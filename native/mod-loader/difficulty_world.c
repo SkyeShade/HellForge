@@ -510,6 +510,7 @@ static float ClusterDirection(float dx, float dy) /* a monotonic stand-in for th
     float p = dy / d;
     return dx >= 0 ? (dy >= 0 ? p : 4.0f + p) : 2.0f - p;
 }
+static void NatureClusters(uint64_t pass, uint64_t clusters, uint32_t n); /* nature variants (c), below */
 static uint64_t WorldPassClusters(uint64_t a, uint64_t b, uint64_t c, uint64_t e)
 {
     AcquireSRWLockExclusive(&g_clusterLock);
@@ -574,6 +575,7 @@ static uint64_t WorldPassClusters(uint64_t a, uint64_t b, uint64_t c, uint64_t e
     if (InterlockedIncrement(&noted) <= 4)
         Note("difficulty: extra large maps: %u location clusters spread over the map (%u on the ring at %.0f m; playable %.0f m), their distances:%s",
             n, m, (double)dist[0], (double)play, list);
+    NatureClusters(c, clusters, n);
     return r;
 }
 WORLD_PASS(Voronoi, 0xF3F8E0u, "GenerateVoronoi")
@@ -2217,6 +2219,146 @@ static void WorldNatureOps(uint32_t op, uint32_t record)
     Note("difficulty: nature research R4: op 0x%X record %u done on thread %lu", op, record, (unsigned long)GetCurrentThreadId());
 }
 
+/* ---- Nature variants in the open land (Design A; KB xl-operation-content "Nature variants", static 2026-11-04) ---------
+ * A city level's kind weights W (S+0xC0 -> its 0x11C map-type entry, W = +0xF0.., W[k-1] for kind k; S = [ctx+8] =
+ * lg+0x2D20, set at level init by 0xF71CD8 / 0xFBF6BF; the entry lives in shared resource data, never written) are
+ * 0 0 1 0 0: every objective, outpost and POI takes a city (kind 3) definition, and op 0x7C (AttachLocationsToRouteCells
+ * 0xF81020) repaints the route cell under a location whose zone type's kinds (type+0x210, u8[4]) lack the location's
+ * kind (0xF815B0..0xF815B7): s75a, 41 of 73 important locations in the open land, 44 open-land cells painted city
+ * (67 after op 0x28). The open land's zones (18/19/20, types 3/4/5) list kind 1, the cities' kind 3. Every kind read
+ * in placement goes through [S+0xC0]: KindRoll 0xF2CA20 (5 callers: ops 0x06, 0x16, 0x8E, the sub-location maker
+ * 0xF8E960 and 0xF479D0) and KindFilter 0xF292B0 (16 callers: 0x13, 0x16, 0x06, 0x17, 0x82, 0x88, 0xA0, 0x81/0x84
+ * through 0xF29740, GenerateLocations 0xF767A0, 0xF8EC70), and op 0x18 sizes its clusters per kind from W (0xF798B5).
+ * So, on a city level of an extra large map:
+ * (a) from op 0x15 to the end of the placement ops (s75a: 0x15 0x16 0x17 0x82 0x18 0x8B 0x78 0x7C 0xA0 0x82 0x8B 0xA0,
+ *     then 0x28) S+0xC0 points at a copy of the entry with W[0] = W[2]; op 0x28 or another op of NatureCloseOp puts the
+ *     original back before op 0x13 (record ~60) and the mission, which reads S too.
+ * (b) The sub-locations an objective makes (0xF8EC70, only caller 0xF90443 in op 0x16; parent [rcx+0x18], its kind
+ *     +0xF0 set by 0xF9006D before) roll and filter with only the parent's kind weighted, so a nature objective gets
+ *     nature sub-sites.
+ * (c) After op 0x18 (and the ring banding), kind-3 clusters move inside the three cities and kind-1 clusters out of
+ *     them, so SpreadLocations (nearest free point to the cluster's centre) puts each kind on its own land. */
+#define NATURE_SLOTS 4
+#define NATURE_ENTRY 0x11Cu
+static struct { uint64_t S, original; DWORD thread; LONG level; int open; uint32_t setW; uint8_t copy[NATURE_ENTRY + 4]; } g_nature[NATURE_SLOTS];
+static SRWLOCK g_natureLock = SRWLOCK_INIT;
+static volatile LONG g_natureSub, g_natureSubOne;
+static volatile LONG* g_attachSkipped; /* op 0x7C locations with no zone of their kind (InstallAttachGuard) */
+/* Every W reader in generation code (indexed reads of +0xEC/+0xF0 off [S+0xC0], 0xF00000..0x1000000): KindFilter, 0xF29740
+ * (ops 0x81 / 0x84), ops 0x13 (0xF636CA), 0x16, 0x17, 0x18, 0x82, 0x88, 0x8E (0xF86412), 0xA0 and GenerateLocations
+ * 0xF767A0. The ops between the placement ops do not read W, so the window closes only where the placement ends: op 0x13
+ * (MergeSubRegionCells, record ~60, must see the original) or the first of the later ops below. */
+static int NatureCloseOp(uint32_t op)
+{
+    static const uint8_t kOps[] = {0x13, 0x1F, 0x28, 0x2B, 0x6A, 0xA5, 0xA7, 0xAB};
+    for (size_t i = 0; i < sizeof kOps; i++) if (kOps[i] == op) return 1;
+    return 0;
+}
+static int NatureSlotOf(uint64_t S)
+{
+    for (int i = 0; i < NATURE_SLOTS; i++) if (g_nature[i].S == S && S != 0) return i;
+    return -1;
+}
+/* called before every dispatcher step of an extra large level: opens the window at op 0x15, closes it at any op outside */
+static void NatureWindow(uint64_t context, uint32_t op, uint32_t record)
+{
+    uint64_t S = 0;
+    if (SafeRead(context + 8, &S, 8) || S == 0) return;
+    AcquireSRWLockExclusive(&g_natureLock);
+    int s = NatureSlotOf(S);
+    if (s >= 0 && g_nature[s].open && NatureCloseOp(op))
+    {
+        uint64_t now = 0;
+        if (!SafeRead(S + 0xC0, &now, 8) && now == (uint64_t)(uintptr_t)g_nature[s].copy) *(volatile uint64_t*)(uintptr_t)(S + 0xC0) = g_nature[s].original;
+        g_nature[s].open = 0;
+        Note("difficulty: extra large maps: nature variants: the open land's kind weights end before op 0x%X (record %u); %ld sub-location groups kept to their parent's kind (%ld nature); "
+            "%ld locations left on their own zone by op 0x7C (none of their kind to paint)", op, record, (long)g_natureSub, (long)g_natureSubOne, g_attachSkipped ? (long)*g_attachSkipped : -1L);
+    }
+    else if (op == 0x15 && g_cities.level == g_world.levels && g_cities.count > 0 && (s < 0 || !g_nature[s].open))
+    {
+        uint64_t mt = 0; float W[5] = {0};
+        if (!SafeRead(S + 0xC0, &mt, 8) && mt != 0 && !SafeRead(mt + 0xF0, W, sizeof W) && W[0] == 0.0f && W[2] > 0.0f)
+        {
+            if (s < 0) for (int i = 0; i < NATURE_SLOTS && s < 0; i++) if (!g_nature[i].open) s = i;
+            if (s >= 0 && !SafeRead(mt, g_nature[s].copy, NATURE_ENTRY))
+            {
+                float w0 = W[2];
+                memcpy(g_nature[s].copy + 0xF0, &w0, 4);
+                g_nature[s].S = S; g_nature[s].original = mt; g_nature[s].thread = GetCurrentThreadId(); g_nature[s].level = g_world.levels; g_nature[s].open = 1;
+                g_natureSub = 0; g_natureSubOne = 0;
+                *(volatile uint64_t*)(uintptr_t)(S + 0xC0) = (uint64_t)(uintptr_t)g_nature[s].copy;
+                Note("difficulty: extra large maps: nature variants: the open land's kind weights from op 0x15 (record %u): W %.3g %.3g %.3g %.3g %.3g -> nature %.3g (S %p)",
+                    record, (double)W[0], (double)W[1], (double)W[2], (double)W[3], (double)W[4], (double)w0, (void*)(uintptr_t)S);
+            }
+        }
+    }
+    ReleaseSRWLockExclusive(&g_natureLock);
+}
+/* (b) */
+typedef uint64_t (*NatureSubFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+static NatureSubFn g_natureSubFn;
+static uint64_t NatureSubLocations(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
+{
+    int s = -1;
+    DWORD me = GetCurrentThreadId();
+    for (int i = 0; i < NATURE_SLOTS && s < 0; i++) if (g_nature[i].open && g_nature[i].thread == me) s = i;
+    uint64_t parent = 0; uint8_t kind = 0;
+    if (s < 0 || SafeRead(a + 0x18, &parent, 8) || parent == 0 || SafeRead(parent + 0xF0, &kind, 1) || kind < 1 || kind > 5)
+        return g_natureSubFn(a, b, c, d, e, f, g, h);
+    float W[5], keep[5];
+    memcpy(keep, g_nature[s].copy + 0xF0, sizeof keep);
+    for (int k = 0; k < 5; k++) W[k] = k == kind - 1 ? (keep[k] > 0.0f ? keep[k] : 1.0f) : 0.0f;
+    memcpy(g_nature[s].copy + 0xF0, W, sizeof W);
+    uint64_t r = g_natureSubFn(a, b, c, d, e, f, g, h);
+    memcpy(g_nature[s].copy + 0xF0, keep, sizeof keep);
+    InterlockedIncrement(&g_natureSub);
+    if (kind == 1) InterlockedIncrement(&g_natureSubOne);
+    return r;
+}
+/* (c) the clusters of a city level's op 0x18, after the ring banding: kind 3 into the cities (each city in turn, on a
+ * ring at 0.45 of its radius), kind 1 out to the open land (at least the radius + the fringe + 160 m from every city
+ * centre, pushed straight out from the nearest one). Inputs are the game's clusters and g_cities (seed-derived). */
+static void NatureClusters(uint64_t pass, uint64_t clusters, uint32_t n)
+{
+    uint64_t S = 0;
+    if (SafeRead(pass + 8, &S, 8) || S == 0) return;
+    int s = NatureSlotOf(S);
+    if (s < 0 || !g_nature[s].open || g_cities.count == 0) return;
+    uint32_t moved3 = 0, moved1 = 0, kinds[6] = {0}, perCity[CITY_COUNT] = {0};
+    const float inner = 0.45f * g_cities.radius, out = g_cities.radius + CITY_FRINGE + 160.0f;
+    for (uint32_t i = 0; i < n && i < 64; i++)
+    {
+        uint64_t at = clusters + 0xE0ull * i;
+        float xy[2]; uint8_t kind = 0;
+        if (SafeRead(at, xy, 8) || SafeRead(at + 0xD8, &kind, 1) || !isfinite(xy[0]) || !isfinite(xy[1])) continue;
+        kinds[kind < 6 ? kind : 0]++;
+        int closest = 0; float best = 1e30f;
+        for (int k = 0; k < g_cities.count; k++)
+        {
+            float dx = xy[0] - g_cities.x[k], dy = xy[1] - g_cities.y[k], d = dx * dx + dy * dy;
+            if (d < best) { best = d; closest = k; }
+        }
+        if (kind == 3)
+        {
+            int k = (int)(moved3 % (uint32_t)g_cities.count);
+            float a = 2.3999632f * (float)perCity[k]++ + 0.7f * (float)k; /* golden angle per city */
+            xy[0] = g_cities.x[k] + inner * cosf(a); xy[1] = g_cities.y[k] + inner * sinf(a);
+            memcpy((void*)(uintptr_t)at, xy, 8);
+            moved3++;
+        }
+        else if (kind == 1 && best < out * out)
+        {
+            float dx = xy[0] - g_cities.x[closest], dy = xy[1] - g_cities.y[closest], d = sqrtf(best);
+            if (d < 1.0f) { dx = 1.0f; dy = 0.0f; d = 1.0f; }
+            xy[0] = g_cities.x[closest] + dx / d * out; xy[1] = g_cities.y[closest] + dy / d * out;
+            memcpy((void*)(uintptr_t)at, xy, 8);
+            moved1++;
+        }
+    }
+    Note("difficulty: extra large maps: nature variants: %u clusters by kind (1: %u, 2: %u, 3: %u, 4: %u, 5: %u); %u city clusters into the cities (%u / %u / %u), %u nature clusters moved out of them",
+        n, kinds[1], kinds[2], kinds[3], kinds[4], kinds[5], moved3, perCity[0], perCity[1], perCity[2], moved1);
+}
+
 static void WorldCityBudget(uintptr_t gen, uint32_t op)
 {
     if (g_cities.level != g_world.levels) return;
@@ -2376,8 +2518,8 @@ static void WorldCityKinds(uint64_t records, uint32_t end, uint64_t context, uin
     if (count > 256) count = 256;
     if (cells > 1024) cells = 1024;
     n = 0;
-    uint32_t outside = 0;
-    for (uint32_t i = 0; i < count && n < (int)sizeof text - 60; i++)
+    uint32_t outside = 0, byKind[2][6] = {{0}};
+    for (uint32_t i = 0; i < count; i++)
     {
         uint8_t kind = 0; float p[2];
         uint64_t at = gen + 0x19B1130u + 0x108ull * i;
@@ -2388,6 +2530,7 @@ static void WorldCityKinds(uint64_t records, uint32_t end, uint64_t context, uin
             float dx = p[0] - g_cities.x[k], dy = p[1] - g_cities.y[k];
             inCity = dx * dx + dy * dy <= g_cities.radius * g_cities.radius * 1.2f;
         }
+        byKind[inCity][kind < 6 ? kind : 0]++;
         if (inCity) continue;
         outside++;
         uint32_t zone = 0; float best = 1e30f;
@@ -2400,9 +2543,12 @@ static void WorldCityKinds(uint64_t records, uint32_t end, uint64_t context, uin
             float d = (q[0] - p[0]) * (q[0] - p[0]) + (q[1] - p[1]) * (q[1] - p[1]);
             if (d < best) { best = d; memcpy(&zone, sub, 4); }
         }
-        n += snprintf(text + n, sizeof text - n, " {%u kind %u at %.0f,%.0f zone %u}", i, kind, (double)p[0], (double)p[1], zone);
+        if (n < (int)sizeof text - 60) n += snprintf(text + n, sizeof text - n, " {%u kind %u at %.0f,%.0f zone %u}", i, kind, (double)p[0], (double)p[1], zone);
     }
     Note("difficulty: city zones research: %u of %u important locations outside the cities:%s", outside, count, text);
+    Note("difficulty: city zones research: important locations by kind: in the cities 1: %u, 3: %u, other %u; in the open land 1: %u, 3: %u, other %u",
+        byKind[1][1], byKind[1][3], byKind[1][0] + byKind[1][2] + byKind[1][4] + byKind[1][5], byKind[0][1], byKind[0][3],
+        byKind[0][0] + byKind[0][2] + byKind[0][4] + byKind[0][5]);
 }
 
 static void WorldCityOpenZones(uint64_t records, uint32_t end, uint64_t context, uintptr_t gen, int withType)
@@ -2966,6 +3112,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     if (watch && op == 0x7C) WorldCityKinds(records, (uint32_t)d, b, block);
     if (watch && op == 0x18) WorldCityDefKinds(b, block);
     if (watch && op == 0x16) WorldNatureResearch16(b);
+    if (watch) NatureWindow(b, op, at);
     if (vanilla2B && vanillaOp == 0x2B) TownsForget(records + (uint64_t)vanillaAt * 0x19B0u + 8);
     if (g_world.current > 1.0f && op == 0x66 && phaseBefore66 < 0) { uint32_t u = 0; if (!SafeRead(block + 0x11A7178u, &u, 4)) phaseBefore66 = (int32_t)u; }
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
@@ -3617,6 +3764,44 @@ static const char* InstallAlarmGuard(uintptr_t game)
     return NULL;
 }
 
+/* Op 0x7C (AttachLocationsToRouteCells 0xF81020) lists, per location, the zones of the region's zone list (R+0x238, 0x44
+ * each, R = [S+0xB0], shared resource data) that may be painted (+0x259 & 2) and whose type lists the location's kind
+ * (type+0x210), and picks one by weight (0xF81382..0xF8147A) with no check that it found any: none gives index -1
+ * (0xF81477 lea eax,[rdi-1]) and a read far outside the list (s75c: c0000005 at 0xF81482). A city map's open-land zones
+ * list kind 1 but are not paintable, so the nature variants' locations (kind 1) find none. Such a location is left
+ * unattached, as the game leaves one whose definition opts out (0xF8129F -> 0xF81DDD): its cells keep their zone, which
+ * on the open land already lists kind 1. 0xF81382..0xF81387 (xor r8d,r8d / xorps xmm0,xmm0) move into a stub that first
+ * tests the count (edi) and on 0 goes to the loop's next location (0xF81DD5: rdi reloaded, r11 the index; counted at
+ * stub +0x40). */
+static const uint8_t kAttachStub[27] = {
+    0x85, 0xFF,                         /*  0 test edi,edi */
+    0x75, 0x0C,                         /*  2 jnz 16 */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,       /*  4 lock inc dword [rip -> stub+0x40] (rel32 at 7) */
+    0xE9, 0, 0, 0, 0,                   /* 11 jmp 0xF81DD5 (rel32 at 12) */
+    0x45, 0x33, 0xC0,                   /* 16 xor r8d,r8d */
+    0x0F, 0x57, 0xC0,                   /* 19 xorps xmm0,xmm0 */
+    0xE9, 0, 0, 0, 0};                  /* 22 jmp 0xF81388 (rel32 at 23) */
+static const char* InstallAttachGuard(uintptr_t game)
+{
+    if (!ApiCodeMatches(game + 0xF8137Au, "4C 8B 9C 24 B8 00 00 00 45 33 C0 0F 57 C0 83 FF 04 72 62") ||
+        !ApiCodeMatches(game + 0xF81DD5u, "48 8B BC 24 98 00 00 00 8B 4C 24 40"))
+        return "op 0x7C's zone pick is not the reviewed one; a location with no zone of its kind is not guarded";
+    uint8_t* stub = AllocateNearGame(game, 0x80);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for op 0x7C's zone pick guard";
+    memcpy(stub, kAttachStub, sizeof kAttachStub);
+    g_attachSkipped = (volatile LONG*)(stub + 0x40);
+    int32_t rel = (int32_t)((stub + 0x40) - (stub + 11)); memcpy(stub + 7, &rel, 4);
+    rel = (int32_t)(game + 0xF81DD5u - (uintptr_t)(stub + 16)); memcpy(stub + 12, &rel, 4);
+    rel = (int32_t)(game + 0xF81388u - (uintptr_t)(stub + 27)); memcpy(stub + 23, &rel, 4);
+    DWORD protect;
+    VirtualProtect(stub, 0x80, PAGE_EXECUTE_READWRITE, &protect);
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x80);
+    uint8_t jump[6] = {0xE9, 0, 0, 0, 0, 0x90};
+    rel = DifficultyJumpRel(game + 0xF81382u, (uintptr_t)stub); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + 0xF81382u, jump, 6)) return "op 0x7C's zone pick guard could not be written";
+    return NULL;
+}
+
 /* The samples' groups: a component init (0x79CCA0, from entity spawn 0x581A50 -> 0x79C756) groups the HiveMind
  * manager's samples (+0x5790, 0x58 each, count +0x5D748) by their owner key into a temporary block of 128 groups
  * (0x810 each: key, 256 {sample, type}, count +0x808; group count +0x40800; size 0x40808 at 0x79CDE4 / 0x79CDFD),
@@ -3891,6 +4076,10 @@ static const char* InstallWorld(DifficultyInstall* d)
         LoaderHook("an operation's missions' objective list", game + 0xF70F20u, (void*)WorldObjectiveFill, (void**)&g_objectiveFill);
     else
         Note("difficulty: extra large maps: the map's objective list fill is not the reviewed one; an operation keeps the selection's objectives");
+    if (ApiCodeMatches(game + 0xF8EC70u, "48 8B C4 48 89 58 20 44 89 40 18 48 89 50 10 48 89 48 08"))
+        LoaderHook("extra large maps' nature sub-locations", game + 0xF8EC70u, (void*)NatureSubLocations, (void**)&g_natureSubFn);
+    else
+        Note("difficulty: extra large maps: the objectives' sub-location maker is not the reviewed one; sub-locations roll any kind");
     const char* garrison = InstallGarrisonGuard(game);
     if (garrison != NULL) Note("difficulty: extra large maps: %s", garrison);
     const char* tasks = InstallTaskGuard(game);
@@ -3899,6 +4088,8 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (samples != NULL) Note("difficulty: extra large maps: %s", samples);
     const char* alarms = InstallAlarmGuard(game);
     if (alarms != NULL) Note("difficulty: extra large maps: %s", alarms);
+    const char* attach = InstallAttachGuard(game);
+    if (attach != NULL) Note("difficulty: extra large maps: %s", attach);
     const char* towns = InstallTowns(game);
     if (ApiCodeMatches(game + 0xFB8F08u, "41 0F 28 C4 F3 0F 59 C3"))
     {
