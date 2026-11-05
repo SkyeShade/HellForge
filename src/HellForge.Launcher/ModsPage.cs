@@ -191,6 +191,7 @@ public partial class MainWindow
         }
         AddPendingCard();
         AddAssetCard(mods);
+        AddShareCard();
         RebuildModAssets(mods);
         AddModKitCards(mods.Select(m => Path.GetFullPath(m.Folder)).ToList());
         if (mods.Count > 0)

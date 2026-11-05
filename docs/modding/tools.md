@@ -99,10 +99,11 @@ Friends then compare the DLL itself, so everyone needs the identical file.
 ## Releasing a mod
 
 1. Raise `version` in `hellforge-mod.json`.
-2. Choose **Zip to share** in the mod's ⋮ menu (or run `HellForge.Cli package-mod --mod <folder>`). HellForge builds
-   the mod first, so a mod that does not compile is not packed. It then writes
-   `<installation>/exports/<folder>-<version>.zip` with the manifest, `src/`, images and data, without IDE leftovers.
-   The zip has no DLL, since every player's HellForge builds it; a prebuilt mod keeps its DLL.
+2. Choose **Prepare for sharing** in the mod's ⋮ menu (or run `HellForge.Cli package-mod --mod <folder>`). HellForge
+   builds the mod first, so a mod that does not compile is not packed. Game patch files have Arrowhead's bytes taken
+   out ([the asset kit](assets.md)). It then writes `<installation>/exports/<folder>-<version>.zip` with the manifest,
+   `src/`, images and data, without IDE leftovers. The zip has no DLL, since every player's HellForge builds it; a
+   prebuilt mod keeps its DLL.
 3. Players drop the zip into their `mods` folder, unpacked or not, but not both: two copies of one id load neither.
    Their HellForge builds it, and they need no tools of their own.
 

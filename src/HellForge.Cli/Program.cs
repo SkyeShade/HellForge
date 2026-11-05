@@ -537,31 +537,13 @@ try
             }
             var outFolder = options.TryGetValue("--out", out var packageOut) ? packageOut
                 : layout?.Exports ?? throw new ArgumentException("Pass --out <folder>: the mod is not in an installation's mods folder.");
-            // Game patch files never go out with Arrowhead's bytes in them: they are stripped first (AssetKit), and the
-            // stripped copy is what is zipped. A mod that already ships a recipe, or has no patch files, is zipped as it is.
-            string? strippedRoot = null;
-            string? assetSummary = null;
-            try
-            {
-                if (!ModAssets.HasRecipe(modFolder) && AssetKit.PatchFiles(modFolder).Count > 0)
-                {
-                    var report = Path.Combine(Path.GetFullPath(outFolder), string.Concat($"{Path.GetFileName(Path.TrimEndingDirectorySeparator(modFolder))}-{mod.Version}"
-                        .Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_')) + ".asset-report.md");
-                    var (stripped, summary) = AssetCommands.StripForPackage(modFolder, layout, report, options.GetValueOrDefault("--history") == "yes");
-                    assetSummary = summary;
-                    if (stripped != null)
-                    {
-                        strippedRoot = Path.GetDirectoryName(stripped);
-                        mod = ModCatalog.Parse(stripped, EntityProfile.Current);
-                    }
-                }
-                var zipPath = ModPackage.Create(mod, outFolder);
-                result = new { mod.Id, mod.Version, zip = zipPath, files = ModPackage.Files(mod).Count, kilobytes = new FileInfo(zipPath).Length / 1024, assets = assetSummary };
-            }
-            finally
-            {
-                if (strippedRoot != null) try { Directory.Delete(strippedRoot, recursive: true); } catch (IOException) { }
-            }
+            // Game patch files never go out with Arrowhead's bytes in them: they are stripped first (AssetSharing.Package), and
+            // the stripped copy is what is zipped. A mod that already ships a recipe, or has no patch files, is zipped as it is.
+            using var packageCancel = new CancellationTokenSource();
+            var packaged = AssetSharing.Package(mod, outFolder, AssetCommands.Context(layout, options.GetValueOrDefault("--history") == "yes", packageCancel));
+            if (packaged.Assets != null) Console.Error.WriteLine($"{packaged.Assets.Result.Summary}\nReport: {packaged.Assets.ReportPath}");
+            result = new { mod.Id, mod.Version, zip = packaged.Zip, files = packaged.Files, kilobytes = new FileInfo(packaged.Zip).Length / 1024, assets = packaged.Assets?.Result.Summary,
+                assetReport = packaged.Assets?.ReportPath };
             break;
         }
         case "assets-check":
@@ -574,7 +556,8 @@ try
                 stripOut = options.TryGetValue("--out", out var given) ? Path.GetFullPath(given)
                     : assetInstall != null ? Path.Combine(assetInstall.Exports, Path.GetFileName(Path.TrimEndingDirectorySeparator(modFolder)))
                     : throw new ArgumentException("Pass --out <folder>: the mod is not in an installation's mods folder.");
-            var (outcome, report) = AssetCommands.Run(modFolder, assetInstall, stripOut, history: options.GetValueOrDefault("--history") == "yes");
+            var check = AssetCommands.Run(modFolder, assetInstall, stripOut, history: options.GetValueOrDefault("--history") == "yes");
+            var (outcome, report) = (check.Result, check.ReportPath);
             result = new
             {
                 outcome = outcome.Outcome.ToString(), summary = outcome.Summary, patchBytes = outcome.ModBytes, gameBytes = outcome.FromGame,
