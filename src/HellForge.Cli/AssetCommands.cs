@@ -40,16 +40,16 @@ static class AssetCommands
     public static AssetSharing.Context Context(InstallLayout? install, bool history, CancellationTokenSource cancel)
     {
         if (history) Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancel.Cancel(); };
-        return new(install, history ? new SteamDownloadCommand.TerminalPrompt() : null, Console.Error.WriteLine, cancel.Token);
+        return new(install, history ? new SteamDownloadCommand.TerminalPrompt() : null, Console.Error.WriteLine, cancel.Token, SteamLogins.Default);
     }
 
     static SteamDepotSession SignIn(CancellationTokenSource cancel)
     {
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancel.Cancel(); };
-        return SteamDepotSession.SignInAsync(new SteamDownloadCommand.TerminalPrompt(), cancel.Token).GetAwaiter().GetResult();
+        return SteamDepotSession.SignInAsync(new SteamDownloadCommand.TerminalPrompt(), cancel.Token, SteamLogins.Default).GetAwaiter().GetResult();
     }
 
-    // assets-rebuild --steam yes: signs in to Steam (a QR code for the Steam app; nothing is kept) and rebuilds the mod
+    // assets-rebuild --steam yes: signs in to Steam (a saved sign-in, else a QR code for the Steam app; SteamLogins) and rebuilds the mod
     // from this PC's builds plus what it needs of the builds it lacks, fetched from Steam.
     public static AssetFetch.Fetched RebuildFromSteam(string modFolder, InstallLayout? install, bool recipe = true)
     {

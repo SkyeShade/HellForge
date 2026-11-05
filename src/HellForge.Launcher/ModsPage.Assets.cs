@@ -13,7 +13,7 @@ namespace HellForge.Launcher;
 // game patch files from this PC's game in the background as soon as it lists one that is not rebuilt yet, says so while
 // it works, and refreshes once it is done. A mod whose recipe takes content from a build this PC does not have (cut
 // content from an older build) says how much it needs, and GET THEM FROM STEAM fetches just that with the player's own
-// Steam sign-in (a QR code for the Steam app, nothing kept; AssetFetch). Nothing downloads without that click. A mod that
+// Steam sign-in (a saved one, else a QR code for the Steam app, then kept: SteamLogins; AssetFetch). Nothing downloads without that click. A mod that
 // cannot be rebuilt is tried again when its recipe changes or Refresh is clicked. Sessions rebuild from this PC too.
 public partial class MainWindow
 {
@@ -114,10 +114,12 @@ public partial class MainWindow
         }
         var amount = bytes > 0 ? $"about {Math.Max(1, bytes / 1e6):F0} MB of an older build's files" : "a few resources of an older build";
         list.Children.Add(Muted($"Steam can send what {(mods.Count == 1 ? "it needs" : "they need")} ({amount}) to your " +
-            "own account, under your own licence: only the pieces the recipe uses. Sign in with the Steam app on your phone; nothing of the sign-in is kept."));
+            "own account, under your own licence: only the pieces the recipe uses. " + char.ToUpperInvariant(SignInWords[0]) + SignInWords[1..] + "."));
         var button = new Button { Content = "GET THEM FROM STEAM", HorizontalAlignment = HorizontalAlignment.Left };
         button.Click += (_, _) => _ = FetchModAssets(mods);
-        list.Children.Add(button);
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { button } };
+        if (SignOutButton() is { } signOut) row.Children.Add(signOut);
+        list.Children.Add(row);
     }
 
     // The sign-in's QR code and what the fetch is doing, with a way to stop it.
@@ -147,7 +149,7 @@ public partial class MainWindow
         Status("Connecting to Steam...");
         try
         {
-            await using var session = await SteamDepotSession.SignInAsync(new AssetPrompt(this), cancel);
+            await using var session = await SteamDepotSession.SignInAsync(new AssetPrompt(this), cancel, SteamLogins.Default);
             assetQr = null;
             var steam = SteamBuilds.For(session, install, cancel);
             foreach (var mod in mods)

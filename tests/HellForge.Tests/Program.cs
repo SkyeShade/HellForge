@@ -728,6 +728,7 @@ VisualCppRuntimesTests.Register(Test, Check, Reject, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
 SteamDownloadTests.Register(Test, Check, Reject, root);
+SteamLoginsTests.Register(Test, Check, root);
 CrashReportTests.Register(Test, Check, Reject, root);
 SetupSourceTests.Register(Test, Check, Reject, root);
 ModStatusTests.Register(Test, Check, Reject, root);

@@ -98,8 +98,8 @@ not on your PC to match. Add `--history yes` to `assets-check`, `assets-strip` o
 HellForge.Cli assets-strip --mod <folder> --history yes
 ```
 
-HellForge signs in to Steam with your own account (a QR code to scan with the Steam app on your phone; nothing of the
-sign-in is kept). It then checks whatever the builds on your PC left in the mod against every build of the game since
+HellForge signs in to Steam with your own account ([signing in to Steam](#signing-in-to-steam): a QR code to scan with
+the Steam app on your phone the first time). It then checks whatever the builds on your PC left in the mod against every build of the game since
 release:
 
 1. It reads each build's depot manifest from Steam, the list of every file's chunks with their SHA-1. That is hashes
@@ -123,8 +123,8 @@ mod, and says so while it works. Each session does it too, before it stages mods
   and the rebuilt files are unchanged, nothing is rebuilt again. A new version of the mod, or a rebuilt file that
   changed, means a rebuild.
 - **Older builds.** When the recipe takes something from a build the player does not have (cut content), the Mods page
-  says how much it needs and offers **GET THEM FROM STEAM**. The player signs in with the Steam app (a QR code, nothing
-  kept), and HellForge fetches only the chunks that hold those pieces, under the player's own licence, then rebuilds the
+  says how much it needs and offers **GET THEM FROM STEAM**. The player signs in to Steam
+  ([signing in to Steam](#signing-in-to-steam): the Steam app scans a QR code the first time), and HellForge fetches only the chunks that hold those pieces, under the player's own licence, then rebuilds the
   mod. Nothing downloads without that click. From a terminal: `HellForge.Cli assets-rebuild --mod <folder> --steam yes`.
 - **Nothing half-built loads.** A mod whose files cannot be rebuilt stays listed with the reason and does not load.
 - **Co-op and mod sync.** The modlist code friends compare counts the recipe, not the rebuilt files. The recipe holds the
@@ -137,6 +137,28 @@ mod, and says so while it works. Each session does it too, before it stages mods
 A recipe from someone else is checked before it is followed. It may only make game patch files
 (`<archive>.patch_<n>`, `.gpu_resources`, `.stream`) inside the mod's folder, never code, a manifest or a script. It may
 never overwrite a file the mod ships. Every operation is range-checked.
+
+## Signing in to Steam
+
+**GET THEM FROM STEAM**, **CHECK OLDER BUILDS**, `--history yes` and `assets-rebuild --steam yes` sign in to Steam with
+the player's own account. The first time it is a QR code to scan with the Steam app on the phone; HellForge never sees a
+password. Steam then hands HellForge a sign-in token, and HellForge keeps it so the next fetch needs no phone:
+
+- **Where.** `<ApplicationData>/HellForge/steam-login.json` (`~/.config/HellForge` on Linux, `%APPDATA%\HellForge` on
+  Windows), with the account name and the token only. On Linux the file and its folder are readable by your user only.
+  It is written whole or not at all.
+- **What is tried.** That sign-in first, then the asset migrator's saved one if it has one
+  (`<ApplicationData>/hellforge-migrator/steam-login.json`, read only: HellForge never changes or deletes it), then the
+  QR code.
+- **Renewed and forgotten.** When Steam offers a newer token, it replaces the old one. A token Steam no longer accepts
+  (expired, revoked, the password changed) is deleted and the QR code comes back. A refusal that can pass (rate limits,
+  Steam busy) keeps it.
+- **Signing out.** **Sign out of Steam** beside those buttons, or `HellForge.Cli steam-signout`, deletes it. Steam
+  lists the sign-in as "HellForge" among your account's authorized devices, where you can remove it too.
+- **Never shown.** The token never reaches the screen, a log or a message: everything the sign-in shows passes through
+  a scrubber, and a test checks the code that handles it.
+
+Setup's download of the game keeps nothing of its sign-in ([steam-download.md](../steam-download.md)).
 
 ## Limits
 

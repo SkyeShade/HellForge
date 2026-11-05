@@ -13,7 +13,8 @@ namespace HellForge.Launcher;
 // files are stripped of Arrowhead's bytes (AssetSharing.Package), and it is zipped into the installation's exports
 // folder. A card says what happened: what was taken out and how players get it back, and the report. When some bytes
 // matched no build on this PC, CHECK OLDER BUILDS prepares it again against every build since release, with the author's
-// own Steam sign-in (a QR code on the card; nothing kept), so cut content from an older build is taken out too.
+// own Steam sign-in (a saved one, else a QR code on the card, then kept: SteamLogins), so cut content from an older build
+// is taken out too.
 public partial class MainWindow
 {
     sealed class Sharing(ModManifest mod, bool history)
@@ -41,7 +42,7 @@ public partial class MainWindow
         RefreshMods();
         var install = new InstallLayout(paths.InstallRoot);
         void Status(string line) => Dispatcher.UIThread.Post(() => { share.Status = line; RefreshMods(); });
-        var context = new AssetSharing.Context(install, history ? new SharePrompt(this, share) : null, Status, share.Running!.Token);
+        var context = new AssetSharing.Context(install, history ? new SharePrompt(this, share) : null, Status, share.Running!.Token, SteamLogins.Default);
         Task.Run(() =>
         {
             try
@@ -115,6 +116,7 @@ public partial class MainWindow
             report.Click += (_, _) => OpenFile(assets.ReportPath);
             buttons.Children.Add(report);
             if (!share.History && assets.Result.Unknown.Count > 0) buttons.Children.Add(OlderBuildsButton(share.Mod));
+            if (SignOutButton() is { } signOut) buttons.Children.Add(signOut);
         }
         list.Children.Add(buttons);
     }
@@ -132,7 +134,7 @@ public partial class MainWindow
         yield return history
             ? $"{MegaBytes(unknown)} is in no build of the game since release: your own work, kept in the zip."
             : $"{MegaBytes(unknown)} matched no build of the game on this PC and stays in the zip. If some of it is cut content from an older build, " +
-              "CHECK OLDER BUILDS finds it on Steam and takes it out too (sign in with the Steam app on your phone; nothing of the sign-in is kept).";
+              "CHECK OLDER BUILDS finds it on Steam and takes it out too (" + SignInWords + ").";
     }
 
     Button OlderBuildsButton(ModManifest mod)

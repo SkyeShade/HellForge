@@ -322,24 +322,32 @@ static class SteamDownloadTests
             scrubber.Forget();
             check(scrubber.Clean("hunter2-correct-horse") == "hunter2-correct-horse", "The scrubber kept its secrets.");
             check(!SteamKit2.DebugLog.Enabled, "SteamKit2's debug log is on.");
-            // the sign-in code itself: no line that shows, logs, writes or throws text names a password or a token, the
-            // session is never persistent, nothing is saved, and Steam Guard data is never read back
+            // the sign-in code itself: no line that shows, logs, writes or throws text names a password or a token, setup's
+            // session is never persistent and keeps nothing, and Steam Guard data is never read back; the asset kit's saved
+            // sign-in (SteamLogins) is the only place a token is kept, and its code is held to the same lines
             string[] sources = ["HellForge.SteamDownload/SignIn.cs", "HellForge.SteamDownload/SteamDepotSession.cs", "HellForge.SteamDownload/SteamCmd.cs",
                 "HellForge.Cli/SteamDownloadCommand.cs", "HellForge.Launcher/SteamSignInFlow.cs"];
+            string[] keeping = ["HellForge.SteamDownload/SteamLogins.cs", "HellForge.SteamDownload/AssetSharing.cs", "HellForge.Cli/AssetCommands.cs",
+                "HellForge.Launcher/ModsPage.SteamSignIn.cs", "HellForge.Launcher/ModsPage.Assets.cs", "HellForge.Launcher/ModsPage.Sharing.cs"];
             var sink = new Regex(@"\b(Status|WriteLine|Write|Append|Exception|Log|Trace|Debug|Print|Show\w*)\s*\(|\.Text\s*=(?!\s*""""\s*;)|\$""");
             var secret = new Regex(@"\b\w*(Password|password|RefreshToken|refreshToken|AccessToken|accessToken|NewGuardData|GuardData)\b");
-            foreach (var relative in sources)
+            foreach (var relative in sources.Concat(keeping))
             {
                 var path = Source(relative);
                 check(File.Exists(path), "Missing source " + relative);
                 var text = File.ReadAllText(path);
                 foreach (var line in text.Split('\n').Select(l => Regex.Replace(l, "\"(?:[^\"\\\\]|\\\\.)*\"", "\"\"")))
                     check(!(sink.IsMatch(line) && secret.IsMatch(line)), $"{relative}: a secret may reach the screen or a log: {line.Trim()}");
-                check(!Regex.IsMatch(text, @"IsPersistentSession\s*=\s*true|ShouldRememberPassword\s*=\s*true|GuardData|SaveToFile|File\.Write|File\.Append|Registry"),
-                    relative + " keeps something of the sign-in.");
+                if (sources.Contains(relative))
+                    check(!Regex.IsMatch(text, @"IsPersistentSession\s*=\s*true|ShouldRememberPassword\s*=\s*true|GuardData|SaveToFile|File\.Write|File\.Append|Registry"),
+                        relative + " keeps something of the sign-in.");
             }
             var session = File.ReadAllText(Source("HellForge.SteamDownload/SteamDepotSession.cs"));
-            check(session.Contains("IsPersistentSession = false") && session.Contains("ShouldRememberPassword = false"), "The session is not marked non-persistent.");
+            check(session.Contains("IsPersistentSession = persistent") && session.Contains("persistent: saved != null") && session.Contains("ShouldRememberPassword = false"),
+                "The session is persistent only when a sign-in is to be kept.");
+            // setup's download never passes a store, so it keeps nothing
+            foreach (var setup in new[] { "HellForge.Cli/SteamDownloadCommand.cs", "HellForge.Launcher/SteamSignInFlow.cs" })
+                check(!File.ReadAllText(Source(setup)).Contains("SteamLogins"), setup + " keeps a sign-in.");
             // no password is ever typed into HellForge: no password sign-in, no password box, no hidden prompt
             var everything = string.Join("\n", new[] { "HellForge.SteamDownload", "HellForge.Cli", "HellForge.Launcher" }
                 .SelectMany(project => Directory.EnumerateFiles(Source(project), "*.*", SearchOption.AllDirectories))
