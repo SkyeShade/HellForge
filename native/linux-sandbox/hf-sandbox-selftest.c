@@ -306,9 +306,51 @@ static void check_copied_credential(const struct hf_sandbox *sandbox)
     else report("deleted credential copy", false, "%s did not hold the copied credential", path);
 }
 
+// 0 when the game could open this controller under the domain's rules, as Wine and SDL open it; otherwise the errno.
+static int controller_open_error(const char *folder, const char *name)
+{
+    char path[PATH_MAX];
+    if (hf_join(path, sizeof(path), folder, name) != 0) return ENAMETOOLONG;
+    int fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) return errno;
+    close(fd);
+    return 0;
+}
+
+// Counts the controllers in one folder of the view and reports any entry the domain's check refuses (hf_dev_entry), or a
+// controller that does not open.
+static bool check_controller_folder(const char *folder, bool input_folder, int *controllers)
+{
+    DIR *dir = opendir(folder);
+    if (dir == NULL) return input_folder && errno == ENOENT;
+    bool passed = true;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (hf_dot_entry(entry->d_name)) continue;
+        enum hf_dev_entry kind = hf_dev_entry(folder, entry->d_name, input_folder);
+        if (kind == HF_DEV_OTHER) continue;
+        int error = kind == HF_DEV_CONTROLLER ? controller_open_error(folder, entry->d_name) : 0;
+        if (kind == HF_DEV_CONTROLLER && error == 0)
+        {
+            (*controllers)++;
+            continue;
+        }
+        if (kind == HF_DEV_CONTROLLER)
+            printf("FAIL minimal /dev: the controller %s/%s cannot be opened: %s\n", folder, entry->d_name, strerror(error));
+        else printf("FAIL minimal /dev: %s/%s is an input device that is not a game controller at its own path\n", folder,
+            entry->d_name);
+        failures++;
+        passed = false;
+    }
+    closedir(dir);
+    return passed;
+}
+
 static void check_devices(void)
 {
-    const char *forbidden[] = { "/dev/input", "/dev/uinput", "/dev/kvm", "/dev/mem", "/dev/kmem" };
+    const char *forbidden[] = { "/dev/uinput", "/dev/kvm", "/dev/mem", "/dev/kmem" };
     bool passed = true;
     for (size_t index = 0; index < sizeof(forbidden) / sizeof(forbidden[0]); index++)
     {
@@ -320,6 +362,9 @@ static void check_devices(void)
             failures++;
         }
     }
+    int controllers = 0;
+    if (!check_controller_folder("/dev", false, &controllers)) passed = false;
+    if (!check_controller_folder("/dev/input", true, &controllers)) passed = false;
     int null = open("/dev/null", O_RDWR | O_CLOEXEC);
     if (null < 0)
     {
@@ -328,7 +373,9 @@ static void check_devices(void)
         failures++;
     }
     else close(null);
-    if (passed) report("minimal /dev", true, "null works; input, uinput, kvm, mem and kmem are absent");
+    if (passed)
+        report("minimal /dev", true, "null works; uinput, kvm, mem and kmem are absent; input devices: %d game controller(s), "
+            "each opens, no keyboard or mouse", controllers);
 }
 
 static void expect_denied_both(const char *label, const char *base, const char *name)

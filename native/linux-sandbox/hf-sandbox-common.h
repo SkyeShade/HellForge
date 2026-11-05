@@ -23,6 +23,7 @@
 #include <sys/mount.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -103,5 +104,28 @@ void hf_filter_deny_errno(struct sock_filter *filter, size_t *length, unsigned i
 int hf_filter_deny_clone_namespaces(struct sock_filter *filter, size_t *length, size_t capacity);
 size_t hf_filter_begin(struct sock_filter *filter, size_t capacity);
 int hf_filter_end(struct sock_filter *filter, size_t length, size_t capacity);
+
+// Game controllers in the sandbox's /dev. Keyboards and mice are input devices too: an evdev node of a keyboard would let
+// the game read every key typed on the PC, and /dev/uinput would let it type into other programs, so neither ever enters
+// the view. Only a node that is a game controller and nothing else does, at its real path (Wine and SDL take a device's
+// node from sysfs, so /dev/input/eventN and /dev/hidrawN). Both tests read sysfs only, never the device.
+// An evdev device (its sysfs folder, the one holding capabilities/): joystick or gamepad buttons and absolute axes, no key
+// a keyboard types with (KEY_ESC to KEY_F12) and no relative X or Y.
+bool hf_pad_event(const char *device_dir);
+// A hidraw device (its sysfs folder, the one holding report_descriptor): an application collection that is a joystick,
+// gamepad or multi-axis controller, and none that is a mouse, keyboard, keypad or digitizer.
+bool hf_pad_hidraw(const char *device_dir);
+// Whether a character device node is a controller the view may hold: its device number's sysfs entry
+// (/sys/dev/char/<major>:<minor>) is an evdev event node or a hidraw node that passes the test above. name, when not
+// NULL, gets the node's kernel name (event12, hidraw3) for the caller's check of the path it sits at.
+bool hf_pad_node(dev_t device, char *name, size_t name_size);
+// Whether a character device node is an input or hidraw device of any kind (any node of the input major, 13).
+bool hf_input_node(dev_t device);
+// The view's rule for one entry of /dev (input_folder false) or /dev/input (true), shared by the domain's check before
+// the game starts and the self-test: every input or hidraw node must be a controller at its own kernel name
+// (/dev/input/eventN, /dev/hidrawN); in /dev/input nothing else may be. HF_DEV_OTHER: not an input device.
+enum hf_dev_entry { HF_DEV_OTHER, HF_DEV_CONTROLLER, HF_DEV_REFUSED };
+enum hf_dev_entry hf_dev_entry(const char *folder, const char *name, bool input_folder);
+bool hf_dot_entry(const char *name);
 
 #endif
