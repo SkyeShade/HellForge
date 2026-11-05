@@ -31,7 +31,7 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
   "icon": "images/icon.png",
   "url": "https://github.com/yourname/liberator-tweaks",
   "gameplay": true,
-  "code": { "dll": "liberator_tweaks.dll", "sdk": 15 }
+  "code": { "dll": "liberator_tweaks.dll", "sdk": 16 }
 }
 ```
 
@@ -44,6 +44,8 @@ the mod's kind, and one mod can be several kinds at once (code with a data spec,
 | `icon` | optional: a PNG or JPEG in the mod folder; square looks best |
 | `url` | optional: where players get the mod, an `https://` address of at most 200 characters (no `http://`, user name, port or spaces). The Mods page links it, and the in-game MOD SYNC prompt shows it as GET IT to a joiner who has to install the mod themselves. Any other address is left out; a bundled mod's is never shown |
 | `gameplay` | default `true`: friends must run the same gameplay mods. Set `false` for cosmetic mods, which are not compared. A mod with stats or `componentWrites` is always gameplay; one holding only Lua patches is always cosmetic |
+| `coop` | optional, `"shared"` or `"per-player"`. Shared mods must match on every machine; per-player mods stay on the player's PC and leave the modlist code. Without the field HellForge infers it: stats-only mods, texture/sound/text-only patch mods, and Local Stats are per-player, everything else shared. `"shared"` always wins; `"per-player"` is refused when the mod has network field types or a data spec, since those change the wire or numbered resources |
+| `coopLevel` | a non-negative whole number that replaces the mod's file hashes in the modlist code (`id\|coop\|<level>`; a bundled mod's `id\|bundled\|<level>`): players whose copies have the same level play together, whatever version each has. Bump it when a change alters what other machines see or need (added content, network messages, host-side logic, other stats or data the host's game uses), not for a fix that stays on one machine. A joiner without the mod still downloads the host's exact copy. A mod without it is compared by its files |
 | `code.dll` | the DLL's file name; HellForge builds it from `src/` |
 | `code.sdk` | the SDK version the mod needs (see [compatibility](#compatibility)) |
 | `code.prebuilt`, `code.game` | for a mod that ships its DLL ([tools](tools.md#prebuilt-mods)) |
@@ -64,6 +66,7 @@ game starts     the loader calls each code mod's hellforge_mod_init, in the orde
                   HF_EVENT_ENTITIES_READY     entity data loaded (again after a reload)
 game running    game events (subscribe), on_game_thread callbacks, every update                 game thread
                 hook detours: whenever the game calls the function                             the caller's thread
+session end     HF_EVENT_SESSION_END (SDK 16): a stop from the launcher, or a normal quit       watch or quitting thread
 ```
 
 `hellforge_mod_init(const HfApi* hf, HfMod* mod)` runs once, while the game is still starting. Register everything
@@ -129,10 +132,11 @@ game: use `hf_set` or `edit_entity` instead.
 
 ## Co-op
 
-- The modlist code. Before a friend joins, HellForge compares both players' gameplay mods: ids, versions and files (a
-  source mod's sources, not a DLL). Any difference refuses the join, and both games say which mods differ; the
-  joiner may then sync to the host's mods ([mods.md](../mods.md#playing-with-other-mods)). Cosmetic
-  mods, packs and Lua mods are not compared. Nor is the order: friends who order the same mods differently can play
+- The modlist code. Before a friend joins, HellForge compares both players' **shared** gameplay mods: ids, versions and
+  files (a source mod's sources, not a DLL). Any difference refuses the join, and both games say which mods differ; the
+  joiner may then sync to the host's mods ([mods.md](../mods.md#playing-with-other-mods)). Cosmetic mods, packs, Lua
+  mods, and per-player gameplay mods (stats-only, texture/sound/text-only patches, or manifest `"coop":
+  "per-player"`) are not compared. Nor is the order: friends who order the same mods differently can play
   together, but where two mods conflict, a different one may win on each machine.
 - Every machine runs its own mods. Each player's game runs the mods' code and data. A hit is applied by the machine
   that owns the target, and its damage events are raised there; a stratagem's activation is applied on its thrower's
@@ -144,6 +148,37 @@ game: use `hf_set` or `edit_entity` instead.
 - What travels between machines. New content travels as ids (stratagem types, projectile types), so a mod's content
   must exist on every machine, which the modlist code makes sure of. A network field type a mod widens is widened on
   every machine for the same reason.
+- The mod channel (SDK 16). The same code mod on every machine can send messages (`send`; `HF_ON_MESSAGE`) and share
+  a table the host owns (`share_set`, `share_get`, `share_row`; `HF_ON_SHARE`). Messages are at most
+  `HF_MESSAGE_MAX` (1024) bytes and 64 a second per mod, in order per sender; nothing is sent in solo. Rows are per
+  mod: keys are the mod's own, values at most `HF_SHARE_VALUE_MAX` (64) bytes, at most `HF_SHARE_ROWS` (512) rows.
+  Only the host sets rows; every machine reads them, and a late joiner gets the whole table when it joins.
+  `is_authority(entity)` says whether this machine simulates an entity, and `entity_of_network(network)` gives the
+  entity a network id names on this machine now.
+- Example: champions. The host's mod crowns some enemies and shares each crown by network id; every machine listens
+  and dresses the entity it holds under that id. What the clients need travels in the value, never a decision they
+  would compute differently:
+
+  ```c
+  typedef struct { uint64_t resource; uint8_t look, kind; uint16_t serial; } Champion;
+
+  /* host: crown an enemy (its network id is the row's key) */
+  Champion crown = {resource, look, kind, serial};
+  hf->share_set(mod, network, &crown, sizeof crown);
+  /* ... and when it dies or retires */
+  hf->share_set(mod, network, NULL, 0);
+
+  /* every machine: a row arrives, changes or goes */
+  static void Shared(HfMod* mod, const HfEventInfo* event, void* user)
+  {
+      const HfShareEvent* row = (const HfShareEvent*)event;
+      if (row->bytes == 0) return; /* gone: undress the entity bound to it */
+      uint32_t entity = HF_API(mod)->entity_of_network(mod, (uint32_t)row->key);
+      /* bind when the entity's resource matches; HF_ON_SPAWN says when it appears */
+  }
+
+  hf->subscribe(mod, HF_ON_SHARE, Shared, NULL, 0);
+  ```
 
 ## Premium content
 
@@ -180,7 +215,7 @@ HellForge does most of this for you.
     "name": "Knight Carbine",
     "version": "1.0.0",
     "premium": ["dlc:super-citizen-edition"],
-    "code": { "dll": "knight_carbine.dll", "sdk": 15 }
+    "code": { "dll": "knight_carbine.dll", "sdk": 16 }
   }
   ```
 
@@ -215,7 +250,7 @@ page.
 ## Compatibility
 
 - SDK versions. The manifest's `code.sdk` is the SDK the mod needs. A HellForge with an older SDK refuses the mod
-  ("needs HellForge mod SDK 16; this HellForge provides SDK 15"), and newer ones load it. Functions are only ever added
+  ("needs HellForge mod SDK 17; this HellForge provides SDK 16"), and newer ones load it. Functions are only ever added
   at the end of `HfApi`, so a mod built for SDK 6 runs on SDK 13. In code, check what you use:
 
   ```c

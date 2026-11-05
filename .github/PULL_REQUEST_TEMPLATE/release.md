@@ -1,5 +1,6 @@
-<!-- A release: dev into main. Open it with ?template=release.md on the compare page, or
-     gh pr create --base main --head dev --template release.md -->
+<!-- A release: a release/X.Y branch cut from dev, into main. Not dev itself: merging would delete its branch.
+     Open it with ?template=release.md on the compare page, or
+     gh pr create --base main --head release/X.Y --template release.md -->
 
 ## Release HellForge X.Y.Z
 
@@ -22,4 +23,5 @@ Changelog (this release's section of `CHANGELOG.md`):
 - [ ] 6b. If any `HellForge.Cli` command or its JSON changed, `docs/external-launchers.md` is updated and the change is
   in the changelog, so launchers that use the CLI know before the release lands
 
-After merging: tag `vX.Y.Z-beta` on main and make the GitHub release from it.
+After merging: tag `vX.Y.Z-beta` on main and make the GitHub release from it, then merge `main` back into `dev` with a
+pull request, so `dev` has the release branch's changes.

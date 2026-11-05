@@ -76,6 +76,33 @@ static class CosmeticPacksTests
             check(loaded.Count == 0 && problems.Single().Contains("Pistol includes a folder outside the pack"), "Refused: " + string.Join(" | ", problems));
         });
 
+        test("Cosmetic packs: folders named as Windows matches them (other case, a trailing dot) load; a missing one is named as written", () =>
+        {
+            // Packs from Nexus mods 11057 and 5466: "Reticle (55)/RL-77/PGO-7V3." is stored without its dot, and a folder's
+            // case differs from the manifest's. Windows opens both; native Linux refused them.
+            var mods = Directory.CreateDirectory(Path.Combine(root, "windows-names-mods")).FullName;
+            var folder = Pack(mods, "scopes", "33333333-2222-3333-4444-555555555555");
+            var manifest = Path.Combine(folder, CosmeticPacks.ManifestName);
+            Directory.Move(Path.Combine(folder, "Pistol"), Path.Combine(folder, "PGO-7V3"));
+            Directory.Move(Path.Combine(folder, "Rifle A"), Path.Combine(folder, "rifle a"));
+            File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("""["Pistol"]""", """["PGO-7V3."]""")
+                .Replace(""".jpgs/icon.png""", """.JPGS/Icon.PNG"""));
+            var (loaded, problems) = ModCatalog.Load(mods);
+            var pack = loaded.SingleOrDefault();
+            // Windows opens the manifest's own spelling, so only Linux is given the name as stored.
+            check(problems.Count == 0 && pack != null && pack.PackFolders.Count == 2 && pack.PackFolders.All(Directory.Exists) &&
+                (!OperatingSystem.IsLinux() || pack.PackFolders.SequenceEqual([Path.Combine(folder, "rifle a"), Path.Combine(folder, "PGO-7V3")])),
+                "Loads, staging the folders as stored: " + string.Join(" | ", problems) + " " + string.Join(", ", pack?.PackFolders ?? []));
+            check(pack?.Icon is { } icon && File.Exists(icon) && (!OperatingSystem.IsLinux() || icon == Path.Combine(folder, ".jpgs", "icon.png")),
+                "The icon is found whatever its case: " + pack?.Icon);
+            check(pack != null && pack.PackFolders.Sum(f => CosmeticPacks.PatchFiles(f).Count()) == 6, "Each folder's patches are found.");
+
+            File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("""["PGO-7V3."]""", """["Reticle (55)/RL-77"]"""));
+            (loaded, problems) = ModCatalog.Load(mods);
+            check(loaded.Count == 0 && problems.Single().Contains($"an option includes {Path.Combine("Reticle (55)", "RL-77")}, which the pack does not have"),
+                "A folder no name matches is still refused, named as the manifest names it: " + string.Join(" | ", problems));
+        });
+
         test("The Mods page's order: gameplay then cosmetic, saved, new mods on top; sessions load it bottom first", () =>
         {
             var mods = Directory.CreateDirectory(Path.Combine(root, "order-mods")).FullName;
@@ -177,6 +204,33 @@ static class CosmeticPacksTests
             // a disabled runtime counts as absent
             ModSettings.SetEnabled(mods, "pack.11111111-0000-0000-0000-000000000002", false);
             check(Problems().Single().StartsWith("Railgun, HD2Runtime need Bingus Shared Loader"), "Bingus turned off: " + string.Join(" | ", Problems()));
+            ModSettings.SetEnabled(mods, "pack.11111111-0000-0000-0000-000000000002", true);
+
+            // HD2R Editor (its release zip's hd2runtime.json and manifest.json): listed, always off, said to be unsupported
+            var editor = LuaMod("HD2R Editor 1.0.1", LuaRuntimes.EditorGuid,
+                """{"format":1,"name":"HD2R Editor","resource":"mods/skyeshade/hd2runtime_editor","guid":"e4b62702-7e11-557e-8413-2b0facb4c1ff","requires":{"bingus":{"api":1},"hd2runtime":{"min_version":"0.40.0","api":1,"module":"mods/skyeshade/hd2runtime"}}}""");
+            var (loaded, editorProblems) = ModCatalog.Load(mods);
+            var listed = loaded.Single(m => m.Name == "HD2R Editor 1.0.1");
+            check(!listed.Enabled && listed.Unsupported == LuaRuntimes.EditorUnsupported && listed.Lua, "The editor is listed, off and marked unsupported.");
+            check(!ModCatalog.Active(loaded).Contains(listed), "It is never in a session's mods.");
+            check(editorProblems.Single() == "HD2R Editor 1.0.1: " + LuaRuntimes.EditorUnsupported && editorProblems[0].Contains("press F8"),
+                "One notice, saying how to open HellForge's editor: " + string.Join(" | ", editorProblems));
+            check(loaded.Where(m => m != listed).All(m => m.Enabled && m.Unsupported == null), "HD2Runtime and its other mods still load.");
+            // the Mods page's switch cannot turn it on
+            ModSettings.SetEnabled(mods, listed.Id, true);
+            check(!ModCatalog.Load(mods).Mods.Single(m => m.Id == listed.Id).Enabled, "Switched on, it stays off.");
+            // known by its resource alone, or by its manifest's guid alone
+            File.WriteAllText(Path.Combine(editor, "hd2runtime.json"), """{"format":1,"resource":"mods/skyeshade/hd2runtime_editor"}""");
+            File.WriteAllText(Path.Combine(editor, CosmeticPacks.ManifestName), """{"Version":1,"Guid":"11111111-0000-0000-0000-000000000009","Name":"Renamed","Options":[]}""");
+            check(LuaRuntimes.IsEditor(editor), "By its resource.");
+            File.Delete(Path.Combine(editor, "hd2runtime.json"));
+            check(!LuaRuntimes.IsEditor(editor), "Neither: another mod.");
+            File.WriteAllText(Path.Combine(editor, CosmeticPacks.ManifestName), """{"Version":1,"Guid":"E4B62702-7E11-557E-8413-2B0FACB4C1FF","Name":"HD2R Editor","Options":[]}""");
+            check(LuaRuntimes.IsEditor(editor), "By its manifest's guid, in any case.");
+            check(!LuaRuntimes.IsEditor(runtime), "HD2Runtime is not the editor.");
+            File.WriteAllText(Path.Combine(editor, CosmeticPacks.ManifestName), "{not json");
+            check(!LuaRuntimes.IsEditor(editor), "A broken manifest is not the editor (and does not throw).");
+            Directory.Delete(editor, recursive: true);
         });
 
         test("A cosmetic pack zipped loads like a folder, and Add mods takes it", () =>
@@ -197,8 +251,14 @@ static class CosmeticPacksTests
                 "Loaded from the zip: " + string.Join(" | ", loadProblems));
         });
 
-        test("A .7z (as a .rar) is unpacked by Windows' tar and added as a folder: a pack with its files at the root, a mod in a folder", () =>
+        test("A .7z (the system's tar writes it) is unpacked and added as a folder: a pack with its files at the root, a mod in a folder", () =>
         {
+            if ((!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) ||
+                (OperatingSystem.IsLinux() && !File.Exists("/usr/bin/bsdtar")))
+            {
+                Console.WriteLine("  (skipped: no libarchive tar)");
+                return;
+            }
             var install = new InstallLayout(Path.Combine(root, "pack-7z-install"));
             install.Create("25480438");
             Directory.CreateDirectory(install.Mods);
@@ -209,7 +269,7 @@ static class CosmeticPacksTests
             File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(mod, "data")).FullName, "9ba626afa44a3aa3.patch_0"), "mod");
             static void SevenZip(string from, string what, string archive)
             {
-                var tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
+                var tar = OperatingSystem.IsLinux() ? "bsdtar" : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
                 using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(tar) { ArgumentList = { "--format", "7zip", "-cf", archive, "-C", from, what }, UseShellExecute = false, CreateNoWindow = true })!;
                 process.WaitForExit();
                 if (process.ExitCode != 0) throw new InvalidOperationException("tar could not write " + archive);

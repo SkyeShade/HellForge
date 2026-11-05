@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="src/HellForge.Core/HellForge.Core.csproj" />
+  <Project Path="src/HellForge.SteamDownload/HellForge.SteamDownload.csproj" />
   <Project Path="src/HellForge.Cli/HellForge.Cli.csproj" />
   <Project Path="src/HellForge.SteamProbe/HellForge.SteamProbe.csproj" />
   <Project Path="src/HellForge.CaptureProxy/HellForge.CaptureProxy.csproj" />

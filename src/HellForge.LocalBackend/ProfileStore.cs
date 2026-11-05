@@ -82,7 +82,8 @@ public sealed class ProfileStore : IDisposable
             if (File.Exists(path))
             {
                 var existing = Load(path);
-                if (NameShipIfIntroSkipped(existing) | GrantOnboardingRewards(existing) | GrantStandardStratagems(existing) | GrantTemplateBoosters(existing)) Save(path, existing);
+                if (NameShipIfIntroSkipped(existing) | GrantOnboardingRewards(existing) | GrantStandardItems(existing) | GrantTemplateBoosters(existing) |
+                    CompletePackageProgress(existing)) Save(path, existing);
                 return new ProfileStore(existing, path, lease, false);
             }
             var profile = CreateDefault(template);
@@ -117,6 +118,8 @@ public sealed class ProfileStore : IDisposable
                 body = JsonSerializer.SerializeToElement(profile[section], BackendJson.Default.JsonNode);
                 if (section == "inventory")
                     body = Ownership?.FilterInventoryResponse(body) ?? OwnershipFilter.WithoutSuperCredits(body);
+                else if (section == "progression" && Ownership != null)
+                    body = Ownership.FilterProgressionResponse(body, JsonSerializer.SerializeToElement(profile["inventory"], BackendJson.Default.JsonNode));
             }
             return true;
         }
@@ -138,27 +141,29 @@ public sealed class ProfileStore : IDisposable
     // POST /Account/ReportPosition (builders 0x12bcf40, 0x12db270): where the Super Destroyer is, {"warId", "planetIndex",
     // "territoryIndex"?, "regionIndex"?}, sent as it moves. GET /Progression returns it as "location" (parser 0x1063320,
     // from 0x10624d0: warId and planetIndex required, the others optional), where the client places the ship at startup.
-    // The builder leaves territoryIndex out when it is negative but always writes regionIndex, -1 away from a region:
-    // a negative optional index is "none" and is not kept.
-    public bool TrySetLocation(JsonElement body)
+    public bool TrySetLocation(JsonElement body) => ParseLocation(body) is { } value && Update(progression => progression["location"] = value);
+
+    // A ship position as /Progression serves it, or null when it names no planet. The builder leaves territoryIndex out
+    // when it is negative but always writes regionIndex, -1 away from a region: a negative optional index is "none" and
+    // is not kept. The live server's /Progression gives a ship away from any planet a negative warId and planetIndex.
+    internal static JsonObject? ParseLocation(JsonElement reported)
     {
-        if (body.ValueKind != JsonValueKind.Object) return false;
-        JsonObject value;
+        if (reported.ValueKind != JsonValueKind.Object) return null;
         try
         {
-            var reported = JsonNode.Parse(body.GetRawText())!.AsObject();
-            value = new JsonObject();
+            var source = JsonNode.Parse(reported.GetRawText())!.AsObject();
+            var value = new JsonObject();
             foreach (var key in new[] { "warId", "planetIndex", "territoryIndex", "regionIndex" })
             {
-                if (!reported.ContainsKey(key)) { if (key is "warId" or "planetIndex") return false; continue; }
-                if (key is "territoryIndex" or "regionIndex" && reported[key] is JsonValue index &&
+                if (!source.ContainsKey(key)) { if (key is "warId" or "planetIndex") return null; continue; }
+                if (key is "territoryIndex" or "regionIndex" && source[key] is JsonValue index &&
                     index.GetValueKind() == JsonValueKind.Number && index.ToJsonString() == "-1") continue;
-                value[key] = Integer(reported, key, "location");
+                value[key] = Integer(source, key, "location");
             }
             ValidateLocation(value);
+            return value;
         }
-        catch (InvalidDataException) { return false; }
-        return Update(progression => progression["location"] = value);
+        catch (InvalidDataException) { return null; }
     }
 
     // PUT /Progression/OnboardingState (builders 0x12be3a0, 0x1355f00): state and flags as GET /Progression reports them.
@@ -308,33 +313,92 @@ public sealed class ProfileStore : IDisposable
         foreach (var (section, _) in Sections) profile[section] = updated[section]!.DeepClone();
     }
 
-    // Mission end: adds experience and item amounts (samples, requisition). Amounts are clamped to the catalogue
+    // Mission end: adds experience and item amounts (samples, requisition, medals). Amounts are clamped to the catalogue
     // maxCap when one exists; unknown items are added as discovered inventory entries. Super Credits are never granted,
-    // whatever the mission report claims was found.
-    public void ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items)
+    // whatever the mission report claims was found. A mission id is paid once: it is saved with the rewards
+    // (progression.paidMissions, the last PaidMissionsKept), so a retried Mission/end, also after a restart, pays nothing
+    // and returns false. A report without an id is paid. The receipt is diemitze's idea (PR #27).
+    public const int PaidMissionsKept = 64;
+
+    public bool ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items, string? missionId = null) =>
+        TryChange((progression, inventory) =>
+        {
+            if (!string.IsNullOrEmpty(missionId))
+            {
+                var paid = progression["paidMissions"] as JsonArray ?? [];
+                if (paid.Any(p => p is JsonValue v && v.TryGetValue<string>(out var id) && id == missionId)) return false;
+                paid.Add((JsonNode)missionId);
+                while (paid.Count > PaidMissionsKept) paid.RemoveAt(0);
+                progression["paidMissions"] = paid;
+            }
+            progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
+            foreach (var (mix, amount) in items) AddItem(inventory, mix, amount);
+            return true;
+        });
+
+    // A pickup (Mission/Activity, or a friend's backend's through multiplayer): the item added once per pile of a mission,
+    // the receipt saved with it (progression.paidPiles, the last PaidPilesKept "mission/pile"), so a retried request or a
+    // relayed copy, also after a restart, adds nothing and returns false.
+    public const int PaidPilesKept = 256;
+
+    public bool ApplyPickup(string missionId, long pile, uint mixId, long amount) =>
+        TryChange((progression, inventory) =>
+        {
+            var receipt = missionId + "/" + pile.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var paid = progression["paidPiles"] as JsonArray ?? [];
+            if (paid.Any(p => p is JsonValue v && v.TryGetValue<string>(out var id) && id == receipt)) return false;
+            paid.Add((JsonNode)receipt);
+            while (paid.Count > PaidPilesKept) paid.RemoveAt(0);
+            progression["paidPiles"] = paid;
+            AddItem(inventory, mixId, amount);
+            return true;
+        });
+
+    // A change to progression and inventory together (a purchase, a reward): edit works on copies and returns whether to
+    // keep them; false changes nothing. The result is validated and saved before it is served.
+    public bool TryChange(Func<JsonObject, JsonArray, bool> edit)
     {
-        var caps = new Dictionary<uint, long>();
-        foreach (var item in LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray())
-            if (item.TryGetProperty("maxCap", out var cap)) caps[item.GetProperty("mixId").GetUInt32()] = cap.GetInt64();
         lock (gate)
         {
             var updated = profile.DeepClone().AsObject();
-            var progression = (JsonObject)updated["progression"]!;
-            progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
             var inventory = (JsonObject)updated["inventory"]!;
             if (inventory["items"] is not JsonArray list) inventory["items"] = list = new JsonArray();
-            foreach (var (mix, amount) in items.Where(item => !PaidContentSet.IsSuperCredits(item.Key)))
-            {
-                var entry = list.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mix);
-                if (entry == null) list.Add((JsonNode?)(entry = new JsonObject { ["mixId"] = mix, ["amount"] = 0, ["isDiscovered"] = true }));
-                var total = Number(entry["amount"]!) + amount;
-                entry["amount"] = Math.Min(caps.TryGetValue(mix, out var cap) ? cap : uint.MaxValue, total);
-            }
+            if (!edit((JsonObject)updated["progression"]!, list)) return false;
             Validate(updated);
             if (FilePath != null) Save(FilePath, updated);
             profile["progression"] = updated["progression"]!.DeepClone();
             profile["inventory"] = updated["inventory"]!.DeepClone();
+            return true;
         }
+    }
+
+    static readonly Lazy<Dictionary<uint, long>> Caps = new(() =>
+    {
+        var caps = new Dictionary<uint, long>();
+        foreach (var item in LocalBackend.LoadStartupFixtures()["/Progression/items"].EnumerateArray())
+            if (item.TryGetProperty("maxCap", out var cap)) caps[item.GetProperty("mixId").GetUInt32()] = cap.GetInt64();
+        return caps;
+    });
+
+    // How many of an item an inventory list holds.
+    public static long Held(JsonArray inventory, uint mixId) =>
+        inventory.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mixId) is { } entry ? Number(entry["amount"]!) : 0;
+
+    // Adds (or with a negative amount takes) an item in an inventory list, within 0 and the catalogue maxCap. Super Credits
+    // are never added, but for Forge Credits (PaidContentSet.ForgeCreditsWallet). Returns the change made.
+    public static long AddItem(JsonArray inventory, uint mixId, long amount)
+    {
+        if (amount == 0 || amount > 0 && PaidContentSet.IsSuperCredits(mixId) && !PaidContentSet.IsForgeCredits(mixId)) return 0;
+        var entry = inventory.OfType<JsonObject>().FirstOrDefault(e => e["mixId"] is JsonNode id && Number(id) == mixId);
+        if (entry == null)
+        {
+            if (amount < 0) return 0;
+            inventory.Add((JsonNode?)(entry = new JsonObject { ["mixId"] = mixId, ["amount"] = 0, ["isDiscovered"] = true }));
+        }
+        var before = Number(entry["amount"]!);
+        var after = Math.Clamp(before + amount, 0, Caps.Value.TryGetValue(mixId, out var cap) ? cap : uint.MaxValue);
+        entry["amount"] = after;
+        return after - before;
     }
 
     // JSON numbers in the profile may be stored as any integer type; read them uniformly.
@@ -403,7 +467,7 @@ public sealed class ProfileStore : IDisposable
         }
         NameShipIfIntroSkipped(profile);
         GrantOnboardingRewards(profile);
-        GrantStandardStratagems(profile);
+        GrantStandardItems(profile);
         Validate(profile);
         return profile;
     }
@@ -413,6 +477,28 @@ public sealed class ProfileStore : IDisposable
     // holds every permanent booster (progression category 5, not consumable) is an unlock-all one, and gets the
     // template's boosters it lacks; one still earning its boosters is left alone. Nothing is removed.
     const int BoosterCategory = 5;
+
+    // A progress entry of progression.packageProgress needs progress, sortOrder and claimedLevels as well as id32 and level:
+    // without them the client's /Progression parser fails ("Something unexpected went wrong while trying to communicate
+    // with our server", status -2) and the game stops before the ship. Purchases made entries without the last two until
+    // 2026-11-03; they are filled in when such a profile is opened.
+    public static bool CompletePackageEntry(JsonObject entry)
+    {
+        var changed = false;
+        if (!entry.ContainsKey("progress")) { entry["progress"] = 0; changed = true; }
+        if (!entry.ContainsKey("sortOrder")) { entry["sortOrder"] = 0; changed = true; }
+        if (!entry.ContainsKey("claimedLevels")) { entry["claimedLevels"] = new JsonArray(); changed = true; }
+        return changed;
+    }
+
+    static bool CompletePackageProgress(JsonObject profile)
+    {
+        if (profile["progression"]?["packageProgress"] is not JsonArray list) return false;
+        var changed = false;
+        foreach (var entry in list.OfType<JsonObject>()) changed |= CompletePackageEntry(entry);
+        return changed;
+    }
+
     static bool GrantTemplateBoosters(JsonObject profile)
     {
         List<(long Mix, bool Consumable)> boosters;
@@ -434,20 +520,28 @@ public sealed class ProfileStore : IDisposable
         return added > 0;
     }
 
-    // Stratagems every account owns from the start: the requisition terminal lists them with no price, so a profile
-    // without them cannot get them at all (GitHub issue 9: a fresh profile could not "buy" either). Catalogue items
-    // (progression category 11) whose stratagem ids are 0xd2062cbc (Orbital Precision Strike, type 118) and 0x1b4f8fa2
-    // (MG-43 Machine Gun, type 92). Missing ones are added to every profile, new or saved before this.
-    static readonly uint[] StandardStratagems = [1497469599, 3787370254];
+    // Items every account owns from the start, which no progression package gives:
+    // - stratagems: the requisition terminal lists them with no price, so a profile without them cannot get them at all
+    //   (GitHub issue 9: a fresh profile could not "buy" either). Catalogue items (progression category 11) whose
+    //   stratagem ids are 0xd2062cbc (Orbital Precision Strike, type 118) and 0x1b4f8fa2 (MG-43 Machine Gun, type 92).
+    // - level 1's unlock item (0xF96CE664, progression category 16): the onboarding chain's nine rewards unlock levels 2
+    //   to 10 (its last, 0xA0AE653A, is level 10's), so without it level 1 was locked: no level-1 missions on the war
+    //   table, and its difficulty bar went to the highest level when a planet's view closed.
+    // - the six ship module tracks' required items (progression package type 1, requiredItems): without them the Ship
+    //   Module page was empty ("under construction"). The seventh type-1 package (1555987791, 0x0FB3AAB1) is not on a
+    //   live account and is left out.
+    // Missing ones are added to every profile, new or saved before this.
+    static readonly uint[] StandardItems = [1497469599, 3787370254, 0xF96CE664,
+        0xCD183602, 0xCBEB8825, 0x7B685872, 0x53939628, 0xE3D5F786, 0xE0623D4C];
 
-    static bool GrantStandardStratagems(JsonObject profile)
+    static bool GrantStandardItems(JsonObject profile)
     {
         // a profile with no template (development only: the launcher always picks one) keeps the parser-tested fixture
         // inventory ({}) exactly
         if (profile["inventory"]?["items"] is not JsonArray inventory) return false;
         var held = inventory.Select(item => Number(item!["mixId"]!)).ToHashSet();
         var added = 0;
-        foreach (var mixId in StandardStratagems)
+        foreach (var mixId in StandardItems)
             if (held.Add(mixId))
             {
                 inventory.Add((JsonNode?)new JsonObject { ["mixId"] = mixId, ["amount"] = 1, ["isDiscovered"] = true });

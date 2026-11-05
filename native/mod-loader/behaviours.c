@@ -190,16 +190,20 @@ static uint32_t ApiAddBehaviour(HfMod* mod, const HfBehaviour* def)
         ApiLog(mod, "add_behaviour: no behaviour, or its size is not set (HfBehaviour b = {sizeof b})");
         return 0;
     }
-    if (g_behaviourState != 0 || g_fired[HF_EVENT_GAME_LOADED]) { ApiLog(mod, "add_behaviour: too late; call it from hellforge_mod_init"); return 0; }
-    if (g_behaviourCount >= BHV_MAX) { ApiLog(mod, "add_behaviour: mods added %u behaviours already", BHV_MAX); return 0; }
+    int live = g_liveSetup != NULL && g_liveSetup == mod; /* a mod set up while the game runs (live_content.c) */
+    if (!live && (g_behaviourState != 0 || g_fired[HF_EVENT_GAME_LOADED])) { ApiLog(mod, "add_behaviour: too late; call it from hellforge_mod_init"); return 0; }
+    if (!live && g_behaviourCount >= BHV_MAX) { ApiLog(mod, "add_behaviour: mods added %u behaviours already", BHV_MAX); return 0; }
     const BhvBase* base = BhvBaseOf(def->base);
     if (base == NULL) { ApiLog(mod, "add_behaviour: base %u is not one HellForge extends (HF_BEHAVIOUR_PELICAN_...)", def->base); return 0; }
     float burst, aimHeight;
     int32_t reserve;
     if (!BehaviourValues(mod, def, &burst, &reserve, &aimHeight)) return 0;
-    Behaviour* b = &g_behaviours[g_behaviourCount];
+    uint32_t index = g_behaviourCount;
+    Behaviour* b = live ? (Behaviour*)LiveEntry(LC_BEHAVIOUR, mod, NULL, &index) : &g_behaviours[index];
+    if (b == NULL) return 0;
+    memset(b, 0, sizeof *b);
     b->mod = mod;
-    b->id = BHV_FIRST + g_behaviourCount++;
+    b->id = BHV_FIRST + index;
     b->base = base;
     b->holdMicroseconds = (uint64_t)(def->hold_seconds * 1000000.0f);
     b->burstMicroseconds = (uint64_t)(burst * 1000000.0f);
@@ -208,6 +212,8 @@ static uint32_t ApiAddBehaviour(HfMod* mod, const HfBehaviour* def)
     b->face = def->face_target != 0;
     b->reserveRounds = reserve;
     b->aimHeight = aimHeight;
+    MemoryBarrier(); /* the entry is whole before the count shows it */
+    if (index == g_behaviourCount) g_behaviourCount++;
     if (base->id == BHV_PELICAN_TRANSPORT)
         ApiLog(mod, "adding behaviour %u: %u holding %.0f s, orbit %.0f m at %.0f m%s", b->id, base->id, (double)def->hold_seconds,
             (double)b->radius, (double)b->height, b->face ? ", facing its turret's target" : "");
@@ -596,12 +602,22 @@ static void Put8(Emit* e, uint8_t v) { *e->at++ = v; }
 static void Put32(Emit* e, uint32_t v) { memcpy(e->at, &v, 4); e->at += 4; }
 static void PutRel32(Emit* e, const uint8_t* target) { Put32(e, (uint32_t)(int32_t)(target - (e->at + 4))); }
 
+/* The stubs' block once built, and where each stub's COUNT is (a live change raises them: live_content.c). */
+static uint8_t* g_bhvBlock;
+static uint8_t* g_bhvCountAt[8];
+static int g_bhvCountSites;
+static void PutCount(Emit* e, uint32_t count)
+{
+    if (g_bhvCountSites < (int)(sizeof g_bhvCountAt / sizeof g_bhvCountAt[0])) g_bhvCountAt[g_bhvCountSites++] = e->at;
+    Put32(e, count);
+}
+
 /* `lea eax, [reg + 1 - FIRST]; cmp eax, COUNT; jae <patched later>` (eax: the index of a HellForge id): returns where
  * the jae's rel8 is. */
 static uint8_t* PutIdCheck(Emit* e, uint8_t leaModrm)
 {
     Put8(e, 0x8D); Put8(e, leaModrm); Put32(e, (uint32_t)(1 - (int32_t)BHV_FIRST));
-    Put8(e, 0x3D); Put32(e, g_behaviourCount);
+    Put8(e, 0x3D); PutCount(e, g_behaviourCount);
     Put8(e, 0x73); Put8(e, 0);
     return e->at - 1;
 }
@@ -619,6 +635,17 @@ static void Land(uint8_t* rel8, const Emit* e) { *rel8 = (uint8_t)(e->at - (rel8
 
 /* Unwind data for a stub that calls out from inside its dispatcher's frame: that frame's prologue, all at offset 0. */
 typedef struct BhvUnwind { uint8_t version, prolog, count, frame; uint16_t codes[6]; } BhvUnwind;
+
+/* A behaviour's answers in the stubs' per-id tables: its base's stage count, slot mappings and case in resume's switch
+ * (or past it: nothing). */
+static void BehaviourAnswers(const Behaviour* b, uintptr_t game, uint32_t* stages, uintptr_t* to, uintptr_t* from, uint32_t* resume)
+{
+    uint32_t base = b->base->id;
+    *stages = b->base->stages;
+    *to = game + b->base->toSlot;
+    *from = game + b->base->fromSlot;
+    *resume = base >= BHV_RESUME_FIRST && base <= BHV_RESUME_LAST ? base - BHV_RESUME_FIRST : 0xFFFFFFFFu;
+}
 
 static int RefuseBehaviours(const char* why, uint32_t at)
 {
@@ -691,19 +718,14 @@ static int InstallBehaviours(uintptr_t game)
     if (block == NULL) return RefuseBehaviours("no memory near game.dll", 0);
     Emit e = {block};
     uint8_t* slots = block + 0x600;
+    g_bhvCountSites = 0;
     /* Per-id answers of the helpers: the stage count (u32) and the two slot mappings (absolute targets). */
     uint32_t* stageCounts = (uint32_t*)(block + 0x700);
     uintptr_t* toSlot = (uintptr_t*)(block + 0x740);
     uintptr_t* fromSlot = (uintptr_t*)(block + 0x780);
     uint32_t* resumeCase = (uint32_t*)(block + 0x7C0); /* the base's index in resume's switch (or past it: nothing) */
     for (uint32_t i = 0; i < g_behaviourCount; i++)
-    {
-        uint32_t base = g_behaviours[i].base->id;
-        stageCounts[i] = g_behaviours[i].base->stages;
-        toSlot[i] = game + g_behaviours[i].base->toSlot;
-        fromSlot[i] = game + g_behaviours[i].base->fromSlot;
-        resumeCase[i] = base >= BHV_RESUME_FIRST && base <= BHV_RESUME_LAST ? base - BHV_RESUME_FIRST : 0xFFFFFFFFu;
-    }
+        BehaviourAnswers(&g_behaviours[i], game, &stageCounts[i], &toSlot[i], &fromSlot[i], &resumeCase[i]);
     uint8_t* stubs[S_COUNT];
     uint8_t* jae;
 
@@ -757,7 +779,7 @@ static int InstallBehaviours(uintptr_t game)
 
     stubs[S_RESUME] = e.at;                 /* edx = the id, rbx = ctx: a new id into the switch with its base's index */
     Put8(&e, 0x8D); Put8(&e, 0x82); Put32(&e, (uint32_t)(-(int32_t)BHV_FIRST));                         /* lea eax, [rdx - FIRST] */
-    Put8(&e, 0x3D); Put32(&e, g_behaviourCount);                                                          /* cmp eax, COUNT */
+    Put8(&e, 0x3D); PutCount(&e, g_behaviourCount);                                                       /* cmp eax, COUNT */
     Put8(&e, 0x73); Put8(&e, 0);                                                                          /* jae not ours */
     jae = e.at - 1;
     Put(&e, "\x4C\x8D\x05", 3); PutRel32(&e, (uint8_t*)resumeCase);                                   /* lea r8, [rip + cases] */
@@ -792,6 +814,7 @@ static int InstallBehaviours(uintptr_t game)
     why = RetargetBranches(game, stubs, &failedAt);
     if (why != NULL) return RefuseBehaviours(why, failedAt);
     AddVectoredExceptionHandler(1, BehaviourFault);
+    g_bhvBlock = block;
     g_behaviourState = 1;
     Note("behaviours: %u behaviour(s) added (ids %u..%u), stubs at 0x%llx", g_behaviourCount, BHV_FIRST, BHV_FIRST + g_behaviourCount - 1,
         (unsigned long long)(uintptr_t)block);

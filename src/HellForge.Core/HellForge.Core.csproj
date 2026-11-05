@@ -1,4 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- The snapshot seal's tests inject a synthetic Linux machine id, so they never read the real one. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="HellForge.Tests" />
+    <InternalsVisibleTo Include="HellForge.LocalBackend.Tests" />
+  </ItemGroup>
   <ItemGroup><EmbeddedResource Include="supported-build.json" />
     <EmbeddedResource Include="supported-languages.json" />
     <EmbeddedResource Include="entity-profile.json" LogicalName="HellForge.Core.entity-profile.json" />
@@ -6,7 +11,12 @@
     <EmbeddedResource Include="../../data/verified-mods.json" LogicalName="HellForge.Core.verified-mods.json" />
     <EmbeddedResource Include="../../mappings/components.json" LogicalName="HellForge.Core.mappings.components.json" />
     <EmbeddedResource Include="../../mappings/catalog.json" LogicalName="HellForge.Core.mappings.catalog.json" />
+    <EmbeddedResource Include="../../mappings/functions.json" LogicalName="HellForge.Core.mappings.functions.json" />
+    <EmbeddedResource Include="../../mappings/globals.json" LogicalName="HellForge.Core.mappings.globals.json" />
     <EmbeddedResource Include="../../mappings/hud-icons.json" LogicalName="HellForge.Core.mappings.hud-icons.json" />
+    <EmbeddedResource Include="../../mappings/warbond-art.json" LogicalName="HellForge.Core.mappings.warbond-art.json" />
+    <EmbeddedResource Include="../../data/forge-credits/currency-icon.png" LogicalName="HellForge.Core.forge-credits.currency-icon.png" />
+    <EmbeddedResource Include="../../data/forge-credits/pickup-color.png" LogicalName="HellForge.Core.forge-credits.pickup-color.png" />
     <EmbeddedResource Include="../../mappings/boosters.json" LogicalName="HellForge.Core.mappings.boosters.json" />
     <EmbeddedResource Include="../../mappings/passives.json" LogicalName="HellForge.Core.mappings.passives.json" />
     <EmbeddedResource Include="../../mappings/references.json" LogicalName="HellForge.Core.mappings.references.json" />
@@ -20,4 +30,8 @@
     <EmbeddedResource Include="../../mappings/melee.json" LogicalName="HellForge.Core.mappings.melee.json" />
     <EmbeddedResource Include="../../mappings/fired-entities.json" LogicalName="HellForge.Core.mappings.fired-entities.json" />
     <EmbeddedResource Include="../../mappings/parity.json" LogicalName="HellForge.Core.mappings.parity.json" /></ItemGroup>
+  <ItemGroup>
+    <!-- .rar and .7z mods (OtherArchives): managed code, MIT -->
+    <PackageReference Include="SharpCompress" Version="0.50.7" />
+  </ItemGroup>
 </Project>

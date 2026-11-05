@@ -1,6 +1,7 @@
-/* Crash and hang diagnostics that are not a behaviour's (from behaviours.c): a freeze of the game's clock, any access
- * violation or illegal instruction, a fail-fast exit, and the war table's map preview watchpoints. Each logs and leaves
- * the game's own handling as it was. Included by hellforge_modloader.c after behaviours.c. */
+/* Crash and hang diagnostics that are not a behaviour's (from behaviours.c): a freeze of the game's clock, the faults a
+ * crash ends with (access violations, illegal instructions, heap corruption, stack overflows, divide by zero), a
+ * fail-fast exit, and the war table's map preview watchpoints. Each logs and leaves the game's own handling as it was.
+ * Included by hellforge_modloader.c after behaviours.c. */
 
 /* The game's two code modules: game.dll and helldivers2.exe, by their address ranges. */
 typedef struct GameModules { uintptr_t game; size_t gameSize; uintptr_t exe; size_t exeSize; } GameModules;
@@ -112,32 +113,70 @@ static void FreezeWatch(void)
     CloseHandle(snapshot);
 }
 
-/* Any access violation or illegal instruction: where it happened (game.dll / exe offset or raw), what it read, the main
- * registers and the game addresses on the stack, then left to the game's own handling. The game's crash reporter does
- * not always get to write its dump; this is the record the loader keeps. The first 4 only. */
 /* Diagnostics (the launcher's Crash dump setting: HELLFORGE_CRASH_DUMP names HellForge.Cli.exe): a full memory dump of the
- * game at its first crash, beside the session's logs. It is written from outside (HellForge.Cli crash-dump), while this
- * thread waits: a process dumping itself from its exception handler can deadlock on a lock a suspended thread holds. */
-static void WriteCrashDump(EXCEPTION_POINTERS* info)
+ * game at its first crash, beside the session's logs. It is written from outside (HellForge.Cli crash-dump), while the
+ * crashed thread (`thread`) waits: a process dumping itself from its exception handler can deadlock on a lock a
+ * suspended thread holds. */
+static int WriteCrashDump(EXCEPTION_POINTERS* info, DWORD thread)
 {
     wchar_t cli[MAX_PATH];
     DWORD length = GetEnvironmentVariableW(L"HELLFORGE_CRASH_DUMP", cli, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH || g_logs[0] == 0) return;
+    if (length == 0 || length >= MAX_PATH || g_logs[0] == 0) return 0;
     wchar_t command[3 * MAX_PATH];
     swprintf(command, sizeof command / sizeof command[0], L"\"%ls\" crash-dump --pid %lu --thread %lu --pointers %llx --out \"%ls\\crash-%lu.dmp\"",
-        cli, GetCurrentProcessId(), GetCurrentThreadId(), (unsigned long long)(uintptr_t)info, g_logs, GetCurrentProcessId());
+        cli, GetCurrentProcessId(), thread, (unsigned long long)(uintptr_t)info, g_logs, GetCurrentProcessId());
     STARTUPINFOW startup = {sizeof startup};
     PROCESS_INFORMATION process;
     if (!CreateProcessW(cli, command, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &startup, &process))
     {
         Note("crash dump: could not start %ls (%lu)", cli, GetLastError());
-        return;
+        return 1;
     }
     DWORD waited = WaitForSingleObject(process.hProcess, 120000), exit = 1;
     GetExitCodeProcess(process.hProcess, &exit);
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
-    Note(waited == WAIT_OBJECT_0 && exit == 0 ? "crash dump: written (thread %lu)" : "crash dump: not written (thread %lu, exit %lu)", GetCurrentThreadId(), exit);
+    Note(waited == WAIT_OBJECT_0 && exit == 0 ? "crash dump: written (thread %lu)" : "crash dump: not written (thread %lu, exit %lu)", thread, exit);
+    return 1;
+}
+
+/* Whether the player asked for the full dump (the Crash dump setting). */
+static int FullDumpAsked(void) { return GetEnvironmentVariableW(L"HELLFORGE_CRASH_DUMP", NULL, 0) > 0; }
+
+typedef BOOL (WINAPI* MiniDumpWriteDumpFn)(HANDLE, DWORD, HANDLE, MINIDUMP_TYPE, PMINIDUMP_EXCEPTION_INFORMATION,
+    PMINIDUMP_USER_STREAM_INFORMATION, PMINIDUMP_CALLBACK_INFORMATION);
+
+/* The dump every session writes at its first crash without the Crash dump setting: the threads with their stacks and
+ * the memory their registers and stacks point to, and the modules (unloaded ones too), not the rest of the game's
+ * memory, as crash-<pid>.dmp beside the logs. It is written from inside the game, by the crash worker while the
+ * crashed thread (`thread`) waits: the session lets the game start no other program, and a thread of its own sees the
+ * crashed thread's stack as it was. dbghelp.dll is the game's if it loaded one, else Windows'. */
+static void WriteSmallDump(EXCEPTION_POINTERS* info, DWORD thread)
+{
+    wchar_t path[MAX_PATH];
+    if (g_logs[0] == 0 || swprintf(path, MAX_PATH, L"%ls\\crash-%lu.dmp", g_logs, GetCurrentProcessId()) < 0) return;
+    HMODULE dbghelp = GetModuleHandleW(L"dbghelp.dll");
+    if (dbghelp == NULL) dbghelp = LoadLibraryExW(L"dbghelp.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    MiniDumpWriteDumpFn write = dbghelp != NULL ? (MiniDumpWriteDumpFn)(void*)GetProcAddress(dbghelp, "MiniDumpWriteDump") : NULL;
+    if (write == NULL) { Note("crash dump: not written (thread %lu): no dbghelp.dll (%lu)", thread, GetLastError()); return; }
+    HANDLE file = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) { Note("crash dump: not written (thread %lu): the file could not be made (%lu)", thread, GetLastError()); return; }
+    MINIDUMP_EXCEPTION_INFORMATION exception = {thread, info, FALSE};
+    MINIDUMP_TYPE type = (MINIDUMP_TYPE)(MiniDumpWithIndirectlyReferencedMemory | MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules);
+    BOOL written = write(GetCurrentProcess(), GetCurrentProcessId(), file, type, &exception, NULL, NULL);
+    DWORD error = written ? 0 : GetLastError();
+    LARGE_INTEGER size = {0};
+    GetFileSizeEx(file, &size);
+    CloseHandle(file);
+    if (written) { Note("crash dump: small dump written (thread %lu, %lld KB)", thread, (long long)(size.QuadPart / 1024)); return; }
+    DeleteFileW(path);
+    Note("crash dump: small dump not written (thread %lu, error %08lx)", thread, error);
+}
+
+/* The session's dump of a crash: the full one when the player asked for it, else the small one. */
+static void CrashDumpOf(EXCEPTION_POINTERS* info, DWORD thread)
+{
+    if (!WriteCrashDump(info, thread)) WriteSmallDump(info, thread);
 }
 
 /* The registers that point into a module, appended to names at m: its length. */
@@ -297,33 +336,156 @@ static void CrashLocationRecords(const CONTEXT* c, uintptr_t game)
     CrashGenerationBlock(c, game);
 }
 
-static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)
+/* B.4: the threads FieldWatch armed (crash_notes.c below), for this note and FieldWatchHit. */
+static int FieldWatchArmed(DWORD id);
+
+/* B.2: a single-step or breakpoint the crash note passes on (FieldWatchHit handles the watchpoint ones): the first 8. */
+static void NoteDebugException(EXCEPTION_POINTERS* info, DWORD code)
 {
     static volatile LONG reported;
-    DWORD code = info->ExceptionRecord->ExceptionCode;
-    if ((code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_ILLEGAL_INSTRUCTION) || InterlockedIncrement(&reported) > 4)
-        return EXCEPTION_CONTINUE_SEARCH;
-    if (reported == 1) WriteCrashDump(info);
+    if (InterlockedIncrement(&reported) > 8) return;
+    CONTEXT* c = info->ContextRecord;
+    NoteDiagnostic("crash: %08lx (%s) passed on: thread %lu at 0x%llx; Dr6=0x%llx Dr7=0x%llx; FieldWatch armed: %s", code,
+        code == EXCEPTION_SINGLE_STEP ? "single-step" : "breakpoint", GetCurrentThreadId(),
+        (unsigned long long)(uintptr_t)info->ExceptionRecord->ExceptionAddress,
+        (unsigned long long)c->Dr6, (unsigned long long)c->Dr7, FieldWatchArmed(GetCurrentThreadId()) ? "yes" : "no");
+}
+
+/* The crash note's codes: those a game crash ends with. Each is noted at most CRASH_NOTES_PER_CODE times in a session,
+ * so faults of one code the game raises and handles itself (first-chance) leave the others their notes. */
+#define CRASH_HEAP_CORRUPTION 0xC0000374u /* STATUS_HEAP_CORRUPTION, raised by the heap when it finds itself damaged */
+static const DWORD kCrashCodes[] = {EXCEPTION_ACCESS_VIOLATION, EXCEPTION_ILLEGAL_INSTRUCTION, CRASH_HEAP_CORRUPTION, EXCEPTION_STACK_OVERFLOW,
+    EXCEPTION_INT_DIVIDE_BY_ZERO};
+#define CRASH_CODES ((int)(sizeof kCrashCodes / sizeof kCrashCodes[0]))
+#define CRASH_NOTES_PER_CODE 4
+static volatile LONG g_crashNoted[CRASH_CODES];
+static volatile LONG g_crashDumped; /* the first noted fault writes the session's dump */
+
+/* Which of kCrashCodes a code is, or -1. */
+static int CrashCodeIndex(DWORD code)
+{
+    for (int i = 0; i < CRASH_CODES; i++)
+        if (kCrashCodes[i] == code) return i;
+    return -1;
+}
+
+/* An access violation's ", reading 0x..." (writing, executing), into text; empty for the other codes. */
+static void CrashAccess(const EXCEPTION_RECORD* r, char* text, size_t size)
+{
+    text[0] = 0;
+    if (r->ExceptionCode != EXCEPTION_ACCESS_VIOLATION || r->NumberParameters < 2) return;
+    const char* how = r->ExceptionInformation[0] == 8 ? "executing" : r->ExceptionInformation[0] ? "writing" : "reading";
+    snprintf(text, size, ", %s 0x%llx", how, (unsigned long long)r->ExceptionInformation[1]);
+}
+
+/* The crash note of a fault on `thread`: where it happened (game.dll / exe offset or raw), what an access violation
+ * read, the main registers and the game addresses on the stack, then the modules involved (CrashModules). The game's
+ * crash reporter does not always get to write its dump; this is the record the loader keeps. */
+static void CrashNoteOf(EXCEPTION_POINTERS* info, DWORD thread)
+{
     GameModules g = CurrentModules();
     uintptr_t at = (uintptr_t)info->ExceptionRecord->ExceptionAddress;
     const char* module = "?";
     uintptr_t offset = at;
     InGame(at, g.game, g.gameSize, g.exe, g.exeSize, &module, &offset);
     CONTEXT* c = info->ContextRecord;
-    char trail[1024];
+    char trail[1024], access[64];
     uintptr_t stack[256];
     if (SafeRead(c->Rsp, stack, sizeof stack)) trail[0] = 0;
     else GameTrail(stack, 256, 24, &g, trail, (int)sizeof trail);
-    Note("crash: %08lx on thread %lu at %s+0x%llx (0x%llx), %s 0x%llx; rax %llx rbx %llx rcx %llx rdx %llx rsi %llx rdi %llx r8 %llx "
-        "r9 %llx r12 %llx r13 %llx r14 %llx r15 %llx; stack:%s", code, GetCurrentThreadId(), module, (unsigned long long)offset,
-        (unsigned long long)at, info->ExceptionRecord->ExceptionInformation[0] ? "writing" : "reading",
-        (unsigned long long)(info->ExceptionRecord->NumberParameters > 1 ? info->ExceptionRecord->ExceptionInformation[1] : 0),
+    CrashAccess(info->ExceptionRecord, access, sizeof access);
+    Note("crash: %08lx on thread %lu at %s+0x%llx (0x%llx)%s; rax %llx rbx %llx rcx %llx rdx %llx rsi %llx rdi %llx r8 %llx "
+        "r9 %llx r12 %llx r13 %llx r14 %llx r15 %llx; Dr0 %llx Dr1 %llx Dr2 %llx Dr3 %llx Dr6 %llx Dr7 %llx; stack:%s",
+        info->ExceptionRecord->ExceptionCode, thread, module, (unsigned long long)offset, (unsigned long long)at, access,
         (unsigned long long)c->Rax, (unsigned long long)c->Rbx, (unsigned long long)c->Rcx, (unsigned long long)c->Rdx,
         (unsigned long long)c->Rsi, (unsigned long long)c->Rdi, (unsigned long long)c->R8, (unsigned long long)c->R9,
-        (unsigned long long)c->R12, (unsigned long long)c->R13, (unsigned long long)c->R14, (unsigned long long)c->R15, trail);
+        (unsigned long long)c->R12, (unsigned long long)c->R13, (unsigned long long)c->R14, (unsigned long long)c->R15,
+        (unsigned long long)c->Dr0, (unsigned long long)c->Dr1, (unsigned long long)c->Dr2, (unsigned long long)c->Dr3,
+        (unsigned long long)c->Dr6, (unsigned long long)c->Dr7, trail);
     CrashModules(at, c, &g, stack, sizeof stack);
     if (module[0] == 'g' && offset == 0xF8F670) CrashObjectiveList(c);
     if (module[0] == 'g' && offset == 0xC176B8) CrashLocationRecords(c, g.game);
+}
+
+/* The crash worker: a thread of its own, started with the crash note, that writes a note or the session's dump for a
+ * crashed thread while that thread waits. A stack overflow leaves its thread a few KB of stack, less than the note
+ * needs (its buffers alone take 4 KB), so that note is written here, and so is every dump (WriteSmallDump). Idle, it
+ * waits on g_crashAsk and costs nothing. */
+typedef struct CrashJob { EXCEPTION_POINTERS* info; DWORD thread; int note, dump; } CrashJob;
+static CrashJob g_crashJob;
+static HANDLE g_crashAsk, g_crashDone;
+static volatile LONG g_crashWorkerReady;
+static DWORD g_crashWorkerId;
+static SRWLOCK g_crashJobLock = SRWLOCK_INIT;
+
+static DWORD WINAPI CrashWorker(void* unused)
+{
+    for (;;)
+    {
+        if (WaitForSingleObject(g_crashAsk, INFINITE) != WAIT_OBJECT_0) return 1;
+        CrashJob job = g_crashJob;
+        if (job.note) CrashNoteOf(job.info, job.thread);
+        if (job.dump) CrashDumpOf(job.info, job.thread);
+        SetEvent(g_crashDone);
+    }
+}
+
+/* Starts the crash worker, once. Without it a stack overflow is noted on its own thread, which may lack the stack for it. */
+static void StartCrashWorker(void)
+{
+    if (g_crashWorkerReady) return;
+    g_crashAsk = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_crashDone = CreateEventW(NULL, FALSE, FALSE, NULL);
+    HANDLE thread = g_crashAsk != NULL && g_crashDone != NULL ? CreateThread(NULL, 0, CrashWorker, NULL, 0, &g_crashWorkerId) : NULL;
+    if (thread == NULL) { Note("crash notes: the crash worker did not start (%lu): a stack overflow may not be noted", GetLastError()); return; }
+    CloseHandle(thread);
+    InterlockedExchange(&g_crashWorkerReady, 1);
+}
+
+/* The crash handed to the worker (its note, its dump or both), this thread waiting for it: 1, or 0 when there is no
+ * worker (or the worker itself crashed). The wait covers a full dump's (WriteCrashDump: 120 s), else 30 s. A worker that did not finish in it (a lock
+ * a frozen thread holds) is not asked again: later crashes are noted on their own threads. */
+static int CrashHandOff(EXCEPTION_POINTERS* info, int note, int dump)
+{
+    if (!g_crashWorkerReady || GetCurrentThreadId() == g_crashWorkerId) return 0;
+    AcquireSRWLockExclusive(&g_crashJobLock);
+    g_crashJob = (CrashJob){info, GetCurrentThreadId(), note, dump};
+    SetEvent(g_crashAsk);
+    if (WaitForSingleObject(g_crashDone, dump && FullDumpAsked() ? 130000 : 30000) != WAIT_OBJECT_0)
+    {
+        InterlockedExchange(&g_crashWorkerReady, 0);
+        Note("crash notes: the crash worker did not finish (thread %lu)", GetCurrentThreadId());
+    }
+    ReleaseSRWLockExclusive(&g_crashJobLock);
+    return 1;
+}
+
+/* Whether this thread holds the loader lock: it runs a DLL's DllMain. The dump needs that lock (dbghelp loads and walks
+ * modules), so a dump asked from here waits for it until the hand-off gives up; the game then runs on while the dump is
+ * written, and the dump can crash it. */
+static int HoldsLoaderLock(void)
+{
+    RTL_CRITICAL_SECTION* lock = *(RTL_CRITICAL_SECTION**)(__readgsqword(0x60) + 0x110); /* PEB.LoaderLock */
+    return lock != NULL && (DWORD)(ULONG_PTR)lock->OwningThread == GetCurrentThreadId();
+}
+
+/* Every fault of the codes above, as it is raised (before the game's own handlers), is noted and then left to the
+ * game's own handling. A fault inside a DllMain is noted without its dump (a tablet driver's Wintab32.dll faults on
+ * purpose as it loads, and handles it): the session's first dump stays for a later crash. */
+static LONG CALLBACK CrashNote(EXCEPTION_POINTERS* info)
+{
+    DWORD code = info->ExceptionRecord->ExceptionCode;
+    if (code == EXCEPTION_SINGLE_STEP || code == EXCEPTION_BREAKPOINT)
+    {
+        NoteDebugException(info, code); /* B.2: the difficulty diagnostics' own traps, passed on */
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+    int kind = CrashCodeIndex(code);
+    if (kind < 0 || InterlockedIncrement(&g_crashNoted[kind]) > CRASH_NOTES_PER_CODE) return EXCEPTION_CONTINUE_SEARCH;
+    int dump = !HoldsLoaderLock() && InterlockedExchange(&g_crashDumped, 1) == 0;
+    if (kCrashCodes[kind] == EXCEPTION_STACK_OVERFLOW && CrashHandOff(info, 1, dump)) return EXCEPTION_CONTINUE_SEARCH;
+    CrashNoteOf(info, GetCurrentThreadId());
+    if (dump && !CrashHandOff(info, 0, 1)) CrashDumpOf(info, GetCurrentThreadId());
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -371,15 +533,64 @@ static void InstallFailFastNote(void)
         Note("crash notes: fail-fast exits will not be noted");
 }
 
-/* Diagnostic (the war table's map previews): hardware watchpoints on a level's playable radius (+0x2D70, DR0) and row
- * factor (+0x2D80, DR1) in every thread; each new game address that touches them is logged once. */
+/* Diagnostic (the war table's map previews), off by default (FieldWatchEnabled): hardware watchpoints on a level's
+ * playable radius (+0x2D70, DR0) and row factor (+0x2D80, DR1) in every thread; each new game address that touches
+ * them is logged once. */
 static volatile uintptr_t g_fieldWatched;
 static volatile uintptr_t g_previewRecord; /* the record 0x1003EE6 copies the radius into (+0x240); watched with DR2 */
-static uintptr_t g_fieldHits[48];
+#define FIELD_WATCH_HITS 48
+static uintptr_t g_fieldHits[FIELD_WATCH_HITS];
 static volatile LONG g_fieldHitCount;
+/* B.4b: every trap FieldWatchHit claims. The native test counts them after the watchpoints are off. */
+static volatile LONG g_fieldTrapCount;
+/* B.4b: the loader's thread turns the watchpoints off once their log is full, and they stay off in this process. */
+static volatile LONG g_fieldWatchOff;
 
-/* A new game address that touched a watched field (`which`: 0 the radius, 1 the row factor, 2 the preview record), as
- * hit n: kept and logged. */
+/* B.4: the threads FieldWatch armed, by id. The loader's thread records an id before SetThreadContext and before it
+ * resumes that thread; a full list means the thread is not armed. The exception handler reads the list without a lock.
+ * A thread id can be reused, so this records ids armed at some point in this process, not live threads; 256 is the
+ * bound. */
+#define FIELD_WATCH_THREADS 256
+static volatile LONG g_fieldWatchThreads[FIELD_WATCH_THREADS];
+static volatile LONG g_fieldWatchThreadCount;
+
+static int FieldWatchArmed(DWORD id)
+{
+    LONG count = g_fieldWatchThreadCount;
+    if (count > FIELD_WATCH_THREADS) count = FIELD_WATCH_THREADS;
+    for (LONG i = 0; i < count; i++) if ((DWORD)g_fieldWatchThreads[i] == id) return 1;
+    return 0;
+}
+
+/* 1 when the thread is in the list (already, or now); 0 when the list is full. WatchThread calls this before arming,
+ * and does not arm a thread it could not record. */
+static int FieldWatchRecordThread(DWORD id)
+{
+    LONG count = g_fieldWatchThreadCount;
+    for (LONG i = 0; i < count && i < FIELD_WATCH_THREADS; i++) if ((DWORD)g_fieldWatchThreads[i] == id) return 1;
+    if (count >= FIELD_WATCH_THREADS) return 0;
+    g_fieldWatchThreads[count] = (LONG)id;
+    InterlockedIncrement(&g_fieldWatchThreadCount);
+    return 1;
+}
+
+/* B.4: whether FieldWatchHit claims a debug exception, from its code, Dr6 and EFlags and whether the thread is one
+ * FieldWatch armed. FIELD_WATCH_CLAIM: Dr6 names the watchpoint that fired (bits 0-2). FIELD_WATCH_CLAIM_UNKNOWN: a
+ * system that does not report Dr6 (Wine reports 0) still sends its watchpoint trap on the armed thread; with bits 0-3
+ * clear, a TF single step is someone else's. Pure, for the native tests. */
+#define FIELD_WATCH_PASS 0
+#define FIELD_WATCH_CLAIM 1
+#define FIELD_WATCH_CLAIM_UNKNOWN 2
+static int FieldWatchClaim(DWORD code, DWORD64 dr6, DWORD64 eflags, int armed)
+{
+    if (code != EXCEPTION_SINGLE_STEP) return FIELD_WATCH_PASS;
+    if ((dr6 & 7) != 0) return FIELD_WATCH_CLAIM;
+    if ((dr6 & 0xF) == 0 && armed && (eflags & 0x100) == 0) return FIELD_WATCH_CLAIM_UNKNOWN;
+    return FIELD_WATCH_PASS;
+}
+
+/* A new game address that touched a watched field (`which`: 0 the radius, 1 the row factor, 2 the preview record, -1
+ * one of them but the system did not say which), as hit n: kept and logged. */
 static void NoteFieldHit(EXCEPTION_POINTERS* info, uintptr_t at, int which, LONG n)
 {
     g_fieldHits[n] = at;
@@ -388,6 +599,12 @@ static void NoteFieldHit(EXCEPTION_POINTERS* info, uintptr_t at, int which, LONG
     const char* m = "?";
     uintptr_t o = at;
     InGame(at, g.game, g.gameSize, g.exe, g.exeSize, &m, &o);
+    if (which < 0)
+    {
+        Note("difficulty: a watched field touched before %s+0x%llx (thread %lu; this system does not say which)", m,
+            (unsigned long long)o, GetCurrentThreadId());
+        return;
+    }
     float value = 0;
     SafeRead(which == 2 ? info->ContextRecord->Dr2 : g_fieldWatched + (which ? 0x10 : 0), &value, 4);
     if (which == 2)
@@ -397,21 +614,51 @@ static void NoteFieldHit(EXCEPTION_POINTERS* info, uintptr_t at, int which, LONG
             (unsigned long long)o, GetCurrentThreadId());
 }
 
-static LONG CALLBACK FieldWatchHit(EXCEPTION_POINTERS* info)
+/* B.4's self-test: one helper thread, Dr0 on a static test variable, its two touches and the traps they make. The test
+ * handler claims every single step on that thread, so none reaches the game's handlers, and records what the system
+ * reports. The helper's own waits are bounded, so it ends even when no trap arrives. */
+#define FIELD_WATCH_TEST_TRAPS 4
+static volatile LONG g_fieldTestValue;
+static volatile LONG g_fieldTestThreadId;
+static volatile LONG g_fieldTestTrapCount;
+static DWORD64 g_fieldTestRip[FIELD_WATCH_TEST_TRAPS];
+static DWORD64 g_fieldTestDr6[FIELD_WATCH_TEST_TRAPS];
+static DWORD64 g_fieldTestDr7[FIELD_WATCH_TEST_TRAPS];
+static int g_fieldTestTf[FIELD_WATCH_TEST_TRAPS];
+static HANDLE g_fieldTestReady, g_fieldTestTouch, g_fieldTestDone;
+
+static DWORD WINAPI FieldWatchTestThread(void* unused)
 {
-    if (info->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP || !(info->ContextRecord->Dr6 & 7)) return EXCEPTION_CONTINUE_SEARCH;
-    uintptr_t at = info->ContextRecord->Rip;
-    int which = (info->ContextRecord->Dr6 & 1) ? 0 : (info->ContextRecord->Dr6 & 2) ? 1 : 2;
-    if (which == 0 && at == ApiModuleBase("game.dll", NULL) + 0x1003EE6) g_previewRecord = info->ContextRecord->Rsi;
-    info->ContextRecord->Dr6 = 0;
-    LONG n = g_fieldHitCount;
-    for (LONG i = 0; i < n && i < 48; i++) if (g_fieldHits[i] == at) return EXCEPTION_CONTINUE_EXECUTION;
-    if (n < 48) NoteFieldHit(info, at, which, n);
+    g_fieldTestThreadId = (LONG)GetCurrentThreadId();
+    if (g_fieldTestReady == NULL || !SetEvent(g_fieldTestReady)) return 0;
+    if (g_fieldTestTouch == NULL || WaitForSingleObject(g_fieldTestTouch, 3000) != WAIT_OBJECT_0) return 0;
+    g_fieldTestValue = 1;
+    g_fieldTestValue = 2;
+    if (g_fieldTestDone != NULL) SetEvent(g_fieldTestDone);
+    return 0;
+}
+
+static LONG CALLBACK FieldWatchTestHit(EXCEPTION_POINTERS* info)
+{
+    CONTEXT* c = info->ContextRecord;
+    if (info->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP || GetCurrentThreadId() != (DWORD)g_fieldTestThreadId)
+        return EXCEPTION_CONTINUE_SEARCH;
+    LONG n = g_fieldTestTrapCount;
+    if (n < FIELD_WATCH_TEST_TRAPS)
+    {
+        g_fieldTestRip[n] = (DWORD64)c->Rip;
+        g_fieldTestDr6[n] = c->Dr6;
+        g_fieldTestDr7[n] = c->Dr7;
+        g_fieldTestTf[n] = (c->EFlags & 0x100) != 0;
+    }
+    InterlockedIncrement(&g_fieldTestTrapCount);
+    c->Dr6 = 0;
+    if (n >= 1) c->Dr7 &= ~(DWORD64)1; /* if continuing did not move past the first touch, stop the trap loop */
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
-/* One thread's watchpoints, set while it is briefly suspended: 1 when they are. */
-static int WatchThread(DWORD id, uintptr_t field, uintptr_t record)
+/* Dr0 on the test variable, set while the helper is suspended, as WatchThread sets it. */
+static int FieldWatchTestArm(DWORD id)
 {
     HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, id);
     if (thread == NULL) return 0;
@@ -422,11 +669,9 @@ static int WatchThread(DWORD id, uintptr_t field, uintptr_t record)
         context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
         if (GetThreadContext(thread, &context))
         {
-            context.Dr0 = field;
-            context.Dr1 = field + 0x10;
-            context.Dr7 = (context.Dr7 & ~0xFF000Full) | 1 | 4 | (0xFull << 16) | (0xFull << 20); /* L0, L1: read/write, 4 bytes */
-            if (record != 0) { context.Dr2 = record + 0x240; context.Dr7 = (context.Dr7 & ~0xF000030ull) | 0x10 | (0xFull << 24); } /* L2 */
-            if (SetThreadContext(thread, &context)) set++;
+            context.Dr0 = (DWORD64)(uintptr_t)&g_fieldTestValue;
+            context.Dr7 = (context.Dr7 & ~0xFF000Full) | 1 | (0xFull << 16); /* L0: read/write, 4 bytes */
+            if (SetThreadContext(thread, &context)) set = 1;
         }
         ResumeThread(thread);
     }
@@ -434,10 +679,239 @@ static int WatchThread(DWORD id, uintptr_t field, uintptr_t record)
     return set;
 }
 
+/* B.4: create the self-test's events and helper, add its handler, arm the test variable and wait for the two touches.
+ * why is set at the first failure; every step after it is skipped, as before. */
+static void FieldWatchTestStart(PVOID* handler, HANDLE* thread, const char** why)
+{
+    *handler = NULL;
+    *thread = NULL;
+    g_fieldTestReady = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldTestTouch = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldTestDone = CreateEventW(NULL, FALSE, FALSE, NULL);
+    if (g_fieldTestReady == NULL || g_fieldTestTouch == NULL || g_fieldTestDone == NULL)
+    {
+        *why = "its events could not be created";
+        return;
+    }
+    *handler = AddVectoredExceptionHandler(1, FieldWatchTestHit);
+    if (*handler == NULL)
+    {
+        *why = "its exception handler could not be added";
+        return;
+    }
+    *thread = CreateThread(NULL, 0, FieldWatchTestThread, NULL, 0, NULL);
+    if (*thread == NULL)
+    {
+        *why = "the helper thread could not be created";
+        return;
+    }
+    if (WaitForSingleObject(g_fieldTestReady, 3000) != WAIT_OBJECT_0)
+    {
+        *why = "the helper thread did not start";
+        return;
+    }
+    if (!FieldWatchTestArm((DWORD)g_fieldTestThreadId))
+    {
+        *why = "Dr0 could not be set on the helper thread";
+        return;
+    }
+    SetEvent(g_fieldTestTouch);
+    if (WaitForSingleObject(g_fieldTestDone, 3000) != WAIT_OBJECT_0) *why = "the helper did not finish its two touches";
+}
+
+/* Only a helper that has ended cannot trap after this point: remove its handler and close the events then. */
+static void FieldWatchTestClose(PVOID handler)
+{
+    if (handler != NULL) RemoveVectoredExceptionHandler(handler);
+    if (g_fieldTestReady != NULL) CloseHandle(g_fieldTestReady);
+    if (g_fieldTestTouch != NULL) CloseHandle(g_fieldTestTouch);
+    if (g_fieldTestDone != NULL) CloseHandle(g_fieldTestDone);
+    g_fieldTestReady = g_fieldTestTouch = g_fieldTestDone = NULL;
+}
+
+/* Wait for the helper. A helper that has not ended keeps its handler installed and its events open; it claims only that
+ * thread id. */
+static void FieldWatchTestEnd(PVOID handler, HANDLE thread, const char** why)
+{
+    int ended = thread == NULL || WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0;
+    if (thread != NULL) CloseHandle(thread);
+    if (ended) FieldWatchTestClose(handler);
+    else if (*why == NULL) *why = "the helper thread has not ended";
+}
+
+/* The self-test's no-trap Note line. */
+static void FieldWatchTestNoTrapNote(const char* why)
+{
+    Note("difficulty: watchpoint self-test: no trap (%s); hardware watchpoints do not work on this system, so FieldWatch stays off in this process",
+        why != NULL ? why : "the helper touched the variable twice and none came");
+}
+
+/* The self-test's trapped Note line. */
+static void FieldWatchTestTrapsNote(LONG traps)
+{
+    Note("difficulty: watchpoint self-test: %ld trap(s), Dr6 %s, TF %s; the second touch %s", (long)traps,
+        (g_fieldTestDr6[0] & 0xF) != 0 ? "reported" : "not reported", g_fieldTestTf[0] ? "set" : "clear",
+        traps > 1 && g_fieldTestRip[1] != g_fieldTestRip[0] ? "trapped again" : "did not trap again (the trap repeated at the first touch)");
+}
+
+/* The per-trap details under the engine log. */
+static void FieldWatchTestDetails(LONG traps, const char* why)
+{
+    if (why != NULL) NoteDiagnostic("difficulty: watchpoint self-test: %s", why);
+    for (LONG i = 0; i < traps && i < FIELD_WATCH_TEST_TRAPS; i++)
+        NoteDiagnostic("difficulty: watchpoint self-test trap %ld: at 0x%llx; Dr6=0x%llx Dr7=0x%llx TF=%s", (long)(i + 1),
+            (unsigned long long)g_fieldTestRip[i], (unsigned long long)g_fieldTestDr6[i], (unsigned long long)g_fieldTestDr7[i],
+            g_fieldTestTf[i] ? "set" : "clear");
+}
+
+/* The self-test's one Note line, then the per-trap details under the engine log. */
+static void FieldWatchTestNote(LONG traps, const char* why)
+{
+    if (traps == 0) FieldWatchTestNoTrapNote(why);
+    else FieldWatchTestTrapsNote(traps);
+    FieldWatchTestDetails(traps, why);
+}
+
+/* B.4: run the self-test once per game process and return whether hardware watchpoints worked. No trap means
+ * FieldWatch never arms in this process. */
+static int FieldWatchSelfTest(void)
+{
+    static int tested, works;
+    if (tested) return works;
+    tested = 1;
+    const char* why = NULL;
+    PVOID handler = NULL;
+    HANDLE thread = NULL;
+    FieldWatchTestStart(&handler, &thread, &why);
+    FieldWatchTestEnd(handler, thread, &why);
+    LONG traps = g_fieldTestTrapCount;
+    works = traps > 0;
+    FieldWatchTestNote(traps, why);
+    return works;
+}
+
+static LONG CALLBACK FieldWatchHit(EXCEPTION_POINTERS* info)
+{
+    CONTEXT* c = info->ContextRecord;
+    int claim = FieldWatchClaim(info->ExceptionRecord->ExceptionCode, c->Dr6, c->EFlags, FieldWatchArmed(GetCurrentThreadId()));
+    if (claim == FIELD_WATCH_PASS) return EXCEPTION_CONTINUE_SEARCH;
+    InterlockedIncrement(&g_fieldTrapCount);
+    uintptr_t at = c->Rip;
+    int which = claim == FIELD_WATCH_CLAIM ? ((c->Dr6 & 1) ? 0 : (c->Dr6 & 2) ? 1 : 2) : -1;
+    /* DR0's instruction is the one that copies the radius; with Dr6=0 (Wine) which watchpoint fired is unknown. DR1's or
+     * DR2's trap at the same instruction must not overwrite the record. */
+    if ((which == 0 || which == -1) && at == ApiModuleBase("game.dll", NULL) + 0x1003EE6) g_previewRecord = c->Rsi;
+    c->Dr6 = 0;
+    LONG n = g_fieldHitCount;
+    for (LONG i = 0; i < n && i < FIELD_WATCH_HITS; i++) if (g_fieldHits[i] == at) return EXCEPTION_CONTINUE_EXECUTION;
+    if (n < FIELD_WATCH_HITS) NoteFieldHit(info, at, which, n);
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+/* The preview watchpoints are a developer's diagnostic, off unless HELLFORGE_DIFFICULTY_FIELDWATCH=1. On, every access
+ * to a level's map fields traps into FieldWatchHit (one exception dispatch each, a signal as well under Wine) and every
+ * new level suspends each thread to arm it: in 0.3.0-beta, on for everyone with Difficulty 11, it cost players large
+ * frame drops. Nothing else depends on it: the preview record it finds is only its own DR2 target. Off, no thread is
+ * suspended, no debug register is set, the self-test does not run and no watchpoint handler is added. */
+static int FieldWatchEnabled(void)
+{
+    wchar_t value[8];
+    DWORD length = GetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", value, 8);
+    return length == 1 && value[0] == L'1';
+}
+
+/* One thread's watchpoints, set while it is briefly suspended: 1 when they are. B.2 logs the values that were set. */
+static int WatchThread(DWORD id, uintptr_t field, uintptr_t record)
+{
+    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, id);
+    if (thread == NULL)
+    {
+        NoteDiagnostic("difficulty: watchpoint install thread=%lu Dr0=0x0 Dr1=0x0 Dr2=0x0 Dr7=0x0 set=no (could not open the thread)", id);
+        return 0;
+    }
+    int set = 0;
+    const char* why = "";
+    CONTEXT context = {0};
+    if (SuspendThread(thread) != (DWORD)-1)
+    {
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        if (GetThreadContext(thread, &context))
+        {
+            context.Dr0 = field;
+            context.Dr1 = field + 0x10;
+            context.Dr7 = (context.Dr7 & ~0xFF000Full) | 1 | 4 | (0xFull << 16) | (0xFull << 20); /* L0, L1: read/write, 4 bytes */
+            if (record != 0) { context.Dr2 = record + 0x240; context.Dr7 = (context.Dr7 & ~0xF000030ull) | 0x10 | (0xFull << 24); } /* L2 */
+            if (!FieldWatchRecordThread(id)) why = " (armed-thread list full)";
+            else if (SetThreadContext(thread, &context)) set++;
+            else why = " (SetThreadContext failed)";
+        }
+        else why = " (could not read its debug registers)";
+        ResumeThread(thread);
+    }
+    else why = " (could not suspend the thread)";
+    NoteDiagnostic("difficulty: watchpoint install thread=%lu Dr0=0x%llx Dr1=0x%llx Dr2=0x%llx Dr7=0x%llx set=%s%s", id,
+        (unsigned long long)context.Dr0, (unsigned long long)context.Dr1, (unsigned long long)context.Dr2,
+        (unsigned long long)context.Dr7, set ? "yes" : "no", why);
+    CloseHandle(thread);
+    return set;
+}
+
+/* The Dr7 bits WatchThread sets for Dr0-Dr2: their local and global enables (bits 0-5: L0 G0 L1 G1 L2 G2) and their
+ * read/write and length fields (bits 16-27). */
+#define FIELD_WATCH_DR7_BITS 0x0FFF003Full
+
+/* B.4b: one armed thread's watchpoints off, set while it is suspended, as WatchThread sets them. Dr0-Dr2 and their
+ * Dr7 bits go (Dr2's L2 is bit 4: clearing only bits 0-2 left the preview record's watchpoint on); Dr3 and the rest
+ * of Dr7 stay. 1 when they were cleared; 0 for a thread that has ended (it cannot be opened) or could not be changed. */
+static int ClearWatchThread(DWORD id)
+{
+    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, id);
+    if (thread == NULL) return 0;
+    int cleared = 0;
+    if (SuspendThread(thread) != (DWORD)-1)
+    {
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        if (GetThreadContext(thread, &context))
+        {
+            context.Dr0 = context.Dr1 = context.Dr2 = 0;
+            context.Dr7 &= ~FIELD_WATCH_DR7_BITS;
+            cleared = SetThreadContext(thread, &context) ? 1 : 0;
+        }
+        ResumeThread(thread);
+    }
+    CloseHandle(thread);
+    return cleared;
+}
+
+/* B.4b: once the 48 places are full, the loader's thread turns the watchpoints off: never the exception handler, which
+ * may be running on a thread that would then be suspended. The armed threads stay listed and the handler stays
+ * installed, so a trap already on its way is still claimed; after this, FieldWatch never arms again. */
+static void FieldWatchTick(void)
+{
+    if (g_fieldWatchOff || g_fieldHitCount < FIELD_WATCH_HITS) return;
+    g_fieldWatchOff = 1;
+    LONG count = g_fieldWatchThreadCount;
+    if (count > FIELD_WATCH_THREADS) count = FIELD_WATCH_THREADS;
+    LONG cleared = 0;
+    for (LONG i = 0; i < count; i++) cleared += ClearWatchThread((DWORD)g_fieldWatchThreads[i]);
+    Note("difficulty: watchpoints off: their log is full (%d places); cleared on %ld of the %ld threads armed (the others "
+        "had ended or could not be changed)", FIELD_WATCH_HITS, (long)cleared, (long)count);
+}
+
 static void FieldWatch(uintptr_t field)
 {
-    static int handler;
+    static int handler, notedOff;
     static uintptr_t record;
+    if (!FieldWatchEnabled())
+    {
+        if (!notedOff) Note("difficulty: the map preview watchpoints are off (HELLFORGE_DIFFICULTY_FIELDWATCH=1 turns them on)");
+        notedOff = 1;
+        return;
+    }
+    if (g_fieldWatchOff) return;
+    if (g_fieldHitCount >= FIELD_WATCH_HITS) { FieldWatchTick(); return; }
+    if (!FieldWatchSelfTest()) return;
     if (field == g_fieldWatched && g_previewRecord == record) return;
     record = g_previewRecord;
     if (!handler) { AddVectoredExceptionHandler(1, FieldWatchHit); handler = 1; }

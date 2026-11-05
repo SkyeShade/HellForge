@@ -4,7 +4,9 @@ namespace HellForge.Core;
 // installed). The Steam console's "download_depot <app> <depot> <manifest>" downloads one depot at an exact manifest, for
 // an account that owns the game, into <Steam>/steamapps/content/app_<app>/depot_<depot>. HellForge shows the commands for the
 // manifests it pins (SupportedBuild.Depots), watches those folders and copies the game from them like from an install:
-// every file is hashed against the build's list. HellForge downloads nothing itself and ships no game content.
+// every file is hashed against the build's list. On this path the Steam client downloads, not HellForge, and HellForge ships no
+// game content. Setup offers it as a choice ("Use the Steam app") and as the fallback of the other ways. SteamCMD's
+// download_depot (HellForge.SteamDownload's SteamCmd) writes the same folders under SteamCMD's own folder, read the same way.
 public static class SteamDepotDownload
 {
     // Waiting: the depot's files not (yet) present with their listed size, as (path, the size on disk or -1 when missing,
@@ -19,22 +21,49 @@ public static class SteamDepotDownload
 
     // Where else download_depot may have put it: the Linux Steam client downloads relative to the folder its program runs
     // from, so <Steam>/ubuntu12_32/steamapps/content (or ubuntu12_64, or steamrt64 for the 64-bit client) instead of
-    // <Steam>/steamapps/content (GitHub issue 11).
-    static readonly string[] ClientFolders = ["ubuntu12_32", "ubuntu12_64", "steamrt64"];
+    // <Steam>/steamapps/content (GitHub issue 11). SteamCMD for Linux does the same from its linux32 folder.
+    static readonly string[] ClientFolders = ["ubuntu12_32", "ubuntu12_64", "steamrt64", "linux32"];
 
-    static IEnumerable<string> ContentFolders(string steamRoot, SupportedBuild build) =>
-        [ContentFolder(steamRoot, build), .. ClientFolders.Select(client => Path.Combine(steamRoot, client, "steamapps", "content", "app_" + build.AppId))];
+    // Steam's steamapps folders: its own and the ones under the client folders its download_depot runs from.
+    public static IReadOnlyList<string> SteamAppsFolders(string steamRoot) =>
+        [Path.Combine(steamRoot, "steamapps"), .. ClientFolders.Select(client => Path.Combine(steamRoot, client, "steamapps"))];
 
-    // The depot's folder: the first place Steam put it, else the usual one (while nothing is there yet).
-    public static string DepotFolder(string steamRoot, SupportedBuild build, uint depot) =>
-        ContentFolders(steamRoot, build).Select(folder => Path.Combine(folder, "depot_" + depot)).FirstOrDefault(Directory.Exists)
-        ?? Path.Combine(ContentFolder(steamRoot, build), "depot_" + depot);
+    public static IReadOnlyList<string> ContentFolders(string steamRoot, SupportedBuild build) =>
+        [.. SteamAppsFolders(steamRoot).Select(folder => Path.Combine(folder, "content", "app_" + build.AppId))];
+
+    // The depot's folder: of the places Steam may have put it, the one holding most of it (the first on a tie), else the
+    // usual one (while nothing is there yet). An empty depot folder left by an earlier download must not hide the real
+    // one under a client folder (GitHub issue 112; the same as linux-native's #181).
+    public static string DepotFolder(string steamRoot, SupportedBuild build, uint depot)
+    {
+        var found = ContentFolders(steamRoot, build).Select(folder => Path.Combine(folder, "depot_" + depot))
+            .Where(Directory.Exists).ToList();
+        if (found.Count == 0) return Path.Combine(ContentFolder(steamRoot, build), "depot_" + depot);
+        if (found.Count == 1) return found[0];
+        var files = build.Files.Where(file => file.Depot == depot).ToList();
+        return found.MaxBy(folder => PresentBytes(folder, files))!;
+    }
+
+    // Bytes of files already in folder, each counted up to its listed size.
+    static long PresentBytes(string folder, IReadOnlyList<SupportedFile> files) =>
+        files.Sum(file =>
+        {
+            var info = new FileInfo(Path.Combine(folder, file.Path));
+            return info.Exists ? Math.Min(info.Length, file.Size) : 0;
+        });
 
     public static IReadOnlyList<string> Commands(SupportedBuild build) =>
         [.. build.Depots.Select(depot => $"download_depot {build.AppId} {depot.Id} {depot.ManifestId}")];
 
     public static string Locate(string steamRoot, SupportedBuild build, SupportedFile file) =>
         Path.Combine(DepotFolder(steamRoot, build, file.Depot), file.Path);
+
+    // Locate for every file, with each depot's folder chosen once.
+    public static Func<SupportedFile, string> Locator(string steamRoot, SupportedBuild build)
+    {
+        var folders = build.Depots.ToDictionary(depot => depot.Id, depot => DepotFolder(steamRoot, build, depot.Id));
+        return file => Path.Combine(folders[file.Depot], file.Path);
+    }
 
     // Bytes of each depot's files that are present with their listed size (a quick check while Steam downloads; the copy
     // hashes every file).
@@ -43,10 +72,11 @@ public static class SteamDepotDownload
         {
             long done = 0, total = 0;
             var waiting = new List<(string, long, long)>();
+            var folder = DepotFolder(steamRoot, build, depot.Id);
             foreach (var file in build.Files.Where(f => f.Depot == depot.Id))
             {
                 total += file.Size;
-                var info = new FileInfo(Locate(steamRoot, build, file));
+                var info = new FileInfo(Path.Combine(folder, file.Path));
                 if (info.Exists && info.Length == file.Size) done += file.Size;
                 else waiting.Add((file.Path, info.Exists ? info.Length : -1, file.Size));
             }
@@ -55,17 +85,86 @@ public static class SteamDepotDownload
 
     public static bool IsComplete(string steamRoot, SupportedBuild build) => Status(steamRoot, build).All(depot => depot.Complete);
 
-    // Removes the build's depot folders after the game is copied (and the app folder when nothing else is in it).
-    public static void Delete(string steamRoot, SupportedBuild build)
+    // Removes the build's depot folders after the game is copied, Steam's state files for the app in an app folder and
+    // next to it (state_<app>_*.patch: left behind, they make Steam treat the next download_depot as already done, GitHub
+    // issue 112), and the app folder when nothing else is in it. With
+    // callbacks, a failed path is reported and the rest are still attempted; without one, a failure is thrown as before.
+    // On Linux a depot folder that is a link is refused, never followed or removed; links inside a depot folder are
+    // removed with it, because Directory.Delete(recursive: true) unlinks them without following them.
+    public static void Delete(string steamRoot, SupportedBuild build, Action<string, Exception>? failed = null,
+        Action<string>? removed = null)
     {
+        if (OperatingSystem.IsLinux()) steamRoot = LocalInstall.ResolveLinks(steamRoot);
         foreach (var app in ContentFolders(steamRoot, build))
         {
+            // Without the app folder there is no depot download here, and state files next to it are Steam's own.
+            if (!Directory.Exists(app)) continue;
             foreach (var depot in build.Depots)
-            {
-                var folder = Path.Combine(app, "depot_" + depot.Id);
-                if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
-            }
-            if (Directory.Exists(app) && !Directory.EnumerateFileSystemEntries(app).Any()) Directory.Delete(app);
+                DeleteFolder(steamRoot, Path.Combine(app, "depot_" + depot.Id), failed, removed);
+            DeleteStateFiles(steamRoot, app, build.AppId, failed, removed);
+            DeleteStateFiles(steamRoot, Path.GetDirectoryName(app)!, build.AppId, failed, removed);
+            DeleteEmptyApp(steamRoot, app, failed, removed);
         }
+    }
+
+    static void DeleteFolder(string steamRoot, string folder, Action<string, Exception>? failed, Action<string>? removed)
+    {
+        if (!Directory.Exists(folder)) return;
+        try
+        {
+            RefuseLinks(folder, steamRoot);
+            Directory.Delete(folder, recursive: true);
+            removed?.Invoke(folder);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            if (failed == null) throw;
+            failed(folder, error);
+        }
+    }
+
+    static void DeleteStateFiles(string steamRoot, string folder, string appId, Action<string, Exception>? failed,
+        Action<string>? removed)
+    {
+        if (!Directory.Exists(folder)) return;
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(folder, "state_*.patch", SearchOption.TopDirectoryOnly)
+                         .Where(path => LinuxUninstall.StatePatchName(path, appId)).ToList())
+            {
+                RefuseLinks(path, steamRoot);
+                File.Delete(path);
+                removed?.Invoke(path);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            if (failed == null) throw;
+            failed(folder, error);
+        }
+    }
+
+    static void DeleteEmptyApp(string steamRoot, string app, Action<string, Exception>? failed, Action<string>? removed)
+    {
+        if (!Directory.Exists(app)) return;
+        try
+        {
+            RefuseLinks(app, steamRoot);
+            if (Directory.EnumerateFileSystemEntries(app).Any()) return;
+            Directory.Delete(app);
+            removed?.Invoke(app);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            if (failed == null) throw;
+            failed(app, error);
+        }
+    }
+
+    // Linux uninstall refuses links inside Steam so a depot download can never lead outside Steam's folders; a link above
+    // Steam's folder (/home -> /var/home) is normal and is resolved first. Windows keeps its old behaviour.
+    static void RefuseLinks(string path, string steamRoot)
+    {
+        if (OperatingSystem.IsLinux()) LocalInstall.NoLinks(path, steamRoot);
     }
 }

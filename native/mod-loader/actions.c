@@ -603,6 +603,7 @@ static int g_actPoolHeld;
 
 static uint32_t ActAddRule(HfMod* mod, const ActRule* rule, const uint64_t* sources, const char* what)
 {
+    if (ModGone(mod)) return 0;
     AcquireSRWLockExclusive(&g_actRulesLock);
     uint32_t id = 0;
     int taken = 0;
@@ -972,7 +973,7 @@ static int ActRun(const ActCall* c, uint32_t* entity)
 /* On the game thread: now. Elsewhere: at the next game update (HF_ACT_QUEUED). */
 static int ActDo(const ActCall* c, uint32_t* entity)
 {
-    if (c->mod == NULL) return 0;
+    if (c->mod == NULL || ModGone(c->mod)) return 0;
     if (g_tickState < 0) { ApiLog(c->mod, "actions: the game thread's update is not hooked (modloader.log says why)"); return 0; }
     if (g_gameThread != 0 && GetCurrentThreadId() == g_gameThread) return ActRun(c, entity);
     AcquireSRWLockExclusive(&g_actQueueLock);

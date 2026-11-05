@@ -17,6 +17,22 @@ static const uint8_t kMapViewStub[33] = {
     0xF3, 0x44, 0x0F, 0x5F, 0x0D, 0, 0, 0, 0,                         /* 14 maxss xmm9, [rip+0.17] (rel32 at 19) */
     0xF3, 0x45, 0x0F, 0x5D, 0xC1,                                     /* 23 minss xmm8, xmm9 */
     0xE9, 0, 0, 0, 0};                                                /* 28 jmp 0x14319BF (rel32 at 29) */
+/* The hologram's terrain height (0x1433460): the map's lowest point sits lift above the table's plane, lift =
+ * 0.025 (1 - f) + 0.2 f with f = (scale - 6.6) / 4.4, made for level 10's scales 6.6 (the drop zone view) to 11
+ * (zoomed). A larger map's scale is the vanilla one x k (above), 3.3 at 2 x: the lift went below 0 and the map's low
+ * ground sank into the table, black until zoomed in (research d11-hologram-clip). The lift reads scale / k, the vanilla
+ * scale: k = clamp(0.19 / h, 0.45, 1), 1 on every level-10 map (and with h 0, before a preview). */
+#define DIF_HOLO_LIFT_SITE 0x143348Eu /* movss xmm0, [rcx+0x8d704] (8), then subss xmm0, [rip+6.6] */
+#define DIF_HOLO_LIFT_BACK 0x1433496u
+static const uint8_t kHoloLiftPin[8] = {0xF3, 0x0F, 0x10, 0x81, 0x04, 0xD7, 0x08, 0x00};
+static const uint8_t kHoloLiftStub[49] = {
+    0xF3, 0x0F, 0x10, 0x81, 0x04, 0xD7, 0x08, 0x00,                   /*  0 movss xmm0, [rcx+0x8d704] (the scale) */
+    0xF3, 0x0F, 0x10, 0x2D, 0, 0, 0, 0,                               /*  8 movss xmm5, [rip+0.19] (rel32 at 12) */
+    0xF3, 0x0F, 0x5E, 0xA9, 0x0C, 0xD7, 0x08, 0x00,                   /* 16 divss xmm5, [rcx+0x8d70c] (h) */
+    0xF3, 0x0F, 0x5F, 0x2D, 0, 0, 0, 0,                               /* 24 maxss xmm5, [rip+0.45] (rel32 at 28) */
+    0xF3, 0x0F, 0x5D, 0x2D, 0, 0, 0, 0,                               /* 32 minss xmm5, [rip+1.0] (rel32 at 36) */
+    0xF3, 0x0F, 0x5E, 0xC5,                                           /* 40 divss xmm0, xmm5 */
+    0xE9, 0, 0, 0, 0};                                                /* 44 jmp 0x1433496 (rel32 at 45) */
 /* The war table's mission card shows its minimap (element panel+0x220, 0x18760E0) through a fixed UV rect, 0.275 to
  * 0.725 of the 2048 m texture (+-460 m: level 10's maps are 389 m), set at 0x187629E when the preview is ready, and
  * places its markers with fixed scales: 484.44 px per 1024 m (0x23C7B58: 0x1875B27, 0x1876D1E, 0x1876D26, 0x18773F1,
@@ -309,6 +325,9 @@ static const char* CardViewFailed(uintptr_t game)
         if (SafeRead(game + kHoloStubs[i].site, holo, kHoloStubs[i].length) || memcmp(holo, kHoloStubs[i].pin, kHoloStubs[i].length) != 0)
             return "the war table hologram's mission scale is not the reviewed one";
     }
+    uint8_t lift[8];
+    if (SafeRead(game + DIF_HOLO_LIFT_SITE, lift, 8) || memcmp(lift, kHoloLiftPin, 8) != 0)
+        return "the war table hologram's terrain height is not the reviewed one";
     uint8_t card[42];
     uint32_t scale;
     if (SafeRead(game + DIF_CARD_VIEW_SITE, card, 42) || memcmp(card, kCardViewPin, 42) != 0 ||
@@ -505,7 +524,7 @@ static const char* InstallBoard(DifficultyInstall* d)
     for (int i = 0; i < 3; i++)
     {
         uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
-        rel = (int32_t)((uintptr_t)(board + 0x80 * i) - (game + kBoardSites[i].site + 5)); memcpy(jump + 1, &rel, 4);
+        rel = DifficultyJumpRel(game + kBoardSites[i].site, (uintptr_t)(board + 0x80 * i)); memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kBoardSites[i].site, jump, kBoardSites[i].length)) return "the war table's mission board could not be given level 11";
     }
     if (ApiWrite(game + DIF_BOARD_REGION_MAX + 1, &level, 4)) return "the regions' missions could not reach level 11";
@@ -517,16 +536,16 @@ static const char* MoveBandsAndIcons(DifficultyInstall* d)
 {
     uintptr_t game = d->game;
     int32_t rel;
-    int32_t bandDisp = (int32_t)(int64_t)((uintptr_t)d->bands - game);
+    int32_t bandDisp = DifficultyDispRel("band", game + DIF_BAND_SITE + 4, (uintptr_t)d->bands, game);
     if (ApiWrite(game + DIF_BAND_SITE + 4, &bandDisp, 4)) return "the band sprites could not be moved";
     uint8_t iconCallNew[5] = {0xE8};
-    rel = (int32_t)((uintptr_t)d->iconStub - (game + DIF_ICON_CALL + 5));
+    rel = DifficultyJumpRel(game + DIF_ICON_CALL, (uintptr_t)d->iconStub);
     memcpy(iconCallNew + 1, &rel, 4);
     if (g_difficulty.icon != 0 && ApiWrite(game + DIF_ICON_CALL, iconCallNew, 5)) return "the difficulty icon setter could not be extended";
     for (int i = 0; i < 4 && g_difficulty.icon != 0; i++)
     {
         uintptr_t call = i == 0 ? game + DIF_HUD_ICON_CALL : game + kIconSites[i - 1].call;
-        rel = (int32_t)((uintptr_t)(d->iconChecks + 0x10 * i) - (call + 5));
+        rel = DifficultyJumpRel(call, (uintptr_t)(d->iconChecks + 0x10 * i));
         memcpy(iconCallNew + 1, &rel, 4);
         if (ApiWrite(call, iconCallNew, 5)) return "a difficulty icon reader could not be extended";
     }
@@ -535,7 +554,7 @@ static const char* MoveBandsAndIcons(DifficultyInstall* d)
         uint8_t jump[32];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
-        rel = (int32_t)((uintptr_t)d->barStubs[i] - (game + kBarSites[i].rva + 5));
+        rel = DifficultyJumpRel(game + kBarSites[i].rva, (uintptr_t)d->barStubs[i]);
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kBarSites[i].rva, jump, kBarSites[i].length)) return "the bar could not be given its 11th widget";
     }
@@ -546,9 +565,9 @@ static const char* MoveBandsAndIcons(DifficultyInstall* d)
 static const char* JumpToMapView(DifficultyInstall* d)
 {
     uintptr_t game = d->game;
-    int32_t toOne = (int32_t)((uintptr_t)&d->viewValues[0] - (game + DIF_MAPVIEW_MIN + 9));
+    int32_t toOne = DifficultyDispRel("map view", game + DIF_MAPVIEW_MIN + 5, (uintptr_t)&d->viewValues[0], game + DIF_MAPVIEW_MIN + 9);
     uint8_t cap[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
-    int32_t rel = (int32_t)((uintptr_t)d->viewStub - (game + DIF_MAPVIEW_CAP + 5));
+    int32_t rel = DifficultyJumpRel(game + DIF_MAPVIEW_CAP, (uintptr_t)d->viewStub);
     memcpy(cap + 1, &rel, 4);
     if (ApiWrite(game + DIF_MAPVIEW_MIN + 5, &toOne, 4) || ApiWrite(game + DIF_MAPVIEW_CAP, cap, sizeof cap))
         return "the war table's map view could not be widened";
@@ -564,13 +583,14 @@ static const char* JumpToCardStubs(DifficultyInstall* d)
     for (int i = 0; i < 9; i++)
     {
         uintptr_t site = game + kCardScales[i].rva;
-        int32_t disp = (int32_t)((uintptr_t)(d->watch + 0x48 + 4 * kCardScales[i].global) - (site + kCardScales[i].length));
+        int32_t disp = DifficultyDispRel("card", site + kCardScales[i].at,
+            (uintptr_t)(d->watch + 0x48 + 4 * kCardScales[i].global), site + kCardScales[i].length);
         if (ApiWrite(site + kCardScales[i].at, &disp, 4)) return "the mission card's markers could not be scaled";
     }
     uint8_t view[42];
     memset(view, 0x90, sizeof view);
     view[0] = 0xE9;
-    rel = (int32_t)((uintptr_t)d->cardViewStub - (game + DIF_CARD_VIEW_SITE + 5));
+    rel = DifficultyJumpRel(game + DIF_CARD_VIEW_SITE, (uintptr_t)d->cardViewStub);
     memcpy(view + 1, &rel, 4);
     if (ApiWrite(game + DIF_CARD_VIEW_SITE, view, sizeof view)) return "the mission card's map view could not be widened";
     for (int i = 0; i < 4; i++)
@@ -578,9 +598,28 @@ static const char* JumpToCardStubs(DifficultyInstall* d)
         uint8_t jump[10];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
-        rel = (int32_t)((uintptr_t)(d->holoStubs + 0x80 * i) - (game + kHoloStubs[i].site + 5));
+        rel = DifficultyJumpRel(game + kHoloStubs[i].site, (uintptr_t)(d->holoStubs + 0x80 * i));
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(game + kHoloStubs[i].site, jump, kHoloStubs[i].length)) return "the war table hologram's mission scale could not be fitted";
     }
+    uint8_t* lift = AllocateNearGame(game, 0x100); /* the stub, then 0.19, 0.45, 1.0 */
+    if (lift == NULL) return "no memory within 2 GB of game.dll for the hologram's terrain height";
+    static const float liftValues[3] = {0.19f, 0.45f, 1.0f};
+    memcpy(lift, kHoloLiftStub, sizeof kHoloLiftStub);
+    memcpy(lift + 0x40, liftValues, sizeof liftValues);
+    const struct { uint8_t at; uintptr_t target; } liftSlots[4] = {{12, (uintptr_t)(lift + 0x40)}, {28, (uintptr_t)(lift + 0x44)},
+        {36, (uintptr_t)(lift + 0x48)}, {45, game + DIF_HOLO_LIFT_BACK}};
+    for (int i = 0; i < 4; i++)
+    {
+        rel = (int32_t)(int64_t)(liftSlots[i].target - (uintptr_t)(lift + liftSlots[i].at + 4));
+        memcpy(lift + liftSlots[i].at, &rel, 4);
+    }
+    DWORD liftProtect;
+    if (!VirtualProtect(lift, 0x100, PAGE_EXECUTE_READ, &liftProtect)) return "the hologram's terrain height stub could not be made executable";
+    FlushInstructionCache(GetCurrentProcess(), lift, 0x100);
+    uint8_t liftJump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+    rel = (int32_t)(int64_t)((uintptr_t)lift - (game + DIF_HOLO_LIFT_SITE + 5));
+    memcpy(liftJump + 1, &rel, 4);
+    if (ApiWrite(game + DIF_HOLO_LIFT_SITE, liftJump, 8)) return "the war table hologram's terrain height could not be fitted";
     return NULL;
 }

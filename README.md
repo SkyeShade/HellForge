@@ -4,20 +4,15 @@ HellForge runs your own copy of HELLDIVERS 2 locally, against a backend on your 
 loads mods into it: new stratagems, weapons, stats and difficulties. You can play solo, or co-op over Steam with other
 players who run HellForge. It comes with an in-game editor (F8) and a C mod SDK with guides and examples.
 
-> [!WARNING]
-> **This is the `dev` branch: work in progress for the next release (0.3.0), experimental and possibly broken.** Players:
-> install the latest release from the [Releases page](https://github.com/SkyeShade/HellForge/releases) instead. A build of
-> this branch shows `-dev.<n>` in its version.
-
-Status: beta (0.3.0-beta), made for modders first, so expect rough edges. The launcher shows its version
+Status: beta (0.4.0-beta), made for modders first, so expect rough edges. The launcher shows its version
 and the game build it targets in its bottom-left corner.
 
 ## What HellForge is and is not
 
 HellForge plays your own game. Setup copies HELLDIVERS 2 from your Steam library into HellForge's folder and checks every
 file against Steam's hashes. This repository and HellForge-Setup.exe contain no game files. When Steam has a newer build
-than the one HellForge runs, setup downloads a patch made from the differences between the two builds and applies it to
-your own Steam files. Your normal Steam game is never changed.
+than the one HellForge runs, setup gets the supported build from Steam for your own account, copying what your Steam
+install already holds. Your normal Steam game is never changed.
 
 The Steam ownership check stays. A genuine check runs at setup, and again before a launch unless one passed within the
 last 7 days for the same installation, Steam account and game build. Steam must be running and signed in to an account
@@ -40,18 +35,23 @@ check (binary data patches, raw stats) download only when HellForge has verified
 running mods you don't want, and lobbies whose host plays with edited stats (which you would play with) are hidden
 unless you show them on the Mods page.
 
-Profiles are local. A new profile starts with every item unlocked, and other templates can be picked. The galactic war can
-follow the live war read-only from the community mirror [api.helldivers2.dev](https://api.helldivers2.dev), stay
-HellForge's frozen war, or open every planet to liberation (Settings > Galactic war).
+Profiles are local. A new installation's first profile starts as a fresh player after basic training (the starter
+template), and new profiles can pick another template. Sync Inventory (Profile > Account sync) brings in your own
+account's inventory and progression from the normal game. Premium items (premium warbonds, Superstore items, Steam DLC
+gear) are there only once a sync has found them on the Steam account signed in now, and Super Credits never are. The
+galactic war can follow the live war read-only from the community mirror
+[api.helldivers2.dev](https://api.helldivers2.dev), stay HellForge's frozen war, or open every planet to liberation
+(Settings > Galactic war).
 
 ## Requirements
 
-- Windows 10 or 11 (64-bit). Linux under Proton is experimental: see [docs/linux.md](docs/linux.md).
+- Windows 11, or Windows 10 version 22H2 with current updates (64-bit). Linux under Proton is experimental: see
+  [docs/linux.md](docs/linux.md).
 - Steam running and signed in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing.
 - The Microsoft Visual C++ 2012 and 2015-2022 Redistributables (x64), which the game needs. Setup checks for both and
   links Microsoft's downloads when one is missing ([troubleshooting](docs/troubleshooting.md#microsoft-visual-c-runtimes)).
-- About 25 GB free on the drive you install to. Add about 2 GB while a patch pack is applied, or plan on about 50 GB in
-  total if Steam has to download the supported build.
+- About 25 GB free on the drive you install to. Plan on about 50 GB in total if the Steam app has to download the
+  supported build through its console (one of the ways below).
 - Permission to approve one Windows administrator prompt, for the network block. Windows Firewall does not need to be on:
   the block lives in the Windows Filtering Platform and holds even when a security suite has switched the firewall off.
 
@@ -66,9 +66,16 @@ HellForge's frozen war, or open every planet to liberation (Settings > Galactic 
    24 GB) from your own Steam library with every file checked against Steam's hashes, places the network block (the one
    administrator prompt) and creates shortcuts.
 
-HellForge runs one game build (Steam build 25480438). When Steam has a newer build that HellForge has a patch pack for,
-setup downloads the pack (about 1.7 GB) and makes the copy by patching your own Steam files. Otherwise the wizard shows
-commands to paste into the Steam console, and Steam itself downloads the supported build for your account.
+On Linux, use the graphical Linux installer instead of `HellForge-Setup.exe`:
+[docs/linux.md](docs/linux.md#setting-it-up).
+
+HellForge runs one game build (Steam build 25480438). When Steam has another build, setup offers three ways to get
+that build for your account. You can scan a QR code with the Steam app on your phone: setup then downloads the build
+from Steam's own servers, copying whatever your Steam install already has. With no phone, Valve's own SteamCMD can
+download it: you type your password into SteamCMD's window, never into HellForge. Or the Steam app on your PC can
+download it through its console, with no sign-in in HellForge, and setup copies it from there. Nothing of a sign-in
+is kept ([how it works](docs/steam-download.md)). If Steam does not allow the download, for a game borrowed through
+Steam Family Sharing for example, the wizard shows the Steam console commands. HellForge hosts no game files.
 
 Each step in detail, the installation's folders, updating and uninstalling are in
 [docs/README.md](docs/README.md#your-installation). If setup stops, see [troubleshooting](docs/troubleshooting.md).
@@ -109,6 +116,12 @@ Each step in detail, the installation's folders, updating and uninstalling are i
   [Zig](https://ziglang.org) compiles native code and mods. All three are downloaded at build time, pinned, and their
   licences ship with what uses them. Microsoft's public PlayFab Party and PlayFab Multiplayer SDK packages are downloaded
   at build time for their headers (the stand-ins' signatures); nothing from them is committed or shipped.
+- [SteamKit2](https://github.com/SteamRE/SteamKit) (LGPL-2.1) signs in to Steam and downloads the supported build, with
+  [protobuf-net](https://github.com/protobuf-net/protobuf-net) (Apache-2.0),
+  [ZstdSharp](https://github.com/oleg-st/ZstdSharp) (MIT, a port of Zstandard: BSD) and
+  [System.IO.Hashing](https://github.com/dotnet/runtime) (MIT); [QRCoder](https://github.com/Shane32/QRCoder) (MIT)
+  draws the sign-in's QR code. Each is its own, unchanged DLL beside the launcher and the CLI, with its licence and
+  where its source is in `licences/` there.
 - The live war comes from the community [Helldivers 2 API](https://github.com/helldivers-2/api).
 - Linux support was worked out by DreamyBranch and joshua-software-dev
   ([issue 1](https://github.com/SkyeShade/HellForge/issues/1)).

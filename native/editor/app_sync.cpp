@@ -36,15 +36,17 @@ void ForgetKeys()
     if (window != nullptr && GetCursorPos(&at) && ScreenToClient(window, &at)) io.AddMousePosEvent((float)at.x, (float)at.y);
 }
 
+void HoldInput() { g_host.modal(g_sync.alone || g_lobbies.alone); }
+
 /* The dialog alone over the game, the window closed: the editor holds the game's input for it, as for the window. */
 void ShowSyncAlone(bool on)
 {
     if (g_sync.alone == on) return;
     g_sync.alone = on;
-    g_host.modal(on);
+    HoldInput();
     ForgetKeys();
     if (on) g_sync.shownAt = ImGui::GetTime();
-    sounds::EditorOpen(on);
+    sounds::EditorOpen(on || g_lobbies.alone);
     g_host.api->log(g_host.mod, on ? "editor: the mod sync prompt shows over the game, the window closed" : "editor: the mod sync prompt goes");
     if (on) Sound(sounds::SHOW);
 }
@@ -125,7 +127,9 @@ void ReadSync()
     g_host.api->sync_state(g_host.mod, &now);
     HfSyncState& was = g_sync.state;
     bool turned = now.version != was.version || now.state != was.state;
-    if (!turned && now.done == was.done && now.bytes == was.bytes && !strcmp(now.message, was.message) && !strcmp(now.host, was.host)) return;
+    /* the flags too: HF_SYNC_LIVE changing alone relabels the dialog's buttons */
+    bool same = now.done == was.done && now.bytes == was.bytes && now.flags == was.flags && !strcmp(now.message, was.message) && !strcmp(now.host, was.host);
+    if (!turned && same) return;
     if (now.version != was.version || now.mods != g_sync.mods.size()) ReadSyncMods(now.mods);
     g_sync.state = now;
     if (turned) SyncTurned(now);
@@ -161,7 +165,8 @@ static bool SyncBlockable(const HfSyncMod& mod)
     return !g_sync.sent && (offered || (mod.action == HF_SYNC_MOD_TRUST && state == HF_SYNC_BLOCKED));
 }
 
-/* A row's TRUST: a Steam friend's mod HellForge has not verified (the backend offers no other for trust). */
+/* A row's TRUST: a mod HellForge has not verified, from a Steam friend or, sandboxed, a stranger (the backend offers no other
+ * for trust). */
 static bool SyncTrustable(const HfSyncMod& mod) { return !g_sync.sent && mod.action == HF_SYNC_MOD_TRUST && g_sync.state.state == HF_SYNC_BLOCKED; }
 
 /* A row's GET IT: a mod the player may install themselves, with an address to get it from (the loader keeps only https://
@@ -196,14 +201,17 @@ static bool TrustDownloads(int i)
     return true;
 }
 
+/* The running game takes the host's mods without a restart (HF_SYNC_LIVE: the backend can change them live). */
+static bool SyncLive() { return (g_sync.state.flags & HF_SYNC_LIVE) != 0; }
+
 /* The dialog's first button and its answer, by state ("" none). */
 static const char* SyncPrimary(uint32_t* answer)
 {
     const HfSyncState& s = g_sync.state;
     *answer = s.state == HF_SYNC_OFFER ? (s.bytes > 0 ? HF_SYNC_ACCEPT : HF_SYNC_RESTART) : s.state == HF_SYNC_READY ? HF_SYNC_RESTART :
         s.state == HF_SYNC_BLOCKED || s.state == HF_SYNC_FAILED ? HF_SYNC_DECLINE : 0;
-    if (s.state == HF_SYNC_OFFER) return s.bytes > 0 ? "DOWNLOAD AND RESTART" : "RESTART TO JOIN";
-    if (s.state == HF_SYNC_READY) return "RESTART TO JOIN";
+    if (s.state == HF_SYNC_OFFER) return s.bytes > 0 ? "DOWNLOAD AND RESTART" : SyncLive() ? "APPLY AND JOIN" : "RESTART TO JOIN";
+    if (s.state == HF_SYNC_READY) return SyncLive() ? "APPLY AND JOIN" : "RESTART TO JOIN";
     if (s.state == HF_SYNC_BLOCKED || s.state == HF_SYNC_FAILED) return "OK";
     return "";
 }
@@ -256,16 +264,35 @@ static float ClassChip(const HfSyncMod& mod, float x, float cy, int z)
 }
 
 /* The TRUST warning's lines: what trusting the mod means (*lead of them, drawn brighter), then what HellForge still
- * checks. */
+ * checks. A stranger's mod (HF_SYNC_FLAG_STRANGER: offered only to a sandboxed game) says what the sandbox does not stop;
+ * a friend's in a sandboxed game (HF_SYNC_FLAG_SANDBOX_ONLY) that the trust holds only there. */
 static std::vector<std::string> TrustLines(const HfSyncMod& mod, const std::string& name, const std::string& friendName, float w, size_t* lead)
 {
     std::vector<std::string> lines;
-    std::string warning = mod.kind == HF_SYNC_CLASS_RAW
-        ? name + " carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or "
-          "through a flaw in the game run code on your PC that can do anything your Windows account can."
-        : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your "
-          "files, or install other programs.";
-    warning += " Only trust it if you trust " + friendName + " and know where the mod comes from.";
+    std::string warning;
+    if (mod.flags & HF_SYNC_FLAG_STRANGER)
+    {
+        warning = mod.kind == HF_SYNC_CLASS_RAW
+            ? name + " carries game data HellForge cannot check, and " + friendName + " is not your Steam friend. Through a flaw in the "
+              "game, data like this can run code on your PC."
+            : name + " runs its own code on your PC, and " + friendName + " is not your Steam friend.";
+        warning += " Your game is sandboxed: the mod cannot change your files or reach the internet, but it can read your files and send "
+                   "what it reads to " + friendName + " through the game. Only trust it if you know where the mod comes from. It will run "
+                   "only while the sandbox is on.";
+    }
+    else
+    {
+        warning = mod.kind == HF_SYNC_CLASS_RAW
+            ? name + " carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or "
+              "through a flaw in the game run code on your PC that can do anything your Windows account can."
+            : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your "
+              "files, or install other programs.";
+        warning += " Only trust it if you trust " + friendName + " and know where the mod comes from.";
+        /* any code in a sandboxed game can answer this prompt, so a trust given here holds only there (ModSync.Answer) */
+        if (mod.flags & HF_SYNC_FLAG_SANDBOX_ONLY)
+            warning += " Trusted here, in a sandboxed game, it will run only while the sandbox is on; the launcher's Mods page "
+                       "lists it.";
+    }
     for (std::string& part : Wrapped(warning, w - 56, SZ_LABEL)) lines.push_back(std::move(part));
     *lead = lines.size();
     for (std::string& part : Wrapped("HellForge still checks that every file you download is exactly the one " + friendName + " has. You can take "
@@ -326,7 +353,8 @@ static std::string SyncMessage(const HfSyncState& s)
     return s.message[0] ? s.message :
         s.state == HF_SYNC_OFFER ? "The host plays with gameplay mods you don't have. Get them and restart with the host's mods: their invitation waits on your ship." :
         s.state == HF_SYNC_DOWNLOADING ? "Downloading the host's mods; each file is checked before it is kept." :
-        s.state == HF_SYNC_READY ? "Every mod is here. Restart with the host's mods: their invitation waits on your ship." :
+        s.state == HF_SYNC_READY ? (SyncLive() ? "Every mod is here. Play with the host's mods now, without a restart: their invitation comes at once." :
+            "Every mod is here. Restart with the host's mods: their invitation waits on your ship.") :
         s.state == HF_SYNC_BLOCKED ? "You cannot join this lobby with these mods." : "The download failed.";
 }
 
@@ -401,7 +429,10 @@ static void DrawSyncSize(const HfSyncState& s, float x, float fy, float w)
 }
 
 /* The first button while an answer is on its way: what it waits for. */
-static const char* PrimaryLabel(uint32_t answer, const char* primary) { return g_sync.sent ? (answer == HF_SYNC_RESTART ? "RESTARTING..." : "STARTING...") : primary; }
+static const char* PrimaryLabel(uint32_t answer, const char* primary)
+{
+    return g_sync.sent ? (answer == HF_SYNC_RESTART ? (SyncLive() ? "APPLYING..." : "RESTARTING...") : "STARTING...") : primary;
+}
 static Style PrimaryStyle(bool bad) { return g_sync.sent || !SyncArmed() ? DISABLED : bad ? NORMAL : PRIMARY; }
 
 /* The dialog's second button (CANCEL, LATER) and its first, by state, from the right; returns the x left of them. */

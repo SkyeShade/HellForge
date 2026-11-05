@@ -1,7 +1,8 @@
 namespace HellForge.LocalBackend.Multiplayer;
 
-// What a backend takes from someone who is not a Steam friend (docs/multiplayer.md step 7). Nothing at all unless the
-// player has turned on "Play with strangers" (off by default, ModSettings.PlayWithStrangers), whatever a lobby's privacy.
+// What a backend takes from someone who is not a Steam friend (docs/multiplayer.md step 7). Nothing at all unless
+// Play with strangers is on for this session (ModSettings.StrangersEffective; by default on when the game is sandboxed),
+// whatever a lobby's privacy.
 // Then strangers only come through the lobby directory, or come back to a lobby here after a mod sync:
 //   - a join (lobby.join) while a public lobby is listed here, from a machine this one deals with already (below), or
 //     from one a lobby here expects back (welcome: admitted before, invited, or back after a mod sync, LobbyService.Welcome),

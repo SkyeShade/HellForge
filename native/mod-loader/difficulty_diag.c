@@ -121,7 +121,8 @@ static const char* JumpToRestartStubs(DifficultyInstall* d)
     for (int i = 0; i < 4; i++)
     {
         uint8_t jump[6] = {0xE9, 0, 0, 0, 0, 0x90};
-        int32_t rel = (int32_t)((uintptr_t)(i == 0 && d->unreachableStub != NULL ? d->unreachableStub : d->restartStubs + 0x20 * i) - (d->game + kRestartSites[i] + 5));
+        int32_t rel = DifficultyJumpRel(d->game + kRestartSites[i],
+            (uintptr_t)(i == 0 && d->unreachableStub != NULL ? d->unreachableStub : d->restartStubs + 0x20 * i));
         memcpy(jump + 1, &rel, 4);
         if (ApiWrite(d->game + kRestartSites[i], jump, 6)) return "a level generation restart could not be noted";
     }
@@ -133,7 +134,7 @@ static const char* JumpToCapture(DifficultyInstall* d)
     uint8_t jump[11];
     memset(jump, 0x90, sizeof jump);
     jump[0] = 0xE9;
-    int32_t rel = (int32_t)((uintptr_t)d->captureStub - (d->game + DIF_CAPTURE_SITE + 5));
+    int32_t rel = DifficultyJumpRel(d->game + DIF_CAPTURE_SITE, (uintptr_t)d->captureStub);
     memcpy(jump + 1, &rel, 4);
     if (ApiWrite(d->game + DIF_CAPTURE_SITE, jump, sizeof jump)) return "the minimap capture could not be noted";
     return NULL;
@@ -264,7 +265,7 @@ static void WatchHashFull(void)
     {
         reported = full;
         fullLogged = GetTickCount64();
-        Note("difficulty: a full hash table skipped %ld entries so far (a map's destructibles past the 32768 the world's destruction-record map holds; the game used to end there)", full);
+        Note("difficulty: a full hash table skipped %ld entries so far (e.g. a map's destructibles past the destruction-record map's slots, which then miss in the world; the game used to end there)", full);
     }
 }
 
@@ -350,7 +351,7 @@ static int WatchLevel(void)
     static ULONGLONG levelSeen;
     static int levelLogs;
     uintptr_t latest = *(volatile uintptr_t*)(g_restartWatch + 0x20);
-    if (latest != 0 && latest != level) { level = latest; levelSeen = GetTickCount64(); levelLogs = 0; FieldWatch(latest + 0x2D70); }
+    if (latest != 0 && latest != level) { level = latest; levelSeen = GetTickCount64(); levelLogs = 0; FieldWatch(latest + 0x2D70); AuditPatchSitesNow(); }
     if (level != 0) FieldWatch(level + 0x2D70); /* again once the preview record is known (DR2) */
     ULONGLONG age = GetTickCount64() - levelSeen;
     if (level == 0 || levelLogs >= 2 || age < (levelLogs == 0 ? 1500u : 6000u)) return 0;
@@ -393,6 +394,19 @@ static void NoteMissionMap(void)
     uint32_t objects[2] = {0};
     if (!SafeRead(world + 0x10E8, &render, 8) && render && !SafeRead(render + 0x2301F8, &store, 8) && store && !SafeRead(store + 0x38, objects, 8))
         Note("difficulty: the mission's render objects: %u in use of %u", objects[0], objects[1]);
+    uint64_t records = 0, slotsAt = 0;
+    uint32_t slotCount = 0, emptyKey = 0, statics = 0;
+    if (!SafeRead(g_difficultyGame + 0x346D528, &records, 8) && records && !SafeRead(records + 0xC5F48, &slotsAt, 8) && slotsAt &&
+        !SafeRead(records + 0xC5F50, &slotCount, 4) && !SafeRead(records + 0xC5F54, &emptyKey, 4) &&
+        !SafeRead(records + 0x1EAF78, &statics, 4) && slotCount > 0 && slotCount <= DIF_RECORD_SLOTS)
+    {
+        static uint32_t keys[DIF_RECORD_SLOTS * 2];
+        uint32_t used = 0;
+        if (!SafeRead(slotsAt, keys, (size_t)slotCount * 8))
+            for (uint32_t i = 0; i < slotCount; i++) used += keys[2 * i] != emptyKey;
+        Note("difficulty: the mission's destruction-record map: %u of %u slots used (%u static records), %ld setup(s) kept level 10's slots",
+            used, slotCount, statics, g_recordKept);
+    }
     Note("difficulty: the mission's map (type %u): important locations %u of 256 (cities flag 1024), city walls %u / %u / %u of 64 / 128 / 128, vertices %u of 975, route cells %u of 1024, edges %u of 1621, locations %u of %u",
         type, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[7], counts[6], DIF_LOCATIONS);
 }
@@ -405,6 +419,7 @@ static int WatchLaunch(void)
     timed = launched;
     Note("difficulty: a level-11 mission launched with the %.0f-minute countdown delta (%u so far)", (double)g_difficulty.minutes, launched);
     NoteMissionMap();
+    AuditPatchSitesNow(); /* the next level the mission loads is the hellpod's */
     return 1;
 }
 
@@ -415,6 +430,16 @@ static int WatchSpawners(void)
     if (spawnersLeft == dropped) return 0;
     dropped = spawnersLeft;
     Note("difficulty: the enemy director's 128 spawners are full: %u more left out so far (their outposts stay)", spawnersLeft);
+    return 1;
+}
+
+static int WatchMines(void)
+{
+    static LONG dropped;
+    LONG left = g_minesLeftOut != NULL ? *g_minesLeftOut : 0;
+    if (left == dropped) return 0;
+    dropped = left;
+    Note("difficulty: the enemy director's 512 mines are full: %ld more left out so far (no mine there)", left);
     return 1;
 }
 
@@ -461,6 +486,24 @@ static int WatchRestarts(void)
 
 /* Polled by the loader's thread: logs each level generation restart (which pass failed, at which difficulty, how many
  * times for that level). The first 40. */
+/* Towns (difficulty_towns.c): once a generation's counts hold still for a tick, what it added since the last line. */
+static void WatchTowns(void)
+{
+    static LONG logged[DIF_TOWN_COUNTERS], seen[DIF_TOWN_COUNTERS];
+    if (g_townCounters == NULL) return;
+    LONG now[DIF_TOWN_COUNTERS];
+    for (int i = 0; i < DIF_TOWN_COUNTERS; i++) now[i] = g_townCounters[i];
+    int moving = memcmp(now, seen, sizeof now) != 0, fresh = memcmp(now, logged, sizeof now) != 0;
+    memcpy(seen, now, sizeof now);
+    if (moving || !fresh) return;
+    Note("difficulty: towns: %ld building(s) placed; %ld position(s) refused past the playable radius and their rule's reach, "
+        "%ld with the location list full; the subregion merge dropped %ld; %ld destructible(s) left without a record (map full); "
+        "town walls: %ld edge rule(s) tried, %ld with no edge in reach, %ld on the wrong side",
+        now[0] - logged[0], now[1] - logged[1], now[2] - logged[2], now[3] - logged[3], now[4] - logged[4], now[7] - logged[7],
+        now[5] - logged[5], now[6] - logged[6]);
+    memcpy(logged, now, sizeof now);
+}
+
 static void DifficultyWatch(void)
 {
     static int logged;
@@ -470,12 +513,15 @@ static void DifficultyWatch(void)
     WatchMixes();
     WatchOutposts();
     WatchFootprints();
+    WatchTowns();
+    WatchTerrain();
     WatchNavGrid();
     if (logged >= 40) return;
     logged += WatchLevel();
     logged += WatchCapture();
     logged += WatchLaunch();
     logged += WatchSpawners();
+    logged += WatchMines();
     logged += WatchPockets();
     logged += WatchRestarts();
 }

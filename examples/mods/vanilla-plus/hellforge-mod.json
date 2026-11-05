@@ -6,6 +6,7 @@
   "description": "Small fixes to how the game plays: blue stratagem beacons stick where you throw them, your hellpod steers over any ground, and reinforcements drop at their beacon.",
   "icon": "icon.png",
   "gameplay": true,
+  "coopLevel": 1,
   "code": {
     "dll": "vanilla_plus.dll",
     "sdk": 8

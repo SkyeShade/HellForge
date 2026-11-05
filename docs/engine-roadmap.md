@@ -4,7 +4,7 @@ This page is for contributors. It lists what is done and what is planned in the 
 backend, the mod loader and the stand-ins); [engine.md](engine.md) describes the engine as it is, and
 [sdk-roadmap.md](sdk-roadmap.md) is the mod SDK's side.
 
-Current versions: HellForge 0.3.0-beta, engine 0.1.41, mod SDK 15 (`Directory.Build.props`,
+Current versions: HellForge 0.4.0-beta, engine 0.1.47, mod SDK 16 (`Directory.Build.props`,
 `native/mod-sdk/hellforge_mod.h`).
 
 ## Network isolation
@@ -67,7 +67,9 @@ Every session writes `network-census.jsonl` (each attempt: call, target, loopbac
 offset; repeats counted), and `result.json` holds its summary (`networkCensus`). `HellForge.Session census <log>`
 summarises one from a player's logs. `native/steam-cloud/test/net_gate_test.c` tests it against the built stand-in.
 The session turns the census on by default (`HELLFORGE_NETGATE=census`), with the send, dns, http and process hook
-groups (see step 4 for why the connect groups are left out).
+groups (see step 4 for why the connect groups are left out), and in a sandboxed session the denied group
+(`docs/steam-bridge.md`). Repeats are counted per call, target and caller in a table of 2048; once it is full, further
+new ones share one count and the summary has `crowded`.
 
 ### Step 2: classify
 
@@ -254,16 +256,13 @@ again, which set the explosive off once per machine. Two fixes followed:
 
 ### Step 4: authority and a mod message channel
 
-Status: planned; neither `is_authority` nor `send` exists yet. (The spawn event, `HfSpawnEvent`, already says whether
-this machine simulates the entity: its `authority` field.)
-
-`is_authority(entity)` and a mod message channel (`send`, and an event for what arrives). Messages go from the loader to
-the backend over the session pipe (a game -> backend direction to be added), from the backend to friends' backends as a
-frame (a protocol bump), and back to the same mod on their machines. The countdown's laser point and the turret's
-target move onto it.
+Status: done in SDK 16. `is_authority`, `entity_of_network`, `send` (`HF_ON_MESSAGE`) and the host's shared table
+(`share_set`, `share_get`, `share_row`, `HF_ON_SHARE`) exist. Messages and rows go from the loader to its backend over
+the live pipe, between backends over the Steam link (`ModChannel`), and back to the same mod on each machine; a late
+joiner gets the table. The countdown's laser point and the turret's target still move onto it (planned).
 
 ### Step 5: the modding docs' co-op section
 
-Status: partly done. [modding/concepts.md](modding/concepts.md) has a co-op section, and
-[modding/hooks.md](modding/hooks.md) and [modding/content.md](modding/content.md) have co-op notes; the message channel
-waits for step 4.
+Status: done. [modding/concepts.md](modding/concepts.md) has the co-op section and the mod channel,
+[modding/hooks.md](modding/hooks.md) and [modding/content.md](modding/content.md) have co-op notes, and
+[multiplayer.md](multiplayer.md#the-mod-channel-in-co-op) has the channel's frames.

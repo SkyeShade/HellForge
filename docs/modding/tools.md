@@ -10,12 +10,15 @@ an IDE, building from a terminal or in the HellForge repository, prebuilt mods, 
 
 A code mod ships its sources (C or C++ under `src/`), and every player's HellForge builds it before a session into
 `<installation>/temp/mod-builds/<mod id>/`. Every machine uses the SDK's pinned Zig compiler with the same flags,
-including `-Wall -Werror`, so a warning fails the build. Nobody installs a toolchain: the first source mod fetches Zig
-into `<installation>/tools` (pinned and checksummed), and the Mods page offers **Install mod tools** while a source mod
-waits for it.
+including `-O2` and `-Wall -Werror`, so a warning fails the build. Nobody installs a toolchain: the first source mod
+fetches Zig into `<installation>/tools` (pinned and checksummed), and the Mods page offers **Install mod tools** while a
+source mod waits for it. On Linux that is the pinned native `tools/zig-linux/zig`, which the wrapper runs before the
+session; the Windows `zig.exe` is not started under Wine.
 
-- The cache. A build is kept under a key made of the manifest, every file under `src/`, the SDK headers, the compiler
-  and flags, and the game build. When any of them changes, the mod builds again; otherwise the session starts at once.
+- The cache. A build is kept under a key made of the manifest, every file under `src/`, the SDK headers, the compiler's
+  identity (its Zig version and target, not its archive) and flags, and the game build. When any of them changes, the
+  mod builds again; otherwise the session starts at once. A native Linux build and a Windows build of the same sources
+  and pin share one key.
 - The check. A build is used only when its record still matches its sources and its DLL's hash. A stale or swapped DLL
   is built again, never loaded.
 - Errors. A mod that does not compile stays off for that session, and its row on the Mods page shows the compiler's
@@ -29,7 +32,7 @@ Rider, CLion and VS Code (CMake Tools) open a mod as a CMake project. Each mod m
 `CMakeLists.txt` and a `CMakePresets.json` that bring in the compiler, Ninja and the SDK, so code completion and
 navigation into `hellforge_mod.h` work.
 
-1. Fetch the tools for IDEs once: `HellForge.Cli mod-tools --install <installation> --ide yes` puts Zig, CMake and Ninja
+1. On Windows, fetch the tools for IDEs once: `HellForge.Cli mod-tools --install <installation> --ide yes` puts Zig, CMake and Ninja
    into `<installation>/tools`. The Mods page's **Install mod tools** fetches the same, but it only shows while a source
    mod waits for Zig; once a session has fetched Zig, use the command.
 2. In Rider, open **Settings > Build, Execution, Deployment > Toolchains** (or **CMake**) and set CMake to
@@ -52,7 +55,9 @@ HellForge.Cli mod-hash --mod <folder or zip>                                    
 
 `new-mod` also takes `--out <folder>` instead of `--install`, to make the mod outside an installation. `build-mod` on a
 mod in an installation's mods folder makes the build a session loads (in `temp/mod-builds`); elsewhere it writes the DLL
-its manifest names beside the manifest. `package-mod` takes `--out <folder>` for a mod outside an installation.
+its manifest names beside the manifest. `package-mod` takes `--out <folder>` for a mod outside an installation. On
+Linux, `<installation>/app/cli-linux/HellForge.Cli` is the native build agent and takes the same commands; it uses the
+pinned `tools/zig-linux/zig`, not the Windows `zig.exe`.
 
 ## In the repository
 
@@ -81,7 +86,7 @@ DLL in the folder is loaded. A mod that ships both and wants its own DLL loaded 
 build the DLL was built for, so that another build refuses it with a message instead of crashing:
 
 ```json
-"code": { "dll": "my_mod.dll", "sdk": 15, "prebuilt": true, "game": "25480438" }
+"code": { "dll": "my_mod.dll", "sdk": 16, "prebuilt": true, "game": "25480438" }
 ```
 
 Friends then compare the DLL itself, so everyone needs the identical file.
@@ -108,19 +113,19 @@ your mod and has to install it themselves gets a GET IT button on the in-game MO
 
 When a player joins a lobby whose host runs your mod and lacks it, mod sync can download it from the host
 ([mods.md](../mods.md#playing-with-other-mods)). A mod HellForge checks all of (schema stats, network field types, data
-specs without `replace`) downloads from any host. A code mod, or one with raw data, downloads only from a host who is
-the player's Steam friend, and only when:
+specs without `replace`) downloads from any host. A code mod, or one with raw data, downloads only when:
 - HellForge's verified list names that exact version (below), or
-- the player trusts it on the prompt (TRUST, after a warning that it runs its own code on their PC). That trust is for
-  those exact files: a new version has to be trusted again.
+- the player trusts it on the prompt (TRUST, after a warning that it runs its own code on their PC), which takes a
+  sandboxed game when the host is not their Steam friend. That trust is for those exact files: a new version has to be
+  trusted again.
 
 Otherwise the player installs it themselves, from your `url` when the manifest has one.
 
 ### The verified list
 
-`data/verified-mods.json` in HellForge's repository lists the code and raw-data mods a HellForge maintainer has
-reviewed. It ships inside each HellForge release, so a change reaches players with the next release. Each entry names
-one exact version by its content hash: the SHA-256 of the lines the modlist code takes from the mod (its id, version,
+`data/verified-mods.json` in HellForge's repository lists HellForge's own code and raw-data mods, reviewed by a
+maintainer. It ships inside each HellForge release and changes with a release; any other mod is each player's own
+trust. Each entry names one exact version by its content hash: the SHA-256 of the lines the modlist code takes from the mod (its id, version,
 each counted file and that file's SHA-256, and for a data spec the data builder's version).
 
 To add a mod (maintainers):

@@ -42,7 +42,7 @@ static class WeaponLevelData
         try
         {
             var newest = Directory.Exists(paths.RunsFolder)
-                ? new DirectoryInfo(paths.RunsFolder).GetFiles("arsenal.tsv", SearchOption.AllDirectories).MaxBy(f => f.LastWriteTimeUtc) : null;
+                ? LocalInstall.FilesNoLinks(paths.RunsFolder, "arsenal.tsv").Select(path => new FileInfo(path)).MaxBy(f => f.LastWriteTimeUtc) : null;
             if (newest == null) return names;
             foreach (var line in File.ReadLines(newest.FullName).Skip(1))
             {

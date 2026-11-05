@@ -37,22 +37,30 @@ static partial class ModSyncTests
         public readonly string Mods, Run, SessionFile;
         public readonly List<string> Log = [];
         public readonly ulong Id;
+        public readonly IPeerTransport Transport;
+        public readonly BlockingCollection<string> Notices = new();
 
-        public Node(InMemoryNetwork network, ulong id, string folder, ModSet own, Func<string, string, bool> verified)
-            : this(network.Join(id), folder, own, verified) { }
+        public Node(InMemoryNetwork network, ulong id, string folder, ModSet own, Func<string, string, bool> verified, bool sandboxed = false)
+            : this(network.Join(id), folder, own, verified, sandboxed) { }
 
-        public Node(IPeerTransport transport, string folder, ModSet own, Func<string, string, bool> verified)
+        public Node(IPeerTransport transport, string folder, ModSet own, Func<string, string, bool> verified, bool sandboxed = false)
         {
             Id = transport.LocalId;
+            Transport = transport;
             Mods = Path.Combine(folder, "mods");
             Run = Directory.CreateDirectory(Path.Combine(folder, "run")).FullName;
             var evidence = Directory.CreateDirectory(Path.Combine(Run, "backend")).FullName;
             SessionFile = ModSyncSession.PathIn(new InstallLayout(folder));
             void Note(string line) { lock (Log) Log.Add(line); }
             Lobby = new LobbyService(transport, Inbox.Add, Note, own.Digest);
-            Sync = new ModSync(transport, new ModSyncPaths(Mods, Run, evidence, SessionFile), own, peer => "Player " + LobbyService.EntityId(peer), Note, verified) { Display = Shown };
+            Sync = new ModSync(transport, new ModSyncPaths(Mods, Run, evidence, SessionFile), own, peer => "Player " + LobbyService.EntityId(peer), Note, verified, sandboxed) { Display = Shown };
             Lobby.ModsRefused = Sync.OfferMods;
+            Lobby.LegacyAdmits = Sync.LegacyAdmits;
+            Lobby.JoinAs = Sync.JoinAs;
             Sync.Expected = Lobby.JoinedRecently;
+            Lobby.ModSetWire = Sync.OwnWire;
+            Lobby.LocalJoinStarted += (host, lobbyId) => Sync.JoinStarted(host, lobbyId);
+            Sync.Notice += notice => Notices.Add(notice);
             transport.Received += (peer, bytes) =>
             {
                 var frame = Frame.Decode(bytes);
@@ -87,6 +95,8 @@ static partial class ModSyncTests
     }
 
     const string Stats = """{"format":1,"weapons":{"AR-23 Liberator":{"rpm":900}}}""";
+    // A different component's field, so two per-player stats mods in one catalogue do not report a stats conflict.
+    const string OtherStats = """{"format":1,"throwables":{"G-12 High Explosive":{"fuse":2}}}""";
 
     // The host: network field types, schema stats (content), a 600 KB data patch (raw, several chunks) and a prebuilt DLL
     // (code). The joiner has the network field types only.
@@ -136,9 +146,9 @@ static partial class ModSyncTests
         SyncAction Action(SyncView view, string id) => view.Items.Single(i => i.Mod.Id == id).Action;
 
         // A friend's unverified code and raw data: the lobby cannot be joined until the player trusts them (or installs them),
-        // and both are named; schema stats would download.
+        // and both are named; a stats-only mod is the player's own, not offered.
         var blocked = Refused(host, guest, check, "a", "blocked");
-        check(Action(blocked, "test.ammo") == SyncAction.Have && Action(blocked, "test.stats") == SyncAction.Download &&
+        check(Action(blocked, "test.ammo") == SyncAction.Have && blocked.Items.All(i => i.Mod.Id != "test.stats") &&
             Action(blocked, "test.texture") == SyncAction.Trust && Action(blocked, "test.code") == SyncAction.Trust &&
             blocked.Message.Contains("Code, Texture") && blocked.Message.Contains("TRUST"), "Unverified code and raw data: " + blocked.Message);
         check(File.Exists(Path.Combine(guest.Run, "backend", ModSync.OfferFile)), "The offer is in the session's logs.");
@@ -147,12 +157,12 @@ static partial class ModSyncTests
         // next session.
         allowVerified = true;
         var offer = Refused(host, guest, check, "b", "offer");
-        var expected = hostSet.Mods.Where(m => m.Id != "test.ammo").Sum(m => m.Bytes);
-        check(offer.Bytes == expected && Action(offer, "test.code") == SyncAction.Download && offer.Message.Contains("3 mod(s)"), "Offer: " + offer.Message);
+        var expected = hostSet.Mods.Where(m => m.Tier == CoopTier.Shared && m.Id != "test.ammo").Sum(m => m.Bytes);
+        check(offer.Bytes == expected && Action(offer, "test.code") == SyncAction.Download && offer.Message.Contains("2 mod(s)"), "Offer: " + offer.Message);
         guest.Sync.Answer(["syncanswer", offer.Version.ToString(), "accept"]);
         var ready = guest.Shown.Next(check, "ready", "failed");
         check(ready.State == "ready" && ready.Done == expected, $"Downloaded: {ready.State} {ready.Message} ({ready.Done} of {expected})");
-        foreach (var mod in hostSet.Mods.Where(m => m.Id != "test.ammo"))
+        foreach (var mod in hostSet.Mods.Where(m => m.Tier == CoopTier.Shared && m.Id != "test.ammo"))
         {
             var stored = SyncedStore.Find(guest.Mods, mod.Id, mod.Hash);
             check(stored != null && ModSets.ContentHash(ModCatalog.Parse(stored, EntityProfile.Current)) == mod.Hash, mod.Id + " is stored as the host has it.");
@@ -164,7 +174,7 @@ static partial class ModSyncTests
         check(File.Exists(signal) && File.ReadAllText(signal) == ModSync.StopReason, "The session is asked to stop for a restart.");
         check(guest.Shown.Next(check, "ready").Message.Contains("Restarting"), "The game is told it restarts.");
         var session = ModSyncSession.Read(guest.SessionFile);
-        var (order, problem) = session.Resolve(guest.Mods, ModCatalog.Load(guest.Mods).Mods);
+        var (order, problem) = session.Resolve(guest.Mods, ModCatalog.Load(guest.Mods).Mods, verified: Verified);
         check(order != null && ModSet.Of(order).Digest == hostSet.Digest && session.Connection.StartsWith(LobbyService.ConnectionPrefix, StringComparison.Ordinal),
             "The next session plays the host's mods: " + problem);
         File.Delete(signal);
@@ -175,13 +185,13 @@ static partial class ModSyncTests
         check(again.Bytes == 0 && again.Items.All(i => i.Action == SyncAction.Have) && again.Message.Contains("Restart"), "Ready: " + again.Message);
         var written = ModSyncOffer.Read(Path.Combine(guest.Run, "backend"));
         check(written != null && written.Version == again.Version && written.State == "offer" && written.Mods.Count == again.Items.Count &&
-            written.Mods.All(m => m.Action == "have"), "The launcher reads the offer the backend wrote.");
+            written.Mods.All(m => m.Action == "have") && written.Live == again.Live, "The launcher reads the offer the backend wrote, live or not.");
         ModSyncOffer.Answer(Path.Combine(guest.Run, "backend"), again.Version, "decline");
         check(guest.Shown.Next(check, "none").Items.Count == 0 && !File.Exists(Path.Combine(guest.Run, "backend", ModSyncOffer.AnswerFileName)),
             "Declined from the launcher: the offer closes and the answer is taken.");
 
         // Blocking a mod from the offer: saved, and the lobby is shown as blocked.
-        foreach (var mod in hostSet.Mods.Where(m => m.Id != "test.ammo")) Directory.Delete(SyncedStore.Find(guest.Mods, mod.Id, mod.Hash)!, recursive: true);
+        foreach (var mod in hostSet.Mods.Where(m => m.Tier == CoopTier.Shared && m.Id != "test.ammo")) Directory.Delete(SyncedStore.Find(guest.Mods, mod.Id, mod.Hash)!, recursive: true);
         var toBlock = Refused(host, guest, check, "d", "offer");
         guest.Sync.Answer(["syncanswer", toBlock.Version.ToString(), "block", "test.texture"]);
         var nowBlocked = guest.Shown.Next(check, "blocked");
@@ -232,7 +242,7 @@ static partial class ModSyncTests
                 .Add(offset).Add(Math.Min(ModSync.ChunkBytes, 600_000 - offset))).Text(1) == "ok", "A chunk is served.");
         var paced = TimeSpan.FromSeconds(4.0 * ModSync.ChunkBytes / ModSync.PeerRate) - ModSync.PaceBurst - TimeSpan.FromMilliseconds(2);
         check(clock.Elapsed >= paced, $"The host paced its upload ({clock.ElapsedMilliseconds} ms, at least {paced.TotalMilliseconds:0} ms).");
-        await HostLimits(network, host, hostSet, stranger, replies, lobby, check);
+        await HostLimits(network, host, hostSet, stranger, replies, lobby, check, verifiedNow => allowVerified = verifiedNow);
 
         // A host whose copy changed (same size, other bytes): the download fails its check and nothing is stored.
         var patch = Path.Combine(host.Mods, "texture", "data", "9ba626afa44a3aa3.patch_0");
@@ -265,9 +275,58 @@ static partial class ModSyncTests
         await LiveDisplay(root, check);
         Window(check);
         await Speed(root, check);
+        await ModsInfo(root, check);
         await liar.Sync.DisposeAsync();
         await guest.Sync.DisposeAsync();
         await host.Sync.DisposeAsync();
+    }
+
+    // A host's mods.info after an accepted join names its per-player mods the joiner lacks, once, and only from that host.
+    static async Task ModsInfo(string root, Action<bool, string> check)
+    {
+        var hostMods = Path.Combine(root, "info-host", "mods");
+        Write(Path.Combine(hostMods, "ammo"), ModCatalog.ManifestName, Ammo);
+        Write(Path.Combine(hostMods, "local-one"), ModCatalog.ManifestName,
+            """{"format":1,"id":"test.local-one","name":"Local One","version":"1","coop":"per-player"}""");
+        Write(Path.Combine(hostMods, "local-one"), "content.bin", "one");
+        Write(Path.Combine(hostMods, "local-one"), StatsData.FileName, Stats);
+        Write(Path.Combine(hostMods, "local-two"), ModCatalog.ManifestName,
+            """{"format":1,"id":"test.local-two","name":"Local Two","version":"1","coop":"per-player"}""");
+        Write(Path.Combine(hostMods, "local-two"), "content.bin", "two");
+        Write(Path.Combine(hostMods, "local-two"), StatsData.FileName, OtherStats);
+        var guestMods = Path.Combine(root, "info-guest", "mods");
+        Write(Path.Combine(guestMods, "ammo"), ModCatalog.ManifestName, Ammo);
+        var (hostLoaded, hostProblems) = ModCatalog.Load(hostMods);
+        var (guestLoaded, guestProblems) = ModCatalog.Load(guestMods);
+        check(hostProblems.Count == 0 && guestProblems.Count == 0, "The mods.info mods load: " + string.Join(" | ", hostProblems.Concat(guestProblems)));
+        var hostSet = ModSet.Of(ModCatalog.LoadOrder(hostLoaded));
+        var guestSet = ModSet.Of(ModCatalog.LoadOrder(guestLoaded));
+        check(hostSet.Mods.Count == 3 && hostSet.Mods.Count(m => m.Tier == CoopTier.PerPlayer) == 2 && hostSet.Digest == guestSet.Digest,
+            "The host's per-player mods are not in the set, or are in the digest.");
+
+        var network = new InMemoryNetwork();
+        var host = new Node(network, HostId, Path.Combine(root, "info-host"), hostSet, (_, _) => true);
+        var guest = new Node(network, GuestId, Path.Combine(root, "info-guest"), guestSet, (_, _) => true);
+        host.Lobby.FromLocal(MultiplayerTests.Create("info-create", HostId));
+        var created = host.Next("lobby.result", check);
+        var lobbyId = created.Text(3);
+        guest.Lobby.FromLocal(MultiplayerTests.Join("info-join", GuestId, created.Text(4)));
+        var joined = guest.Next("lobby.result", check);
+        check(joined.Text(2) == "0", "The joiner was refused: " + joined.Text(2));
+        var got = guest.Notices.TryTake(out var notice, TimeSpan.FromSeconds(5));
+        var hostName = "Player " + LobbyService.EntityId(HostId);
+        check(got && notice == $"{hostName} plays with 2 mods you don't: Local One, Local Two. Each player keeps their own.",
+            "The per-player notice: " + (got ? notice : "nothing"));
+
+        // The same host's second copy is ignored, and a machine that is not the host's cannot send one at all.
+        var wire = hostSet.ToJson(local: false).ToJsonString();
+        host.Transport.Send(GuestId, new Frame("mods.info").Add(lobbyId).Add(wire).Encode(), reliable: true);
+        var stranger = network.Join(StrangerId);
+        stranger.Send(GuestId, new Frame("mods.info").Add(lobbyId).Add(wire).Encode(), reliable: true);
+        await Task.Delay(300);
+        check(!guest.Notices.TryTake(out _, TimeSpan.Zero), "A duplicate or non-host mods.info was taken.");
+        await host.Sync.DisposeAsync();
+        await guest.Sync.DisposeAsync();
     }
 
     // Hosts that call raw data content (the class kept to the verified list): a data patch, which its file list shows; raw
@@ -278,16 +337,16 @@ static partial class ModSyncTests
         var folder = Path.Combine(root, "raw-liars", "mods");
         var texture = hostSet.Mods.Single(m => m.Id == "test.texture");
         if (SyncedStore.Find(guest.Mods, texture.Id, texture.Hash) is { } stored) Directory.Delete(stored, recursive: true);
-        Write(Path.Combine(folder, "rawstats"), ModCatalog.ManifestName, """{"format":1,"id":"test.rawstats","name":"Raw stats","version":"1"}""");
+        Write(Path.Combine(folder, "rawstats"), ModCatalog.ManifestName, """{"format":1,"id":"test.rawstats","name":"Raw stats","version":"1","coop":"shared"}""");
         Write(Path.Combine(folder, "rawstats"), StatsData.FileName,
             """{"format":1,"weapons":{"AR-23 Liberator":{"rpm":900}},"raw":[{"component":"DepositComponentData","resource":"0x1","offset":0,"type":"u32","value":10,"expect":5}]}""");
-        Write(Path.Combine(folder, "rawstats"), "padding.txt", new string('p', 300_000));
+        Write(Path.Combine(folder, "rawstats"), "padding.bin", new string('p', 300_000));
         Write(Path.Combine(folder, "writes"), ModCatalog.ManifestName, """{"format":1,"id":"test.writes","name":"Writes","version":"1","native":{"componentWrites":[{"component":"DepositComponentData","resource":"0x056DE1C5E21E723E","fields":[{"name":"capacity","offset":0,"expect":1000,"value":10000}]}]}}""");
-        Write(Path.Combine(folder, "writes"), "padding.txt", new string('w', 300_000));
+        Write(Path.Combine(folder, "writes"), "padding.bin", new string('w', 300_000));
         var raw = ModSet.Of(ModCatalog.LoadOrder(ModCatalog.Load(folder).Mods));
         check(raw.Mods.Count == 2 && raw.Mods.All(m => m.Class == ModClass.Raw), "Raw stats lines and componentWrites are raw: " + string.Join(", ", raw.Mods.Select(m => m.Id + " " + m.Class)));
         ulong next = 0x110000100000030;
-        foreach (var (id, set, file) in new[] { (texture.Id, hostSet, "data/9ba626afa44a3aa3.patch_0"), ("test.rawstats", raw, "padding.txt"), ("test.writes", raw, "padding.txt") })
+        foreach (var (id, set, file) in new[] { (texture.Id, hostSet, "data/9ba626afa44a3aa3.patch_0"), ("test.rawstats", raw, "padding.bin"), ("test.writes", raw, "padding.bin") })
         {
             var target = set.Mods.Single(m => m.Id == id);
             var liar = new Node(network, ++next, Path.Combine(root, "raw-liar-" + id), new ModSet(set.Digest, [target with { Class = ModClass.Content }]), (_, _) => false);
@@ -329,9 +388,9 @@ static partial class ModSyncTests
     }
 
     // The host's limits (the review of PR 17): a reply it cannot send does not stop its worker; a grant's bytes and time are
-    // capped, and joining again extends neither; code and raw mods go only to Steam friends.
+    // capped, and joining again extends neither; code and raw mods go to strangers too (the joiner decides).
     static async Task HostLimits(InMemoryNetwork network, Node host, ModSet hostSet, IPeerTransport stranger, BlockingCollection<Frame> replies, string lobby,
-        Action<bool, string> check)
+        Action<bool, string> check, Action<bool> setVerified)
     {
         var texture = hostSet.Mods.Single(m => m.Id == "test.texture");
         const string Patch = "data/9ba626afa44a3aa3.patch_0";
@@ -352,7 +411,7 @@ static partial class ModSyncTests
             last = Ask(stranger, replies, Chunk("budget" + i, 0), check);
             if (last.Text(1) == "ok") served += ModSync.ChunkBytes;
         }
-        var budget = 2 * hostSet.Mods.Sum(m => m.Bytes) + ModSync.MaxWindow * ModSync.ChunkBytes;
+        var budget = 2 * hostSet.Mods.Where(m => m.Tier == CoopTier.Shared).Sum(m => m.Bytes) + ModSync.MaxWindow * ModSync.ChunkBytes;
         check(last.Text(1) == "refused" && last.Text(2).Contains("all this offer allows") && served < budget, $"The grant's bytes are capped ({served} of {budget}): {last.Text(2)}");
         JoinAgain(stranger, replies, StrangerId, lobby, "f2-join");
         check(Ask(stranger, replies, Chunk("budget-again", 0), check).Text(1) == "refused", "Joining again does not refill the grant.");
@@ -371,22 +430,28 @@ static partial class ModSyncTests
         host.Sync.GrantFor = ModSync.GrantTime;
         timed.Dispose();
 
-        // Not a Steam friend: content is served, a code or raw mod's files are not. A stranger reaches mod sync only through a
-        // Public lobby: Friends only (a lobby with no privacy value) refuses them before any offer.
+        // Not a Steam friend: every shared mod is served, verified or not: whether it may run is the joiner's to check. A
+        // stranger reaches mod sync only through a Public lobby: Friends only (a lobby with no privacy value) refuses them
+        // before any offer.
         host.Lobby.FromLocal(PrivacyTests.Privacy("public", host.Lobby.HostedLobbies().Single(l => l.ConnectionString == lobby).Id, HostId, "0"));
         // (the update's result, after whatever the game was told meanwhile: members' joins, the lobby's own update)
         while (host.Inbox.TryTake(out var told, TimeSpan.FromSeconds(5)) && !(told.Type == "lobby.result" && told.Text(0) == "public")) { }
         const ulong NotFriend = 0x110000100000027;
         lock (network.Strangers) network.Strangers.Add(NotFriend);
         var (other, otherReplies) = Refusee(network, NotFriend, lobby, "stranger-join");
-        var stats = hostSet.Mods.Single(m => m.Id == "test.stats");
         var code = hostSet.Mods.Single(m => m.Id == "test.code");
-        foreach (var mod in new[] { texture, code })
+        var content = hostSet.Mods.Single(m => m.Id == "test.ammo");
+        string Asked(ModSetEntry mod, string req)
         {
-            var refused = Ask(other, otherReplies, new Frame("mods.files").Add("x" + mod.Id).Add(mod.Id).Add(mod.Hash).Add(0), check);
-            check(refused.Text(1) == "refused" && refused.Text(2).Contains("Steam friends"), $"{mod.Id} is not served to a stranger: {refused.Text(2)}");
+            var answer = Ask(other, otherReplies, new Frame("mods.files").Add(req + mod.Id).Add(mod.Id).Add(mod.Hash).Add(0), check);
+            return answer.Text(1) + (answer.Count > 2 ? " " + answer.Text(2) : "");
         }
-        check(Ask(other, otherReplies, new Frame("mods.files").Add("s").Add(stats.Id).Add(stats.Hash).Add(0), check).Text(1) == "ok", "Content is served to a stranger.");
+        foreach (var mod in new[] { texture, code, content })
+            check(Asked(mod, "v") is var verifiedAnswer && verifiedAnswer.StartsWith("ok", StringComparison.Ordinal), $"{mod.Id}, verified, is served to a stranger: {verifiedAnswer}");
+        setVerified(false);
+        foreach (var mod in new[] { texture, code, content })
+            check(Asked(mod, "u") is var unverifiedAnswer && unverifiedAnswer.StartsWith("ok", StringComparison.Ordinal), $"{mod.Id}, unverified, is served to a stranger: {unverifiedAnswer}");
+        setVerified(true);
         lock (network.Strangers) network.Strangers.Remove(NotFriend);
         other.Dispose();
         // what the host's game was told of that lobby since (its update, the stranger's refused join): not the next test's
@@ -454,7 +519,7 @@ static partial class ModSyncTests
         var bulk = Path.Combine(folder, "bulk");
         Write(bulk, ModCatalog.ManifestName,
             """{"format":1,"id":"test.bulk","name":"Bulk","version":"1","native":{"networkFieldTypes":[{"name":"remaining","expect":{"kind":1,"bits":8,"min":0},"bits":9}]}}""");
-        for (var i = 0; i < 1999; i++) Write(bulk, $"files/f{i:D4}.txt", i.ToString());
+        for (var i = 0; i < 1999; i++) Write(bulk, $"files/f{i:D4}.bin", i.ToString());
         var bulkSet = ModSet.Of(ModCatalog.Load(Path.GetDirectoryName(bulk)!).Mods.Where(m => m.Id == "test.bulk").ToList());
         var bulkMod = bulkSet.Mods.Single();
         check(bulkMod.Files.Count == 2000 && bulkMod.Class == ModClass.Content, $"The bulk mod counts {bulkMod.Files.Count} files.");
@@ -490,7 +555,8 @@ static partial class ModSyncTests
 
     // TRUST and GET IT: a Steam friend's code and raw mods, not verified, wait for the player's trust; GET IT opens a mod's
     // own address; a trust names one exact mod the plan offers for trust, and the last one starts the download, every byte
-    // checked as before. A stranger's are never offered for trust (trusted or not), and untrusted, a mod waits again.
+    // checked as before. A stranger's are offered for trust only in a sandboxed session, the trust counts only in one, and
+    // the prompt is told the host is a stranger. Untrusted, a mod waits again.
     static async Task Trusting(InMemoryNetwork network, Node guest, ModSet hostSet, string root, Action<bool, string> check)
     {
         // a friend of its own: the first host's grant to the guest is spent by now
@@ -518,7 +584,7 @@ static partial class ModSyncTests
         check(opened.TryTake(out var page, TimeSpan.FromSeconds(5)) && page == "https://example.com/code" && !opened.TryTake(out _, TimeSpan.FromMilliseconds(300)),
             "GET IT opens the code mod's page alone: " + page);
 
-        // A stranger hosting the same mods (a Public lobby): nothing to trust, the player installs them.
+        // A stranger hosting the same mods (a Public lobby), unsandboxed: nothing to trust, the player installs them.
         const ulong StrangerHost = 0x110000100000050;
         lock (network.Strangers) network.Strangers.Add(StrangerHost);
         var far = new Node(network, StrangerHost, Path.Combine(root, "trust-stranger"), hostSet, (_, _) => false);
@@ -530,13 +596,63 @@ static partial class ModSyncTests
         guest.Next("lobby.result", check);
         var strange = guest.Shown.Next(check, "blocked");
         check(Action(strange, "test.code") == SyncAction.Manual && Action(strange, "test.texture") == SyncAction.Manual && strange.Items.All(i => i.Action != SyncAction.Trust) &&
-            strange.Message.Contains("Steam friends"), "A stranger's code and raw data are the player's to install: " + strange.Message);
+            strange.Stranger && strange.Message.Contains("not your Steam friend") && strange.Message.Contains("sandboxed game"),
+            "Unsandboxed, a stranger's code and raw data are the player's to install: " + strange.Message);
         guest.Sync.Answer(["syncanswer", strange.Version.ToString(), "trust", "test.code"]);
-        check(Trusted() == "", "A stranger's mod cannot be trusted from the prompt.");
+        check(Trusted() == "", "Unsandboxed, a stranger's mod cannot be trusted from the prompt.");
         guest.Sync.Answer(["syncanswer", strange.Version.ToString(), "decline"]);
         guest.Shown.Next(check, "none");
+
+        // A sandboxed joiner: they wait for trust, the trust is kept as a stranger's, and they download from the stranger,
+        // every byte checked. The same mods then need no prompt from this host or another.
+        const ulong BoxedId = 0x110000100000052;
+        var boxed = new Node(network, BoxedId, Path.Combine(root, "trust-sandboxed"), new ModSet("none", []), (_, _) => false, sandboxed: true);
+        boxed.Lobby.FromLocal(MultiplayerTests.Join("trust-x-join", BoxedId, farLobby));
+        boxed.Next("lobby.result", check);
+        var offered = boxed.Shown.Next(check, "blocked");
+        check(Action(offered, "test.code") == SyncAction.Trust && Action(offered, "test.texture") == SyncAction.Trust && offered.Stranger,
+            "Sandboxed, a stranger's code and raw data wait for trust: " + offered.Message);
+        boxed.Sync.Answer(["syncanswer", offered.Version.ToString(), "trust", "test.code"]);
+        var boxedOne = boxed.Shown.Next(check, "blocked");
+        check(Action(boxedOne, "test.code") == SyncAction.Download && Action(boxedOne, "test.texture") == SyncAction.Trust &&
+            ModSettings.Read(boxed.Mods).Trusted is [{ Stranger: true, Id: "test.code" }], "Sandboxed, a stranger's mod is trusted as a stranger's: " + boxedOne.Message);
+        boxed.Sync.Answer(["syncanswer", boxedOne.Version.ToString(), "trust", "test.texture"]);
+        var boxedReady = boxed.Shown.Next(check, "ready", "failed");
+        check(boxedReady.State == "ready" && SyncedStore.Find(boxed.Mods, code.Id, code.Hash) != null && SyncedStore.Find(boxed.Mods, texture.Id, texture.Hash) != null,
+            $"A stranger's trusted mods download: {boxedReady.State} {boxedReady.Message}");
+        boxed.Sync.Answer(["syncanswer", boxedReady.Version.ToString(), "decline"]);
+        boxed.Shown.Next(check, "none");
+        await boxed.Sync.DisposeAsync();
         await far.Sync.DisposeAsync();
         lock (network.Strangers) network.Strangers.Remove(StrangerHost);
+
+        // A sandboxed joiner and a Steam friend's mods: the game's TRUST (sync_answer, which any code in that game can send)
+        // counts only in sandboxed sessions, a friend's too, and the game is told so (SandboxOnly: HF_SYNC_FLAG_SANDBOX_ONLY);
+        // the launcher's (its answer file, which the sandboxed game cannot write) counts everywhere.
+        const ulong BoxedFriendId = 0x110000100000053;
+        var boxedFriend = new Node(network, BoxedFriendId, Path.Combine(root, "trust-sandboxed-friend"), new ModSet("none", []), (_, _) => false, sandboxed: true);
+        host.Lobby.FromLocal(MultiplayerTests.Create("trust-f-create", host.Id));
+        boxedFriend.Lobby.FromLocal(MultiplayerTests.Join("trust-f-join", BoxedFriendId, host.Next("lobby.result", check).Text(4)));
+        boxedFriend.Next("lobby.result", check);
+        var boxedAsk = boxedFriend.Shown.Next(check, "blocked");
+        check(Action(boxedAsk, "test.code") == SyncAction.Trust && Action(boxedAsk, "test.texture") == SyncAction.Trust && !boxedAsk.Stranger && boxedAsk.SandboxOnly,
+            "Sandboxed, a friend's code and raw data wait for trust, which the game is told counts only sandboxed: " + boxedAsk.Message);
+        boxedFriend.Sync.Answer(["syncanswer", boxedAsk.Version.ToString(), "trust", "test.code"]);
+        var boxedFriendOne = boxedFriend.Shown.Next(check, "blocked");
+        var gameTrust = ModSettings.Read(boxedFriend.Mods);
+        check(Action(boxedFriendOne, "test.code") == SyncAction.Download && Action(boxedFriendOne, "test.texture") == SyncAction.Trust &&
+            gameTrust.Trusted is [{ Stranger: false, Sandboxed: true, Id: "test.code" }] &&
+            gameTrust.Trusts(code.Id, code.Hash, sandboxed: true) && !gameTrust.Trusts(code.Id, code.Hash),
+            "The sandboxed game's trust of a friend's mod counts only in sandboxed sessions: " + string.Join(", ", gameTrust.Trusted));
+        ModSyncOffer.Answer(Path.Combine(boxedFriend.Run, "backend"), boxedFriendOne.Version, "trust", "test.texture");
+        var boxedFriendReady = boxedFriend.Shown.Next(check, "ready", "failed");
+        var launcherTrust = ModSettings.Read(boxedFriend.Mods);
+        check(boxedFriendReady.State == "ready" && launcherTrust.Trusted.SingleOrDefault(t => t.Id == texture.Id) is { Stranger: false, Sandboxed: false } &&
+            launcherTrust.Trusts(texture.Id, texture.Hash),
+            $"The launcher's trust of a friend's mod counts everywhere: {boxedFriendReady.State} {boxedFriendReady.Message} ({string.Join(", ", launcherTrust.Trusted)})");
+        boxedFriend.Sync.Answer(["syncanswer", boxedFriendReady.Version.ToString(), "decline"]);
+        boxedFriend.Shown.Next(check, "none");
+        await boxedFriend.Sync.DisposeAsync();
 
         // Trust the code mod: kept by its exact content, with who hosted it; the offer is made again, the texture still waits.
         var again = Refused(host, guest, check, "trust-b", "blocked");
@@ -588,7 +704,8 @@ static partial class ModSyncTests
         var waited = Stopwatch.StartNew();
         while (!live.Connected && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(20);
         var lines = new List<string>();
-        var game = Task.Run(async () =>
+        // the game's side of one offer: its lines (without their sequence numbers) up to the syncstate that ends it
+        Task Game() => Task.Run(async () =>
         {
             while (await reader.ReadLineAsync() is { } line)
             {
@@ -598,6 +715,7 @@ static partial class ModSyncTests
                 if (parts[0] == "syncstate") return;
             }
         });
+        var game = Game();
         // (a url HellForge would not open never reaches the game, whatever the entry holds)
         var mod = new ModSetEntry("test.tab", "Name\twith a tab", "1", new string('a', 64), 1234, ModClass.Code, 0) { Url = "javascript:alert(1)" };
         var raw = new ModSetEntry("test.raw", "Raw", "2", new string('b', 64), 10, ModClass.Raw, 1) { Url = "https://example.com/raw" };
@@ -605,9 +723,22 @@ static partial class ModSyncTests
         check(await new LiveSyncDisplay(live).ShowAsync(view, withMods: true), "The game took the offer.");
         await game;
         check(lines.SequenceEqual(["syncmod\t7\t0\tdownload\tcode\t1234\ttest.tab\tNamewith a tab\t1\t-", "syncmod\t7\t1\ttrust\traw\t10\ttest.raw\tRaw\t2\thttps://example.com/raw",
-                "syncstate\t7\toffer\tHostName\t1244\t0\t2\tMessage"]),
+                "syncstate\t7\toffer\tHostName\t1244\t0\t2\t0\tMessage"]),
             "The lines: " + string.Join(" | ", lines));
         await writer.WriteLineAsync("syncanswer\t7\tblock\ttest.tab");
         check(answers.TryTake(out var answer, TimeSpan.FromSeconds(5)) && answer!.SequenceEqual(["syncanswer", "7", "block", "test.tab"]), "The game's answer arrives.");
+
+        // A sandboxed game: each mod says a trust answered there counts only sandboxed ("sandboxonly",
+        // HF_SYNC_FLAG_SANDBOX_ONLY); a stranger's says "stranger", which the loader reads as both flags.
+        foreach (var (stranger, word) in new[] { (false, "sandboxonly"), (true, "stranger") })
+        {
+            lock (lines) lines.Clear();
+            game = Game();
+            check(await new LiveSyncDisplay(live).ShowAsync(new SyncView(8, "blocked", "Host", 0, 0, "", [new SyncItem(raw, SyncAction.Trust, null)])
+                { SandboxOnly = true, Stranger = stranger }, withMods: true), "The game took the sandboxed offer.");
+            await game;
+            check(lines.SequenceEqual(["syncmod\t8\t0\ttrust\traw\t10\ttest.raw\tRaw\t2\thttps://example.com/raw\t" + word, "syncstate\t8\tblocked\tHost\t0\t0\t1\t0\t"]),
+                "The sandboxed offer's lines: " + string.Join(" | ", lines));
+        }
     }
 }

@@ -49,20 +49,25 @@ static uint32_t ApiAddDamage(HfMod* mod, const HfDamage* def)
     }
     char identity[256];
     const char* name = def->name != NULL && def->name[0] ? Identity(mod, def->name, identity, sizeof identity) : "(unnamed)";
-    if (g_damageState != 0 || g_fired[HF_EVENT_PROJECTILES_READY]) { ApiLog(mod, "add_damage(%s): too late; call it from hellforge_mod_init", name); return 0; }
-    if (g_damageCount >= DMG_MAX_NEW) { ApiLog(mod, "add_damage(%s): mods added %u damage types already", name, DMG_MAX_NEW); return 0; }
+    int live = g_liveSetup != NULL && g_liveSetup == mod; /* a mod set up while the game runs (live_content.c) */
+    if (!live && (g_damageState != 0 || g_fired[HF_EVENT_PROJECTILES_READY])) { ApiLog(mod, "add_damage(%s): too late; call it from hellforge_mod_init", name); return 0; }
+    if (!live && g_damageCount >= DMG_MAX_NEW) { ApiLog(mod, "add_damage(%s): mods added %u damage types already", name, DMG_MAX_NEW); return 0; }
     if (def->base == 0 || def->base >= DMG_VANILLA) { ApiLog(mod, "add_damage(%s): base %u is not a vanilla damage id (1 .. 649)", name, def->base); return 0; }
     float scale = def->scale == 0.0f ? 1.0f : def->scale;
     if (!(scale > 0.0f && scale <= 1000.0f)) { ApiLog(mod, "add_damage(%s): scale must be above 0 and at most 1000", name); return 0; }
     for (uint32_t i = 0; i < g_damageCount; i++)
-        if (strcmp(g_damages[i].name, name) == 0) { ApiLog(mod, "add_damage(%s): already added by %s", name, g_damages[i].mod->id); return 0; }
-    Damage* d = &g_damages[g_damageCount];
+        if (!LiveGone(LC_DAMAGE, i) && strcmp(g_damages[i].name, name) == 0) { ApiLog(mod, "add_damage(%s): already added by %s", name, g_damages[i].mod->id); return 0; }
+    uint32_t index = g_damageCount;
+    Damage* d = live ? (Damage*)LiveEntry(LC_DAMAGE, mod, name, &index) : &g_damages[index];
+    if (d == NULL) return 0;
     memset(d, 0, sizeof *d);
     d->mod = mod;
     snprintf(d->name, sizeof d->name, "%s", name);
-    d->id = DMG_VANILLA + g_damageCount++;
+    d->id = DMG_VANILLA + index;
     d->base = def->base;
     d->scale = scale;
+    MemoryBarrier(); /* the entry is whole before the count shows it */
+    if (index == g_damageCount) g_damageCount++;
     ApiLog(mod, "adding damage %s as id %u: a copy of id %u, x%g", d->name, d->id, d->base, (double)scale);
     return d->id;
 }
@@ -70,7 +75,7 @@ static uint32_t ApiAddDamage(HfMod* mod, const HfDamage* def)
 static uintptr_t ApiDamageRow(uint32_t id)
 {
     if (g_damageState != 1) return 0;
-    for (uint32_t i = 0; i < g_damageCount; i++) if (g_damages[i].id == id) return (uintptr_t)g_damages[i].row;
+    for (uint32_t i = 0; i < g_damageCount; i++) if (g_damages[i].id == id && !LiveTomb(LC_DAMAGE, i)) return (uintptr_t)g_damages[i].row;
     return 0;
 }
 
@@ -197,35 +202,59 @@ static uint8_t* AllocateNearGame(uintptr_t game, size_t bytes)
     return block;
 }
 
-/* Each new type's row: its base's, with its id and its standard and durable damage scaled. 0 when a base row does not
- * name its id. */
-static int DamageRowsBuild(const uint8_t* table, uint8_t* rows)
-{
-    for (uint32_t i = 0; i < g_damageCount; i++)
-    {
-        Damage* d = &g_damages[i];
-        uint64_t base;
-        memcpy(&base, table + d->base * 8, 8);
-        d->row = rows + (size_t)i * DMG_ROW;
-        if (base == 0 || SafeRead(base, d->row, DMG_ROW) || *(uint32_t*)d->row != d->base) return 0;
-        uint32_t standard, durable;
-        memcpy(&standard, d->row + 4, 4);
-        memcpy(&durable, d->row + 8, 4);
-        standard = (uint32_t)(standard * d->scale + 0.5f);
-        durable = (uint32_t)(durable * d->scale + 0.5f);
-        memcpy(d->row, &d->id, 4);
-        memcpy(d->row + 4, &standard, 4);
-        memcpy(d->row + 8, &durable, 4);
-    }
-    return 1;
-}
-
 static int RefuseDamage(const char* why)
 {
     g_damageState = -1;
     Note("damage: %u new type(s) refused: %s; projectiles keep their own damage", g_damageCount, why);
     for (uint32_t i = 0; i < g_damageCount; i++) ApiLog(g_damages[i].mod, "damage %s (id %u) not added: %s", g_damages[i].name, g_damages[i].id, why);
     return 1;
+}
+
+/* A new type's row (row: where it goes): its base's (the game's own list keeps every vanilla row), its damage scaled.
+ * NULL, or why not. */
+static const char* DamageRow(Damage* d, uint8_t* row, uintptr_t game)
+{
+    uint64_t base = 0;
+    if (SafeRead(game + DMG_TABLE + (uintptr_t)d->base * 8, &base, 8) || base == 0 || SafeRead(base, row, DMG_ROW) || *(uint32_t*)row != d->base)
+        return "a base damage row does not name its id";
+    uint32_t standard, durable;
+    memcpy(&standard, row + 4, 4);
+    memcpy(&durable, row + 8, 4);
+    standard = (uint32_t)(standard * d->scale + 0.5f);
+    durable = (uint32_t)(durable * d->scale + 0.5f);
+    memcpy(row, &d->id, 4);
+    memcpy(row + 4, &standard, 4);
+    memcpy(row + 8, &durable, 4);
+    d->row = row;
+    return NULL;
+}
+
+/* The instructions that address the list, pointed at HellForge's. NULL, or why not. */
+static const char* DamageMove(uintptr_t game, const uint8_t* table, PutFn put)
+{
+    for (size_t i = 0; i < sizeof kDamageSites / sizeof kDamageSites[0]; i++)
+    {
+        int32_t disp = SiteDisplacement((uintptr_t)table, game, &kDamageSites[i]);
+        if (put(game + kDamageSites[i].rva + kDamageSites[i].dispAt, &disp, 4))
+        {
+            /* Unreachable in practice (the pages are writable); the list stays usable through both copies. */
+            Note("damage: could not rewrite the instruction at 0x%x; %zu of %zu moved", kDamageSites[i].rva, i, sizeof kDamageSites / sizeof kDamageSites[0]);
+            return "an instruction could not be rewritten";
+        }
+    }
+    return NULL;
+}
+
+static void DamageInstalledLog(void)
+{
+    for (uint32_t i = 0; i < g_damageCount; i++)
+    {
+        uint32_t standard, durable;
+        if (g_damages[i].row == NULL || LiveTomb(LC_DAMAGE, i)) continue;
+        memcpy(&standard, g_damages[i].row + 4, 4);
+        memcpy(&durable, g_damages[i].row + 8, 4);
+        ApiLog(g_damages[i].mod, "damage %s is id %u: %u standard / %u durable", g_damages[i].name, g_damages[i].id, standard, durable);
+    }
 }
 
 /* Polled with the projectile list (InstallProjectiles) until it returns 1: moves the list and adds the rows once the
@@ -243,28 +272,14 @@ static int InstallDamage(uintptr_t game, int pinsReady)
     if (table == NULL) return RefuseDamage("no memory within 2 GB of game.dll for the moved list");
     if (SafeRead(game + DMG_TABLE, table, DMG_VANILLA * 8)) return RefuseDamage("the damage list is unreadable");
     uint8_t* rows = table + (DMG_VANILLA + DMG_MAX_NEW) * 8;
-    if (!DamageRowsBuild(table, rows)) return RefuseDamage("a base damage row does not name its id");
-    for (size_t i = 0; i < sizeof kDamageSites / sizeof kDamageSites[0]; i++)
-    {
-        int32_t disp = SiteDisplacement((uintptr_t)table, game, &kDamageSites[i]);
-        if (ApiWrite(game + kDamageSites[i].rva + kDamageSites[i].dispAt, &disp, 4))
-        {
-            /* Unreachable in practice (the pages are writable); the list stays usable through both copies. */
-            Note("damage: could not rewrite the instruction at 0x%x; %zu of %zu moved", kDamageSites[i].rva, i, sizeof kDamageSites / sizeof kDamageSites[0]);
-            return RefuseDamage("an instruction could not be rewritten");
-        }
-    }
+    for (uint32_t i = 0; i < g_damageCount; i++)
+        if ((why = DamageRow(&g_damages[i], rows + (size_t)i * DMG_ROW, game)) != NULL) return RefuseDamage(why);
+    if ((why = DamageMove(game, table, ApiWrite)) != NULL) return RefuseDamage(why);
     for (uint32_t i = 0; i < g_damageCount; i++) memcpy(table + g_damages[i].id * 8, &g_damages[i].row, 8);
     g_damageTable = table;
     g_damageState = 1;
     Note("damage: the list moved to 0x%llx (%zu instructions) with %u new type(s)", (unsigned long long)(uintptr_t)table,
         sizeof kDamageSites / sizeof kDamageSites[0], g_damageCount);
-    for (uint32_t i = 0; i < g_damageCount; i++)
-    {
-        uint32_t standard, durable;
-        memcpy(&standard, g_damages[i].row + 4, 4);
-        memcpy(&durable, g_damages[i].row + 8, 4);
-        ApiLog(g_damages[i].mod, "damage %s is id %u: %u standard / %u durable", g_damages[i].name, g_damages[i].id, standard, durable);
-    }
+    DamageInstalledLog();
     return 1;
 }

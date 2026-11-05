@@ -4,11 +4,18 @@
 #include <assert.h>
 #include "stratagem_categories_test.c"
 #include "loadout_preview_test.c"
+#include "armory_diag_test.c"
 #include "live_sync_test.c"
+#include "channel_test.c"
 #include "director_test.c"
 #include "shots_test.c"
 #include "rounds_test.c"
 #include "network_types_test.c"
+#include "table_growth_test.c"
+#include "crash_notes_test.c"
+#include "log_header_test.c"
+#include "mod_identity_test.c"
+#include "mod_status_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -266,10 +273,16 @@ static void NetSwitchFixture(void)
     assert(InstallNetSwitch((uintptr_t)game, 0) == 0 && g_netSwitchState == 0 && !memcmp(game + NET_SWITCH_LOAD, kNetLoadPin, sizeof kNetLoadPin));
     assert(InstallNetSwitch((uintptr_t)game, 1) == 1 && g_netSwitchState == -1 && !memcmp(game + NET_SWITCH_LOAD, kNetLoadPin, sizeof kNetLoadPin));
     vanillaTable[100] = kept;
-    /* a co-op session already running: refused, nothing written */
+    /* a co-op session already running (a game launched into a lobby): the same result, written with the threads paused */
     g_netSwitchState = 0;
     g_session.role = HF_SESSION_JOINER;
-    assert(InstallNetSwitch((uintptr_t)game, 1) == 1 && g_netSwitchState == -1 && !memcmp(game + NET_SWITCH_LOAD, kNetLoadPin, sizeof kNetLoadPin));
+    assert(InstallNetSwitch((uintptr_t)game, 1) == 1 && g_netSwitchState == 1 && g_netSwitchTable != NULL);
+    int32_t paused;
+    memcpy(&paused, game + NET_SWITCH_LOAD + 3, 4);
+    assert((uintptr_t)game + (intptr_t)paused == (uintptr_t)g_netSwitchTable && game[NET_SWITCH_BOUND + 1] == (uint8_t)(NET_VANILLA_TYPES + 1));
+    memcpy(game + NET_SWITCH_LOAD, kNetLoadPin, sizeof kNetLoadPin);
+    memcpy(game + NET_SWITCH_BOUND, kNetBoundPin, sizeof kNetBoundPin);
+    g_netSwitchTable = NULL;
     g_session.role = HF_SESSION_SOLO;
 
     /* installed: the flak copy takes its base's case, the odd one keeps the exit; displacement then bound */
@@ -341,6 +354,24 @@ static void DifficultyFixture(void)
     for (int i = 0; i < 4; i++) memcpy(game + kClusterSites[i].site, kClusterSites[i].pin, kClusterSites[i].length);
     memcpy(game + DIF_CULL_RADIUS, kCullRadiusPin, 8);
     memcpy(game + DIF_VISTA_POSE, kVistaPosePin, 7);
+    memcpy(game + DIF_CLUSTER_RING, kClusterRingPin, 5);
+    memcpy(game + DIF_CLUSTER_X, kClusterXPin, 8);
+    memcpy(game + DIF_CLUSTER_Y, kClusterYPin, 8);
+    for (int i = 0; i < 5; i++) memcpy(game + kTownBorderSites[i].site, kTownBorderSites[i].pin, kTownBorderSites[i].length);
+    for (int i = 0; i < 2; i++) memcpy(game + kTownRefusals[i].site, kTownRefusals[i].pin, 6);
+    memcpy(game + DIF_TOWN_PLACED, kTownPlacedPin, 5);
+    memcpy(game + DIF_TOWN_MERGE, kTownMergePin, 7);
+    memcpy(game + DIF_RECORD_STORE, kRecordStorePin, 7);
+    memcpy(game + DIF_ZONE_GROUPS_SITE, kZoneGroupsPin, 5);
+    memcpy(game + DIF_TOWN_NOISE_SITE, kTownNoisePin, 13);
+    for (int i = 0; i < 2; i++) memcpy(game + kTownRingSites[i].site, kTownRingSites[i].pin, 8);
+    memcpy(game + DIF_TOWN_REACH_SITE, kTownReachPin, 8);
+    for (int i = 0; i < 2; i++) memcpy(game + kTownEdgeRefusals[i].site, kTownEdgeRefusals[i].pin, 6);
+    for (int i = 0; i < 4; i++) memcpy(game + kStreetBorderSites[i].site, kStreetBorderSites[i].pin, kStreetBorderSites[i].length);
+    memcpy(game + DIF_STREET_PROPS_SITE, kStreetPropsPin, sizeof kStreetPropsPin);
+    memcpy(game + DIF_RECORD_SETUP, kRecordSetupPin, sizeof kRecordSetupPin);
+    memcpy(game + DIF_TERRAIN_RAMP_SITE, kTerrainRampPin, 9);
+    for (int i = 0; i < 2; i++) memcpy(game + kTerrainStores[i].site, kTerrainStores[i].pin, 13);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);
@@ -349,6 +380,8 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_CAPTURE_SITE, kCapturePin, sizeof kCapturePin);
     memcpy(game + DIF_TELEMETRY_SITE, kTelemetryPin, sizeof kTelemetryPin);
     memcpy(game + DIF_SPAWNER_SITE, kSpawnerPin, sizeof kSpawnerPin);
+    memcpy(game + DIF_MINE_SITE, kMinePin, sizeof kMinePin);
+    memcpy(game + DIF_MINE_DONE_JUMP, kMineDonePin, sizeof kMineDonePin);
     memcpy(game + DIF_MARKER_LOOP_SITE, kMarkerLoopPin, sizeof kMarkerLoopPin);
     memcpy(game + DIF_MARKER_ROUTE_SITE, kMarkerRoutePin, sizeof kMarkerRoutePin);
     memcpy(game + DIF_TIMER_SITE, kTimerPin, sizeof kTimerPin);
@@ -367,6 +400,7 @@ static void DifficultyFixture(void)
     for (int i = 0; i < 5; i++) memcpy(game + kLevelInPlace[i].rva, kLevelInPlace[i].pin, kLevelInPlace[i].length);
     game[DIF_HUD_TARGET_SIB] = 0x8D;
     for (int i = 0; i < 4; i++) memcpy(game + kHoloStubs[i].site, kHoloStubs[i].pin, kHoloStubs[i].length);
+    memcpy(game + DIF_HOLO_LIFT_SITE, kHoloLiftPin, 8);
     for (int i = 0; i < 3; i++) memcpy(game + kIconSites[i].read, kIconSites[i].pin, 20);
     memcpy(game + DIF_MAPVIEW_MIN, kMapViewMinPin, 9); memcpy(game + DIF_MAPVIEW_CAP, kMapViewCapPin, 9);
     for (size_t i = 0; i < sizeof kLocationRefs / sizeof kLocationRefs[0]; i++) memcpy(game + kLocationRefs[i].rva + kLocationRefs[i].at, &kLocationRefs[i].value, 4);
@@ -744,6 +778,16 @@ static void DifficultyFixture(void)
                 if (kHoloStubs[i].slots[j].target == 4) assert(target == game + kHoloStubs[i].site + kHoloStubs[i].length);
                 else assert(*(float*)target == expect[kHoloStubs[i].slots[j].target]);
             }
+        }
+        /* The hologram's terrain height reads the scale / k: its stub, constants and way back. */
+        {
+            memcpy(&rel, game + DIF_HOLO_LIFT_SITE + 1, 4);
+            uint8_t* lift = game + DIF_HOLO_LIFT_SITE + 5 + rel;
+            assert(game[DIF_HOLO_LIFT_SITE] == 0xE9 && game[DIF_HOLO_LIFT_SITE + 7] == 0x90 && !memcmp(lift, kHoloLiftPin, 8));
+            const uint8_t at[3] = {12, 28, 36};
+            const float expect[3] = {0.19f, 0.45f, 1.0f};
+            for (int j = 0; j < 3; j++) { memcpy(&rel, lift + at[j], 4); assert(*(float*)(lift + at[j] + 4 + rel) == expect[j]); }
+            memcpy(&rel, lift + 45, 4); assert(lift + 49 + rel == game + DIF_HOLO_LIFT_BACK);
         }
         /* Per-level readers: the 15 loads go through stubs (the load, a clamp to 10, back); the in-place clamps. */
         for (int i = 0; i < DIF_LEVEL_LOADS; i++)
@@ -1176,9 +1220,415 @@ static void DifficultyFixture(void)
     uint8_t* last = NULL;
     for (uintptr_t bar = 3; bar <= DIF_BARS + 4; bar++) last = widgetOf((void*)(bar << 12));
     assert(last == first + (DIF_BARS - 1) * DIF_WIDGET && widgetOf((void*)0x2000) == second);
-    char text[1024]; int n = DifficultyItems(text, 0, sizeof text, 1); text[n] = 0;
+    char text[2 * REG_ITEM_ROOM]; int n = DifficultyItems(text, 0, sizeof text, 1); text[n] = 0; /* room for an entry (REG_ITEM_ROOM) */
     assert(strstr(text, "\"kind\":\"difficulty\"") && strstr(text, "\"copyOf\":2695783738"));
     VirtualFree(game, 0, MEM_RELEASE);
+}
+
+/* A larger map's two rings of location clusters (InstallClusterRings), run as machine code: each slot site's own bytes at
+ * its RVA in a fake game.dll, a harness setting the slot (esi), the larger-map flag ([rsp+0x40]), the radius (xmm15) and
+ * the slot's cos or sin, returning the offset the game goes on with. An odd slot on a larger map is radius / map_scale,
+ * an even one and every slot on another map as before; the ring site sets the flag only for the level's larger disk. */
+typedef float (*RingSlotFn)(int slot, int flag, float radius, float factor);
+typedef int (*RingFlagFn)(uint8_t* pass, int unused, float radius, float fraction);
+
+static void ClusterRingsFixture(void)
+{
+    uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x1000000, MEM_RESERVE, PAGE_NOACCESS);
+    assert(game != 0 && VirtualAlloc((void*)(game + 0xF79000), 0x2000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    /* the slot harness: push rsi; sub rsp, 0x50; keep xmm7, xmm15; esi = slot; [rsp+0x40] = flag; xmm15 = radius;
+     * xmm7 / xmm1 = the factor; then the site; at its back: xmm0 = the offset (xmm2 for x), restore, return */
+    static const uint8_t slotIn[] = {0x56, 0x48, 0x83, 0xEC, 0x50, 0x0F, 0x11, 0x7C, 0x24, 0x20, 0x44, 0x0F, 0x11, 0x7C, 0x24, 0x30,
+        0x89, 0xCE, 0x89, 0x54, 0x24, 0x40, 0x44, 0x0F, 0x28, 0xFA, 0x0F, 0x28, 0xFB, 0x0F, 0x28, 0xCB};
+    static const uint8_t xOut[] = {0x0F, 0x28, 0xC2, 0x0F, 0x10, 0x7C, 0x24, 0x20, 0x44, 0x0F, 0x10, 0x7C, 0x24, 0x30, 0x48, 0x83, 0xC4, 0x50, 0x5E, 0xC3};
+    static const uint8_t yOut[] = {0x0F, 0x10, 0x7C, 0x24, 0x20, 0x44, 0x0F, 0x10, 0x7C, 0x24, 0x30, 0x48, 0x83, 0xC4, 0x50, 0x5E, 0xC3};
+    /* the ring harness: push rsi; sub rsp, 0x50; keep xmm15; rsi = the pass; xmm15 = fraction, xmm2 = radius; then the
+     * site; at its back: eax = [rsp+0x40], restore, return */
+    static const uint8_t ringIn[] = {0x56, 0x48, 0x83, 0xEC, 0x50, 0x44, 0x0F, 0x11, 0x7C, 0x24, 0x30, 0x48, 0x89, 0xCE, 0x44, 0x0F, 0x28, 0xFB};
+    static const uint8_t ringOut[] = {0x8B, 0x44, 0x24, 0x40, 0x44, 0x0F, 0x10, 0x7C, 0x24, 0x30, 0x48, 0x83, 0xC4, 0x50, 0x5E, 0xC3};
+    /* the sites and their backs as the game has them (x's back ends before y's site); each harness elsewhere, jumping in */
+    memcpy((void*)(game + DIF_CLUSTER_X), kClusterXPin, 8);
+    memcpy((void*)(game + DIF_CLUSTER_X_BACK), xOut, sizeof xOut);
+    memcpy((void*)(game + DIF_CLUSTER_Y), kClusterYPin, 8);
+    memcpy((void*)(game + DIF_CLUSTER_Y_BACK), yOut, sizeof yOut);
+    memcpy((void*)(game + DIF_CLUSTER_RING), kClusterRingPin, 5);
+    memcpy((void*)(game + DIF_CLUSTER_RING_BACK), ringOut, sizeof ringOut);
+    assert(DIF_CLUSTER_X_BACK + sizeof xOut <= DIF_CLUSTER_Y);
+    const struct { uint32_t at; const uint8_t* in; size_t length; uint32_t site; } harness[3] = {
+        {0xF7A000u, slotIn, sizeof slotIn, DIF_CLUSTER_X}, {0xF7A100u, slotIn, sizeof slotIn, DIF_CLUSTER_Y},
+        {0xF7A200u, ringIn, sizeof ringIn, DIF_CLUSTER_RING}};
+    for (int i = 0; i < 3; i++)
+    {
+        uint8_t* h = (uint8_t*)(game + harness[i].at);
+        memcpy(h, harness[i].in, harness[i].length);
+        h[harness[i].length] = 0xE9;
+        int32_t rel = (int32_t)(int64_t)(game + harness[i].site - (uintptr_t)(h + harness[i].length + 5));
+        memcpy(h + harness[i].length + 1, &rel, 4);
+    }
+    RingSlotFn x = (RingSlotFn)(void*)(game + 0xF7A000u), y = (RingSlotFn)(void*)(game + 0xF7A100u);
+    RingFlagFn flag = (RingFlagFn)(void*)(game + 0xF7A200u);
+    assert(x(1, 1, 600.0f, 0.5f) == 300.0f && y(1, 1, 600.0f, 0.5f) == 300.0f); /* unpatched: the radius times the factor */
+
+    float savedScale = g_difficulty.mapScale;
+    g_difficulty.mapScale = 2.0f;
+    DifficultyInstall d = {game};
+    d.disk = 1022.0f;
+    assert(InstallClusterRings(&d) == NULL);
+    for (int slot = 0; slot < 6; slot++)
+    {
+        float inner = slot & 1 ? 0.5f : 1.0f;
+        assert(x(slot, 1, 600.0f, 0.5f) == 300.0f * inner && y(slot, 1, 600.0f, -0.25f) == -150.0f * inner);
+        assert(x(slot, 0, 600.0f, 0.5f) == 300.0f && y(slot, 0, 600.0f, -0.25f) == -150.0f); /* not a larger map */
+    }
+    /* the flag: the level's disk (lg+0x2D7C at [pass+0x18]) is the larger map's, or not; the radius as before */
+    uint8_t level[0x2E00] = {0}, pass[0x20] = {0};
+    uint8_t* levelAt = level;
+    memcpy(pass + 0x18, &levelAt, 8);
+    float diskBits = d.disk / 1024.0f, other = 680.0f / 1024.0f;
+    memcpy(level + 0x2D7C, &diskBits, 4);
+    assert(flag(pass, 0, 600.0f, 0.7f) == 1);
+    memcpy(level + 0x2D7C, &other, 4);
+    assert(flag(pass, 0, 600.0f, 0.7f) == 0);
+    g_difficulty.mapScale = savedScale;
+    VirtualFree((void*)game, 0, MEM_RELEASE);
+}
+
+/* Towns on larger maps (InstallTowns), run as machine code: every site's own bytes at its RVA in a fake game.dll, a
+ * harness jumping in and code at its exits. The five placers multiply by the border on a larger map, by R otherwise
+ * (and always with HELLFORGE_D11_TOWN_BORDER=0); the refusals and placements are counted and go where they went; the
+ * merge drops a job's results past the location list's capacity; a null record slot is skipped and counted. */
+typedef float (*TownPlacerFn)(const uint8_t* base, float value);
+typedef int (*TownIntFn)(uintptr_t a, uint32_t b, uintptr_t c);
+
+static uintptr_t TownGame(void)
+{
+    uintptr_t game = (uintptr_t)VirtualAlloc(NULL, 0x1400000, MEM_RESERVE, PAGE_NOACCESS);
+    static const uint32_t pages[] = {0xF31000, 0xF33000, 0xF34000, 0xF35000, 0xF37000, 0xF4C000, 0xF68000, 0xF99000, 0xFB2000, 0xFC9000, 0x13E0000, 0x13F0000};
+    for (size_t i = 0; i < sizeof pages / sizeof pages[0]; i++)
+        assert(VirtualAlloc((void*)(game + pages[i]), 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    return game;
+}
+
+static void TownPut(uintptr_t game, uint32_t rva, const uint8_t* code, size_t length) { memcpy((void*)(game + rva), code, length); }
+
+/* A harness at rva: its code, then jmp game+site. */
+static void TownHarness(uintptr_t game, uint32_t rva, const uint8_t* code, size_t length, uint32_t site)
+{
+    uint8_t* h = (uint8_t*)(game + rva);
+    memcpy(h, code, length);
+    h[length] = 0xE9;
+    int32_t rel = (int32_t)(int64_t)(game + site - (uintptr_t)(h + length + 5));
+    memcpy(h + length + 1, &rel, 4);
+}
+
+static void TownsFixtureOnce(int border)
+{
+    uintptr_t game = TownGame();
+    for (int i = 0; i < 5; i++) TownPut(game, kTownBorderSites[i].site, kTownBorderSites[i].pin, kTownBorderSites[i].length);
+    for (int i = 0; i < 2; i++) TownPut(game, kTownRefusals[i].site, kTownRefusals[i].pin, 6);
+    TownPut(game, DIF_TOWN_PLACED, kTownPlacedPin, 5);
+    TownPut(game, DIF_TOWN_MERGE, kTownMergePin, 7);
+    TownPut(game, DIF_RECORD_STORE, kRecordStorePin, 7);
+    TownPut(game, DIF_ZONE_GROUPS_SITE, kZoneGroupsPin, 5);
+    TownPut(game, DIF_TOWN_NOISE_SITE, kTownNoisePin, 13);
+    for (int i = 0; i < 2; i++) TownPut(game, kTownRingSites[i].site, kTownRingSites[i].pin, 8);
+    TownPut(game, DIF_TOWN_REACH_SITE, kTownReachPin, 8);
+    for (int i = 0; i < 2; i++) TownPut(game, kTownEdgeRefusals[i].site, kTownEdgeRefusals[i].pin, 6);
+    assert(TownPinsFailed(game) == NULL);
+    /* the placers' harnesses (0x13F0000 + 0x40 i): push rsi; mov rsi, rcx; sub rsp, 0x28; keep xmmN; xmmN = value; the
+     * site; at its back: xmm0 = xmmN, restore, return. {save, set, out, restore} for xmm8, 9, 9, 6, 7 */
+    static const uint8_t save[5][6] = {{0x44, 0x0F, 0x11, 0x44, 0x24, 0x10}, {0x44, 0x0F, 0x11, 0x4C, 0x24, 0x10}, {0x44, 0x0F, 0x11, 0x4C, 0x24, 0x10},
+        {0x90, 0x0F, 0x11, 0x74, 0x24, 0x10}, {0x90, 0x0F, 0x11, 0x7C, 0x24, 0x10}};
+    static const uint8_t set[5][4] = {{0x44, 0x0F, 0x28, 0xC1}, {0x44, 0x0F, 0x28, 0xC9}, {0x44, 0x0F, 0x28, 0xC9}, {0x90, 0x0F, 0x28, 0xF1}, {0x90, 0x0F, 0x28, 0xF9}};
+    static const uint8_t out[5][4] = {{0x41, 0x0F, 0x28, 0xC0}, {0x41, 0x0F, 0x28, 0xC1}, {0x41, 0x0F, 0x28, 0xC1}, {0x90, 0x0F, 0x28, 0xC6}, {0x90, 0x0F, 0x28, 0xC7}};
+    static const uint8_t restore[5][6] = {{0x44, 0x0F, 0x10, 0x44, 0x24, 0x10}, {0x44, 0x0F, 0x10, 0x4C, 0x24, 0x10}, {0x44, 0x0F, 0x10, 0x4C, 0x24, 0x10},
+        {0x90, 0x0F, 0x10, 0x74, 0x24, 0x10}, {0x90, 0x0F, 0x10, 0x7C, 0x24, 0x10}};
+    for (int i = 0; i < 5; i++)
+    {
+        uint8_t in[20] = {0x56, 0x48, 0x89, 0xCE, 0x48, 0x83, 0xEC, 0x28}, back[20];
+        memcpy(in + 8, save[i], 6);
+        memcpy(in + 14, set[i], 4);
+        TownHarness(game, 0x13F0000u + 0x40u * (uint32_t)i, in, 18, kTownBorderSites[i].site);
+        memcpy(back, out[i], 4);
+        memcpy(back + 4, restore[i], 6);
+        static const uint8_t end[] = {0x48, 0x83, 0xC4, 0x28, 0x5E, 0xC3};
+        memcpy(back + 10, end, sizeof end);
+        TownPut(game, kTownBorderSites[i].back, back, 16);
+    }
+    /* the refusals: cmp ecx, edx; the site; on: eax 1, refused: eax 2. The placed: the site; the placer returns 7 */
+    static const uint8_t compare[] = {0x39, 0xD1}, one[] = {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}, two[] = {0xB8, 0x02, 0x00, 0x00, 0x00, 0xC3};
+    static const uint8_t seven[] = {0xB8, 0x07, 0x00, 0x00, 0x00, 0xC3}, ret[] = {0xC3};
+    for (int i = 0; i < 2; i++)
+    {
+        TownHarness(game, 0x13F0200u + 0x20u * (uint32_t)i, compare, sizeof compare, kTownRefusals[i].site);
+        TownPut(game, kTownRefusals[i].site + 6, one, sizeof one);
+    }
+    TownPut(game, kTownRefusals[0].target, two, sizeof two);
+    TownHarness(game, 0x13F0280u, ret, 0, DIF_TOWN_PLACED);
+    TownPut(game, DIF_TOWN_PLACED_CALL, seven, sizeof seven);
+    TownPut(game, DIF_TOWN_PLACED + 5, ret, 1);
+    /* the merge: push r13; push rdi; sub rsp, 0xa8; [rsp+0xa0] = the record; r13d = the count; rdi = the job; the site;
+     * on: eax 1, dropped: eax 2 */
+    static const uint8_t mergeIn[] = {0x41, 0x55, 0x57, 0x48, 0x81, 0xEC, 0xA8, 0x00, 0x00, 0x00, 0x48, 0x89, 0x8C, 0x24, 0xA0, 0x00, 0x00, 0x00,
+        0x41, 0x89, 0xD5, 0x4C, 0x89, 0xC7};
+    static const uint8_t mergeOn[] = {0xB8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x81, 0xC4, 0xA8, 0x00, 0x00, 0x00, 0x5F, 0x41, 0x5D, 0xC3};
+    uint8_t mergeDrop[sizeof mergeOn];
+    memcpy(mergeDrop, mergeOn, sizeof mergeOn);
+    mergeDrop[1] = 2;
+    TownHarness(game, 0x13F0300u, mergeIn, sizeof mergeIn, DIF_TOWN_MERGE);
+    TownPut(game, DIF_TOWN_MERGE + 7, mergeOn, sizeof mergeOn);
+    TownPut(game, DIF_TOWN_MERGE_DROP, mergeDrop, sizeof mergeDrop);
+    /* the record store: push rdi; push rbx; ebx = r8d; edi = edx; r8 = rcx (the slot); the site; on: pop, pop, ret */
+    static const uint8_t storeIn[] = {0x57, 0x53, 0x44, 0x89, 0xC3, 0x89, 0xD7, 0x49, 0x89, 0xC8}, storeOn[] = {0x5B, 0x5F, 0xC3};
+    TownHarness(game, 0x13F0400u, storeIn, sizeof storeIn, DIF_RECORD_STORE);
+    TownPut(game, DIF_RECORD_STORE + 7, storeOn, sizeof storeOn);
+    /* the zone groups: push rbp, rsi, rdi, r14; sub rsp, 0x88 (the site's alignment); [rsp+0x68], +0x70, +0x78 = the
+     * markers, the route cells, their info; rbp, rsi, r14d from the block; the site; on: rax = rdi (the markers), back */
+    static const uint8_t groupsIn[] = {0x55, 0x56, 0x57, 0x41, 0x56, 0x48, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00,
+        0x48, 0x8B, 0x01, 0x48, 0x89, 0x44, 0x24, 0x68, 0x48, 0x8B, 0x41, 0x08, 0x48, 0x89, 0x44, 0x24, 0x70,
+        0x48, 0x8B, 0x41, 0x10, 0x48, 0x89, 0x44, 0x24, 0x78, 0x48, 0x8B, 0x69, 0x18, 0x48, 0x8B, 0x71, 0x20, 0x44, 0x8B, 0x71, 0x28};
+    static const uint8_t groupsOn[] = {0x48, 0x89, 0xF8, 0x48, 0x81, 0xC4, 0x88, 0x00, 0x00, 0x00, 0x41, 0x5E, 0x5F, 0x5E, 0x5D, 0xC3};
+    TownHarness(game, 0x13F0500u, groupsIn, sizeof groupsIn, DIF_ZONE_GROUPS_SITE);
+    TownPut(game, DIF_ZONE_GROUPS_SITE + 5, groupsOn, sizeof groupsOn);
+    /* the subregion noise: push rdi, rbp; sub rsp, 0x68; [rsp+0x50] = the context (rcx); rdi = the cell (r8); rbp = rsp;
+     * the site; at the call: the position (xmm1, xmm2) to rdx's floats, eax = rcx - rbp (-0x70), back */
+    static const uint8_t noiseIn[] = {0x57, 0x55, 0x48, 0x83, 0xEC, 0x68, 0x48, 0x89, 0x4C, 0x24, 0x50, 0x4C, 0x89, 0xC7, 0x48, 0x89, 0xE5};
+    static const uint8_t noiseOn[] = {0xF3, 0x0F, 0x11, 0x0A, 0xF3, 0x0F, 0x11, 0x52, 0x04, 0x48, 0x89, 0xC8, 0x48, 0x29, 0xE8,
+        0x48, 0x83, 0xC4, 0x68, 0x5D, 0x5F, 0xC3};
+    TownHarness(game, 0x13F0600u, noiseIn, sizeof noiseIn, DIF_TOWN_NOISE_SITE);
+    TownPut(game, DIF_TOWN_NOISE_CALL, noiseOn, sizeof noiseOn);
+    /* the ring and its clear: sub rsp, 0x88; [rsp+0x70] = the pass (rdx); rcx = the type; the site; back: xmm0 = xmm2 or
+     * xmm5, return */
+    static const uint8_t ringIn[] = {0x48, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00, 0x48, 0x89, 0x54, 0x24, 0x70};
+    static const uint8_t ringOn[2][11] = {{0x0F, 0x28, 0xC2, 0x48, 0x81, 0xC4, 0x88, 0x00, 0x00, 0x00, 0xC3},
+        {0x0F, 0x28, 0xC5, 0x48, 0x81, 0xC4, 0x88, 0x00, 0x00, 0x00, 0xC3}};
+    for (int i = 0; i < 2; i++)
+    {
+        TownHarness(game, 0x13F0700u + 0x40u * (uint32_t)i, ringIn, sizeof ringIn, kTownRingSites[i].site);
+        TownPut(game, kTownRingSites[i].back, ringOn[i], sizeof ringOn[i]);
+    }
+    /* the walls' reach: push rbp; rbp = rcx (its [0] the pass); the site; back: pop rbp, return (xmm0). The edge
+     * refusals: cmp ecx, edx; the site; on: eax 1, the next rule: eax 2 */
+    static const uint8_t reachIn[] = {0x55, 0x48, 0x89, 0xCD}, reachOn[] = {0x5D, 0xC3};
+    TownHarness(game, 0x13F0800u, reachIn, sizeof reachIn, DIF_TOWN_REACH_SITE);
+    TownPut(game, DIF_TOWN_REACH_BACK, reachOn, sizeof reachOn);
+    for (int i = 0; i < 2; i++)
+    {
+        TownHarness(game, 0x13F0840u + 0x20u * (uint32_t)i, compare, sizeof compare, kTownEdgeRefusals[i].site);
+        TownPut(game, kTownEdgeRefusals[i].site + 6, one, sizeof one);
+    }
+    TownPut(game, kTownEdgeRefusals[0].target, two, sizeof two);
+
+    float savedScale = g_difficulty.mapScale;
+    g_difficulty.mapScale = 2.0f;
+    SetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_BORDER", border ? NULL : L"0");
+    DifficultyInstall d = {game};
+    d.disk = 1022.0f;
+    float spacing = 65.75f, *cellFactor = (float*)(game + 0x13F0F00u); /* near the stubs, as the loader's own page is */
+    cellFactor[0] = 1023.0f / 681.0f * 1.04f * 4.0f;
+    cellFactor[1] = 0.25f;
+    d.spacingValue = &spacing;
+    d.cellFactor = cellFactor;
+    assert(InstallTowns(&d) == NULL && g_townCounters != NULL);
+    uint8_t base[0x60] = {0};
+    float r = 2.0f, edge = 3.0f, disk = d.disk / 1024.0f, other = 680.0f / 1024.0f;
+    memcpy(base + 0x50, &r, 4);
+    memcpy(base + 0x54, &edge, 4);
+    for (int i = 0; i < 5; i++)
+    {
+        TownPlacerFn placer = (TownPlacerFn)(void*)(game + 0x13F0000u + 0x40u * (uint32_t)i);
+        memcpy(base + 0x5C, &disk, 4);
+        assert(placer(base, 10.0f) == (border ? 30.0f : 20.0f)); /* a larger map: the border (or R when switched off) */
+        memcpy(base + 0x5C, &other, 4);
+        assert(placer(base, 10.0f) == 20.0f);                   /* another map: R */
+    }
+    for (int i = 0; i < 2; i++)
+    {
+        TownIntFn refusal = (TownIntFn)(void*)(game + 0x13F0200u + 0x20u * (uint32_t)i);
+        LONG before = g_townCounters[kTownRefusals[i].counter];
+        assert(refusal(1, 5, 0) == 1 && refusal(5, 1, 0) == 2 && refusal(9, 2, 0) == 2);
+        assert(g_townCounters[kTownRefusals[i].counter] == before + 2);
+    }
+    TownIntFn placed = (TownIntFn)(void*)(game + 0x13F0280u);
+    assert(placed(0, 0, 0) == 7 && placed(0, 0, 0) == 7 && g_townCounters[0] == 2);
+    uint8_t record[0x300] = {0}, job[0x40] = {0};
+    uint32_t capacity = 8192;
+    memcpy(record + 0x278, &capacity, 4);
+    TownIntFn merge = (TownIntFn)(void*)(game + 0x13F0300u);
+    assert(merge((uintptr_t)record, 100, (uintptr_t)job) == 1 && merge((uintptr_t)record, 8191, (uintptr_t)job) == 1);
+    assert(merge((uintptr_t)record, 8192, (uintptr_t)job) == 2 && merge((uintptr_t)record, 9000, (uintptr_t)job) == 2 && g_townCounters[3] == 2);
+    TownIntFn store = (TownIntFn)(void*)(game + 0x13F0400u);
+    uint32_t slot[2] = {0, 0};
+    store((uintptr_t)slot, 77, 0xABCD); /* (slot, edi = the record, ebx = the key) */
+    assert(slot[0] == 0xABCD && slot[1] == 77 && g_townCounters[4] == 0);
+    store(0, 77, 0xABCD);
+    assert(g_townCounters[4] == 1);
+    /* four route cells: 0 and 1 in group 0 (type 30), 2 not a zone cell, 3 in group 1 (type 31) */
+    uint8_t markers[32] = {0}, info[4 * 0x20] = {0}, levelBytes[0x100] = {0}, context[0x20] = {0}, frame[0x70] = {0};
+    float positions[4][2] = {{100, 200}, {300, 200}, {0, 0}, {500, 600}}, table[2][3] = {{10, 50, 30}, {0, 0, 0}};
+    int32_t types[4] = {30, 30, 34, 31};
+    uint32_t groupOf[4] = {0, 0, 0, 1};
+    for (int i = 0; i < 4; i++)
+    {
+        markers[8 * i] = i != 2;
+        memcpy(markers + 8 * i + 4, &groupOf[i], 4);
+        memcpy(info + 0x20 * i + 0xC, &types[i], 4);
+        uintptr_t cell = (uintptr_t)positions[i];
+        memcpy(info + 0x20 * i + 0x18, &cell, 8);
+    }
+    levelBytes[0xF9] = DIF_VANILLA + 1;
+    uintptr_t levelAt = (uintptr_t)levelBytes, tableAt = (uintptr_t)table;
+    memcpy(context + 0x18, &levelAt, 8);
+    memcpy(frame + 0x60, &tableAt, 8); /* rbp+0x60: the table */
+    struct { uintptr_t markers, cells, info, rbp, rsi, groups; } block = {(uintptr_t)markers, 4, (uintptr_t)info, (uintptr_t)frame, (uintptr_t)context, 2};
+    TownIntFn groupsFn = (TownIntFn)(void*)(game + 0x13F0500u);
+    g_zoneCatches = 0;
+    assert((uintptr_t)(uint32_t)groupsFn((uintptr_t)&block, 0, 0) == (uintptr_t)(uint32_t)(uintptr_t)markers);
+    assert(g_zoneCatches == 1 && g_zoneCatch.difficulty == DIF_VANILLA + 1 && g_zoneCatch.cells == 4 && g_zoneCatch.zoneCells == 3);
+    assert(g_zoneCatch.groups == 2 && g_zoneCatch.group[0].type == 30 && g_zoneCatch.group[0].cells == 2);
+    assert(g_zoneCatch.group[0].x == 200.0f && g_zoneCatch.group[0].y == 200.0f && g_zoneCatch.group[0].height == 30.0f);
+    assert(g_zoneCatch.group[0].min == 10.0f && g_zoneCatch.group[0].max == 50.0f);
+    assert(g_zoneCatch.group[1].type == 31 && g_zoneCatch.group[1].cells == 1 && g_zoneCatch.group[1].height == 0.0f);
+    g_zoneCatches = 0;
+    /* the noise: a larger map's cell sampled at 1024 + (p - 1024) x 40 / 65.75, another map's where it is */
+    float cell[2] = {1024.0f + 657.5f, 1024.0f - 131.5f}, sampled[2] = {0};
+    uint8_t settings[0x60] = {0};
+    uintptr_t noiseContext[2] = {0, (uintptr_t)settings};
+    typedef int (*TownNoiseFn)(uintptr_t context, float* out, const float* cell);
+    TownNoiseFn noiseFn = (TownNoiseFn)(void*)(game + 0x13F0600u);
+    memcpy(settings + 0x5C, &disk, 4);
+    assert(noiseFn((uintptr_t)noiseContext, sampled, cell) == -0x70);
+    assert(fabsf(sampled[0] - 1424.0f) < 0.01f && fabsf(sampled[1] - 944.0f) < 0.01f);
+    memcpy(settings + 0x5C, &other, 4);
+    assert(noiseFn((uintptr_t)noiseContext, sampled, cell) == -0x70 && sampled[0] == cell[0] && sampled[1] == cell[1]);
+    /* the ring and its clear: a zone type's 64 m is 100 m on a larger map (as the refill's), 64 m on another */
+    uint8_t zoneType[0x190] = {0}, ringLevel[0x2D80] = {0};
+    float zoneSize = 64.0f;
+    memcpy(zoneType + 0x18C, &zoneSize, 4);
+    uintptr_t ringPass[4] = {0, 0, 0, (uintptr_t)ringLevel};
+    typedef float (*TownRingFn)(const uint8_t* type, const uintptr_t* pass);
+    for (int i = 0; i < 2; i++)
+    {
+        TownRingFn ringFn = (TownRingFn)(void*)(game + 0x13F0700u + 0x40u * (uint32_t)i);
+        memcpy(ringLevel + 0x2D7C, &disk, 4);
+        assert(ringFn(zoneType, ringPass) == 100.0f);
+        memcpy(ringLevel + 0x2D7C, &other, 4);
+        assert(ringFn(zoneType, ringPass) == 64.0f);
+    }
+    /* the walls' reach: 25 m x 1.5623 on a larger map, counted; 25 m on another; the edge refusals counted where they go */
+    typedef float (*TownReachFn)(const uintptr_t* frame);
+    TownReachFn reachFn = (TownReachFn)(void*)(game + 0x13F0800u);
+    uintptr_t reachPass[2] = {0, (uintptr_t)settings}, reachFrame[1] = {(uintptr_t)reachPass};
+    memcpy(settings + 0x5C, &disk, 4);
+    float reached = reachFn(reachFrame);
+    assert(fabsf(reached - 25.0f * cellFactor[0] * 0.25f) < 1e-4f && reached > 39.0f && g_townCounters[7] == 1);
+    memcpy(settings + 0x5C, &other, 4);
+    assert(reachFn(reachFrame) == 25.0f && g_townCounters[7] == 1);
+    for (int i = 0; i < 2; i++)
+    {
+        TownIntFn edge = (TownIntFn)(void*)(game + 0x13F0840u + 0x20u * (uint32_t)i);
+        assert(edge(1, 2, 0) == 1 && edge(3, 3, 0) == 2 && edge(4, 4, 0) == 2);
+        assert(g_townCounters[kTownEdgeRefusals[i].counter] == 2);
+    }
+    SetEnvironmentVariableW(L"HELLFORGE_D11_TOWN_BORDER", NULL);
+    g_difficulty.mapScale = savedScale;
+    g_townCounters = NULL;
+    VirtualFree((void*)game, 0, MEM_RELEASE);
+}
+
+static void TownsFixture(void)
+{
+    TownsFixtureOnce(1);
+    TownsFixtureOnce(0);
+}
+
+/* The destruction-record map's setup (InstallRecordMap), run as machine code: the setup's own bytes at 0x13DF870, a
+ * harness entering them with rbx the owner and rsp 16-aligned, its exit at 0x13DF889. Unpatched it keeps the 0x8000
+ * inline slots; patched an owner gets 0x10000 slots of its own (again for the same owner), the qword clearing the empty
+ * key, and a ninth owner takes the buffer set up longest ago. */
+typedef void (*RecordSetupFn)(uint8_t* owner);
+static void RecordMapFixture(void)
+{
+    uintptr_t game = TownGame();
+    assert(VirtualAlloc((void*)(game + 0x13DF000u), 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    TownPut(game, DIF_RECORD_SETUP, kRecordSetupPin, sizeof kRecordSetupPin);
+    static const uint8_t in[] = {0x53, 0x48, 0x89, 0xCB, 0x48, 0x83, 0xEC, 0x20}; /* push rbx; mov rbx, rcx; sub rsp, 0x20 */
+    static const uint8_t out[] = {0x48, 0x83, 0xC4, 0x20, 0x5B, 0xC3};             /* add rsp, 0x20; pop rbx; ret */
+    TownHarness(game, 0x13F0C00u, in, sizeof in, DIF_RECORD_SETUP);
+    TownPut(game, DIF_RECORD_SETUP_BACK, out, sizeof out);
+    RecordSetupFn setup = (RecordSetupFn)(void*)(game + 0x13F0C00u);
+    uint8_t* owners[DIF_RECORD_MAPS + 1];
+    for (int i = 0; i <= DIF_RECORD_MAPS; i++)
+        assert((owners[i] = (uint8_t*)VirtualAlloc(NULL, 0xC6000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)) != NULL);
+    uint32_t empty = 0xFFFFFFFFu;
+    memcpy(owners[0] + 0xC5F54, &empty, 4);
+    setup(owners[0]);
+    assert(*(uint8_t**)(owners[0] + 0xC5F48) == owners[0] + 0x5F48 && *(uint64_t*)(owners[0] + 0xC5F50) == 0x8000u);
+
+    float savedScale = g_difficulty.mapScale;
+    g_difficulty.mapScale = 2.0f;
+    DifficultyInstall d = {game};
+    assert(RecordMapFailed(game) == NULL && InstallRecordMap(&d) == NULL && *(uint8_t*)(game + DIF_RECORD_SETUP) == 0xE9);
+    memcpy(owners[0] + 0xC5F54, &empty, 4);
+    setup(owners[0]);
+    uint64_t* first = *(uint64_t**)(owners[0] + 0xC5F48);
+    assert(first != NULL && (uint8_t*)first != owners[0] + 0x5F48 && *(uint64_t*)(owners[0] + 0xC5F50) == DIF_RECORD_SLOTS);
+    first[DIF_RECORD_SLOTS - 1] = 7; /* the whole buffer is writable */
+    setup(owners[0]);
+    assert(*(uint64_t**)(owners[0] + 0xC5F48) == first);
+    for (int i = 1; i < DIF_RECORD_MAPS; i++)
+    {
+        setup(owners[i]);
+        uint64_t* own = *(uint64_t**)(owners[i] + 0xC5F48);
+        assert(own != NULL && own != first && *(uint64_t*)(owners[i] + 0xC5F50) == DIF_RECORD_SLOTS);
+    }
+    setup(owners[DIF_RECORD_MAPS]);
+    assert(*(uint64_t**)(owners[DIF_RECORD_MAPS] + 0xC5F48) == first && g_recordKept == 0);
+    g_difficulty.mapScale = savedScale;
+    for (int i = 0; i <= DIF_RECORD_MAPS; i++) VirtualFree(owners[i], 0, MEM_RELEASE);
+    VirtualFree((void*)game, 0, MEM_RELEASE);
+}
+
+/* Terrain on larger maps: an area within an objective's stamp radius + 16 m is found, through a location-group item and
+ * through a direct one; outside it, or for a location with no item, it is not. */
+static void TerrainFixture(void)
+{
+    uint8_t* level = calloc(1, 0x3000);
+    uint8_t* block = calloc(1, DIF_OBJECTIVE_COUNT + 4);
+    uint8_t* items = calloc(2, 0x1C8);
+    uint8_t groups[2][0x18] = {{0}}, set[0x38] = {0};
+    assert(level != NULL && block != NULL && items != NULL);
+    uint64_t pointer = (uint64_t)(uintptr_t)block;
+    memcpy(level + 0x2C8, &pointer, 8);
+    float radius[2] = {50.0f, 20.0f};
+    memcpy(items + 0xD8, &radius[0], 4);                 /* group 1, item 0: 50 m */
+    memcpy(items + 0x1C8 + 0xD8, &radius[1], 4);         /* the direct item: 20 m */
+    pointer = (uint64_t)(uintptr_t)items; memcpy(groups[1] + 8, &pointer, 8);
+    uint32_t one = 1, two = 2; memcpy(groups[1] + 0x10, &one, 4);
+    pointer = (uint64_t)(uintptr_t)groups; memcpy(set + 0x28, &pointer, 8); memcpy(set + 0x30, &two, 4);
+    uint64_t direct = (uint64_t)(uintptr_t)(items + 0x1C8);
+    uint8_t* locations = block + DIF_OBJECTIVE_LOCATIONS;
+    const float at[3][2] = {{100.0f, 100.0f}, {500.0f, 500.0f}, {900.0f, 900.0f}};
+    for (int i = 0; i < 3; i++) memcpy(locations + 0x108 * i + 0xA4, at[i], 8);
+    pointer = (uint64_t)(uintptr_t)set; memcpy(locations, &pointer, 8);
+    uint32_t kind = DIF_LOCATION_GROUP_SET; memcpy(locations + 8, &kind, 4);
+    locations[0xA1] = 1; locations[0xA2] = 0;
+    pointer = (uint64_t)(uintptr_t)&direct; memcpy(locations + 0x108, &pointer, 8);
+    locations[0x108 + 0xA2] = 0;
+    memcpy(locations + 0x210, &pointer, 8);
+    locations[0x210 + 0xA2] = 0xFF;                      /* no item: skipped */
+    uint32_t count = 3; memcpy(block + DIF_OBJECTIVE_COUNT, &count, 4);
+    uint8_t area[0x90] = {0};
+    const struct { float x, y; int inside; } cases[6] = {{140, 100, 1}, {165, 100, 1}, {167, 100, 0}, {510, 530, 1}, {537, 500, 0}, {900, 900, 0}};
+    LONG before = g_terrainRaised;
+    for (int i = 0; i < 6; i++)
+    {
+        memcpy(area + 0x80, &cases[i].x, 4); memcpy(area + 0x84, &cases[i].y, 4);
+        assert(TerrainNearObjective((uintptr_t)level, area) == cases[i].inside);
+    }
+    assert(g_terrainRaised - before == 3);
+    assert(TerrainNearObjective(0, area) == 0);
+    free(items); free(block); free(level);
 }
 
 /* SDK 6 named fields: records by (component, entity); ones other entities share are found only for reading. */
@@ -1672,7 +2122,7 @@ static void LuaBridgeFixture(void)
     }
 
     strcpy(editor->id, editorId);
-    for (int i = mods; i < g_modCount; i++) memset(&g_mods[i], 0, sizeof g_mods[i]);
+    for (int i = mods; i < g_modCount; i++) { memset(&g_mods[i], 0, sizeof g_mods[i]); g_mods[i].order = i; }
     g_modCount = mods;
     for (int i = 0; i < g_fakeRecordCount; i++) free(g_fakeRecords[i].bytes);
     g_fakeRecordCount = g_componentCount = g_editCount = 0;
@@ -2159,6 +2609,18 @@ static void OwnAllFixture(void)
         records[(size_t)theirs * size] ^= 0xFF; /* the base changes; the copy does not */
         assert(records[(size_t)mine * size] != records[(size_t)theirs * size]);
     }
+    /* its records are edited as its own once the data has loaded too (set_live, the editor's pages), not only those it
+     * named; without own_all, one it did not name is refused */
+    {
+        const SdkComponent* fire = SdkComponentNamed("ProjectileWeaponComponentData");
+        int fired = g_fired[HF_EVENT_ENTITIES_READY];
+        g_fired[HF_EVENT_ENTITIES_READY] = 1;
+        assert(fire != NULL && EditTarget(&g_mods[0], "set_live", hmg, fire) == 0);
+        g_weapons[0].ownAll = 0;
+        assert(EditTarget(&g_mods[0], "set_live", hmg, fire) == -1);
+        g_weapons[0].ownAll = 1;
+        g_fired[HF_EVENT_ENTITIES_READY] = fired;
+    }
     /* content lists it with its base; a caller's older, smaller struct gets no more than it holds */
     {
         HfContent c = {sizeof c};
@@ -2166,6 +2628,30 @@ static void OwnAllFixture(void)
         for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c)
             if (c.kind == HF_KIND_ENTITY && c.id == hmg) found = c.base == base && !strcmp(c.name, "fixture/hmg-sentry") && !strcmp(c.mod, g_mods[0].id);
         assert(found);
+        /* an arsenal weapon: own_all taken from its HfWeapon; listed last once registered, with its entities and its own
+         * text (the editor gives it a page), not while pending */
+        HfWeapon gold = {sizeof gold};
+        gold.base = 0x5678; gold.unit = "fixture/liberator_gold"; gold.designation = "AR-23G"; gold.name = "Liberator Gold"; gold.own_all = 1;
+        uint32_t goldId = ApiAddWeapon(&g_mods[0], &gold);
+        Weapon* w = &g_weapons[g_weaponCount - 1];
+        assert(goldId != 0 && w->id == goldId && w->ownAll && !w->plain && w->state == 0);
+        int listed = 0;
+        for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c) listed += c.kind == HF_KIND_ITEM;
+        assert(listed == 0);
+        w->state = 1;
+        w->copies = base;
+        uint32_t last = 0;
+        for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c)
+            if (c.kind == HF_KIND_ITEM)
+            {
+                assert(c.id == goldId && c.base == 0x5678 && c.entity == w->entity && c.base_entity == base && !strcmp(c.name, "fixture/liberator_gold") &&
+                    !strcmp(c.title, "Liberator Gold") && !strcmp(c.designation, "AR-23G") && !strcmp(c.mod, g_mods[0].id));
+                listed++;
+                last = i;
+            }
+        HfContent after = {sizeof after};
+        assert(listed == 1 && !ApiContent(&g_mods[0], last + 1, &after));
+        g_weaponCount--; /* the fixture's other checks know the sentry only */
         uint8_t small[offsetof(HfContent, designation) + 8];
         memset(small, 0xEE, sizeof small);
         ((HfContent*)small)->size = offsetof(HfContent, designation);
@@ -2199,6 +2685,64 @@ static uint64_t FakeConsume(void* system, uint8_t* event, uint64_t r8, uint64_t 
 {
     g_consumed = event;
     return r9 + 1;
+}
+
+/* Typed events (hf_on_<event>, hellforge_mod.h): the listener gets its kind's struct; a damage-pre one changes the hit. */
+static HfDamageEvent g_typedDamage;
+static int g_typedCalls;
+static void TypedDamage(HfMod* mod, const HfDamageEvent* damage, void* user) { g_typedDamage = *damage; g_typedCalls++; }
+static void TypedPre(HfMod* mod, HfDamagePreEvent* pre, void* user) { pre->damage.amount = *(const int32_t*)user; }
+
+static void TypedEvents(HfMod* mod, uint8_t* event)
+{
+    HfApi api = {0};
+    api.size = (uint32_t)sizeof api;
+    api.subscribe = ApiSubscribe;
+    const HfApi* was = mod->api;
+    mod->api = &api;
+    static const int32_t halved = 75;
+    assert(hf_on_damage(mod, TypedDamage, NULL, 0) == 0 && hf_on_damage_pre(mod, TypedPre, (void*)&halved, 0) == 0);
+    assert(hf_on_damage(mod, NULL, NULL, 0) == 1); /* refused */
+    api.size = (uint32_t)offsetof(HfApi, subscribe); /* a loader before SDK 7: refused, nothing called */
+    assert(hf_on_damage(mod, TypedDamage, NULL, 0) == 1);
+    api.size = (uint32_t)sizeof api;
+    g_typedCalls = 0;
+    ConsumeDamageDetour(NULL, event, 0, 0, 0, 0);
+    int32_t applied;
+    memcpy(&applied, event + 0x2C, 4);
+    assert(applied == 75 && g_typedCalls == 1 && g_typedDamage.info.kind == HF_ON_DAMAGE && g_typedDamage.amount == 75 &&
+        g_typedDamage.target == 0x400777 && g_typedDamage.position[1] == 2.0f);
+    mod->api = was;
+}
+
+static int g_manyTicks, g_manyHeard;
+static void ManyTick(HfMod* mod, float dt, void* user) { g_manyTicks++; }
+static void ManyHeard(HfMod* mod, const HfEventInfo* event, void* user) { g_manyHeard++; }
+
+/* Many mods: on_game_thread and subscribe have no limit; the tables grow, and every callback and listener still runs. */
+static void ManyModsFixture(void)
+{
+    TickTable* ticks = g_ticks;
+    int listeners = g_listenerCount, tick = g_tickState;
+    LONG listening = g_listening;
+    g_tickState = 1; g_manyTicks = 0; g_manyHeard = 0;
+    for (int i = 0; i < 500; i++)
+    {
+        HfMod* mod = &g_mods[i % MAX_MODS];
+        assert(ApiOnGameThread(mod, ManyTick, NULL));
+        assert(ApiSubscribe(mod, HF_ON_KILL, ManyHeard, NULL, INT32_MIN));
+    }
+    LONG before = ticks ? ticks->count : 0;
+    assert(g_ticks->count == before + 500 && g_ticks->capacity >= g_ticks->count && g_listenerCount == listeners + 500);
+    for (LONG i = before; i < g_ticks->count; i++) g_ticks->entries[i].callback(g_ticks->entries[i].mod, 0.016f, g_ticks->entries[i].user);
+    assert(g_manyTicks == 500);
+    int loaded[MAX_MODS];
+    for (int i = 0; i < MAX_MODS; i++) { loaded[i] = g_mods[i].loaded; g_mods[i].loaded = 1; }
+    HfEventInfo kill = {sizeof kill, HF_ON_KILL, 0};
+    Dispatch(&kill);
+    assert(g_manyHeard == 500);
+    for (int i = 0; i < MAX_MODS; i++) g_mods[i].loaded = loaded[i];
+    g_ticks = ticks; g_listenerCount = listeners; g_listening = listening; g_tickState = tick;
 }
 
 static void EventsFixture(void)
@@ -2259,6 +2803,8 @@ static void EventsFixture(void)
     assert(g_heardCount == 1 && g_queued == 1);
     EventsTick();
     assert(g_heardCount == 2 && g_queued == 0 && g_lastDamage.info.update == g_updates);
+    g_gameThread = thread;
+    TypedEvents(mod, event);
 
     g_listenerCount = 0; g_listening = 0; g_eventsGame = 0; g_playerCount = 0; g_lastState = 0; g_consumeDamage = NULL;
     free(player); free(peers); free(players); free(gameState); free(game);
@@ -2692,6 +3238,65 @@ static void WeaponOrderFixture(void)
     g_weaponCount = savedCount;
 }
 
+/* registered-items.json for the backend (registry.c RegisteredItemsText): every weapon of a full registry, with names as
+ * long as they go and holding quotes, backslashes and control bytes, then the stratagems, as one JSON text. A fixed
+ * 16 KiB once stopped at about 150 weapons, and a quote in a name broke the file for every item. */
+static int Occurrences(const char* text, const char* what)
+{
+    int n = 0;
+    for (const char* at = strstr(text, what); at != NULL; at = strstr(at + 1, what)) n++;
+    return n;
+}
+
+static void RegisteredItemsFixture(void)
+{
+    char escaped[64];
+    assert(!strcmp(JsonText("a\"b\\c\n\x01", escaped, sizeof escaped), "a\\\"b\\\\c\\u000a\\u0001"));
+    assert(!strcmp(JsonText("plain/unit_01", escaped, sizeof escaped), "plain/unit_01"));
+    assert(strlen(JsonText("\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"", escaped, sizeof escaped)) < sizeof escaped); /* cut, never past */
+
+    int savedCount = g_weaponCount;
+    uint32_t savedStratagems = g_stratagemCount;
+    static Weapon saved[REG_MAX_WEAPONS];
+    memcpy(saved, g_weapons, sizeof saved);
+    HfMod mod;
+    memset(&mod, 0, sizeof mod);
+    memset(mod.id, 'm', sizeof mod.id - 1); /* the longest mod id */
+    g_weaponCount = REG_MAX_WEAPONS;
+    for (int i = 0; i < REG_MAX_WEAPONS; i++)
+    {
+        memset(&g_weapons[i], 0, sizeof g_weapons[i]);
+        g_weapons[i].mod = &mod;
+        g_weapons[i].id = 0x1000 + (uint32_t)i;
+        g_weapons[i].base = 0xAA035309;
+        g_weapons[i].plain = i == 7; /* an entity of add_entity: not an item */
+        memset(g_weapons[i].name, i % 2 ? '"' : 'n', sizeof g_weapons[i].name - 1);
+        g_weapons[i].name[0] = '\\';
+    }
+    g_stratagemCount = 0;
+    int size = 16384;
+    char* text = NULL;
+    int n = 0;
+    for (; size <= (1 << 24); size *= 2) /* as WriteRegisteredItems grows it */
+    {
+        free(text);
+        text = (char*)malloc((size_t)size);
+        n = RegisteredItemsText(text, size);
+        if (n < size - REG_ITEM_ROOM) break;
+    }
+    assert(size > 16384); /* the old fixed text could not hold it */
+    assert(n == (int)strlen(text) && !strcmp(text + n - 3, "]}\n"));
+    assert(Occurrences(text, "\"mixId\":") == REG_MAX_WEAPONS - 1); /* every weapon, the plain entity left out */
+    assert(Occurrences(text, "\"mixId\":4287,") == 1); /* the last one (0x1000 + 191) */
+    assert(strstr(text, "\"mixId\":4103,") == NULL); /* the plain entity (0x1000 + 7) */
+    /* every quote is escaped: none ends a string early, so each entry still has its four keys */
+    assert(Occurrences(text, "\",\"unit\":\"") == REG_MAX_WEAPONS - 1 && Occurrences(text, "\\\"") > 0);
+    free(text);
+    memcpy(g_weapons, saved, sizeof saved);
+    g_weaponCount = savedCount;
+    g_stratagemCount = savedStratagems;
+}
+
 /* Code mods set up in id order (the same on every machine), their edits queued meanwhile kept in load order, so the top
  * mod still wins a conflict (hellforge_modloader.c SetupOrder, fields.c QueueEdit and FinishSetupEdits). */
 static void SetupOrderFixture(void)
@@ -2732,9 +3337,9 @@ static void SetupOrderFixture(void)
 /* The behaviour stubs against a synthetic game (behaviours.c InstallBehaviours): every pinned function and dispatch site
  * as reviewed, then the resume stub run. A HellForge behaviour resumes as its base does (the transport as 667: its
  * flight target re-sent on other machines), any other id takes the switch's default. */
-static void BehaviourStubsFixture(void)
+/* A synthetic game for the behaviour stubs: every pinned function and dispatch site as reviewed. */
+static uint8_t* BehaviourGame(size_t size)
 {
-    size_t size = 0x1000000;
     uint8_t* game = VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
     assert(game);
     for (int f = 0; f < F_COUNT; f++) memcpy(game + kBhvFunctions[f].rva, kBhvFunctions[f].pin, 32);
@@ -2746,14 +3351,14 @@ static void BehaviourStubsFixture(void)
     }
     memcpy(game + kBhvSites[S_RESUME].ja - 6, kBhvResumePin, sizeof kBhvResumePin);
     memcpy(game + BHV_RESUME_SWITCH, kBhvResumeSwitchPin, sizeof kBhvResumeSwitchPin);
-    HfMod* mod = &g_mods[0];
-    g_behaviourCount = 0; g_behaviourState = 0;
-    HfBehaviour transport = {sizeof transport}, turret = {sizeof turret};
-    transport.base = HF_BEHAVIOUR_PELICAN_TRANSPORT;
-    turret.base = HF_BEHAVIOUR_PELICAN_TURRET;
-    assert(ApiAddBehaviour(mod, &transport) == BHV_FIRST && ApiAddBehaviour(mod, &turret) == BHV_FIRST + 1);
-    assert(InstallBehaviours((uintptr_t)game) == 1 && g_behaviourState == 1);
-    /* the switch, resume's end and the branch's own target, after the pins were checked: each answers what it was given */
+    return game;
+}
+
+/* Once the stubs are in: resume's switch, its end and the branch's own target answer what they were given, and the
+ * patched branch is resume as the game would call it. */
+typedef int (*ResumeFn)(void* ctx, uint32_t index);
+static ResumeFn BehaviourResume(uint8_t* game)
+{
     static const uint8_t cases[] = {0x89, 0xD0, 0xC3};                          /* mov eax, edx; ret */
     static const uint8_t none[] = {0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xC3};          /* mov eax, -1; ret */
     static const uint8_t onward[] = {0xB8, 0xFE, 0xFF, 0xFF, 0xFF, 0xC3};        /* mov eax, -2; ret */
@@ -2762,13 +3367,26 @@ static void BehaviourStubsFixture(void)
     memcpy(game + kBhvSites[S_RESUME].target, onward, sizeof onward);
     int32_t rel;
     memcpy(&rel, game + kBhvSites[S_RESUME].ja + 2, 4);
-    typedef int (*ResumeFn)(void* ctx, uint32_t index);
-    ResumeFn resume = (ResumeFn)(game + kBhvSites[S_RESUME].ja + 6 + rel);
+    return (ResumeFn)(game + kBhvSites[S_RESUME].ja + 6 + rel);
+}
+
+static void BehaviourStubsFixture(void)
+{
+    size_t size = 0x1000000;
+    uint8_t* game = BehaviourGame(size);
+    HfMod* mod = &g_mods[0];
+    g_behaviourCount = 0; g_behaviourState = 0;
+    HfBehaviour transport = {sizeof transport}, turret = {sizeof turret};
+    transport.base = HF_BEHAVIOUR_PELICAN_TRANSPORT;
+    turret.base = HF_BEHAVIOUR_PELICAN_TURRET;
+    assert(ApiAddBehaviour(mod, &transport) == BHV_FIRST && ApiAddBehaviour(mod, &turret) == BHV_FIRST + 1);
+    assert(InstallBehaviours((uintptr_t)game) == 1 && g_behaviourState == 1);
+    ResumeFn resume = BehaviourResume(game);
     assert((uint8_t*)resume < game || (uint8_t*)resume >= game + size); /* patched into HellForge's block */
     assert(resume(NULL, BHV_FIRST) == (int)(BHV_PELICAN_TRANSPORT - BHV_RESUME_FIRST));   /* 694 resumes as 667 */
     assert(resume(NULL, BHV_FIRST + 1) == (int)(BHV_PELICAN_TURRET - BHV_RESUME_FIRST)); /* 695 as 645 */
     assert(resume(NULL, BHV_FIRST + 2) == -2 && resume(NULL, 300) == -2 && resume(NULL, BHV_PELICAN_TRANSPORT) == -2); /* every other id as before */
-    g_behaviourCount = 0; g_behaviourState = 0; g_bhvGame = 0;
+    g_behaviourCount = 0; g_behaviourState = 0; g_bhvGame = 0; g_bhvBlock = NULL;
     VirtualFree(game, 0, MEM_RELEASE);
 }
 
@@ -3145,15 +3763,237 @@ static void HookChainFixture(void)
     assert(((volatile ChainFn)ChainTarget2)(5) == 2 * 5 + 7 + 110 && !strcmp(g_trail, "ba"));
 }
 
+/* B.4: which debug exceptions FieldWatchHit claims. Dr6 bits 0-2 name the watchpoint; when bits 0-3 are clear, a system
+ * that does not report Dr6 (Wine) still sends the trap of a thread FieldWatch armed, unless TF is a single step of
+ * someone else's. Every combination of code, Dr6, TF and armed. */
+static void FieldWatchClaimFixture(void)
+{
+    static const DWORD codes[] = {EXCEPTION_SINGLE_STEP, EXCEPTION_BREAKPOINT, EXCEPTION_ACCESS_VIOLATION};
+    static const DWORD64 dr6s[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        0x4000000000000000ull, 0xFFFFFFFFFFFFFFFFull};
+    for (size_t c = 0; c < sizeof codes / sizeof codes[0]; c++)
+        for (size_t d = 0; d < sizeof dr6s / sizeof dr6s[0]; d++)
+            for (int tf = 0; tf < 2; tf++)
+                for (int armed = 0; armed < 2; armed++)
+                {
+                    int expected = FIELD_WATCH_PASS;
+                    if (codes[c] == EXCEPTION_SINGLE_STEP && (dr6s[d] & 7) != 0) expected = FIELD_WATCH_CLAIM;
+                    else if (codes[c] == EXCEPTION_SINGLE_STEP && (dr6s[d] & 0xF) == 0 && armed && !tf) expected = FIELD_WATCH_CLAIM_UNKNOWN;
+                    assert(FieldWatchClaim(codes[c], dr6s[d], tf ? 0x100 : 0, armed) == expected);
+                }
+    /* the exact B.3 context: single step, Dr6=0, TF clear, on an armed thread is ours; unarmed and TF single steps pass */
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0, 1) == FIELD_WATCH_CLAIM_UNKNOWN);
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0x100, 1) == FIELD_WATCH_PASS);
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0, 0) == FIELD_WATCH_PASS);
+    puts("PASS field watch: Dr6 names the watchpoint, Dr6=0 on an armed thread with TF clear is claimed, TF single steps and unarmed threads pass on");
+}
+
+/* The map preview watchpoints are off unless HELLFORGE_DIFFICULTY_FIELDWATCH=1: with it unset, 0 or anything else,
+ * FieldWatch runs no self-test, arms no thread (another thread's debug registers stay clear) and records no field. */
+static DWORD WINAPI FieldWatchIdle(void* event) { WaitForSingleObject(event, INFINITE); return 0; }
+static void FieldWatchOffFixture(void)
+{
+    static float fields[0x10];
+    HANDLE event = CreateEventW(NULL, TRUE, FALSE, NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchIdle, event, 0, NULL);
+    assert(event != NULL && thread != NULL);
+    const wchar_t* offValues[] = {NULL, L"0", L"yes"};
+    for (int i = 0; i < 3; i++)
+    {
+        SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", offValues[i]);
+        assert(!FieldWatchEnabled());
+        FieldWatch((uintptr_t)fields);
+        assert(g_fieldWatched == 0 && g_fieldWatchThreadCount == 0);
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(GetThreadContext(thread, &context));
+        assert(context.Dr0 == 0 && context.Dr1 == 0 && context.Dr2 == 0 && (context.Dr7 & 0x3F) == 0);
+    }
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", L"1");
+    assert(FieldWatchEnabled());
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
+    SetEvent(event);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+    CloseHandle(event);
+    puts("PASS field watch off by default: unset, 0 or another value arms no thread; 1 turns it on");
+}
+
+/* B.4 end to end: the real self-test, then FieldWatch arming a helper of this test process; the helper reads and
+ * writes a watched buffer at +0 and +0x10. Nothing here needs game.dll. */
+static volatile LONG g_fieldE2eBuffer[8];
+static volatile LONG g_fieldE2eThreadId;
+static HANDLE g_fieldE2eReady, g_fieldE2eGo;
+
+static DWORD WINAPI FieldWatchE2eThread(void* unused)
+{
+    g_fieldE2eThreadId = (LONG)GetCurrentThreadId();
+    if (g_fieldE2eReady == NULL || !SetEvent(g_fieldE2eReady)) return 0;
+    if (g_fieldE2eGo == NULL || WaitForSingleObject(g_fieldE2eGo, 5000) != WAIT_OBJECT_0) return 0;
+    g_fieldE2eBuffer[0] = 1;
+    LONG first = g_fieldE2eBuffer[0];
+    g_fieldE2eBuffer[4] = 2;
+    LONG second = g_fieldE2eBuffer[4];
+    return (DWORD)(first + second);
+}
+
+static void FieldWatchEndToEndFixture(void)
+{
+    int works = FieldWatchSelfTest();
+    LONG before = g_fieldHitCount;
+    g_fieldE2eReady = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldE2eGo = CreateEventW(NULL, FALSE, FALSE, NULL);
+    assert(g_fieldE2eReady != NULL && g_fieldE2eGo != NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchE2eThread, NULL, 0, NULL);
+    assert(thread != NULL);
+    assert(WaitForSingleObject(g_fieldE2eReady, 5000) == WAIT_OBJECT_0);
+    FieldWatch((uintptr_t)g_fieldE2eBuffer);
+    assert(SetEvent(g_fieldE2eGo));
+    assert(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0); /* alive: no trap reached the default handler */
+    DWORD exit = 0;
+    assert(GetExitCodeThread(thread, &exit) && exit == 3);
+    CloseHandle(thread);
+    CloseHandle(g_fieldE2eReady);
+    CloseHandle(g_fieldE2eGo);
+    g_fieldE2eReady = g_fieldE2eGo = NULL;
+    if (works)
+    {
+        assert(g_fieldHitCount > before);
+        assert(FieldWatchArmed((DWORD)g_fieldE2eThreadId));
+    }
+    else
+    {
+        assert(g_fieldWatchThreadCount == 0);
+        assert(g_fieldHitCount == before);
+    }
+    puts("PASS field watch: the self-test ran for real; an armed helper's watched reads and writes were claimed, and a system without watchpoints arms nothing");
+}
+
+/* B.4b end to end: a helper of this test process touches a watched buffer past the 48 places; then the loader's
+ * FieldWatchTick clears its Dr0-Dr2 and their Dr7 bits, and a later touch traps no more. A preview record is known
+ * first, so Dr2 (L2, Dr7 bit 4) is armed too, as in a game with the war table open. Nothing here needs game.dll. */
+static volatile LONG g_fieldCapBuffer[8];
+static volatile LONG g_fieldCapRecord; /* the preview record's +0x240, never touched */
+static HANDLE g_fieldCapReady, g_fieldCapGo, g_fieldCapFilled, g_fieldCapDone;
+
+#define FIELD_CAP_TOUCH(n) g_fieldCapBuffer[(n) & 4] = (LONG)(n)
+static DWORD WINAPI FieldWatchCapThread(void* unused)
+{
+    if (g_fieldCapReady == NULL || !SetEvent(g_fieldCapReady)) return 0;
+    if (g_fieldCapGo == NULL || WaitForSingleObject(g_fieldCapGo, 5000) != WAIT_OBJECT_0) return 0;
+    FIELD_CAP_TOUCH(0); FIELD_CAP_TOUCH(1); FIELD_CAP_TOUCH(2); FIELD_CAP_TOUCH(3);
+    FIELD_CAP_TOUCH(4); FIELD_CAP_TOUCH(5); FIELD_CAP_TOUCH(6); FIELD_CAP_TOUCH(7);
+    FIELD_CAP_TOUCH(8); FIELD_CAP_TOUCH(9); FIELD_CAP_TOUCH(10); FIELD_CAP_TOUCH(11);
+    FIELD_CAP_TOUCH(12); FIELD_CAP_TOUCH(13); FIELD_CAP_TOUCH(14); FIELD_CAP_TOUCH(15);
+    FIELD_CAP_TOUCH(16); FIELD_CAP_TOUCH(17); FIELD_CAP_TOUCH(18); FIELD_CAP_TOUCH(19);
+    FIELD_CAP_TOUCH(20); FIELD_CAP_TOUCH(21); FIELD_CAP_TOUCH(22); FIELD_CAP_TOUCH(23);
+    FIELD_CAP_TOUCH(24); FIELD_CAP_TOUCH(25); FIELD_CAP_TOUCH(26); FIELD_CAP_TOUCH(27);
+    FIELD_CAP_TOUCH(28); FIELD_CAP_TOUCH(29); FIELD_CAP_TOUCH(30); FIELD_CAP_TOUCH(31);
+    FIELD_CAP_TOUCH(32); FIELD_CAP_TOUCH(33); FIELD_CAP_TOUCH(34); FIELD_CAP_TOUCH(35);
+    FIELD_CAP_TOUCH(36); FIELD_CAP_TOUCH(37); FIELD_CAP_TOUCH(38); FIELD_CAP_TOUCH(39);
+    FIELD_CAP_TOUCH(40); FIELD_CAP_TOUCH(41); FIELD_CAP_TOUCH(42); FIELD_CAP_TOUCH(43);
+    FIELD_CAP_TOUCH(44); FIELD_CAP_TOUCH(45); FIELD_CAP_TOUCH(46); FIELD_CAP_TOUCH(47);
+    FIELD_CAP_TOUCH(48); FIELD_CAP_TOUCH(49); FIELD_CAP_TOUCH(50); FIELD_CAP_TOUCH(51);
+    FIELD_CAP_TOUCH(52); FIELD_CAP_TOUCH(53); FIELD_CAP_TOUCH(54); FIELD_CAP_TOUCH(55);
+    if (g_fieldCapFilled != NULL) SetEvent(g_fieldCapFilled);
+    if (g_fieldCapGo == NULL || WaitForSingleObject(g_fieldCapGo, 5000) != WAIT_OBJECT_0) return 0;
+    g_fieldCapBuffer[0] = 99;
+    if (g_fieldCapDone != NULL) SetEvent(g_fieldCapDone);
+    return 7;
+}
+#undef FIELD_CAP_TOUCH
+
+static void FieldWatchCapFixture(void)
+{
+    int works = FieldWatchSelfTest();
+    LONG hitsBefore = g_fieldHitCount, trapsBefore = g_fieldTrapCount;
+    g_fieldCapReady = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldCapGo = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldCapFilled = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldCapDone = CreateEventW(NULL, FALSE, FALSE, NULL);
+    assert(g_fieldCapReady != NULL && g_fieldCapGo != NULL && g_fieldCapFilled != NULL && g_fieldCapDone != NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchCapThread, NULL, 0, NULL);
+    assert(thread != NULL);
+    assert(WaitForSingleObject(g_fieldCapReady, 5000) == WAIT_OBJECT_0);
+    uintptr_t recordBefore = g_previewRecord;
+    g_previewRecord = (uintptr_t)&g_fieldCapRecord - 0x240;
+    FieldWatch((uintptr_t)g_fieldCapBuffer);
+    if (works)
+    {
+        CONTEXT armed = {0};
+        armed.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(SuspendThread(thread) != (DWORD)-1);
+        assert(GetThreadContext(thread, &armed));
+        assert(ResumeThread(thread) != (DWORD)-1);
+        /* Wine may report zeros here (it does in the exception handler); when it reports them, Dr2 is armed */
+        assert(armed.Dr7 == 0 || (armed.Dr2 == (uintptr_t)&g_fieldCapRecord && (armed.Dr7 & 0x10) != 0));
+    }
+    assert(SetEvent(g_fieldCapGo));
+    assert(WaitForSingleObject(g_fieldCapFilled, 5000) == WAIT_OBJECT_0); /* the helper touched 56 places */
+    if (works)
+    {
+        assert(g_fieldHitCount == FIELD_WATCH_HITS && g_fieldTrapCount > trapsBefore);
+        assert(!g_fieldWatchOff);
+        FieldWatchTick();
+        assert(g_fieldWatchOff);
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(SuspendThread(thread) != (DWORD)-1);
+        assert(GetThreadContext(thread, &context));
+        assert(context.Dr0 == 0 && context.Dr1 == 0 && context.Dr2 == 0 && (context.Dr7 & FIELD_WATCH_DR7_BITS) == 0);
+        assert(ResumeThread(thread) != (DWORD)-1);
+        LONG trapsCleared = g_fieldTrapCount;
+        assert(SetEvent(g_fieldCapGo));
+        assert(WaitForSingleObject(g_fieldCapDone, 5000) == WAIT_OBJECT_0);
+        assert(g_fieldTrapCount == trapsCleared && g_fieldHitCount == FIELD_WATCH_HITS); /* the later touch trapped no more */
+    }
+    else
+    {
+        assert(g_fieldHitCount == hitsBefore && g_fieldWatchThreadCount == 0 && !g_fieldWatchOff);
+        FieldWatchTick();
+        assert(!g_fieldWatchOff);
+        assert(SetEvent(g_fieldCapGo));
+        assert(WaitForSingleObject(g_fieldCapDone, 5000) == WAIT_OBJECT_0);
+    }
+    DWORD exit = 0;
+    assert(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0);
+    assert(GetExitCodeThread(thread, &exit) && exit == 7); /* the process and its helper survived */
+    CloseHandle(thread);
+    CloseHandle(g_fieldCapReady);
+    CloseHandle(g_fieldCapGo);
+    CloseHandle(g_fieldCapFilled);
+    CloseHandle(g_fieldCapDone);
+    g_fieldCapReady = g_fieldCapGo = g_fieldCapFilled = g_fieldCapDone = NULL;
+    g_previewRecord = recordBefore;
+    puts("PASS field watch: past the 48 places the loader's thread clears the armed threads' Dr0-Dr2 and all their Dr7 bits (Dr2's L2 too), logs once, and later touches do not trap");
+}
+
+#include "live_mods_test.c" /* after the helpers it shares (Edit, FixtureLoad) */
+#include "live_content_test.c" /* after live_mods_test.c and the behaviour and registry helpers */
+
 int main(int argc, char** argv)
 {
     strcpy(g_build, "25480438");
+    for (int i = 0; i < MAX_MODS; i++) g_mods[i].order = i; /* load order as the plan creates them */
     for (int i = 0; i < 2; i++) { g_mods[i].loaded = 1; g_mods[i].log = INVALID_HANDLE_VALUE; }
     strcpy(g_mods[0].id, "a"); strcpy(g_mods[1].id, "b");
     g_modCount = 2;
     FieldsFixture();
     LiveFixture();
     LiveSyncFixture();
+    LiveModsFixture();
+    OwnLiveFixture();
+    LiveCodeFixture();
+    EditsForgetFixture();
+    NetTypesFixture();
+    HotDataFixture();
+    ContentNumbersFixture();
+    ContentInstallFixture();
+    ContentWeaponsFixture();
+    ContentDifficultyFixture();
+    ChannelGameFixture();
+    ChannelFixture();
+    LiveBrowseFixture();
     LuaBridgeFixture();
     ActionsFixture();
     PassivesFixture();
@@ -3180,13 +4020,16 @@ int main(int argc, char** argv)
     FarHookFixture();
     HookChainFixture();
     EventsFixture();
+    ManyModsFixture();
     AbilitiesFixture();
     LooseGuardFixture();
     ReaperFixture();
     ShadowLaunchFixture();
     WeaponOrderFixture();
+    RegisteredItemsFixture();
     SetupOrderFixture();
     BehaviourStubsFixture();
+    ContentBehaviourFixture();
     ExtraFixtures();
     MeleeFixture();
     Component* c = &g_components[0]; g_componentCount = 1;
@@ -3307,9 +4150,10 @@ int main(int argc, char** argv)
     wchar_t temporary[MAX_PATH], plan[MAX_PATH];
     assert(GetTempPathW(MAX_PATH, temporary) && GetTempFileNameW(temporary, L"hfs", 0, plan));
     FILE* file = _wfopen(plan, L"wb"); assert(file);
-    fputs("mod\ta\tfixture\t-\nstat\ta\tcomponent\tFixture\t0000000000000001\t0\t0\tu32\t00000014\t0000000A\t0\t1\t0\tfixture\n", file);
+    fputs("mod\ta\tfixture\t-\nmod_version\ta\t1.2.3 beta\nmod_version\tnobody\t9\nstat\ta\tcomponent\tFixture\t0000000000000001\t0\t0\tu32\t00000014\t0000000A\t0\t1\t0\tfixture\n", file);
     fclose(file); g_statCount = 0; g_modCount = 0;
     assert(ReadPlan(plan) == 0 && g_statCount == 1 && g_modCount == 1 && !wcscmp(g_mods[0].dll, L"-"));
+    assert(!strcmp(g_mods[0].version, "1.2.3 beta")); /* a version for no mod of the plan is dropped */
     assert(g_stats[0].hasExpect && g_stats[0].expect == 10 && g_stats[0].value == 20);
     /* More observations than the loader once held (16384), and one it cannot read: the plan, and its mods, still load. */
     file = _wfopen(plan, L"wb"); assert(file);
@@ -3317,6 +4161,7 @@ int main(int argc, char** argv)
     fputs("observe\tNoSuchTable\t-\t0\t1\t4\ti32\nmod\ta\tfixture\t-\n", file);
     fclose(file); g_statCount = 0; g_modCount = 0; g_statsProbeCount = 0; g_statsProbesSkipped = 0;
     assert(ReadPlan(plan) == 0 && g_modCount == 1 && g_statsProbeCount == 20000 && g_statsProbesSkipped == 1);
+    assert(g_mods[0].version[0] == 0); /* a plan without the line: no version */
     g_statsProbeCount = 0;
     DeleteFileW(plan);
     if (argc == 3)
@@ -3346,9 +4191,22 @@ int main(int argc, char** argv)
         assert(!ModuleAt(0, where, sizeof where) && !ModuleAt((uintptr_t)heap, where, sizeof where));
         free(heap);
     }
+    CrashNotesFixture();
+    LogHeaderFixture();
+    ModIdentityFixture();
+    StatusFixture();
     DifficultyFixture();
+    ClusterRingsFixture();
+    TownsFixture();
+    RecordMapFixture();
+    TerrainFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
+    NetworkWidthFixture();
+    GrowthMagicFixture();
+    GrowthLookupFixture();
+    GrowthSitesFixture();
+    GrowthTableFixture();
     {
         /* game.dll mapped at the top of the address space (a tester's PC: level 11 refused, "no memory within 2 GB"):
          * nothing fits above it, so the moved tables go below it, still within a signed 32-bit offset */
@@ -3381,11 +4239,18 @@ int main(int argc, char** argv)
     }
     StratagemCategoriesFixture();
     LoadoutPreviewFixture();
+    FieldWatchClaimFixture();
+    FieldWatchOffFixture();
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", L"1"); /* the diagnostic's own tests opt in */
+    FieldWatchEndToEndFixture();
+    FieldWatchCapFixture();
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
+    ArmoryDiagFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
-        "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
-        "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; "
-        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn");
+        "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
+        "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; registered items: a full registry's export, names escaped; "
+        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 167 sites, a table grown, built again on a reload and grown again");
     return 0;
 }

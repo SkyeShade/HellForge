@@ -27,6 +27,12 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
     public bool DealSubfactions { get; init; } = true;
     public bool DealSeaf { get; init; } = true;
+    // The launcher's Mods page while the session runs (/hellforge/live-mods), once the session's LiveMods is set up.
+    public LiveModsHub? LiveMods { get; init; }
+    // Pickups paid here go to the other players' backends, and theirs come in, through multiplayer (PickupShare).
+    public PickupRelay? Pickups { get; init; }
+    // The lobby browser's API (null: the routes answer that there is none); its multiplayer services are attached later.
+    public Multiplayer.BrowseApi? Browse { get; init; }
 }
 
 // A synthetic backend contract probe, not a Steam ownership verifier or a game launcher.
@@ -82,6 +88,9 @@ public static partial class LocalBackend
     // A "bodySource" names an embedded data file and optional "#key" (default "items") whose value is the
     // body: the item catalogue and progression data rebuilt from the user's own snapshot by
     // scripts/BuildItemCatalog.py, and the game client's feature switches read from it (game-client-config.json).
+    // "reverse" serves an array source back to front: the warbond list (/SeasonPass) was read from the client's memory,
+    // which holds it oldest first, and served so the game listed it oldest first, Helldivers Mobilize at the top, where
+    // the live game lists the newest first.
     public static Dictionary<string, JsonElement> LoadStartupFixtures()
     {
         using var document = LoadResource("startup-fixtures.json");
@@ -95,6 +104,9 @@ public static partial class LocalBackend
                 using var data = LoadResource(parts[0]);
                 body = data.RootElement.GetProperty(parts.Length > 1 ? parts[1] : "items").Clone();
             }
+            if (endpoint.TryGetProperty("reverse", out var reverse) && reverse.GetBoolean())
+                body = JsonSerializer.SerializeToElement(new JsonArray([.. body.EnumerateArray().Reverse()
+                    .Select(entry => JsonNode.Parse(entry.GetRawText()))]), BackendJson.Default.JsonNode);
             fixtures.Add(endpoint.GetProperty("path").GetString()!, body);
         }
         return fixtures;
@@ -108,7 +120,7 @@ public static partial class LocalBackend
         var liveWar = settings.OpenWar ? null : settings.LiveWar;
         var profile = settings.Profile;
         if (settings.StartupFixtures) profile ??= ProfileStore.Open(null);
-        var missions = profile != null ? new MissionService(profile) : null;
+        var missions = profile != null ? new MissionService(profile, settings.Pickups) : null;
         // Friends' lobbies and profiles for the social tab, filled by multiplayer when a caller supplies it.
         var presence = settings.Presence ?? new FriendPresence();
         var playFab = new PlayFabService(presence);
@@ -128,6 +140,16 @@ public static partial class LocalBackend
         }
         var startup = new StartupBodies(profile, liveWar, fixtures);
         if (settings.RegisteredItems != null) settings.RegisteredItems.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+        // Purchases price items by the catalogue the game was served, mods' registered items included.
+        JsonElement? Catalogue(uint mixId)
+        {
+            if (!startup.TryGet("/Progression/items", out var items, out _)) return null;
+            items = settings.RegisteredItems?.Apply("/Progression/items", items) ?? items;
+            foreach (var item in items.EnumerateArray())
+                if (item.TryGetProperty("mixId", out var id) && id.TryGetUInt32(out var found) && found == mixId) return item;
+            return null;
+        }
+        var purchases = profile != null ? new Purchases(profile, Catalogue) : null;
         Directory.CreateDirectory(settings.EvidenceDirectory);
         var auditPath = Path.Combine(settings.EvidenceDirectory, "requests.jsonl");
         // A fresh evidence directory prevents accidental mixing of runs.
@@ -145,9 +167,10 @@ public static partial class LocalBackend
         var app = builder.Build();
         var requests = new Requests
         {
-            Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Presence = presence,
+            Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
-            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath
+            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath, Browse = settings.Browse,
+            LiveMods = settings.LiveMods
         };
         app.Run(requests.HandleAsync);
         return app;
