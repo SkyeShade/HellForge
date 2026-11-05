@@ -1,5 +1,7 @@
 # HellForge on Linux (Proton)
 
+<!-- diataxis: how-to -->
+
 For players on Linux: the graphical installer, the launcher and the setup wizard run natively, while the Windows session
 runner, backend, and game run through Proton inside the offline network namespace. This page covers installing,
 updating, setup, sessions, Settings, isolation and what is untested. Linux support is experimental. The native launcher

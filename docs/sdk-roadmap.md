@@ -1,5 +1,7 @@
 # HellForge modding SDK: roadmap
 
+<!-- diataxis: explanation -->
+
 For contributors: what is left in the mod SDK. [modding/README.md](modding/README.md) and
 [sdk-reference.md](sdk-reference.md) document what exists, [engine-roadmap.md](engine-roadmap.md) is the engine's side,
 and [roadmap.md](roadmap.md) is the overview.

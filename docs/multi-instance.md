@@ -1,5 +1,7 @@
 # Several installations on one PC (test mode)
 
+<!-- diataxis: how-to -->
+
 For testing co-op without a second PC: two or more HellForge installations run a game each, at the same time, under
 one Steam account, and join each other. It is a test set-up, switched on by `HELLFORGE_MULTI_INSTANCE=1` in the
 session runner's environment. Without the switch nothing below changes what a session does.

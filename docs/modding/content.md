@@ -1,5 +1,7 @@
 # Content
 
+<!-- diataxis: how-to -->
+
 This chapter is for code mod authors who want to change the game's weapons, stratagems and other entities, or add new
 ones: entities, weapons, projectiles and damage types, stratagems and their selection headings, behaviours, abilities
 and a difficulty level.

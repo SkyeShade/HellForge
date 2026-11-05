@@ -1,5 +1,7 @@
 # Logic at run time
 
+<!-- diataxis: how-to -->
+
 This chapter is for code mod authors whose mod needs to do something while the game runs: listen to what happens, make
 the game do things, and change values live. Content itself stays game data ([content](content.md)); this page is the
 logic around it.

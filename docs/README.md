@@ -37,6 +37,8 @@ Reference and related pages:
 - [SDK reference](sdk-reference.md): every API call, component field and content constant (generated from the SDK).
 - [Launchers of your own](external-launchers.md): for authors of mod managers and launchers; `HellForge.Cli.exe` and the
   files it reads and writes.
+- [Mods that change while the game runs](modding/live.md): for code mod authors; what HellForge does when a mod is
+  switched on or off during a session, and how a mod takes part.
 - [Building a lobby browser](lobby-browser.md): for front-end developers drawing their own lobby browser on the ship's
   terminal; the SDK 16 calls, the terminal's visit, what each lobby says and the rules a browser keeps.
 
@@ -58,6 +60,8 @@ Reference and related pages:
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs
   two games under one Steam account.
 - [Stratagem selection categories](stratagem-categories.md): the research behind SDK 8's selection headings.
+- [The Steam bridge](steam-bridge.md): how the sandboxed game reaches Steam through a broker; the design, the
+  census of Steam calls and the phases.
 - [Changelog](../CHANGELOG.md): what changed in each release, and what `dev` has that is not released yet.
 - [Roadmap](roadmap.md): what HellForge has, what is being built, and what comes next.
 - [Engine roadmap](engine-roadmap.md): planned engine work, starting with network isolation.

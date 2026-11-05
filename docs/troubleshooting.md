@@ -1,5 +1,7 @@
 # Troubleshooting
 
+<!-- diataxis: how-to -->
+
 For players: problems people hit when setting up or playing HellForge, the message HellForge shows for each, and what
 to do. The launcher's messages are quoted as it shows them. If your problem is not here, [collect the logs](#collecting-logs)
 and [ask](#where-to-ask).

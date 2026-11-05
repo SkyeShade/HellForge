@@ -1,5 +1,7 @@
 # The Steam download of the supported build
 
+<!-- diataxis: explanation -->
+
 How setup gets the HELLDIVERS 2 build HellForge runs when Steam has another one, and why HellForge hosts no game files.
 
 HellForge runs one HELLDIVERS 2 build, the supported build in `src/HellForge.Core/supported-build.json`. That file pins

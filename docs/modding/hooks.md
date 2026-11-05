@@ -1,5 +1,7 @@
 # Hooks and game memory
 
+<!-- diataxis: how-to -->
+
 This chapter is for code mod authors who need something the SDK's fields, events and actions do not cover yet. For
 that, a code mod has the same reach HellForge's engine has: it can find any function of the game, hook it (run your code
 when the game calls it, with the original a call away), read and write any memory, and patch the game's code.

@@ -1,5 +1,7 @@
 # Mods that change while the game runs
 
+<!-- diataxis: how-to -->
+
 HellForge can change a running session's mods without a restart: when a player switches a mod on or off on the Mods
 page during a session, and when mod sync gives a joining player the host's mods (**APPLY AND JOIN**,
 [docs/mods.md](../mods.md#changing-mods-while-you-play)). This page is for mod authors: what HellForge does with your

@@ -1,5 +1,7 @@
 # Using mods
 
+<!-- diataxis: how-to -->
+
 For players: how to add, order and remove mods in HellForge, and what friends need to play together. To make mods, see
 [modding/README.md](modding/README.md). Mod managers and launchers of their own use
 [external-launchers.md](external-launchers.md).

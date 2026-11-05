@@ -1,5 +1,7 @@
 # Tools and sharing
 
+<!-- diataxis: how-to -->
+
 This page is for mod authors who want more than the launcher's buttons. It covers how HellForge builds mods, working in
 an IDE, building from a terminal or in the HellForge repository, prebuilt mods, and releasing a mod.
 

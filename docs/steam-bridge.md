@@ -1,5 +1,7 @@
 # The Steam bridge: the game at low integrity
 
+<!-- diataxis: explanation -->
+
 **Status: in development** on `port/lockdown-0.3.0`. Built and tested with fixtures: the census, the broker and its
 channel (phase 2), the generated bridge with its first allow-list (phase 3), and the session side of phase 4. In game,
 one sandboxed solo session reached the title screen (2026-10-23, phase 4 below); a mission, a controller and co-op are

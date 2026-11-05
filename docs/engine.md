@@ -1,5 +1,7 @@
 # The engine
 
+<!-- diataxis: explanation -->
+
 This page is the starting point for contributors to HellForge's engine: what it is made of, where each part lives in
 this repository, how to build it and how to run its tests. Mod authors start at [modding/README.md](modding/README.md)
 instead.

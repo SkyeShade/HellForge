@@ -1,5 +1,7 @@
 # How mods run
 
+<!-- diataxis: explanation -->
+
 This page is for mod authors who have made a first mod and are planning the next one. It covers the kinds of mods, the
 manifest, when your code runs and on which thread, the three ways to change game data, how content is named, co-op,
 load order, compatibility and limits.

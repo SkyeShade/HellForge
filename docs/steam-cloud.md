@@ -1,5 +1,7 @@
 # Steam Cloud stays in the profile
 
+<!-- diataxis: explanation -->
+
 For people working on HellForge: which files the game keeps in Steam Cloud, how it reaches them, and how HellForge's
 `steam_api64.dll` stand-in keeps them in each HellForge profile so they never mix with the normal game's.
 
