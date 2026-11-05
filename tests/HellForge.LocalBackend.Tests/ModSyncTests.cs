@@ -53,7 +53,9 @@ static partial class ModSyncTests
             SessionFile = ModSyncSession.PathIn(new InstallLayout(folder));
             void Note(string line) { lock (Log) Log.Add(line); }
             Lobby = new LobbyService(transport, Inbox.Add, Note, own.Digest);
-            Sync = new ModSync(transport, new ModSyncPaths(Mods, Run, evidence, SessionFile), own, peer => "Player " + LobbyService.EntityId(peer), Note, verified, sandboxed) { Display = Shown };
+            // no game on a test machine: a part list's parts all download (ModSyncPartsTests gives a synthetic one)
+            Sync = new ModSync(transport, new ModSyncPaths(Mods, Run, evidence, SessionFile), own, peer => "Player " + LobbyService.EntityId(peer), Note, verified, sandboxed)
+                { Display = Shown, LocalGames = () => [], LocalIndex = () => null };
             Lobby.ModsRefused = Sync.OfferMods;
             Lobby.LegacyAdmits = Sync.LegacyAdmits;
             Lobby.JoinAs = Sync.JoinAs;

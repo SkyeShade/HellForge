@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using HellForge.Core;
+using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
 
 namespace HellForge.LocalBackend.Multiplayer;
@@ -19,7 +20,11 @@ namespace HellForge.LocalBackend.Multiplayer;
 //             mods.files [req, id, hash, start]                 -> mods.filelist [req, "ok", total, start, (path, size, sha256)...]
 //                                                                  (at most PageFiles files a page)
 //             mods.get   [req, id, hash, path, offset, length]  -> mods.chunk [req, "ok", offset, bytes]
-//           or [req, "refused", reason]. The player can turn sharing off (ModSettings.Share).
+//             mods.parts [req, id, hash, start]                 -> mods.partlist [req, "ok", total, start,
+//                                                                  (path, offset, length, type, name, part, sha256)...]
+//                                                                  (at most PageParts a page)
+//           or [req, "refused", reason]. The player can turn sharing off (ModSettings.Share). An offer's fourth field,
+//           PartsFlag, says this host answers mods.parts (an older one has three fields).
 //   joiner: a mod offer for a join this machine asked for (Expected: LobbyService.JoinedRecently) becomes an offer for
 //           the game (ModSyncPlan; HfApi sync_state, the in-game editor's MOD
 //           SYNC view). A code or raw mod HellForge has not verified waits for the player's trust (TRUST on the prompt:
@@ -28,10 +33,12 @@ namespace HellForge.LocalBackend.Multiplayer;
 //           the player's to install. A trust the sandboxed game answers counts only in sandboxed sessions too, a Steam
 //           friend's included (TrustedMod.Sandboxed): any code in that game can call sync_answer; the launcher's prompt,
 //           outside the sandbox, gives one that counts everywhere.
-//           On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore). On
+//           On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore). From a host
+//           that lists parts, the resource parts of a mod's game patch files that this PC's own game has are written
+//           from it, and only the rest is downloaded (SyncParts; docs/multiplayer.md "Mod sync from your own game"). On
 //           restart it writes the next session's mods (ModSyncSession) and stops this session ("mod-sync" in
 //           stop-observation.signal), which the launcher starts again with them.
-public sealed class ModSync : IAsyncDisposable
+public sealed partial class ModSync : IAsyncDisposable
 {
     // PageFiles: a file list page's files (3 fields each, paths of at most 240 characters) stay within a frame's 4096
     // fields and 1 MiB.
@@ -41,6 +48,9 @@ public sealed class ModSync : IAsyncDisposable
     // upload to PeerRate a machine and TotalRate in all: caps against abuse, at the Steam link's own send rate
     // (SteamPeerTransport.SendRate).
     public const int ChunkBytes = 128 << 10, Window = 4, MinWindow = 2, MaxWindow = 16, QueuedPerPeer = MaxWindow + 8, PageFiles = 1000;
+    // A part list page's parts (7 fields each) stay within a frame's 4096 fields and 1 MiB.
+    public const int PageParts = 500;
+    public const string PartsFlag = "parts";
     public const long PeerRate = 8L << 20, TotalRate = 16L << 20;
     public static readonly TimeSpan TargetDelay = TimeSpan.FromMilliseconds(100), PaceBurst = TimeSpan.FromMilliseconds(40);
     // A host's refusal for more requests than it queues (the joiner then asks for fewer).
@@ -83,6 +93,8 @@ public sealed class ModSync : IAsyncDisposable
         this.nameOf = nameOf;
         this.log = log;
         this.verified = verified ?? VerifiedMods.Contains;
+        LocalGames = OwnGames;
+        LocalIndex = OwnIndex;
         // downloads an earlier session left unfinished (it stopped mid-download)
         SyncedStore.Clean(modsFolder);
         serving = Task.Run(ServeAsync);
@@ -148,10 +160,10 @@ public sealed class ModSync : IAsyncDisposable
         {
             switch (frame.Type)
             {
-                case "mods.files" or "mods.get": Queue(peer, frame); break;
+                case "mods.files" or "mods.get" or "mods.parts": Queue(peer, frame); break;
                 case "mods.offer": Offered(peer, frame); break;
                 case "mods.info": Info(peer, frame); break;
-                case "mods.filelist" or "mods.chunk": Answered(peer, frame); break;
+                case "mods.filelist" or "mods.chunk" or "mods.partlist": Answered(peer, frame); break;
             }
         }
         catch (InvalidDataException error) { log($"Mod sync: bad {frame.Type} from {LobbyService.EntityId(peer)}: {error.Message}"); }
@@ -174,7 +186,8 @@ public sealed class ModSync : IAsyncDisposable
     long totalNext;
 
     // What one grant may download: the whole shared set twice (a retry after a failed check), and a little over.
-    long GrantBudget => 2 * (own?.Mods.Where(m => m.Tier == CoopTier.Shared).Sum(m => m.Bytes) ?? 0) + MaxWindow * ChunkBytes;
+    // A recipe mod's rebuilt game files count too: a joiner whose game lacks what the recipe needs gets them from here.
+    long GrantBudget => 2 * (own?.Mods.Where(m => m.Tier == CoopTier.Shared).Sum(m => m.Bytes + HostOutputs(m).Values.Sum(f => f.Size)) ?? 0) + MaxWindow * ChunkBytes;
 
     // A joiner with other gameplay mods is about to be refused (LobbyService.ModsRefused): this session's mod set goes to
     // them first, and they may download it for GrantTime. True when they may (this player shares, and the set is known).
@@ -195,7 +208,11 @@ public sealed class ModSync : IAsyncDisposable
                 foreach (var ended in grants.Where(g => g.Value.Until <= now).Select(g => g.Key).ToList()) grants.Remove(ended);
                 if (!grants.TryGetValue(joiner, out grant)) grants[joiner] = grant = new Grant(now + GrantFor, GrantBudget);
             }
-        Send(joiner, new Frame("mods.offer").Add(lobbyId).Add(wire).Add(share ? "1" : "0"));
+        var frame = new Frame("mods.offer").Add(lobbyId).Add(wire).Add(share ? "1" : "0");
+        // a 0.3 joiner reads three fields; this HellForge's joiners take the part lists, warmed now for the download
+        if (!legacy) frame.Add(PartsFlag);
+        Send(joiner, frame);
+        if (share && !legacy) WarmParts(current.Set);
         log($"Mod sync: {LobbyService.EntityId(joiner)} lacks this session's mods; " + (grant == null ? "sharing is off."
             : $"they may download them until {grant.Until:HH:mm:ss} UTC ({Megabytes(grant.Left)} left)."));
         return share;
@@ -436,25 +453,19 @@ public sealed class ModSync : IAsyncDisposable
         if (mod == null || mod.Class == ModClass.Bundled || mod.Folder == null) return Refused(frame, "not one of the host's mods");
         if (mod.Tier != CoopTier.Shared) return Refused(frame, "a per-player mod is each player's own");
         if (mod.Files.Count > SyncedStore.MaxFiles) return Refused(frame, $"the mod has more than {SyncedStore.MaxFiles} files");
-        return frame.Type == "mods.files" ? FilePage(frame, mod) : Chunk(frame, mod, mod.Folder, grant);
-    }
-
-    // mods.files: a page of the mod's file list.
-    static Frame FilePage(Frame frame, ModSetEntry mod)
-    {
-        if (!int.TryParse(frame.Text(3), NumberStyles.None, CultureInfo.InvariantCulture, out var start) || start >= mod.Files.Count)
-            return Refused(frame, "not a page of the mod's file list");
-        var page = mod.Files.Skip(start).Take(PageFiles).ToList();
-        var list = new Frame("mods.filelist").Add(frame.Text(0)).Add("ok").Add(mod.Files.Count).Add(start);
-        foreach (var file in page) list.Add(file.Path).Add(file.Size).Add(file.Sha256);
-        return list;
+        return frame.Type switch
+        {
+            "mods.files" => FilePage(frame, mod),
+            "mods.parts" => PartPage(frame, mod),
+            _ => Chunk(frame, mod, mod.Folder, grant),
+        };
     }
 
     // mods.get: a part of one of the mod's files (in its folder), within the grant's bytes.
     Frame Chunk(Frame frame, ModSetEntry mod, string folder, Grant grant)
     {
         var path = frame.Text(3);
-        var listed = mod.Files.FirstOrDefault(f => f.Path == path);
+        var listed = mod.Files.FirstOrDefault(f => f.Path == path) ?? HostOutputs(mod).GetValueOrDefault(path);
         if (listed == null || !long.TryParse(frame.Text(4), NumberStyles.None, CultureInfo.InvariantCulture, out var offset) ||
             !int.TryParse(frame.Text(5), NumberStyles.None, CultureInfo.InvariantCulture, out var length) ||
             length is < 1 or > ChunkBytes || offset > listed.Size - length)
@@ -476,7 +487,8 @@ public sealed class ModSync : IAsyncDisposable
     }
 
     static Frame Refused(Frame request, string reason) =>
-        new Frame(request.Type == "mods.files" ? "mods.filelist" : "mods.chunk").Add(request.Count > 0 ? request.Text(0) : "").Add("refused").Add(reason);
+        new Frame(request.Type switch { "mods.files" => "mods.filelist", "mods.parts" => "mods.partlist", _ => "mods.chunk" })
+            .Add(request.Count > 0 ? request.Text(0) : "").Add("refused").Add(reason);
 
     void Send(ulong peer, Frame frame) => transport.Send(peer, frame.Encode(), reliable: true);
 
@@ -496,10 +508,13 @@ public sealed class ModSync : IAsyncDisposable
         public string State = "offer", Message = "";
         public long Done;
         public bool Live; // the running game can take the host's mods: "restart" changes them without a restart
+        public bool Parts; // the host lists its mods' parts (mods.parts): what this PC's game has is not downloaded
     }
 
     Offer? offer;
     int versions;
+    // Hosts whose last offer said they list parts (PartsFlag).
+    readonly HashSet<ulong> partHosts = [];
     CancellationTokenSource? downloading;
     readonly Dictionary<string, (ulong Peer, TaskCompletionSource<Frame> Reply)> waiting = new(StringComparer.Ordinal);
     long requestIds;
@@ -539,6 +554,9 @@ public sealed class ModSync : IAsyncDisposable
         if (Expected?.Invoke(host, lobbyId) != true) { log($"Mod sync: dropped a mod offer from {LobbyService.EntityId(host)} for a join not asked for."); return; }
         var connection = LobbyService.ConnectionPrefix + lobbyId + ";" + LobbyService.EntityId(host);
         var (set, shares) = (frame.Text(1), frame.Text(2) == "1");
+        lock (gate)
+            if (frame.Count > 3 && frame.Text(3) == PartsFlag) partHosts.Add(host);
+            else partHosts.Remove(host);
         _ = Task.Run(() =>
         {
             try
@@ -615,7 +633,7 @@ public sealed class ModSync : IAsyncDisposable
         {
             downloading?.Cancel();
             downloading = null;
-            made = offer = new Offer(++versions, host, nameOf(host), connection, set, shares, plan, legacy) { Live = live };
+            made = offer = new Offer(++versions, host, nameOf(host), connection, set, shares, plan, legacy) { Live = live, Parts = partHosts.Contains(host) };
             (made.State, made.Message) = Describe(made);
         }
         log($"Mod sync: {made.HostName}'s lobby: {plan.Verdict}, " + string.Join(", ", plan.Items.Select(i => $"{i.Mod.Id} {ModSyncPlan.ActionName(i.Action)}")) + ".");
@@ -809,7 +827,8 @@ public sealed class ModSync : IAsyncDisposable
             var declared = ModSets.Declared(files.Select(f => f.Path), Read(manifest)!, Read(stats), Read(spec));
             if (declared is { } kind && !Allowed(mod.Id, mod.Hash))
                 throw new InvalidDataException($"{mod.Name} {ModSets.Unchecked(kind)} and is neither on HellForge's verified list nor trusted.");
-            await DownloadFilesAsync(current, mod, [.. files.Where(f => !first.Contains(f))], partial, window, token);
+            await DownloadRestAsync(current, mod, [.. files.Where(f => !first.Contains(f))], partial, window, token);
+            await RecipeOutputsAsync(current, mod, partial, window, token);
         }
         catch
         {
@@ -869,19 +888,12 @@ public sealed class ModSync : IAsyncDisposable
         return file;
     }
 
-    // Files in order, each written and hashed in order: their chunks are asked for on across the files (a mod of many small
-    // files waits a round trip a file no more), window.Size chunks' bytes at a time in at most window.Ceiling requests,
-    // and each whole chunk that comes back tells the window how long it took.
+    // Files in order, each written and hashed in order (PumpAsync asks for their chunks across the files).
     async Task DownloadFilesAsync(Offer current, ModSetEntry mod, IReadOnlyList<ModFile> files, string partial, DownloadWindow window, CancellationToken token)
     {
-        var asked = new Queue<(int File, long Offset, int Length, long Sent, Task<Frame> Reply)>();
-        var (asking, next) = (0, 0L); // the next chunk to ask for: its file, its offset
-        long askedBytes = 0;
         var open = -1; // the file being written
         FileStream? output = null;
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Task<Frame> Get(int file, long offset, int length) =>
-            RequestAsync(current.Host, new Frame("mods.get").Add(mod.Id).Add(mod.Hash).Add(files[file].Path).Add(offset).Add(length), token);
         // Every file before index written and checked (an empty one too), index's begun.
         async Task MoveTo(int index)
         {
@@ -900,18 +912,52 @@ public sealed class ModSync : IAsyncDisposable
                 output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
             }
         }
-        // The window's chunks asked for, across the files.
+        try
+        {
+            await PumpAsync(current, mod, files, Chunks(files), window, async (file, _, bytes) =>
+            {
+                await MoveTo(file);
+                await output!.WriteAsync(bytes, token);
+                hash.AppendData(bytes);
+            }, token);
+            await MoveTo(files.Count);
+        }
+        finally
+        {
+            if (output != null) await output.DisposeAsync();
+        }
+    }
+
+    // Each file's chunks in order.
+    static IEnumerable<(int File, long Offset, int Length)> Chunks(IReadOnlyList<ModFile> files)
+    {
+        for (var file = 0; file < files.Count; file++)
+            for (long offset = 0; offset < files[file].Size; offset += ChunkBytes)
+                yield return (file, offset, (int)Math.Min(ChunkBytes, files[file].Size - offset));
+    }
+
+    // Chunks (file, offset, length) asked for across the files, window.Size chunks' bytes at a time in at most
+    // window.Ceiling requests, and handed to write in the order asked; each whole chunk that comes back tells the window
+    // how long it took.
+    async Task PumpAsync(Offer current, ModSetEntry mod, IReadOnlyList<ModFile> files, IEnumerable<(int File, long Offset, int Length)> pieces,
+        DownloadWindow window, Func<int, long, byte[], Task> write, CancellationToken token)
+    {
+        var asked = new Queue<(int File, long Offset, int Length, long Sent, Task<Frame> Reply)>();
+        using var next = pieces.GetEnumerator();
+        var more = next.MoveNext();
+        long askedBytes = 0;
+        Task<Frame> Get(int file, long offset, int length) =>
+            RequestAsync(current.Host, new Frame("mods.get").Add(mod.Id).Add(mod.Hash).Add(files[file].Path).Add(offset).Add(length), token);
         void AskMore()
         {
-            while (asked.Count < window.Ceiling && asking < files.Count)
-                if (next >= files[asking].Size) (asking, next) = (asking + 1, 0);
-                else
-                {
-                    var length = (int)Math.Min(ChunkBytes, files[asking].Size - next);
-                    if (asked.Count > 0 && askedBytes + length > (long)window.Size * ChunkBytes) return;
-                    asked.Enqueue((asking, next, length, Stopwatch.GetTimestamp(), Get(asking, next, length)));
-                    (next, askedBytes) = (next + length, askedBytes + length);
-                }
+            while (more && asked.Count < window.Ceiling)
+            {
+                var (file, offset, length) = next.Current;
+                if (asked.Count > 0 && askedBytes + length > (long)window.Size * ChunkBytes) return;
+                asked.Enqueue((file, offset, length, Stopwatch.GetTimestamp(), Get(file, offset, length)));
+                askedBytes += length;
+                more = next.MoveNext();
+            }
         }
         // A chunk's answer. A host that queues fewer requests than this window (an older one queued 8): fewer, and this
         // one again (crowded).
@@ -928,30 +974,20 @@ public sealed class ModSync : IAsyncDisposable
             }
             return (reply, crowded);
         }
-        try
+        while (true)
         {
-            while (true)
-            {
-                AskMore();
-                if (!asked.TryDequeue(out var chunk)) break;
-                askedBytes -= chunk.Length;
-                var (reply, crowded) = await AnswerOf(chunk.Reply, chunk.File, chunk.Offset, chunk.Length);
-                if (reply.Text(1) != "ok") throw new InvalidDataException($"{mod.Name}: the host refused ({(reply.Count > 2 ? reply.Text(2) : "no reason")}).");
-                var bytes = reply.Bytes(3);
-                if (reply.Text(2) != chunk.Offset.ToString(CultureInfo.InvariantCulture) || bytes.Length != chunk.Length)
-                    throw new InvalidDataException($"{mod.Name}: the host sent the wrong part of {files[chunk.File].Path}.");
-                // only whole chunks are timed: a short one is quicker on the wire and would look like an emptier queue
-                if (!crowded && chunk.Length == ChunkBytes) window.Answered(Stopwatch.GetElapsedTime(chunk.Sent));
-                await MoveTo(chunk.File);
-                await output!.WriteAsync(bytes, token);
-                hash.AppendData(bytes);
-                Progress(current, bytes.Length);
-            }
-            await MoveTo(files.Count);
-        }
-        finally
-        {
-            if (output != null) await output.DisposeAsync();
+            AskMore();
+            if (!asked.TryDequeue(out var chunk)) break;
+            askedBytes -= chunk.Length;
+            var (reply, crowded) = await AnswerOf(chunk.Reply, chunk.File, chunk.Offset, chunk.Length);
+            if (reply.Text(1) != "ok") throw new InvalidDataException($"{mod.Name}: the host refused ({(reply.Count > 2 ? reply.Text(2) : "no reason")}).");
+            var bytes = reply.Bytes(3);
+            if (reply.Text(2) != chunk.Offset.ToString(CultureInfo.InvariantCulture) || bytes.Length != chunk.Length)
+                throw new InvalidDataException($"{mod.Name}: the host sent the wrong part of {files[chunk.File].Path}.");
+            // only whole chunks are timed: a short one is quicker on the wire and would look like an emptier queue
+            if (!crowded && chunk.Length == ChunkBytes) window.Answered(Stopwatch.GetElapsedTime(chunk.Sent));
+            await write(chunk.File, chunk.Offset, bytes);
+            Progress(current, bytes.Length);
         }
     }
 

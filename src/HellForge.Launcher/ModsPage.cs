@@ -49,7 +49,7 @@ public partial class MainWindow
     void InitializeMods()
     {
         OpenModsButton.Click += (_, _) => { if (paths.ModsFolder != null) OpenFolder(paths.ModsFolder); };
-        RefreshModsButton.Click += (_, _) => { ForgetAssetTries(); RefreshMods(); };
+        RefreshModsButton.Click += (_, _) => { ForgetAssetTries(); ForgetSyncIndex(); RefreshMods(); };
         AddModsButton.Click += async (_, _) => await PickMods();
         OpenModsButton.IsEnabled = RefreshModsButton.IsEnabled = paths.ModsFolder != null;
         AddModsButton.IsEnabled = paths.InstallRoot != null;
@@ -251,6 +251,7 @@ public partial class MainWindow
         // joiners of a host who enforces their stat changes play with them: such public lobbies are hidden on the Galactic Map unless shown
         panel.Children.Add(SettingSwitch("Show lobbies with host-enforced stat changes", "You would play with the host's changes, not your own.",
             settings.ShowEditedStats, on => ModSettings.SetShowEditedStats(modsFolder, on), "the mod sync setting"));
+        AddSyncIndexRow(panel);
 
         // Trusted (TRUST on the in-game prompt): each exact mod, who hosted it and when. Untrusting it deletes its downloaded
         // copy too, so no synced session runs it again unless it is trusted (or verified) again.

@@ -12,6 +12,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Mod sync from your own game.** A host's mods' game patch files are written from the joiner's own game wherever it
+  has the same bytes, and only the rest downloads: the host lists each archive part with its SHA-256 (`mods.parts`),
+  and every file is still checked against the host's. **Index my game** on the Mods page finds renamed game files too.
+  A recipe mod whose sources the joiner's game lacks (after a game update) takes just those ranges from the host's
+  rebuilt files ([mod sync from your own game](docs/multiplayer.md#mod-sync-from-your-own-game)).
 - **The asset kit: share mods without Arrowhead's files.** `assets-check` shows which bytes of a mod's game patch files
   are the game's and from which build. `assets-strip`, and `package-mod` by itself, ship the author's own bytes plus a
   recipe. Each player's HellForge rebuilds the files from that recipe, out of their own game, checked by SHA-256. The

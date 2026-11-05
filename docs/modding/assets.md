@@ -164,4 +164,11 @@ Both keep the game's bytes out of your mod, in different ways:
 - The asset kit takes patch files you already made with other tools, whatever is in them, and ships them as your bytes
   plus a recipe. Use it for work a data spec cannot describe, or for a mod you have already made.
 
+**Already published without the game's files?** If you shipped a mod that leaves out the game resources it needs
+(players were to add them by hand), declare them in a data spec instead: an `include` (or a `copy` under your own
+name) for each resource, with `"source": "steam"` or `{"build": ...}` for one from another build. Your own patch files
+stay as they are beside it: HellForge builds the spec's patches on each player's PC and loads them after your mod's
+`data/` patches, in the same archives. A recipe needs the complete files to check against, so make one only from your
+full working folder.
+
 Next: [Content](content.md), for changing and adding weapons, stratagems and entities in code.
