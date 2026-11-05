@@ -21,6 +21,9 @@ On `dev`, since 0.4.0-beta.
   checks what a mod still ships against every build since release. It reads Steam's depot manifests with the author's
   own sign-in, and fingerprints just the resources it proves. A player whose recipe needs such a build gets **GET THEM
   FROM STEAM** on the Mods page (or `assets-rebuild --steam yes`), which fetches only the chunks those pieces sit in.
+- **Prepare for sharing.** The Mods page's ⋮ menu item (formerly Zip to share) takes Arrowhead's bytes out of a mod's
+  game patch files before it zips it, as `package-mod` does. A card says what is out, with the zip, the asset report
+  and **CHECK OLDER BUILDS** for bytes that matched no build on the PC.
 - **Data specs: resources from past builds.** `"source": {"build": "2024-03-01"}` (a day, or a data manifest) on a
   `copy` or `include` takes the resource from that build. Each player fetches just those resources from Steam once, with
   the same prompt, and the mod ships only its spec ([data specs](docs/modding/data.md#source-a-past-build)).
@@ -31,23 +34,6 @@ On `dev`, since 0.4.0-beta.
   sizes, Markdown structure, links and filler words, plus code comment blocks of over 10 lines. Existing text is in a
   baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))
   (#277).
-### Added
-
-- **The asset kit: share mods without Arrowhead's files.** `assets-check` shows which bytes of a mod's game patch files
-  are the game's and from which build; `assets-strip`, and `package-mod` by itself, ship the author's own bytes plus a
-  recipe that each player's HellForge rebuilds the files from, out of their own game, checked by SHA-256. The Mods page
-  and every session rebuild such mods before they load; friends and mod sync compare and send the recipe, never the
-  game's bytes ([the asset kit](docs/modding/assets.md)).
-- **The asset kit: cut content from older builds.** `--history yes` on `assets-check`, `assets-strip` and `package-mod`
-  checks what a mod still ships against every build since release, from Steam's depot manifests with the author's own
-  sign-in, and fingerprints just the resources it proves; a player whose recipe needs such a build gets **GET THEM FROM
-  STEAM** on the Mods page (or `assets-rebuild --steam yes`), which fetches only the chunks those pieces sit in.
-- **Prepare for sharing.** The Mods page's ⋮ menu item (formerly Zip to share) takes Arrowhead's bytes out of a mod's
-  game patch files before it zips it, as `package-mod` does, and a card says what is out, with the zip, the asset
-  report and **CHECK OLDER BUILDS** for bytes that matched no build on the PC.
-- **Data specs: resources from past builds.** `"source": {"build": "2024-03-01"}` (a day, or a data manifest) on a
-  `copy` or `include` takes the resource from that build: each player fetches just those resources from Steam once,
-  with the same prompt, and the mod ships only its spec ([data specs](docs/modding/data.md#source-a-past-build)).
 
 ## 0.4.0-beta (2026-11-05)
 
