@@ -86,7 +86,7 @@ Strip the folder you work in, not a stripped copy: a mod that already ships a re
 Content that is no longer in the game's files, such as a vehicle cut before launch or a model from an early build, is
 not on your PC to match. Add `--history yes` to `assets-check`, `assets-strip` or `package-mod`:
 
-```
+```text
 HellForge.Cli assets-strip --mod <folder> --history yes
 ```
 
@@ -139,7 +139,7 @@ never overwrite a file the mod ships. Every operation is range-checked.
   stays in the mod.
 - **Steam updates.** Content the recipe takes from Steam's build comes from the player's Steam install. When Steam
   updates the game and that content changes or moves, the build the recipe names is an older build for players who
-  have only the new one: they get it with **GET THEM FROM STEAM**, as for cut content. Stripping the mod again after an
+  have only the new one. They get it with **GET THEM FROM STEAM**, as for cut content. Stripping the mod again after an
   update spares them that. HellForge's game copy is the pinned build and never changes, so the kit takes anything both
   builds have from the copy.
 - **Game patch files only.** Files of other kinds (a Lua script beside the patches, a loose texture) are shipped as they
