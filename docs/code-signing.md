@@ -1,5 +1,7 @@
 # Code signing and Smart App Control
 
+<!-- diataxis: explanation -->
+
 For maintainers. Why Windows 11's Smart App Control blocks HellForge, what signing would and would not fix, and the
 options. Nothing is bought or configured yet: no release so far has been signed.
 

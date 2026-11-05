@@ -1,5 +1,7 @@
 # How HellForge implements mods
 
+<!-- diataxis: explanation -->
+
 This page is for people working on HellForge itself. It explains how the parts behind the [mod SDK](modding/README.md)
 work, what they check before they change the game, and where the research behind them is. Mod authors do not need it:
 the [modding guide](modding/README.md) covers everything a mod can do.

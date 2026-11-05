@@ -1,5 +1,7 @@
 # Your first mod
 
+<!-- diataxis: tutorial -->
+
 This walkthrough takes you from nothing to a code mod running in game, then through changing it, reading its log and
 sharing it. It is for newcomers to HellForge modding, including people new to C. It takes about ten minutes, most of it
 the one-time download of the mod tools.

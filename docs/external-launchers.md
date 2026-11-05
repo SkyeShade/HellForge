@@ -1,5 +1,7 @@
 # Launchers of your own
 
+<!-- diataxis: reference -->
+
 This page is for people writing a mod manager or launcher on top of HellForge (Echelon, or your own). It lists the
 commands, the JSON they print and the files in an installation that such a program may rely on.
 

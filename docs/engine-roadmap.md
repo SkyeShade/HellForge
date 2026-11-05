@@ -1,5 +1,7 @@
 # HellForge engine: roadmap
 
+<!-- diataxis: explanation -->
+
 This page is for contributors. It lists what is done and what is planned in the engine (the session runner, the local
 backend, the mod loader and the stand-ins); [engine.md](engine.md) describes the engine as it is, and
 [sdk-roadmap.md](sdk-roadmap.md) is the mod SDK's side.

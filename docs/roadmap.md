@@ -1,5 +1,7 @@
 # HellForge roadmap
 
+<!-- diataxis: explanation -->
+
 What HellForge can do today, what is being tested, and what comes after. Updated 2026-11-04 for HellForge 0.4.0-beta.
 Nothing here has a date, and stability comes first. What each release changed is in the
 [changelog](../CHANGELOG.md).

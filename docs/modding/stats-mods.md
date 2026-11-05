@@ -1,5 +1,7 @@
 # Stats mods
 
+<!-- diataxis: how-to -->
+
 This page is for anyone who wants to change numbers (fire rate, magazine size, cooldowns, damage) without writing code.
 It covers the `hellforge-stats.json` file, how its changes apply, and the in-game editor that writes the same format.
 

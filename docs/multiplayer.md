@@ -1,5 +1,7 @@
 # Co-op and public lobbies
 
+<!-- diataxis: explanation -->
+
 This page explains how HellForge's co-op works: first for players, then for contributors working on it. The second half
 is the research and build log from October 2026, kept as history.
 

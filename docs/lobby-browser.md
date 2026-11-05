@@ -1,5 +1,7 @@
 # Building a lobby browser
 
+<!-- diataxis: how-to -->
+
 This page is for front-end developers who build their own lobby browser on the ship's information terminal (the one
 across from the Armory). HellForge does the matchmaking: it finds the lobbies, works out what joining each one takes,
 and joins. Your browser shows the list and sends the player's choices. Layout, look, input and sound are up to you.

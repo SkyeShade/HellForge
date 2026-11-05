@@ -1,5 +1,7 @@
 # Lua mods and the Lua bridge
 
+<!-- diataxis: how-to -->
+
 This page is for players who want to run Lua mods on HellForge, and for authors of Lua mods and runtimes who want to
 know how their changes reach the game. It covers adding Lua mods, what HD2Runtime does on HellForge, which edit wins a
 field, and the C interface the bridge exports.

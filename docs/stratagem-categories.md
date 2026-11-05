@@ -1,5 +1,7 @@
 # Custom stratagem selection categories
 
+<!-- diataxis: explanation -->
+
 This page is for contributors and curious modders. It explains how HellForge adds headings of its own to the game's
 stratagem selection screen (SDK 8): the native code involved, how it is tested, and what still needs checking in game.
 To use headings in a mod, read [Content: selection headings](modding/content.md#selection-headings), which has the API

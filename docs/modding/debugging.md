@@ -1,5 +1,7 @@
 # Debugging
 
+<!-- diataxis: how-to -->
+
 This page is for mod authors whose mod does not do what they meant. It covers the logs, the reasons HellForge gives
 for refusing something, crashes, and testing with friends.
 
