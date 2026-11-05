@@ -5,7 +5,7 @@ every pull request. How to write so they pass is in [CONTRIBUTING.md](../../CONT
 
 | Tool | Checks | Fails CI on |
 | --- | --- | --- |
-| `docs_lint.py` (this folder) | Page types, paragraph, sentence and page sizes | Anything new or worse than the baseline |
+| `docs_lint.py` (this folder) | Page types, paragraph, sentence and page sizes | A page without a type or index link |
 | [markdownlint](https://github.com/DavidAnson/markdownlint) | Markdown structure: headings, lists, code blocks, line length | Any problem |
 | [lychee](https://lychee.cli.rs/) | Relative links and `#anchors` (offline) | Any broken link |
 | [Vale](https://vale.sh/) | Filler and hedge words, history in code comments, long asides | Errors only |
@@ -46,7 +46,9 @@ The marker is an HTML comment, so GitHub does not show it. [docs/README.md](../.
 Code spans count as one word each, and a link counts by its text. Code blocks, tables and HTML are not prose. Moved-page
 stubs and the index have no type (`untyped` in the config). `docs/sdk-reference.md` is generated, so the checks skip it.
 
-CI runs `check --warnings-as-errors`, so every rule fails CI there.
+For now CI runs `check`: errors fail, and warnings show as annotations on the pull request. Once the existing docs are
+split, CI will run `check --warnings-as-errors`, and every rule will fail CI. Run that locally now to keep a change
+clean.
 
 ## The baseline
 
@@ -96,7 +98,7 @@ From the repository root (`python3` instead of `py -3` on Linux and macOS):
 ```text
 py -3 scripts/docs-lint/docs_lint.py                            # file x rule table
 py -3 scripts/docs-lint/docs_lint.py scan --list                # every violation
-py -3 scripts/docs-lint/docs_lint.py check --warnings-as-errors # what CI runs
+py -3 scripts/docs-lint/docs_lint.py check --warnings-as-errors # what a clean change passes
 py -3 scripts/docs-lint/docs_lint.py update                     # lower the baseline after fixes
 py -3 scripts/docs-lint/docs_lint.py stats docs/linux.md        # words, blocks and sentences of pages
 py -3 -m unittest discover -s scripts/docs-lint/tests -v        # its tests

@@ -14,7 +14,8 @@ On `dev`, since 0.4.0-beta.
 
 - A "Docs lint" CI job keeps docs and code comments readable. It checks page types, paragraph, sentence and page
   sizes, Markdown structure, links and filler words, plus code comment blocks of over 10 lines. Existing text is in a
-  baseline and can only get shorter ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments)) (#277).
+  baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))
+  (#277).
 
 ## 0.4.0-beta (2026-11-05)
 
