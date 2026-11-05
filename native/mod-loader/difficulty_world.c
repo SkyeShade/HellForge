@@ -3830,6 +3830,44 @@ static const char* InstallAttachGuard(uintptr_t game)
     return NULL;
 }
 
+/* Op 0x0D RenderRouteSegments (0xF53000) draws every route edge (type != 2, flags & 0x103 == 0) as a gui line into
+ * generated_route_distance, which the zone painters threshold for their path materials. Positions are scaled to pixels
+ * by xmm6 = lg+0x120 (the texture side) / [settings+0x2C] (the world side) (0xF53086..0xF530A2); the line's thickness is
+ * the edge's width [edge+0x30] passed as is (0xF53116 -> [rsp+0x20] at 0xF531C2), and exe 0x260440 builds the quad at
+ * +-0.5 x thickness in the same space, before the gui transform. Vanilla (4096 pixels over 2048 m, 2 px/m) draws w pixels
+ * = 0.5 w m; a 16 km world (0.25 px/m) drew 4 w m, 8 x as wide. The stub scales the thickness by xmm6 / 2, so the line
+ * is 0.5 w m at any world size; vanilla's factor is 1. The near tiles' replay keeps settings+0x2C and scales the gui by
+ * 8 (positions and thickness alike), so their lines are 0.5 w m too. */
+static const uint8_t kRouteWidthStub[30] = {
+    0xF3, 0x0F, 0x10, 0x7B, 0xFC,       /*  0 movss xmm7, [rbx-4] (the edge's width) */
+    0xF3, 0x0F, 0x59, 0xFE,             /*  5 mulss xmm7, xmm6 (pixels per metre) */
+    0xF3, 0x0F, 0x59, 0x3D, 0, 0, 0, 0, /*  9 mulss xmm7, [rip -> 0.5 at stub+0x20] (rel32 at 13) */
+    0xFF, 0xC7,                         /* 17 inc edi */
+    0x3B, 0x7B, 0x08,                   /* 19 cmp edi, [rbx+8] */
+    0xE9, 0, 0, 0, 0,                   /* 22 jmp 0xF53120 (the jae; rel32 at 23) */
+    0xCC, 0xCC, 0xCC};
+static const char* InstallRouteWidth(uintptr_t game)
+{
+    if (!ApiCodeMatches(game + 0xF53086u, "F3 0F 10 B2 20 01 00 00") || !ApiCodeMatches(game + 0xF530A2u, "F3 0F 5E F0") ||
+        !ApiCodeMatches(game + 0xF53113u, "8B 7B 04 F3 0F 10 7B FC FF C7 3B 7B 08 0F 83 B1 00 00 00") ||
+        !ApiCodeMatches(game + 0xF531C2u, "F3 0F 11 7C 24 20 41 FF 52 48"))
+        return "op 0x0D's route lines are not the reviewed ones; their width stays in pixels (8 x wide on a 16 km map)";
+    uint8_t* stub = AllocateNearGame(game, 0x40);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for op 0x0D's route line width";
+    memcpy(stub, kRouteWidthStub, sizeof kRouteWidthStub);
+    const float half = 0.5f;
+    memcpy(stub + 0x20, &half, 4);
+    int32_t rel = (int32_t)((stub + 0x20) - (stub + 17)); memcpy(stub + 13, &rel, 4);
+    rel = (int32_t)(game + 0xF53120u - (uintptr_t)(stub + 27)); memcpy(stub + 23, &rel, 4);
+    DWORD protect;
+    VirtualProtect(stub, 0x40, PAGE_EXECUTE_READ, &protect);
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x40);
+    uint8_t jump[10] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90};
+    rel = DifficultyJumpRel(game + 0xF53116u, (uintptr_t)stub); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + 0xF53116u, jump, 10)) return "op 0x0D's route line width could not be written";
+    return NULL;
+}
+
 /* The samples' groups: a component init (0x79CCA0, from entity spawn 0x581A50 -> 0x79C756) groups the HiveMind
  * manager's samples (+0x5790, 0x58 each, count +0x5D748) by their owner key into a temporary block of 128 groups
  * (0x810 each: key, 256 {sample, type}, count +0x808; group count +0x40800; size 0x40808 at 0x79CDE4 / 0x79CDFD),
@@ -4118,6 +4156,8 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (alarms != NULL) Note("difficulty: extra large maps: %s", alarms);
     const char* attach = InstallAttachGuard(game);
     if (attach != NULL) Note("difficulty: extra large maps: %s", attach);
+    const char* routeWidth = InstallRouteWidth(game);
+    if (routeWidth != NULL) Note("difficulty: extra large maps: %s", routeWidth);
     const char* towns = InstallTowns(game);
     if (ApiCodeMatches(game + 0xFB8F08u, "41 0F 28 C4 F3 0F 59 C3"))
     {
