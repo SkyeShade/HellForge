@@ -190,6 +190,12 @@ public static class ModDataBuilder
         if (copy.Curves is { } curves) EditCurves(main, curves);
         if (copy.Colours != null) ResourceEdits.SetMaterialColours(main, copy.Colours);
         if (copy.Lut != null) gpu = ResourceEdits.RecolourLut(main, gpu, copy.Lut);
+        if (copy.Shaders is { Count: > 0 } shaders)
+        {
+            gpu = ShaderSplice.ApplyAll(gpu, shaders.Select(s => (s.Offset, File.ReadAllBytes(Path.Combine(modFolder, s.Dxbc)))).ToList());
+            ShaderSplice.RenameMaterial(gpu, Hash(copy.Name));
+            ShaderSplice.RenameTemplates(gpu, Hash(copy.Name));
+        }
         if (copy.Mesh is { } mesh)
         {
             if (source.Stream.Length != 0) throw new InvalidDataException("the model streams part of itself; HellForge cannot replace its mesh yet.");
