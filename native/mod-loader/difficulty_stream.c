@@ -581,6 +581,38 @@ static int WorldStreamBegin(uint8_t* pass, uint8_t* record, uint8_t* context)
  * that points back into the freed block is logged. */
 static uint8_t g_streamRecordCopy[0x19B0];
 static uint8_t g_streamContextCopy[0x100];
+/* The context's arena ([ctx+0], the generation thread's) is destroyed when the level is done (0xF7412D -> 0x173BB30:
+ * its chunks freed, its head zeroed). SpawnLevelLayers allocates from it for every layer whose scale ([r13+0xC]) is not
+ * 1 (0xF47041..0xF47053 -> 0xF470C6, 16 bytes; the allocator 0x173B8D0 reads the head at 0x173B936): the cities' scaled
+ * buildings. So a streamed city location ended the game (s75e/s75f, c0000005 at game+0x173B936 as the first city
+ * stamps came within 500 m of a player), while the open land's unscaled stamps never asked. The copy gets its own arena,
+ * laid out as 0x173B700 makes one (as difficulty_world_move.c's MoveArena: arena {head chunk +0, lock +8, owner thread
+ * index +0xC (-1: no index call), growth +0x10}; chunk {used +0, data +8, capacity +0x10, next +0x18}); after each of
+ * the streamer's calls it is reset as the game resets its own after an op (0x173BAB0, 0xF261FE): chunks the allocator
+ * grew are freed, ours is the last and stays. */
+#define STREAM_ARENA_BYTES (4u << 20)
+static struct { uint64_t head; LONG lock; int32_t owner; uint64_t growth; } g_streamArena;
+static struct { uint64_t used, data, capacity, next; } g_streamArenaChunk;
+static int g_streamArenaReset = -1; /* 1: 0x173BAB0 is the reviewed reset */
+static int WorldStreamArena(void)
+{
+    if (g_streamArenaChunk.data == 0)
+    {
+        void* p = VirtualAlloc(NULL, STREAM_ARENA_BYTES, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (p == NULL) return 0;
+        g_streamArenaChunk.data = (uint64_t)(uintptr_t)p; g_streamArenaChunk.capacity = STREAM_ARENA_BYTES;
+    }
+    if (g_streamArenaReset < 0) g_streamArenaReset = ApiCodeMatches(g_stream.game + 0x173BAB0u, "40 53 48 83 EC 20 48 8B 01 48 8B D9 48 85 C0 74") ? 1 : 0;
+    if (g_streamArenaReset != 1) return 0;
+    g_streamArenaChunk.used = 0; g_streamArenaChunk.next = 0;
+    g_streamArena.head = (uint64_t)(uintptr_t)&g_streamArenaChunk; g_streamArena.lock = 0; g_streamArena.owner = -1; g_streamArena.growth = 0x100000;
+    return 1;
+}
+static void WorldStreamArenaReset(void)
+{
+    typedef void (*ArenaFn)(uint64_t arena);
+    if (g_streamArena.head != 0 && g_streamArenaReset == 1) ((ArenaFn)(g_stream.game + 0x173BAB0u))((uint64_t)(uintptr_t)&g_streamArena);
+}
 static void WorldStreamDetachLocked(void)
 {
     uintptr_t ctx = (uintptr_t)g_stream.context, blk = ctx - 0x19B008u, end = ctx + 0xE8;
@@ -598,6 +630,9 @@ static void WorldStreamDetachLocked(void)
     g_stream.pass = g_streamRecordCopy + ((uint8_t*)g_stream.pass - (uint8_t*)g_stream.record);
     g_stream.record = g_streamRecordCopy;
     g_stream.context = g_streamContextCopy;
+    int ownArena = WorldStreamArena();
+    if (ownArena) { uint64_t a = (uint64_t)(uintptr_t)&g_streamArena; memcpy(g_streamContextCopy, &a, 8); }
+    else Note("difficulty: extra large maps: content streaming: no arena of its own (no memory, or the reset is not the reviewed one); scaled layers (city buildings) would read the level's freed one");
     Note("difficulty: extra large maps: content streaming: kept its own copy of the generator's record and context (the generation block is freed when the level goes live)%s%s",
         len ? "; context fields into that block:" : "", len ? inside : "");
 }
@@ -808,6 +843,7 @@ static void WorldStreamSpawnDueLocked(void)
         g_streamOwn = (LONG)GetCurrentThreadId();
         g_streamSpawn(g_stream.pass, g_stream.record, g_stream.context);
         g_streamOwn = 0;
+        if (g_stream.context == g_streamContextCopy) WorldStreamArenaReset();
         if (SafeRead((uintptr_t)g_stream.pass + 0xD8, &resume, 4))
         {
             resume = 0;

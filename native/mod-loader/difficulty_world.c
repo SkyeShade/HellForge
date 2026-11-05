@@ -2259,6 +2259,7 @@ static int NatureSlotOf(uint64_t S)
     for (int i = 0; i < NATURE_SLOTS; i++) if (g_nature[i].S == S && S != 0) return i;
     return -1;
 }
+static void NatureGrid(uintptr_t gen, uint32_t worldSize); /* below */
 /* called before every dispatcher step of an extra large level: opens the window at op 0x15, closes it at any op outside */
 static void NatureWindow(uint64_t context, uint32_t op, uint32_t record)
 {
@@ -2271,6 +2272,7 @@ static void NatureWindow(uint64_t context, uint32_t op, uint32_t record)
         uint64_t now = 0;
         if (!SafeRead(S + 0xC0, &now, 8) && now == (uint64_t)(uintptr_t)g_nature[s].copy) *(volatile uint64_t*)(uintptr_t)(S + 0xC0) = g_nature[s].original;
         g_nature[s].open = 0;
+        { uintptr_t gen = 0; uint64_t lg = 0; uint32_t w = 0; if (!SafeRead(context + 0x18, &lg, 8) && lg != 0 && !SafeRead(lg + 0x2C8, &gen, 8) && !SafeRead(S + 0x2C, &w, 4)) NatureGrid(gen, w); }
         Note("difficulty: extra large maps: nature variants: the open land's kind weights end before op 0x%X (record %u); %ld sub-location groups kept to their parent's kind (%ld nature); "
             "%ld locations left on their own zone by op 0x7C (none of their kind to paint)", op, record, (long)g_natureSub, (long)g_natureSubOne, g_attachSkipped ? (long)*g_attachSkipped : -1L);
     }
@@ -2293,6 +2295,32 @@ static void NatureWindow(uint64_t context, uint32_t op, uint32_t record)
         }
     }
     ReleaseSRWLockExclusive(&g_natureLock);
+}
+/* The spread of a level's important locations (objectives, outposts, POIs, satellites: G+0x19B1130, 0x108 each, count
+ * G+0x11A715C, position +0xA4 in corner metres) over 2 km cells of the world: a row per 2 km of y, north last. */
+static void NatureGrid(uintptr_t gen, uint32_t worldSize)
+{
+    uint32_t count = 0, grid[8][8] = {{0}}, kinds[6] = {0}, outside = 0;
+    if (gen == 0 || SafeRead(gen + 0x11A715Cu, &count, 4)) return;
+    if (count > 1024) count = 1024;
+    const float cell = (float)worldSize / 8.0f;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        float p[2]; uint8_t kind = 0;
+        uint64_t at = gen + 0x19B1130u + 0x108ull * i;
+        if (SafeRead(at + 0xA4, p, 8) || SafeRead(at + 0xF0, &kind, 1) || !(cell > 0.0f)) continue;
+        int gx = (int)(p[0] / cell), gy = (int)(p[1] / cell);
+        if (gx < 0 || gx > 7 || gy < 0 || gy > 7) { outside++; continue; }
+        grid[gy][gx]++; kinds[kind < 6 ? kind : 0]++;
+    }
+    char text[400]; int n = 0, empty = 0;
+    for (int y = 0; y < 8; y++)
+    {
+        n += snprintf(text + n, sizeof text - n, " |");
+        for (int x = 0; x < 8; x++) { n += snprintf(text + n, sizeof text - n, " %u", grid[y][x]); empty += grid[y][x] == 0; }
+    }
+    Note("difficulty: extra large maps: content spread: %u important locations (kind 1: %u, 3: %u, other %u) over 2 km cells, rows south to north:%s; %d of 64 cells empty, %u outside the world",
+        count, kinds[1], kinds[3], kinds[0] + kinds[2] + kinds[4] + kinds[5], text, empty, outside);
 }
 /* (b) */
 typedef uint64_t (*NatureSubFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);

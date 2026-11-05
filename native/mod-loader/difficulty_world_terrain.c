@@ -4598,7 +4598,8 @@ static void NearShowCoarse(int mode)
  * [api+8]+0x100 to update the unit): positions return to 0x1279297 / 0x127A139 / 0x127AAAE, rotations to 0x12792B0 /
  * 0x127A152 / 0x127AACA. While the file says so, those calls get the eye's pose instead, and that camera a 20 km far range.
  * The file, xl-eye.txt in the session's logs (HELLFORGE_XL_EYE=1; polled twice a second): "x y h tx ty th [coarse]": the eye at world (x, y) h metres above the ground there,
- * looking at (tx, ty) th above the ground there; "coarse" = the A/B (NearShowCoarse); anything else = the game's camera.
+ * looking at (tx, ty) th above the ground there; "coarse" = the A/B (NearShowCoarse); "stream" = the content streamer
+ * also counts (tx, ty) as a player, so the content there spawns; anything else = the game's camera.
  * The rotation is built as SetupTerrainMerge builds its cameras' (0xF487B0): exe-independent game.dll helpers 0x173F150
  * (out 4x4, forward, up: a look rotation; normalizes forward in place) and 0x173A750 (quaternion out, 4x4). */
 static struct { int on, coarse; float pos[3], rot[4], game[3]; uint64_t camera; ULONGLONG checked; FILETIME stamp; int pinned; } g_eye; /* game: the game's own camera position, last frame */
@@ -4703,6 +4704,7 @@ static void NearCraterReport(void)
     Note("difficulty: near terrain: craters: %d of %d hidden coarse nodes have finite bounds again", open, g_nearShown.coarseCount);
 }
 
+__declspec(dllexport) int hellforge_research_stream_observer(int on, float x, float y); /* difficulty_stream.c */
 static void NearEyePoll(void)
 {
     ULONGLONG now = GetTickCount64();
@@ -4725,7 +4727,7 @@ static void NearEyePoll(void)
             ApiCodeMatches(g_world.game + 0x127AAACu, "FF D0 48 8B 05") && ApiCodeMatches(g_world.game + 0x127AAC8u, "FF D0") ? 1 : -1;
     if (g_eye.pinned < 0) { have = 0; Note("difficulty: near terrain: eye: the camera code is not the reviewed build; no eye"); return; }
     WIN32_FILE_ATTRIBUTE_DATA a;
-    if (!GetFileAttributesExW(path, GetFileExInfoStandard, &a)) { if (!missing) { missing = 1; Note("difficulty: near terrain: eye: no xl-eye.txt yet"); } if (g_eye.on) { g_eye.on = 0; NearShowCoarse(0); Note("difficulty: near terrain: eye off"); } return; }
+    if (!GetFileAttributesExW(path, GetFileExInfoStandard, &a)) { if (!missing) { missing = 1; Note("difficulty: near terrain: eye: no xl-eye.txt yet"); } if (g_eye.on) { g_eye.on = 0; NearShowCoarse(0); hellforge_research_stream_observer(0, 0.0f, 0.0f); Note("difficulty: near terrain: eye off"); } return; }
     if (CompareFileTime(&a.ftLastWriteTime, &g_eye.stamp) == 0) return;
     g_eye.stamp = a.ftLastWriteTime;
     char text[160] = ""; DWORD got = 0;
@@ -4739,7 +4741,7 @@ static void NearEyePoll(void)
     {
         Note("difficulty: near terrain: eye: \"%.60s\" (%d fields; tile state %d): the game's camera", text, fields, g_near.state);
         if (g_eye.on) Note("difficulty: near terrain: eye off");
-        g_eye.on = 0; NearShowCoarse(0); return;
+        g_eye.on = 0; NearShowCoarse(0); hellforge_research_stream_observer(0, 0.0f, 0.0f); return;
     }
     NearCraterReport();
     NearShowCoarse(fields < 7 ? 0 : strcmp(mode, "coarse") == 0 ? 1 : strcmp(mode, "both") == 0 ? 2 : strcmp(mode, "low") == 0 ? 3 : 0);
@@ -4753,6 +4755,8 @@ static void NearEyePoll(void)
     ((QuatFn)(g_world.game + 0x173A750u))(quat, matrix);
     memcpy(g_eye.pos, eye, 12); memcpy(g_eye.rot, quat, 16);
     g_eye.on = 1;
+    /* "stream": the content streamer counts the looked-at point as a player (its stamps within 500 m spawn there) */
+    hellforge_research_stream_observer(fields >= 7 && strcmp(mode, "stream") == 0, p[3], p[4]);
     Note("difficulty: near terrain: eye at (%.1f, %.1f, %.1f) (ground %.1f) looking at (%.1f, %.1f, %.1f)%s", (double)eye[0], (double)eye[1], (double)eye[2],
         (double)g0, (double)p[3], (double)p[4], (double)(g1 + p[5]), g_nearShown.coarseShown == 1 ? "; the coarse terrain shown" : "");
 }
