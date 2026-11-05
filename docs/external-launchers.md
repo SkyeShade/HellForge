@@ -135,13 +135,13 @@ temporary file and then a rename, as HellForge does.
 launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--strangers yes|no|default`,
-`--game-options`), saves the ones given, checks them as `play` would, and prints every setting:
+`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--game-options`), and also
+`--strangers yes|no|default`, `--live-changes` and `--forge-credits`. It saves the ones given, checks them as `play` would, and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
  "gameOptions": "", "sandbox": true, "steamUdp": true, "steamBridge": true, "playWithStrangers": true,
- "playWithStrangersChosen": null, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
+ "playWithStrangersChosen": null, "liveChanges": false, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
 ```
 
 `settings --live-changes yes|no` sets the experimental Change mods without restarting (off by default, read when a
@@ -199,10 +199,12 @@ Once the session runner has made its run folder, `play` prints
 With `--wait yes`, `play` stays and prints one JSON line each time the session's status changes, then
 `{"event": "ended", "status": ..., "result": ..., "logs": ...}`. It exits with 0 when the session ended normally. A line
 `{"event": "mod-problems", "problems": [...]}` lists mods the session left out (a mod that did not compile, data that
-was not built...). Closing `play` does not stop the session; `stop` does. `stop` asks the game to close by itself first, as its
+was not built...). A line `{"event": "steam-input", "note": ...}` comes from a sandboxed session when the controllers
+Steam Input handles change: `note` is what to tell the player (`SteamInputNote.Of` reads it from the status). Closing
+`play` does not stop the session; `stop` does. `stop` asks the game to close by itself first, as its
 window's close button does, and ends it after 30 seconds if it has not: the game saves its shader cache only when it
 closes by itself. A game without a window, or with one that does not respond, is ended at once, and so is one stopped
-with `--now yes`.
+with `--now yes`. The stop signal, `stop-observation.signal` in the run folder, holds `stop` or, for `--now yes`, `stop-now`.
 
 | `status` | Meaning |
 |---|---|
@@ -314,7 +316,7 @@ a player:
 | File | What it holds |
 |---|---|
 | `session.log` | the session runner's steps; it opens with HellForge's, the engine's, the mod SDK's and the game's versions, Windows' version (and Wine's), the GPUs and their drivers, the session's settings, and the mods with their versions and content hashes |
-| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`); `prepare` and `connect` say how the two launch edits ended (`outcome`, `waitedMilliseconds`, and for `connect` `gameDllSeenMilliseconds`, -1 when `game.dll` never appeared); `windowsCrash` is Windows' record of a game that crashed (`module`, `offset`, `code`, `modulePath`, `owner`: `windows`, `installation`, `other` or `unknown`), or `none` when Windows had none; `sessionEndHeard` whether the mods answered the session's end before a stop ended the game; a sandboxed session also records `gameExitCode`, `gameCrashed` and the loader's first crash line as `loaderCrash` |
+| `result.json` | the session's status and outcome; `report` holds the opening facts of `session.log` as JSON; `ownershipCheck` is `full` when it asked Steam, `recent` when it reused a check that passed at `ownershipConfirmedUtc`; `shaderCache` the game's shader cache at the start and end (`atStart`, `atEnd`: `files`, `bytes`, `newestUtc`; `written`; `seededFromGame` when a new installation took the normal game's) and, while `atStart.files` is 0 and `firstBackendRequestSeconds` is not there yet, the game is most likely building it behind a black screen; `gameClose` how a `stop` went (`outcome`: `ClosedByItself`, `TimedOut`, `NoWindow`, `Hung`, `AlreadyExited` or `EndedAtOnce`; `windows`, `closedByItself`, `seconds`); `prepare` and `connect` say how the two launch edits ended (`outcome`, `waitedMilliseconds`, and for `connect` `gameDllSeenMilliseconds`, -1 when `game.dll` never appeared); `windowsCrash` is Windows' record of a game that crashed (`module`, `offset`, `code`, `modulePath`, `owner`: `windows`, `installation`, `other` or `unknown`), or `none` when Windows had none; `sessionEndHeard` whether the mods answered the session's end before a stop ended the game; `stuckQuitting` (the game closed its window and was ended 30 s later), `gameHung` (its window stopped responding for 15 s) and `gameAtStop` (`stop` on a game without a window or with a hung one) each hold the game's threads by start address and state, and the Windows Error Reporting or crash reporter processes holding it; `jobActiveAtStop` counts what was still in the game's job when the session ended it; `steamInput`, in a sandboxed session once the Steam broker has asked Steam, holds `controllers` (names), `types` (Steam's `ESteamInputType`) and `note` (what to tell the player, or null); a sandboxed session also records `gameExitCode`, `gameCrashed` and the loader's first crash line as `loaderCrash` |
 | `modloader.log` | the mod loader: which mods loaded, with each code mod's version and its DLL's SHA-256, and why one did not |
 | `mod-status.tsv` | each code mod's status for the player (SDK 16 `set_status`), a line `<id>\t<text>` per mod; the launcher shows it on the Mods page |
 | `modlist.txt` | the mods the session ran, in load order |
@@ -332,7 +334,7 @@ itself with an error, the mod loader noted a crash, or it left a crash dump), an
 sizes.
 
 `logs --export <file.zip>` makes the zip the launcher's Save logs to Desktop makes, of the newest session or the one
-`--run` names. Text files and file names in it say `%USERPROFILE%` and `PC` instead of the player's user folder and
+`--run` names; it also has `<run>/processes-now.txt`, the programs of the session. Text files and file names in it say `%USERPROFILE%` and `PC` instead of the player's user folder and
 computer name, whoever wrote them. Programs are left out, links in the run folder are skipped and never followed, and a
 crash dump goes in as it is. While a session runs, its
 logs are read with shared access, and a file it has locked is left out (`skipped` counts them). The zip must not exist
