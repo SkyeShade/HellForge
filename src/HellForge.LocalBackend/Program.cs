@@ -106,6 +106,8 @@ try
     if (profile != null)
     {
         profile.Ownership =OwnershipFilter.ForSnapshot(PaidContentSet.Load(), snapshotDir, steamAccount, out var refusal);
+        // Every profile but an unlock-all one buys its owned premium warbonds with Forge Credits.
+        profile.Ownership.EarnWarbonds = profileTemplate == null || !profileTemplate.Contains("unlock-all", StringComparison.Ordinal);
         Console.Error.WriteLine(refusal != null ? "[premium] none unlocked: " + refusal
             : "[premium] " + profile.Ownership.OwnedPaidCount + " premium items from the account snapshot");
     }
