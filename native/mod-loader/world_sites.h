@@ -10,7 +10,7 @@ typedef struct WorldSite { uint32_t rva; uint8_t length, which; } WorldSite;
 #define WORLD_NEG_HALF 3u /* -1024.0 (0x23C83C0): added by hand, see below */
 #define WORLD_NEG_FULL 4u /* -2048.0 (0x23C83D0): added by hand, see below */
 static const uint32_t kWorldConstants[5] = {0x23C7D58u, 0x23C7DD4u, 0x23C65A4u, 0x23C83C0u, 0x23C83D0u};
-/* 206 instructions. Left out by hand: the structured maps' site template (0xFB9610) reads 1024.0 at 0xFB9886 and
+/* 206 instructions from the script, and 4 added by hand (0x13D3F38, 0x13D3F5B, 0x140227D, 0x14026C7). Left out by hand: the structured maps' site template (0xFB9610) reads 1024.0 at 0xFB9886 and
  * 1 / 2048 at 0xFB96FE / 0xFB970A in template space (points 0..2048 about 1024, scaled by the rect's width / 2048); the
  * world is not in them (difficulty_world.c's city frame lays the template at vanilla size on a larger world). */
 static const WorldSite kWorldSites[] = {
@@ -214,6 +214,12 @@ static const WorldSite kWorldSites[] = {
     {0x13CB91Cu, 8, WORLD_INV},
     {0x13CB92Du, 8, WORLD_HALF},
     {0x13CB935u, 8, WORLD_INV},
+    /* added by hand (2026-11-04): 0x13D3CC0 samples the level heightmap G+0x875980 (u16 x 1000 / 65535 - 500 m) on a
+     * golden-angle spiral (radius sqrt(i) x 2.75 m, up to 1500 points) about [0x346D560]+0x3C for the host's spawn of a
+     * player (0xACD734) and 0x13D3A10, uv = p / 2048 + 0.5 clamped to 0..1; its sibling 0xFC71F0 (0xFC72E3 / 0xFC74F5)
+     * reads the same map through the larger world. */
+    {0x13D3F38u, 8, WORLD_INV},
+    {0x13D3F5Bu, 8, WORLD_INV},
     {0x1400D7Du, 9, WORLD_INV},
     {0x1400E71u, 9, WORLD_INV},
     {0x1401062u, 9, WORLD_INV},
@@ -223,6 +229,12 @@ static const WorldSite kWorldSites[] = {
     {0x1401840u, 8, WORLD_HALF},
     {0x140186Cu, 8, WORLD_HALF},
     {0x140188Eu, 8, WORLD_FULL},
+    /* added by hand (2026-11-04): 0x1401DA0 maps the war board's points ([rdi+0xCD80], 12 bytes) into the ship's
+     * hologram as (p / 2048 - o) x S + T on the same member (obj + 0x24018) and transform (0x1433460) as 0x1400AC0, which
+     * maps the same points through 0x1400D7D / 0x1400E71 above (both under 0x725160: 0x72ACC6 / 0x72AD11); its two loads
+     * of 1 / 2048 (the loop's first and its reload) */
+    {0x140227Du, 9, WORLD_INV},
+    {0x14026C7u, 9, WORLD_INV},
     {0x18AD3DDu, 8, WORLD_HALF},
     {0x18AD3E9u, 8, WORLD_INV},
     {0x18AD740u, 8, WORLD_HALF},

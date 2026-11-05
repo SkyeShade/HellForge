@@ -351,6 +351,7 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
 
     typedef void (*Handler)(uint64_t, uint64_t, uint64_t);
     ((Handler)(g_world.game + 0xF3F8E0u))((uint64_t)(uintptr_t)one + 8, (uint64_t)(uintptr_t)one, context);
+    WorldArenaReset(context); /* GenerateVoronoi is done: the arena as the game leaves it after an op */
     int ok = 1, seen04 = 0;
     uint32_t start = 0xFFFFFFFFu, op = 0;
     for (uint32_t i = 0; i < end; i++)
@@ -374,6 +375,7 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
             ok = 0;
             break;
         }
+        WorldArenaReset(context);
         if (op == 0x04) seen04 = 1;
         if (op == 0x2D && seen04) break;
     }
@@ -561,6 +563,7 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
                 Note("difficulty: terrain: %d tiles drawn, %d failed, in %.1f s (%u frames; building %.1f s, drawing %.1f s)", g_terrain.drawn,
                     g_terrain.failed, (double)(GetTickCount64() - g_terrain.started) / 1000.0, g_terrain.frames, g_terrain.buildMs / 1000.0,
                     g_terrain.drawMs / 1000.0);
+                WorldMemoryNote("terrain tiles drawn", 0xFFFFFFFFu, 0, 1);
                 return MacroStep(context);
             }
             LARGE_INTEGER b0, b1;
@@ -588,7 +591,7 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
             if (fault) { g_terrain.state = 2; return 0; } /* the merge's state is unknown after a fault: stop drawing */
             continue;
         }
-        if (index != 0) { g_terrain.drawn++; g_terrain.building = 0; g_terrain.next++; }
+        if (index != 0) { WorldArenaReset(context); g_terrain.drawn++; g_terrain.building = 0; g_terrain.next++; }
     }
 }
 
@@ -1059,6 +1062,7 @@ static float NearTileAt(float wx, float wy)
 /* The first player's position against both heightmaps, every 1.5 s for a minute once the tile is in. */
 static void NearReportPlayer(const float* at)
 {
+    WorldMemoryTick();
     static ULONGLONG last; static int reports; static LONG level = -1;
     if (g_near.global == NULL || g_near.level != g_world.levels || g_world.current != 8.0f) return;
     if (level != g_near.level) { level = g_near.level; reports = 0; last = 0; }
@@ -1426,7 +1430,7 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
         if (fault) return -1; /* the merge's state is unknown after a fault */
         if (index == 0 && ++g_near.calls < TERRAIN_DRAW_CALLS) return 0;
         g_near.building = 0; g_near.calls = 0;
-        if (index != 0) g_near.tilesDrawn++; else g_near.tilesFailed++;
+        if (index != 0) { WorldArenaReset(context); g_near.tilesDrawn++; } else g_near.tilesFailed++;
         return 1;
     }
     if (g_near.matLeave)
@@ -1500,6 +1504,7 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
     if (index != 0)
     {
         g_near.calls = 0;
+        WorldArenaReset(context);
         if (mat) { g_near.matLeave = 1; return 0; }
         if (g_near.stepOp[s] == 0x63 && (g_nearStampOffset[0] != 0 || g_nearStampOffset[1] != 0)) { g_near.stampLeave = 1; g_near.stampWaits = 0; return 0; }
         return 1;
@@ -3234,6 +3239,7 @@ static int StampRunRecord(const uint8_t* saved, uintptr_t gen, uint8_t* T, uint6
     volatile int calls = 0;
     uint8_t phase = 0;
     LONG fault = WorldTileGuarded(one, context, &index, &phase, g, h, limit, &calls);
+    if (!fault && index != 0) WorldArenaReset(context);
     return fault ? -1 : index != 0 ? 1 : 0;
 }
 
@@ -3783,6 +3789,7 @@ static int TerrainNearReplay(uint64_t records, uint32_t end, uint32_t at, uint64
         Note("difficulty: near terrain: the tile is rendered in %.1f s (%u frames; %d vanilla-density tiles drawn, %d failed): heights %.1f..%.1f m, mean %.1f, "
             "%u of %u samples zero; mean |tile - level| %.2f m", (double)(GetTickCount64() - g_near.started) / 1000.0, g_near.frames, g_near.tilesDrawn,
             g_near.tilesFailed, (double)lo, (double)hi, n ? sum / n : 0.0, zeros, n, n ? diff / n : 0.0);
+        WorldMemoryNote("near tile rendered", 0xFFFFFFFFu, 0, 1);
         if (zeros * 2 > n) { Note("difficulty: near terrain: the tile is mostly empty; it is not spawned"); NearReplayEnd(0); return 0; }
         g_near.state = NEAR_SPAWN;
         return 0;
@@ -4322,6 +4329,61 @@ static float NearVisibleAt(float x, float y)
     if (inside || best < -9000.0f) return best;
     float c = NearGroundAt(&g_nearCoarseGround, x, y);
     return c < -9000.0f || best >= c ? best : c;
+}
+
+/* ---- A stratagem beacon's water depth over the near tiles --------------------------------------------------------
+ * A beacon's deploy (0x6A2A30, at contact) rejects it when the water there is deeper than 1 m (0x6A2D8A: 0x13CA650 >
+ * 1.0, every stratagem; the refund 0x66EE10 and the beacon destroyed). 0x13CA650(-, pos): 0 when [[game+0x33266A8]+0x2BC]
+ * > 0 or the water manager [game+0x347CE48] has +0x44 clear; else water - ground, water = 0x13D4620(manager, pos,
+ * G+0x119FF48) and ground = the hit of a ray from z + 500 m, 1000 m down, against the coarse terrain [G+0x8758A0] only,
+ * when the level's +0x1E4 is 3 (0 otherwise, and 0 when the ray misses). Under every live near tile the coarse collision
+ * is at -500 m (NearHideCoarse), so there the ray misses (ground 0) or hits -500 m, and the depth is the water level or
+ * 500 m more: a beacon on dry ground was rejected wherever the water plane is above 1 m. Over a live tile the ground is
+ * the tile's as drawn (NearVisibleAt); elsewhere, and in every other case, the game's own value. Its callers read only
+ * xmm0 and their own saved registers after it (0x6A2B40, 0x8FA9FB, 0x8FB1B3, 0x11A1C93, the ground search 0x13CAA80). */
+typedef float (*BeaconDepthFn)(uint64_t unused, const float* pos);
+typedef float (*WaterLevelFn)(uintptr_t manager, const float* pos, uintptr_t mask);
+static BeaconDepthFn g_beaconDepth;
+static volatile LONG g_beaconDepthNotes;
+
+/* The parts of the depth at pos: 1 when the tile's ground applies (*ground, *water set), 0 when the game's own value
+ * stands (*kind the level's +0x1E4, or 0 when it did not read). */
+static int BeaconDepthParts(const float* pos, float* ground, float* water, uint32_t* kind)
+{
+    uintptr_t game = g_world.game, holder = 0, manager = 0, gameObj = 0, lg = 0, gen = 0;
+    uint32_t blocked = 0; uint8_t on = 0;
+    *kind = 0;
+    if (game == 0) return 0;
+    float g = NearVisibleAt(pos[0], pos[1]);
+    if (g < -9000.0f) return 0;
+    if (SafeRead(game + 0x33266A8u, &holder, 8) || holder == 0 || SafeRead(holder + 0x2BC, &blocked, 4) || blocked != 0 ||
+        SafeRead(game + 0x347CE48u, &manager, 8) || manager == 0 || SafeRead(manager + 0x44, &on, 1) || on == 0 ||
+        SafeRead(game + 0x3326340u, &gameObj, 8) || gameObj == 0 || SafeRead(gameObj + 0xAE288, &lg, 8) || lg == 0 ||
+        SafeRead(lg + 0x1E4, kind, 4) || *kind != 3 || SafeRead(lg + 0x2C8, &gen, 8) || gen == 0)
+        return 0;
+    float at[3] = {pos[0], pos[1], pos[2]};
+    *water = ((WaterLevelFn)(game + 0x13D4620u))(manager, at, gen + 0x119FF48u);
+    *ground = g;
+    return 1;
+}
+
+static float BeaconDepth(uint64_t unused, const float* pos)
+{
+    float depth = g_beaconDepth(unused, pos), ground, water;
+    uint32_t kind;
+    if (!BeaconDepthParts(pos, &ground, &water, &kind)) return depth;
+    float fixed = water - ground;
+    if ((depth > 1.0f) != (fixed > 1.0f) && InterlockedIncrement(&g_beaconDepthNotes) <= 24)
+        Note("difficulty: water depth at (%.1f, %.1f, %.1f) over a near tile: %.2f m with the ground as drawn (%.2f m, water %.2f m), the coarse ray's %.2f m",
+            (double)pos[0], (double)pos[1], (double)pos[2], (double)fixed, (double)ground, (double)water, (double)depth);
+    return fixed;
+}
+
+static void InstallBeaconDepth(uintptr_t game)
+{
+    if (ApiCodeMatches(game + 0x13CA650u, "40 53 48 81 EC A0 00 00 00"))
+        LoaderHook("a stratagem beacon's water depth (the near tiles' ground)", game + 0x13CA650u, (void*)BeaconDepth, (void**)&g_beaconDepth);
+    else Note("difficulty: the water depth query is not the reviewed one: stratagem beacons over the near tiles keep the coarse terrain's ground");
 }
 
 /* The live tile nearest to (x, y) whose terrain span reaches within `reach` of it; -1 when none. */

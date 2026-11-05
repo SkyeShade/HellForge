@@ -98,7 +98,7 @@ _Static_assert(DIF_IMPORTANT_NEW % 16u == 0, "the important locations' new place
 #include "route_sites.h"
 #define DIF_ROUTE_NODES 2304u
 #define DIF_ROUTE_EDGES 3456u
-#define DIF_ROUTE_POINTS 24576u
+#define DIF_ROUTE_POINTS 65535u /* road point ids are u16 in the road collision entries (0xF30D40): at most 65535; s74p used 24573 of 24576 */
 #define DIF_ROUTE_NODES_OLD 0x8C4E40u
 #define DIF_ROUTE_EDGES_OLD 0x937348u
 #define DIF_ROUTE_CLASSES_OLD 0x11A1F98u

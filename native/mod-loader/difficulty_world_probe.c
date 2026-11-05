@@ -7,6 +7,10 @@
  *   ID inside X Y H       the units whose mesh boxes hold the point H m above the drawn ground at (X, Y) (with 0.15 m to
  *                         spare): an eye there would be inside them.
  *   ID enemies X Y R      the enemy budget's entities within R m (positions, resources).
+ *   ID big X Y R S        every unit whose root is within R m and whose mesh boxes (world space) span more than S m
+ *                         on an axis: a mesh drawn kilometres long (a node matrix gone wrong).
+ *   ID depth X Y Z        a stratagem beacon's water depth at the point (0x13CA650): the game's coarse ray and, over a
+ *                         near tile, with the ground as drawn (difficulty_world_terrain.c, BeaconDepth).
  * The answer goes to xl-probe-out.txt (written whole, then moved in place); its first line is "ID done ...".
  *
  * Where it reads (helldivers2.exe, build 25480438; static analysis in the knowledge base, xl-devtools entry):
@@ -45,7 +49,7 @@ static struct
     FILETIME stamp;
     ULONGLONG checked;
     /* the command being walked */
-    int busy, kind; /* 1 props, 2 inside */
+    int busy, kind; /* 1 props, 2 inside, 3 big */
     char id[32];
     float x, y, r, tol, h, point[3];
     uintptr_t world;
@@ -192,7 +196,7 @@ static void ProbeUnitStep(uintptr_t exe, uintptr_t obj, uint32_t index)
     const float* cam = g_eye.on ? g_eye.pos : g_eye.game;
     if (fabsf(root[12] - cam[0]) < 0.5f && fabsf(root[13] - cam[1]) < 0.5f && fabsf(root[14] - cam[2]) < 0.5f) { g_probe.camera = id; return; }
     float dx = root[12] - g_probe.x, dy = root[13] - g_probe.y;
-    float reach = g_probe.r + 200.0f; /* the largest boxes reach this far from their root */
+    float reach = g_probe.kind == 3 ? g_probe.r : g_probe.r + 200.0f; /* the largest boxes reach this far from their root */
     if (dx * dx + dy * dy > reach * reach) return;
     uint32_t meshes = 0; uintptr_t list = 0;
     if (full) { memcpy(&meshes, o + 0xC8, 4); memcpy(&list, o + 0xD0, 8); }
@@ -228,6 +232,16 @@ static void ProbeUnitStep(uintptr_t exe, uintptr_t obj, uint32_t index)
         }
     }
     if (u.meshes == 0) return;
+    if (g_probe.kind == 3)
+    {
+        float ex = u.hi[0] - u.lo[0], ey = u.hi[1] - u.lo[1], ez = u.hi[2] - u.lo[2];
+        if (dx * dx + dy * dy > g_probe.r * g_probe.r || !(fmaxf(ex, fmaxf(ey, ez)) > g_probe.tol)) return;
+        g_probe.hits++;
+        ProbeAppend("big %016llx unit %08X class %d meshes %d root (%.1f, %.1f, %.1f); box x %.1f..%.1f, y %.1f..%.1f, z %.1f..%.1f\n", (unsigned long long)u.hash,
+            u.id, u.cls, u.meshes, (double)u.root[0], (double)u.root[1], (double)u.root[2], (double)u.lo[0], (double)u.hi[0], (double)u.lo[1], (double)u.hi[1],
+            (double)u.lo[2], (double)u.hi[2]);
+        return;
+    }
     if (g_probe.kind == 2)
     {
         if (deepest < 0) return;
@@ -311,7 +325,21 @@ static void ProbePoll(uintptr_t game)
     if (n < 5) { char h[260]; snprintf(h, sizeof h, "%s done error: \"%.120s\" is not \"ID props|inside|enemies X Y R|H [TOL]\"\n", n > 0 ? g_probe.id : "?", text); ProbeFinish(h); return; }
     g_probe.x = v[0]; g_probe.y = v[1]; g_probe.r = v[2]; g_probe.tol = n >= 6 ? v[3] : 0.3f;
     if (!strcmp(cmd, "enemies")) { ProbeEnemies(game); return; }
-    g_probe.kind = !strcmp(cmd, "props") ? 1 : !strcmp(cmd, "inside") ? 2 : 0;
+    if (!strcmp(cmd, "depth"))
+    {
+        float at[3] = {v[0], v[1], v[2]}, ground = 0.0f, water = 0.0f;
+        uint32_t kind = 0;
+        float coarse = g_beaconDepth != NULL ? g_beaconDepth(0, at) : NAN;
+        int tile = BeaconDepthParts(at, &ground, &water, &kind);
+        char h[360];
+        if (tile) snprintf(h, sizeof h, "%s done depth at (%.1f, %.1f, %.1f): %.2f m over a near tile (ground as drawn %.2f, water %.2f); the coarse ray's %.2f m; a beacon is refused past 1 m\n",
+            g_probe.id, (double)at[0], (double)at[1], (double)at[2], (double)(water - ground), (double)ground, (double)water, (double)coarse);
+        else snprintf(h, sizeof h, "%s done depth at (%.1f, %.1f, %.1f): %.2f m, the game's own (no near tile there, or level +0x1E4 %u, or the water off); drawn ground %.2f\n",
+            g_probe.id, (double)at[0], (double)at[1], (double)at[2], (double)coarse, kind, (double)NearVisibleAt(at[0], at[1]));
+        ProbeFinish(h);
+        return;
+    }
+    g_probe.kind = !strcmp(cmd, "props") ? 1 : !strcmp(cmd, "inside") ? 2 : !strcmp(cmd, "big") ? 3 : 0;
     if (g_probe.kind == 0) { char h[96]; snprintf(h, sizeof h, "%s done error: unknown command %s\n", g_probe.id, cmd); ProbeFinish(h); return; }
     if (g_probe.kind == 2)
     {
@@ -361,7 +389,10 @@ static void ProbeWalk(uintptr_t game)
         if (support >= 0) ProbeAppend("    (supported by unit %08X, its top %.2f)\n", g_probeBoxes[support].id, (double)g_probeBoxes[support].hi[2]);
     }
     char head[320];
-    if (g_probe.kind == 2)
+    if (g_probe.kind == 3)
+        snprintf(head, sizeof head, "%s done big: %u units within %.0f m of (%.1f, %.1f) span more than %.0f m; %u units read, %u skipped\n",
+            g_probe.id, g_probe.hits, (double)g_probe.r, (double)g_probe.x, (double)g_probe.y, (double)g_probe.tol, g_probe.scanned, g_probe.skipped);
+    else if (g_probe.kind == 2)
         snprintf(head, sizeof head, "%s done inside: point (%.2f, %.2f, %.2f) (%.2f m over the drawn ground): in %u unit boxes; %u units read, %u skipped; the camera's unit %08X left out\n",
             g_probe.id, (double)g_probe.point[0], (double)g_probe.point[1], (double)g_probe.point[2], (double)g_probe.h, g_probe.hits, g_probe.scanned, g_probe.skipped, g_probe.camera);
     else

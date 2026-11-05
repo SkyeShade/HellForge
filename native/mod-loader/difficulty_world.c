@@ -39,7 +39,22 @@ static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediat
     {0xF7DFEFu, 3, 0x44800000u}, {0xF7DFF6u, 3, 0x44800000u}, {0xF7EDDCu, 3, 0x44800000u}, {0xF7EDE3u, 3, 0x44800000u}};
 /* What the instructions read (the block's second page, writable): half, full, 1 / full, the gate's +-2000 x scale, and
  * the size the stub stores (0: the table's). */
-typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull; } WorldValues;
+/* maskSpan: 4096.0 (0x23C7E04) where a stratagem's payload clearance is read from the clearing mask (0x6AA0CA; the
+ * test 0x6AA0B2..0x6AA100 refuses the beacon when the largest payload radius [payload+0x24] is more): clearance = 2 (s - 0.5) x (4096 / N) x 32 m, s the mask's sample at the beacon
+ * through 0x6AA04F..0x6AA080 (kWorldSites: over the whole world), N its width ([G+0x11A0008], 512 from 0xF5E9BB); the
+ * division by N puts the encoded distance in texels, 4096 / N = 2 x the world's 2048 m / N, so a texel of a larger world
+ * is that much wider: at the vanilla 4096 a payload's clearance came out 8 x too small on a 16 km map and a vehicle
+ * (its radius against it) was refused at once. */
+/* quarter: 512.0 (0x23C7B88) where SpawnEarthquakes (op 0x4D, 0xF5CE70) bounds a source (0xF5CEE0, compared at 0xF5CFEB and
+ * 0xF5D004): it keeps a source when |x - half| and |y - half| are at most 512, the centre and the 1 / full it samples the
+ * heightmap with both redirected (kWorldSites 0xF5CF04, 0xF5CEF2), so the bound is the world's central half; at the vanilla
+ * 512 a 16 km map kept only the sources in its central kilometre. */
+/* goalHigh / goalLow: +-4096.0 (0x23C7E04, 0x23C83DC) where an enemy's movement goal is applied (0x7ED4C0, loads 0x7ED57B and
+ * 0x7ED58C): the AiEnemy state machine (0xAA9B20: combat 0xAA42D0, retreat 0xAA80E0, charge 0xAA8680 ...) hands it the goal
+ * every update and it returns without setting it when |x|, |y| or |z| is past 4096 m (the jump to 0x7EDB3A), 4 x the
+ * vanilla half world; on a 16 km map an enemy whose goal lay more than 4 km out on either axis never moved. The only
+ * reader of -4096. */
+typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull, maskSpan, quarter, goalHigh, goalLow; } WorldValues;
 /* GenerateClearingPoints (op 0xB3, 0xF42BD0) scatters Poisson points over the whole world square, keeps each with the
  * planet's chance (its random number x 2^-32, 0xF42D1E, against [settings+0x114]), and appends the kept ones (16 bytes
  * each, from G+0x11A16FC) without a check: room for about 1450 before the route counts at G+0x11A71B4. Their number grows
@@ -104,6 +119,10 @@ static void WorldWrite(float scale)
     v->dropHigh = 1024.0f * scale - 25.0f;
     v->dropLow = -(1024.0f * scale - 25.0f);
     v->negFull = -2048.0f * scale;
+    v->maskSpan = 4096.0f * scale;
+    v->quarter = 512.0f * scale;
+    v->goalHigh = 4096.0f * scale;
+    v->goalLow = -4096.0f * scale;
     if (g_world.below != NULL)
     {
         g_world.below[0] = scale > 1.0f ? g_world.makeBelow : 0xFFFFFFFFu;
@@ -322,6 +341,7 @@ static LONG g_worldIndexFullSeen;
 typedef uint64_t (*WorldPassFn)(uint64_t, uint64_t, uint64_t, uint64_t);
 static uintptr_t g_worldLevel;
 static uint32_t g_importantList = 0x8996B0u; /* G + this: the important locations (difficulty_block.c moves them) */
+static int32_t phaseBefore66 = -1; /* research: the road units when op 0x66 began */
 static uint32_t g_routeNodes = 0x8C4E40u, g_routeEdges = 0x937348u, g_routePoints = 0x9568E4u; /* G + these: the route graph (difficulty_block.c moves it) */
 static void WorldPassNote(const char* name, uint32_t before[2], uint64_t start)
 {
@@ -855,6 +875,19 @@ static __attribute__((noinline)) LONG WorldTileGuarded(uint8_t* record, uint64_t
     return 0;
 }
 
+/* The generation arena ([ctx+0]) emptied as the game's step 0xF26140 does after every finished op (0xF261FE..0xF26205,
+ * 0x173BAB0: frees every chunk but the oldest and zeroes its use), so every op starts with an empty arena. The tile
+ * runs call the dispatcher directly, outside that step: without this every tile's allocations stayed until the level's
+ * own op finished (s74w: about 28 MB a composite tile, 5 GB in 3.5 s of the 0x40 wait). Call it only once an op's
+ * index has moved, never between the calls of a multi-call op (0x2F keeps [pass+0x50] there until it moves on). */
+static void WorldArenaReset(uint64_t context)
+{
+    static int ok = -1;
+    if (ok < 0) ok = ApiCodeMatches(g_world.game + 0x173BAB0u, "40 53 48 83 EC 20 48 8B 01 48 8B D9 48 85 C0 74");
+    uint64_t arena = 0;
+    if (ok == 1 && context != 0 && !SafeRead(context, &arena, 8) && arena != 0) ((void (*)(uint64_t))(g_world.game + 0x173BAB0u))(arena);
+}
+
 static void TerrainDiagTileFault(uint32_t op, uintptr_t at, uintptr_t data);
 
 static int WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uint64_t e, uint64_t f, uint64_t g, uint64_t h, uintptr_t gen)
@@ -916,6 +949,7 @@ static int WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uin
         if (g_tileWeldFailed) { Note("difficulty: terrain tile: op 0x%02X's weld failed: the tile is abandoned, the level goes on", op); return 0; }
         QueryPerformanceCounter(&t1);
         ran++;
+        if (index != 0) WorldArenaReset(context);
         { /* research: route cell 0's first edge pointer and the route cell counts after each op (a vertex written over it
            * crashed CellularAutomata at 0xF6D9A0) */
             uint32_t rc[4] = {0};
@@ -1293,6 +1327,7 @@ static int WorldTileStep(uint64_t records, uint32_t end, uint32_t at, uint64_t c
     g_tileGpuFrames++;
     if (index != 0)
     {
+        WorldArenaReset(context);
         Note("difficulty: terrain tile: merge op 0x%02X done (%u calls, frame %u)", kTileGpuOps[g_tileGpuStep], g_tileGpuCalls, g_tileGpuFrames);
         ++g_tileGpuStep;
         if (g_tileGpuStep < (int)sizeof kTileGpuOps && g_tileSkip && kTileGpuOps[g_tileGpuStep] == g_tileSkip && (g_tileRuns & 1) == 0)
@@ -1993,6 +2028,190 @@ static void WorldCellEdges(uintptr_t gen, uint32_t op)
  * the count, how many lie in each city (their box corner +0xB0/+0xB4 within 1.5 x the frame), and the stamp index's
  * free slots ([level+0x2C0] + 8: free head +0x2C, -1 = full; entry stride u16 +0x24, entries +0x30, a free entry's
  * first u32 the next; the inserter returns a null handle when full, 0xC04F1C, and its callers write through it). */
+/* Research (s74n/s74o: purple strips along the roads): every route edge's road points (edge +0x38 start, +0x3C end,
+ * exclusive: 0xFC7253 / 0xFC7267 -> 0xFC726D) against the written points (count G+0x11A71D4), and the points
+ * themselves (x, y in generator metres, 0..W), after op 0x2B on every level of a larger map. */
+static void WorldRoadCheck(uintptr_t gen)
+{
+    uint32_t edges = 0, points = 0, w = 0;
+    if (SafeRead(gen + 0x11A71CCu, &edges, 4) || SafeRead(gen + 0x11A71D4u, &points, 4)) return;
+    SafeRead(g_worldLevel + 0x2D20 + 0x2C, &w, 4);
+    uint32_t past = 0, backwards = 0, longest = 0, zero = 0, outside = 0, firstPast = 0xFFFFFFFFu, firstOut = 0xFFFFFFFFu;
+    uint32_t pastRange[2] = {0, 0}; float outAt[2] = {0, 0};
+    for (uint32_t e = 0; e < edges && e < 65536; e++)
+    {
+        uint32_t r[2];
+        if (SafeRead(gen + g_routeEdges + 0x48ull * e + 0x38, r, 8)) break;
+        if (r[1] < r[0]) { backwards++; continue; }
+        if (r[1] - r[0] > longest) longest = r[1] - r[0];
+        if (r[1] > points) { if (past++ == 0) { firstPast = e; pastRange[0] = r[0]; pastRange[1] = r[1]; } }
+    }
+    for (uint32_t i = 0; i < points && i < 1u << 20; i++)
+    {
+        float p[2];
+        if (SafeRead(gen + g_routePoints + 8ull * i, p, 8)) break;
+        if (p[0] == 0.0f && p[1] == 0.0f) zero++;
+        if (!(p[0] >= -100.0f && p[0] <= (float)w + 100.0f && p[1] >= -100.0f && p[1] <= (float)w + 100.0f))
+        { if (outside++ == 0) { firstOut = i; outAt[0] = p[0]; outAt[1] = p[1]; } }
+    }
+    Note("difficulty: roads research: %u edges, %u road points (world %u m): %u ranges past the points (first edge %u: %u..%u), %u backwards, longest %u; "
+        "%u points at (0, 0), %u outside the world (first %u at %.1f, %.1f)", edges, points, w, past, firstPast, pastRange[0], pastRange[1], backwards, longest,
+        zero, outside, firstOut, (double)outAt[0], (double)outAt[1]);
+}
+
+/* Research (s74n, static: kind roll 0xF2CA20 over W = MT+0xF0..+0x100, MT = [[ctx+8]+0xC0], limited to the
+ * definition's kinds D+0x198 (u8 list) / D+0x1A0 (count); D = [[loc]+0x28] + A1 (+0xA1) * 0x18 -> [+8] + A2 (+0xA2) *
+ * 0x1C8 when loc+8 holds 0xADC32FAA, else [[loc]]; 0xF81201..0xF81223): before op 0x18 on a city level, W and each
+ * important location outside the cities with its kind and its definition's kinds. */
+static void WorldCityDefKinds(uint64_t context, uintptr_t gen)
+{
+    static LONG level = -1;
+    if (g_cities.level != g_world.levels || g_cities.count == 0 || level == g_world.levels) return;
+    level = g_world.levels;
+    uint64_t settings = 0, mt = 0; float W[5] = {0};
+    if (!SafeRead(context + 8, &settings, 8) && settings != 0 && !SafeRead(settings + 0xC0, &mt, 8) && mt != 0) SafeRead(mt + 0xF0, W, sizeof W);
+    uint32_t count = 0; SafeRead(gen + 0x11A715Cu, &count, 4);
+    if (count > 256) count = 256;
+    char text[1600]; int n = 0; uint32_t outside = 0, withOne = 0;
+    for (uint32_t i = 0; i < count && n < (int)sizeof text - 80; i++)
+    {
+        uint64_t at = gen + 0x19B1130u + 0x108ull * i, holder = 0, D = 0, list = 0; uint32_t tag = 0, kinds = 0; uint8_t a1 = 0xFF, a2 = 0xFF, kind = 0; float p[2];
+        if (SafeRead(at, &holder, 8) || SafeRead(at + 8, &tag, 4) || SafeRead(at + 0xA1, &a1, 1) || SafeRead(at + 0xA2, &a2, 1) || SafeRead(at + 0xF0, &kind, 1) || SafeRead(at + 0xA4, p, 8)) continue;
+        int inCity = 0;
+        for (int k = 0; k < g_cities.count && !inCity; k++) { float dx = p[0] - g_cities.x[k], dy = p[1] - g_cities.y[k]; inCity = dx * dx + dy * dy <= g_cities.radius * g_cities.radius * 1.2f; }
+        if (inCity || holder == 0 || a2 == 0xFF) continue;
+        if (tag == 0xADC32FAAu) { uint64_t t = 0, arr = 0; if (a1 == 0xFF || SafeRead(holder + 0x28, &t, 8) || t == 0 || SafeRead(t + (uint64_t)a1 * 0x18 + 8, &arr, 8) || arr == 0) continue; D = arr + (uint64_t)a2 * 0x1C8; }
+        else if (SafeRead(holder, &D, 8)) continue;
+        uint8_t k8[8] = {0};
+        if (D == 0 || SafeRead(D + 0x198, &list, 8) || SafeRead(D + 0x1A0, &kinds, 4)) continue;
+        if (kinds > 8) kinds = 8;
+        if (list != 0) SafeRead(list, k8, kinds);
+        outside++;
+        int one = 0; for (uint32_t k = 0; k < kinds; k++) one |= k8[k] == 1;
+        withOne += one;
+        n += snprintf(text + n, sizeof text - n, " {%u kind %u D %u/%u kinds", i, kind, a1, a2);
+        for (uint32_t k = 0; k < kinds; k++) n += snprintf(text + n, sizeof text - n, " %u", k8[k]);
+        n += snprintf(text + n, sizeof text - n, "}");
+    }
+    Note("difficulty: kinds research: W %.3g %.3g %.3g %.3g %.3g; %u important locations outside the cities, %u whose definition lists kind 1:%s",
+        (double)W[0], (double)W[1], (double)W[2], (double)W[3], (double)W[4], outside, withOne, text);
+}
+
+/* Research for the open land's nature variants (KB xl-operation-content "Nature variants", static 2026-11-04), once per
+ * city level:
+ * R1/R2 after GenerateMissionStampList (op 0x15, 0xF8E530; the op gets the pass at record + 8): holders [pass+0] (8-byte
+ * pointers, count [[pass+8]]), categories holder+0x28 (0x18 each: +0 id, +8 definitions, +0x10 count; count holder+0x30),
+ * definitions 0x1C8 each (kinds u8 list D+0x198, count D+0x1A0; flags byte D+0xE8; D+0x160; weight f32 D+0x68; POI type
+ * list D+0x170 / count D+0x178); the objective set [pass+0x20] (count +0xD4, ids +4, first entry +0x54, entries +0x94; at
+ * most 16) and its 16-byte entries [pass+0x18] {u16 holder, u16 category, u16 definition, pad, u32, u32 objective id},
+ * total [[pass+0x28]]; ctx+0xD0 picks the D+0xE8 bit (2/3/4 -> bit 0/1/2).
+ * R3 before op 0x16: the kind quotas M+0xA0 + 16 (k - 1), M = [[[ctx+0x18]+0x2D0]+0x68] (0xF8F9C0..FAC0).
+ * R4/R6 (WorldNatureOps): the order the placement ops finish in, and on which thread. */
+static uint32_t NatureKindMask(uint64_t D)
+{
+    uint64_t list = 0; uint32_t kinds = 0, mask = 0; uint8_t k8[8] = {0};
+    if (SafeRead(D + 0x198, &list, 8) || SafeRead(D + 0x1A0, &kinds, 4) || list == 0) return 0;
+    if (kinds > 8) kinds = 8;
+    if (SafeRead(list, k8, kinds)) return 0;
+    for (uint32_t k = 0; k < kinds; k++) if (k8[k] < 32) mask |= 1u << k8[k];
+    return mask;
+}
+
+static void WorldNatureResearch15(uint64_t pass, uint64_t context)
+{
+    static LONG level = -1;
+    if (g_cities.level != g_world.levels || g_cities.count == 0 || level == g_world.levels) return;
+    level = g_world.levels;
+    uint64_t holders = 0, holderCountAt = 0, set = 0, entries = 0, totalAt = 0;
+    uint32_t holderCount = 0, total = 0, select = 0, selectArg = 0, objectives = 0;
+    if (SafeRead(pass, &holders, 8) || SafeRead(pass + 8, &holderCountAt, 8) || holderCountAt == 0 || SafeRead(holderCountAt, &holderCount, 4) ||
+        SafeRead(pass + 0x18, &entries, 8) || SafeRead(pass + 0x20, &set, 8) || SafeRead(pass + 0x28, &totalAt, 8) || totalAt == 0 || SafeRead(totalAt, &total, 4) ||
+        set == 0 || SafeRead(set + 0xD4, &objectives, 4))
+    { Note("difficulty: nature research: op 0x15's pass could not be read"); return; }
+    SafeRead(context + 0xD0, &select, 4); SafeRead(context + 0xD4, &selectArg, 4);
+    if (objectives > 16) objectives = 16;
+    /* R1: per objective, its entries' definitions by kind list */
+    for (uint32_t o = 0; o < objectives; o++)
+    {
+        uint32_t id = 0, first = 0, count = 0, one = 0, three = 0, both = 0, neither = 0, e8[8] = {0}, b160 = 0; float wmin = 1e30f, wmax = -1e30f;
+        SafeRead(set + 4 + 4ull * o, &id, 4); SafeRead(set + 0x54 + 4ull * o, &first, 4); SafeRead(set + 0x94 + 4ull * o, &count, 4);
+        for (uint32_t j = 0; j < count && j < 4096; j++)
+        {
+            uint16_t ix[3] = {0}; uint64_t holder = 0, cats = 0, defs = 0;
+            if (entries == 0 || SafeRead(entries + 16ull * (first + j), ix, 6) || ix[0] >= holderCount || SafeRead(holders + 8ull * ix[0], &holder, 8) || holder == 0 ||
+                SafeRead(holder + 0x28, &cats, 8) || cats == 0 || SafeRead(cats + 0x18ull * ix[1] + 8, &defs, 8) || defs == 0) continue;
+            uint64_t D = defs + 0x1C8ull * ix[2];
+            uint32_t m = NatureKindMask(D); uint8_t f = 0; uint32_t x160 = 0; float w = 0;
+            SafeRead(D + 0xE8, &f, 1); SafeRead(D + 0x160, &x160, 4); SafeRead(D + 0x68, &w, 4);
+            int k1 = (m >> 1) & 1, k3 = (m >> 3) & 1;
+            both += k1 && k3; one += k1 && !k3; three += k3 && !k1; neither += !k1 && !k3;
+            for (int b = 0; b < 8; b++) e8[b] += (f >> b) & 1;
+            b160 += (x160 >> 3) & 1;
+            if (w < wmin) wmin = w; if (w > wmax) wmax = w;
+        }
+        Note("difficulty: nature research R1 obj %u id %u: first %u, %u defs: kind1-only %u, kind3-only %u, both %u, neither %u; E8 bits %u/%u/%u; 0x160 bit3 %u; weight %.3g..%.3g",
+            o, id, first, count, one, three, both, neither, e8[0], e8[1], e8[2], b160, count ? (double)wmin : 0.0, count ? (double)wmax : 0.0);
+    }
+    Note("difficulty: nature research R1: ctx+0xD0 %u (+0xD4 %u), %u objectives, %u entries (one note per objective above)", select, selectArg, objectives, total);
+    /* R2: every holder and category: definitions by kind list, with POI type lists, and the selected E8 bit */
+    uint32_t bit = select == 2 ? 0 : select == 3 ? 1 : select == 4 ? 2 : 8, notes = 0, k1All = 0, k3All = 0, bothAll = 0, selAll = 0;
+    for (uint32_t h = 0; h < holderCount && h < 512; h++)
+    {
+        uint64_t holder = 0, cats = 0; uint32_t catCount = 0, key = 0;
+        if (SafeRead(holders + 8ull * h, &holder, 8) || holder == 0 || SafeRead(holder + 0x28, &cats, 8) || SafeRead(holder + 0x30, &catCount, 4) || cats == 0) continue;
+        SafeRead(holder + 8, &key, 4);
+        for (uint32_t c = 0; c < catCount && c < 64; c++)
+        {
+            uint64_t defs = 0; uint32_t defCount = 0, catId = 0, one = 0, three = 0, both = 0, poi = 0, sel = 0;
+            if (SafeRead(cats + 0x18ull * c, &catId, 4) || SafeRead(cats + 0x18ull * c + 8, &defs, 8) || SafeRead(cats + 0x18ull * c + 0x10, &defCount, 4) || defs == 0) continue;
+            for (uint32_t d = 0; d < defCount && d < 1024; d++)
+            {
+                uint64_t D = defs + 0x1C8ull * d; uint32_t m = NatureKindMask(D), poiCount = 0; uint8_t f = 0;
+                SafeRead(D + 0x178, &poiCount, 4); SafeRead(D + 0xE8, &f, 1);
+                int k1 = (m >> 1) & 1, k3 = (m >> 3) & 1;
+                both += k1 && k3; one += k1 && !k3; three += k3 && !k1; poi += poiCount > 0 && poiCount < 64; sel += bit < 8 && ((f >> bit) & 1);
+            }
+            k1All += one; k3All += three; bothAll += both; selAll += sel;
+            if (one + both == 0 && three == 0) continue; /* nothing kind 1 or 3: skip */
+            if (++notes <= 80)
+                Note("difficulty: nature research R2 h%u (+8 %08X) c%u %08X: %u defs, kind1-only %u, kind3-only %u, both %u, POI lists %u, E8 sel %u", h, key, c, catId, defCount, one, three, both, poi, sel);
+        }
+    }
+    Note("difficulty: nature research R2: %u holders, %u categories with kind 1 or 3 (notes above, at most 80): kind1-only %u, kind3-only %u, both %u, E8 sel %u",
+        holderCount, notes, k1All, k3All, bothAll, selAll);
+}
+
+static void WorldNatureResearch16(uint64_t context)
+{
+    static LONG level = -1;
+    if (g_cities.level != g_world.levels || g_cities.count == 0 || level == g_world.levels) return;
+    level = g_world.levels;
+    uint64_t a = 0, b = 0, M = 0; uint32_t q[5][4] = {{0}};
+    if (SafeRead(context + 0x18, &a, 8) || a == 0 || SafeRead(a + 0x2D0, &b, 8) || b == 0 || SafeRead(b + 0x68, &M, 8) || M == 0 || SafeRead(M + 0xA0, q, sizeof q))
+    { Note("difficulty: nature research R3: the quotas could not be read"); return; }
+    char text[600]; int n = 0;
+    for (int k = 0; k < 5; k++)
+    {
+        float f[4]; memcpy(f, q[k], sizeof f);
+        n += snprintf(text + n, sizeof text - n, " {kind %d: %08X %08X %08X %08X = %.4g %.4g %.4g %.4g}", k + 1, q[k][0], q[k][1], q[k][2], q[k][3], (double)f[0], (double)f[1], (double)f[2], (double)f[3]);
+    }
+    Note("difficulty: nature research R3: M %p (ctx+0x18 -> +0x2D0 -> +0x68), quotas M+0xA0 + 16 (k - 1):%s", (void*)(uintptr_t)M, text);
+}
+
+/* R4/R6: the placement-related ops in the order they finish on a city level, with the record and the thread */
+static void WorldNatureOps(uint32_t op, uint32_t record)
+{
+    static LONG level = -1, count;
+    static const uint8_t kOps[] = {0x13, 0x15, 0x16, 0x17, 0x18, 0x1F, 0x28, 0x78, 0x7C, 0x81, 0x82, 0x84, 0x8B, 0xA0, 0xA5};
+    if (g_cities.level != g_world.levels || g_cities.count == 0) return;
+    int listed = 0;
+    for (size_t i = 0; i < sizeof kOps; i++) listed |= kOps[i] == op;
+    if (!listed) return;
+    if (level != g_world.levels) { level = g_world.levels; count = 0; }
+    if (InterlockedIncrement(&count) > 80) return;
+    Note("difficulty: nature research R4: op 0x%X record %u done on thread %lu", op, record, (unsigned long)GetCurrentThreadId());
+}
+
 static void WorldCityBudget(uintptr_t gen, uint32_t op)
 {
     if (g_cities.level != g_world.levels) return;
@@ -2055,9 +2274,132 @@ static void WorldCityShift(uintptr_t gen, int back)
  * structured; types from 0xB9's record +0x38). Each open-land cell (outside every city, +8 == -1: no special) takes
  * one by weight, from those of its height group (+4) or any group, as 0x78 would (0xF3794F..0xF37CBD; scratch
  * cities/zones.md), picked by a hash of its site and the level seed (the same on every peer). Before 0x78 (every city
- * layout) the zone id and group: 0x78 keeps a set +0 (0xF37A80) and 0x11 derives the type. After 0xB9 (template
+ * layout) the zone id, the cell keeping its height group: 0x78 keeps a set +0 (0xF37A80) and 0x11 derives the type. After 0xB9 (template
  * layouts) the type too, as 0x11 does (0xF288E0(ctx, id) ? [r+0xC] : entry +4, 0xC1500D), for 0xA3 reads it first. */
 typedef uint64_t (*ZoneTypeFn)(uint64_t, uint32_t);
+/* Research (s74l, 2026-11-04): ~75 open-land cells (565 m) end with city zones in clusters of 5-8 outside the three
+ * cities. After each op on a city level: the cells outside the city discs whose zone (+0) is a city zone (its type's
+ * +0x170 bit 1, the type through 0xF288E0 or E.+4), how many carry the painters' bit (+0x10 bit 0: 0x28 / 0x7C), and the
+ * first one's zone and place; noted when the count changes (the first 32 changes). */
+static void WorldCityStray(uint64_t records, uint32_t end, uint64_t context, uintptr_t gen, uint32_t op, uint32_t at)
+{
+    static LONG level = -1; static uint32_t last, notes; static uint64_t table;
+    if (g_cities.level != g_world.levels || g_cities.count == 0) return;
+    if (level != g_world.levels) { level = g_world.levels; last = 0; notes = 0; table = 0; }
+    if (notes >= 32) return;
+    if (table == 0)
+        for (uint32_t i = 0; i < end && i < 512 && table == 0; i++)
+        {
+            uint32_t o = 0;
+            if (!SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0xB9) SafeRead(records + (uint64_t)i * 0x19B0u + 0x38, &table, 8);
+        }
+    uint64_t Z = 0;
+    if (table == 0 || SafeRead(g_worldLevel + 0x2D20 + 0xB0, &Z, 8) || Z == 0) return;
+    static int typeFn = -1;
+    if (typeFn < 0) typeFn = ApiCodeMatches(g_world.game + 0xF288E0u, "4C 8B DC 49 89 5B 10 49 89 73 18 57 48 81 EC A0 00 00 00");
+    uint32_t cityIds[16], nIds = 0;
+    for (uint32_t k = 0; k < 16; k++)
+    {
+        uint32_t e[2] = {0, 0}; uint64_t type = 0; uint32_t flags = 0;
+        if (SafeRead(Z + 0x238 + 0x44ull * k, e, 8) || e[0] == 0) break;
+        int32_t t = (int32_t)e[1];
+        if (typeFn == 1) { uint64_t r = ((ZoneTypeFn)(g_world.game + 0xF288E0u))(context, e[0]); if (r != 0) SafeRead(r + 0xC, &t, 4); }
+        if (t >= 0 && t < 256 && !SafeRead(table + 8ull * (uint32_t)t, &type, 8) && type != 0 && !SafeRead(type + 0x170, &flags, 4) && (flags & 2u)) cityIds[nIds++] = e[0];
+    }
+    uint32_t cells = 0, stray = 0, painted = 0, firstZone = 0; float first[2] = {0, 0};
+    SafeRead(gen + 0x11A71C4u, &cells, 4);
+    if (cells > 1024) cells = 1024;
+    for (uint32_t i = 0; i < cells; i++)
+    {
+        uint8_t sub[0x20]; uint64_t route = 0; float p[2]; uint32_t zone = 0, bits = 0;
+        if (SafeRead(gen + 0x92F328u + 0x20ull * i, sub, sizeof sub)) break;
+        memcpy(&zone, sub, 4); memcpy(&bits, sub + 0x10, 4); memcpy(&route, sub + 0x18, 8);
+        if (route == 0 || SafeRead(route, p, 8)) continue;
+        int city = 0;
+        for (uint32_t k = 0; k < nIds && !city; k++) city = cityIds[k] == zone;
+        if (!city) continue;
+        int inCity = 0;
+        for (int k = 0; k < g_cities.count && !inCity; k++)
+        {
+            float dx = p[0] - g_cities.x[k], dy = p[1] - g_cities.y[k];
+            inCity = dx * dx + dy * dy <= g_cities.radius * g_cities.radius * 1.2f;
+        }
+        if (inCity) continue;
+        if (stray++ == 0) { firstZone = zone; first[0] = p[0]; first[1] = p[1]; }
+        if (bits & 1u) painted++;
+    }
+    if (stray == last) return;
+    notes++;
+    Note("difficulty: city zones research: after op 0x%02X (record %u) %u cells outside the cities have city zones (was %u; %u with the painters' bit), the first zone %u at (%.0f, %.0f)",
+        op, at, stray, last, painted, firstZone, (double)first[0], (double)first[1]);
+    last = stray;
+}
+
+/* Research (s74m): 0x7C AttachLocationsToRouteCells (0xF81020) paints an important location's cell (list G+0x19B1130,
+ * 0x108 each, count G+0x11A715C; kind byte +0xF0, position +0xA4/+0xA8) and its route neighbours with a rolled zone
+ * unless the cell's zone entry has +0x20 == 0 and its type's kind list (type+0x210, 4 bytes, 0-ended) holds the kind
+ * (0xF8154E..0xF815B7). Before the level's first 0x7C on a city map: each zone's type kinds, and each important
+ * location outside the cities with its kind and the zone under it (the route cell nearest its position). */
+static void WorldCityKinds(uint64_t records, uint32_t end, uint64_t context, uintptr_t gen)
+{
+    static LONG level = -1;
+    if (g_cities.level != g_world.levels || g_cities.count == 0 || level == g_world.levels) return;
+    level = g_world.levels;
+    uint64_t table = 0, Z = 0;
+    for (uint32_t i = 0; i < end && i < 512 && table == 0; i++)
+    {
+        uint32_t o = 0;
+        if (!SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4) && o == 0xB9) SafeRead(records + (uint64_t)i * 0x19B0u + 0x38, &table, 8);
+    }
+    if (table == 0 || SafeRead(g_worldLevel + 0x2D20 + 0xB0, &Z, 8) || Z == 0) return;
+    static int typeFn = -1;
+    if (typeFn < 0) typeFn = ApiCodeMatches(g_world.game + 0xF288E0u, "4C 8B DC 49 89 5B 10 49 89 73 18 57 48 81 EC A0 00 00 00");
+    char text[1400]; int n = 0;
+    for (uint32_t k = 0; k < 16 && n < (int)sizeof text - 80; k++)
+    {
+        uint8_t e[0x44]; uint64_t type = 0; uint32_t flags = 0; uint8_t kinds[4] = {0};
+        if (SafeRead(Z + 0x238 + 0x44ull * k, e, sizeof e)) break;
+        uint32_t id; int32_t t; memcpy(&id, e, 4); memcpy(&t, e + 4, 4);
+        if (id == 0) break;
+        if (typeFn == 1) { uint64_t r = ((ZoneTypeFn)(g_world.game + 0xF288E0u))(context, id); if (r != 0) SafeRead(r + 0xC, &t, 4); }
+        if (t >= 0 && t < 256 && !SafeRead(table + 8ull * (uint32_t)t, &type, 8) && type != 0) { SafeRead(type + 0x170, &flags, 4); SafeRead(type + 0x210, kinds, 4); }
+        n += snprintf(text + n, sizeof text - n, " {zone %u type %d flags %X +20 %u kinds %u %u %u %u}", id, t, flags & 0xFF, e[0x20], kinds[0], kinds[1], kinds[2], kinds[3]);
+    }
+    Note("difficulty: city zones research: the zones' location kinds:%s", text);
+    uint32_t count = 0, cells = 0;
+    SafeRead(gen + 0x11A715Cu, &count, 4); SafeRead(gen + 0x11A71C4u, &cells, 4);
+    if (count > 256) count = 256;
+    if (cells > 1024) cells = 1024;
+    n = 0;
+    uint32_t outside = 0;
+    for (uint32_t i = 0; i < count && n < (int)sizeof text - 60; i++)
+    {
+        uint8_t kind = 0; float p[2];
+        uint64_t at = gen + 0x19B1130u + 0x108ull * i;
+        if (SafeRead(at + 0xF0, &kind, 1) || SafeRead(at + 0xA4, p, 8)) continue;
+        int inCity = 0;
+        for (int k = 0; k < g_cities.count && !inCity; k++)
+        {
+            float dx = p[0] - g_cities.x[k], dy = p[1] - g_cities.y[k];
+            inCity = dx * dx + dy * dy <= g_cities.radius * g_cities.radius * 1.2f;
+        }
+        if (inCity) continue;
+        outside++;
+        uint32_t zone = 0; float best = 1e30f;
+        for (uint32_t c = 0; c < cells; c++)
+        {
+            uint8_t sub[0x20]; uint64_t route = 0; float q[2];
+            if (SafeRead(gen + 0x92F328u + 0x20ull * c, sub, sizeof sub)) break;
+            memcpy(&route, sub + 0x18, 8);
+            if (route == 0 || SafeRead(route, q, 8)) continue;
+            float d = (q[0] - p[0]) * (q[0] - p[0]) + (q[1] - p[1]) * (q[1] - p[1]);
+            if (d < best) { best = d; memcpy(&zone, sub, 4); }
+        }
+        n += snprintf(text + n, sizeof text - n, " {%u kind %u at %.0f,%.0f zone %u}", i, kind, (double)p[0], (double)p[1], zone);
+    }
+    Note("difficulty: city zones research: %u of %u important locations outside the cities:%s", outside, count, text);
+}
+
 static void WorldCityOpenZones(uint64_t records, uint32_t end, uint64_t context, uintptr_t gen, int withType)
 {
     if (g_cities.level != g_world.levels) return;
@@ -2110,7 +2452,7 @@ static void WorldCityOpenZones(uint64_t records, uint32_t end, uint64_t context,
         Note("difficulty: extra large maps: the open land: no non-city zone in the level's list (%u of:%s), its cells keep the city's", n, seen);
         return;
     }
-    uint32_t perZone[16] = {0};
+    uint32_t perZone[16] = {0}, mismatched = 0;
     for (uint32_t i = 0; i < cells; i++)
     {
         uintptr_t sub = gen + 0x92F328u + 0x20ull * i;
@@ -2140,14 +2482,19 @@ static void WorldCityOpenZones(uint64_t records, uint32_t end, uint64_t context,
             roll -= open[k].weight;
         }
         *(volatile uint32_t*)sub = open[pick].id;
-        if (withType || (open[pick].group != -1 && open[pick].group != group)) *(volatile int32_t*)(sub + 4) = open[pick].group;
+        /* The cell keeps its own height group before 0x78: 0x78 reads it (0xF378E1) and writes only +0 and +0x18
+         * (0xF37CEE, 0xF37CFA), and GenerateSubregionHeights (0x04) builds the relief from it. Writing the zone's group
+         * here flattened the open land (s74n: 673 of 830 cells in group 1, relief sd 1.6 m): the city maps' open zones
+         * have groups 0 and 1 only. After 0xB9 (template layouts, cells rebuilt by 0xA3) the zone's group stays. */
+        if (withType) *(volatile int32_t*)(sub + 4) = open[pick].group;
+        else if (open[pick].group != -1 && open[pick].group != group) mismatched++;
         if (withType) *(volatile int32_t*)(sub + 0xC) = open[pick].type;
         perZone[pick]++; written++;
     }
     char text[256]; int m = 0;
     for (uint32_t k = 0; k < n && m < (int)sizeof text - 32; k++) m += snprintf(text + m, sizeof text - m, " %u (type %d, group %d): %u;", open[k].id, open[k].type, open[k].group, perZone[k]);
-    Note("difficulty: extra large maps: the open land (%s%s): %u of %u cells, zones%s", withType ? "after 0xB9" : "before 0x78", even ? ", unweighted list: traversable zones evenly" : "",
-        written, cells, text);
+    Note("difficulty: extra large maps: the open land (%s%s): %u of %u cells (%u keep a height group their zone does not name), zones%s", withType ? "after 0xB9" : "before 0x78",
+        even ? ", unweighted list: traversable zones evenly" : "", written, cells, mismatched, text);
 }
 
 /* RevoronoiNatureRoutes (op 0xA3, 0xF691E0; structured maps only) rebuilds the route cells and their subregions: its
@@ -2261,6 +2608,44 @@ static void WorldZoneProbe(uint64_t records, uint32_t end, uintptr_t gen)
         n += snprintf(text + n, sizeof text - n, " {id %u type %u flags %X size %.0f +10 %u}", e[0], e[1], flags & 0xFF, (double)size, e[4]);
     }
     Note("difficulty: extra large maps: zone probe: Z+0x684 %u, zone list:%s", bit, text);
+}
+
+/* Memory trace (2026-11-04: an extra large level's game reached 15 GB of private memory and the system's OOM killer ended
+ * run s74t during its terrain tiles): the process's private bytes and working set, and the system's available memory,
+ * after every generation op that grew the commit (private bytes; Wine reports PrivateUsage 0, so PagefileUsage) by 64 MB or more since the last note, at named phases, and
+ * every 30 s while a player exists (NearReportPlayer). K32GetProcessMemoryInfo through GetProcAddress (the loader does
+ * not link psapi). */
+typedef struct { DWORD cb, faults; SIZE_T peakWs, ws, peakPagedPool, pagedPool, peakNonPaged, nonPaged, page, peakPage, priv; } WorldMemCounters;
+static volatile LONG64 g_memLast;
+static void WorldMemoryNote(const char* where, uint32_t op, uint32_t record, int force)
+{
+    static BOOL (WINAPI* info)(HANDLE, void*, DWORD);
+    static int looked;
+    if (!looked) { looked = 1; HMODULE k = GetModuleHandleA("kernel32.dll"); if (k) info = (BOOL (WINAPI*)(HANDLE, void*, DWORD))(void*)GetProcAddress(k, "K32GetProcessMemoryInfo"); }
+    if (info == NULL) return;
+    WorldMemCounters c; memset(&c, 0, sizeof c); c.cb = sizeof c;
+    if (!info(GetCurrentProcess(), &c, sizeof c)) return;
+    LONG64 priv = (LONG64)(c.priv ? c.priv : c.page), last = g_memLast; /* Wine leaves PrivateUsage 0: its commit (PagefileUsage) instead */
+    if (!force && priv - last < (64ll << 20) && last - priv < (256ll << 20)) return;
+    g_memLast = priv;
+    MEMORYSTATUSEX m; m.dwLength = sizeof m; GlobalMemoryStatusEx(&m);
+    if (op != 0xFFFFFFFFu)
+        Note("difficulty: memory: %s op 0x%X record %u at %.0fx: commit %lld MB (%+lld), working set %llu MB (peak %llu), system available %llu MB",
+            where, op, record, (double)g_world.current, priv >> 20, (priv - last) >> 20, (unsigned long long)(c.ws >> 20), (unsigned long long)(c.peakWs >> 20),
+            (unsigned long long)(m.ullAvailPhys >> 20));
+    else
+        Note("difficulty: memory: %s at %.0fx: commit %lld MB (%+lld), working set %llu MB (peak %llu), system available %llu MB",
+            where, (double)g_world.current, priv >> 20, (priv - last) >> 20, (unsigned long long)(c.ws >> 20), (unsigned long long)(c.peakWs >> 20),
+            (unsigned long long)(m.ullAvailPhys >> 20));
+}
+
+static void WorldMemoryTick(void)
+{
+    static ULONGLONG last;
+    ULONGLONG now = GetTickCount64();
+    if (now - last < 30000) return;
+    last = now;
+    WorldMemoryNote("in play", 0xFFFFFFFFu, 0, 1);
 }
 
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
@@ -2417,11 +2802,29 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     if (watch && op == 0x2B) TownsArm(records, at, b, block);
     if (watch && op == 0xB9 && !g_cityShifted) WorldCityShift(block, 0); /* each city's cells into the zone template's square */
     if (watch && op == 0x78) WorldCityOpenZones(records, (uint32_t)d, b, block, 0); /* the open land's zones before 0x78 picks the rest */
+    if (watch && op == 0x7C) WorldCityKinds(records, (uint32_t)d, b, block);
+    if (watch && op == 0x18) WorldCityDefKinds(b, block);
+    if (watch && op == 0x16) WorldNatureResearch16(b);
     if (vanilla2B && vanillaOp == 0x2B) TownsForget(records + (uint64_t)vanillaAt * 0x19B0u + 8);
+    if (g_world.current > 1.0f && op == 0x66 && phaseBefore66 < 0) { uint32_t u = 0; if (!SafeRead(block + 0x11A7178u, &u, 4)) phaseBefore66 = (int32_t)u; }
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
+    {
+        uint32_t now = 0xFFFFFFFFu, done = watch ? at : vanillaAt, doneOp = watch ? op : vanillaOp;
+        if ((watch || vanilla2B) && !SafeRead(index, &now, 4) && now != done) WorldMemoryNote("after", doneOp, done, 0);
+    }
     if (matPatch) TerrainMatPatch(0);
     if (watch && op == 0x2B) TownsAfter(records, at, index, b, g, h, block); /* before TerrainStamps: it saves below[] */
     if (g_cityShifted) { uint32_t now = at; if (!SafeRead(index, &now, 4) && now != at) { WorldCityShift(block, 1); WorldCityOpenZones(records, (uint32_t)d, b, block, 1); } }
+    if (watch) { uint32_t now = at; if (!SafeRead(index, &now, 4) && now != at) WorldCityStray(records, (uint32_t)d, b, block, op, at); }
+    if (watch)
+    {
+        uint32_t now = at;
+        if (!SafeRead(index, &now, 4) && now != at)
+        {
+            WorldNatureOps(op, at);
+            if (op == 0x15) WorldNatureResearch15(records + (uint64_t)at * 0x19B0u + 8, b);
+        }
+    }
     if (watch && g_world.current == 8.0f && op == 0x2B)
     {
         uint32_t now = at;
@@ -2468,6 +2871,21 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     if (op == 0xB9) WorldZoneProbe(records, (uint32_t)d, block);
     if (op == 0x07 || op == 0xA4) WorldCellEdges(block, op);
     if (op == 0xAB || op == 0xA7 || op == 0x2B) { uint32_t now = at; if (!SafeRead(index, &now, 4) && now != at) WorldCityBudget(block, op); }
+    if (op == 0x2B && g_world.current > 1.0f) { uint32_t now = at; if (!SafeRead(index, &now, 4) && now != at) WorldRoadCheck(block); }
+    /* research (s74p: purple strips, unit a441ca86ac27360b, in near-identical pairs beside the roads): the generation's
+     * road units (array G+0x8ABD70, count G+0x11A7178, cap 0x2000 in the 0xA7 / 0x8F pass records, 0xC22A29 /
+     * 0xC2399D), destroyed by 0x66 phase 0 (0xC17B34) */
+    if (g_world.current > 1.0f && (op == 0xA7 || op == 0x8F || op == 0x66))
+    {
+        uint32_t now = at, units = 0;
+        SafeRead(block + 0x11A7178u, &units, 4);
+        if (!SafeRead(index, &now, 4) && now != at)
+        {
+            Note("difficulty: road units research: level %ld after op 0x%02X (record %u): %u generation road units (cap 8192)%s", (long)g_world.levels, op, at, units,
+                op == 0x66 ? "" : "");
+            if (op == 0x66) { Note("difficulty: road units research: op 0x66 began with %d", phaseBefore66); phaseBefore66 = -1; }
+        }
+    }
     if (op == 0xA3)
     {
         uint32_t now = at;
@@ -3161,6 +3579,7 @@ static const char* InstallWorldPlan(uintptr_t game); /* difficulty_world_plan.c:
 static const char* InstallWorldOverlap(uintptr_t game); /* difficulty_world_overlap.c: the stamp overlap test on a grid */
 static const char* InstallWorldPoisson(uintptr_t game); /* difficulty_world_poisson.c: Poisson-disk sets from a periodic tile */
 static const char* InstallTowns(uintptr_t game); /* difficulty_world_towns.c */
+static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
 static const char* InstallWorld(DifficultyInstall* d)
 {
     uint32_t scale = WorldScaleFor(g_difficulty.mapScale);
@@ -3170,7 +3589,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (block == NULL) return "no memory within 2 GB of game.dll for the extra large world";
     g_world.game = game;
     g_world.values = (WorldValues*)(block + 0x1000);
-    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f};
+    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f, 4096.0f, 512.0f, 4096.0f, -4096.0f};
     *g_world.values = vanilla;
     void* level = (void*)WorldLevel;
     int32_t rel;
@@ -3235,6 +3654,27 @@ static const char* InstallWorld(DifficultyInstall* d)
         rel = (int32_t)((intptr_t)(uintptr_t)bound - (intptr_t)(game + kWorldDropBounds[i].rva + 8));
         if (ApiWrite(game + kWorldDropBounds[i].rva + 4, &rel, 4)) return "the drop bounds could not follow the larger world";
     }
+    if (ApiCodeMatches(game + 0x6AA0CAu, "F3 44 0F 10 35 31 DD D1 01"))
+    {
+        rel = (int32_t)((intptr_t)(uintptr_t)&g_world.values->maskSpan - (intptr_t)(game + 0x6AA0CAu + 9));
+        if (ApiWrite(game + 0x6AA0CAu + 5, &rel, 4)) return "a stratagem's payload clearance could not follow the larger world";
+    }
+    else Note("difficulty: a stratagem's payload clearance is not the reviewed one: vehicles on the larger world keep a vanilla clearance");
+    if (ApiCodeMatches(game + 0xF5CEE0u, "F3 44 0F 10 05 9F AC 46 01"))
+    {
+        rel = (int32_t)((intptr_t)(uintptr_t)&g_world.values->quarter - (intptr_t)(game + 0xF5CEE0u + 9));
+        if (ApiWrite(game + 0xF5CEE0u + 5, &rel, 4)) return "the earthquakes' bounds could not follow the larger world";
+    }
+    else Note("difficulty: the earthquakes' bounds are not the reviewed ones: their sources stay near the world's centre");
+    if (ApiCodeMatches(game + 0x7ED57Bu, "F3 0F 10 0D 81 A8 BD 01") && ApiCodeMatches(game + 0x7ED58Cu, "F3 0F 10 05 48 AE BD 01"))
+    {
+        rel = (int32_t)((intptr_t)(uintptr_t)&g_world.values->goalHigh - (intptr_t)(game + 0x7ED57Bu + 8));
+        if (ApiWrite(game + 0x7ED57Bu + 4, &rel, 4)) return "the enemies' movement goals could not follow the larger world";
+        rel = (int32_t)((intptr_t)(uintptr_t)&g_world.values->goalLow - (intptr_t)(game + 0x7ED58Cu + 8));
+        if (ApiWrite(game + 0x7ED58Cu + 4, &rel, 4)) return "the enemies' movement goals could not follow the larger world";
+    }
+    else Note("difficulty: the enemies' movement goal bounds are not the reviewed ones: enemies more than 4 km out keep still");
+    InstallBeaconDepth(game);
     uint8_t jump[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
     rel = DifficultyJumpRel(game + DIF_INDEX_FULL, (uintptr_t)full); memcpy(jump + 1, &rel, 4);
     if (ApiWrite(game + DIF_INDEX_FULL, jump, 5)) return "the stamp index's full case could not be guarded";
