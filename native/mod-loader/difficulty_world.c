@@ -3653,6 +3653,19 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     uintptr_t block = 0;
     int watch = g_world.current > 1.0f && g_worldLevel != 0 && !SafeRead(g_worldLevel + 0x2C8, &block, 8) && block != 0 &&
         !SafeRead(index, &at, 4) && !SafeRead(records + (uint64_t)at * 0x19B0u, &op, 4) && !SafeRead(block + 0x11A7108, &before, 4);
+    /* Research (HELLFORGE_XL_CENSUS=1): the op attribution and locations-<level>.tsv on a level the loader does not grow
+     * too (a vanilla-size difficulty's mission as the per-mission baseline of an extra large map's content); nothing
+     * else changes on such a level. */
+    static int census = -1;
+    if (census < 0) { char v[8] = ""; census = GetEnvironmentVariableA("HELLFORGE_XL_CENSUS", v, sizeof v) > 0 && v[0] == '1'; }
+    int counted = watch;
+    if (!watch && census && g_worldLevel != 0)
+    {
+        block = 0; op = 0xFFFFFFFFu; before = 0;
+        counted = !SafeRead(g_worldLevel + 0x2C8, &block, 8) && block != 0 && !SafeRead(index, &at, 4) &&
+            !SafeRead(records + (uint64_t)at * 0x19B0u, &op, 4) && !SafeRead(block + 0x11A7108, &before, 4);
+        if (!counted) { block = 0; op = 0xFFFFFFFFu; before = 0; }
+    }
     /* op 0x41's material painters in vanilla space (difficulty_world_terrain.c): the level waits while the job queue
      * drains around it */
     int matPatch = 0;
@@ -3892,9 +3905,9 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     QueryPerformanceFrequency(&frequency);
     double ms = (double)(now.QuadPart - start.QuadPart) * 1000.0 / (double)frequency.QuadPart;
     SafeRead(block + 0x11A7108, &after, 4);
-    if (watch && after > before)
+    if (counted && after > before)
         for (uint32_t i = before; i < after && i < DIF_LOCATIONS; i++) g_locationOp[i] = (uint8_t)op;
-    if (watch && op == 0x2B) WorldLocationsNote(block, after);
+    if (counted && op == 0x2B) WorldLocationsNote(block, after);
     uint32_t route[3] = {0, 0, 0}; /* vertices of 2304, cells of 1024, edges of 3456 (difficulty_block.c moves them) */
     SafeRead(block + 0x11A71B4, &route[0], 4); SafeRead(block + 0x11A71C0, &route[1], 4); SafeRead(block + 0x11A71CC, &route[2], 4);
     if (after != before || ms > 100.0 || route[0] > 2304 || route[1] > 1024 || route[2] > 3456 || op == 0x3 || op == 0xB3 ||
