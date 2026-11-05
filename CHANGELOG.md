@@ -11,7 +11,7 @@ On `dev`, since 0.4.0-beta.
 ### Changed
 
 - A new installation's first profile, and the New Profile choice, now start from unlock-all instead of starter. Premium
-  items still come only from Sync Inventory, and existing profiles stay as they are.
+  items still come only from Sync Inventory, and existing profiles stay as they are (#270).
 
 ## 0.4.0-beta (2026-11-05)
 
