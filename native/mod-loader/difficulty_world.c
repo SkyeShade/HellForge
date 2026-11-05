@@ -2579,6 +2579,34 @@ static void WorldCityKinds(uint64_t records, uint32_t end, uint64_t context, uin
         byKind[0][0] + byKind[0][2] + byKind[0][4] + byKind[0][5]);
 }
 
+/* The open land's zone choice, spatially coherent: value noise (quintic, 2 octaves, ZONE_WAVE m and half that) at the
+ * cell's site. Rolled independently per cell, neighbouring open cells (568 m on the 16 km plan) changed zone at about 59 %
+ * of their borders, and every such border is a straight route edge with a hard change of ground (audit 12, s75o). */
+#define ZONE_WAVE 3000.0f
+static float ZoneNoiseLattice(int32_t x, int32_t y, uint32_t s)
+{
+    uint32_t h = (uint32_t)x * 0x27D4EB2Du ^ (uint32_t)y * 0x165667B1u ^ s * 0x9E3779B9u;
+    h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
+    return (float)(h >> 8) / 16777216.0f;
+}
+static float ZoneNoise1(float x, float y, uint32_t s)
+{
+    float fx = floorf(x), fy = floorf(y), u = x - fx, v = y - fy;
+    int32_t xi = (int32_t)fx, yi = (int32_t)fy;
+    u = u * u * u * (u * (u * 6 - 15) + 10); v = v * v * v * (v * (v * 6 - 15) + 10);
+    float a = ZoneNoiseLattice(xi, yi, s), b = ZoneNoiseLattice(xi + 1, yi, s), c = ZoneNoiseLattice(xi, yi + 1, s), d = ZoneNoiseLattice(xi + 1, yi + 1, s);
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+static float ZoneNoise(float gx, float gy, uint32_t seed)
+{
+    return (ZoneNoise1(gx / ZONE_WAVE, gy / ZONE_WAVE, seed) + 0.5f * ZoneNoise1(gx * 2.0f / ZONE_WAVE, gy * 2.0f / ZONE_WAVE, seed + 31u)) / 1.5f;
+}
+static int ZoneRankCompare(const void* a, const void* b)
+{
+    float x = ((const float*)a)[0], y = ((const float*)b)[0];
+    return x < y ? -1 : x > y;
+}
+
 static void WorldCityOpenZones(uint64_t records, uint32_t end, uint64_t context, uintptr_t gen, int withType)
 {
     if (g_cities.level != g_world.levels) return;
@@ -2632,6 +2660,19 @@ static void WorldCityOpenZones(uint64_t records, uint32_t end, uint64_t context,
         return;
     }
     uint32_t perZone[16] = {0}, mismatched = 0;
+    /* the noise at each open cell's site, replaced by its rank among them (0..1, uniform): the weights keep their shares */
+    static float rankOf[1024], order[1024][2];
+    uint32_t ranked = 0;
+    for (uint32_t i = 0; i < cells; i++)
+    {
+        uintptr_t sub = gen + 0x92F328u + 0x20ull * i;
+        uint64_t route = 0; float p[2]; int32_t special = 0;
+        rankOf[i] = -1.0f;
+        if (SafeRead(sub + 0x18, &route, 8) || route == 0 || SafeRead(route, p, 8) || SafeRead(sub + 8, &special, 4) || special != -1) continue;
+        order[ranked][0] = ZoneNoise(p[0], p[1], seed); order[ranked][1] = (float)i; ranked++;
+    }
+    qsort(order, ranked, sizeof order[0], ZoneRankCompare);
+    for (uint32_t r = 0; r < ranked; r++) rankOf[(uint32_t)order[r][1]] = ((float)r + 0.5f) / (float)ranked;
     for (uint32_t i = 0; i < cells; i++)
     {
         uintptr_t sub = gen + 0x92F328u + 0x20ull * i;
@@ -2649,10 +2690,8 @@ static void WorldCityOpenZones(uint64_t records, uint32_t end, uint64_t context,
         for (uint32_t k = 0; k < n; k++) if (open[k].group == -1 || open[k].group == group) sum += open[k].weight;
         int any = !(sum > 0.0f);
         if (any) sum = total;
-        uint32_t bits[2]; memcpy(bits, p, 8);
-        uint32_t h = (bits[0] * 0x9E3779B1u) ^ (bits[1] * 0x85EBCA6Bu) ^ (seed * 0xC2B2AE35u);
-        h ^= h >> 16; h *= 0x7FEB352Du; h ^= h >> 15; h *= 0x846CA68Bu; h ^= h >> 16;
-        float roll = (float)(h >> 8) / 16777216.0f * sum;
+        float roll = (rankOf[i] >= 0.0f ? rankOf[i] : 0.5f) * sum;
+        if (roll >= sum) roll = sum * 0.999999f;
         uint32_t pick = n - 1;
         for (uint32_t k = 0; k < n; k++)
         {
@@ -2983,6 +3022,159 @@ static void WorldMemoryTick(void)
     WorldMemoryNote("in play", 0xFFFFFFFFu, 0, 1);
 }
 
+/* Evidence (content over the whole map): the op that appended each location (locations are only appended, so an index
+ * keeps its op), and locations-<level>.tsv after op 0x2B: index, op, position in world metres (the generator's less half
+ * the world; x east, y north), type (+0xD8) and flags (+0xD4) of each 0xE0 record. */
+static uint8_t g_locationOp[DIF_LOCATIONS];
+static void WorldLocationsNote(uintptr_t block, uint32_t total)
+{
+    uint32_t offset = 0;
+    if (SafeRead(g_world.game + 0xC176A7 + 3, &offset, 4) || offset < 0x90) return;
+    wchar_t name[48];
+    swprintf(name, 48, L"locations-%ld.tsv", (long)g_world.levels);
+    HANDLE file = OpenLog(name);
+    if (file == INVALID_HANDLE_VALUE) return;
+    float half = 1024.0f * g_world.current;
+    char line[128];
+    DWORD wrote;
+    uint32_t n = total < DIF_LOCATIONS ? total : DIF_LOCATIONS, written = 0;
+    for (uint32_t i = 0; i < n; i++)
+    {
+        uint8_t rec[0xE0];
+        if (SafeRead(block + (offset - 0x90) + (uint64_t)i * 0xE0, rec, sizeof rec)) break;
+        float xy[2]; uint32_t type; uint16_t flags;
+        memcpy(xy, rec, 8); memcpy(&type, rec + 0xD8, 4); memcpy(&flags, rec + 0xD4, 2);
+        int len = snprintf(line, sizeof line, "%u\t0x%X\t%.1f\t%.1f\t%u\t0x%X\n", i, g_locationOp[i], (double)(xy[0] - half), (double)(xy[1] - half),
+            type, flags);
+        WriteFile(file, line, (DWORD)len, &wrote, NULL);
+        written++;
+    }
+    CloseHandle(file);
+    Note("difficulty: extra large maps: locations-%ld.tsv written (%u locations)", (long)g_world.levels, written);
+    /* edges-<level>.tsv: each route edge (0x48: ends +0 / +8 in generator metres, cells +0x20 / +0x28, width +0x30, type
+     * +0x34, flags +0x44) with the type index of the subregion on each side (subregion +0x18 = its route cell, +0xC its
+     * type); types-<level>.tsv: the first 0x240 bytes of each used type descriptor ([[level+0x2D0]] + 8 t), as hex. */
+    uint32_t subs = 0, edges = 0, types = 0;
+    uint64_t ts = 0, table = 0;
+    if (SafeRead(block + 0x11A71C4u, &subs, 4) || SafeRead(block + 0x11A71CCu, &edges, 4) || subs > 8192 || edges > 65536) return;
+    static uint64_t cellOf[8192]; static int32_t typeOf[8192];
+    for (uint32_t i = 0; i < subs; i++)
+    {
+        cellOf[i] = 0; typeOf[i] = -1;
+        SafeRead(block + 0x92F328u + 0x20ull * i + 0x18, &cellOf[i], 8); SafeRead(block + 0x92F328u + 0x20ull * i + 0xC, &typeOf[i], 4);
+    }
+    swprintf(name, 48, L"edges-%ld.tsv", (long)g_world.levels);
+    file = OpenLog(name);
+    if (file == INVALID_HANDLE_VALUE) return;
+    uint8_t used[256] = {0};
+    for (uint32_t e = 0; e < edges; e++)
+    {
+        uint8_t rec[0x48];
+        if (SafeRead(block + g_routeEdges + 0x48ull * e, rec, sizeof rec)) break;
+        float a[2], b[2], width; uint64_t c0, c1; uint16_t flags;
+        memcpy(a, rec, 8); memcpy(b, rec + 8, 8); memcpy(&c0, rec + 0x20, 8); memcpy(&c1, rec + 0x28, 8); memcpy(&width, rec + 0x30, 4); memcpy(&flags, rec + 0x44, 2);
+        int32_t t0 = -2, t1 = -2;
+        for (uint32_t i = 0; i < subs && (t0 == -2 || t1 == -2); i++)
+        {
+            if (c0 && cellOf[i] == c0) t0 = typeOf[i];
+            if (c1 && cellOf[i] == c1) t1 = typeOf[i];
+        }
+        if (t0 >= 0 && t0 < 256) used[t0] = 1; if (t1 >= 0 && t1 < 256) used[t1] = 1;
+        int len = snprintf(line, sizeof line, "%u\t%.1f\t%.1f\t%.1f\t%.1f\t%.2f\t%u\t0x%X\t%d\t%d\n", e, (double)(a[0] - half), (double)(a[1] - half),
+            (double)(b[0] - half), (double)(b[1] - half), (double)width, rec[0x34], flags, t0, t1);
+        WriteFile(file, line, (DWORD)len, &wrote, NULL);
+    }
+    CloseHandle(file);
+    for (uint32_t i = 0; i < subs; i++) if (typeOf[i] >= 0 && typeOf[i] < 256) used[typeOf[i]] = 1;
+    if (SafeRead(g_worldLevel + 0x2D0, &ts, 8) || ts == 0 || SafeRead(ts, &table, 8) || table == 0 || SafeRead(ts + 0xA0, &types, 4)) return;
+    swprintf(name, 48, L"types-%ld.tsv", (long)g_world.levels);
+    file = OpenLog(name);
+    if (file == INVALID_HANDLE_VALUE) return;
+    for (uint32_t t = 0; t < types && t < 256; t++)
+    {
+        uint64_t d = 0; uint8_t raw[0x240];
+        if (!used[t] || SafeRead(table + 8ull * t, &d, 8) || d == 0 || SafeRead(d, raw, sizeof raw)) continue;
+        char hex[2 * sizeof raw + 32];
+        int len = snprintf(hex, 32, "%u\t", t);
+        for (size_t k = 0; k < sizeof raw; k++) len += snprintf(hex + len, 3, "%02X", raw[k]);
+        hex[len++] = '\n';
+        WriteFile(file, hex, (DWORD)len, &wrote, NULL);
+    }
+    CloseHandle(file);
+    Note("difficulty: extra large maps: edges-%ld.tsv (%u edges) and types-%ld.tsv written", (long)g_world.levels, edges, (long)g_world.levels);
+}
+
+/* The open land's route edges as a nature map's. On a structured (city) map 0xFD03E0 makes every route edge type 1 with
+ * flags 0x104 (0xFD0742..0xFD074C, when [[ctx+8]+0xC0]+0x1D == 2) and its nodes +0x90 |= 6 (0xFD08A3, 0xFD09FF); any
+ * other map gets type 3 and no flags (0xFD0731). On a vanilla city map every cell is city, so every edge is a street. On
+ * the XL city map the open land's borders became streets too: op 0x41's path B paints the city street material along
+ * every flag-0x100 edge (0xF51C20) and op 0xA8 flattens between nodes that both have +0x90 bit 1 (0xFAF6B5, 0xFAF947),
+ * straight lines across the open land (audit 12, s75o; static, subagent seams). So once the zones are final (the level's
+ * op 0x38, before the first tile copies the block): an edge with no city cell on either side (its cells +0x20 / +0x28,
+ * the subregion of each (+0x18 its route cell) and that subregion's type (+0xC) +0x170 bit 1, as 0xA7 tests at 0xFAA2F2)
+ * gets type 3 and loses 0x104; a node whose every edge (+0x10, 16 slots) is such an edge loses +0x90 bits 1 and 2. */
+static void WorldOpenEdgesPlain(uintptr_t gen)
+{
+    static LONG done = -1;
+    if (done == g_world.levels || g_worldLevel == 0) return;
+    done = g_world.levels;
+    uint32_t subs = 0, edges = 0, nodes = 0, types = 0;
+    uint64_t ts = 0, table = 0;
+    if (SafeRead(gen + 0x11A71C4u, &subs, 4) || SafeRead(gen + 0x11A71CCu, &edges, 4) || SafeRead(gen + 0x11A71B4u, &nodes, 4) || subs > 8192 ||
+        edges > 65536 || nodes > 65536 || SafeRead(g_worldLevel + 0x2D0, &ts, 8) || ts == 0 || SafeRead(ts, &table, 8) || table == 0 || SafeRead(ts + 0xA0, &types, 4))
+        return;
+    static uint64_t cellOf[8192]; static uint8_t cityOf[8192];
+    uint32_t cityCells = 0;
+    for (uint32_t i = 0; i < subs; i++)
+    {
+        int32_t t = -1; uint64_t d = 0; uint32_t flags = 0;
+        cellOf[i] = 0; cityOf[i] = 0;
+        SafeRead(gen + 0x92F328u + 0x20ull * i + 0x18, &cellOf[i], 8);
+        if (!SafeRead(gen + 0x92F328u + 0x20ull * i + 0xC, &t, 4) && t >= 0 && (uint32_t)t < types && !SafeRead(table + 8ull * (uint32_t)t, &d, 8) && d &&
+            !SafeRead(d + 0x170, &flags, 4) && (flags & 2)) { cityOf[i] = 1; cityCells++; }
+    }
+    if (cityCells == 0) return; /* not a city map */
+    uintptr_t E = gen + g_routeEdges, N = gen + g_routeNodes;
+    uint32_t streets = 0, plain = 0, unknown = 0, plainNodes = 0;
+    static uint8_t openEdge[65536];
+    for (uint32_t e = 0; e < edges; e++)
+    {
+        uint64_t c[2] = {0, 0}; uint16_t flags = 0; uint8_t type = 0;
+        openEdge[e] = 0;
+        if (SafeRead(E + 0x48ull * e + 0x20, &c[0], 8) || SafeRead(E + 0x48ull * e + 0x28, &c[1], 8) || SafeRead(E + 0x48ull * e + 0x44, &flags, 2) ||
+            SafeRead(E + 0x48ull * e + 0x34, &type, 1)) break;
+        if (!(flags & 0x100) || type != 1) continue;
+        streets++;
+        int side[2] = {-1, -1};
+        for (int q = 0; q < 2; q++)
+            for (uint32_t i = 0; i < subs && c[q]; i++) if (cellOf[i] == c[q]) { side[q] = cityOf[i]; break; }
+        if (side[0] < 0 && side[1] < 0) { unknown++; continue; }
+        if (side[0] == 1 || side[1] == 1) continue;
+        *(volatile uint8_t*)(E + 0x48ull * e + 0x34) = 3;
+        *(volatile uint16_t*)(E + 0x48ull * e + 0x44) = (uint16_t)(flags & ~0x104u);
+        openEdge[e] = 1; plain++;
+    }
+    for (uint32_t k = 0; k < nodes; k++)
+    {
+        uintptr_t node = N + 0x98ull * k;
+        uint8_t bits = 0; int any = 0, allOpen = 1;
+        if (SafeRead(node + 0x90, &bits, 1)) break;
+        if (!(bits & 6)) continue;
+        for (int q = 0; q < 16; q++)
+        {
+            uint64_t ep = 0;
+            if (SafeRead(node + 0x10 + 8ull * q, &ep, 8)) { allOpen = 0; break; }
+            if (ep == 0) continue;
+            if (ep < E || ep >= E + 0x48ull * edges || (ep - E) % 0x48) { allOpen = 0; break; }
+            any = 1;
+            if (!openEdge[(ep - E) / 0x48]) { allOpen = 0; break; }
+        }
+        if (any && allOpen) { *(volatile uint8_t*)(node + 0x90) = (uint8_t)(bits & ~6u); plainNodes++; }
+    }
+    Note("difficulty: extra large maps: the open land's route edges as a nature map's: %u of %u street edges (%u city cells; %u with no known cell), %u of %u nodes",
+        plain, streets, cityCells, unknown, plainNodes, nodes);
+}
+
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
     uint32_t diagAt, diagOp;
@@ -3007,6 +3199,11 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         /* The tile runs as the level's SetupTerrainMerge (0x38) begins: after its own heights and slopes, while the
          * generation's resources are alive (GenerateSubregionHeights samples textures whose CPU data is released after
          * generation: a tile at op 0x6D read a null image at exe+0x31CA66). */
+        if (o == 0x38 && g_worldLevel != 0 && g_world.current > 1.0f)
+        {
+            uintptr_t genAt = 0;
+            if (!SafeRead(g_worldLevel + 0x2C8, &genAt, 8) && genAt != 0) WorldOpenEdgesPlain(genAt);
+        }
         if (o == 0x38 && g_worldLevel != 0)
         {
             uintptr_t genAt = 0; uint32_t subs = 0;
@@ -3260,6 +3457,9 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     QueryPerformanceFrequency(&frequency);
     double ms = (double)(now.QuadPart - start.QuadPart) * 1000.0 / (double)frequency.QuadPart;
     SafeRead(block + 0x11A7108, &after, 4);
+    if (watch && after > before)
+        for (uint32_t i = before; i < after && i < DIF_LOCATIONS; i++) g_locationOp[i] = (uint8_t)op;
+    if (watch && op == 0x2B) WorldLocationsNote(block, after);
     uint32_t route[3] = {0, 0, 0}; /* vertices of 2304, cells of 1024, edges of 3456 (difficulty_block.c moves them) */
     SafeRead(block + 0x11A71B4, &route[0], 4); SafeRead(block + 0x11A71C0, &route[1], 4); SafeRead(block + 0x11A71CC, &route[2], 4);
     if (after != before || ms > 100.0 || route[0] > 2304 || route[1] > 1024 || route[2] > 3456 || op == 0x3 || op == 0xB3 ||
