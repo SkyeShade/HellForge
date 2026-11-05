@@ -223,6 +223,7 @@ static const LocationSite kLocationRefs[] = {
     {0xF6E98Fu, 3, 0x758E20u},
     {0xF6FED7u, 3, 0x758EC8u},
     {0xF72F96u, 2, 0x758E20u},
+    {0xF73E79u, 3, 0x758E20u}, /* leaf 0xF73E50: the location whose unit +0xA8 is rdx (callers 0x9D1FF0, 0x9D2B70) */
     {0xF742EDu, 3, 0x758EC8u},
     {0x1307231u, 4, 0x758EB0u},
     {0x1307710u, 4, 0x758EB0u},

@@ -526,39 +526,131 @@ static uint64_t WorldPassExploration(uint64_t a, uint64_t b, uint64_t c, uint64_
 /* The map's objective list S is filled at generation setup (0xF7166B -> 0xF70F20: rcx the level, r8 the mission row,
  * r9 the descriptor's ids (level+0x110), the 5th argument their count (+0x10D), nine more through to the 14th). The
  * descriptor holds 32 ids at most (its tail follows at +0xA0; objcap.md), and the selection is held at the objective
- * list's room, so an operation's three missions on one map got fewer optional objectives than three missions have. Here
- * the list gets more: repeats of the descriptor's optional ids (class 3 in the base row) in their order, until the
- * optional count reaches each mission's x the missions (g_operationOptional) or the list is full. Only the descriptor
- * decides it, so every peer fills the same list; repeats are what the selection itself makes (count[i] copies). */
+ * list's room, so an operation's three missions on one map got fewer objectives than three missions have. Here the list
+ * gets more: repeats of the descriptor's major (class 2 in the base row) and then optional (class 3) ids in their order,
+ * until each class reaches each mission's count x the missions (g_operationMajor / g_operationOptional) or the list is
+ * full. Each id is held at what three missions of the row can hold, the game's own rules for one selection (0x1756730)
+ * times the missions: uses <= missions x min(row entry +0x14, definition +0x20), and the ids sharing a bit of the
+ * definition's exclusive byte +0x2C at most missions uses per bit (the picker 0x1757870 drops an entry whose bits were
+ * picked, 0x175790A). Past that the game's op 0x16 found no free place for the late repeats (s75w, row 137: five
+ * once-per-mission optionals filled to 24, 37 places, 33 placed). Only the descriptor and the static tables decide it, so
+ * every peer fills the same list. */
 typedef uint64_t (*ObjectiveFillFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
     uint64_t, uint64_t, uint64_t, uint64_t);
 static ObjectiveFillFn g_objectiveFill;
+static uint32_t g_objectiveList[64], g_objectiveListCount; /* the list as filled, for the placement note after op 0x16 */
+static uint32_t ObjectiveIdCap(uintptr_t base, uint32_t id, uint8_t* bits) /* one mission's most uses of id, and its exclusive bits */
+{
+    uint8_t entries[32 * 0x18];
+    uint32_t most = 0xFFFFFFFFu, perMission = 0;
+    *bits = 0;
+    if (!SafeRead(base + 0x40, entries, sizeof entries))
+        for (int i = 0; i < 32; i++)
+        {
+            uint32_t entry;
+            memcpy(&entry, entries + i * 0x18, 4);
+            if (entry == id) { memcpy(&most, entries + i * 0x18 + 0x14, 4); break; }
+        }
+    uintptr_t def = ObjectiveDef(g_difficultyGame, id);
+    if (def == 0 || SafeRead(def + 0x20, &perMission, 4) || SafeRead(def + 0x2C, bits, 1)) return 0;
+    return perMission < most ? perMission : most;
+}
 static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uint64_t ids, uint64_t count, uint64_t a6, uint64_t a7, uint64_t a8,
     uint64_t a9, uint64_t a10, uint64_t a11, uint64_t a12, uint64_t a13, uint64_t a14)
 {
     uint32_t n = (uint32_t)count, list[64];
     uint8_t difficulty = 0;
     uint16_t r = (uint16_t)row;
+    g_objectiveListCount = 0;
     if (g_difficulty.missions > 1 && g_operationOptional != 0 && g_difficultyGame != 0 && ids != 0 && n > 0 && n <= 32 && r < DIF_MISSION_ROWS &&
         g_objectiveListPlaces > n && g_objectiveListPlaces <= 64 && !SafeRead(level + 0xF9, &difficulty, 1) && difficulty == DIF_VANILLA + 1 &&
         !SafeRead(ids, list, 4ull * n))
     {
         uintptr_t base = g_difficultyGame + DIF_MISSIONS + (uintptr_t)r * DIF_MISSION_ROW;
-        uint32_t optional[32], k = 0, total = n;
+        uint32_t m = g_difficulty.missions, total = n, uses[64] = {0}, cap[64], bitUses[8] = {0}, have[2] = {0}, before[2] = {0}, capped[2] = {0};
+        uint8_t bits[64];
+        int cls[64];
         for (uint32_t i = 0; i < n; i++)
-            if (RowClass(base, list[i]) == 3) optional[k++] = list[i];
-        uint32_t have = k;
-        for (uint32_t i = 0; k > 0 && have < g_operationOptional && total < g_objectiveListPlaces; i++, have++) list[total++] = optional[i % k];
+        {
+            cls[i] = RowClass(base, list[i]);
+            cap[i] = ObjectiveIdCap(base, list[i], &bits[i]);
+            cap[i] = cap[i] > 0xFFFFFFFFu / m ? 0xFFFFFFFFu : cap[i] * m;
+        }
+        for (uint32_t i = 0; i < n; i++)
+        {
+            uint32_t first = i;
+            for (uint32_t j = 0; j < i; j++) if (list[j] == list[i]) { first = j; break; }
+            uses[first]++;
+            for (int t = 0; t < 8; t++) if (bits[i] & (1u << t)) bitUses[t]++;
+            if (cls[i] == 2) have[0]++;
+            if (cls[i] == 3) have[1]++;
+        }
+        before[0] = have[0]; before[1] = have[1];
+        const uint32_t want[2] = {g_operationMajor, g_operationOptional};
+        for (int c = 0; c < 2; c++) /* majors first: op 0x16 places the list in order */
+        {
+            for (int progress = 1; progress && have[c] < want[c] && total < g_objectiveListPlaces;)
+            {
+                progress = 0;
+                for (uint32_t i = 0; i < n && have[c] < want[c] && total < g_objectiveListPlaces; i++)
+                {
+                    if (cls[i] != c + 2) continue;
+                    uint32_t first = i;
+                    for (uint32_t j = 0; j < i; j++) if (list[j] == list[i]) { first = j; break; }
+                    if (first != i) continue; /* each id once per sweep */
+                    int open = uses[i] < cap[i];
+                    for (int t = 0; t < 8 && open; t++) if ((bits[i] & (1u << t)) && bitUses[t] >= m) open = 0;
+                    if (!open) continue;
+                    list[total++] = list[i];
+                    uses[i]++;
+                    for (int t = 0; t < 8; t++) if (bits[i] & (1u << t)) bitUses[t]++;
+                    have[c]++;
+                    progress = 1;
+                }
+            }
+            if (have[c] < want[c] && total < g_objectiveListPlaces) capped[c] = 1;
+        }
         if (total > n)
         {
+            memcpy(g_objectiveList, list, 4ull * total);
+            g_objectiveListCount = total;
             static LONG noted;
             if (InterlockedIncrement(&noted) <= 4)
-                Note("difficulty: an operation's %u missions on one map: optional objectives %u -> %u of %u on the map's objective list (%u -> %u of %u places)",
-                    g_difficulty.missions, k, k + (total - n), g_operationOptional, n, total, g_objectiveListPlaces);
+                Note("difficulty: an operation's %u missions on one map: on the map's objective list major %u -> %u of %u%s, optional %u -> %u of %u%s (%u -> %u of %u places)",
+                    m, before[0], have[0], want[0], capped[0] ? " (the row's ids hold no more for its missions)" : "", before[1], have[1], want[1],
+                    capped[1] ? " (the row's ids hold no more for its missions)" : "", n, total, g_objectiveListPlaces);
             return g_objectiveFill(level, b, row, (uint64_t)(uintptr_t)list, total, a6, a7, a8, a9, a10, a11, a12, a13, a14);
         }
+        memcpy(g_objectiveList, list, 4ull * n);
+        g_objectiveListCount = n;
     }
     return g_objectiveFill(level, b, row, ids, count, a6, a7, a8, a9, a10, a11, a12, a13, a14);
+}
+/* After op 0x16: each id on the list against the important locations it placed (records 0x108 at G+g_importantList,
+ * count G+0x11A715C; op 0x16 writes kind 0xADC32FAA at +0x8, 0xF8FFF7, and the objective id at +0xD8, 0xF900DB). */
+static void WorldObjectivePlaced(uintptr_t block)
+{
+    uint32_t count = 0, ids[64], copies[64], placed[64], k = 0, listed = g_objectiveListCount, done = 0;
+    if (listed == 0 || SafeRead(block + 0x11A715Cu, &count, 4)) return;
+    for (uint32_t i = 0; i < listed; i++)
+    {
+        uint32_t j = 0;
+        while (j < k && ids[j] != g_objectiveList[i]) j++;
+        if (j == k) { ids[k] = g_objectiveList[i]; copies[k] = 0; placed[k] = 0; k++; }
+        copies[j]++;
+    }
+    for (uint32_t l = 0; l < count && l < 1024; l++)
+    {
+        uint32_t kind = 0, id = 0;
+        if (SafeRead(block + g_importantList + 0x108ull * l + 0x8, &kind, 4) || kind != 0xADC32FAAu ||
+            SafeRead(block + g_importantList + 0x108ull * l + 0xD8, &id, 4)) continue;
+        for (uint32_t j = 0; j < k; j++) if (ids[j] == id) { placed[j]++; done++; break; }
+    }
+    char text[1600];
+    int at = snprintf(text, sizeof text, "difficulty: an operation's missions on one map: op 0x16 placed %u of the list's %u (id copies -> placed):", done, listed);
+    for (uint32_t j = 0; j < k && at > 0 && at < (int)sizeof text - 32; j++)
+        at += snprintf(text + at, sizeof text - at, " %08x %u->%u", ids[j], copies[j], placed[j]);
+    Note("%s", text);
 }
 
 /* GenerateLocationClusters (op 0x18, 0xF79520; rcx = its context: clusters [+0x20] (0xE0 each, centre xy at +0/+4,
@@ -3518,6 +3610,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         {
             WorldNatureOps(op, at);
             if (op == 0x15) WorldNatureResearch15(records + (uint64_t)at * 0x19B0u + 8, b);
+            if (op == 0x16) WorldObjectivePlaced(block);
         }
     }
     if (watch && g_world.current == 8.0f && op == 0x2B)

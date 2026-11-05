@@ -673,9 +673,8 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
  *    merge cameras; others get the identity, as in the level's run).
  * 5. The level's merge records run again on copies, as the level ran them: 0x39 clear, 0x3C its Voronoi cells (+0x108
  *    progress zeroed), the vanilla-density tiles that touch the near square (TerrainBuild, drawn as at 0x40), 0x40
- *    smoothing, 0x94 flattening lookup (counter record+0xB0 zeroed), 0x3E flatten zones (record+0x80..+0xBF zeroed; the
- *    intermediate captures lg+0..+0xBF it reads are the ones the level's 0x3E read, copied then), 0x3F stamp pads
- *    (record+0x128..+0x167 zeroed), 0x3D zone heights (materials repeating every 2048 m, as on a vanilla map), 0x0D route
+ *    smoothing (not 0x94, 0x3E or 0x3F: they squeeze the level into the tile, NearPlan; the conform holds the level's
+ *    pads and flatten zones instead), 0x3D zone heights (materials repeating every 2048 m, as on a vanilla map), 0x0D route
  *    segments, 0x63 stamp heights, 0x42, 0x41 materials, 0x64 finalize.
  * 6. Once the queue is empty, the tile's heightmap is read back (+0x1A8/+0x1D0/+0x1D8: the GPU work before it is done, and
  *    the heights are logged), the cameras and gui go back as the level had them and both names are unpublished (0x66
@@ -1192,10 +1191,17 @@ static void TerrainNearDrop(void)
         (double)NearGlobalAt(bestX, bestY), (double)g_nearWater.high, candidates);
 }
 
-/* The level's merge records the tile replays, in the level's order, and the vanilla-density tiles after its 0x3C. */
+/* The level's merge records the tile replays, in the level's order, and the vanilla-density tiles after its 0x3C.
+ * Not 0x94 (the flattening lookup), 0x3E (flatten zones) or 0x3F (pads): replayed on a tile they draw level-space data
+ * squeezed into the tile, the whole 16 km level at 1 / 7.1 about the tile's centre (static, subagent geom14; s75p step
+ * dumps: 0x3E cut a 88 x 96 m pit to 1.0 m at centre + w x 0.1406 of flatten type 30's cells, in the drop tile and two
+ * mid-mission tiles; s75w C36: flatten zone 316 as a ~200 m deep pit beside open6; s75u A18: city 2 as a field of
+ * needles round open3's objective, every tile's raw maximum the same 137.6 m). The lookup's only publisher is 0x94
+ * (0xF3D32B) and 0x3F's phase 1 takes it down (0xC1650F), so no later op reads it. Under the pads and the flatten zones
+ * the conform takes the level's own surface at full weight (g_pads, NearTarget), and the level has both. */
 static int NearPlan(uint64_t records, uint32_t at)
 {
-    static const uint8_t ops[] = {0x39, 0x3C, 0x40, 0x94, 0x3E, 0x3F, 0x3D, 0x0D, 0x63, 0x42, 0x41, 0x64};
+    static const uint8_t ops[] = {0x39, 0x3C, 0x40, 0x3D, 0x0D, 0x63, 0x42, 0x41, 0x64};
     uint32_t start = 0, op = 0;
     for (uint32_t i = at; i > 0; i--)
         if (!SafeRead(records + (uint64_t)(i - 1) * 0x19B0u, &op, 4) && op == 0x38) { start = i; break; }
@@ -1876,9 +1882,10 @@ static int NearFineCell(int i, int j)
  * bit 0 = on), rectangles [shape+0x10] x [shape+0x18] (0x1C: x, y, a, b, angle, strength, flags). An offset is placed at
  * (ox sin + oy cos, oy sin - ox cos) + P (0xFC84A0); a rectangle's axes at the rotation - pi/2 + its angle. The
  * zone-type checks that skip a few stamps (0xF4D1B5, 0xF4D431) are not repeated: their areas take the level's surface. */
-#define NEAR_PADS 2048
+#define NEAR_PADS 16384 /* s75p had 5196 shapes, s75u 2580 */
 typedef struct { float cx, cy, c, s, a, b, ba, bb, k; int rect, foot; } NearPad;
-static struct { LONG level; int count, dropped; float band3C; NearPad pad[NEAR_PADS]; float* w; LONG wLevel; float wCentre[2]; } g_pads = {.level = -1, .wLevel = -1};
+static NearPad g_padStore[NEAR_PADS]; /* zero-initialised (.bss) */
+static struct { LONG level; int count, dropped; float band3C; NearPad* pad; float* w; LONG wLevel; float wCentre[2]; } g_pads = {.level = -1, .pad = g_padStore, .wLevel = -1};
 #define NEAR_PAD_STEP 2.0f
 #define NEAR_PAD_N 1152 /* NEAR_SIDE / NEAR_PAD_STEP */
 
@@ -1959,8 +1966,28 @@ static void TerrainNearPads(uint64_t record, uint64_t context)
             if (kind == 0xC33EB5DBu && (SafeRead(item + 0x60, &bit, 1) || !(bit & 1))) continue;
             NearPadShape(P, (float)size); locations++;
         }
-    Note("difficulty: near terrain: the level's pads: %d shapes (%u stamp footprints, %u stamps with pads, %u locations; %d not kept), band scale %.2f",
-        g_pads.count, footprints, stamps, locations, g_pads.dropped, (double)g_pads.band3C);
+    /* The flatten zones (0x3E, not replayed on tiles): subregions G+0x92F328 (0x20: type index +0xC, route cell +0x18;
+     * count G+0x11A71C4) whose type has a flatten margin +0x208 != FLT_MAX, the route cell's box +0x88..+0x94 (generator
+     * metres) grown by it, as difficulty_world_macro.c holds them. Full weight over the grown box, a 16 m band past it. */
+    uint32_t zones = 0, subs = 0, types = 0; uint64_t gen = 0, ts = 0, table = 0;
+    if (g_worldLevel != 0 && !SafeRead(g_worldLevel + 0x2C8, &gen, 8) && gen != 0 && !SafeRead(g_worldLevel + 0x2D0, &ts, 8) && ts != 0 &&
+        !SafeRead(ts, &table, 8) && table != 0 && !SafeRead(ts + 0xA0, &types, 4) && !SafeRead(gen + 0x11A71C4u, &subs, 4) && subs < 65536)
+        for (uint32_t i = 0; i < subs; i++)
+        {
+            int32_t t = -1; uint64_t rc = 0, d = 0; float margin = 3.4e38f, box[4];
+            if (SafeRead(gen + 0x92F328u + 0x20ull * i + 0xC, &t, 4) || t < 0 || (uint32_t)t >= types || SafeRead(gen + 0x92F328u + 0x20ull * i + 0x18, &rc, 8) ||
+                rc == 0 || SafeRead(table + 8ull * (uint32_t)t, &d, 8) || d == 0 || SafeRead(d + 0x208, &margin, 4) || !(margin >= 0.0f && margin <= 2000.0f) ||
+                SafeRead(rc + 0x88, box, 16)) continue;
+            float x0 = fminf(box[0], box[2]) - margin, x1 = fmaxf(box[0], box[2]) + margin, y0 = fminf(box[1], box[3]) - margin, y1 = fmaxf(box[1], box[3]) + margin;
+            if (!(x1 - x0 > 0.0f && y1 - y0 > 0.0f && x1 - x0 < 6000.0f && y1 - y0 < 6000.0f)) continue;
+            if (g_pads.count >= NEAR_PADS) { g_pads.dropped++; continue; }
+            NearPad* p = &g_pads.pad[g_pads.count++];
+            p->cx = (x0 + x1) / 2 - (float)size / 2; p->cy = (y0 + y1) / 2 - (float)size / 2; p->k = 1.0f; p->rect = 1; p->foot = 0;
+            p->c = 1.0f; p->s = 0.0f; p->a = (x1 - x0) / 2; p->b = (y1 - y0) / 2; p->ba = 16.0f; p->bb = 16.0f;
+            zones++;
+        }
+    Note("difficulty: near terrain: the level's pads: %d shapes (%u stamp footprints, %u stamps with pads, %u locations, %u flatten zones; %d not kept), band scale %.2f",
+        g_pads.count, footprints, stamps, locations, zones, g_pads.dropped, (double)g_pads.band3C);
     /* where they are (s71b: none reached the tile): their centres' extent and the 8 nearest the world's centre */
     if (g_pads.count > 0)
     {

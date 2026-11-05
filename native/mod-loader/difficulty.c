@@ -169,6 +169,7 @@ static uintptr_t g_difficultyGame;
 static uint32_t g_objectivePlaces = 16;  /* the selection's places (its callers' buffers hold 32): 30 once the list moved */
 static uint32_t g_objectiveListPlaces = 16; /* the map's objective list S: 48 once moved (difficulty_block.c, layout L48) */
 static uint32_t g_operationOptional;     /* an operation's missions on one map: the optional objectives wanted (each mission's x missions) */
+static uint32_t g_operationMajor;        /* the same for the major ones (class 2) */
 static volatile LONG g_secondPrimaries, g_secondPrimaryMisses;
 
 static int LargerMaps(void) { return g_difficulty.mapScale > 1.0f; }  /* a map_scale above 1 */
@@ -736,6 +737,7 @@ static const char* MakeLevelRow(DifficultyInstall* d)
         memcpy(&optional, row + 0x28, 4); memcpy(&major, row + 0x2C, 4);
         uint32_t room = DIF_OBJECTIVES_MAX - DIF_OBJECTIVES_OTHER, wantOptional = optional * m, wantMajor = major * m;
         g_operationOptional = wantOptional;
+        g_operationMajor = wantMajor;
         uint32_t newMajor = wantMajor <= room ? wantMajor : room;
         uint32_t newOptional = wantOptional <= room - newMajor ? wantOptional : room - newMajor;
         memcpy(row + 0x28, &newOptional, 4); memcpy(row + 0x2C, &newMajor, 4);
