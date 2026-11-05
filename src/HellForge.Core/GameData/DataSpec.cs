@@ -34,10 +34,12 @@ public abstract record DataResource(string Where)
 }
 public sealed record CopyResource(string Where, ulong Type, ulong From, string Name, IReadOnlyDictionary<int, ulong> Expect,
     IReadOnlyList<Replacement> Replace, CurveEdit? Curves, IReadOnlyDictionary<uint, double[]>? Colours, ResourceEdits.LutRecolour? Lut, MeshFile? Mesh = null,
-    IReadOnlyDictionary<uint, ulong>? Textures = null) : DataResource(Where);
+    IReadOnlyDictionary<uint, ulong>? Textures = null, IReadOnlyList<ShaderFile>? Shaders = null) : DataResource(Where);
 // A unit copy's own geometry: an OBJ in the mod folder (UnitMesh), scaled, Y-up or the game's Z-up; with UnitSpace its
 // coordinates are the unit's own (the frame its joints and attach points are in), otherwise its render mesh's.
 public sealed record MeshFile(string Obj, double Scale, bool YUp, bool UnitSpace = false);
+// A material copy's own code for a shader stage: the stage's offset in the GPU part, and a compiled shader in the mod folder.
+public sealed record ShaderFile(int Offset, string Dxbc);
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
 public sealed record IconResource(string Where, string Name, string Png, string Prepare) : DataResource(Where);
 // A texture of the mod's own: one PNG per layer (more than one is an array texture), its format and category.
@@ -100,6 +102,8 @@ public static partial class DataSpecs
                     return $"{copy.Where} copies a {ResourceTypes.Describe(copy.Type)} resource";
                 case CopyResource copy when copy.Replace.Count > 0:
                     return $"{copy.Where} replaces values (\"replace\")";
+                case CopyResource { Shaders.Count: > 0 } copy:
+                    return $"{copy.Where} brings its own shader code";
                 case CopyResource copy when copy.Curves != null && copy.Type != ResourceTypes.Particles || copy.Colours != null && copy.Type != ResourceTypes.Material ||
                     copy.Lut != null && copy.Type != ResourceTypes.Texture || copy.Textures != null && copy.Type != ResourceTypes.Material:
                     return $"{copy.Where} edits a {ResourceTypes.Describe(copy.Type)} resource as another type";
@@ -327,7 +331,7 @@ public static partial class DataSpecs
     // A copy, its edits read in the spec's order.
     static CopyResource ReadCopy(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
-        Fields(e, at, "type", "copy", "name", "expect", "replace", "curves", "colours", "textures", "lut", "mesh", "source");
+        Fields(e, at, "type", "copy", "name", "expect", "replace", "curves", "colours", "textures", "lut", "mesh", "shader", "source");
         var type = Type(e, at);
         var expect = ReadExpect(e, at);
         var replace = ReadReplace(e, at);
@@ -337,7 +341,25 @@ public static partial class DataSpecs
         var lut = ReadLut(e, at);
         var mesh = ReadMesh(e, at, type, folder, inputs);
         var (steam, build) = Source(e, at);
-        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh, textures) { Steam = steam, Build = build };
+        var shaders = ReadShaders(e, at, type, folder, inputs);
+        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh, textures, shaders) { Steam = steam, Build = build };
+    }
+
+    static List<ShaderFile>? ReadShaders(JsonElement e, string at, ulong type, string? folder, ISet<string> inputs)
+    {
+        if (!e.TryGetProperty("shader", out var list)) return null;
+        if (type != ResourceTypes.Material) throw new InvalidDataException($"{at}.shader: only a material has shaders.");
+        if (list.ValueKind != JsonValueKind.Array) throw new InvalidDataException($"{at}.shader: a list of stages.");
+        var shaders = new List<ShaderFile>();
+        foreach (var stage in list.EnumerateArray())
+        {
+            Fields(stage, $"{at}.shader", "offset", "dxbc");
+            var dxbc = Text(stage, "dxbc", $"{at}.shader").Replace('\\', '/');
+            if (folder != null && !File.Exists(Path.Combine(folder, dxbc))) throw new InvalidDataException($"{at}.shader: {dxbc} is not in the mod's folder.");
+            inputs.Add(dxbc);
+            shaders.Add(new(Offset(Text(stage, "offset", $"{at}.shader"), $"{at}.shader"), dxbc));
+        }
+        return shaders;
     }
 
     static Dictionary<int, ulong> ReadExpect(JsonElement e, string at)
