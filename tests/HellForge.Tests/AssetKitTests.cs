@@ -114,6 +114,12 @@ static class AssetKitTests
             Directory.CreateDirectory(Path.Combine(other, "data"));
             File.WriteAllBytes(Path.Combine(other, "data", "0123456789abcdef.patch_0.gpu_resources"), Noise(98, 100));
             reject(() => ModAssets.Ensure(other, () => games));
+
+            // a copy of a rebuilt mod without its record (copied without dot files): its files are already the recipe's
+            File.Delete(Path.Combine(shipped, ModAssets.RecordName));
+            check(ModCatalog.Parse(shipped, profile).AssetsPending != null, "pending without the record");
+            check(ModAssets.Ensure(shipped, () => games) && Sha(gpu) == good, "files that are the recipe's own are taken back");
+            check(ModCatalog.Parse(shipped, profile).AssetsPending == null, "ready again");
         });
 
         test("A recipe from another PC only rebuilds game patch files inside the mod", () =>

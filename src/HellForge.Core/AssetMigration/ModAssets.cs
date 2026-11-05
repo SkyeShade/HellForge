@@ -114,9 +114,15 @@ public static class ModAssets
         if (!info.HasRecipe || info.Ready) return false;
         var recipe = Recipe.LoadRecipe(folder);
         var previous = RecordedFiles(folder);
-        foreach (var path in info.Outputs)
-            if (File.Exists(Path.Combine(folder, path)) && !previous.Contains(path))
+        // A file already there is replaced only when the record says it was rebuilt, or it already is what the recipe
+        // makes (a copy of the mod that lost its record); anything else is the mod's own file and is never overwritten.
+        foreach (var file in recipe.Files)
+        {
+            var path = file.Path.Replace('\\', '/');
+            var target = Path.Combine(folder, path);
+            if (File.Exists(target) && !previous.Contains(path) && !IsRecipeOutput(target, file))
                 throw new InvalidDataException($"it ships {path} itself, and its recipe makes that file too.");
+        }
         var staging = Path.Combine(folder, PartialPrefix + Guid.NewGuid().ToString("N")[..8]);
         var given = games();
         try
@@ -164,6 +170,12 @@ public static class ModAssets
             try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    static bool IsRecipeOutput(string path, RecipeFile file)
+    {
+        using var stream = File.OpenRead(path);
+        return stream.Length == file.Size && Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
     // The files the record says were rebuilt (a rebuild may replace those), or none.
