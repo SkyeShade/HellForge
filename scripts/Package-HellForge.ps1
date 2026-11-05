@@ -34,14 +34,14 @@ Copy-Item -LiteralPath (Join-Path $setup 'HellForge-Setup.exe') -Destination $re
 & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path $result
 $file=Get-Item -LiteralPath $result
 
-# HellForge-Linux-scripts.zip, the release's second file: linux/ and docs/linux.md in a HellForge-Linux folder. Entries are
+# HellForge-Linux-scripts.zip, the release's second file: linux/ and docs/linux*.md in a HellForge-Linux folder. Entries are
 # named here, with '/': a zip made by Windows PowerShell can name them 'folder\file', which Linux unpacks as one file name
 # (a test zip handed out on Discord did).
 $linuxZip=Join-Path $package 'HellForge-Linux-scripts.zip'
 if(Test-Path -LiteralPath $linuxZip){Remove-Item -LiteralPath $linuxZip}
 $archive=[IO.Compression.ZipFile]::Open($linuxZip,[IO.Compression.ZipArchiveMode]::Create)
 try{
-    $files=@(Get-ChildItem -LiteralPath (Join-Path $project 'linux') -File|Sort-Object Name)+@(Get-Item -LiteralPath (Join-Path $project 'docs/linux.md'))
+    $files=@(Get-ChildItem -LiteralPath (Join-Path $project 'linux') -File|Sort-Object Name)+@(Get-ChildItem -LiteralPath (Join-Path $project 'docs') -Filter 'linux*.md' -File|Sort-Object Name)
     foreach($source in $files){
         $entry=$archive.CreateEntry('HellForge-Linux/'+$source.Name,[IO.Compression.CompressionLevel]::Optimal)
         $entry.LastWriteTime=$source.LastWriteTime

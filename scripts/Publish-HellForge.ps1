@@ -161,10 +161,10 @@ foreach($name in @('hell-forge','vanilla-plus')){
 }
 Copy-Item -LiteralPath (Join-Path $project 'data/profile-templates.json') -Destination $staging
 Copy-Item -LiteralPath (Join-Path $project 'data/progression-data.json') -Destination $staging
-# app/linux: the Linux (Proton) scripts and their guide (docs/linux.md), for an installation copied to Linux.
+# app/linux: the Linux (Proton) scripts and their guide (docs/linux*.md: one folder, so its pages link each other).
 $linuxTarget=New-Item -ItemType Directory (Join-Path $staging 'linux')
 Copy-Item -Path (Join-Path $project 'linux/*.sh') -Destination $linuxTarget
-Copy-Item -LiteralPath (Join-Path $project 'docs/linux.md') -Destination $linuxTarget
+Copy-Item -Path (Join-Path $project 'docs/linux*.md') -Destination $linuxTarget
 $zig=(& (Join-Path $PSScriptRoot 'Get-BuildTools.ps1')).Zig
 # The unprivileged Linux sandbox programs: the phase-1 probe and the phase-2 hf-sandbox, built with the same pinned Zig and
 # shipped beside the Linux scripts. The installer makes both executable after extraction
