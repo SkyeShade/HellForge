@@ -29,6 +29,10 @@ On `dev`, since 0.4.0-beta.
 - **Prepare for sharing.** The Mods page's ⋮ menu item (formerly Zip to share) takes Arrowhead's bytes out of a mod's
   game patch files before it zips it, as `package-mod` does. A card says what is out, with the zip, the asset report
   and **CHECK OLDER BUILDS** for bytes that matched no build on the PC.
+- **The asset kit's Steam sign-in is kept.** GET THEM FROM STEAM, CHECK OLDER BUILDS, `--history yes` and
+  `assets-rebuild --steam yes` ask for the Steam app's QR code once. The sign-in is then kept for your user only and
+  renewed, and the asset migrator's saved sign-in is used too. **Sign out of Steam**, or `steam-signout`, forgets it.
+  Setup's download still keeps nothing ([signing in to Steam](docs/modding/assets.md#signing-in-to-steam)).
 - **Data specs: resources from past builds.** `"source": {"build": "2024-03-01"}` (a day, or a data manifest) on a
   `copy` or `include` takes the resource from that build. Each player fetches just those resources from Steam once, with
   the same prompt, and the mod ships only its spec ([data specs](docs/modding/data.md#source-a-past-build)).

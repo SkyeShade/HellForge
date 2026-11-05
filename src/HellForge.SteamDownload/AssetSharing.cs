@@ -11,8 +11,10 @@ namespace HellForge.SteamDownload;
 public static class AssetSharing
 {
     // Where the builds come from and what to tell the author. History: the sign-in prompt for every build since release
-    // (null: this PC's builds only); it is used only when this PC's builds leave bytes the mod still ships.
-    public sealed record Context(InstallLayout? Install, ISignInPrompt? History = null, Action<string>? Log = null, CancellationToken Cancel = default);
+    // (null: this PC's builds only); it is used only when this PC's builds leave bytes the mod still ships. Saved: the
+    // saved Steam sign-ins it tries first and keeps a new one in (SteamLogins; null: none, and nothing kept).
+    public sealed record Context(InstallLayout? Install, ISignInPrompt? History = null, Action<string>? Log = null, CancellationToken Cancel = default,
+        SteamLogins? Saved = null);
 
     // A check's or strip's result, the report written, and the past builds read from Steam (by label, with their day).
     public sealed record Checked(AssetKit.Result Result, string ReportPath, IReadOnlyList<string> PastBuilds);
@@ -56,7 +58,7 @@ public static class AssetSharing
         var first = AssetKit.Strip(modFolder, index, games, null, context.Log);
         if (!first.Report.Kept.Values.Any(k => k.Count > 0)) return null;
         context.Log?.Invoke("Checking what the mod still ships against every build since release, on Steam...");
-        var session = SteamDepotSession.SignInAsync(context.History!, context.Cancel).GetAwaiter().GetResult();
+        var session = SteamDepotSession.SignInAsync(context.History!, context.Cancel, context.Saved).GetAwaiter().GetResult();
         try
         {
             var steam = SteamBuilds.For(session, context.Install, context.Cancel);

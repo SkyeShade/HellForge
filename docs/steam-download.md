@@ -31,9 +31,10 @@ player's own account. It opens on the QR code. Each way has **Choose another way
 
 The progress of every way shows in one place, the Game files card under it.
 
-Nothing is kept. HellForge's QR sign-in is not persistent: no refresh token and no Steam Guard data is written
+Nothing is kept. HellForge's QR sign-in for setup is not persistent: no refresh token and no Steam Guard data is written
 anywhere, and the next download asks again. The sign-in is a separate Steam session, so the Steam client stays signed
-in. Steam may email the account about a new sign-in.
+in. Steam may email the account about a new sign-in. The asset kit's fetches of older builds are the exception: they keep
+their sign-in until you sign out ([signing in to Steam](modding/assets.md#signing-in-to-steam)).
 
 Every message the sign-in shows passes through a scrubber that hides the tokens. A test checks that no line of the
 sign-in code that shows, logs, writes or throws text names one. It also checks that no password sign-in, password box or

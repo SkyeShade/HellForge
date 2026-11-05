@@ -9,8 +9,10 @@ namespace HellForge.SteamDownload;
 
 // A sign-in to Steam for setup's download, on SteamKit2: Steam's own QR code sign-in, approved in the Steam app, then
 // depot keys, manifest request codes, manifests and chunks from Steam's content servers. Written for HellForge on
-// SteamKit2's API. The session is not persistent and nothing about it is stored: the tokens Steam returns live in this
-// object until it is disposed. It signs in as a separate session (its own login id), so the Steam client stays signed in.
+// SteamKit2's API. For setup the session is not persistent and nothing about it is stored: the tokens Steam returns live
+// in this object until it is disposed. The asset kit's fetches pass saved sign-ins (SteamLogins): those are tried first,
+// and a QR sign-in is then persistent and kept there. It signs in as a separate session (its own login id), so the Steam
+// client stays signed in.
 public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
 {
     // Steam's login id for this session: any value other than the Steam client's own keeps the client signed in.
@@ -49,19 +51,23 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
         callbacks.Subscribe<SteamUser.LoggedOnCallback>(result => loggedOn.TrySetResult(result));
     }
 
-    // Connects, signs in with a QR code approved in the Steam app and logs on. Throws SteamSignInException with the reason in
-    // plain words.
-    public static async Task<SteamDepotSession> SignInAsync(ISignInPrompt prompt, CancellationToken cancellation)
+    // Connects, signs in and logs on: with each saved sign-in in turn (saved: null for none), else with a QR code approved
+    // in the Steam app, which is then kept in saved. Throws SteamSignInException with the reason in plain words.
+    public static async Task<SteamDepotSession> SignInAsync(ISignInPrompt prompt, CancellationToken cancellation, SteamLogins? saved = null)
     {
+        if (saved != null)
+            foreach (var login in saved.Read())
+                if (await SavedAsync(prompt, login, saved, cancellation) is { } signedIn) return signedIn;
         var session = new SteamDepotSession();
         try
         {
             prompt = new ScrubbedPrompt(prompt, session.scrubber);
             prompt.Status("Connecting to Steam...");
             await session.ConnectAsync(cancellation);
-            var (account, token) = await session.AuthenticateAsync(prompt, cancellation);
+            var (account, token) = await session.AuthenticateAsync(prompt, persistent: saved != null, cancellation);
             prompt.Status("Signing in...");
             await session.LogOnAsync(account, token, cancellation);
+            if (saved != null) Keep(saved, account, token, prompt);
             return session;
         }
         catch (Exception error) when (error is not OperationCanceledException and not SteamSignInException)
@@ -82,6 +88,67 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
         }
     }
 
+    // A session signed in with a saved sign-in, or null when Steam did not take it (one it no longer accepts is
+    // forgotten, SteamLogins.Rejected). HellForge's own token is renewed when Steam offers a new one.
+    static async Task<SteamDepotSession?> SavedAsync(ISignInPrompt prompt, SteamLogins.Login login, SteamLogins saved, CancellationToken cancellation)
+    {
+        var session = new SteamDepotSession();
+        session.scrubber.Add(login.RefreshToken);
+        var scrubbed = new ScrubbedPrompt(prompt, session.scrubber);
+        try
+        {
+            scrubbed.Status($"Signing in to Steam as {login.AccountName} ({login.From})...");
+            await session.ConnectAsync(cancellation);
+            var result = await session.TryLogOnAsync(login.AccountName, login.RefreshToken, cancellation);
+            if (result.Result == EResult.OK)
+            {
+                if (login.Own) await session.RenewAsync(login, result.ClientSteamID, saved, scrubbed, cancellation);
+                return session;
+            }
+            if (Rejects(result.Result)) saved.Rejected(login);
+            scrubbed.Status(Rejects(result.Result) ? $"Steam no longer accepts {login.From}" + (login.Own ? "; it is forgotten." : ".")
+                : $"Steam did not take {login.From}: {Describe(result.Result)}");
+        }
+        catch (Exception error) when (error is TimeoutException or IOException)
+        {
+            scrubbed.Status($"{login.From} did not work: " + session.scrubber.Clean(error.Message));
+        }
+        catch
+        {
+            await session.DisposeAsync();
+            throw;
+        }
+        await session.DisposeAsync();
+        return null;
+    }
+
+    // Steam's answers that mean the token is no longer good (others can pass: rate limits, maintenance).
+    static bool Rejects(EResult result) => result is EResult.InvalidPassword or EResult.AccessDenied or EResult.Expired or EResult.Revoked
+        or EResult.InvalidSignature;
+
+    // A new refresh token when Steam offers one (close to its expiry), kept in place of the old; best effort.
+    async Task RenewAsync(SteamLogins.Login login, SteamID? steamId, SteamLogins saved, ISignInPrompt prompt, CancellationToken cancellation)
+    {
+        if (steamId == null) return;
+        try
+        {
+            var renewed = await client.Authentication.GenerateAccessTokenForAppAsync(steamId, login.RefreshToken, allowRenewal: true).WaitAsync(Timeout, cancellation);
+            scrubber.Add(renewed.AccessToken);
+            scrubber.Add(renewed.RefreshToken);
+            if (renewed.RefreshToken is { Length: > 0 } token && token != login.RefreshToken) Keep(saved, login.AccountName, token, prompt);
+        }
+        catch (Exception error) when (error is AuthenticationException or TimeoutException or IOException or TaskCanceledException && !cancellation.IsCancellationRequested) { }
+    }
+
+    static void Keep(SteamLogins saved, string account, string token, ISignInPrompt prompt)
+    {
+        try { saved.Save(account, token); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            prompt.Status("Signed in, but the sign-in could not be kept for next time: " + error.Message);
+        }
+    }
+
     async Task ConnectAsync(CancellationToken cancellation)
     {
         pumping = Task.Run(async () =>
@@ -96,9 +163,11 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
         await connected.Task.WaitAsync(Timeout, cancellation);
     }
 
-    async Task<(string Account, string Token)> AuthenticateAsync(ISignInPrompt prompt, CancellationToken cancellation)
+    // persistent: the token is to be kept (SteamLogins), and Steam lists the sign-in as "HellForge" among the account's
+    // authorized devices, where the player can remove it.
+    async Task<(string Account, string Token)> AuthenticateAsync(ISignInPrompt prompt, bool persistent, CancellationToken cancellation)
     {
-        var details = new AuthSessionDetails { DeviceFriendlyName = "HellForge setup", IsPersistentSession = false };
+        var details = new AuthSessionDetails { DeviceFriendlyName = persistent ? "HellForge" : "HellForge setup", IsPersistentSession = persistent };
         var qr = await client.Authentication.BeginAuthSessionViaQRAsync(details).WaitAsync(Timeout, cancellation);
         prompt.ShowQr(qr.ChallengeURL);
         qr.ChallengeURLChanged = () => prompt.ShowQr(qr.ChallengeURL);
@@ -111,11 +180,19 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
 
     async Task LogOnAsync(string account, string token, CancellationToken cancellation)
     {
+        var result = await TryLogOnAsync(account, token, cancellation);
+        if (result.Result != EResult.OK) throw new SteamSignInException($"Steam sign-in did not work: {Describe(result.Result)}");
+    }
+
+    // Logs on with a refresh token; Steam's answer (signed in when OK).
+    async Task<SteamUser.LoggedOnCallback> TryLogOnAsync(string account, string token, CancellationToken cancellation)
+    {
         user.LogOn(new SteamUser.LogOnDetails { Username = account, AccessToken = token, ShouldRememberPassword = false, LoginID = LoginId });
         var result = await loggedOn.Task.WaitAsync(Timeout, cancellation);
-        if (result.Result != EResult.OK) throw new SteamSignInException($"Steam sign-in did not work: {Describe(result.Result)}");
+        if (result.Result != EResult.OK) return result;
         cellId = result.CellID;
         cdn = new Client(client);
+        return result;
     }
 
     // Steam's result in words a player can act on.

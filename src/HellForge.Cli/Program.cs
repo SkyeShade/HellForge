@@ -38,6 +38,7 @@ try
             assets-check --mod <mod folder> [--install <folder>] [--history yes]
             assets-strip --mod <mod folder> [--out <folder>] [--install <folder>] [--history yes]
             assets-rebuild --mod <mod folder> [--install <folder>] [--steam yes]
+            steam-signout
             mod-hash --mod <mod folder or .zip>
             mod-tools --install <installation or source folder> [--ide yes]
             steam-bridge host | inner | check [socket]
@@ -86,12 +87,15 @@ try
             be shared (--out, or the installation's exports folder): the author's bytes, and a recipe that rebuilds the
             rest from each player's own game, checked by SHA-256; with a report beside it. Both compare the mod with the
             builds on this PC (HellForge's game copy, HELLDIVERS 2 in Steam), fingerprinted once into temp/asset-kit.
-            --history yes (also for package-mod) signs in to Steam (a QR code; nothing kept) and checks what the builds
+            --history yes (also for package-mod) signs in to Steam (a saved sign-in, else a QR code) and checks what the builds
             here leave against every build since release, from Steam's depot manifests: cut content from an older build
             is proven by its chunks' SHA-1, just those resources are fetched, and they go into the recipe too.
             assets-rebuild rebuilds a mod's recipe into its folder, as a session does before it loads the mod; with
             --steam yes, what it needs of builds this PC lacks (cut content from an older build) is fetched from Steam
-            first, with your own sign-in (a QR code for the Steam app; nothing is kept), only the chunks that hold it.
+            first, with your own sign-in, only the chunks that hold it. These Steam sign-ins are kept: the first is a QR code
+            for the Steam app, and the token Steam returns is saved for the user only (<ApplicationData>/HellForge/
+            steam-login.json; the asset migrator's saved sign-in is tried too), so later ones need no phone.
+            steam-signout deletes HellForge's saved sign-in (steam-download's sign-in is never kept).
             mod-hash prints a mod's content hash as mod sync and HellForge's verified list (data/verified-mods.json) take
             it: a folder by its files, a zip by what it ships, as a player's HellForge loads it; with its class and an entry
             for the verified list.
@@ -157,6 +161,7 @@ try
         "package-mod" => ["--mod", "--out", "--history"],
         "assets-check" => ["--mod", "--install", "--history"],
         "assets-rebuild" => ["--mod", "--install", "--steam"],
+        "steam-signout" => [],
         "assets-strip" => ["--mod", "--out", "--install", "--history"],
         "mod-hash" => ["--mod"],
         "mod-tools" => ["--install", "--ide"],
@@ -585,6 +590,9 @@ try
             result = new { mod = modFolder, files = rebuilt.Outputs, ready = rebuilt.Ready, fetchedFrom = fetched?.Builds, downloadedBytes = fetched?.Downloaded };
             break;
         }
+        case "steam-signout":
+            result = new { signedOut = SteamLogins.Default.Forget(), file = SteamLogins.Default.OwnPath };
+            break;
         case "mod-hash":
         {
             var hashed = ModHash.Of(Path.GetFullPath(Required("--mod")));
