@@ -31,12 +31,17 @@ static const struct { uint32_t rva, constant; } kWorldGate[2] = {{0x953642u, 0x2
 static const struct { uint32_t rva, constant; uint8_t high; } kWorldDropBounds[4] = {
     {0xA87BB2u, 0x23C83B8u, 0}, {0xA87BBDu, 0x23C7D38u, 1}, {0x8275EEu, 0x23C83B8u, 0}, {0x8275FFu, 0x23C7D38u, 1}};
 /* The immediates: {rva, offset of the 32-bit value, vanilla value}: 2048.0 (map space clamps 0xF38EDA/0xF38EFE, the
- * engine's world size 0xF5DEF9.. and 0xF5F3C1.., the stamp index's world 0xF6E9D0) and 1024.0 (the centre that
- * SpreadLocations and the outposts' spreading measure from, 0xF7DFEF.. and 0xF7EDDC..). */
-static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediates[11] = {
+ * engine's world size 0xF5DEF9.. and 0xF5F3C1.., the stamp index's world 0xF6E9D0), 1024.0 (the centre that
+ * SpreadLocations and the outposts' spreading measure from, 0xF7DFEF.. and 0xF7EDDC..) and 2046.0 (the water physics
+ * heightfield's extents that GenerateWaterFinalize builds from the 1024^2 water_height readback, 0xF6CD2E -> +0x128 and
+ * the qword at 0xF6CD3C -> +0x12C, its high half 0: 2048 - 2048 / 1024, so the world's size - one texel; vanilla kept
+ * the whole map's water collision in the central 2 km). */
+#define WORLD_IMMEDIATES 13
+static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediates[WORLD_IMMEDIATES] = {
     {0xF38EDAu, 4, 0x45000000u}, {0xF38EFEu, 4, 0x45000000u}, {0xF5DEF9u, 4, 0x45000000u}, {0xF5DF06u, 4, 0x45000000u},
     {0xF5F3C1u, 4, 0x45000000u}, {0xF5F3CEu, 4, 0x45000000u}, {0xF6E9D0u, 2, 0x45000000u},
-    {0xF7DFEFu, 3, 0x44800000u}, {0xF7DFF6u, 3, 0x44800000u}, {0xF7EDDCu, 3, 0x44800000u}, {0xF7EDE3u, 3, 0x44800000u}};
+    {0xF7DFEFu, 3, 0x44800000u}, {0xF7DFF6u, 3, 0x44800000u}, {0xF7EDDCu, 3, 0x44800000u}, {0xF7EDE3u, 3, 0x44800000u},
+    {0xF6CD2Eu, 6, 0x44FFC000u}, {0xF6CD3Cu, 7, 0x44FFC000u}};
 /* What the instructions read (the block's second page, writable): half, full, 1 / full, the gate's +-2000 x scale, and
  * the size the stub stores (0: the table's). */
 /* maskSpan: 4096.0 (0x23C7E04) where a stratagem's payload clearance is read from the clearing mask (0x6AA0CA; the
@@ -128,7 +133,7 @@ static void WorldWrite(float scale)
         g_world.below[0] = scale > 1.0f ? g_world.makeBelow : 0xFFFFFFFFu;
         g_world.below[1] = scale > 1.0f ? g_world.placeBelow : 0xFFFFFFFFu;
     }
-    for (int i = 0; i < 11; i++)
+    for (int i = 0; i < WORLD_IMMEDIATES; i++)
     {
         float value;
         memcpy(&value, &kWorldImmediates[i].value, 4);
@@ -2615,6 +2620,161 @@ static void WorldZoneProbe(uint64_t records, uint32_t end, uintptr_t gen)
  * after every generation op that grew the commit (private bytes; Wine reports PrivateUsage 0, so PagefileUsage) by 64 MB or more since the last note, at named phases, and
  * every 30 s while a player exists (NearReportPlayer). K32GetProcessMemoryInfo through GetProcAddress (the loader does
  * not link psapi). */
+/* ---- Memory attribution (research, HELLFORGE_XL_MEMPROF=1) -------------------------------------------------------------
+ * Every commit goes through ntdll's NtAllocateVirtualMemory and every release or decommit through NtFreeVirtualMemory.
+ * The hooks keep, per caller, the bytes committed and the bytes still committed (live), and every memory note lists the
+ * callers that hold the most. The caller is the first six frames in helldivers2.exe or game.dll above the game's
+ * allocator, rpmalloc 1.4 (exe 0x667000..0x66B560: _rpmalloc_mmap_os 0x667850, _rpmalloc_allocate 0x669D20, huge
+ * 0x669B90, aligned 0x669EB0, posix_memalign 0x66B4B0), whose wrappers are reached only through pointers set at run
+ * time, so their callers cannot be listed statically. s75a (frames inside rpmalloc only): 0x4A's +4.1 GB and 0x0B's
+ * +3.0 GB both come through rpmalloc; 0x4A's 140 GB of span maps are churn. A region is found again on its free by
+ * its allocation base (VirtualQuery). */
+typedef LONG (NTAPI* MemProfAllocFn)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+typedef LONG (NTAPI* MemProfFreeFn)(HANDLE, PVOID*, PSIZE_T, ULONG);
+static MemProfAllocFn g_memProfAlloc;
+static MemProfFreeFn g_memProfFree;
+#define MEMPROF_SLOTS 4096
+#define MEMPROF_FRAMES 6
+#define MEMPROF_REGIONS (1u << 18)
+static struct { volatile LONG64 key; uintptr_t at[MEMPROF_FRAMES]; volatile LONG64 bytes, live, calls, shown; } g_memProf[MEMPROF_SLOTS];
+typedef struct { volatile LONG64 base; volatile LONG64 bytes; volatile LONG slot; } MemProfRegion;
+static MemProfRegion* g_memProfRegion; /* MEMPROF_REGIONS, allocated when the research is on */
+static uintptr_t g_memProfRange[2][2];
+static volatile LONG64 g_memProfOther, g_memProfOtherShown, g_memProfLost;
+static uintptr_t MemProfImageEnd(uintptr_t base)
+{
+    IMAGE_DOS_HEADER dos; IMAGE_NT_HEADERS64 nt;
+    if (base == 0 || SafeRead(base, &dos, sizeof dos) || SafeRead(base + (uintptr_t)dos.e_lfanew, &nt, sizeof nt)) return base;
+    return base + nt.OptionalHeader.SizeOfImage;
+}
+static uintptr_t MemProfAllocationBase(uintptr_t address)
+{
+    MEMORY_BASIC_INFORMATION m;
+    return VirtualQuery((void*)address, &m, sizeof m) == sizeof m ? (uintptr_t)m.AllocationBase : 0;
+}
+static uint32_t MemProfRegionSlot(uintptr_t base, int add)
+{
+    for (uint32_t probe = 0, i = (uint32_t)((base >> 16) * 0x9E3779B1u) & (MEMPROF_REGIONS - 1); probe < 256; probe++, i = (i + 1) & (MEMPROF_REGIONS - 1))
+    {
+        LONG64 have = g_memProfRegion[i].base;
+        if (have == (LONG64)base) return i;
+        if (have == 0 || have == -1)
+        {
+            if (!add) { if (have == 0) return UINT32_MAX; continue; }
+            if (InterlockedCompareExchange64(&g_memProfRegion[i].base, (LONG64)base, have) == have) return i;
+            if (g_memProfRegion[i].base == (LONG64)base) return i;
+        }
+    }
+    return UINT32_MAX;
+}
+static LONG NTAPI MemProfCommit(HANDLE process, PVOID* base, ULONG_PTR zero, PSIZE_T size, ULONG type, ULONG protect)
+{
+    LONG status = g_memProfAlloc(process, base, zero, size, type, protect);
+    if (status >= 0 && (type & MEM_COMMIT) && size != NULL && *size >= 4096 && process == (HANDLE)(intptr_t)-1)
+    {
+        void* frames[48];
+        USHORT n = RtlCaptureStackBackTrace(1, 48, frames, NULL);
+        uintptr_t at[MEMPROF_FRAMES] = {0}; int k = 0;
+        uintptr_t skipLo = g_memProfRange[0][0] + 0x667000u, skipHi = g_memProfRange[0][0] + 0x66B560u;
+        for (USHORT i = 0; i < n && k < MEMPROF_FRAMES; i++)
+        {
+            uintptr_t f = (uintptr_t)frames[i];
+            if (f >= skipLo && f < skipHi) continue;
+            for (int m = 0; m < 2; m++) if (f >= g_memProfRange[m][0] && f < g_memProfRange[m][1]) { at[k++] = f; break; }
+        }
+        if (k == 0) { InterlockedAdd64(&g_memProfOther, (LONG64)*size); return status; }
+        uint64_t h = 0x84222325CBF29CE4ull;
+        for (int f = 0; f < MEMPROF_FRAMES; f++) h = (h ^ at[f]) * 0x100000001B3ull;
+        LONG64 key = (LONG64)(h | 1);
+        for (uint32_t probe = 0, slot = (uint32_t)(h >> 20) % MEMPROF_SLOTS; probe < 128; probe++, slot = (slot + 1) % MEMPROF_SLOTS)
+        {
+            LONG64 have = g_memProf[slot].key;
+            if (have == 0 && InterlockedCompareExchange64(&g_memProf[slot].key, key, 0) == 0)
+            { memcpy(g_memProf[slot].at, at, sizeof at); have = key; }
+            if (have == key || g_memProf[slot].key == key)
+            {
+                InterlockedAdd64(&g_memProf[slot].bytes, (LONG64)*size); InterlockedAdd64(&g_memProf[slot].live, (LONG64)*size);
+                InterlockedIncrement64(&g_memProf[slot].calls);
+                uintptr_t region = MemProfAllocationBase((uintptr_t)*base);
+                uint32_t r = region ? MemProfRegionSlot(region, 1) : UINT32_MAX;
+                if (r != UINT32_MAX) { g_memProfRegion[r].slot = (LONG)slot; InterlockedAdd64(&g_memProfRegion[r].bytes, (LONG64)*size); }
+                else InterlockedAdd64(&g_memProfLost, (LONG64)*size);
+                break;
+            }
+        }
+    }
+    return status;
+}
+static LONG NTAPI MemProfRelease(HANDLE process, PVOID* base, PSIZE_T size, ULONG type)
+{
+    uintptr_t address = (process == (HANDLE)(intptr_t)-1 && base != NULL) ? (uintptr_t)*base : 0;
+    SIZE_T want = size != NULL ? *size : 0;
+    uintptr_t region = address ? MemProfAllocationBase(address) : 0;
+    LONG status = g_memProfFree(process, base, size, type);
+    if (status < 0 || region == 0) return status;
+    uint32_t r = MemProfRegionSlot(region, 0);
+    if (r == UINT32_MAX) return status;
+    LONG64 had = g_memProfRegion[r].bytes, gone = (type & MEM_RELEASE) ? had : (LONG64)want;
+    if (gone > had) gone = had;
+    if (gone <= 0) return status;
+    InterlockedAdd64(&g_memProfRegion[r].bytes, -gone);
+    InterlockedAdd64(&g_memProf[g_memProfRegion[r].slot].live, -gone);
+    if (type & MEM_RELEASE) InterlockedExchange64(&g_memProfRegion[r].base, -1);
+    return status;
+}
+static void MemProfInstall(void)
+{
+    static int done;
+    char t[4] = "";
+    if (done || !(GetEnvironmentVariableA("HELLFORGE_XL_MEMPROF", t, sizeof t) > 0 && t[0] == '1')) return;
+    done = 1;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    g_memProfRange[0][0] = exe; g_memProfRange[0][1] = MemProfImageEnd(exe);
+    g_memProfRange[1][0] = g_world.game; g_memProfRange[1][1] = MemProfImageEnd(g_world.game);
+    if (!ApiCodeMatches(exe + 0x667850u, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20"))
+    { Note("difficulty: memprof: rpmalloc is not the reviewed one; not installed"); return; }
+    g_memProfRegion = (MemProfRegion*)VirtualAlloc(NULL, sizeof(MemProfRegion) * MEMPROF_REGIONS, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (g_memProfRegion == NULL) { Note("difficulty: memprof: no room for the region table"); return; }
+    HMODULE nt = GetModuleHandleA("ntdll.dll");
+    FARPROC alloc = nt ? GetProcAddress(nt, "NtAllocateVirtualMemory") : NULL, release = nt ? GetProcAddress(nt, "NtFreeVirtualMemory") : NULL;
+    if (alloc == NULL || release == NULL) { Note("difficulty: memprof: no NtAllocateVirtualMemory or NtFreeVirtualMemory"); return; }
+    LoaderHook("extra large maps' memory attribution (research)", (uintptr_t)alloc, (void*)MemProfCommit, (void**)&g_memProfAlloc);
+    LoaderHook("extra large maps' memory attribution, frees (research)", (uintptr_t)release, (void*)MemProfRelease, (void**)&g_memProfFree);
+    Note("difficulty: memprof: commits and frees attributed to their callers above rpmalloc (exe %llX..%llX, game %llX..%llX)",
+        (unsigned long long)g_memProfRange[0][0], (unsigned long long)g_memProfRange[0][1], (unsigned long long)g_memProfRange[1][0],
+        (unsigned long long)g_memProfRange[1][1]);
+}
+static void MemProfReport(void)
+{
+    if (g_memProfAlloc == NULL) return;
+    LONG64 other = g_memProfOther - g_memProfOtherShown;
+    if (other >= (8ll << 20)) { Note("difficulty: memprof: %lld MB committed with no game frame on the stack", other >> 20); g_memProfOtherShown += other; }
+    static char picked[MEMPROF_SLOTS];
+    memset(picked, 0, sizeof picked);
+    for (int top = 0; top < 8; top++)
+    {
+        int best = -1; LONG64 bestLive = 0;
+        for (int i = 0; i < MEMPROF_SLOTS; i++)
+            if (g_memProf[i].key != 0 && !picked[i] && g_memProf[i].live > bestLive) { bestLive = g_memProf[i].live; best = i; }
+        if (best < 0 || bestLive < (64ll << 20)) break;
+        picked[best] = 1;
+        char where[MEMPROF_FRAMES * 20 + 8] = ""; size_t used = 0;
+        for (int f = 0; f < MEMPROF_FRAMES && g_memProf[best].at[f] != 0; f++)
+        {
+            uintptr_t a = g_memProf[best].at[f];
+            int x = a >= g_memProfRange[0][0] && a < g_memProfRange[0][1];
+            used += (size_t)snprintf(where + used, sizeof where - used, "%s%s+0x%llX", f ? " < " : "", x ? "x" : "g",
+                (unsigned long long)(a - g_memProfRange[x ? 0 : 1][0]));
+            if (used >= sizeof where) break;
+        }
+        LONG64 grew = g_memProf[best].live - g_memProf[best].shown;
+        Note("difficulty: memprof: %lld MB live (%+lld) by %s (%lld calls, %lld MB committed in all)", bestLive >> 20, grew >> 20, where,
+            (long long)g_memProf[best].calls, (long long)(g_memProf[best].bytes >> 20));
+        g_memProf[best].shown = g_memProf[best].live;
+    }
+    if (g_memProfLost >= (8ll << 20)) Note("difficulty: memprof: %lld MB in regions the table could not hold", (long long)(g_memProfLost >> 20));
+}
+
 typedef struct { DWORD cb, faults; SIZE_T peakWs, ws, peakPagedPool, pagedPool, peakNonPaged, nonPaged, page, peakPage, priv; } WorldMemCounters;
 static volatile LONG64 g_memLast;
 static void WorldMemoryNote(const char* where, uint32_t op, uint32_t record, int force)
@@ -2637,6 +2797,7 @@ static void WorldMemoryNote(const char* where, uint32_t op, uint32_t record, int
         Note("difficulty: memory: %s at %.0fx: commit %lld MB (%+lld), working set %llu MB (peak %llu), system available %llu MB",
             where, (double)g_world.current, priv >> 20, (priv - last) >> 20, (unsigned long long)(c.ws >> 20), (unsigned long long)(c.peakWs >> 20),
             (unsigned long long)(m.ullAvailPhys >> 20));
+    MemProfReport();
 }
 
 static void WorldMemoryTick(void)
@@ -3222,7 +3383,7 @@ static const char* WorldSitesFailed(uintptr_t game)
             SafeRead(game + kWorldDropBounds[i].rva + 4, &disp, 4) || game + kWorldDropBounds[i].rva + 8 + (intptr_t)disp != game + kWorldDropBounds[i].constant)
             return "the drop bounds are not the reviewed ones (an extra large map needs them)";
     }
-    for (int i = 0; i < 11; i++)
+    for (int i = 0; i < WORLD_IMMEDIATES; i++)
     {
         uint32_t value;
         if (SafeRead(game + kWorldImmediates[i].rva + kWorldImmediates[i].at, &value, 4) || value != kWorldImmediates[i].value)
@@ -3698,6 +3859,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     for (size_t i = 0; i < sizeof kWorldPasses / sizeof kWorldPasses[0]; i++)
         LoaderHook("extra large maps' pass diagnostic", game + kWorldPasses[i].rva, kWorldPasses[i].detour, (void**)kWorldPasses[i].original);
     LoaderHook("extra large maps' op diagnostic", game + 0xC14950u, (void*)WorldDispatch, (void**)&g_worldDispatch);
+    MemProfInstall();
     TerrainDiagInstall(game);
     TerrainInstall(game);
     uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
@@ -3801,7 +3963,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     rel = DifficultyJumpRel(game + DIF_WORLD_SIZE_SITE, (uintptr_t)block); memcpy(jump + 1, &rel, 4);
     g_world.scale = scale;
     if (ApiWrite(game + DIF_WORLD_SIZE_SITE, jump, 9)) { g_world.scale = 1; return "the level's size could not be made larger"; }
-    Note("difficulty %s: extra large maps: a %u m world at map_scale %.2f (%u x 2048 m); %zu readers, 11 immediates and the director's bounds follow it",
-        g_difficulty.name, 2048u * scale, (double)g_difficulty.mapScale, scale, sizeof kWorldSites / sizeof kWorldSites[0]);
+    Note("difficulty %s: extra large maps: a %u m world at map_scale %.2f (%u x 2048 m); %zu readers, %d immediates and the director's bounds follow it",
+        g_difficulty.name, 2048u * scale, (double)g_difficulty.mapScale, scale, sizeof kWorldSites / sizeof kWorldSites[0], WORLD_IMMEDIATES);
     return NULL;
 }

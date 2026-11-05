@@ -33,6 +33,8 @@
 #define MACRO_FALL 900.0f  /* metres from a held-at-0 area to full height */
 #define MACRO_WET 256.0f   /* metres around a wet corner held at 0 (corners stand ~300 m apart on the coarse plan) */
 #define MACRO_SEA 6.0f     /* metres above the sea plane still held at 0 */
+#define MACRO_SHORE 1.0f   /* metres above an area's water level a corner's vanilla ground still counts as wet: the drawn ground dips
+                            * about that far below the vertex heights (s74y: drawn -0.90 m beside water at -1.05 m) */
 #define MACRO_HOLD 220.0f  /* metres around a location held flat */
 #define MACRO_RAMP 260.0f  /* metres over which a held plateau blends into the field */
 
@@ -170,15 +172,33 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
     static float D[MACRO_N * MACRO_N], hold[MACRO_N * MACRO_N], holdW[MACRO_N * MACRO_N];
     memset(g_macro.fixed, 0, (size_t)MACRO_N * MACRO_N);
     for (size_t n = 0; n < (size_t)MACRO_N * MACRO_N; n++) { D[n] = 1e9f; hold[n] = 0; holdW[n] = 0; g_macro.slope[n] = sMax; }
-    /* held at 0: wet corners, corners at the sea, the map's edge */
-    uint32_t wet = 0, low = 0;
+    /* held at 0: wet corners, corners at the sea, the map's edge. A corner is wet when its vanilla ground (G+0x1F8A30 x 512)
+     * lies below its type's water level (+0xE4) + MACRO_SEA: op 0x0A spawns a water plane for every area whose type has a
+     * level above -500 (0xF6C610 phase 0), and the plane shows only where the ground is under it. The relief only raises,
+     * so it can hide a lake, never make one: a type with a level alone is not water (s74y: 2272 of ~2850 corners had one,
+     * which held nearly the whole map at 0, mean 1.9 m; s74z: levels -10..-1 m under ground 0..6 m, and the sea's 6 m
+     * margin still held 1977 of 2434). */
+    uint32_t wet = 0, low = 0, typed = 0;
+    float typedLo = 1e9f, typedHi = -1e9f, groundLo = 1e9f, groundHi = -1e9f;
     for (uint32_t c = 0; c < corners; c++)
     {
         float xy[2]; int32_t t = -1; float h512 = 0;
         if (SafeRead(gen + 0x9F310u + 0x48ull * c, xy, 8)) break;
         int isWet = 0;
         if (c < typeCount && !SafeRead(gen + 0x21AE88u + 4ull * c, &t, 4))
-        { uintptr_t d = MacroType((uintptr_t)table, types, t); float level = -1000.0f; if (d && !SafeRead(d + 0xE4, &level, 4) && level > -500.0f) { isWet = 1; wet++; } }
+        {
+            uintptr_t d = MacroType((uintptr_t)table, types, t); float level = -1000.0f;
+            if (d && !SafeRead(d + 0xE4, &level, 4) && level > -500.0f)
+            {
+                typed++;
+                if (level < typedLo) typedLo = level; if (level > typedHi) typedHi = level;
+                float ground = 0.0f;
+                int known = c < heightCount && !SafeRead(gen + 0x1F8A30u + 4ull * c, &ground, 4) && isfinite(ground);
+                ground *= 512.0f;
+                if (known) { if (ground < groundLo) groundLo = ground; if (ground > groundHi) groundHi = ground; }
+                if (!known || ground < level + MACRO_SHORE) { isWet = 1; wet++; }
+            }
+        }
         if (!isWet && sea > -500.0f && c < heightCount && !SafeRead(gen + 0x1F8A30u + 4ull * c, &h512, 4) && h512 * 512.0f < sea + MACRO_SEA) { isWet = 1; low++; }
         if (isWet) MACRO_FOR_NODES(xy[0], xy[1], MACRO_WET, { D[n_] = 0; g_macro.fixed[n_] = 1; });
     }
@@ -283,8 +303,11 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
             MACRO_FOR_NODES(xy[0], xy[1], width / 2 + MACRO_STEP, { if (g_macro.slope[n_] > sRoad) { g_macro.slope[n_] = sRoad; roadNodes++; } });
         }
     }
-    /* the slopes: h_i <= h_j + s d and h_i >= h_j - s d over the 8 neighbours (s the smaller of the two limits), held nodes
-     * fixed; Gauss-Seidel sweeps both ways until nothing moves */
+    /* the slopes: h_i <= h_j + s d and h_i >= h_j - s d over the 8 neighbours (s the smaller of the two limits), the nodes
+     * held at 0 fixed; Gauss-Seidel sweeps both ways until nothing moves. The plateaus (fixed 2) take part with their
+     * flattened values: kept fixed, each at its own centre's value, two plateaus close together or one beside a held-at-0
+     * area left a cliff no sweep could touch (s75a: steepest 62.9 deg with a 34 deg limit). They stay level unless a limit
+     * makes them tilt where they meet. 0 everywhere meets every limit, so the sweeps converge. */
     int sweeps = 0;
     for (; sweeps < 400; sweeps++)
     {
@@ -295,7 +318,7 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
                 {
                     int i = dir ? MACRO_N - 1 - ii : ii, j = dir ? MACRO_N - 1 - jj : jj;
                     size_t n = (size_t)j * MACRO_N + i;
-                    if (g_macro.fixed[n]) continue;
+                    if (g_macro.fixed[n] == 1) continue;
                     float v = g_macro.h[n], lo = -1e9f, hi = 1e9f;
                     for (int dj = -1; dj <= 1; dj++)
                         for (int di = -1; di <= 1; di++)
@@ -330,9 +353,11 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
     g_macro.ms = (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart;
     g_macro.level = g_world.levels; g_macro.ready = 1;
     Note("difficulty: relief: seed %08X; %.0f..%.0f m (mean %.1f), steepest %.1f deg; held at 0: %u wet and %u sea corners (sea %.1f m), %u absolute pads; "
-        "held flat: %u locations, %u flatten zones; %u road nodes at %.0f deg; %d sweeps, %.0f ms (world %.0f m)", seed, (double)lo, (double)hi,
+        "held flat: %u locations, %u flatten zones; %u road nodes at %.0f deg; %d sweeps, %.0f ms (world %.0f m); %u corners have a water level "
+        "(%.1f..%.1f m, their ground %.1f..%.1f m)", seed, (double)lo, (double)hi,
         sum / ((double)MACRO_N * MACRO_N), (double)(atanf(steep) * 180.0f / 3.14159265f), wet, low, (double)sea, absolute, held, flat, roadNodes,
-        (double)MACRO_ROAD, sweeps, g_macro.ms, (double)worldL);
+        (double)MACRO_ROAD, sweeps, g_macro.ms, (double)worldL, typed, typed ? (double)typedLo : 0.0, typed ? (double)typedHi : 0.0,
+        typed ? (double)groundLo : 0.0, typed ? (double)groundHi : 0.0);
     (void)W;
     return 1;
 }

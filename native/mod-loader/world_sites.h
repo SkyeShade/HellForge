@@ -10,7 +10,7 @@ typedef struct WorldSite { uint32_t rva; uint8_t length, which; } WorldSite;
 #define WORLD_NEG_HALF 3u /* -1024.0 (0x23C83C0): added by hand, see below */
 #define WORLD_NEG_FULL 4u /* -2048.0 (0x23C83D0): added by hand, see below */
 static const uint32_t kWorldConstants[5] = {0x23C7D58u, 0x23C7DD4u, 0x23C65A4u, 0x23C83C0u, 0x23C83D0u};
-/* 206 instructions from the script, and 4 added by hand (0x13D3F38, 0x13D3F5B, 0x140227D, 0x14026C7). Left out by hand: the structured maps' site template (0xFB9610) reads 1024.0 at 0xFB9886 and
+/* 206 instructions from the script, and 6 added by hand (0x13D3F38, 0x13D3F5B, 0x140227D, 0x14026C7, 0x13D462B, 0x13D4646). Left out by hand: the structured maps' site template (0xFB9610) reads 1024.0 at 0xFB9886 and
  * 1 / 2048 at 0xFB96FE / 0xFB970A in template space (points 0..2048 about 1024, scaled by the rect's width / 2048); the
  * world is not in them (difficulty_world.c's city frame lays the template at vanilla size on a larger world). */
 static const WorldSite kWorldSites[] = {
@@ -220,6 +220,11 @@ static const WorldSite kWorldSites[] = {
      * reads the same map through the larger world. */
     {0x13D3F38u, 8, WORLD_INV},
     {0x13D3F5Bu, 8, WORLD_INV},
+    /* WaterLevelAt (0x13D4620): uv = p / 2048 + 0.5 into the water_height readback (G+0x119FF48), which op 0x0A renders
+     * with its camera over the whole world (0xF6C522, WORLD_FULL above): 18 callers (beacon depth 0x13CA650, the spawn
+     * spiral, AI) read it 8 x off on a 16 km map without these two */
+    {0x13D462Bu, 8, WORLD_INV},
+    {0x13D4646u, 8, WORLD_INV},
     {0x1400D7Du, 9, WORLD_INV},
     {0x1400E71u, 9, WORLD_INV},
     {0x1401062u, 9, WORLD_INV},
