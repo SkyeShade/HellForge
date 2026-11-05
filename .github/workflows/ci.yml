@@ -1,8 +1,9 @@
 # The checks every pull request into dev or main must pass (CONTRIBUTING.md, "Branches and pull requests"): the
-# structure lint (scripts/lint/README.md), the docs lint (scripts/docs-lint/README.md), the engine version check, the
-# nightly build's scripts, the Windows build (warnings are errors) and the checks that need no game, as
-# scripts/Test.ps1 runs them, and the Linux launcher, CLI and tests. The engine and the in-game editor build and test
-# on a maintainer's PC: they need the game's files, the Steamworks SDK and a GPU.
+# structure lint (scripts/lint/README.md), the docs lint (scripts/docs-lint/README.md), the engine version check and
+# the nightly build's scripts. The builds run on pull requests into main and linux-native, and on every push to dev,
+# but not on pull requests into dev: the Windows build (warnings are errors) and the checks that need no game, as
+# scripts/Test.ps1 runs them, the Linux launcher, CLI and tests, and the native build. The engine and the in-game
+# editor build and test on a maintainer's PC: they need the game's files, the Steamworks SDK and a GPU.
 name: CI
 
 on:
@@ -140,6 +141,8 @@ jobs:
 
   test:
     name: Build and test
+    # not on pull requests into dev: dev builds after each merge (the push run)
+    if: github.event_name != 'pull_request' || github.base_ref != 'dev'
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -159,6 +162,8 @@ jobs:
   # libarchive-tools provides bsdtar, which the .7z test skips without.
   linux:
     name: Linux build and test
+    # not on pull requests into dev: dev builds after each merge (the push run)
+    if: github.event_name != 'pull_request' || github.base_ref != 'dev'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -203,6 +208,8 @@ jobs:
   # bridge test or package), and the editor without its overlay test (a real D3D12 swap chain on a desktop: no GPU here).
   native:
     name: Native build and test
+    # not on pull requests into dev: dev builds after each merge (the push run)
+    if: github.event_name != 'pull_request' || github.base_ref != 'dev'
     runs-on: windows-latest
     timeout-minutes: 45
     steps:

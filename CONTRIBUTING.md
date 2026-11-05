@@ -52,10 +52,13 @@ breaks these rules is closed, and anything of this kind that reaches the reposit
   that release has been checked (the checklist in `.github/PULL_REQUEST_TEMPLATE/release.md`). The repository deletes a
   merged pull request's branch, so a release never comes from `dev` itself: that would delete `dev`. After a release,
   `main` is merged back into `dev`. A pull request into `main` from any other branch fails its checks.
+- **Builds:** a pull request into `dev` runs the lints and checks below, but not the builds. `dev` is built and tested
+  after each merge, and a pull request into `main` is built and tested before a release. Run `scripts/Test.ps1` (or
+  `scripts/test.sh`) before you open a pull request, or start CI by hand: Actions > CI > Run workflow on your branch.
 - **Checks:** every pull request runs CI (`.github/workflows/ci.yml`): the structure lint
   (`py -3 scripts/lint/lint.py check --warnings-as-errors`, [scripts/lint/README.md](scripts/lint/README.md)), where its
-  warnings are errors too, the docs lint ([below](#writing-docs-and-comments)), the build, where warnings are errors,
-  and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game editor are built
+  warnings are errors too, and the docs lint ([below](#writing-docs-and-comments)). Pull requests into `main` also run
+  the build, where warnings are errors, and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game editor are built
   and tested on a maintainer's PC, since they need the game's files. CI also checks the engine's version (below).
 - **The engine's version:** the engine has its own version, `EngineVersion` in `Directory.Build.props`. It is bumped
   with HellForge's `Version` in the version-bump pull request before each test build or release, whenever the engine

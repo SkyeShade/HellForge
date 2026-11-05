@@ -4,7 +4,7 @@
 
 ## Tested
 
-- [ ] `scripts/Test.ps1` passes (CI runs it too)
+- [ ] `scripts/Test.ps1` passes (CI builds `dev` after the merge, not this pull request)
 - [ ] `py -3 scripts/lint/lint.py check --warnings-as-errors` passes: no errors or warnings (CI runs it too;
   `scripts/lint/README.md`)
 - [ ] Docs or comments changed: `py -3 scripts/docs-lint/docs_lint.py check --warnings-as-errors` passes (CI runs the
