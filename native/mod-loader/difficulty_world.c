@@ -2249,7 +2249,7 @@ static void WorldCityDefKinds(uint64_t context, uintptr_t gen)
     char text[1600]; int n = 0; uint32_t outside = 0, withOne = 0;
     for (uint32_t i = 0; i < count && n < (int)sizeof text - 80; i++)
     {
-        uint64_t at = gen + 0x19B1130u + 0x108ull * i, holder = 0, D = 0, list = 0; uint32_t tag = 0, kinds = 0; uint8_t a1 = 0xFF, a2 = 0xFF, kind = 0; float p[2];
+        uint64_t at = gen + g_importantList + 0x108ull * i, holder = 0, D = 0, list = 0; uint32_t tag = 0, kinds = 0; uint8_t a1 = 0xFF, a2 = 0xFF, kind = 0; float p[2];
         if (SafeRead(at, &holder, 8) || SafeRead(at + 8, &tag, 4) || SafeRead(at + 0xA1, &a1, 1) || SafeRead(at + 0xA2, &a2, 1) || SafeRead(at + 0xF0, &kind, 1) || SafeRead(at + 0xA4, p, 8)) continue;
         int inCity = 0;
         for (int k = 0; k < g_cities.count && !inCity; k++) { float dx = p[0] - g_cities.x[k], dy = p[1] - g_cities.y[k]; inCity = dx * dx + dy * dy <= g_cities.radius * g_cities.radius * 1.2f; }
@@ -2463,7 +2463,7 @@ static void NatureWindow(uint64_t context, uint32_t op, uint32_t record)
     }
     ReleaseSRWLockExclusive(&g_natureLock);
 }
-/* The spread of a level's important locations (objectives, outposts, POIs, satellites: G+0x19B1130, 0x108 each, count
+/* The spread of a level's important locations (objectives, outposts, POIs, satellites: G+g_importantList, 0x108 each, count
  * G+0x11A715C, position +0xA4 in corner metres) over 2 km cells of the world: a row per 2 km of y, north last. */
 static void NatureGrid(uintptr_t gen, uint32_t worldSize)
 {
@@ -2474,7 +2474,7 @@ static void NatureGrid(uintptr_t gen, uint32_t worldSize)
     for (uint32_t i = 0; i < count; i++)
     {
         float p[2]; uint8_t kind = 0;
-        uint64_t at = gen + 0x19B1130u + 0x108ull * i;
+        uint64_t at = gen + g_importantList + 0x108ull * i;
         if (SafeRead(at + 0xA4, p, 8) || SafeRead(at + 0xF0, &kind, 1) || !(cell > 0.0f)) continue;
         int gx = (int)(p[0] / cell), gy = (int)(p[1] / cell);
         if (gx < 0 || gx > 7 || gy < 0 || gy > 7) { outside++; continue; }
@@ -2689,7 +2689,7 @@ static void WorldCityStray(uint64_t records, uint32_t end, uint64_t context, uin
     last = stray;
 }
 
-/* Research (s74m): 0x7C AttachLocationsToRouteCells (0xF81020) paints an important location's cell (list G+0x19B1130,
+/* Research (s74m): 0x7C AttachLocationsToRouteCells (0xF81020) paints an important location's cell (list G+g_importantList,
  * 0x108 each, count G+0x11A715C; kind byte +0xF0, position +0xA4/+0xA8) and its route neighbours with a rolled zone
  * unless the cell's zone entry has +0x20 == 0 and its type's kind list (type+0x210, 4 bytes, 0-ended) holds the kind
  * (0xF8154E..0xF815B7). Before the level's first 0x7C on a city map: each zone's type kinds, and each important
@@ -2729,7 +2729,7 @@ static void WorldCityKinds(uint64_t records, uint32_t end, uint64_t context, uin
     for (uint32_t i = 0; i < count; i++)
     {
         uint8_t kind = 0; float p[2];
-        uint64_t at = gen + 0x19B1130u + 0x108ull * i;
+        uint64_t at = gen + g_importantList + 0x108ull * i;
         if (SafeRead(at + 0xF0, &kind, 1) || SafeRead(at + 0xA4, p, 8)) continue;
         int inCity = 0;
         for (int k = 0; k < g_cities.count && !inCity; k++)

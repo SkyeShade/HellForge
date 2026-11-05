@@ -174,7 +174,9 @@ static void NavRetile(uint32_t id, uintptr_t level)
  * 512 -> 1024, and the Havok world's motions 36864 -> 73728 (about one per non-static actor). A larger mega city
  * used up the world's 131072 bodies while spawning: the allocator's "none"
  * (0xFFFFFF, 0xD4588C) became a building's body and its navmesh cutter read it (exe 0xCB304C). Bodies and static actors
- * get 262144 (body ids are 24-bit; 0x814F00 keeps flags in bits 21..23, so below 2^21), navmesh cutters 65536. The
+ * get 524288 since 2026-11-05 (the stamp window: s75x had 173465 of 262144 in use at load and the window hit its
+ * budget after 1519 stamps, ~10 bodies each). Body ids must stay below 2^20: 0x814F00 ORs 0x100000 / 0x200000 / 0x800000
+ * into the id's dword (0x8150F1..0x8150FE, 0x8152EE..0x8152FF; subagent window). Navmesh cutters 65536. The
  * Game World's render objects ("max render objects", 0xAB189D in the same
  * world creation) size its culling systems (N/8 for the main visibility set, 98304, which then ran out at exe
  * 0x58E14B): 0xC0000 -> 0x200000 (handles keep 24 bits, 2 generation bits left; ~+120 MB). Dynamic actors 32768 ->
@@ -184,8 +186,8 @@ static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[10]; uint32_
     {0x4EE32Bu, 7, 3, {0xC7, 0x45, 0x9C, 0x00, 0x20, 0x00, 0x00}, 0x8000u},                        /* config +0x2C ragdoll actors */
     {0x4EE35Cu, 7, 3, {0xC7, 0x45, 0xAC, 0x00, 0x02, 0x00, 0x00}, 0x400u},                         /* config +0x3C ragdolls */
     {0xAB19F8u, 10, 6, {0xC7, 0x85, 0x20, 0x05, 0x00, 0x00, 0x00, 0x90, 0x00, 0x00}, 0x20000u},   /* Havok world motions */
-    {0xAB19EEu, 10, 6, {0xC7, 0x85, 0x1C, 0x05, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00}, 0x40000u},   /* Havok world bodies */
-    {0x4EE324u, 7, 3, {0xC7, 0x45, 0x98, 0x00, 0x00, 0x02, 0x00}, 0x40000u},                       /* config +0x28 static actors */
+    {0xAB19EEu, 10, 6, {0xC7, 0x85, 0x1C, 0x05, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00}, 0x80000u},   /* Havok world bodies */
+    {0x4EE324u, 7, 3, {0xC7, 0x45, 0x98, 0x00, 0x00, 0x02, 0x00}, 0x80000u},                       /* config +0x28 static actors */
     {0x4EE371u, 7, 3, {0xC7, 0x45, 0xBC, 0x00, 0x80, 0x00, 0x00}, 0x10000u},                       /* config +0x4C navmesh cutters */
     {0x4EE31Du, 7, 3, {0xC7, 0x45, 0x94, 0x00, 0x80, 0x00, 0x00}, 0x20000u},                       /* config +0x24 dynamic actors */
     {0x4EE332u, 7, 3, {0xC7, 0x45, 0x90, 0x00, 0x20, 0x00, 0x00}, 0x8000u},                        /* config +0x20 keyframed actors */

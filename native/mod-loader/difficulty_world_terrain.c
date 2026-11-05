@@ -3517,7 +3517,7 @@ static int NearStepDump(uint64_t records, uint32_t end, uint64_t context, uint64
  *    0xE0, box +0xB0) and roads (bit 0 set: the segment from point id - 1 to id of [P+0x2060] = G+9568E4, float x, y
  *    each, half the width at +0x30 of the route [P+0x2058] = G+937348 + (flags >> 2) x 0x48; 0xF30D40, 0xFCC180) before
  *    it is inserted (0xC04EF0, slot = the location's number), as the placement loop does.
- * Locations: 0xE0 at G+11A7280 (xy +0, box +0xB0..+0xBC: moved to level metres), extras 0x40 at G+1367280 (read by no op
+ * Locations: 0xE0 at G+11A7280 (xy +0, box +0xB0..+0xBC: moved to level metres), extras 0x40 at G+DIF_LOCATIONS_B_NEW (read by no op
  * after record 91; +0x10 = the record, +0x38 the vertex list's length: cleared), count G+11A7108 and G+11A710C. */
 #define STAMP_TILE_CELLS_VANILLA 430.0f /* a vanilla map's route-cell items: 434 (planet 70) and 425 (planet 259), measured */
 #define STAMP_LOCATION_LIMIT (DIF_GEN_LOCATIONS - 192u) /* of the generation's DIF_GEN_LOCATIONS */
