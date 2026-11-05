@@ -11,7 +11,8 @@ namespace HellForge.Core.GameData;
 //   copy     a game resource under the mod's own name, optionally edited: references replaced, colour curves,
 //            material colours, a colour lookup texture recoloured;
 //   include  game resources unchanged under their own names (what a copy needs loaded with it);
-//   icon     a stratagem icon from a PNG in the mod folder: its texture and GUI material.
+//   icon     a stratagem icon from a PNG in the mod folder: its texture and GUI material;
+//   shader   a mod's pixel shader in one of the game's shader hosts (ShaderHosts): the materials and the unit that draw it.
 // A copy or include reads the player's game copy, or with "source": "steam" the game as Steam has it installed (a newer
 // build's resources, read from the player's own files like the rest; an include from Steam must be new to the copy).
 //   mesh     (on a unit copy) the mod's own geometry from an OBJ in the mod folder, in every render and shadow mesh.
@@ -30,10 +31,13 @@ public sealed record CopyResource(string Where, ulong Type, ulong From, string N
     IReadOnlyList<ShaderFile>? Shaders = null) : DataResource(Where);
 // A unit copy's own geometry: an OBJ in the mod folder (UnitMesh), scaled, Y-up or the game's Z-up.
 public sealed record MeshFile(string Obj, double Scale, bool YUp);
-// A material copy's own code for a shader stage: the stage's offset in the GPU part, and a compiled shader in the mod folder.
-public sealed record ShaderFile(int Offset, string Dxbc);
+// A material copy's own code for a shader stage: the stage's offset in the GPU part, a compiled shader in the mod folder, and
+// for a shader host's stage what the game's stage must be.
+public sealed record ShaderFile(int Offset, string Dxbc, HostStage? Host = null);
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
 public sealed record IconResource(string Where, string Name, string Png, string Prepare) : DataResource(Where);
+// A compiled shader in a named host (mappings/shader-hosts.json), under the mod's name; Mesh for a host that draws one.
+public sealed record ShaderResource(string Where, string Host, string Name, string Dxbc, MeshFile? Mesh) : DataResource(Where);
 public sealed record Replacement(ulong From, ulong To, IReadOnlyList<int>? At);
 // Warm colour curve keys recoloured by a preset or towards a colour; Keys, if given, is how many keys must change.
 public sealed record CurveEdit(string? Preset, double[]? Colour, int? Keys);
@@ -80,6 +84,8 @@ public static partial class DataSpecs
                     return $"{copy.Where} replaces values (\"replace\")";
                 case CopyResource { Shaders.Count: > 0 } copy:
                     return $"{copy.Where} brings its own shader code";
+                case ShaderResource shader:
+                    return $"{shader.Where} brings its own shader code";
                 case CopyResource copy when copy.Curves != null && copy.Type != ResourceTypes.Particles || copy.Colours != null && copy.Type != ResourceTypes.Material ||
                     copy.Lut != null && copy.Type != ResourceTypes.Texture:
                     return $"{copy.Where} edits a {ResourceTypes.Describe(copy.Type)} resource as another type";
@@ -144,7 +150,8 @@ public static partial class DataSpecs
     {
         if (e.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{at}: a resource is an object.");
         var kinds = new[] { "copy", "include", "icon" }.Where(k => e.TryGetProperty(k, out _)).ToList();
-        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include or icon.");
+        if (kinds.Count == 0 && e.TryGetProperty("shader", out _)) return ReadShader(e, at, folder, inputs);
+        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon or shader.");
         switch (kinds[0])
         {
             case "include": return ReadInclude(e, at);
@@ -189,6 +196,30 @@ public static partial class DataSpecs
         return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh, shaders) { Steam = FromSteam(e, at) };
     }
 
+    // A shader in a host, which says what else the resource needs.
+    static ShaderResource ReadShader(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
+        Fields(e, at, "shader", "name", "dxbc", "mesh");
+        var name = Text(e, "shader", at);
+        var hosts = ShaderHosts.Current.Hosts;
+        if (!hosts.TryGetValue(name, out var host)) throw new InvalidDataException($"{at}: shader is a host: {string.Join(", ", hosts.Keys)}.");
+        var mesh = ReadMesh(e, at, ResourceTypes.Unit, folder, inputs);
+        if (host.Mesh && mesh == null) throw new InvalidDataException($"{at}: the {name} host draws a mesh: give it one, as \"mesh\": {{\"obj\": \"models/shape.obj\"}}.");
+        if (!host.Mesh && mesh != null) throw new InvalidDataException($"{at}: the {name} host draws inside its box and takes no mesh.");
+        return new ShaderResource(at, name, Name(e, at), Dxbc(e, at, folder, inputs), mesh);
+    }
+
+    // A compiled shader in the mod folder, an input of the build.
+    static string Dxbc(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
+        var dxbc = Text(e, "dxbc", at).Replace('\\', '/');
+        if (Path.IsPathRooted(dxbc) || dxbc.Split('/').Any(part => part is "" or "." or "..") || !dxbc.EndsWith(".dxbc", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"{at}: dxbc is a .dxbc file in the mod folder, such as \"shaders/rings.dxbc\".");
+        if (folder != null && !File.Exists(Path.Combine(folder, dxbc))) throw new InvalidDataException($"{at}: {dxbc} is missing.");
+        inputs.Add(dxbc);
+        return dxbc;
+    }
+
     static List<ShaderFile>? ReadShaders(JsonElement e, string at, ulong type, string? folder, ISet<string> inputs)
     {
         if (!e.TryGetProperty("shader", out var list)) return null;
@@ -198,10 +229,7 @@ public static partial class DataSpecs
         foreach (var stage in list.EnumerateArray())
         {
             Fields(stage, $"{at}.shader", "offset", "dxbc");
-            var dxbc = Text(stage, "dxbc", $"{at}.shader").Replace('\\', '/');
-            if (folder != null && !File.Exists(Path.Combine(folder, dxbc))) throw new InvalidDataException($"{at}.shader: {dxbc} is not in the mod's folder.");
-            inputs.Add(dxbc);
-            shaders.Add(new(Offset(Text(stage, "offset", $"{at}.shader"), $"{at}.shader"), dxbc));
+            shaders.Add(new(Offset(Text(stage, "offset", $"{at}.shader"), $"{at}.shader"), Dxbc(stage, $"{at}.shader", folder, inputs)));
         }
         return shaders;
     }

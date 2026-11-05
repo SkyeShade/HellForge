@@ -6,7 +6,7 @@ namespace HellForge.Core.GameData;
 // A material's own pixel shader (data spec "shader"). A root material's GPU part holds each shader stage as a whole DXBC
 // container (SM 5.0, fxc). The copy's stage keeps the game's container with its reflection and signatures, so offsets, the
 // engine's metadata and the root signature stay as they are; the code chunk comes from the mod's compiled shader, which must
-// use the same bindings. A PRIV chunk fills the room left, so the container keeps its size, and it is signed again. The
+// use the same bindings (ShaderCheck). A PRIV chunk fills the room left, so the container keeps its size, and it is signed again. The
 // game's own digest is checked first: a wrong offset, or another game build, fails here and not in the game. The stage id
 // (the top half of the container's hash, after the container and in its program's record), the material's name32 and its
 // template ids change too. The engine's shader manager keys a map by template id and a later load replaces an earlier one, so
@@ -18,16 +18,18 @@ public static class ShaderSplice
 
     // Every stage of a material, then the ids: stages that share a game id (the same shader in several programs) must end up
     // the same, and take one new id. An id stands twice for each of its stages: after the stage, and in its program's record.
-    public static byte[] ApplyAll(byte[] gpu, IReadOnlyList<(int Offset, byte[] Compiled)> stages)
+    public static byte[] ApplyAll(byte[] gpu, IReadOnlyList<(int Offset, byte[] Compiled, string File)> stages)
     {
         var output = gpu.ToArray();
         var ids = new Dictionary<uint, (uint New, int Stages)>();
-        foreach (var (offset, compiled) in stages)
+        foreach (var (offset, compiled, file) in stages)
         {
-            var size = BitConverter.ToInt32(gpu, offset + 24);
+            var (size, _) = Read(gpu, offset, $"the data at 0x{offset:X}");
             if ((long)offset + size + 4 > gpu.Length) throw new InvalidDataException($"no stage id after the stage at 0x{offset:X}.");
             var old = BitConverter.ToUInt32(gpu, offset + size);
-            var result = Stage(output, offset, compiled);
+            byte[] result;
+            try { result = Stage(output, offset, compiled); }
+            catch (InvalidDataException error) { throw new InvalidDataException($"{file}: {error.Message}"); }
             result.CopyTo(output, offset);
             var id = (uint)(EngineHash.Murmur64A(result) >> 32);
             if (ids.TryGetValue(old, out var known) && known.New != id)
@@ -47,7 +49,7 @@ public static class ShaderSplice
         var (compiledSize, ours) = Read(compiled, 0, "the compiled shader");
         if (compiledSize != compiled.Length) throw new InvalidDataException("the compiled shader is not one whole DXBC container.");
         if (Chunk(ours, "SHEX") is not { } code) throw new InvalidDataException("the compiled shader has no SHEX chunk (shader model 5).");
-        if (Chunk(game, "SHEX") == null) throw new InvalidDataException($"the stage at 0x{offset:X} has no SHEX chunk.");
+        ShaderCheck.Check(game, ours);
 
         var chunks = new List<(string Name, byte[] Data)>();
         foreach (var (name, data) in game)
@@ -114,7 +116,7 @@ public static class ShaderSplice
     static byte[]? Chunk(List<(string Name, byte[] Data)> chunks, string name) => chunks.FirstOrDefault(c => c.Name == name).Data;
 
     // The container at offset: its size, and its chunks in order.
-    static (int Size, List<(string Name, byte[] Data)> Chunks) Read(byte[] bytes, int offset, string what)
+    internal static (int Size, List<(string Name, byte[] Data)> Chunks) Read(byte[] bytes, int offset, string what)
     {
         if (offset < 0 || (long)offset + Header > bytes.Length || Encoding.ASCII.GetString(bytes, offset, 4) != "DXBC")
             throw new InvalidDataException($"{what} is not a DXBC container.");
