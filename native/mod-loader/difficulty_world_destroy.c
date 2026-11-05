@@ -96,8 +96,11 @@ static void DestroyTick(void)
 
 static void DestroyNote(void)
 {
-    if (g_destroyHeld || g_destroyStale || g_destroyFull)
-        Note("difficulty: extra large maps: destroys of units not made yet: %ld held (%ld passed on once made, %ld waited too long, %ld waiting), %ld of units gone dropped, %ld not held (list full)",
+    static LONG last[4] = {-1, -1, -1, -1};
+    LONG now[4] = {g_destroyHeld, g_destroyPassed + g_destroyTimedOut, g_destroyStale, g_destroyFull};
+    if (memcmp(now, last, sizeof now) == 0 || (now[0] == 0 && now[2] == 0 && now[3] == 0)) return;
+    memcpy(last, now, sizeof now);
+    Note("difficulty: extra large maps: destroys of units not made yet: %ld held (%ld passed on once made, %ld waited too long, %ld waiting), %ld of units gone dropped, %ld not held (list full)",
             (long)g_destroyHeld, (long)g_destroyPassed, (long)g_destroyTimedOut, (long)g_destroyWaiting, (long)g_destroyStale, (long)g_destroyFull);
 }
 
