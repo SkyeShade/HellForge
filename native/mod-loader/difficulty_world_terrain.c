@@ -2503,11 +2503,20 @@ static int NearMatMix(const uint32_t* src, double x, double y, uint32_t* id, dou
 
 static void NearRoadStampAt(const uint32_t* src, double x, double y, uint32_t* id, double* w, int* n);
 
+static uint32_t NearMatPack(uint32_t* id, double* w, int n, uint32_t hole);
 static uint32_t NearMatEncodeAt(const uint32_t* src, double x, double y)
 {
     uint32_t id[13]; double w[13], tx, ty;
     int n = NearMatMix(src, x, y, id, w, &tx, &ty);
     NearRoadStampAt(src, x, y, id, w, &n);
+    int hc = (int)floor(tx + 0.5), hr = (int)floor(ty + 0.5);
+    uint32_t hole = src[(size_t)(2 * (hr > 2047 ? 2047 : hr)) * 4096 + (size_t)(2 * (hc > 2047 ? 2047 : hc))] & 0x80000000u;
+    return NearMatPack(id, w, n, hole);
+}
+
+/* per-id weights -> a texel: the 3 largest, ids ascending, the hole bit as given */
+static uint32_t NearMatPack(uint32_t* id, double* w, int n, uint32_t hole)
+{
     /* the 3 largest (ties, within rounding: the smaller id), those under half a step dropped, renormalised */
     uint32_t tid[3] = {0, 0, 0}; double tw[3] = {0, 0, 0}, sum = 0;
     for (int r = 0; r < 3; r++)
@@ -2529,8 +2538,6 @@ static uint32_t NearMatEncodeAt(const uint32_t* src, double x, double y)
         }
     uint32_t vB = (uint32_t)floor(tw[1] * 255 + 0.5), vC = (uint32_t)floor(tw[2] * 255 + 0.5);
     if (vB + vC > 255) vC = 255 - vB;
-    int hc = (int)floor(tx + 0.5), hr = (int)floor(ty + 0.5);
-    uint32_t hole = src[(size_t)(2 * (hr > 2047 ? 2047 : hr)) * 4096 + (size_t)(2 * (hc > 2047 ? 2047 : hc))] & 0x80000000u;
     return (tid[0] << 26) | (tid[1] << 21) | (tid[2] << 16) | (vB << 8) | vC | hole;
 }
 
@@ -2599,22 +2606,166 @@ static float NearMatShare(float wx, float wy)
 /* tile: the tile's map (4096^2, row 0 at +y), changed in place; coarse: the level's (4096^2 over the world). The band's
  * texels take the level's map interpolated at their own point (NearMatEncodeAt: what the coarse terrain draws there),
  * dithered against the tile's own by the share. Returns the number of texels taken. */
-typedef struct { uint32_t* tile; const uint32_t* coarse; const NearMatCdf* cdf; int reach, encoded; float x0, y0; volatile LONG taken; } NearBandJob;
+/* Paths in the coarse terrain's material map from their vector data (audit 11: straight grey strips with 8 m steps
+ * across the open land).
+ * Op 0x41's setup (0xF4F9E0) has the base zone type's painters (list +0x70) draw, with their own "material", a quad
+ * along every route edge flagged 0x100 (0xF51C20) straight from the edge's position +0 to +8 (corner metres), half width
+ * [edge+0x30] x 0.5 (x 0.333 when R+0x938 != 0; R = [settings+0xB0]) (0xF51C2A..0xF51CE0), and an octagon at every route
+ * node (G + g_routeNodes, 0x98 each, count G+0x11A71B4; position +0, 16 edge pointers +0x10) of radius 0.42 x the
+ * widest incident edge (0xF52500..0xF52588, 0x23C6A24). They land in the 2048^2 weight buffers: 8 m texels on a 16 km
+ * map, so a 2-12 m path (s75l: 2386 flagged edges, 2.0..12.0 m, mean 6.2; R+0x938 0) became a staircase of 8 m texels.
+ * The path's id is the painters' data, so it is measured: along the flagged edges, every 8 m, the native ids at the
+ * centreline and 48 m to either side; the id with the largest (centre - side) share is the path (needs centre >= 0.2
+ * and 3 x its share aside, else nothing is stamped; s75m: id 19, 0.33 vs 0.06 -- paths under a texel's width often
+ * leave no texel). In NearMatEncodeAt, within 16 m of a path the native path id is
+ * removed and the path is drawn from the vectors with a 4 m box filter (the texel); where the native map holds the
+ * path id at the nearest centreline point only (so water or later painters that cover a path keep it covered); and
+ * where removing it leaves no land, the land is taken from 20 m beyond the corridor. */
+#define ROAD_CELL 64.0
+#define ROAD_CELLS 256
+#define ROAD_CORRIDOR 16.0
+#define ROAD_FILTER 4.0
+typedef struct { float ax, ay, bx, by, hw; } RoadSeg; /* centred metres; a node is a = b */
+static struct { int on; uint32_t id; LONG level; uint32_t count; RoadSeg* seg; uint32_t* start; uint32_t* list; } g_road = {.level = -1};
+
+static void NearRoadStampDrop(void)
+{
+    if (g_road.seg) VirtualFree(g_road.seg, 0, MEM_RELEASE);
+    if (g_road.start) VirtualFree(g_road.start, 0, MEM_RELEASE);
+    if (g_road.list) VirtualFree(g_road.list, 0, MEM_RELEASE);
+    g_road.seg = NULL; g_road.start = NULL; g_road.list = NULL; g_road.on = 0; g_road.count = 0; g_road.level = -1;
+}
+
+/* signed distance from (x, y) to the path set, and the nearest centreline point */
+static double NearRoadDistance(double x, double y, double* px, double* py)
+{
+    int cx = (int)floor((x + 8192.0) / ROAD_CELL), cy = (int)floor((y + 8192.0) / ROAD_CELL);
+    if (cx < 0 || cy < 0 || cx >= ROAD_CELLS || cy >= ROAD_CELLS) return 1e9;
+    uint32_t c = (uint32_t)cy * ROAD_CELLS + cx;
+    double best = 1e9;
+    for (uint32_t k = g_road.start[c]; k < g_road.start[c + 1]; k++)
+    {
+        const RoadSeg* r = &g_road.seg[g_road.list[k]];
+        double dx = r->bx - r->ax, dy = r->by - r->ay, l2 = dx * dx + dy * dy, t = 0;
+        if (l2 > 1e-6) { t = ((x - r->ax) * dx + (y - r->ay) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t; }
+        double qx = r->ax + t * dx, qy = r->ay + t * dy, d = sqrt((x - qx) * (x - qx) + (y - qy) * (y - qy)) - r->hw;
+        if (d < best) { best = d; *px = qx; *py = qy; }
+    }
+    return best;
+}
+
+static double NearRoadWeightOf(const uint32_t* id, const double* w, int n, uint32_t which)
+{
+    for (int q = 0; q < n; q++) if (id[q] == which) return w[q];
+    return 0;
+}
+
+/* A source's per-id weights at a world point: the coarse map (NearMatMix, warped) or a tile's own map. */
+typedef int (*NearMixFn)(const void* ctx, double x, double y, uint32_t* id, double* w);
+static int NearMixCoarse(const void* ctx, double x, double y, uint32_t* id, double* w)
+{
+    double tx, ty;
+    return NearMatMix((const uint32_t*)ctx, x, y, id, w, &tx, &ty);
+}
+
+/* The path drawn over id[] / w[] at (x, y): filter = the box filter's width (the texel the result stands for). */
+static void NearRoadStampWith(NearMixFn mix, const void* ctx, double filter, double x, double y, uint32_t* id, double* w, int* n)
+{
+    if (!g_road.on || g_road.level != g_world.levels) return;
+    double qx = 0, qy = 0, d = NearRoadDistance(x, y, &qx, &qy);
+    if (d >= ROAD_CORRIDOR) return;
+    uint32_t cid[13]; double cw[13];
+    int cn = mix(ctx, qx, qy, cid, cw);
+    if (NearRoadWeightOf(cid, cw, cn, g_road.id) < 0.25) return; /* the game left no path here (covered, or too thin) */
+    double c = 0.5 - d / filter;
+    c = c < 0 ? 0 : c > 1 ? 1 : c;
+    double land = 0;
+    for (int q = 0; q < *n; q++) { if (id[q] == g_road.id) w[q] = 0; land += w[q]; }
+    if (land < 0.2)
+    {
+        /* all path natively: the land from beyond the corridor, away from the centreline */
+        double ux = x - qx, uy = y - qy, l = sqrt(ux * ux + uy * uy);
+        if (l < 1e-3) { ux = 1; uy = 0; l = 1; }
+        double out = ROAD_CORRIDOR + 20.0 - d;
+        *n = mix(ctx, x + ux / l * out, y + uy / l * out, id, w);
+        land = 0;
+        for (int q = 0; q < *n; q++) { if (id[q] == g_road.id) w[q] = 0; land += w[q]; }
+        if (land < 1e-6) return;
+    }
+    for (int q = 0; q < *n; q++) w[q] *= (1 - c) / land;
+    int q = 0;
+    while (q < *n && id[q] != g_road.id) q++;
+    if (q == *n) { if (*n >= 13) return; id[q] = g_road.id; w[q] = 0; (*n)++; }
+    w[q] = c;
+}
+
+static void NearRoadStampAt(const uint32_t* src, double x, double y, uint32_t* id, double* w, int* n)
+{
+    NearRoadStampWith(NearMixCoarse, src, ROAD_FILTER, x, y, id, w, n);
+}
+
+/* A tile's own map (4096^2 over NEAR_SIDE, texel (r, c) at x0 + c t, y0 - r t; a 2 x 2 upsample of its 2048^2 weight
+ * buffers, ~1.1 m): the native texels' per-id weights bilinearly at a world point, unwarped. */
+typedef struct { const uint32_t* tile; double x0, y0; } NearTileSrc;
+static int NearMixTile(const void* ctx, double x, double y, uint32_t* id, double* w)
+{
+    const NearTileSrc* t = (const NearTileSrc*)ctx;
+    double fc = (x - t->x0) / NEAR_TEXEL, fr = (t->y0 - y) / NEAR_TEXEL;
+    double tx = (fc - 0.5) / 2, ty = (fr - 0.5) / 2;
+    tx = tx < 0 ? 0 : tx > 2047 ? 2047 : tx; ty = ty < 0 ? 0 : ty > 2047 ? 2047 : ty;
+    int J0 = (int)floor(tx), I0 = (int)floor(ty);
+    if (J0 > 2046) J0 = 2046;
+    if (I0 > 2046) I0 = 2046;
+    double fx = tx - J0, fy = ty - I0;
+    int n = 0;
+    for (int k = 0; k < 4; k++)
+    {
+        int dI = k >> 1, dJ = k & 1;
+        double beta = (dJ ? fx : 1 - fx) * (dI ? fy : 1 - fy);
+        uint32_t v = t->tile[(size_t)(2 * (I0 + dI)) * 4096 + (size_t)(2 * (J0 + dJ))];
+        uint32_t ids[3] = {(v >> 26) & 31, (v >> 21) & 31, (v >> 16) & 31};
+        double wb = ((v >> 8) & 255) / 255.0, wc = (v & 255) / 255.0, ws[3] = {1 - wb - wc, wb, wc};
+        for (int s3 = 0; s3 < 3; s3++)
+        {
+            if (ids[s3] == 0) continue;
+            int q = 0;
+            while (q < n && id[q] != ids[s3]) q++;
+            if (q == n) { id[n] = ids[s3]; w[n] = 0; n++; }
+            w[q] += beta * ws[s3];
+        }
+    }
+    return n;
+}
+
+typedef struct { uint32_t* tile; const uint32_t* coarse; const NearMatCdf* cdf; int reach, encoded; float x0, y0; volatile LONG taken; const uint32_t* own; volatile LONG paths; } NearBandJob;
 #define NEAR_BAND_SCALE 6.0f
 #define NEAR_BAND_SEED 23u
 #define NEAR_BAND_OCT 3
 static void NearMatBandRows(void* ctx, int r0, int r1)
 {
     NearBandJob* job = (NearBandJob*)ctx;
-    LONG taken = 0;
+    LONG taken = 0, paths = 0;
+    NearTileSrc own = {job->own, job->x0, job->y0};
     for (int r = r0; r < r1; r++)
         for (int c = 0; c < 4096; c++)
         {
-            if (r >= job->reach && r < 4096 - job->reach && c >= job->reach && c < 4096 - job->reach) { c = 4096 - job->reach - 1; continue; }
+            int interior = r >= job->reach && r < 4096 - job->reach && c >= job->reach && c < 4096 - job->reach;
+            if (interior && job->own == NULL) { c = 4096 - job->reach - 1; continue; }
             float wx = job->x0 + NEAR_TEXEL * c, wy = job->y0 - NEAR_TEXEL * r;
-            float share = NearMatShare(wx, wy);
-            if (share <= 0) continue;
-            if (share < 1 && NearMatUniform(job->cdf, 0, NearFbm(wx, wy, NEAR_BAND_SCALE, NEAR_BAND_SEED, NEAR_BAND_OCT)) >= share) continue;
+            float share = interior ? 0 : NearMatShare(wx, wy);
+            if (share <= 0 || (share < 1 && NearMatUniform(job->cdf, 0, NearFbm(wx, wy, NEAR_BAND_SCALE, NEAR_BAND_SEED, NEAR_BAND_OCT)) >= share))
+            {
+                /* the tile's own texel: its paths from their vectors at the tile's weight texel (~1.1 m) */
+                if (job->own == NULL) continue;
+                double qx, qy;
+                if (NearRoadDistance(wx, wy, &qx, &qy) >= ROAD_CORRIDOR) continue;
+                uint32_t id[13]; double w[13];
+                int n = NearMixTile(&own, wx, wy, id, w);
+                NearRoadStampWith(NearMixTile, &own, 1.0, wx, wy, id, w, &n);
+                job->tile[(size_t)r * 4096 + c] = NearMatPack(id, w, n, job->own[(size_t)r * 4096 + c] & 0x80000000u);
+                paths++;
+                continue;
+            }
             if (job->encoded) job->tile[(size_t)r * 4096 + c] = NearMatEncodeAt(job->coarse, wx, wy);
             else /* the coarse terrain draws the level's own map: its nearest texel */
             {
@@ -2625,6 +2776,7 @@ static void NearMatBandRows(void* ctx, int r0, int r1)
             taken++;
         }
     InterlockedExchangeAdd(&job->taken, taken);
+    InterlockedExchangeAdd(&job->paths, paths);
 }
 
 static uint32_t NearMatBand(uint32_t* tile, const uint32_t* coarse)
@@ -2649,7 +2801,20 @@ static uint32_t NearMatBand(uint32_t* tile, const uint32_t* coarse)
     uint32_t run = 0;
     cdf.cdf[0][0] = 0.0f;
     for (int b = 0; b < NEAR_MAT_BINS; b++) { run += hist[b]; cdf.cdf[0][b + 1] = samples ? (float)run / (float)samples : (float)(b + 1) / NEAR_MAT_BINS; }
+    /* the tile's own map as the replay painted it, for its paths (read while the rows write the tile) */
+    uint32_t* own = NULL;
+    if (g_road.on && g_road.level == g_world.levels)
+    {
+        own = (uint32_t*)VirtualAlloc(NULL, (size_t)4096 * 4096 * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (own != NULL) memcpy(own, tile, (size_t)4096 * 4096 * 4);
+    }
+    job.own = own;
     NearRows(NearMatBandRows, &job, 4096);
+    if (own != NULL)
+    {
+        VirtualFree(own, 0, MEM_RELEASE);
+        Note("difficulty: near terrain: the tile's own paths drawn from their vectors: %ld texels", (long)job.paths);
+    }
     return (uint32_t)job.taken;
 }
 
@@ -2745,90 +2910,6 @@ static void NearCoarseMatDrop(void)
     }
     if (g_coarseMat.pixels != NULL) VirtualFree(g_coarseMat.pixels, 0, MEM_RELEASE);
     g_coarseMat.pixels = NULL; g_coarseMat.level = -1; g_coarseMat.slot = NULL;
-}
-
-/* Paths in the coarse terrain's material map from their vector data (audit 11: straight grey strips with 8 m steps
- * across the open land).
- * Op 0x41's setup (0xF4F9E0) has the base zone type's painters (list +0x70) draw, with their own "material", a quad
- * along every route edge flagged 0x100 (0xF51C20) straight from the edge's position +0 to +8 (corner metres), half width
- * [edge+0x30] x 0.5 (x 0.333 when R+0x938 != 0; R = [settings+0xB0]) (0xF51C2A..0xF51CE0), and an octagon at every route
- * node (G + g_routeNodes, 0x98 each, count G+0x11A71B4; position +0, 16 edge pointers +0x10) of radius 0.42 x the
- * widest incident edge (0xF52500..0xF52588, 0x23C6A24). They land in the 2048^2 weight buffers: 8 m texels on a 16 km
- * map, so a 2-12 m path (s75l: 2386 flagged edges, 2.0..12.0 m, mean 6.2; R+0x938 0) became a staircase of 8 m texels.
- * The path's id is the painters' data, so it is measured: along the flagged edges, every 8 m, the native ids at the
- * centreline and 48 m to either side; the id with the largest (centre - side) share is the path (needs centre >= 0.2
- * and 3 x its share aside, else nothing is stamped; s75m: id 19, 0.33 vs 0.06 -- paths under a texel's width often
- * leave no texel). In NearMatEncodeAt, within 16 m of a path the native path id is
- * removed and the path is drawn from the vectors with a 4 m box filter (the texel); where the native map holds the
- * path id at the nearest centreline point only (so water or later painters that cover a path keep it covered); and
- * where removing it leaves no land, the land is taken from 20 m beyond the corridor. */
-#define ROAD_CELL 64.0
-#define ROAD_CELLS 256
-#define ROAD_CORRIDOR 16.0
-#define ROAD_FILTER 4.0
-typedef struct { float ax, ay, bx, by, hw; } RoadSeg; /* centred metres; a node is a = b */
-static struct { int on; uint32_t id; LONG level; uint32_t count; RoadSeg* seg; uint32_t* start; uint32_t* list; } g_road = {.level = -1};
-
-static void NearRoadStampDrop(void)
-{
-    if (g_road.seg) VirtualFree(g_road.seg, 0, MEM_RELEASE);
-    if (g_road.start) VirtualFree(g_road.start, 0, MEM_RELEASE);
-    if (g_road.list) VirtualFree(g_road.list, 0, MEM_RELEASE);
-    g_road.seg = NULL; g_road.start = NULL; g_road.list = NULL; g_road.on = 0; g_road.count = 0; g_road.level = -1;
-}
-
-/* signed distance from (x, y) to the path set, and the nearest centreline point */
-static double NearRoadDistance(double x, double y, double* px, double* py)
-{
-    int cx = (int)floor((x + 8192.0) / ROAD_CELL), cy = (int)floor((y + 8192.0) / ROAD_CELL);
-    if (cx < 0 || cy < 0 || cx >= ROAD_CELLS || cy >= ROAD_CELLS) return 1e9;
-    uint32_t c = (uint32_t)cy * ROAD_CELLS + cx;
-    double best = 1e9;
-    for (uint32_t k = g_road.start[c]; k < g_road.start[c + 1]; k++)
-    {
-        const RoadSeg* r = &g_road.seg[g_road.list[k]];
-        double dx = r->bx - r->ax, dy = r->by - r->ay, l2 = dx * dx + dy * dy, t = 0;
-        if (l2 > 1e-6) { t = ((x - r->ax) * dx + (y - r->ay) * dy) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t; }
-        double qx = r->ax + t * dx, qy = r->ay + t * dy, d = sqrt((x - qx) * (x - qx) + (y - qy) * (y - qy)) - r->hw;
-        if (d < best) { best = d; *px = qx; *py = qy; }
-    }
-    return best;
-}
-
-static double NearRoadWeightOf(const uint32_t* id, const double* w, int n, uint32_t which)
-{
-    for (int q = 0; q < n; q++) if (id[q] == which) return w[q];
-    return 0;
-}
-
-static void NearRoadStampAt(const uint32_t* src, double x, double y, uint32_t* id, double* w, int* n)
-{
-    if (!g_road.on || g_road.level != g_world.levels) return;
-    double qx = 0, qy = 0, d = NearRoadDistance(x, y, &qx, &qy);
-    if (d >= ROAD_CORRIDOR) return;
-    uint32_t cid[13]; double cw[13], tx, ty;
-    int cn = NearMatMix(src, qx, qy, cid, cw, &tx, &ty);
-    if (NearRoadWeightOf(cid, cw, cn, g_road.id) < 0.25) return; /* the game left no path here (covered, or too thin) */
-    double c = 0.5 - d / ROAD_FILTER;
-    c = c < 0 ? 0 : c > 1 ? 1 : c;
-    double land = 0;
-    for (int q = 0; q < *n; q++) { if (id[q] == g_road.id) w[q] = 0; land += w[q]; }
-    if (land < 0.2)
-    {
-        /* all path natively: the land from beyond the corridor, away from the centreline */
-        double ux = x - qx, uy = y - qy, l = sqrt(ux * ux + uy * uy);
-        if (l < 1e-3) { ux = 1; uy = 0; l = 1; }
-        double out = ROAD_CORRIDOR + 20.0 - d;
-        *n = NearMatMix(src, x + ux / l * out, y + uy / l * out, id, w, &tx, &ty);
-        land = 0;
-        for (int q = 0; q < *n; q++) { if (id[q] == g_road.id) w[q] = 0; land += w[q]; }
-        if (land < 1e-6) return;
-    }
-    for (int q = 0; q < *n; q++) w[q] *= (1 - c) / land;
-    int q = 0;
-    while (q < *n && id[q] != g_road.id) q++;
-    if (q == *n) { if (*n >= 13) return; id[q] = g_road.id; w[q] = 0; (*n)++; }
-    w[q] = c;
 }
 
 /* level: the level's map as read back (4096^2): the path set and its id, before the coarse map is encoded. */
