@@ -2755,15 +2755,18 @@ static void NearMatBandRows(void* ctx, int r0, int r1)
             float share = interior ? 0 : NearMatShare(wx, wy);
             if (share <= 0 || (share < 1 && NearMatUniform(job->cdf, 0, NearFbm(wx, wy, NEAR_BAND_SCALE, NEAR_BAND_SEED, NEAR_BAND_OCT)) >= share))
             {
-                /* the tile's own texel: its paths from their vectors at the tile's weight texel (~1.1 m) */
+                /* the tile's own texel: the bilinear mix of its native 2048^2 weight texels (~1.1 m) at the texel's own
+                 * position, and its paths from their vectors. The replay's map is a 2 x 2 upsample of those weights and the
+                 * terrain PS reads 4 texels and thresholds the blend (pixel shader 364ba1ef: alpha = sat(5(2g(a) + h - 2.5)
+                 * + 0.5)), with one mip on XL, so every patch border drew as a staircase of 1.125 m steps (audit 12
+                 * criterion 8; static, subagent surfacing). Mixed, the blend varies smoothly and the cut is a curve. */
                 if (job->own == NULL) continue;
-                double qx, qy;
-                if (NearRoadDistance(wx, wy, &qx, &qy) >= ROAD_CORRIDOR) continue;
                 uint32_t id[13]; double w[13];
                 int n = NearMixTile(&own, wx, wy, id, w);
-                NearRoadStampWith(NearMixTile, &own, 1.0, wx, wy, id, w, &n);
+                double qx, qy;
+                if (g_road.on && g_road.level == g_world.levels && NearRoadDistance(wx, wy, &qx, &qy) < ROAD_CORRIDOR)
+                { NearRoadStampWith(NearMixTile, &own, 1.0, wx, wy, id, w, &n); paths++; }
                 job->tile[(size_t)r * 4096 + c] = NearMatPack(id, w, n, job->own[(size_t)r * 4096 + c] & 0x80000000u);
-                paths++;
                 continue;
             }
             if (job->encoded) job->tile[(size_t)r * 4096 + c] = NearMatEncodeAt(job->coarse, wx, wy);
@@ -2803,7 +2806,6 @@ static uint32_t NearMatBand(uint32_t* tile, const uint32_t* coarse)
     for (int b = 0; b < NEAR_MAT_BINS; b++) { run += hist[b]; cdf.cdf[0][b + 1] = samples ? (float)run / (float)samples : (float)(b + 1) / NEAR_MAT_BINS; }
     /* the tile's own map as the replay painted it, for its paths (read while the rows write the tile) */
     uint32_t* own = NULL;
-    if (g_road.on && g_road.level == g_world.levels)
     {
         own = (uint32_t*)VirtualAlloc(NULL, (size_t)4096 * 4096 * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (own != NULL) memcpy(own, tile, (size_t)4096 * 4096 * 4);
@@ -2813,7 +2815,7 @@ static uint32_t NearMatBand(uint32_t* tile, const uint32_t* coarse)
     if (own != NULL)
     {
         VirtualFree(own, 0, MEM_RELEASE);
-        Note("difficulty: near terrain: the tile's own paths drawn from their vectors: %ld texels", (long)job.paths);
+        Note("difficulty: near terrain: the tile's own map mixed from its weight texels; its paths drawn from their vectors: %ld texels", (long)job.paths);
     }
     return (uint32_t)job.taken;
 }
