@@ -46,6 +46,7 @@ friends compare in co-op.
 | put your stratagems under a heading of their own | [Content: selection headings](content.md#selection-headings) |
 | recolour a model or ship your own model, sound or icon | [Data mods](data.md) |
 | make effects with your own pixel shaders | [Shaders](shaders.md), after [Data mods](data.md) |
+| share patch files made from the game's resources (kitbashes, backports, cut content) without Arrowhead's bytes | [The asset kit](assets.md) |
 | react to kills, damage or missions | [Logic at run time](runtime.md) |
 | change something the SDK does not cover yet | [Hooks and game memory](hooks.md) |
 | find out why a mod does not load or crashes | [Debugging](debugging.md) |
@@ -63,6 +64,7 @@ Read the pages in this order the first time. Each one ends with a link to the ne
    Stats.
 4. [Data mods](data.md): models, textures, effects, sounds and icons, as game patches, cosmetic packs or data specs.
    [Shaders](shaders.md) adds your own pixel shaders to a data spec.
+   Patch files that hold the game's own bytes ship through [the asset kit](assets.md).
 5. [Content](content.md): changing existing weapons, stratagems and entities by field name, and adding new content of
    every kind.
 6. [Logic at run time](runtime.md): game events, actions, live edits, packages and the game thread.

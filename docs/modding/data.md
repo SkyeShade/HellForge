@@ -24,7 +24,9 @@ after any already there. The top mod's patches get the highest numbers, so they 
 changed.
 
 Only ship data you made. Data copied or changed from the game's own resources is the game's bytes: describe it in a
-[data spec](#data-specs) instead, and HellForge builds it for each player.
+[data spec](#data-specs), and HellForge builds it for each player. For patch files you already made with other tools,
+[the asset kit](assets.md) takes the game's bytes out and ships a recipe that rebuilds them from each player's game;
+`package-mod` does this by itself.
 
 ## Cosmetic packs
 
