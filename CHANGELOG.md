@@ -10,6 +10,12 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.4.0-beta.
 
+### For contributors
+
+- A "Docs lint" CI job keeps docs and code comments readable. It checks page types, paragraph, sentence and page
+  sizes, Markdown structure, links and filler words, plus code comment blocks of over 10 lines. Existing text is in a
+  baseline and can only get shorter ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments)) (#277).
+
 ## 0.4.0-beta (2026-11-05)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.4.0-beta). Engine 0.1.47, mod SDK 16.
