@@ -3638,6 +3638,21 @@ static uintptr_t StampIndex(uintptr_t level, uint8_t* T, float extent)
     memset((void*)(p + 0x50), 0, 0x2000);
     memcpy((void*)(p + 0x48), &memory, 8);
     ((WorldIndexInit)(g_world.game + DIF_INDEX_INIT))(p + 8, 0.0f, 0.0f, extent, extent, extent / 64.0f, 0, 0, 0, 0, memory);
+    /* A tile run's index keeps the old width: the constructor now gives every index the level's 131071 slots
+     * (kStampIndex), and every query reads [+0x28] qwords of each row and column it spans (0xC0538F), so the tile runs'
+     * op 0x2B took far longer (s76b: 886 s against s76a's 292 s). Rows of 0x400 qwords (65536 slots) and a free list
+     * cut at 65535 (entry i holds i + 1, 0xC04D00): the insert (0xC04F08), the query (0xC0538F, 0xC05437) and the
+     * remove read the width, stride +0x24 and entries +0x30 from the header; the rows pack closer in memory sized for
+     * 0x800. */
+    {
+        uint32_t words = 0x400, slotsPlusOne = 0x10000, end = 0xFFFFFFFFu, have = 0; uint16_t stride = 0; uint64_t entries = 0;
+        uintptr_t I = p + 8;
+        if (!SafeRead(I + 0x24, &stride, 2) && !SafeRead(I + 0x30, &entries, 8) && !SafeRead(I + 0x28, &have, 4) && entries != 0 && stride == 4 && have > words)
+        {
+            memcpy((void*)(I + 0x28), &words, 4); memcpy((void*)(I + 0x1C), &slotsPlusOne, 4);
+            memcpy((void*)(uintptr_t)(entries + 4ull * (slotsPlusOne - 1)), &end, 4);
+        }
+    }
     memset((void*)(p + 4), 0, 4);
     memcpy((void*)(p + 0x2050), &table, 8);
     return p;
