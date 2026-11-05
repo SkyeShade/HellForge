@@ -145,8 +145,13 @@ static int WindowReadyLocked(void)
     memset(g_plan.slot, 0, (size_t)g_plan.count * 2);
     WindowPoseCheck(g_stream.array, g_stream.count, 2.0f * g_stream.half);
     g_win.on = 1;
-    Note("difficulty: extra large maps: stamp window: %u planned stamps, slots %u..%u (%u), entered within %.0f m of a player (%u a scan at most) while the physics bodies stay under %.0f %% of the store",
-        g_plan.count, g_win.base, DIF_LOCATIONS - 1, g_win.freeCount, (double)WINDOW_IN, WINDOW_PER_SCAN, (double)(WINDOW_BODY_SHARE * 100.0f));
+    /* The index's free entries (I = P + 8: head +0x2C, -1 = none; entries [+0x30], stride u16 +0x24, a free entry's u32 the
+     * next; 0xC04B80 / 0xC04F1C) and its size (+0x1C). */
+    uint32_t head = 0, slots = 0, freeEntries = 0; uint16_t stride = 0; uint64_t entries = 0;
+    if (!SafeRead(P + 8 + 0x2C, &head, 4) && !SafeRead(P + 8 + 0x24, &stride, 2) && !SafeRead(P + 8 + 0x30, &entries, 8) && !SafeRead(P + 8 + 0x1C, &slots, 4))
+        while (head != 0xFFFFFFFFu && freeEntries <= slots && entries != 0 && !SafeRead(entries + (uint64_t)head * stride, &head, 4)) freeEntries++;
+    Note("difficulty: extra large maps: stamp window: %u planned stamps, slots %u..%u (%u), entered within %.0f m of a player (%u a scan at most) while the physics bodies stay under %.0f %% of the store; the stamp index has %u of %u entries free",
+        g_plan.count, g_win.base, DIF_LOCATIONS - 1, g_win.freeCount, (double)WINDOW_IN, WINDOW_PER_SCAN, (double)(WINDOW_BODY_SHARE * 100.0f), freeEntries, slots);
     return 1;
 }
 

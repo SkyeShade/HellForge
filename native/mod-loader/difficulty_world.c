@@ -2640,7 +2640,7 @@ static void WorldCityBudget(uintptr_t gen, uint32_t op)
     uint64_t holder = 0, base = 0; uint32_t head = 0xFFFFFFFFu; uint16_t stride = 0;
     if (!SafeRead(g_worldLevel + 0x2C0, &holder, 8) && holder != 0 && !SafeRead(holder + 8 + 0x2C, &head, 4) &&
         !SafeRead(holder + 8 + 0x24, &stride, 2) && !SafeRead(holder + 8 + 0x30, &base, 8) && base != 0 && stride != 0)
-        for (uint32_t at = head; at != 0xFFFFFFFFu && free < 70000; free++)
+        for (uint32_t at = head; at != 0xFFFFFFFFu && free < 140000; free++)
             if (SafeRead(base + (uint64_t)stride * at, &at, 4)) break;
     Note("difficulty: extra large maps: locations after op 0x%X: %u (cities %u / %u / %u), stamp index %u free slots%s", op, count, inCity[0], inCity[1], inCity[2], free,
         head == 0xFFFFFFFFu ? " (full)" : "");
