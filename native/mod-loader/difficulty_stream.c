@@ -54,6 +54,25 @@ static const char kStreamSpawnPin[] = "4C 8B DC 55 53 41 56 41 57 49 8D AB 38 FE
 #define DIF_STREAM_TABLE 0x8u
 #define DIF_STREAM_SPAWN_ENTRY 0x380u
 #define DIF_STREAM_DESTROY_ENTRY 0x388u
+/* The table's +0x410 (exe 0x3340A0: mov rcx,[rcx+0x230050]; jmp 0x556040) waits for the world's asynchronous animation
+ * update. The animation state machine manager (world+0x230050, built by 0x554870) starts its async jobs (0x555BB0, kicked
+ * from game 0x127A38D through the table's +0x400) over a copy of its list (+0xE0) and does not wait; every game destroy
+ * waits first (+0x410 before +0x388 at game 0x664A2B, 0x6652AE, 0xAB3A31, 0xAC04DE, 0x1304659), and the frame's end waits
+ * at 0xAB61AD. A unit destroyed between the kick and that wait leaves its state machine in the jobs' copy: the update
+ * 0x5530C0 reads [[asm]+0x30] of the freed unit (run s75q: exe+0x55310E, reading -1; static, subagent crash55310e).
+ * The streamer's tick also runs from the late update (0x13270B0 called at 0x13F8938, after the kick), so every
+ * removal waits first; the wait returns at once when no job is in flight (+0xF0 == 0). */
+#define DIF_STREAM_ANIM_WAIT_ENTRY 0x410u
+static const char kStreamAnimWaitPin[] = "48 8B 89 50 00 23 00 E9";
+typedef void (*WorldStreamAnimWaitFn)(uint64_t world);
+/* The wait entry from the world interface's table when it is the reviewed one (exe 0x3340A0's bytes), else 0. */
+static uintptr_t WorldStreamAnimWait(uintptr_t table)
+{
+    uintptr_t wait = 0, exe = ApiModuleBase("helldivers2.exe", NULL);
+    if (table == 0 || exe == 0 || SafeRead(table + DIF_STREAM_ANIM_WAIT_ENTRY, &wait, 8) || wait != exe + 0x3340A0u ||
+        ApiCodeMatches(wait, kStreamAnimWaitPin) != 1) return 0;
+    return wait;
+}
 #define DIF_STREAM_SETDATA_ENTRY 0xB8u
 #define DIF_STREAM_SETDATA_OBJECT 0x10u
 #define DIF_STREAM_SETDATA_METHOD 0x8u
@@ -329,8 +348,16 @@ static int WorldStreamRemoveLocked(uint32_t i)
         Note("difficulty: extra large maps: content streaming: removal off: the world interface's +0x388 entry does not read");
         return 0;
     }
+    uintptr_t wait = WorldStreamAnimWait(table);
+    if (wait == 0)
+    {
+        g_stream.destroyBad = 1;
+        Note("difficulty: extra large maps: content streaming: removal off: the world interface's +0x410 entry (the animation wait) is not the reviewed one");
+        return 0;
+    }
     if (g_stream.removed == 0) g_stream.bodyBeforeSeen = WorldStreamBodies(&g_stream.bodyBefore);
     uint64_t unit = g_streamUnit[i];
+    ((WorldStreamAnimWaitFn)wait)(world);
     ((WorldStreamDestroyUnitFn)destroy)(world, unit, 0, 0);
     uint64_t zero = 0;
     memcpy((void*)((uintptr_t)g_stream.array + (size_t)i * kStreamRecord + 0xA8), &zero, 8);

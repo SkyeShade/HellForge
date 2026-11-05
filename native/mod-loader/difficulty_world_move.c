@@ -259,6 +259,11 @@ static void MoveStampUnitsDestroy(void)
     uintptr_t wi = 0, table = 0, destroy = 0;
     if (world == 0 || SafeRead(g_world.game + DIF_STREAM_INTERFACE, &wi, 8) || wi == 0 || SafeRead(wi + DIF_STREAM_TABLE, &table, 8) || table == 0 ||
         SafeRead(table + DIF_STREAM_DESTROY_ENTRY, &destroy, 8) || destroy == 0) { g_move.stTemp = 0; return; }
+    /* the animation wait first, as every game destroy (difficulty_stream.c, DIF_STREAM_ANIM_WAIT_ENTRY); this runs before
+     * the async kick today (the level-update hook, game 0xAB519E), where the wait returns at once */
+    uintptr_t wait = WorldStreamAnimWait(table);
+    if (wait == 0) { Note("difficulty: near terrain: the tile's stamp units kept: the animation wait is not the reviewed one"); g_move.stTemp = 0; return; }
+    ((WorldStreamAnimWaitFn)wait)(world);
     for (uint32_t k = 0; k < g_move.stTemp; k++) if (g_move.stUnit[k] != 0) ((WorldStreamDestroyUnitFn)destroy)(world, g_move.stUnit[k], 0, 0);
     g_move.stTemp = 0;
     g_nearStampOffset[0] = g_nearStampOffset[1] = 0.0f;
