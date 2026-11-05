@@ -17,7 +17,7 @@ session runner's environment. Without the switch nothing below changes what a se
   (`udp:<own id hex>:<port>:<peer id hex>=<port>`) instead of Steam. `HELLFORGE_DIRECTORY_FOLDER` makes a folder the
   lobby directory (`--directory`).
 - **The broker** (`native/steam-cloud/broker_lobby.c`, sandboxed sessions only): the game sees `HELLFORGE_IDENTITY` as
-  its SteamID, named `HELLFORGE_PERSONA` (else "Diver <last four digits>"). The game's own Steam lobby is kept between
+  its SteamID, named `HELLFORGE_PERSONA` (else "Diver \<last four digits>"). The game's own Steam lobby is kept between
   the installations in `<directory folder>\steam-lobbies`: one text file per lobby, changed under a lock file, with
   create, join, leave, members, owner and owner-only lobby data, and the call results and data updates the game
   waits for. Steam P2P between them goes over loopback UDP, port 48000 + (SteamID mod 1000).
@@ -78,4 +78,3 @@ Two installations ran side by side on Fedora (Proton), each a session of its own
   SteamID, is Windows-only. On Linux both games are the same Steam account, and a second game signing in sends the
   first back to its title screen. A join between two installations on one Linux PC therefore needs two PCs, or the
   broker on Linux.
-

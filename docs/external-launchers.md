@@ -173,7 +173,7 @@ lists and creates profiles; `settings --profile <name>` selects one.
 
 ## Sessions
 
-```
+```text
 HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no] [--multiplayer yes | no]
                        [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--steam-udp yes | no]
                        [--game-options "<launch options>"] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
@@ -285,6 +285,7 @@ asking sooner returns the last list. 200 with:
 last 2 minutes. The game shows it as a friend's invitation would, and joins only if the player accepts. A lobby with
 other shared mods then brings HellForge's MOD SYNC prompt, as any join does. Nothing downloads or is trusted without
 that prompt.
+
 - 202 `{"version": 1, "lobbyId": ..., "state": "invited", "message": ...}`.
 - 404 `HELLFORGE_LOBBY_UNKNOWN`: the lobby is not in a recent list. List again.
 - 409 `HELLFORGE_LOBBY_NOT_JOINABLE`, with `message` saying why (full, locked, or its mods).
@@ -294,6 +295,7 @@ that prompt.
 2 s old: one with a slot free, a Steam friend's first, then the least a join needs (the same mods, then the smallest
 download, then a friend's lobby whose mods are known only on joining, then mods to trust), then the one with the most
 players.
+
 - 202 as a join's, with `hostName`.
 - 404 `HELLFORGE_NO_JOINABLE_LOBBY`: nothing can be joined now.
 - 503 `HELLFORGE_MULTIPLAYER_OFF`.
@@ -358,7 +360,7 @@ On Linux, HellForge's game runs only inside its network namespace, which `app/li
 script also bridges Steam and fetches the live war while the PC still has its network. Give it the program to run in
 place of HellForge.exe, with its arguments:
 
-```
+```sh
 PROTON=<proton> STEAM_COMPAT_DATA_PATH=<prefix> app/linux/hellforge-linux.sh "$INSTALL/app/cli/HellForge.Cli.exe" play --wait yes
 ```
 

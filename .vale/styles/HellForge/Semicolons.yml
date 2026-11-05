@@ -1,0 +1,8 @@
+# Two or more semicolons in one sentence: the sentence is a list, or several sentences.
+extends: occurrence
+message: "Several semicolons in one sentence: split it, or make it a list."
+link: https://github.com/SkyeShade/HellForge/blob/dev/scripts/docs-lint/README.md#vale
+level: warning
+scope: sentence
+max: 1
+token: ';'

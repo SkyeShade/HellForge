@@ -46,7 +46,7 @@ The Mods page follows the mods folder, so the mod appears in the GAMEPLAY group 
 
 From a terminal, `new-mod` makes the same folder with your names filled in, including the DLL and source file names:
 
-```
+```powershell
 <installation>\app\cli\HellForge.Cli.exe new-mod --id yourname.liberator-tweaks --name "Liberator Tweaks" --install <installation>
 ```
 
@@ -56,7 +56,7 @@ It creates `mods\liberator-tweaks` (the part of the id after the dot), with `"dl
 
 ## 2. What is in the folder
 
-```
+```text
 mods/liberator-tweaks/
   hellforge-mod.json   the manifest: id, name, version, description, "code": {"dll": "my_mod.dll", "sdk": 16}
   src/my_mod.c         the mod's C source
@@ -127,7 +127,7 @@ opens the folder of the session you just played (or `logs\sessions` when there i
 `mod-<id>.log`, here `mod-yourname.liberator-tweaks.log`, and it has the line the template writes once the game's
 entity data has loaded:
 
-```
+```text
 AR-23 Liberator: 1200 rounds per minute
 ```
 

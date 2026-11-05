@@ -37,6 +37,7 @@ Declare it in the manifest, with SDK 16:
 ```
 
 Then your mod may be set up after the game has started, and taken out before it ends:
+
 - **`hellforge_mod_init` may run while the game runs.** `api->load_phase(mod)` says which: `HF_LOAD_BOOT`, or
   `HF_LOAD_LIVE`. Register content, events and hooks exactly as at boot. `on()` calls you back after your init returns,
   not inside it: every load event that already fired (`HF_EVENT_GAME_LOADED`, `ENTITIES_READY`, `NETWORK_READY`,
