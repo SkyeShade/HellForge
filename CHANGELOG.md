@@ -40,6 +40,13 @@ On `dev`, since 0.4.0-beta.
   baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))
   (#277).
 
+### Changed
+
+- **A mod download from a host no longer stops at 10 minutes.** The grant now stays on while the download goes on
+  (2 minutes past each request, at most 6 hours), so a large mod over a slow link finishes; one left idle still ends.
+  The host keeps the player expected back while they download, so the rejoin after a long download is still let in
+  ([mod sync](docs/multiplayer.md#mod-sync-speed)).
+
 ## 0.4.0-beta (2026-11-05)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.4.0-beta). Engine 0.1.47, mod SDK 16.

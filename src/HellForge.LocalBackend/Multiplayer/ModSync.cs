@@ -14,8 +14,9 @@ namespace HellForge.LocalBackend.Multiplayer;
 // download them and play with the host's set.
 //   host:   a joiner refused for different gameplay mods (LobbyService.ModsRefused) is sent this session's mod set
 //           (without its folders) just before the refusal, mods.offer [lobby id, set, sharing 0|1], and its machine may
-//           download for GrantTime from the first such offer (a later refusal does not extend it), at most the grant's
-//           byte budget (GrantBudget). The host serves only the set's counted files, from one worker, at most PeerRate
+//           download for GrantTime from the first such offer (a later refusal does not extend it), and on while it keeps
+//           downloading (each request served keeps the grant for GrantIdle more, never past GrantLongest from the
+//           offer), at most the grant's byte budget (GrantBudget). The host serves only the set's counted files, from one worker, at most PeerRate
 //           per joiner and TotalRate in all, so its own game keeps its link:
 //             mods.files [req, id, hash, start]                 -> mods.filelist [req, "ok", total, start, (path, size, sha256)...]
 //                                                                  (at most PageFiles files a page)
@@ -57,7 +58,10 @@ public sealed partial class ModSync : IAsyncDisposable
     const string TooMany = "too many requests at once";
     // Free space a download leaves on the drive besides its own bytes.
     public const long SpareDisk = 256L << 20;
-    public static readonly TimeSpan GrantTime = TimeSpan.FromMinutes(10), RequestTimeout = TimeSpan.FromSeconds(30);
+    // A large mod over a slow upload takes longer than GrantTime: the grant stays while the download goes on (GrantIdle
+    // after each request served), up to GrantLongest from the offer; the byte budget caps it as before.
+    public static readonly TimeSpan GrantTime = TimeSpan.FromMinutes(10), GrantIdle = TimeSpan.FromMinutes(2), GrantLongest = TimeSpan.FromHours(6),
+        RequestTimeout = TimeSpan.FromSeconds(30);
     public const string StopSignal = "stop-observation.signal", StopReason = "mod-sync", OfferFile = ModSyncOffer.FileName;
 
     readonly IPeerTransport transport;
@@ -126,8 +130,11 @@ public sealed partial class ModSync : IAsyncDisposable
     // Where the offer is shown: the game (LiveSyncDisplay) or a test.
     public ISyncDisplay? Display { get; set; }
 
-    // How long a grant lasts (GrantTime; a test shortens it).
+    // How long a grant lasts from the offer, how long each request served keeps it, and its longest (GrantTime,
+    // GrantIdle, GrantLongest; a test shortens them).
     public TimeSpan GrantFor { get; set; } = GrantTime;
+    public TimeSpan GrantIdleFor { get; set; } = GrantIdle;
+    public TimeSpan GrantLongestFor { get; set; } = GrantLongest;
 
     // The free bytes on the drive of a folder, or null when unknown (a test sets its own).
     public Func<string, long?> FreeSpace { get; set; } = FreeBytes;
@@ -171,12 +178,29 @@ public sealed partial class ModSync : IAsyncDisposable
 
     // ---- Host ---------------------------------------------------------------------------------------------------------
 
-    // A machine's download grant: until when, and how many bytes it may still take.
-    sealed class Grant(DateTime until, long budget)
+    // A machine's download grant: until when (kept on by Served, never past Longest), and how many bytes it may still take.
+    sealed class Grant(DateTime until, DateTime longest, long budget)
     {
-        public DateTime Until { get; } = until;
+        public DateTime Until { get; private set; } = until;
+        public DateTime Longest { get; } = longest;
         public long Left = budget;
+        DateTime told;
+
+        // A request was served: the grant stays idle for that long more (under the gate). True at most once a minute:
+        // time to tell the lobby the machine is still downloading (Downloading).
+        public bool Served(DateTime now, TimeSpan idle)
+        {
+            var kept = now + idle;
+            if (kept > Until) Until = kept < Longest ? kept : Longest;
+            if (now - told < TimeSpan.FromMinutes(1)) return false;
+            told = now;
+            return true;
+        }
     }
+
+    // A machine is still downloading this host's mods (at most once a minute): the lobby keeps it expected back
+    // (LobbyService.StillExpected), since a large download can outlast LobbyService.ExpectedBack. Raised outside the lock.
+    public event Action<ulong>? Downloading;
 
     readonly Dictionary<ulong, Grant> grants = [];
     readonly Dictionary<ulong, int> queued = [];
@@ -206,7 +230,7 @@ public sealed partial class ModSync : IAsyncDisposable
             lock (gate)
             {
                 foreach (var ended in grants.Where(g => g.Value.Until <= now).Select(g => g.Key).ToList()) grants.Remove(ended);
-                if (!grants.TryGetValue(joiner, out grant)) grants[joiner] = grant = new Grant(now + GrantFor, GrantBudget);
+                if (!grants.TryGetValue(joiner, out grant)) grants[joiner] = grant = new Grant(now + GrantFor, now + GrantLongestFor, GrantBudget);
             }
         var frame = new Frame("mods.offer").Add(lobbyId).Add(wire).Add(share ? "1" : "0");
         // a 0.3 joiner reads three fields; this HellForge's joiners take the part lists, warmed now for the download
@@ -453,6 +477,10 @@ public sealed partial class ModSync : IAsyncDisposable
         if (mod == null || mod.Class == ModClass.Bundled || mod.Folder == null) return Refused(frame, "not one of the host's mods");
         if (mod.Tier != CoopTier.Shared) return Refused(frame, "a per-player mod is each player's own");
         if (mod.Files.Count > SyncedStore.MaxFiles) return Refused(frame, $"the mod has more than {SyncedStore.MaxFiles} files");
+        // a download going on keeps its grant (a request for none of the shared mods does not)
+        bool downloading;
+        lock (gate) downloading = grant.Served(DateTime.UtcNow, GrantIdleFor);
+        if (downloading) Downloading?.Invoke(peer);
         return frame.Type switch
         {
             "mods.files" => FilePage(frame, mod),
