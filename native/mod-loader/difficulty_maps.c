@@ -37,20 +37,21 @@ static const uint8_t kSpacingPin2[5] = {0xF3, 0x0F, 0x5C, 0x70, 0x04};
 /* The generator's stamp index (0xC04B80: placed stamps, locations and roads by area, for overlap tests) has 10757
  * slots (0x2A05) after a bitset; level 10 uses 4892, and the 17 inserters (0xC04EF0) write through a full index's null
  * (0xC04F1C; PlaceStampWithWeightRule crashed at 0xF3516C). One slot per location (s74g: 2798 and 8192 used at 2798
- * and 8192 locations), so larger maps get 32767 slots (DIF_LOCATIONS 16384 and room): the slot bits follow the count
+ * and 8192 locations), so larger maps get 65535 slots (2026-11-05: the generation's 16384 locations and the stamp window's;
+ * the entry's u16 id caps them, s75u had 16521 of 32767 free after op 0x2B): the slot bits follow the count
  * (bsr + 1 at 0xC04C30, mask +0x20), a handle widens to 64 bits past 32 (0xC04CEA). Each grid cell's bitset holds the
- * slots too: 0xA9 qwords (10816 bits) in vanilla (+0x28 at 0xC04CDA, 0x548 bytes a cell in the size 0xC0497D), 0x200
+ * slots too: 0xA9 qwords (10816 bits) in vanilla (+0x28 at 0xC04CDA, 0x548 bytes a cell in the size 0xC0497D), 0x400
  * now; with 16383 slots and the old width a slot past 10815 set a bit in the next cell (past the memory from the last).
  * The size (0xC048E0), the layout check (0xC04AB0) and the index (0xC04B80) agree. Every index is sized at creation;
  * levels are generated well after the loader installs this. */
 static const struct { uint32_t rva; uint8_t length; uint8_t pin[7], bytes[7]; } kStampIndex[7] = {
-    {0xC0498Bu, 5, {0x05, 0x1F, 0xA8, 0x00, 0x00}, {0x05, 0x07, 0x00, 0x02, 0x00}},                     /* add eax, slots x 4 + 0xB */
-    {0xC04AEAu, 5, {0xB8, 0x05, 0x2A, 0x00, 0x00}, {0xB8, 0xFF, 0x7F, 0x00, 0x00}},                     /* mov eax, slots */
-    {0xC04C1Au, 6, {0x41, 0xBD, 0x05, 0x2A, 0x00, 0x00}, {0x41, 0xBD, 0xFF, 0x7F, 0x00, 0x00}},         /* mov r13d, slots */
-    {0xC04CB2u, 7, {0x48, 0x8D, 0x81, 0x18, 0xA8, 0x00, 0x00}, {0x48, 0x8D, 0x81, 0x00, 0x00, 0x02, 0x00}}, /* lea rax, [rcx + (slots + 1) x 4] */
-    {0xC04CCCu, 7, {0xC7, 0x47, 0x1C, 0x06, 0x2A, 0x00, 0x00}, {0xC7, 0x47, 0x1C, 0x00, 0x80, 0x00, 0x00}}, /* mov [rdi+0x1c], slots + 1 */
-    {0xC04CDAu, 7, {0xC7, 0x47, 0x28, 0xA9, 0x00, 0x00, 0x00}, {0xC7, 0x47, 0x28, 0x00, 0x02, 0x00, 0x00}}, /* mov [rdi+0x28], qwords a cell */
-    {0xC0497Du, 6, {0x69, 0xC3, 0x48, 0x05, 0x00, 0x00}, {0x69, 0xC3, 0x00, 0x10, 0x00, 0x00}}};       /* imul eax, ebx, bytes a cell */
+    {0xC0498Bu, 5, {0x05, 0x1F, 0xA8, 0x00, 0x00}, {0x05, 0x07, 0x00, 0x04, 0x00}},                     /* add eax, slots x 4 + 0xB */
+    {0xC04AEAu, 5, {0xB8, 0x05, 0x2A, 0x00, 0x00}, {0xB8, 0xFF, 0xFF, 0x00, 0x00}},                     /* mov eax, slots */
+    {0xC04C1Au, 6, {0x41, 0xBD, 0x05, 0x2A, 0x00, 0x00}, {0x41, 0xBD, 0xFF, 0xFF, 0x00, 0x00}},         /* mov r13d, slots */
+    {0xC04CB2u, 7, {0x48, 0x8D, 0x81, 0x18, 0xA8, 0x00, 0x00}, {0x48, 0x8D, 0x81, 0x00, 0x00, 0x04, 0x00}}, /* lea rax, [rcx + (slots + 1) x 4] */
+    {0xC04CCCu, 7, {0xC7, 0x47, 0x1C, 0x06, 0x2A, 0x00, 0x00}, {0xC7, 0x47, 0x1C, 0x00, 0x00, 0x01, 0x00}}, /* mov [rdi+0x1c], slots + 1 */
+    {0xC04CDAu, 7, {0xC7, 0x47, 0x28, 0xA9, 0x00, 0x00, 0x00}, {0xC7, 0x47, 0x28, 0x00, 0x04, 0x00, 0x00}}, /* mov [rdi+0x28], qwords a cell */
+    {0xC0497Du, 6, {0x69, 0xC3, 0x48, 0x05, 0x00, 0x00}, {0x69, 0xC3, 0x00, 0x20, 0x00, 0x00}}};       /* imul eax, ebx, bytes a cell */       /* imul eax, ebx, bytes a cell */
 /* The index query (0xC05360: rcx index, edx key, r8d, r9 buffer, [rsp+0x28] its places) writes at most its places
  * (0xC05446) but returns every hit (ebx); three callers clamp (0xFA85AE, 0xFCB273, 0xFCCE3F), four loop over the
  * returned count with their fixed buffers (0xF30C99 / 0xFCC4B4 / 0xFCC791: 0x400, 0xFCCB5C: 0x80): a dense city cell
@@ -399,7 +400,8 @@ static volatile LONG g_cityFootprints[4]; /* most used, overflows, capacity, wan
  * 0xF994AA `cmp [r12], eax`; 0xF994AE `jae 0xF99AB7`, r12 = the location list {count, capacity}). Op 0x2B
  * PlaceStampWithWeightRule runs after op 0xA7 and adds its stamps without a test (s74f: 8192 -> 19599, crash), so with
  * the larger footprint list the buildings could fill the table and leave op 0x2B writing past it. On a table of
- * DIF_LOCATIONS places the placer stops CITY_LOCATION_RESERVE short of it (op 0x2B adds about 1000 on a city level, s75i);
+ * DIF_LOCATIONS places the placer stops CITY_LOCATION_RESERVE short of the generation's DIF_GEN_LOCATIONS (op 0x2B adds about
+ * 1000 on a city level, s75i; the rest of the table is the stamp window's);
  * a vanilla-size table is tested as before. Refusals are counted (g_cityRefusals). */
 #define CITY_LOCATION_TEST 0xF994A5u
 #define CITY_LOCATION_ADD 0xF994B4u
@@ -410,7 +412,7 @@ static const uint8_t kCityLocationStub[46] = {
     0x41, 0x8B, 0x44, 0x24, 0x04,                                     /*  0 mov eax, [r12+4] (the capacity) */
     0x3D, 0, 0, 0, 0,                                                 /*  5 cmp eax, DIF_LOCATIONS (imm32 at 6) */
     0x72, 0x05,                                                       /* 10 jb 17 */
-    0x2D, 0, 0, 0, 0,                                                 /* 12 sub eax, CITY_LOCATION_RESERVE (imm32 at 13) */
+    0xB8, 0, 0, 0, 0,                                                 /* 12 mov eax, DIF_GEN_LOCATIONS - CITY_LOCATION_RESERVE (imm32 at 13) */
     0x41, 0x39, 0x04, 0x24,                                           /* 17 cmp [r12], eax */
     0x73, 0x05,                                                       /* 21 jae 28 */
     0xE9, 0, 0, 0, 0,                                                 /* 23 jmp 0xF994B4 (rel32 at 24) */
@@ -774,7 +776,7 @@ static const char* InstallFootprintWatch(DifficultyInstall* d)
     rel = DifficultyJumpRel(game + DIF_FOOTPRINT_CHECK, (uintptr_t)footprints); memcpy(check + 1, &rel, 4);
     if (ApiWrite(game + DIF_FOOTPRINT_CHECK, check, 9)) return "the city generator's check could not be watched";
     uint8_t* guard = footprints + 0x40;
-    uint32_t places = DIF_LOCATIONS, reserve = CITY_LOCATION_RESERVE;
+    uint32_t places = DIF_LOCATIONS, reserve = DIF_GEN_LOCATIONS - CITY_LOCATION_RESERVE; /* the generation's room, not the window's */
     uint64_t refusals = (uint64_t)(uintptr_t)&g_cityRefusals;
     VirtualProtect(footprints, 0x100, PAGE_READWRITE, &footprintProtect);
     memcpy(guard, kCityLocationStub, sizeof kCityLocationStub);

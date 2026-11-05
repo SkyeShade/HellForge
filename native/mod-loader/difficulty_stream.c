@@ -268,6 +268,9 @@ static void WorldStreamSort(uint32_t count)
  * roots. Players without a Helldiver or a readable position are skipped. The research observer, when on, is one more
  * position and is counted like a player. */
 static void NearReportPlayer(const float* at);
+static void WindowLeaveLocked(uint32_t s);   /* difficulty_stream_window.c */
+static void WindowScanLocked(ULONGLONG now);
+static void WindowNoteLocked(void);
 static void WorldStreamPlayersLocked(void)
 {
     g_stream.playerCount = 0;
@@ -372,6 +375,7 @@ static int WorldStreamRemoveLocked(uint32_t i)
     if (g_stream.spawned > 0) g_stream.spawned--;
     g_stream.removed++;
     if (!g_stream.bodyNoted && g_stream.removed >= 20) g_stream.bodyPending = 1; /* read after the next scan (a few frames on) */
+    WindowLeaveLocked(i); /* a window slot: out of the index and free (difficulty_stream_window.c) */
     return 1;
 }
 
@@ -968,6 +972,7 @@ static void WorldStreamNoteLocked(ULONGLONG now)
         g_stream.bodiesUsed, g_stream.bodySlots,
         g_streamFrameSum > 0 ? (double)g_streamFrames / (double)g_streamFrameSum : 0.0, (double)g_streamFrameMax * 1000.0);
     g_streamFrames = 0; g_streamFrameSum = g_streamFrameMax = 0;
+    WindowNoteLocked();
     WorldStreamObjectivesNote();
 }
 
@@ -997,6 +1002,7 @@ static void WorldStreamTick(float dt)
     }
     ULONGLONG now = GetTickCount64();
     WorldStreamScanLocked(now);
+    WindowScanLocked(now); /* the planned stamps near the players into the window (difficulty_stream_window.c) */
     WorldStreamSpawnDueLocked();
     WorldStreamNoteLocked(now);
     ReleaseSRWLockExclusive(&g_streamLock);

@@ -627,6 +627,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "difficulty_stream.c" /* after rounds.c: the players (event_polls.c, actions.c) and the extra large world */
+#include "difficulty_stream_window.c" /* after difficulty_stream.c: the planned stamps put in near the players (g_plan) */
 #include "difficulty_world_move.c" /* after difficulty_stream.c: the extra large map's detailed terrain follows the players */
 
 static void Deliver(HfEvent event)

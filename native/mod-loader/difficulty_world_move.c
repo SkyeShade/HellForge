@@ -55,7 +55,7 @@ static const char kMoveCraterRenderPin[] = "40 55 56 41 56 41 57 48 8D AC 24 38 
 #define MOVE_SKIP_MS 120000u  /* a cell whose build failed waits this long */
 
 enum { MV_IDLE, MV_PACKAGE, MV_STAMPS, MV_KICK, MV_SETUP, MV_LOOKUP, MV_REPLAY, MV_TEARDOWN, MV_UNSTAMP, MV_SPAWN, MV_READY };
-#define MOVE_STAMPS_MAX 4096u
+#define MOVE_STAMPS_MAX 32768u /* the plan's stamps in reach too (difficulty_stream_window.c): a tile at vanilla density */
 #define MOVE_STAMP_MARGIN 512.0f /* locations this far past the tile's texels: a stamp's terrain reaches ~256 m from it */
 
 typedef void (*MoveUpdateFn)(uint64_t level);
@@ -290,7 +290,8 @@ static uint32_t MoveStampsSelect(uint64_t locs, uint32_t count, float half)
     const float reach = NEAR_SIDE / 2 + MOVE_STAMP_MARGIN;
     uint8_t rec[0xE0];
     uint32_t failed = 0;
-    for (uint32_t i = 0; i < count && i < kStreamMaxLocations && g_move.stCount < MOVE_STAMPS_MAX; i++)
+    const uint32_t tableEnd = g_win.on && g_win.level == g_stream.level ? g_win.base : count; /* window slots come from the plan below */
+    for (uint32_t i = 0; i < count && i < tableEnd && i < kStreamMaxLocations && g_move.stCount < MOVE_STAMPS_MAX; i++)
     {
         if (!g_streamPoseGood[i] || g_streamResource[i] == 0 || SafeRead(locs + (uint64_t)i * 0xE0, rec, sizeof rec)) continue;
         float at[2];
@@ -307,6 +308,40 @@ static uint32_t MoveStampsSelect(uint64_t locs, uint32_t count, float half)
         g_move.stIndex[g_move.stCount] = i; g_move.stUnit[g_move.stUnits++] = unit;
         g_move.stCount++; g_move.stTemp = g_move.stUnits;
     }
+    /* the plan's stamps in reach (g_plan: buckets of the map in generator metres), with op 0x31's pose (WindowPose) */
+    uint32_t planned = 0, past = 0;
+    if (g_plan.level == g_world.levels && g_plan.count != 0)
+    {
+        const float cell = g_plan.cell, gx = g_move.centre[0] + half, gy = g_move.centre[1] + half;
+        int i0 = (int)floorf((gx - reach) / cell), i1 = (int)floorf((gx + reach) / cell), j0 = (int)floorf((gy - reach) / cell), j1 = (int)floorf((gy + reach) / cell);
+        for (int j = j0 < 0 ? 0 : j0; j <= j1 && j < STAMP_PLAN_GRID; j++)
+            for (int i = i0 < 0 ? 0 : i0; i <= i1 && i < STAMP_PLAN_GRID; i++)
+            {
+                int b = j * STAMP_PLAN_GRID + i;
+                for (uint32_t e = g_plan.start[b]; e < g_plan.start[b + 1]; e++)
+                {
+                    const uint8_t* loc = g_stamps.cand[e].loc;
+                    float at[2]; memcpy(at, loc, 8);
+                    if (fabsf(at[0] - half - g_move.centre[0]) > reach || fabsf(at[1] - half - g_move.centre[1]) > reach) continue;
+                    if (g_move.stCount >= MOVE_STAMPS_MAX) { past++; continue; }
+                    uint64_t holder = 0, resource = 0;
+                    memcpy(&holder, loc + DIF_STREAM_LOC_RESOURCE, 8);
+                    if (holder == 0 || SafeRead((uintptr_t)holder + 8, &resource, 8) || resource == 0) continue;
+                    float pose[16];
+                    WindowPose(loc, 2.0f * half, pose);
+                    pose[13] += MOVE_STAMP_OFFSET;
+                    uint64_t unit = ((WorldStreamSpawnUnitFn)spawn)(world, resource, pose, 0, 0);
+                    if (unit == 0) { failed++; continue; }
+                    memcpy(rec, loc, sizeof rec);
+                    memcpy(rec + 0xA8, &unit, 8);
+                    memcpy(g_move.stLoc + (size_t)g_move.stCount * 0xE0, rec, sizeof rec);
+                    g_move.stIndex[g_move.stCount] = 0xFFFFFFFFu; g_move.stUnit[g_move.stUnits++] = unit;
+                    g_move.stCount++; g_move.stTemp = g_move.stUnits; planned++;
+                }
+            }
+    }
+    Note("difficulty: moving tiles: %u stamp terrains for the tile (%u of them the plan's%s)", g_move.stCount, planned, past ? "; more in reach than the tile's room" : "");
+    if (past) Note("difficulty: moving tiles: %u of the plan's stamps in reach left out (room %u)", past, MOVE_STAMPS_MAX);
     if (failed) Note("difficulty: moving tiles: %u stamp units could not be made at the offset", failed);
     if (g_move.stCount) { g_nearStampOffset[0] = 0.0f; g_nearStampOffset[1] = MOVE_STAMP_OFFSET; }
     return g_move.stCount;

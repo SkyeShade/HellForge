@@ -206,7 +206,7 @@ static void TownsAfter(uint64_t records, uint32_t at, uint64_t index, uint64_t c
     for (int k = 1; k < TOWN_RUNS; k++)
     {
         uint32_t last = counts[k] - counts[k - 1];
-        if (counts[k] + last + last / 2 >= DIF_LOCATIONS) { stop = "the location table would fill"; break; }
+        if (counts[k] + last + last / 2 >= DIF_GEN_LOCATIONS) { stop = "the location table would fill"; break; }
         uint64_t arena = 0;
         if (!SafeRead(context, &arena, 8) && arena != 0) ((void (*)(uint64_t))(g_world.game + 0x173BAB0u))(arena);
         const float rho = g_towns.rho, angle = 2.0943951f * (float)k;

@@ -3520,7 +3520,7 @@ static int NearStepDump(uint64_t records, uint32_t end, uint64_t context, uint64
  * Locations: 0xE0 at G+11A7280 (xy +0, box +0xB0..+0xBC: moved to level metres), extras 0x40 at G+1367280 (read by no op
  * after record 91; +0x10 = the record, +0x38 the vertex list's length: cleared), count G+11A7108 and G+11A710C. */
 #define STAMP_TILE_CELLS_VANILLA 430.0f /* a vanilla map's route-cell items: 434 (planet 70) and 425 (planet 259), measured */
-#define STAMP_LOCATION_LIMIT (DIF_LOCATIONS - 192u) /* of the table's DIF_LOCATIONS */
+#define STAMP_LOCATION_LIMIT (DIF_GEN_LOCATIONS - 192u) /* of the generation's DIF_GEN_LOCATIONS */
 typedef struct { uint8_t loc[0xE0]; uint8_t extra[0x40]; float side, prio; uint32_t ring, hash; } StampCandidate;
 static struct
 {
@@ -3529,7 +3529,7 @@ static struct
     LONG rec26Level, rec4ELevel;
     uint8_t rec26[0x19B0], rec4E[0x19B0];
     StampCandidate* cand;
-    uint32_t count, capacity;
+    uint32_t count, capacity, reserved;
     uint8_t* header;            /* the tile run's stamp index: a copy of the level's header ... */
     uint8_t* memory;            /* ... and its own memory */
     uint32_t memoryBytes;
@@ -3665,6 +3665,79 @@ static float StampSegmentBox(const float* s, const float* lo, const float* hi)
     return best;
 }
 
+/* The plan (the stamps the generation's room does not hold): g_stamps.cand[0 .. g_plan.count), ordered by a grid of
+ * STAMP_PLAN_GRID x STAMP_PLAN_GRID buckets over the world (generator metres: bucket (x / cell, y / cell)), bucket b's
+ * entries at [start[b], start[b + 1]); slot[i] = the window's location slot holding entry i, 0 when none. */
+#define STAMP_PLAN_MAX 2000000u /* reserved; committed as it grows (304 B each) */
+#define STAMP_PLAN_GRID 64
+static struct { LONG level; uint32_t count; float cell; uint32_t start[STAMP_PLAN_GRID * STAMP_PLAN_GRID + 1]; uint16_t* slot; } g_plan = {.level = -1};
+static int StampGrow(void) /* 64k more candidates committed; 0 at the reserve */
+{
+    if (g_stamps.capacity >= g_stamps.reserved) return 0;
+    uint32_t more = g_stamps.reserved - g_stamps.capacity < 65536u ? g_stamps.reserved - g_stamps.capacity : 65536u;
+    if (VirtualAlloc(g_stamps.cand + g_stamps.capacity, sizeof(StampCandidate) * (size_t)more, MEM_COMMIT, PAGE_READWRITE) == NULL) return 0;
+    g_stamps.capacity += more;
+    return 1;
+}
+static float g_planCell = 256.0f;
+static int StampPlanBucket(const StampCandidate* c)
+{
+    float xy[2]; memcpy(xy, c->loc, 8);
+    int i = (int)(xy[0] / g_planCell), j = (int)(xy[1] / g_planCell);
+    i = i < 0 ? 0 : i >= STAMP_PLAN_GRID ? STAMP_PLAN_GRID - 1 : i; j = j < 0 ? 0 : j >= STAMP_PLAN_GRID ? STAMP_PLAN_GRID - 1 : j;
+    return j * STAMP_PLAN_GRID + i;
+}
+static int StampPlanCompare(const void* a, const void* b)
+{
+    int x = StampPlanBucket((const StampCandidate*)a), y = StampPlanBucket((const StampCandidate*)b);
+    if (x != y) return x < y ? -1 : 1;
+    return StampCompare(a, b); /* in a bucket: the larger first */
+}
+/* plan-<level>.tsv (evidence: the whole map's stamps): index, op 0x2B, world metres x / y, type (+0xD8), flags (+0xD4),
+ * the footprint's side (m). */
+static void StampPlanWrite(void)
+{
+    wchar_t name[48];
+    swprintf(name, 48, L"plan-%ld.tsv", (long)g_world.levels);
+    HANDLE file = OpenLog(name);
+    if (file == INVALID_HANDLE_VALUE) return;
+    static char buffer[1 << 16];
+    size_t used = 0;
+    DWORD wrote;
+    const float half = 1024.0f * g_world.current;
+    for (uint32_t i = 0; i < g_plan.count; i++)
+    {
+        const StampCandidate* c = &g_stamps.cand[i];
+        float xy[2]; uint32_t type; uint16_t flags;
+        memcpy(xy, c->loc, 8); memcpy(&type, c->loc + 0xD8, 4); memcpy(&flags, c->loc + 0xD4, 2);
+        if (used > sizeof buffer - 128) { WriteFile(file, buffer, (DWORD)used, &wrote, NULL); used = 0; }
+        used += (size_t)snprintf(buffer + used, sizeof buffer - used, "%u\t0x2B\t%.1f\t%.1f\t%u\t0x%X\t%.0f\n", i, (double)(xy[0] - half), (double)(xy[1] - half), type, flags,
+            (double)c->side);
+    }
+    if (used) WriteFile(file, buffer, (DWORD)used, &wrote, NULL);
+    CloseHandle(file);
+}
+static void StampPlanBuild(uint32_t count, float world)
+{
+    g_plan.count = 0; g_plan.level = -1;
+    g_planCell = world / (float)STAMP_PLAN_GRID; g_plan.cell = g_planCell;
+    if (count == 0) { memset(g_plan.start, 0, sizeof g_plan.start); g_plan.level = g_world.levels; return; }
+    qsort(g_stamps.cand, count, sizeof *g_stamps.cand, StampPlanCompare);
+    if (g_plan.slot != NULL) { VirtualFree(g_plan.slot, 0, MEM_RELEASE); g_plan.slot = NULL; }
+    g_plan.slot = (uint16_t*)VirtualAlloc(NULL, (size_t)count * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (g_plan.slot == NULL) { Note("difficulty: stamps: no memory for the plan's slots; no plan"); return; }
+    uint32_t b = 0;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        int k = StampPlanBucket(&g_stamps.cand[i]);
+        while ((int)b <= k) g_plan.start[b++] = i;
+    }
+    while (b <= STAMP_PLAN_GRID * STAMP_PLAN_GRID) g_plan.start[b++] = count;
+    g_plan.count = count;
+    g_plan.level = g_world.levels;
+    StampPlanWrite();
+}
+
 typedef uint32_t (*StampKeyFn)(uintptr_t index, float x, float y);
 typedef uint32_t (*StampQueryFn)(uintptr_t index, uint32_t lo, uint32_t hi, uint64_t* out, uint32_t max);
 typedef uint32_t* (*StampInsertFn)(uintptr_t index, float x0, float y0, float x1, float y1, void* out);
@@ -3722,14 +3795,12 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     float rings[6]; StampRings(rings);
     const float core = (float)TERRAIN_TILE_CORE, margin = (float)TERRAIN_TILE_MARGIN, extent = (float)TERRAIN_TILE_EXTENT;
     const float cgx = g_stamps.centre[0] + half, cgy = g_stamps.centre[1] + half; /* generator metres */
-    /* the tiles whose core meets the outer ring, nearest first */
+    /* every tile of the playable disc, nearest first: the map's whole plan (the user's choice, 2026-11-05: plan at load,
+     * stream near the players). What the generation's room holds goes into the level; the rest is the plan the stamp
+     * window (difficulty_stream_window.c) puts in near the players. */
     int order[1024], tiles = 0;
     for (int t = 0; t < g_terrain.tiles && tiles < 1024; t++)
-    {
-        float cx = (float)(t % g_terrain.columns) * core, cy = (float)(t / g_terrain.columns) * core;
-        if (cx + core <= cgx - rings[2] || cx >= cgx + rings[2] || cy + core <= cgy - rings[2] || cy >= cgy + rings[2] || !TerrainTileWanted(t)) continue;
-        order[tiles++] = t;
-    }
+        if (TerrainTileWanted(t)) order[tiles++] = t;
     for (int a = 1; a < tiles; a++) /* by the Chebyshev distance of the tile's centre */
     {
         int t = order[a], b = a;
@@ -3743,12 +3814,18 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         }
         order[b] = t;
     }
-    if (g_stamps.cand == NULL) { g_stamps.capacity = 65536; g_stamps.cand = (StampCandidate*)VirtualAlloc(NULL, sizeof(StampCandidate) * g_stamps.capacity, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); }
+    if (g_stamps.cand == NULL)
+    {
+        g_stamps.reserved = STAMP_PLAN_MAX;
+        g_stamps.cand = (StampCandidate*)VirtualAlloc(NULL, sizeof(StampCandidate) * (size_t)g_stamps.reserved, MEM_RESERVE, PAGE_READWRITE);
+        g_stamps.capacity = 0;
+    }
     if (g_stamps.cand == NULL) { Note("difficulty: stamps: no memory"); return; }
     g_stamps.count = 0;
+    g_plan.level = -1; g_plan.count = 0;
     uint8_t* T = g_terrain.block;
     uint32_t built = 0, ran = 0, made = 0, why[8] = {0}; /* why: core, type, gate, ring, room */
-    uint32_t sides[3][8] = {{0}};
+    uint32_t sides[4][8] = {{0}};
     volatile uint32_t* sizeP = (volatile uint32_t*)(settings + 0x2C);
     volatile float* g50 = (volatile float*)(settings + 0x50); volatile float* g54 = (volatile float*)(settings + 0x54); volatile float* g5C = (volatile float*)(settings + 0x5C);
     for (int k = 0; k < tiles; k++)
@@ -3839,10 +3916,9 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
             float reach = fmaxf(fabsf(gx - cgx), fabsf(gy - cgy)), side = fmaxf(hi[0] - lo[0], hi[1] - lo[1]);
             uint32_t ring = reach <= rings[0] ? 0 : reach <= rings[1] ? 1 : reach <= rings[2] ? 2 : 3;
             uint32_t hash = (uint32_t)t * 0x9E3779B1u ^ (i + 1) * 0x85EBCA6Bu; hash ^= hash >> 15; hash *= 0xC2B2AE35u; hash ^= hash >> 13;
-            if (ring < 3) { int bin = side < 4 ? 0 : side < 8 ? 1 : side < 16 ? 2 : side < 32 ? 3 : side < 64 ? 4 : side < 128 ? 5 : side < 256 ? 6 : 7; sides[ring][bin]++; }
-            int keep = ring == 0 || (ring == 1 && (side >= rings[3] || (float)hash < rings[5] * 4294967295.0f)) || (ring == 2 && side >= rings[4]);
-            if (!keep) { why[3]++; continue; }
-            if (g_stamps.count >= g_stamps.capacity) { why[4]++; continue; }
+            { int bin = side < 4 ? 0 : side < 8 ? 1 : side < 16 ? 2 : side < 32 ? 3 : side < 64 ? 4 : side < 128 ? 5 : side < 256 ? 6 : 7; sides[ring][bin]++; }
+            (void)rings[3]; (void)rings[4]; (void)rings[5]; /* no thinning: what the level does not hold, the plan does */
+            if (g_stamps.count >= g_stamps.capacity && !StampGrow()) { why[4]++; continue; }
             StampCandidate* c = &g_stamps.cand[g_stamps.count++];
             memcpy(c->loc, loc, 0xE0);
             memcpy(c->extra, T + DIF_LOCATIONS_B_NEW + (size_t)i * 0x40, 0x40);
@@ -3867,13 +3943,15 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     StampInsertFn insert = (StampInsertFn)(g_world.game + 0xC04EF0u);
     uint64_t locTable = 0; SafeRead(P + 0x2050, &locTable, 8);
     static uint64_t hits[0x400];
-    for (uint32_t k = 0; k < g_stamps.count && n < STAMP_LOCATION_LIMIT; k++)
+    uint32_t planned = 0, planBlocked[2] = {0};
+    for (uint32_t k = 0; k < g_stamps.count; k++)
     {
         StampCandidate* c = &g_stamps.cand[k];
         float box[4]; memcpy(box, c->loc + 0xB0, 16);
         float lo[2] = {fminf(box[0], box[2]), fminf(box[1], box[3])}, hi[2] = {fmaxf(box[0], box[2]), fmaxf(box[1], box[3])};
         uint32_t found = query(P + 8, key(P + 8, lo[0], lo[1]), key(P + 8, hi[0], hi[1]), hits, 0x400);
         int clash = 0;
+        const uint32_t was[2] = {blocked[0], blocked[1]};
         for (uint32_t e = 0; e < found && e < 0x400 && !clash; e++)
         {
             uint16_t id = 0, fl = 0;
@@ -3893,7 +3971,13 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
                 if (StampSegmentBox(seg, lo, hi) < 0.5f * width) { clash = 1; blocked[1]++; }
             }
         }
-        if (clash) continue;
+        if (clash) { if (n >= STAMP_LOCATION_LIMIT) { planBlocked[0] += blocked[0] - was[0]; planBlocked[1] += blocked[1] - was[1]; } continue; }
+        if (n >= STAMP_LOCATION_LIMIT) /* the generation's room is full: into the plan (compacted to the front; planned <= k) */
+        {
+            if (planned != k) g_stamps.cand[planned] = *c;
+            planned++;
+            continue;
+        }
         memcpy((void*)(uintptr_t)(gen + 0x11A7280u + 0xE0ull * n), c->loc, 0xE0);
         memcpy((void*)(uintptr_t)(gen + DIF_LOCATIONS_B_NEW + 0x40ull * n), c->extra, 0x40);
         uint8_t scratch[16];
@@ -3905,11 +3989,15 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     *(volatile uint32_t*)(uintptr_t)(gen + 0x11A7108u) = n;
     *(volatile uint32_t*)(uintptr_t)(gen + 0x11A710Cu) = n;
     g_stamps.first = n0; g_stamps.end = n; g_stamps.ringLevel = g_world.levels;
+    StampPlanBuild(planned, world);
     QueryPerformanceCounter(&t1);
+    Note("difficulty: stamps: the plan holds %u stamps beyond the level's room (%u of them blocked by level locations, %u by roads were left out) in %d x %d buckets of %.0f m, %.0f MB",
+        g_plan.count, planBlocked[0], planBlocked[1], STAMP_PLAN_GRID, STAMP_PLAN_GRID, (double)(world / STAMP_PLAN_GRID),
+        (double)((double)g_plan.count * (sizeof(StampCandidate) + 2) / 1048576.0));
     Note("difficulty: stamps: %d tiles in reach, %u built, %u ran 0x2B (%u stamps); kept %u (dropped: %u outside the core, %u type not loaded, %u world gates, %u ring), %u blocked by level locations, %u by roads (roads %s); locations %u -> %u (ring 0 %u, 1 %u, 2 %u) in %.1f s",
         tiles, built, ran, made, g_stamps.count, why[0], why[1], why[2], why[3], blocked[0], blocked[1], roadsAreRoutes ? "the route list" : "not the route list: blocked", n0, n, added[0], added[1], added[2],
         (double)(t1.QuadPart - t0.QuadPart) / (double)hz.QuadPart);
-    for (int r = 0; r < 3; r++)
+    for (int r = 0; r < 4; r++)
         Note("difficulty: stamps: ring %d sides (m) <4 %u, 4-8 %u, 8-16 %u, 16-32 %u, 32-64 %u, 64-128 %u, 128-256 %u, >=256 %u", r,
             sides[r][0], sides[r][1], sides[r][2], sides[r][3], sides[r][4], sides[r][5], sides[r][6], sides[r][7]);
     /* where the level's locations are from the drop point (loc+0 in generator metres, 0..world): the level's own

@@ -100,7 +100,7 @@ static struct
 #define CITY_VANILLA_KEEP 681.12f  /* a vanilla level's keep radius (difficulty_maps.c's radii at map_scale 1: disk + 1) */
 #define CITY_VANILLA_FADE 620.12f  /* and its fade (border + 57): S+0x54 x W / 2 */
 static volatile float* g_cityZone;
-#define DIF_PLACE_LIMIT (DIF_LOCATIONS - 256u) /* op 0x2B places no location past it (kPlaceSkipStub) */
+#define DIF_PLACE_LIMIT (DIF_GEN_LOCATIONS - 256u) /* op 0x2B places no location past it (kPlaceSkipStub) */
 
 /* The scale level 11's map needs: the smallest power of two whose world holds its disk (difficulty_maps.c's radii). */
 static uint32_t WorldScaleFor(float mapScale)

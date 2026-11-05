@@ -75,7 +75,11 @@ static const uint32_t kWeightReaders[6][2] = {{0x94C1E9u, 5}, {0x94C26Fu, 6}, {0
  * so a city keeps vanilla's zone square. */
 #define DIF_XL_PLAYABLE 0.95f
 static float g_cityZoneRatio = 1.0f;
-#define DIF_LOCATIONS 16384u
+/* 65024 since 2026-11-05: the generation fills DIF_GEN_LOCATIONS of them (its ops' limits, the minimap's proxies of op
+ * 0x55, the per-step costs, as before), the rest is the stamp window (difficulty_stream_window.c): planned stamps put in
+ * near the players mid-mission and taken out again. The stamp index's u16 payload caps the ids at 65535. */
+#define DIF_LOCATIONS 65024u
+#define DIF_GEN_LOCATIONS 16384u
 #define DIF_LOCATIONS_A 0x758E20u
 #define DIF_LOCATIONS_B 0x7EEBA0u
 #define DIF_LOCATIONS_A_NEW 0x11A7280u
