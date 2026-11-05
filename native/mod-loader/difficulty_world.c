@@ -2301,6 +2301,126 @@ static uint32_t NatureKindMask(uint64_t D)
  * records with the same holder (+0), category (+0xA1) and definition (+0xA2), the level word +0x60 (min bits 2..5, max
  * 6..9, 0xF none) against [lg+0xF9], faction +0xE8 / +0xE9, +0x70, +0xA8 / +0xB0 / +0xC0 / +0xD0 / +0xD4, kinds, weight
  * +0x68. Read only. */
+/* Research (an id op 0x16 places none of although op 0x15 gave it entries, s76c 0c3f8046): op 0x16's definition test,
+ * KindFilter 0xF292B0, at its op 0x16 call (0xF8F7B6, back at 0xF8F7BB), replayed on the arguments the game passes
+ * (static, Claude 2026-11-05): rcx D, rdx ctx; faction ctx+0xD0 (2/3/4 -> D+0xE8 bit 0/1/2); 0xF28C40(ctx, D,
+ * ctx+0xD4); the level word D+0x60 (min bits 2..5, max 6..9, 0xF none) against [[ctx+0x18]+0xF9]; the tag D+0x70 (an
+ * entry of M+0x170, 0x38 each, count M+0x178, M = [[[ctx+0x18]+0x2D0]+0x68], replaces D's own +0x70..+0xA7): bit lists
+ * +8/+0x10 all, +0x18/+0x20 any, +0x28/+0x30 none against the u64 [[ctx+8]]; byte lists D+0xB0/+0xB8 and D+0xC0/+0xC8
+ * against arguments 3 and 4 ({u32 count, pointer}): one shared byte; D+0xD0 in argument 5's u32 list; D+0xD4 in
+ * argument 6's or 9 there; argument 9 (a byte; 0 here) against D+0x15E; D+0xA8 in argument 7's bytes; one kind of
+ * D+0x198/+0x1A0 with a weight above 0 (argument 10's W[k - 1], else [[ctx+8]+0xC0]+0xEC+4k). Read only. */
+#define KF_FN 0xF292B0u
+#define KF_RET16 0xF8F7BBu
+#define KF_F28C40 0xF28C40u
+typedef uint8_t (*KindFilterFn)(uint64_t D, uint64_t ctx, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7, uint64_t a8, uint64_t a9, uint64_t a10);
+typedef uint8_t (*KfMaskFn)(uint64_t ctx, uint64_t D, uint32_t sel);
+static KindFilterFn g_kindFilter;
+static volatile LONG g_kfOn, g_kfCount, g_kfMismatch;
+typedef struct { uint64_t D; uint16_t pass; uint8_t result, lvl; uint32_t tag; uint64_t mask, all, any, none; uint8_t dB0[8], aB0[8], dC0[8], aC0[8], nB0[2], nC0[2]; float w[8]; uint8_t kinds[8], nk; } KfRecord;
+static KfRecord g_kf[512];
+static int KfByteLists(uint64_t dp, uint32_t dn, uint64_t arg, uint8_t* dOut, uint8_t* aOut, uint8_t* counts)
+{
+    uint32_t an = 0; uint64_t ap = 0;
+    if (arg == 0 || SafeRead(arg, &an, 4) || SafeRead(arg + 8, &ap, 8)) an = 0;
+    counts[0] = (uint8_t)(dn > 255 ? 255 : dn); counts[1] = (uint8_t)(an > 255 ? 255 : an);
+    if (dn && dp) SafeRead(dp, dOut, dn < 8 ? dn : 8);
+    if (an && ap) SafeRead(ap, aOut, an < 8 ? an : 8);
+    if (dn == 0) return 1;
+    for (uint32_t j = 0; j < an && j < 4096; j++)
+    {
+        uint8_t b = 0; if (SafeRead(ap + j, &b, 1)) break;
+        for (uint32_t i = 0; i < dn && i < 4096; i++) { uint8_t c = 0; if (!SafeRead(dp + i, &c, 1) && c == b) return 1; }
+    }
+    return 0;
+}
+static uint64_t KfBits(uint64_t p, uint32_t n)
+{
+    uint64_t m = 0;
+    for (uint32_t i = 0; i < n && i < 64; i++) { uint32_t b = 0; if (!SafeRead(p + 4ull * i, &b, 4) && b < 64) m |= 1ull << b; }
+    return m;
+}
+static int KfU32In(uint64_t arg, uint32_t v, int nineAny)
+{
+    uint32_t n = 0; uint64_t p = 0;
+    if (arg == 0 || SafeRead(arg, &n, 4) || SafeRead(arg + 8, &p, 8)) return 0;
+    for (uint32_t i = 0; i < n && i < 4096; i++) { uint32_t e = 0; if (!SafeRead(p + 4ull * i, &e, 4) && (e == v || (nineAny && e == 9))) return 1; }
+    return 0;
+}
+static uint8_t KindFilterResearch(uint64_t D, uint64_t ctx, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7, uint64_t a8, uint64_t a9, uint64_t a10)
+{
+    uint8_t r = g_kindFilter(D, ctx, a3, a4, a5, a6, a7, a8, a9, a10);
+    if (!g_kfOn || (uintptr_t)__builtin_return_address(0) != g_world.game + KF_RET16) return r;
+    LONG n = g_kfCount;
+    for (LONG i = 0; i < n && i < 512; i++) if (g_kf[i].D == D) return r;
+    if (n >= 512) return r;
+    KfRecord k; memset(&k, 0, sizeof k); k.D = D; k.result = r;
+    uint32_t sel = 0, selMask = 0, x70 = 0, dn = 0, xD0 = 0, xD4 = 0; uint8_t e8 = 0, a8b = 0, x15E = 0; uint16_t w60 = 0; uint64_t lg = 0, dp = 0, set = 0, mt = 0;
+    SafeRead(ctx + 0xD0, &sel, 4); SafeRead(D + 0xE8, &e8, 1);
+    int ok = sel == 2 ? (e8 & 1) : sel == 3 ? (e8 & 2) : sel == 4 ? (e8 & 4) : 1;
+    if (ok) k.pass |= 1;
+    SafeRead(ctx + 0xD4, &selMask, 4);
+    if (((KfMaskFn)(g_world.game + KF_F28C40))(ctx, D, selMask)) k.pass |= 2;
+    SafeRead(ctx + 0x18, &lg, 8); SafeRead(lg + 0xF9, &k.lvl, 1); SafeRead(D + 0x60, &w60, 2);
+    { uint32_t mn = (w60 >> 2) & 0xF, mx = (w60 >> 6) & 0xF; if ((mn == 0xF || k.lvl >= mn) && (mx == 0xF || k.lvl <= mx)) k.pass |= 4; }
+    uint8_t tag[0x38]; SafeRead(D + 0x70, tag, 0x38); SafeRead(D + 0x70, &x70, 4); k.tag = x70;
+    if (x70)
+    {
+        uint64_t q = 0, M = 0, list = 0; uint32_t cnt = 0;
+        if (!SafeRead(lg + 0x2D0, &q, 8) && !SafeRead(q + 0x68, &M, 8) && !SafeRead(M + 0x170, &list, 8) && !SafeRead(M + 0x178, &cnt, 4))
+            for (uint32_t i = 0; i < cnt && i < 4096; i++) { uint32_t id = 0; if (!SafeRead(list + 0x38ull * i, &id, 4) && id == x70) { SafeRead(list + 0x38ull * i, tag, 0x38); break; } }
+    }
+    { uint64_t p1, p2, p3; uint32_t c1, c2, c3; memcpy(&p1, tag + 8, 8); memcpy(&c1, tag + 0x10, 4); memcpy(&p2, tag + 0x18, 8); memcpy(&c2, tag + 0x20, 4);
+      memcpy(&p3, tag + 0x28, 8); memcpy(&c3, tag + 0x30, 4); SafeRead(ctx + 8, &set, 8); SafeRead(set, &k.mask, 8);
+      k.all = c1 ? KfBits(p1, c1) : 0; k.any = c2 ? KfBits(p2, c2) : 0; k.none = c3 ? KfBits(p3, c3) : 0;
+      if ((!c1 || (k.mask & k.all) == k.all) && (!c2 || (k.mask & k.any)) && (!c3 || !(k.mask & k.none))) k.pass |= 8; }
+    SafeRead(D + 0xB0, &dp, 8); SafeRead(D + 0xB8, &dn, 4); if (KfByteLists(dp, dn, a3, k.dB0, k.aB0, k.nB0)) k.pass |= 0x10;
+    SafeRead(D + 0xC0, &dp, 8); SafeRead(D + 0xC8, &dn, 4); if (KfByteLists(dp, dn, a4, k.dC0, k.aC0, k.nC0)) k.pass |= 0x20;
+    SafeRead(D + 0xD0, &xD0, 4); if (xD0 == 0 || KfU32In(a5, xD0, 0)) k.pass |= 0x40;
+    SafeRead(D + 0xD4, &xD4, 4); if (xD4 == 0 || KfU32In(a6, xD4, 1)) k.pass |= 0x80;
+    SafeRead(D + 0x15E, &x15E, 1); if ((uint8_t)a9 == 0 || x15E == (uint8_t)a9) k.pass |= 0x100;
+    SafeRead(D + 0xA8, &a8b, 1);
+    if (a8b == 0) k.pass |= 0x200;
+    else { uint32_t an = 0; uint64_t ap = 0; if (a7 && !SafeRead(a7, &an, 4) && !SafeRead(a7 + 8, &ap, 8)) for (uint32_t i = 0; i < an && i < 4096; i++) { uint8_t b = 0; if (!SafeRead(ap + i, &b, 1) && b == a8b) { k.pass |= 0x200; break; } } }
+    { uint64_t kp = 0; uint32_t kn = 0; SafeRead(D + 0x198, &kp, 8); SafeRead(D + 0x1A0, &kn, 4); SafeRead(set + 0xC0, &mt, 8);
+      k.nk = (uint8_t)(kn > 8 ? 8 : kn); if (kp) SafeRead(kp, k.kinds, k.nk);
+      for (uint32_t i = 0; i < k.nk; i++)
+      {
+          float w = 0; uint8_t kk = k.kinds[i];
+          if (a10) SafeRead(a10 + 4ull * kk - 4, &w, 4); else SafeRead(mt + 0xEC + 4ull * kk, &w, 4);
+          k.w[i] = w; if (w > 0) k.pass |= 0x400;
+      } }
+    if (((k.pass & 0x7FF) == 0x7FF) != (r != 0)) InterlockedIncrement(&g_kfMismatch);
+    n = InterlockedIncrement(&g_kfCount) - 1;
+    if (n < 512) g_kf[n] = k;
+    return r;
+}
+static void KindFilterResearchInstall(uintptr_t game)
+{
+    if (g_kindFilter != NULL) return;
+    if (ApiCodeMatches(game + KF_FN, "40 55 53 56 57 41 55 48 8B EC 48 81 EC 80 00 00 00") != 1 || ApiCodeMatches(game + KF_F28C40, "48 8B 49 18 33 C0 45 8B D8 4C 8B 89 D0 02 00 00") != 1 ||
+        ApiCodeMatches(game + KF_RET16 - 5, "E8") != 1)
+    { Note("difficulty: objectives research: KindFilter is not the reviewed one; its tests are not noted"); return; }
+    LoaderHook("extra large maps' objective definition test (research)", game + KF_FN, (void*)KindFilterResearch, (void**)&g_kindFilter);
+}
+static void KindFilterNote(uint64_t D)
+{
+    for (LONG i = 0; i < g_kfCount && i < 512; i++)
+    {
+        const KfRecord* k = &g_kf[i]; if (k->D != D) continue;
+        static const char* names[11] = {"faction", "0xF28C40", "level", "tag", "B0", "C0", "D0", "D4", "15E", "A8", "kinds"};
+        char failed[128] = ""; size_t at = 0;
+        for (int b = 0; b < 11; b++) if (!(k->pass & (1u << b))) at += (size_t)snprintf(failed + at, sizeof failed - at, "%s%s", at ? " " : "", names[b]);
+        Note("difficulty: objectives research:     KindFilter %s (failed: %s); level %u; tag %u mask %llx all %llx any %llx none %llx; B0 %u:%02x%02x%02x%02x vs %u:%02x%02x%02x%02x; C0 %u:%02x%02x%02x%02x vs %u:%02x%02x%02x%02x; kinds %u: %u=%.3g %u=%.3g %u=%.3g",
+            k->result ? "passes" : "refuses", at ? failed : "none", k->lvl, k->tag, (unsigned long long)k->mask, (unsigned long long)k->all, (unsigned long long)k->any, (unsigned long long)k->none,
+            k->nB0[0], k->dB0[0], k->dB0[1], k->dB0[2], k->dB0[3], k->nB0[1], k->aB0[0], k->aB0[1], k->aB0[2], k->aB0[3],
+            k->nC0[0], k->dC0[0], k->dC0[1], k->dC0[2], k->dC0[3], k->nC0[1], k->aC0[0], k->aC0[1], k->aC0[2], k->aC0[3],
+            k->nk, k->kinds[0], (double)k->w[0], k->kinds[1], (double)k->w[1], k->kinds[2], (double)k->w[2]);
+        return;
+    }
+    Note("difficulty: objectives research:     KindFilter not reached at op 0x16's test for this definition");
+}
+
 static uint64_t g_pass15;
 static void WorldObjectiveUnplacedNote(uintptr_t block)
 {
@@ -2343,6 +2463,7 @@ static void WorldObjectiveUnplacedNote(uintptr_t block)
                 Note("difficulty: objectives research:   entry %u (%u/%u/%u) key %08x: 0x160 bit3 %u, capacity %u (same records %u), level min %u max %u, E8 %02x E9 %02x, +0x70 %08x, +0xA8 %llx +0xB0 %llx +0xC0 %llx +0xD0 %u +0xD4 %u, kinds %08x, weight %.3g",
                     j, ix[0], ix[1], ix[2], key, (x160 >> 3) & 1, cap, same, (x60 >> 2) & 0xF, (x60 >> 6) & 0xF, e8, e9, x70, (unsigned long long)xA8,
                     (unsigned long long)xB0, (unsigned long long)xC0, xD0, xD4, NatureKindMask(D), (double)w);
+                KindFilterNote(D);
             }
         }
 }
@@ -3647,10 +3768,12 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     if (watch && op == 0x7C) WorldCityKinds(records, (uint32_t)d, b, block);
     if (watch && op == 0x18) WorldCityDefKinds(b, block);
     if (watch && op == 0x16) WorldNatureResearch16(b);
+    if (watch && op == 0x16) { g_kfCount = 0; g_kfMismatch = 0; g_kfOn = 1; }
     if (watch) NatureWindow(b, op, at);
     if (vanilla2B && vanillaOp == 0x2B) TownsForget(records + (uint64_t)vanillaAt * 0x19B0u + 8);
     if (g_world.current > 1.0f && op == 0x66 && phaseBefore66 < 0) { uint32_t u = 0; if (!SafeRead(block + 0x11A7178u, &u, 4)) phaseBefore66 = (int32_t)u; }
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
+    if (g_kfOn) { g_kfOn = 0; if (g_kfMismatch) Note("difficulty: objectives research: the KindFilter replay disagreed with the game %ld times of %ld", (long)g_kfMismatch, (long)g_kfCount); }
     {
         uint32_t now = 0xFFFFFFFFu, done = watch ? at : vanillaAt, doneOp = watch ? op : vanillaOp;
         if ((watch || vanilla2B) && !SafeRead(index, &now, 4) && now != done) WorldMemoryNote("after", doneOp, done, 0);
@@ -4642,6 +4765,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     for (size_t i = 0; i < sizeof kWorldPasses / sizeof kWorldPasses[0]; i++)
         LoaderHook("extra large maps' pass diagnostic", game + kWorldPasses[i].rva, kWorldPasses[i].detour, (void**)kWorldPasses[i].original);
     LoaderHook("extra large maps' op diagnostic", game + 0xC14950u, (void*)WorldDispatch, (void**)&g_worldDispatch);
+    KindFilterResearchInstall(game);
     MemProfInstall();
     TerrainDiagInstall(game);
     TerrainInstall(game);
