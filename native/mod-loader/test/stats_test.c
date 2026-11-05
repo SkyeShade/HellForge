@@ -9,6 +9,7 @@
 #include "shots_test.c"
 #include "rounds_test.c"
 #include "network_types_test.c"
+#include "result_rows_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -331,13 +332,18 @@ static void DifficultyFixture(void)
     }
     memcpy(game + DIF_BAND_SITE, kBandSitePin, sizeof kBandSitePin);
     memcpy(game + DIF_MAP_TYPE_SITE, kMapTypePin, 7); memcpy(game + DIF_SPACING_SITE, kSpacingPin, 5); memcpy(game + DIF_SPACING_SITE_2, kSpacingPin2, 5); memcpy(game + DIF_GRID_SITE, kGridPin, 9); memcpy(game + DIF_CELL_SPACING_SITE, kCellSpacingPin, 7); memcpy(game + DIF_FINALIZE_SPACING_SITE, kFinalizeSpacingPin, 9);
-    for (int i = 0; i < 5; i++) memcpy(game + kStampIndex[i].rva, kStampIndex[i].pin, kStampIndex[i].length);
+    for (size_t i = 0; i < sizeof kStampIndex / sizeof kStampIndex[0]; i++) memcpy(game + kStampIndex[i].rva, kStampIndex[i].pin, kStampIndex[i].length);
     memcpy(game + DIF_ZONE_SITE, kZonePin, sizeof kZonePin);
     memcpy(game + DIF_ZONE_CLEAR, kZoneClearPin, 21); memcpy(game + DIF_ZONE_TABLE_LEA, kZoneTableLeaPin, 8); memcpy(game + DIF_ZONE_HEIGHT, kZoneHeightPin, 7);
     for (int i = 0; i < 7; i++) memcpy(game + kCityCapacities[i].rva, kCityCapacities[i].pin, kCityCapacities[i].length);
     memcpy(game + DIF_FOOTPRINT_CHECK, kFootprintPin, 9);
     for (int i = 0; i < 3; i++) memcpy(game + kReVoronoiStubs[i].site, kReVoronoiStubs[i].pin, kReVoronoiStubs[i].length);
     for (int i = 0; i < 8; i++) memcpy(game + kBucketPool[i].rva, kBucketPool[i].pin, kBucketPool[i].length);
+    {   /* the structured weld's full-case guards, strides and pointers (StructuredFailed) */
+        static const uint8_t stride[7] = {0x48, 0x69, 0xC9, 0x08, 0x0A, 0x00, 0x00};
+        for (int i = 0; i < 3; i++) { memcpy(game + kWeldFull[i].site, kWeldFull[i].pin, kWeldFull[i].length); memcpy(game + kWeldPointers[i].site, kWeldPointers[i].pin, 8); }
+        for (int i = 0; i < 2; i++) memcpy(game + kWeldStrides[i], stride, 7);
+    }
     for (int i = 0; i < 4; i++) memcpy(game + kClusterSites[i].site, kClusterSites[i].pin, kClusterSites[i].length);
     memcpy(game + DIF_CULL_RADIUS, kCullRadiusPin, 8);
     memcpy(game + DIF_VISTA_POSE, kVistaPosePin, 7);
@@ -349,6 +355,7 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_CAPTURE_SITE, kCapturePin, sizeof kCapturePin);
     memcpy(game + DIF_TELEMETRY_SITE, kTelemetryPin, sizeof kTelemetryPin);
     memcpy(game + DIF_SPAWNER_SITE, kSpawnerPin, sizeof kSpawnerPin);
+    memcpy(game + DIF_SPAWNER_LOOP_FIRST, kSpawnerFirstPin, 13); memcpy(game + DIF_SPAWNER_LOOP_NEXT, kSpawnerNextPin, 13); memcpy(game + DIF_SPAWNER_PLACES_SITE, kSpawnerPlacesPin, 33);
     memcpy(game + DIF_MARKER_LOOP_SITE, kMarkerLoopPin, sizeof kMarkerLoopPin);
     memcpy(game + DIF_MARKER_ROUTE_SITE, kMarkerRoutePin, sizeof kMarkerRoutePin);
     memcpy(game + DIF_TIMER_SITE, kTimerPin, sizeof kTimerPin);
@@ -379,9 +386,17 @@ static void DifficultyFixture(void)
     for (size_t i = 0; i < sizeof kStampRefs / sizeof kStampRefs[0]; i++) memcpy(game + kStampRefs[i].rva + kStampRefs[i].at, &kStampRefs[i].value, 4);
     for (size_t i = 0; i < sizeof kPlaceListRefs / sizeof kPlaceListRefs[0]; i++) memcpy(game + kPlaceListRefs[i].rva, &kPlaceListRefs[i].value, 4);
     for (size_t i = 0; i < sizeof kPlaceSetRefs / sizeof kPlaceSetRefs[0]; i++) memcpy(game + kPlaceSetRefs[i].rva, &kPlaceSetRefs[i].value, 4);
+    for (size_t i = 0; i < sizeof kImportantRefs / sizeof kImportantRefs[0]; i++) memcpy(game + kImportantRefs[i].rva + kImportantRefs[i].at, &kImportantRefs[i].value, 4);
+    for (size_t i = 0; i < sizeof kLinkedRefs / sizeof kLinkedRefs[0]; i++) memcpy(game + kLinkedRefs[i].rva + kLinkedRefs[i].at, &kLinkedRefs[i].value, 4);
+    {   /* the route graph's references and capacities (MoveGenerationBlock) */
+        const RouteSite* routes[8] = {kRouteNodeRefs, kRouteEdgeRefs, kRouteClassRefs, kRoutePointRefs, kRouteNodeCaps, kRouteEdgeCaps, kRouteClassCaps, kRoutePointCaps};
+        const size_t routeCounts[8] = {sizeof kRouteNodeRefs / sizeof kRouteNodeRefs[0], sizeof kRouteEdgeRefs / sizeof kRouteEdgeRefs[0], sizeof kRouteClassRefs / sizeof kRouteClassRefs[0], sizeof kRoutePointRefs / sizeof kRoutePointRefs[0], sizeof kRouteNodeCaps / sizeof kRouteNodeCaps[0], sizeof kRouteEdgeCaps / sizeof kRouteEdgeCaps[0], sizeof kRouteClassCaps / sizeof kRouteClassCaps[0], sizeof kRoutePointCaps / sizeof kRoutePointCaps[0]};
+        for (int a = 0; a < 8; a++) for (size_t i = 0; i < routeCounts[a]; i++) memcpy(game + routes[a][i].rva + routes[a][i].at, &routes[a][i].value, 4);
+    }
     for (int i = 0; i < 16; i++) { memcpy(game + kClusterRefs[i].rva + kClusterRefs[i].at, &kClusterRefs[i].value, 4); memcpy(game + kClusterCaps[i].rva + kClusterCaps[i].at, &kClusterCaps[i].value, 4); }
     memcpy(game + kClusterCountSites[0].site, kClusterCountPinA, 9); memcpy(game + kClusterCountSites[1].site, kClusterCountPinB, 7);
     for (int i = 0; i < 74; i++) memcpy(game + kObjectiveListSites[i].rva, kObjectiveListSites[i].pin, kObjectiveListSites[i].length);
+    for (int i = 0; i < 4; i++) memcpy(game + kObjectiveStartStubs[i].site, kObjectiveStartStubs[i].pin, kObjectiveStartStubs[i].length);
     memcpy(game + DIF_TELEMETRY_COUNT_SITE, kTelemetryCountPin, 10); memcpy(game + DIF_TELEMETRY_LOOP_SITE, kTelemetryLoopPin, 11);
     memcpy(game + DIF_SELECTION_END, kSelectionPin, 7);
     memcpy(game + DIF_GRANT_SITE, kGrantPin, 7);
@@ -396,7 +411,7 @@ static void DifficultyFixture(void)
         memcpy(game + DIF_GRANTS, sets, sizeof sets);
     }
     for (int i = 0; i < 3; i++) memcpy(game + kHudListSites[i].site, kHudListSites[i].pin, kHudListSites[i].length);
-    memcpy(game + DIF_BADGE_SITE, kBadgePin, 7);
+    memcpy(game + DIF_RESULT_LOOP, kResultLoopPin, 15); memcpy(game + DIF_PANEL_FILL, kPanelFillPin, 17);
     memcpy(game + DIF_NAV_SITE, kNavPin, 15); memcpy(game + DIF_NAV_SHIP_SITE, kNavShipPin, 10);
     *(uint64_t*)(game + DIF_MISSIONS + 3 * DIF_MISSION_ROW + 0x360) = DIF_ERADICATE_DELTA; /* row 3: Eradicate */
     game[DIF_MISSIONS + 5 * DIF_MISSION_ROW + 0x34] = 6; /* row 5: Blitz */
@@ -538,14 +553,17 @@ static void DifficultyFixture(void)
         memcpy(&rel, game + DIF_CELL_SPACING_SITE + 1, 4);
         uint8_t* cells = game + DIF_CELL_SPACING_SITE + 5 + rel;
         assert(game[DIF_CELL_SPACING_SITE] == 0xE9 && game[DIF_CELL_SPACING_SITE + 5] == 0x90 && !memcmp(cells, kCellSpacingStub, 15) && !memcmp(cells + 15, &r[1], 4));
-        float factor, quarter; memcpy(&rel, cells + 26, 4); factor = *(float*)(cells + 30 + rel); memcpy(&rel, cells + 40, 4); quarter = *(float*)(cells + 44 + rel);
-        assert(fabsf(factor - 1023.0f / 681.0f * 1.04f * 4.0f) < 1e-4f && quarter == 0.25f && !memcmp(cells + 44, kCellSpacingStub + 44, 3));
-        memcpy(&rel, cells + 48, 4); assert(cells[47] == 0xE9 && cells + 52 + rel == game + DIF_CELL_SPACING_SITE + 7);
-        /* FinalizeVoronoi's points: the same factor, read from the same place. */
+        /* kCellSpacingStub: the disk's factor (rel32 at 43), the square's for map type 1 (53), 0.25 (67), back (74) */
+        float factor, square, quarter; memcpy(&rel, cells + 43, 4); factor = *(float*)(cells + 47 + rel); memcpy(&rel, cells + 53, 4); square = *(float*)(cells + 57 + rel);
+        memcpy(&rel, cells + 67, 4); quarter = *(float*)(cells + 71 + rel);
+        assert(fabsf(factor - 1023.0f / 681.0f * 1.04f * 4.0f) < 1e-4f && fabsf(square - factor * sqrtf(4.0f / 3.14159265f)) < 1e-4f && quarter == 0.25f);
+        assert(!memcmp(cells + 19, kCellSpacingStub + 19, 24) && !memcmp(cells + 57, kCellSpacingStub + 57, 10) && !memcmp(cells + 71, kCellSpacingStub + 71, 4) && !memcmp(cells + 79, kCellSpacingStub + 79, 3));
+        memcpy(&rel, cells + 75, 4); assert(cells + 79 + rel == game + DIF_CELL_SPACING_SITE + 7);
+        /* FinalizeVoronoi's points (its rebuild over the whole site square): the square's factor, read from the same place. */
         memcpy(&rel, game + DIF_FINALIZE_SPACING_SITE + 1, 4);
         uint8_t* fin = game + DIF_FINALIZE_SPACING_SITE + 5 + rel;
         assert(game[DIF_FINALIZE_SPACING_SITE] == 0xE9 && game[DIF_FINALIZE_SPACING_SITE + 8] == 0x90 && !memcmp(fin, kFinalizeSpacingStub, 24) && !memcmp(fin + 24, &r[1], 4));
-        memcpy(&rel, fin + 34, 4); assert(*(float*)(fin + 38 + rel) == factor);
+        memcpy(&rel, fin + 34, 4); assert(*(float*)(fin + 38 + rel) == square);
         memcpy(&rel, fin + 48, 4); assert(*(float*)(fin + 52 + rel) == 0.25f);
         memcpy(&rel, fin + 53, 4); assert(fin[52] == 0xE9 && fin + 57 + rel == game + DIF_FINALIZE_SPACING_SITE + 9);
         /* The height zones' table moved to the arena: the clear allocates it, the loop loads its pointer, the height read
@@ -796,43 +814,61 @@ static void DifficultyFixture(void)
             assert(game[DIF_TELEMETRY_SITE] == 0xE9 && !memcmp(telemetry, kTelemetryStub, 16));
             memcpy(&rel, telemetry + 16, 4); assert(telemetry + 20 + rel == game + DIF_TELEMETRY_SITE + 5);
         }
-        /* The stamp index has 16383 slots: size, layout check and index agree. */
-        for (int i = 0; i < 5; i++) assert(!memcmp(game + kStampIndex[i].rva, kStampIndex[i].bytes, kStampIndex[i].length));
-        assert(*(uint32_t*)(game + 0xC0498B + 1) == 16384u * 4u + 7u && *(uint32_t*)(game + 0xC04C1A + 2) == 16383u &&
-            *(uint32_t*)(game + 0xC04CB2 + 3) == 16384u * 4u && *(uint32_t*)(game + 0xC04CCC + 3) == 16384u);
+        /* The stamp index has 32767 slots: size, layout check and index agree. */
+        for (size_t i = 0; i < sizeof kStampIndex / sizeof kStampIndex[0]; i++) assert(!memcmp(game + kStampIndex[i].rva, kStampIndex[i].bytes, kStampIndex[i].length));
+        assert(*(uint32_t*)(game + 0xC0498B + 1) == 32768u * 4u + 7u && *(uint32_t*)(game + 0xC04C1A + 2) == 32767u &&
+            *(uint32_t*)(game + 0xC04CB2 + 3) == 32768u * 4u && *(uint32_t*)(game + 0xC04CCC + 3) == 32768u);
         /* The locations moved to the end of a larger block, with 8192 places each. */
         for (size_t i = 0; i < sizeof kLocationRefs / sizeof kLocationRefs[0]; i++)
         {
             uint32_t v = *(uint32_t*)(game + kLocationRefs[i].rva + kLocationRefs[i].at), old = kLocationRefs[i].value;
             assert(old >= DIF_LOCATIONS_B ? v == DIF_LOCATIONS_B_NEW + (old - DIF_LOCATIONS_B) : v == DIF_LOCATIONS_A_NEW + (old - DIF_LOCATIONS_A));
         }
-        for (size_t i = 0; i < sizeof kLocationCaps / sizeof kLocationCaps[0]; i++) assert(*(uint32_t*)(game + kLocationCaps[i].rva + kLocationCaps[i].at) == 8192u);
+        for (size_t i = 0; i < sizeof kLocationCaps / sizeof kLocationCaps[0]; i++) assert(*(uint32_t*)(game + kLocationCaps[i].rva + kLocationCaps[i].at) == DIF_LOCATIONS);
         for (size_t i = 0; i < sizeof kGenerationBlockSize / sizeof kGenerationBlockSize[0]; i++)
-            assert(*(uint32_t*)(game + kGenerationBlockSize[i].rva + kGenerationBlockSize[i].at) == 0x15B1100u);
-        for (size_t i = 0; i < sizeof kPlaceListRefs / sizeof kPlaceListRefs[0]; i++) assert(*(uint32_t*)(game + kPlaceListRefs[i].rva) == 0x15AD500u);
-        for (size_t i = 0; i < sizeof kPlaceSetRefs / sizeof kPlaceSetRefs[0]; i++) assert(*(uint32_t*)(game + kPlaceSetRefs[i].rva) == 0x15AE500u);
+            assert(*(uint32_t*)(game + kGenerationBlockSize[i].rva + kGenerationBlockSize[i].at) == DIF_BLOCK_NEW);
+        for (size_t i = 0; i < sizeof kPlaceListRefs / sizeof kPlaceListRefs[0]; i++) assert(*(uint32_t*)(game + kPlaceListRefs[i].rva + kPlaceListRefs[i].at) == DIF_PLACES_NEW);
+        for (size_t i = 0; i < sizeof kPlaceSetRefs / sizeof kPlaceSetRefs[0]; i++) assert(*(uint32_t*)(game + kPlaceSetRefs[i].rva + kPlaceSetRefs[i].at) == DIF_PLACE_SET_NEW);
         for (int i = 0; i < 16; i++)
-            assert(*(uint32_t*)(game + kClusterRefs[i].rva + 4) == 0x15AF500u && *(uint32_t*)(game + kClusterCaps[i].rva + kClusterCaps[i].at) == 32);
+            assert(*(uint32_t*)(game + kClusterRefs[i].rva + kClusterRefs[i].at) == DIF_CLUSTERS_NEW && *(uint32_t*)(game + kClusterCaps[i].rva + kClusterCaps[i].at) == DIF_CLUSTERS);
         for (int i = 0; i < 2; i++)
         {
             int32_t to; memcpy(&to, game + kClusterCountSites[i].site + 1, 4);
             uint8_t* stub = game + kClusterCountSites[i].site + 5 + to;
-            assert(game[kClusterCountSites[i].site] == 0xE9 && !memcmp(stub, kClusterCountSites[i].stub, kClusterCountSites[i].backAt - 1));
+            assert(game[kClusterCountSites[i].site] == 0xE9);
+            uint8_t expect[64]; memcpy(expect, kClusterCountSites[i].stub, kClusterCountSites[i].backAt - 1);
+            for (int k = 0; k < 2; k++) /* the per-cluster numbers it reads (counts + 0x80 / + 0x84, the stub at counts + 0x40 i) */
+            {
+                int32_t read; memcpy(&read, stub + kClusterCountReads[i][k][0], 4);
+                assert(stub + kClusterCountReads[i][k][1] + read == stub - 0x40 * i + kClusterCountReads[i][k][2]);
+                memcpy(expect + kClusterCountReads[i][k][0], stub + kClusterCountReads[i][k][0], 4);
+            }
+            assert(!memcmp(stub, expect, kClusterCountSites[i].backAt - 1));
             memcpy(&to, stub + kClusterCountSites[i].backAt, 4); assert(stub + kClusterCountSites[i].backAt + 4 + to == game + kClusterCountSites[i].back);
         }
         for (size_t i = 0; i < sizeof kStampRefs / sizeof kStampRefs[0]; i++)
-            assert(*(uint32_t*)(game + kStampRefs[i].rva + kStampRefs[i].at) == 0x15A9280u);
+            assert(*(uint32_t*)(game + kStampRefs[i].rva + kStampRefs[i].at) == DIF_STAMPS_NEW);
         for (size_t i = 0; i < sizeof kMinimapRefs / sizeof kMinimapRefs[0]; i++)
             assert(*(uint32_t*)(game + kMinimapRefs[i].rva + kMinimapRefs[i].at) == MinimapMoved(kMinimapRefs[i].value));
         for (size_t i = 0; i < sizeof kMinimapCaps / sizeof kMinimapCaps[0]; i++)
-            assert(*(uint32_t*)(game + kMinimapCaps[i].rva + kMinimapCaps[i].at) == kMinimapCaps[i].value * 4u);
-        assert(DIF_MINIMAP_P_NEW == 0x13E9280u && DIF_MINIMAP_S_NEW == 0x14A9280u && DIF_MINIMAP_U_NEW == 0x1559280u && DIF_MINIMAP_V_NEW == 0x1569280u);
+            assert(*(uint32_t*)(game + kMinimapCaps[i].rva + kMinimapCaps[i].at) == kMinimapCaps[i].value * DIF_MINIMAP_SCALE);
         for (size_t i = 0; i < sizeof kLocationTypeRefs / sizeof kLocationTypeRefs[0]; i++)
-            assert(*(uint32_t*)(game + kLocationTypeRefs[i].rva + kLocationTypeRefs[i].at) == 0x13E7280u);
+            assert(*(uint32_t*)(game + kLocationTypeRefs[i].rva + kLocationTypeRefs[i].at) == DIF_LOCATION_TYPES_C_NEW);
         for (size_t i = 0; i < sizeof kLocationTypeCaps / sizeof kLocationTypeCaps[0]; i++)
-            assert(*(uint32_t*)(game + kLocationTypeCaps[i].rva + kLocationTypeCaps[i].at) == 512u);
-        assert(DIF_LOCATIONS_B_NEW == 0x1367280u && DIF_LOCATION_TYPES_C_NEW == 0x13E7280u && DIF_STAMPS_NEW == 0x15A9280u && DIF_OBJLIST_NEW == 0x15AD370u && DIF_PLACES_NEW == 0x15AD530u && DIF_PLACE_SET_NEW == 0x15AE530u && DIF_CLUSTERS_NEW == 0x15AF530u &&
-            DIF_IMPORTANT_NEW == 0x15B1130u && DIF_LINKED_NEW == 0x15F3130u && DIF_BLOCK_NEW == 0x15F9130u);
+            assert(*(uint32_t*)(game + kLocationTypeCaps[i].rva + kLocationTypeCaps[i].at) == DIF_LOCATION_TYPES);
+        {   /* the moved block's regions follow each other without overlapping (start, bytes), the block's end after the last */
+            const uint32_t region[][2] = {{DIF_LOCATIONS_A_NEW, DIF_LOCATIONS * 0xE0u}, {DIF_LOCATIONS_B_NEW, DIF_LOCATIONS * 0x40u},
+                {DIF_LOCATION_TYPES_C_NEW, DIF_LOCATION_TYPES * 0x10u}, {DIF_MINIMAP_P_NEW, 0x1000u * DIF_MINIMAP_SCALE * 0x30u},
+                {DIF_MINIMAP_S_NEW, 0x800u * DIF_MINIMAP_SCALE * 0x58u}, {DIF_MINIMAP_U_NEW, 0x1000u * DIF_MINIMAP_SCALE * 4u},
+                {DIF_MINIMAP_V_NEW, 0x4000u * DIF_MINIMAP_SCALE * 4u}, {DIF_STAMPS_NEW, DIF_STAMPS * 0x10u}, {DIF_OBJLIST_REGION, 0x2B0u},
+                {DIF_PLACES_NEW, DIF_PLACES * 8u}, {DIF_PLACE_SET_NEW, DIF_PLACE_SET * 0x10u}, {DIF_CLUSTERS_NEW, DIF_CLUSTERS * 0xE0u},
+                {DIF_IMPORTANT_NEW, DIF_IMPORTANT * 0x108u}, {DIF_LINKED_NEW, DIF_LINKED * 0x18u}, {DIF_ROUTE_NODES_NEW, DIF_ROUTE_NODES * 0x98u},
+                {DIF_ROUTE_EDGES_NEW, DIF_ROUTE_EDGES * 0x48u}, {DIF_ROUTE_CLASSES_NEW, DIF_ROUTE_EDGES}, {DIF_ROUTE_POINTS_NEW, DIF_ROUTE_POINTS * 8u}};
+            const size_t regions = sizeof region / sizeof region[0];
+            assert(DIF_LOCATIONS_A_NEW >= 0x11A7280u); /* after the vanilla block's last field */
+            for (size_t r = 1; r < regions; r++) assert(region[r][0] >= region[r - 1][0] + region[r - 1][1]);
+            assert(DIF_BLOCK_NEW >= region[regions - 1][0] + region[regions - 1][1] && DIF_OBJLIST_NEW == DIF_OBJLIST_REGION + 0xF0u);
+        }
         /* The objective list moved (every field displacement); the telemetry and selection go through their stubs. */
         for (int i = 0; i < 74; i++)
         {
@@ -878,11 +914,20 @@ static void DifficultyFixture(void)
                 memcpy(&rel, stub + 12, 4); assert(stub + 16 + rel == game + kHudListSites[i].site + kHudListSites[i].length);
             }
             assert(lists[0] == lists[1] && lists[1] == lists[2]);
-            memcpy(&rel, game + DIF_BADGE_SITE + 1, 4);
-            uint8_t* badge = game + DIF_BADGE_SITE + 5 + rel;
-            assert(game[DIF_BADGE_SITE] == 0xE9 && !memcmp(badge, kBadgeStub, 12));
-            memcpy(&rel, badge + 12, 4); assert(badge + 16 + rel == game + DIF_BADGE_SKIP);
-            memcpy(&rel, badge + 17, 4); assert(badge + 21 + rel == game + DIF_BADGE_NEXT);
+            /* the mission result's loop and the summary panel's fill into their thunks, which call the C and jump back */
+            const struct { uint32_t site, back; uint8_t length; const uint8_t* thunk; void* fn; } thunks[2] = {
+                {DIF_RESULT_LOOP, DIF_RESULT_DONE, 15, kResultThunk, (void*)ResultObjectives},
+                {DIF_PANEL_FILL, DIF_PANEL_DONE, 17, kPanelThunk, (void*)PanelObjectives}};
+            for (int i = 0; i < 2; i++)
+            {
+                memcpy(&rel, game + thunks[i].site + 1, 4);
+                uint8_t* thunk = game + thunks[i].site + 5 + rel;
+                void* fn; memcpy(&fn, thunk + 12, 8);
+                assert(game[thunks[i].site] == 0xE9 && game[thunks[i].site + thunks[i].length - 1] == 0x90);
+                assert(!memcmp(thunk, thunks[i].thunk, 12) && fn == thunks[i].fn && !memcmp(thunk + 20, thunks[i].thunk + 20, 7));
+                memcpy(&rel, thunk + 27, 4); assert(thunk + 31 + rel == game + thunks[i].back);
+            }
+            assert(g_resultFns.instanceId == (InstanceIdFn)(game + 0x5DBAE0u) && g_resultFns.progress == (ProgressFn)(game + 0x5DD140u));
         }
         /* Mixing: base row 20 (main 0xA1, optional 0xA9) and partner row 21 (main 0xB1, step 0xB2), both Automaton,
          * listed by operation 0. The partner's step is registered in the base as class 1, weight 0; the nested selection
@@ -3337,6 +3382,7 @@ int main(int argc, char** argv)
     PassivesFixture();
     RefsFixture();
     DirectorFixture();
+    ResultRowsFixture();
     ShotsFixture();
     RoundsFixture();
     PerksFixture();

@@ -337,7 +337,7 @@ static int FrameName(uintptr_t at, const GameModules* g, char* out, size_t size)
  * bytes, " frame" each): its number of frames. The crash note's stack scan lists every game address on the stack, stale
  * ones too; this is the real chain. A frame without unwind data is taken as a leaf once (its return address at RSP). The
  * walk stops at an unreadable stack, a frame that does not move, or `most` frames. */
-static int CallChain(const CONTEXT* from, const GameModules* g, int most, char* text, int size)
+static int CrashCallChain(const CONTEXT* from, const GameModules* g, int most, char* text, int size)
 {
     CONTEXT walk = *from;
     char name[160];
@@ -371,7 +371,7 @@ static int CallChain(const CONTEXT* from, const GameModules* g, int most, char* 
 static void CrashCallStack(const CONTEXT* fault, const GameModules* g)
 {
     char text[1600];
-    int depth = CallChain(fault, g, 32, text, (int)sizeof text);
+    int depth = CrashCallChain(fault, g, 32, text, (int)sizeof text);
     Note("crash: call chain (%d frames, unwound):%s", depth, text);
 }
 
@@ -521,7 +521,7 @@ static uint32_t HangThreads(const GameModules* g, DWORD windowThread)
         CloseHandle(thread);
         if (!got) continue;
         char text[900];
-        CallChain(&context, g, 20, text, (int)sizeof text);
+        CrashCallChain(&context, g, 20, text, (int)sizeof text);
         int isWindow = id == windowThread;
         if (isWindow) windowHash = HangHash(text);
         if (!isWindow && strstr(text, " g+") == NULL && strstr(text, " x+") == NULL) continue;

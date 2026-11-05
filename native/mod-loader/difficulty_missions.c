@@ -122,19 +122,48 @@ static const struct { uint32_t site; uint8_t length; uint8_t pin[8]; uint8_t acc
 #define DIF_MARKER_ROUTE_SKIP 0x18B5E22u
 static const uint8_t kMarkerLoopPin[8] = {0x48, 0x8B, 0x40, 0x38, 0x4C, 0x8B, 0x1C, 0xC8};  /* mov rax,[rax+0x38]; mov r11,[rax+rcx*8] */
 static const uint8_t kMarkerRoutePin[6] = {0x45, 0x8B, 0xE7, 0x41, 0x8B, 0xDF};              /* mov r12d,r15d; mov ebx,r15d */
-/* The mission result (0x62EC20: a record on 0x1380840's stack) lists badges (+0x14C8: {id, amount} x 32, count +0x15C8):
- * up to 11 before its objective loop, one per objective instance with a badge (def +0x54), up to 5 after, unchecked (the
- * 33rd overwrites the count). In the loop it appends only while fewer than 27 are listed (HellForge's backend ignores
- * badges). */
-#define DIF_BADGE_SITE 0x62FAB3u      /* movsxd rax, [rdi+0x15c8] */
-#define DIF_BADGE_NEXT 0x62FABAu
-#define DIF_BADGE_SKIP 0x62FB4Cu      /* the objective loop's next instance */
-static const uint8_t kBadgePin[7] = {0x48, 0x63, 0x87, 0xC8, 0x15, 0x00, 0x00};
-static const uint8_t kBadgeStub[21] = {
-    0x48, 0x63, 0x87, 0xC8, 0x15, 0x00, 0x00,                         /*  0 movsxd rax, [rdi+0x15c8] */
-    0x83, 0xF8, 0x1B,                                                 /*  7 cmp eax, 27 */
-    0x0F, 0x8D, 0, 0, 0, 0,                                           /* 10 jge 0x62FB4C (rel32 at 12) */
-    0xE9, 0, 0, 0, 0};                                                /* 16 jmp 0x62FABA (rel32 at 17) */
+/* The mission result (0x62EC20 fills a 0x15F0 record built by 0x126CAD0 on its callers' stacks) is the backend's
+ * Mission/end report (0x1380960 -> 0x12C2700, body 0x11E9680) and the summary screen's rows (0x1461B60). Its objective
+ * loop (0x62F93B..0x62FB59) writes one 0x10 row per objective instance at +0xC8 (32 places: key, objective hash,
+ * completed byte, progress), then the live event's row at index = instance count (0x62FC77), all unchecked: a 33rd
+ * instance writes over the participants (+0x2C8, 32 x 0x40), first participant 0's account id, extracted flag and loadout.
+ * Badges (+0x14C8: {id, amount} x 32, count +0x15C8): up to 11 before the loop, one per instance with a badge (def +0x54),
+ * up to 5 after (the 33rd overwrites the count). The body sends 32 rows and 32 participants, fixed loops (0x11E9AE1,
+ * 0x11E9E55), so a report cannot hold more than 32 objectives. The loop, its totals and the tail up to 0x62FCB7 are
+ * rebuilt in ResultObjectives: as the game writes them while the rows fit; past that the 31 or 32 rows kept are the
+ * completed objectives first, then main (class 0), then major and optional (2..4), in the game's order; every instance
+ * still counts towards the totals' badges. In the loop badges are appended while fewer than 27 are listed, after it
+ * while fewer than 32 (HellForge's backend ignores badges; it counts the completed rows, up to 20). */
+#define DIF_RESULT_LOOP 0x62F93Bu     /* mov r14, [objective manager]; xor esi, esi; xor ecx, ecx; mov [rsp+0x38], esi */
+#define DIF_RESULT_DONE 0x62FCB7u     /* mov rax, [rsp+0x50]: after the live event's row and badge */
+#define DIF_RESULT_ROWS 32u
+#define DIF_RESULT_SCAN 256u
+static const uint8_t kResultLoopPin[15] = {0x4C, 0x8B, 0x35, 0x5E, 0x74, 0xCF, 0x02, 0x33, 0xF6, 0x33, 0xC9, 0x89, 0x74, 0x24, 0x38};
+/* The summary screen's objective panel (screen+0xAAEB0; 0x19C4E70, once per visit of the MissionSummary screen) copies
+ * every instance into two 32-place tables (+0x1BD50 classes, +0x1BDD0 {key, objective hash}; the count +0x1BED0 right
+ * after them), then the live event, unchecked: the 33rd wrote its key over the count and the next read ended the game
+ * (s74p, 0x19C4FFA). It shows 6 main (class 0..1) and 6 major or optional (2..4) objectives, class 5 and above never, and
+ * looks rows up by key with rows[i] when none matches. PanelObjectives fills the tables as the game does while they fit;
+ * past that it keeps up to 15 of class 0..1 and fills the rest with 2..4, in the game's order (31 places with the live event). */
+#define DIF_PANEL_FILL 0x19C4FDFu     /* mov [rsi+0x1bed0], eax; 11 bytes of nop: the manager's count is not 0 */
+#define DIF_PANEL_DONE 0x19C5082u     /* xor edi, edi */
+static const uint8_t kPanelFillPin[17] = {0x89, 0x86, 0xD0, 0xBE, 0x01, 0x00, 0x66, 0x66, 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00};
+#define DIF_OBJECTIVE_MANAGER 0x3326DA0u
+#define DIF_LIVE_EVENTS 0x33264E0u
+#define DIF_NO_INSTANCE 0x3483C34u    /* what 0x5DBAE0 returns past the instances */
+#define DIF_NO_ENTITY 0x3483C20u
+typedef uint32_t* (*InstanceIdFn)(uintptr_t manager, uint32_t* id, uint32_t index); /* 0x5DBAE0: the i-th in the HUD's order */
+typedef uintptr_t (*IdRecordFn)(uint32_t id);                                         /* 0xFD9D40, 0x1255D60 */
+typedef uintptr_t (*SettingsFn)(uintptr_t key);                                       /* 0x4FA880 */
+typedef float (*ProgressFn)(uintptr_t unused, uint32_t id);                           /* 0x5DD140 (edx only) */
+static uintptr_t g_resultGame;
+static struct { InstanceIdFn instanceId; IdRecordFn record, objective; SettingsFn settings; ProgressFn progress; } g_resultFns;
+static volatile LONG g_resultCuts, g_panelCuts;
+/* thunks: mov rcx, rdi | rsi; mov rdx, rsp | r14; sub rsp, 0x20; mov rax, fn; call rax; add rsp, 0x20; jmp back */
+static const uint8_t kResultThunk[31] = {0x48, 0x89, 0xF9, 0x48, 0x89, 0xE2, 0x48, 0x83, 0xEC, 0x20, 0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,
+    0xFF, 0xD0, 0x48, 0x83, 0xC4, 0x20, 0xE9, 0, 0, 0, 0};
+static const uint8_t kPanelThunk[31] = {0x48, 0x89, 0xF1, 0x4C, 0x89, 0xF2, 0x48, 0x83, 0xEC, 0x20, 0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,
+    0xFF, 0xD0, 0x48, 0x83, 0xC4, 0x20, 0xE9, 0, 0, 0, 0};
 /* Mission stratagems (HfDifficulty.mission_stratagem): every player's mission
  * group (Reinforce, SOS, Resupply...; no loadout slot) starts from a table of 8 sets of 6 types (0x213F550), one per
  * mission kind, read only at 0x6AE35D (lea r14, [r15+table]; r15 the image base). At the added level it reads a copy
@@ -785,10 +814,202 @@ static uint32_t MixPartner(uint8_t* inputs, uint32_t count, uint32_t* ids, int32
     return call.count;
 }
 
+/* ---- the mission result and the summary panel ------------------------------------------------------------------- */
+
+static void ResultBadge(uint8_t* result, uint32_t id, float amount, int32_t limit)
+{
+    int32_t count;
+    memcpy(&count, result + 0x15C8, 4);
+    if (count < 0 || count >= limit) { InterlockedIncrement(&g_resultCuts); return; }
+    memcpy(result + 0x14C8 + 8 * count + 4, &amount, 4);
+    memcpy(result + 0x14C8 + 8 * count, &id, 4);
+    count++;
+    memcpy(result + 0x15C8, &count, 4);
+}
+
+/* The manager's instance index of an entity (0x62F9C8..0x62FA4E): open addressing over {entity, index} at +0x38, +0x40
+ * places (a power of two), +0x44 the empty key, +0x48 the multiplier; -1 when absent. */
+static int64_t ResultInstanceIndex(uintptr_t game, uintptr_t manager, uint32_t id)
+{
+    if (id == *(const uint32_t*)(game + DIF_NO_ENTITY)) return -1;
+    uint32_t places = *(const uint32_t*)(manager + 0x40), empty = *(const uint32_t*)(manager + 0x44);
+    uint32_t hash = *(const uint32_t*)(manager + 0x48) * id;
+    const uint32_t* table = *(const uint32_t* const*)(manager + 0x38);
+    for (uint32_t c = 0; c < places && table != NULL; c++)
+    {
+        uint32_t slot = (c + hash) & (places - 1);
+        if (table[2 * slot] == id) return table[2 * slot + 1] == 0xFFFFFFFFu ? -1 : (int64_t)table[2 * slot + 1];
+        if (table[2 * slot] == empty) return -1;
+    }
+    return -1;
+}
+
+typedef struct { uint32_t key, hash; float progress; uint8_t valid, done, rank, kept; } ResultRow;
+
+/* The objective loop and the tail of 0x62EC20 (from 0x62F93B to 0x62FCB7); frame is its rsp ([+0x31] the extraction
+ * flag, [+0x3C] its count, [+0x4C] the live event's key when its entity has no record). xmm8 there is 0.0 (0x62EEB4). */
+static void ResultObjectives(uint8_t* result, uint8_t* frame)
+{
+    uintptr_t game = g_resultGame;
+    InstanceIdFn instanceId = g_resultFns.instanceId;
+    IdRecordFn record = g_resultFns.record, objective = g_resultFns.objective;
+    SettingsFn settings = g_resultFns.settings;
+    ProgressFn progress = g_resultFns.progress;
+    uintptr_t manager = *(const uintptr_t*)(game + DIF_OBJECTIVE_MANAGER);
+    uint32_t none = *(const uint32_t*)(game + DIF_NO_INSTANCE);
+    uintptr_t events = *(const uintptr_t*)(game + DIF_LIVE_EVENTS);
+    int live = events != 0 && *(const uint32_t*)(events + 0x24) > 0;
+    ResultRow rows[DIF_RESULT_SCAN];
+    uint32_t count = *(const uint32_t*)(manager + 0x24), mainDone = 0, othersDone = 0, scanned = 0;
+    float mainSum = 0.0f, othersSum = 0.0f;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        ResultRow row = {0};
+        uint32_t id = 0;
+        instanceId(manager, &id, i);
+        manager = *(const uintptr_t*)(game + DIF_OBJECTIVE_MANAGER);
+        if (id != none)
+        {
+            uintptr_t rec = record(id);
+            uintptr_t set = rec != 0 ? settings(*(const uintptr_t*)rec) : 0;
+            int64_t index = ResultInstanceIndex(game, manager, id);
+            if (set != 0 && index >= 0) /* the game reads both unchecked */
+            {
+                uintptr_t instance = *(const uintptr_t*)(manager + 0x60) + (uintptr_t)index * 0x1078u;
+                uintptr_t def = objective(id);
+                int32_t cls = *(const int32_t*)(set + 0xAC0);
+                if (cls == 5) cls = *(const int32_t*)(instance + 0x1038);
+                int32_t state = *(const int32_t*)(instance + 0x1018);
+                uint32_t badge = *(const uint32_t*)(def + 0x54);
+                row.valid = 1;
+                row.key = *(const uint32_t*)(rec + 0x10);
+                row.hash = *(const uint32_t*)def;
+                row.done = state == 2;
+                if (badge != 0)
+                {
+                    float amount = progress(0, id) * (float)*(const uint32_t*)(result + 0x54);
+                    if (amount > 0.0f) ResultBadge(result, badge, amount, 27);
+                }
+                else if (state == 2)
+                {
+                    if (cls == 0) mainDone = 1;
+                    else if ((uint32_t)(cls - 2) <= 2u) othersDone++;
+                }
+                else if (*(const uint8_t*)(set + 0xABD) != 0)
+                {
+                    row.progress = progress(0, id);
+                    if (row.progress > 0.0f)
+                    {
+                        int32_t own = *(const int32_t*)(instance + 0x1038);
+                        if (own == 0) mainSum += row.progress;
+                        else if ((uint32_t)(own - 2) <= 1u) othersSum += row.progress;
+                    }
+                }
+                row.rank = (uint8_t)(row.done ? 0 : cls == 0 ? 1 : (uint32_t)(cls - 2) <= 2u ? 2 : 3);
+            }
+        }
+        if (scanned < DIF_RESULT_SCAN) rows[scanned++] = row;
+        count = *(const uint32_t*)(manager + 0x24);
+    }
+    uint32_t next = 0;
+    if (count + (uint32_t)live <= DIF_RESULT_ROWS)
+    {
+        for (uint32_t i = 0; i < scanned; i++)
+        {
+            uint8_t* to = result + 0xC8 + 0x10 * i;
+            memcpy(to + 0xC, &rows[i].progress, 4);
+            if (!rows[i].valid) continue;
+            memcpy(to, &rows[i].key, 4); memcpy(to + 4, &rows[i].hash, 4); to[8] = rows[i].done;
+        }
+        next = count;
+    }
+    else
+    {
+        uint32_t keep = DIF_RESULT_ROWS - (uint32_t)live, kept = 0;
+        for (uint8_t rank = 0; rank < 4 && kept < keep; rank++)
+            for (uint32_t i = 0; i < scanned && kept < keep; i++)
+                if (rows[i].valid && rows[i].rank == rank) { rows[i].kept = 1; kept++; }
+        for (uint32_t i = 0; i < scanned; i++)
+        {
+            if (!rows[i].kept) continue;
+            uint8_t* to = result + 0xC8 + 0x10 * next++;
+            memcpy(to, &rows[i].key, 4); memcpy(to + 4, &rows[i].hash, 4); to[8] = rows[i].done; memcpy(to + 0xC, &rows[i].progress, 4);
+        }
+        if (InterlockedIncrement(&g_resultCuts) == 1)
+            Note("difficulty: the mission result lists %u of %u objective instances (its report holds 32 rows; the completed first)", next, count);
+    }
+    float total = (float)mainDone + mainSum, most = *(const float*)(game + 0x23C6D70u);
+    if (total > most) total = most;
+    if (total > 0.0f) ResultBadge(result, 0x34FFE656u, total, 32);
+    if (othersDone != 0 && (float)othersDone + othersSum > 0.0f) ResultBadge(result, 0x6833DD7Au, (float)othersDone + othersSum, 32);
+    if (frame[0x31] != 0)
+    {
+        ResultBadge(result, 0x60D87AD4u, 1.0f, 32);
+        float extracted = (float)*(const uint32_t*)(frame + 0x3C);
+        if (extracted > 0.0f) ResultBadge(result, 0xECD665ACu, extracted, 32);
+    }
+    if (live)
+    {
+        uint32_t id = 0;
+        instanceId(manager, &id, *(const uint32_t*)(manager + 0x24));
+        uintptr_t rec = record(id);
+        if (rec != 0) memcpy(frame + 0x4C, (const void*)(rec + 0x10), 4);
+        uint8_t* to = result + 0xC8 + 0x10 * next;
+        float one = 1.0f;
+        uint32_t hash = DIF_LIVE_EVENT_OBJECTIVE;
+        to[8] = 1;
+        memcpy(to, frame + 0x4C, 4); memcpy(to + 0xC, &one, 4); memcpy(to + 4, &hash, 4);
+        ResultBadge(result, 0xADDD8C40u, 1.0f, 32);
+    }
+}
+
+/* The summary panel's tables (0x19C4FDF..0x19C5082; the manager's count is not 0 there). */
+static void PanelObjectives(uint8_t* panel, uintptr_t manager)
+{
+    uintptr_t game = g_resultGame;
+    IdRecordFn objective = g_resultFns.objective;
+    uintptr_t events = *(const uintptr_t*)(game + DIF_LIVE_EVENTS);
+    uint32_t live = events != 0 && *(const uint32_t*)(events + 0x24) > 0 ? 1u : 0u;
+    uint32_t count = *(const uint32_t*)(manager + 0x24), keep = DIF_RESULT_ROWS - live, n = 0, mainKept = 0, othersKept = 0;
+    int fits = count + live <= DIF_RESULT_ROWS;
+    const uintptr_t* list = *(const uintptr_t* const*)(manager + 0x50);
+    const uint8_t* instances = *(const uint8_t* const*)(manager + 0x60);
+    uint32_t* classes = (uint32_t*)(panel + 0x1BD50), *entries = (uint32_t*)(panel + 0x1BDD0);
+    uint32_t mainCap = 0;
+    for (uint32_t i = 0; i < count && !fits; i++)
+        if (list[i] != 0 && *(const uint32_t*)(instances + (size_t)i * 0x1078u + 0x1038u) <= 1) mainCap++;
+    if (mainCap > 15) mainCap = 15;
+    for (uint32_t i = 0; i < count && n < keep; i++)
+    {
+        uintptr_t instance = list[i];
+        uint32_t cls = *(const uint32_t*)(instances + (size_t)i * 0x1078u + 0x1038u);
+        if (instance == 0) continue;
+        if (!fits)
+        {
+            if (cls > 4) continue;
+            if (cls <= 1 ? mainKept >= mainCap : othersKept >= keep - mainCap) continue;
+            if (cls <= 1) mainKept++; else othersKept++;
+        }
+        entries[2 * n + 1] = *(const uint32_t*)objective(*(const uint32_t*)(instance + 8));
+        entries[2 * n] = *(const uint32_t*)(instance + 0x10);
+        classes[n++] = cls;
+    }
+    if (!fits && InterlockedIncrement(&g_panelCuts) == 1)
+        Note("difficulty: the mission summary lists %u of %u objective instances (32 places; it shows 6 + 6)", n, count);
+    if (live)
+    {
+        classes[n] = 2;
+        entries[2 * n + 1] = DIF_LIVE_EVENT_OBJECTIVE;
+        entries[2 * n] = 0x7FFF;
+        n++;
+    }
+    *(uint32_t*)(panel + 0x1BED0) = n;
+}
+
 /* ---- the checks ------------------------------------------------------------------------------------------------- */
 
 /* What more objectives need (a generation block of the new layout): the mission-end telemetry, the selection's end, the
- * HUD's objective list and the mission result's badges. */
+ * HUD's objective list, the mission result's rows and badges, and the summary's objective panel. */
 static const char* ObjectiveStubSitesFailed(uintptr_t game)
 {
     if (!DifficultyNeedsBlock()) return NULL;
@@ -800,8 +1021,10 @@ static const char* ObjectiveStubSitesFailed(uintptr_t game)
     for (int i = 0; i < 3; i++)
         if (SafeRead(game + kHudListSites[i].site, bytes, kHudListSites[i].length) || memcmp(bytes, kHudListSites[i].pin, kHudListSites[i].length) != 0)
             return "the HUD's objective list is not the reviewed one (more objectives need it)";
-    if (SafeRead(game + DIF_BADGE_SITE, bytes, 7) || memcmp(bytes, kBadgePin, 7) != 0)
-        return "the mission result's badges are not the reviewed ones (more objectives need them)";
+    uint8_t sites[17];
+    if (SafeRead(game + DIF_RESULT_LOOP, sites, 15) || memcmp(sites, kResultLoopPin, 15) != 0 ||
+        SafeRead(game + DIF_PANEL_FILL, sites, 17) || memcmp(sites, kPanelFillPin, 17) != 0)
+        return "the mission result's objective rows or the summary's objective panel are not the reviewed ones (more objectives need them)";
     return NULL;
 }
 
@@ -843,10 +1066,19 @@ static const char* PrepareObjectiveStubs(DifficultyInstall* d)
     rel = (int32_t)(game + DIF_TELEMETRY_LOOP - (uintptr_t)(loop + 20)); memcpy(loop + 16, &rel, 4);
     rel = (int32_t)(game + DIF_TELEMETRY_DONE - (uintptr_t)(loop + 25)); memcpy(loop + 21, &rel, 4);
     memcpy(selection, kSelectionStub, sizeof kSelectionStub);
-    uint8_t* badge = objectiveStubs + 0xD0;
-    memcpy(badge, kBadgeStub, sizeof kBadgeStub);
-    rel = (int32_t)(game + DIF_BADGE_SKIP - (uintptr_t)(badge + 16)); memcpy(badge + 12, &rel, 4);
-    rel = (int32_t)(game + DIF_BADGE_NEXT - (uintptr_t)(badge + 21)); memcpy(badge + 17, &rel, 4);
+    uint8_t* thunks = objectiveStubs + 0xD0; /* the result's (+0xD0) and the panel's (+0xF0) thunks */
+    uint64_t fn = (uint64_t)(uintptr_t)ResultObjectives;
+    g_resultGame = game;
+    g_resultFns.instanceId = (InstanceIdFn)(game + 0x5DBAE0u);
+    g_resultFns.record = (IdRecordFn)(game + 0xFD9D40u);
+    g_resultFns.objective = (IdRecordFn)(game + 0x1255D60u);
+    g_resultFns.settings = (SettingsFn)(game + 0x4FA880u);
+    g_resultFns.progress = (ProgressFn)(game + 0x5DD140u);
+    memcpy(thunks, kResultThunk, sizeof kResultThunk); memcpy(thunks + 12, &fn, 8);
+    rel = (int32_t)(game + DIF_RESULT_DONE - (uintptr_t)(thunks + 31)); memcpy(thunks + 27, &rel, 4);
+    fn = (uint64_t)(uintptr_t)PanelObjectives;
+    memcpy(thunks + 0x20, kPanelThunk, sizeof kPanelThunk); memcpy(thunks + 0x20 + 12, &fn, 8);
+    rel = (int32_t)(game + DIF_PANEL_DONE - (uintptr_t)(thunks + 0x20 + 31)); memcpy(thunks + 0x20 + 27, &rel, 4);
     uint8_t* list = AllocateNearGame(game, DIF_HUD_LIST * 4);
     if (list == NULL) return "no memory within 2 GB of game.dll for the HUD's objective list";
     for (int i = 0; i < 3; i++)
@@ -1229,11 +1461,12 @@ static const char* JumpToObjectiveStubs(DifficultyInstall* d)
             ApiLog(g_difficulty.mod, "difficulty %s: the objective list could not grow (a generation block existed already); missions keep one main objective", g_difficulty.name);
         return NULL;
     }
-    const struct { uint32_t site; uint8_t length, at; } jumps[7] = {{DIF_TELEMETRY_COUNT_SITE, 10, 0}, {DIF_TELEMETRY_LOOP_SITE, 11, 0x20},
-        {DIF_SELECTION_END, 7, 0x40}, {0x18B4EA0u, 7, 0xA0}, {0x18B4EB4u, 7, 0xB0}, {0x18B4F00u, 8, 0xC0}, {DIF_BADGE_SITE, 7, 0xD0}};
-    for (int i = 0; i < 7; i++)
+    const struct { uint32_t site; uint8_t length, at; } jumps[8] = {{DIF_TELEMETRY_COUNT_SITE, 10, 0}, {DIF_TELEMETRY_LOOP_SITE, 11, 0x20},
+        {DIF_SELECTION_END, 7, 0x40}, {0x18B4EA0u, 7, 0xA0}, {0x18B4EB4u, 7, 0xB0}, {0x18B4F00u, 8, 0xC0}, {DIF_RESULT_LOOP, 15, 0xD0},
+        {DIF_PANEL_FILL, 17, 0xF0}};
+    for (int i = 0; i < 8; i++)
     {
-        uint8_t jump[11];
+        uint8_t jump[17];
         memset(jump, 0x90, sizeof jump);
         jump[0] = 0xE9;
         int32_t rel = DifficultyJumpRel(d->game + jumps[i].site, (uintptr_t)(d->objectiveStubs + jumps[i].at));
