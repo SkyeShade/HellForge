@@ -12,10 +12,12 @@ public static class ModPackage
     static readonly DateTimeOffset Stamp = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     // The files that go into the zip, relative to the mod folder with '/'.
+    // A recipe's rebuilt game patch files (ModManifest.AssetOutputs) are the game's and never go in: the recipe does.
     public static List<string> Files(ModManifest mod) =>
         Directory.GetFiles(mod.Folder, "*", SearchOption.AllDirectories)
             .Select(f => Path.GetRelativePath(mod.Folder, f).Replace('\\', '/'))
             .Where(f => !ModCatalog.IsWorkspaceFile(f))
+            .Where(f => !mod.AssetOutputs.Contains(f, StringComparer.OrdinalIgnoreCase))
             .Where(f => !mod.HasSource || !(f == mod.CodeDll || f.EndsWith(".lib", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)))
             .Order(StringComparer.Ordinal).ToList();
 

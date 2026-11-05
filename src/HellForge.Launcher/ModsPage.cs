@@ -49,7 +49,7 @@ public partial class MainWindow
     void InitializeMods()
     {
         OpenModsButton.Click += (_, _) => { if (paths.ModsFolder != null) OpenFolder(paths.ModsFolder); };
-        RefreshModsButton.Click += (_, _) => RefreshMods();
+        RefreshModsButton.Click += (_, _) => { ForgetAssetTries(); RefreshMods(); };
         AddModsButton.Click += async (_, _) => await PickMods();
         OpenModsButton.IsEnabled = RefreshModsButton.IsEnabled = paths.ModsFolder != null;
         AddModsButton.IsEnabled = paths.InstallRoot != null;
@@ -190,6 +190,8 @@ public partial class MainWindow
             ModsList.Children.Add(new Border { Classes = { "card" }, Child = list });
         }
         AddPendingCard();
+        AddAssetCard(mods);
+        RebuildModAssets(mods);
         AddModKitCards(mods.Select(m => Path.GetFullPath(m.Folder)).ToList());
         if (mods.Count > 0)
         {

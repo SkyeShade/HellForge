@@ -10,6 +10,14 @@ Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.m
 
 On `dev`, since 0.4.0-beta.
 
+### Added
+
+- **The asset kit: share mods without Arrowhead's files.** `assets-check` shows which bytes of a mod's game patch files
+  are the game's and from which build. `assets-strip`, and `package-mod` by itself, ship the author's own bytes plus a
+  recipe. Each player's HellForge rebuilds the files from that recipe, out of their own game, checked by SHA-256. The
+  Mods page and every session rebuild such mods before they load; friends and mod sync compare and send the recipe,
+  never the game's bytes ([the asset kit](docs/modding/assets.md)).
+
 ### For contributors
 
 - A "Docs lint" CI job keeps docs and code comments readable. It checks page types, paragraph, sentence and page
