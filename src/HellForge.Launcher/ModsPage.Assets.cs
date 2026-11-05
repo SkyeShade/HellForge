@@ -123,17 +123,19 @@ public partial class MainWindow
     // The sign-in's QR code and what the fetch is doing, with a way to stop it.
     void AddAssetFetchView(StackPanel list)
     {
-        if (assetQr != null)
-            list.Children.Add(new Border
-            {
-                Background = Brushes.White, Padding = new(8), HorizontalAlignment = HorizontalAlignment.Left,
-                Child = new Viewbox { Width = 180, Height = 180, Child = new Avalonia.Controls.Shapes.Path { Data = assetQr, Fill = Brushes.Black } },
-            });
+        if (assetQr != null) list.Children.Add(QrView(assetQr));
         list.Children.Add(Muted(assetFetchStatus));
         var cancel = new Button { Content = "Cancel", Classes = { "flat" }, HorizontalAlignment = HorizontalAlignment.Left };
         cancel.Click += (_, _) => assetFetch?.Cancel();
         list.Children.Add(cancel);
     }
+
+    // A sign-in QR code, black on white, for the Steam app to scan.
+    static Border QrView(Geometry qr) => new()
+    {
+        Background = Brushes.White, Padding = new(8), HorizontalAlignment = HorizontalAlignment.Left,
+        Child = new Viewbox { Width = 180, Height = 180, Child = new Avalonia.Controls.Shapes.Path { Data = qr, Fill = Brushes.Black } },
+    };
 
     async Task FetchModAssets(List<ModManifest> mods)
     {

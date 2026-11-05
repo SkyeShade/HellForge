@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using HellForge.Core;
 using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
+using HellForge.SteamDownload;
 
 // The asset kit (docs/modding/assets.md): an author strips Arrowhead's bytes out of a mod's game patch files, and the
 // player's HellForge rebuilds them into the mod's folder from its own game before the mod loads; friends, mod sync and
@@ -175,6 +176,29 @@ static class AssetKitTests
             check(!File.Exists(Path.Combine(shipped, ModAssets.RecordName)), "no record written");
             var problems = ModAssets.Prepare([shipped], () => []);
             check(problems.Count == 1 && problems[0].Reason.Contains("553853:42") && problems[0].Missing?.Single().Build == "553853:42", "the session's preparation reports it");
+        });
+
+        test("Prepare for sharing zips a stripped mod's recipe, never the files rebuilt from it, and a mod without patch files as it is", () =>
+        {
+            var shipped = AssetKit.Strip(Author("share"), index, games, Out("share")).ShippedFolder!;
+            ModAssets.Ensure(shipped, () => games);
+            var exports = Path.Combine(root, "asset-kit-exports");
+            var packaged = AssetSharing.Package(ModCatalog.Parse(shipped, profile), exports, new(null));
+            check(packaged.Assets == null, "a mod with a recipe is not checked again");
+            check(Path.GetFileName(packaged.Zip) == ModPackage.BaseName(ModCatalog.Parse(shipped, profile)) + ".zip", packaged.Zip);
+            using (var zip = System.IO.Compression.ZipFile.OpenRead(packaged.Zip))
+            {
+                var names = zip.Entries.Select(e => e.FullName[(e.FullName.IndexOf('/') + 1)..]).ToList();
+                check(names.Contains(Recipe.FileName) && names.Contains(Recipe.LiteralsName) && names.Count == packaged.Files, string.Join(", ", names));
+                check(!names.Any(n => n.StartsWith("data/", StringComparison.Ordinal) || n.StartsWith('.')), "nothing rebuilt or recorded goes out: " + string.Join(", ", names));
+            }
+
+            var plain = Path.Combine(root, "asset-kit", "plain");
+            if (Directory.Exists(plain)) Directory.Delete(plain, true);
+            Directory.CreateDirectory(plain);
+            File.WriteAllText(Path.Combine(plain, "hellforge-mod.json"), """{"format":1,"id":"test.plain","name":"Plain","version":"1.0.0"}""");
+            File.WriteAllText(Path.Combine(plain, DataSpecs.FileName), """{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"test/plain/unit"}]}]}""");
+            check(AssetSharing.Package(ModCatalog.Parse(plain, profile), exports, new(null)) is { Assets: null, Files: 2 }, "a data spec mod (no patch files) is zipped as it is");
         });
 
         test("A mod with nothing from the game ships as it is; a stripped copy is not stripped again", () =>

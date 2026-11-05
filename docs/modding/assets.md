@@ -20,6 +20,14 @@ You keep working the way you do now, with your usual tools and your patch files.
 
 ## Quick start
 
+In the launcher, choose **Prepare for sharing** in your mod's ⋮ menu on the Mods page. HellForge builds the mod if it
+has sources, takes the game's bytes out of its patch files, and writes the zip to `<installation>/exports`. A card then
+says how much of the game's content is out, with buttons for the zip and the [report](#what-the-check-tells-you).
+When some bytes matched no build on your PC, **CHECK OLDER BUILDS** prepares it again against every build since
+release ([cut content](#cut-content-from-older-builds)).
+
+From the command line:
+
 ```text
 HellForge.Cli assets-check --mod <installation>/mods/my-mod     # which bytes are the game's, and from which build
 HellForge.Cli package-mod --mod <installation>/mods/my-mod      # the zip to share, with the game's bytes taken out
