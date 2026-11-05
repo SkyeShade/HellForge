@@ -190,7 +190,8 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 - **Linux: controllers work in a sandboxed game.** The sandbox's device folder held no input device at all, so no
   controller of any kind reached the game, only keyboard and mouse. It now holds the game controllers connected when the
   session starts (wired or Bluetooth), and still no keyboard, mouse or virtual input device: those stay out, so code in
-  the game can't read what you type elsewhere. A controller connected while the game runs needs the next session.
+  the game can't read what you type elsewhere. A controller connected while the game runs needs the next session
+  (#254).
 - **Linux: after MOD SYNC's Restart, a sandboxed game starts again.** The game closed and the launcher never started it
   with the host's mods: the sandbox stopped the game before the session noted why it stopped, so the launcher did not
   know to restart it. The session now notes it either way. The game ending because HellForge stopped it (STOP, or a mod
