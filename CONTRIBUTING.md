@@ -53,10 +53,10 @@ breaks these rules is closed, and anything of this kind that reaches the reposit
   merged pull request's branch, so a release never comes from `dev` itself: that would delete `dev`. After a release,
   `main` is merged back into `dev`. A pull request into `main` from any other branch fails its checks.
 - **Checks:** every pull request runs CI (`.github/workflows/ci.yml`): the structure lint
-  (`py -3 scripts/lint/lint.py check --warnings-as-errors`, [scripts/lint/README.md](scripts/lint/README.md)), where
-  its warnings are errors too, the build, where warnings are errors, and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game
-  editor are built and tested on a maintainer's PC, since they need the game's files. CI also checks the engine's
-  version (below).
+  (`py -3 scripts/lint/lint.py check --warnings-as-errors`, [scripts/lint/README.md](scripts/lint/README.md)), where its
+  warnings are errors too, the docs lint ([below](#writing-docs-and-comments)), the build, where warnings are errors,
+  and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game editor are built
+  and tested on a maintainer's PC, since they need the game's files. CI also checks the engine's version (below).
 - **The engine's version:** the engine has its own version, `EngineVersion` in `Directory.Build.props`, bumped with
   HellForge's `Version` in the version-bump pull request before each test build or release, whenever the engine
   changed since the last bump. An ordinary pull request does not bump it: say "engine bump with the next build" in its
@@ -111,6 +111,25 @@ one before, and its `nightly` tag moves to the commit it was built from.
 - **The release pull request** renames Unreleased to the version and date (`## 0.2.0-beta (2026-10-22)`), puts a new
   empty Unreleased above it, and the GitHub release notes are written from that section. Issues its Fixed lines name
   are closed when the release lands.
+
+## Writing docs and comments
+
+Write for a reader who has five minutes and no AI to summarise for them. CI's "Docs lint" job checks what it can
+([scripts/docs-lint/README.md](scripts/docs-lint/README.md)).
+
+- **One page, one type.** A page under `docs/` is a tutorial, a how-to, a reference or an explanation
+  ([Diátaxis](https://diataxis.fr/)). Say which under the title (`<!-- diataxis: how-to -->`) and link the page from
+  [docs/README.md](docs/README.md). When a page needs two types, make two pages.
+- **The answer first.** Open with what the reader came for: the step, the fact, the reason. Background comes after.
+- **Short.** At most 35 words a sentence and 100 a paragraph. A sequence is a numbered list, and a set of facts is a
+  table or a bulleted list.
+- **No history in docs or comments.** Write what is true now. How it got there belongs in the commit message, the pull
+  request and the [changelog](CHANGELOG.md). A dated research log is not documentation; keep its findings, not its
+  diary.
+- **Comments say why.** Name the reason the code is the way it is: a constraint, a game behaviour, a trap. Do not repeat
+  what the code says. A block of more than 10 lines fails the structure lint (R16): move it into `docs/`.
+- **Plain words.** No filler (`please note`, `in order to`) and no hedges (`simply`, `basically`). Vale flags them.
+- **Placeholders in backticks**, such as `<installation>`. Outside backticks, GitHub hides `<host>` as an HTML tag.
 
 ## Building and testing
 

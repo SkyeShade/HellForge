@@ -48,7 +48,7 @@ Use the SDK where it reaches, and hooks where it does not:
 | anything else: a function with no event, a rule in code, a value no mapping names | hooks, code patches, memory |
 
 The SDK's ways are checked against the game build, reported when they conflict, and kept working as HellForge grows.
-A hook is yours to get right, and is as powerful as you make it.
+A hook is yours to get right.
 
 ## How a hook works
 
@@ -327,7 +327,7 @@ else
 
 Your log says `hooked game.dll+0x... (priority 0; 1 of 2 in its chain)`. When a function gets a second owner,
 `modloader.log` says `hooks: shared hook game.dll+0x..., first to last: a (priority 5), then b (priority 0), then
-HellForge (the damage consumer) (priority 0)`, and each owner's log has the same line without `hooks: `. Each session's
+HellForge (the damage consumer) (priority 0)`, and each owner's log has the same line without the `hooks:` prefix. Each session's
 `hooks.tsv` lists every hooked function with its owners in order.
 
 ## Patching code

@@ -1,8 +1,8 @@
 # The checks every pull request into dev or main must pass (CONTRIBUTING.md, "Branches and pull requests"): the
-# structure lint (scripts/lint/README.md), the engine version check, the nightly build's scripts, the Windows build
-# (warnings are errors) and the checks that need no game, as scripts/Test.ps1 runs them, and the Linux launcher, CLI and
-# tests. The engine and the in-game editor build and test on a maintainer's PC: they need the game's files, the
-# Steamworks SDK and a GPU.
+# structure lint (scripts/lint/README.md), the docs lint (scripts/docs-lint/README.md), the engine version check, the
+# nightly build's scripts, the Windows build (warnings are errors) and the checks that need no game, as
+# scripts/Test.ps1 runs them, and the Linux launcher, CLI and tests. The engine and the in-game editor build and test
+# on a maintainer's PC: they need the game's files, the Steamworks SDK and a GPU.
 name: CI
 
 on:
@@ -35,6 +35,67 @@ jobs:
       # --warnings-as-errors, a new R10, R11 or R15 one fails as an error rule's does (scripts/lint/README.md, "The baseline")
       - name: scripts/lint/lint.py check --warnings-as-errors
         run: python scripts/lint/lint.py check --warnings-as-errors
+
+  # Docs and code comments (scripts/docs-lint/README.md): page types and prose sizes against the baseline, Markdown
+  # structure, links, and Vale's word checks. The tool versions are pinned; update them here and in the README.
+  docs:
+    name: Docs lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VALE_VERSION: 3.24.0
+      VALE_SHA256: 867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214
+      LYCHEE_VERSION: 0.24.2
+      LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+      MARKDOWNLINT_CLI2_VERSION: 0.23.3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the pull request's base, for the files it changes
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: The docs lint's own tests
+        run: python -m unittest discover -s scripts/docs-lint/tests -v
+      # D1 and D2 fail; the size rules (D3-D5) are annotations until the docs are split (scripts/docs-lint/README.md)
+      - name: scripts/docs-lint/docs_lint.py check
+        run: python scripts/docs-lint/docs_lint.py check
+      - name: markdownlint
+        if: ${{ !cancelled() }}
+        run: npx --yes "markdownlint-cli2@$MARKDOWNLINT_CLI2_VERSION" '**/*.md'
+      - name: Install Vale and lychee
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          vale=vale_${VALE_VERSION}_Linux_64-bit.tar.gz
+          curl -fsSLo "$vale" "https://github.com/errata-ai/vale/releases/download/v$VALE_VERSION/$vale"
+          echo "$VALE_SHA256  $vale" | sha256sum -c -
+          tar -xzf "$vale" -C bin vale
+          lychee=lychee-x86_64-unknown-linux-gnu
+          curl -fsSLo "$lychee.tar.gz" \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v$LYCHEE_VERSION/$lychee.tar.gz"
+          echo "$LYCHEE_SHA256  $lychee.tar.gz" | sha256sum -c -
+          tar -xzf "$lychee.tar.gz" -C bin --strip-components=1 "$lychee/lychee"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      # relative links and #anchors only: no network, so it never fails for a site that is down
+      - name: Links (lychee, offline)
+        if: ${{ !cancelled() }}
+        run: lychee --offline --include-fragments --no-progress --root-dir "$GITHUB_WORKSPACE" $(git ls-files '*.md')
+      # errors fail, in every file; warnings show on the files the pull request changes and do not fail
+      - name: Vale
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          kinds=('*.md' '*.cs' '*.c' '*.h' '*.cpp')
+          vale --minAlertLevel=error --output=.vale/github-annotations.tmpl $(git ls-files "${kinds[@]}")
+          if [ -n "$BASE_REF" ]; then
+            changed=$(git diff --name-only --diff-filter=AM "origin/$BASE_REF...HEAD" -- "${kinds[@]}")
+            if [ -n "$changed" ]; then
+              vale --minAlertLevel=warning --output=.vale/github-annotations.tmpl --no-exit $changed
+            fi
+          fi
 
   # Whether the engine changed since the commit that set EngineVersion (scripts/engine-version/engine_version.py,
   # CONTRIBUTING.md "The engine's version"): a warning on an ordinary pull request, a failure on a version-bump pull

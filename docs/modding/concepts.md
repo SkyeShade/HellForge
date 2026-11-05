@@ -56,7 +56,7 @@ A mod must change something: code, data, a data spec, stats or native edits. A m
 
 ## When your code runs
 
-```
+```text
 session start   HellForge builds the source mods, stages data mods into the game copy
 game starts     the loader calls each code mod's hellforge_mod_init, in the order of mod ids    loader thread
                 HF_EVENT_GAME_LOADED first: game.dll's code is ready (find functions, hook)     loader's watch thread

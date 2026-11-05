@@ -4,9 +4,18 @@ What changed in each HellForge release, newest first, as a player updating from 
 are GitHub issues and pull requests (#24); short hashes are commits on `dev`. Each pull request adds its lines under
 Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.md#changelog)).
 
+<!-- docs-lint-ok: D5 a release log grows with every release; each section stays short -->
+
 ## Unreleased
 
 On `dev`, since 0.4.0-beta.
+
+### For contributors
+
+- A "Docs lint" CI job keeps docs and code comments readable. It checks page types, paragraph, sentence and page
+  sizes, Markdown structure, links and filler words, plus code comment blocks of over 10 lines. Existing text is in a
+  baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))
+  (#277).
 
 ## 0.4.0-beta (2026-11-05)
 
@@ -79,6 +88,7 @@ On `dev`, since 0.4.0-beta.
 - The crash note in `modloader.log` also covers heap corruption, stack overflows and integer divide by zero, and notes
   the first four faults of each kind instead of the first four in all (#84).
 
+<!-- markdownlint-disable-next-line MD024 -->
 ### Added
 
 - **Medals and spending what you earn.** A won mission now pays medals (2 at Trivial up to 10 at Super Helldive), and
@@ -129,6 +139,7 @@ On `dev`, since 0.4.0-beta.
   `-nightly.<date>` (`0.4.0-nightly.20261102`), so it is never taken for a release. Releases stay the builds to play
   on ([CONTRIBUTING.md](CONTRIBUTING.md#nightly-builds)) (#211).
 
+<!-- markdownlint-disable-next-line MD024 -->
 ### Changed
 
 - The in-game editor says when a stratagem change takes effect, as the game reads it: cooldown and call-in time from
@@ -388,6 +399,7 @@ On `dev`, since 0.4.0-beta.
   issue where a third player joining a lobby of two pushed the second player out (#202). Every sandboxed player in the
   squad needs this version: on 0.3.0-beta, the sandbox still lets that player's game reach only the host.
 
+<!-- markdownlint-disable-next-line MD024 -->
 ### For mod makers
 
 - SDK 16: game functions by name. `HF_HOOK(mod, SpawnEntity, detour, &original)` hooks a game function HellForge has

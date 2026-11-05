@@ -19,6 +19,7 @@ prompt (Windows Firewall never filters loopback, so those rules cannot keep the 
 Mods run inside the game's process, and so does anything a crafted file manages to execute through a bug in the
 engine's parsers. HellForge already keeps the copied game off the internet with firewall rules. Code inside the game can
 still:
+
 - write anywhere the player can (documents, the Startup folder, `HKCU` Run keys, HellForge's own programs);
 - write into other programs the player runs (the launcher, the backend, Steam);
 - start programs the firewall rules do not list.
@@ -32,7 +33,7 @@ client's IPC objects are at the player's normal integrity, so a low-integrity pr
 
 ## Design
 
-```
+```text
  game (low integrity, job: no child processes)          broker (normal integrity, one per session)
  ┌────────────────────────────────────────────┐          ┌──────────────────────────────────────────┐
  │ steam_api64.dll stand-in, bridged mode:    │  pipe    │ hellforge_steam_broker.exe               │
@@ -89,6 +90,7 @@ client's IPC objects are at the player's normal integrity, so a low-integrity pr
 
 The bridge must not become the way out of the sandbox. Every method of the 7 bridged interfaces is classed, by review,
 as one of:
+
 - **allowed;**
 - **allowed with checks** (sizes, ranges, the strings a key may carry);
 - **refused** (the broker answers as Steam would on failure).
@@ -98,6 +100,7 @@ not: the game makes a Steam lobby of its own (census step 2).
 
 Methods that carry data to other people or out of the PC, which are refused unless the census shows the game needs them,
 and then checked:
+
 - `ISteamFriends`: `SetRichPresence` (strings friends see), `ReplyToFriendMessage`, `InviteUserToGame`,
   `ActivateGameOverlayToWebPage` (it may open the player's browser), `SetPersonaName`;
 - `ISteamNetworking`: `SendP2PPacket` to any SteamID. Co-op uses it (the host sends to a joiner when it joins), so it
@@ -109,6 +112,7 @@ The broker logs every refusal.
 ### Where the definitions come from
 
 The proxies and the broker's dispatch are **generated** by `HellForge.SdkShimGen`, as the PlayFab stand-ins are:
+
 - **Methods and parameter kinds** come from Valve's Steamworks SDK (`steam_api.json`), a version whose
   `redistributable_bin/win64/steam_api64.dll` matches the game's pinned copy byte for byte: **SDK 1.55** (1.57's does
   not match). It is pinned by SHA-256 in the gitignored `tools/steamworks-sdk-1.55`; nothing from it is committed or
@@ -127,6 +131,7 @@ The proxies and the broker's dispatch are **generated** by `HellForge.SdkShimGen
 **Inputs:** the pinned `steam_api.json` and `steam_api64.dll`, and `native/steam-cloud/bridge-methods.json`, the
 reviewed table. A method that is not in the table is refused. `HellForge.SdkShimGen steam-bridge` writes, into the
 build's `gen` folder:
+
 - `bridge_gen.h`: the call-mode methods' numbers, every method's slot, and the prototypes of the hand-written methods
   (so `bridge_local.c` fails to compile if one is wrong);
 - `bridge_proxies_gen.c`: the game's side, a vtable per bridged interface;
@@ -141,6 +146,7 @@ Generation fails on anything it cannot marshal exactly, on an enum whose 0 may m
 (`EUserHasLicenseForAppResult` is 0 for "has a license"), and on a table entry the SDK does not declare.
 
 **Each method's mode, in the table:**
+
 - **hand:** answered in the game by `bridge_local.c`, without the broker:
   - `ReadP2PPacket` and `IsP2PPacketAvailable` answer from the packets the broker put in the ring ("Steam P2P"
     below); fixed: `GetAppID` is 553850, the overlay calls answer "no overlay" (it lives in the broker);
@@ -156,6 +162,7 @@ Generation fails on anything it cannot marshal exactly, on an enum whose 0 may m
 
 **Kinds marshalled**, from the JSON's types (the table names what the JSON leaves out: which `void *` is an output buffer
 and which parameter is its size):
+
 - scalars and enums; `CSteamID` by value (64 bits), and returned through the hidden pointer in `RDX`;
 - input strings, bounded and NUL-terminated; output buffers with their size, at most what fits one message (larger is
   refused);
@@ -218,6 +225,7 @@ game; the census saw them on events only.
 
 The game makes a Steam lobby of its own beside its PlayFab one. A Public one is in every Steam search of the app
 (probed 2026-10-22), with its data:
+
 - the PlayFab connection string (key `"0"`), so the lobby id;
 - the build string vanilla games share (`"1"`);
 - the host's SteamID (`"3"`);
@@ -228,6 +236,7 @@ HellForge's public lobbies go through its own directory instead (docs/multiplaye
 The census saw `CreateLobby`, `SetLobbyData`, `SetLobbyJoinable` and `LeaveLobby`, never `SetLobbyType`, so the
 lobby's type is the one asked for at creation. The table marks `eLobbyType` for the broker to adjust (`adjust` in
 `bridge-methods.json`, `BrokerApi.adjust`, run once every check of the table passed):
+
 - **Play with strangers off:** a Public lobby (`2`) is made Friends only (`1`). Friends and invitees
   can still join it, and it is in no search. Strangers could reach no one anyway, so nothing is lost.
 - **Play with strangers on:** the type is left as the game asked. A stranger joining through the directory may join
@@ -324,6 +333,7 @@ keyboard and mouse worked, and with the sandbox off it worked again. Through a n
 its A button opened the chat and the game's controller page showed no bindings. An Xbox controller worked.
 
 **Why (from the code and the reports; not reproduced on a PC with these controllers):**
+
 - The game reads controllers itself, through XInput (and its own PlayStation support, as far as is known). Of Steam
   Input it calls only `GetControllerForGamepadIndex`, four times at start (census step 2), and the stand-in's log of
   #94's sandboxed session refuses no Steam Input call. There is no Steam Input traffic to forward.
@@ -338,6 +348,7 @@ its A button opened the chat and the game's controller page showed no bindings. 
   process may open a PlayStation controller's HID device for the game's own support (which writes to it) is untested.
 
 **What would not do:**
+
 - The overlay in the game: it needs Steam's IPC, which a low-integrity process cannot use, the reason the game alone
   stops at STEAM NOT DETECTED ("Why"). It would take raising the game's integrity or loosening Steam's objects.
 - Forwarding `ISteamInput`: the game makes no such calls.
@@ -345,6 +356,7 @@ its A button opened the chat and the game's controller page showed no bindings. 
   choice. The player can turn it off (Settings > Sandbox).
 
 **What a sandboxed session does:**
+
 - The broker asks Steam which controllers Steam Input handles (`broker_input.c`; `Init` with the broker calling
   `RunFrame`, then every 2 s `GetConnectedControllers`, `GetInputTypeForHandle` and `GetGamepadIndexForController`) and
   logs the list when it changes: `broker: Steam Input controllers: Steam Controller [1] as XInput pad 0`, or `none`.
@@ -408,6 +420,7 @@ reached the hook (the census test showed it). The hook is now on `GetProcAddress
 export the game calls whichever way it found it.
 
 **Step 2** (the census build) needs no definitions:
+
 - **Generic slot proxies:** each interface the game gets is a proxy whose 192 vtable slots count their calls, then jump
   to Valve's object's slot with the real object in `RCX` and every other register untouched.
 - **A counting thunk per export:** every function export the stand-in does not write itself counts its calls and jumps
@@ -433,6 +446,7 @@ Slot names below are read from the pinned DLL's thunks and SDK 1.55's `steam_api
 
 **Flat exports: 11 called**, besides the stand-in's own 4. Even with the hook on `GetProcAddressForCaller`, the game
 looked none of them up by name, so its protection does resolve them itself.
+
 - Once: `SteamAPI_RestartAppIfNecessary`, `SteamAPI_Init`, `SteamInternal_CreateInterface`,
   `SteamGameServer_GetHSteamUser`, `SteamInternal_FindOrCreateGameServerInterface`, `SteamAPI_UnregisterCallback`,
   `SteamAPI_Shutdown`.
@@ -455,6 +469,7 @@ lobby of its own (call result 513, likely `LobbyCreated_t`). `ISteamMatchmaking`
 | `SteamFriends017` #4 | 228 | | `GetFriendByIndex` |
 
 Everything else was called 41 times or fewer:
+
 - `SteamFriends017`: #0 `GetPersonaName`, #3 `GetFriendCount`, #5 `GetFriendRelationship`, #42 `GetUserRestrictions`,
   #43 `SetRichPresence`;
 - `SteamUtils010`: #4 `GetIPCountry`, #9 `GetAppID`, #10 `SetOverlayNotificationPosition`, #31 `InitFilterText`,
@@ -471,6 +486,7 @@ Everything else was called 41 times or fewer:
 714 (8), 1005 (4), 1101 (24), 1102 (16), 1103 (152), 1202 (8), 1203 (9), 1221 (712), and the call result 513 (16).
 
 **What it means for the bridge:**
+
 - Forwarding every call would cost about 1.9 round trips per `RunCallbacks`. Almost all of them can be answered in the
   game instead:
   - `SteamInternal_ContextInit` is the stand-in's own business.
@@ -490,6 +506,7 @@ Everything else was called 41 times or fewer:
 
 Two installations on one PC, one Steam account, their backends on a loopback link (docs/multiplayer.md has no step for
 it yet; it is a test set-up). One game joined the other from the social tab. What the joiner asked of Steam:
+
 - after the PlayFab join, #15 `LeaveLobby` (its own Steam lobby), #14 `JoinLobby` (the host's, call result 504
   `LobbyEnter_t`), #19 `GetLobbyData` and #20 `SetLobbyData` on it, and #35 `GetLobbyOwner`;
 - SteamFriends #36 `GetLargeFriendAvatar` (the other player's avatar; still refused, so no avatar) and #43
@@ -511,6 +528,7 @@ entered counts as its own (`broker_bridge.c` `RememberEntered`).
 
 Co-op uses the old `ISteamNetworking`: the host sends to a joiner when it joins (2026-10-24). Through the bridge it
 reaches only the game's **co-op peers**, so the game has no way to send to any other Steam user:
+
 - **A co-op peer** is a SteamID the backend lists (`P2PPeer`). A member of a lobby the game made or entered is not
   enough (reviewed 2026-10-24): `JoinLobby` takes any lobby id, so a compromised game could enter any lobby it knows of
   and reach its members.
@@ -582,6 +600,7 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
 
 Every number here is unmeasured in game until phase 4. The bridge build measures itself: each minute, and at
 `SteamAPI_Shutdown`, the stand-in's log (`HELLFORGE_CLOUD_LOG`) gets two lines:
+
 - `bridge cost, the last minute: <frames> frames; <n> round trips, <ms> in all, longest <ms>; <n> callbacks in <n>
   frames, <ms> in all, longest frame <ms>`. A round trip's time runs from the call to its reply, the lock's wait
   included, on whichever game thread made it.

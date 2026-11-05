@@ -25,10 +25,10 @@ reaches PlayFab, Arrowhead's services or vanilla players' sessions.
    ones.
 4. In a friend's lobby, every player keeps their own in-game editor changes and can keep making them. HellForge
    loads what each player's changes need on every machine (a vehicle's swapped weapon, a pod's pickup), so friends
-   don't see missing assets. The editor's header shows "JOINED · <name> · YOUR OWN STATS", and the host's shows
+   don't see missing assets. The editor's header shows "JOINED · \<name> · YOUR OWN STATS", and the host's shows
    "HOSTING · EVERYONE KEEPS THEIR OWN". A host can instead have everyone play with the host's changes: "Everyone plays
    with my editor changes" under "When I host" on the launcher's Mods page (MOD SYNC card). Then a joiner's editor turns
-   grey and read-only, with "READ-ONLY · HOST: <name>", and the host's shows "HOSTING · FRIENDS PLAY WITH YOUR STATS".
+   grey and read-only, with "READ-ONLY · HOST: \<name>", and the host's shows "HOSTING · FRIENDS PLAY WITH YOUR STATS".
    [Stats in co-op](#stats-in-co-op) says what each way means for what other players see.
 5. When the host leaves, the lobby closes for everyone, as HD2's host ends the session. If you were playing with the
    host's stats, your own come back.
@@ -54,7 +54,7 @@ reaches PlayFab, Arrowhead's services or vanilla players' sessions.
    takes anyone who joins it, but players who are not your friends cannot find it.
 9. Invitations from the game's social menu reach Steam friends running HellForge, and the invited player may join even
    an Invite only lobby.
-10. When the host kicks a player, that player's game leaves the lobby and says "Removed from <host>'s lobby", their game
+10. When the host kicks a player, that player's game leaves the lobby and says "Removed from \<host>'s lobby", their game
    traffic is cut off at once, and they cannot join that lobby again while it lasts.
 
 Each session's logs hold `backend/multiplayer.log` (the backend's side of co-op) and `coop-diagnostics.log` (what this
@@ -182,7 +182,7 @@ players. Mod sync still checks every downloaded byte against the content hash, a
 level plays its own copy (`SyncItem.LocalHash`). The joiner's backend also sends its shared gameplay mods one by one
 (`--mod-list`, the session's `modlist.txt`, HellForge.Core's `ModlistDiff`), so the refusal can name the mods that differ. The host sends
 `lobby.refused` [reason, up to 6 lines for the joiner's game]. Both backends turn it into notices ("Couldn't join
-<host>" for the joiner, "<friend> couldn't join" for the host) and post them to their game over the live-edit pipe
+\<host>" for the joiner, "\<friend> couldn't join" for the host) and post them to their game over the live-edit pipe
 (`notice`), and the in-game editor draws them over the game: the joiner's as a panel, the host's (kind `brief`,
 `HF_NOTICE_BRIEF`) as a small note in the top right corner. Backends from before the list send only the reason; they
 still interoperate.
@@ -190,8 +190,8 @@ still interoperate.
 Once a join is accepted, the host sends `war.clock`, and the joiner's backend adopts the host's war time. A time below
 0 or above 20 years is ignored, whoever sends it. Then the host sends `mods.info` [lobby id, its set in ModSet's wire
 form, with a `tier` of `shared` or `per-player` per entry]. The joiner's backend takes one `mods.info` per join, only
-from the host whose lobby it joined, and if the host's per-player mods differ it shows a brief notice: "<host> plays
-with 2 mods you don't: <names>. Each player keeps their own." Nothing downloads for those; each player keeps their own.
+from the host whose lobby it joined, and if the host's per-player mods differ it shows a brief notice: "\<host> plays
+with 2 mods you don't: \<names>. Each player keeps their own." Nothing downloads for those; each player keeps their own.
 
 Lobby frames from other machines keep to PlayFab's limits (`PFLobby.h`): at most 30 lobby, member and search
 properties each, at most 60 changes in one update, and the result within the limits. HellForge also caps a key at 64
@@ -213,6 +213,7 @@ frame that breaks them fails with `E_INVALIDARG`.
 | missing | | as Friends only | no |
 
 The evidence:
+
 - The values come from HD2Runtime's research on build F5FEE03DCFDB: the settings value `privacy_mode`, name table
   0x21D3F28 (Open, FriendsOnly, InviteOnly, FriendsAndClan), lobby key 19 `PrivacyMode` (search attribute 6), and the
   host's join gate 0x108BC70, which refuses a non-friend under 1 and anyone not invited under 2. An active SOS Beacon
@@ -230,6 +231,7 @@ gameplay mods passed the privacy check, so it is expected back for 15 minutes wi
 or Invite only stops being listed within a second, and its members stay.
 
 **Invitations.** The game calls `PFLobbySendInvite` from its social menu (seen in the stand-in logs).
+
 - The stand-in sends `lobby.invite [op, lobbyId, sender, invitee]`. A member's backend forwards it to the lobby's owner,
   which records the invitee for the lobby's lifetime (at most 64) and answers.
 - The inviting player's backend then sends `lobby.invited [lobbyId, connection string, inviter]` to the invitee's
@@ -242,14 +244,16 @@ or Invite only stops being listed within a second, and its members stay.
 
 **Kicks.** The owner's `PFLobbyForceRemoveMember` becomes `lobby.kick [op, lobbyId, memberId, preventRejoin]`, which only
 the owner's own machine may send. The backend then:
+
 1. removes the machine's members;
 2. sends the kicked machine `lobby.memberRemoved` with reason 1 (LocalUserForciblyRemoved), then `lobby.disconnected`
    with reason 0 (NoLocalMembers), as the SDK reports a force removal. The kicked machine's backend shows the game
-   "Removed from <host>'s lobby";
+   "Removed from \<host>'s lobby";
 3. sends every other member `lobby.memberRemoved` with reason 2;
 4. answers its own game with the completion, after that game's own MemberRemoved, as the SDK documents.
 
 What follows:
+
 - The machine is refused for the lobby's lifetime, whatever `preventRejoin` says (decided 2026-10-23), and it cannot be
   invited back. Nothing is stored.
 - `PartyService.Expel` takes the machine out of every Party network the host has and tells it the networks are gone.
@@ -258,6 +262,7 @@ What follows:
   `party.kick [networkId, node]`, which kicks that machine from the host's lobbies the same way.
 
 Which of the two kick calls HD2 makes is not known, so both are covered:
+
 - No session log shows either call, and the exe's list of 22 `PFLobby*`/`PFMultiplayer*` imports was not kept.
 - 20 functions have been seen called in session logs, and the Galactic Map's search (`PFMultiplayerFindLobbies`) is a
   21st. That makes `PFLobbyForceRemoveMember` a likely 22nd, but this is an inference.
@@ -304,6 +309,7 @@ address (checked again) in the default browser. Bundled mods never download. The
 **Rejoining after the restart** (`Multiplayer/AutoRejoin.cs`; the research is
 [Step 9](#step-9-rejoining-after-a-mod-sync-2026-10-23)). The restarted game is brought back into the host's lobby
 through the game's own invitation path, the one a friend's invitation takes. HellForge does not make the game join.
+
 - The session runner passes the sync file to the backend (`--rejoin <install>/temp/mod-sync/session.json`), but only
   when mods-stage found all of the host's mods.
 - The backend takes the file only while it is less than 15 minutes old, when its connection string names the host's
@@ -316,9 +322,9 @@ through the game's own invitation path, the one a friend's invitation takes. Hel
 - The answer is `lobby.rejoined [lobby asked, "ok", lobby id, connection string]`, or
   `[lobby asked, gone|full|locked|refused|mods|version, line...]`.
 - On "ok" the lobby stand-in hands the game `InviteReceived` from the host (`LobbyService.InviteLocal`), and the in-game
-  editor shows "Rejoining <host>".
+  editor shows "Rejoining \<host>".
 - Any other answer, no answer within 10 s, or no ship within 3 minutes gives up once. The game shows "Couldn't rejoin
-  <host>" with the reason and, where it helps, how to join by hand. Nothing is tried again.
+  \<host>" with the reason and, where it helps, how to join by hand. Nothing is tried again.
 - A join the game starts by itself ends the rejoin. Into the host's lobby, the player is rejoining; into another
   lobby, the player chose that one.
 - **Admission.** The host keeps a machine refused only for its gameplay mods expected back in that lobby for 15 minutes
@@ -336,6 +342,7 @@ through the game's own invitation path, the one a friend's invitation takes. Hel
 files) in 163 s, about 0.24 MB/s. The 39.48 MB mod took 161 s of it, which is 245 KB/s.
 
 That is Steam networking's own send rate:
+
 - A connection sends at a fixed rate between `k_ESteamNetworkingConfig_SendRateMin` and `SendRateMax`. Both are
   256 KiB/s (262,144 B/s) by default.
 - It estimates no bandwidth. The header says the two "should always be set to the same value".
@@ -355,6 +362,7 @@ Sources: GameNetworkingSockets
 (no-limit)", which is out of date.
 
 The other limits were looser:
+
 - **Round trip.** The rejoin's ask and answer took 136 ms (11:35:12.783 to .919, which includes both links' polling).
 - **Window.** 4 × 128 KiB per round trip comes to about 3.8 MB/s.
 - **Host pacing.** 1 MiB/s.
@@ -379,6 +387,7 @@ The other limits were looser:
 game frames share it with mod sync. `ISteamNetworkingMessages` channels share one connection and its one lane, so a
 channel of its own would not let game frames pass the chunks. The joiner's window keeps the queue short instead (TCP
 Vegas and LEDBAT do the same):
+
 - It times each whole chunk from asking to arrival.
 - A chunk within 100 ms (`TargetDelay`) of the quickest so far adds one chunk: a doubling each round trip at first,
   then one chunk per round trip once it has been cut.
@@ -388,12 +397,14 @@ So whatever the slowest stretch is (the host's upload, a relay, the joiner's lin
 the window fills it.
 
 **Older hosts.** A host from before this change (Steam's 256 KiB/s, a queue of 8) still works with a new joiner:
+
 - Its chunks queue at once, so the window stays near 2.
 - A request it refuses as "too many requests at once" halves the window's ceiling, and that chunk is asked again.
 
 The speed comes from the host's end: an updated joiner downloads from a host on an earlier 0.3.0 test build at its old speed.
 
 **Expected.**
+
 - On a good connection, 8 MiB/s: about 5 s for the test's 38 MB.
 - In practice the host's upload sets the speed (20 to 50 Mbit/s is 2.5 to 6 MB/s, so 7 to 15 s), along with what
   Valve's relays carry, which is not measured yet.
@@ -412,9 +423,11 @@ On the 2 MiB/s link, a small frame the host sends every 50 ms down the same link
 most 360 ms (40 ms of that is the one-way delay). A fixed window of 16 chunks would queue 2 MiB there, a second.
 
 `DownloadWindow`'s growth, cuts, floor and ceiling are checked on their own as well.
+
 ### Trust: what another player's mods can reach
 
 Mod sync and public lobbies bring mods from people a player may not know. What limits them:
+
 - **What downloads by itself** is only what HellForge checks itself (data specs, schema stats, network field types),
   read from the bytes received, with the same rule for every host. Code and raw data need the verified list (HellForge's
   own mods), or the player's own trust after a warning, from a Steam friend or, in a sandboxed session, anyone
@@ -476,6 +489,7 @@ searches the directory and evaluates the game's filter, drops lobbies the player
 All of this needs [Play with strangers](#play-with-strangers) effective for the session (on by default when the game is
 sandboxed, off otherwise, unless the player chose). Off, the Steam link accepts no one who is not a Steam friend. On, it
 accepts someone who is not a Steam friend only while it deals with them (`StrangerGate.cs`):
+
 - while a lobby is listed (and Steam holds the listing);
 - a member or host of a lobby here;
 - a machine a lobby here expects back;
@@ -486,6 +500,7 @@ Play with strangers is effective on.
 
 A stranger's listing is checked before anything of it reaches the game (`DirectoryService.Valid`, `LobbyRecords.cs`).
 One that breaks any of the following is left out whole:
+
 - a feature protocol `LobbyService.Compatible` accepts (`hf.protocol`, else `hellforge`: now `hellforge-mp-9`, or
   0.3's `hellforge-mp-8`), with `hf.wire` the directory's wire level or `hellforge` 0.3's (the searches filter those);
 - a GUID lobby id, and a connection string naming the listing's host;
@@ -509,6 +524,7 @@ another player's map.
 
 The decoder writes the string's arrays into a 0xE8-byte struct on the stack without checking their counts, so a forged
 seed could overflow it. `MissionSeed.Valid` keeps one only in the `f3fb` layout:
+
 - version `f3fb`, then 58 hex digits of fixed fields;
 - four arrays, each a count byte then its entries: u32 (at most 32), bytes (8), bytes (3), bytes (2), then a byte;
 - an array of u32 (at most 4), two bytes, and a last array of u32 (at most 8);
@@ -519,12 +535,14 @@ machine's own listing), and a stranger's listing with one is left out.
 
 Which lobbies a search shows is mod sync's rule (`ModSync.Joinable`), and it uses the plan a join would make
 (`ModSyncPlan`):
+
 - A lobby running code or raw mods that are not verified is shown when joining brings the MOD SYNC prompt with TRUST: a
   Steam friend's, or anyone's in a sandboxed session.
 - A stranger's lobby running such mods is hidden from an unsandboxed session, because they are mods to install by hand.
 
 Each search logs what it found, what it showed, and why it left out the rest: `Directory: search "<the game's filter>": 2
 listed, 1 shown (1 left out: its host's unchecked mods need a sandboxed game)`. The reasons are:
+
 - `this machine's own lobby`, which Steam's search returns too;
 - `malformed (...)`;
 - `the game's filter`, which covers clauses Steam's search does not apply, such as difficulty ranges and member counts;
@@ -553,6 +571,7 @@ search every few seconds.
 
 Until 2026-10-23 a search left this machine's own lobby out without counting it. On the first two-PC test, "1 listed, 0
 shown" was the searching player's own lobby, not the friend's:
+
 - It was listed from the planet's search once the player's own listing had been rewritten for that planet (11:22:25,
   "3 listing value(s) written").
 - None of the lines named a reason, and every other path names one.
@@ -697,6 +716,7 @@ first session that runs with the sandbox default on shows the stranger warning i
 `strangersWarned` in the same file remembers it.
 
 Off:
+
 - every frame from someone who is not a Steam friend is dropped (`StrangerGate`; logged once a minute per machine),
   and the Steam link accepts no session from them;
 - this machine's public lobby is not listed ("Directory: this machine's public lobby is not listed: Play with strangers
@@ -1233,6 +1253,7 @@ it in [Playing with other mods](mods.md). Protocol `hellforge-mp-7`.
 - Rejoining by itself after the restart is built ([Step 9](#step-9-rejoining-after-a-mod-sync-2026-10-23)).
 
 **To test on two PCs:**
+
 1. The host enables a content mod (a data patch or stats mod) and a code mod that is not on the verified list, with a
    `"url": "https://..."` in its manifest; the friend has neither.
 2. The friend joins. Check that the MOD SYNC prompt shows (no editor window behind it), lists the content mod as
@@ -1241,7 +1262,7 @@ it in [Playing with other mods](mods.md). Protocol `hellforge-mp-7`.
 4. TRUST (or T): the warning shows in the prompt's place; Enter does nothing, the button is grey for a second, CANCEL
    and Esc go back to the list. Then TRUST AND DOWNLOAD:
    - check the download starts at once, the progress bar, and that the files land in `mods/.synced`;
-   - check that the session restarts with "Playing with <host>'s mods" in the launcher;
+   - check that the session restarts with "Playing with \<host>'s mods" in the launcher;
    - check that the restarted game is invited back into the host's lobby by itself (step 9's test);
    - check that the launcher's Mods page (MOD SYNC card) lists the code mod as trusted from the host, and that
      Untrust removes it and its `mods/.synced` copy.
@@ -1365,6 +1386,7 @@ Built 2026-10-22 and tested on one PC only.
   No limit was reached. A new lobby was found 0.84 s after it was made.
 
 **To test on two PCs that are not Steam friends** (or two friends' PCs with `HELLFORGE_TEST_STRANGERS=1` on both):
+
 1. Both turn on multiplayer, Local PlayFab and Play with strangers (Settings > MULTIPLAYER). The host opens a Public
    lobby, selects a mission on a planet and deploys. An idle host on the ground can be killed (one was, about 11
    minutes in), and with no one alive the mission fails. `multiplayer.log` says "Play with strangers is on".
@@ -1396,9 +1418,10 @@ invited players, kicks, invitations, hostile listings, the listing switch; `smok
 kick through both stand-ins). What it does is in [Lobby privacy, invitations and kicks](#lobby-privacy-invitations-and-kicks).
 
 **To test on two PCs** (A hosts, B joins; for the stranger cases set `HELLFORGE_TEST_STRANGERS=1` on both):
+
 1. A sets Privacy to Friends only. B (a Steam friend) joins from the social tab: admitted. With the test variable set on
    both, B is refused with "The host's lobby is Friends only".
-2. A sets Invite only. B joins from the social tab: refused, and A's game shows "<B> couldn't join". A invites B from the
+2. A sets Invite only. B joins from the social tab: refused, and A's game shows "\<B> couldn't join". A invites B from the
    social menu: B's game shows the invitation, and B joins.
 3. A sets Public with B in the lobby, then Friends only: B stays, and the map marker goes on a third player's map.
 4. A kicks B from the social menu. Check that:
@@ -1418,6 +1441,7 @@ it does is in [Mod sync](#mod-sync). The research was static, on the supported b
 `game.dll` images (the research repo's snapshots), and on the stand-in and backend logs of earlier sessions.
 
 **How the game joins a lobby, as far as known:**
+
 - **Invitations (PlayFab).** Every session calls `PFMultiplayerStartListeningForLobbyInvites` at boot, about 9 s in.
   The engine logs a received invitation: `Lobby: InviteReceived (sender=%s, receiver=%s, connection_string=%s)` (exe
   strings beside the other lobby state changes). game.dll has the input actions `InvitePopupAccept`, `InvitePopupDecline`
@@ -1438,6 +1462,7 @@ it does is in [Mod sync](#mod-sync). The research was static, on the supported b
   player did that is not known.
 
 **The path chosen: an invitation from the host, handed to the game by its own backend.**
+
 - It is the game's own path, and the stand-in already delivers it for friends' invitations. No game code or data
   changes.
 - It reaches strangers too: the rejoining machine's own backend hands the invitation to its own game, after the host
@@ -1448,12 +1473,14 @@ it does is in [Mod sync](#mod-sync). The research was static, on the supported b
   the PlayFab lobby is not known. It remains a candidate if the invitation proves to need more than one press.
 
 **Not yet known (the two-PC test answers it):**
+
 - whether the game shows a popup for the invitation or joins at once, and whether it names the host (a stranger host
   too);
 - whether an invitation 5 s after the game's lobby is made comes too early for the ship's screens.
 
 **To test on two PCs** (A hosts, B joins; for the stranger case set `HELLFORGE_TEST_STRANGERS=1` on both and use a
 Public lobby; B turns on the launcher's engine log for the last step):
+
 1. A enables a content mod that B lacks, hosts a Friends only lobby, and keeps sharing on. B joins from the social tab:
    the MOD SYNC prompt shows. B chooses DOWNLOAD AND RESTART, then RESTART TO JOIN.
 2. Before B is back, A sets Privacy to Invite only.
@@ -1489,6 +1516,7 @@ playing with the host's stats). What it does is in [Stats in co-op](#stats-in-co
 `docs/asset-loading.md`) was never proven live; this is HellForge's over its backends' channel.
 
 **To test on two PCs** (A hosts, B joins; both with the "Everyone plays with my editor changes" switch off, the default):
+
 1. B swaps a vehicle's weapon in the in-game editor (Mounted Weapons) to one A's loadout never brings, and APPLY. A
    swaps a hellpod's payload the same way. Check that each editor stays editable, with "JOINED · <A> · YOUR OWN STATS"
    on B's and "HOSTING · EVERYONE KEEPS THEIR OWN" on A's.
@@ -1537,7 +1565,7 @@ same as a sandboxed one when nobody had chosen.
   warning in the Play page on the first sandboxed session that uses the default. `settings --strangers yes|no|default`
   exposes the same choice to external launchers.
 - **A joiner hears per-player differences.** After accepting a join the host sends `mods.info` [lobby id, set wire];
-  the joiner takes one per join, only from that host, and shows a brief "<host> plays with N mods you don't: ... Each
+  the joiner takes one per join, only from that host, and shows a brief "\<host> plays with N mods you don't: ... Each
   player keeps their own." Nothing downloads for those, and `ModSyncPlan` ignores per-player entries entirely.
 
 ### Step 12: Steam's cut, mods with a coop level, and HellForge 0.3 players (2026-10-30)

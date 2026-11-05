@@ -78,6 +78,7 @@ restarts the game.
 
 While such a session runs, the Mods page's switches still work. Switching a mod on or off, or saving a change to its
 files, goes to the running game, and the console says what changed:
+
 - **Stats mods** (`hellforge-stats.json`, `componentWrites`, `"own": true` records). Each value applies as a live edit
   does: now, on respawn, or at the next mission; the stats editor shows which. A changed mod keeps its place in the load
   order: the mods above it still win where they change the same value, Local Stats included, and a code mod's edit of a
@@ -105,6 +106,7 @@ files, goes to the running game, and the console says what changed:
 - **A session that plays a host's mods** (after a mod sync) keeps them. Your Mods page applies to your next session.
 
 How it works:
+
 - **The session's files.** The session's backend compares the mods the session runs (`session-mods.json` in its log
   folder) with the Mods page's (HellForge.Core `LiveModPlan`).
 - **Builds and data.** A change with source mods or game data is prepared first by `HellForge.Cli mods-live`: it builds
@@ -141,9 +143,9 @@ friends who run the same mod still join it.
 
 When a friend's code is not the host's, the join is refused and both games say why, over the game:
 
-- The joiner sees "Couldn't join <host>" for 20 seconds, with each mod that differs: one the host has and they do not,
+- The joiner sees "Couldn't join \<host>" for 20 seconds, with each mod that differs: one the host has and they do not,
   one only they have, another version, or the same version with other files.
-- The host sees a small note in the top right corner for 6 seconds: "<friend> couldn't join" and the reason in one line
+- The host sees a small note in the top right corner for 6 seconds: "\<friend> couldn't join" and the reason in one line
   (the full list is in the host's `backend/multiplayer.log`).
 
 A different HellForge version is reported the same way, and the joiner is told when a lobby is full or locked. The
@@ -151,7 +153,7 @@ bundled in-game editor draws these notices. With it switched off, only the logs 
 each session's folder, the first lines of the list.
 
 A join is accepted even when per-player mods differ. After it, if the host plays with per-player mods this player lacks,
-the joiner gets one brief notice ("<host> plays with 2 mods you don't: <names>. Each player keeps their own."); nothing
+the joiner gets one brief notice ("\<host> plays with 2 mods you don't: \<names>. Each player keeps their own."); nothing
 downloads for those. The host's set lists them with `"tier": "per-player"`, and older sets without a tier read as
 shared.
 
@@ -184,20 +186,22 @@ answer it. **DOWNLOAD AND RESTART** downloads what it can, when the drive has ro
 before that answers no.
 
 Then one of two buttons plays the host's mods, in the host's load order, plus your own cosmetic mods and Local Stats:
+
 - **APPLY AND JOIN** when the running game can take every difference with the host's mods (see
   [Changing mods while you play](#changing-mods-while-you-play)). The game changes its mods without a restart, and the
   host's invitation to their lobby comes at once.
 - **RESTART TO JOIN** otherwise: it ends the session and the launcher starts a new one with the host's mods. Once the
   game is on the ship, the host's invitation waits in game. A change the running game refuses restarts the same way.
 
-Accept the invitation ("Rejoining <host>") to join. If the lobby has closed, is full or locked, or the host does not
-answer, the game says so ("Couldn't rejoin <host>"); join from the social tab or the map then. Only that one session
+Accept the invitation ("Rejoining \<host>") to join. If the lobby has closed, is full or locked, or the host does not
+answer, the game says so ("Couldn't rejoin \<host>"); join from the social tab or the map then. Only that one session
 plays the host's mods: your Mods page and its switches never change, and the next session you start yourself runs your
 own mods again.
 
 **What may download (the trust rule).** Only what HellForge checks itself downloads by itself. Your backend decides
 each mod's class from the bytes it received, never from what the host says, and the rule is the same for every host,
 Steam friends included (only who can be trusted differs: a Steam friend's code and raw data, never a stranger's):
+
 - *Content* downloads from any host: data specs HellForge checks all of (`hellforge-data.json`, whose patches HellForge
   builds from your own game files: icons, and copies and includes of units, materials, textures and particle effects
   with only HellForge's own edits, each on its own type, and includes of the game's sound banks), schema stats
@@ -219,8 +223,8 @@ Steam friends included (only who can be trusted differs: a Steam friend's code a
 **Trusting a mod.** A row that needs your trust has a **TRUST** button (or **T** on the
 selected row). It opens a warning in the prompt's place:
 
-> *<Mod> <version>* runs its own code on your PC. A mod like this can do anything your Windows account can: read and
-> change your files, or install other programs. Only trust it if you trust *<friend>* and know where the mod comes from.
+> *\<Mod> \<version>* runs its own code on your PC. A mod like this can do anything your Windows account can: read and
+> change your files, or install other programs. Only trust it if you trust *\<friend>* and know where the mod comes from.
 
 (A raw data mod's warning says it carries game data HellForge cannot check, which can break the game or, through a flaw
 in it, run code on your PC. A stranger's says the sandbox stops the mod changing your files or reaching the internet,
@@ -267,6 +271,7 @@ session starts, never one that session plays. The Mods page shows how many there
 with a button that deletes them all.
 
 **What mod sync does not cover.**
+
 - Settings a mod keeps outside its own folder are neither compared nor downloaded, so they can differ between host and
   joiner.
 - A mod that writes into its own folder while it runs changes its own files, and with them its content hash. A synced
@@ -274,6 +279,7 @@ with a button that deletes them all.
 
 **Public lobbies on the Galactic Map.** The map lists other HellForge players' public lobbies, except the ones you could
 not join:
+
 - lobbies running a blocked mod;
 - lobbies running mods that would have to be installed by hand (mods that wait for your trust still show: a Steam
   friend's, or with the sandbox on, a stranger's);

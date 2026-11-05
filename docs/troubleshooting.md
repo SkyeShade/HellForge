@@ -313,7 +313,7 @@ On Linux, **Sync Inventory** can stop before the game opens with these messages.
 | "Wine could not confirm the capture CA ...: Wine reg export did not confirm the capture CA (exit ...): ...; system.reg holds the expected Blob" | The import exited 0 and `system.reg` has the key, but `reg export` produced no readable export file or Blob. That is the added check; send `launcher.log`. |
 | "Wine could not confirm the capture CA ...: reg export holds the expected Blob; the key is not in system.reg: the import did not land" | The export file has the Blob but the prefix's `system.reg` does not. The import did not reach the store. |
 | "Wine could not confirm the capture CA ...: ... the export file's Blob does not match the certificate ..." | The export succeeded but its Blob differs from the one written. Close Steam's game/tools in that prefix, then sync again; send `launcher.log`. |
-| "The capture CA record names the Steam prefix ..., but the HELLDIVERS 2 library's prefix is ... (a second Steam library?)" | The sync recorded a CA for a different `steamapps/compatdata/553850`. Start the game once from the library Steam actually uses, then sync again. |
+| "The capture CA record names the Steam prefix ..., but the HELLDIVERS 2 library's prefix is ... (a second Steam library?)" | The sync recorded a CA for a different `steamapps/compatdata/553850`. Start the game once from the library Steam uses, then sync again. |
 | "The prefix version changed from ... to ... during the import" | Evidence that a Proton upgraded the prefix while the CA was being imported. If the sync failed, close Steam's game/tools in that prefix and sync again. |
 | "Wine reg import could not remove the capture CA (exit ..., see launcher.log)", "The capture CA removal is not proven: reg export ...", or "Wine reg export did not find the capture CA key, but the key is in system.reg after the flush; the key is not proven gone." | Cleanup kept the `capture-ca.json` record so the next launcher start retries. Empty `reg export` output alone is never "removed"; close the game/tools in that prefix, then use **Clean up** again. |
 | "The Proton that opens HELLDIVERS 2's prefix could not be resolved..." | HellForge looked for Steam's `CompatToolMapping` for 553850 or its `0` default, then the prefix's `compatdata/553850/config_info` and `version`. Start HELLDIVERS 2 once through Steam: running it writes `config_info`, and the next sync can follow it. |
@@ -394,7 +394,7 @@ answer on this PC, and a connection to the outside must be refused by the block.
 The session's `network-probe.json` (and `network-probe-again.json` after the block was placed again) records what the
 check saw; include the logs when you ask.
 
-"Network block was not installed: Linked target path: <path> is a link or a special file" means a folder or file on
+"Network block was not installed: Linked target path: \<path> is a link or a special file" means a folder or file on
 the way to the game copy is a link: a junction or symbolic link (a Documents folder moved to another drive is often
 one), a OneDrive or other cloud placeholder, or a file compressed with CompactGUI or `compact /exe`. The block refuses
 it because a link could point its files or rules elsewhere. Move HellForge to a plain folder (for example

@@ -1,0 +1,10 @@
+{
+  // markdownlint's rules for the repository's Markdown (scripts/docs-lint/README.md, "Markdown structure").
+  // Rules: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+  "default": true,
+  // Line breaks never reach a reader; the docs lint measures sentences and paragraphs instead.
+  "MD013": false,
+  "MD024": {"siblings_only": true},
+  "MD033": {"allowed_elements": ["br", "details", "summary", "kbd", "sup", "sub", "img", "a"]},
+  "MD060": false
+}

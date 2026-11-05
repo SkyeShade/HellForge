@@ -72,7 +72,7 @@ later Lua mod's replaces the earlier one's. A Lua or code mod's edit also stays 
 the boot pass wrote, for as long as the record holds it.
 
 `get_live` and `get_stat` name a Lua mod's edit as the field's holder, with its value as the base, so the F8 editor
-shows "Mod: lua.<name>" and its reset goes back to the Lua mod's value. Code mods' live edits are not named, as before.
+shows "Mod: lua.\<name>" and its reset goes back to the Lua mod's value. Code mods' live edits are not named, as before.
 
 ## The C interface
 

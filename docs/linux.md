@@ -331,7 +331,7 @@ inside that container (pressure-vessel). HellForge does the same. `SteamRuntimeL
 (`libraryfolders.vdf`, `appmanifest_<appid>.acf`), and builds the command Steam would:
 `<runtime>/_v2-entry-point --verb=<verb> -- <proton> <verb> ...`. Every session prints one line saying which it chose:
 
-```
+```text
 HellForge: Steam Linux Runtime: container "steamrt4" 4.0.20261021.265997 at <folder>; Proton runs inside it.
 HellForge: Steam Linux Runtime: host mode: <reason>; Proton runs on the host.
 ```

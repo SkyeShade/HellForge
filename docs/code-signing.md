@@ -18,7 +18,7 @@ makes the game exit with `0xC0000428`:
 | File | Who starts or loads it | What the player sees since this change |
 |---|---|---|
 | `app\session\HellForge.Session.exe` (NativeAOT) | the launcher, `HellForge.Cli launch` | "Windows blocked HellForge's session runner." and the full reason |
-| `app\backend\HellForge.LocalBackend.exe`, `app\sdk-shims\hellforge_steam_broker.exe`, `app\cli\HellForge.Cli.exe`, `network-block\NetworkProbe.exe` | the session runner | the session fails with "Windows blocked <file> ..." |
+| `app\backend\HellForge.LocalBackend.exe`, `app\sdk-shims\hellforge_steam_broker.exe`, `app\cli\HellForge.Cli.exe`, `network-block\NetworkProbe.exe` | the session runner | the session fails with "Windows blocked \<file> ..." |
 | `app\sdk-shims\*.dll` (the PlayFab and Steam stand-ins) | the game | the game exits with `0xC0000428`; the session says what it means, and what to do while Smart App Control is on |
 | `app\sdk-shims\hellforge_modloader.dll` | the Steam stand-in, in the game | no mods load (the stand-in loads it silently; the evidence is the CodeIntegrity log below) |
 | a mod's DLL | the mod loader, in the game | the mod's line in `modloader.log`: "not loaded (... Windows error 4551, an Application Control policy such as Smart App Control blocked it)" |

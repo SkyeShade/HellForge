@@ -251,8 +251,8 @@ ensures it, and types are numbered in the mods' set-up order (by mod id), the sa
 of delivery kind 3, such as `HF_STRATAGEM_EXO45_PATRIOT`) spawns `payload[1]` carrying `payload[0]`; `{0, pelican}`
 sends an empty Pelican.
 
-The game names a stratagem "<designation> <title>" on the permit, the designation being its payload entity's (a
-stratagem row has none). So a copy of the A/MG-43 sentry whose sentry is a copy too reads "A/MG-43 <title>" until the
+The game names a stratagem "\<designation> \<title>" on the permit, the designation being its payload entity's (a
+stratagem row has none). So a copy of the A/MG-43 sentry whose sentry is a copy too reads "A/MG-43 \<title>" until the
 sentry entity is given text of its own (`HfEntity` / `HfEntityDef` `designation` and `title`, SDK 7). The compendium's
 HMG sentry names its sentry "A/MG-101" and its stratagem "Heavy MG Sentry".
 

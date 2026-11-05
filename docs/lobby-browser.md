@@ -19,7 +19,7 @@ strangers, edited stats), and only it knows about the terminal and its camera.
 
 ## How it fits together
 
-```
+```text
  player presses E at the terminal
         │
         ▼
