@@ -229,10 +229,14 @@ public static class ModAssets
 
     static string Size(long bytes) => bytes >= 1e6 ? $"{bytes / 1e6:F1} MB" : $"{Math.Max(1, bytes / 1000)} KB";
 
+    // Why a mod's recipe could not be rebuilt: its folder, the reason, and the builds it needs that this PC lacks (null
+    // when that was not the reason).
+    public sealed record Problem(string Folder, string Reason, IReadOnlyList<Missing>? Missing = null);
+
     // Rebuilds every recipe mod in the mods folder (zipped ones in their unpacked folders) from the builds this PC has,
     // opening the game data once, only if some mod needs it. Returns why any could not be rebuilt, by folder; those mods
     // stay pending (ModManifest.AssetsPending) and do not load.
-    public static List<(string Folder, string Problem)> PrepareAll(InstallLayout install, Action<string>? log = null, IEnumerable<string>? extraFolders = null)
+    public static List<Problem> PrepareAll(InstallLayout install, Action<string>? log = null, IEnumerable<string>? extraFolders = null)
     {
         var folders = new List<string>();
         if (Directory.Exists(install.Mods))
@@ -245,9 +249,9 @@ public static class ModAssets
         return Prepare(folders, () => GameBuilds.Local(install), log);
     }
 
-    public static List<(string Folder, string Problem)> Prepare(IEnumerable<string> folders, Func<IReadOnlyList<LocalBuild>> builds, Action<string>? log = null)
+    public static List<Problem> Prepare(IEnumerable<string> folders, Func<IReadOnlyList<LocalBuild>> builds, Action<string>? log = null)
     {
-        var problems = new List<(string, string)>();
+        var problems = new List<Problem>();
         List<IGameResources>? games = null;
         try
         {
@@ -259,9 +263,13 @@ public static class ModAssets
                 {
                     Ensure(folder, () => games ??= builds().Select(GameBuilds.Open).ToList(), log);
                 }
+                catch (MissingBuildsException missing)
+                {
+                    problems.Add(new(Path.GetFullPath(folder), missing.Message, missing.Missing));
+                }
                 catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
                 {
-                    problems.Add((Path.GetFullPath(folder), error.Message));
+                    problems.Add(new(Path.GetFullPath(folder), error.Message));
                 }
             }
         }

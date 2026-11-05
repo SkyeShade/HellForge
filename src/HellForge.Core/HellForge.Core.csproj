@@ -9,6 +9,7 @@
     <EmbeddedResource Include="entity-profile.json" LogicalName="HellForge.Core.entity-profile.json" />
     <EmbeddedResource Include="stats-schema.json" LogicalName="HellForge.Core.stats-schema.json" />
     <EmbeddedResource Include="../../data/verified-mods.json" LogicalName="HellForge.Core.verified-mods.json" />
+    <EmbeddedResource Include="../../data/depot-history/553853.txt" LogicalName="HellForge.Core.depot-history.553853.txt" />
     <EmbeddedResource Include="../../mappings/components.json" LogicalName="HellForge.Core.mappings.components.json" />
     <EmbeddedResource Include="../../mappings/catalog.json" LogicalName="HellForge.Core.mappings.catalog.json" />
     <EmbeddedResource Include="../../mappings/functions.json" LogicalName="HellForge.Core.mappings.functions.json" />

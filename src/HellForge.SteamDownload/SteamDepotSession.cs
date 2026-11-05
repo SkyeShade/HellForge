@@ -135,7 +135,10 @@ public sealed class SteamDepotSession : IDepotService, IAsyncDisposable
     }
 
     public Task<ulong> ManifestRequestCodeAsync(uint app, uint depot, ulong manifest, CancellationToken cancellation) =>
-        content.GetManifestRequestCode(depot, app, manifest, "public").WaitAsync(Timeout, cancellation);
+        ManifestRequestCodeAsync(app, depot, manifest, "public", cancellation);
+
+    public Task<ulong> ManifestRequestCodeAsync(uint app, uint depot, ulong manifest, string branch, CancellationToken cancellation) =>
+        content.GetManifestRequestCode(depot, app, manifest, branch).WaitAsync(Timeout, cancellation);
 
     public Task<DepotManifest> ManifestAsync(uint app, uint depot, ulong manifest, ulong requestCode, byte[] depotKey, CancellationToken cancellation) =>
         servers.Try(app, depot, cellId, async (server, cdnToken, token) =>
