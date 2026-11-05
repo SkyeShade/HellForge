@@ -1,5 +1,7 @@
 # Debugging
 
+<!-- diataxis: how-to -->
+
 This page is for mod authors whose mod does not do what they meant. It covers the logs, the reasons HellForge gives
 for refusing something, crashes, and testing with friends.
 
@@ -32,9 +34,9 @@ In code, `hf->last_log(mod)` returns your mod's last log line, so it can show wh
 - If the mod does not compile, it stays off for that session (the session still runs), and the Mods page shows the
   compiler's message with the file and line on its row. **Build now** in its ⋮ menu, or `HellForge.Cli build-mod --mod
   <folder>`, compiles it at once.
-- If the mod is not listed, or is listed under the mod notices, the Mods page says why: a manifest error, an id another
-  mod has (two mods with one id load neither), an SDK newer than this HellForge's, or a data spec naming a resource the
-  game does not have.
+- If the mod is not listed, or is listed under the mod notices, the Mods page says why. It can be a manifest error, an id
+  another mod has, an SDK newer than this HellForge's, or a data spec naming a resource the game does not have. Two mods
+  with one id load neither.
 
 ## Refusals
 

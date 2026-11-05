@@ -1,5 +1,7 @@
 # The engine
 
+<!-- diataxis: explanation -->
+
 This page is the starting point for contributors to HellForge's engine: what it is made of, where each part lives in
 this repository, how to build it and how to run its tests. Mod authors start at [modding/README.md](modding/README.md)
 instead.
@@ -81,8 +83,8 @@ In order, the script:
 
 1. fetches the pinned build tools into the ignored `tools/` folder (`scripts/Get-BuildTools.ps1`: Zig 0.17.0 and
    MinHook 1.3.4) and Microsoft's public PlayFab Party 1.10.16 and PlayFab Multiplayer 1.8.7 packages, each checked by
-   SHA-256 (their DLLs are byte-identical to the ones HD2 ships, so their headers give the exact signatures; nothing
-   from them is committed or shipped);
+   SHA-256. Their DLLs are byte-identical to the ones HD2 ships, so their headers give the exact signatures. Nothing
+   from them is committed or shipped;
 2. regenerates the loader's field and content tables from `mappings/` (`HellForge.Cli sdk-headers`);
 3. generates and compiles the two PlayFab stand-ins, the mod loader, the `steam_api64.dll` stand-in with the network
    gate, and the WFP tool, all with Zig, then checks each stand-in's exports against the original;
@@ -131,8 +133,8 @@ The engine build runs:
   group alone;
 - a start of `hellforge_wfp.exe` (installing and removing filters needs administrator rights, so that round trip is
   tested by hand);
-- `HellForge.SdkShimGen smoke`, `smoke-cloud` and `smoke-modloader`: the stand-ins, the cloud stand-in against the
-  real `steam_api64.dll`, and the loader end to end with a fake game (`fake_game.c`), a hook test mod
+- `HellForge.SdkShimGen smoke`, `smoke-cloud` and `smoke-modloader`: the stand-ins, and the cloud stand-in against the
+  real `steam_api64.dll`. They also run the loader end to end with a fake game (`fake_game.c`), a hook test mod
   (`hook_test_mod.c`) and the `machine-gun-10k-code` and `stratagem-compendium` example mods;
 - `scripts/Test-BackendAot.ps1`: the NativeAOT backend must answer the same requests byte for byte as the JIT build.
 

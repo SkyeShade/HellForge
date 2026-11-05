@@ -1,5 +1,7 @@
 # HellForge modding SDK: roadmap
 
+<!-- diataxis: explanation -->
+
 For contributors: what is left in the mod SDK. [modding/README.md](modding/README.md) and
 [sdk-reference.md](sdk-reference.md) document what exists, [engine-roadmap.md](engine-roadmap.md) is the engine's side,
 and [roadmap.md](roadmap.md) is the overview.
@@ -10,7 +12,7 @@ Mod SDK 16, engine 0.1.47, HellForge 0.4.0-beta (2026-11-05).
 |---|---|
 | 1. Named fields and deferred edits | done (SDK 6) |
 | 2. Identity and lookup | done (SDK 6) |
-| 3. Live editing | done (SDK 6); in co-op each player keeps their own (SDK 15) or plays with a sharing host's; field timings to check in game |
+| 3. Live editing | done (SDK 6). In co-op each player keeps their own (SDK 15) or plays with a sharing host's. Field timings to check in game |
 | 4. MDK | done; a New mod button and a helper kit left |
 | 5a. The in-game editor | mostly built; full HD2R Editor parity left |
 | 5b. Events, hooks and registries | built in SDK 7 to 16; some events, registries and launcher views left |
@@ -18,7 +20,7 @@ Mod SDK 16, engine 0.1.47, HellForge 0.4.0-beta (2026-11-05).
 
 ## Goal
 
-Modding Helldivers 2 should feel like making a Minecraft Forge mod: create a mod from a template, register content by
+Modding Helldivers 2 should feel like making a Minecraft Forge mod. Create a mod from a template, register content by
 name, change game data through named fields, build with one command, and see it in the launcher. The C SDK is the main
 path. Stats files (`hellforge-stats.json`) hold value edits and are the editors' save format.
 
@@ -38,17 +40,24 @@ path. Stats files (`hellforge-stats.json`) hold value edits and are the editors'
 
 ## Mappings
 
-`mappings/components.json` names every field the SDK can touch (offset, type, count, meaning, and the game build it was
-reviewed on), `mappings/catalog.json` names vanilla content, `mappings/functions.json` names game functions (SDK 16:
-offset, first bytes, signature and what each argument is) and `mappings/globals.json` names game globals (SDK 16: the
-cell, the instruction that witnesses it, the object's fields). `HellForge.Cli sdk-headers` generates
-`hellforge_components.h`, `hellforge_content.h`, `hellforge_functions.h`, `hellforge_globals.h`, the loader's
-`sdk_fields.h`, `sdk_content.h`, `sdk_functions.h` and `sdk_globals.h`, and `sdk-reference.md` from them
-([internals.md](internals.md#named-fields)).
+Four files name what the SDK can touch:
+
+| File | Names | Each entry holds |
+|---|---|---|
+| `mappings/components.json` | Every field the SDK can touch | Offset, type, count, meaning, and the game build it was reviewed on |
+| `mappings/catalog.json` | Vanilla content | |
+| `mappings/functions.json` | Game functions (SDK 16) | Offset, first bytes, signature and what each argument is |
+| `mappings/globals.json` | Game globals (SDK 16) | The cell, the instruction that witnesses it, the object's fields |
+
+`HellForge.Cli sdk-headers` generates these from them ([internals.md](internals.md#named-fields)):
+
+- the SDK's `hellforge_components.h`, `hellforge_content.h`, `hellforge_functions.h`, `hellforge_globals.h`;
+- the loader's `sdk_fields.h`, `sdk_content.h`, `sdk_functions.h` and `sdk_globals.h`;
+- `sdk-reference.md`.
 
 Naming grows one entry at a time: an `_unknown_XX` range becomes a named field by adding its entry (offset, type,
-meaning, build, evidence) and regenerating. Adding a name never breaks a mod, and a renamed field keeps its old name as a
-deprecated alias for a while. A new game build revalidates every entry.
+meaning, build, evidence) and regenerating. Adding a name never breaks a mod, and a renamed field keeps its old name as
+a deprecated alias for a while. A new game build revalidates every entry.
 
 ## What is left
 
@@ -68,13 +77,13 @@ Full parity with the HD2R Editor, in three steps:
 
 1. The player's kit, mostly ported. Left: beam conversion, the HD2R rows with no HellForge field yet (a coverage count
    says which), and armor perks in co-op (solo only today).
-2. Enemies and structures: stats, damage zones, attacks, spawn rosters and compositions. Every entity's page with the
-   fields the engine maps (`mappings/entities.json`, `scripts/ExportEntities.py`; about 38,800 rows, every editable row of
-   the HD2R Editor's Enemies pages but one, named by `scripts/ImportSchemaMappings.py <HD2Runtime>`, the Unit, AiSpawner,
-   SquadTransportFormation, SquadTransport, Gore, StratagemBlocker and Bughole components included). Spawn rosters,
-   compositions and the difficulty rows are done (`native/mod-loader/director.c`, `mappings/director.json`; level 11's
-   weights too). Left: adding roster rows or compositions (their counts are in the game's code). Enemies are the host's
-   in co-op, so their edits need no per-player handling.
+2. Enemies and structures: stats, damage zones, attacks, spawn rosters and compositions. Every entity's page has the
+   fields the engine maps (`mappings/entities.json`, `scripts/ExportEntities.py`). That is about 38,800 rows: every
+   editable row of the HD2R Editor's Enemies pages but one, named by `scripts/ImportSchemaMappings.py <HD2Runtime>`. The
+   Unit, AiSpawner, SquadTransportFormation, SquadTransport, Gore, StratagemBlocker and Bughole components are included.
+   Spawn rosters, compositions and the difficulty rows are done (`native/mod-loader/director.c`,
+   `mappings/director.json`; level 11's weights too). Left: adding roster rows or compositions (their counts are in the
+   game's code). Enemies are the host's in co-op, so their edits need no per-player handling.
 3. Demolition templates, destruction models and mission settings.
 
 ### Events, hooks and registries (phase 5b)
@@ -87,10 +96,12 @@ Full parity with the HD2R Editor, in three steps:
 - Mod content in progression: a level requirement, a price or a warbond page for a mod's stratagems and weapons
   ([roadmap.md](roadmap.md#progression)).
 - Game functions as SDK calls (spawn, give, damage, Wwise events) instead of raw addresses, which move with every game
-  build. Started in SDK 16: ten functions by name (`mappings/functions.json`, `HF_HOOK`, `hf_fn_`) and typed events
-  (`hf_on_<event>`, no cast), and 15 game globals by name (`mappings/globals.json`, `hf_global_`: the managers and
-  queues those functions take, with their named fields). Left: more names and fields, and named sites inside functions
-  for patches.
+  build. Started in SDK 16:
+  - ten functions by name (`mappings/functions.json`, `HF_HOOK`, `hf_fn_`) and typed events (`hf_on_<event>`, no cast);
+  - 15 game globals by name (`mappings/globals.json`, `hf_global_`): the managers and queues those functions take, with
+    their named fields.
+
+  Left: more names and fields, and named sites inside functions for patches.
 - The launcher shows which mods hook what, and conflicts between mods. The logs and `hooks.tsv` already report both.
 - Conflict rules beyond load order: a priority set by the mod or the player, and merge rules for list data.
 - The Lua bridge's events and actions that have no engine call yet ([lua-bridge.md](lua-bridge.md)).
@@ -100,8 +111,9 @@ Full parity with the HD2R Editor, in three steps:
 - `is_authority(entity)` (SDK 16): whether this machine is in charge of an entity; `entity_of_network(network)` names
   the entity a network id has here now. The spawn event's `authority` field says so at spawn too.
 - The mod channel (SDK 16): `send` and `HF_ON_MESSAGE` between the same mod on every player's machine, carried between
-  the players' backends over the Steam link, and the host's shared table (`share_set`, `share_get`, `share_row`,
-  `HF_ON_SHARE`) that a late joiner gets whole. HellForge's countdown laser and turret targeting move onto it (planned).
+  the players' backends over the Steam link. It also has the host's shared table (`share_set`, `share_get`, `share_row`,
+  `HF_ON_SHARE`), which a late joiner gets whole. HellForge's countdown laser and turret targeting move onto it
+  (planned).
 - The Pelican turning to face its target, and its custom aim height. Only the machine in charge sees them today.
 - A two-backend test: a stratagem of each kind (entity, behaviour, ability) syncs.
 - The channel in the co-op section of [modding/concepts.md](modding/concepts.md#co-op): done (SDK 16).

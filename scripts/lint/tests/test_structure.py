@@ -292,6 +292,24 @@ class Measures(unittest.TestCase):
     def test_module_lines(self):
         self.assertEqual(model('#include <a.h>\n\nint a;\n// note\nint b;\n', 'c').code_lines, 3)
 
+    def test_comment_blocks(self):
+        code = '''
+        // one
+        // two
+
+        int a; // trailing: not a comment-only line
+        /* three
+           lines
+        */ int b;
+        #if 0
+        /* inactive */ int c;
+        #endif
+        /// <summary>doc</summary>
+        void f(void) { }
+        '''
+        # line 1 is blank (dedent keeps it); `*/ int b;` and `/* inactive */ int c;` hold code
+        self.assertEqual(model(code, 'c').comment_blocks, [(2, 2), (6, 2), (12, 1)])
+
     def test_duplicates(self):
         body = ' '.join(f'x{i} = {i};' for i in range(30))
         first = structure.analyse(f'void a() {{ {body} }}', 'c').tokens

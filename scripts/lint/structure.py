@@ -14,6 +14,7 @@ The rules are Bingus Shared Runtime's R10-R15 (its lint.py and metrics.py) for H
 - Stack size (C and C++): the bytes of a function's fixed-size local arrays of scalar or pointer type (`static` ones
   are not on the stack and do not count).
 - Duplicated code: windows of `clone_tokens` tokens that occur more than once, merged into regions (as Bingus's).
+- Comment blocks (HellForge's own, not Bingus's): runs of consecutive lines that hold only comment text.
 
 Preprocessor lines are not tokens. Of an `#if`/`#ifdef`/`#ifndef` group only the first branch is read (the `#else`
 branch of `#if 0`); the others are skipped, so code split across branches still balances.
@@ -30,6 +31,7 @@ LIMITS = {
     'stack_bytes': 16384,   # C and C++: fixed local arrays per function
     'module_lines': 1000,   # SonarSource's default for a file
     'clone_tokens': 100,    # duplicated block length (PMD CPD's default)
+    'comment_lines': 10,    # lines in one block of comment-only lines
 }
 
 LANGUAGES = {'.cs': 'cs', '.c': 'c', '.h': 'cpp', '.cpp': 'cpp', '.cc': 'cpp', '.hpp': 'cpp'}
@@ -78,6 +80,7 @@ class _Scanner:
         self.tokens: list[Token] = []
         self.directive_lines: set[int] = set()
         self.skipped_lines: set[int] = set()
+        self.comment_lines: set[int] = set()  # lines holding comment text (active code only)
         self.conditions: list[str] = []     # per open #if group: 'active', 'skipping', 'done'
         self.line_start = True
 
@@ -107,13 +110,16 @@ class _Scanner:
                 continue
             if text.startswith('//', self.position):
                 end = text.find('\n', self.position)
+                self.comment_lines.add(self.line)
                 self.advance((len(text) if end < 0 else end) - self.position)
                 continue
             if text.startswith('/*', self.position):
                 end = text.find('*/', self.position + 2)
                 if end < 0:
                     raise self.error('unterminated comment')
+                first = self.line
                 self.advance(end + 2 - self.position)
+                self.comment_lines.update(range(first, self.line + 1))
                 continue
             if char == '#' and self.line_start:
                 self.directive()
@@ -300,13 +306,29 @@ class _Scanner:
         raise ParseError('unterminated interpolation')
 
 
-def tokenize(text: str, language: str) -> tuple[list[Token], set[int], set[int]]:
-    """(tokens, preprocessor directive lines, lines skipped as inactive branches)."""
+def _scan(text: str, language: str) -> _Scanner:
     scanner = _Scanner(text, language)
     scanner.run()
     if scanner.conditions:
         raise ParseError('#if without #endif')
+    return scanner
+
+
+def tokenize(text: str, language: str) -> tuple[list[Token], set[int], set[int]]:
+    """(tokens, preprocessor directive lines, lines skipped as inactive branches)."""
+    scanner = _scan(text, language)
     return scanner.tokens, scanner.directive_lines, scanner.skipped_lines
+
+
+def comment_blocks(comment_lines: set[int], code_lines: set[int]) -> list[tuple[int, int]]:
+    """(first line, line count) of each run of consecutive lines that hold comment text and no code."""
+    blocks: list[tuple[int, int]] = []
+    for line in sorted(comment_lines - code_lines):
+        if blocks and blocks[-1][0] + blocks[-1][1] == line:
+            blocks[-1] = (blocks[-1][0], blocks[-1][1] + 1)
+        else:
+            blocks.append((line, 1))
+    return blocks
 
 
 # ----------------------------------------------------------------------------- functions
@@ -1040,14 +1062,17 @@ class Model:
     tokens: list[Token]
     functions: list[Function]
     code_lines: int
+    comment_blocks: list[tuple[int, int]] = field(default_factory=list)  # (first line, line count)
 
 
 def analyse(text: str, language: str) -> Model:
-    tokens, directives, _ = tokenize(text, language)
+    scanner = _scan(text, language)
+    tokens = scanner.tokens
     source = _Source(tokens, language)
     source.scope(0, len(tokens))
-    code_lines = len({token.line for token in tokens} | directives)
-    return Model(tokens, source.functions, code_lines)
+    code = {token.line for token in tokens} | scanner.directive_lines
+    return Model(tokens, source.functions, len(code),
+                 comment_blocks(scanner.comment_lines, code | scanner.skipped_lines))
 
 
 # ----------------------------------------------------------------------------- duplicated code

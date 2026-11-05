@@ -1,5 +1,7 @@
 # Data mods
 
+<!-- diataxis: how-to -->
+
 This page is for mod authors who want to change or add game data: models, textures, effects, sounds and icons. It
 covers the three ways a HellForge mod brings data, and the two engine edits a manifest can make without code.
 

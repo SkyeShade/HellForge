@@ -1,5 +1,7 @@
 # Tools and sharing
 
+<!-- diataxis: how-to -->
+
 This page is for mod authors who want more than the launcher's buttons. It covers how HellForge builds mods, working in
 an IDE, building from a terminal or in the HellForge repository, prebuilt mods, and releasing a mod.
 
@@ -44,7 +46,7 @@ navigation into `hellforge_mod.h` work.
 
 `HellForge.Cli` is in `<installation>/app/cli`.
 
-```
+```sh
 HellForge.Cli new-mod --id yourname.my-mod --name "My Mod" --install <installation>   # a mod from the template, in mods/
 HellForge.Cli build-mod --mod <installation>/mods/my-mod                             # compile now
 HellForge.Cli package-mod --mod <installation>/mods/my-mod                           # zip it to share
@@ -70,7 +72,7 @@ into `<Documents>/HellForge/mods/<folder>`, which suits trying a DLL quickly. To
 copy its folder instead. A `CMakeUserPresets.json` (not committed) that inherits `default` can set `HELLFORGE_INSTALL`
 to another installation, or to empty to only build:
 
-```
+```sh
 cd examples/mods/golden-liberator
 ../../../tools/cmake/bin/cmake --preset default
 ../../../tools/cmake/bin/cmake --build --preset default
@@ -114,6 +116,7 @@ your mod and has to install it themselves gets a GET IT button on the in-game MO
 When a player joins a lobby whose host runs your mod and lacks it, mod sync can download it from the host
 ([mods.md](../mods.md#playing-with-other-mods)). A mod HellForge checks all of (schema stats, network field types, data
 specs without `replace`) downloads from any host. A code mod, or one with raw data, downloads only when:
+
 - HellForge's verified list names that exact version (below), or
 - the player trusts it on the prompt (TRUST, after a warning that it runs its own code on their PC), which takes a
   sandboxed game when the host is not their Steam friend. That trust is for those exact files: a new version has to be
@@ -129,6 +132,7 @@ trust. Each entry names one exact version by its content hash: the SHA-256 of th
 each counted file and that file's SHA-256, and for a data spec the data builder's version).
 
 To add a mod (maintainers):
+
 1. Review the release as players get it: the zip its author shares, not a working folder. Read all of its code.
 2. Print its hash from that zip: `HellForge.Cli mod-hash --mod <the zip or folder>`. It hashes a zip by what it ships,
    as a player's HellForge loads it, and prints the mod's class and an `entry` to copy.

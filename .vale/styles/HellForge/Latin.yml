@@ -1,0 +1,12 @@
+# Plain words read faster than abbreviations of Latin.
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: https://github.com/SkyeShade/HellForge/blob/dev/scripts/docs-lint/README.md#vale
+level: warning
+ignorecase: true
+nonword: true
+swap:
+  '\be\.g\.': for example
+  '\bi\.e\.': that is
+  '\betc\.': and so on
+  '\band/or\b': or

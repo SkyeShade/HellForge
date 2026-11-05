@@ -1,5 +1,7 @@
 # HellForge roadmap
 
+<!-- diataxis: explanation -->
+
 What HellForge can do today, what is being tested, and what comes after. Updated 2026-11-04 for HellForge 0.4.0-beta.
 Nothing here has a date, and stability comes first. What each release changed is in the
 [changelog](../CHANGELOG.md).
@@ -13,7 +15,7 @@ Nothing here has a date, and stability comes first. What each release changed is
 | [Mod SDK](sdk-roadmap.md) | Done | SDK 16; some events and registries left |
 | The supported build from Steam's servers | Testing | Replaces the build patches; nothing to publish per Steam build |
 | Open source | Done | GPL-3 |
-| In-game editor | Mostly done | Player's kit mostly ported; enemies and structures built; missions left |
+| In-game editor | Mostly done | Player's kit mostly ported, enemies and structures built, missions left |
 | Difficulty 11 (Hell Forge) | Mostly done | Needs its own enemy mix |
 | Linux | Experimental | Native launcher and setup, the game under Proton; co-op and Steam Deck untested |
 | Change mods without restarting | Experimental | New in 0.4, off by default (Settings > Experimental) |
@@ -41,8 +43,9 @@ subfactions, custom missions, and mod content in progression. The [SDK roadmap](
 
 ## The details
 
-The rest of this page goes through each item. Contributors will find more detail in [engine-roadmap.md](engine-roadmap.md)
-(session runner, local backend, mod loader, stand-ins) and [sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
+The rest of this page goes through each item. Contributors will find more detail in
+[engine-roadmap.md](engine-roadmap.md) (session runner, local backend, mod loader, stand-ins) and
+[sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
 
 Versions: HellForge 0.4.0-beta, engine 0.1.47, mod SDK 16.
 
@@ -84,20 +87,33 @@ Local PlayFab.
 
 In co-op, every player keeps their own in-game editor changes, and joiners can edit too. HellForge loads what each
 player's changes need on every machine, so a friend's swapped vehicle weapon or hellpod payload shows up instead of a
-purple question mark. A host can still have everyone play with their changes, with a switch on the Mods page. A
-player's projectile swaps fire as theirs on every screen, and everyone else's guns keep their own: hand-held weapons,
-the ones whose round comes from their ammunition or rounds feed (the Liberator, the shotguns), underbarrels (the
-One-Two's grenade) and programmable rounds ([multiplayer.md, shots in co-op](multiplayer.md#shots-in-co-op)). Every
-hand-held weapon's round can be swapped in the editor now: ammunition options, charge and heat levels and magazine
-patterns included.
+purple question mark. A host can still have everyone play with their changes, with a switch on the Mods page.
+
+A player's projectile swaps fire as theirs on every screen, and everyone else's guns keep their own
+([Co-op in game, shots in co-op](multiplayer-in-game.md#shots-in-co-op)). That covers:
+
+- hand-held weapons;
+- the ones whose round comes from their ammunition or rounds feed (the Liberator, the shotguns);
+- underbarrels (the One-Two's grenade);
+- programmable rounds.
+
+Every hand-held weapon's round can be swapped in the editor now: ammunition options, charge and heat levels and
+magazine patterns included.
 
 Fixed: issue #5 (the F8 editor didn't show with RivaTuner or Afterburner running), plus #6, #13, #18 and #20. Resets in
 Local Stats are no longer lost.
 
-Before release we still need two-PC tests: privacy with a friend, a stranger and an invited player; invites; kicking;
-mod sync with its restart and rejoin; a public lobby on the map; and each player's own editor changes in co-op
-([multiplayer.md, step 10](multiplayer.md#step-10-every-players-own-stats-and-the-lobbys-assets-2026-10-23)). The editor's overlay test also needs one run with
-RivaTuner closed.
+Before release we still need two-PC tests:
+
+- privacy with a friend, a stranger and an invited player;
+- invites;
+- kicking;
+- mod sync with its restart and rejoin;
+- a public lobby on the map;
+- each player's own editor changes in co-op
+  ([the co-op build log, step 10](https://github.com/SkyeShade/HellForge/blob/8960d58f03787264e3ce88aa68cffaaf8af0d8ff/docs/multiplayer.md#step-10-every-players-own-stats-and-the-lobbys-assets-2026-10-23)).
+
+The editor's overlay test also needs one run with RivaTuner closed.
 
 ## 0.4.0-beta (release candidate)
 
@@ -152,13 +168,13 @@ only while the live war has them. The plan:
 
 Status: built for 0.3.0-dev.4, needs testing in game.
 
-Cyberstan (planet 260, the Automatons' home world) has missions of its own, but not from its campaign: the game strips
-its map's drop points (game.dll 0x12D88FB) and builds its operations from its 8 Megafactory regions instead ("LIBERATE
+Cyberstan (planet 260, the Automatons' home world) has missions of its own, but not from its campaign. The game strips
+its map's drop points (game.dll 0x12D88FB). It builds its operations from its 8 Megafactory regions instead ("LIBERATE
 CYBERSTAN", difficulties 4 to 10). The war never served those regions, so it offered none. "All planets open" now serves
-each of an enemy home world's regions as the enemy's, at full health and available (HD2Mods research/cyberstan). To test:
-each region at difficulty 4 and 10, the map and biome loading, the campaign panel, and a friend joining.
+each of an enemy home world's regions as the enemy's, at full health and available (HD2Mods research/cyberstan). To
+test: each region at difficulty 4 and 10, the map and biome loading, the campaign panel, and a friend joining.
 
-Difficulty 11 (Hell Forge): the war table keeps level 11 in a part of the mission board that belongs to region 7, so a
+Difficulty 11 (Hell Forge): the war table keeps level 11 in a part of the mission board that belongs to region 7. So a
 planet with a region 7 got no level 11, and Cyberstan is the only one. Each Cyberstan region's level 11 now takes that
 region's level 1 slot, which stays empty because its regions start at difficulty 4 (`difficulty.c`, the mission board).
 To test: a region at difficulty 11.
@@ -168,26 +184,36 @@ To test: a region at difficulty 11.
 Status: built, needs testing in game.
 
 Six planets had a campaign in "All planets open" but no missions: the frozen war keeps a mission modifier on each with
-which the campaign builder offers none (HD2Mods research/cyberstan). They are Meridia (1229, the Supercolony biome), Ivis
-and Moradesh (1252), Calypso (1418), Penta (1352) and Angel's Venture (1241). "All planets open" now leaves those effects
-out, so each has missions at every level, 11 included, against its sector's enemy (Meridia the Terminids'). To test, on
-Meridia first: the map loads, a mission at 1 and at 11, extraction.
+which the campaign builder offers none (HD2Mods research/cyberstan). They are Meridia (1229, the Supercolony biome),
+Ivis and Moradesh (1252), Calypso (1418), Penta (1352) and Angel's Venture (1241). "All planets open" now leaves those
+effects out, so each has missions at every level, 11 included, against its sector's enemy (Meridia the Terminids'). To
+test, on Meridia first: the map loads, a mission at 1 and at 11, extraction.
 
 ### Subfactions
 
 Status: built (steps 1 and 2); the war table's flags show since 0.3.0-dev.8. Co-op still needs the host's war on every
 machine.
 
-A mission's subfactions come from its planet's galactic war effects of type 40: each adds an enemy tag (Predator Strain,
-Spore Burst, Rupture, Dragonroach, Hive Lord; Jet Brigade, Incineration Corps, Cyborgs; the Illuminate's four), and the
-spawn director only picks roster rows and squads whose tags are there (0x953150). The game builds its effect table from
-/WarSeason/GalacticWarEffects, which HellForge served empty, so no planet effect worked. The backend now serves the 13
-subfaction effects and their war-table flags (type 71), so the frozen and live wars get their own subfactions. "All
-planets open" deals them planet by planet from the launcher's seed: half of each enemy's planets get none, the others one
-of that enemy's, and every Illuminate planet one (HD2Mods research/subfactions); SEAF allies go to about one planet in
-eight. Key planets keep their own and are never dealt others: Cyberstan its Cyborgs, and Oshaune, the Terminid hive
-world, its Rupture Strain, Dragonroach and Hive Lord. Each deal has a switch in the launcher; off, the frozen war's stay.
-In co-op the host's war decides; whether a joiner with another seed loads the host's subfaction enemies is to be tested.
+A mission's subfactions come from its planet's galactic war effects of type 40. Each adds an enemy tag:
+
+- Terminids: Predator Strain, Spore Burst, Rupture, Dragonroach, Hive Lord;
+- Automatons: Jet Brigade, Incineration Corps, Cyborgs;
+- the Illuminate's four.
+
+The spawn director only picks roster rows and squads whose tags are there (0x953150). The game builds its effect table
+from /WarSeason/GalacticWarEffects, which HellForge served empty, so no planet effect worked. The backend now serves the
+13 subfaction effects and their war-table flags (type 71), so the frozen and live wars get their own subfactions.
+
+"All planets open" deals them planet by planet from the launcher's seed (HD2Mods research/subfactions):
+
+- Half of each enemy's planets get none, and the others one of that enemy's.
+- Every Illuminate planet gets one.
+- SEAF allies go to about one planet in eight.
+- Key planets keep their own and are never dealt others: Cyberstan its Cyborgs, and Oshaune, the Terminid hive world,
+  its Rupture Strain, Dragonroach and Hive Lord.
+- Each deal has a switch in the launcher; off, the frozen war's stay.
+
+In co-op the host's war decides. Whether a joiner with another seed loads the host's subfaction enemies is to be tested.
 
 1. Find out what decides a mission's subfaction. Done.
 2. Have "All planets open" give each planet subfactions that fit its enemy. Done.
@@ -217,10 +243,16 @@ Status: planned. The design isn't decided yet.
 A new profile starts from a template: `starter` (a fresh player just out of basic training) or `unlock-all`
 (everything, at the top level). For now the local backend pays out with simple placeholder rules (`MissionService.cs`):
 XP based on difficulty, success and objectives, requisition and medals based on difficulty, and whatever samples the
-game reports you looted. What a profile earns can be spent (`Purchases.cs`): medals on warbond pages, requisition on
-stratagems and the store, samples on ship modules, and requisition on weapon attachments, each checked against the
-game's prices and the profile's balance. We want playing up from `starter` to be fun, without turning into a grind or giving everything away. The
-plan:
+game reports you looted.
+
+What a profile earns can be spent (`Purchases.cs`), each checked against the game's prices and the profile's balance:
+
+- medals on warbond pages;
+- requisition on stratagems and the store;
+- samples on ship modules;
+- requisition on weapon attachments.
+
+We want playing up from `starter` to be fun, without turning into a grind or giving everything away. The plan:
 
 1. Make the whole loop work. Everything a profile earns should be spendable on what the game sells for it (stratagems,
    ship modules, warbond pages, the store), and every way of earning should pay out (medals, super credits, operation
@@ -247,14 +279,15 @@ The in-game editor should eventually edit every field the HD2R Editor does
 
 1. Weapons and the rest of the player's kit. Weapons, stratagems, backpacks, vehicles, boosters, the Helldiver and
    armor are mostly ported. The GL-15 Evictor, M90A, P-11, P-4, P-69, R-6 and SG-97, blocked before, now have their
-   Projectile row, and so do the One-Two's and Arbitrator's underbarrels. Still to do: beam conversion, the HD2R rows that have no HellForge field yet (a coverage
-   count will show which), and checking in game when each field takes effect.
+   Projectile row, and so do the One-Two's and Arbitrator's underbarrels. Still to do: beam conversion, the HD2R rows
+   that have no HellForge field yet (a coverage count will show which), and checking in game when each field takes
+   effect.
 2. Enemies: their stats, damage zones and attacks, spawn rosters and compositions. Built in 0.3.0-beta: the in-game
-   editor has the HD2R Editor's Enemies pages (Terminids, Automatons, Illuminate, Structures,
-   Other Entities) with health, armor, damage zones, attacks, the bug hives' director multipliers, unit size,
-   spawners, drop-ship transports, stratagem jammers, bug holes and gore for about 1,170 entities: about 38,800 fields,
-   every one the HD2R Editor lets you edit there. Spawn rosters and compositions are built too. The Helldiver's main
-   health and size and the Solo Silo's health come with it.
+   editor has the HD2R Editor's Enemies pages (Terminids, Automatons, Illuminate, Structures, Other Entities). They
+   cover about 1,170 entities and about 38,800 fields, every one the HD2R Editor lets you edit there. The fields are
+   health, armor, damage zones, attacks, the bug hives' director multipliers, unit size, spawners, drop-ship transports,
+   stratagem jammers, bug holes and gore. Spawn rosters and compositions are built too. The Helldiver's main health and
+   size and the Solo Silo's health come with it.
 3. Demolition templates, destruction models and mission settings (the other Spawning & Destruction pages).
 
 For custom models, the OBJ mesh importer works in game (the cube gun proved it). Copied units still need working

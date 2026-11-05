@@ -1,15 +1,21 @@
 # Code signing and Smart App Control
 
+<!-- diataxis: explanation -->
+
 For maintainers. Why Windows 11's Smart App Control blocks HellForge, what signing would and would not fix, and the
 options. Nothing is bought or configured yet: no release so far has been signed.
 
 ## What players see
 
-Smart App Control (Windows Security > App & browser control > Smart App Control settings) refuses to start a program,
-or load a DLL, unless Microsoft's cloud service knows it to be safe or it carries a valid signature from a publisher
-Windows trusts. It is on by default on clean Windows 11 installs, starts in evaluation mode, and Windows turns it on or
-off by itself after a while. Once it is off, Windows can only turn it back on after a reset or reinstall of Windows (newer
-Windows 11 builds are said to relax that, but players should not count on it).
+Smart App Control refuses to start a program, or load a DLL, unless one of these holds:
+
+- Microsoft's cloud service knows it to be safe
+- it carries a valid signature from a publisher Windows trusts
+
+Its switch is in Windows Security > App & browser control > Smart App Control settings. It is on by default on clean
+Windows 11 installs, starts in evaluation mode, and Windows turns it on or off by itself after a while. Once it is off,
+Windows can only turn it back on after a reset or reinstall of Windows. Newer Windows 11 builds are said to relax that,
+but players should not count on it.
 
 HellForge signs nothing, so while Smart App Control is on, Windows can block any of these. Each says
 "An Application Control policy has blocked this file" (Windows error 4551, `0x800711C7`), or, for a DLL the game loads,
@@ -18,7 +24,7 @@ makes the game exit with `0xC0000428`:
 | File | Who starts or loads it | What the player sees since this change |
 |---|---|---|
 | `app\session\HellForge.Session.exe` (NativeAOT) | the launcher, `HellForge.Cli launch` | "Windows blocked HellForge's session runner." and the full reason |
-| `app\backend\HellForge.LocalBackend.exe`, `app\sdk-shims\hellforge_steam_broker.exe`, `app\cli\HellForge.Cli.exe`, `network-block\NetworkProbe.exe` | the session runner | the session fails with "Windows blocked <file> ..." |
+| `app\backend\HellForge.LocalBackend.exe`, `app\sdk-shims\hellforge_steam_broker.exe`, `app\cli\HellForge.Cli.exe`, `network-block\NetworkProbe.exe` | the session runner | the session fails with "Windows blocked \<file> ..." |
 | `app\sdk-shims\*.dll` (the PlayFab and Steam stand-ins) | the game | the game exits with `0xC0000428`; the session says what it means, and what to do while Smart App Control is on |
 | `app\sdk-shims\hellforge_modloader.dll` | the Steam stand-in, in the game | no mods load (the stand-in loads it silently; the evidence is the CodeIntegrity log below) |
 | a mod's DLL | the mod loader, in the game | the mod's line in `modloader.log`: "not loaded (... Windows error 4551, an Application Control policy such as Smart App Control blocked it)" |
@@ -34,9 +40,11 @@ changes the setting and cannot add an exception: Smart App Control has none.
 
 Signed with a certificate that chains to a root in Microsoft's Trusted Root Program, HellForge's own files would pass
 Smart App Control's signature check even while its cloud service does not know them yet. Microsoft describes the check
-as: when the cloud service cannot make a confident prediction, an app with a valid signature runs. Signing does not
-stop the cloud service from calling a file malicious, and the session runner's memory edits of the game look like what
-malware does, so a signed build should still be tried with Smart App Control on before a release says it works.
+as: when the cloud service cannot make a confident prediction, an app with a valid signature runs.
+
+Signing does not stop the cloud service from calling a file malicious. The session runner's memory edits of the game
+look like what malware does. So a signed build should still be tried with Smart App Control on before a release says it
+works.
 
 Signing HellForge's builds does not cover files made on the player's PC:
 
@@ -73,17 +81,27 @@ a signing identity builds up over downloads, for every option above.
 - `HELLFORGE_SIGN_CERT_SHA1`: a certificate in the Windows certificate store (OV or EV, on a token too), by thumbprint.
 - `HELLFORGE_SIGNTOOL` (where `signtool.exe` is) and `HELLFORGE_SIGN_TIMESTAMP` (the timestamp server), when needed.
 
-The build scripts call it at the points where signing does not break a pin: `Build-Engine.ps1` signs the session runner
-and backend, the stand-ins, mod loader, WFP tool and broker before `build.json` pins them, and the scripts before
-`engine.json` hashes them; `Publish-HellForge.ps1` signs the launcher, CLI, Steam probe, capture proxy, bundled mods and
-`HellForge.exe`; `Package-HellForge.ps1` signs `HellForge-Setup.exe`. Files that already carry a valid signature (the .NET
-runtime's) are left alone. CI does not sign: it has no certificate, and its builds are not released.
+The build scripts call it at the points where signing does not break a pin:
+
+| Script | Signs |
+|---|---|
+| `Build-Engine.ps1` | the session runner and backend, the stand-ins, mod loader, WFP tool and broker before `build.json` pins them, and the scripts before `engine.json` hashes them |
+| `Publish-HellForge.ps1` | the launcher, CLI, Steam probe, capture proxy, bundled mods and `HellForge.exe` |
+| `Package-HellForge.ps1` | `HellForge-Setup.exe` |
+
+Files that already carry a valid signature (the .NET runtime's) are left alone. CI does not sign: it has no certificate,
+and its builds are not released.
 
 ## Evidence from players
 
-When a player reports the block, ask for the CodeIntegrity log entries that name the file: Event Viewer > Applications
-and Services Logs > Microsoft > Windows > CodeIntegrity > Operational, events 3077 (blocked), 3033 (a DLL did not meet
-the signing level) and 3089 (the signature details that go with them). In PowerShell:
+When a player reports the block, ask for the CodeIntegrity log entries that name the file. They are in Event Viewer >
+Applications and Services Logs > Microsoft > Windows > CodeIntegrity > Operational:
+
+- 3077: blocked
+- 3033: a DLL did not meet the signing level
+- 3089: the signature details that go with them
+
+In PowerShell:
 
 ```powershell
 Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -MaxEvents 200 |

@@ -1,5 +1,7 @@
 # Building a lobby browser
 
+<!-- diataxis: how-to -->
+
 This page is for front-end developers who build their own lobby browser on the ship's information terminal (the one
 across from the Armory). HellForge does the matchmaking: it finds the lobbies, works out what joining each one takes,
 and joins. Your browser shows the list and sends the player's choices. Layout, look, input and sound are up to you.
@@ -19,7 +21,7 @@ strangers, edited stats), and only it knows about the terminal and its camera.
 
 ## How it fits together
 
-```
+```text
  player presses E at the terminal
         │
         ▼
@@ -156,7 +158,7 @@ don't work joinability out from `verdict` yourself.
 
 The list comes in this order: lobbies that can be joined now (a friend's first), then ones a `fix` would let in, then
 full or locked ones, then the ones that can't be joined. The placeholder hides that last group while any other lobby
-is shown (CAN'T JOIN, or H, shows it), names each row by what keeps it out ("Needs sandbox", "Host must update",
+is shown (CAN'T JOIN, or H, shows it). It names each row by what keeps it out ("Needs sandbox", "Host must update",
 "Needs mods") and gives the whole `reason` in the selected lobby's details.
 
 | `verdict` | Joinable | Meaning | The placeholder says |
@@ -209,8 +211,9 @@ downloads or is trusted without it. So close your browser on `INVITED` and tell 
 Don't promise they're in.
 
 **Refreshing.** The placeholder asks for a new list when it opens, on REFRESH (R), and every 10 s while it shows. It
-skips the 10 s refresh while a search runs or a join is pending, and shows a searching indicator for at least 0.8 s
+skips the 10 s refresh while a search runs or a join is pending. It shows a searching indicator for at least 0.8 s
 after an ask, because a list from the last 2 s comes back at once and a REFRESH that changes nothing looks broken.
+
 Every ask ends in a state other than `SEARCHING`: a search that fails or times out comes back `FAILED` with the old
 list. Still, give up on a search or a join that has no answer after 60 s, as the placeholder does, so a lost answer
 never leaves your browser searching.
@@ -241,7 +244,7 @@ The SDK has no drawing calls. Your mod draws over the game itself, the way HellF
 (`native/editor/editor.cpp`, a working example to copy from):
 
 - **Drawing.** The game renders with D3D12. The editor finds `IDXGISwapChain::Present`, `Present1` and `ResizeBuffers`
-  through a throwaway device and swap chain, hooks them with `hf->hook`, and records Dear ImGui into the back buffer
+  through a throwaway device and swap chain, and hooks them with `hf->hook`. It records Dear ImGui into the back buffer
   on the swap chain's own command queue just before the game presents. Launched with `--use-d3d11`, the game renders
   with D3D11, and the editor draws with ImGui's DX11 backend instead. Hooks made through `hf->hook` chain with
   HellForge's and other mods' hooks on the same function, so your Present hook and the editor's both run.
@@ -251,13 +254,16 @@ The SDK has no drawing calls. Your mod draws over the game itself, the way HellF
   alongside your browser.
 - **Threads.** Present runs on the game's render thread and the window procedure on the window thread. The editor
   runs its UI under one lock that both take. The SDK browse calls are safe from any thread.
-- **The look.** The editor's browser is laid out like the game's own Social menu, in HellForge red where the game
-  uses yellow: the HellForge mark and MATCHMAKING over a LOBBIES tab, the status, categories and filters on the left,
-  two columns of lobby cards in pages (each with a coloured edge for what joining it takes) in the middle, QUICK PLAY
-  and the colour key on the right, and the game's black hint strip (ESC, R, SPACE, ENTER) along the bottom. A card
-  opens the lobby's pop-up, where Enter joins. It keeps a power-on and power-off animation (0.55 s and 0.3 s). Its
-  colours are the `LB_` constants in `app_lobbies.cpp`.
-  None of this is required.
+- **The look.** None of this is required. The editor's browser is laid out like the game's own Social menu, in
+  HellForge red where the game uses yellow:
+  - the HellForge mark and MATCHMAKING over a LOBBIES tab
+  - the status, categories and filters on the left
+  - two columns of lobby cards in pages (each with a coloured edge for what joining it takes) in the middle
+  - QUICK PLAY and the colour key on the right
+  - the game's black hint strip (ESC, R, SPACE, ENTER) along the bottom
+
+  A card opens the lobby's pop-up, where Enter joins. It keeps a power-on and power-off animation (0.55 s and 0.3 s).
+  Its colours are the `LB_` constants in `app_lobbies.cpp`.
 
 ## A skeleton
 

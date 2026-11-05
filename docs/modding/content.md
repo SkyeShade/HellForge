@@ -1,8 +1,10 @@
 # Content
 
+<!-- diataxis: how-to -->
+
 This chapter is for code mod authors who want to change the game's weapons, stratagems and other entities, or add new
-ones: entities, weapons, projectiles and damage types, stratagems and their selection headings, behaviours, abilities
-and a difficulty level.
+ones. New content can be entities, weapons, projectiles and damage types, stratagems and their selection headings,
+behaviours, abilities and a difficulty level.
 
 After reading it you will be able to:
 
@@ -42,7 +44,7 @@ an event ([how mods run](concepts.md#when-your-code-runs)).
 New content is always a copy of something vanilla: a new stratagem copies a vanilla stratagem's settings, a new weapon
 copies a vanilla weapon. You give the copy a name and change what you want; everything else stays the base's. The name
 is the copy's identity. Its ids come from the name (an entity's resource id is the name's hash) or are numbered in the
-order of mod ids (stratagem, projectile and damage types), so every player's game agrees on them without talking.
+order of mod ids (stratagem, projectile and damage types). So every player's game agrees on them without talking.
 
 A copy of premium content (a premium warbond's or a Steam DLC's weapon, a Superstore item) is in a player's armory only
 when they own the original. Content built on premium content in other ways is declared in the manifest's `premium`
@@ -70,12 +72,15 @@ code. Check `hf->version` for the SDK a call needs, and `hf->size` for a call ad
 ([compatibility](concepts.md#compatibility)).
 
 Weapons run out sooner than 192 in practice. Each new weapon adds its base's item and all of the base's attachments to
-the game's item catalogue (57 items for an AR-23 Liberator copy), and the game keeps only the first 4,096 catalogue
-items (vanilla has 2,925), the first 4,096 inventory entries and 256 progression packages (vanilla has 56; each new
-weapon takes one). That is about 20 Liberator copies across all mods. HellForge adds level 11 first, then new
-stratagems (2 items each), then each weapon whole, and leaves out what does not fit, with a line in the session's
-backend log for each. So past the limit it is the last weapons that are missing, never half of one, and not a mod's
-stratagems.
+the game's item catalogue (57 items for an AR-23 Liberator copy). The game keeps only:
+
+- the first 4,096 catalogue items (vanilla has 2,925)
+- the first 4,096 inventory entries
+- 256 progression packages (vanilla has 56; each new weapon takes one)
+
+That is about 20 Liberator copies across all mods. HellForge adds level 11 first, then new stratagems (2 items each),
+then each weapon whole. It leaves out what does not fit, with a line in the session's backend log for each. So past the
+limit it is the last weapons that are missing, never half of one, and not a mod's stratagems.
 
 ## Changing existing content
 
@@ -117,8 +122,8 @@ and when a change applies.
 
 ### What the loader checks
 
-When the block is queued, the loader checks every field and value: a component without a mapping, a field of another
-layout, a value of another type or out of range, a set on a whole array. If anything is wrong it refuses the whole
+When the block is queued, the loader checks every field and value. It catches a component without a mapping, a field
+of another layout, a value of another type or out of range, and a set on a whole array. If anything is wrong it refuses the whole
 block, logs each problem with your source line, and changes nothing.
 
 ### Shared records
@@ -221,9 +226,9 @@ A `mount` entry carries another entity in one of the entity's mount slots (slot 
 points at another block registers that block first. `behaviour` points at an `HfBehaviour` ([behaviours](#behaviours)),
 added once however many entities name it; `behaviour_id` names an existing one instead.
 
-This is the compendium's Pelican Gatling Support (`src/pelicans.c`), condensed: a Pelican carrying a turret of its own
-that fires the MG-206's casings and sound at the Gatling Sentry's rate, credits its kills to the players, and holds
-2000 rounds.
+This is the compendium's Pelican Gatling Support (`src/pelicans.c`), condensed. It is a Pelican carrying a turret of
+its own that fires the MG-206's casings and sound at the Gatling Sentry's rate, credits its kills to the players, and
+holds 2000 rounds.
 
 ```c
 static const HfCopy turretCopies[] = {
@@ -290,7 +295,7 @@ its model, its text and the components it owns. `own_components` lists up to 8 c
 `hf_record(mod, hf->weapon_entity(id), HfWeaponMagazine)` is the weapon's own record.
 
 `own_all = 1` gives the weapon its own copy of every record its base has, as it does for an entity
-([what a copy shares](#what-a-copy-shares)): an edit of the base never changes the weapon, and the weapon's edits never
+([what a copy shares](#what-a-copy-shares)). An edit of the base never changes the weapon, and the weapon's edits never
 change the base. Older HellForge versions ignore it. The weapon's log names any component HellForge couldn't copy,
 which it still shares.
 
@@ -471,8 +476,8 @@ saved to the profile; a saved loadout naming a removed stratagem drops it.
 
 The in-game editor gives every mod stratagem a page under its category. `editor_like` chooses which vanilla
 stratagem's page it takes, and `editor_entities` which of your entities stand for the vanilla ones on that page. An
-entity's fields are on the page only where the entity owns the record (`own_all` gives it all of them), and a
-projectile's or damage's only where a mod added it, so the page never edits anything vanilla.
+entity's fields are on the page only where the entity owns the record (`own_all` gives it all of them). A projectile's
+or damage's fields are there only where a mod added it, so the page never edits anything vanilla.
 
 ### Limits
 
