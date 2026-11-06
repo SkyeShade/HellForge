@@ -631,6 +631,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_stream_window.c" /* after difficulty_stream.c: the planned stamps put in near the players (g_plan) */
 #include "difficulty_world_destroy.c" /* after difficulty_stream.c: the engine destroys only units that exist */
 #include "difficulty_world_move.c" /* after difficulty_stream.c: the extra large map's detailed terrain follows the players */
+#include "living_world.c" /* after difficulty_world_move.c: the players, the difficulty rows, the world (KB living-world-plan) */
 
 static void Deliver(HfEvent event)
 {

@@ -1,0 +1,772 @@
+/* The living world (development switch HELLFORGE_LIVING_WORLD=1; host only; build 25480438). The director's ambient
+ * patrols are switched off and replaced by squads the loader keeps as records ("offline") that walk the level's route
+ * graph; near the players a squad is spawned as a real squad ("online") from the director's own patrol groups, kept
+ * alive against the native despawners, steered along its route, and taken offline again with its losses kept.
+ * Included by hellforge_modloader.c after difficulty_world_move.c (the players, the difficulty rows, the world).
+ *
+ * Every address and rule here is from the static analysis in the knowledge base (living-world-plan, Phase 0 and the
+ * Phase 1 static answers); the code pins below refuse to run on code that is not the reviewed one. */
+#define LW_DIRECTOR 0x3326D10u      /* [game+]: the director (dir) */
+#define LW_AIJOB 0x33264D8u         /* [game+]: AiJob manager: hash +0x20, records +0x48 (0x1C: +0xC job, +0x18 keep) */
+#define LW_AISQUAD 0x33265A0u       /* [game+]: AiSquad: hash +0x20, records +0x40 (0x2510: members +0x20 + 24 i, count +0x320) */
+#define LW_BUDGET 0x3326838u        /* [game+]: the budget: hash +0x1670, records [+0x1690] + 16 i (+0 player, +4 score) */
+#define LW_SEATS 0x3326D88u         /* [game+]: SeatCollection: hash +0x20 */
+#define LW_STATE 0x346BF98u         /* [game+]: the entity state the removal 0xFDC310 takes */
+#define LW_NONE 0x3483C4Cu          /* [game+]: the "no entity" id the budget's reset writes */
+#define LW_INVALID 0x3483C20u       /* [game+]: the invalid id the AiJob lookup tests first */
+#define LW_PATROL_FLAGS 0x46u       /* 0x02 keep (the squad entity) | 0x04 queue | 0x40 the loader enforces the gates */
+#define LW_JOB_PATROL 1u
+#define LW_JOB_BATTLE 10u           /* state 10 re-reads job_position (0x7FD6FE): the route's waypoints */
+
+typedef uintptr_t (*LwSpawnFn)(uintptr_t dir, uintptr_t group, const float* pos, uint32_t job, uint32_t flags, const float* target,
+    const float* quat, const void* spawnData, float delay, uint32_t memberCap);
+typedef void (*LwRemoveFn)(uintptr_t state, uint32_t id);
+typedef void (*LwUnseatFn)(uintptr_t unused, uint32_t entity);
+typedef void (*LwSetJobFn)(uintptr_t jobs, uint32_t entity, uint32_t job);
+typedef void (*LwGoalFn)(uint32_t squad, const float* pos);
+
+/* The functions the loader calls and the instructions its rules rest on, as reviewed. */
+static const ActPin kLwPins[] = {
+    {0, 0x953580u, "40555356574154415541564157488dac24a8fdffff4881ec"}, /* spawn request */
+    {0, 0xFDC310u, "48895c2408574883ec303b154c824a028bda488bf90f84d4"}, /* queued removal */
+    {0, 0x636240u, "48895c2420564883ec303b15d0d9e4028bda488b352f0bcf"}, /* unseat before removal */
+    {0, 0x7F5120u, "405355565741544883ec403b15efeac802458be08bda488b"}, /* set_job */
+    {0, 0xA13520u, "4053554883ec383b0df306a702488bea8bd90f8471010000"}, /* squad goal */
+    {0, 0x13CA380u, "4c8bdc49895b104989732057"},                         /* the ground ray (z + 500 m down 1000 m) */
+    {0, 0x959650u, "40574883ec3083b98006000000488bf9"},                 /* the effective patrol cap */
+    {0, 0x8F32B0u, "4883ec28488b05e533a3028378080074"},                 /* the mission is ending */
+    {0, 0xF74750u, "48895c2410574883ec2048833900488bd9"},               /* the zone at a position */
+    {0, 0x94FF3Au, "448ba55c050000"}, {0, 0x94FEE6u, "448bbd60050000"}, {0, 0x94FF33u, "448bad64050000"}, /* the caps read */
+    {0, 0x9513A1u, "4439a014060000"},                                    /* the patrol loop's gate */
+    {0, 0xA2DC87u, "8079180075"},                                        /* the removability test reads the keep byte +0x18 */
+    {0, 0x954B8Cu, "410fb6442411"},                                      /* keep travels from rec+0x11 (movzx eax, [r12+0x11]) */
+};
+
+static struct
+{
+    int state;              /* 0 not decided, 1 on, -1 off */
+    int pinsOk;
+    uintptr_t game;
+    LwSpawnFn spawn; LwRemoveFn remove; LwUnseatFn unseat; LwSetJobFn setJob; LwGoalFn goal;
+    uint32_t saved[DIF_VANILLA + 1][3]; /* each level's patrol caps before they were zeroed (factions 2 / 8 / 4) */
+    int savedOk[DIF_VANILLA + 1];
+    uint32_t rowsZeroed;
+} g_lw;
+
+static int LwEnabled(void)
+{
+    if (g_lw.state != 0) return g_lw.state > 0;
+    char t[4] = "";
+    g_lw.state = GetEnvironmentVariableA("HELLFORGE_LIVING_WORLD", t, sizeof t) > 0 && t[0] == '1' ? 1 : -1;
+    if (g_lw.state < 0) return 0;
+    uintptr_t game = ApiModuleBase("game.dll", NULL);
+    if (game == 0 || strcmp(g_build, "25480438") || !ActPins(game, kLwPins, sizeof kLwPins / sizeof kLwPins[0]))
+    {
+        g_lw.state = -1;
+        Note("living world: off: the game's code is not the reviewed build");
+        return 0;
+    }
+    g_lw.game = game;
+    g_lw.spawn = (LwSpawnFn)(game + 0x953580u); g_lw.remove = (LwRemoveFn)(game + 0xFDC310u);
+    g_lw.unseat = (LwUnseatFn)(game + 0x636240u); g_lw.setJob = (LwSetJobFn)(game + 0x7F5120u); g_lw.goal = (LwGoalFn)(game + 0xA13520u);
+    g_lw.pinsOk = 1;
+    Note("living world: on (HELLFORGE_LIVING_WORLD=1): the director's patrols are replaced by the loader's squads (host only)");
+    return 1;
+}
+
+/* A write to the game's heap data (records the game keeps, never its image): guarded, no protection change, not a patch. */
+static int LwPoke(uintptr_t address, const void* data, size_t size)
+{
+    SIZE_T written = 0;
+    return WriteProcessMemory(GetCurrentProcess(), (LPVOID)address, data, size, &written) && written == size ? 0 : 1;
+}
+
+/* ---- lookups (the game's u32 hash maps; records move, so nothing is kept between ticks) ---------------------------- */
+
+/* An entity's AiJob record, or 0 (as 0xA2DBDE..0xA2DC87: the invalid id first, then the hash; the sentinel -1 refused). */
+static uintptr_t LwJobRecord(uint32_t entity)
+{
+    uintptr_t m; uint32_t invalid = 0, index = 0;
+    if (!EvpPtr(g_lw.game + LW_AIJOB, &m) || SafeRead(g_lw.game + LW_INVALID, &invalid, 4) || entity == invalid ||
+        !EvpHash(m + 0x20, entity, 8, 4, &index) || index >= EvpU32(m + 0xC, 0)) return 0;
+    uintptr_t records;
+    return EvpPtr(m + 0x48, &records) ? records + (uintptr_t)index * 0x1C : 0;
+}
+
+/* A squad entity's AiSquad record, or 0. */
+static uintptr_t LwSquadRecord(uint32_t squad)
+{
+    uintptr_t m, records; uint32_t index = 0;
+    if (!EvpPtr(g_lw.game + LW_AISQUAD, &m) || !EvpHash(m + 0x20, squad, 8, 4, &index) || index > 0x10000 || !EvpPtr(m + 0x40, &records)) return 0;
+    return records + (uintptr_t)index * 0x2510;
+}
+
+/* A squad's members (looked up afresh; at most 32): their count, -1 when the squad is gone. */
+static int LwMembers(uint32_t squad, uint32_t* out)
+{
+    uintptr_t r = LwSquadRecord(squad);
+    if (r == 0) return -1;
+    uint32_t count = EvpU32(r + 0x320, 0xFFFFFFFFu);
+    if (count > 32) return -1;
+    for (uint32_t i = 0; i < count; i++) out[i] = EvpU32(r + 0x20 + 24u * i, 0);
+    return (int)count;
+}
+
+/* Keeps a member against the budget despawner (conclusion 6): AiJob keep byte +0x18 = 1 (creation-only field: no dirty
+ * marking), and its budget score reset to -1.0 with the player field = none when it is >= 0, because the pick 0xA2C030
+ * reuses the last score without re-testing removability. */
+static void LwKeep(uint32_t member)
+{
+    uintptr_t job = LwJobRecord(member);
+    if (job != 0) { uint8_t keep = 1, was = 0; if (!SafeRead(job + 0x18, &was, 1) && was != 1) LwPoke(job + 0x18, &keep, 1); }
+    uintptr_t b, records; uint32_t index = 0, none = 0;
+    if (!EvpPtr(g_lw.game + LW_BUDGET, &b) || !EvpHash(b + 0x1670, member, 8, 4, &index) || index >= EvpU32(b + 0x1664, 0) ||
+        !EvpPtr(b + 0x1690, &records) || SafeRead(g_lw.game + LW_NONE, &none, 4)) return;
+    uintptr_t rec = records + (uintptr_t)index * 16;
+    float score = -1.0f;
+    if (!SafeRead(rec + 4, &score, 4) && score >= 0.0f) { float reset = -1.0f; LwPoke(rec + 4, &reset, 4); LwPoke(rec, &none, 4); }
+}
+
+/* Whether an entity is in SeatCollection (the cull calls 0x636240 first then, 0x95560F..0x95567B). */
+static int LwSeated(uint32_t entity)
+{
+    uintptr_t m; uint32_t value = 0;
+    return EvpPtr(g_lw.game + LW_SEATS, &m) && EvpHash(m + 0x20, entity, 8, 4, &value);
+}
+
+/* Takes a squad out of the world as the director's cull does: its seated occupants first, then the squad entity (its
+ * members follow through the AiSquad destroy callback 0x802EF0; the ring record is freed by the type-0x3E link). */
+static void LwRemoveSquad(uint32_t squad)
+{
+    uintptr_t state;
+    if (LwSeated(squad)) g_lw.unseat(0, squad);
+    if (EvpPtr(g_lw.game + LW_STATE, &state)) g_lw.remove(state, squad);
+}
+
+/* ---- the off switch (Phase 0 conclusion 1; timing "After audit 0f") -------------------------------------------------- */
+
+/* Every row the director copies gets patrol caps 0, from the moment the rows exist, before any mission's first world
+ * update; kept for the session. Each level's caps are saved first: the population follows vanilla's numbers. */
+static void LwPatrolsOff(void)
+{
+    static const uint32_t caps[3] = {0x2AC, 0x2B0, 0x2B4};
+    uint32_t rows = 0, zero = 0;
+    for (uint32_t level = 1; level <= DIF_VANILLA + 1; level++)
+    {
+        int ready = 0;
+        uintptr_t row = DifficultyRowOf(level, &ready);
+        if (row == 0) continue;
+        uint32_t now[3];
+        if (SafeRead(row + caps[0], &now[0], 4) || SafeRead(row + caps[1], &now[1], 4) || SafeRead(row + caps[2], &now[2], 4)) continue;
+        if (!g_lw.savedOk[level - 1]) { memcpy(g_lw.saved[level - 1], now, sizeof now); g_lw.savedOk[level - 1] = 1; }
+        for (int k = 0; k < 3; k++) if (now[k] != 0) ApiWrite(row + caps[k], &zero, 4);
+        rows++;
+    }
+    if (rows != g_lw.rowsZeroed)
+    {
+        g_lw.rowsZeroed = rows;
+        Note("living world: the director's patrol caps are 0 in %u difficulty rows (level 10's were %u / %u / %u)", rows, g_lw.saved[9][0], g_lw.saved[9][1],
+            g_lw.saved[9][2]);
+    }
+}
+
+/* ---- the route graph (the loader's copy; KB "Phase 1 static answers" 5) ------------------------------------------------
+ * G = the generation block (alive the whole mission, overwritten by the next generation); nodes G + g_routeNodes (0x98:
+ * +0 x, y in map space, +0x10 + 8 k up to 16 edge pointers, NULL-terminated), count u32 G+0x11A71B4; an edge (0x48)
+ * holds its end nodes at +0x10 / +0x18 and is walkable when both route cells +0x20 / +0x28 are set. World = map -
+ * [lg+0x1E0] / 2. Copied once the level is generated ([lg+0x1E4] == 3), keyed to the level's seed [lg+0x8]. */
+#define LW_NODES_MAX 4096
+typedef struct LwNode { float x, y; uint16_t next[16]; uint8_t degree; } LwNode;
+static LwNode g_lwNodes[LW_NODES_MAX];
+static int g_lwNodeCount;
+
+static uintptr_t LwLevel(void)
+{
+    uintptr_t world, lg;
+    return EvpPtr(g_lw.game + 0x3326340u, &world) && EvpPtr(world + 0xAE288, &lg) ? lg : 0;
+}
+
+/* Copies the route graph; its node count (0: not ready or unreadable). */
+static int LwCopyRoutes(uintptr_t lg)
+{
+    uintptr_t G = GenerationBlock(g_lw.game);
+    uint32_t count = 0, size = 0;
+    if (G == 0 || SafeRead(G + 0x11A71B4, &count, 4) || count == 0 || count > LW_NODES_MAX || SafeRead(lg + 0x1E0, &size, 4) || size == 0 || size > 65536) return 0;
+    uintptr_t nodes = G + g_routeNodes;
+    float half = (float)size * 0.5f;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        uint8_t n[0x98];
+        LwNode* o = &g_lwNodes[i];
+        memset(o, 0, sizeof *o);
+        if (SafeRead(nodes + 0x98u * i, n, sizeof n)) return 0;
+        float mx, my; memcpy(&mx, n, 4); memcpy(&my, n + 4, 4);
+        o->x = mx - half; o->y = my - half;
+        for (int k = 0; k < 16; k++)
+        {
+            uint64_t e; memcpy(&e, n + 0x10 + 8 * k, 8);
+            if (e == 0) break;
+            uint64_t ends[4];
+            if (SafeRead((uintptr_t)e + 0x10, ends, sizeof ends) || ends[2] == 0 || ends[3] == 0) continue; /* +0x10, +0x18 ends; +0x20, +0x28 cells */
+            uint64_t other = ends[0] == nodes + 0x98u * i ? ends[1] : ends[0];
+            if (other < nodes || (other - nodes) % 0x98u != 0 || (other - nodes) / 0x98u >= count || o->degree >= 16) continue;
+            o->next[o->degree++] = (uint16_t)((other - nodes) / 0x98u);
+        }
+    }
+    g_lwNodeCount = (int)count;
+    return (int)count;
+}
+
+/* A* over the copy from a to b (straight-line costs); the path's nodes after a, up to max, into out; its length. */
+static int LwPath(int a, int b, uint16_t* out, int max)
+{
+    static float cost[LW_NODES_MAX]; static int16_t from[LW_NODES_MAX]; static uint8_t closed[LW_NODES_MAX];
+    static uint16_t heap[LW_NODES_MAX * 4]; static float key[LW_NODES_MAX * 4];
+    int n = g_lwNodeCount, size = 0;
+    if (a < 0 || b < 0 || a >= n || b >= n || a == b) return 0;
+    for (int i = 0; i < n; i++) { cost[i] = 3.0e38f; from[i] = -1; closed[i] = 0; }
+    cost[a] = 0; heap[0] = (uint16_t)a; key[0] = 0; size = 1;
+    while (size > 0)
+    {
+        int u = heap[0];
+        size--; heap[0] = heap[size]; key[0] = key[size];
+        for (int i = 0;;) /* sift down */
+        {
+            int l = 2 * i + 1, r = l + 1, m = i;
+            if (l < size && key[l] < key[m]) m = l;
+            if (r < size && key[r] < key[m]) m = r;
+            if (m == i) break;
+            uint16_t th = heap[i]; heap[i] = heap[m]; heap[m] = th; float tk = key[i]; key[i] = key[m]; key[m] = tk; i = m;
+        }
+        if (closed[u]) continue;
+        closed[u] = 1;
+        if (u == b) break;
+        for (int k = 0; k < g_lwNodes[u].degree; k++)
+        {
+            int v = g_lwNodes[u].next[k];
+            float dx = g_lwNodes[v].x - g_lwNodes[u].x, dy = g_lwNodes[v].y - g_lwNodes[u].y, c = cost[u] + sqrtf(dx * dx + dy * dy);
+            if (closed[v] || c >= cost[v] || size >= LW_NODES_MAX * 4) continue;
+            cost[v] = c; from[v] = (int16_t)u;
+            float hx = g_lwNodes[b].x - g_lwNodes[v].x, hy = g_lwNodes[b].y - g_lwNodes[v].y;
+            int i = size++;
+            heap[i] = (uint16_t)v; key[i] = c + sqrtf(hx * hx + hy * hy);
+            while (i > 0) /* sift up */
+            {
+                int q = (i - 1) / 2;
+                if (key[q] <= key[i]) break;
+                uint16_t th = heap[i]; heap[i] = heap[q]; heap[q] = th; float tk = key[i]; key[i] = key[q]; key[q] = tk; i = q;
+            }
+        }
+    }
+    if (from[b] < 0) return 0;
+    static uint16_t back[LW_NODES_MAX];
+    int len = 0;
+    for (int v = b; v != a && len < LW_NODES_MAX; v = from[v]) back[len++] = (uint16_t)v; /* b .. the node after a */
+    int written = 0;
+    for (int i = len - 1; i >= 0 && written < max; i--) out[written++] = back[i];
+    return written;
+}
+
+/* ---- groups (KB "Phase 1 static answers" 2): the director's own main patrol groups ----------------------------------- */
+#define LW_GROUP(dir, i) ((dir) + 0x3A538u + 0xD8u * (uintptr_t)(i))
+
+/* A position's zone tags (0xF74750(lg, &pos) -> zone definition, row u32 +0x174; rows 1 Colony, 2 Colony + City,
+ * 3 Cave: the callbacks 0x9493D0 / 0x949410 / 0x949450). */
+static int LwZoneTags(uintptr_t lg, const float* pos, uint32_t* tags)
+{
+    typedef uintptr_t (*ZoneFn)(uintptr_t lg, const float* pos);
+    uintptr_t def = ((ZoneFn)(g_lw.game + 0xF74750u))(lg, pos);
+    uint32_t row = def ? EvpU32(def + 0x174, 0) : 0;
+    if (row == 1) { tags[0] = 0x0B92E6D4u; return 1; }
+    if (row == 2) { tags[0] = 0x0B92E6D4u; tags[1] = 0x1A061654u; return 2; }
+    if (row == 3) { tags[0] = 0x04CB576Fu; return 1; }
+    return 0;
+}
+
+/* A group's members (its entries' counts, +4 of each 12-byte entry, [g+0x60] entries). */
+static uint32_t LwGroupSize(uintptr_t g)
+{
+    uint32_t n = EvpU32(g + 0x60, 0), total = 0;
+    for (uint32_t k = 0; k < n && k < 8; k++) total += EvpU32(g + 12u * k + 4, 0);
+    return total > 32 ? 32 : total;
+}
+
+static uint32_t g_lwRandom = 0x2545F491u;
+static uint32_t LwRand(void) { g_lwRandom ^= g_lwRandom << 13; g_lwRandom ^= g_lwRandom >> 17; g_lwRandom ^= g_lwRandom << 5; return g_lwRandom; }
+static float LwUnit(void) { return (float)(LwRand() >> 8) / 16777216.0f; }
+
+/* Chooses a group for a squad at pos as the director's patrol pick does (0x959950 / 0x955E10): a category from the
+ * director's list (dir+0x51918, count dir+0x51928; vanilla runs one timer per category: equal shares), the main groups
+ * of that category with weight +0xC0 > 0, first those whose definition's location list (+0x80, 8 tags) holds none of
+ * the zone's tags, else those that hold one; a weighted draw. Its definition (+0xA8), 0 when none. */
+static uintptr_t LwChooseGroup(uintptr_t dir, uintptr_t lg, const float* pos)
+{
+    uint32_t main = EvpU32(dir + 0x5187C, 0), categories = EvpU32(dir + 0x51928, 0), tags[2], ntags;
+    if (main == 0 || main > 96 || categories == 0 || categories > 4) return 0;
+    uint32_t category = EvpU32(dir + 0x51918 + 4u * (LwRand() % categories), 0);
+    float pos3[3] = {pos[0], pos[1], 0};
+    ntags = (uint32_t)LwZoneTags(lg, pos3, tags);
+    for (int pass = 0; pass < 2; pass++)
+    {
+        float total = 0, weights[96];
+        for (uint32_t i = 0; i < main; i++)
+        {
+            uintptr_t g = LW_GROUP(dir, i), def = 0;
+            float w = 0; weights[i] = 0;
+            if (EvpU32(g + 0xCC, 0) != category && category != 0) continue;
+            if (SafeRead(g + 0xC0, &w, 4) || !(w > 0) || !EvpPtr(g + 0xA8, &def) || LwGroupSize(g) == 0) continue;
+            int hit = 0;
+            for (uint32_t t = 0; t < 8 && !hit; t++) { uint32_t tag = EvpU32(def + 0x80 + 4u * t, 0); for (uint32_t z = 0; z < ntags; z++) if (tag != 0 && tag == tags[z]) hit = 1; }
+            if (hit != pass) continue;
+            weights[i] = w; total += w;
+        }
+        if (!(total > 0)) continue;
+        float r = LwUnit() * total;
+        for (uint32_t i = 0; i < main; i++) { if (weights[i] <= 0) continue; r -= weights[i]; if (r <= 0) { uintptr_t def = 0; EvpPtr(LW_GROUP(dir, i) + 0xA8, &def); return def; } }
+    }
+    return 0;
+}
+
+/* The main group slot that now holds a definition (slots shift when a rebuild filters by players), or 0. */
+static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
+{
+    uint32_t main = EvpU32(dir + 0x5187C, 0);
+    for (uint32_t i = 0; i < main && i < 96; i++) { uintptr_t d = 0; if (EvpPtr(LW_GROUP(dir, i) + 0xA8, &d) && d == def) return LW_GROUP(dir, i); }
+    return 0;
+}
+
+/* ---- squads ----------------------------------------------------------------------------------------------------------
+ * Design (KB "Phase 1 design"): N = round(patrols x (R_play / R_on)^2) squads, patrols = the mission's effective patrol
+ * cap in units (0x959650(dir, the row's saved cap): it counts job-1 units, 0x9513A1) / the mean group size, so the
+ * expected number of squads within R_on of a player matches vanilla's. Online within R_on of a player and inside the
+ * playable disc (R = u32 [S+0x2C] x f32 [S+0x50] / 2, S = [[lg+0x2A8]+0x19B010]); offline beyond R_off at alert 0. */
+#define LW_SQUADS_MAX 6144
+#define LW_PATH_MAX 32
+#define LW_R_ON 250.0f
+#define LW_R_OFF 350.0f
+#define LW_R_MIN 150.0f       /* never spawned nearer a player (D): vanilla spawns patrols 75-130 m away */
+#define LW_ARRIVE 15.0f
+#define LW_SPEED_DEFAULT 2.0f /* m/s until a squad's own walking speed was seen online (D) */
+#define LW_RESERVE 12u        /* the 70 room's share kept for garrison top-ups and SEAF (KB "Spawn gates and the online budget") */
+enum { LW_FREE, LW_OFFLINE, LW_PENDING, LW_ONLINE };
+typedef struct LwSquad
+{
+    uint8_t state, survivors, cap, jobSet, pathLen, pathAt;
+    uint16_t node, path[LW_PATH_MAX];  /* walking from node to path[pathAt] */
+    float pos[2], speed;
+    uintptr_t definition, rec;
+    uint32_t squad, seen[32];
+    uint8_t seenCount, lost;
+    ULONGLONG since, moved;
+    float movedFrom[2];
+} LwSquad;
+static LwSquad g_lwSquads[LW_SQUADS_MAX];
+static struct
+{
+    uintptr_t dir, lg; uint32_t seed;
+    int count, populated, online, onlineUnits, eff, playersAt;
+    float players[EVT_MAX_PLAYERS][2], radius;
+    ULONGLONG last, effAt, noteAt;
+    uint32_t spawned, offlined, died, refused;
+} g_lwWorld;
+
+static float LwDist2(const float* a, float bx, float by) { float dx = a[0] - bx, dy = a[1] - by; return dx * dx + dy * dy; }
+static float LwNearestPlayer2(float x, float y)
+{
+    float best = 3.0e38f;
+    for (int i = 0; i < g_lwWorld.playersAt; i++) { float d = LwDist2(g_lwWorld.players[i], x, y); if (d < best) best = d; }
+    return best;
+}
+
+/* The players' positions (their Helldivers' units), into g_lwWorld. */
+static void LwPlayers(void)
+{
+    EvpPlayer list[EVT_MAX_PLAYERS];
+    int n = EvpPlayers(g_lw.game, list), k = 0;
+    for (int i = 0; i < n; i++)
+    {
+        ActHealth h; float at[3];
+        if (list[i].avatar && ActHealthOf(g_lw.game, list[i].avatar, &h) && h.unit && EvpUnitPosition(h.unit, at)) { g_lwWorld.players[k][0] = at[0]; g_lwWorld.players[k][1] = at[1]; k++; }
+    }
+    g_lwWorld.playersAt = k;
+}
+
+/* The playable disc's radius (0: unreadable). */
+static float LwPlayRadius(uintptr_t lg)
+{
+    uintptr_t gen, S; uint32_t size = 0; float fraction = 0;
+    if (!EvpPtr(lg + 0x2A8, &gen) || !EvpPtr(gen + 0x19B010, &S) || SafeRead(S + 0x2C, &size, 4) || SafeRead(S + 0x50, &fraction, 4) || !(fraction > 0) || size == 0) return 0;
+    return (float)size * fraction * 0.5f;
+}
+
+/* The mission's effective patrol cap in units: 0x959650(dir, the faction's saved row cap at the director's level). */
+static int LwEffectiveCap(uintptr_t dir)
+{
+    uint32_t level = EvpU32(dir + 0x518C8, 0) & 0xFF, faction = EvpU32(dir + 0x518BC, 0);
+    int k = faction == 2 ? 0 : faction == 8 ? 1 : faction == 4 ? 2 : -1;
+    if (level < 1) level = 1;
+    if (level > DIF_VANILLA + 1) level = DIF_VANILLA + 1;
+    if (k < 0 || !g_lw.savedOk[level - 1]) return 0;
+    typedef uint32_t (*EffFn)(uintptr_t dir, uint32_t cap);
+    return (int)((EffFn)(g_lw.game + 0x959650u))(dir, g_lw.saved[level - 1][k]);
+}
+
+static int LwNearestNode(float x, float y)
+{
+    int best = -1; float bd = 3.0e38f;
+    for (int i = 0; i < g_lwNodeCount; i++) { float dx = g_lwNodes[i].x - x, dy = g_lwNodes[i].y - y, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = i; } }
+    return best;
+}
+
+/* A new destination: a random node inside the playable disc, and the path there. */
+static void LwPlan(LwSquad* q)
+{
+    for (int tries = 0; tries < 8; tries++)
+    {
+        int goal = (int)(LwRand() % (uint32_t)g_lwNodeCount);
+        float r = g_lwWorld.radius;
+        if (g_lwNodes[goal].x * g_lwNodes[goal].x + g_lwNodes[goal].y * g_lwNodes[goal].y > r * r) continue;
+        int n = LwPath(q->node, goal, q->path, LW_PATH_MAX);
+        if (n > 0) { q->pathLen = (uint8_t)n; q->pathAt = 0; return; }
+    }
+    q->pathLen = 0; q->pathAt = 0;
+}
+
+/* The world's squads for this mission: on route nodes inside the playable disc, away from the players. */
+static void LwPopulate(void)
+{
+    uintptr_t dir = g_lwWorld.dir;
+    uint32_t main = EvpU32(dir + 0x5187C, 0);
+    float sum = 0, weight = 0;
+    for (uint32_t i = 0; i < main && i < 96; i++) { float w = 0; if (!SafeRead(LW_GROUP(dir, i) + 0xC0, &w, 4) && w > 0) { sum += w * (float)LwGroupSize(LW_GROUP(dir, i)); weight += w; } }
+    int eff = LwEffectiveCap(dir);
+    if (!(weight > 0) || eff <= 0 || g_lwWorld.radius <= 0)
+    {
+        Note("living world: no squads this mission (the director builds no patrol groups here, or the patrol cap is 0: vanilla has no patrols either)");
+        g_lwWorld.populated = -1;
+        return;
+    }
+    float mean = sum / weight, patrols = (float)eff / mean, ratio = g_lwWorld.radius / LW_R_ON;
+    int n = (int)(patrols * ratio * ratio + 0.5f);
+    if (n < 1) n = 1;
+    if (n > LW_SQUADS_MAX) n = LW_SQUADS_MAX;
+    int made = 0;
+    for (int tries = 0; made < n && tries < n * 20; tries++)
+    {
+        int node = (int)(LwRand() % (uint32_t)g_lwNodeCount);
+        float x = g_lwNodes[node].x, y = g_lwNodes[node].y, r = g_lwWorld.radius;
+        if (x * x + y * y > r * r || LwNearestPlayer2(x, y) < LW_R_OFF * LW_R_OFF || g_lwNodes[node].degree == 0) continue;
+        float pos[2] = {x, y};
+        uintptr_t def = LwChooseGroup(dir, g_lwWorld.lg, pos);
+        uintptr_t slot = def ? LwSlotOf(dir, def) : 0;
+        if (slot == 0) continue;
+        LwSquad* q = &g_lwSquads[made++];
+        memset(q, 0, sizeof *q);
+        q->state = LW_OFFLINE; q->node = (uint16_t)node; q->pos[0] = x; q->pos[1] = y; q->definition = def;
+        q->survivors = (uint8_t)LwGroupSize(slot); q->speed = LW_SPEED_DEFAULT;
+        LwPlan(q);
+    }
+    g_lwWorld.count = made; g_lwWorld.eff = eff; g_lwWorld.populated = 1;
+    Note("living world: %d squads on %d route nodes (patrol cap %d units, mean group %.1f, playable radius %.0f m, online within %.0f m)", made, g_lwNodeCount, eff,
+        (double)mean, (double)g_lwWorld.radius, (double)LW_R_ON);
+}
+
+/* Offline walking along the path at the squad's speed; a new destination at the end. */
+static void LwWalk(LwSquad* q, float dt)
+{
+    if (q->pathAt >= q->pathLen) { LwPlan(q); if (q->pathLen == 0) return; }
+    float step = q->speed * dt;
+    while (step > 0 && q->pathAt < q->pathLen)
+    {
+        LwNode* t = &g_lwNodes[q->path[q->pathAt]];
+        float dx = t->x - q->pos[0], dy = t->y - q->pos[1], d = sqrtf(dx * dx + dy * dy);
+        if (d <= step) { q->pos[0] = t->x; q->pos[1] = t->y; q->node = q->path[q->pathAt++]; step -= d; }
+        else { q->pos[0] += dx / d * step; q->pos[1] += dy / d * step; step = 0; }
+    }
+}
+
+/* The spawn gates the loader enforces itself (flag 0x40 skips 0x952EB0): a player record with bits 4 and 11 clear, the
+ * mission not ending (0x8F32B0), the 70 room ([[game+0x3326D18]+0x1C] + [dir+0x36C0] - [dir+0x620] - [dir+0x61C], as
+ * 0x952F3C) with the reserve, AiJob active + members + 1 below 448 - 32, the effective cap and the online ceiling. */
+static int LwRoomFor(uint32_t members)
+{
+    uintptr_t players, chars, jobs;
+    if (!EvpPtr(g_lw.game + 0x3326468u, &players)) return 0;
+    uint32_t count = EvpU32(players + 0x84, 0), ok = 0;
+    for (uint32_t i = 0; i < count && i < 16; i++) { uint32_t f = EvpU32(players + 0x3AC + 0x20u * i, 0xFFFFFFFFu); if (!(f & (1u << 11)) && !(f & (1u << 4))) ok = 1; }
+    typedef uint8_t (*EndingFn)(void);
+    if (!ok || ((EndingFn)(g_lw.game + 0x8F32B0u))()) return 0;
+    uintptr_t dir = g_lwWorld.dir;
+    if (!EvpPtr(g_lw.game + 0x3326D18u, &chars) || !EvpPtr(g_lw.game + LW_AIJOB, &jobs)) return 0;
+    int room = (int)EvpU32(chars + 0x1C, 999) + (int)EvpU32(dir + 0x36C0, 999) - (int)EvpU32(dir + 0x620, 0) - (int)EvpU32(dir + 0x61C, 0);
+    if (room + (int)members + (int)LW_RESERVE > 70) return 0;
+    if (EvpU32(jobs + 0xC, 9999) + members + 1 >= 448 - 32) return 0;
+    int ceiling = g_lwWorld.playersAt > 1 ? 64 : 48;
+    if (g_lwWorld.onlineUnits + (int)members > g_lwWorld.eff || g_lwWorld.onlineUnits + (int)members > ceiling) return 0;
+    return 1;
+}
+
+static int LwGround(float x, float y, float* z);
+
+/* Brings a squad online: its group's slot (found again by definition), the request at its position, heading for its
+ * next node. Flags 0x02 keep | 0x04 queue | 0x08 no nav snap (route nodes are walkable; the nav snap would refuse a
+ * height not within 10 m of the mesh) | 0x40 the gates above; 0x10 clear: the ground ray from z + 500 m places it. */
+static void LwOnline(LwSquad* q)
+{
+    uintptr_t slot = LwSlotOf(g_lwWorld.dir, q->definition);
+    if (slot == 0)
+    {
+        q->definition = LwChooseGroup(g_lwWorld.dir, g_lwWorld.lg, q->pos);
+        slot = q->definition ? LwSlotOf(g_lwWorld.dir, q->definition) : 0;
+        if (slot == 0) return;
+    }
+    uint32_t cap = q->survivors, size = LwGroupSize(slot);
+    if (cap > size) cap = size;
+    if (cap == 0 || !LwRoomFor(cap)) { g_lwWorld.refused++; return; }
+    float pos[3] = {q->pos[0], q->pos[1], 0}, target[3] = {q->pos[0], q->pos[1], 0};
+    if (q->pathAt < q->pathLen) { target[0] = g_lwNodes[q->path[q->pathAt]].x; target[1] = g_lwNodes[q->path[q->pathAt]].y; }
+    if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { g_lwWorld.refused++; return; }
+    uintptr_t rec = g_lw.spawn(g_lwWorld.dir, slot, pos, LW_JOB_PATROL, 0x4Eu, target, NULL, NULL, 0.0f, cap);
+    if (rec == 0) { g_lwWorld.refused++; return; }
+    uint8_t used = 0;
+    if (SafeRead(rec + 0x12, &used, 1) || used != 1) { g_lwWorld.refused++; return; } /* the queue was full: nothing queued */
+    q->state = LW_PENDING; q->rec = rec; q->cap = (uint8_t)cap; q->since = GetTickCount64(); q->jobSet = 0; q->seenCount = 0; q->lost = 0; q->squad = 0;
+    g_lwWorld.onlineUnits += (int)cap;
+    g_lwWorld.spawned++;
+}
+
+/* The leader's (members[0]) position, 0 when it does not read. */
+static int LwLeader(const uint32_t* members, int n, float* at)
+{
+    for (int i = 0; i < n; i++) { ActHealth h; float p[3]; if (ActHealthOf(g_lw.game, members[i], &h) && h.unit && EvpUnitPosition(h.unit, p)) { at[0] = p[0]; at[1] = p[1]; return 1; } }
+    return 0;
+}
+
+/* A unit's alert level (AiAlert [game+0x3326528]: hash +0x20, states [+0x50] + 4 idx); 0 when it has none. */
+static uint32_t LwAlert(uint32_t unit)
+{
+    uintptr_t m, states; uint32_t index = 0, invalid = 0;
+    if (!EvpPtr(g_lw.game + 0x3326528u, &m) || SafeRead(g_lw.game + LW_INVALID, &invalid, 4) || unit == invalid || !EvpHash(m + 0x20, unit, 8, 4, &index) ||
+        index >= EvpU32(m + 0xC, 0) || !EvpPtr(m + 0x50, &states)) return 0;
+    return EvpU32(states + 4u * index, 0);
+}
+
+/* The ground's height at (x, y): the game's ground ray (0x13CA380, as the spawn request's ground snap calls it: from
+ * z + 500 m down 1000 m; z written only on a hit). 1 with *z. */
+static int LwGround(float x, float y, float* z)
+{
+    typedef uint8_t (*GroundFn)(uintptr_t world, const float* in, float* outZ, uint8_t reject, float* normal, uint8_t mode);
+    uintptr_t world;
+    if (!EvpPtr(g_lw.game + 0x346D508u, &world)) return 0;
+    float in[3] = {x, y, 0}, out = NAN;
+    ((GroundFn)(g_lw.game + 0x13CA380u))(world, in, &out, 0, NULL, 0);
+    if (!isfinite(out)) return 0;
+    *z = out;
+    return 1;
+}
+
+static void LwSendGoal(LwSquad* q)
+{
+    if (q->pathAt >= q->pathLen) LwPlan(q);
+    if (q->pathAt >= q->pathLen || LwJobRecord(q->squad) == 0 || LwSquadRecord(q->squad) == 0) return;
+    float goal[3] = {g_lwNodes[q->path[q->pathAt]].x, g_lwNodes[q->path[q->pathAt]].y, 0};
+    if (!LwGround(goal[0], goal[1], &goal[2])) return; /* the goal's face search needs its height (40 m sphere, 100 m ray up) */
+    g_lw.goal(q->squad, goal);
+}
+
+/* An online squad: its members kept, losses counted, steered node to node; offline again beyond R_off at alert 0. */
+static void LwOnlineTick(LwSquad* q, int* removals)
+{
+    uint32_t members[32];
+    int n = LwMembers(q->squad, members);
+    if (n < 0) /* the squad entity is gone: it empties itself when its last member leaves */
+    {
+        q->state = LW_FREE; g_lwWorld.died++; g_lwWorld.onlineUnits -= q->cap;
+        return;
+    }
+    for (int i = 0; i < q->seenCount; i++) /* a member that left the list is lost (killed or destroyed) */
+    {
+        int still = 0;
+        for (int k = 0; k < n && !still; k++) still = members[k] == q->seen[i];
+        if (!still) { q->seen[i] = q->seen[--q->seenCount]; i--; q->lost++; }
+    }
+    for (int k = 0; k < n; k++)
+    {
+        LwKeep(members[k]);
+        int known = 0;
+        for (int i = 0; i < q->seenCount && !known; i++) known = q->seen[i] == members[k];
+        if (!known && q->seenCount < 32) q->seen[q->seenCount++] = members[k];
+    }
+    q->survivors = (uint8_t)(q->cap > q->lost ? q->cap - q->lost : 0);
+    if (n == 0) return; /* members still queued */
+    if (!q->jobSet && LwJobRecord(q->squad) != 0 && LwSquadRecord(q->squad) != 0) { uintptr_t jobs; if (EvpPtr(g_lw.game + LW_AIJOB, &jobs)) { g_lw.setJob(jobs, q->squad, LW_JOB_BATTLE); q->jobSet = 1; LwSendGoal(q); } }
+    float at[2];
+    if (!LwLeader(members, n, at)) return;
+    ULONGLONG now = GetTickCount64();
+    if (q->moved == 0) { q->moved = now; q->movedFrom[0] = at[0]; q->movedFrom[1] = at[1]; }
+    else if (now - q->moved >= 5000) /* its walking speed, from the leader's way over 5 s */
+    {
+        float v = sqrtf(LwDist2(q->movedFrom, at[0], at[1])) / ((float)(now - q->moved) / 1000.0f);
+        if (v > 0.3f && v < 12.0f) q->speed = q->speed * 0.5f + v * 0.5f;
+        q->moved = now; q->movedFrom[0] = at[0]; q->movedFrom[1] = at[1];
+    }
+    q->pos[0] = at[0]; q->pos[1] = at[1];
+    if (q->pathAt < q->pathLen && LwDist2(at, g_lwNodes[q->path[q->pathAt]].x, g_lwNodes[q->path[q->pathAt]].y) < LW_ARRIVE * LW_ARRIVE)
+    { q->node = q->path[q->pathAt++]; if (q->jobSet) LwSendGoal(q); }
+    if (LwNearestPlayer2(at[0], at[1]) <= LW_R_OFF * LW_R_OFF || *removals >= 16) return;
+    for (int k = 0; k < n; k++) if (LwAlert(members[k]) != 0) return;
+    LwRemoveSquad(q->squad);
+    (*removals)++;
+    q->state = LW_OFFLINE; q->squad = 0; g_lwWorld.onlineUnits -= q->cap; g_lwWorld.offlined++;
+    int node = LwNearestNode(at[0], at[1]);
+    if (node >= 0 && q->pathAt >= q->pathLen) { q->node = (uint16_t)node; LwPlan(q); }
+    if (q->survivors == 0) q->state = LW_FREE;
+}
+
+/* A requested squad: online once the director dispatched it (ring rec+8 = the squad id). */
+static void LwPendingTick(LwSquad* q)
+{
+    uint32_t none = 0, id = 0; uint8_t used = 0;
+    if (SafeRead(g_lw.game + LW_NONE, &none, 4) || SafeRead(q->rec + 0x12, &used, 1) || SafeRead(q->rec + 8, &id, 4)) return;
+    if (used == 1 && id != none && id != 0) { q->squad = id; q->state = LW_ONLINE; q->rec = 0; return; }
+    if (used == 0) { q->state = LW_OFFLINE; g_lwWorld.onlineUnits -= q->cap; return; } /* dropped: its group was rebuilt away */
+    if (GetTickCount64() - q->since > 60000 && q->since != 0)
+    { Note("living world: a squad request was not dispatched in 60 s (ring record 0x%llx); it stays counted", (unsigned long long)q->rec); q->since = 0; }
+}
+
+static void LwSquadsTick(void)
+{
+    uintptr_t dir, lg = LwLevel();
+    uint32_t seed = 0, levelState = 0;
+    if (lg == 0 || !EvpPtr(g_lw.game + LW_DIRECTOR, &dir) || SafeRead(lg + 0x1E4, &levelState, 4) || levelState != 3 || SafeRead(lg + 0x8, &seed, 4)) return;
+    if (dir != g_lwWorld.dir || lg != g_lwWorld.lg || seed != g_lwWorld.seed) /* a new mission */
+    {
+        memset(&g_lwWorld, 0, sizeof g_lwWorld);
+        g_lwWorld.dir = dir; g_lwWorld.lg = lg; g_lwWorld.seed = seed;
+        g_lwRandom ^= seed | 1u;
+        g_lwNodeCount = 0;
+    }
+    if (g_lwWorld.populated < 0) return;
+    LwPlayers();
+    if (g_lwNodeCount == 0)
+    {
+        if (LwCopyRoutes(lg) == 0) return;
+        g_lwWorld.radius = LwPlayRadius(lg);
+    }
+    if (!g_lwWorld.populated) { if (g_lwWorld.playersAt == 0) return; LwPopulate(); if (g_lwWorld.populated <= 0) return; }
+    ULONGLONG now = GetTickCount64();
+    float dt = g_lwWorld.last ? (float)(now - g_lwWorld.last) / 1000.0f : 0;
+    if (dt > 1.0f) dt = 1.0f;
+    g_lwWorld.last = now;
+    if (now - g_lwWorld.effAt > 5000) { int eff = LwEffectiveCap(dir); if (eff > 0) g_lwWorld.eff = eff; g_lwWorld.effAt = now; }
+    int requested = 0, removals = 0, online = 0;
+    float r = g_lwWorld.radius;
+    for (int i = 0; i < g_lwWorld.count; i++)
+    {
+        LwSquad* q = &g_lwSquads[i];
+        if (q->state == LW_OFFLINE)
+        {
+            LwWalk(q, dt);
+            float near2 = LwNearestPlayer2(q->pos[0], q->pos[1]);
+            if (!requested && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN)
+            { LwOnline(q); requested = q->state == LW_PENDING; }
+        }
+        else if (q->state == LW_PENDING) { LwPendingTick(q); online++; }
+        else if (q->state == LW_ONLINE) { LwOnlineTick(q, &removals); online++; }
+    }
+    g_lwWorld.online = online;
+    if (now - g_lwWorld.noteAt > 30000)
+    {
+        g_lwWorld.noteAt = now;
+        Note("living world: %d squads, %d online (%d units of %d), %u spawned, %u taken offline, %u destroyed, %u requests refused", g_lwWorld.count, online,
+            g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.spawned, g_lwWorld.offlined, g_lwWorld.died, g_lwWorld.refused);
+    }
+}
+
+/* ---- persistent garrisons (KB "Garrisons", Phase 1 approach after audit 0e) ------------------------------------------
+ * Native GuardForce already keeps kills per guard point (its synced U mask); on a refill it re-buys every point whose U
+ * bit is set, so kills could be replaced at other points. The loader marks guard points "occupied" (flags +0x24 bit 6)
+ * that a refill must not fill: after it has seen the garrison active once, while it is inactive (or its refill flag is
+ * set), every phase-B point ((flags & 0x340) == 0) never seen taken (bit 6 while active) and not under a structure.
+ * Phase A points and taken points are never touched: taken points refill natively by their U bit (survivors, despawned
+ * units, owed spawns), killed points stay empty. The game reads bit 6 only in the fill and the structure despawn
+ * (all readers: KB "Bit 6"); the mode-0 despawn clears it on every point and the loader marks again in the next tick,
+ * always before the next fill (different world updates). Records: GuardForce gf = [game+0x33265C0], owned i < gf+0x10;
+ * synced [gf+0x50] + 0x40 i (+4..+0xC U, +0x38 active), runtime [gf+0x40] + 0x1B58 i (+0x1B4F refill flag, structures
+ * +0x810 + 24 k, count +0x1110, +0x10 = local point + 1), point list [gf+0x48] + 0x2B8 i (+0x28 + 4 p global indexes,
+ * count +0x1A8), descriptor [[gf+0x38] + 8 i] (+8 entity); points [game+0x346D5C0] + 0x58 g, flags +0x24. */
+#define LW_GARRISONS_MAX 512
+typedef struct LwGarrison { uint32_t entity; uint8_t seen; uint32_t taken[3], structure[3]; } LwGarrison;
+static LwGarrison g_lwGarrisons[LW_GARRISONS_MAX];
+static int g_lwGarrisonCount;
+static uintptr_t g_lwGarrisonOwner; /* the GuardForce component the records belong to (a new mission makes a new one) */
+
+static LwGarrison* LwGarrisonOf(uint32_t entity)
+{
+    for (int i = 0; i < g_lwGarrisonCount; i++) if (g_lwGarrisons[i].entity == entity) return &g_lwGarrisons[i];
+    if (g_lwGarrisonCount >= LW_GARRISONS_MAX) return NULL;
+    LwGarrison* g = &g_lwGarrisons[g_lwGarrisonCount++];
+    memset(g, 0, sizeof *g);
+    g->entity = entity;
+    return g;
+}
+
+static void LwGarrisonsTick(void)
+{
+    uintptr_t gf, synced, runtime, lists, descriptors, points;
+    if (!EvpPtr(g_lw.game + 0x33265C0u, &gf) || !EvpPtr(gf + 0x50, &synced) || !EvpPtr(gf + 0x40, &runtime) || !EvpPtr(gf + 0x48, &lists) ||
+        !EvpPtr(gf + 0x38, &descriptors) || !EvpPtr(g_lw.game + 0x346D5C0u, &points)) return;
+    if (gf != g_lwGarrisonOwner) { g_lwGarrisonOwner = gf; g_lwGarrisonCount = 0; }
+    uint32_t owned = EvpU32(gf + 0x10, 0), marked = 0;
+    if (owned > LW_GARRISONS_MAX) owned = LW_GARRISONS_MAX;
+    for (uint32_t i = 0; i < owned; i++)
+    {
+        uintptr_t d, s = synced + 0x40u * i, r = runtime + 0x1B58u * i, l = lists + 0x2B8u * i;
+        uint8_t active = 0, refill = 0; uint32_t u[3], n = EvpU32(l + 0x1A8, 0xFFFFFFFFu);
+        if (!EvpPtr(descriptors + 8u * i, &d) || n > 96 || SafeRead(s + 0x38, &active, 1) || SafeRead(r + 0x1B4F, &refill, 1) || SafeRead(s + 4, u, sizeof u)) continue;
+        LwGarrison* g = LwGarrisonOf(EvpU32(d + 8, 0));
+        if (g == NULL || g->entity == 0) continue;
+        if (active)
+        {
+            g->seen = 1;
+            for (uint32_t p = 0; p < n; p++)
+            {
+                uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0;
+                if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x24, &flags, 4) && (flags & 0x40)) g->taken[p / 32] |= 1u << (p % 32);
+            }
+            uint32_t structures = EvpU32(r + 0x1110, 0);
+            for (uint32_t k = 0; k < structures && k < 96; k++)
+            {
+                uint32_t local = EvpU32(r + 0x810 + 24u * k + 0x10, 0);
+                if (local >= 1 && local <= n) g->structure[(local - 1) / 32] |= 1u << ((local - 1) % 32);
+            }
+        }
+        if (!g->seen || (active && !refill)) continue; /* the first fill stays native; no marks while a garrison holds */
+        for (uint32_t p = 0; p < n; p++)
+        {
+            uint32_t bit = 1u << (p % 32);
+            if ((g->taken[p / 32] | g->structure[p / 32]) & bit) continue;
+            uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0;
+            if (gi >= 0x100000) continue;
+            uintptr_t at = points + 0x58u * gi + 0x24;
+            if (SafeRead(at, &flags, 4) || (flags & 0x340) != 0) continue; /* phase A, objective points and marked ones stay */
+            flags |= 0x40;
+            if (!LwPoke(at, &flags, 4)) marked++;
+        }
+    }
+    static ULONGLONG last;
+    ULONGLONG now = GetTickCount64();
+    if (marked && now - last > 5000) { last = now; Note("living world: garrisons: %u guard points held empty (kills are not replaced elsewhere)", marked); }
+}
+
+/* ---- the tick (the loader's game-thread tick: in a mission the late update, after the world update) ----------------- */
+
+static void LivingTick(void)
+{
+    if (!LwEnabled()) return;
+    LwPatrolsOff();
+    int host = 0;
+    if (!ActMission(g_lw.game, &host, NULL) || !host) return;
+    LwGarrisonsTick();
+    LwSquadsTick();
+}

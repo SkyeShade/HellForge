@@ -289,6 +289,7 @@ static void EventsTick(void); /* events.c */
 static void WorldStreamTick(float dt); /* difficulty_stream.c */
 static void TerrainDiagTick(void); /* difficulty_world_diag.c */
 static void TerrainProbeTick(void); /* difficulty_world_probe.c */
+static void LivingTick(void); /* living_world.c */
 
 static void TickDetour(void* manager, float dt)
 {
@@ -298,6 +299,7 @@ static void TickDetour(void* manager, float dt)
     WorldStreamTick(dt);
     TerrainDiagTick();
     TerrainProbeTick();
+    LivingTick();
     LONG count = g_tickCount;
     for (LONG i = 0; i < count; i++) g_ticks[i].callback(g_ticks[i].mod, dt, g_ticks[i].user);
     g_tickOriginal(manager, dt);
