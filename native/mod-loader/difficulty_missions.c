@@ -244,6 +244,10 @@ static const uint8_t kRadarStateStub[69] = {
     0x42, 0x89, 0x4C, 0x30, 0x44,                                     /* 59 mov [rax+r14+0x44], ecx */
     0xE9, 0, 0, 0, 0};                                                /* 64 jmp 0x5DF364 (rel32 at 65) */
 #define DIF_MANDATORY_MAX 16u     /* the HUD's list of class 0 and 1 objectives (0x17CF690) */
+/* 1 when the extra large world groups the HUD's class 0 and 1 rows by id (difficulty_world.c HudGroupInstall): the
+ * builder's 16-entry stack list no longer bounds the instances, only the 16 rows (distinct ids) do, so an operation's
+ * missions on one map may hold every mission's main objectives and steps. */
+static int g_hudGrouped;
 #define DIF_MIX_PARTNERS 16u
 #define DIF_OPERATION_MISSIONS 32u /* an operation's missions: +0x38, {u32 mission id (row +0), f32 weight} */
 /* The first class the mission row gives an id (its 32 entries: +0 id, +0xC class), or -1. */
@@ -719,7 +723,10 @@ static uint32_t KeepPartnerObjectives(const MixCall* call, const uint32_t* got, 
         uintptr_t def = ObjectiveDef(call->game, got[i]);
         for (uint32_t j = 0; j < call->count; j++) uses += call->ids[j] == got[i];
         for (uint32_t j = 0; j < kept; j++) uses += keep[j] == got[i];
-        if (def && !SafeRead(def + 0x20, &most, 4) && most > 0 && uses >= most) continue;
+        /* each mission holds the definition's most uses: on an operation's missions on one map (grouped HUD) the map
+         * holds missions x that (a step two missions share, e.g. fd5054da of rows 119 and 118, stays each mission's) */
+        uint32_t per = g_hudGrouped && g_difficulty.missions > 1 ? g_difficulty.missions : 1u;
+        if (def && !SafeRead(def + 0x20, &most, 4) && most > 0 && uses >= most * per) continue;
         keep[kept] = got[i]; keepClasses[kept] = (uint32_t)gotClasses[i]; *mains += gotClasses[i] == 0; kept++;
     }
     return kept;
@@ -735,6 +742,21 @@ static uint32_t MandatoryCount(const MixCall* call)
         mandatory += call->ids[i] != DIF_LIVE_EVENT_OBJECTIVE && c <= 1;
     }
     return mandatory;
+}
+
+/* The distinct ids of the mission's main objectives and steps so far plus the kept ones (the grouped HUD's rows). */
+static uint32_t MandatoryRows(const MixCall* call, const uint32_t* keep, uint32_t kept)
+{
+    uint32_t seen[64], n = 0;
+    for (uint32_t i = 0; i < call->count + kept; i++)
+    {
+        uint32_t id = i < call->count ? call->ids[i] : keep[i - call->count];
+        if (id == DIF_LIVE_EVENT_OBJECTIVE || (i < call->count && RowClass(call->baseRow, id) > 1)) continue;
+        uint32_t j = 0;
+        while (j < n && seen[j] != id) j++;
+        if (j == n && n < 64) seen[n++] = id;
+    }
+    return n;
 }
 
 /* Room for `kept` more within the objective list's places: the last optional objectives (class 3) go. */
@@ -760,7 +782,7 @@ static uint32_t MixAttempt(MixCall* call, uint32_t partner, uint32_t attempt)
     uint32_t keep[32], keepClasses[32], mains;
     uint32_t kept = KeepPartnerObjectives(call, got, gotClasses, k, keep, keepClasses, &mains);
     if (mains == 0) return MIX_NEXT_PARTNER;
-    if (MandatoryCount(call) + kept > DIF_MANDATORY_MAX) return MIX_NEXT_PARTNER;
+    if (g_hudGrouped ? MandatoryRows(call, keep, kept) > DIF_MANDATORY_MAX : MandatoryCount(call) + kept > DIF_MANDATORY_MAX) return MIX_NEXT_PARTNER;
     MakeObjectiveRoom(call, kept);
     if (call->count + kept > g_objectivePlaces) return MIX_NEXT_PARTNER;
     for (uint32_t i = 0; i < kept; i++)
@@ -802,7 +824,9 @@ static uint32_t MixPartner(uint8_t* inputs, uint32_t count, uint32_t* ids, int32
     for (uint32_t p = 0; p < g_mixPartnerCount[base]; p++)
         if (RowHasLayout(game + DIF_MISSIONS + g_mixPartners[base][p] * DIF_MISSION_ROW, layout)) candidates[n++] = g_mixPartners[base][p];
     if (n == 0) { InterlockedIncrement(&g_secondPrimaryMisses); return count; }
-    uint32_t wanted = g_difficulty.missions > 1 ? g_difficulty.missions - 1 : 1;
+    /* a level-11 mission mixes one partner (its second primary); an operation's missions on one map one per mission
+     * past the first, and with the grouped HUD every mission's second primary too: 2 x missions - 1 */
+    uint32_t wanted = g_difficulty.missions > 1 ? (g_hudGrouped ? 2 * g_difficulty.missions - 1 : g_difficulty.missions - 1) : 1;
     uint32_t start = (uint32_t)(MixHash(in[0], base, in[3]) >> 32) % n;
     for (uint32_t t = 0; t < n && *mixed < wanted; t++)
     {

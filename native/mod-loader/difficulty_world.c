@@ -601,6 +601,21 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
     uint8_t difficulty = 0;
     uint16_t r = (uint16_t)row;
     g_objectiveListCount = 0;
+    /* The list as the game selected it (id/class from the row), on every level-11 map, vanilla size too (the census
+     * baselines): the placement note after op 0x16 then compares it with what was placed. */
+    if (g_difficultyGame != 0 && ids != 0 && n > 0 && n <= 32 && r < DIF_MISSION_ROWS && !SafeRead(level + 0xF9, &difficulty, 1) &&
+        difficulty == DIF_VANILLA + 1 && !SafeRead(ids, list, 4ull * n))
+    {
+        uintptr_t base = g_difficultyGame + DIF_MISSIONS + (uintptr_t)r * DIF_MISSION_ROW;
+        char text[1024];
+        int at = snprintf(text, sizeof text, "difficulty: the objective list as selected, row %u, %u ids (id/class):", (unsigned)r, n);
+        for (uint32_t i = 0; i < n && at > 0 && at < (int)sizeof text - 16; i++) at += snprintf(text + at, sizeof text - at, " %08x/%d", list[i], RowClass(base, list[i]));
+        static LONG noted;
+        if (InterlockedIncrement(&noted) <= 4) Note("%s", text);
+        memcpy(g_objectiveList, list, 4ull * n);
+        g_objectiveListCount = n;
+    }
+    difficulty = 0;
     if (g_difficulty.missions > 1 && g_operationOptional != 0 && g_difficultyGame != 0 && ids != 0 && n > 0 && n <= 32 && r < DIF_MISSION_ROWS &&
         g_objectiveListPlaces > n && g_objectiveListPlaces <= 64 && !SafeRead(level + 0xF9, &difficulty, 1) && difficulty == DIF_VANILLA + 1 &&
         !SafeRead(ids, list, 4ull * n))
@@ -625,6 +640,20 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
             if (cls[i] == 3) have[1]++;
         }
         before[0] = have[0]; before[1] = have[1];
+        /* Every mission's main objectives and steps (the grouped HUD holds them, HudGroupStub): a row that mixes no
+         * partner (a city's Launch ICBM row 50: ICBM x3 and its three steps at vanilla size) gets the descriptor's class
+         * 0 and then class 1 ids again for each mission past the first, a mission's block at a time, before the majors
+         * (op 0x16 places the list in order). A mixing row's other missions' primaries come from MixPartner (2 x missions
+         * - 1 partners). Their exclusive bits are not counted: they are each mission's own. */
+        uint32_t mainsBefore = 0, mainsAfter = 0;
+        for (uint32_t i = 0; i < n; i++) mainsBefore += (cls[i] == 0 || cls[i] == 1) && list[i] != DIF_LIVE_EVENT_OBJECTIVE;
+        mainsAfter = mainsBefore;
+        const int mixes = (g_difficulty.flags & HF_DIFFICULTY_SECOND_PRIMARY) && g_mixBase[r];
+        if (g_hudGrouped && !mixes)
+            for (uint32_t k = 1; k < m; k++)
+                for (int c = 0; c < 2; c++)
+                    for (uint32_t i = 0; i < n && total < g_objectiveListPlaces; i++)
+                        if (cls[i] == c && list[i] != DIF_LIVE_EVENT_OBJECTIVE) { list[total++] = list[i]; mainsAfter++; }
         const uint32_t want[2] = {g_operationMajor, g_operationOptional};
         for (int c = 0; c < 2; c++) /* majors first: op 0x16 places the list in order */
         {
@@ -655,8 +684,9 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
             g_objectiveListCount = total;
             static LONG noted;
             if (InterlockedIncrement(&noted) <= 4)
-                Note("difficulty: an operation's %u missions on one map: on the map's objective list major %u -> %u of %u%s, optional %u -> %u of %u%s (%u -> %u of %u places)",
-                    m, before[0], have[0], want[0], capped[0] ? " (the row's ids hold no more for its missions)" : "", before[1], have[1], want[1],
+                Note("difficulty: an operation's %u missions on one map: on the map's objective list main objectives and steps %u -> %u%s, major %u -> %u of %u%s, "
+                    "optional %u -> %u of %u%s (%u -> %u of %u places)", m, mainsBefore, mainsAfter, mixes ? " (the partners' primaries)" : "",
+                    before[0], have[0], want[0], capped[0] ? " (the row's ids hold no more for its missions)" : "", before[1], have[1], want[1],
                     capped[1] ? " (the row's ids hold no more for its missions)" : "", n, total, g_objectiveListPlaces);
             return g_objectiveFill(level, b, row, (uint64_t)(uintptr_t)list, total, a6, a7, a8, a9, a10, a11, a12, a13, a14);
         }
@@ -665,6 +695,123 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
     }
     return g_objectiveFill(level, b, row, ids, count, a6, a7, a8, a9, a10, a11, a12, a13, a14);
 }
+/* ---- The HUD's main objectives and steps, a row per id (every mission's mains and steps on one map) -----------------
+ * Static (mains16; 0x17CF690 / 0x17CF8A0 / 0x1845E80 / 0x1846C40 re-read by Claude): the HUD's objective list builder
+ * 0x17CF690 (once a mission, from the per-frame updater 0x17CF8A0) writes the ids of every class 0 instance and then
+ * every class 1 instance (manager [game+0x3326DA0]: count +0x24, instances +0x60 x 0x1078 with the class at +0x1038,
+ * id pointers +0x50 -> +8) into a 16-entry stack list at rsp+0x30 with no bound (the 17th overwrites the /GS cookie at
+ * rsp+0x70: the game ends at the first HUD update), then adds a row a list entry (0x184BDE0: 16 rows at most). Rows are
+ * keyed by objective id: the updater finds an instance's row by id (0x17CFA21), and a row's state (0x1845E80) is the one
+ * instance its id hashes to ([mgr+0x38]), set by 0x1846C40(row, state: 1 open, 2 done, 3 failed, 4 other) at 0x1846177.
+ * So copies of an id already share a row. HudGroupInstall: the builder's list part (0x17CF6E7..0x17CF79A) becomes a call
+ * to HudObjectiveRows (one row per distinct id, mains first, 16 rows at most), and the row's state covers every copy
+ * (failed if any failed, as the game fails them all; done when all are done). The game's gating is map-wide already: every
+ * main waits for every step (0x5D3693), extraction for every class 0/1 instance (0x5D91B0). */
+#define HUD_LIST_SITE 0x17CF6E7u
+#define HUD_LIST_BACK 0x17CF79Au
+#define HUD_ROW_ADD 0x184BDE0u
+#define HUD_ROW_STATE 0x1846C40u
+#define HUD_OBJECTIVES 0x3326DA0u
+static const char kHudListPin[] = "E8 04 A0 E0 FE 45 33 DB 45 33 C0 33 F6 44 8B F0 85 FF 74 7F";
+static const char kHudBackPin[] = "0F 57 C9 49 8D 8F F0 6D 00 00 E8";
+static const char kHudRowAddPin[] = "40 55 53 57 48 8D 6C 24 B0 48 81 EC";
+static const char kHudRowStatePin[] = "4C 8B DC 55 56 57 49 8D 6B A1 48 81 EC D0 00 00 00";
+typedef void (*HudRowAddFn)(uint64_t widget, uint32_t id);
+typedef void (*HudRowStateFn)(uint64_t row, uint32_t state);
+static HudRowStateFn g_hudRowState;
+static volatile LONG g_hudRowsCut;
+static int HudInstances(uint64_t* inst, uint64_t* ids, uint32_t* n)
+{
+    uint64_t mgr = 0;
+    return !SafeRead(g_world.game + HUD_OBJECTIVES, &mgr, 8) && mgr != 0 && !SafeRead(mgr + 0x24, n, 4) && !SafeRead(mgr + 0x60, inst, 8) &&
+        !SafeRead(mgr + 0x50, ids, 8) && *inst != 0 && *ids != 0 && *n <= 4096;
+}
+static void HudObjectiveRows(uint64_t hud)
+{
+    uint64_t inst = 0, ptrs = 0;
+    uint32_t n = 0, rows[16], k = 0, cut = 0;
+    if (!HudInstances(&inst, &ptrs, &n)) return;
+    for (int32_t c = 0; c < 2; c++)
+        for (uint32_t i = 0; i < n; i++)
+        {
+            int32_t cls = -1; uint64_t p = 0; uint32_t id = 0;
+            if (SafeRead(inst + 0x1078ull * i + 0x1038, &cls, 4) || cls != c || SafeRead(ptrs + 8ull * i, &p, 8) || p == 0 || SafeRead(p + 8, &id, 4)) continue;
+            uint32_t j = 0;
+            while (j < k && rows[j] != id) j++;
+            if (j < k) continue;
+            if (k < 16) rows[k++] = id; else cut++;
+        }
+    for (uint32_t j = 0; j < k; j++) ((HudRowAddFn)(g_world.game + HUD_ROW_ADD))(hud + 0x6DF0, rows[j]);
+    if (cut) InterlockedExchangeAdd(&g_hudRowsCut, (LONG)cut);
+    static LONG noted;
+    if (InterlockedIncrement(&noted) <= 4)
+        Note("difficulty: HUD: %u main objective and step rows for %u instances%s", k, n, cut ? " (ids past 16 rows not shown)" : "");
+}
+static void HudRowState(uint64_t row, uint32_t state)
+{
+    uint64_t inst = 0, ptrs = 0;
+    uint32_t n = 0, id = 0;
+    if (state >= 1 && state <= 3 && !SafeRead(row + 0xF060, &id, 4) && HudInstances(&inst, &ptrs, &n))
+    {
+        uint32_t copies = 0, done = 0, failed = 0;
+        for (uint32_t i = 0; i < n; i++)
+        {
+            int32_t cls = -1, st = 0; uint64_t p = 0; uint32_t at = 0;
+            if (SafeRead(inst + 0x1078ull * i + 0x1038, &cls, 4) || (cls != 0 && cls != 1) || SafeRead(ptrs + 8ull * i, &p, 8) || p == 0 ||
+                SafeRead(p + 8, &at, 4) || at != id || SafeRead(inst + 0x1078ull * i + 0x1018, &st, 4)) continue;
+            copies++; done += st == 2; failed += st == 3;
+        }
+        if (copies > 1) state = failed ? 3u : done == copies ? 2u : state == 2 ? 1u : state;
+    }
+    g_hudRowState(row, state);
+}
+static int HudGroupStub(uintptr_t game, uint8_t* code) /* before the block is made executable */
+{
+    if (!ApiCodeMatches(game + HUD_LIST_SITE, kHudListPin) || !ApiCodeMatches(game + HUD_LIST_BACK, kHudBackPin) ||
+        !ApiCodeMatches(game + HUD_ROW_ADD, kHudRowAddPin) || !ApiCodeMatches(game + HUD_ROW_STATE, kHudRowStatePin))
+    { Note("difficulty: HUD: the objective list is not the reviewed code; one mission's main objectives and steps"); return 0; }
+    /* mov rcx, r15 (the HUD); mov rax, HudObjectiveRows; call rax; jmp 0x17CF79A (rsp is 16-aligned here, its home area free) */
+    uint8_t stub[3 + 10 + 2 + 5] = {0x4C, 0x89, 0xF9, 0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xD0, 0xE9, 0, 0, 0, 0};
+    _Static_assert(sizeof stub == 20, "the HUD stub ends with its jump");
+    uint64_t to = (uint64_t)(uintptr_t)HudObjectiveRows;
+    memcpy(stub + 5, &to, 8);
+    int32_t rel = (int32_t)((intptr_t)(game + HUD_LIST_BACK) - (intptr_t)(code + sizeof stub)); memcpy(stub + 16, &rel, 4);
+    memcpy(code, stub, sizeof stub);
+    return code[13] == 0xFF && code[15] == 0xE9;
+}
+static void HudGroupSite(uintptr_t game, uint8_t* code)
+{
+    if (LoaderHook("the HUD's grouped objective rows", game + HUD_ROW_STATE, (void*)HudRowState, (void**)&g_hudRowState) != 0) return;
+    uint8_t jump[5] = {0xE9};
+    int32_t rel = DifficultyJumpRel(game + HUD_LIST_SITE, (uintptr_t)code); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + HUD_LIST_SITE, jump, sizeof jump)) { Note("difficulty: HUD: the objective list could not be patched"); return; }
+    g_hudGrouped = 1;
+    Note("difficulty: HUD: main objective and step rows are one per id (16 rows), each row's state over its copies");
+}
+
+/* Op 0x16 places an objective only while the map's records of its template item stay under item+0x15C (u8; 0xF8FC87,
+ * then cmp r8d, ecx; jae refuses). With every mission's copies (ICBM x9 on a city map) that is the missions x the cap,
+ * as for points of interest and satellites (CapStubs): capMul is the missions while op 0x16 runs (WorldDispatch). */
+#define CAP_SITE_OBJ 0xF8FC87u
+static const uint8_t kCapObj[20] = {
+    0x0F, 0xB6, 0x8C, 0x08, 0x5C, 0x01, 0x00, 0x00, /* movzx ecx, byte [rax+rcx+0x15C] */
+    0x0F, 0xAF, 0x0D, 0, 0, 0, 0,                   /* imul ecx, [capMul]         @11 */
+    0xE9, 0, 0, 0, 0};                              /* jmp 0xF8FC8F               @16 */
+static const char* ObjCapStub(uintptr_t game, uint8_t* code)
+{
+    if (!ApiCodeMatches(game + CAP_SITE_OBJ, "0F B6 8C 08 5C 01 00 00 44 3B C1 0F 83")) return "op 0x16's template caps are not the reviewed code";
+    memcpy(code, kCapObj, sizeof kCapObj);
+    int32_t rel = (int32_t)((intptr_t)&g_world.values->capMul - (intptr_t)(code + 15)); memcpy(code + 11, &rel, 4);
+    rel = (int32_t)((intptr_t)(game + CAP_SITE_OBJ + 8) - (intptr_t)(code + 20)); memcpy(code + 16, &rel, 4);
+    return NULL;
+}
+static const char* ObjCapSite(uintptr_t game, uint8_t* code)
+{
+    uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+    int32_t rel = DifficultyJumpRel(game + CAP_SITE_OBJ, (uintptr_t)code); memcpy(jump + 1, &rel, 4);
+    return ApiWrite(game + CAP_SITE_OBJ, jump, sizeof jump) ? "op 0x16's template caps could not be scaled" : NULL;
+}
+
 /* After op 0x16: each id on the list against the important locations it placed (records 0x108 at G+g_importantList,
  * count G+0x11A715C; op 0x16 writes kind 0xADC32FAA at +0x8, 0xF8FFF7, and the objective id at +0xD8, 0xF900DB). */
 static uint32_t g_unplacedIds[64], g_unplacedCount; /* ids op 0x16 placed none of (WorldObjectiveUnplacedNote) */
@@ -4305,7 +4452,12 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     uint32_t sortAt = 0, sortOp = 0xFFFFFFFFu;
     const int sortLock = !SafeRead(index, &sortAt, 4) && !SafeRead(records + (uint64_t)sortAt * 0x19B0u, &sortOp, 4) && OpUsesSortContext(sortOp);
     if (sortLock) AcquireSRWLockExclusive(&g_sortContextLock);
+    /* op 0x16's template caps x the missions (ObjCapStub), under the lock the other capMul passes take (after the sort
+     * lock, their order) */
+    const int objCaps = watch && op == 0x16 && g_world.current > 1.0f && g_difficulty.missions > 1 && g_world.values != NULL;
+    if (objCaps) { AcquireSRWLockExclusive(&g_explorationLock); g_world.values->capMul = g_difficulty.missions; }
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
+    if (objCaps) { g_world.values->capMul = 1; ReleaseSRWLockExclusive(&g_explorationLock); }
     if (sortLock) ReleaseSRWLockExclusive(&g_sortContextLock);
     if (g_kfOn) { g_kfOn = 0; if (g_kfMismatch) Note("difficulty: objectives research: the KindFilter replay disagreed with the game %ld times of %ld", (long)g_kfMismatch, (long)g_kfCount); }
     {
@@ -5536,8 +5688,13 @@ static const char* InstallWorld(DifficultyInstall* d)
     rel = (int32_t)((uint8_t*)g_worldIndexFull - (full + 22)); memcpy(full + 18, &rel, 4);
     rel = (int32_t)((block + 0x1200) - (full + 29)); memcpy(full + 25, &rel, 4);
     int padBand = PadBandStubs(game, block + 0x500), flatBand = FlatBandStub(game, block + 0x5C0), caps = CapStubs(game, block + 0x600), draws = OptionalDrawStub(game, block + 0x660);
+    const char* objCapWhy = ObjCapStub(game, block + 0x6C0);
+    int hud = g_difficulty.missions > 1 && HudGroupStub(game, block + 0x700);
     DWORD protect;
     VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect);
+    if (objCapWhy == NULL) objCapWhy = ObjCapSite(game, block + 0x6C0);
+    if (objCapWhy != NULL) Note("difficulty: %s: an objective keeps one mission's most copies", objCapWhy);
+    if (hud) HudGroupSite(game, block + 0x700);
     if (padBand) { const char* why = PadBandSites(game, block + 0x500); if (why != NULL) return why; }
     if (flatBand) { const char* why = FlatBandSite(game, block + 0x5C0); if (why != NULL) return why; }
     if (caps) { const char* why = CapSites(game, block + 0x600); if (why != NULL) return why; }
