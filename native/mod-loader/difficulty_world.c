@@ -4408,6 +4408,31 @@ static uint64_t WorldObject(uint64_t world, uint64_t handle, uint64_t c, uint64_
     return g_worldObject(world, handle, c, d, e, f, g, h);
 }
 
+/* Diagnostics (t77h/t77i): the objective selection 0x1756730 looks the inputs' key (+4) up in the current level's map
+ * [[[game+0x3326340]+0xAE288]+0x2D0] (+0x18 values, +0x20 keys, count +0xB0; filled level object of 0xF0 bytes, made
+ * at 0xF6E97E) and faults at 0x1757304 when the value is null. At launch during the briefing generation it faulted;
+ * which level it read and what the map held is noted here (the first 16 calls a level, and every call with an empty map). */
+typedef uint32_t (*SelectProbeFn)(void* inputs, uint32_t* ids, int32_t* classes);
+static SelectProbeFn g_selectProbe;
+static volatile LONG g_selectProbeNotes, g_selectProbeLevel = -1;
+static uint32_t SelectProbe(void* inputs, uint32_t* ids, int32_t* classes)
+{
+    uintptr_t gameObj = 0, level = 0, map = 0, values = 0, first = 0; uint32_t count = 0, key = 0, row = 0, planetKey = 0;
+    SafeRead((uintptr_t)inputs + 4, &key, 4); SafeRead((uintptr_t)inputs + 8, &row, 4);
+    if (!SafeRead(g_world.game + 0x3326340u, &gameObj, 8) && gameObj != 0 && !SafeRead(gameObj + 0xAE288, &level, 8) && level != 0)
+    {
+        SafeRead(level + 0xFC, &planetKey, 4);
+        if (!SafeRead(level + 0x2D0, &map, 8) && map != 0) { SafeRead(map + 0x18, &values, 8); SafeRead(map + 0xB0, &count, 4); if (values) SafeRead(values, &first, 8); }
+    }
+    if (g_selectProbeLevel != g_world.levels) { g_selectProbeLevel = g_world.levels; g_selectProbeNotes = 0; }
+    int empty = key != 0 && (map == 0 || values == 0 || first == 0);
+    if (InterlockedIncrement(&g_selectProbeNotes) <= 16 || empty)
+        Note("difficulty: selection probe (levels %ld, generator level %p): key 0x%08X row %u, current level %p (planet key 0x%08X), map %p count %u values %p first %p%s; from game+0x%llX",
+            (long)g_world.levels, (void*)g_worldLevel, key, row, (void*)level, planetKey, (void*)map, count, (void*)values, (void*)first,
+            empty ? " (EMPTY: the selection faults)" : "", (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_world.game));
+    return g_selectProbe(inputs, ids, classes);
+}
+
 /* Level init, before it stores the level's size: the world for this level (level 11's scale, else vanilla). */
 static void WorldLevel(uintptr_t level)
 {
@@ -4944,6 +4969,7 @@ static void MissionListsFull(char* out, size_t size)
 static const char* InstallWorldPlan(uintptr_t game); /* difficulty_world_plan.c: the Hive Lord graph on a grid */
 static const char* InstallWorldOverlap(uintptr_t game); /* difficulty_world_overlap.c: the stamp overlap test on a grid */
 static const char* InstallWorldPoisson(uintptr_t game); /* difficulty_world_poisson.c: Poisson-disk sets from a periodic tile */
+static const char* InstallSpreadSort(uintptr_t game); /* difficulty_world_poisson.c: SpreadLocations' candidate sort */
 static const char* InstallTowns(uintptr_t game); /* difficulty_world_towns.c */
 static const char* InstallCityGates(uintptr_t game); /* difficulty_world_gates.c */
 static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
@@ -5110,6 +5136,10 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (overlap != NULL) Note("difficulty: extra large maps: the stamp overlap grid is not used: %s", overlap);
     const char* poisson = InstallWorldPoisson(game);
     if (poisson != NULL) Note("difficulty: extra large maps: the tiled Poisson-disk sampler is not used: %s", poisson);
+    if (ApiCodeMatches(game + 0x1756730u, "4C 8B DC 55 53 57 49 8D AB A8 F1 FF FF 48 81 EC 40 0F 00 00"))
+        LoaderHook("extra large maps' selection probe", game + 0x1756730u, (void*)SelectProbe, (void**)&g_selectProbe);
+    const char* spread = InstallSpreadSort(game);
+    if (spread != NULL) Note("difficulty: extra large maps: %s", spread);
     const char* convoy = InstallConvoyGuard(game);
     if (convoy != NULL) Note("difficulty: extra large maps: %s", convoy);
     const char* lists = InstallMissionListGuards(game);

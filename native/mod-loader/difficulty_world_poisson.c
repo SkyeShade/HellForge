@@ -328,7 +328,9 @@ static void* PoissonDetour(void* arena, float radius, const float* rect, uint64_
     double cells = cell > 0.0 ? ((double)rect[2] - rect[0]) / cell * (((double)rect[3] - rect[1]) / cell) : 0.0;
     uint32_t originalCount = 0;
     double originalMs = -1.0;
-    if (cells > 0.0 && cells <= (double)POISSON_CHECK_CELLS && InterlockedIncrement(&g_poissonChecks) <= POISSON_CHECK_CALLS)
+    static int checkOn = -1; /* research only (HELLFORGE_XL_POISSON_CHECK=1): at 16 km the 16/20 m calls fit the cap, ~5 s */
+    if (checkOn < 0) { char t[4] = ""; checkOn = GetEnvironmentVariableA("HELLFORGE_XL_POISSON_CHECK", t, sizeof t) > 0 && t[0] == '1'; }
+    if (checkOn && cells > 0.0 && cells <= (double)POISSON_CHECK_CELLS && InterlockedIncrement(&g_poissonChecks) <= POISSON_CHECK_CALLS)
     {
         uint64_t copy = *state;
         LARGE_INTEGER a, b;
@@ -372,7 +374,97 @@ static const char* InstallWorldPoisson(uintptr_t game)
     if (LoaderHook("extra large maps' Poisson-disk sampler", game + POISSON_SAMPLE, (void*)PoissonDetour, (void**)&g_poissonOriginal) != 0)
         return "the Poisson-disk sampler could not be hooked";
     g_poissonInstalled = 1;
-    Note("difficulty: extra large maps: Poisson-disk sets come from a %u-cell periodic tile (checked against the game's sampler for %d calls up to %u cells)",
+    Note("difficulty: extra large maps: Poisson-disk sets come from a %u-cell periodic tile (HELLFORGE_XL_POISSON_CHECK=1 checks %d calls up to %u cells against the game's sampler)",
         POISSON_TILE, POISSON_CHECK_CALLS, POISSON_CHECK_CELLS);
+    return NULL;
+}
+
+/* ---- SpreadLocations' candidate sort (load time) ---------------------------------------------------------------------
+ * SpreadLocations (op 0x8B, 0xF7C310) sorts its whole candidate list {float x, float y, float d} by d for every location
+ * (0xF7A430 writes d = the squared distance to the location; qsort 0xC04470 with comparator 0xF7A5A0: -1 when a.d < b.d,
+ * 1 when a.d > b.d, else 0), then walks it to the first record passing the gap test: phase 1 at 0xF7C838, the deferred
+ * outposts at 0xF7CEF4. On extra large maps the list holds ~460k records (one per 16 m Poisson point in the playable
+ * disk), so the CRT quicksort took ~50 ms a location (3.2 s per call). d is a sum of squares, finite and >= +0.0, so
+ * its bits order like the float: a stable LSD radix sort gives the same order, except that records with exactly equal
+ * d keep their input order (deterministic, so peers on this build build the same map). Both calls are retargeted to a
+ * jump stub; every other call reaches the game's qsort. */
+#define SPREAD_QSORT 0xC04470u
+#define SPREAD_COMPARE 0xF7A5A0u
+typedef void (*SpreadQsortFn)(void* base, size_t count, size_t width, int (*compare)(const void*, const void*));
+static SpreadQsortFn g_spreadQsort;
+static uintptr_t g_spreadCompare;
+static volatile LONG g_spreadSorts;
+
+static void SpreadSort(void* base, size_t count, size_t width, int (*compare)(const void*, const void*))
+{
+    if (!(g_world.current > 1.0f) || width != 12 || (uintptr_t)compare != g_spreadCompare || count < 64 || count > 0x0FFFFFFFu)
+    {
+        g_spreadQsort(base, count, width, compare);
+        return;
+    }
+    uint8_t* a = (uint8_t*)base;
+    uint8_t* b = (uint8_t*)VirtualAlloc(NULL, count * 12, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (b == NULL) { g_spreadQsort(base, count, width, compare); return; }
+    static uint32_t hist[4][256]; /* the generator thread only (a level op); a second caller takes the game's qsort */
+    static volatile LONG busy;
+    if (InterlockedCompareExchange(&busy, 1, 0) != 0) { VirtualFree(b, 0, MEM_RELEASE); g_spreadQsort(base, count, width, compare); return; }
+    memset(hist, 0, sizeof hist);
+    for (size_t i = 0; i < count; i++)
+    {
+        uint32_t k;
+        memcpy(&k, a + i * 12 + 8, 4);
+        hist[0][k & 0xFF]++; hist[1][(k >> 8) & 0xFF]++; hist[2][(k >> 16) & 0xFF]++; hist[3][k >> 24]++;
+    }
+    uint8_t* src = a;
+    uint8_t* dst = b;
+    for (int p = 0; p < 4; p++)
+    {
+        uint32_t* h = hist[p];
+        int shift = 8 * p;
+        uint32_t k0;
+        memcpy(&k0, src + 8, 4);
+        if (h[(k0 >> shift) & 0xFF] == (uint32_t)count) continue; /* every key has this byte: the pass would move nothing */
+        uint32_t sum = 0;
+        for (int v = 0; v < 256; v++) { uint32_t c = h[v]; h[v] = sum; sum += c; }
+        for (size_t i = 0; i < count; i++)
+        {
+            uint32_t k;
+            memcpy(&k, src + i * 12 + 8, 4);
+            memcpy(dst + (size_t)h[(k >> shift) & 0xFF]++ * 12, src + i * 12, 12);
+        }
+        uint8_t* t = src; src = dst; dst = t;
+    }
+    if (src != a) memcpy(a, src, count * 12);
+    InterlockedExchange(&busy, 0);
+    VirtualFree(b, 0, MEM_RELEASE);
+    InterlockedIncrement(&g_spreadSorts);
+}
+
+static const char* InstallSpreadSort(uintptr_t game)
+{
+    static int installed;
+    if (installed) return NULL;
+    static const struct { uint32_t at, call; const char* pin; } kSites[] = {
+        {0xF7C828u, 0xF7C838u, "4C 8D 0D 71 DD FF FF 41 8B D4 41 B8 0C 00 00 00 E8 33 7C C8 FF"},
+        {0xF7CEE2u, 0xF7CEF4u, "4C 8D 0D B7 D6 FF FF 48 8B 4C 24 70 41 B8 0C 00 00 00 E8 77 75 C8 FF"},
+    };
+    for (int i = 0; i < 2; i++) if (!ApiCodeMatches(game + kSites[i].at, kSites[i].pin)) return "SpreadLocations' sort calls are not the reviewed ones; the game's qsort sorts them";
+    if (!ApiCodeMatches(game + SPREAD_COMPARE, "F3 0F 10 41 08 F3 0F 10 4A 08 0F 2F C8 76 06 B8 FF FF FF FF C3")) return "SpreadLocations' comparator is not the reviewed one";
+    uint8_t* stub = AllocateNearGame(game, 0x20);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for the sort stub";
+    g_spreadQsort = (SpreadQsortFn)(game + SPREAD_QSORT);
+    g_spreadCompare = game + SPREAD_COMPARE;
+    uint64_t target = (uint64_t)(uintptr_t)SpreadSort;
+    static const uint8_t jmp[6] = {0xFF, 0x25, 0, 0, 0, 0};
+    memcpy(stub, jmp, 6); memcpy(stub + 6, &target, 8);
+    DWORD old;
+    VirtualProtect(stub, 0x20, PAGE_EXECUTE_READ, &old);
+    for (int i = 0; i < 2; i++)
+    {
+        int32_t rel = DifficultyJumpRel(game + kSites[i].call, (uintptr_t)stub); /* call rel32: from the call's end, as a jump's */
+        if (ApiWrite(game + kSites[i].call + 1, &rel, 4)) return "SpreadLocations' sort calls could not be retargeted";
+    }
+    installed = 1;
+    Note("difficulty: extra large maps: SpreadLocations' candidate lists are radix sorted");
     return NULL;
 }
