@@ -688,6 +688,151 @@ static float ClusterDirection(float dx, float dy) /* a monotonic stand-in for th
     return dx >= 0 ? (dy >= 0 ? p : 4.0f + p) : 2.0f - p;
 }
 static void NatureClusters(uint64_t pass, uint64_t clusters, uint32_t n); /* nature variants (c), below */
+/* One objective a cluster (audit 15 criterion 4, static obj17). Op 0x16 only writes a placeholder; op 0x18 hands each
+ * objective to the same-class cluster with the smallest radius sum (0xF78A80) and SpreadLocations (0x8B) puts every
+ * member at the first free point nearest its cluster's centre, at the minimum gap (0xF7B2E0): on s76d 16 of 25 kind-8
+ * objectives shared 8 light clusters, 66-240 m apart. After the pass, every cluster keeps one objective (its main,
+ * kind 7, else its first) and the others move, with their mode-1/3 kind-0xB children (0xF7A0F0: those follow the
+ * parent's cluster), to a cluster of their class with no objective (the one farthest from the clusters holding one),
+ * else to a new cluster at the emptiest point of the playable band, while the list has room. The rules are op 0x18's
+ * own: class loc+0xF0 == cluster+0xD8, 24 members, one extraction-type member a cluster (0xF789E0: kind 6 or
+ * D+0x160 bit 0x80), the radius sum +0xD4 = sum of D+0xD8 (0xF78F00). Op 0x18 makes a cluster by its class byte alone in
+ * zeroed room (0xF7996E) and later writes its centre, members, count and sum: a new one is just that. No draws: every
+ * peer gets the same clusters. Records: members +0x10 (u64 x 24), count +0xD0, loc+0xE0 = the cluster's address. */
+static uint64_t ClusterDef(uint64_t rec) /* 0xF78E2F..0xF78E7F */
+{
+    uint8_t a1 = 0xFF, a2 = 0xFF; uint32_t kind = 0; uint64_t h = 0, t = 0, base = 0, d = 0;
+    if (SafeRead(rec + 0xA2, &a2, 1) || a2 == 0xFF || SafeRead(rec + 8, &kind, 4) || SafeRead(rec, &h, 8) || h == 0) return 0;
+    if (kind == 0xADC32FAAu)
+    {
+        if (SafeRead(rec + 0xA1, &a1, 1) || a1 == 0xFF || SafeRead(h + 0x28, &t, 8) || t == 0 || SafeRead(t + (uint64_t)a1 * 24 + 8, &base, 8) || base == 0) return 0;
+        return base + (uint64_t)a2 * 0x1C8;
+    }
+    return SafeRead(h, &d, 8) ? 0 : d;
+}
+static int ClusterExtraction(uint64_t rec) /* 0xF78A4D..0xF78A5D */
+{
+    uint8_t kind = 0, flags = 0; uint64_t d = ClusterDef(rec);
+    if (!SafeRead(rec + 0xDC, &kind, 1) && kind == 6) return 1;
+    return d != 0 && !SafeRead(d + 0x160, &flags, 1) && (flags & 0x80);
+}
+static int ClusterObjective(uint64_t rec)
+{
+    uint32_t kind = 0; uint8_t k = 0;
+    return !SafeRead(rec + 8, &kind, 4) && kind == 0xADC32FAAu && !SafeRead(rec + 0xDC, &k, 1) && (k == 7 || k == 8 || k == 9);
+}
+static uint32_t ClusterObjectives(uint64_t cl)
+{
+    uint32_t count = 0, objectives = 0; uint64_t m[24];
+    if (SafeRead(cl + 0xD0, &count, 4) || count > 24 || SafeRead(cl + 0x10, m, 8ull * count)) return 0;
+    for (uint32_t i = 0; i < count; i++) objectives += (uint32_t)ClusterObjective(m[i]);
+    return objectives;
+}
+static int ClusterTakes(uint64_t cl, uint8_t cls, int extraction, uint32_t members)
+{
+    uint32_t count = 0; uint8_t c = 0; uint64_t m[24];
+    if (SafeRead(cl + 0xD0, &count, 4) || count + members > 24 || SafeRead(cl + 0xD8, &c, 1) || c != cls || SafeRead(cl + 0x10, m, 8ull * count)) return 0;
+    if (extraction) for (uint32_t i = 0; i < count; i++) if (ClusterExtraction(m[i])) return 0;
+    return 1;
+}
+static void ClusterMove(uint64_t rec, uint64_t from, uint64_t to)
+{
+    uint32_t count = 0, j = 0; uint64_t m[24]; float sum = 0, r = 0; uint64_t d = ClusterDef(rec);
+    if (d == 0 || SafeRead(d + 0xD8, &r, 4) || !isfinite(r)) r = 0;
+    SafeRead(from + 0xD0, &count, 4); SafeRead(from + 0x10, m, 8ull * (count > 24 ? 24 : count));
+    for (uint32_t i = 0; i < count && i < 24; i++) if (m[i] != rec) m[j++] = m[i];
+    for (uint32_t i = j; i < count && i < 24; i++) m[i] = 0;
+    memcpy((void*)(uintptr_t)(from + 0x10), m, 8ull * (count > 24 ? 24 : count));
+    *(volatile uint32_t*)(uintptr_t)(from + 0xD0) = j;
+    SafeRead(from + 0xD4, &sum, 4); *(volatile float*)(uintptr_t)(from + 0xD4) = sum - r;
+    SafeRead(to + 0xD0, &count, 4);
+    *(volatile uint64_t*)(uintptr_t)(to + 0x10 + 8ull * count) = rec;
+    *(volatile uint32_t*)(uintptr_t)(to + 0xD0) = count + 1;
+    SafeRead(to + 0xD4, &sum, 4); *(volatile float*)(uintptr_t)(to + 0xD4) = sum + r;
+    *(volatile uint64_t*)(uintptr_t)(rec + 0xE0) = to;
+}
+static void ObjectiveSpread(uint64_t a, uint64_t clusters, uint32_t* n, float centre, float play)
+{
+    uint64_t countAt = 0; uint32_t cap = 0;
+    if (SafeRead(a + 0x38, &countAt, 8) || countAt == 0 || SafeRead(a + 0x40, &cap, 4)) return;
+    if (cap > 64) cap = 64;
+    uint32_t sharedBefore = 0, mostBefore = 0, moved = 0, children = 0, made = 0, kept = 0;
+    for (uint32_t i = 0; i < *n; i++) { uint32_t o = ClusterObjectives(clusters + 0xE0ull * i); if (o > 1) sharedBefore++; if (o > mostBefore) mostBefore = o; }
+    for (uint32_t i = 0; i < *n; i++)
+    {
+        uint64_t from = clusters + 0xE0ull * i;
+        uint32_t count = 0; uint64_t m[24];
+        if (SafeRead(from + 0xD0, &count, 4) || count > 24 || SafeRead(from + 0x10, m, 8ull * count)) continue;
+        uint64_t keep = 0;
+        for (uint32_t k = 0; k < count && keep == 0; k++) { uint8_t kind = 0; if (ClusterObjective(m[k]) && !SafeRead(m[k] + 0xDC, &kind, 1) && kind == 7) keep = m[k]; }
+        for (uint32_t k = 0; k < count && keep == 0; k++) if (ClusterObjective(m[k])) keep = m[k];
+        for (uint32_t k = 0; k < count; k++)
+        {
+            uint64_t rec = m[k]; uint8_t cls = 0;
+            if (rec == keep || !ClusterObjective(rec) || SafeRead(rec + 0xF0, &cls, 1)) continue;
+            uint64_t kids[24]; uint32_t nk = 0;
+            for (uint32_t q = 0; q < count; q++)
+            {
+                uint8_t kind = 0, mode = 0; uint64_t parent = 0;
+                if (!SafeRead(m[q] + 0xDC, &kind, 1) && kind == 0xB && !SafeRead(m[q] + 0xF8, &parent, 8) && parent == rec &&
+                    !SafeRead(m[q] + 0x100, &mode, 1) && (mode == 1 || mode == 3)) kids[nk++] = m[q];
+            }
+            int extraction = ClusterExtraction(rec);
+            /* an existing cluster of the class without an objective, farthest from those holding one */
+            uint64_t to = 0; float best = -1.0f;
+            for (uint32_t t = 0; t < *n; t++)
+            {
+                uint64_t cl = clusters + 0xE0ull * t; float xy[2];
+                if (t == i || ClusterObjectives(cl) != 0 || !ClusterTakes(cl, cls, extraction, 1 + nk) || SafeRead(cl, xy, 8)) continue;
+                float closest2 = 1e30f;
+                for (uint32_t u = 0; u < *n; u++)
+                {
+                    float uv[2]; uint64_t cu = clusters + 0xE0ull * u;
+                    if (u == t || ClusterObjectives(cu) == 0 || SafeRead(cu, uv, 8)) continue;
+                    float dd = (xy[0] - uv[0]) * (xy[0] - uv[0]) + (xy[1] - uv[1]) * (xy[1] - uv[1]);
+                    if (dd < closest2) closest2 = dd;
+                }
+                if (closest2 > best) { best = closest2; to = cl; }
+            }
+            if (to == 0 && *n < cap) /* a new cluster at the emptiest point of the band 10..88 % of the playable radius */
+            {
+                float bx = centre, by = centre, bd = -1.0f;
+                for (int gy = 0; gy < 64; gy++)
+                    for (int gx = 0; gx < 64; gx++)
+                    {
+                        float x = (gx + 0.5f) * (2.0f * centre) / 64.0f, y = (gy + 0.5f) * (2.0f * centre) / 64.0f;
+                        float dr = sqrtf((x - centre) * (x - centre) + (y - centre) * (y - centre));
+                        if (dr < 0.10f * play || dr > 0.88f * play) continue;
+                        float closest2 = 1e30f;
+                        for (uint32_t u = 0; u < *n; u++)
+                        {
+                            float uv[2];
+                            if (SafeRead(clusters + 0xE0ull * u, uv, 8)) continue;
+                            float dd = (x - uv[0]) * (x - uv[0]) + (y - uv[1]) * (y - uv[1]);
+                            if (dd < closest2) closest2 = dd;
+                        }
+                        if (closest2 > bd) { bd = closest2; bx = x; by = y; }
+                    }
+                to = clusters + 0xE0ull * *n;
+                memset((void*)(uintptr_t)to, 0, 0xE0);
+                float xy[2] = {bx, by};
+                memcpy((void*)(uintptr_t)to, xy, 8);
+                *(volatile uint8_t*)(uintptr_t)(to + 0xD8) = cls;
+                (*n)++; *(volatile uint32_t*)(uintptr_t)countAt = *n; made++;
+            }
+            if (to == 0) { kept++; continue; }
+            ClusterMove(rec, from, to); moved++;
+            for (uint32_t q = 0; q < nk; q++) { ClusterMove(kids[q], from, to); children++; }
+        }
+    }
+    uint32_t sharedAfter = 0, mostAfter = 0;
+    for (uint32_t i = 0; i < *n; i++) { uint32_t o = ClusterObjectives(clusters + 0xE0ull * i); if (o > 1) sharedAfter++; if (o > mostAfter) mostAfter = o; }
+    static LONG noted;
+    if (InterlockedIncrement(&noted) <= 4)
+        Note("difficulty: extra large maps: one objective a cluster: %u clusters shared objectives (at most %u) -> %u (at most %u); %u objectives and %u children moved, %u new clusters (%u of %u), %u left sharing",
+            sharedBefore, mostBefore, sharedAfter, mostAfter, moved, children, made, *n, cap, kept);
+}
+
 static uint64_t WorldPassClusters(uint64_t a, uint64_t b, uint64_t c, uint64_t e)
 {
     AcquireSRWLockExclusive(&g_clusterLock);
@@ -754,6 +899,7 @@ static uint64_t WorldPassClusters(uint64_t a, uint64_t b, uint64_t c, uint64_t e
     if (InterlockedIncrement(&noted) <= 4)
         Note("difficulty: extra large maps: %u location clusters spread over the map (%u on the ring at %.0f m; playable %.0f m), their distances:%s",
             n, m, (double)dist[0], (double)play, list);
+    ObjectiveSpread(a, clusters, &n, centre, play);
     NatureClusters(c, clusters, n);
     return r;
 }
