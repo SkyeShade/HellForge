@@ -30,7 +30,7 @@
       "name": "Black Ledger",
       "variant": "premium",
       "art": { "from": 610512218 },
-      "showcase": { "from": 610512218, "pose": 1929468580, "weapon": "C12A34F375BD5A87" },
+      "showcase": { "from": 610512218, "pose": 1929468580, "cape": 752209840, "weapon": "C12A34F375BD5A87" },
       "unlock": { "currency": "forge-credits", "cost": 500 },
       "pages": [
         {

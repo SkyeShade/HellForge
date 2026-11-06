@@ -74,7 +74,7 @@ Put `hellforge-warbonds.json` beside your mod's manifest:
 | `pages` | 1 to 15 pages, in order |
 | `variant` | its look: `free` (the default), `premium` or `legendary`: the card's style and the tag under its name |
 | `season` | the season line the game keeps with a warbond's name ("Season I" on Helldivers Mobilize), 1 to 32 characters; your mod's name by default. The Acquisition Center of this game build shows it on no warbond, the game's included |
-| `art` | its picture: `{"image": "card.png"}`, a 2048 by 1024 PNG in your mod's folder; or `{"from": <id>}`, the art of one of the game's warbonds, by its id (the keys of `mappings/warbond-art.json`, or Helldivers Mobilize's `1929468580`); without it, a plain dark card HellForge draws, with your `name` over it |
+| `art` | its picture: `{"image": "card.png"}`, a 2048 by 1024 PNG in your mod's folder; or `{"from": <id>}`, the art of one of the game's warbonds, by its id (the keys of `mappings/warbond-art.json`, or Helldivers Mobilize's `1929468580`); without it, a plain dark card HellForge draws |
 | `unlock` | `{"currency": "forge-credits", "cost": <n>}`: players buy the warbond once, for 1 to 1,000,000 Forge Credits, before they can buy its items; without it, the warbond is open to everyone |
 | `showcase` | the Helldiver and background beside its card: see [The showcase](#the-showcase); without it, the game's default |
 
@@ -134,6 +134,9 @@ Each field is optional:
 "showcase": {
   "from": 610512218,
   "pose": 1929468580,
+  "armor": 3605514351,
+  "helmet": 1004735217,
+  "cape": 752209840,
   "weapon": "27EE1ED8F6FB6356"
 }
 ```
@@ -161,9 +164,8 @@ locked page's line with what is left to spend name that currency too, in English
 A warbond with an `unlock` price shows the game's warbond button with that price, as the game's premium warbonds do. Players
 buy it with Forge Credits, once, and then buy its items as on any warbond. Players with everything unlocked own it.
 
-Your picture is the warbond's card, with its name written over it as on the game's cards. The game also shows its own
-warbonds' art somewhere with the title drawn in; there it shows your picture as it is, so draw in any logo you want. The PNG
-may use any colour type; its transparency is dropped.
+Your picture is the warbond's card as it is: the game writes no name over a card, so draw in the title or logo you want.
+The name shows beside the card. The PNG may use any colour type; its transparency is dropped.
 
 ## Limits
 
