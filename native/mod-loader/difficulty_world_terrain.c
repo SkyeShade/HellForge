@@ -2311,9 +2311,13 @@ static struct { LONG level; int count, dropped; float band3C; NearPad* pad; floa
 #define NEAR_PAD_STEP 2.0f
 #define NEAR_PAD_N 1152 /* NEAR_SIDE / NEAR_PAD_STEP */
 
-static void NearPadAdd(float x, float y, float rot, const float* f, int rect, float size)
+/* strength: the element's strength x the item's [item+0x58] (0xF4D98B circles, 0xF4DC31 rectangles). Band: circles
+ * B ln(a+1) metres (stored in pixels, 0xF4D963); rectangles the padMetre share of it (PadBandStubs: k / 2 on an extra
+ * large level, the shader's metres). Op 0x3F also scales both bands by e <= 1 (0xF4D6DA: the ground's spread under the
+ * footprint, from 0xF4AE30); 1 here, never narrower than the game's. */
+static void NearPadAdd(float x, float y, float rot, const float* f, int rect, float size, float itemStrength)
 {
-    float k = rect ? f[5] : f[3];
+    float k = (rect ? f[5] : f[3]) * itemStrength;
     if (!(k > 0.0f) || g_pads.count >= NEAR_PADS) { if (k > 0.0f) g_pads.dropped++; return; }
     float sn = sinf(rot), cs = cosf(rot);
     NearPad* p = &g_pads.pad[g_pads.count];
@@ -2324,7 +2328,8 @@ static void NearPadAdd(float x, float y, float rot, const float* f, int rect, fl
     {
         float psi = rot - 1.5707963f + f[4];
         p->c = cosf(psi); p->s = sinf(psi); p->a = f[2]; p->b = f[3];
-        p->ba = fmaxf(B * logf(f[2] + 1.0f), 2.0f); p->bb = fmaxf(B * logf(f[3] + 1.0f), 2.0f);
+        const float m = g_world.values != NULL && g_world.values->padMetre > 0.0f ? g_world.values->padMetre : 1.0f;
+        p->ba = fmaxf(m * B * logf(f[2] + 1.0f), 2.0f); p->bb = fmaxf(m * B * logf(f[3] + 1.0f), 2.0f);
     }
     else { p->a = f[2]; p->ba = fmaxf(B * logf(f[2] + 1.0f), 2.0f); }
     if (p->a >= 0.0f && p->a < 4096.0f && (!rect || (p->b >= 0.0f && p->b < 4096.0f))) g_pads.count++;
@@ -2349,7 +2354,9 @@ static int NearPadFootprint(uint64_t P, float size)
 static void NearPadShape(uint64_t P, float size)
 {
     float pos[3]; uint64_t item = 0, shape = 0, list = 0; uint32_t n = 0;
+    float strength = 1.0f;
     if (SafeRead(P, pos, 12) || SafeRead(P + 0x90, &item, 8) || item == 0 || SafeRead(item, &shape, 8) || shape == 0) return;
+    if (SafeRead(item + 0x58, &strength, 4) || !(strength >= 0.0f && strength <= 16.0f)) strength = 1.0f;
     for (int rect = 0; rect < 2; rect++)
     {
         if (SafeRead(shape + (rect ? 0x10 : 0), &list, 8) || SafeRead(shape + (rect ? 0x18 : 8), &n, 4) || list == 0 || n > 4096) continue;
@@ -2357,7 +2364,7 @@ static void NearPadShape(uint64_t P, float size)
         {
             float f[7]; uint32_t flags = 0, stride = rect ? 0x1C : 0x14;
             if (SafeRead(list + (uint64_t)i * stride, f, rect ? 24 : 16) || SafeRead(list + (uint64_t)i * stride + (rect ? 0x18 : 0x10), &flags, 4)) break;
-            if (flags & 1) NearPadAdd(pos[0], pos[1], pos[2], f, rect, size);
+            if (flags & 1) NearPadAdd(pos[0], pos[1], pos[2], f, rect, size, strength);
         }
     }
 }

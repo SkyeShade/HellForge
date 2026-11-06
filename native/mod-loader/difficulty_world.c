@@ -59,7 +59,8 @@ static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediat
  * every update and it returns without setting it when |x|, |y| or |z| is past 4096 m (the jump to 0x7EDB3A), 4 x the
  * vanilla half world; on a 16 km map an enemy whose goal lay more than 4 km out on either axis never moved. The only
  * reader of -4096. */
-typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull, maskSpan, quarter, goalHigh, goalLow; } WorldValues;
+#define PAD_BAND_K 1.5f /* op 0x3F rectangle pads: the falloff, x vanilla's metres (PadBandStubs) */
+typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull, maskSpan, quarter, goalHigh, goalLow, padPx, padMetre, padQuad; } WorldValues;
 /* GenerateClearingPoints (op 0xB3, 0xF42BD0) scatters Poisson points over the whole world square, keeps each with the
  * planet's chance (its random number x 2^-32, 0xF42D1E, against [settings+0x114]), and appends the kept ones (16 bytes
  * each, from G+0x11A16FC) without a check: room for about 1450 before the route counts at G+0x11A71B4. Their number grows
@@ -129,6 +130,11 @@ static void WorldWrite(float scale)
     v->quarter = 512.0f * scale;
     v->goalHigh = 4096.0f * scale;
     v->goalLow = -4096.0f * scale;
+    /* Op 0x3F's rectangle pads (PadBandStubs): band in heightmap pixels, in metres for the quad, and the quad's read
+     * back of the stored pixels; vanilla 1 / 1 / 1 */
+    v->padPx = scale > 1.0f ? PAD_BAND_K / scale : 1.0f;
+    v->padMetre = scale > 1.0f ? PAD_BAND_K / 2.0f : 1.0f;
+    v->padQuad = scale > 1.0f ? scale / 2.0f : 1.0f;
     if (g_world.below != NULL)
     {
         g_world.below[0] = scale > 1.0f ? g_world.makeBelow : 0xFFFFFFFFu;
@@ -3919,11 +3925,14 @@ static void FpsLiftStep(uint64_t records, uint64_t index, uint32_t count)
     {
         FpsLiftEnd("another level");
         g_fpsLift.level = g_world.levels;
-        if (!(g_world.current > 1.0f) || count == 0 || count > 4096) return;
+        if (!(g_world.current > 1.0f) || count == 0 || count > 4096) { if (g_world.current > 1.0f) Note("difficulty: extra large maps: frame cap check: %u records", count); return; }
         int full = 0;
         for (uint32_t i = 0; i < count && !full; i++) { uint32_t op = 0; if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0x4A) full = 1; }
         uintptr_t app = 0; uint32_t fps = 0;
-        if (!full || SafeRead((uintptr_t)GetModuleHandleW(NULL) + 0x1A10208u, &app, 8) || app == 0 || SafeRead(app + 0x470, &fps, 4) || fps == 0 || fps > 1000) return;
+        int bad = SafeRead((uintptr_t)GetModuleHandleW(NULL) + 0x1A10208u, &app, 8) || app == 0 || SafeRead(app + 0x470, &fps, 4);
+        Note("difficulty: extra large maps: frame cap check: %u records%s, app %p, [app+0x470] %u%s", count, full ? " with op 0x4A" : " without op 0x4A",
+            (void*)app, fps, bad ? " (not read)" : "");
+        if (!full || bad || fps == 0 || fps > 1000) return;
         g_fpsLift.app = app; g_fpsLift.saved = fps; g_fpsLift.on = 1;
         *(volatile uint32_t*)(app + 0x470) = 0;
         Note("difficulty: extra large maps: the frame cap (%u fps) is off while the map loads", fps);
@@ -4989,6 +4998,80 @@ static const char* InstallWorldOverlap(uintptr_t game); /* difficulty_world_over
 static const char* InstallWorldPoisson(uintptr_t game); /* difficulty_world_poisson.c: Poisson-disk sets from a periodic tile */
 static const char* InstallSpreadSort(uintptr_t game); /* difficulty_world_poisson.c: SpreadLocations' candidate sort */
 static const char* InstallTowns(uintptr_t game); /* difficulty_world_towns.c */
+/* Op 0x3F's rectangle pads on an extra large level (0xF4DC3C..0xF4DCA9, 0xF4E631): the band e T+0x3C ln(a+1) goes into
+ * the record (+0x1C, +0x20) unscaled, but the pad shader reads it in heightmap pixels, and the scale is 0.25 px/m at
+ * 16384 m (2 on vanilla), so the falloff stopped at a quarter and a pad standing over the ground left a wall (audit 15
+ * criterion 8, s76d objective #8: 42-56 m). The stubs store k band s (padPx = k / scale; s = 2 / scale), pass the
+ * falloff's k band / 2 metres to the quad's corners (0xFC8D50) and read the stored pixels back in metres for the second
+ * call (padQuad = scale / 2). A vanilla level has 1 / 1 / 1: the same products, bit for bit. xmm1 (site A, before the
+ * call to log) and xmm0 (site B, before 0xFC8D50, whose first argument is rcx) are free. Circles store their band in
+ * pixels already (0xF4D963). */
+#define PAD_BAND_SITE_A 0xF4DC65u
+#define PAD_BAND_SITE_B 0xF4DC9Au
+#define PAD_BAND_SITE_C 0xF4E631u
+static const uint8_t kPadBandA[33] = {
+    0xF3, 0x0F, 0x59, 0x36,                         /* mulss xmm6, [rsi]          (e) */
+    0x0F, 0x28, 0xCE,                               /* movaps xmm1, xmm6 */
+    0xF3, 0x0F, 0x59, 0x0D, 0, 0, 0, 0,             /* mulss xmm1, [padPx]        @11 */
+    0xF3, 0x0F, 0x11, 0x4B, 0x1C,                   /* movss [rbx+0x1C], xmm1 */
+    0xF3, 0x0F, 0x59, 0x35, 0, 0, 0, 0,             /* mulss xmm6, [padMetre]     @24 */
+    0xE9, 0, 0, 0, 0};                              /* jmp 0xF4DC6E               @29 */
+static const uint8_t kPadBandB[39] = {
+    0xF3, 0x0F, 0x59, 0x16,                         /* mulss xmm2, [rsi] */
+    0x0F, 0x28, 0xC2,                               /* movaps xmm0, xmm2 */
+    0xF3, 0x0F, 0x59, 0x05, 0, 0, 0, 0,             /* mulss xmm0, [padPx]        @11 */
+    0xF3, 0x0F, 0x11, 0x43, 0x20,                   /* movss [rbx+0x20], xmm0 */
+    0xF3, 0x0F, 0x59, 0x15, 0, 0, 0, 0,             /* mulss xmm2, [padMetre]     @24 */
+    0xF3, 0x0F, 0x11, 0x54, 0x24, 0x20,             /* movss [rsp+0x20], xmm2 */
+    0xE9, 0, 0, 0, 0};                              /* jmp 0xF4DCA9               @35 */
+static const uint8_t kPadBandC[37] = {
+    0xF3, 0x0F, 0x10, 0x43, 0x20,                   /* movss xmm0, [rbx+0x20] */
+    0xF3, 0x0F, 0x59, 0x05, 0, 0, 0, 0,             /* mulss xmm0, [padQuad]      @9 */
+    0xF3, 0x0F, 0x10, 0x5B, 0x1C,                   /* movss xmm3, [rbx+0x1C] */
+    0xF3, 0x0F, 0x59, 0x1D, 0, 0, 0, 0,             /* mulss xmm3, [padQuad]      @22 */
+    0xF3, 0x0F, 0x11, 0x44, 0x24, 0x20,             /* movss [rsp+0x20], xmm0 */
+    0xE9, 0, 0, 0, 0};                              /* jmp 0xF4E641               @32 */
+static void PadBandRel(uint8_t* stub, int at, const void* target)
+{
+    int32_t rel = (int32_t)((intptr_t)target - (intptr_t)(stub + at + 4));
+    memcpy(stub + at, &rel, 4);
+}
+/* Writes the three stubs at code (0xC0 bytes of the world block, before it turns read-only). 1 when the sites are the
+ * reviewed ones. */
+static int PadBandStubs(uintptr_t game, uint8_t* code)
+{
+    if (!ApiCodeMatches(game + PAD_BAND_SITE_A, "F3 0F 59 36 F3 0F 11 73 1C") ||
+        !ApiCodeMatches(game + PAD_BAND_SITE_B, "F3 0F 59 16 F3 0F 11 53 20 F3 0F 11 54 24 20") ||
+        !ApiCodeMatches(game + PAD_BAND_SITE_C, "F3 0F 10 43 20 F3 0F 10 5B 1C F3 0F 11 44 24 20"))
+    {
+        Note("difficulty: op 0x3F's rectangle pads are not the reviewed ones: their bands stay vanilla on extra large levels");
+        return 0;
+    }
+    WorldValues* v = g_world.values;
+    uint8_t *a = code, *b = code + 0x40, *c = code + 0x80;
+    memcpy(a, kPadBandA, sizeof kPadBandA);
+    PadBandRel(a, 11, &v->padPx); PadBandRel(a, 24, &v->padMetre); PadBandRel(a, 29, (void*)(game + PAD_BAND_SITE_A + 9));
+    memcpy(b, kPadBandB, sizeof kPadBandB);
+    PadBandRel(b, 11, &v->padPx); PadBandRel(b, 24, &v->padMetre); PadBandRel(b, 35, (void*)(game + PAD_BAND_SITE_B + 15));
+    memcpy(c, kPadBandC, sizeof kPadBandC);
+    PadBandRel(c, 9, &v->padQuad); PadBandRel(c, 22, &v->padQuad); PadBandRel(c, 32, (void*)(game + PAD_BAND_SITE_C + 16));
+    return 1;
+}
+/* The jumps into the stubs (after the block is executable). NULL or the reason. */
+static const char* PadBandSites(uintptr_t game, uint8_t* code)
+{
+    static const struct { uint32_t site, length, stub; } kSites[3] = {
+        {PAD_BAND_SITE_A, 9, 0}, {PAD_BAND_SITE_B, 15, 0x40}, {PAD_BAND_SITE_C, 16, 0x80}};
+    for (int i = 0; i < 3; i++)
+    {
+        uint8_t jump[16];
+        memset(jump, 0x90, sizeof jump);
+        jump[0] = 0xE9;
+        int32_t rel = DifficultyJumpRel(game + kSites[i].site, (uintptr_t)(code + kSites[i].stub)); memcpy(jump + 1, &rel, 4);
+        if (ApiWrite(game + kSites[i].site, jump, kSites[i].length)) return "op 0x3F's rectangle pads could not get bands for the larger world";
+    }
+    return NULL;
+}
 static const char* InstallCityGates(uintptr_t game); /* difficulty_world_gates.c */
 static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
 static const char* InstallWorld(DifficultyInstall* d)
@@ -5004,7 +5087,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (block == NULL) return "no memory within 2 GB of game.dll for the extra large world";
     g_world.game = game;
     g_world.values = (WorldValues*)(block + 0x1000);
-    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f, 4096.0f, 512.0f, 4096.0f, -4096.0f};
+    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f, 4096.0f, 512.0f, 4096.0f, -4096.0f, 1.0f, 1.0f, 1.0f};
     *g_world.values = vanilla;
     void* level = (void*)WorldLevel;
     int32_t rel;
@@ -5057,8 +5140,10 @@ static const char* InstallWorld(DifficultyInstall* d)
     memcpy(full, kIndexFullStub, sizeof kIndexFullStub);
     rel = (int32_t)((uint8_t*)g_worldIndexFull - (full + 22)); memcpy(full + 18, &rel, 4);
     rel = (int32_t)((block + 0x1200) - (full + 29)); memcpy(full + 25, &rel, 4);
+    int padBand = PadBandStubs(game, block + 0x500);
     DWORD protect;
     VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect);
+    if (padBand) { const char* why = PadBandSites(game, block + 0x500); if (why != NULL) return why; }
     const float* fields[5] = {&g_world.values->half, &g_world.values->full, &g_world.values->inverse, &g_world.values->negHalf, &g_world.values->negFull};
     for (size_t i = 0; i < sizeof kWorldSites / sizeof kWorldSites[0]; i++)
     {
