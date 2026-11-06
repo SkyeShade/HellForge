@@ -5635,18 +5635,21 @@ static const char* OptionalDrawSite(uintptr_t game, uint8_t* code)
 #define RENDER_CAP_MAIN 0x200000u
 #define RENDER_CAP_MUL 2u
 static struct { volatile LONG* made; uint32_t* mul; volatile uint64_t* scenePtr; int on; LONG noted; } g_renderCap;
-/* The main world's culling pool 0 (the one that filled, 0x58E14B): the stub keeps the main world's scene out-pointer
- * (0x10CDE0's rdx; 0x10CEB6 stores 0x1E4080's scene there, which returns its rcx r12: 0x1E4CCF), pool 0 is
- * [scene+0x268] (0x1E41F5; the add at 0x1E6BE2 takes it), its used count +0x30 and capacity +0x34 (0x751A0). */
+/* The main world's culling pool 0 (the one that filled, 0x58E14B): the second stub (RENDER_SCENE_SITE) keeps the main
+ * world's scene; pool 0 is [scene+0x268] (0x1E41F5; the add at 0x1E6BE2 takes it), its used count +0x30 and capacity
+ * +0x34 (0x751A0). */
 static int RenderPool0(uint32_t* used, uint32_t* capacity)
 {
-    uint64_t at = 0, scene = 0, pool = 0;
-    if (g_renderCap.on != 1 || (at = *g_renderCap.scenePtr) == 0) return 0;
-    if (SafeRead((uintptr_t)at, &scene, 8) || scene == 0 || SafeRead((uintptr_t)scene + 0x268, &pool, 8) || pool == 0 ||
+    uint64_t scene = 0, pool = 0;
+    if (g_renderCap.on != 1 || (scene = *g_renderCap.scenePtr) == 0) return 0;
+    if (SafeRead((uintptr_t)scene + 0x268, &pool, 8) || pool == 0 ||
         SafeRead((uintptr_t)pool + 0x30, used, 4) || SafeRead((uintptr_t)pool + 0x34, capacity, 4) || *capacity == 0 || *used > *capacity) return 0;
     return 1;
 }
 static const char kRenderCapPin[] = "8B BC 24 C8 00 00 00 48 8B F1 B9 00 02 00 00 4C 8B FA 8B C7 4D 8B F0 C1 E8 03";
+#define RENDER_SCENE_SITE 0x10CEB6u /* mov [r15],rax; lea rdx,[rsp+0x50] (8 bytes) */
+#define RENDER_SCENE_BACK 0x10CEBEu
+static const char kRenderScenePin[] = "49 89 07 48 8D 54 24 50 48 8B 03";
 
 static void RenderCapacityInstall(void)
 {
@@ -5657,19 +5660,32 @@ static void RenderCapacityInstall(void)
     { Note("difficulty: render capacity: the world creation is not the reviewed code; the main world keeps its pools"); return; }
     uint8_t* page = AllocateNearGame(exe, 0x1000);
     if (page == NULL) { Note("difficulty: render capacity: no room near the exe for the stub"); return; }
-    /* the stub at +0, the counter at +0x40, the multiplier at +0x44, the scene out-pointer at +0x48:
-     * mov edi,[rsp+0xC8]; cmp edi,0x200000; jne done; lock inc dword [count]; mov [scenePtr],rdx; imul edi,[mul];
-     * done: jmp back (rdx is 0x10CDE0's second argument here: 0x10CDE0..0x10CDFD leave it, 0x10CE0C copies it to r15) */
+    /* the stub at +0, the counter at +0x40, the multiplier at +0x44, the main world's scene at +0x48 (the second stub at
+     * +0x60): mov edi,[rsp+0xC8]; cmp edi,0x200000; jne done; lock inc dword [count]; imul edi,[mul]; done: jmp back */
     static const uint8_t code[] = {
         0x8B, 0xBC, 0x24, 0xC8, 0x00, 0x00, 0x00,       /* +0  mov edi,[rsp+0xC8] */
         0x81, 0xFF, 0x00, 0x00, 0x20, 0x00,             /* +7  cmp edi,0x200000 */
-        0x75, 0x15,                                     /* +13 jne +36 */
+        0x75, 0x0E,                                     /* +13 jne +29 */
         0xF0, 0xFF, 0x05, 0, 0, 0, 0,                   /* +15 lock inc dword [rip+rel] (ends +22) */
-        0x48, 0x89, 0x15, 0, 0, 0, 0,                   /* +22 mov [rip+rel],rdx (ends +29) */
-        0x0F, 0xAF, 0x3D, 0, 0, 0, 0,                   /* +29 imul edi,[rip+rel] (ends +36) */
-        0xE9, 0, 0, 0, 0};                              /* +36 jmp back (ends +41) */
-    _Static_assert(sizeof code == 41, "render capacity stub size");
+        0x0F, 0xAF, 0x3D, 0, 0, 0, 0,                   /* +22 imul edi,[rip+rel] (ends +29) */
+        0xE9, 0, 0, 0, 0};                              /* +29 jmp back (ends +34) */
+    _Static_assert(sizeof code == 34, "render capacity stub size");
+    /* At 0x10CEB6 the scene 0x1E4080 made (it returns its rcx, r12: 0x1E4CCF) is in rax and edi still holds N (0x1E4080
+     * and the allocator call keep rdi): mov [r15],rax; cmp edi,N x mul; jne +7; mov [scene],rax; lea rdx,[rsp+0x50];
+     * jmp 0x10CEBE (flags are dead: the next reader is a call). The callers' out-pointer (rdx) is a stack slot
+     * (0x76865, 0x317CD0): the scene itself has to be kept. */
+    static const uint8_t keep[] = {
+        0x49, 0x89, 0x07,                               /* +0  mov [r15],rax */
+        0x81, 0xFF, 0, 0, 0, 0,                         /* +3  cmp edi,imm32 (N x mul) */
+        0x75, 0x07,                                     /* +9  jne +18 */
+        0x48, 0x89, 0x05, 0, 0, 0, 0,                   /* +11 mov [rip+rel],rax (ends +18) */
+        0x48, 0x8D, 0x54, 0x24, 0x50,                   /* +18 lea rdx,[rsp+0x50] */
+        0xE9, 0, 0, 0, 0};                              /* +23 jmp 0x10CEBE (ends +28) */
+    _Static_assert(sizeof keep == 28, "render capacity scene stub size");
+    if (!ApiCodeMatches(exe + RENDER_SCENE_SITE, kRenderScenePin))
+    { Note("difficulty: render capacity: the world creation's scene store is not the reviewed code; the main world keeps its pools"); return; }
     memcpy(page, code, sizeof code);
+    memcpy(page + 0x60, keep, sizeof keep);
     g_renderCap.made = (volatile LONG*)(page + 0x40);
     g_renderCap.mul = (uint32_t*)(page + 0x44);
     g_renderCap.scenePtr = (volatile uint64_t*)(page + 0x48);
@@ -5677,21 +5693,30 @@ static void RenderCapacityInstall(void)
     *g_renderCap.mul = RENDER_CAP_MUL;
     *g_renderCap.scenePtr = 0;
     int32_t rel = (int32_t)((intptr_t)(page + 0x40) - (intptr_t)(page + 22)); memcpy(page + 18, &rel, 4);
-    rel = (int32_t)((intptr_t)(page + 0x48) - (intptr_t)(page + 29)); memcpy(page + 25, &rel, 4);
-    rel = (int32_t)((intptr_t)(page + 0x44) - (intptr_t)(page + 36)); memcpy(page + 32, &rel, 4);
-    intptr_t back = (intptr_t)(exe + RENDER_CAP_BACK) - (intptr_t)(page + 41);
+    rel = (int32_t)((intptr_t)(page + 0x44) - (intptr_t)(page + 29)); memcpy(page + 25, &rel, 4);
+    uint32_t mainN = RENDER_CAP_MAIN * RENDER_CAP_MUL; memcpy(page + 0x60 + 5, &mainN, 4);
+    rel = (int32_t)((intptr_t)(page + 0x48) - (intptr_t)(page + 0x60 + 18)); memcpy(page + 0x60 + 14, &rel, 4);
+    intptr_t sceneBack = (intptr_t)(exe + RENDER_SCENE_BACK) - (intptr_t)(page + 0x60 + 28);
+    intptr_t sceneReach = (intptr_t)(page + 0x60) - (intptr_t)(exe + RENDER_SCENE_SITE + 5);
+    intptr_t back = (intptr_t)(exe + RENDER_CAP_BACK) - (intptr_t)(page + 34);
     intptr_t reach = (intptr_t)page - (intptr_t)(exe + RENDER_CAP_SITE + 5);
-    if (back != (intptr_t)(int32_t)back || reach != (intptr_t)(int32_t)reach)
+    if (back != (intptr_t)(int32_t)back || reach != (intptr_t)(int32_t)reach || sceneBack != (intptr_t)(int32_t)sceneBack ||
+        sceneReach != (intptr_t)(int32_t)sceneReach)
     { Note("difficulty: render capacity: the stub is out of reach"); return; }
-    rel = (int32_t)back; memcpy(page + 37, &rel, 4);
-    if (page[13] != 0x75 || page[14] != 36 - 15 || page[15] != 0xF0 || page[22] != 0x48 || page[29] != 0x0F || page[36] != 0xE9)
+    rel = (int32_t)back; memcpy(page + 30, &rel, 4);
+    rel = (int32_t)sceneBack; memcpy(page + 0x60 + 24, &rel, 4);
+    if (page[13] != 0x75 || page[14] != 29 - 15 || page[15] != 0xF0 || page[22] != 0x0F || page[29] != 0xE9 ||
+        page[0x60 + 9] != 0x75 || page[0x60 + 11] != 0x48 || page[0x60 + 23] != 0xE9)
     { Note("difficulty: render capacity: the stub did not assemble"); return; }
     DWORD old = 0;
     if (!VirtualProtect(page, 0x1000, PAGE_EXECUTE_READWRITE, &old)) { Note("difficulty: render capacity: the stub is not executable"); return; }
     FlushInstructionCache(GetCurrentProcess(), page, 0x1000);
     uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
     rel = (int32_t)reach; memcpy(jump + 1, &rel, 4);
-    if (ApiWrite(exe + RENDER_CAP_SITE, jump, sizeof jump)) { Note("difficulty: render capacity: the world creation could not be patched"); return; }
+    uint8_t sceneJump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+    rel = (int32_t)sceneReach; memcpy(sceneJump + 1, &rel, 4);
+    if (ApiWrite(exe + RENDER_SCENE_SITE, sceneJump, sizeof sceneJump) || ApiWrite(exe + RENDER_CAP_SITE, jump, sizeof jump))
+    { Note("difficulty: render capacity: the world creation could not be patched"); return; }
     g_renderCap.on = 1;
     Note("difficulty: render capacity: the main world (capacity 0x%X) is made at %ux: culling pools of %u, not %u", RENDER_CAP_MAIN, RENDER_CAP_MUL,
         RENDER_CAP_MAIN / 8u * RENDER_CAP_MUL, RENDER_CAP_MAIN / 8u);
