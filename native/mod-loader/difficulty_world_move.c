@@ -75,6 +75,7 @@ static struct
     uintptr_t levelPtr;
     float origin[2], centre[2];
     uint32_t at2F, at37, at38, at4C, at66, frames, waits, calls;
+    int pkgPending; uint32_t pkgFrames; /* the merge package's release, MOVE_PKG_FRAMES after the teardown that gave it up */
     /* the stamp terrains of the tile's locations (0x2F spawns them for 0x63 to draw, 0x65 takes them away): staging
      * copies of their records, the real indices, their units, the counts the two ops read through pointers */
     uint8_t* stLoc; uint32_t* stIndex; uint64_t* stUnit; uint32_t stCount, stUnits, stTemp; int stamped;
@@ -134,8 +135,31 @@ static void MoveFreeNow(uint64_t tex0, uint64_t tex1, uint64_t band, uint32_t* p
     if (pixels != NULL && (band == 0 || destroy != NULL)) VirtualFree(pixels, 0, MEM_RELEASE);
 }
 
+/* The merge package goes some frames after the teardown, never in the same call (run s84b: exe+0x504F42 on the render
+ * thread: a kind-7 render object's destroy, still in the world's command list, freed the constant blocks of a shader
+ * program that the package's material bring-out had already freed (0x51B4B0 via 0x282EC0, queued by 0x168470);
+ * the level's own 0x66 destroys and 0x67 releases are separate ops; static rendercrash504). A build that starts while
+ * the release is pending takes the package back instead of asking for it again. */
+#define MOVE_PKG_FRAMES 8u
+static void MovePackageTick(int now)
+{
+    if (!g_move.pkgPending || (!now && ++g_move.pkgFrames < MOVE_PKG_FRAMES)) return;
+    typedef void (*PkgFn)(uint64_t hash);
+    PkgFn pkgRelease = (PkgFn)NearApi(0x10, 0x300);
+    if (pkgRelease != NULL) pkgRelease(MOVE_PACKAGE);
+    g_move.pkgPending = 0;
+}
+static void MovePackageLater(void)
+{
+    if (!g_move.acquired) return;
+    g_move.acquired = 0;
+    if (g_move.pkgPending) { MovePackageTick(1); } /* one pending at most: the older goes now (its frames are mostly past) */
+    g_move.pkgPending = 1; g_move.pkgFrames = 0;
+}
+
 static void MoveFreeTick(int all)
 {
+    MovePackageTick(all);
     for (int k = 0; k < NEAR_TILES_MAX * 2; k++)
         if (g_move.freeing[k].used && (all || ++g_move.freeing[k].frames >= 4))
         {
@@ -446,7 +470,7 @@ static void MoveTeardown(void)
         if (t != 0) { unpublish(kFree[k].name); release(t); }
         *(volatile uint64_t*)(R + kFree[k].at) = 0; *(volatile uint8_t*)(R + kFree[k].flag) = 0;
     }
-    if (g_move.acquired) { pkgRelease(MOVE_PACKAGE); g_move.acquired = 0; }
+    MovePackageLater(); /* not now: the destroys above are still in the world's command list */
     uint64_t arena = 0;
     memcpy(&arena, g_move.ctx, 8);
     typedef void (*ArenaFn)(uint64_t arena);
@@ -479,13 +503,7 @@ static void MoveFail(const char* why)
         MoveFreeLater(g_near.tex[0] != g_move.dropTex[0] ? g_near.tex[0] : 0, g_near.tex[1] != g_move.dropTex[1] ? g_near.tex[1] : 0,
             g_matband.tex != g_move.dropBand ? g_matband.tex : 0, g_matband.pixels != g_move.dropBandPixels ? g_matband.pixels : NULL);
     }
-    if (g_move.acquired)
-    {
-        typedef void (*PkgFn)(uint64_t hash);
-        PkgFn pkgRelease = (PkgFn)NearApi(0x10, 0x300);
-        if (pkgRelease != NULL) pkgRelease(MOVE_PACKAGE);
-        g_move.acquired = 0;
-    }
+    MovePackageLater();
     MoveCellSkip(g_move.cell[0], g_move.cell[1], GetTickCount64());
     MoveRestoreDrop();
     g_move.failed++;
@@ -709,6 +727,7 @@ static void MoveTick(uint64_t level)
         HasFn has = (HasFn)NearApi(0x10, 0x310);
         PkgFn acquire = (PkgFn)NearApi(0x10, 0x2F0);
         if (has == NULL || acquire == NULL) { MoveFail("the package interface is not there"); return; }
+        if (g_move.pkgPending && !g_move.acquired) { g_move.pkgPending = 0; g_move.acquired = 1; } /* the pending release taken back */
         if (has(MOVE_PACKAGE) == 0)
         {
             if (!g_move.acquired) { acquire(MOVE_PACKAGE); g_move.acquired = 1; Note("difficulty: moving tiles: the merge package asked for"); }
