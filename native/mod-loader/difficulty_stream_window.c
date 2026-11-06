@@ -296,9 +296,10 @@ static void WindowEvictFarLocked(void)
  * WINDOW_FAR_BIG first, under the far budgets. */
 static void WindowScanFarLocked(uint32_t bodies, uint32_t slots)
 {
-    uint32_t used = 0, capacity = 0;
+    uint32_t used = 0, capacity = 0, used1 = 0, capacity1 = 0;
     if (g_win.reach == NULL || g_win.reachFar == 0 || g_win.freeCount == 0 || GetTickCount64() < g_win.farHoldUntil) return;
-    if ((float)bodies >= WINDOW_FAR_SHARE * (float)slots || !RenderPool0(&used, &capacity) || (float)used >= WINDOW_FAR_SHARE * (float)capacity)
+    if ((float)bodies >= WINDOW_FAR_SHARE * (float)slots || !RenderPool0(&used, &capacity) || (float)used >= WINDOW_FAR_SHARE * (float)capacity ||
+        !RenderPool1(&used1, &capacity1) || (float)used1 >= WINDOW_FAR_SHARE * (float)capacity1)
     { g_win.farHeld++; return; }
     const float cell = g_plan.cell, near2 = WINDOW_IN * WINDOW_IN;
     const int reach = (int)ceilf(WINDOW_FAR / cell);
@@ -367,10 +368,10 @@ static void WindowScanLocked(ULONGLONG now)
 static void WindowNoteLocked(void)
 {
     if (!g_win.on) return;
-    uint32_t used = 0, capacity = 0;
-    int pool = RenderPool0(&used, &capacity);
-    Note("difficulty: extra large maps: stamp window: %u in (slots used %u of %u, highest %u), %u entered (%u of them far, %u far ones taken out for the near ones), %u left so far; refused: %u table full, %u index full, %u scans over the body budget, %u far scans held (bodies %u of %u, culling pool 0 %u of %u%s)",
+    uint32_t used = 0, capacity = 0, used1 = 0, capacity1 = 0;
+    int pool = RenderPool0(&used, &capacity), pool1 = RenderPool1(&used1, &capacity1);
+    Note("difficulty: extra large maps: stamp window: %u in (slots used %u of %u, highest %u), %u entered (%u of them far, %u far ones taken out for the near ones), %u left so far; refused: %u table full, %u index full, %u scans over the body budget, %u far scans held (bodies %u of %u, culling pool 0 %u of %u%s, pool 1 %u of %u%s)",
         (DIF_LOCATIONS - g_win.base) - g_win.freeCount, (DIF_LOCATIONS - g_win.base) - g_win.freeCount, DIF_LOCATIONS - g_win.base, g_win.high, g_win.entered,
         g_win.enteredFar, g_win.evictedFar, g_win.left, g_win.refusedFull, g_win.refusedIndex, g_win.refusedBodies, g_win.farHeld, g_stream.bodiesUsed, g_stream.bodySlots,
-        used, capacity, pool ? "" : ", not read");
+        used, capacity, pool ? "" : ", not read", used1, capacity1, pool1 ? "" : ", not read");
 }

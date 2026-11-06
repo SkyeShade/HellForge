@@ -237,15 +237,28 @@ static void PhysicsPools(uintptr_t game)
             return;
         }
     }
+    /* An extra large world (its mod registered from hellforge_mod_init, which add_difficulty requires, so before this
+     * runs): bodies and static actors 0x100000. The lightweight-body handle keeps 20 index bits (0x8150E2..0x8152EE builds
+     * it, the decoders 0x77D7C6 / 0x815F36 mask 0xFFFFF): 0x100000 is the ceiling, never more. Static actors stay with
+     * the bodies (the near window gates bodies at 80 %; a full static pool returns -1 from 0x75230); their handle keeps
+     * 1 generation bit at this size (2 at 0x80000; bits 21..0 = index | alive bit | generation). About 145 MB (277 B a body
+     * slot, the mission world) + 117 MB (56 B x 4 slots a static actor) more. City maps hold 370-415k bodies before the
+     * far ring (audit 18 criterion 9; static, subagent farroom). */
+    const int xl = WorldScaleFor(g_difficulty.mapScale) > 1;
     for (int i = 0; i < 10; i++)
-        if (ApiWrite(game + kPhysicsPools[i].rva + kPhysicsPools[i].at, &kPhysicsPools[i].value, 4))
+    {
+        uint32_t value = kPhysicsPools[i].value;
+        if (xl && (i == 3 || i == 4)) value = 0x100000u;
+        if (ApiWrite(game + kPhysicsPools[i].rva + kPhysicsPools[i].at, &value, 4))
         {
             g_physicsPools = -1;
             Note("physics: a physics pool could not be enlarged");
             return;
         }
+    }
     g_physicsPools = 1;
-    Note("physics: pools enlarged before the engine built them: ragdoll actors 32768, ragdolls 1024, motions 131072, bodies and static actors 524288, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152; actor connectors 4194304");
+    Note("physics: pools enlarged before the engine built them: ragdoll actors 32768, ragdolls 1024, motions 131072, bodies and static actors %u%s, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152; actor connectors 4194304",
+        xl ? 0x100000u : 0x80000u, xl ? " (an extra large world)" : "");
 }
 /* SpreadLocations (op 0x8B, 0xF7C310) picks the nearest location of a kind as a reference (r12d, -1 when none
  * qualifies) and sorts its candidates by their distance from it (0xF7A430) without checking: a level-11 city map (normal
