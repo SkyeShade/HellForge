@@ -712,7 +712,7 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
 #define HUD_ROW_ADD 0x184BDE0u
 #define HUD_ROW_STATE 0x1846C40u
 #define HUD_OBJECTIVES 0x3326DA0u
-static const char kHudListPin[] = "E8 04 A0 E0 FE 45 33 DB 45 33 C0 33 F6 44 8B F0 85 FF 74 7F";
+static const char kHudListPin[] = "E8 04 A0 E0 FE 45 33 DB 45 33 C0 33 F6 44 8B F0 85 FF 0F 84";
 static const char kHudBackPin[] = "0F 57 C9 49 8D 8F F0 6D 00 00 E8";
 static const char kHudRowAddPin[] = "40 55 53 57 48 8D 6C 24 B0 48 81 EC";
 static const char kHudRowStatePin[] = "4C 8B DC 55 56 57 49 8D 6B A1 48 81 EC D0 00 00 00";
