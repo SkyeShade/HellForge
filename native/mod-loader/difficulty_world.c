@@ -3751,8 +3751,118 @@ static void WorldDryCity(uint64_t op)
 }
 
 static void CityGatesNote(uint32_t op); /* difficulty_world_gates.c: the city ops' gates about each city, per level */
+/* Load time: the stamp packages queued early (~/xl-work/static/loadtime/packages.md, hellforge-1a, static).
+ * QueueStampPackages (op 0x1F, record 94 of a 16 km pipeline, 0xF405E0(pass, record, ctx)) builds its package list
+ * from the level's location-type list C and requests each package ([api+0x10]+0x2F0) in one call; the waits after it
+ * (0x1D, 0x20 WaitForStampPackages, 0xA6) then sit ~13 s while the engine's loader brings the packages in one at a time
+ * (a FIFO ring, one package a frame at most, exe 0x603290). C is final once the last op holding it has run (none of
+ * the records between it and 0x2B hold it; 0x2B and the loader's stamp planning never write it). So on the first
+ * main-thread step after that op (the dispatcher's mask argument 0, the record's flags +0x1998 bit 1: the generator
+ * job is idle) the loader calls 0xF405E0 itself on a copy of record 94 whose output (pass +0x30 the list, +0x38 its
+ * count) is its own buffer, with a copy of the context whose arena is its own (0xF405E0 reads only ctx +0, +0x18,
+ * +0xD0). The packages load during the coarse terrain and the stamp planning; record 94's own requests then find them
+ * loaded ("Package already loaded": no second request, 0x603746) or queued (the flag set again, 0x6036D0), so its
+ * list, the waits and the teardown's unload of G+0x757220 are as before. Off with HELLFORGE_XL_EARLY_PACKAGES=0. */
+#define EARLY_PACKAGES_MAX 8192u
+static struct
+{
+    LONG level;                  /* g_world.levels the scan is for */
+    int state;                   /* 0 waiting, 1 requested, 2 record 94 reached, -1 not on this level */
+    uint32_t lastC, at2B, at1F;
+    uint32_t count;              /* packages requested early */
+    ULONGLONG requested;
+    uint64_t list[EARLY_PACKAGES_MAX];
+    uint8_t record[0x19B0];
+} g_early = {.level = -1};
+static const uint8_t kEarlyCHolders[] = {0x9A, 0x16, 0x06, 0x17, 0x82, 0x8B, 0xA0, 0x8E, 0x88, 0x09, 0xAB, 0xA7, 0xA8};
+static void EarlyPackages(uint64_t records, uint64_t context, uint64_t index, uint64_t mask)
+{
+    static int on = -1;
+    if (on < 0) { char v[8] = ""; on = !(GetEnvironmentVariableA("HELLFORGE_XL_EARLY_PACKAGES", v, sizeof v) > 0 && v[0] == '0'); }
+    if (!on || g_worldLevel == 0 || !(g_world.current > 1.0f)) return;
+    uint64_t block = 0;
+    if (SafeRead(g_worldLevel + 0x2A8, &block, 8) || block != records) return;
+    uint32_t i = 0;
+    if (SafeRead(index, &i, 4)) return;
+    /* a level that ended (or generated again) before its record 94: the early requests are released as the teardown
+     * releases record 94's ([api+0x10]+0x308(list, count), 0xF70B58..0xF70B77), on a main-thread step */
+    if (g_early.level != g_world.levels && g_early.state == 1) { g_early.state = 3; }
+    if (g_early.state == 3 && mask == 0)
+    {
+        uint64_t api = 0, table = 0, release = 0;
+        if (!SafeRead(g_world.game + 0x3326308u, &api, 8) && api != 0 && !SafeRead(api + 0x10, &table, 8) && table != 0 && !SafeRead(table + 0x308, &release, 8) && release != 0)
+            ((void (*)(uint64_t*, uint32_t))(uintptr_t)release)(g_early.list, g_early.count);
+        Note("difficulty: early packages: level %ld ended before its record 94: its %u early packages released", (long)g_early.level, g_early.count);
+        g_early.state = -1; g_early.level = -1;
+    }
+    if (g_early.state == 3) return;
+    if (g_early.level != g_world.levels)
+    {
+        g_early.level = g_world.levels; g_early.state = -1; g_early.count = 0;
+        g_early.lastC = 0; g_early.at2B = 0xFFFFFFFFu; g_early.at1F = 0xFFFFFFFFu;
+        uint32_t end = 0; SafeRead(records + 0x19B000u, &end, 4); /* the record count ([block+0x19B000], 0xF740B0) */
+        if (end == 0 || end > 1024) return;
+        for (uint32_t k = 0; k < end; k++)
+        {
+            uint32_t op = 0;
+            if (SafeRead(records + (uint64_t)k * 0x19B0u, &op, 4)) return;
+            if (op == 0x2B && g_early.at2B == 0xFFFFFFFFu) g_early.at2B = k;
+            else if (op == 0x1F && g_early.at2B != 0xFFFFFFFFu && g_early.at1F == 0xFFFFFFFFu) g_early.at1F = k;
+            if (g_early.at2B == 0xFFFFFFFFu) for (size_t c = 0; c < sizeof kEarlyCHolders; c++) if (op == kEarlyCHolders[c]) g_early.lastC = k;
+        }
+        if (g_early.at2B == 0xFFFFFFFFu || g_early.at1F == 0xFFFFFFFFu) return;
+        g_early.state = 0;
+    }
+    if (g_early.state == 1 && i >= g_early.at1F)
+    {
+        g_early.state = 2;
+        uint32_t n = 0; uint64_t api = 0, table = 0, has = 0; uint32_t loaded = 0;
+        SafeRead(block + 0x11A70F4u, &n, 4);
+        uint32_t same = n == g_early.count;
+        for (uint32_t k = 0; k < n && k < EARLY_PACKAGES_MAX && same; k++) { uint64_t id = 0; SafeRead(block + 0x757220u + 8ull * k, &id, 8); same = id == g_early.list[k]; }
+        if (!SafeRead(g_world.game + 0x3326308u, &api, 8) && api != 0 && !SafeRead(api + 0x10, &table, 8) && table != 0 && !SafeRead(table + 0x310, &has, 8) && has != 0)
+            for (uint32_t k = 0; k < g_early.count; k++) loaded += ((uint8_t (*)(uint64_t))(uintptr_t)has)(g_early.list[k]) != 0;
+        Note("difficulty: early packages: record %u (0x1F) reached %.1f s after the early request: %u of the %u packages loaded; its own list %s (%u)",
+            i, (double)(GetTickCount64() - g_early.requested) / 1000.0, loaded, g_early.count, same ? "is the same" : "DIFFERS", n);
+        return;
+    }
+    if (g_early.state != 0 || mask != 0 || i <= g_early.lastC || i >= g_early.at2B) return;
+    uint64_t flags = 0;
+    if (SafeRead(records + (uint64_t)i * 0x19B0u + 0x1998u, &flags, 8) || !(flags & 2)) return;
+    static int pinned = -1;
+    if (pinned < 0) pinned = ApiCodeMatches(g_world.game + 0xF40DF9u, "48 8B 40 38 44 89 38 45 85 FF 74 29");
+    uint64_t api = 0, table = 0, depthFn = 0;
+    uint32_t cCount = 0;
+    if (pinned != 1 || SafeRead(records + (uint64_t)g_early.at1F * 0x19B0u, g_early.record, sizeof g_early.record) ||
+        SafeRead(g_world.game + 0x3326308u, &api, 8) || api == 0 || SafeRead(api + 0x10, &table, 8) || table == 0 || SafeRead(table + 0x358, &depthFn, 8) ||
+        depthFn == 0 || SafeRead(block + 0x11A70F0u, &cCount, 4))
+    { g_early.state = -1; Note("difficulty: early packages: not the reviewed op 0x1F or engine table; the packages load at record %u as before", g_early.at1F); return; }
+    uint32_t depth = ((uint32_t (*)(void))(uintptr_t)depthFn)();
+    if (depth + cCount * 6u >= 448u) { Note("difficulty: early packages: the engine's queue holds %u (C %u): later", depth, cCount); return; } /* the next flag-2 step tries again */
+    uint64_t out = (uint64_t)(uintptr_t)g_early.list, countAt = (uint64_t)(uintptr_t)&g_early.count;
+    g_early.count = 0;
+    memcpy(g_early.record + 8 + 0x30, &out, 8); memcpy(g_early.record + 8 + 0x38, &countAt, 8);
+    TileRunner* r = TileRunnerMake(TILE_RUNNERS_MAX - 1);
+    uint8_t settings[0xD0]; uint64_t S = 0, P = 0;
+    if (r == NULL || SafeRead(context + 8, &S, 8) || S == 0 || SafeRead(S, settings, sizeof settings) || SafeRead(context + 0x20, &P, 8) ||
+        SafeRead(context, r->ctx, sizeof r->ctx))
+    { g_early.state = -1; return; }
+    uint8_t levelContext[0xE8]; memcpy(levelContext, r->ctx, sizeof levelContext);
+    TileRunnerContext(r, levelContext, settings, (uintptr_t)P);
+    uint32_t opNow = 0; SafeRead(records + (uint64_t)i * 0x19B0u, &opNow, 4);
+    LARGE_INTEGER t0, t1, hz; QueryPerformanceCounter(&t0);
+    LONG fault = WorldTileGuardedCall(g_world.game + 0xF405E0u, g_early.record, (uint64_t)(uintptr_t)r->ctx);
+    QueryPerformanceCounter(&t1); QueryPerformanceFrequency(&hz);
+    WorldArenaReset((uint64_t)(uintptr_t)r->ctx);
+    g_early.state = fault ? -1 : 1; g_early.requested = GetTickCount64();
+    Note("difficulty: early packages: at record %u (op 0x%02X, after record %u, the last op holding the location types), %u stamp packages requested for record %u in %.2f ms; the engine's queue held %u%s",
+        i, opNow, g_early.lastC, g_early.count, g_early.at1F, (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart, depth,
+        fault ? "; FAULTED" : g_early.count > 256 ? "; more than record 94's 256 places" : "");
+}
+
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
+    EarlyPackages(records, b, index, f);
     uint32_t diagAt, diagOp;
     TerrainDiagBefore(records, index, (uint32_t)d, &diagAt, &diagOp);
     {

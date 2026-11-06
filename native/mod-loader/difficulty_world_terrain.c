@@ -4035,7 +4035,7 @@ static int TileThreads(void)
         n = 12;
         if (GetEnvironmentVariableA("HELLFORGE_XL_TILE_THREADS", t, sizeof t) > 0) n = atoi(t);
         if (n < 1) n = 1;
-        if (n > TILE_RUNNERS_MAX) n = TILE_RUNNERS_MAX;
+        if (n > TILE_RUNNERS_MAX - 1) n = TILE_RUNNERS_MAX - 1; /* the last runner is difficulty_world.c's EarlyPackages' */
     }
     if (g_tileRunnerTls == TLS_OUT_OF_INDEXES) { DWORD k = TlsAlloc(); if (k != TLS_OUT_OF_INDEXES) g_tileRunnerTls = k; }
     if (n > 1 && !g_tileJobsBroken && TileJobsInstall()) return n;
