@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Shields that stop grenades.** The FX-12 Shield Generator Relay, G/SH-39 Shield and SH-32 Shield Generator Pack have a
+  **Stops grenades** setting in the editor, off by default. Grenades, throwing knives, stratagem balls and self-destruct
+  drones bounce off the bubble from outside, and ones thrown from inside still leave. Helldivers, enemies and vehicles
+  pass as before.
 - **Mod sync from your own game.** A host's mods' game patch files are written from the joiner's own game wherever it
   has the same bytes, and only the rest downloads. The host lists each archive part with its SHA-256 (`mods.parts`),
   and every file is still checked against the host's. **Index my game** on the Mods page finds renamed game files too.

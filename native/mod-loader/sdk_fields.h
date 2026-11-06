@@ -653,6 +653,7 @@ static const SdkField kSdkFieldsShield[] = {
     {"recharge_delay", 88, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"broken_recharge_delay", 92, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"recharge_rate", 96, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"blocks_grenades", 337, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsHellpodPayload[] = {
     {"lifetime", 4, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1109,7 +1110,7 @@ static const SdkComponent kSdkComponents[] = {
     {"Health", "HealthComponentData", 25480438u, 22096u, kSdkFieldsHealth, 401, 0, 224},
     {"Jumppack", "JumppackComponentData", 25480438u, 280u, kSdkFieldsJumppack, 21, 0, 264},
     {"Recharge", "RechargeComponentData", 25480438u, 4u, kSdkFieldsRecharge, 1, 0, 99},
-    {"Shield", "ShieldComponentData", 25480438u, 344u, kSdkFieldsShield, 6, 0, 94},
+    {"Shield", "ShieldComponentData", 25480438u, 344u, kSdkFieldsShield, 7, 0, 94},
     {"HellpodPayload", "HellpodPayloadComponentData", 25480438u, 12u, kSdkFieldsHellpodPayload, 1, 0, 164},
     {"SensorEye", "SensorEyeComponentData", 25480438u, 44u, kSdkFieldsSensorEye, 3, 0, 191},
     {"Turret", "TurretComponentData", 25480438u, 76u, kSdkFieldsTurret, 7, 0, 248},

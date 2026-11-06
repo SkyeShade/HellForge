@@ -289,12 +289,14 @@ static void PackagesRequest(void)
 static void EventsTick(void); /* events.c */
 static void ArmoryDiagTick(void); /* armory_diag.c */
 
+static void ShieldBlockTick(void); /* shield_block.c */
 static void TickDetour(void* manager, float dt)
 {
     InterlockedExchange64(&g_tickLast, (LONG64)GetTickCount64());
     EventsTick();
     PackagesRequest();
     ArmoryDiagTick();
+    ShieldBlockTick();
     TickTable* ticks = g_ticks;
     LONG count = ticks ? ticks->count : 0;
     for (LONG i = 0; i < count; i++) ticks->entries[i].callback(ticks->entries[i].mod, dt, ticks->entries[i].user);
