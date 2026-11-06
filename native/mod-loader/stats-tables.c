@@ -180,10 +180,26 @@ static uintptr_t StatsDeltaRow(const StatEdit* e, uintptr_t base)
     return StatsDeltaFind(arrays, d, settings, component, member, e->offset);
 }
 
+/* A field of a row a mod added (explosions.c, beam_arc.c): those rows are HellForge's, outside the game's allocation. *added
+ * says there is such a row; 0 for a field past it. */
+static uintptr_t StatsAddedRow(const StatEdit* e, int* added)
+{
+    uint32_t stride = !strcmp(e->kind, "ExplosionSettings") ? EXP_ROW : !strcmp(e->kind, "BeamSettings") ? BEAM_ROW : !strcmp(e->kind, "ArcSettings") ? ARC_ROW : 0;
+    uint32_t vanilla = stride == EXP_ROW ? EXP_VANILLA : stride == BEAM_ROW ? BEAM_VANILLA : ARC_VANILLA;
+    *added = 0;
+    if (stride == 0 || e->record < (int64_t)vanilla) return 0;
+    uintptr_t row = stride == EXP_ROW ? ApiExplosionRow((uint32_t)e->record) : stride == BEAM_ROW ? ApiBeamRow((uint32_t)e->record) : ApiArcRow((uint32_t)e->record);
+    *added = row != 0;
+    return *added && e->offset >= 4 && e->offset <= stride - 4 && e->offset % 4 == 0 ? row + e->offset : 0;
+}
+
 static uintptr_t StatsExtraRow(StatEdit* e)
 {
     int kind = StatsExtraKind(e->kind);
     if (kind < 0 || e->own) return 0;
+    int added;
+    uintptr_t own = StatsAddedRow(e, &added);
+    if (added) return own;
     uintptr_t base = g_statsAllocations[kind];
     if (!base || !StatsAllocationValid(base, kind)) return 0;
     if (!strcmp(e->kind, STATUS_MULTIPLIER)) return StatsStatusRow(e, base, kind);

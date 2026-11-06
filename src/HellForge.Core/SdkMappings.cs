@@ -95,6 +95,9 @@ public sealed class SdkMappings
         ("categories", "HF_CATEGORY_", false, "Loadout sections and ping colours, for HfStratagem.category (row +0xB8 + 1)."),
         ("beams", "HF_BEAM_", false, "Beacon beam colours, for HfStratagem.beam (row +0xD4)."),
         ("boosters", "HF_BOOSTER_", false, "Boosters, for the BoosterSettings table (set_live, get_live): a row is the game's Booster value."),
+        ("explosions", "HF_EXPLOSION_", false, "Vanilla explosion types, for HfExplosion.base and HfProjectile.impact_explosion and expiry_explosion (the\n * game's ExplosionType; some are unnamed, and a note gives the game's own name where its hash was found)."),
+        ("weapon_beams", "HF_WEAPON_BEAM_", false, "Vanilla weapon beams, for HfBeam.base (the BeamWeapon record's +0)."),
+        ("arcs", "HF_ARC_", false, "Vanilla arcs, for HfArc.base (the ArcWeapon record's +0)."),
     ];
 
     // hellforge_mod.h's own Hf names: a component record struct can't take one.
@@ -393,7 +396,7 @@ public sealed class SdkMappings
     static SdkContent ParseContent((string Key, string Prefix, bool Wide, string Doc) kind, JsonProperty item, HashSet<string> constants)
     {
         var at = $"{kind.Key} \"{item.Name}\"";
-        Allowed(item.Value, at, "constant", "id", "note");
+        Allowed(item.Value, at, "constant", "id", "note", "source");
         var constant = item.Value.TryGetProperty("constant", out _) ? Text(item.Value, "constant") : Constant(item.Name);
         if (constant.Length == 0 || !constant.All(ch => ch is >= 'A' and <= 'Z' or >= '0' and <= '9' or '_') || !constants.Add(kind.Prefix + constant))
             throw new InvalidDataException($"{at}: constant {constant} is not a unique C name.");
