@@ -956,6 +956,8 @@ static int HudGroupStub(uintptr_t game, uint8_t* code) /* before the block is ma
  * 0x4D7EA0 that ~250 entity/flow machines call): the first 64 completions, with the instance's objective id, class, its
  * net stage (+0x18) of inst+0x1014, the count stage's +0x54 / +0x58 and the call chain, to tell which path does it. */
 #define OBJ_COMPLETE 0x5D7E40u
+static void DestroyDescribe(uint32_t handle, char* out, size_t size); /* difficulty_world_destroy.c */
+static void RemoveWatch(uintptr_t game); /* difficulty_world_destroy.c */
 static const char kObjCompletePin[] = "48 89 5C 24 18 48 89 74 24 20 57 48 83 EC 20 3B 15";
 typedef void (*ObjCompleteFn)(uint64_t mgr, uint32_t key);
 static ObjCompleteFn g_objComplete;
@@ -997,6 +999,19 @@ static void ObjCompleteDetour(uint64_t mgr, uint32_t key)
         }
         Note("difficulty: objectives: completed: instance %u (key 0x%08X, objective %08x, class %d, state %u before), stage %u of %u, count %u of %u; from%s",
             index, key, id, cls, before, stage, stages, have, need, at ? where : " ?");
+        uint32_t units = 0;
+        uint64_t me = inst + 0x1078ull * index;
+        if (index != 0xFFFFFFFFu && !SafeRead(me + 8, &units, 4))
+            for (uint32_t j = 0; j < units && j < 8; j++)
+            {
+                uint32_t unit = 0, flags = 0;
+                uint64_t group = 0;
+                char what[480] = "?";
+                SafeRead(me + 0x10 + 16ull * j, &unit, 4); SafeRead(me + 0x14 + 16ull * j, &flags, 4); SafeRead(me + 0x18 + 16ull * j, &group, 8);
+                if (unit) DestroyDescribe(unit, what, sizeof what);
+                Note("difficulty: objectives: completed: instance %u unit %u of %u: 0x%08X, flags 0x%X, group %016llx: %s", index, j + 1, units, unit, flags,
+                    (unsigned long long)group, unit ? what : "none");
+            }
     }
     g_objComplete(mgr, key);
 }
@@ -1009,6 +1024,7 @@ static void ObjCompleteWatch(uintptr_t game)
 static void HudGroupSite(uintptr_t game, uint8_t* code)
 {
     ObjCompleteWatch(game);
+    RemoveWatch(game);
     if (LoaderHook("the HUD's grouped objective rows", game + HUD_ROW_STATE, (void*)HudRowState, (void**)&g_hudRowState) != 0) return;
     uint8_t jump[5] = {0xE9};
     int32_t rel = DifficultyJumpRel(game + HUD_LIST_SITE, (uintptr_t)code); memcpy(jump + 1, &rel, 4);

@@ -79,9 +79,108 @@ static void DestroyHold(uint64_t world, uint32_t handle)
     ReleaseSRWLockExclusive(&g_destroyWaitLock);
 }
 
+/* Research (s90a: 16 objectives COMPLETED on the first frame in play through the entity machines' API 0x4D7EA0, after
+ * 0x4D8440 -> 0x5D6E30 counted every listed unit as done because [api+0x18]+0x720 = exe 0x1FEEB0 (0x9D8C0(id) != 0)
+ * found none; the units existed when listed, the adders read them through +0x750 = 0x1FC120): the last DESTROY_SEEN
+ * destroys asked for, each with its call chain, so a completion can name what took its units. */
+#define DESTROY_SEEN 262144
+static struct { uint32_t handle, ms; uintptr_t chain[4]; } g_destroySeen[DESTROY_SEEN];
+static volatile LONG g_destroySeenAt;
+static void DestroySeen(uint32_t* handles, uint32_t n)
+{
+    void* chain[4] = {0};
+    RtlCaptureStackBackTrace(2, 4, chain, NULL);
+    uint32_t ms = (uint32_t)GetTickCount64();
+    for (uint32_t i = 0; i < n; i++)
+    {
+        LONG at = (InterlockedIncrement(&g_destroySeenAt) - 1) & (DESTROY_SEEN - 1);
+        g_destroySeen[at].handle = handles[i]; g_destroySeen[at].ms = ms;
+        for (int f = 0; f < 4; f++) g_destroySeen[at].chain[f] = (uintptr_t)chain[f];
+    }
+}
+/* Research (s91a: those units were destroyed by the game's own entity removal, g+0xFDCCFC in 0xFDC820(state, record,
+ * 0) <- the frame's removal list g+0xAB7060 (state+0xF3EF20, count +0xF3EF18; records state+0xF32F18 + 24 i {+0 type,
+ * +8 entity id, +0xC unit, +0x10 cell or 0x7FFF, +0x14 flags}), one frame after 0xFDC310(state, entity id) queued them
+ * (via 0xFDC4E0 when this peer owns the cell); 0xFDC310 has 422 callers): each queued removal's unit and requester. */
+#define REMOVE_REQUEST 0xFDC310u
+static const char kRemoveRequestPin[] = "48 89 5C 24 08 57 48 83 EC 30 3B 15";
+#define REMOVE_SEEN 65536
+typedef void (*RemoveRequestFn)(uint64_t state, uint32_t id);
+static RemoveRequestFn g_removeRequest;
+static struct { uint32_t unit, id, ms; uintptr_t chain[6]; } g_removeSeen[REMOVE_SEEN];
+static volatile LONG g_removeSeenAt;
+static void RemoveRequestDetour(uint64_t state, uint32_t id)
+{
+    uint32_t before = 0, after = 0, index = 0, unit = 0;
+    uint64_t list = 0;
+    SafeRead(state + 0xF3EF18, &before, 4);
+    g_removeRequest(state, id);
+    if (SafeRead(state + 0xF3EF18, &after, 4) || after != before + 1 || SafeRead(state + 0xF3EF20, &list, 8) || list == 0 ||
+        SafeRead(list + 4ull * before, &index, 4) || SafeRead(state + 0xF32F18 + 24ull * index + 0xC, &unit, 4)) return;
+    void* chain[6] = {0};
+    RtlCaptureStackBackTrace(1, 6, chain, NULL);
+    LONG at = (InterlockedIncrement(&g_removeSeenAt) - 1) & (REMOVE_SEEN - 1);
+    g_removeSeen[at].unit = unit; g_removeSeen[at].id = id; g_removeSeen[at].ms = (uint32_t)GetTickCount64();
+    for (int f = 0; f < 6; f++) g_removeSeen[at].chain[f] = (uintptr_t)chain[f];
+}
+static void RemoveWatch(uintptr_t game)
+{
+    if (g_removeRequest != NULL) return;
+    if (ApiCodeMatches(game + REMOVE_REQUEST, kRemoveRequestPin) != 1) { Note("difficulty: objectives: the entity removal request is not the reviewed one; removals not logged"); return; }
+    if (LoaderHook("entity removal requests (research)", game + REMOVE_REQUEST, (void*)RemoveRequestDetour, (void**)&g_removeRequest) != 0) g_removeRequest = NULL;
+}
+static int ChainText(const uintptr_t* chain, int n, char* out, size_t size)
+{
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    int at = 0;
+    for (int f = 0; f < n && at < (int)size - 24; f++)
+    {
+        uintptr_t a = chain[f];
+        at += a >= exe && a < exe + 0x4000000u ? snprintf(out + at, size - at, " e+0x%llx", (unsigned long long)(a - exe))
+            : a >= g_world.game && a < g_world.game + 0x8000000u ? snprintf(out + at, size - at, " g+0x%llx", (unsigned long long)(a - g_world.game))
+            : snprintf(out + at, size - at, " %p", (void*)a);
+    }
+    return at;
+}
+
+/* "exists", "pending" or "gone", and when it was asked to be destroyed, by what (or "no destroy seen"). */
+static void DestroyDescribe(uint32_t handle, char* out, size_t size)
+{
+    int state = g_destroyTableAt ? DestroyHandleState(handle) : 2;
+    int at = snprintf(out, size, "%s", state == 0 ? "exists" : state == 1 ? "pending" : "gone");
+    LONG last = g_destroySeenAt, from = last > DESTROY_SEEN ? last - DESTROY_SEEN : 0;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    for (LONG k = last - 1; k >= from; k--)
+    {
+        LONG i = k & (DESTROY_SEEN - 1);
+        if (g_destroySeen[i].handle != handle) continue;
+        at += snprintf(out + at, size - at, ", destroy asked %u ms ago from", (uint32_t)GetTickCount64() - g_destroySeen[i].ms);
+        for (int f = 0; f < 4 && at < (int)size - 24; f++)
+        {
+            uintptr_t a = g_destroySeen[i].chain[f];
+            at += a >= exe && a < exe + 0x4000000u ? snprintf(out + at, size - at, " e+0x%llx", (unsigned long long)(a - exe))
+                : a >= g_world.game && a < g_world.game + 0x8000000u ? snprintf(out + at, size - at, " g+0x%llx", (unsigned long long)(a - g_world.game))
+                : snprintf(out + at, size - at, " %p", (void*)a);
+        }
+        break;
+    }
+    if (at < (int)size - 40 && g_removeSeenAt == 0) { snprintf(out + at, size - at, "; removal requests not watched"); return; }
+    LONG lastR = g_removeSeenAt, fromR = lastR > REMOVE_SEEN ? lastR - REMOVE_SEEN : 0;
+    for (LONG k = lastR - 1; k >= fromR; k--)
+    {
+        LONG i = k & (REMOVE_SEEN - 1);
+        if (g_removeSeen[i].unit != handle) continue;
+        at += snprintf(out + at, size - at, "; entity 0x%X removal asked %u ms ago from", g_removeSeen[i].id, (uint32_t)GetTickCount64() - g_removeSeen[i].ms);
+        ChainText(g_removeSeen[i].chain, 6, out + at, size - at);
+        return;
+    }
+    snprintf(out + at, size - at, "; no removal request seen");
+}
+
 static void DestroyQueueDetour(uint64_t world, uint32_t* handles, uint32_t n)
 {
     if (handles == NULL || n == 0) { g_destroyQueue(world, handles, n); return; }
+    DestroySeen(handles, n);
     uint32_t i = 0;
     while (i < n && DestroyHandleState(handles[i]) == 0) i++;
     LONG room = DESTROY_ROOM - DestroyListCount(world);
