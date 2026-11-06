@@ -61,7 +61,7 @@ static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediat
  * reader of -4096. */
 #define FLAT_BAND_K 2.0f /* op 0x3E flatten zones: the falloff, x vanilla's metres, ending at its quad's edge (FlatBandStub) */
 #define PAD_BAND_K 1.5f /* op 0x3F rectangle pads: the falloff, x vanilla's metres (PadBandStubs) */
-typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull, maskSpan, quarter, goalHigh, goalLow, padPx, padMetre, padQuad, flatPx; } WorldValues;
+typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull, maskSpan, quarter, goalHigh, goalLow, padPx, padMetre, padQuad, flatPx; uint32_t capMul; } WorldValues;
 /* GenerateClearingPoints (op 0xB3, 0xF42BD0) scatters Poisson points over the whole world square, keeps each with the
  * planet's chance (its random number x 2^-32, 0xF42D1E, against [settings+0x114]), and appends the kept ones (16 bytes
  * each, from G+0x11A16FC) without a check: room for about 1450 before the route counts at G+0x11A71B4. Their number grows
@@ -525,13 +525,31 @@ static uint64_t WorldPassExploration(uint64_t a, uint64_t b, uint64_t c, uint64_
             Note("difficulty: an operation's %u missions on one map: points of interest x%u (%u quota entries, %u category caps)%s", m, m, nq, nc,
                 scaled ? "" : "; the region's settings could not be written, so its counts stay");
     }
+    if (scaled && g_world.values != NULL) g_world.values->capMul = m; /* the items' map-wide caps too (CapStubs) */
     uint64_t r = WorldPassExplorationTimed(a, b, c, e);
+    if (g_world.values != NULL) g_world.values->capMul = 1;
     if (scaled)
     {
         for (uint32_t i = 0; i < nq; i++) memcpy((void*)(uintptr_t)(quotas + 0x14ull * i + 4), saveQ[i], 8);
         for (uint32_t i = 0; i < nc; i++) memcpy((void*)(uintptr_t)(caps + 8ull * i + 4), &saveC[i], 4);
     }
     ReleaseSRWLockExclusive(&g_explorationLock);
+    return r;
+}
+/* AddSatelliteLocations (op 0x8E, 0xF86DC0): an operation's missions on one map hold each satellite item's map-wide cap
+ * x missions (CapStubs), as GenerateExplorationLocations does; under the same lock, so a preview's pass never sees it. */
+static uint64_t WorldPassSatelliteCaps(uint64_t a, uint64_t b, uint64_t c, uint64_t e)
+{
+    AcquireSRWLockExclusive(&g_explorationLock);
+    uint64_t lg = 0; uint8_t level = 0; uint32_t m = g_difficulty.missions;
+    int on = m > 1 && g_world.current > 1.0f && g_world.values != NULL && !SafeRead(c + 0x18, &lg, 8) && lg != 0 && !SafeRead(lg + 0xF9, &level, 1) &&
+        level == DIF_VANILLA + 1;
+    if (on) g_world.values->capMul = m;
+    uint64_t r = WorldPassSatellite(a, b, c, e);
+    if (g_world.values != NULL) g_world.values->capMul = 1;
+    ReleaseSRWLockExclusive(&g_explorationLock);
+    static LONG noted;
+    if (on && InterlockedExchange(&noted, 1) == 0) Note("difficulty: an operation's %u missions on one map: satellite and point-of-interest items' map-wide caps x%u", m, m);
     return r;
 }
 /* The map's objective list S is filled at generation setup (0xF7166B -> 0xF70F20: rcx the level, r8 the mission row,
@@ -4414,7 +4432,7 @@ static const struct { uint32_t rva; void* detour; WorldPassFn* original; } kWorl
     {0xF7E250u, (void*)WorldPassOutposts, &g_passOutposts}, {0xF83EA0u, (void*)WorldPassValidSmall, &g_passValidSmall},
     {0xF84380u, (void*)WorldPassSmall, &g_passSmall}, {0xF77F30u, (void*)WorldPassBorder, &g_passBorder},
     {0xF82A80u, (void*)WorldPassCrossing, &g_passCrossing}, {0xF7C310u, (void*)WorldPassSpread, &g_passSpread},
-    {0xF86DC0u, (void*)WorldPassSatellite, &g_passSatellite}, {0xF40F80u, (void*)WorldPassScatter, &g_passScatter},
+    {0xF86DC0u, (void*)WorldPassSatelliteCaps, &g_passSatellite}, {0xF40F80u, (void*)WorldPassScatter, &g_passScatter},
     {0xF82710u, (void*)WorldPassEdge, &g_passEdge}, {0xF95900u, (void*)WorldPassExploration, &g_passExplorationTimed},
     {0xF3F8E0u, (void*)WorldPassVoronoi, &g_passVoronoi}, {0xF79520u, (void*)WorldPassClusters, &g_passClustersTimed}};
 
@@ -5264,6 +5282,56 @@ static const char* FlatBandSite(uintptr_t game, uint8_t* code)
     int32_t rel = DifficultyJumpRel(game + FLAT_BAND_SITE, (uintptr_t)code); memcpy(jump + 1, &rel, 4);
     return ApiWrite(game + FLAT_BAND_SITE, jump, sizeof jump) ? "op 0x3E's flatten zones could not get bands for the larger world" : NULL;
 }
+/* The items' map-wide caps item+0x15C (u8): op 0xA0 places a point of interest only while the map's records of its
+ * item stay under it (0xF9694B, then cmp [r15+0x10], eax; 0 = never), op 0x8E a satellite likewise (0xF8763A, then
+ * test al, al: 0 = no cap). The loader scaled the quotas and category caps by the missions but not these, so XL held
+ * 35 points of interest and 23 satellites against a vanilla D11 mission's 24 / 23 (t78c vs b78i; static poi17). The
+ * stubs multiply the cap by capMul (the missions inside WorldPassExploration / WorldPassSatelliteCaps, else 1); the
+ * satellite one clamps at 255 for its byte test. A cap of 0 stays 0 at both. No other reader of +0x15C changes. */
+#define CAP_SITE_POI 0xF9694Bu
+#define CAP_SITE_SAT 0xF8763Au
+static const uint8_t kCapPoi[19] = {
+    0x0F, 0xB6, 0x82, 0x5C, 0x01, 0x00, 0x00,       /* movzx eax, byte [rdx+0x15C] */
+    0x0F, 0xAF, 0x05, 0, 0, 0, 0,                   /* imul eax, [capMul]         @10 */
+    0xE9, 0, 0, 0, 0};                              /* jmp 0xF96952               @15 */
+static const uint8_t kCapSat[32] = {
+    0x41, 0x0F, 0xB6, 0x81, 0x5C, 0x01, 0x00, 0x00, /* movzx eax, byte [r9+0x15C] */
+    0x0F, 0xAF, 0x05, 0, 0, 0, 0,                   /* imul eax, [capMul]         @11 */
+    0x3D, 0xFF, 0x00, 0x00, 0x00,                   /* cmp eax, 0xFF */
+    0x76, 0x05,                                     /* jbe +5 */
+    0xB8, 0xFF, 0x00, 0x00, 0x00,                   /* mov eax, 0xFF */
+    0xE9, 0, 0, 0, 0};                              /* jmp 0xF87642               @28 */
+_Static_assert(sizeof kCapPoi == 15 + 4 && sizeof kCapSat == 28 + 4, "the cap stubs end with their jumps");
+static int CapStubs(uintptr_t game, uint8_t* code)
+{
+    if (!ApiCodeMatches(game + CAP_SITE_POI, "0F B6 82 5C 01 00 00 0F 28 D5") || !ApiCodeMatches(game + CAP_SITE_SAT, "41 0F B6 81 5C 01 00 00 84 C0"))
+    {
+        Note("difficulty: the items' map-wide caps are not the reviewed ones: points of interest and satellites keep one mission's caps");
+        return 0;
+    }
+    if (kCapPoi[9] != 0x05 || kCapPoi[14] != 0xE9 || kCapSat[10] != 0x05 || kCapSat[27] != 0xE9) { Note("difficulty: the cap stubs are malformed"); return 0; }
+    uint8_t *a = code, *b = code + 0x20;
+    memcpy(a, kCapPoi, sizeof kCapPoi);
+    int32_t rel = (int32_t)((intptr_t)&g_world.values->capMul - (intptr_t)(a + 14)); memcpy(a + 10, &rel, 4);
+    rel = (int32_t)((intptr_t)(game + CAP_SITE_POI + 7) - (intptr_t)(a + 19)); memcpy(a + 15, &rel, 4);
+    memcpy(b, kCapSat, sizeof kCapSat);
+    rel = (int32_t)((intptr_t)&g_world.values->capMul - (intptr_t)(b + 15)); memcpy(b + 11, &rel, 4);
+    rel = (int32_t)((intptr_t)(game + CAP_SITE_SAT + 8) - (intptr_t)(b + 32)); memcpy(b + 28, &rel, 4);
+    return 1;
+}
+static const char* CapSites(uintptr_t game, uint8_t* code)
+{
+    static const struct { uint32_t site, length, stub; } kSites[2] = {{CAP_SITE_POI, 7, 0}, {CAP_SITE_SAT, 8, 0x20}};
+    for (int i = 0; i < 2; i++)
+    {
+        uint8_t jump[8];
+        memset(jump, 0x90, sizeof jump);
+        jump[0] = 0xE9;
+        int32_t rel = DifficultyJumpRel(game + kSites[i].site, (uintptr_t)(code + kSites[i].stub)); memcpy(jump + 1, &rel, 4);
+        if (ApiWrite(game + kSites[i].site, jump, kSites[i].length)) return "the items' map-wide caps could not follow the missions";
+    }
+    return NULL;
+}
 static const char* InstallCityGates(uintptr_t game); /* difficulty_world_gates.c */
 static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
 static const char* InstallWorld(DifficultyInstall* d)
@@ -5279,7 +5347,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (block == NULL) return "no memory within 2 GB of game.dll for the extra large world";
     g_world.game = game;
     g_world.values = (WorldValues*)(block + 0x1000);
-    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f, 4096.0f, 512.0f, 4096.0f, -4096.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f, 4096.0f, 512.0f, 4096.0f, -4096.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1};
     *g_world.values = vanilla;
     void* level = (void*)WorldLevel;
     int32_t rel;
@@ -5332,11 +5400,12 @@ static const char* InstallWorld(DifficultyInstall* d)
     memcpy(full, kIndexFullStub, sizeof kIndexFullStub);
     rel = (int32_t)((uint8_t*)g_worldIndexFull - (full + 22)); memcpy(full + 18, &rel, 4);
     rel = (int32_t)((block + 0x1200) - (full + 29)); memcpy(full + 25, &rel, 4);
-    int padBand = PadBandStubs(game, block + 0x500), flatBand = FlatBandStub(game, block + 0x5C0);
+    int padBand = PadBandStubs(game, block + 0x500), flatBand = FlatBandStub(game, block + 0x5C0), caps = CapStubs(game, block + 0x600);
     DWORD protect;
     VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect);
     if (padBand) { const char* why = PadBandSites(game, block + 0x500); if (why != NULL) return why; }
     if (flatBand) { const char* why = FlatBandSite(game, block + 0x5C0); if (why != NULL) return why; }
+    if (caps) { const char* why = CapSites(game, block + 0x600); if (why != NULL) return why; }
     const float* fields[5] = {&g_world.values->half, &g_world.values->full, &g_world.values->inverse, &g_world.values->negHalf, &g_world.values->negFull};
     for (size_t i = 0; i < sizeof kWorldSites / sizeof kWorldSites[0]; i++)
     {
