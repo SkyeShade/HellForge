@@ -131,6 +131,8 @@ static class ModWarbondsTests
             Dictionary<uint, long> before;
             using (var inventory = await Get("/Progression/inventory")) before = Held(inventory);
             check(!before.ContainsKey(Gold), "A mod weapon sold on a warbond is held before it is bought.");
+            var goldItem = registered.Load().Single(i => i.MixId == Gold);
+            check(registered.IsLeftOut(goldItem) && !registered.IsLocked(goldItem), "A mod weapon not bought yet is not left out for purchases and earning.");
 
             check((await Buy(pageTwoId)).Status == HttpStatusCode.BadRequest, "An item of a page not open yet was sold.");
             check((await Buy(warbonds[1].Pages[0].Items[0].Id)).Status == HttpStatusCode.BadRequest, "An item was sold without its currency (super samples).");
@@ -146,6 +148,7 @@ static class ModWarbondsTests
             check(store.TryChange((_, inventory) => { check(ProfileStore.Held(inventory, Gold) == 0, "A mod's weapon was saved in the profile."); return false; }) == false,
                 "The profile check did not run.");
             check((await Buy(goldId)).Status == HttpStatusCode.BadRequest, "A mod warbond's item was sold twice.");
+            check(!registered.IsLeftOut(goldItem), "A bought mod weapon is still left out for purchases and earning.");
             check((await Buy(freeId)).Status == HttpStatusCode.OK, "A catalogue item on a mod warbond was not sold.");
             check((await Buy(pageTwoId)).Status == HttpStatusCode.OK, "The second page did not open once 1,500 requisition were spent.");
             using (var inventory = await Get("/Progression/inventory"))

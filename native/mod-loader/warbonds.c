@@ -131,14 +131,15 @@ static void WarbondEntry(uint8_t* entry, const uint8_t* game, const ModWarbond* 
  * (0x1948ACA, 0x193F7FA); its colour call (0x1448690) goes through WarbondPriceColour, which gives a sample its colour. */
 #define WB_SAMPLES 0x32DE960u
 #define WB_SET_COLOUR 0x1448690u
-/* item: the site prices one item (WarbondItemPriceKind(id, warbond currency, block): the item's own currency), else the
- * warbond's balance (WarbondPriceKind(currency, block)). */
+/* item: 1 the site prices one item (WarbondItemPriceKind(id, warbond currency, block): the item's own currency), else the
+ * warbond's balance (WarbondPriceKind(currency, block)); 2 the page header's, whose currency the page's texts follow
+ * (WarbondPagePriceKind, warbond_texts.c). */
 typedef struct { uint32_t rva; uint8_t len; uint8_t pin[8]; uint32_t next; uint8_t load[16]; uint8_t loadLen; uint8_t item; } WbPriceSite;
 static const WbPriceSite kWbPriceSites[] = {
     /* the item panel (rbx = the detail item): mov ecx,[rbx]; mov rax,[rbp+0xD18]; mov edx,[rax+0xC]; lea r8,[r14+0x10] */
     {0x196DFA9u, 8, {0x41,0xc7,0x46,0x10,0x03,0x00,0x00,0x00}, 0x196DFB1u, {0x8b,0x0b, 0x48,0x8b,0x85,0x18,0x0d,0x00,0x00, 0x8b,0x50,0x0c, 0x4d,0x8d,0x46,0x10}, 16, 1},
     /* the page header: lea rdx,[rax+0x40]; mov rax,[rbp+0xD18]; mov ecx,[rax+0xC] */
-    {0x196CC76u, 7, {0xc7,0x40,0x40,0x03,0x00,0x00,0x00}, 0x196CC7Du, {0x48,0x8d,0x50,0x40, 0x48,0x8b,0x85,0x18,0x0d,0x00,0x00, 0x8b,0x48,0x0c}, 14, 0},
+    {0x196CC76u, 7, {0xc7,0x40,0x40,0x03,0x00,0x00,0x00}, 0x196CC7Du, {0x48,0x8d,0x50,0x40, 0x48,0x8b,0x85,0x18,0x0d,0x00,0x00, 0x8b,0x48,0x0c}, 14, 2},
     /* the Acquisition Center's card: lea rdx,[rbx+0x40]; mov ecx,[r13+0xC] */
     {0x1963C1Au, 7, {0xc7,0x43,0x40,0x03,0x00,0x00,0x00}, 0x1963C21u, {0x48,0x8d,0x53,0x40, 0x41,0x8b,0x4d,0x0c}, 8, 0},
     /* a grid cell (rbx = the cell, its id at +0): mov ecx,[rbx]; mov rax,[rsi+0xD18]; mov edx,[rax+0xC]; lea r8,[rbx+8] */
@@ -169,6 +170,14 @@ static void WarbondPriceKind(uint32_t currency, uint8_t* block)
             if (currency == kWbSampleIds[i]) icon = g_wbSampleIcon[i];
     memcpy(block, &kind, 4);
     memcpy(block + 8, &icon, 8);
+}
+
+/* The currency of the warbond page on screen (its header's price, 0x196CC76). */
+static uint32_t g_wbPageCurrency;
+static void WarbondPagePriceKind(uint32_t currency, uint8_t* block)
+{
+    g_wbPageCurrency = currency;
+    WarbondPriceKind(currency, block);
 }
 
 static void WarbondItemPriceKind(uint32_t itemId, uint32_t warbondCurrency, uint8_t* block)
@@ -291,7 +300,7 @@ static void EmitWarbondPriceStubs(uintptr_t game, uint8_t* code, uint8_t* stubs[
         stubs[i] = e.at;
         Put(&e, "\x50\x51\x52\x41\x50\x41\x51\x41\x52\x41\x53\x48\x83\xec\x28", 15);
         Put(&e, site->load, site->loadLen);
-        PutAbs(&e, site->item ? (const void*)WarbondItemPriceKind : (const void*)WarbondPriceKind);
+        PutAbs(&e, site->item == 1 ? (const void*)WarbondItemPriceKind : site->item == 2 ? (const void*)WarbondPagePriceKind : (const void*)WarbondPriceKind);
         Put(&e, "\xff\xd0\x48\x83\xc4\x28\x41\x5b\x41\x5a\x41\x59\x41\x58\x5a\x59\x58", 17);
         Put8(&e, 0xE9);
         PutRel32(&e, (const uint8_t*)(game + site->next));
@@ -378,6 +387,7 @@ static uint32_t WarbondTablePins(uintptr_t game)
 }
 
 static const char* InstallWarbondList(uintptr_t game); /* warbond_list.c */
+static const char* InstallWarbondTexts(uintptr_t game); /* warbond_texts.c */
 
 /* The table copy with the mod warbonds' entries, and the game's references and bounds pointed at it. NULL, or why not. */
 static const char* InstallWarbondTable(uintptr_t game, size_t entries)
@@ -420,5 +430,7 @@ static void InstallModWarbonds(void)
     HookText();
     const char* prices = InstallWarbondPrices(game);
     if (prices) Note("warbonds: every warbond price shows the medal: %s", prices);
+    const char* texts = prices ? "the prices are not installed" : InstallWarbondTexts(game);
+    if (texts) Note("warbonds: mod warbonds' spent and unlock texts name medals: %s", texts);
     Note("warbonds: %d mod warbond(s) in the game's warbond table (%u entries)", g_modWarbondCount, (unsigned)entries);
 }

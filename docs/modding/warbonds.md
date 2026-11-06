@@ -129,7 +129,8 @@ A mod's warbond is listed in the Acquisition Center after the game's warbonds. I
 unlock as the game's do, and players with everything unlocked have bought it all.
 
 Its card and title show your `name`, `season` line, `variant` look and `art`. Prices show the icon of the warbond's
-currency: medals, requisition, each kind of sample in its colour, or Forge Credits.
+currency: medals, requisition, each kind of sample in its colour, or Forge Credits. The line with what was spent and a
+locked page's line with what is left to spend name that currency too, in English.
 
 A warbond with an `unlock` price shows the game's warbond button with that price, as the game's premium warbonds do. Players
 buy it with Forge Credits, once, and then buy its items as on any warbond. Players with everything unlocked own it.

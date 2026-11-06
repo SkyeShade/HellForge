@@ -580,6 +580,7 @@ static void ChannelInstall(uintptr_t game);
 #include "forge_credits.c"
 #include "warbonds.c" /* after forge_credits.c: mods' warbonds in the game's warbond table */
 #include "warbond_list.c" /* after warbonds.c: more than the game's 32 warbonds */
+#include "warbond_texts.c" /* after warbond_list.c: the spent and unlock texts in a mod warbond's currency */
 #include "terminal_camera.c" /* before terminal.c: the terminal starts its glide */
 #include "terminal.c"
 #include "abilities.c"

@@ -208,8 +208,12 @@ public sealed class RegisteredItems(string path)
     // A mod weapon's mastery package, among the weapons this session's game knows; null for any other package.
     public MasteryTrack? Track(uint package) => Current().Tracks.GetValueOrDefault(package);
 
-    // Whether the player may not have an item: Purchases and earning refuse what the inventory leaves out.
+    // Whether the player may not have an item (a premium rule or a locked mod; mods' warbonds sell only what passes this).
     public bool IsLocked(Item item) => Locked(item);
+
+    // Whether the inventory leaves an item out: locked, or sold on a mod's warbond the player has not bought it from.
+    // Purchases and earning refuse what it leaves out.
+    public bool IsLeftOut(Item item) => Locked(item) || Withheld?.Invoke().Contains(item.MixId) == true;
 
     // One entry of the file: a weapon, a stratagem or a difficulty, or null for one that is malformed or waits (copyOf 0).
     static Item? Read(JsonElement item)

@@ -217,7 +217,7 @@ public sealed class MissionService
         {
             if (!TryInt(package, "id32", out var id) || id is <= 0 or > uint.MaxValue || tracks.Count == MaxPackageUpdates || tracks.Any(t => t.Package == id)) continue;
             if (WeaponMastery.Vanilla((uint)id) is { } vanilla && WeaponMastery.IsWeapon(vanilla)) tracks.Add(vanilla);
-            else if (Registered?.Track((uint)id) is { } copy && !Registered.IsLocked(copy.Item!)) tracks.Add(copy);
+            else if (Registered?.Track((uint)id) is { } copy && !Registered.IsLeftOut(copy.Item!)) tracks.Add(copy);
         }
         return tracks;
     }

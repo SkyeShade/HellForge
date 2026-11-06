@@ -259,7 +259,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     {
         if (id32 is < 0 or > uint.MaxValue) return null;
         if (WeaponMastery.Vanilla((uint)id32) is { } vanilla) return vanilla;
-        return Registered?.Track((uint)id32) is { } copy && !Registered.IsLocked(copy.Item!) ? copy : null;
+        return Registered?.Track((uint)id32) is { } copy && !Registered.IsLeftOut(copy.Item!) ? copy : null;
     }
 
     static JsonElement? FindLevel(JsonElement package, long level)
