@@ -19,15 +19,17 @@
 #define OWN_SORT 0x136E6A0u
 #define OWN_APPLY 0x136EF80u
 #define OWN_REMOVE 0x136F5E0u
-#define OWN_COUNT 0x1CE0u
-#define OWN_RECORDS 0x1CE4u
+/* The compiled places, or where the catalogue went and how much it holds now (state_moves.c). */
+#define OWN_COUNT g_catalogue.count
+#define OWN_RECORDS g_catalogue.records
 #define OWN_RECORD 0xB8u
-#define OWN_INDEX 0xB9CE4u
-#define OWN_STARTS 0xD1CE4u
-#define OWN_CATALOGUE 0xD5D48u
-#define OWN_INVENTORY 0xD5D4Cu
-#define OWN_MAX 4096u
-#define OWN_ITEMS 64
+#define OWN_INDEX g_catalogue.index
+#define OWN_STARTS g_catalogue.starts
+#define OWN_CATALOGUE g_catalogue.catalogue
+#define OWN_INVENTORY g_catalogue.inventory
+#define OWN_MAX g_catalogue.items
+#define OWN_ITEMS 512 /* LC_MAX: what one change can add */
+#define OWN_ROOM 256  /* catalogue items a new item may take with its children */
 
 static const uint8_t kOwnApplyPin[47] = {0x44, 0x89, 0x44, 0x24, 0x18, 0x48, 0x89, 0x4C, 0x24, 0x08, 0x53, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56,
     0x48, 0x81, 0xEC, 0xD8, 0x00, 0x00, 0x00, 0x45, 0x33, 0xE4, 0x45, 0x8B, 0xE9, 0x41, 0x8B, 0xF8, 0x8B, 0xF2, 0x4C, 0x8B, 0xF1, 0x81, 0xFA, 0x50, 0xC8,
@@ -200,7 +202,7 @@ static int OwnAppendAll(uintptr_t manager, OwnBatch* b)
         const OwnItem* item = &b->items[i];
         if (item->take) continue; /* given back */
         if (OwnEntry(manager, item->mixId, 0, 0) >= 0) { appended |= OwnRestore(manager, item); continue; } /* in the catalogue already */
-        if (*(const uint32_t*)(manager + OWN_COUNT) + 16 > OWN_MAX) { b->why = "the game's catalogue is full"; break; }
+        if (*(const uint32_t*)(manager + OWN_COUNT) + OWN_ROOM > OWN_MAX) { b->why = "the game's catalogue is full"; break; }
         int added = OwnAppendItem(manager, item);
         if (added == 0 && b->why == NULL) b->why = kOwnNoBase[item->kind];
         b->added += added;

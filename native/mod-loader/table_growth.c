@@ -24,6 +24,9 @@ enum
     GROW_SHIFT,              /* its shift */
     GROW_MAGIC65,            /* the 65-bit form's magic of x / S: Magic65 */
     GROW_SHIFT65,            /* its final shift */
+    GROW_RECORD_FIELD,       /* 16 * S + k: where a field k bytes into record 0 is (k the constant's divisor) */
+    GROW_IMUL8,              /* a product the compiler made of a lea and a shift (`lea eax,[rdx+rdx*4]; shl eax,2`), 5 or 6
+                              * bytes rewritten as a whole: imul eax,edx,S (S below 128) and nops */
 };
 
 /* The u64 magic number of division by d: x / d == (x * m) >> (64 + shift) for every 64-bit x, with m below 2^64 and the
@@ -76,16 +79,18 @@ static uint64_t GrowthValue(uint8_t formula, uint32_t slots, uint32_t stride, ui
     case GROW_SHIFT: *ok = Magic64(slots, &magic, &shift); return shift;
     case GROW_MAGIC65: *ok = Magic65(slots, &magic, &shift); return magic;
     case GROW_SHIFT65: *ok = Magic65(slots, &magic, &shift); return shift;
+    case GROW_RECORD_FIELD: return 16ull * slots + divisor;
+    case GROW_IMUL8: *ok = slots <= 0x7F; return 0x9090909000C26Bull | (uint64_t)slots << 16;
     default: *ok = 0; return 0;
     }
 }
 
 /* Whether `value` fits an immediate of `size` bytes as the instruction reads it: imm8 and imm32 are sign-extended into
  * 64-bit operations (and compares), so a u32 compare against an imm8 reaches 127 and an imm32 0x7FFFFFFF; imm64 holds
- * anything. */
+ * anything, and so does a window of 5 or 6 bytes rewritten whole (GROW_IMUL8). */
 static int ImmediateFits(uint64_t value, uint8_t size)
 {
-    return size == 8 || (size == 4 && value <= 0x7FFFFFFFull) || (size == 1 && value <= 0x7Full);
+    return size == 8 || size == 5 || size == 6 || (size == 4 && value <= 0x7FFFFFFFull) || (size == 1 && value <= 0x7Full);
 }
 
 /* One rewrite: the instruction at `at` (its reviewed `length` bytes in `original`), its immediate at `immOffset`, of
@@ -136,6 +141,7 @@ static int ThreadInside(HANDLE thread, const GrowthPatch* patches, int count)
 }
 
 #define GROWTH_MAX_THREADS 512
+#define GROWTH_MAX_CONSTANTS 32 /* the most any table has (scripts/ExportTableGrowth.py) */
 
 /* A write while the other threads are paused: system calls and a copy only. A paused thread may hold any user lock (the
  * heap's, HellForge's rewrite list), so nothing here may take one; ApplyGrowthPatches records the rewrites (NoteRewrite)
@@ -164,8 +170,11 @@ static int GrowthPatchesReviewed(const GrowthPatch* patches, int count)
     return 1;
 }
 
-/* The rewrites and the pointer, the other threads paused: all, or (undone) none; 1 when all were written. */
-static int WriteGrowthPaused(const GrowthPatch* patches, int count, uintptr_t slot, const uint8_t* table)
+/* A table pointer to change with the rewrites: the entity state's slot and the new table. */
+typedef struct GrowthPointer { uintptr_t slot; const uint8_t* table; } GrowthPointer;
+
+/* The rewrites and the pointers, the other threads paused: all, or (undone) none; 1 when all were written. */
+static int WriteGrowthPaused(const GrowthPatch* patches, int count, const GrowthPointer* pointers, int pointerCount)
 {
     int written = 0;
     while (written < count && !PausedWrite(patches[written].at + patches[written].immOffset, &patches[written].value, patches[written].immSize))
@@ -175,15 +184,17 @@ static int WriteGrowthPaused(const GrowthPatch* patches, int count, uintptr_t sl
         for (int i = 0; i < written; i++) PausedWrite(patches[i].at, patches[i].original, patches[i].length);
         return 0;
     }
-    if (slot != 0) *(const uint8_t* volatile*)slot = table; /* the entity state's table pointer: plain data, as the game writes it */
+    for (int i = 0; i < pointerCount; i++)
+        *(const uint8_t* volatile*)pointers[i].slot = pointers[i].table; /* the entity state's table pointer: plain data, as the game writes it */
     return 1;
 }
 
 /* Every rewrite, or none: each instruction must hold its reviewed bytes and each value fit its immediate (1, nothing
  * written, otherwise). Done with the other threads paused, none of them inside a rewritten instruction (2 when one is:
- * try again later), and in the same pause the table pointer at `slot` (when not 0) becomes `table`: no game thread sees
- * the new constants with the old table or the old ones with the new. 0 when written. */
-static int ApplyGrowthPatches(const GrowthPatch* patches, int count, uintptr_t slot, const uint8_t* table)
+ * try again later), and in the same pause each table pointer changes: no game thread sees the new constants with the old
+ * table or the old ones with the new. One pause for every table: each of its own stopped the game about 150 ms. 0 when
+ * written. */
+static int ApplyGrowthPatches(const GrowthPatch* patches, int count, const GrowthPointer* pointers, int pointerCount)
 {
     if (!GrowthPatchesReviewed(patches, count)) return 1;
     static HANDLE paused[GROWTH_MAX_THREADS];
@@ -191,7 +202,7 @@ static int ApplyGrowthPatches(const GrowthPatch* patches, int count, uintptr_t s
     if (held < 0) { ResumeThreads(paused, held == -1 ? 0 : -1 - held); return 1; }
     for (int t = 0; t < held; t++)
         if (ThreadInside(paused[t], patches, count)) { ResumeThreads(paused, held); return 2; }
-    int done = WriteGrowthPaused(patches, count, slot, table);
+    int done = WriteGrowthPaused(patches, count, pointers, pointerCount);
     ResumeThreads(paused, held);
     if (!done) return 1;
     for (int i = 0; i < count; i++) NoteRewrite(patches[i].at + patches[i].immOffset, patches[i].immSize);
@@ -233,21 +244,24 @@ typedef struct GrowthRules
     uint8_t magic64;     /* a u64 magic modulus: S must have one (Magic64) */
 } GrowthRules;
 
-/* The slot count for `rows` rows: at least twice as many, the smallest the rules allow, at most their maximum; 0 when none
- * does. */
+/* Whether the rules allow a table of s slots. */
+static int GrowthSlotsAllowed(uint64_t s, const GrowthRules* rules)
+{
+    uint64_t magic;
+    uint32_t shift;
+    return !(rules->pow2 && (s & (s - 1)) != 0) && !(rules->multipleOf > 1 && s % rules->multipleOf != 0) &&
+        !(rules->magic64 && !Magic64(s, &magic, &shift));
+}
+
+/* The slot count for `rows` rows: at least twice as many, the smallest the rules allow; past their maximum, the largest
+ * they allow, which holds fewer rows than asked (a table left at its vanilla size would hold fewer still, and adding
+ * weapons would lower what fits). 0 when none does. */
 static uint32_t GrowthSlots(uint32_t rows, const GrowthRules* rules)
 {
     uint64_t want = 2ull * rows;
     if (want < 2) want = 2;
-    for (uint64_t s = want; s <= rules->maxSlots; s++)
-    {
-        if (rules->pow2 && (s & (s - 1)) != 0) continue;
-        if (rules->multipleOf > 1 && s % rules->multipleOf != 0) continue;
-        uint64_t magic;
-        uint32_t shift;
-        if (rules->magic64 && !Magic64(s, &magic, &shift)) continue;
-        return (uint32_t)s;
-    }
+    for (uint64_t s = want; s <= rules->maxSlots; s++) if (GrowthSlotsAllowed(s, rules)) return (uint32_t)s;
+    for (uint64_t s = rules->maxSlots < want ? rules->maxSlots : want; s >= 2; s--) if (GrowthSlotsAllowed(s, rules)) return (uint32_t)s;
     return 0;
 }
 
@@ -354,12 +368,12 @@ static void GrowComponentProfile(uint32_t component, uint32_t from, uint32_t slo
 }
 
 /* The rewrites applied, tried again while a game thread stands inside one of the instructions. */
-static int ApplyGrowthRetrying(const GrowthPatch* patches, int count, uintptr_t slot, const uint8_t* table)
+static int ApplyGrowthRetrying(const GrowthPatch* patches, int count, const GrowthPointer* pointers, int pointerCount)
 {
     int result = 2;
     for (int attempt = 0; attempt < 100 && result == 2; attempt++)
     {
-        result = ApplyGrowthPatches(patches, count, slot, table);
+        result = ApplyGrowthPatches(patches, count, pointers, pointerCount);
         if (result == 2) Sleep(1);
     }
     return result;
@@ -398,37 +412,73 @@ static void NoteGrown(const GrowthTable* t, uint32_t from, uint32_t slots, uint3
     GrowComponentProfile(t->component, from, slots, bytes - from * 16u + slots * 16u);
 }
 
-/* Grows component table c for `rows` rows: the table built again at the size its rules allow, every constant encoding
- * its size rewritten and the game pointed at the new table in one pause. 1 when grown; else 0, logged, and the table
- * is as it was. */
-static int GrowTable(uint8_t* state, uint32_t c, uint32_t rows)
+/* A table to grow, and for how many rows. */
+typedef struct GrowthWish { uint32_t component, rows; } GrowthWish;
+#define GROWTH_TABLES (sizeof kGrowthTables / sizeof kGrowthTables[0])
+
+/* One table's part of a batch: built, its rewrites at patches[first]. */
+typedef struct GrowthBuilt { const GrowthTable* table; uint32_t from, slots, bytes; uint8_t* grown; } GrowthBuilt;
+
+/* Table c built again at the size its rules allow, its rewrites added to `patches` (*count of them) and proven against the
+ * code. 1 when it is ready; else 0, logged, nothing kept. */
+static int GrowthBuild(uint8_t* state, GrowthWish wish, GrowthBuilt* built, GrowthPatch* patches, int* count)
 {
     uint8_t* table;
-    uint32_t slots, bytes, from = SlotsOf(c);
-    const GrowthTable* t = GrowthReady(state, c, rows, &table, &slots);
+    uint32_t c = wish.component, slots, bytes, from = SlotsOf(c);
+    const GrowthTable* t = GrowthReady(state, c, wish.rows, &table, &slots);
     if (t == NULL) return 0;
     if (SafeRead((uintptr_t)table - 12, &bytes, 4) || bytes < from * 16u) { Note("growth: component %u's table is not readable", c); return 0; }
-    GrowthPatch patches[32];
-    uint8_t* grown = t->count <= 32 ? RebuildTable(table, from, slots, bytes - from * 16u, 0) : NULL;
-    if (grown == NULL || GrowthPatchesFor(t, from, slots, g_game, patches) != t->count)
+    uint8_t* grown = t->count <= GROWTH_MAX_CONSTANTS ? RebuildTable(table, from, slots, bytes - from * 16u, 0) : NULL;
+    if (grown == NULL || GrowthPatchesFor(t, from, slots, g_game, patches + *count) != t->count)
     {
         if (grown != NULL) VirtualFree(grown - 32, 0, MEM_RELEASE);
         Note("growth: component %u could not be built again at %u slots", c, slots);
         return 0;
     }
-    int result = ApplyGrowthRetrying(patches, t->count, (uintptr_t)state + REG_TABLES + 8 * c, grown);
-    if (result != 0)
+    if (!GrowthPatchesReviewed(patches + *count, t->count))
     {
         VirtualFree(grown - 32, 0, MEM_RELEASE);
-        Note(result == 2 ? "growth: component %u: a game thread stayed inside its code; not grown" :
-            "growth: component %u's code is not the reviewed build's; not grown", c);
+        Note("growth: component %u's code is not the reviewed build's; not grown", c);
         return 0;
     }
-    NoteGrown(t, from, slots, bytes, grown);
-    Note("growth: component %u grown from %u to %u slots (%d constants rewritten)%s", c, from, slots, t->count,
-        (t->flags & GROWTH_PROTECTED_MATCH) ? "; helldivers2.exe's protected code names this table, not analysed: if the "
-        "game crashes after this, report it" : "");
+    *built = (GrowthBuilt){t, from, slots, bytes, grown};
+    *count += t->count;
     return 1;
+}
+
+/* Grows the wished tables together: each built again at the size its rules allow, and every constant encoding a size
+ * rewritten and the game pointed at the new tables in one pause. A table that cannot be built is logged and left out; a pause
+ * that cannot be had leaves every table as it was. How many grew. */
+static int GrowTables(uint8_t* state, const GrowthWish* wishes, int wishCount)
+{
+    static GrowthPatch patches[GROWTH_TABLES * GROWTH_MAX_CONSTANTS];
+    static GrowthBuilt built[GROWTH_TABLES];
+    static GrowthPointer pointers[GROWTH_TABLES];
+    int ready = 0, count = 0;
+    for (int i = 0; i < wishCount && ready < (int)GROWTH_TABLES; i++)
+        if (GrowthBuild(state, wishes[i], &built[ready], patches, &count))
+        {
+            pointers[ready] = (GrowthPointer){(uintptr_t)state + REG_TABLES + 8 * built[ready].table->component, built[ready].grown};
+            ready++;
+        }
+    if (ready == 0) return 0;
+    int result = ApplyGrowthRetrying(patches, count, pointers, ready);
+    for (int i = 0; i < ready; i++)
+    {
+        const GrowthBuilt* b = &built[i];
+        const GrowthTable* t = b->table;
+        if (result != 0)
+        {
+            VirtualFree(b->grown - 32, 0, MEM_RELEASE);
+            Note(result == 2 ? "growth: component %u: a game thread stayed inside the code; not grown" : "growth: component %u's code is not the reviewed build's; not grown", t->component);
+            continue;
+        }
+        NoteGrown(t, b->from, b->slots, b->bytes, b->grown);
+        Note("growth: component %u grown from %u to %u slots (%d constants rewritten)%s", t->component, b->from, b->slots, t->count,
+            (t->flags & GROWTH_PROTECTED_MATCH) ? "; helldivers2.exe's protected code names this table, not analysed: if the "
+            "game crashes after this, report it" : "");
+    }
+    return result == 0 ? ready : 0;
 }
 
 /* After the entity loader: a grown table it made again (its vanilla size, while the code holds the grown one) built again

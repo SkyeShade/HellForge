@@ -761,6 +761,9 @@ try
     RegisteredItemsTests.Run(root, Check);
     results.Add(new { mode = "registered-items", outcome = "passed" });
     Console.WriteLine("PASS registered items: child hash, catalogue children, mastery package, progress, inventory");
+    MasteryTests.Run(root, Check);
+    results.Add(new { mode = "weapon-mastery", outcome = "passed" });
+    Console.WriteLine("PASS weapon mastery: missions earn, once; a mod weapon's own level, items and purchases, saved apart; the launcher's levels; caching");
 }
 catch (Exception error)
 {

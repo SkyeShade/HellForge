@@ -1,6 +1,7 @@
 /* The editor's catalogue (catalog.h). */
 #include <ctype.h>
 #include <stdlib.h>
+#include <algorithm>
 #include "catalog.h"
 #include "hellforge_mod.h"
 #include "json.h"
@@ -84,6 +85,7 @@ static bool Pointed(const Row& r, const Remap& remap, uint64_t* ref)
 {
     const std::map<uint64_t, uint64_t>* map = r.component == "StratagemDefinition" ? &remap.stratagem
         : r.component == "ProjectileSettings" ? &remap.projectile : r.component == "DamageInfo" ? &remap.damage
+        : r.component == "ExplosionSettings" ? &remap.explosion : r.component == "BeamSettings" ? &remap.beam : r.component == "ArcSettings" ? &remap.arc
         : r.component.find("ComponentData") != std::string::npos ? &remap.entity : nullptr;
     if (map == nullptr) return false;
     auto found = map->find(r.ref);
@@ -121,6 +123,50 @@ static Part CopyPart(Catalog* into, const Part& p, Object* copy, const CopyNames
         into->byEntry[row.category + '\t' + row.target + '\t' + row.key] = &row;
     }
     return part;
+}
+
+bool Catalog::AddOwnPart(Object* copy, const CopyNames& names, const OwnPart& p)
+{
+    const std::string& component = p.component;
+    const uint64_t base = p.base, ref = p.ref;
+    for (const Row* r : copy->rows) if (r->component == component && r->ref == ref) return false;
+    std::vector<const Row*> found;
+    std::vector<uint32_t> offsets;
+    for (const Row& r : rows)
+    {
+        if (r.component != component || r.ref != base || !r.Live() || r.Stat() || !r.choice.empty()) continue;
+        if (std::find(offsets.begin(), offsets.end(), r.offset) != offsets.end()) continue;
+        offsets.push_back(r.offset);
+        found.push_back(&r);
+    }
+    if (found.empty()) return false;
+    Part own{p.title, names.id + "|own|" + p.role, "", false, {}};
+    for (const Row* r : found)
+    {
+        Row row = *r; /* rows may grow: a copy first */
+        row.object = copy;
+        row.ref = ref;
+        row.category = names.category;
+        row.target = names.target;
+        row.key = p.role + "." + r->key;
+        row.link = "mod|" + component + ":" + std::to_string(ref) + ":" + std::to_string(r->offset);
+        row.also.clear();
+        row.alsoIf.clear();
+        row.alsoAmmo.clear();
+        row.hd2r.clear();
+        row.hd2rAs.clear();
+        rows.push_back(std::move(row));
+        Row& added = rows.back();
+        own.rows.push_back(&added);
+        copy->rows.push_back(&added);
+        byLink[added.link].push_back(&added);
+        byEntry[added.category + '\t' + added.target + '\t' + added.key] = &added;
+        bySetting.emplace(SettingKey(component, ref, (uint16_t)r->offset), &added);
+    }
+    for (Category& c : copy->page)
+        if (c.title == p.category) { c.parts.push_back(own); return true; }
+    copy->page.push_back(Category{p.category, names.id + "|own|" + p.category, "", false, false, {own}});
+    return true;
 }
 
 Object* Catalog::AddCopy(const Object& like, const CopyNames& names, const Remap& remap, const std::function<bool(const Row&, uint64_t ref)>& keep)

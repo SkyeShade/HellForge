@@ -208,10 +208,12 @@ static const SdkField kSdkFieldsArcSettings[] = {
     {"max_angle_spread_first_shot", 24, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"chain_count", 28, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
     {"max_split", 32, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"damage", 36, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_DAMAGE},
 };
 static const SdkField kSdkFieldsBeamSettings[] = {
     {"radius", 4, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"length", 8, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"damage", 12, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_DAMAGE},
 };
 static const SdkField kSdkFieldsStatusEffectSettings[] = {
     {"strength", 36, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
@@ -1104,8 +1106,8 @@ static const SdkComponent kSdkComponents[] = {
     {"ProjectileSettings", "ProjectileSettings", 25480438u, 272u, kSdkFieldsProjectileSettings, 13, 1, -1},
     {"StratagemSettings", "StratagemDefinition", 25480438u, 400u, kSdkFieldsStratagemSettings, 28, 1, -1},
     {"ExplosionSettings", "ExplosionSettings", 25480438u, 152u, kSdkFieldsExplosionSettings, 5, 1, -1},
-    {"ArcSettings", "ArcSettings", 25480438u, 104u, kSdkFieldsArcSettings, 8, 1, -1},
-    {"BeamSettings", "BeamSettings", 25480438u, 112u, kSdkFieldsBeamSettings, 2, 1, -1},
+    {"ArcSettings", "ArcSettings", 25480438u, 104u, kSdkFieldsArcSettings, 9, 1, -1},
+    {"BeamSettings", "BeamSettings", 25480438u, 112u, kSdkFieldsBeamSettings, 3, 1, -1},
     {"StatusEffectSettings", "StatusEffectSettings", 25480438u, 152u, kSdkFieldsStatusEffectSettings, 2, 1, -1},
     {"Health", "HealthComponentData", 25480438u, 22096u, kSdkFieldsHealth, 401, 0, 224},
     {"Jumppack", "JumppackComponentData", 25480438u, 280u, kSdkFieldsJumppack, 21, 0, 264},

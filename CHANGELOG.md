@@ -12,6 +12,14 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **New explosion, beam and arc types for mods (SDK 17).** `add_explosion`, `add_beam` and `add_arc` copy a vanilla type
+  with its own damage, radii, length or chained arc, up to 512 of each across all mods. A projectile names its blasts in
+  `impact_explosion` and `expiry_explosion`, and a weapon its `beam` or `arc`
+  ([projectiles and damage](docs/modding/content.md#projectiles-and-damage)) (#298).
+- **295 explosions and 342 damage ids by name.** The catalogue lists them as `HF_EXPLOSION_` and `HF_DAMAGE_` constants
+  for mods (#298).
+- **A mod weapon's own explosion, beam and arc in the editor.** Its page shows them with the damage they deal, and mods'
+  explosions are offered wherever the editor picks an explosion (#298).
 - **Shields that stop grenades.** The FX-12 Shield Generator Relay, G/SH-39 Shield and SH-32 Shield Generator Pack have a
   **Stops grenades** setting in the editor, off by default. Grenades, throwing knives and self-destruct drones bounce off
   the bubble from outside, and ones thrown from inside still leave. Helldivers, enemies, vehicles and
@@ -52,14 +60,19 @@ On `dev`, since 0.4.0-beta.
 - **The game's catalogues come from your own sync.** HellForge no longer ships the item catalogue, item and progression
   packages, level table or warbond list. Sync Inventory copies them from what the normal game receives when it logs in,
   cut to what the supported build knows, so a new installation needs one sync before its first PLAY. The warbond
-  pages and the requisition store, which the normal game doesn't read at login, still ship.
+  pages and the requisition store, which the normal game doesn't read at login, still ship (#296).
+
+### Fixed
+
+- **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
+  a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
 
 ### For contributors
 
 - `tests/HellForge.LocalBackend.Tests` needs the game's catalogues: `HELLFORGE_TEST_CATALOGUE` names a folder with
   `progression-data.json` and `item-catalog.json` (an installation's `catalogue` folder after a sync). Without one the
   suite is skipped with a warning. CI takes them from a private test-data repository
-  ([CONTRIBUTING.md](CONTRIBUTING.md#building-and-testing)).
+  ([CONTRIBUTING.md](CONTRIBUTING.md#building-and-testing)) (#296).
 - A "Docs lint" CI job keeps docs and code comments readable. It checks page types, paragraph, sentence and page
   sizes, Markdown structure, links and filler words, plus code comment blocks of over 10 lines. Existing text is in a
   baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))
@@ -81,6 +94,11 @@ On `dev`, since 0.4.0-beta.
   Proton prefix (#90).
 - The Mods page shows what a code mod says it is doing ("In game: ..." during a session, "Last session: ..." after it),
   for mods that tell it (SDK 16) (#84).
+- **Weapons level up.** Your primary gains the mission's XP, won or lost, and mod weapons do too. A friend who joins
+  your game doesn't earn weapon XP yet (#297).
+- **Many more mod weapons.** Mods can go past the old limit of about 20 weapon copies. HellForge moves the game's item
+  catalogue at start-up, so it keeps 40,960 items and 1,024 progression packages (#297).
+- 512 new damage types and 512 new projectiles across all mods (#297).
 
 ### Changed
 
@@ -116,6 +134,12 @@ On `dev`, since 0.4.0-beta.
   can be joined, the browser says so, names the mods most of them need, and suggests hosting a Public lobby.
 - The lobby browser API lists the mods that keep the most
   lobbies out (`needed`) and gives lobbies you can join first.
+- The armory holds 256 cards of each type, vanilla weapons counted. That leaves room for 199 new primaries, 229
+  secondaries and 81 throwables, and about 100 copies each of lasers, shotguns, plasma and melee weapons. A weapon past
+  that is refused by name in the mod's log, so a vanilla weapon never falls off the list (#297).
+- Every mod weapon has its own level, XP and attachments, starting at the lowest level, instead of copying its base's.
+  Attachments can be bought on a mod weapon's page, and the Weapon levels card lists mod weapons. A removed mod leaves
+  your vanilla progress as it was, and adding it back brings its progress back (#297).
 - After a crash the Play page says "The game crashed." with the game's exit code and what it means, instead of
   "Session ended.", and offers Save logs to Desktop beside Save crash report (#84).
 - Sessions that ended in a crash keep their logs past the newest ten, the five newest of them, so a crash report can

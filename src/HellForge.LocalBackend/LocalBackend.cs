@@ -23,6 +23,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     public LiveWar? LiveWar { get; init; }
     public FriendPresence? Presence { get; init; }
     public RegisteredItems? RegisteredItems { get; init; }
+    // The player's Steam account, when known (HellForge.Core SteamAccount).
+    public ulong? LocalAccount { get; init; }
     public bool OpenWar { get; init; }
     public uint WarSeed { get; init; }
     // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
@@ -144,7 +146,7 @@ public static partial class LocalBackend
         var liveWar = settings.OpenWar ? null : settings.LiveWar;
         var profile = settings.Profile;
         if (settings.StartupFixtures) profile ??= ProfileStore.Open(null);
-        var missions = profile != null ? new MissionService(profile, settings.Pickups) : null;
+        var missions = profile != null ? new MissionService(profile, settings.Pickups) { Registered = settings.RegisteredItems, LocalAccount = settings.LocalAccount } : null;
         // Friends' lobbies and profiles for the social tab, filled by multiplayer when a caller supplies it.
         var presence = settings.Presence ?? new FriendPresence();
         var playFab = new PlayFabService(presence);
@@ -163,7 +165,11 @@ public static partial class LocalBackend
             warClock.Set(war.RootElement.GetProperty("status").GetProperty("time").GetInt64());
         }
         var startup = new StartupBodies(profile, liveWar, fixtures);
-        if (settings.RegisteredItems != null) settings.RegisteredItems.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+        if (settings.RegisteredItems != null)
+        {
+            settings.RegisteredItems.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+            settings.RegisteredItems.ModProgress = profile != null ? profile.ModProgress : null;
+        }
         // Purchases price items by the catalogue the game was served, mods' registered items included.
         JsonElement? Catalogue(uint mixId)
         {
@@ -173,7 +179,7 @@ public static partial class LocalBackend
                 if (item.TryGetProperty("mixId", out var id) && id.TryGetUInt32(out var found) && found == mixId) return item;
             return null;
         }
-        var purchases = profile != null ? new Purchases(profile, Catalogue) : null;
+        var purchases = profile != null ? new Purchases(profile, Catalogue) { Registered = settings.RegisteredItems } : null;
         Directory.CreateDirectory(settings.EvidenceDirectory);
         var auditPath = Path.Combine(settings.EvidenceDirectory, "requests.jsonl");
         // A fresh evidence directory prevents accidental mixing of runs.
