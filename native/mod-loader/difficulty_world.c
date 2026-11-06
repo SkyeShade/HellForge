@@ -5753,7 +5753,7 @@ static int RenderPool0(uint32_t* used, uint32_t* capacity) { return RenderPoolOf
 /* Pool 1 ([scene+0x270]) fills the same way (0x58E0D0); ~200k of 524288 on city maps (farroom). */
 static int RenderPool1(uint32_t* used, uint32_t* capacity) { return RenderPoolOf(1, used, capacity); }
 static const char kRenderCapPin[] = "8B BC 24 C8 00 00 00 48 8B F1 B9 00 02 00 00 4C 8B FA 8B C7 4D 8B F0 C1 E8 03";
-/* Pool 0 alone at 2x more (the far ring on city maps needs ~+90k entries over a 290-340k peak of 524288; audit 18
+/* Pools 0 and 1 at 2x more (pool 1 since s89a: 437k of 524288 with the far ring on; the far ring on city maps needs ~+90k entries over a 290-340k peak of 524288; audit 18
  * criterion 9): at 0x10CE29 the pool capacities max(N/8, 512) go to [rsp+0x60] (pool 0: 0x1E41ED reads the block's first
  * dword for 0x58DDB0, stored at [scene+0x268]) and [rsp+0x64] (pool 1). The stub doubles [rsp+0x60] for the main world
  * (edi = N x mul there, from the first stub) and keeps N, so the render handles (0x1D83F0, a 24-bit field) keep their
@@ -5799,13 +5799,14 @@ static void RenderCapacityInstall(void)
     _Static_assert(sizeof keep == 28, "render capacity scene stub size");
     if (!ApiCodeMatches(exe + RENDER_SCENE_SITE, kRenderScenePin))
     { Note("difficulty: render capacity: the world creation's scene store is not the reviewed code; the main world keeps its pools"); return; }
-    /* mov [rsp+0x64],eax; cmp edi,N x mul; jne +2; add eax,eax; mov [rsp+0x60],eax; jmp 0x10CE31 */
+    /* cmp edi,N x mul; jne +2; add eax,eax; mov [rsp+0x60],eax; mov [rsp+0x64],eax; jmp 0x10CE31: pools 0 and 1 (s89a,
+     * city, far ring on: pool 1 reached 437k of 524288 while pool 0 stayed at 54 % of its doubled size) */
     static const uint8_t pool0[] = {
-        0x89, 0x44, 0x24, 0x64,                         /* +0  mov [rsp+0x64],eax */
-        0x81, 0xFF, 0, 0, 0, 0,                         /* +4  cmp edi,imm32 */
-        0x75, 0x02,                                     /* +10 jne +14 */
-        0x01, 0xC0,                                     /* +12 add eax,eax */
-        0x89, 0x44, 0x24, 0x60,                         /* +14 mov [rsp+0x60],eax */
+        0x81, 0xFF, 0, 0, 0, 0,                         /* +0  cmp edi,imm32 */
+        0x75, 0x02,                                     /* +6  jne +10 */
+        0x01, 0xC0,                                     /* +8  add eax,eax */
+        0x89, 0x44, 0x24, 0x60,                         /* +10 mov [rsp+0x60],eax */
+        0x89, 0x44, 0x24, 0x64,                         /* +14 mov [rsp+0x64],eax */
         0xE9, 0, 0, 0, 0};                              /* +18 jmp 0x10CE31 (ends +23) */
     _Static_assert(sizeof pool0 == 23, "render pool 0 stub size");
     const int pool0Ok = ApiCodeMatches(exe + RENDER_POOL0_SITE, kRenderPool0Pin) == 1;
@@ -5821,7 +5822,7 @@ static void RenderCapacityInstall(void)
     *g_renderCap.scenePtr = 0;
     int32_t rel = (int32_t)((intptr_t)(page + 0x40) - (intptr_t)(page + 22)); memcpy(page + 18, &rel, 4);
     rel = (int32_t)((intptr_t)(page + 0x44) - (intptr_t)(page + 29)); memcpy(page + 25, &rel, 4);
-    uint32_t mainN = RENDER_CAP_MAIN * RENDER_CAP_MUL; memcpy(page + 0x60 + 5, &mainN, 4); memcpy(page + 0x80 + 6, &mainN, 4);
+    uint32_t mainN = RENDER_CAP_MAIN * RENDER_CAP_MUL; memcpy(page + 0x60 + 5, &mainN, 4); memcpy(page + 0x80 + 2, &mainN, 4);
     intptr_t pool0Back = (intptr_t)(exe + RENDER_POOL0_BACK) - (intptr_t)(page + 0x80 + 23);
     intptr_t pool0Reach = (intptr_t)(page + 0x80) - (intptr_t)(exe + RENDER_POOL0_SITE + 5);
     if (pool0Back != (intptr_t)(int32_t)pool0Back || pool0Reach != (intptr_t)(int32_t)pool0Reach) { Note("difficulty: render capacity: the stub is out of reach"); return; }
@@ -5852,7 +5853,7 @@ static void RenderCapacityInstall(void)
         ApiWrite(exe + RENDER_CAP_SITE, jump, sizeof jump))
     { Note("difficulty: render capacity: the world creation could not be patched"); return; }
     g_renderCap.on = 1;
-    Note("difficulty: render capacity: the main world (capacity 0x%X) is made at %ux: culling pools of %u, not %u; pool 0 of %u", RENDER_CAP_MAIN, RENDER_CAP_MUL,
+    Note("difficulty: render capacity: the main world (capacity 0x%X) is made at %ux: culling pools of %u, not %u; pools 0 and 1 of %u", RENDER_CAP_MAIN, RENDER_CAP_MUL,
         RENDER_CAP_MAIN / 8u * RENDER_CAP_MUL, RENDER_CAP_MAIN / 8u, RENDER_CAP_MAIN / 8u * RENDER_CAP_MUL * (pool0Ok ? 2u : 1u));
 }
 

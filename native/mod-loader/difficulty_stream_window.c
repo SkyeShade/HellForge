@@ -37,6 +37,8 @@
 #define WINDOW_FAR_PER_SCAN 128u
 #define WINDOW_FAR_SHARE 0.70f
 #define WINDOW_FAR_BIG 1000.0f    /* the stamps visible past this enter in a first pass */
+#define WINDOW_FAR_LIVE 5000u     /* far stamps live at most: the city map's open spots need 3409-4318 (plan + reach); s89a
+                                   * held ~7000 from the spots before (each stays to its reach + 150 m), +2.5-3 GB */
 #define WINDOW_INSERT 0xC04EF0u
 #define WINDOW_REMOVE 0xC051C0u
 static const char kWindowInsertPin[] = "41 54 41 56 48 83 EC 48 44 0F B7 49 06 4C 8B D9 44 8B 61 2C 66 41 F7 D1";
@@ -54,7 +56,7 @@ static struct
     uint64_t handle[DIF_LOCATIONS];    /* slot -> its index handle */
     uint16_t* reach;                   /* plan entry -> the distance it enters within (m); kept across levels (not reset) */
     uint32_t reachRoom;                /* reach's room */
-    uint32_t entered, left, refusedFull, refusedIndex, refusedBodies, poseChecked, poseEqual, enteredFar, farHeld, evictedFar;
+    uint32_t entered, left, refusedFull, refusedIndex, refusedBodies, poseChecked, poseEqual, enteredFar, farHeld, evictedFar, farLive;
     uint32_t reachFar;                 /* the plan entries whose reach is past WINDOW_IN */
     int on, bad, insertOk, removeOk;
     ULONGLONG nextScan, farHoldUntil; /* far entries wait until then after an eviction */
@@ -256,6 +258,7 @@ static void WindowLeaveLocked(uint32_t s)
     memset((void*)((uintptr_t)g_stream.array + (size_t)s * kStreamRecord), 0, kStreamRecord);
     uint32_t e = g_win.plan[s];
     if (e < g_plan.count && g_plan.slot[e] == s) g_plan.slot[e] = 0;
+    if (g_streamOut2[s] > 0.0f && g_win.farLive > 0) g_win.farLive--;
     g_streamDeferred[s] = 0; g_streamPoseGood[s] = 0; g_streamNeedsUnit[s] = 0; g_streamDue[s] = 0; g_streamResource[s] = 0; g_streamOut2[s] = 0.0f;
     if (g_stream.deferred > 0) g_stream.deferred--;
     g_win.freeList[g_win.freeCount++] = s;
@@ -298,23 +301,25 @@ static void WindowScanFarLocked(uint32_t bodies, uint32_t slots)
 {
     uint32_t used = 0, capacity = 0, used1 = 0, capacity1 = 0;
     if (g_win.reach == NULL || g_win.reachFar == 0 || g_win.freeCount == 0 || GetTickCount64() < g_win.farHoldUntil) return;
+    if (g_win.farLive >= WINDOW_FAR_LIVE) { g_win.farHeld++; return; }
     if ((float)bodies >= WINDOW_FAR_SHARE * (float)slots || !RenderPool0(&used, &capacity) || (float)used >= WINDOW_FAR_SHARE * (float)capacity ||
         !RenderPool1(&used1, &capacity1) || (float)used1 >= WINDOW_FAR_SHARE * (float)capacity1)
     { g_win.farHeld++; return; }
     const float cell = g_plan.cell, near2 = WINDOW_IN * WINDOW_IN;
     const int reach = (int)ceilf(WINDOW_FAR / cell);
     uint32_t done = 0;
-    for (int pass = 0; pass < 2 && done < WINDOW_FAR_PER_SCAN; pass++)
-        for (int p = 0; p < g_stream.playerCount && done < WINDOW_FAR_PER_SCAN; p++)
+    const uint32_t room = WINDOW_FAR_LIVE - g_win.farLive, most = room < WINDOW_FAR_PER_SCAN ? room : WINDOW_FAR_PER_SCAN;
+    for (int pass = 0; pass < 2 && done < most; pass++)
+        for (int p = 0; p < g_stream.playerCount && done < most; p++)
         {
             float px = g_streamPlayerAt[p][0] + g_stream.half, py = g_streamPlayerAt[p][1] + g_stream.half;
             int ci = (int)floorf(px / cell), cj = (int)floorf(py / cell);
-            for (int j = cj - reach; j <= cj + reach && done < WINDOW_FAR_PER_SCAN; j++)
-                for (int i = ci - reach; i <= ci + reach && done < WINDOW_FAR_PER_SCAN; i++)
+            for (int j = cj - reach; j <= cj + reach && done < most; j++)
+                for (int i = ci - reach; i <= ci + reach && done < most; i++)
                 {
                     if (i < 0 || j < 0 || i >= STAMP_PLAN_GRID || j >= STAMP_PLAN_GRID) continue;
                     int b = j * STAMP_PLAN_GRID + i;
-                    for (uint32_t e = g_plan.start[b]; e < g_plan.start[b + 1] && done < WINDOW_FAR_PER_SCAN; e++)
+                    for (uint32_t e = g_plan.start[b]; e < g_plan.start[b + 1] && done < most; e++)
                     {
                         float r = (float)g_win.reach[e];
                         if (g_plan.slot[e] != 0 || r <= WINDOW_IN || (pass == 0) != (r > WINDOW_FAR_BIG)) continue;
@@ -322,7 +327,7 @@ static void WindowScanFarLocked(uint32_t bodies, uint32_t slots)
                         float dx = xy[0] - px, dy = xy[1] - py, d2 = dx * dx + dy * dy;
                         if (d2 <= near2 || d2 > r * r) continue;
                         if (!WindowEnterLocked(e, r + WINDOW_FAR_LEAVE)) { if (g_win.freeCount == 0 || g_win.refusedIndex) return; continue; }
-                        g_win.enteredFar++;
+                        g_win.enteredFar++; g_win.farLive++;
                         done++;
                     }
                 }
@@ -370,8 +375,8 @@ static void WindowNoteLocked(void)
     if (!g_win.on) return;
     uint32_t used = 0, capacity = 0, used1 = 0, capacity1 = 0;
     int pool = RenderPool0(&used, &capacity), pool1 = RenderPool1(&used1, &capacity1);
-    Note("difficulty: extra large maps: stamp window: %u in (slots used %u of %u, highest %u), %u entered (%u of them far, %u far ones taken out for the near ones), %u left so far; refused: %u table full, %u index full, %u scans over the body budget, %u far scans held (bodies %u of %u, culling pool 0 %u of %u%s, pool 1 %u of %u%s)",
+    Note("difficulty: extra large maps: stamp window: %u in (slots used %u of %u, highest %u), %u entered (%u of them far, %u far live, %u far ones taken out for the near ones), %u left so far; refused: %u table full, %u index full, %u scans over the body budget, %u far scans held (bodies %u of %u, culling pool 0 %u of %u%s, pool 1 %u of %u%s)",
         (DIF_LOCATIONS - g_win.base) - g_win.freeCount, (DIF_LOCATIONS - g_win.base) - g_win.freeCount, DIF_LOCATIONS - g_win.base, g_win.high, g_win.entered,
-        g_win.enteredFar, g_win.evictedFar, g_win.left, g_win.refusedFull, g_win.refusedIndex, g_win.refusedBodies, g_win.farHeld, g_stream.bodiesUsed, g_stream.bodySlots,
+        g_win.enteredFar, g_win.farLive, g_win.evictedFar, g_win.left, g_win.refusedFull, g_win.refusedIndex, g_win.refusedBodies, g_win.farHeld, g_stream.bodiesUsed, g_stream.bodySlots,
         used, capacity, pool ? "" : ", not read", used1, capacity1, pool1 ? "" : ", not read");
 }
