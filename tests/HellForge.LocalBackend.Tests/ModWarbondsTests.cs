@@ -227,9 +227,13 @@ static class ModWarbondsTests
         var items = mixed.Pages[0].Items;
         check(problems.Count == 0 && items[1].CurrencyMixId == Requisition && items[0].CurrencyMixId == 0, "An item's own currency was not taken: " + string.Join(" | ", problems));
         var lines = ModWarbonds.PlanLines([mixed]).ToList();
-        check(lines.Count == 5 && lines[1] == $"warbond_item\t{items[0].Id}\t1276729503" && lines[2] == $"warbond_item\t{items[1].Id}\t{Requisition}" &&
-            lines[3].EndsWith("1276729503", StringComparison.Ordinal) && lines[4].EndsWith(Requisition.ToString(), StringComparison.Ordinal),
+        check(lines.Count == 5 && lines[1] == $"warbond_item\t{items[0].Id}\t1276729503\t0" && lines[2] == $"warbond_item\t{items[1].Id}\t{Requisition}\t0" &&
+            lines[3].EndsWith("1276729503\t0", StringComparison.Ordinal) && lines[4].EndsWith($"{Requisition}\t0", StringComparison.Ordinal),
             "The plan does not name every item's currency: " + string.Join(" | ", lines));
+        var repeatable = ModWarbonds.Parse("test", "Test", JsonDocument.Parse($$"""
+            {"format":1,"warbonds":[{"key":"again","name":"Again","pages":[{"items":[{"mixId":{{mobilize[0]}},"cost":5,"repeatable":true}]}]}]}
+            """).RootElement, problems)[0];
+        check(ModWarbonds.PlanLines([repeatable]).Last().EndsWith("\t1", StringComparison.Ordinal), "The plan does not name a repeatable item.");
         check(Problems("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1,\"currency\":\"credits\"}]}]}").Count == 1, "An item with an unknown currency was accepted.");
         var logged = new List<string>();
         var service = new ModWarbondService([mixed]) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = logged.Add };

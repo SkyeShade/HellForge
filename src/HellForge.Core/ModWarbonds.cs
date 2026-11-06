@@ -406,10 +406,11 @@ public static class ModWarbonds
             s.Helmet.ToString(c), s.Cape.ToString(c), s.Weapon.ToString("x16", c));
     }
 
-    // "warbond_item", seasonPassItemId, currency mixId: every item with the currency it costs (its own, else its warbond's;
-    // the game's MVVM buy path assumes medals for all).
+    // "warbond_item", seasonPassItemId, currency mixId, repeatable (1 or 0): every item with the currency it costs (its own,
+    // else its warbond's; the game's MVVM buy path assumes medals for all), and whether the game must not keep it bought.
     static IEnumerable<string> ItemLines(Warbond w) => w.Pages.SelectMany(p => p.Items).Select(i => string.Join('\t', "warbond_item",
-        i.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), (i.CurrencyMixId != 0 ? i.CurrencyMixId : w.CurrencyMixId).ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        i.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), (i.CurrencyMixId != 0 ? i.CurrencyMixId : w.CurrencyMixId).ToString(System.Globalization.CultureInfo.InvariantCulture),
+        i.Repeatable ? "1" : "0"));
 
     static string WarbondLine(Warbond w) => string.Join('\t',
         "warbond", w.Id32.ToString(System.Globalization.CultureInfo.InvariantCulture), w.Variant.ToString(System.Globalization.CultureInfo.InvariantCulture),

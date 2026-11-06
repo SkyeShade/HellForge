@@ -49,10 +49,11 @@ static const WbBound kWbBounds[] = {
     {0x14E90D1u, 3, {0x83,0xfa,0x1c}}, {0x14E954Au, 3, {0x83,0xf9,0x1c}}, {0x14FDC1Au, 3, {0x83,0xfb,0x1c}},
     {0x196390Eu, 3, {0x83,0xfa,0x1c}}, {0x196C6E3u, 4, {0x41,0x83,0xf8,0x1c}}, {0x197D7CAu, 3, {0x83,0xfa,0x1c}}};
 
-/* Items with a currency of their own ("warbond_item <seasonPassItemId> <currency mixId>"), sorted by id at install:
- * what the game's per-item checks, charge and icons use instead of the warbond's (ModWarbondService prices them alike). */
+/* The mod warbonds' items ("warbond_item <seasonPassItemId> <currency mixId> <repeatable>"), sorted by id at install:
+ * the currency the game's per-item checks, charge and icons use instead of the warbond's (ModWarbondService prices them
+ * alike), and whether the item sells again after each purchase. */
 #define WB_ITEMS_MAX 4280
-typedef struct { uint32_t id, currency; } WbItemCurrency;
+typedef struct { uint32_t id, currency, repeatable; } WbItemCurrency;
 static WbItemCurrency g_wbItems[WB_ITEMS_MAX];
 static int g_wbItemCount;
 
@@ -62,17 +63,23 @@ static int CompareWbItems(const void* a, const void* b)
     return x < y ? -1 : x > y;
 }
 
-/* An item's currency: its own, or the warbond's (fallback). */
-static uint32_t ItemCurrency(uint32_t itemId, uint32_t fallback)
+static const WbItemCurrency* FindWbItem(uint32_t itemId)
 {
     int lo = 0, hi = g_wbItemCount - 1;
     while (lo <= hi)
     {
         int mid = (lo + hi) / 2;
-        if (g_wbItems[mid].id == itemId) return g_wbItems[mid].currency;
+        if (g_wbItems[mid].id == itemId) return &g_wbItems[mid];
         if (g_wbItems[mid].id < itemId) lo = mid + 1; else hi = mid - 1;
     }
-    return fallback;
+    return NULL;
+}
+
+/* An item's currency: its own, or the warbond's (fallback). */
+static uint32_t ItemCurrency(uint32_t itemId, uint32_t fallback)
+{
+    const WbItemCurrency* item = FindWbItem(itemId);
+    return item != NULL ? item->currency : fallback;
 }
 
 /* "warbond_showcase <id32> <from> <pose> <armor> <helmet> <cape> <weapon, hex>", after its warbond's line. */
@@ -94,10 +101,11 @@ static int WarbondShowcaseLine(char** f)
 /* "warbond <id32> <variant> <currency> <text key> <name> <season> <art from> <art texture, hex>" (ModWarbonds.PlanLines). */
 static int WarbondPlanLine(char** f, int n)
 {
-    if (n == 3 && strcmp(f[0], "warbond_item") == 0)
+    if ((n == 3 || n == 4) && strcmp(f[0], "warbond_item") == 0)
     {
         if (g_wbItemCount < WB_ITEMS_MAX)
-            g_wbItems[g_wbItemCount++] = (WbItemCurrency){(uint32_t)strtoul(f[1], NULL, 10), (uint32_t)strtoul(f[2], NULL, 10)};
+            g_wbItems[g_wbItemCount++] = (WbItemCurrency){(uint32_t)strtoul(f[1], NULL, 10), (uint32_t)strtoul(f[2], NULL, 10),
+                n == 4 && strcmp(f[3], "1") == 0};
         return 1;
     }
     if (n == 8 && strcmp(f[0], "warbond_showcase") == 0) return WarbondShowcaseLine(f);
@@ -400,6 +408,49 @@ static const char* InstallWarbondItems(uintptr_t game)
     return NULL;
 }
 
+/* Repeatable items (V): the reply to a warbond buy is completed by 0x13751D0(progression), its one caller 0xB64396. It
+ * reads the pending buy (+0x17799D8 flag, +0x17799DC seasonPassItemId), charges it and appends the id, once, to the
+ * purchased list (0x137524F: count +0xD8A58, ids from +0xD8A5C), whatever the detail's isRepeatable, which nothing reads;
+ * "bought" is a search of that list. The backend never lists a repeatable item, so it sells again after a login; this
+ * takes a repeatable mod item's id out of the list again after the buy, so it sells again at once. */
+#define WB_FINISH_BUY 0x13751D0u
+#define WB_PENDING_BUY 0x17799D8u
+#define WB_BOUGHT 0xD8A58u
+#define WB_BOUGHT_MAX 5280 /* the ids the list has room for (the next field +0xDDCDC) */
+static const uint8_t kWbFinishBuyPin[11] = {0x4c,0x8b,0xdc,0x57,0x48,0x81,0xec,0x90,0x03,0x00,0x00}; /* mov r11,rsp; push rdi; sub rsp,0x390 */
+static void (*g_wbFinishBuy)(uint8_t* progression);
+
+static void WarbondFinishBuy(uint8_t* progression)
+{
+    uint32_t id = 0;
+    if (progression[WB_PENDING_BUY] != 0) memcpy(&id, progression + WB_PENDING_BUY + 4, 4);
+    g_wbFinishBuy(progression);
+    const WbItemCurrency* item = id != 0 ? FindWbItem(id) : NULL;
+    if (item == NULL || !item->repeatable) return;
+    int32_t count;
+    memcpy(&count, progression + WB_BOUGHT, 4);
+    uint32_t* ids = (uint32_t*)(progression + WB_BOUGHT + 4);
+    for (int32_t i = 0; i < count && i < WB_BOUGHT_MAX; i++)
+    {
+        if (ids[i] != id) continue;
+        memmove(ids + i, ids + i + 1, (size_t)(count - i - 1) * 4);
+        count--;
+        memcpy(progression + WB_BOUGHT, &count, 4);
+        return;
+    }
+}
+
+/* NULL, or why not. */
+static const char* InstallWarbondRepeat(uintptr_t game)
+{
+    int repeatable = 0;
+    for (int i = 0; i < g_wbItemCount; i++) repeatable |= g_wbItems[i].repeatable != 0;
+    if (!repeatable) return NULL;
+    if (!PinMatches(game + WB_FINISH_BUY, kWbFinishBuyPin, sizeof kWbFinishBuyPin)) return "the purchase code does not match the reviewed build";
+    if (LoaderHook("warbond repeatable item", game + WB_FINISH_BUY, (void*)WarbondFinishBuy, (void**)&g_wbFinishBuy)) return "the purchase could not be hooked";
+    return NULL;
+}
+
 /* The first table reference or bound that does not match the reviewed build; 0 when all do. */
 static uint32_t WarbondTablePins(uintptr_t game)
 {
@@ -448,6 +499,8 @@ static void InstallModWarbonds(void)
     if (list) Note("warbonds: the game lists its 32 warbonds at most, mods' past them wait: %s", list);
     const char* items = InstallWarbondItems(game);
     if (items) Note("warbonds: an item in another currency than its warbond's is checked and charged in the warbond's on screen: %s", items);
+    const char* repeat = InstallWarbondRepeat(game);
+    if (repeat) Note("warbonds: a repeatable item shows claimed after its purchase until the next login: %s", repeat);
     size_t entries = WB_GAME_ENTRIES + (size_t)g_modWarbondCount;
     const char* table = InstallWarbondTable(game, entries);
     if (table) { Note("warbonds: mod warbonds show the game's placeholder: %s", table); return; }
