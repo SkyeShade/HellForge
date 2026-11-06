@@ -57,6 +57,7 @@ static const char kMoveCraterRenderPin[] = "40 55 56 41 56 41 57 48 8D AC 24 38 
 enum { MV_IDLE, MV_PACKAGE, MV_STAMPS, MV_KICK, MV_SETUP, MV_LOOKUP, MV_REPLAY, MV_TEARDOWN, MV_UNSTAMP, MV_SPAWN, MV_READY };
 #define MOVE_STAMPS_MAX 32768u /* the plan's stamps in reach too (difficulty_stream_window.c): a tile at vanilla density */
 #define MOVE_STAMP_MARGIN 512.0f /* locations this far past the tile's texels: a stamp's terrain reaches ~256 m from it */
+#define MOVE_STAMP_REACH 256.0f /* a stamp's terrain reaches about this far from it: these go in first */
 
 typedef void (*MoveUpdateFn)(uint64_t level);
 typedef void (*MoveCraterUpdateFn)(void* system, float dt, uint64_t r8, uint64_t r9);
@@ -309,11 +310,15 @@ static uint32_t MoveStampsSelect(uint64_t locs, uint32_t count, float half)
         g_move.stCount++; g_move.stTemp = g_move.stUnits;
     }
     /* the plan's stamps in reach (g_plan: buckets of the map in generator metres), with op 0x31's pose (WindowPose) */
-    uint32_t planned = 0, past = 0;
+    uint32_t planned = 0, past = 0, pastInner = 0;
     if (g_plan.level == g_world.levels && g_plan.count != 0)
     {
         const float cell = g_plan.cell, gx = g_move.centre[0] + half, gy = g_move.centre[1] + half;
         int i0 = (int)floorf((gx - reach) / cell), i1 = (int)floorf((gx + reach) / cell), j0 = (int)floorf((gy - reach) / cell), j1 = (int)floorf((gy + reach) / cell);
+        /* pass 0: the stamps whose terrain reaches the tile (MOVE_STAMP_REACH past its texels); pass 1: the rest of the
+         * margin. A full room then leaves out only the outer margin, never a stamp that shapes the tile. */
+        const float inner = NEAR_SIDE / 2 + MOVE_STAMP_REACH;
+        for (int pass = 0; pass < 2; pass++)
         for (int j = j0 < 0 ? 0 : j0; j <= j1 && j < STAMP_PLAN_GRID; j++)
             for (int i = i0 < 0 ? 0 : i0; i <= i1 && i < STAMP_PLAN_GRID; i++)
             {
@@ -322,8 +327,9 @@ static uint32_t MoveStampsSelect(uint64_t locs, uint32_t count, float half)
                 {
                     const uint8_t* loc = g_stamps.cand[e].loc;
                     float at[2]; memcpy(at, loc, 8);
-                    if (fabsf(at[0] - half - g_move.centre[0]) > reach || fabsf(at[1] - half - g_move.centre[1]) > reach) continue;
-                    if (g_move.stCount >= MOVE_STAMPS_MAX) { past++; continue; }
+                    const float dx = fabsf(at[0] - half - g_move.centre[0]), dy = fabsf(at[1] - half - g_move.centre[1]);
+                    if (dx > reach || dy > reach || (pass == 0) != (dx <= inner && dy <= inner)) continue;
+                    if (g_move.stCount >= MOVE_STAMPS_MAX) { past++; pastInner += pass == 0; continue; }
                     uint64_t holder = 0, resource = 0;
                     memcpy(&holder, loc + DIF_STREAM_LOC_RESOURCE, 8);
                     if (holder == 0 || SafeRead((uintptr_t)holder + 8, &resource, 8) || resource == 0) continue;
@@ -341,7 +347,7 @@ static uint32_t MoveStampsSelect(uint64_t locs, uint32_t count, float half)
             }
     }
     Note("difficulty: moving tiles: %u stamp terrains for the tile (%u of them the plan's%s)", g_move.stCount, planned, past ? "; more in reach than the tile's room" : "");
-    if (past) Note("difficulty: moving tiles: %u of the plan's stamps in reach left out (room %u)", past, MOVE_STAMPS_MAX);
+    if (past) Note("difficulty: moving tiles: %u of the plan's stamps in reach left out (room %u), %u of them within %.0f m of the tile", past, MOVE_STAMPS_MAX, pastInner, MOVE_STAMP_REACH);
     if (failed) Note("difficulty: moving tiles: %u stamp units could not be made at the offset", failed);
     if (g_move.stCount) { g_nearStampOffset[0] = 0.0f; g_nearStampOffset[1] = MOVE_STAMP_OFFSET; }
     return g_move.stCount;
