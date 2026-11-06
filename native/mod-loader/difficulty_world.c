@@ -1051,12 +1051,15 @@ typedef struct TileRunner
     LONG overlapGeneration;     /* the stamp overlap grid's run for this runner's current tile */
     uint64_t emptyQueries;      /* difficulty_maps.c IndexQueryClamped: queries of its empty index answered at once */
     int decommitted;            /* TileRunnersRelease ran: commit again before use */
+    volatile LONG where, op, tile; /* diagnostics: what the runner does now (TILE_AT_*), the op, the tile */
     uint8_t* block;             /* the generator block this runner builds a tile in (TerrainBlockSelf) */
     uint8_t* moved;             /* TerrainBuild's segment bitmap (a bit per 8 bytes of the block) */
     float offset[2];            /* the samplers' world offset while it builds (TerrainOffsetSelf) */
     int offsetOn;
     uint8_t one[0x19B0];
 } TileRunner;
+enum { TILE_AT_IDLE, TILE_AT_BUILD, TILE_AT_VORONOI, TILE_AT_OP, TILE_AT_SORT_WAIT, TILE_AT_IMAGE_WAIT, TILE_AT_MOVE, TILE_AT_PREPARE,
+       TILE_AT_SLOT_WAIT, TILE_AT_2B, TILE_AT_ZONES };
 static DWORD g_tileRunnerTls = TLS_OUT_OF_INDEXES;
 static TileGuard g_tileGuardMain;
 
@@ -1104,7 +1107,10 @@ static __attribute__((noinline)) LONG WorldTileGuarded(uint8_t* record, uint64_t
     while (handler != 2) SwitchToThread();
     uint32_t op = 0; memcpy(&op, record, 4);
     const int sortLock = OpUsesSortContext(op);
+    TileRunner* self = TileRunnerSelf();
+    if (self != NULL) { self->op = (LONG)op; self->where = sortLock ? TILE_AT_SORT_WAIT : TILE_AT_OP; }
     if (sortLock) AcquireSRWLockExclusive(&g_sortContextLock);
+    if (self != NULL) self->where = TILE_AT_OP;
     TileGuard* t = TileGuardSelf();
     t->fault = 0;
     RtlCaptureContext(&t->context);

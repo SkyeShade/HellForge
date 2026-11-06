@@ -137,9 +137,13 @@ static void* TerrainImage(void* texture)
     uint64_t key = (uint64_t)(uintptr_t)texture;
     if (g_terrainImagesLevel == g_world.levels)
         for (int k = 0; k < 4; k++) { uint64_t have = *(volatile uint64_t*)&g_terrainImages[k].key; if (have == 0) break; if (have == key) return g_terrainImages[k].desc; }
+    TileRunner* self = TileRunnerSelf();
+    LONG was = self != NULL ? self->where : 0;
+    if (self != NULL) self->where = TILE_AT_IMAGE_WAIT;
     AcquireSRWLockExclusive(&g_terrainImagesLock);
     void* result = TerrainImageLocked(texture);
     ReleaseSRWLockExclusive(&g_terrainImagesLock);
+    if (self != NULL) self->where = was;
     return result;
 }
 
@@ -501,6 +505,7 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
     else { g_terrainOffset[0] = ox; g_terrainOffset[1] = oy; g_terrainThread = GetCurrentThreadId(); }
 
     typedef void (*Handler)(uint64_t, uint64_t, uint64_t);
+    if (runner != NULL) { runner->tile = tile; runner->op = 0x25; runner->where = TILE_AT_VORONOI; }
     ((Handler)(g_world.game + 0xF3F8E0u))((uint64_t)(uintptr_t)one + 8, (uint64_t)(uintptr_t)one, context);
     WorldArenaReset(context); /* GenerateVoronoi is done: the arena as the game leaves it after an op */
     int ok = 1, seen04 = 0;
@@ -515,7 +520,7 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
         if (!WorldTileRuns(op)) continue;
         WorldTileRelocate(one, gen, (uintptr_t)B);
         { uint64_t r; memcpy(&r, one + 0x1990, 8); r ^= seed; memcpy(one + 0x1990, &r, 8); }
-        if (op == 0x78) TerrainTileZones(gen, ox, oy);
+        if (op == 0x78) { if (runner != NULL) runner->where = TILE_AT_ZONES; TerrainTileZones(gen, ox, oy); }
         volatile uint32_t index = 0;
         volatile int calls = 0;
         uint8_t phase = 0;
@@ -534,6 +539,7 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
     if (runner != NULL) runner->offsetOn = 0; else g_terrainThread = 0;
     *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius;
     if (!held) { *spacingP = spacing; *diskP = disk; }
+    if (runner != NULL) runner->where = TILE_AT_MOVE;
     if (!ok || !seen04) return 0;
     if (!move) return 1;
 
@@ -692,6 +698,7 @@ static struct
 {
     int on, count, draw, slotCount, started;
     LONG level;                 /* the level the section is for: its runners stop when another level begins */
+    ULONGLONG waitSince; int stallNoted;
     int list[1024];
     volatile LONG nextTile, slotOf[1024];
     CoarseSlot slots[COARSE_SLOTS_MAX];
@@ -709,7 +716,8 @@ static void CoarseRunnerLoop(TileRunner* r)
         for (int i = 0; i < g_coarse.slotCount && s == NULL; i++)
             if (g_coarse.slots[i].state == STAMP_SLOT_FREE && InterlockedCompareExchange(&g_coarse.slots[i].state, STAMP_SLOT_RUNNING, STAMP_SLOT_FREE) == STAMP_SLOT_FREE)
                 s = &g_coarse.slots[i];
-        if (s == NULL) { if (g_coarse.nextTile >= g_coarse.count || g_world.levels != g_coarse.level) break; Sleep(1); continue; }
+        if (s == NULL) { if (g_coarse.nextTile >= g_coarse.count || g_world.levels != g_coarse.level) break; r->where = TILE_AT_SLOT_WAIT; Sleep(1); continue; }
+        r->where = TILE_AT_BUILD;
         LONG k = InterlockedIncrement(&g_coarse.nextTile) - 1;
         if (k >= g_coarse.count) { InterlockedExchange(&s->state, STAMP_SLOT_FREE); break; }
         s->k = (int)k; s->t = g_coarse.list[k];
@@ -718,6 +726,7 @@ static void CoarseRunnerLoop(TileRunner* r)
         TileRunnerContext(r, g_coarse.ctx, g_coarse.buildS, g_coarse.P);
         s->ok = TerrainBuild(s->t, g_coarse.records, g_coarse.end, (uint64_t)(uintptr_t)r->ctx, g_coarse.g, g_coarse.h, g_coarse.gen, 1);
         r->block = NULL;
+        r->where = TILE_AT_PREPARE;
         if (s->ok)
         {
             /* the draw's record (TerrainDrawPrepare) on this slot's block */
@@ -736,7 +745,25 @@ static void CoarseRunnerLoop(TileRunner* r)
         MemoryBarrier();
         InterlockedExchange(&g_coarse.slotOf[k], (LONG)(s - g_coarse.slots));
         InterlockedExchange(&s->state, STAMP_SLOT_BUILT);
+        r->where = TILE_AT_IDLE;
     }
+}
+
+/* The runners' state, once a section when no tile finishes for 10 s (diagnostics for a stall). */
+static void TileRunnersStallNote(const char* section, int started)
+{
+    static const char* const kAt[] = {"idle", "build", "Voronoi", "op", "waiting for the sort lock", "waiting for the image lock", "move", "prepare",
+        "waiting for a slot", "op 0x2B", "zones"};
+    char text[1400]; int len = 0;
+    for (int id = 0; id <= started && id < TILE_RUNNERS_MAX && len < (int)sizeof text - 80; id++)
+    {
+        TileRunner* r = g_tileRunners[id];
+        if (r == NULL) continue;
+        LONG w = r->where;
+        len += snprintf(text + len, sizeof text - len, "%s%d: tile %ld op 0x%02lX %s", len ? "; " : "", id, (long)r->tile, (long)r->op,
+            w >= 0 && w < (LONG)(sizeof kAt / sizeof kAt[0]) ? kAt[w] : "?");
+    }
+    Note("difficulty: %s: no tile finished for 10 s; the runners: %s (%ld of %d jobs returned)", section, text, (long)g_tileFinished, started);
 }
 
 /* Once the template is made (TerrainStep's first call): the parallel section, or 0 for the serial path. */
@@ -780,7 +807,7 @@ static int CoarseStart(uint64_t records, uint32_t end, uint64_t context, uint64_
         *(volatile uint32_t*)(lg + 0x2D7C) = g_coarse.disk; *(volatile float*)spacingAt = g_coarse.spacing; g_tileSectionHeld = 0;
         return 0;
     }
-    g_coarse.on = 1; g_coarse.level = g_world.levels;
+    g_coarse.on = 1; g_coarse.level = g_world.levels; g_coarse.waitSince = 0; g_coarse.stallNoted = 0;
     Note("difficulty: terrain: %d tiles on %d runners (%d slots), drawn in tile order", g_coarse.count, g_coarse.started, g_coarse.slotCount);
     return 1;
 }
@@ -809,7 +836,14 @@ static int CoarseDraw(uint64_t context, uint64_t g, uint64_t h, uintptr_t gen, L
         if ((double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart > TERRAIN_BUDGET_MS) return 1;
         if (g_terrain.next >= g_coarse.count) return 0;
         LONG at = g_coarse.slotOf[g_terrain.next];
-        if (at < 0 || g_coarse.slots[at].state != STAMP_SLOT_BUILT) return 1; /* not built yet: the next frame */
+        if (at < 0 || g_coarse.slots[at].state != STAMP_SLOT_BUILT) /* not built yet: the next frame */
+        {
+            ULONGLONG now = GetTickCount64();
+            if (g_coarse.waitSince == 0) g_coarse.waitSince = now;
+            else if (now - g_coarse.waitSince > 10000 && !g_coarse.stallNoted) { g_coarse.stallNoted = 1; TileRunnersStallNote("terrain", g_coarse.started); }
+            return 1;
+        }
+        g_coarse.waitSince = 0;
         CoarseSlot* s = &g_coarse.slots[at];
         if (!s->ok)
         {
@@ -4725,7 +4759,8 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     for (int k = 0; k < tiles; k++) g_stampPar.slotOf[k] = -1;
     volatile LONG* slotOf = g_stampPar.slotOf;
     int started = R > 1 ? TileRunnersStart(R - 1) : 0;
-    int next = 0, commit = 0, selfRuns = 0;
+    int next = 0, commit = 0, selfRuns = 0, stallNoted = 0;
+    ULONGLONG stallSince = 0;
     uint32_t noIndex = 0, notFixed = 0, noRun = 0;
     uint64_t emptyQueries = 0;
     LARGE_INTEGER w0, w1; QueryPerformanceCounter(&w0);
@@ -4761,7 +4796,14 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
                 TlsSetValue(g_tileRunnerTls, NULL);
                 if (got > 0) { selfRuns++; progress = 1; }
             }
-            if (!progress) SwitchToThread();
+            if (!progress)
+            {
+                ULONGLONG now = GetTickCount64();
+                if (stallSince == 0) stallSince = now;
+                else if (now - stallSince > 10000 && !stallNoted) { stallNoted = 1; TileRunnersStallNote("stamps", started); }
+                SwitchToThread();
+            }
+            else stallSince = 0;
             continue;
         }
         if (next < tiles)
