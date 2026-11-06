@@ -951,8 +951,64 @@ static int HudGroupStub(uintptr_t game, uint8_t* code) /* before the block is ma
     if (!HudFindStub(game, code + 0x40)) { Note("difficulty: HUD: the objective rows' update is not the reviewed code; one mission's main objectives and steps"); return 0; }
     return code[13] == 0xFF && code[15] == 0xE9;
 }
+/* Research (s89a: 9 mains and 6 steps were COMPLETED, state 2, at mission start; static, subagent objstate: the only
+ * writer of 2 is 0x5D7E40(mgr, key), from the stage advance 0x5D7CE0 when ++stage == inst+0x1014, or from the API
+ * 0x4D7EA0 that ~250 entity/flow machines call): the first 64 completions, with the instance's objective id, class, its
+ * net stage (+0x18) of inst+0x1014, the count stage's +0x54 / +0x58 and the call chain, to tell which path does it. */
+#define OBJ_COMPLETE 0x5D7E40u
+static const char kObjCompletePin[] = "48 89 5C 24 18 48 89 74 24 20 57 48 83 EC 20 3B 15";
+typedef void (*ObjCompleteFn)(uint64_t mgr, uint32_t key);
+static ObjCompleteFn g_objComplete;
+static volatile LONG g_objCompleteNoted;
+static void ObjCompleteDetour(uint64_t mgr, uint32_t key)
+{
+    if (InterlockedIncrement(&g_objCompleteNoted) <= 64)
+    {
+        void* chain[8] = {0};
+        USHORT got = RtlCaptureStackBackTrace(1, 8, chain, NULL);
+        uint32_t n = 0, index = 0xFFFFFFFFu, id = 0, before = 0, stage = 0, stages = 0, have = 0, need = 0;
+        int32_t cls = -1;
+        uint64_t ptrs = 0, inst = 0, net = 0, p = 0, def = 0;
+        SafeRead(mgr + 0x24, &n, 4); SafeRead(mgr + 0x50, &ptrs, 8); SafeRead(mgr + 0x60, &inst, 8); SafeRead(mgr + 0x68, &net, 8);
+        for (uint32_t i = 0; i < n && i < 4096 && ptrs != 0; i++)
+        {
+            uint32_t k = 0;
+            if (SafeRead(ptrs + 8ull * i, &p, 8) || p == 0 || SafeRead(p + 8, &k, 4) || k != key) continue;
+            index = i; SafeRead(p, &def, 8); break;
+        }
+        if (index != 0xFFFFFFFFu)
+        {
+            SafeRead(inst + 0x1078ull * index + 0x1038, &cls, 4); SafeRead(inst + 0x1078ull * index + 0x1018, &before, 4);
+            SafeRead(inst + 0x1078ull * index + 0x1014, &stages, 4);
+            SafeRead(net + 0x64ull * index + 0x18, &stage, 4); SafeRead(net + 0x64ull * index + 0x54, &have, 4); SafeRead(net + 0x64ull * index + 0x58, &need, 4);
+            for (uint32_t d = 1; d < DIF_OBJECTIVE_ROWS && def != 0; d++)
+            {
+                uint64_t at = 0;
+                if (!SafeRead(g_world.game + DIF_OBJECTIVES + d * DIF_OBJECTIVE_ROW + 0x18, &at, 8) && at == def)
+                { SafeRead(g_world.game + DIF_OBJECTIVES + d * DIF_OBJECTIVE_ROW, &id, 4); break; }
+            }
+        }
+        char where[256]; int at = 0;
+        for (USHORT f = 0; f < got && at < (int)sizeof where - 24; f++)
+        {
+            uintptr_t a = (uintptr_t)chain[f];
+            at += a >= g_world.game && a < g_world.game + 0x8000000u ? snprintf(where + at, sizeof where - at, " g+0x%llx", (unsigned long long)(a - g_world.game))
+                                                                     : snprintf(where + at, sizeof where - at, " %p", chain[f]);
+        }
+        Note("difficulty: objectives: completed: instance %u (key 0x%08X, objective %08x, class %d, state %u before), stage %u of %u, count %u of %u; from%s",
+            index, key, id, cls, before, stage, stages, have, need, at ? where : " ?");
+    }
+    g_objComplete(mgr, key);
+}
+static void ObjCompleteWatch(uintptr_t game)
+{
+    if (g_objComplete != NULL) return;
+    if (ApiCodeMatches(game + OBJ_COMPLETE, kObjCompletePin) != 1) { Note("difficulty: objectives: the complete function is not the reviewed one; completions not logged"); return; }
+    if (LoaderHook("objective completions (research)", game + OBJ_COMPLETE, (void*)ObjCompleteDetour, (void**)&g_objComplete) != 0) g_objComplete = NULL;
+}
 static void HudGroupSite(uintptr_t game, uint8_t* code)
 {
+    ObjCompleteWatch(game);
     if (LoaderHook("the HUD's grouped objective rows", game + HUD_ROW_STATE, (void*)HudRowState, (void**)&g_hudRowState) != 0) return;
     uint8_t jump[5] = {0xE9};
     int32_t rel = DifficultyJumpRel(game + HUD_LIST_SITE, (uintptr_t)code); memcpy(jump + 1, &rel, 4);
