@@ -701,11 +701,15 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
  * every class 1 instance (manager [game+0x3326DA0]: count +0x24, instances +0x60 x 0x1078 with the class at +0x1038,
  * id pointers +0x50 -> +8) into a 16-entry stack list at rsp+0x30 with no bound (the 17th overwrites the /GS cookie at
  * rsp+0x70: the game ends at the first HUD update), then adds a row a list entry (0x184BDE0: 16 rows at most). Rows are
- * keyed by objective id: the updater finds an instance's row by id (0x17CFA21), and a row's state (0x1845E80) is the one
- * instance its id hashes to ([mgr+0x38]), set by 0x1846C40(row, state: 1 open, 2 done, 3 failed, 4 other) at 0x1846177.
- * So copies of an id already share a row. HudGroupInstall: the builder's list part (0x17CF6E7..0x17CF79A) becomes a call
- * to HudObjectiveRows (one row per distinct id, mains first, 16 rows at most), and the row's state covers every copy
- * (failed if any failed, as the game fails them all; done when all are done). The game's gating is map-wide already: every
+ * keyed by the instance's key ([ptr+8], one per instance: the manager's hash [mgr+0x38] maps it to the instance; s80a
+ * showed 16 keys for 48 instances), its text from the definition [ptr+0] (u64, the objective settings table, 0x4FA880).
+ * The updater finds an instance's row by key (0x17CFA21; none found = row 0) and keeps a near flag per row (rsp+0x30,
+ * zeroed at 0x17CF911, stored at 0x17CFA66); a row's state (0x1845E80) is its key's instance, set by 0x1846C40(row,
+ * state: 1 open, 2 done, 3 failed, 4 other) at 0x1846177. HudGroupInstall: the builder's list part (0x17CF6E7..0x17CF79A)
+ * becomes a call to HudObjectiveRows (one row per definition, keyed by its first instance, mains first, 16 rows at most);
+ * the updater's row search (0x17CFA0B..0x17CFA36) becomes HudRowOf (the key's row, else its definition's row) and the
+ * flag store an OR over the copies; the row's state covers every copy of the definition (failed if any failed, as the
+ * game fails them all; done when all are done). The game's gating is map-wide already: every
  * main waits for every step (0x5D3693), extraction for every class 0/1 instance (0x5D91B0). */
 #define HUD_LIST_SITE 0x17CF6E7u
 #define HUD_LIST_BACK 0x17CF79Au
@@ -716,6 +720,13 @@ static const char kHudListPin[] = "E8 04 A0 E0 FE 45 33 DB 45 33 C0 33 F6 44 8B 
 static const char kHudBackPin[] = "0F 57 C9 49 8D 8F F0 6D 00 00 E8";
 static const char kHudRowAddPin[] = "40 55 53 57 48 8D 6C 24 B0 48 81 EC";
 static const char kHudRowStatePin[] = "4C 8B DC 55 56 57 49 8D 6B A1 48 81 EC D0 00 00 00";
+#define HUD_FIND_SITE 0x17CFA0Bu  /* the updater's row search, 43 bytes: ebp = the key's row (0 when none), esi = the key */
+#define HUD_FIND_BACK 0x17CFA36u
+#define HUD_FLAG_SITE 0x17CFA66u  /* mov byte [rsp+rax+0x30], cl -> or */
+static const char kHudFindPin[] = "49 8B 45 50 4A 8B 14 E0 48 8B 44 24 28 48 05 50 62 01 00 8B 72 08 39 30 74 0F FF C1 48 05 68 F0 00 00 83 F9 10 72 EF EB 02 8B E9";
+static const char kHudFlagPin[] = "88 4C 04 30";
+static uint64_t g_hudRowDef[16];
+static uint32_t g_hudRowKey[16], g_hudRows;
 typedef void (*HudRowAddFn)(uint64_t widget, uint32_t id);
 typedef void (*HudRowStateFn)(uint64_t row, uint32_t state);
 static HudRowStateFn g_hudRowState;
@@ -728,42 +739,99 @@ static int HudInstances(uint64_t* inst, uint64_t* ids, uint32_t* n)
 }
 static void HudObjectiveRows(uint64_t hud)
 {
-    uint64_t inst = 0, ptrs = 0;
+    uint64_t inst = 0, ptrs = 0, defs[16];
     uint32_t n = 0, rows[16], k = 0, cut = 0;
+    g_hudRows = 0;
     if (!HudInstances(&inst, &ptrs, &n)) return;
     for (int32_t c = 0; c < 2; c++)
         for (uint32_t i = 0; i < n; i++)
         {
-            int32_t cls = -1; uint64_t p = 0; uint32_t id = 0;
-            if (SafeRead(inst + 0x1078ull * i + 0x1038, &cls, 4) || cls != c || SafeRead(ptrs + 8ull * i, &p, 8) || p == 0 || SafeRead(p + 8, &id, 4)) continue;
+            int32_t cls = -1; uint64_t p = 0, def = 0; uint32_t id = 0;
+            if (SafeRead(inst + 0x1078ull * i + 0x1038, &cls, 4) || cls != c || SafeRead(ptrs + 8ull * i, &p, 8) || p == 0 || SafeRead(p + 8, &id, 4) ||
+                SafeRead(p, &def, 8)) continue;
             uint32_t j = 0;
-            while (j < k && rows[j] != id) j++;
+            while (j < k && defs[j] != def) j++;
             if (j < k) continue;
-            if (k < 16) rows[k++] = id; else cut++;
+            if (k < 16) { defs[k] = def; rows[k++] = id; } else cut++;
         }
+    for (uint32_t j = 0; j < k; j++) { g_hudRowDef[j] = defs[j]; g_hudRowKey[j] = rows[j]; }
+    g_hudRows = k;
     for (uint32_t j = 0; j < k; j++) ((HudRowAddFn)(g_world.game + HUD_ROW_ADD))(hud + 0x6DF0, rows[j]);
     if (cut) InterlockedExchangeAdd(&g_hudRowsCut, (LONG)cut);
     static LONG noted;
     if (InterlockedIncrement(&noted) <= 4)
-        Note("difficulty: HUD: %u main objective and step rows for %u instances%s", k, n, cut ? " (ids past 16 rows not shown)" : "");
+        Note("difficulty: HUD: %u main objective and step rows (one per objective) for %u instances%s", k, n, cut ? " (objectives past 16 rows not shown)" : "");
 }
 static void HudRowState(uint64_t row, uint32_t state)
 {
     uint64_t inst = 0, ptrs = 0;
     uint32_t n = 0, id = 0;
-    if (state >= 1 && state <= 3 && !SafeRead(row + 0xF060, &id, 4) && HudInstances(&inst, &ptrs, &n))
+    uint64_t def = 0;
+    for (uint32_t j = 0; j < g_hudRows && j < 16; j++)
+        if (!SafeRead(row + 0xF060, &id, 4) && g_hudRowKey[j] == id) { def = g_hudRowDef[j]; break; }
+    if (state >= 1 && state <= 3 && def != 0 && HudInstances(&inst, &ptrs, &n))
     {
         uint32_t copies = 0, done = 0, failed = 0;
         for (uint32_t i = 0; i < n; i++)
         {
-            int32_t cls = -1, st = 0; uint64_t p = 0; uint32_t at = 0;
+            int32_t cls = -1, st = 0; uint64_t p = 0, at = 0;
             if (SafeRead(inst + 0x1078ull * i + 0x1038, &cls, 4) || (cls != 0 && cls != 1) || SafeRead(ptrs + 8ull * i, &p, 8) || p == 0 ||
-                SafeRead(p + 8, &at, 4) || at != id || SafeRead(inst + 0x1078ull * i + 0x1018, &st, 4)) continue;
+                SafeRead(p, &at, 8) || at != def || SafeRead(inst + 0x1078ull * i + 0x1018, &st, 4)) continue;
             copies++; done += st == 2; failed += st == 3;
         }
         if (copies > 1) state = failed ? 3u : done == copies ? 2u : state == 2 ? 1u : state;
     }
     g_hudRowState(row, state);
+}
+/* Called from the updater's row search (HUD_FIND_SITE, main thread, per instance of class 0/1 per frame): the row of the
+ * instance's key, else the row of its definition, else row 0 as the game; the key in the high half (esi after). */
+static uint64_t HudRowOf(uint64_t hud, uint32_t index)
+{
+    /* direct reads: the game reads the same manager, pointer and key at this site (0x17CF8E5, 0x17CFA0F, 0x17CFA1E) */
+    uint64_t mgr = *(const uint64_t*)(uintptr_t)(g_world.game + HUD_OBJECTIVES), ptrs = mgr ? *(const uint64_t*)(uintptr_t)(mgr + 0x50) : 0;
+    uint64_t p = ptrs ? *(const uint64_t*)(uintptr_t)(ptrs + 8ull * index) : 0;
+    if (p == 0) return 0;
+    uint64_t def = *(const uint64_t*)(uintptr_t)p;
+    uint32_t key = *(const uint32_t*)(uintptr_t)(p + 8), found = 0;
+    const uint32_t* rowKey = (const uint32_t*)(uintptr_t)(hud + 0x16250); /* widget +0x6DF0, rows +0x400 x 0xF068, key +0xF060 */
+    uint32_t want = key;
+    for (int pass = 0; pass < 2 && !found; pass++)
+    {
+        if (pass == 1)
+        {
+            uint32_t j = 0;
+            while (j < g_hudRows && j < 16 && g_hudRowDef[j] != def) j++;
+            if (j >= g_hudRows || j >= 16) break;
+            want = g_hudRowKey[j];
+        }
+        for (uint32_t r = 0; r < 16; r++)
+            if (*(const uint32_t*)((const uint8_t*)rowKey + 0xF068ull * r) == want) { found = r + 1; break; }
+    }
+    return ((uint64_t)key << 32) | (found ? found - 1 : 0);
+}
+static int HudFindStub(uintptr_t game, uint8_t* code) /* before the block is made executable */
+{
+    if (!ApiCodeMatches(game + HUD_FIND_SITE, kHudFindPin) || !ApiCodeMatches(game + HUD_FLAG_SITE, kHudFlagPin)) return 0;
+    static const uint8_t stub[] = {
+        0x48, 0x83, 0xEC, 0x40,                   /*  0 sub rsp, 0x40 (16-aligned at the site) */
+        0x0F, 0x11, 0x4C, 0x24, 0x20,             /*  4 movups [rsp+0x20], xmm1 (live across) */
+        0x0F, 0x11, 0x54, 0x24, 0x30,             /*  9 movups [rsp+0x30], xmm2 (live across) */
+        0x48, 0x8B, 0x4C, 0x24, 0x68,             /* 14 mov rcx, [rsp+0x68] (the HUD, rsp+0x28 before) */
+        0x44, 0x89, 0xE2,                         /* 19 mov edx, r12d (the instance) */
+        0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,       /* 22 mov rax, HudRowOf (imm64 at 24) */
+        0xFF, 0xD0,                               /* 32 call rax */
+        0x0F, 0x10, 0x4C, 0x24, 0x20,             /* 34 movups xmm1, [rsp+0x20] */
+        0x0F, 0x10, 0x54, 0x24, 0x30,             /* 39 movups xmm2, [rsp+0x30] */
+        0x48, 0x83, 0xC4, 0x40,                   /* 44 add rsp, 0x40 */
+        0x89, 0xC5,                               /* 48 mov ebp, eax (the row) */
+        0x48, 0xC1, 0xE8, 0x20,                   /* 50 shr rax, 32 */
+        0x89, 0xC6,                               /* 54 mov esi, eax (the key) */
+        0xE9, 0, 0, 0, 0};                        /* 56 jmp 0x17CFA36 (rel32 at 57) */
+    _Static_assert(sizeof stub == 61, "the HUD row search stub ends with its jump");
+    memcpy(code, stub, sizeof stub);
+    uint64_t to = (uint64_t)(uintptr_t)HudRowOf; memcpy(code + 24, &to, 8);
+    int32_t rel = (int32_t)((intptr_t)(game + HUD_FIND_BACK) - (intptr_t)(code + sizeof stub)); memcpy(code + 57, &rel, 4);
+    return 1;
 }
 static int HudGroupStub(uintptr_t game, uint8_t* code) /* before the block is made executable */
 {
@@ -777,6 +845,7 @@ static int HudGroupStub(uintptr_t game, uint8_t* code) /* before the block is ma
     memcpy(stub + 5, &to, 8);
     int32_t rel = (int32_t)((intptr_t)(game + HUD_LIST_BACK) - (intptr_t)(code + sizeof stub)); memcpy(stub + 16, &rel, 4);
     memcpy(code, stub, sizeof stub);
+    if (!HudFindStub(game, code + 0x40)) { Note("difficulty: HUD: the objective rows' update is not the reviewed code; one mission's main objectives and steps"); return 0; }
     return code[13] == 0xFF && code[15] == 0xE9;
 }
 static void HudGroupSite(uintptr_t game, uint8_t* code)
@@ -784,9 +853,13 @@ static void HudGroupSite(uintptr_t game, uint8_t* code)
     if (LoaderHook("the HUD's grouped objective rows", game + HUD_ROW_STATE, (void*)HudRowState, (void**)&g_hudRowState) != 0) return;
     uint8_t jump[5] = {0xE9};
     int32_t rel = DifficultyJumpRel(game + HUD_LIST_SITE, (uintptr_t)code); memcpy(jump + 1, &rel, 4);
-    if (ApiWrite(game + HUD_LIST_SITE, jump, sizeof jump)) { Note("difficulty: HUD: the objective list could not be patched"); return; }
+    uint8_t find[43]; memset(find, 0x90, sizeof find); find[0] = 0xE9;
+    rel = DifficultyJumpRel(game + HUD_FIND_SITE, (uintptr_t)(code + 0x40)); memcpy(find + 1, &rel, 4);
+    const uint8_t orFlag = 0x08; /* or byte [rsp+rax+0x30], cl: a row is near when any of its copies is */
+    if (ApiWrite(game + HUD_FIND_SITE, find, sizeof find) || ApiWrite(game + HUD_FLAG_SITE, &orFlag, 1) ||
+        ApiWrite(game + HUD_LIST_SITE, jump, sizeof jump)) { Note("difficulty: HUD: the objective list could not be patched"); return; }
     g_hudGrouped = 1;
-    Note("difficulty: HUD: main objective and step rows are one per id (16 rows), each row's state over its copies");
+    Note("difficulty: HUD: main objective and step rows are one per objective (16 rows), each row's state and near mark over its copies");
 }
 
 /* Op 0x16 places an objective only while the map's records of its template item stay under item+0x15C (u8; 0xF8FC87,
