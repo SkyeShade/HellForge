@@ -1047,6 +1047,7 @@ typedef struct TileRunner
     float scale;                /* the tile's rule scale (TileJobsInline's perm map; 1: none) */
     LONG overlapGeneration;     /* the stamp overlap grid's run for this runner's current tile */
     uint64_t emptyQueries;      /* difficulty_maps.c IndexQueryClamped: queries of its empty index answered at once */
+    int decommitted;            /* TileRunnersRelease ran: commit again before use */
     uint8_t one[0x19B0];
 } TileRunner;
 static DWORD g_tileRunnerTls = TLS_OUT_OF_INDEXES;
@@ -1103,6 +1104,27 @@ static __attribute__((noinline)) LONG WorldTileGuarded(uint8_t* record, uint64_t
     return 0;
 }
 
+/* One op's handler called directly as the dispatcher's case does ((record + 8, record, context), one call; ops whose case
+ * is only the handler call, e.g. 0x2B at 0xC157E0..0xC1580F), guarded like WorldTileGuarded. A runner of the stamp
+ * planning calls op 0x2B so: the dispatcher's path makes three unlocked shared writes on every call (the case's crash
+ * context label, exe 0x323E70 -> 0x742B0; the seed text at game+0x37CEDE0, 0xFC3E20; the telemetry append 0xBF4F20),
+ * which the generator thread makes at the same time for its own tile ops. */
+static __attribute__((noinline)) LONG WorldTileGuardedCall(uintptr_t handler, uint8_t* record, uint64_t context)
+{
+    static volatile LONG installed;
+    if (installed == 0 && InterlockedCompareExchange(&installed, 1, 0) == 0) { AddVectoredExceptionHandler(1, WorldTileFault); installed = 2; }
+    while (installed != 2) SwitchToThread();
+    TileGuard* t = TileGuardSelf();
+    t->fault = 0;
+    RtlCaptureContext(&t->context);
+    if (t->fault != 0) return t->fault; /* resumed here from WorldTileFault */
+    t->thread = GetCurrentThreadId();
+    t->weldFailed = 0;
+    ((void (*)(uint64_t, uint64_t, uint64_t))handler)((uint64_t)(uintptr_t)record + 8, (uint64_t)(uintptr_t)record, context);
+    t->thread = 0;
+    return 0;
+}
+
 /* The generation arena ([ctx+0]) emptied as the game's step 0xF26140 does after every finished op (0xF261FE..0xF26205,
  * 0x173BAB0: frees every chunk but the oldest and zeroes its use), so every op starts with an empty arena. The tile
  * runs call the dispatcher directly, outside that step: without this every tile's allocations stayed until the level's
@@ -1126,7 +1148,18 @@ static TileRunner* g_tileRunners[TILE_RUNNERS_MAX];
 static TileRunner* TileRunnerMake(int id)
 {
     if (id < 0 || id >= TILE_RUNNERS_MAX) return NULL;
-    if (g_tileRunners[id] != NULL) return g_tileRunners[id];
+    if (g_tileRunners[id] != NULL)
+    {
+        TileRunner* r = g_tileRunners[id];
+        if (r->decommitted)
+        {
+            if (VirtualAlloc((void*)(uintptr_t)r->chunk.data, TILE_RUNNER_ARENA, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
+            for (int j = 0; j < 8; j++)
+                if (r->regions[j] != NULL && VirtualAlloc(r->regions[j], TILE_JOB_REGION, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
+            r->decommitted = 0;
+        }
+        return r;
+    }
     if (g_tileHeaders == NULL) g_tileHeaders = (uint8_t*)VirtualAlloc(NULL, TILE_RUNNERS_MAX * TILE_HEADER_STRIDE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (g_tileHeaders == NULL) return NULL;
     TileRunner* r = (TileRunner*)VirtualAlloc(NULL, sizeof(TileRunner), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -1145,6 +1178,21 @@ static TileRunner* TileRunnerMake(int id)
     }
     g_tileRunners[id] = r;
     return r;
+}
+
+/* After a planning section: the runners' memory decommitted (the generation's peak comes later; TileRunnerMake
+ * commits it again for the next level). */
+static void TileRunnersRelease(void)
+{
+    for (int id = 0; id < TILE_RUNNERS_MAX; id++)
+    {
+        TileRunner* r = g_tileRunners[id];
+        if (r == NULL) continue;
+        VirtualFree((void*)(uintptr_t)r->chunk.data, TILE_RUNNER_ARENA, MEM_DECOMMIT);
+        for (int j = 0; j < 8; j++) if (r->regions[j] != NULL) VirtualFree(r->regions[j], TILE_JOB_REGION, MEM_DECOMMIT);
+        if (r->memory != NULL) { VirtualFree(r->memory, 0, MEM_RELEASE); r->memory = NULL; r->memoryBytes = 0; }
+        r->decommitted = 1;
+    }
 }
 
 /* The runner's context for one op 0x2B run: the level's context and settings as the section took them, its own arena
@@ -4245,9 +4293,16 @@ static void WorldShip(void)
     if (g_world.values != NULL && g_world.current != 1.0f) WorldWrite(1.0f);
 }
 
+/* HELLFORGE_XL_CENSUS=1: the install (and so its checks) on a level the loader does not grow too (InstallWorld). */
+static int WorldCensusOn(void)
+{
+    char v[8] = "";
+    return GetEnvironmentVariableA("HELLFORGE_XL_CENSUS", v, sizeof v) > 0 && v[0] == '1';
+}
+
 static const char* WorldSitesFailed(uintptr_t game)
 {
-    if (WorldScaleFor(g_difficulty.mapScale) <= 1) return NULL;
+    if (WorldScaleFor(g_difficulty.mapScale) <= 1 && !WorldCensusOn()) return NULL;
     uint8_t pin[9];
     if (SafeRead(game + DIF_WORLD_SIZE_SITE, pin, 9) || memcmp(pin, kWorldSizePin, 9) != 0)
         return "the level's size store is not the reviewed one (an extra large map needs it)";
@@ -4750,7 +4805,11 @@ static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a
 static const char* InstallWorld(DifficultyInstall* d)
 {
     uint32_t scale = WorldScaleFor(g_difficulty.mapScale);
-    if (scale <= 1) return NULL;
+    /* Research (HELLFORGE_XL_CENSUS=1): a level the loader does not grow (Hell Forge's difficulty 11 at map_scale 2,
+     * Extra Large Maps off) gets the install too, for the dispatcher's census (WorldDispatch: locations-<level>.tsv and
+     * the op attribution); its levels stay vanilla-size (WorldLevel: scale 1, as a vanilla level of an extra large
+     * session). Without the install no dispatcher hook and no level pointer (g_worldLevel) exist there. */
+    if (scale <= 1 && !WorldCensusOn()) return NULL;
     uintptr_t game = d->game;
     uint8_t* block = AllocateNearGame(game, 0x2000);
     if (block == NULL) return "no memory within 2 GB of game.dll for the extra large world";

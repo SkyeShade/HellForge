@@ -3927,6 +3927,8 @@ static volatile LONG g_tileJobsBroken; /* a runner did not return: one runner fr
 static const char kTileSubmitPin[] = "48 8B 05 3A 14 3F 02 4C 8B 90 88 00 00 00 41 FF D2 85 FF 0F 84 DE 01 00 00";
 static const char kTileAfterJobsPin[] = "4C 8B 7C 24 48 8B EF";
 static const char kTileNoJobsPin[] = "48 8B 8C 24 A0 00 00 00";
+/* op 0x2B's dispatcher case: the label call, then 0xF34CC0(rcx rsi + 8, rdx rsi, r8 r15) and the index step 0xC19E1C */
+static const char kTileCase2BPin[] = "48 8D 4E 08 4D 8B C7 48 8B D6 E8 B1 F4 31 00 E9";
 
 /* Each job, in order, on this thread, into the runner's own region (job+0x20, as WorldPlaceJob gives one on a larger
  * map; the merge reads the records through it), the rules' picks scaled to the tile's items through the jobs'
@@ -3980,7 +3982,8 @@ static int TileJobsInstall(void)
     uintptr_t game = g_world.game;
     if (g_tileRunnerTls == TLS_OUT_OF_INDEXES || g_tileRunnerTls >= 64)
     { Note("difficulty: stamps: no low TLS slot for the planning's runners; one runner"); return 0; }
-    if (!ApiCodeMatches(game + TILE_SUBMIT_SITE, kTileSubmitPin) || !ApiCodeMatches(game + 0xF34FF5u, kTileAfterJobsPin) || !ApiCodeMatches(game + 0xF3519Eu, kTileNoJobsPin))
+    if (!ApiCodeMatches(game + TILE_SUBMIT_SITE, kTileSubmitPin) || !ApiCodeMatches(game + 0xF34FF5u, kTileAfterJobsPin) || !ApiCodeMatches(game + 0xF3519Eu, kTileNoJobsPin) ||
+        !ApiCodeMatches(game + 0xC15800u, kTileCase2BPin))
     { Note("difficulty: stamps: op 0x2B's job submit is not the reviewed one; one runner"); return 0; }
     uint8_t* stub = AllocateNearGame(game, 0x100);
     if (stub == NULL) { Note("difficulty: stamps: no memory near game.dll for the runners' stub; one runner"); return 0; }
@@ -4108,7 +4111,9 @@ static void StampTile2B(TileRunner* r, StampSlot* s, int inlineJobs)
     volatile uint32_t at = 0;
     volatile int calls = 0;
     uint8_t phase = 0;
-    LONG fault = WorldTileGuarded(r->one, (uint64_t)(uintptr_t)r->ctx, &at, &phase, g_stampPar.g, g_stampPar.h, 100000, &calls);
+    LONG fault;
+    if (inlineJobs) { fault = WorldTileGuardedCall(g_world.game + 0xF34CC0u, r->one, (uint64_t)(uintptr_t)r->ctx); at = 1; }
+    else fault = WorldTileGuarded(r->one, (uint64_t)(uintptr_t)r->ctx, &at, &phase, g_stampPar.g, g_stampPar.h, 100000, &calls);
     if (!fault && at != 0) WorldArenaReset((uint64_t)(uintptr_t)r->ctx);
     QueryPerformanceCounter(&q1); s->t2B = (double)(q1.QuadPart - q0.QuadPart) / (double)qf.QuadPart;
     if (!inlineJobs) { InterlockedIncrement(&g_worldOpRun); StampRulesRestore(); }
@@ -4280,8 +4285,21 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     { Note("difficulty: stamps: the level's context, settings or record 91 did not read; no stamp rings"); return; }
     { uint32_t e = (uint32_t)extent; float four = 4.0f; memcpy(g_stampPar.settings2B + 0x2C, &e, 4); memcpy(g_stampPar.settings2B + 0x50, &four, 4);
       memcpy(g_stampPar.settings2B + 0x54, &four, 4); memcpy(g_stampPar.settings2B + 0x5C, &four, 4); }
+    /* Research (HELLFORGE_XL_TILE_COMPARE=1): the tiles run twice, one runner then the configured runners, and the two
+     * candidate arrays are compared byte for byte (the parallel planning must give the serial result exactly) */
+    static int compare = -1;
+    if (compare < 0) { char v[8] = ""; compare = GetEnvironmentVariableA("HELLFORGE_XL_TILE_COMPARE", v, sizeof v) > 0 && v[0] == '1'; }
+    StampCandidate* serial = NULL; uint32_t serialCount = 0;
+    for (int pass = 0; pass < (compare ? 2 : 1); pass++)
+    {
+    if (pass == 1)
+    {
+        g_stamps.count = 0; built = ran = made = 0; memset(why, 0, sizeof why); memset(sides, 0, sizeof sides);
+        tBuild = tFix = t2B = tCollect = 0;
+    }
     /* runners and slots: runner 0 is the generator's; slot 0 is g_terrain.block */
     int R = TileThreads();
+    if (compare && pass == 0) R = 1;
     static uint8_t* slotBlock[STAMP_SLOTS_MAX];
     static StampCandidate* slotCand[STAMP_SLOTS_MAX];
     int slots = R > 1 ? R + 2 : 1;
@@ -4373,8 +4391,42 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     g_stampTileRun = 0;
     g_world.below[0] = below[0]; g_world.below[1] = below[1];
     g_emptyIndexQueries += (LONG64)emptyQueries;
+    /* the slots' blocks and candidates and the runners' memory go (0.5-1 GB touched; the load's peak is later) */
+    if (!g_tileJobsBroken)
+    {
+        for (int i = 1; i < STAMP_SLOTS_MAX; i++) if (slotBlock[i] != NULL) { VirtualFree(slotBlock[i], 0, MEM_RELEASE); slotBlock[i] = NULL; }
+        for (int i = 0; i < STAMP_SLOTS_MAX; i++) if (slotCand[i] != NULL) { VirtualFree(slotCand[i], 0, MEM_RELEASE); slotCand[i] = NULL; }
+        TileRunnersRelease();
+    }
     Note("difficulty: stamps: the tiles ran on %d runners (%d engine jobs started, %d slots; the generator ran %d of %d tiles' op 0x2B itself) in %.1f s",
         R, started, g_stampPar.slotCount, selfRuns, tiles, tTiles);
+    if (compare && pass == 0 && g_stamps.count > 0)
+    {
+        serial = (StampCandidate*)VirtualAlloc(NULL, sizeof(StampCandidate) * (size_t)g_stamps.count, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (serial != NULL) { memcpy(serial, g_stamps.cand, sizeof(StampCandidate) * (size_t)g_stamps.count); serialCount = g_stamps.count; }
+    }
+    }
+    if (serial != NULL)
+    {
+        uint32_t differ = 0, first = 0xFFFFFFFFu, n = serialCount < g_stamps.count ? serialCount : g_stamps.count;
+        for (uint32_t i = 0; i < n; i++)
+            if (memcmp(&serial[i], &g_stamps.cand[i], sizeof(StampCandidate)) != 0) { if (differ++ == 0) first = i; }
+        if (differ == 0 && serialCount == g_stamps.count)
+            Note("difficulty: stamps: compare: the runners' %u candidates are byte-identical to one runner's", serialCount);
+        else
+        {
+            Note("difficulty: stamps: compare: DIFFERENT: one runner %u candidates, the runners %u; %u of the first %u differ (first at %u)",
+                serialCount, g_stamps.count, differ, n, first);
+            if (first < n)
+            {
+                const StampCandidate* x = &serial[first]; const StampCandidate* y = &g_stamps.cand[first];
+                float a[2], b2[2]; uint32_t ta = 0, tb = 0; memcpy(a, x->loc, 8); memcpy(b2, y->loc, 8); memcpy(&ta, x->loc + 0xD8, 4); memcpy(&tb, y->loc + 0xD8, 4);
+                Note("difficulty: stamps: compare: first difference: one runner (%.2f, %.2f) type %u hash 0x%X; the runners (%.2f, %.2f) type %u hash 0x%X",
+                    (double)a[0], (double)a[1], ta, x->hash, (double)b2[0], (double)b2[1], tb, y->hash);
+            }
+        }
+        VirtualFree(serial, 0, MEM_RELEASE);
+    }
     /* into the level, ring 0 first (larger first), then the rest by apparent size (side / distance), while the table has
      * room; each tested against the level's own locations and roads in its index. Not against the stamps added here:
      * each tile's run already tested its own with the game's footprint test, and boxes of rotated footprints overlap far
