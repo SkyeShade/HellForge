@@ -17,6 +17,7 @@ static class ModWarbondsTests
         Spec(check);
         var folder = Path.Combine(root, "mod-warbonds");
         Directory.CreateDirectory(folder);
+        ArtImages(check, folder);
         // Read from each loaded mod's folder: a mod without the file adds nothing, an unreadable one says so.
         HellForge.Core.ModManifest Mod(string id, string? text)
         {
@@ -169,6 +170,100 @@ static class ModWarbondsTests
         check(capped.Resolve().Count == Math.Min(room, 8) && lines.Any(l => l.Contains("\"w0\"") && l.Contains("premium")) &&
             (room >= 8 || lines.Any(l => l.Contains("lists 32"))), "Premium content or the 32-warbond list was not respected: " + string.Join(" | ", lines));
         check(capped.Apply("/SeasonPass", fixtures["/SeasonPass"]).GetArrayLength() == ModWarbondService.ListCap || room >= 8, "The list grew past 32 warbonds.");
+        Tokens(check, fixtures, mobilize);
+    }
+
+    // A premium look or an unlock price gives a warbond a token (the game's ownership, game.dll 0x136E470): served held when the
+    // warbond is open, sold for its price in Forge Credits through /Progression/buy/v2 when it is not.
+    static void Tokens(Action<bool, string> check, IReadOnlyDictionary<string, JsonElement> fixtures, List<uint> mobilize)
+    {
+        var spec = JsonDocument.Parse($$"""
+            {"format":1,"warbonds":[
+              {"key":"look","name":"Look","variant":"premium","pages":[{"items":[{"mixId":{{mobilize[0]}},"cost":5}]}]},
+              {"key":"paid","name":"Paid","unlock":{"currency":"forge-credits","cost":300},"pages":[{"items":[{"mixId":{{mobilize[1]}},"cost":5}]}]}]}
+            """);
+        var problems = new List<string>();
+        var parsed = ModWarbonds.Parse("test", "Test", spec.RootElement, problems);
+        check(parsed.Count == 2 && problems.Count == 0 && parsed[0].HasToken && parsed[0].UnlockCost == 0 && parsed[1].HasToken && parsed[1].UnlockCost == 300 &&
+            parsed[0].Token != 0 && parsed[0].Token != parsed[1].Token, "Warbond tokens were not given: " + string.Join(" | ", problems));
+        var (look, paid) = (parsed[0], parsed[1]);
+        JsonElement? Fixture(string path) => fixtures.TryGetValue(path, out var body) ? body : null;
+        var service = new ModWarbondService(parsed) { Source = Fixture, Log = _ => { } };
+        var list = service.Apply("/SeasonPass", fixtures["/SeasonPass"]).EnumerateArray().ToList();
+        uint[] Tokens(uint id32) => list.Single(e => e.GetProperty("id32").GetUInt32() == id32).GetProperty("premiumTokenMixIds").EnumerateArray().Select(t => t.GetUInt32()).ToArray();
+        check(Tokens(look.Id32).SequenceEqual([look.Token]) && Tokens(paid.Id32).SequenceEqual([paid.Token]) &&
+            service.Detail(paid.Id32.ToString())?.GetProperty("premiumTokenMixIds")[0].GetUInt32() == paid.Token, "A warbond's token is not in its list entry and pages.");
+        var catalogue = service.Apply("/Progression/items", fixtures["/Progression/items"]).EnumerateArray()
+            .Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _)).GroupBy(i => i.GetProperty("mixId").GetUInt32()).ToDictionary(g => g.Key, g => g.First());
+        long Price(uint token) => catalogue[token].GetProperty("buyPrice").EnumerateArray().Single(p => p.GetProperty("mixId").GetUInt32() == PaidContentSet.SuperCreditPrice).GetProperty("amount").GetInt64();
+        check(catalogue.ContainsKey(look.Token) && catalogue.ContainsKey(paid.Token) && Price(paid.Token) == 300 && Price(look.Token) == 1,
+            "A warbond's token is not in the catalogue at its price.");
+        var held = service.Apply("/Progression/inventory", JsonSerializer.SerializeToElement(new { items = Array.Empty<object>() })).GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet();
+        check(held.Contains(look.Token) && !held.Contains(paid.Token), "An open warbond's token is not held, or a priced one's is before it is bought.");
+
+        // Bought: refused while the wallet is short, then once for 300 Forge Credits, then never again; its items sell after.
+        using var store = ProfileStore.Open(null, "starter");
+        store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, 0x4C19589F, 100 - ProfileStore.Held(inventory, 0x4C19589F)) >= 0);
+        var purchases = new Purchases(store, id => catalogue.TryGetValue(id, out var item) ? item : null, service);
+        (int Status, string Reply) Post(string path, string body)
+        {
+            using var json = JsonDocument.Parse(body);
+            var (status, reply, _) = purchases.Handle(path, json.RootElement);
+            return (status, reply?.ToJsonString() ?? "");
+        }
+        string Unlock() => "{\"mixId\":" + paid.Token + ",\"amount\":1,\"warId\":801,\"expectedCost\":[{\"mixId\":" + PaidContentSet.SuperCreditPrice + ",\"amount\":300}]}";
+        string BuyItem(ModWarbonds.Warbond w) => "{\"seasonPassItemId\":" + w.Pages[0].Items[0].Id + ",\"warId\":801,\"expectedCost\":[]}";
+        check(Post("/SeasonPass/item/buy", BuyItem(paid)).Status != 200, "A priced warbond's item was sold before the warbond was bought.");
+        check(Post("/SeasonPass/item/buy", BuyItem(look)).Status == 200, "An open premium-look warbond's item was not sold.");
+        store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, PaidContentSet.ForgeCreditsWallet, 299) >= 0);
+        check(Post("/Progression/buy/v2", Unlock()).Status != 200, "A warbond was sold for less than its price.");
+        store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, PaidContentSet.ForgeCreditsWallet, 1) >= 0);
+        var bought = Post("/Progression/buy/v2", Unlock());
+        check(bought.Status == 200 && bought.Reply.Contains(paid.Token.ToString()) && bought.Reply.Contains(PaidContentSet.ForgeCreditsWallet.ToString()),
+            "A warbond was not sold for 300 Forge Credits: " + bought.Reply);
+        check(store.TryChange((_, inventory) =>
+        {
+            check(ProfileStore.Held(inventory, paid.Token) == 1 && ProfileStore.Held(inventory, PaidContentSet.ForgeCreditsWallet) == 0, "The bought warbond is not saved, or not paid.");
+            return false;
+        }) == false, "The profile check did not run.");
+        check(Post("/Progression/buy/v2", Unlock()).Status != 200, "A warbond was sold twice.");
+        check(Post("/SeasonPass/item/buy", BuyItem(paid)).Status == 200, "A bought warbond's item was not sold.");
+        check(new ModWarbondService(parsed) { Source = Fixture, UnlockAll = true, Log = _ => { } }.Owns(paid.Id32, _ => false), "Unlock-all does not own a priced warbond.");
+    }
+
+    // "art": {"image": ...}: a 2048 x 1024 PNG inside the mod's folder, named for the texture HellForge builds from it.
+    static void ArtImages(Action<bool, string> check, string root)
+    {
+        var mod = Directory.CreateDirectory(Path.Combine(root, "art-mod")).FullName;
+        static byte[] Header(int width, int height)
+        {
+            var png = new byte[33];
+            HellForge.Core.GameData.IconImage.PngSignature.CopyTo(png);
+            png[11] = 13; "IHDR"u8.CopyTo(png.AsSpan(12));
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(png.AsSpan(16), (uint)width);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(png.AsSpan(20), (uint)height);
+            return png;
+        }
+        File.WriteAllBytes(Path.Combine(mod, "card.png"), Header(2048, 1024));
+        File.WriteAllBytes(Path.Combine(mod, "small.png"), Header(1024, 512));
+        File.WriteAllBytes(Path.Combine(root, "outside.png"), Header(2048, 1024));
+        List<string> Parse(string art, out List<ModWarbonds.Warbond> warbonds)
+        {
+            var problems = new List<string>();
+            using var json = JsonDocument.Parse("{\"format\":1,\"warbonds\":[{\"key\":\"a\",\"name\":\"A\",\"art\":" + art + ",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}]}");
+            warbonds = ModWarbonds.Parse("mod", "Mod", json.RootElement, problems, mod);
+            return problems;
+        }
+        var problems = Parse("{\"image\":\"card.png\"}", out var good);
+        check(problems.Count == 0 && good[0].ArtImage == Path.Combine(mod, "card.png") && good[0].ArtFrom == 0 && good[0].ArtTexture == 0,
+            "A warbond's own art was not taken: " + string.Join(" | ", problems));
+        check(ModWarbonds.ArtTextureName("mod", "a") == ModWarbonds.ArtTextureName("mod", "a") && ModWarbonds.ArtTextureName("mod", "a") != ModWarbonds.ArtTextureName("mod", "b"),
+            "Art texture names are not stable and unique.");
+        check(ModWarbonds.PlanLines([good[0] with { ArtTexture = 0xDA2176742E3F1FB2 }]).Single().Split('\t')[8] == "da2176742e3f1fb2", "A warbond's built art is not in its plan line.");
+        foreach (var (art, why) in new[] { ("{\"image\":\"small.png\"}", "art of the wrong size"), ("{\"image\":\"../outside.png\"}", "art outside its mod's folder"),
+            ("{\"image\":\"none.png\"}", "art that is not there"), ("{\"image\":\"card.png\",\"from\":610512218}", "two kinds of art") })
+            check(Parse(art, out _).Count == 1, "A warbond with " + why + " was accepted.");
     }
 
     // The spec's checks: what the game holds (15 pages, 10 items, the 5 x 3 grid), prices, reachable pages and stable ids.
@@ -217,5 +312,17 @@ static class ModWarbondsTests
         check(cells.All(i => i.Id >= ModWarbonds.FirstItemId && i.Id < ModWarbonds.FirstItemId + ModWarbonds.ItemIdSpan) && cells.Select(i => i.Id).Distinct().Count() == 10,
             "Item ids are not unique or not above the game's.");
         check(ModWarbonds.Parse("other", "Other", fullKeyed.RootElement, [])[0].Id32 != parsed[0].Id32, "Two mods' warbonds with one key share an id.");
+
+        // The look: the variant, the line above the name (the mod's name by default) and a game warbond's art, in the plan.
+        check(parsed[0].Variant == 0 && parsed[0].Season == "Mod" && parsed[0].ArtFrom == 0, "A warbond's look does not default to free, its mod's name and no art.");
+        using var look = JsonDocument.Parse("{\"format\":1,\"warbonds\":[{\"key\":\"l\",\"name\":\"Look\",\"variant\":\"legendary\",\"season\":\"Act II\"," +
+            "\"art\":{\"from\":610512218},\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}]}");
+        var styled = ModWarbonds.Parse("mod", "Mod", look.RootElement, problems)[0];
+        var line = ModWarbonds.PlanLines([styled]).Single().Split('\t');
+        check(line.Length == 9 && line[8] == "0000000000000000" && line[0] == "warbond" && line[1] == styled.Id32.ToString() && line[2] == "2" && line[3] == "1276729503" &&
+            line[4] == "warbond/mod/l" && line[5] == "Look" && line[6] == "Act II" && line[7] == "610512218", "A warbond's plan line is wrong: " + string.Join("|", line));
+        foreach (var (field, why) in new[] { ("\"variant\":\"gold\"", "an unknown variant"), ("\"art\":{\"from\":12345}", "art from no game warbond"),
+            ("\"season\":\"\"", "an empty season line") })
+            check(Problems("{\"key\":\"a\",\"name\":\"A\"," + field + ",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}").Count == 1, "A warbond with " + why + " was accepted.");
     }
 }

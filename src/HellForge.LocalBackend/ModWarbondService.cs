@@ -49,7 +49,8 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         List<Served> result = [];
         foreach (var warbond in warbonds)
         {
-            if (list.Contains(warbond.Id32) || TableIds.Contains(warbond.Id32) || lookup.Catalogue?.Contains(warbond.Spent) == true)
+            if (list.Contains(warbond.Id32) || TableIds.Contains(warbond.Id32) || lookup.Catalogue?.Contains(warbond.Spent) == true ||
+                (warbond.HasToken && lookup.Catalogue?.Contains(warbond.Token) == true))
                 Report(warbond, "", "its id is one the game uses; rename its key");
             else if (result.Count >= ListCap - list.Count)
                 Report(warbond, "", $"the game lists {ListCap} warbonds, and {list.Count + result.Count} are listed already");
@@ -89,15 +90,19 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         var requirements = new JsonArray([.. warbond.Pages.Select(p => (JsonNode)p.Requirement)]);
         var entry = Head(warbond, total);
         entry["pageRequirements"] = requirements.DeepClone();
-        entry["premiumTokenMixIds"] = new JsonArray();
+        entry["premiumTokenMixIds"] = Tokens(warbond);
         var detail = Head(warbond, total);
         detail["layoutSize"] = new JsonObject { ["x"] = ModWarbonds.GridWidth, ["y"] = ModWarbonds.GridHeight };
         detail["layoutType"] = 1;
         detail["seasonPassPages"] = pages;
         detail["pageRequirements"] = requirements;
-        detail["premiumTokenMixIds"] = new JsonArray();
+        detail["premiumTokenMixIds"] = Tokens(warbond);
         return new Served(warbond, entry, detail, sells, total);
     }
+
+    // A warbond with a price or a premium look has a token, which owns it (game.dll 0x136E470); one without either has none,
+    // and the game takes it as owned. A premium look without a token would read WARBOND LOCKED under forge_credits.c.
+    static JsonArray Tokens(ModWarbonds.Warbond warbond) => warbond.HasToken ? [(JsonNode)warbond.Token] : [];
 
     static JsonObject Head(ModWarbonds.Warbond warbond, long total) => new()
     {
@@ -157,7 +162,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     public JsonElement Apply(string path, JsonElement body)
     {
         if (warbonds.Count == 0 || path is not ("/SeasonPass" or "/Progression/items" or "/Progression/inventory" or "/Progression")) return body;
-        if (path is ("/Progression/inventory" or "/Progression") && !UnlockAll) return body;
+        if (path == "/Progression" && !UnlockAll) return body;
         var served = Resolve();
         if (served.Count == 0) return body;
         var node = JsonNode.Parse(body.GetRawText());
@@ -165,7 +170,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         {
             ("/SeasonPass", JsonArray list) => AddEntries(list, served),
             ("/Progression/items", JsonArray catalogue) => AddCounters(catalogue, served),
-            ("/Progression/inventory", JsonObject { } inventory) when inventory["items"] is JsonArray held => FillCounters(held, served),
+            ("/Progression/inventory", JsonObject { } inventory) when inventory["items"] is JsonArray held => HoldTokens(held, served) | (UnlockAll && FillCounters(held, served)),
             ("/Progression", JsonObject progression) => BuyAll(progression, served),
             _ => false,
         };
@@ -180,9 +185,18 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         return true;
     }
 
-    // Each warbond's spent counter: a consumable like the game's medalsSpent items.
+    // Each warbond's spent counter (a consumable like the game's medalsSpent items) and its token, priced in Super Credits as
+    // the game's are (the warbond button reads that price, 0x136C270; Purchases takes it in Forge Credits).
     static bool AddCounters(JsonArray catalogue, IReadOnlyList<Served> served)
     {
+        foreach (var warbond in served.Select(w => w.Spec).Where(w => w.HasToken))
+            catalogue.Add((JsonNode)new JsonObject
+            {
+                ["itemId"] = warbond.Token, ["mixId"] = warbond.Token, ["isConsumable"] = false, ["requiredLevel"] = 0,
+                ["progressionCategory"] = 0, ["tags"] = new JsonArray(), ["requiredItems"] = new JsonArray(),
+                ["buyPrice"] = new JsonArray(new JsonObject { ["mixId"] = PaidContentSet.SuperCreditPrice, ["amount"] = Math.Max(warbond.UnlockCost, 1) }),
+                ["sellPrice"] = new JsonArray(),
+            });
         foreach (var warbond in served)
             catalogue.Add((JsonNode)new JsonObject
             {
@@ -190,6 +204,15 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
                 ["progressionCategory"] = 0, ["tags"] = new JsonArray(), ["requiredItems"] = new JsonArray(),
                 ["buyPrice"] = new JsonArray(), ["sellPrice"] = new JsonArray(),
             });
+        return true;
+    }
+
+    // The tokens of open warbonds (a premium look, no price) are everyone's; on unlock-all every token is.
+    bool HoldTokens(JsonArray held, IReadOnlyList<Served> served)
+    {
+        var have = held.OfType<JsonObject>().Select(i => (uint?)i["mixId"]).ToHashSet();
+        foreach (var warbond in served.Select(w => w.Spec).Where(w => w.HasToken && (w.UnlockCost == 0 || UnlockAll) && !have.Contains(w.Token)))
+            held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Token, ["amount"] = 1, ["isDiscovered"] = true });
         return true;
     }
 
@@ -239,6 +262,14 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     }
 
     public bool IsModWarbond(uint id32) => warbonds.Any(w => w.Id32 == id32);
+
+    // Whether a mod warbond is the player's: open to everyone, unlock-all, or its token bought (held is the saved inventory).
+    public bool Owns(uint id32, Func<uint, bool> held) =>
+        warbonds.FirstOrDefault(w => w.Id32 == id32) is { } warbond && (warbond.UnlockCost == 0 || UnlockAll || held(warbond.Token));
+
+    // A mod warbond's token sold for its price (in Forge Credits), or null for any other item.
+    public long? UnlockPrice(uint mixId) =>
+        mixId == 0 ? null : Resolve().Select(w => w.Spec).FirstOrDefault(w => w.HasToken && w.UnlockCost > 0 && w.Token == mixId)?.UnlockCost;
 
     // Mods' weapons and stratagems a warbond sells: the player holds one only once an item selling it is bought (an
     // unlock-all profile has bought them all). An item no warbond sells is the mod's to give, as before.

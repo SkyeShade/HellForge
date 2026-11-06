@@ -37,7 +37,24 @@ public static class ModWarbonds
         IReadOnlyList<Page> Pages)
     {
         public long TotalCost => Pages.Sum(page => page.Items.Sum(item => item.Cost));
+        // How the game shows it (the mod loader's entry in the game's warbond table): its look (Variants), the line above
+        // its name (the mod's name by default), and the game warbond whose art it shows (0: the game's placeholder).
+        public int Variant { get; init; }
+        public string Season { get; init; } = "";
+        public uint ArtFrom { get; init; }
+        // Its own picture instead ("art": {"image": ...}): the PNG, and the texture HellForge builds from it (ModWarbondArt;
+        // 0 until built, and then the game's placeholder).
+        public string ArtImage { get; init; } = "";
+        public ulong ArtTexture { get; init; }
+        // Its price in Forge Credits, bought once with the game's warbond button (0: open to everyone), and its token: the
+        // item that owns it (a premium or legendary look needs one too, held by everyone when the warbond is open).
+        public long UnlockCost { get; init; }
+        public uint Token { get; init; }
+        public bool HasToken => Variant != 0 || UnlockCost > 0;
     }
+
+    // A warbond's look in the game: the card's style, tag and token kind (the game's table +0x48).
+    public static IReadOnlyList<string> Variants { get; } = ["free", "premium", "legendary"];
 
     // A page: what must have been spent on the warbond to open it, and its items.
     public sealed record Page(long Requirement, IReadOnlyList<Item> Items);
@@ -65,7 +82,7 @@ public static class ModWarbonds
             try
             {
                 using var json = JsonDocument.Parse(File.ReadAllText(file), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-                warbonds.AddRange(Parse(mod.Id, mod.Name, json.RootElement, problems));
+                warbonds.AddRange(Parse(mod.Id, mod.Name, json.RootElement, problems, mod.Folder));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
             {
@@ -79,7 +96,7 @@ public static class ModWarbonds
         foreach (var warbond in warbonds)
         {
             var items = warbond.Pages.SelectMany(page => page.Items).Select(item => item.Id).ToList();
-            if (!ids.Add(warbond.Id32) || !ids.Add(warbond.Spent) || items.Any(itemIds.Contains))
+            if (!ids.Add(warbond.Id32) || !ids.Add(warbond.Spent) || !ids.Add(warbond.Token) || items.Any(itemIds.Contains))
             {
                 problems.Add($"{warbond.Mod}: warbond \"{warbond.Key}\" has an id another warbond has; rename its key.");
                 continue;
@@ -91,7 +108,7 @@ public static class ModWarbonds
     }
 
     // One mod's file: its warbonds that pass, with a problem for each that does not.
-    public static List<Warbond> Parse(string modId, string modName, JsonElement root, List<string> problems)
+    public static List<Warbond> Parse(string modId, string modName, JsonElement root, List<string> problems, string? folder = null)
     {
         List<Warbond> warbonds = [];
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("format", out var format) || !format.TryGetInt32(out var version) || version != Format)
@@ -111,7 +128,7 @@ public static class ModWarbonds
             index++;
             try
             {
-                var warbond = ParseWarbond(modId, entry);
+                var warbond = ParseWarbond(modId, modName, entry, folder);
                 if (!keys.Add(warbond.Key)) throw new InvalidDataException($"the key \"{warbond.Key}\" is used twice");
                 warbonds.Add(warbond);
             }
@@ -124,14 +141,86 @@ public static class ModWarbonds
         return warbonds;
     }
 
-    static Warbond ParseWarbond(string modId, JsonElement entry)
+    // "art": {"from": <a game warbond's id32>}: that warbond's pictures (the ids in mappings/warbond-art.json, or Helldivers
+    // Mobilize's); or {"image": "<a PNG in the mod's folder>"}: the mod's own, ArtWidth x ArtHeight as the game's are.
+    static (uint From, string Image) Art(JsonElement entry, string? folder)
+    {
+        if (!entry.TryGetProperty("art", out var art)) return (0, "");
+        const string Shape = "\"art\" is {\"from\": <the id of a game warbond>} or {\"image\": \"<a PNG in your mod's folder>\"}";
+        if (art.ValueKind != JsonValueKind.Object || art.EnumerateObject().Count() != 1) throw new InvalidDataException(Shape);
+        if (art.TryGetProperty("image", out var image))
+            return (0, ArtImage(image.ValueKind == JsonValueKind.String ? image.GetString()! : "", folder) ?? throw new InvalidDataException(Shape));
+        if (!art.TryGetProperty("from", out var from) || !from.TryGetUInt32(out var id) ||
+            (id != PremiumContent.FreeWarbond && GameData.WarbondLocks.Mapping().All(w => w.Id != id)))
+            throw new InvalidDataException(Shape);
+        return (id, "");
+    }
+
+    public const int ArtWidth = 2048, ArtHeight = 1024;
+
+    // The image's full path: a PNG inside the mod's folder of ArtWidth x ArtHeight (read from its header); null when the
+    // value is not a relative path.
+    static string? ArtImage(string relative, string? folder)
+    {
+        if (relative.Length == 0 || Path.IsPathRooted(relative) || folder == null) return null;
+        var root = Path.GetFullPath(folder);
+        var path = Path.GetFullPath(Path.Combine(root, relative));
+        if (!path.StartsWith(root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.Ordinal)) return null;
+        var header = new byte[24];
+        try
+        {
+            using var file = File.OpenRead(path);
+            file.ReadExactly(header);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidDataException($"its art \"{relative}\" could not be read ({error.Message})");
+        }
+        if (!header.AsSpan(0, 8).SequenceEqual(GameData.IconImage.PngSignature) ||
+            BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(16)) != ArtWidth || BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(20)) != ArtHeight)
+            throw new InvalidDataException($"its art \"{relative}\" is not a {ArtWidth} x {ArtHeight} PNG");
+        return path;
+    }
+
+    // The name of the texture built from a warbond's image: the first eight bytes of a SHA-256, never 0.
+    public static ulong ArtTextureName(string modId, string key)
+    {
+        var name = BinaryPrimitives.ReadUInt64LittleEndian(SHA256.HashData(Encoding.UTF8.GetBytes("warbond-art/" + modId + "/" + key)));
+        return name == 0 ? 1ul : name;
+    }
+
+    // "unlock": {"currency": "forge-credits", "cost": <n>}: the warbond is bought once before its items (the game's warbond
+    // button takes the Super Credits price, which HellForge pays in Forge Credits).
+    static long UnlockCost(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("unlock", out var unlock)) return 0;
+        if (unlock.ValueKind != JsonValueKind.Object || Text(unlock, "currency") != "forge-credits" || !unlock.TryGetProperty("cost", out var cost) ||
+            !cost.TryGetInt64(out var amount) || amount is < 1 or > MaxCost)
+            throw new InvalidDataException($"\"unlock\" is {{\"currency\": \"forge-credits\", \"cost\": 1 to {MaxCost}}}");
+        return amount;
+    }
+
+    // The line above its name (the mod's name by default) and its variant.
+    static (string Season, int Variant) Look(JsonElement entry, string modName)
+    {
+        var season = entry.TryGetProperty("season", out _) ? Text(entry, "season").Trim() : modName;
+        if (season.Length is 0 or > 32 || season.Any(char.IsControl)) throw new InvalidDataException("\"season\" is 1 to 32 characters on one line");
+        var variant = entry.TryGetProperty("variant", out _) ? Variants.ToList().IndexOf(Text(entry, "variant")) : 0;
+        if (variant < 0) throw new InvalidDataException($"\"variant\" is one of {string.Join(", ", Variants)}");
+        return (season, variant);
+    }
+
+    static Warbond ParseWarbond(string modId, string modName, JsonElement entry, string? folder)
     {
         if (entry.ValueKind != JsonValueKind.Object) throw new InvalidDataException("it is not an object");
         var key = Text(entry, "key");
         if (key.Length is 0 or > 64 || !key.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '_' or '.'))
             throw new InvalidDataException("\"key\" is 1 to 64 of a-z, 0-9, '-', '_' and '.'");
         var name = Text(entry, "name").Trim();
-        if (name.Length is 0 or > 64) throw new InvalidDataException("\"name\" is 1 to 64 characters");
+        if (name.Length is 0 or > 64 || name.Any(char.IsControl)) throw new InvalidDataException("\"name\" is 1 to 64 characters on one line");
+        var (season, variant) = Look(entry, modName);
+        var (artFrom, artImage) = Art(entry, folder);
+        var unlockCost = UnlockCost(entry);
         var currency = entry.TryGetProperty("currency", out var c) ? c.ValueKind == JsonValueKind.String ? c.GetString()! : "" : "medals";
         if (!Currencies.TryGetValue(currency, out var currencyMixId))
             throw new InvalidDataException($"\"currency\" is one of {string.Join(", ", Currencies.Keys)}");
@@ -140,7 +229,8 @@ public static class ModWarbonds
         List<Page> pages = [];
         var itemKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var pageJson in pagesJson.EnumerateArray()) pages.Add(ParsePage(modId, key, pageJson, pages, itemKeys));
-        return new Warbond(modId, key, name, Hash("warbond/" + modId + "/" + key), Hash("warbond-spent/" + modId + "/" + key), currency, currencyMixId, pages);
+        return new Warbond(modId, key, name, Hash("warbond/" + modId + "/" + key), Hash("warbond-spent/" + modId + "/" + key), currency, currencyMixId, pages)
+            { Variant = variant, Season = season, ArtFrom = artFrom, ArtImage = artImage, UnlockCost = unlockCost, Token = Hash("warbond-token/" + modId + "/" + key) };
     }
 
     // A page: its requirement opens it no sooner than the page before it, and no later than the pages before it cost.
@@ -250,6 +340,14 @@ public static class ModWarbonds
         value.ValueKind == JsonValueKind.Array && value.GetArrayLength() == 2 && value[0].TryGetInt32(out var a) && value[1].TryGetInt32(out var b)
             ? (a, b) : throw new InvalidDataException(what + " is [x, y]");
 
+    // The mod loader's plan lines: one per warbond, for its entry in the game's warbond table (native warbonds.c):
+    // warbond, id32, variant, currency mixId, its text key, name, season, the game warbond whose art it shows, and the
+    // texture built from its own image (hex; 0 for none).
+    public static IEnumerable<string> PlanLines(IEnumerable<Warbond> warbonds) => warbonds.Select(w => string.Join('\t',
+        "warbond", w.Id32.ToString(System.Globalization.CultureInfo.InvariantCulture), w.Variant.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        w.CurrencyMixId.ToString(System.Globalization.CultureInfo.InvariantCulture), "warbond/" + w.Mod + "/" + w.Key, w.Name, w.Season,
+        w.ArtFrom.ToString(System.Globalization.CultureInfo.InvariantCulture), w.ArtTexture.ToString("x16", System.Globalization.CultureInfo.InvariantCulture)));
+
     // A stable 32-bit id: the first four bytes of the text's SHA-256, never 0.
     public static uint Hash(string text)
     {
@@ -268,7 +366,8 @@ public static class ModWarbonds
             list.Add((JsonNode)new JsonObject
             {
                 ["mod"] = w.Mod, ["key"] = w.Key, ["name"] = w.Name, ["id32"] = w.Id32, ["spent"] = w.Spent,
-                ["currency"] = w.Currency, ["currencyMixId"] = w.CurrencyMixId,
+                ["currency"] = w.Currency, ["currencyMixId"] = w.CurrencyMixId, ["variant"] = w.Variant, ["season"] = w.Season, ["artFrom"] = w.ArtFrom,
+                ["unlockCost"] = w.UnlockCost, ["token"] = w.Token,
                 ["pages"] = new JsonArray([.. w.Pages.Select(p => (JsonNode)new JsonObject
                 {
                     ["requirement"] = p.Requirement,
@@ -296,6 +395,10 @@ public static class ModWarbonds
                 [.. p.GetProperty("items").EnumerateArray().Select(i => new Item(i.GetProperty("id").GetUInt32(),
                     new Ref(i.GetProperty("kind").GetString()!, i.GetProperty("mixId").GetUInt32(), i.GetProperty("name").GetString()!, i.GetProperty("mod").GetString()!),
                     i.GetProperty("cost").GetInt64(), i.GetProperty("x").GetInt32(), i.GetProperty("y").GetInt32(),
-                    i.GetProperty("width").GetInt32(), i.GetProperty("height").GetInt32(), i.GetProperty("repeatable").GetBoolean()))]))]))];
+                    i.GetProperty("width").GetInt32(), i.GetProperty("height").GetInt32(), i.GetProperty("repeatable").GetBoolean()))]))])
+            {
+                Variant = w.GetProperty("variant").GetInt32(), Season = w.GetProperty("season").GetString()!, ArtFrom = w.GetProperty("artFrom").GetUInt32(),
+                UnlockCost = w.GetProperty("unlockCost").GetInt64(), Token = w.GetProperty("token").GetUInt32(),
+            })];
     }
 }

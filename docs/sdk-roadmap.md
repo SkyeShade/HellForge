@@ -95,8 +95,8 @@ Full parity with the HD2R Editor, in three steps:
   ([roadmap.md](roadmap.md#subfactions)). A subfaction is set up with the mission, never swapped in per spawn.
 - Mod content in progression: a level requirement or a price for a mod's stratagems and weapons
   ([roadmap.md](roadmap.md#progression)). Warbonds are started without code (`hellforge-warbonds.json`,
-  [modding/warbonds.md](modding/warbonds.md)). Left: the warbond's name, art and price icons in game, more than 32
-  warbonds, per-item currencies, and an `add_warbond` call (SDK 17).
+  [modding/warbonds.md](modding/warbonds.md)). Left: more than 32 warbonds, per-item currencies, and an
+  `add_warbond` call (SDK 17).
 - Game functions as SDK calls (spawn, give, damage, Wwise events) instead of raw addresses, which move with every game
   build. Started in SDK 16:
   - ten functions by name (`mappings/functions.json`, `HF_HOOK`, `hf_fn_`) and typed events (`hf_on_<event>`, no cast);

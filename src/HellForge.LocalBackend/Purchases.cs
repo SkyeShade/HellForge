@@ -118,6 +118,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     JsonNode? StoreItem(uint mixId, long count)
     {
         if (Paid.WarbondTokens.Contains(mixId)) return WarbondToken(mixId);
+        if (modWarbonds?.UnlockPrice(mixId) is { } unlock) return TokenForCredits(mixId, unlock);
         if (count is < 1 or > 100 || Paid.IsPaid(mixId) || catalogue(mixId) is not { } item) return null;
         if (!item.TryGetProperty("buyPrice", out var price) || price.ValueKind != JsonValueKind.Array || price.GetArrayLength() == 0) return null;
         var cost = Costs(price, count);
@@ -139,6 +140,12 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         if (profile.Ownership is not { } ownership || !ownership.Owns(token) || catalogue(token) is not { } item ||
             !item.TryGetProperty("buyPrice", out var price) || price.ValueKind != JsonValueKind.Array || Costs(price, 1) is not { } cost ||
             !cost.TryGetValue(PaidContentSet.SuperCreditPrice, out var credits) || cost.Count != 1 || credits <= 0) return null;
+        return TokenForCredits(token, credits);
+    }
+
+    // A warbond's token (the game's, or a mod's at its unlock price) for Forge Credits, once.
+    JsonNode? TokenForCredits(uint token, long credits)
+    {
         var reply = new JsonArray();
         var saved = profile.TryChange((_, inventory) =>
         {
@@ -213,11 +220,20 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     bool OwnsWarbond(JsonElement warbond)
     {
         if (warbond.GetProperty("id32").GetUInt32() == HellForge.Core.PremiumContent.FreeWarbond) return true;
-        if (modWarbonds?.IsModWarbond(warbond.GetProperty("id32").GetUInt32()) == true) return true; /* a mod's: no token */
+        if (modWarbonds?.IsModWarbond(warbond.GetProperty("id32").GetUInt32()) == true) /* a mod's: open, or its token bought */
+            return modWarbonds.Owns(warbond.GetProperty("id32").GetUInt32(), HeldSaved);
         if (!profile.TryGetResponse("/Progression/inventory", out var served)) return false;
         var held = served.GetProperty("items").EnumerateArray().Where(i => i.TryGetProperty("amount", out var a) && a.GetInt64() > 0)
             .Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet();
         return warbond.GetProperty("premiumTokenMixIds").EnumerateArray().Any(t => held.Contains(t.GetUInt32()));
+    }
+
+    // Whether the saved inventory holds an item (TryChange reads it under the profile's lock; false changes nothing).
+    bool HeldSaved(uint mixId)
+    {
+        var held = false;
+        profile.TryChange((_, inventory) => { held = ProfileStore.Held(inventory, mixId) > 0; return false; });
+        return held;
     }
 
     // The game's warbonds' item, else a mod's (ModWarbondService), sold the same way in its warbond's currency.
