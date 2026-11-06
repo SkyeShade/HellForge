@@ -427,6 +427,14 @@ local backend to answer on this PC, and the block to refuse a connection to the 
   one set up. Use the newer HellForge, or run Settings > Installation.
 - **"the game cannot reach HellForge's own backend on this PC"**: another firewall or security program is blocking
   connections inside this PC (loopback). Allow HellForge's folder in it.
+- **"this PC has no network connection ... checked without one only once it is narrowed"**: the PC is offline, and
+  its block is an older one that does not hold the game to HellForge's backend alone. The session places it again with
+  one Windows prompt; if that does not work, connect to the internet and press Play, or run Settings > Installation.
+
+Without a network connection the check cannot test the internet: Windows refuses the connection before the block sees
+it (error 10065 or 10051). The session then checks the block on this PC alone, and again against the internet the
+moment the PC connects. If it does not hold then, HellForge stops the game ("connected to a network during the
+session"). `network-probe-online.json` records that second check.
 
 The session's `network-probe.json` (and `network-probe-again.json` after the block was placed again) records what the
 check saw; include the logs when you ask.
