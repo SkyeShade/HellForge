@@ -54,10 +54,10 @@ static struct
     uint64_t handle[DIF_LOCATIONS];    /* slot -> its index handle */
     uint16_t* reach;                   /* plan entry -> the distance it enters within (m); kept across levels (not reset) */
     uint32_t reachRoom;                /* reach's room */
-    uint32_t entered, left, refusedFull, refusedIndex, refusedBodies, poseChecked, poseEqual, enteredFar, farHeld;
+    uint32_t entered, left, refusedFull, refusedIndex, refusedBodies, poseChecked, poseEqual, enteredFar, farHeld, evictedFar;
     uint32_t reachFar;                 /* the plan entries whose reach is past WINDOW_IN */
     int on, bad, insertOk, removeOk;
-    ULONGLONG nextScan;
+    ULONGLONG nextScan, farHoldUntil; /* far entries wait until then after an eviction */
 } g_win;
 
 /* Op 0x31's pose for a location (0xF449E1..0xF44BF4, transcribed: its own sine and cosine from fmodf, normalised; rows
@@ -264,12 +264,40 @@ static void WindowLeaveLocked(uint32_t s)
 
 /* Every 0.25 s, after the streamer's scan (the players are fresh): the planned stamps within WINDOW_IN of a player, from
  * the player's bucket outward, into the window while it has slots, the index has room and the bodies stay under budget. */
+/* The near stamps come first: while the bodies are over the near budget, live far stamps go, the farthest from every
+ * player first, WINDOW_FAR_EVICT a scan (s82a, city: 3072 far stamps took ~74k bodies and the near window then waited
+ * over its budget for 1078 scans). The far ring enters again only under WINDOW_FAR_SHARE, so they do not come back
+ * at once. */
+#define WINDOW_FAR_EVICT 64u
+static void WindowEvictFarLocked(void)
+{
+    uint32_t pick[WINDOW_FAR_EVICT], n = 0;
+    float far2[WINDOW_FAR_EVICT];
+    for (uint32_t s = g_win.base; s < g_win.high && s < DIF_LOCATIONS; s++)
+    {
+        if (g_streamOut2[s] <= 0.0f || !g_streamLive[s] || g_win.handle[s] == 0 || !g_streamPoseGood[s] || g_streamNeedsUnit[s] || g_streamUnit[s] == 0) continue;
+        float best = 3.4e38f;
+        for (int p = 0; p < g_stream.playerCount; p++)
+        {
+            float dx = g_streamAt[s][0] - g_streamPlayerAt[p][0], dy = g_streamAt[s][1] - g_streamPlayerAt[p][1];
+            if (dx * dx + dy * dy < best) best = dx * dx + dy * dy;
+        }
+        if (n < WINDOW_FAR_EVICT) { pick[n] = s; far2[n++] = best; continue; }
+        uint32_t m = 0; /* replace the nearest kept one */
+        for (uint32_t k = 1; k < n; k++) if (far2[k] < far2[m]) m = k;
+        if (best > far2[m]) { pick[m] = s; far2[m] = best; }
+    }
+    for (uint32_t k = 0; k < n; k++)
+        if (WorldStreamRemoveLocked(pick[k])) g_win.evictedFar++;
+    if (n != 0) g_win.farHoldUntil = GetTickCount64() + 30000; /* no churn: the far ring waits 30 s after it gave way */
+}
+
 /* The far ring: the planned stamps between WINDOW_IN and their own reach of a player, the ones visible past
  * WINDOW_FAR_BIG first, under the far budgets. */
 static void WindowScanFarLocked(uint32_t bodies, uint32_t slots)
 {
     uint32_t used = 0, capacity = 0;
-    if (g_win.reach == NULL || g_win.reachFar == 0 || g_win.freeCount == 0) return;
+    if (g_win.reach == NULL || g_win.reachFar == 0 || g_win.freeCount == 0 || GetTickCount64() < g_win.farHoldUntil) return;
     if ((float)bodies >= WINDOW_FAR_SHARE * (float)slots || !RenderPool0(&used, &capacity) || (float)used >= WINDOW_FAR_SHARE * (float)capacity)
     { g_win.farHeld++; return; }
     const float cell = g_plan.cell, near2 = WINDOW_IN * WINDOW_IN;
@@ -305,7 +333,8 @@ static void WindowScanLocked(ULONGLONG now)
     if (now < g_win.nextScan || !WindowReadyLocked()) return;
     g_win.nextScan = now + 250;
     uint32_t bodies = 0, slots = 0;
-    if (!WorldStreamBodyStore(&bodies, &slots) || (float)bodies >= WINDOW_BODY_SHARE * (float)slots) { g_win.refusedBodies++; return; }
+    if (!WorldStreamBodyStore(&bodies, &slots)) { g_win.refusedBodies++; return; }
+    if ((float)bodies >= WINDOW_BODY_SHARE * (float)slots) { g_win.refusedBodies++; WindowEvictFarLocked(); return; }
     const float cell = g_plan.cell, r2 = WINDOW_IN * WINDOW_IN;
     const int reach = (int)ceilf(WINDOW_IN / cell);
     uint32_t done = 0;
@@ -340,8 +369,8 @@ static void WindowNoteLocked(void)
     if (!g_win.on) return;
     uint32_t used = 0, capacity = 0;
     int pool = RenderPool0(&used, &capacity);
-    Note("difficulty: extra large maps: stamp window: %u in (slots used %u of %u, highest %u), %u entered (%u of them far), %u left so far; refused: %u table full, %u index full, %u scans over the body budget, %u far scans held (bodies %u of %u, culling pool 0 %u of %u%s)",
+    Note("difficulty: extra large maps: stamp window: %u in (slots used %u of %u, highest %u), %u entered (%u of them far, %u far ones taken out for the near ones), %u left so far; refused: %u table full, %u index full, %u scans over the body budget, %u far scans held (bodies %u of %u, culling pool 0 %u of %u%s)",
         (DIF_LOCATIONS - g_win.base) - g_win.freeCount, (DIF_LOCATIONS - g_win.base) - g_win.freeCount, DIF_LOCATIONS - g_win.base, g_win.high, g_win.entered,
-        g_win.enteredFar, g_win.left, g_win.refusedFull, g_win.refusedIndex, g_win.refusedBodies, g_win.farHeld, g_stream.bodiesUsed, g_stream.bodySlots,
+        g_win.enteredFar, g_win.evictedFar, g_win.left, g_win.refusedFull, g_win.refusedIndex, g_win.refusedBodies, g_win.farHeld, g_stream.bodiesUsed, g_stream.bodySlots,
         used, capacity, pool ? "" : ", not read");
 }
