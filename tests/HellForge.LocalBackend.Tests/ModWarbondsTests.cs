@@ -29,6 +29,12 @@ static class ModWarbondsTests
             Mod("plain", null),
             Mod("broken", "{\"format\":1,"),
             Mod("good", "{\"format\":1,\"warbonds\":[{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}]}")]);
+        // A mod of warbonds alone is a mod: its manifest loads (it changes something).
+        var warbondsOnly = Directory.CreateDirectory(Path.Combine(folder, "catalog", "only")).FullName;
+        File.WriteAllText(Path.Combine(warbondsOnly, "hellforge-mod.json"), "{\"format\":1,\"id\":\"test.only\",\"name\":\"Only\",\"version\":\"1.0.0\",\"gameplay\":false}");
+        File.WriteAllText(Path.Combine(warbondsOnly, ModWarbonds.FileName), "{\"format\":1,\"warbonds\":[]}");
+        var (catalog, catalogProblems) = HellForge.Core.ModCatalog.Load(Path.Combine(folder, "catalog"));
+        check(catalog.Any(m => m.Id == "test.only") && catalogProblems.Count == 0, "A mod of warbonds alone was refused: " + string.Join(" | ", catalogProblems));
         check(loaded.Count == 1 && loaded[0].Mod == "good" && loadProblems.Count == 1 && loadProblems[0].StartsWith("broken name: ", StringComparison.Ordinal),
             "Warbonds files are not read from the mods' folders as they should be: " + string.Join(" | ", loadProblems));
         // Two free items of Helldivers Mobilize (anyone may hold them) and the gold Liberator a code mod registers.

@@ -279,7 +279,8 @@ public static partial class ModCatalog
         if (stats.Count > 0 || writes.Count > 0) gameplay = true;
         // A mod of Lua patches alone is the player's own: client-only, outside the modlist code.
         else if (lua && code == null && types.Count == 0 && !spec) gameplay = false;
-        if (types.Count == 0 && writes.Count == 0 && data.Count == 0 && code == null && !spec && stats.Count == 0) throw new InvalidDataException("The mod changes nothing.");
+        var warbonds = File.Exists(Path.Combine(folder, ModWarbonds.FileName)); /* its warbonds (ModWarbonds.Load) */
+        if (types.Count == 0 && writes.Count == 0 && data.Count == 0 && code == null && !spec && stats.Count == 0 && !warbonds) throw new InvalidDataException("The mod changes nothing.");
         var icon = ReadIcon(root, folder);
         // "url": where players get the mod; one that is not an https:// address (WebAddress) is left out
         var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
