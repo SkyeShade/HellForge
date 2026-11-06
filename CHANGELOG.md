@@ -15,11 +15,11 @@ On `dev`, since 0.4.0-beta.
 - **New explosion, beam and arc types for mods (SDK 17).** `add_explosion`, `add_beam` and `add_arc` copy a vanilla type
   with its own damage, radii, length or chained arc, up to 512 of each across all mods. A projectile names its blasts in
   `impact_explosion` and `expiry_explosion`, and a weapon its `beam` or `arc`
-  ([projectiles and damage](docs/modding/content.md#projectiles-and-damage)) (#TBD-registries).
+  ([projectiles and damage](docs/modding/content.md#projectiles-and-damage)) (#298).
 - **295 explosions and 342 damage ids by name.** The catalogue lists them as `HF_EXPLOSION_` and `HF_DAMAGE_` constants
-  for mods (#TBD-registries).
+  for mods (#298).
 - **A mod weapon's own explosion, beam and arc in the editor.** Its page shows them with the damage they deal, and mods'
-  explosions are offered wherever the editor picks an explosion (#TBD-registries).
+  explosions are offered wherever the editor picks an explosion (#298).
 - **Shields that stop grenades.** The FX-12 Shield Generator Relay, G/SH-39 Shield and SH-32 Shield Generator Pack have a
   **Stops grenades** setting in the editor, off by default. Grenades, throwing knives and self-destruct drones bounce off
   the bubble from outside, and ones thrown from inside still leave. Helldivers, enemies, vehicles and
@@ -59,7 +59,7 @@ On `dev`, since 0.4.0-beta.
 ### Fixed
 
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
-  a sound, because the sound comes with that weapon's package. HellForge now loads the package (#TBD-registries).
+  a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
 
 ### For contributors
 
