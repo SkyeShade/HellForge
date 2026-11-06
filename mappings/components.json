@@ -4641,6 +4641,13 @@
           "meaning": "shield.recharge_rate",
           "verified": false,
           "source": "stats-schema shield.recharge_rate"
+        },
+        "blocks_grenades": {
+          "offset": 337,
+          "type": "u8",
+          "meaning": "Stops grenades",
+          "verified": false,
+          "source": "stats-schema shield.blocks_grenades"
         }
       },
       "applies": "respawn",

@@ -3624,6 +3624,16 @@ typedef int (*FarFn)(void);
 static FarFn g_farOriginal;
 static int FarTarget(void) { return 8; }
 static int FarDetour(void) { return g_farOriginal() + 100; }
+/* The sphere is solid: a grenade already inside keeps no pair with it, so it leaves freely; other shields keep none. */
+static void ShieldBlockFixture(void)
+{
+    SbList list = {1, {{7, 10.0f}}};
+    const float shield[3] = {100, 0, 5}, outside[3] = {100, 12, 5}, inside[3] = {103, 2, 5};
+    assert(ShieldBlockKeeps(&list, 7, shield, outside));
+    assert(!ShieldBlockKeeps(&list, 7, shield, inside));
+    assert(!ShieldBlockKeeps(&list, 8, shield, outside));
+}
+
 static void FarHookFixture(void)
 {
     uint8_t* code = (uint8_t*)VirtualAlloc(NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
@@ -4246,6 +4256,7 @@ int main(int argc, char** argv)
     FieldWatchCapFixture();
     SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
     ArmoryDiagFixture();
+    ShieldBlockFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
