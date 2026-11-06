@@ -709,7 +709,7 @@ static struct
     uint64_t submit;            /* the engine's job submit ([[game+0x33263E8]+0x88]) */
     uint64_t element[TILE_RUNNERS_MAX]; /* each runner's job element (its TileRunner), fixed while the section runs */
     volatile LONG busy[TILE_RUNNERS_MAX], inflight, pending;
-    long jobs, selfBuilt;
+    long jobs, selfBuilt, queueWaits;
 } g_coarse;
 
 /* One coarse tile on a runner (an engine job, CoarseFeed): a free slot and the next tile, built, then the job returns.
@@ -842,7 +842,7 @@ static int CoarseStart(uint64_t records, uint32_t end, uint64_t context, uint64_
     { uint32_t flipped = g_coarse.disk ^ 1u; memcpy(g_coarse.buildS + 0x5C, &flipped, 4); }
     g_coarse.level = g_world.levels;
     g_tileStop = 0; g_tileFinished = 0; g_tileWork = NULL;
-    g_coarse.started = 0; g_coarse.inflight = 0; g_coarse.pending = 0; g_coarse.jobs = 0; g_coarse.selfBuilt = 0; g_coarse.submit = 0;
+    g_coarse.started = 0; g_coarse.inflight = 0; g_coarse.pending = 0; g_coarse.jobs = 0; g_coarse.selfBuilt = 0; g_coarse.queueWaits = 0; g_coarse.submit = 0;
     uint64_t api = 0;
     if (!SafeRead(g_world.game + 0x33263E8u, &api, 8) && api != 0 && !SafeRead(api + 0x88, &g_coarse.submit, 8) && g_coarse.submit != 0)
         for (int id = 1; id <= R - 1 && id < TILE_RUNNERS_MAX; id++)
@@ -876,7 +876,7 @@ static void CoarseEnd(void)
         }
         Sleep(1);
     }
-    Note("difficulty: terrain: the section's %ld tile jobs on %d runners returned; %ld tiles built on the dispatcher's thread", g_coarse.jobs, g_coarse.started, g_coarse.selfBuilt);
+    Note("difficulty: terrain: the section's %ld tile jobs on %d runners returned; %ld tiles built on the dispatcher's thread; %ld frames ended on a full generation queue", g_coarse.jobs, g_coarse.started, g_coarse.selfBuilt, g_coarse.queueWaits);
     *(volatile uint32_t*)(g_coarse.lg + 0x2D7C) = g_coarse.disk;
     *(volatile float*)g_coarse.spacingAt = g_coarse.spacing;
     g_tileSectionHeld = 0;
@@ -888,38 +888,42 @@ static void CoarseEnd(void)
     g_coarse.on = 0;
 }
 
-/* The parallel section, all of it in one dispatcher call (the dispatcher's thread draws the built tiles in tile order
- * and builds one itself while the next is not ready). One call, as the stamp section: between frames the game's own
- * main-thread code runs, and it must not meet the section's state (the held marker and spacing, the runners' ops on
- * the level) or a level abandoned under running tiles (t77h: launch during the section, the objective selector
- * 0x1756730 then read a null type entry from [lg+0x2D0] and faulted). 0 when every tile is drawn, -1 after a faulting
- * draw. */
+/* One frame of the parallel section (the dispatcher's thread): the built tiles drawn in tile order, 1 while tiles
+ * remain. Each RenderHeightmapVoronoi call (0xF499B0) appends one entry to the generation's queue [ctx+0x50] = G+0xAC570
+ * (0xF4A195..0xF4A254: count +0x10, 16 entries of 0x1D0 from +0x18, no capacity check), and only the render callback
+ * drains it, once a frame (0xAB7D54 -> 0xAB0590). A 17th entry lands on G+0xAE288, the current level, with the world
+ * ([ctx+0x40]) as its first qword (t77h/t77i/t77j: the objective selection then read [world+0x2D0] = 0 and faulted at
+ * game+0x1757304). So a draw call is made only while the queue holds at most COARSE_QUEUE_MAX entries (a margin for
+ * other producers in the same frame), else the level waits for the next frame. Runner jobs build meanwhile; the
+ * dispatcher's thread builds a tile itself only when no job is in flight. */
+#define COARSE_QUEUE_MAX 11u
+static uint32_t NearQueued(uint64_t context);
 static int CoarseDraw(uint64_t context, uint64_t g, uint64_t h, uintptr_t gen, LARGE_INTEGER t0, LARGE_INTEGER hz)
 {
-    (void)t0;
     TileRunner* mine = TileRunnerMake(0);
     for (;;)
     {
         CoarseFeed();
         if (g_terrain.next >= g_coarse.count) return 0;
+        LARGE_INTEGER t1; QueryPerformanceCounter(&t1);
+        if ((double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart > TERRAIN_BUDGET_MS) return 1;
         LONG at = g_coarse.slotOf[g_terrain.next];
-        if (at < 0 || g_coarse.slots[at].state != STAMP_SLOT_BUILT) /* not built yet: build one here, or yield */
+        if (at < 0 || g_coarse.slots[at].state != STAMP_SLOT_BUILT) /* not built yet */
         {
-            int built = 0;
-            if (mine != NULL && g_coarse.nextTile < g_coarse.count) /* a job that starts later finds no tile or slot and returns */
+            if (mine != NULL && g_coarse.inflight == 0 && g_coarse.nextTile < g_coarse.count)
             {
                 TlsSetValue(g_tileRunnerTls, mine);
-                built = CoarseOne(mine, 0);
+                int built = CoarseOne(mine, 0);
                 TlsSetValue(g_tileRunnerTls, NULL);
-                if (built) g_coarse.selfBuilt++;
+                if (built) { g_coarse.selfBuilt++; g_coarse.waitSince = 0; continue; }
             }
-            if (built) { g_coarse.waitSince = 0; continue; }
             ULONGLONG now = GetTickCount64();
             if (g_coarse.waitSince == 0) g_coarse.waitSince = now;
             else if (now - g_coarse.waitSince > 10000 && !g_coarse.stallNoted) { g_coarse.stallNoted = 1; TileRunnersStallNote("terrain", g_coarse.started); }
-            SwitchToThread();
-            continue;
+            return 1;
         }
+        uint32_t queued = NearQueued(context);
+        if (queued == 0xFFFFFFFFu || queued > COARSE_QUEUE_MAX) { g_coarse.queueWaits++; return 1; }
         g_coarse.waitSince = 0;
         CoarseSlot* s = &g_coarse.slots[at];
         if (!s->ok)
@@ -994,6 +998,7 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
     if (g_coarse.on)
     {
         int more = CoarseDraw(context, g, h, gen, t0, hz);
+        if (more > 0) return 1;
         CoarseEnd();
         g_terrain.state = 2;
         Note("difficulty: terrain: %d tiles drawn, %d failed, in %.1f s (%u frames; building %.1f s summed over the runners, drawing %.1f s)", g_terrain.drawn,
@@ -1026,6 +1031,7 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
             if (!built) { g_terrain.failed++; g_terrain.next++; continue; }
             g_terrain.building = 1;
         }
+        { uint32_t queued = NearQueued(context); if (queued == 0xFFFFFFFFu || queued > COARSE_QUEUE_MAX) return 1; } /* CoarseDraw: the queue's 16 entries */
         LARGE_INTEGER d0, d1;
         QueryPerformanceCounter(&d0);
         volatile uint32_t index = 0;
