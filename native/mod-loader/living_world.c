@@ -368,7 +368,7 @@ typedef struct LwSquad
     float pos[2], speed;
     uintptr_t definition, rec;
     uint32_t squad, seen[32];
-    uint8_t seenCount, lost;
+    uint8_t seenCount, lost, cycled;
     ULONGLONG since, moved, farSince;
     float movedFrom[2];
 } LwSquad;
@@ -664,12 +664,21 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         Note("living world: squad %d reached node %u at (%.0f, %.0f); next %s", (int)(q - g_lwSquads), q->node, (double)at[0], (double)at[1],
             q->pathAt < q->pathLen ? "node on its route" : "a new destination");
     }
-    /* offline only once it has been beyond R_off of every player, every member at alert 0, for LW_FAR_MS without a break */
-    int calm = g_lwWorld.playersAt > 0 && LwNearestPlayer2(at[0], at[1]) > LW_R_OFF * LW_R_OFF;
-    for (int k = 0; k < n && calm; k++) if (LwAlert(members[k]) != 0) calm = 0;
-    if (!calm) { q->farSince = 0; return; }
-    if (q->farSince == 0) q->farSince = now;
-    if (now - q->farSince < LW_FAR_MS || *removals >= 16) return;
+    /* test instrument (HELLFORGE_LW_TEST_CYCLE=1): a squad with losses is sent offline once, 45 s after it came online,
+     * through the same path as the distance rule (which runs confirmed it), so its return shows the survivor count */
+    static int testCycle = -1;
+    if (testCycle < 0) { char t[4] = ""; testCycle = GetEnvironmentVariableA("HELLFORGE_LW_TEST_CYCLE", t, sizeof t) > 0 && t[0] == '1'; }
+    int forced = testCycle && q->lost > 0 && !q->cycled && now - q->since > 45000 && *removals < 16;
+    if (forced) { q->cycled = 1; Note("living world: test: squad %d sent offline with %u of %u alive", (int)(q - g_lwSquads), q->survivors, q->cap); }
+    else
+    {
+        /* offline only once it has been beyond R_off of every player, every member at alert 0, for LW_FAR_MS without a break */
+        int calm = g_lwWorld.playersAt > 0 && LwNearestPlayer2(at[0], at[1]) > LW_R_OFF * LW_R_OFF;
+        for (int k = 0; k < n && calm; k++) if (LwAlert(members[k]) != 0) calm = 0;
+        if (!calm) { q->farSince = 0; return; }
+        if (q->farSince == 0) q->farSince = now;
+        if (now - q->farSince < LW_FAR_MS || *removals >= 16) return;
+    }
     Note("living world: squad %d (%08X) goes offline at (%.0f, %.0f), %.0f m from the nearest player, %u of %u alive", (int)(q - g_lwSquads), q->squad,
         (double)at[0], (double)at[1], (double)sqrtf(LwNearestPlayer2(at[0], at[1])), q->survivors, q->cap);
     LwRemoveSquad(q->squad);
@@ -745,8 +754,12 @@ static void LwSquadsTick(void)
         {
             LwWalk(q, dt);
             float near2 = LwNearestPlayer2(q->pos[0], q->pos[1]);
-            if (!requested && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN)
-            { LwOnline(q); requested = q->state == LW_PENDING; }
+            int back = q->cycled == 1 && near2 >= LW_R_MIN * LW_R_MIN; /* test cycle: back at once (the budget still applies) */
+            if (!requested && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && ((near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN) || back))
+            {
+                LwOnline(q); requested = q->state == LW_PENDING;
+                if (back && requested) { q->cycled = 2; Note("living world: test: squad %d comes back with its %u survivors", (int)(q - g_lwSquads), q->cap); }
+            }
         }
         else if (q->state == LW_PENDING) { LwPendingTick(q); online++; }
         else if (q->state == LW_ONLINE) { LwOnlineTick(q, &removals); online++; }
