@@ -1052,6 +1052,7 @@ typedef struct TileRunner
     uint64_t emptyQueries;      /* difficulty_maps.c IndexQueryClamped: queries of its empty index answered at once */
     int decommitted;            /* TileRunnersRelease ran: commit again before use */
     uint8_t* block;             /* the generator block this runner builds a tile in (TerrainBlockSelf) */
+    uint8_t* moved;             /* TerrainBuild's segment bitmap (a bit per 8 bytes of the block) */
     float offset[2];            /* the samplers' world offset while it builds (TerrainOffsetSelf) */
     int offsetOn;
     uint8_t one[0x19B0];

@@ -37,6 +37,18 @@ static volatile LONG g_nearActive; /* (below) the near tile's replay is running 
 /* A parallel tile section holds the level's tile marker (lg+0x2D7C = disk ^ 1) and lattice spacing (16) for all its
  * tiles; TerrainBuild leaves them alone then (runners build at once). */
 static volatile LONG g_tileSectionHeld;
+/* The runners' engine jobs (TileRunnersStart) run g_tileWork until it returns; g_tileStop ends it early, g_tileFinished
+ * counts the jobs that returned (TileRunnersJoin). */
+static volatile LONG g_tileStop, g_tileFinished;
+static void (*g_tileWork)(TileRunner* r);
+enum { STAMP_SLOT_FREE, STAMP_SLOT_BUILT, STAMP_SLOT_RUNNING, STAMP_SLOT_DONE };
+static volatile LONG g_tileJobsBroken; /* a runner did not return: one runner from then on */
+
+static int TileThreads(void);
+static int TileBuildsOn(void);
+static int TileDispatchInstall(void);
+static int TileRunnersStart(int count);
+static void TileRunnersJoin(int started);
 
 static struct
 {
@@ -564,9 +576,11 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
     /* RenderHeightmapVoronoi's second phase draws from each point along its 16 segment pointers (+0 .. +0x78), and a
      * segment holds its own two ends (x, y at +0x20 and +0x28; heights through its point pointers +0 / +8): each
      * segment those points name moves once */
-    static uint8_t* moved;
+    static uint8_t* movedGenerator;
     uint32_t blockSize = GEN_BLOCK_SIZE;
-    if (moved == NULL) moved = (uint8_t*)VirtualAlloc(NULL, blockSize / 64 + 1, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint8_t** movedAt = runner != NULL ? &runner->moved : &movedGenerator;
+    if (*movedAt == NULL) *movedAt = (uint8_t*)VirtualAlloc(NULL, blockSize / 64 + 1, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint8_t* moved = *movedAt;
     if (moved == NULL) return 0;
     memset(moved, 0, blockSize / 64 + 1);
     for (uint32_t k = 0; k < last; k++)
@@ -657,6 +671,180 @@ static int TerrainTileWanted(int tile)
     return dx * dx + dy * dy <= radius * radius;
 }
 
+/* ---- The coarse terrain's tiles in parallel (load time) -------------------------------------------------------------
+ * As the stamp planning's stage B: runners (engine jobs) build the wanted tiles (TerrainBuild with move, then the draw's
+ * record on the slot's block) into slots in tile order, each with its own context (the level's settings as the section
+ * holds them: the tile marker and lattice spacing set once for all tiles); the main thread draws them in tile order
+ * within its frame budget (RenderHeightmapVoronoi on the level's merge, as the serial code does), so the merge sees the
+ * serial order. Off with HELLFORGE_XL_TILE_THREADS=1 or HELLFORGE_XL_TILE_BUILDS=0. */
+#define COARSE_SLOTS_MAX (TILE_RUNNERS_MAX + 4)
+typedef struct
+{
+    volatile LONG state;        /* STAMP_SLOT_FREE, _RUNNING (building), _BUILT (ready to draw) */
+    int k, t, ok;
+    uint8_t* T;
+    uint8_t record[0x19B0];     /* the level's RenderHeightmapVoronoi record on this block */
+    uint8_t phase;
+    int drawCalls;
+    double buildMs;
+} CoarseSlot;
+static struct
+{
+    int on, count, draw, slotCount, started;
+    LONG level;                 /* the level the section is for: its runners stop when another level begins */
+    int list[1024];
+    volatile LONG nextTile, slotOf[1024];
+    CoarseSlot slots[COARSE_SLOTS_MAX];
+    uint8_t* blocks[COARSE_SLOTS_MAX];
+    uint64_t records, context, g, h; uint32_t end; uintptr_t gen, P;
+    uint8_t ctx[0xE8], buildS[0x120];
+    uintptr_t lg, spacingAt; uint32_t disk; float spacing;
+} g_coarse;
+
+static void CoarseRunnerLoop(TileRunner* r)
+{
+    while (!g_tileStop)
+    {
+        CoarseSlot* s = NULL;
+        for (int i = 0; i < g_coarse.slotCount && s == NULL; i++)
+            if (g_coarse.slots[i].state == STAMP_SLOT_FREE && InterlockedCompareExchange(&g_coarse.slots[i].state, STAMP_SLOT_RUNNING, STAMP_SLOT_FREE) == STAMP_SLOT_FREE)
+                s = &g_coarse.slots[i];
+        if (s == NULL) { if (g_coarse.nextTile >= g_coarse.count || g_world.levels != g_coarse.level) break; Sleep(1); continue; }
+        LONG k = InterlockedIncrement(&g_coarse.nextTile) - 1;
+        if (k >= g_coarse.count) { InterlockedExchange(&s->state, STAMP_SLOT_FREE); break; }
+        s->k = (int)k; s->t = g_coarse.list[k];
+        LARGE_INTEGER hz, b0, b1; QueryPerformanceFrequency(&hz); QueryPerformanceCounter(&b0);
+        r->block = s->T;
+        TileRunnerContext(r, g_coarse.ctx, g_coarse.buildS, g_coarse.P);
+        s->ok = TerrainBuild(s->t, g_coarse.records, g_coarse.end, (uint64_t)(uintptr_t)r->ctx, g_coarse.g, g_coarse.h, g_coarse.gen, 1);
+        r->block = NULL;
+        if (s->ok)
+        {
+            /* the draw's record (TerrainDrawPrepare) on this slot's block */
+            s->ok = !SafeRead(g_coarse.records + (uint64_t)g_coarse.draw * 0x19B0u, s->record, sizeof s->record);
+            if (s->ok)
+            {
+                uint64_t keep[2];
+                memcpy(keep, s->record + 8, 16);
+                WorldTileRelocate(s->record, g_coarse.gen, (uintptr_t)s->T);
+                memcpy(s->record + 8, keep, 16);
+                memset(s->record + 8 + 0x108, 0, 8);
+            }
+        }
+        s->phase = 0; s->drawCalls = 0;
+        QueryPerformanceCounter(&b1); s->buildMs = (double)(b1.QuadPart - b0.QuadPart) * 1000.0 / (double)hz.QuadPart;
+        MemoryBarrier();
+        InterlockedExchange(&g_coarse.slotOf[k], (LONG)(s - g_coarse.slots));
+        InterlockedExchange(&s->state, STAMP_SLOT_BUILT);
+    }
+}
+
+/* Once the template is made (TerrainStep's first call): the parallel section, or 0 for the serial path. */
+static int CoarseStart(uint64_t records, uint32_t end, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen)
+{
+    g_coarse.on = 0;
+    int R = TileThreads();
+    uintptr_t settings = 0, lg = 0, spacingAt = 0, P = 0;
+    if (R < 2 || !TileBuildsOn() || !TileDispatchInstall() || SafeRead(context + 8, &settings, 8) || SafeRead(context + 0x18, &lg, 8) || lg == 0 ||
+        settings != lg + 0x2D20 || SafeRead(lg + 0x2D0, &spacingAt, 8) || spacingAt == 0 || SafeRead(spacingAt + 0x68, &spacingAt, 8) || spacingAt == 0 ||
+        SafeRead(lg + 0x2D7C, &g_coarse.disk, 4) || SafeRead(spacingAt, &g_coarse.spacing, 4) || SafeRead(settings, g_coarse.buildS, sizeof g_coarse.buildS) ||
+        SafeRead(context, g_coarse.ctx, sizeof g_coarse.ctx) || SafeRead(context + 0x20, &P, 8))
+        return 0;
+    g_coarse.count = 0;
+    for (int t = 0; t < g_terrain.tiles && g_coarse.count < 1024; t++) if (TerrainTileWanted(t)) g_coarse.list[g_coarse.count++] = t;
+    int slots = R + 2 < COARSE_SLOTS_MAX ? R + 2 : COARSE_SLOTS_MAX, have = 0;
+    for (; have < slots; have++)
+    {
+        if (g_coarse.blocks[have] == NULL) g_coarse.blocks[have] = (uint8_t*)VirtualAlloc(NULL, GEN_BLOCK_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (g_coarse.blocks[have] == NULL) break;
+        g_coarse.slots[have].T = g_coarse.blocks[have]; g_coarse.slots[have].state = STAMP_SLOT_FREE;
+    }
+    if (have < 2) return 0;
+    g_coarse.slotCount = have;
+    for (int k = 0; k < g_coarse.count; k++) g_coarse.slotOf[k] = -1;
+    g_coarse.nextTile = 0;
+    g_coarse.records = records; g_coarse.end = end; g_coarse.context = context; g_coarse.g = g; g_coarse.h = h; g_coarse.gen = gen; g_coarse.P = P;
+    g_coarse.draw = (int)g_terrain.draw;
+    g_coarse.lg = lg; g_coarse.spacingAt = spacingAt;
+    TerrainTileZonesPrepare(gen);
+    /* the section holds the marker and the spacing; the runners' build settings are the level's as they are then */
+    *(volatile uint32_t*)(lg + 0x2D7C) = g_coarse.disk ^ 1u;
+    *(volatile float*)spacingAt = 16.0f;
+    g_tileSectionHeld = 1;
+    { uint32_t flipped = g_coarse.disk ^ 1u; memcpy(g_coarse.buildS + 0x5C, &flipped, 4); }
+    g_coarse.level = g_world.levels;
+    g_tileStop = 0; g_tileFinished = 0; g_tileWork = CoarseRunnerLoop;
+    g_coarse.started = TileRunnersStart(R - 1);
+    if (g_coarse.started == 0)
+    {
+        *(volatile uint32_t*)(lg + 0x2D7C) = g_coarse.disk; *(volatile float*)spacingAt = g_coarse.spacing; g_tileSectionHeld = 0;
+        return 0;
+    }
+    g_coarse.on = 1; g_coarse.level = g_world.levels;
+    Note("difficulty: terrain: %d tiles on %d runners (%d slots), drawn in tile order", g_coarse.count, g_coarse.started, g_coarse.slotCount);
+    return 1;
+}
+
+static void CoarseEnd(void)
+{
+    g_tileStop = 1;
+    TileRunnersJoin(g_coarse.started);
+    *(volatile uint32_t*)(g_coarse.lg + 0x2D7C) = g_coarse.disk;
+    *(volatile float*)g_coarse.spacingAt = g_coarse.spacing;
+    g_tileSectionHeld = 0;
+    if (!g_tileJobsBroken)
+    {
+        for (int i = 0; i < COARSE_SLOTS_MAX; i++) if (g_coarse.blocks[i] != NULL) { VirtualFree(g_coarse.blocks[i], 0, MEM_RELEASE); g_coarse.blocks[i] = NULL; }
+        TileRunnersRelease();
+    }
+    g_coarse.on = 0;
+}
+
+/* One frame of the parallel section (main thread): the built tiles in tile order. 1 while tiles remain. */
+static int CoarseDraw(uint64_t context, uint64_t g, uint64_t h, uintptr_t gen, LARGE_INTEGER t0, LARGE_INTEGER hz)
+{
+    for (;;)
+    {
+        LARGE_INTEGER t1; QueryPerformanceCounter(&t1);
+        if ((double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart > TERRAIN_BUDGET_MS) return 1;
+        if (g_terrain.next >= g_coarse.count) return 0;
+        LONG at = g_coarse.slotOf[g_terrain.next];
+        if (at < 0 || g_coarse.slots[at].state != STAMP_SLOT_BUILT) return 1; /* not built yet: the next frame */
+        CoarseSlot* s = &g_coarse.slots[at];
+        if (!s->ok)
+        {
+            g_terrain.failed++; g_terrain.buildMs += s->buildMs;
+            InterlockedExchange(&g_coarse.slotOf[g_terrain.next], -1); InterlockedExchange(&s->state, STAMP_SLOT_FREE);
+            g_terrain.next++;
+            continue;
+        }
+        LARGE_INTEGER d0, d1;
+        QueryPerformanceCounter(&d0);
+        volatile uint32_t index = 0;
+        volatile int calls = 0;
+        int clip = TerrainClipBegin(s->t, gen);
+        LONG fault = WorldTileGuarded(s->record, context, &index, &s->phase, g, h, 1, &calls);
+        if (clip) TerrainClipEnd();
+        QueryPerformanceCounter(&d1);
+        g_terrain.drawMs += (double)(d1.QuadPart - d0.QuadPart) * 1000.0 / (double)hz.QuadPart;
+        s->drawCalls++;
+        int doneTile = 0;
+        if (fault || (index == 0 && s->drawCalls >= TERRAIN_DRAW_CALLS))
+        {
+            Note("difficulty: terrain: tile %d's draw %s", s->t, fault ? "faulted" : "did not finish");
+            g_terrain.failed++; doneTile = 1;
+            if (fault) { g_terrain.buildMs += s->buildMs; InterlockedExchange(&s->state, STAMP_SLOT_FREE); g_terrain.next = g_coarse.count; return -1; }
+        }
+        else if (index != 0) { WorldArenaReset(context); g_terrain.drawn++; doneTile = 1; }
+        if (doneTile)
+        {
+            g_terrain.buildMs += s->buildMs;
+            InterlockedExchange(&g_coarse.slotOf[g_terrain.next], -1); InterlockedExchange(&s->state, STAMP_SLOT_FREE);
+            g_terrain.next++;
+        }
+    }
+}
+
 static int MacroStep(uint64_t context); /* difficulty_world_macro.c: the km-scale relief, drawn once the tiles are */
 /* The dispatcher hook (difficulty_world.c's WorldDispatch) at the level's SmoothHeightmap: 1 while the level waits. */
 static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h)
@@ -664,6 +852,7 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
     if (g_world.current != 8.0f || g_worldLevel == 0 || g_rec25 == 0 || !TerrainOn()) return 0;
     uintptr_t gen = 0;
     if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) return 0;
+    if (g_coarse.on && g_coarse.level != g_world.levels) CoarseEnd(); /* a level that ended inside its section */
     if (g_terrain.level != g_world.levels)
     {
         g_terrain.level = g_world.levels;
@@ -682,6 +871,7 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
         g_terrain.buildMs = 0; g_terrain.drawMs = 0; g_terrain.frames = 0;
         g_terrain.started = GetTickCount64();
         g_terrain.state = 1;
+        CoarseStart(records, end, context, g, h, gen);
         Note("difficulty: terrain: building the map at vanilla density, %d m tiles (%d m drawn; %d x %d) into the level's merge (record %u); the level waits",
             TERRAIN_TILE_EXTENT, TERRAIN_TILE_CORE, g_terrain.columns, g_terrain.columns, g_terrain.draw);
     }
@@ -690,6 +880,17 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
     LARGE_INTEGER hz, t0, t1;
     QueryPerformanceFrequency(&hz);
     QueryPerformanceCounter(&t0);
+    if (g_coarse.on)
+    {
+        int more = CoarseDraw(context, g, h, gen, t0, hz);
+        if (more > 0) return 1;
+        CoarseEnd();
+        g_terrain.state = 2;
+        Note("difficulty: terrain: %d tiles drawn, %d failed, in %.1f s (%u frames; building %.1f s summed over the runners, drawing %.1f s)", g_terrain.drawn,
+            g_terrain.failed, (double)(GetTickCount64() - g_terrain.started) / 1000.0, g_terrain.frames, g_terrain.buildMs / 1000.0, g_terrain.drawMs / 1000.0);
+        WorldMemoryNote("terrain tiles drawn", 0xFFFFFFFFu, 0, 1);
+        return more < 0 ? 0 : MacroStep(context);
+    }
     for (;;)
     {
         QueryPerformanceCounter(&t1);
@@ -3859,7 +4060,6 @@ typedef uint32_t* (*StampInsertFn)(uintptr_t index, float x0, float y0, float x1
  * itself, op 0x2B's jobs submitted as the game does. */
 #define STAMP_SLOTS_MAX (TILE_RUNNERS_MAX + 4)
 #define STAMP_TILE_CANDIDATES 8192u
-enum { STAMP_SLOT_FREE, STAMP_SLOT_BUILT, STAMP_SLOT_RUNNING, STAMP_SLOT_DONE };
 typedef struct
 {
     volatile LONG state;
@@ -3884,7 +4084,6 @@ static struct
     uint8_t rec91Copy[0x19B0];
     StampSlot slots[STAMP_SLOTS_MAX];
     int slotCount, inlineJobs;
-    volatile LONG stop, finished;
     int stageB;                 /* runners build the tiles too (a runner takes a free slot, then the next tile) */
     int tiles, order[1024];
     volatile LONG nextTile, slotOf[1024];
@@ -3985,7 +4184,6 @@ static void StampRulesRestore(void)
 }
 
 static void StampRunnerLoop(TileRunner* r);
-static volatile LONG g_tileJobsBroken; /* a runner did not return: one runner from then on */
 
 /* Op 0x2B's eight jobs on a runner's own thread. The main body (0xF34CC0) fills the jobs (0x60 each, a pointer to each
  * in the array r14, edi of them; 0xF34EE0..0xF34F6A) and submits them at 0xF34FB5 through [[game+0x33263E8]+0x88](fn
@@ -4195,7 +4393,11 @@ static int TileThreads(void)
 /* A runner's engine job: r9 = its element of the submitted array, the runner. */
 static uint64_t TileRunnerJob(uint64_t a, uint64_t b, uint64_t c, uint64_t runner)
 {
-    StampRunnerLoop((TileRunner*)(uintptr_t)runner);
+    TileRunner* r = (TileRunner*)(uintptr_t)runner;
+    TlsSetValue(g_tileRunnerTls, r);
+    if (!g_tileStop && g_tileWork != NULL) g_tileWork(r);
+    TlsSetValue(g_tileRunnerTls, NULL);
+    InterlockedIncrement(&g_tileFinished);
     return 0;
 }
 
@@ -4220,15 +4422,15 @@ static int TileRunnersStart(int count)
     return n;
 }
 
-/* After g_stampPar.stop: every submitted runner has returned (a job the workers start late returns at once). */
+/* After g_tileStop: every submitted runner has returned (a job the workers start late returns at once). */
 static void TileRunnersJoin(int started)
 {
     ULONGLONG since = GetTickCount64();
-    while (g_stampPar.finished < started)
+    while (g_tileFinished < started)
     {
         if (GetTickCount64() - since > 30000)
         {
-            Note("difficulty: stamps: %ld of %d runners did not return within 30 s; no runners for the rest of the session", (long)g_stampPar.finished, started);
+            Note("difficulty: stamps: %ld of %d runners did not return within 30 s; no runners for the rest of the session", (long)g_tileFinished, started);
             g_tileJobsBroken = 1;
             return;
         }
@@ -4343,8 +4545,7 @@ static int StampRunnerTile(TileRunner* r)
 
 static void StampRunnerLoop(TileRunner* r)
 {
-    TlsSetValue(g_tileRunnerTls, r);
-    while (!g_stampPar.stop)
+    while (!g_tileStop)
     {
         if (g_stampPar.stageB)
         {
@@ -4358,8 +4559,6 @@ static void StampRunnerLoop(TileRunner* r)
         StampTile2B(r, s, 1);
         InterlockedExchange(&s->state, STAMP_SLOT_DONE);
     }
-    TlsSetValue(g_tileRunnerTls, NULL);
-    InterlockedIncrement(&g_stampPar.finished);
 }
 
 /* After the level's op 0x2B has finished (difficulty_world.c's WorldDispatch). */
@@ -4496,7 +4695,7 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     g_stampPar.slotCount = have;
     if (have < 2) R = 1;
     g_stampPar.inlineJobs = R > 1;
-    g_stampPar.stop = 0; g_stampPar.finished = 0;
+    g_tileStop = 0; g_tileFinished = 0; g_tileWork = StampRunnerLoop;
     /* for the whole section: no thinning; a tile run's jobs make no per-job line; the overlap grid's runs (one per tile
      * run below when the game runs the jobs, the runners' own otherwise) */
     uint32_t below[2] = {g_world.below[0], g_world.below[1]};
@@ -4593,7 +4792,7 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         }
         if (!progress) SwitchToThread();
     }
-    g_stampPar.stop = 1;
+    g_tileStop = 1;
     TileRunnersJoin(started);
     if (g_stampPar.stageB)
     {
