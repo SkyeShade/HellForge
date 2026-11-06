@@ -4,8 +4,8 @@
  * a copy near game.dll with room for WB_LIST_CAP entries (count and entries together: the /SeasonPass parser writes both
  * through one pointer), the details to a load of a pointer to heap records. Code nothing calls is left (0x136E3A4,
  * 0x1963CF0). The bounds tied to 32 follow: the parser's cap and scratch, the Acquisition Center's card select and card
- * array (the screen object grows by WB_LIST_CAP pointers, its accessors move to the new end), and the MVVM view's 32
- * stack slots (its count clamped to 32). ModWarbondService.ListCap matches. Included after warbonds.c. */
+ * array (the screen object grows by WB_LIST_CAP pointers, its accessors move to the new end), its pager's 32 dots
+ * and the MVVM view's 32 stack slots (both clamped to 32). ModWarbondService.ListCap matches. Included after warbonds.c. */
 #define WB_LIST_CAP 128u
 #define WB_LIST_BYTES (4u + WB_LIST_CAP * 100u)
 #define WB_DETAIL_BYTES 0x17D4u
@@ -144,6 +144,20 @@ static const uint8_t kWbCardBoundPins[2][17] = {
 /* The MVVM view's count: mov esi,[mgr+0x17492D4]; mov [rsp+0x24],esi (10 bytes), then test esi,esi at 0x14E08BC */
 #define WB_MVVM_COUNT 0x14E08B2u
 static const uint8_t kWbMvvmPin[10] = {0x8b,0xb1,0xd4,0x92,0x74,0x01,0x89,0x74,0x24,0x24};
+/* The pager's dots: 32 widgets (pager+0x1C50, 0x268 each) that four loops walk for the card count, read through
+ * [pager+0x7AE8]. Each loop's tail (reload the pointer, compare the count, jl back) becomes a jump to a stub that also
+ * stops at 32. Arrows and the highlight keep the whole count. */
+typedef struct { uint32_t rva; uint8_t len; uint8_t pin[25]; uint8_t keep; uint8_t cmp32[4]; uint32_t back, exit; } WbDotLoop;
+static const WbDotLoop kWbDotLoops[4] = {
+    /* input: mov r14,[rdi+0x7AE8]; inc esi; add rbx,0x268 | cmp esi,[r14]; jl */
+    {0x19478F5u, 25, {0x4c,0x8b,0xb7,0xe8,0x7a,0x00,0x00,0xff,0xc6,0x48,0x81,0xc3,0x68,0x02,0x00,0x00,0x41,0x3b,0x36,0x0f,0x8c,0x62,0xff,0xff,0xff},
+     16, {0x40,0x83,0xfe,0x20}, 0x1947870u, 0x194790Eu},
+    /* layout (the crash past 32): mov rdx,[rbx+0x7AE8] | cmp r9d,[rdx]; jl */
+    {0x1947A25u, 12, {0x48,0x8b,0x93,0xe8,0x7a,0x00,0x00,0x44,0x3b,0x0a,0x7c,0xdf}, 7, {0x41,0x83,0xf9,0x20}, 0x1947A10u, 0x1947A31u},
+    {0x1947C15u, 12, {0x48,0x8b,0x93,0xe8,0x7a,0x00,0x00,0x44,0x3b,0x0a,0x7c,0xdf}, 7, {0x41,0x83,0xf9,0x20}, 0x1947C00u, 0x1947C21u},
+    /* mov r8,[rbx+0x7AE8] | cmp r9d,[r8]; jl */
+    {0x1947D15u, 12, {0x4c,0x8b,0x83,0xe8,0x7a,0x00,0x00,0x45,0x3b,0x08,0x7c,0xdf}, 7, {0x41,0x83,0xf9,0x20}, 0x1947D00u, 0x1947D21u}};
+#define WB_DOT_STUBS 0x100u /* after the MVVM stub, 0x40 bytes each */
 _Static_assert(WB_LIST_BYTES <= 0x3800u, "the list copy overlaps the detail pointer");
 _Static_assert(sizeof kWbListImms / sizeof *kWbListImms == 19, "sizes (4), card accessors (14), the cap (last)");
 static int g_warbondListState;
@@ -156,7 +170,25 @@ static int WarbondListPins(uintptr_t game)
         if (!PinMatches(game + kWbListImms[i].rva, kWbListImms[i].pin, kWbListImms[i].len)) return 0;
     for (size_t i = 0; i < 2; i++)
         if (!PinMatches(game + kWbCardBounds[i], kWbCardBoundPins[i], 17)) return 0;
+    for (size_t i = 0; i < 4; i++)
+        if (!PinMatches(game + kWbDotLoops[i].rva, kWbDotLoops[i].pin, kWbDotLoops[i].len)) return 0;
     return PinMatches(game + WB_MVVM_COUNT, kWbMvvmPin, sizeof kWbMvvmPin);
+}
+
+/* A dot loop's stub: its tail up to the count compare, cmp i,32; jge exit; the compare; jl back; jmp exit. */
+static void EmitWarbondDotStub(uintptr_t game, uint8_t* code, const WbDotLoop* loop)
+{
+    Emit e = {code};
+    const uint8_t* cmp = loop->pin + loop->keep; /* the count compare, 3 bytes, then the jl */
+    Put(&e, loop->pin, loop->keep);
+    Put(&e, loop->cmp32, 4); /* cmp i,32 (a bare REX keeps cmp esi,32 at 4 bytes) */
+    Put(&e, "\x0f\x8d", 2);
+    PutRel32(&e, (const uint8_t*)(game + loop->exit));
+    Put(&e, cmp, 3);
+    Put(&e, "\x0f\x8c", 2);
+    PutRel32(&e, (const uint8_t*)(game + loop->back));
+    Put8(&e, 0xE9);
+    PutRel32(&e, (const uint8_t*)(game + loop->exit));
 }
 
 /* The MVVM count's stub at code: the count from the list copy, at most 32, kept at [rsp+0x24]; back to 0x14E08BC. */
@@ -169,6 +201,35 @@ static void EmitWarbondMvvmStub(uintptr_t game, uint8_t* code, const uint8_t* li
     Put(&e, "\x89\x74\x24\x24", 4);                               /* mov [rsp+0x24], esi */
     Put8(&e, 0xE9);
     PutRel32(&e, (const uint8_t*)(game + WB_MVVM_COUNT + 10));
+}
+
+/* The 32 bounds, written before the parser's cap: the MVVM count and the pager's dot loops through their stubs, the card
+ * select against WB_LIST_CAP. Nonzero on a stop. */
+static int WriteWarbondBounds(uintptr_t game, const uint8_t* stub)
+{
+    uint8_t jump[10] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90};
+    int32_t rel = (int32_t)(int64_t)((intptr_t)stub - (intptr_t)(game + WB_MVVM_COUNT + 5));
+    memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + WB_MVVM_COUNT, jump, sizeof jump)) return 1;
+    for (size_t i = 0; i < 4; i++) /* the dot loops: jmp stub, nops */
+    {
+        uint8_t loop[25];
+        memset(loop, 0x90, sizeof loop);
+        loop[0] = 0xE9;
+        int32_t to = (int32_t)(int64_t)((intptr_t)(stub + WB_DOT_STUBS + 0x40u * i) - (intptr_t)(game + kWbDotLoops[i].rva + 5));
+        memcpy(loop + 1, &to, 4);
+        if (ApiWrite(game + kWbDotLoops[i].rva, loop, kWbDotLoops[i].len)) return 1;
+    }
+    for (size_t i = 0; i < 2; i++) /* cmp eax, WB_LIST_CAP (unsigned: a negative index fails too); jae reject; nops */
+    {
+        uint8_t bound[17] = {0x3d, 0, 0, 0, 0, 0x0f, 0x83, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+        uint32_t cap = WB_LIST_CAP;
+        int32_t back = (int32_t)(WB_CARD_REJECT - (kWbCardBounds[i] + 11));
+        memcpy(bound + 1, &cap, 4);
+        memcpy(bound + 7, &back, 4);
+        if (ApiWrite(game + kWbCardBounds[i], bound, sizeof bound)) return 1;
+    }
+    return 0;
 }
 
 /* Each rewrite, stopping at the first that cannot be written: the scratch and the screen grow first, the list sites and
@@ -191,19 +252,7 @@ static int WriteWarbondList(uintptr_t game, uint8_t* list, uint8_t* const* detai
     }
     for (size_t i = 4; i + 1 < imms; i++) /* the card accessors */
         if (ApiWrite(game + kWbListImms[i].rva + kWbListImms[i].at, &kWbListImms[i].value, 4)) return 1;
-    uint8_t jump[10] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90};
-    int32_t rel = (int32_t)(int64_t)((intptr_t)stub - (intptr_t)(game + WB_MVVM_COUNT + 5));
-    memcpy(jump + 1, &rel, 4);
-    if (ApiWrite(game + WB_MVVM_COUNT, jump, sizeof jump)) return 1;
-    for (size_t i = 0; i < 2; i++) /* cmp eax, WB_LIST_CAP (unsigned: a negative index fails too); jae reject; nops */
-    {
-        uint8_t bound[17] = {0x3d, 0, 0, 0, 0, 0x0f, 0x83, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
-        uint32_t cap = WB_LIST_CAP;
-        int32_t back = (int32_t)(WB_CARD_REJECT - (kWbCardBounds[i] + 11));
-        memcpy(bound + 1, &cap, 4);
-        memcpy(bound + 7, &back, 4);
-        if (ApiWrite(game + kWbCardBounds[i], bound, sizeof bound)) return 1;
-    }
+    if (WriteWarbondBounds(game, stub)) return 1;
     return ApiWrite(game + kWbListImms[imms - 1].rva + kWbListImms[imms - 1].at, &kWbListImms[imms - 1].value, 4) != 0;
 }
 
@@ -219,6 +268,7 @@ static const char* InstallWarbondList(uintptr_t game)
     *details = records;
     uint8_t* stub = block + 0x4000;
     EmitWarbondMvvmStub(game, stub, block);
+    for (size_t i = 0; i < 4; i++) EmitWarbondDotStub(game, stub + WB_DOT_STUBS + 0x40u * i, &kWbDotLoops[i]);
     DWORD protect;
     if (!VirtualProtect(stub, 0x1000, PAGE_EXECUTE_READ, &protect)) return "its stub could not be made executable";
     FlushInstructionCache(GetCurrentProcess(), stub, 0x1000);

@@ -142,6 +142,8 @@ may use any colour type; its transparency is dropped.
 
 - HellForge makes room for 128 warbonds in the game's list, where the game has 32. The game has 25 of its own, so mods
   share 103 places. Later warbonds, in load order, wait until there is room, with a line in the backend's log.
+  The Acquisition Center's row of dots under the cards has 32; past 32 warbonds it shows the first 32, and its arrows
+  still reach every warbond.
 - Mods' warbonds sell 4,280 items in all, which is what a player's profile has room for besides the game's warbonds.
   A warbond that would go past that waits too.
 - The first 99 mods' warbonds have their own name, look and art; any after them show the game's placeholder.
