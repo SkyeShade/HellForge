@@ -121,9 +121,11 @@ static int WarbondPlanLine(char** f, int n)
     return 1;
 }
 
-/* The copy's entry for a mod warbond: the art and logo of the game warbond it names (or entry 0's), its own id, text
- * and variant. Its own picture is the card both untitled (+0x18) and titled (+0x20), as Castellan's Creed has one
- * picture for both, over entry 0's: no logo (+0x28 0, as the placeholder has). */
+/* The copy's entry for a mod warbond: the art of the game warbond it names (or entry 0's), its own id, text and
+ * variant, and no logo (+0x28 0, as the placeholder has): the card draws the logo, the other warbond's title, over the
+ * art. Its own picture (ModWarbondArt: the mod's image, a copy of the named warbond's card that HellForge's lock does
+ * not touch, or the plain card) is the card both untitled (+0x18) and titled (+0x20), as Castellan's Creed has one
+ * picture for both. */
 static void WarbondEntry(uint8_t* entry, const uint8_t* game, const ModWarbond* w)
 {
     const uint8_t* art = game; /* entry 0: the placeholder art, no logo */
@@ -134,6 +136,7 @@ static void WarbondEntry(uint8_t* entry, const uint8_t* game, const ModWarbond* 
     memcpy(entry + 0x04, w->season, 8);
     memcpy(entry + 0x0C, w->name, 8);
     memcpy(entry + 0x48, &w->variant, 4);
+    memset(entry + 0x28, 0, 8);
     if (w->art != 0)
     {
         memcpy(entry + 0x18, &w->art, 8);
@@ -456,5 +459,6 @@ static void InstallModWarbonds(void)
     if (prices) Note("warbonds: every warbond price shows the medal: %s", prices);
     const char* texts = prices ? "the prices are not installed" : InstallWarbondTexts(game);
     if (texts) Note("warbonds: mod warbonds' spent and unlock texts name medals: %s", texts);
-    Note("warbonds: %d mod warbond(s) in the game's warbond table (%u entries)", g_modWarbondCount, (unsigned)entries);
+    Note("warbonds: %d mod warbond(s) in the game's warbond table (%u entries: the game's %u and the mods')", g_modWarbondCount, (unsigned)entries,
+        WB_GAME_ENTRIES);
 }

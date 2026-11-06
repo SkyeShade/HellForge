@@ -167,6 +167,8 @@ static const char* InstallWarbondShowcase(uintptr_t game)
         return "game.dll could not be rewritten";
     if (items && LoaderHook("warbond showcase", game + WB_SHOW_SPAWN, (void*)WarbondShowcaseSpawn, (void**)&g_wbShowSpawn))
         Note("warbonds: the showcase's Helldivers wear what they start from: its spawn could not be hooked");
-    Note("warbonds: %d mod warbond showcase(s)", g_modWarbondCount);
+    int own = 0;
+    for (int i = 0; i < g_modWarbondCount; i++) own += g_modWarbonds[i].showFrom || g_modWarbonds[i].showPose || g_modWarbonds[i].showWeapon || !g_wbShowKits[i];
+    Note("warbonds: a showcase for each of the %d mod warbond(s), %d of them their own, the rest the game's default", g_modWarbondCount, own);
     return NULL;
 }

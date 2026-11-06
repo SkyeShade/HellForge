@@ -58,11 +58,22 @@ static void WarbondSetSpentText(uint8_t* element, uint32_t id)
     else if (kind == 0x1C0000u) ((void (*)(void*, uint32_t))(g_wbGame + WB_TEXT_SET_ALT))(element, id);
 }
 
+/* The update redraws the page bar only when the pages open (+0x5C) differ from the last frame's block (+0x2138), but
+ * fills it only for a warbond the player holds (+0x64): the next card with as many pages open and the other flag kept
+ * the last one's bar. A last-frame value that differs makes it redraw; the game copies the block anew each frame. */
+static void WarbondBarRedraw(const uint8_t* block, uint8_t* last)
+{
+    if (last == NULL || block[0x64] == last[0x64] || memcmp(block + 0x5C, last + 0x5C, 4) != 0) return;
+    uint32_t other = ~*(const uint32_t*)(block + 0x5C);
+    memcpy(last + 0x5C, &other, 4);
+}
+
 static void WarbondSpentUpdate(void* widget, float a, float b)
 {
     const uint8_t* block = *(const uint8_t* const*)((const uint8_t*)widget + 0x2130);
     if (block != NULL)
     {
+        WarbondBarRedraw(block, *(uint8_t* const*)((const uint8_t*)widget + 0x2138));
         int text = WarbondTextOfBlock(block + 0x40);
         uint32_t id = text >= 0 && g_wbSpentText[text] != 0 ? g_wbSpentText[text] : WB_SPENT_TEXT;
         WarbondSetSpentText((uint8_t*)widget + 0x378, id);

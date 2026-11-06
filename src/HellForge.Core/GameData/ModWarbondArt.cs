@@ -19,25 +19,36 @@ public static class ModWarbondArt
 
     static bool Plain(ModWarbonds.Warbond w) => w.ArtImage.Length == 0 && w.ArtFrom == 0;
 
-    // The warbonds with their texture set where it was built, the patch folder (null when no warbond has an image) and a
+    // Helldivers Mobilize's card (it has no entry in mappings/warbond-art.json: everyone owns it).
+    const ulong MobilizeCard = 0x4BCA007A5214D66F;
+
+    // The card of the game warbond an "art": {"from": ...} names, which the warbond gets a copy of under its own name: the
+    // game's own texture, which HellForge's lock (WarbondLocks) does not draw on, so a mod warbond never shows another
+    // warbond's padlock. 0 for an id with no card.
+    static ulong FromCard(uint id) => id == PremiumContent.FreeWarbond ? MobilizeCard : WarbondLocks.Mapping().FirstOrDefault(w => w.Id == id)?.Textures[0] ?? 0;
+
+    // The warbonds with their texture set where it was built, the patch folder (null when no warbond needs a texture) and a
     // problem for each image that could not be used (its warbond keeps the game's placeholder).
     public static (List<ModWarbonds.Warbond> Warbonds, string? Folder, List<string> Problems) Prepare(InstallLayout install, IReadOnlyList<ModWarbonds.Warbond> warbonds)
     {
         var drawn = warbonds.Where(w => w.ArtImage.Length > 0).ToList();
         var plain = warbonds.Any(Plain);
-        if (drawn.Count == 0 && !plain) return ([.. warbonds], null, []);
+        var copies = warbonds.Where(w => w.ArtImage.Length == 0 && FromCard(w.ArtFrom) != 0)
+            .Select(w => (Name: ModWarbonds.ArtTextureName(w.Mod, w.Key), Source: FromCard(w.ArtFrom))).ToList();
+        if (drawn.Count == 0 && !plain && copies.Count == 0) return ([.. warbonds], null, []);
         var hashes = drawn.ToDictionary(w => w, w => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(w.ArtImage))));
         var key = $"{Version}:{SupportedBuild.Current.BuildId}:{(plain ? "default" : "")}:" +
-            string.Join(",", drawn.Select(w => $"{ModWarbonds.ArtTextureName(w.Mod, w.Key):x16}={hashes[w]}").Order());
+            string.Join(",", drawn.Select(w => $"{ModWarbonds.ArtTextureName(w.Mod, w.Key):x16}={hashes[w]}").Order()) + ":" +
+            string.Join(",", copies.Select(c => $"{c.Name:x16}<{c.Source:x16}").Order());
         List<string> problems = [];
         var built = new HashSet<ulong>();
         var folder = OwnPatches.Cached(install, "mod-warbond-art", key, folder =>
         {
             using var game = new GameDataReader(Path.Combine(install.Game, "data"));
-            Build(game, drawn, plain, folder, problems);
+            Build(game, drawn, plain, copies, folder, problems);
         });
         foreach (var name in File.ReadAllLines(Path.Combine(folder, Listing))) built.Add(Convert.ToUInt64(name, 16));
-        var result = warbonds.Select(w => w.ArtImage.Length > 0 && built.Contains(ModWarbonds.ArtTextureName(w.Mod, w.Key))
+        var result = warbonds.Select(w => (w.ArtImage.Length > 0 || w.ArtFrom != 0) && built.Contains(ModWarbonds.ArtTextureName(w.Mod, w.Key))
             ? w with { ArtTexture = ModWarbonds.ArtTextureName(w.Mod, w.Key) }
             : Plain(w) && built.Contains(DefaultTexture) ? w with { ArtTexture = DefaultTexture } : w).ToList();
         problems.AddRange(result.Where(w => w.ArtImage.Length > 0 && w.ArtTexture == 0 && problems.All(p => !p.StartsWith(w.Mod + ": warbond \"" + w.Key + "\"", StringComparison.Ordinal)))
@@ -48,9 +59,11 @@ public static class ModWarbondArt
     // The textures built, one name (hex) a line: kept with the patch, so a cached folder says what it holds.
     const string Listing = "textures.txt";
 
-    // The images as textures in one patch of Archive in output, with the default card when withDefault; an image that
-    // cannot be read stays out, with a problem.
-    public static void Build(GameDataReader game, IReadOnlyList<ModWarbonds.Warbond> warbonds, bool withDefault, string output, List<string> problems)
+    // The images as textures in one patch of Archive in output, with the default card when withDefault and each copy of a
+    // game card (Name, from Source); an image that cannot be read stays out, with a problem, and a card the game data
+    // lacks (in Archive) is not copied, so its warbond shows the game's art as it is.
+    public static void Build(GameDataReader game, IReadOnlyList<ModWarbonds.Warbond> warbonds, bool withDefault,
+        IReadOnlyList<(ulong Name, ulong Source)> copies, string output, List<string> problems)
     {
         Directory.CreateDirectory(output);
         var templateKey = new ResourceKey(ResourceTypes.Texture, Template);
@@ -76,6 +89,10 @@ public static class ModWarbondArt
                 problems.Add($"{warbond.Mod}: warbond \"{warbond.Key}\" shows the game's placeholder art: its image could not be used ({error.Message}).");
             }
         }
+        var sources = game.Find(copies.Select(c => new ResourceKey(ResourceTypes.Texture, c.Source)).Distinct());
+        foreach (var (name, source) in copies)
+            if (sources.GetValueOrDefault(new ResourceKey(ResourceTypes.Texture, source)) is { } found && found.Archive == Archive && game.Read(found) is { } card)
+                resources[new ResourceKey(ResourceTypes.Texture, name)] = card;
         if (withDefault)
             resources[new ResourceKey(ResourceTypes.Texture, DefaultTexture)] =
                 template with { Gpu = IconImage.Bc1Level(ModWarbonds.ArtWidth, ModWarbonds.ArtHeight, DefaultImage()), Stream = [] };
