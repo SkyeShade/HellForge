@@ -5,15 +5,19 @@ using HellForge.Core;
 namespace HellForge.LocalBackend;
 
 // The warbonds mods add (HellForge.Core ModWarbonds, --mod-warbonds), served beside the game's: list entries after the
-// game's while its list has room (32, game.dll 0x1080633), each warbond's pages, its spent counter in the catalogue (what
+// game's while its list has room (ListCap), each warbond's pages, its spent counter in the catalogue (what
 // opens its pages), and on unlock-all every item bought and every counter full (never saved). Its currency is its
 // medalsConsumableMixId, which the page view checks (0x196D2E4) and charges (0x196BB0F). An item is left out when the game
 // would not have it: a catalogue item missing or not the player's to hold (premium, Super Credits), a price above the
 // currency's cap, or a mod's weapon or stratagem not registered this session. Only purchases are saved.
 public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbonds)
 {
-    // The game's warbond list keeps 32 (game.dll 0x1080633).
-    public const int ListCap = 32;
+    // The warbond list the mod loader makes room for (native warbond_list.c WB_LIST_CAP; the game's own keeps 32, game.dll
+    // 0x1080633, and without the loader's room keeps the first 32 served).
+    public const int ListCap = 128;
+    // The bought items a profile holds (game.dll: 5,280 ids, profile+0xD8A5C, no bound on any writer) less the game's own
+    // warbonds' (ids 1 to 989): what mods' warbonds may sell in all.
+    public const int ItemRoom = 5280 - 1000;
     // Every game warbond counts spent medals into the same total (2398121714, the medals' child).
     const uint MedalsTotal = 2398121714;
     // Ids the game's own identity table (0x32E0C20) knows besides the served warbonds: a test entry and an unreleased one.
@@ -47,6 +51,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             ? served.EnumerateArray().Select(w => w.TryGetProperty("id32", out var id) && id.TryGetUInt32(out var value) ? value : 0).ToHashSet() : [];
         var lookup = Look();
         List<Served> result = [];
+        var items = 0;
         foreach (var warbond in warbonds)
         {
             if (list.Contains(warbond.Id32) || TableIds.Contains(warbond.Id32) || lookup.Catalogue?.Contains(warbond.Spent) == true ||
@@ -54,8 +59,14 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
                 Report(warbond, "", "its id is one the game uses; rename its key");
             else if (result.Count >= ListCap - list.Count)
                 Report(warbond, "", $"the game lists {ListCap} warbonds, and {list.Count + result.Count} are listed already");
-            else if (Serve(warbond, lookup) is { } ready)
+            else if (Serve(warbond, lookup) is not { } ready) { }
+            else if (items + ready.Sells.Count > ItemRoom)
+                Report(warbond, "", $"the game holds {ItemRoom} items of mods' warbonds in all, and {items} are served already");
+            else
+            {
+                items += ready.Sells.Count;
                 result.Add(ready);
+            }
         }
         return result;
     }
@@ -113,9 +124,9 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     // An item's cell in the game's detail shape, or null (reported) when it cannot be sold.
     JsonObject? Cell(ModWarbonds.Warbond warbond, ModWarbonds.Item item, Lookup lookup, Dictionary<long, uint> sells)
     {
-        if (lookup.Caps.TryGetValue(warbond.CurrencyMixId, out var cap) && item.Cost > cap)
+        if (lookup.Caps.TryGetValue(CurrencyOf(warbond, item), out var cap) && item.Cost > cap)
         {
-            Report(warbond, item.Sells.ToString(), $"it costs {item.Cost} {warbond.Currency}, and a player holds at most {cap}");
+            Report(warbond, item.Sells.ToString(), $"it costs {item.Cost} {(item.CurrencyMixId != 0 ? item.Currency : warbond.Currency)}, and a player holds at most {cap}");
             return null;
         }
         if (ItemOf(item.Sells, lookup.Catalogue, lookup.Registered, out var why) is not { } mixId)
@@ -290,5 +301,11 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
 
     // Whether a mixId is a mod's registered weapon or stratagem: a purchase grants it without saving it in the profile,
     // which RegisteredItems serves while the item stays bought.
+    static uint CurrencyOf(ModWarbonds.Warbond warbond, ModWarbonds.Item item) => item.CurrencyMixId != 0 ? item.CurrencyMixId : warbond.CurrencyMixId;
+
+    // A mod warbond item's currency (its own, else its warbond's); null for any other item.
+    public uint? ItemCurrency(long itemId) =>
+        warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items).Select(i => (w, i))).FirstOrDefault(x => x.i.Id == itemId) is ({ } w, { } i) ? CurrencyOf(w, i) : null;
+
     public bool IsRegistered(uint mixId) => Registered?.Load().Any(i => i.MixId == mixId && !i.IsDifficulty) == true;
 }

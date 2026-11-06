@@ -576,6 +576,7 @@ static void ChannelInstall(uintptr_t game);
 #include "armory_diag.c" /* the Armory thumbnails' stalls, from packages.c's game-thread update */
 #include "forge_credits.c"
 #include "warbonds.c" /* after forge_credits.c: mods' warbonds in the game's warbond table */
+#include "warbond_list.c" /* after warbonds.c: more than the game's 32 warbonds */
 #include "terminal_camera.c" /* before terminal.c: the terminal starts its glide */
 #include "terminal.c"
 #include "abilities.c"

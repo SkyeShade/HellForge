@@ -91,7 +91,8 @@ An item also has:
 
 | Field | Meaning |
 |---|---|
-| `cost` | its price in the warbond's currency, 1 to 1,000,000 |
+| `cost` | its price, 1 to 1,000,000 |
+| `currency` | what it costs, when not the warbond's `currency`: one of the same names |
 | `position` | its top-left cell `[x, y]` on the 5 by 3 grid, from `[0, 0]`; without one it takes the first free cells, row by row |
 | `size` | the cells it covers `[width, height]`; `[1, 1]` by default |
 | `repeatable` | `true` to sell it again after each purchase (for consumables); `false` by default |
@@ -109,7 +110,8 @@ An item is left out for the session, with a line in the backend's log, when the 
 
 ## Pages and prices
 
-A page's `requirement` is what players must have spent on this warbond before the page opens. The first page has none.
+A page's `requirement` is what players must have spent on this warbond before the page opens. Every price counts
+towards it as its number, whatever its currency, so keep a warbond's prices in one currency when its pages build on them. The first page has none.
 Each later page needs at least as much as the page before it, and no more than the earlier pages cost in all, so it can
 always be opened. A player who buys everything on the earlier pages has spent their whole cost.
 
@@ -134,17 +136,24 @@ may use any colour type; its transparency is dropped.
 
 ## Limits
 
-- The game lists 32 warbonds. It has 25 of its own, so mods share the 7 places left. Later warbonds, in load order,
-  wait until there is room, with a line in the backend's log.
+- HellForge makes room for 128 warbonds in the game's list, where the game has 32. The game has 25 of its own, so mods
+  share 103 places. Later warbonds, in load order, wait until there is room, with a line in the backend's log.
+- Mods' warbonds sell 4,280 items in all, which is what a player's profile has room for besides the game's warbonds.
+  A warbond that would go past that waits too.
+- The first 99 mods' warbonds have their own name, look and art; any after them show the game's placeholder.
 - 15 pages a warbond, 10 items a page, and a 5 by 3 grid. HellForge refuses a warbond over these limits, and the
   launcher says why.
-- One currency a warbond. An item has one price.
+- An item has one price, in one currency. The page's balance at the top shows the warbond's `currency`; an item in
+  another currency shows its own icon and is checked against what the player holds of it.
 - Warbonds are read when a session starts. A mod added while the game runs brings its warbonds at the next start.
 
 Each player's warbonds are their own profile's, so warbonds take nothing from co-op: friends need the same mods only for
 the weapons and stratagems themselves.
 
 ## Where to go next
+
+- `examples/mods/warbond-example` (in `app/sdk/examples/mods` once installed): two warbonds with no code, one in
+  requisition with its own card and an item in samples, one with a premium look bought for Forge Credits.
 
 - [Content](content.md): register the weapons and stratagems a warbond sells.
 - [Debugging](debugging.md): where the launcher's and the backend's messages are.

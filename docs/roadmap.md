@@ -261,7 +261,7 @@ We want playing up from `starter` to be fun, without turning into a grind or giv
    operation. The numbers live in one data file, so players and mods can change the pace: faster, slower, or hardcore.
 3. Bring HellForge's own content in. Mods' warbonds are started: a `hellforge-warbonds.json` sells game items and the
    mod's weapons and stratagems in a currency it chooses ([warbonds](modding/warbonds.md)). They have their own name, look,
-   art and price icons. Left: more than the game's 32 warbonds, an SDK call, and a level requirement or a price outside
+   art and price icons. Left: an SDK call, and a level requirement or a price outside
    a warbond ([SDK roadmap, phase 5b](sdk-roadmap.md#events-hooks-and-registries-phase-5b)). Difficulty 11 is to unlock
    through progress.
 4. Add more start templates between `starter` and `unlock-all`.

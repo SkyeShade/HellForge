@@ -59,8 +59,13 @@ public static class ModWarbonds
     // A page: what must have been spent on the warbond to open it, and its items.
     public sealed record Page(long Requirement, IReadOnlyList<Item> Items);
 
-    // An item on a page: its seasonPassItemId, what it sells, its price, its cell in the 5 x 3 grid.
-    public sealed record Item(uint Id, Ref Sells, long Cost, int X, int Y, int Width, int Height, bool Repeatable);
+    // An item on a page: its seasonPassItemId, what it sells, its price, its cell in the 5 x 3 grid, and its own currency
+    // when it is not its warbond's (CurrencyMixId 0: the warbond's).
+    public sealed record Item(uint Id, Ref Sells, long Cost, int X, int Y, int Width, int Height, bool Repeatable)
+    {
+        public string Currency { get; init; } = "";
+        public uint CurrencyMixId { get; init; }
+    }
 
     // What an item sells: a catalogue item by its mixId (Kind "item"), or a weapon or stratagem a code mod registers this
     // session, by its name and that mod's id, resolved by the backend from registered-items.json.
@@ -252,11 +257,12 @@ public static class ModWarbonds
         var cells = parsed.Select(item => item.Position is { } position ? Place(grid, item, position) : (X: -1, Y: -1)).ToArray();
         for (var i = 0; i < parsed.Count; i++)
             if (cells[i].X < 0) cells[i] = Fill(grid, parsed[i]);
-        return new Page(requirement, [.. parsed.Select((p, i) => new Item(ItemId(modId, warbondKey, p.Key), p.Sells, p.Cost, cells[i].X, cells[i].Y, p.W, p.H, p.Repeatable))]);
+        return new Page(requirement, [.. parsed.Select((p, i) => new Item(ItemId(modId, warbondKey, p.Key), p.Sells, p.Cost, cells[i].X, cells[i].Y, p.W, p.H, p.Repeatable)
+            { Currency = p.Currency, CurrencyMixId = p.Currency.Length > 0 ? Currencies[p.Currency] : 0 })]);
     }
 
     // An item as its file gives it, before its cell is known.
-    sealed record ParsedItem(Ref Sells, string Key, long Cost, int W, int H, bool Repeatable, (int X, int Y)? Position, string At);
+    sealed record ParsedItem(Ref Sells, string Key, long Cost, int W, int H, bool Repeatable, (int X, int Y)? Position, string At, string Currency);
 
     static ParsedItem ParseItem(string modId, JsonElement json, string at, HashSet<string> itemKeys)
     {
@@ -270,7 +276,9 @@ public static class ModWarbonds
         var (w, h) = json.TryGetProperty("size", out var size) ? Pair(size, at + " \"size\"") : (1, 1);
         if (w < 1 || h < 1 || w > GridWidth || h > GridHeight) throw new InvalidDataException($"{at}'s \"size\" fits the {GridWidth} x {GridHeight} grid");
         (int, int)? position = json.TryGetProperty("position", out var p) ? Pair(p, at + " \"position\"") : null;
-        return new ParsedItem(sells, key, cost, w, h, Flag(json, "repeatable", at), position, at);
+        var currency = json.TryGetProperty("currency", out var c) ? c.ValueKind == JsonValueKind.String ? c.GetString()! : "?" : "";
+        if (currency.Length > 0 && !Currencies.ContainsKey(currency)) throw new InvalidDataException($"{at}'s \"currency\" is one of {string.Join(", ", Currencies.Keys)}");
+        return new ParsedItem(sells, key, cost, w, h, Flag(json, "repeatable", at), position, at, currency);
     }
 
     // An item's key within its warbond: its own, or what it sells.
@@ -343,10 +351,17 @@ public static class ModWarbonds
     // The mod loader's plan lines: one per warbond, for its entry in the game's warbond table (native warbonds.c):
     // warbond, id32, variant, currency mixId, its text key, name, season, the game warbond whose art it shows, and the
     // texture built from its own image (hex; 0 for none).
-    public static IEnumerable<string> PlanLines(IEnumerable<Warbond> warbonds) => warbonds.Select(w => string.Join('\t',
+    public static IEnumerable<string> PlanLines(IEnumerable<Warbond> warbonds) => warbonds.SelectMany(w => (IEnumerable<string>)[WarbondLine(w), .. ItemLines(w)]);
+
+    // "warbond_item", seasonPassItemId, currency mixId: every item with the currency it costs (its own, else its warbond's;
+    // the game's MVVM buy path assumes medals for all).
+    static IEnumerable<string> ItemLines(Warbond w) => w.Pages.SelectMany(p => p.Items).Select(i => string.Join('\t', "warbond_item",
+        i.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), (i.CurrencyMixId != 0 ? i.CurrencyMixId : w.CurrencyMixId).ToString(System.Globalization.CultureInfo.InvariantCulture)));
+
+    static string WarbondLine(Warbond w) => string.Join('\t',
         "warbond", w.Id32.ToString(System.Globalization.CultureInfo.InvariantCulture), w.Variant.ToString(System.Globalization.CultureInfo.InvariantCulture),
         w.CurrencyMixId.ToString(System.Globalization.CultureInfo.InvariantCulture), "warbond/" + w.Mod + "/" + w.Key, w.Name, w.Season,
-        w.ArtFrom.ToString(System.Globalization.CultureInfo.InvariantCulture), w.ArtTexture.ToString("x16", System.Globalization.CultureInfo.InvariantCulture)));
+        w.ArtFrom.ToString(System.Globalization.CultureInfo.InvariantCulture), w.ArtTexture.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
 
     // A stable 32-bit id: the first four bytes of the text's SHA-256, never 0.
     public static uint Hash(string text)
@@ -374,7 +389,7 @@ public static class ModWarbonds
                     ["items"] = new JsonArray([.. p.Items.Select(i => (JsonNode)new JsonObject
                     {
                         ["id"] = i.Id, ["kind"] = i.Sells.Kind, ["mixId"] = i.Sells.MixId, ["name"] = i.Sells.Name, ["mod"] = i.Sells.Mod,
-                        ["cost"] = i.Cost, ["x"] = i.X, ["y"] = i.Y, ["width"] = i.Width, ["height"] = i.Height, ["repeatable"] = i.Repeatable,
+                        ["cost"] = i.Cost, ["currency"] = i.Currency, ["currencyMixId"] = i.CurrencyMixId, ["x"] = i.X, ["y"] = i.Y, ["width"] = i.Width, ["height"] = i.Height, ["repeatable"] = i.Repeatable,
                     })]),
                 })]),
             });
@@ -395,7 +410,8 @@ public static class ModWarbonds
                 [.. p.GetProperty("items").EnumerateArray().Select(i => new Item(i.GetProperty("id").GetUInt32(),
                     new Ref(i.GetProperty("kind").GetString()!, i.GetProperty("mixId").GetUInt32(), i.GetProperty("name").GetString()!, i.GetProperty("mod").GetString()!),
                     i.GetProperty("cost").GetInt64(), i.GetProperty("x").GetInt32(), i.GetProperty("y").GetInt32(),
-                    i.GetProperty("width").GetInt32(), i.GetProperty("height").GetInt32(), i.GetProperty("repeatable").GetBoolean()))]))])
+                    i.GetProperty("width").GetInt32(), i.GetProperty("height").GetInt32(), i.GetProperty("repeatable").GetBoolean())
+                    { Currency = i.GetProperty("currency").GetString()!, CurrencyMixId = i.GetProperty("currencyMixId").GetUInt32() })]))])
             {
                 Variant = w.GetProperty("variant").GetInt32(), Season = w.GetProperty("season").GetString()!, ArtFrom = w.GetProperty("artFrom").GetUInt32(),
                 UnlockCost = w.GetProperty("unlockCost").GetInt64(), Token = w.GetProperty("token").GetUInt32(),

@@ -54,7 +54,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         if (!Whole(body, "seasonPassItemId", out var itemId) || FindWarbondItem(itemId) is not { } found) return null;
         var (warbond, page, item) = found;
         var cost = item.GetProperty("medalCost").GetInt64();
-        var medals = warbond.GetProperty("medalsConsumableMixId").GetUInt32();
+        var medals = modWarbonds?.ItemCurrency(itemId) ?? warbond.GetProperty("medalsConsumableMixId").GetUInt32(); /* a mod's item: its own */
         var spent = warbond.GetProperty("medalsSpentMixId").GetUInt32();
         var mixId = item.GetProperty("itemMixId").GetUInt32();
         var repeatable = item.TryGetProperty("isRepeatable", out var r) && r.ValueKind == JsonValueKind.True;

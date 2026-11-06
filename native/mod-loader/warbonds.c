@@ -45,9 +45,41 @@ static const WbBound kWbBounds[] = {
     {0x14E90D1u, 3, {0x83,0xfa,0x1c}}, {0x14E954Au, 3, {0x83,0xf9,0x1c}}, {0x14FDC1Au, 3, {0x83,0xfb,0x1c}},
     {0x196390Eu, 3, {0x83,0xfa,0x1c}}, {0x196C6E3u, 4, {0x41,0x83,0xf8,0x1c}}, {0x197D7CAu, 3, {0x83,0xfa,0x1c}}};
 
+/* Items with a currency of their own ("warbond_item <seasonPassItemId> <currency mixId>"), sorted by id at install:
+ * what the game's per-item checks, charge and icons use instead of the warbond's (ModWarbondService prices them alike). */
+#define WB_ITEMS_MAX 4280
+typedef struct { uint32_t id, currency; } WbItemCurrency;
+static WbItemCurrency g_wbItems[WB_ITEMS_MAX];
+static int g_wbItemCount;
+
+static int CompareWbItems(const void* a, const void* b)
+{
+    uint32_t x = ((const WbItemCurrency*)a)->id, y = ((const WbItemCurrency*)b)->id;
+    return x < y ? -1 : x > y;
+}
+
+/* An item's currency: its own, or the warbond's (fallback). */
+static uint32_t ItemCurrency(uint32_t itemId, uint32_t fallback)
+{
+    int lo = 0, hi = g_wbItemCount - 1;
+    while (lo <= hi)
+    {
+        int mid = (lo + hi) / 2;
+        if (g_wbItems[mid].id == itemId) return g_wbItems[mid].currency;
+        if (g_wbItems[mid].id < itemId) lo = mid + 1; else hi = mid - 1;
+    }
+    return fallback;
+}
+
 /* "warbond <id32> <variant> <currency> <text key> <name> <season> <art from> <art texture, hex>" (ModWarbonds.PlanLines). */
 static int WarbondPlanLine(char** f, int n)
 {
+    if (n == 3 && strcmp(f[0], "warbond_item") == 0)
+    {
+        if (g_wbItemCount < WB_ITEMS_MAX)
+            g_wbItems[g_wbItemCount++] = (WbItemCurrency){(uint32_t)strtoul(f[1], NULL, 10), (uint32_t)strtoul(f[2], NULL, 10)};
+        return 1;
+    }
     if (n != 9 || strcmp(f[0], "warbond") != 0) return 0;
     if (g_modWarbondCount >= WB_MAX) { Note("warbonds: more than %d mod warbonds; the rest show the game's placeholder", WB_MAX); return 1; }
     ModWarbond* w = &g_modWarbonds[g_modWarbondCount];
@@ -99,16 +131,18 @@ static void WarbondEntry(uint8_t* entry, const uint8_t* game, const ModWarbond* 
  * (0x1948ACA, 0x193F7FA); its colour call (0x1448690) goes through WarbondPriceColour, which gives a sample its colour. */
 #define WB_SAMPLES 0x32DE960u
 #define WB_SET_COLOUR 0x1448690u
-typedef struct { uint32_t rva; uint8_t len; uint8_t pin[8]; uint32_t next; uint8_t load[16]; uint8_t loadLen; } WbPriceSite;
+/* item: the site prices one item (WarbondItemPriceKind(id, warbond currency, block): the item's own currency), else the
+ * warbond's balance (WarbondPriceKind(currency, block)). */
+typedef struct { uint32_t rva; uint8_t len; uint8_t pin[8]; uint32_t next; uint8_t load[16]; uint8_t loadLen; uint8_t item; } WbPriceSite;
 static const WbPriceSite kWbPriceSites[] = {
-    /* lea rdx,[r14+0x10]; mov rax,[rbp+0xD18]; mov ecx,[rax+0xC] */
-    {0x196DFA9u, 8, {0x41,0xc7,0x46,0x10,0x03,0x00,0x00,0x00}, 0x196DFB1u, {0x49,0x8d,0x56,0x10, 0x48,0x8b,0x85,0x18,0x0d,0x00,0x00, 0x8b,0x48,0x0c}, 14},
-    /* lea rdx,[rax+0x40]; mov rax,[rbp+0xD18]; mov ecx,[rax+0xC] */
-    {0x196CC76u, 7, {0xc7,0x40,0x40,0x03,0x00,0x00,0x00}, 0x196CC7Du, {0x48,0x8d,0x50,0x40, 0x48,0x8b,0x85,0x18,0x0d,0x00,0x00, 0x8b,0x48,0x0c}, 14},
-    /* lea rdx,[rbx+0x40]; mov ecx,[r13+0xC] */
-    {0x1963C1Au, 7, {0xc7,0x43,0x40,0x03,0x00,0x00,0x00}, 0x1963C21u, {0x48,0x8d,0x53,0x40, 0x41,0x8b,0x4d,0x0c}, 8},
-    /* lea rdx,[rbx+8]; mov rax,[rsi+0xD18]; mov ecx,[rax+0xC] */
-    {0x196D65Fu, 7, {0xc7,0x43,0x08,0x03,0x00,0x00,0x00}, 0x196D666u, {0x48,0x8d,0x53,0x08, 0x48,0x8b,0x86,0x18,0x0d,0x00,0x00, 0x8b,0x48,0x0c}, 14}};
+    /* the item panel (rbx = the detail item): mov ecx,[rbx]; mov rax,[rbp+0xD18]; mov edx,[rax+0xC]; lea r8,[r14+0x10] */
+    {0x196DFA9u, 8, {0x41,0xc7,0x46,0x10,0x03,0x00,0x00,0x00}, 0x196DFB1u, {0x8b,0x0b, 0x48,0x8b,0x85,0x18,0x0d,0x00,0x00, 0x8b,0x50,0x0c, 0x4d,0x8d,0x46,0x10}, 16, 1},
+    /* the page header: lea rdx,[rax+0x40]; mov rax,[rbp+0xD18]; mov ecx,[rax+0xC] */
+    {0x196CC76u, 7, {0xc7,0x40,0x40,0x03,0x00,0x00,0x00}, 0x196CC7Du, {0x48,0x8d,0x50,0x40, 0x48,0x8b,0x85,0x18,0x0d,0x00,0x00, 0x8b,0x48,0x0c}, 14, 0},
+    /* the Acquisition Center's card: lea rdx,[rbx+0x40]; mov ecx,[r13+0xC] */
+    {0x1963C1Au, 7, {0xc7,0x43,0x40,0x03,0x00,0x00,0x00}, 0x1963C21u, {0x48,0x8d,0x53,0x40, 0x41,0x8b,0x4d,0x0c}, 8, 0},
+    /* a grid cell (rbx = the cell, its id at +0): mov ecx,[rbx]; mov rax,[rsi+0xD18]; mov edx,[rax+0xC]; lea r8,[rbx+8] */
+    {0x196D65Fu, 7, {0xc7,0x43,0x08,0x03,0x00,0x00,0x00}, 0x196D666u, {0x8b,0x0b, 0x48,0x8b,0x86,0x18,0x0d,0x00,0x00, 0x8b,0x50,0x0c, 0x4c,0x8d,0x43,0x08}, 16, 1}};
 /* The widgets' compares: the bytes, where equal goes, and the stub's override test (new/old block in rcx/rdx or r8/rdx). */
 typedef struct { uint32_t rva; uint8_t len; uint8_t pin[8]; uint32_t equal, next; uint8_t test[8]; } WbCompare;
 static const WbCompare kWbCompares[] = {
@@ -137,6 +171,11 @@ static void WarbondPriceKind(uint32_t currency, uint8_t* block)
     memcpy(block + 8, &icon, 8);
 }
 
+static void WarbondItemPriceKind(uint32_t itemId, uint32_t warbondCurrency, uint8_t* block)
+{
+    WarbondPriceKind(ItemCurrency(itemId, warbondCurrency), block);
+}
+
 static void WarbondPriceColour(void* element, float* rgb, const uint8_t* widget)
 {
     uint64_t icon;
@@ -151,6 +190,69 @@ static void PutAbs(Emit* e, const void* target) /* mov rax, target */
     uint64_t at = (uint64_t)(uintptr_t)target;
     Put(e, "\x48\xb8", 2);
     Put(e, &at, 8);
+}
+
+/* Per-item currency (V): an item's state (2 buyable, 3 too dear) is set from the warbond's balance (view+0x50) for the
+ * grid's cells (0x196D626, cell+0x20) and the item panel (0x196E22D, panel+0x28; the panel's state is the only buy gate,
+ * through its widget to view+0x2405), and the buy request's builder (0x13714F0: id, cost, currency; its two callers the
+ * page view 0x196BB13 and the MVVM popup 0x14FE4DF, whose currency is medals) takes the warbond's currency, which the
+ * reply's deduction (0x13751D0) takes back as sent. Each goes through the item's currency (ItemCurrency): the state from
+ * its held amount (the game's own inlined lookup), the builder's currency argument replaced at its entry. */
+#define WB_PROGRESSION 0x347CEF8u
+#define WB_BUILDER 0x13714F0u
+#define WB_CELL_STATE 0x196D626u
+#define WB_PANEL_STATE 0x196E22Du
+static const uint8_t kWbBuilderPin[5] = {0x4c,0x8b,0xdc,0x41,0x56};        /* mov r11,rsp; push r14 */
+static const uint8_t kWbCellStatePin[6] = {0x48,0x8b,0x46,0x08,0x33,0xc9}; /* mov rax,[rsi+8]; xor ecx,ecx (to 0x196D63B) */
+static const uint8_t kWbPanelStatePin[6] = {0x8b,0x43,0x08,0x39,0x41,0x50}; /* mov eax,[rbx+8]; cmp [rcx+0x50],eax (to 0x196E248) */
+static uintptr_t g_wbGame;
+
+/* What the profile holds of a currency (the game's inline lookup, 0x196D2E4: progression+0x1CE0 entries at +0xB9CE4,
+ * 0x18 apart, {index, mixId}; the amount at index * 0xB8 + 0x1D94); 0 when it holds none. */
+static int32_t WarbondHeld(uint32_t mixId)
+{
+    const uint8_t* mgr = *(const uint8_t* const*)(g_wbGame + WB_PROGRESSION);
+    if (mgr == NULL) return 0;
+    uint32_t count = *(const uint32_t*)(mgr + 0x1CE0);
+    const uint8_t* entry = mgr + 0xB9CE4;
+    for (uint32_t i = 0; i < count; i++, entry += 0x18)
+        if (*(const uint32_t*)(entry + 4) == mixId) return *(const int32_t*)(mgr + (size_t)*(const uint32_t*)entry * 0xB8 + 0x1D94);
+    return 0;
+}
+
+/* An item's state: 3 when it costs more than the player holds of its currency, else 2 (the warbond's balance for an
+ * item in the warbond's currency, as the game does). */
+static uint32_t WarbondItemState(uint32_t itemId, uint32_t warbondCurrency, int32_t warbondHeld, int32_t cost)
+{
+    uint32_t currency = ItemCurrency(itemId, warbondCurrency);
+    int32_t held = currency == warbondCurrency ? warbondHeld : WarbondHeld(currency);
+    return cost > held ? 3u : 2u;
+}
+
+/* The three stubs at e: the cell state, the panel state, the builder's entry. */
+static void EmitWarbondItemStubs(uintptr_t game, Emit* e, uint8_t* stubs[3])
+{
+    stubs[0] = e->at; /* save the volatile registers (r9 is live), state = WarbondItemState(id, currency, held, cost) */
+    Put(e, "\x50\x51\x52\x41\x50\x41\x51\x41\x52\x41\x53\x48\x83\xec\x28", 15);
+    Put(e, "\x8b\x0b\x48\x8b\x86\x18\x0d\x00\x00\x8b\x50\x0c\x48\x8b\x46\x08\x44\x8b\x40\x50\x44\x8b\x4b\x18", 24);
+    PutAbs(e, (const void*)WarbondItemState);
+    Put(e, "\xff\xd0\x89\x43\x20", 5);                                   /* call rax; mov [rbx+0x20], eax */
+    Put(e, "\x48\x83\xc4\x28\x41\x5b\x41\x5a\x41\x59\x41\x58\x5a\x59\x58", 15);
+    Put8(e, 0xE9);
+    PutRel32(e, (const uint8_t*)(game + 0x196D63Bu));
+    stubs[1] = e->at; /* the function's end follows: every volatile register is free */
+    Put(e, "\x44\x8b\x41\x50\x8b\x0b\x48\x8b\x85\x18\x0d\x00\x00\x8b\x50\x0c\x44\x8b\x4b\x08\x48\x83\xec\x20", 24);
+    PutAbs(e, (const void*)WarbondItemState);
+    Put(e, "\xff\xd0\x48\x83\xc4\x20\x41\x89\x46\x28", 10);           /* call rax; mov [r14+0x28], eax */
+    Put8(e, 0xE9);
+    PutRel32(e, (const uint8_t*)(game + 0x196E248u));
+    stubs[2] = e->at; /* r9d = ItemCurrency(edx, r9d), the arguments kept; then the builder's first two instructions */
+    Put(e, "\x51\x52\x41\x50\x48\x83\xec\x20\x89\xd1\x44\x89\xca", 13);
+    PutAbs(e, (const void*)ItemCurrency);
+    Put(e, "\xff\xd0\x41\x89\xc1\x48\x83\xc4\x20\x41\x58\x5a\x59", 13);
+    Put(e, kWbBuilderPin, sizeof kWbBuilderPin);
+    Put8(e, 0xE9);
+    PutRel32(e, (const uint8_t*)(game + WB_BUILDER + 5));
 }
 
 /* Whether every price site, widget compare and colour call matches the reviewed build. */
@@ -188,7 +290,7 @@ static void EmitWarbondPriceStubs(uintptr_t game, uint8_t* code, uint8_t* stubs[
         stubs[i] = e.at;
         Put(&e, "\x50\x51\x52\x41\x50\x41\x51\x41\x52\x41\x53\x48\x83\xec\x28", 15);
         Put(&e, site->load, site->loadLen);
-        PutAbs(&e, (const void*)WarbondPriceKind);
+        PutAbs(&e, site->item ? (const void*)WarbondItemPriceKind : (const void*)WarbondPriceKind);
         Put(&e, "\xff\xd0\x48\x83\xc4\x28\x41\x5b\x41\x5a\x41\x59\x41\x58\x5a\x59\x58", 17);
         Put8(&e, 0xE9);
         PutRel32(&e, (const uint8_t*)(game + site->next));
@@ -235,11 +337,32 @@ static const char* InstallWarbondPrices(uintptr_t game)
     DWORD protect;
     if (!VirtualProtect(code, 0x1000, PAGE_EXECUTE_READ, &protect)) return "its stubs could not be made executable";
     FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
-    int failed = 0;
-    for (size_t i = 0; i < 4; i++) failed |= WarbondStubJump(game + kWbPriceSites[i].rva, kWbPriceSites[i].len, 0xE9, stubs[i]);
-    for (size_t i = 0; i < 2; i++) failed |= WarbondStubJump(game + kWbCompares[i].rva, kWbCompares[i].len, 0xE9, stubs[4 + i]);
-    for (size_t i = 0; i < 2; i++) failed |= WarbondStubJump(game + kWbColours[i].rva, 5, 0xE8, stubs[6 + i]);
-    if (failed) return "game.dll could not be rewritten";
+    int failed = 0; /* the redraws first, then the kinds: each site stands alone */
+    for (size_t i = 0; i < 2 && !failed; i++) failed |= WarbondStubJump(game + kWbCompares[i].rva, kWbCompares[i].len, 0xE9, stubs[4 + i]);
+    for (size_t i = 0; i < 2 && !failed; i++) failed |= WarbondStubJump(game + kWbColours[i].rva, 5, 0xE8, stubs[6 + i]);
+    for (size_t i = 0; i < 4 && !failed; i++) failed |= WarbondStubJump(game + kWbPriceSites[i].rva, kWbPriceSites[i].len, 0xE9, stubs[i]);
+    return failed ? "game.dll could not be rewritten" : NULL;
+}
+
+/* The per-item currency's stubs (purchases: installed apart from the look). The builder first: once the charge is the
+ * item's currency, the state checks follow; a stop leaves them on the warbond's. NULL, or why not. */
+static const char* InstallWarbondItems(uintptr_t game)
+{
+    if (!PinMatches(game + WB_BUILDER, kWbBuilderPin, sizeof kWbBuilderPin) || !PinMatches(game + WB_CELL_STATE, kWbCellStatePin, sizeof kWbCellStatePin) ||
+        !PinMatches(game + WB_PANEL_STATE, kWbPanelStatePin, sizeof kWbPanelStatePin))
+        return "the purchase code does not match the reviewed build";
+    uint8_t* code = AllocateNearGame(game, 0x1000);
+    if (code == NULL) return "no memory near game.dll";
+    uint8_t* stubs[3];
+    Emit e = {code};
+    g_wbGame = game;
+    EmitWarbondItemStubs(game, &e, stubs);
+    DWORD protect;
+    if (!VirtualProtect(code, 0x1000, PAGE_EXECUTE_READ, &protect)) return "its stubs could not be made executable";
+    FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
+    if (WarbondStubJump(game + WB_BUILDER, 5, 0xE9, stubs[2]) || WarbondStubJump(game + WB_CELL_STATE, 6, 0xE9, stubs[0]) ||
+        WarbondStubJump(game + WB_PANEL_STATE, 6, 0xE9, stubs[1]))
+        return "game.dll could not be rewritten";
     return NULL;
 }
 
@@ -253,17 +376,16 @@ static uint32_t WarbondTablePins(uintptr_t game)
     return 0;
 }
 
-static void InstallModWarbonds(void)
+static const char* InstallWarbondList(uintptr_t game); /* warbond_list.c */
+
+/* The table copy with the mod warbonds' entries, and the game's references and bounds pointed at it. NULL, or why not. */
+static const char* InstallWarbondTable(uintptr_t game, size_t entries)
 {
-    if (g_modWarbondsState || g_modWarbondCount == 0) return;
-    uintptr_t game = ApiModuleBase("game.dll", NULL);
-    g_modWarbondsState = -1;
-    if (strcmp(g_build, "25480438") || !game) return;
+    static char why[128];
     uint32_t mismatch = WarbondTablePins(game);
-    if (mismatch) { Note("warbonds: mod warbonds show the game's placeholder; the code at game.dll+0x%x does not match the reviewed build", mismatch); return; }
-    size_t entries = WB_GAME_ENTRIES + (size_t)g_modWarbondCount;
+    if (mismatch) { snprintf(why, sizeof why, "the code at game.dll+0x%x does not match the reviewed build", mismatch); return why; }
     uint8_t* table = AllocateNearGame(game, entries * WB_ENTRY);
-    if (table == NULL) { Note("warbonds: mod warbonds show the game's placeholder; no memory near game.dll"); return; }
+    if (table == NULL) return "no memory near game.dll";
     const uint8_t* vanilla = (const uint8_t*)(game + WB_TABLE);
     memcpy(table, vanilla, WB_GAME_ENTRIES * WB_ENTRY);
     for (int i = 0; i < g_modWarbondCount; i++) WarbondEntry(table + (WB_GAME_ENTRIES + (size_t)i) * WB_ENTRY, vanilla, &g_modWarbonds[i]);
@@ -271,11 +393,28 @@ static void InstallModWarbonds(void)
     {
         const WbLea* l = &kWbLeas[i];
         int32_t disp = (int32_t)((intptr_t)(table + l->field) - (intptr_t)(game + l->rva + l->len));
-        if (ApiWrite(game + l->rva + l->len - 4, &disp, 4)) { Note("warbonds: game.dll+0x%x could not be rewritten", l->rva); return; }
+        if (ApiWrite(game + l->rva + l->len - 4, &disp, 4)) return "game.dll could not be rewritten";
     }
-    uint8_t count = (uint8_t)entries;
+    uint8_t count = (uint8_t)entries; /* the bounds after the bases: never past the copy */
     for (size_t i = 0; i < sizeof kWbBounds / sizeof *kWbBounds; i++)
-        if (ApiWrite(game + kWbBounds[i].rva + kWbBounds[i].len - 1, &count, 1)) { Note("warbonds: game.dll+0x%x could not be rewritten", kWbBounds[i].rva); return; }
+        if (ApiWrite(game + kWbBounds[i].rva + kWbBounds[i].len - 1, &count, 1)) return "game.dll could not be rewritten";
+    return NULL;
+}
+
+static void InstallModWarbonds(void)
+{
+    if (g_modWarbondsState || g_modWarbondCount == 0) return;
+    uintptr_t game = ApiModuleBase("game.dll", NULL);
+    g_modWarbondsState = -1;
+    qsort(g_wbItems, (size_t)g_wbItemCount, sizeof *g_wbItems, CompareWbItems);
+    if (strcmp(g_build, "25480438") || !game) return;
+    const char* list = InstallWarbondList(game);
+    if (list) Note("warbonds: the game lists its 32 warbonds at most, mods' past them wait: %s", list);
+    const char* items = InstallWarbondItems(game);
+    if (items) Note("warbonds: an item in another currency than its warbond's is checked and charged in the warbond's on screen: %s", items);
+    size_t entries = WB_GAME_ENTRIES + (size_t)g_modWarbondCount;
+    const char* table = InstallWarbondTable(game, entries);
+    if (table) { Note("warbonds: mod warbonds show the game's placeholder: %s", table); return; }
     g_modWarbondsState = 1;
     HookText();
     const char* prices = InstallWarbondPrices(game);
