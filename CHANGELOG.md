@@ -69,7 +69,7 @@ On `dev`, since 0.4.0-beta.
 - **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
   block with "not stopping the game's connections to the internet (error 10065)", asked for administrator consent and
   failed again. The block is now checked on the PC alone while it has no network, and against the internet as soon as
-  it connects; if it does not hold then, HellForge stops the game (#PR).
+  it connects; if it does not hold then, HellForge stops the game (#300).
 
 ### For contributors
 
