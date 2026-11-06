@@ -315,6 +315,41 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
         for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) { size_t n = (size_t)j * MACRO_N + i; D[n] = 0; g_macro.fixed[n] = 1; }
         cityCells++;
     }
+    /* held at 0: the cells op 0xA9 flattens (FlattenCityRegions, also 0xAA / 0xAC): it picks a route cell (G+0x8EB328,
+     * 0x110 each; count G+0x11A71C0) by the type of the coarse-plan corner nearest its site (0xFB5720: 0xFC7900(grid
+     * G+0x231C18, cell) -> corner, 0xFEFEFEFE none; 0xFB5736: G+0x21AE88[corner]; 0xFB5742: type +0x170 bit 1; 0xFB5750:
+     * cell+8 != 0), not by its subregion, and draws it at absolute heights (its centre +0x108 is set only by 0xA7 for
+     * subregion-city cells, so here 0). A first-ring open cell 954 m from a city whose nearest corner lies in a city
+     * fringe cell became a 0 m floor with the relief standing 48-89 m at its edge (t78e #816 / #817, s75y #631; static
+     * citywall17). 0xFC7900 only reads; its writers (0xB9, 0x28, 0x7E, 0xAD) all run before 0x40. */
+    uint32_t cornerCells = 0, cornerOnly = 0;
+    {
+        typedef uint32_t (*NearestCornerFn)(uint64_t grid, uint64_t cell);
+        uint32_t cells = 0;
+        uintptr_t fn = g_world.game + 0xFC7900u;
+        if (ApiCodeMatches(fn, "40 53 55 56 57 41 54 41 55 41 56 41 57 48 8B 02 0F 57 DB") && !SafeRead(gen + 0x11A71C0u, &cells, 4) && cells <= 4096)
+        {
+            NearestCornerFn nearest = (NearestCornerFn)fn;
+            for (uint32_t i = 0; i < cells; i++)
+            {
+                uint64_t cell = gen + 0x8EB328u + 0x110ull * i, owner = 0; float box[4]; int32_t t = -1; uint32_t flags170 = 0;
+                if (SafeRead(cell + 8, &owner, 8) || owner == 0 || SafeRead(cell + 0x88, box, 16)) continue;
+                uint32_t corner = nearest(gen + 0x231C18u, cell);
+                if (corner == 0xFEFEFEFEu || corner >= corners || SafeRead(gen + 0x21AE88u + 4ull * corner, &t, 4)) continue;
+                uintptr_t d = MacroType((uintptr_t)table, types, t);
+                if (d == 0 || SafeRead(d + 0x170, &flags170, 4) || !(flags170 & 2)) continue;
+                float x0 = fminf(box[0], box[2]) - MACRO_STEP, x1 = fmaxf(box[0], box[2]) + MACRO_STEP;
+                float y0 = fminf(box[1], box[3]) - MACRO_STEP, y1 = fmaxf(box[1], box[3]) + MACRO_STEP;
+                if (!(x1 - x0 < 4000.0f && y1 - y0 < 4000.0f) || !(x0 > -W && y0 > -W && x1 < 2 * W && y1 < 2 * W)) continue;
+                int i0 = (int)ceilf(x0 / MACRO_STEP), i1 = (int)floorf(x1 / MACRO_STEP), j0 = (int)ceilf(y0 / MACRO_STEP), j1 = (int)floorf(y1 / MACRO_STEP);
+                if (i0 < 0) i0 = 0; if (j0 < 0) j0 = 0; if (i1 > MACRO_N - 1) i1 = MACRO_N - 1; if (j1 > MACRO_N - 1) j1 = MACRO_N - 1;
+                int fresh = 0;
+                for (int j = j0; j <= j1; j++) for (int q = i0; q <= i1; q++) { size_t n = (size_t)j * MACRO_N + q; if (g_macro.fixed[n] != 1) fresh = 1; D[n] = 0; g_macro.fixed[n] = 1; }
+                cornerCells++; cornerOnly += (uint32_t)fresh;
+            }
+        }
+        else Note("difficulty: relief: op 0xA9's corner lookup is not the reviewed one: its city floors are not held");
+    }
     /* the fall-off: distance to the nearest node held at 0 (chamfer, two passes each way) */
     const float d1 = MACRO_STEP, d2 = MACRO_STEP * 1.41421356f;
     for (int pass = 0; pass < 2; pass++)
@@ -461,10 +496,10 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
     QueryPerformanceCounter(&t1);
     g_macro.ms = (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart;
     g_macro.level = g_world.levels; g_macro.ready = 1;
-    Note("difficulty: relief: seed %08X; %.0f..%.0f m (mean %.1f), steepest %.1f deg; held at 0: %u wet and %u sea corners (sea %.1f m), %u absolute pads, %u city cells; "
+    Note("difficulty: relief: seed %08X; %.0f..%.0f m (mean %.1f), steepest %.1f deg; held at 0: %u wet and %u sea corners (sea %.1f m), %u absolute pads, %u city cells (+ %u by op 0xA9's nearest corner, %u of them not held otherwise); "
         "held flat: %u locations, %u flatten zones; pads by their reach: %u of %u locations (%u without a unit yet, %u absolute, reach up to %.0f m, band scale %.1f), %u nodes at %.0f deg; %u road nodes at %.0f deg; %d sweeps, %.0f ms (world %.0f m); %u corners have a water level "
         "(%.1f..%.1f m, their ground %.1f..%.1f m)", seed, (double)lo, (double)hi,
-        sum / ((double)MACRO_N * MACRO_N), (double)(atanf(steep) * 180.0f / 3.14159265f), wet, low, (double)sea, absolute, cityCells, held, flat, pads, locs, unitless, padsAbs, (double)reachMost, (double)B, padNodes, (double)MACRO_PAD_SLOPE, roadNodes,
+        sum / ((double)MACRO_N * MACRO_N), (double)(atanf(steep) * 180.0f / 3.14159265f), wet, low, (double)sea, absolute, cityCells, cornerCells, cornerOnly, held, flat, pads, locs, unitless, padsAbs, (double)reachMost, (double)B, padNodes, (double)MACRO_PAD_SLOPE, roadNodes,
         (double)MACRO_ROAD, sweeps, g_macro.ms, (double)worldL, typed, typed ? (double)typedLo : 0.0, typed ? (double)typedHi : 0.0,
         typed ? (double)groundLo : 0.0, typed ? (double)groundHi : 0.0);
     (void)W;
