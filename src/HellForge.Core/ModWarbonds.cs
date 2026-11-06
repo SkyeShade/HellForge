@@ -89,7 +89,7 @@ public static class ModWarbonds
                 using var json = JsonDocument.Parse(File.ReadAllText(file), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
                 warbonds.AddRange(Parse(mod.Id, mod.Name, json.RootElement, problems, mod.Folder));
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
             {
                 problems.Add($"{mod.Name}: {FileName} could not be read ({error.Message}); its warbonds are not added.");
             }
@@ -101,11 +101,13 @@ public static class ModWarbonds
         foreach (var warbond in warbonds)
         {
             var items = warbond.Pages.SelectMany(page => page.Items).Select(item => item.Id).ToList();
-            if (!ids.Add(warbond.Id32) || !ids.Add(warbond.Spent) || !ids.Add(warbond.Token) || items.Any(itemIds.Contains))
+            uint[] own = [warbond.Id32, warbond.Spent, warbond.Token];
+            if (own.Distinct().Count() != 3 || own.Any(ids.Contains) || items.Distinct().Count() != items.Count || items.Any(itemIds.Contains))
             {
                 problems.Add($"{warbond.Mod}: warbond \"{warbond.Key}\" has an id another warbond has; rename its key.");
                 continue;
             }
+            ids.UnionWith(own);
             itemIds.UnionWith(items);
             unique.Add(warbond);
         }
@@ -116,7 +118,8 @@ public static class ModWarbonds
     public static List<Warbond> Parse(string modId, string modName, JsonElement root, List<string> problems, string? folder = null)
     {
         List<Warbond> warbonds = [];
-        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("format", out var format) || !format.TryGetInt32(out var version) || version != Format)
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("format", out var format) || format.ValueKind != JsonValueKind.Number ||
+            !format.TryGetInt32(out var version) || version != Format)
         {
             problems.Add($"{modName}: {FileName} needs \"format\": {Format}; its warbonds are not added.");
             return warbonds;
@@ -137,7 +140,8 @@ public static class ModWarbonds
                 if (!keys.Add(warbond.Key)) throw new InvalidDataException($"the key \"{warbond.Key}\" is used twice");
                 warbonds.Add(warbond);
             }
-            catch (InvalidDataException error)
+            /* a value of the wrong JSON type (a string where a number goes), or a path the system refuses */
+            catch (Exception error) when (error is InvalidDataException or InvalidOperationException or ArgumentException or NotSupportedException)
             {
                 var key = entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty("key", out var k) && k.ValueKind == JsonValueKind.String ? $"\"{k.GetString()}\"" : "#" + index;
                 problems.Add($"{modName}: warbond {key} is not added: {error.Message}.");
@@ -278,7 +282,9 @@ public static class ModWarbonds
         (int, int)? position = json.TryGetProperty("position", out var p) ? Pair(p, at + " \"position\"") : null;
         var currency = json.TryGetProperty("currency", out var c) ? c.ValueKind == JsonValueKind.String ? c.GetString()! : "?" : "";
         if (currency.Length > 0 && !Currencies.ContainsKey(currency)) throw new InvalidDataException($"{at}'s \"currency\" is one of {string.Join(", ", Currencies.Keys)}");
-        return new ParsedItem(sells, key, cost, w, h, Flag(json, "repeatable", at), position, at, currency);
+        var repeatable = Flag(json, "repeatable", at);
+        if (repeatable && sells.Kind != "item") throw new InvalidDataException($"{at} is a {sells.Kind}: only a game item (a consumable) can be \"repeatable\"");
+        return new ParsedItem(sells, key, cost, w, h, repeatable, position, at, currency);
     }
 
     // An item's key within its warbond: its own, or what it sells.
@@ -313,6 +319,7 @@ public static class ModWarbonds
             : throw new InvalidDataException(at + "'s \"mod\" is a mod id") : modId;
         if (named[0] == "mixId")
         {
+            if (json.TryGetProperty("mod", out _)) throw new InvalidDataException(at + "'s \"mod\" goes with \"weapon\" or \"stratagem\" only");
             var mixId = json.GetProperty("mixId");
             if (!mixId.TryGetUInt32(out var id) || id == 0) throw new InvalidDataException(at + "'s \"mixId\" is a catalogue item's id");
             return new Ref("item", id, "", "");

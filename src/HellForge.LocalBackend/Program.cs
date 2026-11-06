@@ -134,6 +134,7 @@ try
     var modWarbonds = new ModWarbondService(modWarbondList)
     {
         IsAllowed = profile?.Ownership is { } owner ? owner.IsAllowed : null,
+        IsPaid = PaidContentSet.Load().IsPaid,
         UnlockAll = profileTemplate != null && profileTemplate.Contains("unlock-all", StringComparison.Ordinal),
     };
     // --live-war <cache file>: follow the live galactic war read-only through the community mirror (LiveWar).

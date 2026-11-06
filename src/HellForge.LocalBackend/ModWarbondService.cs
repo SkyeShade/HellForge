@@ -30,6 +30,9 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     public RegisteredItems? Registered { get; set; }
     // Whether the player may hold a catalogue item (OwnershipFilter's rules); null: every item but Super Credits.
     public Func<uint, bool>? IsAllowed { get; set; }
+    // Paid content (PaidContentSet: premium warbonds' items and tokens, the Superstore, DLC): never sold on a mod's warbond,
+    // owned or not, so nothing premium is had without its own token (OwnershipFilter.EarnWarbonds).
+    public Func<uint, bool>? IsPaid { get; set; }
     // An unlock-all profile has bought everything.
     public bool UnlockAll { get; set; }
     // The profile's purchasedSeasonPassItems.
@@ -51,7 +54,9 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             ? served.EnumerateArray().Select(w => w.TryGetProperty("id32", out var id) && id.TryGetUInt32(out var value) ? value : 0).ToHashSet() : [];
         var lookup = Look();
         List<Served> result = [];
-        var items = 0;
+        // bought ids of items no mod sells now (a mod taken out, a key renamed) stay in the profile's list and take room too
+        var current = warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items)).Select(i => (long)i.Id).ToHashSet();
+        var items = Purchased?.Invoke().Count(id => id >= ModWarbonds.FirstItemId && !current.Contains(id)) ?? 0;
         foreach (var warbond in warbonds)
         {
             if (list.Contains(warbond.Id32) || TableIds.Contains(warbond.Id32) || lookup.Catalogue?.Contains(warbond.Spent) == true ||
@@ -98,7 +103,16 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             Report(warbond, "", "none of its items can be sold this session");
             return null;
         }
-        var requirements = new JsonArray([.. warbond.Pages.Select(p => (JsonNode)p.Requirement)]);
+        // Each page's requirement within what the pages before it sell this session (items left out cannot be bought).
+        long before = 0;
+        var requirements = new JsonArray();
+        for (var i = 0; i < warbond.Pages.Count; i++)
+        {
+            var requirement = Math.Min(warbond.Pages[i].Requirement, before);
+            requirements.Add((JsonNode)requirement);
+            pages[i]!["totalMedalsRequired"] = requirement;
+            before += warbond.Pages[i].Items.Where(item => sells.ContainsKey(item.Id)).Sum(item => item.Cost);
+        }
         var entry = Head(warbond, total);
         entry["pageRequirements"] = requirements.DeepClone();
         entry["premiumTokenMixIds"] = Tokens(warbond);
@@ -152,7 +166,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         {
             if (catalogue != null && !catalogue.Contains(sells.MixId)) why = "the game's catalogue has no such item";
             else if (PaidContentSet.IsSuperCredits(sells.MixId)) why = "Super Credits are never sold";
-            else if (IsAllowed?.Invoke(sells.MixId) == false) why = "it is premium content the player does not own";
+            else if (IsPaid?.Invoke(sells.MixId) == true || IsAllowed?.Invoke(sells.MixId) == false) why = "it is premium content, which only its own warbond sells";
             return why.Length == 0 ? sells.MixId : null;
         }
         var match = registered.FirstOrDefault(i => (sells.Kind == "weapon" ? i.IsWeapon : i.IsStratagem) &&
@@ -223,7 +237,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     {
         var have = held.OfType<JsonObject>().Select(i => (uint?)i["mixId"]).ToHashSet();
         foreach (var warbond in served.Select(w => w.Spec).Where(w => w.HasToken && (w.UnlockCost == 0 || UnlockAll) && !have.Contains(w.Token)))
-            held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Token, ["amount"] = 1, ["isDiscovered"] = true });
+            if (held.Count < RegisteredItems.InventoryCap) held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Token, ["amount"] = 1, ["isDiscovered"] = true });
         return true;
     }
 
@@ -234,7 +248,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         {
             var counter = held.OfType<JsonObject>().FirstOrDefault(i => (uint?)i["mixId"] == warbond.Spec.Spent);
             if (counter != null) counter["amount"] = Math.Max((long?)counter["amount"] ?? 0, warbond.TotalCost);
-            else held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Spec.Spent, ["amount"] = warbond.TotalCost, ["isDiscovered"] = true });
+            else if (held.Count < RegisteredItems.InventoryCap) held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Spec.Spent, ["amount"] = warbond.TotalCost, ["isDiscovered"] = true });
         }
         return true;
     }

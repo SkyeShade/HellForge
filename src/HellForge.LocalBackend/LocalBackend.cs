@@ -190,7 +190,8 @@ public static partial class LocalBackend
             ? bought.EnumerateArray().Where(b => b.TryGetInt64(out _)).Select(b => b.GetInt64()).ToHashSet() : new HashSet<long>();
         if (registered == null) return;
         registered.Withheld = modWarbonds.Withheld;
-        registered.ReservedCatalogue = modWarbonds.Warbonds.Count;
+        // each warbond's spent counter, and its token when it has one, in the catalogue and the inventory
+        registered.ReservedCatalogue = registered.ReservedInventory = modWarbonds.Warbonds.Count + modWarbonds.Warbonds.Count(w => w.HasToken);
     }
 
     static void CheckSettings(BackendSettings settings)

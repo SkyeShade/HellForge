@@ -64,6 +64,8 @@ public sealed class RegisteredItems(string path)
 
     // Catalogue items others add besides these (mods' warbonds' spent counters), which the room counts.
     public int ReservedCatalogue { get; set; }
+    // Inventory entries kept for others too (mods' warbonds: a spent counter and a token each).
+    public int ReservedInventory { get; set; }
 
     // Mods whose items stay out of the player's inventory (mods-stage's --premium-locked).
     public IReadOnlySet<string> LockedMods { get; set; } = new HashSet<string>();
@@ -329,9 +331,9 @@ public sealed class RegisteredItems(string path)
             if (item.IsDifficulty && !have.Contains(item.CopyOf)) continue; /* not before level 10 is unlocked */
             var entries = (have.Contains(item.MixId) ? 0 : 1) +
                 (item.IsWeapon ? held.Count(e => Id(e, "mixId") is { } id && children.TryGetValue(id, out var parent) && parent == item.CopyOf) : 0);
-            if (held.Count + entries > InventoryCap)
+            if (held.Count + entries > InventoryCap - ReservedInventory)
             {
-                Report(item, $"the game keeps {InventoryCap} inventory entries, and it needs {entries} more where {InventoryCap - held.Count} are left");
+                Report(item, $"the game keeps {InventoryCap} inventory entries, and it needs {entries} more where {InventoryCap - ReservedInventory - held.Count} are left");
                 continue;
             }
             if (have.Add(item.MixId)) held.Add((JsonNode?)new JsonObject { ["mixId"] = item.MixId, ["amount"] = 1, ["isDiscovered"] = true });

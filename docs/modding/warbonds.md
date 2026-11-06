@@ -30,9 +30,9 @@ A warbond is a set of pages. Each page holds up to 10 items on a 5 by 3 grid. A 
 warbond's currency. What they spend on a warbond counts towards opening its later pages, as medals do on the game's own
 warbonds.
 
-HellForge serves a mod's warbonds beside the game's, after them in the list. Nothing about them is saved but what a player
-bought, so taking a mod out leaves nothing behind but those purchases. Putting it back restores them, as long as its
-warbonds keep their keys.
+HellForge serves a mod's warbonds beside the game's, after them in the list. A player's profile saves only what they bought,
+what they spent on each warbond and the warbonds they paid to unlock. Taking a mod out leaves those behind, and putting it
+back restores them, as long as its warbonds and items keep their ids (see `key` below).
 
 ## The file
 
@@ -95,8 +95,8 @@ An item also has:
 | `currency` | what it costs, when not the warbond's `currency`: one of the same names |
 | `position` | its top-left cell `[x, y]` on the 5 by 3 grid, from `[0, 0]`; without one it takes the first free cells, row by row |
 | `size` | the cells it covers `[width, height]`; `[1, 1]` by default |
-| `repeatable` | `true` to sell it again after each purchase (for consumables); `false` by default |
-| `key` | needed only when two items of a warbond sell the same thing: a name for each, 1 to 64 characters |
+| `repeatable` | `true` to sell it again after each purchase: for a game item (a consumable) only, never a `weapon` or `stratagem`; `false` by default |
+| `key` | needed only when two items of a warbond sell the same thing: a name for each, 1 to 64 characters. An item's id comes from its `key`, or without one from what it sells, so adding a `key` later or renaming what it sells starts it unbought |
 
 A weapon or stratagem of yours sold on a warbond is not in a player's armory until they buy it, unless their profile has
 everything unlocked. A weapon or stratagem no warbond sells stays as it was: in every player's armory.
@@ -104,16 +104,20 @@ everything unlocked. A weapon or stratagem no warbond sells stays as it was: in 
 An item is left out for the session, with a line in the backend's log, when the game could not hold it:
 
 - a `mixId` the game's catalogue does not have;
-- Super Credits, or premium content the player does not own (a premium warbond's item, a Superstore item, Steam DLC gear);
+- Super Credits, or premium content (a premium warbond's item or token, a Superstore item, Steam DLC gear), owned or not:
+  only its own warbond sells it;
 - a `weapon` or `stratagem` that is not registered this session, because its mod is not loaded, its premium content is
   not owned or the game's catalogue is full.
 
 ## Pages and prices
 
 A page's `requirement` is what players must have spent on this warbond before the page opens. Every price counts
-towards it as its number, whatever its currency, so keep a warbond's prices in one currency when its pages build on them. The first page has none.
+towards it as its number, whatever its currency, so keep a warbond's prices in one currency when its pages build on them.
+
+The first page has none.
 Each later page needs at least as much as the page before it, and no more than the earlier pages cost in all, so it can
-always be opened. A player who buys everything on the earlier pages has spent their whole cost.
+always be opened. A player who buys everything on the earlier pages has spent their whole cost. When items are left out for
+a session (below), a page needs no more than the pages before it sell that session.
 
 A price is paid from the player's balance, so it cannot be above what a player can hold. Today that is 250 medals,
 50,000 requisition, and 500 common, 250 rare and 100 super samples. HellForge leaves such an item out of the session and

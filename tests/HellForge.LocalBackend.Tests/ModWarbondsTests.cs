@@ -181,6 +181,25 @@ static class ModWarbondsTests
             lines.Any(l => l.Contains($"holds {ModWarbondService.ItemRoom} items")), "Mods' warbonds sold more items than a profile holds: " + string.Join(" | ", lines));
         Tokens(check, fixtures, mobilize);
         ItemCurrencies(check, fixtures, mobilize);
+        LeftOut(check, fixtures, mobilize, steeled);
+    }
+
+    // Items left out for the session: a later page's requirement stays within what the pages before it sell, and paid
+    // content is never sold, owned or not.
+    static void LeftOut(Action<bool, string> check, IReadOnlyDictionary<string, JsonElement> fixtures, List<uint> mobilize, uint steeled)
+    {
+        var spec = JsonDocument.Parse($$"""
+            {"format":1,"warbonds":[{"key":"gaps","name":"Gaps","currency":"requisition","pages":[
+              {"items":[{"weapon":"other/gone","mod":"other","cost":5000},{"mixId":{{mobilize[0]}},"cost":5000},{"mixId":{{steeled}},"cost":10}]},
+              {"requirement":10000,"items":[{"mixId":{{mobilize[1]}},"cost":10}]}]}]}
+            """);
+        var gaps = ModWarbonds.Parse("test", "Test", spec.RootElement, [])[0];
+        var service = new ModWarbondService([gaps]) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, IsPaid = id => id == steeled, Log = _ => { } };
+        var served = service.Resolve().Single();
+        var requirements = served.ListEntry["pageRequirements"]!.AsArray().Select(r => (long)r!).ToList();
+        check(requirements.SequenceEqual([0L, 5000L]) && (long)served.Detail["seasonPassPages"]![1]!["totalMedalsRequired"]! == 5000,
+            "A page's requirement was not kept within what the pages before it sell: " + string.Join(",", requirements));
+        check(!served.Sells.Values.Contains(steeled), "Paid content was sold on a mod's warbond.");
     }
 
     // An item's own "currency": priced, capped and charged in it, its spent amount counted on its warbond, and named to the
@@ -319,7 +338,8 @@ static class ModWarbondsTests
             "Art texture names are not stable and unique.");
         check(ModWarbonds.PlanLines([good[0] with { ArtTexture = 0xDA2176742E3F1FB2 }]).First().Split('\t')[8] == "da2176742e3f1fb2", "A warbond's built art is not in its plan line.");
         foreach (var (art, why) in new[] { ("{\"image\":\"small.png\"}", "art of the wrong size"), ("{\"image\":\"../outside.png\"}", "art outside its mod's folder"),
-            ("{\"image\":\"none.png\"}", "art that is not there"), ("{\"image\":\"card.png\",\"from\":610512218}", "two kinds of art") })
+            ("{\"image\":\"none.png\"}", "art that is not there"), ("{\"image\":\"card.png\",\"from\":610512218}", "two kinds of art"),
+            ("{\"image\":\"a\\u0000b.png\"}", "a path the system refuses") })
             check(Parse(art, out _).Count == 1, "A warbond with " + why + " was accepted.");
     }
 
@@ -342,8 +362,18 @@ static class ModWarbondsTests
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"weapon\":\"x\",\"cost\":1}]}]}", "an item naming two things"),
             ("{\"key\":\"A B\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "a key with capitals and a space"),
             ("{\"key\":\"a\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "no name"),
+            /* a value of the wrong JSON type is reported like any mistake, never thrown out of the session */
+            ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":\"5\",\"cost\":1}]}]}", "a mixId as a string"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1,\"position\":[\"0\",0]}]}]}", "a position as strings"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"unlock\":{\"currency\":\"forge-credits\",\"cost\":\"5\"},\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "an unlock cost as a string"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"art\":{\"from\":\"x\"},\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "art from a string"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"weapon\":\"x\",\"cost\":1,\"repeatable\":true}]}]}", "a repeatable weapon"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"mod\":\"x\",\"cost\":1}]}]}", "a mod named on a game item"),
         })
             check(Problems(warbond).Count == 1, "A warbond with " + why + " was accepted.");
+        var formatProblems = new List<string>();
+        using (var wrongFormat = JsonDocument.Parse("{\"format\":\"1\",\"warbonds\":[]}")) ModWarbonds.Parse("mod", "Mod", wrongFormat.RootElement, formatProblems);
+        check(formatProblems.Count == 1, "A format given as a string was not reported.");
         check(Problems("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]},{\"key\":\"a\",\"name\":\"B\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}").Count == 1,
             "Two warbonds with one key were accepted.");
 
