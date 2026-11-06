@@ -123,8 +123,91 @@ static void RemoveRequestDetour(uint64_t state, uint32_t id)
     g_removeSeen[at].unit = unit; g_removeSeen[at].id = id; g_removeSeen[at].ms = (uint32_t)GetTickCount64();
     for (int f = 0; f < 6; f++) g_removeSeen[at].chain[f] = (uintptr_t)chain[f];
 }
+/* Research (s94b crash, c0000005 at g+0x54A4B2 during the level's spawns: SpawnEntity 0xFDC140 -> 0x581320 -> the
+ * ability component's post-create 0x54A3E0 found no instance of the entity in the ability manager [g+0x3326640]'s
+ * hash (+0x18 slots {id, index}, +0x20 places, +0x24 empty, +0x28 multiplier) and wrote its index -1. The create loop
+ * (state+0xF0C110[290] = add 0x54A2B0) runs before the post-create loop (state+0xF0CB30[290]) over the same component
+ * list, so the instance was taken out in between (remove 0x54A380 = state+0xF0F2A0[290]) or by another thread): every
+ * add and remove with its thread and chain, and a post-create that finds none logs the entity's history and is left
+ * out (research only). */
+#define ABILITY_ADD 0x54A2B0u
+#define ABILITY_REMOVE 0x54A380u
+#define ABILITY_POST 0x54A3E0u
+#define ABILITY_MANAGER 0x3326640u
+static const char kAbilityAddPin[] = "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57";
+static const char kAbilityRemovePin[] = "40 53 48 83 EC 20 8B 51 08 48 8B 1D";
+static const char kAbilityPostPin[] = "40 53 57 41 54 41 56 41 57 48 83 EC 20 8B 41 08";
+typedef uint64_t (*AbilityHookFn)(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f); /* the post-create takes 5 (0x58151E) */
+static AbilityHookFn g_abilityAdd, g_abilityRemove, g_abilityPost;
+#define ABILITY_SEEN 8192
+static struct { uint32_t id, op, thread, ms; uintptr_t chain[6]; } g_abilitySeen[ABILITY_SEEN];
+static volatile LONG g_abilitySeenAt, g_abilityMissed;
+static void AbilitySeen(uint64_t entity, uint32_t op)
+{
+    uint32_t id = 0;
+    if (entity == 0 || SafeRead(entity + 8, &id, 4)) return;
+    void* chain[6] = {0};
+    RtlCaptureStackBackTrace(2, 6, chain, NULL);
+    LONG at = (InterlockedIncrement(&g_abilitySeenAt) - 1) & (ABILITY_SEEN - 1);
+    g_abilitySeen[at].id = id; g_abilitySeen[at].op = op; g_abilitySeen[at].thread = GetCurrentThreadId(); g_abilitySeen[at].ms = (uint32_t)GetTickCount64();
+    for (int f = 0; f < 6; f++) g_abilitySeen[at].chain[f] = (uintptr_t)chain[f];
+}
+static uint64_t AbilityAddDetour(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f) { AbilitySeen(a, 1); return g_abilityAdd(a, b, c, d, e, f); }
+static uint64_t AbilityRemoveDetour(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f) { AbilitySeen(a, 2); return g_abilityRemove(a, b, c, d, e, f); }
+static int ChainText(const uintptr_t* chain, int n, char* out, size_t size);
+static uint64_t AbilityPostDetour(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f)
+{
+    uint64_t mgr = 0, table = 0;
+    uint32_t id = 0, places = 0, empty = 0, mult = 0, found = 0;
+    if (a == 0 || SafeRead(a + 8, &id, 4) || SafeRead(g_world.game + ABILITY_MANAGER, &mgr, 8) || mgr == 0 || SafeRead(mgr + 0x18, &table, 8) ||
+        SafeRead(mgr + 0x20, &places, 4) || SafeRead(mgr + 0x24, &empty, 4) || SafeRead(mgr + 0x28, &mult, 4) || places == 0 || (places & (places - 1)))
+        return g_abilityPost(a, b, c, d, e, f);
+    for (uint32_t k = 0; k < places; k++)
+    {
+        uint32_t slot[2] = {0, 0};
+        if (SafeRead(table + 8ull * ((k + mult * id) & (places - 1)), slot, 8)) return g_abilityPost(a, b, c, d, e, f);
+        if (slot[0] == id) { found = slot[1] != 0xFFFFFFFFu; break; }
+        if (slot[0] == empty) break;
+    }
+    if (found) return g_abilityPost(a, b, c, d, e, f);
+    if (InterlockedIncrement(&g_abilityMissed) <= 4)
+    {
+        void* chain[6] = {0};
+        uintptr_t here[6];
+        RtlCaptureStackBackTrace(1, 6, chain, NULL);
+        for (int f = 0; f < 6; f++) here[f] = (uintptr_t)chain[f];
+        char text[400];
+        ChainText(here, 6, text, sizeof text);
+        uint32_t count = 0;
+        SafeRead(mgr + 8, &count, 4);
+        Note("difficulty: abilities: a post-create found no instance of entity 0x%X (thread %lu, manager %u instances, %u places); left out (research); from%s",
+            id, GetCurrentThreadId(), count, places, text);
+        LONG last = g_abilitySeenAt, from = last > ABILITY_SEEN ? last - ABILITY_SEEN : 0, shown = 0;
+        for (LONG k = last - 1; k >= from && shown < 6; k--)
+        {
+            LONG i = k & (ABILITY_SEEN - 1);
+            if (g_abilitySeen[i].id != id) continue;
+            ChainText(g_abilitySeen[i].chain, 6, text, sizeof text);
+            Note("difficulty: abilities: entity 0x%X %s %u ms ago on thread %lu from%s", id, g_abilitySeen[i].op == 1 ? "added" : "removed",
+                (uint32_t)GetTickCount64() - g_abilitySeen[i].ms, (unsigned long)g_abilitySeen[i].thread, text);
+            shown++;
+        }
+        if (!shown) Note("difficulty: abilities: entity 0x%X: no add or remove in the last %d", id, ABILITY_SEEN);
+    }
+    return 0;
+}
+static void AbilityWatch(uintptr_t game)
+{
+    if (g_abilityPost != NULL) return;
+    if (ApiCodeMatches(game + ABILITY_ADD, kAbilityAddPin) != 1 || ApiCodeMatches(game + ABILITY_REMOVE, kAbilityRemovePin) != 1 ||
+        ApiCodeMatches(game + ABILITY_POST, kAbilityPostPin) != 1) { Note("difficulty: abilities: the ability component is not the reviewed code; not watched"); return; }
+    if (LoaderHook("ability instance adds (research)", game + ABILITY_ADD, (void*)AbilityAddDetour, (void**)&g_abilityAdd) != 0 ||
+        LoaderHook("ability instance removes (research)", game + ABILITY_REMOVE, (void*)AbilityRemoveDetour, (void**)&g_abilityRemove) != 0 ||
+        LoaderHook("ability post-creates (research)", game + ABILITY_POST, (void*)AbilityPostDetour, (void**)&g_abilityPost) != 0) g_abilityPost = NULL;
+}
 static void RemoveWatch(uintptr_t game)
 {
+    AbilityWatch(game);
     if (g_removeRequest != NULL) return;
     if (ApiCodeMatches(game + REMOVE_REQUEST, kRemoveRequestPin) != 1) { Note("difficulty: objectives: the entity removal request is not the reviewed one; removals not logged"); return; }
     if (LoaderHook("entity removal requests (research)", game + REMOVE_REQUEST, (void*)RemoveRequestDetour, (void**)&g_removeRequest) != 0) g_removeRequest = NULL;
