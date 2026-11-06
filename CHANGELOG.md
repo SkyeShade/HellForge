@@ -66,6 +66,10 @@ On `dev`, since 0.4.0-beta.
 
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
+- **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
+  block with "not stopping the game's connections to the internet (error 10065)", asked for administrator consent and
+  failed again. The block is now checked on the PC alone while it has no network, and against the internet as soon as
+  it connects; if it does not hold then, HellForge stops the game (#PR).
 
 ### For contributors
 
