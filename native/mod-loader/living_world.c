@@ -477,11 +477,14 @@ static void LwPopulate(void)
     if (n < 1) n = 1;
     if (n > LW_SQUADS_MAX) n = LW_SQUADS_MAX;
     int made = 0;
+    /* Start beyond R_off from every player; on a map whose playable disc is smaller than that (lw7b: 292 m, no node
+     * 350 m from the drop) beyond R_min instead, so such squads come online at once at vanilla-like distances. */
+    float least = g_lwWorld.radius < LW_R_OFF ? LW_R_MIN : LW_R_OFF;
     for (int tries = 0; made < n && tries < n * 20; tries++)
     {
         int node = (int)(LwRand() % (uint32_t)g_lwNodeCount);
         float x = g_lwNodes[node].x, y = g_lwNodes[node].y, r = g_lwWorld.radius;
-        if (x * x + y * y > r * r || LwNearestPlayer2(x, y) < LW_R_OFF * LW_R_OFF || g_lwNodes[node].degree == 0) continue;
+        if (x * x + y * y > r * r || LwNearestPlayer2(x, y) < least * least || g_lwNodes[node].degree == 0) continue;
         float pos[2] = {x, y};
         uintptr_t def = LwChooseGroup(dir, g_lwWorld.lg, pos);
         uintptr_t slot = def ? LwSlotOf(dir, def) : 0;
@@ -1155,12 +1158,28 @@ static void LwNavTick(uintptr_t dir)
 
 /* ---- the tick (the loader's game-thread tick: in a mission the late update, after the world update) ----------------- */
 
+/* Test instrument (HELLFORGE_LW_TEST_TRACE=1; development only): the local Helldiver's position twice a second, for a
+ * run script that steers the Helldiver with the harness's input by its measured heading. */
+static void LwTraceTick(void)
+{
+    static int on = -1;
+    static ULONGLONG last;
+    if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1'; }
+    ULONGLONG now = GetTickCount64();
+    if (!on || now - last < 500) return;
+    last = now;
+    ActHealth h; const char* why; float p[3];
+    if (ActLocalAvatar(g_lw.game, 0, &h, &why) && h.unit && EvpUnitPosition(h.unit, p))
+        Note("living world: test: trace %.1f %.1f %.1f", (double)p[0], (double)p[1], (double)p[2]);
+}
+
 static void LivingTick(void)
 {
     if (!LwEnabled()) return;
     LwPatrolsOff();
     int host = 0;
     if (!ActMission(g_lw.game, &host, NULL) || !host) return;
+    LwTraceTick();
     uintptr_t dir;
     if (EvpPtr(g_lw.game + LW_DIRECTOR, &dir)) LwNavTick(dir);
     LwGarrisonsTick();

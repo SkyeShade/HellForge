@@ -632,6 +632,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 #include "difficulty_world_destroy.c" /* after difficulty_stream.c: the engine destroys only units that exist */
 #include "difficulty_world_move.c" /* after difficulty_stream.c: the extra large map's detailed terrain follows the players */
 #include "living_world.c" /* after difficulty_world_move.c: the players, the difficulty rows, the world (KB living-world-plan) */
+#include "test_daylight.c" /* the test switch HELLFORGE_TEST_DAYLIGHT */
 
 static void Deliver(HfEvent event)
 {
@@ -745,6 +746,7 @@ static int GameLoaded(void)
     return 0;
 }
 
+static void InstallDaylight(uintptr_t game); /* test_daylight.c */
 /* game.dll loaded and decoded: what must come before the game's own set-up, then HF_EVENT_GAME_LOADED. */
 static void WatchLoaded(void)
 {
@@ -752,6 +754,7 @@ static void WatchLoaded(void)
     Note("game.dll loaded and decoded");
     ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
+    InstallDaylight(ApiModuleBase("game.dll", NULL)); /* test switch; before any frame runs the sky */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
     InstallCrashEnd(); /* an exception nothing handled: noted, and the game ended if it is still stuck a minute later */
