@@ -648,12 +648,12 @@ static const SdkField kSdkFieldsRecharge[] = {
 };
 static const SdkField kSdkFieldsShield[] = {
     {"radius", 0, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"durability", 76, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"durability", 76, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"armor", 80, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"recharge_delay", 88, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"broken_recharge_delay", 92, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"recharge_rate", 96, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"blocks_grenades", 337, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"recharge_delay", 88, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"broken_recharge_delay", 92, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"recharge_rate", 96, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"blocks_grenades", 337, 1, HF_TYPE_U8, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsHellpodPayload[] = {
     {"lifetime", 4, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},

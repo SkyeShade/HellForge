@@ -4612,7 +4612,10 @@
           "type": "f32",
           "meaning": "shield.durability",
           "verified": false,
-          "source": "stats-schema shield.durability"
+          "source": "stats-schema shield.durability",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the shield frame update and hit path read the record through the resolver 0x4FB390"
         },
         "armor": {
           "offset": 80,
@@ -4626,28 +4629,40 @@
           "type": "f32",
           "meaning": "shield.recharge_delay",
           "verified": false,
-          "source": "stats-schema shield.recharge_delay"
+          "source": "stats-schema shield.recharge_delay",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the shield frame update reads the record through the resolver 0x4FB390"
         },
         "broken_recharge_delay": {
           "offset": 92,
           "type": "f32",
           "meaning": "shield.broken_recharge_delay",
           "verified": false,
-          "source": "stats-schema shield.broken_recharge_delay"
+          "source": "stats-schema shield.broken_recharge_delay",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the shield frame update reads the record through the resolver 0x4FB390"
         },
         "recharge_rate": {
           "offset": 96,
           "type": "f32",
           "meaning": "shield.recharge_rate",
           "verified": false,
-          "source": "stats-schema shield.recharge_rate"
+          "source": "stats-schema shield.recharge_rate",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the shield frame update reads the record through the resolver 0x4FB390"
         },
         "blocks_grenades": {
           "offset": 337,
           "type": "u8",
           "meaning": "Stops grenades",
           "verified": false,
-          "source": "stats-schema shield.blocks_grenades"
+          "source": "stats-schema shield.blocks_grenades",
+          "applies": "now",
+          "appliesVerified": true,
+          "appliesSource": "shield_block.c reads the record every few frames; a marked shield changes within a second"
         }
       },
       "applies": "respawn",
