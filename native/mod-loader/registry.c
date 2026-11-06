@@ -768,9 +768,13 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
 typedef const char* (*EngineTextFn)(uint32_t id, void* a, void* b, void* c);
 static EngineTextFn g_engineText;
 
+/* Text that changes while it is shown (the objective HUD's copy counts): asked first; NULL = not one of its ids. */
+static const char* (*g_textDynamic)(uint32_t id);
+
 /* The engine's text function with the mods' text first. */
 static const char* TextDetour(uint32_t id, void* a, void* b, void* c)
 {
+    if (g_textDynamic != NULL) { const char* t = g_textDynamic(id); if (t != NULL) return t; }
     for (int i = 0; i < g_textCount; i++) if (g_texts[i].id == id) return g_texts[i].text;
     return g_engineText != NULL ? g_engineText(id, a, b, c) : "";
 }

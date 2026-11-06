@@ -578,6 +578,11 @@ typedef uint64_t (*ObjectiveFillFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint
     uint64_t, uint64_t, uint64_t, uint64_t);
 static ObjectiveFillFn g_objectiveFill;
 static uint32_t g_objectiveList[64], g_objectiveListCount; /* the list as filled, for the placement note after op 0x16 */
+/* The list as the game selected it, with each id's class in its row (-1: not in the row, a partner's main): each main is
+ * followed by its own steps (the selection builds a mission at a time), the only tie between a step and its main
+ * (static, subagent hud18: the definitions and mission rows hold no parent). The HUD orders its rows by it. */
+static uint32_t g_hudOrder[32], g_hudOrderCount;
+static int g_hudOrderClass[32];
 static uint32_t ObjectiveIdCap(uintptr_t base, uint32_t id, uint8_t* bits) /* one mission's most uses of id, and its exclusive bits */
 {
     uint8_t entries[32 * 0x18];
@@ -614,6 +619,8 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
         if (InterlockedIncrement(&noted) <= 4) Note("%s", text);
         memcpy(g_objectiveList, list, 4ull * n);
         g_objectiveListCount = n;
+        for (uint32_t i = 0; i < n; i++) { g_hudOrder[i] = list[i]; g_hudOrderClass[i] = RowClass(base, list[i]); }
+        g_hudOrderCount = n;
     }
     difficulty = 0;
     if (g_difficulty.missions > 1 && g_operationOptional != 0 && g_difficultyGame != 0 && ids != 0 && n > 0 && n <= 32 && r < DIF_MISSION_ROWS &&
@@ -737,41 +744,137 @@ static int HudInstances(uint64_t* inst, uint64_t* ids, uint32_t* n)
     return !SafeRead(g_world.game + HUD_OBJECTIVES, &mgr, 8) && mgr != 0 && !SafeRead(mgr + 0x24, n, 4) && !SafeRead(mgr + 0x60, inst, 8) &&
         !SafeRead(mgr + 0x50, ids, 8) && *inst != 0 && *ids != 0 && *n <= 4096;
 }
+/* An objective id's definition key (the u64 its instances hold at [p+0]): the objective table entry +0x18
+ * (game 0x32EF870, 0xA0 each; static, subagent hud18), 0 if none. */
+static uint64_t HudDefOf(uint32_t id)
+{
+    uint64_t def = 0;
+    uintptr_t entry = ObjectiveDef(g_world.game, id);
+    if (entry == 0 || SafeRead(entry + 0x18, &def, 8)) return 0;
+    return def;
+}
+/* 0x184BDE0 (the row add) sorts every row by a per-objective value (0xA03530) after each add and puts every step after
+ * every main (0x184BFFB..0x184C04E), so the order the rows are added in is lost. After the adds the slots are keyed again
+ * in the wanted order with 0x18462C0(row, key), as the game's own sort ends (0x184C14E..0x184C17A); nothing sorts them
+ * afterwards (0x184BDE0 is called only from the list builder this replaces; static, subagent hud18). */
+#define HUD_ROW_KEY 0x18462C0u
+static const char kHudRowKeyPin[] = "4C 8B DC 55 48 81 EC 80 00 00 00 48 8B E9 39 91 60 F0 00 00";
+static int g_hudRekey; /* 1 the re-key is the reviewed code, -1 not */
 static void HudObjectiveRows(uint64_t hud)
 {
-    uint64_t inst = 0, ptrs = 0, defs[16];
-    uint32_t n = 0, rows[16], k = 0, cut = 0;
+    uint64_t inst = 0, ptrs = 0, defs[32];
+    uint32_t n = 0, keys[32], m = 0, cut = 0;
+    int cls[32];
     g_hudRows = 0;
     if (!HudInstances(&inst, &ptrs, &n)) return;
     for (int32_t c = 0; c < 2; c++)
         for (uint32_t i = 0; i < n; i++)
         {
-            int32_t cls = -1; uint64_t p = 0, def = 0; uint32_t id = 0;
-            if (SafeRead(inst + 0x1078ull * i + 0x1038, &cls, 4) || cls != c || SafeRead(ptrs + 8ull * i, &p, 8) || p == 0 || SafeRead(p + 8, &id, 4) ||
+            int32_t ic = -1; uint64_t p = 0, def = 0; uint32_t id = 0;
+            if (SafeRead(inst + 0x1078ull * i + 0x1038, &ic, 4) || ic != c || SafeRead(ptrs + 8ull * i, &p, 8) || p == 0 || SafeRead(p + 8, &id, 4) ||
                 SafeRead(p, &def, 8)) continue;
             uint32_t j = 0;
-            while (j < k && defs[j] != def) j++;
-            if (j < k) continue;
-            if (k < 16) { defs[k] = def; rows[k++] = id; } else cut++;
+            while (j < m && defs[j] != def) j++;
+            if (j < m) continue;
+            if (m < 32) { defs[m] = def; keys[m] = id; cls[m] = c; m++; } else cut++;
         }
-    for (uint32_t j = 0; j < k; j++) { g_hudRowDef[j] = defs[j]; g_hudRowKey[j] = rows[j]; }
+    /* main -> its steps, in the selection's order; then what the list does not name (mains, then steps) */
+    uint32_t order[32], k = 0;
+    uint8_t taken[32] = {0};
+    for (uint32_t e = 0; e < g_hudOrderCount && e < 32; e++)
+    {
+        int oc = g_hudOrderClass[e];
+        if (oc == 2 || oc == 3) continue;
+        uint64_t def = HudDefOf(g_hudOrder[e]);
+        for (uint32_t j = 0; j < m && def != 0; j++)
+            if (!taken[j] && defs[j] == def) { taken[j] = 1; order[k++] = j; break; }
+    }
+    for (int32_t c = 0; c < 2; c++)
+        for (uint32_t j = 0; j < m; j++) if (!taken[j] && cls[j] == c) { taken[j] = 1; order[k++] = j; }
+    if (k > 16) { cut += k - 16; k = 16; }
+    uint32_t rows[16];
+    for (uint32_t j = 0; j < k; j++) { g_hudRowDef[j] = defs[order[j]]; g_hudRowKey[j] = rows[j] = keys[order[j]]; }
     g_hudRows = k;
-    for (uint32_t j = 0; j < k; j++) ((HudRowAddFn)(g_world.game + HUD_ROW_ADD))(hud + 0x6DF0, rows[j]);
+    uint64_t w = hud + 0x6DF0;
+    for (uint32_t j = 0; j < k; j++) ((HudRowAddFn)(g_world.game + HUD_ROW_ADD))(w, rows[j]);
+    if (g_hudRekey == 0) g_hudRekey = ApiCodeMatches(g_world.game + HUD_ROW_KEY, kHudRowKeyPin) == 1 ? 1 : -1;
+    uint32_t slots = 0;
+    int keyed = 0;
+    if (g_hudRekey == 1 && !SafeRead(w + 0xF1884, &slots, 4) && slots == k)
+    {
+        typedef void (*HudRowKeyFn)(uint64_t row, uint32_t key);
+        for (uint32_t j = 0; j < k; j++) ((HudRowKeyFn)(g_world.game + HUD_ROW_KEY))(w + 0x400 + 0xF068ull * j, rows[j]);
+        keyed = 1;
+    }
     if (cut) InterlockedExchangeAdd(&g_hudRowsCut, (LONG)cut);
     static LONG noted;
     if (InterlockedIncrement(&noted) <= 4)
-        Note("difficulty: HUD: %u main objective and step rows (one per objective) for %u instances%s", k, n, cut ? " (objectives past 16 rows not shown)" : "");
+        Note("difficulty: HUD: %u main objective and step rows (one per objective) for %u instances%s; %s", k, n, cut ? " (objectives past 16 rows not shown)" : "",
+            keyed ? "each main followed by its own steps" : g_hudRekey != 1 ? "the row order is the game's (its re-key is not the reviewed code)" : "the row order is the game's (the rows did not all come in)");
 }
+/* The copy count in a row's title. The title is a text id on the element row+0x8B8 ([elem+0x110]; 0x1441720(elem, id)
+ * stores it, frees the cached text and marks the element dirty, and returns at once when it is already that id); the
+ * game sets the objective's name id there only on a key change or a state change to 1 (0x1846820, from 0x1846376 /
+ * 0x18470B5). Each row gets HUD_TEXT_IDS ids of its own, answered by the engine text hook (registry.c TextDetour ->
+ * HudText) with "<name> <done>/<copies>"; a new text goes into an id the row is not showing, so a buffer is never
+ * rewritten while it is shown; the name comes from the engine's text for the id the game set ('#' doubled: the text's
+ * variables are #NAME, 0x1300B90). Static, subagent hud18. */
+#define HUD_TITLE 0x1441720u
+#define HUD_TEXT_IDS 4
+static const char kHudTitlePin[] = "48 83 EC 28 4C 8B D9 39 91 10 01 00 00 0F 84";
+static struct { uint32_t ids[HUD_TEXT_IDS], name; int cur; char text[HUD_TEXT_IDS][192]; } g_hudText[16];
+static int g_hudTextOn; /* 1 on, -1 off */
+static const char* HudText(uint32_t id)
+{
+    if ((id & 0xFFFF0000u) != 0x6F420000u) return NULL;
+    for (int j = 0; j < 16; j++) for (int t = 0; t < HUD_TEXT_IDS; t++) if (g_hudText[j].ids[t] == id) return g_hudText[j].text[t];
+    return NULL;
+}
+static void HudTextOn(void)
+{
+    if (g_hudTextOn != 0) return;
+    g_hudTextOn = -1;
+    if (ApiCodeMatches(g_world.game + HUD_TITLE, kHudTitlePin) != 1) { Note("difficulty: HUD: the row title setter is not the reviewed code; no copy counts"); return; }
+    for (int j = 0; j < 16; j++) for (int t = 0; t < HUD_TEXT_IDS; t++) g_hudText[j].ids[t] = 0x6F420000u | (uint32_t)(0x4800 + j * HUD_TEXT_IDS + t);
+    g_textDynamic = HudText;
+    g_hudTextOn = 1;
+}
+static void HudRowTitle(uint32_t slot, uint64_t row, uint32_t copies, uint32_t done)
+{
+    if (g_hudTextOn == 0) HudTextOn();
+    if (g_hudTextOn != 1 || g_engineText == NULL || slot >= 16) return;
+    typedef void (*TitleFn)(uint64_t elem, uint32_t id);
+    TitleFn title = (TitleFn)(g_world.game + HUD_TITLE);
+    uint64_t elem = row + 0x8B8;
+    uint32_t shown = 0;
+    if (SafeRead(elem + 0x110, &shown, 4)) return;
+    int ours = HudText(shown) != NULL;
+    if (!ours && shown != 0) g_hudText[slot].name = shown;
+    uint32_t name = g_hudText[slot].name;
+    if (name == 0) return;
+    if (copies <= 1) { if (ours) title(elem, name); return; }
+    const char* plain = g_engineText(name, NULL, NULL, NULL);
+    char want[192];
+    int at = 0;
+    for (const char* c = plain ? plain : ""; *c && at < (int)sizeof want - 24; c++) { if (*c == '#') want[at++] = '#'; want[at++] = *c; }
+    snprintf(want + at, sizeof want - at, "  %u/%u", done, copies);
+    int cur = g_hudText[slot].cur;
+    if (ours && shown == g_hudText[slot].ids[cur] && strcmp(g_hudText[slot].text[cur], want) == 0) return;
+    int next = (cur + 1) % HUD_TEXT_IDS;
+    memcpy(g_hudText[slot].text[next], want, strlen(want) + 1);
+    g_hudText[slot].cur = next;
+    title(elem, g_hudText[slot].ids[next]);
+}
+/* Each frame per live row (0x1845CA0 -> 0x1846177): the state over every copy, then the title with the copy count. */
 static void HudRowState(uint64_t row, uint32_t state)
 {
     uint64_t inst = 0, ptrs = 0;
-    uint32_t n = 0, id = 0;
+    uint32_t n = 0, id = 0, slot = 16;
     uint64_t def = 0;
     for (uint32_t j = 0; j < g_hudRows && j < 16; j++)
-        if (!SafeRead(row + 0xF060, &id, 4) && g_hudRowKey[j] == id) { def = g_hudRowDef[j]; break; }
-    if (state >= 1 && state <= 3 && def != 0 && HudInstances(&inst, &ptrs, &n))
-    {
-        uint32_t copies = 0, done = 0, failed = 0;
+        if (!SafeRead(row + 0xF060, &id, 4) && g_hudRowKey[j] == id) { def = g_hudRowDef[j]; slot = j; break; }
+    uint32_t copies = 0, done = 0, failed = 0;
+    if (def != 0 && HudInstances(&inst, &ptrs, &n))
         for (uint32_t i = 0; i < n; i++)
         {
             int32_t cls = -1, st = 0; uint64_t p = 0, at = 0;
@@ -779,9 +882,9 @@ static void HudRowState(uint64_t row, uint32_t state)
                 SafeRead(p, &at, 8) || at != def || SafeRead(inst + 0x1078ull * i + 0x1018, &st, 4)) continue;
             copies++; done += st == 2; failed += st == 3;
         }
-        if (copies > 1) state = failed ? 3u : done == copies ? 2u : state == 2 ? 1u : state;
-    }
+    if (state >= 1 && state <= 3 && copies > 1) state = failed ? 3u : done == copies ? 2u : state == 2 ? 1u : state;
     g_hudRowState(row, state);
+    if (slot < 16) HudRowTitle(slot, row, copies, done);
 }
 /* Called from the updater's row search (HUD_FIND_SITE, main thread, per instance of class 0/1 per frame): the row of the
  * instance's key, else the row of its definition, else row 0 as the game; the key in the high half (esi after). */
