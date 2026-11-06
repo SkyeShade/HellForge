@@ -70,7 +70,7 @@ On `dev`, since 0.4.0-beta.
   HellForge's Zig made every source mod fail in Zig's own libraries ("sub-compilation of libzigc failed"). That failure
   was kept as the mod's, so restoring Zig or running Check and repair changed nothing. HellForge now notices a damaged
   Zig, unpacks it again from its download and builds the mod. Only a mod's own errors are kept, and Build now always
-  compiles again (#PR).
+  compiles again (#301).
 
 ### For contributors
 
