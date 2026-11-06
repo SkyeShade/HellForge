@@ -84,6 +84,7 @@ sealed partial class PlaySession(PlayOptions options)
     {
         install = new InstallLayout(Path.GetFullPath(options.Install));
         if (!install.Exists) throw new SessionFailure("Not a HellForge installation: " + install.Root);
+        if (GameCatalog.Ensure(install.Root) is { } noCatalogue) throw new SessionFailure(noCatalogue); // none ships: a sync gives it
         ConfigureLinuxSandbox();
         // Without Local PlayFab the session clears the platform matchmaking selector, which points the game's own lobby
         // search at Steam's lobbies, where vanilla games list theirs under the same build string (docs/multiplayer.md step
@@ -1146,7 +1147,8 @@ sealed partial class PlaySession(PlayOptions options)
         if (!File.Exists(backend)) throw new SessionFailure("The local backend is missing; reinstall HellForge.");
         var start = new ProcessStartInfo(backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in new[] { "--port", install.BackendPort.ToString(), "--startup-fixtures", "true", "--lifetime-seconds", "0", "--evidence", evidence,
-                     "--profile-dir", profileDirectoryUsed, "--capture-mission-bodies", "true", "--premium-locked", PremiumLockedFile }) start.ArgumentList.Add(argument);
+                     "--profile-dir", profileDirectoryUsed, "--capture-mission-bodies", "true", "--premium-locked", PremiumLockedFile,
+                     "--catalogue", GameCatalog.CopyForSession(install.Root, run) ?? throw new SessionFailure(GameCatalog.SyncFirst) }) start.ArgumentList.Add(argument);
         if (options.Template != null) { start.ArgumentList.Add("--profile-template"); start.ArgumentList.Add(options.Template); }
         if (options.Sandbox) { start.ArgumentList.Add("--sandbox"); start.ArgumentList.Add("true"); }
         WarArguments(start);

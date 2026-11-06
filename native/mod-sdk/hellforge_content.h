@@ -18,6 +18,9 @@
 #define HF_KIND_CATEGORY 10u
 #define HF_KIND_BEAM 11u
 #define HF_KIND_BOOSTER 12u
+#define HF_KIND_EXPLOSION 13u
+#define HF_KIND_WEAPON_BEAM 14u
+#define HF_KIND_ARC 15u
 
 /* Loadout ids of vanilla items, for HfWeapon.base, sound_from and HfStratagem.loads_item. Every session with a
  * weapon added lists the whole arsenal (loadout id, armory type, entity, designation, name) in its log folder as arsenal.tsv. */
@@ -780,7 +783,348 @@
 #define HF_ENTITY_XENOBITE_ARDENT 0x08E6FFC2474287BDull  /* Xenobite Ardent */
 
 /* Vanilla damage ids, for HfDamage.base and HfProjectile.damage (the projectile row's +0x3C). */
+#define HF_DAMAGE_TERMINID_BILE_SPEWING_PROJECTILE 1u    /* Terminid Bile Spewing Projectile */
+#define HF_DAMAGE_TERMINID_BILE_PROJECTILE 2u            /* Terminid Bile Projectile */
+#define HF_DAMAGE_SPORE_BURST_BILE_TITAN 3u              /* Spore Burst Bile Titan */
+#define HF_DAMAGE_TERMINID_NURSING_SPEWING_PROJECTILE 4u /* Terminid Nursing Spewing Projectile */
+#define HF_DAMAGE_TERMINID_LITTLE_BILE_SPITTER_PROJECTILE 5u /* Terminid Little Bile Spitter Projectile */
+#define HF_DAMAGE_DRAGON_AND_1_OTHER 7u                  /* dragon and 1 other - shared: dragon, lieutenant_ivory_legion_assault */
+#define HF_DAMAGE_AUTOMATON_ROCKET_DEVASTATOR_ROCKET_AND_6_OTHERS 8u /* Automaton Rocket Devastator Rocket and 6 others - shared: Automaton Rocket Devastator Rocket, siege_engine, tank_turret_rocketlauncher, Gunship, lieutenant_artillery, lieutenant_suppressor, tank_rocketlauncher */
+#define HF_DAMAGE_AUTOMATON_BASIC_PROJECTILE_AND_13_OTHERS 9u /* Automaton Basic Projectile and 13 others - shared: Automaton Basic Projectile, Basic Automaton Projectile, cha_soldier.cha_soldier_jumppack, soldier, soldier_iron_fleet, soldier_ivory_legion, soldier_mg, soldier_mg_assassinate ... */
+#define HF_DAMAGE_SOLDIER_FLAMER_AND_1_OTHER 10u         /* soldier_flamer and 1 other - shared: soldier_flamer, soldier_mg_ivory_legion */
+#define HF_DAMAGE_AUTOMATON_FIRE_BRIGADE_SHOTGUN_ROUND_AND_1_OTHER 12u /* Automaton Fire Brigade Shotgun Round and 1 other - shared: Automaton Fire Brigade Shotgun Round, soldier_shotgun_ivory_legion */
+#define HF_DAMAGE_SIEGE_ENGINE 13u                       /* siege_engine */
+#define HF_DAMAGE_POSSIBLY_HIVE_LORD_SPEWING_PROJECTILE_AND_1_OTHER 18u /* Possibly Hive Lord Spewing Projectile and 1 other - shared: Possibly Hive Lord Spewing Projectile, hive_lord */
+#define HF_DAMAGE_HIVE_LORD_ABILITY_7 20u                /* hive_lord (ability) #7 */
+#define HF_DAMAGE_HIVE_LORD_ABILITY_9 21u                /* hive_lord (ability) #9 */
+#define HF_DAMAGE_HIVE_LORD_ABILITY 22u                  /* hive_lord (ability) */
+#define HF_DAMAGE_G142_PYROTECH_DETONATION 26u           /* G-142 Pyrotech (detonation) */
+#define HF_DAMAGE_GP20_ULTIMATUM 27u                     /* GP-20 Ultimatum */
+#define HF_DAMAGE_GL28_BELTFED_GRENADE_LAUNCHER 30u      /* GL-28 Belt-Fed Grenade Launcher */
+#define HF_DAMAGE_GL28_BELTFED_GRENADE_LAUNCHER_IMPACT 31u /* GL-28 Belt-Fed Grenade Launcher (impact) */
+#define HF_DAMAGE_GL21_GRENADE_LAUNCHER_AND_8_OTHERS 32u /* GL-21 Grenade Launcher and 8 others - shared: GL-21 Grenade Launcher, GL-52 De-Escalator, A/GM-17 Gas Mortar Sentry, A/M-12 Mortar Sentry, A/M-23 EMS Mortar Sentry, Automaton Mortar Round, StA-X3 W.A.S.P. Launcher, assault_walker ... */
+#define HF_DAMAGE_GL15_EVICTOR 33u                       /* GL-15 Evictor */
+#define HF_DAMAGE_GATEKEEPER 38u                         /* Gatekeeper */
+#define HF_DAMAGE_GATEKEEPER_AND_2_OTHERS 39u            /* Gatekeeper and 2 others - shared: Gatekeeper, tripod, tripod_tier_2 */
+#define HF_DAMAGE_LAS16_SICKLE_AND_1_OTHER 48u           /* LAS-16 Sickle and 1 other - shared: LAS-16 Sickle, LAS-17 Double-Edge Sickle */
+#define HF_DAMAGE_LAS12_SAI 49u                          /* LAS-12 Sai */
+#define HF_DAMAGE_LAS17_DOUBLEEDGE_SICKLE 50u            /* LAS-17 Double-Edge Sickle */
+#define HF_DAMAGE_LAS17_DOUBLEEDGE_SICKLE_51 51u         /* LAS-17 Double-Edge Sickle #51 */
+#define HF_DAMAGE_LAS17_DOUBLEEDGE_SICKLE_52 52u         /* LAS-17 Double-Edge Sickle #52 */
 #define HF_DAMAGE_LAS58_TALON 54u                        /* LAS-58 Talon */
+#define HF_DAMAGE_PLAS1_SCORCHER_AND_1_OTHER 56u         /* PLAS-1 Scorcher and 1 other - shared: PLAS-1 Scorcher, PLAS-15 Loyalist */
+#define HF_DAMAGE_SG8P_PUNISHER_PLASMA 57u               /* SG-8P Punisher Plasma */
+#define HF_DAMAGE_PLAS45_EPOCH_AND_1_OTHER 58u           /* PLAS-45 Epoch and 1 other - shared: PLAS-45 Epoch, Epoch Partial Charge Round */
+#define HF_DAMAGE_EPOCH_FULL_CHARGE_ROUND 59u            /* Epoch Full Charge Round */
+#define HF_DAMAGE_PLAS45_EPOCH_IMPACT 60u                /* PLAS-45 Epoch (impact) */
+#define HF_DAMAGE_40K_MELTAGUN_AND_1_OTHER 61u           /* 40-K Meltagun and 1 other - shared: 40-K Meltagun, PLAS-45 Epoch */
+#define HF_DAMAGE_CHARGED_LOYALIST_ROUND_AND_1_OTHER 62u /* Charged Loyalist Round and 1 other - shared: Charged Loyalist Round, Uncharged Loyalist Round */
+#define HF_DAMAGE_PLAS101_PURIFIER_AND_1_OTHER 63u       /* PLAS-101 Purifier and 1 other - shared: PLAS-101 Purifier, Uncharged Purifier Round */
+#define HF_DAMAGE_RS422_RAILGUN 64u                      /* RS-422 Railgun */
+#define HF_DAMAGE_S11_SPEARGUN 65u                       /* S-11 Speargun */
+#define HF_DAMAGE_S11_SPEARGUN_EXPIRY 66u                /* S-11 Speargun (expiry) */
+#define HF_DAMAGE_P35_REEDUCATOR 67u                     /* P-35 Re-Educator */
+#define HF_DAMAGE_P34_BREACHER 68u                       /* P-34 Breacher */
+#define HF_DAMAGE_P34_BREACHER_IMPACT 69u                /* P-34 Breacher (impact) */
+#define HF_DAMAGE_M7S_SMG 71u                            /* M7S SMG */
+#define HF_DAMAGE_P19_REDEEMER 73u                       /* P-19 Redeemer */
+#define HF_DAMAGE_MP98_KNIGHT_AND_1_OTHER 74u            /* MP-98 Knight and 1 other - shared: MP-98 Knight, StA-11 SMG */
+#define HF_DAMAGE_P2_PEACEMAKER 75u                      /* P-2 Peacemaker */
+#define HF_DAMAGE_VG70_VARIABLE 76u                      /* VG-70 Variable */
+#define HF_DAMAGE_SMG203_GALLANT 77u                     /* SMG-203 Gallant */
+#define HF_DAMAGE_SMG37_DEFENDER 83u                     /* SMG-37 Defender */
+#define HF_DAMAGE_SMG72_PUMMELER 90u                     /* SMG-72 Pummeler */
+#define HF_DAMAGE_P113_VERDICT 91u                       /* P-113 Verdict */
+#define HF_DAMAGE_P69_VETO 92u                           /* P-69 Veto */
+#define HF_DAMAGE_M6CSOCOM_PISTOL 93u                    /* M6C/SOCOM Pistol */
+#define HF_DAMAGE_P92_WARRANT 94u                        /* P-92 Warrant */
+#define HF_DAMAGE_P33_MISSILE_PISTOL 95u                 /* P-33 Missile Pistol */
+#define HF_DAMAGE_SMG32_REPRIMAND 96u                    /* SMG-32 Reprimand */
+#define HF_DAMAGE_SMGFLAM34_STOKER 97u                   /* SMG/FLAM-34 Stoker */
+#define HF_DAMAGE_P4_SENATOR 99u                         /* P-4 Senator */
+#define HF_DAMAGE_AR23P_LIBERATOR_PENETRATOR_AND_2_OTHERS 105u /* AR-23P Liberator Penetrator and 2 others - shared: AR-23P Liberator Penetrator, AX/AR-23 Guard Dog / gun, M-103 Supply FRV / gun */
+#define HF_DAMAGE_AR23C_LIBERATOR_CONCUSSIVE 107u        /* AR-23C Liberator Concussive */
+#define HF_DAMAGE_AR23_LIBERATOR_AND_3_OTHERS 108u       /* AR-23 Liberator and 3 others - shared: AR-23 Liberator, AR-23A Liberator Carbine, StA-52 Assault Rifle, M-105 Stalwart */
+#define HF_DAMAGE_AR59_SUPPRESSOR 114u                   /* AR-59 Suppressor */
+#define HF_DAMAGE_AR32_PACIFIER 116u                     /* AR-32 Pacifier */
+#define HF_DAMAGE_MGX42_BULLET_STORM_AND_1_OTHER 117u    /* MGX-42 Bullet Storm and 1 other - shared: MGX-42 Bullet Storm, Bullet Storm Round */
+#define HF_DAMAGE_AR2_COYOTE 118u                        /* AR-2 Coyote */
+#define HF_DAMAGE_EXO45_PATRIOT_EXOSUIT_RIGHT_GUN_AND_1_OTHER 125u /* EXO-45 Patriot Exosuit / right_gun and 1 other - shared: EXO-45 Patriot Exosuit / right_gun, MG-43 Machine Gun */
+#define HF_DAMAGE_M1000_MAXIGUN 127u                     /* M-1000 Maxigun */
+#define HF_DAMAGE_R72_CENSOR 130u                        /* R-72 Censor */
+#define HF_DAMAGE_ARGL21_ONETWO 132u                     /* AR/GL-21 One-Two */
+#define HF_DAMAGE_AR11_ARBITRATOR 133u                   /* AR-11 Arbitrator */
+#define HF_DAMAGE_BR14_ADJUDICATOR 134u                  /* BR-14 Adjudicator */
+#define HF_DAMAGE_AR61_TENDERIZER 135u                   /* AR-61 Tenderizer */
+#define HF_DAMAGE_MA5C_ASSAULT_RIFLE 136u                /* MA5C Assault Rifle */
+#define HF_DAMAGE_R2124_CONSTITUTION 137u                /* R-2124 Constitution */
+#define HF_DAMAGE_R2_AMENDMENT 138u                      /* R-2 Amendment */
+#define HF_DAMAGE_R6_DEADEYE 139u                        /* R-6 Deadeye */
+#define HF_DAMAGE_R63_DILIGENCE 141u                     /* R-63 Diligence */
+#define HF_DAMAGE_R4_HYENA 142u                          /* R-4 Hyena */
+#define HF_DAMAGE_R63CS_DILIGENCE_COUNTER_SNIPER 143u    /* R-63CS Diligence Counter Sniper */
+#define HF_DAMAGE_R36_ERUPTOR 149u                       /* R-36 Eruptor */
+#define HF_DAMAGE_JAR5_DOMINATOR 153u                    /* JAR-5 Dominator */
+#define HF_DAMAGE_P40K_BOLT_PISTOL 156u                  /* P/40-K Bolt Pistol */
+#define HF_DAMAGE_M90A_SHOTGUN 157u                      /* M90A Shotgun */
+#define HF_DAMAGE_SG97_SWEEPER 158u                      /* SG-97 Sweeper */
+#define HF_DAMAGE_DBS2_DOUBLE_FREEDOM 159u               /* DBS-2 Double Freedom */
+#define HF_DAMAGE_ARBITRATOR_UNDERBARREL_SHOTGUN_ROUND 161u /* Arbitrator Underbarrel Shotgun Round */
+#define HF_DAMAGE_SG22_BUSHWHACKER 163u                  /* SG-22 Bushwhacker */
+#define HF_DAMAGE_SG451_COOKOUT 164u                     /* SG-451 Cookout */
+#define HF_DAMAGE_SG20_HALT 166u                         /* SG-20 Halt */
+#define HF_DAMAGE_BREAK_ACTION_SHOTGUN_ROUND 169u        /* Break Action Shotgun Round */
+#define HF_DAMAGE_SG20_HALT_175 175u                     /* SG-20 Halt #175 */
+#define HF_DAMAGE_SG8S_SLUGGER 176u                      /* SG-8S Slugger */
+#define HF_DAMAGE_SG225SP_BREAKER_SPRAY_PRAY 178u        /* SG-225SP Breaker Spray&Pray */
+#define HF_DAMAGE_SG225_BREAKER 179u                     /* SG-225 Breaker */
+#define HF_DAMAGE_SG225IE_BREAKER_INCENDIARY 182u        /* SG-225IE Breaker Incendiary */
+#define HF_DAMAGE_EXO55_BREAKTHROUGH_EXOSUIT_RIGHT_GUN 188u /* EXO-55 Breakthrough Exosuit / right_gun */
+#define HF_DAMAGE_ORBITAL_AIRBURST_PROJECTILE_I_THINK 190u /* Orbital Airburst Projectile (I think) */
+#define HF_DAMAGE_ARC3_ARC_THROWER 197u                  /* ARC-3 Arc Thrower */
+#define HF_DAMAGE_ARC12_BLITZER 199u                     /* ARC-12 Blitzer */
+#define HF_DAMAGE_AXARC3_K9_GUN 200u                     /* AX/ARC-3 K-9 / gun */
+#define HF_DAMAGE_AC8_AUTOCANNON 202u                    /* AC-8 Autocannon */
+#define HF_DAMAGE_SMALL_AUTOMATON_PROJECTILE_AND_7_OTHERS 203u /* Small Automaton Projectile and 7 others - shared: Small Automaton Projectile, Gunship, command_bunker_side, lieutenant_base, lieutenant_suppressor, tank_autocannons, tank_heavycannon, walker_scout */
+#define HF_DAMAGE_EMG101_HMG_EMPLACEMENT 204u            /* E/MG-101 HMG Emplacement */
+#define HF_DAMAGE_FRV_AND_5_OTHERS 205u                  /* FRV and 5 others - shared: FRV, M-102 Gunner FRV / gun, MG-206 Heavy Machine Gun, TD-110 Maelstrom / attach_tank_gun, TD-220 Bastion MK XVI / attach_tank_gun_mg, TD-110 Maelstrom attach_tank_gun */
+#define HF_DAMAGE_APW1_ANTIMATERIEL_RIFLE 206u           /* APW-1 Anti-Materiel Rifle */
+#define HF_DAMAGE_CB9_EXPLODING_CROSSBOW 208u            /* CB-9 Exploding Crossbow */
+#define HF_DAMAGE_CB9_EXPLODING_CROSSBOW_IMPACT 209u     /* CB-9 Exploding Crossbow (impact) */
+#define HF_DAMAGE_AVATAR_HELLDIVER_BEHAVIOR 210u         /* avatar_helldiver (behavior) */
+#define HF_DAMAGE_AC8_AUTOCANNON_213 213u                /* AC-8 Autocannon #213 */
+#define HF_DAMAGE_EXO49_EMANCIPATOR_EXOSUIT_LEFT_GUN_AND_1_OTHER 215u /* EXO-49 Emancipator Exosuit / left_gun and 1 other - shared: EXO-49 Emancipator Exosuit / left_gun, EXO-49 Emancipator Exosuit / right_gun */
+#define HF_DAMAGE_GATER_OIL_RIG_TURRET 216u              /* GATER Oil Rig / turret */
+#define HF_DAMAGE_EAGLE_SMOKE_STRIKE_AND_2_OTHERS 218u   /* Eagle Smoke Strike and 2 others - shared: Eagle Smoke Strike, Orbital Gatling Barrage, eagle_gunpods */
+#define HF_DAMAGE_AUTOMATON_BIG_PROJECTILE_AND_2_OTHERS 220u /* Automaton Big Projectile and 2 others - shared: Automaton Big Projectile, Small Automaton Projectile, assault_walker */
+#define HF_DAMAGE_CYBORG_ELITE_FEMALE 222u               /* cyborg_elite_female */
+#define HF_DAMAGE_GP31_GRENADE_PISTOL 225u               /* GP-31 Grenade Pistol */
+#define HF_DAMAGE_EXO51_LUMBERER_EXOSUIT_RIGHT_GUN 226u  /* EXO-51 Lumberer Exosuit / right_gun */
+#define HF_DAMAGE_EAT17_EXPENDABLE_ANTITANK 227u         /* EAT-17 Expendable Anti-Tank */
+#define HF_DAMAGE_GR8_RECOILLESS_RIFLE 228u              /* GR-8 Recoilless Rifle */
+#define HF_DAMAGE_AMLS4X_ROCKET_SENTRY 232u              /* A/MLS-4X Rocket Sentry */
+#define HF_DAMAGE_EAGLE_AIRSTRIKE_AND_4_OTHERS 234u      /* Eagle Airstrike and 4 others - shared: Eagle Airstrike, Eagle Cluster Bomb, Eagle Gas Airstrike, Eagle Napalm Airstrike, Eagle Smoke Strike */
+#define HF_DAMAGE_TD220_BASTION_MK_XVI 235u              /* TD-220 Bastion MK XVI */
+#define HF_DAMAGE_MLS4X_COMMANDO_AND_3_OTHERS 237u       /* MLS-4X Commando and 3 others - shared: MLS-4X Commando, TD-110 Maelstrom / slot_3, TD-110 Maelstrom / slot_4, Commando Round */
+#define HF_DAMAGE_EXO45_PATRIOT_EXOSUIT_LEFT_GUN_AND_1_OTHER 239u /* EXO-45 Patriot Exosuit / left_gun and 1 other - shared: EXO-45 Patriot Exosuit / left_gun, EXO-45 Patriot Exosuit slot 0 */
+#define HF_DAMAGE_STAX3_W_A_S_P_LAUNCHER_AND_1_OTHER 244u /* StA-X3 W.A.S.P. Launcher and 1 other - shared: StA-X3 W.A.S.P. Launcher, WASP Rockets */
+#define HF_DAMAGE_FAF14_SPEAR 245u                       /* FAF-14 Spear */
+#define HF_DAMAGE_EAGLE_110MM_ROCKET_PODS_AND_1_OTHER 248u /* Eagle 110mm Rocket Pods and 1 other - shared: Eagle 110mm Rocket Pods, eagle_missile */
+#define HF_DAMAGE_EAGLE_500KG_BOMB 251u                  /* Eagle 500kg Bomb */
+#define HF_DAMAGE_TERMINID_BILE_SPEWER_MORTAR_PROJECTILE_AND_5_OTHERS 252u /* Terminid Bile Spewer Mortar Projectile and 5 others - shared: Terminid Bile Spewer Mortar Projectile, Rupture Spewer, boomer, boomer_nurser, boomer_nurser_mission, boomer_tier_2 */
+#define HF_DAMAGE_AUTOMATON_BIG_TURRET_ROUND_AND_4_OTHERS 254u /* Automaton Big Turret Round and 4 others - shared: Automaton Big Turret Round, Automaton Heavy Gun Projectile, spawner, tank_base, tank_heavycannon */
+#define HF_DAMAGE_SIEGE_ENGINE_255 255u                  /* siege_engine #255 */
+#define HF_DAMAGE_ILLUMINATE_WARMACHINE_BOMBBALL_DETONATION 260u /* illuminate_warmachine_bombball (detonation) */
+#define HF_DAMAGE_ORBITAL_AIRBURST_STRIKE_AND_3_OTHERS 261u /* Orbital Airburst Strike and 3 others - shared: Orbital Airburst Strike, Orbital EMS Strike, Orbital Gas Strike, Orbital Smoke Strike */
+#define HF_DAMAGE_ORBITAL_120MM_HE_BARRAGE 262u          /* Orbital 120mm HE Barrage */
+#define HF_DAMAGE_HE_ORBITAL_SHELL_AND_1_OTHER 263u      /* HE Orbital Shell and 1 other - shared: HE Orbital Shell, Orbital Walking Barrage */
+#define HF_DAMAGE_ORBITAL_PRECISION_STRIKE 264u          /* Orbital Precision Strike */
+#define HF_DAMAGE_ORBITAL_NAPALM_BARRAGE 265u            /* Orbital Napalm Barrage */
+#define HF_DAMAGE_ORBITAL_NAPALM_BARRAGE_SHELL_IMPACT 266u /* Orbital Napalm Barrage (shell impact) */
+#define HF_DAMAGE_ORBITAL_RAILCANNON_STRIKE 267u         /* Orbital Railcannon Strike */
+#define HF_DAMAGE_AUTOMATON_380_POWERED_PROJECTILE 270u  /* Automaton 380 Powered Projectile */
+#define HF_DAMAGE_ILLUMINATE_ATTACK_SHIP 272u            /* illuminate_attack_ship */
+#define HF_DAMAGE_EAT700_EXPENDABLE_NAPALM 274u          /* EAT-700 Expendable Napalm */
+#define HF_DAMAGE_EAT700_EXPENDABLE_NAPALM_IMPACT_SHRAPNEL_IMPACT 276u /* EAT-700 Expendable Napalm (impact, shrapnel impact) */
+#define HF_DAMAGE_RL77_AIRBURST_ROCKET_LAUNCHER_FUNCTION_EXPIRY 277u /* RL-77 Airburst Rocket Launcher (function expiry) */
+#define HF_DAMAGE_G23_STUN_DETONATION 279u               /* G-23 Stun (detonation) */
+#define HF_DAMAGE_G109_URCHIN_DETONATION 280u            /* G-109 Urchin (detonation) */
+#define HF_DAMAGE_GP20_ULTIMATUM_AND_1_OTHER 281u        /* GP-20 Ultimatum and 1 other - shared: GP-20 Ultimatum, siege_engine */
+#define HF_DAMAGE_BOOMER_ABILITY 288u                    /* boomer (ability) */
+#define HF_DAMAGE_RUPTURE_SPEWER_INVENTORY_DETONATION 289u /* Rupture Spewer (inventory detonation) */
+#define HF_DAMAGE_BILE_TITAN_AND_2_OTHERS 291u           /* Bile Titan and 2 others - shared: Bile Titan, scavenger_spitter, warrior_acid */
+#define HF_DAMAGE_CHA_BATTLEFRONT_SEAF_MEDIC_INVENTORY_DETONATION 292u /* cha_battlefront_seaf_medic (inventory detonation) */
+#define HF_DAMAGE_SCAVENGER_GLOOM_BEHAVIOR 293u          /* scavenger_gloom (behavior) */
+#define HF_DAMAGE_SPORE_BURST_HUNTER_BEHAVIOR 294u       /* Spore Burst Hunter (behavior) */
+#define HF_DAMAGE_SPORE_BURST_WARRIOR_BEHAVIOR 295u      /* Spore Burst Warrior (behavior) */
+#define HF_DAMAGE_SPORE_BURST_BILE_TITAN_BEHAVIOR 296u   /* Spore Burst Bile Titan (behavior) */
+#define HF_DAMAGE_BILE_TITAN_ABILITY 297u                /* Bile Titan (ability) */
+#define HF_DAMAGE_SPORE_BURST_BILE_TITAN_SPRAY_IMPACT 298u /* Spore Burst Bile Titan (spray impact) */
+#define HF_DAMAGE_TURRET_AUTOCANNONS_ABILITY_5 300u      /* turret_autocannons (ability) #5 */
+#define HF_DAMAGE_P40K_BOLT_PISTOL_IMPACT 303u           /* P/40-K Bolt Pistol (impact) */
+#define HF_DAMAGE_PLAS15_LOYALIST_IMPACT 305u            /* PLAS-15 Loyalist (impact) */
+#define HF_DAMAGE_PLAS1_SCORCHER_IMPACT 306u             /* PLAS-1 Scorcher (impact) */
+#define HF_DAMAGE_PLAS39_ACCELERATOR_RIFLE 308u          /* PLAS-39 Accelerator Rifle */
+#define HF_DAMAGE_PLAS39_ACCELERATOR_RIFLE_IMPACT 309u   /* PLAS-39 Accelerator Rifle (impact) */
+#define HF_DAMAGE_SG8P_PUNISHER_PLASMA_IMPACT 311u       /* SG-8P Punisher Plasma (impact) */
+#define HF_DAMAGE_PLAS101_PURIFIER_CHARGE_1_IMPACT 312u  /* PLAS-101 Purifier (charge 1 impact) */
+#define HF_DAMAGE_PLAS101_PURIFIER_IMPACT 313u           /* PLAS-101 Purifier (impact) */
+#define HF_DAMAGE_PLAS15_LOYALIST_CHARGE_1_IMPACT 314u   /* PLAS-15 Loyalist (charge 1 impact) */
+#define HF_DAMAGE_PLAS15_LOYALIST_CHARGE_2_IMPACT 315u   /* PLAS-15 Loyalist (charge 2 impact) */
+#define HF_DAMAGE_EAT700_EXPENDABLE_NAPALM_IMPACT 316u   /* EAT-700 Expendable Napalm (impact) */
+#define HF_DAMAGE_PLASMA_CONE 317u                       /* Plasma_Cone */
+#define HF_DAMAGE_MLS4X_COMMANDO_BACKBLAST 318u          /* MLS-4X Commando (backblast) */
+#define HF_DAMAGE_EAT17_EXPENDABLE_ANTITANK_BACKBLAST 319u /* EAT-17 Expendable Anti-Tank (backblast) */
+#define HF_DAMAGE_GR8_RECOILLESS_RIFLE_AND_1_OTHER 320u  /* GR-8 Recoilless Rifle and 1 other - shared: GR-8 Recoilless Rifle, tank_turret_rocketlauncher */
+#define HF_DAMAGE_HELLDIVER_DUMMY_BEHAVIOR 321u          /* helldiver_dummy (behavior) */
+#define HF_DAMAGE_TURRET_AUTOCANNONS_BEHAVIOR 324u       /* turret_autocannons (behavior) */
+#define HF_DAMAGE_LAS98_LASER_CANNON_AND_7_OTHERS 327u   /* LAS-98 Laser Cannon and 7 others - shared: LAS-98 Laser Cannon, Rupture Charger, bug_larva_container_backpack, canister, conscript_shotgun, habs_barrel_fuel, Barrel_Large, Barrel_Small */
+#define HF_DAMAGE_CONSCRIPT_BACKPACK_LMG_AND_1_OTHER 328u /* conscript_backpack_lmg and 1 other - shared: conscript_backpack_lmg, conscript_jumppack */
+#define HF_DAMAGE_LIEUTENANT_JETPACK_DETONATION 330u     /* lieutenant_jetpack (detonation) */
+#define HF_DAMAGE_POWER_GENERATOR_BEHAVIOR 331u          /* power_generator (behavior) */
+#define HF_DAMAGE_G6_FRAG_AND_3_OTHERS 335u              /* G-6 Frag and 3 others - shared: G-6 Frag, RL-77 Airburst Rocket Launcher, Primary_Airburst, Primary_Cluster */
+#define HF_DAMAGE_G7_PINEAPPLE_DETONATION 336u           /* G-7 Pineapple (detonation) */
+#define HF_DAMAGE_G7_PINEAPPLE_DETONATION_SHRAPNEL_EXPIRY 337u /* G-7 Pineapple (detonation, shrapnel expiry) */
+#define HF_DAMAGE_G10_INCENDIARY_AND_1_OTHER 338u        /* G-10 Incendiary and 1 other - shared: G-10 Incendiary, conscript_grenade_incendiary */
+#define HF_DAMAGE_G8_IMMOLATION_DETONATION 339u          /* G-8 Immolation (detonation) */
+#define HF_DAMAGE_G13_INCENDIARY_IMPACT_DETONATION 340u  /* G-13 Incendiary Impact (detonation) */
+#define HF_DAMAGE_LIEUTENANT_IVORY_LEGION_IMPACT 341u    /* lieutenant_ivory_legion (impact) */
+#define HF_DAMAGE_G123_THERMITE_AND_1_OTHER 342u         /* G-123 Thermite and 1 other - shared: G-123 Thermite, P-34 Breacher */
+#define HF_DAMAGE_HIVE_LORD_ABILITY_3 343u               /* hive_lord (ability) #3 */
+#define HF_DAMAGE_G50_SEEKER_DETONATION 344u             /* G-50 Seeker (detonation) */
+#define HF_DAMAGE_G60_ANTITANK_SEEKER_DETONATION 345u    /* G-60 Anti-Tank Seeker (detonation) */
+#define HF_DAMAGE_AC8_AUTOCANNON_FUNCTION_IMPACT 346u    /* AC-8 Autocannon (function impact) */
+#define HF_DAMAGE_R36_ERUPTOR_IMPACT 347u                /* R-36 Eruptor (impact) */
+#define HF_DAMAGE_GUNSHIP_AND_2_OTHERS 348u              /* Gunship and 2 others - shared: Gunship, Rupture Charger, turret_autocannons */
+#define HF_DAMAGE_CRUSHER_ABILITY 349u                   /* Crusher (ability) */
+#define HF_DAMAGE_TANK_ROCKETLAUNCHER_BEHAVIOR 350u      /* tank_rocketlauncher (behavior) */
+#define HF_DAMAGE_GUNSHIP_BEHAVIOR_2 351u                /* Gunship (behavior) #2 */
+#define HF_DAMAGE_PLAS101_PURIFIER_AND_1_OTHER_352 352u  /* PLAS-101 Purifier and 1 other #352 - shared: PLAS-101 Purifier, PLAS-39 Accelerator Rifle */
+#define HF_DAMAGE_GSH39_SHIELD_DETONATION 353u           /* G/SH-39 Shield (detonation) */
+#define HF_DAMAGE_ADEPTSHOCKWAVE 354u                    /* AdeptShockwave */
+#define HF_DAMAGE_EXO45_PATRIOT_EXOSUIT_VEHICLE_CRASH 355u /* EXO-45 Patriot Exosuit (vehicle crash) */
+#define HF_DAMAGE_AM23_EMS_MORTAR_SENTRY_AND_3_OTHERS 356u /* A/M-23 EMS Mortar Sentry and 3 others - shared: A/M-23 EMS Mortar Sentry, EXO-45 Patriot Exosuit, jet_champion, lieutenant_artillery */
+#define HF_DAMAGE_G12_HIGH_EXPLOSIVE_DETONATION 357u     /* G-12 High Explosive (detonation) */
+#define HF_DAMAGE_G16_IMPACT_DETONATION 358u             /* G-16 Impact (detonation) */
+#define HF_DAMAGE_ASSAULT_WALKER_INVENTORY_DETONATION 359u /* assault_walker (inventory detonation) */
+#define HF_DAMAGE_TED63_DYNAMITE_DETONATION 360u         /* TED-63 Dynamite (detonation) */
+#define HF_DAMAGE_G48_GIGA_GRENADE_DETONATION 362u       /* G-48 Giga Grenade (detonation) */
+#define HF_DAMAGE_BMD_C4_PACK_DETONATION 363u            /* B/MD C4 Pack (detonation) */
+#define HF_DAMAGE_G31_ARC_DETONATION 364u                /* G-31 Arc (detonation) */
+#define HF_DAMAGE_GL52_DEESCALATOR_IMPACT 366u           /* GL-52 De-Escalator (impact) */
+#define HF_DAMAGE_EAGLE_110MM_ROCKET_PODS_AND_1_OTHER_367 367u /* Eagle 110mm Rocket Pods and 1 other #367 - shared: Eagle 110mm Rocket Pods, Orbital Gatling Barrage */
+#define HF_DAMAGE_AC8_AUTOCANNON_IMPACT 370u             /* AC-8 Autocannon (impact) */
+#define HF_DAMAGE_EXO49_EMANCIPATOR_EXOSUIT_ATTACH_TURRET_L_IMPACT 371u /* EXO-49 Emancipator Exosuit attach_turret_l (impact) */
+#define HF_DAMAGE_AAC8_AUTOCANNON_SENTRY_IMPACT 373u     /* A/AC-8 Autocannon Sentry (impact) */
+#define HF_DAMAGE_ARGL21_ONETWO_UNDERBARREL_IMPACT 374u  /* AR/GL-21 One-Two / underbarrel (impact) */
+#define HF_DAMAGE_GL21_GRENADE_LAUNCHER_IMPACT 375u      /* GL-21 Grenade Launcher (impact) */
+#define HF_DAMAGE_GL15_EVICTOR_IMPACT 376u               /* GL-15 Evictor (impact) */
+#define HF_DAMAGE_AM12_MORTAR_SENTRY_IMPACT 379u         /* A/M-12 Mortar Sentry (impact) */
+#define HF_DAMAGE_RL77_AIRBURST_ROCKET_LAUNCHER_AND_1_OTHER 380u /* RL-77 Airburst Rocket Launcher and 1 other - shared: RL-77 Airburst Rocket Launcher, Airburst Rocket. Not from the Support Weapon Though. */
+#define HF_DAMAGE_GR8_RECOILLESS_RIFLE_IMPACT 381u       /* GR-8 Recoilless Rifle (impact) */
+#define HF_DAMAGE_EAT12_ANTITANK_EMPLACEMENT_AND_1_OTHER 382u /* E/AT-12 Anti-Tank Emplacement and 1 other - shared: E/AT-12 Anti-Tank Emplacement, EAT-17 Expendable Anti-Tank */
+#define HF_DAMAGE_LAS99_QUASAR_CANNON 383u               /* LAS-99 Quasar Cannon */
+#define HF_DAMAGE_LAS99_QUASAR_CANNON_IMPACT 384u        /* LAS-99 Quasar Cannon (impact) */
+#define HF_DAMAGE_EAGLE_CLUSTER_BOMB_AND_1_OTHER 388u    /* Eagle Cluster Bomb and 1 other - shared: Eagle Cluster Bomb, Orbital Airburst Strike */
+#define HF_DAMAGE_EAGLE_NAPALM_AIRSTRIKE_AND_2_OTHERS 390u /* Eagle Napalm Airstrike and 2 others - shared: Eagle Napalm Airstrike, explosive_gas_chimney, OilField */
+#define HF_DAMAGE_EAGLE_GAS_AIRSTRIKE_PAYLOAD_IMPACT 391u /* Eagle Gas Airstrike (payload impact) */
+#define HF_DAMAGE_MLS4X_COMMANDO_IMPACT 392u             /* MLS-4X Commando (impact) */
+#define HF_DAMAGE_TD110_MAELSTROM_SLOT_3_FIRED_EXPLOSIVE_40 394u /* TD-110 Maelstrom slot 3 (fired explosive 40) */
+#define HF_DAMAGE_EXO45_PATRIOT_EXOSUIT_SLOT_0_IMPACT 395u /* EXO-45 Patriot Exosuit slot 0 (impact) */
+#define HF_DAMAGE_STAX3_W_A_S_P_LAUNCHER_FUNCTION_IMPACT 397u /* StA-X3 W.A.S.P. Launcher (function impact) */
+#define HF_DAMAGE_FAF14_SPEAR_IMPACT 398u                /* FAF-14 Spear (impact) */
+#define HF_DAMAGE_STINGERMISSILE 400u                    /* StingerMissile */
+#define HF_DAMAGE_AMLS4X_ROCKET_SENTRY_AND_1_OTHER 401u  /* A/MLS-4X Rocket Sentry and 1 other - shared: A/MLS-4X Rocket Sentry, soldier_rpg */
+#define HF_DAMAGE_EAGLE_110MM_ROCKET_PODS_MAGAZINE_IMPACT 403u /* Eagle 110mm Rocket Pods (magazine impact) */
+#define HF_DAMAGE_CYBORG_ELITE_IMPACT 404u               /* cyborg_elite (impact) */
+#define HF_DAMAGE_MD6_ANTIPERSONNEL_MINEFIELD_MINE 406u  /* MD-6 Anti-Personnel Minefield (mine) */
+#define HF_DAMAGE_MDI4_INCENDIARY_MINES_MINE 407u        /* MD-I4 Incendiary Mines (mine) */
+#define HF_DAMAGE_CALTROPS_GRENADE_DETONATION 408u       /* caltrops_grenade (detonation) */
+#define HF_DAMAGE_MD17_ANTITANK_MINES_MINE 409u          /* MD-17 Anti-Tank Mines (mine) */
+#define HF_DAMAGE_G40K_MELTA_MINE_DETONATION 410u        /* G/40-K Melta Mine (detonation) */
+#define HF_DAMAGE_TM1_LURE_MINE_DETONATION 411u          /* TM-1 Lure Mine (detonation) */
+#define HF_DAMAGE_CYBORG_MINE 412u                       /* Cyborg_Mine */
+#define HF_DAMAGE_GAZER_AND_3_OTHERS 413u                /* Gazer and 3 others - shared: Gazer, Watcher, illuminate_adept_circle, obj_asset_hijack_tech_hub_nexus_machine */
+#define HF_DAMAGE_JET_CHAMPION_GRENADE_HE_DETONATION 415u /* jet_champion_grenade_he (detonation) */
+#define HF_DAMAGE_BILE_TITAN_AND_2_OTHERS_416 416u       /* Bile Titan and 2 others #416 - shared: Bile Titan, illuminate_war_machine, spawner */
+#define HF_DAMAGE_SOLDIER_RIOTGUN_IMPACT 418u            /* soldier_riotgun (impact) */
+#define HF_DAMAGE_GR8_RECOILLESS_RIFLE_FUNCTION_IMPACT 419u /* GR-8 Recoilless Rifle (function impact) */
+#define HF_DAMAGE_EAGLE_500KG_BOMB_AND_1_OTHER 421u      /* Eagle 500kg Bomb and 1 other - shared: Eagle 500kg Bomb, Bomb_Impact */
+#define HF_DAMAGE_EAGLE_AIRSTRIKE_PAYLOAD_IMPACT 422u    /* Eagle Airstrike (payload impact) */
+#define HF_DAMAGE_EAGLE_MISSILE_MISSILE_IMPACT 424u      /* eagle_missile (missile impact) */
+#define HF_DAMAGE_SOLDIER_RPG_AND_3_OTHERS 425u          /* soldier_rpg and 3 others - shared: soldier_rpg, Gunship, lieutenant_artillery, lieutenant_suppressor */
+#define HF_DAMAGE_HELLPODIMPACT 426u                     /* HellpodImpact */
+#define HF_DAMAGE_HELLPODEXPLOSION 429u                  /* HellpodExplosion */
+#define HF_DAMAGE_IMPALER_TENTACLE_AND_2_OTHERS 431u     /* impaler_tentacle and 2 others - shared: impaler_tentacle, Dragon_Crash, TentacleImpact */
+#define HF_DAMAGE_DROPSHIP_AND_4_OTHERS 432u             /* Dropship and 4 others - shared: Dropship, Gunship, cha_hive_lord_back_shell, illuminate_attack_ship, DropshipCrash */
+#define HF_DAMAGE_CYBORG_SIEGE_ENGINE_SARCOPHAGUS_AND_1_OTHER 433u /* cyborg_siege_engine_sarcophagus and 1 other - shared: cyborg_siege_engine_sarcophagus, cyborg_siege_engine_sarcophagus_left_door */
+#define HF_DAMAGE_PATHFINDER_LIGHTSPEAR_AND_1_OTHER 435u /* pathfinder_lightspear and 1 other - shared: pathfinder_lightspear, Illuminate_Medium */
+#define HF_DAMAGE_GATEKEEPER_IMPACT_2 436u               /* Gatekeeper (impact) #2 */
+#define HF_DAMAGE_GATEKEEPER_AND_2_OTHERS_437 437u       /* Gatekeeper and 2 others #437 - shared: Gatekeeper, tripod, tripod_tier_2 */
+#define HF_DAMAGE_BEAMER_CHAMPION_GUN_AND_1_OTHER 438u   /* beamer_champion_gun and 1 other - shared: beamer_champion_gun, beamer_champion_gun_direct */
+#define HF_DAMAGE_ILLUMINATE_ATTACK_SHIP_IMPACT 439u     /* illuminate_attack_ship (impact) */
+#define HF_DAMAGE_PROP_HUGE 441u                         /* Prop_Huge */
+#define HF_DAMAGE_ASSAULT_WALKER_AND_2_OTHERS 442u       /* assault_walker and 2 others - shared: assault_walker, cyborg_elite_female, turret_mortar */
+#define HF_DAMAGE_ORBITAL_RAILCANNON_STRIKE_ORBITAL_EXPIRY 443u /* Orbital Railcannon Strike (orbital expiry) */
+#define HF_DAMAGE_ORBITAL_380MM_HE_BARRAGE_AND_3_OTHERS 444u /* Orbital 380mm HE Barrage and 3 others - shared: Orbital 380mm HE Barrage, Rupture Charger, il_city_cannon, seaf_gun */
+#define HF_DAMAGE_ORBITAL_120MM_HE_BARRAGE_SHELL_IMPACT 445u /* Orbital 120mm HE Barrage (shell impact) */
+#define HF_DAMAGE_ORBITAL_PRECISION_STRIKE_SHELL_IMPACT 446u /* Orbital Precision Strike (shell impact) */
+#define HF_DAMAGE_ORBITAL_GAS_STRIKE_SHELL_IMPACT 447u   /* Orbital Gas Strike (shell impact) */
+#define HF_DAMAGE_AGM17_GAS_MORTAR_SENTRY_IMPACT 448u    /* A/GM-17 Gas Mortar Sentry (impact) */
+#define HF_DAMAGE_G4_GAS_AND_1_OTHER 449u                /* G-4 Gas and 1 other - shared: G-4 Gas, MD-8 Gas Mines */
+#define HF_DAMAGE_AM23_EMS_MORTAR_SENTRY_AND_1_OTHER 451u /* A/M-23 EMS Mortar Sentry and 1 other - shared: A/M-23 EMS Mortar Sentry, Orbital EMS Strike */
+#define HF_DAMAGE_EAGLE_500KG_BOMB_AND_1_OTHER_453 453u  /* Eagle 500kg Bomb and 1 other #453 - shared: Eagle 500kg Bomb, M-104 Incinerator FRV */
+#define HF_DAMAGE_EAT411_LEVELLER 454u                   /* EAT-411 Leveller */
+#define HF_DAMAGE_EAT411_LEVELLER_IMPACT 455u            /* EAT-411 Leveller (impact) */
+#define HF_DAMAGE_MS11_SOLO_SILO_DETONATION 456u         /* MS-11 Solo Silo (detonation) */
+#define HF_DAMAGE_MS11_SOLO_SILO_EXPLOSIVE_40 457u       /* MS-11 Solo Silo (explosive 40) */
+#define HF_DAMAGE_MS11_SOLO_SILO_ABILITY 458u            /* MS-11 Solo Silo (ability) */
+#define HF_DAMAGE_ASSAULT_WALKER_IMPACT_2 459u           /* assault_walker (impact) #2 */
+#define HF_DAMAGE_RUPTURE_CHARGER_AND_2_OTHERS 460u      /* Rupture Charger and 2 others - shared: Rupture Charger, tank_turret_rocketlauncher, tank_rocketlauncher */
+#define HF_DAMAGE_BIG_WALKER_TURRET_CANNON_AND_5_OTHERS 461u /* big_walker_turret_cannon and 5 others - shared: big_walker_turret_cannon, tank_turret_base, Ammo_Cache, spawner, tank_base, tank_heavycannon */
+#define HF_DAMAGE_SIEGE_ENGINE_IMPACT 462u               /* siege_engine (impact) */
+#define HF_DAMAGE_CYBORG_ARTILLERY 463u                  /* Cyborg_Artillery */
+#define HF_DAMAGE_SIEGE_ENGINE_IMPACT_2 464u             /* siege_engine (impact) #2 */
+#define HF_DAMAGE_BFLAM80_CREMATOR_AND_1_OTHER 466u      /* B/FLAM-80 Cremator and 1 other - shared: B/FLAM-80 Cremator, siege_engine */
+#define HF_DAMAGE_DROPSHIP_AND_2_OTHERS 467u             /* Dropship and 2 others - shared: Dropship, M-102 Gunner FRV, siege_engine */
+#define HF_DAMAGE_SIEGE_ENGINE_ABILITY_4 468u            /* siege_engine (ability) #4 */
+#define HF_DAMAGE_BOOMER_AND_4_OTHERS 470u               /* boomer and 4 others - shared: boomer, Rupture Spewer, boomer_nurser, boomer_nurser_mission, boomer_tier_2 */
+#define HF_DAMAGE_HIVE_LORD_IMPACT 471u                  /* hive_lord (impact) */
+#define HF_DAMAGE_HIVE_LORD_ABILITY_SHRAPNEL_IMPACT 473u /* hive_lord (ability, shrapnel impact) */
+#define HF_DAMAGE_WORLD_METEOR 474u                      /* World_Meteor */
+#define HF_DAMAGE_MAPBOUNDARY 478u                       /* MapBoundary */
+#define HF_DAMAGE_B100_PORTABLE_HELLBOMB_AND_3_OTHERS 479u /* B-100 Portable Hellbomb and 3 others - shared: B-100 Portable Hellbomb, NUX-223 Hellbomb, turret_autocannons, Nuke */
+#define HF_DAMAGE_LIFT182_WARP_PACK_DISPLACEMENT 480u    /* LIFT-182 Warp Pack (displacement) */
+#define HF_DAMAGE_BUGDRILL 481u                          /* BugDrill */
+#define HF_DAMAGE_TURRET_AUTOCANNONS_ABILITY_7 483u      /* turret_autocannons (ability) #7 */
+#define HF_DAMAGE_IDLE_SAM_SITE_IMPACT 484u              /* idle_sam_site (impact) */
+#define HF_DAMAGE_TURRET_AUTOCANNONS_BEHAVIOR_2 490u     /* turret_autocannons (behavior) #2 */
+#define HF_DAMAGE_TURRET_AUTOCANNONS_ABILITY_2 492u      /* turret_autocannons (ability) #2 */
+#define HF_DAMAGE_TORNADOSMALL 493u                      /* TornadoSmall */
+#define HF_DAMAGE_TORNADO 494u                           /* Tornado */
+#define HF_DAMAGE_TORNADO_PULL 495u                      /* Tornado_Pull */
+#define HF_DAMAGE_CYBORG_PRODUCTION_UNIT_ABILITY 497u    /* Cyborg Production Unit (ability) */
+#define HF_DAMAGE_CORRUPTED_GROWTH 499u                  /* Corrupted_Growth */
+#define HF_DAMAGE_LAS7_DAGGER_BEAM 500u                  /* LAS-7 Dagger beam */
+#define HF_DAMAGE_LAS22_SHEAR_AND_1_OTHER 501u           /* LAS-22 Shear and 1 other - shared: LAS-22 Shear, LAS-5 Scythe */
+#define HF_DAMAGE_AXLAS5_ROVER_GUN 503u                  /* AX/LAS-5 Rover / gun */
+#define HF_DAMAGE_ALAS98_LASER_SENTRY_AND_1_OTHER 507u   /* A/LAS-98 Laser Sentry and 1 other - shared: A/LAS-98 Laser Sentry, LAS-98 Laser Cannon */
+#define HF_DAMAGE_LAS13_TRIDENT 508u                     /* LAS-13 Trident */
+#define HF_DAMAGE_40K_MELTAGUN 509u                      /* 40-K Meltagun */
+#define HF_DAMAGE_R40K_HOTSHOT_MARKSMAN_RIFLE 510u       /* R/40-K Hot-Shot Marksman Rifle */
+#define HF_DAMAGE_FUSION_SMELTER_BEAM_BEAM 518u          /* Fusion Smelter Beam beam */
+#define HF_DAMAGE_DISINTIGRATION_BEAM_AND_1_OTHER 534u   /* Disintigration Beam and 1 other - shared: Disintigration Beam, beam weapon of tripod / tripod_tier_2 */
+#define HF_DAMAGE_BEAM_WEAPON_OF_ILLUMINATE_WAR_MACHINE_AND_1_OTHER 535u /* beam weapon of illuminate_war_machine and 1 other - shared: beam weapon of illuminate_war_machine, illuminate_turret_wm_cannon */
+#define HF_DAMAGE_TURRET_01_ILLUMINATE_STRUCTURE_BEAM 536u /* turret_01 (illuminate structure) beam */
+#define HF_DAMAGE_GAZER_SPIRE_AND_1_OTHER 537u           /* Gazer Spire and 1 other - shared: Gazer Spire, turret_tactical_obj */
+#define HF_DAMAGE_BEAM_WEAPON_OF_TRIPOD_TRIPOD_TIER_2_ILLUMINATE_ENEMY_BEAM 538u /* beam weapon of tripod / tripod_tier_2 (illuminate enemy) beam */
+#define HF_DAMAGE_40K_MELTAGUN_AND_102_OTHERS 548u       /* 40-K Meltagun and 102 others - shared: 40-K Meltagun, AC-8 Autocannon, APW-1 Anti-Materiel Rifle, AR-11 Arbitrator, AR-2 Coyote, AR-23 Liberator, AR-23A Liberator Carbine, AR-23C Liberator Concussive ... */
+#define HF_DAMAGE_CQC9_DEFOLIATION_TOOL_MELEE 550u       /* CQC-9 Defoliation Tool melee */
+#define HF_DAMAGE_CQC5_COMBAT_HATCHET_MELEE 551u         /* CQC-5 Combat Hatchet melee */
+#define HF_DAMAGE_CQC2_SABER_MELEE 552u                  /* CQC-2 Saber melee */
+#define HF_DAMAGE_CQC42_MACHETE_MELEE 553u               /* CQC-42 Machete melee */
+#define HF_DAMAGE_CQC73_ENTRENCHMENT_TOOL_MELEE 554u     /* CQC-73 Entrenchment Tool melee */
+#define HF_DAMAGE_CQC1_ONE_TRUE_FLAG_MELEE 557u          /* CQC-1 One True Flag melee */
+#define HF_DAMAGE_CQC19_STUN_LANCE_MELEE 558u            /* CQC-19 Stun Lance melee */
+#define HF_DAMAGE_CQC30_STUN_BATON_MELEE 559u            /* CQC-30 Stun Baton melee */
+#define HF_DAMAGE_CQC20_BREACHING_HAMMER_MELEE 560u      /* CQC-20 Breaching Hammer melee */
+#define HF_DAMAGE_CQC20_BREACHING_HAMMER_ABILITY 562u    /* CQC-20 Breaching Hammer (ability) */
+#define HF_DAMAGE_P33_MISSILE_PISTOL_IMPACT 563u         /* P-33 Missile Pistol (impact) */
+#define HF_DAMAGE_RUPTURE_CHARGER_ABILITY_3 578u         /* Rupture Charger (ability) #3 */
+#define HF_DAMAGE_DRAGON 579u                            /* dragon */
+#define HF_DAMAGE_CONTENTOBJECTIVESOBJ_COMMONSHOULDER_MOUNTED_CAMERASHOULDER_MOUNTED_CAMERA_BEAM 641u /* content/objectives/obj_common/shoulder_mounted_camera/shoulder_mounted_camera beam */
+#define HF_DAMAGE_TD220_BASTION_MK_XVI_ATTACH_TANK_GUN 643u /* TD-220 Bastion MK XVI / attach_tank_gun */
+#define HF_DAMAGE_TD220_BASTION_MK_XVI_ATTACH_TANK_GUN_IMPACT 645u /* TD-220 Bastion MK XVI attach_tank_gun (impact) */
+#define HF_DAMAGE_CALTROPS_MINE_DETONATION 646u          /* caltrops_mine (detonation) */
+#define HF_DAMAGE_TURRET_AUTOCANNONS_ABILITY 649u        /* turret_autocannons (ability) */
+#define HF_DAMAGE_EXOSPIRE_TOWER_SHELL 475u              /* Exospire Tower Shell */
+#define HF_DAMAGE_MONOLITH 491u                          /* Monolith */
+#define HF_DAMAGE_COMBAT_WALKER_MISSILE_LAUNCHER 396u    /* Combat Walker Missile Launcher */
+#define HF_DAMAGE_MAGMA_GEYSER_01_AND_2_OTHERS 193u      /* Magma Geyser 01 and 2 others */
+#define HF_DAMAGE_HAZARD_VENT_01 639u                    /* Hazard Vent 01 */
+#define HF_DAMAGE_ENVIRONMENTAL_HAZARD_ABILITY_1250_AND_2_OTHERS 299u /* Environmental Hazard, ability 1250 and 2 others */
+#define HF_DAMAGE_SEEKING_MISSILE_UNIT_6C23 325u         /* Seeking Missile, unit 6C23 */
+#define HF_DAMAGE_SEEKING_MISSILE_0XC8D6 326u            /* Seeking Missile 0xC8D6 */
 
 /* Vanilla packages, for HfStratagem.package (the resource ids LoadoutPackage records name). */
 #define HF_PACKAGE_PELICAN_GUNSHIP 0x131FE264B7380717ull /* Pelican Gunship - the extraction Pelican's model (its LoadoutPackage record's package) */
@@ -853,5 +1197,309 @@
 #define HF_BOOSTER_CONCEALED_INSERTION 18u               /* Concealed Insertion - the game's Booster SmokePods */
 #define HF_BOOSTER_INTEGRATED_EXTINGUISHERS 19u          /* Integrated Extinguishers - the game's Booster FireExtinguish */
 #define HF_BOOSTER_SURPLUS_EAT_ALLOCATION 20u            /* Surplus EAT Allocation - the game's Booster FreeEAT */
+
+/* Vanilla explosion types, for HfExplosion.base and HfProjectile.impact_explosion and expiry_explosion (the
+ * game's ExplosionType; some are unnamed, and a note gives the game's own name where its hash was found). */
+#define HF_EXPLOSION_ADEPTSHOCKWAVE 4u                   /* AdeptShockwave */
+#define HF_EXPLOSION_BOOMER_IMPACT 6u                    /* boomer (impact) - game name Bug_Artillery (hash match only) */
+#define HF_EXPLOSION_RL77_AIRBURST_ROCKET_LAUNCHER_FUNCTION_EXPIRY_SHRAPNEL_EXPIRY 7u /* RL-77 Airburst Rocket Launcher (function expiry, shrapnel expiry) */
+#define HF_EXPLOSION_G7_PINEAPPLE_DETONATION 8u          /* G-7 Pineapple (detonation) - game name Frag_Cluster */
+#define HF_EXPLOSION_BIG_WALKER_TURRET_CANNON_IMPACT 9u  /* big_walker_turret_cannon (impact) */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY 10u         /* Rupture Charger (ability) */
+#define HF_EXPLOSION_TD110_MAELSTROM_SLOT_3_FIRED_EXPLOSIVE_40 11u /* TD-110 Maelstrom slot 3 (fired explosive 40) */
+#define HF_EXPLOSION_CYBORG_ELITE_RUSHER_INVENTORY_DETONATION 17u /* cyborg_elite_rusher (inventory detonation) */
+#define HF_EXPLOSION_CQC20_BREACHING_HAMMER_ABILITY 19u  /* CQC-20 Breaching Hammer (ability) - game name Melee_Sledge_Hammer */
+#define HF_EXPLOSION_EAT700_EXPENDABLE_NAPALM_IMPACT_SHRAPNEL_IMPACT 26u /* EAT-700 Expendable Napalm (impact, shrapnel impact) */
+#define HF_EXPLOSION_G3_SMOKE_DETONATION 28u             /* G-3 Smoke (detonation) - game name Grenade_Smoke */
+#define HF_EXPLOSION_BUGDRILL 29u                        /* BugDrill */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY 30u      /* turret_autocannons (ability) - game name Hellbomb_Poison (hash match only) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY 31u               /* hive_lord (ability) */
+#define HF_EXPLOSION_G8_IMMOLATION_DETONATION 32u        /* G-8 Immolation (detonation) - game name Incendiary_Molotov */
+#define HF_EXPLOSION_GUNSHIP_VEHICLE_CRASH 35u           /* Gunship (vehicle crash) */
+#define HF_EXPLOSION_TD110_MAELSTROM_SLOT_2_ABILITY 38u  /* TD-110 Maelstrom slot 2 (ability) - game name Tank_Storm_Smoke */
+#define HF_EXPLOSION_GUNSHIP_BEHAVIOR 39u                /* Gunship (behavior) */
+#define HF_EXPLOSION_LIEUTENANT_ARTILLERY_BEHAVIOR 40u   /* lieutenant_artillery (behavior) */
+#define HF_EXPLOSION_GL52_DEESCALATOR_IMPACT 41u         /* GL-52 De-Escalator (impact) */
+#define HF_EXPLOSION_SEAF_GUN_IMPACT 42u                 /* seaf_gun (impact) */
+#define HF_EXPLOSION_GUNSHIP_BEHAVIOR_2 43u              /* Gunship (behavior) #2 - game name ThrusterExplosion (hash match only) */
+#define HF_EXPLOSION_G7_PINEAPPLE_DETONATION_SHRAPNEL_EXPIRY 44u /* G-7 Pineapple (detonation, shrapnel expiry) - game name Frag_Cluster_Shrapnel */
+#define HF_EXPLOSION_EAT12_ANTITANK_EMPLACEMENT_IMPACT 46u /* E/AT-12 Anti-Tank Emplacement (impact) - game name Antitank_Emplacement */
+#define HF_EXPLOSION_CANISTER_DETONATION 47u             /* canister (detonation) */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_BEHAVIOR 49u     /* turret_autocannons (behavior) */
+#define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_IMPACT 50u  /* Eagle 110mm Rocket Pods (impact) */
+#define HF_EXPLOSION_ORBITAL_RAILCANNON_STRIKE_ORBITAL_EXPIRY 52u /* Orbital Railcannon Strike (orbital expiry) - game name Railcannon_Impact */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_2 53u    /* turret_autocannons (ability) #2 */
+#define HF_EXPLOSION_GAZER_BEHAVIOR 57u                  /* Gazer (behavior) */
+#define HF_EXPLOSION_ILLUMINATE_ATTACK_SHIP_VEHICLE_CRASH 58u /* illuminate_attack_ship (vehicle crash) */
+#define HF_EXPLOSION_CB9_EXPLODING_CROSSBOW_IMPACT 59u   /* CB-9 Exploding Crossbow (impact) - game name Crossbow_Bolt */
+#define HF_EXPLOSION_CALTROPS_MINE_DETONATION 62u        /* caltrops_mine (detonation) - game name CaltropsMine */
+#define HF_EXPLOSION_ORBITAL_NAPALM_BARRAGE_SHELL_IMPACT 63u /* Orbital Napalm Barrage (shell impact) - game name Orbital_Napalm */
+#define HF_EXPLOSION_TORNADO 65u                         /* Tornado */
+#define HF_EXPLOSION_LAS99_QUASAR_CANNON_IMPACT 67u      /* LAS-99 Quasar Cannon (impact) - game name Laser_Pulse */
+#define HF_EXPLOSION_G13_INCENDIARY_IMPACT_DETONATION 69u /* G-13 Incendiary Impact (detonation) - game name Incendiary_Impact */
+#define HF_EXPLOSION_SCAVENGER_SPITTER_BEHAVIOR 71u      /* scavenger_spitter (behavior) */
+#define HF_EXPLOSION_MDI4_INCENDIARY_MINES_MINE 72u      /* MD-I4 Incendiary Mines (mine) - game name IncendiaryMine */
+#define HF_EXPLOSION_ORBITAL_NAPALM_BARRAGE_SHELL_IMPACT_2 74u /* Orbital Napalm Barrage (shell impact) #2 */
+#define HF_EXPLOSION_EAGLE_SMOKE_STRIKE_PAYLOAD_IMPACT 75u /* Eagle Smoke Strike (payload impact) - game name OrbitalSmoke */
+#define HF_EXPLOSION_OBJ_ASSET_HIJACK_TECH_HUB_NEXUS_MACHINE_ABILITY 76u /* obj_asset_hijack_tech_hub_nexus_machine (ability) */
+#define HF_EXPLOSION_TORNADOSMALL 78u                    /* TornadoSmall */
+#define HF_EXPLOSION_TED63_DYNAMITE_DETONATION 80u       /* TED-63 Dynamite (detonation) - game name Dynamite */
+#define HF_EXPLOSION_DROPSHIP_VEHICLE_CRASH 81u          /* Dropship (vehicle crash) */
+#define HF_EXPLOSION_ORBITAL_GAS_STRIKE_SHELL_IMPACT 82u /* Orbital Gas Strike (shell impact) - game name OrbitalGas */
+#define HF_EXPLOSION_CYBORG_SIEGE_ENGINE_SARCOPHAGUS_LEFT_DOOR_GIB 84u /* cyborg_siege_engine_sarcophagus_left_door (gib) */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY 85u            /* siege_engine (ability) */
+#define HF_EXPLOSION_STAX3_W_A_S_P_LAUNCHER_FUNCTION_IMPACT 87u /* StA-X3 W.A.S.P. Launcher (function impact) */
+#define HF_EXPLOSION_MAPBOUNDARY 88u                     /* MapBoundary */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_2 89u             /* hive_lord (ability) #2 */
+#define HF_EXPLOSION_SOLDIER_RPG_IMPACT 91u              /* soldier_rpg (impact) */
+#define HF_EXPLOSION_NUKE 92u                            /* Nuke */
+#define HF_EXPLOSION_ILLUMINATE_WAR_MACHINE_RAGDOLL_CRASH 93u /* illuminate_war_machine (ragdoll crash) */
+#define HF_EXPLOSION_ORBITAL_380MM_HE_BARRAGE_SHELL_IMPACT 94u /* Orbital 380mm HE Barrage (shell impact) */
+#define HF_EXPLOSION_G48_GIGA_GRENADE_DETONATION 96u     /* G-48 Giga Grenade (detonation) */
+#define HF_EXPLOSION_S11_SPEARGUN_EXPIRY 97u             /* S-11 Speargun (expiry) - game name GasHarpoon */
+#define HF_EXPLOSION_GATEKEEPER_IMPACT 99u               /* Gatekeeper (impact) */
+#define HF_EXPLOSION_CONSCRIPT_BACKPACK_LMG_DETONATION 100u /* conscript_backpack_lmg (detonation) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_3 105u            /* hive_lord (ability) #3 */
+#define HF_EXPLOSION_ORBITAL_AIRBURST_STRIKE_SHELL_EXPIRY_SHRAPNEL_IMPACT 106u /* Orbital Airburst Strike (shell expiry, shrapnel impact) - game name HeavyShrapnel */
+#define HF_EXPLOSION_SIEGE_ENGINE_IMPACT 107u            /* siege_engine (impact) */
+#define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_MAGAZINE_IMPACT 109u /* Eagle 110mm Rocket Pods (magazine impact) */
+#define HF_EXPLOSION_HELLPODIMPACT 113u                  /* HellpodImpact */
+#define HF_EXPLOSION_STINGERMISSILE 115u                 /* StingerMissile */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_SHRAPNEL_IMPACT 116u /* hive_lord (ability, shrapnel impact) */
+#define HF_EXPLOSION_TM1_LURE_MINE_DETONATION 117u       /* TM-1 Lure Mine (detonation) */
+#define HF_EXPLOSION_BILE_TITAN_SPRAY_IMPACT 118u        /* Bile Titan (spray impact) */
+#define HF_EXPLOSION_EXO45_PATRIOT_EXOSUIT_VEHICLE_CRASH 119u /* EXO-45 Patriot Exosuit (vehicle crash) - game name Prop_Small (hash match only) */
+#define HF_EXPLOSION_EXPLOSIVE_GAS_CHIMNEY_ABILITY 120u  /* explosive_gas_chimney (ability) - game name GasChimney */
+#define HF_EXPLOSION_CYBORG_SIEGE_ENGINE_SARCOPHAGUS_GIB 122u /* cyborg_siege_engine_sarcophagus (gib) */
+#define HF_EXPLOSION_B100_PORTABLE_HELLBOMB_BEHAVIOR 125u /* B-100 Portable Hellbomb (behavior) - game name HellbombBackpack */
+#define HF_EXPLOSION_PLAS15_LOYALIST_CHARGE_2_IMPACT 126u /* PLAS-15 Loyalist (charge 2 impact) - game name Plasma_Pistol_Charge */
+#define HF_EXPLOSION_P34_BREACHER_FIRED_DETONATION 127u  /* P-34 Breacher (fired detonation) - game name Thermite_Missile (hash match only) */
+#define HF_EXPLOSION_DROPSHIPCRASH 130u                  /* DropshipCrash */
+#define HF_EXPLOSION_CONSCRIPT_SHOTGUN_DETONATION 131u   /* conscript_shotgun (detonation) */
+#define HF_EXPLOSION_LIEUTENANT_JETPACK_DETONATION 132u  /* lieutenant_jetpack (detonation) */
+#define HF_EXPLOSION_CONSCRIPT_JUMPPACK_DETONATION 133u  /* conscript_jumppack (detonation) */
+#define HF_EXPLOSION_MS11_SOLO_SILO_DETONATION 135u      /* MS-11 Solo Silo (detonation) - game name Mini_Missile_Silo */
+#define HF_EXPLOSION_SPORE_BURST_HUNTER_BEHAVIOR 138u    /* Spore Burst Hunter (behavior) */
+#define HF_EXPLOSION_IMPALER_TENTACLE_ABILITY 139u       /* impaler_tentacle (ability) */
+#define HF_EXPLOSION_TORNADO_PULL 141u                   /* Tornado_Pull */
+#define HF_EXPLOSION_JET_CHAMPION_BEHAVIOR 143u          /* jet_champion (behavior) */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_2 146u         /* siege_engine (ability) #2 - game name Siege_Engine_Death */
+#define HF_EXPLOSION_HELLDIVER_DUMMY_BEHAVIOR 147u       /* helldiver_dummy (behavior) */
+#define HF_EXPLOSION_MLS4X_COMMANDO_IMPACT 148u          /* MLS-4X Commando (impact) */
+#define HF_EXPLOSION_AM23_EMS_MORTAR_SENTRY_IMPACT 150u  /* A/M-23 EMS Mortar Sentry (impact) */
+#define HF_EXPLOSION_DROPSHIP_BEHAVIOR 153u              /* Dropship (behavior) */
+#define HF_EXPLOSION_P33_MISSILE_PISTOL_IMPACT 154u      /* P-33 Missile Pistol (impact) - game name Smart_Pistol_Missile */
+#define HF_EXPLOSION_PLAS1_SCORCHER_IMPACT 155u          /* PLAS-1 Scorcher (impact) */
+#define HF_EXPLOSION_G31_ARC_DETONATION 157u             /* G-31 Arc (detonation) - game name Arc_Grenade */
+#define HF_EXPLOSION_R36_ERUPTOR_IMPACT 158u             /* R-36 Eruptor (impact) */
+#define HF_EXPLOSION_GSH39_SHIELD_DETONATION 159u        /* G/SH-39 Shield (detonation) - game name Turret_Destroyed (hash match only) */
+#define HF_EXPLOSION_HABS_BARREL_FUEL_DETONATION 161u    /* habs_barrel_fuel (detonation) - game name Barrel_Medium */
+#define HF_EXPLOSION_EAGLE_CLUSTER_BOMB_PAYLOAD_EXPIRY_SHRAPNEL_IMPACT 162u /* Eagle Cluster Bomb (payload expiry, shrapnel impact) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_4 163u            /* hive_lord (ability) #4 */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_2 165u      /* Rupture Charger (ability) #2 */
+#define HF_EXPLOSION_BMD_C4_PACK_DETONATION 166u         /* B/MD C4 Pack (detonation) */
+#define HF_EXPLOSION_P34_BREACHER_IMPACT 167u            /* P-34 Breacher (impact) */
+#define HF_EXPLOSION_MS11_SOLO_SILO_ABILITY 172u         /* MS-11 Solo Silo (ability) */
+#define HF_EXPLOSION_PROP_HUGE 173u                      /* Prop_Huge */
+#define HF_EXPLOSION_ILLUMINATE_WARMACHINE_BOMBBALL_DETONATION 174u /* illuminate_warmachine_bombball (detonation) */
+#define HF_EXPLOSION_G12_HIGH_EXPLOSIVE_DETONATION 175u  /* G-12 High Explosive (detonation) - game name HighExplosive */
+#define HF_EXPLOSION_ORBITAL_120MM_HE_BARRAGE_SHELL_IMPACT 176u /* Orbital 120mm HE Barrage (shell impact) */
+#define HF_EXPLOSION_G4_GAS_DETONATION 177u              /* G-4 Gas (detonation) - game name GasGrenade */
+#define HF_EXPLOSION_MD17_ANTITANK_MINES_MINE 178u       /* MD-17 Anti-Tank Mines (mine) - game name AntiTankMine */
+#define HF_EXPLOSION_M102_GUNNER_FRV_ABILITY 179u        /* M-102 Gunner FRV (ability) */
+#define HF_EXPLOSION_AM23_EMS_MORTAR_SENTRY_EXPIRY 180u  /* A/M-23 EMS Mortar Sentry (expiry) */
+#define HF_EXPLOSION_DUMMY 181u                          /* Dummy */
+#define HF_EXPLOSION_EAT411_LEVELLER_IMPACT 184u         /* EAT-411 Leveller (impact) - game name Massive_Rocket_Launcher */
+#define HF_EXPLOSION_AGM17_GAS_MORTAR_SENTRY_IMPACT 185u /* A/GM-17 Gas Mortar Sentry (impact) - game name GasMortar */
+#define HF_EXPLOSION_SOLDIER_RPG_BEHAVIOR 187u           /* soldier_rpg (behavior) */
+#define HF_EXPLOSION_ORBITAL_EMS_STRIKE_SHELL_IMPACT 188u /* Orbital EMS Strike (shell impact) - game name OrbitalStun */
+#define HF_EXPLOSION_BARREL_LARGE 189u                   /* Barrel_Large */
+#define HF_EXPLOSION_LAS98_LASER_CANNON_ABILITY 190u     /* LAS-98 Laser Cannon (ability) - game name Turret_Destroyed_Flame */
+#define HF_EXPLOSION_PLAS101_PURIFIER_IMPACT 191u        /* PLAS-101 Purifier (impact) - game name Plasma_Rifle_Charge */
+#define HF_EXPLOSION_EAGLE_500KG_BOMB_PAYLOAD_IMPACT 193u /* Eagle 500kg Bomb (payload impact) */
+#define HF_EXPLOSION_EAGLE_AIRSTRIKE_PAYLOAD_IMPACT 194u /* Eagle Airstrike (payload impact) */
+#define HF_EXPLOSION_PLAS101_PURIFIER_CHARGE_1_IMPACT 195u /* PLAS-101 Purifier (charge 1 impact) */
+#define HF_EXPLOSION_RUPTURE_SPEWER_INVENTORY_DETONATION 196u /* Rupture Spewer (inventory detonation) */
+#define HF_EXPLOSION_PLAS15_LOYALIST_CHARGE_1_IMPACT 197u /* PLAS-15 Loyalist (charge 1 impact) */
+#define HF_EXPLOSION_G123_THERMITE_DETONATION 201u       /* G-123 Thermite (detonation) - game name Thermite */
+#define HF_EXPLOSION_ILLUMINATE_WAR_MACHINE_RAGDOLL_CRASH_2 202u /* illuminate_war_machine (ragdoll crash) #2 */
+#define HF_EXPLOSION_EAT17_EXPENDABLE_ANTITANK_BACKBLAST 204u /* EAT-17 Expendable Anti-Tank (backblast) - game name BackblastMedium */
+#define HF_EXPLOSION_CYBORG_ARTILLERY 210u               /* Cyborg_Artillery */
+#define HF_EXPLOSION_BARREL_SMALL 211u                   /* Barrel_Small */
+#define HF_EXPLOSION_PATHFINDER_LIGHTSPEAR_IMPACT 212u   /* pathfinder_lightspear (impact) */
+#define HF_EXPLOSION_ORBITAL_120MM_HE_BARRAGE_SHELL_IMPACT_2 213u /* Orbital 120mm HE Barrage (shell impact) #2 - game name OrbitalStrike */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_3 218u         /* siege_engine (ability) #3 */
+#define HF_EXPLOSION_HELLPODEXPLOSION 219u               /* HellpodExplosion */
+#define HF_EXPLOSION_G23_STUN_DETONATION 220u            /* G-23 Stun (detonation) */
+#define HF_EXPLOSION_AVATAR_HELLDIVER_BEHAVIOR 221u      /* avatar_helldiver (behavior) */
+#define HF_EXPLOSION_G10_INCENDIARY_DETONATION 224u      /* G-10 Incendiary (detonation) - game name Incendiary */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_BEHAVIOR_2 226u  /* turret_autocannons (behavior) #2 */
+#define HF_EXPLOSION_PLAS45_EPOCH_IMPACT 227u            /* PLAS-45 Epoch (impact) - game name Plasma_Blaster_Standard */
+#define HF_EXPLOSION_ILLUMINATE_ATTACK_SHIP_VEHICLE_CRASH_2 228u /* illuminate_attack_ship (vehicle crash) #2 */
+#define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_PAYLOAD_IMPACT 229u /* Eagle 110mm Rocket Pods (payload impact) */
+#define HF_EXPLOSION_CALTROPS_GRENADE_DETONATION 230u    /* caltrops_grenade (detonation) */
+#define HF_EXPLOSION_SPORE_BURST_BILE_TITAN_BEHAVIOR 231u /* Spore Burst Bile Titan (behavior) */
+#define HF_EXPLOSION_EAGLE_MISSILE_MISSILE_IMPACT 232u   /* eagle_missile (missile impact) - game name EagleMissile */
+#define HF_EXPLOSION_AAC8_AUTOCANNON_SENTRY_IMPACT 234u  /* A/AC-8 Autocannon Sentry (impact) */
+#define HF_EXPLOSION_EXO49_EMANCIPATOR_EXOSUIT_ATTACH_TURRET_L_IMPACT 235u /* EXO-49 Emancipator Exosuit attach_turret_l (impact) */
+#define HF_EXPLOSION_G89_SMOKESCREEN_DETONATION 237u     /* G-89 Smokescreen (detonation) - game name Grenade_Impact_Smoke */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_3 239u      /* Rupture Charger (ability) #3 */
+#define HF_EXPLOSION_AMMO_CACHE 240u                     /* Ammo_Cache */
+#define HF_EXPLOSION_ILLUMINATE_ADEPT_CIRCLE_DETONATION 241u /* illuminate_adept_circle (detonation) */
+#define HF_EXPLOSION_NUX223_HELLBOMB_BEHAVIOR 242u       /* NUX-223 Hellbomb (behavior) - game name Hellbomb */
+#define HF_EXPLOSION_SOLDIER_RIOTGUN_IMPACT 244u         /* soldier_riotgun (impact) */
+#define HF_EXPLOSION_CRUSHER_ABILITY 246u                /* Crusher (ability) */
+#define HF_EXPLOSION_GR8_RECOILLESS_RIFLE_IMPACT 248u    /* GR-8 Recoilless Rifle (impact) */
+#define HF_EXPLOSION_M104_INCINERATOR_FRV_ABILITY 250u   /* M-104 Incinerator FRV (ability) */
+#define HF_EXPLOSION_ILLUMINATE_MEDIUM 251u              /* Illuminate_Medium */
+#define HF_EXPLOSION_LIEUTENANT_IVORY_LEGION_IMPACT 252u /* lieutenant_ivory_legion (impact) - game name Cyborg_Grenade_Incendiary */
+#define HF_EXPLOSION_LIFT182_WARP_PACK_DISPLACEMENT 254u /* LIFT-182 Warp Pack (displacement) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_5 255u            /* hive_lord (ability) #5 */
+#define HF_EXPLOSION_M104_INCINERATOR_FRV_ABILITY_2 256u /* M-104 Incinerator FRV (ability) #2 */
+#define HF_EXPLOSION_G6_FRAG_DETONATION 257u             /* G-6 Frag (detonation) - game name Frag */
+#define HF_EXPLOSION_PRIMARY_CLUSTER 259u                /* Primary_Cluster */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_6 260u            /* hive_lord (ability) #6 */
+#define HF_EXPLOSION_BILE_TITAN_ABILITY 262u             /* Bile Titan (ability) */
+#define HF_EXPLOSION_ASSAULT_WALKER_INVENTORY_DETONATION 263u /* assault_walker (inventory detonation) */
+#define HF_EXPLOSION_MLS4X_COMMANDO_BACKBLAST 264u       /* MLS-4X Commando (backblast) - game name BackblastSmall */
+#define HF_EXPLOSION_SPORE_BURST_WARRIOR_BEHAVIOR 265u   /* Spore Burst Warrior (behavior) */
+#define HF_EXPLOSION_ORBITAL_GATLING_BARRAGE_SHELL_IMPACT 266u /* Orbital Gatling Barrage (shell impact) */
+#define HF_EXPLOSION_TD220_BASTION_MK_XVI_ATTACH_TANK_GUN_IMPACT 267u /* TD-220 Bastion MK XVI attach_tank_gun (impact) */
+#define HF_EXPLOSION_GL15_EVICTOR_IMPACT 268u            /* GL-15 Evictor (impact) */
+#define HF_EXPLOSION_PLAS101_PURIFIER_OVERCHARGE 269u    /* PLAS-101 Purifier (overcharge) - game name DefaultOvercharge */
+#define HF_EXPLOSION_MD8_GAS_MINES_MINE 270u             /* MD-8 Gas Mines (mine) - game name GasMine */
+#define HF_EXPLOSION_CYBORG_MINE 271u                    /* Cyborg_Mine */
+#define HF_EXPLOSION_TANK_ROCKETLAUNCHER_BEHAVIOR 272u   /* tank_rocketlauncher (behavior) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_7 274u            /* hive_lord (ability) #7 */
+#define HF_EXPLOSION_BOOMER_ABILITY 275u                 /* boomer (ability) */
+#define HF_EXPLOSION_EAGLE_500KG_BOMB_PAYLOAD_EXPIRY 277u /* Eagle 500kg Bomb (payload expiry) */
+#define HF_EXPLOSION_PLASMA_CONE 279u                    /* Plasma_Cone */
+#define HF_EXPLOSION_BEAMER_CHAMPION_GUN_DIRECT_IMPACT 280u /* beamer_champion_gun_direct (impact) */
+#define HF_EXPLOSION_WORLD_METEOR 285u                   /* World_Meteor */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_8 286u            /* hive_lord (ability) #8 */
+#define HF_EXPLOSION_IL_CITY_CANNON_IMPACT 287u          /* il_city_cannon (impact) */
+#define HF_EXPLOSION_WATCHER_ABILITY 289u                /* Watcher (ability) */
+#define HF_EXPLOSION_SG8P_PUNISHER_PLASMA_IMPACT 290u    /* SG-8P Punisher Plasma (impact) - game name Plasma_Punisher */
+#define HF_EXPLOSION_TANK_TURRET_ROCKETLAUNCHER_BACKBLAST 291u /* tank_turret_rocketlauncher (backblast) - game name BackblastHuge */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_4 292u      /* Rupture Charger (ability) #4 */
+#define HF_EXPLOSION_CYBORG_PRODUCTION_UNIT_ABILITY 293u /* Cyborg Production Unit (ability) */
+#define HF_EXPLOSION_GR8_RECOILLESS_RIFLE_FUNCTION_IMPACT 294u /* GR-8 Recoilless Rifle (function impact) */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_4 295u         /* siege_engine (ability) #4 */
+#define HF_EXPLOSION_SCAVENGER_GLOOM_BEHAVIOR 296u       /* scavenger_gloom (behavior) */
+#define HF_EXPLOSION_TD110_MAELSTROM_SLOT_3_FIRED_ABILITY 297u /* TD-110 Maelstrom slot 3 (fired ability) */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_3 298u   /* turret_autocannons (ability) #3 */
+#define HF_EXPLOSION_RL77_AIRBURST_ROCKET_LAUNCHER_FUNCTION_EXPIRY 300u /* RL-77 Airburst Rocket Launcher (function expiry) */
+#define HF_EXPLOSION_ORBITAL_380MM_HE_BARRAGE_SHELL_IMPACT_2 301u /* Orbital 380mm HE Barrage (shell impact) #2 - game name OrbitalBarrage */
+#define HF_EXPLOSION_FAF14_SPEAR_IMPACT 304u             /* FAF-14 Spear (impact) - game name FafMissile */
+#define HF_EXPLOSION_GUNSHIP_VEHICLE_CRASH_2 306u        /* Gunship (vehicle crash) #2 */
+#define HF_EXPLOSION_GR8_RECOILLESS_RIFLE_BACKBLAST 307u /* GR-8 Recoilless Rifle (backblast) - game name BackblastLarge */
+#define HF_EXPLOSION_BFLAM80_CREMATOR_ABILITY 308u       /* B/FLAM-80 Cremator (ability) */
+#define HF_EXPLOSION_WARRIOR_ACID_BEHAVIOR 310u          /* warrior_acid (behavior) */
+#define HF_EXPLOSION_SIEGE_ENGINE_ABILITY_5 313u         /* siege_engine (ability) #5 */
+#define HF_EXPLOSION_TURRET_MORTAR_IMPACT 314u           /* turret_mortar (impact) */
+#define HF_EXPLOSION_AMLS4X_ROCKET_SENTRY_IMPACT 315u    /* A/MLS-4X Rocket Sentry (impact) */
+#define HF_EXPLOSION_EAT700_EXPENDABLE_NAPALM_IMPACT 316u /* EAT-700 Expendable Napalm (impact) - game name Expendable_Napalm_Launcher */
+#define HF_EXPLOSION_CONSCRIPT_GRENADE_INCENDIARY_DETONATION 318u /* conscript_grenade_incendiary (detonation) - game name Conscript_Incendiary */
+#define HF_EXPLOSION_GATEKEEPER_IMPACT_2 319u            /* Gatekeeper (impact) #2 */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_5 320u      /* Rupture Charger (ability) #5 - game name Chemical_Backpack (hash match only) */
+#define HF_EXPLOSION_40K_MELTAGUN_OVERCHARGE 321u        /* 40-K Meltagun (overcharge) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_9 322u            /* hive_lord (ability) #9 */
+#define HF_EXPLOSION_RL77_AIRBURST_ROCKET_LAUNCHER_IMPACT 325u /* RL-77 Airburst Rocket Launcher (impact) - game name AirburstCluster */
+#define HF_EXPLOSION_PLAS39_ACCELERATOR_RIFLE_OVERCHARGE 326u /* PLAS-39 Accelerator Rifle (overcharge) - game name RailgunOvercharge */
+#define HF_EXPLOSION_ARGL21_ONETWO_UNDERBARREL_IMPACT 327u /* AR/GL-21 One-Two / underbarrel (impact) */
+#define HF_EXPLOSION_CYBORG_ELITE_FEMALE_INVENTORY_DETONATION 329u /* cyborg_elite_female (inventory detonation) */
+#define HF_EXPLOSION_CHA_BATTLEFRONT_SEAF_MEDIC_INVENTORY_DETONATION 330u /* cha_battlefront_seaf_medic (inventory detonation) */
+#define HF_EXPLOSION_EAGLE_GAS_AIRSTRIKE_PAYLOAD_IMPACT 331u /* Eagle Gas Airstrike (payload impact) */
+#define HF_EXPLOSION_WATCHER_VEHICLE_CRASH 332u          /* Watcher (vehicle crash) - game name Illuminate_Small */
+#define HF_EXPLOSION_IDLE_SAM_SITE_IMPACT 334u           /* idle_sam_site (impact) */
+#define HF_EXPLOSION_OILFIELD 338u                       /* OilField */
+#define HF_EXPLOSION_PRIMARY_AIRBURST 339u               /* Primary_Airburst */
+#define HF_EXPLOSION_GP20_ULTIMATUM_IMPACT 341u          /* GP-20 Ultimatum (impact) - game name Cricket_Pistol */
+#define HF_EXPLOSION_G16_IMPACT_DETONATION 342u          /* G-16 Impact (detonation) - game name Impact (hash match only) */
+#define HF_EXPLOSION_ORBITAL_PRECISION_STRIKE_SHELL_IMPACT 343u /* Orbital Precision Strike (shell impact) - game name PrecisionStrike */
+#define HF_EXPLOSION_ILLUMINATE_ATTACK_SHIP_IMPACT 344u  /* illuminate_attack_ship (impact) */
+#define HF_EXPLOSION_SPORE_BURST_BILE_TITAN_SPRAY_IMPACT 345u /* Spore Burst Bile Titan (spray impact) */
+#define HF_EXPLOSION_G60_ANTITANK_SEEKER_DETONATION 351u /* G-60 Anti-Tank Seeker (detonation) */
+#define HF_EXPLOSION_BILE_TITAN_RAGDOLL_CRASH 352u       /* Bile Titan (ragdoll crash) - game name Prop_Large (hash match only) */
+#define HF_EXPLOSION_BOMB_IMPACT 354u                    /* Bomb_Impact */
+#define HF_EXPLOSION_PLAS15_LOYALIST_IMPACT 355u         /* PLAS-15 Loyalist (impact) */
+#define HF_EXPLOSION_HIVE_LORD_IMPACT 356u               /* hive_lord (impact) */
+#define HF_EXPLOSION_CYBORG_ELITE_IMPACT 357u            /* cyborg_elite (impact) */
+#define HF_EXPLOSION_BEAMER_CHAMPION_GUN_IMPACT 358u     /* beamer_champion_gun (impact) */
+#define HF_EXPLOSION_EAGLE_NAPALM_AIRSTRIKE_PAYLOAD_IMPACT 359u /* Eagle Napalm Airstrike (payload impact) */
+#define HF_EXPLOSION_AM12_MORTAR_SENTRY_IMPACT 360u      /* A/M-12 Mortar Sentry (impact) */
+#define HF_EXPLOSION_GL21_GRENADE_LAUNCHER_IMPACT 361u   /* GL-21 Grenade Launcher (impact) */
+#define HF_EXPLOSION_JET_CHAMPION_GRENADE_HE_DETONATION 363u /* jet_champion_grenade_he (detonation) - game name Illuminate_Grenade */
+#define HF_EXPLOSION_MD6_ANTIPERSONNEL_MINEFIELD_MINE 366u /* MD-6 Anti-Personnel Minefield (mine) - game name ContactMine */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_4 367u   /* turret_autocannons (ability) #4 */
+#define HF_EXPLOSION_G40K_MELTA_MINE_DETONATION 368u     /* G/40-K Melta Mine (detonation) - game name SharkMine */
+#define HF_EXPLOSION_G109_URCHIN_DETONATION 369u         /* G-109 Urchin (detonation) - game name StickyStun */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_5 370u   /* turret_autocannons (ability) #5 */
+#define HF_EXPLOSION_ASSAULT_WALKER_IMPACT 372u          /* assault_walker (impact) */
+#define HF_EXPLOSION_STAX3_W_A_S_P_LAUNCHER_IMPACT 373u  /* StA-X3 W.A.S.P. Launcher (impact) */
+#define HF_EXPLOSION_EAGLE_110MM_ROCKET_PODS_MAGAZINE_IMPACT_2 374u /* Eagle 110mm Rocket Pods (magazine impact) #2 */
+#define HF_EXPLOSION_EAT17_EXPENDABLE_ANTITANK_IMPACT 376u /* EAT-17 Expendable Anti-Tank (impact) */
+#define HF_EXPLOSION_HIVE_LORD_ABILITY_10 378u           /* hive_lord (ability) #10 */
+#define HF_EXPLOSION_ORBITAL_AIRBURST_STRIKE_SHELL_EXPIRY 379u /* Orbital Airburst Strike (shell expiry) - game name OrbitalShot */
+#define HF_EXPLOSION_AC8_AUTOCANNON_FUNCTION_IMPACT 380u /* AC-8 Autocannon (function impact) */
+#define HF_EXPLOSION_TANK_TURRET_BASE_IMPACT 381u        /* tank_turret_base (impact) */
+#define HF_EXPLOSION_CORRUPTED_GROWTH 382u               /* Corrupted_Growth */
+#define HF_EXPLOSION_POWER_GENERATOR_BEHAVIOR 383u       /* power_generator (behavior) */
+#define HF_EXPLOSION_RUPTURE_CHARGER_ABILITY_6 384u      /* Rupture Charger (ability) #6 */
+#define HF_EXPLOSION_G50_SEEKER_DETONATION 385u          /* G-50 Seeker (detonation) */
+#define HF_EXPLOSION_DROPSHIP_VEHICLE_CRASH_2 386u       /* Dropship (vehicle crash) #2 */
+#define HF_EXPLOSION_P40K_BOLT_PISTOL_IMPACT 388u        /* P/40-K Bolt Pistol (impact) - game name Shark_Pistol */
+#define HF_EXPLOSION_ORBITALFLARE 390u                   /* OrbitalFlare */
+#define HF_EXPLOSION_SIEGE_ENGINE_IMPACT_2 391u          /* siege_engine (impact) #2 */
+#define HF_EXPLOSION_GL28_BELTFED_GRENADE_LAUNCHER_IMPACT 393u /* GL-28 Belt-Fed Grenade Launcher (impact) */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_6 394u   /* turret_autocannons (ability) #6 */
+#define HF_EXPLOSION_TENTACLEIMPACT 395u                 /* TentacleImpact */
+#define HF_EXPLOSION_ASSAULT_WALKER_IMPACT_2 397u        /* assault_walker (impact) #2 */
+#define HF_EXPLOSION_TURRET_AUTOCANNONS_ABILITY_7 399u   /* turret_autocannons (ability) #7 - game name Tower_Collapse (hash match only) */
+#define HF_EXPLOSION_IMPALER_TENTACLE_ABILITY_2 401u     /* impaler_tentacle (ability) #2 */
+#define HF_EXPLOSION_SPAWNER_RAGDOLL_CRASH 402u          /* spawner (ragdoll crash) */
+#define HF_EXPLOSION_AC8_AUTOCANNON_IMPACT 404u          /* AC-8 Autocannon (impact) */
+#define HF_EXPLOSION_DRAGON_CRASH 405u                   /* Dragon_Crash */
+#define HF_EXPLOSION_PLAS45_EPOCH_CHARGE_2_EXPIRY 407u   /* PLAS-45 Epoch (charge 2 expiry) */
+#define HF_EXPLOSION_TANK_TURRET_ROCKETLAUNCHER_IMPACT 408u /* tank_turret_rocketlauncher (impact) */
+#define HF_EXPLOSION_G142_PYROTECH_DETONATION 409u       /* G-142 Pyrotech (detonation) - game name Zipper_Grenade */
+#define HF_EXPLOSION_PLAS39_ACCELERATOR_RIFLE_IMPACT 413u /* PLAS-39 Accelerator Rifle (impact) - game name Plasma_Sniper_Helghast */
+#define HF_EXPLOSION_CHA_HIVE_LORD_BACK_SHELL_GIB 414u   /* cha_hive_lord_back_shell (gib) */
+#define HF_EXPLOSION_EXO45_PATRIOT_EXOSUIT_SLOT_0_IMPACT 416u /* EXO-45 Patriot Exosuit slot 0 (impact) - game name Combat_Walker_Missile */
+#define HF_EXPLOSION_EAGLE_CLUSTER_BOMB_PAYLOAD_EXPIRY 417u /* Eagle Cluster Bomb (payload expiry) - game name ClusterBomb */
+#define HF_EXPLOSION_BUG_LARVA_CONTAINER_BACKPACK_BEHAVIOR 418u /* bug_larva_container_backpack (behavior) - game name Retrieve_Larva_Backpack */
+#define HF_EXPLOSION_MS11_SOLO_SILO_EXPLOSIVE_40 420u    /* MS-11 Solo Silo (explosive 40) */
+#define HF_EXPLOSION_EXO45_PATRIOT_EXOSUIT_VEHICLE_CRASH_2 422u /* EXO-45 Patriot Exosuit (vehicle crash) #2 - game name Prop_Medium (hash match only) */
+#define HF_EXPLOSION_SEAF_GUN_NAPALM_SHELL_IMPACT 20u    /* SEAF Gun Napalm Shell (impact) */
+#define HF_EXPLOSION_SEAF_GUN_EMP_SHELL_IMPACT 55u       /* SEAF Gun EMP Shell (impact) */
+#define HF_EXPLOSION_SEAF_GUN_SMOKE_SHELL_IMPACT 261u    /* SEAF Gun Smoke Shell (impact) */
+#define HF_EXPLOSION_SEAF_GUN_HIGH_EXPLOSIVE_SHELL_IMPACT 278u /* SEAF Gun High Explosive Shell (impact) */
+#define HF_EXPLOSION_SEAF_GUN_MINI_NUKE_SHELL_IMPACT 288u /* SEAF Gun Mini Nuke Shell (impact) */
+#define HF_EXPLOSION_ORBITAL_SHELL_PROJECTILE_84_IMPACT 5u /* Orbital Shell, projectile 84 (impact) */
+#define HF_EXPLOSION_ORBITAL_SHELL_PROJECTILE_93_IMPACT 77u /* Orbital Shell, projectile 93 (impact) */
+#define HF_EXPLOSION_ORBITAL_SHELL_PROJECTILE_316_IMPACT 48u /* Orbital Shell, projectile 316 (impact) */
+#define HF_EXPLOSION_EXOSPIRE_TOWER_SHELL_IMPACT 365u    /* Exospire Tower Shell (impact) */
+#define HF_EXPLOSION_MONOLITH_BEHAVIOR 68u               /* Monolith (behavior) */
+#define HF_EXPLOSION_OBTRUDER_ABILITY 98u                /* Obtruder (ability) */
+#define HF_EXPLOSION_CANNON_TURRET_IMPACT 206u           /* Cannon Turret (impact) */
+#define HF_EXPLOSION_WARP_SHIP_ABILITY 215u              /* Warp Ship (ability) */
+#define HF_EXPLOSION_COMBAT_WALKER_MISSILE_LAUNCHER_IMPACT 303u /* Combat Walker Missile Launcher (impact) */
+#define HF_EXPLOSION_FUSION_BATTERY_DETONATION 410u      /* Fusion Battery (detonation) */
+#define HF_EXPLOSION_MAGMA_GEYSER_01_ABILITY 317u        /* Magma Geyser 01 (ability) */
+#define HF_EXPLOSION_MAGMA_GEYSER_02_ABILITY 214u        /* Magma Geyser 02 (ability) */
+#define HF_EXPLOSION_MAGMA_GEYSER_03_ABILITY 223u        /* Magma Geyser 03 (ability) */
+#define HF_EXPLOSION_HAZARD_VENT_01_ABILITY 299u         /* Hazard Vent 01 (ability) */
+#define HF_EXPLOSION_ENVIRONMENTAL_HAZARD_ABILITY_1250 129u /* Environmental Hazard, ability 1250 */
+#define HF_EXPLOSION_ENVIRONMENTAL_HAZARD_ABILITY_1251 396u /* Environmental Hazard, ability 1251 */
+#define HF_EXPLOSION_ENVIRONMENTAL_HAZARD_ABILITY_1252 54u /* Environmental Hazard, ability 1252 */
+#define HF_EXPLOSION_SEEKING_MISSILE_UNIT_6C23_DETONATION 86u /* Seeking Missile, unit 6C23 (detonation) */
+#define HF_EXPLOSION_SEEKING_MISSILE_0XC8D6_DETONATION 283u /* Seeking Missile 0xC8D6 (detonation) */
+#define HF_EXPLOSION_SEEKING_MISSILE_UNIT_6C53_DETONATION 398u /* Seeking Missile, unit 6C53 (detonation) */
+
+/* Vanilla weapon beams, for HfBeam.base (the BeamWeapon record's +0). */
+#define HF_WEAPON_BEAM_LAS5_SCYTHE 8u                    /* LAS-5 Scythe */
+
+/* Vanilla arcs, for HfArc.base (the ArcWeapon record's +0). */
+#define HF_ARC_ARC12_BLITZER 3u                          /* ARC-12 Blitzer */
 
 #endif

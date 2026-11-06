@@ -84,10 +84,13 @@ struct Object
 struct Nav { std::string id, label, group, tone; std::vector<std::string> filters; bool hasFilters = false; };
 
 /* Where a copy of a page points (Catalog::AddCopy): the page's ids for its kinds and the copy's own for each. */
-struct Remap { std::map<uint64_t, uint64_t> stratagem, entity, projectile, damage; };
+struct Remap { std::map<uint64_t, uint64_t> stratagem, entity, projectile, damage, explosion, beam, arc; };
 /* A copy's names (Catalog::AddCopy): its id and name, its rows' Local Stats entry (category, target), and its loadout
  * section (nav; "" its page's). */
 struct CopyNames { std::string id, name, category, target, nav; };
+/* A part Catalog::AddOwnPart adds: its category and title, the key its rows' Local Stats keys start with, and the settings
+ * table with the row whose page rows it copies (base) and the row they point at (ref). */
+struct OwnPart { std::string category, title, role, component; uint64_t base, ref; };
 
 struct Catalog
 {
@@ -106,6 +109,10 @@ struct Catalog
     std::string hd2rEditor, hd2rRuntime;
     std::map<std::string, Row*> bySetting;                 /* a settings row's field: component \t ref \t offset (the first) */
     const Row::Option* Reference(const std::string& pick, double value) const;
+    /* The page's rows of a settings row (a mod's explosion, beam or arc, or its damage) under a part of category: copies of
+     * base's rows, wherever a vanilla page has them, pointed at ref. role keeps their Local Stats keys apart. False when the
+     * page has ref's rows already or no page has base's. */
+    bool AddOwnPart(Object* copy, const CopyNames& names, const OwnPart& part);
     Row* Setting(const std::string& component, uint64_t ref, uint16_t offset) const;
     std::vector<Object*> Of(const std::string& nav) const;
     /* The object whose page holds the stratagem's settings row (StratagemDefinition of that type), or nullptr. */

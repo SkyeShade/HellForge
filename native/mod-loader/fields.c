@@ -363,6 +363,9 @@ static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready)
     if (!strcmp(component, "MeleeHitVolume")) return MeleeRowOf(id, ready);
     if (!strcmp(component, "DifficultySettings")) return DifficultyRowOf(id, ready);
     if (DirectorKind(component)) return DirectorRow(component, id, ready);
+    if (!strcmp(component, "ExplosionSettings") && id >= EXP_VANILLA) return ApiExplosionRow((uint32_t)id);
+    if (!strcmp(component, "BeamSettings") && id >= BEAM_VANILLA) return ApiBeamRow((uint32_t)id);
+    if (!strcmp(component, "ArcSettings") && id >= ARC_VANILLA) return ApiArcRow((uint32_t)id);
     return ExtraRowOf(component, id, ready);
 }
 /* The table row lookup edits use; the native fixture replaces it. */
@@ -1079,12 +1082,14 @@ static HfContent WeaponContent(const Weapon* w, uint32_t size)
         ModTextOf(w->text[3]), 0};
     c.entity = w->entity;
     c.base_entity = w->copies;
+    c.beam = BeamTypeUsable(w->beam) ? w->beam : 0;
+    c.arc = ArcTypeUsable(w->arc) ? w->arc : 0;
     return c;
 }
 
-/* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles, damage and (HellForge 2026-10-31,
- * last so the others keep their indexes) registered arsenal weapons, in the order added (what a mod taken out added is
- * left out). A stratagem without editor entities of its own lists each payload entity a mod
+/* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles, damage, (HellForge 2026-10-31)
+ * registered arsenal weapons and (SDK 17) explosions, beams and arcs, each new kind last so the others keep their indexes,
+ * in the order added (what a mod taken out added is left out). A stratagem without editor entities of its own lists each payload entity a mod
  * added, for the entity it copies. */
 static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
 {
@@ -1125,6 +1130,7 @@ static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
             c = WeaponContent(&g_weapons[i], size);
             return GIVE();
         }
+    if (AddedRowContent(&index, size, &c)) return GIVE();
     return 0;
     #undef GIVE
 }
@@ -1181,6 +1187,9 @@ static uint64_t ApiFind(uint32_t kind, const char* name)
     case HF_KIND_STRATAGEM: return StratagemNamed(name);
     case HF_KIND_PROJECTILE: return ProjectileTypeNamed(name);
     case HF_KIND_DAMAGE: return DamageNamed(name);
+    case HF_KIND_EXPLOSION: return ExplosionNamed(name);
+    case HF_KIND_WEAPON_BEAM: return RowNamed(&g_beams, name);
+    case HF_KIND_ARC: return RowNamed(&g_arcs, name);
     }
     return 0;
 }

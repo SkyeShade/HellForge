@@ -1,0 +1,7 @@
+{"scope":"A synthetic item catalogue (see progression-data.json beside it). Not the game's data.","build":"synthetic",
+ "items":[
+  {"itemId":2001,"mixId":2001,"isConsumable":false,"requiredLevel":1,"progressionCategory":2,"tags":[],"requiredItems":[],"buyPrice":[],"sellPrice":[]},
+  {"itemId":2002,"mixId":2002,"isConsumable":false,"requiredLevel":1,"progressionCategory":3,"tags":[],"requiredItems":[],"buyPrice":[{"mixId":1102,"amount":1,"flags":0}],"sellPrice":[]},
+  {"itemId":1101,"mixId":1101,"isConsumable":true,"requiredLevel":1,"progressionCategory":0,"tags":[],"requiredItems":[],"buyPrice":[],"sellPrice":[]},
+  {"itemId":1102,"mixId":1102,"isConsumable":true,"requiredLevel":1,"progressionCategory":18,"tags":[],"requiredItems":[],"buyPrice":[],"sellPrice":[]},
+  {"itemId":1104,"mixId":1104,"isConsumable":false,"requiredLevel":1,"progressionCategory":0,"tags":[],"requiredItems":[],"buyPrice":[],"sellPrice":[]}]}

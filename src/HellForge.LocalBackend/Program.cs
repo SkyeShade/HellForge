@@ -35,6 +35,12 @@ if (args is ["profile", "show", var showDirectory])
         return 1;
     }
 }
+// Every other profile command opens the profile, which reads the game catalogues.
+if (args is ["profile", not "show", var commandProfile, ..] && LocalBackend.UseInstallationCatalogue(commandProfile) is { } noCatalogue)
+{
+    Console.Error.WriteLine("HellForge local backend: " + noCatalogue);
+    return 1;
+}
 if (args is ["profile", var templateCommand and ("apply-template" or "add-template-items"), var templateDirectory, var templateName])
 {
     try
@@ -75,6 +81,9 @@ if (args is ["fetch-live-war", var fetchCache])
 try
 {
     var options = BackendOptions.Parse(args);
+    // The game catalogues (HellForge.Core GameCatalog): HellForge ships none, so a backend that serves the game needs the
+    // installation's, assembled from the player's own Sync Inventory.
+    if (options.GetValueOrDefault("--catalogue") is { } catalogue) LocalBackend.CatalogueDirectory = Path.GetFullPath(catalogue);
     if (!int.TryParse(options.GetValueOrDefault("--port", "0"), out var port) || port is < 0 or > 65535)
         throw new ArgumentException("Port must be between 0 and 65535.");
     var mode = options.GetValueOrDefault("--mode", "local-session") switch
@@ -157,7 +166,7 @@ try
     {
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
-        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
+        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, LocalAccount = steamAccount, OpenWar = openWar, WarSeed = warSeed,
         DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods, Pickups = pickups, Browse = browse
     });
     await app.StartAsync(lifetime.Token);

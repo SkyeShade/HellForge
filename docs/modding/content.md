@@ -59,8 +59,11 @@ constant is in the [SDK reference](../sdk-reference.md). The calls on this page,
 | `register_entity` | 6 | an entity (from a definition block) | its resource id, or 0 | 192, shared with weapons |
 | `add_entity` | 4 | an entity (the older form) | its resource id, or 0 | the same 192 |
 | `add_weapon` | 2 | an arsenal weapon | its loadout id, or 0 | the same 192 (but see below) |
-| `add_damage` | 3 | a damage type | its id (650 and up), or 0 | 64 |
-| `add_projectile` | 3 | a projectile type | its type (351 and up), or 0 | 64 |
+| `add_damage` | 3 | a damage type | its id (650 and up), or 0 | 512 |
+| `add_projectile` | 3 | a projectile type | its type (351 and up), or 0 | 512 |
+| `add_explosion` | 17 | an explosion type | its type (423 and up), or 0 | 512 |
+| `add_beam` | 17 | a beam type | its type (31 and up), or 0 | 512 |
+| `add_arc` | 17 | an arc type | its type (17 and up), or 0 | 512 |
 | `add_stratagem` | 4 | a stratagem | its type (150 and up), or 0 | 48 |
 | `add_stratagem_category` | 8 | a heading in the selection screen | a handle, or 0 | 28 |
 | `add_behaviour` | 4 | a behaviour | its id (694 and up), or 0 | 8 |
@@ -71,16 +74,26 @@ When a call returns 0 (or 1 for the edit calls), your mod's log says why; `hf->l
 code. Check `hf->version` for the SDK a call needs, and `hf->size` for a call added after the version you require
 ([compatibility](concepts.md#compatibility)).
 
-Weapons run out sooner than 192 in practice. Each new weapon adds its base's item and all of the base's attachments to
-the game's item catalogue (57 items for an AR-23 Liberator copy). The game keeps only:
+Weapons can run out sooner. Each new weapon adds its base's item and all of the base's attachments to the game's item
+catalogue (57 items for an AR-23 Liberator copy), and takes one progression package. HellForge moves the catalogue at
+start-up so the game keeps 40,960 items and inventory entries and 1,024 progression packages. If the move is refused,
+`modloader.log` says why and the session stays at the game's 4,096 and 256, about 20 Liberator copies.
 
-- the first 4,096 catalogue items (vanilla has 2,925)
-- the first 4,096 inventory entries
-- 256 progression packages (vanilla has 56; each new weapon takes one)
+HellForge adds level 11 first, then new stratagems (2 items each), then each weapon whole. It leaves out what does not
+fit, with a line in the session's backend log for each. So past the limit it is the last weapons that are missing, never
+half of one, and not a mod's stratagems.
 
-That is about 20 Liberator copies across all mods. HellForge adds level 11 first, then new stratagems (2 items each),
-then each weapon whole. It leaves out what does not fit, with a line in the session's backend log for each. So past the
-limit it is the last weapons that are missing, never half of one, and not a mod's stratagems.
+The armory holds 256 cards of each type, every vanilla weapon counted whether this player owns it or not. That is room
+for 199 new primaries, 229 secondaries and 229 throwables across all mods. A weapon past that is refused by name in your
+mod's log, so a vanilla weapon never falls off the list.
+
+A base's component tables can stop its copies first. Each table its base has rows in must grow, and some stop at 127
+rows. So about 100 copies of the lasers, shotguns, plasma or melee weapons fit across all mods, and 81 throwables of any
+kind. Past that the weapon is refused with the table's name.
+
+A weapon with an explosion, beam or arc of its own has them on its page in the in-game editor, with the damage they deal.
+Mods' explosions are offered wherever the editor picks an explosion. A round that explodes loads the loadout package of
+the weapon that fires its base round, because the explosion's sound comes with it.
 
 ## Changing existing content
 
@@ -252,7 +265,7 @@ HfRef ref = hf->register_entity(mod, &pelican);   /* registers the turret too; 0
 - Registering the same block again returns the same entity.
 - `add_entity` (SDK 4, `HfEntity`) is the older call; new mods use blocks.
 - A block changes or owns at most 8 components and has at most 8 mounts; there is room for 64 blocks.
-- Entities and weapons share 64 places across all mods.
+- Entities and weapons share 512 places across all mods.
 
 `examples/mods/stratagem-compendium` builds every stratagem this way, one source file per family.
 
@@ -314,6 +327,21 @@ banks must load with yours, so your data includes them (`examples/mods/talon-lib
 The weapon appears in the armory and in the player's inventory (the local backend adds it for the session). A session
 in which a mod adds a weapon (or changes component stats) writes `arsenal.tsv` into its log folder: every armory item's loadout id, type, entity,
 designation and name, for choosing a base.
+
+### Mastery
+
+Every mod weapon is a whole copy of its base with its own attachments and its own mastery: level, XP and unlocks are
+the weapon's, not its base's. It starts where a vanilla weapon starts, at level 0 and holding no attachments, whatever
+the base has reached. Missions level it up and attachments are bought on its page, at its base's prices and level
+requirements.
+
+You write nothing for this: the copy gets it from its base. A base without a mastery track gives the copy none either,
+and the copy holds the copies of what the player holds of the base's attachments.
+
+The player's progress with a mod weapon is saved apart from vanilla progress (`modPackageProgress` in the profile).
+Removing the mod leaves their vanilla data as it was, and adding it back brings the level and unlocks back. The ids
+come from the weapon's `unit`, so changing a weapon's unit starts its mastery over. The launcher's Weapon levels card
+lists the mod weapons of the newest session.
 
 `cube-gun` gives a weapon a model of your own, built from an OBJ file.
 
@@ -384,10 +412,69 @@ uint32_t weapon = api->add_weapon(mod, &rifle);
 - A weapon's `projectile` is any projectile type, vanilla or added.
 - Add damage before the projectiles that deal it, and projectiles before the weapons that fire them.
 
+The catalogue names 295 explosions and 342 damage ids as `HF_EXPLOSION_` and `HF_DAMAGE_` constants, so a round's blast
+or a weapon's damage is one autocompletion away. They are all in the [SDK reference](../sdk-reference.md).
+
+### Explosions
+
+`add_explosion` (SDK 17) copies a vanilla explosion under a type of its own, with its own damage and radii. A projectile
+then goes off with it through `impact_explosion` (a hit) and `expiry_explosion` (the end of its flight).
+
+```c
+HfExplosion blast = {sizeof blast};
+blast.base = HF_EXPLOSION_R36_ERUPTOR_IMPACT;
+blast.name = "big_blast";
+blast.damage = damage;       /* 0 keeps the base's */
+blast.outer_radius = 12.0f;
+uint32_t explosion = api->add_explosion(mod, &blast);
+
+HfProjectile round = {sizeof round};
+round.base = HF_PROJECTILE_R36_ERUPTOR;
+round.name = "big_round";
+round.impact_explosion = explosion;
+uint32_t projectile = api->add_projectile(mod, &round);
+```
+
+- `HfExplosion` takes `base`, `name`, `damage`, `inner_radius`, `outer_radius`, `shockwave_radius` (metres) and `arc`, the
+  arc it chains. Each left at 0 keeps the base's. New explosion types are 423 and up.
+- `impact_explosion` and `expiry_explosion` take any explosion type, vanilla or added (0 keeps the base's). Add an
+  explosion before the projectiles that use it.
+- An explosion's effect and sound stay the base's.
+- A vanilla blast's sound comes with the weapon that fires it. HellForge loads the weapon package of a round that
+  explodes, so its sound plays when that weapon is not in the loadout. If the package does not load, your mod's log says
+  so and the blast is silent.
+
+### Beams and arcs
+
+A beam or arc weapon's record names only a type. Its damage, radius, length, range and chains are in that type's row,
+which every weapon of the type shares. So a beam or arc weapon with stats of its own needs a type of its own.
+
+```c
+HfBeam ray = {sizeof ray};
+ray.base = HF_WEAPON_BEAM_LAS5_SCYTHE;
+ray.name = "long_ray";
+ray.damage = damage;
+ray.length = 80.0f;
+uint32_t beam = api->add_beam(mod, &ray);
+
+HfWeapon scythe = {sizeof scythe};
+scythe.base = HF_ITEM_LAS5_SCYTHE; /* a base that fires a beam */
+scythe.beam = beam;
+```
+
+- `add_beam` (SDK 17) takes an `HfBeam`: `base`, `name`, `damage`, `radius` and `length` (metres). New beam types are 31
+  and up.
+- `add_arc` (SDK 17) takes an `HfArc`: `base`, `name` and `damage`. New arc types are 17 and up.
+- `HfWeapon.beam` and `HfWeapon.arc` name the type it fires, vanilla or added. Its base must fire one: a beam weapon's
+  or an arc weapon's own record holds the type. `HfExplosion.arc` chains an arc from an explosion.
+- `HF_WEAPON_BEAM_` and `HF_ARC_` constants name the vanilla types. Left at 0, each field keeps the base's.
+
 ### Changing your rows further
 
 After `HF_EVENT_PROJECTILES_READY`, `projectile_row(type)` and `damage_row(id)` return your rows to change further.
 They return addresses: cast them to `HfProjectileSettings*` and `HfDamageInfo*`, and keep each row's id as it is.
+`explosion_row`, `beam_row` and `arc_row` do the same for the new types (152, 112 and 104 bytes), whose first 4 bytes are
+the type and must stay.
 `hf_set` reaches the rows too. The compendium's Pelican EMS and Gas turrets give their rounds an impact explosion this
 way (`src/pelicans.c`), and `hf_set(mod, type, ProjectileSettings, impact_explosion, HF_U32(82))` makes a projectile's
 hits burst into the Orbital Gas Strike's cloud. HellForge loads the explosion's packages.
@@ -405,8 +492,12 @@ turns the Talon's bolt blue.
 
 ### Room and co-op
 
-There is room for 64 new projectile types and 64 new damage types across all mods. In co-op, every machine fires its
-own copy of a hand-held weapon's shots from its own data; with the same mods, that is the same projectile.
+There is room for 512 new projectile types and 512 new damage types across all mods, and for 512 each of explosions,
+beams and arcs. In co-op, every machine fires its own copy of a hand-held weapon's shots from its own data; with the same
+mods, that is the same projectile.
+
+A set of more than 89 explosion types widens a co-op network field by one bit. Every player runs the same mods, so all of
+them widen it together. If the field is not the one HellForge knows, only the first 89 go in and the log names the rest.
 
 ## Stratagems
 

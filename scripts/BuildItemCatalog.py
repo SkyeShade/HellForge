@@ -126,6 +126,12 @@ def main():
     parser.add_argument("--warbond-snapshot", type=Path, help="snapshot taken after opening every warbond")
     parser.add_argument("--store-snapshot", type=Path, help="snapshot taken after opening the Ship Management store")
     parser.add_argument("--hd2runtime", type=Path, default=ROOT.parent / "HD2Runtime")
+    # HellForge ships no game catalogue (HellForge.Core GameCatalog): these two stay out of the repository.
+    parser.add_argument("--catalogue-out", type=Path, default=ROOT / "artifacts/item-catalog-rebuild",
+                        help="folder for item-catalog.json and progression-data.json (never committed)")
+    # A session's modloader.log says where HellForge moved the catalogue ("state moves: ... catalogue at P+0x..., room for N items").
+    parser.add_argument("--catalogue-at", type=lambda v: int(v, 0), default=0x1CE0, help="the block's offset from P (default: its compiled place)")
+    parser.add_argument("--room", type=lambda v: int(v, 0), default=0x1000, help="the items the block has room for")
     args = parser.parse_args()
     sys.path.insert(0, str(args.hd2runtime / "scripts"))
     from snapshot_image import Snapshot, CAPTURED
@@ -135,11 +141,11 @@ def main():
         raise ValueError("Snapshot is from a different game build")
     game = snapshot.modules["game.dll"]["base"]
     catalogue = struct.unpack("<Q", read(snapshot, CAPTURED, game + CATALOGUE_GLOBAL, 8))[0]
-    count = struct.unpack("<I", read(snapshot, CAPTURED, catalogue + 0x1CE0, 4))[0]
-    if not 0 < count <= 0x1000:
+    count = struct.unpack("<I", read(snapshot, CAPTURED, catalogue + args.catalogue_at, 4))[0]
+    if not 0 < count <= args.room:
         raise ValueError("Implausible catalogue size")
-    definitions = read(snapshot, CAPTURED, catalogue + 0x1CE4, count * 0xB8)
-    records = read(snapshot, CAPTURED, catalogue + 0xB9CE4, count * 0x18)
+    definitions = read(snapshot, CAPTURED, catalogue + args.catalogue_at + 4, count * 0xB8)
+    records = read(snapshot, CAPTURED, catalogue + args.catalogue_at + 4 + args.room * 0xB8, count * 0x18)
 
     items, owned = [], []
     for i in range(count):
@@ -290,10 +296,12 @@ def main():
               "excluded": [{"mixId": item["mixId"], "reason": EXCLUDED_ROOTS.get(item["mixId"], "descendant of an excluded root")}
                            for item in excluded]}
     out = ROOT / "src/HellForge.LocalBackend"
-    (out / "item-catalog.json").write_text(json.dumps(
+    catalogue_out = args.catalogue_out
+    catalogue_out.mkdir(parents=True, exist_ok=True)
+    (catalogue_out / "item-catalog.json").write_text(json.dumps(
         {"scope": "Catalogue rebuilt from the user's own retained snapshot of the same build; served as /Progression/items.",
          "source": source, "items": items}, separators=(",", ":")), newline="\n")
-    (out / "progression-data.json").write_text(json.dumps(
+    (catalogue_out / "progression-data.json").write_text(json.dumps(
         {"scope": "Progression data rebuilt from the user's own retained snapshot of the same build.", "source": {"snapshot": args.snapshot.name},
          "levelSpec": level_spec, "itemPackages": item_packages, "seasonPass": season_pass, "seasonPassDetails": details,
          "progressionPackages": progression_packages, "storeFront": store_front}, separators=(",", ":")), newline="\n")

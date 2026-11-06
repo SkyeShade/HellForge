@@ -1483,6 +1483,14 @@
       "layout": "25480438",
       "meaning": "an arc type",
       "fields": {
+        "damage": {
+          "offset": 36,
+          "type": "u32",
+          "meaning": "the damage id it deals (DamageInfo)",
+          "verified": true,
+          "source": "game.dll 0x176D1A8 reads it as it reads an explosion's +4; research beam-arc-registry",
+          "ref": "damage"
+        },
         "velocity": {
           "offset": 4,
           "type": "f32",
@@ -1551,6 +1559,14 @@
       "layout": "25480438",
       "meaning": "a beam type",
       "fields": {
+        "damage": {
+          "offset": 12,
+          "type": "u32",
+          "meaning": "the damage id it deals (DamageInfo)",
+          "verified": true,
+          "source": "game.dll 0x1769A34 reads it and 0x1769A3F indexes the damage list with it; research explosion-registry, beam-arc-registry",
+          "ref": "damage"
+        },
         "radius": {
           "offset": 4,
           "type": "f32",

@@ -38,6 +38,27 @@ static class AccountSyncTests
         ModItems(root, paid, check);
         ForgeCredits(paid, check);
         WarbondsOtherToken(paid, check);
+        InstallationCatalogue(root, check);
+    }
+
+    // The profile commands take the catalogue of the profile's installation: without one they say to sync first, with one
+    // the backend reads it. The suite's catalogue is put back after.
+    static void InstallationCatalogue(string root, Action<bool, string> check)
+    {
+        var suite = LocalBackend.CatalogueDirectory!;
+        var install = Path.Combine(root, "catalogue-install");
+        var profile = Directory.CreateDirectory(Path.Combine(install, "profiles", "default")).FullName;
+        try
+        {
+            check(LocalBackend.UseInstallationCatalogue(profile) == GameCatalog.SyncFirst && LocalBackend.CatalogueDirectory == suite,
+                "A profile command of an installation with no catalogue was not told to sync first.");
+            var folder = Directory.CreateDirectory(GameCatalog.Directory(install)).FullName;
+            foreach (var file in new[] { GameCatalog.ProgressionDataFile, GameCatalog.ItemCatalogFile })
+                File.Copy(Path.Combine(suite, file), Path.Combine(folder, file));
+            check(LocalBackend.UseInstallationCatalogue(profile + Path.DirectorySeparatorChar) == null &&
+                LocalBackend.CatalogueDirectory == folder, "A profile command did not take its installation's catalogue.");
+        }
+        finally { LocalBackend.CatalogueDirectory = suite; }
     }
 
     // Forge Credits: a pile picked up pays every participant once (the reply the client adds and forwards), the wallet is
@@ -375,6 +396,7 @@ static class AccountSyncTests
         using (var store = ProfileStore.Open(profileDir, "starter"))
         {
             store.ApplyMissionRewards(0, new Dictionary<uint, long> { [LocalArmoryItem] = 1, [Medals] = 5, [Requisition] = 20000, [CommonSamples] = 30 });
+            store.TryChange((progression, _) => { ModPackages.SetLevel(progression, 0x5EED0099, 4); return true; });
             beforeVanillaXp = Experience(store.Current());
             var shipBefore = store.Current()["progression"]!["shipName"]?.ToJsonString();
             store.Import(Snapshot(profileDir), new AccountImportSettings(), PaidContentSet.Load());
@@ -390,6 +412,7 @@ static class AccountSyncTests
                 "Ship or tutorial imported though left out by default.");
             check(!items.Keys.Any(PaidContentSet.IsSuperCredits) && !items.ContainsKey(ids.OwnedToken) && !items.ContainsKey(ids.StoreItem) && !items.ContainsKey(Knight),
                 "Super Credits or premium items were written into the profile.");
+            check(ModPackages.Find(progression, 0x5EED0099) != null, "An import lost a mod weapon's level.");
         }
         check(ProfileBackups.List(profileDir) is [{ Reason: "import" }], "The first import did not back the profile up.");
         ImportsByCommand(profileDir, beforeVanillaXp, check);

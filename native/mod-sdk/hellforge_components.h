@@ -716,7 +716,8 @@ typedef struct HfArcSettings
     float max_angle_spread_first_shot;           /* +0x18 First-shot maximum angle spread (degrees) (unverified) [now?] */
     uint32_t chain_count;                        /* +0x1C Arc maximum chain length (targets) (unverified) [now?] */
     uint32_t max_split;                          /* +0x20 Arc maximum split (targets) (unverified) [now?] */
-    uint8_t _unknown_24[68];
+    uint32_t damage;                             /* +0x24 the damage id it deals (DamageInfo) [now?] */
+    uint8_t _unknown_28[64];
 } HfArcSettings;
 HF_ASSERT_SIZE(HfArcSettings, 104);
 HF_ASSERT_OFFSET(HfArcSettings, velocity, 4);
@@ -735,6 +736,8 @@ HF_ASSERT_OFFSET(HfArcSettings, chain_count, 28);
 #define HF_TYPE_ArcSettings_chain_count HF_TYPE_U32
 HF_ASSERT_OFFSET(HfArcSettings, max_split, 32);
 #define HF_TYPE_ArcSettings_max_split HF_TYPE_U32
+HF_ASSERT_OFFSET(HfArcSettings, damage, 36);
+#define HF_TYPE_ArcSettings_damage HF_TYPE_U32
 
 /* BeamSettings (112-byte table rows, found by id): a beam type */
 #define HfBeamSettings_INFO "BeamSettings", 25480438u
@@ -743,13 +746,16 @@ typedef struct HfBeamSettings
     uint8_t _unknown_00[4];
     float radius;                                /* +0x04 Beam radius (meters) (unverified) [now?] */
     float length;                                /* +0x08 Beam length (meters) (unverified) [now?] */
-    uint8_t _unknown_0C[100];
+    uint32_t damage;                             /* +0x0C the damage id it deals (DamageInfo) [now?] */
+    uint8_t _unknown_10[96];
 } HfBeamSettings;
 HF_ASSERT_SIZE(HfBeamSettings, 112);
 HF_ASSERT_OFFSET(HfBeamSettings, radius, 4);
 #define HF_TYPE_BeamSettings_radius HF_TYPE_F32
 HF_ASSERT_OFFSET(HfBeamSettings, length, 8);
 #define HF_TYPE_BeamSettings_length HF_TYPE_F32
+HF_ASSERT_OFFSET(HfBeamSettings, damage, 12);
+#define HF_TYPE_BeamSettings_damage HF_TYPE_U32
 
 /* StatusEffectSettings (152-byte table rows, found by id): a status effect */
 #define HfStatusEffectSettings_INFO "StatusEffectSettings", 25480438u

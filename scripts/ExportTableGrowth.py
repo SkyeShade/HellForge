@@ -4,8 +4,9 @@ immediate is and how its new value follows from a new slot count; and the rules 
 
 Usage: py scripts/ExportTableGrowth.py <growth-sites.json> native/mod-loader/table_growth_sites.h
 
-From the static pass in HD2Mods\\research\\table-growth (extract_priority.py, check_priority.py: build 25480438, the 16
-tables weapons and stratagems use). Only tables the pass found growable are written; a table it did not cover, or
+From the static passes in HD2Mods\\research\\table-growth (extract_priority.py, check_priority.py: build 25480438) and
+research\\unlimited-weapons\\walls (scripts\\extract_weapons.py, growth-sites-weapons.json: the tables weapon bases have
+rows in, the matcher's gaps closed). Only tables the pass found growable are written; a table it did not cover, or
 refused, stays at its size and its entities are refused as before. The loader checks every instruction's bytes before
 it writes anything, so a game build these were not made for grows nothing.
 """
@@ -15,7 +16,8 @@ import sys
 FORMULAS = {
     'S': 'GROW_S', 'S-1': 'GROW_S_MINUS_1', 'S-1@mask': 'GROW_MASK', '16*S/m': 'GROW_INDEX_SCALED',
     '16*S+(R-1)*stride': 'GROW_DEFAULT_OFFSET', 'magic64(S)': 'GROW_MAGIC', 'shift(S)': 'GROW_SHIFT',
-    'magic65(S)': 'GROW_MAGIC65', 'shift65(S)': 'GROW_SHIFT65',
+    'magic65(S)': 'GROW_MAGIC65', 'shift65(S)': 'GROW_SHIFT65', '16*S+k': 'GROW_RECORD_FIELD',
+    'imul8(S)': 'GROW_IMUL8',
 }
 
 
@@ -35,6 +37,8 @@ def main(source, out):
                     raise SystemExit(f"table {component}: {c['rva']} is not a constant the loader can write")
                 constants.append((int(c['rva'], 16), len(code), c['imm_offset'], c['imm_size'], FORMULAS[c['formula']],
                                   c.get('divisor', 0), code))
+        if len(constants) - first > 32:
+            raise SystemExit(f"table {component}: more constants than GROWTH_MAX_CONSTANTS")
         r = t['rules']
         flags = []
         if 'depends_on' in t:
