@@ -22,6 +22,21 @@
 #define WINDOW_IN 550.0f          /* a planned stamp enters when a player is this close (inside kStreamOutRadius) */
 #define WINDOW_PER_SCAN 384u      /* entries per scan (0.25 s) at most */
 #define WINDOW_BODY_SHARE 0.80f   /* and only while the physics bodies in use stay under this share of the store */
+/* Past WINDOW_IN, a stamp enters while a player is within the distance its meshes can be drawn at (WindowVisible), at
+ * most WINDOW_FAR, and leaves past that + WINDOW_FAR_LEAVE. The engine's view-distance cull (render config
+ * ee6b1ba7e22d71ed, "high": near 350, far 1000, min_size_far 0.05; read 0x1EC20E..0x1EC3BE; kernel 0x57B9B0) draws an
+ * object while its angular size > K (min_size + 0.05 t^2), t = clamp((d - 350) / 650), K the camera's field of view
+ * (cam+0x2C, ~1.2 rad): a 19 m stamp to ~830 m, a 52 m one to ~1.2 km (the footprint's diagonal as the mesh's size, an
+ * upper bound; min_size left out: both make the radius larger, never smaller). So the dressing thins out as the
+ * engine's own does, with no edge at WINDOW_IN. Far entries: the largest first, WINDOW_FAR_PER_SCAN a scan, only while
+ * the physics bodies and the main world's culling pool 0 (RenderPool0) stay under WINDOW_FAR_SHARE (a full pool 0 is
+ * the crash 0x58E14B); a far stamp costs ~10 (open) to ~24 (city) bodies and ~21 pool 0 entries (s78a/s80a/s80b,
+ * static farstamps). */
+#define WINDOW_FAR 1500.0f
+#define WINDOW_FAR_LEAVE 150.0f
+#define WINDOW_FAR_PER_SCAN 128u
+#define WINDOW_FAR_SHARE 0.70f
+#define WINDOW_FAR_BIG 1000.0f    /* the stamps visible past this enter in a first pass */
 #define WINDOW_INSERT 0xC04EF0u
 #define WINDOW_REMOVE 0xC051C0u
 static const char kWindowInsertPin[] = "41 54 41 56 48 83 EC 48 44 0F B7 49 06 4C 8B D9 44 8B 61 2C 66 41 F7 D1";
@@ -37,7 +52,10 @@ static struct
     uint32_t freeCount, freeList[DIF_LOCATIONS];
     uint32_t plan[DIF_LOCATIONS];      /* slot -> plan entry */
     uint64_t handle[DIF_LOCATIONS];    /* slot -> its index handle */
-    uint32_t entered, left, refusedFull, refusedIndex, refusedBodies, poseChecked, poseEqual;
+    uint16_t* reach;                   /* plan entry -> the distance it enters within (m); kept across levels (not reset) */
+    uint32_t reachRoom;                /* reach's room */
+    uint32_t entered, left, refusedFull, refusedIndex, refusedBodies, poseChecked, poseEqual, enteredFar, farHeld;
+    uint32_t reachFar;                 /* the plan entries whose reach is past WINDOW_IN */
     int on, bad, insertOk, removeOk;
     ULONGLONG nextScan;
 } g_win;
@@ -123,6 +141,19 @@ static void WindowPoseCheck(const uint8_t* array, uint32_t count, float worldW)
 
 /* The window for the captured level: its slots from the generation's count. Called with g_streamLock held, once the
  * generator's op is done. 0 when there is no plan or the calls are not the reviewed ones. */
+/* The largest distance at which an object of this size (m) passes the view-distance cull ("high", K 1.2): D/d > K *
+ * 0.05 * t^2 (bisection; the test only gets harder with distance). */
+static float WindowVisible(float size)
+{
+    float lo = 0.0f, hi = 2500.0f;
+    for (int i = 0; i < 24; i++)
+    {
+        float d = 0.5f * (lo + hi), t = (d - 350.0f) / 650.0f;
+        t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+        if (d <= 0.0f || size / d > 1.2f * 0.05f * t * t) lo = d; else hi = d;
+    }
+    return lo;
+}
 static int WindowReadyLocked(void)
 {
     if (g_win.level == g_stream.level && g_win.level != 0) return g_win.on;
@@ -143,6 +174,23 @@ static int WindowReadyLocked(void)
     if (g_win.base >= DIF_LOCATIONS) { Note("difficulty: extra large maps: stamp window off: the generation filled the table (%u)", g_win.base); return 0; }
     for (uint32_t s = DIF_LOCATIONS; s > g_win.base; s--) g_win.freeList[g_win.freeCount++] = s - 1; /* the lowest pops first */
     memset(g_plan.slot, 0, (size_t)g_plan.count * 2);
+    if (g_win.reachRoom < g_plan.count)
+    {
+        if (g_win.reach != NULL) VirtualFree(g_win.reach, 0, MEM_RELEASE);
+        g_win.reach = (uint16_t*)VirtualAlloc(NULL, (size_t)g_plan.count * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        g_win.reachRoom = g_win.reach != NULL ? g_plan.count : 0;
+    }
+    g_win.reachFar = 0;
+    if (g_win.reach != NULL)
+        for (uint32_t e = 0; e < g_plan.count; e++)
+        {
+            float box[4]; memcpy(box, g_stamps.cand[e].loc + 0xB0, 16);
+            float side = fmaxf(fabsf(box[2] - box[0]), fabsf(box[3] - box[1]));
+            float r = isfinite(side) ? WindowVisible(side * 1.41421356f) : WINDOW_IN;
+            r = r < WINDOW_IN ? WINDOW_IN : r > WINDOW_FAR ? WINDOW_FAR : r;
+            g_win.reach[e] = (uint16_t)r;
+            if (r > WINDOW_IN) g_win.reachFar++;
+        }
     WindowPoseCheck(g_stream.array, g_stream.count, 2.0f * g_stream.half);
     g_win.on = 1;
     /* The index's free entries (I = P + 8: head +0x2C, -1 = none; entries [+0x30], stride u16 +0x24, a free entry's u32 the
@@ -152,11 +200,14 @@ static int WindowReadyLocked(void)
         while (head != 0xFFFFFFFFu && freeEntries <= slots && entries != 0 && !SafeRead(entries + (uint64_t)head * stride, &head, 4)) freeEntries++;
     Note("difficulty: extra large maps: stamp window: %u planned stamps, slots %u..%u (%u), entered within %.0f m of a player (%u a scan at most) while the physics bodies stay under %.0f %% of the store; the stamp index has %u of %u entries free",
         g_plan.count, g_win.base, DIF_LOCATIONS - 1, g_win.freeCount, (double)WINDOW_IN, WINDOW_PER_SCAN, (double)(WINDOW_BODY_SHARE * 100.0f), freeEntries, slots);
+    Note("difficulty: extra large maps: stamp window: %u of the planned stamps can be seen past %.0f m: they enter within that distance (%.0f m at most, %u a scan, the largest first) while the bodies and the culling pool 0 stay under %.0f %%%s",
+        g_win.reachFar, (double)WINDOW_IN, (double)WINDOW_FAR, WINDOW_FAR_PER_SCAN, (double)(WINDOW_FAR_SHARE * 100.0f),
+        g_win.reach == NULL ? " (no memory for the distances: off)" : g_renderCap.on != 1 ? " (the culling pool is not read: off)" : "");
     return 1;
 }
 
 /* One planned stamp into a free slot. */
-static int WindowEnterLocked(uint32_t e)
+static int WindowEnterLocked(uint32_t e, float leave)
 {
     if (g_win.freeCount == 0) { g_win.refusedFull++; return 0; }
     const StampCandidate* c = &g_stamps.cand[e];
@@ -183,6 +234,7 @@ static int WindowEnterLocked(uint32_t e)
     g_streamUnit[s] = 0;
     g_streamPoseGood[s] = 1; g_streamDeferred[s] = 1; g_streamNeedsUnit[s] = 1; g_streamDetached[s] = 1; g_streamDue[s] = 1;
     g_streamSpawned[s] = 0; g_streamLive[s] = 0; g_streamOutSince[s] = 0; g_streamFormation[s] = 0; g_streamMission[s] = 0;
+    g_streamOut2[s] = leave * leave;
     if (s + 1 > g_win.high)
     {
         g_win.high = s + 1;
@@ -204,7 +256,7 @@ static void WindowLeaveLocked(uint32_t s)
     memset((void*)((uintptr_t)g_stream.array + (size_t)s * kStreamRecord), 0, kStreamRecord);
     uint32_t e = g_win.plan[s];
     if (e < g_plan.count && g_plan.slot[e] == s) g_plan.slot[e] = 0;
-    g_streamDeferred[s] = 0; g_streamPoseGood[s] = 0; g_streamNeedsUnit[s] = 0; g_streamDue[s] = 0; g_streamResource[s] = 0;
+    g_streamDeferred[s] = 0; g_streamPoseGood[s] = 0; g_streamNeedsUnit[s] = 0; g_streamDue[s] = 0; g_streamResource[s] = 0; g_streamOut2[s] = 0.0f;
     if (g_stream.deferred > 0) g_stream.deferred--;
     g_win.freeList[g_win.freeCount++] = s;
     g_win.left++;
@@ -212,6 +264,42 @@ static void WindowLeaveLocked(uint32_t s)
 
 /* Every 0.25 s, after the streamer's scan (the players are fresh): the planned stamps within WINDOW_IN of a player, from
  * the player's bucket outward, into the window while it has slots, the index has room and the bodies stay under budget. */
+/* The far ring: the planned stamps between WINDOW_IN and their own reach of a player, the ones visible past
+ * WINDOW_FAR_BIG first, under the far budgets. */
+static void WindowScanFarLocked(uint32_t bodies, uint32_t slots)
+{
+    uint32_t used = 0, capacity = 0;
+    if (g_win.reach == NULL || g_win.reachFar == 0 || g_win.freeCount == 0) return;
+    if ((float)bodies >= WINDOW_FAR_SHARE * (float)slots || !RenderPool0(&used, &capacity) || (float)used >= WINDOW_FAR_SHARE * (float)capacity)
+    { g_win.farHeld++; return; }
+    const float cell = g_plan.cell, near2 = WINDOW_IN * WINDOW_IN;
+    const int reach = (int)ceilf(WINDOW_FAR / cell);
+    uint32_t done = 0;
+    for (int pass = 0; pass < 2 && done < WINDOW_FAR_PER_SCAN; pass++)
+        for (int p = 0; p < g_stream.playerCount && done < WINDOW_FAR_PER_SCAN; p++)
+        {
+            float px = g_streamPlayerAt[p][0] + g_stream.half, py = g_streamPlayerAt[p][1] + g_stream.half;
+            int ci = (int)floorf(px / cell), cj = (int)floorf(py / cell);
+            for (int j = cj - reach; j <= cj + reach && done < WINDOW_FAR_PER_SCAN; j++)
+                for (int i = ci - reach; i <= ci + reach && done < WINDOW_FAR_PER_SCAN; i++)
+                {
+                    if (i < 0 || j < 0 || i >= STAMP_PLAN_GRID || j >= STAMP_PLAN_GRID) continue;
+                    int b = j * STAMP_PLAN_GRID + i;
+                    for (uint32_t e = g_plan.start[b]; e < g_plan.start[b + 1] && done < WINDOW_FAR_PER_SCAN; e++)
+                    {
+                        float r = (float)g_win.reach[e];
+                        if (g_plan.slot[e] != 0 || r <= WINDOW_IN || (pass == 0) != (r > WINDOW_FAR_BIG)) continue;
+                        float xy[2]; memcpy(xy, g_stamps.cand[e].loc, 8);
+                        float dx = xy[0] - px, dy = xy[1] - py, d2 = dx * dx + dy * dy;
+                        if (d2 <= near2 || d2 > r * r) continue;
+                        if (!WindowEnterLocked(e, r + WINDOW_FAR_LEAVE)) { if (g_win.freeCount == 0 || g_win.refusedIndex) return; continue; }
+                        g_win.enteredFar++;
+                        done++;
+                    }
+                }
+        }
+}
+
 static void WindowScanLocked(ULONGLONG now)
 {
     if (now < g_win.nextScan || !WindowReadyLocked()) return;
@@ -239,17 +327,21 @@ static void WindowScanLocked(ULONGLONG now)
                         float xy[2]; memcpy(xy, g_stamps.cand[e].loc, 8);
                         float dx = xy[0] - px, dy = xy[1] - py;
                         if (dx * dx + dy * dy > r2) continue;
-                        if (!WindowEnterLocked(e)) { if (g_win.freeCount == 0 || g_win.refusedIndex) return; continue; }
+                        if (!WindowEnterLocked(e, 0.0f)) { if (g_win.freeCount == 0 || g_win.refusedIndex) return; continue; }
                         done++;
                     }
                 }
     }
+    WindowScanFarLocked(bodies, slots);
 }
 
 static void WindowNoteLocked(void)
 {
     if (!g_win.on) return;
-    Note("difficulty: extra large maps: stamp window: %u in (slots used %u of %u, highest %u), %u entered, %u left so far; refused: %u table full, %u index full, %u scans over the body budget",
+    uint32_t used = 0, capacity = 0;
+    int pool = RenderPool0(&used, &capacity);
+    Note("difficulty: extra large maps: stamp window: %u in (slots used %u of %u, highest %u), %u entered (%u of them far), %u left so far; refused: %u table full, %u index full, %u scans over the body budget, %u far scans held (bodies %u of %u, culling pool 0 %u of %u%s)",
         (DIF_LOCATIONS - g_win.base) - g_win.freeCount, (DIF_LOCATIONS - g_win.base) - g_win.freeCount, DIF_LOCATIONS - g_win.base, g_win.high, g_win.entered,
-        g_win.left, g_win.refusedFull, g_win.refusedIndex, g_win.refusedBodies);
+        g_win.enteredFar, g_win.left, g_win.refusedFull, g_win.refusedIndex, g_win.refusedBodies, g_win.farHeld, g_stream.bodiesUsed, g_stream.bodySlots,
+        used, capacity, pool ? "" : ", not read");
 }

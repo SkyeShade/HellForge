@@ -163,6 +163,7 @@ static uint8_t g_streamFormation[kStreamMaxLocations];   /* 1: a large formation
                                                             under the physics budget wherever the players are, kept */
 static ULONGLONG g_streamOutSince[kStreamMaxLocations];  /* tick it first went beyond kStreamOutRadius (0: not out) */
 static uint8_t g_streamMission[kStreamMaxLocations];     /* 1: an important location's stamp (WorldStreamMissionLocked) */
+static float g_streamOut2[kStreamMaxLocations];          /* > 0: this slot's own removal radius, squared (a far window stamp) */
 
 static SRWLOCK g_streamLock = SRWLOCK_INIT;
 static volatile LONG g_streamOwn;     /* the streamer's own call: the thread id inside it (0: none) */
@@ -209,6 +210,7 @@ static void WorldStreamClearLocked(void)
     g_stream.spentMs = 0.0;
     memset(g_streamDeferred, 0, sizeof g_streamDeferred);
     memset(g_streamFormation, 0, sizeof g_streamFormation);
+    memset(g_streamOut2, 0, sizeof g_streamOut2);
     memset(g_streamDue, 0, sizeof g_streamDue);
     memset(g_streamSpawned, 0, sizeof g_streamSpawned);
     memset(g_streamPoseGood, 0, sizeof g_streamPoseGood);
@@ -758,7 +760,7 @@ static void WorldStreamScanLocked(ULONGLONG now)
         if (g_streamLive[i] && g_streamFormation[i]) continue; /* a far formation stays */
         if (g_streamLive[i])
         {
-            if (g_stream.playerCount > 0 && best > out)
+            if (g_stream.playerCount > 0 && best > (g_streamOut2[i] > out ? g_streamOut2[i] : out))
             {
                 if (g_streamOutSince[i] == 0) g_streamOutSince[i] = now;
             }

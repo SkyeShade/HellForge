@@ -5634,7 +5634,18 @@ static const char* OptionalDrawSite(uintptr_t game, uint8_t* code)
 #define RENDER_CAP_BACK 0x10CE04u
 #define RENDER_CAP_MAIN 0x200000u
 #define RENDER_CAP_MUL 2u
-static struct { volatile LONG* made; uint32_t* mul; int on; LONG noted; } g_renderCap;
+static struct { volatile LONG* made; uint32_t* mul; volatile uint64_t* scenePtr; int on; LONG noted; } g_renderCap;
+/* The main world's culling pool 0 (the one that filled, 0x58E14B): the stub keeps the main world's scene out-pointer
+ * (0x10CDE0's rdx; 0x10CEB6 stores 0x1E4080's scene there, which returns its rcx r12: 0x1E4CCF), pool 0 is
+ * [scene+0x268] (0x1E41F5; the add at 0x1E6BE2 takes it), its used count +0x30 and capacity +0x34 (0x751A0). */
+static int RenderPool0(uint32_t* used, uint32_t* capacity)
+{
+    uint64_t at = 0, scene = 0, pool = 0;
+    if (g_renderCap.on != 1 || (at = *g_renderCap.scenePtr) == 0) return 0;
+    if (SafeRead((uintptr_t)at, &scene, 8) || scene == 0 || SafeRead((uintptr_t)scene + 0x268, &pool, 8) || pool == 0 ||
+        SafeRead((uintptr_t)pool + 0x30, used, 4) || SafeRead((uintptr_t)pool + 0x34, capacity, 4) || *capacity == 0 || *used > *capacity) return 0;
+    return 1;
+}
 static const char kRenderCapPin[] = "8B BC 24 C8 00 00 00 48 8B F1 B9 00 02 00 00 4C 8B FA 8B C7 4D 8B F0 C1 E8 03";
 
 static void RenderCapacityInstall(void)
@@ -5646,29 +5657,34 @@ static void RenderCapacityInstall(void)
     { Note("difficulty: render capacity: the world creation is not the reviewed code; the main world keeps its pools"); return; }
     uint8_t* page = AllocateNearGame(exe, 0x1000);
     if (page == NULL) { Note("difficulty: render capacity: no room near the exe for the stub"); return; }
-    /* the stub at +0, the counter at +0x40, the multiplier at +0x44:
-     * mov edi,[rsp+0xC8]; cmp edi,0x200000; jne done; lock inc dword [count]; imul edi,[mul]; done: jmp back */
+    /* the stub at +0, the counter at +0x40, the multiplier at +0x44, the scene out-pointer at +0x48:
+     * mov edi,[rsp+0xC8]; cmp edi,0x200000; jne done; lock inc dword [count]; mov [scenePtr],rdx; imul edi,[mul];
+     * done: jmp back (rdx is 0x10CDE0's second argument here: 0x10CDE0..0x10CDFD leave it, 0x10CE0C copies it to r15) */
     static const uint8_t code[] = {
         0x8B, 0xBC, 0x24, 0xC8, 0x00, 0x00, 0x00,       /* +0  mov edi,[rsp+0xC8] */
         0x81, 0xFF, 0x00, 0x00, 0x20, 0x00,             /* +7  cmp edi,0x200000 */
-        0x75, 0x0E,                                     /* +13 jne +29 */
+        0x75, 0x15,                                     /* +13 jne +36 */
         0xF0, 0xFF, 0x05, 0, 0, 0, 0,                   /* +15 lock inc dword [rip+rel] (ends +22) */
-        0x0F, 0xAF, 0x3D, 0, 0, 0, 0,                   /* +22 imul edi,[rip+rel] (ends +29) */
-        0xE9, 0, 0, 0, 0};                              /* +29 jmp back (ends +34) */
-    _Static_assert(sizeof code == 34, "render capacity stub size");
+        0x48, 0x89, 0x15, 0, 0, 0, 0,                   /* +22 mov [rip+rel],rdx (ends +29) */
+        0x0F, 0xAF, 0x3D, 0, 0, 0, 0,                   /* +29 imul edi,[rip+rel] (ends +36) */
+        0xE9, 0, 0, 0, 0};                              /* +36 jmp back (ends +41) */
+    _Static_assert(sizeof code == 41, "render capacity stub size");
     memcpy(page, code, sizeof code);
     g_renderCap.made = (volatile LONG*)(page + 0x40);
     g_renderCap.mul = (uint32_t*)(page + 0x44);
+    g_renderCap.scenePtr = (volatile uint64_t*)(page + 0x48);
     *g_renderCap.made = 0;
     *g_renderCap.mul = RENDER_CAP_MUL;
+    *g_renderCap.scenePtr = 0;
     int32_t rel = (int32_t)((intptr_t)(page + 0x40) - (intptr_t)(page + 22)); memcpy(page + 18, &rel, 4);
-    rel = (int32_t)((intptr_t)(page + 0x44) - (intptr_t)(page + 29)); memcpy(page + 25, &rel, 4);
-    intptr_t back = (intptr_t)(exe + RENDER_CAP_BACK) - (intptr_t)(page + 34);
+    rel = (int32_t)((intptr_t)(page + 0x48) - (intptr_t)(page + 29)); memcpy(page + 25, &rel, 4);
+    rel = (int32_t)((intptr_t)(page + 0x44) - (intptr_t)(page + 36)); memcpy(page + 32, &rel, 4);
+    intptr_t back = (intptr_t)(exe + RENDER_CAP_BACK) - (intptr_t)(page + 41);
     intptr_t reach = (intptr_t)page - (intptr_t)(exe + RENDER_CAP_SITE + 5);
     if (back != (intptr_t)(int32_t)back || reach != (intptr_t)(int32_t)reach)
     { Note("difficulty: render capacity: the stub is out of reach"); return; }
-    rel = (int32_t)back; memcpy(page + 30, &rel, 4);
-    if (page[13] != 0x75 || page[14] != 29 - 15 || page[15] != 0xF0 || page[22] != 0x0F || page[29] != 0xE9)
+    rel = (int32_t)back; memcpy(page + 37, &rel, 4);
+    if (page[13] != 0x75 || page[14] != 36 - 15 || page[15] != 0xF0 || page[22] != 0x48 || page[29] != 0x0F || page[36] != 0xE9)
     { Note("difficulty: render capacity: the stub did not assemble"); return; }
     DWORD old = 0;
     if (!VirtualProtect(page, 0x1000, PAGE_EXECUTE_READWRITE, &old)) { Note("difficulty: render capacity: the stub is not executable"); return; }
