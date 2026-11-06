@@ -54,7 +54,7 @@ static const char kMoveCraterRenderPin[] = "40 55 56 41 56 41 57 48 8D AC 24 38 
 #define MOVE_HOLD_MS 60000u   /* craters are never held longer than this */
 #define MOVE_SKIP_MS 120000u  /* a cell whose build failed waits this long */
 
-enum { MV_IDLE, MV_PACKAGE, MV_STAMPS, MV_KICK, MV_SETUP, MV_LOOKUP, MV_REPLAY, MV_TEARDOWN, MV_UNSTAMP, MV_SPAWN, MV_READY };
+enum { MV_IDLE, MV_PACKAGE, MV_STAMPS, MV_KICK, MV_SETUP, MV_LOOKUP, MV_REPLAY, MV_TEARDOWN, MV_UNSTAMP, MV_SPAWN, MV_READY, MV_FAILING };
 #define MOVE_STAMPS_MAX 32768u /* the plan's stamps in reach too (difficulty_stream_window.c): a tile at vanilla density */
 #define MOVE_STAMP_MARGIN 512.0f /* locations this far past the tile's texels: a stamp's terrain reaches ~256 m from it */
 #define MOVE_STAMP_REACH 256.0f /* a stamp's terrain reaches about this far from it: these go in first */
@@ -75,7 +75,8 @@ static struct
     uintptr_t levelPtr;
     float origin[2], centre[2];
     uint32_t at2F, at37, at38, at4C, at66, frames, waits, calls;
-    int pkgPending; uint32_t pkgFrames; /* the merge package's release, MOVE_PKG_FRAMES after the teardown that gave it up */
+    int pkgPending; uint32_t pkgFrames;
+    int failState; /* the state a build failed in (MoveFailRest destroys the new tile's terrain from MV_SPAWN on) */ /* the merge package's release, MOVE_PKG_FRAMES after the teardown that gave it up */
     /* the stamp terrains of the tile's locations (0x2F spawns them for 0x63 to draw, 0x65 takes them away): staging
      * copies of their records, the real indices, their units, the counts the two ops read through pointers */
     uint8_t* stLoc; uint32_t* stIndex; uint64_t* stUnit; uint32_t stCount, stUnits, stTemp; int stamped;
@@ -477,22 +478,17 @@ static void MoveTeardown(void)
     if (arena != 0) ((ArenaFn)(g_world.game + 0x173BAB0u))(arena);
 }
 
-/* A build that did not finish: the merge torn down, the new tile's maps and terrain gone, the drop tile's back. */
-static void MoveFail(const char* why)
+/* 0x65's cleanup queues one destroy per live layer unit (exe 0xE1200 -> 0x12D2D0) and up to 0x1000 stamp levels a call;
+ * the world's list holds 8192 and the frame's drain empties it. A call runs only while the list is below the engine's
+ * own "many destroys" mark (0x800, world interface +0x78), one a frame. */
+#define MOVE_DESTROY_ROOM 0x800
+
+/* The rest of a failed build, once its stamp terrains are away. */
+static void MoveFailRest(void)
 {
-    Note("difficulty: moving tiles: the tile of cell (%d, %d) is not built: %s", g_move.cell[0], g_move.cell[1], why);
-    if (g_nearActive) NearReplayEnd(0);
-    if (g_move.stamped)
-    {
-        /* the stamp terrains away (0x65 needs no frames to pass: a few calls) */
-        int r = 0;
-        if (MoveStampsRecord(g_near.at65, 0x65)) for (int k = 0; k < 64 && r == 0; k++) r = MoveRunRecord();
-        if (r != 1) Note("difficulty: moving tiles: the stamp terrains were not all taken away (0x65: %d)", r);
-        g_move.stamped = 0;
-    }
     MoveStampUnitsDestroy();
     MoveTeardown();
-    if (g_move.state >= MV_SPAWN && g_near.handle != 0 && g_near.handle != g_move.dropHandle)
+    if (g_move.failState >= MV_SPAWN && g_near.handle != 0 && g_near.handle != g_move.dropHandle)
     {
         typedef void (*DestroyFn)(uint64_t world, uint64_t handle);
         DestroyFn destroy = (DestroyFn)NearApi(0x08, 0x1E0);
@@ -508,6 +504,23 @@ static void MoveFail(const char* why)
     MoveRestoreDrop();
     g_move.failed++;
     g_move.state = MV_IDLE;
+}
+
+/* A build that did not finish: the merge torn down, the new tile's maps and terrain gone, the drop tile's back. With
+ * stamp terrains spawned, 0x65 takes them away first, one call a frame (MV_FAILING), as MV_UNSTAMP does. */
+static void MoveFail(const char* why)
+{
+    Note("difficulty: moving tiles: the tile of cell (%d, %d) is not built: %s", g_move.cell[0], g_move.cell[1], why);
+    if (g_nearActive) NearReplayEnd(0);
+    if (g_move.state != MV_FAILING) g_move.failState = g_move.state;
+    if (g_move.stamped && g_move.state != MV_FAILING && MoveStampsRecord(g_near.at65, 0x65))
+    {
+        g_move.waits = 0; g_move.state = MV_FAILING;
+        return;
+    }
+    if (g_move.stamped) Note("difficulty: moving tiles: the stamp terrains were not all taken away");
+    g_move.stamped = 0;
+    MoveFailRest();
 }
 
 static void MoveRelease(int slot)
@@ -824,8 +837,19 @@ static void MoveTick(uint64_t level)
         g_move.state = MV_SPAWN;
         return;
     }
+    if (g_move.state == MV_FAILING)
+    {
+        if (DestroyListCount(MoveWorld()) >= MOVE_DESTROY_ROOM) { if (++g_move.waits > 600) { g_move.stamped = 0; Note("difficulty: moving tiles: the destroy list did not empty; the stamp terrains were not all taken away"); MoveFailRest(); } return; }
+        int r = MoveRunRecord();
+        if (r == 0 && ++g_move.waits <= 600) return;
+        if (r != 1) Note("difficulty: moving tiles: the stamp terrains were not all taken away (0x65: %d)", r);
+        g_move.stamped = 0;
+        MoveFailRest();
+        return;
+    }
     if (g_move.state == MV_UNSTAMP)
     {
+        if (DestroyListCount(MoveWorld()) >= MOVE_DESTROY_ROOM) { if (++g_move.waits > 600) { g_move.stamped = 0; MoveFail("the destroy list did not empty"); } return; }
         int r = MoveRunRecord();
         if (r < 0) { g_move.stamped = 0; MoveFail("0x65 faulted"); return; }
         if (r == 0) { if (++g_move.waits > 600) { g_move.stamped = 0; MoveFail("0x65 did not finish"); } return; }
@@ -871,11 +895,11 @@ static void MoveCostAdd(double ms, int mv, int ns, int step, int conf, int bld)
 
 static void MoveCostNote(void)
 {
-    static const char* const mv[] = {"idle", "package", "stamps", "kick", "setup", "lookup", "replay", "teardown", "unstamp", "spawn", "ready"};
+    static const char* const mv[] = {"idle", "package", "stamps", "kick", "setup", "lookup", "replay", "teardown", "unstamp", "spawn", "ready", "failing"};
     char line[640]; int n = 0;
     for (int k = 0; k < 6 && g_moveCost.ms[k] > 0 && n < 600; k++)
         n += snprintf(line + n, sizeof line - n, " %.0f ms (%s, near state %d, step %d, building %d, conform phase %d);", g_moveCost.ms[k],
-            g_moveCost.mv[k] >= 0 && g_moveCost.mv[k] <= MV_READY ? mv[g_moveCost.mv[k]] : "?", g_moveCost.ns[k], g_moveCost.step[k], g_moveCost.bld[k], g_moveCost.conf[k]);
+            g_moveCost.mv[k] >= 0 && g_moveCost.mv[k] <= MV_FAILING ? mv[g_moveCost.mv[k]] : "?", g_moveCost.ns[k], g_moveCost.step[k], g_moveCost.bld[k], g_moveCost.conf[k]);
     Note("difficulty: moving tiles: the build's cost on the game thread: %.0f ms over %u frames; the longest:%s", g_moveCost.sum, g_moveCost.frames, line);
     memset(&g_moveCost, 0, sizeof g_moveCost);
 }

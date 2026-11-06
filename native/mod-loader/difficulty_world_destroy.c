@@ -16,7 +16,9 @@
 #define DESTROY_TABLE 0x1A100F0u
 #define DESTROY_LOCK_SHARED 0x13F6760u
 #define DESTROY_UNLOCK_SHARED 0x13F6758u
-#define DESTROY_WAITING 4096
+#define DESTROY_WAITING 65536 /* a 0x65 cleanup asks for up to 4096 a call (one per stamp level), MoveFail's for more */
+#define DESTROY_LIST 0x10030u   /* world+0x10030: the list's count; its 8192 slots at world+0x30 end there */
+#define DESTROY_ROOM (8192 - 512) /* 0x12D2D0 reserves with lock xadd and never checks for room: slot 8192 IS the count */
 #define DESTROY_WAIT_TICKS 600u
 static const char kDestroyQueuePin[] = "40 56 41 54 41 55 41 56 41 57 48 83 EC 20 45 8B E0 4C 8B F2 4C 8B E9 45 8B F8 F0 44 0F C1 B9 30 00 01 00";
 
@@ -31,6 +33,7 @@ static DestroyLockFn g_destroyLock, g_destroyUnlock;
 static uintptr_t g_destroyTableAt;
 static SRWLOCK g_destroyWaitLock = SRWLOCK_INIT;
 static struct { uint64_t world; uint32_t handle, ticks; uintptr_t level; } g_destroyWait[DESTROY_WAITING];
+static volatile LONG g_destroyRoomHeld; /* destroys of live units held until the list had room */
 static volatile LONG g_destroyWaiting, g_destroyHeld, g_destroyPassed, g_destroyStale, g_destroyTimedOut, g_destroyFull, g_destroyNotes;
 
 /* 0: resolves (a unit), 1: pending (its slot is live, no unit yet), 2: stale. */
@@ -52,31 +55,54 @@ static int DestroyHandleState(uint32_t h)
     return state;
 }
 
+/* The world's destroy list count (world+0x10030), or DESTROY_ROOM when it does not read. Runs s85a/s85b: MoveFail's
+ * in-frame 0x65 loop queued 15218 / 23529 layer-unit destroys (0xE1200 -> 0x12D2D0 at 0xE149C) into the 8192 slots: the
+ * 8193rd overwrote the count, later ones the records after it, and the drain walked past the end (exe+0x12E71B; static
+ * + dumps, subagent drain85). */
+static LONG DestroyListCount(uint64_t world)
+{
+    int32_t c = 0;
+    if (world == 0 || SafeRead(world + DESTROY_LIST, &c, 4) || c < 0 || c > 8192) return DESTROY_ROOM;
+    return c;
+}
+
+static void DestroyHold(uint64_t world, uint32_t handle)
+{
+    AcquireSRWLockExclusive(&g_destroyWaitLock);
+    if (g_destroyWaiting < DESTROY_WAITING)
+    {
+        g_destroyWait[g_destroyWaiting].world = world; g_destroyWait[g_destroyWaiting].handle = handle;
+        g_destroyWait[g_destroyWaiting].ticks = 0; g_destroyWait[g_destroyWaiting].level = g_worldLevel;
+        g_destroyWaiting++;
+    }
+    else InterlockedIncrement(&g_destroyFull);
+    ReleaseSRWLockExclusive(&g_destroyWaitLock);
+}
+
 static void DestroyQueueDetour(uint64_t world, uint32_t* handles, uint32_t n)
 {
     if (handles == NULL || n == 0) { g_destroyQueue(world, handles, n); return; }
     uint32_t i = 0;
     while (i < n && DestroyHandleState(handles[i]) == 0) i++;
-    if (i == n) { g_destroyQueue(world, handles, n); return; } /* the usual case: all of them exist */
+    LONG room = DESTROY_ROOM - DestroyListCount(world);
+    if (i == n && (LONG)n <= room) { g_destroyQueue(world, handles, n); return; } /* the usual case: all exist, room for them */
     uint32_t pass[256], k = 0;
     void* caller = __builtin_return_address(0);
     for (i = 0; i < n; i++)
     {
         int state = DestroyHandleState(handles[i]);
-        if (state == 0) { pass[k++] = handles[i]; if (k == 256) { g_destroyQueue(world, pass, k); k = 0; } continue; }
+        if (state == 0)
+        {
+            if (room - (LONG)k <= 0) { DestroyHold(world, handles[i]); InterlockedIncrement(&g_destroyRoomHeld); continue; }
+            pass[k++] = handles[i];
+            if (k == 256) { g_destroyQueue(world, pass, k); room -= (LONG)k; k = 0; }
+            continue;
+        }
         if (InterlockedIncrement(&g_destroyNotes) <= 8)
             Note("difficulty: extra large maps: a destroy asked for unit 0x%08X, which %s (caller %p); %s", handles[i], state == 1 ? "is not made yet" : "is gone",
                 caller, state == 1 ? "it waits until it is" : "dropped");
         if (state == 2) { InterlockedIncrement(&g_destroyStale); continue; }
-        AcquireSRWLockExclusive(&g_destroyWaitLock);
-        if (g_destroyWaiting < DESTROY_WAITING)
-        {
-            g_destroyWait[g_destroyWaiting].world = world; g_destroyWait[g_destroyWaiting].handle = handles[i];
-            g_destroyWait[g_destroyWaiting].ticks = 0; g_destroyWait[g_destroyWaiting].level = g_worldLevel;
-            g_destroyWaiting++; InterlockedIncrement(&g_destroyHeld);
-        }
-        else InterlockedIncrement(&g_destroyFull);
-        ReleaseSRWLockExclusive(&g_destroyWaitLock);
+        DestroyHold(world, handles[i]); InterlockedIncrement(&g_destroyHeld);
     }
     if (k) g_destroyQueue(world, pass, k);
 }
@@ -86,11 +112,18 @@ static void DestroyTick(void)
 {
     if (g_destroyQueue == NULL || g_destroyWaiting == 0) return;
     AcquireSRWLockExclusive(&g_destroyWaitLock);
+    uint64_t roomWorld = 0;
+    LONG room = 0;
     for (LONG j = 0; j < g_destroyWaiting;)
     {
         int state = g_destroyWait[j].level != g_worldLevel ? 2 : DestroyHandleState(g_destroyWait[j].handle);
         if (state == 1 && ++g_destroyWait[j].ticks <= DESTROY_WAIT_TICKS) { j++; continue; }
-        if (state == 0) { uint32_t h = g_destroyWait[j].handle; g_destroyQueue(g_destroyWait[j].world, &h, 1); g_destroyPassed++; }
+        if (state == 0)
+        {
+            if (g_destroyWait[j].world != roomWorld) { roomWorld = g_destroyWait[j].world; room = DESTROY_ROOM - DestroyListCount(roomWorld); }
+            if (room <= 0) { j++; continue; } /* the frame's drain empties the list: next frame */
+            uint32_t h = g_destroyWait[j].handle; g_destroyQueue(g_destroyWait[j].world, &h, 1); g_destroyPassed++; room--;
+        }
         else if (state == 1) g_destroyTimedOut++;
         else g_destroyStale++;
         g_destroyWait[j] = g_destroyWait[--g_destroyWaiting];
@@ -124,6 +157,8 @@ static void DestroyNote(void)
         bodyNoted = dead;
         Note("difficulty: extra large maps: moved bodies of units that are gone left out of the pose sync: %ld", (long)dead);
     }
+    static LONG roomNoted;
+    if (g_destroyRoomHeld != roomNoted) { roomNoted = g_destroyRoomHeld; Note("difficulty: extra large maps: destroys held until the world's destroy list had room: %ld", (long)roomNoted); }
     if (memcmp(now, last, sizeof now) == 0 || (now[0] == 0 && now[2] == 0 && now[3] == 0)) return;
     memcpy(last, now, sizeof now);
     Note("difficulty: extra large maps: destroys of units not made yet: %ld held (%ld passed on once made, %ld waited too long, %ld waiting), %ld of units gone dropped, %ld not held (list full)",
