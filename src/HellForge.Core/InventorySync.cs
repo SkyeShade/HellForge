@@ -11,10 +11,10 @@ namespace HellForge.Core;
 // an import the player reviews (AccountImportSettings, HellForge.LocalBackend AccountImport).
 //
 // The capture proxy (app/capture/HellForge.CaptureProxy.exe) runs elevated: it maps the live API host to loopback in the
-// hosts file, trusts a per-run CA, terminates TLS for the normal game's login and, with that login's session, reads
-// /api/Progression and /api/Progression/inventory. It seals both for the signed-in Steam account (SnapshotSeal) as soon as
-// the inventory is in, then closes the game the sync opened (CaptureGameEnd: left running, it showed Easy Anti-Cheat's
-// "Could not connect" and closed itself), and once the game has exited removes the hosts line and the CA. The files land
+// hosts file, trusts a per-run CA, terminates TLS for the normal game and keeps the API's answers to the game's own reads
+// of /api/Progression and /inventory after its login, never a request of its own (CaptureCompletion), seals both for the
+// signed-in Steam account (SnapshotSeal), then closes the sync's game (CaptureGameEnd: left running, it showed Easy
+// Anti-Cheat's "Could not connect"), and once the game has exited removes the hosts line and the CA. The files land
 // in a private sync folder under logs/, and FinalizeCapture moves them into account-snapshot/<profile>/ once the
 // capture's state (CaptureState) says they are sealed.
 //
