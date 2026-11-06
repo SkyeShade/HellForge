@@ -110,8 +110,34 @@ static uint64_t ActivateDetour(void* manager, int32_t element, uint32_t thrower,
     return g_activate(manager, element, thrower, position, record, type, s7, s8, s9, s10);
 }
 
+/* Research (s94b/s95b/s96b crashes at level spawn: an entity's component instances missing): SpawnEntity 0xFDC140 takes
+ * the entity record at the cursor (manager +0xF32F14) of the manager's 2048 (0x800) records of 24 B at +0xF32F18 ({+0
+ * resource, +8 entity id or none = [game+0x348456C], +0xC unit, +0x10, +0x14}) and then searches the next free one, at
+ * most 2048 slots (0xFDC1DF..0xFDC228): with all of them live it overwrites a live entity's record. The first times
+ * that happens, with the live records then. */
+static volatile LONG g_spawnOverwrites;
+static void SpawnRecordCheck(void* manager, uint32_t entity, uint64_t resource)
+{
+    static uintptr_t game;
+    if (game == 0) game = (uintptr_t)GetModuleHandleW(L"game.dll");
+    uint32_t cursor = 0, id = 0, none = 0;
+    uintptr_t m = (uintptr_t)manager;
+    if (game == 0 || m == 0 || SafeRead(game + 0x348456Cu, &none, 4) || SafeRead(m + 0xF32F14u, &cursor, 4) || cursor >= 0x800u ||
+        SafeRead(m + 0xF32F18u + 24ull * cursor + 8, &id, 4) || id == none) return;
+    if (InterlockedIncrement(&g_spawnOverwrites) > 4) return;
+    uint32_t live = 0;
+    for (uint32_t i = 0; i < 0x800u; i++)
+    {
+        uint32_t other = none;
+        if (!SafeRead(m + 0xF32F18u + 24ull * i + 8, &other, 4) && other != none) live++;
+    }
+    Note("research: entity records: spawning entity 0x%X (resource %016llx) over the live record %u (entity 0x%X); %u of 2048 records live",
+        entity, (unsigned long long)resource, cursor, id, live);
+}
+
 static uint64_t SpawnDetour(void* manager, uint32_t entity, uint64_t resource, const uint8_t* info, uint64_t s5, uint64_t s6)
 {
+    SpawnRecordCheck(manager, entity, resource);
     uint64_t result = g_spawn(manager, entity, resource, info, s5, s6);
     BehaviourSpawned(entity, resource, info); /* co-op diagnostics (behaviours.c) */
     if (AnyListener(HF_ON_SPAWN))
