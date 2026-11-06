@@ -21,6 +21,7 @@
 #define DIF_WORLD_MAP_SCALE 2.0f      /* a map_scale above this needs a world larger than 2048 m (its disk passes 1022 m) */
 #define DIF_WORLD_SIZE_SITE 0xF714E8u /* movss [r13+0x1e0], xmm0 (r13 = lg; the descriptor is decoded, lg+0xF9 the level) */
 #define DIF_WORLD_SIZE_BACK 0xF714F1u
+static volatile uint32_t* g_paintedPeak; /* op 0x7C's painted route-cell list peak (InstallRouteCellLists) */
 static const uint8_t kWorldSizePin[9] = {0xF3, 0x41, 0x0F, 0x11, 0x85, 0xE0, 0x01, 0x00, 0x00};
 /* The director's spawn gate: movss xmm0, [+2000.0] and movss xmm1, [-2000.0], each compared with x, y and z. */
 static const struct { uint32_t rva, constant; } kWorldGate[2] = {{0x953642u, 0x23C7DD0u}, {0x953653u, 0x23C83CCu}};
@@ -4798,6 +4799,12 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
         op == 0x07 || op == 0x12 || op == 0x75 || op == 0x79 || op == 0xB9 || op == 0xA3 || op == 0xA4 || op == 0x78)
         Note("difficulty: extra large maps: op 0x%X (record %u) at %.0fx: locations %u -> %u, route vertices %u, cells %u, edges %u, %.1f ms",
             op, at, (double)g_world.current, before, after, route[0], route[1], route[2], ms);
+    if (op == 0x7C && g_paintedPeak != NULL)
+    {
+        Note("difficulty: extra large maps: op 0x7C: painted route-cell list peak %u (capacity cells %u + locations %u; the game's was %u)",
+            *g_paintedPeak, route[1], after, route[1]);
+        *g_paintedPeak = 0;
+    }
     return r;
 }
 static const struct { uint32_t rva; void* detour; WorldPassFn* original; } kWorldPasses[] = {
@@ -5904,6 +5911,45 @@ static void RenderCapacityNote(void)
 }
 
 static const char* InstallCityGates(uintptr_t game); /* difficulty_world_gates.c */
+/* Op 0x7C AttachLocationsToRouteCells (0xF81020) on an XL map (KB xl-world-streaming, "i3 crash"; static, P): its list
+ * of painted route cells L ([rsp+0x48]) and its DFS stack S ([rsp+0x88]) come from the generation bump arena sized
+ * cells x 8 (lea rdx, [rbx*8] at 0xF8112B / 0xF810F4; rbx = the route-cell count, 0xF810AE). L's count r12 is zeroed once
+ * (0xF81149) and every location that starts a cluster pushes its cell again (0xF81676, no duplicate check), so L can
+ * reach cells + locations. At 8x the important locations (326) outnumber the cells (301): L ran into the zone roll's
+ * u32[16] D0 that follows it (0xF81151), whose (9, 10) was then read as a cell (0xF81C83, c0000005 at 0xA00000011).
+ * Both sizes become (cells + locations) x 8: lea rdx, [rbx+rbp]; shl rdx, 3 (rbp = the location count, 0xF81071; both
+ * zero-extended u32 and preserved across the arena calls). A probe at 0xF81BE3 (mov [rsp+0x68], r12d) keeps L's peak
+ * (g_paintedPeak, declared with the op wrapper). */
+static const char* InstallRouteCellLists(uintptr_t game)
+{
+    static const uint8_t sized[8] = {0x48, 0x8D, 0x14, 0x2B, 0x48, 0xC1, 0xE2, 0x03};
+    if (!ApiCodeMatches(game + 0xF810F4u, "48 8D 14 DD 00 00 00 00") || !ApiCodeMatches(game + 0xF8112Bu, "48 8D 14 DD 00 00 00 00") ||
+        !ApiCodeMatches(game + 0xF810AEu, "8B 18") || !ApiCodeMatches(game + 0xF81071u, "8B 28") || !ApiCodeMatches(game + 0xF81149u, "45 33 E4") ||
+        !ApiCodeMatches(game + 0xF81BE3u, "44 89 64 24 68 48 C1 E8 3F"))
+        return "op 0x7C's route-cell lists are not the reviewed code; an XL map can overrun them (the i3 crash)";
+    if (ApiWrite(game + 0xF810F4u, sized, 8) || ApiWrite(game + 0xF8112Bu, sized, 8)) return "op 0x7C's route-cell lists could not be resized";
+    uint8_t* block = AllocateNearGame(game, 0x2000);
+    if (block == NULL) return "op 0x7C's lists are resized; no memory near game.dll for their probe";
+    uint8_t code[26] = {0x44, 0x89, 0x64, 0x24, 0x68,          /* mov [rsp+0x68], r12d (the original) */
+        0x44, 0x3B, 0x25, 0, 0, 0, 0,                          /* cmp r12d, [rip+peak] (rel32 at 8, next 12) */
+        0x76, 0x07,                                            /* jbe +7 */
+        0x44, 0x89, 0x25, 0, 0, 0, 0,                          /* mov [rip+peak], r12d (rel32 at 17, next 21) */
+        0xE9, 0, 0, 0, 0};                                     /* jmp 0xF81BE8 (rel32 at 22, next 26); flags are dead there (shr) */
+    int32_t rel = 0x1000 - 12; memcpy(code + 8, &rel, 4);
+    rel = 0x1000 - 21; memcpy(code + 17, &rel, 4);
+    int64_t back = (int64_t)(game + 0xF81BE8u) - (int64_t)(uintptr_t)(block + 26);
+    if (!InRel32(back)) return "op 0x7C's lists are resized; their probe is out of reach";
+    rel = (int32_t)back; memcpy(code + 22, &rel, 4);
+    memcpy(block, code, sizeof code);
+    DWORD protect;
+    VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect);
+    FlushInstructionCache(GetCurrentProcess(), block, 0x1000);
+    uint8_t jump[5] = {0xE9, 0, 0, 0, 0};
+    rel = DifficultyJumpRel(game + 0xF81BE3u, (uintptr_t)block); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + 0xF81BE3u, jump, 5)) return "op 0x7C's lists are resized; their probe could not be written";
+    g_paintedPeak = (volatile uint32_t*)(block + 0x1000);
+    return NULL;
+}
 static void LwInstallWallReach(uintptr_t game); /* living_world.c */
 static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
 static const char* InstallWorld(DifficultyInstall* d)
@@ -6144,6 +6190,8 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (towns != NULL) Note("difficulty: extra large maps: %s", towns);
     const char* gates = InstallCityGates(game);
     if (gates != NULL) Note("difficulty: extra large maps: %s", gates);
+    const char* painted = InstallRouteCellLists(game);
+    Note("difficulty: extra large maps: %s", painted != NULL ? painted : "op 0x7C's painted route-cell list and stack sized cells + locations (was cells)");
     LwInstallWallReach(game);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
     if (cull == NULL) return "no memory within 2 GB of the exe for the occlusion test's guard";
