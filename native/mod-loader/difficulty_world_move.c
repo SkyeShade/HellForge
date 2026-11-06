@@ -76,6 +76,7 @@ static struct
     float origin[2], centre[2];
     uint32_t at2F, at37, at38, at4C, at66, frames, waits, calls;
     int pkgPending; uint32_t pkgFrames;
+    uint32_t ringWaits; /* frames the stamp units' destroy waited for the async spawn ring */
     int failState; /* the state a build failed in (MoveFailRest destroys the new tile's terrain from MV_SPAWN on) */ /* the merge package's release, MOVE_PKG_FRAMES after the teardown that gave it up */
     /* the stamp terrains of the tile's locations (0x2F spawns them for 0x63 to draw, 0x65 takes them away): staging
      * copies of their records, the real indices, their units, the counts the two ops read through pointers */
@@ -199,6 +200,7 @@ static void MoveLevelGone(void)
             g_tiles[k].tex[0] = g_tiles[k].tex[1] = g_tiles[k].band = 0; g_tiles[k].bandPixels = NULL;
         }
     g_move.state = MV_IDLE; g_move.level = -1; g_move.on = 0;
+    g_move.stTemp = 0; g_move.stamped = 0; /* their levels went with the world */
     InterlockedExchange(&g_moveBuilding, 0);
     MoveHold(0);
 }
@@ -278,6 +280,27 @@ static void MoveCellSkip(int a, int b, ULONGLONG now)
  * buildings and the streamer's state are not touched. */
 #define MOVE_STAMP_OFFSET 20000.0f
 static uint64_t MoveWorld(void);
+
+/* The world's async spawn ring is empty: with r9 = [world+0x20], *[r9+8] == *[r9+0x10] (the test 0x338960 makes at
+ * 0x338974..0x33898F before it drains). A level destroyed while its units still wait there skips them (0xD9970 at
+ * 0xD9B8A / 0xD9D6A: the handle resolves to no unit yet) and the drain makes them later as orphans with bodies no level
+ * removes (KB xl-world-streaming, subagent deadbody). 1 empty, 0 not, -1 unreadable. */
+static int MoveSpawnRingEmpty(uint64_t world)
+{
+    uint64_t ring = 0, at8 = 0, at10 = 0, a = 0, b = 0;
+    if (world == 0 || SafeRead(world + 0x20, &ring, 8) || ring == 0 || SafeRead(ring + 8, &at8, 8) || SafeRead(ring + 0x10, &at10, 8) ||
+        at8 == 0 || at10 == 0 || SafeRead(at8, &a, 8) || SafeRead(at10, &b, 8)) return -1;
+    return a == b;
+}
+
+/* MV_UNSTAMP / MV_FAILING: the stamp units go once the spawn ring is empty (at most 600 frames' wait). */
+static int MoveStampUnitsReady(void)
+{
+    if (g_move.stTemp == 0 || MoveSpawnRingEmpty(MoveWorld()) != 0) return 1;
+    if (++g_move.ringWaits <= 600) return 0;
+    Note("difficulty: moving tiles: the async spawn ring did not empty in 600 frames; the tile's stamp units go now");
+    return 1;
+}
 
 static void MoveStampUnitsDestroy(void)
 {
@@ -515,11 +538,12 @@ static void MoveFail(const char* why)
     if (g_move.state != MV_FAILING) g_move.failState = g_move.state;
     if (g_move.stamped && g_move.state != MV_FAILING && MoveStampsRecord(g_near.at65, 0x65))
     {
-        g_move.waits = 0; g_move.state = MV_FAILING;
+        g_move.waits = 0; g_move.ringWaits = 0; g_move.state = MV_FAILING;
         return;
     }
     if (g_move.stamped) Note("difficulty: moving tiles: the stamp terrains were not all taken away");
     g_move.stamped = 0;
+    if (g_move.stTemp != 0 && g_move.state != MV_FAILING) { g_move.ringWaits = 0; g_move.state = MV_FAILING; return; } /* the stamp units wait for the ring */
     MoveFailRest();
 }
 
@@ -839,21 +863,29 @@ static void MoveTick(uint64_t level)
     }
     if (g_move.state == MV_FAILING)
     {
-        if (DestroyListCount(MoveWorld()) >= MOVE_DESTROY_ROOM) { if (++g_move.waits > 600) { g_move.stamped = 0; Note("difficulty: moving tiles: the destroy list did not empty; the stamp terrains were not all taken away"); MoveFailRest(); } return; }
-        int r = MoveRunRecord();
-        if (r == 0 && ++g_move.waits <= 600) return;
-        if (r != 1) Note("difficulty: moving tiles: the stamp terrains were not all taken away (0x65: %d)", r);
-        g_move.stamped = 0;
+        if (g_move.stamped && DestroyListCount(MoveWorld()) >= MOVE_DESTROY_ROOM) { if (++g_move.waits > 600) { g_move.stamped = 0; g_move.ringWaits = 0; Note("difficulty: moving tiles: the destroy list did not empty; the stamp terrains were not all taken away"); } return; }
+        if (g_move.stamped)
+        {
+            int r = MoveRunRecord();
+            if (r == 0 && ++g_move.waits <= 600) return;
+            if (r != 1) Note("difficulty: moving tiles: the stamp terrains were not all taken away (0x65: %d)", r);
+            g_move.stamped = 0; g_move.ringWaits = 0;
+        }
+        if (!MoveStampUnitsReady()) return;
         MoveFailRest();
         return;
     }
     if (g_move.state == MV_UNSTAMP)
     {
-        if (DestroyListCount(MoveWorld()) >= MOVE_DESTROY_ROOM) { if (++g_move.waits > 600) { g_move.stamped = 0; MoveFail("the destroy list did not empty"); } return; }
-        int r = MoveRunRecord();
-        if (r < 0) { g_move.stamped = 0; MoveFail("0x65 faulted"); return; }
-        if (r == 0) { if (++g_move.waits > 600) { g_move.stamped = 0; MoveFail("0x65 did not finish"); } return; }
-        g_move.stamped = 0;
+        if (g_move.stamped)
+        {
+            if (DestroyListCount(MoveWorld()) >= MOVE_DESTROY_ROOM) { if (++g_move.waits > 600) { g_move.stamped = 0; MoveFail("the destroy list did not empty"); } return; }
+            int r = MoveRunRecord();
+            if (r < 0) { g_move.stamped = 0; MoveFail("0x65 faulted"); return; }
+            if (r == 0) { if (++g_move.waits > 600) { g_move.stamped = 0; MoveFail("0x65 did not finish"); } return; }
+            g_move.stamped = 0; g_move.ringWaits = 0;
+        }
+        if (!MoveStampUnitsReady()) return;
         MoveStampUnitsDestroy();
         MoveTeardown();
         memcpy(g_near.one69, g_near.keep69, sizeof g_near.one69); memcpy(g_near.one6B, g_near.keep6B, sizeof g_near.one6B);
