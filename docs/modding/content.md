@@ -59,8 +59,8 @@ constant is in the [SDK reference](../sdk-reference.md). The calls on this page,
 | `register_entity` | 6 | an entity (from a definition block) | its resource id, or 0 | 192, shared with weapons |
 | `add_entity` | 4 | an entity (the older form) | its resource id, or 0 | the same 192 |
 | `add_weapon` | 2 | an arsenal weapon | its loadout id, or 0 | the same 192 (but see below) |
-| `add_damage` | 3 | a damage type | its id (650 and up), or 0 | 64 |
-| `add_projectile` | 3 | a projectile type | its type (351 and up), or 0 | 64 |
+| `add_damage` | 3 | a damage type | its id (650 and up), or 0 | 512 |
+| `add_projectile` | 3 | a projectile type | its type (351 and up), or 0 | 512 |
 | `add_stratagem` | 4 | a stratagem | its type (150 and up), or 0 | 48 |
 | `add_stratagem_category` | 8 | a heading in the selection screen | a handle, or 0 | 28 |
 | `add_behaviour` | 4 | a behaviour | its id (694 and up), or 0 | 8 |
@@ -71,16 +71,22 @@ When a call returns 0 (or 1 for the edit calls), your mod's log says why; `hf->l
 code. Check `hf->version` for the SDK a call needs, and `hf->size` for a call added after the version you require
 ([compatibility](concepts.md#compatibility)).
 
-Weapons run out sooner than 192 in practice. Each new weapon adds its base's item and all of the base's attachments to
-the game's item catalogue (57 items for an AR-23 Liberator copy). The game keeps only:
+Weapons can run out sooner. Each new weapon adds its base's item and all of the base's attachments to the game's item
+catalogue (57 items for an AR-23 Liberator copy), and takes one progression package. HellForge moves the catalogue at
+start-up so the game keeps 40,960 items and inventory entries and 1,024 progression packages. If the move is refused,
+`modloader.log` says why and the session stays at the game's 4,096 and 256, about 20 Liberator copies.
 
-- the first 4,096 catalogue items (vanilla has 2,925)
-- the first 4,096 inventory entries
-- 256 progression packages (vanilla has 56; each new weapon takes one)
+HellForge adds level 11 first, then new stratagems (2 items each), then each weapon whole. It leaves out what does not
+fit, with a line in the session's backend log for each. So past the limit it is the last weapons that are missing, never
+half of one, and not a mod's stratagems.
 
-That is about 20 Liberator copies across all mods. HellForge adds level 11 first, then new stratagems (2 items each),
-then each weapon whole. It leaves out what does not fit, with a line in the session's backend log for each. So past the
-limit it is the last weapons that are missing, never half of one, and not a mod's stratagems.
+The armory holds 256 cards of each type, every vanilla weapon counted whether this player owns it or not. That is room
+for 199 new primaries, 229 secondaries and 229 throwables across all mods. A weapon past that is refused by name in your
+mod's log, so a vanilla weapon never falls off the list.
+
+A base's component tables can stop its copies first. Each table its base has rows in must grow, and some stop at 127
+rows. So about 100 copies of the lasers, shotguns, plasma or melee weapons fit across all mods, and 81 throwables of any
+kind. Past that the weapon is refused with the table's name.
 
 ## Changing existing content
 
@@ -252,7 +258,7 @@ HfRef ref = hf->register_entity(mod, &pelican);   /* registers the turret too; 0
 - Registering the same block again returns the same entity.
 - `add_entity` (SDK 4, `HfEntity`) is the older call; new mods use blocks.
 - A block changes or owns at most 8 components and has at most 8 mounts; there is room for 64 blocks.
-- Entities and weapons share 64 places across all mods.
+- Entities and weapons share 512 places across all mods.
 
 `examples/mods/stratagem-compendium` builds every stratagem this way, one source file per family.
 
@@ -314,6 +320,21 @@ banks must load with yours, so your data includes them (`examples/mods/talon-lib
 The weapon appears in the armory and in the player's inventory (the local backend adds it for the session). A session
 in which a mod adds a weapon (or changes component stats) writes `arsenal.tsv` into its log folder: every armory item's loadout id, type, entity,
 designation and name, for choosing a base.
+
+### Mastery
+
+Every mod weapon is a whole copy of its base with its own attachments and its own mastery: level, XP and unlocks are
+the weapon's, not its base's. It starts where a vanilla weapon starts, at level 0 and holding no attachments, whatever
+the base has reached. Missions level it up and attachments are bought on its page, at its base's prices and level
+requirements.
+
+You write nothing for this: the copy gets it from its base. A base without a mastery track gives the copy none either,
+and the copy holds the copies of what the player holds of the base's attachments.
+
+The player's progress with a mod weapon is saved apart from vanilla progress (`modPackageProgress` in the profile).
+Removing the mod leaves their vanilla data as it was, and adding it back brings the level and unlocks back. The ids
+come from the weapon's `unit`, so changing a weapon's unit starts its mastery over. The launcher's Weapon levels card
+lists the mod weapons of the newest session.
 
 `cube-gun` gives a weapon a model of your own, built from an OBJ file.
 
@@ -405,7 +426,7 @@ turns the Talon's bolt blue.
 
 ### Room and co-op
 
-There is room for 64 new projectile types and 64 new damage types across all mods. In co-op, every machine fires its
+There is room for 512 new projectile types and 512 new damage types across all mods. In co-op, every machine fires its
 own copy of a hand-held weapon's shots from its own data; with the same mods, that is the same projectile.
 
 ## Stratagems

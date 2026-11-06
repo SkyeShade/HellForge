@@ -70,8 +70,8 @@
  * the game sends a type in 11 bits, 193 more at most, unless HellForge widens it to 12 for a mod set with more
  * (registry_load.c WidenNetworkTypes; 2,241 more). Other walls come first for many sets, and each refuses on its own:
  * a component table's compiled index slots (ComponentsUnderstood), the loadout index (193 more weapons), the entity map
- * (2,187 more rows), and for weapons the game's 4,096 catalogue items (RegisteredItems.cs). 512: the research's target
- * (research\entity-limit\README.md). */
+ * (2,187 more rows), and for weapons the armory's 256 cards a list (registry_load.c ArmoryRoom) and the game's catalogue
+ * (RegisteredItems.cs). 512: the research's target (research\entity-limit\README.md). */
 #define REG_MAX_WEAPONS 512
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
@@ -315,6 +315,9 @@ static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
     return owner;
 }
 
+/* What the game keeps once state_moves.c has moved its arrays (0: what it compiled, as far as the backend need know). */
+static uint32_t g_gameItems, g_gamePackages;
+
 static int StratagemItems(char* text, int n, int size, int first);
 static int DifficultyItems(char* text, int n, int size, int first);
 
@@ -347,10 +350,12 @@ static const char* JsonText(const char* text, char* out, size_t size)
 static int RegisteredItemsText(char* text, int size)
 {
     char mod[6 * 80 + 1], name[6 * 192 + 1];
-    int n = snprintf(text, size, "{\"format\":1,\"items\":[");
+    int n = snprintf(text, size, "{\"format\":1,");
+    if (g_gameItems != 0) n += snprintf(text + n, size - n, "\"capacity\":{\"items\":%u,\"packages\":%u},", g_gameItems, g_gamePackages);
+    n += snprintf(text + n, size - n, "\"items\":[");
     int listed = 0;
     for (int i = 0; i < g_weaponCount && n < size - REG_ITEM_ROOM; i++)
-        if (!g_weapons[i].plain && g_weapons[i].state != 2 && !LiveTomb(LC_WEAPON, (uint32_t)i))
+        if (!g_weapons[i].plain && g_weapons[i].state != 2 && g_weapons[i].state != -1 && !LiveTomb(LC_WEAPON, (uint32_t)i))
             n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"unit\":\"%s\"}", listed++ ? "," : "",
                 g_weapons[i].id, g_weapons[i].base, JsonText(g_weapons[i].mod->id, mod, sizeof mod), JsonText(g_weapons[i].name, name, sizeof name));
     int before = n;
@@ -740,7 +745,7 @@ static uint32_t CatalogueStride(uint32_t c, uint32_t slots, uint64_t recordBytes
     *known = 1;
     for (size_t i = 0; i < sizeof kComponentSizes / sizeof kComponentSizes[0]; i++)
         if (kComponentSizes[i].component == c)
-            return kComponentSizes[i].slots == slots && RecordsFit(kComponentSizes[i].records, kComponentSizes[i].size, recordBytes) ? kComponentSizes[i].size : 0;
+            return (kComponentSizes[i].slots == slots || GrownSlots(c) == slots) && RecordsFit(kComponentSizes[i].records, kComponentSizes[i].size, recordBytes) ? kComponentSizes[i].size : 0;
     *known = 0;
     return 0;
 }

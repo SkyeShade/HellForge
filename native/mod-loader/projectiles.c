@@ -9,7 +9,7 @@
  *              indexes it with the type and no bound ([game + 0x37C7670 + type*8], or a lea of the base + index).
  *   loader 0x11EC5A0 / unloader 0x11EC760: clear exactly 0xAF8 bytes (351 slots) and fill slots 1..350.
  *   slots 351..353 (+0x37C8168): padding before the next table (slot 354), so the list has room for 3 more types in
- *              place; HellForge moves it instead, as it does the damage and stratagem lists, for up to 64.
+ *              place; HellForge moves it instead, as it does the damage and stratagem lists, for up to 512.
  *   66 instructions address the list (projectile_sites.h): 37
  *              indexed loads [image base + type*8 + 0x37C7670] and 29 rip-relative (slot 0, the loader's slot 1 check,
  *              one read of slot 216), among them the leaf GetProjectileInfo 0x11EC7C0 (no .pdata entry; a raw scan of
@@ -27,7 +27,7 @@
 
 #define PRJ_TABLE 0x37C7670u
 #define PRJ_VANILLA 351u
-#define PRJ_MAX_NEW 64u
+#define PRJ_MAX_NEW 512u /* what REG_MAX_WEAPONS weapons could each fire: the list is HellForge's own once moved */
 #define PRJ_ROW 272u
 #define PRJ_DAMAGE_AT 0x3Cu
 #define PRJ_VISUAL_AT 0x48u
@@ -211,10 +211,13 @@ static const char* ProjectileMove(uintptr_t game, const uint8_t* table, PutFn pu
     return NULL;
 }
 
-/* Both type bounds raised to `bound` (below 0x19F: the low byte changes only). NULL, or why not. */
+/* Both type bounds raised to `bound`, its high byte first: a live change writes them with the game running, and a bound
+ * passing 0x200 must not read lower than the types in flight half way. NULL, or why not. */
 static const char* ProjectileRaise(uintptr_t game, uint32_t bound, PutFn put)
 {
-    return put(game + PRJ_BOUND_A + 2, &bound, 4) || put(game + PRJ_BOUND_B + 3, &bound, 4) ? "could not raise the type bounds" : NULL;
+    const uint8_t* bytes = (const uint8_t*)&bound;
+    return put(game + PRJ_BOUND_A + 3, bytes + 1, 1) || put(game + PRJ_BOUND_A + 2, bytes, 1) ||
+        put(game + PRJ_BOUND_B + 4, bytes + 1, 1) || put(game + PRJ_BOUND_B + 3, bytes, 1) ? "could not raise the type bounds" : NULL;
 }
 
 /* The moved list and a row for every new type HellForge has room for, in one block kept for the session (the game reads

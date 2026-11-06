@@ -16,6 +16,8 @@ typedef struct WeaponLoad
     uint8_t* newList; /* the short ids' copy (its header) */
     uint32_t listCount, lastShort, appended;
     int late;
+    int cardsCounted;                 /* cards below is filled */
+    uint32_t cards[REG_ARMORY_TYPES]; /* the armory cards of each type so far (ArmoryCards) */
 } WeaponLoad;
 
 /* A row of the game's entity data (the key its first 8 bytes): at once while the entity data loads; for a live change
@@ -358,12 +360,61 @@ static void GiveOwnRecords(WeaponLoad* L, Weapon* w, uint64_t baseEntity, const 
     if (w->ownAll) OwnAllRecords(state, w, baseEntity, components, componentCount);
 }
 
+/* The armory's weapon picker holds 256 cards of a type (game.dll 0x18D43A0, guard 0x18D43B3 drops the rest, unsaid) and the
+ * primary, secondary and throwable lists (0x18D7360) are sorted by weapon class first, so what drops is the last classes,
+ * vanilla weapons among them: research\unlimited-weapons\walls section 1. A card is an armory entry whose catalogue item
+ * the player holds (0x18DD110 takes record states 2 and 4; seen in game, a profile with 12 primaries draws 12), but every
+ * vanilla record of the type is counted, held or not, so the room is the same for every player and on every machine: who
+ * buys a warbond must not push a card off. Types 1 and 3 also claim a customization slot each (0x1034BD0: the types at
+ * 0x2152BF8), 512 of them, which two full lists cannot pass. */
+#define REG_ARMORY_CARDS 256u
+#define REG_CUSTOMIZATION_SLOTS 512u
+_Static_assert(REG_ARMORY_CARDS * 2 <= REG_CUSTOMIZATION_SLOTS, "two full lists fit the customization slots");
+
+/* An entity copy's record, which has no catalogue item and so no card. */
+static int PlainRecord(uint32_t id)
+{
+    for (int i = 0; i < g_weaponCount; i++) if (g_weapons[i].plain && g_weapons[i].id == id) return 1;
+    return 0;
+}
+
+/* The records of each type so far that are cards. */
+static void ArmoryCards(WeaponLoad* L)
+{
+    memset(L->cards, 0, sizeof L->cards);
+    for (uint32_t r = 0; r < L->recordCount; r++)
+    {
+        uint32_t id, type;
+        memcpy(&id, L->records + (size_t)r * REG_LOADOUT_STRIDE, 4);
+        memcpy(&type, L->records + (size_t)r * REG_LOADOUT_STRIDE + 4, 4);
+        if (type < REG_ARMORY_TYPES && !PlainRecord(id)) L->cards[type]++;
+    }
+    L->cardsCounted = 1;
+}
+
+/* The weapon's type of list by its base's record, when that list has a card left; else 0, and it is logged by name. Lists
+ * of other types (stratagem weapons, backpacks) have no such limit. */
+static int ArmoryRoom(WeaponLoad* L, const Weapon* w, int baseRecord)
+{
+    static const char* const kLists[REG_ARMORY_TYPES] = {[1] = "primary", [3] = "secondary", [4] = "throwable"};
+    uint32_t type;
+    memcpy(&type, L->records + (size_t)baseRecord * REG_LOADOUT_STRIDE + 4, 4);
+    if (w->plain || type >= REG_ARMORY_TYPES || kLists[type] == NULL) return 1;
+    if (!L->cardsCounted) ArmoryCards(L);
+    if (L->cards[type] < REG_ARMORY_CARDS) return 1;
+    ApiLog(w->mod, "%s: the armory's %s list is full (%u cards, vanilla weapons counted, and a card past them would push one out); not registered", w->name, kLists[type], REG_ARMORY_CARDS);
+    Note("registry: %s of %s refused: the armory's %s list is full", w->name, w->mod->id, kLists[type]);
+    return 0;
+}
+
 /* Its own loadout record: the base's with the new id. */
 static uint32_t OwnLoadoutRecord(WeaponLoad* L, const Weapon* w, int baseRecord, uint8_t* loadoutRow)
 {
-    uint32_t record = L->recordCount++;
+    uint32_t record = L->recordCount++, type;
     memcpy(L->records + (size_t)record * REG_LOADOUT_STRIDE, L->records + (size_t)baseRecord * REG_LOADOUT_STRIDE, REG_LOADOUT_STRIDE);
     memcpy(L->records + (size_t)record * REG_LOADOUT_STRIDE, &w->id, 4);
+    memcpy(&type, L->records + (size_t)record * REG_LOADOUT_STRIDE + 4, 4);
+    if (L->cardsCounted && type < REG_ARMORY_TYPES) L->cards[type]++;
     memcpy(loadoutRow + 8, &record, 4);
     memset(loadoutRow + 12, 0, 4);
     MemoryBarrier(); /* the key last: a live change's row is found whole */
@@ -397,7 +448,7 @@ static int RegisterWeapon(WeaponLoad* L, Weapon* w)
     w->state = -1;
     /* The base: its loadout record and the entity that owns it; an entity of add_entity names its base itself. */
     int baseRecord = WeaponBaseRecord(L, w);
-    if (baseRecord < 0) return 0;
+    if (baseRecord < 0 || !ArmoryRoom(L, w, baseRecord)) return 0;
     uint64_t baseEntity = w->plain ? w->baseEntity : LoadoutOwner(L->index, (uint32_t)baseRecord);
     uint8_t* baseRow = baseEntity ? FindRow(L->map, REG_MAP_SLOTS, 32, baseEntity) : NULL;
     if (baseRow == NULL) { ApiLog(w->mod, "%s: the base's entity was not found; not registered", w->name); return 0; }
@@ -506,14 +557,17 @@ static void GrowForPending(uint8_t* state, uint8_t* map, uint8_t* loadout, uint3
     static uint32_t rows[GROW_COMPONENTS];
     memset(rows, 0, sizeof rows);
     PendingRows(map, loadout, records, rows, 0, NULL);
-    for (size_t i = 0; i < sizeof kGrowthTables / sizeof kGrowthTables[0]; i++)
+    static GrowthWish wishes[GROWTH_TABLES];
+    int count = 0;
+    for (size_t i = 0; i < GROWTH_TABLES; i++)
     {
         uint32_t c = kGrowthTables[i].component, slots = SlotsOf(c);
         uint8_t* table = StatePointer(state, REG_TABLES + 8 * c);
         if (table == NULL || rows[c] == 0) continue;
         uint32_t used = UsedRows(table, slots);
-        if (GrowthWanted(used, rows[c], slots)) GrowTable(state, c, used + rows[c]);
+        if (GrowthWanted(used, rows[c], slots)) wishes[count++] = (GrowthWish){c, used + rows[c]};
     }
+    if (count != 0) GrowTables(state, wishes, count);
 }
 
 /* Adds every pending weapon to the loaded entity data. Runs on the game's thread right after the entity loader. */
@@ -540,6 +594,7 @@ static void RegisterWeapons(void)
     if (L.appended == 0) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
     PublishWeaponLoad(&L, 1);
     Note("registry: %u weapon(s) added (loadout records %u, entities %u)", L.appended, L.recordCount, L.listCount + L.appended);
+    WriteRegisteredItems(); /* what was refused here is not for the backend to serve */
 }
 
 typedef void* (*EngineAllocateFn)(void* allocator, size_t size, uint32_t align);
