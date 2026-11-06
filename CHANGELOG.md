@@ -66,6 +66,11 @@ On `dev`, since 0.4.0-beta.
 
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
+- **Code mods stuck on "did not compile" after the mod tools were damaged.** An antivirus that removed files from
+  HellForge's Zig made every source mod fail in Zig's own libraries ("sub-compilation of libzigc failed"). That failure
+  was kept as the mod's, so restoring Zig or running Check and repair changed nothing. HellForge now notices a damaged
+  Zig, unpacks it again from its download and builds the mod. Only a mod's own errors are kept, and Build now always
+  compiles again (#PR).
 
 ### For contributors
 

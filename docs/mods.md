@@ -50,8 +50,9 @@ cosmetic packs, Lua mods and mods that say they are not gameplay mods; friends n
   Open folder. It also has Build now for a mod with sources, Prepare for sharing for your own folder mods, and Remove... for
   your own mods (not the bundled mods or Local Stats). Remove asks before it deletes the mod's files.
 - Tags on the right say what a mod is, among them CODE, DATA, STATS, PACK, LUA, ZIP and BUNDLED (shipped with
-  HellForge). DID NOT COMPILE marks a source mod whose last build failed; it stays off until fixed, and its details show
-  the compiler's message.
+  HellForge). DID NOT COMPILE marks a source mod whose last build failed; it stays off until fixed (or Build now compiles
+  it again), and its details show the compiler's message. A build that failed in the mod tools (Zig), not in the mod, is
+  not marked: the next session unpacks Zig again and builds the mod.
 - PREMIUM marks a mod built on Arrowhead's premium content (a premium warbond, Superstore items, a Steam DLC). What it
   adds is yours only when you bought that content in the normal game and synced it (Profile > Account sync). PREMIUM:
   LOCKED means the selected profile's synced account lacks it: the mod loads, but its weapons and stratagems stay

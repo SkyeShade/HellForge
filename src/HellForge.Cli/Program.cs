@@ -480,7 +480,7 @@ try
             var sourceMods = activeMods.Count(m => m.HasSource);
             var progressFile = options.GetValueOrDefault("--progress");
             var (prebuilt, buildProblems) = ModBuilds.Prepare(buildInstall, ModSdk.Find(buildInstall.Root), activeMods, SupportedBuild.Current.BuildId,
-                Console.Error.WriteLine, installTools: false, progress: p => WriteProgress(progressFile, p));
+                Console.Error.WriteLine, new(InstallTools: false), progress: p => WriteProgress(progressFile, p));
             result = new { install = buildInstall.Root, sourceMods, built = prebuilt.Count(m => m.HasSource), problems = buildProblems };
             break;
         }
@@ -514,8 +514,10 @@ try
             string dll;
             if (layout != null && built.HasSource)
             {
-                // as a session does: the pinned Zig fetched on first need, then the session's build
-                var (ready, buildProblems) = ModBuilds.Prepare(layout, ModSdk.Find(modFolder), [built], SupportedBuild.Current.BuildId, Console.Error.WriteLine);
+                // as a session does: the pinned Zig fetched on first need, then the session's build (compiled again even when
+                // its unchanged sources did not compile before: Build now on the Mods page runs this on Linux)
+                var (ready, buildProblems) = ModBuilds.Prepare(layout, ModSdk.Find(modFolder), [built], SupportedBuild.Current.BuildId, Console.Error.WriteLine,
+                    new(RebuildFailed: true));
                 if (buildProblems.Count > 0) throw new InvalidDataException(string.Join("\n", buildProblems));
                 dll = ready[0].BuiltDll!;
             }
