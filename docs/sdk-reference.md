@@ -1132,6 +1132,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `broken_recharge_delay` | +0x5C | f32 | now? | shield.broken_recharge_delay (unverified) |
 | `recharge_rate` | +0x60 | f32 | now? | shield.recharge_rate (unverified) |
 | `blocks_grenades` | +0x151 | u8 | now | Stops grenades (unverified) |
+| `blocks_enemies` | +0x152 | u8 | now? | Stops enemies (unverified) |
 
 ### HfHellpodPayload
 

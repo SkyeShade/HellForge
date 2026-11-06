@@ -4663,6 +4663,16 @@
           "applies": "now",
           "appliesVerified": true,
           "appliesSource": "shield_block.c reads the record every few frames; a marked shield changes within a second"
+        },
+        "blocks_enemies": {
+          "offset": 338,
+          "type": "u8",
+          "meaning": "Stops enemies",
+          "verified": false,
+          "source": "stats-schema shield.blocks_enemies",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "shield_block.c reads the record every few frames; a relay standing gets its ring within a second"
         }
       },
       "applies": "respawn",

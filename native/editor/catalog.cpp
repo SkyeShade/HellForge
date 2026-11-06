@@ -255,6 +255,7 @@ static void ReadRow(const Value& r, Row& row)
     row.size = (uint32_t)r.GetNumber("size", 0);
     row.note = r.GetString("note");
     ReadOptions(r, row);
+    row.toggle = r.GetBool("toggle");
     row.pick = r.GetString("pick");
     row.fires = r.GetString("fires");
     row.mountSlot = r.GetString("mountSlot");

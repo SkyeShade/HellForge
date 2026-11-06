@@ -2348,7 +2348,8 @@ typedef struct HfShield
     float recharge_rate;                         /* +0x60 shield.recharge_rate (unverified) [now?] */
     uint8_t _unknown_64[237];
     uint8_t blocks_grenades;                     /* +0x151 Stops grenades (unverified) [now] */
-    uint8_t _unknown_152[6];
+    uint8_t blocks_enemies;                      /* +0x152 Stops enemies (unverified) [now?] */
+    uint8_t _unknown_153[5];
 } HfShield;
 HF_ASSERT_SIZE(HfShield, 344);
 HF_ASSERT_OFFSET(HfShield, radius, 0);
@@ -2365,6 +2366,8 @@ HF_ASSERT_OFFSET(HfShield, recharge_rate, 96);
 #define HF_TYPE_Shield_recharge_rate HF_TYPE_F32
 HF_ASSERT_OFFSET(HfShield, blocks_grenades, 337);
 #define HF_TYPE_Shield_blocks_grenades HF_TYPE_U8
+HF_ASSERT_OFFSET(HfShield, blocks_enemies, 338);
+#define HF_TYPE_Shield_blocks_enemies HF_TYPE_U8
 
 /* HellpodPayloadComponentData (component 164, 12-byte records): (from the stats schema) */
 #define HfHellpodPayload_INFO "HellpodPayloadComponentData", 25480438u
