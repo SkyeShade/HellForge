@@ -5904,6 +5904,7 @@ static void RenderCapacityNote(void)
 }
 
 static const char* InstallCityGates(uintptr_t game); /* difficulty_world_gates.c */
+static void LwInstallWallReach(uintptr_t game); /* living_world.c */
 static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
 static const char* InstallWorld(DifficultyInstall* d)
 {
@@ -6143,6 +6144,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (towns != NULL) Note("difficulty: extra large maps: %s", towns);
     const char* gates = InstallCityGates(game);
     if (gates != NULL) Note("difficulty: extra large maps: %s", gates);
+    LwInstallWallReach(game);
     uint8_t* cull = exe != 0 ? FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE) : NULL;
     if (cull == NULL) return "no memory within 2 GB of the exe for the occlusion test's guard";
     memcpy(cull, kCullStub, sizeof kCullStub);
