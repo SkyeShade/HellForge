@@ -708,6 +708,7 @@ static void DifficultyWatch(void)
     static int logged;
     WatchZones();
     WatchHashFull();
+    EntityRecordsWatch(ApiModuleBase("game.dll", NULL));
     if (g_difficultyGame != 0) StatusWatch(g_difficultyGame);
     if (g_restartWatch == NULL) return;
     WatchMixes();

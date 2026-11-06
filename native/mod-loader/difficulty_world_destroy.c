@@ -116,7 +116,7 @@ static void RemoveRequestDetour(uint64_t state, uint32_t id)
     SafeRead(state + 0xF3EF18, &before, 4);
     g_removeRequest(state, id);
     if (SafeRead(state + 0xF3EF18, &after, 4) || after != before + 1 || SafeRead(state + 0xF3EF20, &list, 8) || list == 0 ||
-        SafeRead(list + 4ull * before, &index, 4) || SafeRead(state + 0xF32F18 + 24ull * index + 0xC, &unit, 4)) return;
+        SafeRead(list + 4ull * before, &index, 4) || index >= g_entityRecordCount || SafeRead(state + (uintptr_t)g_entityRecordDisp + 24ull * index + 0xC, &unit, 4)) return;
     void* chain[6] = {0};
     RtlCaptureStackBackTrace(1, 6, chain, NULL);
     LONG at = (InterlockedIncrement(&g_removeSeenAt) - 1) & (REMOVE_SEEN - 1);

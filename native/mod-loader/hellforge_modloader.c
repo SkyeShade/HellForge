@@ -359,6 +359,7 @@ static int SwapPointer(uintptr_t at, void* value, void** old)
 }
 
 #include "hooks.c" /* every hook, a mod's or HellForge's own: one chain per function (SDK 13) */
+#include "entity_records.c" /* after hooks.c: the entity state's records, moved for an extra large map */
 
 /* ---- network field types ---------------------------------------------------------------------------------------- */
 

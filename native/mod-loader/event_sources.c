@@ -122,17 +122,17 @@ static void SpawnRecordCheck(void* manager, uint32_t entity, uint64_t resource)
     if (game == 0) game = (uintptr_t)GetModuleHandleW(L"game.dll");
     uint32_t cursor = 0, id = 0, none = 0;
     uintptr_t m = (uintptr_t)manager;
-    if (game == 0 || m == 0 || SafeRead(game + 0x348456Cu, &none, 4) || SafeRead(m + 0xF32F14u, &cursor, 4) || cursor >= 0x800u ||
-        SafeRead(m + 0xF32F18u + 24ull * cursor + 8, &id, 4) || id == none) return;
+    if (game == 0 || m == 0 || SafeRead(game + 0x348456Cu, &none, 4) || SafeRead(m + 0xF32F14u, &cursor, 4) || cursor >= g_entityRecordCount ||
+        SafeRead(m + (uintptr_t)g_entityRecordDisp + 24ull * cursor + 8, &id, 4) || id == none) return;
     if (InterlockedIncrement(&g_spawnOverwrites) > 4) return;
     uint32_t live = 0;
-    for (uint32_t i = 0; i < 0x800u; i++)
+    for (uint32_t i = 0; i < g_entityRecordCount; i++)
     {
         uint32_t other = none;
-        if (!SafeRead(m + 0xF32F18u + 24ull * i + 8, &other, 4) && other != none) live++;
+        if (!SafeRead(m + (uintptr_t)g_entityRecordDisp + 24ull * i + 8, &other, 4) && other != none) live++;
     }
-    Note("research: entity records: spawning entity 0x%X (resource %016llx) over the live record %u (entity 0x%X); %u of 2048 records live",
-        entity, (unsigned long long)resource, cursor, id, live);
+    Note("research: entity records: spawning entity 0x%X (resource %016llx) over the live record %u (entity 0x%X); %u of %u records live",
+        entity, (unsigned long long)resource, cursor, id, live, g_entityRecordCount);
 }
 
 static uint64_t SpawnDetour(void* manager, uint32_t entity, uint64_t resource, const uint8_t* info, uint64_t s5, uint64_t s6)

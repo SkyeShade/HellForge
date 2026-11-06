@@ -23,9 +23,9 @@ __declspec(dllexport) int hellforge_lua_rewrites(uint32_t rva, uint32_t size); /
 #define EVP_HEALTH 0x3326688u
 #define EVP_ENTITIES 0x346BF98u
 #define EVP_NETWORK_MAP 0xF22EC8u
-#define EVP_NETWORK_ENTITY 0xF32F20u
+#define EVP_NETWORK_ENTITY ((uintptr_t)g_entityRecordDisp + 8u) /* the records' +8 (entity_records.c) */
 #define EVP_ENTITY_MAP 0xF1AEB0u
-#define EVP_DESCRIPTORS 0xF32F18u
+#define EVP_DESCRIPTORS ((uintptr_t)g_entityRecordDisp) /* the records (entity_records.c) */
 #define EVP_SCORE 0x3326AE0u
 #define EVP_WIELDER 0x3326420u
 #define EVP_INVENTORY 0x3326738u

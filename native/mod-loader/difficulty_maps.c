@@ -249,6 +249,7 @@ static void PhysicsPools(uintptr_t game)
         Note("physics: the engine's pools were already built: ragdolls keep 8192 actors (about 230 enemies at once)");
         return;
     }
+    if (WorldScaleFor(g_difficulty.mapScale) > 1) EntityRecordsInstall(game); /* before the setup builds the entity state */
     for (int i = 0; i < 10; i++)
     {
         uint8_t bytes[10];
