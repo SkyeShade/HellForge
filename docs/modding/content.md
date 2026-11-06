@@ -61,6 +61,9 @@ constant is in the [SDK reference](../sdk-reference.md). The calls on this page,
 | `add_weapon` | 2 | an arsenal weapon | its loadout id, or 0 | the same 192 (but see below) |
 | `add_damage` | 3 | a damage type | its id (650 and up), or 0 | 512 |
 | `add_projectile` | 3 | a projectile type | its type (351 and up), or 0 | 512 |
+| `add_explosion` | 17 | an explosion type | its type (423 and up), or 0 | 512 |
+| `add_beam` | 17 | a beam type | its type (31 and up), or 0 | 512 |
+| `add_arc` | 17 | an arc type | its type (17 and up), or 0 | 512 |
 | `add_stratagem` | 4 | a stratagem | its type (150 and up), or 0 | 48 |
 | `add_stratagem_category` | 8 | a heading in the selection screen | a handle, or 0 | 28 |
 | `add_behaviour` | 4 | a behaviour | its id (694 and up), or 0 | 8 |
@@ -87,6 +90,10 @@ mod's log, so a vanilla weapon never falls off the list.
 A base's component tables can stop its copies first. Each table its base has rows in must grow, and some stop at 127
 rows. So about 100 copies of the lasers, shotguns, plasma or melee weapons fit across all mods, and 81 throwables of any
 kind. Past that the weapon is refused with the table's name.
+
+A weapon with an explosion, beam or arc of its own has them on its page in the in-game editor, with the damage they deal.
+Mods' explosions are offered wherever the editor picks an explosion. A round that explodes loads the loadout package of
+the weapon that fires its base round, because the explosion's sound comes with it.
 
 ## Changing existing content
 
@@ -405,10 +412,69 @@ uint32_t weapon = api->add_weapon(mod, &rifle);
 - A weapon's `projectile` is any projectile type, vanilla or added.
 - Add damage before the projectiles that deal it, and projectiles before the weapons that fire them.
 
+The catalogue names 295 explosions and 342 damage ids as `HF_EXPLOSION_` and `HF_DAMAGE_` constants, so a round's blast
+or a weapon's damage is one autocompletion away. They are all in the [SDK reference](../sdk-reference.md).
+
+### Explosions
+
+`add_explosion` (SDK 17) copies a vanilla explosion under a type of its own, with its own damage and radii. A projectile
+then goes off with it through `impact_explosion` (a hit) and `expiry_explosion` (the end of its flight).
+
+```c
+HfExplosion blast = {sizeof blast};
+blast.base = HF_EXPLOSION_R36_ERUPTOR_IMPACT;
+blast.name = "big_blast";
+blast.damage = damage;       /* 0 keeps the base's */
+blast.outer_radius = 12.0f;
+uint32_t explosion = api->add_explosion(mod, &blast);
+
+HfProjectile round = {sizeof round};
+round.base = HF_PROJECTILE_R36_ERUPTOR;
+round.name = "big_round";
+round.impact_explosion = explosion;
+uint32_t projectile = api->add_projectile(mod, &round);
+```
+
+- `HfExplosion` takes `base`, `name`, `damage`, `inner_radius`, `outer_radius`, `shockwave_radius` (metres) and `arc`, the
+  arc it chains. Each left at 0 keeps the base's. New explosion types are 423 and up.
+- `impact_explosion` and `expiry_explosion` take any explosion type, vanilla or added (0 keeps the base's). Add an
+  explosion before the projectiles that use it.
+- An explosion's effect and sound stay the base's.
+- A vanilla blast's sound comes with the weapon that fires it. HellForge loads the weapon package of a round that
+  explodes, so its sound plays when that weapon is not in the loadout. If the package does not load, your mod's log says
+  so and the blast is silent.
+
+### Beams and arcs
+
+A beam or arc weapon's record names only a type. Its damage, radius, length, range and chains are in that type's row,
+which every weapon of the type shares. So a beam or arc weapon with stats of its own needs a type of its own.
+
+```c
+HfBeam ray = {sizeof ray};
+ray.base = HF_WEAPON_BEAM_LAS5_SCYTHE;
+ray.name = "long_ray";
+ray.damage = damage;
+ray.length = 80.0f;
+uint32_t beam = api->add_beam(mod, &ray);
+
+HfWeapon scythe = {sizeof scythe};
+scythe.base = HF_ITEM_LAS5_SCYTHE; /* a base that fires a beam */
+scythe.beam = beam;
+```
+
+- `add_beam` (SDK 17) takes an `HfBeam`: `base`, `name`, `damage`, `radius` and `length` (metres). New beam types are 31
+  and up.
+- `add_arc` (SDK 17) takes an `HfArc`: `base`, `name` and `damage`. New arc types are 17 and up.
+- `HfWeapon.beam` and `HfWeapon.arc` name the type it fires, vanilla or added. Its base must fire one: a beam weapon's
+  or an arc weapon's own record holds the type. `HfExplosion.arc` chains an arc from an explosion.
+- `HF_WEAPON_BEAM_` and `HF_ARC_` constants name the vanilla types. Left at 0, each field keeps the base's.
+
 ### Changing your rows further
 
 After `HF_EVENT_PROJECTILES_READY`, `projectile_row(type)` and `damage_row(id)` return your rows to change further.
 They return addresses: cast them to `HfProjectileSettings*` and `HfDamageInfo*`, and keep each row's id as it is.
+`explosion_row`, `beam_row` and `arc_row` do the same for the new types (152, 112 and 104 bytes), whose first 4 bytes are
+the type and must stay.
 `hf_set` reaches the rows too. The compendium's Pelican EMS and Gas turrets give their rounds an impact explosion this
 way (`src/pelicans.c`), and `hf_set(mod, type, ProjectileSettings, impact_explosion, HF_U32(82))` makes a projectile's
 hits burst into the Orbital Gas Strike's cloud. HellForge loads the explosion's packages.
@@ -426,8 +492,12 @@ turns the Talon's bolt blue.
 
 ### Room and co-op
 
-There is room for 512 new projectile types and 512 new damage types across all mods. In co-op, every machine fires its
-own copy of a hand-held weapon's shots from its own data; with the same mods, that is the same projectile.
+There is room for 512 new projectile types and 512 new damage types across all mods, and for 512 each of explosions,
+beams and arcs. In co-op, every machine fires its own copy of a hand-held weapon's shots from its own data; with the same
+mods, that is the same projectile.
+
+A set of more than 89 explosion types widens a co-op network field by one bit. Every player runs the same mods, so all of
+them widen it together. If the field is not the one HellForge knows, only the first 89 go in and the log names the rest.
 
 ## Stratagems
 

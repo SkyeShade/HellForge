@@ -552,6 +552,8 @@ static void ChannelInstall(uintptr_t game);
 #include "table_growth.c" /* the component tables the registry grows */
 #include "registry_load.c" /* the registry at work when the entity data loads */
 #include "damage.c"
+#include "beam_arc.c"
+#include "explosions.c"
 #include "state_moves.c" /* arrays moved out of the game state */
 #include "projectiles.c"
 #include "stratagems.c"
@@ -755,20 +757,8 @@ static void WatchProjectiles(void)
         Note("projectile list ready");
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
         Fire(HF_EVENT_PROJECTILES_READY);
+        WantBlastPackages();
     }
-}
-
-/* Once the game has loaded its stratagems; code still being decoded gets 20 s. */
-static void WatchStratagems(void)
-{
-    if (!g_fired[HF_EVENT_GAME_LOADED] || g_stratagemState != 0) return;
-    static ULONGLONG stratagemsSeen;
-    uintptr_t game = ApiModuleBase("game.dll", NULL);
-    uint64_t first = 0;
-    if (game == 0 || SafeRead(game + STR_TABLE + 8, &first, 8) || first == 0) return;
-    if (stratagemsSeen == 0) stratagemsSeen = GetTickCount64();
-    if (g_game == 0) g_game = game;
-    InstallStratagems(game, GetTickCount64() - stratagemsSeen >= 20000);
 }
 
 /* game.dll fills its difficulty tables when it loads; code still being decoded gets 20 s. */
@@ -1127,7 +1117,7 @@ static void ApiInit(void)
         ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
-        ApiLoadPhase, ApiUnhook};
+        ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */

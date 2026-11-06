@@ -3989,6 +3989,8 @@ static void FieldWatchCapFixture(void)
 
 #include "live_mods_test.c" /* after the helpers it shares (Edit, FixtureLoad) */
 #include "live_content_test.c" /* after live_mods_test.c and the behaviour and registry helpers */
+#include "explosions_test.c"
+#include "beam_arc_test.c"
 
 int main(int argc, char** argv)
 {
@@ -4008,6 +4010,9 @@ int main(int argc, char** argv)
     HotDataFixture();
     ContentNumbersFixture();
     ContentInstallFixture();
+    ExplosionsFixture();
+    ExplosionsWidthFixture();
+    BeamArcFixture();
     ContentWeaponsFixture();
     ContentDifficultyFixture();
     ChannelGameFixture();
