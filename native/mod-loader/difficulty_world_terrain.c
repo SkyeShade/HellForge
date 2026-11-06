@@ -2174,7 +2174,9 @@ static int NearCalStep(uint64_t records, uint32_t end, uint64_t context, uint64_
 #define NEAR_BATCH 16384
 #define NEAR_SHIFT_RADIUS 128 /* the shift's box passes: 257 texels (~129 m), three of them */
 #define NEAR_GRID 1025 /* grid lines: texel -0.5, 4, 8, ..., 4092, 4095.5 */
+#define NEAR_BLOCKS ((NEAR_GRID - 1) / 2) /* 2 x 2 grid cells: a 4.5 m block */
 static struct { int phase; uint32_t id, polls, next, waits; uint16_t* coarse; float* low; float* delta; float* ring; double ms; int seq[4], seqN, seqI;
+    uint8_t* block; int allBlocks; uint32_t blocksCoarse; /* blocks drawn as two triangles (NearConformDraw) */
     volatile LONG planDone, planRunning; int planOk; ULONGLONG planSince; } g_conform;
 
 /* Metres outside the hidden square (negative inside), max norm. */
@@ -2560,6 +2562,30 @@ static int NearConformPlan(void)
             if (fabs(d) > worst) worst = fabs(d);
             sum += fabs(d);
         }
+    /* blocks where the target is the lowpass alone: every texel of the block 160 m or more inside the hidden square's
+     * edge (NearTarget's u = 1, with a texel's margin) and no pad weight on any pad cell the block's bilinear W reads */
+    g_conform.allBlocks = 0; g_conform.blocksCoarse = 0;
+    if (g_conform.block == NULL) g_conform.block = (uint8_t*)VirtualAlloc(NULL, (size_t)NEAR_BLOCKS * NEAR_BLOCKS, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (g_conform.block != NULL)
+        for (int bj = 0; bj < NEAR_BLOCKS; bj++)
+            for (int bi = 0; bi < NEAR_BLOCKS; bi++)
+            {
+                float tx0 = NearGridTexel(2 * bi), tx1 = NearGridTexel(2 * bi + 2), ty0 = NearGridTexel(2 * bj), ty1 = NearGridTexel(2 * bj + 2);
+                float wxa = x0 + NEAR_TEXEL * tx0, wxb = x0 + NEAR_TEXEL * tx1, wya = y0 - NEAR_TEXEL * ty0, wyb = y0 - NEAR_TEXEL * ty1;
+                int ok = NearOutside(wxa, wya) <= -160.0f - NEAR_TEXEL && NearOutside(wxb, wya) <= -160.0f - NEAR_TEXEL &&
+                         NearOutside(wxa, wyb) <= -160.0f - NEAR_TEXEL && NearOutside(wxb, wyb) <= -160.0f - NEAR_TEXEL;
+                if (ok && g_pads.w != NULL && g_pads.wLevel == g_world.levels && g_pads.wCentre[0] == g_near.centre[0] && g_pads.wCentre[1] == g_near.centre[1])
+                {
+                    /* NearPadWeight's cells: u = (wx - west) / step - 0.5, cells floor(u) and floor(u) + 1 */
+                    int c0 = (int)floorf((wxa - (g_near.centre[0] - NEAR_SIDE / 2)) / NEAR_PAD_STEP - 0.5f), c1 = (int)floorf((wxb - (g_near.centre[0] - NEAR_SIDE / 2)) / NEAR_PAD_STEP - 0.5f) + 1;
+                    int r0 = (int)floorf(((g_near.centre[1] + NEAR_SIDE / 2) - wya) / NEAR_PAD_STEP - 0.5f), r1 = (int)floorf(((g_near.centre[1] + NEAR_SIDE / 2) - wyb) / NEAR_PAD_STEP - 0.5f) + 1;
+                    for (int r = r0 < 0 ? 0 : r0; ok && r <= r1 && r < NEAR_PAD_N; r++)
+                        for (int c = c0 < 0 ? 0 : c0; c <= c1 && c < NEAR_PAD_N; c++)
+                            if (g_pads.w[(size_t)r * NEAR_PAD_N + c] != 0.0f) { ok = 0; break; }
+                }
+                g_conform.block[(size_t)bj * NEAR_BLOCKS + bi] = (uint8_t)ok;
+                g_conform.blocksCoarse += (uint32_t)ok;
+            }
     QueryPerformanceCounter(&t1);
     g_conform.ms = (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart;
     g_conformPlanMean = sum / ((double)NEAR_GRID * NEAR_GRID); g_conformPlanWorst = worst;
@@ -2734,7 +2760,15 @@ static void NearStoreU16(void* p, int c, int r, float m) { float v = (m + 500.0f
 static float NearFetchF32(void* p, int c, int r) { return ((float*)p)[(size_t)r * 4096 + c]; }
 static void NearStoreF32(void* p, int c, int r, float m) { ((float*)p)[(size_t)r * 4096 + c] = m; }
 
-/* One batch of grid cells from g_conform.next (cells numbered row by row, 2 triangles each) and its job. */
+/* One batch from g_conform.next (blocks of 2 x 2 grid cells, numbered row by row) and its job. A block is two triangles
+ * on its corners (4.5 m) where the drawn value is smooth over it: the base everywhere (a bilinear surface on the
+ * capture's 16 m cells; the triangles' deviation from it is at most ~t h^2 / 1024 for a cell twist t, and h = 4.5 m
+ * keeps it within cm), the conform where its target is the lowpass alone (160 m and more inside the hidden square's
+ * edge and no pad weight over the block: the mismatch lowpass(C - T), sigma ~64 m, interpolated within ~A / 2000).
+ * Elsewhere each of its four cells is drawn as before (2 triangles, or a texel a cell in the ring). Loading-screen
+ * frames pace the batches (one a frame), so fewer triangles is fewer frames (hellforge-1a, NEAR_TILE.md levers 1/2:
+ * base 128 -> 32 batches, conform ~205 -> ~139). */
+static uint32_t NearCellCost(int i, int j) { return g_conform.ring != NULL && NearFineCell(i, j) ? 50 : 2; }
 static int NearConformDraw(uint64_t context)
 {
     typedef uint64_t (*MatFn)(uint64_t gui, uint64_t hash);
@@ -2750,19 +2784,36 @@ static int NearConformDraw(uint64_t context)
     /* level pixels (the replay's gui transform takes them to the tile): x = (world + size/2) x samples / size, y up */
     const float px = g_near.samples / g_near.world_size, half = g_near.world_size / 2;
     const float x0 = g_near.centre[0] - NEAR_SIDE / 2 + NEAR_TEXEL / 2, y0 = g_near.centre[1] + NEAR_SIDE / 2 - NEAR_TEXEL / 2;
-    const uint32_t cells = (NEAR_GRID - 1) * (NEAR_GRID - 1);
+    const uint32_t blocks = NEAR_BLOCKS * NEAR_BLOCKS;
     uint32_t end = g_conform.next, tris = 0;
-    for (; end < cells; end++)
+    for (; end < blocks; end++)
     {
-        int i = (int)(end % (NEAR_GRID - 1)), j = (int)(end / (NEAR_GRID - 1));
-        int ring = g_conform.ring != NULL && NearFineCell(i, j);
-        uint32_t cost = ring ? 50 : 2;
+        int bi = (int)(end % NEAR_BLOCKS), bj = (int)(end / NEAR_BLOCKS);
+        uint32_t cost = g_conform.allBlocks || (g_conform.block != NULL && g_conform.block[end]) ? 2 :
+            NearCellCost(2 * bi, 2 * bj) + NearCellCost(2 * bi + 1, 2 * bj) + NearCellCost(2 * bi, 2 * bj + 1) + NearCellCost(2 * bi + 1, 2 * bj + 1);
         if (tris + cost > NEAR_BATCH) break;
         tris += cost;
     }
-    for (uint32_t k = g_conform.next; k < end; k++)
+    for (uint32_t kb = g_conform.next; kb < end; kb++)
     {
-        int i = (int)(k % (NEAR_GRID - 1)), j = (int)(k / (NEAR_GRID - 1));
+        int bi = (int)(kb % NEAR_BLOCKS), bj = (int)(kb / NEAR_BLOCKS);
+        if (g_conform.allBlocks || (g_conform.block != NULL && g_conform.block[kb]))
+        {
+            float v[4][3];
+            for (int q = 0; q < 4; q++)
+            {
+                int gi = 2 * bi + 2 * (q == 1 || q == 2), gj = 2 * bj + 2 * (q >= 2);
+                v[q][0] = (x0 + NEAR_TEXEL * NearGridTexel(gi) + half) * px;
+                v[q][1] = (y0 - NEAR_TEXEL * NearGridTexel(gj) + half) * px;
+                v[q][2] = g_conform.delta[(size_t)gj * NEAR_GRID + gi];
+            }
+            tri(g_near.gui, v[0], v[1], v[2], 0, colour, material, NULL, NULL, NULL);
+            tri(g_near.gui, v[0], v[2], v[3], 0, colour, material, NULL, NULL, NULL);
+            continue;
+        }
+        for (int cell = 0; cell < 4; cell++)
+        {
+        int i = 2 * bi + (cell & 1), j = 2 * bj + (cell >> 1);
         if (g_conform.ring != NULL && NearFineCell(i, j))
         {
             /* a texel a cell: lines at the cell's own edges and every texel centre between them */
@@ -2799,6 +2850,7 @@ static int NearConformDraw(uint64_t context)
         }
         tri(g_near.gui, v[0], v[1], v[2], 0, colour, material, NULL, NULL, NULL);
         tri(g_near.gui, v[0], v[2], v[3], 0, colour, material, NULL, NULL, NULL);
+        }
     }
     g_conform.next = end;
     NearGuiJob(queue, g_near.world, camera, generator, r108, g_near.settings);
@@ -2833,7 +2885,7 @@ static int NearBasePlan(void)
     { Note("difficulty: near terrain: base: the level's capture is %u x %u format %u; no tile", w, hgt, format); return 0; }
     if (g_conform.delta == NULL) g_conform.delta = (float*)VirtualAlloc(NULL, (size_t)NEAR_GRID * NEAR_GRID * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (g_conform.delta == NULL) return 0;
-    g_conform.ring = NULL; /* the base: the 2 m grid everywhere */
+    g_conform.ring = NULL; g_conform.allBlocks = 1; /* the base: 4.5 m blocks everywhere */
     const float x0 = g_near.centre[0] - NEAR_SIDE / 2 + NEAR_TEXEL / 2, y0 = g_near.centre[1] + NEAR_SIDE / 2 - NEAR_TEXEL / 2;
     float lo = 1e9f, hi = -1e9f; double sum = 0;
     for (int j = 0; j < NEAR_GRID; j++)
@@ -2866,7 +2918,7 @@ static int NearBaseStep(uint64_t context)
     }
     if (NearQueued(context) != 0) return ++g_conform.waits < 1200 ? 0 : -1;
     g_conform.waits = 0;
-    if (g_conform.next >= (uint32_t)(NEAR_GRID - 1) * (NEAR_GRID - 1)) { g_near.calls = 0; return 1; }
+    if (g_conform.next >= (uint32_t)NEAR_BLOCKS * NEAR_BLOCKS) { g_near.calls = 0; return 1; }
     if (!NearConformDraw(context)) return -1;
     return 0;
 }
@@ -3646,8 +3698,8 @@ static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uin
     if (g_conform.phase == 9) /* the plan's thread */
     {
         if (!g_conform.planDone) return 1; /* bounded work on the loader's own buffers: it finishes */
-        Note("difficulty: near terrain: conform: planned in %.0f ms (on its own thread, %.1f s to the game's frame); the change to draw is mean |d| %.2f m, max %.2f m",
-            g_conform.ms, (double)(GetTickCount64() - g_conform.planSince) / 1000.0, g_conformPlanMean, g_conformPlanWorst);
+        Note("difficulty: near terrain: conform: planned in %.0f ms (on its own thread, %.1f s to the game's frame); the change to draw is mean |d| %.2f m, max %.2f m; %u of %u blocks as two triangles",
+            g_conform.ms, (double)(GetTickCount64() - g_conform.planSince) / 1000.0, g_conformPlanMean, g_conformPlanWorst, g_conform.blocksCoarse, (unsigned)(NEAR_BLOCKS * NEAR_BLOCKS));
         if (!g_conform.planOk) return 0;
         g_conform.next = 0; g_conform.waits = 0; g_conform.phase = 2;
         return 1;
@@ -3775,7 +3827,7 @@ static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uin
     {
         if (NearQueued(context) != 0) { if (++g_conform.waits < 1200) return 1; Note("difficulty: near terrain: conform: the queue did not empty"); return 0; }
         g_conform.waits = 0;
-        if (g_conform.next >= (uint32_t)(NEAR_GRID - 1) * (NEAR_GRID - 1))
+        if (g_conform.next >= (uint32_t)NEAR_BLOCKS * NEAR_BLOCKS)
         {
             int s64 = -1, s41 = -1, s42 = -1;
             for (int s = 0; s < g_near.steps; s++)
