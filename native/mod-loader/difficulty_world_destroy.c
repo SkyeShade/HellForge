@@ -24,6 +24,9 @@ typedef void (*DestroyQueueFn)(uint64_t world, uint32_t* handles, uint32_t n);
 typedef void (*DestroyLockFn)(void* lock);
 static DestroyQueueFn g_destroyQueue;
 static volatile LONG* g_poseSkipped; /* InstallPoseGuard's count of poses skipped for units that are gone */
+static volatile LONG* g_bodyDead;    /* InstallBodySyncGuard's count of moved bodies dropped for units that are gone */
+static const uint32_t* g_bodyDeadSeen; /* the first BODY_DEAD_KEPT of them: {unit id, body, node, actor} each */
+#define BODY_DEAD_KEPT 16
 static DestroyLockFn g_destroyLock, g_destroyUnlock;
 static uintptr_t g_destroyTableAt;
 static SRWLOCK g_destroyWaitLock = SRWLOCK_INIT;
@@ -102,6 +105,25 @@ static void DestroyNote(void)
     static LONG poseNoted;
     LONG skipped = g_poseSkipped != NULL ? *g_poseSkipped : 0;
     if (skipped != poseNoted) { poseNoted = skipped; Note("difficulty: extra large maps: poses for units that are gone skipped: %ld", (long)skipped); }
+    static LONG bodyNoted;
+    LONG dead = g_bodyDead != NULL ? *g_bodyDead : 0;
+    if (dead != bodyNoted)
+    {
+        uint64_t table = 0, gens = 0;
+        uint32_t count = 0;
+        if (g_destroyTableAt == 0 || SafeRead(g_destroyTableAt, &table, 8) || table == 0 || SafeRead(table + 0xA0, &gens, 8) || SafeRead(table + 0x98, &count, 4)) gens = 0;
+        for (LONG i = bodyNoted; i < dead && i < BODY_DEAD_KEPT; i++)
+        {
+            const uint32_t* e = g_bodyDeadSeen + i * 4;
+            uint32_t index = e[0] & 0x3FFFFFu;
+            uint8_t gen = 0;
+            int genRead = gens != 0 && index < count && !SafeRead(gens + index, &gen, 1);
+            Note("difficulty: extra large maps: moved body %ld of a unit that is gone: unit 0x%08X (index 0x%X, generation %u; the table's now %s%u of %u units), body 0x%X, node %u, actor 0x%08X",
+                    (long)i + 1, e[0], index, e[0] >> 22, genRead ? "" : "unread ", (unsigned)gen, count, e[1], e[2], e[3]);
+        }
+        bodyNoted = dead;
+        Note("difficulty: extra large maps: moved bodies of units that are gone left out of the pose sync: %ld", (long)dead);
+    }
     if (memcmp(now, last, sizeof now) == 0 || (now[0] == 0 && now[2] == 0 && now[3] == 0)) return;
     memcpy(last, now, sizeof now);
     Note("difficulty: extra large maps: destroys of units not made yet: %ld held (%ld passed on once made, %ld waited too long, %ld waiting), %ld of units gone dropped, %ld not held (list full)",
@@ -154,11 +176,80 @@ static void InstallPoseGuard(uintptr_t exe)
     Note("difficulty: extra large maps: a pose for a unit that is gone is skipped (exe 0x1FCD00)");
 }
 
+/* The pose sync's batch (exe 0x79BCD0, main thread, before its jobs run 0x79C360) copies the scene's moved bodies
+ * (S+0x230, 16 B {unit id, body, node, actor}) and compacts them at 0x79BD80..0x79BDB2: an entry stays when the scene's
+ * [+0xC0](body) is 0 and its unit id is not 0. Every pose call (unit API +0x78 / +0x80 / +0x530) then looks the unit up
+ * without a check (s83a exe+0x1FCD17, s84a exe+0x1FCDD0: the lookup 0x9D8C0 null). Here the compaction also drops an
+ * entry whose unit no longer exists (0x9D8C0 null), so no job meets it; the first BODY_DEAD_KEPT are kept for the note.
+ * The main thread waits inside the sync (0x79C1A0), so no unit goes between this check and the jobs. rsp is 16-aligned
+ * at the site (entry 8 + 5 pushes + 0x250); rax, rcx, rdx, r8-r11 and xmm0 are free there (KB xl-world-streaming,
+ * subagent deadbody; scratch ~/xl-work/static/deadbody/). */
+#define BODY_SITE 0x79BD99u   /* cmp [rsi+rdi*8],eax; je 0x79BDAD (5 bytes; eax = 0 here) */
+#define BODY_KEEP 0x79BD9Eu   /* movups xmm0,[rsi+rdi*8]: the entry is kept */
+#define BODY_DROP 0x79BDADu   /* inc ebx: the next entry */
+#define BODY_LOOKUP 0x9D8C0u
+static const char kBodyPin[] = "85 C0 75 14 39 04 FE 74 0F 0F 10 04 FE 8B C5 48 03 C0 FF C5 0F 11 04 C6 FF C3 41 3B DE 75 CC";
+static void InstallBodySyncGuard(uintptr_t exe)
+{
+    if (g_bodyDead != NULL) return;
+    if (ApiCodeMatches(exe + BODY_SITE - 4, kBodyPin) != 1 || ApiCodeMatches(exe + BODY_LOOKUP, "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20") != 1)
+    { Note("difficulty: extra large maps: the pose sync's batch (exe 0x79BCD0) is not the reviewed one; bodies of units that are gone are not left out"); return; }
+    uint8_t* page = AllocateNearGame(exe, 0x1000);
+    if (page == NULL) { Note("difficulty: extra large maps: no room near the exe for the body sync guard"); return; }
+    static const uint8_t code[] = {
+        0x8B, 0x0C, 0xFE,                       /* +0  mov ecx,[rsi+rdi*8] (unit id) */
+        0x85, 0xC9,                             /* +3  test ecx,ecx */
+        0x0F, 0x84, 0, 0, 0, 0,                 /* +5  jz 0x79BDAD (ends +11) */
+        0x48, 0x83, 0xEC, 0x20,                 /* +11 sub rsp,0x20 */
+        0xE8, 0, 0, 0, 0,                       /* +15 call 0x9D8C0 (ends +20) */
+        0x48, 0x83, 0xC4, 0x20,                 /* +20 add rsp,0x20 */
+        0x48, 0x85, 0xC0,                       /* +24 test rax,rax */
+        0x74, 0x05,                             /* +27 jz +34 */
+        0xE9, 0, 0, 0, 0,                       /* +29 jmp 0x79BD9E (ends +34) */
+        0xB8, 0x01, 0x00, 0x00, 0x00,           /* +34 mov eax,1 */
+        0xF0, 0x0F, 0xC1, 0x05, 0, 0, 0, 0,     /* +39 lock xadd [rip+count],eax (ends +47) */
+        0x83, 0xF8, BODY_DEAD_KEPT,             /* +47 cmp eax,16 */
+        0x73, 0x12,                             /* +50 jae +70 */
+        0xC1, 0xE0, 0x04,                       /* +52 shl eax,4 */
+        0x48, 0x8D, 0x0D, 0, 0, 0, 0,           /* +55 lea rcx,[rip+kept] (ends +62) */
+        0x0F, 0x10, 0x04, 0xFE,                 /* +62 movups xmm0,[rsi+rdi*8] */
+        0x0F, 0x11, 0x04, 0x01,                 /* +66 movups [rcx+rax],xmm0 */
+        0xE9, 0, 0, 0, 0};                      /* +70 jmp 0x79BDAD (ends +75) */
+    _Static_assert(sizeof code == 75, "body sync guard size");
+    memcpy(page, code, sizeof code);
+    uint8_t* count = page + 0x100;
+    uint8_t* kept = page + 0x200;
+    memset(count, 0, 0x300);
+    intptr_t rels[][2] = {
+        {7, (intptr_t)(exe + BODY_DROP) - (intptr_t)(page + 11)},
+        {16, (intptr_t)(exe + BODY_LOOKUP) - (intptr_t)(page + 20)},
+        {30, (intptr_t)(exe + BODY_KEEP) - (intptr_t)(page + 34)},
+        {43, (intptr_t)count - (intptr_t)(page + 47)},
+        {58, (intptr_t)kept - (intptr_t)(page + 62)},
+        {71, (intptr_t)(exe + BODY_DROP) - (intptr_t)(page + 75)},
+        {-1, (intptr_t)page - (intptr_t)(exe + BODY_SITE + 5)}};
+    for (size_t i = 0; i < sizeof rels / sizeof rels[0]; i++)
+    {
+        if (rels[i][1] != (intptr_t)(int32_t)rels[i][1]) { Note("difficulty: extra large maps: the body sync guard is out of reach"); return; }
+        int32_t rel = (int32_t)rels[i][1];
+        if (rels[i][0] >= 0) memcpy(page + rels[i][0], &rel, 4);
+    }
+    DWORD old = 0;
+    if (!VirtualProtect(page, 0x1000, PAGE_EXECUTE_READWRITE, &old)) { Note("difficulty: extra large maps: the body sync guard is not executable"); return; }
+    FlushInstructionCache(GetCurrentProcess(), page, 0x1000);
+    uint8_t jump[5] = {0xE9, 0, 0, 0, 0};
+    int32_t rel = (int32_t)rels[6][1]; memcpy(jump + 1, &rel, 4);
+    g_bodyDeadSeen = (const uint32_t*)kept;
+    g_bodyDead = (volatile LONG*)count;
+    if (ApiWrite(exe + BODY_SITE, jump, sizeof jump)) { g_bodyDead = NULL; Note("difficulty: extra large maps: the pose sync's batch could not be patched"); return; }
+    Note("difficulty: extra large maps: a moved body of a unit that is gone is left out of the pose sync (exe 0x79BD99)");
+}
+
 static const char* InstallDestroyQueue(void)
 {
     if (g_destroyQueue != NULL) return NULL;
     uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
-    if (exe != 0) InstallPoseGuard(exe);
+    if (exe != 0) { InstallPoseGuard(exe); InstallBodySyncGuard(exe); }
     if (exe == 0 || ApiCodeMatches(exe + DESTROY_QUEUE, kDestroyQueuePin) != 1)
     { Note("difficulty: extra large maps: the destroy queue (exe 0x%X) is not the reviewed one; destroys are not checked", DESTROY_QUEUE); return NULL; }
     uint64_t lock = 0, unlock = 0;
