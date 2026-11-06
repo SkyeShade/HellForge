@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 16
+#define HF_MOD_SDK_VERSION 17
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -121,6 +121,11 @@ typedef struct HfWeapon
      * record when it has a projectile of its own). Its log names any component HellForge could not copy (record size
      * unknown), which it still shares. */
     uint32_t own_all;
+    /* SDK 17: the beam or arc it fires (a vanilla type, or one add_beam or add_arc returned; 0: its base's). Its base must
+     * fire one: a beam weapon's or an arc weapon's own record names the type, and everything else about the beam or arc
+     * is in the type's row. */
+    uint32_t beam;
+    uint32_t arc;
 } HfWeapon;
 
 /* A new entity of any kind (SDK 4, add_entity): a copy of a vanilla entity (a Pelican, a turret...) under a resource
@@ -211,6 +216,50 @@ typedef struct HfDamage
     const char* name;
     float scale;    /* x its standard and durable damage (0 means 1); the rest stays the base's */
 } HfDamage;
+
+/* A new explosion type (SDK 17, add_explosion): a copy of a vanilla ExplosionSettings row under a type of its own, with
+ * its own damage and radii; its effect, sound and packages stay the base's. Projectiles use it through
+ * HfProjectile.impact_explosion and expiry_explosion (docs/modding/content.md). Zero-initialize it and set `size`:
+ *
+ *     HfExplosion blast = {sizeof blast};
+ *     blast.base = HF_EXPLOSION_R36_ERUPTOR_IMPACT;
+ *     blast.name = "my_name/my_mod/big_blast";
+ *     blast.damage = api->add_damage(mod, &heavy);
+ *     blast.outer_radius = 12.0f;
+ *     uint32_t explosion = api->add_explosion(mod, &blast); */
+typedef struct HfExplosion
+{
+    uint32_t size;          /* sizeof(HfExplosion) */
+    uint32_t base;          /* the vanilla explosion type it copies (1 .. 422; HF_EXPLOSION_...) */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint32_t damage;        /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
+    float inner_radius;     /* metres; 0 keeps the base's */
+    float outer_radius;
+    float shockwave_radius;
+    uint32_t arc;           /* the arc it chains (vanilla, or one add_arc returned; 0: the base's) */
+} HfExplosion;
+
+/* A new beam type (SDK 17, add_beam): a copy of a vanilla BeamSettings row under a type of its own, with its own damage,
+ * radius and length; set the rest through beam_row. HfWeapon.beam fires it. Zero-initialize it and set `size`. */
+typedef struct HfBeam
+{
+    uint32_t size;      /* sizeof(HfBeam) */
+    uint32_t base;      /* the vanilla beam type it copies (1 .. 30; HF_WEAPON_BEAM_...) */
+    const char* name;   /* names it in the logs; unique, prefixed with your name and mod */
+    uint32_t damage;    /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
+    float radius;       /* metres; 0 keeps the base's */
+    float length;
+} HfBeam;
+
+/* A new arc type (SDK 17, add_arc): a copy of a vanilla ArcSettings row under a type of its own, with its own damage; set
+ * the rest through arc_row. HfWeapon.arc and HfExplosion.arc use it. Zero-initialize it and set `size`. */
+typedef struct HfArc
+{
+    uint32_t size;      /* sizeof(HfArc) */
+    uint32_t base;      /* the vanilla arc type it copies (1 .. 16; HF_ARC_...) */
+    const char* name;   /* names it in the logs; unique, prefixed with your name and mod */
+    uint32_t damage;    /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
+} HfArc;
 
 /* A new stratagem (SDK 4, add_stratagem): a copy of a vanilla stratagem's settings under a StratagemType of its own,
  * with its own name, description, input code and icon. What it does when called (its payload, beacon and the packages
@@ -316,6 +365,10 @@ typedef struct HfProjectile
     /* 0, or a particles resource for its second effect (row +0x70: the LAS-58 Talon's light and trail; the Liberator
      * has none): resource_hash of its name, loaded with the weapon like spawn_effect. */
     uint64_t flight_effect;
+    /* SDK 17: the explosion of a hit and of the end of its flight (vanilla types, or ones add_explosion returned; 0: the
+     * base's). */
+    uint32_t impact_explosion;
+    uint32_t expiry_explosion;
 } HfProjectile;
 
 /* A network field type: kind 1 is an integer of `bits` bits starting at `min` (range min .. min + 2^bits - 1). */
@@ -606,12 +659,13 @@ typedef struct HfAbility
 typedef struct HfContent
 {
     uint32_t size;          /* sizeof(HfContent): set by the caller */
-    /* HF_KIND_STRATAGEM, HF_KIND_ENTITY, HF_KIND_PROJECTILE, HF_KIND_DAMAGE, or (HellForge 2026-10-31) HF_KIND_ITEM:
-     * an arsenal weapon of add_weapon, once it is registered */
+    /* HF_KIND_STRATAGEM, HF_KIND_ENTITY, HF_KIND_PROJECTILE, HF_KIND_DAMAGE, (HellForge 2026-10-31) HF_KIND_ITEM: an
+     * arsenal weapon of add_weapon, once it is registered, or (SDK 17) HF_KIND_EXPLOSION, HF_KIND_WEAPON_BEAM or
+     * HF_KIND_ARC, once they are installed */
     uint32_t kind;
     uint64_t id;            /* its stratagem type, entity resource, projectile type, damage id or loadout id */
     uint64_t base;          /* the vanilla one of its kind it copies */
-    uint64_t link;          /* a projectile: the damage it deals (0: its base's) */
+    uint64_t link;          /* a projectile, explosion, beam or arc: the damage it deals (0: its base's) */
     const char* mod;        /* the id of the mod that added it, and that mod's folder (UTF-8) */
     const char* folder;
     const char* name;       /* its identity */
@@ -624,6 +678,9 @@ typedef struct HfContent
     /* HellForge 2026-10-31, a weapon (HF_KIND_ITEM; older ones leave these 0): its entity resource and its base's */
     uint64_t entity;
     uint64_t base_entity;
+    /* SDK 17, a weapon: the beam and arc it fires of a mod's (0: its base's) */
+    uint32_t beam;
+    uint32_t arc;
 } HfContent;
 
 typedef struct HfEventInfo
@@ -1445,6 +1502,28 @@ typedef struct HfApi
     /* Takes the mod's own hook of target out of its chain (the function runs as if it had not been hooked by this mod;
      * a call already inside the detour finishes). 0 on success, 1 when the mod has no hook there. */
     int (*unhook)(HfMod* mod, uintptr_t target);
+
+    /* ---- SDK 17: explosions (check hf->size before calling) -------------------------------------------------------- */
+    /* Adds a new explosion type (see HfExplosion). Call it from hellforge_mod_init, before the event below. Returns its
+     * type (423 and up), or 0 (the mod's log says why). 512 across all mods. */
+    uint32_t (*add_explosion)(HfMod* mod, const HfExplosion* explosion);
+    /* The 152-byte ExplosionSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and
+     * must stay. */
+    uintptr_t (*explosion_row)(uint32_t type);
+
+    /* ---- SDK 17: beams and arcs (check hf->size before calling) ---------------------------------------------------- */
+    /* Adds a new beam type (see HfBeam). Call it from hellforge_mod_init. Returns its type (31 and up), or 0 (the mod's
+     * log says why). 512 across all mods. */
+    uint32_t (*add_beam)(HfMod* mod, const HfBeam* beam);
+    /* The 112-byte BeamSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must
+     * stay. */
+    uintptr_t (*beam_row)(uint32_t type);
+    /* Adds a new arc type (see HfArc). Call it from hellforge_mod_init. Returns its type (17 and up), or 0 (the mod's log
+     * says why). 512 across all mods. */
+    uint32_t (*add_arc)(HfMod* mod, const HfArc* arc);
+    /* The 104-byte ArcSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must
+     * stay. */
+    uintptr_t (*arc_row)(uint32_t type);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

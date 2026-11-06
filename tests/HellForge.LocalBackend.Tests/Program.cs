@@ -749,6 +749,9 @@ try
     await ModWarbondsTests.Run(root, Check);
     results.Add(new { mode = "mod-warbonds", outcome = "passed" });
     Console.WriteLine("PASS mod warbonds: the spec's checks and ids, listed after the game's within the list's room and the bought items' room, pages, spent counter, sold in their currency, page gates, mods' items held once bought, unlock-all, premium refused");
+    MasteryTests.Run(root, Check);
+    results.Add(new { mode = "weapon-mastery", outcome = "passed" });
+    Console.WriteLine("PASS weapon mastery: missions earn, once; a mod weapon's own level, items and purchases, saved apart; the launcher's levels; caching");
 }
 catch (Exception error)
 {

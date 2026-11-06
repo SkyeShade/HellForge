@@ -148,7 +148,7 @@ static const char* NetSwitchWritePaused(uintptr_t game, const uint32_t* table, u
     for (int attempt = 0; attempt < NET_SWITCH_PAUSES && result == 2; attempt++)
     {
         if (attempt) Sleep(5);
-        result = ApplyGrowthPatches(patches, 2, 0, NULL);
+        result = ApplyGrowthPatches(patches, 2, NULL, 0);
     }
     if (result == 2) return "a game thread stayed inside its code";
     if (result != 0) return "its code is not the reviewed one";

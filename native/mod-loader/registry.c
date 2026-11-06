@@ -70,8 +70,8 @@
  * the game sends a type in 11 bits, 193 more at most, unless HellForge widens it to 12 for a mod set with more
  * (registry_load.c WidenNetworkTypes; 2,241 more). Other walls come first for many sets, and each refuses on its own:
  * a component table's compiled index slots (ComponentsUnderstood), the loadout index (193 more weapons), the entity map
- * (2,187 more rows), and for weapons the game's 4,096 catalogue items (RegisteredItems.cs). 512: the research's target
- * (research\entity-limit\README.md). */
+ * (2,187 more rows), and for weapons the armory's 256 cards a list (registry_load.c ArmoryRoom) and the game's catalogue
+ * (RegisteredItems.cs). 512: the research's target (research\entity-limit\README.md). */
 #define REG_MAX_WEAPONS 512
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
@@ -147,6 +147,7 @@ typedef struct Weapon
     uint32_t shortId, baseShortId;
     uint32_t projectile, baseProjectile;   /* HfWeapon.projectile, and what its base fires */
     uint32_t soundFrom;                    /* HfWeapon.sound_from */
+    uint32_t beam, arc;                    /* HfWeapon.beam, HfWeapon.arc */
     uint8_t* projectileRecord;             /* its own ProjectileWeapon record, when it has a projectile */
     int ownCount;
     uint32_t own[REG_MAX_OWN], ownStride[REG_MAX_OWN]; /* components it owns records of (HfWeapon.own_components) */
@@ -216,6 +217,7 @@ static int g_registryHooked;
 static int g_registryActive; /* the hooks are in: weapons get added when the entity data loads */
 static int g_armoryReplaced; /* HellForge's armory builder runs instead of the game's (table 29 may grow) */
 static int ProjectileUsable(uint32_t type); /* projectiles.c */
+static int BeamTypeKnown(uint32_t type), ArcTypeKnown(uint32_t type), BeamTypeUsable(uint32_t type), ArcTypeUsable(uint32_t type); /* beam_arc.c */
 static int BehaviourUsable(uint32_t id);    /* behaviours.c */
 static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64_t copy); /* registry_load.c: unit copies */
 static uint32_t GrownSlots(uint32_t component); /* table_growth.c: a table grown this session */
@@ -316,6 +318,9 @@ static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
     return owner;
 }
 
+/* What the game keeps once state_moves.c has moved its arrays (0: what it compiled, as far as the backend need know). */
+static uint32_t g_gameItems, g_gamePackages;
+
 static int StratagemItems(char* text, int n, int size, int first);
 static int DifficultyItems(char* text, int n, int size, int first);
 
@@ -348,10 +353,12 @@ static const char* JsonText(const char* text, char* out, size_t size)
 static int RegisteredItemsText(char* text, int size)
 {
     char mod[6 * 80 + 1], name[6 * 192 + 1];
-    int n = snprintf(text, size, "{\"format\":1,\"items\":[");
+    int n = snprintf(text, size, "{\"format\":1,");
+    if (g_gameItems != 0) n += snprintf(text + n, size - n, "\"capacity\":{\"items\":%u,\"packages\":%u},", g_gameItems, g_gamePackages);
+    n += snprintf(text + n, size - n, "\"items\":[");
     int listed = 0;
     for (int i = 0; i < g_weaponCount && n < size - REG_ITEM_ROOM; i++)
-        if (!g_weapons[i].plain && g_weapons[i].state != 2 && !LiveTomb(LC_WEAPON, (uint32_t)i))
+        if (!g_weapons[i].plain && g_weapons[i].state != 2 && g_weapons[i].state != -1 && !LiveTomb(LC_WEAPON, (uint32_t)i))
             n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"unit\":\"%s\"}", listed++ ? "," : "",
                 g_weapons[i].id, g_weapons[i].base, JsonText(g_weapons[i].mod->id, mod, sizeof mod), JsonText(g_weapons[i].name, name, sizeof name));
     int before = n;
@@ -465,6 +472,20 @@ static int WeaponProjectile(HfMod* mod, const char* unit, const HfWeapon* def, W
     return 0;
 }
 
+/* Its own beam or arc (HfWeapon.beam, HfWeapon.arc), when the mod's HfWeapon names one; 1 if refused (logged). */
+static int WeaponBeamArc(HfMod* mod, const char* unit, const HfWeapon* def, Weapon* w)
+{
+    if (def->size < offsetof(HfWeapon, arc) + sizeof def->arc) return 0;
+    if (!BeamTypeKnown(def->beam) || !ArcTypeKnown(def->arc))
+    {
+        ApiLog(mod, "add_weapon(%s): beam %u or arc %u is neither a vanilla type nor one a mod added", unit, def->beam, def->arc);
+        return 1;
+    }
+    w->beam = def->beam;
+    w->arc = def->arc;
+    return 0;
+}
+
 /* Its own text ids (HfWeapon.name and the rest), when the mod names it. */
 static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
 {
@@ -515,7 +536,7 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     w.id = id;
     w.entity = entity;
     snprintf(w.name, sizeof w.name, "%s", unit);
-    if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w)) return 0;
+    if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w) || WeaponBeamArc(mod, unit, def, &w)) return 0;
     if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
     if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w.ownAll = def->own_all != 0;
     WeaponText(def, unit, &w);
@@ -741,7 +762,7 @@ static uint32_t CatalogueStride(uint32_t c, uint32_t slots, uint64_t recordBytes
     *known = 1;
     for (size_t i = 0; i < sizeof kComponentSizes / sizeof kComponentSizes[0]; i++)
         if (kComponentSizes[i].component == c)
-            return kComponentSizes[i].slots == slots && RecordsFit(kComponentSizes[i].records, kComponentSizes[i].size, recordBytes) ? kComponentSizes[i].size : 0;
+            return (kComponentSizes[i].slots == slots || GrownSlots(c) == slots) && RecordsFit(kComponentSizes[i].records, kComponentSizes[i].size, recordBytes) ? kComponentSizes[i].size : 0;
     *known = 0;
     return 0;
 }

@@ -84,7 +84,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         var caps = new Dictionary<uint, long>();
         foreach (var item in catalogue ?? [])
             if (item.TryGetProperty("maxCap", out var cap) && cap.TryGetInt64(out var most)) caps.TryAdd(item.GetProperty("mixId").GetUInt32(), most);
-        var registered = Registered is { } r ? r.Admitted(RegisteredItems.Prioritized(r.Load())).Where(i => !r.Locked(i) && !i.IsDifficulty).ToList() : [];
+        var registered = Registered is { } r ? r.Served().Where(i => !r.IsLocked(i) && !i.IsDifficulty).ToList() : [];
         return new Lookup(catalogue?.Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet(), caps, registered);
     }
 
@@ -232,23 +232,26 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         return true;
     }
 
+    // The inventory entries the game keeps this session (more once the mod loader has moved its arrays).
+    int InventoryKept => Registered?.InventoryKept ?? RegisteredItems.InventoryCap;
+
     // The tokens of open warbonds (a premium look, no price) are everyone's; on unlock-all every token is.
     bool HoldTokens(JsonArray held, IReadOnlyList<Served> served)
     {
         var have = held.OfType<JsonObject>().Select(i => (uint?)i["mixId"]).ToHashSet();
         foreach (var warbond in served.Select(w => w.Spec).Where(w => w.HasToken && (w.UnlockCost == 0 || UnlockAll) && !have.Contains(w.Token)))
-            if (held.Count < RegisteredItems.InventoryCap) held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Token, ["amount"] = 1, ["isDiscovered"] = true });
+            if (held.Count < InventoryKept) held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Token, ["amount"] = 1, ["isDiscovered"] = true });
         return true;
     }
 
     // Unlock-all: each spent counter at its warbond's whole cost, so every page is open.
-    static bool FillCounters(JsonArray held, IReadOnlyList<Served> served)
+    bool FillCounters(JsonArray held, IReadOnlyList<Served> served)
     {
         foreach (var warbond in served)
         {
             var counter = held.OfType<JsonObject>().FirstOrDefault(i => (uint?)i["mixId"] == warbond.Spec.Spent);
             if (counter != null) counter["amount"] = Math.Max((long?)counter["amount"] ?? 0, warbond.TotalCost);
-            else if (held.Count < RegisteredItems.InventoryCap) held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Spec.Spent, ["amount"] = warbond.TotalCost, ["isDiscovered"] = true });
+            else if (held.Count < InventoryKept) held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Spec.Spent, ["amount"] = warbond.TotalCost, ["isDiscovered"] = true });
         }
         return true;
     }

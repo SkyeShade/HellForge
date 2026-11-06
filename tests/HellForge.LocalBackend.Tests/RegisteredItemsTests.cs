@@ -45,11 +45,11 @@ static class RegisteredItemsTests
         var basePackage = packages.OfType<JsonObject>().First(p => (int)p["type"]! == 2 && ((JsonArray)p["requiredItems"]!).Any(r => (uint)r! == Liberator));
         var progression = JsonSerializer.SerializeToElement(new { experience = 1, packageProgress = new[] { new { id32 = (uint)basePackage["id32"]!, level = 7, progress = 3, sortOrder = 0, claimedLevels = Array.Empty<int>() } } });
         var progress = JsonNode.Parse(items.Apply("/Progression", progression).GetRawText())!["packageProgress"]!.AsArray();
-        check(progress.Any(e => (uint)e!["id32"]! == (uint)mastery[0]["id32"]! && (int)e["level"]! == 7), "The registered weapon does not follow its base's level.");
+        check(!progress.Any(e => (uint)e!["id32"]! == (uint)mastery[0]["id32"]!), "The registered weapon took its base's level: a whole copy starts at the lowest.");
 
         var held = JsonSerializer.SerializeToElement(new { items = new object[] { new { mixId = baseChildren[0], amount = 1, isDiscovered = true } } });
         var inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
-        check(inventory.Contains(Gold) && inventory.Contains(goldChildren[0]), "The inventory lacks the weapon or its copy of a held child.");
+        check(inventory.Contains(Gold) && !inventory.Contains(goldChildren[0]), "The inventory lacks the weapon, or mirrors what its base holds.");
 
         // A stratagem a code mod adds (stratagems.c): a copy of the Orbital Airburst Strike's item (stable id 1560416221)
         // and its child, the child's itemId being the new stable id. An entry whose base is not known yet waits.
@@ -144,5 +144,37 @@ static class RegisteredItemsTests
         catalogue = (JsonArray)JsonNode.Parse(noPackages.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
         check(!copies.Any(c => catalogue.Any(i => (uint)i!["mixId"]! == c)) && catalogue.Any(i => (uint)i!["mixId"]! == Item) &&
             log.Count == 25 && log.All(l => l.Contains("256 progression packages")), "No package left: no weapon copy, the stratagem still: " + string.Join(" | ", log.Take(1)));
+
+        // The loader moved the game's arrays (native/mod-loader/state_moves.c) and says so: every copy goes in, past 4,096
+        // items; inventory and packages follow.
+        string Pack(string capacity) => "{\"format\":1," + capacity + "\"items\":[" + string.Join(",", copies.Select(c => $$"""{"mixId":{{c}},"copyOf":{{Liberator}},"mod":"test.pack","unit":"test/{{c}}"}""")) + "]}";
+        const string Moved = "\"capacity\":{\"items\":40960,\"packages\":1024},";
+        var boundary = (RegisteredItems.PackageCap - fixtures["/Progression/ProgressionPackages"].GetArrayLength()) + 5;
+        copies = [.. Enumerable.Range(0, Math.Max(boundary, 25)).Select(i => 0x40000000u + (uint)i)];
+        JsonArray Served(RegisteredItems registered, string path) => (JsonArray)JsonNode.Parse(registered.Apply(path, fixtures[path]).GetRawText())!;
+        File.WriteAllText(file, Pack(Moved));
+        log.Clear();
+        var moved = new RegisteredItems(file) { Source = items.Source, Log = log.Add };
+        catalogue = Served(moved, "/Progression/items");
+        var movedPackages = Served(moved, "/Progression/ProgressionPackages");
+        check(catalogue.Count == vanillaCount + copies.Count * (baseChildren.Count + 1) && catalogue.Count > RegisteredItems.CatalogueCap && log.Count == 0 &&
+            movedPackages.Count > RegisteredItems.PackageCap, $"Moved: every copy is served whole ({catalogue.Count} items, {movedPackages.Count} packages): " + string.Join(" | ", log.Take(1)));
+        var crowdedOld = JsonSerializer.SerializeToElement(new { items = Enumerable.Range(1, RegisteredItems.InventoryCap).Select(i => new { mixId = (uint)i, amount = 1, isDiscovered = true }) });
+        var heldMoved = JsonNode.Parse(moved.Apply("/Progression/inventory", crowdedOld).GetRawText())!["items"]!.AsArray();
+        check(heldMoved.Count == RegisteredItems.InventoryCap + copies.Count && log.Count == 0, "Moved: the inventory holds past 4,096 entries.");
+        // A move refused says nothing: the session stays at what the game compiled, and so does any word it cannot trust.
+        foreach (var refused in new[] { "", "\"capacity\":{\"items\":100,\"packages\":1024},", "\"capacity\":{\"items\":40960},", "\"capacity\":7," })
+        {
+            File.WriteAllText(file, Pack(refused));
+            var stayed = new RegisteredItems(file) { Source = items.Source, Log = _ => { } };
+            check(Served(stayed, "/Progression/items").Count <= RegisteredItems.CatalogueCap && Served(stayed, "/Progression/ProgressionPackages").Count <= RegisteredItems.PackageCap,
+                $"No move, no more than the game compiled: '{refused}'.");
+        }
+        // The word comes after weapons registered (the game has not asked yet): the file's change is what counts.
+        File.WriteAllText(file, Pack(""));
+        var late = new RegisteredItems(file) { Source = items.Source, Log = _ => { } };
+        var before = late.Load().Count;
+        File.WriteAllText(file, Pack(Moved));
+        check(late.Load().Count == before && Served(late, "/Progression/items").Count > RegisteredItems.CatalogueCap, "A loader's word that comes later counts.");
     }
 }

@@ -552,6 +552,9 @@ static void ChannelInstall(uintptr_t game);
 #include "table_growth.c" /* the component tables the registry grows */
 #include "registry_load.c" /* the registry at work when the entity data loads */
 #include "damage.c"
+#include "beam_arc.c"
+#include "explosions.c"
+#include "state_moves.c" /* arrays moved out of the game state */
 #include "projectiles.c"
 #include "stratagems.c"
 #include "difficulty.c"
@@ -738,6 +741,7 @@ static void WatchLoaded(void)
     Note("game.dll loaded and decoded");
     ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
+    StateMoves(ApiModuleBase("game.dll", NULL)); /* before the plugin setup allocates the game state */
     StartCrashWorker(); /* crash_notes.c: the thread that notes a stack overflow */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
@@ -755,20 +759,8 @@ static void WatchProjectiles(void)
         Note("projectile list ready");
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
         Fire(HF_EVENT_PROJECTILES_READY);
+        WantBlastPackages();
     }
-}
-
-/* Once the game has loaded its stratagems; code still being decoded gets 20 s. */
-static void WatchStratagems(void)
-{
-    if (!g_fired[HF_EVENT_GAME_LOADED] || g_stratagemState != 0) return;
-    static ULONGLONG stratagemsSeen;
-    uintptr_t game = ApiModuleBase("game.dll", NULL);
-    uint64_t first = 0;
-    if (game == 0 || SafeRead(game + STR_TABLE + 8, &first, 8) || first == 0) return;
-    if (stratagemsSeen == 0) stratagemsSeen = GetTickCount64();
-    if (g_game == 0) g_game = game;
-    InstallStratagems(game, GetTickCount64() - stratagemsSeen >= 20000);
 }
 
 /* game.dll fills its difficulty tables when it loads; code still being decoded gets 20 s. */
@@ -898,6 +890,7 @@ static void WatchRunning(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) UnitCopiesTick(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_GAME_LOADED]) FreezeWatch();
     if (g_fired[HF_EVENT_GAME_LOADED] && g_physicsPools == 0) PhysicsPools(ApiModuleBase("game.dll", NULL));
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StateMoves(ApiModuleBase("game.dll", NULL)); StateMovesWatch(ApiModuleBase("game.dll", NULL)); }
     if (g_difficultyState == 1) DifficultyWatch();
     FieldWatchTick(); /* B.4b: off once the watchpoints' log is full, even after the level notes stop */
     if (g_difficultyState == 1) DifficultyArtillery();
@@ -1127,7 +1120,7 @@ static void ApiInit(void)
         ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
-        ApiLoadPhase, ApiUnhook};
+        ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */

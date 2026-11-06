@@ -207,16 +207,17 @@ static const uint8_t kWbCellStatePin[6] = {0x48,0x8b,0x46,0x08,0x33,0xc9}; /* mo
 static const uint8_t kWbPanelStatePin[6] = {0x8b,0x43,0x08,0x39,0x41,0x50}; /* mov eax,[rbx+8]; cmp [rcx+0x50],eax (to 0x196E248) */
 static uintptr_t g_wbGame;
 
-/* What the profile holds of a currency (the game's inline lookup, 0x196D2E4: progression+0x1CE0 entries at +0xB9CE4,
- * 0x18 apart, {index, mixId}; the amount at index * 0xB8 + 0x1D94); 0 when it holds none. */
+/* What the profile holds of a currency (the game's inline lookup, 0x196D2E4: the catalogue's count, then its hierarchy
+ * entries 0x18 apart, {index, mixId}, the amount at definition index + 0xB0; at progression+0x1CE0, +0xB9CE4 and +0x1D94
+ * until state_moves.c moves the catalogue, so through g_catalogue); 0 when it holds none. */
 static int32_t WarbondHeld(uint32_t mixId)
 {
     const uint8_t* mgr = *(const uint8_t* const*)(g_wbGame + WB_PROGRESSION);
     if (mgr == NULL) return 0;
-    uint32_t count = *(const uint32_t*)(mgr + 0x1CE0);
-    const uint8_t* entry = mgr + 0xB9CE4;
-    for (uint32_t i = 0; i < count; i++, entry += 0x18)
-        if (*(const uint32_t*)(entry + 4) == mixId) return *(const int32_t*)(mgr + (size_t)*(const uint32_t*)entry * 0xB8 + 0x1D94);
+    uint32_t count = *(const uint32_t*)(mgr + g_catalogue.count);
+    const uint8_t* entry = mgr + g_catalogue.index;
+    for (uint32_t i = 0; i < count && i < g_catalogue.items; i++, entry += 0x18)
+        if (*(const uint32_t*)(entry + 4) == mixId) return *(const int32_t*)(mgr + g_catalogue.records + (size_t)*(const uint32_t*)entry * 0xB8 + 0xB0);
     return 0;
 }
 

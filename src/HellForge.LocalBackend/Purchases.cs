@@ -33,6 +33,9 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
 
     PaidContentSet Paid => profile.Ownership?.Paid ?? DefaultPaid.Value;
 
+    // This session's mod weapons, set by LocalBackend.
+    public RegisteredItems? Registered { get; init; }
+
     // Status, reply and the audit's outcome; a refusal is a 400 the client shows as a failed purchase.
     public (int Status, JsonNode Reply, string Outcome) Handle(string path, JsonElement body)
     {
@@ -160,11 +163,11 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     // The next level of a progression package (ship modules): its cost taken, its item rewards given.
     JsonNode? PackageLevel(JsonElement body)
     {
-        if (!Whole(body, "id32", out var id) || !Whole(body, "level", out var level) || FindPackage(id) is not { } package) return null;
-        if (FindLevel(package, level) is not { } step || Costs(step.GetProperty("cost"), 1) is not { } cost) return null;
+        if (!Whole(body, "id32", out var id) || !Whole(body, "level", out var level) || FindPackage(id) is not { } track) return null;
+        if (FindLevel(track.Definition, level) is not { } step || Costs(step.GetProperty("cost"), 1) is not { } cost) return null;
         return profile.TryChange((progression, inventory) =>
         {
-            var entry = PackageEntry(progression, id);
+            var entry = track.Entry(progression);
             if (Whole(entry, "level") + 1 != level || cost.Any(c => ProfileStore.Held(inventory, c.Key) < c.Value)) return false;
             foreach (var (currency, amount) in cost) ProfileStore.AddItem(inventory, currency, -amount);
             entry["level"] = level;
@@ -172,7 +175,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
             foreach (var reward in step.GetProperty("rewards").EnumerateArray())
                 if (reward.GetProperty("type").GetInt32() == 1)
                     foreach (var (content, amount) in Contents(reward.GetProperty("id32").GetUInt32(), reward.GetProperty("amount").GetInt64()))
-                        ProfileStore.AddItem(inventory, content, amount);
+                        track.Give(inventory, entry, content, amount);
             return true;
         }) ? new JsonObject() : null;
     }
@@ -181,16 +184,19 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     JsonNode? UnlockableItem(JsonElement body)
     {
         if (!Whole(body, "packageId32", out var id) || !Whole(body, "targetLevel", out var level) || !Whole(body, "itemMixId", out var mix) ||
-            FindPackage(id) is not { } package || FindLevel(package, level) is not { } step) return null;
+            FindPackage(id) is not { } track || FindLevel(track.Definition, level) is not { } step) return null;
         if (!step.TryGetProperty("unlockableItems", out var offers)) return null;
-        var offer = offers.EnumerateArray().FirstOrDefault(o => o.GetProperty("mixId").GetInt64() == mix);
-        if (offer.ValueKind != JsonValueKind.Object || Costs(offer.GetProperty("cost"), 1) is not { } cost || Paid.IsPaid((uint)mix)) return null;
+        // The offer as its base's package lists it; the client names a copy's by the copy's own child id.
+        var offer = offers.EnumerateArray().FirstOrDefault(o => track.Own(o.GetProperty("mixId").GetUInt32()) == mix);
+        if (offer.ValueKind != JsonValueKind.Object || Costs(offer.GetProperty("cost"), 1) is not { } cost) return null;
+        var item = offer.GetProperty("mixId").GetUInt32();
+        if (Paid.IsPaid(item)) return null;
         return profile.TryChange((progression, inventory) =>
         {
-            if (Whole(PackageEntry(progression, id), "level") < level || ProfileStore.Held(inventory, (uint)mix) > 0 ||
-                cost.Any(c => ProfileStore.Held(inventory, c.Key) < c.Value)) return false;
+            var entry = track.Entry(progression);
+            if (Whole(entry, "level") < level || track.Holds(inventory, entry, item) || cost.Any(c => ProfileStore.Held(inventory, c.Key) < c.Value)) return false;
             foreach (var (currency, amount) in cost) ProfileStore.AddItem(inventory, currency, -amount);
-            ProfileStore.AddItem(inventory, (uint)mix, offer.TryGetProperty("amount", out var n) ? n.GetInt64() : 1);
+            track.Give(inventory, entry, item, offer.TryGetProperty("amount", out var n) ? n.GetInt64() : 1);
             return true;
         }) ? new JsonObject() : null;
     }
@@ -248,11 +254,12 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         return null;
     }
 
-    static JsonElement? FindPackage(long id32)
+    // A package of the game's, or a mod weapon's the player may have: it sells at its base's prices, against its own level.
+    MasteryTrack? FindPackage(long id32)
     {
-        foreach (var package in Progression.Value.RootElement.GetProperty("progressionPackages").EnumerateArray())
-            if (package.GetProperty("id32").GetInt64() == id32) return package;
-        return null;
+        if (id32 is < 0 or > uint.MaxValue) return null;
+        if (WeaponMastery.Vanilla((uint)id32) is { } vanilla) return vanilla;
+        return Registered?.Track((uint)id32) is { } copy && !Registered.IsLocked(copy.Item!) ? copy : null;
     }
 
     static JsonElement? FindLevel(JsonElement package, long level)
@@ -260,17 +267,6 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         foreach (var step in package.GetProperty("levels").EnumerateArray())
             if (step.GetProperty("level").GetInt64() == level) return step;
         return null;
-    }
-
-    // The profile's progress entry of a package (progression.packageProgress), made at level 0 with every field the
-    // client's /Progression parser wants (ProfileStore.CompletePackageEntry).
-    static JsonObject PackageEntry(JsonObject progression, long id32)
-    {
-        if (progression["packageProgress"] is not JsonArray list) progression["packageProgress"] = list = new JsonArray();
-        var entry = list.OfType<JsonObject>().FirstOrDefault(e => Whole(e, "id32") == id32);
-        if (entry == null) list.Add((JsonNode)(entry = new JsonObject { ["id32"] = id32, ["level"] = 0 }));
-        ProfileStore.CompletePackageEntry(entry);
-        return entry;
     }
 
     static bool Whole(JsonElement node, string key, out long value)

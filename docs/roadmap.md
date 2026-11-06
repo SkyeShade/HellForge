@@ -243,7 +243,7 @@ Status: planned. The design isn't decided yet.
 A new profile starts from a template: `starter` (a fresh player just out of basic training) or `unlock-all`
 (everything, at the top level). For now the local backend pays out with simple placeholder rules (`MissionService.cs`):
 XP based on difficulty, success and objectives, requisition and medals based on difficulty, and whatever samples the
-game reports you looted.
+game reports you looted. Your primary gains the same XP as you do.
 
 What a profile earns can be spent (`Purchases.cs`), each checked against the game's prices and the profile's balance:
 
