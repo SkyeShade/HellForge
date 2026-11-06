@@ -47,6 +47,8 @@ On `dev`, since 0.4.0-beta.
   (2 minutes past each request, at most 6 hours), so a large mod over a slow link finishes; one left idle still ends.
   The host keeps the player expected back while they download, so the rejoin after a long download is still let in
   ([mod sync](docs/multiplayer-mod-sync.md#mod-sync-speed)).
+- **Sync Inventory only listens.** It keeps what the normal game itself receives after logging in (your progression and
+  inventory) and no longer asks Arrowhead's API for them a second time, so a sync adds no requests of its own.
 
 ### For contributors
 
