@@ -24,7 +24,7 @@ hold the rest:
 - [Source mod builds](#source-mod-builds)
 - [The load chain](#the-load-chain)
 - [Registries](#registries): [weapons](#weapons), [the game state's arrays](#the-game-states-arrays),
-  [projectiles and damage](#projectiles-and-damage),
+  [projectiles and damage](#projectiles-and-damage), [explosions, beams and arcs](#explosions-beams-and-arcs),
   [stratagems](#stratagems), [entities and behaviours](#entities-and-behaviours), [abilities](#abilities)
 - [Difficulty 11](#difficulty-11) (its own page)
 - [Named fields](#named-fields)
@@ -290,6 +290,20 @@ Talon's bolt, and `flight_effect` (row +0x70) its light and trail. An effect's c
 life (10 key times, then 10 RGB keys on a 0..255 scale), not its materials or textures. A recoloured effect therefore
 has to come as data, in an archive the weapon loads, as the gold Liberator's model does. `examples/mods/talon-liberator`
 turns the Talon's yellow curves blue.
+
+### Explosions, beams and arcs
+
+| List | game.dll (build 25480438) | Slots | Row | Loader | Instructions | Bounds |
+| --- | --- | --- | --- | --- | --- | --- |
+| Explosions | +0x37CC920 | 423 | 152 bytes | 0x11DC320, clears 0xD38 bytes | 47 (one, 0x11DC554, has no `.pdata`) | 38 |
+| Beams | +0x37C8250 | 31 | 112 bytes | 0x11D7E00 | 22 | none |
+| Arcs | +0x37C5F90 | 17 | 104 bytes | 0x11D7AE0 | 60 | none |
+
+These move as the damage list does (`explosion_sites.h`, `beam_arc_sites.h`). An explosion bound left behind gives the
+default row, so all rise. Beams and arcs have no bounds: an unfilled slot crashes, so only installed types reach a record.
+
+An expiry explosion travels in network field type 248, 9 bits. Up to 89 new types keep that format. A larger set widens
+it to 10 bits (the field row's +13) on every machine, which all run the same mods.
 
 ### Stratagems
 
