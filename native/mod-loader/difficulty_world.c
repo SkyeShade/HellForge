@@ -1031,7 +1031,7 @@ typedef struct TileGuard
  * 0x2B's job regions. */
 #define TILE_RUNNERS_MAX 16
 #define TILE_RUNNER_ARENA (64u << 20)
-#define TILE_JOB_REGION (64u << 20)  /* a job's records (0x130 each); a reserved page follows */
+#define TILE_JOB_REGION (16u << 20)  /* a job's records (0x130 each); a reserved page follows */
 typedef struct TileRunner
 {
     TileGuard guard;

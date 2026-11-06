@@ -3912,8 +3912,117 @@ static void StampRulesRestore(void)
 }
 
 static void StampRunnerLoop(TileRunner* r);
-/* The runners' engine jobs and op 0x2B's inline jobs (TileJobsInstall) are both needed for more than one runner. */
-static volatile LONG g_tileJobsReady;
+static volatile LONG g_tileJobsBroken; /* a runner did not return: one runner from then on */
+
+/* Op 0x2B's eight jobs on a runner's own thread. The main body (0xF34CC0) fills the jobs (0x60 each, a pointer to each
+ * in the array r14, edi of them; 0xF34EE0..0xF34F6A) and submits them at 0xF34FB5 through [[game+0x33263E8]+0x88](fn
+ * 0xF322F0, the array, a name, r9d 2, arg5 4, count, 0): queue 2 + 3 x 4 = 14, which only the two LP workers and the
+ * generator thread's help call pop. A runner would leave its jobs there and spin in the wait loop
+ * 0xF34FC0..0xF34FF3 (which reads each job's done byte +0x58). The stub at 0xF34FA7 (mov rax, [rip -> 0x33263E8],
+ * 7 bytes, rsp 16-aligned with the submit's stack arguments in place) tests the thread's runner (TEB TlsSlots,
+ * g_tileRunnerTls): none, the original submit and back to 0xF34FB8; a runner, TileJobsInline(r14, edi) and on to
+ * 0xF34FF5 (r15 from the frame, then the serial placement loop; edi, r14 and rbx = 0 are callee-saved), or to
+ * 0xF3519E with no jobs, as the original's test at 0xF34FB8 does. */
+#define TILE_SUBMIT_SITE 0xF34FA7u
+static const char kTileSubmitPin[] = "48 8B 05 3A 14 3F 02 4C 8B 90 88 00 00 00 41 FF D2 85 FF 0F 84 DE 01 00 00";
+static const char kTileAfterJobsPin[] = "4C 8B 7C 24 48 8B EF";
+static const char kTileNoJobsPin[] = "48 8B 8C 24 A0 00 00 00";
+
+/* Each job, in order, on this thread, into the runner's own region (job+0x20, as WorldPlaceJob gives one on a larger
+ * map; the merge reads the records through it), the rules' picks scaled to the tile's items through the jobs'
+ * permutation: the job picks item x for a rule when perm[x] < [rule+0x20] (0xF327D9..0xF327E9, unsigned; perm =
+ * [job+0x30], u32, shared by the jobs, length the item count [[[job+0x10]+0x170]], 0xF323A5/0xF32423/0xF32552). The
+ * serial path scaled each rule's count to max(1, floor(old s + 0.5)); with perm'[x] = h(perm[x]) - 1, h(p) = the least
+ * o >= 1 whose scaled count exceeds p, perm'[x] < old holds exactly when perm[x] < the scaled count, for every rule
+ * (old 0 picks nothing either way). The jobs only read perm (P: its writes are the main body's shuffle, 0xF34E70). */
+static void TileJobsInline(uint64_t* jobs, uint32_t n)
+{
+    TileRunner* r = TileRunnerSelf();
+    WorldJobFn job = g_placeJob != NULL ? g_placeJob : (WorldJobFn)(g_world.game + 0xF322F0u);
+    if (r == NULL || n == 0) return;
+    if (r->scale < 1.0f)
+    {
+        uint64_t pass = 0, list = 0, perm = 0; uint32_t items = 0;
+        memcpy(&pass, (const void*)(uintptr_t)(jobs[0] + 0x10), 8); memcpy(&perm, (const void*)(uintptr_t)(jobs[0] + 0x30), 8);
+        if (pass != 0 && !SafeRead(pass + 0x170, &list, 8) && list != 0 && !SafeRead(list, &items, 4) && perm != 0 && items <= 0x100000)
+        {
+            uint32_t* p = (uint32_t*)(uintptr_t)perm;
+            const float scale = r->scale;
+            for (uint32_t x = 0; x < items; x++)
+            {
+                /* the least o >= 1 with max(1, floor(o s + 0.5)) > p: floor(o s + 0.5) >= p + 1 (p >= 1) */
+                uint32_t v = p[x], o;
+                if (v == 0) o = 1;
+                else
+                {
+                    o = (uint32_t)(((double)v + 0.5) / (double)scale);
+                    if (o < 1) o = 1;
+                    while (o > 1 && (uint32_t)floorf((float)(o - 1) * scale + 0.5f) >= v + 1) o--;
+                    while ((uint32_t)floorf((float)o * scale + 0.5f) < v + 1) o++;
+                }
+                p[x] = o - 1;
+            }
+        }
+    }
+    for (uint32_t j = 0; j < n; j++)
+    {
+        uint64_t at = jobs[j];
+        if (r->regions[j & 7] != NULL) *(volatile uint64_t*)(uintptr_t)(at + 0x20) = (uint64_t)(uintptr_t)r->regions[j & 7];
+        job(0, 0, 0, at);
+    }
+}
+
+static int TileJobsInstall(void)
+{
+    static int done = -1;
+    if (done >= 0) return done;
+    done = 0;
+    uintptr_t game = g_world.game;
+    if (g_tileRunnerTls == TLS_OUT_OF_INDEXES || g_tileRunnerTls >= 64)
+    { Note("difficulty: stamps: no low TLS slot for the planning's runners; one runner"); return 0; }
+    if (!ApiCodeMatches(game + TILE_SUBMIT_SITE, kTileSubmitPin) || !ApiCodeMatches(game + 0xF34FF5u, kTileAfterJobsPin) || !ApiCodeMatches(game + 0xF3519Eu, kTileNoJobsPin))
+    { Note("difficulty: stamps: op 0x2B's job submit is not the reviewed one; one runner"); return 0; }
+    uint8_t* stub = AllocateNearGame(game, 0x100);
+    if (stub == NULL) { Note("difficulty: stamps: no memory near game.dll for the runners' stub; one runner"); return 0; }
+    uint8_t c[128]; int n = 0;
+    uint32_t teb = 0x1480u + 8u * g_tileRunnerTls;
+    uint64_t v;
+#define B(...) do { const uint8_t t_[] = {__VA_ARGS__}; memcpy(c + n, t_, sizeof t_); n += (int)sizeof t_; } while (0)
+#define Q(x) do { v = (uint64_t)(x); memcpy(c + n, &v, 8); n += 8; } while (0)
+    B(0x65, 0x48, 0x8B, 0x04, 0x25); memcpy(c + n, &teb, 4); n += 4;   /* mov rax, gs:[TlsSlots + 8k] */
+    B(0x48, 0x85, 0xC0);                                              /* test rax, rax */
+    B(0x75, 0x00); int jnz = n - 1;                                   /* jnz runner */
+    B(0x48, 0xB8); Q(game + 0x33263E8u);                              /* mov rax, &[game+0x33263E8] */
+    B(0x48, 0x8B, 0x00);                                              /* mov rax, [rax] */
+    B(0x4C, 0x8B, 0x90, 0x88, 0x00, 0x00, 0x00);                      /* mov r10, [rax+0x88] */
+    B(0x41, 0xFF, 0xD2);                                              /* call r10 */
+    B(0xFF, 0x25, 0, 0, 0, 0); Q(game + 0xF34FB8u);                   /* jmp game+0xF34FB8 */
+    c[jnz] = (uint8_t)(n - (jnz + 1));
+    B(0x85, 0xFF);                                                    /* runner: test edi, edi */
+    B(0x75, 0x0E);                                                    /* jnz jobs */
+    B(0xFF, 0x25, 0, 0, 0, 0); Q(game + 0xF3519Eu);                   /* jmp game+0xF3519E (no jobs) */
+    B(0x4C, 0x89, 0xF1);                                              /* jobs: mov rcx, r14 */
+    B(0x89, 0xFA);                                                    /* mov edx, edi */
+    B(0x48, 0xB8); Q((uintptr_t)TileJobsInline);                      /* mov rax, TileJobsInline */
+    B(0xFF, 0xD0);                                                    /* call rax */
+    B(0xFF, 0x25, 0, 0, 0, 0); Q(game + 0xF34FF5u);                   /* jmp game+0xF34FF5 */
+#undef B
+#undef Q
+    memcpy(stub, c, (size_t)n);
+    DWORD old;
+    if (!VirtualProtect(stub, 0x100, PAGE_EXECUTE_READ, &old)) return 0;
+    uint8_t patch[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+    int64_t rel = (int64_t)(uintptr_t)stub - (int64_t)(game + TILE_SUBMIT_SITE + 5);
+    if (rel < INT32_MIN || rel > INT32_MAX) return 0;
+    int32_t r32 = (int32_t)rel; memcpy(patch + 1, &r32, 4);
+    if (!VirtualProtect((void*)(game + TILE_SUBMIT_SITE), 7, PAGE_EXECUTE_READWRITE, &old)) return 0;
+    memcpy((void*)(game + TILE_SUBMIT_SITE), patch, 7);
+    VirtualProtect((void*)(game + TILE_SUBMIT_SITE), 7, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), (void*)(game + TILE_SUBMIT_SITE), 7);
+    done = 1;
+    return 1;
+}
+
 static int TileThreads(void)
 {
     static int n = -1;
@@ -3926,14 +4035,36 @@ static int TileThreads(void)
         if (n > TILE_RUNNERS_MAX) n = TILE_RUNNERS_MAX;
     }
     if (g_tileRunnerTls == TLS_OUT_OF_INDEXES) { DWORD k = TlsAlloc(); if (k != TLS_OUT_OF_INDEXES) g_tileRunnerTls = k; }
-    return g_tileJobsReady && g_tileRunnerTls != TLS_OUT_OF_INDEXES ? n : 1;
+    if (n > 1 && !g_tileJobsBroken && TileJobsInstall()) return n;
+    return 1;
 }
 
-/* `count` runners (ids 1..count) as engine jobs; the number submitted (0: none, the generator runs every tile). */
+/* A runner's engine job: r9 = its element of the submitted array, the runner. */
+static uint64_t TileRunnerJob(uint64_t a, uint64_t b, uint64_t c, uint64_t runner)
+{
+    StampRunnerLoop((TileRunner*)(uintptr_t)runner);
+    return 0;
+}
+
+/* `count` runners (ids 1..count) as engine jobs on the regular workers: [[game+0x33263E8]+0x88](fn, the array, name,
+ * r9d 1, arg5 3, count, 0), queue 1 + 3 x 3 = 10, which the regular workers pop (the design notes: exe
+ * 0x6261C9..0x6261D6, 0x626A41/0x626A98); the job is called (a, b, c, element). The number submitted (0: none). */
 static int TileRunnersStart(int count)
 {
-    (void)count; (void)StampRunnerLoop;
-    return 0; /* the engine job submit is not wired yet */
+    static uint64_t array[TILE_RUNNERS_MAX];
+    static const char name[] = "hellforge stamp tile runner";
+    int n = 0;
+    for (int i = 1; i <= count && n < TILE_RUNNERS_MAX; i++)
+    {
+        TileRunner* r = TileRunnerMake(i);
+        if (r == NULL) break;
+        array[n++] = (uint64_t)(uintptr_t)r;
+    }
+    uint64_t api = 0, submit = 0;
+    if (n == 0 || SafeRead(g_world.game + 0x33263E8u, &api, 8) || api == 0 || SafeRead(api + 0x88, &submit, 8) || submit == 0) return 0;
+    typedef uint64_t (*SubmitFn)(void* fn, uint64_t* data, const char* name, uint32_t queue, uint32_t priority, uint32_t count, uint64_t zero);
+    ((SubmitFn)(uintptr_t)submit)((void*)TileRunnerJob, array, name, 1, 3, (uint32_t)n, 0);
+    return n;
 }
 
 /* After g_stampPar.stop: every submitted runner has returned (a job the workers start late returns at once). */
@@ -3945,7 +4076,7 @@ static void TileRunnersJoin(int started)
         if (GetTickCount64() - since > 30000)
         {
             Note("difficulty: stamps: %ld of %d runners did not return within 30 s; no runners for the rest of the session", (long)g_stampPar.finished, started);
-            g_tileJobsReady = 0;
+            g_tileJobsBroken = 1;
             return;
         }
         Sleep(1);
