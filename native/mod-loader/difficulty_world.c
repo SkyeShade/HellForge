@@ -421,8 +421,11 @@ static uintptr_t g_worldLevel;
 static uint32_t g_importantList = 0x8996B0u; /* G + this: the important locations (difficulty_block.c moves them) */
 static int32_t phaseBefore66 = -1; /* research: the road units when op 0x66 began */
 static uint32_t g_routeNodes = 0x8C4E40u, g_routeEdges = 0x937348u, g_routePoints = 0x9568E4u; /* G + these: the route graph (difficulty_block.c moves it) */
+typedef struct TileRunner TileRunner;
+static inline TileRunner* TileRunnerSelf(void); /* below: a stamp planning runner on this thread */
 static void WorldPassNote(const char* name, uint32_t before[2], uint64_t start)
 {
+    if (TileRunnerSelf() != NULL) return; /* a runner's tile build: the note is about the level's block, and runners do not log */
     uintptr_t block = 0;
     uint32_t after[2] = {0, 0};
     LARGE_INTEGER now, frequency;
@@ -1037,7 +1040,7 @@ typedef struct TileRunner
     TileGuard guard;
     int id;
     uint8_t ctx[0xE8];
-    uint8_t settings[0xD0];
+    uint8_t settings[0x120];    /* lg+0x2D20..0x2E3F (0x120: the build ops are not proven to stop at 0xD0) */
     struct { uint64_t head; LONG lock; int32_t owner; uint64_t growth; } arena;
     struct { uint64_t used, data, capacity, next; } chunk;
     uint8_t* header;            /* the stamp index's header (0x3000, in g_tileHeaders) */
@@ -1084,6 +1087,13 @@ static LONG CALLBACK WorldTileFault(EXCEPTION_POINTERS* info)
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
+/* Ops 0x12, 0x79 and 0xA4 hand qsort its comparator's context through game.dll globals: the route cell's centre at
+ * 0x348CE98 (written at 0xFD0376 by 0x12 and 0xF690F6 by 0xA4, read by the comparator 0xFCF7E0) and 0x348C088 (0xF3826D
+ * in 0x79, read by 0xF36730). Two threads running them at once sort around each other's centre, so every caller runs
+ * them under one lock: the tile runs here, the level's (and previews') in WorldDispatch (static, hellforge-1a). */
+static SRWLOCK g_sortContextLock = SRWLOCK_INIT;
+static inline int OpUsesSortContext(uint32_t op) { return op == 0x12 || op == 0x79 || op == 0xA4; }
+
 /* One tile step through the dispatcher until its index moves (or `limit` calls), guarded: 0, or the fault's code. */
 static __attribute__((noinline)) LONG WorldTileGuarded(uint8_t* record, uint64_t context, volatile uint32_t* index, uint8_t* phase,
     uint64_t g, uint64_t h, int limit, volatile int* calls)
@@ -1091,10 +1101,13 @@ static __attribute__((noinline)) LONG WorldTileGuarded(uint8_t* record, uint64_t
     static volatile LONG handler;
     if (handler == 0 && InterlockedCompareExchange(&handler, 1, 0) == 0) { AddVectoredExceptionHandler(1, WorldTileFault); handler = 2; }
     while (handler != 2) SwitchToThread();
+    uint32_t op = 0; memcpy(&op, record, 4);
+    const int sortLock = OpUsesSortContext(op);
+    if (sortLock) AcquireSRWLockExclusive(&g_sortContextLock);
     TileGuard* t = TileGuardSelf();
     t->fault = 0;
     RtlCaptureContext(&t->context);
-    if (t->fault != 0) return t->fault; /* resumed here from WorldTileFault */
+    if (t->fault != 0) { if (sortLock) ReleaseSRWLockExclusive(&g_sortContextLock); return t->fault; } /* resumed here from WorldTileFault */
     t->thread = GetCurrentThreadId();
     t->weldFailed = 0;
     while (*index == 0 && *calls < limit)
@@ -1104,6 +1117,7 @@ static __attribute__((noinline)) LONG WorldTileGuarded(uint8_t* record, uint64_t
         if (*index == 0 && limit > 1) Sleep(1);
     }
     t->thread = 0;
+    if (sortLock) ReleaseSRWLockExclusive(&g_sortContextLock);
     return 0;
 }
 
@@ -3816,7 +3830,7 @@ static void EarlyPackages(uint64_t records, uint64_t context, uint64_t index, ui
         if (g_early.at2B == 0xFFFFFFFFu || g_early.at1F == 0xFFFFFFFFu) return;
         g_early.state = 0;
     }
-    if (g_early.state == 1 && i >= g_early.at1F)
+    if (g_early.state == 1 && i > g_early.at1F) /* record 94 has run (its list is in G now) */
     {
         g_early.state = 2;
         uint32_t n = 0; uint64_t api = 0, table = 0, has = 0; uint32_t loaded = 0;
@@ -3825,8 +3839,8 @@ static void EarlyPackages(uint64_t records, uint64_t context, uint64_t index, ui
         for (uint32_t k = 0; k < n && k < EARLY_PACKAGES_MAX && same; k++) { uint64_t id = 0; SafeRead(gen + 0x757220u + 8ull * k, &id, 8); same = id == g_early.list[k]; }
         if (!SafeRead(g_world.game + 0x3326308u, &api, 8) && api != 0 && !SafeRead(api + 0x10, &table, 8) && table != 0 && !SafeRead(table + 0x310, &has, 8) && has != 0)
             for (uint32_t k = 0; k < g_early.count; k++) loaded += ((uint8_t (*)(uint64_t))(uintptr_t)has)(g_early.list[k]) != 0;
-        Note("difficulty: early packages: record %u (0x1F) reached %.1f s after the early request: %u of the %u packages loaded; its own list %s (%u)",
-            i, (double)(GetTickCount64() - g_early.requested) / 1000.0, loaded, g_early.count, same ? "is the same" : "DIFFERS", n);
+        Note("difficulty: early packages: record %u (after 0x1F) reached %.1f s after the early request: %u of the %u packages loaded; record %u's own list %s (%u)",
+            i, (double)(GetTickCount64() - g_early.requested) / 1000.0, loaded, g_early.count, g_early.at1F, same ? "is the same" : "DIFFERS", n);
         return;
     }
     if (g_early.state != 0 || mask != 0 || i <= g_early.lastC || i >= g_early.at2B) return;
@@ -3853,7 +3867,7 @@ static void EarlyPackages(uint64_t records, uint64_t context, uint64_t index, ui
     g_early.count = 0;
     memcpy(g_early.record + 8 + 0x30, &out, 8); memcpy(g_early.record + 8 + 0x38, &countAt, 8);
     TileRunner* r = TileRunnerMake(TILE_RUNNERS_MAX - 1);
-    uint8_t settings[0xD0]; uint64_t S = 0, P = 0;
+    uint8_t settings[0x120]; uint64_t S = 0, P = 0;
     if (r == NULL || SafeRead(context + 8, &S, 8) || S == 0 || SafeRead(S, settings, sizeof settings) || SafeRead(context + 0x20, &P, 8) ||
         SafeRead(context, r->ctx, sizeof r->ctx))
     { g_early.state = -1; return; }
@@ -4054,7 +4068,11 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     if (watch) NatureWindow(b, op, at);
     if (vanilla2B && vanillaOp == 0x2B) TownsForget(records + (uint64_t)vanillaAt * 0x19B0u + 8);
     if (g_world.current > 1.0f && op == 0x66 && phaseBefore66 < 0) { uint32_t u = 0; if (!SafeRead(block + 0x11A7178u, &u, 4)) phaseBefore66 = (int32_t)u; }
+    uint32_t sortAt = 0, sortOp = 0xFFFFFFFFu;
+    const int sortLock = !SafeRead(index, &sortAt, 4) && !SafeRead(records + (uint64_t)sortAt * 0x19B0u, &sortOp, 4) && OpUsesSortContext(sortOp);
+    if (sortLock) AcquireSRWLockExclusive(&g_sortContextLock);
     uint64_t r = g_worldDispatch(records, b, index, d, e, f, g, h);
+    if (sortLock) ReleaseSRWLockExclusive(&g_sortContextLock);
     if (g_kfOn) { g_kfOn = 0; if (g_kfMismatch) Note("difficulty: objectives research: the KindFilter replay disagreed with the game %ld times of %ld", (long)g_kfMismatch, (long)g_kfCount); }
     {
         uint32_t now = 0xFFFFFFFFu, done = watch ? at : vanillaAt, doneOp = watch ? op : vanillaOp;
