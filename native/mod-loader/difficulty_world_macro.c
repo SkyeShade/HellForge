@@ -39,7 +39,7 @@
                             * 179 important locations, s75t; pads follow the capture's rim samples, 0x3F) */
 #define MACRO_PAD_SLOPE 18.0f /* degrees, the ramp around a pad (its reach + MACRO_RAMP): op 0x3F blends a pad into the ground over
                               * its band only, so the land it meets must be near the pad's height (audit 15 criterion 8) */
-#define MACRO_PADS 512     /* stamp records with pads held by their reach (those made before 0x40: the objectives' own) */
+#define MACRO_PADS 256     /* important locations held by their pads' reach (the list holds 256 at most here) */
 #define MACRO_RAMP 200.0f  /* metres over which a held plateau blends into the field */
 #define MACRO_LOW 0.30f    /* the lowland hills' height, a share of MACRO_MAX (MacroShape) */
 #define MACRO_HILLS 8.0f   /* their frequency, per 4096 m */
@@ -163,17 +163,17 @@ static int32_t MacroNearestCorner(uintptr_t gen, uint32_t corners, float gx, flo
 }
 
 /* The field for this level: 1 when made. */
-/* A stamp record's pad reach in metres from its centre (0 without pads): op 0x3F's shapes as TerrainNearPads lists them
- * (item [rec+0x90], shape [item]: circles +0 / count +8, 0x14 each, flags +0x10; rectangles +0x10 / count +0x18, 0x1C
- * each, flags +0x18; bit 1 drawn), each its offset + extent + falloff (circles B ln(a+1), rectangles the padMetre share,
- * PadBandStubs), and the near tiles' footprint [item+0xD8] + its band (NearPadFootprint). */
-static float MacroPadReach(uint64_t rec, float B, float m)
+/* An important location's pad reach in metres from its unit's centre (0 without pads), as op 0x3F lists them (0xF4D129:
+ * the important list's [entry+0x98] = P, item [P+0x90]; TerrainNearPads): the near tiles' footprint [item+0xD8] + its
+ * band (NearPadFootprint) for every one, and with [item+0x160] bit 0x400 the shapes (shape [item]: circles +0 / count
+ * +8, 0x14 each, flags +0x10; rectangles +0x10 / count +0x18, 0x1C each, flags +0x18; bit 1 drawn), each its offset +
+ * extent + falloff (circles B ln(a+1), rectangles the padMetre share, PadBandStubs). */
+static float MacroPadReach(uint64_t P, float B, float m)
 {
-    uint64_t item = 0, shape = 0, list = 0; uint32_t n = 0, kind = 0; uint8_t bit = 0; float reach = 0, r = 0;
-    if (SafeRead(rec + 0x90, &item, 8) || item == 0 || SafeRead(rec + 0x98, &kind, 4) || kind == 0xC33EB5DCu) return 0;
-    if (kind == 0xC33EB5DBu && (SafeRead(item + 0x60, &bit, 1) || !(bit & 1))) return 0;
+    uint64_t item = 0, shape = 0, list = 0; uint32_t n = 0, flags160 = 0; float reach = 0, r = 0;
+    if (SafeRead(P + 0x90, &item, 8) || item == 0) return 0;
     if (!SafeRead(item + 0xD8, &r, 4) && r >= 1.0f && r <= 400.0f) reach = r + fmaxf(r / 2, 16.0f);
-    if (SafeRead(item, &shape, 8) || shape == 0) return reach;
+    if (SafeRead(item + 0x160, &flags160, 4) || !(flags160 & 0x400) || SafeRead(item, &shape, 8) || shape == 0) return reach;
     for (int rect = 0; rect < 2; rect++)
     {
         if (SafeRead(shape + (rect ? 0x10 : 0), &list, 8) || SafeRead(shape + (rect ? 0x18 : 8), &n, 4) || list == 0 || n > 4096) continue;
@@ -267,22 +267,21 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
         { uintptr_t d = MacroType((uintptr_t)table, types, t); if (d && !SafeRead(d + 0x204, &pad, 4) && pad < 3.0e38f) locAbs[l] = 1; }
         if (locAbs[l]) { absolute++; MACRO_FOR_NODES(locXY[l][0], locXY[l][1], MACRO_HOLD, { D[n_] = 0; g_macro.fixed[n_] = 1; }); }
     }
-    /* the stamp records already made (the objectives' own: 0x16, 0x17, 0x82, 0x8B, 0x8E, 0xA0 run before 0x40; 0x2B's
-     * come later): held over their whole pad reach, at 0 for an absolute pad, flat otherwise, with the ramp cap around */
+    /* the important locations' pads (0x3F's list, made before 0x40: the objectives, outposts, POIs and satellites; 0x2B's
+     * stamps come later), held over their whole reach: at 0 for an absolute pad, flat otherwise, with the ramp cap */
     static float padXY[MACRO_PADS][2], padReach[MACRO_PADS]; static uint8_t padAbs[MACRO_PADS];
-    uint32_t pads = 0, records = 0, padsAbs = 0; float reachMost = 0;
+    uint32_t pads = 0, padsAbs = 0, unitless = 0; float reachMost = 0, B = 8.0f;
     {
-        uint64_t a = 0, b = 0, T = 0; float B = 8.0f, b3c = 0;
+        uint64_t a = 0, b = 0, T = 0; float b3c = 0;
         if (!SafeRead(context + 0x18, &a, 8) && a != 0 && !SafeRead(a + 0x2D0, &b, 8) && b != 0 && !SafeRead(b + 0x68, &T, 8) && T != 0 &&
             !SafeRead(T + 0x3C, &b3c, 4) && b3c > 0.0f && b3c < 1000.0f) B = b3c;
         const float m = g_world.values != NULL && g_world.values->padMetre > 0.0f ? g_world.values->padMetre : 1.0f;
-        if (SafeRead(gen + 0x11A7108u, &records, 4)) records = 0;
-        if (records > DIF_LOCATIONS) records = DIF_LOCATIONS;
-        for (uint32_t k = 0; k < records && pads < MACRO_PADS; k++)
+        for (uint32_t l = 0; l < locs && pads < MACRO_PADS; l++)
         {
-            uint64_t rec = gen + 0x11A7280u + 0xE0ull * k; float xy[2];
-            if (SafeRead(rec, xy, 8) || !isfinite(xy[0]) || !isfinite(xy[1]) || xy[0] < 0 || xy[1] < 0 || xy[0] > W || xy[1] > W) continue;
-            float reach = MacroPadReach(rec, B, m);
+            uint64_t P = 0; float xy[2];
+            if (SafeRead(gen + g_importantList + 0x108ull * l + 0x98, &P, 8) || P == 0) { unitless++; continue; }
+            if (SafeRead(P, xy, 8) || !isfinite(xy[0]) || !isfinite(xy[1]) || xy[0] < 0 || xy[1] < 0 || xy[0] > W || xy[1] > W) continue;
+            float reach = MacroPadReach(P, B, m);
             if (!(reach > 0)) continue;
             int32_t c = MacroNearestCorner(gen, corners, xy[0], xy[1]), t = -1; float pad = 3.4e38f;
             padAbs[pads] = 0;
@@ -463,9 +462,9 @@ static int MacroPlan(uintptr_t gen, uint64_t context)
     g_macro.ms = (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart;
     g_macro.level = g_world.levels; g_macro.ready = 1;
     Note("difficulty: relief: seed %08X; %.0f..%.0f m (mean %.1f), steepest %.1f deg; held at 0: %u wet and %u sea corners (sea %.1f m), %u absolute pads, %u city cells; "
-        "held flat: %u locations, %u flatten zones; pads by their reach: %u of %u stamp records (%u absolute, reach up to %.0f m), %u nodes at %.0f deg; %u road nodes at %.0f deg; %d sweeps, %.0f ms (world %.0f m); %u corners have a water level "
+        "held flat: %u locations, %u flatten zones; pads by their reach: %u of %u locations (%u without a unit yet, %u absolute, reach up to %.0f m, band scale %.1f), %u nodes at %.0f deg; %u road nodes at %.0f deg; %d sweeps, %.0f ms (world %.0f m); %u corners have a water level "
         "(%.1f..%.1f m, their ground %.1f..%.1f m)", seed, (double)lo, (double)hi,
-        sum / ((double)MACRO_N * MACRO_N), (double)(atanf(steep) * 180.0f / 3.14159265f), wet, low, (double)sea, absolute, cityCells, held, flat, pads, records, padsAbs, (double)reachMost, padNodes, (double)MACRO_PAD_SLOPE, roadNodes,
+        sum / ((double)MACRO_N * MACRO_N), (double)(atanf(steep) * 180.0f / 3.14159265f), wet, low, (double)sea, absolute, cityCells, held, flat, pads, locs, unitless, padsAbs, (double)reachMost, (double)B, padNodes, (double)MACRO_PAD_SLOPE, roadNodes,
         (double)MACRO_ROAD, sweeps, g_macro.ms, (double)worldL, typed, typed ? (double)typedLo : 0.0, typed ? (double)typedHi : 0.0,
         typed ? (double)groundLo : 0.0, typed ? (double)groundHi : 0.0);
     (void)W;
