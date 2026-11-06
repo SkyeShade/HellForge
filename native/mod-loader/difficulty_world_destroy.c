@@ -23,6 +23,7 @@ static const char kDestroyQueuePin[] = "40 56 41 54 41 55 41 56 41 57 48 83 EC 2
 typedef void (*DestroyQueueFn)(uint64_t world, uint32_t* handles, uint32_t n);
 typedef void (*DestroyLockFn)(void* lock);
 static DestroyQueueFn g_destroyQueue;
+static volatile LONG* g_poseSkipped; /* InstallPoseGuard's count of poses skipped for units that are gone */
 static DestroyLockFn g_destroyLock, g_destroyUnlock;
 static uintptr_t g_destroyTableAt;
 static SRWLOCK g_destroyWaitLock = SRWLOCK_INIT;
@@ -98,16 +99,66 @@ static void DestroyNote(void)
 {
     static LONG last[4] = {-1, -1, -1, -1};
     LONG now[4] = {g_destroyHeld, g_destroyPassed + g_destroyTimedOut, g_destroyStale, g_destroyFull};
+    static LONG poseNoted;
+    LONG skipped = g_poseSkipped != NULL ? *g_poseSkipped : 0;
+    if (skipped != poseNoted) { poseNoted = skipped; Note("difficulty: extra large maps: poses for units that are gone skipped: %ld", (long)skipped); }
     if (memcmp(now, last, sizeof now) == 0 || (now[0] == 0 && now[2] == 0 && now[3] == 0)) return;
     memcpy(last, now, sizeof now);
     Note("difficulty: extra large maps: destroys of units not made yet: %ld held (%ld passed on once made, %ld waited too long, %ld waiting), %ld of units gone dropped, %ld not held (list full)",
             (long)g_destroyHeld, (long)g_destroyPassed, (long)g_destroyTimedOut, (long)g_destroyWaiting, (long)g_destroyStale, (long)g_destroyFull);
 }
 
+/* The physics pose sync (exe 0x79C360, from 0x79BC82: per moved body {unit id, actor}) writes each pose through the unit
+ * API's +0x78 = 0x1FCD00, which looks the unit up (0x9D8C0: null when the handle's generation moved on or its index is
+ * past the count) and calls [unit]+0xE8 with no check. Run s83a (city, a moving tile's 26026 stamp units in flight):
+ * exe+0x1FCD17 reading 0x0 for unit 0x00C3CBDC: a body outlived its unit. Here a unit that no longer exists gets no pose
+ * (0x1FCD00 is reached only through the API table; its result is its tail call's, which a missing unit never reaches).
+ * Why the body outlived the unit is open (KB xl-world-streaming: the window's ~180-body leak). */
+#define POSE_SITE 0x1FCD14u /* mov rcx,rax; mov r9,[rax] (6 bytes), then call [r9+0xE8] at 0x1FCD1A */
+#define POSE_BACK 0x1FCD1Au
+static const char kPosePin[] = "48 8B C8 4C 8B 08 41 FF 91 E8 00 00 00 4C 8B C3 8B D7 48 8B C8 48 8B 5C 24 30 48 83 C4 20 5F E9";
+static void InstallPoseGuard(uintptr_t exe)
+{
+    if (g_poseSkipped != NULL) return;
+    if (ApiCodeMatches(exe + POSE_SITE - 5, "E8 AC 0B EA FF") != 1 || ApiCodeMatches(exe + POSE_SITE, kPosePin) != 1)
+    { Note("difficulty: extra large maps: the unit pose setter (exe 0x1FCD00) is not the reviewed one; a pose for a gone unit is not checked"); return; }
+    uint8_t* page = AllocateNearGame(exe, 0x1000);
+    if (page == NULL) { Note("difficulty: extra large maps: no room near the exe for the pose guard"); return; }
+    /* test rax,rax; jz null; mov rcx,rax; mov r9,[rax]; jmp 0x1FCD1A;
+     * null: lock inc dword [count]; mov rbx,[rsp+0x30]; add rsp,0x20; pop rdi; ret (0x1FCD29..0x1FCD32's epilogue) */
+    static const uint8_t code[] = {
+        0x48, 0x85, 0xC0,                       /* +0  test rax,rax */
+        0x74, 0x0B,                             /* +3  jz +16 */
+        0x48, 0x8B, 0xC8,                       /* +5  mov rcx,rax */
+        0x4C, 0x8B, 0x08,                       /* +8  mov r9,[rax] */
+        0xE9, 0, 0, 0, 0,                       /* +11 jmp 0x1FCD1A (ends +16) */
+        0xF0, 0xFF, 0x05, 0, 0, 0, 0,           /* +16 lock inc dword [rip+rel] (ends +23) */
+        0x48, 0x8B, 0x5C, 0x24, 0x30,           /* +23 mov rbx,[rsp+0x30] */
+        0x48, 0x83, 0xC4, 0x20,                 /* +28 add rsp,0x20 */
+        0x5F,                                   /* +32 pop rdi */
+        0xC3};                                  /* +33 ret */
+    _Static_assert(sizeof code == 34, "pose guard size");
+    memcpy(page, code, sizeof code);
+    g_poseSkipped = (volatile LONG*)(page + 0x40);
+    *g_poseSkipped = 0;
+    intptr_t back = (intptr_t)(exe + POSE_BACK) - (intptr_t)(page + 16), reach = (intptr_t)page - (intptr_t)(exe + POSE_SITE + 5);
+    if (back != (intptr_t)(int32_t)back || reach != (intptr_t)(int32_t)reach) { g_poseSkipped = NULL; Note("difficulty: extra large maps: the pose guard is out of reach"); return; }
+    int32_t rel = (int32_t)back; memcpy(page + 12, &rel, 4);
+    rel = (int32_t)((intptr_t)(page + 0x40) - (intptr_t)(page + 23)); memcpy(page + 19, &rel, 4);
+    DWORD old = 0;
+    if (!VirtualProtect(page, 0x1000, PAGE_EXECUTE_READWRITE, &old)) { g_poseSkipped = NULL; Note("difficulty: extra large maps: the pose guard is not executable"); return; }
+    FlushInstructionCache(GetCurrentProcess(), page, 0x1000);
+    uint8_t jump[6] = {0xE9, 0, 0, 0, 0, 0x90};
+    rel = (int32_t)reach; memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(exe + POSE_SITE, jump, sizeof jump)) { g_poseSkipped = NULL; Note("difficulty: extra large maps: the pose setter could not be patched"); return; }
+    Note("difficulty: extra large maps: a pose for a unit that is gone is skipped (exe 0x1FCD00)");
+}
+
 static const char* InstallDestroyQueue(void)
 {
     if (g_destroyQueue != NULL) return NULL;
     uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
+    if (exe != 0) InstallPoseGuard(exe);
     if (exe == 0 || ApiCodeMatches(exe + DESTROY_QUEUE, kDestroyQueuePin) != 1)
     { Note("difficulty: extra large maps: the destroy queue (exe 0x%X) is not the reviewed one; destroys are not checked", DESTROY_QUEUE); return NULL; }
     uint64_t lock = 0, unlock = 0;
