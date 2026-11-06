@@ -5030,7 +5030,9 @@ static const uint8_t kPadBandC[37] = {
     0xF3, 0x0F, 0x10, 0x5B, 0x1C,                   /* movss xmm3, [rbx+0x1C] */
     0xF3, 0x0F, 0x59, 0x1D, 0, 0, 0, 0,             /* mulss xmm3, [padQuad]      @22 */
     0xF3, 0x0F, 0x11, 0x44, 0x24, 0x20,             /* movss [rsp+0x20], xmm0 */
-    0xE9, 0, 0, 0, 0};                              /* jmp 0xF4E641               @32 */
+    0xE9, 0, 0, 0, 0};                              /* jmp 0xF4E641               @33 */
+/* Each displacement ends its instruction: the jump's is the last 4 bytes after its E9 */
+_Static_assert(sizeof kPadBandA == 29 + 4 && sizeof kPadBandB == 35 + 4 && sizeof kPadBandC == 33 + 4, "the pad band stubs end with their jumps");
 static void PadBandRel(uint8_t* stub, int at, const void* target)
 {
     int32_t rel = (int32_t)((intptr_t)target - (intptr_t)(stub + at + 4));
@@ -5047,6 +5049,12 @@ static int PadBandStubs(uintptr_t game, uint8_t* code)
         Note("difficulty: op 0x3F's rectangle pads are not the reviewed ones: their bands stay vanilla on extra large levels");
         return 0;
     }
+    if (kPadBandA[28] != 0xE9 || kPadBandB[34] != 0xE9 || kPadBandC[32] != 0xE9 || kPadBandA[10] != 0x0D || kPadBandA[23] != 0x35 ||
+        kPadBandB[10] != 0x05 || kPadBandB[23] != 0x15 || kPadBandC[8] != 0x05 || kPadBandC[21] != 0x1D)
+    {
+        Note("difficulty: op 0x3F's rectangle pad stubs are malformed: their bands stay vanilla on extra large levels");
+        return 0;
+    }
     WorldValues* v = g_world.values;
     uint8_t *a = code, *b = code + 0x40, *c = code + 0x80;
     memcpy(a, kPadBandA, sizeof kPadBandA);
@@ -5054,7 +5062,7 @@ static int PadBandStubs(uintptr_t game, uint8_t* code)
     memcpy(b, kPadBandB, sizeof kPadBandB);
     PadBandRel(b, 11, &v->padPx); PadBandRel(b, 24, &v->padMetre); PadBandRel(b, 35, (void*)(game + PAD_BAND_SITE_B + 15));
     memcpy(c, kPadBandC, sizeof kPadBandC);
-    PadBandRel(c, 9, &v->padQuad); PadBandRel(c, 22, &v->padQuad); PadBandRel(c, 32, (void*)(game + PAD_BAND_SITE_C + 16));
+    PadBandRel(c, 9, &v->padQuad); PadBandRel(c, 22, &v->padQuad); PadBandRel(c, 33, (void*)(game + PAD_BAND_SITE_C + 16));
     return 1;
 }
 /* The jumps into the stubs (after the block is executable). NULL or the reason. */
