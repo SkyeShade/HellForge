@@ -182,6 +182,20 @@ static uint64_t AbilityPostDetour(uint64_t a, uint64_t b, uint64_t c, uint64_t d
         SafeRead(mgr + 8, &count, 4);
         Note("difficulty: abilities: a post-create found no instance of entity 0x%X (thread %lu, manager %u instances, %u places); left out (research); from%s",
             id, GetCurrentThreadId(), count, places, text);
+        /* 0x581320's frame: e = its rsp + 0x38 (0x581516); the definition copy at rsp+0x50 (+8 list, +0x10 count), the
+         * entity's resource [entity], the spawn info's list {u32 count, 8 B each} at [info + 0x50] (the frame holds 10) */
+        uint64_t resource = 0, list = 0, infoList = 0;
+        uint32_t components = 0, infoCount = 0;
+        uint16_t ids[24] = {0};
+        SafeRead(a, &resource, 8);
+        if (e > 0x38) { SafeRead(e - 0x38 + 0x58, &list, 8); SafeRead(e - 0x38 + 0x60, &components, 4); }
+        if (list && components) SafeRead(list, ids, 2ull * (components < 24 ? components : 24));
+        if (b) { SafeRead(b + 0x50, &infoList, 8); if (infoList) SafeRead(infoList, &infoCount, 4); }
+        char comp[160]; int at = 0;
+        for (uint32_t k = 0; k < components && k < 24 && at < (int)sizeof comp - 8; k++) at += snprintf(comp + at, sizeof comp - at, " %u", ids[k]);
+        comp[at] = 0;
+        Note("difficulty: abilities: entity 0x%X: resource %016llx, %u components:%s; spawn info list %u entries; %ld adds/removes seen",
+            id, (unsigned long long)resource, components, comp, infoCount, g_abilitySeenAt);
         LONG last = g_abilitySeenAt, from = last > ABILITY_SEEN ? last - ABILITY_SEEN : 0, shown = 0;
         for (LONG k = last - 1; k >= from && shown < 6; k--)
         {
