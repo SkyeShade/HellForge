@@ -3892,8 +3892,49 @@ static void EarlyPackages(uint64_t records, uint64_t context, uint64_t index, ui
         fault ? "; FAULTED" : g_early.count > 256 ? "; more than record 94's 256 places" : "");
 }
 
+/* The frame cap while an extra large level loads (load time). Application::update ends with a throttle (exe
+ * 0x8AB70..0x8ABC1): while fps = [app+0x470] != 0, it sleeps until 1 / fps has passed since the frame mark; app =
+ * [exe+0x1A10208] (the settings call 0x318980, item 1, stores the framerate limit there). A 16 km load has frame-paced
+ * parts: the coarse terrain draws a tile a frame (one 0x3C render a frame), the near tile's gui batches, the material
+ * pass's queue waits, the main-thread records, the package loader's states. With a 30 or 60 fps cap each such frame is
+ * padded to 33 or 17 ms (t77n: 515 tiles in 1032 frames, 34.4 s at the harness's 30 fps). So from the first record of
+ * a full load generation (one whose records hold op 0x4A: the briefing's drop map has none) to its last record the
+ * cap is 0 (no throttle; vsync, a render-side wait, is untouched), then the player's value is put back; also when
+ * another level begins or the ship is set up. The only reader is the main thread's frame end. */
+static struct { LONG level; int on; uint32_t saved; uintptr_t app; } g_fpsLift = {.level = -1};
+static void FpsLiftEnd(const char* why)
+{
+    if (!g_fpsLift.on) return;
+    g_fpsLift.on = 0;
+    uint32_t now = 0;
+    if (!SafeRead(g_fpsLift.app + 0x470, &now, 4) && now == 0) *(volatile uint32_t*)(g_fpsLift.app + 0x470) = g_fpsLift.saved;
+    Note("difficulty: extra large maps: the frame cap is %u fps again (%s)", g_fpsLift.saved, why);
+}
+static void FpsLiftStep(uint64_t records, uint64_t index, uint32_t count)
+{
+    /* the level's own records only ([level+0x2A8]): the tile replays and the runners pass a record of their own */
+    uint64_t own = 0;
+    if (g_worldLevel == 0 || SafeRead(g_worldLevel + 0x2A8, &own, 8) || own != records) return;
+    if (g_fpsLift.level != g_world.levels)
+    {
+        FpsLiftEnd("another level");
+        g_fpsLift.level = g_world.levels;
+        if (!(g_world.current > 1.0f) || count == 0 || count > 4096) return;
+        int full = 0;
+        for (uint32_t i = 0; i < count && !full; i++) { uint32_t op = 0; if (!SafeRead(records + (uint64_t)i * 0x19B0u, &op, 4) && op == 0x4A) full = 1; }
+        uintptr_t app = 0; uint32_t fps = 0;
+        if (!full || SafeRead((uintptr_t)GetModuleHandleW(NULL) + 0x1A10208u, &app, 8) || app == 0 || SafeRead(app + 0x470, &fps, 4) || fps == 0 || fps > 1000) return;
+        g_fpsLift.app = app; g_fpsLift.saved = fps; g_fpsLift.on = 1;
+        *(volatile uint32_t*)(app + 0x470) = 0;
+        Note("difficulty: extra large maps: the frame cap (%u fps) is off while the map loads", fps);
+    }
+    uint32_t i = 0;
+    if (g_fpsLift.on && !SafeRead(index, &i, 4) && i + 1 >= count) FpsLiftEnd("the level's last record");
+}
+
 static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint64_t d, uint64_t e, uint64_t f, uint64_t g, uint64_t h)
 {
+    FpsLiftStep(records, index, (uint32_t)d);
     EarlyPackages(records, b, index, f);
     uint32_t diagAt, diagOp;
     TerrainDiagBefore(records, index, (uint32_t)d, &diagAt, &diagOp);
@@ -4435,6 +4476,7 @@ static void WorldLevel(uintptr_t level)
 /* The ship's navigation setup: the world back to vanilla (the ship's own systems read the same constants). */
 static void WorldShip(void)
 {
+    FpsLiftEnd("the ship");
     NearOneMipDrop();
     if (g_world.values != NULL && g_world.current != 1.0f) WorldWrite(1.0f);
 }

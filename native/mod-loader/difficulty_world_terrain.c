@@ -204,7 +204,7 @@ typedef void (*TerrainTriFn)(uint64_t gui, const float* p0, const float* p1, con
     uint64_t material, const float* uv0, const float* uv1, const float* uv2);
 static TerrainTriFn g_terrainTri;
 static float MacroAt(float gx, float gy); /* difficulty_world_macro.c */
-static struct { volatile DWORD thread; float lo[2], hi[2], px; uint64_t add, cap; } g_clip;
+static struct { volatile DWORD thread; float lo[2], hi[2], px; uint64_t add, cap; uint64_t tris; } g_clip; /* tris: gui triangles while a clip is on (its thread only) */
 
 /* The part of polygon p (n vertices: x, y, z) on one side of the line coordinate[axis] = v (keep >= v when above). */
 static int TerrainClipSide(const float (*p)[3], int n, int axis, float v, int above, float (*out)[3])
@@ -252,6 +252,7 @@ static void TerrainClipEmit(float (*p)[3], int n, int split, uint64_t gui, uint3
     {
         float area = (p[i][0] - p[0][0]) * (p[i + 1][1] - p[0][1]) - (p[i + 1][0] - p[0][0]) * (p[i][1] - p[0][1]);
         if (fabsf(area) < 1e-6f) continue;
+        g_clip.tris++;
         g_terrainTri(gui, p[0], p[i], p[i + 1], layer, colour, material, NULL, NULL, NULL);
     }
 }
@@ -261,6 +262,7 @@ static void TerrainTri(uint64_t gui, const float* p0, const float* p1, const flo
 {
     if (g_clip.thread == 0 || g_clip.thread != GetCurrentThreadId() || (material != g_clip.add && material != g_clip.cap) || uv0 != NULL)
     {
+        if (g_clip.thread != 0 && g_clip.thread == GetCurrentThreadId()) g_clip.tris++;
         g_terrainTri(gui, p0, p1, p2, layer, colour, material, uv0, uv1, uv2);
         return;
     }
@@ -276,7 +278,7 @@ static void TerrainTri(uint64_t gui, const float* p0, const float* p1, const flo
     if (material == g_clip.add) { TerrainClipEmit(a, n, 0, gui, layer, colour, material); return; }
     /* a near tile's replay: its base (the level's capture) holds the km-scale relief, so its caps are lifted by it */
     if (g_nearActive) for (int i = 0; i < n; i++) a[i][2] += MacroAt(a[i][0] / g_clip.px, a[i][1] / g_clip.px);
-    for (int i = 1; i + 1 < n; i++) g_terrainTri(gui, a[0], a[i], a[i + 1], layer, colour, material, NULL, NULL, NULL);
+    for (int i = 1; i + 1 < n; i++) { g_clip.tris++; g_terrainTri(gui, a[0], a[i], a[i + 1], layer, colour, material, NULL, NULL, NULL); }
 }
 
 static int TerrainTriInstall(void)
@@ -693,6 +695,7 @@ typedef struct
     uint8_t phase;
     int drawCalls;
     double buildMs;
+    uint64_t tris;              /* gui triangles its draw calls emitted */
 } CoarseSlot;
 static struct
 {
@@ -710,6 +713,7 @@ static struct
     uint64_t element[TILE_RUNNERS_MAX]; /* each runner's job element (its TileRunner), fixed while the section runs */
     volatile LONG busy[TILE_RUNNERS_MAX], inflight, pending;
     long jobs, selfBuilt, queueWaits;
+    uint64_t tileTrisMax, tileTrisSum, frameTrisMax; long tilesCounted;
 } g_coarse;
 
 /* One coarse tile on a runner (an engine job, CoarseFeed): a free slot and the next tile, built, then the job returns.
@@ -746,7 +750,7 @@ static int CoarseOne(TileRunner* r, int job)
             memset(s->record + 8 + 0x108, 0, 8);
         }
     }
-    s->phase = 0; s->drawCalls = 0;
+    s->phase = 0; s->drawCalls = 0; s->tris = 0;
     QueryPerformanceCounter(&b1); s->buildMs = (double)(b1.QuadPart - b0.QuadPart) * 1000.0 / (double)hz.QuadPart;
     MemoryBarrier();
     InterlockedExchange(&g_coarse.slotOf[k], (LONG)(s - g_coarse.slots));
@@ -842,7 +846,8 @@ static int CoarseStart(uint64_t records, uint32_t end, uint64_t context, uint64_
     { uint32_t flipped = g_coarse.disk ^ 1u; memcpy(g_coarse.buildS + 0x5C, &flipped, 4); }
     g_coarse.level = g_world.levels;
     g_tileStop = 0; g_tileFinished = 0; g_tileWork = NULL;
-    g_coarse.started = 0; g_coarse.inflight = 0; g_coarse.pending = 0; g_coarse.jobs = 0; g_coarse.selfBuilt = 0; g_coarse.queueWaits = 0; g_coarse.submit = 0;
+    g_coarse.started = 0; g_coarse.inflight = 0; g_coarse.pending = 0; g_coarse.jobs = 0; g_coarse.selfBuilt = 0; g_coarse.queueWaits = 0;
+    g_coarse.tileTrisMax = 0; g_coarse.tileTrisSum = 0; g_coarse.frameTrisMax = 0; g_coarse.tilesCounted = 0; g_coarse.submit = 0;
     uint64_t api = 0;
     if (!SafeRead(g_world.game + 0x33263E8u, &api, 8) && api != 0 && !SafeRead(api + 0x88, &g_coarse.submit, 8) && g_coarse.submit != 0)
         for (int id = 1; id <= R - 1 && id < TILE_RUNNERS_MAX; id++)
@@ -877,6 +882,8 @@ static void CoarseEnd(void)
         Sleep(1);
     }
     Note("difficulty: terrain: the section's %ld tile jobs on %d runners returned; %ld tiles built on the dispatcher's thread; %ld frames ended on a full generation queue", g_coarse.jobs, g_coarse.started, g_coarse.selfBuilt, g_coarse.queueWaits);
+    Note("difficulty: terrain: gui triangles: a tile's draw at most %llu, mean %llu; one draw call at most %llu", (unsigned long long)g_coarse.tileTrisMax,
+        (unsigned long long)(g_coarse.tilesCounted ? g_coarse.tileTrisSum / (uint64_t)g_coarse.tilesCounted : 0), (unsigned long long)g_coarse.frameTrisMax);
     *(volatile uint32_t*)(g_coarse.lg + 0x2D7C) = g_coarse.disk;
     *(volatile float*)g_coarse.spacingAt = g_coarse.spacing;
     g_tileSectionHeld = 0;
@@ -893,10 +900,12 @@ static void CoarseEnd(void)
  * (0xF4A195..0xF4A254: count +0x10, 16 entries of 0x1D0 from +0x18, no capacity check), and only the render callback
  * drains it, once a frame (0xAB7D54 -> 0xAB0590). A 17th entry lands on G+0xAE288, the current level, with the world
  * ([ctx+0x40]) as its first qword (t77h/t77i/t77j: the objective selection then read [world+0x2D0] = 0 and faulted at
- * game+0x1757304). So a draw call is made only while the queue holds at most COARSE_QUEUE_MAX entries (a margin for
- * other producers in the same frame), else the level waits for the next frame. Runner jobs build meanwhile; the
+ * game+0x1757304). And each entry is one render_world (0xAB07E1 -> [api+0x10]+0x28) of the generator's world through the
+ * camera [R], which draws every gui triangle put there this frame: N draw calls in a frame drew each frame's additive
+ * heights N times (t77k..t77m: the coarse terrain an egg-crate up to the u16's 500 m, base 265-620 m against 80-125 m
+ * serial). So a draw call is made only with the queue empty (one entry, one render a frame, as the serial path: one
+ * call a tile a frame), else the level waits for the next frame. Runner jobs build meanwhile; the
  * dispatcher's thread builds a tile itself only when no job is in flight. */
-#define COARSE_QUEUE_MAX 11u
 static uint32_t NearQueued(uint64_t context);
 static int CoarseDraw(uint64_t context, uint64_t g, uint64_t h, uintptr_t gen, LARGE_INTEGER t0, LARGE_INTEGER hz)
 {
@@ -923,7 +932,7 @@ static int CoarseDraw(uint64_t context, uint64_t g, uint64_t h, uintptr_t gen, L
             return 1;
         }
         uint32_t queued = NearQueued(context);
-        if (queued == 0xFFFFFFFFu || queued > COARSE_QUEUE_MAX) { g_coarse.queueWaits++; return 1; }
+        if (queued != 0) { g_coarse.queueWaits++; return 1; } /* one draw call a frame: see above */
         g_coarse.waitSince = 0;
         CoarseSlot* s = &g_coarse.slots[at];
         if (!s->ok)
@@ -938,8 +947,10 @@ static int CoarseDraw(uint64_t context, uint64_t g, uint64_t h, uintptr_t gen, L
         volatile uint32_t index = 0;
         volatile int calls = 0;
         int clip = TerrainClipBegin(s->t, gen);
+        uint64_t trisBefore = g_clip.tris;
         LONG fault = WorldTileGuarded(s->record, context, &index, &s->phase, g, h, 1, &calls);
         if (clip) TerrainClipEnd();
+        { uint64_t d = g_clip.tris - trisBefore; s->tris += d; if (d > g_coarse.frameTrisMax) g_coarse.frameTrisMax = d; }
         QueryPerformanceCounter(&d1);
         g_terrain.drawMs += (double)(d1.QuadPart - d0.QuadPart) * 1000.0 / (double)hz.QuadPart;
         s->drawCalls++;
@@ -950,7 +961,11 @@ static int CoarseDraw(uint64_t context, uint64_t g, uint64_t h, uintptr_t gen, L
             g_terrain.failed++; doneTile = 1;
             if (fault) { g_terrain.buildMs += s->buildMs; InterlockedExchange(&s->state, STAMP_SLOT_FREE); g_terrain.next = g_coarse.count; return -1; }
         }
-        else if (index != 0) { WorldArenaReset(context); g_terrain.drawn++; doneTile = 1; }
+        else if (index != 0)
+        {
+            WorldArenaReset(context); g_terrain.drawn++; doneTile = 1;
+            g_coarse.tileTrisSum += s->tris; g_coarse.tilesCounted++; if (s->tris > g_coarse.tileTrisMax) g_coarse.tileTrisMax = s->tris;
+        }
         if (doneTile)
         {
             g_terrain.buildMs += s->buildMs;
@@ -1031,7 +1046,7 @@ static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t con
             if (!built) { g_terrain.failed++; g_terrain.next++; continue; }
             g_terrain.building = 1;
         }
-        { uint32_t queued = NearQueued(context); if (queued == 0xFFFFFFFFu || queued > COARSE_QUEUE_MAX) return 1; } /* CoarseDraw: the queue's 16 entries */
+        if (NearQueued(context) != 0) return 1; /* CoarseDraw: one draw call a frame */
         LARGE_INTEGER d0, d1;
         QueryPerformanceCounter(&d0);
         volatile uint32_t index = 0;
