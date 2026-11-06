@@ -1006,28 +1006,77 @@ static void WorldTileListCheck(const uint8_t* block, uintptr_t base, uint32_t si
 /* A tile runs the game's passes on data the game never made, and a pass can take a path vanilla never reaches:
  * FixUnreachableAreas (0x7D) on one map found no neighbour for an area and wrote element (uint32)-1 at 0xF674A5. A
  * fault in a tile pass must cost the tile, not the game: the thread's context before the pass is kept, and a fault on
- * that thread while the pass runs resumes there with g_tileFault set. The CPU passes work on the tile's copy of the
+ * that thread while the pass runs resumes there with the thread's guard (TileGuard) holding the fault. The CPU passes work on the tile's copy of the
  * generator block only, so the level's data is untouched; the tile is abandoned and the level goes on. */
-static CONTEXT g_tileGuardContext;
-static volatile DWORD g_tileGuardThread;
-/* A tile's FinalizeVoronoi weld that failed on the tile's thread (difficulty_status.c's WeldFinal): the op returns as done
- * instead of asking for the level to be generated again (0xF68118: [lg+0xF954]++, [[ctx+0x58]+0x19B0EA] = 1, read by the
- * game's own loops, 0xF2606F and the level tick 0xF73FA6), and the tile's runner abandons the tile. */
-static volatile LONG g_tileWeldFailed;
-static volatile LONG g_tileFault;
-static volatile uintptr_t g_tileFaultAt, g_tileFaultData;
+/* The guard's state is per thread: the stamp planning's runners (difficulty_world_terrain.c, TerrainStamps) run tile
+ * ops on engine workers while the generator thread builds tiles. A runner's own state is in its TileRunner (found
+ * through the TLS slot g_tileRunnerTls); every other thread shares g_tileGuardMain (one tile run at a time there). */
+typedef struct TileGuard
+{
+    CONTEXT context;            /* the thread before the pass (16-byte aligned: first in the struct) */
+    volatile DWORD thread;      /* the guarded thread while the pass runs */
+    /* A tile's FinalizeVoronoi weld that failed on the tile's thread (difficulty_status.c's WeldFinal): the op returns
+     * as done instead of asking for the level to be generated again (0xF68118: [lg+0xF954]++,
+     * [[ctx+0x58]+0x19B0EA] = 1, read by the game's own loops, 0xF2606F and the level tick 0xF73FA6), and the tile's
+     * runner abandons the tile. */
+    volatile LONG weldFailed;
+    volatile LONG fault;
+    volatile uintptr_t at, data;
+} TileGuard;
+
+/* One runner of the parallel stamp planning: its guard, its op 0x2B context (a copy of the level's 0xE8 bytes with its
+ * own arena +0, settings +8 and stamp index +0x20, as difficulty_world_move.c's MoveStart makes one), the arena's own
+ * first chunk (difficulty_world_move.c MoveArena: {head chunk, lock 0, owner -1, growth 0x100000}, chunk {used, data,
+ * capacity, next}; the reset 0x173BAB0 frees the chunks the allocator grew and empties ours), its stamp index and op
+ * 0x2B's job regions. */
+#define TILE_RUNNERS_MAX 16
+#define TILE_RUNNER_ARENA (64u << 20)
+#define TILE_JOB_REGION (64u << 20)  /* a job's records (0x130 each); a reserved page follows */
+typedef struct TileRunner
+{
+    TileGuard guard;
+    int id;
+    uint8_t ctx[0xE8];
+    uint8_t settings[0xD0];
+    struct { uint64_t head; LONG lock; int32_t owner; uint64_t growth; } arena;
+    struct { uint64_t used, data, capacity, next; } chunk;
+    uint8_t* header;            /* the stamp index's header (0x3000, in g_tileHeaders) */
+    uint8_t* memory;            /* the index's memory */
+    uint32_t memoryBytes;
+    uint8_t* regions[8];        /* op 0x2B's jobs' records (TileJobsInline) */
+    float scale;                /* the tile's rule scale (TileJobsInline's perm map; 1: none) */
+    LONG overlapGeneration;     /* the stamp overlap grid's run for this runner's current tile */
+    uint64_t emptyQueries;      /* difficulty_maps.c IndexQueryClamped: queries of its empty index answered at once */
+    uint8_t one[0x19B0];
+} TileRunner;
+static DWORD g_tileRunnerTls = TLS_OUT_OF_INDEXES;
+static TileGuard g_tileGuardMain;
+
+static inline TileRunner* TileRunnerSelf(void)
+{
+    DWORD k = g_tileRunnerTls;
+    if (k == TLS_OUT_OF_INDEXES) return NULL;
+    if (k < 64) return (TileRunner*)(uintptr_t)__readgsqword(0x1480 + 8 * k); /* TEB TlsSlots[k]: no SetLastError */
+    return (TileRunner*)TlsGetValue(k);
+}
+static inline TileGuard* TileGuardSelf(void)
+{
+    TileRunner* r = TileRunnerSelf();
+    return r != NULL ? &r->guard : &g_tileGuardMain;
+}
 
 static LONG CALLBACK WorldTileFault(EXCEPTION_POINTERS* info)
 {
-    if (g_tileGuardThread == 0 || g_tileGuardThread != GetCurrentThreadId()) return EXCEPTION_CONTINUE_SEARCH;
+    TileGuard* t = TileGuardSelf();
+    if (t->thread == 0 || t->thread != GetCurrentThreadId()) return EXCEPTION_CONTINUE_SEARCH;
     DWORD code = info->ExceptionRecord->ExceptionCode;
     if (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_INT_DIVIDE_BY_ZERO && code != EXCEPTION_ARRAY_BOUNDS_EXCEEDED)
         return EXCEPTION_CONTINUE_SEARCH;
-    g_tileGuardThread = 0;
-    g_tileFaultAt = (uintptr_t)info->ExceptionRecord->ExceptionAddress;
-    g_tileFaultData = info->ExceptionRecord->NumberParameters > 1 ? (uintptr_t)info->ExceptionRecord->ExceptionInformation[1] : 0;
-    g_tileFault = (LONG)code;
-    *info->ContextRecord = g_tileGuardContext;
+    t->thread = 0;
+    t->at = (uintptr_t)info->ExceptionRecord->ExceptionAddress;
+    t->data = info->ExceptionRecord->NumberParameters > 1 ? (uintptr_t)info->ExceptionRecord->ExceptionInformation[1] : 0;
+    t->fault = (LONG)code;
+    *info->ContextRecord = t->context;
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
@@ -1035,20 +1084,22 @@ static LONG CALLBACK WorldTileFault(EXCEPTION_POINTERS* info)
 static __attribute__((noinline)) LONG WorldTileGuarded(uint8_t* record, uint64_t context, volatile uint32_t* index, uint8_t* phase,
     uint64_t g, uint64_t h, int limit, volatile int* calls)
 {
-    static int handler;
-    if (!handler) { AddVectoredExceptionHandler(1, WorldTileFault); handler = 1; }
-    g_tileFault = 0;
-    RtlCaptureContext(&g_tileGuardContext);
-    if (g_tileFault != 0) return g_tileFault; /* resumed here from WorldTileFault */
-    g_tileGuardThread = GetCurrentThreadId();
-    g_tileWeldFailed = 0;
+    static volatile LONG handler;
+    if (handler == 0 && InterlockedCompareExchange(&handler, 1, 0) == 0) { AddVectoredExceptionHandler(1, WorldTileFault); handler = 2; }
+    while (handler != 2) SwitchToThread();
+    TileGuard* t = TileGuardSelf();
+    t->fault = 0;
+    RtlCaptureContext(&t->context);
+    if (t->fault != 0) return t->fault; /* resumed here from WorldTileFault */
+    t->thread = GetCurrentThreadId();
+    t->weldFailed = 0;
     while (*index == 0 && *calls < limit)
     {
         g_worldDispatch((uint64_t)record, context, (uint64_t)index, 1, (uint64_t)phase, 0, g, h);
         (*calls)++;
         if (*index == 0 && limit > 1) Sleep(1);
     }
-    g_tileGuardThread = 0;
+    t->thread = 0;
     return 0;
 }
 
@@ -1063,6 +1114,50 @@ static void WorldArenaReset(uint64_t context)
     if (ok < 0) ok = ApiCodeMatches(g_world.game + 0x173BAB0u, "40 53 48 83 EC 20 48 8B 01 48 8B D9 48 85 C0 74");
     uint64_t arena = 0;
     if (ok == 1 && context != 0 && !SafeRead(context, &arena, 8) && arena != 0) ((void (*)(uint64_t))(g_world.game + 0x173BAB0u))(arena);
+}
+
+/* The runners' stamp index headers, TILE_HEADER_STRIDE apart (difficulty_maps.c's IndexQueryClamped knows an index of
+ * a tile run by its address here). */
+#define TILE_HEADER_STRIDE 0x3000u
+static uint8_t* g_tileHeaders;
+static TileRunner* g_tileRunners[TILE_RUNNERS_MAX];
+
+/* Runner `id`, made once and kept (its memory is reserved and committed as the game writes it). NULL without memory. */
+static TileRunner* TileRunnerMake(int id)
+{
+    if (id < 0 || id >= TILE_RUNNERS_MAX) return NULL;
+    if (g_tileRunners[id] != NULL) return g_tileRunners[id];
+    if (g_tileHeaders == NULL) g_tileHeaders = (uint8_t*)VirtualAlloc(NULL, TILE_RUNNERS_MAX * TILE_HEADER_STRIDE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (g_tileHeaders == NULL) return NULL;
+    TileRunner* r = (TileRunner*)VirtualAlloc(NULL, sizeof(TileRunner), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (r == NULL) return NULL;
+    void* chunk = VirtualAlloc(NULL, TILE_RUNNER_ARENA, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (chunk == NULL) { VirtualFree(r, 0, MEM_RELEASE); return NULL; }
+    r->id = id;
+    r->header = g_tileHeaders + (size_t)id * TILE_HEADER_STRIDE;
+    r->chunk.data = (uint64_t)(uintptr_t)chunk; r->chunk.capacity = TILE_RUNNER_ARENA;
+    r->scale = 1.0f;
+    for (int j = 0; j < 8; j++)
+    {
+        uint8_t* region = (uint8_t*)VirtualAlloc(NULL, TILE_JOB_REGION + 0x10000u, MEM_RESERVE, PAGE_NOACCESS);
+        if (region != NULL && VirtualAlloc(region, TILE_JOB_REGION, MEM_COMMIT, PAGE_READWRITE) == NULL) { VirtualFree(region, 0, MEM_RELEASE); region = NULL; }
+        r->regions[j] = region; /* NULL: TileJobsInline refuses the run */
+    }
+    g_tileRunners[id] = r;
+    return r;
+}
+
+/* The runner's context for one op 0x2B run: the level's context and settings as the section took them, its own arena
+ * (empty, as WorldArenaReset leaves one), the settings `settings`, the stamp index `index`. */
+static void TileRunnerContext(TileRunner* r, const uint8_t* levelContext, const uint8_t* settings, uintptr_t index)
+{
+    memcpy(r->settings, settings, sizeof r->settings);
+    memcpy(r->ctx, levelContext, sizeof r->ctx);
+    r->chunk.used = 0; r->chunk.next = 0;
+    r->arena.head = (uint64_t)(uintptr_t)&r->chunk; r->arena.lock = 0; r->arena.owner = -1; r->arena.growth = 0x100000;
+    uint64_t v = (uint64_t)(uintptr_t)&r->arena; memcpy(r->ctx, &v, 8);
+    v = (uint64_t)(uintptr_t)r->settings; memcpy(r->ctx + 8, &v, 8);
+    v = (uint64_t)index; memcpy(r->ctx + 0x20, &v, 8);
 }
 
 static void TerrainDiagTileFault(uint32_t op, uintptr_t at, uintptr_t data);
@@ -1118,12 +1213,12 @@ static int WorldTilePasses(uint64_t records, uint32_t end, uint64_t context, uin
         if (fault)
         {
             Note("difficulty: terrain tile: op 0x%02X faulted (%08lX at game.dll+0x%llX, address 0x%llX): the tile is abandoned, the level goes on",
-                op, (unsigned long)fault, (unsigned long long)(g_tileFaultAt - (uintptr_t)GetModuleHandleW(L"game.dll")),
-                (unsigned long long)g_tileFaultData);
-            TerrainDiagTileFault(op, g_tileFaultAt, g_tileFaultData);
+                op, (unsigned long)fault, (unsigned long long)(TileGuardSelf()->at - (uintptr_t)GetModuleHandleW(L"game.dll")),
+                (unsigned long long)TileGuardSelf()->data);
+            TerrainDiagTileFault(op, TileGuardSelf()->at, TileGuardSelf()->data);
             return 0;
         }
-        if (g_tileWeldFailed) { Note("difficulty: terrain tile: op 0x%02X's weld failed: the tile is abandoned, the level goes on", op); return 0; }
+        if (TileGuardSelf()->weldFailed) { Note("difficulty: terrain tile: op 0x%02X's weld failed: the tile is abandoned, the level goes on", op); return 0; }
         QueryPerformanceCounter(&t1);
         ran++;
         if (index != 0) WorldArenaReset(context);
@@ -1495,8 +1590,8 @@ static int WorldTileStep(uint64_t records, uint32_t end, uint32_t at, uint64_t c
     if (fault)
     {
         Note("difficulty: terrain tile: merge op 0x%02X faulted (%08lX at game.dll+0x%llX): the tile is abandoned, the level goes on",
-            kTileGpuOps[g_tileGpuStep], (unsigned long)fault, (unsigned long long)(g_tileFaultAt - (uintptr_t)GetModuleHandleW(L"game.dll")));
-        TerrainDiagTileFault(kTileGpuOps[g_tileGpuStep], g_tileFaultAt, g_tileFaultData);
+            kTileGpuOps[g_tileGpuStep], (unsigned long)fault, (unsigned long long)(TileGuardSelf()->at - (uintptr_t)GetModuleHandleW(L"game.dll")));
+        TerrainDiagTileFault(kTileGpuOps[g_tileGpuStep], TileGuardSelf()->at, TileGuardSelf()->data);
         g_tileGpuDone = 1;
         return 0;
     }

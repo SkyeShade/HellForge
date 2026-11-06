@@ -375,7 +375,7 @@ static int MoveRunRecord(void)
     LONG fault = WorldTileGuarded(g_move.one, (uint64_t)(uintptr_t)g_move.ctx, &index, &g_move.phase, 0, 0, 1, &calls);
     if (fault)
     {
-        Note("difficulty: moving tiles: op 0x%02X faulted (%08lX at game.dll+0x%llX)", g_move.one[0], (unsigned long)fault, (unsigned long long)(g_tileFaultAt - g_world.game));
+        Note("difficulty: moving tiles: op 0x%02X faulted (%08lX at game.dll+0x%llX)", g_move.one[0], (unsigned long)fault, (unsigned long long)(TileGuardSelf()->at - g_world.game));
         return -1;
     }
     if (index == 0) return 0;

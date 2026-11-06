@@ -216,7 +216,7 @@ static void TownsAfter(uint64_t records, uint32_t at, uint64_t index, uint64_t c
         volatile uint32_t one = 0; volatile int calls = 0; uint8_t phase = 0;
         LONG fault = WorldTileGuarded(record, context, &one, &phase, g, h, 100000, &calls);
         InterlockedIncrement(&g_worldOpRun);
-        if (fault) { stop = "a run faulted"; Note("difficulty: towns: run %d faulted (%08lX at game.dll+0x%llX)", k + 1, (unsigned long)fault, (unsigned long long)(g_tileFaultAt - g_world.game)); break; }
+        if (fault) { stop = "a run faulted"; Note("difficulty: towns: run %d faulted (%08lX at game.dll+0x%llX)", k + 1, (unsigned long)fault, (unsigned long long)(TileGuardSelf()->at - g_world.game)); break; }
         if (one == 0) { stop = "a run did not finish"; break; }
         SafeRead(gen + 0x11A7108u, &counts[k + 1], 4);
         runs++;

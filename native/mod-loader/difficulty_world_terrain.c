@@ -45,6 +45,9 @@ static struct
     int drawCalls;
     uint8_t* block;        /* the tile's generator block */
     uint8_t* tmpl;         /* the level's block, relocated onto `block`, counts zeroed: copied in for each tile */
+    uint32_t* offsets;     /* where tmpl holds a pointer into `block` (TerrainTemplate): a copy elsewhere moves them */
+    uint32_t offsetCount;
+    uint8_t* tmplBase;     /* the block tmpl's pointers point into (g_terrain.block when TerrainTemplate ran) */
     uint8_t record[0x19B0];
     uint8_t phase;
     double buildMs, drawMs;
@@ -301,6 +304,35 @@ static int TerrainTemplate(uintptr_t gen)
      * on tiles) sets bit 2, and RenderHeightmapVoronoi's phase 0 flattens cells on it (0xF49C27, 0xF49D80) */
     memset(g_terrain.tmpl + 0x10BB7Cu, 0, 0x10E92Eu - 0x10BB7Cu);
     if (!TerrainSampleInstall()) Note("difficulty: terrain: the height texture's sampler is not wrapped; tiles sample it unshifted");
+    /* the pointers into the block as the template holds them (after the clears above), so a tile can be built in
+     * another block (the stamp planning's slots, TerrainCopyTemplate) */
+    if (g_terrain.offsets == NULL) g_terrain.offsets = (uint32_t*)VirtualAlloc(NULL, (size_t)(size / 8u) * 4u, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    g_terrain.offsetCount = 0; g_terrain.tmplBase = NULL;
+    if (g_terrain.offsets != NULL)
+    {
+        const uint64_t from = (uint64_t)(uintptr_t)g_terrain.block, to = from + size;
+        for (uint32_t o = 0; o + 8 <= size; o += 8)
+        {
+            uint64_t v; memcpy(&v, g_terrain.tmpl + o, 8);
+            if (v >= from && v < to) g_terrain.offsets[g_terrain.offsetCount++] = o;
+        }
+        g_terrain.tmplBase = g_terrain.block;
+        Note("difficulty: terrain: the tile template holds %u pointers into its block", g_terrain.offsetCount);
+    }
+    return 1;
+}
+
+/* The template into a block: copied, its pointers moved from the block TerrainTemplate made it for onto `T`. 0 when
+ * `T` is another block and the list is missing. */
+static int TerrainCopyTemplate(uint8_t* T)
+{
+    uint32_t size = GEN_BLOCK_SIZE;
+    uint8_t* base = g_terrain.offsets != NULL && g_terrain.tmplBase != NULL ? g_terrain.tmplBase : g_terrain.block;
+    if (T == base) { memcpy(T, g_terrain.tmpl, size); return 1; }
+    if (g_terrain.offsets == NULL || g_terrain.tmplBase == NULL) return 0;
+    memcpy(T, g_terrain.tmpl, size);
+    const uint64_t delta = (uint64_t)(uintptr_t)T - (uint64_t)(uintptr_t)base;
+    for (uint32_t k = 0; k < g_terrain.offsetCount; k++) *(uint64_t*)(T + g_terrain.offsets[k]) += delta;
     return 1;
 }
 
@@ -368,7 +400,7 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
     if (SafeRead(context + 8, &settings, 8) || settings == 0 || SafeRead(context + 0x18, &lg, 8) || lg == 0 ||
         SafeRead(lg + 0x2D0, &p, 8) || p == 0 || SafeRead(p + 0x68, &spacingAt, 8) || spacingAt == 0 || SafeRead(lg + 0x2D7C, &disk, 4))
         return 0;
-    memcpy(g_terrain.block, g_terrain.tmpl, GEN_BLOCK_SIZE);
+    if (!TerrainCopyTemplate(g_terrain.block)) return 0;
     uint64_t seed = TerrainSeed(tile);
     static uint8_t one[0x19B0];
     if (SafeRead(g_rec25, one, sizeof one)) return 0;
@@ -421,10 +453,10 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
         volatile int calls = 0;
         uint8_t phase = 0;
         LONG fault = WorldTileGuarded(one, context, &index, &phase, g, h, 10000, &calls);
-        if (fault || index == 0 || g_tileWeldFailed)
+        if (fault || index == 0 || TileGuardSelf()->weldFailed)
         {
             Note("difficulty: terrain: tile %d (%.0f, %.0f) %s in op 0x%02X%s", tile, (double)ox, (double)oy,
-                fault ? "faulted" : g_tileWeldFailed ? "failed its weld" : "did not finish", op, fault || g_tileWeldFailed ? "; the level's own cells stay there" : "");
+                fault ? "faulted" : TileGuardSelf()->weldFailed ? "failed its weld" : "did not finish", op, fault || TileGuardSelf()->weldFailed ? "; the level's own cells stay there" : "");
             ok = 0;
             break;
         }
@@ -1556,7 +1588,7 @@ static int NearRunStep(uint64_t records, uint32_t end, uint64_t context, uint64_
     if (fault)
     {
         Note("difficulty: near terrain: replayed op 0x%02X faulted (%08lX at game.dll+0x%llX)", g_near.stepOp[s], (unsigned long)fault,
-            (unsigned long long)(g_tileFaultAt - g_world.game));
+            (unsigned long long)(TileGuardSelf()->at - g_world.game));
         return -1;
     }
     g_near.calls++;
@@ -3530,9 +3562,6 @@ static struct
     uint8_t rec26[0x19B0], rec4E[0x19B0];
     StampCandidate* cand;
     uint32_t count, capacity, reserved;
-    uint8_t* header;            /* the tile run's stamp index: a copy of the level's header ... */
-    uint8_t* memory;            /* ... and its own memory */
-    uint32_t memoryBytes;
     LONG ringLevel;             /* g_world.levels the rings below are for */
     uint32_t first, end;        /* the added locations' indices: first .. end - 1 */
     uint8_t ring[STAMP_LOCATION_LIMIT];
@@ -3621,19 +3650,18 @@ static int StampRunRecord(const uint8_t* saved, uintptr_t gen, uint8_t* T, uint6
 /* The tile run's stamp index over 0..896: the level's header (its other tables at +0x2058/+0x2060), its own memory,
  * built as the level init builds the level's (WorldIndex), locations from the tile's table. */
 static volatile LONG64 g_emptyIndexQueries; /* difficulty_maps.c IndexQueryClamped */
-static uintptr_t StampIndex(uintptr_t level, uint8_t* T, float extent)
+static uintptr_t StampIndex(TileRunner* r, uintptr_t level, uint8_t* T, float extent)
 {
     WorldIndexSize size = (WorldIndexSize)(g_world.game + DIF_INDEX_SIZE);
     uint32_t bytes = size(extent, extent, extent / 64.0f);
-    if (g_stamps.header == NULL) g_stamps.header = (uint8_t*)VirtualAlloc(NULL, 0x3000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (g_stamps.memory == NULL || g_stamps.memoryBytes < bytes)
+    if (r->memory == NULL || r->memoryBytes < bytes)
     {
-        if (g_stamps.memory != NULL) VirtualFree(g_stamps.memory, 0, MEM_RELEASE);
-        g_stamps.memory = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        g_stamps.memoryBytes = g_stamps.memory ? bytes : 0;
+        if (r->memory != NULL) VirtualFree(r->memory, 0, MEM_RELEASE);
+        r->memory = (uint8_t*)VirtualAlloc(NULL, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        r->memoryBytes = r->memory ? bytes : 0;
     }
-    if (g_stamps.header == NULL || g_stamps.memory == NULL || SafeRead(level, g_stamps.header, 0x2068)) return 0;
-    uintptr_t p = (uintptr_t)g_stamps.header, memory = (uintptr_t)g_stamps.memory, table = (uintptr_t)(T + 0x11A7280);
+    if (r->header == NULL || r->memory == NULL || SafeRead(level, r->header, 0x2068)) return 0;
+    uintptr_t p = (uintptr_t)r->header, memory = (uintptr_t)r->memory, table = (uintptr_t)(T + 0x11A7280);
     memcpy((void*)p, &extent, 4);
     memset((void*)memory, 0, bytes);
     memset((void*)(p + 0x50), 0, 0x2000);
@@ -3760,6 +3788,267 @@ typedef uint32_t (*StampKeyFn)(uintptr_t index, float x, float y);
 typedef uint32_t (*StampQueryFn)(uintptr_t index, uint32_t lo, uint32_t hi, uint64_t* out, uint32_t max);
 typedef uint32_t* (*StampInsertFn)(uintptr_t index, float x0, float y0, float x1, float y1, void* out);
 
+/* ---- The stamp planning's tiles in parallel (load time) ------------------------------------------------------------
+ * Every tile's run is independent of the others (~/xl-work design notes; P): each works on its own copy of the
+ * generator block with its records moved onto it, and op 0x2B's items each seed their own LCG and test only their own
+ * records and the run's index. So the generator thread builds tiles (TerrainBuild, 0x4E/0x26, the clearing bytes) into
+ * slots, each slot its own block, and runners take built slots and run op 0x2B on them, each with its own context
+ * (TileRunner: arena, settings, stamp index; the level's context and settings as the section took them otherwise) and
+ * op 0x2B's eight jobs inline on the runner's thread (TileJobsInline). The generator commits finished slots in the
+ * order of order[] (the candidates' order is the serial code's, so the qsort and everything after it are unchanged)
+ * and runs a built slot itself when it has nothing to build or no free slot.
+ * With one runner (HELLFORGE_XL_TILE_THREADS=1, or the runners' parts not installed) the generator does every step
+ * itself, op 0x2B's jobs submitted as the game does. */
+#define STAMP_SLOTS_MAX (TILE_RUNNERS_MAX + 4)
+#define STAMP_TILE_CANDIDATES 8192u
+enum { STAMP_SLOT_FREE, STAMP_SLOT_BUILT, STAMP_SLOT_RUNNING, STAMP_SLOT_DONE };
+typedef struct
+{
+    volatile LONG state;
+    int k, t;                   /* order[] index, tile */
+    uint8_t* T;                 /* the slot's generator block */
+    float ox, oy, scale;
+    uint32_t items;
+    int built, fixed, indexed, ran;
+    uint32_t made, count, why[8], sides[4][8];
+    StampCandidate* cand;       /* STAMP_TILE_CANDIDATES */
+    double t2B, tCollect;
+    uint64_t emptyQueries;
+} StampSlot;
+static struct
+{
+    uint64_t records, context, g, h, rec91, table91;
+    uint32_t end;
+    uintptr_t gen, P;
+    uint32_t types[256], typeCount, clearingCount;
+    float rings[6], world, half, s54, s5C, cgx, cgy;
+    uint8_t ctx[0xE8], settings2B[0xD0];
+    uint8_t rec91Copy[0x19B0];
+    StampSlot slots[STAMP_SLOTS_MAX];
+    int slotCount, inlineJobs;
+    volatile LONG stop, finished;
+} g_stampPar;
+
+/* A slot's tile: built, 0x4E/0x26 in level metres, its clearing bytes (generator thread: TerrainBuild and the level's
+ * context; g_terrain.block is the slot's block meanwhile). */
+static void StampTileBuild(StampSlot* s, double* tBuild, double* tFix)
+{
+    const float core = (float)TERRAIN_TILE_CORE, margin = (float)TERRAIN_TILE_MARGIN, extent = (float)TERRAIN_TILE_EXTENT;
+    const int t = s->t;
+    s->ox = (float)(t % g_terrain.columns) * core - margin; s->oy = (float)(t / g_terrain.columns) * core - margin;
+    s->built = s->fixed = s->indexed = s->ran = 0; s->made = s->count = 0; s->scale = 1.0f; s->items = 0;
+    memset(s->why, 0, sizeof s->why); memset(s->sides, 0, sizeof s->sides);
+    s->t2B = s->tCollect = 0; s->emptyQueries = 0;
+    LARGE_INTEGER qf, q0, q1; QueryPerformanceFrequency(&qf);
+    uint8_t* keep = g_terrain.block;
+    g_terrain.block = s->T;
+    uint8_t* T = s->T;
+    QueryPerformanceCounter(&q0);
+    int ok = TerrainBuild(t, g_stampPar.records, g_stampPar.end, g_stampPar.context, g_stampPar.g, g_stampPar.h, g_stampPar.gen, 0);
+    QueryPerformanceCounter(&q1); *tBuild += (double)(q1.QuadPart - q0.QuadPart) / (double)qf.QuadPart;
+    uint32_t vertices = 0;
+    if (ok) { s->built = 1; memcpy(&vertices, T + 0x11A7090, 4); }
+    if (ok && vertices != 0 && vertices <= 6000)
+    {
+        /* 0x4E and 0x26 in level metres, with the level's settings (TerrainBuild put them back) */
+        QueryPerformanceCounter(&q0);
+        StampShiftVertices(T, vertices, s->ox, s->oy);
+        s->fixed = (g_stamps.rec4ELevel != g_world.levels || StampRunRecord(g_stamps.rec4E, g_stampPar.gen, T, 0, g_stampPar.context, g_stampPar.g, g_stampPar.h, 1000) == 1) &&
+                   (g_stamps.rec26Level != g_world.levels || StampRunRecord(g_stamps.rec26, g_stampPar.gen, T, 0, g_stampPar.context, g_stampPar.g, g_stampPar.h, 1000) == 1);
+        StampShiftVertices(T, vertices, -s->ox, -s->oy);
+        QueryPerformanceCounter(&q1); *tFix += (double)(q1.QuadPart - q0.QuadPart) / (double)qf.QuadPart;
+        if (s->fixed)
+        {
+            /* the clearing bytes, from the level's clearing points */
+            memset(T + 0x11A0020, 0, vertices);
+            for (uint32_t c = 0; c < g_stampPar.clearingCount; c++)
+            {
+                float q[3];
+                if (SafeRead(g_stampPar.gen + 0x11A16FCu + 16ull * c, q, 12) || !(q[2] > 0.0f)) continue;
+                float r2 = (1.01f * q[2]) * (1.01f * q[2]), lx = q[0] - s->ox, ly = q[1] - s->oy;
+                if (lx < -q[2] || ly < -q[2] || lx > extent + q[2] || ly > extent + q[2]) continue;
+                for (uint32_t v = 0; v < vertices; v++)
+                {
+                    float xy[2]; memcpy(xy, T + 0x9F310 + (size_t)v * 0x48, 8);
+                    if ((xy[0] - lx) * (xy[0] - lx) + (xy[1] - ly) * (xy[1] - ly) < r2) T[0x11A0020 + v] = 1;
+                }
+            }
+            memcpy(&s->items, T + 0x11A71C4, 4);
+            s->scale = s->items > 0 && (float)s->items < STAMP_TILE_CELLS_VANILLA ? (float)s->items / STAMP_TILE_CELLS_VANILLA : 1.0f;
+        }
+    }
+    g_terrain.block = keep;
+}
+
+/* The rules' picks scaled to the tile's items in the shared rule tables, for a run whose jobs the game runs (one run at
+ * a time); TileJobsInline maps the jobs' permutation instead. */
+static uintptr_t g_stampRuleAt[4096]; static uint32_t g_stampRuleOld[4096], g_stampRules;
+static void StampRulesScale(const uint8_t* T, uint32_t items, float scale)
+{
+    g_stampRules = 0;
+    if (!(scale < 1.0f)) return;
+    for (uint32_t i = 0; i < items && i < 1024; i++)
+    {
+        int32_t type = -1; uint64_t T8 = 0, list = 0; uint32_t n = 0;
+        memcpy(&type, T + 0x92F328 + (size_t)i * 0x20 + 0xC, 4);
+        if (type < 0 || type > 4096 || SafeRead(g_stampPar.table91 + 8ull * (uint32_t)type, &T8, 8) || T8 == 0 || SafeRead(T8 + 0x10, &list, 8) || SafeRead(T8 + 0x18, &n, 4) || list == 0 || n > 64) continue;
+        for (uint32_t r = 0; r < n && g_stampRules < 4096; r++)
+        {
+            uintptr_t a = (uintptr_t)list + 0x70ull * r + 0x20;
+            int seen = 0;
+            for (uint32_t q = 0; q < g_stampRules && !seen; q++) seen = g_stampRuleAt[q] == a;
+            uint32_t old = 0;
+            if (seen || SafeRead(a, &old, 4) || old == 0 || !StampWritable(a, 4)) continue;
+            g_stampRuleAt[g_stampRules] = a; g_stampRuleOld[g_stampRules] = old; g_stampRules++;
+            uint32_t now = (uint32_t)floorf((float)old * scale + 0.5f);
+            *(volatile uint32_t*)a = now < 1 ? 1 : now;
+        }
+    }
+}
+static void StampRulesRestore(void)
+{
+    for (uint32_t q = 0; q < g_stampRules; q++) *(volatile uint32_t*)g_stampRuleAt[q] = g_stampRuleOld[q];
+    g_stampRules = 0;
+}
+
+static void StampRunnerLoop(TileRunner* r);
+/* The runners' engine jobs and op 0x2B's inline jobs (TileJobsInstall) are both needed for more than one runner. */
+static volatile LONG g_tileJobsReady;
+static int TileThreads(void)
+{
+    static int n = -1;
+    if (n < 0)
+    {
+        char t[16] = "";
+        n = 12;
+        if (GetEnvironmentVariableA("HELLFORGE_XL_TILE_THREADS", t, sizeof t) > 0) n = atoi(t);
+        if (n < 1) n = 1;
+        if (n > TILE_RUNNERS_MAX) n = TILE_RUNNERS_MAX;
+    }
+    if (g_tileRunnerTls == TLS_OUT_OF_INDEXES) { DWORD k = TlsAlloc(); if (k != TLS_OUT_OF_INDEXES) g_tileRunnerTls = k; }
+    return g_tileJobsReady && g_tileRunnerTls != TLS_OUT_OF_INDEXES ? n : 1;
+}
+
+/* `count` runners (ids 1..count) as engine jobs; the number submitted (0: none, the generator runs every tile). */
+static int TileRunnersStart(int count)
+{
+    (void)count; (void)StampRunnerLoop;
+    return 0; /* the engine job submit is not wired yet */
+}
+
+/* After g_stampPar.stop: every submitted runner has returned (a job the workers start late returns at once). */
+static void TileRunnersJoin(int started)
+{
+    ULONGLONG since = GetTickCount64();
+    while (g_stampPar.finished < started)
+    {
+        if (GetTickCount64() - since > 30000)
+        {
+            Note("difficulty: stamps: %ld of %d runners did not return within 30 s; no runners for the rest of the session", (long)g_stampPar.finished, started);
+            g_tileJobsReady = 0;
+            return;
+        }
+        Sleep(1);
+    }
+}
+
+/* A built slot's op 0x2B on runner `r` (jobs inline when `inlineJobs`, with the runner in the thread's TLS slot), then
+ * its candidates into the slot (the serial code's collection, per tile). */
+static void StampTile2B(TileRunner* r, StampSlot* s, int inlineJobs)
+{
+    const float core = (float)TERRAIN_TILE_CORE, margin = (float)TERRAIN_TILE_MARGIN, extent = (float)TERRAIN_TILE_EXTENT;
+    LARGE_INTEGER qf, q0, q1; QueryPerformanceFrequency(&qf);
+    uint8_t* T = s->T;
+    const int t = s->t;
+    const float ox = s->ox, oy = s->oy;
+    /* the run's own index, the widened gates (settings2B), no thinning (the section's below[]), the rules' picks scaled
+     * to the tile's items */
+    uintptr_t index = StampIndex(r, g_stampPar.P, T, extent);
+    if (index == 0) return;
+    s->indexed = 1;
+    TileRunnerContext(r, g_stampPar.ctx, g_stampPar.settings2B, index);
+    memcpy(r->one, g_stampPar.rec91Copy, sizeof r->one);
+    WorldTileRelocate(r->one, g_stampPar.gen, (uintptr_t)T);
+    { uint64_t v; memcpy(&v, r->one + 0x1990, 8); v ^= TerrainSeed(t) ^ 0x5354414D50ull; memcpy(r->one + 0x1990, &v, 8); }
+    uint64_t emptyBefore = r->emptyQueries;
+    if (inlineJobs) { r->scale = s->scale; OverlapRunnerTileStart(r); }
+    else { StampRulesScale(T, s->items, s->scale); InterlockedIncrement(&g_worldOpRun); }
+    QueryPerformanceCounter(&q0);
+    volatile uint32_t at = 0;
+    volatile int calls = 0;
+    uint8_t phase = 0;
+    LONG fault = WorldTileGuarded(r->one, (uint64_t)(uintptr_t)r->ctx, &at, &phase, g_stampPar.g, g_stampPar.h, 100000, &calls);
+    if (!fault && at != 0) WorldArenaReset((uint64_t)(uintptr_t)r->ctx);
+    QueryPerformanceCounter(&q1); s->t2B = (double)(q1.QuadPart - q0.QuadPart) / (double)qf.QuadPart;
+    if (!inlineJobs) { InterlockedIncrement(&g_worldOpRun); StampRulesRestore(); }
+    s->emptyQueries = r->emptyQueries - emptyBefore;
+    if (fault || at == 0) return;
+    s->ran = 1;
+    uint32_t n = 0; memcpy(&n, T + 0x11A7108, 4);
+    if (n > 8192) n = 8192;
+    s->made = n;
+    QueryPerformanceCounter(&q0);
+    const float world = g_stampPar.world, half = g_stampPar.half, cgx = g_stampPar.cgx, cgy = g_stampPar.cgy;
+    const float* rings = g_stampPar.rings;
+    for (uint32_t i = 0; i < n; i++)
+    {
+        const uint8_t* loc = T + 0x11A7280 + (size_t)i * 0xE0;
+        float xy[2], box[4]; uint32_t type = 0; uint16_t flags = 0;
+        memcpy(xy, loc, 8); memcpy(box, loc + 0xB0, 16); memcpy(&type, loc + 0xD8, 4); memcpy(&flags, loc + 0xD4, 2);
+        if (xy[0] < margin || xy[0] >= margin + core || xy[1] < margin || xy[1] >= margin + core) { s->why[0]++; continue; }
+        int known = 0;
+        for (uint32_t q = 0; q < g_stampPar.typeCount && !known; q++) known = g_stampPar.types[q] == type;
+        if (!known) { s->why[1]++; continue; }
+        float gx = xy[0] + ox, gy = xy[1] + oy, d = sqrtf((gx - half) * (gx - half) + (gy - half) * (gy - half));
+        float lo[2] = {fminf(box[0], box[2]) + ox, fminf(box[1], box[3]) + oy}, hi[2] = {fmaxf(box[0], box[2]) + ox, fmaxf(box[1], box[3]) + oy};
+        if (d >= world * g_stampPar.s5C * 0.5f || (d >= world * g_stampPar.s54 * 0.5f && !(flags & 1)) || lo[0] < 0.02f * world || lo[1] < 0.02f * world ||
+            hi[0] > 0.98f * world || hi[1] > 0.98f * world) { s->why[2]++; continue; }
+        float reach = fmaxf(fabsf(gx - cgx), fabsf(gy - cgy)), side = fmaxf(hi[0] - lo[0], hi[1] - lo[1]);
+        uint32_t ring = reach <= rings[0] ? 0 : reach <= rings[1] ? 1 : reach <= rings[2] ? 2 : 3;
+        uint32_t hash = (uint32_t)t * 0x9E3779B1u ^ (i + 1) * 0x85EBCA6Bu; hash ^= hash >> 15; hash *= 0xC2B2AE35u; hash ^= hash >> 13;
+        { int bin = side < 4 ? 0 : side < 8 ? 1 : side < 16 ? 2 : side < 32 ? 3 : side < 64 ? 4 : side < 128 ? 5 : side < 256 ? 6 : 7; s->sides[ring][bin]++; }
+        /* no thinning: what the level does not hold, the plan does */
+        if (s->count >= STAMP_TILE_CANDIDATES) { s->why[4]++; continue; }
+        StampCandidate* c = &s->cand[s->count++];
+        memcpy(c->loc, loc, 0xE0);
+        memcpy(c->extra, T + DIF_LOCATIONS_B_NEW + (size_t)i * 0x40, 0x40);
+        float w2[2] = {gx, gy}, b4[4] = {box[0] + ox, box[1] + oy, box[2] + ox, box[3] + oy};
+        memcpy(c->loc, w2, 8); memcpy(c->loc + 0xB0, b4, 16);
+        memcpy(c->extra + 0x10, &g_stampPar.rec91, 8); memset(c->extra + 0x38, 0, 4);
+        c->side = side; c->ring = ring; c->hash = hash;
+        c->prio = ring == 0 ? side : side / fmaxf(reach, 1.0f); /* beyond ring 0: by the size it shows from the centre */
+    }
+    QueryPerformanceCounter(&q1); s->tCollect = (double)(q1.QuadPart - q0.QuadPart) / (double)qf.QuadPart;
+}
+
+/* The built slot to run next: the one earliest in order[] (the generator commits in that order). */
+static StampSlot* StampTakeBuilt(void)
+{
+    StampSlot* best = NULL;
+    for (int i = 0; i < g_stampPar.slotCount; i++)
+    {
+        StampSlot* s = &g_stampPar.slots[i];
+        if (s->state == STAMP_SLOT_BUILT && (best == NULL || s->k < best->k)) best = s;
+    }
+    if (best != NULL && InterlockedCompareExchange(&best->state, STAMP_SLOT_RUNNING, STAMP_SLOT_BUILT) != STAMP_SLOT_BUILT) return NULL;
+    return best;
+}
+
+/* A runner on an engine worker (TileRunnersStart): built slots until the section stops. */
+static void StampRunnerLoop(TileRunner* r)
+{
+    TlsSetValue(g_tileRunnerTls, r);
+    while (!g_stampPar.stop)
+    {
+        StampSlot* s = StampTakeBuilt();
+        if (s == NULL) { Sleep(1); continue; }
+        StampTile2B(r, s, 1);
+        InterlockedExchange(&s->state, STAMP_SLOT_DONE);
+    }
+    TlsSetValue(g_tileRunnerTls, NULL);
+    InterlockedIncrement(&g_stampPar.finished);
+}
+
 /* After the level's op 0x2B has finished (difficulty_world.c's WorldDispatch). */
 static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_t context, uint64_t g, uint64_t h, uintptr_t gen)
 {
@@ -3811,7 +4100,7 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
             (double)s54, (double)s5C, typeCount, clearingCount, g_stamps.rec26Level == g_world.levels ? "kept" : "MISSING", g_stamps.rec4ELevel == g_world.levels ? "kept" : "MISSING");
     }
     float rings[6]; StampRings(rings);
-    const float core = (float)TERRAIN_TILE_CORE, margin = (float)TERRAIN_TILE_MARGIN, extent = (float)TERRAIN_TILE_EXTENT;
+    const float core = (float)TERRAIN_TILE_CORE, extent = (float)TERRAIN_TILE_EXTENT;
     const float cgx = g_stamps.centre[0] + half, cgy = g_stamps.centre[1] + half; /* generator metres */
     /* every tile of the playable disc, nearest first: the map's whole plan (the user's choice, 2026-11-05: plan at load,
      * stream near the players). What the generation's room holds goes into the level; the rest is the plan the stamp
@@ -3841,129 +4130,120 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     if (g_stamps.cand == NULL) { Note("difficulty: stamps: no memory"); return; }
     g_stamps.count = 0;
     g_plan.level = -1; g_plan.count = 0;
-    uint8_t* T = g_terrain.block;
     uint32_t built = 0, ran = 0, made = 0, why[8] = {0}; /* why: core, type, gate, ring, room */
     uint32_t sides[4][8] = {{0}};
-    volatile uint32_t* sizeP = (volatile uint32_t*)(settings + 0x2C);
-    volatile float* g50 = (volatile float*)(settings + 0x50); volatile float* g54 = (volatile float*)(settings + 0x54); volatile float* g5C = (volatile float*)(settings + 0x5C);
-    /* where the planning's time goes (load time): the tile build, 0x4E/0x26, the tile's op 0x2B, the loader's own pass
-     * over its records; then the sort, the level's clash tests and the plan */
+    /* where the planning's time goes (load time): the tile build, 0x4E/0x26 (generator thread), the tiles' op 0x2B and
+     * the collection (summed over the runners); then the sort, the level's clash tests and the plan */
     LARGE_INTEGER qf, q0, q1; QueryPerformanceFrequency(&qf);
-    double tBuild = 0, tFix = 0, t2B = 0, tCollect = 0, tSort = 0, tClash = 0;
+    double tBuild = 0, tFix = 0, t2B = 0, tCollect = 0, tSort = 0, tClash = 0, tTiles = 0;
 #define STAMP_T0() QueryPerformanceCounter(&q0)
 #define STAMP_T1(acc) do { QueryPerformanceCounter(&q1); (acc) += (double)(q1.QuadPart - q0.QuadPart) / (double)qf.QuadPart; } while (0)
-    for (int k = 0; k < tiles; k++)
+    /* the section's constants for the runners */
+    g_stampPar.records = records; g_stampPar.end = end; g_stampPar.context = context; g_stampPar.g = g; g_stampPar.h = h; g_stampPar.gen = gen;
+    g_stampPar.P = P; g_stampPar.rec91 = rec91; g_stampPar.table91 = table91;
+    memcpy(g_stampPar.types, types, sizeof types); g_stampPar.typeCount = typeCount; g_stampPar.clearingCount = clearingCount;
+    memcpy(g_stampPar.rings, rings, sizeof rings); g_stampPar.world = world; g_stampPar.half = half; g_stampPar.s54 = s54; g_stampPar.s5C = s5C;
+    g_stampPar.cgx = cgx; g_stampPar.cgy = cgy;
+    if (SafeRead(context, g_stampPar.ctx, sizeof g_stampPar.ctx) || SafeRead(settings, g_stampPar.settings2B, sizeof g_stampPar.settings2B) ||
+        SafeRead(rec91, g_stampPar.rec91Copy, sizeof g_stampPar.rec91Copy))
+    { Note("difficulty: stamps: the level's context, settings or record 91 did not read; no stamp rings"); return; }
+    { uint32_t e = (uint32_t)extent; float four = 4.0f; memcpy(g_stampPar.settings2B + 0x2C, &e, 4); memcpy(g_stampPar.settings2B + 0x50, &four, 4);
+      memcpy(g_stampPar.settings2B + 0x54, &four, 4); memcpy(g_stampPar.settings2B + 0x5C, &four, 4); }
+    /* runners and slots: runner 0 is the generator's; slot 0 is g_terrain.block */
+    int R = TileThreads();
+    static uint8_t* slotBlock[STAMP_SLOTS_MAX];
+    static StampCandidate* slotCand[STAMP_SLOTS_MAX];
+    int slots = R > 1 ? R + 2 : 1;
+    if (slots > STAMP_SLOTS_MAX) slots = STAMP_SLOTS_MAX;
+    TileRunner* mine = TileRunnerMake(0);
+    if (mine == NULL) { Note("difficulty: stamps: no memory for the planning's runner; no stamp rings"); return; }
+    int have = 0;
+    for (; have < slots; have++)
     {
-        int t = order[k];
-        float cx = (float)(t % g_terrain.columns) * core, cy = (float)(t / g_terrain.columns) * core, ox = cx - margin, oy = cy - margin;
-        STAMP_T0();
-        int builtOk = TerrainBuild(t, records, end, context, g, h, gen, 0);
-        STAMP_T1(tBuild);
-        if (!builtOk) continue;
-        built++;
-        uint32_t vertices = 0; memcpy(&vertices, T + 0x11A7090, 4);
-        if (vertices == 0 || vertices > 6000) continue;
-        /* 0x4E and 0x26 in level metres, with the level's settings (TerrainBuild put them back) */
-        STAMP_T0();
-        StampShiftVertices(T, vertices, ox, oy);
-        int fixed = (g_stamps.rec4ELevel != g_world.levels || StampRunRecord(g_stamps.rec4E, gen, T, 0, context, g, h, 1000) == 1) &&
-                    (g_stamps.rec26Level != g_world.levels || StampRunRecord(g_stamps.rec26, gen, T, 0, context, g, h, 1000) == 1);
-        StampShiftVertices(T, vertices, -ox, -oy);
-        STAMP_T1(tFix);
-        if (!fixed) { Note("difficulty: stamps: tile %d: 0x4E/0x26 did not run", t); continue; }
-        /* the clearing bytes, from the level's clearing points */
-        memset(T + 0x11A0020, 0, vertices);
-        for (uint32_t c = 0; c < clearingCount; c++)
-        {
-            float q[3];
-            if (SafeRead(gen + 0x11A16FCu + 16ull * c, q, 12) || !(q[2] > 0.0f)) continue;
-            float r2 = (1.01f * q[2]) * (1.01f * q[2]), lx = q[0] - ox, ly = q[1] - oy;
-            if (lx < -q[2] || ly < -q[2] || lx > extent + q[2] || ly > extent + q[2]) continue;
-            for (uint32_t v = 0; v < vertices; v++)
-            {
-                float xy[2]; memcpy(xy, T + 0x9F310 + (size_t)v * 0x48, 8);
-                if ((xy[0] - lx) * (xy[0] - lx) + (xy[1] - ly) * (xy[1] - ly) < r2) T[0x11A0020 + v] = 1;
-            }
-        }
-        /* the run's own index, the widened gates, no thinning, the rules' picks scaled to the tile's items */
-        uintptr_t index = StampIndex(P, T, extent);
-        if (index == 0) { Note("difficulty: stamps: no index for tile %d", t); break; }
-        uint32_t items = 0; memcpy(&items, T + 0x11A71C4, 4);
-        float scale = items > 0 && (float)items < STAMP_TILE_CELLS_VANILLA ? (float)items / STAMP_TILE_CELLS_VANILLA : 1.0f;
-        static uintptr_t ruleAt[4096]; static uint32_t ruleOld[4096];
-        uint32_t rules = 0;
-        if (scale < 1.0f)
-            for (uint32_t i = 0; i < items && i < 1024; i++)
-            {
-                int32_t type = -1; uint64_t T8 = 0, list = 0; uint32_t n = 0;
-                memcpy(&type, T + 0x92F328 + (size_t)i * 0x20 + 0xC, 4);
-                if (type < 0 || type > 4096 || SafeRead(table91 + 8ull * (uint32_t)type, &T8, 8) || T8 == 0 || SafeRead(T8 + 0x10, &list, 8) || SafeRead(T8 + 0x18, &n, 4) || list == 0 || n > 64) continue;
-                for (uint32_t r = 0; r < n && rules < 4096; r++)
-                {
-                    uintptr_t a = (uintptr_t)list + 0x70ull * r + 0x20;
-                    int seen = 0;
-                    for (uint32_t q = 0; q < rules && !seen; q++) seen = ruleAt[q] == a;
-                    uint32_t old = 0;
-                    if (seen || SafeRead(a, &old, 4) || old == 0 || !StampWritable(a, 4)) continue;
-                    ruleAt[rules] = a; ruleOld[rules] = old; rules++;
-                    uint32_t now = (uint32_t)floorf((float)old * scale + 0.5f);
-                    *(volatile uint32_t*)a = now < 1 ? 1 : now;
-                }
-            }
-        uint32_t below[2] = {g_world.below[0], g_world.below[1]};
-        uint32_t size = *sizeP; float k50 = *g50, k54 = *g54, k5C = *g5C;
-        uint64_t keepIndex = P;
-        *sizeP = (uint32_t)extent; *g50 = 4.0f; *g54 = 4.0f; *g5C = 4.0f;
-        g_world.below[0] = g_world.below[1] = 0xFFFFFFFFu;
-        *(volatile uint64_t*)(uintptr_t)(context + 0x20) = index;
-        InterlockedIncrement(&g_worldOpRun);
-        uint8_t rec[0x19B0];
-        STAMP_T0();
-        g_stampTileRun = 1;
-        int ok = !SafeRead(rec91, rec, sizeof rec) && StampRunRecord(rec, gen, T, TerrainSeed(t) ^ 0x5354414D50ull, context, g, h, 100000) == 1;
-        g_stampTileRun = 0;
-        STAMP_T1(t2B);
-        *(volatile uint64_t*)(uintptr_t)(context + 0x20) = keepIndex;
-        g_world.below[0] = below[0]; g_world.below[1] = below[1];
-        *sizeP = size; *g50 = k50; *g54 = k54; *g5C = k5C;
-        for (uint32_t q = 0; q < rules; q++) *(volatile uint32_t*)ruleAt[q] = ruleOld[q];
-        InterlockedIncrement(&g_worldOpRun);
-        if (!ok) { Note("difficulty: stamps: tile %d: op 0x2B did not run", t); continue; }
-        ran++;
-        uint32_t n = 0; memcpy(&n, T + 0x11A7108, 4);
-        if (n > 8192) n = 8192;
-        made += n;
-        STAMP_T0();
-        for (uint32_t i = 0; i < n; i++)
-        {
-            const uint8_t* loc = T + 0x11A7280 + (size_t)i * 0xE0;
-            float xy[2], box[4]; uint32_t type = 0; uint16_t flags = 0;
-            memcpy(xy, loc, 8); memcpy(box, loc + 0xB0, 16); memcpy(&type, loc + 0xD8, 4); memcpy(&flags, loc + 0xD4, 2);
-            if (xy[0] < margin || xy[0] >= margin + core || xy[1] < margin || xy[1] >= margin + core) { why[0]++; continue; }
-            int known = 0;
-            for (uint32_t q = 0; q < typeCount && !known; q++) known = types[q] == type;
-            if (!known) { why[1]++; continue; }
-            float gx = xy[0] + ox, gy = xy[1] + oy, d = sqrtf((gx - half) * (gx - half) + (gy - half) * (gy - half));
-            float lo[2] = {fminf(box[0], box[2]) + ox, fminf(box[1], box[3]) + oy}, hi[2] = {fmaxf(box[0], box[2]) + ox, fmaxf(box[1], box[3]) + oy};
-            if (d >= world * s5C * 0.5f || (d >= world * s54 * 0.5f && !(flags & 1)) || lo[0] < 0.02f * world || lo[1] < 0.02f * world ||
-                hi[0] > 0.98f * world || hi[1] > 0.98f * world) { why[2]++; continue; }
-            float reach = fmaxf(fabsf(gx - cgx), fabsf(gy - cgy)), side = fmaxf(hi[0] - lo[0], hi[1] - lo[1]);
-            uint32_t ring = reach <= rings[0] ? 0 : reach <= rings[1] ? 1 : reach <= rings[2] ? 2 : 3;
-            uint32_t hash = (uint32_t)t * 0x9E3779B1u ^ (i + 1) * 0x85EBCA6Bu; hash ^= hash >> 15; hash *= 0xC2B2AE35u; hash ^= hash >> 13;
-            { int bin = side < 4 ? 0 : side < 8 ? 1 : side < 16 ? 2 : side < 32 ? 3 : side < 64 ? 4 : side < 128 ? 5 : side < 256 ? 6 : 7; sides[ring][bin]++; }
-            (void)rings[3]; (void)rings[4]; (void)rings[5]; /* no thinning: what the level does not hold, the plan does */
-            if (g_stamps.count >= g_stamps.capacity && !StampGrow()) { why[4]++; continue; }
-            StampCandidate* c = &g_stamps.cand[g_stamps.count++];
-            memcpy(c->loc, loc, 0xE0);
-            memcpy(c->extra, T + DIF_LOCATIONS_B_NEW + (size_t)i * 0x40, 0x40);
-            float w2[2] = {gx, gy}, b4[4] = {box[0] + ox, box[1] + oy, box[2] + ox, box[3] + oy};
-            memcpy(c->loc, w2, 8); memcpy(c->loc + 0xB0, b4, 16);
-            memcpy(c->extra + 0x10, &rec91, 8); memset(c->extra + 0x38, 0, 4);
-            c->side = side; c->ring = ring; c->hash = hash;
-            c->prio = ring == 0 ? side : side / fmaxf(reach, 1.0f); /* beyond ring 0: by the size it shows from the centre */
-        }
-        STAMP_T1(tCollect);
+        if (have > 0 && slotBlock[have] == NULL) slotBlock[have] = (uint8_t*)VirtualAlloc(NULL, GEN_BLOCK_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (slotCand[have] == NULL) slotCand[have] = (StampCandidate*)VirtualAlloc(NULL, sizeof(StampCandidate) * STAMP_TILE_CANDIDATES, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if ((have > 0 && slotBlock[have] == NULL) || slotCand[have] == NULL) break;
+        StampSlot* sl = &g_stampPar.slots[have];
+        sl->T = have == 0 ? g_terrain.block : slotBlock[have]; sl->cand = slotCand[have]; sl->state = STAMP_SLOT_FREE;
     }
+    if (have == 0) { Note("difficulty: stamps: no memory for the planning's slots; no stamp rings"); return; }
+    g_stampPar.slotCount = have;
+    if (have < 2) R = 1;
+    g_stampPar.inlineJobs = R > 1;
+    g_stampPar.stop = 0; g_stampPar.finished = 0;
+    /* for the whole section: no thinning; a tile run's jobs make no per-job line; the overlap grid's runs (one per tile
+     * run below when the game runs the jobs, the runners' own otherwise) */
+    uint32_t below[2] = {g_world.below[0], g_world.below[1]};
+    g_world.below[0] = g_world.below[1] = 0xFFFFFFFFu;
+    g_stampTileRun = 1;
+    InterlockedIncrement(&g_worldOpRun);
+    int started = R > 1 ? TileRunnersStart(R - 1) : 0;
+    int slotOf[1024];
+    for (int k = 0; k < tiles; k++) slotOf[k] = -1;
+    int next = 0, commit = 0, selfRuns = 0;
+    uint32_t noIndex = 0, notFixed = 0, noRun = 0;
+    uint64_t emptyQueries = 0;
+    LARGE_INTEGER w0, w1; QueryPerformanceCounter(&w0);
+    if (!g_stampPar.inlineJobs) TlsSetValue(g_tileRunnerTls, NULL);
+    while (commit < tiles)
+    {
+        int progress = 0;
+        while (commit < tiles && slotOf[commit] >= 0 && g_stampPar.slots[slotOf[commit]].state == STAMP_SLOT_DONE)
+        {
+            StampSlot* sl = &g_stampPar.slots[slotOf[commit]];
+            built += (uint32_t)sl->built;
+            if (sl->built && !sl->fixed) { notFixed++; if (notFixed <= 8) Note("difficulty: stamps: tile %d: 0x4E/0x26 did not run", sl->t); }
+            if (sl->fixed && !sl->indexed) { noIndex++; if (noIndex <= 8) Note("difficulty: stamps: no index for tile %d", sl->t); }
+            if (sl->indexed && !sl->ran) { noRun++; if (noRun <= 8) Note("difficulty: stamps: tile %d: op 0x2B did not run", sl->t); }
+            ran += (uint32_t)sl->ran; made += sl->made;
+            for (int q = 0; q < 8; q++) why[q] += sl->why[q];
+            for (int a = 0; a < 4; a++) for (int b = 0; b < 8; b++) sides[a][b] += sl->sides[a][b];
+            t2B += sl->t2B; tCollect += sl->tCollect; emptyQueries += sl->emptyQueries;
+            for (uint32_t i = 0; i < sl->count; i++)
+            {
+                if (g_stamps.count >= g_stamps.capacity && !StampGrow()) { why[4] += sl->count - i; break; }
+                g_stamps.cand[g_stamps.count++] = sl->cand[i];
+            }
+            InterlockedExchange(&sl->state, STAMP_SLOT_FREE);
+            commit++; progress = 1;
+        }
+        if (next < tiles)
+        {
+            StampSlot* sl = NULL;
+            for (int i = 0; i < g_stampPar.slotCount && sl == NULL; i++) if (g_stampPar.slots[i].state == STAMP_SLOT_FREE) sl = &g_stampPar.slots[i];
+            if (sl != NULL)
+            {
+                sl->k = next; sl->t = order[next];
+                slotOf[next] = (int)(sl - g_stampPar.slots);
+                next++;
+                StampTileBuild(sl, &tBuild, &tFix);
+                InterlockedExchange(&sl->state, sl->fixed ? STAMP_SLOT_BUILT : STAMP_SLOT_DONE);
+                continue;
+            }
+        }
+        if (!progress)
+        {
+            StampSlot* sl = StampTakeBuilt();
+            if (sl != NULL)
+            {
+                if (g_stampPar.inlineJobs) TlsSetValue(g_tileRunnerTls, mine);
+                StampTile2B(mine, sl, g_stampPar.inlineJobs);
+                if (g_stampPar.inlineJobs) TlsSetValue(g_tileRunnerTls, NULL);
+                InterlockedExchange(&sl->state, STAMP_SLOT_DONE);
+                selfRuns++; progress = 1;
+            }
+        }
+        if (!progress) SwitchToThread();
+    }
+    g_stampPar.stop = 1;
+    TileRunnersJoin(started);
+    QueryPerformanceCounter(&w1); tTiles = (double)(w1.QuadPart - w0.QuadPart) / (double)qf.QuadPart;
+    InterlockedIncrement(&g_worldOpRun);
+    g_stampTileRun = 0;
+    g_world.below[0] = below[0]; g_world.below[1] = below[1];
+    g_emptyIndexQueries += (LONG64)emptyQueries;
+    Note("difficulty: stamps: the tiles ran on %d runners (%d engine jobs started, %d slots; the generator ran %d of %d tiles' op 0x2B itself) in %.1f s",
+        R, started, g_stampPar.slotCount, selfRuns, tiles, tTiles);
     /* into the level, ring 0 first (larger first), then the rest by apparent size (side / distance), while the table has
      * room; each tested against the level's own locations and roads in its index. Not against the stamps added here:
      * each tile's run already tested its own with the game's footprint test, and boxes of rotated footprints overlap far
@@ -4025,8 +4305,8 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         n++; added[c->ring]++;
     }
     STAMP_T1(tClash);
-    Note("difficulty: stamps: planning time: tile builds %.1f s, 0x4E/0x26 %.1f s, op 0x2B %.1f s, collecting %.1f s, sort %.1f s, the level's clash tests %.1f s; %lld queries of an empty tile index answered without a scan",
-        tBuild, tFix, t2B, tCollect, tSort, tClash, (long long)g_emptyIndexQueries);
+    Note("difficulty: stamps: planning time: tiles %.1f s (tile builds %.1f s, 0x4E/0x26 %.1f s; op 0x2B %.1f s, collecting %.1f s summed over the runners), sort %.1f s, the level's clash tests %.1f s; %lld queries of an empty tile index answered without a scan",
+        tTiles, tBuild, tFix, t2B, tCollect, tSort, tClash, (long long)g_emptyIndexQueries);
 #undef STAMP_T0
 #undef STAMP_T1
     *(volatile uint32_t*)(uintptr_t)(gen + 0x11A7108u) = n;

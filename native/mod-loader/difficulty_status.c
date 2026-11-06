@@ -157,13 +157,14 @@ static uint64_t WeldFinal(uint64_t ctx, uint64_t b, uint64_t edges, uint64_t nod
     if (!SafeRead(ctx + 8, &s, 8) && s != 0) SafeRead(s + 0x2C, &w, 4);
     uint64_t r = g_weldFinal(ctx, b, edges, nodes);
     if ((uint8_t)r != 0) return r;
-    int tile = g_tileGuardThread != 0 && g_tileGuardThread == GetCurrentThreadId();
+    TileGuard* guard = TileGuardSelf();
+    int tile = guard->thread != 0 && guard->thread == GetCurrentThreadId();
     if (InterlockedIncrement(&g_weldNotes) <= 24)
         Note("difficulty: weld research: FinalizeVoronoi's weld failed (%s, world %u m): edges %u (cap %u), nodes %u before (cap %u)",
             tile ? "a terrain tile: abandoned, no level restart" : "the level", w, e[0], e[1], n[0], n[1]);
     /* a tile's failure: done for 0xF68114 (it writes the counts back into the tile's own copy of the block), the tile's
-     * runner abandons the tile (g_tileWeldFailed) */
-    if (tile) { InterlockedIncrement(&g_tileWeldFailed); return (r & ~0xFFull) | 1u; }
+     * runner abandons the tile (its guard's weldFailed) */
+    if (tile) { InterlockedIncrement(&guard->weldFailed); return (r & ~0xFFull) | 1u; }
     return r;
 }
 static uint64_t WeldCells(uint64_t weld, uint64_t list, uint64_t count, uint64_t d)

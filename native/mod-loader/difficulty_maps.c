@@ -61,17 +61,22 @@ static const struct { uint32_t rva; uint8_t length; uint8_t pin[7], bytes[7]; } 
 typedef uint32_t (*IndexQueryFn)(uint64_t, uint32_t, uint32_t, uint64_t, uint32_t);
 static IndexQueryFn g_indexQuery;
 static void WeldResearchInstall(uintptr_t game); /* difficulty_status.c */
-/* Load time: a tile run's own index (difficulty_world_terrain.c StampIndex, g_stamps.header + 8) is empty while op
+/* Load time: a tile run's own index (difficulty_world_terrain.c StampIndex: a runner's header + 8, in g_tileHeaders) is empty while op
  * 0x2B's jobs query it (P): the index is fresh per tile with its count [P+4] zeroed, and op 0x2B inserts only in its
  * serial loop after the jobs (0xF3515E, inc [P+4] at 0xF3516E). The query makes no calls and stores only to its stack
  * and the caller's buffer (0xC05449, 0xC05569), so an empty index's answer, 0 hits, needs no scan of its row and column
  * bitsets (0xC054C0..0xC05587; every placement try queries once, 0xF30C99). */
 static uint32_t IndexQueryClamped(uint64_t index, uint32_t key, uint32_t mode, uint64_t buffer, uint32_t places)
 {
-    if (g_stamps.header != NULL && index == (uint64_t)(uintptr_t)g_stamps.header + 8 && *(volatile uint32_t*)(g_stamps.header + 4) == 0)
+    if (g_tileHeaders != NULL)
     {
-        InterlockedIncrement64(&g_emptyIndexQueries);
-        return 0;
+        uint64_t d = index - 8u - (uint64_t)(uintptr_t)g_tileHeaders;
+        if (d < (uint64_t)TILE_RUNNERS_MAX * TILE_HEADER_STRIDE && d % TILE_HEADER_STRIDE == 0 && *(volatile uint32_t*)(g_tileHeaders + d + 4) == 0)
+        {
+            TileRunner* r = TileRunnerSelf(); /* a runner counts its own: one shared counter from every runner thrashes */
+            if (r != NULL) r->emptyQueries++; else InterlockedIncrement64(&g_emptyIndexQueries);
+            return 0;
+        }
     }
     uint32_t hits = g_indexQuery(index, key, mode, buffer, places);
     return hits < places ? hits : places;

@@ -576,9 +576,9 @@ static void OverlapTableForGeneration(LONG generation)
     ReleaseSRWLockExclusive(&g_overlapTableLock);
 }
 
-static OverlapBuffer* OverlapBufferFor(uintptr_t base, LONG generation)
+static OverlapBuffer* OverlapBufferFor(uintptr_t base, LONG generation, int runner)
 {
-    OverlapTableForGeneration(generation);
+    if (!runner) OverlapTableForGeneration(generation); /* a runner's tile runs end without freeing the others' grids */
     OverlapBuffer* found = NULL;
     AcquireSRWLockExclusive(&g_overlapTableLock);
     for (uint32_t i = 0; i < OVERLAP_BUFFERS && found == NULL; i++)
@@ -602,6 +602,28 @@ static OverlapBuffer* OverlapBufferFor(uintptr_t base, LONG generation)
     return found;
 }
 
+/* A stamp planning runner starts a tile run: its thread's last buffer (kept while the thread stays on one base) is
+ * freed, as a new base frees it, so the run's first base starts empty even at an address the last run used. */
+static volatile LONG g_overlapRunnerRuns;
+static void OverlapRunnerTileStart(TileRunner* runner)
+{
+    runner->overlapGeneration = InterlockedDecrement(&g_overlapRunnerRuns);
+    OverlapThread* t = OverlapThreadGet();
+    if (t == NULL || t->cacheEntry == NULL) return;
+    OverlapBuffer* old = t->cacheEntry;
+    AcquireSRWLockExclusive(&g_overlapTableLock);
+    AcquireSRWLockExclusive(&old->lock);
+    if (old->used && old->base == t->cacheBase)
+    {
+        OverlapFreeEntry(old);
+        old->used = 0;
+        old->base = 0;
+    }
+    ReleaseSRWLockExclusive(&old->lock);
+    ReleaseSRWLockExclusive(&g_overlapTableLock);
+    t->cacheEntry = NULL;
+}
+
 /* The stub at 0xF31004: rcx = r14 (base), edx = r15d (count), r8 = the query (centre x, centre y, half x, half y), r9 =
  * rbp (the call's frame). Returns the first candidate index, -1 for none, or -2 for the original loop. Only the job's own
  * slice (callers 0xF33FA1, 0xF3463D) takes the grid: its records are appended and never rewritten below the count.
@@ -616,7 +638,10 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q, uintptr_
     if (caller != g_overlap.game + OVERLAP_CALLER_A && caller != g_overlap.game + OVERLAP_CALLER_B) return -2;
     if (!(g_world.current > 1.0f)) { if (g_overlap.level != 0) g_overlap.level = 0; return -2; }
     if (g_overlap.level != 1) g_overlap.level = 1; /* written only on a change: eight jobs share its cache line */
-    LONG generation = g_worldOpRun; /* one run of one pass record (difficulty_world.c) */
+    /* one run of one pass record (difficulty_world.c), or a stamp planning runner's tile run (its own negative number:
+     * runners' buffers are their own job regions, so no two runners share a base) */
+    TileRunner* runner = TileRunnerSelf();
+    LONG generation = runner != NULL ? runner->overlapGeneration : g_worldOpRun;
     if (base == 0 || count == 0 || count > OVERLAP_MAX_COUNT || q == NULL ||
         !isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3]) ||
         fabsf(q[0]) > OVERLAP_LIMIT || fabsf(q[1]) > OVERLAP_LIMIT || fabsf(q[2]) > OVERLAP_LIMIT || fabsf(q[3]) > OVERLAP_LIMIT)
@@ -649,7 +674,7 @@ static int OverlapBegin(uintptr_t base, uint32_t count, const float* q, uintptr_
             ReleaseSRWLockExclusive(&g_overlapTableLock);
         }
         t->cacheEntry = NULL;
-        e = OverlapBufferFor(base, generation);
+        e = OverlapBufferFor(base, generation, runner != NULL);
         if (e == NULL)
         {
             OverlapStats(t, 0, count, 1);
