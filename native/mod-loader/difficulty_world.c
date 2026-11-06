@@ -522,8 +522,18 @@ static uint64_t WorldPassExploration(uint64_t a, uint64_t b, uint64_t c, uint64_
         }
         static LONG noted;
         if (InterlockedExchange(&noted, 1) == 0)
-            Note("difficulty: an operation's %u missions on one map: points of interest x%u (%u quota entries, %u category caps)%s", m, m, nq, nc,
-                scaled ? "" : "; the region's settings could not be written, so its counts stay");
+        {
+            /* one mission's expected count: sum of min + (max - min) / 2 per entry (the optional slots are uniform draws) */
+            char q[512]; int at = 0; double expect = 0;
+            for (uint32_t i = 0; i < nq && at < (int)sizeof q - 32; i++)
+            {
+                at += snprintf(q + at, sizeof q - at, " %u..%u", saveQ[i][0], saveQ[i][1]);
+                expect += saveQ[i][0] + (saveQ[i][1] > saveQ[i][0] ? (saveQ[i][1] - saveQ[i][0]) / 2.0 : 0.0);
+            }
+            Note("difficulty: an operation's %u missions on one map: points of interest x%u (%u quota entries, %u category caps)%s; one mission's quotas (min..max):%s, "
+                "so %.1f expected a mission (the mandatory and optional passes together)", m, m, nq, nc,
+                scaled ? "" : "; the region's settings could not be written, so its counts stay", q, expect);
+        }
     }
     if (scaled && g_world.values != NULL) g_world.values->capMul = m; /* the items' map-wide caps too (CapStubs) */
     uint64_t r = WorldPassExplorationTimed(a, b, c, e);
