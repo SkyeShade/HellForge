@@ -34,6 +34,9 @@ static TerrainSampleFn g_terrainSample;
 static volatile DWORD g_terrainThread;   /* the thread building a tile (the samplers' offset applies there only) */
 static float g_terrainOffset[2];
 static volatile LONG g_nearActive; /* (below) the near tile's replay is running */
+/* A parallel tile section holds the level's tile marker (lg+0x2D7C = disk ^ 1) and lattice spacing (16) for all its
+ * tiles; TerrainBuild leaves them alone then (runners build at once). */
+static volatile LONG g_tileSectionHeld;
 
 static struct
 {
@@ -55,10 +58,26 @@ static struct
     ULONGLONG started;
 } g_terrain = {.level = -1};
 
+/* The world offset of the tile this thread builds: a stamp planning runner's own (TileRunner), else the one tile the
+ * generator thread builds; NULL when this thread builds none. */
+static inline const float* TerrainOffsetSelf(void)
+{
+    TileRunner* r = TileRunnerSelf();
+    if (r != NULL) return r->offsetOn ? r->offset : NULL;
+    return g_terrainThread != 0 && g_terrainThread == GetCurrentThreadId() ? g_terrainOffset : NULL;
+}
+/* The generator block this thread builds tiles in: a runner's slot, else g_terrain.block. */
+static inline uint8_t* TerrainBlockSelf(void)
+{
+    TileRunner* r = TileRunnerSelf();
+    return r != NULL && r->block != NULL ? r->block : g_terrain.block;
+}
+
 /* The fBm noise (height groups' plateau outlines, GenerateSubregionHeights): world positions for a tile. */
 static float TerrainNoise(void* noise, float x, float y)
 {
-    if (g_terrainThread != 0 && g_terrainThread == GetCurrentThreadId()) { x += g_terrainOffset[0]; y += g_terrainOffset[1]; }
+    const float* o = TerrainOffsetSelf();
+    if (o != NULL) { x += o[0]; y += o[1]; }
     return g_terrainNoise(noise, x, y);
 }
 
@@ -69,12 +88,13 @@ static float TerrainNoise(void* noise, float x, float y)
 static struct { uint64_t key; uint8_t desc[0x20]; uint8_t* data; } g_terrainImages[4];
 static LONG g_terrainImagesLevel = -1;
 
-static void* TerrainImage(void* texture)
+static void* TerrainImageLocked(void* texture)
 {
     if (g_terrainImagesLevel != g_world.levels)
     {
-        g_terrainImagesLevel = g_world.levels;
         for (int k = 0; k < 4; k++) { if (g_terrainImages[k].data) VirtualFree(g_terrainImages[k].data, 0, MEM_RELEASE); memset(&g_terrainImages[k], 0, sizeof g_terrainImages[k]); }
+        MemoryBarrier();
+        g_terrainImagesLevel = g_world.levels;
     }
     uint64_t key = (uint64_t)(uintptr_t)texture;
     int k = 0;
@@ -92,8 +112,23 @@ static void* TerrainImage(void* texture)
     if (SafeRead(data, copy, bytes)) { VirtualFree(copy, 0, MEM_RELEASE); return texture; }
     uint64_t mine = (uint64_t)(uintptr_t)copy;
     memcpy(desc + 0x10, &mine, 8);
-    g_terrainImages[k].key = key; g_terrainImages[k].data = copy; memcpy(g_terrainImages[k].desc, desc, sizeof desc);
+    g_terrainImages[k].data = copy; memcpy(g_terrainImages[k].desc, desc, sizeof desc);
+    MemoryBarrier();
+    *(volatile uint64_t*)&g_terrainImages[k].key = key; /* published last */
     return g_terrainImages[k].desc;
+}
+/* Thread-safe (the stamp planning's runners build tiles at once): a lock-free look-up of the published copies (a key
+ * is written last), the copy made under the lock. The level's reset runs before any tile of the level samples. */
+static SRWLOCK g_terrainImagesLock = SRWLOCK_INIT;
+static void* TerrainImage(void* texture)
+{
+    uint64_t key = (uint64_t)(uintptr_t)texture;
+    if (g_terrainImagesLevel == g_world.levels)
+        for (int k = 0; k < 4; k++) { uint64_t have = *(volatile uint64_t*)&g_terrainImages[k].key; if (have == 0) break; if (have == key) return g_terrainImages[k].desc; }
+    AcquireSRWLockExclusive(&g_terrainImagesLock);
+    void* result = TerrainImageLocked(texture);
+    ReleaseSRWLockExclusive(&g_terrainImagesLock);
+    return result;
 }
 
 /* The height texture GenerateSubregionHeights adds: 0xF64C20 (called at 0xF6558C / 0xF656DC) samples it inline through
@@ -104,13 +139,14 @@ static void* TerrainImage(void* texture)
  * callers pass through. */
 static uint64_t TerrainSample(void* texture, float* uv, void* out, uint64_t d)
 {
-    if (g_terrainThread != 0 && g_terrainThread == GetCurrentThreadId() && g_world.values != NULL &&
+    const float* o = TerrainOffsetSelf();
+    if (o != NULL && g_world.values != NULL &&
         (uintptr_t)__builtin_return_address(0) == g_world.game + 0xF64D90u && uv != NULL)
     {
         float p[2];
         for (int k = 0; k < 2; k++)
         {
-            float w = fmodf(uv[k] * g_world.values->full + g_terrainOffset[k], 2048.0f);
+            float w = fmodf(uv[k] * g_world.values->full + o[k], 2048.0f);
             if (w < 0) w += 2048.0f;
             p[k] = w / 2048.0f;
         }
@@ -344,14 +380,15 @@ static int TerrainCopyTemplate(uint8_t* T)
  * tiles made 0 records over 189-199 items each. Before the tile's 0x78, each of its cells (+8 == -1, as the level's
  * call takes) whose nearest level cell (by route-cell point, +0x18 -> xy, generator metres) is not a city cell (the
  * cell's type +0xC, +0x170 bit 1) takes that cell's zone id (+0); the rest roll as before. Only on a level with cities. */
-static void TerrainTileZones(uintptr_t gen, float ox, float oy)
+static struct { LONG built; float lx[1024], ly[1024]; uint32_t lz[1024]; uint8_t lcity[1024]; uint32_t levelCells; LONG stats[3]; } g_tileZones = {.built = -1};
+/* The level's cells for TerrainTileZones, once a level; on the generator thread before any runner builds a tile. */
+static void TerrainTileZonesPrepare(uintptr_t gen)
 {
     if (g_cities.level != g_world.levels || g_cities.count <= 0 || g_worldLevel == 0) return;
-    static LONG built = -1;
-    static float lx[1024], ly[1024]; static uint32_t lz[1024]; static uint8_t lcity[1024];
-    static uint32_t levelCells;
-    static LONG stats[3]; /* tiles, cells written, cells left to roll */
-    if (built != g_world.levels)
+    float* lx = g_tileZones.lx; float* ly = g_tileZones.ly; uint32_t* lz = g_tileZones.lz; uint8_t* lcity = g_tileZones.lcity;
+    uint32_t levelCells;
+    LONG* stats = g_tileZones.stats; /* tiles, cells written, cells left to roll */
+    if (g_tileZones.built != g_world.levels)
     {
         uint64_t ts = 0, table = 0; uint32_t types = 0, subs = 0;
         levelCells = 0;
@@ -365,10 +402,22 @@ static void TerrainTileZones(uintptr_t gen, float ox, float oy)
             lcity[levelCells] = t >= 0 && (uint32_t)t < types && !SafeRead(table + 8ull * (uint32_t)t, &d, 8) && d != 0 && !SafeRead(d + 0x170, &flags, 4) && (flags & 2u);
             lx[levelCells] = p[0]; ly[levelCells] = p[1]; lz[levelCells] = zone; levelCells++;
         }
-        built = g_world.levels; stats[0] = stats[1] = stats[2] = 0;
+        g_tileZones.levelCells = levelCells;
+        stats[0] = stats[1] = stats[2] = 0;
+        MemoryBarrier();
+        g_tileZones.built = g_world.levels;
     }
-    if (levelCells == 0 || g_terrain.block == NULL) return;
-    uint8_t* T = g_terrain.block;
+}
+static void TerrainTileZones(uintptr_t gen, float ox, float oy)
+{
+    if (g_cities.level != g_world.levels || g_cities.count <= 0 || g_worldLevel == 0) return;
+    if (g_tileZones.built != g_world.levels && TileRunnerSelf() == NULL) TerrainTileZonesPrepare(gen);
+    if (g_tileZones.built != g_world.levels) return;
+    const float* lx = g_tileZones.lx; const float* ly = g_tileZones.ly; const uint32_t* lz = g_tileZones.lz; const uint8_t* lcity = g_tileZones.lcity;
+    const uint32_t levelCells = g_tileZones.levelCells;
+    LONG* stats = g_tileZones.stats;
+    uint8_t* T = TerrainBlockSelf();
+    if (levelCells == 0 || T == NULL) return;
     uint32_t cells = 0; memcpy(&cells, T + 0x11A71C4, 4);
     if (cells > 1024) return;
     uint32_t written = 0, left = 0;
@@ -400,11 +449,15 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
     if (SafeRead(context + 8, &settings, 8) || settings == 0 || SafeRead(context + 0x18, &lg, 8) || lg == 0 ||
         SafeRead(lg + 0x2D0, &p, 8) || p == 0 || SafeRead(p + 0x68, &spacingAt, 8) || spacingAt == 0 || SafeRead(lg + 0x2D7C, &disk, 4))
         return 0;
-    if (!TerrainCopyTemplate(g_terrain.block)) return 0;
+    /* a stamp planning runner builds in its own slot with its own record copy and context (settings +8 its own) */
+    TileRunner* runner = TileRunnerSelf();
+    uint8_t* B = TerrainBlockSelf();
+    if (B == NULL || !TerrainCopyTemplate(B)) return 0;
     uint64_t seed = TerrainSeed(tile);
-    static uint8_t one[0x19B0];
-    if (SafeRead(g_rec25, one, sizeof one)) return 0;
-    WorldTileRelocate(one, gen, (uintptr_t)g_terrain.block);
+    static uint8_t oneGenerator[0x19B0];
+    uint8_t* one = runner != NULL ? runner->one : oneGenerator;
+    if (SafeRead(g_rec25, one, 0x19B0)) return 0;
+    WorldTileRelocate(one, gen, (uintptr_t)B);
     { uint64_t r; memcpy(&r, one + 0x1990, 8); r ^= seed; memcpy(one + 0x1990, &r, 8); }
 
     volatile uint32_t* sizeP = (volatile uint32_t*)(settings + 0x2C);
@@ -428,10 +481,12 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
                 (unsigned)((g_rec25 - records) / 0x19B0u));
         }
     }
-    *diskP = disk ^ 1u;
-    *sizeP = (uint32_t)extent; *loP = 0.0f; *hiP = extent; *radiusP = extent; *spacingP = 16.0f;
-    g_terrainOffset[0] = ox; g_terrainOffset[1] = oy;
-    g_terrainThread = GetCurrentThreadId();
+    /* the tile marker and the lattice spacing are the level's (lg): a parallel section holds them for all its tiles */
+    const int held = g_tileSectionHeld;
+    if (!held) { *diskP = disk ^ 1u; *spacingP = 16.0f; }
+    *sizeP = (uint32_t)extent; *loP = 0.0f; *hiP = extent; *radiusP = extent;
+    if (runner != NULL) { runner->offset[0] = ox; runner->offset[1] = oy; runner->offsetOn = 1; }
+    else { g_terrainOffset[0] = ox; g_terrainOffset[1] = oy; g_terrainThread = GetCurrentThreadId(); }
 
     typedef void (*Handler)(uint64_t, uint64_t, uint64_t);
     ((Handler)(g_world.game + 0xF3F8E0u))((uint64_t)(uintptr_t)one + 8, (uint64_t)(uintptr_t)one, context);
@@ -443,10 +498,10 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
     if (start == 0xFFFFFFFFu) ok = 0;
     for (uint32_t i = start; ok && i < end; i++)
     {
-        if (SafeRead(records + (uint64_t)i * 0x19B0u, one, sizeof one)) { ok = 0; break; }
+        if (SafeRead(records + (uint64_t)i * 0x19B0u, one, 0x19B0)) { ok = 0; break; }
         memcpy(&op, one, 4);
         if (!WorldTileRuns(op)) continue;
-        WorldTileRelocate(one, gen, (uintptr_t)g_terrain.block);
+        WorldTileRelocate(one, gen, (uintptr_t)B);
         { uint64_t r; memcpy(&r, one + 0x1990, 8); r ^= seed; memcpy(one + 0x1990, &r, 8); }
         if (op == 0x78) TerrainTileZones(gen, ox, oy);
         volatile uint32_t index = 0;
@@ -464,14 +519,15 @@ static int TerrainBuild(int tile, uint64_t records, uint32_t end, uint64_t conte
         if (op == 0x04) seen04 = 1;
         if (op == 0x2D && seen04) break;
     }
-    g_terrainThread = 0;
-    *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius; *spacingP = spacing; *diskP = disk;
+    if (runner != NULL) runner->offsetOn = 0; else g_terrainThread = 0;
+    *sizeP = size; *loP = lo; *hiP = hi; *radiusP = radius;
+    if (!held) { *spacingP = spacing; *diskP = disk; }
     if (!ok || !seen04) return 0;
     if (!move) return 1;
 
     /* to the tile's world position: the Voronoi vertices (x, y at +0) and the route-cell areas' points (x, y at +0x80)
      * the route cells name ([+0xA0, +0xA4)) */
-    uint8_t* T = g_terrain.block;
+    uint8_t* T = B;
     uint32_t vertices = 0, cells = 0, last = 0;
     memcpy(&vertices, T + 0x11A7090, 4);
     memcpy(&cells, T + 0x11A71C0, 4);

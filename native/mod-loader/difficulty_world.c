@@ -1048,6 +1048,9 @@ typedef struct TileRunner
     LONG overlapGeneration;     /* the stamp overlap grid's run for this runner's current tile */
     uint64_t emptyQueries;      /* difficulty_maps.c IndexQueryClamped: queries of its empty index answered at once */
     int decommitted;            /* TileRunnersRelease ran: commit again before use */
+    uint8_t* block;             /* the generator block this runner builds a tile in (TerrainBlockSelf) */
+    float offset[2];            /* the samplers' world offset while it builds (TerrainOffsetSelf) */
+    int offsetOn;
     uint8_t one[0x19B0];
 } TileRunner;
 static DWORD g_tileRunnerTls = TLS_OUT_OF_INDEXES;
@@ -3780,8 +3783,8 @@ static void EarlyPackages(uint64_t records, uint64_t context, uint64_t index, ui
     static int on = -1;
     if (on < 0) { char v[8] = ""; on = !(GetEnvironmentVariableA("HELLFORGE_XL_EARLY_PACKAGES", v, sizeof v) > 0 && v[0] == '0'); }
     if (!on || g_worldLevel == 0 || !(g_world.current > 1.0f)) return;
-    uint64_t block = 0;
-    if (SafeRead(g_worldLevel + 0x2A8, &block, 8) || block != records) return;
+    uint64_t block = 0, gen = 0; /* the records' block ([level+0x2A8]) and the generator block G ([level+0x2C8]) */
+    if (SafeRead(g_worldLevel + 0x2A8, &block, 8) || block != records || SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0) return;
     uint32_t i = 0;
     if (SafeRead(index, &i, 4)) return;
     /* a level that ended (or generated again) before its record 94: the early requests are released as the teardown
@@ -3817,9 +3820,9 @@ static void EarlyPackages(uint64_t records, uint64_t context, uint64_t index, ui
     {
         g_early.state = 2;
         uint32_t n = 0; uint64_t api = 0, table = 0, has = 0; uint32_t loaded = 0;
-        SafeRead(block + 0x11A70F4u, &n, 4);
+        SafeRead(gen + 0x11A70F4u, &n, 4);
         uint32_t same = n == g_early.count;
-        for (uint32_t k = 0; k < n && k < EARLY_PACKAGES_MAX && same; k++) { uint64_t id = 0; SafeRead(block + 0x757220u + 8ull * k, &id, 8); same = id == g_early.list[k]; }
+        for (uint32_t k = 0; k < n && k < EARLY_PACKAGES_MAX && same; k++) { uint64_t id = 0; SafeRead(gen + 0x757220u + 8ull * k, &id, 8); same = id == g_early.list[k]; }
         if (!SafeRead(g_world.game + 0x3326308u, &api, 8) && api != 0 && !SafeRead(api + 0x10, &table, 8) && table != 0 && !SafeRead(table + 0x310, &has, 8) && has != 0)
             for (uint32_t k = 0; k < g_early.count; k++) loaded += ((uint8_t (*)(uint64_t))(uintptr_t)has)(g_early.list[k]) != 0;
         Note("difficulty: early packages: record %u (0x1F) reached %.1f s after the early request: %u of the %u packages loaded; its own list %s (%u)",
@@ -3835,10 +3838,17 @@ static void EarlyPackages(uint64_t records, uint64_t context, uint64_t index, ui
     uint32_t cCount = 0;
     if (pinned != 1 || SafeRead(records + (uint64_t)g_early.at1F * 0x19B0u, g_early.record, sizeof g_early.record) ||
         SafeRead(g_world.game + 0x3326308u, &api, 8) || api == 0 || SafeRead(api + 0x10, &table, 8) || table == 0 || SafeRead(table + 0x358, &depthFn, 8) ||
-        depthFn == 0 || SafeRead(block + 0x11A70F0u, &cCount, 4))
+        depthFn == 0 || SafeRead(gen + 0x11A70F0u, &cCount, 4) || cCount > 512)
     { g_early.state = -1; Note("difficulty: early packages: not the reviewed op 0x1F or engine table; the packages load at record %u as before", g_early.at1F); return; }
     uint32_t depth = ((uint32_t (*)(void))(uintptr_t)depthFn)();
-    if (depth + cCount * 6u >= 448u) { Note("difficulty: early packages: the engine's queue holds %u (C %u): later", depth, cCount); return; } /* the next flag-2 step tries again */
+    /* the ring has 512 places and no full check (0x603777); record 94's own list has 256 places (G+0x757220), so its
+     * packages number at most 256 on a level that works today: the next flag-2 step tries again while it is fuller */
+    if (depth + 256u >= 512u)
+    {
+        static LONG noted = -1;
+        if (noted != g_world.levels) { noted = g_world.levels; Note("difficulty: early packages: the engine's queue holds %u (%u location types): later", depth, cCount); }
+        return;
+    }
     uint64_t out = (uint64_t)(uintptr_t)g_early.list, countAt = (uint64_t)(uintptr_t)&g_early.count;
     g_early.count = 0;
     memcpy(g_early.record + 8 + 0x30, &out, 8); memcpy(g_early.record + 8 + 0x38, &countAt, 8);
