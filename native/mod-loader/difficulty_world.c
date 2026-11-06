@@ -661,6 +661,31 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
                 for (int c = 0; c < 2; c++)
                     for (uint32_t i = 0; i < n && total < g_objectiveListPlaces; i++)
                         if (cls[i] == c && list[i] != DIF_LIVE_EVENT_OBJECTIVE) { list[total++] = list[i]; mainsAfter++; }
+        /* A mixing row whose layout has fewer partners than 2 x missions - 1 (s93b: row 129 on layout 1 mixed row 118
+         * only, so the 16 km map had one primary and its steps for three missions): its primary blocks (a main, class
+         * 0 or a partner's -1, and the class 1 steps the selection put right after it) again, in order, until the map
+         * holds 2 x missions primaries (a level-11 mission's two, per mission), each block at most once per mission. */
+        uint32_t primaries = 0, blocksAdded = 0;
+        if (g_hudGrouped && mixes)
+        {
+            uint32_t start[32], length[32], blocks = 0;
+            for (uint32_t i = 0; i < n && blocks < 32; i++)
+            {
+                if (!((cls[i] == 0 || cls[i] == -1) && list[i] != DIF_LIVE_EVENT_OBJECTIVE)) continue;
+                uint32_t j = i + 1;
+                while (j < n && cls[j] == 1 && list[j] != DIF_LIVE_EVENT_OBJECTIVE) j++;
+                start[blocks] = i; length[blocks] = j - i; blocks++;
+            }
+            primaries = blocks;
+            const uint32_t target = 2 * m < blocks * m ? 2 * m : blocks * m;
+            for (uint32_t k = 0; blocks > 0 && primaries < target; k++)
+            {
+                uint32_t b = k % blocks;
+                if (total + length[b] > g_objectiveListPlaces) break;
+                for (uint32_t t = 0; t < length[b]; t++) list[total++] = list[start[b] + t];
+                mainsAfter += length[b]; primaries++; blocksAdded++;
+            }
+        }
         const uint32_t want[2] = {g_operationMajor, g_operationOptional};
         for (int c = 0; c < 2; c++) /* majors first: op 0x16 places the list in order */
         {
@@ -689,10 +714,12 @@ static uint64_t WorldObjectiveFill(uint64_t level, uint64_t b, uint64_t row, uin
         {
             memcpy(g_objectiveList, list, 4ull * total);
             g_objectiveListCount = total;
+            char mixNote[96] = "";
+            if (blocksAdded) snprintf(mixNote, sizeof mixNote, " (%u primaries again, too few partners for this layout: %u of %u)", blocksAdded, primaries, 2 * m);
             static LONG noted;
             if (InterlockedIncrement(&noted) <= 4)
-                Note("difficulty: an operation's %u missions on one map: on the map's objective list main objectives and steps %u -> %u%s, major %u -> %u of %u%s, "
-                    "optional %u -> %u of %u%s (%u -> %u of %u places)", m, mainsBefore, mainsAfter, mixes ? " (the partners' primaries)" : "",
+                Note("difficulty: an operation's %u missions on one map: on the map's objective list main objectives and steps %u -> %u%s%s, major %u -> %u of %u%s, "
+                    "optional %u -> %u of %u%s (%u -> %u of %u places)", m, mainsBefore, mainsAfter, mixes ? " (the partners' primaries)" : "", blocksAdded ? mixNote : "",
                     before[0], have[0], want[0], capped[0] ? " (the row's ids hold no more for its missions)" : "", before[1], have[1], want[1],
                     capped[1] ? " (the row's ids hold no more for its missions)" : "", n, total, g_objectiveListPlaces);
             return g_objectiveFill(level, b, row, (uint64_t)(uintptr_t)list, total, a6, a7, a8, a9, a10, a11, a12, a13, a14);
