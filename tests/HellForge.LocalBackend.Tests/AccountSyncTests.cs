@@ -38,6 +38,27 @@ static class AccountSyncTests
         ModItems(root, paid, check);
         ForgeCredits(paid, check);
         WarbondsOtherToken(paid, check);
+        InstallationCatalogue(root, check);
+    }
+
+    // The profile commands take the catalogue of the profile's installation: without one they say to sync first, with one
+    // the backend reads it. The suite's catalogue is put back after.
+    static void InstallationCatalogue(string root, Action<bool, string> check)
+    {
+        var suite = LocalBackend.CatalogueDirectory!;
+        var install = Path.Combine(root, "catalogue-install");
+        var profile = Directory.CreateDirectory(Path.Combine(install, "profiles", "default")).FullName;
+        try
+        {
+            check(LocalBackend.UseInstallationCatalogue(profile) == GameCatalog.SyncFirst && LocalBackend.CatalogueDirectory == suite,
+                "A profile command of an installation with no catalogue was not told to sync first.");
+            var folder = Directory.CreateDirectory(GameCatalog.Directory(install)).FullName;
+            foreach (var file in new[] { GameCatalog.ProgressionDataFile, GameCatalog.ItemCatalogFile })
+                File.Copy(Path.Combine(suite, file), Path.Combine(folder, file));
+            check(LocalBackend.UseInstallationCatalogue(profile + Path.DirectorySeparatorChar) == null &&
+                LocalBackend.CatalogueDirectory == folder, "A profile command did not take its installation's catalogue.");
+        }
+        finally { LocalBackend.CatalogueDirectory = suite; }
     }
 
     // Forge Credits: a pile picked up pays every participant once (the reply the client adds and forwards), the wallet is

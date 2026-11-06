@@ -83,6 +83,17 @@ public static partial class LocalBackend
     // the player's own Sync Inventory (HellForge.Core GameCatalog; the backend's --catalogue). HellForge does not ship them.
     public static string? CatalogueDirectory { get; set; }
 
+    // The profile commands (profile import, restore, apply-template...) get no --catalogue: they take the catalogue of the
+    // installation the profile belongs to (<root>/profiles/<name>), brought up to date first. Null when it is set, else why not.
+    public static string? UseInstallationCatalogue(string profileDirectory)
+    {
+        var profile = Path.GetFullPath(profileDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (Path.GetDirectoryName(Path.GetDirectoryName(profile)) is not { Length: > 0 } root) return GameCatalog.SyncFirst;
+        if (GameCatalog.Ensure(root) is { } problem) return problem;
+        CatalogueDirectory = GameCatalog.Directory(root);
+        return null;
+    }
+
     static readonly string[] CatalogueFiles = [GameCatalog.ProgressionDataFile, GameCatalog.ItemCatalogFile];
 
     public static JsonDocument LoadResource(string name)

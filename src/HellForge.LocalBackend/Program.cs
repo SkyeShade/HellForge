@@ -35,6 +35,12 @@ if (args is ["profile", "show", var showDirectory])
         return 1;
     }
 }
+// Every other profile command opens the profile, which reads the game catalogues.
+if (args is ["profile", not "show", var commandProfile, ..] && LocalBackend.UseInstallationCatalogue(commandProfile) is { } noCatalogue)
+{
+    Console.Error.WriteLine("HellForge local backend: " + noCatalogue);
+    return 1;
+}
 if (args is ["profile", var templateCommand and ("apply-template" or "add-template-items"), var templateDirectory, var templateName])
 {
     try
