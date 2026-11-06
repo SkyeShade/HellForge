@@ -6452,6 +6452,7 @@ static int NearReadyTile(uint64_t context, uint64_t* worldOut)
     if (body != 0) memcpy((void*)(uintptr_t)(body + 0x168), sizes, 8);
     Note("difficulty: near terrain: the %.0f m tile is in (%u polls); its ground at the centre %.2f m, the level's %.2f m", (double)NEAR_SIDE, g_near.polls,
         (double)NearTileAt(g_near.centre[0], g_near.centre[1]), (double)NearGlobalAt(g_near.centre[0], g_near.centre[1]));
+    RenderCapacityNote();
     *worldOut = world;
     return 0;
 }

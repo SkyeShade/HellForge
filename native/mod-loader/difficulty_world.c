@@ -5391,6 +5391,82 @@ static const char* OptionalDrawSite(uintptr_t game, uint8_t* code)
     int32_t rel = DifficultyJumpRel(game + DRAW_SITE, (uintptr_t)code); memcpy(jump + 1, &rel, 4);
     return ApiWrite(game + DRAW_SITE, jump, sizeof jump) ? "op 0xA0's optional slots could not be drawn per mission" : NULL;
 }
+/* ---- The main world's render capacity -----------------------------------------------------------------------------
+ * Static (s78a crash, 2026-11-05): c0000005 at exe 0x58E14B on the render thread, writing [pool+0x1C0] + 0xFFFFFFFF*16.
+ * 0x58E0D0 adds an object to one of a render world's six culling pools (0x1E6BF6, [scene+0x268], taken when the object's
+ * flags [+0x70] have bit 1) and stores through the slot its allocator (0x751A0) returns, with no check: a full pool
+ * (used [pool+0x30] == capacity [pool+0x34]) returns -1. The pools are made once, with the world (0x10CDE0 -> 0x1E4080
+ * -> 0x58DDB0), from its capacity N (the 8th argument, [rsp+0xC8] at 0x10CDFD): max(N/8, 512) twice, max(N/16, 512)
+ * twice, max(N/12, 512), max(N/64, 128); N also sizes the render world's handles and arrays (0x1D83F0: N handles with
+ * a 24-bit index, N/8 x 40 B, N/16 x 296 B). The main game world has N = 0x200000 (pools of 262144, 262144, 131072,
+ * 131072, 174762, 32768: read from the live s78b process). Measured: the open XL map holds 100-110 thousand objects in
+ * pool 0 at its spots (the count falls as well as rises: no leak); the city map, with its three cities' buildings
+ * loaded map-wide, filled all 262144 at an open-land spot while a moving tile replayed (3 tiles live). The stub
+ * doubles N for that world only (N == 0x200000), so every pool and array keeps the engine's ratio (about 93 MB more:
+ * about 35 B a pool slot and 27.5 B per unit of N); other worlds keep theirs. It counts the main worlds it made, so
+ * the log shows the world in play was made after the install (the note at the tile-in). */
+#define RENDER_CAP_SITE 0x10CDFDu
+#define RENDER_CAP_BACK 0x10CE04u
+#define RENDER_CAP_MAIN 0x200000u
+#define RENDER_CAP_MUL 2u
+static struct { volatile LONG* made; uint32_t* mul; int on; LONG noted; } g_renderCap;
+static const char kRenderCapPin[] = "8B BC 24 C8 00 00 00 48 8B F1 B9 00 02 00 00 4C 8B FA 8B C7 4D 8B F0 C1 E8 03";
+
+static void RenderCapacityInstall(void)
+{
+    if (g_renderCap.on) return;
+    g_renderCap.on = -1;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (!ApiCodeMatches(exe + RENDER_CAP_SITE, kRenderCapPin))
+    { Note("difficulty: render capacity: the world creation is not the reviewed code; the main world keeps its pools"); return; }
+    uint8_t* page = AllocateNearGame(exe, 0x1000);
+    if (page == NULL) { Note("difficulty: render capacity: no room near the exe for the stub"); return; }
+    /* the stub at +0, the counter at +0x40, the multiplier at +0x44:
+     * mov edi,[rsp+0xC8]; cmp edi,0x200000; jne done; lock inc dword [count]; imul edi,[mul]; done: jmp back */
+    static const uint8_t code[] = {
+        0x8B, 0xBC, 0x24, 0xC8, 0x00, 0x00, 0x00,       /* +0  mov edi,[rsp+0xC8] */
+        0x81, 0xFF, 0x00, 0x00, 0x20, 0x00,             /* +7  cmp edi,0x200000 */
+        0x75, 0x0E,                                     /* +13 jne +29 */
+        0xF0, 0xFF, 0x05, 0, 0, 0, 0,                   /* +15 lock inc dword [rip+rel] (ends +22) */
+        0x0F, 0xAF, 0x3D, 0, 0, 0, 0,                   /* +22 imul edi,[rip+rel] (ends +29) */
+        0xE9, 0, 0, 0, 0};                              /* +29 jmp back (ends +34) */
+    _Static_assert(sizeof code == 34, "render capacity stub size");
+    memcpy(page, code, sizeof code);
+    g_renderCap.made = (volatile LONG*)(page + 0x40);
+    g_renderCap.mul = (uint32_t*)(page + 0x44);
+    *g_renderCap.made = 0;
+    *g_renderCap.mul = RENDER_CAP_MUL;
+    int32_t rel = (int32_t)((intptr_t)(page + 0x40) - (intptr_t)(page + 22)); memcpy(page + 18, &rel, 4);
+    rel = (int32_t)((intptr_t)(page + 0x44) - (intptr_t)(page + 29)); memcpy(page + 25, &rel, 4);
+    intptr_t back = (intptr_t)(exe + RENDER_CAP_BACK) - (intptr_t)(page + 34);
+    intptr_t reach = (intptr_t)page - (intptr_t)(exe + RENDER_CAP_SITE + 5);
+    if (back != (intptr_t)(int32_t)back || reach != (intptr_t)(int32_t)reach)
+    { Note("difficulty: render capacity: the stub is out of reach"); return; }
+    rel = (int32_t)back; memcpy(page + 30, &rel, 4);
+    if (page[13] != 0x75 || page[14] != 29 - 15 || page[15] != 0xF0 || page[22] != 0x0F || page[29] != 0xE9)
+    { Note("difficulty: render capacity: the stub did not assemble"); return; }
+    DWORD old = 0;
+    if (!VirtualProtect(page, 0x1000, PAGE_EXECUTE_READWRITE, &old)) { Note("difficulty: render capacity: the stub is not executable"); return; }
+    FlushInstructionCache(GetCurrentProcess(), page, 0x1000);
+    uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+    rel = (int32_t)reach; memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(exe + RENDER_CAP_SITE, jump, sizeof jump)) { Note("difficulty: render capacity: the world creation could not be patched"); return; }
+    g_renderCap.on = 1;
+    Note("difficulty: render capacity: the main world (capacity 0x%X) is made at %ux: culling pools of %u, not %u", RENDER_CAP_MAIN, RENDER_CAP_MUL,
+        RENDER_CAP_MAIN / 8u * RENDER_CAP_MUL, RENDER_CAP_MAIN / 8u);
+}
+
+/* At the tile-in: how many main worlds the stub made (0 = the world in play was made before the install, at vanilla size). */
+static void RenderCapacityNote(void)
+{
+    if (g_renderCap.on != 1) return;
+    LONG made = *g_renderCap.made;
+    if (made == g_renderCap.noted && made != 0) return;
+    g_renderCap.noted = made;
+    if (made == 0) Note("difficulty: render capacity: no main world was made since the install; the one in play has vanilla pools (262144)");
+    else Note("difficulty: render capacity: %ld main world(s) made at %ux since the install", (long)made, RENDER_CAP_MUL);
+}
+
 static const char* InstallCityGates(uintptr_t game); /* difficulty_world_gates.c */
 static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
 static const char* InstallWorld(DifficultyInstall* d)
@@ -5540,6 +5616,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     MemProfInstall();
     TerrainDiagInstall(game);
     TerrainInstall(game);
+    if (scale > 1) RenderCapacityInstall();
     uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
     if (ApiCodeMatches(exe + DIF_OBJECT_CALL, kObjectCallPin) && ApiCodeMatches(exe + DIF_OBJECT_LOOKUP, kObjectLookupPin))
     {
