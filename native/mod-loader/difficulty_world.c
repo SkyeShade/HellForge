@@ -2088,6 +2088,7 @@ static void WorldSubregionNote(void)
 /* difficulty_world_diag.c: terrain diagnostics around every dispatcher step (HELLFORGE_TERRAIN_DIAG) */
 static void TerrainDiagBefore(uint64_t records, uint64_t index, uint32_t end, uint32_t* at, uint32_t* op);
 static void TerrainDiagInstall(uintptr_t game);
+static void ScatterBakeInstall(void); /* difficulty_world_diag.c */
 /* difficulty_world_terrain.c: the map at vanilla density, as tiles drawn into the level's merge */
 static void TerrainInstall(uintptr_t game);
 static int TerrainStep(uint64_t records, uint32_t end, uint32_t at, uint64_t context, uint64_t g, uint64_t h);
@@ -5111,6 +5112,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (overlap != NULL) Note("difficulty: extra large maps: the stamp overlap grid is not used: %s", overlap);
     const char* poisson = InstallWorldPoisson(game);
     if (poisson != NULL) Note("difficulty: extra large maps: the tiled Poisson-disk sampler is not used: %s", poisson);
+    ScatterBakeInstall(); /* difficulty_world_diag.c: the far-scatter bake's views without grass (op 0x4A) */
     const char* spread = InstallSpreadSort(game);
     if (spread != NULL) Note("difficulty: extra large maps: %s", spread);
     const char* convoy = InstallConvoyGuard(game);

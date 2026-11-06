@@ -1220,11 +1220,34 @@ static volatile LONG64 g_tdScatLayerNodes[24], g_tdScatLayerMiss[24];
 static uintptr_t g_tdScatViewFlags;
 
 static LONG64 g_tdScatSkipped;
+static int g_tdScatHooked;
+/* The far-scatter bake on extra large maps (load time; the user chose this cut, 2026-11-05): while the level's
+ * RenderFarScatter (op 0x4A) is its current record, its 64 phase-B tile views (camera B: near 1, far 1001, aspect 1;
+ * view +0x20, +0x24, +0x278, read by 0x212F8D / 0x212FD0) are left out of the engine's scatter update. Each skipped
+ * call is one layer of one view, and its return value is unused (0x210DEA). At 16 km each tile view asked ~253k cells of
+ * 256 lattice candidates (~0.33 s a tile, ~21 s for the bake) and kept their records all mission (~3.5 GB). What changes:
+ * the SpeedTree grass no longer draws into scatter_density (17 vegetation templates have a scatter_density_bake pass),
+ * so the far-scatter overlay, shown only within +-1024 m of the centre and there the 16 km bake squeezed 8x, loses its
+ * grass density. Placed vegetation and the player's own scatter cells are unchanged; no gameplay effect. Other views
+ * with the same near/far (op 0x0A's water camera) are untouched: the gate is op 0x4A. */
+static int TdScatterBakeView(const uint8_t* view)
+{
+    if (!(g_world.current > 1.0f) || g_genOp != 0x4A) return 0;
+    float v[2] = {0}, aspect = 0;
+    return !SafeRead((uintptr_t)view + 0x20, v, 8) && !SafeRead((uintptr_t)view + 0x278, &aspect, 4) && v[0] == 1.0f && v[1] == 1001.0f && aspect == 1.0f;
+}
 static void TdScatterUpdate(void* a, uint8_t* view, uint32_t c, uint8_t* layer, void* e, void* f, void* g, void* h)
 {
-    /* research A/B (HELLFORGE_XL_SCATTER_SKIP_GLOBAL=1): on a larger world, the generator's top-down view (near 1, far
-     * 1001, aspect 1: the merge camera over the whole world) is left out of the scatter update, so the player's view
-     * fills its own cells */
+    if (TdScatterBakeView(view))
+    {
+        static volatile LONG notedLevel = -1;
+        LONG levels = g_world.levels;
+        if (notedLevel != levels && InterlockedExchange(&notedLevel, levels) != levels)
+            Note("difficulty: extra large maps: the far-scatter bake's tile views are left out of the scatter update (op 0x4A, record %ld)", (long)g_genRecord);
+        InterlockedIncrement64(&g_tdScatSkipped);
+        return;
+    }
+    /* research A/B (HELLFORGE_XL_SCATTER_SKIP_GLOBAL=1): the same views at any record */
     static int skipGlobal = -1;
     if (skipGlobal < 0) { char t[4] = ""; skipGlobal = GetEnvironmentVariableA("HELLFORGE_XL_SCATTER_SKIP_GLOBAL", t, sizeof t) > 0 && t[0] == '1'; }
     if (skipGlobal && g_world.current > 1.0)
@@ -1236,6 +1259,7 @@ static void TdScatterUpdate(void* a, uint8_t* view, uint32_t c, uint8_t* layer, 
             return;
         }
     }
+    if (!TerrainDiagOn()) { g_tdScatterUpdate(a, view, c, layer, e, f, g, h); return; }
     g_tdScatterUpdate(a, view, c, layer, e, f, g, h);
     InterlockedIncrement64(&g_tdScatUpdates);
     int slot = 0;
@@ -1331,6 +1355,21 @@ static void TdScatterBounds(uint8_t* sys, void* b, void* c, void* d)
     g_tdScatterBounds(sys, b, c, d);
 }
 
+/* The engine's scatter update hook (the bake cut on extra large maps, and the diagnostics' figures); once. */
+static void ScatterBakeInstall(void)
+{
+    if (g_tdScatHooked) return;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (!ApiCodeMatches(exe + 0x212F10u, "48 89 5C 24 18 55 56 57 41 55 41 56 48 8D AC 24 E0 CB FF"))
+    {
+        Note("difficulty: extra large maps: the engine's scatter update is not the reviewed one; the far-scatter bake keeps its grass (and no scatter cache figures)");
+        g_tdScatHooked = -1;
+        return;
+    }
+    if (LoaderHook("extra large maps' far-scatter bake views", exe + 0x212F10u, (void*)TdScatterUpdate, (void**)&g_tdScatterUpdate) == 0) g_tdScatHooked = 1;
+    else g_tdScatHooked = -1;
+}
+
 /* Hook the scatter callback (level >= 1); the bytes are checked first. */
 static void TerrainDiagInstall(uintptr_t game)
 {
@@ -1338,8 +1377,7 @@ static void TerrainDiagInstall(uintptr_t game)
     if (!ApiCodeMatches(game + 0x137A2A0u, "40 55 53 56 57 41 54 41 56 41 57 48 8D AC 24 E0 FE FF FF")) { Note("terrain diag: the scatter callback is not the reviewed one; no scatter figures"); return; }
     LoaderHook("terrain diag's scatter figures", game + 0x137A2A0u, (void*)TdScatterCell, (void**)&g_tdScatter);
     uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
-    if (!ApiCodeMatches(exe + 0x212F10u, "48 89 5C 24 18 55 56 57 41 55 41 56 48 8D AC 24 E0 CB FF")) Note("terrain diag: the engine's scatter update is not the reviewed one; no scatter cache figures");
-    else LoaderHook("terrain diag's scatter cache figures", exe + 0x212F10u, (void*)TdScatterUpdate, (void**)&g_tdScatterUpdate);
+    ScatterBakeInstall();
     if (ApiCodeMatches(exe + 0x214310u, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 56 41 57"))
         LoaderHook("terrain diag's scatter world box", exe + 0x214310u, (void*)TdScatterBounds, (void**)&g_tdScatterBounds);
 }

@@ -468,3 +468,4 @@ static const char* InstallSpreadSort(uintptr_t game)
     Note("difficulty: extra large maps: SpreadLocations' candidate lists are radix sorted");
     return NULL;
 }
+
