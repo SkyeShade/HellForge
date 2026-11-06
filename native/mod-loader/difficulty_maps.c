@@ -215,6 +215,28 @@ static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[10]; uint32_
     {0xAB189Du, 8, 4, {0xC7, 0x44, 0x24, 0x58, 0x00, 0x00, 0x0C, 0x00}, 0x200000u},              /* Game World render objects */
     {0x4EE340u, 7, 3, {0xC7, 0x45, 0x88, 0x00, 0x00, 0x04, 0x00}, 0x400000u}};                     /* config +0x18 actor connectors */
 #define DIF_PHYSICS_SETUP 0x3326380u
+/* The mission world's Havok broadphase: game.dll's world setup stores the float at 0x23C7DF0 (3072.0, its only reader:
+ * movss at 0xAB1975 -> settings +0x1C at 0xAB198D, +0x20/+0x24 zeroed at 0xAB1A20), so the exe's world creation
+ * (0x78D6C7..0x78D716) builds a cube 0xD486D0: broadPhaseAabb = +-0.5 x 3072 = +-1536 m on every axis (cinfo +0x90/+0xA0).
+ * A dynamic or keyframed body past it exits the broadphase; the engine forwards that (its "exited_broadphase"
+ * callback 0x78B9D0, registered for hknp event 0xD at 0x78DAA1) as game event 0x7DC7CFBB, and game.dll's frame
+ * (g+0xAB6AE0..0xAB6D37) removes the entity (0xFDC310), destroying its unit the next frame (0xFDC820). Runs s90a/s91a/
+ * s92a: 16 of 48 objectives (every ICBM, power generator, fuel pump: units with moving bodies, beyond 1536 m) lost
+ * their units on the first step and the game completed them (a gone target counts as done, 0x5D6E30). Vanilla keeps
+ * 512 m around its 2048 m map; an extra large world keeps the same around its own. Bodies' broadphase boxes are 16-bit
+ * in this space (0.27 m steps at 17408 m instead of 0.05 m): conservative, more pairs, never a missed one. */
+#define DIF_BROADPHASE_LOAD 0xAB1975u
+#define DIF_BROADPHASE_SIZE 0x23C7DF0u
+static const uint8_t kBroadphasePin[8] = {0xF3, 0x0F, 0x10, 0x05, 0x73, 0x64, 0x91, 0x01};
+static void PhysicsBroadphase(uintptr_t game)
+{
+    uint8_t bytes[8];
+    float size = 0.0f, want = 2048.0f * (float)WorldScaleFor(g_difficulty.mapScale) + 1024.0f;
+    if (SafeRead(game + DIF_BROADPHASE_LOAD, bytes, 8) || memcmp(bytes, kBroadphasePin, 8) != 0 || SafeRead(game + DIF_BROADPHASE_SIZE, &size, 4) || size != 3072.0f)
+    { Note("physics: the world's broadphase size is not the reviewed code; it stays as it is (bodies past 1536 m leave it)"); return; }
+    if (ApiWrite(game + DIF_BROADPHASE_SIZE, &want, 4)) { Note("physics: the world's broadphase could not be enlarged"); return; }
+    Note("physics: the mission world's broadphase is %.0f m across (was 3072): bodies of an extra large map stay in it", want);
+}
 static int g_physicsPools; /* 0 waiting, 1 enlarged, -1 left as they are */
 /* Polled from the loader's thread once game.dll is decoded. */
 static void PhysicsPools(uintptr_t game)
@@ -257,6 +279,7 @@ static void PhysicsPools(uintptr_t game)
         }
     }
     g_physicsPools = 1;
+    if (xl) PhysicsBroadphase(game);
     Note("physics: pools enlarged before the engine built them: ragdoll actors 32768, ragdolls 1024, motions 131072, bodies and static actors %u%s, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152; actor connectors 4194304",
         xl ? 0x100000u : 0x80000u, xl ? " (an extra large world)" : "");
 }
