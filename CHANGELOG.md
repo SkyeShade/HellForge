@@ -51,6 +51,8 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **A new HellForge logo.** The launcher, its window and desktop icon, the installer and the in-game editor show the
+  crown in its frame (#NNN).
 - **A mod download from a host no longer stops at 10 minutes.** The grant now stays on while the download goes on
   (2 minutes past each request, at most 6 hours), so a large mod over a slow link finishes; one left idle still ends.
   The host keeps the player expected back while they download, so the rejoin after a long download is still let in
