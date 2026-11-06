@@ -3638,14 +3638,16 @@ static uintptr_t StampIndex(uintptr_t level, uint8_t* T, float extent)
     memset((void*)(p + 0x50), 0, 0x2000);
     memcpy((void*)(p + 0x48), &memory, 8);
     ((WorldIndexInit)(g_world.game + DIF_INDEX_INIT))(p + 8, 0.0f, 0.0f, extent, extent, extent / 64.0f, 0, 0, 0, 0, memory);
-    /* A tile run's index keeps the old width: the constructor now gives every index the level's 131071 slots
-     * (kStampIndex), and every query reads [+0x28] qwords of each row and column it spans (0xC0538F), so the tile runs'
-     * op 0x2B took far longer (s76b: 886 s against s76a's 292 s). Rows of 0x400 qwords (65536 slots) and a free list
-     * cut at 65535 (entry i holds i + 1, 0xC04D00): the insert (0xC04F08), the query (0xC0538F, 0xC05437) and the
-     * remove read the width, stride +0x24 and entries +0x30 from the header; the rows pack closer in memory sized for
-     * 0x800. */
+    /* A tile run's index is narrow: the constructor gives every index the level's 131071 slots (kStampIndex), and every
+     * query reads [+0x28] qwords of each row and column it spans (0xC0538F), so the planning's op 0x2B time follows the
+     * width (s76b 0x800: 1.12 ms a stamp, s76c 0x400: 0.70). Only the tile's op 0x2B inserts here (a fresh index per
+     * tile; at most 3946 records in one tile run over s75y / s76a / s76c / s76d), so rows of 0x100 qwords (16384 slots)
+     * and a free list cut at 16383 (entry i holds i + 1, 0xC04D00): the insert (0xC04F08), the query (0xC0538F,
+     * 0xC05437) and the remove read the width, stride +0x24 and entries +0x30 from the header; the rows pack closer in
+     * memory sized for 0x800. The insert writes through a null when the list runs out (0xF3516C), so the note after
+     * each run counts the tile's most records against these slots. */
     {
-        uint32_t words = 0x400, slotsPlusOne = 0x10000, end = 0xFFFFFFFFu, have = 0; uint16_t stride = 0; uint64_t entries = 0;
+        uint32_t words = 0x100, slotsPlusOne = 0x4000, end = 0xFFFFFFFFu, have = 0; uint16_t stride = 0; uint64_t entries = 0;
         uintptr_t I = p + 8;
         if (!SafeRead(I + 0x24, &stride, 2) && !SafeRead(I + 0x30, &entries, 8) && !SafeRead(I + 0x28, &have, 4) && entries != 0 && stride == 4 && have > words)
         {
