@@ -3628,10 +3628,18 @@ static int FarDetour(void) { return g_farOriginal() + 100; }
 static void ShieldBlockFixture(void)
 {
     SbList list = {1, {{7, 10.0f}}};
-    const float shield[3] = {100, 0, 5}, outside[3] = {100, 12, 5}, inside[3] = {103, 2, 5};
-    assert(ShieldBlockKeeps(&list, 7, shield, outside));
-    assert(!ShieldBlockKeeps(&list, 7, shield, inside));
-    assert(!ShieldBlockKeeps(&list, 8, shield, outside));
+    _Alignas(16) uint8_t shield[0xA0] = {0}, grenade[0xA0] = {0};
+    const float centre[3] = {100, 0, 5}, outside[3] = {100, 12, 5}, inside[3] = {103, 2, 5};
+    uint32_t ball = SB_BALL;
+    memcpy(shield + 0x30, centre, 12);
+    memcpy(grenade + 0x30, outside, 12);
+    assert(ShieldBlockKeeps(&list, 7, shield, grenade));
+    assert(!ShieldBlockKeeps(&list, 8, shield, grenade));
+    memcpy(grenade + 0x98, &ball, 4);
+    assert(!ShieldBlockKeeps(&list, 7, shield, grenade));
+    memset(grenade + 0x98, 0, 4);
+    memcpy(grenade + 0x30, inside, 12);
+    assert(!ShieldBlockKeeps(&list, 7, shield, grenade));
 }
 
 static void FarHookFixture(void)

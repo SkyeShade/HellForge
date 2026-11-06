@@ -17,6 +17,7 @@
 #define SB_HASH_SHIELD 0xC61AD6E5u
 #define SB_HASH_GRENADE 0xB03B6BFFu
 #define SB_NO_BODY 0xFFFFFFu
+#define SB_BALL 0x16F397CAu          /* a stratagem ball: its resource's top half, as a body holds it at +0x98 */
 
 static const uint8_t kShieldBlockPin[] = {0x48, 0x89, 0x5C, 0x24, 0x18, 0x48, 0x89, 0x6C, 0x24, 0x20, 0x41, 0x56, 0x49, 0x8B, 0xE8};
 
@@ -31,9 +32,12 @@ static int g_sbNext, g_sbState, g_sbShieldRow = -1, g_sbGrenadeRow = -1, g_sbPai
 static uint32_t g_sbTicks;
 static ULONGLONG g_sbFirstTry;
 
-/* Whether a pair the matrix allows stays: not for a shield off the list, nor a grenade inside the sphere. */
-static int ShieldBlockKeeps(const SbList* list, uint32_t shield, const float* shieldAt, const float* grenadeAt)
+/* Whether a pair the matrix allows stays: not for a shield off the list, a body inside the sphere or a stratagem ball,
+ * which shares the grenades' filter but must reach the ground. */
+static int ShieldBlockKeeps(const SbList* list, uint32_t shield, const uint8_t* shieldBody, const uint8_t* body)
 {
+    if (*(const uint32_t*)(body + 0x98) == SB_BALL) return 0;
+    const float* shieldAt = (const float*)(shieldBody + 0x30), *grenadeAt = (const float*)(body + 0x30);
     for (int i = 0; i < list->count; i++)
     {
         if (list->shields[i].body != shield) continue;
@@ -57,9 +61,9 @@ static int ShieldBlockPairsDetour(void* filter, uintptr_t world, uint32_t* pairs
         const uint8_t* bodyB = bodies + (uintptr_t)b * SB_BODY_STRIDE;
         int rowA = *(const uint32_t*)(bodyA + 0x6C) & 0x7F, rowB = *(const uint32_t*)(bodyB + 0x6C) & 0x7F, keep = 1;
         if (rowA == g_sbShieldRow && rowB == g_sbGrenadeRow)
-            keep = ShieldBlockKeeps(list, a, (const float*)(bodyA + 0x30), (const float*)(bodyB + 0x30));
+            keep = ShieldBlockKeeps(list, a, bodyA, bodyB);
         else if (rowB == g_sbShieldRow && rowA == g_sbGrenadeRow)
-            keep = ShieldBlockKeeps(list, b, (const float*)(bodyB + 0x30), (const float*)(bodyA + 0x30));
+            keep = ShieldBlockKeeps(list, b, bodyB, bodyA);
         if (keep)
         {
             pairs[out * 2] = pairs[i * 2];
@@ -118,6 +122,7 @@ static void ShieldBlockAdd(uintptr_t game, uintptr_t exe, uintptr_t bindings, ui
     float radius = *(const float*)record;
     if (radius <= 0 || SafeRead(rows + (uintptr_t)index * 0x88, &handle, 4) || handle == 0 || handle == 0xFFFFFFFFu) return;
     bodyOf(handle, &body);
+    body &= SB_NO_BODY; /* an actor's id has a generation in its top byte; the filter's pairs compare the low 24 bits */
     if (body == SB_NO_BODY) return;
     list->shields[list->count].body = body;
     list->shields[list->count].radius = radius;
