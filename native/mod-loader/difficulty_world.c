@@ -59,9 +59,15 @@ static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediat
  * every update and it returns without setting it when |x|, |y| or |z| is past 4096 m (the jump to 0x7EDB3A), 4 x the
  * vanilla half world; on a 16 km map an enemy whose goal lay more than 4 km out on either axis never moved. The only
  * reader of -4096. */
+/* motionHigh / motionLow: +-1900.0 (0x23C7DC8, 0x23C83C8) in the unit motion step 0x59FED0: after every step it compares
+ * the new position's x, y and z with both (loads 0x5A01AF and 0x5A0199, compares 0x5A01A6..0x5A01E8, the only readers)
+ * and REMOVES the entity past either (0xFDC310 at 0x5A184A): vanilla's 2048 m world plus a 876 m margin. On a 16 km map
+ * every motion-driven unit (enemies; I: the Helldiver's mover too) more than 1900 m out on any axis was deleted (static,
+ * living-world Phase 0, subagent drop). The bound keeps vanilla's margin past the larger world's edge: 1900 + 1024 x
+ * (scale - 1), 9068 m at 8 x (also the depth a falling unit is removed at). */
 #define FLAT_BAND_K 2.0f /* op 0x3E flatten zones: the falloff, x vanilla's metres, ending at its quad's edge (FlatBandStub) */
 #define PAD_BAND_K 1.5f /* op 0x3F rectangle pads: the falloff, x vanilla's metres (PadBandStubs) */
-typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull, maskSpan, quarter, goalHigh, goalLow, padPx, padMetre, padQuad, flatPx; uint32_t capMul; } WorldValues;
+typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull, maskSpan, quarter, goalHigh, goalLow, padPx, padMetre, padQuad, flatPx; uint32_t capMul; float motionHigh, motionLow; } WorldValues;
 /* GenerateClearingPoints (op 0xB3, 0xF42BD0) scatters Poisson points over the whole world square, keeps each with the
  * planet's chance (its random number x 2^-32, 0xF42D1E, against [settings+0x114]), and appends the kept ones (16 bytes
  * each, from G+0x11A16FC) without a check: room for about 1450 before the route counts at G+0x11A71B4. Their number grows
@@ -131,6 +137,8 @@ static void WorldWrite(float scale)
     v->quarter = 512.0f * scale;
     v->goalHigh = 4096.0f * scale;
     v->goalLow = -4096.0f * scale;
+    v->motionHigh = 1900.0f + 1024.0f * (scale - 1.0f);
+    v->motionLow = -v->motionHigh;
     /* Op 0x3F's rectangle pads (PadBandStubs): band in heightmap pixels, in metres for the quad, and the quad's read
      * back of the stored pixels; vanilla 1 / 1 / 1 */
     v->padPx = scale > 1.0f ? PAD_BAND_K / scale : 1.0f;
@@ -5910,7 +5918,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (block == NULL) return "no memory within 2 GB of game.dll for the extra large world";
     g_world.game = game;
     g_world.values = (WorldValues*)(block + 0x1000);
-    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f, 4096.0f, 512.0f, 4096.0f, -4096.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1};
+    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f, 4096.0f, 512.0f, 4096.0f, -4096.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1, 1900.0f, -1900.0f};
     *g_world.values = vanilla;
     void* level = (void*)WorldLevel;
     int32_t rel;
@@ -6017,6 +6025,14 @@ static const char* InstallWorld(DifficultyInstall* d)
         if (ApiWrite(game + 0x7ED58Cu + 4, &rel, 4)) return "the enemies' movement goals could not follow the larger world";
     }
     else Note("difficulty: the enemies' movement goal bounds are not the reviewed ones: enemies more than 4 km out keep still");
+    if (ApiCodeMatches(game + 0x5A01AFu, "F3 0F 10 05 11 7C E2 01") && ApiCodeMatches(game + 0x5A0199u, "F3 0F 10 0D 27 82 E2 01"))
+    {
+        rel = (int32_t)((intptr_t)(uintptr_t)&g_world.values->motionHigh - (intptr_t)(game + 0x5A01AFu + 8));
+        if (ApiWrite(game + 0x5A01AFu + 4, &rel, 4)) return "the units' motion bounds could not follow the larger world";
+        rel = (int32_t)((intptr_t)(uintptr_t)&g_world.values->motionLow - (intptr_t)(game + 0x5A0199u + 8));
+        if (ApiWrite(game + 0x5A0199u + 4, &rel, 4)) return "the units' motion bounds could not follow the larger world";
+    }
+    else Note("difficulty: the units' motion bounds are not the reviewed ones: units more than 1900 m out on any axis are removed");
     InstallBeaconDepth(game);
     uint8_t jump[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
     rel = DifficultyJumpRel(game + DIF_INDEX_FULL, (uintptr_t)full); memcpy(jump + 1, &rel, 4);
