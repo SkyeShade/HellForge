@@ -10,9 +10,10 @@ static class WarbondLocksTests
 
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
-        test("Every warbond with locked art is a premium warbond of the progression data, its textures named once", () =>
+        test("Every warbond with locked art is a premium warbond of the pinned catalogue's warbond pages, its textures named once", () =>
         {
-            using var data = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Repository(), "data", "progression-data.json")));
+            // The warbond pages ship in the pinned catalogue (GameCatalog): a passive sync never sees them.
+            using var data = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Repository(), "data", GameCatalog.PinnedFile)));
             var details = data.RootElement.GetProperty("seasonPassDetails");
             var mapping = WarbondLocks.Mapping();
             var premium = details.EnumerateObject().Count(d => d.Name != PremiumContent.FreeWarbond.ToString(System.Globalization.CultureInfo.InvariantCulture));

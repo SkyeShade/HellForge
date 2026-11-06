@@ -125,17 +125,15 @@ public static class PremiumMods
 {
     public sealed record Result(List<ModManifest> Loaded, List<string> Locked, List<string> Problems);
 
-    const string ProgressionData = "progression-data.json";
-
     // A session's check (mods-stage): ownership from the profile's snapshot, read only when a mod declares premium content.
     // Without the installation's progression data, nothing premium counts as owned.
     public static Result ForSession(InstallLayout install, string? snapshotDir, ulong? steamAccount, IReadOnlyList<ModManifest> loadOrder)
     {
         if (loadOrder.All(mod => mod.Premium.Count == 0)) return new Result([.. loadOrder], [], []);
-        var data = Path.Combine(install.App, ProgressionData);
+        var data = GameCatalog.ProgressionData(install.Root);
         if (File.Exists(data)) return Apply(loadOrder, PremiumContent.ForSnapshot(data, snapshotDir, steamAccount));
         var result = Apply(loadOrder, PremiumContent.Nothing);
-        result.Problems.Insert(0, "Premium mods: " + data + " is missing, so none of their premium content counts as owned. Reinstall HellForge.");
+        result.Problems.Insert(0, "Premium mods: " + data + " is missing, so none of their premium content counts as owned. Run Sync Inventory.");
         return result;
     }
 
@@ -144,7 +142,7 @@ public static class PremiumMods
     // nothing at all, so a live change that cannot tell holds back every mod built on premium content for a restart.
     public static PremiumContent ForLiveChange(InstallLayout install, string? snapshotDir, ulong? steamAccount)
     {
-        var data = Path.Combine(install.App, ProgressionData);
+        var data = GameCatalog.ProgressionData(install.Root);
         if (snapshotDir == null || steamAccount == null || !File.Exists(data)) return PremiumContent.Nothing;
         try { return PremiumContent.ForSnapshot(data, snapshotDir, steamAccount); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException or

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using HellForge.Core;
 
 namespace HellForge.LocalBackend;
 
@@ -80,16 +81,39 @@ public static partial class LocalBackend
         return padded;
     }
 
+    // The folder holding the game catalogues (progression-data.json, item-catalog.json) that the installation assembled from
+    // the player's own Sync Inventory (HellForge.Core GameCatalog; the backend's --catalogue). HellForge does not ship them.
+    public static string? CatalogueDirectory { get; set; }
+
+    // The profile commands (profile import, restore, apply-template...) get no --catalogue: they take the catalogue of the
+    // installation the profile belongs to (<root>/profiles/<name>), brought up to date first. Null when it is set, else why not.
+    public static string? UseInstallationCatalogue(string profileDirectory)
+    {
+        var profile = Path.GetFullPath(profileDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (Path.GetDirectoryName(Path.GetDirectoryName(profile)) is not { Length: > 0 } root) return GameCatalog.SyncFirst;
+        if (GameCatalog.Ensure(root) is { } problem) return problem;
+        CatalogueDirectory = GameCatalog.Directory(root);
+        return null;
+    }
+
+    static readonly string[] CatalogueFiles = [GameCatalog.ProgressionDataFile, GameCatalog.ItemCatalogFile];
+
     public static JsonDocument LoadResource(string name)
     {
+        if (CatalogueFiles.Contains(name, StringComparer.Ordinal))
+        {
+            var folder = CatalogueDirectory ?? throw new InvalidOperationException(
+                "No game catalogue: start the backend with --catalogue <folder> (" + GameCatalog.SyncFirst + ")");
+            return JsonDocument.Parse(File.ReadAllBytes(Path.Combine(folder, name)));
+        }
         using var stream = typeof(LocalBackend).Assembly.GetManifestResourceStream("HellForge.LocalBackend." + name)
             ?? throw new InvalidOperationException("Missing embedded resource " + name);
         return JsonDocument.Parse(stream);
     }
 
     // A "bodySource" names an embedded data file and optional "#key" (default "items") whose value is the
-    // body: the item catalogue and progression data rebuilt from the user's own snapshot by
-    // scripts/BuildItemCatalog.py, and the game client's feature switches read from it (game-client-config.json).
+    // body: the game catalogues from the player's own Sync Inventory (CatalogueDirectory, HellForge.Core GameCatalog), and
+    // the game client's feature switches (game-client-config.json).
     // "reverse" serves an array source back to front: the warbond list (/SeasonPass) was read from the client's memory,
     // which holds it oldest first, and served so the game listed it oldest first, Helldivers Mobilize at the top, where
     // the live game lists the newest first.

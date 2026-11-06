@@ -32,6 +32,10 @@ Do not submit:
   facts needed to work with the game are fine: addresses, byte patterns, structure layouts, resource ids and field
   names, as kept in `native/mod-sdk/` and `mappings/`. Generate them with the export scripts in `scripts/` where one
   exists, and write your own code around them.
+- **Arrowhead's server data,** such as the item catalogue, packages, prices and warbond lists the game reads from the
+  API. HellForge takes them from each player's own Sync Inventory (`HellForge.Core.GameCatalog`). The ids the supported
+  build knows are fine (`data/catalogue-pinned.json`), as are the warbond pages and requisition store there, until a
+  sync can provide them as well. Test fixtures are synthetic, or read a catalogue from `HELLFORGE_TEST_CATALOGUE`.
 - **Arrowhead's or Sony's logos, key art, icons or other artwork,** in the launcher, the docs or a mod. HELLDIVERS is a
   trademark of Sony Interactive Entertainment. Use the name only to say what HellForge or a mod works with, never as the
   name or branding of HellForge or a mod, and never in a way that suggests either company endorses it.
@@ -164,7 +168,9 @@ committed or shipped.
 ```
 
 - `scripts/Test.ps1` builds everything and runs the checks that need no game (`tests/HellForge.Tests`,
-  `tests/HellForge.LocalBackend.Tests`).
+  `tests/HellForge.LocalBackend.Tests`). The backend checks serve the game's catalogues, which aren't in this
+  repository: set `HELLFORGE_TEST_CATALOGUE` to an installation's `catalogue` folder after a Sync Inventory, or they
+  are skipped. CI reads them from a private test-data repository with the `HELLFORGE_TEST_DATA_TOKEN` secret.
 - `scripts/Build-Engine.ps1` builds the engine package, `artifacts/engine-package/hellforge-engine-<version>.zip` (the
   version is `EngineVersion` in `Directory.Build.props`), and runs its native and smoke tests. It needs HELLDIVERS 2
   installed through Steam.

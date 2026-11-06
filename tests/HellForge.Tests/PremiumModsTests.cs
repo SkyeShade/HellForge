@@ -51,7 +51,7 @@ static class PremiumModsTests
             check(!PremiumContent.ForSnapshot(data, null, Account).Owns("item:" + Knight), "A profile without a snapshot owned something.");
             // a live change of the running session follows the same sealed snapshot and account
             var install = new InstallLayout(Path.Combine(root, "premium-install"));
-            File.Copy(data, Path.Combine(Directory.CreateDirectory(install.App).FullName, "progression-data.json"), overwrite: true);
+            File.Copy(data, Path.Combine(Directory.CreateDirectory(GameCatalog.Directory(install.Root)).FullName, GameCatalog.ProgressionDataFile), overwrite: true);
             check(PremiumMods.ForLiveChange(install, snapshot, Account).Owns("dlc:super-citizen-edition") && !PremiumMods.ForLiveChange(install, snapshot, Account + 1).Owns("item:" + Knight),
                 "A live change did not follow the sealed snapshot as the session does.");
         });
@@ -62,7 +62,7 @@ static class PremiumModsTests
             var snapshot = Directory.CreateDirectory(Path.Combine(install.Root, InventorySync.SnapshotFolder, "player")).FullName;
             var free = "warbond:" + PremiumContent.FreeWarbond;
             check(!PremiumMods.ForLiveChange(install, snapshot, Account).Owns(free), "Without progression data a live change owned the free warbond.");
-            var data = Path.Combine(Directory.CreateDirectory(install.App).FullName, "progression-data.json");
+            var data = Path.Combine(Directory.CreateDirectory(GameCatalog.Directory(install.Root)).FullName, GameCatalog.ProgressionDataFile);
             File.Copy(ProgressionData(root), data, overwrite: true);
             check(!PremiumMods.ForLiveChange(install, null, Account).Owns(free) && !PremiumMods.ForLiveChange(install, snapshot, null).Owns(free),
                 "Without the session's snapshot or Steam account a live change owned the free warbond.");

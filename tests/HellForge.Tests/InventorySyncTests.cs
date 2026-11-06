@@ -1468,7 +1468,7 @@ static class InventorySyncTests
             "The login is not the POST to /api/Account/Login.");
         check(CaptureCompletion.Classify("GET", "/api/Progression") == Progression && CaptureCompletion.Classify("GET", "/API/progression") == Progression &&
             CaptureCompletion.Classify("GET", "/api/Progression/inventory") == Inventory, "The game's two reads are not recognised.");
-        check(CaptureCompletion.Classify("PUT", "/api/Progression") == Other && CaptureCompletion.Classify("GET", "/api/Progression/items") == Other &&
+        check(CaptureCompletion.Classify("PUT", "/api/Progression") == Other && CaptureCompletion.Classify("GET", "/api/Progression/Items/Customize/v2") == Other &&
             CaptureCompletion.Classify("PUT", "/api/Progression/ShipName") == Other, "A write or another read was taken for one the capture keeps.");
 
         var t0 = new DateTime(2026, 11, 4, 21, 25, 11, DateTimeKind.Utc);
@@ -1493,9 +1493,9 @@ static class InventorySyncTests
         var late = new CaptureCompletion(progressionWanted: true);
         late.Login();
         late.Saved(Inventory, t0);
-        check(!late.TryComplete(t0) && !late.TryComplete(t0 + CaptureCompletion.ProgressionWait - TimeSpan.FromMilliseconds(1)),
+        check(!late.TryComplete(t0) && !late.TryComplete(t0 + CaptureCompletion.ResponseWait - TimeSpan.FromMilliseconds(1)),
             "The capture did not wait for the progression.");
-        check(late.TryComplete(t0 + CaptureCompletion.ProgressionWait) && !late.HasProgression, "The capture never completed without the progression.");
+        check(late.TryComplete(t0 + CaptureCompletion.ResponseWait) && !late.HasProgression, "The capture never completed without the progression.");
 
         var arrives = new CaptureCompletion(progressionWanted: true);
         arrives.Login();
@@ -1513,6 +1513,37 @@ static class InventorySyncTests
         // A refused login opens nothing.
         var refused = new CaptureCompletion(progressionWanted: true);
         check(!refused.LoggedIn && refused.Refusal(Inventory, true) == "it came before a login", "A capture without a login kept a read.");
+
+        // The catalogues the game reads at login: each once, and the warbond list, which comes after the inventory, waited for.
+        const CaptureCompletion.Kind Catalogue = CaptureCompletion.Kind.Catalogue;
+        check(CaptureCompletion.Classify("GET", "/api/Progression/items") == Catalogue && CaptureCompletion.Classify("GET", "/api/SeasonPass") == Catalogue &&
+            CaptureCompletion.Classify("GET", "/api/Progression/levelspec") == Catalogue && CaptureCompletion.Classify("GET", "/api/SeasonPass/1929468580") == Other &&
+            CaptureCompletion.Classify("GET", "/api/StoreFront") == Other, "The catalogue reads are not exactly the five the game makes at login.");
+        check(CaptureCompletion.CatalogueFile("/API/progression/ITEMS") == "items.json", "A catalogue's file does not follow its path.");
+        var withCatalogues = new CaptureCompletion(progressionWanted: true, catalogueWanted: true);
+        withCatalogues.Login();
+        foreach (var (path, _) in CaptureCompletion.Catalogues.Where(entry => entry.File != "SeasonPass.json"))
+        {
+            check(withCatalogues.Refusal(Catalogue, true, path) == null, path + " was not kept.");
+            withCatalogues.Saved(Catalogue, t0, path);
+        }
+        check(withCatalogues.Refusal(Catalogue, true, "/api/Progression/items") == "it was already kept", "A catalogue was kept twice.");
+        withCatalogues.Saved(Progression, t0);
+        withCatalogues.Saved(Inventory, t0);
+        check(!withCatalogues.TryComplete(t0.AddSeconds(1)) && withCatalogues.Missing().SequenceEqual(["SeasonPass.json"]),
+            "The capture completed before the warbond list, or says something else is missing.");
+        withCatalogues.Saved(Catalogue, t0.AddSeconds(1), "/api/SeasonPass");
+        check(withCatalogues.HasCatalogues && withCatalogues.TryComplete(t0.AddSeconds(1)), "The warbond list did not complete the capture.");
+        var noList = new CaptureCompletion(progressionWanted: true, catalogueWanted: true);
+        noList.Login();
+        noList.Saved(Progression, t0);
+        noList.Saved(Inventory, t0);
+        check(noList.TryComplete(t0 + CaptureCompletion.ResponseWait) && !noList.HasCatalogues, "Missing catalogues kept the capture open past the wait.");
+        check(new CaptureCompletion(progressionWanted: true).Refusal(Catalogue, true, "/api/SeasonPass") is "it came before a login",
+            "A catalogue was kept before a login.");
+        var unasked = new CaptureCompletion(progressionWanted: true);
+        unasked.Login();
+        check(unasked.Refusal(Catalogue, true, "/api/SeasonPass") == "the catalogues were not asked for", "A catalogue was kept without --catalogue.");
     }
 
     static void Log(Action<bool, string> check)
