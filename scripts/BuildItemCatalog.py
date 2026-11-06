@@ -126,6 +126,9 @@ def main():
     parser.add_argument("--warbond-snapshot", type=Path, help="snapshot taken after opening every warbond")
     parser.add_argument("--store-snapshot", type=Path, help="snapshot taken after opening the Ship Management store")
     parser.add_argument("--hd2runtime", type=Path, default=ROOT.parent / "HD2Runtime")
+    # HellForge ships no game catalogue (HellForge.Core GameCatalog): these two stay out of the repository.
+    parser.add_argument("--catalogue-out", type=Path, default=ROOT / "artifacts/item-catalog-rebuild",
+                        help="folder for item-catalog.json and progression-data.json (never committed)")
     args = parser.parse_args()
     sys.path.insert(0, str(args.hd2runtime / "scripts"))
     from snapshot_image import Snapshot, CAPTURED
@@ -290,10 +293,12 @@ def main():
               "excluded": [{"mixId": item["mixId"], "reason": EXCLUDED_ROOTS.get(item["mixId"], "descendant of an excluded root")}
                            for item in excluded]}
     out = ROOT / "src/HellForge.LocalBackend"
-    (out / "item-catalog.json").write_text(json.dumps(
+    catalogue_out = args.catalogue_out
+    catalogue_out.mkdir(parents=True, exist_ok=True)
+    (catalogue_out / "item-catalog.json").write_text(json.dumps(
         {"scope": "Catalogue rebuilt from the user's own retained snapshot of the same build; served as /Progression/items.",
          "source": source, "items": items}, separators=(",", ":")), newline="\n")
-    (out / "progression-data.json").write_text(json.dumps(
+    (catalogue_out / "progression-data.json").write_text(json.dumps(
         {"scope": "Progression data rebuilt from the user's own retained snapshot of the same build.", "source": {"snapshot": args.snapshot.name},
          "levelSpec": level_spec, "itemPackages": item_packages, "seasonPass": season_pass, "seasonPassDetails": details,
          "progressionPackages": progression_packages, "storeFront": store_front}, separators=(",", ":")), newline="\n")
