@@ -75,6 +75,9 @@ if (args is ["fetch-live-war", var fetchCache])
 try
 {
     var options = BackendOptions.Parse(args);
+    // The game catalogues (HellForge.Core GameCatalog): HellForge ships none, so a backend that serves the game needs the
+    // installation's, assembled from the player's own Sync Inventory.
+    if (options.GetValueOrDefault("--catalogue") is { } catalogue) LocalBackend.CatalogueDirectory = Path.GetFullPath(catalogue);
     if (!int.TryParse(options.GetValueOrDefault("--port", "0"), out var port) || port is < 0 or > 65535)
         throw new ArgumentException("Port must be between 0 and 65535.");
     var mode = options.GetValueOrDefault("--mode", "local-session") switch

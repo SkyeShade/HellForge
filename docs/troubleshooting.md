@@ -307,6 +307,9 @@ up to 30 seconds; a game that crashes, or that does not close in time, keeps the
 | Message | What to do |
 |---|---|
 | "Existing game or GameGuard process." | HELLDIVERS 2 (or its GameGuard) is already running. Close it, then press PLAY. |
+| "This installation has no game catalogue yet. Run Sync Inventory once..." | HellForge doesn't ship the game's item and warbond catalogues. Run Profile > Account sync > Sync Inventory once on any profile, then press PLAY. |
+| "The game catalogue from the last Sync Inventory cannot be used (...): sync again." | Run Sync Inventory again. `logs/sync-*/launcher.log` says what was wrong with the last one. |
+| "HellForge's pinned catalogue (...) is missing: repair or reinstall HellForge." | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. |
 | "Another HellForge session is still running for this installation..." | Wait for it to end, or close `HellForge.Session.exe` in Task Manager (or restart the PC), then press PLAY again. |
 | "The game copy is not the supported build (...); repair it from the launcher." | Run Settings > Installation > Check and repair. |
 | "The game needs a Microsoft runtime this PC does not have..." | Install the runtime it names from the link it gives, then press PLAY again ([Visual C++ runtimes](#microsoft-visual-c-runtimes)). |

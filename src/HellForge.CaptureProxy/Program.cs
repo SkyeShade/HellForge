@@ -7,8 +7,9 @@
 // It maps the API host to 127.0.0.1, trusts a per-run CA (with a CRL served on loopback, since Schannel checks
 // revocation), terminates the game's TLS and forwards every request unchanged to the real API by IP. It is passive: it
 // never sends a request of its own. After the login it keeps the API's answers to the game's own GET /api/Progression and
-// GET /api/Progression/inventory (CaptureCompletion) and writes them to --progression and --output. With --seal-key and
-// --steam-account it seals the two files for that Steam account (HellForge.Core SnapshotSeal) once the capture is complete,
+// GET /api/Progression/inventory (CaptureCompletion) and writes them to --progression and --output, and with --catalogue
+// the game catalogues it reads (CaptureCompletion.Catalogues) to that folder, unsealed. With --seal-key and
+// --steam-account it seals the two account files for that Steam account (HellForge.Core SnapshotSeal) once the capture is complete,
 // and says so in its state file (CaptureState), so the launcher takes them; the backend unlocks premium items only from a
 // seal. With --close-game it then closes the game the sync opened (CaptureGameEnd), before the game gets the inventory's
 // answer. It keeps forwarding until the game exits, removes the hosts line and the CA, and exits 0 (1 when nothing was
@@ -51,6 +52,7 @@ var listenPort = 443;
 List<IPAddress>? fixedUpstream = null;
 var outputPath = Path.Combine(AppContext.BaseDirectory, "real-inventory.json");
 string? progressionPath = null;
+string? catalogueDir = null;
 var evidenceDir = Path.Combine(AppContext.BaseDirectory, "capture");
 bool manageHosts = true, manageCa = true, cleanupOnly = false, closeGame = false;
 var startedUtc = DateTime.UtcNow;
@@ -75,6 +77,7 @@ try
             case "--real-ip": fixedUpstream = [IPAddress.Parse(Next())]; break;
             case "--output": outputPath = Next(); break;
             case "--progression": progressionPath = Next(); break;
+            case "--catalogue": catalogueDir = Next(); break;
             case "--evidence": evidenceDir = Next(); break;
             case "--timeout-min": timeoutMin = Math.Max(1, int.Parse(Next(), CultureInfo.InvariantCulture)); break;
             case "--no-hosts": manageHosts = false; break;
@@ -89,7 +92,7 @@ try
                 if (!CaptureAccess.IsSid(grantSid)) throw new ArgumentException("--grant-sid needs a SID (S-1-5-...).");
                 break;
             case "--help":
-                Console.WriteLine("HellForge.CaptureProxy [--output <file>] [--progression <file>] [--evidence <dir>] [--timeout-min <n>]");
+                Console.WriteLine("HellForge.CaptureProxy [--output <file>] [--progression <file>] [--catalogue <dir>] [--evidence <dir>] [--timeout-min <n>]");
                 Console.WriteLine("  [--seal-key <file> --steam-account <SteamID64>] [--grant-sid <launcher's SID>]");
                 Console.WriteLine("  [--host <name>] [--listen-port <n>] [--real-ip <ip>]");
                 Console.WriteLine("  [--ca-cert <file>] [--close-game] [--no-hosts] [--no-ca] | --cleanup");
@@ -279,7 +282,7 @@ using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 var captured = 0;
 var sealOk = false;
 // What of the game's own traffic is kept, and when the capture is complete (passive: the capture sends nothing itself).
-var completion = new CaptureCompletion(progressionWanted: progressionPath != null);
+var completion = new CaptureCompletion(progressionWanted: progressionPath != null, catalogueWanted: catalogueDir != null);
 var connections = 0;
 var tally = new CaptureTally();
 var lastRequest = Stopwatch.StartNew();
@@ -492,7 +495,7 @@ async Task Handle(TcpClient client)
         Log($"{request.Method} {Shorten(path)} {(int)response.StatusCode} {responseBody.Length} bytes");
         LogResponse(id, path, response, responseBody, asked);
         stage = "keeping the capture";
-        Capture(CaptureCompletion.Classify(request.Method, path), response.IsSuccessStatusCode, responseBody);
+        Capture(CaptureCompletion.Classify(request.Method, path), path, response.IsSuccessStatusCode, responseBody);
         stage = "answering the game";
         await Respond(ssl, response, responseBody);
         await CheckReuse(ssl, id);
@@ -591,7 +594,7 @@ static async Task Respond(SslStream ssl, HttpResponseMessage response, byte[] bo
 // The capture is passive: it keeps the API's answers to the game's own reads after the login (CaptureCompletion) and
 // sends nothing itself. Runs before the game gets the answer, so --close-game can end the game before the inventory
 // reaches it. A failure here is logged and never keeps the response from the game. Once complete, nothing more is kept.
-void Capture(CaptureCompletion.Kind kind, bool success, byte[] body)
+void Capture(CaptureCompletion.Kind kind, string path, bool success, byte[] body)
 {
     if (kind == CaptureCompletion.Kind.Login)
     {
@@ -601,23 +604,35 @@ void Capture(CaptureCompletion.Kind kind, bool success, byte[] body)
         return;
     }
     if (kind == CaptureCompletion.Kind.Other) return;
-    var what = kind == CaptureCompletion.Kind.Progression ? "progression" : "inventory";
-    if (completion.Refusal(kind, success) is { } refusal) { Log($"{what} not kept: {refusal}"); return; }
+    var what = kind switch
+    {
+        CaptureCompletion.Kind.Progression => "progression",
+        CaptureCompletion.Kind.Inventory => "inventory",
+        _ => "catalogue " + CaptureCompletion.CatalogueFile(path)
+    };
+    if (completion.Refusal(kind, success, path) is { } refusal) { Log($"{what} not kept: {refusal}"); return; }
     try
     {
-        if (kind == CaptureCompletion.Kind.Progression ? SaveProgression(body) : SaveInventory(body)) completion.Saved(kind, DateTime.UtcNow);
+        var saved = kind switch
+        {
+            CaptureCompletion.Kind.Progression => SaveProgression(body),
+            CaptureCompletion.Kind.Inventory => SaveInventory(body),
+            _ => SaveCatalogue(CaptureCompletion.CatalogueFile(path)!, body)
+        };
+        if (saved) completion.Saved(kind, DateTime.UtcNow, path);
     }
     catch (Exception error) when (error is IOException or UnauthorizedAccessException)
     {
         Log("capture failed: " + error.GetType().Name + " " + error.Message);
         return;
     }
-    if (kind == CaptureCompletion.Kind.Inventory && completion.HasInventory && !completion.HasProgression && progressionPath != null)
+    if (kind == CaptureCompletion.Kind.Inventory && completion.HasInventory && completion.Missing() is { Count: > 0 } missing)
     {
-        Log($"inventory in before the progression: waiting up to {CaptureCompletion.ProgressionWait.TotalSeconds:F0} s for it");
+        Log($"inventory in; waiting up to {CaptureCompletion.ResponseWait.TotalSeconds:F0} s for {string.Join(", ", missing)}");
         _ = Task.Run(async () =>
         {
-            await Task.Delay(CaptureCompletion.ProgressionWait);
+            await Task.Delay(CaptureCompletion.ResponseWait);
+            if (completion.Missing() is { Count: > 0 } late && !completion.Completed) Log("completing without " + string.Join(", ", late));
             TryCompleteCapture();
         });
     }
@@ -638,6 +653,26 @@ bool SaveProgression(byte[] body)
     WriteAtomically(progressionPath, body);
     Log("progression saved");
     return true;
+}
+
+// A catalogue the game read (CaptureCompletion.Catalogues): the API's answer as it came, a JSON list.
+bool SaveCatalogue(string file, byte[] body)
+{
+    if (catalogueDir == null) return false;
+    if (!IsJsonArray(body)) { Log($"catalogue {file} is not a list"); return false; }
+    WriteAtomically(Path.Combine(catalogueDir, file), body);
+    Log($"catalogue {file} saved");
+    return true;
+}
+
+static bool IsJsonArray(byte[] body)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(body);
+        return document.RootElement.ValueKind == JsonValueKind.Array;
+    }
+    catch (JsonException) { return false; }
 }
 
 bool SaveInventory(byte[] body)
@@ -672,7 +707,8 @@ static void WriteAtomically(string path, byte[] body)
 static string Shorten(string path)
 {
     var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-    return segments.Length <= 3 && path is CaptureCompletion.LoginPath or CaptureCompletion.ProgressionPath or CaptureCompletion.InventoryPath ? path
+    return segments.Length <= 3 && (path is CaptureCompletion.LoginPath or CaptureCompletion.ProgressionPath or CaptureCompletion.InventoryPath ||
+        CaptureCompletion.CatalogueFile(path) != null) ? path
         : "/" + string.Join('/', segments.Take(2)) + (segments.Length > 2 ? "/..." : "");
 }
 

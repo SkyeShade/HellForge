@@ -50,7 +50,6 @@ ENGINE_SOURCES = (
     # the loader's field and content tables are generated from the mappings; Core and the backend embed data files
     'mappings/',
     'data/profile-templates.json',
-    'data/progression-data.json',
     'data/verified-mods.json',
     'data/forge-credits/',
     'data/depot-history/553853.txt',
