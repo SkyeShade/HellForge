@@ -25,6 +25,7 @@
     "native/mod-loader/sdk_fields.h",
     "native/mod-loader/sdk_functions.h",
     "native/mod-loader/sdk_globals.h",
+    "native/mod-loader/state_move_sites.h",
     "native/mod-loader/stats-layouts.h",
     "native/mod-loader/stratagem_bounds.h",
     "native/mod-loader/stratagem_sites.h",

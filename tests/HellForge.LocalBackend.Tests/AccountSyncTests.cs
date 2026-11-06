@@ -375,6 +375,7 @@ static class AccountSyncTests
         using (var store = ProfileStore.Open(profileDir, "starter"))
         {
             store.ApplyMissionRewards(0, new Dictionary<uint, long> { [LocalArmoryItem] = 1, [Medals] = 5, [Requisition] = 20000, [CommonSamples] = 30 });
+            store.TryChange((progression, _) => { ModPackages.SetLevel(progression, 0x5EED0099, 4); return true; });
             beforeVanillaXp = Experience(store.Current());
             var shipBefore = store.Current()["progression"]!["shipName"]?.ToJsonString();
             store.Import(Snapshot(profileDir), new AccountImportSettings(), PaidContentSet.Load());
@@ -390,6 +391,7 @@ static class AccountSyncTests
                 "Ship or tutorial imported though left out by default.");
             check(!items.Keys.Any(PaidContentSet.IsSuperCredits) && !items.ContainsKey(ids.OwnedToken) && !items.ContainsKey(ids.StoreItem) && !items.ContainsKey(Knight),
                 "Super Credits or premium items were written into the profile.");
+            check(ModPackages.Find(progression, 0x5EED0099) != null, "An import lost a mod weapon's level.");
         }
         check(ProfileBackups.List(profileDir) is [{ Reason: "import" }], "The first import did not back the profile up.");
         ImportsByCommand(profileDir, beforeVanillaXp, check);

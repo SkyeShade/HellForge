@@ -71,6 +71,11 @@ On `dev`, since 0.4.0-beta.
   Proton prefix (#90).
 - The Mods page shows what a code mod says it is doing ("In game: ..." during a session, "Last session: ..." after it),
   for mods that tell it (SDK 16) (#84).
+- **Weapons level up.** Your primary gains the mission's XP, won or lost, and mod weapons do too. A friend who joins
+  your game doesn't earn weapon XP yet (#TBD-limits).
+- **Many more mod weapons.** Mods can go past the old limit of about 20 weapon copies. HellForge moves the game's item
+  catalogue at start-up, so it keeps 40,960 items and 1,024 progression packages (#TBD-limits).
+- 512 new damage types and 512 new projectiles across all mods (#TBD-limits).
 
 ### Changed
 
@@ -106,6 +111,12 @@ On `dev`, since 0.4.0-beta.
   can be joined, the browser says so, names the mods most of them need, and suggests hosting a Public lobby.
 - The lobby browser API lists the mods that keep the most
   lobbies out (`needed`) and gives lobbies you can join first.
+- The armory holds 256 cards of each type, vanilla weapons counted. That leaves room for 199 new primaries, 229
+  secondaries and 81 throwables, and about 100 copies each of lasers, shotguns, plasma and melee weapons. A weapon past
+  that is refused by name in the mod's log, so a vanilla weapon never falls off the list (#TBD-limits).
+- Every mod weapon has its own level, XP and attachments, starting at the lowest level, instead of copying its base's.
+  Attachments can be bought on a mod weapon's page, and the Weapon levels card lists mod weapons. A removed mod leaves
+  your vanilla progress as it was, and adding it back brings its progress back (#TBD-limits).
 - After a crash the Play page says "The game crashed." with the game's exit code and what it means, instead of
   "Session ended.", and offers Save logs to Desktop beside Save crash report (#84).
 - Sessions that ended in a crash keep their logs past the newest ten, the five newest of them, so a crash report can
