@@ -3975,6 +3975,7 @@ static void* const kSpawnDetours[4] = {(void*)WorldSpawn0, (void*)WorldSpawn1, (
 static const char kPlaceJobPin[] = "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 41 54 41 55 41 56 41 57 48 8D AC 24 70 F3 FF FF";
 typedef uint64_t (*WorldJobFn)(uint64_t, uint64_t, uint64_t, uint64_t);
 static WorldJobFn g_placeJob;
+static volatile LONG g_stampTileRun; /* TerrainStamps' tile op 0x2B is running: no per-job line (load time; the planning note has the total) */
 static uint64_t WorldPlaceJob(uint64_t a, uint64_t b, uint64_t c, uint64_t job)
 {
     if (job == 0) return g_placeJob(a, b, c, job); /* every level: a vanilla map gives the numbers to compare with */
@@ -4006,13 +4007,14 @@ static uint64_t WorldPlaceJob(uint64_t a, uint64_t b, uint64_t c, uint64_t job)
     uint64_t r = g_placeJob(a, b, c, job);
     QueryPerformanceCounter(&end);
     QueryPerformanceFrequency(&hz);
+    if (g_stampTileRun) return r;
     /* The job's slice (+0x20, capacity +0x38 records of 0x130, cleared at the job's start, 0xF3253B): records written
      * (a box or a resource) and those of them without a resource (+0x90), which become locations without one. */
     uint64_t slice = 0;
     uint32_t capacity = 0, written = 0, empty = 0, lastWritten = 0, count = 0;
     SafeRead(job + 0x54, &count, 4);
     if (!SafeRead(job + 0x20, &slice, 8) && !SafeRead(job + 0x38, &capacity, 4) && slice != 0 && capacity <= 0x100000)
-        for (uint32_t i = 0; i < (count > capacity ? count : capacity) && i < 0x6B000u; i++)
+        for (uint32_t i = 0; i < count && i < 0x6B000u; i++) /* the job's records (count +0x54); the rest of the slice is its clear */
         {
             uint8_t box[16];
             uint64_t resource = 0;

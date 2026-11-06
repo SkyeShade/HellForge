@@ -3620,6 +3620,7 @@ static int StampRunRecord(const uint8_t* saved, uintptr_t gen, uint8_t* T, uint6
 
 /* The tile run's stamp index over 0..896: the level's header (its other tables at +0x2058/+0x2060), its own memory,
  * built as the level init builds the level's (WorldIndex), locations from the tile's table. */
+static volatile LONG64 g_emptyIndexQueries; /* difficulty_maps.c IndexQueryClamped */
 static uintptr_t StampIndex(uintptr_t level, uint8_t* T, float extent)
 {
     WorldIndexSize size = (WorldIndexSize)(g_world.game + DIF_INDEX_SIZE);
@@ -3918,7 +3919,9 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         InterlockedIncrement(&g_worldOpRun);
         uint8_t rec[0x19B0];
         STAMP_T0();
+        g_stampTileRun = 1;
         int ok = !SafeRead(rec91, rec, sizeof rec) && StampRunRecord(rec, gen, T, TerrainSeed(t) ^ 0x5354414D50ull, context, g, h, 100000) == 1;
+        g_stampTileRun = 0;
         STAMP_T1(t2B);
         *(volatile uint64_t*)(uintptr_t)(context + 0x20) = keepIndex;
         g_world.below[0] = below[0]; g_world.below[1] = below[1];
@@ -4022,8 +4025,8 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         n++; added[c->ring]++;
     }
     STAMP_T1(tClash);
-    Note("difficulty: stamps: planning time: tile builds %.1f s, 0x4E/0x26 %.1f s, op 0x2B %.1f s, collecting %.1f s, sort %.1f s, the level's clash tests %.1f s",
-        tBuild, tFix, t2B, tCollect, tSort, tClash);
+    Note("difficulty: stamps: planning time: tile builds %.1f s, 0x4E/0x26 %.1f s, op 0x2B %.1f s, collecting %.1f s, sort %.1f s, the level's clash tests %.1f s; %lld queries of an empty tile index answered without a scan",
+        tBuild, tFix, t2B, tCollect, tSort, tClash, (long long)g_emptyIndexQueries);
 #undef STAMP_T0
 #undef STAMP_T1
     *(volatile uint32_t*)(uintptr_t)(gen + 0x11A7108u) = n;
