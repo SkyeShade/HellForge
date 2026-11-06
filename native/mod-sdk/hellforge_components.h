@@ -2340,14 +2340,14 @@ typedef struct HfShield
 {
     float radius;                                /* +0x00 shield.radius (unverified) [respawn?] */
     uint8_t _unknown_04[72];
-    float durability;                            /* +0x4C shield.durability (unverified) [respawn?] */
+    float durability;                            /* +0x4C shield.durability (unverified) [now?] */
     float armor;                                 /* +0x50 Armor (unverified) [respawn?] */
     uint8_t _unknown_54[4];
-    float recharge_delay;                        /* +0x58 shield.recharge_delay (unverified) [respawn?] */
-    float broken_recharge_delay;                 /* +0x5C shield.broken_recharge_delay (unverified) [respawn?] */
-    float recharge_rate;                         /* +0x60 shield.recharge_rate (unverified) [respawn?] */
+    float recharge_delay;                        /* +0x58 shield.recharge_delay (unverified) [now?] */
+    float broken_recharge_delay;                 /* +0x5C shield.broken_recharge_delay (unverified) [now?] */
+    float recharge_rate;                         /* +0x60 shield.recharge_rate (unverified) [now?] */
     uint8_t _unknown_64[237];
-    uint8_t blocks_grenades;                     /* +0x151 Stops grenades (unverified) [respawn?] */
+    uint8_t blocks_grenades;                     /* +0x151 Stops grenades (unverified) [now] */
     uint8_t _unknown_152[6];
 } HfShield;
 HF_ASSERT_SIZE(HfShield, 344);
