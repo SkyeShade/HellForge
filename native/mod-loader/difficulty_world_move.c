@@ -727,10 +727,16 @@ static void MoveTick(uint64_t level)
         HasFn has = (HasFn)NearApi(0x10, 0x310);
         PkgFn acquire = (PkgFn)NearApi(0x10, 0x2F0);
         if (has == NULL || acquire == NULL) { MoveFail("the package interface is not there"); return; }
-        if (g_move.pkgPending && !g_move.acquired) { g_move.pkgPending = 0; g_move.acquired = 1; } /* the pending release taken back */
+        /* The package calls queue requests (exe 0x603670 / 0x603A80, ring mgr+0x218, 512 x {hash, context, load flag}); no
+         * count. An acquire turns this context's queued unload back into a load, is a no-op when the package is listed
+         * and nothing is queued (0x60E800), else queues a load. The unload is done when the consumer (0x603290) reaches
+         * it (0x60E410), so has() (0x321330) still answers 1 while a release waits in the queue: run s85a/s85b built on
+         * that, the package went, and 0x38's gui material lookup (exe 0x264620 via [api+0xD0]+0x238) found no material
+         * (set_scalar on 0, exe 0x4F33DA). So the build asks whenever it does not hold the package, whatever has() says. */
+        if (g_move.pkgPending && !g_move.acquired) { g_move.pkgPending = 0; g_move.acquired = 1; } /* not released yet: taken back */
+        if (!g_move.acquired) { acquire(MOVE_PACKAGE); g_move.acquired = 1; Note("difficulty: moving tiles: the merge package asked for"); }
         if (has(MOVE_PACKAGE) == 0)
         {
-            if (!g_move.acquired) { acquire(MOVE_PACKAGE); g_move.acquired = 1; Note("difficulty: moving tiles: the merge package asked for"); }
             if (++g_move.waits > 3600) MoveFail("the merge package did not load");
             return;
         }
