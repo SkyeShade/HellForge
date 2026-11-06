@@ -55,6 +55,13 @@ On `dev`, since 0.4.0-beta.
   baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))
   (#277).
 
+### For mod makers
+
+- **Your own pixel shaders in data mods.** A data spec's `shader` resource puts a compiled shader in one of three hosts,
+  `decal`, `transparent` or `refract`, and HellForge builds the materials and a unit for it. A shader that does not fit
+  its host is refused with the reason, shader headers name what each host can read, and a mod with a shader counts as
+  unchecked for mod sync ([shaders](docs/modding/shaders.md)) (#265).
+
 ## 0.4.0-beta (2026-11-05)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.4.0-beta). Engine 0.1.47, mod SDK 16.
