@@ -381,7 +381,7 @@ try
             string? warbondLocks = null;
             try
             {
-                var progressionData = Path.Combine(modInstall.App, "progression-data.json");
+                var progressionData = GameCatalog.ProgressionData(modInstall.Root);
                 if (File.Exists(progressionData))
                     warbondLocks = WarbondLocks.Prepare(modInstall,
                         PremiumContent.ForSnapshot(progressionData, options.GetValueOrDefault("--premium-snapshot"), SteamAccount.Current()), Console.Error.WriteLine);

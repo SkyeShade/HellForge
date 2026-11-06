@@ -104,8 +104,8 @@ static class InventorySyncTests
         test("The capture logs a refused request's short fields, never a token-like value, and only names of headers and query parameters", () =>
             Log(check));
 
-        test("The capture's own reads repeat the game's client headers, without the login's own, so the API's language check passes", () =>
-            Headers(check));
+        test("The capture is passive: it keeps only the game's own reads after a login, once each, and completes on the inventory with the progression or after waiting for it", () =>
+            Completion(check));
 
         test("The capture's diagnostics give shapes, causes and a tally without values, and a sync collects the game's anti-cheat and crash logs", () =>
             Diagnostics(root, check));
@@ -1460,34 +1460,90 @@ static class InventorySyncTests
         check(found.Count == 2 && found[1].StartsWith("the game wrote ", StringComparison.Ordinal), "A new crash report was not reported: " + string.Join(" | ", found));
     }
 
-    static void Headers(Action<bool, string> check)
+    static void Completion(Action<bool, string> check)
     {
-        var login = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["User-Agent"] = "Stingray WIN64 : stingray:1 e176252a3ac4eb5436b25e7cef665a8c71afa243",
-            ["Accept-Language"] = "de-DE",
-            ["Authorization"] = "session 0",
-            ["X-Signature"] = new string('a', 44),
-            ["Key_ID"] = "1234",
-            ["Content-Length"] = "345"
-        };
-        var now = new DateTimeOffset(2026, 10, 26, 16, 44, 47, TimeSpan.Zero);
-        var headers = CaptureHeaders.ForRead(login, now);
-        check(headers.Count == 5 && headers["Accept-Language"] == "de-DE" && headers["User-Agent"] == login["User-Agent"] &&
-            headers["Accept"] == "application/json" && headers["Content-Type"] == "application/json",
-            "The login's language or user agent, or the JSON accept, is missing.");
-        check(headers["ct"] == "1793033087000000" && headers["ct"] == CaptureHeaders.Microseconds(now),
-            "The client time is not microseconds since the epoch: " + headers["ct"]);
-        check(!headers.ContainsKey("Authorization") && !headers.ContainsKey("X-Signature") && !headers.ContainsKey("Key_ID") &&
-            !headers.ContainsKey("Content-Length"), "A header of the login request itself was repeated.");
+        const CaptureCompletion.Kind Login = CaptureCompletion.Kind.Login, Progression = CaptureCompletion.Kind.Progression,
+            Inventory = CaptureCompletion.Kind.Inventory, Other = CaptureCompletion.Kind.Other;
+        check(CaptureCompletion.Classify("POST", "/api/Account/Login") == Login && CaptureCompletion.Classify("GET", "/api/Account/Login") == Other,
+            "The login is not the POST to /api/Account/Login.");
+        check(CaptureCompletion.Classify("GET", "/api/Progression") == Progression && CaptureCompletion.Classify("GET", "/API/progression") == Progression &&
+            CaptureCompletion.Classify("GET", "/api/Progression/inventory") == Inventory, "The game's two reads are not recognised.");
+        check(CaptureCompletion.Classify("PUT", "/api/Progression") == Other && CaptureCompletion.Classify("GET", "/api/Progression/Items/Customize/v2") == Other &&
+            CaptureCompletion.Classify("PUT", "/api/Progression/ShipName") == Other, "A write or another read was taken for one the capture keeps.");
 
-        var bare = CaptureHeaders.ForRead(null, now);
-        check(bare["Accept-Language"] == CaptureHeaders.DefaultLanguage && !bare.ContainsKey("User-Agent"),
-            "A read without the login's headers has no language, or invented a user agent.");
-        var blank = CaptureHeaders.ForRead(new Dictionary<string, string> { ["Accept-Language"] = " " }, now);
-        check(blank["Accept-Language"] == CaptureHeaders.DefaultLanguage, "A blank language was repeated.");
-        var lower = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["accept-language"] = "ja-JP" };
-        check(CaptureHeaders.ForRead(lower, now)["Accept-Language"] == "ja-JP", "A lower-case header name was not found.");
+        var t0 = new DateTime(2026, 11, 4, 21, 25, 11, DateTimeKind.Utc);
+        // The order both Linux syncs show: login, progression, inventory.
+        var usual = new CaptureCompletion(progressionWanted: true);
+        check(usual.Refusal(Progression, true) == "it came before a login" && usual.Refusal(Inventory, true) == "it came before a login",
+            "A read before the login was kept.");
+        usual.Login();
+        check(usual.Refusal(Progression, false) == "the API refused it", "A refused read was kept.");
+        check(usual.Refusal(Other, true) != null, "Another request was kept.");
+        check(usual.Refusal(Progression, true) == null, "The game's progression after the login was not kept.");
+        usual.Saved(Progression, t0);
+        check(usual.Refusal(Progression, true) == "it was already kept", "A second progression would overwrite the first.");
+        check(!usual.TryComplete(t0), "The capture completed without the inventory.");
+        check(usual.Refusal(Inventory, true) == null, "The game's inventory was not kept.");
+        usual.Saved(Inventory, t0.AddSeconds(0.2));
+        check(usual.TryComplete(t0.AddSeconds(0.2)) && usual.Completed, "Progression then inventory did not complete at once.");
+        check(!usual.TryComplete(t0.AddSeconds(1)), "The capture completed twice.");
+        check(usual.Refusal(Inventory, true) == "the capture is already complete", "A read after completion was kept.");
+
+        // The inventory first: the progression is waited for, then the capture completes without it.
+        var late = new CaptureCompletion(progressionWanted: true);
+        late.Login();
+        late.Saved(Inventory, t0);
+        check(!late.TryComplete(t0) && !late.TryComplete(t0 + CaptureCompletion.ResponseWait - TimeSpan.FromMilliseconds(1)),
+            "The capture did not wait for the progression.");
+        check(late.TryComplete(t0 + CaptureCompletion.ResponseWait) && !late.HasProgression, "The capture never completed without the progression.");
+
+        var arrives = new CaptureCompletion(progressionWanted: true);
+        arrives.Login();
+        arrives.Saved(Inventory, t0);
+        arrives.Saved(Progression, t0.AddSeconds(2));
+        check(arrives.TryComplete(t0.AddSeconds(2)) && arrives.HasProgression, "A progression within the wait did not complete the capture.");
+
+        // No progression asked for (no --progression): the inventory alone completes it, and a progression is not kept.
+        var inventoryOnly = new CaptureCompletion(progressionWanted: false);
+        inventoryOnly.Login();
+        check(inventoryOnly.Refusal(Progression, true) == "the progression was not asked for", "An unasked progression was kept.");
+        inventoryOnly.Saved(Inventory, t0);
+        check(inventoryOnly.TryComplete(t0), "The inventory alone did not complete a capture without progression.");
+
+        // A refused login opens nothing.
+        var refused = new CaptureCompletion(progressionWanted: true);
+        check(!refused.LoggedIn && refused.Refusal(Inventory, true) == "it came before a login", "A capture without a login kept a read.");
+
+        // The catalogues the game reads at login: each once, and the warbond list, which comes after the inventory, waited for.
+        const CaptureCompletion.Kind Catalogue = CaptureCompletion.Kind.Catalogue;
+        check(CaptureCompletion.Classify("GET", "/api/Progression/items") == Catalogue && CaptureCompletion.Classify("GET", "/api/SeasonPass") == Catalogue &&
+            CaptureCompletion.Classify("GET", "/api/Progression/levelspec") == Catalogue && CaptureCompletion.Classify("GET", "/api/SeasonPass/1929468580") == Other &&
+            CaptureCompletion.Classify("GET", "/api/StoreFront") == Other, "The catalogue reads are not exactly the five the game makes at login.");
+        check(CaptureCompletion.CatalogueFile("/API/progression/ITEMS") == "items.json", "A catalogue's file does not follow its path.");
+        var withCatalogues = new CaptureCompletion(progressionWanted: true, catalogueWanted: true);
+        withCatalogues.Login();
+        foreach (var (path, _) in CaptureCompletion.Catalogues.Where(entry => entry.File != "SeasonPass.json"))
+        {
+            check(withCatalogues.Refusal(Catalogue, true, path) == null, path + " was not kept.");
+            withCatalogues.Saved(Catalogue, t0, path);
+        }
+        check(withCatalogues.Refusal(Catalogue, true, "/api/Progression/items") == "it was already kept", "A catalogue was kept twice.");
+        withCatalogues.Saved(Progression, t0);
+        withCatalogues.Saved(Inventory, t0);
+        check(!withCatalogues.TryComplete(t0.AddSeconds(1)) && withCatalogues.Missing().SequenceEqual(["SeasonPass.json"]),
+            "The capture completed before the warbond list, or says something else is missing.");
+        withCatalogues.Saved(Catalogue, t0.AddSeconds(1), "/api/SeasonPass");
+        check(withCatalogues.HasCatalogues && withCatalogues.TryComplete(t0.AddSeconds(1)), "The warbond list did not complete the capture.");
+        var noList = new CaptureCompletion(progressionWanted: true, catalogueWanted: true);
+        noList.Login();
+        noList.Saved(Progression, t0);
+        noList.Saved(Inventory, t0);
+        check(noList.TryComplete(t0 + CaptureCompletion.ResponseWait) && !noList.HasCatalogues, "Missing catalogues kept the capture open past the wait.");
+        check(new CaptureCompletion(progressionWanted: true).Refusal(Catalogue, true, "/api/SeasonPass") is "it came before a login",
+            "A catalogue was kept before a login.");
+        var unasked = new CaptureCompletion(progressionWanted: true);
+        unasked.Login();
+        check(unasked.Refusal(Catalogue, true, "/api/SeasonPass") == "the catalogues were not asked for", "A catalogue was kept without --catalogue.");
     }
 
     static void Log(Action<bool, string> check)

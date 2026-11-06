@@ -8,6 +8,21 @@ using HellForge.LocalBackend;
 // CI runner the pool grows too slowly for them and a stats share's 1 s tick missed an 8 s wait (CI, 2026-10-24).
 ThreadPool.GetMinThreads(out var workers, out var ports);
 ThreadPool.SetMinThreads(Math.Max(workers, 32), ports);
+// The game catalogues (HellForge.Core GameCatalog) are not in the repository, and almost every check below serves them:
+// HELLFORGE_TEST_CATALOGUE names a folder with the two files a Sync Inventory assembles (an installation's catalogue/
+// folder, or CI's private test data). Without it the suite says so and stops; CI sets it whenever it has the data.
+if (Environment.GetEnvironmentVariable("HELLFORGE_TEST_CATALOGUE") is not { Length: > 0 } testCatalogue ||
+    !File.Exists(Path.Combine(testCatalogue, HellForge.Core.GameCatalog.ProgressionDataFile)) ||
+    !File.Exists(Path.Combine(testCatalogue, HellForge.Core.GameCatalog.ItemCatalogFile)))
+{
+    Console.WriteLine("SKIPPED: no game catalogue. Set HELLFORGE_TEST_CATALOGUE to a folder holding " +
+        HellForge.Core.GameCatalog.ProgressionDataFile + " and " + HellForge.Core.GameCatalog.ItemCatalogFile +
+        " (an installation's catalogue folder after Sync Inventory).");
+    if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+        Console.WriteLine("::warning title=Local backend checks skipped::No game catalogue (private test data) for this run.");
+    return 0;
+}
+LocalBackend.CatalogueDirectory = Path.GetFullPath(testCatalogue);
 var root = Path.GetFullPath(Path.Combine("artifacts", "local-backend-tests", Guid.NewGuid().ToString("N")));
 Directory.CreateDirectory(root);
 var results = new List<object>();

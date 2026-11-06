@@ -1,7 +1,8 @@
 namespace HellForge.Core;
 
-// Ends the normal game the sync opened, once the capture is sealed. The game has done its job by then (the capture reads
-// the inventory with the login's own session, before the game gets the login's answer), and left running it showed
+// Ends the normal game the sync opened, once the capture is sealed. The game has done its job by then (the capture has
+// kept the answers to its own progression and inventory reads, and the inventory's has not reached it yet), and left
+// running it showed
 // "Could not connect to Easy Anti Cheat network" and closed itself, whether the redirect stayed or ended (live runs,
 // 2026-10-26), so the player had to close it. Ending it first means the game never gets that far and the capture removes
 // its hosts line and CA at once (it stops when the game exits).

@@ -65,14 +65,28 @@ On `dev`, since 0.4.0-beta.
   (2 minutes past each request, at most 6 hours), so a large mod over a slow link finishes; one left idle still ends.
   The host keeps the player expected back while they download, so the rejoin after a long download is still let in
   ([mod sync](docs/multiplayer-mod-sync.md#mod-sync-speed)).
+- **Sync Inventory only listens.** It keeps what the normal game itself receives after logging in (your progression and
+  inventory) and no longer asks Arrowhead's API for them a second time, so a sync adds no requests of its own.
+- **The game's catalogues come from your own sync.** HellForge no longer ships the item catalogue, item and progression
+  packages, level table or warbond list. Sync Inventory copies them from what the normal game receives when it logs in,
+  cut to what the supported build knows, so a new installation needs one sync before its first PLAY. The warbond
+  pages and the requisition store, which the normal game doesn't read at login, still ship (#296).
 
 ### Fixed
 
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
+- **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
+  block with "not stopping the game's connections to the internet (error 10065)", asked for administrator consent and
+  failed again. The block is now checked on the PC alone while it has no network, and against the internet as soon as
+  it connects; if it does not hold then, HellForge stops the game (#300).
 
 ### For contributors
 
+- `tests/HellForge.LocalBackend.Tests` needs the game's catalogues: `HELLFORGE_TEST_CATALOGUE` names a folder with
+  `progression-data.json` and `item-catalog.json` (an installation's `catalogue` folder after a sync). Without one the
+  suite is skipped with a warning. CI takes them from a private test-data repository
+  ([CONTRIBUTING.md](CONTRIBUTING.md#building-and-testing)) (#296).
 - A "Docs lint" CI job keeps docs and code comments readable. It checks page types, paragraph, sentence and page
   sizes, Markdown structure, links and filler words, plus code comment blocks of over 10 lines. Existing text is in a
   baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))

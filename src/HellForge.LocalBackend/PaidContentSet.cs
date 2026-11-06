@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace HellForge.LocalBackend;
 
-// What the game sells for real money, and its currencies, from the embedded progression-data.json and item-catalog.json:
+// What the game sells for real money, and its currencies, from the game catalogues (progression-data.json and item-catalog.json, LocalBackend.CatalogueDirectory):
 // - paid items (MixIds): each premium warbond's tokens, every item priced in Super Credits (the Superstore's, also those
 //   not in the current rotation) and the gear of the Steam DLCs, unless a warbond page offers it or a progression package
 //   rewards it. A player has them only by buying them in the normal game, so the backend serves them only from a sealed

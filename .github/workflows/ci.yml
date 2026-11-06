@@ -142,12 +142,25 @@ jobs:
     name: Build and test
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      HAS_TEST_DATA: ${{ secrets.HELLFORGE_TEST_DATA_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build-tools   # the .NET SDK, as the native job and the nightly build have it
+      # The game catalogues the backend tests serve are not in this repository (HellForge.Core GameCatalog): they come from a
+      # private test-data repository when this repository has its read token. Without it (a fork's pull request) the
+      # backend checks are skipped with a warning.
+      - name: Private test data (game catalogues)
+        if: ${{ env.HAS_TEST_DATA == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.TEST_DATA_REPOSITORY || 'SkyeShade/HellForge-test-data' }}
+          token: ${{ secrets.HELLFORGE_TEST_DATA_TOKEN }}
+          path: artifacts/test-data
       - name: scripts/Test.ps1 (build, HellForge.Tests, HellForge.LocalBackend.Tests, the CLI's path checks)
         shell: pwsh
         run: |
+          if ($env:HAS_TEST_DATA -eq 'true') { $env:HELLFORGE_TEST_CATALOGUE = Join-Path $env:GITHUB_WORKSPACE 'artifacts/test-data/catalogue' }
           # the tests' temporary files inside the workspace, as on a developer's PC (artifacts/ is ignored)
           $env:TEMP = $env:TMP = (New-Item -ItemType Directory -Force (Join-Path $env:GITHUB_WORKSPACE 'artifacts/tmp')).FullName
           ./scripts/Test.ps1
@@ -161,8 +174,17 @@ jobs:
     name: Linux build and test
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      HAS_TEST_DATA: ${{ secrets.HELLFORGE_TEST_DATA_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Private test data (game catalogues)
+        if: ${{ env.HAS_TEST_DATA == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.TEST_DATA_REPOSITORY || 'SkyeShade/HellForge-test-data' }}
+          token: ${{ secrets.HELLFORGE_TEST_DATA_TOKEN }}
+          path: artifacts/test-data
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -191,6 +213,7 @@ jobs:
           # Unix socket paths are limited to 108 characters; runner.temp is short (/home/runner/work/_temp).
           TMPDIR: ${{ runner.temp }}
         run: |
+          if [ "$HAS_TEST_DATA" = true ]; then export HELLFORGE_TEST_CATALOGUE="$GITHUB_WORKSPACE/artifacts/test-data/catalogue"; fi
           dotnet build tests/HellForge.LocalBackend.Tests -c Release
           dotnet run --project tests/HellForge.LocalBackend.Tests -c Release --no-build
 
