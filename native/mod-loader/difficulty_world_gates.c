@@ -38,11 +38,14 @@
  * margin, is restored with xmm0..xmm5), and its flags reach the ja / jbe.
  * Included by hellforge_modloader.c after difficulty_world_towns.c. */
 
-/* A vanilla city's gate radius: S x S+0x50 / 2 on a vanilla city level, 1024 x 0.323 (s74s: "settings+0x50 0.323",
- * c-s74s-modloader.log line 1399; SetupMissionDistance 0xF41DC2: the row's factor 0.85 at level 10, 0x2143170 + 0x6C,
- * x 0.38 at 0x23C69D0, then mission modifiers 0xF41A54..0xF41B23, so the loader cannot rebuild it from its own state;
- * the log's three digits put it within 330.2..331.3 m). */
-#define CITY_GATE_RADIUS 330.75f
+/* A vanilla city's gate radius: S x S+0x50 / 2 on a vanilla-size level of the difficulty the extra large map holds (11,
+ * Hell Forge's map_scale 2). b78a (mission 185 type 50, the city run's own mission, Hell Forge D11, extra large maps
+ * off): "settings+0x50 0.646", "playable 662 m (factor 1.70)", 544 city blocks and 2308 buildings in its one city, so
+ * 1024 x 0.646 = 661.5 m (the three digits: 661.0..662.0 m). SetupMissionDistance (0xF41DC2: the row's factor x 0.38 at
+ * 0x23C69D0, then mission modifiers 0xF41A54..0xF41B23) builds it, so the loader cannot rebuild it from its own state.
+ * The earlier 330.75 m was a D10 level's (s74s: 0.323, 339 blocks), half a D11 city's radius: s75y's three cities held
+ * 775 blocks and 2795 buildings together, under half of one D11 city each. */
+#define CITY_GATE_RADIUS 661.5f
 
 enum { GATE_EDGES, GATE_POINTS, GATE_BUILDINGS, GATE_WALLS, GATE_FLATS, GATE_FLATS2, GATE_FLATS3, GATE_SITES };
 

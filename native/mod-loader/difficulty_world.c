@@ -59,8 +59,9 @@ static const struct { uint32_t rva; uint8_t at; uint32_t value; } kWorldImmediat
  * every update and it returns without setting it when |x|, |y| or |z| is past 4096 m (the jump to 0x7EDB3A), 4 x the
  * vanilla half world; on a 16 km map an enemy whose goal lay more than 4 km out on either axis never moved. The only
  * reader of -4096. */
+#define FLAT_BAND_K 2.0f /* op 0x3E flatten zones: the falloff, x vanilla's metres, ending at its quad's edge (FlatBandStub) */
 #define PAD_BAND_K 1.5f /* op 0x3F rectangle pads: the falloff, x vanilla's metres (PadBandStubs) */
-typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull, maskSpan, quarter, goalHigh, goalLow, padPx, padMetre, padQuad; } WorldValues;
+typedef struct WorldValues { float half, full, inverse, gateHigh, gateLow, size, clearing, negHalf, dropHigh, dropLow, negFull, maskSpan, quarter, goalHigh, goalLow, padPx, padMetre, padQuad, flatPx; } WorldValues;
 /* GenerateClearingPoints (op 0xB3, 0xF42BD0) scatters Poisson points over the whole world square, keeps each with the
  * planet's chance (its random number x 2^-32, 0xF42D1E, against [settings+0x114]), and appends the kept ones (16 bytes
  * each, from G+0x11A16FC) without a check: room for about 1450 before the route counts at G+0x11A71B4. Their number grows
@@ -135,6 +136,7 @@ static void WorldWrite(float scale)
     v->padPx = scale > 1.0f ? PAD_BAND_K / scale : 1.0f;
     v->padMetre = scale > 1.0f ? PAD_BAND_K / 2.0f : 1.0f;
     v->padQuad = scale > 1.0f ? scale / 2.0f : 1.0f;
+    v->flatPx = scale > 1.0f ? FLAT_BAND_K / scale : 1.0f;
     if (g_world.below != NULL)
     {
         g_world.below[0] = scale > 1.0f ? g_world.makeBelow : 0xFFFFFFFFu;
@@ -5226,6 +5228,42 @@ static const char* PadBandSites(uintptr_t game, uint8_t* code)
     }
     return NULL;
 }
+/* Op 0x3E ForceFlattenZones (0xF4C100) draws each flatten zone with the pad rectangle shader too (material
+ * 0x91134400CB00C3F5, stamp_rectangles_data_1/2/3) and stores the zone type's band +0x208 (128) in the record's +0x1C /
+ * +0x20 unscaled (0xF4C4C9..0xF4C4DC) while the shader reads pixels: at 0.25 px/m the band is 512 m against a quad of
+ * box +- 128 m (0xF4C52B..), so the blend stops at alpha 0.60-0.84 and every flatten zone left a 320 m square of walls
+ * 5-40 m high (t78b / s76d: type-31 zones on the 890.5 m lattice of kFinalizeSpacingStub; static seam17). The stub
+ * stores band x flatPx (FLAT_BAND_K / scale: 2 x vanilla's 64 m, w = 0 at the quad's edge; vanilla 1, the same bits).
+ * xmm0 is reloaded at 0xF4C52B; no branch lands in the 20 bytes. */
+#define FLAT_BAND_SITE 0xF4C4C9u
+static const uint8_t kFlatBand[33] = {
+    0xF3, 0x0F, 0x10, 0x87, 0x08, 0x02, 0x00, 0x00, /* movss xmm0, [rdi+0x208] */
+    0xF3, 0x0F, 0x59, 0x05, 0, 0, 0, 0,             /* mulss xmm0, [flatPx]       @12 */
+    0xF3, 0x41, 0x0F, 0x11, 0x42, 0x1C,             /* movss [r10+0x1C], xmm0 */
+    0xF3, 0x41, 0x0F, 0x11, 0x42, 0x20,             /* movss [r10+0x20], xmm0 */
+    0xE9, 0, 0, 0, 0};                              /* jmp 0xF4C4DD               @29 */
+_Static_assert(sizeof kFlatBand == 29 + 4, "the flatten band stub ends with its jump");
+static int FlatBandStub(uintptr_t game, uint8_t* code)
+{
+    if (!ApiCodeMatches(game + FLAT_BAND_SITE, "8B 87 08 02 00 00 41 89 42 1C 8B 87 08 02 00 00 41 89 42 20"))
+    {
+        Note("difficulty: op 0x3E's flatten zones are not the reviewed ones: their bands stay vanilla on extra large levels");
+        return 0;
+    }
+    if (kFlatBand[11] != 0x05 || kFlatBand[28] != 0xE9) { Note("difficulty: op 0x3E's flatten band stub is malformed: bands stay vanilla"); return 0; }
+    memcpy(code, kFlatBand, sizeof kFlatBand);
+    int32_t rel = (int32_t)((intptr_t)&g_world.values->flatPx - (intptr_t)(code + 16)); memcpy(code + 12, &rel, 4);
+    rel = (int32_t)((intptr_t)(game + FLAT_BAND_SITE + 20) - (intptr_t)(code + 33)); memcpy(code + 29, &rel, 4);
+    return 1;
+}
+static const char* FlatBandSite(uintptr_t game, uint8_t* code)
+{
+    uint8_t jump[20];
+    memset(jump, 0x90, sizeof jump);
+    jump[0] = 0xE9;
+    int32_t rel = DifficultyJumpRel(game + FLAT_BAND_SITE, (uintptr_t)code); memcpy(jump + 1, &rel, 4);
+    return ApiWrite(game + FLAT_BAND_SITE, jump, sizeof jump) ? "op 0x3E's flatten zones could not get bands for the larger world" : NULL;
+}
 static const char* InstallCityGates(uintptr_t game); /* difficulty_world_gates.c */
 static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
 static const char* InstallWorld(DifficultyInstall* d)
@@ -5241,7 +5279,7 @@ static const char* InstallWorld(DifficultyInstall* d)
     if (block == NULL) return "no memory within 2 GB of game.dll for the extra large world";
     g_world.game = game;
     g_world.values = (WorldValues*)(block + 0x1000);
-    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f, 4096.0f, 512.0f, 4096.0f, -4096.0f, 1.0f, 1.0f, 1.0f};
+    WorldValues vanilla = {1024.0f, 2048.0f, 1.0f / 2048.0f, 2000.0f, -2000.0f, 0.0f, 2.3283064365386963e-10f, -1024.0f, 999.0f, -999.0f, -2048.0f, 4096.0f, 512.0f, 4096.0f, -4096.0f, 1.0f, 1.0f, 1.0f, 1.0f};
     *g_world.values = vanilla;
     void* level = (void*)WorldLevel;
     int32_t rel;
@@ -5294,10 +5332,11 @@ static const char* InstallWorld(DifficultyInstall* d)
     memcpy(full, kIndexFullStub, sizeof kIndexFullStub);
     rel = (int32_t)((uint8_t*)g_worldIndexFull - (full + 22)); memcpy(full + 18, &rel, 4);
     rel = (int32_t)((block + 0x1200) - (full + 29)); memcpy(full + 25, &rel, 4);
-    int padBand = PadBandStubs(game, block + 0x500);
+    int padBand = PadBandStubs(game, block + 0x500), flatBand = FlatBandStub(game, block + 0x5C0);
     DWORD protect;
     VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect);
     if (padBand) { const char* why = PadBandSites(game, block + 0x500); if (why != NULL) return why; }
+    if (flatBand) { const char* why = FlatBandSite(game, block + 0x5C0); if (why != NULL) return why; }
     const float* fields[5] = {&g_world.values->half, &g_world.values->full, &g_world.values->inverse, &g_world.values->negHalf, &g_world.values->negFull};
     for (size_t i = 0; i < sizeof kWorldSites / sizeof kWorldSites[0]; i++)
     {
