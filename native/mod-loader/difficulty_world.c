@@ -5332,6 +5332,55 @@ static const char* CapSites(uintptr_t game, uint8_t* code)
     }
     return NULL;
 }
+/* Op 0xA0's optional slots per quota entry are one draw rand % (max - min + 1) on the slot builder's own PCG (0xF95310:
+ * a local copy of rec+0xE0, never written back; 0xF956DF..0xF956F9). With the quotas x missions (WorldPassExploration)
+ * that is one draw over 0..m d: the right mean, but three missions draw three times (s: 5 and 16 optional points of
+ * interest in t78c / t78f against b78i's 11). The stub sums capMul draws of rand % (d + 1), d = (max - min) / capMul,
+ * each on the next state of the same PCG; with capMul 1 it is the original draw. Free here: rax, rcx, rdx, r9 (set at
+ * 0xF95706), r10 (set at 0xF956FF); 0xF956FB tests edx. Only 0xF956D8's jae lands at the site's first byte. */
+#define DRAW_SITE 0xF956DFu
+static const uint8_t kOptionalDraw[64] = {
+    0x41, 0x8B, 0x48, 0x08,                         /* mov ecx, [r8+8] */
+    0x41, 0x2B, 0x48, 0x04,                         /* sub ecx, [r8+4] */
+    0x8B, 0xC1,                                     /* mov eax, ecx */
+    0x33, 0xD2,                                     /* xor edx, edx */
+    0xF7, 0x35, 0, 0, 0, 0,                         /* div dword [capMul]         @14 */
+    0x44, 0x8D, 0x50, 0x01,                         /* lea r10d, [rax+1] */
+    0x44, 0x8B, 0x0D, 0, 0, 0, 0,                   /* mov r9d, [capMul]          @25 */
+    0x33, 0xC9,                                     /* xor ecx, ecx */
+    0x49, 0x0F, 0xAF, 0xDB,                         /* loop: imul rbx, r11 */
+    0x48, 0x03, 0xDF,                               /* add rbx, rdi */
+    0x48, 0x8B, 0xC3,                               /* mov rax, rbx */
+    0x48, 0xC1, 0xE8, 0x20,                         /* shr rax, 32 */
+    0x33, 0xD2,                                     /* xor edx, edx */
+    0x41, 0xF7, 0xF2,                               /* div r10d */
+    0x03, 0xCA,                                     /* add ecx, edx */
+    0x41, 0xFF, 0xC9,                               /* dec r9d */
+    0x75, 0xE6,                                     /* jnz loop */
+    0x8B, 0xD1,                                     /* mov edx, ecx */
+    0xE9, 0, 0, 0, 0};                              /* jmp 0xF956FB               @60 */
+_Static_assert(sizeof kOptionalDraw == 60 + 4, "the optional draw stub ends with its jump");
+static int OptionalDrawStub(uintptr_t game, uint8_t* code)
+{
+    if (!ApiCodeMatches(game + DRAW_SITE, "41 8B 48 08 33 D2 41 2B 48 04 49 0F AF DB FF C1 48 03 DF 48 8B C3 48 C1 E8 20 F7 F1"))
+    {
+        Note("difficulty: op 0xA0's optional slot draw is not the reviewed one: one draw over the missions' range");
+        return 0;
+    }
+    memcpy(code, kOptionalDraw, sizeof kOptionalDraw);
+    int32_t rel = (int32_t)((intptr_t)&g_world.values->capMul - (intptr_t)(code + 18)); memcpy(code + 14, &rel, 4);
+    rel = (int32_t)((intptr_t)&g_world.values->capMul - (intptr_t)(code + 29)); memcpy(code + 25, &rel, 4);
+    rel = (int32_t)((intptr_t)(game + DRAW_SITE + 28) - (intptr_t)(code + 64)); memcpy(code + 60, &rel, 4);
+    return 1;
+}
+static const char* OptionalDrawSite(uintptr_t game, uint8_t* code)
+{
+    uint8_t jump[28];
+    memset(jump, 0x90, sizeof jump);
+    jump[0] = 0xE9;
+    int32_t rel = DifficultyJumpRel(game + DRAW_SITE, (uintptr_t)code); memcpy(jump + 1, &rel, 4);
+    return ApiWrite(game + DRAW_SITE, jump, sizeof jump) ? "op 0xA0's optional slots could not be drawn per mission" : NULL;
+}
 static const char* InstallCityGates(uintptr_t game); /* difficulty_world_gates.c */
 static void InstallBeaconDepth(uintptr_t game); /* difficulty_world_terrain.c: a beacon's water depth over the near tiles */
 static const char* InstallWorld(DifficultyInstall* d)
@@ -5400,12 +5449,13 @@ static const char* InstallWorld(DifficultyInstall* d)
     memcpy(full, kIndexFullStub, sizeof kIndexFullStub);
     rel = (int32_t)((uint8_t*)g_worldIndexFull - (full + 22)); memcpy(full + 18, &rel, 4);
     rel = (int32_t)((block + 0x1200) - (full + 29)); memcpy(full + 25, &rel, 4);
-    int padBand = PadBandStubs(game, block + 0x500), flatBand = FlatBandStub(game, block + 0x5C0), caps = CapStubs(game, block + 0x600);
+    int padBand = PadBandStubs(game, block + 0x500), flatBand = FlatBandStub(game, block + 0x5C0), caps = CapStubs(game, block + 0x600), draws = OptionalDrawStub(game, block + 0x660);
     DWORD protect;
     VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect);
     if (padBand) { const char* why = PadBandSites(game, block + 0x500); if (why != NULL) return why; }
     if (flatBand) { const char* why = FlatBandSite(game, block + 0x5C0); if (why != NULL) return why; }
     if (caps) { const char* why = CapSites(game, block + 0x600); if (why != NULL) return why; }
+    if (draws) { const char* why = OptionalDrawSite(game, block + 0x660); if (why != NULL) return why; }
     const float* fields[5] = {&g_world.values->half, &g_world.values->full, &g_world.values->inverse, &g_world.values->negHalf, &g_world.values->negFull};
     for (size_t i = 0; i < sizeof kWorldSites / sizeof kWorldSites[0]; i++)
     {
