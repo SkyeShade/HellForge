@@ -24,8 +24,10 @@ On `dev`, since 0.4.0-beta.
   priced in medals, requisition, samples or Forge Credits, with later pages opened by what was spent
   ([warbonds](docs/modding/warbonds.md)).
   - Pages can sell game items and the mod's own weapons and stratagems, which stay out of the armory until bought.
-  - Mod warbonds are listed after the game's, with room for 128 warbonds in all where the game has 32. Each has its own name, season line, look and art, and
-    its prices show its currency's icon.
+  - Mod warbonds are listed after the game's, with room for 128 warbonds in all where the game has 32. Each has its own
+    name, look and art (a plain card without any), and its prices and texts show its currency.
+  - Each has its own Helldiver beside its card: a game warbond's background, pose and weapon, and the armor, helmet and
+    cape the mod names.
   - A warbond can cost Forge Credits, paid once with the game's warbond button, and an item can have a currency of its
     own.
 - **Shields that stop grenades.** The FX-12 Shield Generator Relay, G/SH-39 Shield and SH-32 Shield Generator Pack have a

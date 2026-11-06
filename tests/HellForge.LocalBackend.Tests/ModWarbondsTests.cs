@@ -107,8 +107,10 @@ static class ModWarbondsTests
                 var entries = list.RootElement.EnumerateArray().ToList();
                 var gameCount = fixtures["/SeasonPass"].GetArrayLength();
                 var entry = entries.SingleOrDefault(e => e.GetProperty("id32").GetUInt32() == arsenal.Id32);
-                check(entries.Count == gameCount + 2 && entry.ValueKind == JsonValueKind.Object && entries[gameCount].GetProperty("id32").GetUInt32() == arsenal.Id32,
-                    "The mods' warbonds are not listed after the game's (a warbond selling nothing this session is not listed).");
+                var gameLast = fixtures["/SeasonPass"][gameCount - 1].GetProperty("id32").GetUInt32();
+                check(entries.Count == gameCount + 2 && entry.ValueKind == JsonValueKind.Object && entries[gameCount - 1].GetProperty("id32").GetUInt32() == arsenal.Id32 &&
+                    entries[^1].GetProperty("id32").GetUInt32() == gameLast,
+                    "The mods' warbonds are not listed before the game's last, which the game shows first (a warbond selling nothing this session is not listed).");
                 check(entry.GetProperty("medalsConsumableMixId").GetUInt32() == Requisition && entry.GetProperty("medalsSpentMixId").GetUInt32() == arsenal.Spent &&
                     entry.GetProperty("totalCost").GetInt64() == 1700 && entry.GetProperty("pageRequirements").EnumerateArray().Select(r => r.GetInt64()).SequenceEqual([0L, 1500L]) &&
                     entry.GetProperty("premiumTokenMixIds").GetArrayLength() == 0, "A mod warbond's list entry is wrong: " + entry.GetRawText());
@@ -412,6 +414,33 @@ static class ModWarbondsTests
             line[4] == "warbond/mod/l" && line[5] == "Look" && line[6] == "Act II" && line[7] == "610512218", "A warbond's plan line is wrong: " + string.Join("|", line));
         foreach (var (field, why) in new[] { ("\"variant\":\"gold\"", "an unknown variant"), ("\"art\":{\"from\":12345}", "art from no game warbond"),
             ("\"season\":\"\"", "an empty season line") })
+            check(Problems("{\"key\":\"a\",\"name\":\"A\"," + field + ",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}").Count == 1, "A warbond with " + why + " was accepted.");
+
+        // The plain card of a warbond without art: one opaque 2048 x 1024 image, under a name of its own.
+        var plainCard = HellForge.Core.GameData.ModWarbondArt.DefaultImage();
+        check(plainCard.Length == ModWarbonds.ArtWidth * ModWarbonds.ArtHeight * 4 && plainCard.Where((_, i) => i % 4 == 3).All(a => a == 255) &&
+            HellForge.Core.GameData.ModWarbondArt.DefaultTexture != 0, "The default warbond card is not an opaque 2048 x 1024 image with a name.");
+
+        // The showcase: none by default (no plan line); its fields in a line of their own after the warbond's.
+        check(parsed[0].Showcase == null && ModWarbonds.PlanLines([parsed[0]]).All(l => !l.StartsWith("warbond_showcase", StringComparison.Ordinal)),
+            "A warbond without a showcase has one.");
+        using var shown = JsonDocument.Parse("{\"format\":1,\"warbonds\":[{\"key\":\"s\",\"name\":\"Shown\",\"showcase\":{\"from\":610512218," +
+            "\"pose\":1929468580,\"armor\":11,\"helmet\":12,\"cape\":13,\"weapon\":\"27EE1ED8F6FB6356\"},\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}]}");
+        var showcased = ModWarbonds.Parse("mod", "Mod", shown.RootElement, problems)[0];
+        check(showcased.Showcase == new ModWarbonds.Showcase(610512218, 1929468580, 11, 12, 13, 0x27EE1ED8F6FB6356), "A warbond's showcase is not read as written.");
+        var showLines = ModWarbonds.PlanLines([showcased]).ToList();
+        check(showLines.Count == 3 && showLines[0].StartsWith("warbond\t", StringComparison.Ordinal) &&
+            showLines[1] == string.Join('\t', "warbond_showcase", showcased.Id32.ToString(), "610512218", "1929468580", "11", "12", "13", "27ee1ed8f6fb6356"),
+            "A warbond's showcase line is wrong: " + string.Join(" | ", showLines));
+        using var partial = JsonDocument.Parse("{\"format\":1,\"warbonds\":[{\"key\":\"p\",\"name\":\"P\",\"showcase\":{\"helmet\":7}," +
+            "\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}]}");
+        check(ModWarbonds.Parse("mod", "Mod", partial.RootElement, problems)[0].Showcase == new ModWarbonds.Showcase(0, 0, 0, 7, 0, 0),
+            "A showcase's missing fields are not the game's (0).");
+        foreach (var (field, why) in new[] { ("\"showcase\":{\"from\":12345}", "a showcase from no game warbond"),
+            ("\"showcase\":{\"pose\":0}", "a pose of no warbond"), ("\"showcase\":{\"armor\":\"x\"}", "an armor that is no mixId"),
+            ("\"showcase\":{\"weapon\":\"zz\"}", "a weapon that is not hex"), ("\"showcase\":{\"weapon\":\"0\"}", "a weapon of 0"),
+            ("\"showcase\":{\"weapon\":\"12345678901234567\"}", "a weapon past 16 digits"), ("\"showcase\":{\"boots\":1}", "an unknown showcase field"),
+            ("\"showcase\":[]", "a showcase that is no object") })
             check(Problems("{\"key\":\"a\",\"name\":\"A\"," + field + ",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}").Count == 1, "A warbond with " + why + " was accepted.");
     }
 }

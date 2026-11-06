@@ -42,8 +42,8 @@ public static class ModWarbonds
         public int Variant { get; init; }
         public string Season { get; init; } = "";
         public uint ArtFrom { get; init; }
-        // Its own picture instead ("art": {"image": ...}): the PNG, and the texture HellForge builds from it (ModWarbondArt;
-        // 0 until built, and then the game's placeholder).
+        // Its own picture instead ("art": {"image": ...}): the PNG, and the texture HellForge builds from it, or HellForge's
+        // default card without "art" (ModWarbondArt; 0 until built, and then the game's placeholder).
         public string ArtImage { get; init; } = "";
         public ulong ArtTexture { get; init; }
         // Its price in Forge Credits, bought once with the game's warbond button (0: open to everyone), and its token: the
@@ -51,7 +51,15 @@ public static class ModWarbonds
         public long UnlockCost { get; init; }
         public uint Token { get; init; }
         public bool HasToken => Variant != 0 || UnlockCost > 0;
+        // The Helldiver and background shown beside its card (null: the game's default showcase).
+        public Showcase? Showcase { get; init; }
     }
+
+    // "showcase": the Acquisition Center's Helldiver beside a warbond (native warbond_showcase.c). From: the game warbond
+    // whose background and Helldiver it starts from (0: the game's default); Pose: the game warbond whose pose it takes (0:
+    // From's); Armor, Helmet, Cape: catalogue items it wears instead (0: From's, or the player's own cape); Weapon: the
+    // entity it holds (0: From's).
+    public sealed record Showcase(uint From, uint Pose, uint Armor, uint Helmet, uint Cape, ulong Weapon);
 
     // A warbond's look in the game: the card's style, tag and token kind (the game's table +0x48).
     public static IReadOnlyList<string> Variants { get; } = ["free", "premium", "legendary"];
@@ -159,8 +167,7 @@ public static class ModWarbonds
         if (art.ValueKind != JsonValueKind.Object || art.EnumerateObject().Count() != 1) throw new InvalidDataException(Shape);
         if (art.TryGetProperty("image", out var image))
             return (0, ArtImage(image.ValueKind == JsonValueKind.String ? image.GetString()! : "", folder) ?? throw new InvalidDataException(Shape));
-        if (!art.TryGetProperty("from", out var from) || !from.TryGetUInt32(out var id) ||
-            (id != PremiumContent.FreeWarbond && GameData.WarbondLocks.Mapping().All(w => w.Id != id)))
+        if (!art.TryGetProperty("from", out var from) || !from.TryGetUInt32(out var id) || !IsGameWarbond(id))
             throw new InvalidDataException(Shape);
         return (id, "");
     }
@@ -198,6 +205,33 @@ public static class ModWarbonds
         return name == 0 ? 1ul : name;
     }
 
+    // Whether the id is a game warbond's id32: the ids in mappings/warbond-art.json, or Helldivers Mobilize's.
+    static bool IsGameWarbond(uint id) => id == PremiumContent.FreeWarbond || GameData.WarbondLocks.Mapping().Any(w => w.Id == id);
+
+    static readonly string[] ShowcaseFields = ["from", "pose", "armor", "helmet", "cape", "weapon"];
+
+    // "showcase": {"from": <a game warbond>, "pose": <a game warbond>, "armor"/"helmet"/"cape": <a catalogue item's mixId>,
+    // "weapon": "<an entity id, hex>"}, each optional.
+    static Showcase? ParseShowcase(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("showcase", out var show)) return null;
+        if (show.ValueKind != JsonValueKind.Object) throw new InvalidDataException("\"showcase\" is an object");
+        foreach (var field in show.EnumerateObject())
+            if (!ShowcaseFields.Contains(field.Name)) throw new InvalidDataException($"\"showcase\" has no \"{field.Name}\": it takes {string.Join(", ", ShowcaseFields)}");
+        uint Id(string name, bool warbond)
+        {
+            if (!show.TryGetProperty(name, out var value)) return 0;
+            if (!value.TryGetUInt32(out var id) || id == 0 || (warbond && !IsGameWarbond(id)))
+                throw new InvalidDataException(warbond ? $"the showcase's \"{name}\" is the id of a game warbond" : $"the showcase's \"{name}\" is an item's mixId");
+            return id;
+        }
+        ulong weapon = 0;
+        if (show.TryGetProperty("weapon", out var w) && (w.ValueKind != JsonValueKind.String || w.GetString()!.Length is 0 or > 16 ||
+            !ulong.TryParse(w.GetString(), System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out weapon) || weapon == 0))
+            throw new InvalidDataException("the showcase's \"weapon\" is an entity id: 1 to 16 hex digits, as in arsenal.tsv");
+        return new Showcase(Id("from", true), Id("pose", true), Id("armor", false), Id("helmet", false), Id("cape", false), weapon);
+    }
+
     // "unlock": {"currency": "forge-credits", "cost": <n>}: the warbond is bought once before its items (the game's warbond
     // button takes the Super Credits price, which HellForge pays in Forge Credits).
     static long UnlockCost(JsonElement entry)
@@ -230,6 +264,7 @@ public static class ModWarbonds
         var (season, variant) = Look(entry, modName);
         var (artFrom, artImage) = Art(entry, folder);
         var unlockCost = UnlockCost(entry);
+        var showcase = ParseShowcase(entry);
         var currency = entry.TryGetProperty("currency", out var c) ? c.ValueKind == JsonValueKind.String ? c.GetString()! : "" : "medals";
         if (!Currencies.TryGetValue(currency, out var currencyMixId))
             throw new InvalidDataException($"\"currency\" is one of {string.Join(", ", Currencies.Keys)}");
@@ -239,7 +274,8 @@ public static class ModWarbonds
         var itemKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var pageJson in pagesJson.EnumerateArray()) pages.Add(ParsePage(modId, key, pageJson, pages, itemKeys));
         return new Warbond(modId, key, name, Hash("warbond/" + modId + "/" + key), Hash("warbond-spent/" + modId + "/" + key), currency, currencyMixId, pages)
-            { Variant = variant, Season = season, ArtFrom = artFrom, ArtImage = artImage, UnlockCost = unlockCost, Token = Hash("warbond-token/" + modId + "/" + key) };
+            { Variant = variant, Season = season, ArtFrom = artFrom, ArtImage = artImage, UnlockCost = unlockCost, Token = Hash("warbond-token/" + modId + "/" + key),
+                Showcase = showcase };
     }
 
     // A page: its requirement opens it no sooner than the page before it, and no later than the pages before it cost.
@@ -358,7 +394,17 @@ public static class ModWarbonds
     // The mod loader's plan lines: one per warbond, for its entry in the game's warbond table (native warbonds.c):
     // warbond, id32, variant, currency mixId, its text key, name, season, the game warbond whose art it shows, and the
     // texture built from its own image (hex; 0 for none).
-    public static IEnumerable<string> PlanLines(IEnumerable<Warbond> warbonds) => warbonds.SelectMany(w => (IEnumerable<string>)[WarbondLine(w), .. ItemLines(w)]);
+    public static IEnumerable<string> PlanLines(IEnumerable<Warbond> warbonds) =>
+        warbonds.SelectMany(w => (IEnumerable<string>)[WarbondLine(w), .. ShowcaseLines(w), .. ItemLines(w)]);
+
+    // "warbond_showcase", id32, from, pose, armor, helmet, cape, weapon (hex): after its warbond's line, when it has one.
+    static IEnumerable<string> ShowcaseLines(Warbond w)
+    {
+        if (w.Showcase is not { } s) yield break;
+        var c = System.Globalization.CultureInfo.InvariantCulture;
+        yield return string.Join('\t', "warbond_showcase", w.Id32.ToString(c), s.From.ToString(c), s.Pose.ToString(c), s.Armor.ToString(c),
+            s.Helmet.ToString(c), s.Cape.ToString(c), s.Weapon.ToString("x16", c));
+    }
 
     // "warbond_item", seasonPassItemId, currency mixId: every item with the currency it costs (its own, else its warbond's;
     // the game's MVVM buy path assumes medals for all).

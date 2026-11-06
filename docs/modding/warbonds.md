@@ -20,6 +20,7 @@ by a code mod ([content](content.md)).
 - [The file](#the-file)
 - [Items](#items)
 - [Pages and prices](#pages-and-prices)
+- [The showcase](#the-showcase)
 - [What players see](#what-players-see)
 - [Limits](#limits)
 - [Where to go next](#where-to-go-next)
@@ -72,9 +73,10 @@ Put `hellforge-warbonds.json` beside your mod's manifest:
 | `currency` | what its items cost: `medals` (the default), `requisition`, `common-samples`, `rare-samples`, `super-samples` or `forge-credits` |
 | `pages` | 1 to 15 pages, in order |
 | `variant` | its look: `free` (the default), `premium` or `legendary`: the card's style and the tag under its name |
-| `season` | the short line above its name, 1 to 32 characters; your mod's name by default |
-| `art` | its picture: `{"image": "card.png"}`, a 2048 by 1024 PNG in your mod's folder; or `{"from": <id>}`, the art of one of the game's warbonds, by its id (the keys of `mappings/warbond-art.json`, or Helldivers Mobilize's `1929468580`); without it, the game's placeholder art |
+| `season` | the season line the game keeps with a warbond's name ("Season I" on Helldivers Mobilize), 1 to 32 characters; your mod's name by default. The Acquisition Center of this game build shows it on no warbond, the game's included |
+| `art` | its picture: `{"image": "card.png"}`, a 2048 by 1024 PNG in your mod's folder; or `{"from": <id>}`, the art of one of the game's warbonds, by its id (the keys of `mappings/warbond-art.json`, or Helldivers Mobilize's `1929468580`); without it, a plain dark card HellForge draws, with your `name` over it |
 | `unlock` | `{"currency": "forge-credits", "cost": <n>}`: players buy the warbond once, for 1 to 1,000,000 Forge Credits, before they can buy its items; without it, the warbond is open to everyone |
+| `showcase` | the Helldiver and background beside its card: see [The showcase](#the-showcase); without it, the game's default |
 
 ## Items
 
@@ -123,12 +125,36 @@ A price is paid from the player's balance, so it cannot be above what a player c
 50,000 requisition, and 500 common, 250 rare and 100 super samples. HellForge leaves such an item out of the session and
 says why.
 
+## The showcase
+
+Beside the warbond's card, the Acquisition Center shows a Helldiver in front of a background, as on the game's warbonds.
+Each field is optional:
+
+```json
+"showcase": {
+  "from": 610512218,
+  "pose": 1929468580,
+  "weapon": "27EE1ED8F6FB6356"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `from` | a game warbond by its id (as for `art`): its background and its Helldiver, which the fields below change; without it, the game's default |
+| `pose` | a game warbond by its id: the Helldiver stands in that warbond's pose |
+| `armor`, `helmet`, `cape` | an item of the game's catalogue, by its `mixId`: the Helldiver wears it. Without one, it wears what `from` gives it. That is the player's own cape on most of the game's warbonds |
+| `weapon` | an entity id, in hex: the weapon the Helldiver holds. The `entity` column of `arsenal.tsv` (see [Debugging](debugging.md)) lists every armory weapon's, and `HF_ENTITY_` in `hellforge_content.h` names the game's |
+
+Custom armor shows here when your mod changes how one of the game's armors looks: name that armor's `mixId`. An item that is
+not that kind of piece is skipped, with a line in the game's log, and the Helldiver keeps what `from` gives it. The
+Helldiver stands where the game's do, and the camera is the game's.
+
 ## What players see
 
 A mod's warbond is listed in the Acquisition Center after the game's warbonds. Its pages open and its items buy and
 unlock as the game's do, and players with everything unlocked have bought it all.
 
-Its card and title show your `name`, `season` line, `variant` look and `art`. Prices show the icon of the warbond's
+Its card and title show your `name`, `variant` look and `art`, and the Helldiver beside it is your `showcase`. Prices show the icon of the warbond's
 currency: medals, requisition, each kind of sample in its colour, or Forge Credits. The line with what was spent and a
 locked page's line with what is left to spend name that currency too, in English.
 
@@ -160,7 +186,7 @@ the weapons and stratagems themselves.
 ## Where to go next
 
 - `examples/mods/warbond-example` (in `app/sdk/examples/mods` once installed): two warbonds with no code, one in
-  requisition with its own card and an item in samples, one with a premium look bought for Forge Credits.
+  requisition with its own card and an item in samples, one with a premium look bought for Forge Credits and its own Helldiver.
 
 - [Content](content.md): register the weapons and stratagems a warbond sells.
 - [Debugging](debugging.md): where the launcher's and the backend's messages are.

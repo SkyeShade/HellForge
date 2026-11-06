@@ -204,9 +204,12 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         return document.RootElement.Clone();
     }
 
+    // Before the game's last entry: the Acquisition Center shows the list's last warbond first (Helldivers Mobilize in the
+    // game's list), then the rest in order, so mods' warbonds come after the game's.
     static bool AddEntries(JsonArray list, IReadOnlyList<Served> served)
     {
-        foreach (var warbond in served) list.Add((JsonNode)warbond.ListEntry.DeepClone());
+        var at = Math.Max(list.Count - 1, 0);
+        foreach (var warbond in served) list.Insert(at++, (JsonNode)warbond.ListEntry.DeepClone());
         return true;
     }
 

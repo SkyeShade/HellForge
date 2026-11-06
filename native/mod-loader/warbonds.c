@@ -18,6 +18,10 @@ typedef struct
     uint32_t id, variant, currency, artFrom;
     uint32_t season[2], name[2];
     uint64_t art; /* the texture built from the mod's image (ModWarbondArt), 0 for none */
+    /* its showcase (warbond_showcase.c): the game warbonds it starts from and takes the pose of, the catalogue items its
+     * Helldiver wears (armor, helmet, cape) and the entity it holds; 0 for the game's */
+    uint32_t showFrom, showPose, showItem[3];
+    uint64_t showWeapon;
 } ModWarbond;
 static ModWarbond g_modWarbonds[WB_MAX];
 static int g_modWarbondCount, g_modWarbondsState;
@@ -71,6 +75,22 @@ static uint32_t ItemCurrency(uint32_t itemId, uint32_t fallback)
     return fallback;
 }
 
+/* "warbond_showcase <id32> <from> <pose> <armor> <helmet> <cape> <weapon, hex>", after its warbond's line. */
+static int WarbondShowcaseLine(char** f)
+{
+    uint32_t id = (uint32_t)strtoul(f[1], NULL, 10);
+    for (int i = 0; i < g_modWarbondCount; i++)
+    {
+        ModWarbond* w = &g_modWarbonds[i];
+        if (w->id != id) continue;
+        w->showFrom = (uint32_t)strtoul(f[2], NULL, 10);
+        w->showPose = (uint32_t)strtoul(f[3], NULL, 10);
+        for (int k = 0; k < 3; k++) w->showItem[k] = (uint32_t)strtoul(f[4 + k], NULL, 10);
+        w->showWeapon = strtoull(f[7], NULL, 16);
+    }
+    return 1;
+}
+
 /* "warbond <id32> <variant> <currency> <text key> <name> <season> <art from> <art texture, hex>" (ModWarbonds.PlanLines). */
 static int WarbondPlanLine(char** f, int n)
 {
@@ -80,6 +100,7 @@ static int WarbondPlanLine(char** f, int n)
             g_wbItems[g_wbItemCount++] = (WbItemCurrency){(uint32_t)strtoul(f[1], NULL, 10), (uint32_t)strtoul(f[2], NULL, 10)};
         return 1;
     }
+    if (n == 8 && strcmp(f[0], "warbond_showcase") == 0) return WarbondShowcaseLine(f);
     if (n != 9 || strcmp(f[0], "warbond") != 0) return 0;
     if (g_modWarbondCount >= WB_MAX) { Note("warbonds: more than %d mod warbonds; the rest show the game's placeholder", WB_MAX); return 1; }
     ModWarbond* w = &g_modWarbonds[g_modWarbondCount];
@@ -388,6 +409,7 @@ static uint32_t WarbondTablePins(uintptr_t game)
 
 static const char* InstallWarbondList(uintptr_t game); /* warbond_list.c */
 static const char* InstallWarbondTexts(uintptr_t game); /* warbond_texts.c */
+static const char* InstallWarbondShowcase(uintptr_t game); /* warbond_showcase.c */
 
 /* The table copy with the mod warbonds' entries, and the game's references and bounds pointed at it. NULL, or why not. */
 static const char* InstallWarbondTable(uintptr_t game, size_t entries)
@@ -428,6 +450,8 @@ static void InstallModWarbonds(void)
     if (table) { Note("warbonds: mod warbonds show the game's placeholder: %s", table); return; }
     g_modWarbondsState = 1;
     HookText();
+    const char* showcase = InstallWarbondShowcase(game);
+    if (showcase) Note("warbonds: mod warbonds show the game's default Helldiver, or none: %s", showcase);
     const char* prices = InstallWarbondPrices(game);
     if (prices) Note("warbonds: every warbond price shows the medal: %s", prices);
     const char* texts = prices ? "the prices are not installed" : InstallWarbondTexts(game);
