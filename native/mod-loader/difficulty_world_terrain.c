@@ -3845,19 +3845,30 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
     uint32_t sides[4][8] = {{0}};
     volatile uint32_t* sizeP = (volatile uint32_t*)(settings + 0x2C);
     volatile float* g50 = (volatile float*)(settings + 0x50); volatile float* g54 = (volatile float*)(settings + 0x54); volatile float* g5C = (volatile float*)(settings + 0x5C);
+    /* where the planning's time goes (load time): the tile build, 0x4E/0x26, the tile's op 0x2B, the loader's own pass
+     * over its records; then the sort, the level's clash tests and the plan */
+    LARGE_INTEGER qf, q0, q1; QueryPerformanceFrequency(&qf);
+    double tBuild = 0, tFix = 0, t2B = 0, tCollect = 0, tSort = 0, tClash = 0;
+#define STAMP_T0() QueryPerformanceCounter(&q0)
+#define STAMP_T1(acc) do { QueryPerformanceCounter(&q1); (acc) += (double)(q1.QuadPart - q0.QuadPart) / (double)qf.QuadPart; } while (0)
     for (int k = 0; k < tiles; k++)
     {
         int t = order[k];
         float cx = (float)(t % g_terrain.columns) * core, cy = (float)(t / g_terrain.columns) * core, ox = cx - margin, oy = cy - margin;
-        if (!TerrainBuild(t, records, end, context, g, h, gen, 0)) continue;
+        STAMP_T0();
+        int builtOk = TerrainBuild(t, records, end, context, g, h, gen, 0);
+        STAMP_T1(tBuild);
+        if (!builtOk) continue;
         built++;
         uint32_t vertices = 0; memcpy(&vertices, T + 0x11A7090, 4);
         if (vertices == 0 || vertices > 6000) continue;
         /* 0x4E and 0x26 in level metres, with the level's settings (TerrainBuild put them back) */
+        STAMP_T0();
         StampShiftVertices(T, vertices, ox, oy);
         int fixed = (g_stamps.rec4ELevel != g_world.levels || StampRunRecord(g_stamps.rec4E, gen, T, 0, context, g, h, 1000) == 1) &&
                     (g_stamps.rec26Level != g_world.levels || StampRunRecord(g_stamps.rec26, gen, T, 0, context, g, h, 1000) == 1);
         StampShiftVertices(T, vertices, -ox, -oy);
+        STAMP_T1(tFix);
         if (!fixed) { Note("difficulty: stamps: tile %d: 0x4E/0x26 did not run", t); continue; }
         /* the clearing bytes, from the level's clearing points */
         memset(T + 0x11A0020, 0, vertices);
@@ -3906,7 +3917,9 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         *(volatile uint64_t*)(uintptr_t)(context + 0x20) = index;
         InterlockedIncrement(&g_worldOpRun);
         uint8_t rec[0x19B0];
+        STAMP_T0();
         int ok = !SafeRead(rec91, rec, sizeof rec) && StampRunRecord(rec, gen, T, TerrainSeed(t) ^ 0x5354414D50ull, context, g, h, 100000) == 1;
+        STAMP_T1(t2B);
         *(volatile uint64_t*)(uintptr_t)(context + 0x20) = keepIndex;
         g_world.below[0] = below[0]; g_world.below[1] = below[1];
         *sizeP = size; *g50 = k50; *g54 = k54; *g5C = k5C;
@@ -3917,6 +3930,7 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         uint32_t n = 0; memcpy(&n, T + 0x11A7108, 4);
         if (n > 8192) n = 8192;
         made += n;
+        STAMP_T0();
         for (uint32_t i = 0; i < n; i++)
         {
             const uint8_t* loc = T + 0x11A7280 + (size_t)i * 0xE0;
@@ -3945,12 +3959,16 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
             c->side = side; c->ring = ring; c->hash = hash;
             c->prio = ring == 0 ? side : side / fmaxf(reach, 1.0f); /* beyond ring 0: by the size it shows from the centre */
         }
+        STAMP_T1(tCollect);
     }
     /* into the level, ring 0 first (larger first), then the rest by apparent size (side / distance), while the table has
      * room; each tested against the level's own locations and roads in its index. Not against the stamps added here:
      * each tile's run already tested its own with the game's footprint test, and boxes of rotated footprints overlap far
      * more often than the footprints (run s70c: 4160 of the 4900 ring-0 stamps fell to a box test among themselves). */
+    STAMP_T0();
     qsort(g_stamps.cand, g_stamps.count, sizeof *g_stamps.cand, StampCompare);
+    STAMP_T1(tSort);
+    STAMP_T0();
     uint32_t n0 = 0; SafeRead(gen + 0x11A7108u, &n0, 4);
     uint32_t n = n0, added[3] = {0}, blocked[2] = {0};
     uint64_t roads = 0, points = 0; SafeRead(P + 0x2058, &roads, 8); SafeRead(P + 0x2060, &points, 8);
@@ -4003,6 +4021,11 @@ static void TerrainStamps(uint64_t records, uint32_t end, uint32_t at91, uint64_
         g_stamps.ring[n] = (uint8_t)c->ring;
         n++; added[c->ring]++;
     }
+    STAMP_T1(tClash);
+    Note("difficulty: stamps: planning time: tile builds %.1f s, 0x4E/0x26 %.1f s, op 0x2B %.1f s, collecting %.1f s, sort %.1f s, the level's clash tests %.1f s",
+        tBuild, tFix, t2B, tCollect, tSort, tClash);
+#undef STAMP_T0
+#undef STAMP_T1
     *(volatile uint32_t*)(uintptr_t)(gen + 0x11A7108u) = n;
     *(volatile uint32_t*)(uintptr_t)(gen + 0x11A710Cu) = n;
     g_stamps.first = n0; g_stamps.end = n; g_stamps.ringLevel = g_world.levels;
