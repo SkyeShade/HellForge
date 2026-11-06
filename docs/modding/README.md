@@ -44,6 +44,7 @@ friends compare in co-op.
 | change an existing weapon or stratagem in code | [Content: changing existing content](content.md#changing-existing-content) |
 | add a new stratagem, weapon or entity | [Content](content.md), after [your first mod](first-mod.md) |
 | put your stratagems under a heading of their own | [Content: selection headings](content.md#selection-headings) |
+| sell items on a warbond of your own, in a currency you choose | [Warbonds](warbonds.md) |
 | recolour a model or ship your own model, sound or icon | [Data mods](data.md) |
 | share patch files made from the game's resources (kitbashes, backports, cut content) without Arrowhead's bytes | [The asset kit](assets.md) |
 | react to kills, damage or missions | [Logic at run time](runtime.md) |

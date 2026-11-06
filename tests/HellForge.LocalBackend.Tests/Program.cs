@@ -746,6 +746,9 @@ try
     RegisteredItemsTests.Run(root, Check);
     results.Add(new { mode = "registered-items", outcome = "passed" });
     Console.WriteLine("PASS registered items: child hash, catalogue children, mastery package, progress, inventory");
+    await ModWarbondsTests.Run(root, Check);
+    results.Add(new { mode = "mod-warbonds", outcome = "passed" });
+    Console.WriteLine("PASS mod warbonds: the spec's checks and ids, listed after the game's within 32, pages, spent counter, sold in their currency, page gates, mods' items held once bought, unlock-all, premium refused");
 }
 catch (Exception error)
 {

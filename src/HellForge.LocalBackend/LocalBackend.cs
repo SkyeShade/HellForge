@@ -22,6 +22,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     public LiveWar? LiveWar { get; init; }
     public FriendPresence? Presence { get; init; }
     public RegisteredItems? RegisteredItems { get; init; }
+    // Warbonds mods add (--mod-warbonds), served beside the game's.
+    public ModWarbondService? ModWarbonds { get; init; }
     public bool OpenWar { get; init; }
     public uint WarSeed { get; init; }
     // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
@@ -140,6 +142,7 @@ public static partial class LocalBackend
         }
         var startup = new StartupBodies(profile, liveWar, fixtures);
         if (settings.RegisteredItems != null) settings.RegisteredItems.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+        if (settings.ModWarbonds != null) ConnectModWarbonds(settings.ModWarbonds, settings.RegisteredItems, startup, profile);
         // Purchases price items by the catalogue the game was served, mods' registered items included.
         JsonElement? Catalogue(uint mixId)
         {
@@ -149,7 +152,7 @@ public static partial class LocalBackend
                 if (item.TryGetProperty("mixId", out var id) && id.TryGetUInt32(out var found) && found == mixId) return item;
             return null;
         }
-        var purchases = profile != null ? new Purchases(profile, Catalogue) : null;
+        var purchases = profile != null ? new Purchases(profile, Catalogue, settings.ModWarbonds) : null;
         Directory.CreateDirectory(settings.EvidenceDirectory);
         var auditPath = Path.Combine(settings.EvidenceDirectory, "requests.jsonl");
         // A fresh evidence directory prevents accidental mixing of runs.
@@ -169,11 +172,25 @@ public static partial class LocalBackend
         {
             Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
-            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath, Browse = settings.Browse,
+            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, ModWarbonds = settings.ModWarbonds, Startup = startup, AuditPath = auditPath, Browse = settings.Browse,
             LiveMods = settings.LiveMods
         };
         app.Run(requests.HandleAsync);
         return app;
+    }
+
+    // Mods' warbonds read the startup bodies and the registered items, and decide which registered items the profile holds
+    // from what it has bought (its saved purchasedSeasonPassItems).
+    static void ConnectModWarbonds(ModWarbondService modWarbonds, RegisteredItems? registered, StartupBodies startup, ProfileStore? profile)
+    {
+        modWarbonds.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+        modWarbonds.Registered = registered;
+        modWarbonds.Purchased = () => profile != null && profile.TryGetResponse("/Progression", out var progression) &&
+            progression.TryGetProperty("purchasedSeasonPassItems", out var bought) && bought.ValueKind == JsonValueKind.Array
+            ? bought.EnumerateArray().Where(b => b.TryGetInt64(out _)).Select(b => b.GetInt64()).ToHashSet() : new HashSet<long>();
+        if (registered == null) return;
+        registered.Withheld = modWarbonds.Withheld;
+        registered.ReservedCatalogue = modWarbonds.Warbonds.Count;
     }
 
     static void CheckSettings(BackendSettings settings)

@@ -12,6 +12,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Mods can add warbonds.** A mod's `hellforge-warbonds.json` lists warbonds with up to 15 pages of up to 10 items each,
+  priced in medals, requisition, samples or Forge Credits, with later pages opened by what was spent. Pages can sell game
+  items and the mod's own weapons and stratagems, which then stay out of the armory until bought. Mod warbonds are listed
+  after the game's (the game lists 32). Their card and title are placeholders and their prices show the medal icon for
+  now ([warbonds](docs/modding/warbonds.md)).
 - **Shields that stop grenades.** The FX-12 Shield Generator Relay, G/SH-39 Shield and SH-32 Shield Generator Pack have a
   **Stops grenades** setting in the editor, off by default. Grenades, throwing knives and self-destruct drones bounce off
   the bubble from outside, and ones thrown from inside still leave. Helldivers, enemies, vehicles and

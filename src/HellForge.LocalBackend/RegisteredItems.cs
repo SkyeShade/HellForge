@@ -30,7 +30,8 @@ namespace HellForge.LocalBackend;
 // (LockedMods, from mods-stage), stays out of /Progression/inventory: the game knows it, the player cannot equip it.
 public sealed class RegisteredItems(string path)
 {
-    public sealed record Item(uint MixId, uint CopyOf, uint Stable = 0, bool IsDifficulty = false, uint Level = 0, string Mod = "")
+    // Name: the name its mod registered it by (a weapon's "unit", a stratagem's "name"), which a mod's warbond names it by.
+    public sealed record Item(uint MixId, uint CopyOf, uint Stable = 0, bool IsDifficulty = false, uint Level = 0, string Mod = "", string Name = "")
     {
         public bool IsStratagem => Stable != 0;
         // Weapons: the items with children, mastery packages and progress of their own.
@@ -56,6 +57,13 @@ public sealed class RegisteredItems(string path)
 
     // Whether the player may hold a base item; null: every base (no premium rules, as in tests and the development backend).
     public Func<uint, bool>? OwnsBase { get; set; }
+
+    // Mods' weapons and stratagems a warbond sells that the player has not bought (ModWarbondService.Withheld): left out of
+    // the inventory like a locked item.
+    public Func<IReadOnlySet<uint>>? Withheld { get; set; }
+
+    // Catalogue items others add besides these (mods' warbonds' spent counters), which the room counts.
+    public int ReservedCatalogue { get; set; }
 
     // Mods whose items stay out of the player's inventory (mods-stage's --premium-locked).
     public IReadOnlySet<string> LockedMods { get; set; } = new HashSet<string>();
@@ -83,11 +91,11 @@ public sealed class RegisteredItems(string path)
             return null;
         if (item.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "stratagem")
             return copyOf != 0 && item.TryGetProperty("stable", out var stable) && stable.TryGetUInt32(out var stableId) && stableId != 0
-                ? new Item(mixId, copyOf, stableId, Mod: ModOf(item)) : null;
+                ? new Item(mixId, copyOf, stableId, Mod: ModOf(item), Name: NameOf(item, "name")) : null;
         if (item.TryGetProperty("kind", out kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "difficulty")
             return copyOf != 0 && item.TryGetProperty("level", out var level) && level.TryGetUInt32(out var levelValue) && levelValue is > 10 and <= 15
                 ? new Item(mixId, copyOf, IsDifficulty: true, Level: levelValue, Mod: ModOf(item)) : null;
-        return new Item(mixId, copyOf, Mod: ModOf(item));
+        return new Item(mixId, copyOf, Mod: ModOf(item), Name: NameOf(item, "unit"));
     }
 
     // The id of a weapon's child item (an attachment's id for that weapon), as the client computes it.
@@ -137,7 +145,7 @@ public sealed class RegisteredItems(string path)
         if (Source?.Invoke("/Progression/items") is not { ValueKind: JsonValueKind.Array } catalogue) return items;
         var children = ChildCounts(catalogue);
         var packages = Source("/Progression/ProgressionPackages") is { ValueKind: JsonValueKind.Array } p ? (JsonArray)JsonNode.Parse(p.GetRawText())! : [];
-        int room = CatalogueCap - catalogue.GetArrayLength(), packageRoom = PackageCap - packages.Count;
+        int room = CatalogueCap - catalogue.GetArrayLength() - ReservedCatalogue, packageRoom = PackageCap - packages.Count;
         var admitted = new List<Item>();
         foreach (var item in items)
         {
@@ -316,7 +324,7 @@ public sealed class RegisteredItems(string path)
     {
         var have = held.Select(i => Id(i, "mixId")).ToHashSet();
         var children = ChildIds();
-        foreach (var item in items.Where(i => !Locked(i)))
+        foreach (var item in Holdable(items))
         {
             if (item.IsDifficulty && !have.Contains(item.CopyOf)) continue; /* not before level 10 is unlocked */
             var entries = (have.Contains(item.MixId) ? 0 : 1) +
@@ -331,12 +339,21 @@ public sealed class RegisteredItems(string path)
         }
     }
 
+    // The items a player may hold now: not locked, and not sold on a mod's warbond they have not bought from.
+    IEnumerable<Item> Holdable(IReadOnlyList<Item> items)
+    {
+        var withheld = Withheld?.Invoke() ?? new HashSet<uint>();
+        return items.Where(i => !Locked(i) && !withheld.Contains(i.MixId));
+    }
+
     // The mod that registered an entry (registry.c writes its id).
-    static string ModOf(JsonElement item) => item.TryGetProperty("mod", out var owner) && owner.ValueKind == JsonValueKind.String ? owner.GetString()! : "";
+    static string ModOf(JsonElement item) => NameOf(item, "mod");
+
+    static string NameOf(JsonElement item, string key) => item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : "";
 
     // A premium mod the player does not own, or a copy of a premium base they do not own; a stratagem whose base cannot be
     // found yet stays out too, until the game has loaded its stratagems.
-    bool Locked(Item item)
+    public bool Locked(Item item)
     {
         if (LockedMods.Contains(item.Mod)) return true;
         if (OwnsBase == null || item.IsDifficulty) return false;

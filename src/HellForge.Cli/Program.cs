@@ -149,7 +149,7 @@ try
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data", "--verify-all"],
         "migrate" => ["--install", "--from", "--appdata"],
-        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods"],
+        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods", "--mod-warbonds"],
         "mods-live" => ["--install", "--session-mods", "--target", "--seed"],
         "build-source-mods" => ["--install", "--progress", "--sync", "--sandbox"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
@@ -367,6 +367,14 @@ try
                 progress: p => WriteProgress(progressFile, p));
             active = built;
             modProblems.AddRange(buildProblems);
+            // Warbonds the loaded mods add (ModWarbonds: hellforge-warbonds.json), checked and written for the backend
+            // (--mod-warbonds, which the session passes on); one with a mistake is left out and the session says why.
+            if (options.TryGetValue("--mod-warbonds", out var warbondsFile))
+            {
+                var (modWarbonds, warbondProblems) = ModWarbonds.Load(active);
+                modProblems.AddRange(warbondProblems);
+                ModWarbonds.Write(warbondsFile, modWarbonds);
+            }
             // The premium warbonds the profile's synced account does not own look locked in Acquisitions (WarbondLocks): the
             // same ownership the backend serves. Art that cannot be built stays as it is; the session goes on.
             string? warbondLocks = null;
