@@ -392,7 +392,7 @@ static struct
 {
     uintptr_t dir, lg; uint32_t seed;
     int count, populated, online, onlineUnits, eff, playersAt;
-    float players[EVT_MAX_PLAYERS][3], radius; /* feet position (x, y, z) */
+    float players[EVT_MAX_PLAYERS][3], radius, rMin; /* feet position (x, y, z); rMin: this map's least spawn distance */
     uint32_t units[EVT_MAX_PLAYERS], knownUnit[EVT_MAX_PLAYERS]; /* each player's Helldiver unit (the sight ray leaves it out) */
     float known[EVT_MAX_PLAYERS][3]; ULONGLONG knownAt[EVT_MAX_PLAYERS]; uint64_t knownPeer[EVT_MAX_PLAYERS];
     ULONGLONG last, effAt, noteAt;
@@ -499,7 +499,10 @@ static void LwPopulate(void)
     int made = 0;
     /* Start beyond R_off from every player; on a map whose playable disc is smaller than that (lw7b: 292 m, no node
      * 350 m from the drop) beyond R_min instead, so such squads come online at once at vanilla-like distances. */
-    float least = g_lwWorld.radius < LW_R_OFF ? LW_R_MIN : LW_R_OFF;
+    /* The least spawn distance fits the map (D, lw15p: a 156 m disc had no node 150 m from the drop, so 0 squads):
+     * half the playable radius, at least vanilla's 75 m (colony / city patrols) and at most LW_R_MIN. */
+    g_lwWorld.rMin = fminf(LW_R_MIN, fmaxf(75.0f, 0.5f * g_lwWorld.radius));
+    float least = g_lwWorld.radius < LW_R_OFF ? g_lwWorld.rMin : LW_R_OFF;
     for (int tries = 0; made < n && tries < n * 20; tries++)
     {
         int node = (int)(LwRand() % (uint32_t)g_lwNodeCount);
@@ -1029,10 +1032,11 @@ static void LwSquadsTick(void)
         {
             LwWalk(q, dt);
             float near2 = LwNearestPlayer2(q->pos[0], q->pos[1]);
-            int back = q->cycled == 1 && near2 >= LW_R_MIN * LW_R_MIN; /* test cycle: back at once (the budget still applies) */
+            float rMin = g_lwWorld.rMin > 0 ? g_lwWorld.rMin : LW_R_MIN;
+            int back = q->cycled == 1 && near2 >= rMin * rMin; /* test cycle: back at once (the budget still applies) */
             if (waiting && !back) continue; /* test cycle: a squad waiting to come back is served first */
             if (q->retry && now < q->retry) continue; /* its point was refused (placement or sight) a moment ago */
-            int nearBand = near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN, farBand = !nearBand && near2 >= LW_R_ON * LW_R_ON && near2 < LW_FAR * LW_FAR;
+            int nearBand = near2 < LW_R_ON * LW_R_ON && near2 >= rMin * rMin, farBand = !nearBand && near2 >= LW_R_ON * LW_R_ON && near2 < LW_FAR * LW_FAR;
             if (!requested && attempts < 4 && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && (nearBand || back || farBand))
             {
                 if (!back && LwRecentNear(q->pos)) { q->retry = now + 3000; continue; } /* spaced from online squads and recent requests (audit 1, 11) */
