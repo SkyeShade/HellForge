@@ -1883,8 +1883,8 @@ static void LwAvatarDeathWatch(void)
 /* Test runs (HELLFORGE_LW_TEST_TRACE=1): a safe landing. The default drop is the map centre, and on some maps that is
  * inside an outpost (lw73a: 28 enemies within 60 m, the nearest 3 m; a garrison enemy killed the Helldiver, again after
  * every reinforcement until the mission failed). When the Helldiver leaves its pod with live enemies within 80 m, it is
- * moved (the test teleport, which refuses points with enemies within 120 m) to the nearest point 150..300 m away with
- * none within 150 m. */
+ * moved (the test teleport, which refuses points with enemies within 120 m) to the nearest point 100..300 m away with
+ * none within 120 m. */
 static void LwSafeLanding(void)
 {
     static int on = -1, wasAttached = 1, noted; static ULONGLONG landedAt;
@@ -1905,17 +1905,32 @@ static void LwSafeLanding(void)
         return;
     }
     landedAt = 0;
-    for (float r = 150.0f; r <= 300.0f; r += 50.0f)
+    for (float r = 100.0f; r <= 300.0f; r += 50.0f) /* lw74a: none clear of 150 m within 150..300 m on a 350 m disc */
         for (int k = 0; k < 12; k++)
         {
             float a = (float)k * 0.5235988f, x = p[0] + r * cosf(a), y = p[1] + r * sinf(a), z, n2;
-            if (x * x + y * y > 0.85f * 0.85f * g_lwWorld.radius * g_lwWorld.radius || !LwGround(x, y, &z) || LwEnemiesNear(x, y, 150.0f, &n2)) continue;
+            if (x * x + y * y > 0.9f * 0.9f * g_lwWorld.radius * g_lwWorld.radius || !LwGround(x, y, &z) || LwEnemiesNear(x, y, 120.0f, &n2)) continue;
             Note("living world: test: safe landing: %d enemies within 80 m of the pod at (%.0f, %.0f) (nearest %.0f m): moving the Helldiver %.0f m to (%.0f, %.0f)",
                 foes, (double)p[0], (double)p[1], (double)nearest, (double)r, (double)x, (double)y);
             LwTestTeleport(0, x, y);
             return;
         }
-    Note("living world: test: safe landing: %d enemies within 80 m of the pod at (%.0f, %.0f) and no clear point 150..300 m around", foes, (double)p[0], (double)p[1]);
+    Note("living world: test: safe landing: %d enemies within 80 m of the pod at (%.0f, %.0f) and no clear point 100..300 m around", foes, (double)p[0], (double)p[1]);
+}
+/* Test runs only (HELLFORGE_LW_TEST_ALIVE=1, set by the living-world test scripts): the local Helldiver is healed back to
+ * full each tick through the API's heal (ActHealNow: the game's own heal, pinned). The tests put enemy squads 60-170 m
+ * from a solo Helldiver on purpose (lw74a: killed by 29 enemies within 60 m); a death ends the run's checks or, after
+ * repeated reinforcements, the mission. A hit larger than full health still kills. */
+static void LwTestKeepAlive(void)
+{
+    static int on = -1; static ULONGLONG notedAt;
+    if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_ALIVE", t, sizeof t) > 0 && t[0] == '1'; if (on) Note("living world: test: the local Helldiver is kept alive (healed to full each tick; test runs only)"); }
+    if (!on) return;
+    ActHealth h; const char* why = "";
+    if (!ActLocalAvatar(g_lw.game, 0, &h, &why) || h.max <= 0 || h.health >= h.max) return;
+    int before = h.health;
+    ActHealNow(NULL, g_lw.game, (float)h.max);
+    if (GetTickCount64() - notedAt > 10000) { notedAt = GetTickCount64(); Note("living world: test: keep alive: the Helldiver healed from %d of %d", before, h.max); }
 }
 static void LwKillArm(void);
 static void LwTestCommands(void)
@@ -1988,6 +2003,7 @@ static void LwSquadsTick(void)
     g_lwWorld.farUnits = farUnits;
     LwAvatarDeathWatch(); /* test runs: who killed the local Helldiver */
     LwSafeLanding(); /* test runs: out of a pod among enemies, moved clear */
+    LwTestKeepAlive(); /* test runs: the Helldiver healed to full */
     LwDrawnTick(); /* the main view's drawn state of far squads (test instrument, HELLFORGE_LW_DRAWN=1) */
     LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
