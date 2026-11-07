@@ -541,21 +541,26 @@ static void LwWalk(LwSquad* q, float dt)
 /* The spawn gates the loader enforces itself (flag 0x40 skips 0x952EB0): a player record with bits 4 and 11 clear, the
  * mission not ending (0x8F32B0), the 70 room ([[game+0x3326D18]+0x1C] + [dir+0x36C0] - [dir+0x620] - [dir+0x61C], as
  * 0x952F3C) with the reserve, AiJob active + members + 1 below 448 - 32, the effective cap and the online ceiling. */
+static char g_lwRoomWhy[96]; /* the gate that refused the last request (test notes) */
 static int LwRoomFor(uint32_t members)
 {
     uintptr_t players, chars, jobs;
-    if (!EvpPtr(g_lw.game + 0x3326468u, &players)) return 0;
+    if (!EvpPtr(g_lw.game + 0x3326468u, &players)) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no player list"); return 0; }
     uint32_t count = EvpU32(players + 0x84, 0), ok = 0;
     for (uint32_t i = 0; i < count && i < 16; i++) { uint32_t f = EvpU32(players + 0x3AC + 0x20u * i, 0xFFFFFFFFu); if (!(f & (1u << 11)) && !(f & (1u << 4))) ok = 1; }
     typedef uint8_t (*EndingFn)(void);
-    if (!ok || ((EndingFn)(g_lw.game + 0x8F32B0u))()) return 0;
+    if (!ok) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no player record with bits 4 and 11 clear"); return 0; }
+    if (((EndingFn)(g_lw.game + 0x8F32B0u))()) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the mission is ending"); return 0; }
     uintptr_t dir = g_lwWorld.dir;
-    if (!EvpPtr(g_lw.game + 0x3326D18u, &chars) || !EvpPtr(g_lw.game + LW_AIJOB, &jobs)) return 0;
+    if (!EvpPtr(g_lw.game + 0x3326D18u, &chars) || !EvpPtr(g_lw.game + LW_AIJOB, &jobs)) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no character or job table"); return 0; }
     int room = (int)EvpU32(chars + 0x1C, 999) + (int)EvpU32(dir + 0x36C0, 999) - (int)EvpU32(dir + 0x620, 0) - (int)EvpU32(dir + 0x61C, 0);
-    if (room + (int)members + (int)LW_RESERVE > 70) return 0;
-    if (EvpU32(jobs + 0xC, 9999) + members + 1 >= 448 - 32) return 0;
+    if (room + (int)members + (int)LW_RESERVE > 70)
+    { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the game's 70 room: %d used + %u + reserve %d", room, members, (int)LW_RESERVE); return 0; }
+    uint32_t active = EvpU32(jobs + 0xC, 9999);
+    if (active + members + 1 >= 448 - 32) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "AiJob: %u active + %u", active, members); return 0; }
     int ceiling = g_lwWorld.playersAt > 1 ? 64 : 48;
-    if (g_lwWorld.onlineUnits + (int)members > g_lwWorld.eff || g_lwWorld.onlineUnits + (int)members > ceiling) return 0;
+    if (g_lwWorld.onlineUnits + (int)members > g_lwWorld.eff || g_lwWorld.onlineUnits + (int)members > ceiling)
+    { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the cap: %d online + %u over %d (ceiling %d)", g_lwWorld.onlineUnits, members, g_lwWorld.eff, ceiling); return 0; }
     return 1;
 }
 
@@ -598,13 +603,13 @@ static void LwOnline(LwSquad* q)
     if (cap == 0 || !LwRoomFor(cap)) { g_lwWorld.refused++; return; }
     float pos[3] = {q->pos[0], q->pos[1], 0}, target[3] = {q->pos[0], q->pos[1], 0};
     if (q->pathAt < q->pathLen) { target[0] = g_lwNodes[q->path[q->pathAt]].x; target[1] = g_lwNodes[q->path[q->pathAt]].y; }
-    if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { g_lwWorld.refused++; return; }
+    if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no ground under the point or its target"); g_lwWorld.refused++; return; }
     float wanted[2] = {pos[0], pos[1]};
     if (!LwPlace(slot, pos) || (!g_lwTestVisible && !LwHidden(pos))) { q->retry = GetTickCount64() + 3000; return; }
     uintptr_t rec = g_lw.spawn(g_lwWorld.dir, slot, pos, LW_JOB_PATROL, LW_PATROL_FLAGS, target, NULL, NULL, 0.0f, cap);
-    if (rec == 0) { g_lwWorld.refused++; return; }
+    if (rec == 0) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the spawn request returned no record"); g_lwWorld.refused++; return; }
     uint8_t used = 0;
-    if (SafeRead(rec + 0x12, &used, 1) || used != 1) { g_lwWorld.refused++; return; } /* the queue was full: nothing queued */
+    if (SafeRead(rec + 0x12, &used, 1) || used != 1) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the spawn queue was full"); g_lwWorld.refused++; return; } /* the queue was full: nothing queued */
     Note("living world: squad %d requested at (%.0f, %.0f, %.1f) (snapped %.1f m), %.0f m from the nearest player, out of sight, %u of %u members (group 0x%llx)",
         (int)(q - g_lwSquads), (double)pos[0], (double)pos[1], (double)pos[2], (double)sqrtf(LwDist2(wanted, pos[0], pos[1])),
         (double)sqrtf(LwNearestPlayer2(pos[0], pos[1])), cap, size, (unsigned long long)q->definition);
@@ -1044,11 +1049,12 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
     static const float offsets[] = {0, 6, -6, 12, -12, 18, -18, 24, -24, 30, -30, 36, -36};
     uint32_t noFace0 = g_lwWorld.noFace, moved0 = g_lwWorld.moved, over0 = g_lwWorld.overhead, seen0 = g_lwWorld.seen, refused0 = g_lwWorld.refused;
     float save[2] = {best->pos[0], best->pos[1]};
+    int outside = 0; g_lwRoomWhy[0] = 0;
     for (int k = 0; k < (int)(sizeof offsets / sizeof offsets[0]) * 2; k++)
     {
         float a = base + offsets[k / 2] * 3.14159265f / 180.0f, d = dist * (k % 2 ? 0.9f : 1.0f);
         float p[2] = {pl[0] + d * cosf(a), pl[1] + d * sinf(a)};
-        if (p[0] * p[0] + p[1] * p[1] > g_lwWorld.radius * g_lwWorld.radius) continue;
+        if (p[0] * p[0] + p[1] * p[1] > g_lwWorld.radius * g_lwWorld.radius) { outside++; continue; }
         best->pos[0] = p[0]; best->pos[1] = p[1];
         int node = LwNearestNode(p[0], p[1]);
         if (node >= 0) { best->node = (uint16_t)node; best->pathLen = best->pathAt = 0; LwPlan(best); }
@@ -1066,8 +1072,9 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
         }
     }
     best->pos[0] = save[0]; best->pos[1] = save[1];
-    Note("living world: test command %d: spawn %s %.0f m refused at 26 points: %u no face, %u snapped > 2 m, %u under something, %u in sight, %u other",
-        seq, mode, (double)dist, g_lwWorld.noFace - noFace0, g_lwWorld.moved - moved0, g_lwWorld.overhead - over0, g_lwWorld.seen - seen0, g_lwWorld.refused - refused0);
+    Note("living world: test command %d: spawn %s %.0f m refused at 26 points: %d outside the playable disc (radius %.0f m), %u no face, %u snapped > 2 m, %u under something, %u in sight, %u refused%s%s%s",
+        seq, mode, (double)dist, outside, (double)g_lwWorld.radius, g_lwWorld.noFace - noFace0, g_lwWorld.moved - moved0, g_lwWorld.overhead - over0, g_lwWorld.seen - seen0,
+        g_lwWorld.refused - refused0, g_lwRoomWhy[0] ? " (last: " : "", g_lwRoomWhy, g_lwRoomWhy[0] ? ")" : "");
 }
 /* Test command "teleport X Y": the local Helldiver to the ground at (X, Y), through the game's own MotionComponent
  * teleport, as the hellpod exit calls it (subagent teleport; checked by me: 0xA8913F..0xA8914F, the pin, the map
