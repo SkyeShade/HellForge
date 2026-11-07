@@ -383,7 +383,7 @@ typedef struct LwSquad
     ULONGLONG since, moved, farSince;
     float movedFrom[2], reqZ, seenAt[32][3]; /* seenAt: each listed member's last position (for the loss note) */
     uint8_t arrived, viewed; /* viewed: the test trace noted it in a player's view once */
-    uint8_t checkedCount, appearSeen; float appearLo, appearHi; uint32_t checked[32]; /* arrival: members checked in their first 5 s */
+    uint8_t checkedCount, appearSeen; float appearLo, appearHi, appearGap; uint32_t checked[32]; float checkedAt[32][2]; /* arrival: members checked in their first 5 s */
     uint8_t farOn, inView; /* farOn: came online by sightline; inView: a player sees it (checked at lookAt) */
     uint8_t forceOff; /* test command: go offline now */
     ULONGLONG lookAt;
@@ -401,6 +401,7 @@ static struct
     uint32_t spawned, offlined, died, refused, farSpawned;
     int farUnits;
     uint32_t noFace, moved, overhead, seen, rays, blockUnit, blockTerrain; double rayUs; /* placement and sight refusals, rays cast (30 s) */
+    uint32_t crowded; /* points where a member's slot cast would not reach its slot (30 s) */
     uint32_t goals, goalNoFace, goalReplans, goalStuck; /* goals sent, next nodes without a face within 25 m, replans, none found (30 s) */
     uint32_t heights, underGround, overGround; float worstUnder, worstOver; /* members against the drawn ground (30 s) */
 } g_lwWorld;
@@ -575,6 +576,7 @@ static uint32_t g_lwTestUnseen; /* "spawn visible" points no player sees */
 static int LwSeenByAny(const float* p, float range);
 static int LwPlace(uintptr_t slot, float* pos);
 static int LwHidden(const float* p);
+static int LwMembersFit(uintptr_t slot, const float* pos, uint32_t n);
 
 /* Brings a squad online: its group's slot (found again by definition), the request at its position, heading for its
  * next node. The loader places the point itself (LwPlace: on the navmesh, nothing overhead) and spawns only out of
@@ -612,7 +614,7 @@ static void LwOnline(LwSquad* q)
     if (q->pathAt < q->pathLen) { target[0] = g_lwNodes[q->path[q->pathAt]].x; target[1] = g_lwNodes[q->path[q->pathAt]].y; }
     if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no ground under the point or its target"); g_lwWorld.refused++; return; }
     float wanted[2] = {pos[0], pos[1]};
-    if (!LwPlace(slot, pos)) { q->retry = GetTickCount64() + 3000; return; }
+    if (!LwPlace(slot, pos) || !LwMembersFit(slot, pos, cap)) { q->retry = GetTickCount64() + 3000; return; }
     if (g_lwTestVisible ? !LwSeenByAny(pos, LW_SIGHT) && (++g_lwTestUnseen, 1) : !LwHidden(pos)) { q->retry = GetTickCount64() + 3000; return; }
     uintptr_t rec = g_lw.spawn(g_lwWorld.dir, slot, pos, LW_JOB_PATROL, LW_PATROL_FLAGS, target, NULL, NULL, 0.0f, cap);
     if (rec == 0) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the spawn request returned no record"); g_lwWorld.refused++; return; }
@@ -621,7 +623,7 @@ static void LwOnline(LwSquad* q)
     Note("living world: squad %d requested at (%.0f, %.0f, %.1f) (snapped %.1f m), %.0f m from the nearest player, out of sight, %u of %u members (group 0x%llx)",
         (int)(q - g_lwSquads), (double)pos[0], (double)pos[1], (double)pos[2], (double)sqrtf(LwDist2(wanted, pos[0], pos[1])),
         (double)sqrtf(LwNearestPlayer2(pos[0], pos[1])), cap, size, (unsigned long long)q->definition);
-    q->reqZ = pos[2]; q->arrived = 0; q->viewed = 0; q->checkedCount = 0; q->appearSeen = 0; q->farOn = 0; q->inView = 0; q->lookAt = 0;
+    q->reqZ = pos[2]; q->arrived = 0; q->viewed = 0; q->checkedCount = 0; q->appearSeen = 0; q->appearGap = 1e9f; q->farOn = 0; q->inView = 0; q->lookAt = 0;
     q->state = LW_PENDING; q->rec = rec; q->cap = (uint8_t)cap; q->since = GetTickCount64(); q->jobSet = 0; q->farSince = 0; q->seenCount = 0; q->lost = 0; q->squad = 0;
     g_lwWorld.onlineUnits += (int)cap; q->alive = (uint8_t)cap;
     LwRecentAdd(pos);
@@ -677,6 +679,36 @@ static int LwPlace(uintptr_t slot, float* pos)
     if (LwDist2(pos, p[0], p[1]) > 2.0f * 2.0f) { g_lwWorld.moved++; return 0; }
     if (!LwGround(p[0], p[1], &top) || fabsf(top - p[2]) > 2.0f) { g_lwWorld.overhead++; return 0; }
     memcpy(pos, p, sizeof p);
+    return 1;
+}
+
+/* Every member's place (audit 1b criterion 6; KB living-world-spawn-losses, checked by me: 0x800270, 0x80253E..0x8025A4,
+ * 0x80283F..0x8028DC, 5.0 at 0x23C74A4, 1.05 at 0x23C6DBC): the squad create puts member i (of n) at the request point
+ * plus r (cos a, sin a, 0), r = 5 sqrt((i + 0.5) / (n - 0.5)), a = (i + 1) 2 pi / 2.618034 (none for n = 1), then casts
+ * along the navmesh from the point to that slot: exe 0x7D8C00 = [[game+0x3326330]+0x18](u32 [[game+0x346D508]], from,
+ * to, radius = min(2.4, unit) x 1.05, layer, out prefilled with the point). A cast that fails or stops at once leaves
+ * the member ON the point, and members are created with no overlap test: on a navmesh edge (where LwPlace's snap puts
+ * an off-mesh route point) several members stood inside each other and died within seconds (lw34d, lw36a). The point
+ * is used only when every member's cast (largest radius, 2.52 m) reaches its slot within 0.1 m and that slot passes
+ * LwPlace's ground check (nothing over it within 2 m). 1 when all fit. */
+static int LwMembersFit(uintptr_t slot, const float* pos, uint32_t n)
+{
+    typedef uint64_t (*CastFn)(uint32_t world, const float* from, const float* to, float radius, uint32_t layer, float* out);
+    typedef uintptr_t (*LayerFn)(uintptr_t key);
+    uintptr_t table = 0, fn = 0, key = 0, entry, wp = 0;
+    uint32_t layer = 0, world = 0;
+    if (n <= 1) return 1;
+    if (!EvpPtr(g_lw.game + 0x3326330u, &table) || !EvpPtr(table + 0x18, &fn) || fn == 0 || !EvpPtr(g_lw.game + 0x346D508u, &wp) || wp == 0 ||
+        SafeRead(wp, &world, 4)) return 0;
+    if (EvpPtr(slot + 0xB0, &key) && key && (entry = ((LayerFn)(g_lw.game + 0x505B40u))(key)) != 0) layer = EvpU32(entry + 4, 0);
+    for (uint32_t i = 0; i < n && i < 32; i++)
+    {
+        float r = 5.0f * sqrtf(((float)i + 0.5f) / ((float)n - 0.5f)), a = (float)(i + 1) * 6.2831854820f / 2.6180336475f;
+        float to[3] = {pos[0] + r * cosf(a), pos[1] + r * sinf(a), pos[2]}, out[3] = {pos[0], pos[1], pos[2]}, top = NAN;
+        ((CastFn)fn)(world, pos, to, 2.52f, layer, out);
+        if (!isfinite(out[0]) || LwDist2(to, out[0], out[1]) > 0.1f * 0.1f || !LwGround(out[0], out[1], &top) || fabsf(top - out[2]) > 2.0f)
+        { g_lwWorld.crowded++; return 0; }
+    }
     return 1;
 }
 
@@ -855,8 +887,10 @@ static const char* LwLostWhy(uint32_t unit, uint32_t* squad, char* by, size_t si
             snprintf(what, sizeof what, "entity (resource %016llx, %s%.0f m away)", (unsigned long long)res, placed ? "" : "no position, ",
                 placed ? (double)sqrtf((ap[0] - at[0]) * (ap[0] - at[0]) + (ap[1] - at[1]) * (ap[1] - at[1]) + (ap[2] - at[2]) * (ap[2] - at[2])) : 0.0);
         }
-        snprintf(by, size, " by %s %08X%s", helldiver ? "a Helldiver" : attacker == unit ? "itself" : attacker == 0 || attacker == 0x7FFF ? "nothing named" : what,
-            attacker, creditor ? ", credited to a player" : ", no player credited");
+        uint32_t hit = EvpU32(h.record + 0x40, 0); /* the damage hash the apply writes with the attacker (0x923C0A..0x923C34; KB
+                                                    * living-world-spawn-losses): 0 = the gore fall/impact kill, 49B33778 the event kill */
+        snprintf(by, size, " by %s %08X%s, damage %08X", helldiver ? "a Helldiver" : attacker == unit ? "itself" : attacker == 0 || attacker == 0x7FFF ? "nothing named" : what,
+            attacker, creditor ? ", credited to a player" : ", no player credited", hit);
         return "killed";
     }
     if (EvpPtr(g_lw.game + 0x33264C8u, &m) && EvpHash(m + 0x18, unit, 8, 4, &index) && EvpPtr(m + 0x38, &links)) *squad = EvpU32(links + 8u * index, 0);
@@ -913,6 +947,12 @@ static void LwOnlineTick(LwSquad* q, int* removals)
             if (done || q->checkedCount >= 32 || !ActHealthOf(g_lw.game, members[k], &h) || !h.unit || !EvpUnitPosition(h.unit, p)) continue;
             if (q->checkedCount == 0 || p[2] < q->appearLo) q->appearLo = p[2];
             if (q->checkedCount == 0 || p[2] > q->appearHi) q->appearHi = p[2];
+            for (int c = 0; c < q->checkedCount; c++) /* the nearest two members (stacked members: KB living-world-spawn-losses) */
+            {
+                float gap = sqrtf(LwDist2(q->checkedAt[c], p[0], p[1]));
+                if (gap < q->appearGap) q->appearGap = gap;
+            }
+            q->checkedAt[q->checkedCount][0] = p[0]; q->checkedAt[q->checkedCount][1] = p[1];
             q->checked[q->checkedCount++] = members[k];
             float chest[3] = {p[0], p[1], p[2] + 1.0f};
             for (int i = 0; i < g_lwWorld.playersAt; i++)
@@ -921,8 +961,9 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         if (q->checkedCount > 0 && (q->checkedCount >= q->cap || GetTickCount64() - q->since > 5000))
         {
             q->arrived = 1;
-            Note("living world: squad %d members appear: %d of %u read in 5 s, z %.1f .. %.1f (requested %.1f), %d of them in a player's sight",
-                (int)(q - g_lwSquads), q->checkedCount, q->cap, (double)q->appearLo, (double)q->appearHi, (double)q->reqZ, q->appearSeen);
+            Note("living world: squad %d members appear: %d of %u read in 5 s, z %.1f .. %.1f (requested %.1f), nearest two %.1f m apart, %d of them in a player's sight",
+                (int)(q - g_lwSquads), q->checkedCount, q->cap, (double)q->appearLo, (double)q->appearHi, (double)q->reqZ,
+                (double)(q->checkedCount > 1 ? q->appearGap : 0.0f), q->appearSeen);
         }
     }
     q->survivors = (uint8_t)(q->cap > q->lost ? q->cap - q->lost : 0);
@@ -1121,7 +1162,7 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
         105, -105, 120, -120, 135, -135, 150, -150, 165, -165, 180};
     const float* offs = visible ? around : offsets; int nOffs = visible ? (int)(sizeof around / sizeof around[0]) : (int)(sizeof offsets / sizeof offsets[0]);
     uint32_t unseen0 = g_lwTestUnseen;
-    uint32_t noFace0 = g_lwWorld.noFace, moved0 = g_lwWorld.moved, over0 = g_lwWorld.overhead, seen0 = g_lwWorld.seen, refused0 = g_lwWorld.refused;
+    uint32_t noFace0 = g_lwWorld.noFace, moved0 = g_lwWorld.moved, over0 = g_lwWorld.overhead, seen0 = g_lwWorld.seen, refused0 = g_lwWorld.refused, crowded0 = g_lwWorld.crowded;
     float save[2] = {best->pos[0], best->pos[1]};
     int outside = 0; g_lwRoomWhy[0] = 0;
     for (int k = 0; k < nOffs * 2; k++)
@@ -1152,8 +1193,8 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
         }
     }
     best->pos[0] = save[0]; best->pos[1] = save[1];
-    Note("living world: test command %d: spawn %s %.0f m refused at %d points: %u not seen (visible), %d outside the playable disc (radius %.0f m), %u no face, %u snapped > 2 m, %u under something, %u in sight, %u refused%s%s%s",
-        seq, mode, (double)dist, nOffs * 2, g_lwTestUnseen - unseen0, outside, (double)g_lwWorld.radius, g_lwWorld.noFace - noFace0, g_lwWorld.moved - moved0, g_lwWorld.overhead - over0, g_lwWorld.seen - seen0,
+    Note("living world: test command %d: spawn %s %.0f m refused at %d points: %u not seen (visible), %d outside the playable disc (radius %.0f m), %u no face, %u snapped > 2 m, %u under something, %u members would not reach their slots, %u in sight, %u refused%s%s%s",
+        seq, mode, (double)dist, nOffs * 2, g_lwTestUnseen - unseen0, outside, (double)g_lwWorld.radius, g_lwWorld.noFace - noFace0, g_lwWorld.moved - moved0, g_lwWorld.overhead - over0, g_lwWorld.crowded - crowded0, g_lwWorld.seen - seen0,
         g_lwWorld.refused - refused0, g_lwRoomWhy[0] ? " (last: " : "", g_lwRoomWhy, g_lwRoomWhy[0] ? ")" : "");
 }
 /* Test command "teleport X Y": the local Helldiver to the ground at (X, Y), through the game's own MotionComponent
@@ -1309,11 +1350,11 @@ static void LwSquadsTick(void)
             Note("living world: steering walls (30 s): %u requests, %u with no wall segment (%.1f%%), G %.1f m", g_lwWalls.requests,
                 g_lwWalls.empty, 100.0 * g_lwWalls.empty / g_lwWalls.requests, (double)(g_lwWallReach ? *g_lwWallReach : 0));
         g_lwWalls.requests = g_lwWalls.empty = 0;
-        if (g_lwWorld.rays || g_lwWorld.noFace || g_lwWorld.moved || g_lwWorld.overhead)
-            Note("living world: placement (30 s): refused %u with no navmesh face within 10 m, %u snapped more than 2 m, %u under something, %u in a player's sight; "
-                "%u sight rays, %.1f us each; blocked by terrain %u, by static scenery %u", g_lwWorld.noFace, g_lwWorld.moved, g_lwWorld.overhead, g_lwWorld.seen,
+        if (g_lwWorld.rays || g_lwWorld.noFace || g_lwWorld.moved || g_lwWorld.overhead || g_lwWorld.crowded)
+            Note("living world: placement (30 s): refused %u with no navmesh face within 10 m, %u snapped more than 2 m, %u under something, %u where a member would not reach its slot, %u in a player's sight; "
+                "%u sight rays, %.1f us each; blocked by terrain %u, by static scenery %u", g_lwWorld.noFace, g_lwWorld.moved, g_lwWorld.overhead, g_lwWorld.crowded, g_lwWorld.seen,
                 g_lwWorld.rays, g_lwWorld.rays ? g_lwWorld.rayUs / g_lwWorld.rays : 0.0, g_lwWorld.blockTerrain, g_lwWorld.blockUnit);
-        g_lwWorld.noFace = g_lwWorld.moved = g_lwWorld.overhead = g_lwWorld.seen = g_lwWorld.rays = g_lwWorld.blockUnit = g_lwWorld.blockTerrain = 0; g_lwWorld.rayUs = 0;
+        g_lwWorld.noFace = g_lwWorld.moved = g_lwWorld.overhead = g_lwWorld.seen = g_lwWorld.rays = g_lwWorld.blockUnit = g_lwWorld.blockTerrain = g_lwWorld.crowded = 0; g_lwWorld.rayUs = 0;
         if (g_lwWorld.goals || g_lwWorld.goalNoFace)
             Note("living world: goals (30 s): %u sent, %u next nodes with no navmesh within 25 m, %u replans, %u squads left without a reachable goal",
                 g_lwWorld.goals, g_lwWorld.goalNoFace, g_lwWorld.goalReplans, g_lwWorld.goalStuck);
