@@ -1107,9 +1107,10 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         if (q->checkedCount > 0 && (q->checkedCount >= q->cap || GetTickCount64() - q->since > 5000))
         {
             q->arrived = 1;
-            Note("living world: squad %d members appear: %d of %u read in 5 s, z %.1f .. %.1f (requested %.1f), nearest two %.1f m apart, %d of them in a player's sight",
-                (int)(q - g_lwSquads), q->checkedCount, q->cap, (double)q->appearLo, (double)q->appearHi, (double)q->reqZ,
-                (double)(q->checkedCount > 1 ? q->appearGap : 0.0f), q->appearSeen);
+            char gap[48] = "one member, no gap"; /* lw50a: a one-member squad read as "nearest two 0.0 m apart" */
+            if (q->checkedCount > 1) snprintf(gap, sizeof gap, "nearest two %.1f m apart", (double)q->appearGap);
+            Note("living world: squad %d members appear: %d of %u read in 5 s, z %.1f .. %.1f (requested %.1f), %s, %d of them in a player's sight",
+                (int)(q - g_lwSquads), q->checkedCount, q->cap, (double)q->appearLo, (double)q->appearHi, (double)q->reqZ, gap, q->appearSeen);
         }
     }
     q->survivors = (uint8_t)(q->cap > q->lost ? q->cap - q->lost : 0);
