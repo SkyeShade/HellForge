@@ -1524,7 +1524,10 @@ static void LwOnlineTick(LwSquad* q, int* removals)
             }
             if (q->inView || (q->farOn && now - q->since < 60000)) calm = 0; /* and a minute's grace to walk into view */
         }
-        for (int k = 0; k < n && calm; k++) if (LwAlert(members[k]) != 0) calm = 0;
+        /* a member's alert keeps it online only within a player's view range (band + margin): beyond that no player can
+         * see or reach the fight (lw85a: alerted squads 3-6 km behind a player who moved held 48 of the 59 units, and
+         * nothing could come online near him; vanilla removes patrols beyond 300 m whatever their alert, 0x95288B) */
+        for (int k = 0; k < n && calm && d2 < keep * keep; k++) if (LwAlert(members[k]) != 0) calm = 0;
         if (!calm) { q->farSince = 0; return; }
         if (q->farSince == 0) q->farSince = now;
         if (now - q->farSince < LW_FAR_MS || *removals >= 16) return;
@@ -2292,9 +2295,11 @@ static void LwTestCommands(void)
             {
                 LwSquad* q = &g_lwSquads[i];
                 if (q->state != LW_ONLINE && q->state != LW_PENDING) continue;
-                Note("living world: test command %d: squad %d %s at (%.0f, %.0f), %.0f m, %u alive of %u, %s%s", seq, i, q->state == LW_ONLINE ? "online" : "pending",
+                uint32_t ms[32]; int mn = q->state == LW_ONLINE ? LwMembers(q->squad, ms) : 0, alerted = 0;
+                for (int k = 0; k < mn; k++) alerted += LwAlert(ms[k]) != 0;
+                Note("living world: test command %d: squad %d %s at (%.0f, %.0f), %.0f m, %u alive of %u, %s%s, %d alerted", seq, i, q->state == LW_ONLINE ? "online" : "pending",
                     (double)q->pos[0], (double)q->pos[1], (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), q->alive, q->cap,
-                    q->farOn ? "by sightline" : "near", q->inView ? ", in a player's view" : "");
+                    q->farOn ? "by sightline" : "near", q->inView ? ", in a player's view" : "", alerted);
             }
         else Note("living world: test command %d: not understood", seq);
     }
