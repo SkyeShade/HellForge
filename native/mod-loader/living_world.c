@@ -14,7 +14,7 @@
 #define LW_STATE 0x346BF98u         /* [game+]: the entity state the removal 0xFDC310 takes */
 #define LW_NONE 0x3483C4Cu          /* [game+]: the "no entity" id the budget's reset writes */
 #define LW_INVALID 0x3483C20u       /* [game+]: the invalid id the AiJob lookup tests first */
-#define LW_PATROL_FLAGS 0x46u       /* 0x02 keep (the squad entity) | 0x04 queue | 0x40 the loader enforces the gates */
+#define LW_PATROL_FLAGS 0x4Eu       /* 0x02 keep (the squad entity) | 0x04 queue | 0x08 no nav snap | 0x40 the loader enforces the gates */
 #define LW_JOB_PATROL 1u
 #define LW_JOB_BATTLE 10u           /* state 10 re-reads job_position (0x7FD6FE): the route's waypoints */
 
@@ -368,7 +368,7 @@ typedef struct LwSquad
     float pos[2], speed;
     uintptr_t definition, rec;
     uint32_t squad, seen[32];
-    uint8_t seenCount, lost, cycled;
+    uint8_t seenCount, lost, cycled, alive; /* alive: members listed online (the budget counts living units, as 0x9513A1) */
     ULONGLONG since, moved, farSince;
     float movedFrom[2];
 } LwSquad;
@@ -466,7 +466,9 @@ static void LwPopulate(void)
     float sum = 0, weight = 0;
     for (uint32_t i = 0; i < main && i < 96; i++) { float w = 0; if (!SafeRead(LW_GROUP(dir, i) + 0xC0, &w, 4) && w > 0) { sum += w * (float)LwGroupSize(LW_GROUP(dir, i)); weight += w; } }
     int eff = LwEffectiveCap(dir);
-    if (!(weight > 0) || eff <= 0 || g_lwWorld.radius <= 0)
+    if (g_lwWorld.radius <= 0) g_lwWorld.radius = LwPlayRadius(g_lwWorld.lg);
+    if (g_lwWorld.radius <= 0) { LwWhy("no playable radius yet"); return; } /* read again next tick (audit 1: never give up on a 0 read) */
+    if (!(weight > 0) || eff <= 0)
     {
         Note("living world: no squads this mission (the director builds no patrol groups here, or the patrol cap is 0: vanilla has no patrols either)");
         g_lwWorld.populated = -1;
@@ -492,7 +494,7 @@ static void LwPopulate(void)
         LwSquad* q = &g_lwSquads[made++];
         memset(q, 0, sizeof *q);
         q->state = LW_OFFLINE; q->node = (uint16_t)node; q->pos[0] = x; q->pos[1] = y; q->definition = def;
-        q->survivors = (uint8_t)LwGroupSize(slot); q->speed = LW_SPEED_DEFAULT;
+        q->survivors = (uint8_t)LwGroupSize(slot); q->speed = LW_SPEED_DEFAULT * (0.75f + 0.5f * LwUnit()); /* own pace: no lockstep (audit 1, 11) */
         LwPlan(q);
     }
     g_lwWorld.count = made; g_lwWorld.eff = eff; g_lwWorld.populated = 1;
@@ -540,6 +542,16 @@ static int LwGround(float x, float y, float* z);
 /* Brings a squad online: its group's slot (found again by definition), the request at its position, heading for its
  * next node. Flags 0x02 keep | 0x04 queue | 0x08 no nav snap (route nodes are walkable; the nav snap would refuse a
  * height not within 10 m of the mesh) | 0x40 the gates above; 0x10 clear: the ground ray from z + 500 m places it. */
+#define LW_RECENT 16
+static struct { float p[LW_RECENT][2]; ULONGLONG at[LW_RECENT]; int next; } g_lwRecent;
+static void LwRecentAdd(const float* p) { int k = g_lwRecent.next++ % LW_RECENT; g_lwRecent.p[k][0] = p[0]; g_lwRecent.p[k][1] = p[1]; g_lwRecent.at[k] = GetTickCount64(); }
+static int LwRecentNear(const float* p)
+{
+    ULONGLONG now = GetTickCount64();
+    for (int k = 0; k < LW_RECENT; k++) if (g_lwRecent.at[k] && now - g_lwRecent.at[k] < 10000 && LwDist2(g_lwRecent.p[k], p[0], p[1]) < 40.0f * 40.0f) return 1;
+    return 0;
+}
+
 static void LwOnline(LwSquad* q)
 {
     uintptr_t slot = LwSlotOf(g_lwWorld.dir, q->definition);
@@ -555,14 +567,15 @@ static void LwOnline(LwSquad* q)
     float pos[3] = {q->pos[0], q->pos[1], 0}, target[3] = {q->pos[0], q->pos[1], 0};
     if (q->pathAt < q->pathLen) { target[0] = g_lwNodes[q->path[q->pathAt]].x; target[1] = g_lwNodes[q->path[q->pathAt]].y; }
     if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { g_lwWorld.refused++; return; }
-    uintptr_t rec = g_lw.spawn(g_lwWorld.dir, slot, pos, LW_JOB_PATROL, 0x4Eu, target, NULL, NULL, 0.0f, cap);
+    uintptr_t rec = g_lw.spawn(g_lwWorld.dir, slot, pos, LW_JOB_PATROL, LW_PATROL_FLAGS, target, NULL, NULL, 0.0f, cap);
     if (rec == 0) { g_lwWorld.refused++; return; }
     uint8_t used = 0;
     if (SafeRead(rec + 0x12, &used, 1) || used != 1) { g_lwWorld.refused++; return; } /* the queue was full: nothing queued */
     Note("living world: squad %d requested at (%.0f, %.0f, %.1f), %.0f m from the nearest player, %u of %u members (group 0x%llx)", (int)(q - g_lwSquads),
         (double)pos[0], (double)pos[1], (double)pos[2], (double)sqrtf(LwNearestPlayer2(pos[0], pos[1])), cap, size, (unsigned long long)q->definition);
     q->state = LW_PENDING; q->rec = rec; q->cap = (uint8_t)cap; q->since = GetTickCount64(); q->jobSet = 0; q->farSince = 0; q->seenCount = 0; q->lost = 0; q->squad = 0;
-    g_lwWorld.onlineUnits += (int)cap;
+    g_lwWorld.onlineUnits += (int)cap; q->alive = (uint8_t)cap;
+    LwRecentAdd(pos);
     g_lwWorld.spawned++;
 }
 
@@ -613,7 +626,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     if (n < 0) /* the squad entity is gone: it empties itself when its last member leaves */
     {
         Note("living world: squad %d (%08X) is gone: all %u members lost", (int)(q - g_lwSquads), q->squad, q->cap);
-        q->state = LW_FREE; g_lwWorld.died++; g_lwWorld.onlineUnits -= q->cap;
+        q->state = LW_FREE; g_lwWorld.died++; g_lwWorld.onlineUnits -= q->alive;
         return;
     }
     for (int i = 0; i < q->seenCount; i++) /* a member that left the list is lost (killed or destroyed) */
@@ -631,6 +644,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     }
     q->survivors = (uint8_t)(q->cap > q->lost ? q->cap - q->lost : 0);
     if (n == 0) return; /* members still queued */
+    q->alive = (uint8_t)n;
     if (q->cycled == 2 && q->since && GetTickCount64() - q->since > 10000)
     { q->cycled = 3; Note("living world: test: squad %d back online with %d members (requested %u, %u lost since)", (int)(q - g_lwSquads), n, q->cap, q->lost); }
     /* test instrument (HELLFORGE_LW_TEST_LOSS=1): one member of each of the first three squads with two or more is taken
@@ -685,7 +699,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         (double)at[0], (double)at[1], (double)sqrtf(LwNearestPlayer2(at[0], at[1])), q->survivors, q->cap);
     LwRemoveSquad(q->squad);
     (*removals)++;
-    q->state = LW_OFFLINE; q->squad = 0; g_lwWorld.onlineUnits -= q->cap; g_lwWorld.offlined++;
+    q->state = LW_OFFLINE; q->squad = 0; g_lwWorld.onlineUnits -= q->alive; g_lwWorld.offlined++;
     int node = LwNearestNode(at[0], at[1]);
     if (node >= 0 && q->pathAt >= q->pathLen) { q->node = (uint16_t)node; LwPlan(q); }
     if (q->survivors == 0) q->state = LW_FREE;
@@ -699,7 +713,13 @@ static void LwPendingTick(LwSquad* q)
     if (used == 1 && id != none && id != 0)
     {
         Note("living world: squad %d is online as %08X after %.1f s", (int)(q - g_lwSquads), id, (double)(GetTickCount64() - q->since) / 1000.0);
-        q->squad = id; q->state = LW_ONLINE; q->rec = 0; return;
+        q->squad = id; q->state = LW_ONLINE; q->rec = 0; q->moved = 0;
+        /* keep at once (audit 1, criterion 6): the dispatch wrote rec+8 inside the director (0x954F4C), and the members
+         * that exist by now must not meet the next despawner pass (0x572C69) with keep 0 */
+        uint32_t members[32];
+        int n = LwMembers(id, members);
+        for (int k = 0; k < n; k++) LwKeep(members[k]);
+        return;
     }
     if (used == 0) { q->state = LW_OFFLINE; g_lwWorld.onlineUnits -= q->cap; return; } /* dropped: its group was rebuilt away */
     if (GetTickCount64() - q->since > 60000 && q->since != 0)
@@ -746,8 +766,11 @@ static void LwSquadsTick(void)
     if (dt > 1.0f) dt = 1.0f;
     g_lwWorld.last = now;
     if (now - g_lwWorld.effAt > 5000) { int eff = LwEffectiveCap(dir); if (eff > 0) g_lwWorld.eff = eff; g_lwWorld.effAt = now; }
-    int requested = 0, removals = 0, online = 0, waiting = 0;
+    int requested = 0, removals = 0, online = 0, waiting = 0, units = 0;
     float r = g_lwWorld.radius;
+    for (int i = 0; i < g_lwWorld.count; i++) /* the budget: living members of online squads, the request of pending ones */
+        units += g_lwSquads[i].state == LW_PENDING ? g_lwSquads[i].cap : g_lwSquads[i].state == LW_ONLINE ? g_lwSquads[i].alive : 0;
+    g_lwWorld.onlineUnits = units;
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
@@ -758,6 +781,7 @@ static void LwSquadsTick(void)
             float near2 = LwNearestPlayer2(q->pos[0], q->pos[1]);
             int back = q->cycled == 1 && near2 >= LW_R_MIN * LW_R_MIN; /* test cycle: back at once (the budget still applies) */
             if (waiting && !back) continue; /* test cycle: a squad waiting to come back is served first */
+            if (!back && LwRecentNear(q->pos)) continue; /* no two squads out of one spot within 10 s (audit 1, 11) */
             if (!requested && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && ((near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN) || back))
             {
                 LwOnline(q); requested = q->state == LW_PENDING;
