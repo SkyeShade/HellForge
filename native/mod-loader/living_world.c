@@ -1616,7 +1616,10 @@ static void LwTestLook(int seq, int which)
 #define LW_DRAWN_VIEWS 8
 static struct { uint32_t handle, unit; } g_lwDrawnT[LW_DRAWN_MAX];
 static volatile LONG g_lwDrawnN; static volatile float g_lwDrawnFov;
-static struct { uintptr_t view; volatile LONG64 calls; volatile LONG main; LONG64 hit[LW_DRAWN_MAX]; } g_lwDrawnV[LW_DRAWN_VIEWS];
+static struct { uintptr_t view; volatile LONG64 calls; volatile LONG main; LONG64 hit[LW_DRAWN_MAX];
+                /* diagnostics: where the last call stopped (0 = it walked the list), the list's count, its meshes,
+                 * and the first meshes' handles */
+                volatile LONG stage, cnt, meshes; uint32_t sample[4]; } g_lwDrawnV[LW_DRAWN_VIEWS];
 /* 0x1E2F40 takes nine arguments (the call 0x1EDA23..0x1EDA69 stores five at [rsp+0x20..0x40]) and also writes the
  * tenth slot as scratch ([rbp+0x298] = the caller's [rsp+0x48], 0x1E32C4 before its reads): the detour forwards all nine
  * and passes a tenth so its own frame reserves that slot (lw64a: four forwarded crashed it at 0x1E3BE5). */
@@ -1645,15 +1648,19 @@ static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, u
         for (int i = 0; i < 64 && !m; i++) m = fabsf(block[i] - fov) < 1e-4f || fabsf(block[i] - t) < 1e-4f;
         g_lwDrawnV[v].main = m;
     }
-    if (n <= 0 || n > LW_DRAWN_MAX) return;
-    if (SafeRead(ctx + 0x14, &sets, 4) || sets < 5 || SafeRead(ctx + 0x18, &arr, 8) || !arr || SafeRead(arr + 0x20, &set, 8) || !set ||
-        SafeRead(ctx + 0x60, &done, 8) || !done || SafeRead(done + 16, &fin, 4) || fin != 1 ||
-        SafeRead(set + 0x68, &cs, 8) || !cs || SafeRead(set + 0x70, &cnt, 4) || SafeRead(set + 0x38, &idx, 8) ||
+    if (n <= 0 || n > LW_DRAWN_MAX) { g_lwDrawnV[v].stage = 1; return; }
+    g_lwDrawnV[v].stage = 2;
+    if (SafeRead(ctx + 0x14, &sets, 4) || sets < 5 || SafeRead(ctx + 0x18, &arr, 8) || !arr || SafeRead(arr + 0x20, &set, 8) || !set) return;
+    g_lwDrawnV[v].stage = 3;
+    if (SafeRead(ctx + 0x60, &done, 8) || !done || SafeRead(done + 16, &fin, 4) || fin != 1) return;
+    g_lwDrawnV[v].stage = 4;
+    if (SafeRead(set + 0x68, &cs, 8) || !cs || SafeRead(set + 0x70, &cnt, 4) || SafeRead(set + 0x38, &idx, 8) ||
         SafeRead(cs + 0x128, &K, 8) || SafeRead(cs + 0x130, &S, 8)) return;
+    g_lwDrawnV[v].stage = 5;
     uint64_t lim = ~0ull, lc = ~0ull, ls = ~0ull; /* a safety net: nothing read past a committed region */
     if (!LwRegionLimit(K, &lim) || !LwRegionLimit(S, &lim) || !LwRegionLimit(idx, &lc) || !LwRegionLimit(objs, &ls)) return;
     if (cnt > lc) cnt = (uint32_t)lc;
-    const uint32_t* list = (const uint32_t*)idx;
+    const uint32_t* list = (const uint32_t*)idx; int meshes = 0;
     for (uint32_t j = 0; j < cnt; j++)
     {
         uint32_t ci = list[j];
@@ -1663,8 +1670,11 @@ static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, u
         uintptr_t obj = ((const uintptr_t*)objs)[slot];
         if (obj < 0x10000) continue;
         uint32_t h = *(const uint32_t*)(obj + 0x44);
+        if (meshes < 4) g_lwDrawnV[v].sample[meshes] = h;
+        meshes++;
         for (int t = 0; t < n; t++) if (g_lwDrawnT[t].handle == h) g_lwDrawnV[v].hit[t] = call;
     }
+    g_lwDrawnV[v].stage = 0; g_lwDrawnV[v].cnt = (LONG)cnt; g_lwDrawnV[v].meshes = meshes;
 }
 /* A unit's scene graph (object+0x48 or +0x60 by its class, as EvpUnitPosition reads it), its render handle at +4. */
 static uint32_t LwUnitRenderHandle(uint32_t unit)
@@ -1728,6 +1738,16 @@ static void LwDrawnTick(void)
     char views[256]; int w = 0;
     for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view; v++)
         w += snprintf(views + w, sizeof views - (size_t)w, "%sview %d %.0f/s%s", v ? ", " : "", v, rate[v], g_lwDrawnV[v].main ? " (main: carries the camera FOV)" : "");
+    {   /* diagnostics: each view's last walk (stage 0 = walked: its visible count, meshes, first mesh handles) and the
+         * first targets' handles */
+        char dg[640]; int dw = 0;
+        for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view && dw < 560; v++)
+            dw += snprintf(dg + dw, sizeof dg - (size_t)dw, "%sview %d stage %ld, %ld visible, %ld meshes, %06X %06X %06X %06X", v ? "; " : "", v, (long)g_lwDrawnV[v].stage,
+                (long)g_lwDrawnV[v].cnt, (long)g_lwDrawnV[v].meshes, g_lwDrawnV[v].sample[0], g_lwDrawnV[v].sample[1], g_lwDrawnV[v].sample[2], g_lwDrawnV[v].sample[3]);
+        char tg[128]; int tw = 0;
+        for (int t = 0; t < (int)g_lwDrawnN && t < 6; t++) tw += snprintf(tg + tw, sizeof tg - (size_t)tw, "%s%06X", t ? " " : "", g_lwDrawnT[t].handle);
+        Note("living world: drawn: diagnostics: %s; targets %d, first handles %s", dw ? dg : "no views", (int)g_lwDrawnN, tw ? tg : "none");
+    }
     Note("living world: drawn: views %s; vertical FOV %.1f deg%s", w ? views : "none yet", (double)(g_lwDrawnFov * 57.29578f),
         g_lwZoomK > 1.0f && GetTickCount64() < g_lwZoomUntil ? ", zoomed 4x by the test" : "");
     for (int i = 0; i < g_lwWorld.count; i++)
