@@ -372,7 +372,7 @@ typedef struct LwSquad
     uint8_t seenCount, lost, cycled, alive; /* alive: members listed online (the budget counts living units, as 0x9513A1) */
     ULONGLONG since, moved, farSince;
     float movedFrom[2], reqZ, seenAt[32][3]; /* seenAt: each listed member's last position (for the loss note) */
-    uint8_t arrived;
+    uint8_t arrived, viewed; /* viewed: the test trace noted it in a player's view once */
     ULONGLONG retry; /* no request before this (placement or sight refused) */
 } LwSquad;
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
@@ -590,7 +590,7 @@ static void LwOnline(LwSquad* q)
     Note("living world: squad %d requested at (%.0f, %.0f, %.1f) (snapped %.1f m), %.0f m from the nearest player, out of sight, %u of %u members (group 0x%llx)",
         (int)(q - g_lwSquads), (double)pos[0], (double)pos[1], (double)pos[2], (double)sqrtf(LwDist2(wanted, pos[0], pos[1])),
         (double)sqrtf(LwNearestPlayer2(pos[0], pos[1])), cap, size, (unsigned long long)q->definition);
-    q->reqZ = pos[2]; q->arrived = 0;
+    q->reqZ = pos[2]; q->arrived = 0; q->viewed = 0;
     q->state = LW_PENDING; q->rec = rec; q->cap = (uint8_t)cap; q->since = GetTickCount64(); q->jobSet = 0; q->farSince = 0; q->seenCount = 0; q->lost = 0; q->squad = 0;
     g_lwWorld.onlineUnits += (int)cap; q->alive = (uint8_t)cap;
     LwRecentAdd(pos);
@@ -849,6 +849,23 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         q->moved = now; q->movedFrom[0] = at[0]; q->movedFrom[1] = at[1];
     }
     q->pos[0] = at[0]; q->pos[1] = at[1];
+    /* test instrument (HELLFORGE_LW_TEST_TRACE=1): once per squad, when its leader is within 120 m of a player and that
+     * player's eye sees its chest (the sight ray), a note for a screenshot aimed at it */
+    static int testView = -1;
+    if (testView < 0) { char t[4] = ""; testView = GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1'; }
+    if (testView && !q->viewed && (now / 500) % 4 == (ULONGLONG)(q - g_lwSquads) % 4)
+        for (int i = 0; i < g_lwWorld.playersAt && !q->viewed; i++)
+        {
+            float lead[3]; ActHealth h;
+            if (LwDist2(g_lwWorld.players[i], at[0], at[1]) > 120.0f * 120.0f || !ActHealthOf(g_lw.game, members[0], &h) || !h.unit || !EvpUnitPosition(h.unit, lead)) continue;
+            float chest[3] = {lead[0], lead[1], lead[2] + 1.0f};
+            if (LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], chest) == 1)
+            {
+                q->viewed = 1;
+                Note("living world: test: squad %d in view at (%.0f, %.0f, %.1f), %.0f m from player %d, %d members, %u lost", (int)(q - g_lwSquads), (double)lead[0],
+                    (double)lead[1], (double)lead[2], (double)sqrtf(LwDist2(g_lwWorld.players[i], lead[0], lead[1])), i + 1, n, q->lost);
+            }
+        }
     if (q->pathAt < q->pathLen && LwDist2(at, g_lwNodes[q->path[q->pathAt]].x, g_lwNodes[q->path[q->pathAt]].y) < LW_ARRIVE * LW_ARRIVE)
     {
         q->node = q->path[q->pathAt++];
