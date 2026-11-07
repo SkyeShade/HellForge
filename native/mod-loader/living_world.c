@@ -381,10 +381,11 @@ static struct
     uintptr_t dir, lg; uint32_t seed;
     int count, populated, online, onlineUnits, eff, playersAt;
     float players[EVT_MAX_PLAYERS][3], radius; /* feet position (x, y, z) */
+    uint32_t units[EVT_MAX_PLAYERS], knownUnit[EVT_MAX_PLAYERS]; /* each player's Helldiver unit (the sight ray leaves it out) */
     float known[EVT_MAX_PLAYERS][3]; ULONGLONG knownAt[EVT_MAX_PLAYERS]; uint64_t knownPeer[EVT_MAX_PLAYERS];
     ULONGLONG last, effAt, noteAt;
     uint32_t spawned, offlined, died, refused;
-    uint32_t noFace, moved, overhead, seen, rays, rayDynamic; double rayUs; /* placement and sight refusals, rays cast (30 s) */
+    uint32_t noFace, moved, overhead, seen, rays, blockUnit, blockTerrain; double rayUs; /* placement and sight refusals, rays cast (30 s) */
 } g_lwWorld;
 
 static uint32_t LwAiCount(void) { uintptr_t c; return EvpPtr(g_lw.game + 0x3326D18u, &c) ? EvpU32(c + 0x1C, 0) : 0; }
@@ -413,11 +414,11 @@ static void LwPlayers(void)
         if (list[i].avatar && ActHealthOf(g_lw.game, list[i].avatar, &h) && h.unit && EvpUnitPosition(h.unit, at))
         {
             if (slot < 0) for (int j = 0; j < EVT_MAX_PLAYERS && slot < 0; j++) if (!g_lwWorld.knownAt[j] || now - g_lwWorld.knownAt[j] > LW_KNOWN_MS) slot = j;
-            if (slot >= 0) { g_lwWorld.known[slot][0] = at[0]; g_lwWorld.known[slot][1] = at[1]; g_lwWorld.known[slot][2] = at[2]; g_lwWorld.knownAt[slot] = now; g_lwWorld.knownPeer[slot] = list[i].peer; }
+            if (slot >= 0) { g_lwWorld.known[slot][0] = at[0]; g_lwWorld.known[slot][1] = at[1]; g_lwWorld.known[slot][2] = at[2]; g_lwWorld.knownUnit[slot] = h.unit; g_lwWorld.knownAt[slot] = now; g_lwWorld.knownPeer[slot] = list[i].peer; }
         }
     }
     for (int j = 0; j < EVT_MAX_PLAYERS; j++)
-        if (g_lwWorld.knownAt[j] && now - g_lwWorld.knownAt[j] <= LW_KNOWN_MS) { memcpy(g_lwWorld.players[k], g_lwWorld.known[j], sizeof g_lwWorld.players[k]); k++; }
+        if (g_lwWorld.knownAt[j] && now - g_lwWorld.knownAt[j] <= LW_KNOWN_MS) { memcpy(g_lwWorld.players[k], g_lwWorld.known[j], sizeof g_lwWorld.players[k]); g_lwWorld.units[k] = g_lwWorld.knownUnit[j]; k++; }
     g_lwWorld.playersAt = k;
 }
 
@@ -643,32 +644,57 @@ static int LwPlace(uintptr_t slot, float* pos)
     return 1;
 }
 
-/* Sight (audit 1, criterion 5; checked in the dump: the ground ray's own call 0x13CA402..0x13CA47E). The game's ray
- * [[game+0x3326328]+0x68] = exe 0x77DEC0(u32 handle [[world+8]+0xA4], world [game+0x346D508], float from[3], float
- * dir[3] (unit), float length, 0, hit (0x2C bytes), u32 max) returns the hits; hit+0x18 the distance, hit+0x1C 0 for
- * the static world (the ground ray's reject mode keeps only those). A point is seen by a player when a ray from their
- * eye (feet + 1.7 m, started 0.75 m out so their own body never counts) reaches it with no static hit before it
- * (0.5 m short). Players beyond LW_SIGHT are not checked (D). Every ray is timed. 1 when no player sees it, 0 when one
- * does, -1 when the ray is unavailable. */
-static int LwSeenFrom(const float* feet, const float* point)
+/* Sight (audit 1, criterion 5; KB living-world-plan "After audit 1", subagent rayhit; checked by me: make_raycast exe
+ * 0x77DE60, its release 0x77E030, the game's own handles 0x175BE60..). The game's ray [[game+0x3326328]+0x68] = exe
+ * 0x77DEC0(u32 handle, from[3], unit dir[3], length, u32 unit to leave out (the query filter 0x7F1660 rejects every
+ * body whose userData high dword is that unit), hit (0x2C bytes: +0x18 metres along the ray, +0x1C the owning unit, 0
+ * for terrain), u32 max) -> hits. The loader makes its own handle per physics world, as 0x175BE60 makes the AI's
+ * damage_los_query (hash 0x2315515D, mode 1, flags 0x80000009), but with types 3 = static bodies only (filter 0x7F17C4:
+ * characters, ragdolls, debris and vehicles are not seen): make_raycast [+0x58](world index [+0]([T]) (exe 0x79F860, 4 =
+ * none), 1, 3, 0x2315515D, 0x80000009), T = [[game+0x346D508]+8]; released with [+0x60] when the world changes (it only
+ * returns the entry to the free list). A point is seen when the ray from the player's eye (feet + 1.7 m), leaving out
+ * that player's unit, meets nothing static 0.5 m short of it. Players beyond LW_SIGHT are not checked (D). Every ray is
+ * timed. 1 seen, 0 hidden, -1 no ray. */
+static uint32_t LwSightRay(uintptr_t* table)
 {
-    typedef uint32_t (*RayFn)(uint32_t handle, const float* from, const float* dir, float length, uint32_t zero, void* hit, uint32_t max);
-    uintptr_t table = 0, fn = 0, world = 0, query = 0;
-    if (!EvpPtr(g_lw.game + 0x3326328u, &table) || !EvpPtr(table + 0x68, &fn) || fn == 0 || !EvpPtr(g_lw.game + 0x346D508u, &world) ||
-        !EvpPtr(world + 8, &query) || query == 0) return -1;
+    typedef int (*WorldFn)(uintptr_t physics);
+    typedef uint32_t (*MakeFn)(int world, uint32_t mode, uint32_t types, uint32_t hash, uint32_t flags);
+    typedef void (*FreeFn)(uint32_t handle);
+    static uint32_t handle; static uintptr_t world;
+    uintptr_t fnWorld = 0, fnMake = 0, fnFree = 0, wrapper = 0, t = 0, physics = 0;
+    if (!EvpPtr(g_lw.game + 0x3326328u, table) || *table == 0 || !EvpPtr(*table, &fnWorld) || !EvpPtr(*table + 0x58, &fnMake) ||
+        !EvpPtr(*table + 0x60, &fnFree) || !fnWorld || !fnMake || !fnFree || !EvpPtr(g_lw.game + 0x346D508u, &wrapper) || !EvpPtr(wrapper + 8, &t) ||
+        !EvpPtr(t, &physics) || physics == 0) return 0;
+    if (physics == world && handle) return handle;
+    if (handle) { ((FreeFn)fnFree)(handle); handle = 0; }
+    world = physics;
+    uint64_t free = 0; /* make_raycast pops its free list unchecked (0x77DE67) */
+    if (SafeRead((uintptr_t)GetModuleHandleW(NULL) + 0x27B9438u, &free, 8) || free == 0) return 0;
+    int index = ((WorldFn)fnWorld)(physics);
+    if (index < 0 || index >= 4) return 0;
+    handle = ((MakeFn)fnMake)(index, 1, 3, 0x2315515Du, 0x80000009u);
+    Note("living world: sight: a static-only line-of-sight ray for physics world %d (handle %08X)", index, handle);
+    return handle;
+}
+static int LwSeenFrom(const float* feet, uint32_t unit, const float* point)
+{
+    typedef uint32_t (*RayFn)(uint32_t handle, const float* from, const float* dir, float length, uint32_t leaveOut, void* hit, uint32_t max);
+    uintptr_t table = 0, fn = 0;
+    uint32_t handle = LwSightRay(&table);
+    if (handle == 0 || !EvpPtr(table + 0x68, &fn) || fn == 0) return -1;
     float eye[3] = {feet[0], feet[1], feet[2] + 1.7f}, d[3] = {point[0] - eye[0], point[1] - eye[1], point[2] - eye[2]};
     float len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
     if (len < 1.0f) return 1;
-    for (int k = 0; k < 3; k++) { d[k] /= len; eye[k] += 0.75f * d[k]; }
-    len -= 0.75f;
+    for (int k = 0; k < 3; k++) d[k] /= len;
     uint8_t hit[0x40] = {0};
     LARGE_INTEGER a, b, f; QueryPerformanceCounter(&a);
-    uint32_t n = ((RayFn)fn)(EvpU32(query + 0xA4, 0), eye, d, len, 0, hit, 1);
+    uint32_t n = ((RayFn)fn)(handle, eye, d, len, unit, hit, 1);
     QueryPerformanceCounter(&b); QueryPerformanceFrequency(&f);
     g_lwWorld.rays++; g_lwWorld.rayUs += (double)(b.QuadPart - a.QuadPart) * 1e6 / (double)f.QuadPart;
-    float dist; uint32_t body; memcpy(&dist, hit + 0x18, 4); memcpy(&body, hit + 0x1C, 4);
-    if (n >= 1 && body != 0) g_lwWorld.rayDynamic++;
-    return !(n >= 1 && body == 0 && dist < len - 0.5f);
+    float dist; uint32_t owner; memcpy(&dist, hit + 0x18, 4); memcpy(&owner, hit + 0x1C, 4);
+    int blocked = n >= 1 && dist < len - 0.5f;
+    if (blocked) { if (owner) g_lwWorld.blockUnit++; else g_lwWorld.blockTerrain++; }
+    return !blocked;
 }
 /* Out of sight: from every player within LW_SIGHT, both a unit's chest (1.0 m) and head-over height (2.5 m) blocked. */
 static int LwHidden(const float* p)
@@ -679,7 +705,7 @@ static int LwHidden(const float* p)
         for (int h = 0; h < 2; h++)
         {
             float t[3] = {p[0], p[1], p[2] + (h ? 2.5f : 1.0f)};
-            int seen = LwSeenFrom(g_lwWorld.players[i], t);
+            int seen = LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], t);
             if (seen != 0) { g_lwWorld.seen++; return 0; } /* seen, or no ray to tell: refused */
         }
     }
@@ -701,17 +727,29 @@ static void LwSendGoal(LwSquad* q)
  * removals are flushed before the late tick, so here a removed member has no entity and a killed one keeps its record
  * with life >= 2 (0x927050); a member that left alive has AiSquadMember ([game+0x33264C8], hash +0x18, {squad, link}
  * at [+0x38] + 8 idx) cleared. Read in the first tick after the loss (entity ids are reused). */
-static const char* LwLostWhy(uint32_t unit, uint32_t* squad)
+/* For a kill, who (subagent killer; checked by me at 0x923BFE..0x923C34): the damage apply 0x9235F0 writes, on every
+ * hit, health record +0x30 = the attacker entity (net8 -> 0xFD9BA0) and +0x38 = the creditor (a session peer id, kept
+ * from the hit before when 0; 0 = no player). The attacker is a Helldiver when it is in the avatar hash ([game+0x3326D20]
+ * +0xF8, as 0x925524). */
+static const char* LwLostWhy(uint32_t unit, uint32_t* squad, char* by, size_t size)
 {
-    ActHealth h; uintptr_t m, links; uint32_t index;
-    *squad = 0;
+    ActHealth h; uintptr_t m, links, av; uint32_t index;
+    *squad = 0; by[0] = 0;
     if (!EvpAlive(unit)) return "removed (no entity)";
-    if (ActHealthOf(g_lw.game, unit, &h) && h.life >= 2) return "killed";
+    if (ActHealthOf(g_lw.game, unit, &h) && h.life >= 2)
+    {
+        uint32_t attacker = EvpU32(h.record + 0x30, 0), slot; uint64_t creditor = 0;
+        SafeRead(h.record + 0x38, &creditor, 8);
+        int helldiver = attacker && EvpPtr(g_lw.game + 0x3326D20u, &av) && EvpHash(av + 0xF8, attacker, 8, 4, &slot);
+        snprintf(by, size, " by %s %08X%s", helldiver ? "a Helldiver" : attacker == unit ? "itself" : attacker == 0 || attacker == 0x7FFF ? "nothing named" : "entity",
+            attacker, creditor ? ", credited to a player" : ", no player credited");
+        return "killed";
+    }
     if (EvpPtr(g_lw.game + 0x33264C8u, &m) && EvpHash(m + 0x18, unit, 8, 4, &index) && EvpPtr(m + 0x38, &links)) *squad = EvpU32(links + 8u * index, 0);
     return "left its squad alive";
 }
 
-static int LwSeenFrom(const float* feet, const float* point);
+static int LwSeenFrom(const float* feet, uint32_t unit, const float* point);
 
 static void LwOnlineTick(LwSquad* q, int* removals)
 {
@@ -729,11 +767,11 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         for (int k = 0; k < n && !still; k++) still = members[k] == q->seen[i];
         if (!still)
         {
-            uint32_t other = 0; float ground = NAN, *at = q->seenAt[i];
-            const char* why = LwLostWhy(q->seen[i], &other);
+            uint32_t other = 0; float ground = NAN, *at = q->seenAt[i]; char by[96];
+            const char* why = LwLostWhy(q->seen[i], &other, by, sizeof by);
             LwGround(at[0], at[1], &ground);
-            Note("living world: squad %d lost member %08X: %s (squad now %08X); last seen at (%.0f, %.0f, %.1f), ground there %.1f, %.0f m from the nearest player",
-                (int)(q - g_lwSquads), q->seen[i], why, other, (double)at[0], (double)at[1], (double)at[2], (double)ground,
+            Note("living world: squad %d lost member %08X: %s%s (squad now %08X); last seen at (%.0f, %.0f, %.1f), ground there %.1f, %.0f m from the nearest player",
+                (int)(q - g_lwSquads), q->seen[i], why, by, other, (double)at[0], (double)at[1], (double)at[2], (double)ground,
                 (double)sqrtf(LwNearestPlayer2(at[0], at[1])));
             --q->seenCount; q->seen[i] = q->seen[q->seenCount]; memcpy(q->seenAt[i], q->seenAt[q->seenCount], sizeof q->seenAt[i]); i--; q->lost++;
         }
@@ -757,7 +795,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
             read++; if (p[2] < lo) lo = p[2]; if (p[2] > hi) hi = p[2];
             float chest[3] = {p[0], p[1], p[2] + 1.0f};
             for (int i = 0; i < g_lwWorld.playersAt; i++)
-                if (LwDist2(g_lwWorld.players[i], p[0], p[1]) <= LW_SIGHT * LW_SIGHT && LwSeenFrom(g_lwWorld.players[i], chest) == 0) { seen++; break; }
+                if (LwDist2(g_lwWorld.players[i], p[0], p[1]) <= LW_SIGHT * LW_SIGHT && LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], chest) == 1) { seen++; break; }
         }
         if (read > 0)
         {
@@ -927,9 +965,9 @@ static void LwSquadsTick(void)
         g_lwWalls.requests = g_lwWalls.empty = 0;
         if (g_lwWorld.rays || g_lwWorld.noFace || g_lwWorld.moved || g_lwWorld.overhead)
             Note("living world: placement (30 s): refused %u with no navmesh face within 10 m, %u snapped more than 2 m, %u under something, %u in a player's sight; "
-                "%u sight rays, %.1f us each, %u stopped first by a moving body", g_lwWorld.noFace, g_lwWorld.moved, g_lwWorld.overhead, g_lwWorld.seen,
-                g_lwWorld.rays, g_lwWorld.rays ? g_lwWorld.rayUs / g_lwWorld.rays : 0.0, g_lwWorld.rayDynamic);
-        g_lwWorld.noFace = g_lwWorld.moved = g_lwWorld.overhead = g_lwWorld.seen = g_lwWorld.rays = g_lwWorld.rayDynamic = 0; g_lwWorld.rayUs = 0;
+                "%u sight rays, %.1f us each; blocked by terrain %u, by static scenery %u", g_lwWorld.noFace, g_lwWorld.moved, g_lwWorld.overhead, g_lwWorld.seen,
+                g_lwWorld.rays, g_lwWorld.rays ? g_lwWorld.rayUs / g_lwWorld.rays : 0.0, g_lwWorld.blockTerrain, g_lwWorld.blockUnit);
+        g_lwWorld.noFace = g_lwWorld.moved = g_lwWorld.overhead = g_lwWorld.seen = g_lwWorld.rays = g_lwWorld.blockUnit = g_lwWorld.blockTerrain = 0; g_lwWorld.rayUs = 0;
         Note("living world: %d squads, %d online (%d units of %d), %u spawned, %u taken offline, %u destroyed, %u request frames refused; job-1 units %u, AI %u; "
             "player 1 at (%.0f, %.0f)", g_lwWorld.count, online, g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.spawned, g_lwWorld.offlined, g_lwWorld.died,
             g_lwWorld.refused, EvpU32(dir + 0x614, 0), LwAiCount(), (double)(g_lwWorld.playersAt ? g_lwWorld.players[0][0] : 0),
