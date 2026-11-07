@@ -744,8 +744,12 @@ static const char* LwLostWhy(uint32_t unit, uint32_t* squad, char* by, size_t si
         int helldiver = attacker && EvpPtr(g_lw.game + 0x3326D20u, &av) && EvpHash(av + 0xF8, attacker, 8, 4, &slot);
         uint32_t net = 0, point = 0;
         int enemy = !helldiver && attacker && attacker != unit && LwGarrisonUnitsAt(attacker, &net, &point) == 1;
-        char what[48];
-        if (enemy && net) snprintf(what, sizeof what, "an enemy of garrison net %08X", net); else snprintf(what, sizeof what, "%s", enemy ? "an enemy" : "entity");
+        char what[64]; int of = -1;
+        for (int k = 0; k < g_lwWorld.count && of < 0; k++)
+            for (int m = 0; m < g_lwSquads[k].seenCount && of < 0; m++) if (g_lwSquads[k].seen[m] == attacker) of = k;
+        if (of >= 0) snprintf(what, sizeof what, "a member of squad %d", of);
+        else if (enemy && net && net != 0x7FFF) snprintf(what, sizeof what, "an enemy of garrison net %08X", net);
+        else snprintf(what, sizeof what, "%s", enemy ? "an enemy in no garrison" : "entity");
         snprintf(by, size, " by %s %08X%s", helldiver ? "a Helldiver" : attacker == unit ? "itself" : attacker == 0 || attacker == 0x7FFF ? "nothing named" : what,
             attacker, creditor ? ", credited to a player" : ", no player credited");
         return "killed";
