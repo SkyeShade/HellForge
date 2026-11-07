@@ -251,6 +251,20 @@ static class ModWarbondsTests
         }.Resolve();
         check(allHeld.Count == 2 && allHeld.All(w => w.Sells.Count == 0 && w.Claimed.Count == 2 && w.TotalCost == 0),
             "A warbond whose items the player all has was not shown with them claimed.");
+        // With an unlock price and nothing left to sell, its token is served held (unlocked) and never sold.
+        var priced = ModWarbonds.Parse("test", "Test", JsonDocument.Parse($$"""
+            {"format":1,"warbonds":[{"key":"paid","name":"Paid","unlock":{"currency":"forge-credits","cost":500},"pages":[{"items":[{"mixId":{{mobilize[0]}},"cost":5}]}]},
+              {"key":"open","name":"Open","unlock":{"currency":"forge-credits","cost":500},"pages":[{"items":[{"mixId":{{mobilize[2]}},"cost":5}]}]}]}
+            """).RootElement, []);
+        var pricedService = new ModWarbondService(priced)
+        {
+            Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = _ => { }, Holds = () => new HashSet<uint> { mobilize[0] },
+        };
+        var pricedHeld = pricedService.Apply("/Progression/inventory", JsonSerializer.SerializeToElement(new { items = Array.Empty<object>() }))
+            .GetProperty("items").EnumerateArray().Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet();
+        check(pricedHeld.Contains(priced[0].Token) && !pricedHeld.Contains(priced[1].Token) && pricedService.UnlockPrice(priced[0].Token) == 0 &&
+            pricedService.UnlockPrice(priced[1].Token) == 500,
+            "A priced warbond with nothing left to sell was not served unlocked, or one with items to sell was.");
         // Unlock-all has everything bought, so its warbonds keep every item though the profile holds them all.
         var allOwned = new ModWarbondService(two)
         {

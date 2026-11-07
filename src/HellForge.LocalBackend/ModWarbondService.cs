@@ -298,11 +298,14 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     // The inventory entries the game keeps this session (more once the mod loader has moved its arrays).
     int InventoryKept => Registered?.InventoryKept ?? RegisteredItems.InventoryCap;
 
-    // The tokens of open warbonds (a premium look, no price) are everyone's; on unlock-all every token is.
+    // The tokens of open warbonds (a premium look, no price) are everyone's; on unlock-all every token is. So is the token of
+    // a warbond with nothing left to sell (every item shown claimed): its price would buy nothing. A token held owns its
+    // warbond (0x136E470), so the button reads unlocked; never saved.
     bool HoldTokens(JsonArray held, IReadOnlyList<Served> served)
     {
         var have = held.OfType<JsonObject>().Select(i => (uint?)i["mixId"]).ToHashSet();
-        foreach (var warbond in served.Select(w => w.Spec).Where(w => w.HasToken && (w.UnlockCost == 0 || UnlockAll) && !have.Contains(w.Token)))
+        foreach (var warbond in served.Where(w => w.Spec.HasToken && (w.Spec.UnlockCost == 0 || UnlockAll || w.Sells.Count == 0)).Select(w => w.Spec)
+            .Where(w => !have.Contains(w.Token)))
             if (held.Count < InventoryKept) held.Add((JsonNode)new JsonObject { ["mixId"] = warbond.Token, ["amount"] = 1, ["isDiscovered"] = true });
         return true;
     }
@@ -362,9 +365,11 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     public bool Owns(uint id32, Func<uint, bool> held) =>
         warbonds.FirstOrDefault(w => w.Id32 == id32) is { } warbond && (warbond.UnlockCost == 0 || UnlockAll || held(warbond.Token));
 
-    // A mod warbond's token sold for its price (in Forge Credits), or null for any other item.
+    // A mod warbond's token sold for its price (in Forge Credits), or null for any other item. One with nothing left to sell
+    // is never sold (HoldTokens serves it held): 0, which Purchases refuses.
     public long? UnlockPrice(uint mixId) =>
-        mixId == 0 ? null : Resolve().Select(w => w.Spec).FirstOrDefault(w => w.HasToken && w.UnlockCost > 0 && w.Token == mixId)?.UnlockCost;
+        mixId == 0 ? null : Resolve().FirstOrDefault(w => w.Spec.HasToken && w.Spec.UnlockCost > 0 && w.Spec.Token == mixId) is { } warbond
+            ? warbond.Sells.Count == 0 ? 0 : warbond.Spec.UnlockCost : null;
 
     // Mods' weapons and stratagems a warbond sells: the player holds one only once an item selling it is bought (an
     // unlock-all profile has bought them all). An item no warbond sells is the mod's to give, as before.

@@ -181,7 +181,8 @@ afford names the item's currency ("NOT ENOUGH SUPER SAMPLES"). The line with wha
 with what is left to spend name the warbond's `currency`. All of these are in English.
 
 A warbond with an `unlock` price shows the game's warbond button with that price, as the game's premium warbonds do. Players
-buy it with Forge Credits, once, and then buy its items as on any warbond. Players with everything unlocked own it.
+buy it with Forge Credits, once, and then buy its items as on any warbond. Players with everything unlocked own it, and
+so do players who have every item it sells already: it shows unlocked, all claimed, and is not sold.
 
 Your picture is the warbond's card as it is: the game writes no name over a card, so draw in the title or logo you want.
 The name shows beside the card. The PNG may use any colour type; its transparency is dropped.

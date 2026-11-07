@@ -135,7 +135,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     JsonNode? StoreItem(uint mixId, long count)
     {
         if (Paid.WarbondTokens.Contains(mixId)) return WarbondToken(mixId);
-        if (modWarbonds?.UnlockPrice(mixId) is { } unlock) return TokenForCredits(mixId, unlock);
+        if (modWarbonds?.UnlockPrice(mixId) is { } unlock) return unlock > 0 ? TokenForCredits(mixId, unlock) : null; /* 0: nothing to sell */
         if (count is < 1 or > 100 || Paid.IsPaid(mixId) || catalogue(mixId) is not { } item) return null;
         if (!item.TryGetProperty("buyPrice", out var price) || price.ValueKind != JsonValueKind.Array || price.GetArrayLength() == 0) return null;
         var cost = Costs(price, count);
