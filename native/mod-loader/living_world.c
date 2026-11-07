@@ -1307,7 +1307,9 @@ static int LwCameraForward(float* f)
 }
 static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int which)
 {
-    int visible = strcmp(mode, "visible") == 0, asFar = strcmp(mode, "far") == 0;
+    /* scan: as visible, but the farthest seen and placeable point from D down to D / 2 in 25 m steps, every 10 deg
+     * around (lw42b, lw45a, lw46a: at 350-650 m the visible rings found none on vanilla or XL) */
+    int scan = strcmp(mode, "scan") == 0, visible = scan || strcmp(mode, "visible") == 0, asFar = strcmp(mode, "far") == 0;
     float f[2] = {1, 0};
     int fromCamera = LwCameraForward(f);
     float base = atan2f(f[1], f[0]) + deg * 3.14159265f / 180.0f, *pl = g_lwWorld.players[0];
@@ -1332,9 +1334,11 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
      * disc, unseen or crowded); the others: the distance and 0.9 of it */
     static const float visibleMul[] = {1.0f, 0.92f, 0.84f, 0.76f}, otherMul[] = {1.0f, 0.9f};
     const float* mul = visible ? visibleMul : otherMul; int nMul = visible ? 4 : 2;
-    for (int k = 0; k < nOffs * nMul; k++)
+    int nScan = scan ? 1 + (int)(dist * 0.5f / 25.0f) : 0, total = scan ? nScan * 36 : nOffs * nMul;
+    for (int k = 0; k < total; k++)
     {
-        float a = base + offs[k / nMul] * 3.14159265f / 180.0f, d = dist * mul[k % nMul];
+        float turn = scan ? (float)(((k % 36) + 1) / 2 * 10 * ((k % 36) % 2 ? -1 : 1)) : offs[k / nMul];
+        float a = base + turn * 3.14159265f / 180.0f, d = scan ? dist - 25.0f * (float)(k / 36) : dist * mul[k % nMul];
         float p[2] = {pl[0] + d * cosf(a), pl[1] + d * sinf(a)};
         if (p[0] * p[0] + p[1] * p[1] > g_lwWorld.radius * g_lwWorld.radius) { outside++; continue; }
         best->pos[0] = p[0]; best->pos[1] = p[1];
@@ -1355,7 +1359,7 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
             if (asFar) best->farOn = 1;
             Note("living world: test command %d: squad %d spawn %s at (%.0f, %.0f), %.0f m %s, %+.0f deg from it (try %d), %u members (%u lost before)", seq, (int)(best - g_lwSquads), mode,
                 (double)best->pos[0], (double)best->pos[1], (double)sqrtf(LwDist2(pl, best->pos[0], best->pos[1])),
-                fromCamera ? "along the camera's view" : "east (no camera)", (double)(deg + offs[k / nMul]), k + 1, best->cap, best->lost);
+                fromCamera ? "along the camera's view" : "east (no camera)", (double)(deg + turn), k + 1, best->cap, best->lost);
             return;
         }
     }
