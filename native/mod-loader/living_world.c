@@ -1154,7 +1154,8 @@ static void LwOnlineTick(LwSquad* q, int* removals)
             if (p[2] > top + 3.0f) { g_lwWorld.overGround++; if (p[2] - top > g_lwWorld.worstOver) g_lwWorld.worstOver = p[2] - top; }
             /* a member falling under the world (lw40b: squad 4's 00000470 at z -1898, ground 38.3, removed): where it was
              * last on the ground and whether the navmesh has a face there (the game's 10 m snap, layer 0), once each */
-            if (k < 32 && top - p[2] > 10.0f && q->groundId[k] == members[k])
+            if (k < 32 && top - p[2] > 10.0f && q->groundId[k] == members[k] && q->groundAt[k][2] - p[2] > 10.0f) /* fell: 10 m lower than its last
+                * sample on the ground (lw48a: one under a 17 m overhang, its z unchanged, was noted) */
             {
                 typedef int (*SnapFn)(uint32_t nav, float* p, float radius, float* out, float* normal, uint32_t layer);
                 uintptr_t table = 0, fn = 0; float face[3] = {q->groundAt[k][0], q->groundAt[k][1], q->groundAt[k][2]}; int has = 0;
