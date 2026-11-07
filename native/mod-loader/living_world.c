@@ -2688,58 +2688,6 @@ static void LwInstallNavLeaveFix(void)
     Note("living world: a rebuilt cell's completion while the nav is stopping clears its built flag with its section (leave crash fix)");
 }
 
-/* The cut crash (lw84a, exe 0xCB1223; KB crash-cb1223-navcut-section-swap, subagent, checked by me in the dump):
- * Havok AI's ApplyCutsTask (run 0xC95AB0) applies a per-section cut list L = [ctx+0xA8] + 0x80 i that the task graph
- * filled for the cutter it recorded at L+0x18 (0xC93E84: [[ctx+0xD0]+0x20][i]), but at run time it takes the cutter of
- * section slot i afresh (0xC95AFF..0xC95B0B). A rebuild of a built cell (0x7B9053 unload, 0x7B9244 load; the loader's
- * rebuilds, which follow the XL tiles) can put a new section and cutter in slot i in between, and the old mesh's face
- * keys then index the new mesh (0xC29710 has no bounds check): an edge pointing into another section's unmapped edge
- * gives a null partner, written at 0xCB1223. Vanilla never rebuilds a built cell. The guard: the task applies the list
- * only when the slot's cutter is still the one the list was made for; a replaced cutter's list belongs to a mesh that
- * is gone (the new cutter is allocated before the old one is freed, so equal pointers are the same cutter). The other
- * caller of the cutter (0xC22E39) passes its own lists, not this one. */
-static volatile LONG* g_lwCutSkipped; /* the guard's count of cut lists left unapplied (their cutter was replaced) */
-static void LwInstallNavCutGuard(void)
-{
-    static int done;
-    if (done) return;
-    done = 1;
-    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
-    if (!ApiCodeMatches(exe + 0xC95AB0u, "48 83 EC 38 4C 8B 49 10 4C 63 59 18 4D 8B D3 49 C1 E2 07 4D 03 91 A8 00 00 00 4D 8B 42 20") ||
-        !ApiCodeMatches(exe + 0xC95AE8u, "49 8B 81 D0 00 00 00") || !ApiCodeMatches(exe + 0xC95AFFu, "48 8B 48 20"))
-    { Note("living world: the nav cut task is not the reviewed code; no cut guard"); return; }
-    uint8_t* block = AllocateNearGame(exe, 0x1000);
-    if (block == NULL) { Note("living world: no memory within 2 GB of the game's exe for the nav cut guard"); return; }
-    static const uint8_t head[] = {
-        0x48, 0x83, 0xEC, 0x38,                   /* sub rsp, 0x38 */
-        0x4C, 0x8B, 0x49, 0x10,                   /* mov r9, [rcx+0x10]   (ctx) */
-        0x4C, 0x63, 0x59, 0x18,                   /* movsxd r11, [rcx+0x18] (i) */
-        0x4D, 0x8B, 0xD3,                         /* mov r10, r11 */
-        0x49, 0xC1, 0xE2, 0x07,                   /* shl r10, 7 */
-        0x4D, 0x03, 0x91, 0xA8, 0x00, 0x00, 0x00, /* add r10, [r9+0xA8]   (L) */
-        0x49, 0x8B, 0x81, 0xD0, 0x00, 0x00, 0x00, /* mov rax, [r9+0xD0] */
-        0x48, 0x8B, 0x40, 0x20,                   /* mov rax, [rax+0x20] */
-        0x4A, 0x8B, 0x04, 0xD8,                   /* mov rax, [rax+r11*8] (the slot's cutter now) */
-        0x49, 0x3B, 0x42, 0x18,                   /* cmp rax, [r10+0x18]  (the list's cutter) */
-        0x75, 0x05,                               /* jne skip */
-        0xE9, 0, 0, 0, 0,                         /* jmp 0xC95ACA (rel32 at 48, next at 52) */
-        0xF0, 0xFF, 0x05, 0, 0, 0, 0,             /* skip: lock inc dword [rip+disp] (block + 0x100: lists skipped; disp at 55, next at 59) */
-        0x48, 0x83, 0xC4, 0x38,                   /* add rsp, 0x38 */
-        0xC3};                                    /* ret */
-    uint8_t code[sizeof head]; memcpy(code, head, sizeof head);
-    int64_t back = (int64_t)(exe + 0xC95ACAu) - (int64_t)(uintptr_t)(block + 52), to = (int64_t)(uintptr_t)block - (int64_t)(exe + 0xC95AB0u + 5);
-    if (!InRel32(back) || !InRel32(to)) { Note("living world: the nav cut guard is out of reach of the exe"); return; }
-    int32_t rel = (int32_t)back; memcpy(code + 48, &rel, 4);
-    rel = 0x100 - 59; memcpy(code + 55, &rel, 4);
-    memcpy(block, code, sizeof code);
-    DWORD protect; VirtualProtect(block, 0x1000, PAGE_EXECUTE_READWRITE, &protect); FlushInstructionCache(GetCurrentProcess(), block, 0x1000);
-    g_lwCutSkipped = (volatile LONG*)(block + 0x100);
-    uint8_t jump[26]; memset(jump, 0x90, sizeof jump); jump[0] = 0xE9;
-    rel = (int32_t)to; memcpy(jump + 1, &rel, 4);
-    if (ApiWrite(exe + 0xC95AB0u, jump, sizeof jump)) { Note("living world: the nav cut guard could not be written"); return; }
-    Note("living world: the nav cut task applies a section's cut list only while its cutter is the one the list was made for (cut crash fix)");
-}
-
 /* Test instrument (HELLFORGE_LW_TEST_TRACE=1; KB nav-cell-connections, checked by me: 0xBB5310..0xBB545F): a finished
  * cell joins its built neighbours through 0xBB5310 -> 0xBB5110(out, params, &set, &graphSet), whose streaming set's
  * [set+0x28] (connections) is tested at 0xBB5290: 0 = nothing stored, the two sections stay apart and no path crosses.
@@ -2783,7 +2731,6 @@ static void LwInstallWallReach(uintptr_t game)
 {
     if (!LwEnabled()) return; /* audit 1b: the leave fix patched the exe with the living world off; only its rebuilds need it */
     LwInstallNavLeaveFix();
-    LwInstallNavCutGuard();
     if (g_lwWallReach != NULL) return;
     if (!ApiCodeMatches(game + LW_WALL_SITE, "F3 0F 58 C8 0F 28 C5 F3 0F 59 CE 0F 28 F2") ||
         !ApiCodeMatches(game + 0x59CCFEu, "C7 44 24 78 00 00 80 40"))
@@ -2847,7 +2794,10 @@ static struct
     int watching;
     LONG noted;                     /* why it waits, noted once a level (the level + 1) */
     uint32_t busyFrames;
-} g_lwNav;
+    uint8_t pend[LW_NAV_CELLS_MAX];  /* a tile change's cells: 1-4 the checkerboard group of a built cell, 5 never built */
+    int pendPhase; ULONGLONG settleAt; /* the group being rebuilt (-1 none); when the next may be marked */
+} g_lwNav = {.pendPhase = -1};
+#define LW_NAV_SETTLE_MS 1500       /* after a group's last completion: its queued section swaps applied (D: the AI world steps every frame) */
 
 typedef void (*LwMarkFn)(uint32_t id, const float* xy);
 
@@ -2947,6 +2897,27 @@ static uint32_t LwCellFlags(uintptr_t nav, uint32_t index, uint32_t* section)
     return EvpU32(cells + (uintptr_t)stride * index + 0x5C, 0xFFFFFFFFu);
 }
 
+/* Marks the pending cells of group `phase` (0-3 built, 4 never built), each watched until it completes; how many. */
+static int LwNavMarkPhase(uintptr_t nav, uint32_t id, const uint16_t* wh, uint32_t total, int phase)
+{
+    LwMarkFn mark = (LwMarkFn)((uintptr_t)GetModuleHandleW(NULL) + LW_NAV_MARK);
+    float g[4] = {0, 0, 0, 0}; SafeRead(nav + 0x671C, g, 16);
+    char list[256]; int len = 0, marked = 0; list[0] = 0;
+    for (uint32_t x = 0; x < total; x++)
+        if (g_lwNav.pend[x] == phase + 1)
+        {
+            g_lwNav.pend[x] = 0;
+            uint16_t cx = (uint16_t)(x % wh[0]), cy = (uint16_t)(x / wh[0]);
+            float xy[2] = {g[0] + ((float)cx + 0.5f) * (g[2] - g[0]) / wh[0], g[1] + ((float)cy + 0.5f) * (g[3] - g[1]) / wh[1]};
+            uint32_t section = 0; LwCellFlags(nav, x, &section);
+            mark(id, xy); marked++;
+            if (g_lwNav.watching < 64) { g_lwNav.watch[g_lwNav.watching].cx = cx; g_lwNav.watch[g_lwNav.watching].cy = cy;
+                g_lwNav.watch[g_lwNav.watching].section = section; g_lwNav.watch[g_lwNav.watching].at = GetTickCount64(); g_lwNav.watching++; }
+            if (len < (int)sizeof list - 16) len += snprintf(list + len, sizeof list - len, " (%u, %u)", cx, cy);
+        }
+    if (marked) Note("living world: nav: %s marked:%s", phase < 4 ? (phase == 0 ? "built cells, group 1 of 4," : phase == 1 ? "built cells, group 2 of 4," : phase == 2 ? "built cells, group 3 of 4," : "built cells, group 4 of 4,") : "never built cells", list);
+    return marked;
+}
 static void LwNavWait(const char* why)
 {
     if (g_lwNav.noted == g_world.levels + 1) return;
@@ -3023,7 +2994,7 @@ static void LwNavTick(uintptr_t dir)
         if (g_lwNav.orig == NULL) g_lwNav.orig = (uint16_t*)VirtualAlloc(NULL, (size_t)n * n * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (g_lwNav.orig == NULL || SafeRead(data, g_lwNav.orig, (size_t)n * n * 2)) { LwNavWait("no copy of the nav's heights"); return; }
         memset(g_lwNav.applied, 0, sizeof g_lwNav.applied); memset(g_lwNav.gapHandle, 0, sizeof g_lwNav.gapHandle);
-        g_lwNav.heights = H; g_lwNav.level = g_world.levels; g_lwNav.n = n; g_lwNav.watching = 0; g_lwNav.busyFrames = 0;
+        g_lwNav.heights = H; g_lwNav.level = g_world.levels; g_lwNav.n = n; g_lwNav.watching = 0; g_lwNav.busyFrames = 0; g_lwNav.pendPhase = -1; g_lwNav.settleAt = 0; memset(g_lwNav.pend, 0, sizeof g_lwNav.pend);
         Note("living world: nav: world %u, heights 0x%llx: %u x %u, size %.1f m, base %.2f m, range %.2f m", id, (unsigned long long)H, n, n,
             (double)size, (double)base, (double)range);
     }
@@ -3057,6 +3028,27 @@ static void LwNavTick(uintptr_t dir)
             g_lwNav.watch[w] = g_lwNav.watch[--g_lwNav.watching];
         }
         else w++;
+    }
+    /* Built cells rebuilt in four checkerboard groups (audit 1f prep, lw84a / lw86a crashes in Havok AI's cut tasks at exe
+     * 0xCB1223 and 0xC2F662; KB crash-cb1223-navcut-section-swap, second pass, subagent, checked by me in the code): a
+     * rebuilt built cell's completion (main thread, 0x7B8A10) queues its section's unload (0xBB2670) and load (0xBB19B0)
+     * for the AI world's next asynchronous step but rewrites its own and its neighbours' streaming-set maps at once
+     * (connect 0x7B7FD0 -> 0xBB5310). When an adjacent built cell completes before the first swap is applied, a set
+     * matched to one mesh version is paired with the other in the same slot, and face keys of the wrong version reach
+     * the cutter (no bounds check). Vanilla builds each cell once. So no two touching built cells are in rebuild
+     * together: the cells of a tile change go in groups by (x & 1, y & 1), the next group marked only when every cell of
+     * the last has completed and LW_NAV_SETTLE_MS more have passed (the queued swaps applied by the AI world's steps).
+     * Cells never built (flags & 0x8 clear) have no section to swap and are marked at once. */
+    if (g_lwNav.pendPhase >= 0)
+    {
+        if (g_lwNav.watching > 0) return; /* the group's cells are still rebuilding */
+        ULONGLONG nowp = GetTickCount64();
+        if (g_lwNav.settleAt == 0) { g_lwNav.settleAt = nowp + LW_NAV_SETTLE_MS; return; }
+        if (nowp < g_lwNav.settleAt) return;
+        g_lwNav.settleAt = 0;
+        for (g_lwNav.pendPhase++; g_lwNav.pendPhase < 4; g_lwNav.pendPhase++)
+            if (LwNavMarkPhase(nav, id, wh, total, g_lwNav.pendPhase)) return;
+        g_lwNav.pendPhase = -1;
     }
     /* One slot that differs from what was written, when no job is in flight */
     int k = 0;
@@ -3096,23 +3088,22 @@ static void LwNavTick(uintptr_t dir)
                     }
                 v[at] = out; written++;
             }
-    LwMarkFn mark = (LwMarkFn)(exe + LW_NAV_MARK);
-    float g[4] = {0, 0, 0, 0}; SafeRead(nav + 0x671C, g, 16);
-    char list[256]; int len = 0; list[0] = 0;
+    (void)exe;
     for (uint32_t x = 0; x < total; x++)
-        if (cells[x])
-        {
-            uint16_t cx = (uint16_t)(x % wh[0]), cy = (uint16_t)(x / wh[0]);
-            float xy[2] = {g[0] + ((float)cx + 0.5f) * (g[2] - g[0]) / wh[0], g[1] + ((float)cy + 0.5f) * (g[3] - g[1]) / wh[1]};
-            uint32_t section = 0; LwCellFlags(nav, x, &section);
-            mark(id, xy);
-            if (g_lwNav.watching < 64) { g_lwNav.watch[g_lwNav.watching].cx = cx; g_lwNav.watch[g_lwNav.watching].cy = cy;
-                g_lwNav.watch[g_lwNav.watching].section = section; g_lwNav.watch[g_lwNav.watching].at = GetTickCount64(); g_lwNav.watching++; }
-            if (len < (int)sizeof list - 16) len += snprintf(list + len, sizeof list - len, " (%u, %u)", cx, cy);
-        }
-    Note("living world: nav: tile %d %s: %u samples written (%u from the tile) after %u busy frames; cells marked:%s; G %.1f m", k,
-        want[k] ? "in" : "gone", written, fromTile, g_lwNav.busyFrames, list, (double)(g_lwWallReach ? *g_lwWallReach : 0));
+    {
+        g_lwNav.pend[x] = 0;
+        if (!cells[x]) continue;
+        uint32_t fl = LwCellFlags(nav, x, NULL);
+        g_lwNav.pend[x] = fl != 0xFFFFFFFFu && (fl & 0x8) ? (uint8_t)(1 + ((x % wh[0]) & 1) + (((x / wh[0]) & 1) << 1)) : 5; /* 1-4 a group, 5 now */
+    }
+    Note("living world: nav: tile %d %s: %u samples written (%u from the tile) after %u busy frames; G %.1f m", k,
+        want[k] ? "in" : "gone", written, fromTile, g_lwNav.busyFrames, (double)(g_lwWallReach ? *g_lwWallReach : 0));
     g_lwNav.busyFrames = 0;
+    LwNavMarkPhase(nav, id, wh, total, 4); /* the never built cells */
+    g_lwNav.settleAt = 0;
+    for (g_lwNav.pendPhase = 0; g_lwNav.pendPhase < 4; g_lwNav.pendPhase++)
+        if (LwNavMarkPhase(nav, id, wh, total, g_lwNav.pendPhase)) return;
+    g_lwNav.pendPhase = -1;
 }
 
 /* ---- the tick (the loader's game-thread tick: in a mission the late update, after the world update) ----------------- */
@@ -3150,7 +3141,6 @@ static void LivingTick(void)
     {
         Note("living world: cost: %.3f ms a tick on average, %.2f ms at worst, over %u ticks (%d squads)", g_lwCost.sum / g_lwCost.ticks, g_lwCost.worst,
             g_lwCost.ticks, g_lwWorld.count);
-        if (g_lwCutSkipped && *g_lwCutSkipped) Note("living world: nav cut guard: %ld cut lists left unapplied so far (their section's cutter was replaced by a rebuild)", (long)*g_lwCutSkipped);
         g_lwCost.sum = g_lwCost.worst = 0; g_lwCost.ticks = 0; g_lwCost.at = now;
     }
 }
