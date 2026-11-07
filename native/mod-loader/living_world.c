@@ -355,7 +355,17 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
 #define LW_PATH_MAX 32
 #define LW_R_ON 250.0f
 #define LW_R_OFF 350.0f
-#define LW_SIGHT 600.0f       /* players farther than this are not checked for sight (D) */
+#define LW_SIGHT 800.0f       /* players farther than this are not checked for sight (D; the game draws a trooper to ~530 m, ~750 m scoped) */
+/* Sightlines (user 2026-11-06; KB living-world-plan "Phase 1 addition: squads online by sightline", subagent viewdist):
+ * the render cull (exe 0x57B9B0) has no hard distance: an object is drawn while its angular size exceeds
+ * FOV (min_size + min_size_far t^2), so on "high" a 2 m enemy is drawn to ~530 m, ~600-750 m through a scope; AI and
+ * replication have no distance cut. Vanilla has no enemies 400-600 m from every player (patrols removed beyond 300 m,
+ * 0x95288B; garrisons fill within 150 m). A squad 250-600 m away comes online, still hidden, when the next stretch of its
+ * route is in a player's view (D), and stays online while a player within 650 m sees it (D); far squads use at most
+ * 40 % of the budget (D), so the near ones keep theirs. */
+#define LW_FAR 600.0f
+#define LW_FAR_KEEP 650.0f
+#define LW_FAR_SHARE 0.4f
 #define LW_R_MIN 150.0f       /* never spawned nearer a player (D): vanilla spawns patrols 75-130 m away */
 #define LW_ARRIVE 15.0f
 #define LW_FAR_MS 10000       /* beyond R_off and calm this long before a squad goes offline (D) */
@@ -373,6 +383,8 @@ typedef struct LwSquad
     ULONGLONG since, moved, farSince;
     float movedFrom[2], reqZ, seenAt[32][3]; /* seenAt: each listed member's last position (for the loss note) */
     uint8_t arrived, viewed; /* viewed: the test trace noted it in a player's view once */
+    uint8_t farOn, inView; /* farOn: came online by sightline; inView: a player sees it (checked at lookAt) */
+    ULONGLONG lookAt;
     ULONGLONG retry; /* no request before this (placement or sight refused) */
 } LwSquad;
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
@@ -384,7 +396,8 @@ static struct
     uint32_t units[EVT_MAX_PLAYERS], knownUnit[EVT_MAX_PLAYERS]; /* each player's Helldiver unit (the sight ray leaves it out) */
     float known[EVT_MAX_PLAYERS][3]; ULONGLONG knownAt[EVT_MAX_PLAYERS]; uint64_t knownPeer[EVT_MAX_PLAYERS];
     ULONGLONG last, effAt, noteAt;
-    uint32_t spawned, offlined, died, refused;
+    uint32_t spawned, offlined, died, refused, farSpawned;
+    int farUnits;
     uint32_t noFace, moved, overhead, seen, rays, blockUnit, blockTerrain; double rayUs; /* placement and sight refusals, rays cast (30 s) */
 } g_lwWorld;
 
@@ -590,7 +603,7 @@ static void LwOnline(LwSquad* q)
     Note("living world: squad %d requested at (%.0f, %.0f, %.1f) (snapped %.1f m), %.0f m from the nearest player, out of sight, %u of %u members (group 0x%llx)",
         (int)(q - g_lwSquads), (double)pos[0], (double)pos[1], (double)pos[2], (double)sqrtf(LwDist2(wanted, pos[0], pos[1])),
         (double)sqrtf(LwNearestPlayer2(pos[0], pos[1])), cap, size, (unsigned long long)q->definition);
-    q->reqZ = pos[2]; q->arrived = 0; q->viewed = 0;
+    q->reqZ = pos[2]; q->arrived = 0; q->viewed = 0; q->farOn = 0; q->inView = 0; q->lookAt = 0;
     q->state = LW_PENDING; q->rec = rec; q->cap = (uint8_t)cap; q->since = GetTickCount64(); q->jobSet = 0; q->farSince = 0; q->seenCount = 0; q->lost = 0; q->squad = 0;
     g_lwWorld.onlineUnits += (int)cap; q->alive = (uint8_t)cap;
     LwRecentAdd(pos);
@@ -724,6 +737,24 @@ static int LwHidden(const float* p)
         }
     }
     return 1;
+}
+
+/* 1 when a player within `range` sees the point's chest height (1.0 m over it). */
+static int LwSeenByAny(const float* p, float range)
+{
+    float chest[3] = {p[0], p[1], p[2] + 1.0f};
+    for (int i = 0; i < g_lwWorld.playersAt; i++)
+        if (LwDist2(g_lwWorld.players[i], p[0], p[1]) <= range * range && LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], chest) == 1) return 1;
+    return 0;
+}
+/* A far squad's way ahead (40 m toward its next node, on the ground) in a player's view within LW_FAR. */
+static int LwAboutToBeSeen(const LwSquad* q)
+{
+    if (q->pathAt >= q->pathLen) return 0;
+    float nx = g_lwNodes[q->path[q->pathAt]].x - q->pos[0], ny = g_lwNodes[q->path[q->pathAt]].y - q->pos[1], d = sqrtf(nx * nx + ny * ny);
+    float k = d > 40.0f ? 40.0f / d : 1.0f, ahead[3] = {q->pos[0] + nx * k, q->pos[1] + ny * k, 0};
+    if (!LwGround(ahead[0], ahead[1], &ahead[2])) return 0;
+    return LwSeenByAny(ahead, LW_FAR);
 }
 
 static void LwSendGoal(LwSquad* q)
@@ -866,13 +897,14 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         for (int i = 0; i < g_lwWorld.playersAt && !q->viewed; i++)
         {
             float lead[3]; ActHealth h;
-            if (LwDist2(g_lwWorld.players[i], at[0], at[1]) > 120.0f * 120.0f || !ActHealthOf(g_lw.game, members[0], &h) || !h.unit || !EvpUnitPosition(h.unit, lead)) continue;
+            float viewMax = q->farOn ? LW_FAR_KEEP : 120.0f;
+            if (LwDist2(g_lwWorld.players[i], at[0], at[1]) > viewMax * viewMax || !ActHealthOf(g_lw.game, members[0], &h) || !h.unit || !EvpUnitPosition(h.unit, lead)) continue;
             float chest[3] = {lead[0], lead[1], lead[2] + 1.0f};
             if (LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], chest) == 1)
             {
                 q->viewed = 1;
-                Note("living world: test: squad %d in view at (%.0f, %.0f, %.1f), %.0f m from player %d, %d members, %u lost", (int)(q - g_lwSquads), (double)lead[0],
-                    (double)lead[1], (double)lead[2], (double)sqrtf(LwDist2(g_lwWorld.players[i], lead[0], lead[1])), i + 1, n, q->lost);
+                Note("living world: test: squad %d in view at (%.0f, %.0f, %.1f), %.0f m from player %d, %d members, %u lost%s", (int)(q - g_lwSquads), (double)lead[0],
+                    (double)lead[1], (double)lead[2], (double)sqrtf(LwDist2(g_lwWorld.players[i], lead[0], lead[1])), i + 1, n, q->lost, q->farOn ? " (by sightline)" : "");
             }
         }
     if (q->pathAt < q->pathLen && LwDist2(at, g_lwNodes[q->path[q->pathAt]].x, g_lwNodes[q->path[q->pathAt]].y) < LW_ARRIVE * LW_ARRIVE)
@@ -891,7 +923,18 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     else
     {
         /* offline only once it has been beyond R_off of every player, every member at alert 0, for LW_FAR_MS without a break */
-        int calm = g_lwWorld.playersAt > 0 && LwNearestPlayer2(at[0], at[1]) > LW_R_OFF * LW_R_OFF;
+        float d2 = LwNearestPlayer2(at[0], at[1]);
+        int calm = g_lwWorld.playersAt > 0 && d2 > LW_R_OFF * LW_R_OFF;
+        if (calm && d2 < LW_FAR_KEEP * LW_FAR_KEEP) /* in view range: it stays while a player sees it (sightlines), checked once a second */
+        {
+            if (now >= q->lookAt)
+            {
+                float p[3] = {at[0], at[1], 0};
+                q->lookAt = now + 1000 + (ULONGLONG)((q - g_lwSquads) % 7) * 50;
+                q->inView = LwGround(at[0], at[1], &p[2]) && LwSeenByAny(p, LW_FAR_KEEP);
+            }
+            if (q->inView) calm = 0;
+        }
         for (int k = 0; k < n && calm; k++) if (LwAlert(members[k]) != 0) calm = 0;
         if (!calm) { q->farSince = 0; return; }
         if (q->farSince == 0) q->farSince = now;
@@ -974,6 +1017,10 @@ static void LwSquadsTick(void)
     for (int i = 0; i < g_lwWorld.count; i++) /* the budget: living members of online squads, the request of pending ones */
         units += g_lwSquads[i].state == LW_PENDING ? g_lwSquads[i].cap : g_lwSquads[i].state == LW_ONLINE ? g_lwSquads[i].alive : 0;
     g_lwWorld.onlineUnits = units;
+    int farUnits = 0;
+    for (int i = 0; i < g_lwWorld.count; i++)
+        if (g_lwSquads[i].farOn) farUnits += g_lwSquads[i].state == LW_PENDING ? g_lwSquads[i].cap : g_lwSquads[i].state == LW_ONLINE ? g_lwSquads[i].alive : 0;
+    g_lwWorld.farUnits = farUnits;
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
@@ -985,10 +1032,23 @@ static void LwSquadsTick(void)
             int back = q->cycled == 1 && near2 >= LW_R_MIN * LW_R_MIN; /* test cycle: back at once (the budget still applies) */
             if (waiting && !back) continue; /* test cycle: a squad waiting to come back is served first */
             if (q->retry && now < q->retry) continue; /* its point was refused (placement or sight) a moment ago */
-            if (!requested && attempts < 4 && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && ((near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN) || back))
+            int nearBand = near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN, farBand = !nearBand && near2 >= LW_R_ON * LW_R_ON && near2 < LW_FAR * LW_FAR;
+            if (!requested && attempts < 4 && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && (nearBand || back || farBand))
             {
                 if (!back && LwRecentNear(q->pos)) { q->retry = now + 3000; continue; } /* spaced from online squads and recent requests (audit 1, 11) */
+                if (farBand && !back)
+                {
+                    if ((float)(farUnits + q->survivors) > LW_FAR_SHARE * (float)g_lwWorld.eff) { q->retry = now + 3000; continue; }
+                    attempts++;
+                    if (!LwAboutToBeSeen(q)) { q->retry = now + 3000; continue; }
+                }
                 LwOnline(q); requested = q->state == LW_PENDING; attempts++;
+                if (requested && farBand && !back)
+                {
+                    q->farOn = 1; farUnits += q->cap; g_lwWorld.farSpawned++;
+                    Note("living world: squad %d comes online %.0f m from the nearest player by sightline: its way ahead is in a player's view", (int)(q - g_lwSquads),
+                        (double)sqrtf(near2));
+                }
                 if (back && requested) { q->cycled = 2; Note("living world: test: squad %d comes back with its %u survivors", (int)(q - g_lwSquads), q->cap); }
             }
         }
@@ -1010,9 +1070,9 @@ static void LwSquadsTick(void)
                 g_lwWorld.rays, g_lwWorld.rays ? g_lwWorld.rayUs / g_lwWorld.rays : 0.0, g_lwWorld.blockTerrain, g_lwWorld.blockUnit);
         g_lwWorld.noFace = g_lwWorld.moved = g_lwWorld.overhead = g_lwWorld.seen = g_lwWorld.rays = g_lwWorld.blockUnit = g_lwWorld.blockTerrain = 0; g_lwWorld.rayUs = 0;
         Note("living world: %d squads, %d online (%d units of %d), %u spawned, %u taken offline, %u destroyed, %u request frames refused; job-1 units %u, AI %u; "
-            "player 1 at (%.0f, %.0f)", g_lwWorld.count, online, g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.spawned, g_lwWorld.offlined, g_lwWorld.died,
+            "player 1 at (%.0f, %.0f); by sightline: %u spawned, %d units now", g_lwWorld.count, online, g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.spawned, g_lwWorld.offlined, g_lwWorld.died,
             g_lwWorld.refused, EvpU32(dir + 0x614, 0), LwAiCount(), (double)(g_lwWorld.playersAt ? g_lwWorld.players[0][0] : 0),
-            (double)(g_lwWorld.playersAt ? g_lwWorld.players[0][1] : 0));
+            (double)(g_lwWorld.playersAt ? g_lwWorld.players[0][1] : 0), g_lwWorld.farSpawned, g_lwWorld.farUnits);
     }
 }
 
