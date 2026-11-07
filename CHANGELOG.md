@@ -87,11 +87,11 @@ On `dev`, since 0.4.0-beta.
   folder. On Windows they are links to the mod's own files; on Linux the files HellForge keeps itself are linked and
   mod folders still copied ([disk space](docs/mods.md#disk-space)). While the game runs on Windows, a mod's patch files
   cannot be saved over, as game files cannot. A staged patch written over in the game's data folder is found at the
-  next session start.
+  next session start (#306).
 - **Zipped cosmetic packs are kept as folders.** A zip next to its unpacked copy held the pack twice. Add mods puts a
   zipped pack in as a folder, and one already in the mods folder becomes one, with its options and place kept. A
   `.rar`, `.7z` or zipped pack dropped into the mods folder whose files the installed mod already has is removed as a
-  second copy.
+  second copy (#306).
 
 ### Fixed
 
