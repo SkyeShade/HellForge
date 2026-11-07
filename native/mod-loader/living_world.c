@@ -1626,6 +1626,9 @@ static struct { uintptr_t view; volatile LONG64 calls; volatile LONG main; LONG6
                  * [cs+0x148] (KB living-world-drawn-state, third pass) */
                 uintptr_t rw; float cam[3], fov; char which; uint32_t input; volatile ULONGLONG last; } g_lwDrawnV[LW_DRAWN_VIEWS];
 static volatile float g_lwDrawnCam[3];
+/* diagnostics (main view, every 2 s): the render world's objects that carry the first targets' handle at +0x44 (how
+ * many, their types [obj+8] as a bit mask, the first one's flags [obj+0xA8]), and the kinds in its visible list */
+static volatile LONG g_lwDrawnFound, g_lwDrawnFoundTypes, g_lwDrawnFoundFlags, g_lwDrawnObjects; static volatile LONG g_lwDrawnKinds[16];
 /* 0x1E2F40 takes nine arguments (the call 0x1EDA23..0x1EDA69 stores five at [rsp+0x20..0x40]) and also writes the
  * tenth slot as scratch ([rbp+0x298] = the caller's [rsp+0x48], 0x1E32C4 before its reads): the detour forwards all nine
  * and passes a tenth so its own frame reserves that slot (lw64a: four forwarded crashed it at 0x1E3BE5). */
@@ -1701,6 +1704,32 @@ static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, u
         for (int t = 0; t < n; t++) if (g_lwDrawnT[t].handle == h) g_lwDrawnV[v].hit[t] = call;
     }
     g_lwDrawnV[v].stage = 0; g_lwDrawnV[v].cnt = (LONG)cnt; g_lwDrawnV[v].meshes = meshes;
+    static ULONGLONG scanAt;
+    if (g_lwDrawnV[v].main && tick - scanAt >= 2000 && g_lwDrawnV[v].rw)
+    {
+        scanAt = tick;
+        LONG kinds[16] = {0};
+        for (uint32_t j = 0; j < cnt; j++) { uint32_t ci = list[j]; if (ci < lim) { uint32_t k = ((const uint32_t*)K)[ci]; kinds[k < 15 ? k : 15]++; } }
+        for (int k = 0; k < 16; k++) g_lwDrawnKinds[k] = kinds[k];
+        uint32_t total = 0; LONG found = 0, types = 0, flags = 0;
+        int tn = n < 8 ? n : 8;
+        if (!SafeRead(g_lwDrawnV[v].rw + 0x168, &total, 4))
+        {
+            if ((uint64_t)total * 2 > ls) total = (uint32_t)(ls / 2);
+            for (uint32_t i = 0; i < total && i < 400000; i++)
+            {
+                uintptr_t obj = ((const uintptr_t*)objs)[i]; uint32_t h = 0, ty = 0, fl = 0;
+                if (obj < 0x10000 || SafeRead(obj + 0x44, &h, 4)) continue; /* a freed slot may hold a stale pointer */
+                for (int t = 0; t < tn; t++) if (g_lwDrawnT[t].handle == h)
+                {
+                    SafeRead(obj + 8, &ty, 4); SafeRead(obj + 0xA8, &fl, 4);
+                    if (!found) flags = (LONG)fl;
+                    found++; types |= 1L << (ty < 31 ? ty : 31); break;
+                }
+            }
+        }
+        g_lwDrawnFound = found; g_lwDrawnFoundTypes = types; g_lwDrawnFoundFlags = flags; g_lwDrawnObjects = (LONG)total;
+    }
 }
 /* A unit's scene graph (object+0x48 or +0x60 by its class, as EvpUnitPosition reads it), its render handle at +4. */
 static uint32_t LwUnitRenderHandle(uint32_t unit)
@@ -1775,6 +1804,11 @@ static void LwDrawnTick(void)
                 (long)g_lwDrawnV[v].cnt, (long)g_lwDrawnV[v].meshes, g_lwDrawnV[v].sample[0], g_lwDrawnV[v].sample[1]);
         char tg[128]; int tw = 0;
         for (int t = 0; t < (int)g_lwDrawnN && t < 6; t++) tw += snprintf(tg + tw, sizeof tg - (size_t)tw, "%s%06X", t ? " " : "", g_lwDrawnT[t].handle);
+        Note("living world: drawn: objects: %ld render objects; %ld carry one of the first 8 targets' handles (types mask %lX, first flags %lX); main view's visible kinds 0:%ld 1:%ld 2:%ld 3:%ld 4:%ld 5:%ld 6:%ld 7:%ld 8:%ld 9:%ld 10+:%ld",
+            (long)g_lwDrawnObjects, (long)g_lwDrawnFound, (unsigned long)g_lwDrawnFoundTypes, (unsigned long)g_lwDrawnFoundFlags,
+            (long)g_lwDrawnKinds[0], (long)g_lwDrawnKinds[1], (long)g_lwDrawnKinds[2], (long)g_lwDrawnKinds[3], (long)g_lwDrawnKinds[4], (long)g_lwDrawnKinds[5],
+            (long)g_lwDrawnKinds[6], (long)g_lwDrawnKinds[7], (long)g_lwDrawnKinds[8], (long)g_lwDrawnKinds[9],
+            (long)(g_lwDrawnKinds[10] + g_lwDrawnKinds[11] + g_lwDrawnKinds[12] + g_lwDrawnKinds[13] + g_lwDrawnKinds[14] + g_lwDrawnKinds[15]));
         Note("living world: drawn: diagnostics: game camera (%.1f, %.1f, %.1f); %s; targets %d, first handles %s", (double)g_lwDrawnCam[0], (double)g_lwDrawnCam[1], (double)g_lwDrawnCam[2],
             dw ? dg : "no views", (int)g_lwDrawnN, tw ? tg : "none");
     }
