@@ -1906,13 +1906,13 @@ static void LwNavBoost(uintptr_t nav, const uint16_t* wh, uint32_t marksId)
 {
     typedef void (*BoostFn)(uint32_t id, const float* xyz);
     uintptr_t table = 0, fn = 0, world = 0;
-    static uint32_t lastList[16]; static int lastCount = -1; static uintptr_t lastNav;
+    static uint32_t lastList[64]; static int lastCount = -1; static uintptr_t lastNav; /* 64: 512 m cells (KB nav-small-cells) */
     if (!EvpPtr(g_lw.game + 0x33263C8u, &table) || !EvpPtr(table + 0x70, &fn) || fn == 0 || !EvpPtr(g_lw.game + 0x3326340u, &world)) return;
     uint32_t id = EvpU32(world + 0x10F0, 0xFFFFFFFFu);
     float g[4] = {0, 0, 0, 0};
     if (SafeRead(nav + 0x671C, g, 16) || g[2] <= g[0] || g[3] <= g[1]) return;
     float cw = (g[2] - g[0]) / wh[0], ch = (g[3] - g[1]) / wh[1];
-    uint32_t list[16]; int count = 0;
+    uint32_t list[64]; int count = 0;
     for (int p = 0; p < g_lwWorld.playersAt; p++)
     {
         const float* at = g_lwWorld.players[p];
@@ -1923,7 +1923,7 @@ static void LwNavBoost(uintptr_t nav, const uint16_t* wh, uint32_t marksId)
             {
                 uint32_t c = (uint32_t)j * wh[0] + (uint32_t)i; int dup = 0;
                 for (int k = 0; k < count && !dup; k++) dup = list[k] == c;
-                if (dup || count >= 16) continue;
+                if (dup || count >= 64) continue;
                 list[count++] = c;
                 float xyz[3] = {g[0] + ((float)i + 0.5f) * cw, g[1] + ((float)j + 0.5f) * ch, at[2]};
                 ((BoostFn)fn)(id, xyz);
@@ -1931,7 +1931,7 @@ static void LwNavBoost(uintptr_t nav, const uint16_t* wh, uint32_t marksId)
     }
     if (nav != lastNav || count != lastCount || memcmp(list, lastList, sizeof(uint32_t) * (size_t)count))
     {
-        char text[160]; int len = 0; text[0] = 0;
+        char text[640]; int len = 0; text[0] = 0;
         for (int k = 0; k < count && len < (int)sizeof text - 16; k++) len += snprintf(text + len, sizeof text - len, " (%u, %u)", list[k] % wh[0], list[k] / wh[0]);
         Note("living world: nav: cells within %.0f m of the players boosted (world %u, the director's %u):%s", (double)LW_R_ON, id, marksId, text);
         memcpy(lastList, list, sizeof list); lastCount = count; lastNav = nav;

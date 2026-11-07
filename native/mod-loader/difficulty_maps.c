@@ -153,6 +153,60 @@ static uintptr_t g_navExe;
 static float* g_navWorldTile;
 static uint32_t g_navWorldScale = 1;
 static volatile LONG g_navLarger, g_navVanilla;
+/* Smaller cells for an extra large session (audit 1b criterion 11; KB nav-small-cells, subagent navsmall; checked by me:
+ * the pins below, 0xAB1AD6 in 0xAB0EE0 whose only caller 0x4EE63F is in the plugin setup 0x4EE160). The nav grid is
+ * sized and laid out ONCE per process: game.dll's config fill (0x4EE160, or its variant 0x4EDEC0) gives the startup
+ * block extents of 1024.0 (immediates 0x4EE3C1 / 0x4EE3C8, 0x4EE104 / 0x4EE10B) over the cell size 128.0 (W = ceil
+ * (1024 / 128) = 8), and the world setup lays the grid out from the same 1024 over the float read at 0xAB1AD6. A 2048 m
+ * cell of an extra large world took 20-215 s to build, so squads near a dropped player could not walk for ~84 s. With
+ * extents 4096.0 and the read pointed at 32.0 the grid is 32 x 32 for the whole process (W <= 64, W = H: P): extra
+ * large worlds get 512 m cells, vanilla levels of the session 32 m ones (NavRetile sets the tile to range / W). Written
+ * extents first, then the read, so the layout never outgrows the sizing; nothing when a pin differs or the setup ran. */
+#define DIF_NAV_CELLS_XL 32u
+static const struct { uint32_t rva; uint8_t pin[7]; } kNavExtents[4] = {
+    {0x4EE3BEu, {0xC7, 0x45, 0xCC, 0x00, 0x00, 0x80, 0x44}}, {0x4EE3C5u, {0xC7, 0x45, 0xC8, 0x00, 0x00, 0x80, 0x44}},
+    {0x4EE101u, {0xC7, 0x45, 0x13, 0x00, 0x00, 0x80, 0x44}}, {0x4EE108u, {0xC7, 0x45, 0x0F, 0x00, 0x00, 0x80, 0x44}}};
+#define DIF_NAV_CELL_READ 0xAB1AD6u
+static const uint8_t kNavCellReadPin[8] = {0xF3, 0x0F, 0x10, 0x05, 0x8A, 0x5D, 0x91, 0x01};
+static uint32_t g_navCells = 8;   /* the grid's W = H for this process */
+static float* g_navTileNow;       /* near the exe: the tile size the terrain build reads (0x89A85E) when W > 8 */
+static void NavCellsInstall(uintptr_t game)
+{
+    uintptr_t exe = ApiModuleBase("helldivers2.exe", NULL);
+    uint8_t b[8];
+    for (int i = 0; i < 4; i++) if (SafeRead(game + kNavExtents[i].rva, b, 7) || memcmp(b, kNavExtents[i].pin, 7) != 0)
+    { Note("navigation: the nav grid's startup extents are not the reviewed ones; extra large worlds keep 2048 m cells"); return; }
+    if (SafeRead(game + DIF_NAV_CELL_READ, b, 8) || memcmp(b, kNavCellReadPin, 8) != 0 || exe == 0 ||
+        SafeRead(exe + DIF_NAV_TILE_SIZE_READ, b, 8) || memcmp(b, kNavTileSizeRead, 8) != 0)
+    { Note("navigation: the nav grid's cell size read or the terrain build is not the reviewed one; extra large worlds keep 2048 m cells"); return; }
+    float* cell = (float*)AllocateNearGame(game, 0x1000);
+    g_navTileNow = (float*)FindNearGame(exe, 0x1000, MEM_COMMIT | MEM_RESERVE);
+    if (cell == NULL || g_navTileNow == NULL) { g_navTileNow = NULL; Note("navigation: no memory near the game for the nav cell size; extra large worlds keep 2048 m cells"); return; }
+    *cell = 1024.0f / (float)DIF_NAV_CELLS_XL; *g_navTileNow = 128.0f;
+    float extent = 1024.0f * (float)DIF_NAV_CELLS_XL / 8.0f;
+    for (int i = 0; i < 4; i++) if (ApiWrite(game + kNavExtents[i].rva + 3, &extent, 4))
+    { Note("navigation: the nav grid's startup extents could not be written (%d of 4 written; the grid keeps 8 x 8 cells)", i); return; }
+    int32_t rel = (int32_t)((intptr_t)(uintptr_t)cell - (intptr_t)(game + DIF_NAV_CELL_READ + 8));
+    if (!InRel32((int64_t)(uintptr_t)cell - (int64_t)(game + DIF_NAV_CELL_READ + 8)) || ApiWrite(game + DIF_NAV_CELL_READ + 4, &rel, 4))
+    { Note("navigation: the nav grid's cell size read could not be pointed (the block is sized for %u x %u, the grid stays 8 x 8)", DIF_NAV_CELLS_XL, DIF_NAV_CELLS_XL); return; }
+    g_navCells = DIF_NAV_CELLS_XL;
+    Note("navigation: the nav grid is %u x %u cells for this process (startup extents %.0f, cell read %.0f): extra large worlds get %.0f m cells",
+        g_navCells, g_navCells, (double)extent, (double)*cell, (double)(2048.0f * (float)WorldScaleFor(g_difficulty.mapScale) / (float)g_navCells));
+}
+/* The grid fits the block: W = H = the process's W, and the 12-byte array [nav+0x6758] + 12 [nav+0x6750] ends before
+ * the back regions [nav+0x78] (KB nav-small-cells). The carver free list (grid +0x2C head, pool +0x30, 0x80 a slot,
+ * next at +0, -1 last; n at +0x1C) is counted for the note (whether a level could lower W: open). */
+static int NavGridFits(uintptr_t world, uint16_t w, uint16_t h, uint32_t* freeSlots, uint32_t* slots)
+{
+    uintptr_t arr = 0, back = 0, pool = 0; uint32_t count = 0, n = 0; int32_t at = -1;
+    *freeSlots = *slots = 0;
+    if (w != h || w != g_navCells || SafeRead(world + 0x6758, &arr, 8) || SafeRead(world + 0x6750, &count, 4) || SafeRead(world + 0x78, &back, 8) ||
+        arr == 0 || back == 0 || arr + 12u * (uintptr_t)count > back) return 0;
+    if (!SafeRead(world + 0x6710 + 0x1C, &n, 4) && !SafeRead(world + 0x6710 + 0x2C, &at, 4) && !SafeRead(world + 0x6710 + 0x30, &pool, 8) && pool)
+        for (uint32_t k = 0; at >= 0 && (uint32_t)at < n && k <= n; k++) { (*freeSlots)++; if (SafeRead(pool + 0x80u * (uint32_t)at, &at, 4)) break; }
+    *slots = n;
+    return 1;
+}
 /* Before a navmesh grid is set up: 256 m tiles for a larger map (its generated disk, lg+0x2D8C, past vanilla's 681 m),
  * else 128 m. Only an 8 x 8 grid is touched. */
 static void NavRetile(uint32_t id, uintptr_t level)
@@ -163,23 +217,30 @@ static void NavRetile(uint32_t id, uintptr_t level)
     float disk = 0.0f;
     if (exe == 0 || SafeRead(exe + DIF_NAV_COUNT, &count, 4) || id >= count || SafeRead(exe + DIF_NAV_WORLDS, &worlds, 8) || worlds == 0 ||
         SafeRead(worlds + 8 * (uintptr_t)id, &world, 8) ||
-        world == 0 || SafeRead(world + 0x6710, grid, 4) || grid[0] != 8 || grid[1] != 8) return;
+        world == 0 || SafeRead(world + 0x6710, grid, 4) || grid[0] != grid[1] || (grid[0] != 8 && grid[0] != g_navCells)) return;
+    uint32_t freeSlots = 0, slots = 0;
+    if (grid[0] != 8 && !NavGridFits(world, grid[0], grid[1], &freeSlots, &slots))
+    { static int told; if (!told++) Note("navigation: the %u x %u nav grid does not fit its block; this world's grid is left as it is", grid[0], grid[1]); return; }
     if (level == 0) WorldShip();
     int larger = g_navTiles256 && level != 0 && !SafeRead(level + 0x2D8C, &disk, 4) && disk > 682.0f;
     float scale = larger && g_navWorldTile != NULL && disk > 1022.0f ? (float)g_navWorldScale : 1.0f;
+    float lo = larger ? -1023.75f * scale : -511.75f, hi = larger ? 1024.25f * scale : 512.25f, tile = (hi - lo) / (float)grid[0];
     uint8_t read[4];
     memcpy(read, larger ? kNavTileSize256 : kNavTileSizeRead + 4, 4);
-    if (scale > 1.0f)
+    if (grid[0] != 8 || scale > 1.0f) /* the terrain build reads the tile size from a float of the loader's */
     {
-        *g_navWorldTile = 256.0f * scale;
-        int32_t rel = (int32_t)((intptr_t)(uintptr_t)g_navWorldTile - (intptr_t)(exe + DIF_NAV_TILE_SIZE_READ + 8));
+        float* f = grid[0] != 8 ? g_navTileNow : g_navWorldTile;
+        if (f == NULL) return;
+        *f = tile;
+        if (scale > 1.0f && g_navWorldTile != NULL) *g_navWorldTile = tile;
+        int32_t rel = (int32_t)((intptr_t)(uintptr_t)f - (intptr_t)(exe + DIF_NAV_TILE_SIZE_READ + 8));
         memcpy(read, &rel, 4);
     }
-    if (g_navTiles256 && ApiWrite(exe + DIF_NAV_TILE_SIZE_READ + 4, read, 4)) return;
-    float lo = larger ? -1023.75f * scale : -511.75f, hi = larger ? 1024.25f * scale : 512.25f;
-    float min[2] = {lo, lo}, max[2] = {hi, hi}, tiles[5] = {larger ? 256.0f * scale : 128.0f, lo, lo, hi, hi};
+    if ((g_navTiles256 || grid[0] != 8) && ApiWrite(exe + DIF_NAV_TILE_SIZE_READ + 4, read, 4)) return;
+    float min[2] = {lo, lo}, max[2] = {hi, hi}, tiles[5] = {tile, lo, lo, hi, hi};
     if (ApiWrite(world + 0x08, min, sizeof min) || ApiWrite(world + 0x14, max, sizeof max) || ApiWrite(world + 0x6718, tiles, sizeof tiles)) return;
     InterlockedIncrement(larger ? &g_navLarger : &g_navVanilla);
+    if (grid[0] != 8) Note("navigation: world %u: %u x %u cells of %.0f m over %.0f m; %u of %u carver slots free", id, grid[0], grid[1], (double)tile, (double)(hi - lo), freeSlots, slots);
 }
 
 /* The physics pools: game.dll's plugin setup (0x4EE160, once per process,
@@ -281,6 +342,7 @@ static void PhysicsPools(uintptr_t game)
     }
     g_physicsPools = 1;
     if (xl) PhysicsBroadphase(game);
+    if (xl) NavCellsInstall(game); /* before the setup lays out the nav grid (0xAB1AD6 in the same world setup) */
     Note("physics: pools enlarged before the engine built them: ragdoll actors 32768, ragdolls 1024, motions 131072, bodies and static actors %u%s, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152; actor connectors 4194304",
         xl ? 0x100000u : 0x80000u, xl ? " (an extra large world)" : "");
 }
