@@ -957,7 +957,7 @@ sealed partial class PlaySession(PlayOptions options)
             throw new SessionFailure("The network block's check program is missing (" + probe + "). Antivirus programs sometimes remove it: " +
                 "restore it from quarantine and exclude the HellForge folder, or run Settings > Installation again to put the block back.");
         var problem = RunNetworkProbe(probe, linuxNamespace, wfpOnly, "network-probe.json");
-        if (problem == null) return;
+        if (problem == null) { NoteOffline(probe); return; }
         if (linuxNamespace) throw new SessionFailure($"The network namespace is not holding: {problem}.");
         if (!wfpOnly) throw new SessionFailure($"The network block is not holding: {problem}. Run Settings > Installation to place it again.");
         result["networkControlBefore"] = result["networkControl"]?.DeepClone();
@@ -967,6 +967,7 @@ sealed partial class PlaySession(PlayOptions options)
         {
             result["networkBlockRepaired"] = true;
             Say("The network block was placed again and holds.");
+            NoteOffline(probe);
             return;
         }
         throw new SessionFailure(why != null

@@ -203,6 +203,8 @@ static class NetworkBlockTests
             check(written.RootElement.TryGetProperty("loopbackTcpError", out var own) && own.GetInt32() != 10013 &&
                   written.RootElement.TryGetProperty("otherLoopbackTcpError", out var other) && other.GetInt32() != 10013,
                 "The report carries both loopback results.");
+            check(written.RootElement.TryGetProperty("externalIpv4RouteError", out var route) && route.ValueKind == JsonValueKind.Number,
+                "The report carries whether Windows has a route out (ticket 0352).");
             Probe("41000", report);
             check(!File.ReadAllText(report).Contains("otherLoopbackTcpError", StringComparison.Ordinal), "Without it the report is as before (the session's probe).");
         });
@@ -228,6 +230,50 @@ static class NetworkBlockTests
             check(Problem("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10013}""", true) != null, "A narrowed block's report without the other port passed.");
             check(NetworkBlockProbe.Problem(null, false) != null && Problem("[]") != null && Problem("""{"loopbackHttpPassed":"yes","externalIpv4TcpError":"10013"}""") != null,
                 "No report, or one of another shape, passed.");
+        });
+
+        // ticket 0352: with no route out, Windows fails the outside connect (10065) before WFP judges it
+        test("Network block probe: with no network, a narrowed block holds on its other loopback port alone", () =>
+        {
+            static System.Text.Json.Nodes.JsonNode Report(int outside, int? route, int other = 10013)
+            {
+                var report = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["loopbackHttpPassed"] = true, ["externalIpv4TcpError"] = outside, ["externalIpv6TcpError"] = 10065,
+                    ["loopbackTcpError"] = 0, ["otherLoopbackTcpError"] = other
+                };
+                if (route != null) report["externalIpv4RouteError"] = route;
+                return report;
+            }
+            foreach (var error in new[] { 10050, 10051, 10065 })
+                check(NetworkBlockProbe.Problem(Report(error, 1231), true) == null && NetworkBlockProbe.Offline(Report(error, 1231)),
+                    $"No route and error {error}: a narrowed block that refuses the other loopback port failed, or was not offline.");
+            check(NetworkBlockProbe.Problem(Report(10065, 1231, 10061), true) is { } stale && stale.Contains("other programs on this PC", StringComparison.Ordinal),
+                "No route, and filters that no longer apply (the other port reached the stack): passed.");
+            check(NetworkBlockProbe.Problem(Report(10065, 1231), false) is { } wide && wide.Contains("no network connection", StringComparison.Ordinal),
+                "No route and a block that is not narrowed: passed, or did not say the PC is offline.");
+            // a route out: the connect reached the network (a router's ICMP unreachable), so the block did not refuse it
+            check(NetworkBlockProbe.Problem(Report(10065, 0), true) is { } routed && routed.Contains("error 10065", StringComparison.Ordinal) &&
+                !NetworkBlockProbe.Offline(Report(10065, 0)), "A route out and error 10065: passed.");
+            // a probe from before the route check
+            check(NetworkBlockProbe.Problem(Report(10065, null), true) != null && !NetworkBlockProbe.Offline(Report(10065, null)),
+                "A report without the route: passed as offline.");
+            check(NetworkBlockProbe.Problem(Report(-1, 1231), true) != null && NetworkBlockProbe.Problem(Report(0, 1231), true) != null,
+                "No route, but a connect that waited or was answered: passed.");
+            check(!NetworkBlockProbe.Offline(Report(10013, 1231)) && NetworkBlockProbe.Problem(Report(10013, 1231), true) == null,
+                "A refused connect is the online proof, route or not.");
+        });
+
+        test("Network block probe: the probe, the session and the install script share the offline rule", () =>
+        {
+            if (Scripts() is not { } scripts) { Console.WriteLine("  (skipped: no scripts folder)"); return; }
+            var probe = File.ReadAllText(Path.Combine(scripts, "OfflineControlNetworkProbe.cs"));
+            var install = File.ReadAllText(Path.Combine(scripts, "Install-WfpBlock.ps1"));
+            check(probe.Contains("error == 10050 || error == 10051 || error == 10065", StringComparison.Ordinal) &&
+                  probe.Contains("(other > 0 && Offline(route, v4))", StringComparison.Ordinal) &&
+                  probe.Contains("\\\"externalIpv4RouteError\\\":", StringComparison.Ordinal), "The probe's offline rule changed.");
+            check(install.Contains("'externalIpv4RouteError'", StringComparison.Ordinal) && install.Contains("-in @(10050,10051,10065)", StringComparison.Ordinal) &&
+                  install.Contains("-ne 10013 -and -not $offline", StringComparison.Ordinal), "Install-WfpBlock.ps1's offline rule changed.");
         });
     }
 }

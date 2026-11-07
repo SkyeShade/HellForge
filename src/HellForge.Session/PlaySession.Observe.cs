@@ -24,6 +24,7 @@ sealed partial class PlaySession
             if (job.Process.HasExited) break;
             if (WatchQuit(quit, clock, ref hung)) break;
             CheckBlock(clock, blockRules, ref nextBlockCheck);
+            CheckOfflineBlock();
             CheckBroker();
             RecordRedirect(playFab);
             RecordSteamInput();
@@ -99,6 +100,37 @@ sealed partial class PlaySession
         // blockRules is 0 only in the WFP-only mode, which has no firewall rules to re-read.
         if (blockRules > 0 && BlockRuleCount() != blockRules) throw new SessionFailure("Network block rules or firewall profiles changed during the session.");
         nextBlockCheck = clock.ElapsedMilliseconds + 10000;
+    }
+
+    // The network block's probe while the session started with no network (NoteOffline): the outside is still to prove.
+    string? offlineProbe;
+
+    // The block held on a PC with no network (NetworkBlockProbe.Offline, ticket 0352): proved on loopback alone, so the
+    // outside is proved the moment Windows has a route out again (CheckOfflineBlock, each second while the game runs).
+    void NoteOffline(string probe)
+    {
+        if (!NetworkBlockProbe.Offline(result["networkControl"])) return;
+        offlineProbe = probe;
+        result["networkBlockOffline"] = true;
+        result["networkControlOffline"] = result["networkControl"]?.DeepClone();
+        Say("This PC has no network connection: the network block is checked on this PC alone now, and against the internet as soon as the PC connects.");
+    }
+
+    // Started with no network (NoteOffline): while Windows has no route out nothing can leave this PC. Once it has one,
+    // the probe runs again and must see the outside refused, or the session fails and its clean-up stops the game. A
+    // route that is gone again by the time the probe runs leaves the session offline, still watched.
+    void CheckOfflineBlock()
+    {
+        if (offlineProbe == null || NetworkBlockProbe.HasRoute() != true) return;
+        var problem = RunNetworkProbe(offlineProbe, false, true, "network-probe-online.json");
+        if (problem == null && NetworkBlockProbe.Offline(result["networkControl"])) return;
+        if (problem != null)
+            throw new SessionFailure($"This PC connected to a network during the session, and the network block is not holding ({problem}). " +
+                "HellForge stopped the game: press Play to check the block again.");
+        offlineProbe = null;
+        result["networkBlockProvenOnline"] = true;
+        Save();
+        Say("This PC is online now, and the network block stops the game's connections to the internet.");
     }
 
     void RecordRedirect(HellForgeLocalRoutingPatch.PlayFabRedirect? playFab)

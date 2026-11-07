@@ -56,14 +56,19 @@ try{
         $otherPort=if($BackendPort -lt 65535){$BackendPort+1}else{$BackendPort-1}
         & $HellForgeBlockProbe $BackendPort $probeReport $otherPort|Out-Null
         $egress=if(Test-Path -LiteralPath $probeReport){Get-Content -Raw -LiteralPath $probeReport|ConvertFrom-Json}else{$null}
-        if(-not $egress -or $egress.externalIpv4TcpError -ne 10013){
+        # A PC with no network (no route out, so the connect fails in the stack before WFP judges it): the other loopback
+        # port's refusal below is the proof, since the BLOCK filter that refuses it names only the program and so refuses
+        # the outside too (NetworkBlockProbe). The session proves the outside once the PC is online.
+        $offline=[bool]($egress -and ($egress.PSObject.Properties.Name -contains 'externalIpv4RouteError') -and
+            $egress.externalIpv4RouteError -ne 0 -and $egress.externalIpv4TcpError -in @(10050,10051,10065))
+        if(-not $egress -or ($egress.externalIpv4TcpError -ne 10013 -and -not $offline)){
             throw 'The network block is not stopping outside connections (another firewall, a VPN or a security suite may be letting traffic past the WFP filters).'
         }
         if($egress.otherLoopbackTcpError -ne 10013){throw ('The network block lets the copy reach loopback ports other than the backend''s ('+$otherPort+').')}
         if($egress.loopbackTcpError -eq 10013){throw ('The network block refuses the backend''s own port ('+$BackendPort+').')}
         $marker=[ordered]@{block='wfp';provider=$HellForgeWfpProvider;port=$BackendPort;filters=$r.filters;programs=$programs.Count;installedUtc=[DateTime]::UtcNow.ToString('o')}
         [IO.File]::WriteAllText($HellForgeWfpMarker,($marker|ConvertTo-Json))
-        $state.programs=$programs.Count;$state.filters=$r.filters;$state.egressBlocked=$true;$state.status='installed'
+        $state.programs=$programs.Count;$state.filters=$r.filters;$state.egressBlocked=$true;$state.checkedOffline=$offline;$state.status='installed'
     }
 }catch{$state.status='failed';$state.failure=$_.Exception.Message}
 $state.completedUtc=[DateTime]::UtcNow.ToString('o')
