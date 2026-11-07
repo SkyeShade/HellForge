@@ -67,6 +67,10 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         /* unlock-all opens a mod warbond's pages in what the game is served (FillCounters), never in the saved counter */
         var open = own != null && modWarbonds!.UnlockAll;
         if (cost < 0 || !OwnsWarbond(warbond)) return null;
+        /* the client takes back what it sent (0x13751D0): a mod item sent in another currency (the loader's per-item
+           currency not installed) is refused, so the shown and saved balances never part */
+        if (own != null && body.TryGetProperty("expectedCost", out var expected) && expected.ValueKind == JsonValueKind.Array &&
+            expected.EnumerateArray().Any(e => e.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out var sent) && sent != medals)) return null;
         var granted = new JsonArray();
         var saved = profile.TryChange((progression, inventory) =>
         {

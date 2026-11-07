@@ -267,7 +267,9 @@ static class ModWarbondsTests
         store.TryChange((_, inventory) => ProfileStore.AddItem(inventory, Requisition, 1000 - ProfileStore.Held(inventory, Requisition)) >= 0 &
             ProfileStore.AddItem(inventory, 0x4C19589F, 100 - ProfileStore.Held(inventory, 0x4C19589F)) >= 0);
         var purchases = new Purchases(store, id => catalogue.TryGetValue(id, out var item) ? item : null, service);
-        using var body = JsonDocument.Parse("{\"seasonPassItemId\":" + items[1].Id + ",\"warId\":801,\"expectedCost\":[]}");
+        using var wrong = JsonDocument.Parse("{\"seasonPassItemId\":" + items[1].Id + ",\"warId\":801,\"expectedCost\":[{\"mixId\":1276729503,\"amount\":400}]}");
+        check(purchases.Handle("/SeasonPass/item/buy", wrong.RootElement).Item1 != 200, "An item sent in its warbond's currency, not its own, was sold.");
+        using var body = JsonDocument.Parse("{\"seasonPassItemId\":" + items[1].Id + ",\"warId\":801,\"expectedCost\":[{\"mixId\":" + Requisition + ",\"amount\":400}]}");
         var (status, reply, _) = purchases.Handle("/SeasonPass/item/buy", body.RootElement);
         check(status == 200, "An item in its own currency was not sold: " + reply?.ToJsonString());
         check(reply?["items"]?.AsArray().All(i => (uint?)i!["mixId"] != mixed.Spent) == true, "The reply counts an item in another currency as spent: " + reply?.ToJsonString());
@@ -450,6 +452,12 @@ static class ModWarbondsTests
         formatProblems.Clear();
         using (var extra = JsonDocument.Parse("{\"format\":1,\"warbond\":[],\"warbonds\":[]}")) ModWarbonds.Parse("mod", "Mod", extra.RootElement, formatProblems);
         check(formatProblems.Count == 1 && formatProblems[0].Contains("\"warbond\""), "A misspelt field at the file's top was not reported.");
+        // Without "season", a mod name longer than a season takes is cut, never a reason to refuse the warbond.
+        var longProblems = new List<string>();
+        var longName = ModWarbonds.Parse("test", "Vanilla Plus Megapack Warbond Collection", JsonDocument.Parse(
+            "{\"format\":1,\"warbonds\":[{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}]}").RootElement, longProblems);
+        check(longProblems.Count == 0 && longName.Count == 1 && longName[0].Season == "Vanilla Plus Megapack Warbond Co",
+            "A long mod name refused a warbond without a season: " + string.Join(" | ", longProblems));
         check(Problems("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]},{\"key\":\"a\",\"name\":\"B\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}").Count == 1,
             "Two warbonds with one key were accepted.");
 

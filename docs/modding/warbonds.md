@@ -73,13 +73,13 @@ Put `hellforge-warbonds.json` beside your mod's manifest:
 | `currency` | what its items cost: `medals` (the default), `requisition`, `common-samples`, `rare-samples`, `super-samples` or `forge-credits` |
 | `pages` | 1 to 15 pages, in order |
 | `variant` | its look: `free` (the default), `premium` or `legendary`: the card's style and the tag under its name |
-| `season` | the season line the game keeps with a warbond's name ("Season I" on Helldivers Mobilize), 1 to 32 characters; your mod's name by default. The Acquisition Center of this game build shows it on no warbond, the game's included |
+| `season` | the season line the game keeps with a warbond's name ("Season I" on Helldivers Mobilize), 1 to 32 characters; your mod's name by default (its first 32 characters). The Acquisition Center of this game build shows it on no warbond, the game's included |
 | `art` | its picture: `{"image": "card.png"}`, a 2048 by 1024 PNG in your mod's folder; or `{"from": <id>}`, the picture of one of the game's warbonds without its title, by its id (the keys of `mappings/warbond-art.json`, or Helldivers Mobilize's `1929468580`); without it, a plain dark card HellForge draws |
 | `unlock` | `{"currency": "forge-credits", "cost": <n>}`: players buy the warbond once, for 1 to 1,000,000 Forge Credits, before they can buy its items; without it, the warbond is open to everyone |
 | `showcase` | the Helldiver and background beside its card: see [The showcase](#the-showcase); without it, the game's default |
 
-A field not in these tables, at any level of the file, is a mistake: HellForge refuses the warbond and the launcher says
-which field. A misspelt `requirement` would otherwise open a page from the start.
+A field not in these tables, at any level of the file, is a mistake: HellForge refuses the warbond (or, at the file's top
+level, the whole file) and the launcher says which field. A misspelt `requirement` would otherwise open a page from the start.
 
 ## Items
 
@@ -187,6 +187,8 @@ The name shows beside the card. The PNG may use any colour type; its transparenc
   until there is room, with a line in the backend's log. A warbond that is left out for a session (it sells nothing the
   game can hold, or its id clashes with one of the game's) still takes its place. Of two mods' warbonds with the same id,
   the later one is refused when the mods load and takes none.
+- The game's list holds 128 warbonds in all: if the game served more than 29 of its own, mods would have fewer places,
+  and the backend's log would say so.
 - The Acquisition Center's column of dots beside the cards has 32. Past 32 warbonds the warbonds make equal groups of up
   to 32 (124 warbonds make 4 groups of 31). The column shows the group the current warbond is in, and a dot selects that
   warbond.

@@ -273,7 +273,8 @@ public static class ModWarbonds
     // The line above its name (the mod's name by default) and its variant.
     static (string Season, int Variant) Look(JsonElement entry, string modName)
     {
-        var season = entry.TryGetProperty("season", out _) ? Text(entry, "season").Trim() : modName;
+        // Without one, the mod's name, cut to the 32 characters a season takes (a manifest's name takes 80).
+        var season = entry.TryGetProperty("season", out _) ? Text(entry, "season").Trim() : modName.Trim()[..Math.Min(modName.Trim().Length, 32)].TrimEnd();
         if (season.Length is 0 or > 32 || season.Any(char.IsControl)) throw new InvalidDataException("\"season\" is 1 to 32 characters on one line");
         var variant = entry.TryGetProperty("variant", out _) ? Variants.ToList().IndexOf(Text(entry, "variant")) : 0;
         if (variant < 0) throw new InvalidDataException($"\"variant\" is one of {string.Join(", ", Variants)}");
