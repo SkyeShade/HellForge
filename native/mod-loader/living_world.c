@@ -731,6 +731,7 @@ static void LwSendGoal(LwSquad* q)
  * hit, health record +0x30 = the attacker entity (net8 -> 0xFD9BA0) and +0x38 = the creditor (a session peer id, kept
  * from the hit before when 0; 0 = no player). The attacker is a Helldiver when it is in the avatar hash ([game+0x3326D20]
  * +0xF8, as 0x925524). */
+static int LwGarrisonUnitsAt(uint32_t unit, uint32_t* net, uint32_t* slot);
 static const char* LwLostWhy(uint32_t unit, uint32_t* squad, char* by, size_t size)
 {
     ActHealth h; uintptr_t m, links, av; uint32_t index;
@@ -741,7 +742,11 @@ static const char* LwLostWhy(uint32_t unit, uint32_t* squad, char* by, size_t si
         uint32_t attacker = EvpU32(h.record + 0x30, 0), slot; uint64_t creditor = 0;
         SafeRead(h.record + 0x38, &creditor, 8);
         int helldiver = attacker && EvpPtr(g_lw.game + 0x3326D20u, &av) && EvpHash(av + 0xF8, attacker, 8, 4, &slot);
-        snprintf(by, size, " by %s %08X%s", helldiver ? "a Helldiver" : attacker == unit ? "itself" : attacker == 0 || attacker == 0x7FFF ? "nothing named" : "entity",
+        uint32_t net = 0, point = 0;
+        int enemy = !helldiver && attacker && attacker != unit && LwGarrisonUnitsAt(attacker, &net, &point) == 1;
+        char what[48];
+        if (enemy && net) snprintf(what, sizeof what, "an enemy of garrison net %08X", net); else snprintf(what, sizeof what, "%s", enemy ? "an enemy" : "entity");
+        snprintf(by, size, " by %s %08X%s", helldiver ? "a Helldiver" : attacker == unit ? "itself" : attacker == 0 || attacker == 0x7FFF ? "nothing named" : what,
             attacker, creditor ? ", credited to a player" : ", no player credited");
         return "killed";
     }
@@ -767,7 +772,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         for (int k = 0; k < n && !still; k++) still = members[k] == q->seen[i];
         if (!still)
         {
-            uint32_t other = 0; float ground = NAN, *at = q->seenAt[i]; char by[96];
+            uint32_t other = 0; float ground = NAN, *at = q->seenAt[i]; char by[128];
             const char* why = LwLostWhy(q->seen[i], &other, by, sizeof by);
             LwGround(at[0], at[1], &ground);
             Note("living world: squad %d lost member %08X: %s%s (squad now %08X); last seen at (%.0f, %.0f, %.1f), ground there %.1f, %.0f m from the nearest player",
@@ -997,7 +1002,25 @@ typedef struct LwGarrison { uint32_t entity; uint8_t seen, wasActive, refills; u
  * its point's U bit (0x910070 killed = 1). The point is found by that U bit; after the garrison fills again the note
  * says whether the point stayed empty (no unit: occupied bit 6 clear). Runtime list: [gf+0x40] + 0x1B58 i, +0x204 u32
  * units, count +0x384 (max 96). */
-static struct { int on, stage; uint32_t garrison, unit, u[3], point; ULONGLONG at; } g_lwKill = {-1};
+static struct { int on, stage; uint32_t garrison, unit, u[3], point, net, slot; ULONGLONG at; } g_lwKill = {-1};
+/* The living units AiEnemy records at a garrison's point (as the game's own list rebuild 0x90AFE2 reads them, P):
+ * E = [game+0x33266C8], count [E+0x2320], records [E+0x2360] + 20 i (+0xC the garrison's network id, +0x10 its local
+ * point + 1), entity [[E+0x2348] + 8 i] + 8. With unit != 0: fills *net and *slot for that unit instead (1 when found). */
+static int LwGarrisonUnitsAt(uint32_t unit, uint32_t* net, uint32_t* slot)
+{
+    uintptr_t e, records, entities, d; int found = 0;
+    if (!EvpPtr(g_lw.game + 0x33266C8u, &e) || !EvpPtr(e + 0x2360, &records) || !EvpPtr(e + 0x2348, &entities)) return -1;
+    uint32_t count = EvpU32(e + 0x2320, 0);
+    for (uint32_t i = 0; i < count && i < 65536; i++)
+    {
+        uint32_t r[5]; ActHealth h;
+        if (SafeRead(records + 20u * i, r, sizeof r) || !EvpPtr(entities + 8u * i, &d) || d == 0) continue;
+        uint32_t entity = EvpU32(d + 8, 0);
+        if (unit) { if (entity == unit) { *net = r[3]; *slot = r[4]; return 1; } continue; }
+        if (r[3] == *net && r[4] == *slot && ActHealthOf(g_lw.game, entity, &h) && h.life < 2) found++;
+    }
+    return unit ? 0 : found;
+}
 static void LwKillTest(LwGarrison* g, uintptr_t r, uintptr_t l, uintptr_t points, const uint32_t* u, uint32_t n, uint8_t active)
 {
     typedef void (*QueueDamageFn)(void*, uint32_t, uint32_t, uint32_t, uint32_t, uint8_t, uint32_t, uint32_t, uint64_t, uint32_t, float, float, float,
@@ -1015,11 +1038,12 @@ static void LwKillTest(LwGarrison* g, uintptr_t r, uintptr_t l, uintptr_t points
         { Note("living world: test: kill: QueueDamage is not the reviewed code"); g_lwKill.stage = 9; return; }
         if (!EvpPtr(g_lw.game + 0x347CF38u, &sys) || (system = EvpU32(sys + 0x201120, 4096)) >= 4096) return;
         static const float down[3] = {0, 0, -1};
+        if (LwGarrisonUnitsAt(unit, &g_lwKill.net, &g_lwKill.slot) != 1) g_lwKill.slot = 0;
         memcpy(g_lwKill.u, u, sizeof g_lwKill.u);
         ((QueueDamageFn)(g_lw.game + 0x129F910u))(NULL, 7, 0, unit, 0xFFFFFFFFu, 0, h.network, h.network, 0, 0, 0.0f, 0.0f, 0.0f, down, pos, 0xFFFFFFFFu, 0, 0, 1.0f);
         g_lwKill.garrison = g->entity; g_lwKill.unit = unit; g_lwKill.at = now; g_lwKill.stage = 1;
-        Note("living world: test: kill: garrison %08X unit %08X at (%.0f, %.0f, %.1f) killed (QueueDamage kind 7); %u units listed", g->entity, unit,
-            (double)pos[0], (double)pos[1], (double)pos[2], count);
+        Note("living world: test: kill: garrison %08X unit %08X at (%.0f, %.0f, %.1f) killed (QueueDamage kind 7); %u units listed; its AiEnemy record: "
+            "garrison net %08X, point %d", g->entity, unit, (double)pos[0], (double)pos[1], (double)pos[2], count, g_lwKill.net, (int)g_lwKill.slot - 1);
         return;
     }
     if (g->entity != g_lwKill.garrison) return;
@@ -1044,8 +1068,10 @@ static void LwKillAfterFill(LwGarrison* g, uintptr_t l, uintptr_t points, const 
     if (g_lwKill.stage != 2 || g->entity != g_lwKill.garrison) return;
     uint32_t p = g_lwKill.point, gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0xFFFFFFFFu;
     if (gi < 0x100000) SafeRead(points + 0x58u * gi + 0x24, &flags, 4);
-    Note("living world: test: kill: garrison %08X filled again with %u units; the killed point %u: U %u, occupied %u (%s)", g->entity, listed, p,
-        (u[p / 32] >> (p % 32)) & 1, (flags >> 6) & 1, ((flags >> 6) & 1) == 0 && !((u[p / 32] >> (p % 32)) & 1) ? "stays empty" : "FILLED");
+    int living = g_lwKill.slot ? LwGarrisonUnitsAt(0, &g_lwKill.net, &g_lwKill.slot) : -1;
+    Note("living world: test: kill: garrison %08X filled again with %u units; the killed point %u: U %u, occupied bit %u; living units whose AiEnemy "
+        "record names that point: %d (%s)", g->entity, listed, p, (u[p / 32] >> (p % 32)) & 1, (flags >> 6) & 1, living,
+        living == 0 ? "stays empty" : living > 0 ? "FILLED" : "unreadable");
     g_lwKill.stage = 3;
 }
 static LwGarrison g_lwGarrisons[LW_GARRISONS_MAX];
