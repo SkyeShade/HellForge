@@ -758,6 +758,9 @@ try
     Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; the live pipe");
     await LiveModsTests.Run(root, Check);
     results.Add(new { mode = "live-mods", outcome = "passed" });
+    IdleKickTests.Run(Check);
+    results.Add(new { mode = "idle-kick", outcome = "passed" });
+    Console.WriteLine("PASS idle kick: served off, every other override unchanged");
     RegisteredItemsTests.Run(root, Check);
     results.Add(new { mode = "registered-items", outcome = "passed" });
     Console.WriteLine("PASS registered items: child hash, catalogue children, mastery package, progress, inventory");

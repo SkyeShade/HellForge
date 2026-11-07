@@ -115,7 +115,7 @@ public static partial class LocalBackend
 
     // A "bodySource" names an embedded data file and optional "#key" (default "items") whose value is the
     // body: the game catalogues from the player's own Sync Inventory (CatalogueDirectory, HellForge.Core GameCatalog), and
-    // the game client's feature switches (game-client-config.json).
+    // the game client's feature switches (game-client-config.json, with the idle kick turned off).
     // "reverse" serves an array source back to front: the warbond list (/SeasonPass) was read from the client's memory,
     // which holds it oldest first, and served so the game listed it oldest first, Helldivers Mobilize at the top, where
     // the live game lists the newest first.
@@ -135,7 +135,9 @@ public static partial class LocalBackend
             if (endpoint.TryGetProperty("reverse", out var reverse) && reverse.GetBoolean())
                 body = JsonSerializer.SerializeToElement(new JsonArray([.. body.EnumerateArray().Reverse()
                     .Select(entry => JsonNode.Parse(entry.GetRawText()))]), BackendJson.Default.JsonNode);
-            fixtures.Add(endpoint.GetProperty("path").GetString()!, body);
+            var path = endpoint.GetProperty("path").GetString()!;
+            if (path == "/Configuration/GameClient") body = IdleKick.TurnOff(body);
+            fixtures.Add(path, body);
         }
         return fixtures;
     }
