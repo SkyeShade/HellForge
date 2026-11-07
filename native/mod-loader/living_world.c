@@ -1302,6 +1302,40 @@ static void LwTestAim(int seq, float x, float y)
     Note("living world: test command %d: aim: camera %.1f deg, target %.1f deg, off by %+.1f deg", seq, (double)(cam * 57.29578f), (double)(to * 57.29578f), (double)(off * 57.29578f));
 }
 
+/* Test command "zoom K MS" (audit 1b criterion 8: no shot was zoomed; KB living-world-scope-draw-distance, checked by me:
+ * FirstPersonVR sets the Camera's +0x34 at the same point live): for MS milliseconds the frame's vertical field of view
+ * is the game's divided by K, as a K-times scope gives (the largest zoom in the game data is 4). Set in the engine's
+ * script render step (exe 0x689BC0, hooked before it runs: the game's camera code has set its own FOV for the frame by
+ * then, and the frame renders and culls with this one) through the Camera's set_vertical_fov (exe 0x30D990, Camera =
+ * [[game+0x346D560]]); the game sets its own again the next frame (0x127A11A), so nothing stays behind. */
+typedef void (*LwStepFn)(void* app);
+static LwStepFn g_lwStep;
+static volatile float g_lwZoomK; static volatile ULONGLONG g_lwZoomUntil; static float g_lwZoomBase;
+static void LwStepDetour(void* app)
+{
+    if (g_lwZoomK > 1.0f && GetTickCount64() < g_lwZoomUntil)
+    {
+        uintptr_t holder = 0, cam = 0; float fov = 0;
+        if (EvpPtr(g_lw.game + 0x346D560u, &holder) && holder && EvpPtr(holder, &cam) && cam && !SafeRead(cam + 0x34, &fov, 4) && fov > 0.1f && fov < 3.0f)
+        {
+            if (g_lwZoomBase == 0) g_lwZoomBase = fov;
+            ((void (*)(uintptr_t, float))((uintptr_t)GetModuleHandleW(NULL) + 0x30D990u))(cam, fov / g_lwZoomK);
+        }
+    }
+    g_lwStep(app);
+}
+static void LwTestZoom(int seq, float k, float ms)
+{
+    if (g_lwStep == NULL)
+    {
+        uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+        if (!ApiCodeMatches(exe + 0x30D990u, "F3 0F 11 49 34") || LoaderHook("living world zoom (test)", exe + 0x689BC0u, (void*)LwStepDetour, (void**)&g_lwStep) || g_lwStep == NULL)
+        { Note("living world: test command %d: zoom: the render step or set_vertical_fov is not the reviewed code", seq); g_lwStep = NULL; return; }
+    }
+    g_lwZoomBase = 0; g_lwZoomK = k; g_lwZoomUntil = GetTickCount64() + (ULONGLONG)ms;
+    Note("living world: test command %d: zoom %.1fx for %.0f ms", seq, (double)k, (double)ms);
+}
+
 static void LwKillArm(void);
 static void LwTestCommands(void)
 {
@@ -1319,6 +1353,7 @@ static void LwTestCommands(void)
         else if (strncmp(cmds[c], "kill garrison", 13) == 0) LwKillArm();
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
         else if (sscanf(cmds[c], "aim %f %f", &d, &deg) == 2) LwTestAim(seq, d, deg);
+        else if (sscanf(cmds[c], "zoom %f %f", &d, &deg) == 2 && d >= 1.0f && d <= 8.0f && deg > 0 && deg <= 20000) LwTestZoom(seq, d, deg);
         else if (strncmp(cmds[c], "status", 6) == 0)
             for (int i = 0; i < g_lwWorld.count; i++)
             {
