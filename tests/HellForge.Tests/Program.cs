@@ -718,6 +718,7 @@ AssetFetchTests.Register(Test, Check, Reject, root);
 SdkTests.Register(Test, Check, Reject, root);
 LiveEditTests.Register(Test, Check, Reject, root);
 ModKitTests.Register(Test, Check, Reject, root);
+ModToolRepairTests.Register(Test, Check, Reject, root);
 BundledModsTests.Register(Test, Check, Reject, root);
 CosmeticPacksTests.Register(Test, Check, Reject, root);
 OtherArchivesTests.Register(Test, Check, Reject, root);

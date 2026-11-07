@@ -26,6 +26,10 @@ public sealed record ModBuildRecord(string Key, string SourceHash, string Dll, s
 // ("tools": fetching the compiler, "compiling", "done"), the source mods done and in all, and the one being built.
 public sealed record ModBuildProgress(string Stage, int Done, int Total, string Mod);
 
+// How a build runs: InstallTools fetches Zig when it is missing or damaged (the Linux wrapper's build-source-mods may not:
+// it unpacks Zig again only from tools/downloads), and RebuildFailed compiles unchanged sources that failed (Build now).
+public sealed record ModBuildOptions(bool InstallTools = true, bool RebuildFailed = false);
+
 public static class ModBuilds
 {
     public const string RecordName = "record.json";
@@ -113,7 +117,7 @@ public static class ModBuilds
     // and the problems (a mod that did not compile is left out). tools: on Windows, installs the SDK's pinned compiler
     // when missing; Linux installs the native compiler in the wrapper before the session.
     public static (List<ModManifest> Mods, List<string> Problems) Prepare(InstallLayout install, ModSdk? sdk, IReadOnlyList<ModManifest> mods, string buildId,
-        Action<string>? log = null, bool installTools = true, Action<ModBuildProgress>? progress = null)
+        Action<string>? log = null, ModBuildOptions? options = null, Action<ModBuildProgress>? progress = null)
     {
         var ready = new List<ModManifest>();
         var problems = new List<string>();
@@ -128,8 +132,8 @@ public static class ModBuilds
                 // Linux builds natively before the session (hellforge-linux.sh), and a Wine session uses that record: it
                 // never installs or starts zig.exe. Windows keeps installing the pinned tools on first need.
                 if (!OperatingSystem.IsLinux() && !ModKit.NativeBuildOnly)
-                    InstallTools(sdk, installTools, new("tools", done, total, mod.Name), log, progress);
-                ready.Add(mod with { BuiltDll = Ensure(install, sdk, mod, buildId, log) });
+                    InstallTools(sdk, options?.InstallTools ?? true, new("tools", done, total, mod.Name), log, progress);
+                ready.Add(mod with { BuiltDll = Ensure(install, sdk, mod, buildId, log, options) });
             }
             catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or HttpRequestException or
                 System.ComponentModel.Win32Exception)
@@ -156,45 +160,114 @@ public static class ModBuilds
         ModKit.InstallToolsAsync(sdk, ide: false, line => log?.Invoke(line)).GetAwaiter().GetResult();
     }
 
-    // The mod's DLL for this build: its cached build when the record and both hashes match, else built now.
-    public static string Ensure(InstallLayout install, ModSdk sdk, ModManifest mod, string buildId, Action<string>? log = null)
+    // The mod's DLL for this build: its cached build when the record and both hashes match, else built now (ticket 0353:
+    // a failure in Zig's own files, not the mod's, unpacks Zig again and builds once more, and is never kept).
+    public static string Ensure(InstallLayout install, ModSdk sdk, ModManifest mod, string buildId, Action<string>? log = null, ModBuildOptions? options = null)
     {
+        options ??= new();
         var folder = Directory.CreateDirectory(ModFolder(install, mod.Id)).FullName;
         var sourceHash = SourceHash(mod.Folder);
         var key = Key(sourceHash, sdk, buildId, ModKit.Sources(mod.Folder).Any(f => f.EndsWith(".cpp", StringComparison.Ordinal)));
-        var record = Record(install, mod.Id);
-        var dll = Path.Combine(folder, key[..16], mod.CodeDll!);
-        if (record != null && record.Key == key && record.SourceHash == sourceHash)
-        {
-            if (record.Error != null) throw new InvalidDataException("did not compile (sources unchanged since):\n" + record.Error);
-            if (File.Exists(dll) && Sha256(dll) == record.DllSha256) return dll;
-            log?.Invoke($"{mod.Id}: its cached build does not match its record; building it again.");
-        }
+        var target = new Target(folder, key, sourceHash, Path.Combine(folder, key[..16], mod.CodeDll!));
+        if (UseKept(target, Record(install, mod.Id), sdk, mod.Id, options.RebuildFailed, log)) return target.Dll;
         log?.Invoke($"{mod.Id}: building from source ({ModKit.Sources(mod.Folder).Count} file(s))...");
-        var staging = Path.Combine(folder, "building-" + Guid.NewGuid().ToString("N")[..8]);
+        return BuildRepairing(target, sdk, mod, options.InstallTools, log);
+    }
+
+    // One build's place: the mod's build folder, its key and sources' hash, and where its DLL goes.
+    sealed record Target(string Folder, string Key, string SourceHash, string Dll);
+
+    // Whether the kept build serves: its DLL when the record matches it; a kept failure is thrown again, unless
+    // rebuildFailed (Build now), or it failed in Zig's own files, or those are damaged now.
+    static bool UseKept(Target target, ModBuildRecord? record, ModSdk sdk, string id, bool rebuildFailed, Action<string>? log)
+    {
+        if (record == null || record.Key != target.Key || record.SourceHash != target.SourceHash) return false;
+        if (record.Error == null)
+        {
+            if (File.Exists(target.Dll) && Sha256(target.Dll) == record.DllSha256) return true;
+            log?.Invoke($"{id}: its cached build does not match its record; building it again.");
+            return false;
+        }
+        if (rebuildFailed) log?.Invoke($"{id}: building it again, though its sources are unchanged since it did not compile.");
+        else if (ToolsFailure(record.Error) || PinnedCompiler(sdk) is { } pinned && ModKit.ToolDamage(sdk, pinned) != null)
+            log?.Invoke($"{id}: its last build failed in the mod tools (Zig), not in the mod; building it again.");
+        else throw new InvalidDataException("did not compile (sources unchanged since):\n" + record.Error);
+        return false;
+    }
+
+    // The build, and when it failed in Zig's own files, Zig unpacked again and one more build (AfterFailure).
+    static string BuildRepairing(Target target, ModSdk sdk, ModManifest mod, bool allowDownload, Action<string>? log)
+    {
+        for (var repaired = false; ; repaired = true)
+        {
+            try { return Compile(target, sdk, mod, log); }
+            catch (InvalidDataException error) { AfterFailure(target, sdk, mod, error.Message, repaired, allowDownload, log); }
+        }
+    }
+
+    // A failed build: the mod's own failure is kept and thrown. One in Zig's own files (its message, or its file list
+    // finding a file gone) unpacks Zig again for one more build, or after that is thrown without being kept.
+    static void AfterFailure(Target target, ModSdk sdk, ModManifest mod, string message, bool repaired, bool allowDownload, Action<string>? log)
+    {
+        var tool = PinnedCompiler(sdk);
+        var damage = tool == null ? null : ModKit.ToolDamage(sdk, tool);
+        var zigs = ToolsFailure(message);
+        if (damage == null && !zigs)
+        {
+            Write(target.Folder, NewRecord(target.Key, target.SourceHash, mod.CodeDll!, null, Trim(message), sdk));
+            throw new InvalidDataException("did not compile:\n" + Trim(message));
+        }
+        var why = damage ?? "Zig could not build its own libraries";
+        if (tool == null || repaired) throw new InvalidDataException(Damaged(why, message));
+        log?.Invoke($"{mod.Id}: {(zigs ? "the build failed in the mod tools, not in the mod" : "did not compile, and the mod tools need checking first")} " +
+            $"({why}): unpacking {tool.Name} again, then building again...");
+        try { ModKit.RepairToolAsync(sdk, tool, allowDownload, line => log?.Invoke(line)).GetAwaiter().GetResult(); }
+        catch (Exception failure) when (failure is InvalidDataException or IOException or UnauthorizedAccessException or HttpRequestException or TaskCanceledException)
+        {
+            throw new InvalidDataException(Damaged(why, message) + "\nUnpacking Zig again did not work: " + failure.Message);
+        }
+    }
+
+    // One compile into a staging folder, moved into place with its record; the compiler's failure is thrown as it came.
+    static string Compile(Target target, ModSdk sdk, ModManifest mod, Action<string>? log)
+    {
+        var staging = Path.Combine(target.Folder, "building-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(staging);
         try
         {
-            var built = ModKit.Build(mod.Folder, sdk, line => log?.Invoke(line), Path.Combine(staging, mod.CodeDll!));
-            var target = Path.GetDirectoryName(dll)!;
-            if (Directory.Exists(target)) Directory.Delete(target, recursive: true);
-            Directory.Move(staging, target);
-            Write(folder, NewRecord(key, sourceHash, mod.CodeDll!, Sha256(dll), null, sdk));
-            foreach (var old in Directory.GetDirectories(folder).Where(d => Path.GetFileName(d) != key[..16]))
+            ModKit.Build(mod.Folder, sdk, line => log?.Invoke(line), Path.Combine(staging, mod.CodeDll!));
+            var built = Path.GetDirectoryName(target.Dll)!;
+            if (Directory.Exists(built)) Directory.Delete(built, recursive: true);
+            Directory.Move(staging, built);
+            Write(target.Folder, NewRecord(target.Key, target.SourceHash, mod.CodeDll!, Sha256(target.Dll), null, sdk));
+            foreach (var old in Directory.GetDirectories(target.Folder).Where(d => Path.GetFileName(d) != target.Key[..16]))
                 try { Directory.Delete(old, recursive: true); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException) { } /* a DLL a running game holds: next time */
-            log?.Invoke($"{mod.Id}: built ({new FileInfo(dll).Length / 1024} KB).");
-            return dll;
-        }
-        catch (InvalidDataException error)
-        {
-            Write(folder, NewRecord(key, sourceHash, mod.CodeDll!, null, Trim(error.Message), sdk));
-            throw new InvalidDataException("did not compile:\n" + Trim(error.Message));
+            log?.Invoke($"{mod.Id}: built ({new FileInfo(target.Dll).Length / 1024} KB).");
+            return target.Dll;
         }
         finally
         {
             if (Directory.Exists(staging)) try { Directory.Delete(staging, recursive: true); } catch (IOException) { }
         }
+    }
+
+    // Zig failed building its own runtime libraries (compiler_rt, libzigc, MinGW's C runtime, libc++), which it compiles
+    // from its lib folder before any of the mod's code: never the mod's fault. (Zig 0.17.0's wording.)
+    public static bool ToolsFailure(string compilerOutput) => compilerOutput.Contains("error: sub-compilation of ", StringComparison.Ordinal);
+
+    static string Damaged(string why, string compilerOutput) =>
+        $"did not compile, because the mod tools (Zig) are damaged, not the mod: {why}. An antivirus that removes files from the HellForge " +
+        "folder does this: exclude the folder, then start the session again.\n" + Trim(compilerOutput);
+
+    // The pinned tool this host compiles with (tools/zig/zig.exe, or tools/zig-linux/zig), or null for a Zig HellForge did
+    // not unpack (ZIG or PATH on Linux), which it neither checks nor repairs.
+    static ModTool? PinnedCompiler(ModSdk sdk)
+    {
+        string compiler;
+        try { compiler = Path.GetFullPath(ModKit.Compiler(sdk, OperatingSystem.IsLinux(), ModKit.NativeBuildOnly)); }
+        catch (IOException) { return null; }
+        return ModKit.ToolsForThisPlatform(sdk).FirstOrDefault(t => Path.GetFullPath(ModKit.ToolPath(sdk, t)) == compiler);
     }
 
     // The compiler's message, without the "did not compile" heading and the mod folder's own path (file:line stays).

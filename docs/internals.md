@@ -116,8 +116,9 @@ the installation, who could edit the sources or the record too.
 
 A mod that does not compile stays off for that session, and the session still runs. The record keeps the compiler's
 message (file and line), which the launcher's Mods page shows on the mod's card. The same sources are not compiled again.
-Build now in the mod's ⋮ menu (or `HellForge.Cli build-mod --mod <mods>/<mod>`) makes the same build at once. On Linux it
-runs the native agent.
+Build now in the mod's ⋮ menu (or `HellForge.Cli build-mod --mod <mods>/<mod>`) compiles at once, even unchanged
+sources. On Linux it runs the native agent. Zig's own failures are never kept
+([damaged mod tools](modding/tools.md#how-hellforge-builds-mods)).
 
 ### Tools and friends
 

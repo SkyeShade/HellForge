@@ -110,8 +110,8 @@ The CONSOLE page shows `Building yourname.liberator-tweaks...` and then `yournam
 the next session loads it.` The build goes to `<installation>\temp\mod-builds\<mod id>\`, which is where sessions load
 it from.
 
-If the code does not compile, the mod's row opens with `Did not compile; it stays off until fixed:` and the compiler's
-message with the file and line, and the row gets a DID NOT COMPILE tag. Every mod is built with `-Wall -Werror`, so a
+If the code does not compile, the mod's row opens with `Did not compile; it stays off until fixed (Build now compiles it
+again):` and the compiler's message with the file and line, and the row gets a DID NOT COMPILE tag. Every mod is built with `-Wall -Werror`, so a
 warning fails the build too. A mod that does not compile stays off for that session, and the session still runs.
 
 From a terminal: `HellForge.Cli build-mod --mod <installation>\mods\liberator-tweaks`. For a mod in an installation's
