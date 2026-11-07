@@ -363,6 +363,7 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
  * 0x95288B; garrisons fill within 150 m). A squad 250-600 m away comes online, still hidden, when the next stretch of its
  * route is in a player's view (D), and stays online while a player within 650 m sees it (D); far squads use at most
  * 40 % of the budget (D), so the near ones keep theirs. */
+#define LW_BOOST_FAR 900.0f   /* nav cells within this of a player are boosted too, every 4th tick (D) */
 #define LW_FAR_MARGIN 50.0f   /* a squad seen within its band + this stays online (D) */
 #define LW_RADIUS_DEFAULT 2.0f /* a group's unit radius until one of its units has been measured (D: a 2 m sphere, 811 m) */
 #define LW_FAR_SHARE 0.4f
@@ -1948,11 +1949,16 @@ static void LwNavBoost(uintptr_t nav, const uint16_t* wh, uint32_t marksId)
     if (SafeRead(nav + 0x671C, g, 16) || g[2] <= g[0] || g[3] <= g[1]) return;
     float cw = (g[2] - g[0]) / wh[0], ch = (g[3] - g[1]) / wh[1];
     uint32_t list[64]; int count = 0;
+    /* Two tiers (512 m cells, KB nav-small-cells): every tick the cells within R_on, and every 4th tick those within
+     * LW_BOOST_FAR, so squads seen far out (the drawn-distance band, 700-950 m for most units) find navmesh there,
+     * while the cells around the players still come first (the game adds +100 a frame to a player's own cell). */
+    static unsigned tick; tick++;
+    float reach = (tick & 3) == 0 ? LW_BOOST_FAR : LW_R_ON;
     for (int p = 0; p < g_lwWorld.playersAt; p++)
     {
         const float* at = g_lwWorld.players[p];
-        int i0 = (int)floorf((at[0] - LW_R_ON - g[0]) / cw), i1 = (int)floorf((at[0] + LW_R_ON - g[0]) / cw);
-        int j0 = (int)floorf((at[1] - LW_R_ON - g[1]) / ch), j1 = (int)floorf((at[1] + LW_R_ON - g[1]) / ch);
+        int i0 = (int)floorf((at[0] - reach - g[0]) / cw), i1 = (int)floorf((at[0] + reach - g[0]) / cw);
+        int j0 = (int)floorf((at[1] - reach - g[1]) / ch), j1 = (int)floorf((at[1] + reach - g[1]) / ch);
         for (int j = j0 < 0 ? 0 : j0; j <= j1 && j < wh[1]; j++)
             for (int i = i0 < 0 ? 0 : i0; i <= i1 && i < wh[0]; i++)
             {
@@ -1964,7 +1970,7 @@ static void LwNavBoost(uintptr_t nav, const uint16_t* wh, uint32_t marksId)
                 ((BoostFn)fn)(id, xyz);
             }
     }
-    if (nav != lastNav || count != lastCount || memcmp(list, lastList, sizeof(uint32_t) * (size_t)count))
+    if (reach == LW_R_ON && (nav != lastNav || count != lastCount || memcmp(list, lastList, sizeof(uint32_t) * (size_t)count)))
     {
         char text[640]; int len = 0; text[0] = 0;
         for (int k = 0; k < count && len < (int)sizeof text - 16; k++) len += snprintf(text + len, sizeof text - len, " (%u, %u)", list[k] % wh[0], list[k] / wh[0]);
