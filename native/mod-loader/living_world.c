@@ -504,8 +504,10 @@ static void LwPopulate(void)
     /* The least spawn distance fits the map (D, lw15p: a 156 m disc had no node 150 m from the drop, so 0 squads):
      * half the playable radius, at least vanilla's 75 m (colony / city patrols) and at most LW_R_MIN. */
     g_lwWorld.rMin = fminf(LW_R_MIN, fmaxf(75.0f, 0.5f * g_lwWorld.radius));
-    float least = g_lwWorld.radius < LW_R_OFF ? g_lwWorld.rMin : LW_R_OFF;
-    for (int tries = 0; made < n && tries < n * 20; tries++)
+    /* Two passes (lw32a: a 350 m disc = LW_R_OFF made 0 squads: no node lay 350 m from a player in the middle): beyond
+     * R_off first, then what that pass could not place beyond R_min. */
+    for (int pass = 0, tries = 0; pass < 2; pass++, tries = 0)
+    for (float least = pass == 0 ? LW_R_OFF : g_lwWorld.rMin; made < n && tries < n * 20; tries++)
     {
         int node = (int)(LwRand() % (uint32_t)g_lwNodeCount);
         float x = g_lwNodes[node].x, y = g_lwNodes[node].y, r = g_lwWorld.radius;
