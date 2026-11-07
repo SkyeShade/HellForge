@@ -389,6 +389,7 @@ typedef struct LwSquad
     uint8_t forceOff; /* test command: go offline now */
     ULONGLONG lookAt;
     ULONGLONG retry; /* no request before this (placement or sight refused) */
+    uint32_t groundId[32]; float groundAt[32][3]; /* each member's last 5 s sample on the ground (the fall note) */
 } LwSquad;
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
@@ -683,32 +684,96 @@ static int LwPlace(uintptr_t slot, float* pos)
     return 1;
 }
 
+/* A family's possible units (lw40b: squad 11's 8 members all stood on its request point, "nearest two 0.0 m", twice,
+ * though LwMembersFit had passed it with the slot's layer and 2.52 m). Checked in the dump: the squad create's member
+ * loop (0x801F80..0x8029DF) takes, per family (slot +12k: hash, +4 count; [slot+0x60] families), each member's unit
+ * from 0x953150(dir, hash, table = [dir+0x660] (the loader's requests carry no spawn data: [data+0x10] = 0), 0): a
+ * WEIGHTED RANDOM pick (the game's LCG 0x3483C38) among the table's entries (stride 0x80, count [table+8]) with
+ * [e] == hash, tag test 0x177E3C0(dir+0x518D4, e+0x58) and weight [e+0x30+4(difficulty [dir+0x518C4] - 1)] > 0; then
+ * resource = 0x949B80(&out, 0, e, -1, 0) (a pure lookup by difficulty), and per member layer = [0x505B40(res)+4]
+ * (0 without), radius = min(2.4, [0x505B40(res)+8] when > 0, else [0x4F95C0(res)+0x10]) x 1.05, else 0.5
+ * (0x8025A5..0x8025EE). The layer filters the cast's start face (exe 0x7D8D00: 0x7E6CB0(layer) -> query filter), so a
+ * member whose layer has no face at the point stays ON the point. The pick cannot be predicted without moving the
+ * game's random state, so the point must suit every unit the pick can give. Up to 8 per family; 0 = none (the game
+ * would read entry 0). */
+#define LW_VARIANTS 8
+typedef struct { float radius; uint32_t layer; } LwVariant;
+static int LwVariantsOf(uint32_t hash, LwVariant* out)
+{
+    typedef char (*TagFn)(uintptr_t tags, uintptr_t want);
+    typedef uintptr_t* (*ResFn)(uintptr_t* out, uintptr_t table, uintptr_t entry, int32_t difficulty, uintptr_t tags);
+    typedef uintptr_t (*LookFn)(uintptr_t res);
+    uintptr_t dir = g_lwWorld.dir, table = 0, base = 0;
+    if (!EvpPtr(dir + 0x660, &table) || table == 0 || !EvpPtr(table, &base) || base == 0) return 0;
+    uint32_t count = EvpU32(table + 8, 0), diff = EvpU32(dir + 0x518C4, 0);
+    if (diff == 0 || diff > 16 || count > 4096) return 0;
+    int n = 0;
+    for (uint32_t k = 0; k < count; k++)
+    {
+        uintptr_t e = base + (uintptr_t)k * 0x80; float w = 0;
+        if (EvpU32(e, 0) != hash || SafeRead(e + 0x30 + 4u * (diff - 1), &w, 4) || !(w > 0.0f)) continue;
+        if (!((TagFn)(g_lw.game + 0x177E3C0u))(dir + 0x518D4, e + 0x58)) continue;
+        uintptr_t res = 0;
+        ((ResFn)(g_lw.game + 0x949B80u))(&res, 0, e, -1, 0);
+        uintptr_t info = res ? ((LookFn)(g_lw.game + 0x505B40u))(res) : 0, alt;
+        LwVariant v = {0.5f, 0}; float r = 0;
+        if (info) v.layer = EvpU32(info + 4, 0);
+        if (info && !SafeRead(info + 8, &r, 4) && r > 0.0f) v.radius = (r < 2.4f ? r : 2.4f) * 1.05f;
+        else if (res && (alt = ((LookFn)(g_lw.game + 0x4F95C0u))(res)) != 0 && !SafeRead(alt + 0x10, &r, 4)) v.radius = (r < 2.4f ? r : 2.4f) * 1.05f;
+        int same = 0;
+        for (int j = 0; j < n; j++) if (out[j].layer == v.layer && out[j].radius == v.radius) same = 1;
+        if (!same && n < LW_VARIANTS) out[n++] = v;
+    }
+    return n;
+}
+
 /* Every member's place (audit 1b criterion 6; KB living-world-spawn-losses, checked by me: 0x800270, 0x80253E..0x8025A4,
- * 0x80283F..0x8028DC, 5.0 at 0x23C74A4, 1.05 at 0x23C6DBC): the squad create puts member i (of n) at the request point
- * plus r (cos a, sin a, 0), r = 5 sqrt((i + 0.5) / (n - 0.5)), a = (i + 1) 2 pi / 2.618034 (none for n = 1), then casts
- * along the navmesh from the point to that slot: exe 0x7D8C00 = [[game+0x3326330]+0x18](u32 [[game+0x346D508]], from,
- * to, radius = min(2.4, unit) x 1.05, layer, out prefilled with the point). A cast that fails or stops at once leaves
- * the member ON the point, and members are created with no overlap test: on a navmesh edge (where LwPlace's snap puts
- * an off-mesh route point) several members stood inside each other and died within seconds (lw34d, lw36a). The point
- * is used only when every member's cast (largest radius, 2.52 m) reaches its slot within 0.1 m and that slot passes
- * LwPlace's ground check (nothing over it within 2 m). 1 when all fit. */
+ * 0x80283F..0x8028DC, 5.0 at 0x23C74A4, 1.05 at 0x23C6DBC): the squad create puts member i (of n = the families'
+ * summed counts, capped) at the request point plus r (cos a, sin a, 0), r = 5 sqrt((i + 0.5) / (n - 0.5)),
+ * a = (i + 1) 2 pi / 2.618034 (none for n = 1), i counting across families, then casts along the navmesh from the
+ * point to that slot: exe 0x7D8C00 = [[game+0x3326330]+0x18](u32 [[game+0x346D508]], from, to, its radius, its layer,
+ * out prefilled with the point). A cast that fails or stops at once leaves the member ON the point, and members are
+ * created with no overlap test (lw34d, lw36a: members inside each other died within seconds). The point is used only
+ * when, for every member and every unit its family's pick can give (LwVariantsOf), the cast reaches the slot within
+ * 0.1 m and that slot passes LwPlace's ground check (nothing over it within 2 m). 1 when all fit. */
+static uint32_t g_lwVariantNoted[16];
 static int LwMembersFit(uintptr_t slot, const float* pos, uint32_t n)
 {
     typedef uint64_t (*CastFn)(uint32_t world, const float* from, const float* to, float radius, uint32_t layer, float* out);
-    typedef uintptr_t (*LayerFn)(uintptr_t key);
-    uintptr_t table = 0, fn = 0, key = 0, entry, wp = 0;
-    uint32_t layer = 0, world = 0;
+    uintptr_t table = 0, fn = 0, wp = 0;
+    uint32_t world = 0;
     if (n <= 1) return 1;
     if (!EvpPtr(g_lw.game + 0x3326330u, &table) || !EvpPtr(table + 0x18, &fn) || fn == 0 || !EvpPtr(g_lw.game + 0x346D508u, &wp) || wp == 0 ||
         SafeRead(wp, &world, 4)) return 0;
-    if (EvpPtr(slot + 0xB0, &key) && key && (entry = ((LayerFn)(g_lw.game + 0x505B40u))(key)) != 0) layer = EvpU32(entry + 4, 0);
-    for (uint32_t i = 0; i < n && i < 32; i++)
+    uint32_t families = EvpU32(slot + 0x60, 0), i = 0;
+    if (families > 8) return 0;
+    for (uint32_t f = 0; f < families && i < n; f++)
     {
-        float r = 5.0f * sqrtf(((float)i + 0.5f) / ((float)n - 0.5f)), a = (float)(i + 1) * 6.2831854820f / 2.6180336475f;
-        float to[3] = {pos[0] + r * cosf(a), pos[1] + r * sinf(a), pos[2]}, out[3] = {pos[0], pos[1], pos[2]}, top = NAN;
-        ((CastFn)fn)(world, pos, to, 2.52f, layer, out);
-        if (!isfinite(out[0]) || LwDist2(to, out[0], out[1]) > 0.1f * 0.1f || !LwGround(out[0], out[1], &top) || fabsf(top - out[2]) > 2.0f)
-        { g_lwWorld.crowded++; return 0; }
+        uint32_t hash = EvpU32(slot + 12u * f, 0), count = EvpU32(slot + 12u * f + 4, 0);
+        LwVariant v[LW_VARIANTS];
+        int nv = count ? LwVariantsOf(hash, v) : 0;
+        if (count && nv == 0) { g_lwWorld.crowded++; return 0; }
+        int noted = 0; /* once per family hash: the units its pick can give, for the run notes */
+        for (int k = 0; k < 16 && !noted; k++) if (g_lwVariantNoted[k] == hash) noted = 1;
+        if (!noted && count)
+        {
+            for (int k = 0; k < 16; k++) if (g_lwVariantNoted[k] == 0) { g_lwVariantNoted[k] = hash; break; }
+            char line[256]; int at = 0;
+            for (int j = 0; j < nv && at < (int)sizeof line - 32; j++) at += snprintf(line + at, sizeof line - at, "%s%.2f m layer %u", j ? ", " : "", (double)v[j].radius, v[j].layer);
+            Note("living world: family %08X: its pick gives %d kind%s of unit: %s", hash, nv, nv == 1 ? "" : "s", line);
+        }
+        for (uint32_t c = 0; c < count && i < n; c++, i++)
+        {
+            float r = 5.0f * sqrtf(((float)i + 0.5f) / ((float)n - 0.5f)), a = (float)(i + 1) * 6.2831854820f / 2.6180336475f;
+            float to[3] = {pos[0] + r * cosf(a), pos[1] + r * sinf(a), pos[2]}, top = NAN;
+            if (!LwGround(to[0], to[1], &top)) { g_lwWorld.crowded++; return 0; }
+            for (int j = 0; j < nv; j++)
+            {
+                float out[3] = {pos[0], pos[1], pos[2]};
+                ((CastFn)fn)(world, pos, to, v[j].radius, v[j].layer, out);
+                if (!isfinite(out[0]) || LwDist2(to, out[0], out[1]) > 0.1f * 0.1f || fabsf(top - out[2]) > 2.0f) { g_lwWorld.crowded++; return 0; }
+            }
+        }
     }
     return 1;
 }
@@ -1071,6 +1136,21 @@ static void LwOnlineTick(LwSquad* q, int* removals)
             g_lwWorld.heights++;
             if (p[2] < top - 1.5f) { g_lwWorld.underGround++; if (top - p[2] > g_lwWorld.worstUnder) g_lwWorld.worstUnder = top - p[2]; }
             if (p[2] > top + 3.0f) { g_lwWorld.overGround++; if (p[2] - top > g_lwWorld.worstOver) g_lwWorld.worstOver = p[2] - top; }
+            /* a member falling under the world (lw40b: squad 4's 00000470 at z -1898, ground 38.3, removed): where it was
+             * last on the ground and whether the navmesh has a face there (the game's 10 m snap, layer 0), once each */
+            if (k < 32 && top - p[2] > 10.0f && q->groundId[k] == members[k])
+            {
+                typedef int (*SnapFn)(uint32_t nav, float* p, float radius, float* out, float* normal, uint32_t layer);
+                uintptr_t table = 0, fn = 0; float face[3] = {q->groundAt[k][0], q->groundAt[k][1], q->groundAt[k][2]}; int has = 0;
+                if (EvpPtr(g_lw.game + 0x3326330u, &table) && EvpPtr(table + 0x10, &fn) && fn) has = ((SnapFn)fn)(EvpU32(g_lwWorld.dir + 0x648, 0), face, 10.0f, face, NULL, 0) != 0;
+                Note("living world: squad %d member %08X under the ground: at (%.1f, %.1f, %.1f), ground %.1f; 5 s before on the ground at (%.1f, %.1f, %.1f); %s", (int)(q - g_lwSquads),
+                    members[k], (double)p[0], (double)p[1], (double)p[2], (double)top, (double)q->groundAt[k][0], (double)q->groundAt[k][1], (double)q->groundAt[k][2],
+                    has ? "" : "no navmesh face within 10 m there");
+                if (has) Note("living world: squad %d member %08X: the navmesh face nearest that point is %.1f m across, %.1f m up", (int)(q - g_lwSquads), members[k],
+                    (double)sqrtf(LwDist2(q->groundAt[k], face[0], face[1])), (double)(face[2] - q->groundAt[k][2]));
+                q->groundId[k] = 0;
+            }
+            else if (k < 32 && fabsf(top - p[2]) <= 1.5f) { q->groundId[k] = members[k]; memcpy(q->groundAt[k], p, sizeof p); }
         }
     }
     q->pos[0] = at[0]; q->pos[1] = at[1];
