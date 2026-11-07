@@ -14,7 +14,7 @@
 #define LW_STATE 0x346BF98u         /* [game+]: the entity state the removal 0xFDC310 takes */
 #define LW_NONE 0x3483C4Cu          /* [game+]: the "no entity" id the budget's reset writes */
 #define LW_INVALID 0x3483C20u       /* [game+]: the invalid id the AiJob lookup tests first */
-#define LW_PATROL_FLAGS 0x4Eu       /* 0x02 keep (the squad entity) | 0x04 queue | 0x08 no nav snap | 0x40 the loader enforces the gates */
+#define LW_PATROL_FLAGS 0x5Eu       /* 0x02 keep (the squad entity) | 0x04 queue | 0x08 no nav snap | 0x10 no ground ray (LwPlace placed it) | 0x40 the loader enforces the gates */
 #define LW_JOB_PATROL 1u
 #define LW_JOB_BATTLE 10u           /* state 10 re-reads job_position (0x7FD6FE): the route's waypoints */
 
@@ -355,6 +355,7 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
 #define LW_PATH_MAX 32
 #define LW_R_ON 250.0f
 #define LW_R_OFF 350.0f
+#define LW_SIGHT 600.0f       /* players farther than this are not checked for sight (D) */
 #define LW_R_MIN 150.0f       /* never spawned nearer a player (D): vanilla spawns patrols 75-130 m away */
 #define LW_ARRIVE 15.0f
 #define LW_FAR_MS 10000       /* beyond R_off and calm this long before a squad goes offline (D) */
@@ -370,17 +371,20 @@ typedef struct LwSquad
     uint32_t squad, seen[32];
     uint8_t seenCount, lost, cycled, alive; /* alive: members listed online (the budget counts living units, as 0x9513A1) */
     ULONGLONG since, moved, farSince;
-    float movedFrom[2];
+    float movedFrom[2], reqZ, seenAt[32][3]; /* seenAt: each listed member's last position (for the loss note) */
+    uint8_t arrived;
+    ULONGLONG retry; /* no request before this (placement or sight refused) */
 } LwSquad;
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
 {
     uintptr_t dir, lg; uint32_t seed;
     int count, populated, online, onlineUnits, eff, playersAt;
-    float players[EVT_MAX_PLAYERS][2], radius;
-    float known[EVT_MAX_PLAYERS][2]; ULONGLONG knownAt[EVT_MAX_PLAYERS]; uint64_t knownPeer[EVT_MAX_PLAYERS];
+    float players[EVT_MAX_PLAYERS][3], radius; /* feet position (x, y, z) */
+    float known[EVT_MAX_PLAYERS][3]; ULONGLONG knownAt[EVT_MAX_PLAYERS]; uint64_t knownPeer[EVT_MAX_PLAYERS];
     ULONGLONG last, effAt, noteAt;
     uint32_t spawned, offlined, died, refused;
+    uint32_t noFace, moved, overhead, seen, rays, rayDynamic; double rayUs; /* placement and sight refusals, rays cast (30 s) */
 } g_lwWorld;
 
 static uint32_t LwAiCount(void) { uintptr_t c; return EvpPtr(g_lw.game + 0x3326D18u, &c) ? EvpU32(c + 0x1C, 0) : 0; }
@@ -409,11 +413,11 @@ static void LwPlayers(void)
         if (list[i].avatar && ActHealthOf(g_lw.game, list[i].avatar, &h) && h.unit && EvpUnitPosition(h.unit, at))
         {
             if (slot < 0) for (int j = 0; j < EVT_MAX_PLAYERS && slot < 0; j++) if (!g_lwWorld.knownAt[j] || now - g_lwWorld.knownAt[j] > LW_KNOWN_MS) slot = j;
-            if (slot >= 0) { g_lwWorld.known[slot][0] = at[0]; g_lwWorld.known[slot][1] = at[1]; g_lwWorld.knownAt[slot] = now; g_lwWorld.knownPeer[slot] = list[i].peer; }
+            if (slot >= 0) { g_lwWorld.known[slot][0] = at[0]; g_lwWorld.known[slot][1] = at[1]; g_lwWorld.known[slot][2] = at[2]; g_lwWorld.knownAt[slot] = now; g_lwWorld.knownPeer[slot] = list[i].peer; }
         }
     }
     for (int j = 0; j < EVT_MAX_PLAYERS; j++)
-        if (g_lwWorld.knownAt[j] && now - g_lwWorld.knownAt[j] <= LW_KNOWN_MS) { g_lwWorld.players[k][0] = g_lwWorld.known[j][0]; g_lwWorld.players[k][1] = g_lwWorld.known[j][1]; k++; }
+        if (g_lwWorld.knownAt[j] && now - g_lwWorld.knownAt[j] <= LW_KNOWN_MS) { memcpy(g_lwWorld.players[k], g_lwWorld.known[j], sizeof g_lwWorld.players[k]); k++; }
     g_lwWorld.playersAt = k;
 }
 
@@ -538,10 +542,14 @@ static int LwRoomFor(uint32_t members)
 }
 
 static int LwGround(float x, float y, float* z);
+static int LwPlace(uintptr_t slot, float* pos);
+static int LwHidden(const float* p);
 
 /* Brings a squad online: its group's slot (found again by definition), the request at its position, heading for its
- * next node. Flags 0x02 keep | 0x04 queue | 0x08 no nav snap (route nodes are walkable; the nav snap would refuse a
- * height not within 10 m of the mesh) | 0x40 the gates above; 0x10 clear: the ground ray from z + 500 m places it. */
+ * next node. The loader places the point itself (LwPlace: on the navmesh, nothing overhead) and spawns only out of
+ * every player's sight (LwHidden), so the request skips both of the game's snaps, as vanilla's patrols (0x5C) do:
+ * flags 0x02 keep | 0x04 queue | 0x08 no nav snap | 0x10 no ground ray | 0x40 the gates above (KB "Spawn placement
+ * and sight"). A refused point is tried again 3 s later (the squad walks on offline). */
 #define LW_RECENT 16
 static struct { float p[LW_RECENT][2]; ULONGLONG at[LW_RECENT]; int next; } g_lwRecent;
 static void LwRecentAdd(const float* p) { int k = g_lwRecent.next++ % LW_RECENT; g_lwRecent.p[k][0] = p[0]; g_lwRecent.p[k][1] = p[1]; g_lwRecent.at[k] = GetTickCount64(); }
@@ -567,12 +575,16 @@ static void LwOnline(LwSquad* q)
     float pos[3] = {q->pos[0], q->pos[1], 0}, target[3] = {q->pos[0], q->pos[1], 0};
     if (q->pathAt < q->pathLen) { target[0] = g_lwNodes[q->path[q->pathAt]].x; target[1] = g_lwNodes[q->path[q->pathAt]].y; }
     if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { g_lwWorld.refused++; return; }
+    float wanted[2] = {pos[0], pos[1]};
+    if (!LwPlace(slot, pos) || !LwHidden(pos)) { q->retry = GetTickCount64() + 3000; return; }
     uintptr_t rec = g_lw.spawn(g_lwWorld.dir, slot, pos, LW_JOB_PATROL, LW_PATROL_FLAGS, target, NULL, NULL, 0.0f, cap);
     if (rec == 0) { g_lwWorld.refused++; return; }
     uint8_t used = 0;
     if (SafeRead(rec + 0x12, &used, 1) || used != 1) { g_lwWorld.refused++; return; } /* the queue was full: nothing queued */
-    Note("living world: squad %d requested at (%.0f, %.0f, %.1f), %.0f m from the nearest player, %u of %u members (group 0x%llx)", (int)(q - g_lwSquads),
-        (double)pos[0], (double)pos[1], (double)pos[2], (double)sqrtf(LwNearestPlayer2(pos[0], pos[1])), cap, size, (unsigned long long)q->definition);
+    Note("living world: squad %d requested at (%.0f, %.0f, %.1f) (snapped %.1f m), %.0f m from the nearest player, out of sight, %u of %u members (group 0x%llx)",
+        (int)(q - g_lwSquads), (double)pos[0], (double)pos[1], (double)pos[2], (double)sqrtf(LwDist2(wanted, pos[0], pos[1])),
+        (double)sqrtf(LwNearestPlayer2(pos[0], pos[1])), cap, size, (unsigned long long)q->definition);
+    q->reqZ = pos[2]; q->arrived = 0;
     q->state = LW_PENDING; q->rec = rec; q->cap = (uint8_t)cap; q->since = GetTickCount64(); q->jobSet = 0; q->farSince = 0; q->seenCount = 0; q->lost = 0; q->squad = 0;
     g_lwWorld.onlineUnits += (int)cap; q->alive = (uint8_t)cap;
     LwRecentAdd(pos);
@@ -609,6 +621,71 @@ static int LwGround(float x, float y, float* z)
     return 1;
 }
 
+/* Placement (audit 1, criterion 4; KB "Spawn placement and sight", checked in the dump: 0x95374C..0x9537E8). The
+ * game's own nav snap, called as the spawn request calls it when 0x08 is clear: [[game+0x3326330]+0x10] = exe
+ * 0x7D89F0(u32 nav id [dir+0x648], float p[3] in and out (one buffer), 10.0f (0x23C7554), NULL, u32 layer =
+ * [0x505B40([slot+0xB0]) + 4] or 0); 0 = no face within 10 m. Refused when there is no face, when the face point is more
+ * than 2 m from the route point across, or when the ground ray (the topmost surface) is more than 2 m off the face's
+ * height: something stands over the navmesh there (a roof, an overhang). 1 with pos at the face point. */
+static int LwPlace(uintptr_t slot, float* pos)
+{
+    typedef int (*SnapFn)(uint32_t nav, float* p, float radius, float* out, float* normal, uint32_t layer);
+    typedef uintptr_t (*LayerFn)(uintptr_t key);
+    uintptr_t table = 0, fn = 0, key = 0, entry;
+    uint32_t layer = 0, nav = EvpU32(g_lwWorld.dir + 0x648, 0);
+    if (!EvpPtr(g_lw.game + 0x3326330u, &table) || !EvpPtr(table + 0x10, &fn) || fn == 0) { g_lwWorld.noFace++; return 0; }
+    if (EvpPtr(slot + 0xB0, &key) && key && (entry = ((LayerFn)(g_lw.game + 0x505B40u))(key)) != 0) layer = EvpU32(entry + 4, 0);
+    float p[3] = {pos[0], pos[1], pos[2]}, top = NAN;
+    if (((SnapFn)fn)(nav, p, 10.0f, p, NULL, layer) == 0 || !isfinite(p[2])) { g_lwWorld.noFace++; return 0; }
+    if (LwDist2(pos, p[0], p[1]) > 2.0f * 2.0f) { g_lwWorld.moved++; return 0; }
+    if (!LwGround(p[0], p[1], &top) || fabsf(top - p[2]) > 2.0f) { g_lwWorld.overhead++; return 0; }
+    memcpy(pos, p, sizeof p);
+    return 1;
+}
+
+/* Sight (audit 1, criterion 5; checked in the dump: the ground ray's own call 0x13CA402..0x13CA47E). The game's ray
+ * [[game+0x3326328]+0x68] = exe 0x77DEC0(u32 handle [[world+8]+0xA4], world [game+0x346D508], float from[3], float
+ * dir[3] (unit), float length, 0, hit (0x2C bytes), u32 max) returns the hits; hit+0x18 the distance, hit+0x1C 0 for
+ * the static world (the ground ray's reject mode keeps only those). A point is seen by a player when a ray from their
+ * eye (feet + 1.7 m, started 0.75 m out so their own body never counts) reaches it with no static hit before it
+ * (0.5 m short). Players beyond LW_SIGHT are not checked (D). Every ray is timed. 1 when no player sees it, 0 when one
+ * does, -1 when the ray is unavailable. */
+static int LwSeenFrom(const float* feet, const float* point)
+{
+    typedef uint32_t (*RayFn)(uint32_t handle, const float* from, const float* dir, float length, uint32_t zero, void* hit, uint32_t max);
+    uintptr_t table = 0, fn = 0, world = 0, query = 0;
+    if (!EvpPtr(g_lw.game + 0x3326328u, &table) || !EvpPtr(table + 0x68, &fn) || fn == 0 || !EvpPtr(g_lw.game + 0x346D508u, &world) ||
+        !EvpPtr(world + 8, &query) || query == 0) return -1;
+    float eye[3] = {feet[0], feet[1], feet[2] + 1.7f}, d[3] = {point[0] - eye[0], point[1] - eye[1], point[2] - eye[2]};
+    float len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    if (len < 1.0f) return 1;
+    for (int k = 0; k < 3; k++) { d[k] /= len; eye[k] += 0.75f * d[k]; }
+    len -= 0.75f;
+    uint8_t hit[0x40] = {0};
+    LARGE_INTEGER a, b, f; QueryPerformanceCounter(&a);
+    uint32_t n = ((RayFn)fn)(EvpU32(query + 0xA4, 0), eye, d, len, 0, hit, 1);
+    QueryPerformanceCounter(&b); QueryPerformanceFrequency(&f);
+    g_lwWorld.rays++; g_lwWorld.rayUs += (double)(b.QuadPart - a.QuadPart) * 1e6 / (double)f.QuadPart;
+    float dist; uint32_t body; memcpy(&dist, hit + 0x18, 4); memcpy(&body, hit + 0x1C, 4);
+    if (n >= 1 && body != 0) g_lwWorld.rayDynamic++;
+    return !(n >= 1 && body == 0 && dist < len - 0.5f);
+}
+/* Out of sight: from every player within LW_SIGHT, both a unit's chest (1.0 m) and head-over height (2.5 m) blocked. */
+static int LwHidden(const float* p)
+{
+    for (int i = 0; i < g_lwWorld.playersAt; i++)
+    {
+        if (LwDist2(g_lwWorld.players[i], p[0], p[1]) > LW_SIGHT * LW_SIGHT) continue;
+        for (int h = 0; h < 2; h++)
+        {
+            float t[3] = {p[0], p[1], p[2] + (h ? 2.5f : 1.0f)};
+            int seen = LwSeenFrom(g_lwWorld.players[i], t);
+            if (seen != 0) { g_lwWorld.seen++; return 0; } /* seen, or no ray to tell: refused */
+        }
+    }
+    return 1;
+}
+
 static void LwSendGoal(LwSquad* q)
 {
     if (q->pathAt >= q->pathLen) LwPlan(q);
@@ -619,6 +696,23 @@ static void LwSendGoal(LwSquad* q)
 }
 
 /* An online squad: its members kept, losses counted, steered node to node; offline again beyond R_off at alert 0. */
+/* Why a member left its squad's list (KB living-world-plan "Member losses", P): only RemoveMember 0x804A00 takes one
+ * out, from the death link (0xB48160), the destroy link (0xB4BC28) or a behaviour's leave (0x4D04C0, the unit lives on);
+ * removals are flushed before the late tick, so here a removed member has no entity and a killed one keeps its record
+ * with life >= 2 (0x927050); a member that left alive has AiSquadMember ([game+0x33264C8], hash +0x18, {squad, link}
+ * at [+0x38] + 8 idx) cleared. Read in the first tick after the loss (entity ids are reused). */
+static const char* LwLostWhy(uint32_t unit, uint32_t* squad)
+{
+    ActHealth h; uintptr_t m, links; uint32_t index;
+    *squad = 0;
+    if (!EvpAlive(unit)) return "removed (no entity)";
+    if (ActHealthOf(g_lw.game, unit, &h) && h.life >= 2) return "killed";
+    if (EvpPtr(g_lw.game + 0x33264C8u, &m) && EvpHash(m + 0x18, unit, 8, 4, &index) && EvpPtr(m + 0x38, &links)) *squad = EvpU32(links + 8u * index, 0);
+    return "left its squad alive";
+}
+
+static int LwSeenFrom(const float* feet, const float* point);
+
 static void LwOnlineTick(LwSquad* q, int* removals)
 {
     uint32_t members[32];
@@ -633,14 +727,44 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     {
         int still = 0;
         for (int k = 0; k < n && !still; k++) still = members[k] == q->seen[i];
-        if (!still) { q->seen[i] = q->seen[--q->seenCount]; i--; q->lost++; }
+        if (!still)
+        {
+            uint32_t other = 0; float ground = NAN, *at = q->seenAt[i];
+            const char* why = LwLostWhy(q->seen[i], &other);
+            LwGround(at[0], at[1], &ground);
+            Note("living world: squad %d lost member %08X: %s (squad now %08X); last seen at (%.0f, %.0f, %.1f), ground there %.1f, %.0f m from the nearest player",
+                (int)(q - g_lwSquads), q->seen[i], why, other, (double)at[0], (double)at[1], (double)at[2], (double)ground,
+                (double)sqrtf(LwNearestPlayer2(at[0], at[1])));
+            --q->seenCount; q->seen[i] = q->seen[q->seenCount]; memcpy(q->seenAt[i], q->seenAt[q->seenCount], sizeof q->seenAt[i]); i--; q->lost++;
+        }
     }
     for (int k = 0; k < n; k++)
     {
         LwKeep(members[k]);
-        int known = 0;
-        for (int i = 0; i < q->seenCount && !known; i++) known = q->seen[i] == members[k];
-        if (!known && q->seenCount < 32) q->seen[q->seenCount++] = members[k];
+        int known = -1;
+        for (int i = 0; i < q->seenCount && known < 0; i++) if (q->seen[i] == members[k]) known = i;
+        if (known < 0 && q->seenCount < 32) { known = q->seenCount++; q->seen[known] = members[k]; }
+        ActHealth h; float p[3];
+        if (known >= 0 && ActHealthOf(g_lw.game, members[k], &h) && h.unit && EvpUnitPosition(h.unit, p)) memcpy(q->seenAt[known], p, sizeof p);
+    }
+    if (!q->arrived && n > 0) /* the members' first positions: their height against the request, and whether a player sees them */
+    {
+        float lo = 1e9f, hi = -1e9f; int seen = 0, read = 0;
+        for (int k = 0; k < n; k++)
+        {
+            ActHealth h; float p[3];
+            if (!ActHealthOf(g_lw.game, members[k], &h) || !h.unit || !EvpUnitPosition(h.unit, p)) continue;
+            read++; if (p[2] < lo) lo = p[2]; if (p[2] > hi) hi = p[2];
+            float chest[3] = {p[0], p[1], p[2] + 1.0f};
+            for (int i = 0; i < g_lwWorld.playersAt; i++)
+                if (LwDist2(g_lwWorld.players[i], p[0], p[1]) <= LW_SIGHT * LW_SIGHT && LwSeenFrom(g_lwWorld.players[i], chest) == 0) { seen++; break; }
+        }
+        if (read > 0)
+        {
+            q->arrived = 1;
+            Note("living world: squad %d members appear: %d read, z %.1f .. %.1f (requested %.1f), %d of them in a player's sight",
+                (int)(q - g_lwSquads), read, (double)lo, (double)hi, (double)q->reqZ, seen);
+        }
     }
     q->survivors = (uint8_t)(q->cap > q->lost ? q->cap - q->lost : 0);
     if (n == 0) return; /* members still queued */
@@ -766,7 +890,7 @@ static void LwSquadsTick(void)
     if (dt > 1.0f) dt = 1.0f;
     g_lwWorld.last = now;
     if (now - g_lwWorld.effAt > 5000) { int eff = LwEffectiveCap(dir); if (eff > 0) g_lwWorld.eff = eff; g_lwWorld.effAt = now; }
-    int requested = 0, removals = 0, online = 0, waiting = 0, units = 0;
+    int requested = 0, removals = 0, online = 0, waiting = 0, units = 0, attempts = 0;
     float r = g_lwWorld.radius;
     for (int i = 0; i < g_lwWorld.count; i++) /* the budget: living members of online squads, the request of pending ones */
         units += g_lwSquads[i].state == LW_PENDING ? g_lwSquads[i].cap : g_lwSquads[i].state == LW_ONLINE ? g_lwSquads[i].alive : 0;
@@ -782,9 +906,10 @@ static void LwSquadsTick(void)
             int back = q->cycled == 1 && near2 >= LW_R_MIN * LW_R_MIN; /* test cycle: back at once (the budget still applies) */
             if (waiting && !back) continue; /* test cycle: a squad waiting to come back is served first */
             if (!back && LwRecentNear(q->pos)) continue; /* no two squads out of one spot within 10 s (audit 1, 11) */
-            if (!requested && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && ((near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN) || back))
+            if (q->retry && now < q->retry) continue; /* its point was refused (placement or sight) a moment ago */
+            if (!requested && attempts < 4 && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && ((near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN) || back))
             {
-                LwOnline(q); requested = q->state == LW_PENDING;
+                LwOnline(q); requested = q->state == LW_PENDING; attempts++;
                 if (back && requested) { q->cycled = 2; Note("living world: test: squad %d comes back with its %u survivors", (int)(q - g_lwSquads), q->cap); }
             }
         }
@@ -800,6 +925,11 @@ static void LwSquadsTick(void)
             Note("living world: steering walls (30 s): %u requests, %u with no wall segment (%.1f%%), G %.1f m", g_lwWalls.requests,
                 g_lwWalls.empty, 100.0 * g_lwWalls.empty / g_lwWalls.requests, (double)(g_lwWallReach ? *g_lwWallReach : 0));
         g_lwWalls.requests = g_lwWalls.empty = 0;
+        if (g_lwWorld.rays || g_lwWorld.noFace || g_lwWorld.moved || g_lwWorld.overhead)
+            Note("living world: placement (30 s): refused %u with no navmesh face within 10 m, %u snapped more than 2 m, %u under something, %u in a player's sight; "
+                "%u sight rays, %.1f us each, %u stopped first by a moving body", g_lwWorld.noFace, g_lwWorld.moved, g_lwWorld.overhead, g_lwWorld.seen,
+                g_lwWorld.rays, g_lwWorld.rays ? g_lwWorld.rayUs / g_lwWorld.rays : 0.0, g_lwWorld.rayDynamic);
+        g_lwWorld.noFace = g_lwWorld.moved = g_lwWorld.overhead = g_lwWorld.seen = g_lwWorld.rays = g_lwWorld.rayDynamic = 0; g_lwWorld.rayUs = 0;
         Note("living world: %d squads, %d online (%d units of %d), %u spawned, %u taken offline, %u destroyed, %u request frames refused; job-1 units %u, AI %u; "
             "player 1 at (%.0f, %.0f)", g_lwWorld.count, online, g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.spawned, g_lwWorld.offlined, g_lwWorld.died,
             g_lwWorld.refused, EvpU32(dir + 0x614, 0), LwAiCount(), (double)(g_lwWorld.playersAt ? g_lwWorld.players[0][0] : 0),
@@ -820,7 +950,66 @@ static void LwSquadsTick(void)
  * +0x810 + 24 k, count +0x1110, +0x10 = local point + 1), point list [gf+0x48] + 0x2B8 i (+0x28 + 4 p global indexes,
  * count +0x1A8), descriptor [[gf+0x38] + 8 i] (+8 entity); points [game+0x346D5C0] + 0x58 g, flags +0x24. */
 #define LW_GARRISONS_MAX 512
-typedef struct LwGarrison { uint32_t entity; uint8_t seen, wasActive, refills; uint32_t taken[3], structure[3]; ULONGLONG checkAt; } LwGarrison;
+typedef struct LwGarrison { uint32_t entity; uint8_t seen, wasActive, refills; uint32_t taken[3], structure[3]; ULONGLONG checkAt, activeAt; } LwGarrison;
+
+/* Test instrument (HELLFORGE_LW_TEST_KILL=1, host): one unit of the first garrison active for 15 s is killed through the
+ * game's own death path, exactly as the game kills drowning and zone-floor units (0xAA88D8 / 0x89C9C9; KB living-world-plan
+ * "Member losses" Q4): QueueDamage 0x129F910(NULL, kind 7, 0, unit, 0xFFFFFFFF, 0, net, net, 0, 0, 0, 0, 0, &dir, &pos,
+ * actor 0xFFFFFFFF (no limb: zone 0), 0, 0, 1.0); applied in the next frame's damage drain, the death link then clears
+ * its point's U bit (0x910070 killed = 1). The point is found by that U bit; after the garrison fills again the note
+ * says whether the point stayed empty (no unit: occupied bit 6 clear). Runtime list: [gf+0x40] + 0x1B58 i, +0x204 u32
+ * units, count +0x384 (max 96). */
+static struct { int on, stage; uint32_t garrison, unit, u[3], point; ULONGLONG at; } g_lwKill = {-1};
+static void LwKillTest(LwGarrison* g, uintptr_t r, uintptr_t l, uintptr_t points, const uint32_t* u, uint32_t n, uint8_t active)
+{
+    typedef void (*QueueDamageFn)(void*, uint32_t, uint32_t, uint32_t, uint32_t, uint8_t, uint32_t, uint32_t, uint64_t, uint32_t, float, float, float,
+        const float*, const float*, uint32_t, uint32_t, uint32_t, float);
+    ULONGLONG now = GetTickCount64();
+    if (g_lwKill.on < 0) { char t[4] = ""; g_lwKill.on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_KILL", t, sizeof t) > 0 && t[0] == '1'; }
+    if (!g_lwKill.on) return;
+    if (g_lwKill.stage == 0 && active && g->activeAt && now - g->activeAt > 15000)
+    {
+        uint32_t count = EvpU32(r + 0x384, 0), unit = 0, system = 0; uintptr_t sys; ActHealth h; float pos[3];
+        for (uint32_t k = 0; k < count && k < 96 && !unit; k++)
+        { uint32_t e = EvpU32(r + 0x204 + 4u * k, 0); if (e && ActHealthOf(g_lw.game, e, &h) && h.life < 2 && h.unit && h.network && EvpUnitPosition(h.unit, pos)) unit = e; }
+        if (unit == 0 || count < 2) return;
+        if (!ApiCodeMatches(g_lw.game + 0x129F910u, "40 55 53 56 57 41 56 48 8D 6C 24 F9 48 81 EC D0 00 00 00"))
+        { Note("living world: test: kill: QueueDamage is not the reviewed code"); g_lwKill.stage = 9; return; }
+        if (!EvpPtr(g_lw.game + 0x347CF38u, &sys) || (system = EvpU32(sys + 0x201120, 4096)) >= 4096) return;
+        static const float down[3] = {0, 0, -1};
+        memcpy(g_lwKill.u, u, sizeof g_lwKill.u);
+        ((QueueDamageFn)(g_lw.game + 0x129F910u))(NULL, 7, 0, unit, 0xFFFFFFFFu, 0, h.network, h.network, 0, 0, 0.0f, 0.0f, 0.0f, down, pos, 0xFFFFFFFFu, 0, 0, 1.0f);
+        g_lwKill.garrison = g->entity; g_lwKill.unit = unit; g_lwKill.at = now; g_lwKill.stage = 1;
+        Note("living world: test: kill: garrison %08X unit %08X at (%.0f, %.0f, %.1f) killed (QueueDamage kind 7); %u units listed", g->entity, unit,
+            (double)pos[0], (double)pos[1], (double)pos[2], count);
+        return;
+    }
+    if (g->entity != g_lwKill.garrison) return;
+    if (g_lwKill.stage == 1)
+    {
+        ActHealth h; uint32_t life = ActHealthOf(g_lw.game, g_lwKill.unit, &h) ? h.life : 99;
+        for (uint32_t p = 0; p < n; p++)
+        {
+            uint32_t bit = 1u << (p % 32);
+            if ((g_lwKill.u[p / 32] & bit) && !(u[p / 32] & bit))
+            {
+                g_lwKill.point = p; g_lwKill.stage = 2;
+                Note("living world: test: kill: after %llu ms the unit's life is %u and point %u's U bit is clear (a kill)", (unsigned long long)(now - g_lwKill.at), life, p);
+                return;
+            }
+        }
+        if (now - g_lwKill.at > 10000) { Note("living world: test: kill: no U bit cleared in 10 s (unit life %u)", life); g_lwKill.stage = 9; }
+    }
+}
+static void LwKillAfterFill(LwGarrison* g, uintptr_t l, uintptr_t points, const uint32_t* u, uint32_t listed)
+{
+    if (g_lwKill.stage != 2 || g->entity != g_lwKill.garrison) return;
+    uint32_t p = g_lwKill.point, gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0xFFFFFFFFu;
+    if (gi < 0x100000) SafeRead(points + 0x58u * gi + 0x24, &flags, 4);
+    Note("living world: test: kill: garrison %08X filled again with %u units; the killed point %u: U %u, occupied %u (%s)", g->entity, listed, p,
+        (u[p / 32] >> (p % 32)) & 1, (flags >> 6) & 1, ((flags >> 6) & 1) == 0 && !((u[p / 32] >> (p % 32)) & 1) ? "stays empty" : "FILLED");
+    g_lwKill.stage = 3;
+}
 static LwGarrison g_lwGarrisons[LW_GARRISONS_MAX];
 static int g_lwGarrisonCount;
 static uintptr_t g_lwGarrisonOwner; /* the GuardForce component the records belong to (a new mission makes a new one) */
@@ -853,6 +1042,8 @@ static void LwGarrisonsTick(void)
         LwGarrison* g = LwGarrisonOf(EvpU32(d + 8, 0));
         if (g == NULL || g->entity == 0) continue;
         if (active && g->seen && !g->wasActive) g->checkAt = GetTickCount64() + 5000; /* filled again: compare in 5 s */
+        if (active && !g->wasActive) g->activeAt = GetTickCount64();
+        LwKillTest(g, r, l, points, u, n, active);
         if (!active && g->wasActive)
         {
             uint32_t taken = 0, empty = 0;
@@ -871,6 +1062,7 @@ static void LwGarrisonsTick(void)
             }
             Note("living world: garrison %08X filled again: %u units listed; %u points had a unit and are not killed (%u structure points)", g->entity,
                 EvpU32(r + 0x384, 0), expect, structures);
+            LwKillAfterFill(g, l, points, u, EvpU32(r + 0x384, 0));
             g->checkAt = 0; g->refills++;
         }
         if (active)
@@ -1108,6 +1300,49 @@ static void LwNavWait(const char* why)
     Note("living world: nav: %s", why);
 }
 
+/* The cells around the players first (audit 1, criterion 11; KB living-world-plan "XL nav cell order", P): the game's
+ * scheduler (0x7B8200) starts one rebuild job a frame at most, the highest priority ([nav+0x6708] {cell, prio}) first;
+ * the mission update adds +100 a frame to each player's own cell and +25 to its 8 neighbours (0xACD576..0xACD616:
+ * [[game+0x33263C8]+0x70] = exe 0x7DA380(u32 [[world]+0x10F0], float xyz[3]) -> 0x7B63E0, which keeps 0 (built or in
+ * flight) as 0). The loader makes the same call, every tick, for every cell within LW_R_ON of a player (a point at its
+ * centre), so the cells squads come online in outrank the far neighbours. The world id is the game's own argument
+ * (world [game+0x3326340], +0x10F0 written by the nav world's create at 0xAB1B31). */
+static void LwNavBoost(uintptr_t nav, const uint16_t* wh, uint32_t marksId)
+{
+    typedef void (*BoostFn)(uint32_t id, const float* xyz);
+    uintptr_t table = 0, fn = 0, world = 0;
+    static uint32_t lastList[16]; static int lastCount = -1; static uintptr_t lastNav;
+    if (!EvpPtr(g_lw.game + 0x33263C8u, &table) || !EvpPtr(table + 0x70, &fn) || fn == 0 || !EvpPtr(g_lw.game + 0x3326340u, &world)) return;
+    uint32_t id = EvpU32(world + 0x10F0, 0xFFFFFFFFu);
+    float g[4] = {0, 0, 0, 0};
+    if (SafeRead(nav + 0x671C, g, 16) || g[2] <= g[0] || g[3] <= g[1]) return;
+    float cw = (g[2] - g[0]) / wh[0], ch = (g[3] - g[1]) / wh[1];
+    uint32_t list[16]; int count = 0;
+    for (int p = 0; p < g_lwWorld.playersAt; p++)
+    {
+        const float* at = g_lwWorld.players[p];
+        int i0 = (int)floorf((at[0] - LW_R_ON - g[0]) / cw), i1 = (int)floorf((at[0] + LW_R_ON - g[0]) / cw);
+        int j0 = (int)floorf((at[1] - LW_R_ON - g[1]) / ch), j1 = (int)floorf((at[1] + LW_R_ON - g[1]) / ch);
+        for (int j = j0 < 0 ? 0 : j0; j <= j1 && j < wh[1]; j++)
+            for (int i = i0 < 0 ? 0 : i0; i <= i1 && i < wh[0]; i++)
+            {
+                uint32_t c = (uint32_t)j * wh[0] + (uint32_t)i; int dup = 0;
+                for (int k = 0; k < count && !dup; k++) dup = list[k] == c;
+                if (dup || count >= 16) continue;
+                list[count++] = c;
+                float xyz[3] = {g[0] + ((float)i + 0.5f) * cw, g[1] + ((float)j + 0.5f) * ch, at[2]};
+                ((BoostFn)fn)(id, xyz);
+            }
+    }
+    if (nav != lastNav || count != lastCount || memcmp(list, lastList, sizeof(uint32_t) * (size_t)count))
+    {
+        char text[160]; int len = 0; text[0] = 0;
+        for (int k = 0; k < count && len < (int)sizeof text - 16; k++) len += snprintf(text + len, sizeof text - len, " (%u, %u)", list[k] % wh[0], list[k] / wh[0]);
+        Note("living world: nav: cells within %.0f m of the players boosted (world %u, the director's %u):%s", (double)LW_R_ON, id, marksId, text);
+        memcpy(lastList, list, sizeof list); lastCount = count; lastNav = nav;
+    }
+}
+
 static void LwNavTick(uintptr_t dir)
 {
     uintptr_t exe = g_navExe, nav, H;
@@ -1151,6 +1386,7 @@ static void LwNavTick(uintptr_t dir)
     uint16_t wh[2] = {0, 0};
     if (SafeRead(nav + 0x6710, wh, 4) || (uint32_t)wh[0] * wh[1] > LW_NAV_CELLS_MAX || wh[0] == 0) return;
     uint32_t total = (uint32_t)wh[0] * wh[1];
+    LwNavBoost(nav, wh, id);
     /* The rebuilds asked for: done when the cell is neither dirty nor in flight */
     for (int w = 0; w < g_lwNav.watching; )
     {
