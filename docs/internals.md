@@ -52,9 +52,9 @@ kept as a loose folder counts by every file in it, so share mods as zips.
 Each session stages the data mods into the copied game, loads the code mods into it and applies the declarative native
 edits while the game runs. Nothing is changed in the normal game.
 
-Staging copies only what changed since the last session. A patch already staged from the same file (same size and time)
-stays, so an unchanged modlist starts without copying anything. For the same reason, `mods/.unpacked` keeps the zips'
-hashes and the files they ship (`.zip-hashes.json`, `.zip-files.json`).
+Staging places only what changed since the last session: a patch staged from the same file (same size and time) stays.
+For the same reason, `mods/.unpacked` keeps the zips' hashes and the files they ship (`.zip-hashes.json`,
+`.zip-files.json`). Staged patches are hard links where possible ([disk space](mods.md#disk-space)).
 
 The session's `result.json` lists what loaded (`mods`) and the status of network edits (`nativeMods`).
 `native-mods.log` records network edits, and `mod-<id>.log` records stats and legacy component edits.

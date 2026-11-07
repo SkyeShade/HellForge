@@ -28,18 +28,36 @@ marks them CODE.
    lists it and waits. Press Add to replace the installed one, whose files are deleted, or Cancel.
 
 Copying a mod into the mods folder yourself works too (Open mods folder opens it), and the page shows it at once. A
-`.zip` loads as it is. A `.rar` or `.7z` is unpacked into a folder of its own and the archive is removed, the next time
-the Mods page loads or a session starts. When a dropped archive holds a mod that is installed already, it stays as it is
-and Mod notices says so: use Add mods... to replace the installed one.
+`.zip` loads as it is. A `.rar` or `.7z`, and a zipped cosmetic pack, is unpacked into a folder of its own and the
+archive is removed, the next time the Mods page loads or a session starts.
+
+When a dropped archive holds a mod that is installed already, it stays as it is and Mod notices says so: use Add mods...
+to replace the installed one. When it holds exactly the installed mod's files, it is only a second copy: it is removed,
+and Mod notices says so.
 
 Some things to know:
 
 - `.rar` (RAR 4 and 5) and `.7z` files are unpacked by HellForge itself, on Windows 10 and 11 and under Wine. Only plain
   files and folders come out. A password-protected archive, one split into parts, or one with links or paths outside
   itself is refused: unpack it yourself and add its folder.
-- Keep a mod as its zip: HellForge unpacks it by itself. Two copies of one mod (a zip and a folder with the same id) load
-  neither, and the page says so.
+- Keep a gameplay mod as its zip: HellForge unpacks it by itself. Two copies of one mod (a zip and a folder with the same
+  id) load neither, and the page says so.
+- Cosmetic packs are kept as folders: a zipped pack becomes one, with its options and its place in the order. A zip kept
+  beside its unpacked copy would hold the pack twice.
 - Files that are not mods are listed under Mod notices with the reason, until the next Add mods.
+
+### Disk space
+
+PLAY puts each mod's patches into the game copy's data folder as hard links to the mod's own files where it can, not as
+second copies:
+
+- **Windows:** every patch. While the game runs, a mod's patch files cannot be saved over, as the game's cannot.
+- **Linux:** the files HellForge keeps itself (zips' unpacked copies, mods from hosts). A mod folder's patches are copied,
+  since Linux lets a program write to a file the game is reading. btrfs and XFS make that copy without using space.
+
+A drive without hard links (FAT32, exFAT) gets copies. A staged patch is the mod's file under a second name: change the
+mod, not the file in the game's data folder. A gameplay mod kept as a zip is on the drive twice, as its zip and its
+unpacked copy: the zip is what friends compare.
 
 ## The Mods page
 

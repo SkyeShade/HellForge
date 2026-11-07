@@ -3,15 +3,20 @@ using System.Text.Json;
 
 namespace HellForge.Core;
 
-// Data mods for one session: their patch files are copied into game/data, renumbered so each bundle's patches stay
+// Data mods for one session: their patch files are placed into game/data, renumbered so each bundle's patches stay
 // contiguous after any the player installed there by hand, and listed in temp/staged-mods.json so the next session
-// removes exactly them first. Game files from Steam are never touched. A mod's generated data (ModDataCache.Prepare) is
-// staged after its data/ folder, the same way, and HellForge's own patches for the session (the locked warbond art,
-// WarbondLocks) after every mod's.
+// removes exactly them first. Game files from Steam are never touched. A placed patch is a hard link to the mod's file
+// where it may be (Linkable), so it takes no second copy of the mod's bytes; else a copy (FileLinks). A mod's generated
+// data (ModDataCache.Prepare) is staged after its data/ folder, the same way, and HellForge's own patches for the session
+// (the locked warbond art, WarbondLocks) after every mod's.
 public static class ModStaging
 {
     const string RecordName = "staged-mods.json";
     const string LiveRecordName = "live-packages.json";
+    // The staged names this version placed (linked, or copied where a link may not be or failed). A name staged by an
+    // earlier version (always a copy) is placed again once, as a link where it may be: kept as it was, a player's
+    // existing staged copies would stay copies until their mods change.
+    const string PlacedRecordName = "staged-placed.json";
 
     // A mod's patches as Stage stages them, each a patch's main file: its data/ folder's, then its generated data's.
     public static List<string> Patches(ModManifest mod)
@@ -61,25 +66,41 @@ public static class ModStaging
         else if (File.Exists(record)) File.Delete(record);
     }
 
-    // What the last Stage did: files copied, and files kept from the session before (the same source, unchanged).
+    // What the last Stage did: files placed (linked or copied), and files kept from the session before (the same source,
+    // unchanged); LastLinked: how many of the placed ones are links.
     public static (int Copied, int Kept) LastCounts { get; private set; }
+    public static int LastLinked { get; private set; }
+
+    // Whether a staged patch may be a hard link to its source. On Windows always: the game opens its data files with
+    // FILE_SHARE_READ alone and keeps them open (nxstorage, helldivers2.exe 0x740E26), so while it runs no program can
+    // write to a staged patch through either of its names; an editor's save fails as one into game/data does, and never
+    // changes bytes under the game. Linux has no such sharing rule: a mod folder edited in place while the game runs would
+    // change the game's file too. There a link is made only to HellForge's own stores, which nothing rewrites in place
+    // (zips' unpacked copies, mod sync's downloads, temp: generated data and HellForge's own patches); a mod folder is
+    // copied, which btrfs and XFS clone without using space.
+    static bool Linkable(InstallLayout install, string source) =>
+        OperatingSystem.IsWindows() ||
+        LocalInstall.Within(source, Path.Combine(install.Mods, ModArchives.UnpackedFolder)) ||
+        LocalInstall.Within(source, Path.Combine(install.Mods, SyncedStore.FolderName)) ||
+        LocalInstall.Within(source, install.Temp);
 
     // The previous session's staged files stay where they are what this one stages (same name, and the same size and
-    // time as the file they come from: a copy keeps its source's time): a session start copied and deleted every patch
-    // again, ~3 GB for a tester's packs, and kept the drive busy for minutes. Only new or changed patches are copied;
-    // those no longer staged are removed. The journal is written before the first change and every file goes through a
-    // .staging name, so Unstage can remove exactly this session's work even after a kill.
+    // time as the file they come from: a copy keeps its source's time, a link is its source): a session start copied and
+    // deleted every patch again, ~3 GB for a tester's packs, and kept the drive busy for minutes. Only new or changed
+    // patches are placed; those no longer staged are removed. The journal is written before the first change and every
+    // file goes through a .staging name, so Unstage can remove exactly this session's work even after a kill.
     // own: folders of HellForge's own patch files, staged after the mods'.
     public static IReadOnlyList<string> Stage(InstallLayout install, IReadOnlyList<ModManifest> mods, IReadOnlyList<string>? own = null)
     {
         var data = Path.Combine(install.Game, "data");
         RemoveLive(install, data);
         var previous = Previous(install);
+        var placed = Placed(install);
         var plan = Plan(mods, own ?? [], data, previous);
         var wanted = plan.Select(p => p.Target).ToHashSet(StringComparer.Ordinal);
         var left = new HashSet<string>(previous, StringComparer.Ordinal); /* staged here before and still in game/data */
         var staged = new List<string>();
-        int copied = 0, kept = 0;
+        var counts = new Dictionary<Placement, int>();
         Directory.CreateDirectory(install.Temp);
         var journal = new HashSet<string>(previous, StringComparer.Ordinal);
         journal.UnionWith(wanted);
@@ -90,39 +111,51 @@ public static class ModStaging
             Directory.CreateDirectory(data);
             foreach (var name in previous.Where(n => !wanted.Contains(n)))
             {
-                var path = Path.Combine(data, name);
-                if (File.Exists(path)) File.Delete(path);
-                if (File.Exists(path + ".staging")) File.Delete(path + ".staging");
+                DeleteStaged(Path.Combine(data, name));
                 left.Remove(name);
             }
             foreach (var (source, target) in plan)
             {
-                var path = Path.Combine(data, target);
-                var staging = path + ".staging";
-                if (left.Contains(target) && Same(source, path))
-                {
-                    if (File.Exists(staging)) File.Delete(staging);
-                    staged.Add(target);
-                    left.Remove(target);
-                    kept++;
-                    continue;
-                }
-                left.Remove(target);
-                File.Copy(source, staging, overwrite: true);
-                if (new FileInfo(staging).Length != new FileInfo(source).Length)
-                    throw new InvalidDataException("A staged mod file was not copied whole: " + target);
-                File.Move(staging, path, overwrite: true);
+                var how = Place(install, source, Path.Combine(data, target), left.Remove(target), placed.Contains(target));
+                counts[how] = counts.GetValueOrDefault(how) + 1;
                 staged.Add(target);
-                copied++;
             }
             completed = true;
         }
         finally
         {
-            if (completed) WriteRecord(install, staged);
-            LastCounts = (copied, kept);
+            if (completed)
+            {
+                WriteRecord(install, staged);
+                WriteNames(Path.Combine(install.Temp, PlacedRecordName), staged);
+            }
+            LastLinked = counts.GetValueOrDefault(Placement.Linked);
+            LastCounts = (LastLinked + counts.GetValueOrDefault(Placement.Copied), counts.GetValueOrDefault(Placement.Kept));
         }
         return staged;
+    }
+
+    enum Placement { Kept, Copied, Linked }
+
+    static void DeleteStaged(string path)
+    {
+        if (File.Exists(path)) File.Delete(path);
+        if (File.Exists(path + ".staging")) File.Delete(path + ".staging");
+    }
+
+    // One patch at path: kept when the last session staged it from this same file (and this version placed it, or it may
+    // not be a link anyway), else linked or copied through its .staging name. wasStaged: the last session staged it here.
+    static Placement Place(InstallLayout install, string source, string path, bool wasStaged, bool placedBefore)
+    {
+        var staging = path + ".staging";
+        if (File.Exists(staging)) File.Delete(staging);
+        var linkable = Linkable(install, source);
+        if (wasStaged && Same(source, path) && (placedBefore || !linkable)) return Placement.Kept;
+        var linked = FileLinks.LinkOrCopy(source, staging, linkable);
+        if (new FileInfo(staging).Length != new FileInfo(source).Length)
+            throw new InvalidDataException("A staged mod file was not copied whole: " + Path.GetFileName(path));
+        File.Move(staging, path, overwrite: true);
+        return linked ? Placement.Linked : Placement.Copied;
     }
 
     // Each mod's patch files (its data/, its pack's chosen folders, its generated data) with the names they are staged
@@ -189,10 +222,24 @@ public static class ModStaging
         catch (JsonException) { return new HashSet<string>(StringComparer.Ordinal); }
     }
 
-    // The record itself is replaced whole: a kill while writing it leaves the previous journal, not half a name list.
-    static void WriteRecord(InstallLayout install, IEnumerable<string> names)
+    // The names the last completed Stage placed or kept (PlacedRecordName); none before this version.
+    static HashSet<string> Placed(InstallLayout install)
     {
-        var record = Path.Combine(install.Temp, RecordName);
+        var record = Path.Combine(install.Temp, PlacedRecordName);
+        try
+        {
+            return File.Exists(record)
+                ? (JsonSerializer.Deserialize<List<string>>(File.ReadAllText(record)) ?? []).ToHashSet(StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+        }
+        catch (Exception error) when (error is JsonException or IOException) { return new HashSet<string>(StringComparer.Ordinal); }
+    }
+
+    // The record itself is replaced whole: a kill while writing it leaves the previous journal, not half a name list.
+    static void WriteRecord(InstallLayout install, IEnumerable<string> names) => WriteNames(Path.Combine(install.Temp, RecordName), names);
+
+    static void WriteNames(string record, IEnumerable<string> names)
+    {
         var partial = record + ".partial";
         var entries = names.Where(name => ModCatalog.PatchFile().IsMatch(name)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         File.WriteAllText(partial, JsonSerializer.Serialize(entries));
@@ -219,5 +266,7 @@ public static class ModStaging
         File.Delete(record);
         var partial = record + ".partial";
         if (File.Exists(partial)) File.Delete(partial);
+        var placed = Path.Combine(install.Temp, PlacedRecordName);
+        if (File.Exists(placed)) File.Delete(placed);
     }
 }

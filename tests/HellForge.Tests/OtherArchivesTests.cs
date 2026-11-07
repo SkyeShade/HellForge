@@ -137,11 +137,17 @@ static class OtherArchivesTests
                 "The broken one stays and says why: " + string.Join(" | ", notes));
             check(ModInstaller.TakeDropped(install).SequenceEqual(notes), "Asked again, the same line, the file untouched.");
 
-            // the same mod again: the installed one stays until the player replaces it on Add mods
-            File.WriteAllBytes(Path.Combine(install.Mods, "again.rar"), Rar((ModCatalog.ManifestName, Text(Manifest("a.dropped"))), ("data/" + Patch, Text("dropped"))));
+            // the same mod again, other files: the installed one stays until the player replaces it on Add mods
+            File.WriteAllBytes(Path.Combine(install.Mods, "again.rar"), Rar((ModCatalog.ManifestName, Text(Manifest("a.dropped"))), ("data/" + Patch, Text("dropped, version 2"))));
             var again = ModInstaller.TakeDropped(install);
-            check(again.Any(n => n.StartsWith("again.rar: a.dropped is installed already", StringComparison.Ordinal)) && File.Exists(Path.Combine(install.Mods, "again.rar")) &&
+            check(again.Any(n => n.StartsWith("again.rar: a.dropped is installed already. To replace", StringComparison.Ordinal)) && File.Exists(Path.Combine(install.Mods, "again.rar")) &&
                 ModCatalog.Load(install.Mods).Mods.Count(m => m.Id == "a.dropped") == 1, "An installed mod's archive stays: " + string.Join(" | ", again));
+            // the same files as the installed copy: only a second copy of them, so it goes
+            File.WriteAllBytes(Path.Combine(install.Mods, "same.rar"), Rar((ModCatalog.ManifestName, Text(Manifest("a.dropped"))), ("data/" + Patch, Text("dropped"))));
+            var same = ModInstaller.TakeDropped(install);
+            check(same.Contains("same.rar: a.dropped is installed already with the same files, so this copy was removed.") && !File.Exists(Path.Combine(install.Mods, "same.rar")) &&
+                File.ReadAllText(Path.Combine(install.Mods, "rar-mod", "data", Patch)) == "dropped", "A copy of the installed mod's files is removed: " + string.Join(" | ", same));
+            check(!ModInstaller.TakeDropped(install).Any(n => n.StartsWith("same.rar", StringComparison.Ordinal)), "The removal is said once.");
             check(!Directory.EnumerateDirectories(install.Temp, "mod-dropped-*").Any() && !Directory.EnumerateDirectories(install.Temp, "mod-unpacked-*").Any(),
                 "Nothing is left in temp.");
         });

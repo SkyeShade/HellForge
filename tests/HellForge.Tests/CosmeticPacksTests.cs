@@ -61,6 +61,65 @@ static class CosmeticPacksTests
             check(ModCatalog.Digest([pack]) == "none", "Friends do not need the same cosmetic packs.");
         });
 
+        test("Zipped cosmetic packs go in as folders, also ones in mods/ already, with their settings; gameplay zips stay zips", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "zip-pack-install"));
+            install.Create("25480438");
+            Directory.CreateDirectory(install.Mods);
+            var source = Directory.CreateDirectory(Path.Combine(root, "zip-pack-source")).FullName;
+            // added as zips by an earlier HellForge and loaded from them: a pack in its top-level folder, a pack of bare patches
+            // (no manifest: its id comes from its folder's name), and a gameplay mod
+            ZipFile.CreateFromDirectory(Pack(source, "kinetic", "0967dcdf-f9c8-4e3c-b8ac-184d2ba16f2a"), Path.Combine(install.Mods, "kinetic.zip"), CompressionLevel.Fastest, includeBaseDirectory: true);
+            var bare = Directory.CreateDirectory(Path.Combine(source, "bare")).FullName;
+            File.WriteAllText(Path.Combine(bare, "9ba626afa44a3aa3.patch_0"), "bare");
+            ZipFile.CreateFromDirectory(bare, Path.Combine(install.Mods, "Bare Pack.zip"));
+            var gameplay = Directory.CreateDirectory(Path.Combine(source, "gameplay", "data")).Parent!.FullName;
+            File.WriteAllText(Path.Combine(gameplay, ModCatalog.ManifestName), """{"format":1,"id":"test.gameplay","name":"Gameplay","version":"1","gameplay":true}""");
+            File.WriteAllText(Path.Combine(gameplay, "data", "9ba626afa44a3aa3.patch_0"), "gameplay");
+            ZipFile.CreateFromDirectory(gameplay, Path.Combine(install.Mods, "gameplay.zip"));
+            var before = ModCatalog.Load(install.Mods).Mods;
+            var kineticId = "pack.0967dcdf-f9c8-4e3c-b8ac-184d2ba16f2a";
+            var bareBefore = before.Single(m => m.Archive == "Bare Pack.zip");
+            check(before.Count == 3 && before.Count(m => m.Archive != null) == 3, "Loaded from their zips: " + string.Join(", ", before.Select(m => m.Id)));
+            ModSettings.SetChoice(install.Mods, kineticId, new(new HashSet<string> { "Pistol" }, new Dictionary<string, string> { ["Rifle"] = "Rifle/B" }));
+            ModSettings.SetEnabled(install.Mods, bareBefore.Id, false);
+            ModSettings.SetOrder(install.Mods, [bareBefore.Id, kineticId, "test.gameplay"]);
+
+            var notes = ModInstaller.TakeDropped(install);
+            var (after, problems) = ModCatalog.Load(install.Mods);
+            check(notes.Count == 0 && problems.Count == 0, "Taken without a line: " + string.Join(" | ", notes.Concat(problems)));
+            check(Directory.Exists(Path.Combine(install.Mods, "kinetic")) && Directory.Exists(Path.Combine(install.Mods, "Bare Pack")) &&
+                !File.Exists(Path.Combine(install.Mods, "kinetic.zip")) && !File.Exists(Path.Combine(install.Mods, "Bare Pack.zip")) &&
+                File.Exists(Path.Combine(install.Mods, "gameplay.zip")), "The packs are folders, their zips gone; the gameplay zip stays.");
+            check(Directory.GetDirectories(Path.Combine(install.Mods, ModArchives.UnpackedFolder)).Length == 1 &&
+                !Directory.EnumerateDirectories(install.Temp).Any(d => Path.GetFileName(d).StartsWith("mod-", StringComparison.Ordinal)),
+                "Only the gameplay zip has an unpacked copy, and nothing is left in temp.");
+            var kinetic = after.Single(m => m.Id == kineticId);
+            var bareAfter = after.Single(m => m.Folder == Path.Combine(install.Mods, "Bare Pack"));
+            var settings = ModSettings.Read(install.Mods);
+            check(kinetic.Archive == null && kinetic.PackFolders.Select(Path.GetFileName).SequenceEqual(["Rifle B"]), "The pack kept its choice.");
+            check(bareAfter.Id != bareBefore.Id && !bareAfter.Enabled && settings.Order.SequenceEqual([bareAfter.Id, kineticId, "test.gameplay"]) &&
+                !settings.Disabled.Contains(bareBefore.Id), $"The bare pack's new id {bareAfter.Id} kept its switch and place: {string.Join(", ", settings.Order)}.");
+
+            // one dropped and never loaded, and one chosen on Add mods: folders too
+            File.WriteAllText(Path.Combine(bare, "9ba626afa44a3aa3.patch_0"), "fresh");
+            ZipFile.CreateFromDirectory(bare, Path.Combine(install.Mods, "fresh.zip"));
+            var chosen = Pack(Directory.CreateDirectory(Path.Combine(source, "chosen")).FullName, "chosen", "11111111-2222-3333-4444-555555555555");
+            ZipFile.CreateFromDirectory(chosen, Path.Combine(source, "chosen.zip"), CompressionLevel.Fastest, includeBaseDirectory: true);
+            check(ModInstaller.TakeDropped(install).Count == 0 && Directory.Exists(Path.Combine(install.Mods, "fresh")) && !File.Exists(Path.Combine(install.Mods, "fresh.zip")),
+                "A dropped zipped pack is a folder.");
+            var (candidates, inspectProblems) = ModInstaller.Inspect(install, [Path.Combine(source, "chosen.zip")]);
+            check(inspectProblems.Count == 0 && candidates.Single() is { IsZip: false, Id: "pack.11111111-2222-3333-4444-555555555555" }, "Add mods takes a zipped pack as a folder.");
+            var added = ModInstaller.Add(install, candidates.Single());
+            check(Directory.Exists(added) && Path.GetFileName(added) == "chosen" && CosmeticPacks.IsPack(added), "Added as the folder " + added);
+
+            // the same pack zipped again beside its folder: a second copy of its files, removed
+            ZipFile.CreateFromDirectory(Path.Combine(install.Mods, "kinetic"), Path.Combine(install.Mods, "kinetic copy.zip"), CompressionLevel.Fastest, includeBaseDirectory: true);
+            var copyNotes = ModInstaller.TakeDropped(install);
+            check(copyNotes.SequenceEqual([$"kinetic copy.zip: {kineticId} is installed already with the same files, so this copy was removed."]) &&
+                !File.Exists(Path.Combine(install.Mods, "kinetic copy.zip")), "The copy is removed: " + string.Join(" | ", copyNotes));
+        });
+
         test("Cosmetic packs: an empty Include (a VANILLA choice) stages nothing; a folder outside the pack is still refused", () =>
         {
             var mods = Directory.CreateDirectory(Path.Combine(root, "vanilla-mods")).FullName;
@@ -233,7 +292,7 @@ static class CosmeticPacksTests
             Directory.Delete(editor, recursive: true);
         });
 
-        test("A cosmetic pack zipped loads like a folder, and Add mods takes it", () =>
+        test("A cosmetic pack zipped loads like a folder, and Add mods takes it as a folder", () =>
         {
             var install = new InstallLayout(Path.Combine(root, "pack-zip-install"));
             install.Create("25480438");
@@ -243,12 +302,18 @@ static class CosmeticPacksTests
             var zip = Path.Combine(source, "zipped.zip");
             ZipFile.CreateFromDirectory(folder, zip, CompressionLevel.Fastest, includeBaseDirectory: true);
             var (candidates, problems) = ModInstaller.Inspect(install, [zip, Path.Combine(folder, CosmeticPacks.ManifestName)]);
-            check(problems.Count == 1 && candidates.Single() is { Id: "pack.99999999-2222-3333-4444-555555555555", IsZip: true },
-                "The zip is a pack; the same pack again (its folder) is refused as chosen twice: " + string.Join(" | ", problems));
+            check(problems.Count == 1 && candidates.Single() is { Id: "pack.99999999-2222-3333-4444-555555555555", IsZip: false },
+                "The zip is a pack, taken as a folder; the same pack again (its folder) is refused as chosen twice: " + string.Join(" | ", problems));
             ModInstaller.Add(install, candidates.Single());
             var (mods, loadProblems) = ModCatalog.Load(install.Mods);
-            check(loadProblems.Count == 0 && mods.Single() is { Cosmetic: true, Archive: "zipped.zip" } p && p.PackFolders.Count == 2,
-                "Loaded from the zip: " + string.Join(" | ", loadProblems));
+            check(loadProblems.Count == 0 && mods.Single() is { Cosmetic: true, Archive: null } p && p.PackFolders.Count == 2 &&
+                Directory.GetFiles(install.Mods, "*.zip").Length == 0, "Added as a folder: " + string.Join(" | ", loadProblems));
+            // a zipped pack copied into mods/ loads from its zip until TakeDropped makes it a folder
+            var copied = new InstallLayout(Path.Combine(root, "pack-zip-copied"));
+            copied.Create("25480438");
+            File.Copy(zip, Path.Combine(Directory.CreateDirectory(copied.Mods).FullName, "zipped.zip"));
+            check(ModCatalog.Load(copied.Mods) is { Problems.Count: 0 } loaded && loaded.Mods.Single() is { Cosmetic: true, Archive: "zipped.zip" } fromZip &&
+                fromZip.PackFolders.Count == 2, "Loaded from the zip.");
         });
 
         test("A .7z (the system's tar writes it) is unpacked and added as a folder: a pack with its files at the root, a mod in a folder", () =>
