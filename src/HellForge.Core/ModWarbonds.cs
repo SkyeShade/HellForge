@@ -73,6 +73,10 @@ public static class ModWarbonds
     {
         public string Currency { get; init; } = "";
         public uint CurrencyMixId { get; init; }
+
+        // Whether its price counts as spent on a warbond in that currency: only a price in the warbond's own currency
+        // does, so what was spent (which the game names in the warbond's currency) and what opens its pages are one sum.
+        public bool CountsAsSpent(uint warbondCurrency) => CurrencyMixId == 0 || CurrencyMixId == warbondCurrency;
     }
 
     // What an item sells: a catalogue item by its mixId (Kind "item"), or a weapon or stratagem a code mod registers this
@@ -218,6 +222,7 @@ public static class ModWarbonds
     static readonly string[] RootFields = ["format", "warbonds"];
     static readonly string[] WarbondFields = ["key", "name", "currency", "pages", "variant", "season", "art", "unlock", "showcase"];
     static readonly string[] PageFields = ["requirement", "items"];
+    static readonly string[] UnlockFields = ["currency", "cost"];
     static readonly string[] ItemFields = ["mixId", "weapon", "stratagem", "mod", "cost", "currency", "position", "size", "repeatable", "key"];
 
     // Refuses a field the object does not take: `what` names it in the message.
@@ -253,6 +258,7 @@ public static class ModWarbonds
     static long UnlockCost(JsonElement entry)
     {
         if (!entry.TryGetProperty("unlock", out var unlock)) return 0;
+        if (unlock.ValueKind == JsonValueKind.Object) OnlyFields(unlock, "\"unlock\"", UnlockFields);
         if (unlock.ValueKind != JsonValueKind.Object || Text(unlock, "currency") != "forge-credits" || !unlock.TryGetProperty("cost", out var cost) ||
             !cost.TryGetInt64(out var amount) || amount is < 1 or > MaxCost)
             throw new InvalidDataException($"\"unlock\" is {{\"currency\": \"forge-credits\", \"cost\": 1 to {MaxCost}}}");
@@ -289,24 +295,25 @@ public static class ModWarbonds
             throw new InvalidDataException($"\"pages\" holds 1 to {MaxPages} pages");
         List<Page> pages = [];
         var itemKeys = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var pageJson in pagesJson.EnumerateArray()) pages.Add(ParsePage(modId, key, pageJson, pages, itemKeys));
+        foreach (var pageJson in pagesJson.EnumerateArray()) pages.Add(ParsePage(modId, key, currencyMixId, pageJson, pages, itemKeys));
         return new Warbond(modId, key, name, Hash("warbond/" + modId + "/" + key), Hash("warbond-spent/" + modId + "/" + key), currency, currencyMixId, pages)
             { Variant = variant, Season = season, ArtFrom = artFrom, ArtImage = artImage, UnlockCost = unlockCost, Token = Hash("warbond-token/" + modId + "/" + key),
                 Showcase = showcase };
     }
 
-    // A page: its requirement opens it no sooner than the page before it, and no later than the pages before it cost.
-    static Page ParsePage(string modId, string warbondKey, JsonElement pageJson, List<Page> before, HashSet<string> itemKeys)
+    // A page: its requirement opens it no sooner than the page before it, and no later than the pages before it cost in the
+    // warbond's currency.
+    static Page ParsePage(string modId, string warbondKey, uint currencyMixId, JsonElement pageJson, List<Page> before, HashSet<string> itemKeys)
     {
         var at = $"page {before.Count + 1}";
         if (pageJson.ValueKind != JsonValueKind.Object) throw new InvalidDataException(at + " is not an object");
         OnlyFields(pageJson, at, PageFields);
         var requirement = pageJson.TryGetProperty("requirement", out var r) ? Whole(r, at + " \"requirement\"") : 0;
-        var spentBefore = before.Sum(page => page.Items.Sum(item => item.Cost));
+        var spentBefore = before.Sum(page => page.Items.Where(item => item.CountsAsSpent(currencyMixId)).Sum(item => item.Cost));
         if (before.Count == 0 && requirement != 0) throw new InvalidDataException("page 1's \"requirement\" is 0: it is open from the start");
         if (before.Count > 0 && requirement < before[^1].Requirement) throw new InvalidDataException(at + "'s \"requirement\" is below the page before it");
         if (requirement > spentBefore)
-            throw new InvalidDataException($"{at} needs {requirement} spent, but the pages before it cost {spentBefore} in all, so it could never open");
+            throw new InvalidDataException($"{at} needs {requirement} spent, but the pages before it cost {spentBefore} in the warbond's currency in all, so it could never open");
         if (!pageJson.TryGetProperty("items", out var itemsJson) || itemsJson.ValueKind != JsonValueKind.Array || itemsJson.GetArrayLength() is 0 or > MaxItemsPerPage)
             throw new InvalidDataException($"{at} holds 1 to {MaxItemsPerPage} items");
         var parsed = itemsJson.EnumerateArray().Select((json, i) => ParseItem(modId, json, $"{at} item {i + 1}", itemKeys)).ToList();

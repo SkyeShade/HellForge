@@ -48,7 +48,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     public sealed record Served(ModWarbonds.Warbond Spec, JsonObject ListEntry, JsonObject Detail, IReadOnlyDictionary<long, uint> Sells, long TotalCost);
 
     // What a warbond's items are checked against: the catalogue's ids and currency caps, and the registered mod items.
-    sealed record Lookup(HashSet<uint>? Catalogue, Dictionary<uint, long> Caps, List<RegisteredItems.Item> Registered);
+    sealed record Lookup(HashSet<uint>? Catalogue, HashSet<uint>? Consumables, Dictionary<uint, long> Caps, List<RegisteredItems.Item> Registered);
 
     // The warbonds the game gets now, their items resolved.
     public IReadOnlyList<Served> Resolve()
@@ -91,7 +91,9 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         foreach (var item in catalogue ?? [])
             if (item.TryGetProperty("maxCap", out var cap) && cap.TryGetInt64(out var most)) caps.TryAdd(item.GetProperty("mixId").GetUInt32(), most);
         var registered = Registered is { } r ? r.Served().Where(i => !r.IsLocked(i) && !i.IsDifficulty).ToList() : [];
-        return new Lookup(catalogue?.Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet(), caps, registered);
+        var consumables = catalogue?.Where(i => i.TryGetProperty("isConsumable", out var c) && c.ValueKind == JsonValueKind.True)
+            .Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet();
+        return new Lookup(catalogue?.Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet(), consumables, caps, registered);
     }
 
     // One warbond in the game's shapes, or null when none of its items can be sold.
@@ -103,8 +105,8 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             ["totalMedalsRequired"] = page.Requirement,
             ["seasonPassItems"] = new JsonArray([.. page.Items.Select(item => Cell(warbond, item, lookup, sells)).OfType<JsonNode>()]),
         })]);
-        var total = warbond.Pages.Sum(p => p.Items.Where(i => sells.ContainsKey(i.Id)).Sum(i => i.Cost));
-        if (total == 0)
+        var total = warbond.Pages.Sum(p => p.Items.Where(i => sells.ContainsKey(i.Id) && i.CountsAsSpent(warbond.CurrencyMixId)).Sum(i => i.Cost));
+        if (sells.Count == 0)
         {
             Report(warbond, "", "none of its items can be sold this session");
             return null;
@@ -117,7 +119,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             var requirement = Math.Min(warbond.Pages[i].Requirement, before);
             requirements.Add((JsonNode)requirement);
             pages[i]!["totalMedalsRequired"] = requirement;
-            before += warbond.Pages[i].Items.Where(item => sells.ContainsKey(item.Id)).Sum(item => item.Cost);
+            before += warbond.Pages[i].Items.Where(item => sells.ContainsKey(item.Id) && item.CountsAsSpent(warbond.CurrencyMixId)).Sum(item => item.Cost);
         }
         var entry = Head(warbond, total);
         entry["pageRequirements"] = requirements.DeepClone();
@@ -138,7 +140,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     static JsonObject Head(ModWarbonds.Warbond warbond, long total) => new()
     {
         ["id32"] = warbond.Id32, ["medalsTotalMixId"] = MedalsTotal, ["medalsConsumableMixId"] = warbond.CurrencyMixId,
-        ["medalsSpentMixId"] = warbond.Spent, ["totalCost"] = total,
+        ["medalsSpentMixId"] = warbond.Spent, ["totalCost"] = Math.Max(total, 1), /* 0 reads complete (held spent == totalCost, 0x1963587): the card moves last */
     };
 
     // An item's cell in the game's detail shape, or null (reported) when it cannot be sold.
@@ -152,6 +154,12 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         if (ItemOf(item.Sells, lookup.Catalogue, lookup.Registered, out var why) is not { } mixId)
         {
             Report(warbond, item.Sells.ToString(), why);
+            return null;
+        }
+        // A repeatable item is bought again and again: only a consumable adds up (an armor or a weapon is held once).
+        if (item.Repeatable && lookup.Consumables != null && !lookup.Consumables.Contains(mixId))
+        {
+            Report(warbond, item.Sells.ToString(), "it is \"repeatable\", and only a consumable can be bought again");
             return null;
         }
         sells[item.Id] = mixId;
@@ -327,13 +335,13 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         return offers.Where(o => !o.Value).Select(o => o.Key).ToHashSet();
     }
 
-    // Whether a mixId is a mod's registered weapon or stratagem: a purchase grants it without saving it in the profile,
-    // which RegisteredItems serves while the item stays bought.
     static uint CurrencyOf(ModWarbonds.Warbond warbond, ModWarbonds.Item item) => item.CurrencyMixId != 0 ? item.CurrencyMixId : warbond.CurrencyMixId;
 
     // A mod warbond item's currency (its own, else its warbond's); null for any other item.
     public uint? ItemCurrency(long itemId) =>
         warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items).Select(i => (w, i))).FirstOrDefault(x => x.i.Id == itemId) is ({ } w, { } i) ? CurrencyOf(w, i) : null;
 
+    // Whether a mixId is a mod's registered weapon or stratagem: a purchase grants it without saving it in the profile,
+    // which RegisteredItems serves while the item stays bought.
     public bool IsRegistered(uint mixId) => Registered?.Load().Any(i => i.MixId == mixId && !i.IsDifficulty) == true;
 }

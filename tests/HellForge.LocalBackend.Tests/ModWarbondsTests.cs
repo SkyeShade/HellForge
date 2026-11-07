@@ -222,8 +222,8 @@ static class ModWarbondsTests
         check(!served.Sells.Values.Contains(steeled), "Paid content was sold on a mod's warbond.");
     }
 
-    // An item's own "currency": priced, capped and charged in it, its spent amount counted on its warbond, and named to the
-    // mod loader (warbond_item) so the game checks and shows it.
+    // An item's own "currency": priced, capped and charged in it, not counted as spent on its warbond (whose spent line
+    // names the warbond's currency), and named to the mod loader (warbond_item) so the game checks and shows it.
     static void ItemCurrencies(Action<bool, string> check, IReadOnlyDictionary<string, JsonElement> fixtures, List<uint> mobilize)
     {
         var spec = JsonDocument.Parse($$"""
@@ -239,9 +239,18 @@ static class ModWarbondsTests
         check(lines.Count == 5 && lines[1] == $"warbond_item\t{items[0].Id}\t1276729503\t0" && lines[2] == $"warbond_item\t{items[1].Id}\t{Requisition}\t0" &&
             lines[3].EndsWith("1276729503\t0", StringComparison.Ordinal) && lines[4].EndsWith($"{Requisition}\t0", StringComparison.Ordinal),
             "The plan does not name every item's currency: " + string.Join(" | ", lines));
+        // A consumable of the catalogue (an item the player holds many of) sells again; an armor marked repeatable is left out.
+        var consumable = fixtures["/Progression/items"].EnumerateArray().First(i => i.TryGetProperty("isConsumable", out var c) && c.ValueKind == JsonValueKind.True &&
+            i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out var id) && !PaidContentSet.IsSuperCredits(id)).GetProperty("mixId").GetUInt32();
         var repeatable = ModWarbonds.Parse("test", "Test", JsonDocument.Parse($$"""
-            {"format":1,"warbonds":[{"key":"again","name":"Again","pages":[{"items":[{"mixId":{{mobilize[0]}},"cost":5,"repeatable":true}]}]}]}
+            {"format":1,"warbonds":[{"key":"again","name":"Again","pages":[{"items":[{"mixId":{{consumable}},"cost":5,"repeatable":true}]}]}]}
             """).RootElement, problems)[0];
+        var heldOnce = ModWarbonds.Parse("test", "Test", JsonDocument.Parse($$"""
+            {"format":1,"warbonds":[{"key":"armor","name":"Armor","pages":[{"items":[{"mixId":{{mobilize[0]}},"cost":5,"repeatable":true}]}]}]}
+            """).RootElement, problems)[0];
+        var heldLog = new List<string>();
+        var heldService = new ModWarbondService([heldOnce]) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = heldLog.Add };
+        check(heldService.Resolve().Count == 0 && heldLog.Any(l => l.Contains("only a consumable")), "A repeatable item that is not a consumable was sold: " + string.Join(" | ", heldLog));
         check(ModWarbonds.PlanLines([repeatable]).Last().EndsWith("\t1", StringComparison.Ordinal), "The plan does not name a repeatable item.");
         var again = new ModWarbondService([repeatable]) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, UnlockAll = true, Log = _ => { } };
         var allBought = again.Apply("/Progression", JsonSerializer.SerializeToElement(new { purchasedSeasonPassItems = new[] { 1 } }))
@@ -261,10 +270,12 @@ static class ModWarbondsTests
         using var body = JsonDocument.Parse("{\"seasonPassItemId\":" + items[1].Id + ",\"warId\":801,\"expectedCost\":[]}");
         var (status, reply, _) = purchases.Handle("/SeasonPass/item/buy", body.RootElement);
         check(status == 200, "An item in its own currency was not sold: " + reply?.ToJsonString());
+        check(reply?["items"]?.AsArray().All(i => (uint?)i!["mixId"] != mixed.Spent) == true, "The reply counts an item in another currency as spent: " + reply?.ToJsonString());
+        check(served.TotalCost == 10, "The warbond's whole cost counts prices in other currencies: " + served.TotalCost);
         check(store.TryChange((_, inventory) =>
         {
-            check(ProfileStore.Held(inventory, Requisition) == 600 && ProfileStore.Held(inventory, 0x4C19589F) == 100 && ProfileStore.Held(inventory, mixed.Spent) == 400,
-                "An item in its own currency did not take 400 requisition (and no medals) and count it as spent.");
+            check(ProfileStore.Held(inventory, Requisition) == 600 && ProfileStore.Held(inventory, 0x4C19589F) == 100 && ProfileStore.Held(inventory, mixed.Spent) == 0,
+                "An item in its own currency did not take 400 requisition (and no medals), or counted it as spent in medals.");
             return false;
         }) == false, "The profile check did not run.");
     }
@@ -386,6 +397,8 @@ static class ModWarbondsTests
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":0}]}]}", "a free item"),
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"requirement\":5,\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "a first page that is not open"),
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":3}]},{\"requirement\":4,\"items\":[{\"mixId\":2,\"cost\":1}]}]}", "a page that can never open"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":3,\"currency\":\"requisition\"}]},{\"requirement\":2,\"items\":[{\"mixId\":2,\"cost\":1}]}]}",
+                "a page opened only by prices in another currency"),
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1},{\"mixId\":1,\"cost\":2}]}]}", "the same item twice without keys"),
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"weapon\":\"x\",\"cost\":1}]}]}", "an item naming two things"),
             ("{\"key\":\"A B\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "a key with capitals and a space"),
@@ -401,6 +414,7 @@ static class ModWarbondsTests
             ("{\"key\":\"a\",\"name\":\"A\",\"curency\":\"requisition\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "a misspelt warbond field"),
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":3}]},{\"requirment\":3,\"items\":[{\"mixId\":2,\"cost\":1}]}]}", "a misspelt page field"),
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1,\"repeatble\":true}]}]}", "a misspelt item field"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"unlock\":{\"currency\":\"forge-credits\",\"cost\":5,\"cots\":5},\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "a misspelt unlock field"),
         })
             check(Problems(warbond).Count == 1, "A warbond with " + why + " was accepted.");
         var formatProblems = new List<string>();

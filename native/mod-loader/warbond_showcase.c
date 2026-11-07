@@ -56,7 +56,37 @@ static int64_t WarbondItemKit(uint32_t mixId, uint32_t type)
     return 0;
 }
 
-/* A mod warbond's items into its character row (+0xC armor, +0x10 helmet, +0x14 cape), once the catalogue is filled. */
+/* Whether an entity is an armory weapon of a kind the game's own showcases hold (types 1 primary, 2 support, 3 secondary:
+ * the 26 weapons of the character rows at 0x32B1E60, read in the live dump); -1 while the armory is not built. The armory
+ * ([game.dll + 0x33269E8], the game's object or HellForge's copy of it) has per-type starts at +0x1B24 and counts at
+ * +0x1B40 and 32-byte entries, the entity at +8 (registry.c). */
+static int WarbondShowcaseWeapon(uint64_t entity)
+{
+    const uint8_t* armory = *(const uint8_t* const*)(g_wbGame + REG_ARMORY_GLOBAL);
+    if (armory == NULL) return -1;
+    for (int t = 1; t <= 3; t++)
+    {
+        uint32_t start = *(const uint32_t*)(armory + 0x1B24 + 4 * t), count = *(const uint32_t*)(armory + 0x1B40 + 4 * t);
+        for (uint32_t k = 0; k < count; k++)
+            if (*(const uint64_t*)(armory + (size_t)(start + k) * 32 + 8) == entity) return 1;
+    }
+    return 0;
+}
+
+/* The warbond's weapon into its character row (+0x20) when the armory has it; 0 while the armory is not built. */
+static int WarbondShowcaseHolds(const ModWarbond* w, uint8_t* row)
+{
+    int weapon = w->showWeapon != 0 ? WarbondShowcaseWeapon(w->showWeapon) : 0;
+    if (weapon < 0) return 0;
+    if (weapon) memcpy(row + 0x20, &w->showWeapon, 8);
+    else if (w->showWeapon != 0)
+        Note("warbonds: showcase of warbond %u: %016llx is not an armory primary, support or secondary weapon; it holds the one it starts from", w->id,
+            (unsigned long long)w->showWeapon);
+    return 1;
+}
+
+/* A mod warbond's items into its character row (+0xC armor, +0x10 helmet, +0x14 cape), once the catalogue is filled, and
+ * its weapon (+0x20) once the armory is built: an entity that is not an armory weapon would reach the game's spawn. */
 static void WarbondShowcaseKits(int i)
 {
     const ModWarbond* w = &g_modWarbonds[i];
@@ -64,6 +94,7 @@ static void WarbondShowcaseKits(int i)
     int64_t kits[3];
     for (int k = 0; k < 3; k++)
         if ((kits[k] = w->showItem[k] != 0 ? WarbondItemKit(w->showItem[k], (uint32_t)k) : 0) < 0) return;
+    if (!WarbondShowcaseHolds(w, row)) return;
     for (int k = 0; k < 3; k++)
     {
         uint32_t kit = (uint32_t)kits[k];
@@ -137,8 +168,7 @@ static int ShowcaseModRows(uint8_t* table, const uint8_t* rows, const uint8_t* c
     const uint8_t* poseChar = pose ? ShowcaseRow(chars, WB_SHOW_ROWS, WB_CHAR_ROW, *(const uint32_t*)(pose + 0x18)) : NULL;
     if (poseChar) memcpy(ch + 0x18, poseChar + 0x18, 4);
     else if (w->showPose != 0) Note("warbonds: showcase of warbond %u: %u is not a game warbond's pose; it keeps the pose it starts from", w->id, w->showPose);
-    if (w->showWeapon != 0) memcpy(ch + 0x20, &w->showWeapon, 8);
-    g_wbShowKits[i] = w->showItem[0] == 0 && w->showItem[1] == 0 && w->showItem[2] == 0;
+    g_wbShowKits[i] = w->showItem[0] == 0 && w->showItem[1] == 0 && w->showItem[2] == 0 && w->showWeapon == 0; /* the weapon at the spawn */
     return 1;
 }
 
@@ -167,7 +197,7 @@ static const char* InstallWarbondShowcase(uintptr_t game)
         ShowcaseRepoint(game, kWbShowLeas, kWbShowBounds, 6, table, (uint8_t)total))
         return "game.dll could not be rewritten";
     if (items && LoaderHook("warbond showcase", game + WB_SHOW_SPAWN, (void*)WarbondShowcaseSpawn, (void**)&g_wbShowSpawn))
-        Note("warbonds: the showcase's Helldivers wear what they start from: its spawn could not be hooked");
+        Note("warbonds: the showcase's Helldivers wear and hold what they start from: its spawn could not be hooked");
     int own = 0;
     for (int i = 0; i < g_modWarbondCount; i++) own += g_modWarbonds[i].showFrom || g_modWarbonds[i].showPose || g_modWarbonds[i].showWeapon || !g_wbShowKits[i];
     Note("warbonds: a showcase for each of the %d mod warbond(s), %d of them their own, the rest the game's default", g_modWarbondCount, own);

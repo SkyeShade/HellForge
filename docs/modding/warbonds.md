@@ -27,9 +27,9 @@ by a code mod ([content](content.md)).
 
 ## What a warbond is
 
-A warbond is a set of pages. Each page holds up to 10 items on a 5 by 3 grid. A player buys an item once with the
-warbond's currency. What they spend on a warbond counts towards opening its later pages, as medals do on the game's own
-warbonds.
+A warbond is a set of pages. Each page holds up to 10 items on a 5 by 3 grid. A player buys an item once, in the
+warbond's currency or in the item's own. What they spend in the warbond's currency counts towards opening its later pages,
+as medals do on the game's own warbonds.
 
 HellForge serves a mod's warbonds beside the game's, after them in the list. A player's profile saves only what they bought,
 what they spent on each warbond and the warbonds they paid to unlock. Taking a mod out leaves those behind, and putting it
@@ -100,7 +100,7 @@ An item also has:
 | `currency` | what it costs, when not the warbond's `currency`: one of the same names |
 | `position` | its top-left cell `[x, y]` on the 5 by 3 grid, from `[0, 0]`; without one it takes the first free cells, row by row |
 | `size` | the cells it covers `[width, height]`; `[1, 1]` by default |
-| `repeatable` | `true` to sell it again after each purchase: for a game item (a consumable) only, never a `weapon` or `stratagem`; `false` by default |
+| `repeatable` | `true` to sell it again after each purchase: for a consumable of the game's catalogue only, never a `weapon` or `stratagem`; `false` by default |
 | `key` | needed only when two items of a warbond sell the same thing: a name for each, 1 to 64 characters. An item's id comes from its `key`, or without one from what it sells, so adding a `key` later or renaming what it sells starts it unbought |
 
 A weapon or stratagem of yours sold on a warbond is not in a player's armory until they buy it, unless their profile has
@@ -109,6 +109,7 @@ everything unlocked. A weapon or stratagem no warbond sells stays as it was: in 
 An item is left out for the session, with a line in the backend's log, when the game could not hold it:
 
 - a `mixId` the game's catalogue does not have;
+- a `repeatable` item that is not a consumable;
 - Super Credits, or premium content (a premium warbond's item or token, a Superstore item, Steam DLC gear), owned or not:
   only its own warbond sells it;
 - a `weapon` or `stratagem` that is not registered this session, because its mod is not loaded, its premium content is
@@ -116,8 +117,8 @@ An item is left out for the session, with a line in the backend's log, when the 
 
 ## Pages and prices
 
-A page's `requirement` is what players must have spent on this warbond before the page opens. Every price counts
-towards it as its number, whatever its currency, so keep a warbond's prices in one currency when its pages build on them.
+A page's `requirement` is what players must have spent on this warbond, in its `currency`, before the page opens. An
+item priced in another currency does not count towards it, and the line with what was spent leaves it out too.
 
 The first page has none.
 Each later page needs at least as much as the page before it, and no more than the earlier pages cost in all, so it can
@@ -149,24 +150,28 @@ Each field is optional:
 | `from` | a game warbond by its id (as for `art`): its background and its Helldiver, which the fields below change; without it, the game's default |
 | `pose` | a game warbond by its id: the Helldiver stands in that warbond's pose |
 | `armor`, `helmet`, `cape` | an item of the game's catalogue, by its `mixId`: the Helldiver wears it. Without one, it wears what `from` gives it. That is the player's own cape on most of the game's warbonds |
-| `weapon` | an entity id, in hex: the weapon the Helldiver holds. Take it from the `entity` column of `arsenal.tsv` (see [Debugging](debugging.md)), which lists every armory weapon's, or from `HF_ENTITY_` in `hellforge_content.h`: HellForge cannot check the id before the game uses it |
+| `weapon` | an entity id, in hex: the weapon the Helldiver holds, a primary, support or secondary weapon of the armory, your mod's own included. Take it from the `entity` column of `arsenal.tsv` (see [Debugging](debugging.md)), which lists every armory weapon's, or from `HF_ENTITY_` in `hellforge_content.h` |
 
 Custom armor shows here when your mod changes how one of the game's armors looks: name that armor's `mixId`. An item that is
-not that kind of piece is skipped, with a line in the mod loader's log (`modloader.log`, see [Debugging](debugging.md)), and the Helldiver keeps what `from` gives it. The
+not that kind of piece, or a `weapon` that is not one of the armory's, is skipped and the Helldiver keeps what `from`
+gives it. The mod loader's log (`modloader.log`, see [Debugging](debugging.md)) says which. The
 Helldiver stands where the game's do, and the camera is the game's.
 
 ## What players see
 
-A mod's warbond is listed in the Acquisition Center after the game's warbonds, in load order. The first time the
-Acquisition Center opens after the number of warbonds changed (a mod with warbonds added or taken out), it shows the last
-warbond first, once, as it does with a new warbond of the game's. Its pages open and its items buy and unlock as the game's
-do, and players with everything unlocked have bought it all.
+A mod's warbond is listed in the Acquisition Center after the game's warbonds, in load order. When the number of
+warbonds changed (a mod with warbonds added or taken out), the Acquisition Center shows the last warbond first the next
+time it opens. It does so once, as it does with a new warbond of the game's.
+
+A warbond a player has spent its whole cost on (in its `currency`) is listed last, after the mods' warbonds, as the game
+does with its own finished warbonds. Its pages open and its items buy and unlock as the game's do, and players with
+everything unlocked have bought it all.
 
 Its card shows your `art`. The name beside the card and the page's title show your `name`, the tag under the name
-your `variant`, and the Helldiver beside the card is your `showcase`. Prices show the icon of the warbond's currency:
-medals, requisition, each kind of sample in its colour, or Forge Credits. The line with what was spent, a locked
-page's line with what is left to spend and the claim button of an item the player cannot afford ("NOT ENOUGH ...")
-name that currency too, in English.
+your `variant`, and the Helldiver beside the card is your `showcase`. Each price shows the icon of its item's currency:
+medals, requisition, each kind of sample in its colour, or Forge Credits. The claim button of an item the player cannot
+afford names the item's currency ("NOT ENOUGH SUPER SAMPLES"). The line with what was spent and a locked page's line
+with what is left to spend name the warbond's `currency`. All of these are in English.
 
 A warbond with an `unlock` price shows the game's warbond button with that price, as the game's premium warbonds do. Players
 buy it with Forge Credits, once, and then buy its items as on any warbond. Players with everything unlocked own it.
@@ -179,8 +184,9 @@ The name shows beside the card. The PNG may use any colour type; its transparenc
 - Mods' warbonds share 99 places, each with its own name, look, art and Helldiver. Later warbonds, in load order, wait
   until there is room, with a line in the backend's log. A warbond that is left out for a session (it sells nothing the
   game can hold, or its id clashes) still takes its place.
-- The Acquisition Center's column of dots beside the cards has 32. Past 32 warbonds it shows the group of up to 32 the
-  current warbond is in (128 warbonds make 4 groups of 32), and a dot selects that warbond.
+- The Acquisition Center's column of dots beside the cards has 32. Past 32 warbonds the warbonds make equal groups of up
+  to 32 (124 warbonds make 4 groups of 31). The column shows the group the current warbond is in, and a dot selects that
+  warbond.
 - Mods' warbonds sell 4,280 items in all, which is what a player's profile has room for besides the game's warbonds.
   A warbond that would go past that waits too.
 - 15 pages a warbond, 10 items a page, and a 5 by 3 grid. HellForge refuses a warbond over these limits, and the

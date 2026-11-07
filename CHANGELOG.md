@@ -26,11 +26,12 @@ On `dev`, since 0.4.0-beta.
   - Pages can sell game items and the mod's own weapons and stratagems, which stay out of the armory until bought.
   - Up to 99 mod warbonds are listed after the game's, where the game lists 32 warbonds in all. Each has its own name,
     look and art (a plain card without any), and its prices and texts show its currency. Past 32 warbonds the column of
-    dots beside the cards shows the group of 32 the current one is in.
-  - Each has its own Helldiver beside its card: a game warbond's background, pose and weapon, and the armor, helmet and
-    cape the mod names.
+    dots beside the cards shows the group of up to 32 the current one is in.
+  - Each has its own Helldiver beside its card: a game warbond's background and pose, and the armor, helmet, cape and
+    armory weapon the mod names (its own weapons included).
   - A warbond can cost Forge Credits, paid once with the game's warbond button, and an item can have a currency of its
-    own.
+    own, which the claim button names when the player cannot afford it. Only prices in the warbond's own currency count
+    as spent on it.
 - **Shields that stop grenades.** The FX-12 Shield Generator Relay, G/SH-39 Shield and SH-32 Shield Generator Pack have a
   **Stops grenades** setting in the editor, off by default. Grenades, throwing knives and self-destruct drones bounce off
   the bubble from outside, and ones thrown from inside still leave. Helldivers, enemies, vehicles and

@@ -51,11 +51,11 @@ static const WbBound kWbBounds[] = {
 
 /* The mod warbonds' items ("warbond_item <seasonPassItemId> <currency mixId> <repeatable>"), sorted by id at install:
  * the currency the game's per-item checks, charge and icons use instead of the warbond's (ModWarbondService prices them
- * alike), and whether the item sells again after each purchase. */
-#define WB_ITEMS_MAX 4280
+ * alike), and whether the item sells again after each purchase. The plan names every loaded warbond's items, the ones
+ * the backend leaves out included, so the table grows with it. */
 typedef struct { uint32_t id, currency, repeatable; } WbItemCurrency;
-static WbItemCurrency g_wbItems[WB_ITEMS_MAX];
-static int g_wbItemCount;
+static WbItemCurrency* g_wbItems;
+static int g_wbItemCount, g_wbItemCapacity, g_wbItemsLost;
 
 static int CompareWbItems(const void* a, const void* b)
 {
@@ -98,19 +98,33 @@ static int WarbondShowcaseLine(char** f)
     return 1;
 }
 
+/* "warbond_item <seasonPassItemId> <currency mixId> [<repeatable>]": into the growing item table. */
+static int WarbondItemLine(char** f, int n)
+{
+    if (g_wbItemCount == g_wbItemCapacity)
+    {
+        int capacity = g_wbItemCapacity ? g_wbItemCapacity * 2 : 1024;
+        WbItemCurrency* grown = capacity <= (1 << 24) ? (WbItemCurrency*)realloc(g_wbItems, (size_t)capacity * sizeof *grown) : NULL;
+        if (grown == NULL)
+        {
+            if (!g_wbItemsLost++) Note("warbonds: no memory for more mod warbond items; the rest are priced in their warbond's currency");
+            return 1;
+        }
+        g_wbItems = grown;
+        g_wbItemCapacity = capacity;
+    }
+    g_wbItems[g_wbItemCount++] = (WbItemCurrency){(uint32_t)strtoul(f[1], NULL, 10), (uint32_t)strtoul(f[2], NULL, 10),
+        n == 4 && strcmp(f[3], "1") == 0};
+    return 1;
+}
+
 /* "warbond <id32> <variant> <currency> <text key> <name> <season> <art from> <art texture, hex>" (ModWarbonds.PlanLines). */
 static int WarbondPlanLine(char** f, int n)
 {
-    if ((n == 3 || n == 4) && strcmp(f[0], "warbond_item") == 0)
-    {
-        if (g_wbItemCount < WB_ITEMS_MAX)
-            g_wbItems[g_wbItemCount++] = (WbItemCurrency){(uint32_t)strtoul(f[1], NULL, 10), (uint32_t)strtoul(f[2], NULL, 10),
-                n == 4 && strcmp(f[3], "1") == 0};
-        return 1;
-    }
+    if ((n == 3 || n == 4) && strcmp(f[0], "warbond_item") == 0) return WarbondItemLine(f, n);
     if (n == 8 && strcmp(f[0], "warbond_showcase") == 0) return WarbondShowcaseLine(f);
     if (n != 9 || strcmp(f[0], "warbond") != 0) return 0;
-    if (g_modWarbondCount >= WB_MAX) { Note("warbonds: more than %d mod warbonds; the rest show the game's placeholder", WB_MAX); return 1; }
+    if (g_modWarbondCount >= WB_MAX) { Note("warbonds: more than %d mod warbonds in the plan; the backend serves only the first %d", WB_MAX, WB_MAX); return 1; }
     ModWarbond* w = &g_modWarbonds[g_modWarbondCount];
     w->id = (uint32_t)strtoul(f[1], NULL, 10);
     w->variant = (uint32_t)strtoul(f[2], NULL, 10);
@@ -494,7 +508,7 @@ static void InstallModWarbonds(void)
     if (g_modWarbondsState || g_modWarbondCount == 0) return;
     uintptr_t game = ApiModuleBase("game.dll", NULL);
     g_modWarbondsState = -1;
-    qsort(g_wbItems, (size_t)g_wbItemCount, sizeof *g_wbItems, CompareWbItems);
+    if (g_wbItemCount > 1) qsort(g_wbItems, (size_t)g_wbItemCount, sizeof *g_wbItems, CompareWbItems);
     if (strcmp(g_build, "25480438") || !game) return;
     const char* list = InstallWarbondList(game);
     if (list) Note("warbonds: the game lists its 32 warbonds at most, mods' past them wait: %s", list);

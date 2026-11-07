@@ -51,7 +51,8 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     }
 
     // A warbond page item: the page must be open (the warbond's medalsSpent at least the page's requirement), the warbond
-    // owned, the item not bought yet (unless repeatable), and the medals there.
+    // owned, the item not bought yet (unless repeatable), and the medals there. Only a price in the warbond's own currency
+    // counts as spent on it (a mod item in another currency does not: ModWarbonds.Item.CountsAsSpent).
     JsonNode? WarbondItem(JsonElement body)
     {
         if (!Whole(body, "seasonPassItemId", out var itemId) || FindWarbondItem(itemId) is not { } found) return null;
@@ -59,6 +60,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         var cost = item.GetProperty("medalCost").GetInt64();
         var medals = modWarbonds?.ItemCurrency(itemId) ?? warbond.GetProperty("medalsConsumableMixId").GetUInt32(); /* a mod's item: its own */
         var spent = warbond.GetProperty("medalsSpentMixId").GetUInt32();
+        var counts = medals == warbond.GetProperty("medalsConsumableMixId").GetUInt32();
         var mixId = item.GetProperty("itemMixId").GetUInt32();
         var repeatable = item.TryGetProperty("isRepeatable", out var r) && r.ValueKind == JsonValueKind.True;
         if (cost < 0 || !OwnsWarbond(warbond)) return null;
@@ -69,7 +71,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
             if (!repeatable && bought.Any(b => b is JsonValue v && v.TryGetValue<long>(out var id) && id == itemId)) return false;
             if (ProfileStore.Held(inventory, spent) < page.GetProperty("totalMedalsRequired").GetInt64() || ProfileStore.Held(inventory, medals) < cost) return false;
             ProfileStore.AddItem(inventory, medals, -cost);
-            ProfileStore.AddItem(inventory, spent, cost);
+            if (counts) ProfileStore.AddItem(inventory, spent, cost);
             foreach (var (content, amount) in Contents(mixId, 1))
             {
                 /* a mod's weapon or stratagem: RegisteredItems serves it from now on (the id is bought), nothing is saved */
@@ -82,7 +84,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
             return true;
         });
         if (!saved) return null;
-        granted.Add((JsonNode)new JsonObject { ["mixId"] = spent, ["amount"] = cost });
+        if (counts) granted.Add((JsonNode)new JsonObject { ["mixId"] = spent, ["amount"] = cost });
         return new JsonObject { ["items"] = granted, ["packageProgress"] = new JsonArray() };
     }
 
