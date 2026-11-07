@@ -488,6 +488,7 @@ static struct
     int count, populated, online, onlineUnits, eff, playersAt;
     float players[EVT_MAX_PLAYERS][3], radius, rMin; /* feet position (x, y, z); rMin: this map's least spawn distance */
     uint32_t units[EVT_MAX_PLAYERS], knownUnit[EVT_MAX_PLAYERS]; /* each player's Helldiver unit (the sight ray leaves it out) */
+    uint32_t avatars[EVT_MAX_PLAYERS], knownAvatar[EVT_MAX_PLAYERS]; uint8_t local[EVT_MAX_PLAYERS], knownLocal[EVT_MAX_PLAYERS]; /* the avatar entity (its aim, LwAimForward); this machine's player */
     float known[EVT_MAX_PLAYERS][3]; ULONGLONG knownAt[EVT_MAX_PLAYERS]; uint64_t knownPeer[EVT_MAX_PLAYERS];
     ULONGLONG last, effAt, noteAt;
     uint32_t spawned, offlined, died, refused, farSpawned;
@@ -524,11 +525,11 @@ static void LwPlayers(void)
         if (list[i].avatar && ActHealthOf(g_lw.game, list[i].avatar, &h) && h.unit && EvpUnitPosition(h.unit, at))
         {
             if (slot < 0) for (int j = 0; j < EVT_MAX_PLAYERS && slot < 0; j++) if (!g_lwWorld.knownAt[j] || now - g_lwWorld.knownAt[j] > LW_KNOWN_MS) slot = j;
-            if (slot >= 0) { g_lwWorld.known[slot][0] = at[0]; g_lwWorld.known[slot][1] = at[1]; g_lwWorld.known[slot][2] = at[2]; g_lwWorld.knownUnit[slot] = h.unit; g_lwWorld.knownAt[slot] = now; g_lwWorld.knownPeer[slot] = list[i].peer; }
+            if (slot >= 0) { g_lwWorld.known[slot][0] = at[0]; g_lwWorld.known[slot][1] = at[1]; g_lwWorld.known[slot][2] = at[2]; g_lwWorld.knownUnit[slot] = h.unit; g_lwWorld.knownAvatar[slot] = list[i].avatar; g_lwWorld.knownLocal[slot] = (uint8_t)(list[i].local != 0); g_lwWorld.knownAt[slot] = now; g_lwWorld.knownPeer[slot] = list[i].peer; }
         }
     }
     for (int j = 0; j < EVT_MAX_PLAYERS; j++)
-        if (g_lwWorld.knownAt[j] && now - g_lwWorld.knownAt[j] <= LW_KNOWN_MS) { memcpy(g_lwWorld.players[k], g_lwWorld.known[j], sizeof g_lwWorld.players[k]); g_lwWorld.units[k] = g_lwWorld.knownUnit[j]; k++; }
+        if (g_lwWorld.knownAt[j] && now - g_lwWorld.knownAt[j] <= LW_KNOWN_MS) { memcpy(g_lwWorld.players[k], g_lwWorld.known[j], sizeof g_lwWorld.players[k]); g_lwWorld.units[k] = g_lwWorld.knownUnit[j]; g_lwWorld.avatars[k] = g_lwWorld.knownAvatar[j]; g_lwWorld.local[k] = g_lwWorld.knownLocal[j]; k++; }
     g_lwWorld.playersAt = k;
 }
 
@@ -611,7 +612,9 @@ static void LwPopulate(void)
      * came online after 2-3 minutes, and they arrived one after another at the same points). Its route on from there
      * is planned when it gets there (LwWalk), not here (the populate's 6144 path searches made a 60-79 ms frame). */
     for (int pass = 0, tries = 0; pass < 2; pass++, tries = 0)
-    for (float least = pass == 0 ? LW_R_OFF : g_lwWorld.rMin; made < n && tries < n * 20; tries++)
+    /* On an extra large map (walking grid) the squads start evenly from R_min out, as they stand everywhere else on the
+     * disc (audit 1e, 7: started beyond R_off, the first squads walked in over 2 minutes; lw83a). */
+    for (float least = pass == 0 && g_lwWorld.radius < 1500.0f ? LW_R_OFF : g_lwWorld.rMin; made < n && tries < n * 20; tries++)
     {
         int node = (int)(LwRand() % (uint32_t)g_lwNodeCount);
         if (g_lwNodes[node].degree == 0) continue;
@@ -1085,9 +1088,38 @@ static int LwViewRead(void)
     g_lwViewOwner = owner;
     return owner;
 }
+/* A remote player's view on the host (audit 1e, 6: a far squad a client could see never came online for them; KB
+ * remote-player-aim-direction, static, subagent): the avatar manager M = [game+0x3326D20] keys avatar entities at
+ * +0xF8 (EvpHash layout, as 0x83A729); slot i's aim rotation, a unit quaternion (x, y, z, w), at M + 0x547858 + 0x78 i
+ * (network field 0xE3186939, copied from the owner's state by 0x83AB40 each frame; read for every avatar's upper-body
+ * aim by 0x6B7720). Its forward is local +y rotated: (2(xy - wz), 1 - 2(x^2 + z^2), 2(yz + wx)), on the mod's axes (x, y
+ * ground, z up). The aim runs from the weapon toward the crosshair point: within a degree of the camera's view at 50 m.
+ * 1 with the forward across the ground in f. */
+static int LwAimForward(int player, float* f)
+{
+    uintptr_t m = 0; uint32_t slot = 0; float qv[4];
+    if (player < 0 || player >= g_lwWorld.playersAt || !g_lwWorld.avatars[player] || !EvpPtr(g_lw.game + 0x3326D20u, &m) || m == 0 ||
+        !EvpHash(m + 0xF8, g_lwWorld.avatars[player], 8, 4, &slot) || SafeRead(m + 0x547858u + 0x78u * (uintptr_t)slot, qv, sizeof qv)) return 0;
+    float x = qv[0], y = qv[1], z = qv[2], w = qv[3], l = x * x + y * y + z * z + w * w;
+    if (!(l > 0.9f && l < 1.1f)) return 0;
+    float fx = 2.0f * (x * y - w * z), fy = 1.0f - 2.0f * (x * x + z * z), fl = sqrtf(fx * fx + fy * fy);
+    if (!(fl > 0.2f)) return 0;
+    f[0] = fx / fl; f[1] = fy / fl;
+    return 1;
+}
 static int LwOffScreen(int player, const float* p)
 {
-    if (LwViewRead() != player) return 0;
+    if (LwViewRead() != player)
+    {
+        /* another machine's player: off its screen when outside the widest view any setting gives (vertical FOV 90 deg,
+         * the game's clamp; 2.4 aspect, 10 deg margin, as below), around its replicated aim */
+        float f[2];
+        if (g_lwWorld.local[player] || !LwAimForward(player, f)) return 0;
+        float dx = p[0] - g_lwWorld.players[player][0], dy = p[1] - g_lwWorld.players[player][1], d = sqrtf(dx * dx + dy * dy);
+        if (!(d > 1.0f)) return 0;
+        const float half = atanf(tanf(0.5f * 1.5707963f) * 2.4f) + 10.0f * 3.14159265f / 180.0f;
+        return (dx * f[0] + dy * f[1]) / d < cosf(half);
+    }
     float dx = p[0] - g_lwViewCam[0], dy = p[1] - g_lwViewCam[1], d = sqrtf(dx * dx + dy * dy);
     if (!(d > 1.0f)) return 0;
     return (dx * g_lwViewFwd[0] + dy * g_lwViewFwd[1]) / d < cosf(g_lwViewHalf);
