@@ -66,6 +66,10 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         var counts = medals == warbond.GetProperty("medalsConsumableMixId").GetUInt32() && !(repeatable && own != null);
         /* unlock-all opens a mod warbond's pages in what the game is served (FillCounters), never in the saved counter */
         var open = own != null && modWarbonds!.UnlockAll;
+        // A mod item the player has gained since its page was served (on another warbond): its price would buy nothing.
+        var consumable = catalogue(mixId) is { } entry && entry.TryGetProperty("isConsumable", out var k) && k.ValueKind == JsonValueKind.True;
+        bool Gained(JsonArray bought, JsonArray inventory) => own != null && !repeatable && modWarbonds!.HasAlready(itemId, mixId, consumable,
+            bought.OfType<JsonValue>().Select(v => v.TryGetValue<long>(out var id) ? id : -1).ToHashSet(), m => ProfileStore.Held(inventory, m) > 0);
         if (cost < 0 || !OwnsWarbond(warbond)) return null;
         /* the client takes back what it sent (0x13751D0): a mod item sent in another currency (the loader's per-item
            currency not installed) is refused, so the shown and saved balances never part */
@@ -76,6 +80,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         {
             var bought = progression["purchasedSeasonPassItems"] as JsonArray ?? [];
             if (!repeatable && bought.Any(b => b is JsonValue v && v.TryGetValue<long>(out var id) && id == itemId)) return false;
+            if (Gained(bought, inventory)) return false;
             if ((!open && ProfileStore.Held(inventory, spent) < page.GetProperty("totalMedalsRequired").GetInt64()) || ProfileStore.Held(inventory, medals) < cost) return false;
             ProfileStore.AddItem(inventory, medals, -cost);
             if (counts) ProfileStore.AddItem(inventory, spent, cost);

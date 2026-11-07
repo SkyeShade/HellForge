@@ -44,6 +44,10 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
 
     // The mixIds the profile holds now (its saved inventory, amount above 0).
     public Func<IReadOnlySet<uint>>? Holds { get; set; }
+
+    // What the player had when the session's first warbond was served: the pages leave out what they had then, so they
+    // stay as the game loaded them (a later purchase is refused at the buy, HasAlready).
+    (IReadOnlySet<long> Bought, IReadOnlySet<uint> Held)? owned;
     public Action<string> Log { get; set; } = line => Console.Error.WriteLine("[mod warbonds] " + line);
     readonly HashSet<string> reported = [];
 
@@ -101,11 +105,30 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         var registered = Registered is { } r ? r.Served().Where(i => !r.IsLocked(i) && !i.IsDifficulty).ToList() : [];
         var consumables = catalogue?.Where(i => i.TryGetProperty("isConsumable", out var c) && c.ValueKind == JsonValueKind.True)
             .Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet();
+        lock (reported) owned ??= (Purchased?.Invoke() ?? new HashSet<long>(), Holds?.Invoke() ?? new HashSet<uint>());
         var lookup = new Lookup(catalogue?.Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet(), consumables, caps, registered)
-            { Bought = Purchased?.Invoke() ?? new HashSet<long>(), Owned = [.. Holds?.Invoke() ?? new HashSet<uint>()] };
-        foreach (var item in warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items)).Where(i => lookup.Bought.Contains(i.Id)))
-            if (ItemOf(item.Sells, lookup.Catalogue, registered, out _) is { } mixId) lookup.Owned.Add(mixId);
+            { Bought = owned.Value.Bought, Owned = OwnedMixIds(owned.Value.Bought, owned.Value.Held, catalogue?.Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet(), registered) };
         return lookup;
+    }
+
+    // The mixIds the player has: what they hold, and what their bought mod items sell.
+    HashSet<uint> OwnedMixIds(IReadOnlySet<long> bought, IReadOnlySet<uint> held, HashSet<uint>? catalogue, List<RegisteredItems.Item> registered)
+    {
+        HashSet<uint> result = [.. held];
+        foreach (var item in warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items)).Where(i => bought.Contains(i.Id)))
+            if (ItemOf(item.Sells, catalogue, registered, out _) is { } mixId) result.Add(mixId);
+        return result;
+    }
+
+    // Whether a mod item (not repeatable) would buy what the player has already, now: held (not a consumable), or sold by
+    // another mod item they bought. Never on unlock-all, which has everything bought.
+    public bool HasAlready(long itemId, uint mixId, bool consumable, IReadOnlySet<long> bought, Func<uint, bool> holds)
+    {
+        if (UnlockAll || consumable || bought.Contains(itemId)) return false;
+        if (holds(mixId)) return true;
+        var registered = Registered is { } r ? r.Served().ToList() : [];
+        return warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items))
+            .Any(i => i.Id != itemId && bought.Contains(i.Id) && ItemOf(i.Sells, null, registered, out _) == mixId);
     }
 
     // One warbond in the game's shapes, or null when none of its items can be sold.
@@ -170,7 +193,8 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         }
         // An item held once (not a consumable) the player has already, from another warbond or bought on another mod's, is
         // not sold again: its price would buy nothing. One bought here stays, claimed.
-        if (!item.Repeatable && !lookup.Bought.Contains(item.Id) && lookup.Owned.Contains(mixId) && lookup.Consumables?.Contains(mixId) != true)
+        if (!UnlockAll && lookup.Consumables != null && !item.Repeatable && !lookup.Bought.Contains(item.Id) && lookup.Owned.Contains(mixId) &&
+            !lookup.Consumables.Contains(mixId))
         {
             Report(warbond, item.Sells.ToString(), "the player has it already");
             return null;

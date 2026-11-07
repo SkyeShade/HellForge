@@ -447,6 +447,7 @@ static void WarbondFinishBuy(uint8_t* progression)
     if (item == NULL || !item->repeatable) return;
     int32_t count;
     memcpy(&count, progression + WB_BOUGHT, 4);
+    if (count > WB_BOUGHT_MAX) count = WB_BOUGHT_MAX;
     uint32_t* ids = (uint32_t*)(progression + WB_BOUGHT + 4);
     for (int32_t i = 0; i < count && i < WB_BOUGHT_MAX; i++)
     {

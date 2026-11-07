@@ -236,6 +236,21 @@ static class ModWarbondsTests
         check(owned.Count == 2 && owned[0].Sells.Keys.SequenceEqual([(long)oneBought]) && owned[1].Sells.Values.SequenceEqual([mobilize[2]]) &&
             ownedLog.Count(l => l.Contains("has it already")) == 2,
             "Items the player has already were sold again, or one bought on its own warbond was left out: " + string.Join(" | ", ownedLog));
+        // Unlock-all has everything bought, so its warbonds keep every item though the profile holds them all.
+        var allOwned = new ModWarbondService(two)
+        {
+            Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = _ => { }, UnlockAll = true,
+            Holds = () => new HashSet<uint> { mobilize[0], mobilize[1], mobilize[2] },
+        }.Resolve();
+        check(allOwned.Count == 2 && allOwned.Sum(w => w.Sells.Count) == 4, "Unlock-all left out items its profile holds.");
+        // At the buy: an item gained since its page was served is refused; never a consumable, never on unlock-all.
+        var buyCheck = new ModWarbondService(two) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = _ => { } };
+        var none = new HashSet<long>();
+        check(buyCheck.HasAlready(two[1].Pages[0].Items[1].Id, mobilize[2], false, none, m => m == mobilize[2]) &&
+            buyCheck.HasAlready(two[1].Pages[0].Items[0].Id, mobilize[1], false, new HashSet<long> { oneBought }, _ => false) &&
+            !buyCheck.HasAlready(two[1].Pages[0].Items[1].Id, mobilize[2], true, none, _ => true) &&
+            !buyCheck.HasAlready(two[1].Pages[0].Items[1].Id, mobilize[2], false, none, _ => false),
+            "The buy did not refuse an item the player has gained, or refused one they have not.");
     }
 
     // An item's own "currency": priced, capped and charged in it, not counted as spent on its warbond (whose spent line
