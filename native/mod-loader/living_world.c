@@ -1553,6 +1553,11 @@ static void LwTestLook(int seq, int which)
     if (!EvpPtr(g_lw.game + 0x346D560u, &cm) || cm == 0 || SafeRead(cm + 0x3C, cam, sizeof cam) || g_lwWorld.playersAt == 0) { Note("living world: test command %d: look: no camera", seq); return; }
     uint32_t handle = LwSightRay(&table);
     if (handle == 0 || !EvpPtr(table + 0x68, &fn) || fn == 0) { Note("living world: test command %d: look: no sight ray", seq); return; }
+    /* where the clear members fall in the 1280 x 720 frame (the tests render at that size): the pose's rows as right (x),
+     * forward (y) and up (z) (the y row is the view's axis, lw52a / lw53b; x and z by the same convention, checked by the
+     * 60 m visible shots), the vertical FOV [[CM]+0x34], and 4x zoomed (the zoom shot's FOV / 4) */
+    uintptr_t camObj = 0; float pose[16] = {0}, vfov = 0; int proj = EvpPtr(cm, &camObj) && camObj && !SafeRead(cm + 0xC, pose, sizeof pose) && !SafeRead(camObj + 0x34, &vfov, 4) && vfov > 0.1f && vfov < 3.0f;
+    float box[2][4] = {{1e9f, 1e9f, -1e9f, -1e9f}, {1e9f, 1e9f, -1e9f, -1e9f}}; int inFrame[2] = {0, 0};
     int n = LwMembers(g_lwSquads[which].squad, members), clear = 0, read = 0; float nearest = 3e38f, farthest = 0, elevMin = 90, elevMax = -90;
     for (int k = 0; k < n && k < 32; k++)
     {
@@ -1567,14 +1572,30 @@ static void LwTestLook(int seq, int which)
         memcpy(&dist, hit + 0x18, 4);
         if (got >= 1 && dist < len - 0.5f) continue;
         clear++;
+        if (proj)
+        {
+            float w[3] = {p[0] - cam[0], p[1] - cam[1], p[2] + 1.0f - cam[2]};
+            float xr = w[0] * pose[0] + w[1] * pose[1] + w[2] * pose[2], yf = w[0] * pose[4] + w[1] * pose[5] + w[2] * pose[6], zu = w[0] * pose[8] + w[1] * pose[9] + w[2] * pose[10];
+            for (int z = 0; z < 2 && yf > 1.0f; z++)
+            {
+                float t = tanf(0.5f * vfov) / (z ? 4.0f : 1.0f), px = 640.0f + 640.0f * (xr / yf) / (t * 16.0f / 9.0f), py = 360.0f - 360.0f * (zu / yf) / t;
+                if (px < box[z][0]) box[z][0] = px;
+                if (py < box[z][1]) box[z][1] = py;
+                if (px > box[z][2]) box[z][2] = px;
+                if (py > box[z][3]) box[z][3] = py;
+                if (px >= 0 && px < 1280 && py >= 0 && py < 720) inFrame[z]++;
+            }
+        }
         float e = asinf(d[2]) * 57.29578f;
         if (len < nearest) nearest = len;
         if (len > farthest) farthest = len;
         if (e < elevMin) elevMin = e;
         if (e > elevMax) elevMax = e;
     }
-    if (clear) Note("living world: test command %d: look: squad %d: %d of %d members clear from the camera at (%.0f, %.0f, %.1f), %.0f .. %.0f m, %+.1f .. %+.1f deg up", seq, which,
-        clear, read, (double)cam[0], (double)cam[1], (double)cam[2], (double)nearest, (double)farthest, (double)elevMin, (double)elevMax);
+    if (clear) Note("living world: test command %d: look: squad %d: %d of %d members clear from the camera at (%.0f, %.0f, %.1f), %.0f .. %.0f m, %+.1f .. %+.1f deg up; "
+        "in the frame at x %.0f..%.0f y %.0f..%.0f (%d in it), 4x zoomed x %.0f..%.0f y %.0f..%.0f (%d in it)", seq, which,
+        clear, read, (double)cam[0], (double)cam[1], (double)cam[2], (double)nearest, (double)farthest, (double)elevMin, (double)elevMax,
+        (double)box[0][0], (double)box[0][2], (double)box[0][1], (double)box[0][3], inFrame[0], (double)box[1][0], (double)box[1][2], (double)box[1][1], (double)box[1][3], inFrame[1]);
     else Note("living world: test command %d: look: squad %d: 0 of %d members clear from the camera at (%.0f, %.0f, %.1f)", seq, which, read, (double)cam[0], (double)cam[1], (double)cam[2]);
 }
 
