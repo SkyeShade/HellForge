@@ -689,7 +689,27 @@ static void MoveTileIn(uint64_t world)
 #define MOVE_KEEP_UNDER 0.3f
 #define MOVE_KEEP_RECORDS 8192
 static uint8_t g_keepModes[MOVE_KEEP_RECORDS * 0x2C], g_keepPos[MOVE_KEEP_RECORDS * 0xA4];
-static struct { int pins; LONG level; uint32_t lifted, fromTile, fromCoarse; } g_keep;
+static struct { int pins; LONG level; uint32_t lifted, fromTile, fromCoarse, held, refused; uint64_t frame; } g_keep;
+/* Each unit under the ground with a missed ray, by entity (lw92a: four units at one spot, their z wandering 0.3 m
+ * without falling, were lifted 2850 times and the lifts did not hold: something other than the motion step places
+ * them). A unit is lifted only when it is falling (z lower than the frame before by MOVE_KEEP_FALL: a missed ray means
+ * gravity in modes 4 and 7, P), and at most MOVE_KEEP_TRIES times in MOVE_KEEP_WINDOW_MS; then it is left to the game,
+ * noted once with its resource and the parent handle of its motion entry (+0x18) for the static analysis. */
+#define MOVE_KEEP_FALL 0.01f
+#define MOVE_KEEP_TRIES 3
+#define MOVE_KEEP_WINDOW_MS 20000
+#define MOVE_KEEP_TRACKS 1024
+static struct { uint32_t entity; float z; uint64_t frame; uint8_t tries, gaveUp; ULONGLONG firstAt; } g_keepTrack[MOVE_KEEP_TRACKS];
+static int MoveKeepTrack(uint32_t e)
+{
+    uint32_t h = (e * 2654435761u) % MOVE_KEEP_TRACKS;
+    for (uint32_t k = 0; k < MOVE_KEEP_TRACKS; k++, h = (h + 1) % MOVE_KEEP_TRACKS)
+    {
+        if (g_keepTrack[h].entity == e) return (int)h;
+        if (g_keepTrack[h].entity == 0) { memset(&g_keepTrack[h], 0, sizeof g_keepTrack[h]); g_keepTrack[h].entity = e; return (int)h; }
+    }
+    return -1;
+}
 
 /* The level's coarse heights (lg+0xD8, the rows the coarse collision was made from and NearRaiseCoarse writes back) at a
  * point, on the triangles NearCoarseTri uses; -9999 outside or unreadable. */
@@ -722,7 +742,9 @@ static void MoveGroundKeep(void)
                              : "difficulty: moving tiles: the motion step is not the reviewed code; units left under the ground are not put back");
     }
     if (g_keep.pins < 0) return;
-    if (g_keep.level != g_world.levels) { g_keep.level = g_world.levels; g_keep.lifted = g_keep.fromTile = g_keep.fromCoarse = 0; }
+    if (g_keep.level != g_world.levels)
+    { g_keep.level = g_world.levels; g_keep.lifted = g_keep.fromTile = g_keep.fromCoarse = g_keep.held = g_keep.refused = 0; memset(g_keepTrack, 0, sizeof g_keepTrack); }
+    g_keep.frame++;
     uintptr_t mgr = 0, modes = 0, pos = 0, descs = 0, gsys = 0, grecs = 0, gen = 0, coarse = 0;
     uint32_t dims[3] = {0};
     if (!EvpPtr(game + 0x3326558u, &mgr) || !EvpPtr(mgr + 0x48D8, &modes) || !EvpPtr(mgr + 0x48D0, &pos) || !EvpPtr(mgr + 0x48B8, &descs) ||
@@ -752,6 +774,24 @@ static void MoveGroundKeep(void)
         if (!EvpHash(gsys + 0x28, e, 8, 4, &gi) || gi >= 0x100000 || SafeRead(grecs + 0x3Cu * gi + 0x38, &hit, 1) || hit) continue;
         SafeRead(grecs + 0x3Cu * gi + 0x2C, ray, 8);
         if (((uint8_t (*)(void*, uint32_t))(game + 0x4A52B0u))(NULL, e)) continue; /* attached: the teleport stops half-way */
+        int tk = MoveKeepTrack(e);
+        if (tk < 0) continue;
+        ULONGLONG now = GetTickCount64();
+        float before = g_keepTrack[tk].z; uint64_t seen = g_keepTrack[tk].frame;
+        g_keepTrack[tk].z = p[2]; g_keepTrack[tk].frame = g_keep.frame;
+        if (seen != g_keep.frame - 1 || !(before - p[2] > MOVE_KEEP_FALL)) continue; /* not falling (or first seen): not the step's gravity */
+        if (g_keepTrack[tk].gaveUp) continue;
+        if (g_keepTrack[tk].tries && now - g_keepTrack[tk].firstAt > MOVE_KEEP_WINDOW_MS) g_keepTrack[tk].tries = 0;
+        if (g_keepTrack[tk].tries >= MOVE_KEEP_TRIES)
+        {
+            uint64_t res = 0; uint32_t parent = 0; memcpy(&parent, m + 0x18, 4); SafeRead(d, &res, 8);
+            g_keepTrack[tk].gaveUp = 1; g_keep.refused++;
+            Note("difficulty: moving tiles: unit %08X (resource %016llX, motion mode %u, parent handle %08X) still falls under the %s at (%.1f, %.1f) after %d lifts in %u s: z %.2f, ground %.2f; left to the game (%u units so far)",
+                e, (unsigned long long)res, mode, parent, tile >= 0 ? "tile's ground" : "coarse ground", (double)p[0], (double)p[1], MOVE_KEEP_TRIES,
+                (unsigned)((now - g_keepTrack[tk].firstAt) / 1000), (double)p[2], (double)ground, g_keep.refused);
+            continue;
+        }
+        if (g_keepTrack[tk].tries++ == 0) g_keepTrack[tk].firstAt = now;
         float to[3] = {p[0], p[1], ground + 0.1f};
         ((void (*)(void*, uint32_t, const float*))(game + 0x5A2BB0u))(NULL, e, to);
         g_keep.lifted++; if (tile >= 0) g_keep.fromTile++; else g_keep.fromCoarse++;
@@ -759,6 +799,7 @@ static void MoveGroundKeep(void)
             Note("difficulty: moving tiles: unit %08X (motion mode %u) under the %s at (%.1f, %.1f): z %.2f, ground %.2f (%.2f under), its ray missed (up %.2f, below %.2f): put back on it; %u this level (%u on tiles, %u on the coarse ground)",
                 e, mode, tile >= 0 ? "tile's ground" : "coarse ground", (double)p[0], (double)p[1], (double)p[2], (double)ground, (double)(ground - p[2]),
                 (double)ray[0], (double)ray[1], g_keep.lifted, g_keep.fromTile, g_keep.fromCoarse);
+        g_keepTrack[tk].z = to[2];
     }
 }
 
