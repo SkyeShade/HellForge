@@ -1599,6 +1599,121 @@ static void LwTestLook(int seq, int which)
     else Note("living world: test command %d: look: squad %d: 0 of %d members clear from the camera at (%.0f, %.0f, %.1f)", seq, which, read, (double)cam[0], (double)cam[1], (double)cam[2]);
 }
 
+/* ---- drawn in the main view (test instrument, HELLFORGE_LW_DRAWN=1; user 2026-11-07: audits on data, not screenshots;
+ * KB living-world-drawn-state, checked by me) -------------------------------------------------------------------------
+ * The engine keeps no per-unit "drawn" flag: the main view's cull runs on the render thread (0x1EA3E0) through
+ * 0x57A7B0(ctx), whose only caller is 0x1EC45C (shadow views cull through other paths). When it returns, ctx+0x14 sets
+ * (u32) at [ctx+0x18] (pointers) hold the visible lists: set +0x38 u32 cull indices, +0x70 their count, +0x68 the cull
+ * set cs, whose spheres are parallel float arrays indexed by cull index ([cs+0x100] x, +0x108 y, +0x110 z, +0x118
+ * radius: the kernel 0x57B9B0 loads four at a time at 0x57BB6C..0x57BBB1) and [cs+0x128] the kind (8 = a render object,
+ * as the consumer 0x1EC5E0..0x1EC606 reads them). The game thread publishes targets (members of online squads beyond
+ * 250 m: their centre 1 m over the feet); the hook marks a target drawn in a frame when a visible kind-8 sphere of at
+ * most 6 m radius has its centre within 1.5 m of it. Matching is by place, not by the unit's own render objects (that
+ * mapping is not traced): a rock beside a member could match too. */
+#define LW_DRAWN_MAX 64
+static struct { float x, y, z; uint32_t unit; volatile LONG64 hit; } g_lwDrawnT[LW_DRAWN_MAX];
+static volatile LONG g_lwDrawnN; static volatile LONG64 g_lwDrawnFrame; static float g_lwDrawnBox[6];
+typedef void (*LwCullFn)(uintptr_t ctx);
+static LwCullFn g_lwCull;
+static void LwCullDetour(uintptr_t ctx)
+{
+    g_lwCull(ctx);
+    int n = (int)g_lwDrawnN;
+    LONG64 frame = InterlockedIncrement64(&g_lwDrawnFrame);
+    if (n <= 0 || n > LW_DRAWN_MAX) return;
+    uint32_t sets = 0; uintptr_t arr = 0;
+    if (SafeRead(ctx + 0x14, &sets, 4) || SafeRead(ctx + 0x18, &arr, 8) || arr == 0 || sets > 5) return;
+    float bx0 = g_lwDrawnBox[0] - 1.5f, by0 = g_lwDrawnBox[1] - 1.5f, bz0 = g_lwDrawnBox[2] - 1.5f, bx1 = g_lwDrawnBox[3] + 1.5f, by1 = g_lwDrawnBox[4] + 1.5f, bz1 = g_lwDrawnBox[5] + 1.5f;
+    for (uint32_t k = 0; k < sets; k++)
+    {
+        uintptr_t set = 0, cs = 0, idx = 0, X = 0, Y = 0, Z = 0, Rr = 0, K = 0; uint32_t cnt = 0;
+        if (SafeRead(arr + 8u * k, &set, 8) || set == 0 || SafeRead(set + 0x68, &cs, 8) || cs == 0 || SafeRead(set + 0x70, &cnt, 4) || SafeRead(set + 0x38, &idx, 8) || idx == 0 ||
+            SafeRead(cs + 0x100, &X, 8) || SafeRead(cs + 0x108, &Y, 8) || SafeRead(cs + 0x110, &Z, 8) || SafeRead(cs + 0x118, &Rr, 8) || SafeRead(cs + 0x128, &K, 8) ||
+            !X || !Y || !Z || !Rr || !K || cnt > 1000000) continue;
+        const uint32_t* list = (const uint32_t*)idx;
+        for (uint32_t j = 0; j < cnt; j++)
+        {
+            uint32_t ci = list[j];
+            float x = ((const float*)X)[ci], y = ((const float*)Y)[ci], z = ((const float*)Z)[ci];
+            if (x < bx0 || x > bx1 || y < by0 || y > by1 || z < bz0 || z > bz1) continue;
+            if (((const uint32_t*)K)[ci] != 8 || ((const float*)Rr)[ci] > 6.0f) continue;
+            for (int t = 0; t < n; t++)
+            {
+                float dx = x - g_lwDrawnT[t].x, dy = y - g_lwDrawnT[t].y, dz = z - g_lwDrawnT[t].z;
+                if (dx * dx + dy * dy + dz * dz < 1.5f * 1.5f) g_lwDrawnT[t].hit = frame;
+            }
+        }
+    }
+}
+/* Game thread, each tick: the hook (once), the targets every 250 ms, and every 5 s per far squad a note of how many of
+ * its members the main view drew in the last 0.5 s (frames counted by the hook), with the view's FOV and zoom. */
+static void LwDrawnTick(void)
+{
+    static int on = -1, hooked; static ULONGLONG pubAt, noteAt; static LONG64 frameAt[2]; static ULONGLONG frameTime[2];
+    if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_DRAWN", t, sizeof t) > 0 && t[0] == '1'; }
+    if (!on) return;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (!hooked)
+    {
+        hooked = -1;
+        if (!ApiCodeMatches(exe + 0x57A7B0u, "40 55 53 56 57 48 8D AC 24 78 F7 FF FF 48 81 EC 88 09 00 00") ||
+            !ApiCodeMatches(exe + 0x1EC5E0u, "4A 8B 84 1D E8 07 00 00 4A 8B 94 1D 18 08 00 00 42 8B 0C 08 48 8B 82 30 01 00 00 44 8B 14 88 48 8B 82 28 01 00 00 83 3C 88 08") ||
+            !ApiCodeMatches(exe + 0x57BB6Cu, "48 8B 81 00 01 00 00") || !ApiCodeMatches(exe + 0x57BB82u, "48 8B 81 08 01 00 00") ||
+            !ApiCodeMatches(exe + 0x57BB99u, "48 8B 81 10 01 00 00") || !ApiCodeMatches(exe + 0x57BBB1u, "48 8B 81 18 01 00 00"))
+        { Note("living world: drawn: the main view's cull is not the reviewed code; no drawn notes"); return; }
+        if (LoaderHook("living world drawn (test)", exe + 0x57A7B0u, (void*)LwCullDetour, (void**)&g_lwCull) || g_lwCull == NULL) { Note("living world: drawn: the cull hook failed"); return; }
+        hooked = 1; Note("living world: drawn: the main view's cull is hooked (0x57A7B0): far squads' members are matched to its visible render objects");
+    }
+    if (hooked != 1) return;
+    ULONGLONG now = GetTickCount64();
+    if (now - pubAt >= 250)
+    {
+        pubAt = now;
+        int n = 0; float box[6] = {1e9f, 1e9f, 1e9f, -1e9f, -1e9f, -1e9f};
+        for (int i = 0; i < g_lwWorld.count && n < LW_DRAWN_MAX; i++)
+        {
+            LwSquad* q = &g_lwSquads[i]; uint32_t members[32];
+            if (q->state != LW_ONLINE || LwNearestPlayer2(q->pos[0], q->pos[1]) < LW_R_ON * LW_R_ON) continue;
+            int m = LwMembers(q->squad, members);
+            for (int k = 0; k < m && n < LW_DRAWN_MAX; k++)
+            {
+                ActHealth h; float p[3];
+                if (!ActHealthOf(g_lw.game, members[k], &h) || !h.unit || !EvpUnitPosition(h.unit, p)) continue;
+                if (g_lwDrawnT[n].unit != members[k]) g_lwDrawnT[n].hit = 0;
+                g_lwDrawnT[n].x = p[0]; g_lwDrawnT[n].y = p[1]; g_lwDrawnT[n].z = p[2] + 1.0f; g_lwDrawnT[n].unit = members[k];
+                for (int a = 0; a < 3; a++) { float v = a == 2 ? p[2] + 1.0f : p[a]; if (v < box[a]) box[a] = v; if (v > box[3 + a]) box[3 + a] = v; }
+                n++;
+            }
+        }
+        memcpy(g_lwDrawnBox, box, sizeof box);
+        g_lwDrawnN = n;
+    }
+    if (now - noteAt < 5000) return;
+    noteAt = now;
+    LONG64 frame = g_lwDrawnFrame;
+    frameAt[0] = frameAt[1]; frameTime[0] = frameTime[1]; frameAt[1] = frame; frameTime[1] = now;
+    double fps = frameTime[0] && now > frameTime[0] ? (double)(frame - frameAt[0]) * 1000.0 / (double)(now - frameTime[0]) : 30.0;
+    LONG64 recent = (LONG64)(fps * 0.5 + 1.0);
+    uintptr_t holder = 0, cam = 0; float fov = 0;
+    if (EvpPtr(g_lw.game + 0x346D560u, &holder) && holder && EvpPtr(holder, &cam) && cam) SafeRead(cam + 0x34, &fov, 4);
+    int zoomed = g_lwZoomK > 1.0f && GetTickCount64() < g_lwZoomUntil;
+    for (int i = 0; i < g_lwWorld.count; i++)
+    {
+        LwSquad* q = &g_lwSquads[i]; int total = 0, drawn = 0;
+        if (q->state != LW_ONLINE) continue;
+        for (int t = 0; t < (int)g_lwDrawnN; t++)
+        {
+            int mine = 0; uint32_t members[32]; int m = LwMembers(q->squad, members);
+            for (int k = 0; k < m && !mine; k++) mine = members[k] == g_lwDrawnT[t].unit;
+            if (!mine) continue;
+            total++; if (g_lwDrawnT[t].hit && frame - g_lwDrawnT[t].hit <= recent) drawn++;
+        }
+        if (total == 0) continue;
+        Note("living world: drawn: squad %d at %.0f m: %d of %d members drawn in the main view in the last 0.5 s (%.0f frames a second; vertical FOV %.1f deg%s)", i,
+            (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), drawn, total, fps, (double)(fov * 57.29578f), zoomed ? ", zoomed 4x by the test" : "");
+    }
+}
+
 static void LwKillArm(void);
 static void LwTestCommands(void)
 {
@@ -1668,6 +1783,7 @@ static void LwSquadsTick(void)
     for (int i = 0; i < g_lwWorld.count; i++)
         if (g_lwSquads[i].farOn) farUnits += g_lwSquads[i].state == LW_PENDING ? g_lwSquads[i].cap : g_lwSquads[i].state == LW_ONLINE ? g_lwSquads[i].alive : 0;
     g_lwWorld.farUnits = farUnits;
+    LwDrawnTick(); /* the main view's drawn state of far squads (test instrument, HELLFORGE_LW_DRAWN=1) */
     LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
