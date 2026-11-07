@@ -1749,6 +1749,7 @@ static void LwTestStage(int seq, float d)
  * counted when the sight ray from the candidate's eye (+1.7 m) reaches 1 m over the node's ground; candidates with an
  * enemy within 120 m are skipped (LwEnemiesNear). The best count wins; then teleported there (LwTestTeleport). One
  * pass on the game thread (about 15k rays, ~0.1 s). */
+static int g_lwTeleportForce; /* "teleport! X Y": the enemy check skipped (going back to a garrison) */
 static void LwTestTeleport(int seq, float x, float y);
 static int LwEnemiesNear(float x, float y, float r, float* nearest);
 static void LwTestVantage(int seq)
@@ -1801,7 +1802,7 @@ static void LwTestTeleport(int seq, float x, float y)
     /* a solo Helldiver put among enemies dies and, reinforced on the same spot, dies again until the mission fails
      * (lw67a, lw71a: back on the ship 90 s later); such a point is refused */
     float nearest; int foes = LwEnemiesNear(x, y, 120.0f, &nearest);
-    if (foes) { Note("living world: test command %d: teleport: %d enemies within 120 m of (%.0f, %.0f), the nearest %.0f m", seq, foes, (double)x, (double)y, (double)nearest); return; }
+    if (foes && !g_lwTeleportForce) { Note("living world: test command %d: teleport: %d enemies within 120 m of (%.0f, %.0f), the nearest %.0f m", seq, foes, (double)x, (double)y, (double)nearest); return; }
     pos[2] += 0.1f;
     ((void (*)(void*, uint32_t, const float*))(g_lw.game + 0x5A2BB0u))(NULL, e, pos);
     float back[3] = {0, 0, 0};
@@ -2288,6 +2289,7 @@ static void LwTestCommands(void)
         if (sscanf(cmds[c], "spawn %15s %f %f %d", mode, &d, &deg, &idx) >= 2) LwTestSpawn(seq, mode, d, deg, idx);
         else if (sscanf(cmds[c], "offline %d", &idx) == 1 && idx >= 0 && idx < g_lwWorld.count && g_lwSquads[idx].state == LW_ONLINE) g_lwSquads[idx].forceOff = 1;
         else if (strncmp(cmds[c], "kill garrison", 13) == 0) LwKillArm();
+        else if (sscanf(cmds[c], "teleport! %f %f", &d, &deg) == 2) { g_lwTeleportForce = 1; LwTestTeleport(seq, d, deg); g_lwTeleportForce = 0; }
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
         else if (strcmp(cmds[c], "vantage") == 0) LwTestVantage(seq);
         else if (sscanf(cmds[c], "stage %f", &d) == 1 && d > LW_R_ON && d < 2000.0f) LwTestStage(seq, d);
@@ -2697,6 +2699,184 @@ static void LwInstallNavLeaveFix(void)
     Note("living world: a rebuilt cell's completion while the nav is stopping clears its built flag with its section (leave crash fix)");
 }
 
+/* Section swaps applied at once (audit 1f, crashes 0xCB1223 / 0xC2F662; KB crash-cb1223-navcut-section-swap "Design
+ * verified (third pass)", subagent, checked by me in the dump: the call sites, the vanilla flush 0x7B94A3..0x7B959E and
+ * the permit 0x7D7740, which takes and releases its owner / count at table +0x70 / +0x74 on every call). A built cell's
+ * completion (main thread, 0x7B8A10) queues its old section's unload (0x7B9053 -> 0xBB2670) and its new one's load
+ * (0x7B9244 -> 0xBB19B0) for the AI world's next asynchronous step, but connects to its neighbours at once. Another
+ * completion next to it before that step applied the swap pairs face keys of one mesh version with the other (no
+ * bounds check in the cutter). Both calls go through wrappers here, on the same thread with the original arguments:
+ * before the unload, the world's in-flight step is finished and committed and anything still queued (a neighbour's
+ * first load) is applied by one synchronous step; after the load, the same again, so this completion's swap is applied
+ * before the frame goes on. That is the vanilla teardown flush's sequence: join the threaded AI update (table +0x20),
+ * the permit 0x7D7740 (no async query job reads the world; [W+0x478]), wait 0xBD0710 / commit 0xBD05E0 when a step is
+ * in flight, then 0xBD0BB0 with its parameter block and a serial runner, and [W+0x478] = 0. Every built-cell connect
+ * then runs with no step in flight and an empty queue, in any order of completions (game-initiated builds included).
+ * When the permit doesn't come within LW_NAV_PERMIT_MS (query jobs still running), the call goes on as vanilla's and
+ * g_lwSwap.unsafe holds the loader's new rebuild marks until the world is idle. */
+#define LW_AIW_TABLE 0x190D4A0u
+#define LW_NAV_PERMIT_MS 20
+typedef uintptr_t (*LwNavUnloadFn)(uintptr_t w, uint32_t* id, uint8_t graph);
+typedef uintptr_t (*LwNavLoadFn)(uintptr_t w, uint32_t* out, uintptr_t inst, void* p4, uintptr_t graph, void* p6);
+static struct
+{
+    LwNavUnloadFn unload; LwNavLoadFn load;
+    uint8_t (*asyncMode)(uintptr_t), (*inFlight)(uintptr_t), (*stepDone)(uintptr_t);
+    void (*wait)(uintptr_t), (*commit)(uintptr_t, void*, int);
+    uintptr_t (*step)(uintptr_t, void*, void*, int);
+    void (*runnerMake)(void*), (*runnerFree)(void*);
+    int (*queued)(uintptr_t);
+    int (*permit)(int);
+    void (*join)(int);
+    uintptr_t table;
+    uint8_t swap[4];
+    volatile LONG unsafe;            /* a swap went unsynchronised: hold new marks until the world is idle */
+    uint32_t swaps, steps, refused;
+    double worstMs;
+} g_lwSwap;
+
+static int LwAiwIndex(uintptr_t w)
+{
+    for (int i = 0; i < 4; i++) if (*(volatile uintptr_t*)(g_lwSwap.table + 0x80u * i) == w) return i;
+    return -1;
+}
+/* The vanilla flush's step (0x7B94F0..0x7B959E). */
+static void LwNavSyncStep(uintptr_t w)
+{
+    uint8_t runner[0x18] __attribute__((aligned(16)));
+    uint8_t block[0x40] __attribute__((aligned(16)));
+    memset(block, 0, sizeof block);
+    g_lwSwap.runnerMake(runner);
+    block[0] = 1;
+    *(uint32_t*)(block + 0x14) = 0x80000000u;
+    *(int32_t*)(block + 0x20) = 0x7FFFFFFF; *(int32_t*)(block + 0x28) = 0x7FFFFFFF;
+    *(int32_t*)(block + 0x30) = 0x7FFFFFFF; *(int32_t*)(block + 0x34) = 0x7FFFFFFF;
+    *(uint32_t*)(block + 0x38) = 0xFFFFFFFFu;
+    g_lwSwap.step(w, block, runner, 1);
+    *(volatile uint8_t*)(w + 0x478) = 0;
+    int32_t cap = *(int32_t*)(block + 0x14); uintptr_t arr = *(uintptr_t*)(block + 8);
+    if (cap >= 0 && arr != 0)
+    {
+        uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), heap = *(uintptr_t*)(exe + 0x1899880u);
+        ((void (*)(uintptr_t, uintptr_t, int, uint32_t))(exe + 0x99A920u))(heap, arr, 4, (uint32_t)cap & 0x3FFFFFFFu);
+    }
+    g_lwSwap.runnerFree(runner);
+    g_lwSwap.steps++;
+}
+/* Finishes the world's async step and applies what is queued; 0 when the permit never came (nothing done). */
+static int LwNavDrain(uintptr_t w, int idx)
+{
+    if (*(volatile uintptr_t*)(g_lwSwap.table + 0x80u * idx + 0x20)) g_lwSwap.join(idx);
+    LARGE_INTEGER a, b, f; QueryPerformanceCounter(&a); QueryPerformanceFrequency(&f);
+    for (;;)
+    {
+        g_lwSwap.permit(idx);
+        if (*(volatile uint8_t*)(w + 0x478)) break;
+        QueryPerformanceCounter(&b);
+        if ((double)(b.QuadPart - a.QuadPart) * 1000.0 / (double)f.QuadPart > LW_NAV_PERMIT_MS) return 0;
+        SwitchToThread();
+    }
+    if (g_lwSwap.inFlight(w)) g_lwSwap.wait(w);
+    if (g_lwSwap.inFlight(w) && g_lwSwap.stepDone(w)) g_lwSwap.commit(w, NULL, 0);
+    uintptr_t q = *(volatile uintptr_t*)(w + 0x4A0);
+    if (q && g_lwSwap.queued(q) > 0) LwNavSyncStep(w);
+    *(volatile uint8_t*)(w + 0x478) = 0;
+    return 1;
+}
+static uintptr_t LwNavUnload(uintptr_t w, uint32_t* id, uint8_t graph)
+{
+    int idx = LwAiwIndex(w);
+    if (idx >= 0 && g_lwSwap.asyncMode(w))
+    {
+        if (LwNavDrain(w, idx)) g_lwSwap.swap[idx] = 1;
+        else { g_lwSwap.swap[idx] = 0; g_lwSwap.refused++; InterlockedExchange(&g_lwSwap.unsafe, 1); }
+    }
+    return g_lwSwap.unload(w, id, graph);
+}
+static uintptr_t LwNavLoad(uintptr_t w, uint32_t* out, uintptr_t inst, void* p4, uintptr_t graph, void* p6)
+{
+    uintptr_t r = g_lwSwap.load(w, out, inst, p4, graph, p6);
+    int idx = LwAiwIndex(w);
+    if (idx < 0 || !g_lwSwap.swap[idx]) return r;
+    g_lwSwap.swap[idx] = 0;
+    LARGE_INTEGER a, b, f; QueryPerformanceCounter(&a);
+    uint32_t steps = g_lwSwap.steps;
+    int ok = LwNavDrain(w, idx);
+    QueryPerformanceCounter(&b); QueryPerformanceFrequency(&f);
+    double ms = (double)(b.QuadPart - a.QuadPart) * 1000.0 / (double)f.QuadPart;
+    if (!ok) { g_lwSwap.refused++; InterlockedExchange(&g_lwSwap.unsafe, 1); }
+    else
+    {
+        g_lwSwap.swaps++;
+        if (ms > g_lwSwap.worstMs) g_lwSwap.worstMs = ms;
+        Note("living world: nav: section %u swapped in at once (world %d): %u step(s), %.1f ms; %u swaps, worst %.1f ms",
+            out ? *out : 0u, idx, g_lwSwap.steps - steps, ms, g_lwSwap.swaps, g_lwSwap.worstMs);
+    }
+    return r;
+}
+static void LwInstallNavSwapSync(void)
+{
+    static int done;
+    if (done) return;
+    done = 1;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (!ApiCodeMatches(exe + 0x7B9053u, "E8 18 96 3F 00 8B 43 60") || !ApiCodeMatches(exe + 0x7B9244u, "E8 67 87 3F 00 8B 85 20 01 00 00") ||
+        !ApiCodeMatches(exe + 0xBB2670u, "40 55 53 56 57 41 55 41 56 41 57") || !ApiCodeMatches(exe + 0xBB19B0u, "4C 89 4C 24 20 48 89 54 24 10") ||
+        !ApiCodeMatches(exe + 0x7D7930u, "48 89 5C 24 10 48 89 6C 24 18") || !ApiCodeMatches(exe + 0x7D7740u, "48 89 74 24 18 57 48 83 EC 20 83 F9 04") ||
+        !ApiCodeMatches(exe + 0xBD1150u, "48 83 B9 A8 04 00 00 00 0F 95 C0 C3") || !ApiCodeMatches(exe + 0xBD1190u, "48 83 B9 B0 04 00 00 00 0F 95 C0 C3") ||
+        !ApiCodeMatches(exe + 0xBD1160u, "40 53 48 83 EC 20 48 8B D9 48 8B 89 A8 04 00 00") || !ApiCodeMatches(exe + 0xBD0710u, "40 53 48 83 EC 30 80 B9 78 04 00 00 00") ||
+        !ApiCodeMatches(exe + 0xBD05E0u, "48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 50") || !ApiCodeMatches(exe + 0xBD0BB0u, "48 89 5C 24 10 48 89 74 24 18 55 57 41 56") ||
+        !ApiCodeMatches(exe + 0xA0F4D0u, "48 8D 05 61 CE A1 00") || !ApiCodeMatches(exe + 0xA0F4F0u, "40 53 48 83 EC 20 48 8B D9 48 8D 05 38 CE A1 00") ||
+        !ApiCodeMatches(exe + 0xAD4740u, "48 8B 01 8B 40 08 03 41 1C C3") || !ApiCodeMatches(exe + 0x7B94A3u, "8B CF E8 96 E2 01 00 80 BB 78 04 00 00 00") ||
+        !ApiCodeMatches(exe + 0x7B921Cu, "4C 8D 35 7D 42 15 01"))
+    { Note("living world: the nav section swap is not the reviewed code; swaps stay asynchronous"); return; }
+    uint8_t* block = AllocateNearGame(exe, 0x1000);
+    if (block == NULL) { Note("living world: no memory within 2 GB of the game's exe for the nav swap"); return; }
+    g_lwSwap.unload = (LwNavUnloadFn)(exe + 0xBB2670u); g_lwSwap.load = (LwNavLoadFn)(exe + 0xBB19B0u);
+    g_lwSwap.asyncMode = (uint8_t (*)(uintptr_t))(exe + 0xBD1150u); g_lwSwap.inFlight = (uint8_t (*)(uintptr_t))(exe + 0xBD1190u);
+    g_lwSwap.stepDone = (uint8_t (*)(uintptr_t))(exe + 0xBD1160u); g_lwSwap.wait = (void (*)(uintptr_t))(exe + 0xBD0710u);
+    g_lwSwap.commit = (void (*)(uintptr_t, void*, int))(exe + 0xBD05E0u); g_lwSwap.step = (uintptr_t (*)(uintptr_t, void*, void*, int))(exe + 0xBD0BB0u);
+    g_lwSwap.runnerMake = (void (*)(void*))(exe + 0xA0F4D0u); g_lwSwap.runnerFree = (void (*)(void*))(exe + 0xA0F4F0u);
+    g_lwSwap.queued = (int (*)(uintptr_t))(exe + 0xAD4740u); g_lwSwap.permit = (int (*)(int))(exe + 0x7D7740u);
+    g_lwSwap.join = (void (*)(int))(exe + 0x7D7930u); g_lwSwap.table = exe + LW_AIW_TABLE;
+    uint8_t code[24] = {0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xE0,  /* mov rax, LwNavUnload; jmp rax */
+                        0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xE0}; /* mov rax, LwNavLoad; jmp rax */
+    uint64_t fn = (uint64_t)(uintptr_t)LwNavUnload; memcpy(code + 2, &fn, 8);
+    fn = (uint64_t)(uintptr_t)LwNavLoad; memcpy(code + 14, &fn, 8);
+    memcpy(block, code, sizeof code);
+    DWORD protect; VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect); FlushInstructionCache(GetCurrentProcess(), block, 0x1000);
+    int64_t r1 = (int64_t)(uintptr_t)block - (int64_t)(exe + 0x7B9058u), r2 = (int64_t)(uintptr_t)(block + 12) - (int64_t)(exe + 0x7B9249u);
+    if (!InRel32(r1) || !InRel32(r2)) { Note("living world: the nav swap is out of reach of the exe"); return; }
+    uint8_t call[5] = {0xE8, 0, 0, 0, 0}; int32_t r32 = (int32_t)r1; memcpy(call + 1, &r32, 4);
+    if (ApiWrite(exe + 0x7B9053u, call, sizeof call)) { Note("living world: the nav unload call could not be written"); return; }
+    r32 = (int32_t)r2; memcpy(call + 1, &r32, 4);
+    if (ApiWrite(exe + 0x7B9244u, call, sizeof call))
+    {
+        r32 = 0x003F9618; memcpy(call + 1, &r32, 4); ApiWrite(exe + 0x7B9053u, call, sizeof call); /* back to the original */
+        Note("living world: the nav load call could not be written; swaps stay asynchronous"); return;
+    }
+    Note("living world: a rebuilt nav cell's section swap is applied before the next completion (0xBB2670 at 0x7B9053, 0xBB19B0 at 0x7B9244)");
+}
+/* The hold after an unsynchronised swap: cleared when no AI update runs (table +0x54), no async step is in flight and
+ * nothing is queued, in every world (+0x54 read first and last). */
+static int LwNavSwapHeld(void)
+{
+    if (!g_lwSwap.unsafe || !g_lwSwap.table) return 0;
+    for (int i = 0; i < 4; i++)
+    {
+        uintptr_t t = g_lwSwap.table + 0x80u * i, w = *(volatile uintptr_t*)t, q;
+        if (!w) continue;
+        if (*(volatile int32_t*)(t + 0x54)) return 1;
+        if (*(volatile uintptr_t*)(w + 0x4B0)) return 1;
+        q = *(volatile uintptr_t*)(w + 0x4A0);
+        if (q && g_lwSwap.queued(q) > 0) return 1;
+        if (*(volatile int32_t*)(t + 0x54)) return 1;
+    }
+    InterlockedExchange(&g_lwSwap.unsafe, 0);
+    Note("living world: nav: the world is idle again after %u unsynchronised swap(s); rebuild marks go on", g_lwSwap.refused);
+    return 0;
+}
+
 /* Test instrument (HELLFORGE_LW_TEST_TRACE=1; KB nav-cell-connections, checked by me: 0xBB5310..0xBB545F): a finished
  * cell joins its built neighbours through 0xBB5310 -> 0xBB5110(out, params, &set, &graphSet), whose streaming set's
  * [set+0x28] (connections) is tested at 0xBB5290: 0 = nothing stored, the two sections stay apart and no path crosses.
@@ -2740,6 +2920,7 @@ static void LwInstallWallReach(uintptr_t game)
 {
     if (!LwEnabled()) return; /* audit 1b: the leave fix patched the exe with the living world off; only its rebuilds need it */
     LwInstallNavLeaveFix();
+    LwInstallNavSwapSync();
     if (g_lwWallReach != NULL) return;
     if (!ApiCodeMatches(game + LW_WALL_SITE, "F3 0F 58 C8 0F 28 C5 F3 0F 59 CE 0F 28 F2") ||
         !ApiCodeMatches(game + 0x59CCFEu, "C7 44 24 78 00 00 80 40"))
@@ -2803,10 +2984,7 @@ static struct
     int watching;
     LONG noted;                     /* why it waits, noted once a level (the level + 1) */
     uint32_t busyFrames;
-    uint8_t pend[LW_NAV_CELLS_MAX];  /* a tile change's cells: 1-4 the checkerboard group of a built cell, 5 never built */
-    int pendPhase; ULONGLONG settleAt; /* the group being rebuilt (-1 none); when the next may be marked */
-} g_lwNav = {.pendPhase = -1};
-#define LW_NAV_SETTLE_MS 1500       /* after a group's last completion: its queued section swaps applied (D: the AI world steps every frame) */
+} g_lwNav;
 
 typedef void (*LwMarkFn)(uint32_t id, const float* xy);
 
@@ -2906,16 +3084,16 @@ static uint32_t LwCellFlags(uintptr_t nav, uint32_t index, uint32_t* section)
     return EvpU32(cells + (uintptr_t)stride * index + 0x5C, 0xFFFFFFFFu);
 }
 
-/* Marks the pending cells of group `phase` (0-3 built, 4 never built), each watched until it completes; how many. */
-static int LwNavMarkPhase(uintptr_t nav, uint32_t id, const uint16_t* wh, uint32_t total, int phase)
+/* Marks the cells of a tile change at once, each watched until it completes; how many. Built and never built cells
+ * alike: each completion's section swap is applied before the next (LwInstallNavSwapSync). */
+static int LwNavMarkCells(uintptr_t nav, uint32_t id, const uint16_t* wh, uint32_t total, const uint8_t* cells)
 {
     LwMarkFn mark = (LwMarkFn)((uintptr_t)GetModuleHandleW(NULL) + LW_NAV_MARK);
     float g[4] = {0, 0, 0, 0}; SafeRead(nav + 0x671C, g, 16);
     char list[256]; int len = 0, marked = 0; list[0] = 0;
     for (uint32_t x = 0; x < total; x++)
-        if (g_lwNav.pend[x] == phase + 1)
+        if (cells[x])
         {
-            g_lwNav.pend[x] = 0;
             uint16_t cx = (uint16_t)(x % wh[0]), cy = (uint16_t)(x / wh[0]);
             float xy[2] = {g[0] + ((float)cx + 0.5f) * (g[2] - g[0]) / wh[0], g[1] + ((float)cy + 0.5f) * (g[3] - g[1]) / wh[1]};
             uint32_t section = 0; LwCellFlags(nav, x, &section);
@@ -2924,7 +3102,7 @@ static int LwNavMarkPhase(uintptr_t nav, uint32_t id, const uint16_t* wh, uint32
                 g_lwNav.watch[g_lwNav.watching].section = section; g_lwNav.watch[g_lwNav.watching].at = GetTickCount64(); g_lwNav.watching++; }
             if (len < (int)sizeof list - 16) len += snprintf(list + len, sizeof list - len, " (%u, %u)", cx, cy);
         }
-    if (marked) Note("living world: nav: %s marked:%s", phase < 4 ? (phase == 0 ? "built cells, group 1 of 4," : phase == 1 ? "built cells, group 2 of 4," : phase == 2 ? "built cells, group 3 of 4," : "built cells, group 4 of 4,") : "never built cells", list);
+    if (marked) Note("living world: nav: %d cells marked:%s", marked, list);
     return marked;
 }
 static void LwNavWait(const char* why)
@@ -3003,7 +3181,7 @@ static void LwNavTick(uintptr_t dir)
         if (g_lwNav.orig == NULL) g_lwNav.orig = (uint16_t*)VirtualAlloc(NULL, (size_t)n * n * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (g_lwNav.orig == NULL || SafeRead(data, g_lwNav.orig, (size_t)n * n * 2)) { LwNavWait("no copy of the nav's heights"); return; }
         memset(g_lwNav.applied, 0, sizeof g_lwNav.applied); memset(g_lwNav.gapHandle, 0, sizeof g_lwNav.gapHandle);
-        g_lwNav.heights = H; g_lwNav.level = g_world.levels; g_lwNav.n = n; g_lwNav.watching = 0; g_lwNav.busyFrames = 0; g_lwNav.pendPhase = -1; g_lwNav.settleAt = 0; memset(g_lwNav.pend, 0, sizeof g_lwNav.pend);
+        g_lwNav.heights = H; g_lwNav.level = g_world.levels; g_lwNav.n = n; g_lwNav.watching = 0; g_lwNav.busyFrames = 0;
         Note("living world: nav: world %u, heights 0x%llx: %u x %u, size %.1f m, base %.2f m, range %.2f m", id, (unsigned long long)H, n, n,
             (double)size, (double)base, (double)range);
     }
@@ -3038,27 +3216,8 @@ static void LwNavTick(uintptr_t dir)
         }
         else w++;
     }
-    /* Built cells rebuilt in four checkerboard groups (audit 1f prep, lw84a / lw86a crashes in Havok AI's cut tasks at exe
-     * 0xCB1223 and 0xC2F662; KB crash-cb1223-navcut-section-swap, second pass, subagent, checked by me in the code): a
-     * rebuilt built cell's completion (main thread, 0x7B8A10) queues its section's unload (0xBB2670) and load (0xBB19B0)
-     * for the AI world's next asynchronous step but rewrites its own and its neighbours' streaming-set maps at once
-     * (connect 0x7B7FD0 -> 0xBB5310). When an adjacent built cell completes before the first swap is applied, a set
-     * matched to one mesh version is paired with the other in the same slot, and face keys of the wrong version reach
-     * the cutter (no bounds check). Vanilla builds each cell once. So no two touching built cells are in rebuild
-     * together: the cells of a tile change go in groups by (x & 1, y & 1), the next group marked only when every cell of
-     * the last has completed and LW_NAV_SETTLE_MS more have passed (the queued swaps applied by the AI world's steps).
-     * Cells never built (flags & 0x8 clear) have no section to swap and are marked at once. */
-    if (g_lwNav.pendPhase >= 0)
-    {
-        if (g_lwNav.watching > 0) return; /* the group's cells are still rebuilding */
-        ULONGLONG nowp = GetTickCount64();
-        if (g_lwNav.settleAt == 0) { g_lwNav.settleAt = nowp + LW_NAV_SETTLE_MS; return; }
-        if (nowp < g_lwNav.settleAt) return;
-        g_lwNav.settleAt = 0;
-        for (g_lwNav.pendPhase++; g_lwNav.pendPhase < 4; g_lwNav.pendPhase++)
-            if (LwNavMarkPhase(nav, id, wh, total, g_lwNav.pendPhase)) return;
-        g_lwNav.pendPhase = -1;
-    }
+    /* After a swap the hooks could not synchronise: no new marks until the AI world is idle (LwNavSwapHeld) */
+    if (LwNavSwapHeld()) { g_lwNav.busyFrames++; return; }
     /* One slot that differs from what was written, when no job is in flight */
     int k = 0;
     for (; k < NEAR_TILES_MAX; k++)
@@ -3098,21 +3257,10 @@ static void LwNavTick(uintptr_t dir)
                 v[at] = out; written++;
             }
     (void)exe;
-    for (uint32_t x = 0; x < total; x++)
-    {
-        g_lwNav.pend[x] = 0;
-        if (!cells[x]) continue;
-        uint32_t fl = LwCellFlags(nav, x, NULL);
-        g_lwNav.pend[x] = fl != 0xFFFFFFFFu && (fl & 0x8) ? (uint8_t)(1 + ((x % wh[0]) & 1) + (((x / wh[0]) & 1) << 1)) : 5; /* 1-4 a group, 5 now */
-    }
     Note("living world: nav: tile %d %s: %u samples written (%u from the tile) after %u busy frames; G %.1f m", k,
         want[k] ? "in" : "gone", written, fromTile, g_lwNav.busyFrames, (double)(g_lwWallReach ? *g_lwWallReach : 0));
     g_lwNav.busyFrames = 0;
-    LwNavMarkPhase(nav, id, wh, total, 4); /* the never built cells */
-    g_lwNav.settleAt = 0;
-    for (g_lwNav.pendPhase = 0; g_lwNav.pendPhase < 4; g_lwNav.pendPhase++)
-        if (LwNavMarkPhase(nav, id, wh, total, g_lwNav.pendPhase)) return;
-    g_lwNav.pendPhase = -1;
+    LwNavMarkCells(nav, id, wh, total, cells);
 }
 
 /* ---- the tick (the loader's game-thread tick: in a mission the late update, after the world update) ----------------- */

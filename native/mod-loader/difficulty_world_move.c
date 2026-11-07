@@ -669,6 +669,99 @@ static void MoveTileIn(uint64_t world)
     MoveRestoreDrop(); /* g_near.tex / g_matband: the drop tile's again (the new tile's are in its entry) */
 }
 
+/* ---- Units left under the ground (living world audit 1f criterion 7) ----------------------------------------------
+ * KB enemies/living-world-tile-switch-falls (subagent; checked by me in game.dll): the motion loop 0x59F440 gives the
+ * records below [mgr+0x4890] (mgr [game+0x3326558]) the step 0x59FED0; the mode is +0x1C of the record's 0x2C entry at
+ * [mgr+0x48D8] (0x5A03B2; jump table 0x5A1884: modes 4 and 7 -> 0x5A0B70), its active byte +0x20 (0x59FF3D). Those
+ * modes look the entity up in the ground system [game+0x3326440] (hash header +0x28, records [+0x48] of 0x3C bytes;
+ * 0x5A0B70..0x5A0BF8, 0x5A0D22) and read its ray's hit flag +0x38: hit -> z := the hit's z, miss -> gravity. The ray
+ * starts `up` (+0x2C) over the unit, straight down. The step's output position is the 0xA4 record +0..+8 at
+ * [mgr+0x48D0] (0x5A16D5 / 0x5A16DE); the authority bit is [descriptor+0x14] bit 0 (0x5A2D2C). A heightfield has one
+ * surface, so a unit left under it never meets it again and falls to the motion bound: the coarse collision lowered
+ * under a new tile's square while it stood on the coarse ground below the tile (lw89a: 7 of 7 falls began 0.2-0.35 s
+ * after NearHideCoarse), the coarse raised back over the tile at release, or a step on a tile into a rise taller than
+ * `up`. Each frame, before the ray is cast (MoveTick runs in the level update at 0xAB519E, before the cast at 0xAB5597
+ * and the world update at 0xAB5EC9): a unit in mode 4 or 7, active, ours to move, whose last ray missed and that is
+ * more than MOVE_KEEP_UNDER under the ground there (the live tile's heights inside its square, else the level's coarse
+ * ones) is put back on it by the game's teleport 0x5A2BB0, as the test teleport does. A missed ray means gravity, so
+ * these are exactly the units vanilla would let fall; nothing standing is touched. Vanilla units too: garrisons and
+ * objective units standing on the coarse ground when a tile comes are hit the same way. */
+#define MOVE_KEEP_UNDER 0.3f
+#define MOVE_KEEP_RECORDS 8192
+static uint8_t g_keepModes[MOVE_KEEP_RECORDS * 0x2C], g_keepPos[MOVE_KEEP_RECORDS * 0xA4];
+static struct { int pins; LONG level; uint32_t lifted, fromTile, fromCoarse; } g_keep;
+
+/* The level's coarse heights (lg+0xD8, the rows the coarse collision was made from and NearRaiseCoarse writes back) at a
+ * point, on the triangles NearCoarseTri uses; -9999 outside or unreadable. */
+static float MoveCoarseHere(uintptr_t data, float wx, float wy)
+{
+    const float step = 16383.5f / 4095.0f;
+    float fx = (wx + 8191.75f) / step, fy = (8191.75f - wy) / step;
+    if (!(fx >= 0 && fy >= 0 && fx < 4095.0f && fy < 4095.0f)) return -9999.0f;
+    uint32_t c = (uint32_t)fx, r = (uint32_t)fy;
+    float ax = fx - c, ay = fy - r;
+    uint16_t no[2], so[2];
+    if (SafeRead(data + ((uint64_t)r * 4096 + c) * 2, no, 4) || SafeRead(data + ((uint64_t)(r + 1) * 4096 + c) * 2, so, 4)) return -9999.0f;
+    float nw = no[0], ne = no[1], sw = so[0], se = so[1];
+    float z = ax <= ay ? sw + ax * (se - sw) + (1 - ay) * (nw - sw) : ne + (1 - ax) * (nw - ne) + ay * (se - ne);
+    return z / 65535.0f * 1000.0f - 500.0f;
+}
+
+static void MoveGroundKeep(void)
+{
+    static uintptr_t game;
+    if (game == 0) game = (uintptr_t)GetModuleHandleW(L"game.dll");
+    if (g_keep.pins == 0)
+    {
+        g_keep.pins = game && ApiCodeMatches(game + 0x59F478u, "3B 9F 90 48 00 00") && ApiCodeMatches(game + 0x573F5Cu, "44 8B 80 8C 48 00 00") &&
+            ApiCodeMatches(game + 0x5A03B2u, "8B 44 10 1C FF C8 83 F8 06") && ApiCodeMatches(game + 0x5A1884u, "D7 03 5A 00 0F 04 5A 00 58 04 5A 00 70 0B 5A 00 04 05 5A 00 B7 10 5A 00 70 0B 5A 00") &&
+            ApiCodeMatches(game + 0x59FF3Du, "80 7C 08 20 00") && ApiCodeMatches(game + 0x5A0B79u, "4C 8B 35 C0 58 D8 02") &&
+            ApiCodeMatches(game + 0x5A0BE6u, "48 6B F1 3C 49 03 76 48 0F B6 46 38") && ApiCodeMatches(game + 0x5A16D5u, "F2 45 0F 11 6D 00 8B 45 98 41 89 45 08") &&
+            ApiCodeMatches(game + 0x5A2C62u, "49 69 F4 A4 00 00 00") && ApiCodeMatches(game + 0x5A2BB0u, "48 89 5C 24 08 48 89 6C 24 10 56 57 41 54 41 56 41 57 48 83 EC 40") ? 1 : -1;
+        Note(g_keep.pins > 0 ? "difficulty: moving tiles: units left under the ground are put back on it (motion modes 4 and 7)"
+                             : "difficulty: moving tiles: the motion step is not the reviewed code; units left under the ground are not put back");
+    }
+    if (g_keep.pins < 0) return;
+    if (g_keep.level != g_world.levels) { g_keep.level = g_world.levels; g_keep.lifted = g_keep.fromTile = g_keep.fromCoarse = 0; }
+    uintptr_t mgr = 0, modes = 0, pos = 0, descs = 0, gsys = 0, grecs = 0, gen = 0, coarse = 0;
+    uint32_t dims[3] = {0};
+    if (!EvpPtr(game + 0x3326558u, &mgr) || !EvpPtr(mgr + 0x48D8, &modes) || !EvpPtr(mgr + 0x48D0, &pos) || !EvpPtr(mgr + 0x48B8, &descs) ||
+        !EvpPtr(game + 0x3326440u, &gsys) || !EvpPtr(gsys + 0x48, &grecs)) return;
+    if (!SafeRead(g_worldLevel + 0x2C8, &gen, 8) && gen != 0 && !SafeRead(gen + 0x8758A8u + 0xD8, dims, 12) && dims[0] == 4096 && dims[1] == 4096 &&
+        NearTexelBytes(dims[2]) == 2) SafeRead(gen + 0x8758A8u + 0xD8 + 0x10, &coarse, 8);
+    uint32_t n = EvpU32(mgr + 0x4890, 0), all = EvpU32(mgr + 0x488C, 0);
+    if (n > all) n = all;
+    if (n > MOVE_KEEP_RECORDS) n = MOVE_KEEP_RECORDS;
+    if (n == 0 || SafeRead(modes, g_keepModes, (size_t)n * 0x2C) || SafeRead(pos, g_keepPos, (size_t)n * 0xA4)) return;
+    for (uint32_t i = 0; i < n; i++)
+    {
+        const uint8_t* m = g_keepModes + (size_t)i * 0x2C;
+        uint32_t mode; memcpy(&mode, m + 0x1C, 4);
+        if ((mode != 4 && mode != 7) || m[0x20] == 0) continue;
+        float p[3]; memcpy(p, g_keepPos + (size_t)i * 0xA4, 12);
+        if (!isfinite(p[0]) || !isfinite(p[1]) || !isfinite(p[2])) continue;
+        int tile = -1; float ground = -9999.0f;
+        for (int k = 0; k < NEAR_TILES_MAX; k++)
+            if (g_tiles[k].live && g_tiles[k].level == g_world.levels && g_tiles[k].ground.v != NULL &&
+                fabsf(p[0] - g_tiles[k].centre[0]) < NEAR_HIDE / 2 && fabsf(p[1] - g_tiles[k].centre[1]) < NEAR_HIDE / 2)
+            { tile = k; ground = NearGroundAt(&g_tiles[k].ground, p[0], p[1]); break; }
+        if (tile < 0 && coarse) ground = MoveCoarseHere(coarse, p[0], p[1]);
+        if (ground < -9000.0f || !(p[2] < ground - MOVE_KEEP_UNDER)) continue;
+        uintptr_t d = 0; uint32_t e = 0, gi = 0; uint8_t flags = 0, hit = 1; float ray[2] = {0, 0};
+        if (!EvpPtr(descs + 8u * i, &d) || d == 0 || SafeRead(d + 0x14, &flags, 1) || !(flags & 1) || (e = EvpU32(d + 8, 0)) == 0) continue;
+        if (!EvpHash(gsys + 0x28, e, 8, 4, &gi) || gi >= 0x100000 || SafeRead(grecs + 0x3Cu * gi + 0x38, &hit, 1) || hit) continue;
+        SafeRead(grecs + 0x3Cu * gi + 0x2C, ray, 8);
+        if (((uint8_t (*)(void*, uint32_t))(game + 0x4A52B0u))(NULL, e)) continue; /* attached: the teleport stops half-way */
+        float to[3] = {p[0], p[1], ground + 0.1f};
+        ((void (*)(void*, uint32_t, const float*))(game + 0x5A2BB0u))(NULL, e, to);
+        g_keep.lifted++; if (tile >= 0) g_keep.fromTile++; else g_keep.fromCoarse++;
+        if (g_keep.lifted <= 200 || g_keep.lifted % 50 == 0)
+            Note("difficulty: moving tiles: unit %08X (motion mode %u) under the %s at (%.1f, %.1f): z %.2f, ground %.2f (%.2f under), its ray missed (up %.2f, below %.2f): put back on it; %u this level (%u on tiles, %u on the coarse ground)",
+                e, mode, tile >= 0 ? "tile's ground" : "coarse ground", (double)p[0], (double)p[1], (double)p[2], (double)ground, (double)(ground - p[2]),
+                (double)ray[0], (double)ray[1], g_keep.lifted, g_keep.fromTile, g_keep.fromCoarse);
+    }
+}
+
 static void MoveTick(uint64_t level)
 {
     if (!g_moveInstalled || level == 0 || level != g_worldLevel || g_world.current != 8.0f || !TerrainOn() || !NearOn() || !MoveOn()) return;
@@ -715,6 +808,7 @@ static void MoveTick(uint64_t level)
             g_near.at65, g_move.at66);
     }
     if (!g_move.on) return;
+    MoveGroundKeep(); /* before the frame's ground rays are cast */
     MoveFreeTick(0);
     MovePlayers();
     if (g_move.state == MV_IDLE)
