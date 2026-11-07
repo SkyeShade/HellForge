@@ -121,8 +121,71 @@ static uint32_t WorldScaleFor(float mapScale)
     return scale;
 }
 
+/* The network position range (KB net-position-clamp-2000; subagent, checked by me in the dump): every motion position
+ * write goes out as game-object field 0x8BBEB160, and the flush (game 0xFDDF0C / 0xFDE0FC: clamp 1) has exe 0x34BAB0
+ * clamp the caller's own value, the host's live motion record, to its type's range, [-2000, 2000] on each axis;
+ * the send path (0x34F47E..0x34F4D7) quantises each component with the type descriptor's min +0x10, max +0x14 and
+ * bits +0xD. On an extra large map enemies past 2 km were pinned to that line (lw87a: 45 of 52 offline points at
+ * +-2000), and clients would see every unit there. For an extra large level the range of every type a 0x8BBEB160
+ * field uses is widened to +-1024 (scale + 1) m (9216 at 8x: past the motion bound, 1900 + 1024 (scale - 1)); the bits
+ * stay, so the wire layout is the same and a step is about 7 cm instead of 1.5 cm. It runs at level init on every
+ * peer (WorldLevel), so all peers of an XL mission quantise alike; vanilla's range comes back on a vanilla level.
+ * The config: [[exe+0x1A10268]] (stored at exe 0x1CD8C7), object types [cfg+0x78] x [cfg+0x70] (0x34C4C5), 0x50 bytes:
+ * +0x18 field count, +0x20 type indices, +0x38 field hashes (0x34C27E..0x34C2BC); descriptors [cfg+0x18], 24 bytes,
+ * +0xC kind (3 = vector3). */
+static struct { int state; uint32_t type[8]; int count; float low[8], high[8]; } g_netPos; /* state 0 unread, 1 ok, -1 not the reviewed layout */
+static void NetPositionRange(float scale)
+{
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), global = 0, cfg = 0, types = 0, descs = 0;
+    if (g_netPos.state == 0)
+    {
+        g_netPos.state = -1;
+        if (!ApiCodeMatches(exe + 0x1CD8C7u, "48 89 05 9A 29 84 01") ||
+            !ApiCodeMatches(exe + 0x34C4C5u, "48 8B 05 9C 3D 6C 01 45 33 C9 44 8B DA 48 8B 08 44 8B 41 70 48 8B 59 78") ||
+            !ApiCodeMatches(exe + 0x34C27Eu, "4C 8D 0C 89 49 C1 E1 04 4C 03 4D 78 45 8B 41 18") ||
+            !ApiCodeMatches(exe + 0x34F47Eu, "F3 0F 10 5A 14 F3 0F 10 52 10"))
+        { Note("difficulty: extra large maps: the network position type is not the reviewed code; enemies past 2 km stay at the 2000 m line"); return; }
+        uint32_t count = 0;
+        if (SafeRead(exe + 0x1A10268u, &global, 8) || global == 0 || SafeRead(global, &cfg, 8) || cfg == 0 || SafeRead(cfg + 0x70, &count, 4) ||
+            SafeRead(cfg + 0x78, &types, 8) || types == 0 || SafeRead(cfg + 0x18, &descs, 8) || descs == 0 || count == 0 || count > 8192)
+        { Note("difficulty: extra large maps: the network config is not readable; enemies past 2 km stay at the 2000 m line"); return; }
+        int fields = 0;
+        for (uint32_t i = 0; i < count; i++)
+        {
+            uintptr_t t = types + 0x50u * i, hashes = 0, idx = 0; uint32_t fc = 0;
+            if (SafeRead(t + 0x18, &fc, 4) || fc == 0 || fc > 512 || SafeRead(t + 0x38, &hashes, 8) || SafeRead(t + 0x20, &idx, 8) || !hashes || !idx) continue;
+            for (uint32_t f = 0; f < fc; f++)
+            {
+                uint32_t h = 0, ti = 0;
+                if (SafeRead(hashes + 4u * f, &h, 4) || h != 0x8BBEB160u || SafeRead(idx + 4u * f, &ti, 4) || ti > 65535) continue;
+                fields++;
+                int known = 0;
+                for (int k = 0; k < g_netPos.count; k++) known |= g_netPos.type[k] == ti;
+                if (known || g_netPos.count >= 8) continue;
+                uint8_t kind = 0; float lo = 0, hi = 0; uintptr_t d = descs + 24u * ti;
+                if (SafeRead(d + 0xC, &kind, 1) || SafeRead(d + 0x10, &lo, 4) || SafeRead(d + 0x14, &hi, 4) || kind != 3 || !(hi > 0) || lo != -hi)
+                { Note("difficulty: extra large maps: network position type %u is not a symmetric vector3 (kind %u, %.1f .. %.1f); left as it is", ti, kind, (double)lo, (double)hi); continue; }
+                g_netPos.type[g_netPos.count] = ti; g_netPos.low[g_netPos.count] = lo; g_netPos.high[g_netPos.count] = hi; g_netPos.count++;
+            }
+        }
+        if (g_netPos.count == 0) { Note("difficulty: extra large maps: no network position type found (%d fields); enemies past 2 km stay at the 2000 m line", fields); return; }
+        g_netPos.state = 1;
+        Note("difficulty: extra large maps: %d network position fields use %d type(s), the first %u at %.0f .. %.0f m", fields, g_netPos.count, g_netPos.type[0], (double)g_netPos.low[0], (double)g_netPos.high[0]);
+    }
+    if (g_netPos.state != 1 || SafeRead(exe + 0x1A10268u, &global, 8) || SafeRead(global, &cfg, 8) || SafeRead(cfg + 0x18, &descs, 8) || descs == 0) return;
+    for (int k = 0; k < g_netPos.count; k++)
+    {
+        float hi = scale > 1.0f ? fmaxf(g_netPos.high[k], 1024.0f * (scale + 1.0f)) : g_netPos.high[k], lo = -hi;
+        uintptr_t d = descs + 24u * g_netPos.type[k];
+        ApiWrite(d + 0x10, &lo, 4); ApiWrite(d + 0x14, &hi, 4);
+    }
+    Note("difficulty: extra large maps: network positions range +-%.0f m (%s)", (double)(scale > 1.0f ? fmaxf(g_netPos.high[0], 1024.0f * (scale + 1.0f)) : g_netPos.high[0]),
+        scale > 1.0f ? "an extra large level" : "vanilla");
+}
+
 static void WorldWrite(float scale)
 {
+    NetPositionRange(scale);
     WorldValues* v = g_world.values;
     v->half = 1024.0f * scale;
     v->negHalf = -1024.0f * scale;
