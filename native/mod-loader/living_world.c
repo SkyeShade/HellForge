@@ -1502,13 +1502,13 @@ static void LwTestStage(int seq, float d)
 {
     if (!g_lwWorld.playersAt) { Note("living world: test command %d: stage: no player", seq); return; }
     const float* pl = g_lwWorld.players[0];
-    int pick = -1;
-    for (int i = 0; i < g_lwWorld.count && pick < 0; i++)
+    int pick = -1; float far2 = -1; /* the offline squad farthest from the players (lw77a: none beyond 350 m on a 389 m disc) */
+    for (int i = 0; i < g_lwWorld.count; i++)
     {
-        LwSquad* q = &g_lwSquads[i];
-        if (q->state == LW_OFFLINE && q->survivors && !q->cycled && !q->pulled && LwNearestPlayer2(q->pos[0], q->pos[1]) > LW_R_OFF * LW_R_OFF) pick = i;
+        LwSquad* q = &g_lwSquads[i]; float d2;
+        if (q->state == LW_OFFLINE && q->survivors && !q->cycled && !q->pulled && (d2 = LwNearestPlayer2(q->pos[0], q->pos[1])) > far2) { far2 = d2; pick = i; }
     }
-    if (pick < 0) { Note("living world: test command %d: stage: no offline squad beyond %.0f m", seq, (double)LW_R_OFF); return; }
+    if (pick < 0) { Note("living world: test command %d: stage: no offline squad", seq); return; }
     LwSquad* q = &g_lwSquads[pick];
     float band = LwSquadBand(q), r = g_lwWorld.radius;
     int tried = 0;
