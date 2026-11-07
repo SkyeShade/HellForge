@@ -1606,8 +1606,8 @@ static void LwTestLook(int seq, int which)
  * (u32) at [ctx+0x18] (pointers) hold the visible lists: set +0x38 u32 cull indices, +0x70 their count, +0x68 the cull
  * set cs, whose spheres are parallel float arrays indexed by cull index ([cs+0x100] x, +0x108 y, +0x110 z, +0x118
  * radius: the kernel 0x57B9B0 loads four at a time at 0x57BB6C..0x57BBB1) and [cs+0x128] the kind (8 = a render object,
- * as the consumer 0x1EC5E0..0x1EC606 reads them). The game thread publishes targets (members of online squads beyond
- * 250 m: their centre 1 m over the feet); the hook marks a target drawn in a frame when a visible kind-8 sphere of at
+ * as the consumer 0x1EC5E0..0x1EC606 reads them). The game thread publishes targets (members of online squads, those
+ * beyond 250 m first, the near ones as a control: their centre 1 m over the feet); the hook marks a target drawn in a frame when a visible kind-8 sphere of at
  * most 6 m radius has its centre within 1.5 m of it. Matching is by place, not by the unit's own render objects (that
  * mapping is not traced): a rock beside a member could match too. */
 #define LW_DRAWN_MAX 64
@@ -1670,10 +1670,11 @@ static void LwDrawnTick(void)
     {
         pubAt = now;
         int n = 0; float box[6] = {1e9f, 1e9f, 1e9f, -1e9f, -1e9f, -1e9f};
+        for (int pass = 0; pass < 2; pass++) /* the far squads first; then the near ones, as the instrument's control */
         for (int i = 0; i < g_lwWorld.count && n < LW_DRAWN_MAX; i++)
         {
             LwSquad* q = &g_lwSquads[i]; uint32_t members[32];
-            if (q->state != LW_ONLINE || LwNearestPlayer2(q->pos[0], q->pos[1]) < LW_R_ON * LW_R_ON) continue;
+            if (q->state != LW_ONLINE || (LwNearestPlayer2(q->pos[0], q->pos[1]) < LW_R_ON * LW_R_ON) != (pass == 1)) continue;
             int m = LwMembers(q->squad, members);
             for (int k = 0; k < m && n < LW_DRAWN_MAX; k++)
             {
