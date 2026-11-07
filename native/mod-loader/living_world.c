@@ -1465,6 +1465,25 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
  * body and the replicated position, and bumps the teleport counter so the next frame snaps (0x59F4B0). It has no
  * not-found check, so the entity must be in the motion map ([game+0x3326558] +0x48A0, descriptor [+0x48B8][i] +8), and
  * it stops half-way for an attached avatar (0x4A52B0(_, e) != 0: a vehicle or a pod). Velocity is kept: ground only. */
+/* Live AI enemies within r of (x, y) (the AiEnemy records [game+0x33266C8]: count +0x2320, entities +0x2348, as the
+ * garrison test reads them), and the nearest one's distance. */
+static int LwEnemiesNear(float x, float y, float r, float* nearest)
+{
+    uintptr_t e, entities, d; int n = 0; *nearest = 1e9f;
+    if (!EvpPtr(g_lw.game + 0x33266C8u, &e) || !EvpPtr(e + 0x2348, &entities)) return 0;
+    uint32_t count = EvpU32(e + 0x2320, 0);
+    for (uint32_t i = 0; i < count && i < 65536; i++)
+    {
+        ActHealth h; float p[3];
+        if (!EvpPtr(entities + 8u * i, &d) || d == 0) continue;
+        uint32_t entity = EvpU32(d + 8, 0);
+        if (!ActHealthOf(g_lw.game, entity, &h) || h.life >= 2 || !h.unit || !EvpUnitPosition(h.unit, p)) continue;
+        float dd = sqrtf((p[0] - x) * (p[0] - x) + (p[1] - y) * (p[1] - y));
+        if (dd < *nearest) *nearest = dd;
+        if (dd < r) n++;
+    }
+    return n;
+}
 static void LwTestTeleport(int seq, float x, float y)
 {
     ActHealth h; const char* why = "";
@@ -1478,6 +1497,10 @@ static void LwTestTeleport(int seq, float x, float y)
         EvpU32(d + 8, 0) != e) { Note("living world: test command %d: teleport: the Helldiver %08X has no motion record", seq, e); return; }
     if (((uint8_t (*)(void*, uint32_t))(g_lw.game + 0x4A52B0u))(NULL, e)) { Note("living world: test command %d: teleport: the Helldiver is attached (vehicle or pod)", seq); return; }
     if (!LwGround(x, y, &pos[2])) { Note("living world: test command %d: teleport: no ground at (%.0f, %.0f)", seq, (double)x, (double)y); return; }
+    /* a solo Helldiver put among enemies dies and, reinforced on the same spot, dies again until the mission fails
+     * (lw67a, lw71a: back on the ship 90 s later); such a point is refused */
+    float nearest; int foes = LwEnemiesNear(x, y, 120.0f, &nearest);
+    if (foes) { Note("living world: test command %d: teleport: %d enemies within 120 m of (%.0f, %.0f), the nearest %.0f m", seq, foes, (double)x, (double)y, (double)nearest); return; }
     pos[2] += 0.1f;
     ((void (*)(void*, uint32_t, const float*))(g_lw.game + 0x5A2BB0u))(NULL, e, pos);
     float back[3] = {0, 0, 0};
