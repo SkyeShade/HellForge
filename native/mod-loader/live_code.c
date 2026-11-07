@@ -379,8 +379,8 @@ static void EditsForget(HfMod* mod)
     ReleaseSRWLockExclusive(&g_fieldsLock);
 }
 
-/* Its definition blocks and the behaviours they define (fields.c register_entity): their addresses were in its DLL, and
- * another DLL loaded later at the same address would otherwise be answered with the entity of the mod taken out. */
+/* Its definition blocks and the behaviours they define (fields.c register_entity): their addresses are in its DLL, and a
+ * set-up a refused change takes out leaves entries for entities that were never registered. */
 static void DefinitionsForget(const HfMod* mod)
 {
     int kept = 0;
