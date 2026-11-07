@@ -391,6 +391,7 @@ typedef struct LwSquad
     ULONGLONG retry; /* no request before this (placement or sight refused) */
     uint32_t groundId[32]; float groundAt[32][3]; /* each member's last 5 s sample on the ground (the fall note) */
     float band; uint32_t bandGen; uintptr_t bandDef; /* LwSquadBand's cache */
+    uint8_t pulled, pullFor; float pullTo[2]; ULONGLONG pullAt; /* presence: walking off the routes toward a player who had no squad near */
 } LwSquad;
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
@@ -540,9 +541,17 @@ static void LwPopulate(void)
         made, g_lwNodeCount, eff, (double)mean, (double)g_lwWorld.radius, (double)LW_R_ON, (double)sqrtf(nearest));
 }
 
-/* Offline walking along the path at the squad's speed; a new destination at the end. */
+/* Offline walking along the path at the squad's speed; a new destination at the end. A pulled squad (LwPresence) walks
+ * straight to its point instead and waits there. */
 static void LwWalk(LwSquad* q, float dt)
 {
+    if (q->pulled)
+    {
+        float dx = q->pullTo[0] - q->pos[0], dy = q->pullTo[1] - q->pos[1], d = sqrtf(dx * dx + dy * dy), step = q->speed * dt;
+        if (d <= step) { q->pos[0] = q->pullTo[0]; q->pos[1] = q->pullTo[1]; }
+        else { q->pos[0] += dx / d * step; q->pos[1] += dy / d * step; }
+        return;
+    }
     if (q->pathAt >= q->pathLen) { LwPlan(q); if (q->pathLen == 0) return; }
     float step = q->speed * dt;
     while (step > 0 && q->pathAt < q->pathLen)
@@ -1367,6 +1376,7 @@ static void LwWallSample(void)
  *   offline N        squad N goes offline now (survivors carried)      status   the online squads
  *   kill garrison    the garrison kill test on the next active garrison, without its 15 s wait
  *   teleport X Y     the local Helldiver to the ground at (X, Y) (LwTestTeleport)
+ *   stage D          an offline squad's record to a route node D m out in player 1's sight (LwTestStage)
  *   aim X Y          how far the camera's view is from (X, Y), for the harness to turn it (LwTestAim)
  *   look N           how many of squad N's members a ray from the camera reaches (LwTestLook)
  * The camera: CM = [game+0x346D560], [CM+0x3C] its world position (subagent viewdist, P); the third-person camera
@@ -1483,6 +1493,40 @@ static int LwEnemiesNear(float x, float y, float r, float* nearest)
         if (dd < r) n++;
     }
     return n;
+}
+/* Test command "stage D": one offline squad's record moved to a route node D +- 50 m from player 1 that the player sees
+ * (LwSeenByAny within the squad's draw band) and inside the disc; nothing else. Whether and how it comes online is the
+ * far rule's own decision (by sightline, off the host's screen), so a run can show the far path without waiting for an
+ * offline squad to wander into a player's view (audit 1d, 6: none did in 4 min in lw75/lw76). */
+static void LwTestStage(int seq, float d)
+{
+    if (!g_lwWorld.playersAt) { Note("living world: test command %d: stage: no player", seq); return; }
+    const float* pl = g_lwWorld.players[0];
+    int pick = -1;
+    for (int i = 0; i < g_lwWorld.count && pick < 0; i++)
+    {
+        LwSquad* q = &g_lwSquads[i];
+        if (q->state == LW_OFFLINE && q->survivors && !q->cycled && !q->pulled && LwNearestPlayer2(q->pos[0], q->pos[1]) > LW_R_OFF * LW_R_OFF) pick = i;
+    }
+    if (pick < 0) { Note("living world: test command %d: stage: no offline squad beyond %.0f m", seq, (double)LW_R_OFF); return; }
+    LwSquad* q = &g_lwSquads[pick];
+    float band = LwSquadBand(q), r = g_lwWorld.radius;
+    int tried = 0;
+    uint32_t start = LwRand();
+    for (int k = 0; k < g_lwNodeCount; k++)
+    {
+        int n = (int)((start + (uint32_t)k) % (uint32_t)g_lwNodeCount);
+        float x = g_lwNodes[n].x, y = g_lwNodes[n].y, dx = x - pl[0], dy = y - pl[1], dd = sqrtf(dx * dx + dy * dy);
+        if (fabsf(dd - d) > 50.0f || dd >= band || x * x + y * y > r * r) continue;
+        float here[3] = {x, y, 0};
+        tried++;
+        if (!LwGround(x, y, &here[2]) || !LwSeenByAny(here, band)) continue;
+        q->pos[0] = x; q->pos[1] = y; q->node = (uint16_t)n; q->pathLen = q->pathAt = 0; q->retry = 0;
+        Note("living world: test command %d: stage: squad %d (%u alive, band %.0f m) moved offline to node %d at (%.0f, %.0f), %.0f m from player 1, in its sight (%d nodes tried)",
+            seq, pick, q->survivors, (double)band, n, (double)x, (double)y, (double)dd, tried);
+        return;
+    }
+    Note("living world: test command %d: stage: no route node %.0f +- 50 m out in player 1's sight (%d in range, band %.0f m)", seq, (double)d, tried, (double)band);
 }
 static void LwTestTeleport(int seq, float x, float y)
 {
@@ -1968,10 +2012,13 @@ static void LwKillArm(void);
 static void LwTestCommands(void)
 {
     char cmds[8][128]; int n, seq0;
+    static int on = -1; /* test runs only (audit 1d, 11): the exported channel acts only with HELLFORGE_LW_TEST_TRACE=1 */
+    if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1'; }
     AcquireSRWLockExclusive(&g_lwCmdLock);
     n = g_lwCmdCount; seq0 = g_lwCmdSeq - n + 1;
     memcpy(cmds, g_lwCmd, sizeof cmds); g_lwCmdCount = 0;
     ReleaseSRWLockExclusive(&g_lwCmdLock);
+    if (!on) { if (n) Note("living world: test commands ignored: %d (HELLFORGE_LW_TEST_TRACE is not 1)", n); return; }
     for (int c = 0; c < n; c++)
     {
         char mode[16] = ""; float d = 0, deg = 0; int idx = -1, seq = seq0 + c;
@@ -1980,6 +2027,7 @@ static void LwTestCommands(void)
         else if (sscanf(cmds[c], "offline %d", &idx) == 1 && idx >= 0 && idx < g_lwWorld.count && g_lwSquads[idx].state == LW_ONLINE) g_lwSquads[idx].forceOff = 1;
         else if (strncmp(cmds[c], "kill garrison", 13) == 0) LwKillArm();
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
+        else if (sscanf(cmds[c], "stage %f", &d) == 1 && d > LW_R_ON && d < 2000.0f) LwTestStage(seq, d);
         else if (sscanf(cmds[c], "aim %f %f", &d, &deg) == 2) LwTestAim(seq, d, deg);
         else if (sscanf(cmds[c], "look %d", &idx) == 1) LwTestLook(seq, idx);
         else if (sscanf(cmds[c], "zoom %f %f", &d, &deg) == 2 && d >= 1.0f && d <= 8.0f && deg > 0 && deg <= 20000) LwTestZoom(seq, d, deg);
@@ -1993,6 +2041,66 @@ static void LwTestCommands(void)
                     q->farOn ? "by sightline" : "near", q->inView ? ", in a player's view" : "");
             }
         else Note("living world: test command %d: not understood", seq);
+    }
+}
+
+/* Presence (audit 1d, 7): squads walk the game's route graph, and on an extra large map its edges can stay farther than
+ * the online radius from where a player is (lw76b: the nearest edge 302 m from the drop; the first squad came 8 min 49 s
+ * later), where vanilla's patrols would have come to the player anyway. So when a player has had no squad (offline or
+ * online) within the online radius for LW_STARVE_MS and none is on its way, the nearest offline squad leaves the routes
+ * and walks straight, at its own pace, to a point 200 m from that player on its side; from there the near rule brings it
+ * online as for any squad (out of sight, 150..250 m), and online it plans back onto the routes. The point follows the
+ * player every 10 s; the online budget still applies. */
+#define LW_STARVE_MS 30000
+static ULONGLONG g_lwStarved[EVT_MAX_PLAYERS];
+static void LwPresence(ULONGLONG now)
+{
+    static ULONGLONG at;
+    if (now - at < 1000) return;
+    at = now;
+    float r = g_lwWorld.radius;
+    for (int j = 0; j < g_lwWorld.playersAt && j < EVT_MAX_PLAYERS; j++)
+    {
+        const float* pl = g_lwWorld.players[j];
+        int served = 0, pulledBy = -1;
+        for (int i = 0; i < g_lwWorld.count && !served; i++)
+        {
+            LwSquad* q = &g_lwSquads[i];
+            if (q->pulled && q->pullFor == j) { pulledBy = i; served = 0; continue; }
+            float dx = q->pos[0] - pl[0], dy = q->pos[1] - pl[1];
+            if (q->survivors && dx * dx + dy * dy < LW_R_ON * LW_R_ON) served = 1;
+        }
+        if (served) { g_lwStarved[j] = 0; if (pulledBy >= 0) g_lwSquads[pulledBy].pulled = 0; continue; }
+        if (pulledBy >= 0) /* on its way: the point follows the player */
+        {
+            LwSquad* q = &g_lwSquads[pulledBy];
+            if (now - q->pullAt >= 10000)
+            {
+                float dx = q->pos[0] - pl[0], dy = q->pos[1] - pl[1], d = sqrtf(dx * dx + dy * dy);
+                if (d > 1.0f) { q->pullTo[0] = pl[0] + dx / d * 200.0f; q->pullTo[1] = pl[1] + dy / d * 200.0f; }
+                q->pullAt = now;
+            }
+            continue;
+        }
+        if (!g_lwStarved[j]) { g_lwStarved[j] = now; continue; }
+        if (now - g_lwStarved[j] < LW_STARVE_MS || g_lwWorld.onlineUnits >= g_lwWorld.eff) continue;
+        int best = -1; float bd = 3e38f;
+        for (int i = 0; i < g_lwWorld.count; i++)
+        {
+            LwSquad* q = &g_lwSquads[i];
+            if (q->state != LW_OFFLINE || q->pulled || !q->survivors || q->cycled) continue;
+            float dx = q->pos[0] - pl[0], dy = q->pos[1] - pl[1], d = dx * dx + dy * dy;
+            if (d < bd) { bd = d; best = i; }
+        }
+        if (best < 0) continue;
+        LwSquad* q = &g_lwSquads[best];
+        float d = sqrtf(bd), ux = (q->pos[0] - pl[0]) / d, uy = (q->pos[1] - pl[1]) / d, tx = pl[0] + ux * 200.0f, ty = pl[1] + uy * 200.0f;
+        float t2 = tx * tx + ty * ty;
+        if (t2 > 0.95f * 0.95f * r * r) { float k = 0.95f * r / sqrtf(t2); tx *= k; ty *= k; } /* inside the playable disc */
+        q->pulled = 1; q->pullFor = (uint8_t)j; q->pullTo[0] = tx; q->pullTo[1] = ty; q->pullAt = now;
+        Note("living world: presence: player %d had no squad within %.0f m for %.0f s: squad %d (%.0f m away, %u alive) leaves the routes toward (%.0f, %.0f), 200 m from the player",
+            j + 1, (double)LW_R_ON, (double)(now - g_lwStarved[j]) / 1000.0, best, (double)d, q->survivors, (double)tx, (double)ty);
+        g_lwStarved[j] = 0;
     }
 }
 
@@ -2038,6 +2146,7 @@ static void LwSquadsTick(void)
     LwTestKeepAlive(); /* test runs: the Helldiver healed to full */
     LwDrawnTick(); /* the main view's drawn state of far squads (test instrument, HELLFORGE_LW_DRAWN=1) */
     LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
+    LwPresence(now);
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
@@ -2065,6 +2174,7 @@ static void LwSquadsTick(void)
                 uint32_t off0 = g_lwOffScreen;
                 g_lwFarSpawn = farBand && !back;
                 LwOnline(q); requested = q->state == LW_PENDING;
+                if (requested && q->pulled) { q->pulled = 0; q->node = (uint16_t)LwNearestNode(q->pos[0], q->pos[1]); q->pathLen = q->pathAt = 0; } /* back onto the routes */
                 g_lwFarSpawn = 0;
                 if (farBand && !back) farTries++; else attempts++;
                 if (requested && farBand && !back)
