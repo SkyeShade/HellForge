@@ -479,7 +479,7 @@ typedef struct LwSquad
     ULONGLONG retry; /* no request before this (placement or sight refused) */
     uint32_t groundId[32]; float groundAt[32][3]; /* each member's last 5 s sample on the ground (the fall note) */
     float band; uint32_t bandGen; uintptr_t bandDef; /* LwSquadBand's cache */
-    uint8_t pulled, pullFor; float pullTo[2]; ULONGLONG pullAt; /* presence (1): walking off the routes toward a player who had no squad near; 2: held by the test stage */
+    uint8_t pulled;                 /* 2: held in place by the test stage until it comes online (the only value) */
 } LwSquad;
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
@@ -637,17 +637,11 @@ static void LwPopulate(void)
         made, g_lwNodeCount, eff, (double)mean, (double)g_lwWorld.radius, (double)LW_R_ON, (double)sqrtf(nearest));
 }
 
-/* Offline walking along the path at the squad's speed; a new destination at the end. A pulled squad (LwPresence) walks
- * straight to its point instead and waits there. */
+/* Offline walking along the path at the squad's speed; a new destination at the end. A staged squad (pulled 2) stays
+ * where the test stage put it. */
 static void LwWalk(LwSquad* q, float dt)
 {
-    if (q->pulled)
-    {
-        float dx = q->pullTo[0] - q->pos[0], dy = q->pullTo[1] - q->pos[1], d = sqrtf(dx * dx + dy * dy), step = q->speed * dt;
-        if (d <= step) { q->pos[0] = q->pullTo[0]; q->pos[1] = q->pullTo[1]; }
-        else { q->pos[0] += dx / d * step; q->pos[1] += dy / d * step; }
-        return;
-    }
+    if (q->pulled) return;
     if (q->pathAt >= q->pathLen) { LwPlan(q); if (q->pathLen == 0) return; }
     float step = q->speed * dt;
     while (step > 0 && q->pathAt < q->pathLen)
@@ -1736,7 +1730,7 @@ static void LwTestStage(int seq, float d)
             tried++;
             if (!LwGround(x, y, &here[2]) || !LwSeenByAny(here, band)) continue;
             q->pos[0] = x; q->pos[1] = y; q->node = (uint16_t)LwNearestNode(x, y); q->pathLen = q->pathAt = 0; q->retry = 0;
-            q->pulled = 2; q->pullTo[0] = x; q->pullTo[1] = y;
+            q->pulled = 2;
             Note("living world: test command %d: stage: squad %d (%u alive, band %.0f m) held offline at (%.0f, %.0f), %.0f m from player 1, in its sight (%d points tried)",
                 seq, pick, q->survivors, (double)band, (double)x, (double)y, (double)dd, tried);
             return;
