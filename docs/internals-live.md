@@ -475,6 +475,11 @@ The engine validates every integer field written to the network against `min .. 
 place (exe 0x34BAB0). So a wider type raises that limit for every field of that type. All players must run the same
 edit, and the modlist digest makes sure of that.
 
+The in-game editor widens `deposit_value` to 20 bits this way, which makes backpack ammo editable past 1,023 and makes
+the editor a shared mod: a different copy is another HellForge version. Float types are clamped to their range too. Shield
+health is row 371 (0..10000, 7 bits), so a shield set past that raises the row's maximum (`NetShieldHealth`). The width
+stays, so a player who does not own the shield sees its health in coarser steps.
+
 The game keeps entity component records in one private allocation of a fixed size whose first 28 bytes are the entity
 map header. HellForge finds it, and each component's index, exactly as HD2Runtime's `core/entity_catalog.lua` does. It
 uses the profile `src/HellForge.Core/entity-profile.json`, exported from HD2Runtime's reviewed `schemas/current.lua` by

@@ -6,7 +6,8 @@
  * Shields that stop enemies (shield.blocks_enemies, the FX-12's). Enemies have no Havok mover, so the pair can't hold them.
  * A ring of navmesh material 6 outside the bubble makes the game's own breach logic stop them and attack, as it does at a
  * gate. Charges and pounces skip that, so the one write of every object's position puts back whatever crosses the bubble,
- * and a charge held there plays the reaction its hit zone would. */
+ * and a charge held there plays the reaction its hit zone would. A Bile Titan is too big to hold, so it walks over the dome.
+ */
 
 #define SB_MANAGER 0x3326630u        /* game.dll: the Shield manager */
 #define SB_RECORD_OF 0x4FB390u       /* game.dll: a shield's record, the way the game's own readers get it */
@@ -29,6 +30,8 @@
 #define SB_NAV_HUMAN 0xF3B52DB1u     /* SEAF, crew and the two profiles after it pass */
 #define SB_NAV_HUMAN_B 0x9AE897D0u
 #define SB_NAV_HUMAN_C 0x49B287D9u
+#define SB_NAV_TITAN 0x9BDAB0E9u     /* climbs: its height comes from a ground check that can't see the bubble */
+#define SB_DOME_STEP 0.25f           /* the most a Titan rises in a frame: the ground check puts it back down each one */
 #define SB_CUT_CREATE 0x812CC0u      /* exe: a silhouette generator, the navmesh cut */
 #define SB_CUT_REMOVE 0x8127A0u
 #define SB_CUT_ENABLE 0x812AE0u
@@ -163,8 +166,18 @@ static int ShieldBlockHold(const SbShield* s, const float* before, float* now)
     return 1;
 }
 
-/* An object's entity when the wall stops it, 0 for one with no navigation or a human's: they pass. */
-static uint32_t ShieldBlockEnemy(void* motion, uint32_t index)
+/* The height over the dome at a position, from the height the last frame left; 0 and no change off the dome. */
+static int ShieldBlockDomeHeight(const SbShield* s, const float* at, float was, float* height)
+{
+    float dx = at[0] - s->x, dy = at[1] - s->y, flat = dx * dx + dy * dy, r = s->radius * s->radius;
+    if (flat >= r) return 0;
+    float top = s->z + sqrtf(r - flat);
+    *height = top < was + SB_DOME_STEP ? top : was + SB_DOME_STEP;
+    return 1;
+}
+
+/* An object's Navigation profile, 0 for one with none or a human's: they pass. */
+static uint32_t ShieldBlockProfile(void* motion, uint32_t index, uint32_t* entity)
 {
     const uint8_t* object = (*(const uint8_t***)((uint8_t*)motion + 0x48B8))[index];
     if (object == NULL) return 0;
@@ -172,7 +185,30 @@ static uint32_t ShieldBlockEnemy(void* motion, uint32_t index)
     const uint8_t* nav = navigation(*(const uint64_t*)object);
     if (nav == NULL) return 0;
     uint32_t profile = *(const uint32_t*)(nav + 4);
-    return profile == SB_NAV_HUMAN || profile == SB_NAV_HUMAN_B || profile == SB_NAV_HUMAN_C ? 0 : *(const uint32_t*)(object + 8);
+    *entity = *(const uint32_t*)(object + 8);
+    return profile == SB_NAV_HUMAN || profile == SB_NAV_HUMAN_B || profile == SB_NAV_HUMAN_C ? 0 : profile;
+}
+
+/* Holds an object at a position. Motion starts each frame from its source row, so holding only the row it draws from lets the
+ * object walk on unseen and arrive there when the wall goes. An object riding a parent keeps its source: that row is relative. */
+static void ShieldBlockPlace(void* motion, uint32_t index, const float* at, float* row)
+{
+    const int32_t parent = *(const int32_t*)(*(uint8_t**)((uint8_t*)motion + 0x48C8) + (uintptr_t)index * 0x84 + 0x3C);
+    memcpy(row, at, 3 * sizeof(float));
+    if (parent == -1) memcpy(*(uint8_t**)((uint8_t*)motion + 0x48D8) + (uintptr_t)index * 0x2C, at, 3 * sizeof(float));
+}
+
+/* A Titan over the dome stands on it. The fall its ground check starts when it loses the ground goes too, or it would land
+ * hard when the bubble breaks. */
+static int ShieldBlockClimb(void* motion, uint32_t index, const SbShield* s, const float* before, float* row)
+{
+    float height;
+    uint32_t entity;
+    if (!ShieldBlockDomeHeight(s, row, before[2], &height) || ShieldBlockProfile(motion, index, &entity) != SB_NAV_TITAN) return 0;
+    if (row[2] >= height) return 1;
+    row[2] = height;
+    (*(float**)((uint8_t*)motion + 0x48C8))[index * (0x84 / 4) + 2] = 0;
+    return 1;
 }
 
 /* On the motion jobs, for every object: one read and a compare per wall unless something crosses one. */
@@ -186,10 +222,13 @@ static void ShieldBlockMoveDetour(void* motion, uint32_t index, float dt)
     for (int i = 0; i < list->count; i++)
     {
         float moved[3] = {row[0], row[1], row[2]};
-        if (!list->shields[i].wall || !ShieldBlockHold(&list->shields[i], before, moved)) continue;
-        uint32_t entity = ShieldBlockEnemy(motion, index);
-        if (entity == 0) return;
-        memcpy(row, moved, sizeof moved);
+        uint32_t entity = 0, profile;
+        if (!list->shields[i].wall) continue;
+        if (ShieldBlockClimb(motion, index, &list->shields[i], before, row)) return;
+        if (!ShieldBlockHold(&list->shields[i], before, moved)) continue;
+        profile = ShieldBlockProfile(motion, index, &entity);
+        if (profile == 0 || profile == SB_NAV_TITAN) return;
+        ShieldBlockPlace(motion, index, moved, row);
         g_sbHeld[InterlockedIncrement(&g_sbHeldWrite) % 64] = entity;
         return;
     }

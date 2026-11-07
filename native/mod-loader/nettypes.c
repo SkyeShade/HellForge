@@ -11,6 +11,47 @@
  * 25480438, KB hellforge-live-mod-sync-re-runtime). A narrower width wraps a value already above it when that value is
  * next sent: a live change narrows only on its own ship, before joining or being joined. */
 
+/* Shield health travels as a float type of 7 bits over 0..10000, and the engine clamps a field to its type where it is written,
+ * so a stronger shield is a 10000 HP one. A shield set past that widens the type's range, as the countdown's is
+ * (difficulty_countdown.c). The width stays: the steps get coarser only on the screens of players who don't own the shield. */
+#define NET_SHIELD_HEALTH 0x7191792Bu
+#define NET_SHIELD_RANGE 10000.0f
+static float g_shieldHealthMost; /* the highest shield health the stats or live edits set */
+
+/* A shield's health as a stat's float bits. */
+static void NetShieldHealthSet(uint32_t bits)
+{
+    float health;
+    memcpy(&health, &bits, 4);
+    if (health > g_shieldHealthMost) g_shieldHealthMost = health;
+}
+
+/* Polled: the edits come before and after the network configuration loads, and a shield made first would keep the old cap. */
+static void NetShieldHealth(void)
+{
+    static float range = NET_SHIELD_RANGE;
+    uintptr_t rows;
+    uint32_t count;
+    float most = g_shieldHealthMost, step;
+    if (most <= range || FieldTypes(&rows, &count)) return;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        uint8_t def[24];
+        uint32_t name;
+        float maximum;
+        if (SafeRead(rows + (uintptr_t)i * 24, def, sizeof def)) return;
+        memcpy(&name, def, 4);
+        memcpy(&maximum, def + 0x14, 4);
+        if (name != NET_SHIELD_HEALTH || def[0xC] != 2) continue;
+        if (maximum != range) { Note("shield health: its network type has an unexpected range (max %.1f); left as it is", (double)maximum); range = most; return; }
+        step = most / 256.0f;
+        if (ApiWrite(rows + (uintptr_t)i * 24 + 0x14, &most, 4) || ApiWrite(rows + (uintptr_t)i * 24 + 8, &step, 4)) return;
+        range = most;
+        Note("shield health: its network type (%u) goes to %.0f", i, (double)most);
+        return;
+    }
+}
+
 #define NET_ASKS 256
 typedef struct NetAsk { HfMod* mod; char name[64]; uint8_t kind, expectBits, bits; int32_t min; } NetAsk;
 static NetAsk g_netAsks[NET_ASKS];

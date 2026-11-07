@@ -3649,6 +3649,11 @@ static void ShieldBlockFixture(void)
     assert(ShieldBlockHold(&wall, before, side) && fabsf(side[1] - 10.6f) < 0.01f && side[2] == 5); /* walkers go sideways */
     assert(!ShieldBlockHold(&wall, from, in));                                                       /* already inside: free */
     assert(ShieldBlockHold(&wall, high, top) && fabsf(top[2] - 15.6f) < 0.01f);                      /* a pounce stops on the dome */
+    const float centreTop[3] = {100, 0, 0}, rim[3] = {100, 9.9f, 0}, off[3] = {100, 12, 0};
+    float climb = 0;
+    assert(ShieldBlockDomeHeight(&wall, centreTop, 14.9f, &climb) && fabsf(climb - 15.0f) < 0.01f);  /* its top */
+    assert(ShieldBlockDomeHeight(&wall, rim, 0, &climb) && climb == SB_DOME_STEP);                   /* eased up */
+    assert(!ShieldBlockDomeHeight(&wall, off, 0, &climb));                                           /* off the dome */
     assert(ShieldBlockReaction(0xDE) == 0xE1 && ShieldBlockReaction(0x1D0) == 0x1D4 && ShieldBlockReaction(0xDC) == 0);
 }
 
