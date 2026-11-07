@@ -199,6 +199,12 @@ static class ModWarbondsTests
         var heavy = new ModWarbondService(full) { Source = capped.Source, Log = lines.Add }.Resolve();
         check(heavy.Count == ModWarbondService.ItemRoom / 150 && heavy.Sum(w => w.Sells.Count) <= ModWarbondService.ItemRoom &&
             lines.Any(l => l.Contains($"holds {ModWarbondService.ItemRoom} items")), "Mods' warbonds sold more items than a profile holds: " + string.Join(" | ", lines));
+        // Ids bought on the last warbond are in the list the game is served whether it is served or not, so they take room
+        // from the first: the one before it waits, and it is served, adding no ids.
+        var waiting = full[^1].Pages.SelectMany(p => p.Items).Select(i => (long)i.Id).ToHashSet();
+        var heavier = new ModWarbondService(full) { Source = capped.Source, Log = _ => { }, Purchased = () => waiting }.Resolve();
+        check(heavier.Count == ModWarbondService.ItemRoom / 150 && heavier.Any(w => w.Spec == full[^1]) && !heavier.Any(w => w.Spec == full[^2]),
+            $"Ids bought on a warbond took no room: {heavier.Count} served.");
         Tokens(check, fixtures, mobilize);
         ItemCurrencies(check, fixtures, mobilize);
         LeftOut(check, fixtures, mobilize, steeled);

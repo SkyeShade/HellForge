@@ -74,9 +74,10 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             ? served.EnumerateArray().Select(w => w.TryGetProperty("id32", out var id) && id.TryGetUInt32(out var value) ? value : 0).ToHashSet() : [];
         var lookup = Look();
         List<Served> result = [];
-        // bought ids of items no mod sells now (a mod taken out, a key renamed) stay in the profile's list and take room too
-        var current = warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items)).Select(i => (long)i.Id).ToHashSet();
-        var items = Purchased?.Invoke().Count(id => id >= ModWarbonds.FirstItemId && !current.Contains(id)) ?? 0;
+        // every bought id of a mod's item stays in the list the game is served and takes room, served or not (a mod taken
+        // out, a key renamed, a warbond waiting for room); a served warbond adds the ids it may add (sold or shown claimed)
+        var bought = Purchased?.Invoke() ?? new HashSet<long>();
+        var items = bought.Count(id => id >= ModWarbonds.FirstItemId);
         foreach (var (warbond, row) in warbonds.Select((w, i) => (w, i)))
         {
             if (row >= TableRoom)
@@ -87,16 +88,20 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             else if (result.Count >= ListCap - list.Count)
                 Report(warbond, "", $"the game lists {ListCap} warbonds, and {list.Count + result.Count} are listed already");
             else if (Serve(warbond, lookup) is not { } ready) { }
-            else if (items + ready.Sells.Count + ready.Claimed.Count > ItemRoom)
+            else if (items + Adds(ready, bought) > ItemRoom)
                 Report(warbond, "", $"the game holds {ItemRoom} items of mods' warbonds in all, and {items} are served already");
             else
             {
-                items += ready.Sells.Count + ready.Claimed.Count;
+                items += Adds(ready, bought);
                 result.Add(ready);
             }
         }
         return result;
     }
+
+    // The ids a served warbond may add to the purchased list beyond what is bought already: every item it sells (bought
+    // later, or all on unlock-all) and every one it shows claimed.
+    static int Adds(Served warbond, IReadOnlySet<long> bought) => warbond.Sells.Keys.Concat(warbond.Claimed).Count(id => !bought.Contains(id));
 
     Lookup Look()
     {

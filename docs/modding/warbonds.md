@@ -199,7 +199,8 @@ The name shows beside the card. The PNG may use any colour type; its transparenc
   to 32 (124 warbonds make 4 groups of 31). The column shows the group the current warbond is in, and a dot selects that
   warbond.
 - Mods' warbonds sell 4,280 items in all, which is what a player's profile has room for besides the game's warbonds.
-  A warbond that would go past that waits too.
+  Every item a player bought on a mod's warbond counts, whether its warbond is listed this session or not. A warbond
+  that would go past that waits too.
 - 15 pages a warbond, 10 items a page, and a 5 by 3 grid. HellForge refuses a warbond over these limits, and the
   launcher says why.
 - An item has one price, in one currency. The page's balance at the top shows the warbond's `currency`; an item in
@@ -213,6 +214,8 @@ the weapons and stratagems themselves.
 
 - `examples/mods/warbond-example` (in `app/sdk/examples/mods` once installed): two warbonds with no code, one in
   requisition with its own card and an item in samples, one with a premium look bought for Forge Credits and its own Helldiver.
+  Each also sells a stratagem permit, a consumable, so a player who has the Helldivers Mobilize items it sells (shown
+  claimed) still has something to buy.
 
 - [Content](content.md): register the weapons and stratagems a warbond sells.
 - [Debugging](debugging.md): where the launcher's and the backend's messages are.
