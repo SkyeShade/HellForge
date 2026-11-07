@@ -1639,7 +1639,7 @@ static void LwTestLook(int seq, int which)
  * The list is the frustum and small-object cull; the LOD pass after it can still drop a mesh (not counted here).
  * 0x1EA3E0 renders several views a frame; results are kept per view (ctx+0x28, the render camera), and a view counts as
  * the main one when its camera's position (+0xE8, as the cull kernel reads it) is within 0.5 m of the game camera's
- * (CM pose +0x3C). */
+ * (CM pose +0x3C) and it is no cubemap face (FOV +0x2C not pi/2). */
 #define LW_DRAWN_MAX 64
 #define LW_DRAWN_VIEWS 16
 static struct { uint32_t handle, unit; } g_lwDrawnT[LW_DRAWN_MAX];
@@ -1693,8 +1693,9 @@ static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, u
         {
             float dx = c[0] - g_lwDrawnCam[0], dy = c[1] - g_lwDrawnCam[1], dz = c[2] - g_lwDrawnCam[2];
             memcpy(g_lwDrawnV[v].cam, c, sizeof c); g_lwDrawnV[v].fov = f;
-            /* and its FOV is the game camera's (lw68a: six cubemap faces, FOV 1.57, stand at the camera too) */
-            g_lwDrawnV[v].main = dx * dx + dy * dy + dz * dz < 0.25f && fabsf(f - g_lwDrawnFov) < 0.02f;
+            /* and it is no cubemap face (lw68a: six faces, FOV exactly pi/2, stand at the camera too). Not the game
+             * camera's FOV itself: a zoom narrows the render camera's only (lw75a: 4x zoomed, no view matched) */
+            g_lwDrawnV[v].main = dx * dx + dy * dy + dz * dz < 0.25f && fabsf(f - 1.5707963f) > 0.01f && f > 0.01f && f < 3.0f;
         }
     }
     if (n <= 0 || n > LW_DRAWN_MAX) { g_lwDrawnV[v].stage = 1; return; }
