@@ -1383,10 +1383,14 @@ __declspec(dllexport) int hellforge_lw_test(const char* cmd)
     ReleaseSRWLockExclusive(&g_lwCmdLock);
     return seq;
 }
+/* The view's direction across the ground: the camera pose's y row (lw52a / lw53b: it follows player - camera at a
+ * steady 8.7 deg, the over-the-shoulder offset: the Helldiver stands left of the screen's centre), else player -
+ * camera. */
 static int LwCameraForward(float* f)
 {
-    uintptr_t cm = 0; float cam[3];
+    uintptr_t cm = 0; float cam[3], pose[8];
     if (!EvpPtr(g_lw.game + 0x346D560u, &cm) || cm == 0 || SafeRead(cm + 0x3C, cam, sizeof cam) || g_lwWorld.playersAt == 0) return 0;
+    if (!SafeRead(cm + 0xC, pose, sizeof pose)) { float l = sqrtf(pose[4] * pose[4] + pose[5] * pose[5]); if (l > 0.2f) { f[0] = pose[4] / l; f[1] = pose[5] / l; return 1; } }
     float dx = g_lwWorld.players[0][0] - cam[0], dy = g_lwWorld.players[0][1] - cam[1], d = sqrtf(dx * dx + dy * dy);
     if (!(d > 0.2f)) return 0;
     f[0] = dx / d; f[1] = dy / d;
@@ -1492,10 +1496,15 @@ static void LwTestAim(int seq, float x, float y)
     float cam = atan2f(f[1], f[0]), to = atan2f(y - g_lwWorld.players[0][1], x - g_lwWorld.players[0][0]), off = to - cam;
     while (off > 3.14159265f) off -= 6.2831853f;
     while (off < -3.14159265f) off += 6.2831853f;
-    uintptr_t cm = 0; float pose[12] = {0}; double poseDeg = 999;
-    if (EvpPtr(g_lw.game + 0x346D560u, &cm) && cm && !SafeRead(cm + 0xC, pose, sizeof pose)) poseDeg = atan2f(pose[5], pose[4]) * 57.29578f;
-    Note("living world: test command %d: aim: camera %.1f deg, target %.1f deg, off by %+.1f deg; the pose's y row %.1f deg, x row %.1f deg (view owner %d)", seq,
-        (double)(cam * 57.29578f), (double)(to * 57.29578f), (double)(off * 57.29578f), poseDeg, (double)(atan2f(pose[1], pose[0]) * 57.29578f), LwViewRead());
+    /* pitch: the target's chest (ground + 1 m) seen from the camera against the y row's own elevation */
+    uintptr_t cm = 0; float pose[16] = {0}, pitchOff = 0, tz = 0;
+    if (EvpPtr(g_lw.game + 0x346D560u, &cm) && cm && !SafeRead(cm + 0xC, pose, sizeof pose) && LwGround(x, y, &tz))
+    {
+        float yl = sqrtf(pose[4] * pose[4] + pose[5] * pose[5] + pose[6] * pose[6]), dx = x - pose[12], dy = y - pose[13], dz = tz + 1.0f - pose[14];
+        if (yl > 0.2f) pitchOff = (atan2f(dz, sqrtf(dx * dx + dy * dy)) - asinf(pose[6] / yl)) * 57.29578f;
+    }
+    Note("living world: test command %d: aim: camera %.1f deg, target %.1f deg, off by %+.1f deg; pitch off by %+.1f deg (view owner %d)", seq,
+        (double)(cam * 57.29578f), (double)(to * 57.29578f), (double)(off * 57.29578f), (double)pitchOff, LwViewRead());
 }
 
 /* Test command "zoom K MS" (audit 1b criterion 8: no shot was zoomed; KB living-world-scope-draw-distance, checked by me:
