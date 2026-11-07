@@ -1610,8 +1610,9 @@ static void LwTestLook(int seq, int which)
  * {[M+0xC8], [[M+0xC0]+4]} where M+0xC0 is the unit's scene graph, object+0x48 or +0x60 as EvpUnitGraph reads it). So a
  * unit was in a view's visible list when [graph+4] of its scene graph is among the visible meshes' +0x44: no positions.
  * The list is the frustum and small-object cull; the LOD pass after it can still drop a mesh (not counted here).
- * 0x1EA3E0 renders several views a frame; results are kept per view (ctx+0x28), and a view counts as the main one when
- * its block view+0x200..0x300 carries the gameplay camera's vertical FOV ([CM]+0x34) or its half-angle tangent. */
+ * 0x1EA3E0 renders several views a frame; results are kept per view (ctx+0x28, the render camera), and a view counts as
+ * the main one when its camera's position (+0xE8, as the cull kernel reads it) is within 0.5 m of the game camera's
+ * (CM pose +0x3C). */
 #define LW_DRAWN_MAX 64
 #define LW_DRAWN_VIEWS 8
 static struct { uint32_t handle, unit; } g_lwDrawnT[LW_DRAWN_MAX];
@@ -1619,7 +1620,12 @@ static volatile LONG g_lwDrawnN; static volatile float g_lwDrawnFov;
 static struct { uintptr_t view; volatile LONG64 calls; volatile LONG main; LONG64 hit[LW_DRAWN_MAX];
                 /* diagnostics: where the last call stopped (0 = it walked the list), the list's count, its meshes,
                  * and the first meshes' handles */
-                volatile LONG stage, cnt, meshes; uint32_t sample[4]; } g_lwDrawnV[LW_DRAWN_VIEWS];
+                volatile LONG stage, cnt, meshes; uint32_t sample[4];
+                /* the view's render world rw = [ctx]-0x10, its camera's position (+0xE8) and FOV (+0x2C), which cull
+                 * set its set 4 is ('A' [rw+0x268]+0x50, 'B' [rw+0x280]+0x50, '?' other) and that set's input count
+                 * [cs+0x148] (KB living-world-drawn-state, third pass) */
+                uintptr_t rw; float cam[3], fov; char which; uint32_t input; } g_lwDrawnV[LW_DRAWN_VIEWS];
+static volatile float g_lwDrawnCam[3];
 /* 0x1E2F40 takes nine arguments (the call 0x1EDA23..0x1EDA69 stores five at [rsp+0x20..0x40]) and also writes the
  * tenth slot as scratch ([rbp+0x298] = the caller's [rsp+0x48], 0x1E32C4 before its reads): the detour forwards all nine
  * and passes a tenth so its own frame reserves that slot (lw64a: four forwarded crashed it at 0x1E3BE5). */
@@ -1641,12 +1647,15 @@ static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, u
     if (v == LW_DRAWN_VIEWS) return;
     if (!g_lwDrawnV[v].view) g_lwDrawnV[v].view = view;
     LONG64 call = InterlockedIncrement64(&g_lwDrawnV[v].calls);
-    float fov = g_lwDrawnFov, block[64];
-    if (fov > 0.05f && !SafeRead(view + 0x200, block, sizeof block))
-    {
-        float t = tanf(fov * 0.5f); int m = 0;
-        for (int i = 0; i < 64 && !m; i++) m = fabsf(block[i] - fov) < 1e-4f || fabsf(block[i] - t) < 1e-4f;
-        g_lwDrawnV[v].main = m;
+    {   /* the main view: its camera stands where the game camera is (within 0.5 m) */
+        uintptr_t ctx0 = 0; float c[3] = {0}, f = 0;
+        if (!SafeRead(ctx, &ctx0, 8) && ctx0) g_lwDrawnV[v].rw = ctx0 - 0x10;
+        if (!SafeRead(view + 0xE8, c, 12) && !SafeRead(view + 0x2C, &f, 4))
+        {
+            float dx = c[0] - g_lwDrawnCam[0], dy = c[1] - g_lwDrawnCam[1], dz = c[2] - g_lwDrawnCam[2];
+            memcpy(g_lwDrawnV[v].cam, c, sizeof c); g_lwDrawnV[v].fov = f;
+            g_lwDrawnV[v].main = dx * dx + dy * dy + dz * dz < 0.25f;
+        }
     }
     if (n <= 0 || n > LW_DRAWN_MAX) { g_lwDrawnV[v].stage = 1; return; }
     g_lwDrawnV[v].stage = 2;
@@ -1654,6 +1663,13 @@ static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, u
     g_lwDrawnV[v].stage = 3;
     if (SafeRead(ctx + 0x60, &done, 8) || !done || SafeRead(done + 16, &fin, 4) || fin != 1) return;
     g_lwDrawnV[v].stage = 4;
+    {
+        uintptr_t rw = g_lwDrawnV[v].rw, a = 0, b = 0, c = 0; uint32_t in = 0;
+        SafeRead(set + 0x68, &c, 8);
+        if (rw) { SafeRead(rw + 0x268, &a, 8); SafeRead(rw + 0x280, &b, 8); }
+        g_lwDrawnV[v].which = c && a && c == a + 0x50 ? 'A' : c && b && c == b + 0x50 ? 'B' : '?';
+        if (c && !SafeRead(c + 0x148, &in, 4)) g_lwDrawnV[v].input = in;
+    }
     if (SafeRead(set + 0x68, &cs, 8) || !cs || SafeRead(set + 0x70, &cnt, 4) || SafeRead(set + 0x38, &idx, 8) ||
         SafeRead(cs + 0x128, &K, 8) || SafeRead(cs + 0x130, &S, 8)) return;
     g_lwDrawnV[v].stage = 5;
@@ -1707,6 +1723,7 @@ static void LwDrawnTick(void)
     ULONGLONG now = GetTickCount64();
     uintptr_t holder = 0, cam = 0; float fov = 0;
     if (EvpPtr(g_lw.game + 0x346D560u, &holder) && holder && EvpPtr(holder, &cam) && cam && !SafeRead(cam + 0x34, &fov, 4)) g_lwDrawnFov = fov;
+    { float c[3]; if (holder && !SafeRead(holder + 0x3C, c, 12)) { g_lwDrawnCam[0] = c[0]; g_lwDrawnCam[1] = c[1]; g_lwDrawnCam[2] = c[2]; } }
     if (now - pubAt >= 250)
     {
         pubAt = now;
@@ -1737,16 +1754,19 @@ static void LwDrawnTick(void)
     noteAt = now;
     char views[256]; int w = 0;
     for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view; v++)
-        w += snprintf(views + w, sizeof views - (size_t)w, "%sview %d %.0f/s%s", v ? ", " : "", v, rate[v], g_lwDrawnV[v].main ? " (main: carries the camera FOV)" : "");
+        w += snprintf(views + w, sizeof views - (size_t)w, "%sview %d %.0f/s%s", v ? ", " : "", v, rate[v], g_lwDrawnV[v].main ? " (main: its camera is the game camera's place)" : "");
     {   /* diagnostics: each view's last walk (stage 0 = walked: its visible count, meshes, first mesh handles) and the
          * first targets' handles */
-        char dg[640]; int dw = 0;
-        for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view && dw < 560; v++)
-            dw += snprintf(dg + dw, sizeof dg - (size_t)dw, "%sview %d stage %ld, %ld visible, %ld meshes, %06X %06X %06X %06X", v ? "; " : "", v, (long)g_lwDrawnV[v].stage,
-                (long)g_lwDrawnV[v].cnt, (long)g_lwDrawnV[v].meshes, g_lwDrawnV[v].sample[0], g_lwDrawnV[v].sample[1], g_lwDrawnV[v].sample[2], g_lwDrawnV[v].sample[3]);
+        char dg[1400]; int dw = 0;
+        for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view && dw < 1250; v++)
+            dw += snprintf(dg + dw, sizeof dg - (size_t)dw, "%sview %d rw %llX cam (%.1f, %.1f, %.1f) fov %.2f set4 %c in %u: stage %ld, %ld visible, %ld meshes, %06X %06X", v ? "; " : "", v,
+                (unsigned long long)g_lwDrawnV[v].rw, (double)g_lwDrawnV[v].cam[0], (double)g_lwDrawnV[v].cam[1], (double)g_lwDrawnV[v].cam[2], (double)g_lwDrawnV[v].fov,
+                g_lwDrawnV[v].which ? g_lwDrawnV[v].which : '-', g_lwDrawnV[v].input, (long)g_lwDrawnV[v].stage,
+                (long)g_lwDrawnV[v].cnt, (long)g_lwDrawnV[v].meshes, g_lwDrawnV[v].sample[0], g_lwDrawnV[v].sample[1]);
         char tg[128]; int tw = 0;
         for (int t = 0; t < (int)g_lwDrawnN && t < 6; t++) tw += snprintf(tg + tw, sizeof tg - (size_t)tw, "%s%06X", t ? " " : "", g_lwDrawnT[t].handle);
-        Note("living world: drawn: diagnostics: %s; targets %d, first handles %s", dw ? dg : "no views", (int)g_lwDrawnN, tw ? tg : "none");
+        Note("living world: drawn: diagnostics: game camera (%.1f, %.1f, %.1f); %s; targets %d, first handles %s", (double)g_lwDrawnCam[0], (double)g_lwDrawnCam[1], (double)g_lwDrawnCam[2],
+            dw ? dg : "no views", (int)g_lwDrawnN, tw ? tg : "none");
     }
     Note("living world: drawn: views %s; vertical FOV %.1f deg%s", w ? views : "none yet", (double)(g_lwDrawnFov * 57.29578f),
         g_lwZoomK > 1.0f && GetTickCount64() < g_lwZoomUntil ? ", zoomed 4x by the test" : "");
