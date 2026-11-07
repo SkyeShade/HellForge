@@ -400,6 +400,7 @@ static struct
     uint32_t spawned, offlined, died, refused, farSpawned;
     int farUnits;
     uint32_t noFace, moved, overhead, seen, rays, blockUnit, blockTerrain; double rayUs; /* placement and sight refusals, rays cast (30 s) */
+    uint32_t goals, goalNoFace, goalReplans, goalStuck; /* goals sent, next nodes without a face within 25 m, replans, none found (30 s) */
 } g_lwWorld;
 
 static uint32_t LwAiCount(void) { uintptr_t c; return EvpPtr(g_lw.game + 0x3326D18u, &c) ? EvpU32(c + 0x1C, 0) : 0; }
@@ -770,13 +771,42 @@ static int LwAboutToBeSeen(const LwSquad* q)
     return LwSeenByAny(ahead, LW_FAR);
 }
 
+/* A node the AI can walk to (subagent navlink, KB nav-cell-connections; checked by me: 0x7FD440's 0x7ED200 call): the
+ * squad's state 10 snaps its goal with exe 0x7D89F0 within 25 m (0x23C7614) and, finding no face, sets the squad's
+ * own position as its destination: it stands still. On XL most cells are not built (only those around the players),
+ * so a node there is no goal for an online squad. The same snap as the game's, at the node's ground, cached per node
+ * for 20 s (cells get built as players move). */
+static int LwNodeHasFace(int node)
+{
+    static uint16_t nodeAt[LW_NODES_MAX]; static uint8_t nodeFace[LW_NODES_MAX]; static uintptr_t level;
+    typedef int (*SnapFn)(uint32_t nav, float* p, float radius, float* out, float* normal, uint32_t layer);
+    if (level != g_lwWorld.lg) { memset(nodeAt, 0, sizeof nodeAt); level = g_lwWorld.lg; }
+    if (node < 0 || node >= g_lwNodeCount || node >= LW_NODES_MAX) return 0;
+    uint16_t now = (uint16_t)(GetTickCount64() / 20000u | 1u);
+    if (nodeAt[node] == now) return nodeFace[node];
+    uintptr_t table = 0, fn = 0;
+    float p[3] = {g_lwNodes[node].x, g_lwNodes[node].y, 0};
+    int face = EvpPtr(g_lw.game + 0x3326330u, &table) && EvpPtr(table + 0x10, &fn) && fn && LwGround(p[0], p[1], &p[2]) &&
+        ((SnapFn)fn)(EvpU32(g_lwWorld.dir + 0x648, 0), p, 25.0f, p, NULL, 0) != 0 && isfinite(p[2]);
+    nodeAt[node] = now; nodeFace[node] = (uint8_t)face;
+    return face;
+}
+
 static void LwSendGoal(LwSquad* q)
 {
     if (q->pathAt >= q->pathLen) LwPlan(q);
     if (q->pathAt >= q->pathLen || LwJobRecord(q->squad) == 0 || LwSquadRecord(q->squad) == 0) return;
+    if (!LwNodeHasFace(q->path[q->pathAt])) /* the next node has no navmesh: another destination whose next node has */
+    {
+        g_lwWorld.goalNoFace++;
+        int t = 0;
+        for (; t < 8; t++) { g_lwWorld.goalReplans++; LwPlan(q); if (q->pathAt < q->pathLen && LwNodeHasFace(q->path[q->pathAt])) break; }
+        if (t == 8) { g_lwWorld.goalStuck++; q->pathLen = q->pathAt = 0; return; } /* tried again at the next goal send */
+    }
     float goal[3] = {g_lwNodes[q->path[q->pathAt]].x, g_lwNodes[q->path[q->pathAt]].y, 0};
     if (!LwGround(goal[0], goal[1], &goal[2])) return; /* the goal's face search needs its height (40 m sphere, 100 m ray up) */
     g_lw.goal(q->squad, goal);
+    g_lwWorld.goals++;
 }
 
 /* An online squad: its members kept, losses counted, steered node to node; offline again beyond R_off at alert 0. */
@@ -1242,6 +1272,10 @@ static void LwSquadsTick(void)
                 "%u sight rays, %.1f us each; blocked by terrain %u, by static scenery %u", g_lwWorld.noFace, g_lwWorld.moved, g_lwWorld.overhead, g_lwWorld.seen,
                 g_lwWorld.rays, g_lwWorld.rays ? g_lwWorld.rayUs / g_lwWorld.rays : 0.0, g_lwWorld.blockTerrain, g_lwWorld.blockUnit);
         g_lwWorld.noFace = g_lwWorld.moved = g_lwWorld.overhead = g_lwWorld.seen = g_lwWorld.rays = g_lwWorld.blockUnit = g_lwWorld.blockTerrain = 0; g_lwWorld.rayUs = 0;
+        if (g_lwWorld.goals || g_lwWorld.goalNoFace)
+            Note("living world: goals (30 s): %u sent, %u next nodes with no navmesh within 25 m, %u replans, %u squads left without a reachable goal",
+                g_lwWorld.goals, g_lwWorld.goalNoFace, g_lwWorld.goalReplans, g_lwWorld.goalStuck);
+        g_lwWorld.goals = g_lwWorld.goalNoFace = g_lwWorld.goalReplans = g_lwWorld.goalStuck = 0;
         Note("living world: %d squads, %d online (%d units of %d), %u spawned, %u taken offline, %u destroyed, %u request frames refused; job-1 units %u, AI %u; "
             "player 1 at (%.0f, %.0f); by sightline: %u spawned, %d units now", g_lwWorld.count, online, g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.spawned, g_lwWorld.offlined, g_lwWorld.died,
             g_lwWorld.refused, EvpU32(dir + 0x614, 0), LwAiCount(), (double)(g_lwWorld.playersAt ? g_lwWorld.players[0][0] : 0),
@@ -1494,6 +1528,44 @@ static void LwInstallNavLeaveFix(void)
     rel = (int32_t)to; memcpy(jump + 1, &rel, 4);
     if (ApiWrite(exe + 0x7B905Fu, jump, sizeof jump)) { Note("living world: the nav completion could not be written"); return; }
     Note("living world: a rebuilt cell's completion while the nav is stopping clears its built flag with its section (leave crash fix)");
+}
+
+/* Test instrument (HELLFORGE_LW_TEST_TRACE=1; KB nav-cell-connections, checked by me: 0xBB5310..0xBB545F): a finished
+ * cell joins its built neighbours through 0xBB5310 -> 0xBB5110(out, params, &set, &graphSet), whose streaming set's
+ * [set+0x28] (connections) is tested at 0xBB5290: 0 = nothing stored, the two sections stay apart and no path crosses.
+ * The call at exe 0xBB5340 goes through LwConnectNote, which calls 0xBB5110 and notes the section uids (params +0x10,
+ * +0x14 = the cell ids) and the count. Installed at game load: vanilla's cells (built at level load) are noted too. */
+typedef uintptr_t (*LwConnectFn)(void* out, uintptr_t params, uintptr_t* set, uintptr_t* graphSet);
+static LwConnectFn g_lwConnect;
+static uintptr_t LwConnectNote(void* out, uintptr_t params, uintptr_t* set, uintptr_t* graphSet)
+{
+    uintptr_t r = g_lwConnect(out, params, set, graphSet), st = set ? *set : 0;
+    int32_t n = -1; uint32_t a = 0, b = 0;
+    if (st) SafeRead(st + 0x28, &n, 4);
+    SafeRead(params + 0x10, &a, 4); SafeRead(params + 0x14, &b, 4);
+    Note("living world: nav: sections %u and %u joined by %d connections", a, b, n);
+    return r;
+}
+static void LwInstallNavConnectNote(void)
+{
+    char t[4] = "";
+    if (!(GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1') || !LwEnabled()) return;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (!ApiCodeMatches(exe + 0xBB5340u, "E8 CB FD FF FF 48 8B 5C 24 50 48 8B 7C 24 58 80 38 00") ||
+        !ApiCodeMatches(exe + 0xBB5290u, "83 7F 28 00 75 1A"))
+    { Note("living world: test: the nav connect step is not the reviewed code; not noted"); return; }
+    uint8_t* block = AllocateNearGame(exe, 0x1000);
+    if (block == NULL) { Note("living world: test: no memory near the exe for the nav connect note"); return; }
+    uint8_t code[12] = {0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xE0}; /* mov rax, LwConnectNote; jmp rax */
+    uint64_t to = (uint64_t)(uintptr_t)LwConnectNote; memcpy(code + 2, &to, 8);
+    memcpy(block, code, sizeof code);
+    DWORD protect; VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect); FlushInstructionCache(GetCurrentProcess(), block, 0x1000);
+    int64_t rel = (int64_t)(uintptr_t)block - (int64_t)(exe + 0xBB5345u);
+    if (!InRel32(rel)) { Note("living world: test: the nav connect note is out of reach"); return; }
+    g_lwConnect = (LwConnectFn)(exe + 0xBB5110u);
+    uint8_t call[5] = {0xE8, 0, 0, 0, 0}; int32_t r32 = (int32_t)rel; memcpy(call + 1, &r32, 4);
+    if (ApiWrite(exe + 0xBB5340u, call, sizeof call)) { Note("living world: test: the nav connect call could not be written"); return; }
+    Note("living world: test: nav section connections are noted (0xBB5110 at 0xBB5340)");
 }
 
 /* From InstallWorld (an extra large world is configured), before any mission: the stub with G = 0. */
