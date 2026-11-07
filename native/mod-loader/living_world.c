@@ -1880,6 +1880,43 @@ static void LwAvatarDeathWatch(void)
     Note("living world: test: the Helldiver %08X died at (%.0f, %.0f, %.1f): %s%s; health %d of %d; %d enemies within 60 m (nearest %.0f m)", e, (double)at[0], (double)at[1], (double)at[2],
         what, by, h.health, h.max, foes, (double)nearest);
 }
+/* Test runs (HELLFORGE_LW_TEST_TRACE=1): a safe landing. The default drop is the map centre, and on some maps that is
+ * inside an outpost (lw73a: 28 enemies within 60 m, the nearest 3 m; a garrison enemy killed the Helldiver, again after
+ * every reinforcement until the mission failed). When the Helldiver leaves its pod with live enemies within 80 m, it is
+ * moved (the test teleport, which refuses points with enemies within 120 m) to the nearest point 150..300 m away with
+ * none within 150 m. */
+static void LwSafeLanding(void)
+{
+    static int on = -1, wasAttached = 1, noted; static ULONGLONG landedAt;
+    if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1'; }
+    if (!on) return;
+    ActHealth h; const char* why = ""; float p[3];
+    uint32_t e = ActLocalAvatar(g_lw.game, 0, &h, &why);
+    if (!e || !h.unit || !EvpUnitPosition(h.unit, p)) { wasAttached = 1; return; } /* dead or not spawned: the next landing counts */
+    int attached = ((uint8_t (*)(void*, uint32_t))(g_lw.game + 0x4A52B0u))(NULL, e) != 0;
+    if (wasAttached && !attached) { landedAt = GetTickCount64(); noted = 0; }
+    wasAttached = attached;
+    /* for 8 s after it leaves the pod: an outpost's guards spawn as a player comes near */
+    if (attached || !landedAt || GetTickCount64() - landedAt > 8000) return;
+    float nearest; int foes = LwEnemiesNear(p[0], p[1], 80.0f, &nearest);
+    if (!foes)
+    {
+        if (!noted++) Note("living world: test: safe landing: the Helldiver is out of its pod at (%.0f, %.0f), no enemy within 80 m (nearest %.0f m); watched 8 s", (double)p[0], (double)p[1], (double)nearest);
+        return;
+    }
+    landedAt = 0;
+    for (float r = 150.0f; r <= 300.0f; r += 50.0f)
+        for (int k = 0; k < 12; k++)
+        {
+            float a = (float)k * 0.5235988f, x = p[0] + r * cosf(a), y = p[1] + r * sinf(a), z, n2;
+            if (x * x + y * y > 0.85f * 0.85f * g_lwWorld.radius * g_lwWorld.radius || !LwGround(x, y, &z) || LwEnemiesNear(x, y, 150.0f, &n2)) continue;
+            Note("living world: test: safe landing: %d enemies within 80 m of the pod at (%.0f, %.0f) (nearest %.0f m): moving the Helldiver %.0f m to (%.0f, %.0f)",
+                foes, (double)p[0], (double)p[1], (double)nearest, (double)r, (double)x, (double)y);
+            LwTestTeleport(0, x, y);
+            return;
+        }
+    Note("living world: test: safe landing: %d enemies within 80 m of the pod at (%.0f, %.0f) and no clear point 150..300 m around", foes, (double)p[0], (double)p[1]);
+}
 static void LwKillArm(void);
 static void LwTestCommands(void)
 {
@@ -1950,6 +1987,7 @@ static void LwSquadsTick(void)
         if (g_lwSquads[i].farOn) farUnits += g_lwSquads[i].state == LW_PENDING ? g_lwSquads[i].cap : g_lwSquads[i].state == LW_ONLINE ? g_lwSquads[i].alive : 0;
     g_lwWorld.farUnits = farUnits;
     LwAvatarDeathWatch(); /* test runs: who killed the local Helldiver */
+    LwSafeLanding(); /* test runs: out of a pod among enemies, moved clear */
     LwDrawnTick(); /* the main view's drawn state of far squads (test instrument, HELLFORGE_LW_DRAWN=1) */
     LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
