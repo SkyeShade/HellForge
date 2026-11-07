@@ -660,26 +660,35 @@ static int LwPlace(uintptr_t slot, float* pos)
  * returns the entry to the free list). A point is seen when the ray from the player's eye (feet + 1.7 m), leaving out
  * that player's unit, meets nothing static 0.5 m short of it. Players beyond LW_SIGHT are not checked (D). Every ray is
  * timed. 1 seen, 0 hidden, -1 no ray. */
+static uint32_t g_lwSightHandle; static uintptr_t g_lwSightWorld;
+/* At each level change: the handle goes back to the game's free list (exe 0x77E030 only pushes the entry). */
+static void LwSightRelease(void)
+{
+    typedef void (*FreeFn)(uint32_t handle);
+    uintptr_t table = 0, fnFree = 0;
+    if (g_lwSightHandle && EvpPtr(g_lw.game + 0x3326328u, &table) && table && EvpPtr(table + 0x60, &fnFree) && fnFree) ((FreeFn)fnFree)(g_lwSightHandle);
+    g_lwSightHandle = 0; g_lwSightWorld = 0;
+}
 static uint32_t LwSightRay(uintptr_t* table)
 {
     typedef int (*WorldFn)(uintptr_t physics);
     typedef uint32_t (*MakeFn)(int world, uint32_t mode, uint32_t types, uint32_t hash, uint32_t flags);
     typedef void (*FreeFn)(uint32_t handle);
-    static uint32_t handle; static uintptr_t world;
+    uint32_t* const h = &g_lwSightHandle; uintptr_t* const w = &g_lwSightWorld;
     uintptr_t fnWorld = 0, fnMake = 0, fnFree = 0, wrapper = 0, t = 0, physics = 0;
     if (!EvpPtr(g_lw.game + 0x3326328u, table) || *table == 0 || !EvpPtr(*table, &fnWorld) || !EvpPtr(*table + 0x58, &fnMake) ||
         !EvpPtr(*table + 0x60, &fnFree) || !fnWorld || !fnMake || !fnFree || !EvpPtr(g_lw.game + 0x346D508u, &wrapper) || !EvpPtr(wrapper + 8, &t) ||
         !EvpPtr(t, &physics) || physics == 0) return 0;
-    if (physics == world && handle) return handle;
-    if (handle) { ((FreeFn)fnFree)(handle); handle = 0; }
-    world = physics;
+    if (physics == *w && *h) return *h;
+    if (*h) { ((FreeFn)fnFree)(*h); *h = 0; }
+    *w = physics;
     uint64_t free = 0; /* make_raycast pops its free list unchecked (0x77DE67) */
     if (SafeRead((uintptr_t)GetModuleHandleW(NULL) + 0x27B9438u, &free, 8) || free == 0) return 0;
     int index = ((WorldFn)fnWorld)(physics);
     if (index < 0 || index >= 4) return 0;
-    handle = ((MakeFn)fnMake)(index, 1, 3, 0x2315515Du, 0x80000009u);
-    Note("living world: sight: a static-only line-of-sight ray for physics world %d (handle %08X)", index, handle);
-    return handle;
+    *h = ((MakeFn)fnMake)(index, 1, 3, 0x2315515Du, 0x80000009u);
+    Note("living world: sight: a static-only line-of-sight ray for physics world %d (handle %08X)", index, *h);
+    return *h;
 }
 static int LwSeenFrom(const float* feet, uint32_t unit, const float* point)
 {
@@ -940,6 +949,7 @@ static void LwSquadsTick(void)
     if (levelState != 3) { LwWhy("the level is still generating"); return; }
     if (dir != g_lwWorld.dir || lg != g_lwWorld.lg || seed != g_lwWorld.seed) /* a new mission */
     {
+        LwSightRelease();
         memset(&g_lwWorld, 0, sizeof g_lwWorld);
         g_lwWorld.dir = dir; g_lwWorld.lg = lg; g_lwWorld.seed = seed;
         g_lwRandom ^= seed | 1u;
@@ -1217,9 +1227,44 @@ static const ActPin kLwNavPins[] = {
 };
 /* g_lwWallReach (declared with the walls measurement): the stub's G; NULL when the stub is not in */
 
+/* The leave crash (lw16i; KB living-world-plan "Leave crash", subagent leavecrash, checked by me in the dump): when the
+ * rebuild job of a cell that was already built (flags +0x5C bit 0x8) completes, exe 0x7B9053 unloads its old section
+ * and 0x7B905F sets the section id [cell+0x60] = -1; it loads a new one only while the nav runs (([nav+0x20] & 3) == 3,
+ * gate 0x7B91B8) and never clears 0x8 (0x7B91AF clears only 0x10). After the leave began (0xAB345B clears bit 0x2), the
+ * unload pass 0x7B7C40 then unloads every cell with 0x8 and not 0x1 by its id unchecked (0x7B7CEC..0x7B7D16), so it
+ * queues section -1 to the Havok AI world (0xBB2670), whose step (ApplyAsyncWorldUpdatesTask, 0xC3A790 -> 0xBAC380)
+ * reads before its section array and crashes at 0x99CCE0. Vanilla builds cells in under a second, the loader's rebuilds
+ * of built cells take 20-110 s. The fix keeps the game's state honest: right where it sets -1, it also clears 0x8 (a
+ * successful reload sets 0x8 again at 0x7B9252); no branch lands in 0x7B9060..0x7B9065. */
+static void LwInstallNavLeaveFix(void)
+{
+    static int done;
+    if (done) return;
+    done = 1;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (!ApiCodeMatches(exe + 0x7B905Fu, "C7 43 60 FF FF FF FF 41 F7 47 0C 00 01 00 00") ||
+        !ApiCodeMatches(exe + 0x7B9053u, "E8") || !ApiCodeMatches(exe + 0x7B91AFu, "8B 43 5C 83 E0 EF 83 C8 04"))
+    { Note("living world: the nav completion is not the reviewed code; rebuilt cells are left as the game keeps them"); return; }
+    uint8_t* block = AllocateNearGame(exe, 0x1000);
+    if (block == NULL) { Note("living world: no memory within 2 GB of the game's exe for the nav completion fix"); return; }
+    uint8_t code[16] = {0xC7, 0x43, 0x60, 0xFF, 0xFF, 0xFF, 0xFF, /* mov dword [rbx+0x60], -1 */
+        0x83, 0x63, 0x5C, 0xF7,                                       /* and dword [rbx+0x5C], ~0x8 */
+        0xE9, 0, 0, 0, 0};                                            /* jmp 0x7B9066 (rel32 at 12, next 16) */
+    int64_t back = (int64_t)(exe + 0x7B9066u) - (int64_t)(uintptr_t)(block + 16), to = (int64_t)(uintptr_t)block - (int64_t)(exe + 0x7B905Fu + 5);
+    if (!InRel32(back) || !InRel32(to)) { Note("living world: the nav completion fix is out of reach of the exe"); return; }
+    int32_t rel = (int32_t)back; memcpy(code + 12, &rel, 4);
+    memcpy(block, code, sizeof code);
+    DWORD protect; VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect); FlushInstructionCache(GetCurrentProcess(), block, 0x1000);
+    uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+    rel = (int32_t)to; memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(exe + 0x7B905Fu, jump, sizeof jump)) { Note("living world: the nav completion could not be written"); return; }
+    Note("living world: a rebuilt cell's completion while the nav is stopping clears its built flag with its section (leave crash fix)");
+}
+
 /* From InstallWorld (an extra large world is configured), before any mission: the stub with G = 0. */
 static void LwInstallWallReach(uintptr_t game)
 {
+    LwInstallNavLeaveFix();
     if (!LwEnabled() || g_lwWallReach != NULL) return;
     if (!ApiCodeMatches(game + LW_WALL_SITE, "F3 0F 58 C8 0F 28 C5 F3 0F 59 CE 0F 28 F2") ||
         !ApiCodeMatches(game + 0x59CCFEu, "C7 44 24 78 00 00 80 40"))
