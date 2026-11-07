@@ -383,6 +383,7 @@ typedef struct LwSquad
     ULONGLONG since, moved, farSince;
     float movedFrom[2], reqZ, seenAt[32][3]; /* seenAt: each listed member's last position (for the loss note) */
     uint8_t arrived, viewed; /* viewed: the test trace noted it in a player's view once */
+    uint8_t checkedCount, appearSeen; float appearLo, appearHi; uint32_t checked[32]; /* arrival: members checked in their first 5 s */
     uint8_t farOn, inView; /* farOn: came online by sightline; inView: a player sees it (checked at lookAt) */
     uint8_t forceOff; /* test command: go offline now */
     ULONGLONG lookAt;
@@ -619,7 +620,7 @@ static void LwOnline(LwSquad* q)
     Note("living world: squad %d requested at (%.0f, %.0f, %.1f) (snapped %.1f m), %.0f m from the nearest player, out of sight, %u of %u members (group 0x%llx)",
         (int)(q - g_lwSquads), (double)pos[0], (double)pos[1], (double)pos[2], (double)sqrtf(LwDist2(wanted, pos[0], pos[1])),
         (double)sqrtf(LwNearestPlayer2(pos[0], pos[1])), cap, size, (unsigned long long)q->definition);
-    q->reqZ = pos[2]; q->arrived = 0; q->viewed = 0; q->farOn = 0; q->inView = 0; q->lookAt = 0;
+    q->reqZ = pos[2]; q->arrived = 0; q->viewed = 0; q->checkedCount = 0; q->appearSeen = 0; q->farOn = 0; q->inView = 0; q->lookAt = 0;
     q->state = LW_PENDING; q->rec = rec; q->cap = (uint8_t)cap; q->since = GetTickCount64(); q->jobSet = 0; q->farSince = 0; q->seenCount = 0; q->lost = 0; q->squad = 0;
     g_lwWorld.onlineUnits += (int)cap; q->alive = (uint8_t)cap;
     LwRecentAdd(pos);
@@ -739,15 +740,20 @@ static int LwSeenFrom(const float* feet, uint32_t unit, const float* point)
     if (blocked) { if (owner) g_lwWorld.blockUnit++; else g_lwWorld.blockTerrain++; }
     return !blocked;
 }
-/* Out of sight: from every player within LW_SIGHT, both a unit's chest (1.0 m) and head-over height (2.5 m) blocked. */
+/* Out of sight: from every player within LW_SIGHT, a unit's chest (1.0 m), head-over (2.5 m) and a tall unit's top (4.5 m)
+ * all blocked, measured from the higher of the navmesh face and the ground ray's top surface: members stand on the
+ * drawn ground, which LwPlace allows up to 2 m over the face (audit 1b criterion 4: on XL, whose faces lie on a 4 m
+ * grid, members appeared 1-2.3 m over the requested face height and in a player's sight). */
 static int LwHidden(const float* p)
 {
+    float top = NAN, base = p[2];
+    if (LwGround(p[0], p[1], &top) && isfinite(top) && top > base) base = top;
     for (int i = 0; i < g_lwWorld.playersAt; i++)
     {
         if (LwDist2(g_lwWorld.players[i], p[0], p[1]) > LW_SIGHT * LW_SIGHT) continue;
-        for (int h = 0; h < 2; h++)
+        for (int h = 0; h < 3; h++)
         {
-            float t[3] = {p[0], p[1], p[2] + (h ? 2.5f : 1.0f)};
+            float t[3] = {p[0], p[1], base + (h == 0 ? 1.0f : h == 1 ? 2.5f : 4.5f)};
             int seen = LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], t);
             if (seen != 0) { g_lwWorld.seen++; return 0; } /* seen, or no ray to tell: refused */
         }
@@ -895,23 +901,27 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         ActHealth h; float p[3];
         if (known >= 0 && ActHealthOf(g_lw.game, members[k], &h) && h.unit && EvpUnitPosition(h.unit, p)) memcpy(q->seenAt[known], p, sizeof p);
     }
-    if (!q->arrived && n > 0) /* the members' first positions: their height against the request, and whether a player sees them */
+    if (!q->arrived && n > 0) /* every member's first position in its first 5 s (audit 1b: the first tick read 2 of 6-9):
+                               * its height against the request, and whether a player sees it */
     {
-        float lo = 1e9f, hi = -1e9f; int seen = 0, read = 0;
         for (int k = 0; k < n; k++)
         {
+            int done = 0;
+            for (int c = 0; c < q->checkedCount && !done; c++) done = q->checked[c] == members[k];
             ActHealth h; float p[3];
-            if (!ActHealthOf(g_lw.game, members[k], &h) || !h.unit || !EvpUnitPosition(h.unit, p)) continue;
-            read++; if (p[2] < lo) lo = p[2]; if (p[2] > hi) hi = p[2];
+            if (done || q->checkedCount >= 32 || !ActHealthOf(g_lw.game, members[k], &h) || !h.unit || !EvpUnitPosition(h.unit, p)) continue;
+            if (q->checkedCount == 0 || p[2] < q->appearLo) q->appearLo = p[2];
+            if (q->checkedCount == 0 || p[2] > q->appearHi) q->appearHi = p[2];
+            q->checked[q->checkedCount++] = members[k];
             float chest[3] = {p[0], p[1], p[2] + 1.0f};
             for (int i = 0; i < g_lwWorld.playersAt; i++)
-                if (LwDist2(g_lwWorld.players[i], p[0], p[1]) <= LW_SIGHT * LW_SIGHT && LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], chest) == 1) { seen++; break; }
+                if (LwDist2(g_lwWorld.players[i], p[0], p[1]) <= LW_SIGHT * LW_SIGHT && LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], chest) == 1) { q->appearSeen++; break; }
         }
-        if (read > 0)
+        if (q->checkedCount > 0 && (q->checkedCount >= q->cap || GetTickCount64() - q->since > 5000))
         {
             q->arrived = 1;
-            Note("living world: squad %d members appear: %d read, z %.1f .. %.1f (requested %.1f), %d of them in a player's sight",
-                (int)(q - g_lwSquads), read, (double)lo, (double)hi, (double)q->reqZ, seen);
+            Note("living world: squad %d members appear: %d of %u read in 5 s, z %.1f .. %.1f (requested %.1f), %d of them in a player's sight",
+                (int)(q - g_lwSquads), q->checkedCount, q->cap, (double)q->appearLo, (double)q->appearHi, (double)q->reqZ, q->appearSeen);
         }
     }
     q->survivors = (uint8_t)(q->cap > q->lost ? q->cap - q->lost : 0);
@@ -1590,8 +1600,9 @@ static void LwInstallNavConnectNote(void)
 /* From InstallWorld (an extra large world is configured), before any mission: the stub with G = 0. */
 static void LwInstallWallReach(uintptr_t game)
 {
+    if (!LwEnabled()) return; /* audit 1b: the leave fix patched the exe with the living world off; only its rebuilds need it */
     LwInstallNavLeaveFix();
-    if (!LwEnabled() || g_lwWallReach != NULL) return;
+    if (g_lwWallReach != NULL) return;
     if (!ApiCodeMatches(game + LW_WALL_SITE, "F3 0F 58 C8 0F 28 C5 F3 0F 59 CE 0F 28 F2") ||
         !ApiCodeMatches(game + 0x59CCFEu, "C7 44 24 78 00 00 80 40"))
     { Note("living world: the steering walls' box is not the reviewed one; its reach stays the game's"); return; }
