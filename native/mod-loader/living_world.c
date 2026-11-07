@@ -391,7 +391,7 @@ typedef struct LwSquad
     ULONGLONG retry; /* no request before this (placement or sight refused) */
     uint32_t groundId[32]; float groundAt[32][3]; /* each member's last 5 s sample on the ground (the fall note) */
     float band; uint32_t bandGen; uintptr_t bandDef; /* LwSquadBand's cache */
-    uint8_t pulled, pullFor; float pullTo[2]; ULONGLONG pullAt; /* presence: walking off the routes toward a player who had no squad near */
+    uint8_t pulled, pullFor; float pullTo[2]; ULONGLONG pullAt; /* presence (1): walking off the routes toward a player who had no squad near; 2: held by the test stage */
 } LwSquad;
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
@@ -1494,8 +1494,8 @@ static int LwEnemiesNear(float x, float y, float r, float* nearest)
     }
     return n;
 }
-/* Test command "stage D": one offline squad's record moved to a route node D +- 50 m from player 1 that the player sees
- * (LwSeenByAny within the squad's draw band) and inside the disc; nothing else. Whether and how it comes online is the
+/* Test command "stage D": one offline squad's record held at a point D +- 50 m from player 1 that the player sees
+ * (LwSeenByAny within the squad's draw band), on the ground and inside the disc; nothing else. Whether and how it comes online is the
  * far rule's own decision (by sightline, off the host's screen), so a run can show the far path without waiting for an
  * offline squad to wander into a player's view (audit 1d, 6: none did in 4 min in lw75/lw76). */
 static void LwTestStage(int seq, float d)
@@ -1512,21 +1512,25 @@ static void LwTestStage(int seq, float d)
     LwSquad* q = &g_lwSquads[pick];
     float band = LwSquadBand(q), r = g_lwWorld.radius;
     int tried = 0;
-    uint32_t start = LwRand();
-    for (int k = 0; k < g_lwNodeCount; k++)
-    {
-        int n = (int)((start + (uint32_t)k) % (uint32_t)g_lwNodeCount);
-        float x = g_lwNodes[n].x, y = g_lwNodes[n].y, dx = x - pl[0], dy = y - pl[1], dd = sqrtf(dx * dx + dy * dy);
-        if (fabsf(dd - d) > 50.0f || dd >= band || x * x + y * y > r * r) continue;
-        float here[3] = {x, y, 0};
-        tried++;
-        if (!LwGround(x, y, &here[2]) || !LwSeenByAny(here, band)) continue;
-        q->pos[0] = x; q->pos[1] = y; q->node = (uint16_t)n; q->pathLen = q->pathAt = 0; q->retry = 0;
-        Note("living world: test command %d: stage: squad %d (%u alive, band %.0f m) moved offline to node %d at (%.0f, %.0f), %.0f m from player 1, in its sight (%d nodes tried)",
-            seq, pick, q->survivors, (double)band, n, (double)x, (double)y, (double)dd, tried);
-        return;
-    }
-    Note("living world: test command %d: stage: no route node %.0f +- 50 m out in player 1's sight (%d in range, band %.0f m)", seq, (double)d, tried, (double)band);
+    uint32_t start = LwRand() % 72u;
+    /* points every 5 deg on rings d, d - 25, d + 25, d - 50, d + 50 (lw77b: the XL route graph had no node 450 +- 50 m
+     * out); the record is held there (pulled 2: walks nowhere, presence leaves it) until it comes online */
+    static const float rings[5] = {0, -25, 25, -50, 50};
+    for (int ri = 0; ri < 5; ri++)
+        for (int k = 0; k < 72; k++)
+        {
+            float dd = d + rings[ri], a = (float)((start + (uint32_t)k) % 72u) * 0.0872665f, x = pl[0] + dd * cosf(a), y = pl[1] + dd * sinf(a);
+            if (dd >= band || dd <= LW_R_ON || x * x + y * y > r * r) continue;
+            float here[3] = {x, y, 0};
+            tried++;
+            if (!LwGround(x, y, &here[2]) || !LwSeenByAny(here, band)) continue;
+            q->pos[0] = x; q->pos[1] = y; q->node = (uint16_t)LwNearestNode(x, y); q->pathLen = q->pathAt = 0; q->retry = 0;
+            q->pulled = 2; q->pullTo[0] = x; q->pullTo[1] = y;
+            Note("living world: test command %d: stage: squad %d (%u alive, band %.0f m) held offline at (%.0f, %.0f), %.0f m from player 1, in its sight (%d points tried)",
+                seq, pick, q->survivors, (double)band, (double)x, (double)y, (double)dd, tried);
+            return;
+        }
+    Note("living world: test command %d: stage: no point %.0f +- 50 m out in player 1's sight (%d points tried, band %.0f m)", seq, (double)d, tried, (double)band);
 }
 static void LwTestTeleport(int seq, float x, float y)
 {
@@ -2066,7 +2070,7 @@ static void LwPresence(ULONGLONG now)
         for (int i = 0; i < g_lwWorld.count && !served; i++)
         {
             LwSquad* q = &g_lwSquads[i];
-            if (q->pulled && q->pullFor == j) { pulledBy = i; served = 0; continue; }
+            if (q->pulled == 1 && q->pullFor == j) { pulledBy = i; served = 0; continue; }
             float dx = q->pos[0] - pl[0], dy = q->pos[1] - pl[1];
             if (q->survivors && dx * dx + dy * dy < LW_R_ON * LW_R_ON) served = 1;
         }
