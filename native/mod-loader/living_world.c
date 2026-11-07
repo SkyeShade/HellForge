@@ -2966,6 +2966,101 @@ static void LwInstallNavConnectNote(void)
     Note("living world: test: nav section connections are noted (0xBB5110 at 0xBB5340)");
 }
 
+/* Test instrument (HELLFORGE_LW_TEST_HITS=1; audit 1g criterion 6; KB living-world-spawn-losses, subagent, checked by me
+ * in game.dll): calm loader members are killed by squad mates (hash 0), and statics cannot single out the source because
+ * it lies in unit and ability data. H1: every hit the damage apply 0x9235F0 takes on an online loader member is noted
+ * before the apply runs: kind (r8d), amount (arg8), DamageInfo id (arg16), hash (arg17), the damager (arg5) and attacker
+ * (arg6) net ids as entities (0xFD9BA0(out, net), as the apply converts them at 0x923BED / 0x923BF9; its prologue copies
+ * arg6 / arg5 to [rbp+0] / [rbp+4] at 0x92361E..0x923630), each one's resource, position and alert, and the caller. H2:
+ * each explosion the spawner 0x13C0A80 (rdx pos, r8d type, r9d source, arg5 attacker) makes within 15 m of an online loader
+ * member, with its caller (0x8CB1FF a grenade / explosive, 0x11AD469 an ability's bone explosion). The original is
+ * called last and its result returned as is. */
+typedef uint64_t (*LwApplyFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
+    uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+typedef uint64_t (*LwBlastFn)(uint64_t, const float*, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+static LwApplyFn g_lwApply; static LwBlastFn g_lwBlast;
+static volatile LONG g_lwHitNotes;
+static int LwOnlineMember(uint32_t e, int* squad)
+{
+    if (e == 0) return 0;
+    for (int i = 0; i < g_lwWorld.count && i < LW_SQUADS_MAX; i++)
+    {
+        const LwSquad* q = &g_lwSquads[i];
+        if (q->state != LW_ONLINE) continue;
+        for (int k = 0; k < q->seenCount && k < 32; k++) if (q->seen[k] == e) { *squad = i; return 1; }
+    }
+    return 0;
+}
+static uint32_t LwNetEntity(uint32_t net)
+{
+    uint32_t out[8] = {0};
+    ((void (*)(uint32_t*, uint32_t))(g_lw.game + 0xFD9BA0u))(out, net);
+    return out[0];
+}
+static void LwHitWho(uint32_t e, char* buf, size_t n)
+{
+    uint32_t unit = 0; float p[3] = {0, 0, 0}; int sq = -1;
+    uint64_t res = e ? EvpEntityResource(g_lw.game, e, &unit) : 0;
+    char at[64] = "";
+    if (unit && EvpUnitPosition(unit, p)) snprintf(at, sizeof at, ", at (%.1f, %.1f, %.1f)", (double)p[0], (double)p[1], (double)p[2]);
+    snprintf(buf, n, "%08X (resource %016llX, alert %u%s%s)", e, (unsigned long long)res, e ? LwAlert(e) : 0u, at, LwOnlineMember(e, &sq) ? ", a loader member" : "");
+}
+static uint64_t LwHitApply(uint64_t mgr, uint64_t target, uint64_t kind, uint64_t a4, uint64_t damager, uint64_t attacker, uint64_t creditor, uint64_t amount,
+    uint64_t a9, uint64_t a10, uint64_t a11, uint64_t a12, uint64_t a13, uint64_t a14, uint64_t a15, uint64_t info, uint64_t hash, uint64_t a18, uint64_t a19)
+{
+    int sq = -1;
+    if (LwOnlineMember((uint32_t)target, &sq) && InterlockedIncrement(&g_lwHitNotes) <= 4000)
+    {
+        char who[3][200];
+        LwHitWho((uint32_t)target, who[0], sizeof who[0]);
+        LwHitWho(LwNetEntity((uint32_t)damager), who[1], sizeof who[1]);
+        LwHitWho(LwNetEntity((uint32_t)attacker), who[2], sizeof who[2]);
+        Note("living world: test: hit on squad %d member %s: kind %u, amount %d, DamageInfo %08X, hash %08X, creditor %llX; damager %s; attacker %s; caller game+0x%llX",
+            sq, who[0], (uint32_t)kind, (int32_t)amount, (uint32_t)info, (uint32_t)hash, (unsigned long long)creditor, who[1], who[2],
+            (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_lw.game));
+    }
+    return g_lwApply(mgr, target, kind, a4, damager, attacker, creditor, amount, a9, a10, a11, a12, a13, a14, a15, info, hash, a18, a19);
+}
+static uint64_t LwHitBlast(uint64_t self, const float* pos, uint64_t type, uint64_t source, uint64_t attacker, uint64_t a6, uint64_t a7, uint64_t a8, uint64_t a9, uint64_t a10)
+{
+    float p[3];
+    if (pos && !SafeRead((uintptr_t)pos, p, 12) && isfinite(p[0]))
+    {
+        int closeTo = -1;
+        for (int i = 0; i < g_lwWorld.count && i < LW_SQUADS_MAX && closeTo < 0; i++)
+        {
+            const LwSquad* q = &g_lwSquads[i];
+            if (q->state != LW_ONLINE) continue;
+            for (int k = 0; k < q->seenCount && k < 32; k++)
+            { float dx = q->seenAt[k][0] - p[0], dy = q->seenAt[k][1] - p[1]; if (dx * dx + dy * dy < 15.0f * 15.0f) { closeTo = i; break; } }
+        }
+        if (closeTo >= 0 && InterlockedIncrement(&g_lwHitNotes) <= 4000)
+        {
+            char who[2][200];
+            LwHitWho(LwNetEntity((uint32_t)source), who[0], sizeof who[0]);
+            LwHitWho(LwNetEntity((uint32_t)attacker), who[1], sizeof who[1]);
+            Note("living world: test: explosion type %08X at (%.1f, %.1f, %.1f) within 15 m of squad %d; source %s; attacker %s; caller game+0x%llX",
+                (uint32_t)type, (double)p[0], (double)p[1], (double)p[2], closeTo, who[0], who[1], (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_lw.game));
+        }
+    }
+    return g_lwBlast(self, pos, type, source, attacker, a6, a7, a8, a9, a10);
+}
+static void LwInstallHitNotes(void)
+{
+    char t[4] = "";
+    if (!(GetEnvironmentVariableA("HELLFORGE_LW_TEST_HITS", t, sizeof t) > 0 && t[0] == '1') || !LwEnabled()) return;
+    uintptr_t game = ApiModuleBase("game.dll", NULL);
+    if (!game) return;
+    if (!ApiCodeMatches(game + 0x9235F0u, "4C 8B DC 55 53 41 54 49 8D AB 48 F5 FF FF 48 81 EC C0 0B 00 00") ||
+        !ApiCodeMatches(game + 0x92361Eu, "8B 85 E0 0A 00 00 4C 8B E1 89 45 04 8B 85 E8 0A 00 00 89 45 00") ||
+        !ApiCodeMatches(game + 0x13C0A80u, "40 53 48 83 EC 30 8B 41 20 4C 8B DA 48 8B D9") ||
+        !ApiCodeMatches(game + 0xFD9BA0u, "48 83 EC 08 4C 8B 1D ED 23 49 02 44 8B C2"))
+    { Note("living world: test: the damage apply / explosion spawner is not the reviewed code; hits are not noted"); return; }
+    LoaderHook("living world test: hits on loader members (damage apply)", game + 0x9235F0u, (void*)LwHitApply, (void**)&g_lwApply);
+    LoaderHook("living world test: explosions near loader members", game + 0x13C0A80u, (void*)LwHitBlast, (void**)&g_lwBlast);
+    Note("living world: test: hits on online loader members and explosions within 15 m of them are noted (0x9235F0, 0x13C0A80)");
+}
+
 /* From InstallWorld (an extra large world is configured), before any mission: the stub with G = 0. */
 static void LwInstallWallReach(uintptr_t game)
 {
