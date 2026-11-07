@@ -934,9 +934,11 @@ static void LwOnlineTick(LwSquad* q, int* removals)
             {
                 float p[3] = {at[0], at[1], 0};
                 q->lookAt = now + 1000 + (ULONGLONG)((q - g_lwSquads) % 7) * 50;
-                q->inView = LwGround(at[0], at[1], &p[2]) && LwSeenByAny(p, LW_FAR_KEEP);
+                /* seen where it stands, or (a squad brought online by sightline) its way ahead is, so it is not taken
+                 * offline while still hidden on its way into view (lw16l: offline 10 s after it came online) */
+                q->inView = (LwGround(at[0], at[1], &p[2]) && LwSeenByAny(p, LW_FAR_KEEP)) || (q->farOn && LwAboutToBeSeen(q));
             }
-            if (q->inView) calm = 0;
+            if (q->inView || (q->farOn && now - q->since < 60000)) calm = 0; /* and a minute's grace to walk into view */
         }
         for (int k = 0; k < n && calm; k++) if (LwAlert(members[k]) != 0) calm = 0;
         if (!calm) { q->farSince = 0; return; }
@@ -1015,7 +1017,7 @@ static void LwSquadsTick(void)
     if (dt > 1.0f) dt = 1.0f;
     g_lwWorld.last = now;
     if (now - g_lwWorld.effAt > 5000) { int eff = LwEffectiveCap(dir); if (eff > 0) g_lwWorld.eff = eff; g_lwWorld.effAt = now; }
-    int requested = 0, removals = 0, online = 0, waiting = 0, units = 0, attempts = 0;
+    int requested = 0, removals = 0, online = 0, waiting = 0, units = 0, attempts = 0, farTries = 0; /* separate budgets: far checks never starve near squads (lw16l) */
     float r = g_lwWorld.radius;
     for (int i = 0; i < g_lwWorld.count; i++) /* the budget: living members of online squads, the request of pending ones */
         units += g_lwSquads[i].state == LW_PENDING ? g_lwSquads[i].cap : g_lwSquads[i].state == LW_ONLINE ? g_lwSquads[i].alive : 0;
@@ -1037,16 +1039,17 @@ static void LwSquadsTick(void)
             if (waiting && !back) continue; /* test cycle: a squad waiting to come back is served first */
             if (q->retry && now < q->retry) continue; /* its point was refused (placement or sight) a moment ago */
             int nearBand = near2 < LW_R_ON * LW_R_ON && near2 >= rMin * rMin, farBand = !nearBand && near2 >= LW_R_ON * LW_R_ON && near2 < LW_FAR * LW_FAR;
-            if (!requested && attempts < 4 && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && (nearBand || back || farBand))
+            if (!requested && (farBand && !back ? farTries < 2 : attempts < 4) && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && (nearBand || back || farBand))
             {
                 if (!back && LwRecentNear(q->pos)) { q->retry = now + 3000; continue; } /* spaced from online squads and recent requests (audit 1, 11) */
                 if (farBand && !back)
                 {
                     if ((float)(farUnits + q->survivors) > LW_FAR_SHARE * (float)g_lwWorld.eff) { q->retry = now + 3000; continue; }
-                    attempts++;
+                    farTries++;
                     if (!LwAboutToBeSeen(q)) { q->retry = now + 3000; continue; }
                 }
-                LwOnline(q); requested = q->state == LW_PENDING; attempts++;
+                LwOnline(q); requested = q->state == LW_PENDING;
+                if (farBand && !back) farTries++; else attempts++;
                 if (requested && farBand && !back)
                 {
                     q->farOn = 1; farUnits += q->cap; g_lwWorld.farSpawned++;
