@@ -149,7 +149,7 @@ try
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data", "--verify-all"],
         "migrate" => ["--install", "--from", "--appdata"],
-        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods"],
+        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods", "--mod-warbonds"],
         "mods-live" => ["--install", "--session-mods", "--target", "--seed"],
         "build-source-mods" => ["--install", "--progress", "--sync", "--sandbox"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
@@ -367,6 +367,15 @@ try
                 progress: p => WriteProgress(progressFile, p));
             active = built;
             modProblems.AddRange(buildProblems);
+            // Warbonds the loaded mods add (ModWarbonds: hellforge-warbonds.json), checked and written for the backend
+            // (--mod-warbonds, which the session passes on); one with a mistake is left out and the session says why.
+            List<ModWarbonds.Warbond> modWarbonds = [];
+            if (options.TryGetValue("--mod-warbonds", out var warbondsFile))
+            {
+                (modWarbonds, var warbondProblems) = ModWarbonds.Load(active);
+                modProblems.AddRange(warbondProblems);
+                ModWarbonds.Write(warbondsFile, modWarbonds);
+            }
             // The premium warbonds the profile's synced account does not own look locked in Acquisitions (WarbondLocks): the
             // same ownership the backend serves. Art that cannot be built stays as it is; the session goes on.
             string? warbondLocks = null;
@@ -392,12 +401,23 @@ try
             {
                 modProblems.Add("Forge Credits art: not shown this session (" + error.Message + ").");
             }
-            var staged = ModStaging.Stage(modInstall, active, [.. new[] { forgeCredits, warbondLocks }.OfType<string>()]);
+            // The mods' warbonds' own pictures (ModWarbondArt); one that cannot be built shows the game's placeholder.
+            string? warbondArt = null;
+            try
+            {
+                (modWarbonds, warbondArt, var artProblems) = ModWarbondArt.Prepare(modInstall, modWarbonds);
+                modProblems.AddRange(artProblems);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                modProblems.Add("Mod warbond art: the game's placeholder this session (" + error.Message + ").");
+            }
+            var staged = ModStaging.Stage(modInstall, active, [.. new[] { forgeCredits, warbondLocks, warbondArt }.OfType<string>()]);
             // Code, stats and legacy component mods all need the in-process loader plan.
             var code = active.Where(m => m.NeedsLoader).ToList();
             if (options.TryGetValue("--plan", out var planPath))
                 File.WriteAllText(planPath, ModLoaderPlan.Text(code, Path.GetFullPath(Required("--logs")), EntityProfile.Current, SupportedBuild.Current.BuildId,
-                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance));
+                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance, modWarbonds));
             // The gameplay mods with their content hashes, for the backend (mod sync: joiners whose mods differ get it), and
             // the digest's mods one by one (ModlistDiff's wire form), so a refused co-op join can say which differ.
             var modSet = ModSet.Of(active);

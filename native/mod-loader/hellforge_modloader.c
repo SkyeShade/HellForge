@@ -578,6 +578,11 @@ static void ChannelInstall(uintptr_t game);
 #include "loadout_preview.c"
 #include "armory_diag.c" /* the Armory thumbnails' stalls, from packages.c's game-thread update */
 #include "forge_credits.c"
+#include "warbonds.c" /* after forge_credits.c: mods' warbonds in the game's warbond table */
+#include "warbond_list.c" /* after warbonds.c: more than the game's 32 warbonds */
+#include "warbond_pager.c" /* after warbond_list.c: the Acquisition Center's pager past 32 cards */
+#include "warbond_texts.c" /* after warbond_list.c: the spent and unlock texts in a mod warbond's currency */
+#include "warbond_showcase.c" /* after warbond_texts.c: the Helldiver and background beside a mod warbond's card */
 #include "terminal_camera.c" /* before terminal.c: the terminal starts its glide */
 #include "terminal.c"
 #include "abilities.c"
@@ -789,6 +794,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsColour();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsRoll();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
+    if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) ShieldBlockInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
@@ -989,7 +995,7 @@ static int PlanGame(char** f, int n)
 {
     if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
     if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
-    if (FnPlanLine(f, n) || GlPlanLine(f, n)) return 1;
+    if (FnPlanLine(f, n) || GlPlanLine(f, n) || WarbondPlanLine(f, n)) return 1;
     if (n == 2 && strcmp(f[0], "forge_credits_chance") == 0) { int p = atoi(f[1]); g_forgeCreditChance = p < 0 ? 0 : p > 100 ? 100 : p; return 1; }
     if (n >= 4 && strcmp(f[0], "game_pin") == 0)
     {

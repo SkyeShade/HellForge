@@ -93,8 +93,10 @@ Full parity with the HD2R Editor, in three steps:
   enemy weights ([roadmap.md](roadmap.md#difficulty-11-and-custom-missions)).
 - Subfactions set by a mod per mission or planet, once the research finds what makes a subfaction active
   ([roadmap.md](roadmap.md#subfactions)). A subfaction is set up with the mission, never swapped in per spawn.
-- Mod content in progression: a level requirement, a price or a warbond page for a mod's stratagems and weapons
-  ([roadmap.md](roadmap.md#progression)).
+- Mod content in progression: a level requirement or a price for a mod's stratagems and weapons
+  ([roadmap.md](roadmap.md#progression)). Warbonds are declared by file only (`hellforge-warbonds.json`,
+  [modding/warbonds.md](modding/warbonds.md)), code mods included. A warbond is fixed before the game starts (its art is
+  built at launch, its ids keep players' purchases), so no SDK call adds one.
 - Game functions as SDK calls (spawn, give, damage, Wwise events) instead of raw addresses, which move with every game
   build. Started in SDK 16:
   - ten functions by name (`mappings/functions.json`, `HF_HOOK`, `hf_fn_`) and typed events (`hf_on_<event>`, no cast);

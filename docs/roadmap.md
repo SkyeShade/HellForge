@@ -259,9 +259,11 @@ We want playing up from `starter` to be fun, without turning into a grind or giv
    rewards). The first job is listing which of the game's progression requests the backend answers today.
 2. Tune the rewards. That means how fast a profile levels up and unlocks things, per difficulty and across a whole
    operation. The numbers live in one data file, so players and mods can change the pace: faster, slower, or hardcore.
-3. Bring HellForge's own content in. Mod stratagems and weapons get a level requirement, a price or a warbond page
-   through an SDK call ([SDK roadmap, phase 5b](sdk-roadmap.md#events-hooks-and-registries-phase-5b)), and
-   difficulty 11 unlocks through progress.
+3. Bring HellForge's own content in. Mods' warbonds are started: a `hellforge-warbonds.json` sells game items and the
+   mod's weapons and stratagems in a currency it chooses ([warbonds](modding/warbonds.md)). They have their own name, look,
+   art and price icons. Left: an SDK call, and a level requirement or a price outside
+   a warbond ([SDK roadmap, phase 5b](sdk-roadmap.md#events-hooks-and-registries-phase-5b)). Difficulty 11 is to unlock
+   through progress.
 4. Add more start templates between `starter` and `unlock-all`.
 
 In co-op, every player keeps their own profile and earns rewards on their own machine.

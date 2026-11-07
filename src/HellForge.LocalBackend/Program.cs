@@ -132,6 +132,20 @@ try
     // locked (--premium-locked: their declared premium list is not owned) add nothing to the inventory.
     if (profile?.Ownership is { } ownership) registeredItems.OwnsBase = ownership.IsAllowed;
     registeredItems.LockedMods = HellForge.Core.PremiumMods.ReadLocked(options.GetValueOrDefault("--premium-locked"));
+    // --mod-warbonds <file>: the warbonds the session's mods add (mods-stage writes it; HellForge.Core ModWarbonds), sold
+    // like the game's; an unlock-all profile has bought them all.
+    IReadOnlyList<HellForge.Core.ModWarbonds.Warbond> modWarbondList = [];
+    try { modWarbondList = HellForge.Core.ModWarbonds.Read(options.GetValueOrDefault("--mod-warbonds")); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidDataException or KeyNotFoundException or InvalidOperationException or FormatException)
+    {
+        Console.Error.WriteLine("[mod warbonds] none served: the session's warbonds could not be read (" + error.Message + ")");
+    }
+    var modWarbonds = new ModWarbondService(modWarbondList)
+    {
+        IsAllowed = profile?.Ownership is { } owner ? owner.IsAllowed : null,
+        IsPaid = PaidContentSet.Load().IsPaid,
+        UnlockAll = profileTemplate != null && profileTemplate.Contains("unlock-all", StringComparison.Ordinal),
+    };
     // --live-war <cache file>: follow the live galactic war read-only through the community mirror (LiveWar).
     Directory.CreateDirectory(evidence);
     var liveWarLog = Path.Combine(evidence, "live-war.log");
@@ -166,7 +180,7 @@ try
     {
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
-        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, LocalAccount = steamAccount, OpenWar = openWar, WarSeed = warSeed,
+        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, Presence = presence, RegisteredItems = registeredItems, ModWarbonds = modWarbonds, LocalAccount = steamAccount, OpenWar = openWar, WarSeed = warSeed,
         DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods, Pickups = pickups, Browse = browse
     });
     await app.StartAsync(lifetime.Token);

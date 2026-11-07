@@ -162,7 +162,8 @@ typedef struct Weapon
  * once shared 4 * REG_MAX_WEAPONS with the others, so a full pack left a stratagem with its base's name. */
 #define REG_STRATAGEM_TEXTS (48 * 3)
 typedef struct ModText { uint32_t id; char* text; } ModText;
-static ModText g_texts[REG_MAX_WEAPONS * 4 + REG_STRATAGEM_TEXTS + 2];
+/* + four for each mod warbond (warbonds.c: its name and the line above it, each in two cases), 99 at most */
+static ModText g_texts[REG_MAX_WEAPONS * 4 + REG_STRATAGEM_TEXTS + 2 + 4 * 99];
 static int g_textCount;
 /* The texts the engine is answered from: the first g_textsServed. A live change's set-ups add theirs while it is staged
  * (g_textsHeld): they are served once it is made (TextsPublish), and a refused change's are never served. A text is never
