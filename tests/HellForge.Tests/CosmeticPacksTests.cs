@@ -85,6 +85,9 @@ static class CosmeticPacksTests
             ModSettings.SetEnabled(install.Mods, bareBefore.Id, false);
             ModSettings.SetOrder(install.Mods, [bareBefore.Id, kineticId, "test.gameplay"]);
 
+            var gameData = Directory.CreateDirectory(Path.Combine(install.Game, "data")).FullName;
+            ModStaging.Stage(install, before); // staged from the zips' unpacked copies: links on both systems
+
             var notes = ModInstaller.TakeDropped(install);
             var (after, problems) = ModCatalog.Load(install.Mods);
             check(notes.Count == 0 && problems.Count == 0, "Taken without a line: " + string.Join(" | ", notes.Concat(problems)));
@@ -100,6 +103,14 @@ static class CosmeticPacksTests
             check(kinetic.Archive == null && kinetic.PackFolders.Select(Path.GetFileName).SequenceEqual(["Rifle B"]), "The pack kept its choice.");
             check(bareAfter.Id != bareBefore.Id && !bareAfter.Enabled && settings.Order.SequenceEqual([bareAfter.Id, kineticId, "test.gameplay"]) &&
                 !settings.Disabled.Contains(bareBefore.Id), $"The bare pack's new id {bareAfter.Id} kept its switch and place: {string.Join(", ", settings.Order)}.");
+
+            // the moved folder's files were the staged links; staged again, a mod folder is linked on Windows and copied on
+            // Linux, where nothing stops a program writing to a file the game reads
+            ModStaging.Stage(install, after);
+            using (var stream = new FileStream(Path.Combine(install.Mods, "Bare Pack", "9ba626afa44a3aa3.patch_0"), FileMode.Open, FileAccess.Write))
+                stream.Write("B"u8);
+            var stagedBare = Directory.GetFiles(gameData).Select(File.ReadAllText).Where(t => t.EndsWith("are", StringComparison.Ordinal)).ToList();
+            check(stagedBare.SequenceEqual([OperatingSystem.IsWindows() ? "Bare" : "bare"]), "The bare pack's staged patch: " + string.Join(", ", stagedBare));
 
             // one dropped and never loaded, and one chosen on Add mods: folders too
             File.WriteAllText(Path.Combine(bare, "9ba626afa44a3aa3.patch_0"), "fresh");

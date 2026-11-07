@@ -310,10 +310,10 @@ try
             var modInstall = new InstallLayout(Required("--install"));
             if (!modInstall.Exists) throw new InvalidDataException($"{modInstall.Root} is not a HellForge installation.");
             // Staged links written over since the last session first (ModStaging.CheckLinks): what HellForge keeps of them is
-            // made again as the mods load. Then the mods HellForge ships (the in-game editor) are put in place, or updated.
-            var linkProblems = ModStaging.CheckLinks(modInstall);
+            // made again as the mods load; they are not problems of this session's mods, which all load. Then the mods
+            // HellForge ships (the in-game editor) are put in place, or updated.
+            foreach (var line in ModStaging.CheckLinks(modInstall)) Console.Error.WriteLine(line); // the Mods page shows a mod's (Notices)
             var bundledProblems = BundledMods.Sync(modInstall, Console.Error.WriteLine);
-            bundledProblems.InsertRange(0, linkProblems);
             // a .rar or .7z dropped into mods/ is added as a folder first (ModInstaller.TakeDropped)
             bundledProblems.AddRange(ModInstaller.TakeDropped(modInstall));
             // a mod that ships a recipe for its game patch files has them rebuilt from this PC's game first (ModAssets)

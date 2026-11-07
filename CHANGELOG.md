@@ -89,8 +89,9 @@ On `dev`, since 0.4.0-beta.
   cannot be saved over, as game files cannot. A staged patch written over in the game's data folder is found at the
   next session start.
 - **Zipped cosmetic packs are kept as folders.** A zip next to its unpacked copy held the pack twice. Add mods puts a
-  zipped pack in as a folder, and one already in the mods folder becomes one, with its options and place kept. An
-  archive dropped into the mods folder whose files the installed mod already has is removed as a second copy.
+  zipped pack in as a folder, and one already in the mods folder becomes one, with its options and place kept. A
+  `.rar`, `.7z` or zipped pack dropped into the mods folder whose files the installed mod already has is removed as a
+  second copy.
 
 ### Fixed
 

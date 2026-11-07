@@ -56,7 +56,8 @@ second copies:
   since Linux lets a program write to a file the game is reading.
 
 A drive without hard links (FAT32, exFAT) gets copies. A gameplay mod kept as a zip is on the drive twice, as its zip and
-its unpacked copy: the zip is what friends compare.
+its unpacked copy: the zip is what friends compare. Explorer's folder sizes count a linked file once in each folder, so
+the drive's free space is what shows the saving.
 
 A staged patch is the mod's file under a second name, so change the mod, not the file in the game's data folder. Written
 over there, the mod's file changes too. The next session start finds it: a file HellForge keeps itself is made again,

@@ -93,31 +93,93 @@ public static class ModStaging
         return LocalInstall.Within(source, install.Temp) ? Path.GetDirectoryName(Path.GetFullPath(source)) : null;
     }
 
-    // Staged links written over since the last Stage (their size or time is not what Stage left): a modpack unpacked into
-    // game/data over a staged name, or an editor saving a mod's patch, wrote into the mod's file too. Run before the mods
-    // load: a store's folder is deleted, so HellForge makes it again from the zip, the host or the game (and Stage links
-    // the new file); a mod's own folder cannot be made again, so its line says to reinstall it. Returns the lines.
+    // Staged links written over since the last Stage: still the source's file, but not the size or time Stage left (a
+    // modpack unpacked into game/data over a staged name, or an editor saving a mod's patch, wrote into the mod's file too).
+    // A staged name replaced by a new file broke the link and left the mod alone: Stage links it again. Run before the
+    // mods load. A store's folder is set aside and deleted, so HellForge makes it again from the zip, the host or the game.
+    // A mod's own folder cannot be made again: its line is kept for the Mods page (Notices) until the file changes.
+    // Returns the lines (for the session's log).
     public static List<string> CheckLinks(InstallLayout install)
     {
         var lines = new List<string>();
+        var notices = ReadNotices(install);
         var data = Path.Combine(install.Game, "data");
         foreach (var (name, placed) in Placed(install))
         {
             var staged = new FileInfo(Path.Combine(data, name));
-            if (!placed.Linked || !staged.Exists || (staged.Length == placed.Length && staged.LastWriteTimeUtc.Ticks == placed.Written)) continue;
+            if (!placed.Linked || !staged.Exists || !File.Exists(placed.Source) ||
+                (staged.Length == placed.Length && staged.LastWriteTimeUtc.Ticks == placed.Written) ||
+                FileLinks.SameFile(placed.Source, staged.FullName) != true) continue;
             if (Store(install, placed.Source) is { } store)
             {
-                try { if (Directory.Exists(store)) Directory.Delete(store, recursive: true); }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-                lines.Add($"data/{name} was written over in the game's data folder; HellForge makes its mod's files again. Change a mod, not its staged patch: they are the same file.");
+                lines.Add(SetAside(store) is { } error
+                    ? $"data/{name} was written over in the game's data folder, and its mod's files HellForge keeps could not be made again ({error})."
+                    : $"data/{name} was written over in the game's data folder; HellForge makes its mod's files again. Change a mod, not its staged patch: they are the same file.");
                 continue;
             }
             var relative = Path.GetRelativePath(install.Mods, placed.Source).Replace('\\', '/');
             var slash = relative.IndexOf('/');
-            lines.Add(slash < 0 ? $"{relative} changed since the last session."
-                : $"{relative[..slash]}: {relative[(slash + 1)..]} changed since the last session, in the mod or through data/{name} in the game's data folder (they are the same file). If you did not change it yourself, reinstall the mod.");
+            var line = slash < 0 ? $"{relative} changed in place since it was staged."
+                : $"{relative[..slash]}: {relative[(slash + 1)..]} changed in place since it was staged, in the mod or through data/{name} in the game's " +
+                  "data folder (they are the same file), and the game loads it as it is now. If you did not change it yourself, reinstall the mod.";
+            lines.Add(line);
+            notices.RemoveAll(n => string.Equals(n.Source, placed.Source, StringComparison.OrdinalIgnoreCase));
+            notices.Add(new(placed.Source, staged.Length, staged.LastWriteTimeUtc.Ticks, line));
         }
+        WriteNotices(install, notices);
         return lines;
+    }
+
+    // A store's folder renamed out of the way first (one step, so no half-deleted folder is ever taken for a whole one),
+    // then deleted; what its owner does not find it makes again. A leftover that could not be deleted is a dot folder no
+    // mod loads from, which ModArchives.Sync, ModDataCache.Ensure and OwnPatches.Cached remove beside theirs (mods/.synced
+    // keeps it). Null, or why not.
+    static string? SetAside(string store)
+    {
+        if (!Directory.Exists(store)) return null;
+        var aside = Path.Combine(Path.GetDirectoryName(store)!, ".stale-" + Guid.NewGuid().ToString("N")[..8]);
+        try { Directory.Move(store, aside); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return error.Message; }
+        try { Directory.Delete(aside, recursive: true); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return null;
+    }
+
+    // A mod folder's file written over (CheckLinks), with the file's size and time then.
+    public sealed record LinkNotice(string Source, long Length, long Written, string Line);
+    const string NoticesName = "link-notices.json";
+
+    // The Mods page's lines for mod files written over through a staged link: each until its file changes or goes (the
+    // mod reinstalled or updated).
+    public static List<string> Notices(InstallLayout install)
+    {
+        var notices = ReadNotices(install);
+        var current = notices.Where(n => new FileInfo(n.Source) is { Exists: true } f && f.Length == n.Length && f.LastWriteTimeUtc.Ticks == n.Written).ToList();
+        if (current.Count != notices.Count)
+            try { WriteNotices(install, current); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return current.Select(n => n.Line).ToList();
+    }
+
+    static List<LinkNotice> ReadNotices(InstallLayout install)
+    {
+        try
+        {
+            var path = Path.Combine(install.Temp, NoticesName);
+            if (File.Exists(path) && JsonSerializer.Deserialize<List<LinkNotice>>(File.ReadAllText(path)) is { } read)
+                return read.Where(n => n?.Source != null && n.Line != null).ToList();
+        }
+        catch (Exception error) when (error is JsonException or IOException or NotSupportedException) { }
+        return [];
+    }
+
+    static void WriteNotices(InstallLayout install, List<LinkNotice> notices)
+    {
+        var path = Path.Combine(install.Temp, NoticesName);
+        if (notices.Count == 0) { if (File.Exists(path)) File.Delete(path); return; }
+        Directory.CreateDirectory(install.Temp);
+        File.WriteAllText(path + ".partial", JsonSerializer.Serialize(notices));
+        File.Move(path + ".partial", path, overwrite: true);
     }
 
     // The previous session's staged files stay where they are what this one stages (same name, and the same size and
@@ -158,7 +220,7 @@ public static class ModStaging
                 staged.Add(target);
                 var now = new FileInfo(Path.Combine(data, target));
                 records[target] = new(Path.GetFullPath(source), now.Length, now.LastWriteTimeUtc.Ticks,
-                    how == Placement.Linked || (how == Placement.Kept && placed.GetValueOrDefault(target)?.Linked == true));
+                    how == Placement.Linked || (how == Placement.Kept && FileLinks.SameFile(source, now.FullName) == true));
             }
             completed = true;
         }
@@ -183,16 +245,14 @@ public static class ModStaging
         if (File.Exists(path + ".staging")) File.Delete(path + ".staging");
     }
 
-    // One patch at path: kept when the last session staged it from this same file (and this version placed it from there,
-    // or it may not be a link anyway), else linked or copied through its .staging name. wasStaged: the last session staged
-    // it here; before: what this version placed there.
+    // One patch at path: kept when the last session staged it from this same file as it should be (Keep), else linked or
+    // copied through its .staging name. wasStaged: the last session staged it here; before: what this version placed there.
     static Placement Place(InstallLayout install, string source, string path, bool wasStaged, PlacedFile? before)
     {
         var staging = path + ".staging";
         if (File.Exists(staging)) File.Delete(staging);
         var linkable = Linkable(install, source);
-        var placedFromHere = before != null && string.Equals(before.Source, Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase);
-        if (wasStaged && Same(source, path) && (placedFromHere || !linkable)) return Placement.Kept;
+        if (wasStaged && Same(source, path) && Keep(source, path, linkable, before)) return Placement.Kept;
         var linked = FileLinks.LinkOrCopy(source, staging, linkable);
         if (new FileInfo(staging).Length != new FileInfo(source).Length)
             throw new InvalidDataException("A staged mod file was not copied whole: " + Path.GetFileName(path));
@@ -201,6 +261,18 @@ public static class ModStaging
         // Stage leaves its .staging name behind
         if (File.Exists(staging)) File.Delete(staging);
         return linked ? Placement.Linked : Placement.Copied;
+    }
+
+    // A staged file with its source's size and time stays when it is what it should be. Where a link may be, the source's
+    // own file: a copy (an earlier version's, or the old file of a mod updated or unpacked again in its place, which keeps
+    // the times) is linked again; one copied because the link failed last time stays copied. Where no link may be, a copy:
+    // a link (a zipped pack's unpacked file, moved into mods/ as its folder) is copied, so no mod folder is linked.
+    static bool Keep(string source, string path, bool linkable, PlacedFile? before)
+    {
+        var same = FileLinks.SameFile(source, path);
+        if (!linkable) return same != true;
+        if (same is { } known) return known || (before is { Linked: false } && string.Equals(before.Source, Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase));
+        return before != null && string.Equals(before.Source, Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase);
     }
 
     // Each mod's patch files (its data/, its pack's chosen folders, its generated data) with the names they are staged

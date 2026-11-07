@@ -411,6 +411,14 @@ static class ModTests
             check(File.ReadAllText(Path.Combine(data, ZipPatch)) == "Yipped", "The earlier copy did not become a link.");
             ModStaging.Stage(install, mods);
             check(ModStaging.LastCounts == (0, 2) && ModStaging.LastLinked == 0, $"Placed once, kept after: {ModStaging.LastCounts}.");
+            // the zip unpacked again at the same path (its files keep their times): the staged file, now the old file, is
+            // linked to the new one, not kept as a second copy
+            Directory.Delete(Path.GetDirectoryName(Path.GetDirectoryName(zipSource))!, recursive: true);
+            mods = ModCatalog.Load(install.Mods).Mods;
+            ModStaging.Stage(install, mods);
+            check(ModStaging.LastCounts == (1, 1) && ModStaging.LastLinked == 1, $"The zip's new file was not linked again: {ModStaging.LastCounts}, linked {ModStaging.LastLinked}.");
+            Overwrite(zipSource, "Y");
+            check(File.ReadAllText(Path.Combine(data, ZipPatch)) == "Yipped", "The staged patch is not the new file.");
             ModStaging.Unstage(install);
             check(!File.Exists(Path.Combine(install.Temp, "staged-placed.json")) && File.ReadAllText(zipSource) == "Yipped" && File.ReadAllText(plainSource) == "Plain",
                 "Unstaging removed the record and left the mods' own files alone.");
@@ -442,12 +450,24 @@ static class ModTests
                 !Directory.EnumerateDirectories(Path.Combine(install.Mods, ModArchives.UnpackedFolder)).Any(), "The zip's unpacked copy goes: " + string.Join(" | ", lines));
             // Windows links a mod folder too: its file took the write, and only the player can put the mod back
             var plainLinks = OperatingSystem.IsWindows();
-            check(lines.Any(l => l.StartsWith($"plain: data/{PlainPatch} changed since the last session", StringComparison.Ordinal)) == plainLinks &&
+            check(lines.Any(l => l.StartsWith($"plain: data/{PlainPatch} changed in place since it was staged", StringComparison.Ordinal)) == plainLinks &&
                 File.ReadAllText(Path.Combine(plain, "data", PlainPatch)) == (plainLinks ? "a modpack's own patch" : "plain"), "The folder mod: " + string.Join(" | ", lines));
+            check(ModStaging.Notices(install).Count == (plainLinks ? 1 : 0), "The Mods page's line: " + string.Join(" | ", ModStaging.Notices(install)));
             ModStaging.Stage(install, ModCatalog.Load(install.Mods).Mods);
             check(File.ReadAllText(Path.Combine(data, ZipPatch)) == "zipped" && File.ReadAllText(Path.Combine(data, PlainPatch)) == (plainLinks ? "a modpack's own patch" : "plain"),
                 "The zip's patch is staged again from its zip; a copied folder mod's is put back.");
-            check(ModStaging.CheckLinks(install).Count == 0, "Said once.");
+            check(ModStaging.CheckLinks(install).Count == 0 && ModStaging.Notices(install).Count == (plainLinks ? 1 : 0), "Said once in the log; the Mods page keeps it.");
+            // the mod reinstalled (a new file) clears the Mods page's line
+            File.Delete(Path.Combine(plain, "data", PlainPatch));
+            File.WriteAllText(Path.Combine(plain, "data", PlainPatch), "plain");
+            check(ModStaging.Notices(install).Count == 0, "The line outlived the reinstall.");
+
+            // a staged name replaced by a new file (deleted, then written) broke the link: the mod is intact, nothing is said
+            ModStaging.Stage(install, ModCatalog.Load(install.Mods).Mods);
+            File.Delete(Path.Combine(data, ZipPatch));
+            File.WriteAllText(Path.Combine(data, ZipPatch), "a modpack's own patch");
+            check(ModStaging.CheckLinks(install).Count == 0 && Directory.EnumerateDirectories(Path.Combine(install.Mods, ModArchives.UnpackedFolder)).Any(),
+                "A replaced staged file was taken for a written-over mod.");
         });
 
     }
