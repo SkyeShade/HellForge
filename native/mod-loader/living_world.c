@@ -1752,6 +1752,7 @@ static void LwTestStage(int seq, float d)
 static int g_lwTeleportForce; /* "teleport! X Y": the enemy check skipped (going back to a garrison) */
 static void LwTestTeleport(int seq, float x, float y);
 static int LwEnemiesNear(float x, float y, float r, float* nearest);
+static void LwTestGarrisons(int seq);
 static void LwTestVantage(int seq)
 {
     if (g_lwNodeCount < 8 || g_lwWorld.radius < 100.0f) { Note("living world: test command %d: vantage: no route graph or disc", seq); return; }
@@ -2292,6 +2293,7 @@ static void LwTestCommands(void)
         else if (sscanf(cmds[c], "teleport! %f %f", &d, &deg) == 2) { g_lwTeleportForce = 1; LwTestTeleport(seq, d, deg); g_lwTeleportForce = 0; }
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
         else if (strcmp(cmds[c], "vantage") == 0) LwTestVantage(seq);
+        else if (strcmp(cmds[c], "garrisons") == 0) LwTestGarrisons(seq);
         else if (sscanf(cmds[c], "stage %f", &d) == 1 && d > LW_R_ON && d < 2000.0f) LwTestStage(seq, d);
         else if (sscanf(cmds[c], "aim %f %f", &d, &deg) == 2) LwTestAim(seq, d, deg);
         else if (sscanf(cmds[c], "look %d", &idx) == 1) LwTestLook(seq, idx);
@@ -2562,6 +2564,27 @@ static LwGarrison* LwGarrisonOf(uint32_t entity)
 
 /* The survivor mask (KB "Garrisons", Phase 1 approach): notes when a garrison goes inactive (taken and killed points)
  * and, 5 s after it fills again, how many units it listed against the points that had a unit and are not killed. */
+/* Test command "garrisons": each garrison the game has, with its position (its descriptor's unit, +0xC in the shared
+ * component descriptor layout {resource, entity +8, unit +0xC, flags +0x14}), whether it is active, its points and
+ * units listed: for going to one on an extra large map. */
+static void LwTestGarrisons(int seq)
+{
+    uintptr_t gf, synced, runtime, lists, descriptors;
+    if (!EvpPtr(g_lw.game + 0x33265C0u, &gf) || !EvpPtr(gf + 0x50, &synced) || !EvpPtr(gf + 0x40, &runtime) || !EvpPtr(gf + 0x48, &lists) ||
+        !EvpPtr(gf + 0x38, &descriptors)) { Note("living world: test command %d: garrisons: the garrison manager does not read", seq); return; }
+    uint32_t owned = EvpU32(gf + 0x10, 0);
+    Note("living world: test command %d: garrisons: %u", seq, owned);
+    for (uint32_t i = 0; i < owned && i < LW_GARRISONS_MAX; i++)
+    {
+        uintptr_t d; uint8_t active = 0; float p[3] = {NAN, NAN, NAN};
+        if (!EvpPtr(descriptors + 8u * i, &d) || d == 0) continue;
+        SafeRead(synced + 0x40u * i + 0x38, &active, 1);
+        int at = EvpUnitPosition(EvpU32(d + 0xC, 0), p);
+        Note("living world: test command %d: garrison %08X %s at (%.0f, %.0f, %.1f): %u points, %u units listed", seq, EvpU32(d + 8, 0), active ? "active" : "inactive",
+            at ? (double)p[0] : 0.0, at ? (double)p[1] : 0.0, at ? (double)p[2] : 0.0, EvpU32(lists + 0x2B8u * i + 0x1A8, 0), EvpU32(runtime + 0x1B58u * i + 0x384, 0));
+    }
+}
+
 static void LwGarrisonsTick(void)
 {
     uintptr_t gf, synced, runtime, lists, descriptors, points;
