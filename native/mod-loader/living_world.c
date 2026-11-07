@@ -1109,6 +1109,12 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
         best->pos[0] = p[0]; best->pos[1] = p[1];
         int node = LwNearestNode(p[0], p[1]);
         if (node >= 0) { best->node = (uint16_t)node; best->pathLen = best->pathAt = 0; LwPlan(best); }
+        if (asFar && node >= 0) /* test only: a far squad's route leads to the player, so it walks into view for an aimed
+                                 * shot (lw33b, lw34d, lw35c: far squads on random routes walked away unseen) */
+        {
+            int home = LwNearestNode(pl[0], pl[1]), len = home >= 0 ? LwPath(node, home, best->path, LW_PATH_MAX) : 0;
+            if (len > 0) { best->pathLen = (uint8_t)len; best->pathAt = 0; }
+        }
         best->retry = 0;
         g_lwTestVisible = visible;
         LwOnline(best);
