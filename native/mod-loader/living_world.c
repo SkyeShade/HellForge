@@ -1615,6 +1615,44 @@ static void LwTestStage(int seq, float d)
         }
     Note("living world: test command %d: stage: no point %.0f +- 50 m out in player 1's sight (%d points tried, band %.0f m)", seq, (double)d, tried, (double)band);
 }
+/* Test command "vantage": a point in the disc with open views over the far band, so the far rule's natural onlines can
+ * be watched in clear line (audit 1e, 6: from most places on the vanilla maps the far band is behind terrain or
+ * scenery). 160 random grounded candidates inside 0.9 of the disc; for each, 96 random route nodes 250-700 m away,
+ * counted when the sight ray from the candidate's eye (+1.7 m) reaches 1 m over the node's ground; candidates with an
+ * enemy within 120 m are skipped (LwEnemiesNear). The best count wins; then teleported there (LwTestTeleport). One
+ * pass on the game thread (about 15k rays, ~0.1 s). */
+static void LwTestTeleport(int seq, float x, float y);
+static int LwEnemiesNear(float x, float y, float r, float* nearest);
+static void LwTestVantage(int seq)
+{
+    if (g_lwNodeCount < 8 || g_lwWorld.radius < 100.0f) { Note("living world: test command %d: vantage: no route graph or disc", seq); return; }
+    static uint32_t rng = 0x9E3779B9u;
+    #define LWRND() (rng ^= rng << 13, rng ^= rng >> 17, rng ^= rng << 5, (float)(rng & 0xFFFFFF) / 16777216.0f)
+    float best[2] = {0, 0}; int bestN = -1, tried = 0;
+    for (int c = 0; c < 160; c++)
+    {
+        float a = LWRND() * 6.2831853f, r = sqrtf(LWRND()) * 0.9f * g_lwWorld.radius, eye[3] = {r * cosf(a), r * sinf(a), 0}, nearest;
+        if (!LwGround(eye[0], eye[1], &eye[2]) || LwEnemiesNear(eye[0], eye[1], 120.0f, &nearest) > 0) continue;
+        eye[2] += 1.7f; tried++;
+        int n = 0;
+        for (int k = 0; k < 96; k++)
+        {
+            LwNode* o = &g_lwNodes[(int)(LWRND() * (float)g_lwNodeCount) % g_lwNodeCount];
+            float dx = o->x - eye[0], dy = o->y - eye[1], d2 = dx * dx + dy * dy;
+            if (d2 < 250.0f * 250.0f || d2 > 700.0f * 700.0f) continue;
+            float t[3] = {o->x, o->y, 0};
+            if (!LwGround(t[0], t[1], &t[2])) continue;
+            t[2] += 1.0f;
+            if (LwRayClear(eye, g_lwWorld.units[0], t) == 1) n++;
+        }
+        if (n > bestN) { bestN = n; best[0] = eye[0]; best[1] = eye[1]; }
+    }
+    #undef LWRND
+    if (bestN <= 0) { Note("living world: test command %d: vantage: none of %d safe candidates sees a route node 250-700 m out", seq, tried); return; }
+    Note("living world: test command %d: vantage: (%.0f, %.0f) sees %d of 96 sampled route nodes 250-700 m out (best of %d safe candidates)", seq, (double)best[0], (double)best[1], bestN, tried);
+    LwTestTeleport(seq, best[0], best[1]);
+}
+
 static void LwTestTeleport(int seq, float x, float y)
 {
     ActHealth h; const char* why = "";
@@ -2119,6 +2157,7 @@ static void LwTestCommands(void)
         else if (sscanf(cmds[c], "offline %d", &idx) == 1 && idx >= 0 && idx < g_lwWorld.count && g_lwSquads[idx].state == LW_ONLINE) g_lwSquads[idx].forceOff = 1;
         else if (strncmp(cmds[c], "kill garrison", 13) == 0) LwKillArm();
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
+        else if (strcmp(cmds[c], "vantage") == 0) LwTestVantage(seq);
         else if (sscanf(cmds[c], "stage %f", &d) == 1 && d > LW_R_ON && d < 2000.0f) LwTestStage(seq, d);
         else if (sscanf(cmds[c], "aim %f %f", &d, &deg) == 2) LwTestAim(seq, d, deg);
         else if (sscanf(cmds[c], "look %d", &idx) == 1) LwTestLook(seq, idx);
