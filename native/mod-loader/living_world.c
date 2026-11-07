@@ -2458,7 +2458,10 @@ static void LwSquadsTick(void)
  * +0x810 + 24 k, count +0x1110, +0x10 = local point + 1), point list [gf+0x48] + 0x2B8 i (+0x28 + 4 p global indexes,
  * count +0x1A8), descriptor [[gf+0x38] + 8 i] (+8 entity); points [game+0x346D5C0] + 0x58 g, flags +0x24. */
 #define LW_GARRISONS_MAX 512
-typedef struct LwGarrison { uint32_t entity; uint8_t seen, wasActive, refills; uint32_t taken[3], structure[3]; ULONGLONG checkAt, activeAt; } LwGarrison;
+typedef struct LwGarrison { uint32_t entity; uint8_t seen, wasActive, refills; uint32_t taken[3], structure[3], marked[3]; ULONGLONG checkAt, activeAt; } LwGarrison;
+/* marked: the points the loader itself set bit 6 on (held empty); kept apart from taken (audit 1f, 4: the loader's own
+ * marks, still set in the next active period, were counted as filled points, so after the next mode-0 despawn they were
+ * not marked again and the third fill spent its budget there, replacing kills elsewhere) */
 
 /* Test instrument (HELLFORGE_LW_TEST_KILL=1, host): one unit of the first garrison active for 15 s is killed through the
  * game's own death path, exactly as the game kills drowning and zone-floor units (0xAA88D8 / 0x89C9C9; KB living-world-plan
@@ -2603,8 +2606,8 @@ static void LwGarrisonsTick(void)
             g->seen = 1;
             for (uint32_t p = 0; p < n; p++)
             {
-                uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0;
-                if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x24, &flags, 4) && (flags & 0x40)) g->taken[p / 32] |= 1u << (p % 32);
+                uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0, bit = 1u << (p % 32);
+                if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x24, &flags, 4) && (flags & 0x40) && !(g->marked[p / 32] & bit)) g->taken[p / 32] |= bit; /* filled by the game, not our mark */
             }
             uint32_t structures = EvpU32(r + 0x1110, 0);
             for (uint32_t k = 0; k < structures && k < 96; k++)
@@ -2621,9 +2624,11 @@ static void LwGarrisonsTick(void)
             uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0;
             if (gi >= 0x100000) continue;
             uintptr_t at = points + 0x58u * gi + 0x24;
-            if (SafeRead(at, &flags, 4) || (flags & 0x340) != 0) continue; /* phase A, objective points and marked ones stay */
+            if (SafeRead(at, &flags, 4)) continue;
+            if ((flags & 0x340) == 0x40 && (g->marked[p / 32] & bit)) continue; /* our mark still set */
+            if ((flags & 0x340) != 0) continue; /* phase A, objective points and points the game holds stay */
             flags |= 0x40;
-            if (!LwPoke(at, &flags, 4)) marked++;
+            if (!LwPoke(at, &flags, 4)) { marked++; g->marked[p / 32] |= bit; }
         }
     }
     static ULONGLONG last;
