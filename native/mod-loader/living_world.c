@@ -2974,10 +2974,13 @@ static void LwInstallNavConnectNote(void)
  * arg6 / arg5 to [rbp+0] / [rbp+4] at 0x92361E..0x923630), each one's resource, position and alert, and the caller. H2:
  * each explosion the spawner 0x13C0A80 (rdx pos, r8d type, r9d source, arg5 attacker) makes within 15 m of an online loader
  * member, with its caller (0x8CB1FF a grenade / explosive, 0x11AD469 an ability's bone explosion). The original is
- * called last and its result returned as is. */
+ * called last with every argument it reads (checked by me: the apply reads up to entry rsp+0x98, 19 arguments; the spawner
+ * up to entry rsp+0x78 ([rsp+0xB0] after its push and 0x30), 15; lw95a crashed at 0x13C0CCB on its 13th, a pointer, when
+ * only 10 were passed on) and its result returned as is. */
 typedef uint64_t (*LwApplyFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
     uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
-typedef uint64_t (*LwBlastFn)(uint64_t, const float*, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+typedef uint64_t (*LwBlastFn)(uint64_t, const float*, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
+    uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
 static LwApplyFn g_lwApply; static LwBlastFn g_lwBlast;
 static volatile LONG g_lwHitNotes;
 static int LwOnlineMember(uint32_t e, int* squad)
@@ -3021,7 +3024,8 @@ static uint64_t LwHitApply(uint64_t mgr, uint64_t target, uint64_t kind, uint64_
     }
     return g_lwApply(mgr, target, kind, a4, damager, attacker, creditor, amount, a9, a10, a11, a12, a13, a14, a15, info, hash, a18, a19);
 }
-static uint64_t LwHitBlast(uint64_t self, const float* pos, uint64_t type, uint64_t source, uint64_t attacker, uint64_t a6, uint64_t a7, uint64_t a8, uint64_t a9, uint64_t a10)
+static uint64_t LwHitBlast(uint64_t self, const float* pos, uint64_t type, uint64_t source, uint64_t attacker, uint64_t a6, uint64_t a7, uint64_t a8, uint64_t a9, uint64_t a10,
+    uint64_t a11, uint64_t a12, uint64_t a13, uint64_t a14, uint64_t a15)
 {
     float p[3];
     if (pos && !SafeRead((uintptr_t)pos, p, 12) && isfinite(p[0]))
@@ -3043,7 +3047,7 @@ static uint64_t LwHitBlast(uint64_t self, const float* pos, uint64_t type, uint6
                 (uint32_t)type, (double)p[0], (double)p[1], (double)p[2], closeTo, who[0], who[1], (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_lw.game));
         }
     }
-    return g_lwBlast(self, pos, type, source, attacker, a6, a7, a8, a9, a10);
+    return g_lwBlast(self, pos, type, source, attacker, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15);
 }
 static void LwInstallHitNotes(void)
 {
