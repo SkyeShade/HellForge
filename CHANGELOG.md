@@ -112,6 +112,8 @@ On `dev`, since 0.4.0-beta.
 
 ### For contributors
 
+- **Nightlies have a Linux installer:** `HellForge-Nightly-Linux-Installer.tar.gz`, once this workflow is on `main`
+  (#309).
 - `tests/HellForge.LocalBackend.Tests` needs the game's catalogues: `HELLFORGE_TEST_CATALOGUE` names a folder with
   `progression-data.json` and `item-catalog.json` (an installation's `catalogue` folder after a sync). Without one the
   suite is skipped with a warning. CI takes them from a private test-data repository
