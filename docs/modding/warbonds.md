@@ -110,12 +110,15 @@ An item is left out for the session, with a line in the backend's log, when the 
 
 - a `mixId` the game's catalogue does not have;
 - a `repeatable` item that is not a consumable;
-- an item that is not a consumable and that the player has already, from the game's warbonds or another mod's warbond.
-  It stays on the page where they bought it;
 - Super Credits, or premium content (a premium warbond's item or token, a Superstore item, Steam DLC gear), owned or not:
   only its own warbond sells it;
 - a `weapon` or `stratagem` that is not registered this session, because its mod is not loaded, its premium content is
   not owned or the game's catalogue is full.
+
+An item that is not a consumable and that the player has already, from the game's warbonds or another mod's warbond, shows
+claimed, as on the warbond where they got it. It is not sold again: its price would buy nothing. Like an item left out,
+it counts towards no page. What the player has is taken when the session starts, so an item they get later in the
+session shows claimed from the next start; until then, its claim button is refused.
 
 ## Pages and prices
 
@@ -126,7 +129,7 @@ spent leaves them out too.
 The first page has none.
 Each later page needs at least as much as the page before it, and no more than the earlier pages cost in all, so it can
 always be opened. A player who buys everything on the earlier pages has spent their whole cost. When items are left out for
-a session (below), a page needs no more than the pages before it sell that session.
+a session or shown claimed (see [Items](#items)), a page needs no more than the pages before it sell that session.
 
 A price is paid from the player's balance, so it cannot be above what a player can hold. Today that is 250 medals,
 50,000 requisition, and 500 common, 250 rare and 100 super samples. HellForge leaves such an item out of the session and
@@ -167,8 +170,8 @@ warbonds changed (a mod with warbonds added or taken out), the Acquisition Cente
 time it opens. It does so once, as it does with a new warbond of the game's.
 
 A warbond a player has spent its whole cost on (in its `currency`) is listed last, after the mods' warbonds, as the game
-does with its own finished warbonds. One whose only prices in its `currency` are `repeatable` items, or that has none,
-never is. Its pages open and its items buy and unlock as the game's do, and players with
+does with its own finished warbonds. One whose only prices in its `currency` are `repeatable` items or items shown
+claimed, or that has none, never is. Its pages open and its items buy and unlock as the game's do, and players with
 everything unlocked have bought it all.
 
 Its card shows your `art`. The name beside the card and the page's title show your `name`, the tag under the name

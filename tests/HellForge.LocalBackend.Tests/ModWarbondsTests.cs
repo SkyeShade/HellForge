@@ -220,22 +220,37 @@ static class ModWarbondsTests
         check(requirements.SequenceEqual([0L, 5000L]) && (long)served.Detail["seasonPassPages"]![1]!["totalMedalsRequired"]! == 5000,
             "A page's requirement was not kept within what the pages before it sell: " + string.Join(",", requirements));
         check(!served.Sells.Values.Contains(steeled), "Paid content was sold on a mod's warbond.");
-        // An item held once that the player has already (from another warbond, or bought on another mod's) is left out;
-        // one bought on this warbond stays, claimed.
+        // An item held once that the player has already (from another warbond, or bought on another mod's) is shown claimed,
+        // not sold and not counted; one bought on this warbond is sold as any (bought, so claimed).
         var two = ModWarbonds.Parse("test", "Test", JsonDocument.Parse($$"""
             {"format":1,"warbonds":[{"key":"one","name":"One","pages":[{"items":[{"mixId":{{mobilize[0]}},"cost":5},{"mixId":{{mobilize[1]}},"cost":5}]}]},
               {"key":"two","name":"Two","pages":[{"items":[{"mixId":{{mobilize[1]}},"cost":5},{"mixId":{{mobilize[2]}},"cost":5}]}]}]}
             """).RootElement, []);
         var oneBought = two[0].Pages[0].Items[1].Id;
         var ownedLog = new List<string>();
-        var owned = new ModWarbondService(two)
+        var ownedService = new ModWarbondService(two)
         {
             Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = ownedLog.Add,
             Holds = () => new HashSet<uint> { mobilize[0], mobilize[1] }, Purchased = () => new HashSet<long> { oneBought },
-        }.Resolve();
+        };
+        var owned = ownedService.Resolve();
+        long[] claimedIds = [two[0].Pages[0].Items[0].Id, two[1].Pages[0].Items[0].Id];
         check(owned.Count == 2 && owned[0].Sells.Keys.SequenceEqual([(long)oneBought]) && owned[1].Sells.Values.SequenceEqual([mobilize[2]]) &&
-            ownedLog.Count(l => l.Contains("has it already")) == 2,
-            "Items the player has already were sold again, or one bought on its own warbond was left out: " + string.Join(" | ", ownedLog));
+            owned[0].Claimed.SequenceEqual([claimedIds[0]]) && owned[1].Claimed.SequenceEqual([claimedIds[1]]) &&
+            owned.All(w => w.Detail["seasonPassPages"]![0]!["seasonPassItems"]!.AsArray().Count == 2) && owned[1].TotalCost == 5 && ownedLog.Count == 0,
+            "Items the player has already were sold again or not shown, or one bought on its own warbond was not sold: " + string.Join(" | ", ownedLog));
+        var shownBought = ownedService.Apply("/Progression", JsonSerializer.SerializeToElement(new { purchasedSeasonPassItems = new[] { 1L, oneBought } }))
+            .GetProperty("purchasedSeasonPassItems").EnumerateArray().Select(i => i.GetInt64()).ToList();
+        check(shownBought.Order().SequenceEqual(new[] { 1L, oneBought }.Concat(claimedIds).Order()) && ownedService.Find(claimedIds[1]) == null,
+            "The items the player has already were not served claimed, or one could be bought: " + string.Join(",", shownBought));
+        // A warbond whose every item the player has is shown, all claimed.
+        var allHeld = new ModWarbondService(two)
+        {
+            Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = _ => { },
+            Holds = () => new HashSet<uint> { mobilize[0], mobilize[1], mobilize[2] },
+        }.Resolve();
+        check(allHeld.Count == 2 && allHeld.All(w => w.Sells.Count == 0 && w.Claimed.Count == 2 && w.TotalCost == 0),
+            "A warbond whose items the player all has was not shown with them claimed.");
         // Unlock-all has everything bought, so its warbonds keep every item though the profile holds them all.
         var allOwned = new ModWarbondService(two)
         {

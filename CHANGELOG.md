@@ -32,6 +32,7 @@ On `dev`, since 0.4.0-beta.
   - A warbond can cost Forge Credits, paid once with the game's warbond button, and an item can have a currency of its
     own, which the claim button names when the player cannot afford it. Only prices in the warbond's own currency count
     as spent on it.
+  - An item the player has already, from the game's warbonds or another mod's, shows claimed and is not sold again.
 - **Shields that stop grenades.** The FX-12 Shield Generator Relay, G/SH-39 Shield and SH-32 Shield Generator Pack have a
   **Stops grenades** setting in the editor, off by default. Grenades, throwing knives and self-destruct drones bounce off
   the bubble from outside, and ones thrown from inside still leave. Helldivers, enemies, vehicles and

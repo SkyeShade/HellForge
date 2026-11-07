@@ -45,14 +45,18 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     // The mixIds the profile holds now (its saved inventory, amount above 0).
     public Func<IReadOnlySet<uint>>? Holds { get; set; }
 
-    // What the player had when the session's first warbond was served: the pages leave out what they had then, so they
-    // stay as the game loaded them (a later purchase is refused at the buy, HasAlready).
+    // What the player had when the session's first warbond was served: the pages show what they had then as claimed, so
+    // they stay as the game loaded them (a later purchase is refused at the buy, HasAlready).
     (IReadOnlySet<long> Bought, IReadOnlySet<uint> Held)? owned;
     public Action<string> Log { get; set; } = line => Console.Error.WriteLine("[mod warbonds] " + line);
     readonly HashSet<string> reported = [];
 
-    // A warbond as served this session: its spec, the items it sells (by seasonPassItemId) and its game-shaped bodies.
-    public sealed record Served(ModWarbonds.Warbond Spec, JsonObject ListEntry, JsonObject Detail, IReadOnlyDictionary<long, uint> Sells, long TotalCost);
+    // A warbond as served this session: its spec, the items it sells (by seasonPassItemId), the items shown claimed because
+    // the player has them already (never sold, never counted as spent) and its game-shaped bodies.
+    public sealed record Served(ModWarbonds.Warbond Spec, JsonObject ListEntry, JsonObject Detail, IReadOnlyDictionary<long, uint> Sells, long TotalCost)
+    {
+        public IReadOnlySet<long> Claimed { get; init; } = new HashSet<long>();
+    }
 
     // What a warbond's items are checked against: the catalogue's ids and currency caps, and the registered mod items.
     sealed record Lookup(HashSet<uint>? Catalogue, HashSet<uint>? Consumables, Dictionary<uint, long> Caps, List<RegisteredItems.Item> Registered)
@@ -83,11 +87,11 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             else if (result.Count >= ListCap - list.Count)
                 Report(warbond, "", $"the game lists {ListCap} warbonds, and {list.Count + result.Count} are listed already");
             else if (Serve(warbond, lookup) is not { } ready) { }
-            else if (items + ready.Sells.Count > ItemRoom)
+            else if (items + ready.Sells.Count + ready.Claimed.Count > ItemRoom)
                 Report(warbond, "", $"the game holds {ItemRoom} items of mods' warbonds in all, and {items} are served already");
             else
             {
-                items += ready.Sells.Count;
+                items += ready.Sells.Count + ready.Claimed.Count;
                 result.Add(ready);
             }
         }
@@ -131,19 +135,20 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             .Any(i => i.Id != itemId && bought.Contains(i.Id) && ItemOf(i.Sells, null, registered, out _) == mixId);
     }
 
-    // One warbond in the game's shapes, or null when none of its items can be sold.
+    // One warbond in the game's shapes, or null when it has no item to sell or show.
     Served? Serve(ModWarbonds.Warbond warbond, Lookup lookup)
     {
         var sells = new Dictionary<long, uint>();
+        var claimed = new HashSet<long>();
         var pages = new JsonArray([.. warbond.Pages.Select(page => (JsonNode)new JsonObject
         {
             ["totalMedalsRequired"] = page.Requirement,
-            ["seasonPassItems"] = new JsonArray([.. page.Items.Select(item => Cell(warbond, item, lookup, sells)).OfType<JsonNode>()]),
+            ["seasonPassItems"] = new JsonArray([.. page.Items.Select(item => Cell(warbond, item, lookup, sells, claimed)).OfType<JsonNode>()]),
         })]);
         var total = warbond.Pages.Sum(p => p.Items.Where(i => sells.ContainsKey(i.Id) && i.CountsAsSpent(warbond.CurrencyMixId)).Sum(i => i.Cost));
-        if (sells.Count == 0)
+        if (sells.Count + claimed.Count == 0)
         {
-            Report(warbond, "", "none of its items can be sold this session");
+            Report(warbond, "", "none of its items can be sold or shown this session");
             return null;
         }
         // Each page's requirement within what the pages before it sell this session (items left out cannot be bought).
@@ -165,7 +170,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         detail["seasonPassPages"] = pages;
         detail["pageRequirements"] = requirements;
         detail["premiumTokenMixIds"] = Tokens(warbond);
-        return new Served(warbond, entry, detail, sells, total);
+        return new Served(warbond, entry, detail, sells, total) { Claimed = claimed };
     }
 
     // A warbond with a price or a premium look has a token, which owns it (game.dll 0x136E470); one without either has none,
@@ -178,8 +183,8 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         ["medalsSpentMixId"] = warbond.Spent, ["totalCost"] = Math.Max(total, 1), /* 0 reads complete (held spent == totalCost, 0x1963587): the card moves last */
     };
 
-    // An item's cell in the game's detail shape, or null (reported) when it cannot be sold.
-    JsonObject? Cell(ModWarbonds.Warbond warbond, ModWarbonds.Item item, Lookup lookup, Dictionary<long, uint> sells)
+    // An item's cell in the game's detail shape, or null (reported) when it cannot be sold or shown.
+    JsonObject? Cell(ModWarbonds.Warbond warbond, ModWarbonds.Item item, Lookup lookup, Dictionary<long, uint> sells, HashSet<long> claimed)
     {
         if (lookup.Caps.TryGetValue(CurrencyOf(warbond, item), out var cap) && item.Cost > cap)
         {
@@ -191,21 +196,20 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             Report(warbond, item.Sells.ToString(), why);
             return null;
         }
-        // An item held once (not a consumable) the player has already, from another warbond or bought on another mod's, is
-        // not sold again: its price would buy nothing. One bought here stays, claimed.
-        if (!UnlockAll && lookup.Consumables != null && !item.Repeatable && !lookup.Bought.Contains(item.Id) && lookup.Owned.Contains(mixId) &&
-            !lookup.Consumables.Contains(mixId))
-        {
-            Report(warbond, item.Sells.ToString(), "the player has it already");
-            return null;
-        }
         // A repeatable item is bought again and again: only a consumable adds up (an armor or a weapon is held once).
         if (item.Repeatable && lookup.Consumables != null && !lookup.Consumables.Contains(mixId))
         {
             Report(warbond, item.Sells.ToString(), "it is \"repeatable\", and only a consumable can be bought again");
             return null;
         }
-        sells[item.Id] = mixId;
+        // An item held once (not a consumable) the player has already, from another warbond or bought on another mod's, is
+        // shown claimed (its id in the served purchased list, Claim) and not sold: its price would buy nothing. It counts
+        // towards no page, as an item left out. One bought here is sold as any (bought, so claimed).
+        if (!UnlockAll && lookup.Consumables != null && !item.Repeatable && !lookup.Bought.Contains(item.Id) && lookup.Owned.Contains(mixId) &&
+            !lookup.Consumables.Contains(mixId))
+            claimed.Add(item.Id);
+        else
+            sells[item.Id] = mixId;
         return new JsonObject
         {
             ["seasonPassItemId"] = item.Id, ["itemMixId"] = mixId, ["medalCost"] = item.Cost,
@@ -244,16 +248,15 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     public JsonElement Apply(string path, JsonElement body)
     {
         if (warbonds.Count == 0 || path is not ("/SeasonPass" or "/Progression/items" or "/Progression/inventory" or "/Progression")) return body;
-        if (path == "/Progression" && !UnlockAll) return body;
         var served = Resolve();
-        if (served.Count == 0) return body;
+        if (served.Count == 0 || (path == "/Progression" && !UnlockAll && served.All(w => w.Claimed.Count == 0))) return body;
         var node = JsonNode.Parse(body.GetRawText());
         var changed = (path, node) switch
         {
             ("/SeasonPass", JsonArray list) => AddEntries(list, served),
             ("/Progression/items", JsonArray catalogue) => AddCounters(catalogue, served),
             ("/Progression/inventory", JsonObject { } inventory) when inventory["items"] is JsonArray held => HoldTokens(held, served) | (UnlockAll && FillCounters(held, served)),
-            ("/Progression", JsonObject progression) => BuyAll(progression, served),
+            ("/Progression", JsonObject progression) => Claim(progression, served, UnlockAll),
             _ => false,
         };
         if (!changed) return body;
@@ -316,14 +319,16 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         return true;
     }
 
-    // Unlock-all: every item of the mods' warbonds bought.
-    static bool BuyAll(JsonObject progression, IReadOnlyList<Served> served)
+    // The purchased list the game is served (it fills its own from it alone, 0x1038BF0; never saved): the items the player
+    // has already shown claimed, and on unlock-all every item of the mods' warbonds bought.
+    static bool Claim(JsonObject progression, IReadOnlyList<Served> served, bool unlockAll)
     {
         var bought = progression["purchasedSeasonPassItems"] as JsonArray ?? [];
         var have = bought.OfType<JsonValue>().Select(v => v.TryGetValue<long>(out var id) ? id : -1).ToHashSet();
         // a repeatable item is never bought for good: it stays for sale, as after a purchase
         var repeatable = served.SelectMany(w => w.Spec.Pages.SelectMany(p => p.Items)).Where(i => i.Repeatable).Select(i => (long)i.Id).ToHashSet();
-        foreach (var id in served.SelectMany(w => w.Sells.Keys).Where(id => !repeatable.Contains(id) && have.Add(id))) bought.Add((JsonNode)id);
+        var shown = served.SelectMany(w => unlockAll ? w.Sells.Keys.Concat(w.Claimed) : w.Claimed);
+        foreach (var id in shown.Where(id => !repeatable.Contains(id) && have.Add(id))) bought.Add((JsonNode)id);
         progression["purchasedSeasonPassItems"] = bought;
         return true;
     }
