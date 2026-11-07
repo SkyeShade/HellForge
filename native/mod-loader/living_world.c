@@ -1016,8 +1016,10 @@ static const char* LwLostWhy(uint32_t unit, uint32_t* squad, char* by, size_t si
         {
             uint32_t au = 0, vu = 0; float ap[3] = {0, 0, 0}; uint64_t res = EvpEntityResource(g_lw.game, attacker, &au), vres = EvpEntityResource(g_lw.game, unit, &vu);
             int placed = au && EvpUnitPosition(au, ap);
-            snprintf(what, sizeof what, "a member of squad %d (resource %016llx, %s%.1f m away; the dead one %016llx)", of, (unsigned long long)res, placed ? "" : "no position, ",
-                placed ? (double)sqrtf((ap[0] - at[0]) * (ap[0] - at[0]) + (ap[1] - at[1]) * (ap[1] - at[1]) + (ap[2] - at[2]) * (ap[2] - at[2])) : 0.0, (unsigned long long)vres);
+            /* hash 0 is a bullet or explosion hit (impacts carry E32E9832; KB living-world-spawn-losses "Mate kills"):
+             * the shooter's alert says whether it was engaging something */
+            snprintf(what, sizeof what, "a member of squad %d (resource %016llx, alert %u, %s%.1f m away; the dead one %016llx)", of, (unsigned long long)res, LwAlert(attacker),
+                placed ? "" : "no position, ", placed ? (double)sqrtf((ap[0] - at[0]) * (ap[0] - at[0]) + (ap[1] - at[1]) * (ap[1] - at[1]) + (ap[2] - at[2]) * (ap[2] - at[2])) : 0.0, (unsigned long long)vres);
         }
         else if (enemy && net && net != 0x7FFF) snprintf(what, sizeof what, "an enemy of garrison net %08X", net);
         else if (enemy) snprintf(what, sizeof what, "an enemy in no garrison");
