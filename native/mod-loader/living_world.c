@@ -175,7 +175,7 @@ static void LwPatrolsOff(void)
  * +0 x, y in map space, +0x10 + 8 k up to 16 edge pointers, NULL-terminated), count u32 G+0x11A71B4; an edge (0x48)
  * holds its end nodes at +0x10 / +0x18 and is walkable when both route cells +0x20 / +0x28 are set. World = map -
  * [lg+0x1E0] / 2. Copied once the level is generated ([lg+0x1E4] == 3), keyed to the level's seed [lg+0x8]. */
-#define LW_NODES_MAX 4096
+#define LW_NODES_MAX 8192
 typedef struct LwNode { float x, y; uint16_t next[16]; uint8_t degree; } LwNode;
 static LwNode g_lwNodes[LW_NODES_MAX];
 static int g_lwNodeCount;
@@ -226,6 +226,94 @@ static int LwCopyRoutes(uintptr_t lg)
     }
     g_lwNodeCount = (int)count;
     return (int)count;
+}
+
+/* The walking grid (audit 1e, criterion 7): on an extra large map the level's route graph is sparse (576-610 nodes,
+ * 500-700 m apart, over a 7-7.8 km disc), so offline squads, which live on routes, gathered on a few lines and a player
+ * elsewhere had none near for minutes. The level's own height plan (g_near.global, the 4096 x 4096 capture the XL
+ * terrain is built from; 4 m a sample; NearGlobalAt, world metres) gives the ground everywhere, so the copy gains a
+ * grid of nodes LW_GRID apart inside the disc where the ground is above the highest water + 1 m and no steeper than
+ * LW_GRID_SLOPE over 8 m, joined to its 8 neighbours where the straight line between them stays walkable (every 8 m step
+ * within the slope, above water), and each level node joined to its nearest grid node within LW_GRID of a walkable line.
+ * Squads then start spread evenly over the disc, at the density LwPopulate sets (vanilla's cap within R_on), and walk
+ * locally (LwPlan): no squad is steered toward a player. Offline only: online squads still take goals only at nodes
+ * whose navmesh exists (LwNodeHasFace). */
+#define LW_GRID 200.0f
+#define LW_GRID_SLOPE 0.70f /* rise over run: 35 deg */
+static int LwGridWalkable(float x, float y, float water)
+{
+    float h = NearGlobalAt(x, y);
+    if (h < -9000.0f || h < water + 1.0f) return 0;
+    float hx = NearGlobalAt(x + 8.0f, y), hy = NearGlobalAt(x, y + 8.0f);
+    return hx > -9000.0f && hy > -9000.0f && fabsf(hx - h) <= 8.0f * LW_GRID_SLOPE && fabsf(hy - h) <= 8.0f * LW_GRID_SLOPE;
+}
+static int LwGridLine(float ax, float ay, float bx, float by, float water)
+{
+    float dx = bx - ax, dy = by - ay, len = sqrtf(dx * dx + dy * dy);
+    int steps = (int)(len / 8.0f) + 1;
+    float prev = NearGlobalAt(ax, ay);
+    for (int k = 1; k <= steps; k++)
+    {
+        float t = (float)k / (float)steps, h = NearGlobalAt(ax + dx * t, ay + dy * t);
+        if (h < -9000.0f || h < water + 0.5f || fabsf(h - prev) > (len / (float)steps) * LW_GRID_SLOPE) return 0;
+        prev = h;
+    }
+    return 1;
+}
+static void LwLink(int a, int b)
+{
+    LwNode* na = &g_lwNodes[a]; LwNode* nb = &g_lwNodes[b];
+    for (int k = 0; k < na->degree; k++) if (na->next[k] == b) return;
+    if (na->degree >= 16 || nb->degree >= 16) return;
+    na->next[na->degree++] = (uint16_t)b; nb->next[nb->degree++] = (uint16_t)a;
+}
+/* 1 when the grid is added (or not needed: a vanilla disc); 0 to wait (the height plan of this level not copied yet). */
+static int LwGridRoutes(float radius)
+{
+    if (!(radius > 0)) { LwWhy("no playable radius yet (the walking grid needs it)"); return 0; }
+    if (radius < 1500.0f) return 1; /* vanilla discs: the level's routes cover them */
+    if (g_near.global == NULL || g_near.level != g_world.levels || g_near.columns != 4096 || g_near.rows != 4096) { LwWhy("the extra large map's height plan is not copied yet (the walking grid waits for it)"); return 0; }
+    float water = g_nearWater.level == g_world.levels ? g_nearWater.high : -500.0f;
+    enum { G = 96 };
+    static int16_t cell[G][G];
+    int base = g_lwNodeCount, half = (int)(radius / LW_GRID);
+    if (half > G / 2 - 1) half = G / 2 - 1;
+    for (int r = 0; r < G; r++) for (int c = 0; c < G; c++) cell[r][c] = -1;
+    for (int r = -half; r <= half; r++) for (int c = -half; c <= half; c++)
+    {
+        float x = (float)c * LW_GRID, y = (float)r * LW_GRID;
+        if (x * x + y * y > (radius - 50.0f) * (radius - 50.0f) || g_lwNodeCount >= LW_NODES_MAX || !LwGridWalkable(x, y, water)) continue;
+        LwNode* o = &g_lwNodes[g_lwNodeCount]; memset(o, 0, sizeof *o); o->x = x; o->y = y;
+        cell[r + G / 2][c + G / 2] = (int16_t)g_lwNodeCount++;
+    }
+    int edges = 0, joined = 0;
+    static const int dr[4] = {0, 1, 1, 1}, dc[4] = {1, 0, 1, -1};
+    for (int r = 0; r < G; r++) for (int c = 0; c < G; c++)
+    {
+        int a = cell[r][c]; if (a < 0) continue;
+        for (int k = 0; k < 4; k++)
+        {
+            int r2 = r + dr[k], c2 = c + dc[k];
+            if (r2 < 0 || c2 < 0 || r2 >= G || c2 >= G || cell[r2][c2] < 0) continue;
+            int b = cell[r2][c2];
+            if (LwGridLine(g_lwNodes[a].x, g_lwNodes[a].y, g_lwNodes[b].x, g_lwNodes[b].y, water)) { LwLink(a, b); edges++; }
+        }
+    }
+    for (int i = 0; i < base; i++)
+    {
+        int best = -1; float bd = LW_GRID * LW_GRID * 2.0f;
+        int c0 = (int)floorf(g_lwNodes[i].x / LW_GRID + 0.5f) + G / 2, r0 = (int)floorf(g_lwNodes[i].y / LW_GRID + 0.5f) + G / 2;
+        for (int r = r0 - 1; r <= r0 + 1; r++) for (int c = c0 - 1; c <= c0 + 1; c++)
+        {
+            if (r < 0 || c < 0 || r >= G || c >= G || cell[r][c] < 0) continue;
+            float ex = g_lwNodes[cell[r][c]].x - g_lwNodes[i].x, ey = g_lwNodes[cell[r][c]].y - g_lwNodes[i].y, d = ex * ex + ey * ey;
+            if (d < bd && LwGridLine(g_lwNodes[i].x, g_lwNodes[i].y, g_lwNodes[cell[r][c]].x, g_lwNodes[cell[r][c]].y, water)) { bd = d; best = cell[r][c]; }
+        }
+        if (best >= 0) { LwLink(i, best); joined++; }
+    }
+    Note("living world: walking grid: %d nodes %.0f m apart over the %.0f m disc (%d edges; %d of the level's %d route nodes joined to it; water %.1f m)",
+        g_lwNodeCount - base, (double)LW_GRID, (double)radius, edges, joined, base, (double)water);
+    return 1;
 }
 
 /* A* over the copy from a to b (straight-line costs); the path's nodes after a, up to max, into out; its length. */
@@ -351,7 +439,7 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
  * cap in units (0x959650(dir, the row's saved cap): it counts job-1 units, 0x9513A1) / the mean group size, so the
  * expected number of squads within R_on of a player matches vanilla's. Online within R_on of a player and inside the
  * playable disc (R = u32 [S+0x2C] x f32 [S+0x50] / 2, S = [[lg+0x2A8]+0x19B010]); offline beyond R_off at alert 0. */
-#define LW_SQUADS_MAX 6144
+#define LW_SQUADS_MAX 8192
 #define LW_PATH_MAX 32
 #define LW_R_ON 250.0f
 #define LW_R_OFF 350.0f
@@ -471,14 +559,19 @@ static int LwNearestNode(float x, float y)
     return best;
 }
 
-/* A new destination: a random node inside the playable disc, and the path there. */
+/* A new destination: a random node inside the playable disc, and the path there. On a disc wider than LW_ROAM a node
+ * within LW_ROAM of the squad (audit 1e, 7: on XL a squad brought online near a player walked off toward a node anywhere
+ * on the 7.8 km disc; squads that roam locally keep the even spread they start with). */
+#define LW_ROAM 1200.0f
 static void LwPlan(LwSquad* q)
 {
-    for (int tries = 0; tries < 8; tries++)
+    int local = g_lwWorld.radius > LW_ROAM;
+    for (int tries = 0; tries < (local ? 24 : 8); tries++)
     {
         int goal = (int)(LwRand() % (uint32_t)g_lwNodeCount);
         float r = g_lwWorld.radius;
         if (g_lwNodes[goal].x * g_lwNodes[goal].x + g_lwNodes[goal].y * g_lwNodes[goal].y > r * r) continue;
+        if (local && LwDist2(q->pos, g_lwNodes[goal].x, g_lwNodes[goal].y) > LW_ROAM * LW_ROAM) continue;
         int n = LwPath(q->node, goal, q->path, LW_PATH_MAX);
         if (n > 0) { q->pathLen = (uint8_t)n; q->pathAt = 0; return; }
     }
@@ -2175,65 +2268,8 @@ static void LwTestCommands(void)
     }
 }
 
-/* Presence (audit 1d, 7): squads walk the game's route graph, and on an extra large map its edges can stay farther than
- * the online radius from where a player is (lw76b: the nearest edge 302 m from the drop; the first squad came 8 min 49 s
- * later), where vanilla's patrols would have come to the player anyway. So when a player has had no squad (offline or
- * online) within the online radius for LW_STARVE_MS and none is on its way, the nearest offline squad leaves the routes
- * and walks straight, at its own pace, to a point 200 m from that player on its side; from there the near rule brings it
- * online as for any squad (out of sight, 150..250 m), and online it plans back onto the routes. The point follows the
- * player every 10 s; the online budget still applies. */
-#define LW_STARVE_MS 30000
-static ULONGLONG g_lwStarved[EVT_MAX_PLAYERS];
-static void LwPresence(ULONGLONG now)
-{
-    static ULONGLONG at;
-    if (now - at < 1000) return;
-    at = now;
-    float r = g_lwWorld.radius;
-    for (int j = 0; j < g_lwWorld.playersAt && j < EVT_MAX_PLAYERS; j++)
-    {
-        const float* pl = g_lwWorld.players[j];
-        int served = 0, pulledBy = -1;
-        for (int i = 0; i < g_lwWorld.count && !served; i++)
-        {
-            LwSquad* q = &g_lwSquads[i];
-            if (q->pulled == 1 && q->pullFor == j) { pulledBy = i; served = 0; continue; }
-            float dx = q->pos[0] - pl[0], dy = q->pos[1] - pl[1];
-            if (q->survivors && dx * dx + dy * dy < LW_R_ON * LW_R_ON) served = 1;
-        }
-        if (served) { g_lwStarved[j] = 0; if (pulledBy >= 0) g_lwSquads[pulledBy].pulled = 0; continue; }
-        if (pulledBy >= 0) /* on its way: the point follows the player */
-        {
-            LwSquad* q = &g_lwSquads[pulledBy];
-            if (now - q->pullAt >= 10000)
-            {
-                float dx = q->pos[0] - pl[0], dy = q->pos[1] - pl[1], d = sqrtf(dx * dx + dy * dy);
-                if (d > 1.0f) { q->pullTo[0] = pl[0] + dx / d * 200.0f; q->pullTo[1] = pl[1] + dy / d * 200.0f; }
-                q->pullAt = now;
-            }
-            continue;
-        }
-        if (!g_lwStarved[j]) { g_lwStarved[j] = now; continue; }
-        if (now - g_lwStarved[j] < LW_STARVE_MS || g_lwWorld.onlineUnits >= g_lwWorld.eff) continue;
-        int best = -1; float bd = 3e38f;
-        for (int i = 0; i < g_lwWorld.count; i++)
-        {
-            LwSquad* q = &g_lwSquads[i];
-            if (q->state != LW_OFFLINE || q->pulled || !q->survivors || q->cycled) continue;
-            float dx = q->pos[0] - pl[0], dy = q->pos[1] - pl[1], d = dx * dx + dy * dy;
-            if (d < bd) { bd = d; best = i; }
-        }
-        if (best < 0) continue;
-        LwSquad* q = &g_lwSquads[best];
-        float d = sqrtf(bd), ux = (q->pos[0] - pl[0]) / d, uy = (q->pos[1] - pl[1]) / d, tx = pl[0] + ux * 200.0f, ty = pl[1] + uy * 200.0f;
-        float t2 = tx * tx + ty * ty;
-        if (t2 > 0.95f * 0.95f * r * r) { float k = 0.95f * r / sqrtf(t2); tx *= k; ty *= k; } /* inside the playable disc */
-        q->pulled = 1; q->pullFor = (uint8_t)j; q->pullTo[0] = tx; q->pullTo[1] = ty; q->pullAt = now;
-        Note("living world: presence: player %d had no squad within %.0f m for %.0f s: squad %d (%.0f m away, %u alive) leaves the routes toward (%.0f, %.0f), 200 m from the player",
-            j + 1, (double)LW_R_ON, (double)(now - g_lwStarved[j]) / 1000.0, best, (double)d, q->survivors, (double)tx, (double)ty);
-        g_lwStarved[j] = 0;
-    }
-}
+/* (The presence pull, which walked an offline squad toward a player with none near, is gone: on extra large maps the
+ * walking grid spreads squads evenly instead; audit 1e, 7.) */
 
 static void LwSquadsTick(void)
 {
@@ -2256,6 +2292,7 @@ static void LwSquadsTick(void)
     {
         if (LwCopyRoutes(lg) == 0) return;
         g_lwWorld.radius = LwPlayRadius(lg);
+        if (!LwGridRoutes(g_lwWorld.radius)) { g_lwNodeCount = 0; return; } /* copied again next tick, then the grid */
     }
     if (!g_lwWorld.populated) { if (g_lwWorld.playersAt == 0) { LwWhy("no player position yet"); return; } LwPopulate(); if (g_lwWorld.populated <= 0) return; }
     ULONGLONG now = GetTickCount64();
@@ -2277,7 +2314,6 @@ static void LwSquadsTick(void)
     LwTestKeepAlive(); /* test runs: the Helldiver healed to full */
     LwDrawnTick(); /* the main view's drawn state of far squads (test instrument, HELLFORGE_LW_DRAWN=1) */
     LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
-    LwPresence(now);
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
