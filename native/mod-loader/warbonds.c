@@ -462,6 +462,7 @@ static uint32_t WarbondTablePins(uintptr_t game)
 }
 
 static const char* InstallWarbondList(uintptr_t game); /* warbond_list.c */
+static const char* InstallWarbondPager(uintptr_t game); /* warbond_pager.c */
 static const char* InstallWarbondTexts(uintptr_t game); /* warbond_texts.c */
 static const char* InstallWarbondShowcase(uintptr_t game); /* warbond_showcase.c */
 
@@ -497,6 +498,8 @@ static void InstallModWarbonds(void)
     if (strcmp(g_build, "25480438") || !game) return;
     const char* list = InstallWarbondList(game);
     if (list) Note("warbonds: the game lists its 32 warbonds at most, mods' past them wait: %s", list);
+    const char* pager = list ? NULL : InstallWarbondPager(game);
+    if (pager) Note("warbonds: past 32 warbonds the Acquisition Center's pager shows no position: %s", pager);
     const char* items = InstallWarbondItems(game);
     if (items) Note("warbonds: an item in another currency than its warbond's is checked and charged in the warbond's on screen: %s", items);
     const char* repeat = InstallWarbondRepeat(game);

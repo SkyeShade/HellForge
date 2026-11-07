@@ -137,6 +137,11 @@ public static class ModWarbonds
             problems.Add($"{modName}: {FileName} has no \"warbonds\" list.");
             return warbonds;
         }
+        if (root.EnumerateObject().Select(f => f.Name).FirstOrDefault(name => !RootFields.Contains(name)) is { } unknown)
+        {
+            problems.Add($"{modName}: {FileName} has no \"{unknown}\": it takes {string.Join(", ", RootFields)}; its warbonds are not added.");
+            return warbonds;
+        }
         var keys = new HashSet<string>(StringComparer.Ordinal);
         var index = 0;
         foreach (var entry in list.EnumerateArray())
@@ -209,6 +214,18 @@ public static class ModWarbonds
     static bool IsGameWarbond(uint id) => id == PremiumContent.FreeWarbond || GameData.WarbondLocks.Mapping().Any(w => w.Id == id);
 
     static readonly string[] ShowcaseFields = ["from", "pose", "armor", "helmet", "cape", "weapon"];
+    // The fields each level takes: any other is a mistake (a misspelt "requirement" would open a page from the start).
+    static readonly string[] RootFields = ["format", "warbonds"];
+    static readonly string[] WarbondFields = ["key", "name", "currency", "pages", "variant", "season", "art", "unlock", "showcase"];
+    static readonly string[] PageFields = ["requirement", "items"];
+    static readonly string[] ItemFields = ["mixId", "weapon", "stratagem", "mod", "cost", "currency", "position", "size", "repeatable", "key"];
+
+    // Refuses a field the object does not take: `what` names it in the message.
+    static void OnlyFields(JsonElement json, string what, string[] fields)
+    {
+        foreach (var field in json.EnumerateObject())
+            if (!fields.Contains(field.Name)) throw new InvalidDataException($"{what} has no \"{field.Name}\": it takes {string.Join(", ", fields)}");
+    }
 
     // "showcase": {"from": <a game warbond>, "pose": <a game warbond>, "armor"/"helmet"/"cape": <a catalogue item's mixId>,
     // "weapon": "<an entity id, hex>"}, each optional.
@@ -216,8 +233,7 @@ public static class ModWarbonds
     {
         if (!entry.TryGetProperty("showcase", out var show)) return null;
         if (show.ValueKind != JsonValueKind.Object) throw new InvalidDataException("\"showcase\" is an object");
-        foreach (var field in show.EnumerateObject())
-            if (!ShowcaseFields.Contains(field.Name)) throw new InvalidDataException($"\"showcase\" has no \"{field.Name}\": it takes {string.Join(", ", ShowcaseFields)}");
+        OnlyFields(show, "\"showcase\"", ShowcaseFields);
         uint Id(string name, bool warbond)
         {
             if (!show.TryGetProperty(name, out var value)) return 0;
@@ -256,6 +272,7 @@ public static class ModWarbonds
     static Warbond ParseWarbond(string modId, string modName, JsonElement entry, string? folder)
     {
         if (entry.ValueKind != JsonValueKind.Object) throw new InvalidDataException("it is not an object");
+        OnlyFields(entry, "a warbond", WarbondFields);
         var key = Text(entry, "key");
         if (key.Length is 0 or > 64 || !key.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '_' or '.'))
             throw new InvalidDataException("\"key\" is 1 to 64 of a-z, 0-9, '-', '_' and '.'");
@@ -283,6 +300,7 @@ public static class ModWarbonds
     {
         var at = $"page {before.Count + 1}";
         if (pageJson.ValueKind != JsonValueKind.Object) throw new InvalidDataException(at + " is not an object");
+        OnlyFields(pageJson, at, PageFields);
         var requirement = pageJson.TryGetProperty("requirement", out var r) ? Whole(r, at + " \"requirement\"") : 0;
         var spentBefore = before.Sum(page => page.Items.Sum(item => item.Cost));
         if (before.Count == 0 && requirement != 0) throw new InvalidDataException("page 1's \"requirement\" is 0: it is open from the start");
@@ -307,6 +325,7 @@ public static class ModWarbonds
     static ParsedItem ParseItem(string modId, JsonElement json, string at, HashSet<string> itemKeys)
     {
         if (json.ValueKind != JsonValueKind.Object) throw new InvalidDataException(at + " is not an object");
+        OnlyFields(json, at, ItemFields);
         var sells = ParseRef(modId, json, at);
         var key = ItemKey(json, sells, at);
         if (!itemKeys.Add(key)) throw new InvalidDataException($"{at} sells what another item of the warbond sells; give one of them its own \"key\"");

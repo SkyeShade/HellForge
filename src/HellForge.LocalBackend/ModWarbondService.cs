@@ -15,6 +15,10 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     // The warbond list the mod loader makes room for (native warbond_list.c WB_LIST_CAP; the game's own keeps 32, game.dll
     // 0x1080633, and without the loader's room keeps the first 32 served).
     public const int ListCap = 128;
+    // The mods' rows in the game's warbond table (native warbonds.c WB_MAX: 127 entries, signed 8-bit bounds, less the
+    // game's 28): name, look, art and Helldiver. The loader gives them to the session's warbonds in order (the plan lists
+    // them all, served or not), so only the first TableRoom are served: none shows without its own.
+    public const int TableRoom = 127 - 28;
     // The bought items a profile holds (game.dll: 5,280 ids, profile+0xD8A5C, no bound on any writer) less the game's own
     // warbonds' (ids 1 to 989): what mods' warbonds may sell in all.
     public const int ItemRoom = 5280 - 1000;
@@ -57,9 +61,11 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         // bought ids of items no mod sells now (a mod taken out, a key renamed) stay in the profile's list and take room too
         var current = warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items)).Select(i => (long)i.Id).ToHashSet();
         var items = Purchased?.Invoke().Count(id => id >= ModWarbonds.FirstItemId && !current.Contains(id)) ?? 0;
-        foreach (var warbond in warbonds)
+        foreach (var (warbond, row) in warbonds.Select((w, i) => (w, i)))
         {
-            if (list.Contains(warbond.Id32) || TableIds.Contains(warbond.Id32) || lookup.Catalogue?.Contains(warbond.Spent) == true ||
+            if (row >= TableRoom)
+                Report(warbond, "", $"the game's warbond table names {TableRoom} mods' warbonds, and this is number {row + 1}");
+            else if (list.Contains(warbond.Id32) || TableIds.Contains(warbond.Id32) || lookup.Catalogue?.Contains(warbond.Spent) == true ||
                 (warbond.HasToken && lookup.Catalogue?.Contains(warbond.Token) == true))
                 Report(warbond, "", "its id is one the game uses; rename its key");
             else if (result.Count >= ListCap - list.Count)
@@ -204,12 +210,12 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         return document.RootElement.Clone();
     }
 
-    // Before the game's last entry: the Acquisition Center shows the list's last warbond first (Helldivers Mobilize in the
-    // game's list), then the rest in order, so mods' warbonds come after the game's.
+    // After all of the game's: the Acquisition Center shows the list in order (0x1963470). Only when the number of warbonds
+    // differs from the one it stored when it last closed (+0x897B4 of its settings) does it show the last one first, once,
+    // as it does with a new warbond; with mods, that is the last mod's.
     static bool AddEntries(JsonArray list, IReadOnlyList<Served> served)
     {
-        var at = Math.Max(list.Count - 1, 0);
-        foreach (var warbond in served) list.Insert(at++, (JsonNode)warbond.ListEntry.DeepClone());
+        foreach (var warbond in served) list.Add((JsonNode)warbond.ListEntry.DeepClone());
         return true;
     }
 
@@ -264,7 +270,9 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     {
         var bought = progression["purchasedSeasonPassItems"] as JsonArray ?? [];
         var have = bought.OfType<JsonValue>().Select(v => v.TryGetValue<long>(out var id) ? id : -1).ToHashSet();
-        foreach (var id in served.SelectMany(w => w.Sells.Keys).Where(have.Add)) bought.Add((JsonNode)id);
+        // a repeatable item is never bought for good: it stays for sale, as after a purchase
+        var repeatable = served.SelectMany(w => w.Spec.Pages.SelectMany(p => p.Items)).Where(i => i.Repeatable).Select(i => (long)i.Id).ToHashSet();
+        foreach (var id in served.SelectMany(w => w.Sells.Keys).Where(id => !repeatable.Contains(id) && have.Add(id))) bought.Add((JsonNode)id);
         progression["purchasedSeasonPassItems"] = bought;
         return true;
     }

@@ -19,7 +19,15 @@ static const char* const kWbSpentTexts[5] = {"#COUNT Requisition spent", "#COUNT
     "#COUNT Common Sample(s) spent", "#COUNT Rare Sample(s) spent", "#COUNT Super Sample(s) spent"};
 static const char* const kWbLockTexts[5] = {"Spend #COUNT more requisition to unlock", "Spend #COUNT more Forge Credits to unlock",
     "Spend #COUNT more common samples to unlock", "Spend #COUNT more rare samples to unlock", "Spend #COUNT more super samples to unlock"};
-static uint32_t g_wbSpentText[5], g_wbLockText[5];
+/* The item panel's claim button (widget update 0x193A530) shows, for an item the player cannot afford (state 3), the id at
+ * widget+0x21090: "NOT ENOUGH MEDALS" on a warbond page. Its read at 0x193A6B6 (`mov edx,[rbx+0x21090]`; rbx the widget,
+ * r8 and rax live, rsp 16-aligned) calls a stub that returns the item's own currency's text for a mod item; the item is
+ * the panel data's +0 ([widget+0x21068], the seasonPassItemId the page's charge sends). */
+#define WB_DEAR_SITE 0x193A6B6u
+static const uint8_t kWbDearPin[6] = {0x8b,0x93,0x90,0x10,0x02,0x00};
+static const char* const kWbDearTexts[5] = {"NOT ENOUGH REQUISITION", "NOT ENOUGH FORGE CREDITS", "NOT ENOUGH COMMON SAMPLES",
+    "NOT ENOUGH RARE SAMPLES", "NOT ENOUGH SUPER SAMPLES"};
+static uint32_t g_wbSpentText[5], g_wbLockText[5], g_wbDearText[5];
 static void (*g_wbSpentUpdate)(void* widget, float a, float b);
 
 /* A currency's place in the texts: from its mixId, or from a price block {kind, icon override} as WarbondPriceKind
@@ -88,16 +96,32 @@ static uint32_t WarbondLockText(void)
     return text >= 0 && g_wbLockText[text] != 0 ? g_wbLockText[text] : WB_LOCK_TEXT;
 }
 
+/* The claim button's id for an item the player cannot afford (the stub's eax): the game's, unless a mod item costs another
+ * currency than medals. */
+static uint32_t WarbondDearText(const uint8_t* widget)
+{
+    uint32_t id, item;
+    memcpy(&id, widget + 0x21090, 4);
+    const uint8_t* panel = *(const uint8_t* const*)(widget + 0x21068);
+    if (panel == NULL) return id;
+    memcpy(&item, panel, 4);
+    const WbItemCurrency* found = FindWbItem(item);
+    int text = found != NULL ? WarbondTextOf(found->currency) : -1;
+    return text >= 0 && g_wbDearText[text] != 0 ? g_wbDearText[text] : id;
+}
+
 /* After the price stubs. NULL, or why not. */
 static const char* InstallWarbondTexts(uintptr_t game)
 {
     if (!PinMatches(game + WB_SPENT_UPDATE, kWbSpentUpdatePin, sizeof kWbSpentUpdatePin) ||
-        !PinMatches(game + kWbLockSites[0], kWbLockPin, 5) || !PinMatches(game + kWbLockSites[1], kWbLockPin, 5))
+        !PinMatches(game + kWbLockSites[0], kWbLockPin, 5) || !PinMatches(game + kWbLockSites[1], kWbLockPin, 5) ||
+        !PinMatches(game + WB_DEAR_SITE, kWbDearPin, sizeof kWbDearPin))
         return "the text code does not match the reviewed build";
     for (int i = 0; i < 5; i++)
     {
         g_wbSpentText[i] = AddText(kWbSpentTexts[i], kWbSpentTexts[i], 0x45u);
         g_wbLockText[i] = AddText(kWbLockTexts[i], kWbLockTexts[i], 0x46u);
+        g_wbDearText[i] = AddText(kWbDearTexts[i], kWbDearTexts[i], 0x47u);
     }
     uint8_t* code = AllocateNearGame(game, 0x1000);
     if (code == NULL) return "no memory near game.dll";
@@ -105,11 +129,16 @@ static const char* InstallWarbondTexts(uintptr_t game)
     Put(&e, "\x48\x83\xec\x28", 4);
     PutAbs(&e, (const void*)WarbondLockText);
     Put(&e, "\xff\xd0\x48\x83\xc4\x28\x89\xc2\xc3", 9);
+    uint8_t* dear = e.at; /* save rax rcx r8-r11; edx = WarbondDearText(rbx); rsp 8 off 16 at entry, 0 at the call */
+    Put(&e, "\x50\x51\x41\x50\x41\x51\x41\x52\x41\x53\x48\x83\xec\x28\x48\x89\xd9", 17);
+    PutAbs(&e, (const void*)WarbondDearText);
+    Put(&e, "\xff\xd0\x89\xc2\x48\x83\xc4\x28\x41\x5b\x41\x5a\x41\x59\x41\x58\x59\x58\xc3", 19);
     DWORD protect;
     if (!VirtualProtect(code, 0x1000, PAGE_EXECUTE_READ, &protect)) return "its stub could not be made executable";
     FlushInstructionCache(GetCurrentProcess(), code, 0x1000);
     if (LoaderHook("warbond spent text", game + WB_SPENT_UPDATE, (void*)WarbondSpentUpdate, (void**)&g_wbSpentUpdate)) return "the spent text's update could not be hooked";
     for (size_t i = 0; i < 2; i++)
         if (WarbondStubJump(game + kWbLockSites[i], 5, 0xE8, code)) return "game.dll could not be rewritten";
+    if (WarbondStubJump(game + WB_DEAR_SITE, 6, 0xE8, dear)) return "game.dll could not be rewritten";
     return NULL;
 }

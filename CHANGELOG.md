@@ -24,8 +24,9 @@ On `dev`, since 0.4.0-beta.
   priced in medals, requisition, samples or Forge Credits, with later pages opened by what was spent
   ([warbonds](docs/modding/warbonds.md)).
   - Pages can sell game items and the mod's own weapons and stratagems, which stay out of the armory until bought.
-  - Mod warbonds are listed after the game's, with room for 128 warbonds in all where the game has 32. Each has its own
-    name, look and art (a plain card without any), and its prices and texts show its currency.
+  - Up to 99 mod warbonds are listed after the game's, where the game lists 32 warbonds in all. Each has its own name,
+    look and art (a plain card without any), and its prices and texts show its currency. Past 32 warbonds the column of
+    dots beside the cards shows the group of 32 the current one is in.
   - Each has its own Helldiver beside its card: a game warbond's background, pose and weapon, and the armor, helmet and
     cape the mod names.
   - A warbond can cost Forge Credits, paid once with the game's warbond button, and an item can have a currency of its

@@ -108,9 +108,9 @@ static class ModWarbondsTests
                 var gameCount = fixtures["/SeasonPass"].GetArrayLength();
                 var entry = entries.SingleOrDefault(e => e.GetProperty("id32").GetUInt32() == arsenal.Id32);
                 var gameLast = fixtures["/SeasonPass"][gameCount - 1].GetProperty("id32").GetUInt32();
-                check(entries.Count == gameCount + 2 && entry.ValueKind == JsonValueKind.Object && entries[gameCount - 1].GetProperty("id32").GetUInt32() == arsenal.Id32 &&
-                    entries[^1].GetProperty("id32").GetUInt32() == gameLast,
-                    "The mods' warbonds are not listed before the game's last, which the game shows first (a warbond selling nothing this session is not listed).");
+                check(entries.Count == gameCount + 2 && entry.ValueKind == JsonValueKind.Object && entries[gameCount].GetProperty("id32").GetUInt32() == arsenal.Id32 &&
+                    entries[gameCount - 1].GetProperty("id32").GetUInt32() == gameLast,
+                    "The mods' warbonds are not listed after all of the game's (a warbond selling nothing this session is not listed).");
                 check(entry.GetProperty("medalsConsumableMixId").GetUInt32() == Requisition && entry.GetProperty("medalsSpentMixId").GetUInt32() == arsenal.Spent &&
                     entry.GetProperty("totalCost").GetInt64() == 1700 && entry.GetProperty("pageRequirements").EnumerateArray().Select(r => r.GetInt64()).SequenceEqual([0L, 1500L]) &&
                     entry.GetProperty("premiumTokenMixIds").GetArrayLength() == 0, "A mod warbond's list entry is wrong: " + entry.GetRawText());
@@ -177,13 +177,22 @@ static class ModWarbondsTests
         ModWarbonds.Warbond Simple(int i, int pages, int perPage, uint first) => new("test", "w" + i, "W", ModWarbonds.Hash("w" + i), ModWarbonds.Hash("s" + i), "medals", 0x4C19589F,
             [.. Enumerable.Range(0, pages).Select(p => new ModWarbonds.Page(0, [.. Enumerable.Range(0, perPage).Select(k => new ModWarbonds.Item(
                 ModWarbonds.ItemId("test", "w" + i, p + "/" + k), new ModWarbonds.Ref("item", i == 0 ? first : mobilize[0], "", ""), 5, k % 5, k / 5, 1, 1, false))]))]);
-        var room = ModWarbondService.ListCap - fixtures["/SeasonPass"].GetArrayLength();
-        var many = Enumerable.Range(0, room + 2).Select(i => Simple(i, 1, 1, steeled)).ToList();
+        // The table names TableRoom mods' warbonds, in order: one left out (w0, premium) still takes its row.
+        var many = Enumerable.Range(0, ModWarbondService.TableRoom + 6).Select(i => Simple(i, 1, 1, steeled)).ToList();
         var lines = new List<string>();
         var capped = new ModWarbondService(many) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, IsAllowed = id => id != steeled, Log = lines.Add };
-        check(ModWarbondService.ListCap > 32 && capped.Resolve().Count == room && lines.Any(l => l.Contains("\"w0\"") && l.Contains("premium")) &&
-            lines.Any(l => l.Contains($"lists {ModWarbondService.ListCap}")), "Premium content or the warbond list's room was not respected: " + string.Join(" | ", lines));
-        check(capped.Apply("/SeasonPass", fixtures["/SeasonPass"]).GetArrayLength() == ModWarbondService.ListCap, "The list grew past its room.");
+        check(ModWarbondService.TableRoom < ModWarbondService.ListCap - fixtures["/SeasonPass"].GetArrayLength() &&
+            capped.Resolve().Count == ModWarbondService.TableRoom - 1 && lines.Any(l => l.Contains("\"w0\"") && l.Contains("premium")) &&
+            lines.Any(l => l.Contains($"names {ModWarbondService.TableRoom}") && l.Contains($"number {ModWarbondService.TableRoom + 1}")),
+            "Premium content or the warbond table's room was not respected: " + string.Join(" | ", lines));
+        check(capped.Apply("/SeasonPass", fixtures["/SeasonPass"]).GetArrayLength() == fixtures["/SeasonPass"].GetArrayLength() + ModWarbondService.TableRoom - 1,
+            "The list did not hold the served warbonds alone.");
+        // A game list near the cap leaves the mods less room than the table.
+        using var longList = JsonDocument.Parse("[" + string.Join(",", Enumerable.Range(1, 110).Select(i => $"{{\"id32\":{i}}}")) + "]");
+        lines.Clear();
+        var crowded = new ModWarbondService(many) { Source = path => path == "/SeasonPass" ? longList.RootElement : capped.Source!(path), IsAllowed = capped.IsAllowed, Log = lines.Add };
+        check(crowded.Resolve().Count == ModWarbondService.ListCap - 110 && lines.Any(l => l.Contains($"lists {ModWarbondService.ListCap}")),
+            "The warbond list's room was not respected: " + string.Join(" | ", lines));
         // The game holds 5,280 bought items: mods' warbonds sell ItemRoom in all, so unlock-all's list fits.
         var full = Enumerable.Range(1, ModWarbondService.ItemRoom / 150 + 1).Select(i => Simple(i, 15, 10, 0)).ToList();
         lines.Clear();
@@ -234,6 +243,10 @@ static class ModWarbondsTests
             {"format":1,"warbonds":[{"key":"again","name":"Again","pages":[{"items":[{"mixId":{{mobilize[0]}},"cost":5,"repeatable":true}]}]}]}
             """).RootElement, problems)[0];
         check(ModWarbonds.PlanLines([repeatable]).Last().EndsWith("\t1", StringComparison.Ordinal), "The plan does not name a repeatable item.");
+        var again = new ModWarbondService([repeatable]) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, UnlockAll = true, Log = _ => { } };
+        var allBought = again.Apply("/Progression", JsonSerializer.SerializeToElement(new { purchasedSeasonPassItems = new[] { 1 } }))
+            .GetProperty("purchasedSeasonPassItems").EnumerateArray().Select(i => i.GetInt64()).ToList();
+        check(again.Resolve().Count == 1 && allBought.SequenceEqual([1L]), "Unlock-all bought a repeatable item for good: " + string.Join(",", allBought));
         check(Problems("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1,\"currency\":\"credits\"}]}]}").Count == 1, "An item with an unknown currency was accepted.");
         var logged = new List<string>();
         var service = new ModWarbondService([mixed]) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = logged.Add };
@@ -384,11 +397,18 @@ static class ModWarbondsTests
             ("{\"key\":\"a\",\"name\":\"A\",\"art\":{\"from\":\"x\"},\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "art from a string"),
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"weapon\":\"x\",\"cost\":1,\"repeatable\":true}]}]}", "a repeatable weapon"),
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"mod\":\"x\",\"cost\":1}]}]}", "a mod named on a game item"),
+            /* a misspelt field is a mistake, never ignored */
+            ("{\"key\":\"a\",\"name\":\"A\",\"curency\":\"requisition\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "a misspelt warbond field"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":3}]},{\"requirment\":3,\"items\":[{\"mixId\":2,\"cost\":1}]}]}", "a misspelt page field"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1,\"repeatble\":true}]}]}", "a misspelt item field"),
         })
             check(Problems(warbond).Count == 1, "A warbond with " + why + " was accepted.");
         var formatProblems = new List<string>();
         using (var wrongFormat = JsonDocument.Parse("{\"format\":\"1\",\"warbonds\":[]}")) ModWarbonds.Parse("mod", "Mod", wrongFormat.RootElement, formatProblems);
         check(formatProblems.Count == 1, "A format given as a string was not reported.");
+        formatProblems.Clear();
+        using (var extra = JsonDocument.Parse("{\"format\":1,\"warbond\":[],\"warbonds\":[]}")) ModWarbonds.Parse("mod", "Mod", extra.RootElement, formatProblems);
+        check(formatProblems.Count == 1 && formatProblems[0].Contains("\"warbond\""), "A misspelt field at the file's top was not reported.");
         check(Problems("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]},{\"key\":\"a\",\"name\":\"B\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}").Count == 1,
             "Two warbonds with one key were accepted.");
 

@@ -136,6 +136,7 @@ static int ShowcaseModRows(uint8_t* table, const uint8_t* rows, const uint8_t* c
     const uint8_t* pose = ShowcaseRow(rows, WB_SHOW_ROWS, WB_SHOW_ROW, w->showPose);
     const uint8_t* poseChar = pose ? ShowcaseRow(chars, WB_SHOW_ROWS, WB_CHAR_ROW, *(const uint32_t*)(pose + 0x18)) : NULL;
     if (poseChar) memcpy(ch + 0x18, poseChar + 0x18, 4);
+    else if (w->showPose != 0) Note("warbonds: showcase of warbond %u: %u is not a game warbond's pose; it keeps the pose it starts from", w->id, w->showPose);
     if (w->showWeapon != 0) memcpy(ch + 0x20, &w->showWeapon, 8);
     g_wbShowKits[i] = w->showItem[0] == 0 && w->showItem[1] == 0 && w->showItem[2] == 0;
     return 1;
