@@ -1185,6 +1185,7 @@ static void LwWallSample(void)
  *   kill garrison    the garrison kill test on the next active garrison, without its 15 s wait
  *   teleport X Y     the local Helldiver to the ground at (X, Y) (LwTestTeleport)
  *   aim X Y          how far the camera's view is from (X, Y), for the harness to turn it (LwTestAim)
+ *   look N           how many of squad N's members a ray from the camera reaches (LwTestLook)
  * The camera: CM = [game+0x346D560], [CM+0x3C] its world position (subagent viewdist, P); the third-person camera
  * stands behind the Helldiver, so player - camera is the screen's direction across the ground. */
 static SRWLOCK g_lwCmdLock = SRWLOCK_INIT;
@@ -1337,6 +1338,43 @@ static void LwTestZoom(int seq, float k, float ms)
     Note("living world: test command %d: zoom %.1fx for %.0f ms", seq, (double)k, (double)ms);
 }
 
+/* Test command "look N": how many of squad N's members a ray from the camera's own position ([[game+0x346D560]]+0x3C,
+ * as LwCameraForward reads it) reaches at chest height (1.0 m over the feet), through the same static-only sight ray as
+ * LwSeenFrom. The spawn's "seen" test is from the player's eye; an aimed or zoomed camera stands elsewhere (lw38b
+ * far1-zoom: a rock in front of the shoulder camera filled the frame). The harness takes a shot only when some are clear. */
+static void LwTestLook(int seq, int which)
+{
+    typedef uint32_t (*RayFn)(uint32_t handle, const float* from, const float* dir, float length, uint32_t leaveOut, void* hit, uint32_t max);
+    uintptr_t cm = 0, table = 0, fn = 0; float cam[3]; uint32_t members[32];
+    if (which < 0 || which >= g_lwWorld.count || g_lwSquads[which].state != LW_ONLINE) { Note("living world: test command %d: look: squad %d is not online", seq, which); return; }
+    if (!EvpPtr(g_lw.game + 0x346D560u, &cm) || cm == 0 || SafeRead(cm + 0x3C, cam, sizeof cam) || g_lwWorld.playersAt == 0) { Note("living world: test command %d: look: no camera", seq); return; }
+    uint32_t handle = LwSightRay(&table);
+    if (handle == 0 || !EvpPtr(table + 0x68, &fn) || fn == 0) { Note("living world: test command %d: look: no sight ray", seq); return; }
+    int n = LwMembers(g_lwSquads[which].squad, members), clear = 0, read = 0; float nearest = 3e38f, farthest = 0, elevMin = 90, elevMax = -90;
+    for (int k = 0; k < n && k < 32; k++)
+    {
+        ActHealth h; float p[3];
+        if (!ActHealthOf(g_lw.game, members[k], &h) || !h.unit || !EvpUnitPosition(h.unit, p)) continue;
+        read++;
+        float d[3] = {p[0] - cam[0], p[1] - cam[1], p[2] + 1.0f - cam[2]}, len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        if (len < 1.0f) { clear++; continue; }
+        for (int i = 0; i < 3; i++) d[i] /= len;
+        uint8_t hit[0x40] = {0}; float dist;
+        uint32_t got = ((RayFn)fn)(handle, cam, d, len, g_lwWorld.units[0], hit, 1);
+        memcpy(&dist, hit + 0x18, 4);
+        if (got >= 1 && dist < len - 0.5f) continue;
+        clear++;
+        float e = asinf(d[2]) * 57.29578f;
+        if (len < nearest) nearest = len;
+        if (len > farthest) farthest = len;
+        if (e < elevMin) elevMin = e;
+        if (e > elevMax) elevMax = e;
+    }
+    if (clear) Note("living world: test command %d: look: squad %d: %d of %d members clear from the camera at (%.0f, %.0f, %.1f), %.0f .. %.0f m, %+.1f .. %+.1f deg up", seq, which,
+        clear, read, (double)cam[0], (double)cam[1], (double)cam[2], (double)nearest, (double)farthest, (double)elevMin, (double)elevMax);
+    else Note("living world: test command %d: look: squad %d: 0 of %d members clear from the camera at (%.0f, %.0f, %.1f)", seq, which, read, (double)cam[0], (double)cam[1], (double)cam[2]);
+}
+
 static void LwKillArm(void);
 static void LwTestCommands(void)
 {
@@ -1354,6 +1392,7 @@ static void LwTestCommands(void)
         else if (strncmp(cmds[c], "kill garrison", 13) == 0) LwKillArm();
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
         else if (sscanf(cmds[c], "aim %f %f", &d, &deg) == 2) LwTestAim(seq, d, deg);
+        else if (sscanf(cmds[c], "look %d", &idx) == 1) LwTestLook(seq, idx);
         else if (sscanf(cmds[c], "zoom %f %f", &d, &deg) == 2 && d >= 1.0f && d <= 8.0f && deg > 0 && deg <= 20000) LwTestZoom(seq, d, deg);
         else if (strncmp(cmds[c], "status", 6) == 0)
             for (int i = 0; i < g_lwWorld.count; i++)
