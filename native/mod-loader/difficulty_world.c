@@ -132,8 +132,9 @@ static uint32_t WorldScaleFor(float mapScale)
  * peer (WorldLevel), so all peers of an XL mission quantise alike; vanilla's range comes back on a vanilla level.
  * The config: [[exe+0x1A10268]] (stored at exe 0x1CD8C7), object types [cfg+0x78] x [cfg+0x70] (0x34C4C5), 0x50 bytes:
  * +0x18 field count, +0x20 type indices, +0x38 field hashes (0x34C27E..0x34C2BC); descriptors [cfg+0x18], 24 bytes,
- * +0xC kind (3 = vector3). */
-static struct { int state; uint32_t type[8]; int count; float low[8], high[8]; } g_netPos; /* state 0 unread, 1 ok, -1 not the reviewed layout */
+ * +0xC kind (3 = vector3), +0xD bits per component: the writer 0x28C600 sends trunc((v - min) / (max - min) x (2^bits - 1)
+ * + 0.5), or the raw float at 32 bits (0x34F4AB..0x34F4D7), so a wider range is a coarser step. */
+static struct { int state; uint32_t type[8]; int count; float low[8], high[8]; uint8_t bits[8]; } g_netPos; /* state 0 unread, 1 ok, -1 not the reviewed layout */
 static void NetPositionRange(float scale)
 {
     uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), global = 0, cfg = 0, types = 0, descs = 0;
@@ -162,10 +163,10 @@ static void NetPositionRange(float scale)
                 int known = 0;
                 for (int k = 0; k < g_netPos.count; k++) known |= g_netPos.type[k] == ti;
                 if (known || g_netPos.count >= 8) continue;
-                uint8_t kind = 0; float lo = 0, hi = 0; uintptr_t d = descs + 24u * ti;
-                if (SafeRead(d + 0xC, &kind, 1) || SafeRead(d + 0x10, &lo, 4) || SafeRead(d + 0x14, &hi, 4) || kind != 3 || !(hi > 0) || lo != -hi)
+                uint8_t kind = 0, bits = 0; float lo = 0, hi = 0; uintptr_t d = descs + 24u * ti;
+                if (SafeRead(d + 0xC, &kind, 1) || SafeRead(d + 0xD, &bits, 1) || bits == 0 || bits > 32 || SafeRead(d + 0x10, &lo, 4) || SafeRead(d + 0x14, &hi, 4) || kind != 3 || !(hi > 0) || lo != -hi)
                 { Note("difficulty: extra large maps: network position type %u is not a symmetric vector3 (kind %u, %.1f .. %.1f); left as it is", ti, kind, (double)lo, (double)hi); continue; }
-                g_netPos.type[g_netPos.count] = ti; g_netPos.low[g_netPos.count] = lo; g_netPos.high[g_netPos.count] = hi; g_netPos.count++;
+                g_netPos.type[g_netPos.count] = ti; g_netPos.low[g_netPos.count] = lo; g_netPos.high[g_netPos.count] = hi; g_netPos.bits[g_netPos.count] = bits; g_netPos.count++;
             }
         }
         if (g_netPos.count == 0) { Note("difficulty: extra large maps: no network position type found (%d fields); enemies past 2 km stay at the 2000 m line", fields); return; }
@@ -173,14 +174,18 @@ static void NetPositionRange(float scale)
         Note("difficulty: extra large maps: %d network position fields use %d type(s), the first %u at %.0f .. %.0f m", fields, g_netPos.count, g_netPos.type[0], (double)g_netPos.low[0], (double)g_netPos.high[0]);
     }
     if (g_netPos.state != 1 || SafeRead(exe + 0x1A10268u, &global, 8) || SafeRead(global, &cfg, 8) || SafeRead(cfg + 0x18, &descs, 8) || descs == 0) return;
+    char steps[160]; int len = 0; steps[0] = 0;
     for (int k = 0; k < g_netPos.count; k++)
     {
         float hi = scale > 1.0f ? fmaxf(g_netPos.high[k], 1024.0f * (scale + 1.0f)) : g_netPos.high[k], lo = -hi;
         uintptr_t d = descs + 24u * g_netPos.type[k];
         ApiWrite(d + 0x10, &lo, 4); ApiWrite(d + 0x14, &hi, 4);
+        if (len < (int)sizeof steps - 32)
+            len += g_netPos.bits[k] >= 32 ? snprintf(steps + len, sizeof steps - len, "%s32 bits (a float)", k ? ", " : "")
+                : snprintf(steps + len, sizeof steps - len, "%s%u bits %.1f mm", k ? ", " : "", g_netPos.bits[k], 1000.0 * (hi - lo) / (double)((1ull << g_netPos.bits[k]) - 1));
     }
-    Note("difficulty: extra large maps: network positions range +-%.0f m (%s)", (double)(scale > 1.0f ? fmaxf(g_netPos.high[0], 1024.0f * (scale + 1.0f)) : g_netPos.high[0]),
-        scale > 1.0f ? "an extra large level" : "vanilla");
+    Note("difficulty: extra large maps: network positions range +-%.0f m (%s); step per type: %s", (double)(scale > 1.0f ? fmaxf(g_netPos.high[0], 1024.0f * (scale + 1.0f)) : g_netPos.high[0]),
+        scale > 1.0f ? "an extra large level" : "vanilla", steps);
 }
 
 static void WorldWrite(float scale)
