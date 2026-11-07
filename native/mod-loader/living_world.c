@@ -822,7 +822,7 @@ static void LwSendGoal(LwSquad* q)
  * from the hit before when 0; 0 = no player). The attacker is a Helldiver when it is in the avatar hash ([game+0x3326D20]
  * +0xF8, as 0x925524). */
 static int LwGarrisonUnitsAt(uint32_t unit, uint32_t* net, uint32_t* slot);
-static const char* LwLostWhy(uint32_t unit, uint32_t* squad, char* by, size_t size)
+static const char* LwLostWhy(uint32_t unit, uint32_t* squad, char* by, size_t size, const float* at)
 {
     ActHealth h; uintptr_t m, links, av; uint32_t index;
     *squad = 0; by[0] = 0;
@@ -834,12 +834,20 @@ static const char* LwLostWhy(uint32_t unit, uint32_t* squad, char* by, size_t si
         int helldiver = attacker && EvpPtr(g_lw.game + 0x3326D20u, &av) && EvpHash(av + 0xF8, attacker, 8, 4, &slot);
         uint32_t net = 0, point = 0;
         int enemy = !helldiver && attacker && attacker != unit && LwGarrisonUnitsAt(attacker, &net, &point) == 1;
-        char what[64]; int of = -1;
+        char what[96]; int of = -1;
         for (int k = 0; k < g_lwWorld.count && of < 0; k++)
             for (int m = 0; m < g_lwSquads[k].seenCount && of < 0; m++) if (g_lwSquads[k].seen[m] == attacker) of = k;
         if (of >= 0) snprintf(what, sizeof what, "a member of squad %d", of);
         else if (enemy && net && net != 0x7FFF) snprintf(what, sizeof what, "an enemy of garrison net %08X", net);
-        else snprintf(what, sizeof what, "%s", enemy ? "an enemy in no garrison" : "entity");
+        else if (enemy) snprintf(what, sizeof what, "an enemy in no garrison");
+        else /* not a squad member, garrison enemy or Helldiver (lw34d: entity 00000134 killed 4 members 0.1 s after
+              * they appeared): its resource (name hash) and distance, to find what it is */
+        {
+            uint32_t au = 0; float ap[3] = {0, 0, 0}; uint64_t res = attacker && attacker != 0x7FFF ? EvpEntityResource(g_lw.game, attacker, &au) : 0;
+            int placed = au && EvpUnitPosition(au, ap);
+            snprintf(what, sizeof what, "entity (resource %016llx, %s%.0f m away)", (unsigned long long)res, placed ? "" : "no position, ",
+                placed ? (double)sqrtf((ap[0] - at[0]) * (ap[0] - at[0]) + (ap[1] - at[1]) * (ap[1] - at[1]) + (ap[2] - at[2]) * (ap[2] - at[2])) : 0.0);
+        }
         snprintf(by, size, " by %s %08X%s", helldiver ? "a Helldiver" : attacker == unit ? "itself" : attacker == 0 || attacker == 0x7FFF ? "nothing named" : what,
             attacker, creditor ? ", credited to a player" : ", no player credited");
         return "killed";
@@ -867,7 +875,10 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         if (!still)
         {
             uint32_t other = 0; float ground = NAN, *at = q->seenAt[i]; char by[128];
-            const char* why = LwLostWhy(q->seen[i], &other, by, sizeof by);
+            int twice = 0; /* lw34d: one member noted lost twice in one tick: a repeated seen entry (cause open) */
+            for (int j = i + 1; j < q->seenCount; j++) if (q->seen[j] == q->seen[i]) { twice++; --q->seenCount; q->seen[j] = q->seen[q->seenCount]; memcpy(q->seenAt[j], q->seenAt[q->seenCount], sizeof q->seenAt[j]); j--; }
+            if (twice) Note("living world: squad %d: member %08X was listed %d more time(s) in its seen list (counted once)", (int)(q - g_lwSquads), q->seen[i], twice);
+            const char* why = LwLostWhy(q->seen[i], &other, by, sizeof by, at);
             LwGround(at[0], at[1], &ground);
             Note("living world: squad %d lost member %08X: %s%s (squad now %08X); last seen at (%.0f, %.0f, %.1f), ground there %.1f, %.0f m from the nearest player",
                 (int)(q - g_lwSquads), q->seen[i], why, by, other, (double)at[0], (double)at[1], (double)at[2], (double)ground,
