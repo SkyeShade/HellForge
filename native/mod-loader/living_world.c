@@ -355,7 +355,7 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
 #define LW_PATH_MAX 32
 #define LW_R_ON 250.0f
 #define LW_R_OFF 350.0f
-#define LW_SIGHT 800.0f       /* players farther than this are not checked for sight (D; the game draws a trooper to ~530 m, ~750 m scoped) */
+#define LW_SIGHT 1700.0f      /* players farther than this are not checked for sight: the largest drawn distance through a 4x zoom (LwFarBand, r 8 m: 1630 m) */
 /* Sightlines (user 2026-11-06; KB living-world-plan "Phase 1 addition: squads online by sightline", subagent viewdist):
  * the render cull (exe 0x57B9B0) has no hard distance: an object is drawn while its angular size exceeds
  * FOV (min_size + min_size_far t^2), so on "high" a 2 m enemy is drawn to ~530 m, ~600-750 m through a scope; AI and
@@ -363,8 +363,8 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
  * 0x95288B; garrisons fill within 150 m). A squad 250-600 m away comes online, still hidden, when the next stretch of its
  * route is in a player's view (D), and stays online while a player within 650 m sees it (D); far squads use at most
  * 40 % of the budget (D), so the near ones keep theirs. */
-#define LW_FAR 600.0f
-#define LW_FAR_KEEP 650.0f
+#define LW_FAR_MARGIN 50.0f   /* a squad seen within its band + this stays online (D) */
+#define LW_RADIUS_DEFAULT 2.0f /* a group's unit radius until one of its units has been measured (D: a 2 m sphere, 811 m) */
 #define LW_FAR_SHARE 0.4f
 #define LW_R_MIN 150.0f       /* never spawned nearer a player (D): vanilla spawns patrols 75-130 m away */
 #define LW_ARRIVE 15.0f
@@ -802,14 +802,76 @@ static int LwSeenByAny(const float* p, float range)
         if (LwDist2(g_lwWorld.players[i], p[0], p[1]) <= range * range && LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], chest) == 1) return 1;
     return 0;
 }
-/* A far squad's way ahead (40 m toward its next node, on the ground) in a player's view within LW_FAR. */
+/* The drawn distance through the narrowest zoom (audit 1b criterion 8; KB living-world-scope-draw-distance, P unless
+ * marked): the cull (exe 0x57B9B0) draws an object while its bounding sphere's angle 2 asin(r / d) exceeds F (m0 + msf
+ * t^2), t = clamp((d - near) / (far - near)); the largest camera zoom in the game data is 4.0 (sniper scopes, "10x"), so
+ * F = vertical_fov / 4, and vertical_fov is clamped to 45-90 deg. The host cannot know each player's setting or preset:
+ * the band assumes the farthest drawing, F = 45 / 4 deg and the high preset (near 350, far 1000, msf 0.05), m0 = 0.
+ * Solved by bisection (the angle falls, the threshold rises with d). r 1 / 2 / 4 / 8 m: about 701 / 811 / 952 / 1630 m. */
+static float LwFarBand(float r)
+{
+    const float F = 45.0f / 4.0f * 3.14159265f / 180.0f, nearD = 350.0f, farD = 1000.0f, msf = 0.05f;
+    if (!(r > 0.05f)) r = 0.05f;
+    float lo = nearD, hi = 6000.0f;
+    for (int k = 0; k < 40; k++)
+    {
+        float d = 0.5f * (lo + hi), t = (d - nearD) / (farD - nearD);
+        if (t > 1) t = 1;
+        float angle = 2.0f * asinf(r / d < 1 ? r / d : 1), limit = F * msf * t * t;
+        if (angle > limit) lo = d; else hi = d;
+    }
+    return lo;
+}
+/* A unit's bounding radius: half its box's diagonal (the Unit box, exe vtable +0x238 (unit, out[0x58], flag), min at
+ * +0x40, max at +0x4C, as the Lua Unit box API 0x2059A0 calls it; the object found as EvpUnitPosition finds it). 0 when
+ * it does not read or is outside 0.1-30 m. */
+static float LwUnitRadius(uint32_t unit)
+{
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), registry, gens, objects, object, vtable, fn;
+    uint32_t index = unit & 0x3FFFFFu, count; uint8_t gen;
+    if (!unit || !EvpPtr(exe + EVP_EXE_UNITS, &registry) || SafeRead(registry + 0x98, &count, 4) || index >= count ||
+        !EvpPtr(registry + 0xA0, &gens) || SafeRead(gens + index, &gen, 1) || gen != ((unit >> 22) & 0xFF) ||
+        !EvpPtr(registry + 0x88, &objects) || !EvpPtr(objects + (uintptr_t)index * 8, &object) || EvpU32(object + 8, 0) != unit ||
+        !EvpPtr(object, &vtable) || !EvpPtr(vtable + 0x238, &fn) || fn < exe || fn >= exe + 0x4000000u) return 0;
+    uint8_t box[0x58] = {0};
+    ((void (*)(uintptr_t, uint8_t*, int))fn)(object, box, 0);
+    float mn[3], mx[3]; memcpy(mn, box + 0x40, 12); memcpy(mx, box + 0x4C, 12);
+    float dx = mx[0] - mn[0], dy = mx[1] - mn[1], dz = mx[2] - mn[2], r = 0.5f * sqrtf(dx * dx + dy * dy + dz * dz);
+    return isfinite(r) && r >= 0.1f && r <= 30.0f ? r : 0;
+}
+/* Each group definition's largest measured unit radius (learned from its online members), and so its band. */
+#define LW_RADII 256
+static struct { uintptr_t definition; float radius; } g_lwRadii[LW_RADII];
+static float LwGroupRadius(uintptr_t definition)
+{
+    for (int k = 0; k < LW_RADII; k++) if (g_lwRadii[k].definition == definition) return g_lwRadii[k].radius;
+    return LW_RADIUS_DEFAULT;
+}
+static void LwGroupRadiusSeen(uintptr_t definition, float r)
+{
+    int empty = -1;
+    for (int k = 0; k < LW_RADII; k++)
+    {
+        if (g_lwRadii[k].definition == definition)
+        {
+            if (r > g_lwRadii[k].radius) { Note("living world: group 0x%llx: units up to %.2f m radius: drawn to %.0f m through a 4x zoom", (unsigned long long)definition, (double)r, (double)LwFarBand(r)); g_lwRadii[k].radius = r; }
+            return;
+        }
+        if (empty < 0 && g_lwRadii[k].definition == 0) empty = k;
+    }
+    if (empty >= 0) { g_lwRadii[empty].definition = definition; g_lwRadii[empty].radius = r;
+        Note("living world: group 0x%llx: units up to %.2f m radius: drawn to %.0f m through a 4x zoom", (unsigned long long)definition, (double)r, (double)LwFarBand(r)); }
+}
+static float LwSquadBand(const LwSquad* q) { return LwFarBand(LwGroupRadius(q->definition)); }
+
+/* A far squad's way ahead (40 m toward its next node, on the ground) in a player's view within its band. */
 static int LwAboutToBeSeen(const LwSquad* q)
 {
     if (q->pathAt >= q->pathLen) return 0;
     float nx = g_lwNodes[q->path[q->pathAt]].x - q->pos[0], ny = g_lwNodes[q->path[q->pathAt]].y - q->pos[1], d = sqrtf(nx * nx + ny * ny);
     float k = d > 40.0f ? 40.0f / d : 1.0f, ahead[3] = {q->pos[0] + nx * k, q->pos[1] + ny * k, 0};
     if (!LwGround(ahead[0], ahead[1], &ahead[2])) return 0;
-    return LwSeenByAny(ahead, LW_FAR);
+    return LwSeenByAny(ahead, LwSquadBand(q));
 }
 
 /* A node the AI can walk to (subagent navlink, KB nav-cell-connections; checked by me: 0x7FD440's 0x7ED200 call): the
@@ -953,6 +1015,8 @@ static void LwOnlineTick(LwSquad* q, int* removals)
                 if (gap < q->appearGap) q->appearGap = gap;
             }
             q->checkedAt[q->checkedCount][0] = p[0]; q->checkedAt[q->checkedCount][1] = p[1];
+            float radius = LwUnitRadius(h.unit); /* the group's band follows its largest unit (audit 1b criterion 8) */
+            if (radius > 0) LwGroupRadiusSeen(q->definition, radius);
             q->checked[q->checkedCount++] = members[k];
             float chest[3] = {p[0], p[1], p[2] + 1.0f};
             for (int i = 0; i < g_lwWorld.playersAt; i++)
@@ -1017,7 +1081,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         for (int i = 0; i < g_lwWorld.playersAt && !q->viewed; i++)
         {
             float lead[3]; ActHealth h;
-            float viewMax = q->farOn ? LW_FAR_KEEP : 120.0f;
+            float viewMax = q->farOn ? LwSquadBand(q) + LW_FAR_MARGIN : 120.0f;
             if (LwDist2(g_lwWorld.players[i], at[0], at[1]) > viewMax * viewMax || !ActHealthOf(g_lw.game, members[0], &h) || !h.unit || !EvpUnitPosition(h.unit, lead)) continue;
             float chest[3] = {lead[0], lead[1], lead[2] + 1.0f};
             if (LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], chest) == 1)
@@ -1047,7 +1111,8 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         /* offline only once it has been beyond R_off of every player, every member at alert 0, for LW_FAR_MS without a break */
         float d2 = LwNearestPlayer2(at[0], at[1]);
         int calm = g_lwWorld.playersAt > 0 && d2 > LW_R_OFF * LW_R_OFF;
-        if (calm && d2 < LW_FAR_KEEP * LW_FAR_KEEP) /* in view range: it stays while a player sees it (sightlines), checked once a second */
+        float keep = LwSquadBand(q) + LW_FAR_MARGIN;
+        if (calm && d2 < keep * keep) /* in view range: it stays while a player sees it (sightlines), checked once a second */
         {
             if (now >= q->lookAt)
             {
@@ -1055,7 +1120,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
                 q->lookAt = now + 1000 + (ULONGLONG)((q - g_lwSquads) % 7) * 50;
                 /* seen where it stands, or (a squad brought online by sightline) its way ahead is, so it is not taken
                  * offline while still hidden on its way into view (lw16l: offline 10 s after it came online) */
-                q->inView = (LwGround(at[0], at[1], &p[2]) && LwSeenByAny(p, LW_FAR_KEEP)) || (q->farOn && LwAboutToBeSeen(q));
+                q->inView = (LwGround(at[0], at[1], &p[2]) && LwSeenByAny(p, keep)) || (q->farOn && LwAboutToBeSeen(q));
             }
             if (q->inView || (q->farOn && now - q->since < 60000)) calm = 0; /* and a minute's grace to walk into view */
         }
@@ -1317,7 +1382,7 @@ static void LwSquadsTick(void)
             int back = q->cycled == 1 && near2 >= rMin * rMin; /* test cycle: back at once (the budget still applies) */
             if (waiting && !back) continue; /* test cycle: a squad waiting to come back is served first */
             if (q->retry && now < q->retry) continue; /* its point was refused (placement or sight) a moment ago */
-            int nearBand = near2 < LW_R_ON * LW_R_ON && near2 >= rMin * rMin, farBand = !nearBand && near2 >= LW_R_ON * LW_R_ON && near2 < LW_FAR * LW_FAR;
+            int nearBand = near2 < LW_R_ON * LW_R_ON && near2 >= rMin * rMin, farBand = !nearBand && near2 >= LW_R_ON * LW_R_ON && near2 < LwSquadBand(q) * LwSquadBand(q);
             if (!requested && (farBand && !back ? farTries < 2 : attempts < 4) && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && (nearBand || back || farBand))
             {
                 if (!back && LwRecentNear(q->pos)) { q->retry = now + 3000; continue; } /* spaced from online squads and recent requests (audit 1, 11) */
