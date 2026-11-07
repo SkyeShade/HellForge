@@ -689,7 +689,8 @@ static int LwPlace(uintptr_t slot, float* pos)
  * loop (0x801F80..0x8029DF) takes, per family (slot +12k: hash, +4 count; [slot+0x60] families), each member's unit
  * from 0x953150(dir, hash, table = [dir+0x660] (the loader's requests carry no spawn data: [data+0x10] = 0), 0): a
  * WEIGHTED RANDOM pick (the game's LCG 0x3483C38) among the table's entries (stride 0x80, count [table+8]) with
- * [e] == hash, tag test 0x177E3C0(dir+0x518D4, e+0x58) and weight [e+0x30+4(difficulty [dir+0x518C4] - 1)] > 0; then
+ * [e] == hash, tag test 0x177E3C0(dir+0x518D4, e+0x58) and weight [e+disp+4(tech level [dir+0x518C4] - 1)] > 0 (disp
+ * 0x30, 0x2C with difficulty 11's moved weights); then
  * resource = 0x949B80(&out, 0, e, -1, 0) (a pure lookup by difficulty), and per member layer = [0x505B40(res)+4]
  * (0 without), radius = min(2.4, [0x505B40(res)+8] when > 0, else [0x4F95C0(res)+0x10]) x 1.05, else 0.5
  * (0x8025A5..0x8025EE). The layer filters the cast's start face (exe 0x7D8D00: 0x7E6CB0(layer) -> query filter), so a
@@ -706,12 +707,18 @@ static int LwVariantsOf(uint32_t hash, LwVariant* out)
     uintptr_t dir = g_lwWorld.dir, table = 0, base = 0;
     if (!EvpPtr(dir + 0x660, &table) || table == 0 || !EvpPtr(table, &base) || base == 0) return 0;
     uint32_t count = EvpU32(table + 8, 0), diff = EvpU32(dir + 0x518C4, 0);
+    /* the weights' offset as the pick reads it now (0x95321B movss xmm0, [rdi+rax*4+disp8]): 0x30, or 0x2C once
+     * difficulty 11 has moved every roster row's weights (difficulty.c MoveRosterWeights; lw44a: on XL no unit was
+     * found with 0x30 and nothing came online) */
+    uint8_t code[6] = {0}; static int told;
+    if (SafeRead(g_lw.game + 0x95321Bu, code, 6) || memcmp(code, "\xF3\x0F\x10\x44\x87", 5) != 0)
+    { if (!told++) Note("living world: the unit pick's weight read (game 0x95321B) is not the reviewed code: no squad is placed"); return 0; }
     if (diff == 0 || diff > 16 || count > 4096) return 0;
     int n = 0;
     for (uint32_t k = 0; k < count; k++)
     {
         uintptr_t e = base + (uintptr_t)k * 0x80; float w = 0;
-        if (EvpU32(e, 0) != hash || SafeRead(e + 0x30 + 4u * (diff - 1), &w, 4) || !(w > 0.0f)) continue;
+        if (EvpU32(e, 0) != hash || SafeRead(e + code[5] + 4u * (diff - 1), &w, 4) || !(w > 0.0f)) continue;
         if (!((TagFn)(g_lw.game + 0x177E3C0u))(dir + 0x518D4, e + 0x58)) continue;
         uintptr_t res = 0;
         ((ResFn)(g_lw.game + 0x949B80u))(&res, 0, e, -1, 0);
@@ -1319,9 +1326,13 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
     uint32_t noFace0 = g_lwWorld.noFace, moved0 = g_lwWorld.moved, over0 = g_lwWorld.overhead, seen0 = g_lwWorld.seen, refused0 = g_lwWorld.refused, crowded0 = g_lwWorld.crowded;
     float save[2] = {best->pos[0], best->pos[1]};
     int outside = 0; g_lwRoomWhy[0] = 0;
-    for (int k = 0; k < nOffs * 2; k++)
+    /* visible: four distances per direction (lw42b: from 0.75 of the disc's radius every 650-350 m point was outside the
+     * disc, unseen or crowded); the others: the distance and 0.9 of it */
+    static const float visibleMul[] = {1.0f, 0.92f, 0.84f, 0.76f}, otherMul[] = {1.0f, 0.9f};
+    const float* mul = visible ? visibleMul : otherMul; int nMul = visible ? 4 : 2;
+    for (int k = 0; k < nOffs * nMul; k++)
     {
-        float a = base + offs[k / 2] * 3.14159265f / 180.0f, d = dist * (k % 2 ? 0.9f : 1.0f);
+        float a = base + offs[k / nMul] * 3.14159265f / 180.0f, d = dist * mul[k % nMul];
         float p[2] = {pl[0] + d * cosf(a), pl[1] + d * sinf(a)};
         if (p[0] * p[0] + p[1] * p[1] > g_lwWorld.radius * g_lwWorld.radius) { outside++; continue; }
         best->pos[0] = p[0]; best->pos[1] = p[1];
@@ -1342,7 +1353,7 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
             if (asFar) best->farOn = 1;
             Note("living world: test command %d: squad %d spawn %s at (%.0f, %.0f), %.0f m %s, %+.0f deg from it (try %d), %u members (%u lost before)", seq, (int)(best - g_lwSquads), mode,
                 (double)best->pos[0], (double)best->pos[1], (double)sqrtf(LwDist2(pl, best->pos[0], best->pos[1])),
-                fromCamera ? "along the camera's view" : "east (no camera)", (double)(deg + offs[k / 2]), k + 1, best->cap, best->lost);
+                fromCamera ? "along the camera's view" : "east (no camera)", (double)(deg + offs[k / nMul]), k + 1, best->cap, best->lost);
             return;
         }
     }
