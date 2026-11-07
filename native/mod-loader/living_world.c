@@ -619,28 +619,44 @@ static int LwRecentNear(const float* p)
     return 0;
 }
 
+/* Test notes: why a staged squad (pulled 2) is not online yet, noted when the reason changes (and every 30 s while it
+ * stays), so a run shows the far rule's own gate instead of a silent wait. */
+static void LwStagedWhy(LwSquad* q, const char* why, float near2)
+{
+    static char last[128]; static int lastIdx = -1; static ULONGLONG lastAt;
+    ULONGLONG now = GetTickCount64();
+    int idx = (int)(q - g_lwSquads);
+    if (idx == lastIdx && strcmp(last, why) == 0 && now - lastAt < 30000) return;
+    lastIdx = idx; lastAt = now; snprintf(last, sizeof last, "%s", why);
+    Note("living world: test: staged squad %d (%.0f m, %d units online of %d, far %d): not online: %s", idx, (double)sqrtf(near2),
+        g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.farUnits, why);
+}
+
+static const char* g_lwOnlineWhy; /* test notes: the step of LwOnline that refused the last request */
 static void LwOnline(LwSquad* q)
 {
+    g_lwOnlineWhy = NULL;
     uintptr_t slot = LwSlotOf(g_lwWorld.dir, q->definition);
     if (slot == 0)
     {
         q->definition = LwChooseGroup(g_lwWorld.dir, g_lwWorld.lg, q->pos);
         slot = q->definition ? LwSlotOf(g_lwWorld.dir, q->definition) : 0;
-        if (slot == 0) return;
+        if (slot == 0) { g_lwOnlineWhy = "no group slot"; return; }
     }
     uint32_t cap = q->survivors, size = LwGroupSize(slot);
     if (cap > size) cap = size;
-    if (cap == 0 || !LwRoomFor(cap)) { g_lwWorld.refused++; return; }
+    if (cap == 0 || !LwRoomFor(cap)) { g_lwOnlineWhy = cap ? g_lwRoomWhy : "no survivors"; g_lwWorld.refused++; return; }
     float pos[3] = {q->pos[0], q->pos[1], 0}, target[3] = {q->pos[0], q->pos[1], 0};
     if (q->pathAt < q->pathLen) { target[0] = g_lwNodes[q->path[q->pathAt]].x; target[1] = g_lwNodes[q->path[q->pathAt]].y; }
-    if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no ground under the point or its target"); g_lwWorld.refused++; return; }
+    if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no ground under the point or its target"); g_lwOnlineWhy = g_lwRoomWhy; g_lwWorld.refused++; return; }
     float wanted[2] = {pos[0], pos[1]};
-    if (!LwPlace(slot, pos) || !LwMembersFit(slot, pos, cap)) { q->retry = GetTickCount64() + 3000; return; }
-    if (g_lwTestVisible ? !LwSeenByAny(pos, LW_SIGHT) && (++g_lwTestUnseen, 1) : !(g_lwFarSpawn ? LwHiddenFar(pos) : LwHidden(pos))) { q->retry = GetTickCount64() + 3000; return; }
+    if (!LwPlace(slot, pos)) { g_lwOnlineWhy = "placement (LwPlace)"; q->retry = GetTickCount64() + 3000; return; }
+    if (!LwMembersFit(slot, pos, cap)) { g_lwOnlineWhy = "a member would not reach its slot"; q->retry = GetTickCount64() + 3000; return; }
+    if (g_lwTestVisible ? !LwSeenByAny(pos, LW_SIGHT) && (++g_lwTestUnseen, 1) : !(g_lwFarSpawn ? LwHiddenFar(pos) : LwHidden(pos))) { g_lwOnlineWhy = g_lwFarSpawn ? "sight: seen on the host's screen (or no off-screen read)" : "sight: seen"; q->retry = GetTickCount64() + 3000; return; }
     uintptr_t rec = g_lw.spawn(g_lwWorld.dir, slot, pos, LW_JOB_PATROL, LW_PATROL_FLAGS, target, NULL, NULL, 0.0f, cap);
-    if (rec == 0) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the spawn request returned no record"); g_lwWorld.refused++; return; }
+    if (rec == 0) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the spawn request returned no record"); g_lwOnlineWhy = g_lwRoomWhy; g_lwWorld.refused++; return; }
     uint8_t used = 0;
-    if (SafeRead(rec + 0x12, &used, 1) || used != 1) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the spawn queue was full"); g_lwWorld.refused++; return; } /* the queue was full: nothing queued */
+    if (SafeRead(rec + 0x12, &used, 1) || used != 1) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the spawn queue was full"); g_lwOnlineWhy = g_lwRoomWhy; g_lwWorld.refused++; return; } /* the queue was full: nothing queued */
     Note("living world: squad %d requested at (%.0f, %.0f, %.1f) (snapped %.1f m), %.0f m from the nearest player, out of sight, %u of %u members (group 0x%llx)",
         (int)(q - g_lwSquads), (double)pos[0], (double)pos[1], (double)pos[2], (double)sqrtf(LwDist2(wanted, pos[0], pos[1])),
         (double)sqrtf(LwNearestPlayer2(pos[0], pos[1])), cap, size, (unsigned long long)q->definition);
@@ -2157,23 +2173,35 @@ static void LwSquadsTick(void)
         LwSquad* q = &g_lwSquads[i];
         if (q->state == LW_OFFLINE)
         {
+            const char* why = NULL; char whyBuf[128]; /* test notes for a staged squad (pulled 2): the gate it fails */
             LwWalk(q, dt);
             float near2 = LwNearestPlayer2(q->pos[0], q->pos[1]);
             float rMin = g_lwWorld.rMin > 0 ? g_lwWorld.rMin : LW_R_MIN;
             int back = q->cycled == 1 && near2 >= rMin * rMin; /* test cycle: back at once (the budget still applies) */
-            if (waiting && !back) continue; /* test cycle: a squad waiting to come back is served first */
+            if (waiting && !back) { why = "a test-cycle squad is served first"; goto offlineDone; }
             if (q->retry && now < q->retry) continue; /* its point was refused (placement or sight) a moment ago */
             int nearBand = near2 < LW_R_ON * LW_R_ON && near2 >= rMin * rMin, farBand = !nearBand && near2 >= LW_R_ON * LW_R_ON && near2 < LwSquadBand(q) * LwSquadBand(q);
-            if (!requested && (farBand && !back ? farTries < 2 : attempts < 4) && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && (nearBand || back || farBand))
+            if (!(!requested && (farBand && !back ? farTries < 2 : attempts < 4) && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && (nearBand || back || farBand)))
             {
-                if (!back && LwRecentNear(q->pos)) { q->retry = now + 3000; continue; } /* spaced from online squads and recent requests (audit 1, 11) */
+                if (q->pulled == 2)
+                {
+                    if (requested) why = "another squad's request this tick";
+                    else if (!(nearBand || farBand)) { snprintf(whyBuf, sizeof whyBuf, "in no band: %.0f m (far band to %.0f m)", (double)sqrtf(near2), (double)LwSquadBand(q)); why = whyBuf; }
+                    else if (q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] >= r * r) why = "outside the playable disc";
+                    else why = "this tick's tries are used";
+                }
+            }
+            else
+            {
+                if (!back && LwRecentNear(q->pos)) { why = "within 60 m of an online squad or a request in the last minute"; q->retry = now + 3000; goto offlineDone; } /* spaced from online squads and recent requests (audit 1, 11) */
                 if (farBand && !back)
                 {
-                    if ((float)(farUnits + q->survivors) > LW_FAR_SHARE * (float)g_lwWorld.eff) { q->retry = now + 3000; continue; }
+                    if ((float)(farUnits + q->survivors) > LW_FAR_SHARE * (float)g_lwWorld.eff)
+                    { snprintf(whyBuf, sizeof whyBuf, "the far share: %d far units + %u over %.0f", farUnits, q->survivors, (double)(LW_FAR_SHARE * (float)g_lwWorld.eff)); why = whyBuf; q->retry = now + 3000; goto offlineDone; }
                     farTries++;
                     float here[3] = {q->pos[0], q->pos[1], 0};
                     int inView = LwGround(here[0], here[1], &here[2]) && LwSeenByAny(here, LwSquadBand(q));
-                    if (!inView && !LwAboutToBeSeen(q)) { q->retry = now + 3000; continue; }
+                    if (!inView && !LwAboutToBeSeen(q)) { why = "not in a player's sight (nor its way ahead)"; q->retry = now + 3000; goto offlineDone; }
                 }
                 uint32_t off0 = g_lwOffScreen;
                 g_lwFarSpawn = farBand && !back;
@@ -2188,7 +2216,10 @@ static void LwSquadsTick(void)
                         g_lwOffScreen != off0 ? "in a player's line of sight, off the host's screen" : "out of sight, it or its way ahead in a player's view");
                 }
                 if (back && requested) { q->cycled = 2; Note("living world: test: squad %d comes back with its %u survivors", (int)(q - g_lwSquads), q->cap); }
+                if (q->state == LW_OFFLINE) why = g_lwOnlineWhy ? g_lwOnlineWhy : "the request was not taken";
             }
+        offlineDone:
+            if (q->pulled == 2 && why) LwStagedWhy(q, why, near2);
         }
         else if (q->state == LW_PENDING) { LwPendingTick(q); online++; }
         else if (q->state == LW_ONLINE) { LwOnlineTick(q, &removals); online++; }
