@@ -3049,6 +3049,36 @@ static uint64_t LwHitBlast(uint64_t self, const float* pos, uint64_t type, uint6
     }
     return g_lwBlast(self, pos, type, source, attacker, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15);
 }
+/* H3 (lw95b: the hit that killed was kind 6, amount 100, DamageInfo 9, hash 0, damager = attacker = the mate's own body,
+ * applied from the damage drain game+0x12A82F0, so the queuer is not on the apply's stack): QueueDamage 0x129F910 (rcx,
+ * edx kind, r8d, r9d target, arg5 amount, arg6 / arg7 the attacker's net id; 19 arguments: its frame reads up to
+ * [rbp+0xC7] = entry rsp+0x98 after five pushes, rbp = rsp - 7 and 0xD0; its callers write up to [rsp+0x90]). Kind 6 is
+ * queued directly at 0x93630E (amount -1) and 0x11AE1EB (amount 15, DamageInfo 9), or with kind / amount / DamageInfo
+ * from arguments at 0x4C8433 (a wrapper with many callers): the unwound chain names the origin. Noted for each damage
+ * queued on an online loader member. */
+static LwApplyFn g_lwQueue;
+static uint64_t LwHitQueue(uint64_t rcx, uint64_t kind, uint64_t r8, uint64_t target, uint64_t amount, uint64_t attacker, uint64_t a7, uint64_t a8,
+    uint64_t a9, uint64_t a10, uint64_t a11, uint64_t a12, uint64_t a13, uint64_t a14, uint64_t a15, uint64_t a16, uint64_t a17, uint64_t a18, uint64_t a19)
+{
+    int sq = -1;
+    if (LwOnlineMember((uint32_t)target, &sq) && InterlockedIncrement(&g_lwHitNotes) <= 4000)
+    {
+        void* frames[12]; char chain[320]; size_t at = 0; chain[0] = 0;
+        USHORT n = RtlCaptureStackBackTrace(1, 12, frames, NULL);
+        for (USHORT k = 0; k < n && at < sizeof chain - 24; k++)
+        {
+            uintptr_t f = (uintptr_t)frames[k];
+            at += (size_t)snprintf(chain + at, sizeof chain - at, f >= g_lw.game && f < g_lw.game + 0x4000000u ? " g+0x%llX" : " ?%llX",
+                (unsigned long long)(f >= g_lw.game && f < g_lw.game + 0x4000000u ? f - g_lw.game : f));
+        }
+        char who[2][200];
+        LwHitWho((uint32_t)target, who[0], sizeof who[0]);
+        LwHitWho(LwNetEntity((uint32_t)attacker), who[1], sizeof who[1]);
+        Note("living world: test: damage queued on squad %d member %s: kind %u, amount %d, args 7-8 %08X %08X, arg17 %08X; attacker %s; chain%s",
+            sq, who[0], (uint32_t)kind, (int32_t)amount, (uint32_t)a7, (uint32_t)a8, (uint32_t)a17, who[1], chain);
+    }
+    return g_lwQueue(rcx, kind, r8, target, amount, attacker, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19);
+}
 static void LwInstallHitNotes(void)
 {
     char t[4] = "";
@@ -3062,6 +3092,9 @@ static void LwInstallHitNotes(void)
     { Note("living world: test: the damage apply / explosion spawner is not the reviewed code; hits are not noted"); return; }
     LoaderHook("living world test: hits on loader members (damage apply)", game + 0x9235F0u, (void*)LwHitApply, (void**)&g_lwApply);
     LoaderHook("living world test: explosions near loader members", game + 0x13C0A80u, (void*)LwHitBlast, (void**)&g_lwBlast);
+    if (ApiCodeMatches(game + 0x129F910u, "40 55 53 56 57 41 56 48 8D 6C 24 F9 48 81 EC D0 00 00 00"))
+        LoaderHook("living world test: damage queued on loader members", game + 0x129F910u, (void*)LwHitQueue, (void**)&g_lwQueue);
+    else Note("living world: test: QueueDamage is not the reviewed code; queued damage is not noted");
     Note("living world: test: hits on online loader members and explosions within 15 m of them are noted (0x9235F0, 0x13C0A80)");
 }
 
