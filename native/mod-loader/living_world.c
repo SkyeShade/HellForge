@@ -1835,9 +1835,18 @@ static void LwDrawnTick(void)
     }
     Note("living world: drawn: views %s; vertical FOV %.1f deg%s", w ? views : "none yet", (double)(g_lwDrawnFov * 57.29578f),
         g_lwZoomK > 1.0f && GetTickCount64() < g_lwZoomUntil ? ", zoomed 4x by the test" : "");
+    /* each member also against the game camera: inside its frame (the look command's projection: the pose rows, the
+     * vertical FOV [[CM]+0x34] divided by the test zoom, 1280 x 720) and clear of the static world (the sight ray) */
+    uintptr_t cmP = 0, camObj = 0, table = 0, rayFn = 0; float pose[16] = {0}, camPos[3] = {0}, vf = 0;
+    int proj = EvpPtr(g_lw.game + 0x346D560u, &cmP) && cmP && !SafeRead(cmP + 0xC, pose, sizeof pose) && !SafeRead(cmP + 0x3C, camPos, sizeof camPos) &&
+        EvpPtr(cmP, &camObj) && camObj && !SafeRead(camObj + 0x34, &vf, 4) && vf > 0.1f && vf < 3.0f;
+    float zk = g_lwZoomK > 1.0f && GetTickCount64() < g_lwZoomUntil ? g_lwZoomK : 1.0f;
+    typedef uint32_t (*RayFn)(uint32_t handle, const float* from, const float* dir, float length, uint32_t leaveOut, void* hit, uint32_t max);
+    uint32_t ray = proj ? LwSightRay(&table) : 0;
+    if (ray && (!EvpPtr(table + 0x68, &rayFn) || !rayFn)) ray = 0;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
-        LwSquad* q = &g_lwSquads[i]; uint32_t members[32]; int m, total = 0, inMain = 0, inAny = 0;
+        LwSquad* q = &g_lwSquads[i]; uint32_t members[32]; int m, total = 0, inMain = 0, inAny = 0, inFrame = 0, clearOf = 0;
         if (q->state != LW_ONLINE) continue;
         m = LwMembers(q->squad, members);
         char per[160]; int pw = 0; int cntv[LW_DRAWN_VIEWS] = {0};
@@ -1847,6 +1856,28 @@ static void LwDrawnTick(void)
             for (int k = 0; k < m && !mine; k++) mine = members[k] == g_lwDrawnT[t].unit;
             if (!mine) continue;
             total++; int any = 0, main = 0;
+            {
+                ActHealth hh; float p[3];
+                if (proj && ActHealthOf(g_lw.game, g_lwDrawnT[t].unit, &hh) && hh.unit && EvpUnitPosition(hh.unit, p))
+                {
+                    float w[3] = {p[0] - camPos[0], p[1] - camPos[1], p[2] + 1.0f - camPos[2]};
+                    float xr = w[0] * pose[0] + w[1] * pose[1] + w[2] * pose[2], yf = w[0] * pose[4] + w[1] * pose[5] + w[2] * pose[6], zu = w[0] * pose[8] + w[1] * pose[9] + w[2] * pose[10];
+                    float tt = tanf(0.5f * vf) / zk;
+                    if (yf > 1.0f)
+                    {
+                        float px = 640.0f + 640.0f * (xr / yf) / (tt * 16.0f / 9.0f), py = 360.0f - 360.0f * (zu / yf) / tt;
+                        if (px >= 0 && px < 1280 && py >= 0 && py < 720) inFrame++;
+                    }
+                    float len = sqrtf(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+                    if (ray && len > 1.0f)
+                    {
+                        float d[3] = {w[0] / len, w[1] / len, w[2] / len}, dist; uint8_t hit[0x40] = {0};
+                        uint32_t got = ((RayFn)rayFn)(ray, camPos, d, len, g_lwWorld.units[0], hit, 1);
+                        memcpy(&dist, hit + 0x18, 4);
+                        if (!(got >= 1 && dist < len - 0.5f)) clearOf++;
+                    }
+                }
+            }
             for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view; v++)
             {
                 LONG64 recent = (LONG64)(rate[v] * 0.5 + 1.0), c = g_lwDrawnV[v].calls;
@@ -1856,8 +1887,8 @@ static void LwDrawnTick(void)
         }
         if (total == 0) continue;
         for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view; v++) pw += snprintf(per + pw, sizeof per - (size_t)pw, "%s%d", v ? " " : "", cntv[v]);
-        Note("living world: drawn: squad %d at %.0f m: %d of %d members in the main view's visible list in the last 0.5 s (%d in any view; per view %s)", i,
-            (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), inMain, total, inAny, per);
+        Note("living world: drawn: squad %d at %.0f m: %d of %d members in the main view's visible list in the last 0.5 s (%d in any view; per view %s); %d in the camera's frame%s, %d clear of the static world from it", i,
+            (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), inMain, total, inAny, per, inFrame, zk > 1.0f ? " (zoomed)" : "", clearOf);
     }
 }
 
