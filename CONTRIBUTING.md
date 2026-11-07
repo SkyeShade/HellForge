@@ -93,8 +93,8 @@ breaks these rules is closed, and anything of this kind that reaches the reposit
 
 Each night that `dev` changed, `.github/workflows/nightly.yml` builds its newest commit and publishes it as the
 **nightly** pre-release: [releases/tag/nightly](https://github.com/SkyeShade/HellForge/releases/tag/nightly), with
-`HellForge-Nightly-Setup.exe`, `HellForge-Nightly-Linux-scripts.zip` and their SHA-256 sums. Each nightly replaces the
-one before, and its `nightly` tag moves to the commit it was built from.
+`HellForge-Nightly-Setup.exe`, `HellForge-Nightly-Linux-Installer.tar.gz`, `HellForge-Nightly-Linux-scripts.zip` and
+their SHA-256 sums. Each nightly replaces the one before, and its `nightly` tag moves to the commit it was built from.
 
 - **For testers, not for playing:** nobody tests a nightly in game before it is published. Install it into a folder of
   its own. It is never GitHub's "latest" release, and its notes list what changed since the previous nightly and the
