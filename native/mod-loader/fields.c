@@ -852,7 +852,6 @@ static uint32_t DefinedBehaviour(HfMod* mod, const HfBehaviour* def)
     return id;
 }
 
-
 /* What a definition block changes: HfEntityDef's and HfEditDef's lists. */
 typedef struct Changes
 {

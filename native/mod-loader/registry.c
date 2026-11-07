@@ -503,12 +503,18 @@ static int OwnComponents(HfMod* mod, const char* what, const char* name, const c
     return 0;
 }
 
-/* Why WeaponSlotFree refused (logged): a live change past the room HellForge's copies were made with, or the ceiling. */
-static void WeaponsFull(HfMod* mod, const char* what, const char* name)
+static void LiveRefuseRoom(HfMod* mod, const char* what, const char* name, const char* why); /* live_content.c */
+
+/* Why WeaponSlotFree refused (logged): a live change past the room HellForge's copies were made with, or the ceiling. In
+ * a live change the whole change is refused (live_content.c LiveRefuseRoom), never made with part of a mod's content. */
+static void WeaponsFull(HfMod* mod, const char* what, const char* name, int live)
 {
+    char why[192];
     if (g_regRoom != 0 && (uint32_t)g_weaponCount >= g_regRoom)
-        ApiLog(mod, "%s(%s): this session's copies of the game's tables have room for %u weapons and entities, all taken; a restart makes room", what, name, g_regRoom);
-    else ApiLog(mod, "%s(%s): mods added %d weapons and entities already (or there is no memory for more)", what, name, g_weaponCount);
+        snprintf(why, sizeof why, "this session's copies of the game's tables have room for %u weapons and entities, all taken; a restart makes room", g_regRoom);
+    else snprintf(why, sizeof why, "mods added %d weapons and entities already, or there is no memory for more", g_weaponCount);
+    if (live) LiveRefuseRoom(mod, what, name, why);
+    else ApiLog(mod, "%s(%s): %s", what, name, why);
 }
 
 /* Whether a weapon of this unit can be added now; logged when not. */
@@ -516,7 +522,7 @@ static int WeaponAddable(HfMod* mod, const char* unit, int live)
 {
     if (unit == NULL || unit[0] == 0 || strlen(unit) >= sizeof g_weapons[0].name) { ApiLog(mod, "add_weapon: it needs a unit name (under 192 bytes)"); return 0; }
     if (g_fired[HF_EVENT_ENTITIES_READY] && !live) { ApiLog(mod, "add_weapon(%s): too late; call it from hellforge_mod_init", unit); return 0; }
-    if (!WeaponSlotFree()) { WeaponsFull(mod, "add_weapon", unit); return 0; }
+    if (!WeaponSlotFree()) { WeaponsFull(mod, "add_weapon", unit, live); return 0; }
     return 1;
 }
 
@@ -615,7 +621,7 @@ static int EntityAddable(HfMod* mod, const HfEntity* def, const char* name, int 
 {
     if (name == NULL || name[0] == 0 || strlen(name) >= sizeof g_weapons[0].name) { ApiLog(mod, "add_entity: it needs a name (under 192 bytes)"); return 0; }
     if (g_fired[HF_EVENT_ENTITIES_READY] && !live) { ApiLog(mod, "add_entity(%s): too late; call it from hellforge_mod_init", name); return 0; }
-    if (!WeaponSlotFree()) { WeaponsFull(mod, "add_entity", name); return 0; }
+    if (!WeaponSlotFree()) { WeaponsFull(mod, "add_entity", name, live); return 0; }
     if (def->base == 0) { ApiLog(mod, "add_entity(%s): it needs a base entity", name); return 0; }
     return 1;
 }

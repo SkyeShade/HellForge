@@ -2596,10 +2596,35 @@ static void GrowableLimitsFixture(void)
     g_regRoom = (uint32_t)g_weaponCount;
     HfEntity late = {sizeof late, .base = HF_ENTITY_PELICAN_TURRET, .name = "fixture/grown_late"};
     g_liveSetup = mod;
+    g_lcRefused[0] = 0;
+    char why[512];
     assert(ApiAddEntity(mod, &late) == 0 && g_weaponCount == boot);
+    /* the whole change refused, never made with part of a mod's content */
+    assert(LiveNumbersCheck(why, sizeof why) != NULL && !strncmp(why, "capacity\t", 9) && strstr(why, "a restart makes room") != NULL);
+    g_lcRefused[0] = 0;
     g_regRoom = (uint32_t)g_weaponCount + 1;
     assert(ApiAddEntity(mod, &late) == Murmur64A("fixture/grown_late", 18) && g_weaponCount == boot + 1 && g_weapons[boot].state == 2);
     g_liveSetup = NULL;
+    /* a copied component table's records past the pages committed with the copy: each record's page committed as it is
+     * added (OwnRecord), up to the room, then refused */
+    enum { OWNED = 1000 };
+    uint8_t* fakeState = calloc(1, REG_LIST + 8);
+    uint8_t* behaviours = FakeTable(284, 2008 * 16 + 12 * 4);
+    FakeRow(behaviours, 2008, 0xB45E, 1);
+    for (uint32_t k = 0; k <= OWNED; k++) FakeRow(behaviours, 2008, 0xE000 + k, 1);
+    SetStatePointer(fakeState, REG_TABLES + 8 * 284, behaviours);
+    int ownedCount = g_ownedCount;
+    g_regRoom = OWNED;
+    for (uint32_t k = 0; k < OWNED; k++)
+    {
+        uint8_t* record = OwnRecord(fakeState, 284, 12, 0xB45E, 0xE000 + k);
+        assert(record != NULL);
+        memcpy(record + 4, &k, 4); /* a write on every record: a page left uncommitted faults */
+    }
+    OwnedTable* copy = OwnedTableOf(284, StatePointer(fakeState, REG_TABLES + 8 * 284));
+    assert(copy != NULL && copy->next == copy->first + OWNED && copy->end == copy->first + OWNED);
+    assert(OwnRecord(fakeState, 284, 12, 0xB45E, 0xE000 + OWNED) == NULL); /* the room is full */
+    g_ownedCount = ownedCount;
     /* an array's entries stay where they are as it grows, and it stops at its ceiling */
     StableArray small = {NULL, 24, 200, 0};
     assert(StableRoom(&small, 1) && small.committed == 64);

@@ -133,6 +133,14 @@ static void LiveRefuse(HfMod* mod, const char* kind, const char* name, const cha
         name != NULL ? name : "", why);
 }
 
+/* A registration refused for want of room, not for its number (registry.c WeaponsFull): logged, and the change refused
+ * with it, so it is never made with part of a mod's content. */
+static void LiveRefuseRoom(HfMod* mod, const char* what, const char* name, const char* why)
+{
+    ApiLog(mod, "%s(%s): %s", what, name != NULL ? name : "", why);
+    if (!g_lcRefused[0]) snprintf(g_lcRefused, sizeof g_lcRefused, "capacity\t%s's %s: %s", mod->id, name != NULL ? name : "", why);
+}
+
 /* Why a registration cannot take number index (what holds it), in why. */
 static void LiveHeldWhy(int kind, uint32_t index, const char* name, char* why, size_t size)
 {
