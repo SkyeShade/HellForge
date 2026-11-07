@@ -1600,92 +1600,104 @@ static void LwTestLook(int seq, int which)
 }
 
 /* ---- drawn in the main view (test instrument, HELLFORGE_LW_DRAWN=1; user 2026-11-07: audits on data, not screenshots;
- * KB living-world-drawn-state, checked by me) -------------------------------------------------------------------------
- * The engine keeps no per-unit "drawn" flag: the main view's cull runs on the render thread (0x1EA3E0) through
- * 0x57A7B0(ctx), whose only caller is 0x1EC45C (shadow views cull through other paths). When it returns, ctx+0x14 sets
- * (u32) at [ctx+0x18] (pointers) hold visible lists, the main view's draw list being sets 0 and 1: set +0x38 u32 cull indices, +0x70 their count, +0x68 the cull
- * set cs, whose spheres are parallel float arrays indexed by cull index ([cs+0x100] x, +0x108 y, +0x110 z, +0x118
- * radius: the kernel 0x57B9B0 loads four at a time at 0x57BB6C..0x57BBB1) and [cs+0x128] the kind (8 = a render object,
- * as the consumer 0x1EC5E0..0x1EC606 reads them). The game thread publishes targets (members of online squads, those
- * beyond 250 m first, the near ones as a control: their centre 1 m over the feet); the hook marks a target drawn in a frame when a visible kind-8 sphere of at
- * most 6 m radius has its centre within 1.5 m of it. Matching is by place, not by the unit's own render objects (that
- * mapping is not traced): a rock beside a member could match too. */
+ * KB living-world-drawn-state, second pass, checked by me) ---------------------------------------------------------------
+ * The engine keeps no per-unit "drawn" flag. The view render 0x1EA3E0 (render thread) culls through 0x57A7B0(ctx), which
+ * only starts the jobs; the visible lists are complete once 0x1E2F40 (LOD selection, only caller 0x1EDA6E, rdx = P with
+ * ctx = [P+0x88], r8 = the render world's objects [rw+0x170]) has waited on its sets {4, 2, 3} (P+0x78; 0x1E2F90). Set 4
+ * ([[ctx+0x18]+0x20]) is the meshes' cull set: after the sync job 0x5778D0, set+0x70 is the visible count (0x577E91) and
+ * set+0x38 the visible cull indices ci; [cs+0x128][ci] is the object's type (3 = a mesh, constructor 0x510AC0) and
+ * [cs+0x130][ci] its slot in the objects. A mesh's +0x44 is its unit's scene-graph render handle (0x510C19..0x510C46:
+ * {[M+0xC8], [[M+0xC0]+4]} where M+0xC0 is the unit's scene graph, object+0x48 or +0x60 as EvpUnitGraph reads it). So a
+ * unit was in a view's visible list when [graph+4] of its scene graph is among the visible meshes' +0x44: no positions.
+ * The list is the frustum and small-object cull; the LOD pass after it can still drop a mesh (not counted here).
+ * 0x1EA3E0 renders several views a frame; results are kept per view (ctx+0x28), and a view counts as the main one when
+ * its block view+0x200..0x300 carries the gameplay camera's vertical FOV ([CM]+0x34) or its half-angle tangent. */
 #define LW_DRAWN_MAX 64
-static struct { float x, y, z; uint32_t unit; volatile LONG64 hit; } g_lwDrawnT[LW_DRAWN_MAX];
-static volatile LONG g_lwDrawnN; static volatile LONG64 g_lwDrawnFrame; static float g_lwDrawnBox[6];
-typedef void (*LwCullFn)(uintptr_t ctx);
-static LwCullFn g_lwCull;
-static void LwCullDetour(uintptr_t ctx)
+#define LW_DRAWN_VIEWS 8
+static struct { uint32_t handle, unit; } g_lwDrawnT[LW_DRAWN_MAX];
+static volatile LONG g_lwDrawnN; static volatile float g_lwDrawnFov;
+static struct { uintptr_t view; volatile LONG64 calls; volatile LONG main; LONG64 hit[LW_DRAWN_MAX]; } g_lwDrawnV[LW_DRAWN_VIEWS];
+typedef void (*LwLodFn)(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d);
+static LwLodFn g_lwLod;
+static int LwRegionLimit(uintptr_t base, uint64_t* n4)
 {
-    g_lwCull(ctx);
+    MEMORY_BASIC_INFORMATION mb;
+    if (!base || !VirtualQuery((LPCVOID)base, &mb, sizeof mb) || mb.State != MEM_COMMIT) return 0;
+    uint64_t n = ((uintptr_t)mb.BaseAddress + mb.RegionSize - base) / 4; if (n < *n4) *n4 = n; return 1;
+}
+static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d)
+{
+    g_lwLod(a, p, objs, d);
     int n = (int)g_lwDrawnN;
-    LONG64 frame = InterlockedIncrement64(&g_lwDrawnFrame);
-    if (n <= 0 || n > LW_DRAWN_MAX) return;
-    uint32_t sets = 0; uintptr_t arr = 0;
-    /* Only sets 0 and 1: the consumer builds the main view's draw list from those two alone (0x1EC4B9: count
-     * [rbp+0x820] + [rbp+0x898], the loop 0x1EC5C0 over {0, 1}); set 4 held other data (lw62a/b: an index 0x3F800000
-     * past its count crashed this hook). */
-    if (SafeRead(ctx + 0x14, &sets, 4) || SafeRead(ctx + 0x18, &arr, 8) || arr == 0 || sets > 5) return;
-    if (sets > 2) sets = 2;
-    float bx0 = g_lwDrawnBox[0] - 1.5f, by0 = g_lwDrawnBox[1] - 1.5f, bz0 = g_lwDrawnBox[2] - 1.5f, bx1 = g_lwDrawnBox[3] + 1.5f, by1 = g_lwDrawnBox[4] + 1.5f, bz1 = g_lwDrawnBox[5] + 1.5f;
-    for (uint32_t k = 0; k < sets; k++)
+    uintptr_t ctx = 0, arr = 0, set = 0, view = 0, cs = 0, idx = 0, K = 0, S = 0, done = 0; uint32_t sets = 0, cnt = 0, fin = 0;
+    if (SafeRead(p + 0x88, &ctx, 8) || !ctx || SafeRead(ctx + 0x28, &view, 8) || !view) return;
+    int v = 0; while (v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view && g_lwDrawnV[v].view != view) v++;
+    if (v == LW_DRAWN_VIEWS) return;
+    if (!g_lwDrawnV[v].view) g_lwDrawnV[v].view = view;
+    LONG64 call = InterlockedIncrement64(&g_lwDrawnV[v].calls);
+    float fov = g_lwDrawnFov, block[64];
+    if (fov > 0.05f && !SafeRead(view + 0x200, block, sizeof block))
     {
-        uintptr_t set = 0, cs = 0, idx = 0, X = 0, Y = 0, Z = 0, Rr = 0, K = 0; uint32_t cnt = 0;
-        if (SafeRead(arr + 8u * k, &set, 8) || set == 0 || SafeRead(set + 0x68, &cs, 8) || cs == 0 || SafeRead(set + 0x70, &cnt, 4) || SafeRead(set + 0x38, &idx, 8) || idx == 0 ||
-            SafeRead(cs + 0x100, &X, 8) || SafeRead(cs + 0x108, &Y, 8) || SafeRead(cs + 0x110, &Z, 8) || SafeRead(cs + 0x118, &Rr, 8) || SafeRead(cs + 0x128, &K, 8) ||
-            !X || !Y || !Z || !Rr || !K || cnt > 1000000) continue;
-        /* a safety net, not a layout: no index read past the committed region of any of the arrays */
-        uintptr_t ends[6] = {0}, bases[6] = {X, Y, Z, Rr, K, idx}; uint64_t lim = ~0ull; int bad = 0;
-        for (int a = 0; a < 6 && !bad; a++)
-        {
-            MEMORY_BASIC_INFORMATION mb;
-            if (!VirtualQuery((LPCVOID)bases[a], &mb, sizeof mb) || mb.State != MEM_COMMIT) { bad = 1; break; }
-            ends[a] = (uintptr_t)mb.BaseAddress + mb.RegionSize;
-            uint64_t n4 = (ends[a] - bases[a]) / 4; if (a < 5 && n4 < lim) lim = n4;
-            if (a == 5 && n4 < cnt) cnt = (uint32_t)n4;
-        }
-        if (bad) continue;
-        const uint32_t* list = (const uint32_t*)idx;
-        for (uint32_t j = 0; j < cnt; j++)
-        {
-            uint32_t ci = list[j];
-            if (ci >= lim) continue;
-            float x = ((const float*)X)[ci], y = ((const float*)Y)[ci], z = ((const float*)Z)[ci];
-            if (x < bx0 || x > bx1 || y < by0 || y > by1 || z < bz0 || z > bz1) continue;
-            if (((const uint32_t*)K)[ci] != 8 || ((const float*)Rr)[ci] > 6.0f) continue;
-            for (int t = 0; t < n; t++)
-            {
-                float dx = x - g_lwDrawnT[t].x, dy = y - g_lwDrawnT[t].y, dz = z - g_lwDrawnT[t].z;
-                if (dx * dx + dy * dy + dz * dz < 1.5f * 1.5f) g_lwDrawnT[t].hit = frame;
-            }
-        }
+        float t = tanf(fov * 0.5f); int m = 0;
+        for (int i = 0; i < 64 && !m; i++) m = fabsf(block[i] - fov) < 1e-4f || fabsf(block[i] - t) < 1e-4f;
+        g_lwDrawnV[v].main = m;
+    }
+    if (n <= 0 || n > LW_DRAWN_MAX) return;
+    if (SafeRead(ctx + 0x14, &sets, 4) || sets < 5 || SafeRead(ctx + 0x18, &arr, 8) || !arr || SafeRead(arr + 0x20, &set, 8) || !set ||
+        SafeRead(ctx + 0x60, &done, 8) || !done || SafeRead(done + 16, &fin, 4) || fin != 1 ||
+        SafeRead(set + 0x68, &cs, 8) || !cs || SafeRead(set + 0x70, &cnt, 4) || SafeRead(set + 0x38, &idx, 8) ||
+        SafeRead(cs + 0x128, &K, 8) || SafeRead(cs + 0x130, &S, 8)) return;
+    uint64_t lim = ~0ull, lc = ~0ull, ls = ~0ull; /* a safety net: nothing read past a committed region */
+    if (!LwRegionLimit(K, &lim) || !LwRegionLimit(S, &lim) || !LwRegionLimit(idx, &lc) || !LwRegionLimit(objs, &ls)) return;
+    if (cnt > lc) cnt = (uint32_t)lc;
+    const uint32_t* list = (const uint32_t*)idx;
+    for (uint32_t j = 0; j < cnt; j++)
+    {
+        uint32_t ci = list[j];
+        if (ci >= lim || ((const uint32_t*)K)[ci] != 3) continue;
+        uint32_t slot = ((const uint32_t*)S)[ci];
+        if ((uint64_t)slot * 2 + 1 >= ls) continue;
+        uintptr_t obj = ((const uintptr_t*)objs)[slot];
+        if (obj < 0x10000) continue;
+        uint32_t h = *(const uint32_t*)(obj + 0x44);
+        for (int t = 0; t < n; t++) if (g_lwDrawnT[t].handle == h) g_lwDrawnV[v].hit[t] = call;
     }
 }
-/* Game thread, each tick: the hook (once), the targets every 250 ms, and every 5 s per far squad a note of how many of
- * its members the main view drew in the last 0.5 s (frames counted by the hook), with the view's FOV and zoom. */
+/* A unit's scene graph (object+0x48 or +0x60 by its class, as EvpUnitPosition reads it), its render handle at +4. */
+static uint32_t LwUnitRenderHandle(uint32_t unit)
+{
+    uintptr_t graph = EvpUnitGraph(unit); uint32_t h = 0;
+    return graph && !SafeRead(graph + 4, &h, 4) && h != 0xFFFFFFu ? h : 0;
+}
+/* Game thread, each tick: the hook (once); the targets every 250 ms (the members of online squads, those beyond 250 m
+ * first, the near ones as the control); every 5 s per squad, how many members each view had in its visible list within
+ * its last 0.5 s of calls. */
 static void LwDrawnTick(void)
 {
-    static int on = -1, hooked; static ULONGLONG pubAt, noteAt; static LONG64 frameAt[2]; static ULONGLONG frameTime[2];
+    static int on = -1, hooked; static ULONGLONG pubAt, noteAt, rateAt; static LONG64 callsAt[LW_DRAWN_VIEWS]; static double rate[LW_DRAWN_VIEWS];
     if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_DRAWN", t, sizeof t) > 0 && t[0] == '1'; }
     if (!on) return;
     uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
     if (!hooked)
     {
         hooked = -1;
-        if (!ApiCodeMatches(exe + 0x57A7B0u, "40 55 53 56 57 48 8D AC 24 78 F7 FF FF 48 81 EC 88 09 00 00") ||
-            !ApiCodeMatches(exe + 0x1EC5E0u, "4A 8B 84 1D E8 07 00 00 4A 8B 94 1D 18 08 00 00 42 8B 0C 08 48 8B 82 30 01 00 00 44 8B 14 88 48 8B 82 28 01 00 00 83 3C 88 08") ||
-            !ApiCodeMatches(exe + 0x57BB6Cu, "48 8B 81 00 01 00 00") || !ApiCodeMatches(exe + 0x57BB82u, "48 8B 81 08 01 00 00") ||
-            !ApiCodeMatches(exe + 0x57BB99u, "48 8B 81 10 01 00 00") || !ApiCodeMatches(exe + 0x57BBB1u, "48 8B 81 18 01 00 00"))
-        { Note("living world: drawn: the main view's cull is not the reviewed code; no drawn notes"); return; }
-        if (LoaderHook("living world drawn (test)", exe + 0x57A7B0u, (void*)LwCullDetour, (void**)&g_lwCull) || g_lwCull == NULL) { Note("living world: drawn: the cull hook failed"); return; }
-        hooked = 1; Note("living world: drawn: the main view's cull is hooked (0x57A7B0): far squads' members are matched to its visible render objects");
+        if (!ApiCodeMatches(exe + 0x1E2F40u, "4C 89 4C 24 20 4C 89 44 24 18 48 89 54 24 10 48 89 4C 24 08 55 53 56 57 41 54 41 55 41 56 41 57") ||
+            !ApiCodeMatches(exe + 0x1E2F6Fu, "48 8B BA 88 00 00 00 48 8D 5A 78 4C 8B F2 4C 8B F9 BE 03 00 00 00") ||
+            !ApiCodeMatches(exe + 0x1EDA6Eu, "E8 CD 54 FF FF") || !ApiCodeMatches(exe + 0x577E91u, "45 89 69 70") ||
+            !ApiCodeMatches(exe + 0x510C19u, "49 8B 80 C0 00 00 00 41 8B 88 C8 00 00 00 89 4D B7 48 85 C0 74 08 8B 40 04 89 45 BB") ||
+            !ApiCodeMatches(exe + 0x510C42u, "48 8B 47 70 0F 11 47 40"))
+        { Note("living world: drawn: the LOD selection or the mesh records are not the reviewed code; no drawn notes"); return; }
+        if (LoaderHook("living world drawn (test)", exe + 0x1E2F40u, (void*)LwLodDetour, (void**)&g_lwLod) || g_lwLod == NULL) { Note("living world: drawn: the hook failed"); return; }
+        hooked = 1; Note("living world: drawn: the LOD selection is hooked (0x1E2F40): squad members are matched by their scene graph's render handle to the meshes' visible list (set 4), per view");
     }
     if (hooked != 1) return;
     ULONGLONG now = GetTickCount64();
+    uintptr_t holder = 0, cam = 0; float fov = 0;
+    if (EvpPtr(g_lw.game + 0x346D560u, &holder) && holder && EvpPtr(holder, &cam) && cam && !SafeRead(cam + 0x34, &fov, 4)) g_lwDrawnFov = fov;
     if (now - pubAt >= 250)
     {
         pubAt = now;
-        int n = 0; float box[6] = {1e9f, 1e9f, 1e9f, -1e9f, -1e9f, -1e9f};
+        int n = 0;
         for (int pass = 0; pass < 2; pass++) /* the far squads first; then the near ones, as the instrument's control */
         for (int i = 0; i < g_lwWorld.count && n < LW_DRAWN_MAX; i++)
         {
@@ -1694,40 +1706,50 @@ static void LwDrawnTick(void)
             int m = LwMembers(q->squad, members);
             for (int k = 0; k < m && n < LW_DRAWN_MAX; k++)
             {
-                ActHealth h; float p[3];
-                if (!ActHealthOf(g_lw.game, members[k], &h) || !h.unit || !EvpUnitPosition(h.unit, p)) continue;
-                if (g_lwDrawnT[n].unit != members[k]) g_lwDrawnT[n].hit = 0;
-                g_lwDrawnT[n].x = p[0]; g_lwDrawnT[n].y = p[1]; g_lwDrawnT[n].z = p[2] + 1.0f; g_lwDrawnT[n].unit = members[k];
-                for (int a = 0; a < 3; a++) { float v = a == 2 ? p[2] + 1.0f : p[a]; if (v < box[a]) box[a] = v; if (v > box[3 + a]) box[3 + a] = v; }
+                ActHealth h; uint32_t rh;
+                if (!ActHealthOf(g_lw.game, members[k], &h) || !h.unit || (rh = LwUnitRenderHandle(h.unit)) == 0) continue;
+                if (g_lwDrawnT[n].unit != members[k]) for (int v = 0; v < LW_DRAWN_VIEWS; v++) g_lwDrawnV[v].hit[n] = 0;
+                g_lwDrawnT[n].handle = rh; g_lwDrawnT[n].unit = members[k];
                 n++;
             }
         }
-        memcpy(g_lwDrawnBox, box, sizeof box);
         g_lwDrawnN = n;
+    }
+    if (now - rateAt >= 5000)
+    {
+        double dt = rateAt ? (double)(now - rateAt) / 1000.0 : 0; rateAt = now;
+        for (int v = 0; v < LW_DRAWN_VIEWS; v++) { LONG64 c = g_lwDrawnV[v].calls; rate[v] = dt > 0 ? (double)(c - callsAt[v]) / dt : 0; callsAt[v] = c; }
     }
     if (now - noteAt < 5000) return;
     noteAt = now;
-    LONG64 frame = g_lwDrawnFrame;
-    frameAt[0] = frameAt[1]; frameTime[0] = frameTime[1]; frameAt[1] = frame; frameTime[1] = now;
-    double fps = frameTime[0] && now > frameTime[0] ? (double)(frame - frameAt[0]) * 1000.0 / (double)(now - frameTime[0]) : 30.0;
-    LONG64 recent = (LONG64)(fps * 0.5 + 1.0);
-    uintptr_t holder = 0, cam = 0; float fov = 0;
-    if (EvpPtr(g_lw.game + 0x346D560u, &holder) && holder && EvpPtr(holder, &cam) && cam) SafeRead(cam + 0x34, &fov, 4);
-    int zoomed = g_lwZoomK > 1.0f && GetTickCount64() < g_lwZoomUntil;
+    char views[256]; int w = 0;
+    for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view; v++)
+        w += snprintf(views + w, sizeof views - (size_t)w, "%sview %d %.0f/s%s", v ? ", " : "", v, rate[v], g_lwDrawnV[v].main ? " (main: carries the camera FOV)" : "");
+    Note("living world: drawn: views %s; vertical FOV %.1f deg%s", w ? views : "none yet", (double)(g_lwDrawnFov * 57.29578f),
+        g_lwZoomK > 1.0f && GetTickCount64() < g_lwZoomUntil ? ", zoomed 4x by the test" : "");
     for (int i = 0; i < g_lwWorld.count; i++)
     {
-        LwSquad* q = &g_lwSquads[i]; int total = 0, drawn = 0;
+        LwSquad* q = &g_lwSquads[i]; uint32_t members[32]; int m, total = 0, inMain = 0, inAny = 0;
         if (q->state != LW_ONLINE) continue;
+        m = LwMembers(q->squad, members);
+        char per[160]; int pw = 0; int cntv[LW_DRAWN_VIEWS] = {0};
         for (int t = 0; t < (int)g_lwDrawnN; t++)
         {
-            int mine = 0; uint32_t members[32]; int m = LwMembers(q->squad, members);
+            int mine = 0;
             for (int k = 0; k < m && !mine; k++) mine = members[k] == g_lwDrawnT[t].unit;
             if (!mine) continue;
-            total++; if (g_lwDrawnT[t].hit && frame - g_lwDrawnT[t].hit <= recent) drawn++;
+            total++; int any = 0, main = 0;
+            for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view; v++)
+            {
+                LONG64 recent = (LONG64)(rate[v] * 0.5 + 1.0), c = g_lwDrawnV[v].calls;
+                if (g_lwDrawnV[v].hit[t] && c - g_lwDrawnV[v].hit[t] <= recent) { cntv[v]++; any = 1; if (g_lwDrawnV[v].main) main = 1; }
+            }
+            inAny += any; inMain += main;
         }
         if (total == 0) continue;
-        Note("living world: drawn: squad %d at %.0f m: %d of %d members drawn in the main view in the last 0.5 s (%.0f frames a second; vertical FOV %.1f deg%s)", i,
-            (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), drawn, total, fps, (double)(fov * 57.29578f), zoomed ? ", zoomed 4x by the test" : "");
+        for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view; v++) pw += snprintf(per + pw, sizeof per - (size_t)pw, "%s%d", v ? " " : "", cntv[v]);
+        Note("living world: drawn: squad %d at %.0f m: %d of %d members in the main view's visible list in the last 0.5 s (%d in any view; per view %s)", i,
+            (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), inMain, total, inAny, per);
     }
 }
 

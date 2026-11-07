@@ -430,10 +430,11 @@ static EvpHole g_evpHoles[EVP_MAX_DESTRUCTIBLES]; /* by the manager's instance s
 static ULONGLONG g_evpHolesNext;
 static uint32_t g_evpHolesState;
 
-/* A unit's position (its scene graph's root, helldivers2.exe's unit registry); 0 when it does not read. */
-static int EvpUnitPosition(uint32_t unit, float* position)
+/* A unit's scene graph (helldivers2.exe's unit registry: object+0x48 for the level unit class, +0x60 for the plain one,
+ * as their vt+0xE8 returns it); 0 when it does not read. */
+static uintptr_t EvpUnitGraph(uint32_t unit)
 {
-    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), registry, gens, objects, object, vtable, method, poses;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), registry, gens, objects, object, vtable, method;
     uint32_t index = unit & 0x3FFFFFu, count;
     uint8_t gen, code[5];
     if (!unit || !EvpPtr(exe + EVP_EXE_UNITS, &registry) || SafeRead(registry + 0x98, &count, 4) || index >= count ||
@@ -445,7 +446,14 @@ static int EvpUnitPosition(uint32_t unit, float* position)
     if (vtable == exe + 0x16770E0u && method == exe + 0x2CAC50u && !memcmp(code, level, 5)) graph = object + 0x48;
     else if (method == exe + 0x2BD870u && !memcmp(code, plain, 5)) graph = object + 0x60;
     else return 0;
-    if (!EvpPtr(graph + 0x28, &poses) || SafeRead(poses + 0x30, position, 12)) return 0;
+    return graph;
+}
+
+/* A unit's position (its scene graph's root); 0 when it does not read. */
+static int EvpUnitPosition(uint32_t unit, float* position)
+{
+    uintptr_t graph = EvpUnitGraph(unit), poses;
+    if (!graph || !EvpPtr(graph + 0x28, &poses) || SafeRead(poses + 0x30, position, 12)) return 0;
     for (int k = 0; k < 3; k++) if (!isfinite(position[k]) || fabsf(position[k]) > 100000.0f) return 0;
     return 1;
 }
