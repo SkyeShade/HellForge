@@ -2683,6 +2683,58 @@ static void LwInstallNavLeaveFix(void)
     Note("living world: a rebuilt cell's completion while the nav is stopping clears its built flag with its section (leave crash fix)");
 }
 
+/* The cut crash (lw84a, exe 0xCB1223; KB crash-cb1223-navcut-section-swap, subagent, checked by me in the dump):
+ * Havok AI's ApplyCutsTask (run 0xC95AB0) applies a per-section cut list L = [ctx+0xA8] + 0x80 i that the task graph
+ * filled for the cutter it recorded at L+0x18 (0xC93E84: [[ctx+0xD0]+0x20][i]), but at run time it takes the cutter of
+ * section slot i afresh (0xC95AFF..0xC95B0B). A rebuild of a built cell (0x7B9053 unload, 0x7B9244 load; the loader's
+ * rebuilds, which follow the XL tiles) can put a new section and cutter in slot i in between, and the old mesh's face
+ * keys then index the new mesh (0xC29710 has no bounds check): an edge pointing into another section's unmapped edge
+ * gives a null partner, written at 0xCB1223. Vanilla never rebuilds a built cell. The guard: the task applies the list
+ * only when the slot's cutter is still the one the list was made for; a replaced cutter's list belongs to a mesh that
+ * is gone (the new cutter is allocated before the old one is freed, so equal pointers are the same cutter). The other
+ * caller of the cutter (0xC22E39) passes its own lists, not this one. */
+static volatile LONG* g_lwCutSkipped; /* the guard's count of cut lists left unapplied (their cutter was replaced) */
+static void LwInstallNavCutGuard(void)
+{
+    static int done;
+    if (done) return;
+    done = 1;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (!ApiCodeMatches(exe + 0xC95AB0u, "48 83 EC 38 4C 8B 49 10 4C 63 59 18 4D 8B D3 49 C1 E2 07 4D 03 91 A8 00 00 00 4D 8B 42 20") ||
+        !ApiCodeMatches(exe + 0xC95AE8u, "49 8B 81 D0 00 00 00") || !ApiCodeMatches(exe + 0xC95AFFu, "48 8B 48 20"))
+    { Note("living world: the nav cut task is not the reviewed code; no cut guard"); return; }
+    uint8_t* block = AllocateNearGame(exe, 0x1000);
+    if (block == NULL) { Note("living world: no memory within 2 GB of the game's exe for the nav cut guard"); return; }
+    static const uint8_t head[] = {
+        0x48, 0x83, 0xEC, 0x38,                   /* sub rsp, 0x38 */
+        0x4C, 0x8B, 0x49, 0x10,                   /* mov r9, [rcx+0x10]   (ctx) */
+        0x4C, 0x63, 0x59, 0x18,                   /* movsxd r11, [rcx+0x18] (i) */
+        0x4D, 0x8B, 0xD3,                         /* mov r10, r11 */
+        0x49, 0xC1, 0xE2, 0x07,                   /* shl r10, 7 */
+        0x4D, 0x03, 0x91, 0xA8, 0x00, 0x00, 0x00, /* add r10, [r9+0xA8]   (L) */
+        0x49, 0x8B, 0x81, 0xD0, 0x00, 0x00, 0x00, /* mov rax, [r9+0xD0] */
+        0x48, 0x8B, 0x40, 0x20,                   /* mov rax, [rax+0x20] */
+        0x4A, 0x8B, 0x04, 0xD8,                   /* mov rax, [rax+r11*8] (the slot's cutter now) */
+        0x49, 0x3B, 0x42, 0x18,                   /* cmp rax, [r10+0x18]  (the list's cutter) */
+        0x75, 0x05,                               /* jne skip */
+        0xE9, 0, 0, 0, 0,                         /* jmp 0xC95ACA (rel32 at 48, next at 52) */
+        0xF0, 0xFF, 0x05, 0, 0, 0, 0,             /* skip: lock inc dword [rip+disp] (block + 0x100: lists skipped; disp at 55, next at 59) */
+        0x48, 0x83, 0xC4, 0x38,                   /* add rsp, 0x38 */
+        0xC3};                                    /* ret */
+    uint8_t code[sizeof head]; memcpy(code, head, sizeof head);
+    int64_t back = (int64_t)(exe + 0xC95ACAu) - (int64_t)(uintptr_t)(block + 52), to = (int64_t)(uintptr_t)block - (int64_t)(exe + 0xC95AB0u + 5);
+    if (!InRel32(back) || !InRel32(to)) { Note("living world: the nav cut guard is out of reach of the exe"); return; }
+    int32_t rel = (int32_t)back; memcpy(code + 48, &rel, 4);
+    rel = 0x100 - 59; memcpy(code + 55, &rel, 4);
+    memcpy(block, code, sizeof code);
+    DWORD protect; VirtualProtect(block, 0x1000, PAGE_EXECUTE_READWRITE, &protect); FlushInstructionCache(GetCurrentProcess(), block, 0x1000);
+    g_lwCutSkipped = (volatile LONG*)(block + 0x100);
+    uint8_t jump[26]; memset(jump, 0x90, sizeof jump); jump[0] = 0xE9;
+    rel = (int32_t)to; memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(exe + 0xC95AB0u, jump, sizeof jump)) { Note("living world: the nav cut guard could not be written"); return; }
+    Note("living world: the nav cut task applies a section's cut list only while its cutter is the one the list was made for (cut crash fix)");
+}
+
 /* Test instrument (HELLFORGE_LW_TEST_TRACE=1; KB nav-cell-connections, checked by me: 0xBB5310..0xBB545F): a finished
  * cell joins its built neighbours through 0xBB5310 -> 0xBB5110(out, params, &set, &graphSet), whose streaming set's
  * [set+0x28] (connections) is tested at 0xBB5290: 0 = nothing stored, the two sections stay apart and no path crosses.
@@ -2726,6 +2778,7 @@ static void LwInstallWallReach(uintptr_t game)
 {
     if (!LwEnabled()) return; /* audit 1b: the leave fix patched the exe with the living world off; only its rebuilds need it */
     LwInstallNavLeaveFix();
+    LwInstallNavCutGuard();
     if (g_lwWallReach != NULL) return;
     if (!ApiCodeMatches(game + LW_WALL_SITE, "F3 0F 58 C8 0F 28 C5 F3 0F 59 CE 0F 28 F2") ||
         !ApiCodeMatches(game + 0x59CCFEu, "C7 44 24 78 00 00 80 40"))
@@ -3092,6 +3145,7 @@ static void LivingTick(void)
     {
         Note("living world: cost: %.3f ms a tick on average, %.2f ms at worst, over %u ticks (%d squads)", g_lwCost.sum / g_lwCost.ticks, g_lwCost.worst,
             g_lwCost.ticks, g_lwWorld.count);
+        if (g_lwCutSkipped && *g_lwCutSkipped) Note("living world: nav cut guard: %ld cut lists left unapplied so far (their section's cutter was replaced by a rebuild)", (long)*g_lwCutSkipped);
         g_lwCost.sum = g_lwCost.worst = 0; g_lwCost.ticks = 0; g_lwCost.at = now;
     }
 }
