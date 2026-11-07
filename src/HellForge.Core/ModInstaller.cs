@@ -207,8 +207,10 @@ public static class ModInstaller
             var files = zip.Entries.Select(e => (Name: e.FullName.Replace('\\', '/'), Entry: e)).Where(e => !e.Name.EndsWith('/')).ToList();
             bool? PackAt(string prefix)
             {
+                // names compared as the system's file lookups compare them (ModCatalog.ManifestIn, CosmeticPacks.IsPack once unpacked)
                 var here = files.Where(f => f.Name.StartsWith(prefix, StringComparison.Ordinal) && !f.Name[prefix.Length..].Contains('/'))
-                    .ToDictionary(f => f.Name[prefix.Length..], f => f.Entry, StringComparer.Ordinal);
+                    .GroupBy(f => f.Name[prefix.Length..], OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+                    .ToDictionary(g => g.Key, g => g.First().Entry, OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
                 if (here.ContainsKey(ModCatalog.ManifestName) || here.ContainsKey(ModCatalog.LegacyManifestName)) return false; // a mod
                 if (here.Keys.Any(n => ModCatalog.PatchFile().IsMatch(n))) return true;
                 if (here.TryGetValue(CosmeticPacks.ManifestName, out var manifest))
@@ -298,30 +300,13 @@ public static class ModInstaller
         var name = root == folder ? Path.GetFileNameWithoutExtension(archive) : Path.GetFileName(root);
         var target = Path.Combine(install.Mods, name);
         for (var n = 2; File.Exists(target) || Directory.Exists(target); n++) target = Path.Combine(install.Mods, $"{name}-{n}");
-        // moved out first, as TakeOne does: two programs never take the same one
-        var away = Path.Combine(install.Temp, "mod-dropped-" + Guid.NewGuid().ToString("N")[..8], file);
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(away)!);
-            File.Move(archive, away);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            TryDelete(Path.GetDirectoryName(away)!);
-            return "";
-        }
+        // the folder first, while the zip is still in mods/: a catalog load meanwhile (another program's) keeps a zip's unpacked
+        // copy, or unpacks it again, but never deletes it half moved. A zip that cannot go now stays beside the folder, and
+        // the next look removes it (the same files: TakeOne).
         try { Directory.Move(root, target); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            try { File.Move(away, archive); }
-            catch (Exception back) when (back is IOException or UnauthorizedAccessException)
-            {
-                return $"{file}: it could not be unpacked into the mods folder ({error.Message}), and it was moved to {away}.";
-            }
-            TryDelete(Path.GetDirectoryName(away)!);
-            return "";
-        }
-        TryDelete(Path.GetDirectoryName(away)!);
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return ""; }
+        try { File.Delete(archive); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         // the folder named after the zip, not its unpacked copy: a pack without a name of its own gets that id
         try
         {
@@ -333,7 +318,7 @@ public static class ModInstaller
     }
 
     // Every file of the unpacked archive is in the installed folder with the same bytes (the installed copy may have more:
-    // what the mod wrote beside itself). False for an archive without files.
+    // what the mod wrote beside itself, so nothing the archive holds is lost). False for an archive without files.
     static bool HoldsSameFiles(string unpacked, string installed)
     {
         var files = Directory.GetFiles(unpacked, "*", SearchOption.AllDirectories);

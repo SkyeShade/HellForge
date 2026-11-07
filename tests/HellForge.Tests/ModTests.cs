@@ -416,6 +416,40 @@ static class ModTests
                 "Unstaging removed the record and left the mods' own files alone.");
         });
 
+        test("A staged link written over in game/data is found before the mods load: a zip's files are made again, a mod folder's line says so", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "overwrite-install"));
+            install.Create("12345");
+            var data = Directory.CreateDirectory(Path.Combine(install.Game, "data")).FullName;
+            Directory.CreateDirectory(install.Mods);
+            const string PlainPatch = "9ba626afa44a3aa3.patch_0", ZipPatch = "0123456789abcdef.patch_0";
+            var plain = Directory.CreateDirectory(Path.Combine(install.Mods, "plain", "data")).Parent!.FullName;
+            File.WriteAllText(Path.Combine(plain, ModCatalog.ManifestName), """{"format":1,"id":"test.plain","name":"Plain","version":"1"}""");
+            File.WriteAllText(Path.Combine(plain, "data", PlainPatch), "plain");
+            var zipped = Directory.CreateDirectory(Path.Combine(root, "overwrite-zipped", "data")).Parent!.FullName;
+            File.WriteAllText(Path.Combine(zipped, ModCatalog.ManifestName), """{"format":1,"id":"test.zipped","name":"Zipped","version":"1"}""");
+            File.WriteAllText(Path.Combine(zipped, "data", ZipPatch), "zipped");
+            ZipFile.CreateFromDirectory(zipped, Path.Combine(install.Mods, "zipped.zip"));
+            ModStaging.Stage(install, ModCatalog.Load(install.Mods).Mods);
+            check(ModStaging.CheckLinks(install).Count == 0, "Nothing is reported when nothing was written over.");
+
+            // a modpack unpacked into game/data over both staged names, written in place as Explorer's Replace writes
+            foreach (var name in new[] { ZipPatch, PlainPatch })
+                using (var stream = new FileStream(Path.Combine(data, name), FileMode.Create, FileAccess.Write))
+                    stream.Write(System.Text.Encoding.UTF8.GetBytes("a modpack's own patch"));
+            var lines = ModStaging.CheckLinks(install);
+            check(lines.Any(l => l.StartsWith($"data/{ZipPatch} was written over", StringComparison.Ordinal)) &&
+                !Directory.EnumerateDirectories(Path.Combine(install.Mods, ModArchives.UnpackedFolder)).Any(), "The zip's unpacked copy goes: " + string.Join(" | ", lines));
+            // Windows links a mod folder too: its file took the write, and only the player can put the mod back
+            var plainLinks = OperatingSystem.IsWindows();
+            check(lines.Any(l => l.StartsWith($"plain: data/{PlainPatch} changed since the last session", StringComparison.Ordinal)) == plainLinks &&
+                File.ReadAllText(Path.Combine(plain, "data", PlainPatch)) == (plainLinks ? "a modpack's own patch" : "plain"), "The folder mod: " + string.Join(" | ", lines));
+            ModStaging.Stage(install, ModCatalog.Load(install.Mods).Mods);
+            check(File.ReadAllText(Path.Combine(data, ZipPatch)) == "zipped" && File.ReadAllText(Path.Combine(data, PlainPatch)) == (plainLinks ? "a modpack's own patch" : "plain"),
+                "The zip's patch is staged again from its zip; a copied folder mod's is put back.");
+            check(ModStaging.CheckLinks(install).Count == 0, "Said once.");
+        });
+
     }
 
     static string WriteMod(string root, string name, string json)

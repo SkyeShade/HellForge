@@ -32,8 +32,8 @@ Copying a mod into the mods folder yourself works too (Open mods folder opens it
 archive is removed, the next time the Mods page loads or a session starts.
 
 When a dropped archive holds a mod that is installed already, it stays as it is and Mod notices says so: use Add mods...
-to replace the installed one. When it holds exactly the installed mod's files, it is only a second copy: it is removed,
-and Mod notices says so.
+to replace the installed one. When every file it holds is in the installed mod with the same bytes, it is only a second
+copy: it is removed, and Mod notices says so.
 
 Some things to know:
 
@@ -53,11 +53,14 @@ second copies:
 
 - **Windows:** every patch. While the game runs, a mod's patch files cannot be saved over, as the game's cannot.
 - **Linux:** the files HellForge keeps itself (zips' unpacked copies, mods from hosts). A mod folder's patches are copied,
-  since Linux lets a program write to a file the game is reading. btrfs and XFS make that copy without using space.
+  since Linux lets a program write to a file the game is reading.
 
-A drive without hard links (FAT32, exFAT) gets copies. A staged patch is the mod's file under a second name: change the
-mod, not the file in the game's data folder. A gameplay mod kept as a zip is on the drive twice, as its zip and its
-unpacked copy: the zip is what friends compare.
+A drive without hard links (FAT32, exFAT) gets copies. A gameplay mod kept as a zip is on the drive twice, as its zip and
+its unpacked copy: the zip is what friends compare.
+
+A staged patch is the mod's file under a second name, so change the mod, not the file in the game's data folder. Written
+over there, the mod's file changes too. The next session start finds it: a file HellForge keeps itself is made again,
+and for a mod folder Mod notices says which file changed, so you can reinstall the mod.
 
 ## The Mods page
 

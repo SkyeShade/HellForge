@@ -3,9 +3,8 @@ using System.Runtime.InteropServices;
 namespace HellForge.Core;
 
 // A file at a second path without a second copy of its bytes: a hard link where the drive has them (NTFS, ReFS, ext4,
-// btrfs, XFS, ntfs-3g), else a copy. The copy is File.Copy, which on Linux clones the file's extents first where the file
-// system can (.NET's SystemNative_CopyFile tries the FICLONE ioctl: btrfs, XFS), so it costs no space there either. A link
-// falls back to the copy on a drive without links (FAT32, exFAT), across drives, and on a share.
+// btrfs, XFS, ntfs-3g; under Wine, CreateHardLinkW makes the host's link), else a copy (File.Copy). A link falls back to
+// the copy on a drive without links (FAT32, exFAT), across drives, and on a share.
 public static class FileLinks
 {
     // source at destination, which must not exist: linked when link is true and the drive takes it, else copied. True: linked.
