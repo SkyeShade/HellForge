@@ -24,6 +24,13 @@ On `dev`, since 0.4.0-beta.
   **Stops grenades** setting in the editor, off by default. Grenades, throwing knives and self-destruct drones bounce off
   the bubble from outside, and ones thrown from inside still leave. Helldivers, enemies, vehicles and
   stratagem balls pass as before.
+- **Shields that stop enemies.** The FX-12 Shield Generator Relay has a **Stops enemies** setting in the editor, off by
+  default. Enemies stop at the bubble and break it with their own attacks, charges end there with their hit reaction,
+  and pounces stop on it. Enemies already inside stay inside, and Helldivers pass.
+- **Shields past 10,000 health.** A shield set stronger than that keeps its value: the network type that capped it now
+  widens to match.
+- **Backpack ammo past 1,023.** The editor now takes backpack ammo up to 1,048,575 on any backpack. The HellForge Editor
+  widens `deposit_value` to 20 bits for everyone, so it now counts as a shared mod: friends need the same HellForge version.
 - **Mod sync from your own game.** A host's mods' game patch files are written from the joiner's own game wherever it
   has the same bytes, and only the rest downloads. The host lists each archive part with its SHA-256 (`mods.parts`),
   and every file is still checked against the host's. **Index my game** on the Mods page finds renamed game files too.

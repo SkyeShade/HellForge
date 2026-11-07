@@ -310,6 +310,8 @@ static class StatsTests
                 bastion["zone_0.affected_by_explosions"] is { Offset: 843, Storage: "u8" }, "Explosion shares: the default zone's and each zone's own, with its flag.");
             foreach (var (kind, name) in new[] { ("stratagems", "FX-12 Shield Generator Relay"), ("throwables", "G/SH-39 Shield"), ("backpacks", "SH-32 Shield Generator Pack") })
                 check(StatsSchema.Current.Targets[kind][name].Fields["shield.blocks_grenades"] is { Offset: 337, Storage: "u8" }, name + ": stopping grenades is a flag in the Shield record's padding");
+            check(StatsSchema.Current.Targets["stratagems"]["FX-12 Shield Generator Relay"].Fields["shield.blocks_enemies"] is { Offset: 338, Storage: "u8" } &&
+                !StatsSchema.Current.Targets["backpacks"]["SH-32 Shield Generator Pack"].Fields.ContainsKey("shield.blocks_enemies"), "Stopping enemies is the relay's alone");
             var shield = StatsSchema.Current.Targets["backpacks"]["SH-20 Ballistic Shield Backpack"].Fields;
             check(shield["zone.explosive_damage_percentage"].Offset == 844 && shield["entity.explosive_damage_percentage"].Record == 292, "The ballistic shield's explosion shares.");
             var row = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "SH-20 Ballistic Shield Backpack")!["page"]!.AsArray()

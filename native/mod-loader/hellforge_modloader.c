@@ -894,6 +894,7 @@ static void WatchRunning(void)
     if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
     if (g_difficultyCapPending) DifficultyCapTick(g_game); /* a live level 11 (live_content.c) */
     if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
+    if (g_fired[HF_EVENT_NETWORK_READY]) NetShieldHealth();
     AuditPatchSites(); /* also while the level was refused: its earlier steps' patches are still live */
     if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
 }

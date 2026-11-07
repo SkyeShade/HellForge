@@ -3628,7 +3628,7 @@ static int FarDetour(void) { return g_farOriginal() + 100; }
 /* The sphere is solid: a grenade already inside keeps no pair with it, so it leaves freely; other shields keep none. */
 static void ShieldBlockFixture(void)
 {
-    SbList list = {1, {{7, 10.0f}}};
+    SbList list = {.count = 1, .shields = {{.body = 7, .radius = 10.0f, .grenades = 1}}};
     _Alignas(16) uint8_t shield[0xA0] = {0}, grenade[0xA0] = {0};
     const float centre[3] = {100, 0, 5}, outside[3] = {100, 12, 5}, inside[3] = {103, 2, 5};
     uint32_t ball = SB_BALL;
@@ -3641,6 +3641,20 @@ static void ShieldBlockFixture(void)
     memset(grenade + 0x98, 0, 4);
     memcpy(grenade + 0x30, inside, 12);
     assert(!ShieldBlockKeeps(&list, 7, shield, grenade));
+    memcpy(grenade + 0x30, outside, 12);
+    list.shields[0].grenades = 0;
+    assert(!ShieldBlockKeeps(&list, 7, shield, grenade)); /* marked for enemies only */
+    const SbShield wall = {.radius = 10.0f, .x = 100, .z = 5, .wall = 1};
+    float before[3] = {100, 11, 5}, side[3] = {100, 10, 5}, from[3] = {100, 5, 5}, in[3] = {100, 4, 5}, high[3] = {100, 0, 16.5f}, top[3] = {100, 0, 15};
+    assert(ShieldBlockHold(&wall, before, side) && fabsf(side[1] - 10.6f) < 0.01f && side[2] == 5); /* walkers go sideways */
+    assert(!ShieldBlockHold(&wall, from, in));                                                       /* already inside: free */
+    assert(ShieldBlockHold(&wall, high, top) && fabsf(top[2] - 15.6f) < 0.01f);                      /* a pounce stops on the dome */
+    const float centreTop[3] = {100, 0, 0}, rim[3] = {100, 9.9f, 0}, off[3] = {100, 12, 0};
+    float climb = 0;
+    assert(ShieldBlockDomeHeight(&wall, centreTop, 14.9f, &climb) && fabsf(climb - 15.0f) < 0.01f);  /* its top */
+    assert(ShieldBlockDomeHeight(&wall, rim, 0, &climb) && climb == SB_DOME_STEP);                   /* eased up */
+    assert(!ShieldBlockDomeHeight(&wall, off, 0, &climb));                                           /* off the dome */
+    assert(ShieldBlockReaction(0xDE) == 0xE1 && ShieldBlockReaction(0x1D0) == 0x1D4 && ShieldBlockReaction(0xDC) == 0);
 }
 
 static void FarHookFixture(void)
