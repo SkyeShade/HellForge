@@ -497,6 +497,7 @@ static struct
     uint32_t crowded; /* points where a member's slot cast would not reach its slot (30 s) */
     uint32_t goals, goalNoFace, goalReplans, goalStuck; /* goals sent, next nodes without a face within 25 m, replans, none found (30 s) */
     uint32_t heights, underGround, overGround; float worstUnder, worstOver; /* members against the drawn ground (30 s) */
+    int popMade, popPass, popTries, popTicks; float popNearest; double popMs; /* the populate, resumed each tick (LW_POP_MS) */
 } g_lwWorld;
 
 static uint32_t LwAiCount(void) { uintptr_t c; return EvpPtr(g_lw.game + 0x3326D18u, &c) ? EvpU32(c + 0x1C, 0) : 0; }
@@ -580,6 +581,7 @@ static void LwPlan(LwSquad* q)
 }
 
 /* The world's squads for this mission: on route nodes inside the playable disc, away from the players. */
+#define LW_POP_MS 2.0 /* the populate's time a tick */
 static void LwPopulate(void)
 {
     uintptr_t dir = g_lwWorld.dir;
@@ -599,7 +601,13 @@ static void LwPopulate(void)
     int n = (int)(patrols * ratio * ratio + 0.5f);
     if (n < 1) n = 1;
     if (n > LW_SQUADS_MAX) n = LW_SQUADS_MAX;
-    int made = 0; float nearest = 3e38f;
+    /* Spread over ticks (audit 1f pass caveat 10: 6981 squads in one tick made a 56-67 ms frame after the landing):
+     * placement goes on where the last tick stopped until LW_POP_MS is spent. The squads are drawn uniformly, and the
+     * world stays unpopulated (no squad ticks) until the last is placed, so nothing sees a part of it. */
+    if (g_lwWorld.popTicks == 0) { g_lwWorld.popNearest = 3e38f; g_lwWorld.popMade = 0; g_lwWorld.popPass = 0; g_lwWorld.popTries = 0; }
+    g_lwWorld.popTicks++;
+    LARGE_INTEGER t0, t1, hz; QueryPerformanceCounter(&t0); QueryPerformanceFrequency(&hz);
+    int made = g_lwWorld.popMade; float nearest = g_lwWorld.popNearest; uint32_t steps = 0;
     /* Start beyond R_off from every player; on a map whose playable disc is smaller than that (lw7b: 292 m, no node
      * 350 m from the drop) beyond R_min instead, so such squads come online at once at vanilla-like distances. */
     /* The least spawn distance fits the map (D, lw15p: a 156 m disc had no node 150 m from the drop, so 0 squads):
@@ -611,11 +619,21 @@ static void LwPopulate(void)
      * on nodes only, XL's 576-591 nodes 500-700 m apart held about 10 squads each, none near the drop: the first squad
      * came online after 2-3 minutes, and they arrived one after another at the same points). Its route on from there
      * is planned when it gets there (LwWalk), not here (the populate's 6144 path searches made a 60-79 ms frame). */
-    for (int pass = 0, tries = 0; pass < 2; pass++, tries = 0)
+    for (; g_lwWorld.popPass < 2; g_lwWorld.popPass++, g_lwWorld.popTries = 0)
     /* On an extra large map (walking grid) the squads start evenly from R_min out, as they stand everywhere else on the
      * disc (audit 1e, 7: started beyond R_off, the first squads walked in over 2 minutes; lw83a). */
-    for (float least = pass == 0 && g_lwWorld.radius < 1500.0f ? LW_R_OFF : g_lwWorld.rMin; made < n && tries < n * 20; tries++)
+    for (float least = g_lwWorld.popPass == 0 && g_lwWorld.radius < 1500.0f ? LW_R_OFF : g_lwWorld.rMin; made < n && g_lwWorld.popTries < n * 20; g_lwWorld.popTries++)
     {
+        if ((++steps & 63) == 0)
+        {
+            QueryPerformanceCounter(&t1);
+            if ((double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart > LW_POP_MS)
+            {
+                g_lwWorld.popMade = made; g_lwWorld.popNearest = nearest;
+                g_lwWorld.popMs += (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart;
+                return; /* on next tick */
+            }
+        }
         int node = (int)(LwRand() % (uint32_t)g_lwNodeCount);
         if (g_lwNodes[node].degree == 0) continue;
         int to = g_lwNodes[node].next[LwRand() % g_lwNodes[node].degree];
@@ -632,9 +650,11 @@ static void LwPopulate(void)
         q->path[0] = (uint16_t)to; q->pathLen = 1; q->pathAt = 0;
         if (LwNearestPlayer2(x, y) < nearest) nearest = LwNearestPlayer2(x, y);
     }
+    QueryPerformanceCounter(&t1);
+    g_lwWorld.popMs += (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart;
     g_lwWorld.count = made; g_lwWorld.eff = eff; g_lwWorld.populated = 1;
-    Note("living world: %d squads on %d route nodes (patrol cap %d units, mean group %.1f, playable radius %.0f m, online within %.0f m); the nearest starts %.0f m from a player",
-        made, g_lwNodeCount, eff, (double)mean, (double)g_lwWorld.radius, (double)LW_R_ON, (double)sqrtf(nearest));
+    Note("living world: %d squads on %d route nodes (patrol cap %d units, mean group %.1f, playable radius %.0f m, online within %.0f m); the nearest starts %.0f m from a player; placed over %d ticks, %.1f ms",
+        made, g_lwNodeCount, eff, (double)mean, (double)g_lwWorld.radius, (double)LW_R_ON, (double)sqrtf(nearest), g_lwWorld.popTicks, g_lwWorld.popMs);
 }
 
 /* Offline walking along the path at the squad's speed; a new destination at the end. A staged squad (pulled 2) stays
@@ -2989,11 +3009,13 @@ static void LwInstallWallReach(uintptr_t game)
 }
 
 #define LW_NAV_CELLS_MAX 4096
+#define LW_NAV_COPY_ROWS 512 /* 4 MB a tick */
 static struct
 {
     int pins;                       /* 0 not checked, 1 ok, -1 not the reviewed code */
     uintptr_t heights; LONG level;  /* the height copy written to, for this level */
     uint16_t* orig;                 /* that copy as the game made it (the coarse heights) */
+    uintptr_t copying; LONG copyLevel; uint32_t copyRows; /* orig being taken, LW_NAV_COPY_ROWS rows a tick */
     uint32_t n;
     int applied[NEAR_TILES_MAX]; float centre[NEAR_TILES_MAX][2]; uint64_t handle[NEAR_TILES_MAX];
     float gap[NEAR_TILES_MAX]; uint64_t gapHandle[NEAR_TILES_MAX];
@@ -3196,7 +3218,15 @@ static void LwNavTick(uintptr_t dir)
     if (H != g_lwNav.heights || g_lwNav.level != g_world.levels) /* a new copy: keep it as the game made it */
     {
         if (g_lwNav.orig == NULL) g_lwNav.orig = (uint16_t*)VirtualAlloc(NULL, (size_t)n * n * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (g_lwNav.orig == NULL || SafeRead(data, g_lwNav.orig, (size_t)n * n * 2)) { LwNavWait("no copy of the nav's heights"); return; }
+        if (g_lwNav.orig == NULL) { LwNavWait("no memory for a copy of the nav's heights"); return; }
+        /* 32 MB in slices (audit 1f pass caveat 10: the copy and the populate made one 56-67 ms frame after the landing) */
+        if (g_lwNav.copying != H || g_lwNav.copyLevel != g_world.levels) { g_lwNav.copying = H; g_lwNav.copyLevel = g_world.levels; g_lwNav.copyRows = 0; }
+        uint32_t rows = n - g_lwNav.copyRows < LW_NAV_COPY_ROWS ? n - g_lwNav.copyRows : LW_NAV_COPY_ROWS;
+        if (SafeRead(data + (size_t)g_lwNav.copyRows * n * 2, g_lwNav.orig + (size_t)g_lwNav.copyRows * n, (size_t)rows * n * 2))
+        { g_lwNav.copying = 0; LwNavWait("no copy of the nav's heights"); return; }
+        g_lwNav.copyRows += rows;
+        if (g_lwNav.copyRows < n) return;
+        g_lwNav.copying = 0;
         memset(g_lwNav.applied, 0, sizeof g_lwNav.applied); memset(g_lwNav.gapHandle, 0, sizeof g_lwNav.gapHandle);
         g_lwNav.heights = H; g_lwNav.level = g_world.levels; g_lwNav.n = n; g_lwNav.watching = 0; g_lwNav.busyFrames = 0;
         Note("living world: nav: world %u, heights 0x%llx: %u x %u, size %.1f m, base %.2f m, range %.2f m", id, (unsigned long long)H, n, n,
