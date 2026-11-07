@@ -1603,7 +1603,7 @@ static void LwTestLook(int seq, int which)
  * KB living-world-drawn-state, checked by me) -------------------------------------------------------------------------
  * The engine keeps no per-unit "drawn" flag: the main view's cull runs on the render thread (0x1EA3E0) through
  * 0x57A7B0(ctx), whose only caller is 0x1EC45C (shadow views cull through other paths). When it returns, ctx+0x14 sets
- * (u32) at [ctx+0x18] (pointers) hold the visible lists: set +0x38 u32 cull indices, +0x70 their count, +0x68 the cull
+ * (u32) at [ctx+0x18] (pointers) hold visible lists, the main view's draw list being sets 0 and 1: set +0x38 u32 cull indices, +0x70 their count, +0x68 the cull
  * set cs, whose spheres are parallel float arrays indexed by cull index ([cs+0x100] x, +0x108 y, +0x110 z, +0x118
  * radius: the kernel 0x57B9B0 loads four at a time at 0x57BB6C..0x57BBB1) and [cs+0x128] the kind (8 = a render object,
  * as the consumer 0x1EC5E0..0x1EC606 reads them). The game thread publishes targets (members of online squads, those
@@ -1622,7 +1622,11 @@ static void LwCullDetour(uintptr_t ctx)
     LONG64 frame = InterlockedIncrement64(&g_lwDrawnFrame);
     if (n <= 0 || n > LW_DRAWN_MAX) return;
     uint32_t sets = 0; uintptr_t arr = 0;
+    /* Only sets 0 and 1: the consumer builds the main view's draw list from those two alone (0x1EC4B9: count
+     * [rbp+0x820] + [rbp+0x898], the loop 0x1EC5C0 over {0, 1}); set 4 held other data (lw62a/b: an index 0x3F800000
+     * past its count crashed this hook). */
     if (SafeRead(ctx + 0x14, &sets, 4) || SafeRead(ctx + 0x18, &arr, 8) || arr == 0 || sets > 5) return;
+    if (sets > 2) sets = 2;
     float bx0 = g_lwDrawnBox[0] - 1.5f, by0 = g_lwDrawnBox[1] - 1.5f, bz0 = g_lwDrawnBox[2] - 1.5f, bx1 = g_lwDrawnBox[3] + 1.5f, by1 = g_lwDrawnBox[4] + 1.5f, bz1 = g_lwDrawnBox[5] + 1.5f;
     for (uint32_t k = 0; k < sets; k++)
     {
@@ -1630,10 +1634,22 @@ static void LwCullDetour(uintptr_t ctx)
         if (SafeRead(arr + 8u * k, &set, 8) || set == 0 || SafeRead(set + 0x68, &cs, 8) || cs == 0 || SafeRead(set + 0x70, &cnt, 4) || SafeRead(set + 0x38, &idx, 8) || idx == 0 ||
             SafeRead(cs + 0x100, &X, 8) || SafeRead(cs + 0x108, &Y, 8) || SafeRead(cs + 0x110, &Z, 8) || SafeRead(cs + 0x118, &Rr, 8) || SafeRead(cs + 0x128, &K, 8) ||
             !X || !Y || !Z || !Rr || !K || cnt > 1000000) continue;
+        /* a safety net, not a layout: no index read past the committed region of any of the arrays */
+        uintptr_t ends[6] = {0}, bases[6] = {X, Y, Z, Rr, K, idx}; uint64_t lim = ~0ull; int bad = 0;
+        for (int a = 0; a < 6 && !bad; a++)
+        {
+            MEMORY_BASIC_INFORMATION mb;
+            if (!VirtualQuery((LPCVOID)bases[a], &mb, sizeof mb) || mb.State != MEM_COMMIT) { bad = 1; break; }
+            ends[a] = (uintptr_t)mb.BaseAddress + mb.RegionSize;
+            uint64_t n4 = (ends[a] - bases[a]) / 4; if (a < 5 && n4 < lim) lim = n4;
+            if (a == 5 && n4 < cnt) cnt = (uint32_t)n4;
+        }
+        if (bad) continue;
         const uint32_t* list = (const uint32_t*)idx;
         for (uint32_t j = 0; j < cnt; j++)
         {
             uint32_t ci = list[j];
+            if (ci >= lim) continue;
             float x = ((const float*)X)[ci], y = ((const float*)Y)[ci], z = ((const float*)Z)[ci];
             if (x < bx0 || x > bx1 || y < by0 || y > by1 || z < bz0 || z > bz1) continue;
             if (((const uint32_t*)K)[ci] != 8 || ((const float*)Rr)[ci] > 6.0f) continue;
