@@ -384,6 +384,7 @@ typedef struct LwSquad
     float movedFrom[2], reqZ, seenAt[32][3]; /* seenAt: each listed member's last position (for the loss note) */
     uint8_t arrived, viewed; /* viewed: the test trace noted it in a player's view once */
     uint8_t farOn, inView; /* farOn: came online by sightline; inView: a player sees it (checked at lookAt) */
+    uint8_t forceOff; /* test command: go offline now */
     ULONGLONG lookAt;
     ULONGLONG retry; /* no request before this (placement or sight refused) */
 } LwSquad;
@@ -559,6 +560,7 @@ static int LwRoomFor(uint32_t members)
 }
 
 static int LwGround(float x, float y, float* z);
+static int g_lwTestVisible; /* test command "spawn visible": the sight rule is skipped for that one request */
 static int LwPlace(uintptr_t slot, float* pos);
 static int LwHidden(const float* p);
 
@@ -598,7 +600,7 @@ static void LwOnline(LwSquad* q)
     if (q->pathAt < q->pathLen) { target[0] = g_lwNodes[q->path[q->pathAt]].x; target[1] = g_lwNodes[q->path[q->pathAt]].y; }
     if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { g_lwWorld.refused++; return; }
     float wanted[2] = {pos[0], pos[1]};
-    if (!LwPlace(slot, pos) || !LwHidden(pos)) { q->retry = GetTickCount64() + 3000; return; }
+    if (!LwPlace(slot, pos) || (!g_lwTestVisible && !LwHidden(pos))) { q->retry = GetTickCount64() + 3000; return; }
     uintptr_t rec = g_lw.spawn(g_lwWorld.dir, slot, pos, LW_JOB_PATROL, LW_PATROL_FLAGS, target, NULL, NULL, 0.0f, cap);
     if (rec == 0) { g_lwWorld.refused++; return; }
     uint8_t used = 0;
@@ -921,8 +923,10 @@ static void LwOnlineTick(LwSquad* q, int* removals)
      * through the same path as the distance rule (which runs confirmed it), so its return shows the survivor count */
     static int testCycle = -1;
     if (testCycle < 0) { char t[4] = ""; testCycle = GetEnvironmentVariableA("HELLFORGE_LW_TEST_CYCLE", t, sizeof t) > 0 && t[0] == '1'; }
-    int forced = testCycle && q->lost > 0 && !q->cycled && now - q->since > 45000 && *removals < 16;
-    if (forced) { q->cycled = 1; Note("living world: test: squad %d sent offline with %u of %u alive", (int)(q - g_lwSquads), q->survivors, q->cap); }
+    int forced = (testCycle && q->lost > 0 && !q->cycled && now - q->since > 45000 && *removals < 16) || q->forceOff;
+    if (q->forceOff) { q->forceOff = 0; Note("living world: test: squad %d sent offline by command with %u of %u alive", (int)(q - g_lwSquads), q->survivors, q->cap); }
+    else
+    if (forced && !q->cycled && testCycle && q->lost > 0) { q->cycled = 1; Note("living world: test: squad %d sent offline with %u of %u alive", (int)(q - g_lwSquads), q->survivors, q->cap); }
     else
     {
         /* offline only once it has been beyond R_off of every player, every member at alert 0, for LW_FAR_MS without a break */
@@ -989,6 +993,109 @@ static void LwWallSample(void)
     g_lwWalls.empty = (uint32_t)InterlockedExchange(&g_lwWallCounts[1], 0) + g_lwWalls.empty;
 }
 
+/* ---- test commands (development only): the harness's in-game Lua calls this export through LuaJIT's ffi, as it
+ * calls harness_input (harness.py INPUT_LUA); the command waits in a queue until the loader's next game-thread tick,
+ * which runs it and notes the result ("living world: test command N: ..."). Host only.
+ *   spawn near|far|visible D [deg [N]]  an offline squad (squad N) at a placeable point D m from player 1 in the camera's direction
+ *                                   (+deg): near / far = through the placement and sight rules (far: as by sightline),
+ *                                   visible = in plain view (screenshots only)
+ *   offline N        squad N goes offline now (survivors carried)      status   the online squads
+ *   kill garrison    the garrison kill test on the next active garrison, without its 15 s wait
+ * The camera: CM = [game+0x346D560], [CM+0x3C] its world position (subagent viewdist, P); the third-person camera
+ * stands behind the Helldiver, so player - camera is the screen's direction across the ground. */
+static SRWLOCK g_lwCmdLock = SRWLOCK_INIT;
+static char g_lwCmd[8][128];
+static int g_lwCmdCount, g_lwCmdSeq;
+__declspec(dllexport) int hellforge_lw_test(const char* cmd)
+{
+    if (cmd == NULL) return -1;
+    int seq = -1;
+    AcquireSRWLockExclusive(&g_lwCmdLock);
+    if (g_lwCmdCount < 8) { snprintf(g_lwCmd[g_lwCmdCount++], sizeof g_lwCmd[0], "%s", cmd); seq = ++g_lwCmdSeq; }
+    ReleaseSRWLockExclusive(&g_lwCmdLock);
+    return seq;
+}
+static int LwCameraForward(float* f)
+{
+    uintptr_t cm = 0; float cam[3];
+    if (!EvpPtr(g_lw.game + 0x346D560u, &cm) || cm == 0 || SafeRead(cm + 0x3C, cam, sizeof cam) || g_lwWorld.playersAt == 0) return 0;
+    float dx = g_lwWorld.players[0][0] - cam[0], dy = g_lwWorld.players[0][1] - cam[1], d = sqrtf(dx * dx + dy * dy);
+    if (!(d > 0.2f)) return 0;
+    f[0] = dx / d; f[1] = dy / d;
+    return 1;
+}
+static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int which)
+{
+    int visible = strcmp(mode, "visible") == 0, asFar = strcmp(mode, "far") == 0;
+    float f[2] = {1, 0};
+    int fromCamera = LwCameraForward(f);
+    float base = atan2f(f[1], f[0]) + deg * 3.14159265f / 180.0f, *pl = g_lwWorld.players[0];
+    LwSquad* best = NULL; float bestD = 3e38f, tx = pl[0] + dist * cosf(base), ty = pl[1] + dist * sinf(base);
+    for (int i = 0; i < g_lwWorld.count; i++)
+    {
+        LwSquad* q = &g_lwSquads[i];
+        if (q->state != LW_OFFLINE || q->survivors == 0) continue;
+        float d = LwDist2(q->pos, tx, ty);
+        if (d < bestD) { bestD = d; best = q; }
+    }
+    if (which >= 0) best = which < g_lwWorld.count && g_lwSquads[which].state == LW_OFFLINE && g_lwSquads[which].survivors ? &g_lwSquads[which] : NULL;
+    if (best == NULL) { Note("living world: test command %d: no offline squad%s", seq, which >= 0 ? " by that number" : ""); return; }
+    static const float offsets[] = {0, 6, -6, 12, -12, 18, -18, 24, -24, 30, -30, 36, -36};
+    uint32_t noFace0 = g_lwWorld.noFace, moved0 = g_lwWorld.moved, over0 = g_lwWorld.overhead, seen0 = g_lwWorld.seen, refused0 = g_lwWorld.refused;
+    float save[2] = {best->pos[0], best->pos[1]};
+    for (int k = 0; k < (int)(sizeof offsets / sizeof offsets[0]) * 2; k++)
+    {
+        float a = base + offsets[k / 2] * 3.14159265f / 180.0f, d = dist * (k % 2 ? 0.9f : 1.0f);
+        float p[2] = {pl[0] + d * cosf(a), pl[1] + d * sinf(a)};
+        if (p[0] * p[0] + p[1] * p[1] > g_lwWorld.radius * g_lwWorld.radius) continue;
+        best->pos[0] = p[0]; best->pos[1] = p[1];
+        int node = LwNearestNode(p[0], p[1]);
+        if (node >= 0) { best->node = (uint16_t)node; best->pathLen = best->pathAt = 0; LwPlan(best); }
+        best->retry = 0;
+        g_lwTestVisible = visible;
+        LwOnline(best);
+        g_lwTestVisible = 0;
+        if (best->state == LW_PENDING)
+        {
+            if (asFar) best->farOn = 1;
+            Note("living world: test command %d: squad %d spawn %s at (%.0f, %.0f), %.0f m %s (try %d), %u members (%u lost before)", seq, (int)(best - g_lwSquads), mode,
+                (double)best->pos[0], (double)best->pos[1], (double)sqrtf(LwDist2(pl, best->pos[0], best->pos[1])),
+                fromCamera ? "along the camera's view" : "east (no camera)", k + 1, best->cap, best->lost);
+            return;
+        }
+    }
+    best->pos[0] = save[0]; best->pos[1] = save[1];
+    Note("living world: test command %d: spawn %s %.0f m refused at 26 points: %u no face, %u snapped > 2 m, %u under something, %u in sight, %u other",
+        seq, mode, (double)dist, g_lwWorld.noFace - noFace0, g_lwWorld.moved - moved0, g_lwWorld.overhead - over0, g_lwWorld.seen - seen0, g_lwWorld.refused - refused0);
+}
+static void LwKillArm(void);
+static void LwTestCommands(void)
+{
+    char cmds[8][128]; int n, seq0;
+    AcquireSRWLockExclusive(&g_lwCmdLock);
+    n = g_lwCmdCount; seq0 = g_lwCmdSeq - n + 1;
+    memcpy(cmds, g_lwCmd, sizeof cmds); g_lwCmdCount = 0;
+    ReleaseSRWLockExclusive(&g_lwCmdLock);
+    for (int c = 0; c < n; c++)
+    {
+        char mode[16] = ""; float d = 0, deg = 0; int idx = -1, seq = seq0 + c;
+        Note("living world: test command %d: %s", seq, cmds[c]);
+        if (sscanf(cmds[c], "spawn %15s %f %f %d", mode, &d, &deg, &idx) >= 2) LwTestSpawn(seq, mode, d, deg, idx);
+        else if (sscanf(cmds[c], "offline %d", &idx) == 1 && idx >= 0 && idx < g_lwWorld.count && g_lwSquads[idx].state == LW_ONLINE) g_lwSquads[idx].forceOff = 1;
+        else if (strncmp(cmds[c], "kill garrison", 13) == 0) LwKillArm();
+        else if (strncmp(cmds[c], "status", 6) == 0)
+            for (int i = 0; i < g_lwWorld.count; i++)
+            {
+                LwSquad* q = &g_lwSquads[i];
+                if (q->state != LW_ONLINE && q->state != LW_PENDING) continue;
+                Note("living world: test command %d: squad %d %s at (%.0f, %.0f), %.0f m, %u alive of %u, %s%s", seq, i, q->state == LW_ONLINE ? "online" : "pending",
+                    (double)q->pos[0], (double)q->pos[1], (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), q->alive, q->cap,
+                    q->farOn ? "by sightline" : "near", q->inView ? ", in a player's view" : "");
+            }
+        else Note("living world: test command %d: not understood", seq);
+    }
+}
+
 static void LwSquadsTick(void)
 {
     uintptr_t dir, lg = LwLevel();
@@ -1026,6 +1133,7 @@ static void LwSquadsTick(void)
     for (int i = 0; i < g_lwWorld.count; i++)
         if (g_lwSquads[i].farOn) farUnits += g_lwSquads[i].state == LW_PENDING ? g_lwSquads[i].cap : g_lwSquads[i].state == LW_ONLINE ? g_lwSquads[i].alive : 0;
     g_lwWorld.farUnits = farUnits;
+    LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
@@ -1105,7 +1213,7 @@ typedef struct LwGarrison { uint32_t entity; uint8_t seen, wasActive, refills; u
  * its point's U bit (0x910070 killed = 1). The point is found by that U bit; after the garrison fills again the note
  * says whether the point stayed empty (no unit: occupied bit 6 clear). Runtime list: [gf+0x40] + 0x1B58 i, +0x204 u32
  * units, count +0x384 (max 96). */
-static struct { int on, stage; uint32_t garrison, unit, u[3], point, net, slot; ULONGLONG at; } g_lwKill = {-1};
+static struct { int on, stage, now; uint32_t garrison, unit, u[3], point, net, slot; ULONGLONG at; } g_lwKill = {-1};
 /* The living units AiEnemy records at a garrison's point (as the game's own list rebuild 0x90AFE2 reads them, P):
  * E = [game+0x33266C8], count [E+0x2320], records [E+0x2360] + 20 i (+0xC the garrison's network id, +0x10 its local
  * point + 1), entity [[E+0x2348] + 8 i] + 8. With unit != 0: fills *net and *slot for that unit instead (1 when found). */
@@ -1131,7 +1239,7 @@ static void LwKillTest(LwGarrison* g, uintptr_t r, uintptr_t l, uintptr_t points
     ULONGLONG now = GetTickCount64();
     if (g_lwKill.on < 0) { char t[4] = ""; g_lwKill.on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_KILL", t, sizeof t) > 0 && t[0] == '1'; }
     if (!g_lwKill.on) return;
-    if (g_lwKill.stage == 0 && active && g->activeAt && now - g->activeAt > 15000)
+    if (g_lwKill.stage == 0 && active && g->activeAt && (now - g->activeAt > 15000 || g_lwKill.now))
     {
         uint32_t count = EvpU32(r + 0x384, 0), unit = 0, system = 0; uintptr_t sys; ActHealth h; float pos[3];
         for (uint32_t k = 0; k < count && k < 96 && !unit; k++)
@@ -1166,6 +1274,8 @@ static void LwKillTest(LwGarrison* g, uintptr_t r, uintptr_t l, uintptr_t points
         if (now - g_lwKill.at > 10000) { Note("living world: test: kill: no U bit cleared in 10 s (unit life %u)", life); g_lwKill.stage = 9; }
     }
 }
+/* Test command "kill garrison": the kill test on the next active garrison, now. */
+static void LwKillArm(void) { g_lwKill.on = 1; g_lwKill.now = 1; if (g_lwKill.stage >= 3 || g_lwKill.stage == 9) g_lwKill.stage = 0; }
 static void LwKillAfterFill(LwGarrison* g, uintptr_t l, uintptr_t points, const uint32_t* u, uint32_t listed)
 {
     if (g_lwKill.stage != 2 || g->entity != g_lwKill.garrison) return;
