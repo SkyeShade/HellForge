@@ -41,6 +41,9 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     public bool UnlockAll { get; set; }
     // The profile's purchasedSeasonPassItems.
     public Func<IReadOnlySet<long>>? Purchased { get; set; }
+
+    // The mixIds the profile holds now (its saved inventory, amount above 0).
+    public Func<IReadOnlySet<uint>>? Holds { get; set; }
     public Action<string> Log { get; set; } = line => Console.Error.WriteLine("[mod warbonds] " + line);
     readonly HashSet<string> reported = [];
 
@@ -48,7 +51,12 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     public sealed record Served(ModWarbonds.Warbond Spec, JsonObject ListEntry, JsonObject Detail, IReadOnlyDictionary<long, uint> Sells, long TotalCost);
 
     // What a warbond's items are checked against: the catalogue's ids and currency caps, and the registered mod items.
-    sealed record Lookup(HashSet<uint>? Catalogue, HashSet<uint>? Consumables, Dictionary<uint, long> Caps, List<RegisteredItems.Item> Registered);
+    sealed record Lookup(HashSet<uint>? Catalogue, HashSet<uint>? Consumables, Dictionary<uint, long> Caps, List<RegisteredItems.Item> Registered)
+    {
+        // What the player has already: their mod items bought, and the mixIds they hold or bought on a mod's warbond.
+        public IReadOnlySet<long> Bought { get; init; } = new HashSet<long>();
+        public HashSet<uint> Owned { get; init; } = [];
+    }
 
     // The warbonds the game gets now, their items resolved.
     public IReadOnlyList<Served> Resolve()
@@ -93,7 +101,11 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         var registered = Registered is { } r ? r.Served().Where(i => !r.IsLocked(i) && !i.IsDifficulty).ToList() : [];
         var consumables = catalogue?.Where(i => i.TryGetProperty("isConsumable", out var c) && c.ValueKind == JsonValueKind.True)
             .Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet();
-        return new Lookup(catalogue?.Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet(), consumables, caps, registered);
+        var lookup = new Lookup(catalogue?.Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet(), consumables, caps, registered)
+            { Bought = Purchased?.Invoke() ?? new HashSet<long>(), Owned = [.. Holds?.Invoke() ?? new HashSet<uint>()] };
+        foreach (var item in warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items)).Where(i => lookup.Bought.Contains(i.Id)))
+            if (ItemOf(item.Sells, lookup.Catalogue, registered, out _) is { } mixId) lookup.Owned.Add(mixId);
+        return lookup;
     }
 
     // One warbond in the game's shapes, or null when none of its items can be sold.
@@ -154,6 +166,13 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         if (ItemOf(item.Sells, lookup.Catalogue, lookup.Registered, out var why) is not { } mixId)
         {
             Report(warbond, item.Sells.ToString(), why);
+            return null;
+        }
+        // An item held once (not a consumable) the player has already, from another warbond or bought on another mod's, is
+        // not sold again: its price would buy nothing. One bought here stays, claimed.
+        if (!item.Repeatable && !lookup.Bought.Contains(item.Id) && lookup.Owned.Contains(mixId) && lookup.Consumables?.Contains(mixId) != true)
+        {
+            Report(warbond, item.Sells.ToString(), "the player has it already");
             return null;
         }
         // A repeatable item is bought again and again: only a consumable adds up (an armor or a weapon is held once).

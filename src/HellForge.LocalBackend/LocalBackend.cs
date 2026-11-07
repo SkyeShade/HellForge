@@ -210,7 +210,7 @@ public static partial class LocalBackend
     }
 
     // Mods' warbonds read the startup bodies and the registered items, and decide which registered items the profile holds
-    // from what it has bought (its saved purchasedSeasonPassItems).
+    // from what it has bought (its saved purchasedSeasonPassItems); what it holds leaves its items out of their pages.
     static void ConnectModWarbonds(ModWarbondService modWarbonds, RegisteredItems? registered, StartupBodies startup, ProfileStore? profile)
     {
         modWarbonds.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
@@ -218,6 +218,10 @@ public static partial class LocalBackend
         modWarbonds.Purchased = () => profile != null && profile.TryGetResponse("/Progression", out var progression) &&
             progression.TryGetProperty("purchasedSeasonPassItems", out var bought) && bought.ValueKind == JsonValueKind.Array
             ? bought.EnumerateArray().Where(b => b.TryGetInt64(out _)).Select(b => b.GetInt64()).ToHashSet() : new HashSet<long>();
+        modWarbonds.Holds = () => profile != null && profile.TryGetResponse("/Progression/inventory", out var inventory) &&
+            inventory.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
+            ? items.EnumerateArray().Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _) && i.TryGetProperty("amount", out var a) &&
+                a.TryGetInt64(out var n) && n > 0).Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet() : new HashSet<uint>();
         if (registered == null) return;
         registered.Withheld = modWarbonds.Withheld;
         // each warbond's spent counter, and its token when it has one, in the catalogue and the inventory

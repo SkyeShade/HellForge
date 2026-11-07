@@ -220,6 +220,22 @@ static class ModWarbondsTests
         check(requirements.SequenceEqual([0L, 5000L]) && (long)served.Detail["seasonPassPages"]![1]!["totalMedalsRequired"]! == 5000,
             "A page's requirement was not kept within what the pages before it sell: " + string.Join(",", requirements));
         check(!served.Sells.Values.Contains(steeled), "Paid content was sold on a mod's warbond.");
+        // An item held once that the player has already (from another warbond, or bought on another mod's) is left out;
+        // one bought on this warbond stays, claimed.
+        var two = ModWarbonds.Parse("test", "Test", JsonDocument.Parse($$"""
+            {"format":1,"warbonds":[{"key":"one","name":"One","pages":[{"items":[{"mixId":{{mobilize[0]}},"cost":5},{"mixId":{{mobilize[1]}},"cost":5}]}]},
+              {"key":"two","name":"Two","pages":[{"items":[{"mixId":{{mobilize[1]}},"cost":5},{"mixId":{{mobilize[2]}},"cost":5}]}]}]}
+            """).RootElement, []);
+        var oneBought = two[0].Pages[0].Items[1].Id;
+        var ownedLog = new List<string>();
+        var owned = new ModWarbondService(two)
+        {
+            Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = ownedLog.Add,
+            Holds = () => new HashSet<uint> { mobilize[0], mobilize[1] }, Purchased = () => new HashSet<long> { oneBought },
+        }.Resolve();
+        check(owned.Count == 2 && owned[0].Sells.Keys.SequenceEqual([(long)oneBought]) && owned[1].Sells.Values.SequenceEqual([mobilize[2]]) &&
+            ownedLog.Count(l => l.Contains("has it already")) == 2,
+            "Items the player has already were sold again, or one bought on its own warbond was left out: " + string.Join(" | ", ownedLog));
     }
 
     // An item's own "currency": priced, capped and charged in it, not counted as spent on its warbond (whose spent line

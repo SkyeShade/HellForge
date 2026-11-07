@@ -110,6 +110,8 @@ An item is left out for the session, with a line in the backend's log, when the 
 
 - a `mixId` the game's catalogue does not have;
 - a `repeatable` item that is not a consumable;
+- an item that is not a consumable and that the player has already, from the game's warbonds or another mod's warbond.
+  It stays on the page where they bought it;
 - Super Credits, or premium content (a premium warbond's item or token, a Superstore item, Steam DLC gear), owned or not:
   only its own warbond sells it;
 - a `weapon` or `stratagem` that is not registered this session, because its mod is not loaded, its premium content is
