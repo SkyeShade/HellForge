@@ -32,7 +32,10 @@ typedef struct SdkContent { uint32_t kind; const char* name; uint64_t id; } SdkC
 #include "sdk_content.h"
 
 #define FIELD_MAX_EDITS (1 << 20) /* a sanity bound: the list grows as mods and editors add edits */
-#define FIELD_MAX_DEFS 64
+/* Definition blocks register_entity has seen (and the behaviours they define): grown as mods register them
+ * (stable_array.c), as many as the weapon registry takes; a sanity bound for address space, not a limit any mod set
+ * reaches before the registry's own walls (registry.c REG_WEAPON_CEILING). */
+#define FIELD_DEF_CEILING REG_WEAPON_CEILING
 #define FIELD_BEFORE 64
 
 enum { EDIT_COPY, EDIT_SET, EDIT_TAG };
@@ -65,14 +68,18 @@ typedef struct FieldEdit
 static int RefEdit(FieldEdit* e, const uint8_t* at);
 
 typedef struct EntityDefinition { const HfEntityDef* def; HfMod* mod; uint64_t entity; int busy; } EntityDefinition;
-typedef struct BehaviourDefinition { const HfBehaviour* def; uint32_t id; } BehaviourDefinition;
+typedef struct BehaviourDefinition { const HfBehaviour* def; uint32_t id; const HfMod* mod; } BehaviourDefinition;
 
 static FieldEdit* g_edits; /* grown by EditRoom (an editor applying a preset makes thousands) */
 static int g_editCapacity;
 static int g_editCount;
-static EntityDefinition g_entityDefs[FIELD_MAX_DEFS];
+/* An entry's address stays put as these grow: ApiRegisterEntity holds its block's entry while the blocks its mounts carry
+ * are registered (stable_array.c). */
+static StableArray g_entityDefStore = {NULL, sizeof(EntityDefinition), FIELD_DEF_CEILING, 0};
+#define g_entityDefs ((EntityDefinition*)g_entityDefStore.base)
 static int g_entityDefCount;
-static BehaviourDefinition g_behaviourDefs[FIELD_MAX_DEFS];
+static StableArray g_behaviourDefStore = {NULL, sizeof(BehaviourDefinition), FIELD_DEF_CEILING, 0};
+#define g_behaviourDefs ((BehaviourDefinition*)g_behaviourDefStore.base)
 static int g_behaviourDefCount;
 static int g_fieldConflicts; /* edits that overlap another mod's or a stats mod's (reported) */
 static int g_editsWaiting;   /* some edit waits for its table */
@@ -839,9 +846,9 @@ static void ApplyWaitingEdits(void)
 static uint32_t DefinedBehaviour(HfMod* mod, const HfBehaviour* def)
 {
     for (int i = 0; i < g_behaviourDefCount; i++) if (g_behaviourDefs[i].def == def) return g_behaviourDefs[i].id;
-    if (g_behaviourDefCount >= FIELD_MAX_DEFS) { ApiLog(mod, "register_entity: too many behaviours"); return 0; }
+    if (!StableRoom(&g_behaviourDefStore, (size_t)g_behaviourDefCount + 1)) { ApiLog(mod, "register_entity: no memory for more behaviours"); return 0; }
     uint32_t id = ApiAddBehaviour(mod, def);
-    if (id != 0) g_behaviourDefs[g_behaviourDefCount++] = (BehaviourDefinition){def, id};
+    if (id != 0) g_behaviourDefs[g_behaviourDefCount++] = (BehaviourDefinition){def, id, mod};
     return id;
 }
 
@@ -1002,8 +1009,8 @@ static HfRef ApiRegisterEntity(HfMod* mod, const HfEntityDef* def)
     }
     char what[224];
     snprintf(what, sizeof what, "register_entity(%s)", def->name ? def->name : "?");
-    if (g_entityDefCount >= FIELD_MAX_DEFS) { ApiLog(mod, "%s: too many definitions", what); return 0; }
-    EntityDefinition* d = &g_entityDefs[g_entityDefCount++];
+    if (!StableRoom(&g_entityDefStore, (size_t)g_entityDefCount + 1)) { ApiLog(mod, "%s: no memory for more definitions", what); return 0; }
+    EntityDefinition* d = &g_entityDefs[g_entityDefCount++]; /* stays where it is while its mounts' blocks are registered */
     *d = (EntityDefinition){def, mod, 0, 1};
 
     /* Fields first: refuse the block before anything is added. */

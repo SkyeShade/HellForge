@@ -84,7 +84,7 @@ static const char* TxnOwnRefused(const Component* c, uint8_t* table, uint32_t re
     uint32_t wanted = need[c - g_components]++;
     if (owned != NULL) return owned->next + wanted >= owned->end ? "HellForge's copy of its table has no room left" : TxnHeld(at, at + c->stride) ?
         "an edit or stat already holds a field of the record it would copy" : NULL;
-    if (wanted >= REG_MAX_WEAPONS) return "HellForge's copy of its table has no room left";
+    if (wanted >= RegRoom()) return "HellForge's copy of its table has no room left"; /* OwnedCopy makes it with RegRoom() */
     if (wanted == 0 && g_ownedCount >= REG_MAX_OWNED) return "HellForge copies no more tables";
     return TxnHeld(at, at + c->stride) ? "an edit or stat already holds a field of the record it would copy" : NULL; /* the table's move takes the rest */
 }

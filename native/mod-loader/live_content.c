@@ -33,13 +33,13 @@
 #include "ownership.c" /* items made owned, and given back */
 #include "loadout_scrub.c" /* the loadout without what a removed mod added */
 
-#define LC_MAX 512 /* entries of any kind HellForge has room for (weapons and entities the most: REG_MAX_WEAPONS) */
+#define LC_MAX 512 /* entries of any numbered kind HellForge has room for (weapons and entities grow: their tombs are Weapon.tomb) */
 /* table: the settings table edits name its rows in by their number (fields.c), or NULL */
 typedef struct LiveKind { const char* name; void* entries; size_t stride, nameAt; uint32_t* count; uint32_t max, first; const char* table; } LiveKind;
 _Static_assert(offsetof(Stratagem, mod) == 0 && offsetof(Projectile, mod) == 0 && offsetof(Damage, mod) == 0 && offsetof(Behaviour, mod) == 0 &&
     offsetof(Ability, mod) == 0, "every content entry begins with its mod");
-_Static_assert(STR_MAX_NEW <= LC_MAX && PRJ_MAX_NEW <= LC_MAX && DMG_MAX_NEW <= LC_MAX && BHV_MAX <= LC_MAX && ABL_MAX <= LC_MAX &&
-    REG_MAX_WEAPONS <= LC_MAX, "a kind's flags fit");
+_Static_assert(STR_MAX_NEW <= LC_MAX && PRJ_MAX_NEW <= LC_MAX && DMG_MAX_NEW <= LC_MAX && BHV_MAX <= LC_MAX && ABL_MAX <= LC_MAX,
+    "a kind's flags fit");
 static const LiveKind kLiveKinds[LC_KINDS] = {
     {"stratagem", g_stratagems, sizeof(Stratagem), offsetof(Stratagem, name), &g_stratagemCount, STR_MAX_NEW, STR_VANILLA, "StratagemDefinition"},
     {"projectile", g_projectiles, sizeof(Projectile), offsetof(Projectile, name), &g_projectileCount, PRJ_MAX_NEW, PRJ_VANILLA, "ProjectileSettings"},
@@ -48,7 +48,7 @@ static const LiveKind kLiveKinds[LC_KINDS] = {
     {"ability", g_abilities, sizeof(Ability), 0, &g_abilityCount, ABL_MAX, ABL_FIRST, NULL},
 };
 
-static uint8_t g_lcTomb[LC_KINDS + 1][LC_MAX];  /* entries a mod taken out left (LC_WEAPON: g_weapons) */
+static uint8_t g_lcTomb[LC_KINDS][LC_MAX];      /* entries a mod taken out left (LC_WEAPON's: Weapon.tomb) */
 static uint32_t g_lcBefore[LC_KINDS];          /* the entries before the change's set-ups; after them, the set-ups' */
 static uint8_t* g_lcShadow[LC_KINDS];          /* stand-ins, by index, for entries of mods taken out */
 /* How each stand-in stands in (0: none): the entry's new version, the entry back at its tombstone, or another mod's
@@ -73,7 +73,11 @@ static int LiveLeaves(const HfMod* mod)
 static uint8_t* LiveAt(int kind, uint32_t index) { return (uint8_t*)kLiveKinds[kind].entries + index * kLiveKinds[kind].stride; }
 static HfMod* LiveModAt(int kind, uint32_t index) { return kind == LC_WEAPON ? g_weapons[index].mod : *(HfMod**)LiveAt(kind, index); }
 
-static int LiveTomb(int kind, uint32_t index) { return kind >= 0 && kind <= LC_KINDS && index < LC_MAX && g_lcTomb[kind][index]; }
+static int LiveTomb(int kind, uint32_t index)
+{
+    if (kind == LC_WEAPON) return index < (uint32_t)g_weaponCount && g_weapons[index].tomb;
+    return kind >= 0 && kind < LC_KINDS && index < LC_MAX && g_lcTomb[kind][index];
+}
 static int LiveGone(int kind, uint32_t index) { return LiveTomb(kind, index) || (g_lcOpen && LiveLeaves(LiveModAt(kind, index))); }
 
 /* The mod whose entry this is after the change: a stand-in's, else the entry's when its mod stays; NULL when it leaves. */
@@ -127,6 +131,14 @@ static void LiveRefuse(HfMod* mod, const char* kind, const char* name, const cha
     ApiLog(mod, "%s %s not added: %s", kind, name != NULL ? name : "", why);
     if (!g_lcRefused[0]) snprintf(g_lcRefused, sizeof g_lcRefused, "capability\t%s's %s %s: %s; a restart numbers it as the host does", mod->id, kind,
         name != NULL ? name : "", why);
+}
+
+/* A registration refused for want of room, not for its number (registry.c WeaponsFull): logged, and the change refused
+ * with it, so it is never made with part of a mod's content. */
+static void LiveRefuseRoom(HfMod* mod, const char* what, const char* name, const char* why)
+{
+    ApiLog(mod, "%s(%s): %s", what, name != NULL ? name : "", why);
+    if (!g_lcRefused[0]) snprintf(g_lcRefused, sizeof g_lcRefused, "capacity\t%s's %s: %s", mod->id, name != NULL ? name : "", why);
 }
 
 /* Why a registration cannot take number index (what holds it), in why. */
@@ -457,7 +469,24 @@ typedef struct LivePlan
 
 static void LiveOwn(LivePlan* plan, OwnItem item)
 {
-    if (plan->items.count < OWN_ITEMS) plan->items.items[plan->items.count++] = item;
+    OwnBatch* b = &plan->items;
+    if (b->count == b->capacity)
+    {
+        int capacity = b->capacity ? b->capacity * 2 : 64;
+        OwnItem* grown = (OwnItem*)realloc(b->items, sizeof *grown * (size_t)capacity);
+        if (grown == NULL) { b->why = "out of memory: some of the change's items are owned or given back from the next session"; return; }
+        b->items = grown;
+        b->capacity = capacity;
+    }
+    b->items[b->count++] = item;
+}
+
+/* What an earlier change's plan holds (its item and scrub lists), freed before the next one is made. */
+static void LivePlanFree(LivePlan* plan)
+{
+    free(plan->items.items);
+    free(plan->scrub.weapons);
+    memset(plan, 0, sizeof *plan);
 }
 
 /* A kind's gate: 1 when the change's entries of it install now; 0 when there are none, the kind was refused at boot (its
@@ -692,7 +721,7 @@ static void LiveRetire(LivePlan* plan)
     {
         Weapon* w = &g_weapons[i];
         if (LiveTomb(LC_WEAPON, (uint32_t)i) || !LiveLeaves(w->mod) || LiveCarried(i)) continue;
-        g_lcTomb[LC_WEAPON][i] = 1;
+        g_weapons[i].tomb = 1;
         if (!w->plain && w->state == 1) LiveOwn(plan, (OwnItem){OWN_WEAPON, w->id, 0, 0, 0, 1});
     }
 }
@@ -708,7 +737,11 @@ static void LiveScrubList(LivePlan* plan)
             s->types[s->typeCount] = g_stratagems[i].type;
             s->stables[s->typeCount++] = g_stratagems[i].stable;
         }
-    for (int i = 0; i < g_lcWeaponsBefore && s->weaponCount < REG_MAX_WEAPONS; i++)
+    free(s->weapons);
+    s->weapons = g_lcWeaponsBefore > 0 ? (uint32_t*)malloc(sizeof(uint32_t) * (size_t)g_lcWeaponsBefore) : NULL;
+    s->weaponCount = 0;
+    if (s->weapons == NULL && g_lcWeaponsBefore > 0) Note("loadout: out of memory listing the weapons the change takes out; a loadout may keep them");
+    for (int i = 0; s->weapons != NULL && i < g_lcWeaponsBefore; i++)
     {
         const Weapon* w = &g_weapons[i];
         if (!w->plain && w->state == 1 && !LiveTomb(LC_WEAPON, (uint32_t)i) && LiveLeaves(w->mod) && !LiveCarried(i)) s->weapons[s->weaponCount++] = w->id;
@@ -866,7 +899,7 @@ static const char* LiveContentMake(char* why, size_t size, int* failed)
     *failed = 0;
     if (!LiveContentAny()) { g_lcOpen = 0; TextsPublish(); return NULL; }
     static LivePlan plan;
-    memset(&plan, 0, sizeof plan);
+    LivePlanFree(&plan);
     size_t image = g_lcFixtureGameSize;
     plan.game = g_lcFixtureGame ? g_lcFixtureGame : ApiModuleBase("game.dll", &image);
     g_lcImageFrom = plan.game;

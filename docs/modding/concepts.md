@@ -273,9 +273,10 @@ These limits are for all mods together:
 
 | What | Room |
 |---|---|
-| New entities and weapons | 64 |
-| New projectile types | 64 (types 351 and up) |
-| New damage types | 64 (ids 650 and up) |
+| New entities and weapons | no number of HellForge's own: the game's entity map, about 2,187 rows free ([content](content.md#other-rules)) |
+| New projectile types | 512 (types 351 and up) |
+| New damage types | 512 (ids 650 and up) |
+| New explosion, beam and arc types | 512 of each |
 | New stratagems | 48 (types 150 and up) |
 | New behaviours | 8 |
 | New abilities | 8 |
@@ -285,7 +286,7 @@ These limits are for all mods together:
 | Hooks | 16 per function and 1,024 functions, HellForge's own included |
 | Event listeners, `on_game_thread` callbacks | 128, 16 |
 
-A definition block can own or change 8 components and have 8 mounts, and all mods together can have 64 blocks. An `add_*` call that
+A definition block can own or change 8 components and have 8 mounts, with no limit on blocks. An `add_*` call that
 would pass a limit returns 0 (`hook` returns non-zero), and the mod's log says why.
 
 ## Safety

@@ -379,6 +379,18 @@ static void EditsForget(HfMod* mod)
     ReleaseSRWLockExclusive(&g_fieldsLock);
 }
 
+/* Its definition blocks and the behaviours they define (fields.c register_entity): their addresses are in its DLL, and a
+ * set-up a refused change takes out leaves entries for entities that were never registered. */
+static void DefinitionsForget(const HfMod* mod)
+{
+    int kept = 0;
+    for (int i = 0; i < g_entityDefCount; i++) if (g_entityDefs[i].mod != mod) g_entityDefs[kept++] = g_entityDefs[i];
+    g_entityDefCount = kept;
+    kept = 0;
+    for (int i = 0; i < g_behaviourDefCount; i++) if (g_behaviourDefs[i].mod != mod) g_behaviourDefs[kept++] = g_behaviourDefs[i];
+    g_behaviourDefCount = kept;
+}
+
 /* Live threads whose start address is in the mod's DLL. */
 typedef LONG (WINAPI* NtQueryThreadFn)(HANDLE thread, int what, void* out, ULONG size, ULONG* returned);
 static int ThreadsIn(const HfMod* mod)
@@ -433,6 +445,7 @@ static int CodeRemove(HfMod* mod, uint32_t reason)
     if (mod->imageBase && ThreadsIn(mod) > 0) { Note("%s: a thread it started still runs", mod->id); failed = 1; }
     int kept = 0, reverted = JournalRevert(mod, &kept);
     EditsForget(mod);
+    DefinitionsForget(mod);
     ExtrasForget(mod);
     NetForget(mod);
     AcquireSRWLockExclusive(&g_passivesLock);

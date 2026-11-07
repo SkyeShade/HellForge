@@ -2539,6 +2539,109 @@ static void FakeRow(uint8_t* table, uint32_t slots, uint64_t entity, uint32_t re
     memcpy(row + 8, &record, 4);
 }
 
+/* No number of HellForge's own stops mods' entities (stable_array.c; registry.c RegRoom; fields.c): 600 definition blocks
+ * register, past the 64 the definition table held and the 512 the registry held; a block whose mount carries another
+ * registers both while the table grows under the outer block's entry; a block registered again returns its entity; a mod
+ * taken out forgets its blocks; HellForge's copies have room for every entity the game's entity map holds, and a live
+ * change that cannot add one, or whose entities the map cannot hold, is refused whole; an array's entries never move as
+ * it grows, to its ceiling. */
+static void GrowableLimitsFixture(void)
+{
+    int weapons = g_weaponCount, defs = g_entityDefCount, edits = g_editCount, components = g_componentCount;
+    Component savedComponent = g_components[0];
+    memset(&g_components[0], 0, sizeof g_components[0]);
+    strcpy(g_components[0].name, "MountComponentData"); g_components[0].index = 283; g_components[0].stride = 120;
+    g_componentCount = 1;
+    g_weaponCount = g_entityDefCount = 0;
+    HfMod* mod = &g_mods[0];
+    enum { BLOCKS = 600 };
+    static HfEntityDef blocks[BLOCKS];
+    static char names[BLOCKS][32];
+    for (int i = 0; i < BLOCKS; i++)
+    {
+        snprintf(names[i], sizeof names[i], "fixture/grown_%d", i);
+        blocks[i] = (HfEntityDef){.size = sizeof(HfEntityDef), .name = names[i], .base = HF_ENTITY_PELICAN_TURRET};
+    }
+    /* up to the last entry the table has room for: the next block takes it, and the block its mount carries grows the table */
+    int i = 0;
+    for (; g_entityDefCount < 127; i++) assert(ApiRegisterEntity(mod, &blocks[i]) == Murmur64A(names[i], strlen(names[i])));
+    assert(g_entityDefStore.committed == 128);
+    const EntityDefinition* table = g_entityDefs;
+    static const HfEntityDef carried = {.size = sizeof(HfEntityDef), .name = "fixture/grown_carried", .base = HF_ENTITY_PELICAN_TURRET};
+    static const HfMountDef mounts[] = {{.slot = 0, .entity = &carried}, {0}};
+    static const HfEntityDef carrier = {.size = sizeof(HfEntityDef), .name = "fixture/grown_carrier", .base = HF_ENTITY_PELICAN_TRANSPORT, .mount = mounts};
+    uint64_t outer = ApiRegisterEntity(mod, &carrier), inner = Murmur64A("fixture/grown_carried", 21);
+    assert(outer == Murmur64A("fixture/grown_carrier", 21) && g_entityDefCount == 129 && g_entityDefStore.committed == 256 && g_entityDefs == table);
+    assert(g_entityDefs[127].def == &carrier && g_entityDefs[127].entity == outer && !g_entityDefs[127].busy && g_entityDefs[128].entity == inner);
+    for (; i < BLOCKS; i++) assert(ApiRegisterEntity(mod, &blocks[i]) == Murmur64A(names[i], strlen(names[i])));
+    assert(g_entityDefCount == BLOCKS + 2 && g_weaponCount == BLOCKS + 2 && g_weapons[BLOCKS + 1].entity == Murmur64A(names[BLOCKS - 1], strlen(names[BLOCKS - 1])));
+    assert(ApiRegisterEntity(mod, &blocks[3]) == Murmur64A(names[3], strlen(names[3])) && ApiRegisterEntity(mod, &carrier) == outer && g_weaponCount == BLOCKS + 2);
+    /* a mod taken out: its blocks forgotten, the others' kept */
+    static const HfEntityDef theirs[2] = {{.size = sizeof(HfEntityDef), .name = "fixture/theirs_0", .base = HF_ENTITY_PELICAN_TURRET},
+        {.size = sizeof(HfEntityDef), .name = "fixture/theirs_1", .base = HF_ENTITY_PELICAN_TURRET}};
+    assert(ApiRegisterEntity(&g_mods[1], &theirs[0]) && ApiRegisterEntity(&g_mods[1], &theirs[1]) && g_entityDefCount == BLOCKS + 4);
+    DefinitionsForget(&g_mods[1]);
+    int found;
+    assert(g_entityDefCount == BLOCKS + 2 && KnownDefinition(mod, &blocks[BLOCKS - 1], &found) == Murmur64A(names[BLOCKS - 1], strlen(names[BLOCKS - 1])) && found);
+    KnownDefinition(&g_mods[1], &theirs[0], &found);
+    assert(!found);
+    /* HellForge's copies have room for as many as the game's entity map holds; a live change's entities are added */
+    int boot = g_weaponCount;
+    assert(RegRoom() == REG_MAP_SLOTS);
+    HfEntity late = {sizeof late, .base = HF_ENTITY_PELICAN_TURRET, .name = "fixture/grown_late"};
+    g_liveSetup = mod;
+    g_lcRefused[0] = 0;
+    assert(ApiAddEntity(mod, &late) == Murmur64A("fixture/grown_late", 18) && g_weaponCount == boot + 1 && g_weapons[boot].state == 2);
+    /* one a live change cannot add (no memory, or the address space's ceiling): the whole change refused, never made with
+     * part of a mod's content */
+    char why[512];
+    WeaponsFull(mod, "add_entity", "fixture/grown_none", 1);
+    assert(LiveNumbersCheck(why, sizeof why) != NULL && !strncmp(why, "capacity\t", 9) && strstr(why, "fixture/grown_none") != NULL);
+    g_lcRefused[0] = 0;
+    g_liveSetup = NULL;
+    /* the game's entity map: a live change whose entities need more rows than it has free is refused whole (a boot refuses
+     * the ones sorting last, so registering the ones that fit would number them otherwise) */
+    uint8_t* map = calloc(REG_MAP_SLOTS, 32);
+    for (uint32_t k = 0; k < REG_MAP_SLOTS - 10; k++) { uint64_t key = 0x9000 + k; memcpy(map + (size_t)k * 32, &key, 8); }
+    assert(LiveMapUsed(map) == REG_MAP_SLOTS - 10 && LiveMapCheck(map, 10, why, sizeof why) == NULL);
+    assert(LiveMapCheck(map, 11, why, sizeof why) != NULL && !strncmp(why, "capability\t", 11) && strstr(why, "10 of its 4096 free") != NULL);
+    free(map);
+    /* a copied component table's records past the pages committed with the copy: each record's page committed as it is
+     * added (OwnRecord); the copy has room for as many as the entity map holds */
+    enum { OWNED = 1000 };
+    uint8_t* fakeState = calloc(1, REG_LIST + 8);
+    uint8_t* behaviours = FakeTable(284, 2008 * 16 + 12 * 4);
+    FakeRow(behaviours, 2008, 0xB45E, 1);
+    for (uint32_t k = 0; k <= OWNED; k++) FakeRow(behaviours, 2008, 0xE000 + k, 1);
+    SetStatePointer(fakeState, REG_TABLES + 8 * 284, behaviours);
+    int ownedCount = g_ownedCount;
+    for (uint32_t k = 0; k < OWNED; k++)
+    {
+        uint8_t* record = OwnRecord(fakeState, 284, 12, 0xB45E, 0xE000 + k);
+        assert(record != NULL);
+        memcpy(record + 4, &k, 4); /* a write on every record: a page left uncommitted faults */
+    }
+    OwnedTable* copy = OwnedTableOf(284, StatePointer(fakeState, REG_TABLES + 8 * 284));
+    assert(copy != NULL && copy->next == copy->first + OWNED && copy->end == copy->first + REG_MAP_SLOTS);
+    g_ownedCount = ownedCount;
+    /* an array's entries stay where they are as it grows, and it stops at its ceiling */
+    StableArray small = {NULL, 24, 200, 0};
+    assert(StableRoom(&small, 1) && small.committed == 64);
+    uint8_t* first = small.base;
+    first[23] = 7;
+    assert(StableRoom(&small, 65) && small.committed == 128 && small.base == first && first[23] == 7 && small.base[64 * 24] == 0);
+    assert(StableRoom(&small, 200) && small.committed == 200 && small.base == first && !StableRoom(&small, 201) && small.committed == 200);
+    VirtualFree(small.base, 0, MEM_RELEASE);
+    printf("  growable limits: %d definition blocks and entities registered (past 64 and 512), a mount's block growing the table under its carrier, "
+        "a mod's blocks forgotten, 1,000 records across a copy's pages, a live change refused whole past memory or the entity map\n", BLOCKS + 2);
+
+    g_weaponCount = weapons;
+    g_entityDefCount = defs;
+    g_editCount = edits;
+    g_components[0] = savedComponent;
+    g_componentCount = components;
+}
+
 /* own_all: the copy gets a record of its own, equal to its base's, in every component whose record size is certain. */
 static void OwnAllFixture(void)
 {
@@ -3229,12 +3332,13 @@ static void WeaponOrderFixture(void)
     memcpy(saved, g_weapons, sizeof saved);
     g_weaponCount = 3;
     g_weapons[0].entity = 0x30; g_weapons[1].entity = 0x10; g_weapons[2].entity = 0x20;
-    int order[REG_MAX_WEAPONS];
-    WeaponOrder(order);
-    assert(order[0] == 1 && order[1] == 2 && order[2] == 0);
+    int* order = WeaponOrder();
+    assert(order != NULL && order[0] == 1 && order[1] == 2 && order[2] == 0);
+    free(order);
     g_weapons[0].entity = 0x10; g_weapons[1].entity = 0x20; g_weapons[2].entity = 0x30; /* the same entities, loaded the other way */
-    WeaponOrder(order);
-    assert(order[0] == 0 && order[1] == 1 && order[2] == 2);
+    order = WeaponOrder();
+    assert(order != NULL && order[0] == 0 && order[1] == 1 && order[2] == 2);
+    free(order);
     memcpy(g_weapons, saved, sizeof saved);
     g_weaponCount = savedCount;
 }
@@ -3258,13 +3362,15 @@ static void RegisteredItemsFixture(void)
 
     int savedCount = g_weaponCount;
     uint32_t savedStratagems = g_stratagemCount;
-    static Weapon saved[REG_MAX_WEAPONS];
+    enum { FULL = 1024 }; /* past the 512 the registry once held */
+    static Weapon saved[FULL];
+    assert(WeaponRoom(FULL));
     memcpy(saved, g_weapons, sizeof saved);
     HfMod mod;
     memset(&mod, 0, sizeof mod);
     memset(mod.id, 'm', sizeof mod.id - 1); /* the longest mod id */
-    g_weaponCount = REG_MAX_WEAPONS;
-    for (int i = 0; i < REG_MAX_WEAPONS; i++)
+    g_weaponCount = FULL;
+    for (int i = 0; i < FULL; i++)
     {
         memset(&g_weapons[i], 0, sizeof g_weapons[i]);
         g_weapons[i].mod = &mod;
@@ -3287,11 +3393,11 @@ static void RegisteredItemsFixture(void)
     }
     assert(size > 16384); /* the old fixed text could not hold it */
     assert(n == (int)strlen(text) && !strcmp(text + n - 3, "]}\n"));
-    assert(Occurrences(text, "\"mixId\":") == REG_MAX_WEAPONS - 1); /* every weapon, the plain entity left out */
+    assert(Occurrences(text, "\"mixId\":") == FULL - 1); /* every weapon, the plain entity left out */
     assert(Occurrences(text, "\"mixId\":4287,") == 1); /* the last one (0x1000 + 191) */
     assert(strstr(text, "\"mixId\":4103,") == NULL); /* the plain entity (0x1000 + 7) */
     /* every quote is escaped: none ends a string early, so each entry still has its four keys */
-    assert(Occurrences(text, "\",\"unit\":\"") == REG_MAX_WEAPONS - 1 && Occurrences(text, "\\\"") > 0);
+    assert(Occurrences(text, "\",\"unit\":\"") == FULL - 1 && Occurrences(text, "\\\"") > 0);
     free(text);
     memcpy(g_weapons, saved, sizeof saved);
     g_weaponCount = savedCount;
@@ -4009,11 +4115,14 @@ static void FieldWatchCapFixture(void)
 int main(int argc, char** argv)
 {
     strcpy(g_build, "25480438");
+    /* the fixtures write entries of these growable arrays directly, as the game's tables would hold them */
+    assert(WeaponRoom(4096) && NetworkTypeRoom());
     for (int i = 0; i < MAX_MODS; i++) g_mods[i].order = i; /* load order as the plan creates them */
     for (int i = 0; i < 2; i++) { g_mods[i].loaded = 1; g_mods[i].log = INVALID_HANDLE_VALUE; }
     strcpy(g_mods[0].id, "a"); strcpy(g_mods[1].id, "b");
     g_modCount = 2;
     FieldsFixture();
+    GrowableLimitsFixture();
     LiveFixture();
     LiveSyncFixture();
     LiveModsFixture();

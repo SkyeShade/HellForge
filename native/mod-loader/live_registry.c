@@ -18,10 +18,28 @@
  * and swapped in (the old one is never freed: a reader may hold it); texts. Network type indices follow the short ids as
  * at boot: a weapon whose base has no network type gets none, as RegisterNetworkTypes does. */
 
-static int g_lrCarry[REG_MAX_WEAPONS]; /* a registered entry a new version keeps: the set-up's entry carried over, or -1 */
+/* For each entry before the change (g_lrCarryCount of them): the set-up's entry a new version carries it over to, or -1.
+ * Sized at each check (LiveCarryReset), on the change's thread. */
+static int* g_lrCarry;
+static int g_lrCarryCount;
 static uint32_t g_lrNetBefore;
 
-static int LiveCarried(int weapon) { return weapon >= 0 && weapon < g_lcWeaponsBefore && g_lrCarry[weapon] >= 0; }
+static int LiveCarried(int weapon) { return weapon >= 0 && weapon < g_lcWeaponsBefore && weapon < g_lrCarryCount && g_lrCarry[weapon] >= 0; }
+
+/* No entry carried over, with room for one per entry before the change: 1, or 0 out of memory. */
+static int LiveCarryReset(void)
+{
+    int count = g_lcWeaponsBefore > 0 ? g_lcWeaponsBefore : 0;
+    if (count > g_lrCarryCount)
+    {
+        int* grown = (int*)realloc(g_lrCarry, sizeof(int) * (size_t)count);
+        if (grown == NULL) return 0;
+        g_lrCarry = grown;
+        g_lrCarryCount = count;
+    }
+    for (int i = 0; i < g_lrCarryCount; i++) g_lrCarry[i] = -1;
+    return 1;
+}
 
 static int SameText(const char* a, const char* b) { return !strcmp(a, b); }
 
@@ -45,7 +63,7 @@ static const char* LiveWeaponCarry(int pending, char* why, size_t size)
     {
         const Weapon* w = &g_weapons[e];
         if (w->entity != p->entity) continue;
-        if (w->state == 1 && (LiveTomb(LC_WEAPON, (uint32_t)e) || LiveLeaves(w->mod)) && g_lrCarry[e] < 0 && !strcmp(w->mod->id, p->mod->id) && WeaponSame(w, p))
+        if (w->state == 1 && (LiveTomb(LC_WEAPON, (uint32_t)e) || LiveLeaves(w->mod)) && e < g_lrCarryCount && g_lrCarry[e] < 0 && !strcmp(w->mod->id, p->mod->id) && WeaponSame(w, p))
         { g_lrCarry[e] = pending; return NULL; }
         snprintf(why, size, "capability\t%s's %s %s was registered otherwise by its old version; a restart registers it anew", p->mod->id,
             p->plain ? "entity" : "weapon", p->name);
@@ -57,7 +75,7 @@ static const char* LiveWeaponCarry(int pending, char* why, size_t size)
 /* A carried entry's set-up twin (the one dropped when the change is made). */
 static int LiveWeaponIsCarry(int pending)
 {
-    for (int e = 0; e < g_lcWeaponsBefore; e++) if (g_lrCarry[e] == pending) return 1;
+    for (int e = 0; e < g_lcWeaponsBefore && e < g_lrCarryCount; e++) if (g_lrCarry[e] == pending) return 1;
     return 0;
 }
 
@@ -96,6 +114,31 @@ static void LiveShortIds(uint32_t* first, uint32_t* last)
 /* Whether a set-up's entity is one the change leaves out of the rows it adds (its old version's registration is kept). */
 static int LiveRowsSkip(int i) { return i < g_lcWeaponsBefore || LiveWeaponIsCarry(i); }
 
+/* The game's entity map rows in use (32-byte rows, an empty one's key 0: FreeRow). */
+static uint32_t LiveMapUsed(const uint8_t* map)
+{
+    uint32_t used = 0;
+    for (uint32_t i = 0; i < REG_MAP_SLOTS; i++)
+    {
+        uint64_t key;
+        memcpy(&key, map + (size_t)i * 32, 8);
+        used += key != 0;
+    }
+    return used;
+}
+
+/* Whether the game's entity map has a free row for each entity the set-ups register (`needed`): its 4096 rows are
+ * compiled into the game, and RegisterWeapon refuses an entity without one while the others go in, which would number
+ * them as no boot of these mods does (a boot refuses the ones sorting last). NULL, or "<reason>\t<why>". */
+static const char* LiveMapCheck(const uint8_t* map, uint32_t needed, char* why, size_t size)
+{
+    uint32_t left = REG_MAP_SLOTS - LiveMapUsed(map);
+    if (needed <= left) return NULL;
+    snprintf(why, size, "capability\tthese mods' weapons and entities need %u row(s) in the game's entity map, which has %u of its %u free; "
+        "a restart registers the ones that fit, as a boot of these mods does", needed, left, REG_MAP_SLOTS);
+    return why;
+}
+
 /* Whether the component tables have a free row for each row the set-ups' entities take. A boot grows a table its
  * entities would fill before adding them (registry_load.c GrowForPending); a running game's tables keep their slot
  * counts, and RegisterWeapon refuses an entity whose table is full while the others go in, which would number them as no
@@ -107,6 +150,9 @@ static const char* LiveTablesCheck(char* why, size_t size)
     uint32_t records;
     uint8_t* loadout = LoadoutTable(state, &records);
     if (map == NULL || loadout == NULL) return NULL; /* not loaded: nothing is registered into them yet */
+    uint32_t entities = 0;
+    for (int i = g_lcWeaponsBefore; i < g_weaponCount; i++) entities += g_weapons[i].state == 2 && !LiveRowsSkip(i);
+    if (LiveMapCheck(map, entities, why, size) != NULL) return why;
     static uint32_t rows[GROW_COMPONENTS];
     memset(rows, 0, sizeof rows);
     PendingRows(map, loadout, records, rows, 2, LiveRowsSkip);
@@ -155,47 +201,58 @@ static const char* LiveRowsAndWidthCheck(uint32_t after, char* why, size_t size)
     return refused != NULL ? refused : LiveNetWidthCheck(after, why, size);
 }
 
-static const char* LiveWeaponsCheck(char* why, size_t size)
+/* The short ids of the entities registered after the change, in resource id order (`order`, WeaponOrder): each the one a
+ * boot of these mods gives it. *rank: how many there are. NULL, or "<reason>\t<why>". */
+static const char* LiveShortIdsCheck(const int* order, uint32_t* rank, char* why, size_t size)
 {
-    for (int i = 0; i < REG_MAX_WEAPONS; i++) g_lrCarry[i] = -1;
-    for (int p = g_lcWeaponsBefore; p < g_weaponCount; p++)
-        if (g_weapons[p].state == 2 && LiveWeaponCarry(p, why, size) != NULL) return why;
     uint32_t first, last;
     LiveShortIds(&first, &last);
-    int order[REG_MAX_WEAPONS];
-    WeaponOrder(order);
-    uint32_t rank = 0, next = last + 1;
+    uint32_t next = last + 1;
+    *rank = 0;
     for (int k = 0; k < g_weaponCount; k++)
     {
         int i = order[k];
         if (!LiveWeaponAfter(i)) continue;
         const Weapon* w = &g_weapons[i];
-        uint32_t expected = first + rank++, has = i < g_lcWeaponsBefore ? w->shortId : next++;
+        uint32_t expected = first + (*rank)++, has = i < g_lcWeaponsBefore ? w->shortId : next++;
         if (has == expected) continue;
         snprintf(why, size, "capability\t%s's %s %s %s short id %u, which a boot of these mods gives %u; a restart numbers it as the host does",
             w->mod->id, w->plain ? "entity" : "weapon", w->name, i < g_lcWeaponsBefore ? "has" : "would take", has, expected);
         return why;
     }
-    return LiveRowsAndWidthCheck(rank, why, size);
+    return NULL;
+}
+
+static const char* LiveWeaponsCheck(char* why, size_t size)
+{
+    int* order = LiveCarryReset() ? WeaponOrder() : NULL;
+    if (order == NULL) { snprintf(why, size, "state\tHellForge is out of memory; try again in a moment"); return why; }
+    const char* refused = NULL;
+    for (int p = g_lcWeaponsBefore; p < g_weaponCount && refused == NULL; p++)
+        if (g_weapons[p].state == 2) refused = LiveWeaponCarry(p, why, size);
+    uint32_t rank = 0;
+    if (refused == NULL) refused = LiveShortIdsCheck(order, &rank, why, size);
+    free(order);
+    return refused != NULL ? refused : LiveRowsAndWidthCheck(rank, why, size);
 }
 
 /* Once the change is made: each carried registration is the new version's, its item owned again (a mod taken out gave
  * it back); the set-ups' twins of them go. */
 static void LiveRegistryCarry(LivePlan* plan)
 {
-    for (int e = 0; e < g_lcWeaponsBefore; e++)
+    for (int e = 0; e < g_lcWeaponsBefore && e < g_lrCarryCount; e++)
         if (g_lrCarry[e] >= 0)
         {
             Weapon* w = &g_weapons[e];
             w->mod = g_weapons[g_lrCarry[e]].mod;
-            g_lcTomb[LC_WEAPON][e] = 0; /* a mod back with what it had: no longer a tombstone */
+            w->tomb = 0; /* a mod back with what it had: no longer a tombstone */
             if (!w->plain) LiveOwn(plan, (OwnItem){OWN_WEAPON, w->id, 0, 0, w->base, 0});
             ApiLog(w->mod, "%s: its registration is kept", w->name);
         }
     int kept = g_lcWeaponsBefore;
     for (int p = g_lcWeaponsBefore; p < g_weaponCount; p++) if (!LiveWeaponIsCarry(p)) g_weapons[kept++] = g_weapons[p];
     g_weaponCount = kept;
-    for (int i = 0; i < REG_MAX_WEAPONS; i++) g_lrCarry[i] = -1;
+    for (int i = 0; i < g_lrCarryCount; i++) g_lrCarry[i] = -1;
 }
 
 static int LiveWeaponsPending(void)
@@ -231,8 +288,28 @@ static void LiveNetworkEntry(const Weapon* w, uint32_t index, int found)
     ApiLog(w->mod, "%s: network entity type %u (a copy of type %d)", w->name, index, found);
 }
 
+/* Whether an entity has a network type already (one of g_networkTypes). */
+static int LiveNetworkTypeKnown(const Weapon* w)
+{
+    for (uint32_t t = 0; t < g_networkTypeCount; t++) if (g_networkTypes[t].entity == w->entity) return 1;
+    return 0;
+}
+
+/* An entity's network type at `index` (after lastKey, within the arrays and the width): 1 when it was given, else 0 (logged). */
+static int LiveNetworkTypeAt(const Weapon* w, uint32_t index, uint32_t lastKey, uint8_t width)
+{
+    int found = NetworkEntryOf(g_netEntries, g_networkVanillaTypes, w->baseShortId);
+    if (found < 0 || w->shortId <= lastKey)
+    { ApiLog(w->mod, "%s: no network type to copy (base short id %u); joining games with it may fail", w->name, w->baseShortId); return 0; }
+    if (index >= g_netCapacity || index >= (1u << width))
+    { ApiLog(w->mod, "%s: no network type (the type index is full); joining games with it may fail", w->name); return 0; }
+    if (!NetworkTypeRoom()) { ApiLog(w->mod, "%s: no network type (out of memory); joining games with it may fail", w->name); return 0; }
+    LiveNetworkEntry(w, index, found);
+    return 1;
+}
+
 /* The network types of the entities registered since the step began, appended to the arrays RegisterNetworkTypes made
- * (count + REG_MAX_WEAPONS each) within the type index's width (registry_load.c: 11 bits, or 12 when the boot's set
+ * (g_netCapacity entries each) within the type index's width (registry_load.c: 11 bits, or 12 when the boot's set
  * needed them); the first ever made by it. Entries first, the counts last. */
 static void LiveNetworkTypes(void)
 {
@@ -246,24 +323,14 @@ static void LiveNetworkTypes(void)
     { Note("registry: the network types made at boot are not there; the live weapons have none (equipping them crashes)"); return; }
     uint32_t added = 0, lastKey = 0;
     memcpy(&lastKey, g_netEntries + (size_t)(count - 1) * 80, 4);
-    int order[REG_MAX_WEAPONS];
-    WeaponOrder(order);
-    for (int k = 0; k < g_weaponCount; k++)
+    int* order = WeaponOrder();
+    for (int k = 0; order != NULL && k < g_weaponCount; k++)
     {
-        Weapon* w = &g_weapons[order[k]];
-        int known = 0;
-        for (uint32_t t = 0; t < g_networkTypeCount && !known; t++) known = g_networkTypes[t].entity == w->entity;
-        if (w->state != 1 || known || order[k] < g_lcWeaponsBefore) continue;
-        int found = NetworkEntryOf(g_netEntries, g_networkVanillaTypes, w->baseShortId);
-        uint32_t index = count + added;
-        if (found < 0 || w->shortId <= lastKey)
-        { ApiLog(w->mod, "%s: no network type to copy (base short id %u); joining games with it may fail", w->name, w->baseShortId); continue; }
-        if (index >= g_networkVanillaTypes + REG_MAX_WEAPONS || index >= (1u << width))
-        { ApiLog(w->mod, "%s: no network type (the type index is full); joining games with it may fail", w->name); continue; }
-        LiveNetworkEntry(w, index, found);
-        lastKey = w->shortId;
-        added++;
+        const Weapon* w = &g_weapons[order[k]];
+        if (w->state != 1 || order[k] < g_lcWeaponsBefore || LiveNetworkTypeKnown(w)) continue;
+        if (LiveNetworkTypeAt(w, count + added, lastKey, width)) { lastKey = w->shortId; added++; }
     }
+    free(order);
     if (added == 0) return;
     uint32_t pair[2] = {count + added, count + added};
     MemoryBarrier();
@@ -305,7 +372,7 @@ static void LiveArmory(void)
 {
     uint32_t count;
     uint8_t* table = LoadoutTable(EntityState(), &count);
-    uint8_t* armory = table != NULL ? (uint8_t*)VirtualAlloc(NULL, REG_ARMORY_BYTES, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) : NULL;
+    uint8_t* armory = table != NULL ? (uint8_t*)VirtualAlloc(NULL, ArmoryBytes(), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) : NULL;
     if (armory == NULL) { Note("registry: no memory for the armory; the live weapons are not in it"); return; }
     ArmoryFill(armory, table, count);
     MemoryBarrier();
@@ -345,20 +412,23 @@ static void LiveRegistryStep(LivePlan* plan)
         L.index = g_loadoutTable;
         L.records = g_loadoutTable + (size_t)SlotsOf(REG_LOADOUT) * 16; /* past the index as copied: grown, when table 29 was */
         L.recordCount = g_loadoutRecords;
+        L.recordCapacity = g_loadoutCapacity;
         L.newList = g_regList;
         L.listCount = g_regListCount;
+        L.listCapacity = g_regListCapacity;
         memcpy(&L.lastShort, L.newList + 32 + (size_t)(L.listCount - 1) * 8, 4);
     }
     L.late = 1;
     g_lrNetBefore = g_networkTypeCount;
-    int order[REG_MAX_WEAPONS], ownedBefore = g_ownedCount;
-    WeaponOrder(order);
-    for (int k = 0; k < g_weaponCount; k++)
+    int ownedBefore = g_ownedCount;
+    int* order = WeaponOrder();
+    for (int k = 0; order != NULL && k < g_weaponCount; k++)
     {
         Weapon* w = &g_weapons[order[k]];
         if (w->state != 2) continue;
         if (RegisterWeapon(&L, w) && !w->plain) LiveOwn(plan, (OwnItem){OWN_WEAPON, w->id, 0, 0, w->base, 0});
     }
+    free(order);
     HeldFollowFrom(ownedBefore); /* a table a registration moved takes the stats and edits held in it along */
     if (L.appended == 0 && first) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
     PublishWeaponLoad(&L, first);
