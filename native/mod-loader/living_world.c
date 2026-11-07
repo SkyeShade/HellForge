@@ -402,6 +402,7 @@ static struct
     int farUnits;
     uint32_t noFace, moved, overhead, seen, rays, blockUnit, blockTerrain; double rayUs; /* placement and sight refusals, rays cast (30 s) */
     uint32_t goals, goalNoFace, goalReplans, goalStuck; /* goals sent, next nodes without a face within 25 m, replans, none found (30 s) */
+    uint32_t heights, underGround, overGround; float worstUnder, worstOver; /* members against the drawn ground (30 s) */
 } g_lwWorld;
 
 static uint32_t LwAiCount(void) { uintptr_t c; return EvpPtr(g_lw.game + 0x3326D18u, &c) ? EvpU32(c + 0x1C, 0) : 0; }
@@ -953,6 +954,18 @@ static void LwOnlineTick(LwSquad* q, int* removals)
             Note("living world: squad %d walks %.2f m/s (its speed now %.2f m/s); %d members, %u lost", (int)(q - g_lwSquads), (double)v, (double)q->speed, n, q->lost);
         }
         q->moved = now; q->movedFrom[0] = at[0]; q->movedFrom[1] = at[1];
+        /* each member against the drawn ground under it (audit 1b criterion 11: the steering walls' fix, "squads do not
+         * cross walls or cliffs in tiles", was never shown): a member that walks through a cliff or off the navmesh's
+         * idea of the ground stands inside it or floats over it. Under: 1.5 m below the ground ray's top; over: 3 m
+         * above it (the ray hits the topmost surface, so a member on a roof or bridge reads as on the ground). */
+        for (int k = 0; k < n; k++)
+        {
+            ActHealth h; float p[3], top = NAN;
+            if (!ActHealthOf(g_lw.game, members[k], &h) || !h.unit || !EvpUnitPosition(h.unit, p) || !LwGround(p[0], p[1], &top) || !isfinite(top)) continue;
+            g_lwWorld.heights++;
+            if (p[2] < top - 1.5f) { g_lwWorld.underGround++; if (top - p[2] > g_lwWorld.worstUnder) g_lwWorld.worstUnder = top - p[2]; }
+            if (p[2] > top + 3.0f) { g_lwWorld.overGround++; if (p[2] - top > g_lwWorld.worstOver) g_lwWorld.worstOver = p[2] - top; }
+        }
     }
     q->pos[0] = at[0]; q->pos[1] = at[1];
     /* test instrument (HELLFORGE_LW_TEST_TRACE=1): once per squad, when its leader is within 120 m of a player and that
@@ -1305,6 +1318,10 @@ static void LwSquadsTick(void)
             Note("living world: goals (30 s): %u sent, %u next nodes with no navmesh within 25 m, %u replans, %u squads left without a reachable goal",
                 g_lwWorld.goals, g_lwWorld.goalNoFace, g_lwWorld.goalReplans, g_lwWorld.goalStuck);
         g_lwWorld.goals = g_lwWorld.goalNoFace = g_lwWorld.goalReplans = g_lwWorld.goalStuck = 0;
+        if (g_lwWorld.heights)
+            Note("living world: ground (30 s): %u member positions, %u more than 1.5 m under the drawn ground (worst %.1f m), %u more than 3 m over it (worst %.1f m)",
+                g_lwWorld.heights, g_lwWorld.underGround, (double)g_lwWorld.worstUnder, g_lwWorld.overGround, (double)g_lwWorld.worstOver);
+        g_lwWorld.heights = g_lwWorld.underGround = g_lwWorld.overGround = 0; g_lwWorld.worstUnder = g_lwWorld.worstOver = 0;
         Note("living world: %d squads, %d online (%d units of %d), %u spawned, %u taken offline, %u destroyed, %u request frames refused; job-1 units %u, AI %u; "
             "player 1 at (%.0f, %.0f); by sightline: %u spawned, %d units now", g_lwWorld.count, online, g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.spawned, g_lwWorld.offlined, g_lwWorld.died,
             g_lwWorld.refused, EvpU32(dir + 0x614, 0), LwAiCount(), (double)(g_lwWorld.playersAt ? g_lwWorld.players[0][0] : 0),
