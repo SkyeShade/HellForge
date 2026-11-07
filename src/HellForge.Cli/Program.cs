@@ -309,7 +309,10 @@ try
             // The installation's mods: data mods are staged into the copy, and the plan and modlist digest are printed.
             var modInstall = new InstallLayout(Required("--install"));
             if (!modInstall.Exists) throw new InvalidDataException($"{modInstall.Root} is not a HellForge installation.");
-            // The mods HellForge ships (the in-game editor) are put in place, or updated, first.
+            // Staged links written over since the last session first (ModStaging.CheckLinks): what HellForge keeps of them is
+            // made again as the mods load; they are not problems of this session's mods, which all load. Then the mods
+            // HellForge ships (the in-game editor) are put in place, or updated.
+            foreach (var line in ModStaging.CheckLinks(modInstall)) Console.Error.WriteLine(line); // the Mods page shows a mod's (Notices)
             var bundledProblems = BundledMods.Sync(modInstall, Console.Error.WriteLine);
             // a .rar or .7z dropped into mods/ is added as a folder first (ModInstaller.TakeDropped)
             bundledProblems.AddRange(ModInstaller.TakeDropped(modInstall));
@@ -431,7 +434,7 @@ try
                 codeMods = code.Count,
                 loaderRequired = true, // read-only stats snapshots are also collected without mods
                 disabled = mods.Where(m => !m.Enabled).Select(m => m.Id),
-                problems = modProblems, staged, stagedCopied = ModStaging.LastCounts.Copied, stagedKept = ModStaging.LastCounts.Kept,
+                problems = modProblems, staged, stagedCopied = ModStaging.LastCounts.Copied, stagedLinked = ModStaging.LastLinked, stagedKept = ModStaging.LastCounts.Kept,
                 native = active.Any(m => m.HasNative), digest, modlist = ModlistDiff.Encode(compared), syncedWith, premiumLocked = premium.Locked
             };
             break;

@@ -311,6 +311,7 @@ static class Launch
     {
         var install = Install(options);
         var dropped = ModInstaller.TakeDropped(install);
+        dropped.AddRange(ModStaging.Notices(install)); // mod files written over through a staged link, as the Mods page shows them
         var (mods, problems) = ModCatalog.Load(install.Mods);
         problems.InsertRange(0, dropped);
         var active = ModCatalog.Active(mods);

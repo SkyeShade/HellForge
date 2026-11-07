@@ -83,6 +83,15 @@ On `dev`, since 0.4.0-beta.
   packages, level table or warbond list. Sync Inventory copies them from what the normal game receives when it logs in,
   cut to what the supported build knows, so a new installation needs one sync before its first PLAY. The warbond
   pages and the requisition store, which the normal game doesn't read at login, still ship (#296).
+- **Mods take far less disk space.** PLAY no longer puts a second copy of every mod's patches into the game's data
+  folder. On Windows they are links to the mod's own files; on Linux the files HellForge keeps itself are linked and
+  mod folders still copied ([disk space](docs/mods.md#disk-space)). While the game runs on Windows, a mod's patch files
+  cannot be saved over, as game files cannot. A staged patch written over in the game's data folder is found at the
+  next session start (#306).
+- **Zipped cosmetic packs are kept as folders.** A zip next to its unpacked copy held the pack twice. Add mods puts a
+  zipped pack in as a folder, and one already in the mods folder becomes one, with its options and place kept. A
+  `.rar`, `.7z` or zipped pack dropped into the mods folder whose files the installed mod already has is removed as a
+  second copy (#306).
 
 ### Fixed
 

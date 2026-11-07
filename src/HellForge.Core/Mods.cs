@@ -647,13 +647,11 @@ public static class ModArchives
         var cache = Path.Combine(modsFolder, UnpackedFolder);
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var archives = Directory.GetFiles(modsFolder, "*.zip").Order(StringComparer.OrdinalIgnoreCase).ToList();
-        LoadHashes(cache);
         foreach (var archive in archives)
         {
             try
             {
-                var hash = ContentHash(archive);
-                var target = Path.Combine(cache, Path.GetFileNameWithoutExtension(archive) + "-" + hash);
+                var target = UnpackedFolderOf(cache, archive);
                 keep.Add(Path.GetFileName(target));
                 if (!Directory.Exists(target)) Unpack(archive, target);
                 results.Add((archive, ManifestRoot(target), null));
@@ -669,6 +667,13 @@ public static class ModArchives
                 try { Directory.Delete(stale, recursive: true); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         return results;
+    }
+
+    // Where a zip of the mods folder is unpacked: <cache>/<zip name>-<content hash> (cache: the mods folder's .unpacked).
+    internal static string UnpackedFolderOf(string cache, string archive)
+    {
+        LoadHashes(cache);
+        return Path.Combine(cache, Path.GetFileNameWithoutExtension(archive) + "-" + ContentHash(archive));
     }
 
     // A zip's content hash, kept while its size and time are unchanged: the Mods page loads the mods on every change, and
@@ -1088,6 +1093,22 @@ public static class ModSettings
     });
 
     public static void SetChoice(string modsFolder, string id, CosmeticPacks.Choice choice) => Change(modsFolder, state => state.Choices[id] = choice);
+
+    // A mod whose id changed (a zipped pack without a name of its own, unpacked into a folder: ModInstaller) keeps its
+    // switch, its place in the order and its pack choice. Nothing changes when the new id has settings of its own already.
+    public static void RenameId(string modsFolder, string from, string to)
+    {
+        var state = Read(modsFolder);
+        if (from == to || state.Disabled.Contains(to) || state.Order.Contains(to) || state.Choices.ContainsKey(to) ||
+            !(state.Disabled.Contains(from) || state.Order.Contains(from) || state.Choices.ContainsKey(from))) return;
+        Change(modsFolder, s =>
+        {
+            if (s.Disabled.Remove(from)) s.Disabled.Add(to);
+            var at = s.Order.IndexOf(from);
+            if (at >= 0) s.Order[at] = to;
+            if (s.Choices.Remove(from, out var choice)) s.Choices[to] = choice;
+        });
+    }
 
     // Mod sync's blocklist: a lobby running a blocked mod is hidden and never joined (ModSyncPlan).
     public static void SetBlocked(string modsFolder, string id, bool blocked) => Change(modsFolder, state =>

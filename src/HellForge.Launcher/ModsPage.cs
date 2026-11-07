@@ -154,6 +154,8 @@ public partial class MainWindow
         List<string> problems;
         // a .rar or .7z dropped into the mods folder is added as a folder first, as Add mods... adds one
         var dropped = paths.InstallRoot != null ? ModInstaller.TakeDropped(new InstallLayout(paths.InstallRoot)) : [];
+        // and mod files written over through a staged link since (ModStaging.Notices): reinstalling the mod clears its line
+        if (paths.InstallRoot != null) dropped.AddRange(ModStaging.Notices(new InstallLayout(paths.InstallRoot)));
         try { (mods, problems) = ModCatalog.Load(paths.ModsFolder); problems.InsertRange(0, dropped); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
