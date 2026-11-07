@@ -100,7 +100,7 @@ An item also has:
 | `currency` | what it costs, when not the warbond's `currency`: one of the same names |
 | `position` | its top-left cell `[x, y]` on the 5 by 3 grid, from `[0, 0]`; without one it takes the first free cells, row by row |
 | `size` | the cells it covers `[width, height]`; `[1, 1]` by default |
-| `repeatable` | `true` to sell it again after each purchase: for a consumable of the game's catalogue only, never a `weapon` or `stratagem`; `false` by default |
+| `repeatable` | `true` to sell it again after each purchase: for an item the game's catalogue marks as a consumable (a stratagem permit, for one) only, never a `weapon` or `stratagem`; `false` by default |
 | `key` | needed only when two items of a warbond sell the same thing: a name for each, 1 to 64 characters. An item's id comes from its `key`, or without one from what it sells, so adding a `key` later or renaming what it sells starts it unbought |
 
 A weapon or stratagem of yours sold on a warbond is not in a player's armory until they buy it, unless their profile has
@@ -118,7 +118,8 @@ An item is left out for the session, with a line in the backend's log, when the 
 ## Pages and prices
 
 A page's `requirement` is what players must have spent on this warbond, in its `currency`, before the page opens. An
-item priced in another currency does not count towards it, and the line with what was spent leaves it out too.
+item priced in another currency does not count towards it, nor does a `repeatable` item, and the line with what was
+spent leaves them out too.
 
 The first page has none.
 Each later page needs at least as much as the page before it, and no more than the earlier pages cost in all, so it can
@@ -147,7 +148,7 @@ Each field is optional:
 
 | Field | Meaning |
 |---|---|
-| `from` | a game warbond by its id (as for `art`): its background and its Helldiver, which the fields below change; without it, the game's default |
+| `from` | a game warbond by its id (as for `art`): its background and its Helldiver, which the fields below change; without it, the game's default. Another id is a mistake, as for `pose` |
 | `pose` | a game warbond by its id: the Helldiver stands in that warbond's pose |
 | `armor`, `helmet`, `cape` | an item of the game's catalogue, by its `mixId`: the Helldiver wears it. Without one, it wears what `from` gives it. That is the player's own cape on most of the game's warbonds |
 | `weapon` | an entity id, in hex: the weapon the Helldiver holds, a primary, support or secondary weapon of the armory, your mod's own included. Take it from the `entity` column of `arsenal.tsv` (see [Debugging](debugging.md)), which lists every armory weapon's, or from `HF_ENTITY_` in `hellforge_content.h` |
@@ -164,7 +165,8 @@ warbonds changed (a mod with warbonds added or taken out), the Acquisition Cente
 time it opens. It does so once, as it does with a new warbond of the game's.
 
 A warbond a player has spent its whole cost on (in its `currency`) is listed last, after the mods' warbonds, as the game
-does with its own finished warbonds. Its pages open and its items buy and unlock as the game's do, and players with
+does with its own finished warbonds. One whose only prices in its `currency` are `repeatable` items, or that has none,
+never is. Its pages open and its items buy and unlock as the game's do, and players with
 everything unlocked have bought it all.
 
 Its card shows your `art`. The name beside the card and the page's title show your `name`, the tag under the name
@@ -183,7 +185,8 @@ The name shows beside the card. The PNG may use any colour type; its transparenc
 
 - Mods' warbonds share 99 places, each with its own name, look, art and Helldiver. Later warbonds, in load order, wait
   until there is room, with a line in the backend's log. A warbond that is left out for a session (it sells nothing the
-  game can hold, or its id clashes) still takes its place.
+  game can hold, or its id clashes with one of the game's) still takes its place. Of two mods' warbonds with the same id,
+  the later one is refused when the mods load and takes none.
 - The Acquisition Center's column of dots beside the cards has 32. Past 32 warbonds the warbonds make equal groups of up
   to 32 (124 warbonds make 4 groups of 31). The column shows the group the current warbond is in, and a dot selects that
   warbond.

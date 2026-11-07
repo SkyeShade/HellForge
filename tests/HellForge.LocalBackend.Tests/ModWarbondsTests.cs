@@ -278,6 +278,32 @@ static class ModWarbondsTests
                 "An item in its own currency did not take 400 requisition (and no medals), or counted it as spent in medals.");
             return false;
         }) == false, "The profile check did not run.");
+        // A repeatable item, bought again and again, never counts as spent: the warbond is finished (held spent == totalCost)
+        // only when its other items are bought.
+        var sold = new ModWarbondService([repeatable]) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = _ => { } };
+        check(sold.Resolve().Single().TotalCost == 0, "A repeatable item counts towards its warbond's whole cost.");
+        var again2 = new Purchases(store, id => catalogue.TryGetValue(id, out var item) ? item : null, sold);
+        using var buyAgain = JsonDocument.Parse("{\"seasonPassItemId\":" + repeatable.Pages[0].Items[0].Id + ",\"warId\":801,\"expectedCost\":[]}");
+        var first = again2.Handle("/SeasonPass/item/buy", buyAgain.RootElement);
+        var second = again2.Handle("/SeasonPass/item/buy", buyAgain.RootElement);
+        check(first.Item1 == 200 && second.Item1 == 200 && second.Item2?["items"]?.AsArray().All(i => (uint?)i!["mixId"] != repeatable.Spent) == true,
+            "A repeatable item did not sell twice without counting as spent: " + second.Item2?.ToJsonString());
+        check(store.TryChange((_, inventory) =>
+        {
+            check(ProfileStore.Held(inventory, 0x4C19589F) == 90 && ProfileStore.Held(inventory, repeatable.Spent) == 0,
+                "Two buys of a repeatable item did not take 10 medals, or counted them as spent.");
+            return false;
+        }) == false, "The profile check did not run.");
+        // Unlock-all opens every page, a later page's repeatable item included, though the saved counter stays 0.
+        var later = ModWarbonds.Parse("test", "Test", JsonDocument.Parse($$"""
+            {"format":1,"warbonds":[{"key":"later","name":"Later","currency":"requisition","pages":[{"items":[{"mixId":{{mobilize[1]}},"cost":1000}]},
+              {"requirement":1000,"items":[{"mixId":{{consumable}},"cost":5,"repeatable":true}]}]}]}
+            """).RootElement, problems)[0];
+        var all = new ModWarbondService([later]) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, UnlockAll = true, Log = _ => { } };
+        all.Resolve();
+        using var buyLater = JsonDocument.Parse("{\"seasonPassItemId\":" + later.Pages[1].Items[0].Id + ",\"warId\":801,\"expectedCost\":[]}");
+        check(new Purchases(store, id => catalogue.TryGetValue(id, out var item) ? item : null, all).Handle("/SeasonPass/item/buy", buyLater.RootElement).Item1 == 200,
+            "Unlock-all did not sell a later page's repeatable item.");
     }
 
     // A premium look or an unlock price gives a warbond a token (the game's ownership, game.dll 0x136E470): served held when the
@@ -415,6 +441,7 @@ static class ModWarbondsTests
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":3}]},{\"requirment\":3,\"items\":[{\"mixId\":2,\"cost\":1}]}]}", "a misspelt page field"),
             ("{\"key\":\"a\",\"name\":\"A\",\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1,\"repeatble\":true}]}]}", "a misspelt item field"),
             ("{\"key\":\"a\",\"name\":\"A\",\"unlock\":{\"currency\":\"forge-credits\",\"cost\":5,\"cots\":5},\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "a misspelt unlock field"),
+            ("{\"key\":\"a\",\"name\":\"A\",\"art\":{\"form\":610512218},\"pages\":[{\"items\":[{\"mixId\":1,\"cost\":1}]}]}", "a misspelt art field"),
         })
             check(Problems(warbond).Count == 1, "A warbond with " + why + " was accepted.");
         var formatProblems = new List<string>();

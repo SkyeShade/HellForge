@@ -124,7 +124,12 @@ static int WarbondPlanLine(char** f, int n)
     if ((n == 3 || n == 4) && strcmp(f[0], "warbond_item") == 0) return WarbondItemLine(f, n);
     if (n == 8 && strcmp(f[0], "warbond_showcase") == 0) return WarbondShowcaseLine(f);
     if (n != 9 || strcmp(f[0], "warbond") != 0) return 0;
-    if (g_modWarbondCount >= WB_MAX) { Note("warbonds: more than %d mod warbonds in the plan; the backend serves only the first %d", WB_MAX, WB_MAX); return 1; }
+    static int over;
+    if (g_modWarbondCount >= WB_MAX)
+    {
+        if (!over++) Note("warbonds: more than %d mod warbonds in the plan; the backend serves only the first %d", WB_MAX, WB_MAX);
+        return 1;
+    }
     ModWarbond* w = &g_modWarbonds[g_modWarbondCount];
     w->id = (uint32_t)strtoul(f[1], NULL, 10);
     w->variant = (uint32_t)strtoul(f[2], NULL, 10);
@@ -513,7 +518,7 @@ static void InstallModWarbonds(void)
     const char* list = InstallWarbondList(game);
     if (list) Note("warbonds: the game lists its 32 warbonds at most, mods' past them wait: %s", list);
     const char* pager = list ? NULL : InstallWarbondPager(game);
-    if (pager) Note("warbonds: past 32 warbonds the Acquisition Center's pager shows no position: %s", pager);
+    if (pager) Note("warbonds: past 32 warbonds the Acquisition Center's column of dots runs together into one block: %s", pager);
     const char* items = InstallWarbondItems(game);
     if (items) Note("warbonds: an item in another currency than its warbond's is checked and charged in the warbond's on screen: %s", items);
     const char* repeat = InstallWarbondRepeat(game);

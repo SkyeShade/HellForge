@@ -75,8 +75,10 @@ public static class ModWarbonds
         public uint CurrencyMixId { get; init; }
 
         // Whether its price counts as spent on a warbond in that currency: only a price in the warbond's own currency
-        // does, so what was spent (which the game names in the warbond's currency) and what opens its pages are one sum.
-        public bool CountsAsSpent(uint warbondCurrency) => CurrencyMixId == 0 || CurrencyMixId == warbondCurrency;
+        // does, so what was spent (which the game names in the warbond's currency) and what opens its pages are one sum;
+        // and never a repeatable item's, bought any number of times, so spent reaches the warbond's whole cost (the game's
+        // "finished", 0x1963587: held spent == totalCost) exactly when its other items are all bought.
+        public bool CountsAsSpent(uint warbondCurrency) => !Repeatable && (CurrencyMixId == 0 || CurrencyMixId == warbondCurrency);
     }
 
     // What an item sells: a catalogue item by its mixId (Kind "item"), or a weapon or stratagem a code mod registers this
@@ -173,7 +175,9 @@ public static class ModWarbonds
     {
         if (!entry.TryGetProperty("art", out var art)) return (0, "");
         const string Shape = "\"art\" is {\"from\": <the id of a game warbond>} or {\"image\": \"<a PNG in your mod's folder>\"}";
-        if (art.ValueKind != JsonValueKind.Object || art.EnumerateObject().Count() != 1) throw new InvalidDataException(Shape);
+        if (art.ValueKind != JsonValueKind.Object) throw new InvalidDataException(Shape);
+        OnlyFields(art, "\"art\"", ArtFields);
+        if (art.EnumerateObject().Count() != 1) throw new InvalidDataException(Shape);
         if (art.TryGetProperty("image", out var image))
             return (0, ArtImage(image.ValueKind == JsonValueKind.String ? image.GetString()! : "", folder) ?? throw new InvalidDataException(Shape));
         if (!art.TryGetProperty("from", out var from) || !from.TryGetUInt32(out var id) || !IsGameWarbond(id))
@@ -223,6 +227,7 @@ public static class ModWarbonds
     static readonly string[] WarbondFields = ["key", "name", "currency", "pages", "variant", "season", "art", "unlock", "showcase"];
     static readonly string[] PageFields = ["requirement", "items"];
     static readonly string[] UnlockFields = ["currency", "cost"];
+    static readonly string[] ArtFields = ["image", "from"];
     static readonly string[] ItemFields = ["mixId", "weapon", "stratagem", "mod", "cost", "currency", "position", "size", "repeatable", "key"];
 
     // Refuses a field the object does not take: `what` names it in the message.

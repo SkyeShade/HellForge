@@ -52,24 +52,27 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
 
     // A warbond page item: the page must be open (the warbond's medalsSpent at least the page's requirement), the warbond
     // owned, the item not bought yet (unless repeatable), and the medals there. Only a price in the warbond's own currency
-    // counts as spent on it (a mod item in another currency does not: ModWarbonds.Item.CountsAsSpent).
+    // counts as spent on it, and never a mod's repeatable item's (ModWarbonds.Item.CountsAsSpent).
     JsonNode? WarbondItem(JsonElement body)
     {
         if (!Whole(body, "seasonPassItemId", out var itemId) || FindWarbondItem(itemId) is not { } found) return null;
         var (warbond, page, item) = found;
         var cost = item.GetProperty("medalCost").GetInt64();
-        var medals = modWarbonds?.ItemCurrency(itemId) ?? warbond.GetProperty("medalsConsumableMixId").GetUInt32(); /* a mod's item: its own */
+        var own = modWarbonds?.ItemCurrency(itemId); /* a mod's item: its own currency */
+        var medals = own ?? warbond.GetProperty("medalsConsumableMixId").GetUInt32();
         var spent = warbond.GetProperty("medalsSpentMixId").GetUInt32();
-        var counts = medals == warbond.GetProperty("medalsConsumableMixId").GetUInt32();
         var mixId = item.GetProperty("itemMixId").GetUInt32();
         var repeatable = item.TryGetProperty("isRepeatable", out var r) && r.ValueKind == JsonValueKind.True;
+        var counts = medals == warbond.GetProperty("medalsConsumableMixId").GetUInt32() && !(repeatable && own != null);
+        /* unlock-all opens a mod warbond's pages in what the game is served (FillCounters), never in the saved counter */
+        var open = own != null && modWarbonds!.UnlockAll;
         if (cost < 0 || !OwnsWarbond(warbond)) return null;
         var granted = new JsonArray();
         var saved = profile.TryChange((progression, inventory) =>
         {
             var bought = progression["purchasedSeasonPassItems"] as JsonArray ?? [];
             if (!repeatable && bought.Any(b => b is JsonValue v && v.TryGetValue<long>(out var id) && id == itemId)) return false;
-            if (ProfileStore.Held(inventory, spent) < page.GetProperty("totalMedalsRequired").GetInt64() || ProfileStore.Held(inventory, medals) < cost) return false;
+            if ((!open && ProfileStore.Held(inventory, spent) < page.GetProperty("totalMedalsRequired").GetInt64()) || ProfileStore.Held(inventory, medals) < cost) return false;
             ProfileStore.AddItem(inventory, medals, -cost);
             if (counts) ProfileStore.AddItem(inventory, spent, cost);
             foreach (var (content, amount) in Contents(mixId, 1))
