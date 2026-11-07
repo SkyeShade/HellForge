@@ -631,6 +631,8 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     }
     q->survivors = (uint8_t)(q->cap > q->lost ? q->cap - q->lost : 0);
     if (n == 0) return; /* members still queued */
+    if (q->cycled == 2 && q->since && GetTickCount64() - q->since > 10000)
+    { q->cycled = 3; Note("living world: test: squad %d back online with %d members (requested %u, %u lost since)", (int)(q - g_lwSquads), n, q->cap, q->lost); }
     /* test instrument (HELLFORGE_LW_TEST_LOSS=1): one member of each of the first three squads with two or more is taken
      * out (the queued removal the director's cull uses) 20 s after it came online; its loss must carry over offline */
     static int testLoss = -1, testDone;
@@ -704,18 +706,17 @@ static void LwPendingTick(LwSquad* q)
     { Note("living world: a squad request was not dispatched in 60 s (ring record 0x%llx); it stays counted", (unsigned long long)q->rec); q->since = 0; }
 }
 
-/* Measurement (what statics cannot give): the steering units' wall requests of the frame (queue [game+0x347CD70],
- * written at 0xAB1F48: +0 count, record i at +8 + 0x65C i, its segment count at +0x60 + 0x65C i, read by 0x134CB8B), as
- * the late tick sees them. */
+/* Measurement (what statics cannot give): the share of steering wall requests that found no wall segment, counted by a
+ * stub at the game's reader 0x134CB8B (LwInstallWallReach); the queue itself ([game+0x347CD70], count +0) is already
+ * empty again by the late tick. */
 static volatile float* g_lwWallReach;
+static volatile LONG* g_lwWallCounts; /* [0] requests read by the steering consumer, [1] those with no wall segment */
 static struct { uint32_t requests, empty, ticks; } g_lwWalls;
 static void LwWallSample(void)
 {
-    uintptr_t q;
-    if (++g_lwWalls.ticks % 10 || !EvpPtr(g_lw.game + 0x347CD70u, &q)) return;
-    uint32_t n = EvpU32(q, 0);
-    if (n > 256) n = 256;
-    for (uint32_t i = 0; i < n; i++) { g_lwWalls.requests++; g_lwWalls.empty += EvpU32(q + 0x60 + 0x65Cu * i, 1) == 0; }
+    if (g_lwWallCounts == NULL) return;
+    g_lwWalls.requests = (uint32_t)InterlockedExchange(&g_lwWallCounts[0], 0) + g_lwWalls.requests;
+    g_lwWalls.empty = (uint32_t)InterlockedExchange(&g_lwWallCounts[1], 0) + g_lwWalls.empty;
 }
 
 static void LwSquadsTick(void)
@@ -745,8 +746,9 @@ static void LwSquadsTick(void)
     if (dt > 1.0f) dt = 1.0f;
     g_lwWorld.last = now;
     if (now - g_lwWorld.effAt > 5000) { int eff = LwEffectiveCap(dir); if (eff > 0) g_lwWorld.eff = eff; g_lwWorld.effAt = now; }
-    int requested = 0, removals = 0, online = 0;
+    int requested = 0, removals = 0, online = 0, waiting = 0;
     float r = g_lwWorld.radius;
+    for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
         LwSquad* q = &g_lwSquads[i];
@@ -755,6 +757,7 @@ static void LwSquadsTick(void)
             LwWalk(q, dt);
             float near2 = LwNearestPlayer2(q->pos[0], q->pos[1]);
             int back = q->cycled == 1 && near2 >= LW_R_MIN * LW_R_MIN; /* test cycle: back at once (the budget still applies) */
+            if (waiting && !back) continue; /* test cycle: a squad waiting to come back is served first */
             if (!requested && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && ((near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN) || back))
             {
                 LwOnline(q); requested = q->state == LW_PENDING;
@@ -770,7 +773,7 @@ static void LwSquadsTick(void)
     {
         g_lwWorld.noteAt = now;
         if (g_lwWalls.requests)
-            Note("living world: steering walls (every 10th late tick): %u requests, %u with no wall segment (%.1f%%), G %.1f m", g_lwWalls.requests,
+            Note("living world: steering walls (30 s): %u requests, %u with no wall segment (%.1f%%), G %.1f m", g_lwWalls.requests,
                 g_lwWalls.empty, 100.0 * g_lwWalls.empty / g_lwWalls.requests, (double)(g_lwWallReach ? *g_lwWallReach : 0));
         g_lwWalls.requests = g_lwWalls.empty = 0;
         Note("living world: %d squads, %d online (%d units of %d), %u spawned, %u taken offline, %u destroyed, %u request frames refused; job-1 units %u, AI %u; "
@@ -935,6 +938,30 @@ static void LwInstallWallReach(uintptr_t game)
     if (ApiWrite(game + LW_WALL_SITE, patch, sizeof patch)) { Note("living world: the walls' reach jump could not be written"); return; }
     g_lwWallReach = (volatile float*)(block + 0x1000);
     Note("living world: the steering walls' reach stub is in (G 0 until an extra large mission)");
+    /* Measurement: the steering consumer 0x134AD60 reads each request's segment count at 0x134CB8B (mov r13d,
+     * [rdi+rsi+0x60]; test r13d, r13d; je 0x134D306). The queue's count is 0 again by the late tick, so the share of
+     * requests with no wall is counted there: lock inc (it may run on worker threads), the test redone before going on. */
+    if (!ApiCodeMatches(game + 0x134CB8Bu, "44 8B 6C 37 60 45 85 ED 0F 84 6D 07 00 00")) { Note("living world: the steering walls' reader is not the reviewed one; no wall count"); return; }
+    uint8_t* count = AllocateNearGame(game, 0x2000);
+    if (count == NULL) return;
+    uint8_t c[32] = {0x44, 0x8B, 0x6C, 0x37, 0x60,     /* mov r13d, [rdi+rsi+0x60] (the original) */
+        0xF0, 0xFF, 0x05, 0, 0, 0, 0,                   /* lock inc dword [rip+all] (rel32 at 8, next 12) */
+        0x45, 0x85, 0xED, 0x75, 0x07,                   /* test r13d, r13d; jnz +7 */
+        0xF0, 0xFF, 0x05, 0, 0, 0, 0,                   /* lock inc dword [rip+none] (rel32 at 20, next 24) */
+        0x45, 0x85, 0xED,                               /* test r13d, r13d (the flags the je reads) */
+        0xE9, 0, 0, 0, 0};                              /* jmp 0x134CB93 (rel32 at 28, next 32) */
+    rel = 0x1000 - 12; memcpy(c + 8, &rel, 4);
+    rel = 0x1004 - 24; memcpy(c + 20, &rel, 4);
+    back = (int64_t)(game + 0x134CB93u) - (int64_t)(uintptr_t)(count + 32);
+    if (!InRel32(back)) return;
+    rel = (int32_t)back; memcpy(c + 28, &rel, 4);
+    memcpy(count, c, sizeof c);
+    VirtualProtect(count, 0x1000, PAGE_EXECUTE_READ, &protect);
+    FlushInstructionCache(GetCurrentProcess(), count, 0x1000);
+    uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+    rel = DifficultyJumpRel(game + 0x134CB8Bu, (uintptr_t)count); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + 0x134CB8Bu, jump, 8)) return;
+    g_lwWallCounts = (volatile LONG*)(count + 0x1000);
 }
 
 #define LW_NAV_CELLS_MAX 4096
@@ -1186,9 +1213,30 @@ static void LwTraceTick(void)
         Note("living world: test: trace %.1f %.1f %.1f", (double)p[0], (double)p[1], (double)p[2]);
 }
 
+static struct { double sum, worst; uint32_t ticks; ULONGLONG at; } g_lwCost;
+
+static void LivingTickBody(void);
 static void LivingTick(void)
 {
     if (!LwEnabled()) return;
+    LARGE_INTEGER a, b, f;
+    QueryPerformanceCounter(&a);
+    LivingTickBody();
+    QueryPerformanceCounter(&b); QueryPerformanceFrequency(&f);
+    double ms = (double)(b.QuadPart - a.QuadPart) * 1000.0 / (double)f.QuadPart;
+    g_lwCost.sum += ms; g_lwCost.ticks++; if (ms > g_lwCost.worst) g_lwCost.worst = ms;
+    ULONGLONG now = GetTickCount64();
+    if (!g_lwCost.at) g_lwCost.at = now;
+    if (now - g_lwCost.at >= 30000 && g_lwWorld.count > 0)
+    {
+        Note("living world: cost: %.3f ms a tick on average, %.2f ms at worst, over %u ticks (%d squads)", g_lwCost.sum / g_lwCost.ticks, g_lwCost.worst,
+            g_lwCost.ticks, g_lwWorld.count);
+        g_lwCost.sum = g_lwCost.worst = 0; g_lwCost.ticks = 0; g_lwCost.at = now;
+    }
+}
+
+static void LivingTickBody(void)
+{
     LwPatrolsOff();
     int host = 0;
     if (!ActMission(g_lw.game, &host, NULL) || !host) return;
