@@ -366,7 +366,7 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
 #define LW_BOOST_FAR 900.0f   /* nav cells within this of a player are boosted too, every 4th tick (D) */
 #define LW_FAR_MARGIN 50.0f   /* a squad seen within its band + this stays online (D) */
 #define LW_RADIUS_DEFAULT 2.0f /* a group's unit radius until one of its units has been measured (D: a 2 m sphere, 811 m) */
-#define LW_FAR_SHARE 0.4f
+#define LW_FAR_SHARE 0.5f     /* far squads use at most half the budget (audit 1e, 6: 0.4 x 39 left room for one squad of 8) */
 #define LW_R_MIN 150.0f       /* never spawned nearer a player (D): vanilla spawns patrols 75-130 m away */
 #define LW_ARRIVE 15.0f
 #define LW_FAR_MS 10000       /* beyond R_off and calm this long before a squad goes offline (D) */
@@ -567,8 +567,14 @@ static void LwWalk(LwSquad* q, float dt)
  * mission not ending (0x8F32B0), the 70 room ([[game+0x3326D18]+0x1C] + [dir+0x36C0] - [dir+0x620] - [dir+0x61C], as
  * 0x952F3C) with the reserve, AiJob active + members + 1 below 448 - 32, the effective cap and the online ceiling. */
 static char g_lwRoomWhy[96]; /* the gate that refused the last request (test notes) */
+/* Room held for a far squad in a player's sight while a hidden near squad it displaced leaves (LwSwapForFar): other
+ * requests count it as used until that squad comes online or the hold lapses (audit 1e, 6: near squads took the room
+ * first, so far squads came online only by chance). */
+static struct { int idx; uint32_t units; ULONGLONG until; } g_lwHold = {-1, 0, 0};
+static int g_lwRequester = -1; /* the squad LwOnline is serving */
 static int LwRoomFor(uint32_t members)
 {
+    uint32_t held = g_lwHold.idx >= 0 && g_lwHold.idx != g_lwRequester && GetTickCount64() < g_lwHold.until ? g_lwHold.units : 0;
     uintptr_t players, chars, jobs;
     if (!EvpPtr(g_lw.game + 0x3326468u, &players)) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no player list"); return 0; }
     uint32_t count = EvpU32(players + 0x84, 0), ok = 0;
@@ -579,13 +585,13 @@ static int LwRoomFor(uint32_t members)
     uintptr_t dir = g_lwWorld.dir;
     if (!EvpPtr(g_lw.game + 0x3326D18u, &chars) || !EvpPtr(g_lw.game + LW_AIJOB, &jobs)) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no character or job table"); return 0; }
     int room = (int)EvpU32(chars + 0x1C, 999) + (int)EvpU32(dir + 0x36C0, 999) - (int)EvpU32(dir + 0x620, 0) - (int)EvpU32(dir + 0x61C, 0);
-    if (room + (int)members + (int)LW_RESERVE > 70)
-    { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the game's 70 room: %d used + %u + reserve %d", room, members, (int)LW_RESERVE); return 0; }
+    if (room + (int)members + (int)held + (int)LW_RESERVE > 70)
+    { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the game's 70 room: %d used + %u + reserve %d%s", room, members, (int)LW_RESERVE, held ? " + held for a far squad" : ""); return 0; }
     uint32_t active = EvpU32(jobs + 0xC, 9999);
     if (active + members + 1 >= 448 - 32) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "AiJob: %u active + %u", active, members); return 0; }
     int ceiling = g_lwWorld.playersAt > 1 ? 64 : 48;
-    if (g_lwWorld.onlineUnits + (int)members > g_lwWorld.eff || g_lwWorld.onlineUnits + (int)members > ceiling)
-    { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the cap: %d online + %u over %d (ceiling %d)", g_lwWorld.onlineUnits, members, g_lwWorld.eff, ceiling); return 0; }
+    if (g_lwWorld.onlineUnits + (int)members + (int)held > g_lwWorld.eff || g_lwWorld.onlineUnits + (int)members + (int)held > ceiling)
+    { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the cap: %d online + %u over %d (ceiling %d)%s", g_lwWorld.onlineUnits, members, g_lwWorld.eff, ceiling, held ? ", room held for a far squad" : ""); return 0; }
     return 1;
 }
 
@@ -596,6 +602,7 @@ static int LwSeenByAny(const float* p, float range);
 static int LwPlace(uintptr_t slot, float* pos);
 static int LwHidden(const float* p);
 static int LwHiddenFar(const float* p);
+static int LwSeenFromView(int i, const float* point);
 static int g_lwFarSpawn; /* LwOnline: a far (sightline) squad's request */
 static int LwMembersFit(uintptr_t slot, const float* pos, uint32_t n);
 
@@ -632,10 +639,49 @@ static void LwStagedWhy(LwSquad* q, const char* why, float near2)
         g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.farUnits, why);
 }
 
+static int LwHidden(const float* p);
+static uint32_t LwAlert(uint32_t unit);
+static int LwMembers(uint32_t squad, uint32_t* out);
+static int LwLeader(const uint32_t* members, int n, float* at);
+/* A far squad in a player's sight refused for room (the game's 70 room or the budget): the online near squad that no
+ * player sees and whose members are all calm, farthest from every player, goes offline with its survivors (as the
+ * distance rule takes squads offline) and stays offline a minute; the far squad's room is held for it meanwhile. Near
+ * squads out of every player's sight are the world's filler: a squad a player can see takes their place (audit 1e, 6).
+ * At most one swap every 5 s. */
+static int LwSwapForFar(LwSquad* fq)
+{
+    static ULONGLONG last;
+    ULONGLONG now = GetTickCount64();
+    if (now - last < 5000) return 0;
+    LwSquad* pick = NULL; float pickD = -1; float pickAt[2] = {0, 0};
+    for (int i = 0; i < g_lwWorld.count; i++)
+    {
+        LwSquad* q = &g_lwSquads[i];
+        if (q == fq || q->state != LW_ONLINE || q->farOn || q->forceOff || q->alive == 0) continue;
+        uint32_t members[32]; int n = LwMembers(q->squad, members); float at[3];
+        if (n <= 0 || !LwLeader(members, n, at)) continue;
+        int calm = 1;
+        for (int k = 0; k < n && calm; k++) if (LwAlert(members[k]) != 0) calm = 0;
+        if (!calm) continue;
+        float d2 = LwNearestPlayer2(at[0], at[1]);
+        if (d2 <= pickD) continue;
+        at[2] = 0;
+        if (!LwGround(at[0], at[1], &at[2]) || !LwHidden(at)) continue; /* a player sees where it stands */
+        pick = q; pickD = d2; pickAt[0] = at[0]; pickAt[1] = at[1];
+    }
+    last = now;
+    if (pick == NULL) return 0;
+    pick->forceOff = 2;
+    g_lwHold.idx = (int)(fq - g_lwSquads); g_lwHold.units = fq->survivors; g_lwHold.until = now + 20000;
+    Note("living world: squad %d (hidden, calm, %.0f m from the nearest player) goes offline to make room for squad %d in a player's sight %.0f m away",
+        (int)(pick - g_lwSquads), (double)sqrtf(pickD), g_lwHold.idx, (double)sqrtf(LwNearestPlayer2(fq->pos[0], fq->pos[1])));
+    return 1;
+}
+
 static const char* g_lwOnlineWhy; /* test notes: the step of LwOnline that refused the last request */
 static void LwOnline(LwSquad* q)
 {
-    g_lwOnlineWhy = NULL;
+    g_lwOnlineWhy = NULL; g_lwRequester = (int)(q - g_lwSquads);
     uintptr_t slot = LwSlotOf(g_lwWorld.dir, q->definition);
     if (slot == 0)
     {
@@ -861,13 +907,20 @@ static uint32_t LwSightRay(uintptr_t* table)
     Note("living world: sight: a static-only line-of-sight ray for physics world %d (handle %08X)", index, *h);
     return *h;
 }
+static int LwRayClear(const float* eye, uint32_t unit, const float* point);
 static int LwSeenFrom(const float* feet, uint32_t unit, const float* point)
+{
+    float eye[3] = {feet[0], feet[1], feet[2] + 1.7f};
+    return LwRayClear(eye, unit, point);
+}
+/* 1 when the static-only sight ray from `eye` reaches `point` (0.5 m short counts), 0 when blocked, -1 with no ray. */
+static int LwRayClear(const float* eye, uint32_t unit, const float* point)
 {
     typedef uint32_t (*RayFn)(uint32_t handle, const float* from, const float* dir, float length, uint32_t leaveOut, void* hit, uint32_t max);
     uintptr_t table = 0, fn = 0;
     uint32_t handle = LwSightRay(&table);
     if (handle == 0 || !EvpPtr(table + 0x68, &fn) || fn == 0) return -1;
-    float eye[3] = {feet[0], feet[1], feet[2] + 1.7f}, d[3] = {point[0] - eye[0], point[1] - eye[1], point[2] - eye[2]};
+    float d[3] = {point[0] - eye[0], point[1] - eye[1], point[2] - eye[2]};
     float len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
     if (len < 1.0f) return 1;
     for (int k = 0; k < 3; k++) d[k] /= len;
@@ -895,7 +948,7 @@ static int LwHidden(const float* p)
         for (int h = 0; h < 3; h++)
         {
             float t[3] = {p[0], p[1], base + (h == 0 ? 1.0f : h == 1 ? 2.5f : 4.5f)};
-            int seen = LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], t);
+            int seen = LwSeenFromView(i, t);
             if (seen != 0) { g_lwWorld.seen++; return 0; } /* seen, or no ray to tell: refused */
         }
     }
@@ -914,6 +967,7 @@ static int LwHidden(const float* p)
  * 2.4 aspect (ultrawide) plus 10 deg, across the ground. The owner is the player within 15 m of the camera (none when
  * dead or in the reinforce view). Other players' views are unknown: for them only line of sight counts. */
 static int g_lwViewOwner = -1; static float g_lwViewCam[3], g_lwViewFwd[2], g_lwViewHalf; static ULONGLONG g_lwViewAt;
+static int LwRayClear(const float* eye, uint32_t unit, const float* point);
 static int LwViewRead(void)
 {
     ULONGLONG now = GetTickCount64();
@@ -933,7 +987,7 @@ static int LwViewRead(void)
     if (owner < 0) return -1;
     float px = g_lwWorld.players[owner][0] - cx, py = g_lwWorld.players[owner][1] - cy, pl = sqrtf(px * px + py * py);
     if (!(pl > 0.2f) || (px * fx + py * fy) / pl < cosf(30.0f * 3.14159265f / 180.0f)) return -1; /* the y row is not the view here */
-    g_lwViewCam[0] = cx; g_lwViewCam[1] = cy; g_lwViewFwd[0] = fx; g_lwViewFwd[1] = fy;
+    g_lwViewCam[0] = cx; g_lwViewCam[1] = cy; g_lwViewCam[2] = pos[2]; g_lwViewFwd[0] = fx; g_lwViewFwd[1] = fy;
     g_lwViewHalf = atanf(tanf(0.5f * fov) * 2.4f) + 10.0f * 3.14159265f / 180.0f;
     g_lwViewOwner = owner;
     return owner;
@@ -944,6 +998,17 @@ static int LwOffScreen(int player, const float* p)
     float dx = p[0] - g_lwViewCam[0], dy = p[1] - g_lwViewCam[1], d = sqrtf(dx * dx + dy * dy);
     if (!(d > 1.0f)) return 0;
     return (dx * g_lwViewFwd[0] + dy * g_lwViewFwd[1]) / d < cosf(g_lwViewHalf);
+}
+/* Sight from the host's game camera (audit 1e, 6: the third-person camera stands about 4 m behind and above the eye, so
+ * the eye's ray alone can pass where the camera's is blocked, or the reverse): player i's view counts as seen when
+ * either the eye (feet + 1.7 m) or, for the player whose camera this machine renders, the camera reaches the point.
+ * Returns 1 seen, 0 not, -1 no ray. */
+static int LwSeenFromView(int i, const float* point)
+{
+    int eye = LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], point);
+    if (eye == 1) return 1;
+    if (LwViewRead() == i && LwRayClear(g_lwViewCam, g_lwWorld.units[i], point) == 1) return 1;
+    return eye;
 }
 /* LwHidden for a far squad: as LwHidden, but a player whose screen does not hold the point does not count. */
 static uint32_t g_lwOffScreen; /* far requests allowed by LwOffScreen (30 s) */
@@ -958,7 +1023,7 @@ static int LwHiddenFar(const float* p)
         for (int h = 0; h < 3; h++)
         {
             float t[3] = {p[0], p[1], base + (h == 0 ? 1.0f : h == 1 ? 2.5f : 4.5f)};
-            int seen = LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], t);
+            int seen = LwSeenFromView(i, t);
             if (seen == 1 && LwOffScreen(i, t)) { offUsed = 1; break; }
             if (seen != 0) { g_lwWorld.seen++; return 0; }
         }
@@ -972,7 +1037,7 @@ static int LwSeenByAny(const float* p, float range)
 {
     float chest[3] = {p[0], p[1], p[2] + 1.0f};
     for (int i = 0; i < g_lwWorld.playersAt; i++)
-        if (LwDist2(g_lwWorld.players[i], p[0], p[1]) <= range * range && LwSeenFrom(g_lwWorld.players[i], g_lwWorld.units[i], chest) == 1) return 1;
+        if (LwDist2(g_lwWorld.players[i], p[0], p[1]) <= range * range && LwSeenFromView(i, chest) == 1) return 1;
     return 0;
 }
 /* The drawn distance through the narrowest zoom (audit 1b criterion 8; KB living-world-scope-draw-distance, P unless
@@ -1312,7 +1377,8 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     static int testCycle = -1;
     if (testCycle < 0) { char t[4] = ""; testCycle = GetEnvironmentVariableA("HELLFORGE_LW_TEST_CYCLE", t, sizeof t) > 0 && t[0] == '1'; }
     int forced = (testCycle && q->lost > 0 && !q->cycled && now - q->since > 45000 && *removals < 16) || q->forceOff;
-    if (q->forceOff) { q->forceOff = 0; Note("living world: test: squad %d sent offline by command with %u of %u alive", (int)(q - g_lwSquads), q->survivors, q->cap); }
+    int swapped = q->forceOff == 2;
+    if (q->forceOff) { if (!swapped) Note("living world: test: squad %d sent offline by command with %u of %u alive", (int)(q - g_lwSquads), q->survivors, q->cap); q->forceOff = 0; }
     else
     if (forced && !q->cycled && testCycle && q->lost > 0) { q->cycled = 1; Note("living world: test: squad %d sent offline with %u of %u alive", (int)(q - g_lwSquads), q->survivors, q->cap); }
     else
@@ -1343,6 +1409,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     LwRemoveSquad(q->squad);
     (*removals)++;
     q->state = LW_OFFLINE; q->squad = 0; g_lwWorld.onlineUnits -= q->alive; g_lwWorld.offlined++;
+    if (swapped) q->retry = now + 60000; /* displaced by a far squad in sight: not straight back */
     int node = LwNearestNode(at[0], at[1]);
     if (node >= 0 && q->pathAt >= q->pathLen) { q->node = (uint16_t)node; LwPlan(q); }
     if (q->survivors == 0) q->state = LW_FREE;
@@ -1910,7 +1977,8 @@ static void LwDrawnTick(void)
     if (ray && (!EvpPtr(table + 0x68, &rayFn) || !rayFn)) ray = 0;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
-        LwSquad* q = &g_lwSquads[i]; uint32_t members[32]; int m, total = 0, inMain = 0, inAny = 0, inFrame = 0, clearOf = 0;
+        LwSquad* q = &g_lwSquads[i]; uint32_t members[32]; int m, total = 0, inMain = 0, inAny = 0, inFrame = 0, clearOf = 0, joint = 0, eyeClear = 0;
+        float blockAt = -1, blockLen = 0; uint32_t blockOwner = 0; /* the first in-frame member the camera ray does not reach: where the ray stopped */
         if (q->state != LW_ONLINE) continue;
         m = LwMembers(q->squad, members);
         char per[160]; int pw = 0; int cntv[LW_DRAWN_VIEWS] = {0};
@@ -1919,7 +1987,7 @@ static void LwDrawnTick(void)
             int mine = 0;
             for (int k = 0; k < m && !mine; k++) mine = members[k] == g_lwDrawnT[t].unit;
             if (!mine) continue;
-            total++; int any = 0, main = 0;
+            total++; int any = 0, main = 0, fIn = 0, fClear = 0;
             {
                 ActHealth hh; float p[3];
                 if (proj && ActHealthOf(g_lw.game, g_lwDrawnT[t].unit, &hh) && hh.unit && EvpUnitPosition(hh.unit, p))
@@ -1930,7 +1998,7 @@ static void LwDrawnTick(void)
                     if (yf > 1.0f)
                     {
                         float px = 640.0f + 640.0f * (xr / yf) / (tt * 16.0f / 9.0f), py = 360.0f - 360.0f * (zu / yf) / tt;
-                        if (px >= 0 && px < 1280 && py >= 0 && py < 720) inFrame++;
+                        if (px >= 0 && px < 1280 && py >= 0 && py < 720) { inFrame++; fIn = 1; }
                     }
                     float len = sqrtf(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
                     if (ray && len > 1.0f)
@@ -1938,8 +2006,10 @@ static void LwDrawnTick(void)
                         float d[3] = {w[0] / len, w[1] / len, w[2] / len}, dist; uint8_t hit[0x40] = {0};
                         uint32_t got = ((RayFn)rayFn)(ray, camPos, d, len, g_lwWorld.units[0], hit, 1);
                         memcpy(&dist, hit + 0x18, 4);
-                        if (!(got >= 1 && dist < len - 0.5f)) clearOf++;
+                        if (!(got >= 1 && dist < len - 0.5f)) { clearOf++; fClear = 1; }
+                        else if (fIn && blockAt < 0) { blockAt = dist; blockLen = len; memcpy(&blockOwner, hit + 0x1C, 4); }
                     }
+                    if (g_lwWorld.playersAt > 0) { float chest[3] = {p[0], p[1], p[2] + 1.0f}; if (LwSeenFrom(g_lwWorld.players[0], g_lwWorld.units[0], chest) == 1) eyeClear++; }
                 }
             }
             for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view; v++)
@@ -1947,12 +2017,14 @@ static void LwDrawnTick(void)
                 LONG64 recent = (LONG64)(rate[v] * 0.5 + 1.0), c = g_lwDrawnV[v].calls;
                 if (g_lwDrawnV[v].hit[t] && c - g_lwDrawnV[v].hit[t] <= recent) { cntv[v]++; any = 1; if (g_lwDrawnV[v].main) main = 1; }
             }
-            inAny += any; inMain += main;
+            inAny += any; inMain += main; joint += main && fIn && fClear;
         }
         if (total == 0) continue;
         for (int v = 0; v < LW_DRAWN_VIEWS && g_lwDrawnV[v].view; v++) pw += snprintf(per + pw, sizeof per - (size_t)pw, "%s%d", v ? " " : "", cntv[v]);
-        Note("living world: drawn: squad %d at %.0f m: %d of %d members in the main view's visible list in the last 0.5 s (%d in any view; per view %s); %d in the camera's frame%s, %d clear of the static world from it", i,
-            (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), inMain, total, inAny, per, inFrame, zk > 1.0f ? " (zoomed)" : "", clearOf);
+        char blk[96] = "";
+        if (blockAt >= 0) snprintf(blk, sizeof blk, "; the camera ray stopped %.1f m out of %.0f (unit %08X)", (double)blockAt, (double)blockLen, blockOwner);
+        Note("living world: drawn: squad %d at %.0f m: %d of %d members in the main view's visible list in the last 0.5 s (%d in any view; per view %s); %d in the camera's frame%s, %d clear of the static world from it; %d in the frame, clear and in the list together; %d clear from the eye%s", i,
+            (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), inMain, total, inAny, per, inFrame, zk > 1.0f ? " (zoomed)" : "", clearOf, joint, eyeClear, blk);
     }
 }
 
@@ -2217,6 +2289,10 @@ static void LwSquadsTick(void)
                 }
                 if (back && requested) { q->cycled = 2; Note("living world: test: squad %d comes back with its %u survivors", (int)(q - g_lwSquads), q->cap); }
                 if (q->state == LW_OFFLINE) why = g_lwOnlineWhy ? g_lwOnlineWhy : "the request was not taken";
+                if (q->state == LW_OFFLINE && farBand && !back && g_lwOnlineWhy == g_lwRoomWhy &&
+                    (strncmp(g_lwRoomWhy, "the game's 70 room", 18) == 0 || strncmp(g_lwRoomWhy, "the cap", 7) == 0))
+                    LwSwapForFar(q);
+                if (q->state != LW_OFFLINE && g_lwHold.idx == (int)(q - g_lwSquads)) g_lwHold.idx = -1; /* served */
             }
         offlineDone:
             if (q->pulled == 2 && why) LwStagedWhy(q, why, near2);
