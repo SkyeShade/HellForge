@@ -104,6 +104,7 @@ static void NetworkTypesFixture(void)
     uint8_t* savedLoadout = g_loadoutTable;
     int savedWeaponCount = g_weaponCount, savedBefore = g_lcWeaponsBefore;
     Weapon savedWeapons[3];
+    assert(WeaponRoom(3));
     memcpy(savedWeapons, g_weapons, sizeof savedWeapons);
     snprintf(g_networkModule, sizeof g_networkModule, "%s", name);
     g_networkRva = (uint32_t)((uintptr_t)&g_ntHolder - (uintptr_t)GetModuleHandleA(NULL));
@@ -239,6 +240,7 @@ static uint32_t NtWideRun(NtAllocator* allocator, uint32_t vanilla, uint32_t ext
     g_loadoutTable = config;
     g_networkTypesAdded = 0;
     g_networkTypeCount = 0;
+    g_regRoom = 0; /* a fresh boot's */
     g_weaponCount = (int)extra;
     for (uint32_t k = 0; k < extra; k++)
         g_weapons[k] = (Weapon){.entity = 0x1000 + k, .state = 1, .shortId = 10 * vanilla + 1 + k, .baseShortId = 10, .name = "fixture/wide"};
@@ -277,7 +279,8 @@ static void NetworkWidthFixture(void)
     LONG savedAdded = g_networkTypesAdded;
     uint8_t* savedLoadout = g_loadoutTable;
     int savedWeaponCount = g_weaponCount;
-    static Weapon savedWeapons[REG_MAX_WEAPONS];
+    static Weapon savedWeapons[2241];
+    assert(WeaponRoom(2241));
     memcpy(savedWeapons, g_weapons, sizeof savedWeapons);
     snprintf(g_networkModule, sizeof g_networkModule, "%s", name);
     g_networkRva = (uint32_t)((uintptr_t)&g_ntHolder - (uintptr_t)GetModuleHandleA(NULL));
@@ -295,7 +298,11 @@ static void NetworkWidthFixture(void)
     /* + 194: 12 bits, every one, the boot session's copy too */
     assert(NtWideRun(&allocator, 1855, 194, 11, 11, NT_SESSION, &width, &bits, &copy) == 194 && width == 12 && bits == 12 && copy == 12);
     /* the research's target, 512 more (2,367 types), before any session is built */
-    assert(NtWideRun(&allocator, 1855, REG_MAX_WEAPONS, 11, 11, NT_NO_SESSION, &width, &bits, &copy) == REG_MAX_WEAPONS && width == 12 && bits == 12);
+    assert(NtWideRun(&allocator, 1855, 512, 11, 11, NT_NO_SESSION, &width, &bits, &copy) == 512 && width == 12 && bits == 12);
+    /* every type a 12-bit index names, 2,241 more (no number of HellForge's own stops them first), and one past it: the
+     * first 193 (what 11 bits hold) */
+    assert(NtWideRun(&allocator, 1855, 2241, 11, 11, NT_NO_SESSION, &width, &bits, &copy) == 2241 && width == 12 && bits == 12 && g_netCapacity == 4096);
+    assert(NtWideRun(&allocator, 1855, 2242, 11, 11, NT_NO_SESSION, &width, &bits, &copy) == 193 && width == 11 && bits == 11);
     /* a session with a connection, or one that is not the game's: 11 bits stay everywhere, the first 193 get types */
     assert(NtWideRun(&allocator, 1855, 300, 11, 11, NT_CONNECTED, &width, &bits, &copy) == 193 && width == 11 && bits == 11 && copy == 11);
     assert(NtWideRun(&allocator, 1855, 300, 11, 11, NT_FOREIGN, &width, &bits, &copy) == 193 && width == 11 && bits == 11 && copy == 11);

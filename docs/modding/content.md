@@ -56,9 +56,9 @@ constant is in the [SDK reference](../sdk-reference.md). The calls on this page,
 | Call | SDK | Adds or changes | Returns | Room across all mods |
 |---|---|---|---|---|
 | `edit_entity`, `hf_set`, `hf_copy`, `hf_tag`, `hf_mount` | 6 | fields of an existing entity | 0 queued, 1 refused | |
-| `register_entity` | 6 | an entity (from a definition block) | its resource id, or 0 | 192, shared with weapons |
-| `add_entity` | 4 | an entity (the older form) | its resource id, or 0 | the same 192 |
-| `add_weapon` | 2 | an arsenal weapon | its loadout id, or 0 | the same 192 (but see below) |
+| `register_entity` | 6 | an entity (from a definition block) | its resource id, or 0 | about 2,187, shared with weapons ([other rules](#other-rules)) |
+| `add_entity` | 4 | an entity (the older form) | its resource id, or 0 | the same |
+| `add_weapon` | 2 | an arsenal weapon | its loadout id, or 0 | the same (but see below) |
 | `add_damage` | 3 | a damage type | its id (650 and up), or 0 | 512 |
 | `add_projectile` | 3 | a projectile type | its type (351 and up), or 0 | 512 |
 | `add_explosion` | 17 | an explosion type | its type (423 and up), or 0 | 512 |
@@ -264,8 +264,12 @@ HfRef ref = hf->register_entity(mod, &pelican);   /* registers the turret too; 0
 
 - Registering the same block again returns the same entity.
 - `add_entity` (SDK 4, `HfEntity`) is the older call; new mods use blocks.
-- A block changes or owns at most 8 components and has at most 8 mounts; there is room for 64 blocks.
-- Entities and weapons share 512 places across all mods.
+- A block changes or owns at most 8 components and has at most 8 mounts. HellForge sets no limit on the number of blocks.
+- Entities and weapons share the game's entity map across all mods: 4,096 rows, about 2,187 of them free. HellForge sets
+  no number of its own. A component table of the base that cannot grow, or a network type past what 12 bits hold, stops
+  an entity first, and your mod's log names which.
+- While the game runs, a live change can add up to 512 entities and weapons more than the session started with; past
+  that the change is refused and a restart makes room.
 
 `examples/mods/stratagem-compendium` builds every stratagem this way, one source file per family.
 

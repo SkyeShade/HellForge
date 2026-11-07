@@ -62,7 +62,7 @@ static void StateMovesOffsetsFixture(void)
 /* The armory's room: a list full counting its vanilla records refuses by type, and entity copies take no card. */
 static void ArmoryRoomFixture(void)
 {
-    static uint8_t records[(REG_LOADOUT_RECORDS + REG_MAX_WEAPONS) * REG_LOADOUT_STRIDE];
+    static uint8_t records[(REG_LOADOUT_RECORDS + REG_LIVE_ROOM) * REG_LOADOUT_STRIDE];
     WeaponLoad L = {0};
     L.records = records;
     uint32_t primary = 1, secondary = 3, support = 2;
@@ -109,7 +109,8 @@ static void StateMovesOwnershipFixture(void)
     entry[0] = last; entry[1] = 0xABCD;
     *(uint32_t*)(manager + OWN_RECORDS + (uintptr_t)last * OWN_RECORD + 0xC) = 7;
     assert(OwnEntry((uintptr_t)manager, 0xABCD, 0, 7) == (int)last);
-    OwnBatch batch = {.items = {{OWN_WEAPON, 0xBEEF, 0, 0, 0xABCD, 0}}, .count = 1};
+    OwnItem weapon = {OWN_WEAPON, 0xBEEF, 0, 0, 0xABCD, 0};
+    OwnBatch batch = {.items = &weapon, .count = 1};
     OwnAppendAll((uintptr_t)manager, &batch);
     assert(batch.added == 0 && batch.why != NULL && strstr(batch.why, "full") != NULL);
     free(manager);

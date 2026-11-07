@@ -20,7 +20,7 @@ typedef struct DamageSite { uint32_t rva; uint8_t dispAt, size, rip; uint16_t sl
 
 #define DMG_TABLE 0x37C60C0u
 #define DMG_VANILLA 650u
-#define DMG_MAX_NEW 512u /* a damage type for each of REG_MAX_WEAPONS weapons: the list is HellForge's own once moved */
+#define DMG_MAX_NEW 512u /* a damage type for each of 512 weapons: the list is HellForge's own once moved */
 #define DMG_ROW 76u
 #define DMG_CLEAR 0x11F8E72u /* 41 B8 50 14 00 00: mov r8d, 0x1450 (650 slots) */
 

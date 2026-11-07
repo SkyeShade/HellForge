@@ -155,6 +155,10 @@ static HfApi g_api;
 
 #include "patch_registry.c" /* B.2: the writes the difficulty install makes, for the site audit */
 
+/* ---- arrays whose entries never move ---------------------------------------------------------------------------- */
+
+#include "stable_array.c" /* the registry's and the definition blocks' growable arrays */
+
 /* ---- memory ----------------------------------------------------------------------------------------------------- */
 
 static int SafeRead(uintptr_t address, void* buffer, size_t size)

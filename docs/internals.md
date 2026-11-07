@@ -194,8 +194,8 @@ In multiplayer, the weapon is part of the mod's code, which the modlist gate alr
 
 **Network types past 2,048.** Every weapon and entity a mod adds takes a network type, a copy of its base's. The game
 sends a type in 11 bits, so 2,048 types fit, 1,855 of them vanilla. Two things hold that width: the network
-configuration's width byte, and network field type 431, which names a corpse's source type. HellForge allows 512 weapons
-and entities together.
+configuration's width byte, and network field type 431, which names a corpse's source type. HellForge sets no limit
+of its own.
 
 For a mod set with more types than fit, the loader widens both to 12 bits (4,096 types) when it adds the types. It does
 so only then: a set that fits keeps the game's own wire format. Every player in a game runs the same mods, so every one

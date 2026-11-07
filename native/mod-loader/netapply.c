@@ -24,7 +24,7 @@
 #define NET_VANILLA_TYPES 0x73Fu
 #define NET_CASES_FIRST 0xBC2DBFu    /* every case lies in the switch's own code (the exit too), right after the jmp */
 #define NET_CASES_LAST 0xBD9E0Eu
-#define NET_TABLE_SLOTS (NET_VANILLA_TYPES + REG_MAX_WEAPONS)
+#define NET_TABLE_SLOTS (1u << NET_WIDE_BITS) /* every type a 12-bit index names (registry_load.c), whatever the mods add */
 #define NET_SWITCH_PAUSES 20         /* tries when a thread stands inside the two instructions */
 
 static const uint8_t kNetBoundPin[11] = {0x3D, 0x3E, 0x07, 0x00, 0x00, 0x0F, 0x87, 0xAD, 0x3A, 0x00, 0x00};
