@@ -1617,7 +1617,10 @@ static void LwTestLook(int seq, int which)
 static struct { uint32_t handle, unit; } g_lwDrawnT[LW_DRAWN_MAX];
 static volatile LONG g_lwDrawnN; static volatile float g_lwDrawnFov;
 static struct { uintptr_t view; volatile LONG64 calls; volatile LONG main; LONG64 hit[LW_DRAWN_MAX]; } g_lwDrawnV[LW_DRAWN_VIEWS];
-typedef void (*LwLodFn)(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d);
+/* 0x1E2F40 takes nine arguments (the call 0x1EDA23..0x1EDA69 stores five at [rsp+0x20..0x40]) and also writes the
+ * tenth slot as scratch ([rbp+0x298] = the caller's [rsp+0x48], 0x1E32C4 before its reads): the detour forwards all nine
+ * and passes a tenth so its own frame reserves that slot (lw64a: four forwarded crashed it at 0x1E3BE5). */
+typedef void (*LwLodFn)(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, uintptr_t a5, uintptr_t a6, uintptr_t a7, uintptr_t a8, uintptr_t a9, uintptr_t scratch);
 static LwLodFn g_lwLod;
 static int LwRegionLimit(uintptr_t base, uint64_t* n4)
 {
@@ -1625,9 +1628,9 @@ static int LwRegionLimit(uintptr_t base, uint64_t* n4)
     if (!base || !VirtualQuery((LPCVOID)base, &mb, sizeof mb) || mb.State != MEM_COMMIT) return 0;
     uint64_t n = ((uintptr_t)mb.BaseAddress + mb.RegionSize - base) / 4; if (n < *n4) *n4 = n; return 1;
 }
-static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d)
+static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, uintptr_t a5, uintptr_t a6, uintptr_t a7, uintptr_t a8, uintptr_t a9)
 {
-    g_lwLod(a, p, objs, d);
+    g_lwLod(a, p, objs, d, a5, a6, a7, a8, a9, 0);
     int n = (int)g_lwDrawnN;
     uintptr_t ctx = 0, arr = 0, set = 0, view = 0, cs = 0, idx = 0, K = 0, S = 0, done = 0; uint32_t sets = 0, cnt = 0, fin = 0;
     if (SafeRead(p + 0x88, &ctx, 8) || !ctx || SafeRead(ctx + 0x28, &view, 8) || !view) return;
