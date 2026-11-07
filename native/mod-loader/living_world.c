@@ -1609,6 +1609,10 @@ static void LwTestLook(int seq, int which)
  * [cs+0x130][ci] its slot in the objects. A mesh's +0x44 is its unit's scene-graph render handle (0x510C19..0x510C46:
  * {[M+0xC8], [[M+0xC0]+4]} where M+0xC0 is the unit's scene graph, object+0x48 or +0x60 as EvpUnitGraph reads it). So a
  * unit was in a view's visible list when [graph+4] of its scene graph is among the visible meshes' +0x44: no positions.
+ * A unit with LOD groups (enemies: their meshes carry [obj+0xA8] bit 3, no cull entry of their own, 0x1E640B, and bit 9)
+ * is culled by its LOD object instead: render type 0xD (constructor 0x353F40), one cull entry per bounding volume of
+ * kind 0xD (| 0x80000000 with more than one, 0x1E6A51..0x1E6A90), its +0x18 entries {node, the unit's scene-graph
+ * handle [SG+4], ...} (0x3541A1..0x3541CD): its handle is read there.
  * The list is the frustum and small-object cull; the LOD pass after it can still drop a mesh (not counted here).
  * 0x1EA3E0 renders several views a frame; results are kept per view (ctx+0x28, the render camera), and a view counts as
  * the main one when its camera's position (+0xE8, as the cull kernel reads it) is within 0.5 m of the game camera's
@@ -1626,9 +1630,9 @@ static struct { uintptr_t view; volatile LONG64 calls; volatile LONG main; LONG6
                  * [cs+0x148] (KB living-world-drawn-state, third pass) */
                 uintptr_t rw; float cam[3], fov; char which; uint32_t input; volatile ULONGLONG last; } g_lwDrawnV[LW_DRAWN_VIEWS];
 static volatile float g_lwDrawnCam[3];
-/* diagnostics (main view, every 2 s): the render world's objects that carry the first targets' handle at +0x44 (how
- * many, their types [obj+8] as a bit mask, the first one's flags [obj+0xA8]), and the kinds in its visible list */
-static volatile LONG g_lwDrawnFound, g_lwDrawnFoundTypes, g_lwDrawnFoundFlags, g_lwDrawnObjects; static volatile LONG g_lwDrawnKinds[16];
+/* diagnostics (main view, every 2 s): the kinds in its visible list (lw70a: the members' 48 meshes carry flags 0x20A, bit
+ * 3 = no cull entry of their own, bit 9 = in a LOD group: the unit is culled by its LOD object, kind 0xD) */
+static volatile LONG g_lwDrawnKinds[16];
 /* 0x1E2F40 takes nine arguments (the call 0x1EDA23..0x1EDA69 stores five at [rsp+0x20..0x40]) and also writes the
  * tenth slot as scratch ([rbp+0x298] = the caller's [rsp+0x48], 0x1E32C4 before its reads): the detour forwards all nine
  * and passes a tenth so its own frame reserves that slot (lw64a: four forwarded crashed it at 0x1E3BE5). */
@@ -1693,12 +1697,21 @@ static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, u
     for (uint32_t j = 0; j < cnt; j++)
     {
         uint32_t ci = list[j];
-        if (ci >= lim || ((const uint32_t*)K)[ci] != 3) continue;
+        if (ci >= lim) continue;
+        uint32_t kind = ((const uint32_t*)K)[ci] & 0x7FFFFFFFu;
+        if (kind != 3 && kind != 0xD) continue;
         uint32_t slot = ((const uint32_t*)S)[ci];
         if ((uint64_t)slot * 2 + 1 >= ls) continue;
         uintptr_t obj = ((const uintptr_t*)objs)[slot];
-        if (obj < 0x10000) continue;
-        uint32_t h = *(const uint32_t*)(obj + 0x44);
+        if (obj < 0x10000 || *(const uint32_t*)(obj + 8) != kind) continue;
+        uint32_t h;
+        if (kind == 3) h = *(const uint32_t*)(obj + 0x44); /* a mesh with its own cull entry */
+        else
+        {   /* a unit's LOD object: its bounding volumes' entries {node, scene-graph handle, ...} at +0x18 */
+            uintptr_t bv = *(const uintptr_t*)(obj + 0x18);
+            if (bv < 0x10000) continue;
+            h = *(const uint32_t*)(bv + 4);
+        }
         if (meshes < 4) g_lwDrawnV[v].sample[meshes] = h;
         meshes++;
         for (int t = 0; t < n; t++) if (g_lwDrawnT[t].handle == h) g_lwDrawnV[v].hit[t] = call;
@@ -1709,26 +1722,8 @@ static void LwLodDetour(uintptr_t a, uintptr_t p, uintptr_t objs, uintptr_t d, u
     {
         scanAt = tick;
         LONG kinds[16] = {0};
-        for (uint32_t j = 0; j < cnt; j++) { uint32_t ci = list[j]; if (ci < lim) { uint32_t k = ((const uint32_t*)K)[ci]; kinds[k < 15 ? k : 15]++; } }
+        for (uint32_t j = 0; j < cnt; j++) { uint32_t ci = list[j]; if (ci < lim) { uint32_t k = ((const uint32_t*)K)[ci] & 0x7FFFFFFFu; kinds[k < 15 ? k : 15]++; } }
         for (int k = 0; k < 16; k++) g_lwDrawnKinds[k] = kinds[k];
-        uint32_t total = 0; LONG found = 0, types = 0, flags = 0;
-        int tn = n < 8 ? n : 8;
-        if (!SafeRead(g_lwDrawnV[v].rw + 0x168, &total, 4))
-        {
-            if ((uint64_t)total * 2 > ls) total = (uint32_t)(ls / 2);
-            for (uint32_t i = 0; i < total && i < 400000; i++)
-            {
-                uintptr_t obj = ((const uintptr_t*)objs)[i]; uint32_t h = 0, ty = 0, fl = 0;
-                if (obj < 0x10000 || SafeRead(obj + 0x44, &h, 4)) continue; /* a freed slot may hold a stale pointer */
-                for (int t = 0; t < tn; t++) if (g_lwDrawnT[t].handle == h)
-                {
-                    SafeRead(obj + 8, &ty, 4); SafeRead(obj + 0xA8, &fl, 4);
-                    if (!found) flags = (LONG)fl;
-                    found++; types |= 1L << (ty < 31 ? ty : 31); break;
-                }
-            }
-        }
-        g_lwDrawnFound = found; g_lwDrawnFoundTypes = types; g_lwDrawnFoundFlags = flags; g_lwDrawnObjects = (LONG)total;
     }
 }
 /* A unit's scene graph (object+0x48 or +0x60 by its class, as EvpUnitPosition reads it), its render handle at +4. */
@@ -1753,7 +1748,10 @@ static void LwDrawnTick(void)
             !ApiCodeMatches(exe + 0x1E2F6Fu, "48 8B BA 88 00 00 00 48 8D 5A 78 4C 8B F2 4C 8B F9 BE 03 00 00 00") ||
             !ApiCodeMatches(exe + 0x1EDA6Eu, "E8 CD 54 FF FF") || !ApiCodeMatches(exe + 0x577E91u, "45 89 69 70") ||
             !ApiCodeMatches(exe + 0x510C19u, "49 8B 80 C0 00 00 00 41 8B 88 C8 00 00 00 89 4D B7 48 85 C0 74 08 8B 40 04 89 45 BB") ||
-            !ApiCodeMatches(exe + 0x510C42u, "48 8B 47 70 0F 11 47 40"))
+            !ApiCodeMatches(exe + 0x510C42u, "48 8B 47 70 0F 11 47 40") ||
+            !ApiCodeMatches(exe + 0x1E6405u, "8B 97 A8 00 00 00 F6 C2 08 0F 85") || !ApiCodeMatches(exe + 0x353F54u, "C7 41 08 0D 00 00 00") ||
+            !ApiCodeMatches(exe + 0x3541A1u, "49 8B 56 18 8B 41 10 49 03 C2 8B 44 81 14 8B 4C 08 1C 8B 42 04 89 44 24 24") ||
+            !ApiCodeMatches(exe + 0x1E6A90u, "0B 57 08"))
         { Note("living world: drawn: the LOD selection or the mesh records are not the reviewed code; no drawn notes"); return; }
         if (LoaderHook("living world drawn (test)", exe + 0x1E2F40u, (void*)LwLodDetour, (void**)&g_lwLod) || g_lwLod == NULL) { Note("living world: drawn: the hook failed"); return; }
         hooked = 1; Note("living world: drawn: the LOD selection is hooked (0x1E2F40): squad members are matched by their scene graph's render handle to the meshes' visible list (set 4), per view");
@@ -1804,8 +1802,7 @@ static void LwDrawnTick(void)
                 (long)g_lwDrawnV[v].cnt, (long)g_lwDrawnV[v].meshes, g_lwDrawnV[v].sample[0], g_lwDrawnV[v].sample[1]);
         char tg[128]; int tw = 0;
         for (int t = 0; t < (int)g_lwDrawnN && t < 6; t++) tw += snprintf(tg + tw, sizeof tg - (size_t)tw, "%s%06X", t ? " " : "", g_lwDrawnT[t].handle);
-        Note("living world: drawn: objects: %ld render objects; %ld carry one of the first 8 targets' handles (types mask %lX, first flags %lX); main view's visible kinds 0:%ld 1:%ld 2:%ld 3:%ld 4:%ld 5:%ld 6:%ld 7:%ld 8:%ld 9:%ld 10+:%ld",
-            (long)g_lwDrawnObjects, (long)g_lwDrawnFound, (unsigned long)g_lwDrawnFoundTypes, (unsigned long)g_lwDrawnFoundFlags,
+        Note("living world: drawn: the main view's visible kinds 0:%ld 1:%ld 2:%ld 3:%ld 4:%ld 5:%ld 6:%ld 7:%ld 8:%ld 9:%ld 10+:%ld",
             (long)g_lwDrawnKinds[0], (long)g_lwDrawnKinds[1], (long)g_lwDrawnKinds[2], (long)g_lwDrawnKinds[3], (long)g_lwDrawnKinds[4], (long)g_lwDrawnKinds[5],
             (long)g_lwDrawnKinds[6], (long)g_lwDrawnKinds[7], (long)g_lwDrawnKinds[8], (long)g_lwDrawnKinds[9],
             (long)(g_lwDrawnKinds[10] + g_lwDrawnKinds[11] + g_lwDrawnKinds[12] + g_lwDrawnKinds[13] + g_lwDrawnKinds[14] + g_lwDrawnKinds[15]));
