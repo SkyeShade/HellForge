@@ -554,10 +554,15 @@ static int LwHidden(const float* p);
 #define LW_RECENT 16
 static struct { float p[LW_RECENT][2]; ULONGLONG at[LW_RECENT]; int next; } g_lwRecent;
 static void LwRecentAdd(const float* p) { int k = g_lwRecent.next++ % LW_RECENT; g_lwRecent.p[k][0] = p[0]; g_lwRecent.p[k][1] = p[1]; g_lwRecent.at[k] = GetTickCount64(); }
+/* Spacing (D; audit 1 criterion 11, lw16i: two squads came online at one spot 14 s apart): no squad comes online within
+ * LW_SPACING of a squad that is online or pending (its live position) or of a request in the last 60 s. */
+#define LW_SPACING 60.0f
 static int LwRecentNear(const float* p)
 {
     ULONGLONG now = GetTickCount64();
-    for (int k = 0; k < LW_RECENT; k++) if (g_lwRecent.at[k] && now - g_lwRecent.at[k] < 10000 && LwDist2(g_lwRecent.p[k], p[0], p[1]) < 40.0f * 40.0f) return 1;
+    for (int k = 0; k < LW_RECENT; k++) if (g_lwRecent.at[k] && now - g_lwRecent.at[k] < 60000 && LwDist2(g_lwRecent.p[k], p[0], p[1]) < LW_SPACING * LW_SPACING) return 1;
+    for (int i = 0; i < g_lwWorld.count; i++)
+        if ((g_lwSquads[i].state == LW_ONLINE || g_lwSquads[i].state == LW_PENDING) && LwDist2(g_lwSquads[i].pos, p[0], p[1]) < LW_SPACING * LW_SPACING) return 1;
     return 0;
 }
 
@@ -952,10 +957,10 @@ static void LwSquadsTick(void)
             float near2 = LwNearestPlayer2(q->pos[0], q->pos[1]);
             int back = q->cycled == 1 && near2 >= LW_R_MIN * LW_R_MIN; /* test cycle: back at once (the budget still applies) */
             if (waiting && !back) continue; /* test cycle: a squad waiting to come back is served first */
-            if (!back && LwRecentNear(q->pos)) continue; /* no two squads out of one spot within 10 s (audit 1, 11) */
             if (q->retry && now < q->retry) continue; /* its point was refused (placement or sight) a moment ago */
             if (!requested && attempts < 4 && q->pos[0] * q->pos[0] + q->pos[1] * q->pos[1] < r * r && ((near2 < LW_R_ON * LW_R_ON && near2 >= LW_R_MIN * LW_R_MIN) || back))
             {
+                if (!back && LwRecentNear(q->pos)) { q->retry = now + 3000; continue; } /* spaced from online squads and recent requests (audit 1, 11) */
                 LwOnline(q); requested = q->state == LW_PENDING; attempts++;
                 if (back && requested) { q->cycled = 2; Note("living world: test: squad %d comes back with its %u survivors", (int)(q - g_lwSquads), q->cap); }
             }
