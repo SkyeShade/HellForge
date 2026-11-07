@@ -67,18 +67,14 @@
 #define REG_ARMORY_FIRST 219u /* the first entry after the armory list's count fields (0x1B24..0x1B5C) */
 #define REG_ARMORY_TYPES 7
 /* Weapons and entities mods add, together. HellForge sets no number of its own: g_weapons and the arrays beside it grow
- * as mods add them (stable_array.c), and HellForge's copies of the game's tables are made for what the boot registered
- * and REG_LIVE_ROOM more (RegRoom). What refuses an entity is the game's, each wall on its own and logged by name: its
+ * as mods add them (stable_array.c), and HellForge's copies of the game's tables have room for as many as the game's
+ * entity map can hold (RegRoom). What refuses an entity is the game's, each wall on its own and logged by name: its
  * network type (build 25480438 has 1855, NET_VANILLA_TYPES; the game sends a type in 11 bits, 193 more at most, unless
  * HellForge widens it to 12 for a mod set with more: registry_load.c WidenNetworkTypes, 2,241 more), the entity map
  * (4096 rows, 2,187 free), a component table's compiled index slots where HellForge cannot grow it (ComponentsUnderstood,
  * table_growth.c), and for weapons the armory's 256 cards a list (registry_load.c ArmoryRoom) and the game's catalogue
  * (RegisteredItems.cs). REG_WEAPON_CEILING bounds the address space g_weapons reserves, far past every one of them. */
 #define REG_WEAPON_CEILING 65536u
-/* Weapons and entities a running game's live changes may add past what the boot registered: HellForge's copies of the
- * loadout table, the short-id list, the armory and component tables are made once, with room for these (the game holds
- * their addresses), and a live change past them refuses (a restart makes room). 512: what the copies held before. */
-#define REG_LIVE_ROOM 512u
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
 #define REG_MAX_OWNED 325 /* component tables HellForge keeps its own copies of (an own_all entity: every one it has): one each, every
@@ -207,8 +203,6 @@ typedef void (*ArmoryBuilderFn)(void* list);
 static Weapon* g_weapons;
 static StableArray g_weaponStore = {NULL, sizeof(Weapon), REG_WEAPON_CEILING, 0};
 static int g_weaponCount;
-/* What HellForge's copies of the game's tables are made for (RegRoom): 0 until the first is made. */
-static uint32_t g_regRoom;
 
 /* Room for entries [0, count) of g_weapons: 1, or 0 past REG_WEAPON_CEILING or out of memory. */
 static int WeaponRoom(int count)
@@ -218,22 +212,15 @@ static int WeaponRoom(int count)
     return 1;
 }
 
-/* The weapons and entities HellForge's copies of the game's tables have room for: fixed when the first copy is made (the
- * boot's registrations are all in by then: they come from hellforge_mod_init, before the entity data loads), at those and
- * REG_LIVE_ROOM more, so every copy made later (a reload of the entity data, a live change's first) agrees. */
-static uint32_t RegRoom(void)
-{
-    if (g_regRoom == 0) g_regRoom = (uint32_t)g_weaponCount + REG_LIVE_ROOM;
-    return g_regRoom;
-}
+/* The new records or entries HellForge's copies of the game's tables (the loadout table, the short-id list, the armory,
+ * component tables) are made with room for. Every one belongs to an entity with a row of the game's entity map
+ * (RegisterWeapon takes one for each, a tombstone keeps its own, and each entity has at most one record in a table), so
+ * none needs more than the map's rows: a copy made once, at boot or by a live change, never runs out before the map
+ * does. Its pages are committed as it fills where that matters (OwnedCopy), so the room costs address space. */
+static uint32_t RegRoom(void) { return REG_MAP_SLOTS; }
 
-/* Whether one more weapon or entity may be added: within REG_WEAPON_CEILING, and once HellForge's copies are made (a live
- * change), within the room they have. */
-static int WeaponSlotFree(void)
-{
-    uint32_t limit = g_regRoom != 0 ? g_regRoom : REG_WEAPON_CEILING;
-    return (uint32_t)g_weaponCount < limit && WeaponRoom(g_weaponCount + 1);
-}
+/* Whether one more weapon or entity may be added: g_weapons has room for it (REG_WEAPON_CEILING, memory). */
+static int WeaponSlotFree(void) { return WeaponRoom(g_weaponCount + 1); }
 
 static int WeaponOrderCompare(const void* a, const void* b)
 {
@@ -505,14 +492,12 @@ static int OwnComponents(HfMod* mod, const char* what, const char* name, const c
 
 static void LiveRefuseRoom(HfMod* mod, const char* what, const char* name, const char* why); /* live_content.c */
 
-/* Why WeaponSlotFree refused (logged): a live change past the room HellForge's copies were made with, or the ceiling. In
- * a live change the whole change is refused (live_content.c LiveRefuseRoom), never made with part of a mod's content. */
+/* Why WeaponSlotFree refused (logged). In a live change the whole change is refused (live_content.c LiveRefuseRoom), never
+ * made with part of a mod's content. */
 static void WeaponsFull(HfMod* mod, const char* what, const char* name, int live)
 {
     char why[192];
-    if (g_regRoom != 0 && (uint32_t)g_weaponCount >= g_regRoom)
-        snprintf(why, sizeof why, "this session's copies of the game's tables have room for %u weapons and entities, all taken; a restart makes room", g_regRoom);
-    else snprintf(why, sizeof why, "mods added %d weapons and entities already, or there is no memory for more", g_weaponCount);
+    snprintf(why, sizeof why, "mods added %d weapons and entities already, or there is no memory for more", g_weaponCount);
     if (live) LiveRefuseRoom(mod, what, name, why);
     else ApiLog(mod, "%s(%s): %s", what, name, why);
 }
@@ -898,7 +883,7 @@ static OwnedTable* OwnedCopy(uint8_t* state, uint32_t c, uint32_t stride, uint32
     uint32_t recordBytes = bytes > slots * 16u ? bytes - slots * 16u : 0;
     uint32_t first = (recordBytes + stride - 1) / stride; /* the first record index after every vanilla byte */
     /* address space for RegRoom() records after the vanilla ones; pages committed as records are added (OwnRecord): an
-     * own_all entity copies every table, and each one's room committed at once took about 216 KB per weapon or entity */
+     * own_all entity copies every table, and the room committed at once would take about 216 KB for each record of it */
     uint32_t room = RegRoom();
     size_t vanillaBytes = 32 + (size_t)slots * 16 + (size_t)first * stride;
     size_t size = vanillaBytes + (size_t)room * stride;

@@ -634,7 +634,7 @@ static void ContentWeaponsFixture(void)
     ContentEventsSave();
     int mods = g_modCount;
     uintptr_t was = g_game;
-    g_weaponCount = g_ownedCount = 0; g_loadoutTable = NULL; g_regList = NULL; g_regRoom = 0;
+    g_weaponCount = g_ownedCount = 0; g_loadoutTable = NULL; g_regList = NULL;
     int hooked = g_registryHooked, active = g_registryActive;
     g_registryHooked = g_registryActive = 1;
     const uint64_t base = 0x37CDE43876BA26BBull;
@@ -729,6 +729,28 @@ static void ContentWeaponsFixture(void)
     ContentChange(NULL, z2);
     uint64_t third = ContentEntity(z2, base, last);
     assert(third != 0 && ContentCommit() && g_weaponCount == 3 && g_weapons[2].shortId == 80 && FindRow(behaviours, 2008, 16, third) != NULL);
+    /* the game's entity map without a free row for a new entity that numbers right: the change refused whole, nothing
+     * registered (RegisterWeapon would refuse it alone while the others went in) */
+    {
+        uint64_t top = third > first ? third : first;
+        if (second > top) top = second;
+        static uint8_t filler[REG_MAP_SLOTS];
+        for (uint32_t i = 0; i < REG_MAP_SLOTS; i++)
+        {
+            uint64_t key;
+            memcpy(&key, map + (size_t)i * 32, 8);
+            filler[i] = key == 0;
+            key = 0xF100000000000000ull + i;
+            if (filler[i]) memcpy(map + (size_t)i * 32, &key, 8);
+        }
+        char full[32], why[512];
+        ContentEntityName("z", top, 0, full);
+        HfMod* z3 = ContentMod("z");
+        ContentChange(NULL, z3);
+        assert(ContentEntity(z3, base, full) != 0 && LiveNumbersCheck(why, sizeof why) != NULL && strstr(why, "entity map") != NULL);
+        assert(!ContentCommit() && g_weaponCount == 3 && g_regListCount == 4);
+        for (uint32_t i = 0; i < REG_MAP_SLOTS; i++) if (filler[i]) memset(map + (size_t)i * 32, 0, 8);
+    }
     /* a field set from hellforge_mod_init, before the entity has a record (a live rack's slots, a live missile's blast):
      * nothing to write yet, and written once the entity is registered */
     uint64_t highest = third > first ? third : first;
@@ -761,7 +783,7 @@ static void ContentWeaponsFixture(void)
     printf("  live content: entities registered live in resource id order (copies made at the first), a new version's and a returning one's kept (a weapon owned again), 4 refusals (one a full component table)\n");
 
     ContentTombsClear();
-    g_weaponCount = 0; g_loadoutTable = NULL; g_regList = NULL; g_regListCount = 0; g_ownedCount = 0; g_regRoom = 0;
+    g_weaponCount = 0; g_loadoutTable = NULL; g_regList = NULL; g_regListCount = 0; g_ownedCount = 0;
     g_registryHooked = hooked; g_registryActive = active;
     g_game = was;
     g_modCount = mods;

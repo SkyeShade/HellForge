@@ -240,7 +240,6 @@ static uint32_t NtWideRun(NtAllocator* allocator, uint32_t vanilla, uint32_t ext
     g_loadoutTable = config;
     g_networkTypesAdded = 0;
     g_networkTypeCount = 0;
-    g_regRoom = 0; /* a fresh boot's */
     g_weaponCount = (int)extra;
     for (uint32_t k = 0; k < extra; k++)
         g_weapons[k] = (Weapon){.entity = 0x1000 + k, .state = 1, .shortId = 10 * vanilla + 1 + k, .baseShortId = 10, .name = "fixture/wide"};

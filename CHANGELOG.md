@@ -72,9 +72,8 @@ On `dev`, since 0.4.0-beta.
 ### Changed
 
 - **No fixed limit on mods' entities and weapons.** Mods together could register 64 entity blocks and 512 entities and
-  weapons; HellForge now takes as many as the game's own tables hold (its entity map has room for about 2,187 more).
-  A strat pack and a compendium together no longer run out. While the game runs, a live change can add up to 512 more
-  than the session started with.
+  weapons. HellForge now takes as many as the game's own tables hold (its entity map has room for about 2,187 more),
+  at boot and in live changes. A strat pack and a compendium together no longer run out.
 - **No idle kick.** Alone on the ship, 15 minutes without touching the controls no longer sends you back to the title
   screen, and the countdown warning before it is gone (#304).
 - **A mod download from a host no longer stops at 10 minutes.** The grant now stays on while the download goes on

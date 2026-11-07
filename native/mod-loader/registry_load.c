@@ -477,8 +477,9 @@ static uint32_t AppendEntity(WeaponLoad* L, Weapon* w, const uint8_t* baseRow, u
 }
 
 /* The rows a weapon or entity takes: a free row in the game's entity map, one in the loadout index (a weapon), and room in
- * HellForge's copies of the loadout table and short-id list (RegRoom; a live change past it is refused before it gets
- * here: WeaponSlotFree). 1 when there are, else 0 (logged). */
+ * HellForge's copies of the loadout table and short-id list (RegRoom: as many as the map's rows, so a check that never
+ * fails). A live change checks the map and the tables before it is made (live_registry.c LiveTablesCheck). 1 when there
+ * are, else 0 (logged). */
 static int RegisterRoom(const WeaponLoad* L, const Weapon* w, const uint8_t* mapRow, const uint8_t* loadoutRow)
 {
     const char* full = mapRow == NULL ? "the game's entity map (4096 rows)" : !w->plain && loadoutRow == NULL ? "the loadout table's index"
@@ -840,13 +841,11 @@ static int AddNetworkType(const NetworkConfig* n, const NetworkTypeArrays* to, W
     return 1;
 }
 
-/* The entries the configuration's new arrays are made with: every weapon and entity HellForge's copies have room for
- * (RegRoom: the ones a live change's types take too, live_registry.c), as far as a 12-bit type index reaches; never
- * fewer than the `wanted` added now. */
+/* The entries the configuration's new arrays are made with: every type a 12-bit index names (the ones a live change's
+ * types take too, live_registry.c); never fewer than the ones there are and the `wanted` added now. */
 static uint32_t NetworkCapacity(uint32_t count, uint32_t wanted)
 {
-    uint32_t capacity = count + RegRoom();
-    if (capacity > (1u << NET_WIDE_BITS)) capacity = 1u << NET_WIDE_BITS;
+    uint32_t capacity = 1u << NET_WIDE_BITS;
     return capacity < count + wanted ? count + wanted : capacity;
 }
 

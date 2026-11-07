@@ -114,6 +114,31 @@ static void LiveShortIds(uint32_t* first, uint32_t* last)
 /* Whether a set-up's entity is one the change leaves out of the rows it adds (its old version's registration is kept). */
 static int LiveRowsSkip(int i) { return i < g_lcWeaponsBefore || LiveWeaponIsCarry(i); }
 
+/* The game's entity map rows in use (32-byte rows, an empty one's key 0: FreeRow). */
+static uint32_t LiveMapUsed(const uint8_t* map)
+{
+    uint32_t used = 0;
+    for (uint32_t i = 0; i < REG_MAP_SLOTS; i++)
+    {
+        uint64_t key;
+        memcpy(&key, map + (size_t)i * 32, 8);
+        used += key != 0;
+    }
+    return used;
+}
+
+/* Whether the game's entity map has a free row for each entity the set-ups register (`needed`): its 4096 rows are
+ * compiled into the game, and RegisterWeapon refuses an entity without one while the others go in, which would number
+ * them as no boot of these mods does (a boot refuses the ones sorting last). NULL, or "<reason>\t<why>". */
+static const char* LiveMapCheck(const uint8_t* map, uint32_t needed, char* why, size_t size)
+{
+    uint32_t left = REG_MAP_SLOTS - LiveMapUsed(map);
+    if (needed <= left) return NULL;
+    snprintf(why, size, "capability\tthese mods' weapons and entities need %u row(s) in the game's entity map, which has %u of its %u free; "
+        "a restart registers the ones that fit, as a boot of these mods does", needed, left, REG_MAP_SLOTS);
+    return why;
+}
+
 /* Whether the component tables have a free row for each row the set-ups' entities take. A boot grows a table its
  * entities would fill before adding them (registry_load.c GrowForPending); a running game's tables keep their slot
  * counts, and RegisterWeapon refuses an entity whose table is full while the others go in, which would number them as no
@@ -125,6 +150,9 @@ static const char* LiveTablesCheck(char* why, size_t size)
     uint32_t records;
     uint8_t* loadout = LoadoutTable(state, &records);
     if (map == NULL || loadout == NULL) return NULL; /* not loaded: nothing is registered into them yet */
+    uint32_t entities = 0;
+    for (int i = g_lcWeaponsBefore; i < g_weaponCount; i++) entities += g_weapons[i].state == 2 && !LiveRowsSkip(i);
+    if (LiveMapCheck(map, entities, why, size) != NULL) return why;
     static uint32_t rows[GROW_COMPONENTS];
     memset(rows, 0, sizeof rows);
     PendingRows(map, loadout, records, rows, 2, LiveRowsSkip);

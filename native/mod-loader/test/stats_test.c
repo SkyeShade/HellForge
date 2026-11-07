@@ -2542,18 +2542,17 @@ static void FakeRow(uint8_t* table, uint32_t slots, uint64_t entity, uint32_t re
 /* No number of HellForge's own stops mods' entities (stable_array.c; registry.c RegRoom; fields.c): 600 definition blocks
  * register, past the 64 the definition table held and the 512 the registry held; a block whose mount carries another
  * registers both while the table grows under the outer block's entry; a block registered again returns its entity; a mod
- * taken out forgets its blocks; HellForge's copies are made for the boot's entities and REG_LIVE_ROOM more, and a live
- * change past that room is refused until a slot is free; an array's entries never move as it grows, to its ceiling. */
+ * taken out forgets its blocks; HellForge's copies have room for every entity the game's entity map holds, and a live
+ * change that cannot add one, or whose entities the map cannot hold, is refused whole; an array's entries never move as
+ * it grows, to its ceiling. */
 static void GrowableLimitsFixture(void)
 {
     int weapons = g_weaponCount, defs = g_entityDefCount, edits = g_editCount, components = g_componentCount;
-    uint32_t room = g_regRoom;
     Component savedComponent = g_components[0];
     memset(&g_components[0], 0, sizeof g_components[0]);
     strcpy(g_components[0].name, "MountComponentData"); g_components[0].index = 283; g_components[0].stride = 120;
     g_componentCount = 1;
     g_weaponCount = g_entityDefCount = 0;
-    g_regRoom = 0;
     HfMod* mod = &g_mods[0];
     enum { BLOCKS = 600 };
     static HfEntityDef blocks[BLOCKS];
@@ -2586,27 +2585,29 @@ static void GrowableLimitsFixture(void)
     assert(g_entityDefCount == BLOCKS + 2 && KnownDefinition(mod, &blocks[BLOCKS - 1], &found) == Murmur64A(names[BLOCKS - 1], strlen(names[BLOCKS - 1])) && found);
     KnownDefinition(&g_mods[1], &theirs[0], &found);
     assert(!found);
-    /* HellForge's copies: made for what the boot registered and REG_LIVE_ROOM more, fixed from the first copy on */
+    /* HellForge's copies have room for as many as the game's entity map holds; a live change's entities are added */
     int boot = g_weaponCount;
-    assert(RegRoom() == (uint32_t)boot + REG_LIVE_ROOM && g_regRoom == (uint32_t)boot + REG_LIVE_ROOM);
-    g_weaponCount++;
-    assert(RegRoom() == (uint32_t)boot + REG_LIVE_ROOM);
-    g_weaponCount--;
-    /* a live change past that room: refused, nothing added; with a slot free, added */
-    g_regRoom = (uint32_t)g_weaponCount;
+    assert(RegRoom() == REG_MAP_SLOTS);
     HfEntity late = {sizeof late, .base = HF_ENTITY_PELICAN_TURRET, .name = "fixture/grown_late"};
     g_liveSetup = mod;
     g_lcRefused[0] = 0;
-    char why[512];
-    assert(ApiAddEntity(mod, &late) == 0 && g_weaponCount == boot);
-    /* the whole change refused, never made with part of a mod's content */
-    assert(LiveNumbersCheck(why, sizeof why) != NULL && !strncmp(why, "capacity\t", 9) && strstr(why, "a restart makes room") != NULL);
-    g_lcRefused[0] = 0;
-    g_regRoom = (uint32_t)g_weaponCount + 1;
     assert(ApiAddEntity(mod, &late) == Murmur64A("fixture/grown_late", 18) && g_weaponCount == boot + 1 && g_weapons[boot].state == 2);
+    /* one a live change cannot add (no memory, or the address space's ceiling): the whole change refused, never made with
+     * part of a mod's content */
+    char why[512];
+    WeaponsFull(mod, "add_entity", "fixture/grown_none", 1);
+    assert(LiveNumbersCheck(why, sizeof why) != NULL && !strncmp(why, "capacity\t", 9) && strstr(why, "fixture/grown_none") != NULL);
+    g_lcRefused[0] = 0;
     g_liveSetup = NULL;
+    /* the game's entity map: a live change whose entities need more rows than it has free is refused whole (a boot refuses
+     * the ones sorting last, so registering the ones that fit would number them otherwise) */
+    uint8_t* map = calloc(REG_MAP_SLOTS, 32);
+    for (uint32_t k = 0; k < REG_MAP_SLOTS - 10; k++) { uint64_t key = 0x9000 + k; memcpy(map + (size_t)k * 32, &key, 8); }
+    assert(LiveMapUsed(map) == REG_MAP_SLOTS - 10 && LiveMapCheck(map, 10, why, sizeof why) == NULL);
+    assert(LiveMapCheck(map, 11, why, sizeof why) != NULL && !strncmp(why, "capability\t", 11) && strstr(why, "10 of its 4096 free") != NULL);
+    free(map);
     /* a copied component table's records past the pages committed with the copy: each record's page committed as it is
-     * added (OwnRecord), up to the room, then refused */
+     * added (OwnRecord); the copy has room for as many as the entity map holds */
     enum { OWNED = 1000 };
     uint8_t* fakeState = calloc(1, REG_LIST + 8);
     uint8_t* behaviours = FakeTable(284, 2008 * 16 + 12 * 4);
@@ -2614,7 +2615,6 @@ static void GrowableLimitsFixture(void)
     for (uint32_t k = 0; k <= OWNED; k++) FakeRow(behaviours, 2008, 0xE000 + k, 1);
     SetStatePointer(fakeState, REG_TABLES + 8 * 284, behaviours);
     int ownedCount = g_ownedCount;
-    g_regRoom = OWNED;
     for (uint32_t k = 0; k < OWNED; k++)
     {
         uint8_t* record = OwnRecord(fakeState, 284, 12, 0xB45E, 0xE000 + k);
@@ -2622,8 +2622,7 @@ static void GrowableLimitsFixture(void)
         memcpy(record + 4, &k, 4); /* a write on every record: a page left uncommitted faults */
     }
     OwnedTable* copy = OwnedTableOf(284, StatePointer(fakeState, REG_TABLES + 8 * 284));
-    assert(copy != NULL && copy->next == copy->first + OWNED && copy->end == copy->first + OWNED);
-    assert(OwnRecord(fakeState, 284, 12, 0xB45E, 0xE000 + OWNED) == NULL); /* the room is full */
+    assert(copy != NULL && copy->next == copy->first + OWNED && copy->end == copy->first + REG_MAP_SLOTS);
     g_ownedCount = ownedCount;
     /* an array's entries stay where they are as it grows, and it stops at its ceiling */
     StableArray small = {NULL, 24, 200, 0};
@@ -2634,21 +2633,20 @@ static void GrowableLimitsFixture(void)
     assert(StableRoom(&small, 200) && small.committed == 200 && small.base == first && !StableRoom(&small, 201) && small.committed == 200);
     VirtualFree(small.base, 0, MEM_RELEASE);
     printf("  growable limits: %d definition blocks and entities registered (past 64 and 512), a mount's block growing the table under its carrier, "
-        "a mod's blocks forgotten, copies' room fixed at boot + %u, a live change past it refused\n", BLOCKS + 2, REG_LIVE_ROOM);
+        "a mod's blocks forgotten, 1,000 records across a copy's pages, a live change refused whole past memory or the entity map\n", BLOCKS + 2);
 
     g_weaponCount = weapons;
     g_entityDefCount = defs;
     g_editCount = edits;
     g_components[0] = savedComponent;
     g_componentCount = components;
-    g_regRoom = room;
 }
 
 /* own_all: the copy gets a record of its own, equal to its base's, in every component whose record size is certain. */
 static void OwnAllFixture(void)
 {
     uintptr_t was = g_game;
-    g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL; g_regRoom = 0;
+    g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL;
     const uint64_t base = 0x37CDE43876BA26BBull, other = 0x1234;
     uint8_t* game = calloc(1, REG_STATE_GLOBAL + 8);
     uint8_t* state = calloc(1, REG_LIST + 8);

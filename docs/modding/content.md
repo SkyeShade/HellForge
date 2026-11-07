@@ -267,10 +267,8 @@ HfRef ref = hf->register_entity(mod, &pelican);   /* registers the turret too; 0
 - A block changes or owns at most 8 components and has at most 8 mounts. HellForge sets no limit on the number of blocks.
 - Entities and weapons share the game's entity map across all mods: 4,096 rows, about 2,187 of them free. A component
   table of the base that cannot grow can stop an entity first, and your mod's log names it.
-- While the game runs, a live change can add up to 512 entities and weapons more than the session started with. Past
-  that the whole change is refused, and a restart makes room.
-- Updating a mod while the game runs counts every entity and weapon of its new version against those 512, so a mod with
-  more of them updates at the next restart.
+- While the game runs, a live change whose entities and weapons the entity map cannot hold is refused whole. A restart
+  registers the ones that fit, as any boot of those mods does.
 
 `examples/mods/stratagem-compendium` builds every stratagem this way, one source file per family.
 

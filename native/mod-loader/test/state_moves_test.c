@@ -62,7 +62,7 @@ static void StateMovesOffsetsFixture(void)
 /* The armory's room: a list full counting its vanilla records refuses by type, and entity copies take no card. */
 static void ArmoryRoomFixture(void)
 {
-    static uint8_t records[(REG_LOADOUT_RECORDS + REG_LIVE_ROOM) * REG_LOADOUT_STRIDE];
+    static uint8_t records[(REG_LOADOUT_RECORDS + 512) * REG_LOADOUT_STRIDE];
     WeaponLoad L = {0};
     L.records = records;
     uint32_t primary = 1, secondary = 3, support = 2;
