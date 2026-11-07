@@ -1001,6 +1001,7 @@ static void LwWallSample(void)
  *                                   visible = in plain view (screenshots only)
  *   offline N        squad N goes offline now (survivors carried)      status   the online squads
  *   kill garrison    the garrison kill test on the next active garrison, without its 15 s wait
+ *   teleport X Y     the local Helldiver to the ground at (X, Y) (LwTestTeleport)
  * The camera: CM = [game+0x346D560], [CM+0x3C] its world position (subagent viewdist, P); the third-person camera
  * stands behind the Helldiver, so player - camera is the screen's direction across the ground. */
 static SRWLOCK g_lwCmdLock = SRWLOCK_INIT;
@@ -1068,6 +1069,33 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
     Note("living world: test command %d: spawn %s %.0f m refused at 26 points: %u no face, %u snapped > 2 m, %u under something, %u in sight, %u other",
         seq, mode, (double)dist, g_lwWorld.noFace - noFace0, g_lwWorld.moved - moved0, g_lwWorld.overhead - over0, g_lwWorld.seen - seen0, g_lwWorld.refused - refused0);
 }
+/* Test command "teleport X Y": the local Helldiver to the ground at (X, Y), through the game's own MotionComponent
+ * teleport, as the hellpod exit calls it (subagent teleport; checked by me: 0xA8913F..0xA8914F, the pin, the map
+ * header): 0x5A2BB0(unused, avatar entity, float pos[3]) writes the motion record, the unit (API +0xC8), the Havok mover
+ * body and the replicated position, and bumps the teleport counter so the next frame snaps (0x59F4B0). It has no
+ * not-found check, so the entity must be in the motion map ([game+0x3326558] +0x48A0, descriptor [+0x48B8][i] +8), and
+ * it stops half-way for an attached avatar (0x4A52B0(_, e) != 0: a vehicle or a pod). Velocity is kept: ground only. */
+static void LwTestTeleport(int seq, float x, float y)
+{
+    ActHealth h; const char* why = "";
+    uintptr_t mgr = 0, descs = 0, d = 0, local = 0; uint32_t i = 0;
+    uint32_t e = ActLocalAvatar(g_lw.game, 0, &h, &why);
+    float pos[3] = {x, y, 0};
+    if (!e) { Note("living world: test command %d: teleport: %s", seq, why); return; }
+    if (x * x + y * y > g_lwWorld.radius * g_lwWorld.radius) { Note("living world: test command %d: teleport: (%.0f, %.0f) is outside the playable disc", seq, (double)x, (double)y); return; }
+    if (!ApiCodeMatches(g_lw.game + 0x5A2BB0u, "48 89 5C 24 08 48 89 6C 24 10 56 57 41 54 41 56 41 57 48 83 EC 40")) { Note("living world: test command %d: teleport: 0x5A2BB0 is not the reviewed code", seq); return; }
+    if (!EvpPtr(g_lw.game + 0x3326558u, &mgr) || !EvpHash(mgr + 0x48A0, e, 8, 4, &i) || !EvpPtr(mgr + 0x48B8, &descs) || !EvpPtr(descs + 8u * i, &d) ||
+        EvpU32(d + 8, 0) != e) { Note("living world: test command %d: teleport: the Helldiver %08X has no motion record", seq, e); return; }
+    if (((uint8_t (*)(void*, uint32_t))(g_lw.game + 0x4A52B0u))(NULL, e)) { Note("living world: test command %d: teleport: the Helldiver is attached (vehicle or pod)", seq); return; }
+    if (!LwGround(x, y, &pos[2])) { Note("living world: test command %d: teleport: no ground at (%.0f, %.0f)", seq, (double)x, (double)y); return; }
+    pos[2] += 0.1f;
+    ((void (*)(void*, uint32_t, const float*))(g_lw.game + 0x5A2BB0u))(NULL, e, pos);
+    float back[3] = {0, 0, 0};
+    if (EvpPtr(mgr + 0x48D0, &local)) SafeRead(local + 0xA4u * i, back, sizeof back);
+    Note("living world: test command %d: teleported the Helldiver %08X to (%.0f, %.0f, %.1f); its motion record reads (%.0f, %.0f, %.1f)", seq, e,
+        (double)pos[0], (double)pos[1], (double)pos[2], (double)back[0], (double)back[1], (double)back[2]);
+}
+
 static void LwKillArm(void);
 static void LwTestCommands(void)
 {
@@ -1083,6 +1111,7 @@ static void LwTestCommands(void)
         if (sscanf(cmds[c], "spawn %15s %f %f %d", mode, &d, &deg, &idx) >= 2) LwTestSpawn(seq, mode, d, deg, idx);
         else if (sscanf(cmds[c], "offline %d", &idx) == 1 && idx >= 0 && idx < g_lwWorld.count && g_lwSquads[idx].state == LW_ONLINE) g_lwSquads[idx].forceOff = 1;
         else if (strncmp(cmds[c], "kill garrison", 13) == 0) LwKillArm();
+        else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
         else if (strncmp(cmds[c], "status", 6) == 0)
             for (int i = 0; i < g_lwWorld.count; i++)
             {
