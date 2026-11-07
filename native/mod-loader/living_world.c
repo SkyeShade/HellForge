@@ -1813,6 +1813,9 @@ static void LwTestTeleport(int seq, float x, float y)
     /* XL: the ground ray can hit something below the terrain where the tile's collision is not in yet (lw88a: put at
      * z -36.7 at (2500, 1800), the height plan there about 60 m: the Helldiver died at once and the mission ended) */
     float plan = g_lwWorld.radius > 1500.0f && g_near.global != NULL && g_near.level == g_world.levels ? NearGlobalAt(x, y) : -9999.0f;
+    /* under the water a Helldiver drowns (kind 8 damage; lw92a: put at z -40.7 by water at -39.0, dead 9 s later) */
+    float water = g_nearWater.level == g_world.levels ? g_nearWater.high : -500.0f;
+    if (pos[2] < water + 0.5f) { Note("living world: test command %d: teleport: the ground at (%.0f, %.0f) reads %.1f m, under the water at %.1f m", seq, (double)x, (double)y, (double)pos[2], (double)water); return; }
     if (plan > -9000.0f && pos[2] < plan - 3.0f) { Note("living world: test command %d: teleport: the ground at (%.0f, %.0f) reads %.1f m, %.1f m under the height plan: not streamed in yet", seq, (double)x, (double)y, (double)pos[2], (double)(plan - pos[2])); return; }
     /* a solo Helldiver put among enemies dies and, reinforced on the same spot, dies again until the mission fails
      * (lw67a, lw71a: back on the ship 90 s later); such a point is refused */
