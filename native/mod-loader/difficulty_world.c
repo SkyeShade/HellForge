@@ -4384,6 +4384,58 @@ static void WorldDryCity(uint64_t op)
         (unsigned)op, g_dry.count, (double)DRY_LEVEL, g_dry.count ? text : " none had one", refused ? " (some descriptors not writable: kept)" : "");
 }
 
+/* The cell types' kill height (KB engine/zone-kill-height; subagent, checked by me in game.dll: the avatar update calls
+ * the zone lookup 0xF74750 at 0x82BD2F, compares the record's +0x12C with the unit's z at 0x82BD46 and, when it is above,
+ * queues kind 7 damage of -1 (a full kill) with the avatar as its own attacker at 0x82BDE8 / 0x82BDF5; AiEnemy does the
+ * same at 0xAA880B, vehicles, beacons and hellpods read it too). The value is per type, authored like the water level:
+ * -100 in 256 of 257 dumped types, -18.5 on a sea type with water at -39. The extra large relief lies lower than any
+ * vanilla map, so Helldivers put on its low ground died at once (lw88a z -36.7, lw91a -37.4 and -19.9 in that type's
+ * cells, "killed by itself", health -99999). On an extra large level each type's kill height above KILL_FLOOR goes to
+ * it: under all ground the heightmap holds (-500 .. +500) but above the -500 m plane the coarse collision drops to under a
+ * tile, so a unit that falls through still dies there. Deep water still drowns (kind 8, the water level). Written on
+ * every peer (each peer applies the kill to what it owns: its Helldiver, the host its enemies), before the level's op
+ * 0x0A like the water edit, and put back at the next level's first op while the descriptor is still in that level's
+ * table and still holds KILL_FLOOR. */
+#define KILL_FLOOR -480.0f
+static struct { uint32_t count; uint64_t type[256]; float was[256]; } g_killHeight;
+
+static void WorldKillHeight(void)
+{
+    static LONG doneFor = -1;
+    if (doneFor == g_world.levels || g_worldLevel == 0) return;
+    uint64_t ts = 0, table = 0;
+    uint32_t types = 0;
+    if (SafeRead(g_worldLevel + 0x2D0, &ts, 8) || ts == 0 || SafeRead(ts, &table, 8) || table == 0 || SafeRead(ts + 0xA0, &types, 4)) return;
+    if (types > 256) types = 256;
+    doneFor = g_world.levels;
+    uint32_t restored = 0, dropped = 0;
+    for (uint32_t i = 0; i < g_killHeight.count; i++)
+    {
+        int live = 0;
+        for (uint32_t t = 0; t < types && !live; t++) { uint64_t d = 0; if (!SafeRead(table + 8ull * t, &d, 8) && d == g_killHeight.type[i]) live = 1; }
+        float now = 0;
+        if (live && !SafeRead(g_killHeight.type[i] + 0x12C, &now, 4) && now == KILL_FLOOR && DryWritable(g_killHeight.type[i] + 0x12C))
+        { *(volatile float*)(uintptr_t)(g_killHeight.type[i] + 0x12C) = g_killHeight.was[i]; restored++; }
+        else dropped++;
+    }
+    if (g_killHeight.count) Note("difficulty: extra large maps: kill heights put back on %u types (%u no longer this level's or changed: left alone)", restored, dropped);
+    g_killHeight.count = 0;
+    if (!(g_world.current > 1.0f)) return;
+    char text[512]; size_t at = 0; text[0] = 0;
+    uint32_t refused = 0;
+    for (uint32_t t = 0; t < types; t++)
+    {
+        uint64_t d = 0; float kill = KILL_FLOOR;
+        if (SafeRead(table + 8ull * t, &d, 8) || d == 0 || SafeRead(d + 0x12C, &kill, 4) || !isfinite(kill) || !(kill > KILL_FLOOR)) continue;
+        if (!DryWritable(d + 0x12C)) { refused++; continue; }
+        g_killHeight.type[g_killHeight.count] = d; g_killHeight.was[g_killHeight.count] = kill; g_killHeight.count++;
+        *(volatile float*)(uintptr_t)(d + 0x12C) = KILL_FLOOR;
+        if (at < sizeof text - 24) at += (size_t)snprintf(text + at, sizeof text - at, " %u (%.1f)", t, (double)kill);
+    }
+    Note("difficulty: extra large maps: kill heights of %u cell types lowered to %.0f m (the relief lies lower than a vanilla map's):%s%s", g_killHeight.count,
+        (double)KILL_FLOOR, g_killHeight.count ? text : " none", refused ? " (some descriptors not writable: kept)" : "");
+}
+
 static void CityGatesNote(uint32_t op); /* difficulty_world_gates.c: the city ops' gates about each city, per level */
 /* Load time: the stamp packages queued early (~/xl-work/static/loadtime/packages.md, hellforge-1a, static).
  * QueueStampPackages (op 0x1F, record 94 of a 16 km pipeline, 0xF405E0(pass, record, ctx)) builds its package list
@@ -4552,7 +4604,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     TerrainDiagBefore(records, index, (uint32_t)d, &diagAt, &diagOp);
     {
         uint32_t i = 0, o = 0xFFFFFFFFu;
-        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4)) WorldDryCity(o); /* once a level, before op 0x0A */
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4)) { WorldKillHeight(); WorldDryCity(o); } /* once a level, before op 0x0A */
     }
     if (g_world.current == 8.0f) WorldCamInstall();
     {
