@@ -1860,6 +1860,26 @@ static void LwDrawnTick(void)
     }
 }
 
+/* Test runs (HELLFORGE_LW_TEST_TRACE=1): when the local Helldiver dies, who killed it, read as for a lost member
+ * (LwLostWhy: the health record's attacker +0x30, creditor +0x38, damage hash +0x40), with where it stood (lw72a: it died
+ * about 10 s after each landing, again and again, with no squad near). */
+static void LwAvatarDeathWatch(void)
+{
+    static int on = -1; static uint32_t lastDead; static float at[3];
+    if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1'; }
+    if (!on) return;
+    ActHealth h; const char* why = ""; float p[3];
+    uint32_t e = ActLocalAvatar(g_lw.game, 1, &h, &why); /* 1: downed or dead too */
+    if (!e) return;
+    if (h.life < 2) { if (h.unit && EvpUnitPosition(h.unit, p)) memcpy(at, p, sizeof p); return; }
+    if (e == lastDead) return;
+    lastDead = e;
+    uint32_t squad; char by[400];
+    const char* what = LwLostWhy(e, &squad, by, sizeof by, at);
+    float nearest; int foes = LwEnemiesNear(at[0], at[1], 60.0f, &nearest);
+    Note("living world: test: the Helldiver %08X died at (%.0f, %.0f, %.1f): %s%s; health %d of %d; %d enemies within 60 m (nearest %.0f m)", e, (double)at[0], (double)at[1], (double)at[2],
+        what, by, h.health, h.max, foes, (double)nearest);
+}
 static void LwKillArm(void);
 static void LwTestCommands(void)
 {
@@ -1929,6 +1949,7 @@ static void LwSquadsTick(void)
     for (int i = 0; i < g_lwWorld.count; i++)
         if (g_lwSquads[i].farOn) farUnits += g_lwSquads[i].state == LW_PENDING ? g_lwSquads[i].cap : g_lwSquads[i].state == LW_ONLINE ? g_lwSquads[i].alive : 0;
     g_lwWorld.farUnits = farUnits;
+    LwAvatarDeathWatch(); /* test runs: who killed the local Helldiver */
     LwDrawnTick(); /* the main view's drawn state of far squads (test instrument, HELLFORGE_LW_DRAWN=1) */
     LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
