@@ -117,8 +117,9 @@ An item is left out for the session, with a line in the backend's log, when the 
 
 An item that is not a consumable and that the player has already, from the game's warbonds or another mod's warbond, shows
 claimed, as on the warbond where they got it. It is not sold again: its price would buy nothing. Like an item left out,
-it counts towards no page. What the player has is taken when the session starts, so an item they get later in the
-session shows claimed from the next start; until then, its claim button is refused.
+it counts towards no page, and a page with nothing else to sell opens with the page before it. What the player has is
+taken when the session starts, so an item they get later in the session shows claimed from the next start; until then,
+its claim button is refused.
 
 ## Pages and prices
 

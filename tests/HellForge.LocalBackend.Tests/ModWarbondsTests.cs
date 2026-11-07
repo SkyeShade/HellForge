@@ -249,6 +249,17 @@ static class ModWarbondsTests
             .GetProperty("purchasedSeasonPassItems").EnumerateArray().Select(i => i.GetInt64()).ToList();
         check(shownBought.Order().SequenceEqual(new[] { 1L, oneBought }.Concat(claimedIds).Order()) && ownedService.Find(claimedIds[1]) == null,
             "The items the player has already were not served claimed, or one could be bought: " + string.Join(",", shownBought));
+        // A later page that sells nothing (all its items held) opens with the page before it, not on what is spent.
+        var laterHeld = ModWarbonds.Parse("test", "Test", JsonDocument.Parse($$"""
+            {"format":1,"warbonds":[{"key":"later","name":"Later","pages":[{"items":[{"mixId":{{mobilize[2]}},"cost":5}]},
+              {"requirement":5,"items":[{"mixId":{{mobilize[0]}},"cost":5}]}]}]}
+            """).RootElement, []);
+        var laterServed = new ModWarbondService(laterHeld)
+        {
+            Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = _ => { }, Holds = () => new HashSet<uint> { mobilize[0] },
+        }.Resolve().Single();
+        check(laterServed.ListEntry["pageRequirements"]!.AsArray().Select(r => (long)r!).SequenceEqual([0L, 0L]) && laterServed.Claimed.Count == 1,
+            "A page with nothing to sell stayed locked behind what is spent.");
         // A warbond whose every item the player has is shown, all claimed.
         var allHeld = new ModWarbondService(two)
         {

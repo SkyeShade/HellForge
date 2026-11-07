@@ -156,12 +156,15 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
             Report(warbond, "", "none of its items can be sold or shown this session");
             return null;
         }
-        // Each page's requirement within what the pages before it sell this session (items left out cannot be bought).
-        long before = 0;
+        // Each page's requirement within what the pages before it sell this session (items left out cannot be bought). A
+        // page that sells nothing (every item shown claimed or left out) opens with the page before it: locked, the game
+        // would read it as a premium warbond's ("PREMIUM WARBOND NEEDED", 0x1975132: its own amount left is 0, run 11).
+        long before = 0, previous = 0;
         var requirements = new JsonArray();
         for (var i = 0; i < warbond.Pages.Count; i++)
         {
-            var requirement = Math.Min(warbond.Pages[i].Requirement, before);
+            var requirement = warbond.Pages[i].Items.Any(item => sells.ContainsKey(item.Id)) ? Math.Min(warbond.Pages[i].Requirement, before) : previous;
+            previous = requirement;
             requirements.Add((JsonNode)requirement);
             pages[i]!["totalMedalsRequired"] = requirement;
             before += warbond.Pages[i].Items.Where(item => sells.ContainsKey(item.Id) && item.CountsAsSpent(warbond.CurrencyMixId)).Sum(item => item.Cost);
