@@ -565,7 +565,9 @@ static int LwRoomFor(uint32_t members)
 }
 
 static int LwGround(float x, float y, float* z);
-static int g_lwTestVisible; /* test command "spawn visible": the sight rule is skipped for that one request */
+static int g_lwTestVisible; /* test command "spawn visible": the point must be in a player's sight instead of out of it */
+static uint32_t g_lwTestUnseen; /* "spawn visible" points no player sees */
+static int LwSeenByAny(const float* p, float range);
 static int LwPlace(uintptr_t slot, float* pos);
 static int LwHidden(const float* p);
 
@@ -605,7 +607,8 @@ static void LwOnline(LwSquad* q)
     if (q->pathAt < q->pathLen) { target[0] = g_lwNodes[q->path[q->pathAt]].x; target[1] = g_lwNodes[q->path[q->pathAt]].y; }
     if (!LwGround(pos[0], pos[1], &pos[2]) || !LwGround(target[0], target[1], &target[2])) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "no ground under the point or its target"); g_lwWorld.refused++; return; }
     float wanted[2] = {pos[0], pos[1]};
-    if (!LwPlace(slot, pos) || (!g_lwTestVisible && !LwHidden(pos))) { q->retry = GetTickCount64() + 3000; return; }
+    if (!LwPlace(slot, pos)) { q->retry = GetTickCount64() + 3000; return; }
+    if (g_lwTestVisible ? !LwSeenByAny(pos, LW_SIGHT) && (++g_lwTestUnseen, 1) : !LwHidden(pos)) { q->retry = GetTickCount64() + 3000; return; }
     uintptr_t rec = g_lw.spawn(g_lwWorld.dir, slot, pos, LW_JOB_PATROL, LW_PATROL_FLAGS, target, NULL, NULL, 0.0f, cap);
     if (rec == 0) { snprintf(g_lwRoomWhy, sizeof g_lwRoomWhy, "the spawn request returned no record"); g_lwWorld.refused++; return; }
     uint8_t used = 0;
@@ -1003,10 +1006,12 @@ static void LwWallSample(void)
  * which runs it and notes the result ("living world: test command N: ..."). Host only.
  *   spawn near|far|visible D [deg [N]]  an offline squad (squad N) at a placeable point D m from player 1 in the camera's direction
  *                                   (+deg): near / far = through the placement and sight rules (far: as by sightline),
- *                                   visible = in plain view (screenshots only)
+ *                                   visible = in a player's sight (screenshots only; the whole circle,
+ *                                   the camera's view first; the note says how far to turn)
  *   offline N        squad N goes offline now (survivors carried)      status   the online squads
  *   kill garrison    the garrison kill test on the next active garrison, without its 15 s wait
  *   teleport X Y     the local Helldiver to the ground at (X, Y) (LwTestTeleport)
+ *   aim X Y          how far the camera's view is from (X, Y), for the harness to turn it (LwTestAim)
  * The camera: CM = [game+0x346D560], [CM+0x3C] its world position (subagent viewdist, P); the third-person camera
  * stands behind the Helldiver, so player - camera is the screen's direction across the ground. */
 static SRWLOCK g_lwCmdLock = SRWLOCK_INIT;
@@ -1046,13 +1051,16 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
     }
     if (which >= 0) best = which < g_lwWorld.count && g_lwSquads[which].state == LW_OFFLINE && g_lwSquads[which].survivors ? &g_lwSquads[which] : NULL;
     if (best == NULL) { Note("living world: test command %d: no offline squad%s", seq, which >= 0 ? " by that number" : ""); return; }
-    static const float offsets[] = {0, 6, -6, 12, -12, 18, -18, 24, -24, 30, -30, 36, -36};
+    static const float offsets[] = {0, 6, -6, 12, -12, 18, -18, 24, -24, 30, -30, 36, -36}, around[] = {0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90,
+        105, -105, 120, -120, 135, -135, 150, -150, 165, -165, 180};
+    const float* offs = visible ? around : offsets; int nOffs = visible ? (int)(sizeof around / sizeof around[0]) : (int)(sizeof offsets / sizeof offsets[0]);
+    uint32_t unseen0 = g_lwTestUnseen;
     uint32_t noFace0 = g_lwWorld.noFace, moved0 = g_lwWorld.moved, over0 = g_lwWorld.overhead, seen0 = g_lwWorld.seen, refused0 = g_lwWorld.refused;
     float save[2] = {best->pos[0], best->pos[1]};
     int outside = 0; g_lwRoomWhy[0] = 0;
-    for (int k = 0; k < (int)(sizeof offsets / sizeof offsets[0]) * 2; k++)
+    for (int k = 0; k < nOffs * 2; k++)
     {
-        float a = base + offsets[k / 2] * 3.14159265f / 180.0f, d = dist * (k % 2 ? 0.9f : 1.0f);
+        float a = base + offs[k / 2] * 3.14159265f / 180.0f, d = dist * (k % 2 ? 0.9f : 1.0f);
         float p[2] = {pl[0] + d * cosf(a), pl[1] + d * sinf(a)};
         if (p[0] * p[0] + p[1] * p[1] > g_lwWorld.radius * g_lwWorld.radius) { outside++; continue; }
         best->pos[0] = p[0]; best->pos[1] = p[1];
@@ -1065,15 +1073,15 @@ static void LwTestSpawn(int seq, const char* mode, float dist, float deg, int wh
         if (best->state == LW_PENDING)
         {
             if (asFar) best->farOn = 1;
-            Note("living world: test command %d: squad %d spawn %s at (%.0f, %.0f), %.0f m %s (try %d), %u members (%u lost before)", seq, (int)(best - g_lwSquads), mode,
+            Note("living world: test command %d: squad %d spawn %s at (%.0f, %.0f), %.0f m %s, %+.0f deg from it (try %d), %u members (%u lost before)", seq, (int)(best - g_lwSquads), mode,
                 (double)best->pos[0], (double)best->pos[1], (double)sqrtf(LwDist2(pl, best->pos[0], best->pos[1])),
-                fromCamera ? "along the camera's view" : "east (no camera)", k + 1, best->cap, best->lost);
+                fromCamera ? "along the camera's view" : "east (no camera)", (double)(deg + offs[k / 2]), k + 1, best->cap, best->lost);
             return;
         }
     }
     best->pos[0] = save[0]; best->pos[1] = save[1];
-    Note("living world: test command %d: spawn %s %.0f m refused at 26 points: %d outside the playable disc (radius %.0f m), %u no face, %u snapped > 2 m, %u under something, %u in sight, %u refused%s%s%s",
-        seq, mode, (double)dist, outside, (double)g_lwWorld.radius, g_lwWorld.noFace - noFace0, g_lwWorld.moved - moved0, g_lwWorld.overhead - over0, g_lwWorld.seen - seen0,
+    Note("living world: test command %d: spawn %s %.0f m refused at %d points: %u not seen (visible), %d outside the playable disc (radius %.0f m), %u no face, %u snapped > 2 m, %u under something, %u in sight, %u refused%s%s%s",
+        seq, mode, (double)dist, nOffs * 2, g_lwTestUnseen - unseen0, outside, (double)g_lwWorld.radius, g_lwWorld.noFace - noFace0, g_lwWorld.moved - moved0, g_lwWorld.overhead - over0, g_lwWorld.seen - seen0,
         g_lwWorld.refused - refused0, g_lwRoomWhy[0] ? " (last: " : "", g_lwRoomWhy, g_lwRoomWhy[0] ? ")" : "");
 }
 /* Test command "teleport X Y": the local Helldiver to the ground at (X, Y), through the game's own MotionComponent
@@ -1103,6 +1111,19 @@ static void LwTestTeleport(int seq, float x, float y)
         (double)pos[0], (double)pos[1], (double)pos[2], (double)back[0], (double)back[1], (double)back[2]);
 }
 
+/* Test command "aim X Y": how far the camera's view (player - camera, across the ground) is from the direction to (X, Y),
+ * in degrees, counterclockwise positive (atan2 in the world's x/y); the harness turns the camera with its look input
+ * until this is small, measuring the look's rate as it goes (closed loop: no assumed sensitivity or sign). */
+static void LwTestAim(int seq, float x, float y)
+{
+    float f[2];
+    if (g_lwWorld.playersAt == 0 || !LwCameraForward(f)) { Note("living world: test command %d: aim: no camera or player", seq); return; }
+    float cam = atan2f(f[1], f[0]), to = atan2f(y - g_lwWorld.players[0][1], x - g_lwWorld.players[0][0]), off = to - cam;
+    while (off > 3.14159265f) off -= 6.2831853f;
+    while (off < -3.14159265f) off += 6.2831853f;
+    Note("living world: test command %d: aim: camera %.1f deg, target %.1f deg, off by %+.1f deg", seq, (double)(cam * 57.29578f), (double)(to * 57.29578f), (double)(off * 57.29578f));
+}
+
 static void LwKillArm(void);
 static void LwTestCommands(void)
 {
@@ -1119,6 +1140,7 @@ static void LwTestCommands(void)
         else if (sscanf(cmds[c], "offline %d", &idx) == 1 && idx >= 0 && idx < g_lwWorld.count && g_lwSquads[idx].state == LW_ONLINE) g_lwSquads[idx].forceOff = 1;
         else if (strncmp(cmds[c], "kill garrison", 13) == 0) LwKillArm();
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
+        else if (sscanf(cmds[c], "aim %f %f", &d, &deg) == 2) LwTestAim(seq, d, deg);
         else if (strncmp(cmds[c], "status", 6) == 0)
             for (int i = 0; i < g_lwWorld.count; i++)
             {
