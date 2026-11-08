@@ -99,7 +99,6 @@ static int LwSquadGoTo(LwSquad* q, const float* target)
     if (EvpPtr(g_lw.game + 0x3326418u, &navs) && EvpHash(navs + 0x30, q->squad, 8, 4, &slot)) ((RepathFn)(g_lw.game + 0x5B36C0u))(NULL, q->squad, p);
     return 1;
 }
-static int LwBits(uint32_t v) { int c = 0; for (; v; v &= v - 1) c++; return c; }
 
 /* Phase 2b (KB living-world-plan "Phase 2 design", living-world-p2-contact): fights draw squads in. Once a second the
  * AiAlert table ([game+0x3326528]: count +0xC, entity pointers [+0x38] (id at +8), levels [+0x50], one index; P
@@ -174,8 +173,9 @@ static void LwIntentEnd(LwSquad* q, const char* why)
 {
     ULONGLONG now = GetTickCount64();
     char peak[96] = "";
-    if (q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, q->intent == LW_INVESTIGATE ? "; %d of %d members investigated (alert 2+, the first after %.1f s)"
-        : "; %d of %d members engaged at the fight (alert 3+, the first after %.1f s)", LwBits(q->intentPeak), q->seenCount, (double)q->intentPeakAt);
+    /* intentPeak: the most members at once (a member index shifts as members die, lw112c) */
+    if (q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, q->intent == LW_INVESTIGATE ? "; at most %u members investigating at once (alert 2+, the first after %.1f s), %d alive"
+        : "; at most %u members engaged at once at the fight (alert 3+, the first after %.1f s), %d alive", q->intentPeak, (double)q->intentPeakAt, q->seenCount);
     if (q->rushed && q->state == LW_ONLINE) LwRushMembers(q, q->seen, q->seenCount, 0);
     q->rushed = 0;
     if (q->intent == LW_RETAKE && q->garrison >= 0 && q->garrison < g_lwGarrisonCount && g_lwGarrisons[q->garrison].retaker == (int16_t)(q - g_lwSquads)) g_lwGarrisons[q->garrison].retaker = -1;
@@ -330,8 +330,8 @@ static void LwReinforceOnline(LwSquad* q, const uint32_t* members, int n, const 
             return;
         }
     }
-    for (int k = 0; k < n; k++) if (LwAlert(members[k]) >= 3) for (int i = 0; i < q->seenCount && i < 32; i++) if (q->seen[i] == members[k])
-    { if (q->intentPeak == 0) q->intentPeakAt = (float)(now - q->intentStageAt) / 1000.0f; q->intentPeak |= 1u << i; }
+    if (engaged > 0 && q->intentPeak == 0) q->intentPeakAt = (float)(now - q->intentStageAt) / 1000.0f;
+    if ((uint32_t)engaged > q->intentPeak) q->intentPeak = (uint32_t)engaged;
     /* nobody engaged at the fight: every 10 s, up to 3 times, the members hear the fight's target where it is */
     if (!engaged && q->tells < 3 && now >= q->tellAt && LwFightOf(q) && g_lwFights[q->fight].target)
     {
@@ -385,14 +385,10 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
             (double)q->target[0], (double)q->target[1], (double)(now - q->intentAt) / 1000.0, told, source, flags, aiState, (double)thr, (double)inv);
         return;
     }
-    int calm = 1;
-    for (int k = 0; k < n; k++)
-    {
-        uint32_t alert = LwAlert(members[k]);
-        if (alert != 0) calm = 0;
-        if (alert >= 2) for (int i = 0; i < q->seenCount && i < 32; i++) if (q->seen[i] == members[k])
-        { if (q->intentPeak == 0) q->intentPeakAt = (float)(now - q->intentStageAt) / 1000.0f; q->intentPeak |= 1u << i; }
-    }
+    int calm = 1, looking = 0;
+    for (int k = 0; k < n; k++) { uint32_t alert = LwAlert(members[k]); if (alert != 0) calm = 0; looking += alert >= 2; }
+    if (looking > 0 && q->intentPeak == 0) q->intentPeakAt = (float)(now - q->intentStageAt) / 1000.0f;
+    if ((uint32_t)looking > q->intentPeak) q->intentPeak = (uint32_t)looking;
     if ((calm && now - q->intentStageAt > 10000) || now - q->intentStageAt > 90000) LwIntentEnd(q, calm ? "members calm again" : "90 s");
 }
 /* an online squad going offline with an intent: the route from where it stands */
