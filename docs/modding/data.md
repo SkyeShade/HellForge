@@ -112,13 +112,13 @@ mod, never a game resource's name. The copy can then be changed, in this order:
   makes every row first take this row's values, `columns` (`{"<column>": colour}`) sets columns in every row, and
   `rows` (`{"<row>": {"<column>": colour}}`) sets single cells. Alpha is kept and the mips are rebuilt.
 - `mesh` (on a `unit`): your own geometry from a Wavefront OBJ in the mod folder, `{"obj": "models/cube.obj", "scale":
-  1, "yUp": true, "unitSpace": false}`. Every render and shadow mesh in every LOD gets it, rigid on the unit's main bone,
-  all in one place: centred on the render mesh's joint (a weapon's grip area), or with `"unitSpace": true` at the OBJ's
-  own coordinates in the unit, the frame its joints and attachment points are in (a weapon: +Y to the muzzle, +Z up, +X
-  its right; Blender's coordinates when Blender writes the OBJ). Materials, physics, hitboxes and attachment points (the
-  muzzle, magazine, optic) stay the base's, so recolour the materials in the same patch and model around the attachment
-  points. Its UVs sample the base material's own textures. Models HellForge cannot rebuild yet are refused with the
-  reason.
+  1, "yUp": true, "unitSpace": false}`. Every render and shadow mesh in every LOD gets it, rigid on the unit's main bone.
+  Models HellForge cannot rebuild yet are refused with the reason.
+  - By default the mesh is centred on the render mesh's joint (a weapon's grip area). With `"unitSpace": true` it sits
+    at the OBJ's own coordinates in the unit, the frame of the unit's joints and attachment points. For a weapon that is
+    +Y to the muzzle, +Z up and +X to its right: Blender's coordinates when Blender writes the OBJ.
+  - Materials, physics, hitboxes and attachment points (the muzzle, magazine, optic) stay the base's. Recolour the
+    materials in the same patch and model around the attachment points. Its UVs sample the base material's own textures.
 
 A `unit` copy also gets its base's physics under its own name, because the engine finds a unit's physics by its name.
 

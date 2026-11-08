@@ -2,20 +2,16 @@ using System.Globalization;
 
 namespace HellForge.Core.GameData;
 
-// A mod's own mesh in a copy of one of the game's models (a data spec's "mesh" on a unit copy): every render and shadow
-// mesh of the copied unit, in every LOD, gets the mod's geometry, encoded in each vertex stream's own layout; the unit
-// keeps its joints, skeleton, materials, LOD entries and mesh and group counts, so nothing else in it moves. The mesh is
-// rigid on the unit's main bone (the joint the first render mesh's group 0 remaps bone index 0 to: a weapon's `boss`);
-// each mesh's vertices name the bone index its own group-0 remap list gives that joint (a Liberator's LOD2 remaps index 0
-// to its fire selector), and the boxes and radii the engine culls with are rebuilt around it. Each mesh is placed by that
-// joint's inverse bind in its skeleton map (its mesh joint when it has none), which differs between a unit's render and
-// shadow meshes (a BR-14 Adjudicator's by 0.2 m), so each gets the geometry moved by its own offset: the OBJ lands where
-// the first render mesh puts it, or, with unitSpace, at the OBJ's own coordinates in the unit (the frame of its joints
-// and attach points). The layout is HellForge's research (artifacts/models/FORMAT.md in
-// the research repository), checked against every unit of the supported build; what it does not cover is refused, never
-// guessed: units whose geometry lives in another resource, data after the vertex streams, rotated mesh joints, meshes
-// culled by another body (a sentry's c_culling), vertex formats without an encoder. Physics, hitboxes and attachment
-// points stay the base's: only what is drawn changes.
+// A mod's own mesh in a copy of one of the game's models (a data spec's "mesh" on a unit copy). Every render and shadow
+// mesh in every LOD gets the geometry in its vertex stream's own layout; joints, skeleton, materials, LODs and counts
+// stay. The mesh is rigid on the main bone (the joint the first render mesh's group 0 remaps bone 0 to: a weapon's
+// boss), each mesh naming the bone index its own group-0 remap gives that joint, with cull boxes rebuilt around it.
+// Each mesh is placed by that joint's inverse bind in its own skeleton map, which differs between render and shadow
+// meshes (a BR-14's by 0.2 m), so the OBJ lands where the first render mesh puts it (or, with unitSpace, at its own
+// coordinates in the unit). The layout is HellForge's research (artifacts/models/FORMAT.md in the research repository),
+// checked against every unit of the supported build. What it does not cover is refused, never guessed: geometry in
+// another resource, data after the streams, rotated mesh joints, meshes culled by another body, unknown vertex formats.
+// Physics, hitboxes and attachment points stay the base's.
 public static class UnitMesh
 {
     public sealed record Mesh(IReadOnlyList<double[]> Positions, IReadOnlyList<double[]> Normals, IReadOnlyList<double[]> Uvs, IReadOnlyList<int> Triangles);
@@ -186,7 +182,7 @@ public static class UnitMesh
         var mesh = geometry.Mesh;
         var vertices = new byte[mesh.Positions.Count * s.Stride];
         for (var v = 0; v < mesh.Positions.Count; v++)
-            EncodeVertex(vertices.AsSpan(v * (int)s.Stride, (int)s.Stride), s.Items, offsets, Moved(mesh.Positions[v], bind.Shift), mesh.Normals[v], geometry.Tangents[v], mesh.Uvs[v], bind.Bone);
+            EncodeVertex(vertices.AsSpan(v * (int)s.Stride, (int)s.Stride), s.Items, offsets, new(Moved(mesh.Positions[v], bind.Shift), mesh.Normals[v], geometry.Tangents[v], mesh.Uvs[v], bind.Bone));
         var lists = new List<List<uint>> { mesh.Triangles.Select(t => (uint)t).ToList() };
         for (var g = 1; g < m.Groups.Count; g++) lists.Add([0, 0, 0]); // a group left over: one degenerate triangle
         return new(i, vertices, mesh.Positions.Count, lists);
@@ -350,8 +346,12 @@ public static class UnitMesh
         return any ? (lo, hi) : null;
     }
 
-    static void EncodeVertex(Span<byte> out_, IReadOnlyList<Item> items, int[] offsets, double[] p, double[] n, (double[] T, int Sign) t, double[] uv, int bone)
+    // One vertex to encode: position, normal, tangent and its sign, UV, and the bone index it is rigid on.
+    readonly record struct Vertex(double[] P, double[] N, (double[] T, int Sign) T, double[] Uv, int Bone);
+
+    static void EncodeVertex(Span<byte> out_, IReadOnlyList<Item> items, int[] offsets, Vertex x)
     {
+        var (p, n, t, uv, bone) = (x.P, x.N, x.T, x.Uv, x.Bone);
         for (var k = 0; k < items.Count; k++)
         {
             var (type, format) = (items[k].Type, items[k].Format);
