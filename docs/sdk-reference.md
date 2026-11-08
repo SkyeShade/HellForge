@@ -18,7 +18,7 @@ there) and `mappings/` (functions, globals, fields and content); do not edit it 
 - [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-the-lobby-browser-hfbrowsestate-check-hf-size-before-calling), [SDK 16](#sdk-16-game-functions-and-globals-by-name-hellforge_functionsh-hellforge_globalsh-check-hf-size), [SDK 16](#sdk-16-the-mods-status-check-hf-size-before-calling), [SDK 16](#sdk-16-the-mod-channel-co-op-docsmoddingconceptsmd-co-op), [SDK 16](#sdk-16-live-mods-see-the-top-of-this-file-check-hf-size-before-calling), [SDK 17](#sdk-17-explosions-check-hf-size-before-calling), [SDK 17](#sdk-17-beams-and-arcs-check-hf-size-before-calling)
 - [Functions](#functions): [ConsumeDamageEvent](#consumedamageevent), [KillDispatch](#killdispatch), [ActivateStratagemBeacon](#activatestratagembeacon), [SpawnEntity](#spawnentity), [RequestExplosion](#requestexplosion), [AddHealthFraction](#addhealthfraction), [RestoreZone](#restorezone), [QueueStatusRequest](#queuestatusrequest), [SetVelocity](#setvelocity), [FireProjectile](#fireprojectile)
 - [Globals](#globals): [Game](#game), [PlayerManager](#playermanager), [LocalUser](#localuser), [GameMode](#gamemode), [EntityManager](#entitymanager), [HealthManager](#healthmanager), [MotionManager](#motionmanager), [ExplosionQueue](#explosionqueue), [ProjectileSystem](#projectilesystem), [CombatQueues](#combatqueues), [ScoreManager](#scoremanager), [WielderManager](#wieldermanager), [InventoryManager](#inventorymanager), [Destructibles](#destructibles), [DestructionRecords](#destructionrecords)
-- [Components](#components): [HfProjectileWeapon](#hfprojectileweapon), [HfWeaponData](#hfweapondata), [HfWeaponMagazine](#hfweaponmagazine), [HfTag](#hftag), [HfMount](#hfmount), [HfBehavior](#hfbehavior), [HfLoadoutPackage](#hfloadoutpackage), [HfDeposit](#hfdeposit), [HfHealth](#hfhealth), [HfJumppack](#hfjumppack), [HfRecharge](#hfrecharge), [HfShield](#hfshield), [HfHellpodPayload](#hfhellpodpayload), [HfSensorEye](#hfsensoreye), [HfTurret](#hfturret), [HfWeaponWindUp](#hfweaponwindup), [HfBeamWeapon](#hfbeamweapon), [HfWeaponHeat](#hfweaponheat), [HfEagle](#hfeagle), [HfThrower](#hfthrower), [HfBombardment](#hfbombardment), [HfExplosive](#hfexplosive), [HfThrowable](#hfthrowable), [HfVehicleMotion](#hfvehiclemotion), [HfWeaponCharge](#hfweaponcharge), [HfWeaponReload](#hfweaponreload), [HfWeaponRounds](#hfweaponrounds), [HfArcWeapon](#hfarcweapon), [HfHiveMind](#hfhivemind), [HfOrbitalAbility](#hforbitalability), [HfRotation](#hfrotation), [HfDisplacement](#hfdisplacement), [HfSeekingMissile](#hfseekingmissile), [HfLoadoutEntry](#hfloadoutentry), [HfHellpodRack](#hfhellpodrack), [HfAvatar](#hfavatar), [HfInventory](#hfinventory), [HfMeleeWeapon](#hfmeleeweapon), [HfAbilityWeapon](#hfabilityweapon), [HfUnit](#hfunit), [HfSquadTransportFormation](#hfsquadtransportformation), [HfSquadTransport](#hfsquadtransport), [HfGore](#hfgore), [HfAiSpawner](#hfaispawner), [HfStratagemBlocker](#hfstratagemblocker), [HfBughole](#hfbughole)
+- [Components](#components): [HfProjectileWeapon](#hfprojectileweapon), [HfWeaponData](#hfweapondata), [HfWeaponMagazine](#hfweaponmagazine), [HfTag](#hftag), [HfMount](#hfmount), [HfBehavior](#hfbehavior), [HfLoadoutPackage](#hfloadoutpackage), [HfDeposit](#hfdeposit), [HfHealth](#hfhealth), [HfJumppack](#hfjumppack), [HfRecharge](#hfrecharge), [HfShield](#hfshield), [HfHellpodPayload](#hfhellpodpayload), [HfSensorEye](#hfsensoreye), [HfTurret](#hfturret), [HfWeaponWindUp](#hfweaponwindup), [HfBeamWeapon](#hfbeamweapon), [HfWeaponHeat](#hfweaponheat), [HfEagle](#hfeagle), [HfThrower](#hfthrower), [HfBombardment](#hfbombardment), [HfExplosive](#hfexplosive), [HfThrowable](#hfthrowable), [HfVehicleMotion](#hfvehiclemotion), [HfWeaponCharge](#hfweaponcharge), [HfWeaponReload](#hfweaponreload), [HfWeaponRounds](#hfweaponrounds), [HfArcWeapon](#hfarcweapon), [HfHiveMind](#hfhivemind), [HfOrbitalAbility](#hforbitalability), [HfRotation](#hfrotation), [HfDisplacement](#hfdisplacement), [HfSeekingMissile](#hfseekingmissile), [HfLoadoutEntry](#hfloadoutentry), [HfHellpodRack](#hfhellpodrack), [HfAvatar](#hfavatar), [HfInventory](#hfinventory), [HfMeleeWeapon](#hfmeleeweapon), [HfAbilityWeapon](#hfabilityweapon), [HfUnit](#hfunit), [HfSquadTransportFormation](#hfsquadtransportformation), [HfSquadTransport](#hfsquadtransport), [HfGore](#hfgore), [HfAiSpawner](#hfaispawner), [HfStratagemBlocker](#hfstratagemblocker), [HfBughole](#hfbughole), [HfEquipment](#hfequipment), [HfWieldable](#hfwieldable), [HfAttachable](#hfattachable), [HfWeaponCustomization](#hfweaponcustomization)
 - [Settings tables](#settings-tables): [HfDifficultySettings](#hfdifficultysettings), [HfDamageInfo](#hfdamageinfo), [HfProjectileSettings](#hfprojectilesettings), [HfStratagemSettings](#hfstratagemsettings), [HfExplosionSettings](#hfexplosionsettings), [HfArcSettings](#hfarcsettings), [HfBeamSettings](#hfbeamsettings), [HfStatusEffectSettings](#hfstatuseffectsettings), [HfBoosterSettings](#hfboostersettings), [HfPassiveModifier](#hfpassivemodifier), [HfPassiveStat](#hfpassivestat), [HfMeleeHitVolume](#hfmeleehitvolume), [HfEnemyRoster](#hfenemyroster), [HfEnemyRosterLevel11](#hfenemyrosterlevel11), [HfEnemyComposition](#hfenemycomposition), [HfDemolitionTemplate](#hfdemolitiontemplate)
 - [Content](#content): [HF_ITEM_...](#hf_item_-168-hf_kind_item), [HF_PROJECTILE_...](#hf_projectile_-61-hf_kind_projectile), [HF_STRATAGEM_...](#hf_stratagem_-149-hf_kind_stratagem), [HF_BEHAVIOUR_...](#hf_behaviour_-2-hf_kind_behaviour), [HF_ENTITY_...](#hf_entity_-369-hf_kind_entity), [HF_DAMAGE_...](#hf_damage_-342-hf_kind_damage), [HF_PACKAGE_...](#hf_package_-1-hf_kind_package), [HF_TAG_...](#hf_tag_-1-hf_kind_tag), [HF_TRAIT_...](#hf_trait_-29-hf_kind_trait), [HF_CATEGORY_...](#hf_category_-5-hf_kind_category), [HF_BEAM_...](#hf_beam_-3-hf_kind_beam), [HF_BOOSTER_...](#hf_booster_-20-hf_kind_booster), [HF_EXPLOSION_...](#hf_explosion_-295-hf_kind_explosion), [HF_WEAPON_BEAM_...](#hf_weapon_beam_-1-hf_kind_weapon_beam), [HF_ARC_...](#hf_arc_-1-hf_kind_arc)
 
@@ -1348,7 +1348,27 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
+| `manual_clearing` | +0x00 | u8 | respawn? | 1: a jam is cleared by hand (unverified) |
+| `allow_move` | +0x01 | u8 | respawn? | 1: may move while reloading |
+| `ability` | +0x04 | u32 | respawn? | the reload ability, which times the reload (2785 Adjudicator, 2739 Liberator) |
+| `event_type_0` | +0x08 | u32 | respawn? | reload animation 0's kind: 1 normal, 3 fast |
+| `weapon_event_0` | +0x0C | u32 | respawn? | reload animation 0: the weapon's own state machine event (reload) |
+| `wielder_event_0` | +0x10 | u32 | respawn? | reload animation 0: the Helldiver's animation event (reload_battlerifle) |
+| `event_type_1` | +0x14 | u32 | respawn? | reload animation 1's kind: 1 normal, 3 fast |
+| `weapon_event_1` | +0x18 | u32 | respawn? | reload animation 1: the weapon's own state machine event (reload) |
+| `wielder_event_1` | +0x1C | u32 | respawn? | reload animation 1: the Helldiver's animation event (reload_battlerifle) |
+| `event_type_2` | +0x20 | u32 | respawn? | reload animation 2's kind: 1 normal, 3 fast (unverified) |
+| `weapon_event_2` | +0x24 | u32 | respawn? | reload animation 2: the weapon's own state machine event (reload) (unverified) |
+| `wielder_event_2` | +0x28 | u32 | respawn? | reload animation 2: the Helldiver's animation event (reload_battlerifle) (unverified) |
+| `event_type_3` | +0x2C | u32 | respawn? | reload animation 3's kind: 1 normal, 3 fast (unverified) |
+| `weapon_event_3` | +0x30 | u32 | respawn? | reload animation 3: the weapon's own state machine event (reload) (unverified) |
+| `wielder_event_3` | +0x34 | u32 | respawn? | reload animation 3: the Helldiver's animation event (reload_battlerifle) (unverified) |
 | `duration` | +0x38 | f32 | respawn? | Reload duration override (0 = native) (seconds) (unverified) |
+| `has_shared_deposit` | +0x3C | u8 | respawn? | 1: reloads from a shared ammunition deposit (unverified) |
+| `vo_normal` | +0x40 | u32 | respawn? | voice line event of a reload |
+| `vo_last_magazine` | +0x44 | u32 | respawn? | voice line event of the last magazine |
+| `vo_no_magazines` | +0x48 | u32 | respawn? | voice line event with no magazines left |
+| `vo_no_magazines_no_backpack` | +0x4C | u32 | respawn? | voice line event with no magazines and no backpack (unverified) |
 
 ### HfWeaponRounds
 
@@ -1623,6 +1643,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
+| `unit` | +0x00 | u64 | respawn? | its unit resource (name hash); add_weapon sets it from HfWeapon.unit |
 | `scale_min` | +0x08 | f32 | respawn? | Scale min (unverified) |
 | `radius` | +0x10 | f32 | respawn? | Radius (unverified) |
 
@@ -1686,6 +1707,96 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
 | `emission_radius` | +0x0C | f32 | respawn? | Emission radius (unverified) |
+
+### HfEquipment
+
+`EquipmentComponentData`: component 233, 232-byte records. how a held item is wielded, holstered and dropped: nodes, timings, the Helldiver's animations and grip.
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `wield_node` | +0x00 | u32 | respawn? | the hand joint it is held at (thin hash of the name: attach_hand_r) |
+| `wield_rotation` | +0x04 | f32[3] | respawn? | rotation offset at the wield node (degrees) (unverified) |
+| `wield_position` | +0x10 | f32[3] | respawn? | position offset at the wield node (metres) (unverified) |
+| `holster_node` | +0x1C | u32 | respawn? | the joint it is holstered at (thin hash: sling) |
+| `holster_rotation` | +0x20 | f32[3] | respawn? | rotation offset at the holster node (degrees) |
+| `holster_position` | +0x2C | f32[3] | respawn? | position offset at the holster node (metres) |
+| `holster_duration` | +0x38 | f32 | respawn? | seconds to holster |
+| `wield_duration` | +0x3C | f32 | respawn? | seconds to wield |
+| `pickup_duration` | +0x40 | f32 | respawn? | seconds to pick up |
+| `wield_animation` | +0x48 | u32 | respawn? | the Helldiver's wield animation event (thin hash: draw_primary) |
+| `pickup_animation` | +0x4C | u32 | respawn? | the Helldiver's pickup animation event (pickup_weapon) |
+| `holster_animation` | +0x50 | u32 | respawn? | the Helldiver's holster animation event (holster_primary) |
+| `drop_animation` | +0x54 | u32 | respawn? | the Helldiver's drop animation event (unverified) |
+| `ammocheck_animation` | +0x58 | u32 | respawn? | the Helldiver's ammunition check animation event (ammocheck_marksmanrifle) |
+| `holster_duration_attach` | +0x60 | f32 | respawn? | seconds before it moves to the holster node |
+| `wield_duration_attach` | +0x64 | f32 | respawn? | seconds before it moves to the wield node |
+| `attach_lerp_time` | +0x68 | f32 | respawn? | seconds it blends between nodes |
+| `wield_animation_self` | +0x70 | u32 | respawn? | its own state machine's wield event (draw) |
+| `pickup_animation_self` | +0x74 | u32 | respawn? | its own state machine's pickup event (unverified) |
+| `holster_animation_self` | +0x78 | u32 | respawn? | its own state machine's holster event (sheath) |
+| `equipment_type` | +0x80 | u32 | respawn? | equipment type (1 for arsenal weapons) |
+| `drop_mode` | +0x88 | u32 | respawn? | how it drops (1 for arsenal weapons) |
+| `drop_icon` | +0x98 | u64 | respawn? | the HUD icon of a dropped one (a resource name hash) |
+| `pickup_audio_event` | +0xA0 | u32 | respawn? | sound event on pickup (unverified) |
+| `switch_wield_audio_event` | +0xB0 | u32 | respawn? | sound event when switched to |
+| `switch_holster_audio_event` | +0xB4 | u32 | respawn? | sound event when switched away from |
+| `pickup_ability` | +0xB8 | u32 | respawn? | ability run on pickup (93 for arsenal weapons) |
+| `drop_ability` | +0xBC | u32 | respawn? | ability run on drop (unverified) |
+| `grip_type` | +0xC0 | u32 | respawn? | the Helldiver's grip: 10 rifle, 14 plasma rifle, 15 marksman rifle, 70 PDW, 80 pump shotgun, 90 bullpup rifle |
+| `one_handed` | +0xC4 | u8 | respawn? | 1: held in one hand (unverified) |
+| `allow_wield_on_ship` | +0xC5 | u8 | respawn? | 1: may be held on the ship (unverified) |
+| `show_in_pickup_widget` | +0xC6 | u8 | respawn? | 1: named in the pickup prompt |
+| `holster_unit` | +0xC8 | u64 | respawn? | a unit shown in its place when holstered (unverified) |
+| `wwise_index` | +0xD8 | u32 | respawn? | its equipment sound switch index |
+| `left_hand_node` | +0xE4 | u32 | respawn? | the joint the left hand reaches for (thin hash: attach_hand_l) |
+
+### HfWieldable
+
+`WieldableComponentData`: component 111, 32-byte records. aiming down sights and the events of taking it in hand.
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `allow_ads` | +0x00 | u8 | respawn? | 1: may aim down sights |
+| `wielder_enter_event` | +0x04 | u32 | respawn? | the Helldiver's animation event when taken in hand (unverified) |
+| `wielder_exit_event` | +0x08 | u32 | respawn? | the Helldiver's animation event when put away (unverified) |
+| `wield_state_audio_event` | +0x0C | u32 | respawn? | sound event of the wield state |
+| `self_enter_event` | +0x10 | u32 | respawn? | its own state machine's event when taken in hand (unverified) |
+| `self_exit_event` | +0x14 | u32 | respawn? | its own state machine's event when put away (unverified) |
+
+### HfAttachable
+
+`AttachableComponentData`: component 262, 64-byte records. how it attaches to a Helldiver or other unit, and its physics actor.
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `dynamic_actor` | +0x00 | u32 | respawn? | the unit's physics actor used while it is loose (thin hash: collision) |
+| `attached_dynamic_actor` | +0x04 | u32 | respawn? | the physics actor used while it is attached (unverified) |
+| `use_all_dynamic_actors` | +0x08 | u8 | respawn? | 1: every physics actor of the unit (unverified) |
+| `offset` | +0x0C | f32[3] | respawn? | position offset when attached (unverified) |
+| `rotation_offset` | +0x18 | f32[3] | respawn? | rotation offset when attached (unverified) |
+| `offset_node` | +0x24 | u32 | respawn? | the joint the offsets are from (unverified) |
+| `attach_animation` | +0x28 | u32 | respawn? | its animation event on attach (unverified) |
+| `parent_attach_animation` | +0x2C | u32 | respawn? | the parent's animation event on attach (unverified) |
+| `detach_animation` | +0x30 | u32 | respawn? | its animation event on detach (unverified) |
+| `parent_detach_animation` | +0x34 | u32 | respawn? | the parent's animation event on detach (unverified) |
+| `inherit_angular_momentum` | +0x3A | u8 | respawn? | 1: keeps the parent's spin when it comes loose |
+
+### HfWeaponCustomization
+
+`WeaponCustomizationComponentData`: component 271, 4872-byte records. a weapon's attachment slots, default attachments and the attachment units it names itself.
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `defaults` | +0x00 | u32[20] | respawn? | up to 10 default attachments, {slot, item id} pairs (slots: 1 underbarrel, 2 optics, 3 paint, 4 muzzle, 5 magazine, 6 ammunition, 8 internals, 9 triggers) |
+| `slots` | +0x50 | u32[10] | respawn? | the slots the player may change in the armory (0: none) |
+| `optics_unit` | +0x78 | u64 | respawn? | the optic unit spawned at attach_optic without an optic attachment (resource name hash; 0: none) (unverified) |
+| `magazine_unit` | +0x80 | u64 | respawn? | the magazine unit spawned at attach_mag without a magazine attachment (the Adjudicator names its magazine here) |
+| `magazine_secondary_unit` | +0x90 | u64 | respawn? | a second magazine unit (unverified) |
+| `muzzle_unit` | +0xA0 | u64 | respawn? | the muzzle unit spawned at attach_muzzle without a muzzle attachment |
+| `optics_crosshair` | +0xA8 | f32[2] | respawn? | the optic's crosshair parameters (unverified) |
+| `underbarrel_entity` | +0xC0 | u64 | respawn? | the underbarrel entity without an underbarrel attachment (unverified) |
+| `trigger_settings` | +0x1248 | u32[13] | respawn? | trigger settings |
+| `magazine_adjusting_nodes` | +0x1280 | u32[24] | respawn? | magazine joints shown one per remaining round (thin hashes: bullet_01..) |
 
 ## Settings tables
 
