@@ -393,6 +393,7 @@ static const char* JsonText(const char* text, char* out, size_t size)
 }
 
 /* registered-items.json's text into text (size bytes); its length. Complete only when it is below size - REG_ITEM_ROOM. */
+static int AttachmentItems(char* text, int n, int size); /* attachments.c */
 static int RegisteredItemsText(char* text, int size)
 {
     char mod[6 * 80 + 1], name[6 * 192 + 1];
@@ -407,7 +408,9 @@ static int RegisteredItemsText(char* text, int size)
     int before = n;
     n = StratagemItems(text, n, size, listed == 0);
     n = DifficultyItems(text, n, size, listed == 0 && n == before);
-    return n + snprintf(text + n, size - n, "]}\n");
+    n += snprintf(text + n, size - n, "]");
+    n = AttachmentItems(text, n, size);
+    return n + snprintf(text + n, size - n, "}\n");
 }
 
 /* Every weapon, stratagem and difficulty mods registered, for the backend (RegisteredItems.cs). The text grows until all

@@ -39,6 +39,33 @@ public sealed class RegisteredItems(string path)
         public bool IsWeapon => !IsStratagem && !IsDifficulty;
     }
 
+    // An attachment a mod added (native/mod-loader/attachments.c): a copy of a vanilla customization item (CopyOf) offered
+    // on weapons mods registered. Each weapon gets a child for it, a copy of a vanilla child of the base item, under
+    // WeaponChild(attachment, weapon), held whenever the weapon is.
+    public sealed record ModAttachment(uint MixId, uint CopyOf, IReadOnlyList<uint> Weapons);
+
+    // The file's "attachments" (none in an older file).
+    public static List<ModAttachment> Attachments(byte[] file)
+    {
+        if (file.Length == 0) return [];
+        try
+        {
+            using var document = JsonDocument.Parse(file);
+            if (!document.RootElement.TryGetProperty("attachments", out var list) || list.ValueKind != JsonValueKind.Array) return [];
+            var attachments = new List<ModAttachment>();
+            foreach (var a in list.EnumerateArray())
+                if (a.TryGetProperty("mixId", out var id) && id.TryGetUInt32(out var mixId) && mixId != 0 && a.TryGetProperty("copyOf", out var copy) &&
+                    copy.TryGetUInt32(out var copyOf) && a.TryGetProperty("weapons", out var weapons) && weapons.ValueKind == JsonValueKind.Array)
+                    attachments.Add(new(mixId, copyOf, [.. weapons.EnumerateArray().Where(w => w.TryGetUInt32(out _)).Select(w => w.GetUInt32())]));
+            return attachments;
+        }
+        catch (JsonException) { return []; }
+    }
+
+    // The children a weapon holds for the attachments offered on it.
+    static IEnumerable<uint> AttachmentChildren(IReadOnlyList<ModAttachment> attachments, uint weapon) =>
+        attachments.Where(a => a.Weapons.Contains(weapon)).Select(a => WeaponChild(a.MixId, weapon));
+
     // The online override capping the difficulty level (its mixId: the client's hash of keys AF218CAC, FAABBEA9).
     public const uint DifficultyCapOverride = 48726272;
 
@@ -312,7 +339,7 @@ public sealed class RegisteredItems(string path)
         switch (path)
         {
             case "/Progression/items" when node is JsonArray catalogue:
-                AddCatalogue(catalogue, items);
+                AddCatalogue(catalogue, items, Attachments(current.File));
                 break;
             case "/Progression/ProgressionPackages" when node is JsonArray packages:
                 AddPackages(packages, items);
@@ -341,13 +368,33 @@ public sealed class RegisteredItems(string path)
         node is JsonObject o && o[name] is JsonValue v && v.GetValueKind() == JsonValueKind.Number &&
         uint.TryParse(v.ToJsonString(), out var id) ? id : null;
 
-    static void AddCatalogue(JsonArray catalogue, IReadOnlyList<Item> items)
+    static void AddCatalogue(JsonArray catalogue, IReadOnlyList<Item> items, IReadOnlyList<ModAttachment> attachments)
     {
         var known = catalogue.Select(i => Id(i, "mixId")).ToHashSet();
         var index = new CatalogueIndex(catalogue);
         foreach (var item in items.Where(i => !known.Contains(i.MixId)))
             if (item.IsStratagem) AddStratagem(catalogue, item, known, index.Stratagems, index.Parents);
-            else AddWeapon(catalogue, item, known, index);
+            else
+            {
+                AddWeapon(catalogue, item, known, index);
+                if (item.IsWeapon) AddAttachmentChildren(catalogue, item, known, index, attachments);
+            }
+    }
+
+    // After the weapon's own children (the client links a child to the run of its parent): a copy of a vanilla child of
+    // each attachment's base, as the attachment's child of this weapon.
+    static void AddAttachmentChildren(JsonArray catalogue, Item item, HashSet<uint?> known, CatalogueIndex index, IReadOnlyList<ModAttachment> attachments)
+    {
+        foreach (var a in attachments.Where(a => a.Weapons.Contains(item.MixId)))
+        {
+            var mixId = WeaponChild(a.MixId, item.MixId);
+            if (!index.ChildOfItem.TryGetValue(a.CopyOf, out var template) || !known.Add(mixId)) continue;
+            var child = template.DeepClone().AsObject();
+            child["itemId"] = a.MixId;
+            child["mixId"] = mixId;
+            child["parentId"] = item.MixId;
+            catalogue.Add((JsonNode?)child);
+        }
     }
 
     // The catalogue by id: a copy of each of 500 weapons searched all of it for its base and its children.
@@ -355,12 +402,17 @@ public sealed class RegisteredItems(string path)
     {
         public readonly Dictionary<uint, JsonObject> Parents = [], Stratagems = [];
         public readonly Dictionary<uint, List<JsonObject>> ChildrenOf = [];
+        public readonly Dictionary<uint, JsonObject> ChildOfItem = [];  // an attachment -> one of its children
 
         public CatalogueIndex(JsonArray catalogue)
         {
             foreach (var entry in catalogue.OfType<JsonObject>())
             {
-                if (Id(entry, "parentId") is { } parent) (ChildrenOf.TryGetValue(parent, out var list) ? list : ChildrenOf[parent] = []).Add(entry);
+                if (Id(entry, "parentId") is { } parent)
+                {
+                    (ChildrenOf.TryGetValue(parent, out var list) ? list : ChildrenOf[parent] = []).Add(entry);
+                    if (Id(entry, "itemId") is { } attachment) ChildOfItem.TryAdd(attachment, entry);
+                }
                 else if (Id(entry, "mixId") is { } mixId) Parents.TryAdd(mixId, entry);
                 if (Id(entry, "progressionCategory") == 10 && Id(entry, "itemId") is { } stable) Stratagems.TryAdd(stable, entry);
             }
@@ -476,9 +528,10 @@ public sealed class RegisteredItems(string path)
         var heldChildren = HeldChildren(held);
         var withheld = Withheld?.Invoke() ?? new HashSet<uint>();
         var keeps = current.Keeps.Inventory - ReservedInventory;
+        var attachments = Attachments(current.File);
         foreach (var item in current.Admitted.Where(i => !Locked(i) && !withheld.Contains(i.MixId) && (!i.IsDifficulty || have.Contains(i.CopyOf)))) /* a difficulty not before level 10 is unlocked */
         {
-            var own = OwnItems(item, current, saved);
+            var own = HeldWith(item, current, saved, attachments);
             var mirrored = item.IsWeapon && !current.ByWeapon.ContainsKey(item.MixId) ? heldChildren.GetValueOrDefault(item.CopyOf) ?? [] : [];
             var entries = (have.Contains(item.MixId) ? 0 : 1) + own.Count + mirrored.Count;
             if (held.Count + entries > keeps)
@@ -490,6 +543,14 @@ public sealed class RegisteredItems(string path)
                 if (have.Add(mixId)) held.Add((JsonNode?)new JsonObject { ["mixId"] = mixId, ["amount"] = 1, ["isDiscovered"] = true });
             AddMirrored(held, have, mirrored, item);
         }
+    }
+
+    // What the inventory holds with an item: the children its own progress holds, and its attachments' children.
+    static HashSet<uint> HeldWith(Item item, Session current, Dictionary<uint, JsonObject> saved, IReadOnlyList<ModAttachment> attachments)
+    {
+        var own = OwnItems(item, current, saved);
+        if (item.IsWeapon) own.UnionWith(AttachmentChildren(attachments, item.MixId));
+        return own;
     }
 
     static HashSet<uint> OwnItems(Item item, Session current, Dictionary<uint, JsonObject> saved) =>

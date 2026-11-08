@@ -195,6 +195,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 - `beam_row`: `uintptr_t (uint32_t type)`. The 112-byte BeamSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must stay.
 - `add_arc`: `uint32_t (HfMod* mod, const HfArc* arc)`. Adds a new arc type (see HfArc). Call it from hellforge_mod_init. Returns its type (17 and up), or 0 (the mod's log says why). 512 across all mods.
 - `arc_row`: `uintptr_t (uint32_t type)`. The 104-byte ArcSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must stay.
+- `add_attachment`: `uint32_t (HfMod* mod, const HfAttachment* attachment)`. Adds a weapon attachment (see HfAttachment). Call it from hellforge_mod_init, after add_weapon for its weapons. Returns its item id, or 0 (the mod's log says why). 128 across all mods. Customization screens list it on its weapons once the game has loaded its items; the session's backend makes it the player's.
 
 ## Functions
 
