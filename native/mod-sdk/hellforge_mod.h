@@ -261,6 +261,25 @@ typedef struct HfArc
     uint32_t damage;    /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
 } HfArc;
 
+/* A new weapon attachment (SDK 17, add_attachment): a copy of a vanilla customization item (a magazine, muzzle, optic...)
+ * under an id of its own, with the base's slot, stat changes and look in the armory, offered on weapons mods added.
+ * Zero-initialize it and set `size`. */
+typedef struct HfAttachment
+{
+    uint32_t size;      /* sizeof(HfAttachment) */
+    uint32_t base;      /* the vanilla item it copies (its id, e.g. a magazine the base weapon takes) */
+    const char* name;   /* its id is the thin hash of this; unique, prefixed with your name and mod */
+    /* A magazine's, muzzle's or optic's model: a unit resource the mod's data provides, drawn at the weapon's attach_
+     * joint in place of the base's. 0 keeps the base's (and is required for other slots). */
+    uint64_t unit;
+    /* Its text in the armory (UTF-8); NULL keeps the base's. An upper-case copy of the name is made. */
+    const char* name_text;
+    const char* description;
+    /* The weapons offering it: loadout ids add_weapon returned (up to 16). Their base must take the base item's slot. */
+    const uint32_t* weapons;
+    uint32_t weapon_count;
+} HfAttachment;
+
 /* A new stratagem (SDK 4, add_stratagem): a copy of a vanilla stratagem's settings under a StratagemType of its own,
  * with its own name, description, input code and icon. What it does when called (its payload, beacon and the packages
  * it loads) stays the base's, except its ship-upgrade (level) packages. Zero-initialize it and set `size`:
@@ -1526,6 +1545,10 @@ typedef struct HfApi
     /* The 104-byte ArcSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must
      * stay. */
     uintptr_t (*arc_row)(uint32_t type);
+    /* Adds a weapon attachment (see HfAttachment). Call it from hellforge_mod_init, after add_weapon for its weapons.
+     * Returns its item id, or 0 (the mod's log says why). 128 across all mods. Customization screens list it on its
+     * weapons once the game has loaded its items; the session's backend makes it the player's. */
+    uint32_t (*add_attachment)(HfMod* mod, const HfAttachment* attachment);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

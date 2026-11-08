@@ -25,6 +25,9 @@ On `dev`, since 0.4.0-beta.
 - **Mods can have packages of their own.** A data spec patch with `package` becomes a whole archive under the package's
   id. It loads when the game starts, or with `"load": "request"` only through `load_package` (SDK 17), which now takes
   a mod's own packages ([packages of your own](docs/modding/data.md#packages-of-your-own)).
+- **Mods can add attachments to their weapons (SDK 17).** `add_attachment` copies a vanilla magazine, muzzle, optic or
+  other item under an id of its own, optionally with the mod's own model, and offers it on weapons mods added. The
+  player holds it from the start ([attachments](docs/modding/content.md#attachments-of-your-own)).
 - **New explosion, beam and arc types for mods (SDK 17).** `add_explosion`, `add_beam` and `add_arc` copy a vanilla type
   with its own damage, radii, length or chained arc, up to 512 of each across all mods. A projectile names its blasts in
   `impact_explosion` and `expiry_explosion`, and a weapon its `beam` or `arc`

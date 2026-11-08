@@ -348,6 +348,37 @@ lists the mod weapons of the newest session.
 
 `cube-gun` gives a weapon a model of your own, built from an OBJ file.
 
+### Attachments of your own
+
+`hf->add_attachment(mod, &attachment)` (SDK 17) adds an attachment to weapons your mods added. It copies a vanilla
+customization item: its slot, its stat changes and its look in the armory. It returns the new item's id, or 0 with
+the reason in the mod's log. Call it from `hellforge_mod_init`, after `add_weapon`.
+
+```c
+static const uint32_t weapons[] = {0}; /* filled with add_weapon's id */
+HfAttachment drum = {sizeof drum};
+drum.base = 0x73CA1B5E;                 /* a magazine the base weapon takes */
+drum.name = "yourname/your_mod/drum";   /* its id: the thin hash of this */
+drum.unit = HF_API(mod)->resource_hash("yourname/your_mod/drum_magazine");
+drum.name_text = "Drum";
+drum.weapons = weapons;
+drum.weapon_count = 1;
+```
+
+| Field | Value |
+|---|---|
+| `base` | the vanilla item it copies, by id; its slot must be one the weapon takes |
+| `name` | unique, prefixed with your name and mod; the item's id is its thin hash |
+| `unit` | a magazine's, muzzle's or optic's model from your mod's data, drawn at the weapon's `attach_` joint; 0 keeps the base's |
+| `name_text`, `description` | its text in the armory; NULL keeps the base's |
+| `weapons`, `weapon_count` | the weapons offering it: 1 to 16 ids `add_weapon` returned |
+
+- The player holds it on each of its weapons from the start; it has no level or price.
+- Its deltas are the base's: the same magazine size, recoil or zoom. Change them with the weapon's own records.
+- A unit replaces the base's model only. The weapon's unit needs the `attach_mag`, `attach_muzzle` or `attach_optic`
+  joint ([models](models.md)).
+- At most 128 attachments across all mods.
+
 ### The in-game editor
 
 The in-game editor gives every mod weapon a page in its base's section (Primary, Secondary...), named

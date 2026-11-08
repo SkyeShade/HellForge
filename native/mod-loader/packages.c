@@ -327,6 +327,8 @@ static void PackagesRequest(void)
     if (changed) LivePackagesChanged();
 }
 
+#include "attachments.c" /* mods' weapon attachments, made on this file's game-thread update */
+
 static void EventsTick(void); /* events.c */
 static void ArmoryDiagTick(void); /* armory_diag.c */
 
@@ -337,6 +339,7 @@ static void TickDetour(void* manager, float dt)
     EventsTick();
     ModPackagesTick();
     PackagesRequest();
+    AttachmentsTick();
     ArmoryDiagTick();
     ShieldBlockTick(dt);
     TickTable* ticks = g_ticks;
