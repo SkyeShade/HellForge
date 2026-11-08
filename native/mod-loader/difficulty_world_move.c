@@ -588,6 +588,7 @@ static void MoveRelease(int slot)
     if (raised) MoveRaiseCheck(t.centre[0], t.centre[1], t.cell[0], t.cell[1]);
     Note("difficulty: moving tiles: the tile of cell (%d, %d) released (no player within %.0f m for %u s); the coarse collision %s; %d tiles live",
         t.cell[0], t.cell[1], (double)MOVE_KEEP, MOVE_KEEP_MS / 1000, raised ? "raised back" : "NOT raised back (the level's copy did not read)", NearTilesLive());
+    if (g_allocOn > 0) WorldMemoryNote("a tile released", 0xFFFFFFFFu, 0, 1); /* research (HELLFORGE_XL_ALLOCS=1): what a release gives back */
 }
 
 /* The context's arena ([ctx+0]): the generation thread's arena is destroyed when the level is done (0x173BB80: its
@@ -691,6 +692,7 @@ static void MoveTileIn(uint64_t world)
         g_move.cell[0], g_move.cell[1], (double)(GetTickCount64() - g_move.started) / 1000.0, g_move.frames, ground.v != NULL ? "read" : "NOT read",
         (double)NearGroundAt(&ground, g_move.centre[0], g_move.centre[1]), (double)NearGroundAt(&g_nearCoarseGround, g_move.centre[0], g_move.centre[1]),
         NearTilesLive(), (long long)g_moveHeldUpdates);
+    if (g_allocOn > 0) WorldMemoryNote("a tile in", 0xFFFFFFFFu, 0, 1); /* research (HELLFORGE_XL_ALLOCS=1): what a build keeps */
     MoveRestoreDrop(); /* g_near.tex / g_matband: the drop tile's again (the new tile's are in its entry) */
 }
 

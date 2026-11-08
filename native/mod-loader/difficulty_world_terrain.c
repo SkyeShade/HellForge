@@ -6941,18 +6941,22 @@ static void TerrainInstall(uintptr_t game)
  * constant-buffer release that frees the descriptor but leaves the handle in the record (0x6E33C0 at 0x6E33E3,
  * 0x6E3730 at 0x6E3760 / 0x6E3773). Static analysis cannot name which record holds it, so (checked by me in the exe):
  * D1 notes every descriptor free 0x6F0D20 (rcx the CPU allocator, rdx the handle, r8; three arguments, r9 is written at
- * 0x6F0D45 before any read) in a ring with its time and callers; D2 checks, at the copy-record builder 0x6BE710 (rcx the
- * device D, rdx out, r8 the destination start, r9b 1 for samplers (0x6F997E: table 3), the count at entry rsp+0x28 (read
- * at 0x6BE71F) and the source handles at entry rsp+0x30 (read at 0x6BE7C0); six arguments), that every CBV/SRV/UAV
- * source lies in a live page of D's allocator D+0x5E8 (as the free itself finds a handle's page: count +0x80, pages
- * +0x88 of 0x38 bytes, page start +0x10, size [+0xA0] x [+0x9C]), and notes any that does not, with which allocator's
- * pages hold it (+0x6A0 samplers, +0x478), when it was freed and by whom, and the copy's callers. */
+ * 0x6F0D45 before any read) in a ring with its time and callers, and takes R (the allocators' owner) from it: every
+ * CBV/SRV/UAV free passes rcx = R+0x5E8 and r8 = R. D2 checks each CBV/SRV/UAV source of the copy-record builder
+ * 0x6BE710 (rcx the queue object Q = [G+0x1338], not R: lw96b's first build compared handles with Q+0x5E8, op records,
+ * and missed ordinary handles; rdx out, r8 the destination start, r9b 1 for samplers (0x6F997E: table 3), the count at
+ * entry rsp+0x28 (read at 0x6BE71F), the source handles at entry rsp+0x30 (read at 0x6BE7C0); six arguments): a handle
+ * in a live page of R+0x5E8 (count +0x80, pages +0x88 of 0x38 bytes, CPU start +0x10, size [+0xA0] x [+0x9C]) passes;
+ * otherwise its vkd3d heap (handle & ~(2^(b+5) - 1), b = handle & 31) must have a host buffer [heap+0x220], which the
+ * copy reads (d3d12core+0x3F8783). One without is the crash's condition: noted with where the handle lies, when it and
+ * the last handle of its heap were freed and by whom, and the copy's callers (KB engine/crash-merge-replay-render-null). */
 typedef uint64_t (*DescFreeFn)(uint64_t, uint64_t, uint64_t);
 typedef uint64_t (*DescCopyFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
 static DescFreeFn g_descFree; static DescCopyFn g_descCopy;
 #define DESC_RING 8192
 static struct { uint64_t handle, alloc; ULONGLONG at; uintptr_t chain[4]; } g_descFreed[DESC_RING];
 static volatile LONG g_descFreedAt, g_descMisses, g_descChecked;
+static volatile uint64_t g_descR; /* the object owning the CPU descriptor allocators (R+0x478 RTV, +0x530 DSV, +0x5E8 CBV/SRV/UAV, +0x6A0 sampler) */
 static void DescChain(uintptr_t* out, int n, int skip)
 {
     void* f[8] = {0}; USHORT got = RtlCaptureStackBackTrace((DWORD)skip, (DWORD)n, f, NULL);
@@ -6973,6 +6977,7 @@ static uint64_t DescFree(uint64_t alloc, uint64_t handle, uint64_t r8)
     g_descFreed[s].handle = 0; MemoryBarrier();
     g_descFreed[s].alloc = alloc; g_descFreed[s].at = GetTickCount64(); DescChain(g_descFreed[s].chain, 4, 1);
     MemoryBarrier(); g_descFreed[s].handle = handle;
+    if (r8 != 0 && alloc == r8 + 0x5E8u) g_descR = r8; /* every CBV/SRV/UAV free passes rcx = R+0x5E8, r8 = R (0x6E33D9..0x6E33E3, 0x6E3756.., 0x6E4595..) */
     return g_descFree(alloc, handle, r8);
 }
 /* 1 when the handle lies in one of the allocator's pages, read as the free reads them (fresh: ReadProcessMemory). */
@@ -7017,33 +7022,63 @@ static int DescCached(uint64_t dev, uint64_t h)
     ReleaseSRWLockExclusive(&g_descLock);
     return DescInPages(dev + 0x5E8, h);
 }
-static uint64_t DescCopy(uint64_t dev, uint64_t out, uint64_t dest, uint64_t sampler, uint64_t count, uint64_t src)
+/* Heaps outside R's CBV/SRV/UAV pages (the dynamic pool G+0x868's pages, I) whose host buffer was seen non-NULL in the last
+ * 2 s: not read again per draw. */
+#define DESC_OTHER 64
+static struct { uint64_t heap; ULONGLONG at; } g_descOther[DESC_OTHER];
+static volatile LONG g_descOtherAt;
+static uint64_t DescCopy(uint64_t q, uint64_t out, uint64_t dest, uint64_t sampler, uint64_t count, uint64_t src)
 {
+    /* rcx is the queue object Q ([G+0x1338], 0x6F9981), not the allocators' owner R: R comes from the frees */
+    uint64_t r = g_descR;
     InterlockedIncrement(&g_descChecked);
-    if ((uint8_t)sampler == 0 && src != 0 && dev != 0 && (uint32_t)count > 0 && (uint32_t)count < 4096 && g_descMisses < 200)
+    if ((uint8_t)sampler == 0 && src != 0 && r != 0 && (uint32_t)count > 0 && (uint32_t)count < 4096 && g_descMisses < 100)
         for (uint32_t i = 0; i < (uint32_t)count; i++)
         {
             uint64_t h = ((const volatile uint64_t*)(uintptr_t)src)[i];
-            if (h == 0 || DescCached(dev, h) || DescInPages(dev + 0x5E8, h)) continue;
-            if (InterlockedIncrement(&g_descMisses) > 200) break;
-            const char* in = DescInPages(dev + 0x6A0, h) ? "a page of the sampler allocator (D+0x6A0)" : DescInPages(dev + 0x478, h) ? "a page of D+0x478" : "no allocator's page";
-            char freed[256] = "never freed while noted";
-            ULONGLONG now = GetTickCount64();
-            LONG top = g_descFreedAt;
-            for (LONG j = top - 1; j >= 0 && j >= top - DESC_RING; j--)
+            if (h == 0 || DescCached(r, h)) continue;
+            /* vkd3d-proton's CPU handle: low 5 bits log2 of the heap's size, then the index, the heap object above (its
+             * create: cpu_va = object + log2ceil(n)); the copy reads the source heap's host buffer [heap+0x220]
+             * (d3d12core+0x3F8783, md5 82117798): NULL there is the crash */
+            unsigned b = (unsigned)(h & 31);
+            uint64_t heap = b <= 20 ? h & ~((1ull << (b + 5)) - 1) : 0;
+            ULONGLONG now = GetTickCount64(); int known = 0;
+            for (int k = 0; k < DESC_OTHER; k++) if (g_descOther[k].heap == heap && now - g_descOther[k].at < 2000) { known = 1; break; }
+            if (known) continue;
+            uint64_t host = 0; int unreadable = heap == 0 || SafeRead(heap + 0x220, &host, 8);
+            if (!unreadable && host != 0)
+            { int k = (int)((ULONG)InterlockedIncrement(&g_descOtherAt) % DESC_OTHER); g_descOther[k].heap = heap; g_descOther[k].at = now; continue; }
+            if (InterlockedIncrement(&g_descMisses) > 100) break;
+            const char* in = DescInPages(r + 0x6A0, h) ? "a page of the sampler allocator (R+0x6A0)" : DescInPages(r + 0x478, h) ? "a page of R+0x478" :
+                DescInPages(r + 0x530, h) ? "a page of R+0x530" : DescInPages(r + 0x5E8, h) ? "a page of R+0x5E8 (live)" : "no page of R's allocators";
+            char freed[256] = "the handle was not freed while noted", lastFree[200] = "no free into its heap while noted";
+            LONG top = g_descFreedAt; int gotH = 0, gotHeap = 0;
+            for (LONG j = top - 1; j >= 0 && j >= top - DESC_RING && !(gotH && gotHeap); j--)
             {
-                int s = (int)((ULONG)j % DESC_RING);
-                if (g_descFreed[s].handle != h) continue;
-                char c[4][48]; for (int k = 0; k < 4; k++) DescName(g_descFreed[s].chain[k], c[k], sizeof c[k]);
-                snprintf(freed, sizeof freed, "freed %llu ms ago from allocator D+0x%llX by%s%s%s%s", (unsigned long long)(now - g_descFreed[s].at),
-                    (unsigned long long)(g_descFreed[s].alloc - dev), c[0], c[1], c[2], c[3]);
-                break;
+                int sl = (int)((ULONG)j % DESC_RING);
+                uint64_t fh = g_descFreed[sl].handle;
+                char c[4][48];
+                if (!gotH && fh == h)
+                {
+                    for (int k = 0; k < 4; k++) DescName(g_descFreed[sl].chain[k], c[k], sizeof c[k]);
+                    snprintf(freed, sizeof freed, "the handle was freed %llu ms ago (allocator R+0x%llX) by%s%s%s%s", (unsigned long long)(now - g_descFreed[sl].at),
+                        (unsigned long long)(g_descFreed[sl].alloc - r), c[0], c[1], c[2], c[3]);
+                    gotH = 1;
+                }
+                if (!gotHeap && heap != 0 && (fh & ~((1ull << (b + 5)) - 1)) == heap && (fh & 31) == b)
+                {
+                    for (int k = 0; k < 4; k++) DescName(g_descFreed[sl].chain[k], c[k], sizeof c[k]);
+                    snprintf(lastFree, sizeof lastFree, "the last free into its heap %llu ms ago (handle %llX) by%s%s%s%s", (unsigned long long)(now - g_descFreed[sl].at),
+                        (unsigned long long)fh, c[0], c[1], c[2], c[3]);
+                    gotHeap = 1;
+                }
             }
             uintptr_t ch[8]; char cc[8][48]; DescChain(ch, 8, 1); for (int k = 0; k < 8; k++) DescName(ch[k], cc[k], sizeof cc[k]);
-            Note("difficulty: render test: a copied CBV/SRV/UAV source is not in a live page of D+0x5E8: handle %llX (%u of %u, source list %llX), in %s; %s; copy called by%s%s%s%s%s%s%s%s; near tile step %d",
-                (unsigned long long)h, i, (uint32_t)count, (unsigned long long)src, in, freed, cc[0], cc[1], cc[2], cc[3], cc[4], cc[5], cc[6], cc[7], g_near.step);
+            Note("difficulty: render test: a copied CBV/SRV/UAV source has no host buffer (the crash's condition): handle %llX (%u of %u, source list %llX), heap %llX (2^%u), host %s; in %s; %s; %s; copy called by%s%s%s%s%s%s%s%s; near tile step %d",
+                (unsigned long long)h, i, (uint32_t)count, (unsigned long long)src, (unsigned long long)heap, b, unreadable ? "unreadable" : "NULL", in, freed, lastFree,
+                cc[0], cc[1], cc[2], cc[3], cc[4], cc[5], cc[6], cc[7], g_near.step);
         }
-    return g_descCopy(dev, out, dest, sampler, count, src);
+    return g_descCopy(q, out, dest, sampler, count, src);
 }
 static void DescInstallNotes(void)
 {

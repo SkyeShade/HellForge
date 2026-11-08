@@ -4121,6 +4121,67 @@ static void MemProfReport(void)
     if (g_memProfLost >= (8ll << 20)) Note("difficulty: memprof: %lld MB in regions the table could not hold", (long long)(g_memProfLost >> 20));
 }
 
+/* ---- The game's named allocators (research, HELLFORGE_XL_ALLOCS=1; KB missions/xl-tile-memory-growth) ---------------
+ * Commit counts rpmalloc's kept spans as used, so it cannot tell a leak from a cache. The game's tracking allocators
+ * keep live bytes by name (checked by me in the exe): the constructor 0x5C2C40 sets name +8 (0x5C2C57) and links the
+ * node at the head of the list [exe+0x1B13180] = {head, CRITICAL_SECTION +8} (0x5C2C83..0x5C2CB5: next +0x10, the old
+ * head's prev +0x18); the allocation 0x5C2E10 adds to the live count +0x28 and live bytes +0x30 (lock xadd at 0x5C2E51,
+ * 0x5C2E63); peak bytes +0x40. Each memory note then lists the eight largest changes since the last note by name. */
+#define WORLD_ALLOCS 1024
+static struct { uintptr_t node, name; LONG64 bytes; } g_allocPrev[WORLD_ALLOCS];
+static int g_allocPrevN, g_allocOn = -1;
+static void WorldAllocNote(const char* where)
+{
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (g_allocOn < 0)
+    {
+        char t[4] = "";
+        g_allocOn = GetEnvironmentVariableA("HELLFORGE_XL_ALLOCS", t, sizeof t) > 0 && t[0] == '1' && !strcmp(g_build, "25480438") &&
+            ApiCodeMatches(exe + 0x5C2C57u, "48 89 51 08 4C 89 61 10") && ApiCodeMatches(exe + 0x5C2C83u, "48 8B 3D F6 04 55 01") &&
+            ApiCodeMatches(exe + 0x5C2C9Eu, "48 8B 07 48 89 43 10") && ApiCodeMatches(exe + 0x5C2E51u, "F0 4C 0F C1 43 28") &&
+            ApiCodeMatches(exe + 0x5C2E63u, "F0 4C 0F C1 4B 30");
+    }
+    if (!g_allocOn) return;
+    uintptr_t list = *(volatile uintptr_t*)(exe + 0x1B13180u);
+    if (list == 0) return;
+    static struct { uintptr_t node, name; LONG64 bytes; } now[WORLD_ALLOCS];
+    int n = 0;
+    EnterCriticalSection((CRITICAL_SECTION*)(list + 8));
+    for (uintptr_t node = *(volatile uintptr_t*)list; node != 0 && n < WORLD_ALLOCS; node = *(volatile uintptr_t*)(node + 0x10))
+    { now[n].node = node; now[n].name = *(volatile uintptr_t*)(node + 8); now[n].bytes = *(volatile LONG64*)(node + 0x30); n++; }
+    LeaveCriticalSection((CRITICAL_SECTION*)(list + 8));
+    LONG64 total = 0, delta[8]; int top[8], k = 0;
+    static LONG64 d[WORLD_ALLOCS];
+    for (int i = 0; i < n; i++)
+    {
+        total += now[i].bytes;
+        LONG64 before = 0;
+        for (int j = 0; j < g_allocPrevN; j++) if (g_allocPrev[j].node == now[i].node) { before = g_allocPrev[j].bytes; break; }
+        d[i] = now[i].bytes - before;
+    }
+    for (k = 0; k < 8; k++) /* the eight largest |changes| of at least 1 MB */
+    {
+        int best = -1; LONG64 bestAbs = (1ll << 20) - 1;
+        for (int i = 0; i < n; i++)
+        {
+            LONG64 a = d[i] < 0 ? -d[i] : d[i]; int taken = 0;
+            for (int m = 0; m < k; m++) if (top[m] == i) taken = 1;
+            if (!taken && a > bestAbs) { best = i; bestAbs = a; }
+        }
+        if (best < 0) break;
+        top[k] = best; delta[k] = d[best];
+    }
+    char line[900]; size_t at = 0; line[0] = 0;
+    for (int m = 0; m < k && at < sizeof line - 80; m++)
+    {
+        char name[40] = "?"; if (now[top[m]].name && SafeRead(now[top[m]].name, name, sizeof name - 1)) snprintf(name, sizeof name, "?"); name[sizeof name - 1] = 0;
+        for (char* c = name; *c; c++) if ((unsigned char)*c < 0x20 || (unsigned char)*c > 0x7E) { *c = 0; break; }
+        at += (size_t)snprintf(line + at, sizeof line - at, "%s %s %+lld MB (now %lld)", m ? ";" : "", name, (long long)(delta[m] >> 20), (long long)(now[top[m]].bytes >> 20));
+    }
+    Note("difficulty: allocators (%s): %d named, %lld MB live in all; changes over 1 MB since the last note:%s", where, n, (long long)(total >> 20), k ? line : " none");
+    memcpy(g_allocPrev, now, sizeof(now[0]) * (size_t)n); g_allocPrevN = n;
+}
+
 typedef struct { DWORD cb, faults; SIZE_T peakWs, ws, peakPagedPool, pagedPool, peakNonPaged, nonPaged, page, peakPage, priv; } WorldMemCounters;
 static volatile LONG64 g_memLast;
 static void WorldMemoryNote(const char* where, uint32_t op, uint32_t record, int force)
@@ -4144,6 +4205,7 @@ static void WorldMemoryNote(const char* where, uint32_t op, uint32_t record, int
             where, (double)g_world.current, priv >> 20, (priv - last) >> 20, (unsigned long long)(c.ws >> 20), (unsigned long long)(c.peakWs >> 20),
             (unsigned long long)(m.ullAvailPhys >> 20));
     MemProfReport();
+    WorldAllocNote(where);
 }
 
 static void WorldMemoryTick(void)
