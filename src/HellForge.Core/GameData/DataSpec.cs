@@ -22,7 +22,10 @@ public sealed record DataSpec(IReadOnlyList<DataPatch> Patches, IReadOnlyList<st
     // The past builds its resources come from ("<depot>:<manifest>", AssetMigration.GameBuilds), in order.
     public IReadOnlyList<string> Builds => [.. Patches.SelectMany(p => p.Resources).Select(r => r.Build).OfType<string>().Distinct().Order(StringComparer.Ordinal)];
 }
-public sealed record DataPatch(IReadOnlyList<string> Archives, IReadOnlyList<DataResource> Resources);
+// A patch for game archives, or (Package) a package of the mod's own: a whole archive of its own id, loaded at session
+// start or only when asked for (load_package, or a record that names it).
+public sealed record DataPatch(IReadOnlyList<string> Archives, IReadOnlyList<DataResource> Resources, ModDataPackage? Package = null);
+public sealed record ModDataPackage(string Name, ulong Id, bool Session);
 public abstract record DataResource(string Where)
 {
     public bool Steam { get; init; }
@@ -136,19 +139,45 @@ public static partial class DataSpecs
         foreach (var patch in Items(root, "patches", ""))
         {
             var at = $"patches[{p++}]";
-            Fields(patch, at, "archives", "resources");
-            var archives = Items(patch, "archives", at).Select(a => a.ValueKind == JsonValueKind.String && ArchiveName().IsMatch(a.GetString()!)
-                ? a.GetString()! : throw new InvalidDataException($"{at}: an archive is 16 lowercase hex digits, such as \"dbd9381f9ea9788f\".")).ToList();
-            if (archives.Count == 0 || archives.Distinct().Count() != archives.Count) throw new InvalidDataException($"{at}: archives are missing or repeated.");
+            Fields(patch, at, "archives", "package", "load", "resources");
+            var package = ReadPackage(patch, at);
+            var archives = package != null ? [] : ReadArchives(patch, at);
             var resources = new List<DataResource>();
             var r = 0;
             foreach (var resource in Items(patch, "resources", at))
                 resources.Add(Resource(resource, $"{at}.resources[{r++}]", folder, inputs));
             if (resources.Count == 0) throw new InvalidDataException($"{at}: resources are missing.");
-            patches.Add(new(archives, resources));
+            patches.Add(new(archives, resources, package));
         }
         if (patches.Count == 0) throw new InvalidDataException("patches are missing.");
+        if (patches.Where(x => x.Package != null).GroupBy(x => x.Package!.Id).FirstOrDefault(g => g.Count() > 1) is { } twice)
+            throw new InvalidDataException($"package {twice.First().Package!.Name} is named by two patches.");
         return new(patches, [.. inputs]);
+    }
+
+    static List<string> ReadArchives(JsonElement patch, string at)
+    {
+        var archives = Items(patch, "archives", at).Select(a => a.ValueKind == JsonValueKind.String && ArchiveName().IsMatch(a.GetString()!)
+            ? a.GetString()! : throw new InvalidDataException($"{at}: an archive is 16 lowercase hex digits, such as \"dbd9381f9ea9788f\".")).ToList();
+        return archives.Count > 0 && archives.Distinct().Count() == archives.Count ? archives : throw new InvalidDataException($"{at}: archives are missing or repeated.");
+    }
+
+    // "package": the mod's own package by name (exactly one of it and "archives"), "load": "session" (the default) or
+    // "request". Its id must not be a 16-hex-digit name of the game's that a hash could meet, so it is the name's hash.
+    static ModDataPackage? ReadPackage(JsonElement patch, string at)
+    {
+        var has = patch.TryGetProperty("package", out _);
+        if (has == patch.TryGetProperty("archives", out _)) throw new InvalidDataException($"{at}: a patch has exactly one of archives or package.");
+        if (!has)
+        {
+            if (patch.TryGetProperty("load", out _)) throw new InvalidDataException($"{at}: load is for a package.");
+            return null;
+        }
+        var name = Text(patch, "package", at);
+        if (name.Length > 200 || !ResourceName().IsMatch(name)) throw new InvalidDataException($"{at}: package is the mod's own package path, such as \"you/your_mod/rifle\".");
+        var load = patch.TryGetProperty("load", out _) ? Text(patch, "load", at) : "session";
+        if (load is not ("session" or "request")) throw new InvalidDataException($"{at}: load is session or request.");
+        return new(name, EngineHash.Murmur64A(Encoding.UTF8.GetBytes(name)), load == "session");
     }
 
     static DataResource Resource(JsonElement e, string at, string? folder, ISet<string> inputs)

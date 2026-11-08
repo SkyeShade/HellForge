@@ -2421,6 +2421,17 @@ static void RefsFixture(void)
     assert(g_heldCount == PKG_MAX_HELD - PKG_OWN_RESERVE);
     while (kRefPackages[next].id == packageId || kRefPackages[next].id == friendId) next++;
     assert(ApiLoadPackage(mod, kRefPackages[next].id) == HF_PACKAGE_LOADING && g_heldCount == PKG_MAX_HELD - PKG_OWN_RESERVE + 1);
+    /* SDK 17, a mod's own packages (the plan's package lines): known to load_package; "session" ones asked for once, on the
+     * first update the package system is set up in, as this machine's own; malformed lines are skipped */
+    char request[] = "package\tmod.a\t00000000abcdef01\trequest", session[] = "package\tmod.a\t00000000abcdef02\tsession";
+    char malformed[] = "package\tmod.a\tnot-hex-at-all!!\tsession", unknownLoad[] = "package\tmod.a\t00000000abcdef03\tlater";
+    assert(PlanLine(request) == 0 && PlanLine(session) == 0 && PlanLine(malformed) == 0 && PlanLine(unknownLoad) == 0 && g_modPackageCount == 2);
+    held = g_heldCount;
+    ModPackagesTick();
+    assert(g_modPackagesWanted && g_heldCount == held + 1 && g_held[held].id == 0xABCDEF02ull && g_held[held].own);
+    ModPackagesTick(); assert(g_heldCount == held + 1); /* once */
+    assert(ApiLoadPackage(mod, 0xABCDEF01ull) == HF_PACKAGE_LOADING && g_heldCount == held + 2);
+    g_modPackageCount = 0; g_modPackagesWanted = 0;
 
     g_statCount = 0;
     for (int i = 0; i < g_fakeRecordCount; i++) free(g_fakeRecords[i].bytes);

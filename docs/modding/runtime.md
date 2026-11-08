@@ -326,7 +326,8 @@ A package is a set of game resources the engine loads together (a weapon's model
 What your mod uses must be loaded, so a stratagem or effect that needs another one's resources needs that package held.
 
 `hf->load_package(mod, package)` (SDK 6) loads a package from HellForge's catalogue (`mappings/references.json`) through
-the game's own package system and holds it for the session. It answers `HF_PACKAGE_LOADING` until the engine has all of
+the game's own package system and holds it for the session. Since SDK 17 it also loads a data spec's own `package` of
+any mod in the session ([packages of your own](data.md#packages-of-your-own)); pass the hash of the package's name. It answers `HF_PACKAGE_LOADING` until the engine has all of
 it (call again to see), then `HF_PACKAGE_RESIDENT`, or 0 when refused. At most 64 packages are held, counting the ones
 HellForge loads for references and abilities; a package not resident within 90 seconds fails.
 

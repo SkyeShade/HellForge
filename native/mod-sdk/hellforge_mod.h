@@ -1307,10 +1307,11 @@ typedef struct HfApi
      * spawns, package requests), before the game's update. Keep it short; it runs every frame. Returns 1, or 0 when
      * the game thread's update could not be hooked (modloader.log says why). Check hf->size before calling. */
     int (*on_game_thread)(HfMod* mod, HfTickCallback callback, void* user);
-    /* Loads a package (by its resource name hash, as mappings/references.json lists them) and holds it for the session,
-     * through the game's own package system on the game thread: HF_PACKAGE_RESIDENT once the engine has all of it,
-     * HF_PACKAGE_LOADING until then (call it again to see), 0 refused or failed (not a catalogue package, HellForge's
-     * 64 held already, or not loaded within 90 seconds; the mod's log says why). Loading is per client: other players
+    /* Loads a package (by its resource name hash, as mappings/references.json lists them, or since SDK 17 a data spec's
+     * own "package" of any mod of the session) and holds it for the session, through the game's own package system on
+     * the game thread: HF_PACKAGE_RESIDENT once the engine has all of it, HF_PACKAGE_LOADING until then (call it again
+     * to see), 0 refused or failed (neither kind, HellForge's 64 held already, or not loaded within 90 seconds; the
+     * mod's log says why). Loading is per client: other players
      * load their own. A reference set_live or a stats file writes (a donor projectile, an explosion) loads its packages
      * itself. */
     int (*load_package)(HfMod* mod, uint64_t package);

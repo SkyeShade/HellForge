@@ -46,13 +46,15 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     public bool Live { get; init; }
     public IReadOnlyList<StatsEdit> Stats { get; init; } = [];
     // The in-game loader applies its code, stats and component writes, and its network field types (its nettype lines).
-    public bool NeedsLoader => HasCode || Stats.Count > 0 || ComponentWrites.Count > 0 || NetworkFieldTypes.Count > 0;
+    public bool NeedsLoader => HasCode || Stats.Count > 0 || ComponentWrites.Count > 0 || NetworkFieldTypes.Count > 0 || Packages.Count > 0;
     // Off in the installation's hellforge-mods.json (the launcher's Mods page): listed, but not loaded.
     public bool Enabled { get; init; } = true;
     // The zip in the mods folder this mod was unpacked from (its Folder is then under mods/.unpacked), or null.
     public string? Archive { get; init; }
     // The mod has a data spec (hellforge-data.json), whose patches are generated per installation (ModDataCache).
     public bool HasDataSpec { get; init; }
+    // Its data spec's own packages, which the loader may load (the plan's package lines).
+    public IReadOnlyList<ModDataPackage> Packages { get; init; } = [];
     // Why HellForge does not check all of the data spec's output (DataSpecs.Unchecked: a "replace", or a type outside the
     // reviewed ones), or null: mod sync takes such a spec as raw data (ModSets.ClassOf).
     public string? UncheckedSpec { get; init; }
@@ -124,6 +126,10 @@ public static partial class ModCatalog
 
     [GeneratedRegex("^[0-9a-f]{16}\\.patch_([0-9]{1,4})(\\.gpu_resources|\\.stream)?$")]
     public static partial Regex PatchFile();
+
+    // A package's archive (a data spec's "package"), or a live change's hot package: data/<16 hex> and its sidecars.
+    [GeneratedRegex("^[0-9a-f]{16}(\\.gpu_resources|\\.stream)?$")]
+    public static partial Regex PackageFile();
 
     [GeneratedRegex("^[a-z0-9_]{1,64}$")]
     private static partial Regex FieldTypeName();
@@ -285,7 +291,7 @@ public static partial class ModCatalog
         // "url": where players get the mod; one that is not an https:// address (WebAddress) is left out
         var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
         var manifest = new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
-            { CodeDll = code, HasSource = source, Live = live, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
+            { CodeDll = code, HasSource = source, Live = live, HasDataSpec = spec, Packages = dataSpec?.Patches.Select(p => p.Package).OfType<ModDataPackage>().ToList() ?? [], UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
               CoopLevel = ReadCoopLevel(root), Premium = PremiumList(root), AssetOutputs = assets.Outputs, AssetsPending = assets.Pending ?? PastBuildsPending(folder, dataSpec) };
         return manifest with { Coop = DecideTier(root, manifest, new(code, source, data, lua, spec, stats, types, writes)) };
     }
@@ -891,7 +897,7 @@ public static class ModLoaderPlan
         lines.AddRange(ModWarbonds.PlanLines(warbonds ?? []));
         // in the order given, a session's load order (ModCatalog.LoadOrder): code loads and stats apply in it, the last winning
         var mods = codeMods.Where(m => m.Enabled && m.NeedsLoader).ToList();
-        if (mods.Count > 64 || mods.Sum(m => StatsData.Edits(m).Count()) > StatsData.MaxEdits)
+        if (mods.Count > 64 || mods.Sum(m => StatsData.Edits(m).Count()) > StatsData.MaxEdits || mods.Sum(m => m.Packages.Count) > 64)
             throw new InvalidDataException("Mod loader plan exceeds its mod or stats edit capacity.");
         foreach (var mod in mods) lines.AddRange(ModLines(mod));
         if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (4 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 4 MiB.");
@@ -919,7 +925,7 @@ public static class ModLoaderPlan
     }
 
     // A mod's lines of the plan: the mod ("live": SDK 16, it may be taken out while the game runs), a code mod's version,
-    // its stats edits and its network field types.
+    // its stats edits, its network field types and its own packages.
     static IEnumerable<string> ModLines(ModManifest mod)
     {
         if (mod.HasCode && mod.DllPath == null) throw new InvalidDataException($"{mod.Id} is a source mod that was not built for this session.");
@@ -928,6 +934,7 @@ public static class ModLoaderPlan
         if (mod.HasCode && OneLine(mod.Version) is { Length: > 0 } version) yield return $"mod_version\t{mod.Id}\t{version}";
         foreach (var e in StatsData.Edits(mod)) yield return "stat\t" + string.Join('\t', StatFields(mod, e));
         foreach (var t in mod.NetworkFieldTypes) yield return "nettype\t" + string.Join('\t', NetFields(mod, t));
+        foreach (var p in mod.Packages) yield return $"package\t{mod.Id}\t{p.Id:x16}\t{(p.Session ? "session" : "request")}";
     }
 
     static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')

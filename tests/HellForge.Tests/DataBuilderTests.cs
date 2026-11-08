@@ -797,6 +797,60 @@ static class DataBuilderTests
             try { ModDataBuilder.Build(spec, mod, gameReader, output + "2"); throw new Exception("Built layers of different sizes."); }
             catch (InvalidDataException error) { check(error.Message.Contains("resources[0]") && error.Message.Contains("same size"), "The texture is not named: " + error.Message); }
         });
+
+        test("A data spec's package builds as a whole archive of its own id, is staged under it, and the loader plan names it", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "mod-package-install"));
+            install.Create("12345");
+            var gameData = Path.Combine(install.Game, "data");
+            WriteGameData(gameData);
+            var mods = Path.Combine(install.Root, "mods");
+            var folder = Path.Combine(mods, "package-mod");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, ModCatalog.ManifestName), """{"format":1,"id":"test.package","name":"Package","version":"1"}""");
+            void Spec(string patches) => File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), $$"""{"format":1,"patches":[{{patches}}]}""");
+            const string material = """{"type":"material","copy":"0x1111","name":"test/mod/package_material"}""";
+            foreach (var (bad, reason) in new[] {
+                ("""{"archives":["1111111111111111"],"package":"test/mod/pkg","resources":[""" + material + "]}", "exactly one of archives or package"),
+                ("""{"package":"test/mod/pkg","load":"later","resources":[""" + material + "]}", "load is session or request"),
+                ("""{"archives":["1111111111111111"],"load":"session","resources":[""" + material + "]}", "load is for a package"),
+                ("""{"package":"pkg","resources":[""" + material + "]}", "the mod's own package path"),
+                ("""{"package":"test/mod/pkg","resources":[""" + material + """]},{"package":"test/mod/pkg","resources":[{"type":"texture","include":["0x2222"]}]}""", "named by two patches") })
+            {
+                Spec(bad);
+                try { DataSpecs.Load(folder); throw new Exception("Accepted: " + bad); }
+                catch (InvalidDataException error) { check(error.Message.Contains(reason), "Refused for another reason: " + error.Message); }
+            }
+            Spec("""{"package":"test/mod/pkg","resources":[""" + material + """]},{"package":"test/mod/later","load":"request","resources":[{"type":"texture","include":["0x2222"]}]}""");
+            var id = EngineHash.Murmur64A("test/mod/pkg"u8).ToString("x16");
+            var later = EngineHash.Murmur64A("test/mod/later"u8).ToString("x16");
+            var (loaded, problems) = ModCatalog.Load(mods);
+            var mod = loaded.Single();
+            check(problems.Count == 0 && mod.Packages.Count == 2 && mod.Packages[0].Session && !mod.Packages[1].Session && mod.NeedsLoader,
+                "The mod's packages are not read, or do not need the loader: " + string.Join(" | ", problems));
+            var plan = ModLoaderPlan.Text(loaded, Path.Combine(root, "package-session"), EntityProfile.Current, "25480438");
+            check(plan.Contains($"package\ttest.package\t{id}\tsession\n") && plan.Contains($"package\ttest.package\t{later}\trequest\n"), "The plan does not name the packages: " + plan);
+            check(LiveModPlan.Why(mod) is { } why && why.Contains("packages"), "A mod with packages of its own may change while the game runs.");
+
+            var (ready, failed) = ModDataCache.Prepare(install, loaded);
+            check(failed.Count == 0, "The packages were not built: " + string.Join(" | ", failed));
+            var output = ready.Single().GeneratedData!;
+            check(new[] { id, id + ".gpu_resources", id + ".stream", later, later + ".gpu_resources", later + ".stream" }.All(f => File.Exists(Path.Combine(output, f))) &&
+                !Directory.GetFiles(output).Any(f => f.Contains(".patch_")), "A package is not its whole archive with both sidecars: " + string.Join(", ", Directory.GetFiles(output).Select(Path.GetFileName)));
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, id)), File.ReadAllBytes(Path.Combine(output, id + ".gpu_resources")), File.ReadAllBytes(Path.Combine(output, id + ".stream")));
+            check(built.Keys.Single() == new ResourceKey(ResourceTypes.Material, EngineHash.Murmur64A("test/mod/package_material"u8)), "The package holds other resources.");
+
+            var staged = ModStaging.Stage(install, ready);
+            check(staged.Contains(id) && staged.Contains(id + ".stream") && staged.Contains(later) && File.Exists(Path.Combine(gameData, id + ".gpu_resources")) &&
+                ModStaging.Recorded(install).Contains(id), "The package is not staged under its own name: " + string.Join(", ", staged));
+            check(ModStaging.Stage(install, ready).Count == staged.Count, "Staging again changed what is staged.");
+            ModStaging.Unstage(install);
+            check(!File.Exists(Path.Combine(gameData, id)) && !File.Exists(Path.Combine(gameData, later + ".stream")), "Unstage left the package.");
+            File.WriteAllText(Path.Combine(gameData, id), "the game's own");
+            try { ModStaging.Stage(install, ready); throw new Exception("Staged over a file of the game's."); }
+            catch (InvalidDataException error) { check(error.Message.Contains(id) && File.ReadAllText(Path.Combine(gameData, id)) == "the game's own", "Refused for another reason: " + error.Message); }
+            File.Delete(Path.Combine(gameData, id));
+        });
     }
 
     // The synthetic game data: archive 1111111111111111 with a unit naming a material, the material naming a colour

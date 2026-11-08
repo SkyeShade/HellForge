@@ -87,6 +87,9 @@ what your mod adds, such as the base weapon's, or `007e093ca718ca1a` for UI icon
 `0x<hash>` or a name (hashed as the game hashes them). Types are names (`unit`, `material`, `texture`, `particles`,
 `wwise_bank`, ...) or `0x<hash>`. Colours are `[r, g, b]` as the game stores them, or `"#RRGGBB"`.
 
+A patch can instead be a package of your own: `"package": "yourname/your_mod/rifle"` in place of `archives`
+([packages of your own](#packages-of-your-own)).
+
 Each resource is one of the following.
 
 ### copy
@@ -180,6 +183,27 @@ clips and the state machine that plays them on the weapon's events ([animations]
 `{"model": "models/carbine.glb", "name": "yourname/your_mod/carbine", "materials": {"Body": "0x7F112ACD09A5E523"}}`. Every
 node becomes a joint, every mesh draws rigid on its node, and node names give LODs and shadow casters
 ([models](models.md)).
+
+### Packages of your own
+
+A patch with `package` becomes a whole archive of its own, `data/<id>`, where the id is the hash of the package's name.
+The game loads it by that id like its own loose archives, so your resources load without a game bundle.
+
+```json
+{ "package": "yourname/your_mod/rifle", "load": "session", "resources": [ ... ] }
+```
+
+| `load` | The package loads |
+|---|---|
+| `"session"` (the default) | when the game starts, and stays for the session |
+| `"request"` | only when asked: `load_package` from code ([packages](runtime.md#packages)), or a record that names it |
+
+- Every player in a session runs the same mods, so each machine has the same package. In co-op HellForge asks friends'
+  machines to load the packages this machine holds.
+- A package holds only what its patch lists. A resource it references must be in it too, or be loaded by another
+  package: include a game material's textures, or keep the patch on the base weapon's bundles.
+- Its id must not be an archive of the game's, and two mods may not use one package.
+- A mod with a package cannot be added or changed while the game runs; it waits for the next session.
 
 ### Checks
 
