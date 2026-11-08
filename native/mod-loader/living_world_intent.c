@@ -836,6 +836,7 @@ static int LwRetakeArrived(LwSquad* q, ULONGLONG now)
         return 1;
     }
     if (done == 0 && now - q->intentStageAt < LW_RETAKE_WAIT) return 1;
+    if (g && done < 0) g->retakeAt = now; /* not again for LW_RETAKE_AGAIN (lw109b sent 11 squads to one it could not take) */
     LwIntentEnd(q, done < 0 ? "the garrison cannot be retaken" : "players stayed near");
     return 0;
 }
