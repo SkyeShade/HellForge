@@ -147,6 +147,23 @@ static int LwIntentGoal(LwSquad* q)
     if (q->intentStage == 0) { q->intentSent = 1; if (!LwSquadGoTo(q, q->target)) LwIntentEnd(q, "no navmesh at the point"); }
     return 1;
 }
+/* A unit's AI settings (0x511CC0's table, as LwObstacleAbilities): the hearing threshold +0x2BC (0x7EB1DD, compared at
+ * 0x7EB694) and the investigate time +0x5C (0x7EBBEC). 1 when found. */
+static int LwHearSettings(uint32_t unit, float* threshold, float* investigate)
+{
+    uintptr_t game = g_lw.game, aiState = 0, table = 0; uint32_t u = 0;
+    uint64_t res = EvpEntityResource(game, unit, &u);
+    if (!res || SafeRead(game + 0x346BF98u, &aiState, 8) || !aiState || SafeRead(aiState + 0xF12DE8u, &table, 8) || !table) return 0;
+    for (uint32_t p = 0; p < 316; p++)
+    {
+        uint64_t key = 0; uint32_t sidx = 0; uintptr_t b = table + 16ull * ((res + p) % 316);
+        if (SafeRead(b, &key, 8) || key == 0) return 0;
+        if (key != res) continue;
+        uintptr_t st = table + 0x13C0 + 0x2DCull * (SafeRead(b + 8, &sidx, 4) ? 0 : sidx);
+        return !SafeRead(st + 0x2BC, threshold, 4) && !SafeRead(st + 0x5C, investigate, 4);
+    }
+    return 0;
+}
 /* The detector the awareness update reads for a unit: [Behavior record + 0x68] (0x7ECF70 returns [game+0x3326740] +0x60
  * records + 0x1F8 idx + 8, and 0x7EB262 reads +0x60 from it; the record it compares is that id's, 0x7EB2C0). The game's
  * ears report to it too (the dispatch passes the ear's detector entity to 0x888E50, 0x64AE81). It is a separate entity
@@ -216,8 +233,9 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
         uintptr_t ai = 0, recs = 0; uint32_t idx = 0, flags = 0xFFFFFFFFu, aiState = 0xFFFFFFFFu;
         if (EvpPtr(g_lw.game + 0x33266C8u, &ai) && EvpHash(ai + 0x2330, members[0], 8, 4, &idx) && EvpPtr(ai + 0x2350, &recs))
         { flags = EvpU32(recs + 0xA50ull * idx + 0xE4, 0xFFFFFFFFu); uintptr_t st; if (EvpPtr(ai + 0x2360, &st)) aiState = EvpU32(st + 20ull * idx, 0xFFFFFFFFu); }
-        Note("living world: squad %d reached the noise at (%.0f, %.0f) online after %.0f s; %d members told (source %08X); first member's AiEnemy flags %08X, synced state %u", (int)(q - g_lwSquads),
-            (double)q->target[0], (double)q->target[1], (double)(now - q->intentAt) / 1000.0, told, source, flags, aiState);
+        float thr = NAN, inv = NAN; LwHearSettings(members[0], &thr, &inv);
+        Note("living world: squad %d reached the noise at (%.0f, %.0f) online after %.0f s; %d members told (source %08X); first member's AiEnemy flags %08X, synced state %u, hearing threshold %.1f, investigate time %.1f s", (int)(q - g_lwSquads),
+            (double)q->target[0], (double)q->target[1], (double)(now - q->intentAt) / 1000.0, told, source, flags, aiState, (double)thr, (double)inv);
         return;
     }
     int calm = 1;
