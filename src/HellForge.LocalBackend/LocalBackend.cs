@@ -169,11 +169,7 @@ public static partial class LocalBackend
             warClock.Set(war.RootElement.GetProperty("status").GetProperty("time").GetInt64());
         }
         var startup = new StartupBodies(profile, liveWar, fixtures);
-        if (settings.RegisteredItems != null)
-        {
-            settings.RegisteredItems.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
-            settings.RegisteredItems.ModProgress = profile != null ? profile.ModProgress : null;
-        }
+        if (settings.RegisteredItems != null) ConnectRegisteredItems(settings.RegisteredItems, startup, profile);
         if (settings.ModWarbonds != null) ConnectModWarbonds(settings.ModWarbonds, settings.RegisteredItems, startup, profile);
         // Purchases price items by the catalogue the game was served, mods' registered items included.
         JsonElement? Catalogue(uint mixId)
@@ -209,6 +205,14 @@ public static partial class LocalBackend
         };
         app.Run(requests.HandleAsync);
         return app;
+    }
+
+    // Registered items read the startup bodies and mod progress, and save a standalone weapon's level 1 in the profile.
+    static void ConnectRegisteredItems(RegisteredItems registered, StartupBodies startup, ProfileStore? profile)
+    {
+        registered.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+        registered.ModProgress = profile != null ? profile.ModProgress : null;
+        registered.ChangeProfile = profile != null ? profile.TryChange : null;
     }
 
     // Mods' warbonds read the startup bodies and the registered items, and decide which registered items the profile holds

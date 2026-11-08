@@ -197,7 +197,7 @@ static class RegisteredItemsTests
     // A standalone weapon names no base: its item, children and mastery package are authored from its entry, beside a copy.
     static void Standalone(string folder, Dictionary<string, JsonElement> fixtures, Action<bool, string> check)
     {
-        const uint Rifle = 0x5A0D0001, Package = 0x5A0D0F01, Sight = 0x5A0D0A01, Brake = 0x5A0D0A02, Drum = 0x5A0D0A03, Far = 0x5A0D0A04;
+        const uint Rifle = 0x5A0D0001, Package = 0x5A0D0F01, Sight = 0x5A0D0A01, Brake = 0x5A0D0A02, Drum = 0x5A0D0A03, Far = 0x5A0D0A04, Scope = 0x5A0D0A05;
         var file = Path.Combine(folder, "standalone.json");
         File.WriteAllText(file, $$"""
             {"format":1,"items":[
@@ -206,8 +206,9 @@ static class RegisteredItemsTests
              "attachments":[
               {"mixId":{{Sight}},"standalone":true,"weapons":[{{Rifle}}],"level":0},
               {"mixId":{{Brake}},"standalone":true,"weapons":[{{Rifle}},{{Gold}}],"level":1},
-              {"mixId":{{Drum}},"standalone":true,"weapons":[{{Rifle}}],"level":5},
-              {"mixId":{{Far}},"standalone":true,"weapons":[{{Rifle}}],"level":26}]}
+              {"mixId":{{Drum}},"standalone":true,"weapons":[{{Rifle}}],"level":5,"price":4500},
+              {"mixId":{{Far}},"standalone":true,"weapons":[{{Rifle}}],"level":26},
+              {"mixId":{{Scope}},"standalone":true,"weapons":[{{Rifle}}],"level":12}]}
             """);
         var log = new List<string>();
         // Every base refused: a standalone weapon has none, so no premium rule applies to it.
@@ -227,7 +228,7 @@ static class RegisteredItemsTests
         check(catalogue[at]!.ToJsonString() == $$"""{"itemId":{{Rifle}},"mixId":{{Rifle}},"isConsumable":false,"requiredLevel":0,"progressionCategory":1,"tags":{{tags}},"requiredItems":[],"buyPrice":[],"sellPrice":[]}""",
             "The standalone weapon's item is not the authored one: " + catalogue[at]!.ToJsonString());
         var run = catalogue.Skip(at + 1).TakeWhile(i => (uint?)i!["parentId"] == Rifle).OfType<JsonObject>().ToList();
-        check(run.Count == 4 && run.Select(c => (uint)c["itemId"]!).SequenceEqual([Sight, Brake, Drum, Far]) &&
+        check(run.Count == 5 && run.Select(c => (uint)c["itemId"]!).SequenceEqual([Sight, Brake, Drum, Far, Scope]) &&
             run.All(c => (uint)c["mixId"]! == RegisteredItems.WeaponChild((uint)c["itemId"]!, Rifle) && (int)c["progressionCategory"]! == 2 &&
                 c["buyPrice"]!.AsArray().Count == 0 && c["tags"]!.AsArray().Count == 0),
             "The standalone weapon's run is not one authored child per standalone attachment.");
@@ -244,30 +245,40 @@ static class RegisteredItemsTests
         var levels = own!["levels"]!.AsArray().OfType<JsonObject>().ToList();
         check(levels.Select(l => (l["level"]!.ToJsonString(), l["requirementType"]!.ToJsonString(), l["requirement"]!.ToJsonString()))
                 .SequenceEqual(vanillaLevels.Select(l => (l!["level"]!.ToJsonString(), l["requirementType"]!.ToJsonString(), l["requirement"]!.ToJsonString()))) &&
-            levels.All(l => l["cost"]!.AsArray().Count == 0 && l["unlockableItems"]!.AsArray().Count == 0),
+            levels.All(l => l["cost"]!.AsArray().Count == 0),
             "The standalone package's levels are not the vanilla weapons' shared ones.");
-        string Rewards(int level) => levels.Single(l => (int)l["level"]! == level)["rewards"]!.ToJsonString();
-        check(Rewards(1) == $$"""[{"type":1,"id32":{{RegisteredItems.WeaponChild(Brake, Rifle)}},"amount":1}]""" &&
-            Rewards(5) == $$"""[{"type":1,"id32":{{RegisteredItems.WeaponChild(Drum, Rifle)}},"amount":1}]""" &&
-            levels.Where(l => (int)l["level"]! is not (1 or 5)).All(l => l["rewards"]!.AsArray().Count == 0),
-            "The standalone attachments are not their levels' rewards.");
+        // Vanilla's shapes: level 1 rewards every default (level 0 or 1); a later level offers an attachment for requisition,
+        // its mod's price or the default for its level.
+        string Field(int level, string name) => levels.Single(l => (int)l["level"]! == level)[name]!.ToJsonString();
+        check(Field(1, "rewards") == $$"""[{"type":1,"id32":{{RegisteredItems.WeaponChild(Sight, Rifle)}},"amount":1},{"type":1,"id32":{{RegisteredItems.WeaponChild(Brake, Rifle)}},"amount":1}]""" &&
+            levels.Where(l => (int)l["level"]! != 1).All(l => l["rewards"]!.AsArray().Count == 0),
+            "The standalone defaults are not level 1's rewards: " + Field(1, "rewards"));
+        check(Field(5, "unlockableItems") == $$"""[{"mixId":{{RegisteredItems.WeaponChild(Drum, Rifle)}},"amount":1,"sortOrder":0,"cost":[{"mixId":3608481516,"amount":4500}]}]""" &&
+            Field(12, "unlockableItems") == $$"""[{"mixId":{{RegisteredItems.WeaponChild(Scope, Rifle)}},"amount":1,"sortOrder":0,"cost":[{"mixId":3608481516,"amount":7000}]}]""" &&
+            levels.Where(l => (int)l["level"]! is not (5 or 12)).All(l => l["unlockableItems"]!.AsArray().Count == 0),
+            "The standalone attachments above level 1 are not their levels' unlockables: " + Field(5, "unlockableItems"));
+        check(RegisteredItems.PriceAt(2) == 3000 && RegisteredItems.PriceAt(10) == 5000 && RegisteredItems.PriceAt(17) == 7000 && RegisteredItems.PriceAt(25) == 13000,
+            "The default prices do not rise with the level as vanilla's do.");
         check(log.Any(l => l.Contains($"attachment {Far} unlocks at level 26")), "An attachment past the last level was not logged.");
         check(packages.Count(p => ((JsonArray)p!["requiredItems"]!).Any(r => (uint)r! == Gold)) == 1, "The copy beside it has no mastery package.");
 
         var inventory = JsonNode.Parse(items.Apply("/Progression/inventory", JsonSerializer.SerializeToElement(new { items = Array.Empty<object>() })).GetRawText())!["items"]!
             .AsArray().Select(i => (uint)i!["mixId"]!).ToHashSet();
         check(inventory.Contains(Rifle) && inventory.Contains(RegisteredItems.WeaponChild(Sight, Rifle)) &&
-            !inventory.Contains(RegisteredItems.WeaponChild(Brake, Rifle)) && !inventory.Contains(RegisteredItems.WeaponChild(Drum, Rifle)),
-            "The standalone weapon is not held with only its level 0 attachment, despite a premium rule that refuses every base.");
+            inventory.Contains(RegisteredItems.WeaponChild(Brake, Rifle)) && !inventory.Contains(RegisteredItems.WeaponChild(Drum, Rifle)),
+            "The standalone weapon is not held with only its defaults, despite a premium rule that refuses every base.");
         check(!inventory.Contains(Gold), "The copy escaped its base's premium rule.");
 
-        // Its level 1 passes at the first mission with XP and gives the level 1 attachment, as a vanilla weapon's defaults.
+        // Its level 1 gives the defaults, as a vanilla weapon's first mission does.
         var track = items.Track(Package);
         var progression = new JsonObject();
-        if (track != null) WeaponMastery.Earn(track, progression, [], 100);
+        if (track != null) WeaponMastery.Earn(track, progression, [], 0);
         var earned = track != null ? WeaponMastery.Owned(track, track.Entry(progression)) : [];
-        check(track is { IsMod: true } && earned.SetEquals([RegisteredItems.WeaponChild(Brake, Rifle)]), "A first mission does not give the level 1 attachment.");
+        check(track is { IsMod: true } && earned.SetEquals([RegisteredItems.WeaponChild(Sight, Rifle), RegisteredItems.WeaponChild(Brake, Rifle)]),
+            "Level 1 does not give the defaults.");
+        StandaloneProgress(file, items, check);
 
+        File.WriteAllText(file, $$"""{"format":1,"items":[{"mixId":{{Rifle}},"standalone":true,"class":"primary","mod":"test.rifle","unit":"test/rifle","package":{{Package}}}]}""");
         // A mod that locks its premium list still locks a standalone weapon; another class or no package is malformed.
         var locked = new RegisteredItems(file) { Source = items.Source, Log = _ => { }, LockedMods = new HashSet<string> { "test.rifle" } };
         check(locked.IsLocked(locked.Served().Single(i => i.MixId == Rifle)), "A mod's own premium list does not lock its standalone weapon.");
@@ -279,5 +290,44 @@ static class RegisteredItemsTests
         log.Clear();
         var clash = new RegisteredItems(file) { Source = items.Source, Log = log.Add };
         check(clash.Served().Count == 0 && log.Any(l => l.Contains("another package's id")), "A standalone weapon took a vanilla package's id.");
+    }
+
+    // A standalone weapon is served and saved at level 1 (LVL 1 in the Armory, its defaults owned); its unlockables are
+    // bought as a copy's are.
+    static void StandaloneProgress(string file, RegisteredItems source, Action<bool, string> check)
+    {
+        const uint Package = 0x5A0D0F01, Rifle = 0x5A0D0001, Drum = 0x5A0D0A03;
+        var store = ProfileStore.Open(null, "starter");
+        var items = new RegisteredItems(file) { Source = source.Source, Log = _ => { }, ModProgress = store.ModProgress, ChangeProfile = store.TryChange };
+        JsonObject? Served(RegisteredItems registered)
+        {
+            store.TryGetResponse("/Progression", out var body);
+            return JsonNode.Parse(registered.Apply("/Progression", body).GetRawText())!["packageProgress"]!.AsArray().OfType<JsonObject>()
+                .SingleOrDefault(e => (uint)e["id32"]! == Package);
+        }
+        var served = Served(items);
+        check(served != null && (int)served["level"]! == 1 && (int)served["progress"]! == 0 && served["claimedLevels"] is JsonArray && !served.ContainsKey(HellForge.Core.ModPackages.HeldItems),
+            "A standalone weapon is not served at level 1: " + served?.ToJsonString());
+        var saved = store.ModProgress()?.OfType<JsonObject>().SingleOrDefault(e => (uint)e["id32"]! == Package);
+        check(saved != null && (int)saved["level"]! == 1 && HellForge.Core.ModPackages.Held(saved).Count() == 2, "A standalone weapon's level 1 was not saved with its defaults.");
+        Served(items);
+        check(store.ModProgress()!.Count == 1 && (int)store.ModProgress()![0]!["level"]! == 1, "Level 1 was saved again.");
+        // Without a profile to save in it is still served at level 1.
+        var unsaved = new RegisteredItems(file) { Source = source.Source, Log = _ => { } };
+        check(Served(unsaved) is { } entry && (int)entry["level"]! == 1, "A standalone weapon without saved progress is not served at level 1.");
+
+        // Bought at its level for its price, as a copy's unlockable.
+        var shop = new Purchases(store, _ => null) { Registered = items };
+        store.ApplyMissionRewards(0, new Dictionary<uint, long> { [MissionService.RequisitionMixId] = 10000 });
+        var buy = new { packageId32 = Package, targetLevel = 5, itemMixId = RegisteredItems.WeaponChild(Drum, Rifle), expectedCost = Array.Empty<object>() };
+        check(shop.Handle("/Progression/ProgressionPackage/AcquireUnlockableItem", JsonSerializer.SerializeToElement(buy)).Status == 400,
+            "An unlockable was sold below its level.");
+        store.TryChange((progression, _) => { HellForge.Core.ModPackages.Entry(progression, Package)["level"] = 5; return true; });
+        check(shop.Handle("/Progression/ProgressionPackage/AcquireUnlockableItem", JsonSerializer.SerializeToElement(buy)).Status == 200 &&
+            ProfileStore.Held(store.Current()["inventory"]!["items"]!.AsArray(), MissionService.RequisitionMixId) == 10000 - 4500,
+            "A standalone unlockable is not sold at its level for its price.");
+        var inventory = JsonNode.Parse(items.Apply("/Progression/inventory", JsonSerializer.SerializeToElement(new { items = Array.Empty<object>() })).GetRawText())!["items"]!
+            .AsArray().Select(i => (uint)i!["mixId"]!).ToHashSet();
+        check(inventory.Contains(RegisteredItems.WeaponChild(Drum, Rifle)), "A bought standalone unlockable is not held.");
     }
 }
