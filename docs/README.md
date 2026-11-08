@@ -31,6 +31,7 @@ The modding guide, in reading order:
    load order, compatibility.
 4. [Stats mods](modding/stats-mods.md): number changes without code, and the in-game editor's Local Stats.
 5. [Data mods](modding/data.md): models, textures, effects, sounds and icons; patch files, cosmetic packs and data specs.
+   [Animations](modding/animations.md): a unit copy's own joints, clips and state machine from a JSON file.
    [The asset kit](modding/assets.md): sharing patch files made from the game's resources without Arrowhead's bytes.
 6. [Content](modding/content.md): changing and adding weapons, projectiles, stratagems, entities, behaviours, abilities
    and difficulties.

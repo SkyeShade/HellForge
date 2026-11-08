@@ -153,6 +153,7 @@ try
         "mods-live" => ["--install", "--session-mods", "--target", "--seed"],
         "build-source-mods" => ["--install", "--progress", "--sync", "--sandbox"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
+        "unit-joints" => ["--install", "--game-data", "--unit"],
         "check-stats" => ["--mod"],
         "sdk-headers" => ["--repo", "--mode"],
         "editor-data" => ["--out", "--install", "--game"],
@@ -692,6 +693,16 @@ try
                 result = new { output, files = ModDataBuilder.Build(spec, modFolder, game, output, steamGame) };
             }
             else result = new { checkedSpec = Path.Combine(modFolder, DataSpecs.FileName), patches = spec.Patches.Count, resources, inputs = spec.Inputs };
+            break;
+        }
+        case "unit-joints":
+        {
+            // A unit's joints for a mod's animations: thin name hash, name where known, local rest transform.
+            using var game = new GameDataReader(options.TryGetValue("--install", out var jointsInstall) ? Path.Combine(new InstallLayout(jointsInstall).Game, "data") : Required("--game-data"));
+            result = AnimationSet.Named(game, Required("--unit")).Select(j => new
+            {
+                hash = $"0x{j.Joint.Name:X8}", name = j.Name, position = j.Joint.Position, rotation = j.Joint.Rotation, scale = j.Joint.Scale
+            }).ToList();
             break;
         }
         case "migrate":

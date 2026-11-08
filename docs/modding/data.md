@@ -160,6 +160,12 @@ crashes on an icon without one). `"prepare": "auto"` turns a red-and-white pictu
 takes the category's colour and green becomes white. The default, `"raw"`, uses the pixels as they are, and `"image"`
 keeps the picture's colours and transparency for widgets that draw it as it is (a difficulty icon).
 
+### animations
+
+`animations` gives a unit copy in the same patch animations of its own from a JSON file in the mod folder:
+`{"animations": "animations/rifle.json", "unit": "yourname/your_mod/rifle"}`. The file lists the joints that move, the
+clips and the state machine that plays them on the weapon's events ([animations](animations.md)).
+
 ### Checks
 
 Everything is checked before anything is written. Every resource the spec names must exist (all missing ones are
@@ -173,9 +179,9 @@ the built files, because with the same game build they are the same bytes on eve
 installation's cache, and with `--game-data <game/data> --out <folder>` anywhere. In the repository, use
 `scripts/Build-Mod.ps1 <folder> -Install <installation>`.
 
-Examples: `golden-liberator` (a model recoloured gold through its lookup texture), `talon-liberator` (blue effect
-copies and another weapon's sound banks), `cube-gun` (an OBJ model), `blue-sentry` (a sentry) and
-`stratagem-compendium` (icons).
+Examples: `golden-liberator` (a model recoloured gold through its lookup texture), `talon-liberator` (blue effect copies
+and another weapon's sound banks), `cube-gun` (an OBJ model), `animated-liberator` (animations), `blue-sentry` (a
+sentry) and `stratagem-compendium` (icons).
 
 ## Native edits in the manifest
 

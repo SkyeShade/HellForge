@@ -36,6 +36,9 @@ public sealed record CopyResource(string Where, ulong Type, ulong From, string N
 public sealed record MeshFile(string Obj, double Scale, bool YUp, bool UnitSpace = false);
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
 public sealed record IconResource(string Where, string Name, string Png, string Prepare) : DataResource(Where);
+// A unit's own animations from a JSON file in the mod folder (AnimationSet): its bones, clips and state machine, built for
+// the unit copy named Unit in the same patch, which then uses them.
+public sealed record AnimationsResource(string Where, string File, string Unit) : DataResource(Where);
 public sealed record Replacement(ulong From, ulong To, IReadOnlyList<int>? At);
 // Warm colour curve keys recoloured by a preset or towards a colour; Keys, if given, is how many keys must change.
 public sealed record CurveEdit(string? Preset, double[]? Colour, int? Keys);
@@ -68,7 +71,8 @@ public static partial class DataSpecs
 
     // Whether HellForge checks everything the spec builds, so mod sync may take it from any host: no "replace" (it writes
     // any 8 bytes over any value at any offset), only the types above (never lua), and each edit only on its own type.
-    // Icons are always checked: a 256 x 256 PNG becomes a texture and its GUI material. Null: checked; otherwise why not.
+    // Icons are always checked: a 256 x 256 PNG becomes a texture and its GUI material. Animations too: HellForge encodes
+    // every value of them itself, in range. Null: checked; otherwise why not.
     public static string? Unchecked(DataSpec spec)
     {
         foreach (var resource in spec.Patches.SelectMany(p => p.Resources))
@@ -143,12 +147,13 @@ public static partial class DataSpecs
     static DataResource Resource(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{at}: a resource is an object.");
-        var kinds = new[] { "copy", "include", "icon" }.Where(k => e.TryGetProperty(k, out _)).ToList();
-        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include or icon.");
+        var kinds = new[] { "copy", "include", "icon", "animations" }.Where(k => e.TryGetProperty(k, out _)).ToList();
+        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon or animations.");
         switch (kinds[0])
         {
             case "include": return ReadInclude(e, at);
             case "icon": return ReadIcon(e, at, folder, inputs);
+            case "animations": return ReadAnimations(e, at, folder, inputs);
         }
         return ReadCopy(e, at, folder, inputs);
     }
@@ -160,6 +165,19 @@ public static partial class DataSpecs
         if (ids.Count == 0) throw new InvalidDataException($"{at}: include lists no resources.");
         var (steam, build) = Source(e, at);
         return new IncludeResources(at, Type(e, at), ids) { Steam = steam, Build = build };
+    }
+
+    static AnimationsResource ReadAnimations(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
+        Fields(e, at, "animations", "unit");
+        var file = Text(e, "animations", at).Replace('\\', '/');
+        if (Path.IsPathRooted(file) || file.Split('/').Any(part => part is "" or "." or "..") || !file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"{at}: animations is a .json file in the mod folder, such as \"animations/my_gun.json\".");
+        if (folder != null && !File.Exists(Path.Combine(folder, file))) throw new InvalidDataException($"{at}: {file} is missing.");
+        var unit = Text(e, "unit", at);
+        if (unit.Length == 0) throw new InvalidDataException($"{at}: unit names the unit copy the animations are for.");
+        inputs.Add(file);
+        return new AnimationsResource(at, file, unit);
     }
 
     static IconResource ReadIcon(JsonElement e, string at, string? folder, ISet<string> inputs)

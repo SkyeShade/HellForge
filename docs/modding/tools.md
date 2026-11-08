@@ -62,6 +62,7 @@ HellForge.Cli assets-check --mod <folder>                                       
 HellForge.Cli assets-strip --mod <folder> [--out <folder>]                           # the mod without them, plus a recipe
 HellForge.Cli check-stats --mod <folder>                                             # check a stats mod
 HellForge.Cli build-data --mod <folder> --install <installation>                     # build a data spec
+HellForge.Cli unit-joints --install <installation> --unit <0x hash or name>          # a unit's joints, for animations
 HellForge.Cli mod-hash --mod <folder or zip>                                         # its content hash (mod sync)
 ```
 

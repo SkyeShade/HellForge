@@ -165,7 +165,7 @@ static class DataBuilderTests
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"test/mod/unit","colour":[1,1,1]}]}""", "unknown field colour");
             Refused("""{"archives":["NOTHEX"],"resources":[""" + copy + "]}", "16 lowercase hex");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"unit"}]}""", "the mod's own resource path");
-            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include or icon");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include, icon or animations");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"../icon.png","name":"test/mod/icon"}]}""", "a .png file in the mod folder");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"missing.png","name":"test/mod/icon"}]}""", "missing.png is missing");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"particles","copy":"0x1","name":"test/mod/fx","curves":{"preset":"pink"}}]}""", "warm-to-blue");
@@ -442,6 +442,178 @@ static class DataBuilderTests
             try { ModDataBuilder.Build(Spec($$$"""{"type":"texture","include":["0x100"],"source":{"build":"{{{label}}}"}}"""), mod, gameReader, output + "4"); throw new Exception("Shadowed."); }
             catch (InvalidDataException error) { check(error.Message.Contains("include them from the game"), "Refused for another reason: " + error.Message); }
         });
+
+        test("Animation resources: bones, clips and state machines encode as the game's and read back", () =>
+        {
+            check(AnimationClip.Quantize(1) == 36043 && AnimationClip.Quantize(0) == 32767 && AnimationClip.QuantizeRotation([0, 0, 0, 1]) == 2149582851u,
+                "A scale of 1, a position of 0 or the identity rotation quantize differently from the game's clips.");
+            reject(() => AnimationClip.Quantize(11));
+            var q = AnimationClip.DequantizeRotation(AnimationClip.QuantizeRotation([0, 0, Math.Sqrt(0.5), Math.Sqrt(0.5)]));
+            check(Math.Abs(q[2] - Math.Sqrt(0.5)) < 2e-3 && Math.Abs(q[3] - Math.Sqrt(0.5)) < 2e-3, $"A quarter turn about Z does not read back: {string.Join(", ", q)}");
+
+            var bones = AnimationBones.For(["bolt", "attach_mag"]);
+            check(bones.Names.SequenceEqual(["StingrayEntityRoot", "FbxAxisSystem_ConvertNode", "bolt", "attach_mag"]), "The root entries do not come first: " + string.Join(", ", bones.Names));
+            var bonesBytes = AnimationBones.Write(bones);
+            check(AnimationBones.Write(AnimationBones.Read(bonesBytes)).SequenceEqual(bonesBytes) && AnimationBones.Read(bonesBytes).Names.SequenceEqual(bones.Names), "Bones do not read back.");
+            reject(() => AnimationBones.Read(bonesBytes[..12]));
+
+            var one = AnimationClip.Quantize([0, 0, 0]);
+            AnimationClip.Pose Rest() => new(one, AnimationClip.QuantizeRotation([0, 0, 0, 1]), AnimationClip.Quantize([1, 1, 1]));
+            var clip = new AnimationClip.Clip(0.5f, [Rest(), Rest(), Rest(), Rest()],
+            [
+                new(AnimationClip.Channel.Position, 3, 200, AnimationClip.Quantize([0, -0.1, 0]), 0),
+                new(AnimationClip.Channel.Position, 3, 500, AnimationClip.Quantize([0, -0.2, 0]), 0),
+                new(AnimationClip.Channel.Rotation, 2, 500, null, AnimationClip.QuantizeRotation([0, 0, Math.Sqrt(0.5), Math.Sqrt(0.5)])),
+            ], [new(0.25f, AnimationBones.Thin("mag_out"))]);
+            var clipBytes = AnimationClip.Write(clip);
+            var read = AnimationClip.Read(clipBytes);
+            check(AnimationClip.Write(read).SequenceEqual(clipBytes) && read.Length == 0.5f && read.Rest.Count == 4 && read.Triggers.Single().Hash == AnimationBones.Thin("mag_out"),
+                "A clip does not read back.");
+            check(BinaryPrimitives.ReadInt32LittleEndian(clipBytes.AsSpan(0x0C)) == clipBytes.Length, "A clip's first copy does not hold the file size at +0x0C.");
+            check(read.Keys.Count(k => k.Bone == 3 && k.Channel == AnimationClip.Channel.Position) == 2, "The keys of a curve do not read back.");
+            reject(() => AnimationClip.Write(clip with { Rest = [Rest()] }));
+            reject(() => AnimationClip.Read(clipBytes[..(clipBytes.Length / 2 - 4)]));
+
+            var machine = new AnimationStateMachine.Machine(1,
+            [
+                new(0,
+                [
+                    new(EngineHash.Murmur64A("idle"u8), 0, [0x1234], [1f], true, false, [(AnimationBones.Thin("reload"), 0)], [new(1, 0.1f)], [], AnimationSet.Unheard, 0,
+                        AnimationStateMachine.Speed(1), [], []),
+                    new(EngineHash.Murmur64A("reload"u8), 0, [0x5678], [1f], false, false, [], [], [new(0.2f, AnimationBones.Thin("mag_out"), 1)], AnimationBones.Thin("reload_done"), 0.1f,
+                        AnimationStateMachine.Speed(1), [], []),
+                ]),
+            ], new[] { AnimationSet.Unheard, AnimationBones.Thin("reload"), AnimationBones.Thin("reload_done"), AnimationBones.Thin("mag_out") }.Order().ToList(), [], [[0, 0, 1, 1]]);
+            var machineBytes = AnimationStateMachine.Write(machine);
+            var machineRead = AnimationStateMachine.Read(machineBytes);
+            check(AnimationStateMachine.Write(machineRead).SequenceEqual(machineBytes) && machineRead.Layers[0].States[1].EmitEnd == AnimationBones.Thin("reload_done") &&
+                machineRead.Masks.Single().SequenceEqual([0f, 0, 1, 1]), "A state machine does not read back.");
+            reject(() => AnimationStateMachine.Write(machine with { Events = [.. machine.Events.Reverse()] }));
+            reject(() => AnimationStateMachine.Read(machineBytes[..0x40]));
+        });
+
+        test("A mod's animations JSON: bones bound to the unit's joints, curves held to the end, every mistake refused by its field", () =>
+        {
+            var unit = JointedUnit();
+            var joints = AnimationSet.UnitJoints(unit);
+            check(joints.Count == 2 && joints[0].Name == AnimationBones.Thin("bolt") && joints[0].Position.SequenceEqual([0, 0.125, 0.0625]) &&
+                Math.Abs(joints[1].Rotation[2] - Math.Sqrt(0.5)) < 1e-6 && Math.Abs(joints[1].Rotation[3] - Math.Sqrt(0.5)) < 1e-6,
+                "The unit's joints (column-major rotations) do not read: " + string.Join(" | ", joints.Select(j => string.Join(",", j.Rotation))));
+            const string json = """
+                // a reload: the magazine drops and comes back, the bolt runs forward at the end
+                {"bones": ["bolt", "attach_mag"],
+                 "clips": {
+                   "idle": {"length": 1},
+                   "reload": {"length": 2, "keys": {"attach_mag": {"position": [[0.5, 0, 0, -0.2], [1.5, 0, 0, 0]]},
+                                                    "bolt": {"position": [[1.8, 0, 0.05, 0.0625]]}},
+                              "events": [[0.5, "mag_out"], [1.5, "mag_in"]]}},
+                 "layers": [{"default": "idle", "states": {
+                   "idle": {"clip": "idle", "loop": true, "on": {"reload": ["reload", 0.1]}},
+                   "reload": {"clip": "reload", "end": "reload_done", "on": {"reload_done": "idle", "0x0000BEEF": "idle"}}}}]}
+                """;
+            var built = AnimationSet.Build(json, "content/mod/gun/gun", joints);
+            check(built.Clips.Select(c => c.Clip).SequenceEqual(["idle", "reload"]), "The clips are not named as in the file.");
+            var reload = AnimationClip.Read(built.Clips[1].Data);
+            check(reload.Rest[2].Position.SequenceEqual(AnimationClip.Quantize([0, 0.125, 0.0625])) && reload.Rest[3].Rotation == AnimationClip.QuantizeRotation(joints[1].Rotation) &&
+                reload.Rest[0].Rotation == 2149582851u, "Rest poses are not the unit's joints (identity for the root entries).");
+            check(reload.Keys.Where(k => k.Bone == 2).Select(k => k.Ms).SequenceEqual([1800, 2000]) && reload.Keys.Where(k => k.Bone == 3).Select(k => k.Ms).SequenceEqual([500, 1500, 2000]),
+                "Curves are not held to the clip's end: " + string.Join(", ", reload.Keys.Select(k => $"{k.Bone}@{k.Ms}")));
+            check(reload.Triggers.Select(t => t.Hash).SequenceEqual([AnimationBones.Thin("mag_out"), AnimationBones.Thin("mag_in")]), "The clip's events are not sent.");
+            var machine = AnimationStateMachine.Read(built.Machine);
+            var states = machine.Layers.Single().States;
+            check(states[0].Clips.Single() == EngineHash.Murmur64A("content/mod/gun/gun/animation/idle"u8) && states[0].Loop && states[0].EmitEnd == AnimationSet.Unheard &&
+                states[0].Links.Single() is { Target: 1, BlendTime: 0.1f } && states[1].EmitEnd == AnimationBones.Thin("reload_done") &&
+                states[1].Events.Select(e => e.Event).Order().SequenceEqual(new[] { 0xBEEFu, AnimationBones.Thin("reload_done") }.Order()) && states[1].Links.Count == 1,
+                "The state machine does not play the clips or link the states.");
+            check(machine.Events.SequenceEqual(machine.Events.Order()) && machine.Events.Contains(AnimationBones.Thin("reload")), "The machine's events are not all listed, sorted.");
+            check(AnimationBones.Read(built.Bones).Names.Count == 4, "The bones resource does not list the root entries and the moving joints.");
+            check(AnimationSet.Named(unit, built.Bones).Select(j => j.Name).SequenceEqual(["bolt", "attach_mag"]) && AnimationSet.Named(unit, null).All(j => j.Name == null),
+                "A unit's joints are not named from its bones resource.");
+
+            void Refused(string from, string to, string reason)
+            {
+                var bad = json.Replace(from, to);
+                check(bad != json, "The refusal case does not change the file: " + from);
+                try { AnimationSet.Build(bad, "content/mod/gun/gun", joints); }
+                catch (InvalidDataException error) { check(error.Message.Contains(reason), $"Refused for another reason: {error.Message}"); return; }
+                throw new Exception("Accepted: " + to);
+            }
+            Refused("\"bones\": [\"bolt\", \"attach_mag\"]", "\"bones\": [\"bolt\", \"attach_mag\", \"stock\"]", "stock, which is not a joint of the unit");
+            Refused("\"bones\": [\"bolt\", \"attach_mag\"]", "\"bones\": [\"bolt\", \"bolt\"]", "each joint once");
+            Refused("[[0.5, 0, 0, -0.2]", "[[0, 0, 0, -0.2]", "the rest pose is the key at 0");
+            Refused("[1.5, 0, 0, 0]]", "[0.4, 0, 0, 0]]", "time order");
+            Refused("[1.5, 0, 0, 0]]", "[2.5, 0, 0, 0]]", "within the clip");
+            Refused("[1.5, 0, 0, 0]]", "[1.5, 0, 0]]", "each key is [time, 3 values]");
+            Refused("\"bolt\": {\"position\"", "\"stock\": {\"position\"", "keys names stock, which is not in bones");
+            Refused("\"clip\": \"reload\"", "\"clip\": \"inspect\"", "clip inspect is not in clips");
+            Refused("\"reload_done\": \"idle\"", "\"reload_done\": \"walk\"", "walk is not a state of this layer");
+            Refused("\"loop\": true", "\"loop\": true, \"colour\": 1", "colour is not a field here");
+            Refused("\"default\": \"idle\"", "\"default\": \"run\"", "default names one of its states");
+            Refused("\"0x0000BEEF\"", "\"0xBEEF\"", "0x<8 hex digits>");
+            Refused("[1.5, \"mag_in\"]", "[2.5, \"mag_in\"]", "outside the clip");
+            Refused("\"length\": 1}", "\"length\": 0}", "length is the clip's seconds");
+            Refused("[\"reload\", 0.1]", "[\"reload\", 11]", "the blend is 0 to 10 seconds");
+            try { AnimationSet.Build(json.Replace("\"attach_mag\"]", "\"attach_mag\"], \"rest\": {\"stock\": {}}"), "content/mod/gun/gun", joints); throw new Exception("Accepted a rest for a bone not listed."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("rest names stock"), "Refused for another reason: " + error.Message); }
+
+            // Without the unit's joints, every moving bone needs its rest given.
+            try { AnimationSet.Build(json, "content/mod/gun/gun"); throw new Exception("Built without rest poses."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("rest has no transform for bolt"), "Refused for another reason: " + error.Message); }
+            var withRest = AnimationSet.Build(json.Replace("\"attach_mag\"]", "\"attach_mag\"], \"rest\": {\"bolt\": {\"position\": [0, 0.125, 0.0625]}, \"attach_mag\": {}}"), "content/mod/gun/gun");
+            check(AnimationClip.Read(withRest.Clips[1].Data).Rest[2].Position.SequenceEqual(AnimationClip.Quantize([0, 0.125, 0.0625])), "A given rest pose is not used.");
+        });
+
+        test("A data spec's animations build for a unit copy: its bones, state machine and clips under its name, the unit pointed at them", () =>
+        {
+            var game = Path.Combine(root, "animations-game");
+            WriteGameData(game);
+            var mod = Directory.CreateDirectory(Path.Combine(root, "animations-mod")).FullName;
+            Directory.CreateDirectory(Path.Combine(mod, "animations"));
+            File.WriteAllText(Path.Combine(mod, "animations", "gun.json"), """
+                {"bones": ["attach_mag"], "clips": {"idle": {"length": 1}, "reload": {"length": 2, "keys": {"attach_mag": {"position": [[1, 0, 0, -0.2]]}}}},
+                 "layers": [{"default": "idle", "states": {"idle": {"clip": "idle", "loop": true, "on": {"reload": "reload"}}, "reload": {"clip": "reload", "end": "done", "on": {"done": "idle"}}}}]}
+                """);
+            DataSpec Spec(string resources)
+            {
+                File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{{resources}}]}]}""");
+                return DataSpecs.Load(mod)!;
+            }
+            const string copy = """{"type":"unit","copy":"0x6666","name":"test/mod/gun"}""";
+            const string animations = """{"animations":"animations/gun.json","unit":"test/mod/gun"}""";
+            var spec = Spec(copy + "," + animations);
+            check(spec.Inputs.Contains("animations/gun.json") && spec.Patches[0].Resources[1] is AnimationsResource { File: "animations/gun.json", Unit: "test/mod/gun" },
+                "The animations and their file are not part of the spec (and of its cache key).");
+            foreach (var (bad, why) in new[] { ("""{"animations":"../gun.json","unit":"test/mod/gun"}""", "a .json file in the mod folder"),
+                ("""{"animations":"animations/none.json","unit":"test/mod/gun"}""", "is missing"), ("""{"animations":"animations/gun.json"}""", "unit"),
+                ("""{"animations":"animations/gun.json","unit":"test/mod/gun","speed":2}""", "unknown field speed") })
+            {
+                try { Spec(copy + "," + bad); throw new Exception("Accepted: " + bad); }
+                catch (InvalidDataException error) { check(error.Message.Contains(why), "Refused for another reason: " + error.Message); }
+            }
+
+            using var gameReader = new GameDataReader(game);
+            var output = Path.Combine(root, "animations-out");
+            ModDataBuilder.Build(spec, mod, gameReader, output);
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0.gpu_resources")), []);
+            var name = EngineHash.Murmur64A("test/mod/gun"u8);
+            var unit = built[new(ResourceTypes.Unit, name)].Main;
+            check(BinaryPrimitives.ReadUInt64LittleEndian(unit.AsSpan(0x08)) == name && BinaryPrimitives.ReadUInt64LittleEndian(unit.AsSpan(0x20)) == name &&
+                unit.AsSpan(0x28).SequenceEqual(JointedUnit().AsSpan(0x28)), "The unit copy does not name its own bones and state machine, or more of it changed.");
+            check(built.ContainsKey(new(ResourceTypes.Bones, name)) && built.ContainsKey(new(ResourceTypes.StateMachine, name)) &&
+                built.ContainsKey(new(ResourceTypes.Animation, EngineHash.Murmur64A("test/mod/gun/animation/idle"u8))) &&
+                built.ContainsKey(new(ResourceTypes.Animation, EngineHash.Murmur64A("test/mod/gun/animation/reload"u8))), "The animation resources are missing: " +
+                string.Join(", ", built.Keys.Select(k => ResourceTypes.Describe(k.Type))));
+            var reload = AnimationClip.Read(built[new(ResourceTypes.Animation, EngineHash.Murmur64A("test/mod/gun/animation/reload"u8))].Main);
+            check(reload.Rest[2].Rotation == AnimationClip.QuantizeRotation(AnimationSet.UnitJoints(JointedUnit())[1].Rotation), "The clips' rest poses are not the copied unit's joints.");
+
+            // animations for a unit not copied in that patch, or a file with a mistake, are refused by the resource
+            try { ModDataBuilder.Build(Spec(animations), mod, gameReader, output + "2"); throw new Exception("Built animations for no unit."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("not a unit copy in this patch"), "Refused for another reason: " + error.Message); }
+            File.WriteAllText(Path.Combine(mod, "animations", "gun.json"), """{"bones": ["stock"], "clips": {"idle": {"length": 1}}, "layers": [{"default": "idle", "states": {"idle": {"clip": "idle"}}}]}""");
+            try { ModDataBuilder.Build(Spec(copy + "," + animations), mod, gameReader, output + "3"); throw new Exception("Built a bone the unit lacks."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("animations/gun.json") && error.Message.Contains("stock"), "The mistake is not named: " + error.Message); }
+        });
     }
 
     // The synthetic game data: archive 1111111111111111 with a unit naming a material, the material naming a colour
@@ -457,6 +629,29 @@ static class DataBuilderTests
         foreach (var at in new[] { 0x08, 0x38, 0x40 }) BinaryPrimitives.WriteUInt64LittleEndian(main.AsSpan(at), unit);
         BinaryPrimitives.WriteUInt64LittleEndian(main.AsSpan(0x50), unit); // a body's own data that happens to hold the same bits
         return main;
+    }
+
+    // A unit with two joints at +0x34 as the game lays them out: bolt (no rotation, at 0, 0.125, 0.0625) and attach_mag
+    // (a quarter turn about Z, stored column-major), each joint 64 bytes, then world matrices, u16 pairs and thin names.
+    internal static byte[] JointedUnit()
+    {
+        const int at = 0x80, n = 2;
+        var unit = new byte[at + 16 + 64 * n * 2 + 4 * n + 4 * n];
+        BinaryPrimitives.WriteUInt64LittleEndian(unit.AsSpan(0x40), 0x1111);
+        BinaryPrimitives.WriteInt32LittleEndian(unit.AsSpan(0x34), at);
+        BinaryPrimitives.WriteInt32LittleEndian(unit.AsSpan(at), n);
+        void Joint(int i, float[] columnMajor, float[] position)
+        {
+            var j = at + 16 + 64 * i;
+            foreach (var (v, k) in columnMajor.Concat(position).Concat([1f, 1f, 1f]).Select((v, k) => (v, k)))
+                BinaryPrimitives.WriteSingleLittleEndian(unit.AsSpan(j + 4 * k), v);
+        }
+        Joint(0, [1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0.125f, 0.0625f]);
+        Joint(1, [0, 1, 0, -1, 0, 0, 0, 0, 1], [0, 0, 0]); // column 0 (x axis) = (0, 1, 0): x turned onto y
+        var names = at + 16 + 64 * n * 2 + 4 * n;
+        BinaryPrimitives.WriteUInt32LittleEndian(unit.AsSpan(names), AnimationBones.Thin("bolt"));
+        BinaryPrimitives.WriteUInt32LittleEndian(unit.AsSpan(names + 4), AnimationBones.Thin("attach_mag"));
+        return unit;
     }
 
     static void WriteGameData(string folder)
@@ -475,6 +670,7 @@ static class DataBuilderTests
             [new(ResourceTypes.Particles, 0x4444)] = new(Floats(curve), [], []),
             [bank] = new("bank-first"u8.ToArray(), [], Enumerable.Repeat((byte)9, 40).ToArray()),
             [new(ResourceTypes.Unit, EngineHash.Murmur64A("test/mod/taken"u8))] = new([1], [], []),
+            [new(ResourceTypes.Unit, 0x6666)] = new(JointedUnit(), [5], []),
         });
         var second = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [bank] = new("bank-second"u8.ToArray(), [], [1, 2, 3]) });
         WriteBundles(folder, new Dictionary<string, byte[]>

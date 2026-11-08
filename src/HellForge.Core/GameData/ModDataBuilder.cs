@@ -74,8 +74,35 @@ public static class ModDataBuilder
                         AddCopy(resources, copy, added);
                         break;
                 }
+            foreach (var animations in patch.Resources.OfType<AnimationsResource>())
+                AddAnimations(resources, animations, added);
             return resources;
         }
+        // A unit copy's own animations: its bones and state machine under the unit's name, its clips beside it, and the
+        // unit pointed at them (header +0x08 bones, +0x20 state machine).
+        void AddAnimations(Dictionary<ResourceKey, ResourceParts> resources, AnimationsResource a, HashSet<ResourceKey> added)
+        {
+            var name = Hash(a.Unit);
+            var unitKey = new ResourceKey(ResourceTypes.Unit, name);
+            if (!resources.TryGetValue(unitKey, out var unit))
+                throw new InvalidDataException($"{a.Where}: unit {a.Unit} is not a unit copy in this patch; copy a unit under that name first.");
+            AnimationSet.Built set;
+            try { set = AnimationSet.Build(File.ReadAllText(Path.Combine(modFolder, a.File)), a.Unit, AnimationSet.UnitJoints(unit.Main)); }
+            catch (Exception error) when (error is InvalidDataException or System.Text.Json.JsonException) { throw new InvalidDataException($"{a.Where} ({a.File}): {error.Message}"); }
+            var main = unit.Main.ToArray();
+            BitConverter.TryWriteBytes(main.AsSpan(0x08), name);
+            BitConverter.TryWriteBytes(main.AsSpan(0x20), name);
+            resources[unitKey] = unit with { Main = main };
+            void Add(ResourceKey key, byte[] data)
+            {
+                AddResource(resources, a.Where, key, new(data, [], []));
+                added.Add(key);
+            }
+            Add(new(ResourceTypes.Bones, name), set.Bones);
+            Add(new(ResourceTypes.StateMachine, name), set.Machine);
+            foreach (var (clip, data) in set.Clips) Add(new(ResourceTypes.Animation, Hash(AnimationSet.ClipName(a.Unit, clip))), data);
+        }
+
         // A copy under its own name, edited, and a unit copy's physics under that name too.
         void AddCopy(Dictionary<ResourceKey, ResourceParts> resources, CopyResource copy, HashSet<ResourceKey> added)
         {
