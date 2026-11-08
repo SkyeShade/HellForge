@@ -111,14 +111,27 @@ static int LwBits(uint32_t v) { int c = 0; for (; v; v &= v - 1) c++; return c; 
  * kept through state changes and the squad's slowest-member sync; the convoy code does the same, P). The speed is put
  * back as the convoy does (+0x48 = -1.0, then 0x7F0180(manager, unit, settings + block) with settings = 0x511CC0(the
  * unit's resource), block +0x64 when engaged, else +0x24; 0x864907..0x864926) when a member engages, the squad arrives
- * within LW_FIGHT_JOIN, or the intent ends. Native target sharing pulls arrivals into the fight. */
+ * within LW_FIGHT_JOIN, or the intent ends. A fight draws squads once it lasted LW_FIGHT_HOLD, has 3 engaged or is a call.
+ * Its target is an engaged unit's Behavior target (record +0x18 id, +0x1C position, +0x78 set; living-world-p2-contact)
+ * on the Helldivers' side. Arrivals with nobody engaged hear it like a told investigation (0x888E50 at the target). */
 #define LW_FIGHT_CLUSTER 40.0f /* engaged units within this are one fight (D) */
 #define LW_FIGHT_MATCH 60.0f   /* a cluster within this of a known fight is that fight (D) */
 #define LW_FIGHT_REACH 400.0f  /* squads sent from within this (D; x2 on extra large maps) */
 #define LW_FIGHT_JOIN 40.0f    /* arrived within this of the fight (D) */
-typedef struct { float pos[3]; int engaged, peak; ULONGLONG born, seen; uint8_t sent, call, live; } LwFight;
+#define LW_FIGHT_HOLD 5000     /* ms a small fight lasts before it draws squads: alerts of a second or two end before help arrives (D) */
+typedef struct { float pos[3], tpos[3]; int engaged, peak; uint32_t target; ULONGLONG born, seen; uint8_t sent, call, live; } LwFight;
 static LwFight g_lwFights[16];
 static struct { uint32_t fights, calls, sent, joined, ended; } g_lwRush; /* 30 s counters */
+/* a unit's Behavior target on the Helldivers' side, or 0 */
+static uint32_t LwBehaviorTarget(uint32_t unit, float* pos)
+{
+    uintptr_t beh = 0, recs = 0; uint32_t bi = 0;
+    if (!EvpPtr(g_lw.game + 0x3326740u, &beh) || !EvpHash(beh + 0x40, unit, 8, 4, &bi) || !EvpPtr(beh + 0x60, &recs)) return 0;
+    uintptr_t rec = recs + 0x1F8ull * bi; uint8_t has = 0;
+    if (SafeRead(rec + 0x78, &has, 1) || !has || SafeRead(rec + 0x1C, pos, 12) || !isfinite(pos[0]) || !isfinite(pos[1])) return 0;
+    uint32_t target = EvpU32(rec + 0x18, 0);
+    return target && LwPlayerSide(target) ? target : 0;
+}
 static uintptr_t LwAiRecord(uint32_t unit)
 {
     uintptr_t ai = 0, recs = 0; uint32_t idx = 0;
@@ -154,7 +167,8 @@ static void LwIntentEnd(LwSquad* q, const char* why)
 {
     ULONGLONG now = GetTickCount64();
     char peak[96] = "";
-    if (q->intent == LW_INVESTIGATE && q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, "; %d of %d members investigated (alert 2+, the first after %.1f s)", LwBits(q->intentPeak), q->seenCount, (double)q->intentPeakAt);
+    if (q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, q->intent == LW_INVESTIGATE ? "; %d of %d members investigated (alert 2+, the first after %.1f s)"
+        : "; %d of %d members engaged at the fight (alert 3+, the first after %.1f s)", LwBits(q->intentPeak), q->seenCount, (double)q->intentPeakAt);
     if (q->rushed && q->state == LW_ONLINE) LwRushMembers(q, q->seen, q->seenCount, 0);
     q->rushed = 0;
     Note("living world: squad %d %s ends (%s) after %.0f s, %s; %s (%.0f m from it, %.0f m when sent)%s", (int)(q - g_lwSquads), q->intent == LW_REINFORCE ? "reinforcement" : "investigation",
@@ -292,14 +306,28 @@ static void LwReinforceOnline(LwSquad* q, const uint32_t* members, int n, const 
         if (engaged || there)
         {
             if (q->rushed) LwRushMembers(q, members, n, 0);
-            q->intentStage = 1; q->intentStageAt = now; g_lwRush.joined++;
+            q->intentStage = 1; q->intentStageAt = now; q->intentPeak = 0; q->intentPeakAt = 0; q->tells = 0; q->tellAt = now; g_lwRush.joined++;
             Note("living world: squad %d %s at (%.0f, %.0f) after %.0f s, %d of %d members engaged", (int)(q - g_lwSquads), engaged ? "joined the fight" : "reached the fight",
                 (double)at[0], (double)at[1], (double)(now - q->intentAt) / 1000.0, engaged, n);
+        }
+        else
+        {
+            if (!LwFightOf(q)) { LwIntentEnd(q, "the fight ended before it got there"); return; }
+            if (now - q->intentAt > 240000) LwIntentEnd(q, "not there in 240 s");
             return;
         }
-        if (!LwFightOf(q)) { LwIntentEnd(q, "the fight ended before it got there"); return; }
-        if (now - q->intentAt > 240000) LwIntentEnd(q, "not there in 240 s");
-        return;
+    }
+    for (int k = 0; k < n; k++) if (LwAlert(members[k]) >= 3) for (int i = 0; i < q->seenCount && i < 32; i++) if (q->seen[i] == members[k])
+    { if (q->intentPeak == 0) q->intentPeakAt = (float)(now - q->intentStageAt) / 1000.0f; q->intentPeak |= 1u << i; }
+    /* nobody engaged at the fight: every 10 s, up to 3 times, the members hear the fight's target where it is */
+    if (!engaged && q->tells < 3 && now >= q->tellAt && LwFightOf(q) && g_lwFights[q->fight].target)
+    {
+        typedef void (*HearFn)(void*, uint32_t, uint32_t, const float*, float);
+        LwFight* fi = &g_lwFights[q->fight]; int told = 0;
+        for (int k = 0; k < n; k++) { uint32_t det = LwAwareDetector(members[k]); if (det) { ((HearFn)(g_lw.game + 0x888E50u))(NULL, det, fi->target, fi->tpos, 40.0f); told++; } }
+        q->tells++; q->tellAt = now + 10000;
+        Note("living world: squad %d at the fight: %d of %d members told of its target %08X at (%.0f, %.0f), %.0f m away (tell %d)", (int)(q - g_lwSquads), told, n, fi->target,
+            (double)fi->tpos[0], (double)fi->tpos[1], (double)sqrtf(LwDist2(at, fi->tpos[0], fi->tpos[1])), q->tells);
     }
     if ((!LwFightOf(q) && !engaged) || now - q->intentStageAt > 180000) LwIntentEnd(q, LwFightOf(q) ? "180 s at the fight" : "the fight is over");
 }
@@ -472,7 +500,7 @@ static void LwFightScan(void)
     if (level != g_lwWorld.lg) { level = g_lwWorld.lg; memset(g_lwFights, 0, sizeof g_lwFights); calls = EvpU32(g_lwWorld.dir + 0x51950, 0); next = 0; }
     if (now < next) return;
     next = now + 1000;
-    float cx[32][3]; int cn[32], clusters = 0; uint8_t ccall[32];
+    float cx[32][3], ctp[32][3]; int cn[32], clusters = 0; uint8_t ccall[32]; uint32_t ct[32];
     uintptr_t al = 0, ptrs = 0, levels = 0;
     if (EvpPtr(g_lw.game + 0x3326528u, &al) && EvpPtr(al + 0x38, &ptrs) && EvpPtr(al + 0x50, &levels))
     {
@@ -487,7 +515,8 @@ static void LwFightScan(void)
             if (!id || !ActHealthOf(g_lw.game, id, &h) || !h.unit || !EvpUnitPosition(h.unit, p) || !isfinite(p[0])) continue;
             int c = 0;
             for (; c < clusters; c++) if (LwDist2(cx[c], p[0], p[1]) < LW_FIGHT_CLUSTER * LW_FIGHT_CLUSTER) break;
-            if (c == clusters) { if (clusters == 32) continue; clusters++; cx[c][0] = p[0]; cx[c][1] = p[1]; cx[c][2] = p[2]; cn[c] = 0; ccall[c] = 0; }
+            if (c == clusters) { if (clusters == 32) continue; clusters++; cx[c][0] = p[0]; cx[c][1] = p[1]; cx[c][2] = p[2]; cn[c] = 0; ccall[c] = 0; ct[c] = 0; }
+            if (!ct[c]) ct[c] = LwBehaviorTarget(id, ctp[c]);
             cx[c][0] = (cx[c][0] * (float)cn[c] + p[0]) / (float)(cn[c] + 1); cx[c][1] = (cx[c][1] * (float)cn[c] + p[1]) / (float)(cn[c] + 1);
             cn[c]++;
         }
@@ -497,7 +526,7 @@ static void LwFightScan(void)
     {
         float cp[3] = {0, 0, 0};
         if (!SafeRead(g_lwWorld.dir + 0x3A378, cp, 12) && isfinite(cp[0]) && isfinite(cp[1]))
-        { cx[clusters][0] = cp[0]; cx[clusters][1] = cp[1]; cx[clusters][2] = cp[2]; cn[clusters] = 8; ccall[clusters] = 1; clusters++; g_lwRush.calls++; }
+        { cx[clusters][0] = cp[0]; cx[clusters][1] = cp[1]; cx[clusters][2] = cp[2]; cn[clusters] = 8; ccall[clusters] = 1; ct[clusters] = 0; clusters++; g_lwRush.calls++; }
         calls = nowCalls;
     }
     for (int c = 0; c < clusters; c++)
@@ -517,8 +546,15 @@ static void LwFightScan(void)
                 ccall[c] ? " (a call for reinforcements)" : "", (double)sqrtf(LwNearestPlayer2(cx[c][0], cx[c][1])));
         }
         LwFight* fi = &g_lwFights[f];
-        memcpy(fi->pos, cx[c], sizeof fi->pos);
-        fi->engaged = ccall[c] ? (fi->engaged > cn[c] ? fi->engaged : cn[c]) : cn[c];
+        if (ccall[c]) { if (fi->seen != now) memcpy(fi->pos, cx[c], sizeof fi->pos); if (cn[c] > fi->engaged) fi->engaged = cn[c]; }
+        else if (fi->seen == now) /* a second cluster of this fight in this scan: one centre, weighted by units */
+        {
+            int m = fi->engaged + cn[c];
+            for (int a = 0; a < 3; a++) fi->pos[a] = (fi->pos[a] * (float)fi->engaged + cx[c][a] * (float)cn[c]) / (float)m;
+            fi->engaged = m;
+        }
+        else { memcpy(fi->pos, cx[c], sizeof fi->pos); fi->engaged = cn[c]; }
+        if (ct[c]) { fi->target = ct[c]; memcpy(fi->tpos, ctp[c], sizeof fi->tpos); }
         if (fi->engaged > fi->peak) fi->peak = fi->engaged;
         fi->seen = now; fi->call |= ccall[c];
     }
@@ -535,7 +571,7 @@ static void LwFightScan(void)
         }
         int want = 1 + fi->engaged / 8;
         if (want > 3) want = 3;
-        if (fi->seen == now && fi->sent < want) LwReinforce(f, want - fi->sent);
+        if (fi->seen == now && fi->sent < want && (now - fi->born >= LW_FIGHT_HOLD || fi->engaged >= 3 || fi->call)) LwReinforce(f, want - fi->sent);
     }
 }
 static void LwRushNote(void)

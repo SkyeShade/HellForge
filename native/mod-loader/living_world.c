@@ -487,8 +487,8 @@ typedef struct LwSquad
     uint8_t pulled;                 /* 2: held in place by the test stage until it comes online (the only value) */
     uint8_t intent, intentStage, intentSent; /* Phase 2 (living_world_intent.c): LW_PATROL / LW_INVESTIGATE; 1 = at the point; goal sent online */
     float target[3]; uint32_t intentSource, intentSearch; ULONGLONG intentAt, intentStageAt, intentFree;
-    uint32_t intentPeak; float intentPeakAt, intentFrom; /* intentFrom: m from the point when sent */
-    int8_t fight; uint8_t rushed; ULONGLONG retargetAt; /* REINFORCE: its fight (g_lwFights index); members sped up (0x7EFFC0); next goal refresh */ /* members (bit = seen index) that reached alert 2+ after being told; seconds to the first */
+    uint32_t intentPeak; float intentPeakAt, intentFrom; /* members (bit = seen index) at alert 2+ (REINFORCE: 3+) at the point; seconds to the first; m from the point when sent */
+    int8_t fight; uint8_t rushed, tells; ULONGLONG retargetAt, tellAt; /* REINFORCE: its fight (g_lwFights index); members sped up (0x7EFFC0); fight target tells; next goal refresh, next tell */
 } LwSquad;
 static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
 static void LwIntentOffline(LwSquad* q); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
