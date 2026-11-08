@@ -740,7 +740,7 @@ static int LwGarrisonLiving(uint32_t net, uint32_t* mask)
     }
     return found;
 }
-/* the squad at the garrison, offline: the recipe, then the squad is the garrison. 1 = done, 0 = not yet, -1 = never */
+/* the squad at the garrison, offline: the recipe. The points opened (k <= survivors: those units become the garrison) when done, 0 = not yet, -1 = never */
 static int LwRetakeApply(LwSquad* q, LwGarrison* g)
 {
     uintptr_t gf, synced, runtime, lists, descriptors, points, d;
@@ -785,7 +785,7 @@ static int LwRetakeApply(LwSquad* q, LwGarrison* g)
         "U %08X %08X %08X -> %08X %08X %08X), %d of %u points held, refill flag %u; it fills when a player comes within 150 m", (int)(q - g_lwSquads), g->entity,
         (double)g->center[0], (double)g->center[1], (double)(g->retakeAt - q->intentAt) / 1000.0, chosen, k, chosen, fresh, owed, killed,
         u[0], u[1], u[2], after[0], after[1], after[2], held, n, flag);
-    return 1;
+    return chosen;
 }
 static void LwRetakeScan(void)
 {
@@ -839,8 +839,15 @@ static int LwRetakeArrived(LwSquad* q, ULONGLONG now)
     int done = g ? LwRetakeApply(q, g) : -1;
     if (done > 0)
     {
-        q->intent = LW_PATROL; q->intentStage = 0; q->garrison = -1; q->state = LW_FREE; q->survivors = 0; /* it became the garrison */
         g_lwWorld.retook++;
+        if (done < q->survivors) /* the rest patrol on as the same squad */
+        {
+            char why[64]; snprintf(why, sizeof why, "retook it; %d survivors patrol on", q->survivors - done);
+            q->survivors = (uint8_t)(q->survivors - done);
+            LwIntentEnd(q, why);
+            return 0;
+        }
+        q->intent = LW_PATROL; q->intentStage = 0; q->garrison = -1; q->state = LW_FREE; q->survivors = 0; /* it became the garrison */
         return 1;
     }
     if (done == 0 && now - q->intentStageAt < LW_RETAKE_WAIT) return 1;
