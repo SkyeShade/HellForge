@@ -209,10 +209,13 @@ static class DataBuilderTests
                 $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"type":"{{type}}","copy":"0x3333","name":"test/mod/unit","mesh":{{mesh}}}]}]}""";
             File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), Spec("""{"obj":"models/cube.obj","scale":2,"yUp":false}"""));
             var spec = DataSpecs.Load(folder)!;
-            check(spec.Inputs.SequenceEqual(["models/cube.obj"]) && spec.Patches[0].Resources[0] is CopyResource { Mesh: { Obj: "models/cube.obj", Scale: 2, YUp: false } },
+            check(spec.Inputs.SequenceEqual(["models/cube.obj"]) && spec.Patches[0].Resources[0] is CopyResource { Mesh: { Obj: "models/cube.obj", Scale: 2, YUp: false, UnitSpace: false } },
                 "The mesh and its file are part of the spec (and of its cache key).");
+            File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), Spec("""{"obj":"models/cube.obj","unitSpace":true}"""));
+            check(DataSpecs.Load(folder)!.Patches[0].Resources[0] is CopyResource { Mesh: { UnitSpace: true, YUp: true } }, "unitSpace is read.");
             foreach (var (bad, why) in new[] { (Spec("""{"obj":"../cube.obj"}"""), "an .obj file in the mod folder"), (Spec("""{"obj":"models/none.obj"}"""), "is missing"),
-                (Spec("""{"obj":"models/cube.obj"}""", "material"), "mesh is for a unit copy"), (Spec("""{"obj":"models/cube.obj","scale":0}"""), "scale is a positive number") })
+                (Spec("""{"obj":"models/cube.obj"}""", "material"), "mesh is for a unit copy"), (Spec("""{"obj":"models/cube.obj","scale":0}"""), "scale is a positive number"),
+                (Spec("""{"obj":"models/cube.obj","unitSpace":1}"""), "unitSpace is true or false") })
             {
                 File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), bad);
                 try { DataSpecs.Load(folder); throw new Exception("Accepted: " + bad); }

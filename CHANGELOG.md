@@ -98,6 +98,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **A mod's own weapon mesh in the right place on every LOD and its shadow.** A data spec's `mesh` put the shadow 20 cm
+  off the gun on an Adjudicator copy (4.5 cm on a Liberator), and hung a Liberator copy's LOD2 on its fire selector. Each
+  render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new
+  `"unitSpace": true` the OBJ keeps its own coordinates, the frame the weapon's attachment points are in
+  ([data specs](docs/modding/data.md)).
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
 - **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network

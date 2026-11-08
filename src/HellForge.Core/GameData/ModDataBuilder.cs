@@ -219,7 +219,7 @@ public static class ModDataBuilder
         if (copy.Mesh is { } mesh)
         {
             if (source.Stream.Length != 0) throw new InvalidDataException("the model streams part of itself; HellForge cannot replace its mesh yet.");
-            var (meshMain, meshGpu) = UnitMesh.Replace(main, gpu, UnitMesh.ReadObj(File.ReadAllText(Path.Combine(modFolder, mesh.Obj)), mesh.Scale, mesh.YUp));
+            var (meshMain, meshGpu) = UnitMesh.Replace(main, gpu, UnitMesh.ReadObj(File.ReadAllText(Path.Combine(modFolder, mesh.Obj)), mesh.Scale, mesh.YUp), mesh.UnitSpace);
             return new(meshMain, meshGpu, source.Stream);
         }
         return new(main, gpu, source.Stream);

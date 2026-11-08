@@ -31,8 +31,9 @@ public abstract record DataResource(string Where)
 }
 public sealed record CopyResource(string Where, ulong Type, ulong From, string Name, IReadOnlyDictionary<int, ulong> Expect,
     IReadOnlyList<Replacement> Replace, CurveEdit? Curves, IReadOnlyDictionary<uint, double[]>? Colours, ResourceEdits.LutRecolour? Lut, MeshFile? Mesh = null) : DataResource(Where);
-// A unit copy's own geometry: an OBJ in the mod folder (UnitMesh), scaled, Y-up or the game's Z-up.
-public sealed record MeshFile(string Obj, double Scale, bool YUp);
+// A unit copy's own geometry: an OBJ in the mod folder (UnitMesh), scaled, Y-up or the game's Z-up; with UnitSpace its
+// coordinates are the unit's own (the frame its joints and attach points are in), otherwise its render mesh's.
+public sealed record MeshFile(string Obj, double Scale, bool YUp, bool UnitSpace = false);
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
 public sealed record IconResource(string Where, string Name, string Png, string Prepare) : DataResource(Where);
 public sealed record Replacement(ulong From, ulong To, IReadOnlyList<int>? At);
@@ -256,15 +257,16 @@ public static partial class DataSpecs
     {
         if (!e.TryGetProperty("mesh", out var meshSpec)) return null;
         if (type != ResourceTypes.Unit) throw new InvalidDataException($"{at}: mesh is for a unit copy.");
-        Fields(meshSpec, $"{at}.mesh", "obj", "scale", "yUp");
+        Fields(meshSpec, $"{at}.mesh", "obj", "scale", "yUp", "unitSpace");
         var obj = Text(meshSpec, "obj", $"{at}.mesh").Replace('\\', '/');
         if (Path.IsPathRooted(obj) || obj.Split('/').Any(part => part is "" or "." or "..") || !obj.EndsWith(".obj", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"{at}.mesh: obj is an .obj file in the mod folder, such as \"models/cube.obj\".");
         if (folder != null && !File.Exists(Path.Combine(folder, obj))) throw new InvalidDataException($"{at}.mesh: {obj} is missing.");
         var scale = meshSpec.TryGetProperty("scale", out var sc) ? (sc.ValueKind == JsonValueKind.Number && sc.GetDouble() is > 0 and < 1000 and var v ? v : throw new InvalidDataException($"{at}.mesh: scale is a positive number.")) : 1.0;
         var yUp = !meshSpec.TryGetProperty("yUp", out var up) || (up.ValueKind is JsonValueKind.True or JsonValueKind.False ? up.GetBoolean() : throw new InvalidDataException($"{at}.mesh: yUp is true or false."));
+        var unitSpace = meshSpec.TryGetProperty("unitSpace", out var us) && (us.ValueKind is JsonValueKind.True or JsonValueKind.False ? us.GetBoolean() : throw new InvalidDataException($"{at}.mesh: unitSpace is true or false."));
         inputs.Add(obj);
-        return new(obj, scale, yUp);
+        return new(obj, scale, yUp, unitSpace);
     }
 
     // "source": "game" (the default), "steam", or {"build": "<depot>:<manifest>"} / {"build": "yyyy-MM-dd"} (the build of
