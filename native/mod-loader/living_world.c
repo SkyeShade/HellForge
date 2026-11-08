@@ -2356,6 +2356,9 @@ static void LwTestCommands(void)
                 if (q->state != LW_ONLINE && q->state != LW_PENDING) continue;
                 uint32_t ms[32]; int mn = q->state == LW_ONLINE ? LwMembers(q->squad, ms) : 0, alerted = 0;
                 for (int k = 0; k < mn; k++) alerted += LwAlert(ms[k]) != 0;
+                uintptr_t beh = 0, brecs = 0; uint32_t bi = 0, bdet = 0xFFFFFFFFu; /* the awareness update's detector of the first member (Behavior +0x68, 0x7ECF70 / 0x7EB262) */
+                if (mn > 0 && EvpPtr(g_lw.game + 0x3326740u, &beh) && EvpHash(beh + 0x40, ms[0], 8, 4, &bi) && EvpPtr(beh + 0x60, &brecs)) bdet = EvpU32(brecs + 0x1F8ull * bi + 0x68, 0xFFFFFFFFu);
+                if (mn > 0) Note("living world: test command %d: squad %d member %08X: awareness detector %08X", seq, i, ms[0], bdet);
                 Note("living world: test command %d: squad %d %s at (%.0f, %.0f), %.0f m, %u alive of %u, %s%s, %d alerted", seq, i, q->state == LW_ONLINE ? "online" : "pending",
                     (double)q->pos[0], (double)q->pos[1], (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])), q->alive, q->cap,
                     q->farOn ? "by sightline" : "near", q->inView ? ", in a player's view" : "", alerted);
