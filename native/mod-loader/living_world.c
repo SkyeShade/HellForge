@@ -763,7 +763,7 @@ static void LwStagedWhy(LwSquad* q, const char* why, float near2)
     int idx = (int)(q - g_lwSquads);
     if (idx == lastIdx && strcmp(last, why) == 0 && now - lastAt < 30000) return;
     lastIdx = idx; lastAt = now; snprintf(last, sizeof last, "%s", why);
-    Note("living world: test: staged squad %d (%.0f m, %d units online of %d, far %d): not online: %s", idx, (double)sqrtf(near2),
+    Note("living world: test: %s squad %d (%.0f m, %d units online of %d, far %d): not online: %s", q->pulled == 2 ? "staged" : "waiting", idx, (double)sqrtf(near2),
         g_lwWorld.onlineUnits, g_lwWorld.eff, g_lwWorld.farUnits, why);
 }
 
@@ -801,12 +801,23 @@ static int LwSwapForFar(LwSquad* fq)
     if (pick == NULL) return 0;
     pick->forceOff = 2;
     g_lwHold.idx = (int)(fq - g_lwSquads); g_lwHold.units = fq->survivors; g_lwHold.until = now + 20000;
-    Note("living world: squad %d (hidden, calm, %.0f m from the nearest player) goes offline to make room for squad %d in a player's sight %.0f m away",
-        (int)(pick - g_lwSquads), (double)sqrtf(pickD), g_lwHold.idx, (double)sqrtf(LwNearestPlayer2(fq->pos[0], fq->pos[1])));
+    Note("living world: squad %d (hidden, calm, %.0f m from the nearest player) goes offline to make room for squad %d %s %.0f m away",
+        (int)(pick - g_lwSquads), (double)sqrtf(pickD), g_lwHold.idx, fq->held ? "waiting at the spawn band's edge" : "in a player's sight",
+        (double)sqrtf(LwNearestPlayer2(fq->pos[0], fq->pos[1])));
     return 1;
+}
+/* A squad an event sent (investigate, reinforce) waiting at the spawn band's edge goes before the world's filler: refused
+ * for room, the room is held for it while it waits, and a calm hidden patrol may leave to make it (LwSwapForFar). lw113b:
+ * at an outpost the game's own units left room for one squad at a time, and far filler took it by index order. */
+static void LwHoldForIntent(LwSquad* q)
+{
+    ULONGLONG now = GetTickCount64(); int idx = (int)(q - g_lwSquads);
+    if (g_lwHold.idx >= 0 && g_lwHold.idx != idx && now < g_lwHold.until && g_lwSquads[g_lwHold.idx].held && g_lwSquads[g_lwHold.idx].state == LW_OFFLINE) return; /* another waiting squad first */
+    if (!LwSwapForFar(q)) { g_lwHold.idx = idx; g_lwHold.units = q->survivors; g_lwHold.until = now + 20000; }
 }
 
 static const char* g_lwOnlineWhy; /* test notes: the step of LwOnline that refused the last request */
+static int LwTestTraceOn(void);
 static void LwOnline(LwSquad* q)
 {
     g_lwOnlineWhy = NULL; g_lwRequester = (int)(q - g_lwSquads);
@@ -2483,10 +2494,13 @@ static void LwSquadsTick(void)
                 if (q->state == LW_OFFLINE && farBand && !back && g_lwOnlineWhy == g_lwRoomWhy &&
                     (strncmp(g_lwRoomWhy, "the game's 70 room", 18) == 0 || strncmp(g_lwRoomWhy, "the cap", 7) == 0))
                     LwSwapForFar(q);
+                if (q->state == LW_OFFLINE && q->held && g_lwOnlineWhy == g_lwRoomWhy &&
+                    (strncmp(g_lwRoomWhy, "the game's 70 room", 18) == 0 || strncmp(g_lwRoomWhy, "the cap", 7) == 0))
+                    LwHoldForIntent(q);
                 if (q->state != LW_OFFLINE && g_lwHold.idx == (int)(q - g_lwSquads)) g_lwHold.idx = -1; /* served */
             }
         offlineDone:
-            if (q->pulled == 2 && why) LwStagedWhy(q, why, near2);
+            if ((q->pulled == 2 || (q->held && LwTestTraceOn())) && why) LwStagedWhy(q, why, near2); /* test notes */
         }
         else if (q->state == LW_PENDING) { LwPendingTick(q); online++; }
         else if (q->state == LW_ONLINE) { LwOnlineTick(q, &removals); online++; }
@@ -2682,7 +2696,7 @@ static void LwTestGarrisons(int seq)
         Note("living world: test command %d: garrison %08X fields: link %u, spawners %u, objectives %u, counted %u, structures %u, points 0x200 %u, 0x20 %u, 0x100 %u", seq, EvpU32(d + 8, 0),
             link, sp, ob, ce, st, f200, f20, f100);
         Note("living world: test command %d: garrison %08X %s%s%s at (%.0f, %.0f)%s%.0f%s: %u points, %u units listed", seq, EvpU32(d + 8, 0), active ? "active" : "inactive",
-            g && g->plain ? ", plain" : g && g->plainBase ? ", plain once its spawners are destroyed" : "", g && g->cleared ? ", cleared" : "",
+            g && g->plain ? ", plain" : g && g->plainBase ? ", plain once its spawners and structures are destroyed" : "", g && g->cleared ? ", cleared" : "",
             (double)cx, (double)cy, havePl ? ", " : "", havePl ? (double)sqrtf((cx - pl[0]) * (cx - pl[0]) + (cy - pl[1]) * (cy - pl[1])) : 0.0, havePl ? " m from player 1" : "",
             np, EvpU32(runtime + 0x1B58u * i + 0x384, 0));
     }

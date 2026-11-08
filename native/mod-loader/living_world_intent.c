@@ -173,6 +173,7 @@ static void LwIntentEnd(LwSquad* q, const char* why)
 {
     ULONGLONG now = GetTickCount64();
     char peak[96] = "";
+    if (g_lwHold.idx == (int)(q - g_lwSquads)) g_lwHold.idx = -1; /* the room held for it while it waited (LwHoldForIntent) */
     /* intentPeak: the most members at once (a member index shifts as members die, lw112c) */
     if (q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, q->intent == LW_INVESTIGATE ? "; at most %u members investigating at once (alert 2+, the first after %.1f s), %d alive"
         : "; at most %u members engaged at once at the fight (alert 3+, the first after %.1f s), %d alive", q->intentPeak, (double)q->intentPeakAt, q->seenCount);
@@ -667,9 +668,13 @@ static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t 
     if (now >= g->plainAt || newly) /* every 2 s (staggered): a fill can register spawners or structures; ReadProcessMemory per point is not free */
     {
         g->plainAt = now + 2000 + 125u * (g->index % 16u);
-        plain = n > 0 && !SafeRead(s + 0x1C, &f[0], 4) && !SafeRead(s + 0x24, &f[1], 4) && !SafeRead(s + 0x2C, &f[2], 4) &&
-            !f[1] && !f[2] && EvpU32(r + 0x1110, 1) == 0 && !(g->structure[0] | g->structure[1] | g->structure[2]);
+        uint32_t live = EvpU32(r + 0x1110, 1); /* structure entries (+0x810, 24 bytes, +0x10 = point + 1): kept while inactive too (level-placed ones, 0x90B0A5) */
+        for (uint32_t k = 0; k < live && k < 96; k++) { uint32_t local = EvpU32(r + 0x810 + 24u * k + 0x10, 0); if (local >= 1 && local <= n) g->structure[(local - 1) / 32] |= 1u << ((local - 1) % 32); }
+        plain = n > 0 && !SafeRead(s + 0x1C, &f[0], 4) && !SafeRead(s + 0x24, &f[1], 4) && !SafeRead(s + 0x2C, &f[2], 4) && !f[1] && !f[2];
         g->plainBase = (uint8_t)plain;
+        /* structures: only once every one is destroyed. Its death sets point 0x20 (0x910435) and nothing clears it; a
+         * despawned one has no 0x20 and comes back. The retake holds their points, so the fill never touches them. */
+        if (plain && live) plain = 0;
         /* spawners: only once every listed one is destroyed (list count +0x1EC == 0): the fill never registers or spawns one
          * (registrations only at 0x90CFFB, GuardForce init, and 0xA22CAD), and the alarm needs a living one (0x912AF0) */
         if (plain && f[0]) plain = EvpU32(l + 0x1EC, 1) == 0;
@@ -677,7 +682,7 @@ static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t 
         for (uint32_t p = 0; p < n && plain; p++)
         {
             uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0; float xy[2];
-            if (gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4) || (flags & 0x220)) { plain = 0; break; }
+            if (gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4) || (flags & 0x200) || ((g->structure[p / 32] & (1u << (p % 32))) && !(flags & 0x20))) { plain = 0; break; }
             if (!g->haveCenter && !SafeRead(points + 0x58u * gi + 0x10, xy, 8) && isfinite(xy[0]) && isfinite(xy[1])) { sx += xy[0]; sy += xy[1]; got++; }
         }
         if (!g->haveCenter && got) { g->center[0] = (float)(sx / got); g->center[1] = (float)(sy / got); g->haveCenter = 1; }
@@ -753,7 +758,7 @@ static int LwRetakeApply(LwSquad* q, LwGarrison* g)
         {
             uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0, bit = 1u << (p % 32), w = p / 32;
             if (allow[w] & bit || gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4)) continue;
-            if ((flags & 0x220) || ((flags & 0x40) && !(g->marked[w] & bit))) continue; /* objective / structure points; held by the game. Phase A (0x100) refills like phase B: 0x90E400..0x90E427 skips only bit 6 */
+            if ((flags & 0x220) || (g->structure[w] & bit) || ((flags & 0x40) && !(g->marked[w] & bit))) continue; /* objective / structure points; held by the game. Phase A (0x100) refills like phase B: 0x90E400..0x90E427 skips only bit 6 */
             int taken = (g->taken[w] & bit) != 0, uset = (u[w] & bit) != 0;
             if (pass == 0 ? (taken || !uset) : pass == 1 ? (!taken || !uset) : (!taken || uset)) continue;
             allow[w] |= bit; chosen++;
@@ -894,8 +899,18 @@ static void LwTestClear(int seq, uint32_t entity)
         ((QueueDamageFn)(g_lw.game + 0x129F910u))(NULL, 7, 0, e, 0xFFFFFFFFu, 0, h.network, h.network, 0, 0, 0.0f, 0.0f, 0.0f, down, pos, 0xFFFFFFFFu, 0, 0, 1.0f);
         hit++;
     }
-    Note("living world: test command %d: clear: garrison %08X at (%.0f, %.0f), %.0f m: %u of %u listed units killed, %u of %u listed spawners hit (QueueDamage kind 7)", seq, best->entity,
-        (double)best->center[0], (double)best->center[1], (double)sqrtf(bd), killed, count, hit, spawners);
+    uint32_t structures = EvpU32(r + 0x1110, 0), struck = 0, ents[96];
+    for (uint32_t k = 0; k < structures && k < 96; k++) ents[k] = EvpU32(r + 0x810 + 24u * k, 0); /* the kill path removes entries as they die */
+    for (uint32_t k = 0; k < structures && k < 96; k++)
+    {
+        uint32_t e = ents[k]; ActHealth h; float pos[3] = {0, 0, 0};
+        if (!e || !ActHealthOf(g_lw.game, e, &h) || h.life >= 2 || !h.network) continue;
+        if (h.unit) EvpUnitPosition(h.unit, pos);
+        ((QueueDamageFn)(g_lw.game + 0x129F910u))(NULL, 7, 0, e, 0xFFFFFFFFu, 0, h.network, h.network, 0, 0, 0.0f, 0.0f, 0.0f, down, pos, 0xFFFFFFFFu, 0, 0, 1.0f);
+        struck++;
+    }
+    Note("living world: test command %d: clear: garrison %08X at (%.0f, %.0f), %.0f m: %u of %u listed units killed, %u of %u listed spawners and %u of %u structures hit (QueueDamage kind 7)", seq, best->entity,
+        (double)best->center[0], (double)best->center[1], (double)sqrtf(bd), killed, count, hit, spawners, struck, structures);
     g_lwClearCheck.entity = best->entity; g_lwClearCheck.index = best->index; g_lwClearCheck.at = GetTickCount64() + 2000;
 }
 /* test command "retake wait <s>": how long a garrison stays cleared before a squad is sent (default LW_RETAKE_CLEAR) */
@@ -1112,7 +1127,7 @@ static int LwIntentHold(LwSquad* q, float nx, float ny)
     if (pi < 0) { q->held = 0; return 0; }
     const float* pl = g_lwWorld.players[pi];
     float d0 = sqrtf(best), d1 = sqrtf(LwNearestPlayer2(nx, ny));
-    if (d0 >= rMin && !(d1 < edge && d1 < d0)) { q->held = 0; return 0; } /* outside and not crossing inward */
+    if (d0 >= rMin && !(d1 < edge && d1 < d0)) { if (d0 > edge + 20.0f) q->held = 0; return 0; } /* outside and not crossing inward; still waiting while near the edge */
     ULONGLONG now = GetTickCount64();
     if (q->intent == LW_REINFORCE && !LwFightOf(q)) { LwIntentEnd(q, "the fight ended while it waited at the spawn band"); return 1; }
     if (q->intent == LW_REINFORCE && now - q->intentAt > 240000) { LwIntentEnd(q, "240 s, waiting at the spawn band"); return 1; }
@@ -1147,6 +1162,7 @@ static void LwTestClearCheck(void)
     if (!EvpPtr(g_lw.game + 0x33265C0u, &gf) || !EvpPtr(gf + 0x48, &lists) || !EvpPtr(gf + 0x50, &synced)) return;
     uintptr_t l = lists + 0x2B8u * g_lwClearCheck.index; uint8_t cleared = 0;
     SafeRead(synced + 0x40u * g_lwClearCheck.index + 0x39, &cleared, 1);
-    Note("living world: test: clear check: garrison %08X: %u listed spawners left (flagged alive %u), cleared %u", g_lwClearCheck.entity, EvpU32(l + 0x1EC, 99),
-        EvpU32(synced + 0x40u * g_lwClearCheck.index + 0x34, 99), cleared);
+    uintptr_t runtime = 0; uint32_t structures = EvpPtr(gf + 0x40, &runtime) ? EvpU32(runtime + 0x1B58u * g_lwClearCheck.index + 0x1110, 99) : 99;
+    Note("living world: test: clear check: garrison %08X: %u listed spawners left (flagged alive %u), %u structures left, cleared %u", g_lwClearCheck.entity, EvpU32(l + 0x1EC, 99),
+        EvpU32(synced + 0x40u * g_lwClearCheck.index + 0x34, 99), structures, cleared);
 }
