@@ -1285,7 +1285,16 @@ static int LwIntentHold(LwSquad* q, float nx, float ny)
     int push = d0 < rMin && now - q->pushAt >= 3000;
     if (push || (d0 >= rMin && now - q->heldAt > 20000))
     {
-        float a = atan2f(q->pos[1] - pl[1], q->pos[0] - pl[0]) + (d0 >= rMin ? 0.436f : 0.0f), r = rMin + 8.0f;
+        /* inside: straight out. At the edge: up to 25 degrees toward the point's bearing from the player (audit 2d: always
+         * +25 degrees walked squads round the player); already on it, 25 degrees either way in turn, off the refused spot */
+        float a = atan2f(q->pos[1] - pl[1], q->pos[0] - pl[0]), r = rMin + 8.0f;
+        if (d0 >= rMin)
+        {
+            float da = atan2f(q->target[1] - pl[1], q->target[0] - pl[0]) - a;
+            while (da > 3.14159265f) da -= 6.2831853f;
+            while (da < -3.14159265f) da += 6.2831853f;
+            a += fabsf(da) > 0.087f ? (da > 0.436f ? 0.436f : da < -0.436f ? -0.436f : da) : ((now / 20000) & 1 ? 0.436f : -0.436f);
+        }
         float px = pl[0] + r * cosf(a), py = pl[1] + r * sinf(a);
         if (LwNearestPlayer2(px, py) >= rMin * rMin && px * px + py * py < g_lwWorld.radius * g_lwWorld.radius)
         {
@@ -1299,8 +1308,7 @@ static int LwIntentHold(LwSquad* q, float nx, float ny)
     return 1;
 }
 /* LwWalk, offline, at the end of its path (or with none): an INVESTIGATE or REINFORCE squad inside the band where no
- * squad comes online, or whose point lies in it, waits at the band's edge through LwIntentHold with the point as its
- * next step: inside, it steps back out. One that already reached its point there goes back to walking in (stage 0),
+ * squad comes online steps back out to its edge through LwIntentHold with the point as its next step. One that already reached its point there goes back to walking in (stage 0),
  * so it comes online at the edge and walks the rest with its online goal (audit 2c, 5: 7 of 16 offline arrivals were
  * inside 150 m of a player, unseen). 1 = it waits. */
 static int LwIntentInside(LwSquad* q)
@@ -1312,8 +1320,25 @@ static int LwIntentInside(LwSquad* q)
             q->intent == LW_REINFORCE ? "reinforcing" : "investigating", (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])));
         q->intentStage = 0; q->intentSent = 0;
     }
-    if (q->intentStage != 0) return 0;
+    if (q->intentStage != 0 || LwNearestPlayer2(q->pos[0], q->pos[1]) >= rMin * rMin) return 0; /* outside: the last leg walks on and waits at the edge (LwIntentLeg) */
     return LwIntentHold(q, q->target[0], q->target[1]);
+}
+/* LwWalk, offline, at the end of its route: an INVESTIGATE, REINFORCE or RETAKE squad farther from its point than it
+ * arrives at walks the last leg straight there at its pace (reinforcements run), through the band-edge hold; it arrives
+ * (LwIntentArrived) only within that distance. Route nodes are ~200 m apart on extra large maps, and a route ending at
+ * the point's nearest node left squads where they stood yet "reached" (audit 2d, 6: lw113i squad 5851, 134 m away). */
+static int LwIntentLeg(LwSquad* q, float dt)
+{
+    if ((q->intent != LW_INVESTIGATE && q->intent != LW_REINFORCE && q->intent != LW_RETAKE) || q->intentStage != 0) return 0;
+    float reach = q->intent == LW_INVESTIGATE ? LW_HEAR_NEAR : LW_FIGHT_JOIN;
+    float dx = q->target[0] - q->pos[0], dy = q->target[1] - q->pos[1], d = sqrtf(dx * dx + dy * dy);
+    if (d <= reach) return 0;
+    float step = q->speed * (q->intent == LW_REINFORCE ? LW_RUSH : 1.0f) * dt, go = d - reach * 0.5f;
+    if (step > go) step = go;
+    float nx = q->pos[0] + dx / d * step, ny = q->pos[1] + dy / d * step;
+    if (q->intent != LW_RETAKE && LwIntentHold(q, nx, ny)) return 1;
+    q->pos[0] = nx; q->pos[1] = ny;
+    return 1;
 }
 
 /* 2 s after "clear garrison": the spawners left and cleared (test notes; called from LwRetakeScan's tick) */
