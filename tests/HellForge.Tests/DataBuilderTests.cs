@@ -800,7 +800,7 @@ static class DataBuilderTests
 
         test("A data spec's package builds as a whole archive of its own id, is staged under it, and the loader plan names it", () =>
         {
-            var install = new InstallLayout(Path.Combine(root, "package-install"));
+            var install = new InstallLayout(Path.Combine(root, "mod-package-install"));
             install.Create("12345");
             var gameData = Path.Combine(install.Game, "data");
             WriteGameData(gameData);
