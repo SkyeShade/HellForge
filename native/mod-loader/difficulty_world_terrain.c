@@ -5493,6 +5493,26 @@ static uint64_t NearCoarseHandle(void)
     return h;
 }
 
+/* The level's material words for the samples strictly inside a square (lg+0xF0: {w, h, format, ?, data}, u32 4096 x
+ * 4096; rows (y0 + 1 + r) x 4096 + x0 + 1, n - 1 each), for the heightfield edit's materials. KB
+ * living-world-tile-switch-falls section 7 (subagent; checked by me: the edit 0x1ADCD0 always decodes materials and
+ * 0x8147C0 writes each sample's collision tag ((filter & 0x7F) << 8) | physics material from them, 0x814A9C..0x814ACE; the
+ * game's own crater edit at game.dll 0x1384858 passes the level's rows). With NULL every sample of the square took
+ * material 0's tag, which on some maps no ground query sees: lw87a / lw92a found no collision in a released square.
+ * A VirtualAlloc'd block the caller frees; NULL when the copy does not read. */
+static uint32_t* NearCoarseMatRows(int x0, int y0, int n)
+{
+    uintptr_t gen = 0; uint32_t d[4] = {0}; uint64_t data = 0;
+    if (SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(gen + 0x8758A8u + 0xF0, d, 16) || SafeRead(gen + 0x8758A8u + 0xF0 + 0x10, &data, 8) ||
+        data == 0 || d[0] != 4096 || d[1] != 4096 || NearTexelBytes(d[2]) != 4) return NULL;
+    uint32_t w = (uint32_t)(n - 1);
+    uint32_t* rows = (uint32_t*)VirtualAlloc(NULL, (size_t)w * w * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (rows == NULL) return NULL;
+    for (uint32_t r = 0; r < w; r++)
+        if (SafeRead(data + ((uint64_t)(y0 + 1 + r) * 4096 + (uint64_t)(x0 + 1)) * 4, rows + (size_t)r * w, (size_t)w * 4)) { VirtualFree(rows, 0, MEM_RELEASE); return NULL; }
+    return rows;
+}
+
 /* The coarse collision under a tile's square goes to the lowest height ([api+8]+0x1D0): the samples strictly inside. */
 static void NearHideCoarse(uint64_t world, int x0, int y0, NearHidden* out)
 {
@@ -5508,10 +5528,13 @@ static void NearHideCoarse(uint64_t world, int x0, int y0, NearHidden* out)
     uint32_t w = (uint32_t)(n - 1);
     uint16_t* low = (uint16_t*)VirtualAlloc(NULL, (size_t)w * w * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE); /* zeros: -500 m */
     if (low == NULL) return;
-    edit(world, h, x0 + 1, y0 + 1, x0 + n, y0 + n, low, NULL, w, w);
+    uint32_t* mats = NearCoarseMatRows(x0, y0, n);
+    edit(world, h, x0 + 1, y0 + 1, x0 + n, y0 + n, low, mats, w, w);
     VirtualFree(low, 0, MEM_RELEASE);
+    if (mats) VirtualFree(mats, 0, MEM_RELEASE);
     out->lowered = 1;
-    Note("difficulty: near terrain: the coarse terrain's collision under the tile lowered (samples %d..%d, rows %d..%d)", x0 + 1, x0 + n - 1, y0 + 1, y0 + n - 1);
+    Note("difficulty: near terrain: the coarse terrain's collision under the tile lowered (samples %d..%d, rows %d..%d; its materials %s)", x0 + 1, x0 + n - 1, y0 + 1, y0 + n - 1,
+        mats ? "kept from the level's rows" : "NOT read: material 0's tags");
 }
 
 /* The coarse collision under a released tile's square back as the level made it: the rows of the level's CPU copy
@@ -5532,8 +5555,11 @@ static int NearRaiseCoarse(uint64_t world, const NearHidden* sq)
     int ok = 1;
     for (uint32_t r = 0; r < w && ok; r++)
         ok = !SafeRead(data + ((uint64_t)(sq->y0 + 1 + r) * 4096 + (uint64_t)(sq->x0 + 1)) * 2, rows + (size_t)r * w, (size_t)w * 2);
-    if (ok) edit(world, h, sq->x0 + 1, sq->y0 + 1, sq->x0 + sq->n, sq->y0 + sq->n, rows, NULL, w, w);
+    uint32_t* mats = ok ? NearCoarseMatRows(sq->x0, sq->y0, sq->n) : NULL;
+    if (ok && mats == NULL) Note("difficulty: near terrain: the level's material rows did not read; the raised square takes material 0's collision tags");
+    if (ok) edit(world, h, sq->x0 + 1, sq->y0 + 1, sq->x0 + sq->n, sq->y0 + sq->n, rows, mats, w, w);
     VirtualFree(rows, 0, MEM_RELEASE);
+    if (mats) VirtualFree(mats, 0, MEM_RELEASE);
     return ok;
 }
 

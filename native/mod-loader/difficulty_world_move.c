@@ -547,6 +547,30 @@ static void MoveFail(const char* why)
     MoveFailRest();
 }
 
+static float MoveCoarseHere(uintptr_t data, float wx, float wy);
+/* After a raise: the ground query (0x13CA380, from z + 500 m down 1000 m) at a 4 x 4 grid inside the square against the
+ * level's coarse rows: how many hit within 0.5 m (audit 1g, 9: lw87a / lw92a found no collision in a released square). */
+static void MoveRaiseCheck(float cx, float cy, int cellX, int cellY)
+{
+    uintptr_t game = (uintptr_t)GetModuleHandleW(L"game.dll"), world = 0, gen = 0, coarse = 0; uint32_t dims[3] = {0};
+    if (!game || !EvpPtr(game + 0x346D508u, &world) || SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(gen + 0x8758A8u + 0xD8, dims, 12) ||
+        dims[0] != 4096 || SafeRead(gen + 0x8758A8u + 0xD8 + 0x10, &coarse, 8) || coarse == 0) return;
+    typedef uint8_t (*GroundFn)(uintptr_t world, const float* in, float* outZ, uint8_t reject, float* normal, uint8_t mode);
+    int hit = 0, miss = 0, off = 0; float worst = 0;
+    for (int j = 0; j < 4; j++)
+        for (int i = 0; i < 4; i++)
+        {
+            float x = cx + ((float)i - 1.5f) * NEAR_HIDE / 4.5f, y = cy + ((float)j - 1.5f) * NEAR_HIDE / 4.5f, in[3] = {x, y, 0}, z = NAN;
+            ((GroundFn)(game + 0x13CA380u))(world, in, &z, 0, NULL, 0);
+            float want = MoveCoarseHere(coarse, x, y);
+            if (!isfinite(z)) miss++;
+            else if (fabsf(z - want) <= 0.5f) hit++;
+            else { off++; if (fabsf(z - want) > worst) worst = fabsf(z - want); }
+        }
+    Note("difficulty: moving tiles: the released square of cell (%d, %d): the ground query at 16 points: %d on the coarse ground, %d elsewhere (worst %.1f m: props or over it), %d with no collision",
+        cellX, cellY, hit, off, (double)worst, miss);
+}
+
 static void MoveRelease(int slot)
 {
     NearTile t = g_tiles[slot];
@@ -561,6 +585,7 @@ static void MoveRelease(int slot)
     if (destroy != NULL && t.handle != 0) destroy(world, t.handle);
     MoveFreeLater(t.tex[0], t.tex[1], t.band, t.bandPixels);
     g_move.released++;
+    if (raised) MoveRaiseCheck(t.centre[0], t.centre[1], t.cell[0], t.cell[1]);
     Note("difficulty: moving tiles: the tile of cell (%d, %d) released (no player within %.0f m for %u s); the coarse collision %s; %d tiles live",
         t.cell[0], t.cell[1], (double)MOVE_KEEP, MOVE_KEEP_MS / 1000, raised ? "raised back" : "NOT raised back (the level's copy did not read)", NearTilesLive());
 }
