@@ -989,7 +989,7 @@ static void LwTerritoryBuild(void)
     char line[1100]; size_t len = 0; int first = 0;
     for (int a = 0; a <= g_lwNodeCount; a++)
     {
-        if (a == g_lwNodeCount || len > 1000) { if (len) Note("living world: territory nodes %d-%d: %s", first, a - 1, line); len = 0; first = a; line[0] = 0; if (a == g_lwNodeCount) break; }
+        if (a == g_lwNodeCount || len > 760) { if (len) Note("living world: territory nodes %d-%d: %s", first, a - 1, line); len = 0; first = a; line[0] = 0; if (a == g_lwNodeCount) break; }
         len += (size_t)snprintf(line + len, sizeof line - len, "%.0f,%.0f,%d;", (double)g_lwNodes[a].x, (double)g_lwNodes[a].y, (int)g_lwRegion[a] - 1);
     }
 }
@@ -1041,4 +1041,39 @@ static void LwTerritoryTick(void)
         for (int r = 0; r < regions && len < sizeof list - 16; r++) if (g_lwRegionNodes[r]) len += (size_t)snprintf(list + len, sizeof list - len, "%d:%d ", r, g_lwRegionStrength[r]);
         Note("living world: territory (30 s): %d held, %d lost; %u lost and %u held again so far; strength by region: %s", held, lost, g_lwTerr.lost, g_lwTerr.regained, list);
     }
+}
+
+/* Test trace (HELLFORGE_LW_TEST_TRACE=1, evidence only): every intent change at once with the squad's place, the squads
+ * with an intent every 10 s, and every living squad's place every 30 s (lwplot.py draws the tracks from these). */
+static void LwIntentTrace(void)
+{
+    static int on = -1; static uint8_t last[LW_SQUADS_MAX], lastState[LW_SQUADS_MAX]; static ULONGLONG every10, every30; static uintptr_t level;
+    if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1'; }
+    if (!on || g_lwWorld.populated != 1) return;
+    static const char* const names[] = {"patrol", "investigate", "reinforce", "retake"};
+    if (level != g_lwWorld.lg) { level = g_lwWorld.lg; memset(last, 0, sizeof last); memset(lastState, 0, sizeof lastState); }
+    ULONGLONG now = GetTickCount64();
+    int tick10 = now >= every10, tick30 = now >= every30;
+    if (tick10) every10 = now + 10000;
+    if (tick30) every30 = now + 30000;
+    char line[1100]; size_t len = 0; int first = 0;
+    for (int i = 0; i < g_lwWorld.count; i++)
+    {
+        LwSquad* q = &g_lwSquads[i];
+        uint8_t in = q->intent < 4 ? q->intent : 0, st = q->state;
+        if (in != last[i] || (st == LW_FREE) != (lastState[i] == LW_FREE))
+            Note("living world: intent trace: squad %d %s -> %s at (%.0f, %.0f), %s, %u survivors, home region %d", i, names[last[i] < 4 ? last[i] : 0], st == LW_FREE ? "gone" : names[in],
+                (double)q->pos[0], (double)q->pos[1], st == LW_ONLINE ? "online" : st == LW_OFFLINE ? "offline" : st == LW_PENDING ? "pending" : "free", q->survivors, (int)q->home1 - 1);
+        else if (tick10 && in != LW_PATROL && st != LW_FREE)
+            Note("living world: intent trace: squad %d %s at (%.0f, %.0f), %s, stage %u, target (%.0f, %.0f)", i, names[in], (double)q->pos[0], (double)q->pos[1],
+                st == LW_ONLINE ? "online" : "offline", q->intentStage, (double)q->target[0], (double)q->target[1]);
+        last[i] = in; lastState[i] = st;
+        if (tick30 && st != LW_FREE && q->survivors)
+        {
+            if (len > 760) { Note("living world: intent trace: places from squad %d: %s", first, line); len = 0; }
+            if (!len) { first = i; line[0] = 0; }
+            len += (size_t)snprintf(line + len, sizeof line - len, "%d:%.0f,%.0f,%s;", i, (double)q->pos[0], (double)q->pos[1], names[in]);
+        }
+    }
+    if (len) Note("living world: intent trace: places from squad %d: %s", first, line);
 }
