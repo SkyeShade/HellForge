@@ -26,8 +26,9 @@ On `dev`, since 0.4.0-beta.
   id. It loads when the game starts, or with `"load": "request"` only through `load_package` (SDK 17), which now takes
   a mod's own packages ([packages of your own](docs/modding/data.md#packages-of-your-own)).
 - **Mods can add attachments to their weapons (SDK 17).** `add_attachment` builds an optic, muzzle or magazine from the
-  mod's declaration, copying no item: its model at its slot and the field changes it declares. It is offered on weapons
-  mods added, unlocked at a mastery level or held from the start ([attachments](docs/modding/content.md#attachments-of-your-own)).
+  mod's declaration, copying no item: its model at its slot and the field changes it declares. Level 0 or 1 makes it a
+  default; a higher level sells it in the Armory for its `price` in requisition. A weapon needs one for sale to show
+  CUSTOMIZE ([attachments](docs/modding/content.md#attachments-of-your-own)).
 - **Weapons are standalone (SDK 17).** `add_weapon` builds a weapon from its class and the mod's declaration and copies
   no other weapon, so it inherits no premium lock, attachments, decals or icon. It needs `weapon_class`, `package`,
   `reload_ability` and `projectile`, and refuses a `base` ([weapons](docs/modding/content.md#weapons)). The five

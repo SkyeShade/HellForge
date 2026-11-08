@@ -16,11 +16,13 @@ The mod loader writes them beside the copy entries. An entry without `"standalon
 | Entry | Fields |
 | --- | --- |
 | weapon, in `items` | `mixId`, `"standalone": true`, `class`, `mod`, `unit`, `package` |
-| attachment, in `attachments` | `mixId`, `"standalone": true`, `weapons`, `level` |
+| attachment, in `attachments` | `mixId`, `"standalone": true`, `weapons`, `level`, `price` |
 
 - `class` is `primary`. Another class, or a missing or zero `package`, makes the entry malformed, and it is skipped.
 - `package` is the weapon's own mastery package id, chosen by its mod.
-- `level` is the mastery level that gives the attachment. Level 0 means held from the start.
+- `level` 0 or 1 makes the attachment a default. A higher level sells it at that level.
+- `price` is its requisition price. 0, or none in an older file, takes a price in line with vanilla's at that level
+  (`RegisteredItems.PriceAt`).
 - A standalone attachment is a child only of the standalone weapons in its `weapons`.
 
 ## What the game is served
@@ -29,8 +31,8 @@ The mod loader writes them beside the copy entries. An entry without `"standalon
 | --- | --- |
 | `/Progression/items` | the weapon's item, then one child per standalone attachment |
 | `/Progression/ProgressionPackages` | the weapon's mastery package, type 2 |
-| `/Progression/inventory` | the weapon, its level 0 children, and the children its progress gives |
-| `/Progression` | its level, from its saved progress, as for a copy |
+| `/Progression/inventory` | the weapon, its default children, and the children its progress holds |
+| `/Progression` | its level, from its saved progress, at least 1 |
 
 **The item.** `itemId` and `mixId` are the weapon's id, in category 1. It has no price, no level requirement and is not
 consumable, like most vanilla weapons. Each field every vanilla weapon item has is written, since an unseen layout risks
@@ -47,10 +49,23 @@ parent before it.
 vanilla weapon package shares: `level`, `requirementType` and `requirement`. Each level also has `rewards`, `cost` and
 `unlockableItems`, as every vanilla level does.
 
-- An attachment at level N is a type 1 reward of level N. The client grants the rewards of the levels a mission reaches,
-  and `WeaponMastery.Earn` does the same.
-- Vanilla `unlockableItems` always carry a price, and these attachments have none, so they are not offered there.
-- An attachment past the last level is never held, and the log says so.
+The levels take vanilla's shapes:
+
+- **Defaults** are type 1 rewards of the first level (level 1, `requirementType` 3), as every vanilla weapon's are.
+- **An attachment at level N >= 2** is an `unlockableItems` entry of level N: `mixId` its child, `amount` 1,
+  `sortOrder` 0 and `cost` `[{"mixId": 3608481516, "amount": <price>}]`, requisition. `Purchases` sells it.
+- An attachment past the last level is never offered, and the log says so.
+
+The Armory needs both. Its item panel shows CUSTOMIZE only when some level has an unlockable (game.dll 0x191d6b0), and
+the customize screen lists only rewards and unlockables (0x1493770). The mod loader logs a standalone weapon with
+nothing for sale.
+
+## Its level
+
+A standalone weapon starts at level 1, so the Armory shows LVL 1 and the defaults are owned. On the first
+`/Progression` request the backend runs `WeaponMastery.Earn` with no XP, which passes level 1 and holds its rewards, and
+saves that in `modPackageProgress`. Without a profile it still serves level 1. Defaults stay held whatever the saved
+progress says, so a default a mod adds later is held too.
 
 ## When a weapon is left out
 

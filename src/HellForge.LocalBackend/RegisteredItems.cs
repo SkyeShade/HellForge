@@ -44,9 +44,12 @@ public sealed class RegisteredItems(string path)
     // An attachment a mod added (native/mod-loader/attachments.c): a copy of a vanilla customization item (CopyOf) offered
     // on weapons mods registered. Each weapon gets a child for it, a copy of a vanilla child of the base item, under
     // WeaponChild(attachment, weapon), held whenever the weapon is.
-    // A standalone one (CopyOf 0) is a child only of the standalone weapons it names, unlocked at mastery Level (0: held
-    // from the start).
-    public sealed record ModAttachment(uint MixId, uint CopyOf, IReadOnlyList<uint> Weapons, bool Standalone = false, uint Level = 0);
+    // A standalone one (CopyOf 0) is a child only of the standalone weapons it names. Level 0 or 1 is a default, held from
+    // the start; a higher level offers it for Price requisition (0: PriceAt's).
+    public sealed record ModAttachment(uint MixId, uint CopyOf, IReadOnlyList<uint> Weapons, bool Standalone = false, uint Level = 0, uint Price = 0)
+    {
+        public bool IsDefault => Level <= 1;
+    }
 
     // The file's "attachments" (none in an older file).
     public static List<ModAttachment> Attachments(byte[] file)
@@ -67,14 +70,20 @@ public sealed class RegisteredItems(string path)
             !a.TryGetProperty("weapons", out var weapons) || weapons.ValueKind != JsonValueKind.Array) return null;
         List<uint> on = [.. weapons.EnumerateArray().Where(w => w.TryGetUInt32(out _)).Select(w => w.GetUInt32())];
         if (IsStandalone(a))
-            return a.TryGetProperty("level", out var level) && level.TryGetUInt32(out var unlock) ? new(mixId, 0, on, true, unlock) : null;
+            return a.TryGetProperty("level", out var level) && level.TryGetUInt32(out var unlock)
+                ? new(mixId, 0, on, true, unlock, a.TryGetProperty("price", out var price) && price.TryGetUInt32(out var cost) ? cost : 0) : null;
         return a.TryGetProperty("copyOf", out var copy) && copy.TryGetUInt32(out var copyOf) ? new(mixId, copyOf, on) : null;
     }
 
     // The children a weapon holds for the attachments offered on it.
-    // A standalone attachment above level 0 is held only once its mastery level gives it (OwnItems).
+    // A standalone weapon's defaults are held even when its saved level 1 predates them (a mod update); the others only
+    // once bought (OwnItems).
     static IEnumerable<uint> AttachmentChildren(IReadOnlyList<ModAttachment> attachments, uint weapon) =>
-        attachments.Where(a => a.Weapons.Contains(weapon) && (!a.Standalone || a.Level == 0)).Select(a => WeaponChild(a.MixId, weapon));
+        attachments.Where(a => a.Weapons.Contains(weapon) && (!a.Standalone || a.IsDefault)).Select(a => WeaponChild(a.MixId, weapon));
+
+    // A standalone attachment's price when its mod gives none, in line with vanilla's at that level (3,000 to 25,000
+    // requisition, rising with the level; MissionService.RequisitionMixId).
+    public static uint PriceAt(uint level) => level switch { <= 5 => 3000, <= 10 => 5000, <= 17 => 7000, _ => 13000 };
 
     static IEnumerable<ModAttachment> StandaloneOn(IReadOnlyList<ModAttachment> attachments, uint weapon) =>
         attachments.Where(a => a.Standalone && a.Weapons.Contains(weapon));
@@ -506,26 +515,35 @@ public sealed class RegisteredItems(string path)
     }
 
     // A standalone weapon's mastery package (type 2, named by requiredItems as every weapon's is): the shared levels, each
-    // with every field a vanilla level has. An attachment's level gives its child as a type 1 reward, which the client
-    // (0x1369860) and WeaponMastery.Earn grant on reaching it; vanilla unlockableItems always carry a price, and these have
-    // none. Level 0 is not a package level: those children are held from the start (AttachmentChildren).
+    // with every field a vanilla level has, in vanilla's shapes. The first level rewards the defaults (type 1), and a later
+    // level offers an attachment for requisition. The Armory offers CUSTOMIZE only for a package with an unlockable, and
+    // its customize screen lists only rewards and unlockables (game.dll 0x191d6b0, 0x1493770).
     JsonElement StandaloneDefinition(Item item, List<(uint Level, uint Type, uint Requirement)> curve, IReadOnlyList<ModAttachment> attachments)
     {
         var on = StandaloneOn(attachments, item.MixId).ToList();
         foreach (var a in on.Where(a => a.Level > curve[^1].Level))
-            Log($"{(item.Mod.Length > 0 ? item.Mod + "'s " : "")}attachment {a.MixId} unlocks at level {a.Level}, past weapon {item.MixId}'s last ({curve[^1].Level}): it is never held.");
+            Log($"{(item.Mod.Length > 0 ? item.Mod + "'s " : "")}attachment {a.MixId} unlocks at level {a.Level}, past weapon {item.MixId}'s last ({curve[^1].Level}): it is never offered.");
         var levels = new JsonArray();
         foreach (var (level, type, requirement) in curve)
             levels.Add((JsonNode?)new JsonObject
             {
                 ["level"] = level, ["requirementType"] = type, ["requirement"] = requirement,
-                ["rewards"] = new JsonArray([.. on.Where(a => a.Level == level).Select(a => (JsonNode?)new JsonObject { ["type"] = 1, ["id32"] = WeaponChild(a.MixId, item.MixId), ["amount"] = 1 })]),
-                ["cost"] = new JsonArray(), ["unlockableItems"] = new JsonArray(),
+                ["rewards"] = new JsonArray([.. on.Where(a => a.IsDefault && level == curve[0].Level)
+                    .Select(a => (JsonNode?)new JsonObject { ["type"] = 1, ["id32"] = WeaponChild(a.MixId, item.MixId), ["amount"] = 1 })]),
+                ["cost"] = new JsonArray(),
+                ["unlockableItems"] = new JsonArray([.. on.Where(a => !a.IsDefault && a.Level == level).Select(a => (JsonNode?)Unlockable(a, item.MixId))]),
             });
         var package = new JsonObject { ["id32"] = item.Package, ["type"] = 2, ["requiredItems"] = new JsonArray(item.MixId), ["levels"] = levels };
         using var document = JsonDocument.Parse(package.ToJsonString());
         return document.RootElement.Clone();
     }
+
+    // Every vanilla weapon unlockable has these four fields, amount 1 and one requisition price; sortOrder is 0 on 866 of 871.
+    static JsonObject Unlockable(ModAttachment a, uint weapon) => new()
+    {
+        ["mixId"] = WeaponChild(a.MixId, weapon), ["amount"] = 1, ["sortOrder"] = 0,
+        ["cost"] = new JsonArray(new JsonObject { ["mixId"] = MissionService.RequisitionMixId, ["amount"] = a.Price != 0 ? a.Price : PriceAt(a.Level) }),
+    };
 
     // After the weapon's own children (the client links a child to the run of its parent): a copy of a vanilla child of
     // each attachment's base, as the attachment's child of this weapon.
@@ -642,6 +660,21 @@ public sealed class RegisteredItems(string path)
         }
     }
 
+    // The profile change that saves a standalone weapon's level 1 (ProfileStore.TryChange), set by LocalBackend.
+    public Func<Func<JsonObject, JsonArray, bool>, bool>? ChangeProfile { get; set; }
+
+    // A standalone weapon starts at level 1, as a vanilla weapon is after its first mission: the Armory shows LVL 0
+    // before it. Earn with no XP passes level 1 (requirementType 3, which no mission counts) and gives its rewards.
+    void StartStandalone(Session current)
+    {
+        var saved = SavedProgress();
+        var due = current.Admitted.Where(i => i.Standalone && !IsLeftOut(i)).Select(i => current.ByWeapon.GetValueOrDefault(i.MixId))
+            .OfType<MasteryTrack>().Where(t => Level(saved.GetValueOrDefault(t.Package)) < 1).ToList();
+        if (due.Count > 0) ChangeProfile?.Invoke((progression, inventory) => { due.ForEach(t => WeaponMastery.Earn(t, progression, inventory, 0)); return true; });
+    }
+
+    static long Level(JsonObject? entry) => ModPackages.Whole(entry?["level"]) ?? 0;
+
     // Saved mod progress, by package.
     Dictionary<uint, JsonObject> SavedProgress()
     {
@@ -653,9 +686,13 @@ public sealed class RegisteredItems(string path)
 
     // A copy's own level, for the weapons this session has: nothing for a copy still at level 0, as for a vanilla weapon
     // not yet levelled. Only the fields of a packageProgress entry (ProfileStore.CompletePackageEntry) reach the client.
+    // A standalone weapon is at level 1 at least (StartStandalone), even where it could not be saved.
     void AddProgress(JsonObject progression, Session current)
     {
+        StartStandalone(current);
         var saved = SavedProgress();
+        foreach (var track in current.Tracks.Values.Where(t => t.Item!.Standalone && Level(saved.GetValueOrDefault(t.Package)) < 1))
+            saved[track.Package] = new JsonObject { ["id32"] = track.Package, ["level"] = 1 };
         if (saved.Count == 0) return;
         if (progression["packageProgress"] is not JsonArray progress) progression["packageProgress"] = progress = [];
         var listed = progress.Select(e => Id(e, "id32")).ToHashSet();

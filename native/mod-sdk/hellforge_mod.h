@@ -533,9 +533,10 @@ typedef struct HfAttachment
     const char* description;
     const uint32_t* weapons; /* loadout ids add_weapon returned (up to 16) */
     uint32_t weapon_count;
-    uint32_t level;          /* the weapon's mastery level that unlocks it; 0: held from the start */
+    uint32_t level;          /* 0 or 1: a default, held from the start; 2 and up: the mastery level that offers it for sale */
     const HfAttachmentChange* changes; /* what it changes while fitted: HF_FIELD(WeaponData, ...) and a value; up to 16 */
     uint32_t change_count;
+    uint32_t price;          /* requisition it costs at its level; 0: a price in line with vanilla's at that level */
 } HfAttachment;
 
 /* The local player's armor passives (set_passives, get_passives): passive ids as the game numbers them (mappings/passives.json;

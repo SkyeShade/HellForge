@@ -337,7 +337,8 @@ catalogue item for the session. It has no premium lock; a premium list your mod 
 ### Mastery
 
 The weapon has a mastery package of its own, made by the backend. Its levels follow the curve every vanilla weapon
-shares, and its rewards are your attachments. Level, XP and unlocks are the weapon's.
+shares. Level 1 gives your default attachments, and later levels sell the others. Level, XP and unlocks are the
+weapon's. It starts at level 1, as a vanilla weapon is after its first mission.
 
 The player's progress with a mod weapon is saved apart from vanilla progress (`modPackageProgress` in the profile).
 Removing the mod leaves their vanilla data as it was, and adding it back brings the level and unlocks back. The ids
@@ -370,14 +371,35 @@ brake.change_count = 1;
 | `unit` | an optic's, muzzle's or magazine's model from your data, drawn at the weapon's `attach_` joint |
 | `name_text`, `description` | its text in the armory |
 | `weapons`, `weapon_count` | the weapons offering it: 1 to 16 ids `add_weapon` returned |
-| `level` | the weapon's mastery level that unlocks it; 0: held from the start |
+| `level` | 0 or 1: a default, held from the start; 2 to 25: the mastery level that sells it |
 | `changes`, `change_count` | up to 16 reviewed fields of the weapon's records and their values while it is fitted |
+| `price` | requisition it costs at its level; 0: a price in line with vanilla's at that level |
 
 - A change names a single-value field of a component its weapons have, with `HF_FIELD` and a value of its type.
 - Its weapon's own records stay as they are; the game applies the changes while the attachment is fitted.
 - The weapon's unit needs the `attach_mag`, `attach_muzzle` or `attach_optic` joint ([models](models.md)).
 - Its unit must load with the weapon: put it in the weapon's package ([a weapon of your own](#a-weapon-of-your-own)).
 - At most 128 attachments across all mods.
+
+#### Defaults and attachments for sale
+
+The Armory shows CUSTOMIZE for a weapon only when its mastery package sells at least one attachment. Without one it
+shows CANNOT EDIT, and the mod's log says so. Its customize screen lists the defaults and the attachments for sale.
+
+| `level` | In the Armory |
+|---|---|
+| 0 or 1 | a default: a level 1 reward, held from the start |
+| 2 to 25 | for sale at that level, for `price` requisition |
+| above 25 | never offered; the backend's log says so |
+
+When `price` is 0, the price follows the level:
+
+| Level | Requisition |
+|---|---|
+| 2 to 5 | 3,000 |
+| 6 to 10 | 5,000 |
+| 11 to 17 | 7,000 |
+| 18 to 25 | 13,000 |
 
 ### Its assets
 

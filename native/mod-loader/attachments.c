@@ -30,7 +30,7 @@ typedef struct Attachment
 {
     HfMod* mod;
     char name[96];
-    uint32_t id, slot, level;
+    uint32_t id, slot, level, price;
     uint64_t addPath, unit;
     AttDelta deltas[ATT_CHANGES];
     uint32_t deltaCount;
@@ -280,9 +280,12 @@ static void AttItemsTick(uintptr_t game, uint32_t count)
     *(volatile uint32_t*)(game + ATT_COUNT) = count + 1;
 }
 
+static void AttachmentsStandaloneCheck(void);
+
 /* On the game thread, once the game has its items and entity deltas. */
 static void AttachmentsTick(void)
 {
+    if (g_fired[HF_EVENT_ENTITIES_READY]) AttachmentsStandaloneCheck(); /* add_attachment is refused from then on */
     uintptr_t game = g_game;
     if (g_attachmentCount == 0 || game == 0 || !AttProven(game)) return;
     uint8_t* state = EntityState();
@@ -359,7 +362,8 @@ static int AttDeltas(HfMod* mod, const HfAttachment* def, Attachment* a)
 
 static uint32_t ApiAddAttachment(HfMod* mod, const HfAttachment* def)
 {
-    if (mod == NULL || def == NULL || def->size < sizeof(HfAttachment)) { ApiLog(mod, "add_attachment: no attachment, or its size is not set (HfAttachment a = {sizeof a})"); return 0; }
+    if (mod == NULL || def == NULL || def->size < offsetof(HfAttachment, change_count) + sizeof def->change_count)
+    { ApiLog(mod, "add_attachment: no attachment, or its size is not set (HfAttachment a = {sizeof a})"); return 0; }
     if (def->name == NULL || def->name[0] == 0 || strlen(def->name) >= sizeof g_attachments[0].name) { ApiLog(mod, "add_attachment: it needs a name (under 96 bytes)"); return 0; }
     if (g_fired[HF_EVENT_ENTITIES_READY]) { ApiLog(mod, "add_attachment(%s): too late; call it from hellforge_mod_init", def->name); return 0; }
     if (g_attachmentCount == ATT_MAX) { ApiLog(mod, "add_attachment(%s): mods added %d attachments already", def->name, ATT_MAX); return 0; }
@@ -368,6 +372,7 @@ static uint32_t ApiAddAttachment(HfMod* mod, const HfAttachment* def)
     a.id = Thin(def->name);
     a.unit = def->unit;
     a.level = def->level;
+    a.price = def->size >= offsetof(HfAttachment, price) + sizeof def->price ? def->price : 0;
     snprintf(a.name, sizeof a.name, "%s", def->name);
     char key[160];
     snprintf(key, sizeof key, "hellforge/attachment/%s", def->name);
@@ -377,12 +382,13 @@ static uint32_t ApiAddAttachment(HfMod* mod, const HfAttachment* def)
     g_attachments[g_attachmentCount] = a;
     MemoryBarrier();
     g_attachmentCount++;
-    ApiLog(mod, "adding attachment %s (item %08x, slot %u, %u change(s)) on %u weapon(s)", a.name, a.id, a.slot, a.deltaCount, a.weaponCount);
+    ApiLog(mod, "adding attachment %s (item %08x, slot %u, level %u, %u change(s)) on %u weapon(s)", a.name, a.id, a.slot, a.level, a.deltaCount, a.weaponCount);
     WriteRegisteredItems();
     return a.id;
 }
 
-/* The attachments for the backend (RegisteredItems.cs): {"mixId", "standalone", "weapons", "level"}, the refused left out. */
+/* The attachments for the backend (RegisteredItems.cs): {"mixId", "standalone", "weapons", "level", "price"}, the refused
+ * left out. */
 static int AttachmentItems(char* text, int n, int size)
 {
     n += snprintf(text + n, size - n, ",\"attachments\":[");
@@ -393,7 +399,26 @@ static int AttachmentItems(char* text, int n, int size)
         if (a->state < 0) continue;
         n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"standalone\":true,\"weapons\":[", listed++ ? "," : "", a->id);
         for (uint32_t w = 0; w < a->weaponCount; w++) n += snprintf(text + n, size - n, "%s%u", w ? "," : "", a->weapons[w]);
-        n += snprintf(text + n, size - n, "],\"level\":%u}", a->level);
+        n += snprintf(text + n, size - n, "],\"level\":%u,\"price\":%u}", a->level, a->price);
     }
     return n + snprintf(text + n, size - n, "]");
+}
+
+/* Once mods can add no more attachments: a standalone weapon with no attachment above level 1 is logged. The Armory offers
+ * CUSTOMIZE only for a weapon whose mastery package sells something (game.dll 0x191d6b0); defaults are not sold. */
+static int g_attChecked;
+static void AttachmentsStandaloneCheck(void)
+{
+    if (g_attChecked) return;
+    g_attChecked = 1;
+    for (int w = 0; w < g_weaponCount; w++)
+    {
+        const Weapon* weapon = &g_weapons[w];
+        if (!weapon->standalone || weapon->plain || weapon->state == -1) continue;
+        int sold = 0;
+        for (int i = 0; i < g_attachmentCount && !sold; i++)
+            for (uint32_t k = 0; k < g_attachments[i].weaponCount && g_attachments[i].state >= 0 && g_attachments[i].level >= 2; k++)
+                sold |= g_attachments[i].weapons[k] == weapon->id;
+        if (!sold) ApiLog(weapon->mod, "add_weapon(%s): no attachment above level 1, so the Armory shows CANNOT EDIT for it", weapon->name);
+    }
 }
