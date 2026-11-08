@@ -51,7 +51,10 @@ static void LwInstallNoise(void)
     uintptr_t game = g_lw.game;
     if (!ApiCodeMatches(game + 0x64A890u, "84 D2 0F 84 AD 06 00 00 4C 8B DC 57 41 56") || !ApiCodeMatches(game + 0x2140320u + 8u * 6u, "00 00 0C 42 00 00 70 41") ||
         !ApiCodeMatches(game + 0x888E50u, "40 53 57 41 57 48 83 EC 20") || !ApiCodeMatches(game + 0x5B36C0u, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 50") ||
-        !ApiCodeMatches(game + 0x5B36DDu, "48 8B 35 34 2D D7 02") || !ApiCodeMatches(game + 0x5B36E6u, "44 8B 4E 38") || !ApiCodeMatches(game + 0x5B36FDu, "4C 8B 5E 30 8B 5E 3C"))
+        !ApiCodeMatches(game + 0x5B36DDu, "48 8B 35 34 2D D7 02") || !ApiCodeMatches(game + 0x5B36E6u, "44 8B 4E 38") || !ApiCodeMatches(game + 0x5B36FDu, "4C 8B 5E 30 8B 5E 3C") ||
+        !ApiCodeMatches(game + 0x7EFFC0u, "40 53 48 83 EC 30 3B 15 54 3C C9 02") || !ApiCodeMatches(game + 0x7EFFCEu, "4C 8B 0D F3 66 B3 02") || !ApiCodeMatches(game + 0x7F0062u, "F3 0F 11 74 02 48") ||
+        !ApiCodeMatches(game + 0x7F0180u, "48 89 5C 24 18 48 89 6C 24 20 56 57 41 55 41 56 41 57") || !ApiCodeMatches(game + 0x511CC0u, "48 85 C9 74 71 48 8B 05 CC A2 F5 02") ||
+        !ApiCodeMatches(game + 0x957AF2u, "4D 8D 86 50 19 05 00 41 FF 00") || !ApiCodeMatches(game + 0x957B6Au, "41 0F 11 86 78 A3 03 00"))
     { Note("living world: the noise dispatch is not the reviewed code; squads do not investigate noise"); return; }
     if (LoaderHook("living world: noise for offline squads", game + 0x64A890u, (void*)LwNoiseDetour, (void**)&g_lwNoiseOrig) || g_lwNoiseOrig == NULL)
     { Note("living world: the noise hook failed; squads do not investigate noise"); return; }
@@ -96,15 +99,69 @@ static int LwSquadGoTo(LwSquad* q, const float* target)
     return 1;
 }
 static int LwBits(uint32_t v) { int c = 0; for (; v; v &= v - 1) c++; return c; }
+
+/* Phase 2b (KB living-world-plan "Phase 2 design", living-world-p2-contact): fights draw squads in. Once a second the
+ * AiAlert table ([game+0x3326528]: count +0xC, entity pointers [+0x38] (id at +8), levels [+0x50], one index; P
+ * 0x952BDC..0x952C71) gives every unit engaged (levels 3, 5, 6, 7); their positions cluster within LW_FIGHT_CLUSTER into
+ * fights, kept while seen (ended after 30 s without an engaged unit). A call for reinforcements (the creator 0x957390:
+ * dir+0x51950 + 1 at 0x957AF9, its position at dir+0x3A378, 0x957B6A) counts as 8 engaged units at its point. Each fight
+ * wants min(3, 1 + engaged / 8) squads; calm PATROL or INVESTIGATE squads within LW_FIGHT_REACH (XL: x2) are sent,
+ * nearest first. Offline they run the route at LW_RUSH x their pace; online they get the point (0xA13520 + the repath
+ * 0x5B36C0) and every member the speed setter 0x7EFFC0(_, member, pace x LW_RUSH) (AiEnemy +0x48 and AiCharacter +0xC;
+ * kept through state changes and the squad's slowest-member sync; the convoy code does the same, P). The speed is put
+ * back as the convoy does (+0x48 = -1.0, then 0x7F0180(manager, unit, settings + block) with settings = 0x511CC0(the
+ * unit's resource), block +0x64 when engaged, else +0x24; 0x864907..0x864926) when a member engages, the squad arrives
+ * within LW_FIGHT_JOIN, or the intent ends. Native target sharing pulls arrivals into the fight. */
+#define LW_FIGHT_CLUSTER 40.0f /* engaged units within this are one fight (D) */
+#define LW_FIGHT_MATCH 60.0f   /* a cluster within this of a known fight is that fight (D) */
+#define LW_FIGHT_REACH 400.0f  /* squads sent from within this (D; x2 on extra large maps) */
+#define LW_FIGHT_JOIN 40.0f    /* arrived within this of the fight (D) */
+typedef struct { float pos[3]; int engaged, peak; ULONGLONG born, seen; uint8_t sent, call, live; } LwFight;
+static LwFight g_lwFights[16];
+static struct { uint32_t fights, calls, sent, joined, ended; } g_lwRush; /* 30 s counters */
+static uintptr_t LwAiRecord(uint32_t unit)
+{
+    uintptr_t ai = 0, recs = 0; uint32_t idx = 0;
+    return EvpPtr(g_lw.game + 0x33266C8u, &ai) && EvpHash(ai + 0x2330, unit, 8, 4, &idx) && EvpPtr(ai + 0x2350, &recs) ? recs + 0xA50ull * idx : 0;
+}
+static void LwRushMembers(LwSquad* q, const uint32_t* members, int n, int on)
+{
+    typedef void (*SpeedFn)(void*, uint32_t, float);
+    typedef uintptr_t (*SettingsFn)(uint64_t);
+    typedef void (*StateSpeedFn)(uintptr_t, uint32_t, uintptr_t);
+    uintptr_t mgr = 0;
+    if (!EvpPtr(g_lw.game + 0x33266C8u, &mgr)) return;
+    float pace = (q->speed > 0.5f ? q->speed : LW_SPEED_DEFAULT) * LW_RUSH;
+    int done = 0;
+    for (int k = 0; k < n; k++)
+    {
+        uintptr_t rec = LwAiRecord(members[k]);
+        if (!rec) continue;
+        if (on) { ((SpeedFn)(g_lw.game + 0x7EFFC0u))(NULL, members[k], pace); done++; continue; }
+        uint32_t u = 0; uint64_t res = EvpEntityResource(g_lw.game, members[k], &u);
+        uintptr_t settings = res ? ((SettingsFn)(g_lw.game + 0x511CC0u))(res) : 0;
+        *(volatile float*)(rec + 0x48) = -1.0f;
+        if (settings) ((StateSpeedFn)(g_lw.game + 0x7F0180u))(mgr, members[k], settings + (LwAlert(members[k]) >= 3 ? 0x64 : 0x24));
+        done++;
+    }
+    q->rushed = (uint8_t)(on && done > 0);
+    if (on && done) Note("living world: squad %d runs to the fight at %.2f m/s (%d members)", (int)(q - g_lwSquads), (double)pace, done);
+}
+/* its fight still on: the slot is live and not reused since (a fight born after the squad was sent is another one) */
+static int LwFightOf(const LwSquad* q) { int f = q->fight; return f >= 0 && f < 16 && g_lwFights[f].live && g_lwFights[f].born <= q->intentAt; }
+
 static void LwIntentEnd(LwSquad* q, const char* why)
 {
     ULONGLONG now = GetTickCount64();
     char peak[96] = "";
-    if (q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, "; %d of %d members investigated (alert 2+, the first after %.1f s)", LwBits(q->intentPeak), q->seenCount, (double)q->intentPeakAt);
-    Note("living world: squad %d investigation ends (%s) after %.0f s, %s; %s (%.0f m from it, %.0f m when sent)%s", (int)(q - g_lwSquads), why, (double)(now - q->intentAt) / 1000.0,
-        q->state == LW_ONLINE ? "online" : "offline", q->intentStage ? "it reached the point" : "it did not reach the point",
+    if (q->intent == LW_INVESTIGATE && q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, "; %d of %d members investigated (alert 2+, the first after %.1f s)", LwBits(q->intentPeak), q->seenCount, (double)q->intentPeakAt);
+    if (q->rushed && q->state == LW_ONLINE) LwRushMembers(q, q->seen, q->seenCount, 0);
+    q->rushed = 0;
+    Note("living world: squad %d %s ends (%s) after %.0f s, %s; %s (%.0f m from it, %.0f m when sent)%s", (int)(q - g_lwSquads), q->intent == LW_REINFORCE ? "reinforcement" : "investigation",
+        why, (double)(now - q->intentAt) / 1000.0, q->state == LW_ONLINE ? "online" : "offline", q->intentStage ? "it reached the point" : "it did not reach the point",
         (double)sqrtf(LwDist2(q->pos, q->target[0], q->target[1])), (double)q->intentFrom, peak);
-    q->intent = LW_PATROL; q->intentStage = 0; q->intentFree = now + LW_INTENT_REST; g_lwHear.ended++;
+    if (q->intent == LW_REINFORCE) g_lwRush.ended++; else g_lwHear.ended++;
+    q->intent = LW_PATROL; q->intentStage = 0; q->intentFree = now + LW_INTENT_REST; q->fight = -1;
     int node = LwNearestNode(q->pos[0], q->pos[1]);
     if (node >= 0) q->node = (uint16_t)node;
     q->pathLen = q->pathAt = 0; LwPlan(q);
@@ -129,6 +186,17 @@ static int LwIntentRoute(LwSquad* q)
 static int LwIntentArrived(LwSquad* q)
 {
     ULONGLONG now = GetTickCount64();
+    if (q->intent == LW_REINFORCE) /* at the fight offline: it waits there while the fight lasts (players near bring it online) */
+    {
+        if (q->intentStage == 0)
+        {
+            q->intentStage = 1; q->intentStageAt = now;
+            Note("living world: squad %d reached the fight at (%.0f, %.0f) offline after %.0f s", (int)(q - g_lwSquads), (double)q->target[0], (double)q->target[1], (double)(now - q->intentAt) / 1000.0);
+        }
+        if (LwFightOf(q) && now - q->intentStageAt < 120000) return 1;
+        LwIntentEnd(q, LwFightOf(q) ? "waited 120 s" : "the fight is over");
+        return 0;
+    }
     if (q->intent != LW_INVESTIGATE) return 0;
     if (q->intentStage == 0)
     {
@@ -143,7 +211,7 @@ static int LwIntentArrived(LwSquad* q)
 /* LwSendGoal for a squad with an intent */
 static int LwIntentGoal(LwSquad* q)
 {
-    if (q->intent != LW_INVESTIGATE) return 0;
+    if (q->intent != LW_INVESTIGATE && q->intent != LW_REINFORCE) return 0;
     if (q->intentStage == 0) { q->intentSent = 1; if (!LwSquadGoTo(q, q->target)) LwIntentEnd(q, "no navmesh at the point"); }
     return 1;
 }
@@ -210,10 +278,37 @@ static void LwHearReadBack(const LwSquad* q, uint32_t member, uint32_t source) /
         inHash ? "in the detector hash" : "NOT in the detector hash", owned, source, tagged ? "read" : "not read", tagged ? ((tag >> 25) & 1 ? "set" : "clear") : "-", entry, bdet, local, synced);
 }
 /* an online squad with an intent, each tick after its members were read */
+static void LwReinforceOnline(LwSquad* q, const uint32_t* members, int n, const float* at, ULONGLONG now)
+{
+    int engaged = 0;
+    for (int k = 0; k < n; k++) engaged += LwAlert(members[k]) >= 3;
+    if (q->intentStage == 0)
+    {
+        if (!q->intentSent && q->jobSet) { q->intentSent = 1; if (!LwSquadGoTo(q, q->target)) { LwIntentEnd(q, "no navmesh at the point"); return; } }
+        if (q->intentSent && !q->rushed && !engaged) LwRushMembers(q, members, n, 1);
+        if (LwFightOf(q) && now >= q->retargetAt && LwDist2(g_lwFights[q->fight].pos, q->target[0], q->target[1]) > 30.0f * 30.0f) /* the fight moved */
+        { memcpy(q->target, g_lwFights[q->fight].pos, sizeof q->target); q->retargetAt = now + 10000; if (q->jobSet) LwSquadGoTo(q, q->target); }
+        int there = LwDist2(at, q->target[0], q->target[1]) <= LW_FIGHT_JOIN * LW_FIGHT_JOIN;
+        if (engaged || there)
+        {
+            if (q->rushed) LwRushMembers(q, members, n, 0);
+            q->intentStage = 1; q->intentStageAt = now; g_lwRush.joined++;
+            Note("living world: squad %d %s at (%.0f, %.0f) after %.0f s, %d of %d members engaged", (int)(q - g_lwSquads), engaged ? "joined the fight" : "reached the fight",
+                (double)at[0], (double)at[1], (double)(now - q->intentAt) / 1000.0, engaged, n);
+            return;
+        }
+        if (!LwFightOf(q)) { LwIntentEnd(q, "the fight ended before it got there"); return; }
+        if (now - q->intentAt > 240000) LwIntentEnd(q, "not there in 240 s");
+        return;
+    }
+    if ((!LwFightOf(q) && !engaged) || now - q->intentStageAt > 180000) LwIntentEnd(q, LwFightOf(q) ? "180 s at the fight" : "the fight is over");
+}
 static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at)
 {
-    if (q->intent != LW_INVESTIGATE || n <= 0) return;
+    if (n <= 0) return;
     ULONGLONG now = GetTickCount64();
+    if (q->intent == LW_REINFORCE) { LwReinforceOnline(q, members, n, at, now); return; }
+    if (q->intent != LW_INVESTIGATE) return;
     for (int k = 0; k < n; k++) if (LwAlert(members[k]) >= 3) { LwIntentEnd(q, "a member is in a fight"); return; }
     if (q->intentStage == 0)
     {
@@ -251,14 +346,15 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
 /* an online squad going offline with an intent: the route from where it stands */
 static void LwIntentOffline(LwSquad* q)
 {
-    if (q->intent != LW_INVESTIGATE) return;
-    q->intentSent = 0;
-    if (q->intentStage != 0) LwIntentEnd(q, "it went offline while investigating");
+    if (q->intent != LW_INVESTIGATE && q->intent != LW_REINFORCE) return;
+    q->intentSent = 0; q->rushed = 0; /* its units are gone, and their speed with them */
+    if (q->intentStage != 0) LwIntentEnd(q, q->intent == LW_REINFORCE ? "it went offline at the fight" : "it went offline while investigating");
     else if (!LwIntentRoute(q)) LwIntentEnd(q, "no route to the point");
 }
 
 static void LwInvestigate(const LwEvent* e)
 {
+    for (int f = 0; f < 16; f++) if (g_lwFights[f].live && LwDist2(g_lwFights[f].pos, e->pos[0], e->pos[1]) < 100.0f * 100.0f) return; /* a fight: 2b sends squads */
     float native = LwNoiseRange(e->type);
     int pick[LW_HEAR_SQUADS]; float d2s[LW_HEAR_SQUADS]; int picked = 0;
     ULONGLONG now = GetTickCount64();
@@ -326,6 +422,127 @@ static void LwHearNote(void)
     Note("living world: noise (30 s): %u emissions, %u from the Helldivers' side in reach, %u events, %u squads sent, %u members told, %u investigations ended",
         g_lwHear.heard, g_lwHear.kept, g_lwHear.events, g_lwHear.sent, g_lwHear.told, g_lwHear.ended);
     memset(&g_lwHear, 0, sizeof g_lwHear);
+}
+static void LwReinforce(int f, int want)
+{
+    LwFight* fi = &g_lwFights[f];
+    float reach = g_lwWorld.radius > 1500.0f ? 2.0f * LW_FIGHT_REACH : LW_FIGHT_REACH;
+    int pick[3]; float d2s[3]; int picked = 0;
+    if (want > 3) want = 3;
+    ULONGLONG now = GetTickCount64();
+    for (int i = 0; i < g_lwWorld.count; i++)
+    {
+        LwSquad* q = &g_lwSquads[i];
+        if ((q->state != LW_OFFLINE && q->state != LW_ONLINE) || q->intent == LW_REINFORCE || q->pulled || q->survivors == 0) continue;
+        if (q->intent == LW_PATROL && now < q->intentFree) continue;
+        if (q->state == LW_ONLINE && !LwCalm(q)) continue; /* already in it, or busy */
+        float d2 = LwDist2(q->pos, fi->pos[0], fi->pos[1]);
+        if (d2 > reach * reach || d2 < LW_FIGHT_JOIN * LW_FIGHT_JOIN) continue;
+        int at = picked < want ? picked++ : (d2 < d2s[want - 1] ? want - 1 : -1);
+        if (at < 0) continue;
+        while (at > 0 && d2s[at - 1] > d2) { pick[at] = pick[at - 1]; d2s[at] = d2s[at - 1]; at--; }
+        pick[at] = i; d2s[at] = d2;
+    }
+    char list[160] = ""; size_t len = 0; int sent = 0;
+    for (int j = 0; j < picked; j++)
+    {
+        LwSquad* q = &g_lwSquads[pick[j]];
+        uint8_t was = q->intent;
+        q->intent = LW_REINFORCE; q->intentStage = 0; q->intentSent = 0; q->intentAt = now; q->intentFrom = sqrtf(d2s[j]); q->fight = (int8_t)f; q->retargetAt = now + 10000;
+        memcpy(q->target, fi->pos, sizeof q->target);
+        if (q->state == LW_OFFLINE) { if (!LwIntentRoute(q)) { q->intent = was; q->fight = -1; continue; } }
+        else if (q->jobSet)
+        {
+            q->intentSent = 1;
+            if (!LwSquadGoTo(q, q->target)) { q->intent = was; q->fight = -1; continue; }
+            uint32_t ms[32]; int mn = LwMembers(q->squad, ms);
+            if (mn > 0) LwRushMembers(q, ms, mn, 1);
+        }
+        sent++; fi->sent++; g_lwRush.sent++;
+        len += (size_t)snprintf(list + len, sizeof list - len, "%s%d (%s%s, %.0f m)", len ? ", " : "", pick[j], q->state == LW_ONLINE ? "online" : "offline", was == LW_INVESTIGATE ? ", was investigating" : "", (double)sqrtf(d2s[j]));
+        if (len >= sizeof list) len = sizeof list - 1;
+    }
+    if (sent) Note("living world: fight %d at (%.0f, %.0f), %d engaged%s: squads sent %s", f, (double)fi->pos[0], (double)fi->pos[1], fi->engaged, fi->call ? " (a call for help)" : "", list);
+}
+/* each squads tick: once a second, the fights from the engaged units and the calls for help */
+static void LwFightScan(void)
+{
+    static ULONGLONG next; static uint32_t calls; static uintptr_t level;
+    ULONGLONG now = GetTickCount64();
+    if (level != g_lwWorld.lg) { level = g_lwWorld.lg; memset(g_lwFights, 0, sizeof g_lwFights); calls = EvpU32(g_lwWorld.dir + 0x51950, 0); next = 0; }
+    if (now < next) return;
+    next = now + 1000;
+    float cx[32][3]; int cn[32], clusters = 0; uint8_t ccall[32];
+    uintptr_t al = 0, ptrs = 0, levels = 0;
+    if (EvpPtr(g_lw.game + 0x3326528u, &al) && EvpPtr(al + 0x38, &ptrs) && EvpPtr(al + 0x50, &levels))
+    {
+        uint32_t count = EvpU32(al + 0xC, 0);
+        for (uint32_t i = 0; i < count && i < 1024; i++)
+        {
+            uint32_t lv = EvpU32(levels + 4ull * i, 0);
+            if (lv != 3 && (lv < 5 || lv > 7)) continue;
+            uintptr_t ent = 0; ActHealth h; float p[3];
+            if (!EvpPtr(ptrs + 8ull * i, &ent) || !ent) continue;
+            uint32_t id = EvpU32(ent + 8, 0);
+            if (!id || !ActHealthOf(g_lw.game, id, &h) || !h.unit || !EvpUnitPosition(h.unit, p) || !isfinite(p[0])) continue;
+            int c = 0;
+            for (; c < clusters; c++) if (LwDist2(cx[c], p[0], p[1]) < LW_FIGHT_CLUSTER * LW_FIGHT_CLUSTER) break;
+            if (c == clusters) { if (clusters == 32) continue; clusters++; cx[c][0] = p[0]; cx[c][1] = p[1]; cx[c][2] = p[2]; cn[c] = 0; ccall[c] = 0; }
+            cx[c][0] = (cx[c][0] * (float)cn[c] + p[0]) / (float)(cn[c] + 1); cx[c][1] = (cx[c][1] * (float)cn[c] + p[1]) / (float)(cn[c] + 1);
+            cn[c]++;
+        }
+    }
+    uint32_t nowCalls = EvpU32(g_lwWorld.dir + 0x51950, calls);
+    if (nowCalls != calls && clusters < 32) /* a call for reinforcements since the last scan: its point (the last one if several) */
+    {
+        float cp[3] = {0, 0, 0};
+        if (!SafeRead(g_lwWorld.dir + 0x3A378, cp, 12) && isfinite(cp[0]) && isfinite(cp[1]))
+        { cx[clusters][0] = cp[0]; cx[clusters][1] = cp[1]; cx[clusters][2] = cp[2]; cn[clusters] = 8; ccall[clusters] = 1; clusters++; g_lwRush.calls++; }
+        calls = nowCalls;
+    }
+    for (int c = 0; c < clusters; c++)
+    {
+        int f = -1, freeSlot = -1;
+        for (int k = 0; k < 16; k++)
+        {
+            if (g_lwFights[k].live && LwDist2(g_lwFights[k].pos, cx[c][0], cx[c][1]) < LW_FIGHT_MATCH * LW_FIGHT_MATCH) { f = k; break; }
+            if (!g_lwFights[k].live && freeSlot < 0) freeSlot = k;
+        }
+        if (f < 0)
+        {
+            if (freeSlot < 0) continue;
+            f = freeSlot; memset(&g_lwFights[f], 0, sizeof g_lwFights[f]);
+            g_lwFights[f].live = 1; g_lwFights[f].born = now; g_lwRush.fights++;
+            Note("living world: fight %d at (%.0f, %.0f, %.1f): %d engaged%s, %.0f m from the nearest player", f, (double)cx[c][0], (double)cx[c][1], (double)cx[c][2], cn[c],
+                ccall[c] ? " (a call for reinforcements)" : "", (double)sqrtf(LwNearestPlayer2(cx[c][0], cx[c][1])));
+        }
+        LwFight* fi = &g_lwFights[f];
+        memcpy(fi->pos, cx[c], sizeof fi->pos);
+        fi->engaged = ccall[c] ? (fi->engaged > cn[c] ? fi->engaged : cn[c]) : cn[c];
+        if (fi->engaged > fi->peak) fi->peak = fi->engaged;
+        fi->seen = now; fi->call |= ccall[c];
+    }
+    for (int f = 0; f < 16; f++)
+    {
+        LwFight* fi = &g_lwFights[f];
+        if (!fi->live) continue;
+        if (now - fi->seen > 30000)
+        {
+            fi->live = 0;
+            Note("living world: fight %d at (%.0f, %.0f) is over after %.0f s (at most %d engaged, %u squads sent)", f, (double)fi->pos[0], (double)fi->pos[1],
+                (double)(fi->seen - fi->born) / 1000.0, fi->peak, fi->sent);
+            continue;
+        }
+        int want = 1 + fi->engaged / 8;
+        if (want > 3) want = 3;
+        if (fi->seen == now && fi->sent < want) LwReinforce(f, want - fi->sent);
+    }
+}
+static void LwRushNote(void)
+{
+    if (g_lwRush.fights == 0 && g_lwRush.sent == 0 && g_lwRush.ended == 0) return;
+    Note("living world: fights (30 s): %u new, %u calls for help, %u squads sent, %u arrived or joined, %u reinforcements ended", g_lwRush.fights, g_lwRush.calls, g_lwRush.sent, g_lwRush.joined, g_lwRush.ended);
+    memset(&g_lwRush, 0, sizeof g_lwRush);
 }
 /* test command "noise <type> [dx dy]" (HELLFORGE_LW_TEST_TRACE=1): a noise through the game's dispatch (and so the hook)
  * at the local player's feet plus (dx, dy), from the local Helldiver, mode 0, loudness 1, as a shot of that template.

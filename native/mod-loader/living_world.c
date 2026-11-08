@@ -464,7 +464,8 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
 #define LW_SPEED_DEFAULT 2.0f /* m/s until a squad's own walking speed was seen online (D) */
 #define LW_RESERVE 12u        /* the 70 room's share kept for garrison top-ups and SEAF (KB "Spawn gates and the online budget") */
 enum { LW_FREE, LW_OFFLINE, LW_PENDING, LW_ONLINE };
-enum { LW_PATROL = 0, LW_INVESTIGATE = 1 }; /* a squad's intent (Phase 2, living_world_intent.c) */
+enum { LW_PATROL = 0, LW_INVESTIGATE = 1, LW_REINFORCE = 2 }; /* a squad's intent (Phase 2, living_world_intent.c) */
+#define LW_RUSH 1.6f /* a reinforcing squad's pace x its walking speed (D) */
 typedef struct LwSquad
 {
     uint8_t state, survivors, cap, jobSet, pathLen, pathAt;
@@ -486,10 +487,11 @@ typedef struct LwSquad
     uint8_t pulled;                 /* 2: held in place by the test stage until it comes online (the only value) */
     uint8_t intent, intentStage, intentSent; /* Phase 2 (living_world_intent.c): LW_PATROL / LW_INVESTIGATE; 1 = at the point; goal sent online */
     float target[3]; uint32_t intentSource, intentSearch; ULONGLONG intentAt, intentStageAt, intentFree;
-    uint32_t intentPeak; float intentPeakAt, intentFrom; /* intentFrom: m from the point when sent */ /* members (bit = seen index) that reached alert 2+ after being told; seconds to the first */
+    uint32_t intentPeak; float intentPeakAt, intentFrom; /* intentFrom: m from the point when sent */
+    int8_t fight; uint8_t rushed; ULONGLONG retargetAt; /* REINFORCE: its fight (g_lwFights index); members sped up (0x7EFFC0); next goal refresh */ /* members (bit = seen index) that reached alert 2+ after being told; seconds to the first */
 } LwSquad;
 static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
-static void LwIntentOffline(LwSquad* q); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
+static void LwIntentOffline(LwSquad* q); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
 {
@@ -673,7 +675,7 @@ static void LwWalk(LwSquad* q, float dt)
 {
     if (q->pulled) return;
     if (q->pathAt >= q->pathLen) { if (LwIntentArrived(q)) return; LwPlan(q); if (q->pathLen == 0) return; }
-    float step = q->speed * dt;
+    float step = q->speed * (q->intent == LW_REINFORCE && q->intentStage == 0 ? LW_RUSH : 1.0f) * dt; /* reinforcements run (Phase 2b) */
     while (step > 0 && q->pathAt < q->pathLen)
     {
         LwNode* t = &g_lwNodes[q->path[q->pathAt]];
@@ -1476,7 +1478,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     else if (now - q->moved >= 5000) /* its walking speed, from the leader's way over 5 s */
     {
         float v = sqrtf(LwDist2(q->movedFrom, at[0], at[1])) / ((float)(now - q->moved) / 1000.0f);
-        if (v > 0.3f && v < 12.0f)
+        if (v > 0.3f && v < 12.0f && !q->rushed) /* not while sped up for a fight (2b) */
         {
             q->speed = q->speed * 0.5f + v * 0.5f;
             Note("living world: squad %d walks %.2f m/s (its speed now %.2f m/s); %d members, %u lost", (int)(q - g_lwSquads), (double)v, (double)q->speed, n, q->lost);
@@ -2415,6 +2417,7 @@ static void LwSquadsTick(void)
     LwDrawnTick(); /* the main view's drawn state of far squads (test instrument, HELLFORGE_LW_DRAWN=1) */
     LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
     LwNoiseDrain(); /* Phase 2a: noises since the last tick send squads to investigate */
+    LwFightScan(); /* Phase 2b: fights and calls for help draw squads in (once a second) */
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
@@ -2498,7 +2501,7 @@ static void LwSquadsTick(void)
         g_lwWorld.goals = g_lwWorld.goalNoFace = g_lwWorld.goalReplans = g_lwWorld.goalStuck = 0;
         LwNavTypeDump(); /* test (HELLFORGE_LW_TEST_NAV=1): agent types and obstacle areas, twice a level */
         { LONG spared = InterlockedExchange(&g_lwSpared, 0); if (spared) Note("living world: obstacle smashes (30 s): squad mates kept out of the zones %ld times (a mate is tested again every frame of a zone)", (long)spared); }
-        LwHearNote();
+        LwHearNote(); LwRushNote();
         { LONG spared = InterlockedExchange(&g_lwBlastSpared, 0); if (spared) Note("living world: obstacle smash explosions (30 s): squad mates left out %ld times", (long)spared); }
         if (g_lwWorld.heights)
             Note("living world: ground (30 s): %u member positions, %u more than 1.5 m under the drawn ground (worst %.1f m), %u more than 3 m over it (worst %.1f m)",
