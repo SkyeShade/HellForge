@@ -1198,6 +1198,33 @@ typedef void (*NearReleaseFn)(uint64_t resource);
 typedef uint32_t (*NearReadbackFn)(uint64_t resource);
 typedef char (*NearReadyFn)(uint32_t id);
 typedef const uint8_t* (*NearDescFn)(uint8_t* out, uint32_t id);
+/* A taken readback's data is the caller's to free (KB missions/xl-tile-memory-growth, checked by me in the exe): the
+ * take [api 0x10]+0x1D8 = 0x31BAB0 copies the 24-byte record {w, h, format, ..., data +0x10} to the caller and frees
+ * only the slot's record; the release +0x1E0 = 0x31BB20 frees [desc+0x10] (allocator [exe+0x1A10200] vtbl+0x40) and
+ * zeroes it. The game pairs them; the loader did not, and every tile built in mission kept 160 MiB (heights 32,
+ * conform 2 x 32, materials 64). Each taken descriptor here is a NEAR_TAKEN local: released when it leaves scope, on
+ * every path, after the site has copied its data into loader memory. */
+typedef void (*NearReleaseDataFn)(uint8_t* desc);
+static uintptr_t NearApi(uint32_t table, uint32_t slot);
+static void NearReadDone(uint8_t (*d)[24])
+{
+    static int checked; static NearReleaseDataFn release;
+    uint64_t data = 0; memcpy(&data, *d + 16, 8);
+    if (data == 0) return;
+    if (!checked)
+    {
+        uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+        uintptr_t r = NearApi(0x10, 0x1E0), t = NearApi(0x10, 0x1D8);
+        checked = 1;
+        if (r == exe + 0x31BB20u && t == exe + 0x31BAB0u &&
+            ApiCodeMatches(exe + 0x31BB20u, "40 53 48 83 EC 20 48 8B D9 45 33 C0 48 8B 0D") &&
+            ApiCodeMatches(exe + 0x31BAB0u, "40 53 48 83 EC 20 8B C2 48 8B D9 4C 8D 0C C5"))
+            release = (NearReleaseDataFn)r;
+        else Note("difficulty: near terrain: the readback take / release are not the reviewed code; taken readbacks are not freed");
+    }
+    if (release != NULL) release(*d);
+}
+#define NEAR_TAKEN __attribute__((cleanup(NearReadDone)))
 typedef uint64_t* (*NearSlotFn)(uint64_t table, uint32_t* key);
 
 static const uint32_t kNearNames[2] = {0x2A9E3232u, 0x95E7E3ACu}; /* generated_heightmap, generated_materials */
@@ -2077,7 +2104,7 @@ static int NearCalTake(void)
     NearDescFn desc = (NearDescFn)NearApi(0x10, 0x1D8);
     if (ready == NULL || desc == NULL) return -1;
     if (!ready(g_cal.id)) return ++g_cal.polls < 2000 ? 0 : -1;
-    uint8_t out[32] = {0}, d[24];
+    uint8_t out[32] = {0}; NEAR_TAKEN uint8_t d[24] = {0};
     const uint8_t* p = desc(out, g_cal.id);
     memcpy(d, p ? p : out, 24);
     uint32_t w, hgt, format; uint64_t data;
@@ -3728,8 +3755,11 @@ static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uin
     }
     if (g_conform.phase == 1 || g_conform.phase == 5)
     {
+        /* a plan of a build that failed still uses the buffers: wait before taking the readback (taking it empties its
+         * slot, and a later ready() on that id would read a freed or reused record) */
+        if (g_conform.phase == 1 && g_conform.planRunning) return 1;
         if (!ready(g_conform.id)) { if (++g_conform.polls < 2000) return 1; Note("difficulty: near terrain: conform: a readback did not come"); return 0; }
-        uint8_t out[32] = {0}, d[24];
+        uint8_t out[32] = {0}; NEAR_TAKEN uint8_t d[24] = {0};
         const uint8_t* p = desc(out, g_conform.id);
         memcpy(d, p ? p : out, 24);
         uint32_t w, hgt, format; uint64_t data;
@@ -3738,7 +3768,6 @@ static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uin
         { Note("difficulty: near terrain: conform: a readback is %u x %u format %u; the tile stays as rendered", w, hgt, format); return 0; }
         if (g_conform.phase == 1)
         {
-            if (g_conform.planRunning) return 1; /* a plan of a build that failed is still using the buffers */
             if (g_conform.coarse == NULL) g_conform.coarse = (uint16_t*)VirtualAlloc(NULL, (size_t)4096 * 4096 * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (g_conform.coarse == NULL || SafeRead(data, g_conform.coarse, (size_t)4096 * 4096 * 2)) return 0;
             NearRingRestore("the conform's readback of the level's heightmap", NearFetchU16, NearStoreU16, g_conform.coarse);
@@ -3792,7 +3821,7 @@ static int NearConformStep(uint64_t records, uint32_t end, uint64_t context, uin
     if (g_conform.phase == 6 || g_conform.phase == 7) /* the tile's and the level's material maps: the band, and the dumps (HELLFORGE_XL_NEAR_DUMP) */
     {
         if (!ready(g_conform.id)) return ++g_conform.polls < 2000 ? 1 : 0;
-        uint8_t out[32] = {0}, d[24];
+        uint8_t out[32] = {0}; NEAR_TAKEN uint8_t d[24] = {0};
         const uint8_t* p = desc(out, g_conform.id);
         memcpy(d, p ? p : out, 24);
         uint32_t w, hgt, format; uint64_t data;
@@ -3939,7 +3968,7 @@ static int NearStepDump(uint64_t records, uint32_t end, uint64_t context, uint64
     NearDescFn desc = (NearDescFn)NearApi(0x10, 0x1D8);
     if (ready == NULL || desc == NULL) return -1;
     if (!ready(g_stepDump.id)) return ++g_stepDump.polls < 2000 ? 1 : -1;
-    uint8_t out[32] = {0}, d[24];
+    uint8_t out[32] = {0}; NEAR_TAKEN uint8_t d[24] = {0};
     const uint8_t* p = desc(out, g_stepDump.id);
     memcpy(d, p ? p : out, 24);
     uint32_t w, hgt, format; uint64_t data;
@@ -5326,7 +5355,7 @@ static int TerrainNearReplay(uint64_t records, uint32_t end, uint32_t at, uint64
         NearDescFn desc = (NearDescFn)NearApi(0x10, 0x1D8);
         if (ready == NULL || desc == NULL) { NearReplayEnd(0); return 0; }
         if (!ready(g_near.readId)) { if (++g_near.polls < 2000) return 1; Note("difficulty: near terrain: the tile's readback did not come; no tile"); NearReplayEnd(0); return 0; }
-        uint8_t out[32] = {0}, d[24];
+        uint8_t out[32] = {0}; NEAR_TAKEN uint8_t d[24] = {0};
         const uint8_t* p = desc(out, g_near.readId);
         memcpy(d, p ? p : out, 24);
         uint32_t w, hgt, format; uint64_t data;
@@ -6281,7 +6310,7 @@ static void NearCraterReport(void)
             break;
         }
         if (!ready(gpu.id)) { if (++gpu.polls > 40) { Note("difficulty: near terrain: drawn heights: readback %d mip %d did not come", gpu.which, gpu.mip); gpu.mip = 5; gpu.state = 0; } break; }
-        uint8_t out[32] = {0}, d[24];
+        uint8_t out[32] = {0}; NEAR_TAKEN uint8_t d[24] = {0};
         const uint8_t* p = desc(out, gpu.id);
         memcpy(d, p ? p : out, 24);
         uint32_t w, hgt, format; uint64_t data;
