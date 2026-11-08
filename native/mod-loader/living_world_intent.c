@@ -101,8 +101,9 @@ static void LwIntentEnd(LwSquad* q, const char* why)
     ULONGLONG now = GetTickCount64();
     char peak[96] = "";
     if (q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, "; %d of %d members investigated (alert 2+, the first after %.1f s)", LwBits(q->intentPeak), q->seenCount, (double)q->intentPeakAt);
-    Note("living world: squad %d investigation ends (%s) after %.0f s, %s; %s%s", (int)(q - g_lwSquads), why, (double)(now - q->intentAt) / 1000.0,
-        q->state == LW_ONLINE ? "online" : "offline", q->intentStage ? "it reached the point" : "it did not reach the point", peak);
+    Note("living world: squad %d investigation ends (%s) after %.0f s, %s; %s (%.0f m from it, %.0f m when sent)%s", (int)(q - g_lwSquads), why, (double)(now - q->intentAt) / 1000.0,
+        q->state == LW_ONLINE ? "online" : "offline", q->intentStage ? "it reached the point" : "it did not reach the point",
+        (double)sqrtf(LwDist2(q->pos, q->target[0], q->target[1])), (double)q->intentFrom, peak);
     q->intent = LW_PATROL; q->intentStage = 0; q->intentFree = now + LW_INTENT_REST; g_lwHear.ended++;
     int node = LwNearestNode(q->pos[0], q->pos[1]);
     if (node >= 0) q->node = (uint16_t)node;
@@ -146,6 +147,32 @@ static int LwIntentGoal(LwSquad* q)
     if (q->intentStage == 0) { q->intentSent = 1; if (!LwSquadGoTo(q, q->target)) LwIntentEnd(q, "no navmesh at the point"); }
     return 1;
 }
+/* What 0x888E50 left for the first member (the write's own exits: the member not in the detector hash [game+0x3326548]
+ * +0x30, its entity flag +0x14 bit 0 clear, the source's tag bit 25 from 0x4A9710 (Tags [game+0x3326430] hash +0x18,
+ * values [+0x38] + 8 idx), the source not in the faction registry (then slot 0 +0x1228, which the awareness update
+ * never reads)); the entry in the hostile list (+0x310 count, +0x318 + 0x50 i: +0 source, +0x20 heard time, +0x38
+ * hearing, +0x48 flags) is what the awareness update compares with the settings' +0x2BC (0x7EB694). */
+static void LwHearReadBack(const LwSquad* q, uint32_t member, uint32_t source)
+{
+    uintptr_t det = 0, recs = 0, ents = 0, ent = 0, tags = 0, tagv = 0; uint32_t di = 0, ti = 0; uint64_t tag = 0;
+    int inHash = EvpPtr(g_lw.game + 0x3326548u, &det) && EvpHash(det + 0x30, member, 8, 4, &di) && EvpPtr(det + 0x50, &recs);
+    uint32_t owned = inHash && EvpPtr(det + 0x48, &ents) && EvpPtr(ents + 8ull * di, &ent) ? (EvpU32(ent + 0x14, 0) & 1u) : 0;
+    int tagged = EvpPtr(g_lw.game + 0x3326430u, &tags) && EvpHash(tags + 0x18, source, 8, 4, &ti) && EvpPtr(tags + 0x38, &tagv) && !SafeRead(tagv + 8ull * ti, &tag, 8);
+    char entry[96] = "no entry for the source";
+    if (inHash)
+    {
+        uintptr_t r = recs + 0x13F8ull * di; uint32_t count = EvpU32(r + 0x310, 0);
+        for (uint32_t i = 0; i < count && i < 16; i++)
+        {
+            uintptr_t e = r + 0x318 + 0x50ull * i; float level = 0; uint64_t heard = 0;
+            if (EvpU32(e, 0) != source) continue;
+            SafeRead(e + 0x38, &level, 4); SafeRead(e + 0x20, &heard, 8);
+            snprintf(entry, sizeof entry, "entry %u of %u: hearing %.1f, flags %X, heard at %llu", i, count, (double)level, EvpU32(e + 0x48, 0), (unsigned long long)heard);
+        }
+    }
+    Note("living world: squad %d: the hearing write on member %08X: %s, entity flag %u; source %08X tags %s (bit 25 %s); %s", (int)(q - g_lwSquads), member,
+        inHash ? "in the detector hash" : "NOT in the detector hash", owned, source, tagged ? "read" : "not read", tagged ? ((tag >> 25) & 1 ? "set" : "clear") : "-", entry);
+}
 /* an online squad with an intent, each tick after its members were read */
 static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at)
 {
@@ -162,6 +189,7 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
         if (!LwPlayerSide(source)) { source = 0; for (int i = 0; i < g_lwWorld.playersAt && !source; i++) if (LwPlayerSide(g_lwWorld.avatars[i])) source = g_lwWorld.avatars[i]; }
         int told = 0;
         if (source) for (int k = 0; k < n; k++) { ((HearFn)(g_lw.game + 0x888E50u))(NULL, members[k], source, q->target, 40.0f); told++; }
+        LwHearReadBack(q, members[0], source);
         g_lwHear.told += (uint32_t)told;
         q->intentStage = 1; q->intentStageAt = now; q->intentPeak = 0; q->intentPeakAt = 0;
         /* the awareness update's gates before the hearing test (0x7EB000): AiEnemy +0xE4 bits 0x2 / 0x4 / 0x8 / 0x20 take
@@ -213,7 +241,7 @@ static void LwInvestigate(const LwEvent* e)
     for (int j = 0; j < picked; j++)
     {
         LwSquad* q = &g_lwSquads[pick[j]];
-        q->intent = LW_INVESTIGATE; q->intentStage = 0; q->intentSent = 0; q->intentAt = now; q->intentSource = e->source;
+        q->intent = LW_INVESTIGATE; q->intentStage = 0; q->intentSent = 0; q->intentAt = now; q->intentSource = e->source; q->intentFrom = sqrtf(d2s[j]);
         memcpy(q->target, e->pos, sizeof q->target);
         if (q->state == LW_OFFLINE) { if (!LwIntentRoute(q)) { q->intent = LW_PATROL; continue; } }
         else if (q->jobSet) { q->intentSent = 1; if (!LwSquadGoTo(q, q->target)) { q->intent = LW_PATROL; continue; } }

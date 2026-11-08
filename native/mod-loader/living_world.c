@@ -486,7 +486,7 @@ typedef struct LwSquad
     uint8_t pulled;                 /* 2: held in place by the test stage until it comes online (the only value) */
     uint8_t intent, intentStage, intentSent; /* Phase 2 (living_world_intent.c): LW_PATROL / LW_INVESTIGATE; 1 = at the point; goal sent online */
     float target[3]; uint32_t intentSource, intentSearch; ULONGLONG intentAt, intentStageAt, intentFree;
-    uint32_t intentPeak; float intentPeakAt; /* members (bit = seen index) that reached alert 2+ after being told; seconds to the first */
+    uint32_t intentPeak; float intentPeakAt, intentFrom; /* intentFrom: m from the point when sent */ /* members (bit = seen index) that reached alert 2+ after being told; seconds to the first */
 } LwSquad;
 static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
 static void LwIntentOffline(LwSquad* q); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
