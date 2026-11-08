@@ -238,7 +238,7 @@
     },
     "AbilityTick": {
       "rva": "0x11509E0",
-      "code": "48 83 EC 28 45 32 C9 FF CA 81 FA 32 0B 00 00 0F 87 84 BD 00 00 4C 8D 15 04 F6 EA FE 41 8B 94 92 84 C7 15 01 49 03 D2 FF",
+      "code": "48 83 EC 28 45 32 C9 FF CA 81 FA 32 0B 00 00 0F 87 ?? ?? ?? ?? 4C 8D 15 04 F6 EA FE 41 8B 94 92 84 C7 15 01 49 03 D2 FF",
       "returns": "uint8_t",
       "params": [
         {"name": "ctx", "type": "void*", "meaning": "the ability's context: +8 the entity it runs on"},
@@ -394,7 +394,7 @@
     },
     "BehaviourStage": {
       "rva": "0x48EE50",
-      "code": "40 55 53 57 48 8D AC 24 30 FF FF FF 48 81 EC D0 01 00 00 FF CA 41 8B F8 48 8B D9 81 FA B4 02 00 00 0F 87 86 42 00 00 48",
+      "code": "40 55 53 57 48 8D AC 24 30 FF FF FF 48 81 EC D0 01 00 00 FF CA 41 8B F8 48 8B D9 81 FA B4 02 00 00 0F 87 ?? ?? ?? ?? 48",
       "returns": "void",
       "params": [
         {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage)"},
@@ -407,7 +407,7 @@
     },
     "BehaviourEvent": {
       "rva": "0x4966D0",
-      "code": "48 89 7C 24 18 55 48 8D AC 24 C0 F6 FF FF 48 81 EC 40 0A 00 00 FF CA 48 8B F9 81 FA B4 02 00 00 0F 87 4B 9A 00 00 48 63",
+      "code": "48 89 7C 24 18 55 48 8D AC 24 C0 F6 FF FF 48 81 EC 40 0A 00 00 FF CA 48 8B F9 81 FA B4 02 00 00 0F 87 ?? ?? ?? ?? 48 63",
       "returns": "void",
       "params": [
         {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}: P the behaviour record + 8"},
@@ -420,7 +420,7 @@
     },
     "BehaviourResume": {
       "rva": "0x493BE0",
-      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 48 8B EC 48 83 EC 60 48 8B D9 81 FA 1A 01 00 00 0F 8F 70 10 00 00 0F 84",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 48 8B EC 48 83 EC 60 48 8B D9 81 FA 1A 01 00 00 0F 8F ?? ?? ?? ?? 0F 84",
       "returns": "void",
       "params": [
         {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}: P the behaviour record + 8"},
@@ -948,7 +948,7 @@
         {"name": "currency", "type": "uint32_t", "meaning": "the mixId of the currency it is charged in (the warbond's; requisition 0xD7150EEC, Forge Credits 0x6C3C83C1)"}
       ],
       "hook": false,
-      "meaning": "Builds the buy request for a warbond item and records it as the progression's pending buy; its callers are the warbond page view and the MVVM popup. HellForge patches its entry so the currency is the item's own",
+      "meaning": "Builds the buy request for a warbond item and records it as the progression's pending buy; its callers are the warbond page view and the MVVM popup. HellForge patches its entry so the currency is the item's own. HellForge's warbond items replace its first bytes with a jump, so hf_fn_ gives NULL while they are installed",
       "source": "HellForge's per-item warbond currency (warbonds.c InstallWarbondItems)"
     },
     "FinishWarbondPurchase": {
@@ -1800,7 +1800,7 @@
     },
     "DifficultyBarDestroy": {
       "rva": "0x19D1090",
-      "code": "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 33 DB E8 9C AA 81 FF 85 C0 74 2B 0F 1F 84 00 00 00 00 00 8B C3 48 8D",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 33 DB E8 9C AA 81 FF 85 C0 74 2B 0F 1F 84 00 00 00 00 00 8B C3",
       "returns": "void",
       "params": [
         {"name": "bar", "type": "void*", "meaning": "the bar"}
@@ -1952,6 +1952,2762 @@
       "hook": false,
       "meaning": "The war table hologram's terrain height: the map's lowest point lifted above the table's plane by a lift that follows the scale (+0x8D704)",
       "source": "HellForge's hologram lift (difficulty_ui.c, DIF_HOLO_LIFT_SITE)"
+    },
+    "EngineRenderStep": {
+      "module": "helldivers2.exe",
+      "rva": "0x689BC0",
+      "code": "48 83 EC 58 33 C0 4C 8D 05 EB 71 00 01 48 89 44 24 30 48 8D 54 24 40 89 44 24 38 48 81 C1 90 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "game", "type": "void*", "meaning": "the engine's game object (the boot script's; this is its vtable 0x1690DF0's +0x20)"}
+      ],
+      "hook": false,
+      "meaning": "The engine's script render step, once a frame: calls the boot script's render(), which renders the world and takes the camera unit's pose then, so a pose set before it is the one the frame renders with. HellForge hooks it; its return value is not reviewed (it ends in a tail call), so it is not marked for hooking by name",
+      "source": "HellForge's terminal camera (terminal_camera.c)"
+    },
+    "UnitSetLocalPose": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FCAD0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 49 8B D8 48 63 FA E8 D6 0D EA FF 48 8B C8 48 8B F0",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"},
+        {"name": "pose", "type": "const float*", "meaning": "the local pose, 16 floats: rotation rows right, forward, up, then position and scale"}
+      ],
+      "hook": true,
+      "meaning": "Sets a unit's scene graph node's local pose and marks it changed (the engine's set_local_pose, its scene graph table 0x27C8F10 +0x60); UpdateUnit applies it",
+      "source": "HellForge's terminal camera (terminal_camera.c)"
+    },
+    "UpdateUnit": {
+      "module": "helldivers2.exe",
+      "rva": "0x1B2DC0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 41 54 41 55 41 56 41 57 48 8D AC 24 30 F8 FF FF",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world (MainWorld)"},
+        {"name": "unit", "type": "void*", "meaning": "the unit object (UnitFromHandle)"}
+      ],
+      "hook": true,
+      "meaning": "Updates a unit in its world after its pose was set: its world poses from the local ones (the engine's update_unit)",
+      "source": "HellForge's terminal camera (terminal_camera.c)"
+    },
+    "UnitFromHandle": {
+      "module": "helldivers2.exe",
+      "rva": "0x9D8C0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B 35 1A 28 97 01 8B D9 48 8D 8E D0 00 00 00 FF 15 7B 8E 35 01",
+      "returns": "void*",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle (index in the low 22 bits, generation above)"}
+      ],
+      "hook": true,
+      "meaning": "The unit object for a handle, through the unit registry (UnitRegistry) under its lock; NULL when the handle is stale",
+      "source": "HellForge's terminal camera (terminal_camera.c); HellForge's unit positions (event_polls.c)"
+    },
+    "MainWorld": {
+      "module": "helldivers2.exe",
+      "rva": "0x317DE0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 48 8B 05 12 84 6F 01 33 C9 0F 57 C0 8B D1 8B D9 44 8B 98 90 05 00 00",
+      "returns": "void*",
+      "params": [],
+      "hook": true,
+      "meaning": "The engine's main world, chosen from the engine's worlds (EngineCore +0x590 count, +0x598 array; the API table 0x27C9E60 +0x18). A world: +0x2305B8 its unit count, +0x2305C0 the units, +0x230920 its last render pose (a 4x4)",
+      "source": "HellForge's terminal camera (terminal_camera.c)"
+    },
+    "UnitNodeWorldPosition": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FD190",
+      "code": "40 53 48 83 EC 20 48 63 DA E8 22 07 EA FF 48 8B C8 4C 8B 00 41 FF 90 E8 00 00 00 48 8B CB 48 C1 E1 06",
+      "returns": "const float*",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node"}
+      ],
+      "hook": true,
+      "meaning": "A unit node's world position (3 floats in its world pose): the scene graph table's (EngineApi +0x18, 0x27C8F10) +0x88",
+      "source": "HellForge's Pelican turret (behaviour_turret.c); the slot resolved in the decoded image"
+    },
+    "UnitActorByName": {
+      "module": "helldivers2.exe",
+      "rva": "0x799DE0",
+      "code": "48 89 6C 24 20 56 48 81 EC 80 00 00 00 49 8B F0 8B EA 4D 85 C0 74 07 41 C7 00 FF FF FF FF 48 89 9C 24 90 00 00 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "name", "type": "uint32_t", "meaning": "the actor's name hash"},
+        {"name": "index", "type": "uint32_t*", "meaning": "NULL, or where the actor's index in the unit's actor list goes (-1 when none)"}
+      ],
+      "hook": true,
+      "aliases": ["UnitFindActor"],
+      "meaning": "The unit's physics actor of that name, 0xFFFFFFFF when it has none (EngineUnitApi +0x10). hf->injure passes the limb's to QueueDamage",
+      "source": "HellForge's injure (actions.c); EngineUnitApi's table at 0x27CD4C0"
+    },
+    "SetResourceOverride": {
+      "module": "helldivers2.exe",
+      "rva": "0x3217C0",
+      "code": "40 53 55 56 57 41 56 48 83 EC 20 48 8B 05 36 EA 6E 01 4D 8B F0 48 8B E9 4C 89 44 24 60 48 89 54 24 58",
+      "returns": "void",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the resource type hash"},
+        {"name": "name", "type": "uint64_t", "meaning": "the resource name hash looked up"},
+        {"name": "target", "type": "uint64_t", "meaning": "the name it finds instead"}
+      ],
+      "hook": true,
+      "meaning": "Points every later lookup of a resource name at another resource's name, under the resource manager's lock (the API table's +0x378). Objects already made keep what they had",
+      "source": "HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60)"
+    },
+    "ClearResourceOverride": {
+      "module": "helldivers2.exe",
+      "rva": "0x321900",
+      "code": "48 83 EC 28 48 89 4C 24 38 4C 8D 44 24 30 48 8B 0D F3 E8 6E 01 48 89 54 24 30 48 8D 54 24 38 48 8B 89 F8 03 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the resource type hash"},
+        {"name": "name", "type": "uint64_t", "meaning": "the overridden name"}
+      ],
+      "hook": true,
+      "meaning": "Takes a resource override out (the API table's +0x380)",
+      "source": "HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60)"
+    },
+    "CanGetResource": {
+      "module": "helldivers2.exe",
+      "rva": "0x321930",
+      "code": "48 83 EC 28 48 89 4C 24 38 4C 8D 44 24 30 48 8B 0D C3 E8 6E 01 48 89 54 24 30 48 8D 54 24 38 48 8B 89 F8 03 00 00",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the resource type hash"},
+        {"name": "name", "type": "uint64_t", "meaning": "the resource name hash"}
+      ],
+      "hook": true,
+      "meaning": "Whether a resource is loaded and can be had now (the API table's +0x388)",
+      "source": "HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60)"
+    },
+    "TransportCleanup": {
+      "module": "helldivers2.exe",
+      "rva": "0x2ABE20",
+      "code": "48 89 5C 24 18 55 56 57 48 83 EC 20 8B 81 A0 00 00 00 33 F6 49 8B F8 48 8B DA 48 8B E9 44 8B D6",
+      "returns": "void",
+      "params": [
+        {"name": "transport", "type": "void*", "meaning": "the transport (NetworkManager +0x98): +0xA0 its connection count, +0xA8 the connections"},
+        {"name": "wanted", "type": "void*", "meaning": "the peers some list still wants"},
+        {"name": "removed", "type": "void*", "meaning": "the removed peers it fills"}
+      ],
+      "hook": true,
+      "meaning": "The network transport's cleanup (its vtable 0x1676270 +0xA0, called from NetworkManagerUpdate): destroys a dead connection (+0x1878C) only when no list (session, lobbies, the manager's own) wants its peer. HellForge hooks it to close a crashed friend's connection",
+      "source": "HellForge's dead connection reaper (netreap.c)"
+    },
+    "DestroyConnection": {
+      "module": "helldivers2.exe",
+      "rva": "0x2AA8A0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 20 4C 89 44 24 18 41 56 48 83 EC 20 48 8B F9 48 8B DA",
+      "returns": "void",
+      "params": [
+        {"name": "transport", "type": "void*", "meaning": "the transport"},
+        {"name": "connection", "type": "void*", "meaning": "the connection: +0x10 its peer id"},
+        {"name": "r8", "type": "uint64_t", "meaning": "not reviewed: pass it on (one caller passes it; the function keeps it)"}
+      ],
+      "hook": true,
+      "meaning": "Destroys one of the transport's connections and takes it out of the transport's array (which closes up)",
+      "source": "HellForge's dead connection reaper (netreap.c)"
+    },
+    "SessionPeersRemoved": {
+      "module": "helldivers2.exe",
+      "rva": "0x292FC0",
+      "code": "48 89 74 24 10 57 33 FF 48 8B F2 4C 8B C1 39 3A 0F 86 60 01 00 00 48 89 5C 24 10 0F 1F 44 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "session", "type": "void*", "meaning": "the game session (NetworkManager +0xA8; its vtable 0x1675B70 +0xE0)"},
+        {"name": "removed", "type": "const void*", "meaning": "the peers: {u32 count, u32 capacity, u64* peers}"}
+      ],
+      "hook": true,
+      "meaning": "Tells the game session these peers' connections are gone",
+      "source": "HellForge's dead connection reaper (netreap.c)"
+    },
+    "NetworkManagerUpdate": {
+      "module": "helldivers2.exe",
+      "rva": "0x172080",
+      "code": "48 8B C4 55 53 48 8D A8 08 F8 FF FF 48 81 EC E8 08 00 00 48 83 B9 98 00 00 00 00 48 8B D9 0F 84 56 06 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the network manager (NetworkManager)"}
+      ],
+      "hook": true,
+      "meaning": "The network manager's update, every frame: calls the transport's cleanup (TransportCleanup, at 0x172466)",
+      "source": "HellForge's dead connection reaper (netreap.c)"
+    },
+    "CollisionFilterPairs": {
+      "module": "helldivers2.exe",
+      "rva": "0xCE5A10",
+      "code": "48 89 5C 24 18 48 89 6C 24 20 41 56 49 8B E8 48 8B DA 4C 8B F1 4D 8B D0 4D 8B D8 45 85 C9 0F 8E A4 01 00 00",
+      "returns": "int32_t",
+      "params": [
+        {"name": "filter", "type": "void*", "meaning": "the collision filter (CollisionFilterA or CollisionFilterB)"},
+        {"name": "world", "type": "void*", "meaning": "the physics world: +0x38 its bodies, 0xA0 bytes each"},
+        {"name": "pairs", "type": "uint32_t*", "meaning": "body id pairs (2 x u32, the low 24 bits the body)"},
+        {"name": "count", "type": "int32_t", "meaning": "how many pairs"}
+      ],
+      "hook": true,
+      "meaning": "Both collision filters' pair check (their slot +0x18), on the physics threads for new pairs of nearby bodies: compacts the pairs the collision matrix lets through and returns how many are kept. HellForge's detour drops grenade and shield pairs",
+      "source": "HellForge's shield block (shield_block.c)"
+    },
+    "PhysicsHandleBody": {
+      "module": "helldivers2.exe",
+      "rva": "0x77D6F0",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 44 8B D9 BB FF FF FF 00 89 1A 48 8B FA 83 F9 FF 75 10 B8 04 00 00 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "handle", "type": "uint32_t", "meaning": "a physics actor handle"},
+        {"name": "body", "type": "uint32_t*", "meaning": "its body id goes here (0xFFFFFF none)"}
+      ],
+      "hook": true,
+      "meaning": "A physics handle's world index (4 when the handle is -1) and its body id",
+      "source": "HellForge's shield block (shield_block.c)"
+    },
+    "CreateNavmeshCut": {
+      "module": "helldivers2.exe",
+      "rva": "0x812CC0",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 30 F8 FF FF 48 81 EC D0 08 00 00 44 8B 79 04",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "args", "type": "const void*", "meaning": "the cut: u32 type (2), world, material (0x400003E6 is material 6), enable; then the transform, a key, the hull points and sizes and their counts (SbCutArgs)"}
+      ],
+      "hook": true,
+      "meaning": "Makes a navmesh cut (a silhouette generator) in a world; 0 when it fails. HellForge calls it with denormals flushed (MXCSR) and only while the world's cut lock (0x27C6350 + 8 x world) is set",
+      "source": "HellForge's shield block (shield_block.c)"
+    },
+    "RemoveNavmeshCuts": {
+      "module": "helldivers2.exe",
+      "rva": "0x8127A0",
+      "code": "85 D2 0F 84 32 01 00 00 41 54 41 55 48 83 EC 38 48 89 5C 24 50 45 33 C0 48 89 74 24 68 44 8B E2",
+      "returns": "void",
+      "params": [
+        {"name": "cuts", "type": "uint32_t*", "meaning": "the cuts' handles"},
+        {"name": "count", "type": "uint32_t", "meaning": "how many"}
+      ],
+      "hook": true,
+      "meaning": "Removes navmesh cuts (turning them off first through EnableNavmeshCuts)",
+      "source": "HellForge's shield block (shield_block.c)"
+    },
+    "EnableNavmeshCuts": {
+      "module": "helldivers2.exe",
+      "rva": "0x812AE0",
+      "code": "85 D2 0F 84 D1 01 00 00 56 41 54 41 55 41 57 48 83 EC 28 48 89 7C 24 60 45 8B E8 48 89 5C 24 50",
+      "returns": "void",
+      "params": [
+        {"name": "cuts", "type": "uint32_t*", "meaning": "the cuts' handles"},
+        {"name": "count", "type": "uint32_t", "meaning": "how many"},
+        {"name": "on", "type": "uint32_t", "meaning": "1 on, 0 off"}
+      ],
+      "hook": true,
+      "meaning": "Turns navmesh cuts on or off",
+      "source": "HellForge's shield block (shield_block.c)"
+    },
+    "NavWorldSetup": {
+      "module": "helldivers2.exe",
+      "rva": "0x7B45C0",
+      "code": "48 8B C4 48 81 EC B8 00 00 00 39 0D F0 EA 00 02 0F 86 4E 06 00 00 F2 0F 10 02 48 89 58 10 8B 9C 24 F0 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "id", "type": "uint32_t", "meaning": "the nav world's id (below the count at 0x27C30C0)"},
+        {"name": "min", "type": "const float*", "meaning": "the world's min x, y, z (its +0x08)"},
+        {"name": "max", "type": "const float*", "meaning": "the world's max x, y, z (its +0x14)"},
+        {"name": "r9", "type": "const float*", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "const float*", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Sets up a navigation world once at startup: 8 x 8 tiles of 128 m, +-512 m around the centre, which every mission reuses (NavWorlds)",
+      "source": "HellForge's larger maps (difficulty_maps.c)"
+    },
+    "BuildNavTile": {
+      "module": "helldivers2.exe",
+      "rva": "0x89A6C0",
+      "code": "48 8B C4 44 89 48 20 89 50 10 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 68 F8 FF FF",
+      "returns": "void*",
+      "params": [
+        {"name": "result", "type": "void*", "meaning": "where its 16-byte result goes (also returned)"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "const void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Builds a navmesh tile's terrain (Recast): sizes its heightfield from a hard-coded 128 m (0x89A85E) while it rasterises the tile's real bounds; HellForge points that read at 256.0 for 256 m tiles",
+      "source": "HellForge's larger maps (difficulty_maps.c)"
+    },
+    "BuildPhysicsPools": {
+      "module": "helldivers2.exe",
+      "rva": "0x795630",
+      "code": "48 89 5C 24 20 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 30 48 8B FA 45 8B C0 48 8B D9 33 D2 48 8B CF",
+      "returns": "void",
+      "params": [
+        {"name": "config", "type": "const void*", "meaning": "the physics config's pool sizes (filled by game.dll's physics plugin setup)"},
+        {"name": "block", "type": "void*", "meaning": "the one block every pool lives in"},
+        {"name": "size", "type": "uint32_t", "meaning": "the block's size"}
+      ],
+      "hook": true,
+      "meaning": "Builds a physics world's pools (bodies, actors, ragdolls, cutters) from the config in one block; HellForge raises the sizes before the setup runs",
+      "source": "HellForge's larger maps (difficulty_maps.c)"
+    },
+    "EngineAllocatorAllocate": {
+      "module": "helldivers2.exe",
+      "rva": "0x58EC0",
+      "code": "48 83 EC 38 48 8B 01 45 8B C8 4C 8B C2 48 8D 54 24 20 FF 50 30 48 8B 00 48 83 C4 38 C3",
+      "returns": "void*",
+      "params": [
+        {"name": "allocator", "type": "void*", "meaning": "an engine allocator (this is slot 7 of several allocator vtables)"},
+        {"name": "size", "type": "uint64_t", "meaning": "bytes"},
+        {"name": "align", "type": "uint32_t", "meaning": "alignment"}
+      ],
+      "hook": true,
+      "meaning": "Allocates from an engine allocator (through its slot +0x30); arrays from it are freed through its slot +0x40",
+      "source": "HellForge's network types (registry_load.c)"
+    },
+    "DestroyNetworkTypeEntry": {
+      "module": "helldivers2.exe",
+      "rva": "0x175B60",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 33 FF 48 8B D9 39 79 34 74 20 39 79 30 76 03 89 79 30 48 8B 49 40",
+      "returns": "void",
+      "params": [
+        {"name": "entry", "type": "void*", "meaning": "an 80-byte network configuration entry"}
+      ],
+      "hook": true,
+      "meaning": "Frees a network configuration entry's two arrays ({count, capacity, data, allocator} at +0x18 and +0x30), only those with a capacity; run when the game quits",
+      "source": "HellForge's network types (registry_load.c)"
+    },
+    "FindPackage": {
+      "rva": "0x60DA80",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 8B B9 80 00 00 00 45 33 D2 85 FF 74 40 48 8B B1 88",
+      "returns": "void*",
+      "params": [
+        {"name": "resources", "type": "void*", "meaning": "the engine's resource manager"},
+        {"name": "id", "type": "uint64_t", "meaning": "the package id"}
+      ],
+      "hook": true,
+      "meaning": "The engine's package lookup: the package object with that id, or null",
+      "source": "HD2Runtime 0.40.1 domains/package_residency loader.engine.findPackageRva (core/assets.lua proves its bytes)",
+      "module": "helldivers2.exe"
+    },
+    "PackageHasLoaded": {
+      "rva": "0x321330",
+      "code": "48 83 EC 28 48 8B 05 CD EE 6E 01 48 8B D1 48 8B 88 00 04 00 00 48 8B 89 08 02 00 00 E8 2F C7 2E",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "id", "type": "uint64_t", "meaning": "the package id"}
+      ],
+      "hook": true,
+      "meaning": "1 when the engine knows the package and every part of it is loaded (part state 4), else 0",
+      "source": "HD2Runtime 0.40.1 domains/package_residency loader.engine.hasLoadedRva (core/assets.lua proves its bytes)",
+      "module": "helldivers2.exe"
+    },
+    "LobbyMemberData": {
+      "rva": "0x8C6F30",
+      "code": "48 89 5C 24 10 57 48 83 EC 50 48 8B 59 10 49 8B F8 48 8B 83 08 01 00 00 44 8B 8B 00 01 00 00 4E",
+      "returns": "const char*",
+      "params": [
+        {"name": "lobby", "type": "void*", "meaning": "the engine lobby"},
+        {"name": "peer", "type": "uint64_t", "meaning": "the member's peer id"},
+        {"name": "key", "type": "const char*", "meaning": "the property name"}
+      ],
+      "hook": true,
+      "meaning": "A lobby member's property as the PlayFab SDK holds it, or null. An engine API slot (+0x118) that game.dll calls for its own member keys",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_lobby_read; domains/peer_messaging api.memberDataRva",
+      "module": "helldivers2.exe"
+    },
+    "LobbySetMemberData": {
+      "rva": "0x8C7010",
+      "code": "48 83 EC 58 48 8B 49 10 33 C0 89 54 24 30 4C 89 44 24 38 45 33 C0 4C 89 4C 24 40 4C 8D 4C 24 30",
+      "returns": "int32_t",
+      "params": [
+        {"name": "lobby", "type": "void*", "meaning": "the engine lobby"},
+        {"name": "count", "type": "uint32_t", "meaning": "how many properties"},
+        {"name": "keys", "type": "const void*", "meaning": "the property names (an array of const char*)"},
+        {"name": "values", "type": "const void*", "meaning": "the values (an array of const char*)"}
+      ],
+      "hook": true,
+      "meaning": "Posts this machine's own lobby member properties (one PFLobbyPostUpdate) and returns the HRESULT (0: queued). An engine API slot (+0x120)",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_lobby_publish; domains/peer_messaging api.setMemberDataRva",
+      "module": "helldivers2.exe"
+    },
+    "RegistryAllocate": {
+      "rva": "0x5C2E10",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 48 8B FA 48 8B D9 4D 85 C0 75 17 33 C0 48 89 02 48 89 42 08 48 8B",
+      "returns": "void*",
+      "params": [
+        {"name": "allocator", "type": "void*", "meaning": "the allocator (the text registry's, at registry +0x10)"},
+        {"name": "out", "type": "uint64_t*", "meaning": "receives {pointer, size}"},
+        {"name": "size", "type": "uint64_t", "meaning": "bytes (0: an empty result)"},
+        {"name": "align", "type": "uint64_t", "meaning": "the alignment"}
+      ],
+      "hook": true,
+      "meaning": "The allocate of the text registry's allocator (its vtable +0x30): allocates through the backing allocator and returns out",
+      "source": "HD2Runtime 0.40.1 runtime/text_resources.lua native.allocate; domains/text_resources growth",
+      "module": "helldivers2.exe"
+    },
+    "ProjectileWeaponCopy": {
+      "rva": "0x61AF10",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 40 8B 42 08 49 8B E8",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the ProjectileWeapon component manager"},
+        {"name": "handle", "type": "void*", "meaning": "the entity's handle record"},
+        {"name": "delta", "type": "const uint32_t*", "meaning": "a delta entry {kind, first patch, count, 0}; all zero applies no patch"}
+      ],
+      "hook": true,
+      "meaning": "Gives one entity its own per-instance ProjectileWeapon record: a copy of its type's record with the delta's patches. An entity that already has one is left as it is",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_weapon_copy; domains/pelican gatling.copy"
+    },
+    "MagazineCopy": {
+      "rva": "0x770B10",
+      "code": "48 89 5C 24 10 48 89 74 24 18 57 41 56 41 57 48 83 EC 40 8B 42 08 4D 8B F8 3B 05 F5 30 D1 02 4C",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the WeaponMagazine component manager"},
+        {"name": "record", "type": "void*", "meaning": "the entity's world record"},
+        {"name": "delta", "type": "const uint32_t*", "meaning": "a delta entry {kind, first patch, count, 0}; all zero applies no patch"}
+      ],
+      "hook": true,
+      "meaning": "Gives one entity its own per-instance magazine record: a copy of its type's record with the delta's patches. One that already has a copy is left as it is",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_magazine_copy; domains/pelican gatling.magazineCopy"
+    },
+    "AttachToUnit": {
+      "rva": "0x812540",
+      "code": "4C 8B DC 55 53 56 57 41 56 49 8D 6B 88 48 81 EC 50 01 00 00 48 8B 05 B5 9A E2 01 48 33 C4 48 89",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the attachable manager"},
+        {"name": "child", "type": "uint32_t", "meaning": "the entity to attach"},
+        {"name": "link", "type": "uint32_t", "meaning": "the parent's unit link"},
+        {"name": "node", "type": "uint32_t", "meaning": "the parent node index"},
+        {"name": "offset", "type": "const float*", "meaning": "the offset (3 floats)"},
+        {"name": "rotation", "type": "const float*", "meaning": "the rotation quaternion (x, y, z, w), 16-byte aligned (read with an aligned load)"},
+        {"name": "s7", "type": "float", "meaning": "HD2Runtime passes 0.0"}
+      ],
+      "hook": true,
+      "meaning": "Attaches a child entity to a node of a parent unit at an offset and rotation: the call the mount system makes for each child it attaches",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_attach; runtime/pelican_gatling.lua"
+    },
+    "SetBehaviour": {
+      "rva": "0x843EA0",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 48 83 EC 30 3B 15 66 FD C3 02 41 8B F0 48 8B 3D",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "not read: callers pass the BehaviourManager, which it loads itself"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"},
+        {"name": "behaviour", "type": "uint32_t", "meaning": "the new behaviour id (213 is the Gatling Sentry's AI)"}
+      ],
+      "hook": true,
+      "meaning": "Changes an entity's AI behaviour the game's own way: leaves the old one through BehaviourStage with 0, writes and replicates the id (MarkReplicated) and enters the new one at stage 1. Nothing happens if it already runs that behaviour",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_set_behaviour; runtime/pelican_weapon.lua"
+    },
+    "UnlinkRelation": {
+      "rva": "0xB0B020",
+      "code": "40 53 41 54 41 57 48 83 EC 30 3B 0D FC 94 97 02 45 8B F8 4C 8B E2 8B D9 0F 84 7C 01 00 00 48 89",
+      "returns": "void",
+      "params": [
+        {"name": "child", "type": "uint32_t", "meaning": "the child entity"},
+        {"name": "owner", "type": "void*", "meaning": "the relation's owner (the mount manager for a mounted child)"},
+        {"name": "parent", "type": "uint32_t", "meaning": "the parent entity"}
+      ],
+      "hook": true,
+      "meaning": "Removes a child's relation to its parent: the call the mount system makes before it removes a child. A child without that relation is left as it is",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_relation_unlink; runtime/pelican_gatling.lua"
+    },
+    "RemoveEntity": {
+      "rva": "0xFDC310",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 3B 15 4C 82 4A 02 8B DA 48 8B F9 0F 84 D4 00 00 00 8B CA E8 BE D7",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the EntityManager (hf_global_EntityManager)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"}
+      ],
+      "hook": true,
+      "meaning": "Asks for an entity to be removed. Deferred: on the host it is queued in the world's removal map, and the pending-removal pass destroys it",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_remove_entity; runtime/pelican_gatling.lua"
+    },
+    "DestroyEntity": {
+      "rva": "0xFDC820",
+      "code": "48 85 D2 0F 84 D5 05 00 00 4C 8B DC 56 41 55 48 81 EC F8 00 00 00 48 8B 05 D3 F7 65 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the EntityManager"},
+        {"name": "record", "type": "void*", "meaning": "the entity's own world record (null: nothing happens)"},
+        {"name": "forced", "type": "uint8_t", "meaning": "0 keeps the ownership check: a networked entity must pass the network layer's check, any other must have been created here"}
+      ],
+      "hook": true,
+      "meaning": "Destroys one entity now: what the pending-removal pass (0xFDC7E0) calls for each queued entity",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_destroy_entity; runtime/pelican_gatling.lua"
+    },
+    "CloseStratagemSelector": {
+      "rva": "0x146F3B0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20 0F B6 81 92 39 27",
+      "returns": "void",
+      "params": [
+        {"name": "ui", "type": "void*", "meaning": "the loadout UI"}
+      ],
+      "hook": true,
+      "meaning": "Closes the open stratagem selection on the loadout screen: what Back on a focused stratagem slot calls",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_selector_close; domains/stratagem_selector selectorClose"
+    },
+    "SetStratagemCardEnabled": {
+      "rva": "0x18D1440",
+      "code": "48 89 74 24 10 57 48 83 EC 20 8B B9 14 1F 09 00 45 33 C9 45 33 DB 41 0F B6 F0 4C 8B D1 85 FF 0F",
+      "returns": "void",
+      "params": [
+        {"name": "list", "type": "void*", "meaning": "the stratagem card list"},
+        {"name": "key", "type": "uint32_t", "meaning": "the card's key"},
+        {"name": "enabled", "type": "uint8_t", "meaning": "1 enabled, 0 greyed"}
+      ],
+      "hook": true,
+      "meaning": "Greys or un-greys one stratagem card: finds the card with that key, writes its enabled byte and, for a realized card, its grey bit and redraw. The game's post-pick refresh calls it with 0",
+      "source": "HD2Runtime 0.40.1 runtime/windows_write.lua native_card_enable; runtime/stratagem_card_enable.lua"
+    },
+    "SetLobbySetting": {
+      "rva": "0x11ED0B0",
+      "code": "4D 85 C0 0F 84 F6 0E 00 00 53 55 56 48 83 EC 40 8B EA 48 8B F1 48 89 7C 24 60 8B CD 0F 29 74 24",
+      "returns": "void",
+      "params": [
+        {"name": "settings", "type": "void*", "meaning": "the lobby settings"},
+        {"name": "id", "type": "uint32_t", "meaning": "the setting id (0 is privacy)"},
+        {"name": "value", "type": "const void*", "meaning": "the new value (null: nothing happens)"}
+      ],
+      "hook": false,
+      "meaning": "Sets one lobby setting the way the options menu does; for id 0 it writes settings +0x174 and the lobby's PrivacyMode key. It dispatches on the id through a jump table",
+      "source": "HD2Runtime 0.40.1 runtime/matchmaking_safety.lua set_privacy; domains/matchmaking_safety setter"
+    },
+    "SetQuickplay": {
+      "rva": "0x133E6E0",
+      "code": "40 53 48 83 EC 70 45 8B D0 48 8B D9 38 91 5C BD 10 00 0F 84 34 02 00 00 88 91 5C BD 10 00 84 D2",
+      "returns": "void",
+      "params": [
+        {"name": "matchmaker", "type": "void*", "meaning": "the matchmaker"},
+        {"name": "on", "type": "uint8_t", "meaning": "0 stops Quickplay"},
+        {"name": "r8", "type": "int32_t", "meaning": "not reviewed: the stop passes -1"},
+        {"name": "r9", "type": "int32_t", "meaning": "not reviewed: the stop passes 0x7FFFFFFF"},
+        {"name": "s5", "type": "uint8_t", "meaning": "not reviewed: the stop passes 0"},
+        {"name": "s6", "type": "uint8_t", "meaning": "not reviewed: the stop passes 0"},
+        {"name": "s7", "type": "uint8_t", "meaning": "not reviewed: the stop passes 0"},
+        {"name": "s8", "type": "uint8_t", "meaning": "not reviewed: the stop passes 0"}
+      ],
+      "hook": true,
+      "meaning": "Starts or stops Quickplay matchmaking. (matchmaker, 0, -1, 0x7FFFFFFF, 0, 0, 0, 0) is the stop that the galactic war map's cancel makes",
+      "source": "HD2Runtime 0.40.1 runtime/matchmaking_safety.lua stop_quickplay; domains/matchmaking_safety stopQuickplay"
+    },
+    "ReleasePackages": {
+      "rva": "0x12FE4E0",
+      "code": "45 85 C0 0F 84 60 01 00 00 41 56 41 57 48 83 EC 38 48 89 5C 24 50 4C 8B FA 48 89 6C 24 58 4C 8B",
+      "returns": "void",
+      "params": [
+        {"name": "system", "type": "void*", "meaning": "the RefcountedPackageSystem: hf_global_PackageSystem"},
+        {"name": "ids", "type": "const uint64_t*", "meaning": "the package ids"},
+        {"name": "count", "type": "uint32_t", "meaning": "how many ids (0: nothing)"}
+      ],
+      "hook": true,
+      "meaning": "Drops a reference that RequestPackages took on packages. Same shape as RequestPackages, and the same game-thread-only rule",
+      "source": "HD2Runtime 0.40.1 domains/package_residency loader.releaseRva (core/assets.lua proves its bytes)"
+    },
+    "BeamInfoOf": {
+      "rva": "0x11D8020",
+      "code": "85 C9 75 08 48 8D 05 ?? ?? ?? ?? C3 8B C1 48 8D 0D ?? ?? ?? ?? 48 8B 04 C1 C3",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint32_t", "meaning": "the BeamType (0: the default row)"}
+      ],
+      "hook": true,
+      "meaning": "The BeamInfo row of a beam type, from the beam table at game.dll+0x37C8250 (31 slots of 0x70 bytes). A leaf with no .pdata entry",
+      "source": "HD2Runtime 0.40.1 domains/beam_conversion rows (GetBeamInfo)"
+    },
+    "DamageInfoOf": {
+      "rva": "0x11F8EA0",
+      "code": "85 C9 75 08 48 8D 05 ?? ?? ?? ?? C3 8B C1 48 8D 0D ?? ?? ?? ?? 48 8B 04 C1 C3",
+      "returns": "void*",
+      "params": [
+        {"name": "id", "type": "uint32_t", "meaning": "the damage id (0: the default row)"}
+      ],
+      "hook": true,
+      "meaning": "The DamageInfo row of a damage id, from the table at game.dll+0x37C60C0 (650 slots of 76 bytes). A leaf with no .pdata entry",
+      "source": "HD2Runtime 0.40.1 domains/beam_conversion rows (GetDamageInfo)"
+    },
+    "ProjectileInfoOf": {
+      "rva": "0x11EC7C0",
+      "code": "85 C9 75 08 48 8D 05 ?? ?? ?? ?? C3 8B C1 48 8D 0D ?? ?? ?? ?? 48 8B 04 C1 C3",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint32_t", "meaning": "the projectile type (0: the default row)"}
+      ],
+      "hook": true,
+      "meaning": "The ProjectileInfo row of a projectile type, from the table at game.dll+0x37C7670 (351 types). A leaf with no .pdata entry",
+      "source": "HD2Runtime 0.40.1 domains/projectile_rows table; domains/beam_conversion projectileRow"
+    },
+    "PluginUpdate": {
+      "rva": "0x4EE6C0",
+      "code": "48 83 EC 38 48 8B 05 1D 7D E3 02 0F 29 74 24 20 0F 28 F0 FF 50 20 48 8B 05 B3 7C E3 02 FF 10 48",
+      "returns": "void",
+      "params": [
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The game plugin's per-frame entry point, registered in the plugin API table (no direct callers): runs two engine callbacks, then GameUpdate with the Game and the frame time",
+      "source": "HD2Runtime 0.40.1 sdk/docs/custom-text.md; sdk/docs/events.md; domains/text_resources pins"
+    },
+    "GameUpdate": {
+      "rva": "0xAB5000",
+      "code": "4C 8B DC 55 41 56 49 8D AB 58 F9 FF FF 48 81 EC 98 07 00 00 48 8B 05 F5 6F B8 01 48 33 C4 48 89",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "not read: PluginUpdate passes the Game, which it loads itself"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The game's world update, once a frame on the game thread on every machine: kicks the explosion queue, runs the entity and component updates, later gathers the explosions, and checks for a language change",
+      "source": "HD2Runtime 0.40.1 sdk/docs/events.md; sdk/docs/custom-text.md"
+    },
+    "PlayLoadoutSound": {
+      "rva": "0x1327F50",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B 05 B2 E3 FF 01 8B DA 48 8B 0D D1 E3 FF 01 48",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "not read"},
+        {"name": "key", "type": "uint32_t", "meaning": "the sound key, remapped to a Wwise event id"}
+      ],
+      "hook": true,
+      "meaning": "Posts a UI sound the way the loadout screen does: the key becomes a Wwise event id, which it posts through the WwiseWorld",
+      "source": "HD2Runtime 0.40.1 runtime/ui_sound.lua"
+    },
+    "CreditorOf": {
+      "rva": "0x129C690",
+      "code": "48 89 5C 24 18 57 48 83 EC 20 33 FF 8B DA 3B 15 7C 75 1E 02 0F 84 D2 00 00 00 48 8B 05 07 A6 08",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "not read"},
+        {"name": "owner", "type": "uint32_t", "meaning": "the owner entity"}
+      ],
+      "hook": true,
+      "aliases": ["Creditor"],
+      "meaning": "The peer id that gets the credit for what an owner does: the peer owning the owner's network object",
+      "source": "HD2Runtime 0.40.1 runtime/pelican_weapon.lua (Creditor(owner))"
+    },
+    "PickEnemy": {
+      "rva": "0x953150",
+      "code": "48 89 5C 24 10 44 88 4C 24 20 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 40 4D 8B E0 8B DA 4C 8B",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the spawn manager"},
+        {"name": "group", "type": "uint32_t", "meaning": "the spawn group key"},
+        {"name": "roster", "type": "void*", "meaning": "the roster"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Picks an enemy type from a spawn group, weighted by the mission difficulty (row +0x30 has ten weights). Every spawn that picks an enemy type calls it; it returns 0xFFFFFFFF when nothing qualifies",
+      "source": "HD2Runtime 0.40.1 runtime/enemy_spawn_weights.lua; domains/enemy_spawn_weights pins"
+    },
+    "EntityAttribute": {
+      "rva": "0x11D9DF0",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 56 57 41 54 41 56 41 57 48 83 EC 20 33 FF 45 8B E0 3B 0D 0F 9E 2A",
+      "returns": "void*",
+      "params": [
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity (an avatar)"},
+        {"name": "key", "type": "uint32_t", "meaning": "the attribute key hash"},
+        {"name": "flags", "type": "uint32_t", "meaning": "which sources to read (callers pass 1 or 3)"}
+      ],
+      "hook": true,
+      "meaning": "An entity's attribute record by key (a float at +8), or null. It is the only reader of the armor passive slots and maps an avatar to its kits' passives",
+      "source": "HD2Runtime 0.40.1 runtime/player_passives.lua; sdk/docs/armor-passives.md"
+    },
+    "ApplyDamage": {
+      "rva": "0x9235F0",
+      "code": "4C 8B DC 55 53 41 54 49 8D AB 48 F5 FF FF 48 81 EC C0 0B 00 00 48 8B 05 04 8A D1 01 48 33 C4 48 89 85 00 0A 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "health", "type": "void*", "meaning": "the HealthManager (HealthManager global)"},
+        {"name": "target", "type": "uint32_t", "meaning": "the entity hit (DamageEvent +0)"},
+        {"name": "kind", "type": "uint32_t", "meaning": "the damage kind (DamageEvent +4)"},
+        {"name": "element", "type": "uint32_t", "meaning": "the damage element (DamageEvent +8)"},
+        {"name": "dealer", "type": "uint32_t", "meaning": "the dealer's network id (DamageEvent +0x10)"},
+        {"name": "owner", "type": "uint32_t", "meaning": "the owner's network id (DamageEvent +0x14)"},
+        {"name": "creditor", "type": "uint64_t", "meaning": "the peer the damage is credited to (DamageEvent +0x18)"},
+        {"name": "amount", "type": "int32_t", "meaning": "the damage (DamageEvent +0x2C), before armour and multipliers"},
+        {"name": "s9", "type": "uint32_t", "meaning": "not reviewed: pass it on (DamageEvent +0x30)"},
+        {"name": "s10", "type": "float", "meaning": "not reviewed: pass it on (DamageEvent +0x34)"},
+        {"name": "position", "type": "float*", "meaning": "3 floats: the hit position (DamageEvent +0x50)"},
+        {"name": "s12", "type": "float*", "meaning": "not reviewed: pass it on (3 floats, DamageEvent +0x44)"},
+        {"name": "s13", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s14", "type": "uint8_t", "meaning": "not reviewed: pass it on (DamageEvent +0x28)"},
+        {"name": "s15", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s16", "type": "uint32_t", "meaning": "not reviewed: pass it on (DamageEvent +0x5C)"},
+        {"name": "s17", "type": "uint32_t", "meaning": "not reviewed: pass it on (DamageEvent +0x60, kept in the record at +0x40)"},
+        {"name": "s18", "type": "uint32_t", "meaning": "not reviewed: pass it on (DamageEvent +0x20, the hit-ring key)"},
+        {"name": "s19", "type": "uint8_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Applies one damage to an entity's health: acceptance mask, element and Vitality multipliers, zone health, downing and death (KillDispatch). ConsumeDamageEvent calls it with the DamageEvent's fields, on the machine that drains the queue",
+      "source": "HD2Runtime 0.40.1 research event-combat (damage_apply, 15 stack args); ConsumeDamageEvent's call at 0x12A82EB"
+    },
+    "IsDead": {
+      "rva": "0x927050",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 3B 15 B6 CB B5 02 4C 8B D1 74 51 44 8B 89 38 10 00 00",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "health", "type": "void*", "meaning": "the HealthManager"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"}
+      ],
+      "hook": true,
+      "meaning": "1 when the entity's health record says dead (life state +0x19C >= 2); 0 when alive, downed or without a health record",
+      "source": "HD2Runtime 0.40.1 research event-combat (is_dead)"
+    },
+    "HealthRecord": {
+      "rva": "0x4A4410",
+      "code": "48 83 EC 08 3B 15 06 F8 FD 02 4C 8B 15 67 22 E8 02 75 07 B8 FF FF FF FF EB 7E 45 8B 8A 38 10 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"}
+      ],
+      "hook": false,
+      "meaning": "The entity's health record (0x1B8 bytes in the HealthManager's records at +0x1058). An entity with no record gives a bad pointer, not NULL: check first. No code calls it",
+      "source": "HD2Runtime 0.40.1 research event-combat (health_record_getter)"
+    },
+    "RestoreHealth": {
+      "rva": "0x91E500",
+      "code": "48 89 5C 24 08 48 89 6C 24 18 48 89 74 24 20 57 41 54 41 55 41 56 41 57 48 83 EC 50 33 F6 0F 29 74 24 40",
+      "returns": "void",
+      "params": [
+        {"name": "health", "type": "void*", "meaning": "the HealthManager"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "fraction", "type": "float", "meaning": "the health to set, as a fraction of the maximum"}
+      ],
+      "hook": true,
+      "meaning": "Sets an entity's health to fraction x its maximum and revives a downed one (life state 0); does nothing to the dead. The stim's status handler calls it",
+      "source": "HD2Runtime 0.40.1 research event-combat (heal_set_fraction, stim_restore_call)"
+    },
+    "HealthSettings": {
+      "rva": "0x507920",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 E8 C2 F7 02 0F 84 A3 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (HealthManager +0x1048 per index)"}
+      ],
+      "hook": true,
+      "meaning": "The entity's HealthComponentData: its private copy if it has one, else the shared type record (0x5650 bytes each)",
+      "source": "HD2Runtime 0.40.1 research event-combat (settings_getter)"
+    },
+    "SetLifeState": {
+      "rva": "0x91C240",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 90 48 81 EC 70 01 00 00 48 8B 05 AD FD D1 01",
+      "returns": "void",
+      "params": [
+        {"name": "health", "type": "void*", "meaning": "the HealthManager"},
+        {"name": "index", "type": "uint32_t", "meaning": "the health record index (not the entity)"},
+        {"name": "state", "type": "uint32_t", "meaning": "the new life state (0 alive, 1 downed, 2 dead)"},
+        {"name": "kind", "type": "uint32_t", "meaning": "the damage kind that caused it"},
+        {"name": "element", "type": "uint32_t", "meaning": "the damage element that caused it"}
+      ],
+      "hook": true,
+      "meaning": "Raises a health record's life state (+0x19C; a lower state is ignored) and runs what follows the change. ApplyDamage calls it, and the update calls it when the replicated state differs",
+      "source": "HD2Runtime 0.40.1 research event-combat (set_life_state); callers 0x9204BD and 0x9256F4"
+    },
+    "HealthManagerUpdate": {
+      "rva": "0x920260",
+      "code": "40 55 53 41 54 41 56 48 8D AC 24 18 F7 FF FF 48 81 EC E8 09 00 00 0F 29 BC 24 C0 09 00 00 48 8B 05 8B BD D1 01",
+      "returns": "void",
+      "params": [
+        {"name": "health", "type": "void*", "meaning": "the HealthManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time in seconds"}
+      ],
+      "hook": true,
+      "meaning": "The HealthManager's frame update: regeneration, time since damage, damage-over-time deaths and the replicated life state",
+      "source": "HD2Runtime 0.40.1 research event-combat (update)"
+    },
+    "DrainCombatQueues": {
+      "rva": "0x12A6EF0",
+      "code": "4C 8B DC 55 41 55 41 57 49 8D AB 18 FE FF FF 48 81 EC D0 02 00 00 48 8B 05 03 51 39 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "queues", "type": "void*", "meaning": "the combat queues (CombatQueues global)"}
+      ],
+      "hook": true,
+      "meaning": "The frame's drain of the combat queues: up to 16 damage events per call through ConsumeDamageEvent, then the status and other queues",
+      "source": "HD2Runtime 0.40.1 research event-combat (queue_drain); HD2Runtime 0.40.1 research event-actions"
+    },
+    "EnqueueDamageEvent": {
+      "rva": "0x129EF00",
+      "code": "48 83 EC 18 4C 8B 05 2D E0 1D 02 41 8B 80 20 11 20 00 3D 00 10 00 00 73 7D 41 8B 80 20 11 20 00",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "event", "type": "void*", "meaning": "a whole DamageEvent (0x70 bytes) to copy"}
+      ],
+      "hook": false,
+      "meaning": "Copies a DamageEvent into this machine's damage queue (CombatQueues +0x1120, 4096 at most; a full queue drops it). No code calls it",
+      "source": "HD2Runtime 0.40.1 research event-combat (enqueue_copy)"
+    },
+    "ProduceDamage": {
+      "rva": "0x129DD30",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 20 57 41 54 41 55 41 56 41 57 48 81 EC A0 00 00 00 44 0F 29 4C 24 60",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "values", "type": "float*", "meaning": "the DamageValues (+0 damage, +4 armour factor)"},
+        {"name": "hit", "type": "void*", "meaning": "the hit event (+0 kind, +4 element, +0x20 target, +0x84 dealer and +0x104 owner network ids, +0x110 creditor)"},
+        {"name": "key", "type": "uint32_t", "meaning": "stored in the DamageEvent at +0x20"}
+      ],
+      "hook": true,
+      "meaning": "Turns a hit into a queued DamageEvent (damage = trunc(values +0) times the target's attribute) and queues the hit's status effects when the armour factor is not 0. Every damage source's hit goes through it",
+      "source": "HD2Runtime 0.40.1 research event-combat (producer); HD2Runtime 0.40.1 research direct-hit-damage"
+    },
+    "InitHitInfo": {
+      "rva": "0x12A15E0",
+      "code": "44 89 44 24 18 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 28 48 8B 8C 24 98 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "hit", "type": "void*", "meaning": "the hit event to fill"},
+        {"name": "kind", "type": "uint32_t", "meaning": "the hit kind (hit +0)"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on (hit +0xC)"},
+        {"name": "s5", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "source", "type": "void*", "meaning": "the source struct (+0xC, +0x1C hit node, +0x20, +0x24 DamageInfo id)"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Fills a hit event from its source: target, hit zone and armour, and the DamageInfo row's element and damage",
+      "source": "HD2Runtime 0.40.1 research event-combat (hit_init); HD2Runtime 0.40.1 research direct-hit-damage"
+    },
+    "EntityToNetwork": {
+      "rva": "0xFD9AF0",
+      "code": "48 83 EC 08 3B 0D 72 AA 4A 02 75 0B 8B 05 42 AA 17 01 48 83 C4 08 C3 4C 8B 15 8A 24 49 02 45 33 C0",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"}
+      ],
+      "hook": true,
+      "meaning": "The network id of an entity (EntityOfNetwork's inverse); 0x7FFF when it has none",
+      "source": "HD2Runtime 0.40.1 research event-state (set_player_avatar's call at 0x6079CF)"
+    },
+    "HealthZoneOfNode": {
+      "rva": "0x922060",
+      "code": "48 89 5C 24 08 33 DB 4C 8D 8A 68 02 00 00 45 33 D2 45 8B D8 41 83 39 00 74 34 45 33 C0 49 8D 89 68 01 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "settings", "type": "void*", "meaning": "the HealthComponentData (HealthSettings)"},
+        {"name": "node", "type": "uint32_t", "meaning": "the hit node's hash"}
+      ],
+      "hook": true,
+      "meaning": "The health zone a hit node belongs to (zones at settings +0x208, 0x228 bytes each, 38 at most); the default zone (settings +0x40) when none lists it",
+      "source": "HD2Runtime 0.40.1 research direct-hit-damage (0x922060)"
+    },
+    "BuildDamageValues": {
+      "rva": "0x129DC30",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 33 C0 0F 57 C0 0F 11 02 49 8B F8 48 8B DA 0F 11 42 10 89 42 20 41 8B 00",
+      "returns": "float*",
+      "params": [
+        {"name": "rcx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "values", "type": "float*", "meaning": "the DamageValues to fill (0x24 bytes)"},
+        {"name": "hit", "type": "void*", "meaning": "the hit event"}
+      ],
+      "hook": true,
+      "meaning": "Builds a hit's DamageValues with the builder of its kind (+0 damage, -1 to kill; +4 armour factor) and returns values",
+      "source": "HD2Runtime 0.40.1 research direct-hit-damage (DamageValues)"
+    },
+    "IsBoosterActive": {
+      "rva": "0x856D40",
+      "code": "48 8B 0D 59 F9 AC 02 48 8B 05 EA FB AC 02 83 79 08 00 76 06 83 79 40 04 74 46 44 8B 48 10 33 C9",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "booster", "type": "uint32_t", "meaning": "the booster id"}
+      ],
+      "hook": true,
+      "meaning": "1 when the mission has the booster (ApplyDamage asks it for Vitality, id 1)",
+      "source": "HD2Runtime 0.40.1 research event-combat (damage_apply 0x923A8A)"
+    },
+    "ApplyStatus": {
+      "rva": "0x699E40",
+      "code": "40 55 53 57 41 55 41 57 48 8D 6C 24 D0 48 81 EC 30 01 00 00 48 8B 05 B5 21 FA 01 48 33 C4 48 89 45 00",
+      "returns": "void",
+      "params": [
+        {"name": "receivers", "type": "void*", "meaning": "the status receivers (StatusReceivers global)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the target"},
+        {"name": "type", "type": "uint32_t", "meaning": "the status type"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "buildup", "type": "float", "meaning": "the strength, against the target's susceptibility"},
+        {"name": "s6", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Applies a status to an entity owned here: susceptibility and buildup decide, then the type's handler runs. Weather Insulated (56) refuses 53..55",
+      "source": "HD2Runtime 0.40.1 research acid-storm-attachment"
+    },
+    "HasStatus": {
+      "rva": "0x69B1F0",
+      "code": "48 89 5C 24 10 48 89 6C 24 20 56 57 41 54 41 56 41 57 48 83 EC 70 48 8B 05 03 0E FA 01 48 33 C4",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "receivers", "type": "void*", "meaning": "the status receivers (StatusReceivers global)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"},
+        {"name": "type", "type": "int32_t", "meaning": "the status type"}
+      ],
+      "hook": true,
+      "meaning": "1 when the entity has the status",
+      "source": "HD2Runtime 0.40.1 research acid-storm-attachment"
+    },
+    "RemoveStatus": {
+      "rva": "0x69AB60",
+      "code": "48 89 5C 24 10 55 56 57 41 56 41 57 48 83 EC 70 0F 29 74 24 60 48 8B 05 94 14 FA 01 48 33 C4 48 89 44 24 50",
+      "returns": "void",
+      "params": [
+        {"name": "receivers", "type": "void*", "meaning": "the status receivers"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"},
+        {"name": "type", "type": "uint32_t", "meaning": "the status type"}
+      ],
+      "hook": true,
+      "meaning": "Ends a status on an entity: the type's handler runs with apply = 0",
+      "source": "HD2Runtime 0.40.1 research acid-storm-attachment"
+    },
+    "AddStat": {
+      "rva": "0x62C930",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 41 8B E9 41 8B D8 48 8B F9 E8 BE FD FF FF",
+      "returns": "void",
+      "params": [
+        {"name": "stats", "type": "void*", "meaning": "the ScoreManager (ScoreManager global)"},
+        {"name": "peer", "type": "uint64_t", "meaning": "the player's peer id"},
+        {"name": "key", "type": "uint32_t", "meaning": "the stat key (HF_STAT_..., e.g. 0xD494C5CC dealt_kills)"},
+        {"name": "amount", "type": "uint32_t", "meaning": "added to the stat"},
+        {"name": "source", "type": "uint32_t", "meaning": "the source entity, or the invalid entity to use resource"},
+        {"name": "resource", "type": "uint64_t", "meaning": "the source resource, read when source is the invalid entity"}
+      ],
+      "hook": true,
+      "meaning": "Adds amount to one of a player's mission stats, overall and under its source. Kills, deaths, stims, shots and damage all count through it",
+      "source": "HD2Runtime 0.40.1 research event-combat (add_stat); HD2Runtime 0.40.1 research event-state (addStatCallSites)"
+    },
+    "StatsPlayerIndex": {
+      "rva": "0x62C710",
+      "code": "48 83 EC 08 45 33 C0 4C 8B D9 48 8B 0D 47 9D CF 02 41 8B C0 44 8B 91 84 00 00 00 45 85 D2 74 17",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "stats", "type": "void*", "meaning": "the ScoreManager (ScoreManager global)"},
+        {"name": "peer", "type": "uint64_t", "meaning": "the player's peer id"}
+      ],
+      "hook": true,
+      "meaning": "The ScoreManager index of the player with this peer id (through PlayerManager +0x2C8); 0xFFFFFFFF when none",
+      "source": "HD2Runtime 0.40.1 research event-combat (player_index)"
+    },
+    "StatMapLookup": {
+      "rva": "0x1731A60",
+      "code": "48 89 5C 24 08 48 89 7C 24 10 44 8B 41 08 33 C0 44 8B 51 10 44 8B CA 44 0F AF D2 41 8D 78 FF 45 85 C0",
+      "returns": "void*",
+      "params": [
+        {"name": "map", "type": "void*", "meaning": "the map: +0 entries (20 bytes each, u32 key first), +8 capacity, +0xC empty key, +0x10 hash multiplier"},
+        {"name": "key", "type": "uint32_t", "meaning": "the key"}
+      ],
+      "hook": true,
+      "meaning": "The 20-byte entry of a u32-keyed map that holds key, or the empty slot that ends its probe; NULL when the map is full. The stat tables use it (an entry's +4 is the stat's value)",
+      "source": "HD2Runtime 0.40.1 research event-combat (stat_map_lookup)"
+    },
+    "BuildScore": {
+      "rva": "0x630130",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 20 41 8B C0 48 8B DA",
+      "returns": "void",
+      "params": [
+        {"name": "stats", "type": "void*", "meaning": "the ScoreManager (ScoreManager global)"},
+        {"name": "score", "type": "uint32_t*", "meaning": "the score to fill: +0 dealt_damage, +4 dealt_kills, +8 dealt_team_kills, +0xC melee kills, +0x10 team damage, +0x28 stims used, +0x30 reinforcements called, +0x34 received damage"},
+        {"name": "index", "type": "uint32_t", "meaning": "the player's ScoreManager index (StatsPlayerIndex)"}
+      ],
+      "hook": true,
+      "meaning": "Fills a player's end-of-mission score from the stat keys",
+      "source": "HD2Runtime 0.40.1 research event-combat (score_getter)"
+    },
+    "KillCreditListener": {
+      "rva": "0x129FD00",
+      "code": "4C 89 44 24 18 48 89 54 24 10 48 89 4C 24 08 53 55 56 57 41 55 41 56 48 83 EC 48 8B 9C 24 A0 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "listener", "type": "void*", "meaning": "the listener's registration"},
+        {"name": "context", "type": "void*", "meaning": "KillDispatch's context"},
+        {"name": "creditor", "type": "uint64_t", "meaning": "the peer the kill is credited to"},
+        {"name": "victim", "type": "uint32_t", "meaning": "the entity killed"},
+        {"name": "dealer", "type": "uint32_t", "meaning": "the entity that dealt the killing damage"},
+        {"name": "kind", "type": "uint32_t", "meaning": "the damage kind"},
+        {"name": "element", "type": "uint32_t", "meaning": "the damage element: passed, not read"}
+      ],
+      "hook": true,
+      "meaning": "KillDispatch's listener that counts a kill in the creditor's mission stats (dealt_kills, team kills, melee kills) when the victim's KillScore is above 0",
+      "source": "HD2Runtime 0.40.1 research event-combat (kill_credit); KillDispatch's call at 0xB96392"
+    },
+    "PassiveValue": {
+      "rva": "0x11DA090",
+      "code": "48 8B 15 61 C4 14 02 0F 57 C0 F3 0F 10 15 CE CC 1E 01 8B C1 8B 4C 82 30 83 F9 FF 74 5E 48 8B 42 20",
+      "returns": "float",
+      "params": [
+        {"name": "passive", "type": "uint32_t", "meaning": "the passive id"},
+        {"name": "base", "type": "float", "meaning": "the value without the passive"},
+        {"name": "key", "type": "uint32_t", "meaning": "the attribute key"}
+      ],
+      "hook": true,
+      "meaning": "A value after one passive's modifiers of a key: (the last Set, else base) plus every Add, times every Multiply; base when the passive has none",
+      "source": "HD2Runtime 0.40.1 research player-attributes (PassiveValue)"
+    },
+    "ChangeState": {
+      "rva": "0xAB2FA0",
+      "code": "48 89 5C 24 08 48 89 6C 24 18 56 57 41 54 41 56 41 57 48 83 EC 30 8B DA 4C 8D 3D 41 D0 54 FF 49 8B F0",
+      "returns": "void",
+      "params": [
+        {"name": "game", "type": "void*", "meaning": "the Game (Game global)"},
+        {"name": "state", "type": "uint32_t", "meaning": "the new state (HF_STATE_...: 1 Splash .. 6 PrepareMission)"},
+        {"name": "data", "type": "void*", "meaning": "passed to the new state's enter handler; may be NULL"}
+      ],
+      "hook": true,
+      "meaning": "Changes the game state: runs the old state's exit handler, writes Game +0xAC21C and runs the new state's enter handler (Mission zeroes the StateGame block). HF_ON_STATE polls the value it writes",
+      "source": "HD2Runtime 0.40.1 research event-state (gameStateMachine)"
+    },
+    "SetPlayerAvatar": {
+      "rva": "0x607820",
+      "code": "40 53 55 57 48 83 EC 30 3B 15 F2 C3 E7 02 41 8B D8 8B FA 48 8B E9 0F 84 CC 02 00 00 44 8B 81 D8 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "players", "type": "void*", "meaning": "the PlayerManager"},
+        {"name": "player", "type": "uint32_t", "meaning": "the player entity"},
+        {"name": "avatar", "type": "uint32_t", "meaning": "the avatar entity"}
+      ],
+      "hook": true,
+      "meaning": "Sets a player's avatar (+0x108 + 0x70 per owned player, network id at +0x3A8 + 0x20 per player) and its state to Spawned (3)",
+      "source": "HD2Runtime 0.40.1 research event-state (playerManager)"
+    },
+    "SetPlayerState": {
+      "rva": "0x608A90",
+      "code": "40 53 3B 15 88 B1 E7 02 41 8B D8 4C 8B C9 75 0A B8 FF FF FF FF E9 80 00 00 00 44 8B 91 D8 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "players", "type": "void*", "meaning": "the PlayerManager"},
+        {"name": "player", "type": "uint32_t", "meaning": "the player entity"},
+        {"name": "state", "type": "uint32_t", "meaning": "the lifecycle state (2 WaitingForRespawnTimer, 3 Spawned; 0 and 1 unnamed)"}
+      ],
+      "hook": true,
+      "meaning": "Sets a player's lifecycle state (PlayerManager +0x2E0 + 0x38 per player)",
+      "source": "HD2Runtime 0.40.1 research event-state (playerManager set_player_state)"
+    },
+    "TurretSettings": {
+      "rva": "0x50B8B0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 58 83 F7 02 0F 84 90 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's TurretComponentData (0x4C bytes: +8 vertical, +0xC horizontal turn speed): its own copy in the turret manager (game.dll+0x3326D70, copies +0xA8) if it has one, else the shared type record",
+      "source": "HD2Runtime 0.40.1 research sentry-components (turretSettingsResolver)"
+    },
+    "SensorEyeSettings": {
+      "rva": "0x503BC0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 48 00 F8 02 0F 84 90 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's SensorEyeComponentData (0x2C bytes: the vision ranges the sensor copies at spawn): its own copy if it has one, else the shared type record",
+      "source": "HD2Runtime 0.40.1 research sentry-components (sensorEyeResolver)"
+    },
+    "ProjectileWeaponRecord": {
+      "rva": "0x515100",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 08 EB F6 02 0F 84 A3 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the weapon entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The weapon's ProjectileWeaponComponentData (+0 the projectile type): its own copy in ProjectileWeapons if it has one, else the shared type record",
+      "source": "HD2Runtime 0.40.1 research component-swap-liberator-beam; HD2Runtime 0.40.1 research beam-conversion-add-layout"
+    },
+    "WeaponDataRecord": {
+      "rva": "0x509A40",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 C8 A1 F7 02 0F 84 93 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the weapon entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The weapon's WeaponData record (0x4D0 bytes; fire modes, the input bindings): its own copy in WeaponDatas if it has one, else the shared type record",
+      "source": "HD2Runtime 0.40.1 research carrier-weapon-clone"
+    },
+    "BeamWeaponRecord": {
+      "rva": "0x50ECC0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 48 4F F7 02 0F 84 90 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the weapon entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The weapon's BeamWeaponComponentData (+0 the beam type): its own copy in BeamWeapons if it has one, else the shared type record",
+      "source": "HD2Runtime 0.40.1 research beam-damage-per-weapon; component-swap-liberator-beam"
+    },
+    "WeaponProjectileType": {
+      "rva": "0x7456D0",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 56 57 41 54 41 56 41 57 48 83 EC 20 8B 35 34 E5 D3 02 33 ED 4C 8B 0D 6B 0F BE 02",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"}
+      ],
+      "hook": true,
+      "aliases": ["ResolveFiredType"],
+      "meaning": "The projectile type the weapon fires now, by its components: the magazine's round type or pattern, WeaponRounds' primary or alternate magazine, linked ammunition, else ProjectileWeapon +0",
+      "source": "HD2Runtime 0.40.1 research fired-type-callers (resolver 0x7456D0)"
+    },
+    "ProjectileFire": {
+      "rva": "0x6128B0",
+      "code": "48 8B C4 48 89 58 10 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 18 FB FF FF 48 81 EC B0 05 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "projectiles", "type": "void*", "meaning": "ProjectileWeapons (the ProjectileWeapons global)"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "type", "type": "uint32_t", "meaning": "the projectile type to fire; 0: the weapon's own (WeaponProjectileType)"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s9", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s10", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s11", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "aliases": ["ProjectileWeaponFire"],
+      "meaning": "Fires one shot of a weapon's projectiles; type 0 resolved to 0 fires nothing. The ProjectileWeapon update, the heat step and GenericFire all shoot through it",
+      "source": "HD2Runtime 0.40.1 research fired-type-callers (fire 0x6128B0); HD2Runtime 0.40.1 research beam-conversion-add-layout (projectileFire)"
+    },
+    "GenericFire": {
+      "rva": "0x741DF0",
+      "code": "4C 8B DC 53 41 55 48 81 EC 98 00 00 00 48 8B 05 0C A2 EF 01 48 33 C4 48 89 44 24 68 4C 8B E9 4C 89 4C 24 60",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "type", "type": "uint32_t", "meaning": "the projectile type; 0: the weapon's own"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s9", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s10", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s11", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s12", "type": "uint8_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "The generic fire: hands the shot to ProjectileFire (its arguments 5 to 11 pass through) when the weapon has a ProjectileWeapon or ArcWeapon instance, else returns. Charged releases and the heat levels fire through it",
+      "source": "HD2Runtime 0.40.1 research fired-type-callers; HD2Runtime 0.40.1 research beam-conversion-coverage (genericFire)"
+    },
+    "WeaponHeatStep": {
+      "rva": "0x7627B0",
+      "code": "44 88 44 24 18 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 81 EC D8 00 00 00 4C 8B 2D 74 45 BC 02",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Adds one shot's heat to a weapon with a WeaponHeat instance and fires the projectile of the heat level reached (its own type per stage)",
+      "source": "HD2Runtime 0.40.1 research beam-conversion-add-layout (heatStep); HD2Runtime 0.40.1 research fired-type-callers"
+    },
+    "SpendRound": {
+      "rva": "0x744690",
+      "code": "48 89 4C 24 08 53 55 56 57 41 55 41 57 48 83 EC 38 8B 3D 79 F5 D3 02 45 33 FF 4C 8B 2D AF 1F BE 02",
+      "returns": "void",
+      "params": [
+        {"name": "magazines", "type": "void*", "meaning": "the MagazineManager"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"}
+      ],
+      "hook": true,
+      "meaning": "Spends one round of a weapon (magazine, rounds or linked ammunition), shared by every output family; the beam spends one per pulse",
+      "source": "HD2Runtime 0.40.1 research component-swap-liberator-beam (round consumption); beam-conversion-coverage (roundSpend)"
+    },
+    "ProjectileWeaponUpdate": {
+      "rva": "0x616AC0",
+      "code": "48 8B C4 48 89 58 18 55 56 57 41 54 41 55 41 56 41 57 48 81 EC E0 00 00 00 0F 29 70 B8 0F 29 78 A8",
+      "returns": "void",
+      "params": [
+        {"name": "projectiles", "type": "void*", "meaning": "ProjectileWeapons"},
+        {"name": "index", "type": "uint32_t", "meaning": "the instance index"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "One ProjectileWeapon instance's frame: its fire timer and trigger, then the shot (through the heat step when the weapon has WeaponHeat)",
+      "source": "HD2Runtime 0.40.1 research beam-conversion-add-layout (projectileUpdate)"
+    },
+    "BeamWeaponUpdate": {
+      "rva": "0x83E200",
+      "code": "4C 8B DC 55 53 56 41 55 41 57 49 8D AB 88 FE FF FF 48 81 EC 50 02 00 00 45 0F 29 AB 48 FF FF FF",
+      "returns": "void",
+      "params": [
+        {"name": "beams", "type": "void*", "meaning": "BeamWeapons"},
+        {"name": "index", "type": "uint32_t", "meaning": "the instance index (0x70-byte instances)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "One BeamWeapon instance's frame: the charge gate and the beam shot from the trigger byte",
+      "source": "HD2Runtime 0.40.1 research beam-conversion-add-layout (beamUpdate); HD2Runtime 0.40.1 research beam-damage-per-weapon"
+    },
+    "BeamShot": {
+      "rva": "0x83F9D0",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 81 EC 90 00 00 00 48 8B 05 22 C6 DF 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "s10", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "One beam pulse: spends a round and runs the heat step of the weapon's own WeaponHeat; no authority test on the way",
+      "source": "HD2Runtime 0.40.1 research beam-conversion-coverage (beamShot); beam-damage-per-weapon"
+    },
+    "ReloadMagazine": {
+      "rva": "0x7768F0",
+      "code": "44 88 4C 24 20 48 89 4C 24 08 53 56 41 57 48 83 EC 60 3B 15 2C D3 D0 02 45 8B F8 48 8B 35 5E 01 BB 02",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "The reload refill: spends one spare magazine (one unit from the parent's deposit when shared) and fills the magazine, queuing the network field writes",
+      "source": "HD2Runtime 0.40.1 research ammo-network-fields; liberator-beam-chamber"
+    },
+    "TurretUpdate": {
+      "rva": "0x6DEDB0",
+      "code": "40 53 41 54 41 55 48 81 EC 70 01 00 00 44 0F 29 9C 24 00 01 00 00 44 0F 29 BC 24 C0 00 00 00 48 8B 05 3A D2 F5 01",
+      "returns": "void",
+      "params": [
+        {"name": "turrets", "type": "void*", "meaning": "the turret component's manager (component world +0xEB5060)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The turret system's frame: turns every turret toward its targeting direction, yaw then pitch, with the instance's turn speeds and the settings' limits (TurretSettings, resolved every frame)",
+      "source": "HD2Runtime 0.40.1 research sentry-components (turretUpdate)"
+    },
+    "TurretSpeedFactor": {
+      "rva": "0x6DE820",
+      "code": "40 53 56 57 41 56 41 57 48 83 EC 30 8B 72 10 48 8B FA 0F 29 74 24 20 F3 0F 10 35 31 85 CE 01 81 FE FF 7F 00 00",
+      "returns": "float",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "rdx", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "A new turret's turn speed factor from the ship-module modifiers (1.0 by default); turret creation stores it in the instance at +4",
+      "source": "HD2Runtime 0.40.1 research sentry-components (turretSpeedFactor, turretSpawnCopy)"
+    },
+    "SensorEyeRanges": {
+      "rva": "0x64C3C0",
+      "code": "48 83 EC 28 3B 15 56 78 E3 02 4C 8B D1 0F 84 E2 00 00 00 44 8B 49 38 45 33 C0 44 8B 59 40 44 0F AF DA",
+      "returns": "void",
+      "params": [
+        {"name": "sensors", "type": "void*", "meaning": "the sensor eye manager (entity map at +0x30)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the sensor entity"},
+        {"name": "scale", "type": "float", "meaning": "the factor for the SensorEyeSettings ranges"}
+      ],
+      "hook": true,
+      "meaning": "Sets a sensor's vision ranges in its instance (+0xC, +0x10, +0x14) to its SensorEyeSettings ranges times scale and keeps scale at +0x20",
+      "source": "HD2Runtime 0.40.1 research sentry-components (sensorEyeRanges)"
+    },
+    "PerceptionUpdate": {
+      "rva": "0x887760",
+      "code": "48 8B C4 55 41 55 48 81 EC 98 00 00 00 33 ED 0F 29 70 B8 0F 28 F1 4C 8B E9 89 AC 24 B0 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "perception", "type": "void*", "meaning": "the perception manager (component world +0xEEB908)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The perception frame: every perceiver's sensors mark what they sense (the proximity sensors without a line-of-sight ray)",
+      "source": "HD2Runtime 0.40.1 research sentry-components (perceptionUpdate, sensorProximity)"
+    },
+    "WindUpUpdate": {
+      "rva": "0x78A420",
+      "code": "48 8B C4 53 41 54 41 55 48 81 EC 80 00 00 00 33 DB 44 0F 29 40 A8 44 0F 28 C1 4C 8B E9 44 8B E3",
+      "returns": "void",
+      "params": [
+        {"name": "windups", "type": "void*", "meaning": "the WeaponWindUp manager (component world +0x1B29B8)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The weapon wind-up frame: spin progress rises by dt / settings +0 while the trigger is held; on release settings +4 <= 0 resets it, else it falls by dt / settings +0",
+      "source": "HD2Runtime 0.40.1 research sentry-components (windUpUpdate)"
+    },
+    "ApplyAttribute": {
+      "rva": "0x87A3C0",
+      "code": "40 53 48 83 EC 20 49 8B D8 41 B8 03 00 00 00 E8 1C FA 95 00 48 8B C8 48 85 C0 74 41 8B 50 04 85 D2",
+      "returns": "void",
+      "params": [
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"},
+        {"name": "key", "type": "uint32_t", "meaning": "the attribute key"},
+        {"name": "value", "type": "float*", "meaning": "the value to modify in place"}
+      ],
+      "hook": false,
+      "meaning": "Applies the entity's armour or helmet modifier of a key (EntityAttribute with flags 3) to *value: Set stores, Add and Time add, Multiply multiplies; no modifier leaves it. No code calls it",
+      "source": "HD2Runtime 0.40.1 research player-attributes (ApplyAttribute)"
+    },
+    "UpdateCustomization": {
+      "rva": "0x874520",
+      "code": "40 55 53 56 41 54 41 55 41 56 41 57 48 8D 6C 24 B0 48 81 EC 50 01 00 00 48 8B 05 D1 7A DC 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "customizations", "type": "void*", "meaning": "the CustomizationManager (CustomizationManager global)"},
+        {"name": "index", "type": "uint32_t", "meaning": "the record index"}
+      ],
+      "hook": true,
+      "meaning": "Moves one player's pending customization to the applied record; when the new kit's package is ready it copies the kit ids and sets the applied armour and helmet passives (+0x3C, +0x38) from the kit",
+      "source": "HD2Runtime 0.40.1 research player-attributes (updatePlayerCustomization)"
+    },
+    "UpdateCustomizations": {
+      "rva": "0x874D80",
+      "code": "48 89 5C 24 20 56 57 41 56 48 81 EC 80 00 00 00 0F 29 74 24 70 0F 29 7C 24 60 48 8B 05 6F 72 DC 01",
+      "returns": "void",
+      "params": [
+        {"name": "customizations", "type": "void*", "meaning": "the CustomizationManager (CustomizationManager global)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The customization frame: UpdateCustomization for every record, then the 2 passive ids of every player slot, loading and unloading their packages when they change",
+      "source": "HD2Runtime 0.40.1 research player-attributes (updateAll)"
+    },
+    "SetArmorKit": {
+      "rva": "0x8760B0",
+      "code": "40 57 48 83 EC 20 3B 15 78 DB C0 02 48 8B F9 0F 84 25 01 00 00 44 8B 99 38 09 00 00 45 33 C9 48 89 5C 24 30",
+      "returns": "void",
+      "params": [
+        {"name": "customizations", "type": "void*", "meaning": "the CustomizationManager (CustomizationManager global)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the player entity"},
+        {"name": "kit", "type": "uint32_t", "meaning": "the armour kit id"}
+      ],
+      "hook": true,
+      "meaning": "Sets a player's pending armour kit (pending record +0xC, network field 0xB7D3A2EC); UpdateCustomization applies it and its passive",
+      "source": "HD2Runtime 0.40.1 research player-attributes (setKit armor)"
+    },
+    "SetHelmetKit": {
+      "rva": "0x875CD0",
+      "code": "40 57 48 83 EC 20 3B 15 58 DF C0 02 48 8B F9 0F 84 19 01 00 00 44 8B 99 38 09 00 00 45 33 C9 48 89 5C 24 30",
+      "returns": "void",
+      "params": [
+        {"name": "customizations", "type": "void*", "meaning": "the CustomizationManager (CustomizationManager global)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the player entity"},
+        {"name": "kit", "type": "uint32_t", "meaning": "the helmet kit id"}
+      ],
+      "hook": true,
+      "meaning": "Sets a player's pending helmet kit (pending record +4); UpdateCustomization applies it and its passive",
+      "source": "HD2Runtime 0.40.1 research player-attributes (setKit helmet)"
+    },
+    "SetCapeKit": {
+      "rva": "0x875EC0",
+      "code": "40 57 48 83 EC 20 3B 15 68 DD C0 02 48 8B F9 0F 84 25 01 00 00 44 8B 99 38 09 00 00 45 33 C9 48 89 5C 24 30",
+      "returns": "void",
+      "params": [
+        {"name": "customizations", "type": "void*", "meaning": "the CustomizationManager (CustomizationManager global)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the player entity"},
+        {"name": "kit", "type": "uint32_t", "meaning": "the cape kit id"}
+      ],
+      "hook": true,
+      "meaning": "Sets a player's pending cape kit (pending record +8)",
+      "source": "HD2Runtime 0.40.1 research player-attributes (setKit cape)"
+    },
+    "PlayerSlot": {
+      "rva": "0x606820",
+      "code": "48 83 EC 08 3B 15 F6 D3 E7 02 4C 8B D1 75 18 B8 FF FF FF FF 8B C8 48 C1 E1 05 42 8B 84 11 B4 03 00 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "players", "type": "void*", "meaning": "the PlayerManager"},
+        {"name": "player", "type": "uint32_t", "meaning": "the player entity"}
+      ],
+      "hook": true,
+      "meaning": "A player's slot (0 to 3), kept at PlayerManager +0x3B4 + 0x20 per player; the customization update reads each slot's passives with it",
+      "source": "HD2Runtime 0.40.1 research player-attributes (updateAll: 0x606820 = player slot of an entity)"
+    },
+    "BehaviourExplosion": {
+      "rva": "0x4C89C0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 54 41 56 41 57 48 83 EC 70 48 8B 05 2B 36 17 02",
+      "returns": "void",
+      "params": [
+        {"name": "context", "type": "void*", "meaning": "the behaviour's context (+0 the entity's descriptor)"},
+        {"name": "type", "type": "uint32_t", "meaning": "the explosion type"},
+        {"name": "node", "type": "uint32_t", "meaning": "the hash of the unit node it goes off at"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Requests an explosion at a node of the behaving entity's unit: into the ExplosionQueue (RequestExplosionAt) and to the peers. Enemy behaviours and abilities call it",
+      "source": "HD2Runtime 0.40.1 research event-actions (behavior explosion wrapper); HD2Runtime 0.40.1 research explosion-identities"
+    },
+    "RequestExplosionAt": {
+      "rva": "0x13C6D30",
+      "code": "48 8B C4 48 89 58 08 48 89 70 18 48 89 50 10 57 48 81 EC 90 00 00 00 8B 94 24 D8 00 00 00 48 8B F9",
+      "returns": "void",
+      "params": [
+        {"name": "queue", "type": "void*", "meaning": "the ExplosionQueue"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its home is scratch)"},
+        {"name": "position", "type": "float*", "meaning": "3 floats: where"},
+        {"name": "type", "type": "uint32_t", "meaning": "the explosion type"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Queues an explosion request at a position through RequestExplosion; BehaviourExplosion and the ability explosion wrapper use it",
+      "source": "HD2Runtime 0.40.1 research event-actions; HD2Runtime 0.40.1 research explosion-identities (0x13C6D30)"
+    },
+    "ExplosionKick": {
+      "rva": "0x13C5420",
+      "code": "48 8B C4 48 89 58 10 48 89 70 18 48 89 78 20 55 41 54 41 55 41 56 41 57 48 8D A8 B8 FC FF FF 48 81 EC 20 04 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "explosions", "type": "void*", "meaning": "the explosion system (the ExplosionQueue's object, Game + 0x1C9DAF8)"}
+      ],
+      "hook": true,
+      "meaning": "Starts this frame's explosions: up to 8 queued requests (kicked count at +0x24), early in the world update",
+      "source": "HD2Runtime 0.40.1 research event-explosions (explosion kick)"
+    },
+    "ExplosionGather": {
+      "rva": "0x13C6180",
+      "code": "4C 8B DC 55 53 56 41 54 49 8D AB F8 F6 FF FF 48 81 EC E8 09 00 00 48 8B 05 73 5E 27 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "explosions", "type": "void*", "meaning": "the explosion system"}
+      ],
+      "hook": true,
+      "meaning": "Finishes the kicked explosions later in the same world update (ProcessExplosion for each, in order) and moves the rest of the queue to the front",
+      "source": "HD2Runtime 0.40.1 research event-explosions (explosion gather)"
+    },
+    "ProcessExplosion": {
+      "rva": "0x13C0D10",
+      "code": "48 8B C4 48 89 58 20 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 E8 FC FF FF 48 81 EC E0 03 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "explosions", "type": "void*", "meaning": "the explosion system"},
+        {"name": "rdx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "offset", "type": "uint64_t", "meaning": "the request's offset in the explosion system: 0x28 + 0x98 per entry"}
+      ],
+      "hook": true,
+      "meaning": "Processes one kicked explosion request: its hits, damage and effects",
+      "source": "HD2Runtime 0.40.1 research event-explosions (process one explosion); event-actions (the game drains the queue)"
+    },
+    "ProjectileKick": {
+      "rva": "0x13AB0E0",
+      "code": "40 55 53 48 8D AC 24 08 FC FF FF 48 81 EC F8 04 00 00 44 0F 29 A4 24 70 04 00 00 44 0F 29 BC 24 40 04 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "projectiles", "type": "void*", "meaning": "the projectile system (Game + 0x44F7E30)"}
+      ],
+      "hook": true,
+      "meaning": "The projectile step of the world update, after the explosion kick: its impacts request explosions after the kick",
+      "source": "HD2Runtime 0.40.1 research event-explosions (projectile kick)"
+    },
+    "BehaviourStartAbility": {
+      "rva": "0x4C3210",
+      "code": "48 89 6C 24 20 41 56 48 83 EC 30 48 8B 29 44 8B F2 4C 8B 15 18 34 E6 02 8B 45 08 3B 05 EF 09 FC 02",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "context", "type": "void*", "meaning": "the behaviour's context (+0 the entity's descriptor)"},
+        {"name": "ability", "type": "uint32_t", "meaning": "the ability"}
+      ],
+      "hook": true,
+      "meaning": "Starts an ability on the behaving entity: StartAbility with the AbilityManager, mode 1 and speed 1.0, returning its result",
+      "source": "HD2Runtime 0.40.1 research event-actions (ability play); HD2Runtime 0.40.1 research pelican-cas"
+    },
+    "CorpseSource": {
+      "rva": "0x870310",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 20 3B 15 FA 38 C1 02 48 8B 1D EF 65 AB 02",
+      "returns": "void*",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"}
+      ],
+      "hook": true,
+      "meaning": "For a corpse (Corpses global), the descriptor of the entity it came from; NULL when the entity is no corpse. Entity removal consults it",
+      "source": "HD2Runtime 0.40.1 research event-mission (corpse link)"
+    },
+    "StatusReceivable": {
+      "rva": "0x6994F0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 54 41 56 41 57 48 83 EC 40 48 8B 05 FB 2A FA 01",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the target"},
+        {"name": "type", "type": "int32_t", "meaning": "the status type"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "1 when the entity can receive the status (StatusReceivers' susceptibility rule, the same as ApplyStatus's); the status queue checks it first",
+      "source": "HD2Runtime 0.40.1 research event-actions (the target can receive the type); acid-storm-attachment"
+    },
+    "FlushNetworkFields": {
+      "rva": "0xFDC780",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B D9 0F B6 F2 48 8B 49 08 48 85 C9 74 05 E8 BD 18 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "entities", "type": "void*", "meaning": "the EntityManager"},
+        {"name": "rdx", "type": "uint8_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "The sync point: flushes every batched network field write (clamped and sent), before and after the frame's update phases",
+      "source": "HD2Runtime 0.40.1 research team-reload-ammo (sync point 0xFDC780); event-explosions"
+    },
+    "Wield": {
+      "rva": "0x785DE0",
+      "code": "40 53 55 57 41 54 48 83 EC 78 48 8B 05 1F 62 EB 01 48 33 C4 48 89 44 24 50 3B 15 21 DE CF 02 41 8B F9",
+      "returns": "void",
+      "params": [
+        {"name": "wielders", "type": "void*", "meaning": "the WielderManager"},
+        {"name": "wielder", "type": "uint32_t", "meaning": "the wielding entity"},
+        {"name": "slot", "type": "uint32_t", "meaning": "the wield slot (5, 0x50 bytes each)"},
+        {"name": "item", "type": "uint32_t", "meaning": "the item entity held in the slot"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Puts an item in a wielder's slot (slot record +0 holds the entity) and wields it. The weapon switch calls it",
+      "source": "HD2Runtime 0.40.1 research event-wielder"
+    },
+    "SwitchWeapon": {
+      "rva": "0x9AAA50",
+      "code": "48 8B C4 44 89 40 18 53 55 41 55 48 81 EC 80 00 00 00 3B 15 B8 91 AD 02 41 8B E8 8B DA 4C 8B E9",
+      "returns": "void",
+      "params": [
+        {"name": "inventory", "type": "void*", "meaning": "the InventoryManager"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the inventory's entity"},
+        {"name": "selection", "type": "uint32_t", "meaning": "the slot to select (record +0x1C; 1..5 pick record +0, +4, +8, +0x10)"}
+      ],
+      "hook": true,
+      "meaning": "Selects an inventory slot and wields its item (Wield)",
+      "source": "HD2Runtime 0.40.1 research event-wielder"
+    },
+    "QueueFieldWrite": {
+      "rva": "0xFD97E0",
+      "code": "48 89 6C 24 18 56 41 56 41 57 48 83 EC 30 48 8B 05 A3 27 49 02 4D 8B F0 44 8B FA 8B E9 48 8B 70 08",
+      "returns": "void",
+      "params": [
+        {"name": "network", "type": "uint32_t", "meaning": "the object's network id (0x7FFF: nothing is queued)"},
+        {"name": "field", "type": "uint32_t", "meaning": "the network field's hash"},
+        {"name": "value", "type": "void*", "meaning": "the live value (read when the batch is flushed)"}
+      ],
+      "hook": true,
+      "meaning": "Queues one replicated field write {network id, field hash, value pointer} in the batch (0x800 entries) that FlushNetworkFields clamps and sends; every replicated gameplay field change goes through it",
+      "source": "HD2Runtime 0.40.1 research ammo-network-fields; component-swap-liberator-beam (network field write)"
+    },
+    "BeamTypeOf": {
+      "rva": "0x83FD50",
+      "code": "48 83 EC 28 3B 15 DA 3E C4 02 4C 8B D1 75 07 B8 FF FF FF FF EB 73 44 8B 49 48 45 33 C0 48 89 5C 24 30",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "beams", "type": "void*", "meaning": "BeamWeapons"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"}
+      ],
+      "hook": true,
+      "meaning": "The weapon's beam type: BeamWeaponRecord +0, re-read at every shot; 0xFFFFFFFF for the invalid entity",
+      "source": "HD2Runtime 0.40.1 research beam-damage-per-weapon (BeamType = 0x83FD50)"
+    },
+    "OutOfAmmo": {
+      "rva": "0x753A10",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 55 41 56 41 57 48 83 EC 30 8B 3D EC 01 D3 02",
+      "returns": "void",
+      "params": [
+        {"name": "weapondata", "type": "void*", "meaning": "WeaponDatas"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"}
+      ],
+      "hook": true,
+      "meaning": "The out-of-ammo handler: returns at once when the weapon has a WeaponReload instance; otherwise it uses the weapon's WeaponData (its AutoDropAbility, the expendables' drop)",
+      "source": "HD2Runtime 0.40.1 research carrier-weapon-clone (out-of-ammo handler 0x753A10)"
+    },
+    "ChargeFire": {
+      "rva": "0x741A00",
+      "code": "48 89 5C 24 20 44 89 44 24 18 48 89 4C 24 08 55 56 57 41 55 41 57 48 81 EC B0 00 00 00 4C 8B 2D 3C 4C BE 02",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "type", "type": "uint32_t", "meaning": "the projectile type of the charge level; 0: the weapon's own"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Fires a charged release through GenericFire with its own type (the charge level's projectile). The charge release 0x73D8C0 calls it",
+      "source": "HD2Runtime 0.40.1 research fired-type-callers (callers of the charge fire 0x741A00); HD2Runtime 0.40.1 research beam-conversion-coverage"
+    },
+    "EncyclopediaRecord": {
+      "rva": "0x4F8A50",
+      "code": "48 85 C9 74 71 48 8B 05 3C 35 F7 02 44 8B C1 4C 8B 90 D8 26 F1 00 48 B8 5D 39 A3 18 C0 95 33 8A",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "entity", "type": "uint64_t", "meaning": "the entity resource's hash (an armory entry's +8, a weapon's entity)"}
+      ],
+      "hook": false,
+      "meaning": "The entity's EncyclopediaEntryComponentData record (component 76; +0 its name text id, +0x24 its designation text id), by open addressing over 1330 slots; NULL for 0 or an entity without one",
+      "source": "HellForge's weapon registry (registry.c REG_ENCYCLOPEDIA_LOOKUP)"
+    },
+    "PickerCatalogueItem": {
+      "rva": "0x1372290",
+      "code": "4C 8B D1 85 D2 75 09 48 8D 05 D2 91 45 02 EB 0D 8B C2 48 8D 0D 57 93 45 02 48 8B 04 C1 44 8B 48 04",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "account", "type": "void*", "meaning": "the progression manager: hf_global_Progression"},
+        {"name": "type", "type": "uint32_t", "meaning": "the StratagemType (HF_STRATAGEM_..., or a mod's)"}
+      ],
+      "hook": false,
+      "meaning": "The player's catalogue item (24 bytes, at account + 0xB9CE4) for a stratagem type, or NULL when the catalogue has none: what the picker's heading counts as selectable before StratagemAvailable",
+      "source": "HellForge's stratagem categories (stratagem_categories.c PickerCategoryCounts)"
+    },
+    "NavigationRecord": {
+      "rva": "0x505B40",
+      "code": "48 85 C9 74 71 48 8B 05 4C 64 F6 02 44 8B C1 4C 8B 90 F0 2A F1 00 48 B8 9D 9F 4A 08 C8 F9 A9 84",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "resource", "type": "uint64_t", "meaning": "the entity resource's hash (a moving object's +0)"}
+      ],
+      "hook": false,
+      "meaning": "The resource's Navigation component record (+4 its navigation profile hash, +8 a radius), by open addressing over a static table; NULL for 0 or a resource without one",
+      "source": "HellForge's shield block (shield_block.c SB_NAV_RECORD)"
+    },
+    "BehaviourStageCount": {
+      "rva": "0x495F20",
+      "code": "FF C9 81 F9 B4 02 00 00 0F 87 ?? ?? ?? ?? 48 63 C1 48 8D 15 C8 A0 B6 FF 0F B6 84 02 04 60 49 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "id", "type": "uint32_t", "meaning": "the behaviour (1 .. 693)"}
+      ],
+      "hook": false,
+      "meaning": "How many stages a behaviour has; 0 for an unknown id, and such an entity never enters stage 1. HellForge points its id check at a stub that answers for its own behaviours with their base's count",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourEventSlot": {
+      "rva": "0x47A240",
+      "code": "FF C9 81 F9 B4 02 00 00 0F 87 ?? ?? ?? ?? 48 63 C1 4C 8D 05 A8 5D B8 FF 41 8B 8C 80 88 40 48 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "id", "type": "uint32_t", "meaning": "the behaviour (1 .. 693)"},
+        {"name": "event", "type": "uint32_t", "meaning": "the event's hash"}
+      ],
+      "hook": false,
+      "meaning": "The network slot a behaviour sends an event in; 0x1F when the behaviour does not replicate it. Paired with BehaviourSlotEvent; HellForge's stub answers for its own ids with their base's slot",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourSlotEvent": {
+      "rva": "0x484B60",
+      "code": "FF C9 81 F9 B4 02 00 00 0F 87 ?? ?? ?? ?? 4C 8D 05 8B B4 B7 FF 48 63 C1 41 8B 84 80 A4 A2 48 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "id", "type": "uint32_t", "meaning": "the behaviour (1 .. 693)"},
+        {"name": "slot", "type": "uint32_t", "meaning": "the network slot an event arrived in"}
+      ],
+      "hook": false,
+      "meaning": "The event hash a behaviour's network slot stands for, as a replicated event is turned back into one; 0 for none. The inverse of BehaviourEventSlot",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "FillDistancesTo": {
+      "rva": "0xF7A430",
+      "code": "45 33 D2 83 FA 04 0F 82 DB 00 00 00 8D 42 FC C1 E8 02 4C 8D 49 1C FF C0 44 8B D8 44 8D 14 85 00 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "candidates", "type": "float*", "meaning": "the candidates, 12 bytes each: x, y, and +8 the squared distance it writes"},
+        {"name": "count", "type": "uint32_t", "meaning": "how many candidates"},
+        {"name": "centre", "type": "float*", "meaning": "the reference point (x, y): SpreadLocations passes its reference location's cluster centre, +0xE0"}
+      ],
+      "hook": false,
+      "meaning": "Writes each candidate's squared 2D distance from a point into its third float, before SpreadLocations sorts them by it (comparator 0xF7A5A0). SpreadLocations read location -1 here on level-11 city maps until HellForge gave it location 0",
+      "source": "HellForge's location spread fix (difficulty.c DIF_SPREAD_REFERENCE); research d11-map-centre"
+    },
+    "UpdateImageUv": {
+      "rva": "0x143F3C0",
+      "code": "F3 0F 10 91 34 01 00 00 0F 2E 15 D9 76 EC 01 7A 58 75 56 F3 0F 10 81 38 01 00 00 0F 2E 05 CA 76 EC 01",
+      "returns": "void",
+      "params": [
+        {"name": "image", "type": "uint8_t*", "meaning": "the image element: +0x114 its base UV rect (4 floats), +0x134 the sprite sub-rect (x, y, w, h)"}
+      ],
+      "hook": false,
+      "meaning": "Recomputes an image element's UV rect (+0x124..+0x130) from its base UV and its sprite sub-rect; a sub-rect of 0, 0, 1, 1 copies the base. HellForge's difficulty icon stub resets the sub-rect and ends here",
+      "source": "HellForge's difficulty bar icons (difficulty.c); HD2Runtime's stratagem slot icons (uv_for)"
+    },
+    "HiveMindDefinition": {
+      "rva": "0x505F50",
+      "code": "48 85 C9 74 5C 48 8B 05 3C 60 F6 02 44 8B C1 4C 8B 90 18 2B F1 00 48 B8 5F 43 79 0D E5 35 94 D7",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "resource", "type": "uint64_t", "meaning": "the entity resource's hash"}
+      ],
+      "hook": false,
+      "meaning": "The resource's shared HiveMindComponent definition (0x43C bytes; +0x74 the mission countdown in seconds), by open addressing over 38 slots; NULL for none. The mission spawn and the war table's mission card copy it and apply deltas; the shared one is never written",
+      "source": "HellForge's mission countdown (difficulty.c DIF_TIMER_SITE notes)"
+    },
+    "UnloadDamageList": {
+      "rva": "0x11F8E30",
+      "code": "40 53 48 83 EC 20 0F B6 D9 48 8B 0D B8 53 29 02 48 85 C9 74 1C 48 8B 05 BC D4 12 02 48 8B 90 70 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "clear", "type": "uint8_t", "meaning": "nonzero: also zero the DamageInfo list's 650 slots (0x1450 bytes at game + 0x37C60C0)"}
+      ],
+      "hook": false,
+      "meaning": "Releases the damage list's resource and, when asked, clears the DamageInfo id list (called through a table, not directly). A reload never clears past slot 649, so HellForge's moved list keeps its added rows",
+      "source": "HellForge's damage types (damage.c kDamageClearPin)"
+    },
+    "CollectOperationsForDifficulty": {
+      "rva": "0x11E4CD0",
+      "code": "48 89 5C 24 18 48 89 6C 24 20 56 41 54 41 55 41 56 41 57 48 81 EC 90 08 00 00 48 8B 05 1F 73 45 01",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (callers leave the value they store in s5)"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on (callers pass a u16 of their descriptor, +0x10; it goes on to 0x12DF110)"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on (-1 or a looked-up id; it goes on to 0x12DF110)"},
+        {"name": "difficulty", "type": "uint32_t", "meaning": "the difficulty level (callers pass a byte, their descriptor's +0x20)"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: must equal the operation row's u32 before its highest difficulty (6 adds an account check)"},
+        {"name": "s6", "type": "uint32_t", "meaning": "not reviewed: must equal the operation row's u32 4 bytes below its lowest difficulty"},
+        {"name": "unused2", "type": "uint64_t", "meaning": "not read"},
+        {"name": "rows", "type": "uint32_t*", "meaning": "receives the index (0..24) of each matching operation row"}
+      ],
+      "hook": true,
+      "meaning": "Collects the operation settings rows (25 of 0x490, lowest and highest difficulty at +0xC / +0x10) that allow a difficulty and match the caller's kind, and returns how many: the war table's mission board only offers a level they allow, so HellForge lets every row allowing 10 allow 11",
+      "source": "HellForge's level 11 (difficulty.c DIF_OPERATIONS)"
+    },
+    "FinalizeVoronoiStructured": {
+      "rva": "0xFBBB20",
+      "code": "40 55 53 56 57 41 54 41 55 48 8D AC 24 E8 F7 FF FF 48 81 EC 18 09 00 00 48 8B 05 D1 04 68 01 48 33 C4",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +0 the generation arena, +8 = lg+0x2D20 (the level's radii)"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on (FinalizeVoronoi passes a {u32 count, u32, pointer} list of its own; the weld reads count and pointer)"},
+        {"name": "r9", "type": "void*", "meaning": "not reviewed: pass it on (a second {u32, u32} list, cleared and filled by the weld)"}
+      ],
+      "hook": true,
+      "meaning": "FinalizeVoronoi on structured maps (map type 2: mega cities, factories): welds vertices through a 24 x 24 bucket grid whose blocks come from a pool of 512 (+0xBA60, 0xA08 each, count +0x14CA60); 0 on failure. HellForge gives the pool 576 blocks",
+      "source": "HellForge's larger maps (difficulty.c kBucketPool)"
+    },
+    "ReVoronoi": {
+      "rva": "0xFD0E00",
+      "code": "40 55 53 56 41 56 41 57 48 8D AC 24 70 FF FF FF 48 81 EC 90 01 00 00 44 0F 29 AC 24 00 01 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (a {u32 count, u32, pointer} list from the pass's state, 32-byte entries)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (a second such list)"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on (the pass's state +0)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +0 the generation arena, +8 = lg+0x2D20 (the level's radii)"},
+        {"name": "s5", "type": "void*", "meaning": "not reviewed: pass it on (the level + 0x1990)"},
+        {"name": "count", "type": "uint32_t*", "meaning": "an output count it zeroes first"}
+      ],
+      "hook": true,
+      "meaning": "Level generator op 0xA3 (revoronoi) on structured maps: refills the land around the city with a Poisson disc at the nature cell size (+0x18C), kept apart from the city's sites; returns the new diagram or NULL. HellForge grows the cell size on larger maps",
+      "source": "HellForge's larger maps (difficulty.c kReVoronoiStubs)"
+    },
+    "PlaceRoadProps": {
+      "rva": "0xFB1DB0",
+      "code": "4C 8B DC 49 89 5B 08 49 89 6B 10 49 89 73 18 57 41 54 41 55 41 56 41 57 48 81 EC 40 01 00 00 45 0F 29 4B 98",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s9", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s10", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s11", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s12", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Places one road prop of a city street (its caller runs it rand % type+0x230 + 1 times per edge), testing the position against its rule's reach (+0x54) past the playable radius. HellForge measures that reach from the border on larger maps",
+      "source": "HellForge's city streets (difficulty_streets.c kStreetBorderSites)"
+    },
+    "StampIndexInit": {
+      "rva": "0xC04B80",
+      "code": "48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 57 41 54 41 55 41 56 41 57 48 81 EC B0 00 00 00 0F 29 70 C8",
+      "returns": "void",
+      "params": [
+        {"name": "index", "type": "void*", "meaning": "the stamp index (the level generator's + 8)"},
+        {"name": "x0", "type": "float", "meaning": "the area's lowest x (0)"},
+        {"name": "y0", "type": "float", "meaning": "the area's lowest y (0)"},
+        {"name": "x1", "type": "float", "meaning": "the area's highest x (the map's size)"},
+        {"name": "y1", "type": "float", "meaning": "the area's highest y"},
+        {"name": "cell", "type": "float", "meaning": "a cell's side"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "unused2", "type": "uint64_t", "meaning": "not read"},
+        {"name": "unused3", "type": "uint64_t", "meaning": "not read"},
+        {"name": "unused4", "type": "uint64_t", "meaning": "not read"},
+        {"name": "memory", "type": "void*", "meaning": "its storage, StampIndexSize bytes"}
+      ],
+      "hook": false,
+      "meaning": "Sets up the level generator's stamp index over an area: placed stamps, locations and roads by cell, for overlap tests (10757 slots after a bitset; slots + 1 at +0x1C). HellForge gives it 16383 slots",
+      "source": "HellForge's larger maps (difficulty.c stamp index sites)"
+    },
+    "StampIndexInsert": {
+      "rva": "0xC04EF0",
+      "code": "41 54 41 56 48 83 EC 48 44 0F B7 49 06 4C 8B D9 44 8B 61 2C 66 41 F7 D1 44 8B 51 28 41 83 E1 01",
+      "returns": "uint32_t*",
+      "params": [
+        {"name": "index", "type": "void*", "meaning": "the stamp index (the level generator's + 8)"},
+        {"name": "x0", "type": "float", "meaning": "the rect's lowest x"},
+        {"name": "y0", "type": "float", "meaning": "the rect's lowest y"},
+        {"name": "x1", "type": "float", "meaning": "the rect's highest x"},
+        {"name": "y1", "type": "float", "meaning": "the rect's highest y"},
+        {"name": "slot", "type": "uint64_t*", "meaning": "receives the slot's cell mask, or 0 when the index is full"}
+      ],
+      "hook": true,
+      "meaning": "Takes a free slot of the level generator's stamp index for a rect and links it into every cell the rect covers; returns the slot's record (callers write the stamp's id at +0) or NULL when full (17 callers; a full index used to be written through that NULL)",
+      "source": "HellForge's larger maps (difficulty.c stamp index sites)"
+    },
+    "CreateMinimapTexture": {
+      "rva": "0xF586A0",
+      "code": "4C 8B DC 55 49 8D AB 98 FD FF FF 48 81 EC 60 03 00 00 48 8B 05 57 39 6E 01 48 33 C4 48 89 85 80 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": true,
+      "meaning": "Level generator pass: captures the level's minimap texture with the level's radii",
+      "source": "HellForge's larger-map diagnostic (difficulty.c DIF_CAPTURE_SITE)"
+    },
+    "UpdateMissionCardDuration": {
+      "rva": "0x1A12D70",
+      "code": "40 53 55 56 57 41 54 41 57 48 81 EC 98 04 00 00 48 8B 05 89 92 C2 00 48 33 C4 48 89 84 24 80 04 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "card", "type": "void*", "meaning": "the war table's mission card widget"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "mission", "type": "const uint8_t*", "meaning": "the mission descriptor: +9 its level, +0x1A its mission row (u16), +0x1D its modifier count, +0x20 the modifiers"}
+      ],
+      "hook": true,
+      "meaning": "The war table mission card's duration: the mode's HiveMind definition with only the mission row's delta (+0x360) applied in a copy, its seconds divided by 60 into the card's minutes (0x1A131CC). HellForge shows the added level's own countdown there",
+      "source": "HellForge's mission countdown (difficulty.c DIF_CARD_TIME_SITE)"
+    },
+    "SetupPhysicsConfig": {
+      "rva": "0x4EE160",
+      "code": "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 55 48 8D AC 24 F0 FD FF FF 48 81 EC 10 03 00 00 48 8B 05 8A DE 14 02",
+      "returns": "void",
+      "params": [
+        {"name": "get_api", "type": "void*", "meaning": "the engine's API getter, (u32 id) -> API table; it asks for ids 0x28, 0x1F, 6 and more"}
+      ],
+      "hook": true,
+      "meaning": "game.dll's plugin setup_game, once per process (from its plugin table, no direct caller): takes the engine's APIs, then fills the engine's physics config with its pool sizes, from which the exe builds every world's pools. HellForge raises those sizes before it runs",
+      "source": "HellForge's physics pools (difficulty.c)"
+    },
+    "SiloRemoteLink": {
+      "rva": "0x76B580",
+      "code": "40 53 41 54 48 83 EC 48 3B 15 A6 86 D1 02 8B DA 4C 8B 25 61 B2 BB 02 0F 84 40 05 00 00 45 8B 44 24 28",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its caller passes hf_global_WeaponLinkerManager's cell)"},
+        {"name": "remote", "type": "uint32_t", "meaning": "the targeting remote's entity"}
+      ],
+      "hook": true,
+      "meaning": "A silo remote's link, which its laser update runs every frame: while the remote's linker record says a silo link (+4 0x06212002) and the missile is not launched yet, it launches it (engine, explosive set off), names the explosive's owner, sets its guidance target to the laser's point and has the rack let it go. HellForge's silo countdown repeats these steps in this order",
+      "source": "HellForge's silo countdown (abilities.c kLaunchFunctions)"
+    },
+    "LaserDesignatorUpdate": {
+      "rva": "0x9BF6D0",
+      "code": "4C 8B DC 55 49 8D AB 68 FB FF FF 48 81 EC 90 05 00 00 48 8B 05 27 C9 C7 01 48 33 C4 48 89 85 C0 03 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "designators", "type": "void*", "meaning": "the laser designators (the world system passes its + 0x75C2B8)"}
+      ],
+      "hook": true,
+      "meaning": "Updates every laser designator for a frame (a silo remote's laser) and calls each remote's link (SiloRemoteLink), which launches the missile on the first frame the laser marks a point",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "LinkRemoteOnPickup": {
+      "rva": "0x76AAB0",
+      "code": "48 89 54 24 10 48 89 4C 24 08 53 55 56 57 41 55 41 56 41 57 48 83 EC 40 4C 8B 2D 29 BD BB 02 45 33 F6",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its thunk loads a manager into it)"},
+        {"name": "event", "type": "uint8_t*", "meaning": "the component event: +8 the entity"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Links a silo's targeting remote to its missile when it is picked up: the rack's items in the SeekingMissile manager, and the missile's +8 names the remote's network handle. Reached through a component callback thunk (0x528870)",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "MissilePreDestroy": {
+      "rva": "0x642570",
+      "code": "48 89 4C 24 08 57 41 54 41 55 48 83 EC 30 8B 42 08 4C 8B E2 8B 3D 96 16 E4 02 4C 8B 2D 5F 48 CE 02",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its thunk passes the event in both)"},
+        {"name": "event", "type": "uint8_t*", "meaning": "the component event: +8 the entity (the missile), +0xC compared with the remote's attachable record"}
+      ],
+      "hook": false,
+      "meaning": "A seeking missile's pre-destroy callback: on the machine with authority over its remote, takes the remote out of its holder's hands, looking it up among the attachables and reading the record unchecked. HellForge guards that read (engine 0.1.21, InstallLooseGuard) for a remote attached to nothing",
+      "source": "HellForge's silo countdown (abilities.c ABL_GUARD_LOOKUP)"
+    },
+    "CompactLinkerCopies": {
+      "rva": "0x76D280",
+      "code": "40 53 56 57 48 83 EC 20 48 8B 1D 69 95 BB 02 48 8B F2 8B 52 08 48 8D 4B 20 E8 02 26 FC 00 8B 4B 0C",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its thunk passes the event in both)"},
+        {"name": "event", "type": "uint8_t*", "meaning": "the component event: +8 the entity; +0x10 what it returns"}
+      ],
+      "hook": false,
+      "meaning": "A WeaponLinker's destroy callback: drops the entity's linker copy and moves the last copy into the freed slot, so a record pointer kept across frames can name another remote's. Returns the event's +0x10",
+      "source": "HellForge's silo countdown (abilities.c LinkRecord)"
+    },
+    "SiloRemoteCleanup": {
+      "rva": "0x76BC70",
+      "code": "40 53 57 48 83 EC 38 8B 3D B7 7F D1 02 8B DA 4C 8B D1 44 3B C7 0F 85 43 01 00 00 4C 89 7C 24 30",
+      "returns": "void",
+      "params": [
+        {"name": "linkers", "type": "void*", "meaning": "the linker manager its caller walks"},
+        {"name": "remote", "type": "uint32_t", "meaning": "the remote's entity"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on (its caller's index)"},
+        {"name": "r9", "type": "uint8_t*", "meaning": "not reviewed: pass it on (the linker record; +8 read)"}
+      ],
+      "hook": true,
+      "meaning": "Removes a silo remote once it is dropped and its rack is gone (ability 2089); runs only for a silo link, so a remote whose linker record HellForge marked as no link stays until the launch",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "PelicanTurretAim": {
+      "rva": "0x44FE20",
+      "code": "40 55 41 57 48 8D AC 24 48 FE FF FF 48 81 EC B8 02 00 00 48 8B 05 D6 C1 1E 02 48 33 C4 48 89 85 F0 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}: P the behaviour record + 8"}
+      ],
+      "hook": true,
+      "meaning": "Behaviour 645's (the Pelican's chin turret) stage 2, aim: at least 1.5 s, until within 2 degrees of its target, re-scoring its perceiver's entries. HellForge's turret aims without the wait",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "RealizePellet": {
+      "rva": "0x615940",
+      "code": "4C 8B DC 55 53 56 57 41 55 41 56 41 57 49 8D AB A8 F5 FF FF 48 81 EC 20 0B 00 00 41 0F 29 73 B8",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the ProjectileWeapon component manager"},
+        {"name": "index", "type": "uint32_t", "meaning": "the weapon's component index (not its entity)"},
+        {"name": "type", "type": "uint32_t", "meaning": "the projectile type chosen (a programmable round may replace it, 0x615B23)"},
+        {"name": "transform", "type": "const uint8_t*", "meaning": "the shot's transform: +0x10 its direction, +0x30 its position"},
+        {"name": "owner", "type": "uint32_t", "meaning": "the owner or wielder entity (its creditor comes from Creditor)"},
+        {"name": "s6", "type": "float", "meaning": "not reviewed: pass it on (copied into the pool's options)"},
+        {"name": "s7", "type": "uint32_t", "meaning": "not reviewed: pass it on (a shot random or token)"},
+        {"name": "s8", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s9", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s10", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s11", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s12", "type": "uint8_t", "meaning": "not reviewed: pass it on (selects the ProjectileWeapon +0x108 option)"}
+      ],
+      "hook": true,
+      "meaning": "Emits one pellet of a ProjectileWeapon shot: builds its descriptor and spawns it into the projectile pool (SpawnProjectile, at 0x616612), on every machine. HellForge swaps the programmable round per player at 0x615B23 and gives other players' shots their own rows at the pool call",
+      "source": "HellForge's per-player shots (shots.c); research projectile-per-player (ProjectileWeapon_RealizePellet)"
+    },
+    "NetworkApplyState": {
+      "rva": "0xBC2D30",
+      "code": "48 89 7C 24 10 55 48 8B EC 48 83 EC 30 48 8B 05 C4 35 76 02 0F 57 C0 8B FA 0F 11 45 F0 45 84 C0",
+      "returns": "void",
+      "params": [
+        {"name": "source", "type": "void*", "meaning": "not reviewed: pass it on (the engine object the state is read from; passed on to the engine's state readers)"},
+        {"name": "network_id", "type": "uint32_t", "meaning": "the network object's id"},
+        {"name": "full", "type": "uint8_t", "meaning": "which engine reader it uses (+0xB0 when nonzero, else +0xA8): 1 at the object's creation and for each frame's data, 0 at a migration"}
+      ],
+      "hook": true,
+      "meaning": "Applies the state another machine sent for one of its network objects, by the object's network type through a table of the 1,855 vanilla types (0xBC2DB3). HellForge moves the table and gives each added type its base type's case",
+      "source": "HellForge's network apply (netapply.c NET_SWITCH_LOAD)"
+    },
+    "BehaviourSpawnSetup": {
+      "rva": "0x842200",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 54 41 57 48 81 EC C0 00 00 00 8B 42 08 45 33 E4",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the behaviour manager (its thunk, 0x549110, loads it)"},
+        {"name": "event", "type": "uint8_t*", "meaning": "the component event: +8 the entity"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on (the thunk's second argument)"}
+      ],
+      "hook": false,
+      "meaning": "Sets up an entity's behaviour record at its spawn; without authority over the entity it leaves the record empty, to be filled from what arrives (BehaviourNetworkFill)",
+      "source": "HellForge's behaviours (behaviours.c, co-op)"
+    },
+    "BehaviourNetworkFill": {
+      "rva": "0x842690",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 56 57 41 55 41 56 41 57 48 81 EC D0 00 00 00 48 8B 05 60 99 DF 01",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its thunk passes the event in both)"},
+        {"name": "event", "type": "uint8_t*", "meaning": "the component event: +8 the entity"}
+      ],
+      "hook": false,
+      "meaning": "Fills a behaviour record from what arrives from the machine with authority: the id, the stage and the fields, ending with BehaviourResume. So a new behaviour resumes as its base does",
+      "source": "HellForge's behaviours (behaviours.c, co-op)"
+    },
+    "LoadProjectileList": {
+      "rva": "0x11EC5A0",
+      "code": "40 53 55 57 41 54 41 57 48 83 EC 30 E8 EF B4 DE FF 48 8B 0D 50 9D 13 02 48 8B E8 C7 44 24 60 00 00 00 00",
+      "returns": "void",
+      "params": [],
+      "hook": true,
+      "meaning": "Loads the projectile settings file and fills the projectile list (game + 0x37C7670, ProjectileType -> 272-byte row): clears exactly 351 slots and fills 1..350 of whichever list its instructions name, so HellForge's moved list keeps its new types over a reload",
+      "source": "HellForge's projectile types (projectiles.c)"
+    },
+    "UnloadProjectileList": {
+      "rva": "0x11EC760",
+      "code": "40 53 48 83 EC 20 0F B6 D9 48 8B 0D 88 1B 2A 02 48 85 C9 74 1C 48 8B 05 8C 9B 13 02 48 8B 90 70 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "clear", "type": "uint8_t", "meaning": "nonzero: also zero the list's 351 slots (0xAF8 bytes)"}
+      ],
+      "hook": true,
+      "meaning": "Releases the projectile settings file and, when asked, clears the projectile list",
+      "source": "HellForge's projectile types (projectiles.c)"
+    },
+    "ProjectileLookupA": {
+      "rva": "0x75A0D0",
+      "code": "40 53 48 81 EC 30 01 00 00 41 FF C8 41 8B D9 4C 8B DA 41 83 F8 0B 0F 87 B5 03 00 00 48 8D 0D 0D 5F 8A FF",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "out", "type": "void*", "meaning": "not reviewed: pass it on (a buffer its caller reads)"},
+        {"name": "kind", "type": "uint32_t", "meaning": "not reviewed: pass it on (1..12: the switch it takes)"},
+        {"name": "value", "type": "uint32_t", "meaning": "not reviewed: pass it on (for one kind the projectile type)"},
+        {"name": "s5", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "One of the two lookups that bound a projectile type (0x75A376: cmp type, 351; above it, nothing). HellForge raises the bound to 351 + the new types",
+      "source": "HellForge's projectile types (projectiles.c)"
+    },
+    "ProjectileLookupB": {
+      "rva": "0x1829110",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 41 54 41 55 41 56 41 57 48 8D 6C 24 A0 48 81 EC 60 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "uint8_t*", "meaning": "not reviewed: pass it on (an object of 0x678-byte rows; its +0x3C0 is read)"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on (its caller's +0x350..+0x35C)"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "The other lookup that bounds a projectile type (0x1829374: cmp r14, 351; above it, another branch); it calls ProjectileLookupA. HellForge raises the bound to 351 + the new types",
+      "source": "HellForge's projectile types (projectiles.c)"
+    },
+    "AttachmentItemById": {
+      "rva": "0x11F46F0",
+      "code": "48 89 5C 24 08 48 89 7C 24 10 8B 3D 98 93 29 02 45 33 D2 85 FF 74 3B 4C 8D 1D 42 14 5D 02 66 90",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "id", "type": "uint32_t", "meaning": "the attachment item's id"}
+      ],
+      "hook": false,
+      "meaning": "An attachment item (0x58 bytes, its id at +8) by id, walking every attachment group (u32 group count at game + 0x348DA98, group pointers at game + 0x37C5B50, each {items*, u32 count}); NULL for none",
+      "source": "HellForge's attachment registry research (attachment-registry NOTES.md)"
+    },
+    "EntityDelta": {
+      "rva": "0x5154C0",
+      "code": "48 89 5C 24 08 48 8B 05 CC 6A F5 02 33 D2 45 33 C0 4C 8B D9 48 8B 98 98 2E F1 00 48 8B C1 44 8B 4B 08",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "resource", "type": "uint64_t", "meaning": "the delta's resource hash"}
+      ],
+      "hook": false,
+      "meaning": "A delta's entry ({component count, first}) in the game's entity delta table ({pointer, count} x 5 at [game + 0x346BF98] + 0xF12E98), by open addressing; NULL for none. The spawn dereferences it unchecked, so an id a machine lacks crashes it",
+      "source": "HellForge's mission countdown (difficulty.c DIF_DELTA_TABLE); research per-player-deployables"
+    },
+    "RemoveSessionPeer": {
+      "rva": "0x108D190",
+      "code": "48 89 5C 24 20 56 41 56 41 57 48 83 EC 70 45 8B F8 4C 8B F2 4C 8B C2 48 8B F1 48 8D 15 07 6B 1D 01",
+      "returns": "void",
+      "params": [
+        {"name": "session", "type": "void*", "meaning": "not reviewed: pass it on (its +0 the game session object; +0x1D470 its peers)"},
+        {"name": "peer", "type": "uint64_t", "meaning": "the peer id removed"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on (2 at every caller)"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on (0 at every caller; logged)"}
+      ],
+      "hook": true,
+      "meaning": "The host removes a peer from the game session. HellForge then destroys that peer's dead connection, so a friend who crashed can connect again",
+      "source": "HellForge's rejoin (netreap.c)"
+    },
+    "IsSteamFriend": {
+      "rva": "0x13EFEA0",
+      "code": "48 83 EC 58 48 8B 05 9D 64 F3 01 4C 8B C2 80 78 28 00 74 38 33 C0 48 8D 54 24 20 48 89 44 24 40",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "peer", "type": "uint64_t", "meaning": "the peer id (HellForge's is the Steam id)"}
+      ],
+      "hook": true,
+      "meaning": "The friends-only join check: asks the platform's friend list about a peer id. HellForge keeps Steam ids as peer ids, so it answers for a Steam friend",
+      "source": "HellForge's rejoin (netreap.c, 0x108BCFF -> 0x13EFEA0)"
+    },
+    "ApplySpawnDeltas": {
+      "rva": "0x5740B0",
+      "code": "4C 8B DC 4D 89 4B 20 4D 89 43 18 55 41 54 41 55 48 8B EC 48 83 EC 70 33 C0 4C 8B E2 4C 8B E9 89 45 B0",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the spawner, or a manager)"},
+        {"name": "descriptor", "type": "uint8_t*", "meaning": "the entity descriptor: +0 its resource, +8 its entity"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on (the delta list, {u32 count; u64 ids[10]})"},
+        {"name": "r9", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Applies a spawn's entity deltas to the new entity's components (the mission's HiveMind gets a private copy of its definition, HiveMind case 0x57525C): on the machine with authority at the create pass, elsewhere the replicated list after it. It reads EntityDelta's answer unchecked",
+      "source": "HellForge's mission countdown (difficulty.c); research per-player-deployables"
+    },
+    "HiveMindOf": {
+      "rva": "0x506580",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 88 D6 F7 02 0F 84 A6 00 00 00",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "descriptor", "type": "const uint8_t*", "meaning": "the entity descriptor: +0 its resource, +8 its entity"}
+      ],
+      "hook": false,
+      "meaning": "An entity's HiveMindComponent record (+0x74 the mission countdown, which the countdown readers take as the duration): its own in hf_global_HiveMindManager (+0x519AC, 0x43C each), else the shared definition (HiveMindDefinition); NULL for NULL",
+      "source": "HellForge's mission countdown (difficulty.c DIF_TIMER_SITE notes)"
+    },
+    "RegisterDestructible": {
+      "rva": "0x883200",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 40 8B 42 08 33 ED",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its thunk, 0x526870, passes the event in rdx)"},
+        {"name": "event", "type": "uint8_t*", "meaning": "the component event: +8 the entity, +0xC its world index"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on (the thunk's second argument)"}
+      ],
+      "hook": false,
+      "meaning": "Registers a unit for destruction from the destructible index (DestructibleIndexEntry): a unit missing from it logs \"Could not find any destructible index data\" and is never registered, which also skips some of its havok actors. Its holes take a record from a ring of 1024 (0x13E0760)",
+      "source": "HellForge's unit copies (registry.c DESTR_INDEX); research d11-bug-holes"
+    },
+    "LoadDestructibleIndex": {
+      "rva": "0xF6EC10",
+      "code": "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 55 48 8D AC 24 B0 FB FF FF 48 81 EC 50 05 00 00 48 8B 05 DA D3 6C 01",
+      "returns": "void",
+      "params": [
+        {"name": "level", "type": "void*", "meaning": "the level (its +0xF720 is set)"}
+      ],
+      "hook": false,
+      "meaning": "Fills the destructible index ([[game + 0x3326550]] + 0x2C60) from its baked resource (type 0xB8FD4D2CEDE20ED7) when the level loads: 16-byte entries {u64 unit name, u64 the unit's destruction settings}",
+      "source": "HellForge's unit copies (registry.c DESTR_INDEX)"
+    },
+    "DestructibleIndexEntry": {
+      "rva": "0xFC45C0",
+      "code": "48 89 5C 24 08 44 8B 41 10 4C 8D 1C 12 4C 8B 51 08 4C 8B CA 33 C9 49 8B C2 41 8D 58 FF 45 85 C0",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "index", "type": "void*", "meaning": "the destructible index: +8 its table, +0x10 its capacity"},
+        {"name": "unit", "type": "uint64_t", "meaning": "the unit's name hash"}
+      ],
+      "hook": false,
+      "meaning": "A unit's entry in the destructible index, probed from slot (i + 2 x name) & (capacity - 1) to the first empty name; NULL for none. HellForge enters its unit copies as their base",
+      "source": "HellForge's unit copies (registry.c)"
+    },
+    "PlayerNearness": {
+      "rva": "0x4B3B80",
+      "code": "48 89 5C 24 10 48 89 4C 24 08 57 48 83 EC 50 48 8B 0D D2 28 E7 02 33 DB 0F 29 74 24 40 48 8B FA",
+      "returns": "float",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "point", "type": "const float*", "meaning": "the point (3 floats)"},
+        {"name": "radius", "type": "float", "meaning": "the radius"}
+      ],
+      "hook": true,
+      "meaning": "How near the nearest living player is to a point: 1 - (squared distance / radius squared) for the nearest within the radius, 0 when none is. The Pelican's turret uses it to spare targets near players",
+      "source": "HellForge's behaviours (OpenEngine behaviours.c, a living player near a point)"
+    },
+    "BuildWarbondPager": {
+      "rva": "0x19430B0",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 54 41 55 41 56 41 57 48 83 EC 20 33 F6 48 89 91 E8 87 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "screen", "type": "uint8_t*", "meaning": "the Acquisition Center panel W (the pager at +0x110)"},
+        {"name": "pair", "type": "uint32_t*", "meaning": "the {count, current} pair the pager reads (stored at W + 0x87E8; the AC passes its state + 0x320)"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on (stored at W + 0x87F0; the callers pass the same pointer)"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on (0x65 or 0x66 by caller)"}
+      ],
+      "hook": true,
+      "meaning": "Builds the Acquisition Center's warbond pager and its 32 dots over a {count, current} pair. HellForge pages it past 32 cards (right after it, 0x1968015)",
+      "source": "HellForge's warbond pager (warbond_pager.c WB_PAGER_INIT)"
+    },
+    "RefreshWarbondBuyButton": {
+      "rva": "0x1969F30",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 80 B9 83 2E 00 00 00 48 8B F9 74 14 48 8B 05 CB 2F B1 01 80 B8 D5 1A 0E 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "button", "type": "uint8_t*", "meaning": "the BUY PREMIUM WARBOND button: its variant at [+0x2E58] + 0x60 (0 plain, 1 premium, 2 legendary)"}
+      ],
+      "hook": true,
+      "meaning": "Refreshes the warbond buy button's look: per-variant border, highlight, fills and star (the premium variant's branch only), then its label (0x196A229). HellForge recolours it for Forge Credits",
+      "source": "HellForge's Forge Credits (forge_credits.c); research forge-credits-tint"
+    },
+    "UpdateWarbondBuyButton": {
+      "rva": "0x1969E00",
+      "code": "40 53 48 83 EC 30 0F 29 74 24 20 48 8B D9 0F 28 F1 E8 1A 01 00 00 48 8B 83 58 2E 00 00 80 78 64 00",
+      "returns": "void",
+      "params": [
+        {"name": "button", "type": "uint8_t*", "meaning": "the BUY PREMIUM WARBOND button"},
+        {"name": "dt", "type": "float", "meaning": "the frame's time"}
+      ],
+      "hook": true,
+      "meaning": "Updates the warbond buy button: refreshes it (RefreshWarbondBuyButton), then its state, 4 (owned: no hover, no press, no price, label UNLOCKED) when the warbond's data says owned (+0x64), else idle, hover or press",
+      "source": "HellForge's Forge Credits (forge_credits.c); research forge-credits-tint"
+    },
+    "WarbondScreenData": {
+      "rva": "0x196CE10",
+      "code": "40 53 56 41 54 41 56 48 83 EC 28 48 8B 59 08 48 8D 54 24 50 41 B9 02 00 00 00 4C 89 7C 24 20 4C 8B E1",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "uint8_t*", "meaning": "{u32 warbond id, data*}: data +0x60 variant, +0x64 owned, +0x68 / +0x78 the price currency type and price, +0x80 / +0x90 an alternative currency and price"}
+      ],
+      "hook": true,
+      "meaning": "Fills a warbond screen's data: its variant, whether it is owned and its price. A warbond with no token priced in Super Credits counts as owned (0x196CE86, the free-warbond rule), which HellForge narrows to free variants",
+      "source": "HellForge's Forge Credits (forge_credits.c); research forge-credits-tint"
+    },
+    "BuildWarbondList": {
+      "rva": "0x1963860",
+      "code": "48 85 D2 0F 84 35 04 00 00 4C 8B DC 53 48 81 EC 80 00 00 00 48 8B 05 95 87 CD 00 48 33 C4 48 89 44 24 50",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "int32_t", "meaning": "not reviewed: pass it on (its callers' object +0x590)"},
+        {"name": "rdx", "type": "uint8_t*", "meaning": "not reviewed: pass it on (the object)"},
+        {"name": "r8", "type": "uint8_t*", "meaning": "not reviewed: pass it on (the object + 0x3E0)"}
+      ],
+      "hook": true,
+      "meaning": "The Acquisition Center's warbond list builder: counts each warbond's tokens that have any price; with none it sets owned = 1, else owned = OwnsWarbond. HellForge makes a priced-less premium one stay locked",
+      "source": "HellForge's Forge Credits (forge_credits.c); research forge-credits-tint"
+    },
+    "UpdateWarbondPanel": {
+      "rva": "0x193A530",
+      "code": "40 53 48 83 EC 20 8B 81 78 10 02 00 48 8B D9 83 C0 FD A9 FB FF FF FF 0F 84 47 02 00 00 0F B6 93 99 10 02 00",
+      "returns": "void",
+      "params": [
+        {"name": "widget", "type": "uint8_t*", "meaning": "the item panel widget (its panel at +0x21068)"}
+      ],
+      "hook": true,
+      "meaning": "Updates a warbond page's item panel widget; for an item the player cannot afford it shows NOT ENOUGH MEDALS (0x193A6B6), which HellForge names in the item's own currency",
+      "source": "HellForge's warbond texts (warbond_texts.c WB_DEAR_SITE)"
+    },
+    "DrawWarbondClaimButton": {
+      "rva": "0x19302C0",
+      "code": "48 89 7C 24 18 55 48 8B EC 48 83 EC 50 48 8B 05 3C BD D0 00 48 33 C4 48 89 45 E0 8B 81 50 2F 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "button", "type": "uint8_t*", "meaning": "the claim button (its panel at +0x2F40)"}
+      ],
+      "hook": true,
+      "meaning": "Draws a warbond item's claim button; in state 3 (cannot afford) it reads NOT ENOUGH MEDALS (0x1930754), which HellForge names in the item's own currency",
+      "source": "HellForge's warbond texts (warbond_texts.c WB_BUTTON_DEAR_SITE)"
+    },
+    "UpdateWarbondPage": {
+      "rva": "0x1975060",
+      "code": "40 53 48 83 EC 20 48 8B 81 E0 62 01 00 48 8B D9 44 8B 40 0C 48 8B 81 E8 62 01 00 44 3B 40 0C 74 41",
+      "returns": "void",
+      "params": [
+        {"name": "page", "type": "uint8_t*", "meaning": "the warbond page view"}
+      ],
+      "hook": true,
+      "meaning": "Updates a warbond page, setting its lock text (\"Spend #COUNT more medals to unlock\", 0x19751AA / 0x19751B9) on every call. HellForge's stub gives a mod warbond its own currency's text",
+      "source": "HellForge's warbond texts (warbond_texts.c kWbLockSites)"
+    },
+    "ItemPresetKit": {
+      "rva": "0x139CCD0",
+      "code": "85 D2 0F 84 4F 02 00 00 48 8B C4 41 57 48 83 EC 70 4C 8B 15 78 01 0E 02 0F 29 70 D8 0F 28 F3 48 89 68 10",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on (0 returns at once)"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm3", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "The preset path: finds an item's kit through the catalogue hierarchy {index, mixId, kit} (kit type +0x28 in hf_global_CustomizationManager's object). HellForge's warbond showcase finds a mod warbond item's kit the same way",
+      "source": "HellForge's warbond showcase (warbond_showcase.c)"
+    },
+    "ValidateBootLoadout": {
+      "rva": "0x1750870",
+      "code": "B8 58 14 00 00 E8 46 3D 9B 00 48 2B E0 48 8B 05 8C B7 EE 00 48 33 C4 48 89 84 24 20 14 00 00 80 3D F6 EC D3 01 00",
+      "returns": "void",
+      "params": [
+        {"name": "out", "type": "void*", "meaning": "not reviewed: its callers pass a stack record"}
+      ],
+      "hook": false,
+      "meaning": "A boot's loadout validation: an unknown weapon becomes the default loadout's of its kind and is pushed through the armory's commit (PushArmoryLoadout). HellForge's loadout scrub does the same after a live change takes content out",
+      "source": "HellForge's loadout scrub (loadout_scrub.c)"
+    },
+    "StratagemPackages": {
+      "rva": "0x1753080",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20 33 FF 4C 8D 05 5D 85 07 02",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (a stack record of its callers')"},
+        {"name": "type", "type": "uint32_t", "meaning": "the StratagemType"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Acquires or releases a stratagem's packages from the row table[type] names at that moment (the package system counts holds per package id). A type another mod takes over in between would release that mod's row's packages",
+      "source": "HellForge's loadout scrub (loadout_scrub.c)"
+    },
+    "ReleaseUnusedSharedStratagems": {
+      "rva": "0x1367690",
+      "code": "41 57 48 81 EC 60 08 00 00 48 8B 05 70 49 2D 01 48 33 C4 48 89 84 24 30 08 00 00 48 8B 05 3E 58 11 02",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "A per-update pass of the players' loadouts: releases each shared stratagem (PlayerHistory + 0x45410, 64 entries of 0x6C) no world object uses",
+      "source": "HellForge's loadout scrub (loadout_scrub.c)"
+    },
+    "LoadStratagemSettings": {
+      "rva": "0x11F2080",
+      "code": "40 53 55 57 41 54 41 55 48 83 EC 30 E8 0F 5A DE FF 48 8B 0D 70 42 13 02 48 8B E8 C7 44 24 60 00 00 00 00",
+      "returns": "void",
+      "params": [],
+      "hook": true,
+      "meaning": "Loads generated_stratagem_settings.dl_bin into the stratagem list: clears exactly 150 slots (0x4B0 bytes), sets table[row +0] = row and counts the vanilla rows (game + 0x348E3FC). A reload never clears the moved list's new slots, but resets the count, which HellForge raises again",
+      "source": "HellForge's stratagems (stratagems.c kStratagemClearPin)"
+    },
+    "BuildStratagemPicker": {
+      "rva": "0x18D8710",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 54 41 55 41 56 41 57 B8 D0 10 00 00 E8 8E BE 82 00",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "uint8_t*", "meaning": "not reviewed: pass it on (its caller's object + 0xD2850)"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The stratagem picker's list: walks the types (bound 0x18D8AA9 mov edi, 0x96) into 150 stack candidates {key, section, type, order, enabled, blocked, pad} and sorts them. HellForge grows the walk and its categories reorder the candidates",
+      "source": "HellForge's stratagems (stratagems.c); HellForge's stratagem categories (stratagem_categories.c)"
+    },
+    "MasteryPackageOf": {
+      "rva": "0x11F4F00",
+      "code": "48 83 EC 28 E8 57 2C FF FF 8B D0 48 8B 05 D6 1A 13 02 44 8B 84 90 40 1B 00 00 45 85 C0 74 28 44 8B 8C 90 24 1B 00 00",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "id", "type": "uint32_t", "meaning": "the weapon's loadout id"}
+      ],
+      "hook": false,
+      "meaning": "A weapon's mastery package, through its WeaponCustomizationComponentData record (component 271, package id32 at +0x12FC); NULL for none. HellForge gives each registered weapon a record naming its own package",
+      "source": "HellForge's weapon registry (registry.c)"
+    },
+    "BuildCustomizationList": {
+      "rva": "0x1493770",
+      "code": "40 53 41 56 41 57 48 81 EC 20 01 00 00 48 8B 05 8C 88 1A 01 48 33 C4 48 89 84 24 F0 00 00 00 4C 8B F9",
+      "returns": "void",
+      "params": [
+        {"name": "screen", "type": "uint8_t*", "meaning": "the customization screen's list X (entries at +0x40, 64 of 0x18; fields at +0x640)"},
+        {"name": "weapon", "type": "const uint32_t*", "meaning": "the weapon's loadout id"}
+      ],
+      "hook": true,
+      "meaning": "The armory's customization screen builder: lists the weapon's mastery package's level unlocks and rewards (no bound on its 64 entries) and sorts them; an unlock no attachment matched left an empty entry and crashed the sort",
+      "source": "HellForge's weapon registry (registry.c); research attachment-registry"
+    },
+    "CreateWorld": {
+      "rva": "0xAB8B70",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 41 54 41 55 41 56 41 57 48 8D 6C 24 C9 48 81 EC C0 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "owner", "type": "uint8_t*", "meaning": "not reviewed: its +0xAE288 the level"}
+      ],
+      "hook": false,
+      "meaning": "Creates a world for a level, with its level generator's block (CreateGenerationBlock). A block made before HellForge's larger-map install keeps the old layout",
+      "source": "HellForge's larger maps (difficulty.c DIF_LOCATIONS)"
+    },
+    "StretchCityTemplate": {
+      "rva": "0xFB9610",
+      "code": "48 8B C4 53 56 57 48 81 EC D0 00 00 00 48 8B 9C 24 18 01 00 00 33 D2 0F 29 70 D8 0F 28 F1 0F 29 78 C8",
+      "returns": "void",
+      "params": [
+        {"name": "arena", "type": "void*", "meaning": "the arena it allocates from (passed on to ArenaAllocate)"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on (the level's +0x680 or +0x67C)"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on (2 takes another path)"},
+        {"name": "r9", "type": "uint8_t*", "meaning": "not reviewed: pass it on (+0x198 a divisor)"},
+        {"name": "s5", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Lays a structured map's (mega city, factory) fixed template of sites stretched over the city's rect: positions scale with the map, the count is fixed",
+      "source": "HellForge's larger maps (difficulty.c); research d11-city-blocks, d11-sparse-cities"
+    },
+    "LaySites": {
+      "rva": "0xC126C0",
+      "code": "48 8B C4 53 55 56 48 81 EC 90 00 00 00 48 8B 9C 24 D8 00 00 00 49 8B F1 44 0F 29 40 B8 44 0F 28 C2",
+      "returns": "void*",
+      "params": [
+        {"name": "grid", "type": "uint8_t", "meaning": "1: a grid at the spacing; 0: a Poisson disc"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (passed on to 0xF2D370)"},
+        {"name": "spacing", "type": "float", "meaning": "the spacing"},
+        {"name": "r9", "type": "void*", "meaning": "not reviewed: pass it on (passed on to 0xF2D370)"},
+        {"name": "s5", "type": "void*", "meaning": "not reviewed: pass it on (passed on to 0xF2D370)"},
+        {"name": "s6", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Lays the level generator's route sites over an area, as a grid (map type 1, grid = 1) or a Poisson disc, and returns the site list (from 0xF2D370, which it ends in). A grid of inexact spacing splits its corners, so HellForge rounds a larger map's spacing to quarter metres",
+      "source": "HellForge's larger maps (difficulty.c)"
+    },
+    "KeepTownEdges": {
+      "rva": "0xF31BD0",
+      "code": "48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 57 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 0F 29 70 C8",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "reach", "type": "float", "meaning": "the reach from the slot (25 m; HellForge scales it on larger maps)"},
+        {"name": "s6", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s9", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "For a zone town's wall rules (subregion stamps, op 0x2B): keeps a slot's area edges that border another type (the town's ring) within a reach of the slot; 0 when none is in reach",
+      "source": "HellForge's town walls (difficulty_towns.c); research d11-sparse-cities"
+    },
+    "BuildingPlaced": {
+      "rva": "0xFC9C10",
+      "code": "48 89 5C 24 10 57 48 83 EC 30 F3 0F 10 82 BC 00 00 00 48 8D 44 24 40 F3 0F 10 9A B8 00 00 00 48 8B F9",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the generator's +0x20)"},
+        {"name": "building", "type": "uint8_t*", "meaning": "the placed stamp: +0xB0..+0xBC its rect"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Records a building a town or city placed: enters its rect in the stamp index (StampIndexInsert). HellForge counts the buildings placed through it (0xF99AAE)",
+      "source": "HellForge's towns (difficulty_towns.c DIF_TOWN_PLACED)"
+    },
+    "AreaRimHeight": {
+      "rva": "0xF64A60",
+      "code": "4C 89 44 24 18 53 48 83 EC 30 F3 0F 10 44 24 50 48 8B D9 F3 0F 5C 05 DD 32 46 01 0F 29 74 24 20",
+      "returns": "float",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on (the area's +0x80)"}
+      ],
+      "hook": true,
+      "meaning": "An area's rim height (its rule's +0x34), which GenerateSubregionHeights stores at the area's +0x88",
+      "source": "HellForge's terrain (difficulty_terrain.c); research d11-heightmaps"
+    },
+    "FindPocketNeighbour": {
+      "rva": "0xF66B80",
+      "code": "48 89 5C 24 18 44 88 4C 24 20 89 54 24 10 48 89 4C 24 08 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 20",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "FixUnreachableAreas' search for a walkable neighbour to open for a pocket of route cells; 0 for none, and then the level is generated again. HellForge lets a larger map's level go on from the 7th try",
+      "source": "HellForge's larger maps (difficulty.c DIF_UNREACHABLE_GO_ON)"
+    },
+    "SendMissionEndTelemetry": {
+      "rva": "0x13462C0",
+      "code": "48 89 5C 24 08 48 89 6C 24 18 48 89 74 24 20 57 41 54 41 55 41 56 41 57 48 81 EC 30 02 00 00 48 8B 05 2A 5D 2F 01",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (callers pass a player)"},
+        {"name": "outcome", "type": "const uint8_t*", "meaning": "the outcome's name (\"disconnected\", \"host_abandoned\", \"abandoned\", ...)"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Reads the mission-end telemetry record (TelemetryMissionEnd's, hf_global_Telemetry + 0x31820) and sends it with an outcome: two 16-place stack arrays of objective instances, its count and loop stopping at 16",
+      "source": "HellForge's level 11 (difficulty.c, mission-end telemetry)"
+    },
+    "MissionResultReport": {
+      "rva": "0x1380840",
+      "code": "48 89 5C 24 18 48 89 7C 24 20 55 48 8D AC 24 90 EA FF FF B8 70 16 00 00 E8 63 3D D8 00 48 2B E0",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (a record of its caller's)"}
+      ],
+      "hook": false,
+      "meaning": "Builds the mission result (BuildMissionResult, a record on its stack: badges at +0x14C8, {id, amount} x 32, count +0x15C8) and reports it",
+      "source": "HellForge's level 11 (difficulty.c DIF_BADGE_SITE)"
+    },
+    "ObjectiveSpawnSetup": {
+      "rva": "0x5DEF00",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 81 EC 80 00 00 00 8B 42 08",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its thunk, 0x5243B0, loads a manager into it)"},
+        {"name": "event", "type": "uint8_t*", "meaning": "the component event: +8 the entity"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Sets up an objective's network record at its spawn: discovered_state (+0x44) starts at 1 (unknown: not on the map) for optional objectives, by the objective's class (0x5DF35B). HellForge's radar station starts at 0",
+      "source": "HellForge's radar station (difficulty.c DIF_RADAR_STATE_SITE)"
+    },
+    "RateOfFireCycle": {
+      "rva": "0x617960",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 48 8B 1D 5D ED D0 02 45 33 C9 3B 15 9C C2 E6 02",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (the manager is loaded from [game + 0x33266D8])"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon's entity"}
+      ],
+      "hook": true,
+      "meaning": "A rate-of-fire selector press: moves a ProjectileWeapon to its next rate and returns the new rate index. Reached from WeaponFunctionPress (function type 2)",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) RofCycle"
+    },
+    "WeaponFunctionPress": {
+      "rva": "0x7552D0",
+      "code": "48 89 5C 24 20 44 89 44 24 18 55 56 57 41 56 41 57 48 83 EC 30 8B DA 33 FF 8B 15 31 E9 D2 02 45 8B F8",
+      "returns": "void",
+      "params": [
+        {"name": "weapons", "type": "void*", "meaning": "the Weapon component manager ([game + 0x3326CE0])"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon's entity"},
+        {"name": "function", "type": "uint32_t", "meaning": "the bound WeaponFunctionType (1..12; the Weapon instance's +0x350 / +0x354)"}
+      ],
+      "hook": false,
+      "meaning": "Dispatches a press of a weapon's bound function (fire mode, rate of fire, ...) by its type",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) WeaponFunctionPress dispatch"
+    },
+    "ProjectileWeaponRateSeed": {
+      "rva": "0x6117C0",
+      "code": "40 57 41 55 48 83 EC 28 8B 42 08 4C 8B EA 3B 05 4C 24 E7 02 48 8B F9 0F 84 A5 01 00 00 44 8B 49 58",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the ProjectileWeapon manager ([game + 0x33266D8])"},
+        {"name": "descriptor", "type": "const uint8_t*", "meaning": "the entity descriptor: +8 the entity, +0x10 its network id, +0x14 bit 0 authority here"}
+      ],
+      "hook": false,
+      "meaning": "Seeds a ProjectileWeapon's rate struct, only on the machine with authority over it (the current RPM is networked from there)",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) PwRateSeed"
+    },
+    "ProjectileWeaponNetApply": {
+      "rva": "0x6190C0",
+      "code": "48 89 5C 24 18 48 89 6C 24 20 41 56 3B 15 4E AB E6 02 4D 8B F1 49 8B E8 48 8B D9 75 07 B8 FF FF FF FF",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the ProjectileWeapon manager"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon's entity"},
+        {"name": "buffer", "type": "const uint8_t*", "meaning": "the received state"},
+        {"name": "cursor", "type": "uint32_t*", "meaning": "the read offset into it, advanced by 12"}
+      ],
+      "hook": true,
+      "meaning": "Applies a ProjectileWeapon's received network state (one of NetworkApplyState's cases)",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) PwNetApply"
+    },
+    "ProjectileWeaponSystemPass": {
+      "rva": "0x617550",
+      "code": "48 8B C4 55 41 56 48 81 EC 98 00 00 00 48 8B 15 DC ED D0 02 45 33 F6 0F 29 78 A8 48 8B E9 48 89 58 10",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the ProjectileWeapon manager"},
+        {"name": "dt", "type": "float", "meaning": "the update's time step"}
+      ],
+      "hook": true,
+      "meaning": "The ProjectileWeapon system's frame pass, from the world update: resets a weapon's rate when its fire-rate modifier changed, then runs the fire timers",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) PwSystemPass"
+    },
+    "SetCurrentFireMode": {
+      "rva": "0x755F90",
+      "code": "48 89 4C 24 08 53 55 56 57 41 57 48 83 EC 20 4C 89 64 24 58 33 F6 3B 15 74 DC D2 02 8B DA 4C 89 6C 24 60",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "weapons", "type": "void*", "meaning": "the Weapon component manager"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon's entity"},
+        {"name": "mode", "type": "uint32_t", "meaning": "the new FireMode"}
+      ],
+      "hook": false,
+      "meaning": "Sets a weapon's fire mode and sends its RPM entry again",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) SetCurrentFireMode"
+    },
+    "WeaponFunctionValue": {
+      "rva": "0x755BA0",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 56 41 57 48 83 EC 20 44 8B 15 61 E0 D2 02 45 33 DB",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "weapons", "type": "void*", "meaning": "the Weapon component manager"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon's entity"},
+        {"name": "input", "type": "uint32_t", "meaning": "the input (0 left, 1 right)"}
+      ],
+      "hook": false,
+      "meaning": "A weapon function's current value for an input: for rate of fire, the current rate index",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) WeaponFunctionValue getter"
+    },
+    "WeaponApplyReplicatedTrigger": {
+      "rva": "0x746460",
+      "code": "41 56 41 57 3B 15 B6 D7 D3 02 4D 8B F1 4D 8B F8 4C 8B D9 75 07 B8 FF FF FF FF EB 6D 44 8B 49 30",
+      "returns": "void",
+      "params": [
+        {"name": "weapons", "type": "void*", "meaning": "the Weapon manager"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon's local entity"},
+        {"name": "buffer", "type": "const uint8_t*", "meaning": "the decoded component-field bytes"},
+        {"name": "cursor", "type": "uint32_t*", "meaning": "the read offset into them, advanced by 4"}
+      ],
+      "hook": true,
+      "meaning": "Applies another machine's trigger state to its weapon's copy here (the trigger byte into the manager's +0x58); it builds no projectile itself. One of NetworkApplyState's cases",
+      "source": "HellForge research projectile-per-player (hooks.jsonl) Weapon_ApplyReplicatedTrigger"
+    },
+    "RpcFireSingleRound": {
+      "rva": "0xBBD5B0",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 56 41 56 41 57 48 81 EC B0 00 00 00 0F 29 BC 24 90 00 00 00 48 8B 05 3B EA A7 01",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (an opaque dispatch context)"},
+        {"name": "args", "type": "const uint8_t*", "meaning": "the decoded RPC arguments, 16 bytes each with the payload pointer at +8; the first is the weapon's network id"}
+      ],
+      "hook": false,
+      "meaning": "The receiver of a simple fire message (rpc_fire_single_round): resolves the weapon by its network id and fires it through the generic dispatch into ProjectileWeaponFire with type 0. A table callback",
+      "source": "HellForge research projectile-per-player (hooks.jsonl) RPC_FireSingleRound"
+    },
+    "RpcFireSingleRoundAdvanced": {
+      "rva": "0xBC1010",
+      "code": "48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 57 41 54 41 55 41 56 41 57 48 81 EC D0 00 00 00 0F 29 70 C8",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (an opaque dispatch context)"},
+        {"name": "args", "type": "const uint8_t*", "meaning": "the decoded RPC arguments, 16 bytes each with the payload pointer at +8: 0 the weapon's network id, 3 an explicit projectile type, 6..8 three per-shot multipliers"}
+      ],
+      "hook": false,
+      "meaning": "The receiver of an advanced fire message (rpc_fire_single_round_advanced): fires the weapon with the sent type (skipping ResolveFiredType) and multipliers. A table callback (pointer at game + 0x214D430)",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) rpc_fire_single_round_advanced receiver"
+    },
+    "SendFireSingleRoundAdvanced": {
+      "rva": "0xBF2A10",
+      "code": "48 89 5C 24 08 44 89 4C 24 20 55 48 8D 6C 24 E1 48 81 EC E0 00 00 00 48 8B 05 E2 95 A4 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon's entity (sent as its network id)"},
+        {"name": "direction", "type": "const float*", "meaning": "a vec3"},
+        {"name": "token", "type": "uint32_t", "meaning": "the shot token"},
+        {"name": "type", "type": "uint32_t", "meaning": "an explicit projectile type (payload 3); the fire function's own send passes 0"},
+        {"name": "s6", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "speed", "type": "float", "meaning": "a per-shot speed multiplier"},
+        {"name": "damage", "type": "float", "meaning": "a per-shot damage multiplier"},
+        {"name": "penetration", "type": "float", "meaning": "a per-shot penetration multiplier"}
+      ],
+      "hook": true,
+      "meaning": "Sends a shot to the other machines as an advanced fire message, from ProjectileWeaponFire and the charge fire",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) rpc_fire_single_round_advanced sender"
+    },
+    "RpcAddProjectileToManager": {
+      "rva": "0xBB9950",
+      "code": "40 53 48 81 EC 80 00 00 00 48 8B 05 B0 26 A8 01 48 33 C4 48 89 44 24 70 48 8B 42 08 48 8D 4C 24 48",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "args", "type": "const uint8_t*", "meaning": "the decoded RPC arguments; the projectile type at [[args + 0x38]]"}
+      ],
+      "hook": false,
+      "meaning": "The receiver of rpc_add_projectile_to_manager (config index 428): spawns a projectile of the sent type through 0xB86F10, which reads the projectile list with no bound. A table callback",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) rpc_add_projectile_to_manager receiver"
+    },
+    "SetWielder": {
+      "rva": "0x79B480",
+      "code": "40 53 41 56 48 83 EC 48 3B 15 92 87 CE 02 41 8B D8 4C 8B 35 98 B2 B8 02 0F 84 CB 03 00 00 45 8B 4E 20",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (the manager is loaded from a global)"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon's local entity"},
+        {"name": "wielder", "type": "uint32_t", "meaning": "its new wielder's local entity (0 or none when it is let go)"}
+      ],
+      "hook": true,
+      "meaning": "Sets who wields a weapon (hf_global_WieldableManager's), at a pickup and other transfers",
+      "source": "HellForge research projectile-per-player (hooks.jsonl) Wieldable_SetWielder"
+    },
+    "ProjectileWeaponNetInit": {
+      "rva": "0x618EB0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 54 41 56 41 57 48 83 EC 20 8B 42 08",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "descriptor", "type": "const uint8_t*", "meaning": "the entity descriptor (+8 the entity)"},
+        {"name": "unused2", "type": "uint64_t", "meaning": "not read"},
+        {"name": "fields", "type": "uint8_t*", "meaning": "the field entries it appends to, {u32 hash, u32 kind, u64 value pointer}"},
+        {"name": "count", "type": "uint32_t*", "meaning": "the entry count, raised per field"},
+        {"name": "allocator", "type": "void*", "meaning": "an allocator holder (12 bytes are taken from it)"}
+      ],
+      "hook": true,
+      "meaning": "Builds a ProjectileWeapon's network state fields at its creation (from the create pass's init table)",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) PwNetInit"
+    },
+    "WeaponBuild": {
+      "rva": "0x752370",
+      "code": "4C 8B DC 41 56 48 81 EC 90 00 00 00 48 8B 05 8D 9C EE 01 48 33 C4 48 89 44 24 50 8B 42 08 45 33 F6",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "descriptor", "type": "const uint8_t*", "meaning": "the entity descriptor (+8 the entity)"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on (a creation context)"}
+      ],
+      "hook": false,
+      "meaning": "Builds a Weapon instance: copies its input bindings (WeaponData +0xB8 / +0xBC into the instance's +0x350 / +0x354). A component callback",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) WeaponBuild"
+    },
+    "ProjectileWeaponEnterOwned": {
+      "rva": "0x61A260",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 56 41 57 48 81 EC E0 00 00 00 8B 42 08 3B 05 9C 99 E6 02",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "descriptor", "type": "const uint8_t*", "meaning": "the entity descriptor"}
+      ],
+      "hook": false,
+      "meaning": "Moves a ProjectileWeapon into the owned partition when this machine gains authority over it (MigrateToThisMachine's table), zeroing its rate struct",
+      "source": "HellForge research coop-weapon-stats (hooks.jsonl) PwEnterOwnedPartition"
+    },
+    "OwnsWarbond": {
+      "rva": "0x136E470",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B 35 72 EA 10 02 45 33 C0 4C 63 96 D4 92 74 01",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "warbond", "type": "uint32_t", "meaning": "the warbond's id"}
+      ],
+      "hook": true,
+      "meaning": "Whether the player owns a warbond: walks the season-pass list (account + 0x17492D8, 0x64 each) and answers 1 when the player holds any of its tokens (+0x14..+0x20, HasCatalogueItem)",
+      "source": "HellForge research forge-credits-tint (README.md, locked warbonds)"
+    },
+    "WarbondCurrencyToken": {
+      "rva": "0x136C270",
+      "code": "48 89 74 24 08 48 89 7C 24 10 48 8B 3D 77 0C 11 02 45 33 D2 48 8B F2 4C 63 9F D4 92 74 01 4D 85 DB",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "out", "type": "uint32_t*", "meaning": "receives the token (0 for none)"},
+        {"name": "warbond", "type": "uint32_t", "meaning": "the warbond's id"},
+        {"name": "currency", "type": "uint32_t", "meaning": "the currency type (2 = Super Credits, 0xCF875032)"}
+      ],
+      "hook": false,
+      "meaning": "The warbond token whose first price (buyPrice[0].mixId) is the currency type's, only when it has no second price; 0 otherwise. WarbondScreenData and the warbond list take a warbond with none as free (owned)",
+      "source": "HellForge research forge-credits-tint (README.md, locked warbonds)"
+    },
+    "HasCatalogueItem": {
+      "rva": "0x136FB40",
+      "code": "40 53 48 83 EC 20 48 8B D9 85 D2 74 26 44 8B 81 E0 1C 00 00 33 C0 45 85 C0 74 18 4C 8D 89 E4 9C 0B 00",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "account", "type": "void*", "meaning": "the progression manager: hf_global_Progression"},
+        {"name": "item", "type": "uint32_t", "meaning": "the item's id"}
+      ],
+      "hook": true,
+      "meaning": "Whether the player holds a catalogue item",
+      "source": "HellForge research forge-credits-tint (README.md, locked warbonds)"
     }
   }
 }

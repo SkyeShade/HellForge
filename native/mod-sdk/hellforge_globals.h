@@ -768,6 +768,206 @@ HF_ASSERT_OFFSET(HfGuardForces, count, 0xC);
 HF_ASSERT_OFFSET(HfGuardForces, records, 0x48);
 static inline HfGuardForces* hf_global_GuardForces(HfMod* mod) { return (HfGuardForces*)hf_global_object_(mod, "GuardForces"); }
 
+/* UnitRegistry (helldivers2.exe+0x1A100F0, a pointer to it). The engine's unit registry: every unit by its handle's
+ * index (UnitFromHandle reads it under its lock at +0xD0).
+ * From HellForge's unit positions (event_polls.c EVP_EXE_UNITS). */
+typedef struct HfUnitRegistry
+{
+    uint8_t _unknown_00[0x88];
+    void* objects;                       /* +0x88 the units, a pointer each by index */
+    uint8_t _unknown_90[0x8];
+    uint32_t count;                      /* +0x98 how many indexes */
+    uint8_t _unknown_9C[0x4];
+    void* generations;                   /* +0xA0 a byte per index: its generation (handle >> 22) */
+} HfUnitRegistry;
+HF_ASSERT_OFFSET(HfUnitRegistry, objects, 0x88);
+HF_ASSERT_OFFSET(HfUnitRegistry, count, 0x98);
+HF_ASSERT_OFFSET(HfUnitRegistry, generations, 0xA0);
+static inline HfUnitRegistry* hf_global_UnitRegistry(HfMod* mod) { return (HfUnitRegistry*)hf_global_object_(mod, "UnitRegistry"); }
+
+/* EngineCore (helldivers2.exe+0x1A10208, a pointer to it). The engine's core object: its worlds, its resource manager
+ * and its resource overrides.
+ * From HellForge's packages (reference_data.h PKG_EXE_ENGINE) and live data (live_data.c); MainWorld and
+ * SetResourceOverride read it. */
+typedef struct HfEngineCore
+{
+    uint8_t _unknown_00[0x3F8];
+    void* overrides;                     /* +0x3F8 the resource override store (SetResourceOverride) */
+    void* resource_manager;              /* +0x400 the resource manager: +0x208 its package store (+0x80 count, +0x88 packages), +0x218 its load queue (24-byte entries, head +0x321C, tail +0x3220) */
+    uint8_t _unknown_408[0x188];
+    uint32_t world_count;                /* +0x590 how many worlds */
+    uint8_t _unknown_594[0x4];
+    void* worlds;                        /* +0x598 the worlds, a pointer each */
+} HfEngineCore;
+HF_ASSERT_OFFSET(HfEngineCore, overrides, 0x3F8);
+HF_ASSERT_OFFSET(HfEngineCore, resource_manager, 0x400);
+HF_ASSERT_OFFSET(HfEngineCore, world_count, 0x590);
+HF_ASSERT_OFFSET(HfEngineCore, worlds, 0x598);
+static inline HfEngineCore* hf_global_EngineCore(HfMod* mod) { return (HfEngineCore*)hf_global_object_(mod, "EngineCore"); }
+
+/* NetworkManager (helldivers2.exe+0x1A10278, a pointer to it). The engine's network manager (NetworkManagerUpdate).
+ * From HellForge's dead connection reaper (netreap.c) and network width (registry_load.c). */
+typedef struct HfNetworkManager
+{
+    void* config;                        /* +0x0 the network configuration: +0x0C the type width, +0x10 field type count, +0x18 field types, +0x28/+0x40/+0x70 the entity type arrays */
+    uint8_t _unknown_08[0x90];
+    void* transport;                     /* +0x98 the transport: +0xA0 its connection count, +0xA8 the connections */
+    uint8_t _unknown_A0[0x8];
+    void* session;                       /* +0xA8 the game session (+0x18 its configuration, +0x4870 its copy of the type width) */
+    uint8_t _unknown_B0[0x20];
+    uint32_t kept_count;                 /* +0xD0 how many peers the game asked to keep */
+    uint8_t _unknown_D4[0x4];
+    void* kept;                          /* +0xD8 those peers' ids (u64) */
+} HfNetworkManager;
+HF_ASSERT_OFFSET(HfNetworkManager, config, 0x0);
+HF_ASSERT_OFFSET(HfNetworkManager, transport, 0x98);
+HF_ASSERT_OFFSET(HfNetworkManager, session, 0xA8);
+HF_ASSERT_OFFSET(HfNetworkManager, kept_count, 0xD0);
+HF_ASSERT_OFFSET(HfNetworkManager, kept, 0xD8);
+static inline HfNetworkManager* hf_global_NetworkManager(HfMod* mod) { return (HfNetworkManager*)hf_global_object_(mod, "NetworkManager"); }
+
+/* NetworkConfigOwner (helldivers2.exe+0x1A10268, a pointer to it). The object whose +0 is the engine's network
+ * configuration (the plan's network_config, [[cell]]); in the decoded image it holds the same pointer as
+ * NetworkManager.
+ * From HellForge's network types (registry.c, hellforge_modloader.c FieldTypes). */
+typedef struct HfNetworkConfigOwner
+{
+    void* config;                        /* +0x0 the network configuration (see NetworkManager's config) */
+} HfNetworkConfigOwner;
+HF_ASSERT_OFFSET(HfNetworkConfigOwner, config, 0x0);
+static inline HfNetworkConfigOwner* hf_global_NetworkConfigOwner(HfMod* mod) { return (HfNetworkConfigOwner*)hf_global_object_(mod, "NetworkConfigOwner"); }
+
+/* EngineEntityIndex (helldivers2.exe+0x1B135B8, a pointer to it). The engine's entity index: whether an entity handle
+ * is alive (its generation).
+ * From HellForge's entity checks (event_polls.c EVP_EXE_ENTITIES). */
+typedef struct HfEngineEntityIndex
+{
+    uint8_t _unknown_00[0x80];
+    uint32_t size;                       /* +0x80 how many indexes */
+    uint8_t _unknown_84[0x4];
+    void* generations;                   /* +0x88 a byte per index: its generation (handle >> 22 & 0xFF) */
+} HfEngineEntityIndex;
+HF_ASSERT_OFFSET(HfEngineEntityIndex, size, 0x80);
+HF_ASSERT_OFFSET(HfEngineEntityIndex, generations, 0x88);
+static inline HfEngineEntityIndex* hf_global_EngineEntityIndex(HfMod* mod) { return (HfEngineEntityIndex*)hf_global_object_(mod, "EngineEntityIndex"); }
+
+/* NavWorlds (helldivers2.exe+0x27C30B8, a pointer to it). The navigation worlds, a pointer each by id (their count is
+ * the u32 at 0x27C30C0). A nav world: +0x08 min x, y, +0x14 max x, y, +0x6710 its grid (2 x u16), +0x6718 the tile
+ * size, +0x671C..+0x6728 the grid's min and max.
+ * From HellForge's larger maps (difficulty_maps.c DIF_NAV_WORLDS). */
+typedef struct HfNavWorlds HfNavWorlds;
+static inline HfNavWorlds* hf_global_NavWorlds(HfMod* mod) { return (HfNavWorlds*)hf_global_object_(mod, "NavWorlds"); }
+
+/* PhysicsProperties (helldivers2.exe+0x27C5E48, a pointer to it). The engine's physics properties: the collision
+ * filters by name.
+ * From HellForge's shield block (shield_block.c). */
+typedef struct HfPhysicsProperties
+{
+    uint8_t _unknown_00[0xF8];
+    uint32_t filter_count;               /* +0xF8 how many collision filters */
+    uint8_t _unknown_FC[0x4];
+    void* filter_names;                  /* +0x100 their name hashes (u32 each); a filter's row is its place here */
+} HfPhysicsProperties;
+HF_ASSERT_OFFSET(HfPhysicsProperties, filter_count, 0xF8);
+HF_ASSERT_OFFSET(HfPhysicsProperties, filter_names, 0x100);
+static inline HfPhysicsProperties* hf_global_PhysicsProperties(HfMod* mod) { return (HfPhysicsProperties*)hf_global_object_(mod, "PhysicsProperties"); }
+
+/* CollisionFilterA (helldivers2.exe+0x27C5E40, a pointer to it). One of the two collision filters (its slot +0x18 is
+ * CollisionFilterPairs).
+ * From HellForge's shield block (shield_block.c). */
+typedef struct HfCollisionFilterA
+{
+    uint8_t _unknown_00[0x28];
+    uint32_t matrix;                     /* +0x28 the collision matrix's first word: 16 bytes per filter row, a bit per other filter */
+} HfCollisionFilterA;
+HF_ASSERT_OFFSET(HfCollisionFilterA, matrix, 0x28);
+static inline HfCollisionFilterA* hf_global_CollisionFilterA(HfMod* mod) { return (HfCollisionFilterA*)hf_global_object_(mod, "CollisionFilterA"); }
+
+/* CollisionFilterB (helldivers2.exe+0x27C5B90, a pointer to it). The other collision filter (its slot +0x18 is
+ * CollisionFilterPairs too).
+ * From HellForge's shield block (shield_block.c). */
+typedef struct HfCollisionFilterB
+{
+    uint8_t _unknown_00[0x28];
+    uint32_t matrix;                     /* +0x28 the collision matrix's first word: 16 bytes per filter row, a bit per other filter */
+} HfCollisionFilterB;
+HF_ASSERT_OFFSET(HfCollisionFilterB, matrix, 0x28);
+static inline HfCollisionFilterB* hf_global_CollisionFilterB(HfMod* mod) { return (HfCollisionFilterB*)hf_global_object_(mod, "CollisionFilterB"); }
+
+/* StatusReceivers (game.dll+0x3326620, a pointer to it). The status effect receivers: ApplyStatus's, HasStatus's and
+ * RemoveStatus's first argument. At +0x12C0 a map of entity ids to indexes (8-byte entries; capacity +0x12C8, empty key
+ * +0x12CC, hash multiplier +0x12D0).
+ * From HD2Runtime 0.40.1 research acid-storm-attachment; HasStatus's callers at 0x4B5241 and 0x4B85A6. */
+typedef struct HfStatusReceivers HfStatusReceivers;
+static inline HfStatusReceivers* hf_global_StatusReceivers(HfMod* mod) { return (HfStatusReceivers*)hf_global_object_(mod, "StatusReceivers"); }
+
+/* ComponentWorld (game.dll+0x346BFC8, a pointer to it). The component world, EntityManager + 0x40: the component
+ * manager globals point inside it (HealthManager at +0x7C6230, ScoreManager at +0x7C7368, PlayerManager at +0xEA0818).
+ * Re-pointed together with EntityManager.
+ * From HD2Runtime 0.40.1 research event-state (componentWorld). */
+typedef struct HfComponentWorld HfComponentWorld;
+static inline HfComponentWorld* hf_global_ComponentWorld(HfMod* mod) { return (HfComponentWorld*)hf_global_object_(mod, "ComponentWorld"); }
+
+/* GameModeMission (game.dll+0x3326D60, a pointer to it). The game_mode_mission component (capacity 1), the mission's
+ * game-mode state beside GameMode.
+ * From HD2Runtime 0.40.1 research event-state (gameModeMission). */
+typedef struct HfGameModeMission
+{
+    uint8_t _unknown_00[0x48];
+    uint32_t max;                        /* +0x48 the most instances seen */
+    uint8_t _unknown_4C[0x4];
+    uint32_t count;                      /* +0x50 instances (0 or 1) */
+    uint8_t _unknown_54[0x2C];
+    void* descriptor;                    /* +0x80 the instance's entity descriptor */
+} HfGameModeMission;
+HF_ASSERT_OFFSET(HfGameModeMission, max, 0x48);
+HF_ASSERT_OFFSET(HfGameModeMission, count, 0x50);
+HF_ASSERT_OFFSET(HfGameModeMission, descriptor, 0x80);
+static inline HfGameModeMission* hf_global_GameModeMission(HfMod* mod) { return (HfGameModeMission*)hf_global_object_(mod, "GameModeMission"); }
+
+/* CareerStats (game.dll+0x346D570, a pointer to it). The player's career stats from the backend (the UI's "Kills: %u"
+ * line reads them).
+ * From HD2Runtime 0.40.1 research event-combat (careerStats, career_kills_ui 0x17B4680). */
+typedef struct HfCareerStats
+{
+    uint8_t _unknown_00[0x14];
+    uint32_t kills;                      /* +0x14 career kills, the larger of the local and server values */
+} HfCareerStats;
+HF_ASSERT_OFFSET(HfCareerStats, kills, 0x14);
+static inline HfCareerStats* hf_global_CareerStats(HfMod* mod) { return (HfCareerStats*)hf_global_object_(mod, "CareerStats"); }
+
+/* ProjectileWeapons (game.dll+0x33266D8, a pointer to it). The ProjectileWeapon component: ProjectileFire's first
+ * argument; ProjectileWeaponRecord looks in its private copies.
+ * From HD2Runtime 0.40.1 research loadout-pod (projectileWeapon); vehicle-mech-components. */
+typedef struct HfProjectileWeapons HfProjectileWeapons;
+static inline HfProjectileWeapons* hf_global_ProjectileWeapons(HfMod* mod) { return (HfProjectileWeapons*)hf_global_object_(mod, "ProjectileWeapons"); }
+
+/* WeaponDatas (game.dll+0x3326CE0, a pointer to it). The WeaponData component (weapon_data): WeaponDataRecord looks in
+ * its private copies.
+ * From HD2Runtime 0.40.1 research loadout-pod (weaponData); railgun-charge. */
+typedef struct HfWeaponDatas HfWeaponDatas;
+static inline HfWeaponDatas* hf_global_WeaponDatas(HfMod* mod) { return (HfWeaponDatas*)hf_global_object_(mod, "WeaponDatas"); }
+
+/* BeamWeapons (game.dll+0x3326A20, a pointer to it). The BeamWeapon component (0x70-byte instances): BeamWeaponUpdate's
+ * first argument; BeamWeaponRecord looks in its private copies.
+ * From HD2Runtime 0.40.1 research beam-damage-per-weapon; component-swap-liberator-beam. */
+typedef struct HfBeamWeapons HfBeamWeapons;
+static inline HfBeamWeapons* hf_global_BeamWeapons(HfMod* mod) { return (HfBeamWeapons*)hf_global_object_(mod, "BeamWeapons"); }
+
+/* LinkedAmmo (game.dll+0x3326AA8, a pointer to it). The WeaponLinkedAmmo component: WeaponProjectileType reads its
+ * round type for weapons with linked ammunition.
+ * From HD2Runtime 0.40.1 research loadout-pod (linkedAmmo); fired-type-callers. */
+typedef struct HfLinkedAmmo HfLinkedAmmo;
+static inline HfLinkedAmmo* hf_global_LinkedAmmo(HfMod* mod) { return (HfLinkedAmmo*)hf_global_object_(mod, "LinkedAmmo"); }
+
+/* Corpses (game.dll+0x3326920, a pointer to it). The corpse component: per corpse the link to the entity it came from
+ * (CorpseSource). At +0x28 a map of entity ids to indexes (capacity +0x30, empty key +0x34, hash multiplier +0x38); per
+ * index a 0x38-byte record at +0x50 (+0 the source network id) and a 0x48-byte spawn record at +0x48 (+0x3C the source
+ * entity).
+ * From HD2Runtime 0.40.1 research event-mission (corpse); CorpseSource 0x870310. */
+typedef struct HfCorpses HfCorpses;
+static inline HfCorpses* hf_global_Corpses(HfMod* mod) { return (HfCorpses*)hf_global_object_(mod, "Corpses"); }
+
 #pragma pack(pop)
 
 #endif

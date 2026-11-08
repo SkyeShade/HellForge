@@ -716,6 +716,220 @@
         "records": {"offset": "0x48", "type": "ptr", "meaning": "the GuardForce records, 0x2B8 bytes each"}
       },
       "source": "HellForge's level 11 watch (difficulty_diag.c, WatchOutposts)"
+    },
+    "UnitRegistry": {
+      "module": "helldivers2.exe",
+      "rva": "0x1A100F0",
+      "witnesses": [
+        {"rva": "0x9D8CF", "code": "48 8B 35 1A 28 97 01 8B D9 48 8D 8E"},
+        {"rva": "0x9D8B0", "code": "48 8B 05 39 28 97 01 C3 CC CC CC CC"}
+      ],
+      "meaning": "The engine's unit registry: every unit by its handle's index (UnitFromHandle reads it under its lock at +0xD0)",
+      "source": "HellForge's unit positions (event_polls.c EVP_EXE_UNITS)",
+      "fields": {
+        "objects": {"offset": "0x88", "type": "ptr", "meaning": "the units, a pointer each by index"},
+        "count": {"offset": "0x98", "type": "u32", "meaning": "how many indexes"},
+        "generations": {"offset": "0xA0", "type": "ptr", "meaning": "a byte per index: its generation (handle >> 22)"}
+      }
+    },
+    "EngineCore": {
+      "module": "helldivers2.exe",
+      "rva": "0x1A10208",
+      "witnesses": [
+        {"rva": "0x76806", "code": "48 8B 35 FB 99 99 01 49 8B F8 48 8B"},
+        {"rva": "0x76994", "code": "48 8B 3D 6D 98 99 01 E8 A0 F6 4D 00"}
+      ],
+      "meaning": "The engine's core object: its worlds, its resource manager and its resource overrides",
+      "source": "HellForge's packages (reference_data.h PKG_EXE_ENGINE) and live data (live_data.c); MainWorld and SetResourceOverride read it",
+      "fields": {
+        "overrides": {"offset": "0x3F8", "type": "ptr", "meaning": "the resource override store (SetResourceOverride)"},
+        "resource_manager": {"offset": "0x400", "type": "ptr", "meaning": "the resource manager: +0x208 its package store (+0x80 count, +0x88 packages), +0x218 its load queue (24-byte entries, head +0x321C, tail +0x3220)"},
+        "world_count": {"offset": "0x590", "type": "u32", "meaning": "how many worlds"},
+        "worlds": {"offset": "0x598", "type": "ptr", "meaning": "the worlds, a pointer each"}
+      }
+    },
+    "NetworkManager": {
+      "module": "helldivers2.exe",
+      "rva": "0x1A10278",
+      "witnesses": [
+        {"rva": "0x17271A", "code": "48 8B 1D 57 DB 89 01 48 8B FA 48 81"},
+        {"rva": "0x172786", "code": "48 8B 1D EB DA 89 01 48 8B 8B D8 00"}
+      ],
+      "meaning": "The engine's network manager (NetworkManagerUpdate)",
+      "source": "HellForge's dead connection reaper (netreap.c) and network width (registry_load.c)",
+      "fields": {
+        "config": {"offset": "0x0", "type": "ptr", "meaning": "the network configuration: +0x0C the type width, +0x10 field type count, +0x18 field types, +0x28/+0x40/+0x70 the entity type arrays"},
+        "transport": {"offset": "0x98", "type": "ptr", "meaning": "the transport: +0xA0 its connection count, +0xA8 the connections"},
+        "session": {"offset": "0xA8", "type": "ptr", "meaning": "the game session (+0x18 its configuration, +0x4870 its copy of the type width)"},
+        "kept_count": {"offset": "0xD0", "type": "u32", "meaning": "how many peers the game asked to keep"},
+        "kept": {"offset": "0xD8", "type": "ptr", "meaning": "those peers' ids (u64)"}
+      }
+    },
+    "NetworkConfigOwner": {
+      "module": "helldivers2.exe",
+      "rva": "0x1A10268",
+      "witnesses": [
+        {"rva": "0x34B65B", "code": "48 8B 05 06 4C 6C 01 45 33 C9 48 8B"},
+        {"rva": "0x34B719", "code": "48 8B 05 48 4B 6C 01 45 33 FF 4D 8B"}
+      ],
+      "meaning": "The object whose +0 is the engine's network configuration (the plan's network_config, [[cell]]); in the decoded image it holds the same pointer as NetworkManager",
+      "source": "HellForge's network types (registry.c, hellforge_modloader.c FieldTypes)",
+      "fields": {
+        "config": {"offset": "0x0", "type": "ptr", "meaning": "the network configuration (see NetworkManager's config)"}
+      }
+    },
+    "EngineEntityIndex": {
+      "module": "helldivers2.exe",
+      "rva": "0x1B135B8",
+      "witnesses": [
+        {"rva": "0xD08B0", "code": "48 8B 05 01 2D A4 01 C3 CC CC CC CC"},
+        {"rva": "0xD0AC6", "code": "48 8B 15 EB 2A A4 01 48 8D 8B E8 00"}
+      ],
+      "meaning": "The engine's entity index: whether an entity handle is alive (its generation)",
+      "source": "HellForge's entity checks (event_polls.c EVP_EXE_ENTITIES)",
+      "fields": {
+        "size": {"offset": "0x80", "type": "u32", "meaning": "how many indexes"},
+        "generations": {"offset": "0x88", "type": "ptr", "meaning": "a byte per index: its generation (handle >> 22 & 0xFF)"}
+      }
+    },
+    "NavWorlds": {
+      "module": "helldivers2.exe",
+      "rva": "0x27C30B8",
+      "witnesses": [
+        {"rva": "0x77FED8", "code": "48 8B 05 D9 31 04 02 8B C9 4C 8B 04"},
+        {"rva": "0x789DB4", "code": "4C 8B 05 FD 92 03 02 8B DF 8B 15 FD"}
+      ],
+      "meaning": "The navigation worlds, a pointer each by id (their count is the u32 at 0x27C30C0). A nav world: +0x08 min x, y, +0x14 max x, y, +0x6710 its grid (2 x u16), +0x6718 the tile size, +0x671C..+0x6728 the grid's min and max",
+      "source": "HellForge's larger maps (difficulty_maps.c DIF_NAV_WORLDS)"
+    },
+    "PhysicsProperties": {
+      "module": "helldivers2.exe",
+      "rva": "0x27C5E48",
+      "witnesses": [
+        {"rva": "0x77D963", "code": "48 8B 05 DE 84 04 02 48 85 C0 74 0D"},
+        {"rva": "0x77D9E3", "code": "48 8B 05 5E 84 04 02 83 E1 7F 48 85"}
+      ],
+      "meaning": "The engine's physics properties: the collision filters by name",
+      "source": "HellForge's shield block (shield_block.c)",
+      "fields": {
+        "filter_count": {"offset": "0xF8", "type": "u32", "meaning": "how many collision filters"},
+        "filter_names": {"offset": "0x100", "type": "ptr", "meaning": "their name hashes (u32 each); a filter's row is its place here"}
+      }
+    },
+    "CollisionFilterA": {
+      "module": "helldivers2.exe",
+      "rva": "0x27C5E40",
+      "witnesses": [
+        {"rva": "0x78D71B", "code": "48 8B 1D 1E 87 03 02 48 85 DB 74 08"},
+        {"rva": "0x7A2AB2", "code": "48 8B 05 87 33 02 02 48 89 44 24 78"}
+      ],
+      "meaning": "One of the two collision filters (its slot +0x18 is CollisionFilterPairs)",
+      "source": "HellForge's shield block (shield_block.c)",
+      "fields": {
+        "matrix": {"offset": "0x28", "type": "u32", "meaning": "the collision matrix's first word: 16 bytes per filter row, a bit per other filter"}
+      }
+    },
+    "CollisionFilterB": {
+      "module": "helldivers2.exe",
+      "rva": "0x27C5B90",
+      "witnesses": [
+        {"rva": "0x79A150", "code": "48 8B 05 39 BA 02 02 0F 5C D5 4C 8B"},
+        {"rva": "0x7E32C1", "code": "48 8B 05 C8 28 FE 01 49 8B CC 48 8B"}
+      ],
+      "meaning": "The other collision filter (its slot +0x18 is CollisionFilterPairs too)",
+      "source": "HellForge's shield block (shield_block.c)",
+      "fields": {
+        "matrix": {"offset": "0x28", "type": "u32", "meaning": "the collision matrix's first word: 16 bytes per filter row, a bit per other filter"}
+      }
+    },
+    "StatusReceivers": {
+      "rva": "0x3326620",
+      "witnesses": [
+        {"rva": "0xC22AC", "code": "4C 8B 1D 6D 43 26 03 33 D2 48 89 6C"},
+        {"rva": "0x4A93EB", "code": "48 8B 05 2E D2 E7 02 45 33 C0 48 89"}
+      ],
+      "meaning": "The status effect receivers: ApplyStatus's, HasStatus's and RemoveStatus's first argument. At +0x12C0 a map of entity ids to indexes (8-byte entries; capacity +0x12C8, empty key +0x12CC, hash multiplier +0x12D0)",
+      "source": "HD2Runtime 0.40.1 research acid-storm-attachment; HasStatus's callers at 0x4B5241 and 0x4B85A6"
+    },
+    "ComponentWorld": {
+      "rva": "0x346BFC8",
+      "witnesses": [
+        {"rva": "0x56A950", "code": "48 8B 3D 71 16 F0 02 48 8D 4C 24 20"},
+        {"rva": "0x56FFF0", "code": "48 8B 05 D1 BF EF 02 33 C9 89 48 0C"}
+      ],
+      "meaning": "The component world, EntityManager + 0x40: the component manager globals point inside it (HealthManager at +0x7C6230, ScoreManager at +0x7C7368, PlayerManager at +0xEA0818). Re-pointed together with EntityManager",
+      "source": "HD2Runtime 0.40.1 research event-state (componentWorld)"
+    },
+    "GameModeMission": {
+      "rva": "0x3326D60",
+      "witnesses": [
+        {"rva": "0x2569BC", "code": "48 8B 0D 9D 03 0D 03 8B 50 08 E8 B5"},
+        {"rva": "0x256C61", "code": "48 8B 0D F8 00 0D 03 8B 50 08 E8 10"}
+      ],
+      "meaning": "The game_mode_mission component (capacity 1), the mission's game-mode state beside GameMode",
+      "fields": {
+        "max": {"offset": "0x48", "type": "u32", "meaning": "the most instances seen"},
+        "count": {"offset": "0x50", "type": "u32", "meaning": "instances (0 or 1)"},
+        "descriptor": {"offset": "0x80", "type": "ptr", "meaning": "the instance's entity descriptor"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-state (gameModeMission)"
+    },
+    "CareerStats": {
+      "rva": "0x346D570",
+      "witnesses": [
+        {"rva": "0x1038E31", "code": "4C 8B 05 38 47 43 02 8B D3 66 0F 1F"},
+        {"rva": "0x126D970", "code": "48 8B 0D F9 FB 1F 02 83 FA 06 74 1B"}
+      ],
+      "meaning": "The player's career stats from the backend (the UI's \"Kills: %u\" line reads them)",
+      "fields": {
+        "kills": {"offset": "0x14", "type": "u32", "meaning": "career kills, the larger of the local and server values"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-combat (careerStats, career_kills_ui 0x17B4680)"
+    },
+    "ProjectileWeapons": {
+      "rva": "0x33266D8",
+      "witnesses": [
+        {"rva": "0x4A843A", "code": "4C 8B 15 97 E2 E7 02 75 17 B8 FF FF"},
+        {"rva": "0x4BAFA2", "code": "48 8B 3D 2F B7 E6 02 41 8B C9 44 8B"}
+      ],
+      "meaning": "The ProjectileWeapon component: ProjectileFire's first argument; ProjectileWeaponRecord looks in its private copies",
+      "source": "HD2Runtime 0.40.1 research loadout-pod (projectileWeapon); vehicle-mech-components"
+    },
+    "WeaponDatas": {
+      "rva": "0x3326CE0",
+      "witnesses": [
+        {"rva": "0xBD5F0", "code": "48 8B 15 E9 96 26 03 45 33 C0 44 8B"},
+        {"rva": "0xBDE32", "code": "48 8B 15 A7 8E 26 03 45 8B C5 44 8B"}
+      ],
+      "meaning": "The WeaponData component (weapon_data): WeaponDataRecord looks in its private copies",
+      "source": "HD2Runtime 0.40.1 research loadout-pod (weaponData); railgun-charge"
+    },
+    "BeamWeapons": {
+      "rva": "0x3326A20",
+      "witnesses": [
+        {"rva": "0x50ECE2", "code": "4C 8B 1D 37 7D E1 02 45 33 C0 48 89"},
+        {"rva": "0x54682A", "code": "48 8B 1D EF 01 DE 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "The BeamWeapon component (0x70-byte instances): BeamWeaponUpdate's first argument; BeamWeaponRecord looks in its private copies",
+      "source": "HD2Runtime 0.40.1 research beam-damage-per-weapon; component-swap-liberator-beam"
+    },
+    "LinkedAmmo": {
+      "rva": "0x3326AA8",
+      "witnesses": [
+        {"rva": "0x50B302", "code": "4C 8B 1D 9F B7 E1 02 45 33 C0 48 89"},
+        {"rva": "0x54229A", "code": "48 8B 1D 07 48 DE 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "The WeaponLinkedAmmo component: WeaponProjectileType reads its round type for weapons with linked ammunition",
+      "source": "HD2Runtime 0.40.1 research loadout-pod (linkedAmmo); fired-type-callers"
+    },
+    "Corpses": {
+      "rva": "0x3326920",
+      "witnesses": [
+        {"rva": "0x51674A", "code": "48 8B 1D CF 01 E1 02 48 8B F9 44 8B"},
+        {"rva": "0x5167DA", "code": "48 8B 1D 3F 01 E1 02 48 8B F9 8B 43"}
+      ],
+      "meaning": "The corpse component: per corpse the link to the entity it came from (CorpseSource). At +0x28 a map of entity ids to indexes (capacity +0x30, empty key +0x34, hash multiplier +0x38); per index a 0x38-byte record at +0x50 (+0 the source network id) and a 0x48-byte spawn record at +0x48 (+0x3C the source entity)",
+      "source": "HD2Runtime 0.40.1 research event-mission (corpse); CorpseSource 0x870310"
     }
   }
 }
