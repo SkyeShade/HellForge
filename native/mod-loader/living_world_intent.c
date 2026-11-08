@@ -95,11 +95,14 @@ static int LwSquadGoTo(LwSquad* q, const float* target)
     if (EvpPtr(g_lw.game + 0x3326418u, &navs) && EvpHash(navs + 0x30, q->squad, 8, 4, &slot)) ((RepathFn)(g_lw.game + 0x5B36C0u))(NULL, q->squad, p);
     return 1;
 }
+static int LwBits(uint32_t v) { int c = 0; for (; v; v &= v - 1) c++; return c; }
 static void LwIntentEnd(LwSquad* q, const char* why)
 {
     ULONGLONG now = GetTickCount64();
-    Note("living world: squad %d investigation ends (%s) after %.0f s, %s; %s", (int)(q - g_lwSquads), why, (double)(now - q->intentAt) / 1000.0,
-        q->state == LW_ONLINE ? "online" : "offline", q->intentStage ? "it reached the point" : "it did not reach the point");
+    char peak[96] = "";
+    if (q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, "; %d of %d members investigated (alert 2+, the first after %.1f s)", LwBits(q->intentPeak), q->seenCount, (double)q->intentPeakAt);
+    Note("living world: squad %d investigation ends (%s) after %.0f s, %s; %s%s", (int)(q - g_lwSquads), why, (double)(now - q->intentAt) / 1000.0,
+        q->state == LW_ONLINE ? "online" : "offline", q->intentStage ? "it reached the point" : "it did not reach the point", peak);
     q->intent = LW_PATROL; q->intentStage = 0; q->intentFree = now + LW_INTENT_REST; g_lwHear.ended++;
     int node = LwNearestNode(q->pos[0], q->pos[1]);
     if (node >= 0) q->node = (uint16_t)node;
@@ -160,13 +163,24 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
         int told = 0;
         if (source) for (int k = 0; k < n; k++) { ((HearFn)(g_lw.game + 0x888E50u))(NULL, members[k], source, q->target, 40.0f); told++; }
         g_lwHear.told += (uint32_t)told;
-        q->intentStage = 1; q->intentStageAt = now;
-        Note("living world: squad %d reached the noise at (%.0f, %.0f) online after %.0f s; %d members told (source %08X)", (int)(q - g_lwSquads),
-            (double)q->target[0], (double)q->target[1], (double)(now - q->intentAt) / 1000.0, told, source);
+        q->intentStage = 1; q->intentStageAt = now; q->intentPeak = 0; q->intentPeakAt = 0;
+        /* the awareness update's gates before the hearing test (0x7EB000): AiEnemy +0xE4 bits 0x2 / 0x4 / 0x8 / 0x20 take
+         * another branch (0x7EB1E6..0x7EB241), and synced state 0x10 ([AiEnemy +0x2360] + 20 idx, +0) skips the unit (0x7EB0CD, 0x7EB0FD, 0x7EB136) */
+        uintptr_t ai = 0, recs = 0; uint32_t idx = 0, flags = 0xFFFFFFFFu, aiState = 0xFFFFFFFFu;
+        if (EvpPtr(g_lw.game + 0x33266C8u, &ai) && EvpHash(ai + 0x2330, members[0], 8, 4, &idx) && EvpPtr(ai + 0x2350, &recs))
+        { flags = EvpU32(recs + 0xA50ull * idx + 0xE4, 0xFFFFFFFFu); uintptr_t st; if (EvpPtr(ai + 0x2360, &st)) aiState = EvpU32(st + 20ull * idx, 0xFFFFFFFFu); }
+        Note("living world: squad %d reached the noise at (%.0f, %.0f) online after %.0f s; %d members told (source %08X); first member's AiEnemy flags %08X, synced state %u", (int)(q - g_lwSquads),
+            (double)q->target[0], (double)q->target[1], (double)(now - q->intentAt) / 1000.0, told, source, flags, aiState);
         return;
     }
     int calm = 1;
-    for (int k = 0; k < n && calm; k++) if (LwAlert(members[k]) != 0) calm = 0;
+    for (int k = 0; k < n; k++)
+    {
+        uint32_t alert = LwAlert(members[k]);
+        if (alert != 0) calm = 0;
+        if (alert >= 2) for (int i = 0; i < q->seenCount && i < 32; i++) if (q->seen[i] == members[k])
+        { if (q->intentPeak == 0) q->intentPeakAt = (float)(now - q->intentStageAt) / 1000.0f; q->intentPeak |= 1u << i; }
+    }
     if ((calm && now - q->intentStageAt > 10000) || now - q->intentStageAt > 90000) LwIntentEnd(q, calm ? "members calm again" : "90 s");
 }
 /* an online squad going offline with an intent: the route from where it stands */
