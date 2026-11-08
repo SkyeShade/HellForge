@@ -544,9 +544,15 @@ time](modding/runtime.md) for live edits, [Stats mods](modding/stats-mods.md) fo
 | `maximum_heat` | +0x38 | f32 | respawn | most heat (unverified) |
 | `heat_bleed_speed` | +0x3C | f32 | respawn | heat lost per second (unverified) |
 | `heat_bleed_delay` | +0x40 | f32 | respawn | seconds before heat bleeds (unverified) |
+| `world_shake_effect` | +0x48 | u64 | respawn | camera shake for players nearby on each round (unverified) |
+| `local_shake_effect` | +0x50 | u64 | respawn | the shooter's camera shake on each round (unverified) |
+| `shake_inner_radius` | +0x60 | f32 | respawn | full world shake inside this distance (m) (unverified) |
+| `shake_outer_radius` | +0x64 | f32 | respawn | no world shake beyond this distance (m) (unverified) |
+| `low_ammo_audio_event` | +0x6C | u32 | respawn | posted per shot when the magazine runs low (unverified) |
 | `speed_multiplier` | +0x7C | f32 | respawn | projectile speed multiplier (unverified) |
 | `spinup_time` | +0x90 | f32 | respawn | seconds to spin up (unverified) |
 | `rpc_synced_fire_events` | +0x94 | u8 | respawn | 1: only its creator decides when it fires (networked fire) |
+| `ejection_event` | +0x98 | u32 | respawn | the animation event that ejects a casing (unverified) |
 | `ejection_effect` | +0xA0 | u64 | respawn | ejection particle effect (unverified) |
 | `ejection_node` | +0xA8 | u32 | respawn | the node casings leave from (hash) (unverified) |
 | `casing_effect` | +0xB0 | u64 | respawn | the casings' particle effect |
@@ -576,6 +582,8 @@ time](modding/runtime.md) for live edits, [Stats mods](modding/stats-mods.md) fo
 | `silenced_fire_loop_stop_audio_event` | +0x214 | u32 | respawn | fire_loop_stop_audio_event when silenced |
 | `silenced_fire_single_audio_event` | +0x218 | u32 | respawn | fire_single_audio_event when silenced |
 | `fire_node` | +0x21C | u32 | respawn | the node it fires from (hash of "muzzle") |
+| `dry_fire_audio_event` | +0x220 | u32 | respawn | posted on a trigger pull with no round (unverified) |
+| `dry_fire_repeat_audio_event` | +0x224 | u32 | respawn | posted on held trigger with no round (unverified) |
 | `silenced` | +0x22C | u8 | respawn | 1: posts the silenced events |
 | `weapon_function_projectile_type` | +0x240 | u32 | respawn | the projectile type it fires with programmable ammunition on (a projectile reference) |
 
@@ -607,6 +615,14 @@ Group `firing_sounds` (every firing sound, silenced or not (HfWeapon.sound_from 
 | `ergonomics` | +0x164 | f32 | respawn | ergonomics (unverified) |
 | `stationary_while_firing` | +0x183 | u8 | respawn | 1: the wielder stands still while firing (unverified) |
 | `crosshair_type` | +0x190 | u32 | respawn | crosshair (unverified) |
+| `enter_first_person_aim_audio_event` | +0x1D4 | u32 | respawn | posted on entering first-person aim (unverified) |
+| `exit_first_person_aim_audio_event` | +0x1D8 | u32 | respawn | posted on leaving first-person aim (unverified) |
+| `enter_third_person_aim_audio_event` | +0x1E0 | u32 | respawn | posted on entering third-person aim (unverified) |
+| `exit_third_person_aim_audio_event` | +0x1E4 | u32 | respawn | posted on leaving third-person aim (unverified) |
+| `fire_mode_changed_audio_event` | +0x1EC | u32 | respawn | posted when the fire mode changes (unverified) |
+| `fire_last_round_animation_event` | +0x39C | u32 | respawn | the weapon's animation event on its last round (unverified) |
+| `fire_round_wielder_animation_event` | +0x3A0 | u32 | respawn | the Helldiver's animation event on each round (unverified) |
+| `fire_mode_changed_wielder_animation_event` | +0x3A8 | u32 | respawn | the Helldiver's animation event when the fire mode changes (unverified) |
 | `fire_ability` | +0x3AC | u32 | respawn | an ability the weapon runs when it fires (0: none) (unverified) |
 | `fire_ability_2` | +0x3B0 | u32 | respawn | a second fire-time ability (the VG-70 Variable: 50, a lead for its knock-down when fired standing; 0 on the AMR and Autocannon) (unverified) |
 
@@ -1731,6 +1747,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `holster_duration_attach` | +0x60 | f32 | respawn? | seconds before it moves to the holster node |
 | `wield_duration_attach` | +0x64 | f32 | respawn? | seconds before it moves to the wield node |
 | `attach_lerp_time` | +0x68 | f32 | respawn? | seconds it blends between nodes |
+| `holster_animation_event` | +0x6C | u32 | respawn? | the Helldiver's animation event when it is holstered (unverified) |
 | `wield_animation_self` | +0x70 | u32 | respawn? | its own state machine's wield event (draw) |
 | `pickup_animation_self` | +0x74 | u32 | respawn? | its own state machine's pickup event (unverified) |
 | `holster_animation_self` | +0x78 | u32 | respawn? | its own state machine's holster event (sheath) |
@@ -1797,6 +1814,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `underbarrel_entity` | +0xC0 | u64 | respawn? | the underbarrel entity without an underbarrel attachment (unverified) |
 | `trigger_settings` | +0x1248 | u32[13] | respawn? | trigger settings |
 | `magazine_adjusting_nodes` | +0x1280 | u32[24] | respawn? | magazine joints shown one per remaining round (thin hashes: bullet_01..) |
+| `ik_attach_animation_event` | +0x12F8 | u32 | respawn? | the animation event that attaches the support hand (unverified) |
 
 ## Settings tables
 

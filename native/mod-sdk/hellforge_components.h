@@ -33,12 +33,22 @@ typedef struct HfProjectileWeapon
     float maximum_heat;                          /* +0x38 most heat (unverified) [respawn] */
     float heat_bleed_speed;                      /* +0x3C heat lost per second (unverified) [respawn] */
     float heat_bleed_delay;                      /* +0x40 seconds before heat bleeds (unverified) [respawn] */
-    uint8_t _unknown_44[56];
+    uint8_t _unknown_44[4];
+    uint64_t world_shake_effect;                 /* +0x48 camera shake for players nearby on each round (unverified) [respawn] */
+    uint64_t local_shake_effect;                 /* +0x50 the shooter's camera shake on each round (unverified) [respawn] */
+    uint8_t _unknown_58[8];
+    float shake_inner_radius;                    /* +0x60 full world shake inside this distance (m) (unverified) [respawn] */
+    float shake_outer_radius;                    /* +0x64 no world shake beyond this distance (m) (unverified) [respawn] */
+    uint8_t _unknown_68[4];
+    uint32_t low_ammo_audio_event;               /* +0x6C posted per shot when the magazine runs low (unverified) [respawn] */
+    uint8_t _unknown_70[12];
     float speed_multiplier;                      /* +0x7C projectile speed multiplier (unverified) [respawn] */
     uint8_t _unknown_80[16];
     float spinup_time;                           /* +0x90 seconds to spin up (unverified) [respawn] */
     uint8_t rpc_synced_fire_events;              /* +0x94 1: only its creator decides when it fires (networked fire) [respawn] */
-    uint8_t _unknown_95[11];
+    uint8_t _unknown_95[3];
+    uint32_t ejection_event;                     /* +0x98 the animation event that ejects a casing (unverified) [respawn] */
+    uint8_t _unknown_9C[4];
     uint64_t ejection_effect;                    /* +0xA0 ejection particle effect (unverified) [respawn] */
     uint32_t ejection_node;                      /* +0xA8 the node casings leave from (hash) (unverified) [respawn] */
     uint8_t _unknown_AC[4];
@@ -72,7 +82,9 @@ typedef struct HfProjectileWeapon
     uint32_t silenced_fire_loop_stop_audio_event; /* +0x214 fire_loop_stop_audio_event when silenced [respawn] */
     uint32_t silenced_fire_single_audio_event;   /* +0x218 fire_single_audio_event when silenced [respawn] */
     uint32_t fire_node;                          /* +0x21C the node it fires from (hash of "muzzle") [respawn] */
-    uint8_t _unknown_220[12];
+    uint32_t dry_fire_audio_event;               /* +0x220 posted on a trigger pull with no round (unverified) [respawn] */
+    uint32_t dry_fire_repeat_audio_event;        /* +0x224 posted on held trigger with no round (unverified) [respawn] */
+    uint8_t _unknown_228[4];
     uint8_t silenced;                            /* +0x22C 1: posts the silenced events [respawn] */
     uint8_t _unknown_22D[19];
     uint32_t weapon_function_projectile_type;    /* +0x240 the projectile type it fires with programmable ammunition on [respawn] */
@@ -101,12 +113,24 @@ HF_ASSERT_OFFSET(HfProjectileWeapon, heat_bleed_speed, 60);
 #define HF_TYPE_ProjectileWeapon_heat_bleed_speed HF_TYPE_F32
 HF_ASSERT_OFFSET(HfProjectileWeapon, heat_bleed_delay, 64);
 #define HF_TYPE_ProjectileWeapon_heat_bleed_delay HF_TYPE_F32
+HF_ASSERT_OFFSET(HfProjectileWeapon, world_shake_effect, 72);
+#define HF_TYPE_ProjectileWeapon_world_shake_effect HF_TYPE_U64
+HF_ASSERT_OFFSET(HfProjectileWeapon, local_shake_effect, 80);
+#define HF_TYPE_ProjectileWeapon_local_shake_effect HF_TYPE_U64
+HF_ASSERT_OFFSET(HfProjectileWeapon, shake_inner_radius, 96);
+#define HF_TYPE_ProjectileWeapon_shake_inner_radius HF_TYPE_F32
+HF_ASSERT_OFFSET(HfProjectileWeapon, shake_outer_radius, 100);
+#define HF_TYPE_ProjectileWeapon_shake_outer_radius HF_TYPE_F32
+HF_ASSERT_OFFSET(HfProjectileWeapon, low_ammo_audio_event, 108);
+#define HF_TYPE_ProjectileWeapon_low_ammo_audio_event HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileWeapon, speed_multiplier, 124);
 #define HF_TYPE_ProjectileWeapon_speed_multiplier HF_TYPE_F32
 HF_ASSERT_OFFSET(HfProjectileWeapon, spinup_time, 144);
 #define HF_TYPE_ProjectileWeapon_spinup_time HF_TYPE_F32
 HF_ASSERT_OFFSET(HfProjectileWeapon, rpc_synced_fire_events, 148);
 #define HF_TYPE_ProjectileWeapon_rpc_synced_fire_events HF_TYPE_U8
+HF_ASSERT_OFFSET(HfProjectileWeapon, ejection_event, 152);
+#define HF_TYPE_ProjectileWeapon_ejection_event HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileWeapon, ejection_effect, 160);
 #define HF_TYPE_ProjectileWeapon_ejection_effect HF_TYPE_U64
 HF_ASSERT_OFFSET(HfProjectileWeapon, ejection_node, 168);
@@ -165,6 +189,10 @@ HF_ASSERT_OFFSET(HfProjectileWeapon, silenced_fire_single_audio_event, 536);
 #define HF_TYPE_ProjectileWeapon_silenced_fire_single_audio_event HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileWeapon, fire_node, 540);
 #define HF_TYPE_ProjectileWeapon_fire_node HF_TYPE_U32
+HF_ASSERT_OFFSET(HfProjectileWeapon, dry_fire_audio_event, 544);
+#define HF_TYPE_ProjectileWeapon_dry_fire_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfProjectileWeapon, dry_fire_repeat_audio_event, 548);
+#define HF_TYPE_ProjectileWeapon_dry_fire_repeat_audio_event HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileWeapon, silenced, 556);
 #define HF_TYPE_ProjectileWeapon_silenced HF_TYPE_U8
 HF_ASSERT_OFFSET(HfProjectileWeapon, weapon_function_projectile_type, 576);
@@ -206,7 +234,19 @@ typedef struct HfWeaponData
     uint8_t stationary_while_firing;             /* +0x183 1: the wielder stands still while firing (unverified) [respawn] */
     uint8_t _unknown_184[12];
     uint32_t crosshair_type;                     /* +0x190 crosshair (unverified) [respawn] */
-    uint8_t _unknown_194[536];
+    uint8_t _unknown_194[64];
+    uint32_t enter_first_person_aim_audio_event; /* +0x1D4 posted on entering first-person aim (unverified) [respawn] */
+    uint32_t exit_first_person_aim_audio_event;  /* +0x1D8 posted on leaving first-person aim (unverified) [respawn] */
+    uint8_t _unknown_1DC[4];
+    uint32_t enter_third_person_aim_audio_event; /* +0x1E0 posted on entering third-person aim (unverified) [respawn] */
+    uint32_t exit_third_person_aim_audio_event;  /* +0x1E4 posted on leaving third-person aim (unverified) [respawn] */
+    uint8_t _unknown_1E8[4];
+    uint32_t fire_mode_changed_audio_event;      /* +0x1EC posted when the fire mode changes (unverified) [respawn] */
+    uint8_t _unknown_1F0[428];
+    uint32_t fire_last_round_animation_event;    /* +0x39C the weapon's animation event on its last round (unverified) [respawn] */
+    uint32_t fire_round_wielder_animation_event; /* +0x3A0 the Helldiver's animation event on each round (unverified) [respawn] */
+    uint8_t _unknown_3A4[4];
+    uint32_t fire_mode_changed_wielder_animation_event; /* +0x3A8 the Helldiver's animation event when the fire mode changes (unverified) [respawn] */
     uint32_t fire_ability;                       /* +0x3AC an ability the weapon runs when it fires (0: none) (unverified) [respawn] */
     uint32_t fire_ability_2;                     /* +0x3B0 a second fire-time ability (the VG-70 Variable: 50, a lead for its knock-down when fired standing; 0 on the AMR and Autocannon) (unverified) [respawn] */
     uint8_t _unknown_3B4[284];
@@ -248,6 +288,22 @@ HF_ASSERT_OFFSET(HfWeaponData, stationary_while_firing, 387);
 #define HF_TYPE_WeaponData_stationary_while_firing HF_TYPE_U8
 HF_ASSERT_OFFSET(HfWeaponData, crosshair_type, 400);
 #define HF_TYPE_WeaponData_crosshair_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, enter_first_person_aim_audio_event, 468);
+#define HF_TYPE_WeaponData_enter_first_person_aim_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, exit_first_person_aim_audio_event, 472);
+#define HF_TYPE_WeaponData_exit_first_person_aim_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, enter_third_person_aim_audio_event, 480);
+#define HF_TYPE_WeaponData_enter_third_person_aim_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, exit_third_person_aim_audio_event, 484);
+#define HF_TYPE_WeaponData_exit_third_person_aim_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, fire_mode_changed_audio_event, 492);
+#define HF_TYPE_WeaponData_fire_mode_changed_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, fire_last_round_animation_event, 924);
+#define HF_TYPE_WeaponData_fire_last_round_animation_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, fire_round_wielder_animation_event, 928);
+#define HF_TYPE_WeaponData_fire_round_wielder_animation_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, fire_mode_changed_wielder_animation_event, 936);
+#define HF_TYPE_WeaponData_fire_mode_changed_wielder_animation_event HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponData, fire_ability, 940);
 #define HF_TYPE_WeaponData_fire_ability HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponData, fire_ability_2, 944);
@@ -3930,7 +3986,7 @@ typedef struct HfEquipment
     float holster_duration_attach;               /* +0x60 seconds before it moves to the holster node [respawn?] */
     float wield_duration_attach;                 /* +0x64 seconds before it moves to the wield node [respawn?] */
     float attach_lerp_time;                      /* +0x68 seconds it blends between nodes [respawn?] */
-    uint8_t _unknown_6C[4];
+    uint32_t holster_animation_event;            /* +0x6C the Helldiver's animation event when it is holstered (unverified) [respawn?] */
     uint32_t wield_animation_self;               /* +0x70 its own state machine's wield event (draw) [respawn?] */
     uint32_t pickup_animation_self;              /* +0x74 its own state machine's pickup event (unverified) [respawn?] */
     uint32_t holster_animation_self;             /* +0x78 its own state machine's holster event (sheath) [respawn?] */
@@ -3992,6 +4048,8 @@ HF_ASSERT_OFFSET(HfEquipment, wield_duration_attach, 100);
 #define HF_TYPE_Equipment_wield_duration_attach HF_TYPE_F32
 HF_ASSERT_OFFSET(HfEquipment, attach_lerp_time, 104);
 #define HF_TYPE_Equipment_attach_lerp_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, holster_animation_event, 108);
+#define HF_TYPE_Equipment_holster_animation_event HF_TYPE_U32
 HF_ASSERT_OFFSET(HfEquipment, wield_animation_self, 112);
 #define HF_TYPE_Equipment_wield_animation_self HF_TYPE_U32
 HF_ASSERT_OFFSET(HfEquipment, pickup_animation_self, 116);
@@ -4118,7 +4176,9 @@ typedef struct HfWeaponCustomization
     uint32_t trigger_settings[13];               /* +0x1248 trigger settings [respawn?] */
     uint8_t _unknown_127C[4];
     uint32_t magazine_adjusting_nodes[24];       /* +0x1280 magazine joints shown one per remaining round (thin hashes: bullet_01..) [respawn?] */
-    uint8_t _unknown_12E0[40];
+    uint8_t _unknown_12E0[24];
+    uint32_t ik_attach_animation_event;          /* +0x12F8 the animation event that attaches the support hand (unverified) [respawn?] */
+    uint8_t _unknown_12FC[12];
 } HfWeaponCustomization;
 HF_ASSERT_SIZE(HfWeaponCustomization, 4872);
 HF_ASSERT_OFFSET(HfWeaponCustomization, defaults, 0);
@@ -4141,6 +4201,8 @@ HF_ASSERT_OFFSET(HfWeaponCustomization, trigger_settings, 4680);
 #define HF_TYPE_WeaponCustomization_trigger_settings HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponCustomization, magazine_adjusting_nodes, 4736);
 #define HF_TYPE_WeaponCustomization_magazine_adjusting_nodes HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponCustomization, ik_attach_animation_event, 4856);
+#define HF_TYPE_WeaponCustomization_ik_attach_animation_event HF_TYPE_U32
 
 #pragma pack(pop)
 

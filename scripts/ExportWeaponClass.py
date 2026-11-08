@@ -26,8 +26,10 @@ PRIMARY_LOADOUT_TYPE = 1
 STORAGE = {20: 'struct'}
 IDENTITY = re.compile(r'Audio|VO|Event|Effect|Path|Package|AudioResource|Icon|LocName|Description|Prefix|Fluff|'
                       r'MuzzleFlash|Node|DefaultCustomizations|CustomizationSlots|MaterialOverride|UnknownThinHash2|'
-                      r'^Ability$|ReloadAnimEvents|unk0_0$|unk3_c$|Crosshair|Shake')
-HANDLING_EXCEPTIONS = {'FireNodes', 'HolsterNodeRotationOffset', 'HolsterNodePositionOffset'}
+                      r'^Ability$|ReloadAnimEvents|Crosshair|Shake')
+# Unnamed top-level fields that are identity (LoadoutEntry's loadout id and traits); nested unk fields are handling.
+IDENTITY_TOP = {'unk0_0', 'unk3_c'}
+HANDLING_EXCEPTIONS = {'FireNodes', 'HolsterNodeRotationOffset', 'HolsterNodePositionOffset', 'RPCSyncedFireEvents'}
 
 
 def dl_hash(text):
@@ -165,6 +167,10 @@ class Names:
 def kind(name):
     top = name.split('.')[0]
     if top in HANDLING_EXCEPTIONS:
+        return 'CLASS_HANDLING'
+    if name in IDENTITY_TOP:
+        return 'CLASS_IDENTITY'
+    if re.fullmatch(r'unk\d+_[0-9a-f]+', name.split('.')[-1]):
         return 'CLASS_HANDLING'
     return 'CLASS_IDENTITY' if IDENTITY.search(name.split('.')[-1]) or IDENTITY.search(top) else 'CLASS_HANDLING'
 

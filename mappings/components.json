@@ -89,6 +89,41 @@
           "verified": false,
           "source": "HD2Runtime research/component-catalogue-F5FEE03DCFDB.json"
         },
+        "world_shake_effect": {
+          "offset": 72,
+          "type": "u64",
+          "meaning": "camera shake for players nearby on each round",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "local_shake_effect": {
+          "offset": 80,
+          "type": "u64",
+          "meaning": "the shooter's camera shake on each round",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "shake_inner_radius": {
+          "offset": 96,
+          "type": "f32",
+          "meaning": "full world shake inside this distance (m)",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "shake_outer_radius": {
+          "offset": 100,
+          "type": "f32",
+          "meaning": "no world shake beyond this distance (m)",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "low_ammo_audio_event": {
+          "offset": 108,
+          "type": "u32",
+          "meaning": "posted per shot when the magazine runs low",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
         "speed_multiplier": {
           "offset": 124,
           "type": "f32",
@@ -109,6 +144,13 @@
           "meaning": "1: only its creator decides when it fires (networked fire)",
           "verified": true,
           "source": "HD2Runtime research/docs/weapon-sounds-F5FEE03DCFDB.md:40"
+        },
+        "ejection_event": {
+          "offset": 152,
+          "type": "u32",
+          "meaning": "the animation event that ejects a casing",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
         },
         "ejection_effect": {
           "offset": 160,
@@ -316,6 +358,20 @@
           "verified": true,
           "source": "HD2Runtime research/docs/carrier-weapon-clone-F5FEE03DCFDB.md:115"
         },
+        "dry_fire_audio_event": {
+          "offset": 544,
+          "type": "u32",
+          "meaning": "posted on a trigger pull with no round",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "dry_fire_repeat_audio_event": {
+          "offset": 548,
+          "type": "u32",
+          "meaning": "posted on held trigger with no round",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
         "silenced": {
           "offset": 556,
           "type": "u8",
@@ -500,6 +556,62 @@
           "meaning": "crosshair",
           "verified": false,
           "source": "stats-schema"
+        },
+        "enter_first_person_aim_audio_event": {
+          "offset": 468,
+          "type": "u32",
+          "meaning": "posted on entering first-person aim",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "exit_first_person_aim_audio_event": {
+          "offset": 472,
+          "type": "u32",
+          "meaning": "posted on leaving first-person aim",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "enter_third_person_aim_audio_event": {
+          "offset": 480,
+          "type": "u32",
+          "meaning": "posted on entering third-person aim",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "exit_third_person_aim_audio_event": {
+          "offset": 484,
+          "type": "u32",
+          "meaning": "posted on leaving third-person aim",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "fire_mode_changed_audio_event": {
+          "offset": 492,
+          "type": "u32",
+          "meaning": "posted when the fire mode changes",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "fire_last_round_animation_event": {
+          "offset": 924,
+          "type": "u32",
+          "meaning": "the weapon's animation event on its last round",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "fire_round_wielder_animation_event": {
+          "offset": 928,
+          "type": "u32",
+          "meaning": "the Helldiver's animation event on each round",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
+        "fire_mode_changed_wielder_animation_event": {
+          "offset": 936,
+          "type": "u32",
+          "meaning": "the Helldiver's animation event when the fire mode changes",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
         },
         "fire_ability": {
           "offset": 940,
@@ -7971,6 +8083,13 @@
           "verified": true,
           "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
         },
+        "holster_animation_event": {
+          "offset": 108,
+          "type": "u32",
+          "meaning": "the Helldiver's animation event when it is holstered",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
+        },
         "wield_animation_self": {
           "offset": 112,
           "type": "u32",
@@ -8328,6 +8447,13 @@
           "verified": true,
           "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record",
           "count": 24
+        },
+        "ik_attach_animation_event": {
+          "offset": 4856,
+          "type": "u32",
+          "meaning": "the animation event that attaches the support hand",
+          "verified": false,
+          "source": "filediver datalibrary layouts zipped onto the 25480438 typelib (scripts/ExportWeaponClass.py)"
         }
       },
       "applies": "respawn",
