@@ -24,8 +24,11 @@ public static partial class ProfileStore
 {
     public const string DefaultName = "default";
     public const string FallbackTemplate = "starter";
-    // The profile a fresh install starts with: the starter template, no paid content.
-    public const string FirstProfileTemplate = "starter";
+    // Live-like: a starter profile until Sync Inventory, which then brings in everything it can of the live account, and
+    // the premium warbonds the account owns are open without a Forge Credits purchase (#282).
+    public const string LiveLikeTemplate = "live-like";
+    // The profile a fresh install starts with, and the one the launcher offers first: live-like, no paid content until a sync.
+    public const string FirstProfileTemplate = LiveLikeTemplate;
     static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true, NewLine = "\n" };
 
     [GeneratedRegex("^[a-z0-9-]{1,32}$")]

@@ -11,7 +11,7 @@ static class SessionLaunchTests
             install.Create(SupportedBuild.Current.BuildId);
             Directory.CreateDirectory(install.App);
             File.WriteAllText(Path.Combine(install.App, "profile-templates.json"),
-                """{"templates": {"starter": {"description": "New player", "items": []}, "unlock-all": {"description": "Everything", "items": [1, 2]}}}""");
+                """{"templates": {"live-like": {"description": "Like live", "items": []}, "starter": {"description": "New player", "items": []}, "unlock-all": {"description": "Everything", "items": [1, 2]}}}""");
             return new InstallSessionPaths(install);
         }
 

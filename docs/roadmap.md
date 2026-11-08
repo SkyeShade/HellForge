@@ -240,8 +240,9 @@ weights are in the [SDK roadmap, phase 5b](sdk-roadmap.md#events-hooks-and-regis
 
 Status: planned. The design isn't decided yet.
 
-A new profile starts from a template: `starter` (a fresh player just out of basic training) or `unlock-all`
-(everything, at the top level). For now the local backend pays out with simple placeholder rules (`MissionService.cs`):
+A new profile starts from a template. `live-like` is the default: a starter profile until Sync Inventory, then your live
+account, with the premium warbonds you own open. `starter` is a fresh player just out of basic training, who buys owned
+premium warbonds with Forge Credits. `unlock-all` has everything, at the top level. For now the local backend pays out with simple placeholder rules (`MissionService.cs`):
 XP based on difficulty, success and objectives, requisition and medals based on difficulty, and whatever samples the
 game reports you looted. Your primary gains the same XP as you do.
 

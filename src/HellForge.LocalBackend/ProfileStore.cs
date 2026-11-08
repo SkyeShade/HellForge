@@ -54,6 +54,11 @@ public sealed class ProfileStore : IDisposable
         return document.RootElement.GetProperty("templates").EnumerateObject().Select(t => t.Name).ToArray();
     }
 
+    // Whether a profile buys the premium warbonds its account owns with Forge Credits: every template but unlock-all and
+    // live-like, which have them open as soon as a sync shows them owned.
+    public static bool EarnsWarbonds(string? template) =>
+        template == null || !(template.Contains("unlock-all", StringComparison.Ordinal) || template == HellForge.Core.ProfileStore.LiveLikeTemplate);
+
     static JsonArray TemplateItems(string template)
     {
         using var document = LocalBackend.LoadResource("profile-templates.json");
