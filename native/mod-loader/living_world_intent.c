@@ -190,7 +190,7 @@ static void LwIntentEnd(LwSquad* q, const char* why)
     }
 }
 /* offline: the route to the node nearest the point */
-static int LwRetakeArrived(LwSquad* q, ULONGLONG now);
+static int LwRetakeArrived(LwSquad* q, ULONGLONG now); static int LwRegionTier(const LwSquad* q, int region); static int LwRegionOfNode(int node);
 static int LwIntentRoute(LwSquad* q)
 {
     int goal = LwNearestNode(q->target[0], q->target[1]);
@@ -471,7 +471,8 @@ static void LwReinforce(int f, int want)
 {
     LwFight* fi = &g_lwFights[f];
     float reach = g_lwWorld.radius > 1500.0f ? 2.0f * LW_FIGHT_REACH : LW_FIGHT_REACH;
-    int pick[3]; float d2s[3]; int picked = 0;
+    int pick[3]; float d2s[3], keys[3]; int picked = 0, tiers[3];
+    int region = LwRegionOfNode(LwNearestNode(fi->pos[0], fi->pos[1]));
     if (want > 3) want = 3;
     ULONGLONG now = GetTickCount64();
     for (int i = 0; i < g_lwWorld.count; i++)
@@ -482,10 +483,11 @@ static void LwReinforce(int f, int want)
         if (q->state == LW_ONLINE && !LwCalm(q)) continue; /* already in it, or busy */
         float d2 = LwDist2(q->pos, fi->pos[0], fi->pos[1]);
         if (d2 > reach * reach || d2 < LW_FIGHT_JOIN * LW_FIGHT_JOIN) continue;
-        int at = picked < want ? picked++ : (d2 < d2s[want - 1] ? want - 1 : -1);
+        int tier = LwRegionTier(q, region); float key = (float)tier * 1e7f + d2; /* 2d: own region, neighbour, then the rest; nearest first in each */
+        int at = picked < want ? picked++ : (key < keys[want - 1] ? want - 1 : -1);
         if (at < 0) continue;
-        while (at > 0 && d2s[at - 1] > d2) { pick[at] = pick[at - 1]; d2s[at] = d2s[at - 1]; at--; }
-        pick[at] = i; d2s[at] = d2;
+        while (at > 0 && keys[at - 1] > key) { pick[at] = pick[at - 1]; d2s[at] = d2s[at - 1]; keys[at] = keys[at - 1]; tiers[at] = tiers[at - 1]; at--; }
+        pick[at] = i; d2s[at] = d2; keys[at] = key; tiers[at] = tier;
     }
     char list[160] = ""; size_t len = 0; int sent = 0;
     for (int j = 0; j < picked; j++)
@@ -503,7 +505,8 @@ static void LwReinforce(int f, int want)
             if (mn > 0) LwRushMembers(q, ms, mn, 1);
         }
         sent++; fi->sent++; g_lwRush.sent++;
-        len += (size_t)snprintf(list + len, sizeof list - len, "%s%d (%s%s, %.0f m)", len ? ", " : "", pick[j], q->state == LW_ONLINE ? "online" : "offline", was == LW_INVESTIGATE ? ", was investigating" : "", (double)sqrtf(d2s[j]));
+        len += (size_t)snprintf(list + len, sizeof list - len, "%s%d (%s%s, %.0f m%s)", len ? ", " : "", pick[j], q->state == LW_ONLINE ? "online" : "offline", was == LW_INVESTIGATE ? ", was investigating" : "", (double)sqrtf(d2s[j]),
+            tiers[j] == 0 ? ", its region" : tiers[j] == 1 ? ", neighbour region" : "");
         if (len >= sizeof list) len = sizeof list - 1;
     }
     if (sent) Note("living world: fight %d at (%.0f, %.0f), %d engaged%s: squads sent %s", f, (double)fi->pos[0], (double)fi->pos[1], fi->engaged, fi->call ? " (a call for help)" : "", list);
@@ -619,8 +622,9 @@ static void LwTestNoise(int seq, int type, float dx, float dy)
  * does: 0xFD97E0(net id, the word's hash, &word)), and the refill flag runtime +0x1B4F is armed. The refill path
  * 0x912274 fills an active garrison with a detector within 150 m and never reads cleared, and the activation of a cleared
  * garrison jumps over the flag reset (0x912463), so the units appear natively when a player next comes near.
- * Plain: list +0x2AB == 1 (no mission objective), synced spawners +0x1C, objectives +0x24 and counted +0x2C all 0, no
- * 0x200 point, and no structure at all: a held structure point keeps its structure through the despawn (0x90F911), an
+ * Plain: its map location (the location table G+0x8996B0 matched as GuardForce init does, 0x90CD60..0x90CD92) is an
+ * outpost, a small location or a point of interest (kinds 3, 2, 4, 10) or none, never an objective (7, 8, 9) or an
+ * unmapped kind; synced spawners +0x1C, objectives +0x24 and counted +0x2C all 0, no 0x200 point, and no structure at all: a held structure point keeps its structure through the despawn (0x90F911), an
  * open one could refill a destroyed one. A plain post is cleared by the kill that empties its units list (0x91055B). */
 #define LW_RETAKE_CLEAR 300000   /* ms a garrison stays cleared before a squad retakes it (D) */
 #define LW_RETAKE_AGAIN 600000   /* ms between retakes of one garrison (D) */
@@ -642,12 +646,27 @@ static int LwRetakePinsOk(void)
     }
     return ok;
 }
+/* the kind (+0xDC) of the map location a garrison guards, -1 for none: the record whose instance (+0x98) has location id
+ * +0xA8 == list +0x2B0 (written at 0x90CC55 from the level object), skipping records with settings index +0xA2 == 0xFF */
+static int LwGarrisonKind(uintptr_t l)
+{
+    uintptr_t a = 0, b = 0, gen = 0; uint64_t key = 0;
+    if (!EvpPtr(g_lw.game + 0x3326340u, &a) || !EvpPtr(a + 0xAE288, &b) || !EvpPtr(b + 0x2C8, &gen) || SafeRead(l + 0x2B0, &key, 8) || !key) return -2;
+    uint32_t count = EvpU32(gen + 0x11A715C, 0);
+    for (uint32_t i = 0; i < count && i < 256; i++)
+    {
+        uintptr_t rec = gen + 0x8996B0 + 0x108ull * i, inst = 0; uint8_t idx = 0xFF, kind = 0; uint64_t id = 0;
+        if (SafeRead(rec + 0xA2, &idx, 1) || idx == 0xFF || !EvpPtr(rec + 0x98, &inst) || SafeRead(inst + 0xA8, &id, 8) || id != key) continue;
+        return SafeRead(rec + 0xDC, &kind, 1) ? -2 : kind;
+    }
+    return -1;
+}
 static int LwPlayerWithin(const float* at, float r) { return LwNearestPlayer2(at[0], at[1]) < r * r; }
 /* each tick per owned garrison (LwGarrisonsTick): cleared time, plain test, centre; an armed retake's holds and re-arming */
 static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t r, uintptr_t l, uintptr_t points, uint32_t n, const uint32_t* u, uint8_t active, uint8_t refill)
 {
     ULONGLONG now = GetTickCount64();
-    uint8_t cleared = 0, link = 0; uint32_t f[3] = {1, 1, 1};
+    uint8_t cleared = 0; uint32_t f[3] = {1, 1, 1};
     SafeRead(s + 0x39, &cleared, 1);
     if (cleared && !g->cleared) g->clearedAt = now;
     uint8_t newly = cleared && !g->cleared;
@@ -656,7 +675,8 @@ static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t 
     if (now >= g->plainAt || newly) /* every 2 s (staggered): a fill can register spawners or structures; ReadProcessMemory per point is not free */
     {
         g->plainAt = now + 2000 + 125u * (g->index % 16u);
-        plain = n > 0 && !SafeRead(l + 0x2AB, &link, 1) && link == 1 && !SafeRead(s + 0x1C, &f[0], 4) && !SafeRead(s + 0x24, &f[1], 4) && !SafeRead(s + 0x2C, &f[2], 4) &&
+        if (!g->kindRead) { int k = LwGarrisonKind(l); if (k != -2) { g->kind = (int16_t)k; g->kindRead = 1; } }
+    plain = n > 0 && g->kindRead && (g->kind == -1 || g->kind == 2 || g->kind == 3 || g->kind == 4 || g->kind == 10) && !SafeRead(s + 0x1C, &f[0], 4) && !SafeRead(s + 0x24, &f[1], 4) && !SafeRead(s + 0x2C, &f[2], 4) &&
             !f[0] && !f[1] && !f[2] && EvpU32(r + 0x1110, 1) == 0 && !(g->structure[0] | g->structure[1] | g->structure[2]);
         double sx = 0, sy = 0; int got = 0;
         for (uint32_t p = 0; p < n && plain; p++)
@@ -667,6 +687,13 @@ static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t 
         }
         if (!g->haveCenter && got) { g->center[0] = (float)(sx / got); g->center[1] = (float)(sy / got); g->haveCenter = 1; }
         g->plain = (uint8_t)plain;
+    }
+    memcpy(g->u, u, sizeof g->u); g->points = n;
+    if (!g->haveCenter && n > 0 && n <= 96) /* every garrison's centre (2d seeds regions with it), once */
+    {
+        double cx = 0, cy = 0; int k = 0;
+        for (uint32_t p = 0; p < n; p++) { uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu); float xy[2]; if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x10, xy, 8) && isfinite(xy[0]) && isfinite(xy[1])) { cx += xy[0]; cy += xy[1]; k++; } }
+        if (k) { g->center[0] = (float)(cx / k); g->center[1] = (float)(cy / k); g->haveCenter = 1; }
     }
     if (newly) Note("living world: garrison %08X cleared (%s)", g->entity, plain ? "plain: a squad may retake it" : "not plain: never retaken");
     if (!g->retake) return;
@@ -778,13 +805,14 @@ static void LwRetakeScan(void)
         if (LwPlayerWithin(g->center, LW_RETAKE_PLAYER)) continue;
         int node = LwNearestNode(g->center[0], g->center[1]); /* the squad arrives at this node: it must be at the garrison */
         if (node < 0 || LwDist2(g->center, g_lwNodes[node].x, g_lwNodes[node].y) > LW_RETAKE_NODE * LW_RETAKE_NODE) continue;
-        int pick = -1; float best = reach * reach;
-        for (int i = 0; i < g_lwWorld.count; i++)
+        int pick = -1, bestTier = 3; float best = reach * reach;
+        for (int i = 0; i < g_lwWorld.count; i++) /* 2d: the region's own squads first, then a neighbour's, then the nearest */
         {
             LwSquad* q = &g_lwSquads[i];
             if (q->state != LW_OFFLINE || q->intent != LW_PATROL || q->pulled || q->survivors == 0 || now < q->intentFree) continue;
             float d2 = LwDist2(q->pos, g->center[0], g->center[1]);
-            if (d2 < best) { best = d2; pick = i; }
+            int tier = LwRegionTier(q, gi);
+            if (d2 < reach * reach && (tier < bestTier || (tier == bestTier && d2 < best))) { best = d2; bestTier = tier; pick = i; }
         }
         if (pick < 0) continue;
         LwSquad* q = &g_lwSquads[pick];
@@ -792,8 +820,9 @@ static void LwRetakeScan(void)
         q->target[0] = g->center[0]; q->target[1] = g->center[1]; q->target[2] = 0;
         if (!LwIntentRoute(q)) { q->intent = LW_PATROL; q->garrison = -1; q->intentFree = now + LW_INTENT_REST; continue; } /* the next scan tries another squad */
         g->retaker = (int16_t)pick;
-        Note("living world: garrison %08X at (%.0f, %.0f), cleared %.0f s ago: squad %d (offline, %u survivors, %.0f m) sent to retake it", g->entity,
-            (double)g->center[0], (double)g->center[1], (double)(now - g->clearedAt) / 1000.0, pick, q->survivors, (double)q->intentFrom);
+        static const char* const tiers[] = {"its region's", "a neighbour region's", "the nearest"};
+        Note("living world: garrison %08X at (%.0f, %.0f), cleared %.0f s ago: squad %d (offline, %u survivors, %.0f m, %s) sent to retake it", g->entity,
+            (double)g->center[0], (double)g->center[1], (double)(now - g->clearedAt) / 1000.0, pick, q->survivors, (double)q->intentFrom, tiers[bestTier]);
     }
 }
 /* the retaking squad at the end of its path, offline (LwIntentArrived) */
@@ -867,4 +896,142 @@ static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32
     if (living >= 0) for (int w = 0; w < 3; w++) g->allow[w] &= at[w]; /* an opened point the fill left empty (no group fits it, or the 70 room) is not owed later */
     Note("living world: retaken garrison %08X filled: %u units listed, %d living; points with a living unit: %d of the %d opened, %d elsewhere; %d opened points still owed (U set); cleared stays %u",
         g->entity, EvpU32(r + 0x384, 0), living, inside, opened, outside, owed, (unsigned)g->cleared);
+}
+
+/* Phase 2d (KB living-world-plan "Phase 2 design", 2d): territory. Every garrison seeds a region; each route node belongs
+ * to the garrison reached first by a breadth-first search over the route graph from the garrisons' nearest nodes (nodes
+ * no search reaches: the nearest centre). Regions touching across an edge are neighbours. Strength = the garrison's
+ * units (points with U set while not cleared; a retaken one: its opened points still owed) + the survivors of living
+ * squads homed there (the region of the node a squad stands on when the regions are built or it is placed). A region
+ * with no strength is lost until a squad retakes its garrison (2c). Patrol goals keep to the home region or a neighbour
+ * 70 % of the time; retake and reinforcement prefer squads of the region, then of a neighbour, then the nearest. */
+#define LW_REGIONS_MAX LW_GARRISONS_MAX
+static uint16_t g_lwRegion[LW_NODES_MAX]; /* garrison index + 1, 0 = none */
+static uint8_t g_lwRegionAdj[LW_REGIONS_MAX][LW_REGIONS_MAX / 8];
+static int g_lwRegionStrength[LW_REGIONS_MAX], g_lwRegionNodes[LW_REGIONS_MAX]; /* nodes: 0 = a garrison sharing its nearest node with another (no region) */
+static uint8_t g_lwRegionHeld[LW_REGIONS_MAX];
+static struct { uintptr_t owner; int garrisons, built, seeded, nodes; ULONGLONG next, noteAt; uint32_t lost, regained; } g_lwTerr;
+static int LwRegionOfNode(int node) { return g_lwTerr.built && node >= 0 && node < g_lwNodeCount ? (int)g_lwRegion[node] - 1 : -1; }
+static int LwRegionsTouch(int a, int b) { return a >= 0 && b >= 0 && a < LW_REGIONS_MAX && b < LW_REGIONS_MAX && (a == b || (g_lwRegionAdj[a][b / 8] >> (b % 8)) & 1); }
+/* 0 = the squad's own region, 1 = a neighbour, 2 = elsewhere or no territory */
+static int LwRegionTier(const LwSquad* q, int region) { int h = (int)q->home1 - 1; return h < 0 || region < 0 ? 2 : h == region ? 0 : LwRegionsTouch(h, region) ? 1 : 2; }
+/* node < 0: whether the squad has a home at all */
+static int LwTerritoryGoalOk(const LwSquad* q, int node)
+{
+    if (!g_lwTerr.built || q->home1 == 0) return 0;
+    return node < 0 ? 1 : LwRegionsTouch((int)q->home1 - 1, LwRegionOfNode(node));
+}
+static int LwGarrisonStrength(const LwGarrison* g)
+{
+    int s = 0;
+    for (uint32_t p = 0; p < g->points && p < 96; p++)
+    {
+        uint32_t bit = 1u << (p % 32), w = p / 32;
+        if (g->retake) s += (g->allow[w] & g->u[w] & bit) != 0; else if (!g->cleared) s += (g->u[w] & bit) != 0;
+    }
+    return s;
+}
+static void LwTerritoryBuild(void)
+{
+    static uint16_t queue[LW_NODES_MAX];
+    int head = 0, tail = 0, seeds = 0;
+    memset(g_lwRegion, 0, sizeof g_lwRegion); memset(g_lwRegionAdj, 0, sizeof g_lwRegionAdj); memset(g_lwRegionHeld, 0, sizeof g_lwRegionHeld);
+    for (int gi = 0; gi < g_lwGarrisonCount && gi < LW_REGIONS_MAX; gi++)
+    {
+        LwGarrison* g = &g_lwGarrisons[gi];
+        if (!g->haveCenter) continue;
+        int node = LwNearestNode(g->center[0], g->center[1]);
+        if (node < 0 || g_lwRegion[node]) continue; /* two garrisons on one nearest node: the first keeps it */
+        g_lwRegion[node] = (uint16_t)(gi + 1); queue[tail++] = (uint16_t)node; seeds++;
+    }
+    while (head < tail)
+    {
+        int a = queue[head++];
+        for (int k = 0; k < g_lwNodes[a].degree; k++)
+        { int b = g_lwNodes[a].next[k]; if (b < g_lwNodeCount && !g_lwRegion[b]) { g_lwRegion[b] = g_lwRegion[a]; queue[tail++] = (uint16_t)b; } }
+    }
+    for (int a = 0; a < g_lwNodeCount; a++) /* unreached: the nearest centre */
+        if (!g_lwRegion[a])
+        {
+            float best = 3e38f; int pick = -1;
+            for (int gi = 0; gi < g_lwGarrisonCount && gi < LW_REGIONS_MAX; gi++)
+            { float d2 = g_lwGarrisons[gi].haveCenter ? LwDist2(g_lwGarrisons[gi].center, g_lwNodes[a].x, g_lwNodes[a].y) : 3e38f; if (d2 < best) { best = d2; pick = gi; } }
+            if (pick >= 0) g_lwRegion[a] = (uint16_t)(pick + 1);
+        }
+    for (int a = 0; a < g_lwNodeCount; a++)
+        for (int k = 0; k < g_lwNodes[a].degree; k++)
+        {
+            int b = g_lwNodes[a].next[k], ra = (int)g_lwRegion[a] - 1, rb = b < g_lwNodeCount ? (int)g_lwRegion[b] - 1 : -1;
+            if (ra >= 0 && rb >= 0 && ra != rb) { g_lwRegionAdj[ra][rb / 8] |= (uint8_t)(1u << (rb % 8)); g_lwRegionAdj[rb][ra / 8] |= (uint8_t)(1u << (ra % 8)); }
+        }
+    memset(g_lwRegionNodes, 0, sizeof g_lwRegionNodes);
+    for (int a = 0; a < g_lwNodeCount; a++) if (g_lwRegion[a]) g_lwRegionNodes[g_lwRegion[a] - 1]++;
+    g_lwTerr.built = 1; g_lwTerr.seeded = 0; g_lwTerr.garrisons = g_lwGarrisonCount; g_lwTerr.owner = g_lwGarrisonOwner; g_lwTerr.nodes = g_lwNodeCount;
+    for (int i = 0; i < g_lwWorld.count; i++) { LwSquad* q = &g_lwSquads[i]; q->home1 = q->state != LW_FREE ? (uint16_t)g_lwRegion[q->node < g_lwNodeCount ? q->node : 0] : 0; }
+    Note("living world: territory: %d regions from %d garrisons over %d route nodes (%d reached through the routes)", seeds, g_lwGarrisonCount, g_lwNodeCount, tail);
+    for (int gi = 0; gi < g_lwGarrisonCount && gi < LW_REGIONS_MAX; gi++) /* the map, for the evidence graphics */
+    {
+        LwGarrison* g = &g_lwGarrisons[gi]; int nodes = 0, nb = 0, homed = 0;
+        if (!g->haveCenter) continue;
+        for (int a = 0; a < g_lwNodeCount; a++) nodes += g_lwRegion[a] == gi + 1;
+        for (int b = 0; b < g_lwGarrisonCount && b < LW_REGIONS_MAX; b++) nb += b != gi && LwRegionsTouch(gi, b);
+        for (int i = 0; i < g_lwWorld.count; i++) homed += g_lwSquads[i].home1 == gi + 1;
+        if (nodes) Note("living world: territory: region %d (garrison %08X%s) at (%.0f, %.0f): %d nodes, %d neighbours, %d squads homed, strength %d", gi, g->entity,
+            g->plain ? ", plain" : "", (double)g->center[0], (double)g->center[1], nodes, nb, homed, LwGarrisonStrength(g));
+    }
+    char line[1100]; size_t len = 0; int first = 0;
+    for (int a = 0; a <= g_lwNodeCount; a++)
+    {
+        if (a == g_lwNodeCount || len > 1000) { if (len) Note("living world: territory nodes %d-%d: %s", first, a - 1, line); len = 0; first = a; line[0] = 0; if (a == g_lwNodeCount) break; }
+        len += (size_t)snprintf(line + len, sizeof line - len, "%.0f,%.0f,%d;", (double)g_lwNodes[a].x, (double)g_lwNodes[a].y, (int)g_lwRegion[a] - 1);
+    }
+}
+static void LwTerritoryTick(void)
+{
+    ULONGLONG now = GetTickCount64();
+    if (g_lwWorld.populated != 1 || g_lwNodeCount <= 0 || g_lwGarrisonCount <= 0) return;
+    if (g_lwTerr.built && (g_lwTerr.owner != g_lwGarrisonOwner || g_lwTerr.garrisons != g_lwGarrisonCount || g_lwTerr.nodes != g_lwNodeCount)) g_lwTerr.built = 0;
+    if (!g_lwTerr.built)
+    {
+        for (int gi = 0; gi < g_lwGarrisonCount; gi++) if (g_lwGarrisons[gi].points && !g_lwGarrisons[gi].haveCenter) return; /* every centre read first */
+        LwTerritoryBuild();
+    }
+    if (now < g_lwTerr.next) return;
+    g_lwTerr.next = now + 5000;
+    int regions = g_lwGarrisonCount < LW_REGIONS_MAX ? g_lwGarrisonCount : LW_REGIONS_MAX, held = 0, lost = 0, squads[LW_REGIONS_MAX];
+    memset(squads, 0, sizeof squads);
+    for (int i = 0; i < g_lwWorld.count; i++)
+    {
+        LwSquad* q = &g_lwSquads[i];
+        if (q->state == LW_FREE || q->survivors == 0) continue;
+        if (q->home1 == 0) q->home1 = (uint16_t)g_lwRegion[q->node < g_lwNodeCount ? q->node : 0];
+        if (q->home1 && q->home1 <= regions) squads[q->home1 - 1] += q->survivors;
+    }
+    for (int r = 0; r < regions; r++) /* a garrison with no region of its own counts for the region of its nearest node */
+        if (g_lwGarrisons[r].haveCenter && !g_lwRegionNodes[r])
+        { int host = LwRegionOfNode(LwNearestNode(g_lwGarrisons[r].center[0], g_lwGarrisons[r].center[1])); if (host >= 0 && host < regions) squads[host] += LwGarrisonStrength(&g_lwGarrisons[r]); }
+    for (int r = 0; r < regions; r++)
+    {
+        LwGarrison* g = &g_lwGarrisons[r];
+        if (!g->haveCenter || !g_lwRegionNodes[r]) continue;
+        int gs = LwGarrisonStrength(g), st = gs + squads[r]; /* squads[]: homed survivors, plus garrisons without a region of their own */
+        uint8_t was = g_lwRegionHeld[r], now1 = st > 0;
+        g_lwRegionStrength[r] = st;
+        if (g_lwTerr.seeded && was != now1)
+        {
+            if (now1) g_lwTerr.regained++; else g_lwTerr.lost++;
+            Note("living world: territory: region %d (garrison %08X at (%.0f, %.0f)) %s: garrison strength %d%s, squads homed there (and garrisons sharing its node) %d", r, g->entity,
+                (double)g->center[0], (double)g->center[1], now1 ? "held again" : "lost", gs, g->retake ? " (retaken)" : g->cleared ? " (cleared)" : "", squads[r]);
+        }
+        g_lwRegionHeld[r] = now1;
+        held += now1; lost += !now1;
+    }
+    g_lwTerr.seeded = 1;
+    if (now >= g_lwTerr.noteAt)
+    {
+        g_lwTerr.noteAt = now + 30000;
+        char list[700]; size_t len = 0;
+        for (int r = 0; r < regions && len < sizeof list - 16; r++) if (g_lwRegionNodes[r]) len += (size_t)snprintf(list + len, sizeof list - len, "%d:%d ", r, g_lwRegionStrength[r]);
+        Note("living world: territory (30 s): %d held, %d lost; %u lost and %u held again so far; strength by region: %s", held, lost, g_lwTerr.lost, g_lwTerr.regained, list);
+    }
 }
