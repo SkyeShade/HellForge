@@ -655,6 +655,7 @@ static void LwTestNoise(int seq, int type, float dx, float dy)
 #define LW_RETAKE_NODE 60.0f    /* the route node nearest the garrison is within max(this, 0.75 x the mean node spacing) of its centre (D) */
 #define LW_RETAKE_REACH 800.0f   /* squads sent from within this (D; 1500 m on extra large maps) */
 static ULONGLONG g_lwRetakeClear = LW_RETAKE_CLEAR; /* the test command "retake wait <s>" shortens it */
+static int g_lwRetakeUnfit; /* test command "retake unfit": the next retake opens only points no group fits, to show the refill retry and the return */
 static const uint32_t kLwUHash[3] = {0x58840A74u, 0x8D0AE425u, 0x44818B0Au};
 static int LwRetakePinsOk(void)
 {
@@ -762,6 +763,64 @@ static int LwGarrisonLiving(uint32_t net, uint32_t* mask)
     }
     return found;
 }
+/* Phase B of the fill 0x90E150 for an enemy garrison (settings 0x505D80(descriptor) mode +0xC == 0; modes 1-3 have no
+ * phase-B groups, 0x94BE4F): a group g of dir+0x41138 (0xD8 bytes, count dir+0x51884) can fill an open point
+ * ((flags & 0x340) == 0) when 0x94BC80([g+0xA8], difficulty, players, tags) holds, the per-type cap 0x952FF0(dir, g, 1,
+ * 2) does not block it, its cost [g+0xD4] fits the budget ([settings] if > 0, else dir+0x518B4 x [settings+4]) and the
+ * point's mask +0x28 meets M(g): the type of g's entry 0 resolved by 0x949B80, then 0x510790 (+8) (0x90EB50..0x90EC6C).
+ * Returns the union of M over those groups (0: none), with the budget; -1 when unreadable. All five are pure. */
+static int LwFillPinsOk(void)
+{
+    static int ok = -1;
+    if (ok < 0)
+    {
+        uintptr_t g = g_lw.game;
+        ok = ApiCodeMatches(g + 0x505D80u, "48 85 C9 75 03 33 C0 C3 48 8B 09") && ApiCodeMatches(g + 0x94BC80u, "48 89 5C 24 08 48 89 6C 24 18 48 89 74 24 20") &&
+             ApiCodeMatches(g + 0x952FF0u, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18") && ApiCodeMatches(g + 0x949B80u, "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20") &&
+             ApiCodeMatches(g + 0x510790u, "48 85 C9 74 71 48 8B 05") && ApiCodeMatches(g + 0x90EB57u, "48 8B 97 A8 00 00 00") && ApiCodeMatches(g + 0x90EB86u, "E8");
+        if (!ok) Note("living world: the fill's group checks do not match this build; a retake opens points without them");
+    }
+    return ok;
+}
+static int64_t LwFillMasks(uintptr_t desc, float* budget, char* trace, size_t traceLen)
+{
+    typedef uintptr_t (*SettingsFn)(uintptr_t);
+    typedef uint8_t (*EligibleFn)(void*, uintptr_t, uint32_t, uint32_t, uintptr_t);
+    typedef uint8_t (*CapFn)(uintptr_t, uintptr_t, uint8_t, uint32_t);
+    typedef uintptr_t (*ResolveFn)(void*, uintptr_t, uintptr_t, uint32_t, uintptr_t);
+    typedef uintptr_t (*TypeFn)(uint64_t);
+    uintptr_t dir = g_lwWorld.dir, players = 0, table = 0, rows = 0, set;
+    if (trace && traceLen) trace[0] = 0;
+    if (!LwFillPinsOk() || !dir || !EvpPtr(g_lw.game + 0x3326468u, &players) || !EvpPtr(dir + 0x660, &table) || !EvpPtr(table, &rows)) return -1;
+    set = ((SettingsFn)(g_lw.game + 0x505D80u))(desc);
+    if (!set) return -1;
+    float b = 0, scale = 0, base = 0; uint32_t mode = EvpU32(set + 0xC, 99);
+    SafeRead(set, &b, 4); SafeRead(set + 4, &scale, 4); SafeRead(dir + 0x518B4, &base, 4);
+    if (!(b > 0)) b = base * scale;
+    *budget = b;
+    if (mode != 0) { if (trace) snprintf(trace, traceLen, "mode %u: no phase-B groups", mode); return 0; }
+    uint32_t count = EvpU32(dir + 0x51884, 0), diff = EvpU32(dir + 0x518C4, 0), np = EvpU32(players + 0x84, 0), nrows = EvpU32(table + 8, 0);
+    int64_t masks = 0; size_t at = 0;
+    for (uint32_t k = 0; k < count && k < 64; k++)
+    {
+        uintptr_t gp = dir + 0x41138u + 0xD8u * k, list = 0; float cost = 0; uint32_t key = EvpU32(gp, 0), m = 0;
+        int el = EvpPtr(gp + 0xA8, &list) && list && ((EligibleFn)(g_lw.game + 0x94BC80u))(NULL, list, diff, np, dir + 0x518D4) != 0;
+        int capped = el && ((CapFn)(g_lw.game + 0x952FF0u))(dir, gp, 1, 2) != 0;
+        SafeRead(gp + 0xD4, &cost, 4);
+        uintptr_t row = 0;
+        for (uint32_t i = 0; i < nrows && i < 4096 && !row; i++) if (EvpU32(rows + 0x80u * i, 0) == key) row = rows + 0x80u * i;
+        if (row)
+        {
+            uint64_t out[4] = {0, 0, 0, 0}; uintptr_t hp = ((ResolveFn)(g_lw.game + 0x949B80u))(out, table, row, 0xFFFFFFFFu, 0);
+            uint64_t hash = 0; uintptr_t rec;
+            if (hp && !SafeRead(hp, &hash, 8) && hash && (rec = ((TypeFn)(g_lw.game + 0x510790u))(hash)) != 0) m = EvpU32(rec + 8, 0);
+        }
+        int fits = el && !capped && cost <= b && m;
+        if (fits) masks |= m;
+        if (trace && at + 40 < traceLen) at += (size_t)snprintf(trace + at, traceLen - at, "%s%u:%s%s%.0f/%X", k ? " " : "", k, el ? "" : "inel,", capped ? "cap," : "", (double)cost, m);
+    }
+    return masks;
+}
 /* the squad at the garrison, offline: the recipe. The points opened (k <= survivors: those units become the garrison) when done, 0 = not yet, -1 = never */
 static int LwRetakeApply(LwSquad* q, LwGarrison* g)
 {
@@ -774,7 +833,8 @@ static int LwRetakeApply(LwSquad* q, LwGarrison* g)
     uint8_t active = 1; uint32_t u[3], n = EvpU32(l + 0x1A8, 0);
     if (SafeRead(s + 0x38, &active, 1) || SafeRead(s + 4, u, sizeof u) || n == 0 || n > 96) return -1;
     if (active || LwPlayerWithin(g->center, LW_RETAKE_PLAYER) || EvpU32(r + 0x384, 1) != 0) return 0;
-    uint32_t allow[3] = {0, 0, 0}, restore[3] = {0, 0, 0}; int k = q->survivors, chosen = 0, fresh = 0, owed = 0, killed = 0;
+    uint32_t allow[3] = {0, 0, 0}, restore[3] = {0, 0, 0}; int k = q->survivors, chosen = 0, fresh = 0, owed = 0, killed = 0, unfit = 0;
+    float budget = 0; int64_t masks = LwFillMasks(d, &budget, NULL, 0); /* -1: unread, every point may open (the fill check returns what does not appear) */
     /* killed points first: the fill made units there before (lw108a, lw109b: 9 of 9 filled again); then never filled with U
      * set; points filled with U set and never killed last (lw113c: 0 of 9 filled; why is open) */
     for (int pass = 0; pass < 3 && chosen < k; pass++)
@@ -782,16 +842,19 @@ static int LwRetakeApply(LwSquad* q, LwGarrison* g)
         {
             uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0, bit = 1u << (p % 32), w = p / 32;
             if (allow[w] & bit || gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4)) continue;
-            if ((flags & 0x220) || (g->structure[w] & bit) || ((flags & 0x40) && !(g->marked[w] & bit))) continue; /* objective / structure points; held by the game. Phase A (0x100) refills like phase B: 0x90E400..0x90E427 skips only bit 6 */
+            if ((flags & 0x220) || (g->structure[w] & bit) || ((flags & 0x40) && !(g->marked[w] & bit))) continue;
+            int fit = masks < 0 || (flags & 0x300) || (EvpU32(points + 0x58u * gi + 0x28, 0) & (uint32_t)masks);
+            if (g_lwRetakeUnfit ? fit || (flags & 0x300) || masks < 0 : !fit) { unfit += pass == 0 && !fit; continue; } /* no group of this garrison can fill it (LwFillMasks) */ /* objective / structure points; held by the game. Phase A (0x100) refills like phase B: 0x90E400..0x90E427 skips only bit 6 */
             int taken = (g->taken[w] & bit) != 0, uset = (u[w] & bit) != 0;
             if (pass == 0 ? (!taken || uset) : pass == 1 ? (taken || !uset) : (!taken || !uset)) continue;
             allow[w] |= bit; chosen++;
             if (pass == 0) { restore[w] |= bit; killed++; } else if (pass == 2) owed++; else fresh++;
         }
     if (!chosen) return -1;
+    g_lwRetakeUnfit = 0;
     typedef void (*NetDirtyFn)(uint32_t, uint32_t, void*);
     uint32_t net = EvpU32(d + 0x10, 0x7FFFu);
-    memcpy(g->allow, allow, sizeof allow); g->retake = 1; /* the holds go in now, before the flag */
+    memcpy(g->allow, allow, sizeof allow); g->retake = 1; g->fillTries = 0; /* the holds go in now, before the flag */
     LwRetakeGarrison(g, d, s, r, l, points, n, u, 0, 1); g->lastRefill = 1; g->fillAt = 0;
     for (int w = 0; w < 3; w++)
         if (restore[w])
@@ -806,9 +869,9 @@ static int LwRetakeApply(LwSquad* q, LwGarrison* g)
     uint8_t flag = 0; SafeRead(r + 0x1B4F, &flag, 1);
     g->retakeAt = GetTickCount64(); g->retaker = -1;
     Note("living world: squad %d retook garrison %08X at (%.0f, %.0f) after %.0f s: %d of %d survivors become its units at %d points (%d never filled, %d owed, %d killed, "
-        "U %08X %08X %08X -> %08X %08X %08X), %d of %u points held, refill flag %u; it fills when a player comes within 150 m", (int)(q - g_lwSquads), g->entity,
+        "U %08X %08X %08X -> %08X %08X %08X), %d of %u points held, refill flag %u; groups' masks %llX (budget %.0f), %d points no group fits; it fills when a player comes within 150 m", (int)(q - g_lwSquads), g->entity,
         (double)g->center[0], (double)g->center[1], (double)(g->retakeAt - q->intentAt) / 1000.0, chosen, k, chosen, fresh, owed, killed,
-        u[0], u[1], u[2], after[0], after[1], after[2], held, n, flag);
+        u[0], u[1], u[2], after[0], after[1], after[2], held, n, flag, (unsigned long long)masks, (double)budget, unfit);
     return chosen;
 }
 static void LwRetakeScan(void)
@@ -938,6 +1001,7 @@ static void LwTestClear(int seq, uint32_t entity)
         (double)best->center[0], (double)best->center[1], (double)sqrtf(bd), killed, count, hit, spawners, struck, structures);
     g_lwClearCheck.entity = best->entity; g_lwClearCheck.index = best->index; g_lwClearCheck.at = GetTickCount64() + 2000;
 }
+static void LwRetakeUnfit(int seq) { g_lwRetakeUnfit = 1; Note("living world: test command %d: retake unfit: the next retake opens only points no group of its garrison fits", seq); }
 /* test command "retake wait <s>": how long a garrison stays cleared before a squad is sent (default LW_RETAKE_CLEAR) */
 static void LwRetakeWait(int seq, float sec)
 {
@@ -968,16 +1032,29 @@ static void LwRetakeReturn(LwGarrison* g, int missing)
 static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32_t* u, uint32_t n)
 {
     uint32_t at[3]; int living = LwGarrisonLiving(EvpU32(d + 0x10, 0x7FFFu), at), inside = 0, outside = 0, opened = 0, owed = 0;
+    if (LwTestTraceOn()) /* test runs: the values that decide an empty fill (lw113c), at each fill */
+    {
+        char tr[700]; float budget = 0; int64_t masks = LwFillMasks(d, &budget, tr, sizeof tr); uintptr_t chars = 0, jobs = 0, pr = 0; float p60 = 0;
+        int room = EvpPtr(g_lw.game + 0x3326D18u, &chars) ? (int)EvpU32(chars + 0x1C, 0) + (int)EvpU32(g_lwWorld.dir + 0x36C0, 0) - (int)EvpU32(g_lwWorld.dir + 0x620, 0) - (int)EvpU32(g_lwWorld.dir + 0x61C, 0) : -1;
+        if (EvpPtr(g_lw.game + 0x3326D20u, &pr)) SafeRead(pr + 0x60, &p60, 4);
+        Note("living world: test: fill of garrison %08X: groups' masks %llX, budget %.0f, room %d, AiJob %u, pressure +0x60 %.1f; groups (cost/mask): %s", g->entity, (unsigned long long)masks, (double)budget,
+            room, EvpPtr(g_lw.game + 0x33264D8u, &jobs) ? EvpU32(jobs + 0xC, 0) : 0, (double)p60, tr);
+    }
     for (uint32_t p = 0; p < n; p++)
     {
         uint32_t bit = 1u << (p % 32), w = p / 32;
         opened += (g->allow[w] & bit) != 0; owed += (g->allow[w] & u[w] & bit) != 0;
         if (at[w] & bit) { if (g->allow[w] & bit) inside++; else outside++; }
     }
-    if (living >= 0) for (int w = 0; w < 3; w++) g->allow[w] &= at[w]; /* an opened point the fill left empty (no group fits it, or the 70 room) is not owed later */
     Note("living world: retaken garrison %08X filled: %u units listed, %d living; points with a living unit: %d of the %d opened, %d elsewhere; %d opened points still owed (U set); cleared stays %u",
         g->entity, EvpU32(r + 0x384, 0), living, inside, opened, outside, owed, (unsigned)g->cleared);
     int missing = living >= 0 ? (int)g->absorbed - inside - outside : 0;
+    if (missing > 0 && g->fillTries < 2 && LwPlayerWithin(g->center, 150.0f)) /* a gate of that moment (a type cap, the room) may pass on another fill */
+    {
+        uint8_t one = 1;
+        if (!LwPoke(r + 0x1B4F, &one, 1)) { g->fillTries++; Note("living world: retaken garrison %08X: %d units missing after the fill; refill armed again (%u of 2)", g->entity, missing, g->fillTries); return; }
+    }
+    if (living >= 0) for (int w = 0; w < 3; w++) g->allow[w] &= at[w]; /* an opened point the fill left empty (no group fits it, or the 70 room) is not owed later */
     g->absorbed = 0;
     if (missing > 0) LwRetakeReturn(g, missing);
 }
