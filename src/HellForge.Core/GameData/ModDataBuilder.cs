@@ -73,6 +73,9 @@ public static class ModDataBuilder
                     case CopyResource copy:
                         AddCopy(resources, copy, added);
                         break;
+                    case ModelResource model:
+                        AddModel(resources, model, added);
+                        break;
                 }
             foreach (var animations in patch.Resources.OfType<AnimationsResource>())
                 AddAnimations(resources, animations, added);
@@ -122,6 +125,20 @@ public static class ModDataBuilder
             }
         }
 
+        // A unit written from the mod's glTF model, and the physics of the game unit it names under its name.
+        void AddModel(Dictionary<ResourceKey, ResourceParts> resources, ModelResource model, HashSet<ResourceKey> added)
+        {
+            var key = new ResourceKey(ResourceTypes.Unit, Hash(model.Name));
+            AddResource(resources, model.Where, key, BuildModel(model, modFolder, model.AnimationsFrom is { } of ? (Read(new(ResourceTypes.Unit, of), "game").Main, Read(new(ResourceTypes.Hash("bones"), of), "game").Main) : null));
+            added.Add(key);
+            if (model.Physics is not { } from) return;
+            var physics = new ResourceKey(ResourceTypes.Physics, from);
+            if (!Has(physics, "game")) throw new InvalidDataException($"{model.Where}: unit 0x{from:X16} has no physics in the game data.");
+            var named = new ResourceKey(ResourceTypes.Physics, key.Name);
+            AddResource(resources, model.Where, named, RenamePhysics(Read(physics, "game"), from, key.Name));
+            added.Add(named);
+        }
+
         var built = new List<(IReadOnlyList<string> Archives, byte[] Archive, byte[] Gpu, byte[] Stream)>();
         var added = new HashSet<ResourceKey>();
         foreach (var patch in spec.Patches)
@@ -147,6 +164,7 @@ public static class ModDataBuilder
             CopyResource copy => copy.Type == ResourceTypes.Unit ? [new ResourceKey(copy.Type, copy.From), new ResourceKey(ResourceTypes.Physics, copy.From)]
                 : [new ResourceKey(copy.Type, copy.From)],
             IncludeResources include => include.Ids.Select(id => new ResourceKey(include.Type, id)),
+            ModelResource model => ModelSources(model),
             _ => []
         }).ToHashSet();
         var gameSources = Sources(false);
@@ -191,6 +209,39 @@ public static class ModDataBuilder
     }
 
     // A resource into a patch; a key it has already must come with the same bytes.
+    // What a model reads from the game: the physics it names (its absence is reported by the model) and the bones and
+    // state machine of the unit whose animations it plays.
+    static IEnumerable<ResourceKey> ModelSources(ModelResource model)
+    {
+        if (model.Physics is { } physics) yield return new(ResourceTypes.Physics, physics);
+        if (model.AnimationsFrom is not { } of) yield break;
+        yield return new(ResourceTypes.Unit, of);
+        yield return new(ResourceTypes.Hash("bones"), of);
+        yield return new(ResourceTypes.Hash("state_machine"), of);
+    }
+
+    // A model's unit; a mistake in the file is reported with the resource and the file.
+    static ResourceParts BuildModel(ModelResource model, string modFolder, (byte[] Unit, byte[] Bones)? animated)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(model.File) ?? "";
+            var nodes = Gltf.Read(File.ReadAllBytes(Path.Combine(modFolder, model.File)), uri =>
+                DataSpecs.InModFolder(Path.Combine(dir, uri).Replace('\\', '/')) ? File.ReadAllBytes(Path.Combine(modFolder, dir, uri)) : throw new InvalidDataException($"buffer {uri} is outside the mod folder."));
+            // a game unit's animations: its bones and state machine are named after it (every unit's header points at its own)
+            var animations = model.AnimationsFrom ?? 0;
+            var unit = ModelUnit.Build(nodes, model.Materials, model.LodSizes, animations, animations);
+            if (animated is { } a) ModelUnit.CheckAnimations(unit, a.Unit, a.Bones);
+            var (main, gpu) = UnitWriter.Write(unit);
+            return new(main, gpu, []);
+        }
+        catch (Exception error) when (error is InvalidDataException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException or FormatException
+            or ArgumentOutOfRangeException or IndexOutOfRangeException or IOException)
+        {
+            throw new InvalidDataException($"{model.Where} ({model.File}): {error.Message}");
+        }
+    }
+
     static void AddResource(Dictionary<ResourceKey, ResourceParts> resources, string where, ResourceKey key, ResourceParts parts)
     {
         if (resources.TryGetValue(key, out var other) && !(other.Main.AsSpan().SequenceEqual(parts.Main)

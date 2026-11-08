@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "patches": [
+    {
+      "archives": ["dbd9381f9ea9788f", "047c26f2f11d253e"],
+      "resources": [
+        {
+          "model": "models/carbine.glb",
+          "name": "skyeshade/model_carbine/carbine",
+          "materials": { "Body": "0x7F112ACD09A5E523" },
+          "physics": "0x968211C0033DCE64"
+        }
+      ]
+    }
+  ]
+}
