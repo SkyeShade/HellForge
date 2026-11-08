@@ -22,6 +22,9 @@ On `dev`, since 0.4.0-beta.
 - **Mods can bring their own textures.** A data spec's `texture` builds a texture from PNG files in the mod folder,
   in RGBA8 or BC1, BC3, BC4 or BC5, with its mips and as an array of layers. A material copy's `textures` puts it in a
   slot by name ([textures](docs/modding/textures.md)).
+- **Mods can have packages of their own.** A data spec patch with `package` becomes a whole archive under the package's
+  id. It loads when the game starts, or with `"load": "request"` only through `load_package` (SDK 17), which now takes
+  a mod's own packages ([packages of your own](docs/modding/data.md#packages-of-your-own)).
 - **New explosion, beam and arc types for mods (SDK 17).** `add_explosion`, `add_beam` and `add_arc` copy a vanilla type
   with its own damage, radii, length or chained arc, up to 512 of each across all mods. A projectile names its blasts in
   `impact_explosion` and `expiry_explosion`, and a weapon its `beam` or `arc`

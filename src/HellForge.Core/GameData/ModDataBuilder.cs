@@ -152,13 +152,15 @@ public static class ModDataBuilder
             added.Add(named);
         }
 
-        var built = new List<(IReadOnlyList<string> Archives, byte[] Archive, byte[] Gpu, byte[] Stream)>();
+        var built = new List<(IReadOnlyList<string> Archives, bool Whole, byte[] Archive, byte[] Gpu, byte[] Stream)>();
         var added = new HashSet<ResourceKey>();
         foreach (var patch in spec.Patches)
         {
             var (archive, gpu, stream) = ResourceArchive.Write(PatchResources(patch, added));
-            built.Add((patch.Archives, archive, gpu, stream));
+            built.Add((patch.Package is { } package ? [PackageFile(package)] : patch.Archives, patch.Package != null, archive, gpu, stream));
         }
+        var shipped = spec.Patches.Select(p => p.Package).OfType<ModDataPackage>().Where(p => game.HasArchive(PackageFile(p))).Select(p => p.Name).ToList();
+        if (shipped.Count > 0) throw new InvalidDataException("these packages' ids are archives of the game; name them otherwise: " + string.Join(", ", shipped) + ".");
         // What a mod adds has a name of its own: a copy or icon may not stand in for one of the game's resources.
         var taken = game.Find(added).Keys.Select(k => k.ToString()).Order(StringComparer.Ordinal).ToList();
         if (taken.Count > 0) throw new InvalidDataException("these names are the game's own resources; give them names of the mod's: " + string.Join(", ", taken) + ".");
@@ -263,21 +265,25 @@ public static class ModDataBuilder
         resources[key] = parts;
     }
 
-    // Each patch written for each archive it names, numbered per archive in the spec's order: the file names.
-    static List<string> WriteFiles(string output, List<(IReadOnlyList<string> Archives, byte[] Archive, byte[] Gpu, byte[] Stream)> built)
+    // A package's archive: data/<its id>, as the game names its own loose archives.
+    public static string PackageFile(ModDataPackage package) => package.Id.ToString("x16", System.Globalization.CultureInfo.InvariantCulture);
+
+    // Each patch written for each archive it names, numbered per archive in the spec's order, and each package as its
+    // whole archive: the file names.
+    static List<string> WriteFiles(string output, List<(IReadOnlyList<string> Archives, bool Whole, byte[] Archive, byte[] Gpu, byte[] Stream)> built)
     {
         Directory.CreateDirectory(output);
         var files = new List<string>();
         var next = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var (targets, archive, gpu, stream) in built)
+        foreach (var (targets, whole, archive, gpu, stream) in built)
             foreach (var target in targets)
             {
-                var name = $"{target}.patch_{next.GetValueOrDefault(target)}";
+                var name = whole ? target : $"{target}.patch_{next.GetValueOrDefault(target)}";
                 next[target] = next.GetValueOrDefault(target) + 1;
                 File.WriteAllBytes(Path.Combine(output, name), archive);
                 File.WriteAllBytes(Path.Combine(output, name + ".gpu_resources"), gpu);
                 files.AddRange([name, name + ".gpu_resources"]);
-                if (stream.Length == 0) continue;
+                if (stream.Length == 0 && !whole) continue; /* a package's archive always has one: the engine crashes when it cannot open it */
                 File.WriteAllBytes(Path.Combine(output, name + ".stream"), stream);
                 files.Add(name + ".stream");
             }

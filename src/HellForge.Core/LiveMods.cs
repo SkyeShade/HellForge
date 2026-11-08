@@ -90,7 +90,8 @@ public sealed record LiveModPlan(IReadOnlyList<LiveModChange> Changes, IReadOnly
     public static string? Why(ModManifest mod) =>
         mod.HasCode && !mod.Live ? "it runs code that does not declare \"live\": true" :
         mod.Lua ? "it holds Lua scripts" :
-        mod.Pack != null ? "it is a cosmetic pack" : null;
+        mod.Pack != null ? "it is a cosmetic pack" :
+        mod.Packages.Count > 0 ? "its data spec has packages of its own, which load at a session's start" : null;
 
     // Whether the change needs the session's tools first: a source mod's build, or game data to package.
     public bool NeedsPreparation => Changes.Any(c => c.Mod != null && (c.Mod.HasSource || HasData(c.Mod)) || c.Was?.Data == true);

@@ -48,11 +48,10 @@ public static class ModStaging
         catch (JsonException) { return []; }
     }
 
-    static bool IsLivePackage(string name)
-    {
-        var stem = name.EndsWith(".gpu_resources", StringComparison.Ordinal) ? name[..^14] : name.EndsWith(".stream", StringComparison.Ordinal) ? name[..^7] : name;
-        return stem.Length == 16 && stem.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
-    }
+    static bool IsLivePackage(string name) => ModCatalog.PackageFile().IsMatch(name);
+
+    // A name Stage places: a patch, or a data spec package's archive.
+    static bool IsStagedName(string name) => ModCatalog.PatchFile().IsMatch(name) || ModCatalog.PackageFile().IsMatch(name);
 
     // The last sessions' hot packages removed (a name of 16 hex digits and its sidecars only); those still held stay listed.
     static void RemoveLive(InstallLayout install, string data)
@@ -306,9 +305,22 @@ public static class ModStaging
         {
             if (mod.HasDataSpec && mod.GeneratedData == null) throw new InvalidDataException($"{mod.Id}: its data has not been generated.");
             foreach (var (folder, files) in Sources(mod)) Add(folder, files);
+            if (mod.GeneratedData != null) AddPackages(plan, mod, data, previous);
         }
         foreach (var folder in own) Add(folder, PatchFiles(folder));
         return plan;
+    }
+
+    // A mod's packages, under their own names: never over a file of the game's (a loose archive, a hot package) or another
+    // mod's package of the same id.
+    static void AddPackages(List<(string Source, string Target)> plan, ModManifest mod, string data, HashSet<string> previous)
+    {
+        foreach (var file in Directory.GetFiles(mod.GeneratedData!).Select(Path.GetFileName).OfType<string>().Where(f => ModCatalog.PackageFile().IsMatch(f)).Order(StringComparer.Ordinal))
+        {
+            if (plan.Any(p => p.Target == file)) throw new InvalidDataException($"{mod.Id}: another mod has a package with the same id ({file}).");
+            if (!previous.Contains(file) && File.Exists(Path.Combine(data, file))) throw new InvalidDataException($"{mod.Id}: its package's archive {file} is a file of the game's data already.");
+            plan.Add((Path.Combine(mod.GeneratedData!, file), file));
+        }
     }
 
     // A mod's folders of patches and their files: its data/, its pack's chosen folders, its generated data.
@@ -320,20 +332,20 @@ public static class ModStaging
         return sources;
     }
 
-    // The last session's staged files (patch file names only), for the data audit and Unstage.
+    // The last session's staged files (patches and packages), for the data audit and Unstage.
     public static IReadOnlyCollection<string> Recorded(InstallLayout install) => Previous(install);
 
     static IEnumerable<string> PatchFiles(string folder) =>
         Directory.GetFiles(folder).Select(f => Path.GetFileName(f)).Where(f => ModCatalog.PatchFile().IsMatch(f));
 
-    // The last session's staged files (patch file names only).
+    // The last session's staged files (patches and packages).
     static HashSet<string> Previous(InstallLayout install)
     {
         var record = Path.Combine(install.Temp, RecordName);
         try
         {
             return File.Exists(record)
-                ? (JsonSerializer.Deserialize<List<string>>(File.ReadAllText(record)) ?? []).Where(n => ModCatalog.PatchFile().IsMatch(n)).ToHashSet(StringComparer.Ordinal)
+                ? (JsonSerializer.Deserialize<List<string>>(File.ReadAllText(record)) ?? []).Where(IsStagedName).ToHashSet(StringComparer.Ordinal)
                 : new HashSet<string>(StringComparer.Ordinal);
         }
         catch (JsonException) { return new HashSet<string>(StringComparer.Ordinal); }
@@ -346,7 +358,7 @@ public static class ModStaging
         try
         {
             if (File.Exists(record) && JsonSerializer.Deserialize<Dictionary<string, PlacedFile>>(File.ReadAllText(record)) is { } read)
-                return new(read.Where(r => r.Value?.Source != null && ModCatalog.PatchFile().IsMatch(r.Key)), StringComparer.Ordinal);
+                return new(read.Where(r => r.Value?.Source != null && IsStagedName(r.Key)), StringComparer.Ordinal);
         }
         catch (Exception error) when (error is JsonException or IOException or NotSupportedException) { }
         return new(StringComparer.Ordinal);
@@ -366,7 +378,7 @@ public static class ModStaging
     static void WriteNames(string record, IEnumerable<string> names)
     {
         var partial = record + ".partial";
-        var entries = names.Where(name => ModCatalog.PatchFile().IsMatch(name)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        var entries = names.Where(IsStagedName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         File.WriteAllText(partial, JsonSerializer.Serialize(entries));
         File.Move(partial, record, overwrite: true);
     }
