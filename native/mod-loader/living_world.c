@@ -3100,6 +3100,60 @@ static uint64_t LwHitQueue(uint64_t rcx, uint64_t kind, uint64_t r8, uint64_t ta
     }
     return g_lwQueue(rcx, kind, r8, target, amount, attacker, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19);
 }
+/* Z / A (lw95c: no kind-6 hit was queued through 0x129F910; KB living-world-spawn-losses, subagent kind6, checked by me):
+ * the only builder of kind-6 hits is 0x12A2C40, called four times from the damage-zone processor 0x7D01C0 (DamageInfo =
+ * zone descriptor +8, hash = +0xD8). Damage between AI units is applied with no faction test, so a mate inside a unit's own
+ * ability zone takes it. Which ability a calm unit plays is game data, not code: Z notes every zone a loader member starts
+ * (0x7D38D0: rcx, edx entity, r8 the static descriptor; three arguments, r9 is written at 0x7D390A before any read) with
+ * its caller (the ability's step function) and the descriptor's +0 / +8 / +0xD8; A notes every ability a loader member
+ * starts (0x7CAF40: rcx manager, edx entity, r8d ability id, r9d mode, the rate a float at entry rsp+0x28, read at
+ * 0x7CAFDE as [rsp+0x100] after five pushes and 0xB0; five arguments) with its caller, which names the trigger (0xAA7250
+ * combat task; 0xAA9D92 / 0xAA3D9B AiEnemy settings +0x184; 0x7E6BEE +0x18C; 0x7E9988 +0x1D0; 0x4C32xx a brain helper).
+ * Both with the unit's alert and the distance to its nearest online mate. */
+typedef uint64_t (*LwZoneFn)(uint64_t, uint64_t, uint64_t);
+typedef uint64_t (*LwAbilityFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+static LwZoneFn g_lwZone; static LwAbilityFn g_lwAbility;
+static volatile LONG g_lwZoneNotes;
+static float LwMateDistance(uint32_t e, int sq)
+{
+    const LwSquad* q = &g_lwSquads[sq]; int me = -1; float best = -1.0f;
+    for (int k = 0; k < q->seenCount && k < 32; k++) if (q->seen[k] == e) me = k;
+    if (me < 0) return -1.0f;
+    for (int k = 0; k < q->seenCount && k < 32; k++)
+    {
+        if (k == me || q->seen[k] == 0) continue;
+        float dx = q->seenAt[k][0] - q->seenAt[me][0], dy = q->seenAt[k][1] - q->seenAt[me][1], d = sqrtf(dx * dx + dy * dy);
+        if (best < 0 || d < best) best = d;
+    }
+    return best;
+}
+static uint64_t LwHitZone(uint64_t ctx, uint64_t entity, uint64_t desc)
+{
+    int sq = -1;
+    if (LwOnlineMember((uint32_t)entity, &sq) && InterlockedIncrement(&g_lwZoneNotes) <= 6000)
+    {
+        uint32_t d0 = 0, info = 0, hash = 0;
+        if (desc) { SafeRead((uintptr_t)desc, &d0, 4); SafeRead((uintptr_t)desc + 8, &info, 4); SafeRead((uintptr_t)desc + 0xD8, &hash, 4); }
+        char who[200]; LwHitWho((uint32_t)entity, who, sizeof who);
+        Note("living world: test: zone started by squad %d member %s: descriptor game+0x%llX (+0 %08X, DamageInfo %08X, hash %08X); nearest mate %.1f m; caller game+0x%llX",
+            sq, who, (unsigned long long)(desc >= g_lw.game && desc < g_lw.game + 0x4000000u ? desc - g_lw.game : desc), d0, info, hash,
+            (double)LwMateDistance((uint32_t)entity, sq), (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_lw.game));
+    }
+    return g_lwZone(ctx, entity, desc);
+}
+static uint64_t LwHitAbility(uint64_t mgr, uint64_t entity, uint64_t id, uint64_t mode, uint64_t rate)
+{
+    int sq = -1;
+    if (LwOnlineMember((uint32_t)entity, &sq) && InterlockedIncrement(&g_lwZoneNotes) <= 6000)
+    {
+        float r; uint32_t bits = (uint32_t)rate; memcpy(&r, &bits, 4);
+        char who[200]; LwHitWho((uint32_t)entity, who, sizeof who);
+        Note("living world: test: ability %u (mode %d, rate %.2f) started by squad %d member %s; nearest mate %.1f m; caller game+0x%llX",
+            (uint32_t)id, (int32_t)mode, (double)r, sq, who, (double)LwMateDistance((uint32_t)entity, sq),
+            (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_lw.game));
+    }
+    return g_lwAbility(mgr, entity, id, mode, rate);
+}
 static void LwInstallHitNotes(void)
 {
     char t[4] = "";
@@ -3116,6 +3170,14 @@ static void LwInstallHitNotes(void)
     if (ApiCodeMatches(game + 0x129F910u, "40 55 53 56 57 41 56 48 8D 6C 24 F9 48 81 EC D0 00 00 00"))
         LoaderHook("living world test: damage queued on loader members", game + 0x129F910u, (void*)LwHitQueue, (void**)&g_lwQueue);
     else Note("living world: test: QueueDamage is not the reviewed code; queued damage is not noted");
+    if (ApiCodeMatches(game + 0x7D38D0u, "48 89 5C 24 10 48 89 7C 24 18 55 41 56 41 57 48 8D AC 24 40 FC FF FF 48 81 EC C0 04 00 00") &&
+        ApiCodeMatches(game + 0x7D390Au, "45 8B 4A 38") && ApiCodeMatches(game + 0x7CAFDEu, "F3 0F 10 B4 24 00 01 00 00") &&
+        ApiCodeMatches(game + 0x7CAF40u, "4C 8B DC 49 89 5B 18 55 56 57 41 55 41 56 48 81 EC B0 00 00 00"))
+    {
+        LoaderHook("living world test: damage zones started by loader members", game + 0x7D38D0u, (void*)LwHitZone, (void**)&g_lwZone);
+        LoaderHook("living world test: abilities started by loader members", game + 0x7CAF40u, (void*)LwHitAbility, (void**)&g_lwAbility);
+    }
+    else Note("living world: test: the zone / ability starts are not the reviewed code; they are not noted");
     Note("living world: test: hits on online loader members and explosions within 15 m of them are noted (0x9235F0, 0x13C0A80)");
 }
 
