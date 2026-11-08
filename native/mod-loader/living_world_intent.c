@@ -205,8 +205,15 @@ static int LwIntentRoute(LwSquad* q)
 {
     int goal = LwNearestNode(q->target[0], q->target[1]);
     if (goal < 0) return 0;
-    if (goal == q->node) { q->pathLen = q->pathAt = 0; return 1; }
-    int n = LwPath(q->node, goal, q->path, LW_PATH_MAX);
+    /* already nearer the point than its node: there. Else from the node nearest the squad, not the last one it passed:
+     * route nodes are ~184 m apart on extra large maps, and lw113e's squad sent 14 m from a post walked 550 m. */
+    if (LwDist2(q->pos, q->target[0], q->target[1]) <= (g_lwNodes[goal].x - q->target[0]) * (g_lwNodes[goal].x - q->target[0]) + (g_lwNodes[goal].y - q->target[1]) * (g_lwNodes[goal].y - q->target[1]))
+    { q->pathLen = q->pathAt = 0; return 1; }
+    int start = LwNearestNode(q->pos[0], q->pos[1]);
+    if (start < 0) start = q->node;
+    q->node = (uint16_t)start;
+    if (goal == start) { q->pathLen = q->pathAt = 0; return 1; }
+    int n = LwPath(start, goal, q->path, LW_PATH_MAX);
     if (n <= 0) return 0;
     q->pathLen = (uint8_t)n; q->pathAt = 0;
     return 1;
@@ -1052,7 +1059,7 @@ static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32
     if (missing > 0 && g->fillTries < 2 && LwPlayerWithin(g->center, 150.0f)) /* a gate of that moment (a type cap, the room) may pass on another fill */
     {
         uint8_t one = 1;
-        if (!LwPoke(r + 0x1B4F, &one, 1)) { g->fillTries++; Note("living world: retaken garrison %08X: %d units missing after the fill; refill armed again (%u of 2)", g->entity, missing, g->fillTries); return; }
+        if (!LwPoke(r + 0x1B4F, &one, 1)) { g->fillTries++; g->lastRefill = 1; /* the game may take the flag before the next read */ Note("living world: retaken garrison %08X: %d units missing after the fill; refill armed again (%u of 2)", g->entity, missing, g->fillTries); return; }
     }
     if (living >= 0) for (int w = 0; w < 3; w++) g->allow[w] &= at[w]; /* an opened point the fill left empty (no group fits it, or the 70 room) is not owed later */
     g->absorbed = 0;
