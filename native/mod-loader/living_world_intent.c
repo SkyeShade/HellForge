@@ -1043,7 +1043,7 @@ static void LwRetakeWait(int seq, float sec)
 /* The retaking squad's units the fill did not show (lw113c: 0 of 9 points filled) come back as an offline squad at the
  * garrison's nearest route node, so no unit leaves the world; their points are no longer owed, so a later fill cannot
  * add them twice. */
-static void LwRetakeReturn(LwGarrison* g, int missing)
+static int LwRetakeReturn(LwGarrison* g, int missing)
 {
     int node = LwNearestNode(g->center[0], g->center[1]), slot = -1;
     for (int i = 0; i < g_lwWorld.count && slot < 0; i++) if (g_lwSquads[i].state == LW_FREE) slot = i;
@@ -1053,7 +1053,7 @@ static void LwRetakeReturn(LwGarrison* g, int missing)
     if (node < 0 || slot < 0 || !g->absorbedDef)
     {
         Note("living world: retaken garrison %08X: %d of its units did not appear at the fill and cannot return (%s)", g->entity, missing, node < 0 ? "no route node" : slot < 0 ? "no free squad slot" : "no group");
-        return;
+        return 0;
     }
     LwSquad* q = &g_lwSquads[slot];
     memset(q, 0, sizeof *q);
@@ -1062,6 +1062,7 @@ static void LwRetakeReturn(LwGarrison* g, int missing)
     LwPlan(q);
     Note("living world: retaken garrison %08X: %d of its units did not appear at the fill; they return to the world as squad %d at (%.0f, %.0f)%s", g->entity, missing, slot,
         (double)q->pos[0], (double)q->pos[1], appended ? " (a new table entry: no free squad slot)" : "");
+    return 1;
 }
 /* 5 s after a retaken garrison filled (LwGarrisonsTick): its living units by point, against the points the retake opened */
 static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, uintptr_t l, uintptr_t points, const uint32_t* u, uint32_t n)
@@ -1114,9 +1115,18 @@ static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, uintptr_t l,
         uint8_t one = 1;
         if (!LwPoke(r + 0x1B4F, &one, 1)) { g->fillTries++; g->lastRefill = 1; /* the game may take the flag before the next read */ Note("living world: retaken garrison %08X: %d units missing after the fill; %d empty points opened again, refill armed again (%u of 2)", g->entity, missing, reopened, g->fillTries); return; }
     }
-    if (living >= 0) for (int w = 0; w < 3; w++) g->allow[w] &= at[w]; /* an opened point the fill left empty (a type cap, the room) is not owed later */
+    /* Only the first check after the retake accounts for the absorbed units (inside + outside + returned): its empty
+     * points stop being owed so no unit appears twice, except `missing` of them when the return fails. Later fills keep
+     * their empty owed points owed: they refill at a later activation, as natively (audit 2g, 7). */
+    if (living < 0) return;
+    int first = g->absorbed != 0, keep = first && missing > 0 && !LwRetakeReturn(g, missing) ? missing : 0;
+    for (uint32_t p = 0; p < n; p++) /* killed points (U clear) owe nothing and are dropped at every check */
+    {
+        uint32_t bit = 1u << (p % 32), w = p / 32;
+        if (!(g->allow[w] & bit) || (at[w] & bit) || ((u[w] & bit) && (!first || keep-- > 0))) continue;
+        g->allow[w] &= ~bit;
+    }
     g->absorbed = 0;
-    if (missing > 0) LwRetakeReturn(g, missing);
 }
 
 /* Phase 2d (KB living-world-plan "Phase 2 design", 2d): territory. Every garrison seeds a region; each route node belongs
