@@ -485,7 +485,7 @@ typedef struct LwSquad
     uint32_t groundId[32]; float groundAt[32][3]; /* each member's last 5 s sample on the ground (the fall note) */
     float band; uint32_t bandGen; uintptr_t bandDef; /* LwSquadBand's cache */
     uint8_t pulled;                 /* 2: held in place by the test stage until it comes online (the only value) */
-    uint8_t intent, intentStage, intentSent, held; ULONGLONG heldAt; /* held: waiting at the spawn band's edge since heldAt (LwIntentHold) */ /* Phase 2 (living_world_intent.c): LW_PATROL / LW_INVESTIGATE; 1 = at the point; goal sent online */
+    uint8_t intent, intentStage, intentSent, held; ULONGLONG heldAt, pushAt; /* held: waiting at the spawn band's edge since heldAt (LwIntentHold) */ /* Phase 2 (living_world_intent.c): LW_PATROL / LW_INVESTIGATE; 1 = at the point; goal sent online */
     float target[3]; uint32_t intentSource, intentSearch; ULONGLONG intentAt, intentStageAt, intentFree;
     uint32_t intentPeak; float intentPeakAt, intentFrom; /* the most members at once at alert 2+ (REINFORCE: 3+) at the point; seconds to the first; m from the point when sent */
     int16_t garrison; /* RETAKE: its g_lwGarrisons index */

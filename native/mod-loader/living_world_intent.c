@@ -341,7 +341,11 @@ static void LwReinforceOnline(LwSquad* q, const uint32_t* members, int n, const 
             return;
         }
     }
-    if (engaged > 0 && q->intentPeak == 0) q->intentPeakAt = (float)(now - q->intentStageAt) / 1000.0f;
+    if (engaged > 0 && q->intentPeak == 0)
+    {
+        q->intentPeakAt = (float)(now - q->intentStageAt) / 1000.0f;
+        Note("living world: squad %d engages at the fight %.0f s after it got there: %d of %d members engaged", (int)(q - g_lwSquads), (double)q->intentPeakAt, engaged, n);
+    }
     if ((uint32_t)engaged > q->intentPeak) q->intentPeak = (uint32_t)engaged;
     /* nobody engaged at the fight: every 10 s, up to 3 times, the members hear the fight's target where it is */
     if (!engaged && q->tells < 3 && now >= q->tellAt && LwFightOf(q) && g_lwFights[q->fight].target)
@@ -1276,7 +1280,10 @@ static int LwIntentHold(LwSquad* q, float nx, float ny)
         Note("living world: squad %d (%s) waits at the spawn band's edge at (%.0f, %.0f), %.0f m from the nearest player, to come online there", (int)(q - g_lwSquads),
             q->intent == LW_REINFORCE ? "reinforcing" : "investigating", (double)q->pos[0], (double)q->pos[1], (double)d0);
     }
-    if (d0 < rMin || now - q->heldAt > 20000) /* pushed inside, or 20 s at a point that does not come online */
+    /* pushed inside (at most every 3 s: a falling hellpod moves the player each tick, lw113h pushed one squad 17 times in
+     * a second), or 20 s at a point that does not come online */
+    int push = d0 < rMin && now - q->pushAt >= 3000;
+    if (push || (d0 >= rMin && now - q->heldAt > 20000))
     {
         float a = atan2f(q->pos[1] - pl[1], q->pos[0] - pl[0]) + (d0 >= rMin ? 0.436f : 0.0f), r = rMin + 8.0f;
         float px = pl[0] + r * cosf(a), py = pl[1] + r * sinf(a);
@@ -1284,6 +1291,7 @@ static int LwIntentHold(LwSquad* q, float nx, float ny)
         {
             Note("living world: squad %d %s along the spawn band's edge to (%.0f, %.0f)", (int)(q - g_lwSquads), d0 < rMin ? "steps back out" : "moves", (double)px, (double)py);
             q->pos[0] = px; q->pos[1] = py;
+            if (push) q->pushAt = now;
         }
         q->heldAt = now;
     }
