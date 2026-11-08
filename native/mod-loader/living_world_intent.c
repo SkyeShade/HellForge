@@ -635,7 +635,7 @@ static void LwTestNoise(int seq, int type, float dx, float dy)
 #define LW_RETAKE_CLEAR 300000   /* ms a garrison stays cleared before a squad retakes it (D) */
 #define LW_RETAKE_AGAIN 600000   /* ms between retakes of one garrison (D) */
 #define LW_RETAKE_PLAYER 300.0f  /* no player within this while a squad is sent or the garrison is armed (D) */
-#define LW_RETAKE_NODE 60.0f    /* the route node nearest the garrison is within this of its centre (D) */
+#define LW_RETAKE_NODE 60.0f    /* the route node nearest the garrison is within max(this, 0.75 x the mean node spacing) of its centre (D) */
 #define LW_RETAKE_REACH 800.0f   /* squads sent from within this (D; 1500 m on extra large maps) */
 static ULONGLONG g_lwRetakeClear = LW_RETAKE_CLEAR; /* the test command "retake wait <s>" shortens it */
 static const uint32_t kLwUHash[3] = {0x58840A74u, 0x8D0AE425u, 0x44818B0Au};
@@ -798,8 +798,11 @@ static void LwRetakeScan(void)
             g_lwSquads[g->retaker].intent == LW_RETAKE && g_lwSquads[g->retaker].garrison == gi) continue;
         g->retaker = -1;
         if (LwPlayerWithin(g->center, LW_RETAKE_PLAYER)) continue;
-        int node = LwNearestNode(g->center[0], g->center[1]); /* the squad arrives at this node: it must be at the garrison */
-        if (node < 0 || LwDist2(g->center, g_lwNodes[node].x, g_lwNodes[node].y) > LW_RETAKE_NODE * LW_RETAKE_NODE) continue;
+        /* the squad arrives at this node, so it must be at the garrison: within max(60 m, 0.75 x the mean node spacing
+         * sqrt(disc area / nodes)); XL routes are ~184 m apart, vanilla ~24 m (lw113a: an XL post 98 m from its node) */
+        float spacing = g_lwNodeCount > 0 ? sqrtf(3.14159f * g_lwWorld.radius * g_lwWorld.radius / (float)g_lwNodeCount) : 0.0f, gate = 0.75f * spacing > LW_RETAKE_NODE ? 0.75f * spacing : LW_RETAKE_NODE;
+        int node = LwNearestNode(g->center[0], g->center[1]);
+        if (node < 0 || LwDist2(g->center, g_lwNodes[node].x, g_lwNodes[node].y) > gate * gate) continue;
         int pick = -1, bestTier = 3; float best = reach * reach;
         for (int i = 0; i < g_lwWorld.count; i++) /* 2d: the region's own squads first, then a neighbour's, then the nearest */
         {
