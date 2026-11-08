@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "skyeshade.animated-liberator",
+  "name": "AR-23 Liberator Animated",
+  "version": "0.1.0",
+  "description": "A new arsenal weapon with animations of its own: a copy of the AR-23 Liberator whose bolt kicks back on every shot and whose magazine drops out and comes back on a reload (hellforge-data.json and animations/assault_rifle.json: HellForge builds them). Source in src/.",
+  "gameplay": true,
+  "code": { "dll": "animated_liberator.dll", "sdk": 2 }
+}
