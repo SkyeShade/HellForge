@@ -493,7 +493,7 @@ typedef struct LwSquad
     int8_t fight; uint8_t rushed, tells; ULONGLONG retargetAt, tellAt; /* REINFORCE: its fight (g_lwFights index); members sped up (0x7EFFC0); fight target tells; next goal refresh, next tell */
 } LwSquad;
 static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
-static void LwIntentOffline(LwSquad* q); static int LwIntentHold(LwSquad* q, float nx, float ny); static int LwTerritoryGoalOk(const LwSquad* q, int node); static void LwTerritoryTick(void); static void LwIntentTrace(void); static void LwRetakeScan(void); static void LwTestClear(int seq, uint32_t entity); static void LwRetakeWait(int seq, float s); static void LwRetakeUnfit(int seq); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
+static void LwIntentOffline(LwSquad* q); static int LwIntentHold(LwSquad* q, float nx, float ny); static int LwTerritoryGoalOk(const LwSquad* q, int node); static void LwTerritoryTick(void); static void LwIntentTrace(void); static void LwRetakeScan(void); static void LwTestClear(int seq, uint32_t entity); static void LwRetakeWait(int seq, float s); static void LwRetakeUnfit(int seq); static int64_t LwFillMasks(uintptr_t desc, float* budget, char* trace, size_t traceLen); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
 {
@@ -2695,8 +2695,10 @@ static void LwTestGarrisons(int seq)
         uint32_t st = EvpU32(runtime + 0x1B58u * i + 0x1110, 0xFFFFFFFFu), f200 = 0, f20 = 0, f100 = 0;
         SafeRead(l + 0x2AB, &link, 1);
         for (uint32_t p = 0; p < np; p++) { uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), fl = 0; if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x24, &fl, 4)) { f200 += (fl & 0x200) != 0; f20 += (fl & 0x20) != 0; f100 += (fl & 0x100) != 0; } }
-        Note("living world: test command %d: garrison %08X fields: link %u, spawners %u, objectives %u, counted %u, structures %u, points 0x200 %u, 0x20 %u, 0x100 %u", seq, EvpU32(d + 8, 0),
-            link, sp, ob, ce, st, f200, f20, f100);
+        float fb = 0; int64_t fm = LwFillMasks(d, &fb, NULL, 0); int unfit = -1; /* phase-B points no group of this garrison fits (LwFillMasks) */
+        if (fm >= 0) { unfit = 0; for (uint32_t p = 0; p < np; p++) { uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), fl = 0; if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x24, &fl, 4) && !(fl & 0x320) && !(EvpU32(points + 0x58u * gi + 0x28, 0) & (uint32_t)fm)) unfit++; } }
+        Note("living world: test command %d: garrison %08X fields: link %u, spawners %u, objectives %u, counted %u, structures %u, points 0x200 %u, 0x20 %u, 0x100 %u, unfit %d", seq, EvpU32(d + 8, 0),
+            link, sp, ob, ce, st, f200, f20, f100, unfit);
         Note("living world: test command %d: garrison %08X %s%s%s at (%.0f, %.0f)%s%.0f%s: %u points, %u units listed", seq, EvpU32(d + 8, 0), active ? "active" : "inactive",
             g && g->plain ? ", plain" : g && g->plainBase ? ", plain once its spawners and structures are destroyed" : "", g && g->cleared ? ", cleared" : "",
             (double)cx, (double)cy, havePl ? ", " : "", havePl ? (double)sqrtf((cx - pl[0]) * (cx - pl[0]) + (cy - pl[1]) * (cy - pl[1])) : 0.0, havePl ? " m from player 1" : "",
