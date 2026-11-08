@@ -166,6 +166,13 @@ keeps the picture's colours and transparency for widgets that draw it as it is (
 `{"animations": "animations/rifle.json", "unit": "yourname/your_mod/rifle"}`. The file lists the joints that move, the
 clips and the state machine that plays them on the weapon's events ([animations](animations.md)).
 
+### model
+
+`model` builds a unit of your own from a glTF 2.0 file (a `.glb` from Blender) in the mod folder:
+`{"model": "models/carbine.glb", "name": "yourname/your_mod/carbine", "materials": {"Body": "0x7F112ACD09A5E523"}}`. Every
+node becomes a joint, every mesh draws rigid on its node, and node names give LODs and shadow casters
+([models](models.md)).
+
 ### Checks
 
 Everything is checked before anything is written. Every resource the spec names must exist (all missing ones are
@@ -180,8 +187,8 @@ installation's cache, and with `--game-data <game/data> --out <folder>` anywhere
 `scripts/Build-Mod.ps1 <folder> -Install <installation>`.
 
 Examples: `golden-liberator` (a model recoloured gold through its lookup texture), `talon-liberator` (blue effect copies
-and another weapon's sound banks), `cube-gun` (an OBJ model), `animated-liberator` (animations), `blue-sentry` (a
-sentry) and `stratagem-compendium` (icons).
+and another weapon's sound banks), `cube-gun` (an OBJ model), `model-carbine` (a glTF model), `animated-liberator`
+(animations), `blue-sentry` (a sentry) and `stratagem-compendium` (icons).
 
 ## Native edits in the manifest
 

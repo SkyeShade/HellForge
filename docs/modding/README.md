@@ -94,6 +94,7 @@ The example mods:
 | `talon-liberator` | a weapon with a projectile of its own, recoloured effects and another weapon's sounds |
 | `cube-gun` | a weapon with a model of your own, from an OBJ file |
 | `animated-liberator` | a weapon with animations of its own: a bolt that kicks back and a magazine change |
+| `model-carbine` | a weapon whose whole unit is built from a glTF model: joints, meshes and LODs |
 | `blue-sentry` | a new sentry stratagem with a recoloured model |
 | `stratagem-compendium` | eleven stratagems, one file per family: Pelicans with turrets and a behaviour, a sentry, barrages, expendables, a silo with a countdown ability |
 | `stratagem-categories` | stratagem selection headings and their order ([how headings work](../stratagem-categories.md)) |

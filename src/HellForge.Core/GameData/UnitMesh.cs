@@ -383,7 +383,7 @@ public static class UnitMesh
 
     // R10G10B10A2: R, G the octahedral normal; B the tangent's angle about it from a reference tangent (diamond encoded);
     // A = 3 when the bitangent is flipped.
-    static uint PackNormal(double[] normal, double[] tangent, int sign)
+    internal static uint PackNormal(double[] normal, double[] tangent, int sign)
     {
         var n = Normalize(normal);
         var l1 = Math.Abs(n[0]) + Math.Abs(n[1]) + Math.Abs(n[2]);
@@ -404,7 +404,7 @@ public static class UnitMesh
     }
 
     // Per-vertex tangents and handedness from the UV derivatives of their triangles.
-    static List<(double[] T, int Sign)> Tangents(Mesh mesh)
+    internal static List<(double[] T, int Sign)> Tangents(Mesh mesh)
     {
         int count = mesh.Positions.Count;
         var t = new double[count][];

@@ -39,6 +39,10 @@ public sealed record IconResource(string Where, string Name, string Png, string 
 // A unit's own animations from a JSON file in the mod folder (AnimationSet): its bones, clips and state machine, built for
 // the unit copy named Unit in the same patch, which then uses them.
 public sealed record AnimationsResource(string Where, string File, string Unit) : DataResource(Where);
+// A unit of the mod's own from a glTF model (ModelUnit): materials by the model's material names, LOD sizes (null: the
+// weapons' own), and optionally a game unit whose physics it takes under its name and one whose animations it plays.
+public sealed record ModelResource(string Where, string Name, string File, IReadOnlyDictionary<string, ulong> Materials, IReadOnlyList<double>? LodSizes,
+    ulong? Physics, ulong? AnimationsFrom) : DataResource(Where);
 public sealed record Replacement(ulong From, ulong To, IReadOnlyList<int>? At);
 // Warm colour curve keys recoloured by a preset or towards a colour; Keys, if given, is how many keys must change.
 public sealed record CurveEdit(string? Preset, double[]? Colour, int? Keys);
@@ -147,13 +151,14 @@ public static partial class DataSpecs
     static DataResource Resource(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{at}: a resource is an object.");
-        var kinds = new[] { "copy", "include", "icon", "animations" }.Where(k => e.TryGetProperty(k, out _)).ToList();
-        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon or animations.");
+        var kinds = new[] { "copy", "include", "icon", "animations", "model" }.Where(k => e.TryGetProperty(k, out _)).ToList();
+        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon, animations or model.");
         switch (kinds[0])
         {
             case "include": return ReadInclude(e, at);
             case "icon": return ReadIcon(e, at, folder, inputs);
             case "animations": return ReadAnimations(e, at, folder, inputs);
+            case "model": return ReadModel(e, at, folder, inputs);
         }
         return ReadCopy(e, at, folder, inputs);
     }
@@ -191,6 +196,42 @@ public static partial class DataSpecs
         if (prepare is not ("raw" or "auto" or "image")) throw new InvalidDataException($"{at}: prepare is raw, auto or image.");
         inputs.Add(png);
         return new IconResource(at, Name(e, at), png, prepare);
+    }
+
+    static ModelResource ReadModel(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
+        Fields(e, at, "model", "name", "materials", "lods", "physics", "animationsFrom");
+        var file = Text(e, "model", at).Replace('\\', '/');
+        if (!InModFolder(file) || !(file.EndsWith(".glb", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException($"{at}: model is a .glb or .gltf file in the mod folder, such as \"models/rifle.glb\".");
+        if (folder != null && !File.Exists(Path.Combine(folder, file))) throw new InvalidDataException($"{at}: {file} is missing.");
+        inputs.Add(file);
+        if (folder != null) foreach (var buffer in ModelBuffers(folder, file, at)) inputs.Add(buffer);
+        var materials = Object(Property(e, "materials", at), $"{at}.materials").ToDictionary(m => m.Name, m => Id(m.Value, $"{at}.materials.{m.Name}"));
+        if (materials.Count == 0) throw new InvalidDataException($"{at}: materials names a material resource for each of the model's materials.");
+        var lods = e.TryGetProperty("lods", out _) ? Items(e, "lods", at).Select(v => v.ValueKind == JsonValueKind.Number && v.GetDouble() is > 0 and <= 100 ? v.GetDouble()
+            : throw new InvalidDataException($"{at}: lods are the share of the screen at which each LOD starts, such as [1, 0.5, 0.25].")).ToList() : null;
+        ulong? physics = e.TryGetProperty("physics", out var p) ? Id(p, $"{at}.physics") : null;
+        ulong? animations = e.TryGetProperty("animationsFrom", out var a) ? Id(a, $"{at}.animationsFrom") : null;
+        return new ModelResource(at, Name(e, at), file, materials, lods, physics, animations);
+    }
+
+    // A path in the mod folder: relative, without . or .. parts.
+    internal static bool InModFolder(string path) => !Path.IsPathRooted(path) && !path.Split('/').Any(part => part is "" or "." or "..");
+
+    // A .gltf file's buffer files, as mod-folder paths (they count toward the spec like the model).
+    internal static List<string> ModelBuffers(string folder, string file, string at)
+    {
+        if (!file.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase)) return [];
+        var dir = Path.GetDirectoryName(file)?.Replace('\\', '/') ?? "";
+        var list = new List<string>();
+        foreach (var uri in Gltf.ExternalFiles(File.ReadAllBytes(Path.Combine(folder, file))))
+        {
+            var path = (dir.Length > 0 ? dir + "/" : "") + uri.Replace('\\', '/');
+            if (!InModFolder(path) || !File.Exists(Path.Combine(folder, path))) throw new InvalidDataException($"{at}: the model's buffer {uri} is not a file beside it in the mod folder.");
+            list.Add(path);
+        }
+        return list;
     }
 
     // A copy, its edits read in the spec's order.

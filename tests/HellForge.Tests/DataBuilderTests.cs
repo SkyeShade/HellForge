@@ -165,7 +165,7 @@ static class DataBuilderTests
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"test/mod/unit","colour":[1,1,1]}]}""", "unknown field colour");
             Refused("""{"archives":["NOTHEX"],"resources":[""" + copy + "]}", "16 lowercase hex");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"unit"}]}""", "the mod's own resource path");
-            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include, icon or animations");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include, icon, animations or model");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"../icon.png","name":"test/mod/icon"}]}""", "a .png file in the mod folder");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"missing.png","name":"test/mod/icon"}]}""", "missing.png is missing");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"particles","copy":"0x1","name":"test/mod/fx","curves":{"preset":"pink"}}]}""", "warm-to-blue");
@@ -614,6 +614,110 @@ static class DataBuilderTests
             try { ModDataBuilder.Build(Spec(copy + "," + animations), mod, gameReader, output + "3"); throw new Exception("Built a bone the unit lacks."); }
             catch (InvalidDataException error) { check(error.Message.Contains("animations/gun.json") && error.Message.Contains("stock"), "The mistake is not named: " + error.Message); }
         });
+
+        test("A mod's own model: glTF nodes become joints turned Z-up, meshes rigid on their nodes, LODs and shadow casters by name", () =>
+        {
+            var nodes = Gltf.Read(Glb([
+                new("root", -1, [0, 0, 0], []),
+                new("bolt", 0, [0, 0.3, 0.1], []),
+                new("body", 0, [0, 0, 0], [("Body", [-0.02, -0.2, 0], [0.02, 0.3, 0.1]), ("Grip", [-0.01, -0.1, -0.08], [0.01, -0.05, 0])]),
+                new("handle", 1, [0, 0.3, 0.1], [("Body", [0.02, 0.28, 0.09], [0.03, 0.31, 0.11])]),
+                new("body_lod1", 0, [0, 0, 0], [("Body", [-0.02, -0.2, -0.08], [0.02, 0.3, 0.1])]),
+            ]), _ => throw new Exception("no external buffers"));
+            check(nodes.Select(n => n.Name).SequenceEqual(["root", "bolt", "handle", "body", "body_lod1"]) && nodes[2].Parent == 1, "The node tree is not read parents first: " + string.Join(", ", nodes.Select(n => $"{n.Name}<{n.Parent}")));
+            var model = ModelUnit.Build(nodes, new Dictionary<string, ulong> { ["Body"] = 0x1111, ["Grip"] = 0x2222 }, null);
+            check(model.Joints[0].Name == ModelUnit.Root && model.Joints.Select(j => j.Name).Skip(1).SequenceEqual(nodes.Select(n => n.Name)) && model.Joints[2].Parent == 1,
+                "Every node is not a joint under the root.");
+            check(model.Joints[2].Translation.Zip(new[] { 0, 0.3, 0.1 }).All(p => Math.Abs(p.First - p.Second) < 1e-6), "A node's position is not turned to Z-up: " + string.Join(", ", model.Joints[2].Translation));
+            check(model.Meshes.Select(m => (m.Name, m.Lod, m.Shadow)).SequenceEqual([("lod0", 0, false), ("lod0_shadow", 0, true), ("lod1", 1, false)]),
+                "LODs and shadow casters are not named: " + string.Join(", ", model.Meshes.Select(m => m.Name)));
+            var lod0 = model.Meshes[0];
+            var body = lod0.Parts.Single(p => p.Material == "Body");
+            check(body.Vertices.Select(v => v.Joint).Distinct().Order().SequenceEqual([3, 4]) && lod0.Parts.Single(p => p.Material == "Grip").Vertices.All(v => v.Joint == 4),
+                "Vertices are not rigid on their own nodes (the handle on its node under the bolt).");
+            check(body.Vertices.Where(v => v.Joint == 3).All(v => v.Position[0] >= 0.02 - 1e-6 && Math.Abs(v.Position[1] - 0.295) < 0.016 && Math.Abs(v.Position[2] - 0.1) < 0.011),
+                "The handle's vertices are not in the unit's space (Z-up, under the bolt).");
+            check(model.Materials.Count == 2 && model.LodSizes.SequenceEqual(UnitWriter.WeaponLodSizes[..2]), "The materials or LOD sizes are not the model's.");
+
+            var (main, gpu) = UnitWriter.Write(model);
+            uint U(int at) => BinaryPrimitives.ReadUInt32LittleEndian(main.AsSpan(at));
+            check(U(0x28) == 2 && U(0x2C) == 0xA4CD36 && U(0x80) == 0 && U(0x3C) == 0x80 && U(0x38) == 0x90, "The header is not a weapon unit's.");
+            var joints = (int)U(0x34);
+            check(U(joints) == 6 && U(joints + 16 + 132 * 6) == EngineHash.Id32(ModelUnit.Root) && U((int)U(0x64)) == 3 && U((int)U(0x60)) == 3 && U((int)U(0x5C)) == 2,
+                "The unit does not hold its 6 joints, 3 meshes and 2 vertex layouts.");
+            // the handle joint's world matrix (stored transposed) is its position; its inverse bind in mesh 0's skeleton map undoes it
+            var handleWorld = joints + 16 + 64 * 6 + 64 * 3;
+            check(Math.Abs(BitConverter.ToSingle(main, handleWorld + 52) - 0.3) < 1e-6 && Math.Abs(BitConverter.ToSingle(main, handleWorld + 56) - 0.1) < 1e-6,
+                "The handle's world position is not stored.");
+            var lods = (int)U(0x30);
+            check(U(lods) == 1 && U(lods + 8) == 3 && U(lods + 24) == 2, "The LOD group does not list the model's 2 LODs.");
+            var layout = (int)U(0x5C) + (int)U((int)U(0x5C) + 4);
+            check(U(layout) == 0x0AFFFFFF && U(layout + 356) == 36 && U(layout + 420) == U(layout + 352) * 36 && gpu.Length >= U(layout + 428) + U(layout + 424),
+                "The render layout's vertices are not 36 bytes each or overrun the GPU part.");
+
+            foreach (var (bad, why) in new (Func<UnitWriter.Model>, string)[] {
+                (() => ModelUnit.Build(nodes, new Dictionary<string, ulong> { ["Body"] = 1 }, null), "no resource for the model's Grip"),
+                (() => ModelUnit.Build(nodes, new Dictionary<string, ulong> { ["Body"] = 1, ["Grip"] = 2 }, [0.5, 0.9]), "smaller than the one before"),
+                (() => ModelUnit.Build([.. nodes.Where(n => n.Name != "body" && n.Name != "handle")], new Dictionary<string, ulong> { ["Body"] = 1 }, null), "no meshes for LOD 0") })
+            {
+                try { UnitWriter.Write(bad()); throw new Exception("Accepted: " + why); }
+                catch (InvalidDataException error) { check(error.Message.Contains(why), "Refused for another reason: " + error.Message); }
+            }
+            reject(() => Gltf.Read("{\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"mode\":1}]}]}"u8.ToArray(), _ => []));
+
+            // a game unit's animations fit only joints at the animated unit's rest pose: its clips hold whole transforms
+            var baseUnit = UnitWriter.Write(model with { Joints = [.. model.Joints.Select(j => j.Name == "bolt" ? j with { Translation = [0, 0.25, 0.1] } : j)] }).Main;
+            var bones = new byte[8 + 4 * 3];
+            BinaryPrimitives.WriteUInt32LittleEndian(bones, 3);
+            foreach (var (name, k) in new[] { ("StingrayEntityRoot", 0), ("FbxAxisSystem_ConvertNode", 1), ("bolt", 2) }) BinaryPrimitives.WriteUInt32LittleEndian(bones.AsSpan(8 + 4 * k), EngineHash.Id32(name));
+            ModelUnit.CheckAnimations(model, main, bones);
+            try { ModelUnit.CheckAnimations(model, baseUnit, bones); throw new Exception("Accepted a bolt at another rest pose."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("joint bolt's rest pose"), "Refused for another reason: " + error.Message); }
+        });
+
+        test("A data spec's model builds a unit of the mod's own, with the physics of the game unit it names", () =>
+        {
+            var game = Path.Combine(root, "model-game");
+            WriteGameData(game);
+            var mod = Directory.CreateDirectory(Path.Combine(root, "model-mod")).FullName;
+            Directory.CreateDirectory(Path.Combine(mod, "models"));
+            File.WriteAllBytes(Path.Combine(mod, "models", "gun.glb"), Glb([new("body", -1, [0, 0, 0], [("Body", [-0.02, -0.2, 0], [0.02, 0.3, 0.1])])]));
+            DataSpec Spec(string resource)
+            {
+                File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{{resource}}]}]}""");
+                return DataSpecs.Load(mod)!;
+            }
+            const string model = """{"model":"models/gun.glb","name":"test/mod/gun","materials":{"Body":"0x1111"},"physics":"0x3333"}""";
+            var spec = Spec(model);
+            check(spec.Inputs.SequenceEqual(["models/gun.glb"]) && spec.Patches[0].Resources[0] is ModelResource { Name: "test/mod/gun", Physics: 0x3333, LodSizes: null } m && m.Materials["Body"] == 0x1111,
+                "The model and its file are not part of the spec.");
+            check(DataSpecs.Unchecked(spec) == null, "A model is not content HellForge checks itself.");
+            foreach (var (bad, why) in new[] { ("""{"model":"../gun.glb","name":"test/mod/gun","materials":{"Body":"0x1"}}""", "a .glb or .gltf file in the mod folder"),
+                ("""{"model":"models/none.glb","name":"test/mod/gun","materials":{"Body":"0x1"}}""", "is missing"),
+                ("""{"model":"models/gun.glb","name":"test/mod/gun","materials":{}}""", "names a material resource"),
+                ("""{"model":"models/gun.glb","name":"test/mod/gun","materials":{"Body":"0x1"},"lods":[0]}""", "share of the screen"),
+                ("""{"model":"models/gun.glb","name":"test/mod/gun","materials":{"Body":"0x1"},"colour":1}""", "unknown field colour") })
+            {
+                try { Spec(bad); throw new Exception("Accepted: " + bad); }
+                catch (InvalidDataException error) { check(error.Message.Contains(why), "Refused for another reason: " + error.Message); }
+            }
+
+            using var gameReader = new GameDataReader(game);
+            var output = Path.Combine(root, "model-out");
+            ModDataBuilder.Build(spec, mod, gameReader, output);
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0.gpu_resources")), []);
+            var name = EngineHash.Murmur64A("test/mod/gun"u8);
+            var unit = built[new(ResourceTypes.Unit, name)];
+            check(BitConverter.ToUInt32(unit.Main, 0x2C) == 0xA4CD36 && unit.Gpu.Length > 0 && BitConverter.ToUInt64(unit.Main, (int)BitConverter.ToUInt32(unit.Main, 0x70) + 8) == 0x1111,
+                "The model's unit is not written with its material.");
+            check(BinaryPrimitives.ReadUInt64LittleEndian(built[new(ResourceTypes.Physics, name)].Main.AsSpan(0x08)) == name, "The named physics is not the model's.");
+
+            try { ModDataBuilder.Build(Spec(model.Replace("\"Body\":\"0x1111\"", "\"Grip\":\"0x1111\"")), mod, gameReader, output + "2"); throw new Exception("Built without the material."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("models/gun.glb") && error.Message.Contains("Body"), "The mistake is not named: " + error.Message); }
+            try { ModDataBuilder.Build(Spec(model.Replace("0x3333", "0x4444")), mod, gameReader, output + "3"); throw new Exception("Built without physics."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("has no physics"), "Refused for another reason: " + error.Message); }
+        });
     }
 
     // The synthetic game data: archive 1111111111111111 with a unit naming a material, the material naming a colour
@@ -629,6 +733,94 @@ static class DataBuilderTests
         foreach (var at in new[] { 0x08, 0x38, 0x40 }) BinaryPrimitives.WriteUInt64LittleEndian(main.AsSpan(at), unit);
         BinaryPrimitives.WriteUInt64LittleEndian(main.AsSpan(0x50), unit); // a body's own data that happens to hold the same bits
         return main;
+    }
+
+    // A glTF 2.0 binary as Blender exports one: nodes at positions given in the unit's frame (+Y forward, +Z up), each
+    // with boxes (material, low corner, high corner, in the unit's frame) as its mesh.
+    internal sealed record GlbNode(string Name, int Parent, double[] At, (string Material, double[] Lo, double[] Hi)[] Boxes);
+
+    internal static byte[] Glb(IReadOnlyList<GlbNode> nodes)
+    {
+        static double[] Gl(double[] p) => [p[0], p[2], -p[1]];
+        var bin = new MemoryStream();
+        var views = new List<object>();
+        var accessors = new List<object>();
+        int Add(byte[] data, int count, string type, int component)
+        {
+            while (bin.Length % 4 != 0) bin.WriteByte(0);
+            views.Add(new { buffer = 0, byteOffset = bin.Length, byteLength = data.Length });
+            bin.Write(data);
+            accessors.Add(new { bufferView = views.Count - 1, componentType = component, count, type });
+            return accessors.Count - 1;
+        }
+        static byte[] Floats(IEnumerable<double> values) => values.SelectMany(v => BitConverter.GetBytes((float)v)).ToArray();
+        var materials = nodes.SelectMany(n => n.Boxes.Select(b => b.Material)).Distinct().ToList();
+        var meshes = new List<object>();
+        var glNodes = new List<Dictionary<string, object>>();
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            var n = nodes[i];
+            var parentAt = n.Parent < 0 ? [0, 0, 0] : nodes[n.Parent].At;
+            var node = new Dictionary<string, object> { ["name"] = n.Name, ["translation"] = Gl([n.At[0] - parentAt[0], n.At[1] - parentAt[1], n.At[2] - parentAt[2]]) };
+            var children = Enumerable.Range(0, nodes.Count).Where(k => nodes[k].Parent == i).ToArray();
+            if (children.Length > 0) node["children"] = children;
+            if (n.Boxes.Length > 0)
+            {
+                var primitives = n.Boxes.GroupBy(b => b.Material).Select(group =>
+                {
+                    var (p, nm, uv, ix) = Boxes(group.ToList(), n.At);
+                    return new
+                    {
+                        attributes = new Dictionary<string, int> { ["POSITION"] = Add(Floats(p.SelectMany(Gl)), p.Count, "VEC3", 5126), ["NORMAL"] = Add(Floats(nm.SelectMany(Gl)), nm.Count, "VEC3", 5126),
+                            ["TEXCOORD_0"] = Add(Floats(uv.SelectMany(v => v)), uv.Count, "VEC2", 5126) },
+                        indices = Add(ix.SelectMany(v => BitConverter.GetBytes((ushort)v)).ToArray(), ix.Count, "SCALAR", 5123),
+                        material = materials.IndexOf(group.Key),
+                    };
+                }).ToList();
+                meshes.Add(new { name = n.Name, primitives });
+                node["mesh"] = meshes.Count - 1;
+            }
+            glNodes.Add(node);
+        }
+        while (bin.Length % 4 != 0) bin.WriteByte(0);
+        var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            asset = new { version = "2.0" }, scene = 0, scenes = new[] { new { nodes = Enumerable.Range(0, nodes.Count).Where(k => nodes[k].Parent < 0).ToArray() } },
+            nodes = glNodes, meshes, materials = materials.Select(m => new { name = m }), accessors, bufferViews = views, buffers = new[] { new { byteLength = bin.Length } },
+        });
+        var pad = (4 - json.Length % 4) % 4;
+        var file = new MemoryStream();
+        void U(uint v) => file.Write(BitConverter.GetBytes(v));
+        U(0x46546C67); U(2); U((uint)(12 + 8 + json.Length + pad + 8 + bin.Length));
+        U((uint)(json.Length + pad)); U(0x4E4F534A); file.Write(json); for (var k = 0; k < pad; k++) file.WriteByte(0x20);
+        U((uint)bin.Length); U(0x004E4942); file.Write(bin.ToArray());
+        return file.ToArray();
+    }
+
+    // Boxes as faces of 4 corners each (two triangles), relative to the node.
+    static (List<double[]> P, List<double[]> N, List<double[]> Uv, List<int> I) Boxes(List<(string Material, double[] Lo, double[] Hi)> boxes, double[] at)
+    {
+        var (p, n, uv, ix) = (new List<double[]>(), new List<double[]>(), new List<double[]>(), new List<int>());
+        foreach (var (_, lo, hi) in boxes)
+            for (var axis = 0; axis < 3; axis++)
+                foreach (var side in new[] { -1, 1 })
+                {
+                    int a = (axis + 1) % 3, b = (axis + 2) % 3;
+                    var first = p.Count;
+                    foreach (var (s, t) in side > 0 ? new[] { (0, 0), (1, 0), (1, 1), (0, 1) } : [(0, 0), (0, 1), (1, 1), (1, 0)])
+                    {
+                        var c = new double[3];
+                        c[axis] = side > 0 ? hi[axis] : lo[axis];
+                        c[a] = s == 0 ? lo[a] : hi[a];
+                        c[b] = t == 0 ? lo[b] : hi[b];
+                        p.Add([c[0] - at[0], c[1] - at[1], c[2] - at[2]]);
+                        var normal = new double[3]; normal[axis] = side;
+                        n.Add(normal);
+                        uv.Add([s, t]);
+                    }
+                    ix.AddRange([first, first + 1, first + 2, first, first + 2, first + 3]);
+                }
+        return (p, n, uv, ix);
     }
 
     // A unit with two joints at +0x34 as the game lays them out: bolt (no rotation, at 0, 0.125, 0.0625) and attach_mag
