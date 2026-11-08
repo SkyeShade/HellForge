@@ -274,79 +274,76 @@ HfRef ref = hf->register_entity(mod, &pelican);   /* registers the turret too; 0
 
 ## Weapons
 
-`add_weapon` (SDK 2) puts a new weapon in the arsenal: a copy of an existing one with its own loadout id, model, name
-and, if you want, stats. `examples/mods/golden-liberator` is the whole mod:
+`add_weapon` puts a new weapon in the arsenal. Since SDK 17 it is standalone: it copies no other weapon. You declare
+what makes it yours, and HellForge builds the rest from its class.
 
 ```c
-HF_MOD_EXPORT int hellforge_mod_init(const HfApi* api, HfMod* mod)
-{
-    if (api->version < 2) return 1;
-    HfWeapon gold = {sizeof gold};
-    gold.base = HF_ITEM_AR23_LIBERATOR;
-    gold.unit = "skyeshade/golden_liberator/assault_rifle_gold";
-    gold.designation = "AR-23G";
-    gold.name = "Liberator Gold";
-    gold.description = "The SEAF standard assault rifle, plated in gold for those who serve Liberty with distinction. Performs "
-        "exactly like the Liberator; looks considerably more democratic.";
-    uint32_t id = api->add_weapon(mod, &gold);
-    api->log(mod, id ? "AR-23G Liberator Gold is loadout item %08x" : "the weapon was not added", id);
-    return id ? 0 : 1;
-}
+HfWeapon rifle = {sizeof rifle};
+rifle.weapon_class = HF_WEAPON_CLASS_PRIMARY;
+rifle.unit = "my_name/my_mod/rifle";
+rifle.package = "my_name/my_mod/rifle";
+rifle.designation = "BR-76";
+rifle.name = "Adaptive";
+rifle.reload_ability = 2785; /* the Helldiver's battle-rifle reload */
+rifle.projectile = 135;
+rifle.capacity = 20;
+uint32_t id = api->add_weapon(mod, &rifle);
 ```
 
-`HfWeapon gold = {sizeof gold};` zeroes the struct and sets its size, so fields added in later SDKs read as unset.
-`base` is the vanilla weapon it copies, by loadout id (`HF_ITEM_...`). `unit` is its model, which the mod's data
-provides; here a data spec builds a gold copy of the Liberator's model ([data mods](data.md#data-specs)).
+`HfWeapon rifle = {sizeof rifle};` zeroes the struct and sets its size, so fields added in later SDKs read as unset.
+
+| Field | Required | What it is |
+| --- | --- | --- |
+| `weapon_class` | yes | `HF_WEAPON_CLASS_PRIMARY`, the only class so far |
+| `unit` | yes | its model, from your data; also its identity |
+| `package` | yes | the resource package that loads its units and textures ([data](data.md)) |
+| `name` | yes | its name; `designation` and `description` are optional |
+| `reload_ability` | yes | the Helldiver's reload it plays, a vanilla ability id |
+| `projectile` | yes | what it fires: a vanilla type, or one `add_projectile` returned |
+| `capacity`, `rounds_per_minute` | no | 0 takes the class's most common value |
+| `audio_package`, `icon`, `magazine_unit` | no | its sound banks' package, armory icon and magazine model |
+
+`base` must be 0, and `sound_from`, `beam` and `arc` too. A weapon from an older SDK, or one that names a base, is
+refused with a line in the mod's log.
 
 ### Identity
 
 The weapon's entity is the hash of `unit`, and its loadout id is the top 32 bits of that, so every player's game agrees
 on it. Prefix `unit` with your name and mod.
 
-### What it shares
+### What it is built from
 
-The weapon has everything its base has (handling, magazine, ammunition, customisation, sounds) except its loadout entry,
-its model, its text and the components it owns. `own_components` lists up to 8 components to own
-(`{"WeaponMagazineComponentData", NULL}`); after `HF_EVENT_ENTITIES_READY`,
-`hf_record(mod, hf->weapon_entity(id), HfWeaponMagazine)` is the weapon's own record.
+The weapon gets its class's component list and a record of its own in each table. Each field comes from one source:
 
-`own_all = 1` gives the weapon its own copy of every record its base has, as it does for an entity
-([what a copy shares](#what-a-copy-shares)). An edit of the base never changes the weapon, and the weapon's edits never
-change the base. Older HellForge versions ignore it. The weapon's log names any component HellForge couldn't copy,
-which it still shares.
+1. **The class.** A field every vanilla weapon of the class shares takes that value: pickup, physics, animation graph,
+   network settings.
+2. **Your declaration**, or `hf_set` on its records, which are all its own.
+3. **Otherwise:** an identity field (model, package, sound, effect, text, node, attachment) stays 0. A handling field
+   (recoil, spread, fire mode, holster offsets) takes the value most weapons of the class have.
+
+HellForge reads the class from the game's loaded data, before stats mods change it. If the class's weapons differ in a
+byte that no class field names, the game build is not the one HellForge knows, and the weapon is refused.
+
+Set sounds, muzzle flash, casings and recoil with `hf_set` in an `HF_EVENT_ENTITIES_READY` listener, or as deferred
+edits in `hellforge_mod_init`. The field names are in `hellforge_components.h`.
 
 ### Text
 
-Text is one language for every game language. The armory shows `<designation> <NAME>`. Without a `name`, the weapon
-keeps its base's text.
-
-### Sounds
-
-`sound_from` (a vanilla weapon's loadout id, SDK 3) gives the weapon that weapon's firing sounds. That weapon's sound
-banks must load with yours, so your data includes them (`examples/mods/talon-liberator`).
+Text is one language for every game language. The armory shows `<designation> <NAME>`.
 
 ### Where it shows
 
-The weapon appears in the armory and in the player's inventory (the local backend adds it for the session). A session
-in which a mod adds a weapon (or changes component stats) writes `arsenal.tsv` into its log folder: every armory item's loadout id, type, entity,
-designation and name, for choosing a base.
+The weapon appears in the armory's primary list and in the player's inventory: the local backend adds its own
+catalogue item for the session. It has no premium lock; a premium list your mod declares still applies.
 
 ### Mastery
 
-Every mod weapon is a whole copy of its base with its own attachments and its own mastery: level, XP and unlocks are
-the weapon's, not its base's. It starts where a vanilla weapon starts, at level 0 and holding no attachments, whatever
-the base has reached. Missions level it up and attachments are bought on its page, at its base's prices and level
-requirements.
-
-You write nothing for this: the copy gets it from its base. A base without a mastery track gives the copy none either,
-and the copy holds the copies of what the player holds of the base's attachments.
+The weapon has a mastery package of its own, made by the backend. Its levels follow the curve every vanilla weapon
+shares, and its rewards are your attachments. Level, XP and unlocks are the weapon's.
 
 The player's progress with a mod weapon is saved apart from vanilla progress (`modPackageProgress` in the profile).
 Removing the mod leaves their vanilla data as it was, and adding it back brings the level and unlocks back. The ids
-come from the weapon's `unit`, so changing a weapon's unit starts its mastery over. The launcher's Weapon levels card
-lists the mod weapons of the newest session.
-
-`cube-gun` gives a weapon a model of your own, built from an OBJ file.
+come from the weapon's `unit`, so changing a weapon's unit starts its mastery over.
 
 ### Attachments of your own
 

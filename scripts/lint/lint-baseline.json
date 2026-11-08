@@ -139,7 +139,6 @@
     {"unit": "mod-loader", "file": "perks.c", "rule": "R16", "function": "", "value": 11},
     {"unit": "mod-loader", "file": "projectiles.c", "rule": "R16", "function": "", "value": 26},
     {"unit": "mod-loader", "file": "refs.c", "rule": "R16", "function": "", "value": 12},
-    {"unit": "mod-loader", "file": "registry.c", "rule": "R10", "function": "ApiAddWeapon", "value": 16},
     {"unit": "mod-loader", "file": "registry.c", "rule": "R16", "function": "", "value": 53},
     {"unit": "mod-loader", "file": "rounds.c", "rule": "R16", "function": "", "value": 19},
     {"unit": "mod-loader", "file": "shots.c", "rule": "R16", "function": "", "value": 28},

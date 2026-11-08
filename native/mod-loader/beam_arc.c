@@ -116,8 +116,6 @@ static int BeamArcUsable(const RowKind* k, uint32_t type)
 static int BeamArcKnown(const RowKind* k, uint32_t type) { return type < k->vanilla + k->count; }
 
 _Static_assert(REG_BEAM_VANILLA == BEAM_VANILLA && REG_ARC_VANILLA == ARC_VANILLA, "the weapon registry's check of a record");
-static int BeamTypeKnown(uint32_t type) { return BeamArcKnown(&g_beams, type); }
-static int ArcTypeKnown(uint32_t type) { return BeamArcKnown(&g_arcs, type); }
 static int BeamTypeUsable(uint32_t type) { return BeamArcUsable(&g_beams, type); }
 static int ArcTypeUsable(uint32_t type) { return BeamArcUsable(&g_arcs, type); }
 

@@ -132,6 +132,7 @@ static const SlotCount kSlots[] = {
     {291, 8}, {293, 4}, {300, 36}, {301, 16}, {308, 4}, {313, 10}, {314, 12}, {317, 6}, {320, 20}, {323, 20}};
 
 #include "component_sizes.h" /* kComponentShapes: every table's slots, records and record size (ComponentStride) */
+#include "weapon_classes.h"  /* the standalone weapons' classes (standalone.c) */
 
 typedef struct Weapon
 {
@@ -158,7 +159,18 @@ typedef struct Weapon
     char title[96];      /* add_entity: its title (HfEntity.title), or "" */
     char designation[64]; /* add_entity: its designation (HfEntity.designation), or "" */
     int tomb;            /* left by a mod a live change took out (live_content.c LiveTomb(LC_WEAPON, i)) */
+    int standalone;      /* copies no weapon: built from its class and declaration (standalone.c) */
+    uint64_t package, audioPackage, icon, magazineUnit; /* its declaration's resources (HfWeapon, SDK 17) */
+    uint32_t reloadAbility, capacity, mastery;
+    float roundsPerMinute;
 } Weapon;
+
+typedef struct WeaponLoad WeaponLoad;
+typedef struct NetworkConfig NetworkConfig;
+typedef struct NetworkTypeArrays NetworkTypeArrays;
+static int RegisterStandalone(WeaponLoad* L, Weapon* w); /* standalone.c */
+static int AddStandaloneNetworkType(const NetworkConfig* n, const NetworkTypeArrays* to, Weapon* w, uint32_t index, uint32_t lastKey);
+static void ClassRows(uint32_t* rows);
 
 /* Mod text by id, answered by the text lookup detour: four for each weapon or entity (name, upper-case name, description,
  * designation), three for each stratagem (stratagems.c asserts its STR_MAX_NEW fits) and two for the difficulty. Weapons
@@ -180,7 +192,7 @@ static int g_textHooked;
 static volatile LONG g_networkTypesAdded; /* 0, 1 being added, 2 done */
 /* The network types RegisterNetworkTypes added, as the configuration numbered them, with the vanilla type each copies
  * and the two entities (netapply.c gives each its base's case in the network apply switch). */
-typedef struct NetworkType { uint32_t index, base; uint64_t entity, baseEntity; const char* name; HfMod* mod; } NetworkType;
+typedef struct NetworkType { uint32_t index, base; uint64_t entity, baseEntity; const char* name; HfMod* mod; int standalone; } NetworkType;
 static NetworkType* g_networkTypes; /* grown as types are added (stable_array.c: netapply.c reads them) */
 static StableArray g_networkTypeStore = {NULL, sizeof(NetworkType), REG_WEAPON_CEILING, 0};
 static uint32_t g_networkTypeCount, g_networkVanillaTypes;
@@ -260,7 +272,7 @@ static int g_registryHooked;
 static int g_registryActive; /* the hooks are in: weapons get added when the entity data loads */
 static int g_armoryReplaced; /* HellForge's armory builder runs instead of the game's (table 29 may grow) */
 static int ProjectileUsable(uint32_t type); /* projectiles.c */
-static int BeamTypeKnown(uint32_t type), ArcTypeKnown(uint32_t type), BeamTypeUsable(uint32_t type), ArcTypeUsable(uint32_t type); /* beam_arc.c */
+static int BeamTypeUsable(uint32_t type), ArcTypeUsable(uint32_t type); /* beam_arc.c */
 static int BehaviourUsable(uint32_t id);    /* behaviours.c */
 static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64_t copy); /* registry_load.c: unit copies */
 static uint32_t GrownSlots(uint32_t component); /* table_growth.c: a table grown this session */
@@ -392,19 +404,30 @@ static const char* JsonText(const char* text, char* out, size_t size)
     return out;
 }
 
+/* One weapon's entry of registered-items.json (snprintf's result): a standalone weapon's class and mastery package, or a
+ * copy's base. */
+static int WeaponItemText(const Weapon* w, int listed, char* text, int size)
+{
+    char mod[6 * 80 + 1], name[6 * 192 + 1];
+    JsonText(w->mod->id, mod, sizeof mod);
+    JsonText(w->name, name, sizeof name);
+    if (w->standalone)
+        return snprintf(text, size, "%s{\"mixId\":%u,\"standalone\":true,\"class\":\"primary\",\"mod\":\"%s\",\"unit\":\"%s\",\"package\":%u}",
+            listed ? "," : "", w->id, mod, name, w->mastery);
+    return snprintf(text, size, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"unit\":\"%s\"}", listed ? "," : "", w->id, w->base, mod, name);
+}
+
 /* registered-items.json's text into text (size bytes); its length. Complete only when it is below size - REG_ITEM_ROOM. */
 static int AttachmentItems(char* text, int n, int size); /* attachments.c */
 static int RegisteredItemsText(char* text, int size)
 {
-    char mod[6 * 80 + 1], name[6 * 192 + 1];
     int n = snprintf(text, size, "{\"format\":1,");
     if (g_gameItems != 0) n += snprintf(text + n, size - n, "\"capacity\":{\"items\":%u,\"packages\":%u},", g_gameItems, g_gamePackages);
     n += snprintf(text + n, size - n, "\"items\":[");
     int listed = 0;
     for (int i = 0; i < g_weaponCount && n < size - REG_ITEM_ROOM; i++)
         if (!g_weapons[i].plain && g_weapons[i].state != 2 && g_weapons[i].state != -1 && !LiveTomb(LC_WEAPON, (uint32_t)i))
-            n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"unit\":\"%s\"}", listed++ ? "," : "",
-                g_weapons[i].id, g_weapons[i].base, JsonText(g_weapons[i].mod->id, mod, sizeof mod), JsonText(g_weapons[i].name, name, sizeof name));
+            n += WeaponItemText(&g_weapons[i], listed++, text + n, size - n);
     int before = n;
     n = StratagemItems(text, n, size, listed == 0);
     n = DifficultyItems(text, n, size, listed == 0 && n == before);
@@ -514,33 +537,6 @@ static int WeaponAddable(HfMod* mod, const char* unit, int live)
     return 1;
 }
 
-/* Its own projectile (HfWeapon.projectile), when the mod's HfWeapon names one; 1 if refused (logged). */
-static int WeaponProjectile(HfMod* mod, const char* unit, const HfWeapon* def, Weapon* w)
-{
-    if (def->size < offsetof(HfWeapon, projectile) + sizeof def->projectile || def->projectile == 0) return 0;
-    if (!ProjectileUsable(def->projectile))
-    {
-        ApiLog(mod, "add_weapon(%s): projectile %u is neither a vanilla type (1 .. 350) nor one a mod added", unit, def->projectile);
-        return 1;
-    }
-    w->projectile = def->projectile;
-    return 0;
-}
-
-/* Its own beam or arc (HfWeapon.beam, HfWeapon.arc), when the mod's HfWeapon names one; 1 if refused (logged). */
-static int WeaponBeamArc(HfMod* mod, const char* unit, const HfWeapon* def, Weapon* w)
-{
-    if (def->size < offsetof(HfWeapon, arc) + sizeof def->arc) return 0;
-    if (!BeamTypeKnown(def->beam) || !ArcTypeKnown(def->arc))
-    {
-        ApiLog(mod, "add_weapon(%s): beam %u or arc %u is neither a vanilla type nor one a mod added", unit, def->beam, def->arc);
-        return 1;
-    }
-    w->beam = def->beam;
-    w->arc = def->arc;
-    return 0;
-}
-
 /* Its own text ids (HfWeapon.name and the rest), when the mod names it. */
 static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
 {
@@ -555,17 +551,28 @@ static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
     w->text[3] = AddText(def->designation, key, 0x04);
 }
 
-/* The mod's log line for a weapon add_weapon accepted: its text, entity and ids, and the records it owns. */
-static void LogWeaponAdded(HfMod* mod, const HfWeapon* def, const Weapon* w)
+/* The resource id of a declared resource name, or 0 for none. */
+static uint64_t DeclaredResource(const char* name) { return name != NULL && name[0] ? Murmur64A(name, strlen(name)) : 0; }
+
+/* What a standalone weapon must declare and must not name (SDK 17: add_weapon copies no weapon); NULL when it is whole. */
+static const char* WeaponDeclarationRefused(const HfWeapon* def)
 {
-    char own[48];
-    if (w->ownAll) snprintf(own, sizeof own, "records of its own in every component");
-    else snprintf(own, sizeof own, "%d record(s) of its own", w->ownCount);
-    ApiLog(mod, "adding weapon %s \"%s%s%s\" (entity %016llx, loadout id %08x) as a copy of loadout item %08x, %s",
-        w->name, def->designation ? def->designation : "", def->designation ? " " : "", def->name ? def->name : "(the base's name)",
-        (unsigned long long)w->entity, w->id, def->base, own);
+    if (def->size < offsetof(HfWeapon, magazine_unit) + sizeof def->magazine_unit)
+        return "it is an SDK 16 weapon (a copy of a base); since SDK 17 a weapon copies no other: declare it (docs/modding/content.md \"Weapons\")";
+    if (def->base != 0) return "it names a base; since SDK 17 a weapon copies no other: set base to 0 and declare it";
+    if (def->sound_from != 0) return "sound_from takes another weapon's sounds; set its own sound events with hf_set";
+    if (def->beam != 0 || def->arc != 0) return "its class fires projectiles: beam and arc must be 0";
+    if (def->weapon_class != HF_WEAPON_CLASS_PRIMARY) return "weapon_class must be HF_WEAPON_CLASS_PRIMARY";
+    if (def->package == NULL || def->package[0] == 0) return "it needs its package (the resource package that loads its units)";
+    if (def->name == NULL || def->name[0] == 0) return "it needs a name";
+    if (def->reload_ability == 0) return "it needs a reload_ability";
+    if (def->projectile == 0) return "it needs a projectile";
+    if (!ProjectileUsable(def->projectile)) return "its projectile is neither a vanilla type (1 .. 350) nor one a mod added";
+    return NULL;
 }
 
+/* A new arsenal weapon (SDK 17): standalone, built from its class and the mod's declaration when the entity data loads
+ * (standalone.c). Its id is its unit name's hash, so every player's game agrees. */
 static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfWeapon, own_components) + sizeof def->own_components)
@@ -576,6 +583,8 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     const char* unit = def->unit;
     int live = g_liveSetup != NULL && g_liveSetup == mod; /* a mod set up while the game runs (live_registry.c) */
     if (!WeaponAddable(mod, unit, live)) return 0;
+    const char* refused = WeaponDeclarationRefused(def);
+    if (refused != NULL) { ApiLog(mod, "add_weapon(%s): %s; not added", unit, refused); return 0; }
     uint64_t entity = Murmur64A(unit, strlen(unit));
     uint32_t id = (uint32_t)(entity >> 32);
     if (id == 0) id = 1;
@@ -587,19 +596,28 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
         }
     Weapon w = {0};
     w.mod = mod;
-    w.base = def->base;
+    w.standalone = 1;
     w.id = id;
     w.entity = entity;
     snprintf(w.name, sizeof w.name, "%s", unit);
-    if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w) || WeaponBeamArc(mod, unit, def, &w)) return 0;
-    if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
-    if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w.ownAll = def->own_all != 0;
+    w.projectile = def->projectile;
+    w.package = DeclaredResource(def->package);
+    w.audioPackage = DeclaredResource(def->audio_package);
+    w.icon = DeclaredResource(def->icon);
+    w.magazineUnit = DeclaredResource(def->magazine_unit);
+    w.reloadAbility = def->reload_ability;
+    w.capacity = def->capacity;
+    w.roundsPerMinute = def->rounds_per_minute;
+    char key[256];
+    snprintf(key, sizeof key, "%s#mastery", unit);
+    w.mastery = (uint32_t)(Murmur64A(key, strlen(key)) >> 32); /* its own mastery package, the backend's (registered-items.json) */
     WeaponText(def, unit, &w);
     w.state = live ? 2 : 0;
     g_weapons[g_weaponCount] = w;
     MemoryBarrier(); /* the entry is whole before the count shows it */
     g_weaponCount++;
-    LogWeaponAdded(mod, def, &w);
+    ApiLog(mod, "adding weapon %s \"%s%s%s\" (entity %016llx, loadout id %08x), standalone", w.name, def->designation ? def->designation : "",
+        def->designation ? " " : "", def->name, (unsigned long long)w.entity, w.id);
     if (!live) WriteRegisteredItems(); /* a live change writes it once made */
     return id;
 }
@@ -925,6 +943,28 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
     memcpy(&baseRecord, baseRow + 8, 4);
     memcpy(records + (size_t)record * stride, records + (size_t)baseRecord * stride, stride);
     memcpy(row + 8, &record, 4);
+    return records + (size_t)record * stride;
+}
+
+/* A record of a standalone weapon's own in component table c (standalone.c): `bytes` placed after the vanilla records
+ * of HellForge's copy of the table, and a new index row naming it. Returns the record, or NULL. */
+static uint8_t* NewOwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t entity, const uint8_t* bytes)
+{
+    uint32_t slots = SlotsOf(c);
+    uint8_t* table = StatePointer(state, REG_TABLES + 8 * c);
+    if (slots == 0 || table == NULL) return NULL;
+    OwnedTable* owned = OwnedCopy(state, c, stride, slots, table);
+    if (owned == NULL || owned->stride != stride || owned->next >= owned->end) return NULL;
+    uint8_t* row = FreeRow(owned->index, slots, 16, entity);
+    if (row == NULL || FindRow(owned->index, slots, 16, entity) != NULL) return NULL;
+    uint8_t* records = owned->index + (size_t)slots * 16;
+    if (VirtualAlloc(records + (size_t)owned->next * stride, stride, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
+    uint32_t record = owned->next++;
+    memcpy(records + (size_t)record * stride, bytes, stride);
+    memcpy(row + 8, &record, 4);
+    memset(row + 12, 0, 4);
+    MemoryBarrier(); /* the key last: the row is found whole */
+    memcpy(row, &entity, 8);
     return records + (size_t)record * stride;
 }
 

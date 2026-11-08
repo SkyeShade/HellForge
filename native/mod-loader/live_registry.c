@@ -298,6 +298,14 @@ static int LiveNetworkTypeKnown(const Weapon* w)
 /* An entity's network type at `index` (after lastKey, within the arrays and the width): 1 when it was given, else 0 (logged). */
 static int LiveNetworkTypeAt(const Weapon* w, uint32_t index, uint32_t lastKey, uint8_t width)
 {
+    if (w->standalone)
+    {
+        if (index >= g_netCapacity || index >= (1u << width))
+        { ApiLog(w->mod, "%s: no network type (the type index is full); joining games with it may fail", w->name); return 0; }
+        NetworkConfig n = {0, g_networkVanillaTypes, g_netEntries, g_netOwn, g_netValues};
+        NetworkTypeArrays to = {g_netEntries, g_netOwn, g_netValues};
+        return AddStandaloneNetworkType(&n, &to, (Weapon*)w, index, lastKey);
+    }
     int found = NetworkEntryOf(g_netEntries, g_networkVanillaTypes, w->baseShortId);
     if (found < 0 || w->shortId <= lastKey)
     { ApiLog(w->mod, "%s: no network type to copy (base short id %u); joining games with it may fail", w->name, w->baseShortId); return 0; }

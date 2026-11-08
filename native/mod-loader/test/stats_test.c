@@ -2653,6 +2653,8 @@ static void GrowableLimitsFixture(void)
     g_componentCount = components;
 }
 
+#include "standalone_test.c" /* after FakeTable and FakeRow */
+
 /* own_all: the copy gets a record of its own, equal to its base's, in every component whose record size is certain. */
 static void OwnAllFixture(void)
 {
@@ -2746,20 +2748,20 @@ static void OwnAllFixture(void)
         /* an arsenal weapon: own_all taken from its HfWeapon; listed last once registered, with its entities and its own
          * text (the editor gives it a page), not while pending */
         HfWeapon gold = {sizeof gold};
-        gold.base = 0x5678; gold.unit = "fixture/liberator_gold"; gold.designation = "AR-23G"; gold.name = "Liberator Gold"; gold.own_all = 1;
+        gold.weapon_class = HF_WEAPON_CLASS_PRIMARY; gold.unit = "fixture/liberator_gold"; gold.package = "fixture/liberator_gold";
+        gold.designation = "AR-23G"; gold.name = "Liberator Gold"; gold.reload_ability = 2785; gold.projectile = 135;
         uint32_t goldId = ApiAddWeapon(&g_mods[0], &gold);
         Weapon* w = &g_weapons[g_weaponCount - 1];
-        assert(goldId != 0 && w->id == goldId && w->ownAll && !w->plain && w->state == 0);
+        assert(goldId != 0 && w->id == goldId && w->standalone && !w->plain && w->state == 0);
         int listed = 0;
         for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c) listed += c.kind == HF_KIND_ITEM;
         assert(listed == 0);
         w->state = 1;
-        w->copies = base;
         uint32_t last = 0;
         for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c)
             if (c.kind == HF_KIND_ITEM)
             {
-                assert(c.id == goldId && c.base == 0x5678 && c.entity == w->entity && c.base_entity == base && !strcmp(c.name, "fixture/liberator_gold") &&
+                assert(c.id == goldId && c.base == 0 && c.entity == w->entity && c.base_entity == 0 && !strcmp(c.name, "fixture/liberator_gold") &&
                     !strcmp(c.title, "Liberator Gold") && !strcmp(c.designation, "AR-23G") && !strcmp(c.mod, g_mods[0].id));
                 listed++;
                 last = i;
@@ -4423,6 +4425,7 @@ int main(int argc, char** argv)
         StatsSaveSnapshot();
     }
     OwnAllFixture();
+    StandaloneFixture();
     {
         /* the crash note names modules: an address in kernel32, none for the null page or a heap block */
         char where[160];

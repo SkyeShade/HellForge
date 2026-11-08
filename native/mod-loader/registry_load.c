@@ -5,7 +5,7 @@
 /* One load of the entity data as RegisterWeapons (or a live change's registration: live_registry.c) fills it:
  * HellForge's copies of the loadout table and of the short ids, and how far they are filled. late: the game runs
  * meanwhile, so a row's key goes in after the rest of it. */
-typedef struct WeaponLoad
+struct WeaponLoad
 {
     uint8_t* state;
     uint8_t* map;
@@ -18,7 +18,7 @@ typedef struct WeaponLoad
     int late;
     int cardsCounted;                 /* cards below is filled */
     uint32_t cards[REG_ARMORY_TYPES]; /* the armory cards of each type so far (ArmoryCards) */
-} WeaponLoad;
+};
 
 /* A row of the game's entity data (the key its first 8 bytes): at once while the entity data loads; for a live change
  * the rest first, then the key that makes it found. */
@@ -457,7 +457,7 @@ static uint32_t OwnLoadoutRecord(WeaponLoad* L, const Weapon* w, int baseRecord,
     return record;
 }
 
-/* Its short id and map row (naming its base's components). */
+/* Its short id and map row (naming its base's components, or a standalone weapon's class's: baseRow NULL). */
 static uint32_t AppendEntity(WeaponLoad* L, Weapon* w, const uint8_t* baseRow, uint8_t* mapRow, uint16_t* components, uint64_t componentCount)
 {
     uint32_t shortId = L->lastShort + 1 + L->appended;
@@ -465,7 +465,7 @@ static uint32_t AppendEntity(WeaponLoad* L, Weapon* w, const uint8_t* baseRow, u
     memcpy(L->newList + 32 + (size_t)(L->listCount + L->appended) * 8, &shortId, 4);
     memcpy(L->newList + 32 + (size_t)(L->listCount + L->appended) * 8 + 4, &mapIndex, 4);
     L->appended++;
-    memcpy(&w->baseShortId, baseRow + 24, 4);
+    if (baseRow != NULL) memcpy(&w->baseShortId, baseRow + 24, 4);
     w->shortId = shortId;
     uint8_t row[32] = {0};
     memcpy(row, &w->entity, 8);
@@ -493,6 +493,7 @@ static int RegisterRoom(const WeaponLoad* L, const Weapon* w, const uint8_t* map
  * ones it owns. 1 when it was registered (w->state 1), else 0 (-1, logged). */
 static int RegisterWeapon(WeaponLoad* L, Weapon* w)
 {
+    if (w->standalone) return RegisterStandalone(L, w);
     w->state = -1;
     /* The base: its loadout record and the entity that owns it; an entity of add_entity names its base itself. */
     int baseRecord = WeaponBaseRecord(L, w);
@@ -590,7 +591,9 @@ static void PendingRows(uint8_t* map, uint8_t* loadout, uint32_t records, uint32
     for (int i = 0; i < g_weaponCount; i++)
     {
         const Weapon* w = &g_weapons[i];
-        uint64_t base = w->state == state && (skip == NULL || !skip(i)) ? PendingBase(loadout, records, w, state) : 0;
+        int pending = w->state == state && (skip == NULL || !skip(i));
+        if (w->standalone) { if (pending) ClassRows(rows); continue; }
+        uint64_t base = pending ? PendingBase(loadout, records, w, state) : 0;
         uint8_t* baseRow = base != 0 ? FindRow(map, REG_MAP_SLOTS, 32, base) : NULL;
         if (baseRow != NULL) BaseRows(baseRow, w->plain, rows);
     }
@@ -693,7 +696,7 @@ static int CopyNetworkEntry(uint8_t* to, const uint8_t* from)
 }
 
 /* The engine's network configuration: its entries (+0x70), own indices (+0x28) and values (+0x40), one per type. */
-typedef struct NetworkConfig { uintptr_t config; uint32_t count; uint8_t *entries, *own, *values; } NetworkConfig;
+struct NetworkConfig { uintptr_t config; uint32_t count; uint8_t *entries, *own, *values; };
 
 /* 1 once the configuration is loaded and as reviewed (its three arrays the same length). */
 static int ReadNetworkConfig(NetworkConfig* n)
@@ -822,7 +825,7 @@ static uint32_t NetworkTypesWidened(uintptr_t config, uint32_t count, uint32_t w
 }
 
 /* The configuration's three arrays as AddNetworkTypes makes them anew: entries, own indices, values. */
-typedef struct NetworkTypeArrays { uint8_t *entries, *own, *values; } NetworkTypeArrays;
+struct NetworkTypeArrays { uint8_t *entries, *own, *values; };
 
 /* The weapon's type at `index`: a copy of its base's entry under its short id (above lastKey, the order the engine
  * searches); 0 when its base has none (logged). */
@@ -860,7 +863,8 @@ static uint32_t AddNetworkTypesInOrder(const NetworkConfig* n, const NetworkType
         Weapon* w = &g_weapons[order[k]];
         if (w->state != 1) continue;
         if (added == wanted) ApiLog(w->mod, "%s: no network type (the type index is full); joining games with it may fail", w->name);
-        else if (AddNetworkType(n, to, w, n->count + added, lastKey)) { added++; lastKey = w->shortId; }
+        else if (w->standalone ? AddStandaloneNetworkType(n, to, w, n->count + added, lastKey) : AddNetworkType(n, to, w, n->count + added, lastKey))
+        { added++; lastKey = w->shortId; }
     }
     free(order);
     return added;
@@ -906,6 +910,8 @@ static void AddNetworkTypes(const NetworkConfig* n)
     ApiWrite(n->config + 0x70, pair, 8);
     Note("registry: %u network entity type(s) added (%u in all)", added, total);
 }
+
+#include "standalone.c" /* weapons that copy no other (add_weapon, SDK 17) */
 
 /* Appends the registered weapons' entity types to the engine's network configuration, once both are loaded, in short id
  * order (WeaponOrder). */

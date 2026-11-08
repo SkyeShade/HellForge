@@ -79,19 +79,19 @@ typedef void (*HfTickCallback)(HfMod* mod, float dt, void* user);
 #define HF_PACKAGE_LOADING 1
 #define HF_PACKAGE_RESIDENT 2
 
-/* A new arsenal weapon (SDK 2, add_weapon): a copy of an existing one with a model, a name and, optionally, stats of
- * its own. Zero-initialize it and set `size`, so fields added later read as unset:
+/* A new arsenal weapon (add_weapon; standalone since SDK 17): its own model, package, name and fire, copying no other
+ * weapon. Zero-initialize it and set `size`, so fields added later read as unset:
  *
- *     HfWeapon gold = {sizeof gold};
- *     gold.base = HF_ITEM_AR23_LIBERATOR;
- *     gold.unit = "my_name/my_mod/assault_rifle_gold";
- *     gold.designation = "AR-23G";
- *     gold.name = "Liberator Gold";
- *     uint32_t id = api->add_weapon(mod, &gold); */
+ *     HfWeapon rifle = {sizeof rifle};
+ *     rifle.weapon_class = HF_WEAPON_CLASS_PRIMARY;
+ *     rifle.unit = rifle.package = "my_name/my_mod/rifle";
+ *     rifle.name = "Adaptive";
+ *     rifle.reload_ability = 2785; rifle.projectile = 135;
+ *     uint32_t id = api->add_weapon(mod, &rifle); */
 typedef struct HfWeapon
 {
     uint32_t size;           /* sizeof(HfWeapon) */
-    uint32_t base;           /* the weapon it copies: a vanilla loadout id (HF_ITEM_..., or the session's arsenal.tsv) */
+    uint32_t base;           /* SDK 2 to 16: the weapon it copied. SDK 17 refuses a weapon that names one: set 0 */
     /* Its model: a unit resource the mod's data provides (a copy of the base's unit with other materials, say). The name
      * also identifies the weapon: its entity is the name's hash and its loadout id the top 32 bits of that, so every
      * player's game agrees. Keep it unique, prefixed with your name and mod. */
@@ -126,7 +126,21 @@ typedef struct HfWeapon
      * is in the type's row. */
     uint32_t beam;
     uint32_t arc;
+    /* SDK 17: what makes it standalone. It copies no weapon: its entity has the class's component list and a record of
+     * its own in each. A field every vanilla member of the class shares takes that class value; any other is declared
+     * here or set with hf_set (it owns every record), else identity fields (models, packages, sounds, effects, text,
+     * nodes, attachments) stay 0 and handling fields take the class's most common value (docs/modding/content.md
+     * "Weapons"). base must be 0. */
+    uint32_t weapon_class;     /* HF_WEAPON_CLASS_PRIMARY */
+    const char* package;       /* the resource package that loads its units and textures ("package" in hellforge-data.json) */
+    const char* audio_package; /* the package of its sound banks, or NULL */
+    const char* icon;          /* its armory icon texture resource, or NULL */
+    uint32_t reload_ability;   /* the Helldiver's reload it plays (a vanilla ability id) */
+    uint32_t capacity;         /* rounds per magazine; 0: the class's most common */
+    float rounds_per_minute;   /* 0: the class's most common */
+    const char* magazine_unit; /* its magazine's model, or NULL */
 } HfWeapon;
+#define HF_WEAPON_CLASS_PRIMARY 1u
 
 /* A new entity of any kind (SDK 4, add_entity): a copy of a vanilla entity (a Pelican, a turret...) under a resource
  * name of its own, sharing every component record of its base except the ones it owns. No loadout, armory or catalogue

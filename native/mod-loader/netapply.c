@@ -106,6 +106,15 @@ static uint32_t NetMapTypes(uint32_t* table, uint32_t* highest, uint32_t* mapped
             continue;
         }
         if (t->index > *highest) *highest = t->index;
+        if (t->standalone)
+        {
+            uint32_t c = ClassNetworkCase(table);
+            if (c == 0) { Note("network: type %u (%s): its class's types have no one case; it keeps the exit (its copies get no state)", t->index, t->name); kept++; continue; }
+            table[t->index] = c;
+            (*mapped)++;
+            Note("network: type %u (%s) -> case game.dll+0x%x (its class's)", t->index, t->name, c);
+            continue;
+        }
         uint64_t own[2], copied[2];
         if (!NetComponents(map, t->entity, own) || !NetComponents(map, t->baseEntity, copied) || own[0] != copied[0] || own[1] != copied[1])
         {
