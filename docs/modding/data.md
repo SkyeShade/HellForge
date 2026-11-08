@@ -116,6 +116,11 @@ mod, never a game resource's name. The copy can then be changed, in this order:
 - `lut`: a material's colour lookup texture, with a row per material zone and column 0 the base colour. `zonesFrom`
   makes every row first take this row's values, `columns` (`{"<column>": colour}`) sets columns in every row, and
   `rows` (`{"<row>": {"<column>": colour}}`) sets single cells. Alpha is kept and the mips are rebuilt.
+  - `finishes` (`{"<row>": {"colour": colour, "roughness": 0.5, "metallic": 0}}`, each part optional) sets a zone's
+    material, applied last. The colour goes to columns 0, 5 and 6 (base, worn and camo tints), metallic to column 6
+    alpha and roughness to column 10. Other columns keep the copied row's detail and wear settings.
+  - The shader reads colours as sRGB. Half the vanilla zones are 0.4 or darker, and lit parts look about 1.3 times
+    brighter in the armory, so a real-world paint colour looks pale.
 - `mesh` (on a `unit`): your own geometry from a Wavefront OBJ in the mod folder, `{"obj": "models/cube.obj", "scale":
   1, "yUp": true, "unitSpace": false}`. Every render and shadow mesh in every LOD gets it, rigid on the unit's main bone.
   Models HellForge cannot rebuild yet are refused with the reason.

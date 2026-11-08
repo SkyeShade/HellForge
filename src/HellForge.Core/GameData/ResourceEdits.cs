@@ -201,7 +201,13 @@ public static class ResourceEdits
 
     sealed record MaterialParameter(uint Type, uint Name, int Offset, int Size);
 
-    public sealed record LutRecolour(int? ZonesFrom, IReadOnlyDictionary<int, double[]> Columns, IReadOnlyDictionary<int, IReadOnlyDictionary<int, double[]>> Rows);
+    public sealed record LutRecolour(int? ZonesFrom, IReadOnlyDictionary<int, double[]> Columns, IReadOnlyDictionary<int, IReadOnlyDictionary<int, double[]>> Rows,
+        IReadOnlyDictionary<int, LutFinish>? Finishes = null);
+
+    // A zone's material in the weapon shader's terms (filediver lut.frag): the colour is read as sRGB from column 0, and
+    // columns 5 and 6 (the worn and camo-blended tints) follow it; metallic is column 6 alpha (column 7's texture-driven
+    // variation is added to it); roughness is column 10 red. A copied row keeps the vanilla zone's material otherwise.
+    public sealed record LutFinish(double[]? Colour, double? Roughness, double? Metallic);
 
     // A material's colour lookup texture (R16G16B16A16_FLOAT; each row a material zone, each column a parameter: column 0
     // the base colour; hd2_model.py): optionally every row first takes one row's values (the gold Liberator takes the
@@ -239,6 +245,8 @@ public static class ResourceEdits
             throw new InvalidDataException("the texture is not an R16G16B16A16_FLOAT colour lookup texture.");
         if ((long)width * height * 8 > gpu.Length) throw new InvalidDataException("the texture's pixels end early.");
         if (edit.ZonesFrom is { } from && from >= height) throw new InvalidDataException($"the texture has {height} rows, no row {from}.");
+        if (edit.Finishes is { Count: > 0 } finishes && (width <= FinishRoughnessColumn || finishes.Keys.Any(y => y >= height)))
+            throw new InvalidDataException($"the texture is {width} x {height}; a finish needs 11 columns and its row.");
         if (edit.Columns.Keys.Concat(edit.Rows.Values.SelectMany(r => r.Keys)).Any(x => x >= width) || edit.Rows.Keys.Any(y => y >= height))
             throw new InvalidDataException($"the texture is {width} x {height}; a recoloured cell is outside it.");
         return (width, height, mips);
@@ -259,8 +267,19 @@ public static class ResourceEdits
                 if (edit.Rows.TryGetValue(y, out var row) && row.TryGetValue(x, out rgb)) Array.Copy(rgb, px, 3);
                 level[y][x] = px;
             }
+            if (edit.Finishes?.TryGetValue(y, out var finish) == true) Finish(level[y], finish);
         }
         return level;
+    }
+
+    const int FinishMetallicColumn = 6, FinishRoughnessColumn = 10;
+
+    static void Finish(double[][] row, LutFinish finish)
+    {
+        if (finish.Colour is { } rgb)
+            foreach (var x in new[] { 0, 5, FinishMetallicColumn }) Array.Copy(rgb, row[x], 3);
+        if (finish.Metallic is { } metallic) row[FinishMetallicColumn][3] = metallic;
+        if (finish.Roughness is { } roughness) row[FinishRoughnessColumn][0] = roughness;
     }
 
     static void WriteLevel(MemoryStream output, double[][][] level, byte[] half)
