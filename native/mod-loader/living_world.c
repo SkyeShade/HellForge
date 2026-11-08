@@ -1486,7 +1486,9 @@ static void LwOnlineTick(LwSquad* q, int* removals)
             g_lwWorld.heights++;
             /* against the ground as drawn (the live tile's, else the level's coarse rows) where it reads: the topmost ray
              * hit counts a member beside a rock or under an overhang as under the ground (audit 1g, 9) */
-            int tile; float drawn = MoveDrawnGround(p[0], p[1], &tile), ref = drawn > -9000.0f ? drawn : top;
+            /* the drawn ground exists only on a level with moving tiles; elsewhere the ground ray's top (audit 1h, 15: on vanilla
+             * levels MoveCoarseHere read the XL extent's texels and reported every member 18 m under) */
+            int tile; float drawn = MoveTilesOn() ? MoveDrawnGround(p[0], p[1], &tile) : -9999.0f, ref = drawn > -9000.0f ? drawn : top;
             if (p[2] < ref - 1.5f) { g_lwWorld.underGround++; if (ref - p[2] > g_lwWorld.worstUnder) g_lwWorld.worstUnder = ref - p[2]; }
             if (p[2] > top + 3.0f) { g_lwWorld.overGround++; if (p[2] - top > g_lwWorld.worstOver) g_lwWorld.worstOver = p[2] - top; }
             /* a member falling under the world (lw40b: squad 4's 00000470 at z -1898, ground 38.3, removed): where it was
@@ -3070,8 +3072,17 @@ static uint64_t LwHitBlast(uint64_t self, const float* pos, uint64_t type, uint6
             char who[2][200];
             LwHitWho(LwNetEntity((uint32_t)source), who[0], sizeof who[0]);
             LwHitWho(LwNetEntity((uint32_t)attacker), who[1], sizeof who[1]);
-            Note("living world: test: explosion type %08X at (%.1f, %.1f, %.1f) within 15 m of squad %d; source %s; attacker %s; caller game+0x%llX",
-                (uint32_t)type, (double)p[0], (double)p[1], (double)p[2], closeTo, who[0], who[1], (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_lw.game));
+            /* the spawner's caller can lie in relocated code outside game.dll (audit 1h, 15: game+0x606999C): the unwound chain,
+             * each frame named in game.dll or not */
+            void* frames[8]; char chain[256]; size_t at = 0; chain[0] = 0;
+            USHORT nf = RtlCaptureStackBackTrace(1, 8, frames, NULL);
+            for (USHORT k = 0; k < nf && at < sizeof chain - 24; k++)
+            {
+                uintptr_t f = (uintptr_t)frames[k]; int in = f >= g_lw.game && f < g_lw.game + 0x4744000u;
+                at += (size_t)snprintf(chain + at, sizeof chain - at, in ? " g+0x%llX" : " ?%llX", (unsigned long long)(in ? f - g_lw.game : f));
+            }
+            Note("living world: test: explosion type %08X at (%.1f, %.1f, %.1f) within 15 m of squad %d; source %s; attacker %s; chain%s",
+                (uint32_t)type, (double)p[0], (double)p[1], (double)p[2], closeTo, who[0], who[1], chain);
         }
     }
     return g_lwBlast(self, pos, type, source, attacker, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15);
@@ -3095,8 +3106,8 @@ static uint64_t LwHitQueue(uint64_t rcx, uint64_t kind, uint64_t r8, uint64_t ta
         for (USHORT k = 0; k < n && at < sizeof chain - 24; k++)
         {
             uintptr_t f = (uintptr_t)frames[k];
-            at += (size_t)snprintf(chain + at, sizeof chain - at, f >= g_lw.game && f < g_lw.game + 0x4000000u ? " g+0x%llX" : " ?%llX",
-                (unsigned long long)(f >= g_lw.game && f < g_lw.game + 0x4000000u ? f - g_lw.game : f));
+            at += (size_t)snprintf(chain + at, sizeof chain - at, f >= g_lw.game && f < g_lw.game + 0x4744000u ? " g+0x%llX" : " ?%llX",
+                (unsigned long long)(f >= g_lw.game && f < g_lw.game + 0x4744000u ? f - g_lw.game : f));
         }
         char who[2][200];
         LwHitWho((uint32_t)target, who[0], sizeof who[0]);

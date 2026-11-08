@@ -762,6 +762,8 @@ static float MoveCoarseHere(uintptr_t data, float wx, float wy)
 static float MoveDrawnGround(float x, float y, int* tile)
 {
     *tile = -1;
+    if (!(g_moveInstalled && g_move.on && g_move.level == g_world.levels)) return -9999.0f; /* moving tiles only: the coarse rows read
+        * below are the extra large level's (audit 1h, 15) */
     for (int k = 0; k < NEAR_TILES_MAX; k++)
         if (g_tiles[k].live && g_tiles[k].level == g_world.levels && g_tiles[k].ground.v != NULL &&
             fabsf(x - g_tiles[k].centre[0]) < NEAR_HIDE / 2 && fabsf(y - g_tiles[k].centre[1]) < NEAR_HIDE / 2)
