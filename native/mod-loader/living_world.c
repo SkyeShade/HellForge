@@ -497,6 +497,7 @@ static struct
     uint32_t crowded; /* points where a member's slot cast would not reach its slot (30 s) */
     uint32_t goals, goalNoFace, goalReplans, goalStuck; /* goals sent, next nodes without a face within 25 m, replans, none found (30 s) */
     uint32_t heights, underGround, overGround; float worstUnder, worstOver; /* members against the drawn ground (30 s) */
+    uint32_t building, undrawn; /* points refused: in the cell being built; the ground hit not the drawn ground (30 s) */
     int popMade, popPass, popTries, popTicks; float popNearest; double popMs; /* the populate, resumed each tick (LW_POP_MS) */
 } g_lwWorld;
 
@@ -871,6 +872,18 @@ static int LwPlace(uintptr_t slot, float* pos)
     if (((SnapFn)fn)(nav, p, 10.0f, p, NULL, layer) == 0 || !isfinite(p[2])) { g_lwWorld.noFace++; return 0; }
     if (LwDist2(pos, p[0], p[1]) > 2.0f * 2.0f) { g_lwWorld.moved++; return 0; }
     if (!LwGround(p[0], p[1], &top) || fabsf(top - p[2]) > 2.0f) { g_lwWorld.overhead++; return 0; }
+    /* Extra large levels with moving tiles (audit 1g, 9; KB living-world-tile-switch-falls section 6): lw92a's squad
+     * 1913 was requested in the square of the cell being built (its tile in 10 s later, the coarse lowered under its
+     * members) at the navmesh face's height (87.5), while the collision under it was missing. So no point in the
+     * building cell's square; the ground hit must be the drawn ground (the live tile's, else the coarse rows) within
+     * 0.5 m; and the request goes at the hit's height, not the face's. */
+    if (MoveTilesOn())
+    {
+        int tile; float drawn = MoveDrawnGround(p[0], p[1], &tile);
+        if (MoveCellBuilding(p[0], p[1])) { g_lwWorld.building++; return 0; }
+        if (drawn < -9000.0f || fabsf(top - drawn) > 0.5f) { g_lwWorld.undrawn++; return 0; }
+        p[2] = top;
+    }
     memcpy(pos, p, sizeof p);
     return 1;
 }
@@ -965,11 +978,14 @@ static int LwMembersFit(uintptr_t slot, const float* pos, uint32_t n)
             float r = 5.0f * sqrtf(((float)i + 0.5f) / ((float)n - 0.5f)), a = (float)(i + 1) * 6.2831854820f / 2.6180336475f;
             float to[3] = {pos[0] + r * cosf(a), pos[1] + r * sinf(a), pos[2]}, top = NAN;
             if (!LwGround(to[0], to[1], &top)) { g_lwWorld.crowded++; return 0; }
+            if (MoveTilesOn()) { int tile; float drawn = MoveDrawnGround(to[0], to[1], &tile); if (drawn < -9000.0f || fabsf(top - drawn) > 0.5f) { g_lwWorld.undrawn++; return 0; } }
             for (int j = 0; j < nv; j++)
             {
                 float out[3] = {pos[0], pos[1], pos[2]};
                 ((CastFn)fn)(world, pos, to, v[j].radius, v[j].layer, out);
-                if (!isfinite(out[0]) || LwDist2(to, out[0], out[1]) > 0.1f * 0.1f || fabsf(top - out[2]) > 2.0f) { g_lwWorld.crowded++; return 0; }
+                /* a member starts at the cast's height and its ground ray reaches `up` (1.00 m for these units) over it:
+                 * one started deeper under the ground never meets it (audit 1g, 9: the old 2 m tolerance could bury it) */
+                if (!isfinite(out[0]) || LwDist2(to, out[0], out[1]) > 0.1f * 0.1f || out[2] < top - 0.9f || out[2] > top + 2.0f) { g_lwWorld.crowded++; return 0; }
             }
         }
     }
@@ -1465,7 +1481,10 @@ static void LwOnlineTick(LwSquad* q, int* removals)
             ActHealth h; float p[3], top = NAN;
             if (!ActHealthOf(g_lw.game, members[k], &h) || !h.unit || !EvpUnitPosition(h.unit, p) || !LwGround(p[0], p[1], &top) || !isfinite(top)) continue;
             g_lwWorld.heights++;
-            if (p[2] < top - 1.5f) { g_lwWorld.underGround++; if (top - p[2] > g_lwWorld.worstUnder) g_lwWorld.worstUnder = top - p[2]; }
+            /* against the ground as drawn (the live tile's, else the level's coarse rows) where it reads: the topmost ray
+             * hit counts a member beside a rock or under an overhang as under the ground (audit 1g, 9) */
+            int tile; float drawn = MoveDrawnGround(p[0], p[1], &tile), ref = drawn > -9000.0f ? drawn : top;
+            if (p[2] < ref - 1.5f) { g_lwWorld.underGround++; if (ref - p[2] > g_lwWorld.worstUnder) g_lwWorld.worstUnder = ref - p[2]; }
             if (p[2] > top + 3.0f) { g_lwWorld.overGround++; if (p[2] - top > g_lwWorld.worstOver) g_lwWorld.worstOver = p[2] - top; }
             /* a member falling under the world (lw40b: squad 4's 00000470 at z -1898, ground 38.3, removed): where it was
              * last on the ground and whether the navmesh has a face there (the game's 10 m snap, layer 0), once each */
@@ -2446,10 +2465,12 @@ static void LwSquadsTick(void)
             Note("living world: steering walls (30 s): %u requests, %u with no wall segment (%.1f%%), G %.1f m", g_lwWalls.requests,
                 g_lwWalls.empty, 100.0 * g_lwWalls.empty / g_lwWalls.requests, (double)(g_lwWallReach ? *g_lwWallReach : 0));
         g_lwWalls.requests = g_lwWalls.empty = 0;
-        if (g_lwWorld.rays || g_lwWorld.noFace || g_lwWorld.moved || g_lwWorld.overhead || g_lwWorld.crowded)
-            Note("living world: placement (30 s): refused %u with no navmesh face within 10 m, %u snapped more than 2 m, %u under something, %u where a member would not reach its slot, %u in a player's sight; "
-                "%u sight rays, %.1f us each; blocked by terrain %u, by static scenery %u", g_lwWorld.noFace, g_lwWorld.moved, g_lwWorld.overhead, g_lwWorld.crowded, g_lwWorld.seen,
+        if (g_lwWorld.rays || g_lwWorld.noFace || g_lwWorld.moved || g_lwWorld.overhead || g_lwWorld.crowded || g_lwWorld.building || g_lwWorld.undrawn)
+            Note("living world: placement (30 s): refused %u with no navmesh face within 10 m, %u snapped more than 2 m, %u under something, %u where a member would not reach its slot, %u in a player's sight, "
+                "%u in the cell being built, %u where the ground hit is not the drawn ground; %u sight rays, %.1f us each; blocked by terrain %u, by static scenery %u", g_lwWorld.noFace, g_lwWorld.moved,
+                g_lwWorld.overhead, g_lwWorld.crowded, g_lwWorld.seen, g_lwWorld.building, g_lwWorld.undrawn,
                 g_lwWorld.rays, g_lwWorld.rays ? g_lwWorld.rayUs / g_lwWorld.rays : 0.0, g_lwWorld.blockTerrain, g_lwWorld.blockUnit);
+        g_lwWorld.building = g_lwWorld.undrawn = 0;
         g_lwWorld.noFace = g_lwWorld.moved = g_lwWorld.overhead = g_lwWorld.seen = g_lwWorld.rays = g_lwWorld.blockUnit = g_lwWorld.blockTerrain = g_lwWorld.crowded = 0; g_lwWorld.rayUs = 0;
         if (g_lwWorld.goals || g_lwWorld.goalNoFace)
             Note("living world: goals (30 s): %u sent, %u next nodes with no navmesh within 25 m, %u replans, %u squads left without a reachable goal",

@@ -690,16 +690,19 @@ static void MoveTileIn(uint64_t world)
 #define MOVE_KEEP_RECORDS 8192
 static uint8_t g_keepModes[MOVE_KEEP_RECORDS * 0x2C], g_keepPos[MOVE_KEEP_RECORDS * 0xA4];
 static struct { int pins; LONG level; uint32_t lifted, fromTile, fromCoarse, held, refused; uint64_t frame; } g_keep;
-/* Each unit under the ground with a missed ray, by entity (lw92a: four units at one spot, their z wandering 0.3 m
- * without falling, were lifted 2850 times and the lifts did not hold: something other than the motion step places
- * them). A unit is lifted only when it is falling (z lower than the frame before by MOVE_KEEP_FALL: a missed ray means
- * gravity in modes 4 and 7, P), and at most MOVE_KEEP_TRIES times in MOVE_KEEP_WINDOW_MS; then it is left to the game,
- * noted once with its resource and the parent handle of its motion entry (+0x18) for the static analysis. */
-#define MOVE_KEEP_FALL 0.01f
-#define MOVE_KEEP_TRIES 3
-#define MOVE_KEEP_WINDOW_MS 20000
+/* Each unit put back, by entity: its lift count and whether the collision under it was found (for the notes).
+ * KB living-world-tile-switch-falls section 6 (subagent; checked by me in game.dll): the game's teleport 0x5A2BB0 writes
+ * the position but never the velocity, the 0x84 record at [mgr+0x48C8] (+8 vz: the no-hit branch adds gravity to it at
+ * 0x5A101F, only the grounded branch writes it, at 0x5A10AA). lw92a's squad 1913 kept its free-fall speed through 2850
+ * lifts: each one was undone by the next frame's fall at that speed (the drop grew g dt per frame, vz = g (t - 11.8 s)).
+ * So a lift also sets vz = 0, and is made onto the collision as it is: the ground query (0x13CA380, as the teleport's own
+ * check 0x909B20 uses it) cast down from 1.5 m over the expected ground; when it hits within MOVE_KEEP_FIND of the
+ * expected ground the unit goes 5 cm over the hit, else (no collision there: lw92a's released square, under study) it is
+ * held 10 cm over the expected ground, vz 0, every frame it would fall. No caps: a unit under the ground with a missed
+ * ray is always falling (P). The 3843ca65 rules (only while falling, three tries) are gone. */
+#define MOVE_KEEP_FIND 3.0f
 #define MOVE_KEEP_TRACKS 1024
-static struct { uint32_t entity; float z; uint64_t frame; uint8_t tries, gaveUp; ULONGLONG firstAt; } g_keepTrack[MOVE_KEEP_TRACKS];
+static struct { uint32_t entity; uint32_t lifts; uint8_t noCollision; } g_keepTrack[MOVE_KEEP_TRACKS];
 static int MoveKeepTrack(uint32_t e)
 {
     uint32_t h = (e * 2654435761u) % MOVE_KEEP_TRACKS;
@@ -725,6 +728,28 @@ static float MoveCoarseHere(uintptr_t data, float wx, float wy)
     float nw = no[0], ne = no[1], sw = so[0], se = so[1];
     float z = ax <= ay ? sw + ax * (se - sw) + (1 - ay) * (nw - sw) : ne + (1 - ax) * (nw - ne) + ay * (se - ne);
     return z / 65535.0f * 1000.0f - 500.0f;
+}
+
+/* The ground as drawn at a point on an extra large level with moving tiles: the live tile's heights inside its hidden
+ * square, else the level's coarse rows (lg+0xD8); *tile the slot or -1; -9999 when it does not read. */
+static float MoveDrawnGround(float x, float y, int* tile)
+{
+    *tile = -1;
+    for (int k = 0; k < NEAR_TILES_MAX; k++)
+        if (g_tiles[k].live && g_tiles[k].level == g_world.levels && g_tiles[k].ground.v != NULL &&
+            fabsf(x - g_tiles[k].centre[0]) < NEAR_HIDE / 2 && fabsf(y - g_tiles[k].centre[1]) < NEAR_HIDE / 2)
+        { *tile = k; return NearGroundAt(&g_tiles[k].ground, x, y); }
+    uintptr_t gen = 0, coarse = 0; uint32_t dims[3] = {0};
+    if (g_worldLevel == 0 || SafeRead(g_worldLevel + 0x2C8, &gen, 8) || gen == 0 || SafeRead(gen + 0x8758A8u + 0xD8, dims, 12) || dims[0] != 4096 ||
+        dims[1] != 4096 || NearTexelBytes(dims[2]) != 2 || SafeRead(gen + 0x8758A8u + 0xD8 + 0x10, &coarse, 8) || coarse == 0) return -9999.0f;
+    return MoveCoarseHere(coarse, x, y);
+}
+/* Moving tiles on for this level (an extra large level whose detailed tiles follow the players). */
+static int MoveTilesOn(void) { return g_moveInstalled && g_move.on && g_move.level == g_world.levels; }
+/* A point inside the square of the cell being built now (its tile comes in at the end, its coarse ground lowered then). */
+static int MoveCellBuilding(float x, float y)
+{
+    return MoveTilesOn() && g_move.state != MV_IDLE && fabsf(x - g_move.centre[0]) < NEAR_HIDE / 2 && fabsf(y - g_move.centre[1]) < NEAR_HIDE / 2;
 }
 
 static void MoveGroundKeep(void)
@@ -775,31 +800,27 @@ static void MoveGroundKeep(void)
         SafeRead(grecs + 0x3Cu * gi + 0x2C, ray, 8);
         if (((uint8_t (*)(void*, uint32_t))(game + 0x4A52B0u))(NULL, e)) continue; /* attached: the teleport stops half-way */
         int tk = MoveKeepTrack(e);
-        if (tk < 0) continue;
-        ULONGLONG now = GetTickCount64();
-        float before = g_keepTrack[tk].z; uint64_t seen = g_keepTrack[tk].frame;
-        g_keepTrack[tk].z = p[2]; g_keepTrack[tk].frame = g_keep.frame;
-        if (seen != g_keep.frame - 1 || !(before - p[2] > MOVE_KEEP_FALL)) continue; /* not falling (or first seen): not the step's gravity */
-        if (g_keepTrack[tk].gaveUp) continue;
-        if (g_keepTrack[tk].tries && now - g_keepTrack[tk].firstAt > MOVE_KEEP_WINDOW_MS) g_keepTrack[tk].tries = 0;
-        if (g_keepTrack[tk].tries >= MOVE_KEEP_TRIES)
+        float to[3] = {p[0], p[1], ground + 0.1f}, floor_ = NAN;
+        uintptr_t world = 0;
+        if (EvpPtr(game + 0x346D508u, &world))
         {
-            uint64_t res = 0; uint32_t parent = 0; memcpy(&parent, m + 0x18, 4); SafeRead(d, &res, 8);
-            g_keepTrack[tk].gaveUp = 1; g_keep.refused++;
-            Note("difficulty: moving tiles: unit %08X (resource %016llX, motion mode %u, parent handle %08X) still falls under the %s at (%.1f, %.1f) after %d lifts in %u s: z %.2f, ground %.2f; left to the game (%u units so far)",
-                e, (unsigned long long)res, mode, parent, tile >= 0 ? "tile's ground" : "coarse ground", (double)p[0], (double)p[1], MOVE_KEEP_TRIES,
-                (unsigned)((now - g_keepTrack[tk].firstAt) / 1000), (double)p[2], (double)ground, g_keep.refused);
-            continue;
+            typedef uint8_t (*GroundFn)(uintptr_t world, const float* in, float* outZ, uint8_t reject, float* normal, uint8_t mode);
+            float in[3] = {p[0], p[1], ground + 1.5f - 500.0f}; /* the query casts from in z + 500 m down 1000 m */
+            ((GroundFn)(game + 0x13CA380u))(world, in, &floor_, 0, NULL, 0);
         }
-        if (g_keepTrack[tk].tries++ == 0) g_keepTrack[tk].firstAt = now;
-        float to[3] = {p[0], p[1], ground + 0.1f};
+        int found = isfinite(floor_) && fabsf(floor_ - ground) <= MOVE_KEEP_FIND;
+        if (found) to[2] = floor_ + 0.05f;
         ((void (*)(void*, uint32_t, const float*))(game + 0x5A2BB0u))(NULL, e, to);
+        uintptr_t vel = 0; float vz = NAN, zero = 0.0f;
+        if (EvpPtr(mgr + 0x48C8, &vel) && !SafeRead(vel + 0x84u * i + 8, &vz, 4)) *(volatile float*)(vel + 0x84u * i + 8) = zero;
         g_keep.lifted++; if (tile >= 0) g_keep.fromTile++; else g_keep.fromCoarse++;
-        if (g_keep.lifted <= 200 || g_keep.lifted % 50 == 0)
-            Note("difficulty: moving tiles: unit %08X (motion mode %u) under the %s at (%.1f, %.1f): z %.2f, ground %.2f (%.2f under), its ray missed (up %.2f, below %.2f): put back on it; %u this level (%u on tiles, %u on the coarse ground)",
-                e, mode, tile >= 0 ? "tile's ground" : "coarse ground", (double)p[0], (double)p[1], (double)p[2], (double)ground, (double)(ground - p[2]),
-                (double)ray[0], (double)ray[1], g_keep.lifted, g_keep.fromTile, g_keep.fromCoarse);
-        g_keepTrack[tk].z = to[2];
+        if (!found) g_keep.held++;
+        uint32_t lifts = 0;
+        if (tk >= 0) { lifts = ++g_keepTrack[tk].lifts; if (!found && !g_keepTrack[tk].noCollision) { g_keepTrack[tk].noCollision = 1; g_keep.refused++; } }
+        if (g_keep.lifted <= 200 || g_keep.lifted % 50 == 0 || lifts == 1 || (!found && lifts % 100 == 1))
+            Note("difficulty: moving tiles: unit %08X (motion mode %u) under the %s at (%.1f, %.1f): z %.2f, ground %.2f (%.2f under), vz %.2f, its ray missed (up %.2f, below %.2f); the collision %s: put back at %.2f, vz 0 (its lift %u; %u this level, %u on tiles, %u on the coarse ground, %u without collision under them)",
+                e, mode, tile >= 0 ? "tile's ground" : "coarse ground", (double)p[0], (double)p[1], (double)p[2], (double)ground, (double)(ground - p[2]), (double)vz,
+                (double)ray[0], (double)ray[1], found ? "found" : "NOT found within 3 m", (double)to[2], lifts, g_keep.lifted, g_keep.fromTile, g_keep.fromCoarse, g_keep.refused);
     }
 }
 
