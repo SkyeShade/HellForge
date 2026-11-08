@@ -6905,3 +6905,132 @@ static void TerrainInstall(uintptr_t game)
     char off[4] = "";
     if (!(GetEnvironmentVariableA("HELLFORGE_XL_SCATTER_BOXES", off, sizeof off) > 0 && off[0] == '0')) NearScatterViewInstall();
 }
+
+/* Test instrument (HELLFORGE_XL_TEST_DESC=1; KB engine/crash-merge-replay-render-null): lw16b and lw96a crashed on the
+ * render thread in vkd3d's descriptor copy (msvcrt+0xa53d from d3d12core, exe 0x6BF181 = ID3D12Device::CopyDescriptors)
+ * with a source handle that decoded to a heap without a CBV/SRV/UAV host buffer: a stale handle (I), from a buffer or
+ * constant-buffer release that frees the descriptor but leaves the handle in the record (0x6E33C0 at 0x6E33E3,
+ * 0x6E3730 at 0x6E3760 / 0x6E3773). Static analysis cannot name which record holds it, so (checked by me in the exe):
+ * D1 notes every descriptor free 0x6F0D20 (rcx the CPU allocator, rdx the handle, r8; three arguments, r9 is written at
+ * 0x6F0D45 before any read) in a ring with its time and callers; D2 checks, at the copy-record builder 0x6BE710 (rcx the
+ * device D, rdx out, r8 the destination start, r9b 1 for samplers (0x6F997E: table 3), the count at entry rsp+0x28 (read
+ * at 0x6BE71F) and the source handles at entry rsp+0x30 (read at 0x6BE7C0); six arguments), that every CBV/SRV/UAV
+ * source lies in a live page of D's allocator D+0x5E8 (as the free itself finds a handle's page: count +0x80, pages
+ * +0x88 of 0x38 bytes, page start +0x10, size [+0xA0] x [+0x9C]), and notes any that does not, with which allocator's
+ * pages hold it (+0x6A0 samplers, +0x478), when it was freed and by whom, and the copy's callers. */
+typedef uint64_t (*DescFreeFn)(uint64_t, uint64_t, uint64_t);
+typedef uint64_t (*DescCopyFn)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
+static DescFreeFn g_descFree; static DescCopyFn g_descCopy;
+#define DESC_RING 8192
+static struct { uint64_t handle, alloc; ULONGLONG at; uintptr_t chain[4]; } g_descFreed[DESC_RING];
+static volatile LONG g_descFreedAt, g_descMisses, g_descChecked;
+static void DescChain(uintptr_t* out, int n, int skip)
+{
+    void* f[8] = {0}; USHORT got = RtlCaptureStackBackTrace((DWORD)skip, (DWORD)n, f, NULL);
+    for (int k = 0; k < n; k++) out[k] = k < got ? (uintptr_t)f[k] : 0;
+}
+static void DescName(uintptr_t a, char* buf, size_t n)
+{
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), me = (uintptr_t)&DescName;
+    if (a >= exe && a < exe + 0x4000000u) snprintf(buf, n, " x+0x%llX", (unsigned long long)(a - exe));
+    else if (g_world.game && a >= g_world.game && a < g_world.game + 0x4000000u) snprintf(buf, n, " g+0x%llX", (unsigned long long)(a - g_world.game));
+    else if (a > me - 0x400000u && a < me + 0x400000u) snprintf(buf, n, " loader?%llX", (unsigned long long)a);
+    else snprintf(buf, n, " ?%llX", (unsigned long long)a);
+}
+static uint64_t DescFree(uint64_t alloc, uint64_t handle, uint64_t r8)
+{
+    LONG i = InterlockedIncrement(&g_descFreedAt) - 1;
+    int s = (int)((ULONG)i % DESC_RING);
+    g_descFreed[s].handle = 0; MemoryBarrier();
+    g_descFreed[s].alloc = alloc; g_descFreed[s].at = GetTickCount64(); DescChain(g_descFreed[s].chain, 4, 1);
+    MemoryBarrier(); g_descFreed[s].handle = handle;
+    return g_descFree(alloc, handle, r8);
+}
+/* 1 when the handle lies in one of the allocator's pages, read as the free reads them (fresh: ReadProcessMemory). */
+static int DescInPages(uint64_t alloc, uint64_t h)
+{
+    uint32_t count = 0, per = 0, stride = 0; uint64_t pages = 0;
+    if (SafeRead(alloc + 0x80, &count, 4) || SafeRead(alloc + 0x88, &pages, 8) || SafeRead(alloc + 0x9C, &per, 4) || SafeRead(alloc + 0xA0, &stride, 4) ||
+        pages == 0 || count > 65536) return 0;
+    for (uint32_t k = 0; k < count; k++)
+    {
+        uint64_t start = 0;
+        if (SafeRead(pages + 0x38ull * k + 0x10, &start, 8)) return 0;
+        if (h >= start && h < start + (uint64_t)per * stride) return 1;
+    }
+    return 0;
+}
+/* The copies run per draw: D+0x5E8's page starts are cached and re-read (ReadProcessMemory) only when its page count or
+ * array changes; a handle the cache misses is checked again fresh before it is noted. The allocator's own fields are
+ * read directly (the device lives as long as the renderer). */
+#define DESC_PAGES 1024
+static SRWLOCK g_descLock = SRWLOCK_INIT;
+static struct { uint64_t dev, pages; uint32_t count, per, stride; uint64_t start[DESC_PAGES]; } g_descCache;
+static int DescCached(uint64_t dev, uint64_t h)
+{
+    volatile uint8_t* a = (volatile uint8_t*)(uintptr_t)(dev + 0x5E8);
+    uint32_t count = *(volatile uint32_t*)(a + 0x80); uint64_t pages = *(volatile uint64_t*)(a + 0x88);
+    uint32_t per = *(volatile uint32_t*)(a + 0x9C), stride = *(volatile uint32_t*)(a + 0xA0);
+    AcquireSRWLockShared(&g_descLock);
+    int fresh = g_descCache.dev == dev && g_descCache.pages == pages && g_descCache.count == count && g_descCache.per == per && g_descCache.stride == stride;
+    int in = 0;
+    if (fresh) for (uint32_t k = 0; k < count && k < DESC_PAGES; k++) if (h >= g_descCache.start[k] && h < g_descCache.start[k] + (uint64_t)per * stride) { in = 1; break; }
+    ReleaseSRWLockShared(&g_descLock);
+    if (fresh) return in || count > DESC_PAGES;
+    AcquireSRWLockExclusive(&g_descLock);
+    g_descCache.dev = 0;
+    if (pages != 0 && count <= DESC_PAGES)
+    {
+        int ok = 1;
+        for (uint32_t k = 0; k < count && ok; k++) ok = !SafeRead(pages + 0x38ull * k + 0x10, &g_descCache.start[k], 8);
+        if (ok) { g_descCache.dev = dev; g_descCache.pages = pages; g_descCache.count = count; g_descCache.per = per; g_descCache.stride = stride; }
+    }
+    ReleaseSRWLockExclusive(&g_descLock);
+    return DescInPages(dev + 0x5E8, h);
+}
+static uint64_t DescCopy(uint64_t dev, uint64_t out, uint64_t dest, uint64_t sampler, uint64_t count, uint64_t src)
+{
+    InterlockedIncrement(&g_descChecked);
+    if ((uint8_t)sampler == 0 && src != 0 && dev != 0 && (uint32_t)count > 0 && (uint32_t)count < 4096 && g_descMisses < 200)
+        for (uint32_t i = 0; i < (uint32_t)count; i++)
+        {
+            uint64_t h = ((const volatile uint64_t*)(uintptr_t)src)[i];
+            if (h == 0 || DescCached(dev, h) || DescInPages(dev + 0x5E8, h)) continue;
+            if (InterlockedIncrement(&g_descMisses) > 200) break;
+            const char* in = DescInPages(dev + 0x6A0, h) ? "a page of the sampler allocator (D+0x6A0)" : DescInPages(dev + 0x478, h) ? "a page of D+0x478" : "no allocator's page";
+            char freed[256] = "never freed while noted";
+            ULONGLONG now = GetTickCount64();
+            LONG top = g_descFreedAt;
+            for (LONG j = top - 1; j >= 0 && j >= top - DESC_RING; j--)
+            {
+                int s = (int)((ULONG)j % DESC_RING);
+                if (g_descFreed[s].handle != h) continue;
+                char c[4][48]; for (int k = 0; k < 4; k++) DescName(g_descFreed[s].chain[k], c[k], sizeof c[k]);
+                snprintf(freed, sizeof freed, "freed %llu ms ago from allocator D+0x%llX by%s%s%s%s", (unsigned long long)(now - g_descFreed[s].at),
+                    (unsigned long long)(g_descFreed[s].alloc - dev), c[0], c[1], c[2], c[3]);
+                break;
+            }
+            uintptr_t ch[8]; char cc[8][48]; DescChain(ch, 8, 1); for (int k = 0; k < 8; k++) DescName(ch[k], cc[k], sizeof cc[k]);
+            Note("difficulty: render test: a copied CBV/SRV/UAV source is not in a live page of D+0x5E8: handle %llX (%u of %u, source list %llX), in %s; %s; copy called by%s%s%s%s%s%s%s%s; near tile step %d",
+                (unsigned long long)h, i, (uint32_t)count, (unsigned long long)src, in, freed, cc[0], cc[1], cc[2], cc[3], cc[4], cc[5], cc[6], cc[7], g_near.step);
+        }
+    return g_descCopy(dev, out, dest, sampler, count, src);
+}
+static void DescInstallNotes(void)
+{
+    char t[4] = "";
+    if (!(GetEnvironmentVariableA("HELLFORGE_XL_TEST_DESC", t, sizeof t) > 0 && t[0] == '1')) return;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL);
+    if (strcmp(g_build, "25480438") ||
+        !ApiCodeMatches(exe + 0x6F0D20u, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20") ||
+        !ApiCodeMatches(exe + 0x6F0D3Eu, "44 8B 91 80 00 00 00") || !ApiCodeMatches(exe + 0x6F0D5Fu, "4C 8B 99 88 00 00 00") ||
+        !ApiCodeMatches(exe + 0x6F0D77u, "4A 8B 54 19 10") || !ApiCodeMatches(exe + 0x6F0D81u, "44 8B 87 A0 00 00 00 41 8B C8 0F AF 8F 9C 00 00") ||
+        !ApiCodeMatches(exe + 0x6BE710u, "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 50") ||
+        !ApiCodeMatches(exe + 0x6BE71Fu, "44 8B 94 24 80 00 00 00") || !ApiCodeMatches(exe + 0x6BE7C0u, "48 8B 94 24 88 00 00 00") ||
+        !ApiCodeMatches(exe + 0x6F997Eu, "83 FF 03 48 8B 0B 41 0F 94 C1") || !ApiCodeMatches(exe + 0x6E33D9u, "48 81 C1 E8 05 00 00"))
+    { Note("difficulty: render test: the descriptor free / copy is not the reviewed code; not noted"); return; }
+    if (LoaderHook("render test: descriptor frees", exe + 0x6F0D20u, (void*)DescFree, (void**)&g_descFree) ||
+        LoaderHook("render test: descriptor copies checked", exe + 0x6BE710u, (void*)DescCopy, (void**)&g_descCopy))
+    { Note("difficulty: render test: the descriptor hooks were not placed"); return; }
+    Note("difficulty: render test: every CBV/SRV/UAV descriptor copy's sources are checked against D+0x5E8's live pages; frees are kept for 8192 frees");
+}

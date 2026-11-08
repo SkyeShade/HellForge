@@ -749,6 +749,7 @@ static int GameLoaded(void)
 static void InstallDaylight(uintptr_t game); /* test_daylight.c */
 static void LwInstallNavConnectNote(void); /* living_world.c */
 static void LwInstallHitNotes(void); /* living_world.c */
+static void DescInstallNotes(void); /* difficulty_world_terrain.c */
 /* game.dll loaded and decoded: what must come before the game's own set-up, then HF_EVENT_GAME_LOADED. */
 static void WatchLoaded(void)
 {
@@ -759,6 +760,7 @@ static void WatchLoaded(void)
     InstallDaylight(ApiModuleBase("game.dll", NULL)); /* test switch; before any frame runs the sky */
     LwInstallNavConnectNote(); /* test instrument (HELLFORGE_LW_TEST_TRACE=1); before any level builds its cells */
     LwInstallHitNotes(); /* test instrument (HELLFORGE_LW_TEST_HITS=1): hits on loader members */
+    DescInstallNotes(); /* test instrument (HELLFORGE_XL_TEST_DESC=1): stale descriptor handles in the renderer's copies */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
     InstallCrashEnd(); /* an exception nothing handled: noted, and the game ended if it is still stuck a minute later */
