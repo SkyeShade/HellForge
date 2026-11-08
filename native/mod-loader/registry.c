@@ -552,7 +552,13 @@ static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
 }
 
 /* The resource id of a declared resource name, or 0 for none. */
-static uint64_t DeclaredResource(const char* name) { return name != NULL && name[0] ? Murmur64A(name, strlen(name)) : 0; }
+/* A resource a weapon declares: "0x<hash>" names a game resource (a sound bank, say), anything else is hashed. */
+static uint64_t DeclaredResource(const char* name)
+{
+    if (name == NULL || name[0] == 0) return 0;
+    if (name[0] == '0' && (name[1] == 'x' || name[1] == 'X')) return strtoull(name + 2, NULL, 16);
+    return Murmur64A(name, strlen(name));
+}
 
 /* What a standalone weapon must declare and must not name (SDK 17: add_weapon copies no weapon); NULL when it is whole. */
 static const char* WeaponDeclarationRefused(const HfWeapon* def)

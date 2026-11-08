@@ -132,8 +132,9 @@ typedef struct HfWeapon
      * nodes, attachments) stay 0 and handling fields take the class's most common value (docs/modding/content.md
      * "Weapons"). base must be 0. */
     uint32_t weapon_class;     /* HF_WEAPON_CLASS_PRIMARY */
+    /* Resources are names, or "0x<hash>" for a game resource. */
     const char* package;       /* the resource package that loads its units and textures ("package" in hellforge-data.json) */
-    const char* audio_package; /* the package of its sound banks, or NULL */
+    const char* audio_package; /* the sound bank its sound events are in (the package must hold it), or NULL */
     const char* icon;          /* its armory icon texture resource, or NULL */
     uint32_t reload_ability;   /* the Helldiver's reload it plays (a vanilla ability id) */
     uint32_t capacity;         /* rounds per magazine; 0: the class's most common */
