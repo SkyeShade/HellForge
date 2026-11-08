@@ -56,11 +56,17 @@ try{
         $otherPort=if($BackendPort -lt 65535){$BackendPort+1}else{$BackendPort-1}
         & $HellForgeBlockProbe $BackendPort $probeReport $otherPort|Out-Null
         $egress=if(Test-Path -LiteralPath $probeReport){Get-Content -Raw -LiteralPath $probeReport|ConvertFrom-Json}else{$null}
-        # A PC with no network (no route out, so the connect fails in the stack before WFP judges it): the other loopback
-        # port's refusal below is the proof, since the BLOCK filter that refuses it names only the program and so refuses
-        # the outside too (NetworkBlockProbe). The session proves the outside once the PC is online.
-        $offline=[bool]($egress -and ($egress.PSObject.Properties.Name -contains 'externalIpv4RouteError') -and
-            $egress.externalIpv4RouteError -ne 0 -and $egress.externalIpv4TcpError -in @(10050,10051,10065))
+        # An offline PC (the connect fails in the stack, before WFP judges it): no route out, or a route while Windows sees
+        # no internet on either protocol (internetConnectivity, NLM_CONNECTIVITY flags without 0x40 or 0x400; -1 unread).
+        # The other loopback port's refusal below is then the proof, since the BLOCK filter that refuses it names only the
+        # program and so refuses the outside too (NetworkBlockProbe). The session proves the outside again while the game runs.
+        $offline=$false
+        if($egress){
+            $fields=$egress.PSObject.Properties.Name
+            $noRoute=($fields -contains 'externalIpv4RouteError') -and $egress.externalIpv4RouteError -ne 0
+            $noInternet=($fields -contains 'internetConnectivity') -and $egress.internetConnectivity -ge 0 -and ($egress.internetConnectivity -band 0x440) -eq 0
+            $offline=($noRoute -or $noInternet) -and $egress.externalIpv4TcpError -in @(10050,10051,10065)
+        }
         if(-not $egress -or ($egress.externalIpv4TcpError -ne 10013 -and -not $offline)){
             throw 'The network block is not stopping outside connections (another firewall, a VPN or a security suite may be letting traffic past the WFP filters).'
         }

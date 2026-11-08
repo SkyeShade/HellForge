@@ -6,7 +6,8 @@ namespace HellForge.Core;
 
 // The network block's probe report, as every session reads it (app/scripts/OfflineControlNetworkProbe.cs, which
 // NetworkProbe.exe is built from, or the session's own copy in the Linux namespace): {"loopbackHttpPassed",
-// "externalIpv4TcpError", "externalIpv6TcpError"} and, for a block narrowed to the backend's port, "loopbackTcpError"
+// "externalIpv4TcpError", "externalIpv6TcpError"}, the outside route and connectivity ("externalIpv4RouteError",
+// "internetConnectivity") from a probe that has them and, for a block narrowed to the backend's port, "loopbackTcpError"
 // and "otherLoopbackTcpError". The block holds when the backend answers over loopback, a connect to a documentation
 // address (192.0.2.1, which goes nowhere) is refused by the block itself (WSAEACCES) and, narrowed, so is another
 // loopback port.
@@ -14,13 +15,19 @@ public static class NetworkBlockProbe
 {
     public const int Refused = 10013;
 
-    // No network (ticket 0352): with no route out, Windows fails the outside connect in the stack before WFP's connect
-    // layer judges it, with one of these (WSAENETDOWN, WSAENETUNREACH, WSAEHOSTUNREACH), so the block's refusal cannot
-    // show. The probe writes "externalIpv4RouteError" (GetBestInterface, 0 with a route). With none, a narrowed block holds
-    // when the other loopback port is refused: its BLOCK filter names only the program, so the filter refusing that port
-    // refuses the outside too (native/network-block/hellforge_wfp.c, AddPair). The session proves the outside the moment
-    // Windows has a route again (PlaySession.CheckOfflineBlock).
+    // No internet (ticket 0352): Windows fails the outside connect in the stack, with one of these (WSAENETDOWN,
+    // WSAENETUNREACH, WSAEHOSTUNREACH), so the block's refusal (always WSAEACCES) cannot show. The PC counts as offline
+    // when the probe saw no route out ("externalIpv4RouteError", GetBestInterface, 0 with a route), or a route while
+    // Windows sees no internet on either protocol ("internetConnectivity", INetworkListManager::GetConnectivity's
+    // NLM_CONNECTIVITY flags, -1 unread): a Wi-Fi network or adapter with no way on, as on the ticket's PC (10065 with a
+    // route, flags without INTERNET). A route with the internet up never counts: a router's unreachable answer means the
+    // connect got out. Offline, a narrowed block holds when the other loopback port is refused: its BLOCK filter names only
+    // the program, so the filter refusing that port refuses the outside too (native/network-block/hellforge_wfp.c,
+    // AddPair). The session proves the outside again while the game runs (PlaySession.CheckOfflineBlock).
     static readonly int[] NoRoute = [10050, 10051, 10065];
+
+    // NLM_CONNECTIVITY_IPV4_INTERNET | NLM_CONNECTIVITY_IPV6_INTERNET (netlistmgr.h)
+    const int Internet = 0x40 | 0x400;
 
     // Null when the report shows the block holding; else what is wrong, in players' words.
     public static string? Problem(JsonNode? report, bool narrowed)
@@ -32,7 +39,7 @@ public static class NetworkBlockProbe
                 : "the game cannot reach HellForge's own backend on this PC";
         var offline = NoNetwork(probe);
         if (offline && !narrowed)
-            return $"this PC has no network connection (error {outside}), and the network block can be checked without one only once it is narrowed to HellForge's backend";
+            return $"this PC has no internet connection (error {outside}), and the network block can be checked without one only once it is narrowed to HellForge's backend";
         // -1: the connect was still waiting after 2.5 s, so it was let out (to an address that answers nothing)
         if (outside == -1) return "the network block is not stopping the game's connections to the internet";
         if (outside != Refused && !offline) return $"the network block is not stopping the game's connections to the internet (error {outside?.ToString() ?? "none"})";
@@ -40,13 +47,15 @@ public static class NetworkBlockProbe
         return null;
     }
 
-    // The report is from a PC with no route out: the probe saw no route, and the outside connect failed for it. A probe
-    // built before the route check writes no route, so this is false for its report.
+    // The report is from an offline PC (NoRoute above): the outside connect failed in the stack, with no route out or no
+    // internet. A probe built before the route check, or before the connectivity check on a PC with a route, writes
+    // neither, so this is false for its report.
     public static bool Offline(JsonNode? report) => report is JsonObject probe && NoNetwork(probe);
 
     static bool NoNetwork(JsonObject probe) =>
-        Error(probe, "externalIpv4RouteError") is { } route && route != 0 &&
-        Error(probe, "externalIpv4TcpError") is { } outside && NoRoute.Contains(outside);
+        Error(probe, "externalIpv4TcpError") is { } outside && NoRoute.Contains(outside) &&
+        (Error(probe, "externalIpv4RouteError") is { } route && route != 0 ||
+         Error(probe, "internetConnectivity") is { } connectivity && connectivity >= 0 && (connectivity & Internet) == 0);
 
     // Whether Windows has a route to the probe's outside address now (the probe's own check); null off Windows.
     public static bool? HasRoute()

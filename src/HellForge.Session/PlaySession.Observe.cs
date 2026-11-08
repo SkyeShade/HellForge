@@ -24,7 +24,7 @@ sealed partial class PlaySession
             if (job.Process.HasExited) break;
             if (WatchQuit(quit, clock, ref hung)) break;
             CheckBlock(clock, blockRules, ref nextBlockCheck);
-            CheckOfflineBlock();
+            CheckOfflineBlock(clock);
             CheckBroker();
             RecordRedirect(playFab);
             RecordSteamInput();
@@ -102,30 +102,42 @@ sealed partial class PlaySession
         nextBlockCheck = clock.ElapsedMilliseconds + 10000;
     }
 
-    // The network block's probe while the session started with no network (NoteOffline): the outside is still to prove.
+    // The network block's probe while the session started offline (NoteOffline): the outside is still to prove.
     string? offlineProbe;
+    // When the offline session's probe runs next (on the observation clock), and whether Windows had a route out at the
+    // last look: the probe runs every 10 seconds, and at once when a route appears.
+    long nextOfflineCheck;
+    bool? offlineRoute;
 
-    // The block held on a PC with no network (NetworkBlockProbe.Offline, ticket 0352): proved on loopback alone, so the
-    // outside is proved the moment Windows has a route out again (CheckOfflineBlock, each second while the game runs).
+    // The block held on an offline PC (NetworkBlockProbe.Offline, ticket 0352): proved on loopback alone, so the outside
+    // is proved again while the game runs (CheckOfflineBlock).
     void NoteOffline(string probe)
     {
         if (!NetworkBlockProbe.Offline(result["networkControl"])) return;
         offlineProbe = probe;
+        offlineRoute = NetworkBlockProbe.HasRoute();
         result["networkBlockOffline"] = true;
         result["networkControlOffline"] = result["networkControl"]?.DeepClone();
-        Say("This PC has no network connection: the network block is checked on this PC alone now, and against the internet as soon as the PC connects.");
+        Say("This PC has no internet connection: the network block is checked on this PC alone now, and against the internet as soon as the PC connects.");
     }
 
-    // Started with no network (NoteOffline): while Windows has no route out nothing can leave this PC. Once it has one,
-    // the probe runs again and must see the outside refused, or the session fails and its clean-up stops the game. A
-    // route that is gone again by the time the probe runs leaves the session offline, still watched.
-    void CheckOfflineBlock()
+    // Started offline (NoteOffline): the probe runs again every 10 seconds, and at once when Windows gains a route out. A
+    // route alone is no sign of the internet (the ticket's PC had one while offline), and Windows can be slow to see the
+    // internet come back, so the probe's own result decides: still offline (NetworkBlockProbe.Offline) keeps the session
+    // watched; the outside refused (10013) proves the block online and ends the watch; anything else (the connect got out,
+    // waited, or the block no longer holds) fails the session, and its clean-up stops the game.
+    void CheckOfflineBlock(Stopwatch clock)
     {
-        if (offlineProbe == null || NetworkBlockProbe.HasRoute() != true) return;
+        if (offlineProbe == null) return;
+        var route = NetworkBlockProbe.HasRoute();
+        var routeAppeared = route == true && offlineRoute != true;
+        offlineRoute = route;
+        if (!routeAppeared && clock.ElapsedMilliseconds < nextOfflineCheck) return;
         var problem = RunNetworkProbe(offlineProbe, false, true, "network-probe-online.json");
+        nextOfflineCheck = clock.ElapsedMilliseconds + 10000;
         if (problem == null && NetworkBlockProbe.Offline(result["networkControl"])) return;
         if (problem != null)
-            throw new SessionFailure($"This PC connected to a network during the session, and the network block is not holding ({problem}). " +
+            throw new SessionFailure($"This PC connected to the internet during the session, and the network block is not holding ({problem}). " +
                 "HellForge stopped the game: press Play to check the block again.");
         offlineProbe = null;
         result["networkBlockProvenOnline"] = true;

@@ -17,9 +17,43 @@ public static class OfflineControlNetworkProbe {
         // IPAddr is in_addr's form (network byte order): the address bytes as they are, read as one value
         return GetBestInterface(BitConverter.ToUInt32(IPAddress.Parse(address).GetAddressBytes(), 0), out index);
     }
-    // No route out (Route), and the connect failed for it: WSAENETDOWN, WSAENETUNREACH or WSAEHOSTUNREACH.
-    static bool Offline(int route, int error) {
-        return route != 0 && (error == 10050 || error == 10051 || error == 10065);
+    // Windows' Network List Manager (netlistmgr.h). INetworkListManager derives from IDispatch; GetConnectivity is its
+    // seventh method. The six before it are declared only to hold their places in the table and are never called.
+    [ComImport, Guid("DCB00000-570F-4A9B-8D69-199FDBA5723B"), InterfaceType(ComInterfaceType.InterfaceIsDual)]
+    interface INetworkListManager {
+        [PreserveSig] int GetNetworks(int flags, out IntPtr networks);
+        [PreserveSig] int GetNetwork(Guid id, out IntPtr network);
+        [PreserveSig] int GetNetworkConnections(out IntPtr connections);
+        [PreserveSig] int GetNetworkConnection(Guid id, out IntPtr connection);
+        [PreserveSig] int IsConnectedToInternet(out short connected);
+        [PreserveSig] int IsConnected(out short connected);
+        [PreserveSig] int GetConnectivity(out int connectivity);
+    }
+    [ComImport, Guid("DCB00C01-570F-4A9B-8D69-199FDBA5723B")]
+    class NetworkListManager { }
+    // NLM_CONNECTIVITY_IPV4_INTERNET | NLM_CONNECTIVITY_IPV6_INTERNET
+    const int Internet = 0x40 | 0x400;
+    // Windows' own verdict on this PC's connectivity (the taskbar's "No internet"): the NLM_CONNECTIVITY flags of
+    // INetworkListManager::GetConnectivity, or -1 when they could not be read (which never counts as offline).
+    static int Connectivity() {
+        object manager = null;
+        try {
+            manager = new NetworkListManager();
+            int flags;
+            return ((INetworkListManager)manager).GetConnectivity(out flags) == 0 ? flags : -1;
+        } catch(Exception) {
+            return -1;
+        } finally {
+            if(manager != null) Marshal.ReleaseComObject(manager);
+        }
+    }
+    // The outside connect failed in the stack (WSAENETDOWN, WSAENETUNREACH or WSAEHOSTUNREACH; the WFP block's refusal is
+    // always WSAEACCES) on a PC that is offline: no route out, or a route (a network with no way on, ticket 0352) while
+    // Windows sees no internet on either protocol. A route with the internet up fails: a router's unreachable answer
+    // means the connect got out.
+    static bool Offline(int route, int connectivity, int error) {
+        if(error != 10050 && error != 10051 && error != 10065) return false;
+        return route != 0 || (connectivity >= 0 && (connectivity & Internet) == 0);
     }
     static int External(AddressFamily family, string address) {
         using(var socket = new Socket(family, SocketType.Stream, ProtocolType.Tcp)) {
@@ -46,7 +80,7 @@ public static class OfflineControlNetworkProbe {
         }
     }
     // <backend port> <report> [other loopback port]: with the third, also how a connect to the backend's port and to
-    // another loopback port ends (the WFP block permits only the backend's: 10013 for the other). Offline (no route out),
+    // another loopback port ends (the WFP block permits only the backend's: 10013 for the other). Offline (Offline above),
     // the other port's 10013 is the proof: the WFP block's BLOCK filter names only the program, so the filter that
     // refuses it is the one that refuses the outside (native/network-block/hellforge_wfp.c, AddPair).
     public static int Main(string[] args) {
@@ -72,6 +106,7 @@ public static class OfflineControlNetworkProbe {
             }
         }
         int route = Route("192.0.2.1");
+        int connectivity = Connectivity();
         int v4 = External(AddressFamily.InterNetwork, "192.0.2.1");
         int v6 = External(AddressFamily.InterNetworkV6, "2001:db8::1");
         string narrowing = "";
@@ -81,8 +116,8 @@ public static class OfflineControlNetworkProbe {
             narrowing = ",\"loopbackTcpError\":" + Loopback(port) + ",\"otherLoopbackTcpError\":" + otherError;
         }
         File.WriteAllText(args[1], "{\"loopbackHttpPassed\":" + (local ? "true" : "false") +
-            ",\"externalIpv4TcpError\":" + v4 + ",\"externalIpv4RouteError\":" + route + ",\"externalIpv6TcpError\":" + v6 + narrowing + "}");
-        bool outside = v4 == 10013 || (other > 0 && Offline(route, v4));
+            ",\"externalIpv4TcpError\":" + v4 + ",\"externalIpv4RouteError\":" + route + ",\"internetConnectivity\":" + connectivity + ",\"externalIpv6TcpError\":" + v6 + narrowing + "}");
+        bool outside = v4 == 10013 || (other > 0 && Offline(route, connectivity, v4));
         return local && outside && (other == 0 || otherError == 10013) ? 0 : 1;
     }
 }
