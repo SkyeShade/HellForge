@@ -3458,7 +3458,7 @@ static void AttachmentsFixture(void)
     const uint32_t weapons[] = {0x7E57u}, strangers[] = {0x9999u};
     const uint64_t modUnit = 0x5555666677778888ull;
     static const HfAttachmentChange changes[] = {{HF_FIELD(WeaponData, ergonomics), HF_F32(55)}, {HF_FIELD(ProjectileWeapon, muzzle_flash), HF_U64(0xF1A5)}};
-    HfAttachment brake = {sizeof brake, HF_SLOT_MUZZLE, "test/mod/brake", modUnit, "Brake", "A brake.", weapons, 1, 3, changes, 2};
+    HfAttachment brake = {sizeof brake, HF_SLOT_MUZZLE, "test/mod/brake", modUnit, "Brake", "A brake.", weapons, 1, 3, changes, 2, 4500};
     HfAttachment nowhere = brake; nowhere.name = "test/mod/nowhere"; nowhere.weapons = strangers;
     HfAttachment paint = brake; paint.name = "test/mod/paint"; paint.slot = 3;
     HfAttachment unitless = brake; unitless.name = "test/mod/trigger"; unitless.slot = HF_SLOT_TRIGGER;
@@ -3494,7 +3494,28 @@ static void AttachmentsFixture(void)
     static char text[REG_ITEM_ROOM + 512];
     int n = AttachmentItems(text, 0, sizeof text);
     text[n] = 0;
-    assert(strstr(text, "\"standalone\":true,\"weapons\":[32343],\"level\":3}]") && !strstr(text, "copyOf") && Occurrences(text, "\"mixId\":") == 1);
+    assert(strstr(text, "\"standalone\":true,\"weapons\":[32343],\"level\":3,\"price\":4500}]") && !strstr(text, "copyOf") && Occurrences(text, "\"mixId\":") == 1);
+
+    /* A mod built before `price` (its size ends at change_count): accepted, at the default price. */
+    HfAttachment older = brake; older.name = "test/mod/older"; older.size = (uint32_t)offsetof(HfAttachment, price); older.level = 0;
+    assert(ApiAddAttachment(mod, &older) != 0 && g_attachments[1].price == 0 && g_attachments[0].price == 4500);
+    older.name = "test/mod/oldest"; older.size = (uint32_t)offsetof(HfAttachment, change_count);
+    assert(ApiAddAttachment(mod, &older) == 0);
+    /* A standalone weapon selling nothing above level 1 is logged (the Armory's CANNOT EDIT); one that sells the brake is not. */
+    g_weapons[savedWeapons].standalone = 1; g_weapons[savedWeapons].mod = mod;
+    memset(&g_weapons[g_weaponCount], 0, sizeof g_weapons[0]);
+    g_weapons[g_weaponCount].id = 0x7E58u; g_weapons[g_weaponCount].standalone = 1; g_weapons[g_weaponCount].mod = mod;
+    snprintf(g_weapons[g_weaponCount].name, sizeof g_weapons[0].name, "test/mod/bare");
+    g_weaponCount++;
+    mod->last[0] = 0;
+    g_attChecked = 0;
+    AttachmentsStandaloneCheck();
+    assert(strstr(mod->last, "add_weapon(test/mod/bare): no attachment above level 1") != NULL);
+    mod->last[0] = 0;
+    AttachmentsStandaloneCheck();
+    assert(mod->last[0] == 0); /* once */
+    g_weaponCount--;
+    g_attChecked = 0;
 
     g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL; g_attBlock.count = 0;
     g_weaponCount = savedWeapons;
