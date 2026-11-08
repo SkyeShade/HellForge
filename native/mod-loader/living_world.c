@@ -54,6 +54,8 @@ static struct
 } g_lw;
 
 static void LwNavTypeDump(void); /* test data dump, below */
+static void LwSmashTableUpdate(void); /* obstacle smashes spare squad mates, below */
+static volatile LONG g_lwSpared;
 static int LwEnabled(void)
 {
     if (g_lw.state != 0) return g_lw.state > 0;
@@ -2355,6 +2357,7 @@ static void LwTestCommands(void)
 
 static void LwSquadsTick(void)
 {
+    LwSmashTableUpdate();
     uintptr_t dir, lg = LwLevel();
     uint32_t seed = 0, levelState = 0;
     if (lg == 0 || !EvpPtr(g_lw.game + LW_DIRECTOR, &dir) || SafeRead(lg + 0x1E4, &levelState, 4) || SafeRead(lg + 0x8, &seed, 4)) { LwWhy("no level or director"); return; }
@@ -2478,6 +2481,7 @@ static void LwSquadsTick(void)
                 g_lwWorld.goals, g_lwWorld.goalNoFace, g_lwWorld.goalReplans, g_lwWorld.goalStuck);
         g_lwWorld.goals = g_lwWorld.goalNoFace = g_lwWorld.goalReplans = g_lwWorld.goalStuck = 0;
         LwNavTypeDump(); /* test (HELLFORGE_LW_TEST_NAV=1): agent types and obstacle areas, twice a level */
+        { LONG spared = InterlockedExchange(&g_lwSpared, 0); if (spared) Note("living world: obstacle smashes (30 s): %ld squad-mate targets spared", (long)spared); }
         if (g_lwWorld.heights)
             Note("living world: ground (30 s): %u member positions, %u more than 1.5 m under the drawn ground (worst %.1f m), %u more than 3 m over it (worst %.1f m)",
                 g_lwWorld.heights, g_lwWorld.underGround, (double)g_lwWorld.worstUnder, g_lwWorld.overGround, (double)g_lwWorld.worstOver);
@@ -3248,6 +3252,151 @@ static void LwNavTypeDump(void)
             shown++;
         }
     }
+}
+/* ---- A loader member's obstacle smash spares its own squad (user decision 2026-11-07; KB living-world-spawn-losses,
+ * follow-ups 1-6, the bytes checked by me in game.dll) ----------------------------------------------------------------
+ * Calm loader members died to squad mates' obstacle smashes (lw95b/c, lw97a: kind 6, amount 100, DamageInfo 9 at
+ * 1.5-2.3 m). The game's obstacle clearing (0x7E63B0, slots filled by 0x7E5480) replays a unit's smash ability (its AI
+ * settings +0x200 small / +0x204 large obstacle ability: 958, 1058, 829, 2730) while an obstacle area is in its box; the
+ * ability's damage zone is centred on the unit and the zone processor 0x7D01C0 tests no faction: it skips only its
+ * owner, the owner's links and targets already hit. The user's choice: "Keep the game's smashing as is (obstacles still
+ * get cleared), but a loader squad member's smash zone doesn't damage members of its own squad."
+ * The candidate loop (0x7D03A0..0x7D1040) maps each contact to its entity (edi, 0x7D03E1) and compares it with the
+ * owner ([[rsp+0x78]+8] into ebx, 0x7D03EF..0x7D03FA: owner -> 0x7D0565). A candidate's only effect in the loop is
+ * joining the target list; damage, hit reactions and pushes are applied after the loop from that list. The jump at
+ * 0x7D03EF (17 bytes, no branch into 0x7D03F0..0x7D03FF) goes to a stub that redoes those instructions and asks
+ * LwSmashSpares(owner, candidate): 1 = the vanilla skip 0x7D1017 (xor r13d, r13d; the loop's own next-contact path),
+ * else on at 0x7D0400. Free at that point: rax, rcx, rdx, r8-r11, flags; the body's rsp is 16-aligned (seven pushes,
+ * 0x950; movaps at 0x7D01DA), so the stub keeps xmm0-5 and calls C with 0x80 bytes reserved.
+ * A zone keeps a copy of its descriptor and no ability id, and descriptors are shared, so the zone is told by its
+ * owner's current ability (the record 0x4A40C0 reads: [game+0x3326640] keys {id, index} [+0x18], places +0x20, empty
+ * key +0x24, multiplier +0x28, records [+0x38] + 0xE0 index, +0 ability id, +0x10 active): active and equal to the
+ * owner's +0x200 or +0x204. The mate never joins the zone's already-hit set (re-tested and skipped each frame); the
+ * zone's world hits (+0x334), and so the obstacle's clearing, are untouched. Ids are full 32-bit (generation from bit
+ * 22); the table holds members whose index (id & 0x3FFFFF) is under 0x10000. Clients keep an empty table (the squads
+ * are the host's): vanilla there. */
+#define LW_SMASH_TAB 0x10000u
+typedef struct { volatile uint32_t id, tag, ab0, ab1; } LwSmashEntry;
+static LwSmashEntry g_lwSmash[LW_SMASH_TAB];
+static uint32_t g_lwSmashSet[2048]; static int g_lwSmashSetN;
+static volatile LONG g_lwSmashOn;
+/* the obstacle abilities of a unit from its AI settings (0x511CC0's table): 1 when found */
+static int LwObstacleAbilities(uint32_t e, uint32_t* ab0, uint32_t* ab1)
+{
+    uintptr_t game = g_lw.game, aiState = 0, table = 0; uint32_t unit = 0;
+    uint64_t res = EvpEntityResource(game, e, &unit);
+    if (!res || SafeRead(game + 0x346BF98u, &aiState, 8) || !aiState || SafeRead(aiState + 0xF12DE8u, &table, 8) || !table) return 0;
+    for (uint32_t p = 0; p < 316; p++)
+    {
+        uint64_t key = 0; uint32_t sidx = 0; uintptr_t b = table + 16ull * ((res + p) % 316);
+        if (SafeRead(b, &key, 8) || key == 0) return 0;
+        if (key == res)
+        {
+            uint32_t ab[2] = {0, 0};
+            if (SafeRead(b + 8, &sidx, 4) || SafeRead(table + 0x13C0 + 0x2DCull * sidx + 0x200, ab, 8)) return 0;
+            *ab0 = ab[0]; *ab1 = ab[1]; return 1;
+        }
+    }
+    return 0;
+}
+/* each squads tick: the online members, their squad as the tag; an entry changes only when a member comes or goes */
+static void LwSmashTableUpdate(void)
+{
+    if (!g_lwSmashOn) return;
+    static uint32_t want[2048]; int wantN = 0;
+    for (int i = 0; i < g_lwWorld.count && i < LW_SQUADS_MAX; i++)
+    {
+        const LwSquad* q = &g_lwSquads[i];
+        if (q->state != LW_ONLINE) continue;
+        for (int k = 0; k < q->seenCount && k < 32 && wantN < 2048; k++)
+        {
+            uint32_t e = q->seen[k], s = e & 0x3FFFFFu, tag = (uint32_t)i + 1;
+            if (e == 0 || s >= LW_SMASH_TAB) continue;
+            LwSmashEntry* t = &g_lwSmash[s];
+            if (t->id != e || t->tag != tag)
+            {
+                uint32_t a0 = 0, a1 = 0; LwObstacleAbilities(e, &a0, &a1);
+                t->tag = 0; MemoryBarrier(); t->ab0 = a0; t->ab1 = a1; t->id = e; MemoryBarrier(); t->tag = tag;
+            }
+            want[wantN++] = s;
+        }
+    }
+    for (int j = 0; j < g_lwSmashSetN; j++) /* members gone: cleared */
+    {
+        int still = 0;
+        for (int k = 0; k < wantN && !still; k++) still = want[k] == g_lwSmashSet[j];
+        if (!still) { g_lwSmash[g_lwSmashSet[j]].tag = 0; MemoryBarrier(); g_lwSmash[g_lwSmashSet[j]].id = 0; }
+    }
+    memcpy(g_lwSmashSet, want, sizeof want[0] * (size_t)wantN); g_lwSmashSetN = wantN;
+}
+/* from the zone processor's candidate loop: 1 = skip this candidate */
+static int LwSmashSpares(uint32_t owner, uint32_t target)
+{
+    if ((owner & 0x3FFFFFu) >= LW_SMASH_TAB || (target & 0x3FFFFFu) >= LW_SMASH_TAB) return 0;
+    const LwSmashEntry* a = &g_lwSmash[owner & 0x3FFFFFu]; const LwSmashEntry* b = &g_lwSmash[target & 0x3FFFFFu];
+    uint32_t tag = a->tag;
+    if (tag == 0 || a->id != owner || b->id != target || b->tag != tag || (a->ab0 == 0 && a->ab1 == 0)) return 0;
+    uintptr_t m = *(volatile uintptr_t*)(g_lw.game + 0x3326640u);
+    if (m == 0) return 0;
+    uint32_t places = *(volatile uint32_t*)(m + 0x20), empty = *(volatile uint32_t*)(m + 0x24), mult = *(volatile uint32_t*)(m + 0x28);
+    uintptr_t keys = *(volatile uintptr_t*)(m + 0x18), recs = *(volatile uintptr_t*)(m + 0x38);
+    if (places == 0 || (places & (places - 1)) != 0 || keys == 0 || recs == 0) return 0;
+    uint32_t index = 0xFFFFFFFFu;
+    for (uint32_t i = 0; i < places; i++)
+    {
+        const volatile uint32_t* k = (const volatile uint32_t*)(keys + 8ull * ((owner * mult + i) & (places - 1)));
+        if (k[0] == empty) break;
+        if (k[0] == owner) { index = k[1]; break; }
+    }
+    if (index == 0xFFFFFFFFu) return 0;
+    uint32_t ability = *(volatile uint32_t*)(recs + 0xE0ull * index); uint8_t active = *(volatile uint8_t*)(recs + 0xE0ull * index + 0x10);
+    if (!active || ability == 0 || (ability != a->ab0 && ability != a->ab1)) return 0;
+    InterlockedIncrement(&g_lwSpared);
+    return 1;
+}
+static void LwInstallSmashSpares(void)
+{
+    if (!LwEnabled() || g_lwSmashOn) return;
+    uintptr_t game = g_lw.game;
+    if (!ApiCodeMatches(game + 0x7D03E1u, "8B 38 3B 3D 63 38 CB 02") ||
+        !ApiCodeMatches(game + 0x7D03EFu, "48 8B 44 24 78 8B 58 08 41 3B DC 0F 84 65 01 00 00") ||
+        !ApiCodeMatches(game + 0x7D1017u, "45 33 ED 48 8B 5D A8") || !ApiCodeMatches(game + 0x7D01C0u, "40 55 53 56 57 41 55 41 56 41 57") ||
+        !ApiCodeMatches(game + 0x4A40CAu, "4C 8B 15 6F 25 E8 02") || !ApiCodeMatches(game + 0x4A40DAu, "45 8B 4A 20") ||
+        !ApiCodeMatches(game + 0x4A40E6u, "41 8B 5A 28") || !ApiCodeMatches(game + 0x4A4104u, "49 8B 7A 18 41 8B 72 24") ||
+        !ApiCodeMatches(game + 0x4A414Au, "49 8B 42 38 48 69 D1 E0 00 00 00 80 7C 02 10 00"))
+    { Note("living world: the damage zones' target test is not the reviewed code; obstacle smashes are not kept off squad mates"); return; }
+    uint8_t* block = AllocateNearGame(game, 0x1000);
+    if (block == NULL) { Note("living world: no memory near game.dll for the smash stub; obstacle smashes are not kept off squad mates"); return; }
+    static const uint8_t pre[132] = {
+        0x48, 0x8B, 0x44, 0x24, 0x78,             /* 0: mov rax, [rsp+0x78] */
+        0x8B, 0x58, 0x08,                         /* 5: mov ebx, [rax+8] */
+        0x41, 0x3B, 0xDC,                         /* 8: cmp ebx, r12d */
+        0x0F, 0x84, 0, 0, 0, 0,                   /* 11: je 0x7D0565 (rel32 at 13) */
+        0x48, 0x81, 0xEC, 0x80, 0, 0, 0,          /* 17: sub rsp, 0x80 */
+        0xF3, 0x0F, 0x7F, 0x44, 0x24, 0x20, 0xF3, 0x0F, 0x7F, 0x4C, 0x24, 0x30, 0xF3, 0x0F, 0x7F, 0x54, 0x24, 0x40,
+        0xF3, 0x0F, 0x7F, 0x5C, 0x24, 0x50, 0xF3, 0x0F, 0x7F, 0x64, 0x24, 0x60, 0xF3, 0x0F, 0x7F, 0x6C, 0x24, 0x70, /* 24: movdqu [rsp+0x20..0x70], xmm0-5 */
+        0x89, 0xD9,                               /* 60: mov ecx, ebx (the owner) */
+        0x89, 0xFA,                               /* 62: mov edx, edi (the candidate) */
+        0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,       /* 64: mov rax, LwSmashSpares (imm64 at 66) */
+        0xFF, 0xD0,                               /* 74: call rax */
+        0xF3, 0x0F, 0x6F, 0x44, 0x24, 0x20, 0xF3, 0x0F, 0x6F, 0x4C, 0x24, 0x30, 0xF3, 0x0F, 0x6F, 0x54, 0x24, 0x40,
+        0xF3, 0x0F, 0x6F, 0x5C, 0x24, 0x50, 0xF3, 0x0F, 0x6F, 0x64, 0x24, 0x60, 0xF3, 0x0F, 0x6F, 0x6C, 0x24, 0x70, /* 76: movdqu xmm0-5, [rsp+0x20..0x70] */
+        0x48, 0x81, 0xC4, 0x80, 0, 0, 0,          /* 112: add rsp, 0x80 */
+        0x85, 0xC0,                               /* 119: test eax, eax */
+        0x0F, 0x85, 0, 0, 0, 0,                   /* 121: jnz 0x7D1017 (rel32 at 123) */
+        0xE9, 0, 0, 0, 0 };                       /* 127: jmp 0x7D0400 (rel32 at 128) */
+    memcpy(block, pre, sizeof pre);
+    uint64_t fn = (uint64_t)(uintptr_t)LwSmashSpares; memcpy(block + 66, &fn, 8);
+    int64_t r1 = (int64_t)(game + 0x7D0565u) - (int64_t)(uintptr_t)(block + 17), r2 = (int64_t)(game + 0x7D1017u) - (int64_t)(uintptr_t)(block + 127),
+        r3 = (int64_t)(game + 0x7D0400u) - (int64_t)(uintptr_t)(block + 132);
+    if (!InRel32(r1) || !InRel32(r2) || !InRel32(r3)) { Note("living world: the smash stub is out of reach of game.dll"); return; }
+    int32_t v = (int32_t)r1; memcpy(block + 13, &v, 4); v = (int32_t)r2; memcpy(block + 123, &v, 4); v = (int32_t)r3; memcpy(block + 128, &v, 4);
+    DWORD protect; VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect); FlushInstructionCache(GetCurrentProcess(), block, 0x1000);
+    uint8_t patch[17]; memset(patch, 0xCC, sizeof patch);
+    patch[0] = 0xE9; v = DifficultyJumpRel(game + 0x7D03EFu, (uintptr_t)block); memcpy(patch + 1, &v, 4);
+    InterlockedExchange(&g_lwSmashOn, 1); /* the table fills from the next squads tick; until then every test answers 0 */
+    if (ApiWrite(game + 0x7D03EFu, patch, sizeof patch)) { g_lwSmashOn = 0; Note("living world: the smash stub's jump could not be written"); return; }
+    Note("living world: a loader member's obstacle smash spares its own squad mates (the zone processor's target test, game.dll 0x7D03EF)");
 }
 static void LwInstallHitNotes(void)
 {
