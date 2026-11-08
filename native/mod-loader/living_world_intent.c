@@ -198,6 +198,8 @@ static void LwIntentEnd(LwSquad* q, const char* why)
 }
 /* offline: the route to the node nearest the point */
 static int LwTestTraceOn(void); static int LwLiveTarget(uint32_t target, float* pos); static void LwTestClearCheck(void);
+static int LwPlayerWithin(const float* at, float r);
+#define LW_RETAKE_PLAYER 300.0f  /* no player within this while a squad is sent or the garrison is armed (D) */
 static int LwRetakeArrived(LwSquad* q, ULONGLONG now); static int LwRegionTier(const LwSquad* q, int region); static int LwRegionOfNode(int node);
 static int LwIntentRoute(LwSquad* q)
 {
@@ -360,6 +362,20 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
         { q->intentStage = 1; q->intentStageAt = now; Note("living world: squad %d reached the garrison to retake online after %.0f s; it waits for players to leave", (int)(q - g_lwSquads), (double)(now - q->intentAt) / 1000.0); }
         else if (q->intentStage == 0 && now - q->intentAt > 300000) LwIntentEnd(q, "not there in 300 s");
         else if (q->intentStage == 1 && now - q->intentStageAt > LW_RETAKE_WAIT) LwIntentEnd(q, "players stayed near");
+        else if (q->intentStage == 1 && !q->forceOff && now >= q->retargetAt && !LwPlayerWithin(q->target, LW_RETAKE_PLAYER))
+        {
+            /* in a player's sightline band a squad stays online (LwOnlineTick), so on extra large maps it waited out
+             * LW_RETAKE_WAIT 450 m from the player (lw113c). Calm and out of every player's sight, it leaves here. */
+            q->retargetAt = now + 1000; /* REINFORCE's field; free on a retake */
+            int calm = 1; float p[3] = {at[0], at[1], 0};
+            for (int k = 0; k < n && calm; k++) if (LwAlert(members[k]) != 0) calm = 0;
+            if (calm && LwGround(at[0], at[1], &p[2]) && LwHidden(p))
+            {
+                q->forceOff = 2;
+                Note("living world: squad %d goes offline at the garrison to retake, out of every player's sight, %.0f m from the nearest player", (int)(q - g_lwSquads),
+                    (double)sqrtf(LwNearestPlayer2(at[0], at[1])));
+            }
+        }
         return;
     }
     if (q->intent != LW_INVESTIGATE) return;
@@ -636,7 +652,6 @@ static void LwTestNoise(int seq, int type, float dx, float dy)
  * open one could refill a destroyed one. A plain post is cleared by the kill that empties its units list (0x91055B). */
 #define LW_RETAKE_CLEAR 300000   /* ms a garrison stays cleared before a squad retakes it (D) */
 #define LW_RETAKE_AGAIN 600000   /* ms between retakes of one garrison (D) */
-#define LW_RETAKE_PLAYER 300.0f  /* no player within this while a squad is sent or the garrison is armed (D) */
 #define LW_RETAKE_NODE 60.0f    /* the route node nearest the garrison is within max(this, 0.75 x the mean node spacing) of its centre (D) */
 #define LW_RETAKE_REACH 800.0f   /* squads sent from within this (D; 1500 m on extra large maps) */
 static ULONGLONG g_lwRetakeClear = LW_RETAKE_CLEAR; /* the test command "retake wait <s>" shortens it */
@@ -753,16 +768,18 @@ static int LwRetakeApply(LwSquad* q, LwGarrison* g)
     if (SafeRead(s + 0x38, &active, 1) || SafeRead(s + 4, u, sizeof u) || n == 0 || n > 96) return -1;
     if (active || LwPlayerWithin(g->center, LW_RETAKE_PLAYER) || EvpU32(r + 0x384, 1) != 0) return 0;
     uint32_t allow[3] = {0, 0, 0}, restore[3] = {0, 0, 0}; int k = q->survivors, chosen = 0, fresh = 0, owed = 0, killed = 0;
-    for (int pass = 0; pass < 3 && chosen < k; pass++) /* (a) never filled with U set, (b) filled with U set (owed), (c) killed */
+    /* killed points first: the fill made units there before (lw108a, lw109b: 9 of 9 filled again); then never filled with U
+     * set; points filled with U set and never killed last (lw113c: 0 of 9 filled; why is open) */
+    for (int pass = 0; pass < 3 && chosen < k; pass++)
         for (uint32_t p = 0; p < n && chosen < k; p++)
         {
             uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0, bit = 1u << (p % 32), w = p / 32;
             if (allow[w] & bit || gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4)) continue;
             if ((flags & 0x220) || (g->structure[w] & bit) || ((flags & 0x40) && !(g->marked[w] & bit))) continue; /* objective / structure points; held by the game. Phase A (0x100) refills like phase B: 0x90E400..0x90E427 skips only bit 6 */
             int taken = (g->taken[w] & bit) != 0, uset = (u[w] & bit) != 0;
-            if (pass == 0 ? (taken || !uset) : pass == 1 ? (!taken || !uset) : (!taken || uset)) continue;
+            if (pass == 0 ? (!taken || uset) : pass == 1 ? (taken || !uset) : (!taken || !uset)) continue;
             allow[w] |= bit; chosen++;
-            if (pass == 2) { restore[w] |= bit; killed++; } else if (pass == 1) owed++; else fresh++;
+            if (pass == 0) { restore[w] |= bit; killed++; } else if (pass == 2) owed++; else fresh++;
         }
     if (!chosen) return -1;
     typedef void (*NetDirtyFn)(uint32_t, uint32_t, void*);
