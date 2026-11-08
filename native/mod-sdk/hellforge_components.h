@@ -199,7 +199,7 @@ HF_ASSERT_OFFSET(HfProjectileWeapon, weapon_function_projectile_type, 576);
 #define HF_TYPE_ProjectileWeapon_weapon_function_projectile_type HF_TYPE_U32
 /* Group casings: the casings it ejects: their effect and sounds */
 #define HF_GROUP_ProjectileWeapon_casings(X, ...) X(ProjectileWeapon, casing_effect, __VA_ARGS__), X(ProjectileWeapon, casing_impact_type, __VA_ARGS__), X(ProjectileWeapon, casing_audio_event, __VA_ARGS__), X(ProjectileWeapon, casing_playbacks, __VA_ARGS__)
-/* Group firing_sounds: every firing sound, silenced or not (HfWeapon.sound_from copies the same) */
+/* Group firing_sounds: every firing sound, silenced or not */
 #define HF_GROUP_ProjectileWeapon_firing_sounds(X, ...) X(ProjectileWeapon, use_midi_event_system, __VA_ARGS__), X(ProjectileWeapon, midi_timing_randomization, __VA_ARGS__), X(ProjectileWeapon, midi_stop_delay, __VA_ARGS__), X(ProjectileWeapon, fire_loop_start_audio_event, __VA_ARGS__), X(ProjectileWeapon, fire_loop_stop_audio_event, __VA_ARGS__), X(ProjectileWeapon, fire_single_audio_event, __VA_ARGS__), X(ProjectileWeapon, audio_event_108, __VA_ARGS__), X(ProjectileWeapon, fire_single_audio_event_mode4, __VA_ARGS__), X(ProjectileWeapon, fire_single_audio_event_mode7, __VA_ARGS__), X(ProjectileWeapon, haptics_loop_stop_event, __VA_ARGS__), X(ProjectileWeapon, haptics_single_event, __VA_ARGS__), X(ProjectileWeapon, silenced_fire_loop_start_audio_event, __VA_ARGS__), X(ProjectileWeapon, silenced_fire_loop_stop_audio_event, __VA_ARGS__), X(ProjectileWeapon, silenced_fire_single_audio_event, __VA_ARGS__), X(ProjectileWeapon, silenced, __VA_ARGS__)
 
 /* WeaponDataComponentData (component 236, 1232-byte records): a weapon's handling: recoil, spread, sway, fire modes (the live per-entity copy has another layout) */

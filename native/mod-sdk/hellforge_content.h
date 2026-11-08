@@ -22,7 +22,7 @@
 #define HF_KIND_WEAPON_BEAM 14u
 #define HF_KIND_ARC 15u
 
-/* Loadout ids of vanilla items, for HfWeapon.base, sound_from and HfStratagem.loads_item. Every session with a
+/* Loadout ids of vanilla items, for HfStratagem.loads_item and LoadoutEntry lookups. Every session with a
  * weapon added lists the whole arsenal (loadout id, armory type, entity, designation, name) in its log folder as arsenal.tsv. */
 #define HF_ITEM_AR23_LIBERATOR 0xAA035309u               /* AR-23 Liberator */
 #define HF_ITEM_LAS16_SICKLE 0x6AF4EC48u                 /* LAS-16 Sickle */

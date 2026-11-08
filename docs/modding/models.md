@@ -65,7 +65,7 @@ weapon model has these joints. On the AR-23 Liberator they are at:
 | `attach_paintjob` | 0, -0.035, 0.132 |
 | `ejector` | 0.007, -0.139, 0.123 |
 
-Put them where your gun's grip, sights and muzzle are. The `model-carbine` example has them at the Liberator's places.
+Put them where your gun's grip, sights and muzzle are. The carbine of `liberator-variants` has them at the Liberator's places.
 
 ## Meshes, LODs and shadows
 
@@ -106,4 +106,4 @@ can be anything.
 - The unit has no lights.
 - A weapon's attachments (magazine, muzzle, optic) are still its base's units, drawn at your `attach_` joints.
 
-Example: `model-carbine`, an original carbine of boxes with its charging handle on the `bolt` joint.
+Example: the carbine of `liberator-variants`, an original carbine of boxes with its charging handle on the `bolt` joint.

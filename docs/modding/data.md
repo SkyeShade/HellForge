@@ -253,9 +253,8 @@ the built files, because with the same game build they are the same bytes on eve
 installation's cache, and with `--game-data <game/data> --out <folder>` anywhere. In the repository, use
 `scripts/Build-Mod.ps1 <folder> -Install <installation>`.
 
-Examples: `golden-liberator` (a model recoloured gold), `talon-liberator` (blue effect copies
-and another weapon's sound banks), `cube-gun` (an OBJ model), `model-carbine` (a glTF model, textures), `animated-liberator`
-(animations), `blue-sentry` (a sentry) and `stratagem-compendium` (icons).
+Examples: `liberator-variants` (a gold recolour, blue effect copies and another weapon's sound banks, an OBJ model, a glTF
+model with textures, animations), `blue-sentry` (a sentry) and `stratagem-compendium` (icons).
 
 ## Native edits in the manifest
 

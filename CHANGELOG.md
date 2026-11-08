@@ -15,19 +15,25 @@ On `dev`, since 0.4.0-beta.
 - **Mods can animate their weapons.** A data spec's `animations` names a JSON file with the joints that move, their clips
   and the state machine that plays them on the game's events. HellForge builds the unit copy's own bones, clips and
   state machine from it ([animations](docs/modding/animations.md)). `HellForge.Cli unit-joints` lists a unit's joints,
-  and the `animated-liberator` example kicks its bolt back on each shot and drops its magazine on a reload.
+  and the `liberator-variants` example's animated rifle kicks its bolt back on each shot and drops its magazine.
 - **Mods can build weapons from their own models.** A data spec's `model` turns a glTF 2.0 file (a `.glb` from Blender)
   into a unit of the mod's own. Every node becomes a joint, every mesh draws rigid on its node, and node names give LODs
-  and shadow casters ([models](docs/modding/models.md)). The `model-carbine` example builds a whole weapon this way.
+  and shadow casters ([models](docs/modding/models.md)). The `liberator-variants` carbine is built this way.
 - **Mods can bring their own textures.** A data spec's `texture` builds a texture from PNG files in the mod folder,
   in RGBA8 or BC1, BC3, BC4 or BC5, with its mips and as an array of layers. A material copy's `textures` puts it in a
   slot by name ([textures](docs/modding/textures.md)).
 - **Mods can have packages of their own.** A data spec patch with `package` becomes a whole archive under the package's
   id. It loads when the game starts, or with `"load": "request"` only through `load_package` (SDK 17), which now takes
   a mod's own packages ([packages of your own](docs/modding/data.md#packages-of-your-own)).
-- **Mods can add attachments to their weapons (SDK 17).** `add_attachment` copies a vanilla magazine, muzzle, optic or
-  other item under an id of its own, optionally with the mod's own model, and offers it on weapons mods added. The
-  player holds it from the start ([attachments](docs/modding/content.md#attachments-of-your-own)).
+- **Mods can add attachments to their weapons (SDK 17).** `add_attachment` builds an optic, muzzle or magazine from the
+  mod's declaration, copying no item: its model at its slot and the field changes it declares. It is offered on weapons
+  mods added, unlocked at a mastery level or held from the start ([attachments](docs/modding/content.md#attachments-of-your-own)).
+- **Weapons are standalone (SDK 17).** `add_weapon` builds a weapon from its class and the mod's declaration and copies
+  no other weapon, so it inherits no premium lock, attachments, decals or icon. It needs `weapon_class`, `package`,
+  `reload_ability` and `projectile`, and refuses a `base` ([weapons](docs/modding/content.md#weapons)). The five
+  Liberator examples are now one, `liberator-variants`.
+- **Materials on a game shader.** A data spec's `shader` builds a material of the mod's own on a game shader, with its
+  textures declared and no other material's copied ([data](docs/modding/data.md#shader)).
 - **Sound banks of a mod's own.** A data spec's `sounds` builds a Wwise bank from WAV files, one event each, routed like
   a game bank's mixer. `hf_wwise_id` gives an event's id for the records that play it ([sounds](docs/modding/data.md#sounds)).
 - **A weapon's handling records have named fields.** Equipment, Wieldable, Attachable and WeaponCustomization, all of
