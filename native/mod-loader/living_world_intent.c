@@ -184,7 +184,7 @@ static void LwIntentEnd(LwSquad* q, const char* why)
         why, (double)(now - q->intentAt) / 1000.0, q->state == LW_ONLINE ? "online" : "offline", q->intentStage ? "it reached the point" : "it did not reach the point",
         (double)sqrtf(LwDist2(q->pos, q->target[0], q->target[1])), (double)q->intentFrom, peak);
     if (q->intent == LW_REINFORCE) g_lwRush.ended++; else if (q->intent == LW_INVESTIGATE) g_lwHear.ended++;
-    q->garrison = -1;
+    q->garrison = -1; q->held = 0;
     q->intent = LW_PATROL; q->intentStage = 0; q->intentFree = now + LW_INTENT_REST; q->fight = -1;
     int node = LwNearestNode(q->pos[0], q->pos[1]);
     if (node >= 0) q->node = (uint16_t)node;
@@ -349,6 +349,7 @@ untold:
 static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at)
 {
     if (n <= 0) return;
+    q->held = 0; /* online: no longer waiting at the edge */
     ULONGLONG now = GetTickCount64();
     if (q->intent == LW_REINFORCE) { LwReinforceOnline(q, members, n, at, now); return; }
     if (q->intent == LW_RETAKE) /* online, players are near: it walks there and waits; the retake itself needs it offline */
@@ -1096,19 +1097,43 @@ static void LwIntentTrace(void)
 
 static int LwTestTraceOn(void) { static int on = -1; if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1'; } return on; }
 /* LwWalk, offline: an INVESTIGATE or REINFORCE squad on its way does not walk into the band where no squad comes online
- * (nearer a player than rMin, LwSquadsTick's nearBand): it waits at the edge, which is inside the near band, so it comes
- * online there and walks the rest with its online goal (audit 2a, 6: 19 of 28 offline arrivals stopped unseen inside it).
- * 1 = wait. While waiting, the reinforcement ends with its fight and the investigation after 180 s. */
+ * (nearer a player than rMin, LwSquadsTick's nearBand): it waits at the edge, inside the near band, so it comes online
+ * there and walks the rest with its online goal (audit 2a, 6: 19 of 28 offline arrivals stopped unseen inside it).
+ * A refusal there depends only on the point (sight, navmesh), and squads sent together queue on one spot (the 60 m
+ * request spacing), so after 20 s without coming online it moves 25 degrees along the edge around the nearest player;
+ * a player stepping up to it pushes it back out to the edge. 1 = wait. The wait ends with the fight or after 240 s
+ * (reinforcing), after 180 s (investigating). */
 static int LwIntentHold(LwSquad* q, float nx, float ny)
 {
     if ((q->intent != LW_INVESTIGATE && q->intent != LW_REINFORCE) || q->intentStage != 0) { q->held = 0; return 0; }
-    float rMin = (g_lwWorld.rMin > 0 ? g_lwWorld.rMin : LW_R_MIN) + 5.0f;
-    if (LwNearestPlayer2(q->pos[0], q->pos[1]) < rMin * rMin || LwNearestPlayer2(nx, ny) >= rMin * rMin) { q->held = 0; return 0; } /* already inside, or not crossing */
+    float rMin = g_lwWorld.rMin > 0 ? g_lwWorld.rMin : LW_R_MIN, edge = rMin + 5.0f;
+    int pi = -1; float best = 3e38f;
+    for (int i = 0; i < g_lwWorld.playersAt; i++) { float d2 = LwDist2(q->pos, g_lwWorld.players[i][0], g_lwWorld.players[i][1]); if (d2 < best) { best = d2; pi = i; } }
+    if (pi < 0) { q->held = 0; return 0; }
+    const float* pl = g_lwWorld.players[pi];
+    float d0 = sqrtf(best), d1 = sqrtf(LwNearestPlayer2(nx, ny));
+    if (d0 >= rMin && !(d1 < edge && d1 < d0)) { q->held = 0; return 0; } /* outside and not crossing inward */
     ULONGLONG now = GetTickCount64();
     if (q->intent == LW_REINFORCE && !LwFightOf(q)) { LwIntentEnd(q, "the fight ended while it waited at the spawn band"); return 1; }
+    if (q->intent == LW_REINFORCE && now - q->intentAt > 240000) { LwIntentEnd(q, "240 s, waiting at the spawn band"); return 1; }
     if (q->intent == LW_INVESTIGATE && now - q->intentAt > 180000) { LwIntentEnd(q, "180 s, waiting at the spawn band"); return 1; }
-    if (!q->held) Note("living world: squad %d (%s) waits at the spawn band's edge at (%.0f, %.0f), %.0f m from the nearest player, to come online there", (int)(q - g_lwSquads),
-        q->intent == LW_REINFORCE ? "reinforcing" : "investigating", (double)q->pos[0], (double)q->pos[1], (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])));
+    if (!q->held)
+    {
+        q->heldAt = now;
+        Note("living world: squad %d (%s) waits at the spawn band's edge at (%.0f, %.0f), %.0f m from the nearest player, to come online there", (int)(q - g_lwSquads),
+            q->intent == LW_REINFORCE ? "reinforcing" : "investigating", (double)q->pos[0], (double)q->pos[1], (double)d0);
+    }
+    if (d0 < rMin || now - q->heldAt > 20000) /* pushed inside, or 20 s at a point that does not come online */
+    {
+        float a = atan2f(q->pos[1] - pl[1], q->pos[0] - pl[0]) + (d0 >= rMin ? 0.436f : 0.0f), r = rMin + 8.0f;
+        float px = pl[0] + r * cosf(a), py = pl[1] + r * sinf(a);
+        if (LwNearestPlayer2(px, py) >= rMin * rMin && px * px + py * py < g_lwWorld.radius * g_lwWorld.radius)
+        {
+            Note("living world: squad %d %s along the spawn band's edge to (%.0f, %.0f)", (int)(q - g_lwSquads), d0 < rMin ? "steps back out" : "moves", (double)px, (double)py);
+            q->pos[0] = px; q->pos[1] = py;
+        }
+        q->heldAt = now;
+    }
     q->held = 1;
     return 1;
 }
