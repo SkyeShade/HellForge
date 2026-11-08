@@ -5,8 +5,13 @@ namespace HellForge.Core.GameData;
 // A mod's own mesh in a copy of one of the game's models (a data spec's "mesh" on a unit copy): every render and shadow
 // mesh of the copied unit, in every LOD, gets the mod's geometry, encoded in each vertex stream's own layout; the unit
 // keeps its joints, skeleton, materials, LOD entries and mesh and group counts, so nothing else in it moves. The mesh is
-// rigid on the unit's first bone (bone index 0 -> the skeleton map's first joint: a weapon's main bone), and the boxes and
-// radii the engine culls with are rebuilt around it. The layout is HellForge's research (artifacts/models/FORMAT.md in
+// rigid on the unit's main bone (the joint the first render mesh's group 0 remaps bone index 0 to: a weapon's `boss`);
+// each mesh's vertices name the bone index its own group-0 remap list gives that joint (a Liberator's LOD2 remaps index 0
+// to its fire selector), and the boxes and radii the engine culls with are rebuilt around it. Each mesh is placed by that
+// joint's inverse bind in its skeleton map (its mesh joint when it has none), which differs between a unit's render and
+// shadow meshes (a BR-14 Adjudicator's by 0.2 m), so each gets the geometry moved by its own offset: the OBJ lands where
+// the first render mesh puts it, or, with unitSpace, at the OBJ's own coordinates in the unit (the frame of its joints
+// and attach points). The layout is HellForge's research (artifacts/models/FORMAT.md in
 // the research repository), checked against every unit of the supported build; what it does not cover is refused, never
 // guessed: units whose geometry lives in another resource, data after the vertex streams, rotated mesh joints, meshes
 // culled by another body (a sentry's c_culling), vertex formats without an encoder. Physics, hitboxes and attachment
@@ -20,12 +25,18 @@ public static class UnitMesh
     sealed record Item(uint Type, uint Format, uint Layer);
     sealed record Stream(int At, IReadOnlyList<Item> Items, uint Vertices, uint Stride, uint Indices, uint IndexType, uint VbOffset, uint VbSize, uint IbOffset, uint IbSize);
     sealed record Group(uint Material, uint VertexOffset, uint Vertices, uint IndexOffset, uint IndexCount, uint Id);
-    sealed record UnitMeshRecord(int At, uint Type, uint AabbJoint, uint Joint, int Stream, IReadOnlyList<Group> Groups, int GroupsAt);
+    sealed record UnitMeshRecord(int At, uint Type, uint AabbJoint, uint Joint, int Stream, IReadOnlyList<Group> Groups, int GroupsAt, int SkeletonMap);
     // The copied unit as Replace rewrites it: its main part (written in place), its GPU part, its meshes and the ones that
     // get the mod's geometry.
-    sealed record Model(byte[] Main, byte[] Gpu, List<UnitMeshRecord> Meshes, HashSet<int> Replaced);
-    // The mod's geometry as each replaced mesh gets it: with its tangents, its box and its radius.
-    sealed record Geometry(Mesh Mesh, List<(double[] T, int Sign)> Tangents, double[] Lo, double[] Hi, double Radius);
+    sealed record Model(byte[] Main, byte[] Gpu, List<UnitMeshRecord> Meshes, HashSet<int> Replaced, Dictionary<int, Bind> Binds);
+    // How a replaced mesh holds the geometry: the bone index its vertices name, what they are moved by, and where the
+    // mesh places its vertices in the unit.
+    sealed record Bind(int Bone, double[] Shift, double[] At);
+    // Where a mesh puts a vertex bound to the main joint: that joint's inverse bind translation, and the bone index that
+    // names it in the mesh's group-0 remap list (-1 without a skeleton map).
+    sealed record Placed(double[] T, int Bone);
+    // The mod's geometry with its tangents.
+    sealed record Geometry(Mesh Mesh, List<(double[] T, int Sign)> Tangents);
     // A mesh's vertices and its groups' index lists, as they go into the rewritten stream.
     sealed record Block(int Mesh, byte[] Vertices, int Count, List<List<uint>> Lists);
 
@@ -41,7 +52,7 @@ public static class UnitMesh
         _ => throw new InvalidDataException($"vertex format {format} is not one HellForge knows.")
     };
 
-    public static (byte[] Main, byte[] Gpu) Replace(byte[] mainIn, byte[] gpu, Mesh mesh)
+    public static (byte[] Main, byte[] Gpu) Replace(byte[] mainIn, byte[] gpu, Mesh mesh, bool unitSpace = false)
     {
         if (mesh.Positions.Count == 0 || mesh.Triangles.Count == 0) throw new InvalidDataException("the mesh has no triangles.");
         var main = mainIn.ToArray();
@@ -53,11 +64,12 @@ public static class UnitMesh
         var end = streams.Max(s => (long)s.IbOffset + s.IbSize);
         if ((end + 15) / 16 * 16 < gpu.Length) throw new InvalidDataException("the model has GPU data after its vertex streams; HellForge cannot replace it yet.");
 
-        var model = new Model(main, gpu, meshes, Replaced(meshes, joints));
-        var geometry = Shape(mesh);
+        var replaced = Replaced(meshes, joints);
+        var model = new Model(main, gpu, meshes, replaced, Binds(main, meshes, joints, replaced, unitSpace));
+        var geometry = new Geometry(mesh, Tangents(mesh));
         var output = new MemoryStream();
         for (var si = 0; si < streams.Count; si++) WriteStream(model, streams[si], si, geometry, output);
-        RebuildLodFooters(main, Meshes(main), joints);
+        RebuildLodFooters(main, Meshes(main), i => replaced.Contains(i) ? model.Binds[i].At : joints[(int)meshes[i].Joint].T);
         return (main, output.ToArray());
     }
 
@@ -74,13 +86,46 @@ public static class UnitMesh
         return replace;
     }
 
-    static Geometry Shape(Mesh mesh)
+    // Each replaced mesh's bone index and shift, so the geometry lands at one place: the OBJ's coordinates (unitSpace), or
+    // where the first render mesh puts it.
+    static Dictionary<int, Bind> Binds(byte[] m, List<UnitMeshRecord> meshes, List<(double[] T, bool Plain)> joints, HashSet<int> replaced, bool unitSpace)
     {
-        var tangents = Tangents(mesh);
-        double[] lo = [double.MaxValue, double.MaxValue, double.MaxValue], hi = [double.MinValue, double.MinValue, double.MinValue];
-        foreach (var p in mesh.Positions) for (var k = 0; k < 3; k++) { lo[k] = Math.Min(lo[k], p[k]); hi[k] = Math.Max(hi[k], p[k]); }
-        var radius = mesh.Positions.Max(p => Math.Sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]));
-        return new(mesh, tangents, lo, hi, radius);
+        var first = replaced.Where(i => meshes[i].Type == RenderMesh).DefaultIfEmpty(replaced.Min()).Min();
+        var main = MainJoint(m, meshes[first]);
+        var place = replaced.ToDictionary(i => i, i => Placement(m, meshes[i], joints, main));
+        double[] target = unitSpace ? [0, 0, 0] : place[first].T;
+        return place.ToDictionary(p => p.Key, p => new Bind(Math.Max(p.Value.Bone, 0),
+            [target[0] - p.Value.T[0], target[1] - p.Value.T[1], target[2] - p.Value.T[2]], p.Value.T));
+    }
+
+    // A mesh's skeleton map: (its joint indices' offset, its inverse binds' offset, its group-0 remap list), or null.
+    static (int Joints, int Matrices, int Count, int[] Remap)? SkeletonMap(byte[] m, UnitMeshRecord mesh)
+    {
+        var mapsAt = (int)U32(m, 0x58);
+        if (mesh.SkeletonMap < 0 || mapsAt == 0) return null;
+        if (mesh.SkeletonMap >= (int)U32(m, mapsAt)) throw new InvalidDataException("a mesh of the model names a skeleton map it does not have.");
+        var at = mapsAt + (int)U32(m, mapsAt + 4 + 4 * mesh.SkeletonMap);
+        int count = (int)U32(m, at), remap = at + (int)U32(m, at + 12);
+        var list = U32(m, remap) == 0 ? [] : Enumerable.Range(0, (int)U32(m, remap + 8)).Select(q => (int)U32(m, remap + (int)U32(m, remap + 4) + 4 * q)).ToArray();
+        if (list.Length == 0) list = [0];
+        if (list.Any(e => e >= count)) throw new InvalidDataException("a mesh's skeleton map remaps a bone past its joints.");
+        return (at + (int)U32(m, at + 8), at + (int)U32(m, at + 4), count, list);
+    }
+
+    // The joint the mesh's group 0 binds bone index 0 to (-1 without a skeleton map).
+    static int MainJoint(byte[] m, UnitMeshRecord mesh) =>
+        SkeletonMap(m, mesh) is { } map ? (int)U32(m, map.Joints + 4 * map.Remap[0]) : -1;
+
+    static Placed Placement(byte[] m, UnitMeshRecord mesh, List<(double[] T, bool Plain)> joints, int mainJoint)
+    {
+        if (SkeletonMap(m, mesh) is not { } map) return new(joints[(int)mesh.Joint].T, -1);
+        var bone = Array.FindIndex(map.Remap, e => (int)U32(m, map.Joints + 4 * e) == mainJoint);
+        if (bone < 0 || bone > 255) throw new InvalidDataException("a mesh of the model is not bound to the model's main bone; HellForge cannot replace it yet.");
+        var matrix = map.Matrices + 64 * map.Remap[bone];
+        for (var k = 0; k < 12; k++)
+            if (Math.Abs(F32(m, matrix + 4 * k) - (k is 0 or 5 or 10 ? 1.0 : 0.0)) > 1e-5)
+                throw new InvalidDataException("the model's main bone is bound rotated or scaled; HellForge cannot replace it yet.");
+        return new([F32(m, matrix + 48), F32(m, matrix + 52), F32(m, matrix + 56)], bone);
     }
 
     // One vertex stream rewritten into output: its meshes' vertices, then their indices (u16, or u32 when a block needs
@@ -103,7 +148,7 @@ public static class UnitMesh
         {
             var m = model.Meshes[b.Mesh];
             indexCount = WriteIndices(main, m, b, first[b.Mesh], indexCount, wide, output);
-            if (model.Replaced.Contains(b.Mesh)) WriteBox(main, m.At, geometry);
+            if (model.Replaced.Contains(b.Mesh)) WriteBox(main, m.At, geometry, model.Binds[b.Mesh].Shift);
         }
         var ibSize = (uint)output.Length - ibOffset;
         Write(main, s.At + 352, vertexCount);
@@ -132,16 +177,16 @@ public static class UnitMesh
         var own = Enumerable.Range(0, meshes.Count).Where(i => meshes[i].Stream == si).OrderBy(i => meshes[i].Groups[0].VertexOffset).ToList();
         var blocks = new List<Block>();
         foreach (var i in own)
-            blocks.Add(model.Replaced.Contains(i) ? NewBlock(i, meshes[i], s, geometry, offsets) : OldBlock(i, meshes[i], s, model.Gpu));
+            blocks.Add(model.Replaced.Contains(i) ? NewBlock(i, meshes[i], s, geometry, model.Binds[i], offsets) : OldBlock(i, meshes[i], s, model.Gpu));
         return blocks;
     }
 
-    static Block NewBlock(int i, UnitMeshRecord m, Stream s, Geometry geometry, int[] offsets)
+    static Block NewBlock(int i, UnitMeshRecord m, Stream s, Geometry geometry, Bind bind, int[] offsets)
     {
         var mesh = geometry.Mesh;
         var vertices = new byte[mesh.Positions.Count * s.Stride];
         for (var v = 0; v < mesh.Positions.Count; v++)
-            EncodeVertex(vertices.AsSpan(v * (int)s.Stride, (int)s.Stride), s.Items, offsets, mesh.Positions[v], mesh.Normals[v], geometry.Tangents[v], mesh.Uvs[v]);
+            EncodeVertex(vertices.AsSpan(v * (int)s.Stride, (int)s.Stride), s.Items, offsets, Moved(mesh.Positions[v], bind.Shift), mesh.Normals[v], geometry.Tangents[v], mesh.Uvs[v], bind.Bone);
         var lists = new List<List<uint>> { mesh.Triangles.Select(t => (uint)t).ToList() };
         for (var g = 1; g < m.Groups.Count; g++) lists.Add([0, 0, 0]); // a group left over: one degenerate triangle
         return new(i, vertices, mesh.Positions.Count, lists);
@@ -176,11 +221,20 @@ public static class UnitMesh
         return indexCount;
     }
 
-    // A replaced mesh's box and radius, the mod's geometry's.
-    static void WriteBox(byte[] main, int at, Geometry geometry)
+    static double[] Moved(double[] p, double[] shift) => [p[0] + shift[0], p[1] + shift[1], p[2] + shift[2]];
+
+    // A replaced mesh's box and radius: the mod's geometry's, as that mesh holds it.
+    static void WriteBox(byte[] main, int at, Geometry geometry, double[] shift)
     {
-        for (var k = 0; k < 3; k++) { WriteF(main, at + 8 + 4 * k, geometry.Lo[k]); WriteF(main, at + 20 + 4 * k, geometry.Hi[k]); }
-        WriteF(main, at + 0x20, geometry.Radius);
+        double[] lo = [double.MaxValue, double.MaxValue, double.MaxValue], hi = [double.MinValue, double.MinValue, double.MinValue];
+        var radius = 0.0;
+        foreach (var p in geometry.Mesh.Positions.Select(p => Moved(p, shift)))
+        {
+            for (var k = 0; k < 3; k++) { lo[k] = Math.Min(lo[k], p[k]); hi[k] = Math.Max(hi[k], p[k]); }
+            radius = Math.Max(radius, Math.Sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]));
+        }
+        for (var k = 0; k < 3; k++) { WriteF(main, at + 8 + 4 * k, lo[k]); WriteF(main, at + 20 + 4 * k, hi[k]); }
+        WriteF(main, at + 0x20, radius);
     }
 
     static void Align(MemoryStream output) { while (output.Length % 16 != 0) output.WriteByte(0); }
@@ -221,7 +275,7 @@ public static class UnitMesh
                 return new Group(U32(m, o), U32(m, o + 4), U32(m, o + 8), U32(m, o + 12), U32(m, o + 16), U32(m, o + 20));
             }).ToList();
             if (groups.Count == 0) throw new InvalidDataException("a mesh of the model has no groups.");
-            list.Add(new(at, U32(m, at + 0x24), U32(m, at + 0x2C), U32(m, at + 0x30), I32(m, at + 0x3C), groups, groupsAt));
+            list.Add(new(at, U32(m, at + 0x24), U32(m, at + 0x2C), U32(m, at + 0x30), I32(m, at + 0x3C), groups, groupsAt, I32(m, at + 0x38)));
         }
         return list;
     }
@@ -246,9 +300,9 @@ public static class UnitMesh
         return list;
     }
 
-    // Each LOD group's footer: the union of its render meshes' boxes (in the unit's space: plus their joints' translation)
+    // Each LOD group's footer: the union of its render meshes' boxes (in the unit's space: plus where each mesh is placed)
     // and half its diagonal, which the engine picks the LOD and culls with.
-    static void RebuildLodFooters(byte[] m, List<UnitMeshRecord> meshes, List<(double[] T, bool Plain)> joints)
+    static void RebuildLodFooters(byte[] m, List<UnitMeshRecord> meshes, Func<int, double[]> placement)
     {
         var base0 = (int)U32(m, 0x30);
         if (base0 == 0) return;
@@ -257,7 +311,7 @@ public static class UnitMesh
         {
             var at = base0 + (int)U32(m, base0 + 4 + 4 * i);
             int footers = (int)U32(m, at + 12), entries = (int)U32(m, at + 16);
-            if (LodBox(m, at, entries, meshes, joints) is not { } box) continue;
+            if (LodBox(m, at, entries, meshes, placement) is not { } box) continue;
             var (lo, hi) = box;
             var half = Math.Sqrt(Enumerable.Range(0, 3).Sum(k => (hi[k] - lo[k]) * (hi[k] - lo[k]))) / 2;
             for (var f = 0; f < footers; f++)
@@ -269,9 +323,9 @@ public static class UnitMesh
         }
     }
 
-    // The union of the boxes of a LOD group's render meshes (at, with entries mesh lists), each moved by its joint's
-    // translation; null when it lists none.
-    static (double[] Lo, double[] Hi)? LodBox(byte[] m, int at, int entries, List<UnitMeshRecord> meshes, List<(double[] T, bool Plain)> joints)
+    // The union of the boxes of a LOD group's render meshes (at, with entries mesh lists), each moved to where it is
+    // placed; null when it lists none.
+    static (double[] Lo, double[] Hi)? LodBox(byte[] m, int at, int entries, List<UnitMeshRecord> meshes, Func<int, double[]> placement)
     {
         double[] lo = [double.MaxValue, double.MaxValue, double.MaxValue], hi = [double.MinValue, double.MinValue, double.MinValue];
         var any = false;
@@ -284,7 +338,7 @@ public static class UnitMesh
                 var index = (int)U32(m, entry + 12 + 4 * q);
                 if (index >= meshes.Count || meshes[index].Type != RenderMesh) continue;
                 var me = meshes[index];
-                var t = joints[(int)me.Joint].T;
+                var t = placement(index);
                 for (var k = 0; k < 3; k++)
                 {
                     lo[k] = Math.Min(lo[k], F32(m, me.At + 8 + 4 * k) + t[k]);
@@ -296,7 +350,7 @@ public static class UnitMesh
         return any ? (lo, hi) : null;
     }
 
-    static void EncodeVertex(Span<byte> out_, IReadOnlyList<Item> items, int[] offsets, double[] p, double[] n, (double[] T, int Sign) t, double[] uv)
+    static void EncodeVertex(Span<byte> out_, IReadOnlyList<Item> items, int[] offsets, double[] p, double[] n, (double[] T, int Sign) t, double[] uv, int bone)
     {
         for (var k = 0; k < items.Count; k++)
         {
@@ -311,7 +365,8 @@ public static class UnitMesh
                 case (5, 4): at[..4].Fill(255); break;
                 case (7, 0): BitConverter.TryWriteBytes(at, 1.0f); break;
                 case (7, 35): BitConverter.TryWriteBytes(at, (Half)1.0); break; // weights 1, 0, 0, 0 (the rest stay 0)
-                case (6, 28) or (6, 24): break; // bone index 0: the skeleton map's first joint
+                case (6, 28): at[0] = (byte)bone; break; // the bone index group 0's remap gives the main joint
+                case (6, 24) when bone == 0: break;
                 default: throw new InvalidDataException($"the model's vertices have an item (type {type}, format {format}) HellForge cannot write yet.");
             }
         }
