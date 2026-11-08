@@ -464,7 +464,7 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
 #define LW_SPEED_DEFAULT 2.0f /* m/s until a squad's own walking speed was seen online (D) */
 #define LW_RESERVE 12u        /* the 70 room's share kept for garrison top-ups and SEAF (KB "Spawn gates and the online budget") */
 enum { LW_FREE, LW_OFFLINE, LW_PENDING, LW_ONLINE };
-enum { LW_PATROL = 0, LW_INVESTIGATE = 1, LW_REINFORCE = 2 }; /* a squad's intent (Phase 2, living_world_intent.c) */
+enum { LW_PATROL = 0, LW_INVESTIGATE = 1, LW_REINFORCE = 2, LW_RETAKE = 3 }; /* a squad's intent (Phase 2, living_world_intent.c) */
 #define LW_RUSH 1.6f /* a reinforcing squad's pace x its walking speed (D) */
 typedef struct LwSquad
 {
@@ -488,10 +488,11 @@ typedef struct LwSquad
     uint8_t intent, intentStage, intentSent; /* Phase 2 (living_world_intent.c): LW_PATROL / LW_INVESTIGATE; 1 = at the point; goal sent online */
     float target[3]; uint32_t intentSource, intentSearch; ULONGLONG intentAt, intentStageAt, intentFree;
     uint32_t intentPeak; float intentPeakAt, intentFrom; /* members (bit = seen index) at alert 2+ (REINFORCE: 3+) at the point; seconds to the first; m from the point when sent */
+    int16_t garrison; /* RETAKE: its g_lwGarrisons index */
     int8_t fight; uint8_t rushed, tells; ULONGLONG retargetAt, tellAt; /* REINFORCE: its fight (g_lwFights index); members sped up (0x7EFFC0); fight target tells; next goal refresh, next tell */
 } LwSquad;
 static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
-static void LwIntentOffline(LwSquad* q); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
+static void LwIntentOffline(LwSquad* q); static void LwRetakeScan(void); static void LwTestClear(int seq); static void LwRetakeWait(int seq, float s); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
 {
@@ -502,7 +503,7 @@ static struct
     uint32_t avatars[EVT_MAX_PLAYERS], knownAvatar[EVT_MAX_PLAYERS]; uint8_t local[EVT_MAX_PLAYERS], knownLocal[EVT_MAX_PLAYERS]; /* the avatar entity (its aim, LwAimForward); this machine's player */
     float known[EVT_MAX_PLAYERS][3]; ULONGLONG knownAt[EVT_MAX_PLAYERS]; uint64_t knownPeer[EVT_MAX_PLAYERS];
     ULONGLONG last, effAt, noteAt;
-    uint32_t spawned, offlined, died, refused, farSpawned;
+    uint32_t spawned, offlined, died, refused, farSpawned, retook; /* retook: squads that became a cleared garrison (2c) */
     int farUnits;
     uint32_t noFace, moved, overhead, seen, rays, blockUnit, blockTerrain; double rayUs; /* placement and sight refusals, rays cast (30 s) */
     uint32_t crowded; /* points where a member's slot cast would not reach its slot (30 s) */
@@ -2342,6 +2343,8 @@ static void LwTestCommands(void)
         if (sscanf(cmds[c], "spawn %15s %f %f %d", mode, &d, &deg, &idx) >= 2) LwTestSpawn(seq, mode, d, deg, idx);
         else if (sscanf(cmds[c], "offline %d", &idx) == 1 && idx >= 0 && idx < g_lwWorld.count && g_lwSquads[idx].state == LW_ONLINE) g_lwSquads[idx].forceOff = 1;
         else if (strncmp(cmds[c], "kill garrison", 13) == 0) LwKillArm();
+        else if (strncmp(cmds[c], "clear garrison", 14) == 0) LwTestClear(seq);
+        else if (sscanf(cmds[c], "retake wait %f", &d) == 1) LwRetakeWait(seq, d);
         else if (sscanf(cmds[c], "teleport! %f %f", &d, &deg) == 2) { g_lwTeleportForce = 1; LwTestTeleport(seq, d, deg); g_lwTeleportForce = 0; }
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
         else if (strcmp(cmds[c], "vantage") == 0) LwTestVantage(seq);
@@ -2418,6 +2421,7 @@ static void LwSquadsTick(void)
     LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
     LwNoiseDrain(); /* Phase 2a: noises since the last tick send squads to investigate */
     LwFightScan(); /* Phase 2b: fights and calls for help draw squads in (once a second) */
+    LwRetakeScan(); /* Phase 2c: squads retake cleared plain garrisons (every 10 s) */
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
@@ -2426,6 +2430,7 @@ static void LwSquadsTick(void)
         {
             const char* why = NULL; char whyBuf[128]; /* test notes for a staged squad (pulled 2): the gate it fails */
             LwWalk(q, dt);
+            if (q->state != LW_OFFLINE) continue; /* it became a garrison (2c) */
             float near2 = LwNearestPlayer2(q->pos[0], q->pos[1]);
             float rMin = g_lwWorld.rMin > 0 ? g_lwWorld.rMin : LW_R_MIN;
             int back = q->cycled == 1 && near2 >= rMin * rMin; /* test cycle: back at once (the budget still applies) */
@@ -2527,7 +2532,12 @@ static void LwSquadsTick(void)
  * +0x810 + 24 k, count +0x1110, +0x10 = local point + 1), point list [gf+0x48] + 0x2B8 i (+0x28 + 4 p global indexes,
  * count +0x1A8), descriptor [[gf+0x38] + 8 i] (+8 entity); points [game+0x346D5C0] + 0x58 g, flags +0x24. */
 #define LW_GARRISONS_MAX 512
-typedef struct LwGarrison { uint32_t entity; uint8_t seen, wasActive, refills; uint32_t taken[3], structure[3], marked[3]; ULONGLONG checkAt, activeAt; } LwGarrison;
+typedef struct LwGarrison
+{
+    uint32_t entity; uint8_t seen, wasActive, refills; uint32_t taken[3], structure[3], marked[3]; ULONGLONG checkAt, activeAt;
+    /* Phase 2c (living_world_intent.c, LwRetake*): index = its GuardForce record; plain = safe to retake; retake = armed */
+    uint32_t index, allow[3]; float center[2]; uint8_t plain, cleared, haveCenter, retake; int16_t retaker; uint8_t lastRefill; ULONGLONG clearedAt, retakeAt, plainAt, fillAt;
+} LwGarrison;
 /* marked: the points the loader itself set bit 6 on (held empty); kept apart from taken (audit 1f, 4: the loader's own
  * marks, still set in the next active period, were counted as filled points, so after the next mode-0 despawn they were
  * not marked again and the third fill spent its budget there, replacing kills elsewhere) */
@@ -2623,7 +2633,7 @@ static LwGarrison* LwGarrisonOf(uint32_t entity)
     if (g_lwGarrisonCount >= LW_GARRISONS_MAX) return NULL;
     LwGarrison* g = &g_lwGarrisons[g_lwGarrisonCount++];
     memset(g, 0, sizeof *g);
-    g->entity = entity;
+    g->entity = entity; g->index = 0xFFFFFFFFu; g->retaker = -1;
     return g;
 }
 
@@ -2655,18 +2665,25 @@ static void LwTestGarrisons(int seq)
         }
         if (!got) continue;
         float cx = (float)(sx / got), cy = (float)(sy / got);
-        Note("living world: test command %d: garrison %08X %s at (%.0f, %.0f)%s%.0f%s: %u points, %u units listed", seq, EvpU32(d + 8, 0), active ? "active" : "inactive",
+        LwGarrison* g = LwGarrisonOf(EvpU32(d + 8, 0));
+        Note("living world: test command %d: garrison %08X %s%s%s at (%.0f, %.0f)%s%.0f%s: %u points, %u units listed", seq, EvpU32(d + 8, 0), active ? "active" : "inactive",
+            g && g->plain ? ", plain" : "", g && g->cleared ? ", cleared" : "",
             (double)cx, (double)cy, havePl ? ", " : "", havePl ? (double)sqrtf((cx - pl[0]) * (cx - pl[0]) + (cy - pl[1]) * (cy - pl[1])) : 0.0, havePl ? " m from player 1" : "",
             np, EvpU32(runtime + 0x1B58u * i + 0x384, 0));
     }
 }
 
+static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32_t* u, uint32_t n);
+static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t r, uintptr_t l, uintptr_t points, uint32_t n, const uint32_t* u, uint8_t active, uint8_t refill);
 static void LwGarrisonsTick(void)
 {
     uintptr_t gf, synced, runtime, lists, descriptors, points;
     if (!EvpPtr(g_lw.game + 0x33265C0u, &gf) || !EvpPtr(gf + 0x50, &synced) || !EvpPtr(gf + 0x40, &runtime) || !EvpPtr(gf + 0x48, &lists) ||
         !EvpPtr(gf + 0x38, &descriptors) || !EvpPtr(g_lw.game + 0x346D5C0u, &points)) return;
-    if (gf != g_lwGarrisonOwner) { g_lwGarrisonOwner = gf; g_lwGarrisonCount = 0; }
+    static uintptr_t level; /* the squads' level too: a new mission's GuardForce can reuse the old address (0 = not placed yet, no reset) */
+    int newLevel = g_lwWorld.lg && level && g_lwWorld.lg != level;
+    if (g_lwWorld.lg) level = g_lwWorld.lg;
+    if (gf != g_lwGarrisonOwner || newLevel) { g_lwGarrisonOwner = gf; g_lwGarrisonCount = 0; }
     uint32_t owned = EvpU32(gf + 0x10, 0), marked = 0;
     if (owned > LW_GARRISONS_MAX) owned = LW_GARRISONS_MAX;
     for (uint32_t i = 0; i < owned; i++)
@@ -2676,6 +2693,8 @@ static void LwGarrisonsTick(void)
         if (!EvpPtr(descriptors + 8u * i, &d) || n > 96 || SafeRead(s + 0x38, &active, 1) || SafeRead(r + 0x1B4F, &refill, 1) || SafeRead(s + 4, u, sizeof u)) continue;
         LwGarrison* g = LwGarrisonOf(EvpU32(d + 8, 0));
         if (g == NULL || g->entity == 0) continue;
+        g->index = i;
+        LwRetakeGarrison(g, d, s, r, l, points, n, u, active, refill);
         if (active && g->seen && !g->wasActive) g->checkAt = GetTickCount64() + 5000; /* filled again: compare in 5 s */
         if (active && !g->wasActive) g->activeAt = GetTickCount64();
         LwKillTest(g, r, l, points, u, n, active);
@@ -2718,6 +2737,7 @@ static void LwGarrisonsTick(void)
             }
         }
         if (!g->seen || (active && !refill)) continue; /* the first fill stays native; no marks while a garrison holds */
+        if (g->retake) continue; /* a retaken garrison's holds are LwRetakeGarrison's */
         for (uint32_t p = 0; p < n; p++)
         {
             uint32_t bit = 1u << (p % 32);

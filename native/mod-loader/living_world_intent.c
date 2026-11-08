@@ -24,6 +24,7 @@
 #define LW_HEAR_MAX 600.0f  /* at most (D) */
 #define LW_HEAR_NEAR 30.0f  /* online: members are told within this of the point (D) */
 #define LW_HEAR_SQUADS 2    /* squads sent per noise event (D) */
+#define LW_RETAKE_WAIT 120000    /* ms a squad waits at the garrison for players to leave (D) */
 #define LW_INTENT_REST 30000 /* ms a squad patrols after an intent before the next (D) */
 
 typedef struct { float pos[3], loudness; uint32_t source; uint8_t type, mode; ULONGLONG at; } LwNoise;
@@ -171,10 +172,13 @@ static void LwIntentEnd(LwSquad* q, const char* why)
         : "; %d of %d members engaged at the fight (alert 3+, the first after %.1f s)", LwBits(q->intentPeak), q->seenCount, (double)q->intentPeakAt);
     if (q->rushed && q->state == LW_ONLINE) LwRushMembers(q, q->seen, q->seenCount, 0);
     q->rushed = 0;
-    Note("living world: squad %d %s ends (%s) after %.0f s, %s; %s (%.0f m from it, %.0f m when sent)%s", (int)(q - g_lwSquads), q->intent == LW_REINFORCE ? "reinforcement" : "investigation",
+    if (q->intent == LW_RETAKE && q->garrison >= 0 && q->garrison < g_lwGarrisonCount && g_lwGarrisons[q->garrison].retaker == (int16_t)(q - g_lwSquads)) g_lwGarrisons[q->garrison].retaker = -1;
+    Note("living world: squad %d %s ends (%s) after %.0f s, %s; %s (%.0f m from it, %.0f m when sent)%s", (int)(q - g_lwSquads),
+        q->intent == LW_REINFORCE ? "reinforcement" : q->intent == LW_RETAKE ? "retake" : "investigation",
         why, (double)(now - q->intentAt) / 1000.0, q->state == LW_ONLINE ? "online" : "offline", q->intentStage ? "it reached the point" : "it did not reach the point",
         (double)sqrtf(LwDist2(q->pos, q->target[0], q->target[1])), (double)q->intentFrom, peak);
-    if (q->intent == LW_REINFORCE) g_lwRush.ended++; else g_lwHear.ended++;
+    if (q->intent == LW_REINFORCE) g_lwRush.ended++; else if (q->intent == LW_INVESTIGATE) g_lwHear.ended++;
+    q->garrison = -1;
     q->intent = LW_PATROL; q->intentStage = 0; q->intentFree = now + LW_INTENT_REST; q->fight = -1;
     int node = LwNearestNode(q->pos[0], q->pos[1]);
     if (node >= 0) q->node = (uint16_t)node;
@@ -186,6 +190,7 @@ static void LwIntentEnd(LwSquad* q, const char* why)
     }
 }
 /* offline: the route to the node nearest the point */
+static int LwRetakeArrived(LwSquad* q, ULONGLONG now);
 static int LwIntentRoute(LwSquad* q)
 {
     int goal = LwNearestNode(q->target[0], q->target[1]);
@@ -211,6 +216,7 @@ static int LwIntentArrived(LwSquad* q)
         LwIntentEnd(q, LwFightOf(q) ? "waited 120 s" : "the fight is over");
         return 0;
     }
+    if (q->intent == LW_RETAKE) return LwRetakeArrived(q, now);
     if (q->intent != LW_INVESTIGATE) return 0;
     if (q->intentStage == 0)
     {
@@ -225,7 +231,7 @@ static int LwIntentArrived(LwSquad* q)
 /* LwSendGoal for a squad with an intent */
 static int LwIntentGoal(LwSquad* q)
 {
-    if (q->intent != LW_INVESTIGATE && q->intent != LW_REINFORCE) return 0;
+    if (q->intent != LW_INVESTIGATE && q->intent != LW_REINFORCE && q->intent != LW_RETAKE) return 0;
     if (q->intentStage == 0) { q->intentSent = 1; if (!LwSquadGoTo(q, q->target)) LwIntentEnd(q, "no navmesh at the point"); }
     return 1;
 }
@@ -336,6 +342,15 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
     if (n <= 0) return;
     ULONGLONG now = GetTickCount64();
     if (q->intent == LW_REINFORCE) { LwReinforceOnline(q, members, n, at, now); return; }
+    if (q->intent == LW_RETAKE) /* online, players are near: it walks there and waits; the retake itself needs it offline */
+    {
+        for (int k = 0; k < n; k++) if (LwAlert(members[k]) >= 3) { LwIntentEnd(q, "a member is in a fight"); return; }
+        if (q->intentStage == 0 && LwDist2(at, q->target[0], q->target[1]) <= LW_FIGHT_JOIN * LW_FIGHT_JOIN)
+        { q->intentStage = 1; q->intentStageAt = now; Note("living world: squad %d reached the garrison to retake online after %.0f s; it waits for players to leave", (int)(q - g_lwSquads), (double)(now - q->intentAt) / 1000.0); }
+        else if (q->intentStage == 0 && now - q->intentAt > 300000) LwIntentEnd(q, "not there in 300 s");
+        else if (q->intentStage == 1 && now - q->intentStageAt > LW_RETAKE_WAIT) LwIntentEnd(q, "players stayed near");
+        return;
+    }
     if (q->intent != LW_INVESTIGATE) return;
     for (int k = 0; k < n; k++) if (LwAlert(members[k]) >= 3) { LwIntentEnd(q, "a member is in a fight"); return; }
     if (q->intentStage == 0)
@@ -374,8 +389,9 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
 /* an online squad going offline with an intent: the route from where it stands */
 static void LwIntentOffline(LwSquad* q)
 {
-    if (q->intent != LW_INVESTIGATE && q->intent != LW_REINFORCE) return;
+    if (q->intent != LW_INVESTIGATE && q->intent != LW_REINFORCE && q->intent != LW_RETAKE) return;
     q->intentSent = 0; q->rushed = 0; /* its units are gone, and their speed with them */
+    if (q->intent == LW_RETAKE && q->intentStage != 0) { q->pathLen = q->pathAt = 0; return; } /* at the garrison: LwWalk applies the retake (LwRetakeArrived) */
     if (q->intentStage != 0) LwIntentEnd(q, q->intent == LW_REINFORCE ? "it went offline at the fight" : "it went offline while investigating");
     else if (!LwIntentRoute(q)) LwIntentEnd(q, "no route to the point");
 }
@@ -461,7 +477,7 @@ static void LwReinforce(int f, int want)
     for (int i = 0; i < g_lwWorld.count; i++)
     {
         LwSquad* q = &g_lwSquads[i];
-        if ((q->state != LW_OFFLINE && q->state != LW_ONLINE) || q->intent == LW_REINFORCE || q->pulled || q->survivors == 0) continue;
+        if ((q->state != LW_OFFLINE && q->state != LW_ONLINE) || q->intent == LW_REINFORCE || q->intent == LW_RETAKE || q->pulled || q->survivors == 0) continue;
         if (q->intent == LW_PATROL && now < q->intentFree) continue;
         if (q->state == LW_ONLINE && !LwCalm(q)) continue; /* already in it, or busy */
         float d2 = LwDist2(q->pos, fi->pos[0], fi->pos[1]);
@@ -595,4 +611,260 @@ static void LwTestNoise(int seq, int type, float dx, float dy)
     uint32_t none = EvpU32(g_lw.game + 0x3483C34u, 0);
     ((NoiseFn)(g_lw.game + 0x64A890u))(NULL, (uint8_t)type, avatar, p, 0, 1.0f, none);
     Note("living world: test command %d: noise type %d (range %.0f m) at (%.0f, %.0f, %.1f) from %08X", seq, type, (double)LwNoiseRange((uint8_t)type), (double)p[0], (double)p[1], (double)p[2], avatar);
+}
+
+/* Phase 2c (KB living-world-p2-retake, "Refill recipe"): a squad re-occupies a cleared plain guard post. Cleared stays 1
+ * (un-clearing repeats the cleared effects on every peer: HUD notice, VO, 0x1272B80). Instead, every point but the k
+ * chosen ones is held (bit 6), the chosen killed points get their U bit back (written and sent as the kill path 0x90F9F0
+ * does: 0xFD97E0(net id, the word's hash, &word)), and the refill flag runtime +0x1B4F is armed. The refill path
+ * 0x912274 fills an active garrison with a detector within 150 m and never reads cleared, and the activation of a cleared
+ * garrison jumps over the flag reset (0x912463), so the units appear natively when a player next comes near.
+ * Plain: list +0x2AB == 1 (no mission objective), synced spawners +0x1C, objectives +0x24 and counted +0x2C all 0, no
+ * 0x200 point, and no structure at all: a held structure point keeps its structure through the despawn (0x90F911), an
+ * open one could refill a destroyed one. A plain post is cleared by the kill that empties its units list (0x91055B). */
+#define LW_RETAKE_CLEAR 300000   /* ms a garrison stays cleared before a squad retakes it (D) */
+#define LW_RETAKE_AGAIN 600000   /* ms between retakes of one garrison (D) */
+#define LW_RETAKE_PLAYER 300.0f  /* no player within this while a squad is sent or the garrison is armed (D) */
+#define LW_RETAKE_NODE 60.0f    /* the route node nearest the garrison is within this of its centre (D) */
+#define LW_RETAKE_REACH 800.0f   /* squads sent from within this (D; 1500 m on extra large maps) */
+static ULONGLONG g_lwRetakeClear = LW_RETAKE_CLEAR; /* the test command "retake wait <s>" shortens it */
+static const uint32_t kLwUHash[3] = {0x58840A74u, 0x8D0AE425u, 0x44818B0Au};
+static int LwRetakePinsOk(void)
+{
+    static int ok = -1;
+    if (ok < 0)
+    {
+        uintptr_t g = g_lw.game;
+        ok = ApiCodeMatches(g + 0xFD97E0u, "48 89 6C 24 18 56 41 56 41 57 48 83 EC 30") && ApiCodeMatches(g + 0x912274u, "80 BC 3B 4F 1B 00 00 00") &&
+             ApiCodeMatches(g + 0x912463u, "80 78 39 00 75 1B C6 81 4F 1B") && ApiCodeMatches(g + 0x90FA44u, "0A 8B 81 44") &&
+             ApiCodeMatches(g + 0x91055Bu, "41 83 7A 24 00 75 10 45 84 ED 74 0B 83 BE 84 03 00 00 00 75");
+        if (!ok) Note("living world: the garrison refill is not the reviewed code; squads do not retake garrisons");
+    }
+    return ok;
+}
+static int LwPlayerWithin(const float* at, float r) { return LwNearestPlayer2(at[0], at[1]) < r * r; }
+/* each tick per owned garrison (LwGarrisonsTick): cleared time, plain test, centre; an armed retake's holds and re-arming */
+static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t r, uintptr_t l, uintptr_t points, uint32_t n, const uint32_t* u, uint8_t active, uint8_t refill)
+{
+    ULONGLONG now = GetTickCount64();
+    uint8_t cleared = 0, link = 0; uint32_t f[3] = {1, 1, 1};
+    SafeRead(s + 0x39, &cleared, 1);
+    if (cleared && !g->cleared) g->clearedAt = now;
+    uint8_t newly = cleared && !g->cleared;
+    g->cleared = cleared;
+    int plain = g->plain;
+    if (now >= g->plainAt || newly) /* every 2 s (staggered): a fill can register spawners or structures; ReadProcessMemory per point is not free */
+    {
+        g->plainAt = now + 2000 + 125u * (g->index % 16u);
+        plain = n > 0 && !SafeRead(l + 0x2AB, &link, 1) && link == 1 && !SafeRead(s + 0x1C, &f[0], 4) && !SafeRead(s + 0x24, &f[1], 4) && !SafeRead(s + 0x2C, &f[2], 4) &&
+            !f[0] && !f[1] && !f[2] && EvpU32(r + 0x1110, 1) == 0 && !(g->structure[0] | g->structure[1] | g->structure[2]);
+        double sx = 0, sy = 0; int got = 0;
+        for (uint32_t p = 0; p < n && plain; p++)
+        {
+            uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0; float xy[2];
+            if (gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4) || (flags & 0x220)) { plain = 0; break; }
+            if (!g->haveCenter && !SafeRead(points + 0x58u * gi + 0x10, xy, 8) && isfinite(xy[0]) && isfinite(xy[1])) { sx += xy[0]; sy += xy[1]; got++; }
+        }
+        if (!g->haveCenter && got) { g->center[0] = (float)(sx / got); g->center[1] = (float)(sy / got); g->haveCenter = 1; }
+        g->plain = (uint8_t)plain;
+    }
+    if (newly) Note("living world: garrison %08X cleared (%s)", g->entity, plain ? "plain: a squad may retake it" : "not plain: never retaken");
+    if (!g->retake) return;
+    if (active && g->lastRefill && !refill) g->fillAt = now + 5000; /* the refill path ran (it zeroes the flag after the fill, 0x91229D) */
+    g->lastRefill = refill;
+    if (g->fillAt && now >= g->fillAt) { g->fillAt = 0; LwRetakeFilled(g, d, r, u, n); }
+    uint32_t owed = 0;
+    for (uint32_t p = 0; p < n; p++) owed += (g->allow[p / 32] & u[p / 32] & (1u << (p % 32))) != 0;
+    if (!active && !refill) /* after a despawn (players left): cleared garrisons never fill on activation, so arm it again */
+    {
+        if (!owed)
+        {
+            g->retake = 0; g->retaker = -1;
+            Note("living world: retaken garrison %08X is lost again: every retaken point killed", g->entity);
+            return;
+        }
+        uint8_t one = 1;
+        if (!LwPoke(r + 0x1B4F, &one, 1)) refill = 1;
+    }
+    if (active && !refill) return;
+    for (uint32_t p = 0; p < n; p++) /* every point but the chosen ones held, and the chosen ones open */
+    {
+        uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0, bit = 1u << (p % 32);
+        uintptr_t at = points + 0x58u * gi + 0x24;
+        if (gi >= 0x100000 || SafeRead(at, &flags, 4)) continue;
+        if (g->allow[p / 32] & bit)
+        { if (g->marked[p / 32] & bit) { if (!(flags & 0x40)) g->marked[p / 32] &= ~bit; else { flags &= ~0x40u; if (!LwPoke(at, &flags, 4)) g->marked[p / 32] &= ~bit; } } }
+        else if (!(flags & 0x40)) { flags |= 0x40; if (!LwPoke(at, &flags, 4)) g->marked[p / 32] |= bit; }
+    }
+}
+/* the living units at each point of a garrison (AiEnemy records +0xC = the garrison's net id, +0x10 = point + 1, as the
+ * kill path 0x910504..0x91051C matches them) */
+static int LwGarrisonLiving(uint32_t net, uint32_t* mask)
+{
+    uintptr_t e, records, entities, d; int found = 0;
+    mask[0] = mask[1] = mask[2] = 0;
+    if (!EvpPtr(g_lw.game + 0x33266C8u, &e) || !EvpPtr(e + 0x2360, &records) || !EvpPtr(e + 0x2348, &entities)) return -1;
+    uint32_t count = EvpU32(e + 0x2320, 0);
+    for (uint32_t i = 0; i < count && i < 65536; i++)
+    {
+        uint32_t rr[5]; ActHealth h;
+        if (SafeRead(records + 20u * i, rr, sizeof rr) || rr[3] != net || rr[4] == 0 || rr[4] > 96 || !EvpPtr(entities + 8u * i, &d) || d == 0) continue;
+        if (ActHealthOf(g_lw.game, EvpU32(d + 8, 0), &h) && h.life < 2) { mask[(rr[4] - 1) / 32] |= 1u << ((rr[4] - 1) % 32); found++; }
+    }
+    return found;
+}
+/* the squad at the garrison, offline: the recipe, then the squad is the garrison. 1 = done, 0 = not yet, -1 = never */
+static int LwRetakeApply(LwSquad* q, LwGarrison* g)
+{
+    uintptr_t gf, synced, runtime, lists, descriptors, points, d;
+    if (!g->plain || !g->cleared || g->retake) return -1;
+    if (!EvpPtr(g_lw.game + 0x33265C0u, &gf) || !EvpPtr(gf + 0x50, &synced) || !EvpPtr(gf + 0x40, &runtime) || !EvpPtr(gf + 0x48, &lists) ||
+        !EvpPtr(gf + 0x38, &descriptors) || !EvpPtr(g_lw.game + 0x346D5C0u, &points) || g->index >= EvpU32(gf + 0x10, 0) || !EvpPtr(descriptors + 8u * g->index, &d) ||
+        EvpU32(d + 8, 0) != g->entity) return -1;
+    uintptr_t s = synced + 0x40u * g->index, r = runtime + 0x1B58u * g->index, l = lists + 0x2B8u * g->index;
+    uint8_t active = 1; uint32_t u[3], n = EvpU32(l + 0x1A8, 0);
+    if (SafeRead(s + 0x38, &active, 1) || SafeRead(s + 4, u, sizeof u) || n == 0 || n > 96) return -1;
+    if (active || LwPlayerWithin(g->center, LW_RETAKE_PLAYER) || EvpU32(r + 0x384, 1) != 0) return 0;
+    uint32_t allow[3] = {0, 0, 0}, restore[3] = {0, 0, 0}; int k = q->survivors, chosen = 0, fresh = 0, owed = 0, killed = 0;
+    for (int pass = 0; pass < 3 && chosen < k; pass++) /* (a) never filled with U set, (b) filled with U set (owed), (c) killed */
+        for (uint32_t p = 0; p < n && chosen < k; p++)
+        {
+            uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0, bit = 1u << (p % 32), w = p / 32;
+            if (allow[w] & bit || gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4)) continue;
+            if ((flags & 0x320) || ((flags & 0x40) && !(g->marked[w] & bit))) continue; /* phase A / objective / structure points; held by the game */
+            int taken = (g->taken[w] & bit) != 0, uset = (u[w] & bit) != 0;
+            if (pass == 0 ? (taken || !uset) : pass == 1 ? (!taken || !uset) : (!taken || uset)) continue;
+            allow[w] |= bit; chosen++;
+            if (pass == 2) { restore[w] |= bit; killed++; } else if (pass == 1) owed++; else fresh++;
+        }
+    if (!chosen) return -1;
+    typedef void (*NetDirtyFn)(uint32_t, uint32_t, void*);
+    uint32_t net = EvpU32(d + 0x10, 0x7FFFu);
+    memcpy(g->allow, allow, sizeof allow); g->retake = 1; /* the holds go in now, before the flag */
+    LwRetakeGarrison(g, d, s, r, l, points, n, u, 0, 1); g->lastRefill = 1; g->fillAt = 0;
+    for (int w = 0; w < 3; w++)
+        if (restore[w])
+        {
+            uint32_t word = u[w] | restore[w];
+            if (!LwPoke(s + 4 + 4u * w, &word, 4)) ((NetDirtyFn)(g_lw.game + 0xFD97E0u))(net, kLwUHash[w], (void*)(s + 4 + 4u * w));
+        }
+    uint8_t one = 1; LwPoke(r + 0x1B4F, &one, 1);
+    uint32_t after[3] = {0, 0, 0}; SafeRead(s + 4, after, sizeof after);
+    int held = 0;
+    for (uint32_t p = 0; p < n; p++) { uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0; if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x24, &flags, 4)) held += (flags & 0x40) != 0; }
+    uint8_t flag = 0; SafeRead(r + 0x1B4F, &flag, 1);
+    g->retakeAt = GetTickCount64(); g->retaker = -1;
+    Note("living world: squad %d retook garrison %08X at (%.0f, %.0f) after %.0f s: %d of %d survivors become its units at %d points (%d never filled, %d owed, %d killed, "
+        "U %08X %08X %08X -> %08X %08X %08X), %d of %u points held, refill flag %u; it fills when a player comes within 150 m", (int)(q - g_lwSquads), g->entity,
+        (double)g->center[0], (double)g->center[1], (double)(g->retakeAt - q->intentAt) / 1000.0, chosen, k, chosen, fresh, owed, killed,
+        u[0], u[1], u[2], after[0], after[1], after[2], held, n, flag);
+    return 1;
+}
+static void LwRetakeScan(void)
+{
+    static ULONGLONG next;
+    ULONGLONG now = GetTickCount64();
+    if (now < next || !g_lwGarrisonCount) return;
+    next = now + 10000;
+    if (!LwRetakePinsOk()) { next = ~0ull; return; }
+    float reach = g_lwWorld.radius > 1500.0f ? 1500.0f : LW_RETAKE_REACH;
+    for (int gi = 0; gi < g_lwGarrisonCount; gi++)
+    {
+        LwGarrison* g = &g_lwGarrisons[gi];
+        if (!g->plain || !g->cleared || g->retake || !g->haveCenter || now - g->clearedAt < g_lwRetakeClear || (g->retakeAt && now - g->retakeAt < LW_RETAKE_AGAIN)) continue;
+        if (g->retaker >= 0 && g->retaker < g_lwWorld.count && g_lwSquads[g->retaker].state != LW_FREE && g_lwSquads[g->retaker].survivors &&
+            g_lwSquads[g->retaker].intent == LW_RETAKE && g_lwSquads[g->retaker].garrison == gi) continue;
+        g->retaker = -1;
+        if (LwPlayerWithin(g->center, LW_RETAKE_PLAYER)) continue;
+        int node = LwNearestNode(g->center[0], g->center[1]); /* the squad arrives at this node: it must be at the garrison */
+        if (node < 0 || LwDist2(g->center, g_lwNodes[node].x, g_lwNodes[node].y) > LW_RETAKE_NODE * LW_RETAKE_NODE) continue;
+        int pick = -1; float best = reach * reach;
+        for (int i = 0; i < g_lwWorld.count; i++)
+        {
+            LwSquad* q = &g_lwSquads[i];
+            if (q->state != LW_OFFLINE || q->intent != LW_PATROL || q->pulled || q->survivors == 0 || now < q->intentFree) continue;
+            float d2 = LwDist2(q->pos, g->center[0], g->center[1]);
+            if (d2 < best) { best = d2; pick = i; }
+        }
+        if (pick < 0) continue;
+        LwSquad* q = &g_lwSquads[pick];
+        q->intent = LW_RETAKE; q->intentStage = 0; q->intentSent = 0; q->intentAt = now; q->intentFrom = sqrtf(best); q->garrison = (int16_t)gi;
+        q->target[0] = g->center[0]; q->target[1] = g->center[1]; q->target[2] = 0;
+        if (!LwIntentRoute(q)) { q->intent = LW_PATROL; q->garrison = -1; q->intentFree = now + LW_INTENT_REST; continue; } /* the next scan tries another squad */
+        g->retaker = (int16_t)pick;
+        Note("living world: garrison %08X at (%.0f, %.0f), cleared %.0f s ago: squad %d (offline, %u survivors, %.0f m) sent to retake it", g->entity,
+            (double)g->center[0], (double)g->center[1], (double)(now - g->clearedAt) / 1000.0, pick, q->survivors, (double)q->intentFrom);
+    }
+}
+/* the retaking squad at the end of its path, offline (LwIntentArrived) */
+static int LwRetakeArrived(LwSquad* q, ULONGLONG now)
+{
+    if (q->intentStage == 0)
+    {
+        q->intentStage = 1; q->intentStageAt = now;
+        Note("living world: squad %d reached garrison %08X offline after %.0f s, %.0f m from its centre", (int)(q - g_lwSquads),
+            q->garrison >= 0 && q->garrison < g_lwGarrisonCount ? g_lwGarrisons[q->garrison].entity : 0, (double)(now - q->intentAt) / 1000.0,
+            (double)sqrtf(LwDist2(q->pos, q->target[0], q->target[1])));
+    }
+    LwGarrison* g = q->garrison >= 0 && q->garrison < g_lwGarrisonCount ? &g_lwGarrisons[q->garrison] : NULL;
+    int done = g ? LwRetakeApply(q, g) : -1;
+    if (done > 0)
+    {
+        q->intent = LW_PATROL; q->intentStage = 0; q->garrison = -1; q->state = LW_FREE; q->survivors = 0; /* it became the garrison */
+        g_lwWorld.retook++;
+        return 1;
+    }
+    if (done == 0 && now - q->intentStageAt < LW_RETAKE_WAIT) return 1;
+    LwIntentEnd(q, done < 0 ? "the garrison cannot be retaken" : "players stayed near");
+    return 0;
+}
+/* test command "clear garrison": every living unit of the active plain garrison nearest the local player is killed
+ * through the game's death path (QueueDamage kind 7, as the kill test), so the last kill clears it natively */
+static void LwTestClear(int seq)
+{
+    typedef void (*QueueDamageFn)(void*, uint32_t, uint32_t, uint32_t, uint32_t, uint8_t, uint32_t, uint32_t, uint64_t, uint32_t, float, float, float,
+        const float*, const float*, uint32_t, uint32_t, uint32_t, float);
+    uintptr_t gf, runtime, synced;
+    if (!ApiCodeMatches(g_lw.game + 0x129F910u, "40 55 53 56 57 41 56 48 8D 6C 24 F9 48 81 EC D0 00 00 00") || !EvpPtr(g_lw.game + 0x33265C0u, &gf) ||
+        !EvpPtr(gf + 0x40, &runtime) || !EvpPtr(gf + 0x50, &synced) || g_lwWorld.playersAt <= 0) { Note("living world: test command %d: clear: not readable", seq); return; }
+    LwGarrison* best = NULL; float bd = 1e18f;
+    for (int i = 0; i < g_lwGarrisonCount; i++)
+    {
+        LwGarrison* g = &g_lwGarrisons[i]; uint8_t active = 0;
+        if (!g->plain || g->cleared || !g->haveCenter || g->index >= EvpU32(gf + 0x10, 0) || SafeRead(synced + 0x40u * g->index + 0x38, &active, 1) || !active) continue;
+        float d2 = LwDist2(g_lwWorld.players[0], g->center[0], g->center[1]);
+        if (d2 < bd) { bd = d2; best = g; }
+    }
+    if (!best) { Note("living world: test command %d: clear: no active plain garrison", seq); return; }
+    uintptr_t r = runtime + 0x1B58u * best->index; uint32_t count = EvpU32(r + 0x384, 0), killed = 0;
+    static const float down[3] = {0, 0, -1};
+    for (uint32_t k = 0; k < count && k < 96; k++)
+    {
+        uint32_t e = EvpU32(r + 0x204 + 4u * k, 0); ActHealth h; float pos[3];
+        if (!e || !ActHealthOf(g_lw.game, e, &h) || h.life >= 2 || !h.unit || !h.network || !EvpUnitPosition(h.unit, pos)) continue;
+        ((QueueDamageFn)(g_lw.game + 0x129F910u))(NULL, 7, 0, e, 0xFFFFFFFFu, 0, h.network, h.network, 0, 0, 0.0f, 0.0f, 0.0f, down, pos, 0xFFFFFFFFu, 0, 0, 1.0f);
+        killed++;
+    }
+    Note("living world: test command %d: clear: garrison %08X at (%.0f, %.0f), %.0f m: %u of %u listed units killed (QueueDamage kind 7)", seq, best->entity,
+        (double)best->center[0], (double)best->center[1], (double)sqrtf(bd), killed, count);
+}
+/* test command "retake wait <s>": how long a garrison stays cleared before a squad is sent (default LW_RETAKE_CLEAR) */
+static void LwRetakeWait(int seq, float sec)
+{
+    if (sec >= 0 && sec <= 3600) g_lwRetakeClear = (ULONGLONG)(sec * 1000.0f);
+    Note("living world: test command %d: garrisons are retaken %.0f s after they were cleared", seq, (double)g_lwRetakeClear / 1000.0);
+}
+/* 5 s after a retaken garrison filled (LwGarrisonsTick): its living units by point, against the points the retake opened */
+static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32_t* u, uint32_t n)
+{
+    uint32_t at[3]; int living = LwGarrisonLiving(EvpU32(d + 0x10, 0x7FFFu), at), inside = 0, outside = 0, opened = 0, owed = 0;
+    for (uint32_t p = 0; p < n; p++)
+    {
+        uint32_t bit = 1u << (p % 32), w = p / 32;
+        opened += (g->allow[w] & bit) != 0; owed += (g->allow[w] & u[w] & bit) != 0;
+        if (at[w] & bit) { if (g->allow[w] & bit) inside++; else outside++; }
+    }
+    if (living >= 0) for (int w = 0; w < 3; w++) g->allow[w] &= at[w]; /* an opened point the fill left empty (no group fits it, or the 70 room) is not owed later */
+    Note("living world: retaken garrison %08X filled: %u units listed, %d living; points with a living unit: %d of the %d opened, %d elsewhere; %d opened points still owed (U set); cleared stays %u",
+        g->entity, EvpU32(r + 0x384, 0), living, inside, opened, outside, owed, (unsigned)g->cleared);
 }
