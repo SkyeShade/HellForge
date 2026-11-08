@@ -413,13 +413,25 @@ public static partial class DataSpecs
     static ResourceEdits.LutRecolour? ReadLut(JsonElement e, string at)
     {
         if (!e.TryGetProperty("lut", out var lutSpec)) return null;
-        Fields(lutSpec, $"{at}.lut", "zonesFrom", "columns", "rows");
+        Fields(lutSpec, $"{at}.lut", "zonesFrom", "columns", "rows", "finishes");
         int? zonesFrom = lutSpec.TryGetProperty("zonesFrom", out var z) ? (z.ValueKind == JsonValueKind.Number && z.TryGetInt32(out var row) && row >= 0 ? row : throw new InvalidDataException($"{at}.lut: zonesFrom is a row number.")) : null;
         var columns = lutSpec.TryGetProperty("columns", out var cs) ? Cells(cs, $"{at}.lut.columns") : [];
         var rows = new Dictionary<int, IReadOnlyDictionary<int, double[]>>();
         if (lutSpec.TryGetProperty("rows", out var rs))
             foreach (var item in Object(rs, $"{at}.lut.rows")) rows[Index(item.Name, $"{at}.lut.rows")] = Cells(item.Value, $"{at}.lut.rows");
-        return new(zonesFrom, columns, rows);
+        var finishes = new Dictionary<int, ResourceEdits.LutFinish>();
+        if (lutSpec.TryGetProperty("finishes", out var fs))
+            foreach (var item in Object(fs, $"{at}.lut.finishes")) finishes[Index(item.Name, $"{at}.lut.finishes")] = Finish(item.Value, $"{at}.lut.finishes.{item.Name}");
+        return new(zonesFrom, columns, rows, finishes);
+    }
+
+    static ResourceEdits.LutFinish Finish(JsonElement e, string at)
+    {
+        Fields(e, at, "colour", "roughness", "metallic");
+        double? Unit(string name) => !e.TryGetProperty(name, out var v) ? null
+            : v.ValueKind == JsonValueKind.Number && v.GetDouble() is >= 0 and <= 1 and var d ? d : throw new InvalidDataException($"{at}: {name} is a number from 0 to 1.");
+        var finish = new ResourceEdits.LutFinish(e.TryGetProperty("colour", out var c) ? Colour(c, $"{at}.colour") : null, Unit("roughness"), Unit("metallic"));
+        return finish is { Colour: null, Roughness: null, Metallic: null } ? throw new InvalidDataException($"{at}: a finish sets colour, roughness or metallic.") : finish;
     }
 
     static MeshFile? ReadMesh(JsonElement e, string at, ulong type, string? folder, ISet<string> inputs)

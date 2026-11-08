@@ -108,6 +108,15 @@ static class DataBuilderTests
                 new Dictionary<int, IReadOnlyDictionary<int, double[]>> { [5] = new Dictionary<int, double[]> { [1] = [0.5, 0.25, 0.125] } }));
             check(Sha(lut) == "580472BB9719E8FAD740A2E60DE80BF1BCF3BBBA13B56860949E008A50A8CBF7", "The LUT differs from hd2_model.lut_mips.");
             reject(() => ResourceEdits.RecolourLut(IconImage.TextureMain(23, 8, 5), Lut(), new(null, new Dictionary<int, double[]>(), new Dictionary<int, IReadOnlyDictionary<int, double[]>>())));
+            var finished = ResourceEdits.RecolourLut(IconImage.TextureMain(23, 8, 5, 10), Lut(), new(null, new Dictionary<int, double[]>(),
+                new Dictionary<int, IReadOnlyDictionary<int, double[]>>(), new Dictionary<int, ResourceEdits.LutFinish> { [7] = new([0.5, 0.25, 0.125], 0.375, 0) }));
+            double Cell(byte[] gpu, int x, int y, int c) => (double)BinaryPrimitives.ReadHalfLittleEndian(gpu.AsSpan(((y * 23 + x) * 4 + c) * 2));
+            check(new[] { 0, 5, 6 }.All(x => Cell(finished, x, 7, 0) == 0.5 && Cell(finished, x, 7, 2) == 0.125) && Cell(finished, 0, 7, 3) == Cell(Lut(), 0, 7, 3),
+                "A finish's colour is not in columns 0, 5 and 6 of its row with alpha kept.");
+            check(Cell(finished, 6, 7, 3) == 0 && Cell(finished, 10, 7, 0) == 0.375 && Cell(finished, 10, 7, 1) == Cell(Lut(), 10, 7, 1) && Cell(finished, 0, 6, 0) == Cell(Lut(), 0, 6, 0),
+                "A finish's metallic (column 6 alpha) or roughness (column 10 red) is wrong, or it changed another cell.");
+            reject(() => ResourceEdits.RecolourLut(IconImage.TextureMain(23, 8, 5, 10), Lut(), new(null, new Dictionary<int, double[]>(),
+                new Dictionary<int, IReadOnlyDictionary<int, double[]>>(), new Dictionary<int, ResourceEdits.LutFinish> { [8] = new(null, 0.5, null) })));
         });
 
         test("Stratagem icons build as hd2_image.py builds them: texture and GUI material", () =>
