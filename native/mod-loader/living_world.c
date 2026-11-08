@@ -2541,7 +2541,7 @@ typedef struct LwGarrison
 {
     uint32_t entity; uint8_t seen, wasActive, refills; uint32_t taken[3], structure[3], marked[3]; ULONGLONG checkAt, activeAt;
     /* Phase 2c (living_world_intent.c, LwRetake*): index = its GuardForce record; plain = safe to retake; retake = armed */
-    uint32_t index, allow[3], u[3], points; float center[2]; int16_t kind; uint8_t kindRead; /* kind: its map location's (-1 none) */ uint8_t plain, cleared, haveCenter, retake; int16_t retaker; uint8_t lastRefill; ULONGLONG clearedAt, retakeAt, plainAt, fillAt;
+    uint32_t index, allow[3], u[3], points; float center[2]; uint8_t plain, cleared, haveCenter, retake; int16_t retaker; uint8_t lastRefill; ULONGLONG clearedAt, retakeAt, plainAt, fillAt;
 } LwGarrison;
 /* marked: the points the loader itself set bit 6 on (held empty); kept apart from taken (audit 1f, 4: the loader's own
  * marks, still set in the next active period, were counted as filled points, so after the next mode-0 despawn they were
@@ -2677,8 +2677,8 @@ static void LwTestGarrisons(int seq)
         uint32_t st = EvpU32(runtime + 0x1B58u * i + 0x1110, 0xFFFFFFFFu), f200 = 0, f20 = 0, f100 = 0;
         SafeRead(l + 0x2AB, &link, 1);
         for (uint32_t p = 0; p < np; p++) { uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), fl = 0; if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x24, &fl, 4)) { f200 += (fl & 0x200) != 0; f20 += (fl & 0x20) != 0; f100 += (fl & 0x100) != 0; } }
-        Note("living world: test command %d: garrison %08X fields: location kind %d, link %u, spawners %u, objectives %u, counted %u, structures %u, points 0x200 %u, 0x20 %u, 0x100 %u", seq, EvpU32(d + 8, 0),
-            g && g->kindRead ? (int)g->kind : -2, link, sp, ob, ce, st, f200, f20, f100);
+        Note("living world: test command %d: garrison %08X fields: link %u, spawners %u, objectives %u, counted %u, structures %u, points 0x200 %u, 0x20 %u, 0x100 %u", seq, EvpU32(d + 8, 0),
+            link, sp, ob, ce, st, f200, f20, f100);
         Note("living world: test command %d: garrison %08X %s%s%s at (%.0f, %.0f)%s%.0f%s: %u points, %u units listed", seq, EvpU32(d + 8, 0), active ? "active" : "inactive",
             g && g->plain ? ", plain" : "", g && g->cleared ? ", cleared" : "",
             (double)cx, (double)cy, havePl ? ", " : "", havePl ? (double)sqrtf((cx - pl[0]) * (cx - pl[0]) + (cy - pl[1]) * (cy - pl[1])) : 0.0, havePl ? " m from player 1" : "",

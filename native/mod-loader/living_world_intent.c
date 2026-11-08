@@ -622,9 +622,10 @@ static void LwTestNoise(int seq, int type, float dx, float dy)
  * does: 0xFD97E0(net id, the word's hash, &word)), and the refill flag runtime +0x1B4F is armed. The refill path
  * 0x912274 fills an active garrison with a detector within 150 m and never reads cleared, and the activation of a cleared
  * garrison jumps over the flag reset (0x912463), so the units appear natively when a player next comes near.
- * Plain: its map location (the location table G+0x8996B0 matched as GuardForce init does, 0x90CD60..0x90CD92) is an
- * outpost, a small location or a point of interest (kinds 3, 2, 4, 10) or none, never an objective (7, 8, 9) or an
- * unmapped kind; synced spawners +0x1C, objectives +0x24 and counted +0x2C all 0, no 0x200 point, and no structure at all: a held structure point keeps its structure through the despawn (0x90F911), an
+ * Plain: synced spawners +0x1C, objectives +0x24 and counted +0x2C all 0, no 0x200 point, and no structure at all (the map
+ * location kind cannot decide it: the generator's location table is wiped once the level is built, lw111a; objective
+ * sites register their objective entity, +0x24 >= 1 at every one seen). Link +0x2AB 0 (a non-outpost location) runs no
+ * cleared effects at all; for 1 they fired once at the native clear and cleared stays 1: a held structure point keeps its structure through the despawn (0x90F911), an
  * open one could refill a destroyed one. A plain post is cleared by the kill that empties its units list (0x91055B). */
 #define LW_RETAKE_CLEAR 300000   /* ms a garrison stays cleared before a squad retakes it (D) */
 #define LW_RETAKE_AGAIN 600000   /* ms between retakes of one garrison (D) */
@@ -646,21 +647,6 @@ static int LwRetakePinsOk(void)
     }
     return ok;
 }
-/* the kind (+0xDC) of the map location a garrison guards, -1 for none: the record whose instance (+0x98) has location id
- * +0xA8 == list +0x2B0 (written at 0x90CC55 from the level object), skipping records with settings index +0xA2 == 0xFF */
-static int LwGarrisonKind(uintptr_t l)
-{
-    uintptr_t a = 0, b = 0, gen = 0; uint64_t key = 0;
-    if (!EvpPtr(g_lw.game + 0x3326340u, &a) || !EvpPtr(a + 0xAE288, &b) || !EvpPtr(b + 0x2C8, &gen) || SafeRead(l + 0x2B0, &key, 8) || !key) return -2;
-    uint32_t count = EvpU32(gen + 0x11A715C, 0);
-    for (uint32_t i = 0; i < count && i < 256; i++)
-    {
-        uintptr_t rec = gen + 0x8996B0 + 0x108ull * i, inst = 0; uint8_t idx = 0xFF, kind = 0; uint64_t id = 0;
-        if (SafeRead(rec + 0xA2, &idx, 1) || idx == 0xFF || !EvpPtr(rec + 0x98, &inst) || SafeRead(inst + 0xA8, &id, 8) || id != key) continue;
-        return SafeRead(rec + 0xDC, &kind, 1) ? -2 : kind;
-    }
-    return -1;
-}
 static int LwPlayerWithin(const float* at, float r) { return LwNearestPlayer2(at[0], at[1]) < r * r; }
 /* each tick per owned garrison (LwGarrisonsTick): cleared time, plain test, centre; an armed retake's holds and re-arming */
 static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t r, uintptr_t l, uintptr_t points, uint32_t n, const uint32_t* u, uint8_t active, uint8_t refill)
@@ -675,8 +661,7 @@ static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t 
     if (now >= g->plainAt || newly) /* every 2 s (staggered): a fill can register spawners or structures; ReadProcessMemory per point is not free */
     {
         g->plainAt = now + 2000 + 125u * (g->index % 16u);
-        if (!g->kindRead) { int k = LwGarrisonKind(l); if (k != -2) { g->kind = (int16_t)k; g->kindRead = 1; } }
-    plain = n > 0 && g->kindRead && (g->kind == -1 || g->kind == 2 || g->kind == 3 || g->kind == 4 || g->kind == 10) && !SafeRead(s + 0x1C, &f[0], 4) && !SafeRead(s + 0x24, &f[1], 4) && !SafeRead(s + 0x2C, &f[2], 4) &&
+        plain = n > 0 && !SafeRead(s + 0x1C, &f[0], 4) && !SafeRead(s + 0x24, &f[1], 4) && !SafeRead(s + 0x2C, &f[2], 4) &&
             !f[0] && !f[1] && !f[2] && EvpU32(r + 0x1110, 1) == 0 && !(g->structure[0] | g->structure[1] | g->structure[2]);
         double sx = 0, sy = 0; int got = 0;
         for (uint32_t p = 0; p < n && plain; p++)
