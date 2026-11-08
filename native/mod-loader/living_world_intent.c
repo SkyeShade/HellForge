@@ -840,9 +840,10 @@ static int LwRetakeArrived(LwSquad* q, ULONGLONG now)
     LwIntentEnd(q, done < 0 ? "the garrison cannot be retaken" : "players stayed near");
     return 0;
 }
-/* test command "clear garrison": every living unit of the active plain garrison nearest the local player is killed
- * through the game's death path (QueueDamage kind 7, as the kill test), so the last kill clears it natively */
-static void LwTestClear(int seq)
+/* test command "clear garrison [id]": every living unit of that garrison (or the active plain garrison with units nearest
+ * the local player) is killed through the game's death path (QueueDamage kind 7, as the kill test), so the last kill
+ * clears it natively */
+static void LwTestClear(int seq, uint32_t entity)
 {
     typedef void (*QueueDamageFn)(void*, uint32_t, uint32_t, uint32_t, uint32_t, uint8_t, uint32_t, uint32_t, uint64_t, uint32_t, float, float, float,
         const float*, const float*, uint32_t, uint32_t, uint32_t, float);
@@ -853,7 +854,8 @@ static void LwTestClear(int seq)
     for (int i = 0; i < g_lwGarrisonCount; i++)
     {
         LwGarrison* g = &g_lwGarrisons[i]; uint8_t active = 0;
-        if (!g->plain || g->cleared || !g->haveCenter || g->index >= EvpU32(gf + 0x10, 0) || SafeRead(synced + 0x40u * g->index + 0x38, &active, 1) || !active) continue;
+        if ((entity && g->entity != entity) || !g->plain || g->cleared || !g->haveCenter || g->index >= EvpU32(gf + 0x10, 0) || SafeRead(synced + 0x40u * g->index + 0x38, &active, 1) || !active ||
+            EvpU32(runtime + 0x1B58u * g->index + 0x384, 0) == 0) continue;
         float d2 = LwDist2(g_lwWorld.players[0], g->center[0], g->center[1]);
         if (d2 < bd) { bd = d2; best = g; }
     }
