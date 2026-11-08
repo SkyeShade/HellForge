@@ -56,11 +56,18 @@ try{
         $otherPort=if($BackendPort -lt 65535){$BackendPort+1}else{$BackendPort-1}
         & $HellForgeBlockProbe $BackendPort $probeReport $otherPort|Out-Null
         $egress=if(Test-Path -LiteralPath $probeReport){Get-Content -Raw -LiteralPath $probeReport|ConvertFrom-Json}else{$null}
-        # A PC with no network (no route out, so the connect fails in the stack before WFP judges it): the other loopback
-        # port's refusal below is the proof, since the BLOCK filter that refuses it names only the program and so refuses
-        # the outside too (NetworkBlockProbe). The session proves the outside once the PC is online.
-        $offline=[bool]($egress -and ($egress.PSObject.Properties.Name -contains 'externalIpv4RouteError') -and
-            $egress.externalIpv4RouteError -ne 0 -and $egress.externalIpv4TcpError -in @(10050,10051,10065))
+        # An offline PC: the outside TCP connect fails in the stack (10050, 10051, 10065), so the block's refusal cannot show
+        # there. The block still counts as proved on the outside with no route out (nothing can leave), or with the outside
+        # UDP datagram refused by the block (externalIpv4UdpError 10013: judged at the same connect layer by the same
+        # program-only BLOCK filter, and not waiting on the next hop). With that, the other loopback port's refusal below is
+        # needed as always (NetworkBlockProbe). The session proves the block again while the game runs.
+        $offline=$false
+        if($egress){
+            $fields=$egress.PSObject.Properties.Name
+            $noRoute=($fields -contains 'externalIpv4RouteError') -and $egress.externalIpv4RouteError -ne 0
+            $udpRefused=($fields -contains 'externalIpv4UdpError') -and $egress.externalIpv4UdpError -eq 10013
+            $offline=($noRoute -or $udpRefused) -and $egress.externalIpv4TcpError -in @(10050,10051,10065)
+        }
         if(-not $egress -or ($egress.externalIpv4TcpError -ne 10013 -and -not $offline)){
             throw 'The network block is not stopping outside connections (another firewall, a VPN or a security suite may be letting traffic past the WFP filters).'
         }

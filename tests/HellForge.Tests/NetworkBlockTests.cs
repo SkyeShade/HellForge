@@ -205,6 +205,8 @@ static class NetworkBlockTests
                 "The report carries both loopback results.");
             check(written.RootElement.TryGetProperty("externalIpv4RouteError", out var route) && route.ValueKind == JsonValueKind.Number,
                 "The report carries whether Windows has a route out (ticket 0352).");
+            check(written.RootElement.TryGetProperty("externalIpv4UdpError", out var datagram) && datagram.ValueKind == JsonValueKind.Number,
+                "The report carries how the outside datagram ended (ticket 0352).");
             Probe("41000", report);
             check(!File.ReadAllText(report).Contains("otherLoopbackTcpError", StringComparison.Ordinal), "Without it the report is as before (the session's probe).");
         });
@@ -235,7 +237,7 @@ static class NetworkBlockTests
         // ticket 0352: with no route out, Windows fails the outside connect (10065) before WFP judges it
         test("Network block probe: with no network, a narrowed block holds on its other loopback port alone", () =>
         {
-            static System.Text.Json.Nodes.JsonNode Report(int outside, int? route, int other = 10013)
+            static System.Text.Json.Nodes.JsonNode Report(int outside, int? route, int other = 10013, int? datagram = null)
             {
                 var report = new System.Text.Json.Nodes.JsonObject
                 {
@@ -243,6 +245,7 @@ static class NetworkBlockTests
                     ["loopbackTcpError"] = 0, ["otherLoopbackTcpError"] = other
                 };
                 if (route != null) report["externalIpv4RouteError"] = route;
+                if (datagram != null) report["externalIpv4UdpError"] = datagram;
                 return report;
             }
             foreach (var error in new[] { 10050, 10051, 10065 })
@@ -250,11 +253,33 @@ static class NetworkBlockTests
                     $"No route and error {error}: a narrowed block that refuses the other loopback port failed, or was not offline.");
             check(NetworkBlockProbe.Problem(Report(10065, 1231, 10061), true) is { } stale && stale.Contains("other programs on this PC", StringComparison.Ordinal),
                 "No route, and filters that no longer apply (the other port reached the stack): passed.");
-            check(NetworkBlockProbe.Problem(Report(10065, 1231), false) is { } wide && wide.Contains("no network connection", StringComparison.Ordinal),
+            check(NetworkBlockProbe.Problem(Report(10065, 1231), false) is { } wide && wide.Contains("no internet connection", StringComparison.Ordinal),
                 "No route and a block that is not narrowed: passed, or did not say the PC is offline.");
-            // a route out: the connect reached the network (a router's ICMP unreachable), so the block did not refuse it
+            // a route out and no datagram (a probe from before it): the connect may have reached the network (a router's ICMP
+            // unreachable), so the block did not refuse it
             check(NetworkBlockProbe.Problem(Report(10065, 0), true) is { } routed && routed.Contains("error 10065", StringComparison.Ordinal) &&
-                !NetworkBlockProbe.Offline(Report(10065, 0)), "A route out and error 10065: passed.");
+                !NetworkBlockProbe.Offline(Report(10065, 0)), "A route out, no datagram and error 10065: passed.");
+            // a route out and a datagram that went out, or failed in some other way: still fails
+            foreach (var sent in new[] { 0, 10051, 10065, 10050, 10055, -2 })
+                check(NetworkBlockProbe.Problem(Report(10065, 0, datagram: sent), true) != null && !NetworkBlockProbe.Offline(Report(10065, 0, datagram: sent)),
+                    $"A route out, datagram {sent} and error 10065: passed as offline.");
+            // a route out and the datagram refused by the block (ticket 0352's PC): offline, proved
+            foreach (var error in new[] { 10050, 10051, 10065 })
+                check(NetworkBlockProbe.Problem(Report(error, 0, datagram: 10013), true) == null && NetworkBlockProbe.Offline(Report(error, 0, datagram: 10013)),
+                    $"A route out, the datagram refused and error {error}: failed, or was not offline.");
+            check(NetworkBlockProbe.Problem(Report(10065, 0, 10061, 10013), true) != null, "The datagram refused, but the other loopback port reached: passed.");
+            check(NetworkBlockProbe.Problem(Report(-1, 0, datagram: 10013), true) != null && NetworkBlockProbe.Problem(Report(0, 0, datagram: 10013), true) != null,
+                "The datagram refused, but a connect that waited or was answered: passed.");
+            check(NetworkBlockProbe.Problem(Report(10065, 0, datagram: 10013), false) is { } wideRouted && wideRouted.Contains("no internet connection", StringComparison.Ordinal),
+                "The datagram refused and a block that is not narrowed: passed, or did not say the PC is offline.");
+            // the ticket's own report (HellForge-logs-20261107-234437, run 9a50d976): the probe from before the datagram
+            var ticket = System.Text.Json.Nodes.JsonNode.Parse("""{"loopbackHttpPassed":true,"externalIpv4TcpError":10065,"externalIpv4RouteError":0,"externalIpv6TcpError":10051,"loopbackTcpError":0,"otherLoopbackTcpError":10013}""");
+            check(NetworkBlockProbe.Problem(ticket, true) != null && !NetworkBlockProbe.Offline(ticket),
+                "The ticket's report, which has no datagram, passed: an old probe must be rebuilt (by the repair) first.");
+            ticket!["externalIpv4UdpError"] = 10013;
+            check(NetworkBlockProbe.Problem(ticket, true) == null && NetworkBlockProbe.Offline(ticket), "The ticket's report with the datagram refused failed.");
+            ticket["externalIpv4UdpError"] = 0;
+            check(NetworkBlockProbe.Problem(ticket, true) != null, "The ticket's report with the datagram sent passed.");
             // a probe from before the route check
             check(NetworkBlockProbe.Problem(Report(10065, null), true) != null && !NetworkBlockProbe.Offline(Report(10065, null)),
                 "A report without the route: passed as offline.");
@@ -264,15 +289,54 @@ static class NetworkBlockTests
                 "A refused connect is the online proof, route or not.");
         });
 
+        // ticket 0352: the offline session's probe runs every 10 seconds and when the outside's interface changes
+        test("Network block probe: an offline session's watch runs on time, on a new interface, and judges each run", () =>
+        {
+            var watch = new OfflineBlockWatch(7);
+            check(watch.Due(0, 7), "The first look is not due at once.");
+            watch.Ran(500);
+            check(!watch.Due(1000, 7) && !watch.Due(10499, 7), "Due before 10 seconds with the same interface.");
+            check(watch.Due(10500, 7), "Not due 10 seconds after the last run.");
+            watch.Ran(10600);
+            check(watch.Due(11000, 12), "Not due at once when another adapter takes the outside (Wi-Fi joining a network).");
+            watch.Ran(11100);
+            check(!watch.Due(12000, 12), "Due again for an interface it already saw.");
+            check(watch.Due(13000, -1) && watch.Due(14000, 12), "A route going away and coming back is not a change.");
+            var offlineWatch = new OfflineBlockWatch(-1);
+            offlineWatch.Ran(0);
+            check(offlineWatch.Due(1000, 3), "No route, then a route: not due at once.");
+
+            static System.Text.Json.Nodes.JsonNode Run(int outside, int? datagram) => new System.Text.Json.Nodes.JsonObject
+            {
+                ["loopbackHttpPassed"] = true, ["externalIpv4TcpError"] = outside, ["externalIpv4RouteError"] = 0,
+                ["externalIpv4UdpError"] = datagram, ["externalIpv6TcpError"] = 10051, ["loopbackTcpError"] = 0, ["otherLoopbackTcpError"] = 10013
+            };
+            check(OfflineBlockWatch.Judge(null, Run(10065, 10013)) == OfflineBlockWatch.Verdict.StillOffline, "Still offline was not kept watching.");
+            check(OfflineBlockWatch.Judge(null, Run(10013, 10013)) == OfflineBlockWatch.Verdict.ProvenOnline, "The outside refused did not prove the block online.");
+            check(OfflineBlockWatch.Judge("the network block is not stopping the game's connections to the internet", Run(-1, 0)) == OfflineBlockWatch.Verdict.Failed,
+                "A problem did not fail the session.");
+            var session = File.Exists(Path.Combine(RepositoryRoot() ?? "", "src", "HellForge.Session", "PlaySession.Observe.cs"))
+                ? File.ReadAllText(Path.Combine(RepositoryRoot()!, "src", "HellForge.Session", "PlaySession.Observe.cs")) : null;
+            if (session != null)
+                check(session.Contains("if (problem != null) problem = RunNetworkProbe(offlineProbe, false, true, \"network-probe-online-again.json\");", StringComparison.Ordinal) &&
+                      session.Contains("offlineWatch.Due(clock.ElapsedMilliseconds, NetworkBlockProbe.BestInterface())", StringComparison.Ordinal),
+                    "The session no longer checks a failure twice, or no longer asks the watch when to run.");
+        });
+
         test("Network block probe: the probe, the session and the install script share the offline rule", () =>
         {
             if (Scripts() is not { } scripts) { Console.WriteLine("  (skipped: no scripts folder)"); return; }
             var probe = File.ReadAllText(Path.Combine(scripts, "OfflineControlNetworkProbe.cs"));
             var install = File.ReadAllText(Path.Combine(scripts, "Install-WfpBlock.ps1"));
-            check(probe.Contains("error == 10050 || error == 10051 || error == 10065", StringComparison.Ordinal) &&
-                  probe.Contains("(other > 0 && Offline(route, v4))", StringComparison.Ordinal) &&
-                  probe.Contains("\\\"externalIpv4RouteError\\\":", StringComparison.Ordinal), "The probe's offline rule changed.");
-            check(install.Contains("'externalIpv4RouteError'", StringComparison.Ordinal) && install.Contains("-in @(10050,10051,10065)", StringComparison.Ordinal) &&
+            check(probe.Contains("error != 10050 && error != 10051 && error != 10065", StringComparison.Ordinal) &&
+                  probe.Contains("return route != 0 || datagram == 10013;", StringComparison.Ordinal) &&
+                  probe.Contains("(other > 0 && Offline(route, datagram, v4))", StringComparison.Ordinal) &&
+                  probe.Contains("SocketType.Dgram, ProtocolType.Udp", StringComparison.Ordinal) &&
+                  probe.Contains("\\\"externalIpv4RouteError\\\":", StringComparison.Ordinal) &&
+                  probe.Contains("\\\"externalIpv4UdpError\\\":", StringComparison.Ordinal), "The probe's offline rule changed.");
+            check(install.Contains("'externalIpv4RouteError'", StringComparison.Ordinal) && install.Contains("'externalIpv4UdpError'", StringComparison.Ordinal) &&
+                  install.Contains("$egress.externalIpv4UdpError -eq 10013", StringComparison.Ordinal) &&
+                  install.Contains("($noRoute -or $udpRefused) -and $egress.externalIpv4TcpError -in @(10050,10051,10065)", StringComparison.Ordinal) &&
                   install.Contains("-ne 10013 -and -not $offline", StringComparison.Ordinal), "Install-WfpBlock.ps1's offline rule changed.");
         });
     }

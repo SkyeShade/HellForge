@@ -17,9 +17,27 @@ public static class OfflineControlNetworkProbe {
         // IPAddr is in_addr's form (network byte order): the address bytes as they are, read as one value
         return GetBestInterface(BitConverter.ToUInt32(IPAddress.Parse(address).GetAddressBytes(), 0), out index);
     }
-    // No route out (Route), and the connect failed for it: WSAENETDOWN, WSAENETUNREACH or WSAEHOSTUNREACH.
-    static bool Offline(int route, int error) {
-        return route != 0 && (error == 10050 || error == 10051 || error == 10065);
+    // One UDP datagram to the address (the discard port, 9): 0 when Windows sent it, else the send's Winsock error. With a
+    // route out, the first datagram is judged at WFP's ALE connect layer before it leaves, and the block's BLOCK filter
+    // names only the program, with no protocol (native/network-block/hellforge_wfp.c, AddPair), so a holding block refuses
+    // it (WSAEACCES, 10013). Unlike the TCP connect, nothing here waits on the next hop or on the network answering: a
+    // refused datagram proves the block on the outside whether or not the PC is online, and a sent one means it does not
+    // hold. Without a route the send fails in the stack (10051, 10065), as the connect does.
+    static int Datagram(string address) {
+        using(var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)) {
+            try {
+                socket.SendTo(new byte[1], new IPEndPoint(IPAddress.Parse(address), 9));
+                return 0;
+            } catch(SocketException error) { return error.ErrorCode; }
+        }
+    }
+    // The outside TCP connect failed in the stack (WSAENETDOWN, WSAENETUNREACH or WSAEHOSTUNREACH; the WFP block's own
+    // refusal is always WSAEACCES) on a PC where the block is proved anyway: no route out (nothing can leave), or the
+    // outside datagram refused by the block (Datagram; ticket 0352: a route while offline, the connect failing on the next
+    // hop). A route with a datagram that went out fails: the connect's unreachable may be a router's answer.
+    static bool Offline(int route, int datagram, int error) {
+        if(error != 10050 && error != 10051 && error != 10065) return false;
+        return route != 0 || datagram == 10013;
     }
     static int External(AddressFamily family, string address) {
         using(var socket = new Socket(family, SocketType.Stream, ProtocolType.Tcp)) {
@@ -46,7 +64,7 @@ public static class OfflineControlNetworkProbe {
         }
     }
     // <backend port> <report> [other loopback port]: with the third, also how a connect to the backend's port and to
-    // another loopback port ends (the WFP block permits only the backend's: 10013 for the other). Offline (no route out),
+    // another loopback port ends (the WFP block permits only the backend's: 10013 for the other). Offline (Offline above),
     // the other port's 10013 is the proof: the WFP block's BLOCK filter names only the program, so the filter that
     // refuses it is the one that refuses the outside (native/network-block/hellforge_wfp.c, AddPair).
     public static int Main(string[] args) {
@@ -73,6 +91,7 @@ public static class OfflineControlNetworkProbe {
         }
         int route = Route("192.0.2.1");
         int v4 = External(AddressFamily.InterNetwork, "192.0.2.1");
+        int datagram = Datagram("192.0.2.1");
         int v6 = External(AddressFamily.InterNetworkV6, "2001:db8::1");
         string narrowing = "";
         int otherError = 0;
@@ -81,8 +100,8 @@ public static class OfflineControlNetworkProbe {
             narrowing = ",\"loopbackTcpError\":" + Loopback(port) + ",\"otherLoopbackTcpError\":" + otherError;
         }
         File.WriteAllText(args[1], "{\"loopbackHttpPassed\":" + (local ? "true" : "false") +
-            ",\"externalIpv4TcpError\":" + v4 + ",\"externalIpv4RouteError\":" + route + ",\"externalIpv6TcpError\":" + v6 + narrowing + "}");
-        bool outside = v4 == 10013 || (other > 0 && Offline(route, v4));
+            ",\"externalIpv4TcpError\":" + v4 + ",\"externalIpv4RouteError\":" + route + ",\"externalIpv4UdpError\":" + datagram + ",\"externalIpv6TcpError\":" + v6 + narrowing + "}");
+        bool outside = v4 == 10013 || (other > 0 && Offline(route, datagram, v4));
         return local && outside && (other == 0 || otherError == 10013) ? 0 : 1;
     }
 }
