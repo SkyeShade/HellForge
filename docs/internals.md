@@ -183,14 +183,16 @@ retried `Mission/end` pays the weapon nothing, as it pays nothing else.
   gives the weapon's default attachments.
 
 A mod weapon's package is its own (`WeaponMastery.cs`, `RegisteredItems.cs`). It sells at its base's prices, against its
-own level, and what it gives is its own child items, saved with its progress. That is
+own level, and gives its own child items, saved with its progress. That is
 `progression.modPackageProgress`, which the client is never served: the backend turns it into `packageProgress` and
 inventory entries for the weapons this session has.
 
 A new copy starts at level 0 holding no attachments. Its ids follow from its unit name, so a mod added back finds its
 level.
 
-In multiplayer, the weapon is part of the mod's code, which the modlist gate already requires friends to share.
+[Standalone weapons](internals-standalone-weapons.md) have no base.
+
+In multiplayer, the weapon is part of the mod's code, which the modlist gate requires friends to share.
 
 **Network types past 2,048.** Every weapon and entity a mod adds takes a network type, a copy of its base's. The game
 sends a type in 11 bits, so 2,048 types fit, 1,855 of them vanilla. Two things hold that width: the network
