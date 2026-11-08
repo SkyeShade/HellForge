@@ -206,8 +206,9 @@ public static class ResourceEdits
 
     // A zone's material in the weapon shader's terms (filediver lut.frag): the colour is read as sRGB from column 0, and
     // columns 5 and 6 (the worn and camo-blended tints) follow it; metallic is column 6 alpha (column 7's texture-driven
-    // variation is added to it); roughness is column 10 red. A copied row keeps the vanilla zone's material otherwise.
-    public sealed record LutFinish(double[]? Colour, double? Roughness, double? Metallic);
+    // variation is added to it); roughness is column 10 red; wear scales the grime that mixes column 2 in (column 3's
+    // noise, cavity and occlusion weights and column 1 blue's base amount). A copied row keeps the rest of its zone.
+    public sealed record LutFinish(double[]? Colour, double? Roughness, double? Metallic, double? Wear = null);
 
     // A material's colour lookup texture (R16G16B16A16_FLOAT; each row a material zone, each column a parameter: column 0
     // the base colour; hd2_model.py): optionally every row first takes one row's values (the gold Liberator takes the
@@ -280,6 +281,11 @@ public static class ResourceEdits
             foreach (var x in new[] { 0, 5, FinishMetallicColumn }) Array.Copy(rgb, row[x], 3);
         if (finish.Metallic is { } metallic) row[FinishMetallicColumn][3] = metallic;
         if (finish.Roughness is { } roughness) row[FinishRoughnessColumn][0] = roughness;
+        if (finish.Wear is { } wear)
+        {
+            for (var c = 0; c < 4; c++) row[3][c] *= wear;
+            row[1][2] *= wear;
+        }
     }
 
     static void WriteLevel(MemoryStream output, double[][][] level, byte[] half)

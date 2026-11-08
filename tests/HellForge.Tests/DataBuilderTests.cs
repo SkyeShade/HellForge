@@ -117,6 +117,10 @@ static class DataBuilderTests
                 "A finish's metallic (column 6 alpha) or roughness (column 10 red) is wrong, or it changed another cell.");
             reject(() => ResourceEdits.RecolourLut(IconImage.TextureMain(23, 8, 5, 10), Lut(), new(null, new Dictionary<int, double[]>(),
                 new Dictionary<int, IReadOnlyDictionary<int, double[]>>(), new Dictionary<int, ResourceEdits.LutFinish> { [8] = new(null, 0.5, null) })));
+            var worn = ResourceEdits.RecolourLut(IconImage.TextureMain(23, 8, 5, 10), Lut(), new(null, new Dictionary<int, double[]>(),
+                new Dictionary<int, IReadOnlyDictionary<int, double[]>>(), new Dictionary<int, ResourceEdits.LutFinish> { [2] = new(null, null, null, 0.5) }));
+            check(Enumerable.Range(0, 4).All(c => Cell(worn, 3, 2, c) == Cell(Lut(), 3, 2, c) / 2) && Cell(worn, 1, 2, 2) == Cell(Lut(), 1, 2, 2) / 2
+                && Cell(worn, 1, 2, 1) == Cell(Lut(), 1, 2, 1) && Cell(worn, 3, 3, 0) == Cell(Lut(), 3, 3, 0), "Wear did not scale only column 3 and column 1 blue of its row.");
         });
 
         test("Stratagem icons build as hd2_image.py builds them: texture and GUI material", () =>

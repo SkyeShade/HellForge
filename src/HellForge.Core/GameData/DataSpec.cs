@@ -427,11 +427,11 @@ public static partial class DataSpecs
 
     static ResourceEdits.LutFinish Finish(JsonElement e, string at)
     {
-        Fields(e, at, "colour", "roughness", "metallic");
+        Fields(e, at, "colour", "roughness", "metallic", "wear");
         double? Unit(string name) => !e.TryGetProperty(name, out var v) ? null
             : v.ValueKind == JsonValueKind.Number && v.GetDouble() is >= 0 and <= 1 and var d ? d : throw new InvalidDataException($"{at}: {name} is a number from 0 to 1.");
-        var finish = new ResourceEdits.LutFinish(e.TryGetProperty("colour", out var c) ? Colour(c, $"{at}.colour") : null, Unit("roughness"), Unit("metallic"));
-        return finish is { Colour: null, Roughness: null, Metallic: null } ? throw new InvalidDataException($"{at}: a finish sets colour, roughness or metallic.") : finish;
+        var finish = new ResourceEdits.LutFinish(e.TryGetProperty("colour", out var c) ? Colour(c, $"{at}.colour") : null, Unit("roughness"), Unit("metallic"), Unit("wear"));
+        return finish is { Colour: null, Roughness: null, Metallic: null, Wear: null } ? throw new InvalidDataException($"{at}: a finish sets colour, roughness, metallic or wear.") : finish;
     }
 
     static MeshFile? ReadMesh(JsonElement e, string at, ulong type, string? folder, ISet<string> inputs)
