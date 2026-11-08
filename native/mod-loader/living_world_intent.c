@@ -679,10 +679,10 @@ static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t 
     if (cleared && !g->cleared) g->clearedAt = now;
     uint8_t newly = cleared && !g->cleared;
     g->cleared = cleared;
-    int plain = g->plain;
+    int plain = g->plain, tested = 0;
     if (now >= g->plainAt || newly) /* every 2 s (staggered): a fill can register spawners or structures; ReadProcessMemory per point is not free */
     {
-        g->plainAt = now + 2000 + 125u * (g->index % 16u);
+        g->plainAt = now + 2000 + 125u * (g->index % 16u); tested = 1;
         uint32_t live = EvpU32(r + 0x1110, 1); /* structure entries (+0x810, 24 bytes, +0x10 = point + 1): kept while inactive too (level-placed ones, 0x90B0A5) */
         for (uint32_t k = 0; k < live && k < 96; k++) { uint32_t local = EvpU32(r + 0x810 + 24u * k + 0x10, 0); if (local >= 1 && local <= n) g->structure[(local - 1) / 32] |= 1u << ((local - 1) % 32); }
         plain = n > 0 && !SafeRead(s + 0x1C, &f[0], 4) && !SafeRead(s + 0x24, &f[1], 4) && !SafeRead(s + 0x2C, &f[2], 4) && !f[1] && !f[2];
@@ -710,7 +710,14 @@ static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t 
         for (uint32_t p = 0; p < n; p++) { uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu); float xy[2]; if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x10, xy, 8) && isfinite(xy[0]) && isfinite(xy[1])) { cx += xy[0]; cy += xy[1]; k++; } }
         if (k) { g->center[0] = (float)(cx / k); g->center[1] = (float)(cy / k); g->haveCenter = 1; }
     }
-    if (newly) Note("living world: garrison %08X cleared (%s)", g->entity, plain ? "plain: a squad may retake it" : "not plain: never retaken");
+    /* noted after a plain test 2 s or more after the clear: in the clearing tick the destroyed spawners and structures are
+     * still listed (lw113d noted "not plain" for a post it then retook); again whenever the state changes */
+    if (!cleared) g->notedPlain = 0;
+    else if (tested && now - g->clearedAt >= 2000 && g->notedPlain != (uint8_t)(plain + 1))
+    {
+        Note("living world: garrison %08X %s (%s)", g->entity, g->notedPlain ? "cleared, now" : "cleared", plain ? "plain: a squad may retake it" : "not plain: spawners, structures or objectives remain");
+        g->notedPlain = (uint8_t)(plain + 1);
+    }
     if (!g->retake) return;
     if (active && g->lastRefill && !refill) g->fillAt = now + 5000; /* the refill path ran (it zeroes the flag after the fill, 0x91229D) */
     g->lastRefill = refill;
