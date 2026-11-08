@@ -493,7 +493,7 @@ typedef struct LwSquad
     int8_t fight; uint8_t rushed, rushedN, tells; ULONGLONG retargetAt, tellAt; /* REINFORCE: its fight (g_lwFights index); members sped up (0x7EFFC0), how many; fight target tells; next goal refresh, next tell */
 } LwSquad;
 static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
-static void LwIntentOffline(LwSquad* q); static int LwIntentHold(LwSquad* q, float nx, float ny); static int LwIntentInside(LwSquad* q); static int LwIntentLeg(LwSquad* q, float dt); static int LwTerritoryGoalOk(const LwSquad* q, int node); static void LwTerritoryTick(void); static void LwIntentTrace(void); static void LwRetakeScan(void); static void LwTestClear(int seq, uint32_t entity); static void LwRetakeWait(int seq, float s); static void LwRetakeUnfit(int seq); static int64_t LwFillMasks(uintptr_t desc, float* budget, char* trace, size_t traceLen); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
+static void LwIntentOffline(LwSquad* q); static int LwIntentHold(LwSquad* q, float nx, float ny); static int LwIntentInside(LwSquad* q); static int LwIntentLeg(LwSquad* q, float dt); static int LwTerritoryGoalOk(const LwSquad* q, int node); static void LwTerritoryTick(void); static void LwIntentTrace(void); static void LwRetakeScan(void); static void LwTestClear(int seq, uint32_t entity); static void LwRetakeWait(int seq, float s); static void LwRetakeUnfit(int seq); static void LwRetakeTakenCmd(int seq); static int64_t LwFillMasks(uintptr_t desc, float* budget, char* trace, size_t traceLen); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
 {
@@ -2364,6 +2364,7 @@ static void LwTestCommands(void)
         else if (strncmp(cmds[c], "clear garrison", 14) == 0) { unsigned id = 0; sscanf(cmds[c], "clear garrison %x", &id); LwTestClear(seq, id); }
         else if (sscanf(cmds[c], "retake wait %f", &d) == 1) LwRetakeWait(seq, d);
         else if (strcmp(cmds[c], "retake unfit") == 0) LwRetakeUnfit(seq);
+        else if (strcmp(cmds[c], "retake taken") == 0) LwRetakeTakenCmd(seq);
         else if (sscanf(cmds[c], "teleport! %f %f", &d, &deg) == 2) { g_lwTeleportForce = 1; LwTestTeleport(seq, d, deg); g_lwTeleportForce = 0; }
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
         else if (strcmp(cmds[c], "vantage") == 0) LwTestVantage(seq);
@@ -2561,7 +2562,7 @@ typedef struct LwGarrison
     uint32_t entity; uint8_t seen, wasActive, refills; uint32_t taken[3], structure[3], marked[3]; ULONGLONG checkAt, activeAt;
     /* Phase 2c (living_world_intent.c, LwRetake*): index = its GuardForce record; plain = safe to retake; retake = armed */
     uint32_t index, allow[3], u[3], points; float center[2]; uint8_t plainBase; /* plainBase: plain apart from living spawners and structures */ uint8_t plain, cleared, haveCenter, retake, notedPlain; /* notedPlain: plain + 1 as last noted while cleared, 0 = none */ int16_t retaker; uint8_t lastRefill; ULONGLONG clearedAt, retakeAt, plainAt, fillAt;
-    uint8_t absorbed, fillTries; uint16_t absorbedHome; float absorbedSpeed; uintptr_t absorbedDef; /* the retaking squad's units in the garrison until its fill shows them (LwRetakeFilled) */
+    uint8_t absorbed, fillTries; uint16_t fillWaits, absorbedHome; float absorbedSpeed; uintptr_t absorbedDef; /* the retaking squad's units in the garrison until its fill shows them (LwRetakeFilled) */
 } LwGarrison;
 /* marked: the points the loader itself set bit 6 on (held empty); kept apart from taken (audit 1f, 4: the loader's own
  * marks, still set in the next active period, were counted as filled points, so after the next mode-0 despawn they were

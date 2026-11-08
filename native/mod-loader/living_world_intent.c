@@ -669,6 +669,7 @@ static void LwTestNoise(int seq, int type, float dx, float dy)
 #define LW_RETAKE_REACH 800.0f   /* squads sent from within this (D; 1500 m on extra large maps) */
 static ULONGLONG g_lwRetakeClear = LW_RETAKE_CLEAR; /* the test command "retake wait <s>" shortens it */
 static int g_lwRetakeUnfit; /* test command "retake unfit": the next retake opens only points no group fits, to show the refill retry and the return */
+static int g_lwRetakeTaken; /* test command "retake taken": the next retake's opened points start taken with no request, as a refused pick leaves them (lw114a) */
 static const uint32_t kLwUHash[3] = {0x58840A74u, 0x8D0AE425u, 0x44818B0Au};
 static int LwRetakePinsOk(void)
 {
@@ -881,6 +882,18 @@ static int LwRetakeApply(LwSquad* q, LwGarrison* g)
             if (!LwPoke(s + 4 + 4u * w, &word, 4)) ((NetDirtyFn)(g_lw.game + 0xFD97E0u))(net, kLwUHash[w], (void*)(s + 4 + 4u * w));
         }
     uint8_t one = 1; LwPoke(r + 0x1B4F, &one, 1);
+    if (g_lwRetakeTaken) /* test only: the state 0x90D2A0 leaves when 0x953580 refuses after 0x90D46A */
+    {
+        int taken = 0;
+        for (uint32_t p = 0; p < n; p++)
+        {
+            uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0;
+            if (!(allow[p / 32] & (1u << (p % 32))) || gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4)) continue;
+            flags |= 0x40; taken += !LwPoke(points + 0x58u * gi + 0x24, &flags, 4);
+        }
+        g_lwRetakeTaken = 0;
+        Note("living world: test: retake taken: %d opened points of garrison %08X marked taken with no request", taken, g->entity);
+    }
     uint32_t after[3] = {0, 0, 0}; SafeRead(s + 4, after, sizeof after);
     int held = 0;
     for (uint32_t p = 0; p < n; p++) { uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0; if (gi < 0x100000 && !SafeRead(points + 0x58u * gi + 0x24, &flags, 4)) held += (flags & 0x40) != 0; }
@@ -1019,6 +1032,7 @@ static void LwTestClear(int seq, uint32_t entity)
         (double)best->center[0], (double)best->center[1], (double)sqrtf(bd), killed, count, hit, spawners, struck, structures);
     g_lwClearCheck.entity = best->entity; g_lwClearCheck.index = best->index; g_lwClearCheck.at = GetTickCount64() + 2000;
 }
+static void LwRetakeTakenCmd(int seq) { g_lwRetakeTaken = 1; Note("living world: test command %d: retake taken: the next retake's opened points start taken with no request", seq); }
 static void LwRetakeUnfit(int seq) { g_lwRetakeUnfit = 1; Note("living world: test command %d: retake unfit: the next retake opens only points no group of its garrison fits", seq); }
 /* test command "retake wait <s>": how long a garrison stays cleared before a squad is sent (default LW_RETAKE_CLEAR) */
 static void LwRetakeWait(int seq, float sec)
@@ -1034,6 +1048,7 @@ static void LwRetakeReturn(LwGarrison* g, int missing)
     int node = LwNearestNode(g->center[0], g->center[1]), slot = -1;
     for (int i = 0; i < g_lwWorld.count && slot < 0; i++) if (g_lwSquads[i].state == LW_FREE) slot = i;
     /* a vanilla map places few squads and none may have died (lw114a: 13 of 13 in use); the table has room past them */
+    int appended = slot < 0;
     if (slot < 0 && node >= 0 && g->absorbedDef && g_lwWorld.count < LW_SQUADS_MAX) slot = g_lwWorld.count++;
     if (node < 0 || slot < 0 || !g->absorbedDef)
     {
@@ -1045,12 +1060,23 @@ static void LwRetakeReturn(LwGarrison* g, int missing)
     q->state = LW_OFFLINE; q->node = (uint16_t)node; q->pos[0] = g_lwNodes[node].x; q->pos[1] = g_lwNodes[node].y; q->definition = g->absorbedDef;
     q->survivors = (uint8_t)missing; q->speed = g->absorbedSpeed > 0 ? g->absorbedSpeed : LW_SPEED_DEFAULT; q->garrison = -1; q->home1 = g->absorbedHome;
     LwPlan(q);
-    Note("living world: retaken garrison %08X: %d of its units did not appear at the fill; they return to the world as squad %d at (%.0f, %.0f)", g->entity, missing, slot,
-        (double)q->pos[0], (double)q->pos[1]);
+    Note("living world: retaken garrison %08X: %d of its units did not appear at the fill; they return to the world as squad %d at (%.0f, %.0f)%s", g->entity, missing, slot,
+        (double)q->pos[0], (double)q->pos[1], appended ? " (a new table entry: no free squad slot)" : "");
 }
 /* 5 s after a retaken garrison filled (LwGarrisonsTick): its living units by point, against the points the retake opened */
 static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, uintptr_t l, uintptr_t points, const uint32_t* u, uint32_t n)
 {
+    /* a request still queued (dir+0x36C0: +1 at enqueue 0x954527, -1 at dispatch 0x94F0D0) has no unit yet: deciding
+     * now could reopen its point or return its unit twice, so the check waits for an empty queue */
+    uint32_t queued = g_lwWorld.dir ? EvpU32(g_lwWorld.dir + 0x36C0, 0) : 0;
+    if (queued)
+    {
+        g->fillAt = GetTickCount64() + 1000;
+        if (++g->fillWaits == 30 && LwTestTraceOn()) Note("living world: test: retaken garrison %08X: its fill check has waited 30 s for the spawn queue (%u queued)", g->entity, queued);
+        return;
+    }
+    if (g->fillWaits && LwTestTraceOn()) Note("living world: test: retaken garrison %08X: fill check after %u s of queued spawns", g->entity, (unsigned)g->fillWaits);
+    g->fillWaits = 0;
     uint32_t at[3]; int living = LwGarrisonLiving(EvpU32(d + 0x10, 0x7FFFu), at), inside = 0, outside = 0, opened = 0, owed = 0;
     if (LwTestTraceOn()) /* test runs: the values that decide an empty fill (lw113c), at each fill */
     {
