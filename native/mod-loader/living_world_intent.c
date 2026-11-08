@@ -123,7 +123,13 @@ static int LwBits(uint32_t v) { int c = 0; for (; v; v &= v - 1) c++; return c; 
 typedef struct { float pos[3], tpos[3]; int engaged, peak; uint32_t target; ULONGLONG born, seen; uint8_t sent, call, live; } LwFight;
 static LwFight g_lwFights[16];
 static struct { uint32_t fights, calls, sent, joined, ended; } g_lwRush; /* 30 s counters */
-/* a unit's Behavior target on the Helldivers' side, or 0 */
+/* a target that still lives, and where it is now (the Behavior position +0x1C is only where it was last seen or heard) */
+static int LwLiveTarget(uint32_t target, float* pos)
+{
+    ActHealth h;
+    return ActHealthOf(g_lw.game, target, &h) && h.life < 2 && h.unit && EvpUnitPosition(h.unit, pos) && isfinite(pos[0]) && isfinite(pos[1]);
+}
+/* a unit's Behavior target on the Helldivers' side that still lives, at its live position, or 0 */
 static uint32_t LwBehaviorTarget(uint32_t unit, float* pos)
 {
     uintptr_t beh = 0, recs = 0; uint32_t bi = 0;
@@ -131,7 +137,7 @@ static uint32_t LwBehaviorTarget(uint32_t unit, float* pos)
     uintptr_t rec = recs + 0x1F8ull * bi; uint8_t has = 0;
     if (SafeRead(rec + 0x78, &has, 1) || !has || SafeRead(rec + 0x1C, pos, 12) || !isfinite(pos[0]) || !isfinite(pos[1])) return 0;
     uint32_t target = EvpU32(rec + 0x18, 0);
-    return target && LwPlayerSide(target) ? target : 0;
+    return target && LwPlayerSide(target) && LwLiveTarget(target, pos) ? target : 0;
 }
 static uintptr_t LwAiRecord(uint32_t unit)
 {
@@ -190,6 +196,7 @@ static void LwIntentEnd(LwSquad* q, const char* why)
     }
 }
 /* offline: the route to the node nearest the point */
+static int LwTestTraceOn(void); static int LwLiveTarget(uint32_t target, float* pos); static void LwTestClearCheck(void);
 static int LwRetakeArrived(LwSquad* q, ULONGLONG now); static int LwRegionTier(const LwSquad* q, int region); static int LwRegionOfNode(int node);
 static int LwIntentRoute(LwSquad* q)
 {
@@ -330,11 +337,13 @@ static void LwReinforceOnline(LwSquad* q, const uint32_t* members, int n, const 
     {
         typedef void (*HearFn)(void*, uint32_t, uint32_t, const float*, float);
         LwFight* fi = &g_lwFights[q->fight]; int told = 0;
+        if (!LwLiveTarget(fi->target, fi->tpos)) { fi->target = 0; goto untold; } /* dead or gone: the next scan picks another */
         for (int k = 0; k < n; k++) { uint32_t det = LwAwareDetector(members[k]); if (det) { ((HearFn)(g_lw.game + 0x888E50u))(NULL, det, fi->target, fi->tpos, 40.0f); told++; } }
         q->tells++; q->tellAt = now + 10000;
         Note("living world: squad %d at the fight: %d of %d members told of its target %08X at (%.0f, %.0f), %.0f m away (tell %d)", (int)(q - g_lwSquads), told, n, fi->target,
             (double)fi->tpos[0], (double)fi->tpos[1], (double)sqrtf(LwDist2(at, fi->tpos[0], fi->tpos[1])), q->tells);
     }
+untold:
     if ((!LwFightOf(q) && !engaged) || now - q->intentStageAt > 180000) LwIntentEnd(q, LwFightOf(q) ? "180 s at the fight" : "the fight is over");
 }
 static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at)
@@ -363,7 +372,7 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
         if (!LwPlayerSide(source)) { source = 0; for (int i = 0; i < g_lwWorld.playersAt && !source; i++) if (LwPlayerSide(g_lwWorld.avatars[i])) source = g_lwWorld.avatars[i]; }
         int told = 0;
         if (source) for (int k = 0; k < n; k++) { uint32_t det = LwAwareDetector(members[k]); if (det) { ((HearFn)(g_lw.game + 0x888E50u))(NULL, det, source, q->target, 40.0f); told++; } }
-        LwHearReadBack(q, LwAwareDetector(members[0]), source);
+        if (LwTestTraceOn()) LwHearReadBack(q, LwAwareDetector(members[0]), source);
         g_lwHear.told += (uint32_t)told;
         q->intentStage = 1; q->intentStageAt = now; q->intentPeak = 0; q->intentPeakAt = 0;
         /* the awareness update's gates before the hearing test (0x7EB000): AiEnemy +0xE4 bits 0x2 / 0x4 / 0x8 / 0x20 take
@@ -662,7 +671,11 @@ static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t 
     {
         g->plainAt = now + 2000 + 125u * (g->index % 16u);
         plain = n > 0 && !SafeRead(s + 0x1C, &f[0], 4) && !SafeRead(s + 0x24, &f[1], 4) && !SafeRead(s + 0x2C, &f[2], 4) &&
-            !f[0] && !f[1] && !f[2] && EvpU32(r + 0x1110, 1) == 0 && !(g->structure[0] | g->structure[1] | g->structure[2]);
+            !f[1] && !f[2] && EvpU32(r + 0x1110, 1) == 0 && !(g->structure[0] | g->structure[1] | g->structure[2]);
+        g->plainBase = (uint8_t)plain;
+        /* spawners: only once every listed one is destroyed (list count +0x1EC == 0): the fill never registers or spawns one
+         * (registrations only at 0x90CFFB, GuardForce init, and 0xA22CAD), and the alarm needs a living one (0x912AF0) */
+        if (plain && f[0]) plain = EvpU32(l + 0x1EC, 1) == 0;
         double sx = 0, sy = 0; int got = 0;
         for (uint32_t p = 0; p < n && plain; p++)
         {
@@ -776,6 +789,7 @@ static void LwRetakeScan(void)
 {
     static ULONGLONG next;
     ULONGLONG now = GetTickCount64();
+    LwTestClearCheck();
     if (now < next || !g_lwGarrisonCount) return;
     next = now + 10000;
     if (!LwRetakePinsOk()) { next = ~0ull; return; }
@@ -841,20 +855,22 @@ static int LwRetakeArrived(LwSquad* q, ULONGLONG now)
     return 0;
 }
 /* test command "clear garrison [id]": every living unit of that garrison (or the active plain garrison with units nearest
- * the local player) is killed through the game's death path (QueueDamage kind 7, as the kill test), so the last kill
- * clears it natively */
+ * the local player) is killed through the game's death path (QueueDamage kind 7, as the kill test), and so is every
+ * listed spawner with a health record (list +0x1AC, count +0x1EC), so the game clears it natively. Kind 7 is proven
+ * for AI units; for spawners the note gives each one's life after the drain. */
+static struct { uint32_t entity, index; ULONGLONG at; } g_lwClearCheck;
 static void LwTestClear(int seq, uint32_t entity)
 {
     typedef void (*QueueDamageFn)(void*, uint32_t, uint32_t, uint32_t, uint32_t, uint8_t, uint32_t, uint32_t, uint64_t, uint32_t, float, float, float,
         const float*, const float*, uint32_t, uint32_t, uint32_t, float);
-    uintptr_t gf, runtime, synced;
+    uintptr_t gf, runtime, synced, lists = 0;
     if (!ApiCodeMatches(g_lw.game + 0x129F910u, "40 55 53 56 57 41 56 48 8D 6C 24 F9 48 81 EC D0 00 00 00") || !EvpPtr(g_lw.game + 0x33265C0u, &gf) ||
-        !EvpPtr(gf + 0x40, &runtime) || !EvpPtr(gf + 0x50, &synced) || g_lwWorld.playersAt <= 0) { Note("living world: test command %d: clear: not readable", seq); return; }
+        !EvpPtr(gf + 0x40, &runtime) || !EvpPtr(gf + 0x50, &synced) || !EvpPtr(gf + 0x48, &lists) || g_lwWorld.playersAt <= 0) { Note("living world: test command %d: clear: not readable", seq); return; }
     LwGarrison* best = NULL; float bd = 1e18f;
     for (int i = 0; i < g_lwGarrisonCount; i++)
     {
         LwGarrison* g = &g_lwGarrisons[i]; uint8_t active = 0;
-        if ((entity && g->entity != entity) || !g->plain || g->cleared || !g->haveCenter || g->index >= EvpU32(gf + 0x10, 0) || SafeRead(synced + 0x40u * g->index + 0x38, &active, 1) || !active ||
+        if ((entity && g->entity != entity) || !g->plainBase || g->cleared || !g->haveCenter || g->index >= EvpU32(gf + 0x10, 0) || SafeRead(synced + 0x40u * g->index + 0x38, &active, 1) || !active ||
             EvpU32(runtime + 0x1B58u * g->index + 0x384, 0) == 0) continue;
         float d2 = LwDist2(g_lwWorld.players[0], g->center[0], g->center[1]);
         if (d2 < bd) { bd = d2; best = g; }
@@ -869,8 +885,18 @@ static void LwTestClear(int seq, uint32_t entity)
         ((QueueDamageFn)(g_lw.game + 0x129F910u))(NULL, 7, 0, e, 0xFFFFFFFFu, 0, h.network, h.network, 0, 0, 0.0f, 0.0f, 0.0f, down, pos, 0xFFFFFFFFu, 0, 0, 1.0f);
         killed++;
     }
-    Note("living world: test command %d: clear: garrison %08X at (%.0f, %.0f), %.0f m: %u of %u listed units killed (QueueDamage kind 7)", seq, best->entity,
-        (double)best->center[0], (double)best->center[1], (double)sqrtf(bd), killed, count);
+    uintptr_t l = lists + 0x2B8u * best->index; uint32_t spawners = EvpU32(l + 0x1EC, 0), hit = 0;
+    for (uint32_t k = 0; k < spawners && k < 16; k++)
+    {
+        uint32_t e = EvpU32(l + 0x1AC + 4u * k, 0); ActHealth h; float pos[3] = {0, 0, 0};
+        if (!e || !ActHealthOf(g_lw.game, e, &h) || h.life >= 2 || !h.network) continue;
+        if (h.unit) EvpUnitPosition(h.unit, pos);
+        ((QueueDamageFn)(g_lw.game + 0x129F910u))(NULL, 7, 0, e, 0xFFFFFFFFu, 0, h.network, h.network, 0, 0, 0.0f, 0.0f, 0.0f, down, pos, 0xFFFFFFFFu, 0, 0, 1.0f);
+        hit++;
+    }
+    Note("living world: test command %d: clear: garrison %08X at (%.0f, %.0f), %.0f m: %u of %u listed units killed, %u of %u listed spawners hit (QueueDamage kind 7)", seq, best->entity,
+        (double)best->center[0], (double)best->center[1], (double)sqrtf(bd), killed, count, hit, spawners);
+    g_lwClearCheck.entity = best->entity; g_lwClearCheck.index = best->index; g_lwClearCheck.at = GetTickCount64() + 2000;
 }
 /* test command "retake wait <s>": how long a garrison stays cleared before a squad is sent (default LW_RETAKE_CLEAR) */
 static void LwRetakeWait(int seq, float sec)
@@ -975,7 +1001,7 @@ static void LwTerritoryBuild(void)
             g->plain ? ", plain" : "", (double)g->center[0], (double)g->center[1], nodes, nb, homed, LwGarrisonStrength(g));
     }
     char line[1100]; size_t len = 0; int first = 0;
-    for (int a = 0; a <= g_lwNodeCount; a++)
+    for (int a = 0; a <= g_lwNodeCount && LwTestTraceOn(); a++) /* the node map for the evidence graphics: test runs only */
     {
         if (a == g_lwNodeCount || len > 760) { if (len) Note("living world: territory nodes %d-%d: %s", first, a - 1, line); len = 0; first = a; line[0] = 0; if (a == g_lwNodeCount) break; }
         len += (size_t)snprintf(line + len, sizeof line - len, "%.0f,%.0f,%d;", (double)g_lwNodes[a].x, (double)g_lwNodes[a].y, (int)g_lwRegion[a] - 1);
@@ -1002,20 +1028,23 @@ static void LwTerritoryTick(void)
         if (q->home1 == 0) q->home1 = (uint16_t)g_lwRegion[q->node < g_lwNodeCount ? q->node : 0];
         if (q->home1 && q->home1 <= regions) squads[q->home1 - 1] += q->survivors;
     }
+    int extra[LW_REGIONS_MAX]; memset(extra, 0, sizeof extra);
     for (int r = 0; r < regions; r++) /* a garrison with no region of its own counts for the region of its nearest node */
         if (g_lwGarrisons[r].haveCenter && !g_lwRegionNodes[r])
-        { int host = LwRegionOfNode(LwNearestNode(g_lwGarrisons[r].center[0], g_lwGarrisons[r].center[1])); if (host >= 0 && host < regions) squads[host] += LwGarrisonStrength(&g_lwGarrisons[r]); }
+        { int host = LwRegionOfNode(LwNearestNode(g_lwGarrisons[r].center[0], g_lwGarrisons[r].center[1])); if (host >= 0 && host < regions) extra[host] += LwGarrisonStrength(&g_lwGarrisons[r]); }
     for (int r = 0; r < regions; r++)
     {
         LwGarrison* g = &g_lwGarrisons[r];
         if (!g->haveCenter || !g_lwRegionNodes[r]) continue;
-        int gs = LwGarrisonStrength(g), st = gs + squads[r]; /* squads[]: homed survivors, plus garrisons without a region of their own */
-        uint8_t was = g_lwRegionHeld[r], now1 = st > 0;
+        /* held while its garrisons hold (audit 2a, 9: with homed squads counted, an XL region of 100+ squads could never fall);
+         * the homed squads are its strength and its retakers, not its hold */
+        int gs = LwGarrisonStrength(g) + extra[r], st = gs + squads[r];
+        uint8_t was = g_lwRegionHeld[r], now1 = gs > 0;
         g_lwRegionStrength[r] = st;
         if (g_lwTerr.seeded && was != now1)
         {
             if (now1) g_lwTerr.regained++; else g_lwTerr.lost++;
-            Note("living world: territory: region %d (garrison %08X at (%.0f, %.0f)) %s: garrison strength %d%s, squads homed there (and garrisons sharing its node) %d", r, g->entity,
+            Note("living world: territory: region %d (garrison %08X at (%.0f, %.0f)) %s: garrison strength %d%s, squads homed there %d", r, g->entity,
                 (double)g->center[0], (double)g->center[1], now1 ? "held again" : "lost", gs, g->retake ? " (retaken)" : g->cleared ? " (cleared)" : "", squads[r]);
         }
         g_lwRegionHeld[r] = now1;
@@ -1064,4 +1093,36 @@ static void LwIntentTrace(void)
         }
     }
     if (len) Note("living world: intent trace: places from squad %d: %s", first, line);
+}
+
+static int LwTestTraceOn(void) { static int on = -1; if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1'; } return on; }
+/* LwWalk, offline: an INVESTIGATE or REINFORCE squad on its way does not walk into the band where no squad comes online
+ * (nearer a player than rMin, LwSquadsTick's nearBand): it waits at the edge, which is inside the near band, so it comes
+ * online there and walks the rest with its online goal (audit 2a, 6: 19 of 28 offline arrivals stopped unseen inside it).
+ * 1 = wait. While waiting, the reinforcement ends with its fight and the investigation after 180 s. */
+static int LwIntentHold(LwSquad* q, float nx, float ny)
+{
+    if ((q->intent != LW_INVESTIGATE && q->intent != LW_REINFORCE) || q->intentStage != 0) { q->held = 0; return 0; }
+    float rMin = (g_lwWorld.rMin > 0 ? g_lwWorld.rMin : LW_R_MIN) + 5.0f;
+    if (LwNearestPlayer2(q->pos[0], q->pos[1]) < rMin * rMin || LwNearestPlayer2(nx, ny) >= rMin * rMin) { q->held = 0; return 0; } /* already inside, or not crossing */
+    ULONGLONG now = GetTickCount64();
+    if (q->intent == LW_REINFORCE && !LwFightOf(q)) { LwIntentEnd(q, "the fight ended while it waited at the spawn band"); return 1; }
+    if (q->intent == LW_INVESTIGATE && now - q->intentAt > 180000) { LwIntentEnd(q, "180 s, waiting at the spawn band"); return 1; }
+    if (!q->held) Note("living world: squad %d (%s) waits at the spawn band's edge at (%.0f, %.0f), %.0f m from the nearest player, to come online there", (int)(q - g_lwSquads),
+        q->intent == LW_REINFORCE ? "reinforcing" : "investigating", (double)q->pos[0], (double)q->pos[1], (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])));
+    q->held = 1;
+    return 1;
+}
+
+/* 2 s after "clear garrison": the spawners left and cleared (test notes; called from LwRetakeScan's tick) */
+static void LwTestClearCheck(void)
+{
+    uintptr_t gf, lists, synced;
+    if (!g_lwClearCheck.at || GetTickCount64() < g_lwClearCheck.at) return;
+    g_lwClearCheck.at = 0;
+    if (!EvpPtr(g_lw.game + 0x33265C0u, &gf) || !EvpPtr(gf + 0x48, &lists) || !EvpPtr(gf + 0x50, &synced)) return;
+    uintptr_t l = lists + 0x2B8u * g_lwClearCheck.index; uint8_t cleared = 0;
+    SafeRead(synced + 0x40u * g_lwClearCheck.index + 0x39, &cleared, 1);
+    Note("living world: test: clear check: garrison %08X: %u listed spawners left (flagged alive %u), cleared %u", g_lwClearCheck.entity, EvpU32(l + 0x1EC, 99),
+        EvpU32(synced + 0x40u * g_lwClearCheck.index + 0x34, 99), cleared);
 }
