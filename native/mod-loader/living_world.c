@@ -55,7 +55,7 @@ static struct
 
 static void LwNavTypeDump(void); /* test data dump, below */
 static void LwSmashTableUpdate(void); /* obstacle smashes spare squad mates, below */
-static volatile LONG g_lwSpared;
+static volatile LONG g_lwSpared, g_lwBlastSpared;
 static int LwEnabled(void)
 {
     if (g_lw.state != 0) return g_lw.state > 0;
@@ -2484,6 +2484,7 @@ static void LwSquadsTick(void)
         g_lwWorld.goals = g_lwWorld.goalNoFace = g_lwWorld.goalReplans = g_lwWorld.goalStuck = 0;
         LwNavTypeDump(); /* test (HELLFORGE_LW_TEST_NAV=1): agent types and obstacle areas, twice a level */
         { LONG spared = InterlockedExchange(&g_lwSpared, 0); if (spared) Note("living world: obstacle smashes (30 s): squad mates kept out of the zones %ld times (a mate is tested again every frame of a zone)", (long)spared); }
+        { LONG spared = InterlockedExchange(&g_lwBlastSpared, 0); if (spared) Note("living world: obstacle smash explosions (30 s): squad mates left out %ld times", (long)spared); }
         if (g_lwWorld.heights)
             Note("living world: ground (30 s): %u member positions, %u more than 1.5 m under the drawn ground (worst %.1f m), %u more than 3 m over it (worst %.1f m)",
                 g_lwWorld.heights, g_lwWorld.underGround, (double)g_lwWorld.worstUnder, g_lwWorld.overGround, (double)g_lwWorld.worstOver);
@@ -3340,8 +3341,8 @@ static void LwSmashTableUpdate(void)
     }
     memcpy(g_lwSmashSet, want, sizeof want[0] * (size_t)wantN); g_lwSmashSetN = wantN;
 }
-/* from the zone processor's candidate loop: 1 = skip this candidate */
-static int LwSmashSpares(uint32_t owner, uint32_t target)
+/* 1 = target is a squad mate of owner and owner's obstacle ability (+0x200 / +0x204) is running */
+static int LwSmashMate(uint32_t owner, uint32_t target)
 {
     if ((owner & 0x3FFFFFu) >= LW_SMASH_TAB || (target & 0x3FFFFFu) >= LW_SMASH_TAB) return 0;
     const LwSmashEntry* a = &g_lwSmash[owner & 0x3FFFFFu]; const LwSmashEntry* b = &g_lwSmash[target & 0x3FFFFFu];
@@ -3361,9 +3362,82 @@ static int LwSmashSpares(uint32_t owner, uint32_t target)
     }
     if (index == 0xFFFFFFFFu) return 0;
     uint32_t ability = *(volatile uint32_t*)(recs + 0xE0ull * index); uint8_t active = *(volatile uint8_t*)(recs + 0xE0ull * index + 0x10);
-    if (!active || ability == 0 || (ability != a->ab0 && ability != a->ab1)) return 0;
+    return active && ability != 0 && (ability == a->ab0 || ability == a->ab1);
+}
+/* from the zone processor's candidate loop: 1 = skip this candidate */
+static int LwSmashSpares(uint32_t owner, uint32_t target)
+{
+    if (!LwSmashMate(owner, target)) return 0;
     InterlockedIncrement(&g_lwSpared);
     return 1;
+}
+/* The explosion ability 2730 spawns (its step, frame switch 0x112E03F: frame 30 the zone, frame 46 0x11AD240(ctx, type
+ * 0x106 at 0x112E0B4, node 0x5FC1CE78), frame 85 the zone ends, frame 105 the ability) goes through the spawner
+ * 0x13C0A80 with source and attacker both [ctx+8], the owner's full id (0x11AD412, 0x11AD44F), and an empty ignore
+ * list (count 0, 0x11AD438). Its record (mgr + 0x28 + 0x98 i) holds +0xC type (0x13C0ADB), +0x10 source, +0x14 attacker
+ * (0x13C0B34), +0x28 ignore count, +0x58 ignored units (0x13C0C7B, 0x13C0C83). The update 0x13C6180 hands the record
+ * to the damage pass 0x13C29E0 (lea rdx, [rdi+0x28] at 0x13C622D; kept at [rsp+0x78], 0x13C2A44), whose contact loop
+ * (0x13C2D30..0x13C3960) maps each contact unit (edi, +0x1C) to its entity (ebx; the entity state's unit hash +0xF2AEE0,
+ * the same the zones' 0xFD9980 reads) and then tests the ignore list at 0x13C2DC7 (only 0x13C2DBF jumps there; nothing
+ * branches into 0x13C2DC8..0x13C2DDC); an ignored contact goes to 0x13C2FBA, which clears it and takes the next. The
+ * patch puts a jump at 0x13C2DC7 to a stub that asks LwSmashBlastSpares(record, entity) and then either takes that
+ * exit or redoes the 22 bytes and goes on at 0x13C2DDD. The damage lands about two frames after frame 46 while 2730 is
+ * still active (until frame 105), so the zones' test applies as it is: owner and target in one squad, the owner's
+ * obstacle ability active. Only the mate's contact is dropped: props and other units still take the explosion. Among
+ * the obstacle abilities only 2730 spawns an explosion (958 0x10D3350, 1058 0x10D8110, 829 0x10CBC80 reach no spawner
+ * or hit submitter; KB spawn-losses follow-up 7). The pass's rsp is 16-aligned (r11 = entry rsp, four pushes, 0x508). */
+static int LwSmashBlastSpares(uintptr_t record, uint32_t target)
+{
+    if (*(volatile uint32_t*)(record + 0xC) != 0x106 || !LwSmashMate(*(volatile uint32_t*)(record + 0x14), target)) return 0;
+    InterlockedIncrement(&g_lwBlastSpared);
+    return 1;
+}
+static void LwInstallBlastSpares(uintptr_t game)
+{
+    if (!ApiCodeMatches(game + 0x13C2DBFu, "EB 06") ||
+        !ApiCodeMatches(game + 0x13C2DC7u, "48 8B 4C 24 78 41 8B C6 89 44 24 5C 44 39 71 28 0F 86 19 01 00 00") ||
+        !ApiCodeMatches(game + 0x13C2DDDu, "8B 15 3D 0E 0C 02 8B 4C 81 58") || !ApiCodeMatches(game + 0x13C2EF6u, "41 F7 45 20 00 00 80 00") ||
+        !ApiCodeMatches(game + 0x13C2FBAu, "48 8B 45 80 4C 8B 7C 24 68 44 89 70 1C") ||
+        !ApiCodeMatches(game + 0x13C2DB6u, "41 39 38 75 06 41 8B 58 04 EB 06 8B 1D") || !ApiCodeMatches(game + 0x13C2D61u, "48 8B 05 30 92 0A 02") ||
+        !ApiCodeMatches(game + 0x13C0ADBu, "44 89 44 0F 34") || !ApiCodeMatches(game + 0x13C0B34u, "89 4C 1F 3C") ||
+        !ApiCodeMatches(game + 0x13C622Du, "48 8D 57 28 48 8B CE E8 A7 C7 FF FF") || !ApiCodeMatches(game + 0x13C29E0u, "4C 8B DC 55 53 56 41 56") ||
+        !ApiCodeMatches(game + 0x13C29EFu, "48 81 EC 08 05 00 00") || !ApiCodeMatches(game + 0x13C2A44u, "48 89 54 24 78") ||
+        !ApiCodeMatches(game + 0x112E0B4u, "BA 06 01 00 00"))
+    { Note("living world: the explosions' target test is not the reviewed code; obstacle smash explosions are not kept off squad mates"); return; }
+    uint8_t* block = AllocateNearGame(game, 0x1000);
+    if (block == NULL) { Note("living world: no memory near game.dll for the explosion stub; obstacle smash explosions are not kept off squad mates"); return; }
+    static const uint8_t pre[156] = {
+        0x48, 0x8B, 0x4C, 0x24, 0x78,             /* 0: mov rcx, [rsp+0x78] (the record) */
+        0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53, /* 5: push r8-r11 */
+        0x48, 0x81, 0xEC, 0x80, 0, 0, 0,          /* 13: sub rsp, 0x80 */
+        0xF3, 0x0F, 0x7F, 0x44, 0x24, 0x20, 0xF3, 0x0F, 0x7F, 0x4C, 0x24, 0x30, 0xF3, 0x0F, 0x7F, 0x54, 0x24, 0x40,
+        0xF3, 0x0F, 0x7F, 0x5C, 0x24, 0x50, 0xF3, 0x0F, 0x7F, 0x64, 0x24, 0x60, 0xF3, 0x0F, 0x7F, 0x6C, 0x24, 0x70, /* 20: movdqu [rsp+0x20..0x70], xmm0-5 */
+        0x89, 0xDA,                               /* 56: mov edx, ebx (the candidate) */
+        0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,       /* 58: mov rax, LwSmashBlastSpares (imm64 at 60) */
+        0xFF, 0xD0,                               /* 68: call rax */
+        0xF3, 0x0F, 0x6F, 0x44, 0x24, 0x20, 0xF3, 0x0F, 0x6F, 0x4C, 0x24, 0x30, 0xF3, 0x0F, 0x6F, 0x54, 0x24, 0x40,
+        0xF3, 0x0F, 0x6F, 0x5C, 0x24, 0x50, 0xF3, 0x0F, 0x6F, 0x64, 0x24, 0x60, 0xF3, 0x0F, 0x6F, 0x6C, 0x24, 0x70, /* 70: movdqu xmm0-5, [rsp+0x20..0x70] */
+        0x48, 0x81, 0xC4, 0x80, 0, 0, 0,          /* 106: add rsp, 0x80 */
+        0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, /* 113: pop r11-r8 */
+        0x85, 0xC0,                               /* 121: test eax, eax */
+        0x0F, 0x85, 0, 0, 0, 0,                   /* 123: jnz 0x13C2FBA (rel32 at 125) */
+        0x48, 0x8B, 0x4C, 0x24, 0x78,             /* 129: mov rcx, [rsp+0x78] */
+        0x41, 0x8B, 0xC6,                         /* 134: mov eax, r14d */
+        0x89, 0x44, 0x24, 0x5C,                   /* 137: mov [rsp+0x5C], eax */
+        0x44, 0x39, 0x71, 0x28,                   /* 141: cmp [rcx+0x28], r14d */
+        0x0F, 0x86, 0, 0, 0, 0,                   /* 145: jbe 0x13C2EF6 (rel32 at 147) */
+        0xE9, 0, 0, 0, 0 };                       /* 151: jmp 0x13C2DDD (rel32 at 152) */
+    memcpy(block, pre, sizeof pre);
+    uint64_t fn = (uint64_t)(uintptr_t)LwSmashBlastSpares; memcpy(block + 60, &fn, 8);
+    int64_t r1 = (int64_t)(game + 0x13C2FBAu) - (int64_t)(uintptr_t)(block + 129), r2 = (int64_t)(game + 0x13C2EF6u) - (int64_t)(uintptr_t)(block + 151),
+        r3 = (int64_t)(game + 0x13C2DDDu) - (int64_t)(uintptr_t)(block + 156);
+    if (!InRel32(r1) || !InRel32(r2) || !InRel32(r3)) { Note("living world: the explosion stub is out of reach of game.dll"); return; }
+    int32_t v = (int32_t)r1; memcpy(block + 125, &v, 4); v = (int32_t)r2; memcpy(block + 147, &v, 4); v = (int32_t)r3; memcpy(block + 152, &v, 4);
+    DWORD protect; VirtualProtect(block, 0x1000, PAGE_EXECUTE_READ, &protect); FlushInstructionCache(GetCurrentProcess(), block, 0x1000);
+    uint8_t patch[22]; memset(patch, 0xCC, sizeof patch);
+    patch[0] = 0xE9; v = DifficultyJumpRel(game + 0x13C2DC7u, (uintptr_t)block); memcpy(patch + 1, &v, 4);
+    if (ApiWrite(game + 0x13C2DC7u, patch, sizeof patch)) { Note("living world: the explosion stub's jump could not be written"); return; }
+    Note("living world: a loader member's obstacle smash explosion spares its own squad mates (the explosions' target test, game.dll 0x13C2DC7)");
 }
 static void LwInstallSmashSpares(void)
 {
@@ -3408,6 +3482,7 @@ static void LwInstallSmashSpares(void)
     InterlockedExchange(&g_lwSmashOn, 1); /* the table fills from the next squads tick; until then every test answers 0 */
     if (ApiWrite(game + 0x7D03EFu, patch, sizeof patch)) { g_lwSmashOn = 0; Note("living world: the smash stub's jump could not be written"); return; }
     Note("living world: a loader member's obstacle smash spares its own squad mates (the zone processor's target test, game.dll 0x7D03EF)");
+    LwInstallBlastSpares(game);
 }
 static void LwInstallHitNotes(void)
 {
