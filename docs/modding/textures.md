@@ -92,4 +92,4 @@ with a copy of the lookup texture and its `lut` edit ([copy](data.md#copy)); a P
 - The block compression is simple and fast, not a quality encoder. For fine detail, use `rgba8` or a larger texture.
 - No BC7 or 16-bit float formats yet.
 
-Example: `model-carbine` builds its body material from two textures of its own.
+Example: the carbine of `liberator-variants` builds its body material from two textures of its own.

@@ -55,7 +55,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 ### SDK 2
 
-- `add_weapon`: `uint32_t (HfMod* mod, const HfWeapon* weapon)`. Adds a new arsenal weapon (see HfWeapon). HellForge adds it to the game's entity data when that loads, to the armory, and to the backend's item catalogue and the player's inventory; it behaves exactly like its base except for what the mod changes in its own records. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the mod's log says why).
+- `add_weapon`: `uint32_t (HfMod* mod, const HfWeapon* weapon)`. Adds a new arsenal weapon (see HfWeapon). HellForge adds it to the game's entity data when that loads, to the armory, and to the backend's item catalogue and the player's inventory. Since SDK 17 it is standalone: built from its class and the declaration, copying no weapon. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the mod's log says why).
 - `weapon_entity`: `uint64_t (uint32_t weapon)`. The entity resource of a weapon any mod added (its loadout id), for component_record; 0 if there is none.
 
 ### SDK 3
@@ -589,7 +589,7 @@ time](modding/runtime.md) for live edits, [Stats mods](modding/stats-mods.md) fo
 
 Group `casings` (the casings it ejects: their effect and sounds): `casing_effect`, `casing_impact_type`, `casing_audio_event`, `casing_playbacks`.
 
-Group `firing_sounds` (every firing sound, silenced or not (HfWeapon.sound_from copies the same)): `use_midi_event_system`, `midi_timing_randomization`, `midi_stop_delay`, `fire_loop_start_audio_event`, `fire_loop_stop_audio_event`, `fire_single_audio_event`, `audio_event_108`, `fire_single_audio_event_mode4`, `fire_single_audio_event_mode7`, `haptics_loop_stop_event`, `haptics_single_event`, `silenced_fire_loop_start_audio_event`, `silenced_fire_loop_stop_audio_event`, `silenced_fire_single_audio_event`, `silenced`.
+Group `firing_sounds` (every firing sound, silenced or not): `use_midi_event_system`, `midi_timing_randomization`, `midi_stop_delay`, `fire_loop_start_audio_event`, `fire_loop_stop_audio_event`, `fire_single_audio_event`, `audio_event_108`, `fire_single_audio_event_mode4`, `fire_single_audio_event_mode7`, `haptics_loop_stop_event`, `haptics_single_event`, `silenced_fire_loop_start_audio_event`, `silenced_fire_loop_stop_audio_event`, `silenced_fire_single_audio_event`, `silenced`.
 
 ### HfWeaponData
 
@@ -2087,7 +2087,7 @@ See also: [Content](modding/content.md) for finding content, including content o
 
 ### HF_ITEM_... (168, `HF_KIND_ITEM`)
 
-Loadout ids of vanilla items, for HfWeapon.base, sound_from and HfStratagem.loads_item. Every session with a weapon added lists the whole arsenal (loadout id, armory type, entity, designation, name) in its log folder as arsenal.tsv.
+Loadout ids of vanilla items, for HfStratagem.loads_item and LoadoutEntry lookups. Every session with a weapon added lists the whole arsenal (loadout id, armory type, entity, designation, name) in its log folder as arsenal.tsv.
 
 <details><summary>All 168</summary>
 

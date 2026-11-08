@@ -85,7 +85,7 @@ copy its folder instead. A `CMakeUserPresets.json` (not committed) that inherits
 to another installation, or to empty to only build:
 
 ```sh
-cd examples/mods/golden-liberator
+cd examples/mods/liberator-variants
 ../../../tools/cmake/bin/cmake --preset default
 ../../../tools/cmake/bin/cmake --build --preset default
 ```

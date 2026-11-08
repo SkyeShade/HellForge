@@ -1248,9 +1248,9 @@ typedef struct HfApi
 
     /* ---- SDK 2 ---------------------------------------------------------------------------------------------------- */
     /* Adds a new arsenal weapon (see HfWeapon). HellForge adds it to the game's entity data when that loads, to the armory,
-     * and to the backend's item catalogue and the player's inventory; it behaves exactly like its base except for what
-     * the mod changes in its own records. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the
-     * mod's log says why). */
+     * and to the backend's item catalogue and the player's inventory. Since SDK 17 it is standalone: built from its class
+     * and the declaration, copying no weapon. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0
+     * (the mod's log says why). */
     uint32_t (*add_weapon)(HfMod* mod, const HfWeapon* weapon);
     /* The entity resource of a weapon any mod added (its loadout id), for component_record; 0 if there is none. */
     uint64_t (*weapon_entity)(uint32_t weapon);

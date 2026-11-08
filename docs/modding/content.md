@@ -74,10 +74,10 @@ When a call returns 0 (or 1 for the edit calls), your mod's log says why; `hf->l
 code. Check `hf->version` for the SDK a call needs, and `hf->size` for a call added after the version you require
 ([compatibility](concepts.md#compatibility)).
 
-Weapons can run out sooner. Each new weapon adds its base's item and all of the base's attachments to the game's item
-catalogue (57 items for an AR-23 Liberator copy), and takes one progression package. HellForge moves the catalogue at
-start-up so the game keeps 40,960 items and inventory entries and 1,024 progression packages. If the move is refused,
-`modloader.log` says why and the session stays at the game's 4,096 and 256, about 20 Liberator copies.
+Weapons can run out sooner. Each new weapon adds its item and its attachments to the game's item catalogue, and takes
+one progression package. HellForge moves the catalogue at start-up so the game keeps 40,960 items and inventory entries
+and 1,024 progression packages. If the move is refused, `modloader.log` says why and the session stays at the game's
+4,096 and 256.
 
 HellForge adds level 11 first, then new stratagems (2 items each), then each weapon whole. It leaves out what does not
 fit, with a line in the session's backend log for each. So past the limit it is the last weapons that are missing, never
@@ -87,11 +87,9 @@ The armory holds 256 cards of each type, every vanilla weapon counted whether th
 for 199 new primaries, 229 secondaries and 229 throwables across all mods. A weapon past that is refused by name in your
 mod's log, so a vanilla weapon never falls off the list.
 
-A base's component tables can stop its copies first. Each table its base has rows in must grow, and some stop at 127
-rows. So about 100 copies of the lasers, shotguns, plasma or melee weapons fit across all mods, and 81 throwables of any
-kind. Past that the weapon is refused with the table's name.
+A class's component tables can stop its weapons first. Each table the class has rows in must grow, and some stop at 127
+rows. Past that the weapon is refused with the table's name.
 
-A weapon with an explosion, beam or arc of its own has them on its page in the in-game editor, with the damage they deal.
 Mods' explosions are offered wherever the editor picks an explosion. A round that explodes loads the loadout package of
 the weapon that fires its base round, because the explosion's sound comes with it.
 
@@ -381,71 +379,44 @@ brake.change_count = 1;
 - Its unit must load with the weapon: put it in the weapon's package ([a weapon of your own](#a-weapon-of-your-own)).
 - At most 128 attachments across all mods.
 
-### A weapon of your own
+### Its assets
 
-A weapon with no vanilla assets is still an `add_weapon` copy. Its base lends only its list of components and its
-network type. `own_all = 1` gives the weapon its own copy of every record, and your mod then sets
-every field that names an asset or an animation.
+A standalone weapon names its own assets. Build the unit, its textures, its attachment units and anything else it names
+into one package of your own ([data](data.md#packages-of-your-own)), and set `HfWeapon.package` to it.
 
-1. Choose a base with the same kind of magazine and firing as yours (any magazine-fed arsenal primary for a rifle).
-2. Build the unit, its textures and its attachment units into one package of your own ([data](data.md#packages-of-your-own)).
-   Give the unit the joints the game looks for: `attach_muzzle`, `attach_optic`, `attach_mag`, `attach_underbarrel` and
-   the `sight` the optic aims along. The hand and sling joints Equipment names are the Helldiver's.
-3. Point the weapon's LoadoutPackage record at that package. The armory and the mission load it with the weapon, in
-   place of the base's. So the package also holds what the records still name from the base, such as casings,
-   muzzle flash and sound banks.
-4. Set the records below from `hellforge_mod_init`, as deferred edits. They apply each time the game loads its entities.
+- Give the unit the joints the game looks for: `attach_muzzle`, `attach_optic`, `attach_mag`, `attach_underbarrel` and
+  the `sight` the optic aims along. The hand and sling joints are the Helldiver's.
+- Materials on the game's weapon shader take no other weapon's textures ([data](data.md#shader)).
+- A game effect or sound bank the weapon names must be in the package too, as an `include`, unless the game keeps it
+  loaded. `audio_package` names the bank, such as `"0x141D2931DE9CFCD0"`: a resource field takes a name or `0x<hash>`.
+
+Then declare, with `hf_set` from `hellforge_mod_init`, the identity fields the class leaves at 0:
 
 ```c
-HfRef rifle = api->weapon_entity(id); /* id: what add_weapon returned, with own_all = 1 */
-hf_set(mod, rifle, LoadoutPackage, package, HF_U64(api->resource_hash("yourname/your_mod/rifle")));
-hf_set(mod, rifle, Equipment, grip_type, HF_U32(10));
-hf_set(mod, rifle, WeaponReload, ability, HF_U32(2785));
-hf_set(mod, rifle, WeaponCustomization, magazine_unit, HF_U64(api->resource_hash("yourname/your_mod/magazine")));
+HfRef rifle = api->weapon_entity(id);
+hf_set(mod, rifle, ProjectileWeapon, fire_node, HF_U32(api->resource_hash("attach_muzzle") >> 32));
+hf_set(mod, rifle, ProjectileWeapon, fire_single_audio_event, HF_U32(0xDB6B98AAu));
+hf_set(mod, rifle, WeaponReload, weapon_event_0, HF_U32(api->resource_hash("reload") >> 32));
 ```
 
-| Record | Fields that name your assets or animations |
+| Record | Identity fields |
 |---|---|
-| `Unit` | `unit` (`HfWeapon.unit` sets it) |
-| `LoadoutPackage` | `package`, `audio_resource` |
-| `Equipment` | `wield_node`, `holster_node` and their offsets, `grip_type`, the `_animation` events, `left_hand_node` |
-| `Wieldable` | `allow_ads`, the `_event` fields |
-| `WeaponReload` | `ability`, `event_type_`, `weapon_event_` and `wielder_event_` 0 to 3, `duration` |
-| `WeaponCustomization` | `slots`, `defaults`, `magazine_unit`, `muzzle_unit`, `optics_unit`, `magazine_adjusting_nodes` |
-| `Attachable` | `dynamic_actor`: a physics actor of your unit |
-| `WeaponData`, `ProjectileWeapon`, `WeaponMagazine` | fire nodes, events, projectile, casings, capacity |
+| `WeaponReload` | `event_type_`, `weapon_event_` and `wielder_event_` 0 to 3, `vo_normal` |
+| `WeaponCustomization` | `slots`, `defaults` (your attachments' ids), `muzzle_unit`, `optics_unit`, `magazine_adjusting_nodes` |
+| `ProjectileWeapon` | `fire_node`, `casing_node`, the `_audio_event` fields, `muzzle_flash`, `ejection_effect`, `casing_effect`, the shakes |
+| `WeaponData` | the aim and fire-mode `_audio_event` fields, the `_animation_event` fields |
+| `Wieldable`, `Equipment` | `wield_state_audio_event`, the switch `_audio_event` fields, `holster_animation_event` |
 
-- Fields that hold a name, such as a joint or an animation event, take its thin hash: `api->resource_hash(name) >> 32`.
-- `grip_type` picks the Helldiver's hold: 10 rifle, 14 plasma rifle, 15 marksman rifle, 70 PDW, 80 pump shotgun,
-  90 bullpup rifle.
-- The reload `ability` is engine code that times the reload. Keep a vanilla one and time your clips to it
-  ([animations](animations.md)); `duration` scales it.
-- HellForge sets the mastery package in `WeaponCustomization` itself; it has no field.
-- Firing sounds of your own: a `sounds` resource ([data](data.md#sounds)). Reload sounds stay the ability's.
+- A joint's or an animation event's field takes its thin hash: `api->resource_hash(name) >> 32`.
+- Sound events are ids in a bank; a game weapon's are in its records (`hellforge_components.h` names the fields).
+- The reload `ability` is engine code that times the reload. Time your clips to a vanilla one
+  ([animations](animations.md)).
+- `examples/mods/liberator-variants` declares them for five weapons (`DeclareLiberator`).
 
 ### The in-game editor
 
-The in-game editor gives every mod weapon a page in its base's section (Primary, Secondary...), named
-`<designation> <name>`. The page is a copy of the base's page with only the fields of the records the weapon owns, so
-editing it never changes the base:
-
-- with `own_all = 1`, every field of its base's page the editor can change while the game runs (handling, fire modes,
-  rates of fire);
-- otherwise, the components in `own_components`, and the rates of fire when the weapon has a `projectile` of its own;
-- the projectile's flight and damage rows when it fires a projectile (and damage) a mod added.
-
-A weapon that owns none of its page's records gets no page; the editor's log says so. Fields the game reads only at
-start (magazines, reloads, attachments) aren't on a mod weapon's page yet. Values saved on the page are kept in the
-editor's file and applied at the next start, like a mod stratagem's.
-
-```c
-HfWeapon gold = {sizeof gold};
-gold.base = HF_ITEM_AR23_LIBERATOR;
-gold.unit = "skyeshade/golden_liberator/assault_rifle_gold";
-gold.designation = "AR-23G";
-gold.name = "Liberator Gold";
-gold.own_all = 1; /* its own records: a full page in the in-game editor */
-```
+The in-game editor builds a mod weapon's page from its base's page. A standalone weapon has no base, so it has no page
+there yet: `content_at` lists it with `base` and `base_entity` 0. Change its fields with `hf_set` or live edits.
 
 ## Projectiles and damage
 
@@ -454,13 +425,13 @@ projectile row holds speed, gravity, lifetime, effects and the damage id it deal
 durable damage, armour penetration and status effects. `add_damage` and `add_projectile` (SDK 3) copy a vanilla row
 under an id of its own, so changing yours changes no vanilla weapon.
 
-`examples/mods/talon-liberator` adds all three: a damage type with five times the LAS-58 Talon's damage, a projectile
-that deals it with a blue look, and a Liberator that fires it with the LAS-16 Sickle's sound.
+The Talon variant of `examples/mods/liberator-variants` adds all three. Its damage type has five times the LAS-58
+Talon's damage, its projectile deals it with a blue look, and the rifle fires it with the LAS-16 Sickle's sound.
 
 ```c
 HfDamage heavy = {sizeof heavy};
 heavy.base = HF_DAMAGE_LAS58_TALON;
-heavy.name = "bolt_damage"; /* SDK 6: short names are the mod's ("skyeshade.talon-liberator:bolt_damage") */
+heavy.name = "bolt_damage"; /* SDK 6: short names are the mod's ("skyeshade.liberator-variants:bolt_damage") */
 heavy.scale = 5.0f;
 uint32_t damage = api->add_damage(mod, &heavy);
 
@@ -468,19 +439,16 @@ HfProjectile bolt = {sizeof bolt};
 bolt.base = HF_PROJECTILE_LAS58_TALON;
 bolt.name = "bolt";
 bolt.damage = damage;
-bolt.spawn_effect = api->resource_hash("skyeshade/talon_liberator/assault_rifle_talon/bolt_blue");
-bolt.flight_effect = api->resource_hash("skyeshade/talon_liberator/assault_rifle_talon/bolt_flight_blue");
+bolt.spawn_effect = api->resource_hash("skyeshade/liberator_variants/talon/bolt_blue");
+bolt.flight_effect = api->resource_hash("skyeshade/liberator_variants/talon/bolt_flight_blue");
 uint32_t projectile = api->add_projectile(mod, &bolt);
 
 HfWeapon rifle = {sizeof rifle};
-rifle.base = HF_ITEM_AR23_LIBERATOR;
-rifle.unit = "skyeshade/talon_liberator/assault_rifle_talon";
+rifle.unit = "skyeshade/liberator_variants/talon";
 rifle.designation = "AR-23T";
 rifle.name = "Liberator Talon";
-rifle.description = "...";
 rifle.projectile = projectile;
-rifle.sound_from = HF_ITEM_LAS16_SICKLE; /* its banks are in data/ with the rifle's model */
-uint32_t weapon = api->add_weapon(mod, &rifle);
+uint32_t weapon = AddVariant(api, mod, &rifle, ...); /* class, package, sounds: src/liberator_variants.c */
 ```
 
 - `scale` multiplies the base's standard and durable damage (0 means 1); the rest stays the base's. New damage ids are
@@ -534,17 +502,13 @@ ray.name = "long_ray";
 ray.damage = damage;
 ray.length = 80.0f;
 uint32_t beam = api->add_beam(mod, &ray);
-
-HfWeapon scythe = {sizeof scythe};
-scythe.base = HF_ITEM_LAS5_SCYTHE; /* a base that fires a beam */
-scythe.beam = beam;
 ```
 
 - `add_beam` (SDK 17) takes an `HfBeam`: `base`, `name`, `damage`, `radius` and `length` (metres). New beam types are 31
   and up.
 - `add_arc` (SDK 17) takes an `HfArc`: `base`, `name` and `damage`. New arc types are 17 and up.
-- `HfWeapon.beam` and `HfWeapon.arc` name the type it fires, vanilla or added. Its base must fire one: a beam weapon's
-  or an arc weapon's own record holds the type. `HfExplosion.arc` chains an arc from an explosion.
+- Standalone weapons are of the primary class, which fires projectiles, so no weapon fires an added beam or arc yet.
+  `HfExplosion.arc` chains an arc from an explosion.
 - `HF_WEAPON_BEAM_` and `HF_ARC_` constants name the vanilla types. Left at 0, each field keeps the base's.
 
 ### Changing your rows further
@@ -565,7 +529,7 @@ Attachments can set a weapon's projectile when it is assembled (the Liberator's 
 ### Looks
 
 A projectile looks the way its particle effects (`spawn_effect`, `flight_effect`) draw it. The colours are curves inside
-the effect, so a recoloured effect comes as data ([data specs](data.md#data-specs)). `examples/mods/talon-liberator`
+the effect, so a recoloured effect comes as data ([data specs](data.md#data-specs)). `examples/mods/liberator-variants`
 turns the Talon's bolt blue.
 
 ### Room and co-op

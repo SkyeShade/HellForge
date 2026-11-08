@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "id": "skyeshade.liberator-variants",
+  "name": "Liberator Variants",
+  "version": "0.1.0",
+  "description": "Five standalone arsenal weapons on the AR-23 Liberator's model, each showing one part of a weapon of your own: a gold recolour, a cube mesh from an OBJ file, animations of its own, a projectile and damage type of its own with blue effects and the Sickle's shot, and a whole carbine from a glTF model with its own textures. HellForge builds them from your game copy (hellforge-data.json). Source in src/.",
+  "gameplay": true,
+  "code": {
+    "dll": "liberator_variants.dll",
+    "sdk": 17
+  }
+}

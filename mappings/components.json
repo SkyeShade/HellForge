@@ -399,7 +399,7 @@
           ]
         },
         "firing_sounds": {
-          "meaning": "every firing sound, silenced or not (HfWeapon.sound_from copies the same)",
+          "meaning": "every firing sound, silenced or not",
           "fields": [
             "use_midi_event_system",
             "midi_timing_randomization",

@@ -90,11 +90,7 @@ The example mods:
 | Example | Shows |
 |---|---|
 | `machine-gun-10k-code` | the reference example: a definition block, a load event and the mod's log, in about 60 lines |
-| `golden-liberator` | a new arsenal weapon with a recoloured model, in about 20 lines |
-| `talon-liberator` | a weapon with a projectile of its own, recoloured effects and another weapon's sounds |
-| `cube-gun` | a weapon with a model of your own, from an OBJ file |
-| `animated-liberator` | a weapon with animations of its own: a bolt that kicks back and a magazine change |
-| `model-carbine` | a weapon whose whole unit is built from a glTF model and its own textures: joints, meshes, LODs, a material copy |
+| `liberator-variants` | five standalone weapons on the Liberator's model: a recolour, an OBJ mesh, animations, a projectile of its own, a glTF model with its own textures |
 | `blue-sentry` | a new sentry stratagem with a recoloured model |
 | `stratagem-compendium` | eleven stratagems, one file per family: Pelicans with turrets and a behaviour, a sentry, barrages, expendables, a silo with a countdown ability |
 | `stratagem-categories` | stratagem selection headings and their order ([how headings work](../stratagem-categories.md)) |

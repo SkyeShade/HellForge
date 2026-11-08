@@ -281,15 +281,14 @@ In multiplayer, every machine fires its own copy of a hand-held weapon's shots f
 same mods (the modlist gate) fire the same projectile. Types and ids are numbered in the mods' set-up order (by mod id),
 the same on every machine whatever its load order.
 
-`HfWeapon.sound_from` gives the weapon a vanilla weapon's firing sounds, named by its loadout id, such as
-`HF_ITEM_LAS16_SICKLE`. The weapon's own `ProjectileWeaponComponentData` record takes the donor's sound events: shot,
-loops, fire modes, secondary, silenced. The donor's sound banks must load with the weapon, so the mod's data puts them
-in the weapon's archive patch. `examples/mods/talon-liberator` does this with the Sickle's two banks.
+A weapon's firing sounds are sound events in its `ProjectileWeaponComponentData` record: shot, loops, fire modes,
+silenced. A standalone weapon declares them with `hf_set`, and their sound banks must load with it.
+`examples/mods/liberator-variants` (its Talon variant) declares the LAS-16 Sickle's shot and puts its two banks in the weapon's archive patch.
 
 No row member is a colour. A projectile's look is its particle effects: `spawn_effect` (row +0x48) draws the LAS-58
 Talon's bolt, and `flight_effect` (row +0x70) its light and trail. An effect's colours are curves over the particle's
 life (10 key times, then 10 RGB keys on a 0..255 scale), not its materials or textures. A recoloured effect therefore
-has to come as data, in an archive the weapon loads, as the gold Liberator's model does. `examples/mods/talon-liberator`
+has to come as data, in an archive the weapon loads, as the gold Liberator's model does. The Talon variant of `examples/mods/liberator-variants`
 turns the Talon's yellow curves blue.
 
 ### Explosions, beams and arcs
@@ -496,12 +495,12 @@ The mod widens `deposit_value` to 14 bits (up to 16,383). It sets the backpack's
 resource `0x056DE1C5E21E723E`) capacity and start amount to 10,000 and refill to 5,000. The HUD maximum is the start
 amount, so it shows 10,000.
 
-`examples/mods/golden-liberator` is a gold-plated copy of the AR-23 Liberator as its own arsenal weapon. Its
-`hellforge-data.json` describes the model: the Liberator's unit under the mod's own name, pointing to a copy of the body
+The gold variant of `examples/mods/liberator-variants` is a gold-plated AR-23 Liberator as its own standalone arsenal
+weapon. Its `hellforge-data.json` describes the model: the Liberator's unit under the mod's own name, pointing to a copy of the body
 material. That copy's colour lookup texture is gold metal in every zone: every zone takes the bare-metal zone's values.
 HellForge builds it from each player's game copy.
 
-`examples/mods/talon-liberator` does the same in blue. It adds the blue copies of the Talon's bolt and flight effects,
+Its Talon variant does the same in blue. It adds the blue copies of the Talon's bolt and flight effects,
 everything they use, and the Sickle's sound banks. Both build byte for byte what the research scripts
 `artifacts/registry/build_gold_liberator.py` and `build_talon_liberator.py` built.
 

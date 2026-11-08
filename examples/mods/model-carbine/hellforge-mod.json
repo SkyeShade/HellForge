@@ -1,9 +1,0 @@
-{
-  "format": 1,
-  "id": "skyeshade.model-carbine",
-  "name": "Model Carbine",
-  "version": "0.1.0",
-  "description": "A new arsenal weapon with a model of its own: an original carbine of boxes, built from models/carbine.glb (hellforge-data.json: HellForge writes the unit). It handles like the AR-23 Liberator. Source in src/.",
-  "gameplay": true,
-  "code": { "dll": "model_carbine.dll", "sdk": 2 }
-}

@@ -83,7 +83,7 @@ public sealed class SdkMappings
     // Content kinds, in header order: (JSON key, constant prefix, C type of the ids, what the ids are for).
     static readonly (string Key, string Prefix, bool Wide, string Doc)[] Kinds =
     [
-        ("items", "HF_ITEM_", false, "Loadout ids of vanilla items, for HfWeapon.base, sound_from and HfStratagem.loads_item. Every session with a\n * weapon added lists the whole arsenal (loadout id, armory type, entity, designation, name) in its log folder as arsenal.tsv."),
+        ("items", "HF_ITEM_", false, "Loadout ids of vanilla items, for HfStratagem.loads_item and LoadoutEntry lookups. Every session with a\n * weapon added lists the whole arsenal (loadout id, armory type, entity, designation, name) in its log folder as arsenal.tsv."),
         ("projectiles", "HF_PROJECTILE_", false, "Vanilla projectile types, for HfProjectile.base and visual_from (HD2Runtime research projectile-identities)."),
         ("stratagems", "HF_STRATAGEM_", false, "Vanilla stratagem types, for HfStratagem.base (the game's StratagemType enum)."),
         ("behaviours", "HF_BEHAVIOUR_", false, "Vanilla behaviours, for HfBehaviour.base, HfEntity.behaviour and HfEntityDef.behaviour_id."),

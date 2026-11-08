@@ -1,9 +1,0 @@
-{
-  "format": 1,
-  "id": "skyeshade.golden-liberator",
-  "name": "AR-23 Liberator Gold",
-  "version": "0.1.0",
-  "description": "A new arsenal weapon: the AR-23 Liberator in gold. Registered with the HellForge weapon registry (SDK 2) as its own loadout item, a copy of the Liberator with its own gold model (hellforge-data.json: HellForge builds it from your game copy). Source in src/.",
-  "gameplay": true,
-  "code": { "dll": "golden_liberator.dll", "sdk": 2 }
-}

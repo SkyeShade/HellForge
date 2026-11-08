@@ -157,5 +157,5 @@ one speed. Make your reload clips as long as the base weapon's, so the magazine 
   selector and ejection cover in the example.
 - Clips carry no sounds. A weapon's sounds come from its records and abilities.
 
-Example: `animated-liberator`, an AR-23 copy whose bolt and carrier kick back on each shot and whose magazine drops and
-comes back on a reload.
+Example: the animated variant of `liberator-variants`, on the AR-23's model. Its bolt and carrier kick back on each shot,
+and its magazine drops and comes back on a reload.
