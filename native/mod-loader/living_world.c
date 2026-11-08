@@ -488,7 +488,7 @@ typedef struct LwSquad
     float target[3]; uint32_t intentSource, intentSearch; ULONGLONG intentAt, intentStageAt, intentFree;
 } LwSquad;
 static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
-static void LwIntentOffline(LwSquad* q); static void LwNoiseDrain(void); static void LwHearNote(void);
+static void LwIntentOffline(LwSquad* q); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
 {
@@ -2342,6 +2342,7 @@ static void LwTestCommands(void)
         else if (sscanf(cmds[c], "teleport! %f %f", &d, &deg) == 2) { g_lwTeleportForce = 1; LwTestTeleport(seq, d, deg); g_lwTeleportForce = 0; }
         else if (sscanf(cmds[c], "teleport %f %f", &d, &deg) == 2) LwTestTeleport(seq, d, deg);
         else if (strcmp(cmds[c], "vantage") == 0) LwTestVantage(seq);
+        else if (sscanf(cmds[c], "noise %d %f %f", &idx, &d, &deg) >= 1) LwTestNoise(seq, idx, d, deg);
         else if (strcmp(cmds[c], "garrisons") == 0) LwTestGarrisons(seq);
         else if (sscanf(cmds[c], "stage %f", &d) == 1 && d > LW_R_ON && d < 2000.0f) LwTestStage(seq, d);
         else if (sscanf(cmds[c], "aim %f %f", &d, &deg) == 2) LwTestAim(seq, d, deg);

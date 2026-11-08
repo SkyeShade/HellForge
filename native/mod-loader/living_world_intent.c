@@ -248,3 +248,19 @@ static void LwHearNote(void)
         g_lwHear.heard, g_lwHear.kept, g_lwHear.events, g_lwHear.sent, g_lwHear.told, g_lwHear.ended);
     memset(&g_lwHear, 0, sizeof g_lwHear);
 }
+/* test command "noise <type> [dx dy]" (HELLFORGE_LW_TEST_TRACE=1): a noise through the game's dispatch (and so the hook)
+ * at the local player's feet plus (dx, dy), from the local Helldiver, mode 0, loudness 1, as a shot of that template.
+ * The late tick runs on the main thread right after the frame's own post-update noise calls (explosions 0xAB5FBF,
+ * beams 0xAB5FCB, impacts 0xAB5FEF; the late tick 0xAB612D), so the call has their context. */
+static void LwTestNoise(int seq, int type, float dx, float dy)
+{
+    typedef void (*NoiseFn)(void*, uint8_t, uint32_t, const float*, uint32_t, float, uint32_t);
+    uint32_t avatar = 0; float p[3] = {0, 0, 0};
+    for (int i = 0; i < g_lwWorld.playersAt && !avatar; i++) if (g_lwWorld.local[i]) { avatar = g_lwWorld.avatars[i]; memcpy(p, g_lwWorld.players[i], sizeof p); }
+    if (!g_lwNoiseOn || !avatar || type <= 0 || type >= 28 || LwNoiseRange((uint8_t)type) <= 0) { Note("living world: test command %d: no noise (hook %d, avatar %08X, type %d)", seq, (int)g_lwNoiseOn, avatar, type); return; }
+    p[0] += dx; p[1] += dy;
+    LwGround(p[0], p[1], &p[2]);
+    uint32_t none = EvpU32(g_lw.game + 0x3483C34u, 0);
+    ((NoiseFn)(g_lw.game + 0x64A890u))(NULL, (uint8_t)type, avatar, p, 0, 1.0f, none);
+    Note("living world: test command %d: noise type %d (range %.0f m) at (%.0f, %.0f, %.1f) from %08X", seq, type, (double)LwNoiseRange((uint8_t)type), (double)p[0], (double)p[1], (double)p[2], avatar);
+}
