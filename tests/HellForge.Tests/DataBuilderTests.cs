@@ -165,7 +165,7 @@ static class DataBuilderTests
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"test/mod/unit","colour":[1,1,1]}]}""", "unknown field colour");
             Refused("""{"archives":["NOTHEX"],"resources":[""" + copy + "]}", "16 lowercase hex");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"unit"}]}""", "the mod's own resource path");
-            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include, icon, animations or model");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include, icon, texture, animations or model");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"../icon.png","name":"test/mod/icon"}]}""", "a .png file in the mod folder");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"missing.png","name":"test/mod/icon"}]}""", "missing.png is missing");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"particles","copy":"0x1","name":"test/mod/fx","curves":{"preset":"pink"}}]}""", "warm-to-blue");
@@ -717,6 +717,85 @@ static class DataBuilderTests
             catch (InvalidDataException error) { check(error.Message.Contains("models/gun.glb") && error.Message.Contains("Body"), "The mistake is not named: " + error.Message); }
             try { ModDataBuilder.Build(Spec(model.Replace("0x3333", "0x4444")), mod, gameReader, output + "3"); throw new Exception("Built without physics."); }
             catch (InvalidDataException error) { check(error.Message.Contains("has no physics"), "Refused for another reason: " + error.Message); }
+        });
+
+        test("Textures build from PNGs in the game's unstreamed form: every format's mip chain, array layers, the category", () =>
+        {
+            var pixels = new byte[8 * 8 * 4];
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = (byte)(i % 4 == 3 ? 255 : (i * 37) % 251);
+            var png = Png(pixels, 8);
+            uint U32(byte[] b, int at) => BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(at));
+            var rgba = TextureImage.Build([png], "rgba8", TextureImage.Category("normal"));
+            check(U32(rgba.Main, 0) == 0xC322A444 && U32(rgba.Main, 8) == 0xFFFFFFFF && U32(rgba.Main, 0xC4 + 16) == 32 && U32(rgba.Main, 0xC4 + 24) == 4 &&
+                U32(rgba.Main, 0xC4 + 124) == 28 && U32(rgba.Main, 0xC4 + 136) == 1 && rgba.Main.Length == 340 && rgba.Stream.Length == 0,
+                "The RGBA8 header is not the game's unstreamed one (category, -1, pitch, 4 mips, format 28, one layer).");
+            var mean = (pixels[0] + pixels[4] + pixels[32] + pixels[36] + 2) / 4;
+            check(rgba.Gpu.Length == 4 * (64 + 16 + 4 + 1) && rgba.Gpu.AsSpan(0, 256).SequenceEqual(pixels) && rgba.Gpu[256] == mean,
+                "The RGBA8 chain is not the pixels, then box-filtered levels.");
+            foreach (var (format, dxgi, block) in new[] { ("bc1", 71, 8), ("bc3", 77, 16), ("bc4", 80, 8), ("bc5", 83, 16) })
+            {
+                var t = TextureImage.Build([png], format);
+                check(U32(t.Main, 0) == 0 && U32(t.Main, 0xC4 + 124) == dxgi && U32(t.Main, 0xC4 + 16) == 0 && t.Gpu.Length == (4 + 1 + 1 + 1) * block, $"{format}: wrong format or chain size.");
+            }
+            var array = TextureImage.Build([png, png], "bc3");
+            check(U32(array.Main, 0xC4 + 136) == 2 && array.Gpu.Length == 2 * 7 * 16 && array.Gpu.AsSpan(0, 112).SequenceEqual(array.Gpu.AsSpan(112)),
+                "An array texture is not its layers' chains one after another.");
+            var dot = TextureImage.Build([Png([1, 2, 3, 4], 1)], "rgba8");
+            check(U32(dot.Main, 0xC4 + 4) == 0x1007 && U32(dot.Main, 0xC4 + 104) == 0x1000 && dot.Gpu.SequenceEqual(new byte[] { 1, 2, 3, 4 }), "A single level keeps the mip flags.");
+            check(TextureImage.MipCount(23, 8) == 5, "The game's 23 x 8 lookups have 5 levels.");
+            reject(() => TextureImage.Build([png], "bc7"));
+            reject(() => TextureImage.Build([png, Png(new byte[4 * 4 * 4], 4)], "rgba8"));
+
+            var material = Material(0x2222);
+            ResourceEdits.SetMaterialTextures(material, new Dictionary<uint, ulong> { [0xAAAA] = 0xBEEF });
+            check(BinaryPrimitives.ReadUInt64LittleEndian(material.AsSpan(0x8C)) == 0xBEEF, "The slot's texture was not replaced.");
+            reject(() => ResourceEdits.SetMaterialTextures(Material(0x2222), new Dictionary<uint, ulong> { [0x1234] = 1 }));
+        });
+
+        test("A data spec's textures build from the mod's PNGs, and a material copy names them by slot", () =>
+        {
+            var game = Path.Combine(root, "texture-game");
+            WriteGameData(game);
+            var mod = Directory.CreateDirectory(Path.Combine(root, "texture-mod")).FullName;
+            Directory.CreateDirectory(Path.Combine(mod, "textures"));
+            File.WriteAllBytes(Path.Combine(mod, "textures", "a.png"), Png(new byte[16 * 16 * 4], 16));
+            File.WriteAllBytes(Path.Combine(mod, "textures", "b.png"), Png(new byte[16 * 16 * 4], 16));
+            DataSpec Spec(string resources)
+            {
+                File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{{resources}}]}]}""");
+                return DataSpecs.Load(mod)!;
+            }
+            const string texture = """{"texture":["textures/a.png","textures/b.png"],"name":"test/mod/masks","format":"rgba8","category":"0x12345678"}""";
+            const string material = """{"type":"material","copy":"0x1111","name":"test/mod/material","textures":{"0xAAAA":"test/mod/masks"}}""";
+            var spec = Spec(texture + "," + material);
+            check(spec.Inputs.Contains("textures/a.png") && spec.Inputs.Contains("textures/b.png") && DataSpecs.Unchecked(spec) == null &&
+                spec.Patches[0].Resources[0] is TextureResource { Format: "rgba8", Category: 0x12345678 } && spec.Patches[0].Resources[1] is CopyResource { Textures.Count: 1 },
+                "The texture, its PNGs or the material's textures are not part of the spec, or the spec is not checked.");
+            check(DataSpecs.Unchecked(Spec("""{"type":"unit","copy":"0x3333","name":"test/mod/u","textures":{"base_data":"0x1"}}""")) is { } why && why.Contains("as another type"),
+                "Textures on a unit copy count as checked.");
+            foreach (var (bad, reason) in new[] { ("""{"texture":"textures/a.png","name":"test/mod/t"}""", "format"),
+                ("""{"texture":"textures/a.png","name":"test/mod/t","format":"bc7"}""", "format is rgba8"),
+                ("""{"texture":"../a.png","name":"test/mod/t","format":"bc1"}""", "a .png file in the mod folder"),
+                ("""{"texture":"textures/none.png","name":"test/mod/t","format":"bc1"}""", "is missing"),
+                ("""{"type":"material","copy":"0x1111","name":"test/mod/m","textures":{}}""", "textures is empty") })
+            {
+                try { Spec(bad); throw new Exception("Accepted: " + bad); }
+                catch (InvalidDataException error) { check(error.Message.Contains(reason), "Refused for another reason: " + error.Message); }
+            }
+
+            using var gameReader = new GameDataReader(game);
+            var output = Path.Combine(root, "texture-out");
+            ModDataBuilder.Build(spec, mod, gameReader, output);
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0.gpu_resources")), []);
+            var masks = built[new(ResourceTypes.Texture, EngineHash.Murmur64A("test/mod/masks"u8))];
+            check(BinaryPrimitives.ReadUInt32LittleEndian(masks.Main) == 0x12345678 && BinaryPrimitives.ReadUInt32LittleEndian(masks.Main.AsSpan(0xC4 + 136)) == 2 &&
+                masks.Gpu.Length == 2 * 4 * (256 + 64 + 16 + 4 + 1), "The texture is not the two PNGs as layers.");
+            check(BinaryPrimitives.ReadUInt64LittleEndian(built[new(ResourceTypes.Material, EngineHash.Murmur64A("test/mod/material"u8))].Main.AsSpan(0x8C)) == EngineHash.Murmur64A("test/mod/masks"u8),
+                "The material copy does not name the texture in its slot.");
+            File.WriteAllBytes(Path.Combine(mod, "textures", "b.png"), Png(new byte[8 * 8 * 4], 8));
+            try { ModDataBuilder.Build(spec, mod, gameReader, output + "2"); throw new Exception("Built layers of different sizes."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("resources[0]") && error.Message.Contains("same size"), "The texture is not named: " + error.Message); }
         });
     }
 

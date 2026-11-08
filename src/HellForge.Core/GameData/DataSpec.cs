@@ -11,7 +11,7 @@ namespace HellForge.Core.GameData;
 //   copy     a game resource under the mod's own name, optionally edited: references replaced, colour curves,
 //            material colours, a colour lookup texture recoloured;
 //   include  game resources unchanged under their own names (what a copy needs loaded with it);
-//   icon     a stratagem icon from a PNG in the mod folder: its texture and GUI material.
+//   icon, texture  a stratagem icon (texture and GUI material) or a texture (TextureImage) from PNGs in the mod folder.
 // A copy or include reads the player's game copy, or with "source": "steam" the newer build of the player's own Steam install,
 // or with "source": {"build": ...} a past build's (cut content), fetched from Steam once (BuildResources). An include from Steam or a past build must be new to the copy.
 //   mesh     (on a unit copy) the mod's own geometry from an OBJ in the mod folder, in every render and shadow mesh.
@@ -30,12 +30,15 @@ public abstract record DataResource(string Where)
     public string? Build { get; init; }
 }
 public sealed record CopyResource(string Where, ulong Type, ulong From, string Name, IReadOnlyDictionary<int, ulong> Expect,
-    IReadOnlyList<Replacement> Replace, CurveEdit? Curves, IReadOnlyDictionary<uint, double[]>? Colours, ResourceEdits.LutRecolour? Lut, MeshFile? Mesh = null) : DataResource(Where);
+    IReadOnlyList<Replacement> Replace, CurveEdit? Curves, IReadOnlyDictionary<uint, double[]>? Colours, ResourceEdits.LutRecolour? Lut, MeshFile? Mesh = null,
+    IReadOnlyDictionary<uint, ulong>? Textures = null) : DataResource(Where);
 // A unit copy's own geometry: an OBJ in the mod folder (UnitMesh), scaled, Y-up or the game's Z-up; with UnitSpace its
 // coordinates are the unit's own (the frame its joints and attach points are in), otherwise its render mesh's.
 public sealed record MeshFile(string Obj, double Scale, bool YUp, bool UnitSpace = false);
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
 public sealed record IconResource(string Where, string Name, string Png, string Prepare) : DataResource(Where);
+// A texture of the mod's own: one PNG per layer (more than one is an array texture), its format and category.
+public sealed record TextureResource(string Where, string Name, IReadOnlyList<string> Pngs, string Format, uint Category) : DataResource(Where);
 // A unit's own animations from a JSON file in the mod folder (AnimationSet): its bones, clips and state machine, built for
 // the unit copy named Unit in the same patch, which then uses them.
 public sealed record AnimationsResource(string Where, string File, string Unit) : DataResource(Where);
@@ -68,14 +71,14 @@ public static partial class DataSpecs
     private static partial Regex HexColour();
 
     // The resource types a spec may copy and stay content for mod sync (ModSets.ClassOf), each with the one edit HellForge
-    // reviewed for it: a unit's mesh (and its physics), a material's colours, a texture's colour lookup, an effect's
+    // reviewed for it: a unit's mesh (and its physics), a material's colours and textures, a texture's colour lookup, an effect's
     // colour curves. An include also takes the game's sound banks: it adds the game's own bytes unchanged.
     static readonly HashSet<ulong> CopiedTypes = [ResourceTypes.Unit, ResourceTypes.Material, ResourceTypes.Texture, ResourceTypes.Particles];
     static readonly HashSet<ulong> IncludedTypes = [.. CopiedTypes, ResourceTypes.Hash("wwise_bank"), ResourceTypes.Hash("wwise_dep")];
 
     // Whether HellForge checks everything the spec builds, so mod sync may take it from any host: no "replace" (it writes
     // any 8 bytes over any value at any offset), only the types above (never lua), and each edit only on its own type.
-    // Icons are always checked: a 256 x 256 PNG becomes a texture and its GUI material. Animations too: HellForge encodes
+    // Icons and textures are always checked: HellForge encodes their PNGs itself. Animations too: HellForge encodes
     // every value of them itself, in range. Null: checked; otherwise why not.
     public static string? Unchecked(DataSpec spec)
     {
@@ -89,7 +92,7 @@ public static partial class DataSpecs
                 case CopyResource copy when copy.Replace.Count > 0:
                     return $"{copy.Where} replaces values (\"replace\")";
                 case CopyResource copy when copy.Curves != null && copy.Type != ResourceTypes.Particles || copy.Colours != null && copy.Type != ResourceTypes.Material ||
-                    copy.Lut != null && copy.Type != ResourceTypes.Texture:
+                    copy.Lut != null && copy.Type != ResourceTypes.Texture || copy.Textures != null && copy.Type != ResourceTypes.Material:
                     return $"{copy.Where} edits a {ResourceTypes.Describe(copy.Type)} resource as another type";
             }
         return null;
@@ -151,12 +154,13 @@ public static partial class DataSpecs
     static DataResource Resource(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{at}: a resource is an object.");
-        var kinds = new[] { "copy", "include", "icon", "animations", "model" }.Where(k => e.TryGetProperty(k, out _)).ToList();
-        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon, animations or model.");
+        var kinds = new[] { "copy", "include", "icon", "texture", "animations", "model" }.Where(k => e.TryGetProperty(k, out _)).ToList();
+        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon, texture, animations or model.");
         switch (kinds[0])
         {
             case "include": return ReadInclude(e, at);
             case "icon": return ReadIcon(e, at, folder, inputs);
+            case "texture": return ReadTexture(e, at, folder, inputs);
             case "animations": return ReadAnimations(e, at, folder, inputs);
             case "model": return ReadModel(e, at, folder, inputs);
         }
@@ -198,6 +202,31 @@ public static partial class DataSpecs
         return new IconResource(at, Name(e, at), png, prepare);
     }
 
+    static TextureResource ReadTexture(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
+        Fields(e, at, "texture", "name", "format", "category");
+        var texture = Property(e, "texture", at);
+        var pngs = (texture.ValueKind == JsonValueKind.Array ? texture.EnumerateArray().ToList() : [texture])
+            .Select(p => p.ValueKind == JsonValueKind.String ? p.GetString()!.Replace('\\', '/') : "").ToList();
+        if (pngs.Count == 0 || pngs.Any(p => !InModFolder(p) || !p.EndsWith(".png", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException($"{at}: texture is a .png file in the mod folder, or a list of them for an array texture.");
+        foreach (var png in pngs)
+        {
+            if (folder != null && !File.Exists(Path.Combine(folder, png))) throw new InvalidDataException($"{at}: {png} is missing.");
+            inputs.Add(png);
+        }
+        var format = Text(e, "format", at);
+        if (!TextureImage.Formats.ContainsKey(format)) throw new InvalidDataException($"{at}: format is {string.Join(", ", TextureImage.Formats.Keys)}.");
+        var category = 0u;
+        if (e.TryGetProperty("category", out _))
+        {
+            var name = Text(e, "category", at);
+            category = Hash32().IsMatch(name) ? uint.Parse(name[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture)
+                : name.Length > 0 ? TextureImage.Category(name) : throw new InvalidDataException($"{at}: category is a name, such as normal, or 0x<8 hex digits>.");
+        }
+        return new TextureResource(at, Name(e, at), pngs, format, category);
+    }
+
     static ModelResource ReadModel(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
         Fields(e, at, "model", "name", "materials", "lods", "physics", "animationsFrom");
@@ -237,16 +266,17 @@ public static partial class DataSpecs
     // A copy, its edits read in the spec's order.
     static CopyResource ReadCopy(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
-        Fields(e, at, "type", "copy", "name", "expect", "replace", "curves", "colours", "lut", "mesh", "source");
+        Fields(e, at, "type", "copy", "name", "expect", "replace", "curves", "colours", "textures", "lut", "mesh", "source");
         var type = Type(e, at);
         var expect = ReadExpect(e, at);
         var replace = ReadReplace(e, at);
         var curves = ReadCurves(e, at);
         var colours = ReadColours(e, at);
+        var textures = ReadTextures(e, at);
         var lut = ReadLut(e, at);
         var mesh = ReadMesh(e, at, type, folder, inputs);
         var (steam, build) = Source(e, at);
-        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh) { Steam = steam, Build = build };
+        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh, textures) { Steam = steam, Build = build };
     }
 
     static Dictionary<int, ulong> ReadExpect(JsonElement e, string at)
@@ -286,6 +316,18 @@ public static partial class DataSpecs
         if (colour != null && colour.Max() <= 0) throw new InvalidDataException($"{at}.curves: the colour cannot be black.");
         int? keys = curveSpec.TryGetProperty("keys", out var k) ? (k.ValueKind == JsonValueKind.Number && k.TryGetInt32(out var n) && n > 0 ? n : throw new InvalidDataException($"{at}.curves: keys is a positive count.")) : null;
         return new(preset, colour, keys);
+    }
+
+    // {slot: texture}: a slot by name (base_data) or 0x<8 hex digits>, a texture by resource name or 0x id.
+    static Dictionary<uint, ulong>? ReadTextures(JsonElement e, string at)
+    {
+        if (!e.TryGetProperty("textures", out var spec)) return null;
+        var textures = new Dictionary<uint, ulong>();
+        foreach (var item in Object(spec, $"{at}.textures"))
+            textures[Hash32().IsMatch(item.Name) ? uint.Parse(item.Name[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture)
+                : item.Name.Length > 0 ? EngineHash.Id32(item.Name) : throw new InvalidDataException($"{at}.textures: a slot is 0x<8 hex digits> or a name.")]
+                = Id(item.Value, $"{at}.textures.{item.Name}");
+        return textures.Count > 0 ? textures : throw new InvalidDataException($"{at}: textures is empty.");
     }
 
     static Dictionary<uint, double[]>? ReadColours(JsonElement e, string at)
