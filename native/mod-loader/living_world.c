@@ -53,6 +53,7 @@ static struct
     uint32_t rowsZeroed;
 } g_lw;
 
+static void LwNavTypeDump(void); /* test data dump, below */
 static int LwEnabled(void)
 {
     if (g_lw.state != 0) return g_lw.state > 0;
@@ -2476,6 +2477,7 @@ static void LwSquadsTick(void)
             Note("living world: goals (30 s): %u sent, %u next nodes with no navmesh within 25 m, %u replans, %u squads left without a reachable goal",
                 g_lwWorld.goals, g_lwWorld.goalNoFace, g_lwWorld.goalReplans, g_lwWorld.goalStuck);
         g_lwWorld.goals = g_lwWorld.goalNoFace = g_lwWorld.goalReplans = g_lwWorld.goalStuck = 0;
+        LwNavTypeDump(); /* test (HELLFORGE_LW_TEST_NAV=1): agent types and obstacle areas, twice a level */
         if (g_lwWorld.heights)
             Note("living world: ground (30 s): %u member positions, %u more than 1.5 m under the drawn ground (worst %.1f m), %u more than 3 m over it (worst %.1f m)",
                 g_lwWorld.heights, g_lwWorld.underGround, (double)g_lwWorld.worstUnder, g_lwWorld.overGround, (double)g_lwWorld.worstOver);
@@ -3153,6 +3155,99 @@ static uint64_t LwHitAbility(uint64_t mgr, uint64_t entity, uint64_t id, uint64_
             (unsigned long long)((uintptr_t)__builtin_return_address(0) - g_lw.game));
     }
     return g_lwAbility(mgr, entity, id, mode, rate);
+}
+/* Test data dump (HELLFORGE_LW_TEST_NAV=1; KB living-world-spawn-losses "Follow-up 5", subagent, the reads checked by me at
+ * exe 0x82FF30 and game 0x59C093): which agent types may cross the obstacle areas, so that calm smashers can be given a
+ * route around them (the masks are heap data, not code). Read only:
+ * - navigation settings R = [exe+0x27C5CF8]: areas A = R+[R+0x2C] (count [A], hash [A+4+4i]); agent types T = R+[R+0x34]
+ *   (count nT [T], m [T+4], hash [T+8+4t], f[t] [T+8+4nT+4m nT+4t]); word[t] [R+[R+0x3C]+4+4t]; k [R+[R+0x44]].
+ * - the mover's filter Fm = [exe+0x27C5BB8] (0x82FF30: area a allowed for type t when mask[a] +0x9C+4a has bit t; else
+ *   forbidden when a < N +0x18; else allowed when q[t] +0x1C+4t > the face's byte 7) and the planner's Fp =
+ *   [exe+0x27C5E38] (masks +0xA0+4a, N +0x130, k +0x134, e[t] +0x138+4t, q[t] +0x1B8+4t).
+ * - each online member's NavigationComponent ([game+0x3326418]: keys {id, index} at [+0x30], places +0x38, empty key
+ *   +0x3C, multiplier +0x40, probe (id mult + i) & (places - 1); record [+0x50] + 0xA8 index: radius +0x98, type hash
+ *   +0x9C) and AI settings (0x511CC0's table [[game+0x346BF98]+0xF12DE8]: 316 buckets {u64 resource, u32 index}, home
+ *   resource % 316, linear probe, key 0 = none; settings = table + 0x13C0 + 0x2DC index: +0x200 / +0x204 the small /
+ *   large obstacle ability, +0x208 / +0x20C the box, +0x210 the obstacle walls flag). */
+static int LwNavDumpU32(uintptr_t a, uint32_t* v) { return SafeRead(a, v, 4) == 0; }
+static void LwNavTypeDump(void)
+{
+    static LONG level = -1; static int done; static ULONGLONG first;
+    char t[4] = "";
+    if (!(GetEnvironmentVariableA("HELLFORGE_LW_TEST_NAV", t, sizeof t) > 0 && t[0] == '1')) return;
+    if (level != g_world.levels) { level = g_world.levels; done = 0; first = 0; }
+    if (done >= 2 || (done == 1 && GetTickCount64() - first < 120000)) return;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), game = g_lw.game, R = 0, Fm = 0, Fp = 0;
+    if (SafeRead(exe + 0x27C5CF8u, &R, 8) || R == 0 || SafeRead(exe + 0x27C5BB8u, &Fm, 8) || SafeRead(exe + 0x27C5E38u, &Fp, 8)) return;
+    int members = 0;
+    for (int i = 0; i < g_lwWorld.count && i < LW_SQUADS_MAX; i++) if (g_lwSquads[i].state == LW_ONLINE) members += g_lwSquads[i].seenCount;
+    if (members == 0) return;
+    if (done++ == 0) first = GetTickCount64();
+    uint32_t oA = 0, oT = 0, oW = 0, oK = 0, nA = 0, nT = 0, m = 0, k = 0, obst[2] = {0xFFFFFFFFu, 0xFFFFFFFFu};
+    if (!LwNavDumpU32(R + 0x2C, &oA) || !LwNavDumpU32(R + 0x34, &oT) || !LwNavDumpU32(R + 0x3C, &oW) || !LwNavDumpU32(R + 0x44, &oK) ||
+        !LwNavDumpU32(R + oA, &nA) || !LwNavDumpU32(R + oT, &nT) || !LwNavDumpU32(R + oT + 4, &m) || !LwNavDumpU32(R + oK, &k) || nA > 64 || nT > 64 || m > 64)
+    { Note("living world: test: nav types: the settings are not readable (areas %u, types %u, m %u)", nA, nT, m); return; }
+    char line[1200]; size_t at = 0;
+    for (uint32_t a = 0; a < nA && at < sizeof line - 40; a++)
+    {
+        uint32_t h = 0, fm = 0, fp = 0; LwNavDumpU32(R + oA + 4 + 4 * a, &h);
+        if (Fm) LwNavDumpU32(Fm + 0x9C + 4 * (a & 31), &fm);
+        if (Fp) LwNavDumpU32(Fp + 0xA0 + 4 * (a & 31), &fp);
+        if (h == 0x96740A91u) obst[0] = a; if (h == 0xAAE05A4Bu) obst[1] = a;
+        at += (size_t)snprintf(line + at, sizeof line - at, " %u:%08X/%08X/%08X", a, h, fm, fp);
+    }
+    uint32_t fmN = 0, fpN = 0, fpK = 0;
+    if (Fm) LwNavDumpU32(Fm + 0x18, &fmN);
+    if (Fp) { LwNavDumpU32(Fp + 0x130, &fpN); LwNavDumpU32(Fp + 0x134, &fpK); }
+    Note("living world: test: nav types: %u areas (obstacle_small %d, obstacle_large %d), k %u; mover N %u, planner N %u k %u; area:hash/mover mask/planner mask:%s",
+        nA, (int)obst[0], (int)obst[1], k, fmN, fpN, fpK, line);
+    at = 0; line[0] = 0;
+    for (uint32_t ty = 0; ty < nT && at < sizeof line - 60; ty++)
+    {
+        uint32_t h = 0, fbits = 0, word = 0, qm = 0, qp = 0, ep = 0; float f = 0;
+        LwNavDumpU32(R + oT + 8 + 4 * ty, &h); LwNavDumpU32(R + oT + 8 + 4 * nT + 4 * m * nT + 4 * ty, &fbits); memcpy(&f, &fbits, 4);
+        LwNavDumpU32(R + oW + 4 + 4 * ty, &word);
+        if (Fm) LwNavDumpU32(Fm + 0x1C + 4 * (ty & 31), &qm);
+        if (Fp) { LwNavDumpU32(Fp + 0x1B8 + 4 * (ty & 31), &qp); LwNavDumpU32(Fp + 0x138 + 4 * (ty & 31), &ep); }
+        at += (size_t)snprintf(line + at, sizeof line - at, " %u:%08X f %.1f word %08X q %u/%u e %08X;", ty, h, (double)f, word, qm, qp, ep);
+    }
+    Note("living world: test: nav types: %u agent types (type:hash f word q mover/planner e):%s", nT, line);
+    uintptr_t nav = 0, aiState = 0, table = 0; uint32_t places = 0, empty = 0, mult = 0; uintptr_t keys = 0, recs = 0;
+    SafeRead(game + 0x3326418u, &nav, 8);
+    if (nav) { SafeRead(nav + 0x30, &keys, 8); LwNavDumpU32(nav + 0x38, &places); LwNavDumpU32(nav + 0x3C, &empty); LwNavDumpU32(nav + 0x40, &mult); SafeRead(nav + 0x50, &recs, 8); }
+    if (!SafeRead(game + 0x346BF98u, &aiState, 8) && aiState) SafeRead(aiState + 0xF12DE8u, &table, 8);
+    int shown = 0;
+    for (int i = 0; i < g_lwWorld.count && i < LW_SQUADS_MAX && shown < 40; i++)
+    {
+        const LwSquad* q = &g_lwSquads[i];
+        if (q->state != LW_ONLINE) continue;
+        for (int j = 0; j < q->seenCount && j < 32 && shown < 40; j++)
+        {
+            uint32_t e = q->seen[j], idx = 0xFFFFFFFFu, type = 0, unit = 0; float radius = 0;
+            for (uint32_t p = 0; keys && places && (places & (places - 1)) == 0 && p < places; p++)
+            {
+                uint32_t kv[2] = {0, 0};
+                if (SafeRead(keys + 8ull * ((e * mult + p) & (places - 1)), kv, 8) || kv[0] == empty) break;
+                if (kv[0] == e) { idx = kv[1]; break; }
+            }
+            if (idx != 0xFFFFFFFFu && recs) { SafeRead(recs + 0xA8ull * idx + 0x98, &radius, 4); LwNavDumpU32(recs + 0xA8ull * idx + 0x9C, &type); }
+            uint64_t res = EvpEntityResource(game, e, &unit);
+            uint32_t ab[2] = {0, 0}, box[2] = {0, 0}; uint8_t walls = 0; int found = 0;
+            for (uint32_t p = 0; table && res && p < 316; p++)
+            {
+                uint64_t key = 0; uint32_t sidx = 0; uintptr_t b = table + 16ull * ((res + p) % 316);
+                if (SafeRead(b, &key, 8) || key == 0) break;
+                if (key == res && !SafeRead(b + 8, &sidx, 4))
+                {
+                    uintptr_t st = table + 0x13C0 + 0x2DCull * sidx;
+                    SafeRead(st + 0x200, ab, 8); SafeRead(st + 0x208, box, 8); SafeRead(st + 0x210, &walls, 1); found = 1; break;
+                }
+            }
+            Note("living world: test: nav types: squad %d member %08X (resource %016llX): agent type %08X, radius %.2f; settings %s: obstacle abilities %u / %u, box %08X %08X, walls %u",
+                i, e, (unsigned long long)res, type, (double)radius, found ? "found" : "NOT found", ab[0], ab[1], box[0], box[1], walls);
+            shown++;
+        }
+    }
 }
 static void LwInstallHitNotes(void)
 {
