@@ -175,7 +175,7 @@ static void LwIntentEnd(LwSquad* q, const char* why)
     char peak[96] = "";
     if (g_lwHold.idx == (int)(q - g_lwSquads)) g_lwHold.idx = -1; /* the room held for it while it waited (LwHoldForIntent) */
     /* intentPeak: the most members at once (a member index shifts as members die, lw112c) */
-    if (q->state == LW_ONLINE && q->intentStage) snprintf(peak, sizeof peak, q->intent == LW_INVESTIGATE ? "; at most %u members investigating at once (alert 2+, the first after %.1f s), %d alive"
+    if (q->state == LW_ONLINE && q->intentStage && (q->intent == LW_INVESTIGATE || q->intent == LW_REINFORCE)) snprintf(peak, sizeof peak, q->intent == LW_INVESTIGATE ? "; at most %u members investigating at once (alert 2+, the first after %.1f s), %d alive"
         : "; at most %u members engaged at once at the fight (alert 3+, the first after %.1f s), %d alive", q->intentPeak, (double)q->intentPeakAt, q->seenCount);
     if (q->rushed && q->state == LW_ONLINE) LwRushMembers(q, q->seen, q->seenCount, 0);
     q->rushed = 0;
@@ -868,6 +868,7 @@ static int LwRetakeArrived(LwSquad* q, ULONGLONG now)
     if (done > 0)
     {
         g_lwWorld.retook++;
+        g->absorbed = (uint8_t)done; g->absorbedHome = q->home1; g->absorbedSpeed = q->speed; g->absorbedDef = q->definition;
         if (done < q->survivors) /* the rest patrol on as the same squad */
         {
             char why[64]; snprintf(why, sizeof why, "retook it; %d survivors patrol on", q->survivors - done);
@@ -943,6 +944,26 @@ static void LwRetakeWait(int seq, float sec)
     if (sec >= 0 && sec <= 3600) g_lwRetakeClear = (ULONGLONG)(sec * 1000.0f);
     Note("living world: test command %d: garrisons are retaken %.0f s after they were cleared", seq, (double)g_lwRetakeClear / 1000.0);
 }
+/* The retaking squad's units the fill did not show (lw113c: 0 of 9 points filled) come back as an offline squad at the
+ * garrison's nearest route node, so no unit leaves the world; their points are no longer owed, so a later fill cannot
+ * add them twice. */
+static void LwRetakeReturn(LwGarrison* g, int missing)
+{
+    int node = LwNearestNode(g->center[0], g->center[1]), slot = -1;
+    for (int i = 0; i < g_lwWorld.count && slot < 0; i++) if (g_lwSquads[i].state == LW_FREE) slot = i;
+    if (node < 0 || slot < 0 || !g->absorbedDef)
+    {
+        Note("living world: retaken garrison %08X: %d of its units did not appear at the fill and cannot return (%s)", g->entity, missing, node < 0 ? "no route node" : slot < 0 ? "no free squad slot" : "no group");
+        return;
+    }
+    LwSquad* q = &g_lwSquads[slot];
+    memset(q, 0, sizeof *q);
+    q->state = LW_OFFLINE; q->node = (uint16_t)node; q->pos[0] = g_lwNodes[node].x; q->pos[1] = g_lwNodes[node].y; q->definition = g->absorbedDef;
+    q->survivors = (uint8_t)missing; q->speed = g->absorbedSpeed > 0 ? g->absorbedSpeed : LW_SPEED_DEFAULT; q->garrison = -1; q->home1 = g->absorbedHome;
+    LwPlan(q);
+    Note("living world: retaken garrison %08X: %d of its units did not appear at the fill; they return to the world as squad %d at (%.0f, %.0f)", g->entity, missing, slot,
+        (double)q->pos[0], (double)q->pos[1]);
+}
 /* 5 s after a retaken garrison filled (LwGarrisonsTick): its living units by point, against the points the retake opened */
 static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32_t* u, uint32_t n)
 {
@@ -956,6 +977,9 @@ static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32
     if (living >= 0) for (int w = 0; w < 3; w++) g->allow[w] &= at[w]; /* an opened point the fill left empty (no group fits it, or the 70 room) is not owed later */
     Note("living world: retaken garrison %08X filled: %u units listed, %d living; points with a living unit: %d of the %d opened, %d elsewhere; %d opened points still owed (U set); cleared stays %u",
         g->entity, EvpU32(r + 0x384, 0), living, inside, opened, outside, owed, (unsigned)g->cleared);
+    int missing = living >= 0 ? (int)g->absorbed - inside - outside : 0;
+    g->absorbed = 0;
+    if (missing > 0) LwRetakeReturn(g, missing);
 }
 
 /* Phase 2d (KB living-world-plan "Phase 2 design", 2d): territory. Every garrison seeds a region; each route node belongs
