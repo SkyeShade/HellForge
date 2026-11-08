@@ -275,24 +275,6 @@ typedef struct HfArc
     uint32_t damage;    /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
 } HfArc;
 
-/* A new weapon attachment (SDK 17, add_attachment): a copy of a vanilla customization item (a magazine, muzzle, optic...)
- * under an id of its own, with the base's slot, stat changes and look in the armory, offered on weapons mods added.
- * Zero-initialize it and set `size`. */
-typedef struct HfAttachment
-{
-    uint32_t size;      /* sizeof(HfAttachment) */
-    uint32_t base;      /* the vanilla item it copies (its id, e.g. a magazine the base weapon takes) */
-    const char* name;   /* its id is the thin hash of this; unique, prefixed with your name and mod */
-    /* A magazine's, muzzle's or optic's model: a unit resource the mod's data provides, drawn at the weapon's attach_
-     * joint in place of the base's. 0 keeps the base's (and is required for other slots). */
-    uint64_t unit;
-    /* Its text in the armory (UTF-8); NULL keeps the base's. An upper-case copy of the name is made. */
-    const char* name_text;
-    const char* description;
-    /* The weapons offering it: loadout ids add_weapon returned (up to 16). Their base must take the base item's slot. */
-    const uint32_t* weapons;
-    uint32_t weapon_count;
-} HfAttachment;
 
 /* A new stratagem (SDK 4, add_stratagem): a copy of a vanilla stratagem's settings under a StratagemType of its own,
  * with its own name, description, input code and icon. What it does when called (its payload, beacon and the packages
@@ -543,6 +525,30 @@ typedef struct HfValue
 #define HF_I32(x) {HF_TYPE_I32, (double)(x), 0}
 #define HF_F32(x) {HF_TYPE_F32, (double)(x), 0}
 #define HF_U64(x) {HF_TYPE_U64, 0.0, (uint64_t)(x)}
+
+/* A new weapon attachment (SDK 17, add_attachment) on weapons mods added. It copies no item: its armory item and what it
+ * changes on the weapon (its slot's model and the field changes it declares) are built from this. Zero-initialize it
+ * and set `size`. */
+#define HF_SLOT_OPTICS 2u
+#define HF_SLOT_MUZZLE 4u
+#define HF_SLOT_MAGAZINE 5u
+#define HF_SLOT_INTERNALS 8u
+#define HF_SLOT_TRIGGER 9u
+typedef struct HfAttachmentChange { HfField field; HfValue value; } HfAttachmentChange; /* one field of the weapon's records */
+typedef struct HfAttachment
+{
+    uint32_t size;      /* sizeof(HfAttachment) */
+    uint32_t slot;      /* HF_SLOT_... */
+    const char* name;   /* its id is the thin hash of this; unique, prefixed with your name and mod */
+    uint64_t unit;      /* an optic's, muzzle's or magazine's model (resource_hash of your unit), drawn at its slot */
+    const char* name_text;   /* its text in the armory (UTF-8); an upper-case copy of the name is made */
+    const char* description;
+    const uint32_t* weapons; /* loadout ids add_weapon returned (up to 16) */
+    uint32_t weapon_count;
+    uint32_t level;          /* the weapon's mastery level that unlocks it; 0: held from the start */
+    const HfAttachmentChange* changes; /* what it changes while fitted: HF_FIELD(WeaponData, ...) and a value; up to 16 */
+    uint32_t change_count;
+} HfAttachment;
 
 /* The local player's armor passives (set_passives, get_passives): passive ids as the game numbers them (mappings/passives.json;
  * 0 STANDARD ISSUE ... 41 TRUE GRIT), or HF_PASSIVE_KIT for what the armor and helmet worn give. */

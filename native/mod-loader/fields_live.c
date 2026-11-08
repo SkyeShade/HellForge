@@ -2,6 +2,26 @@
  * deferred ones, applied at once, kept in rank order per field and undone by a reset. Included by hellforge_modloader.c
  * right after fields.c. */
 
+/* An attachment's change (attachments.c AttDeltas) as a delta of a weapon record: a reviewed single-value field of one
+ * of the class's components and a value it holds. 1 if refused (logged). */
+static int AttChangeBytes(HfMod* mod, const char* name, const HfField* f, const HfValue* v, AttDelta* out)
+{
+    char what[128];
+    snprintf(what, sizeof what, "add_attachment(%s)", name);
+    const SdkComponent* c = NULL;
+    const SdkField* field = ResolveField(mod, what, f, &c);
+    if (field == NULL) return 1;
+    int ofClass = 0;
+    for (size_t k = 0; k < sizeof kPrimaryComponents / sizeof kPrimaryComponents[0]; k++) ofClass |= kPrimaryComponents[k] == (uint32_t)c->index;
+    if (!ofClass) { ApiLog(mod, "%s: line %u: %s is not a component of its weapons", what, f->line, c->name); return 1; }
+    uint8_t bytes[8];
+    if (ValueBytes(mod, what, f->line, c, field, v, bytes)) return 1;
+    *out = (AttDelta){(uint16_t)c->index, field->offset, field->size, {0}};
+    memcpy(out->bytes, bytes, field->size);
+    return 0;
+}
+
+
 static void RemoveEdit(int index)
 {
     memmove(&g_edits[index], &g_edits[index + 1], (size_t)(g_editCount - index - 1) * sizeof g_edits[0]);

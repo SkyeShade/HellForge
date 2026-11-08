@@ -1,10 +1,10 @@
 /* Weapon attachments of mods' own (SDK 17, add_attachment; docs/modding/content.md "Attachments of your own"). Included
- * by packages.c, whose game-thread update runs AttachmentsTick. game.dll (25480438; KB attachment-registration-static)
- * keeps items in g_settings (+0x37C5B50): up to 32 pointers to {items*, u32 count} blocks of 88-byte items, the count at
- * +0x348DA98 read on every call. A weapon's chosen item ids become keys (each item's add_path, +0x20) into the entity
- * deltas, [state + 0xF12E98], reloaded at every use. So an attachment is a copy of its base's item in HellForge's block,
- * appended to g_settings, and of its base's deltas under its own add_path in a grown copy of the delta storage, swapped
- * in; a unit of the mod's own replaces the base's where the deltas name it. Both are made again when the game reloads. */
+ * by packages.c, whose game-thread update runs AttachmentsTick. game.dll (25480438) keeps items in g_settings
+ * (+0x37C5B50): up to 32 pointers to {items*, u32 count} blocks of 88-byte items, the count at +0x348DA98 read on every
+ * call. A weapon's chosen item ids become keys (each item's add_path, +0x20) into the entity deltas, [state + 0xF12E98].
+ * An attachment copies no item: its item is written from its declaration into HellForge's block, and its deltas (its
+ * slot's unit field, then its changes) are added under its own add_path to a grown copy of the delta storage. Both are
+ * made again when the game reloads. */
 
 #define ATT_MAX 128
 #define ATT_WEAPONS 16
@@ -16,18 +16,24 @@
 #define ATT_ITEM_LOOKUP 0x11F46F0u
 #define ATT_DELTA_LOOKUP 0x5154C0u
 #define ATT_CUSTOMIZATION 271u
+#define ATT_CHANGES 17 /* its unit, and up to 16 changes */
 
 static const uint8_t kAttItemPin[24] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x7c, 0x24, 0x10, 0x8b, 0x3d, 0x98, 0x93, 0x29, 0x02,
     0x45, 0x33, 0xd2, 0x85, 0xff, 0x74, 0x3b, 0x4c};
 static const uint8_t kAttDeltaPin[30] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x8b, 0x05, 0xcc, 0x6a, 0xf5, 0x02, 0x33, 0xd2, 0x45, 0x33,
     0xc0, 0x4c, 0x8b, 0xd9, 0x48, 0x8b, 0x98, 0x98, 0x2e, 0xf1, 0x00, 0x48, 0x8b, 0xc1};
 
+/* One delta: bytes at offset of the weapon's record of component. */
+typedef struct AttDelta { uint16_t component, offset, size; uint8_t bytes[16]; } AttDelta;
+
 typedef struct Attachment
 {
     HfMod* mod;
     char name[96];
-    uint32_t id, base, slot;
-    uint64_t addPath, unit, baseKey;
+    uint32_t id, slot, level;
+    uint64_t addPath, unit;
+    AttDelta deltas[ATT_CHANGES];
+    uint32_t deltaCount;
     uint32_t text[3];
     uint32_t weapons[ATT_WEAPONS];
     uint32_t weaponCount;
@@ -56,12 +62,6 @@ static const uint8_t* AttVanillaItem(uintptr_t game, uint32_t id)
             if (*(const uint32_t*)(items + (size_t)i * ATT_ITEM + 8) == id) return items + (size_t)i * ATT_ITEM;
     }
     return NULL;
-}
-
-static uint32_t AttSlot(const uint8_t* item)
-{
-    const uint32_t* slots = *(uint32_t* const*)(item + 0x30);
-    return slots != NULL && *(const uint32_t*)(item + 0x38) > 0 ? slots[0] : 0;
 }
 
 /* The settings entry {count, first} of a delta key, or NULL (0x5154C0's search). */
@@ -95,31 +95,32 @@ static AttSizes AttMeasure(const uint8_t* s)
     return z;
 }
 
-/* One attachment's deltas copied under its add_path: its settings entry, component settings, deltas and data appended. */
-static void AttCopyDeltas(const uint8_t* s, const Attachment* a, uint32_t* settings, uint32_t* comps, uint32_t* deltas, uint8_t* data, AttSizes* z)
+/* One attachment's deltas under its add_path: its settings entry, then a component setting per component it changes
+ * (in component order) with its deltas, and their bytes. */
+static void AttWriteDeltas(const Attachment* a, uint32_t* settings, uint32_t* comps, uint32_t* deltas, uint8_t* data, AttSizes* z)
 {
-    const uint32_t* from = AttDeltaSetting(s, a->baseKey);
-    const uint32_t* oldComps = *(uint32_t* const*)(s + 0x20);
-    const uint32_t* oldDeltas = *(uint32_t* const*)(s + 0x30);
-    const uint8_t* oldData = *(uint8_t* const*)(s + 0x40);
-    settings[2 * z->settings] = from[0];
     settings[2 * z->settings + 1] = z->comps;
-    for (uint32_t c = 0; c < from[0]; c++)
+    uint32_t count = 0;
+    for (uint32_t c = 0, last = 0; ; last = c + 1)
     {
-        const uint32_t* oc = oldComps + 3u * (from[1] + c);
+        c = 0xFFFFFFFFu; /* the next component in order */
+        for (uint32_t d = 0; d < a->deltaCount; d++) if (a->deltas[d].component >= last && a->deltas[d].component < c) c = a->deltas[d].component;
+        if (c == 0xFFFFFFFFu) break;
         uint32_t* nc = comps + 3u * z->comps++;
-        nc[0] = oc[0]; nc[1] = z->deltas; nc[2] = oc[2];
-        for (uint32_t d = 0; d < oc[2]; d++)
+        nc[0] = c; nc[1] = z->deltas; nc[2] = 0;
+        for (uint32_t d = 0; d < a->deltaCount; d++)
         {
-            const uint32_t* od = oldDeltas + 3u * (oc[1] + d);
+            const AttDelta* x = &a->deltas[d];
+            if (x->component != c) continue;
             uint32_t* nd = deltas + 3u * z->deltas++;
-            nd[0] = od[0]; nd[1] = od[1]; nd[2] = z->data;
-            memcpy(data + z->data, oldData + od[2], od[1]);
-            for (uint32_t b = 0; a->unit && oc[0] == ATT_CUSTOMIZATION && b + 8 <= od[1]; b++) /* the base's unit, where the record holds it */
-                if ((od[0] + b) % 8 == 0 && *(const uint64_t*)(data + z->data + b) == a->baseKey) memcpy(data + z->data + b, &a->unit, 8);
-            z->data += od[1];
+            nd[0] = x->offset; nd[1] = x->size; nd[2] = z->data;
+            memcpy(data + z->data, x->bytes, x->size);
+            z->data += x->size;
+            nc[2]++;
         }
+        count++;
     }
+    settings[2 * z->settings] = count;
     z->settings++;
 }
 
@@ -132,18 +133,17 @@ static void AttPut(uint8_t* keys, uint32_t slots, uint64_t key, uint32_t index)
     memcpy(keys + 16u * at + 8, &index, 4);
 }
 
-/* What one attachment's copy adds: component settings, deltas and data bytes. */
-static AttSizes AttExtra(const uint8_t* s, const Attachment* a)
+/* What one attachment adds: component settings, deltas and data bytes. */
+static AttSizes AttExtra(const Attachment* a)
 {
     AttSizes one = {0};
-    const uint32_t* from = AttDeltaSetting(s, a->baseKey);
-    const uint32_t* comps = *(uint32_t* const*)(s + 0x20);
-    const uint32_t* deltas = *(uint32_t* const*)(s + 0x30);
-    for (uint32_t c = 0; c < from[0]; c++)
+    for (uint32_t d = 0; d < a->deltaCount; d++)
     {
-        const uint32_t* comp = comps + 3u * (from[1] + c);
-        one.comps++;
-        for (uint32_t d = 0; d < comp[2]; d++) { one.deltas++; one.data += deltas[3u * (comp[1] + d) + 1]; }
+        int first = 1;
+        for (uint32_t e = 0; e < d; e++) first &= a->deltas[e].component != a->deltas[d].component;
+        one.comps += (uint32_t)first;
+        one.deltas++;
+        one.data += a->deltas[d].size;
     }
     return one;
 }
@@ -164,7 +164,7 @@ static void AttHeader(uint8_t* g, const uint8_t* s, void* const* pointers, uint3
 static uint8_t* AttGrow(const uint8_t* s, Attachment* const* list, int n)
 {
     AttSizes old = AttMeasure(s), add = {0}, z;
-    for (int i = 0; i < n; i++) { AttSizes one = AttExtra(s, list[i]); add.comps += one.comps; add.deltas += one.deltas; add.data += one.data; }
+    for (int i = 0; i < n; i++) { AttSizes one = AttExtra(list[i]); add.comps += one.comps; add.deltas += one.deltas; add.data += one.data; }
     uint32_t slots = 2 * (old.keys + (uint32_t)n) + 1;
     const size_t parts[5] = {16u * slots, 8u * (old.settings + (uint32_t)n), 12u * (old.comps + add.comps), 12u * (old.deltas + add.deltas), (size_t)old.data + add.data};
     size_t at[5], size = 0x100;
@@ -184,44 +184,44 @@ static uint8_t* AttGrow(const uint8_t* s, Attachment* const* list, int n)
     for (int i = 0; i < n; i++)
     {
         AttPut(pointers[0], slots, list[i]->addPath, z.settings);
-        AttCopyDeltas(s, list[i], pointers[1], pointers[2], pointers[3], pointers[4], &z);
+        AttWriteDeltas(list[i], pointers[1], pointers[2], pointers[3], pointers[4], &z);
     }
     AttHeader(g, s, pointers, slots, &old, &z);
     return g;
 }
 
-/* The attachments' items in HellForge's block: each its base's 88 bytes (debug name, slot and colour lists stay the
- * game's) with its own id, text and add_path. Returns how many. */
-static uint32_t AttItems(uintptr_t game)
+/* The attachments' items in HellForge's block, written from their declarations: debug name, id, text, add_path and
+ * their one slot; no icon, colours or sort group, as the game's optics, muzzles and magazines have none. Returns how
+ * many. */
+static uint32_t AttItems(void)
 {
     uint32_t n = 0;
     for (int i = 0; i < g_attachmentCount; i++)
     {
         Attachment* a = &g_attachments[i];
-        const uint8_t* base = a->state == 1 ? AttVanillaItem(game, a->base) : NULL;
-        if (base == NULL) continue;
+        if (a->state != 1) continue;
         uint8_t* row = g_attItems + (size_t)n++ * ATT_ITEM;
-        memcpy(row, base, ATT_ITEM);
+        const char* name = a->name;
+        const uint32_t* slot = &a->slot;
+        uint64_t one = 1;
+        memset(row, 0, ATT_ITEM);
+        memcpy(row, &name, 8);
         memcpy(row + 8, &a->id, 4);
-        if (a->text[0]) { memcpy(row + 0x0C, &a->text[1], 4); memcpy(row + 0x10, &a->text[0], 4); }
-        if (a->text[2]) memcpy(row + 0x14, &a->text[2], 4);
+        memcpy(row + 0x0C, &a->text[1], 4);
+        memcpy(row + 0x10, &a->text[0], 4);
+        memcpy(row + 0x14, &a->text[2], 4);
         memcpy(row + 0x20, &a->addPath, 8);
+        memcpy(row + 0x30, &slot, 8);
+        memcpy(row + 0x38, &one, 8);
     }
     return n;
 }
 
-/* Why an attachment cannot go in, or NULL; its base key and slot are set on the way. */
-static const char* AttWhy(uintptr_t game, const uint8_t* s, Attachment* a)
+/* Why an attachment cannot go in, or NULL. */
+static const char* AttWhy(uintptr_t game, const uint8_t* s, const Attachment* a)
 {
-    const uint8_t* base = AttVanillaItem(game, a->base);
-    if (base == NULL) return "its base is not a customization item of the game";
-    if (*(const uint64_t*)(base + 0x20) == 0) return "its base changes nothing (no add_path)";
     if (AttVanillaItem(game, a->id) != NULL) return "its id is a game item's";
-    a->baseKey = *(const uint64_t*)(base + 0x20);
-    a->slot = AttSlot(base);
-    if (a->unit && a->slot != 2 && a->slot != 4 && a->slot != 5) return "a unit is for an optic, muzzle or magazine";
     if (AttDeltaSetting(s, a->addPath) != NULL) return "its key is taken in the entity deltas";
-    if (AttDeltaSetting(s, a->baseKey) == NULL) return "its base has no entity deltas";
     return NULL;
 }
 
@@ -273,7 +273,7 @@ static void AttDeltasTick(uintptr_t game, uint8_t* state, uint8_t* s)
 static void AttItemsTick(uintptr_t game, uint32_t count)
 {
     for (uint32_t k = 0; k < count; k++) if (*(uint8_t* const*)(game + ATT_TABLE + 8u * k) == (uint8_t*)&g_attBlock) return;
-    g_attBlock.count = AttItems(game);
+    g_attBlock.count = AttItems();
     if (g_attBlock.count == 0) return;
     *(uint8_t**)(game + ATT_TABLE + 8u * count) = (uint8_t*)&g_attBlock;
     MemoryBarrier(); /* the block is in its slot before the count shows it */
@@ -330,6 +330,33 @@ static void AttText(const HfAttachment* def, const char* key, Attachment* a)
     if (def->description != NULL && def->description[0]) a->text[2] = AddText(def->description, key, 0x13);
 }
 
+/* The weapon record field that draws a slot's unit (WeaponCustomization OpticsPath, MuzzlePath, MagazinePath), or 0. */
+static uint16_t AttUnitField(uint32_t slot) { return slot == HF_SLOT_OPTICS ? 0x78 : slot == HF_SLOT_MUZZLE ? 0xA0 : slot == HF_SLOT_MAGAZINE ? 0x80 : 0; }
+
+static int AttChangeBytes(HfMod* mod, const char* name, const HfField* f, const HfValue* v, AttDelta* out); /* fields.c */
+
+/* Its slot, unit and changes as deltas; 1 if refused (logged). */
+static int AttDeltas(HfMod* mod, const HfAttachment* def, Attachment* a)
+{
+    static const uint32_t kSlots[] = {HF_SLOT_OPTICS, HF_SLOT_MUZZLE, HF_SLOT_MAGAZINE, HF_SLOT_INTERNALS, HF_SLOT_TRIGGER};
+    int known = 0;
+    for (size_t k = 0; k < sizeof kSlots / sizeof kSlots[0]; k++) known |= def->slot == kSlots[k];
+    const char* why = !known ? "its slot is not an optic, muzzle, magazine, internals or trigger slot"
+        : def->unit && !AttUnitField(def->slot) ? "a unit is for an optic, muzzle or magazine"
+        : def->change_count > ATT_CHANGES - 1 || (def->change_count && def->changes == NULL) ? "it has more than 16 changes" : NULL;
+    if (why != NULL) { ApiLog(mod, "add_attachment(%s): %s", a->name, why); return 1; }
+    a->slot = def->slot;
+    if (def->unit)
+    {
+        AttDelta* d = &a->deltas[a->deltaCount++];
+        *d = (AttDelta){ATT_CUSTOMIZATION, AttUnitField(def->slot), 8, {0}};
+        memcpy(d->bytes, &def->unit, 8);
+    }
+    for (uint32_t c = 0; c < def->change_count; c++)
+        if (AttChangeBytes(mod, a->name, &def->changes[c].field, &def->changes[c].value, &a->deltas[a->deltaCount++])) return 1;
+    return 0;
+}
+
 static uint32_t ApiAddAttachment(HfMod* mod, const HfAttachment* def)
 {
     if (mod == NULL || def == NULL || def->size < sizeof(HfAttachment)) { ApiLog(mod, "add_attachment: no attachment, or its size is not set (HfAttachment a = {sizeof a})"); return 0; }
@@ -338,24 +365,24 @@ static uint32_t ApiAddAttachment(HfMod* mod, const HfAttachment* def)
     if (g_attachmentCount == ATT_MAX) { ApiLog(mod, "add_attachment(%s): mods added %d attachments already", def->name, ATT_MAX); return 0; }
     Attachment a = {0};
     a.mod = mod;
-    a.base = def->base;
     a.id = Thin(def->name);
     a.unit = def->unit;
+    a.level = def->level;
     snprintf(a.name, sizeof a.name, "%s", def->name);
     char key[160];
     snprintf(key, sizeof key, "hellforge/attachment/%s", def->name);
-    a.addPath = def->unit ? def->unit : Murmur64A(key, strlen(key));
-    if (a.id == 0 || AttTaken(mod, &a) || AttWeapons(mod, def, &a)) return 0;
+    a.addPath = Murmur64A(key, strlen(key));
+    if (a.id == 0 || AttTaken(mod, &a) || AttWeapons(mod, def, &a) || AttDeltas(mod, def, &a)) return 0;
     AttText(def, key, &a);
     g_attachments[g_attachmentCount] = a;
     MemoryBarrier();
     g_attachmentCount++;
-    ApiLog(mod, "adding attachment %s (item %08x) as a copy of item %08x on %u weapon(s)", a.name, a.id, a.base, a.weaponCount);
+    ApiLog(mod, "adding attachment %s (item %08x, slot %u, %u change(s)) on %u weapon(s)", a.name, a.id, a.slot, a.deltaCount, a.weaponCount);
     WriteRegisteredItems();
     return a.id;
 }
 
-/* The attachments for the backend (RegisteredItems.cs): {"mixId", "copyOf", "weapons"}, the refused left out. */
+/* The attachments for the backend (RegisteredItems.cs): {"mixId", "standalone", "weapons", "level"}, the refused left out. */
 static int AttachmentItems(char* text, int n, int size)
 {
     n += snprintf(text + n, size - n, ",\"attachments\":[");
@@ -364,9 +391,9 @@ static int AttachmentItems(char* text, int n, int size)
     {
         const Attachment* a = &g_attachments[i];
         if (a->state < 0) continue;
-        n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"weapons\":[", listed++ ? "," : "", a->id, a->base);
+        n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"standalone\":true,\"weapons\":[", listed++ ? "," : "", a->id);
         for (uint32_t w = 0; w < a->weaponCount; w++) n += snprintf(text + n, size - n, "%s%u", w ? "," : "", a->weapons[w]);
-        n += snprintf(text + n, size - n, "]}");
+        n += snprintf(text + n, size - n, "],\"level\":%u}", a->level);
     }
     return n + snprintf(text + n, size - n, "]");
 }

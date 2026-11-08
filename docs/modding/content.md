@@ -347,35 +347,38 @@ come from the weapon's `unit`, so changing a weapon's unit starts its mastery ov
 
 ### Attachments of your own
 
-`hf->add_attachment(mod, &attachment)` (SDK 17) adds an attachment to weapons your mods added. It copies a vanilla
-customization item: its slot, its stat changes and its look in the armory. It returns the new item's id, or 0 with
-the reason in the mod's log. Call it from `hellforge_mod_init`, after `add_weapon`.
+`hf->add_attachment(mod, &attachment)` (SDK 17) adds an attachment to weapons your mods added. It copies no item: its
+armory item and what it changes on the weapon come from the declaration. It returns the item's id, or 0 with the
+reason in the mod's log. Call it from `hellforge_mod_init`, after `add_weapon`.
 
 ```c
 static const uint32_t weapons[] = {0}; /* filled with add_weapon's id */
-HfAttachment drum = {sizeof drum};
-drum.base = 0x73CA1B5E;                 /* a magazine the base weapon takes */
-drum.name = "yourname/your_mod/drum";   /* its id: the thin hash of this */
-drum.unit = HF_API(mod)->resource_hash("yourname/your_mod/drum_magazine");
-drum.name_text = "Drum";
-drum.weapons = weapons;
-drum.weapon_count = 1;
+static const HfAttachmentChange changes[] = {{HF_FIELD(WeaponData, ergonomics), HF_F32(55)}};
+HfAttachment brake = {sizeof brake};
+brake.slot = HF_SLOT_MUZZLE;
+brake.name = "yourname/your_mod/brake";   /* its id: the thin hash of this */
+brake.unit = HF_API(mod)->resource_hash("yourname/your_mod/brake");
+brake.name_text = "Three-port Brake";
+brake.weapons = weapons;
+brake.weapon_count = 1;
+brake.changes = changes;
+brake.change_count = 1;
 ```
 
 | Field | Value |
 |---|---|
-| `base` | the vanilla item it copies, by id; its slot must be one the weapon takes |
+| `slot` | `HF_SLOT_OPTICS`, `HF_SLOT_MUZZLE`, `HF_SLOT_MAGAZINE`, `HF_SLOT_INTERNALS` or `HF_SLOT_TRIGGER` |
 | `name` | unique, prefixed with your name and mod; the item's id is its thin hash |
-| `unit` | a magazine's, muzzle's or optic's model from your mod's data, drawn at the weapon's `attach_` joint; 0 keeps the base's |
-| `name_text`, `description` | its text in the armory; NULL keeps the base's |
+| `unit` | an optic's, muzzle's or magazine's model from your data, drawn at the weapon's `attach_` joint |
+| `name_text`, `description` | its text in the armory |
 | `weapons`, `weapon_count` | the weapons offering it: 1 to 16 ids `add_weapon` returned |
+| `level` | the weapon's mastery level that unlocks it; 0: held from the start |
+| `changes`, `change_count` | up to 16 reviewed fields of the weapon's records and their values while it is fitted |
 
-- The player holds it on each of its weapons from the start; it has no level or price.
-- Its deltas are the base's: the same magazine size, recoil or zoom. Change them with the weapon's own records.
-- A unit replaces the base's model only. The weapon's unit needs the `attach_mag`, `attach_muzzle` or `attach_optic`
-  joint ([models](models.md)).
-- Its unit must load with the weapon. Put it in the weapon's own package ([a weapon of your own](#a-weapon-of-your-own))
-  or in a session package. The game finds the package of a vanilla attachment's unit, but not of yours.
+- A change names a single-value field of a component its weapons have, with `HF_FIELD` and a value of its type.
+- Its weapon's own records stay as they are; the game applies the changes while the attachment is fitted.
+- The weapon's unit needs the `attach_mag`, `attach_muzzle` or `attach_optic` joint ([models](models.md)).
+- Its unit must load with the weapon: put it in the weapon's package ([a weapon of your own](#a-weapon-of-your-own)).
 - At most 128 attachments across all mods.
 
 ### A weapon of your own

@@ -3417,9 +3417,9 @@ static void RegisteredItemsFixture(void)
     g_stratagemCount = savedStratagems;
 }
 
-/* Attachments (attachments.c): an item copied into HellForge's block appended to the game's item table, its base's
- * deltas copied under its own key in a grown delta storage swapped into the entity state, the base's unit replaced by
- * the mod's in the Customization delta, and both made again once only. */
+/* Attachments (attachments.c): no item copied. Its item is written from its declaration into HellForge's block,
+ * appended to the game's item table; its deltas (its slot's unit field, then its declared changes, by component) go
+ * under its own key in a grown delta storage swapped into the entity state; both are made again once only. */
 static void AttachmentsFixture(void)
 {
     uint8_t* game = (uint8_t*)VirtualAlloc(NULL, ATT_TABLE + 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -3428,22 +3428,18 @@ static void AttachmentsFixture(void)
     memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
     memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
     uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
-    /* the game's items: a magazine (slot 5) whose add_path is its unit, and a paint without deltas */
-    static uint8_t items[2 * ATT_ITEM];
-    static uint32_t magazineSlot = 5;
-    const uint64_t baseUnit = 0x1111222233334444ull;
-    uint32_t id = 0xBA5E0001u; memcpy(items + 8, &id, 4); memcpy(items + 0x20, &baseUnit, 8);
-    uintptr_t slots = (uintptr_t)&magazineSlot; memcpy(items + 0x30, &slots, 8); uint32_t one = 1; memcpy(items + 0x38, &one, 4);
-    id = 0xBA5E0002u; memcpy(items + ATT_ITEM + 8, &id, 4);
+    /* the game's items: one magazine (slot 5) with deltas of its own */
+    static uint8_t items[ATT_ITEM];
+    const uint64_t gameKey = 0x1111222233334444ull;
+    uint32_t id = 0xBA5E0001u; memcpy(items + 8, &id, 4); memcpy(items + 0x20, &gameKey, 8);
     static struct { uint8_t* items; uint32_t count; uint32_t pad; } block;
-    block.items = items; block.count = 2;
+    block.items = items; block.count = 1;
     at = (uintptr_t)&block; memcpy(game + ATT_TABLE, &at, 8);
     uint32_t count = 1; memcpy(game + ATT_COUNT, &count, 4);
-    /* the delta storage: the magazine's key -> one Customization setting -> a delta writing its unit at +0x80 */
     static uint8_t keys[16 * 3], data[16];
     static uint32_t settings[2] = {1, 0}, comps[3] = {ATT_CUSTOMIZATION, 0, 1}, deltas[3] = {0x80, 8, 0};
-    memcpy(keys + 16 * (baseUnit % 3), &baseUnit, 8);
-    memcpy(data, &baseUnit, 8);
+    memcpy(keys + 16 * (gameKey % 3), &gameKey, 8);
+    memcpy(data, &gameKey, 8);
     static uint8_t storage[0x50];
     void* parts[5] = {keys, settings, comps, deltas, data};
     for (int p = 0; p < 5; p++) memcpy(storage + 0x10 * p, &parts[p], 8);
@@ -3461,26 +3457,36 @@ static void AttachmentsFixture(void)
     HfMod* mod = &g_mods[0];
     const uint32_t weapons[] = {0x7E57u}, strangers[] = {0x9999u};
     const uint64_t modUnit = 0x5555666677778888ull;
-    HfAttachment mag = {sizeof mag, 0xBA5E0001u, "test/mod/drum", modUnit, "Drum", "A drum.", weapons, 1};
-    HfAttachment paint = {sizeof paint, 0xBA5E0002u, "test/mod/paint", 0, NULL, NULL, weapons, 1};
-    HfAttachment nowhere = {sizeof nowhere, 0xBA5E0001u, "test/mod/nowhere", 0, NULL, NULL, strangers, 1};
-    uint32_t drum = ApiAddAttachment(mod, &mag);
-    assert(drum == Thin("test/mod/drum") && ApiAddAttachment(mod, &mag) == 0 && ApiAddAttachment(mod, &nowhere) == 0);
-    assert(ApiAddAttachment(mod, &paint) != 0 && g_attachmentCount == 2);
+    static const HfAttachmentChange changes[] = {{HF_FIELD(WeaponData, ergonomics), HF_F32(55)}, {HF_FIELD(ProjectileWeapon, muzzle_flash), HF_U64(0xF1A5)}};
+    HfAttachment brake = {sizeof brake, HF_SLOT_MUZZLE, "test/mod/brake", modUnit, "Brake", "A brake.", weapons, 1, 3, changes, 2};
+    HfAttachment nowhere = brake; nowhere.name = "test/mod/nowhere"; nowhere.weapons = strangers;
+    HfAttachment paint = brake; paint.name = "test/mod/paint"; paint.slot = 3;
+    HfAttachment unitless = brake; unitless.name = "test/mod/trigger"; unitless.slot = HF_SLOT_TRIGGER;
+    uint32_t mine = ApiAddAttachment(mod, &brake);
+    assert(mine == Thin("test/mod/brake") && ApiAddAttachment(mod, &brake) == 0 && ApiAddAttachment(mod, &nowhere) == 0);
+    assert(ApiAddAttachment(mod, &paint) == 0 && ApiAddAttachment(mod, &unitless) == 0 && g_attachmentCount == 1);
+    assert(g_attachments[0].deltaCount == 3 && g_attachments[0].deltas[0].offset == 0xA0); /* the muzzle's unit field */
 
     AttachmentsTick();
     uint8_t* grown = StatePointer(state, ATT_DELTAS);
-    assert(grown == g_attGrown && grown != storage && g_attachments[0].state == 1 && g_attachments[1].state == -1); /* the paint has no deltas */
-    const uint32_t* setting = AttDeltaSetting(grown, modUnit);
-    assert(setting != NULL && setting[0] == 1 && AttDeltaSetting(grown, baseUnit) != NULL);
-    const uint32_t* newComp = *(uint32_t* const*)(grown + 0x20) + 3 * setting[1];
-    const uint32_t* newDelta = *(uint32_t* const*)(grown + 0x30) + 3 * newComp[1];
-    assert(newComp[0] == ATT_CUSTOMIZATION && newDelta[0] == 0x80 && newDelta[1] == 8);
-    assert(*(const uint64_t*)(*(uint8_t* const*)(grown + 0x40) + newDelta[2]) == modUnit); /* the mod's unit */
-    assert(*(const uint64_t*)(*(uint8_t* const*)(grown + 0x40)) == baseUnit && *(const uint32_t*)(grown + 0x48) == 16);
+    assert(grown == g_attGrown && grown != storage && g_attachments[0].state == 1);
+    const uint32_t* setting = AttDeltaSetting(grown, g_attachments[0].addPath);
+    assert(setting != NULL && setting[0] == 3 && AttDeltaSetting(grown, gameKey) != NULL); /* WeaponData, Customization, ProjectileWeapon */
+    const uint32_t* newComps = *(uint32_t* const*)(grown + 0x20) + 3 * setting[1];
+    const uint32_t* allDeltas = *(uint32_t* const*)(grown + 0x30);
+    const uint8_t* allData = *(uint8_t* const*)(grown + 0x40);
+    assert(newComps[0] == 236 && newComps[3] == ATT_CUSTOMIZATION && newComps[6] == REG_PROJECTILE_WEAPON);
+    const uint32_t* unitDelta = allDeltas + 3 * newComps[4];
+    assert(unitDelta[0] == 0xA0 && unitDelta[1] == 8 && *(const uint64_t*)(allData + unitDelta[2]) == modUnit);
+    float ergonomics;
+    memcpy(&ergonomics, allData + allDeltas[3 * newComps[1] + 2], 4);
+    assert(ergonomics == 55.0f && *(const uint64_t*)(allData + allDeltas[3 * newComps[7] + 2]) == 0xF1A5);
+    assert(*(const uint64_t*)allData == gameKey && *(const uint32_t*)(grown + 0x48) == 8 + 8 + 4 + 8); /* the game's data first */
     memcpy(&count, game + ATT_COUNT, 4);
     assert(count == 2 && *(uint8_t**)(game + ATT_TABLE + 8) == (uint8_t*)&g_attBlock && g_attBlock.count == 1);
-    assert(*(const uint32_t*)(g_attItems + 8) == drum && *(const uint64_t*)(g_attItems + 0x20) == modUnit && AttSlot(g_attItems) == 5);
+    const uint32_t* slotList = *(uint32_t* const*)(g_attItems + 0x30);
+    assert(*(const uint32_t*)(g_attItems + 8) == mine && *(const uint64_t*)(g_attItems + 0x20) == g_attachments[0].addPath &&
+        slotList[0] == HF_SLOT_MUZZLE && *(const uint32_t*)(g_attItems + 0x38) == 1 && *(const uint64_t*)(g_attItems + 0x28) == 0);
     assert(*(const uint32_t*)(g_attItems + 0x10) != 0 && *(const uint32_t*)(g_attItems + 0x14) != 0); /* its own text */
     AttachmentsTick(); memcpy(&count, game + ATT_COUNT, 4); assert(count == 2); /* once */
     count = 1; memcpy(game + ATT_COUNT, &count, 4); /* the game loaded its items again */
@@ -3488,7 +3494,7 @@ static void AttachmentsFixture(void)
     static char text[REG_ITEM_ROOM + 512];
     int n = AttachmentItems(text, 0, sizeof text);
     text[n] = 0;
-    assert(strstr(text, "\"attachments\":[{\"mixId\":") && strstr(text, "\"weapons\":[32343]}]") && Occurrences(text, "\"mixId\":") == 1);
+    assert(strstr(text, "\"standalone\":true,\"weapons\":[32343],\"level\":3}]") && !strstr(text, "copyOf") && Occurrences(text, "\"mixId\":") == 1);
 
     g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL; g_attBlock.count = 0;
     g_weaponCount = savedWeapons;
