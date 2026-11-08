@@ -104,7 +104,7 @@ On `dev`, since 0.4.0-beta.
   block with "not stopping the game's connections to the internet (error 10065)", asked for administrator consent and
   failed again. It still did on a PC that keeps a network route while offline. Offline, the block is now proved by
   the PC having no route out, or by its refusing a UDP datagram to the internet. While the game runs it is checked
-  again every 10 seconds, and HellForge stops the game if it does not hold (#300, #PR).
+  again every 10 seconds, and HellForge stops the game if it does not hold (#300, #317).
 - **Code mods stuck on "did not compile" after the mod tools were damaged.** An antivirus that removed files from
   HellForge's Zig made every source mod fail in Zig's own libraries ("sub-compilation of libzigc failed"). That failure
   was kept as the mod's, so restoring Zig or running Check and repair changed nothing. HellForge now notices a damaged
