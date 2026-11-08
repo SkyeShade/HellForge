@@ -77,7 +77,7 @@ static float LwNoiseRange(uint8_t type)
     return range;
 }
 
-typedef struct { float pos[3], reach; uint32_t source; ULONGLONG at; uint8_t type; } LwEvent;
+typedef struct { float pos[3], reach; uint32_t source; ULONGLONG at, born; uint8_t type, onlinePending; } LwEvent;
 static LwEvent g_lwEvents[16];
 static struct { uint32_t heard, kept, events, sent, told, ended; } g_lwHear; /* 30 s counters */
 
@@ -85,6 +85,14 @@ static int LwCalm(const LwSquad* q)
 {
     for (int k = 0; k < q->seenCount; k++) if (LwAlert(q->seen[k]) != 0) return 0;
     return 1;
+}
+/* An online squad may be steered (job position, repath) only when every member has been at alert 0 for 10 s (D): the
+ * game turns a hit or a heard shot into alert 2 and a walk to the shooter (0x7EB694), and a goal pulls those members out
+ * of that reaction and out of the range where engaged mates share their target (0x7E67C0). */
+#define LW_STEER_CALM 10000
+static int LwSteerOk(const LwSquad* q)
+{
+    return q->state == LW_ONLINE && LwCalm(q) && (!q->alerted || (q->calmSince && GetTickCount64() - q->calmSince >= LW_STEER_CALM));
 }
 /* the job position and an immediate repath for an online squad (S6, P) */
 static int LwSquadGoTo(LwSquad* q, const float* target)
@@ -190,11 +198,11 @@ static void LwIntentEnd(LwSquad* q, const char* why)
     q->intent = LW_PATROL; q->intentStage = 0; q->intentFree = now + LW_INTENT_REST; q->fight = -1;
     int node = LwNearestNode(q->pos[0], q->pos[1]);
     if (node >= 0) q->node = (uint16_t)node;
-    q->pathLen = q->pathAt = 0; LwPlan(q);
+    q->prevValid = 0; q->pathLen = q->pathAt = 0; LwPlan(q);
     if (q->state == LW_ONLINE && q->jobSet && q->pathAt < q->pathLen)
     {
         float goal[3] = {g_lwNodes[q->path[q->pathAt]].x, g_lwNodes[q->path[q->pathAt]].y, 0};
-        LwSquadGoTo(q, goal);
+        if (LwSteerOk(q)) LwSquadGoTo(q, goal); else q->goalPending = 1; /* ending in a fight: the game keeps it */
     }
 }
 /* offline: the route to the node nearest the point */
@@ -255,7 +263,9 @@ static int LwIntentGoal(LwSquad* q)
 }
 /* A unit's AI settings (0x511CC0's table, as LwObstacleAbilities): the hearing threshold +0x2BC (0x7EB1DD, compared at
  * 0x7EB694) and the investigate time +0x5C (0x7EBBEC). 1 when found. */
-static int LwHearSettings(uint32_t unit, float* threshold, float* investigate)
+/* The unit's AI settings block, as the awareness update finds it (0x511CC0 from 0x7EB128: the resource's slot in the
+ * 316-entry table [[game+0x346BF98]+0xF12DE8], block +0x13C0 + 0x2DC idx). 0 when not found. */
+static uintptr_t LwAwareSettings(uint32_t unit)
 {
     uintptr_t game = g_lw.game, aiState = 0, table = 0; uint32_t u = 0;
     uint64_t res = EvpEntityResource(game, unit, &u);
@@ -265,10 +275,14 @@ static int LwHearSettings(uint32_t unit, float* threshold, float* investigate)
         uint64_t key = 0; uint32_t sidx = 0; uintptr_t b = table + 16ull * ((res + p) % 316);
         if (SafeRead(b, &key, 8) || key == 0) return 0;
         if (key != res) continue;
-        uintptr_t st = table + 0x13C0 + 0x2DCull * (SafeRead(b + 8, &sidx, 4) ? 0 : sidx);
-        return !SafeRead(st + 0x2BC, threshold, 4) && !SafeRead(st + 0x5C, investigate, 4);
+        return table + 0x13C0 + 0x2DCull * (SafeRead(b + 8, &sidx, 4) ? 0 : sidx);
     }
     return 0;
+}
+static int LwHearSettings(uint32_t unit, float* threshold, float* investigate)
+{
+    uintptr_t st = LwAwareSettings(unit);
+    return st && !SafeRead(st + 0x2BC, threshold, 4) && !SafeRead(st + 0x5C, investigate, 4);
 }
 /* The detector the awareness update reads for a unit: [Behavior record + 0x68] (0x7ECF70 returns [game+0x3326740] +0x60
  * records + 0x1F8 idx + 8, and 0x7EB262 reads +0x60 from it; the record it compares is that id's, 0x7EB2C0). The game's
@@ -367,6 +381,11 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
     if (n <= 0) return;
     q->held = 0; /* online: no longer waiting at the edge */
     ULONGLONG now = GetTickCount64();
+    int calmNow = 1;
+    for (int k = 0; k < n && calmNow; k++) if (LwAlert(members[k]) != 0) calmNow = 0;
+    if (!calmNow) { q->calmSince = 0; q->alerted = 1; } else if (!q->calmSince) q->calmSince = now;
+    if (q->alerted && q->calmSince && now - q->calmSince >= LW_STEER_CALM) q->alerted = 0;
+    if (q->goalPending && q->intent == LW_PATROL && q->jobSet && LwSteerOk(q)) { q->goalPending = 0; LwSendGoal(q); } /* the patrol goal held while it was alert */
     if (q->intent == LW_REINFORCE) { LwReinforceOnline(q, members, n, at, now); return; }
     if (q->intent == LW_RETAKE) /* online, players are near: it walks there and waits; the retake itself needs it offline */
     {
@@ -432,7 +451,11 @@ static void LwIntentOffline(LwSquad* q)
     else if (!LwIntentRoute(q)) LwIntentEnd(q, "no route to the point");
 }
 
-static void LwInvestigate(const LwEvent* e)
+/* pass 0 at the event: offline squads; pass 1, LW_HEAR_ONLINE_MS later: online squads still calm. The noise is caught in
+ * the frame of the shot (0x573F81), before its hit raises the target's alert, so an online squad picked then would be the
+ * one shot at, sent to the shooter's spot on top of the game's own reaction. */
+#define LW_HEAR_ONLINE_MS 1500
+static void LwInvestigate(const LwEvent* e, int pass)
 {
     for (int f = 0; f < 16; f++) if (g_lwFights[f].live && LwDist2(g_lwFights[f].pos, e->pos[0], e->pos[1]) < 100.0f * 100.0f) return; /* a fight: 2b sends squads */
     float native = LwNoiseRange(e->type);
@@ -441,7 +464,7 @@ static void LwInvestigate(const LwEvent* e)
     for (int i = 0; i < g_lwWorld.count; i++)
     {
         LwSquad* q = &g_lwSquads[i];
-        if ((q->state != LW_OFFLINE && q->state != LW_ONLINE) || q->intent != LW_PATROL || q->pulled || q->survivors == 0 || now < q->intentFree) continue;
+        if ((q->state != (pass ? LW_ONLINE : LW_OFFLINE)) || q->intent != LW_PATROL || q->pulled || q->survivors == 0 || now < q->intentFree) continue;
         float d2 = LwDist2(q->pos, e->pos[0], e->pos[1]);
         if (d2 > e->reach * e->reach) continue;
         if (q->state == LW_ONLINE && (d2 <= native * native || !LwCalm(q))) continue; /* its ears hear it, or it is busy */
@@ -462,8 +485,9 @@ static void LwInvestigate(const LwEvent* e)
         len += (size_t)snprintf(list + len, sizeof list - len, "%s%d (%s, %.0f m)", len ? ", " : "", pick[j], q->state == LW_ONLINE ? "online" : "offline", (double)sqrtf(d2s[j]));
         if (len >= sizeof list) len = sizeof list - 1;
     }
-    Note("living world: noise type %u at (%.0f, %.0f, %.1f) from %08X, reach %.0f m: %s", e->type, (double)e->pos[0], (double)e->pos[1], (double)e->pos[2], e->source,
-        (double)e->reach, picked ? list : "no calm squad in reach");
+    if (pass && !picked) return; /* the event's note is written at pass 0 */
+    Note("living world: noise type %u at (%.0f, %.0f, %.1f) from %08X, reach %.0f m%s: %s", e->type, (double)e->pos[0], (double)e->pos[1], (double)e->pos[2], e->source,
+        (double)e->reach, pass ? ", online squads" : "", picked ? list : "no calm squad in reach");
 }
 /* each squads tick, before the squads: the noises since the last tick */
 static void LwNoiseDrain(void)
@@ -486,15 +510,21 @@ static void LwNoiseDrain(void)
         int same = -1, oldest = 0;
         for (int i = 0; i < 16; i++)
         {
-            if (g_lwEvents[i].at && now - g_lwEvents[i].at < 10000 && LwDist2(g_lwEvents[i].pos, n.pos[0], n.pos[1]) < 50.0f * 50.0f) { same = i; break; }
-            if (g_lwEvents[i].at < g_lwEvents[oldest].at) oldest = i;
+            LwEvent* o = &g_lwEvents[i];
+            /* one event per place, and per moving source: a driven vehicle's engine (type 2) emits every 2-3 s along its
+             * way, and each emission sent squads after it (user, real play) */
+            if (o->at && now - o->at < 10000 && LwDist2(o->pos, n.pos[0], n.pos[1]) < 50.0f * 50.0f) { same = i; break; }
+            if (o->at && o->source == n.source && o->type == n.type && now - o->born < 15000 && LwDist2(o->pos, n.pos[0], n.pos[1]) < 150.0f * 150.0f) { same = i; break; }
+            if (o->at < g_lwEvents[oldest].at) oldest = i;
         }
         if (same >= 0) { g_lwEvents[same].at = now; continue; }
         LwEvent* e = &g_lwEvents[oldest];
-        memcpy(e->pos, n.pos, sizeof e->pos); e->reach = reach; e->source = n.source; e->at = now; e->type = n.type;
+        memcpy(e->pos, n.pos, sizeof e->pos); e->reach = reach; e->source = n.source; e->at = e->born = now; e->type = n.type; e->onlinePending = 1;
         g_lwHear.events++;
-        LwInvestigate(e);
+        LwInvestigate(e, 0);
     }
+    for (int i = 0; i < 16; i++)
+        if (g_lwEvents[i].onlinePending && now - g_lwEvents[i].born >= LW_HEAR_ONLINE_MS) { g_lwEvents[i].onlinePending = 0; LwInvestigate(&g_lwEvents[i], 1); }
 }
 static void LwHearNote(void)
 {
@@ -1303,6 +1333,44 @@ static void LwIntentTrace(void)
         }
     }
     if (len) Note("living world: intent trace: places from squad %d: %s", first, line);
+}
+
+/* Test runs: why a shot member does or does not turn on the shooter. The awareness update gives alert 5 only when the
+ * detector's entry for the attacker has danger (+0x3C) >= settings +0x2B8 and +0x29B is set (0x7EB4B5..0x7EB4FE);
+ * hearing (+0x38) over +0x2BC or danger over +0x2B4 only sends it to look (alert 2). Logged every 250 ms for 3 s. */
+static void LwAggroTrace(void)
+{
+    static ULONGLONG nextAt[8];
+    ULONGLONG now = GetTickCount64();
+    for (int w = 0; w < 8; w++)
+    {
+        uint32_t member = (uint32_t)g_lwAggroWatch[w].member, attacker = (uint32_t)g_lwAggroWatch[w].attacker;
+        if (!member || now >= g_lwAggroWatch[w].until || now < nextAt[w]) continue;
+        nextAt[w] = now + 250;
+        uint32_t detE = LwAwareDetector(member), di = 0, count = 0; uintptr_t det = 0, recs = 0, r = 0, st = LwAwareSettings(member);
+        if (detE && EvpPtr(g_lw.game + 0x3326548u, &det) && EvpHash(det + 0x30, detE, 8, 4, &di) && EvpPtr(det + 0x50, &recs)) r = recs + 0x13F8ull * di;
+        char entry[96] = "no entry for the attacker";
+        float hear = NAN, danger = NAN, aHear = NAN, aDanger = NAN, t[4] = {NAN, NAN, NAN, NAN}; uint8_t fire = 0xFF;
+        if (r)
+        {
+            count = EvpU32(r + 0x310, 0);
+            for (uint32_t i = 0; i < count && i < 16; i++)
+            {
+                uintptr_t e = r + 0x318 + 0x50ull * i;
+                if (EvpU32(e, 0) != attacker) continue;
+                SafeRead(e + 0x38, &hear, 4); SafeRead(e + 0x3C, &danger, 4);
+                snprintf(entry, sizeof entry, "entry %u of %u: hearing %.2f, danger %.2f, flags %X", i, count, (double)hear, (double)danger, EvpU32(e + 0x48, 0));
+            }
+            SafeRead(r + 0x1278 + 0x38, &aHear, 4); SafeRead(r + 0x1278 + 0x3C, &aDanger, 4);
+        }
+        if (st) { SafeRead(st + 0x2B0, t, sizeof t); SafeRead(st + 0x29B, &fire, 1); }
+        int sq = -1; LwOnlineMember(member, &sq);
+        const LwSquad* q = sq >= 0 && sq < g_lwWorld.count ? &g_lwSquads[sq] : NULL;
+        Note("living world: test: aggro %08X (squad %d%s) by %08X: alert %u; detector %08X %s; %s; anonymous hearing %.2f, danger %.2f; +0x13C4 %X, +0x188 %X; "
+             "settings +0x2B0 %.2f, +0x2B4 %.2f, +0x2B8 %.2f, +0x2BC %.2f, +0x29B %u", member, sq, q ? (q->goalPending ? ", goal held" : q->alerted ? ", alerted" : "") : "", attacker,
+            LwAlert(member), detE, r ? "found" : "NOT in the detector hash", entry, (double)aHear, (double)aDanger, r ? EvpU32(r + 0x13C4, 0) : 0u, r ? EvpU32(r + 0x188, 0) : 0u,
+            (double)t[0], (double)t[1], (double)t[2], (double)t[3], fire);
+    }
 }
 
 static int LwTestTraceOn(void) { static int on = -1; if (on < 0) { char t[4] = ""; on = GetEnvironmentVariableA("HELLFORGE_LW_TEST_TRACE", t, sizeof t) > 0 && t[0] == '1'; } return on; }

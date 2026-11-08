@@ -491,9 +491,10 @@ typedef struct LwSquad
     int16_t garrison; /* RETAKE: its g_lwGarrisons index */
     uint16_t home1; /* 2d: its home region + 1 (0 = none yet) */
     int8_t fight; uint8_t rushed, rushedN, tells; ULONGLONG retargetAt, tellAt; /* REINFORCE: its fight (g_lwFights index); members sped up (0x7EFFC0), how many; fight target tells; next goal refresh, next tell */
+    uint16_t prevNode; uint8_t prevValid, goalPending, alerted; ULONGLONG calmSince; /* the node it walked from (no route starts back to it); a patrol goal held while members are alert; alert since it came online, calm since */
 } LwSquad;
 static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
-static void LwIntentOffline(LwSquad* q); static int LwIntentHold(LwSquad* q, float nx, float ny); static int LwIntentInside(LwSquad* q); static int LwIntentLeg(LwSquad* q, float dt); static int LwTerritoryGoalOk(const LwSquad* q, int node); static void LwTerritoryTick(void); static void LwIntentTrace(void); static void LwRetakeScan(void); static void LwTestClear(int seq, uint32_t entity); static void LwRetakeWait(int seq, float s); static void LwRetakeUnfit(int seq); static void LwRetakeTakenCmd(int seq); static int64_t LwFillMasks(uintptr_t desc, float* budget, char* trace, size_t traceLen); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
+static int LwSteerOk(const LwSquad* q); static void LwIntentOffline(LwSquad* q); static int LwIntentHold(LwSquad* q, float nx, float ny); static int LwIntentInside(LwSquad* q); static int LwIntentLeg(LwSquad* q, float dt); static int LwTerritoryGoalOk(const LwSquad* q, int node); static void LwTerritoryTick(void); static void LwIntentTrace(void); static void LwAggroTrace(void); static void LwRetakeScan(void); static void LwTestClear(int seq, uint32_t entity); static void LwRetakeWait(int seq, float s); static void LwRetakeUnfit(int seq); static void LwRetakeTakenCmd(int seq); static int64_t LwFillMasks(uintptr_t desc, float* budget, char* trace, size_t traceLen); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
 {
@@ -583,7 +584,8 @@ static void LwPlan(LwSquad* q)
 {
     int local = g_lwWorld.radius > LW_ROAM;
     int home = LwTerritoryGoalOk(q, -1) && LwUnit() < 0.7f; /* 2d: most goals stay in the home region or a neighbour (D) */
-    for (int tries = 0; tries < (local ? 24 : 8) * (home ? 2 : 1); tries++)
+    int most = (local ? 24 : 8) * (home ? 2 : 1);
+    for (int tries = 0; tries < most; tries++)
     {
         int goal = (int)(LwRand() % (uint32_t)g_lwNodeCount);
         if (home && tries < (local ? 24 : 8) && !LwTerritoryGoalOk(q, goal)) continue; /* then any goal, so the squad never stands still */
@@ -591,6 +593,7 @@ static void LwPlan(LwSquad* q)
         if (g_lwNodes[goal].x * g_lwNodes[goal].x + g_lwNodes[goal].y * g_lwNodes[goal].y > r * r) continue;
         if (local && LwDist2(q->pos, g_lwNodes[goal].x, g_lwNodes[goal].y) > LW_ROAM * LW_ROAM) continue;
         int n = LwPath(q->node, goal, q->path, LW_PATH_MAX);
+        if (n > 0 && q->prevValid && q->path[0] == q->prevNode && tries < most / 2) continue; /* back the way it came: an about-turn (user, real play) */
         if (n > 0) { q->pathLen = (uint8_t)n; q->pathAt = 0; return; }
     }
     q->pathLen = 0; q->pathAt = 0;
@@ -688,7 +691,7 @@ static void LwWalk(LwSquad* q, float dt)
         float dx = t->x - q->pos[0], dy = t->y - q->pos[1], d = sqrtf(dx * dx + dy * dy);
         float nx = d <= step ? t->x : q->pos[0] + dx / d * step, ny = d <= step ? t->y : q->pos[1] + dy / d * step;
         if (LwIntentHold(q, nx, ny)) return; /* Phase 2: an intent squad waits at the spawn band's edge, so it comes online there */
-        if (d <= step) { q->pos[0] = t->x; q->pos[1] = t->y; q->node = q->path[q->pathAt++]; step -= d; }
+        if (d <= step) { q->pos[0] = t->x; q->pos[1] = t->y; q->prevNode = q->node; q->prevValid = 1; q->node = q->path[q->pathAt++]; step -= d; }
         else { q->pos[0] = nx; q->pos[1] = ny; step = 0; }
     }
 }
@@ -1559,8 +1562,8 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         }
     if (q->intent == LW_PATROL && q->pathAt < q->pathLen && LwDist2(at, g_lwNodes[q->path[q->pathAt]].x, g_lwNodes[q->path[q->pathAt]].y) < LW_ARRIVE * LW_ARRIVE)
     {
-        q->node = q->path[q->pathAt++];
-        if (q->jobSet) LwSendGoal(q);
+        q->prevNode = q->node; q->prevValid = 1; q->node = q->path[q->pathAt++];
+        if (q->jobSet) { if (LwSteerOk(q)) LwSendGoal(q); else q->goalPending = 1; } /* a goal would pull members still at alert 1-2 out of the game's own reaction */
         Note("living world: squad %d reached node %u at (%.0f, %.0f); next %s", (int)(q - g_lwSquads), q->node, (double)at[0], (double)at[1],
             q->pathAt < q->pathLen ? "node on its route" : "a new destination");
     }
@@ -1604,6 +1607,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     LwRemoveSquad(q->squad);
     (*removals)++;
     q->state = LW_OFFLINE; q->squad = 0; g_lwWorld.onlineUnits -= q->alive; g_lwWorld.offlined++;
+    q->alerted = 0; q->calmSince = 0; q->goalPending = 0; /* offline it walks its route; the next online stretch starts calm */
     if (swapped) q->retry = now + 60000; /* displaced by a far squad in sight: not straight back */
     int node = LwNearestNode(at[0], at[1]);
     if (node >= 0 && q->intent != LW_PATROL) { q->node = (uint16_t)node; LwIntentOffline(q); }
@@ -2444,6 +2448,7 @@ static void LwSquadsTick(void)
     LwTerritoryTick(); /* Phase 2d: regions, their strength, and the squads' homes */
     LwRetakeScan(); /* Phase 2c: squads retake cleared plain garrisons (every 10 s) */
     LwIntentTrace(); /* test runs only: intent changes and positions for the evidence graphics */
+    if (LwTestTraceOn()) LwAggroTrace();
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
@@ -3112,10 +3117,20 @@ static void LwHitWho(uint32_t e, char* buf, size_t n)
     if (unit && EvpUnitPosition(unit, p)) snprintf(at, sizeof at, ", at (%.1f, %.1f, %.1f)", (double)p[0], (double)p[1], (double)p[2]);
     snprintf(buf, n, "%08X (resource %016llX, alert %u%s%s)", e, (unsigned long long)res, e ? LwAlert(e) : 0u, at, LwOnlineMember(e, &sq) ? ", a loader member" : "");
 }
+/* the hit members whose awareness LwAggroTrace follows (test only): written here, read in the squads tick */
+static struct { volatile LONG member, attacker; ULONGLONG until; } g_lwAggroWatch[8];
+static volatile LONG g_lwAggroNext;
 static uint64_t LwHitApply(uint64_t mgr, uint64_t target, uint64_t kind, uint64_t a4, uint64_t damager, uint64_t attacker, uint64_t creditor, uint64_t amount,
     uint64_t a9, uint64_t a10, uint64_t a11, uint64_t a12, uint64_t a13, uint64_t a14, uint64_t a15, uint64_t info, uint64_t hash, uint64_t a18, uint64_t a19)
 {
     int sq = -1;
+    if (LwOnlineMember((uint32_t)target, &sq))
+    {
+        uint32_t who = LwNetEntity((uint32_t)attacker), w = (uint32_t)InterlockedIncrement(&g_lwAggroNext) % 8;
+        int dup = 0;
+        for (int i = 0; i < 8; i++) if ((uint32_t)g_lwAggroWatch[i].member == (uint32_t)target && GetTickCount64() < g_lwAggroWatch[i].until) dup = 1;
+        if (!dup && who) { g_lwAggroWatch[w].member = (LONG)(uint32_t)target; g_lwAggroWatch[w].attacker = (LONG)who; g_lwAggroWatch[w].until = GetTickCount64() + 3000; }
+    }
     if (LwOnlineMember((uint32_t)target, &sq) && InterlockedIncrement(&g_lwHitNotes) <= 4000)
     {
         char who[3][200];
