@@ -28,6 +28,8 @@ On `dev`, since 0.4.0-beta.
 - **Mods can add attachments to their weapons (SDK 17).** `add_attachment` copies a vanilla magazine, muzzle, optic or
   other item under an id of its own, optionally with the mod's own model, and offers it on weapons mods added. The
   player holds it from the start ([attachments](docs/modding/content.md#attachments-of-your-own)).
+- **Sound banks of a mod's own.** A data spec's `sounds` builds a Wwise bank from WAV files, one event each, routed like
+  a game bank's mixer. `hf_wwise_id` gives an event's id for the records that play it ([sounds](docs/modding/data.md#sounds)).
 - **A weapon's handling records have named fields.** Equipment, Wieldable, Attachable and WeaponCustomization, all of
   WeaponReload and Unit's `unit` can be set by name, so a weapon can name only assets of its own
   ([a weapon of your own](docs/modding/content.md#a-weapon-of-your-own)).

@@ -383,8 +383,8 @@ drum.weapon_count = 1;
 
 ### A weapon of your own
 
-A weapon with no vanilla assets is still an `add_weapon` copy. Its base only lends the engine plumbing: its list of
-components and its network type. `own_all = 1` gives the weapon its own copy of every record, and your mod then sets
+A weapon with no vanilla assets is still an `add_weapon` copy. Its base lends only its list of components and its
+network type. `own_all = 1` gives the weapon its own copy of every record, and your mod then sets
 every field that names an asset or an animation.
 
 1. Choose a base with the same kind of magazine and firing as yours (any magazine-fed arsenal primary for a rifle).
@@ -421,6 +421,7 @@ hf_set(mod, rifle, WeaponCustomization, magazine_unit, HF_U64(api->resource_hash
 - The reload `ability` is engine code that times the reload. Keep a vanilla one and time your clips to it
   ([animations](animations.md)); `duration` scales it.
 - HellForge sets the mastery package in `WeaponCustomization` itself; it has no field.
+- Firing sounds of your own: a `sounds` resource ([data](data.md#sounds)). Reload sounds stay the ability's.
 
 ### The in-game editor
 

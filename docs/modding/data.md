@@ -184,6 +184,30 @@ clips and the state machine that plays them on the weapon's events ([animations]
 node becomes a joint, every mesh draws rigid on its node, and node names give LODs and shadow casters
 ([models](models.md)).
 
+### sounds
+
+`sounds` builds a sound bank of your own from WAV files in the mod folder, with one event per file. Name the bank, list
+its sounds, and name a mixer of a game bank whose routing, 3D placement and distance curve your sounds use.
+
+```json
+{ "sounds": [{ "event": "yourname_rifle_fire", "wav": "sounds/fire.wav", "gain": -3 }],
+  "name": "yourname/your_mod/rifle_sounds",
+  "mixer_bank": "content/audio/wep_cr1_adjudicator", "mixer": "0x2D200575" }
+```
+
+| Field | Value |
+|---|---|
+| `event` | the event's name: letters, digits and `_`, prefixed with yours; its id is `hf_wwise_id(name)` |
+| `wav` | a 16-bit PCM WAV, mono or stereo, 8 to 96 kHz |
+| `gain` | dB added to the sound, -96 to 24 (default 0) |
+| `mixer_bank`, `mixer` | a game bank and one of its root actor-mixers: no parent, its own output bus |
+
+- The bank and its `wwise_dep` take `name`. Put them in the package or bundle that loads with what plays them, such as
+  the weapon's package.
+- A record field that names a sound event takes the id: `hf_set(mod, rifle, ProjectileWeapon, fire_single_audio_event,
+  HF_U32(hf_wwise_id("yourname_rifle_fire")))`.
+- Sounds are stored uncompressed, about 94 KB a second for mono at 48 kHz. Keep them short.
+
 ### Packages of your own
 
 A patch with `package` becomes a whole archive of its own, `data/<id>`, where the id is the hash of the package's name.

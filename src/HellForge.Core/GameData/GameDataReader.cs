@@ -15,7 +15,8 @@ public sealed record ResourceParts(byte[] Main, byte[] Gpu, byte[] Stream);
 public static class ResourceTypes
 {
     public static readonly ulong Unit = Hash("unit"), Material = Hash("material"), Texture = Hash("texture"), Particles = Hash("particles"),
-        Physics = Hash("physics"), Lua = Hash("lua"), Bones = Hash("bones"), StateMachine = Hash("state_machine"), Animation = Hash("animation");
+        Physics = Hash("physics"), Lua = Hash("lua"), Bones = Hash("bones"), StateMachine = Hash("state_machine"), Animation = Hash("animation"),
+        WwiseBank = Hash("wwise_bank"), WwiseDependency = Hash("wwise_dep");
     static readonly string[] Known = ["unit", "material", "texture", "particles", "wwise_bank", "wwise_dep", "wwise_stream", "animation",
         "state_machine", "bones", "physics", "lua", "package", "font", "strings", "entity", "geometry_group", "prefab", "level"];
     static readonly Dictionary<ulong, string> names = Known.ToDictionary(Hash);

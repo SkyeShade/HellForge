@@ -79,6 +79,9 @@ public static class ModDataBuilder
                     case ModelResource model:
                         AddModel(resources, model, added);
                         break;
+                    case SoundsResource sounds:
+                        AddSounds(resources, sounds, added);
+                        break;
                 }
             foreach (var animations in patch.Resources.OfType<AnimationsResource>())
                 AddAnimations(resources, animations, added);
@@ -138,6 +141,21 @@ public static class ModDataBuilder
             added.Add(key);
         }
 
+        // A sound bank and its dependency resource under the bank's name; its mixer comes from the player's game bank.
+        void AddSounds(Dictionary<ResourceKey, ResourceParts> resources, SoundsResource sounds, HashSet<ResourceKey> added)
+        {
+            var mixerBank = Read(new(ResourceTypes.WwiseBank, sounds.MixerBank), "game").Main;
+            (byte[] Bank, byte[] Dependency) built;
+            try { built = SoundBank.Build(sounds.Name, [.. sounds.Sounds.Select(s => new SoundBank.Sound(s.Event, File.ReadAllBytes(Path.Combine(modFolder, s.Wav)), s.Gain))], mixerBank, sounds.Mixer); }
+            catch (InvalidDataException error) { throw new InvalidDataException($"{sounds.Where}: {error.Message}"); }
+            foreach (var (type, data) in new[] { (ResourceTypes.WwiseBank, built.Bank), (ResourceTypes.WwiseDependency, built.Dependency) })
+            {
+                var key = new ResourceKey(type, Hash(sounds.Name));
+                AddResource(resources, sounds.Where, key, new(data, [], []));
+                added.Add(key);
+            }
+        }
+
         // A unit written from the mod's glTF model, and the physics of the game unit it names under its name.
         void AddModel(Dictionary<ResourceKey, ResourceParts> resources, ModelResource model, HashSet<ResourceKey> added)
         {
@@ -180,6 +198,7 @@ public static class ModDataBuilder
                 : [new ResourceKey(copy.Type, copy.From)],
             IncludeResources include => include.Ids.Select(id => new ResourceKey(include.Type, id)),
             ModelResource model => ModelSources(model),
+            SoundsResource sounds => [new ResourceKey(ResourceTypes.WwiseBank, sounds.MixerBank)],
             _ => []
         }).ToHashSet();
         var gameSources = Sources(false);
