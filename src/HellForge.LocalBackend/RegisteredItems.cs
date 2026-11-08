@@ -32,7 +32,9 @@ namespace HellForge.LocalBackend;
 public sealed class RegisteredItems(string path)
 {
     // Name: the name its mod registered it by (a weapon's "unit", a stratagem's "name"), which a mod's warbond names it by.
-    public sealed record Item(uint MixId, uint CopyOf, uint Stable = 0, bool IsDifficulty = false, uint Level = 0, string Mod = "", string Name = "")
+    // Standalone (docs/internals.md "Standalone weapons"): no base (CopyOf 0), and Package is the id its mod chose.
+    public sealed record Item(uint MixId, uint CopyOf, uint Stable = 0, bool IsDifficulty = false, uint Level = 0, string Mod = "", string Name = "",
+        bool Standalone = false, uint Package = 0)
     {
         public bool IsStratagem => Stable != 0;
         // Weapons: the items with children, mastery packages and progress of their own.
@@ -42,7 +44,9 @@ public sealed class RegisteredItems(string path)
     // An attachment a mod added (native/mod-loader/attachments.c): a copy of a vanilla customization item (CopyOf) offered
     // on weapons mods registered. Each weapon gets a child for it, a copy of a vanilla child of the base item, under
     // WeaponChild(attachment, weapon), held whenever the weapon is.
-    public sealed record ModAttachment(uint MixId, uint CopyOf, IReadOnlyList<uint> Weapons);
+    // A standalone one (CopyOf 0) is a child only of the standalone weapons it names, unlocked at mastery Level (0: held
+    // from the start).
+    public sealed record ModAttachment(uint MixId, uint CopyOf, IReadOnlyList<uint> Weapons, bool Standalone = false, uint Level = 0);
 
     // The file's "attachments" (none in an older file).
     public static List<ModAttachment> Attachments(byte[] file)
@@ -52,19 +56,30 @@ public sealed class RegisteredItems(string path)
         {
             using var document = JsonDocument.Parse(file);
             if (!document.RootElement.TryGetProperty("attachments", out var list) || list.ValueKind != JsonValueKind.Array) return [];
-            var attachments = new List<ModAttachment>();
-            foreach (var a in list.EnumerateArray())
-                if (a.TryGetProperty("mixId", out var id) && id.TryGetUInt32(out var mixId) && mixId != 0 && a.TryGetProperty("copyOf", out var copy) &&
-                    copy.TryGetUInt32(out var copyOf) && a.TryGetProperty("weapons", out var weapons) && weapons.ValueKind == JsonValueKind.Array)
-                    attachments.Add(new(mixId, copyOf, [.. weapons.EnumerateArray().Where(w => w.TryGetUInt32(out _)).Select(w => w.GetUInt32())]));
-            return attachments;
+            return [.. list.EnumerateArray().Select(ReadAttachment).OfType<ModAttachment>()];
         }
         catch (JsonException) { return []; }
     }
 
+    static ModAttachment? ReadAttachment(JsonElement a)
+    {
+        if (!a.TryGetProperty("mixId", out var id) || !id.TryGetUInt32(out var mixId) || mixId == 0 ||
+            !a.TryGetProperty("weapons", out var weapons) || weapons.ValueKind != JsonValueKind.Array) return null;
+        List<uint> on = [.. weapons.EnumerateArray().Where(w => w.TryGetUInt32(out _)).Select(w => w.GetUInt32())];
+        if (IsStandalone(a))
+            return a.TryGetProperty("level", out var level) && level.TryGetUInt32(out var unlock) ? new(mixId, 0, on, true, unlock) : null;
+        return a.TryGetProperty("copyOf", out var copy) && copy.TryGetUInt32(out var copyOf) ? new(mixId, copyOf, on) : null;
+    }
+
     // The children a weapon holds for the attachments offered on it.
+    // A standalone attachment above level 0 is held only once its mastery level gives it (OwnItems).
     static IEnumerable<uint> AttachmentChildren(IReadOnlyList<ModAttachment> attachments, uint weapon) =>
-        attachments.Where(a => a.Weapons.Contains(weapon)).Select(a => WeaponChild(a.MixId, weapon));
+        attachments.Where(a => a.Weapons.Contains(weapon) && (!a.Standalone || a.Level == 0)).Select(a => WeaponChild(a.MixId, weapon));
+
+    static IEnumerable<ModAttachment> StandaloneOn(IReadOnlyList<ModAttachment> attachments, uint weapon) =>
+        attachments.Where(a => a.Standalone && a.Weapons.Contains(weapon));
+
+    static bool IsStandalone(JsonElement entry) => entry.TryGetProperty("standalone", out var flag) && flag.ValueKind == JsonValueKind.True;
 
     // The online override capping the difficulty level (its mixId: the client's hash of keys AF218CAC, FAABBEA9).
     public const uint DifficultyCapOverride = 48726272;
@@ -97,6 +112,11 @@ public sealed class RegisteredItems(string path)
         public readonly Dictionary<uint, uint> Parents = [];          // child -> parent
         public readonly Dictionary<uint, uint> StratagemItems = [];   // a stratagem's stable id -> its catalogue item
         public readonly Dictionary<uint, uint> Mastery = [];          // weapon -> its mastery package
+        public readonly HashSet<uint> PackageIds = [];
+        // What every vanilla weapon shares, for standalone weapons: its catalogue item's tags (null: they differ) and its
+        // mastery levels as (level, requirementType, requirement) (null: they differ).
+        public readonly JsonArray? WeaponTags;
+        public readonly List<(uint Level, uint Type, uint Requirement)>? Curve;
 
         public Vanilla(JsonElement catalogue, JsonElement? packages)
         {
@@ -105,6 +125,33 @@ public sealed class RegisteredItems(string path)
             if (packages is not { ValueKind: JsonValueKind.Array } list) return;
             Packages = list.GetArrayLength();
             foreach (var package in list.EnumerateArray()) AddMastery(package);
+            WeaponTags = SharedTags(catalogue);
+            Curve = SharedCurve(list);
+        }
+
+        // A weapon here is a progressionCategory 1 item a mastery package names.
+        JsonArray? SharedTags(JsonElement catalogue)
+        {
+            var tags = catalogue.EnumerateArray().Where(e => Field(e, "progressionCategory") == 1 && !e.TryGetProperty("parentId", out _) &&
+                Field(e, "mixId") is { } id && Mastery.ContainsKey(id)).Select(e => e.TryGetProperty("tags", out var t) ? t.GetRawText() : "").Distinct().ToList();
+            return tags.Count == 1 && tags[0].Length > 0 ? JsonNode.Parse(tags[0]) as JsonArray : null;
+        }
+
+        static List<(uint, uint, uint)>? SharedCurve(JsonElement packages)
+        {
+            List<(uint, uint, uint)>? shared = null;
+            foreach (var package in packages.EnumerateArray().Where(p => Field(p, "type") == 2))
+            {
+                if (!package.TryGetProperty("levels", out var levels) || levels.ValueKind != JsonValueKind.Array) return null;
+                List<(uint, uint, uint)> curve = [];
+                foreach (var step in levels.EnumerateArray())
+                    if (Field(step, "level") is { } level && Field(step, "requirementType") is { } type && Field(step, "requirement") is { } requirement)
+                        curve.Add((level, type, requirement));
+                    else return null;
+                if (shared == null) shared = curve;
+                else if (!shared.SequenceEqual(curve)) return null;
+            }
+            return shared is { Count: > 0 } ? shared : null;
         }
 
         static uint? Field(JsonElement entry, string name) => entry.TryGetProperty(name, out var value) && value.TryGetUInt32(out var id) ? id : null;
@@ -119,6 +166,7 @@ public sealed class RegisteredItems(string path)
 
         void AddMastery(JsonElement package)
         {
+            if (Field(package, "id32") is { } any) PackageIds.Add(any);
             if (Field(package, "type") != 2 || Field(package, "id32") is not { } id32 ||
                 !package.TryGetProperty("requiredItems", out var required) || required.ValueKind != JsonValueKind.Array) return;
             foreach (var weapon in required.EnumerateArray())
@@ -174,19 +222,28 @@ public sealed class RegisteredItems(string path)
             if (session != null && bytes.AsSpan().SequenceEqual(session.File)) return session;
             var loaded = Parse(bytes);
             var keeps = Keeps(bytes);
-            var admitted = Admitted(Prioritized(loaded), keeps);
+            var attachments = Attachments(bytes);
+            var admitted = Admitted(Prioritized(loaded), keeps, attachments);
             Dictionary<uint, MasteryTrack> tracks = [], byWeapon = [];
             if (Game() is { } game)
                 foreach (var item in admitted.Where(i => i.IsWeapon))
-                    if (game.Mastery.TryGetValue(item.CopyOf, out var basePackage) && WeaponMastery.Definition(basePackage) is { } definition)
+                    if (TrackOf(item, game, attachments) is { } track)
                     {
-                        var track = new MasteryTrack(WeaponIds.PackageFor(basePackage, item.CopyOf, item.MixId), definition,
-                            id => game.Parents.TryGetValue(id, out var parent) && parent == item.CopyOf ? Rehome(id, item.CopyOf, item.MixId) : id, item);
                         tracks[track.Package] = track;
                         byWeapon[item.MixId] = track;
                     }
             return session = new Session(bytes, loaded, admitted, tracks, byWeapon, keeps);
         }
+    }
+
+    // A weapon's mastery package: a standalone one's authored, a copy's its base's under the copy's ids.
+    MasteryTrack? TrackOf(Item item, Vanilla game, IReadOnlyList<ModAttachment> attachments)
+    {
+        if (item.Standalone)
+            return game.Curve is { } curve ? new MasteryTrack(item.Package, StandaloneDefinition(item, curve, attachments), id => id, item) : null;
+        if (!game.Mastery.TryGetValue(item.CopyOf, out var basePackage) || WeaponMastery.Definition(basePackage) is not { } definition) return null;
+        return new MasteryTrack(WeaponIds.PackageFor(basePackage, item.CopyOf, item.MixId), definition,
+            id => game.Parents.TryGetValue(id, out var parent) && parent == item.CopyOf ? Rehome(id, item.CopyOf, item.MixId) : id, item);
     }
 
     byte[] ReadFile()
@@ -245,9 +302,9 @@ public sealed class RegisteredItems(string path)
     // One entry of the file: a weapon, a stratagem or a difficulty, or null for one that is malformed or waits (copyOf 0).
     static Item? Read(JsonElement item)
     {
-        if (!item.TryGetProperty("mixId", out var id) || !id.TryGetUInt32(out var mixId) || mixId == 0 ||
-            !item.TryGetProperty("copyOf", out var copy) || !copy.TryGetUInt32(out var copyOf))
-            return null;
+        if (!item.TryGetProperty("mixId", out var id) || !id.TryGetUInt32(out var mixId) || mixId == 0) return null;
+        if (IsStandalone(item)) return ReadStandalone(item, mixId);
+        if (!item.TryGetProperty("copyOf", out var copy) || !copy.TryGetUInt32(out var copyOf)) return null;
         if (item.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "stratagem")
             return copyOf != 0 && item.TryGetProperty("stable", out var stable) && stable.TryGetUInt32(out var stableId) && stableId != 0
                 ? new Item(mixId, copyOf, stableId, Mod: ModOf(item), Name: NameOf(item, "name")) : null;
@@ -256,6 +313,11 @@ public sealed class RegisteredItems(string path)
                 ? new Item(mixId, copyOf, IsDifficulty: true, Level: levelValue, Mod: ModOf(item)) : null;
         return new Item(mixId, copyOf, Mod: ModOf(item), Name: NameOf(item, "unit"));
     }
+
+    // Only primaries have a contract so far; another class is malformed until it has one.
+    static Item? ReadStandalone(JsonElement item, uint mixId) =>
+        NameOf(item, "class") == "primary" && item.TryGetProperty("package", out var own) && own.TryGetUInt32(out var package) && package != 0
+            ? new Item(mixId, 0, Mod: ModOf(item), Name: NameOf(item, "unit"), Standalone: true, Package: package) : null;
 
     // The client's ids (HellForge.Core WeaponIds).
     public static uint WeaponChild(uint attachment, uint weapon) => WeaponIds.WeaponChild(attachment, weapon);
@@ -292,25 +354,45 @@ public sealed class RegisteredItems(string path)
     // (Source), every item.
     public IReadOnlyList<Item> Admitted(IReadOnlyList<Item> items) => Admitted(items, Capacity.Game);
 
-    public IReadOnlyList<Item> Admitted(IReadOnlyList<Item> items, Capacity keeps)
+    public IReadOnlyList<Item> Admitted(IReadOnlyList<Item> items, Capacity keeps, IReadOnlyList<ModAttachment>? attachments = null)
     {
         if (Game() is not { } game) return items;
         int room = keeps.Items - game.Items - ReservedCatalogue, packageRoom = keeps.Packages - game.Packages;
         var admitted = new List<Item>();
+        HashSet<uint> packages = [.. game.PackageIds];
         foreach (var item in items)
         {
-            var cost = item.IsStratagem ? 2 : 1 + game.Children.GetValueOrDefault(item.CopyOf);
-            var package = item.IsWeapon && game.Mastery.ContainsKey(item.CopyOf) ? 1 : 0;
+            if (item.Standalone && StandaloneRefusal(item, game, packages) is { } refused)
+            {
+                Report(item, refused);
+                continue;
+            }
+            var (cost, package) = Needs(item, game, attachments ?? []);
             if (cost <= room && package <= packageRoom)
             {
                 (room, packageRoom) = (room - cost, packageRoom - package);
                 admitted.Add(item);
+                if (item.Standalone) packages.Add(item.Package);
             }
             else Report(item, cost > room ? $"the game keeps {keeps.Items} catalogue items, and it needs {cost} more where {room} are left"
                 : $"the game keeps {keeps.Packages} progression packages, and none is left for its mastery package");
         }
         return admitted;
     }
+
+    // The catalogue items and progression packages an item takes: a weapon's item and its children, and its package.
+    static (int Items, int Packages) Needs(Item item, Vanilla game, IReadOnlyList<ModAttachment> attachments)
+    {
+        if (item.IsStratagem) return (2, 0);
+        if (item.Standalone) return (1 + StandaloneOn(attachments, item.MixId).Count(), 1);
+        return (1 + game.Children.GetValueOrDefault(item.CopyOf), item.IsWeapon && game.Mastery.ContainsKey(item.CopyOf) ? 1 : 0);
+    }
+
+    // A standalone weapon needs the mastery levels every vanilla weapon shares (it reads no single weapon's) and a package
+    // id of its own: two packages under one id would share one progress.
+    static string? StandaloneRefusal(Item item, Vanilla game, HashSet<uint> packages) =>
+        game.Curve == null ? "the vanilla weapons' mastery levels differ, so it has none to take" :
+        packages.Contains(item.Package) ? $"its mastery package {item.Package} is another package's id" : null;
 
     void Report(Item item, string why)
     {
@@ -339,10 +421,10 @@ public sealed class RegisteredItems(string path)
         switch (path)
         {
             case "/Progression/items" when node is JsonArray catalogue:
-                AddCatalogue(catalogue, items, Attachments(current.File));
+                AddCatalogue(catalogue, items, Attachments(current.File), StandaloneTags(items));
                 break;
             case "/Progression/ProgressionPackages" when node is JsonArray packages:
-                AddPackages(packages, items);
+                AddPackages(packages, current);
                 break;
             case "/Progression" when node is JsonObject progression:
                 AddProgress(progression, current);
@@ -368,7 +450,7 @@ public sealed class RegisteredItems(string path)
         node is JsonObject o && o[name] is JsonValue v && v.GetValueKind() == JsonValueKind.Number &&
         uint.TryParse(v.ToJsonString(), out var id) ? id : null;
 
-    static void AddCatalogue(JsonArray catalogue, IReadOnlyList<Item> items, IReadOnlyList<ModAttachment> attachments)
+    static void AddCatalogue(JsonArray catalogue, IReadOnlyList<Item> items, IReadOnlyList<ModAttachment> attachments, JsonArray tags)
     {
         var known = catalogue.Select(i => Id(i, "mixId")).ToHashSet();
         var index = new CatalogueIndex(catalogue);
@@ -376,16 +458,80 @@ public sealed class RegisteredItems(string path)
             if (item.IsStratagem) AddStratagem(catalogue, item, known, index.Stratagems, index.Parents);
             else
             {
-                AddWeapon(catalogue, item, known, index);
+                if (item.Standalone) AddStandaloneWeapon(catalogue, item, known, attachments, tags);
+                else AddWeapon(catalogue, item, known, index);
                 if (item.IsWeapon) AddAttachmentChildren(catalogue, item, known, index, attachments);
             }
+    }
+
+    bool tagsReported;
+
+    // The class's tags: those every vanilla weapon's item has. They differ in the game's data (warbond tags, or none), and
+    // then a standalone weapon gets none rather than one weapon's.
+    JsonArray StandaloneTags(IReadOnlyList<Item> items)
+    {
+        if (!items.Any(i => i.Standalone)) return [];
+        if (Game()?.WeaponTags is { } tags) return (JsonArray)tags.DeepClone();
+        lock (reported)
+            if (tagsReported) return [];
+            else tagsReported = true;
+        Log("The vanilla weapons' catalogue items do not share one set of tags: standalone weapons are served with none.");
+        return [];
+    }
+
+    // Authored from the entry and its standalone attachments alone, with the fields every vanilla weapon item and child has
+    // (an unseen field layout risks the client's parse): no price, no level, not consumable. The run of children follows it.
+    static void AddStandaloneWeapon(JsonArray catalogue, Item item, HashSet<uint?> known, IReadOnlyList<ModAttachment> attachments, JsonArray tags)
+    {
+        catalogue.Add((JsonNode?)CatalogueItem(item.MixId, null, item.MixId, 1, tags));
+        known.Add(item.MixId);
+        foreach (var a in StandaloneOn(attachments, item.MixId))
+            if (known.Add(WeaponChild(a.MixId, item.MixId)))
+                catalogue.Add((JsonNode?)CatalogueItem(a.MixId, item.MixId, WeaponChild(a.MixId, item.MixId), 2, []));
+    }
+
+    static JsonObject CatalogueItem(uint itemId, uint? parent, uint mixId, int category, JsonArray tags)
+    {
+        var entry = new JsonObject { ["itemId"] = itemId };
+        if (parent is { } parentId) entry["parentId"] = parentId;
+        entry["mixId"] = mixId;
+        entry["isConsumable"] = false;
+        entry["requiredLevel"] = 0;
+        entry["progressionCategory"] = category;
+        entry["tags"] = tags;
+        entry["requiredItems"] = new JsonArray();
+        entry["buyPrice"] = new JsonArray();
+        entry["sellPrice"] = new JsonArray();
+        return entry;
+    }
+
+    // A standalone weapon's mastery package (type 2, named by requiredItems as every weapon's is): the shared levels, each
+    // with every field a vanilla level has. An attachment's level gives its child as a type 1 reward, which the client
+    // (0x1369860) and WeaponMastery.Earn grant on reaching it; vanilla unlockableItems always carry a price, and these have
+    // none. Level 0 is not a package level: those children are held from the start (AttachmentChildren).
+    JsonElement StandaloneDefinition(Item item, List<(uint Level, uint Type, uint Requirement)> curve, IReadOnlyList<ModAttachment> attachments)
+    {
+        var on = StandaloneOn(attachments, item.MixId).ToList();
+        foreach (var a in on.Where(a => a.Level > curve[^1].Level))
+            Log($"{(item.Mod.Length > 0 ? item.Mod + "'s " : "")}attachment {a.MixId} unlocks at level {a.Level}, past weapon {item.MixId}'s last ({curve[^1].Level}): it is never held.");
+        var levels = new JsonArray();
+        foreach (var (level, type, requirement) in curve)
+            levels.Add((JsonNode?)new JsonObject
+            {
+                ["level"] = level, ["requirementType"] = type, ["requirement"] = requirement,
+                ["rewards"] = new JsonArray([.. on.Where(a => a.Level == level).Select(a => (JsonNode?)new JsonObject { ["type"] = 1, ["id32"] = WeaponChild(a.MixId, item.MixId), ["amount"] = 1 })]),
+                ["cost"] = new JsonArray(), ["unlockableItems"] = new JsonArray(),
+            });
+        var package = new JsonObject { ["id32"] = item.Package, ["type"] = 2, ["requiredItems"] = new JsonArray(item.MixId), ["levels"] = levels };
+        using var document = JsonDocument.Parse(package.ToJsonString());
+        return document.RootElement.Clone();
     }
 
     // After the weapon's own children (the client links a child to the run of its parent): a copy of a vanilla child of
     // each attachment's base, as the attachment's child of this weapon.
     static void AddAttachmentChildren(JsonArray catalogue, Item item, HashSet<uint?> known, CatalogueIndex index, IReadOnlyList<ModAttachment> attachments)
     {
-        foreach (var a in attachments.Where(a => a.Weapons.Contains(item.MixId)))
+        foreach (var a in attachments.Where(a => !a.Standalone && a.Weapons.Contains(item.MixId)))
         {
             var mixId = WeaponChild(a.MixId, item.MixId);
             if (!index.ChildOfItem.TryGetValue(a.CopyOf, out var template) || !known.Add(mixId)) continue;
@@ -458,15 +604,20 @@ public sealed class RegisteredItems(string path)
         known.Add(WeaponChild(item.Stable, item.MixId));
     }
 
-    void AddPackages(JsonArray packages, IReadOnlyList<Item> items)
+    void AddPackages(JsonArray packages, Session current)
     {
+        var items = current.Admitted;
+        var ids = packages.Select(p => Id(p, "id32")).ToHashSet();
+        foreach (var item in items.Where(i => i.Standalone))
+            if (current.ByWeapon.TryGetValue(item.MixId, out var track) && ids.Add(track.Package))
+                packages.Add(JsonNode.Parse(track.Definition.GetRawText()));
         // Each weapon's package, by weapon, and the base's children, which a copy's package names by its own ids.
         Dictionary<uint, JsonObject> mastery = [];
         foreach (var package in packages.OfType<JsonObject>().Where(p => Id(p, "type") == 2))
             foreach (var weapon in (package["requiredItems"] as JsonArray ?? []).OfType<JsonValue>())
                 if (uint.TryParse(weapon.ToJsonString(), out var id)) mastery.TryAdd(id, package);
         var children = Game()?.Parents ?? [];
-        foreach (var item in items.Where(i => i.IsWeapon))
+        foreach (var item in items.Where(i => i.IsWeapon && !i.Standalone))
         {
             if (!mastery.TryGetValue(item.CopyOf, out var source) || mastery.ContainsKey(item.MixId)) continue;
             var copy = source.DeepClone().AsObject();
@@ -532,7 +683,7 @@ public sealed class RegisteredItems(string path)
         foreach (var item in current.Admitted.Where(i => !Locked(i) && !withheld.Contains(i.MixId) && (!i.IsDifficulty || have.Contains(i.CopyOf)))) /* a difficulty not before level 10 is unlocked */
         {
             var own = HeldWith(item, current, saved, attachments);
-            var mirrored = item.IsWeapon && !current.ByWeapon.ContainsKey(item.MixId) ? heldChildren.GetValueOrDefault(item.CopyOf) ?? [] : [];
+            var mirrored = item.IsWeapon && !item.Standalone && !current.ByWeapon.ContainsKey(item.MixId) ? heldChildren.GetValueOrDefault(item.CopyOf) ?? [] : [];
             var entries = (have.Contains(item.MixId) ? 0 : 1) + own.Count + mirrored.Count;
             if (held.Count + entries > keeps)
             {
@@ -589,7 +740,7 @@ public sealed class RegisteredItems(string path)
     bool Locked(Item item)
     {
         if (LockedMods.Contains(item.Mod)) return true;
-        if (OwnsBase == null || item.IsDifficulty) return false;
+        if (OwnsBase == null || item.IsDifficulty || item.Standalone) return false;
         return BaseItem(item) is not { } baseItem || !OwnsBase(baseItem);
     }
 

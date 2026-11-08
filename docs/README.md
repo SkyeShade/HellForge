@@ -63,6 +63,8 @@ Reference and related pages:
   spec builds.
 - [How Difficulty 11 is implemented](internals-difficulty.md): how add_difficulty adds level 11 after Super Helldive,
   which game tables move or grow, and what each part of the level changes.
+- [Standalone weapons in the backend](internals-standalone-weapons.md): how the local backend serves a mod weapon
+  with no base: its catalogue item, children, mastery package and inventory.
 - [Stats, live editing and events](internals-live.md): the stats pass at load, live editing, the in-game editor and live
   pipe, event sources and native edits.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in
