@@ -4127,7 +4127,7 @@ static void MemProfReport(void)
  * node at the head of the list [exe+0x1B13180] = {head, CRITICAL_SECTION +8} (0x5C2C83..0x5C2CB5: next +0x10, the old
  * head's prev +0x18); the allocation 0x5C2E10 adds to the live count +0x28 and live bytes +0x30 (lock xadd at 0x5C2E51,
  * 0x5C2E63); peak bytes +0x40. Each memory note then lists the eight largest changes since the last note by name. */
-#define WORLD_ALLOCS 1024
+#define WORLD_ALLOCS 8192
 static struct { uintptr_t node, name; LONG64 bytes; } g_allocPrev[WORLD_ALLOCS];
 static int g_allocPrevN, g_allocOn = -1;
 static void WorldAllocNote(const char* where)
@@ -4147,8 +4147,14 @@ static void WorldAllocNote(const char* where)
     static struct { uintptr_t node, name; LONG64 bytes; } now[WORLD_ALLOCS];
     int n = 0;
     EnterCriticalSection((CRITICAL_SECTION*)(list + 8));
-    for (uintptr_t node = *(volatile uintptr_t*)list; node != 0 && n < WORLD_ALLOCS; node = *(volatile uintptr_t*)(node + 0x10))
-    { now[n].node = node; now[n].name = *(volatile uintptr_t*)(node + 8); now[n].bytes = *(volatile LONG64*)(node + 0x30); n++; }
+    /* the list also holds other classes (TaggedHeapAllocator and the like, and short-lived allocators on stacks: the unlink
+     * at 0x59DFE..0x59E7F); only the tracking class (vtable exe+0x168B5A0, set at 0x5C2CD4) keeps live bytes at +0x30 */
+    int others = 0, walked = 0;
+    for (uintptr_t node = *(volatile uintptr_t*)list; node != 0 && n < WORLD_ALLOCS && walked < 65536; node = *(volatile uintptr_t*)(node + 0x10), walked++)
+    {
+        if (*(volatile uintptr_t*)node != exe + 0x168B5A0u) { others++; continue; }
+        now[n].node = node; now[n].name = *(volatile uintptr_t*)(node + 8); now[n].bytes = *(volatile LONG64*)(node + 0x30); n++;
+    }
     LeaveCriticalSection((CRITICAL_SECTION*)(list + 8));
     LONG64 total = 0, delta[8]; int top[8], k = 0;
     static LONG64 d[WORLD_ALLOCS];
@@ -4156,7 +4162,16 @@ static void WorldAllocNote(const char* where)
     {
         total += now[i].bytes;
         LONG64 before = 0;
-        for (int j = 0; j < g_allocPrevN; j++) if (g_allocPrev[j].node == now[i].node) { before = g_allocPrev[j].bytes; break; }
+        /* the list changes little between notes: the same place first, then nearby, then all */
+        int hit = -1;
+        for (int w = 0; w <= 8 && hit < 0; w++)
+        {
+            int j1 = i + w, j2 = i - w;
+            if (j1 < g_allocPrevN && g_allocPrev[j1].node == now[i].node) hit = j1;
+            else if (w && j2 >= 0 && j2 < g_allocPrevN && g_allocPrev[j2].node == now[i].node) hit = j2;
+        }
+        for (int j = 0; j < g_allocPrevN && hit < 0; j++) if (g_allocPrev[j].node == now[i].node) hit = j;
+        if (hit >= 0) before = g_allocPrev[hit].bytes;
         d[i] = now[i].bytes - before;
     }
     for (k = 0; k < 8; k++) /* the eight largest |changes| of at least 1 MB */
@@ -4178,7 +4193,8 @@ static void WorldAllocNote(const char* where)
         for (char* c = name; *c; c++) if ((unsigned char)*c < 0x20 || (unsigned char)*c > 0x7E) { *c = 0; break; }
         at += (size_t)snprintf(line + at, sizeof line - at, "%s %s %+lld MB (now %lld)", m ? ";" : "", name, (long long)(delta[m] >> 20), (long long)(now[top[m]].bytes >> 20));
     }
-    Note("difficulty: allocators (%s): %d named, %lld MB live in all; changes over 1 MB since the last note:%s", where, n, (long long)(total >> 20), k ? line : " none");
+    Note("difficulty: allocators (%s): %d tracking (%d other nodes%s), %lld MB live in all; changes over 1 MB since the last note:%s", where, n, others,
+        walked >= 65536 ? ", the walk stopped at 65536" : "", (long long)(total >> 20), k ? line : " none");
     memcpy(g_allocPrev, now, sizeof(now[0]) * (size_t)n); g_allocPrevN = n;
 }
 
