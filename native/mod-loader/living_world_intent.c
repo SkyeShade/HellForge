@@ -170,15 +170,15 @@ static void LwHearReadBack(const LwSquad* q, uint32_t member, uint32_t source)
             snprintf(entry, sizeof entry, "entry %u of %u: hearing %.1f, flags %X, heard at %llu", i, count, (double)level, EvpU32(e + 0x48, 0), (unsigned long long)heard);
         }
     }
-    /* the awareness update's own detector: [Behavior record + 0x60] (0x7ECF70 = the Behavior hash [game+0x3326740] +0x40,
-     * records [+0x60] + 0x1F8 idx; read at 0x7EB262, "none" [0x3483C4C] skips the unit at 0x7EB2D5); and its gate in the
+    /* the awareness update's own detector: [Behavior record + 0x68] (0x7ECF70 = the Behavior hash [game+0x3326740] +0x40,
+     * returns [+0x60] + 0x1F8 idx + 8 (0x7ED005), and 0x7EB262 reads +0x60 from that; read at 0x7EB262, "none" [0x3483C4C] skips the unit at 0x7EB2D5); and its gate in the
      * AiEnemy update: local behaviour state ([+0x2358] + 0xC0 idx) equal to the synced one ([+0x2360] + 20 idx) before
      * the state's handler (state 3: 0xAA1260, which calls 0x7EB000 at 0xAA1285) runs (0x7E7A5B) */
     uintptr_t beh = 0, brecs = 0, ai = 0, loc = 0, syn = 0; uint32_t bi = 0, ei = 0, bdet = 0xFFFFFFFFu, local = 0xFFFFFFFFu, synced = 0xFFFFFFFFu;
-    if (EvpPtr(g_lw.game + 0x3326740u, &beh) && EvpHash(beh + 0x40, member, 8, 4, &bi) && EvpPtr(beh + 0x60, &brecs)) bdet = EvpU32(brecs + 0x1F8ull * bi + 0x60, 0xFFFFFFFFu);
+    if (EvpPtr(g_lw.game + 0x3326740u, &beh) && EvpHash(beh + 0x40, member, 8, 4, &bi) && EvpPtr(beh + 0x60, &brecs)) bdet = EvpU32(brecs + 0x1F8ull * bi + 0x68, 0xFFFFFFFFu);
     if (EvpPtr(g_lw.game + 0x33266C8u, &ai) && EvpHash(ai + 0x2330, member, 8, 4, &ei) && EvpPtr(ai + 0x2358, &loc) && EvpPtr(ai + 0x2360, &syn))
     { local = EvpU32(loc + 0xC0ull * ei, 0xFFFFFFFFu); synced = EvpU32(syn + 20ull * ei, 0xFFFFFFFFu); }
-    Note("living world: squad %d: the hearing write on member %08X: %s, entity flag %u; source %08X tags %s (bit 25 %s); %s; Behavior +0x60 detector %08X; behaviour state %u, synced %u", (int)(q - g_lwSquads), member,
+    Note("living world: squad %d: the hearing write on member %08X: %s, entity flag %u; source %08X tags %s (bit 25 %s); %s; Behavior +0x68 detector %08X; behaviour state %u, synced %u", (int)(q - g_lwSquads), member,
         inHash ? "in the detector hash" : "NOT in the detector hash", owned, source, tagged ? "read" : "not read", tagged ? ((tag >> 25) & 1 ? "set" : "clear") : "-", entry, bdet, local, synced);
 }
 /* an online squad with an intent, each tick after its members were read */
