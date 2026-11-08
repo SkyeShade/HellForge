@@ -743,7 +743,7 @@ static int LwRetakeApply(LwSquad* q, LwGarrison* g)
         {
             uint32_t gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0, bit = 1u << (p % 32), w = p / 32;
             if (allow[w] & bit || gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4)) continue;
-            if ((flags & 0x320) || ((flags & 0x40) && !(g->marked[w] & bit))) continue; /* phase A / objective / structure points; held by the game */
+            if ((flags & 0x220) || ((flags & 0x40) && !(g->marked[w] & bit))) continue; /* objective / structure points; held by the game. Phase A (0x100) refills like phase B: 0x90E400..0x90E427 skips only bit 6 */
             int taken = (g->taken[w] & bit) != 0, uset = (u[w] & bit) != 0;
             if (pass == 0 ? (taken || !uset) : pass == 1 ? (!taken || !uset) : (!taken || uset)) continue;
             allow[w] |= bit; chosen++;
