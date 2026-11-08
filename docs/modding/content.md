@@ -377,7 +377,50 @@ drum.weapon_count = 1;
 - Its deltas are the base's: the same magazine size, recoil or zoom. Change them with the weapon's own records.
 - A unit replaces the base's model only. The weapon's unit needs the `attach_mag`, `attach_muzzle` or `attach_optic`
   joint ([models](models.md)).
+- Its unit must load with the weapon. Put it in the weapon's own package ([a weapon of your own](#a-weapon-of-your-own))
+  or in a session package. The game finds the package of a vanilla attachment's unit, but not of yours.
 - At most 128 attachments across all mods.
+
+### A weapon of your own
+
+A weapon with no vanilla assets is still an `add_weapon` copy. Its base only lends the engine plumbing: its list of
+components and its network type. `own_all = 1` gives the weapon its own copy of every record, and your mod then sets
+every field that names an asset or an animation.
+
+1. Choose a base with the same kind of magazine and firing as yours (any magazine-fed arsenal primary for a rifle).
+2. Build the unit, its textures and its attachment units into one package of your own ([data](data.md#packages-of-your-own)).
+   Give the unit the joints the game looks for: `attach_muzzle`, `attach_optic`, `attach_mag`, `attach_underbarrel` and
+   the `sight` the optic aims along. The hand and sling joints Equipment names are the Helldiver's.
+3. Point the weapon's LoadoutPackage record at that package. The armory and the mission load it with the weapon, in
+   place of the base's. So the package also holds what the records still name from the base, such as casings,
+   muzzle flash and sound banks.
+4. Set the records below from `hellforge_mod_init`, as deferred edits. They apply each time the game loads its entities.
+
+```c
+HfRef rifle = api->weapon_entity(id); /* id: what add_weapon returned, with own_all = 1 */
+hf_set(mod, rifle, LoadoutPackage, package, HF_U64(api->resource_hash("yourname/your_mod/rifle")));
+hf_set(mod, rifle, Equipment, grip_type, HF_U32(10));
+hf_set(mod, rifle, WeaponReload, ability, HF_U32(2785));
+hf_set(mod, rifle, WeaponCustomization, magazine_unit, HF_U64(api->resource_hash("yourname/your_mod/magazine")));
+```
+
+| Record | Fields that name your assets or animations |
+|---|---|
+| `Unit` | `unit` (`HfWeapon.unit` sets it) |
+| `LoadoutPackage` | `package`, `audio_resource` |
+| `Equipment` | `wield_node`, `holster_node` and their offsets, `grip_type`, the `_animation` events, `left_hand_node` |
+| `Wieldable` | `allow_ads`, the `_event` fields |
+| `WeaponReload` | `ability`, `event_type_`, `weapon_event_` and `wielder_event_` 0 to 3, `duration` |
+| `WeaponCustomization` | `slots`, `defaults`, `magazine_unit`, `muzzle_unit`, `optics_unit`, `magazine_adjusting_nodes` |
+| `Attachable` | `dynamic_actor`: a physics actor of your unit |
+| `WeaponData`, `ProjectileWeapon`, `WeaponMagazine` | fire nodes, events, projectile, casings, capacity |
+
+- Fields that hold a name, such as a joint or an animation event, take its thin hash: `api->resource_hash(name) >> 32`.
+- `grip_type` picks the Helldiver's hold: 10 rifle, 14 plasma rifle, 15 marksman rifle, 70 PDW, 80 pump shotgun,
+  90 bullpup rifle.
+- The reload `ability` is engine code that times the reload. Keep a vanilla one and time your clips to it
+  ([animations](animations.md)); `duration` scales it.
+- HellForge sets the mastery package in `WeaponCustomization` itself; it has no field.
 
 ### The in-game editor
 
