@@ -11,7 +11,9 @@
       ],
       "meaning": "The Game: the session's top object, whose state the game's ChangeState (game.dll+0xAB2FA0) sets",
       "fields": {
-        "state": {"offset": "0xAC21C", "type": "u32", "meaning": "the game's state (HF_STATE_...; hf->game_state reads it)"}
+        "wwise_world": {"offset": "0x10F8", "type": "ptr", "meaning": "the WwiseWorld: +0x4148 its default source (u32), heard everywhere"},
+        "state": {"offset": "0xAC21C", "type": "u32", "meaning": "the game's state (HF_STATE_...; hf->game_state reads it)"},
+        "level": {"offset": "0xAE288", "type": "ptr", "meaning": "the mission's level (the level generator, lg): +0xF9 its difficulty level (u8), +0x2C8 its generation block, +0x2D70 the playable radius / 1024 (f32)"}
       },
       "source": "HD2Runtime 0.40.1 research event-state; HellForge's HF_ON_STATE poll (event_sources.c)"
     },
@@ -35,7 +37,8 @@
       ],
       "meaning": "This machine's user",
       "fields": {
-        "peer": {"offset": "0xB398", "type": "u64", "meaning": "this machine's player's peer id (HfPlayerEvent.peer)"}
+        "peer": {"offset": "0xB398", "type": "u64", "meaning": "this machine's player's peer id (HfPlayerEvent.peer)"},
+        "host_peer": {"offset": "0xB3A8", "type": "u64", "meaning": "the game's host's peer id (it changes with a host migration)"}
       },
       "source": "HD2Runtime 0.40.1 research event-mission; HellForge's local player (event_sources.c)"
     },
@@ -59,7 +62,13 @@
         {"rva": "0xBA0F5", "code": "48 8B 0D 9C 1E 3B 03 8B 50 08 E8 0C"}
       ],
       "meaning": "The entities of this machine's world. At +0xF22EC8 a hash map of network ids to slots (8-byte keys, 4-byte values), and at +0xF32F20 the network objects by slot, 24 bytes each (+0 the entity id, u32); at +0xF1AEB0 the map of entity ids, at +0xF32F18 their descriptors",
-      "source": "HD2Runtime 0.40.1 research event-combat; HellForge's event polls (event_polls.c)"
+      "source": "HD2Runtime 0.40.1 research event-combat; HellForge's event polls (event_polls.c)",
+      "fields": {
+        "component_tables": {"offset": "0xF12478", "type": "ptr", "meaning": "component table 0; table c's pointer at +8 c: rows {u64 entity, u32 record, u32 0} from entity % slots, then the records"},
+        "entity_deltas": {"offset": "0xF12E98", "type": "ptr", "meaning": "the entity deltas a weapon's chosen attachments key into (by their add_path); reloaded at every use"},
+        "entity_map": {"offset": "0xF12EA0", "type": "ptr", "meaning": "the entity map: 4096 rows of {u64 entity, u16* components, u64 component count, u32 short id, u32 0}, from entity % 4096"},
+        "short_ids": {"offset": "0xF12EA8", "type": "ptr", "meaning": "the short ids: sorted {u32 short id, u32 map row}; an entity's index here is its type in the engine"}
+      }
     },
     "HealthManager": {
       "rva": "0x3326688",
@@ -86,7 +95,9 @@
       "fields": {
         "count": {"offset": "0x4880", "type": "u32", "meaning": "indexes in use"},
         "descriptors": {"offset": "0x48B8", "type": "ptr", "meaning": "an array of descriptor pointers, by index"},
-        "records": {"offset": "0x48C8", "type": "ptr", "meaning": "the motion records, 0x84 bytes each, by index"}
+        "records": {"offset": "0x48C8", "type": "ptr", "meaning": "the motion records, 0x84 bytes each, by index"},
+        "positions": {"offset": "0x48D0", "type": "ptr", "meaning": "0xA4 bytes per index: the position (3 floats) MoveObject writes"},
+        "sources": {"offset": "0x48D8", "type": "ptr", "meaning": "0x2C bytes per index: the position motion starts from each frame (3 floats; relative for an object riding a parent, the record's +0x3C not -1)"}
       },
       "source": "HD2Runtime 0.40.1 research player-avatar-actions; HellForge's add_velocity (actions.c)"
     },
@@ -168,6 +179,7 @@
       ],
       "meaning": "The world's destructible objects. Their descriptor pointers at +0x4030 and world indexes at +0x6030, one per destructible",
       "fields": {
+        "index": {"offset": "0x0", "type": "ptr", "meaning": "the destructible index's holder: at +0x2C68 its table of 16-byte entries {u64 unit name, u64 the unit's destruction settings}, at +0x2C70 its capacity (u32, a power of two), probed from (i + 2 name) & (capacity - 1)"},
         "count": {"offset": "0xC", "type": "u32", "meaning": "destructibles"}
       },
       "source": "HD2Runtime 0.40.1 research event-destruction; HellForge's HF_ON_BUGHOLE poll (event_polls.c)"
@@ -179,7 +191,531 @@
         {"rva": "0x4C5B4F", "code": "48 8B 1D D2 79 FA 02 66 66 0F 1F 84"}
       ],
       "meaning": "The destruction state of the world's destructibles: records of 12 bytes at +0xC5F78 by world index (+0 unit, +7 stage u8, +8 bit 0 registered)",
-      "source": "HD2Runtime 0.40.1 research event-destruction; HellForge's HF_ON_BUGHOLE poll (event_polls.c)"
+      "source": "HD2Runtime 0.40.1 research event-destruction; HellForge's HF_ON_BUGHOLE poll (event_polls.c)",
+      "fields": {
+        "slots": {"offset": "0xC5F48", "type": "ptr", "meaning": "the record map's slots (0x8000 inline at +0x5F48)"},
+        "slot_count": {"offset": "0xC5F50", "type": "u32", "meaning": "the record map's slots (a power of two; mask count - 1)"},
+        "empty_key": {"offset": "0xC5F54", "type": "u32", "meaning": "the record map's empty key"}
+      }
+    },
+    "DepositManager": {
+      "rva": "0x33265E8",
+      "witnesses": [
+        {"rva": "0x4A5A7B", "code": "48 8B 05 66 0B E8 02 45 33 C0 48 89"},
+        {"rva": "0x4B653D", "code": "48 8B 1D A4 00 E7 02 45 33 DB 4C 8B"}
+      ],
+      "meaning": "Entities that hand out supplies (a Supply Pack). At +0x20 a map of entities to deposits; at +0x60 a map of entities to definition overrides",
+      "fields": {
+        "amounts": {"offset": "0x50", "type": "ptr", "meaning": "8 bytes per deposit: +0 the supplies left (u32)"},
+        "definitions": {"offset": "0xA0", "type": "ptr", "meaning": "the overriding definitions, 0x98 bytes each (+0x24 the self-use ability: 2629 for the B-1 Supply Pack)"}
+      },
+      "source": "HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c)"
+    },
+    "ActionManager": {
+      "rva": "0x3326D20",
+      "witnesses": [
+        {"rva": "0x289F36", "code": "48 8B 15 E3 CD 09 03 33 DB F2 44 0F"},
+        {"rva": "0x289FC8", "code": "48 8B 15 51 CD 09 03 FF C3 3B 5A 6C"}
+      ],
+      "meaning": "The entities' actions. At +0xF8 a map of entities to indexes; descriptor pointers at +0x110 + 8 index (+8 the entity); each index's action context at +0x53E170 + 0x1238 index (+0 the entity, +8 the running action, TryStartAction's first argument) and its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride",
+      "source": "HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c)"
+    },
+    "WieldableManager": {
+      "rva": "0x3326730",
+      "witnesses": [
+        {"rva": "0x4AAD2B", "code": "48 8B 05 FE B9 E7 02 45 33 C0 48 89"},
+        {"rva": "0x4AADBA", "code": "4C 8B 15 6F B9 E7 02 75 14 B8 FF FF"}
+      ],
+      "meaning": "Wieldable items (weapons). At +0x18 a map of entities to indexes",
+      "fields": {
+        "wielders": {"offset": "0x38", "type": "ptr", "meaning": "the wielder of each index (u32 entity each)"}
+      },
+      "source": "HellForge's credit_to_player (actions.c) and co-op shot swaps (shots.c)"
+    },
+    "FactionManager": {
+      "rva": "0x3326CB8",
+      "witnesses": [
+        {"rva": "0xBB2A2", "code": "48 8B 3D 0F BA 26 03 33 D2 44 8B 8F"},
+        {"rva": "0xBC11C", "code": "48 8B 35 95 AB 26 03 33 C9 44 8B 86"}
+      ],
+      "meaning": "The entities' factions. At +0x12050 a map of entities to indexes",
+      "fields": {
+        "masks": {"offset": "0x12078", "type": "ptr", "meaning": "the faction mask of each index (u32 each; bit 0 the Helldivers' side)"}
+      },
+      "source": "HellForge's credit_to_player (actions.c) and Pelican turret (behaviours.c)"
+    },
+    "BehaviourManager": {
+      "rva": "0x3326740",
+      "witnesses": [
+        {"rva": "0xC29AC", "code": "48 8B 0D 8D 3D 26 03 C6 44 24 28 00"},
+        {"rva": "0xC2D5C", "code": "48 8B 0D DD 39 26 03 C6 44 24 28 00"}
+      ],
+      "meaning": "The entities' behaviours. At +0x40 a map of entities to indexes",
+      "fields": {
+        "handles": {"offset": "0x58", "type": "ptr", "meaning": "a pointer per index: +8 the entity (u32), +0x10 its network handle (0x7FFF: none)"},
+        "records": {"offset": "0x60", "type": "ptr", "meaning": "the behaviour records, 0x1F8 bytes each; P (record + 8) is a behaviour's state, P+0 its stage"}
+      },
+      "source": "HellForge's behaviours (behaviours.c) and spawn_pelican (actions.c)"
+    },
+    "TagManager": {
+      "rva": "0x3326430",
+      "witnesses": [
+        {"rva": "0xFD92C", "code": "48 8B 0D FD 8A 22 03 E8 D8 BD 3A 00"},
+        {"rva": "0xFD94F", "code": "48 8B 0D DA 8A 22 03 E8 B5 BD 3A 00"}
+      ],
+      "meaning": "The entities' tag words. At +0x18 a map of entities to indexes",
+      "fields": {
+        "tags": {"offset": "0x38", "type": "ptr", "meaning": "the tag word of each index (u64 each): 0x10000000 its kills credited to no one, bit 35 never targeted"}
+      },
+      "source": "HellForge's credit_to_player (actions.c) and Pelican turret (behaviours.c)"
+    },
+    "Clock": {
+      "rva": "0x3326348",
+      "witnesses": [
+        {"rva": "0xB8B8A", "code": "48 8B 05 B7 D7 26 03 48 3B 48 18 77"},
+        {"rva": "0xB9636", "code": "48 8B 05 0B CD 26 03 48 8B D9 48 8B"}
+      ],
+      "meaning": "The game's clock, which behaviours time themselves by",
+      "fields": {
+        "now": {"offset": "0x18", "type": "u64", "meaning": "now, in microseconds"}
+      },
+      "source": "HellForge's behaviours (behaviours.c) and spawn_pelican (actions.c)"
+    },
+    "EngineApi": {
+      "rva": "0x3326308",
+      "witnesses": [
+        {"rva": "0xB7EA8", "code": "48 8B 0D 59 E4 26 03 48 89 5C 24 30"},
+        {"rva": "0xB7F1C", "code": "48 8B 0D E5 E3 26 03 48 89 5C 24 30"}
+      ],
+      "meaning": "The engine's API table (helldivers2.exe's), which the game calls into",
+      "fields": {
+        "table": {"offset": "0x10", "type": "ptr", "meaning": "its function table, in helldivers2.exe's data: at +1000 the text function, const char* (u32 id), which HellForge points at its own to answer mod texts"},
+        "scene_graph": {"offset": "0x18", "type": "ptr", "meaning": "the scene graph's functions: +0x88 a node's world position (unit, node), +0x748 the unit of an index"}
+      },
+      "source": "HellForge's Pelican turret (behaviour_turret.c) and ability sounds (abilities.c); HellForge's mod text (registry.c HookText)"
+    },
+    "EngineUnitApi": {
+      "rva": "0x3326310",
+      "witnesses": [
+        {"rva": "0xBA571", "code": "48 8B 05 98 BD 26 03 45 33 C0 8B 49"},
+        {"rva": "0xBA658", "code": "48 8B 05 B1 BC 26 03 45 33 C0 BA 6F"}
+      ],
+      "meaning": "An engine API table in helldivers2.exe (helldivers2.exe+0x27CD4C0 on this build)",
+      "fields": {
+        "actor_by_name": {"offset": "0x10", "type": "ptr", "meaning": "UnitActorByName (helldivers2.exe 0x799DE0): (unit, actor name hash, NULL) -> the actor, 0xFFFFFFFF none"}
+      },
+      "source": "HellForge's injure (actions.c)"
+    },
+    "WwiseApi": {
+      "rva": "0x3326318",
+      "witnesses": [
+        {"rva": "0x3A2959", "code": "48 8B 05 B8 39 F8 02 48 8B 0D D9 39"},
+        {"rva": "0x3A2A0C", "code": "48 8B 05 05 39 F8 02 48 8B 0D 26 39"}
+      ],
+      "meaning": "The Wwise plugin's API table; its functions take the WwiseWorld (hf_global_Game's wwise_world)",
+      "fields": {
+        "post": {"offset": "0x338", "type": "ptr", "meaning": "posts a sound: (world, event, game object, flags)"},
+        "unit_source": {"offset": "0x590", "type": "ptr", "meaning": "the source on a unit's node: (world, unit, node)"},
+        "source_object": {"offset": "0x5A0", "type": "ptr", "meaning": "a source's game object: (world, source), -1 when the source is gone"}
+      },
+      "source": "HellForge's ability sounds (abilities.c)"
+    },
+    "AbilityManager": {
+      "rva": "0x3326640",
+      "witnesses": [
+        {"rva": "0x428E4E", "code": "48 8B 0D EB D7 EF 02 41 B8 14 02 00"},
+        {"rva": "0x4A40CA", "code": "4C 8B 15 6F 25 E8 02 75 07 B8 FF FF"}
+      ],
+      "meaning": "The abilities running on entities: StartAbility's first argument. At +0x18 a map of entities to indexes; it ticks each ability at 60 a second (AbilityTick)",
+      "source": "HellForge's silo countdown (abilities.c) and shield wall (shield_block.c)"
+    },
+    "WeaponLinkerManager": {
+      "rva": "0x33267F8",
+      "witnesses": [
+        {"rva": "0x4FD712", "code": "4C 8B 1D DF 90 E2 02 45 33 C0 48 89"},
+        {"rva": "0x52862A", "code": "48 8B 1D C7 E1 DF 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "WeaponLinker instances (a silo's targeting remote linked to its missile and rack). At +0x20 a map of entities to indexes; its copies of the records of instances this machine has authority over (12 bytes each) are compacted when one goes",
+      "fields": {
+        "descriptors": {"offset": "0x38", "type": "ptr", "meaning": "a descriptor pointer per index (LinkerRecord's argument)"},
+        "copy_count": {"offset": "0x90", "type": "u32", "meaning": "record copies in use"},
+        "copies": {"offset": "0x98", "type": "ptr", "meaning": "the record copies, 12 bytes each"}
+      },
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "SeekingMissileManager": {
+      "rva": "0x3326DF0",
+      "witnesses": [
+        {"rva": "0x256FAC", "code": "4C 8B 1D 3D FE 0C 03 8B 40 08 3B 05"},
+        {"rva": "0x4C8DF7", "code": "4C 8B 1D F2 DF E5 02 8B 40 08 3B 05"}
+      ],
+      "meaning": "Seeking missiles (a silo's). At +0x20 a map of entities to indexes",
+      "fields": {
+        "rows": {"offset": "0x48", "type": "ptr", "meaning": "0xC0 bytes per index: +0x48 the missile's position (3 floats)"},
+        "instances": {"offset": "0x50", "type": "ptr", "meaning": "0x38 bytes per index: +8 its remote's network handle, +0xC its guidance target, +0x35 engine byte, +0x36 launched byte"}
+      },
+      "source": "HellForge's silo countdown (abilities.c) and co-op diagnostics (coop_diag.c)"
+    },
+    "LaserDesignatorManager": {
+      "rva": "0x3326960",
+      "witnesses": [
+        {"rva": "0x531E4A", "code": "48 8B 1D 0F 4B DF 02 48 8B F9 44 8B"},
+        {"rva": "0x531EDF", "code": "48 8B 1D 7A 4A DF 02 48 8B FA 48 8B"}
+      ],
+      "meaning": "Laser designators (a silo remote's laser). At +0x30 a map of entities to indexes",
+      "fields": {
+        "instances": {"offset": "0x58", "type": "ptr", "meaning": "0x38 bytes per index: +0x2C the marked point (3 floats)"},
+        "on": {"offset": "0x60", "type": "ptr", "meaning": "a byte per index: the laser on"}
+      },
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "GuidanceTargets": {
+      "rva": "0x3326BD8",
+      "witnesses": [
+        {"rva": "0x507002", "code": "4C 8B 1D CF FB E1 02 45 33 C0 48 89"},
+        {"rva": "0x53C9EA", "code": "48 8B 1D E7 A1 DE 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "Guided entities' targets (SetGuidanceTarget). At +0x840 a map of entities to indexes",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "ExplosiveManager": {
+      "rva": "0x3326728",
+      "witnesses": [
+        {"rva": "0x2575FB", "code": "4C 8B 1D 26 F1 0C 03 3B C1 0F 84 AA"},
+        {"rva": "0x26DCBC", "code": "48 8B 0D 65 8A 0B 03 48 8B D8 8B 52"}
+      ],
+      "meaning": "Explosives (SetExplosiveOwner's first argument). At +0x38 a map of entities to indexes",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "RemoteOwners": {
+      "rva": "0x3326DC0",
+      "witnesses": [
+        {"rva": "0xC30B8", "code": "48 8B 3D 01 3D 26 03 4C 89 74 24 38"},
+        {"rva": "0x4A5D9B", "code": "48 8B 05 1E 10 E8 02 45 33 C0 48 89"}
+      ],
+      "meaning": "The owner of a silo's targeting remote. At +0x20 a map of entities to indexes",
+      "fields": {
+        "records": {"offset": "0x40", "type": "ptr", "meaning": "48 bytes per index: +4 the owner entity"}
+      },
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "HellpodRackManager": {
+      "rva": "0x3326A58",
+      "witnesses": [
+        {"rva": "0x500662", "code": "4C 8B 1D EF 63 E2 02 45 33 C0 48 89"},
+        {"rva": "0x52FD7A", "code": "48 8B 1D D7 6C DF 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "Hellpod racks (RackReleaseItem's first argument). At +0x28 a map of entities to indexes",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "AttachableManager": {
+      "rva": "0x3326698",
+      "witnesses": [
+        {"rva": "0x4A52CA", "code": "4C 8B 15 C7 13 E8 02 74 4D 45 8B 4A"},
+        {"rva": "0x4A537B", "code": "48 8B 05 16 13 E8 02 45 33 C0 48 89"}
+      ],
+      "meaning": "Attachables (what sits in someone's hands). At +0x18 a map of entities to indexes; records of 0xAC bytes (+0 the holder's link)",
+      "source": "HellForge's loose remote guard (abilities.c)"
+    },
+    "MountManager": {
+      "rva": "0x3326438",
+      "witnesses": [
+        {"rva": "0x3B753D", "code": "48 8B 15 F4 EE F6 02 45 8B C4 44 8B"},
+        {"rva": "0x4A79CB", "code": "48 8B 05 66 EA E7 02 45 33 C0 48 89"}
+      ],
+      "meaning": "Mounts (a Pelican's turret). At +0x20 a map of entities to indexes",
+      "fields": {
+        "records": {"offset": "0x48", "type": "ptr", "meaning": "6 u32 per index: the mounted children 0 to 4 first"}
+      },
+      "source": "HellForge's Pelican behaviours (behaviours.c)"
+    },
+    "DropAnchors": {
+      "rva": "0x3326658",
+      "witnesses": [
+        {"rva": "0x4AA61B", "code": "48 8B 05 36 C0 E7 02 45 33 C0 48 89"},
+        {"rva": "0x4AA6CA", "code": "4C 8B 15 87 BF E7 02 75 12 B8 FF FF"}
+      ],
+      "meaning": "Drop positions (a transport Pelican's beacon). At +0x30 a map of entities to indexes",
+      "fields": {
+        "records": {"offset": "0x60", "type": "ptr", "meaning": "0x20 bytes per index: +0 the anchor"}
+      },
+      "source": "HellForge's Pelican behaviours (behaviours.c)"
+    },
+    "PerceptionManager": {
+      "rva": "0x3326548",
+      "witnesses": [
+        {"rva": "0xB8BBB", "code": "48 8B 05 86 D9 26 03 45 33 C0 48 89"},
+        {"rva": "0xB8C4A", "code": "4C 8B 15 F7 D8 26 03 75 17 B8 FF FF"}
+      ],
+      "meaning": "Perceivers and what they sense (FindPerceptionEntry's first argument). At +0x30 a map of entities to indexes",
+      "fields": {
+        "records": {"offset": "0x50", "type": "ptr", "meaning": "the perceiver records, 0x13F8 bytes each"}
+      },
+      "source": "HellForge's Pelican turret (behaviours.c, behaviour_turret.c)"
+    },
+    "MagazineManager": {
+      "rva": "0x3326660",
+      "witnesses": [
+        {"rva": "0x4BAB2D", "code": "4C 8B 1D 2C BB E6 02 45 8B 43 30 45"},
+        {"rva": "0x4BAD36", "code": "48 8B 1D 23 B9 E6 02 44 8B 4B 30 44"}
+      ],
+      "meaning": "Weapons' magazines: MagazineRounds' first argument",
+      "source": "HellForge's Pelican turret refill (behaviour_turret.c)"
+    },
+    "MagazineRefills": {
+      "rva": "0x3326648",
+      "witnesses": [
+        {"rva": "0x3A6F09", "code": "48 8B 05 38 F7 F7 02 48 8B 48 50 39"},
+        {"rva": "0x3A6F30", "code": "48 8B 05 11 F7 F7 02 48 8B 48 50 83"}
+      ],
+      "meaning": "The magazines AddMagazineRounds refills. At +0x20 a map of entities to indexes (the refill's own lookup)",
+      "source": "HellForge's Pelican turret refill (behaviour_turret.c)"
+    },
+    "WeaponTargeting": {
+      "rva": "0x3326D30",
+      "witnesses": [
+        {"rva": "0x4A9A2B", "code": "48 8B 05 FE D2 E7 02 45 33 C0 48 89"},
+        {"rva": "0x4A9ACA", "code": "4C 8B 15 5F D2 E7 02 75 07 B8 FF FF"}
+      ],
+      "meaning": "Weapons' targeting. At +0x150 a map of entities to indexes",
+      "fields": {
+        "records": {"offset": "0x178", "type": "ptr", "meaning": "the targeting records, 0xD0 bytes each"},
+        "network": {"offset": "0x180", "type": "ptr", "meaning": "their network blocks, 0x18 bytes each"}
+      },
+      "source": "HellForge's Pelican turret (behaviours.c)"
+    },
+    "ShieldManager": {
+      "rva": "0x3326630",
+      "witnesses": [
+        {"rva": "0x4B1F71", "code": "4C 8B 2D B8 46 E7 02 45 33 F6 45 8B"},
+        {"rva": "0x4BB5C9", "code": "48 8B 3D 60 B0 E6 02 33 D2 44 8B 4F"}
+      ],
+      "meaning": "The shields standing (relay bubbles, shield packs): a map of 8-byte entries {key, index} (index 0xFFFFFFFF: none) and, per index, a binding, a row and a live state",
+      "fields": {
+        "map": {"offset": "0x30", "type": "ptr", "meaning": "the map's entries, 8 bytes each"},
+        "capacity": {"offset": "0x38", "type": "u32", "meaning": "the map's entries"},
+        "empty": {"offset": "0x3C", "type": "u32", "meaning": "the key of an empty entry"},
+        "bindings": {"offset": "0x48", "type": "ptr", "meaning": "a binding pointer per index (ShieldRecord's argument)"},
+        "rows": {"offset": "0x50", "type": "ptr", "meaning": "0x88 bytes per index: +0 the physics handle"},
+        "live": {"offset": "0x58", "type": "ptr", "meaning": "0x14 bytes per index: +2 broken (u8), +4 health"}
+      },
+      "source": "HellForge's shield block (shield_block.c)"
+    },
+    "CustomizationManager": {
+      "rva": "0x33264F8",
+      "witnesses": [
+        {"rva": "0x4DBD09", "code": "48 8B 0D E8 A7 E4 02 83 FE 10 49 8B"},
+        {"rva": "0x5405D6", "code": "48 8B 1D 1B 5F DE 02 4C 8B C9 44 8B"}
+      ],
+      "aliases": ["KitList"],
+      "meaning": "The players' armor and its passives. At +0x30 the passive ids' slots (u32 each, 42 ids); at +0x930 a map of entities to records, their descriptor pointers at +0x948; per record an applied block at +0x96C + 0x44 record (+0x38 the helmet passive, +0x3C the armor passive). Kit records: the kit id at +0 (u32), its type at +0x28 (u32: 0 armour, 1 helmet, 2 cape)",
+      "fields": {
+        "kits": {"offset": "0x0", "type": "ptr", "meaning": "the armor kits (a kit row's +0x1C its passive)"},
+        "kit_count": {"offset": "0x8", "type": "u32", "meaning": "the kits"},
+        "passives": {"offset": "0x20", "type": "ptr", "meaning": "pointers to the passive rows (0x34 bytes each), by slot"},
+        "passive_count": {"offset": "0x28", "type": "u32", "meaning": "the passive rows (32)"},
+        "record_count": {"offset": "0x8E8", "type": "u32", "meaning": "records in use (at most 4, one a player)"}
+      },
+      "source": "HD2Runtime 0.40.1 research player-attributes; HellForge's set_passives and armor perks (passives.c, perks.c); HellForge's warbond showcase (warbond_showcase.c WarbondItemKit)"
+    },
+    "BombardmentManager": {
+      "rva": "0x3326CE8",
+      "witnesses": [
+        {"rva": "0x4A588B", "code": "48 8B 05 56 14 E8 02 45 33 C0 48 89"},
+        {"rva": "0x4A591A", "code": "4C 8B 15 C7 13 E8 02 75 14 B8 FF FF"}
+      ],
+      "meaning": "Bombardments (an orbital barrage). At +0x30 a map of entities to indexes, filled within the spawn",
+      "fields": {
+        "blocks": {"offset": "0x60", "type": "ptr", "meaning": "0x1C bytes per index: +0 shells a salvo, +4 salvos, +8 the target, +0x14 heading, +0x18 seed"}
+      },
+      "source": "HellForge's co-op diagnostics (coop_diag.c)"
+    },
+    "Progression": {
+      "rva": "0x347CEF8",
+      "witnesses": [
+        {"rva": "0x62C2FC", "code": "4C 8B 3D F5 0B E5 02 B8 01 00 00 00"},
+        {"rva": "0x62EF1E", "code": "48 8B 2D D3 DF E4 02 66 66 66 0F 1F"}
+      ],
+      "aliases": ["ProgressionManager"],
+      "meaning": "The progression manager: this machine's player's account (catalogue, warbonds, purchases). Its purchased warbond items from +0xD8A5C (u32 ids). HellForge moves its warbond list and catalogue elsewhere when mods add warbonds, so do not read those from it. The player's progression: the item catalogue and inventory in one table (a part of the game state, which HellForge enlarges: its catalogue moves past the state's old end, state_moves.c). As the game has it: a count at +0x1CE0, 0xB8-byte records from +0x1CE4 (+4 mixId, +8 itemId, +0xC category, +0xB0 amount)",
+      "fields": {
+        "bought_count": {"offset": "0xD8A58", "type": "u32", "meaning": "warbond items purchased (5280 at most), their ids following"},
+        "login": {"offset": "0xDDCF8", "type": "u32", "meaning": "the login's state: 12 once logged in"},
+        "pending_buy": {"offset": "0x17799D8", "type": "u8", "meaning": "nonzero while a warbond buy waits for its reply"},
+        "pending_item": {"offset": "0x17799DC", "type": "u32", "meaning": "the pending buy's seasonPassItemId"}
+      },
+      "source": "HellForge's warbonds (warbonds.c) and loadout scrub (loadout_scrub.c); KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c, state_moves.c)"
+    },
+    "PlayerHistory": {
+      "rva": "0x347CE50",
+      "witnesses": [
+        {"rva": "0x4DBC39", "code": "4C 8B 3D 10 12 FA 02 49 89 6B 18 0F"},
+        {"rva": "0x4DBD6D", "code": "4C 8B 3D DC 10 FA 02 41 FF C6 BF 0F"}
+      ],
+      "meaning": "The players' loadouts. Records of 0x1690 bytes from +0: the peer id at +0 (u64), the loadout at +0x38 (stratagem slots of 0x30 bytes at +0x188 with the type at +0, their count at +0x788), its loaded copy at +0xA28 (load type +0x9E4: 2 for a mission). Loadouts of players who left at +0x2FD10 (0x9F0 each); the shared stratagems at +0x45410 (64 of 0x6C: {type, choice, state})",
+      "fields": {
+        "count": {"offset": "0x2D200", "type": "u32", "meaning": "records in use"},
+        "left_count": {"offset": "0x2FD0C", "type": "u32", "meaning": "loadouts kept for players who left"}
+      },
+      "source": "HellForge's loadout scrub (loadout_scrub.c)"
+    },
+    "Profile": {
+      "rva": "0x347CDD8",
+      "witnesses": [
+        {"rva": "0x44B24D", "code": "4C 8B 05 84 1B 03 03 8B 42 50 41 39"},
+        {"rva": "0x44B6BE", "code": "4C 8B 05 13 17 03 03 8B 41 50 41 39"}
+      ],
+      "meaning": "This machine's player's saved loadout. At +0x4C 32 {stratagem stable id, uses} pairs (u32 each)",
+      "fields": {
+        "primary": {"offset": "0x40", "type": "u32", "meaning": "the primary weapon's loadout id"},
+        "secondary": {"offset": "0x44", "type": "u32", "meaning": "the secondary weapon's loadout id"},
+        "throwable": {"offset": "0x48", "type": "u32", "meaning": "the throwable's loadout id"}
+      },
+      "source": "HellForge's loadout scrub (loadout_scrub.c)"
+    },
+    "MenuStates": {
+      "rva": "0x347CE28",
+      "witnesses": [
+        {"rva": "0x5C08CB", "code": "48 8B 15 56 C5 EB 02 8B 82 B0 42 00"},
+        {"rva": "0x60961E", "code": "4C 8B 0D 03 38 E7 02 84 D2 74 31 4D"}
+      ],
+      "aliases": ["UiManager"],
+      "meaning": "The UI state machine. Its state stack: 5 u32 from +0x429C, the top at +0x429C + 4 (depth - 1) (5 the Armory, 14 the mission briefing's loadout). Its presenter (+0x4294) is 0 while no menu is open",
+      "fields": {
+        "presenter": {"offset": "0x4294", "type": "u32", "meaning": "the menu presenter open (14 the loadout screen)"},
+        "depth": {"offset": "0x42B0", "type": "u32", "meaning": "states on the stack (1 to 5)"}
+      },
+      "source": "HellForge's loadout scrub (loadout_scrub.c) and armory diagnostics (armory_diag.c); HellForge's live level 11 (difficulty.c, DifficultyCapTick)"
+    },
+    "MenuStack": {
+      "rva": "0x347CE38",
+      "witnesses": [
+        {"rva": "0x605470", "code": "48 8B 05 C1 79 E7 02 48 8B 88 B0 00"},
+        {"rva": "0x605490", "code": "48 8B 0D A1 79 E7 02 48 8B 89 B0 00"}
+      ],
+      "meaning": "The menu stack",
+      "fields": {
+        "top": {"offset": "0x0", "type": "u32", "meaning": "the menu on top (11 the loadout screen)"}
+      },
+      "source": "HellForge's loadout scrub (loadout_scrub.c)"
+    },
+    "Armory": {
+      "rva": "0x33269E8",
+      "witnesses": [
+        {"rva": "0x62C519", "code": "48 8B 1D C8 A4 CF 02 44 8B D6 4C 8D"},
+        {"rva": "0x66E865", "code": "48 8B 0D 7C 81 CB 02 44 8B 81 48 1B"}
+      ],
+      "meaning": "The armory's list (BuildArmoryList's, or HellForge's larger copy when mods add weapons): 32-byte entries, the loadout id at +0 and the entity at +8 (u64). Type t's entries start at entry [+0x1B24 + 4 t] and number [+0x1B40 + 4 t] (u32; 7 types, 1 primary, 2 support, 3 secondary)",
+      "fields": {
+        "starts": {"offset": "0x1B24", "type": "u32", "meaning": "type 0's first entry; type t's at +4 t"},
+        "counts": {"offset": "0x1B40", "type": "u32", "meaning": "type 0's entries; type t's at +4 t"}
+      },
+      "source": "HellForge's weapon registry (registry.c, registry_load.c) and warbond showcase (warbond_showcase.c)"
+    },
+    "ThumbnailManager": {
+      "rva": "0x347CD80",
+      "witnesses": [
+        {"rva": "0xAB7B8C", "code": "48 8B 15 ED 51 9C 02 48 8B 8B F8 E2"},
+        {"rva": "0xAB7BAF", "code": "48 8B 15 CA 51 9C 02 48 8B 8B F8 E2"}
+      ],
+      "meaning": "The Armory's thumbnail manager: six cards of up to 15 icon requests rendered into one atlas. Card c's state at +1832 + 1816 c (u32, 8 complete), its request count at +1836 + 1816 c, its requests of 120 bytes from +32 + 1816 c (+24 the item's id, +100 its kind 0 weapon to 4 cape, +104 its stage: 1 waiting, 2 submitted, 3 unit available, 4 done)",
+      "fields": {
+        "active_card": {"offset": "0x2B38", "type": "u32", "meaning": "the card being generated (0xFFFFFFFF none)"},
+        "phase": {"offset": "0x2B58", "type": "u32", "meaning": "the active card's phase"}
+      },
+      "source": "HellForge's armory diagnostics (armory_diag.c)"
+    },
+    "PackageSystem": {
+      "rva": "0x347CEB0",
+      "witnesses": [
+        {"rva": "0x5387CA", "code": "48 8B 0D DF 46 F4 02 E9 7A 5B DC 00"},
+        {"rva": "0x53881D", "code": "48 8B 0D 8C 46 F4 02 E8 B7 5C DC 00"}
+      ],
+      "meaning": "The RefcountedPackageSystem: RequestPackages' system. Its reference map has 16-byte entries keyed by package id (u64, 0 empty) and no overflow path",
+      "fields": {
+        "map": {"offset": "0x0", "type": "ptr", "meaning": "the reference map's entries"},
+        "capacity": {"offset": "0x8", "type": "u32", "meaning": "the map's entries"}
+      },
+      "source": "HD2Runtime 0.40.1 domains/package_residency; HellForge's load_package (packages.c)"
+    },
+    "GameConfig": {
+      "rva": "0x347CDF8",
+      "witnesses": [
+        {"rva": "0x63D013", "code": "48 8B 0D DE FD E3 02 44 8B C0 BA 01"},
+        {"rva": "0x67ABE2", "code": "48 8B 0D 0F 22 E0 02 44 8B C0 BA 01"}
+      ],
+      "meaning": "The game's config settings: FindConfigSetting's config. Two open-addressing tables of 48-byte entries, the online overrides at +0x12078 and the defaults at +0xC050 (each {entries, capacity +8, empty key +0xC, multiplier +0x10}; an entry's type at +0x14, its value at +0x18)",
+      "source": "HellForge's live level 11 (difficulty.c, DifficultyCapValue)"
+    },
+    "NavigationSystem": {
+      "rva": "0x33263C8",
+      "witnesses": [
+        {"rva": "0x51A1D7", "code": "48 8B 05 EA C1 E0 02 FF 90 A8 00 00"},
+        {"rva": "0x51AA52", "code": "48 8B 05 6F B9 E0 02 FF 50 68 48 8B"}
+      ],
+      "meaning": "The engine's navigation interface, a table of functions: its +8 sets up a nav world's navmesh grid (ecx the nav world's id), called for each mission's level (setup_navmeshgrid, pass 0x68) and for the ship",
+      "source": "HellForge's larger maps' navmesh (difficulty_maps.c, DIF_NAV_SYSTEM)"
+    },
+    "PhysicsPlugin": {
+      "rva": "0x3326380",
+      "witnesses": [
+        {"rva": "0x4EDEE5", "code": "48 8B 05 94 84 E3 02 48 85 C0 0F 95"},
+        {"rva": "0x4EE02B", "code": "48 8B 05 4E 83 E3 02 F3 0F 10 05 2E"}
+      ],
+      "meaning": "Set by the physics plugin setup's first call (SetupPhysicsConfig, once per process): 0 until the engine's physics pools are set up",
+      "source": "HellForge's physics pools (difficulty_maps.c, DIF_PHYSICS_SETUP)"
+    },
+    "ObjectiveManager": {
+      "rva": "0x3326DA0",
+      "witnesses": [
+        {"rva": "0x17D07D", "code": "48 8B 05 1C 9D 1A 03 48 89 5C 24 30"},
+        {"rva": "0x17D1B7", "code": "48 8B 05 E2 9B 1A 03 33 DB 48 89 74"}
+      ],
+      "meaning": "The mission's objective instances, which the HUD's objective updater (UpdateHudObjectives) numbers",
+      "fields": {
+        "instance_count": {"offset": "0x24", "type": "u32", "meaning": "objective instances in the mission"}
+      },
+      "source": "HellForge's more objectives (difficulty_missions.c, kHudListSites)"
+    },
+    "HiveMindManager": {
+      "rva": "0x3326D10",
+      "witnesses": [
+        {"rva": "0x26EF4B", "code": "48 8B 0D BE 7D 0B 03 33 F6 39 B1 80"},
+        {"rva": "0x2706DC", "code": "48 8B 0D 2D 66 0B 03 39 B9 80 06 00"}
+      ],
+      "aliases": ["MissionTimers"],
+      "meaning": "The mission's HiveMind: the enemy director and the mission's countdowns. The mission's countdowns. With one timer, its slot at +0x51948: +4 a byte set once it has run out, +6 its pause byte (1 paused), which the countdown's update honours; hf->freeze_mission_timer writes it, host only",
+      "fields": {
+        "level": {"offset": "0x650", "type": "ptr", "meaning": "the mission's level (lg): its difficulty level at +0xF9 (u8)"},
+        "timer_count": {"offset": "0x67C", "type": "u32", "meaning": "the mission's timers (hf->freeze_mission_timer needs 1)"},
+        "director": {"offset": "0x6B0", "type": "ptr", "meaning": "the timer's director: +8 the game mode's entity (u32)"},
+        "countdown_left": {"offset": "0x51948", "type": "f32", "meaning": "the mission countdown left, s"},
+        "expired": {"offset": "0x5194C", "type": "u8", "meaning": "set once the timer has run out"},
+        "paused": {"offset": "0x5194E", "type": "u8", "meaning": "1 while the timer is paused"}
+      },
+      "source": "HellForge's mission countdown (difficulty_countdown.c, kWidgetTimeStub); HD2Runtime 0.40.1 research mission-timer; HellForge's freeze_mission_timer (actions.c)"
+    },
+    "Telemetry": {
+      "rva": "0x347CE18",
+      "witnesses": [
+        {"rva": "0x540BFD", "code": "48 8B 05 14 C2 F3 02 80 B8 76 12 03"},
+        {"rva": "0x5D3441", "code": "48 8B 0D D0 99 EA 02 33 D2 44 0F B6"}
+      ],
+      "meaning": "The game's telemetry: the mission-end telemetry record (TelemetryMissionEnd) at +0x31820 keeps 16 objective instances",
+      "source": "HellForge's more objectives (difficulty_missions.c, DIF_TELEMETRY_COUNT_SITE)"
+    },
+    "GuardForces": {
+      "rva": "0x33265C0",
+      "witnesses": [
+        {"rva": "0x4B8AA3", "code": "4C 8B 2D 16 DB E6 02 45 8B C7 F3 0F"},
+        {"rva": "0x53A2FA", "code": "48 8B 35 BF C2 DE 02 4C 8B F1 8B 6E"}
+      ],
+      "meaning": "The mission's outposts (GuardForce records). A record (0x2B8 bytes): +0x2A8 its size (1 small, 2 medium, 3 large, 4 stronghold), +0x2AB whether it is active",
+      "fields": {
+        "count": {"offset": "0xC", "type": "u32", "meaning": "outposts"},
+        "records": {"offset": "0x48", "type": "ptr", "meaning": "the GuardForce records, 0x2B8 bytes each"}
+      },
+      "source": "HellForge's level 11 watch (difficulty_diag.c, WatchOutposts)"
     }
   }
 }

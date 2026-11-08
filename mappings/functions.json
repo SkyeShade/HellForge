@@ -169,6 +169,1789 @@
       "hook": false,
       "meaning": "Fires a projectile. Host only, in a mission, with the projectile's package loaded. hf->spawn_projectile is the checked way to call it",
       "source": "HD2Runtime 0.40.1 research projectile-ballistics; HellForge's spawn_projectile (actions.c)"
+    },
+    "QueueDamage": {
+      "rva": "0x129F910",
+      "code": "40 55 53 56 57 41 56 48 8D 6C 24 F9 48 81 EC D0 00 00 00 48 8B 05 E6 C6 39 01 48 33 C4 48 89 45 D7 44 3B 0D E8 42 1E 02",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "kind", "type": "uint32_t", "meaning": "the damage kind (HfDamageEvent.kind; injure passes 6, ability, as the VG-70's own self-damage does)"},
+        {"name": "a3", "type": "uint32_t", "meaning": "injure passes 0"},
+        {"name": "target", "type": "uint32_t", "meaning": "the entity damaged"},
+        {"name": "amount", "type": "uint32_t", "meaning": "the damage"},
+        {"name": "a6", "type": "uint8_t", "meaning": "injure passes 1"},
+        {"name": "network", "type": "uint32_t", "meaning": "a network id: injure passes the Helldiver's own"},
+        {"name": "network2", "type": "uint32_t", "meaning": "a network id: injure passes the Helldiver's own"},
+        {"name": "creditor", "type": "uint64_t", "meaning": "the peer id credited: injure passes the one in the Helldiver's health record (+0x38)"},
+        {"name": "a10", "type": "uint32_t", "meaning": "injure passes 0"},
+        {"name": "f11", "type": "float", "meaning": "injure passes 0"},
+        {"name": "f12", "type": "float", "meaning": "injure passes 0"},
+        {"name": "f13", "type": "float", "meaning": "injure passes 0"},
+        {"name": "direction", "type": "const float*", "meaning": "the hit's direction (3 floats; injure passes 0, 0, -1)"},
+        {"name": "position", "type": "const float*", "meaning": "the hit's position (3 floats; injure passes 0, 0, 0)"},
+        {"name": "actor", "type": "uint32_t", "meaning": "the hit actor: injure passes the limb's, from the engine's UnitActorByName (helldivers2.exe 0x799DE0)"},
+        {"name": "a17", "type": "uint32_t", "meaning": "injure passes 9"},
+        {"name": "a18", "type": "uint32_t", "meaning": "injure passes 0"},
+        {"name": "scale", "type": "float", "meaning": "injure passes 1.0"}
+      ],
+      "hook": false,
+      "meaning": "Queues a damage request (4096 a frame: hf_global_CombatQueues' damage_count) that the frame's drain applies. hf->injure is the checked way to call it, on a limb of this machine's Helldiver",
+      "source": "HD2Runtime 0.40.1 research event-combat, player-injury-path; HellForge's injure (actions.c)"
+    },
+    "NeedsAmmo": {
+      "rva": "0x9AD7D0",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 48 83 EC 20 4C 8B 15 4D 8F 97 02 33 FF 3B 15 2D 64 AD 02 75 07 B8 FF FF",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the Helldiver"}
+      ],
+      "hook": false,
+      "meaning": "Whether a Helldiver needs ammunition (1) or not (0), as the Supply Pack's self-use asks. hf->resupply_from_pack calls it before TryStartAction",
+      "source": "HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c)"
+    },
+    "TryStartAction": {
+      "rva": "0xA431D0",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 48 8B FA 48 8B D9 E8 1B FF FF FF 84 C0 75 24 48 8B CB E8 5F 00 00 00 84 C0 74 18 48 8B D7",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "context", "type": "void*", "meaning": "the entity's action context: hf_global_ActionManager + 0x53E170 + 0x1238 index (+0 the entity, +8 the running action)"},
+        {"name": "request", "type": "const uint32_t*", "meaning": "3 u32: the action (2629, the Supply Pack's self-use), the game's no-action id (u32 at game.dll+0x3483C5C), the context's +0xC"}
+      ],
+      "hook": false,
+      "meaning": "Starts an action on an entity if it is free to: 1 started, 0 not. hf->resupply_from_pack is the checked way to call it",
+      "source": "HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c)"
+    },
+    "RequestEntitySpawn": {
+      "rva": "0xFD9710",
+      "code": "4C 8B DC 49 89 5B 10 49 89 73 20 57 48 81 EC A0 00 00 00 48 8B 05 E6 28 66 01 48 33 C4 48 89 84 24 90 00 00 00 33 C0 49",
+      "returns": "uint32_t*",
+      "params": [
+        {"name": "out", "type": "uint32_t*", "meaning": "receives the new entity's id (0: none made)"},
+        {"name": "resource", "type": "uint64_t", "meaning": "the entity's resource id (HF_ENTITY_...), registered in this mission"},
+        {"name": "spawn", "type": "void*", "meaning": "0x58 bytes: +0 1, +4 network id (0x7FFF none), +8 the pose (4x4 floats, the position in the last row), +0x48 a pointer to a 0x8A0-byte spawn context (a transport Pelican's hover point at +0x610)"}
+      ],
+      "hook": false,
+      "meaning": "The entity spawn request: makes an entity of a resource at a pose; returns out. hf->spawn_pelican is the checked way to call it (host only, in a mission, with shuttle_transport)",
+      "source": "HD2Runtime 0.40.1 research pelican; HellForge's spawn_pelican (actions.c)"
+    },
+    "AbilityTick": {
+      "rva": "0x11509E0",
+      "code": "48 83 EC 28 45 32 C9 FF CA 81 FA 32 0B 00 00 0F 87 84 BD 00 00 4C 8D 15 04 F6 EA FE 41 8B 94 92 84 C7 15 01 49 03 D2 FF",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "the ability's context: +8 the entity it runs on"},
+        {"name": "id", "type": "uint32_t", "meaning": "the ability (1 .. 2867; HellForge's own from 2868)"},
+        {"name": "tick", "type": "uint32_t", "meaning": "the tick, 60 a second from 0"}
+      ],
+      "hook": false,
+      "meaning": "Runs one tick of an ability, switching on its id through a 2867-entry table: 1 when it is done, 0 while it runs (and for an unknown id). HellForge points its id check at a stub for abilities of its own (hf->add_ability)",
+      "source": "HellForge's abilities (abilities.c)"
+    },
+    "SiloMissileArmedAbility": {
+      "rva": "0x110F270",
+      "code": "40 53 48 83 EC 30 48 8B D9 85 D2 75 35 BA AE E1 3C A8 E8 A9 09 0A 00 45 33 C9 C7 44 24 28 00 00 00 00 BA AC 00 00 00 C6",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "the ability's context: +8 the missile"},
+        {"name": "tick", "type": "uint32_t", "meaning": "the tick, 60 a second from 0"}
+      ],
+      "hook": false,
+      "meaning": "Ability 2088, the Solo Silo missile's armed ability, which its launch starts: tick 0 the launch blast (explosion 172), tick 2 it leaves the rack, tick 120 it arms and is done (1)",
+      "source": "HellForge's abilities (abilities.c)"
+    },
+    "LinkedMissile": {
+      "rva": "0x76B410",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20 8B 05 04 88 D1 02 48 8B DA 4C 8B D9 44 3B",
+      "returns": "uint32_t*",
+      "params": [
+        {"name": "linkers", "type": "void*", "meaning": "the WeaponLinker manager: hf_global_WeaponLinkerManager"},
+        {"name": "out", "type": "uint32_t*", "meaning": "receives the missile (the no-entity id when the link names none)"},
+        {"name": "remote", "type": "uint32_t", "meaning": "a silo's targeting remote"}
+      ],
+      "hook": false,
+      "meaning": "The missile a silo's targeting remote is linked to; returns out",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "LinkerRecord": {
+      "rva": "0x4FD6F0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 18 65 F8 02 0F 84 94 00 00 00 4C 8B 1D DF 90 E2",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "a linker instance's descriptor (hf_global_WeaponLinkerManager's descriptors, by index)"}
+      ],
+      "hook": false,
+      "meaning": "A WeaponLinker instance's record (12 bytes; +4 0x06212002 a silo remote's link, which launches its missile): this machine's copy for an instance it has authority over, else the resource's shared one. NULL for no descriptor",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "LinkedRack": {
+      "rva": "0x76B4C0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20 8B 05 54 87 D1 02 48 8B DA 4C 8B D9 44 3B",
+      "returns": "uint32_t*",
+      "params": [
+        {"name": "linkers", "type": "void*", "meaning": "the WeaponLinker manager: hf_global_WeaponLinkerManager"},
+        {"name": "out", "type": "uint32_t*", "meaning": "receives the rack (the no-entity id when the link names none)"},
+        {"name": "remote", "type": "uint32_t", "meaning": "a silo's targeting remote"}
+      ],
+      "hook": false,
+      "meaning": "The hellpod rack a silo's targeting remote is linked to; returns out",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "SetMissileEngine": {
+      "rva": "0x645B80",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 54 41 56 41 57 48 83 EC 50 3B 15 7C E0 E3 02 45 0F B6 F8",
+      "returns": "void",
+      "params": [
+        {"name": "missiles", "type": "void*", "meaning": "the SeekingMissile manager: hf_global_SeekingMissileManager"},
+        {"name": "missile", "type": "uint32_t", "meaning": "the missile"},
+        {"name": "on", "type": "uint8_t", "meaning": "1 on, 0 off (its instance's +0x35)"}
+      ],
+      "hook": false,
+      "meaning": "Turns a seeking missile's engine on or off, as a silo remote's link does at a launch",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "LaunchMissile": {
+      "rva": "0x645940",
+      "code": "40 56 41 56 48 83 EC 48 48 8B 05 C1 66 FF 01 48 33 C4 48 89 44 24 30 8B 05 C3 E2 E3 02 45 33 D2 48 89 5C 24 60 48 8B F1",
+      "returns": "void",
+      "params": [
+        {"name": "missiles", "type": "void*", "meaning": "the SeekingMissile manager: hf_global_SeekingMissileManager"},
+        {"name": "missile", "type": "uint32_t", "meaning": "the missile"}
+      ],
+      "hook": false,
+      "meaning": "Launches a seeking missile: sets off its explosive, which starts its armed ability (2088 for the Solo Silo's), and marks it launched (its instance's +0x36)",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "SetExplosiveOwner": {
+      "rva": "0x8CE620",
+      "code": "40 53 56 57 48 83 EC 20 3B 15 F2 55 BB 02 41 8B F8 8B DA 48 8B F1 0F 84 AA 01 00 00 44 8B 41 40 33 D2 44 8B 49 48 44 0F",
+      "returns": "void",
+      "params": [
+        {"name": "explosives", "type": "void*", "meaning": "the Explosive manager: hf_global_ExplosiveManager"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the explosive (a missile)"},
+        {"name": "owner", "type": "uint32_t", "meaning": "its owner entity"}
+      ],
+      "hook": false,
+      "meaning": "Names an explosive's owner, as a silo remote's link does for its missile at a launch",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "SetGuidanceTarget": {
+      "rva": "0x919940",
+      "code": "40 55 3B 15 EC A2 B6 02 49 8B E8 4C 8B 15 86 D2 A0 02 75 07 B8 FF FF FF FF EB 75 45 8B 8A 48 08 00 00 33 C9 45 8B 9A 50",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the guided entity (a missile in hf_global_GuidanceTargets' map)"},
+        {"name": "point", "type": "const float*", "meaning": "the point it flies to (3 floats)"}
+      ],
+      "hook": false,
+      "meaning": "Sets an entity's guidance target, as a silo remote's link does with its laser's point",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "RackReleaseItem": {
+      "rva": "0x9374D0",
+      "code": "40 53 57 41 56 48 83 EC 40 3B 15 55 C7 B4 02 41 8B F8 8B DA 4C 8B F1 0F 84 27 01 00 00 44 8B 41 30 44 8B 51 38 48 89 6C",
+      "returns": "void",
+      "params": [
+        {"name": "racks", "type": "void*", "meaning": "the HellpodRack manager: hf_global_HellpodRackManager"},
+        {"name": "rack", "type": "uint32_t", "meaning": "the rack"},
+        {"name": "item", "type": "uint32_t", "meaning": "the item it lets go of (a silo's missile)"}
+      ],
+      "hook": false,
+      "meaning": "Has a hellpod rack let go of an item, as a silo remote's link does at a launch",
+      "source": "HellForge's silo countdown (abilities.c)"
+    },
+    "StartAbility": {
+      "rva": "0x7CAF40",
+      "code": "4C 8B DC 49 89 5B 18 55 56 57 41 55 41 56 48 81 EC B0 00 00 00 48 8B 05 B4 10 E7 01 48 33 C4 48 89 84 24 90 00 00 00 3B",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "abilities", "type": "void*", "meaning": "the ability manager: hf_global_AbilityManager"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity it runs on"},
+        {"name": "ability", "type": "uint32_t", "meaning": "the ability (ids travel in 12 bits)"},
+        {"name": "mode", "type": "uint32_t", "meaning": "1 on the machine with authority over the entity; 2 without it, whose start is always sent on"},
+        {"name": "speed", "type": "float", "meaning": "1.0 in HellForge's calls"},
+        {"name": "s6", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Starts an ability on an entity; the ability manager then ticks it (AbilityTick). HellForge's silo countdown starts its ability on the missile with it, and its shield wall detours it to see enemies' charges",
+      "source": "HellForge's silo countdown (abilities.c) and shield wall hook (shield_block.c)"
+    },
+    "BehaviourUpdate": {
+      "rva": "0x472F60",
+      "code": "4C 8B DC 55 57 49 8D AB D8 FE FF FF 48 81 EC 18 02 00 00 48 8B 05 96 90 1C 02 48 33 C4 48 89 85 E0 00 00 00 FF CA 48 8B",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage)"},
+        {"name": "id", "type": "uint32_t", "meaning": "the behaviour (1 .. 693; HellForge's own from 694)"},
+        {"name": "dt", "type": "float", "meaning": "the frame's time"}
+      ],
+      "hook": false,
+      "meaning": "Updates an entity's behaviour, switching on its id through a 693-entry table, on the machine with authority over the entity. HellForge points its id check at a stub for behaviours of its own (hf->add_behaviour)",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourStage": {
+      "rva": "0x48EE50",
+      "code": "40 55 53 57 48 8D AC 24 30 FF FF FF 48 81 EC D0 01 00 00 FF CA 41 8B F8 48 8B D9 81 FA B4 02 00 00 0F 87 86 42 00 00 48",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage)"},
+        {"name": "id", "type": "uint32_t", "meaning": "the behaviour (1 .. 693)"},
+        {"name": "stage", "type": "uint32_t", "meaning": "the stage it enters"}
+      ],
+      "hook": false,
+      "meaning": "Moves an entity's behaviour to a stage, switching on its id through a 693-entry table. HellForge points its id check at a stub for behaviours of its own",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourEvent": {
+      "rva": "0x4966D0",
+      "code": "48 89 7C 24 18 55 48 8D AC 24 C0 F6 FF FF 48 81 EC 40 0A 00 00 FF CA 48 8B F9 81 FA B4 02 00 00 0F 87 4B 9A 00 00 48 63",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}: P the behaviour record + 8"},
+        {"name": "id", "type": "uint32_t", "meaning": "the behaviour (1 .. 693)"},
+        {"name": "hash", "type": "uint32_t", "meaning": "the event's name hash"}
+      ],
+      "hook": false,
+      "meaning": "Hands an event to an entity's behaviour, switching on its id through a 693-entry table. HellForge points its id check at a stub for behaviours of its own",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourResume": {
+      "rva": "0x493BE0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 48 8B EC 48 83 EC 60 48 8B D9 81 FA 1A 01 00 00 0F 8F 70 10 00 00 0F 84",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}: P the behaviour record + 8"},
+        {"name": "id", "type": "uint32_t", "meaning": "the behaviour"}
+      ],
+      "hook": false,
+      "meaning": "Resumes a behaviour on a machine without authority, after its record arrives from the network: for the transport Pelican (667) it sends the mover to the replicated flight target (P+0x1BC). HellForge sends its own behaviours into its base's case",
+      "source": "HellForge's behaviours, co-op (behaviours.c)"
+    },
+    "PelicanTransportUpdate": {
+      "rva": "0x45C760",
+      "code": "48 89 5C 24 18 55 48 8B EC 48 83 EC 60 48 8B 05 9C F8 1D 02 48 33 C4 48 89 45 F0 48 8B 51 08 48 8B D9 8B 02 FF C8 83 F8",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage)"}
+      ],
+      "hook": false,
+      "meaning": "Behaviour 667's update, the transport Pelican: flies to the beacon (stages 1-3), hovers (6, entered with P+0x180 = now), releases its cargo after 6 s, departs and is removed. HellForge's Pelican behaviours (hf->add_behaviour) run it",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "PelicanTransportStage": {
+      "rva": "0x45BD00",
+      "code": "48 89 5C 24 08 48 89 7C 24 10 55 48 8B EC 48 83 EC 70 48 8B 41 08 8B FA 48 8B D9 39 50 08 0F 84 75 09 00 00 89 50 08 48",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"},
+        {"name": "stage", "type": "int32_t", "meaning": "the stage it enters (6: the hover)"}
+      ],
+      "hook": false,
+      "meaning": "Behaviour 667's stage change, the transport Pelican",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "PelicanTransportEvent": {
+      "rva": "0x45BBE0",
+      "code": "40 53 48 83 EC 30 48 8B D9 81 FA 75 D1 71 33 74 74 81 FA DE 01 C4 54 74 3B 81 FA 1A 39 02 CA 74 24 81 FA E7 2F 46 DC 75",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"},
+        {"name": "hash", "type": "uint32_t", "meaning": "the event's name hash"}
+      ],
+      "hook": false,
+      "meaning": "Behaviour 667's event handler, the transport Pelican",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourOwnPosition": {
+      "rva": "0x4BC5D0",
+      "code": "40 53 56 48 83 EC 38 48 8B 32 48 8B D9 8B 4E 0C 85 C9 74 2E 48 8B 05 1D 9D E6 02 48 8B 50 18 48 8B 82 88 00 00 00 33 D2",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "receives the position (3 floats)"},
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"}
+      ],
+      "hook": false,
+      "meaning": "A behaviour's entity's own position: its unit's root node from the scene graph; returns out",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourOrbitStep": {
+      "rva": "0x4D5E60",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 57 41 54 41 55 41 56 41 57 48 81 EC 80 00 00 00 4C 8B 29 45 33 F6 48 8B 2D D1 07 E5 02 4C",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"},
+        {"name": "position", "type": "const float*", "meaning": "where the entity is (3 floats)"},
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "height", "type": "float", "meaning": "the orbit's height"},
+        {"name": "radius", "type": "float", "meaning": "the orbit's radius"}
+      ],
+      "hook": false,
+      "meaning": "The extraction Pelican's orbit step: writes the next point on its orbit to P+0x1BC (the replicated flight target)",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourMoveTo": {
+      "rva": "0x4D1150",
+      "code": "48 89 5C 24 08 48 89 6C 24 18 48 89 74 24 20 48 89 54 24 10 57 41 54 41 55 41 56 41 57 48 83 EC 30 4C 8B 29 45 33 F6 8B",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"},
+        {"name": "target", "type": "const float*", "meaning": "the point to fly to (3 floats)"}
+      ],
+      "hook": false,
+      "meaning": "Sends a flying behaviour's mover to a point",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourFace": {
+      "rva": "0x4C1530",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 30 4C 8B 21 45 33 D2 44 8B 05 C7 26 FC",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"},
+        {"name": "direction", "type": "const float*", "meaning": "the direction to face (3 floats)"}
+      ],
+      "hook": false,
+      "meaning": "Sets the hover controller's desired facing, turning a hovering behaviour's body",
+      "source": "HellForge's behaviours (behaviours.c)"
+    },
+    "BehaviourTargetPosition": {
+      "rva": "0x4B0C40",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 55 41 56 41 57 48 83 EC 40 48 8B 5A 08 4D 8B E8 48 8B F9",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "receives the position (3 floats)"},
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*} (a mounted turret's: P+0x10 its target, P+0x70 set while it has one)"},
+        {"name": "self", "type": "const float*", "meaning": "the entity's own position (3 floats)"}
+      ],
+      "hook": false,
+      "meaning": "Where a behaviour's target is (a turret's aim point); returns out",
+      "source": "HellForge's behaviours (behaviours.c, behaviour_turret.c)"
+    },
+    "PelicanTurretIdle": {
+      "rva": "0x44F310",
+      "code": "40 55 41 55 48 8D AC 24 38 FE FF FF 48 81 EC C8 02 00 00 48 8B 05 E6 CC 1E 02 48 33 C4 48 89 85 00 01 00 00 48 8B 41 08",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"},
+        {"name": "dt", "type": "float", "meaning": "the frame's time"}
+      ],
+      "hook": false,
+      "meaning": "Behaviour 645's stage 1 update (idle), the Pelican's chin turret",
+      "source": "HellForge's Pelican turret (behaviours.c, behaviour_turret.c)"
+    },
+    "TurretActive": {
+      "rva": "0x4B0810",
+      "code": "48 83 EC 28 4C 8B 19 41 8B 43 08 3B 05 FF 33 FD 02 74 68 48 8B 15 46 65 E7 02 33 C9 48 89 74 24 38 44 8B 4A 30 44 8B 52",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"}
+      ],
+      "hook": false,
+      "meaning": "Whether a behaviour's turret is active (behaviour 645's firing stage tests it)",
+      "source": "HellForge's Pelican turret (behaviours.c, behaviour_turret.c)"
+    },
+    "TurretHasAmmo": {
+      "rva": "0x4BB080",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 30 4C 8B 29 4C 8B F9 8B 15 78 8B FC 02",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"}
+      ],
+      "hook": false,
+      "meaning": "Whether a behaviour's turret has ammunition (behaviour 645's firing stage tests it)",
+      "source": "HellForge's Pelican turret (behaviours.c, behaviour_turret.c)"
+    },
+    "PelicanTurretStage": {
+      "rva": "0x450AD0",
+      "code": "48 89 5C 24 08 57 48 83 EC 60 48 8B 41 08 8B DA 48 8B F9 39 50 08 0F 84 CB 02 00 00 89 50 08 48 8B 41 08 C7 40 04 FF FF",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"},
+        {"name": "stage", "type": "int32_t", "meaning": "the stage it enters: 1 idle, 2 aim, 3 fire, 4 inactive"}
+      ],
+      "hook": false,
+      "meaning": "Behaviour 645's stage change, the Pelican's chin turret",
+      "source": "HellForge's Pelican turret (behaviours.c, behaviour_turret.c)"
+    },
+    "BehaviourSetTarget": {
+      "rva": "0x4AF4E0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 55 41 56 41 57 4C 8B 41 08 4C 8B D9 48 85 D2 0F 84 C7 01",
+      "returns": "void",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*}"},
+        {"name": "entry", "type": "const uint8_t*", "meaning": "a perceiver's entry for the target (FindPerceptionEntry; +4 its position), or NULL to clear"}
+      ],
+      "hook": false,
+      "meaning": "Installs a perception entry as a behaviour's target (P+0x10), or clears it",
+      "source": "HellForge's Pelican turret (behaviours.c, behaviour_turret.c)"
+    },
+    "WeaponDegreesTo": {
+      "rva": "0x7582D0",
+      "code": "4C 8B DC 48 81 EC 88 00 00 00 48 8B 05 2F 3D EE 01 48 33 C4 48 89 44 24 30 3B 15 31 B9 D2 02 49 89 5B 08 48 8B 1D E6 E9",
+      "returns": "float",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the weapon's entity (a turret)"},
+        {"name": "position", "type": "const float*", "meaning": "a point (3 floats)"}
+      ],
+      "hook": false,
+      "meaning": "The angle in degrees between a weapon's forward and a point",
+      "source": "HellForge's Pelican turret (behaviour_turret.c)"
+    },
+    "IsValidTarget": {
+      "rva": "0x8858A0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20 49 8B D8 4D 85 C0 75 13 8B CA E8 77 44 75",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"},
+        {"name": "info", "type": "void*", "meaning": "the entity's info, or NULL to look it up"}
+      ],
+      "hook": false,
+      "meaning": "Whether an entity is a valid target: it exists, is alive and has no flag 25",
+      "source": "HellForge's Pelican turret (behaviour_turret.c)"
+    },
+    "FindPerceptionEntry": {
+      "rva": "0x8891C0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 3B 15 44 AA BF 02 48 8B D9 0F 84 1B 01 00 00 44 8B 51",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "perception", "type": "void*", "meaning": "the perceivers: hf_global_PerceptionManager"},
+        {"name": "perceiver", "type": "uint32_t", "meaning": "the perceiving entity (a turret's P+0x60)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the perceived entity"}
+      ],
+      "hook": false,
+      "meaning": "A perceiver's entry for an entity (+4 its position), or NULL when it has none",
+      "source": "HellForge's Pelican turret (behaviour_turret.c)"
+    },
+    "MagazineRounds": {
+      "rva": "0x742900",
+      "code": "48 89 5C 24 20 55 56 57 48 83 EC 20 3B 15 0E 13 D4 02 8B DA 4C 8B C9 74 43 44 8B 41 30 33 F6 44 8B 51 38 8B D6 44 0F AF",
+      "returns": "int32_t",
+      "params": [
+        {"name": "magazines", "type": "void*", "meaning": "the magazines: hf_global_MagazineManager"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the weapon's entity"}
+      ],
+      "hook": false,
+      "meaning": "The rounds in a weapon's magazine",
+      "source": "HellForge's Pelican turret refill (behaviour_turret.c)"
+    },
+    "AddMagazineRounds": {
+      "rva": "0x76E080",
+      "code": "48 89 5C 24 08 48 89 6C 24 18 56 57 41 54 41 56 41 57 48 83 EC 20 48 8B 3D AB 85 BB 02 45 33 E4 3B 15 7A 5B D1 02 45 8B",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the weapon's entity (in hf_global_MagazineRefills' map)"},
+        {"name": "add", "type": "int32_t", "meaning": "the rounds to add"}
+      ],
+      "hook": false,
+      "meaning": "Adds rounds to a weapon's magazine, on the machine with authority over it",
+      "source": "HellForge's Pelican turret refill (behaviour_turret.c)"
+    },
+    "MagazineCapacity": {
+      "rva": "0x743410",
+      "code": "48 89 5C 24 18 55 56 57 48 83 EC 20 3B 15 FE 07 D4 02 8B DA 4C 8B 05 35 32 BE 02 74 3F 45 8B 48 30 33 F6 45 8B 50 38 8B",
+      "returns": "int32_t",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL (ignored)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the weapon's entity"}
+      ],
+      "hook": false,
+      "meaning": "A weapon's magazine capacity",
+      "source": "HellForge's Pelican turret refill (behaviour_turret.c)"
+    },
+    "WeaponWithinDegrees": {
+      "rva": "0x4B54D0",
+      "code": "48 89 6C 24 18 56 48 83 EC 40 48 8B 31 48 8B EA 0F 29 74 24 30 0F 28 F2 8B 46 08 3B 05 2F E7 FC 02 74 64 48 8B 0D E6 17",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "ctx", "type": "void*", "meaning": "{EntityInfo*, P*} of the turret's behaviour"},
+        {"name": "position", "type": "const float*", "meaning": "the aim point (3 floats)"},
+        {"name": "max_degrees", "type": "float", "meaning": "the most the weapon may be off (behaviour 645: 2)"}
+      ],
+      "hook": false,
+      "meaning": "Whether a behaviour's weapon points within max_degrees of a point: behaviour 645's fire gate",
+      "source": "HellForge's Pelican turret (behaviour_turret.c)"
+    },
+    "EntityDescriptor": {
+      "rva": "0xFD9D40",
+      "code": "48 83 EC 08 3B 0D 02 9F 4A 02 0F 84 9B 00 00 00 4C 8B 15 41 22 49 02 45 33 C0 48 89 5C 24 10 48 89 74 24 18 48 89 3C 24",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"}
+      ],
+      "hook": false,
+      "meaning": "An entity's descriptor in this machine's world: +0 its resource (u64), +0xC its unit's index, +0x14 bit 0 set where this machine has authority over it; NULL for none",
+      "source": "HellForge's behaviours and co-op diagnostics (behaviours.c, abilities.c, coop_diag.c)"
+    },
+    "MarkReplicated": {
+      "rva": "0x8449B0",
+      "code": "41 56 3B 15 68 F2 C3 02 45 8B F0 4C 8B 0D 7E 1D AE 02 0F 84 D3 00 00 00 45 8B 51 48 45 33 C0 48 89 5C 24 10 41 8B 59 50",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "entity", "type": "uint32_t", "meaning": "a networked entity"},
+        {"name": "mask", "type": "uint32_t", "meaning": "the fields to send (0xE00: a behaviour's flight target, P+0x1BC)"}
+      ],
+      "hook": false,
+      "meaning": "Marks fields of an entity's behaviour record replicated, so the other machines receive them; does nothing without authority",
+      "source": "HellForge's behaviours, co-op (behaviours.c)"
+    },
+    "ShieldRecord": {
+      "rva": "0x4FB390",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 78 88 F8 02 0F 84 93 00 00 00 4C 8B 1D 77 B2 E2",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "binding", "type": "void*", "meaning": "a shield's binding (hf_global_ShieldManager's bindings, by index)"}
+      ],
+      "hook": false,
+      "meaning": "A shield's record (the stats' Shield record: +0 the radius, +0x78 the bubble unit), as the game's own readers get it; NULL for no binding",
+      "source": "HellForge's shield block (shield_block.c)"
+    },
+    "MoveObject": {
+      "rva": "0x59FED0",
+      "code": "40 55 53 57 41 54 41 56 41 57 48 8D AC 24 58 FF FF FF 48 81 EC A8 01 00 00 44 0F 29 9C 24 40 01 00 00 44 0F 29 A4 24 30",
+      "returns": "void",
+      "params": [
+        {"name": "motion", "type": "void*", "meaning": "the motion manager: hf_global_MotionManager"},
+        {"name": "index", "type": "uint32_t", "meaning": "the object's motion index"},
+        {"name": "dt", "type": "float", "meaning": "the frame's time"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "One object's motion for a frame, on the motion jobs, ending at the single write of its position (MotionManager's positions). HellForge's shield wall detours it to hold enemies outside a bubble",
+      "source": "HellForge's shield wall hook (shield_block.c)"
+    },
+    "SpawnProjectile": {
+      "rva": "0x13A9830",
+      "code": "40 55 56 41 55 41 56 48 8D AC 24 08 FF FF FF 48 81 EC F8 01 00 00 48 8B 05 C3 27 29 01 48 33 C4 48 89 45 40 80 79 28 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "pool", "type": "void*", "meaning": "the projectile pool: hf_global_ProjectileSystem"},
+        {"name": "descriptor", "type": "uint8_t*", "meaning": "the shot: +0x10 its ProjectileSettings row (pointer), +0x18 the weapon's entity"},
+        {"name": "extra", "type": "void*", "meaning": "not reviewed: the ProjectileWeapon fire path passes its own"}
+      ],
+      "hook": false,
+      "meaning": "Spawns a shot into the projectile pool, copying its flight and armour penetration from its rows; returns its slot (its hit record at pool + 0x4D040 + 0xC8 slot). HellForge redirects the ProjectileWeapon pellet call (0x616612) to give other players' shots their own rows. The artillery's shells fly from it, with their ProjectileSettings row's speed (+0x20), drag (+0x28) and gravity",
+      "source": "HellForge's co-op round stats (rounds.c); HellForge's artillery reach (difficulty_artillery.c)"
+    },
+    "CatalogueAddItem": {
+      "rva": "0x136EC00",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 55 41 56 41 57 4C 8B 2D D7 E2 10 02 0F 57 C9 0F 57 C0 41",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "0"},
+        {"name": "mix_id", "type": "uint32_t", "meaning": "the item's mixId"},
+        {"name": "item_id", "type": "uint32_t", "meaning": "the item's itemId"},
+        {"name": "parent", "type": "uint32_t", "meaning": "its parent in the catalogue (children link to the root appended just before them)"},
+        {"name": "field", "type": "int32_t", "meaning": "the record's +0x10"},
+        {"name": "flag", "type": "uint8_t", "meaning": "the record's +0xB4 byte"},
+        {"name": "buy", "type": "const void*", "meaning": "the buy prices (a record's +0x1C)"},
+        {"name": "buy_count", "type": "uint32_t", "meaning": "4"},
+        {"name": "sell", "type": "const void*", "meaning": "the sell prices (a record's +0x4C)"},
+        {"name": "sell_count", "type": "uint32_t", "meaning": "4"},
+        {"name": "dwords", "type": "const uint32_t*", "meaning": "a record's four dwords at +0x7C"},
+        {"name": "dword_count", "type": "uint32_t", "meaning": "4"},
+        {"name": "required", "type": "const uint32_t*", "meaning": "the required items (a record's +0x90)"},
+        {"name": "required_count", "type": "uint32_t", "meaning": "how many (at most 8)"},
+        {"name": "category", "type": "uint32_t", "meaning": "the item's category"},
+        {"name": "max_cap", "type": "uint32_t", "meaning": "the most one can own"}
+      ],
+      "hook": false,
+      "meaning": "Appends a record to the item catalogue (hf_global_ProgressionManager), as the login's catalogue reply does. On the game thread; CatalogueSort after",
+      "source": "KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c)"
+    },
+    "CatalogueSort": {
+      "rva": "0x136E6A0",
+      "code": "4C 8B DC 53 55 56 41 55 48 81 EC A8 00 00 00 48 8B 05 5A D9 2C 01 48 33 C4 48 89 84 24 90 00 00 00 48 8B 35 30 E8 10 02",
+      "returns": "void",
+      "params": [],
+      "hook": false,
+      "meaning": "Sorts the item catalogue again, into its categories' starts (it only adds to them: they are zeroed first). On the game thread",
+      "source": "KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c)"
+    },
+    "AddItemAmount": {
+      "rva": "0x136EF80",
+      "code": "44 89 44 24 18 48 89 4C 24 08 53 56 57 41 54 41 55 41 56 48 81 EC D8 00 00 00 45 33 E4 45 8B E9 41 8B F8 8B F2 4C 8B F1",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the progression manager: hf_global_ProgressionManager"},
+        {"name": "mix_id", "type": "uint32_t", "meaning": "the item's mixId (one the catalogue lacks is ignored)"},
+        {"name": "amount", "type": "uint32_t", "meaning": "how many to add"},
+        {"name": "source", "type": "uint32_t", "meaning": "0"},
+        {"name": "text", "type": "const uint8_t*", "meaning": "NULL"},
+        {"name": "extra", "type": "int32_t", "meaning": "0"}
+      ],
+      "hook": false,
+      "meaning": "Adds to an owned item as the buy/v2 reply does: no popup, no backend request. On the game thread",
+      "source": "KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c)"
+    },
+    "RemoveItemAmount": {
+      "rva": "0x136F5E0",
+      "code": "85 D2 0F 84 91 00 00 00 53 48 83 EC 20 44 8B 91 E0 1C 00 00 45 33 DB 48 8B D9 45 8B CB 45 85 D2 74 72 48 8D 81 E4 9C 0B",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the progression manager: hf_global_ProgressionManager"},
+        {"name": "mix_id", "type": "uint32_t", "meaning": "the item's mixId (one the catalogue lacks is ignored)"},
+        {"name": "amount", "type": "uint32_t", "meaning": "how many to take away"}
+      ],
+      "hook": false,
+      "meaning": "Takes an amount of an owned item away. On the game thread",
+      "source": "KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c)"
+    },
+    "LoadEntities": {
+      "rva": "0xFDB440",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 30 33 FF 4C 8B E9 89 B9 70 24 F1 00 E8 3C C6 FF FF",
+      "returns": "void",
+      "params": [
+        {"name": "state", "type": "void*", "meaning": "the entity state: hf_global_EntityManager's object"}
+      ],
+      "hook": true,
+      "meaning": "Loads the game's entity data (generated_entities.dl_bin) into the entity state: the entity map, short ids and component tables. HellForge's weapon and entity registry adds the mods' entities right after it returns",
+      "source": "HellForge's weapon registry (registry.c, registry_load.c EntityLoaderDetour)"
+    },
+    "BuildArmoryList": {
+      "rva": "0x9F1CC0",
+      "code": "48 89 5C 24 08 48 89 7C 24 10 48 8B 05 C7 A2 A7 02 45 33 DB 4C 8B C9 45 8B D3 48 8B B8 60 25 F1 00 4C 8D 87",
+      "returns": "void",
+      "params": [
+        {"name": "list", "type": "void*", "meaning": "the armory list object it fills"}
+      ],
+      "hook": true,
+      "meaning": "Builds the armory's list from the loadout entries (component 29) into a fixed 193-entry object: per-type starts at +0x1B24, counts at +0x1B40, 32-byte entries. HellForge's detour replaces it with a larger list of its own (hf_global_Armory points there)",
+      "source": "HellForge's weapon registry (registry.c, registry_load.c ArmoryBuilderDetour)"
+    },
+    "ArmoryEntryOf": {
+      "rva": "0x11E7C60",
+      "code": "48 89 5C 24 08 48 8B 1D 7C ED 13 02 41 BB 01 00 00 00 4C 8D 8B 28 1B 00 00 0F 1F 80 00 00 00 00 45 8B 41 1C",
+      "returns": "uint8_t*",
+      "params": [
+        {"name": "id", "type": "uint32_t", "meaning": "the loadout id (a weapon's, as in its loadout entry)"}
+      ],
+      "hook": false,
+      "meaning": "The armory entry of a loadout id, found by walking the armory's per-type ranges (hf_global_Armory): 32 bytes, the loadout id at +0 and the entity at +8 (u64); NULL when the armory lists none",
+      "source": "HellForge's registry self-check (registry_load.c SelfCheck)"
+    },
+    "EngineText": {
+      "rva": "0x17802E0",
+      "code": "40 53 48 83 EC 20 48 8B 05 1B 60 BA 01 8B D9 48 8B 48 10 48 8B 81 E8 03 00 00 8B CB FF D0 48 85 C0 74 05 80",
+      "returns": "const uint8_t*",
+      "params": [
+        {"name": "id", "type": "uint32_t", "meaning": "the text id (a strings entry, or one HellForge added for a mod)"}
+      ],
+      "hook": false,
+      "meaning": "game.dll's wrapper of the engine's text function (the slot at +1000 of hf_global_EngineApi's table): the text of an id, as a UTF-8 string. HellForge points that slot at its own, so mod texts answer here too; the armory calls the slot directly, so hook the slot, not this, to change texts",
+      "source": "HellForge's mod text (registry.c HookText)"
+    },
+    "OpenMenuPresenter": {
+      "rva": "0x14C0550",
+      "code": "4C 89 44 24 18 56 57 41 56 48 83 EC 60 8B 41 28 48 8B F1 83 E8 01 48 63 FA 4C 63 C8 78 16 48 8D 41 14 4A 8D",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the presenter manager"},
+        {"name": "presenter", "type": "int32_t", "meaning": "the menu presenter to open (6 the information terminal, 41 the debug lobby browser)"},
+        {"name": "arg", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Opens a menu presenter on this machine's ship UI. HellForge's terminal detour turns presenter 6 (the information terminal) into 41 (the lobby browser) or opens nothing when an editor shows its own browser",
+      "source": "HellForge's information terminal (terminal.c)"
+    },
+    "MenuSoundUpdate": {
+      "rva": "0x13270B0",
+      "code": "40 53 48 83 EC 40 48 83 B9 58 46 00 00 00 48 8B D9 0F 29 7C 24 20 0F 28 F9 0F 84 0D 02 00 00 48 8B 05 32 F2",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the menu sound manager"},
+        {"name": "dt", "type": "float", "meaning": "the frame's time (seconds)"}
+      ],
+      "hook": true,
+      "meaning": "The menu sound manager's update, once a frame on the game thread, in missions and on the ship. HellForge's detour runs package requests and hf->on_game_thread callbacks there, before the game's own update",
+      "source": "HellForge's game thread (packages.c TickDetour)"
+    },
+    "RequestPackages": {
+      "rva": "0x12FE350",
+      "code": "45 85 C0 0F 84 75 01 00 00 41 56 41 57 48 83 EC 38 48 89 5C 24 50 4C 8B FA 48 89 6C 24 58 4C 8B F1 48 89 74",
+      "returns": "void",
+      "params": [
+        {"name": "system", "type": "void*", "meaning": "the RefcountedPackageSystem: hf_global_PackageSystem"},
+        {"name": "ids", "type": "const uint64_t*", "meaning": "the package ids"},
+        {"name": "count", "type": "uint32_t", "meaning": "how many ids (HellForge passes 1)"}
+      ],
+      "hook": false,
+      "meaning": "Takes a reference on packages so the engine loads and keeps them. Game thread only: it changes the system's reference map without a lock, and a full map writes to address 0. hf->load_package is the checked way to call it",
+      "source": "HD2Runtime 0.40.1 domains/package_residency; HellForge's load_package (packages.c)"
+    },
+    "EntityOfNetwork": {
+      "rva": "0xFD9BA0",
+      "code": "48 83 EC 08 4C 8B 1D ED 23 49 02 44 8B C2 4C 8B C9 81 FA FF 7F 00 00 75 10 8B 05 AD A9 4A 02 89 01 48 8B C1",
+      "returns": "uint32_t*",
+      "params": [
+        {"name": "out", "type": "uint32_t*", "meaning": "where it writes the entity (the game's no-entity id when there is none)"},
+        {"name": "network", "type": "uint32_t", "meaning": "the network id (handle)"}
+      ],
+      "hook": false,
+      "aliases": ["EntityOfHandle"],
+      "meaning": "The entity a network id names on this machine now, written to out (and out returned). hf->entity_of_network is the checked way to call it",
+      "source": "HellForge's entity_of_network (channel.c; the pin in abilities.c)"
+    },
+    "QueryLoadoutPreview": {
+      "rva": "0x18E9D50",
+      "code": "40 55 53 56 57 41 56 48 8D AC 24 60 EB FF FF B8 A0 15 00 00 E8 57 A8 81 00 48 2B E0 48 8B 05 9D 22 D5 00 48",
+      "returns": "void*",
+      "params": [
+        {"name": "out", "type": "void*", "meaning": "the 0x4C-byte preview record it fills, returned"},
+        {"name": "alternate", "type": "uint8_t", "meaning": "1 for the fallback query (the game's missing-child fallback calls itself with 1)"},
+        {"name": "slot", "type": "uint32_t", "meaning": "the loadout slot"},
+        {"name": "mode", "type": "uint32_t", "meaning": "the preview mode"},
+        {"name": "context", "type": "void*", "meaning": "the query's context"}
+      ],
+      "hook": true,
+      "meaning": "The loadout unit-preview query: the record a loadout slot's preview shows; a missing loadout row gives a zero record. HellForge's detour breaks its fallback's endless self-call (G-8 Immolation in the hellpod)",
+      "source": "HellForge's loadout preview guard (loadout_preview.c)"
+    },
+    "PushArmoryLoadout": {
+      "rva": "0x11F5010",
+      "code": "B8 18 14 00 00 E8 A6 F5 F0 00 48 2B E0 4C 8B 0D 2C 7E 28 02 33 C0 45 8B 81 00 D2 02 00 45 85 C0 0F 84 B9 00",
+      "returns": "void",
+      "params": [],
+      "hook": false,
+      "meaning": "The armory's commit: pushes this machine's player's loadout from the profile to its PlayerHistory record (hf_global_PlayerHistory), the way a boot's validation applies a changed weapon. Game thread; its request is handled a few frames later",
+      "source": "HellForge's loadout scrub (loadout_scrub.c)"
+    },
+    "RollCacheLoot": {
+      "rva": "0xF3A800",
+      "code": "4C 8B DC 53 56 57 41 54 41 57 48 81 EC 30 01 00 00 48 8B 05 F8 17 70 01 48 33 C4 48 89 84 24 E0 00 00 00 48",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "params", "type": "void*", "meaning": "the pass's parameters"},
+        {"name": "rdx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "context", "type": "uint8_t*", "meaning": "the level generation context: [[[+0x18] + 0x2D0] + 0x68] the generation settings, their cache loot tables at +0x90 (count +0x98, 0x28 bytes each: u32 id, i32 weight, i32 min and max difficulty, entries at +0x18, count +0x20)"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Level generation's QueueRandomCacheLootRewardsPackages pass: rolls each random loot cache against the generation settings' cache loot tables. HellForge's detour sets the Super Credits tables' weight to the plan's Forge Credits chance before the roll",
+      "source": "HellForge's Forge Credits loot chance (forge_credits.c)"
+    },
+    "RequestWarbondPurchase": {
+      "rva": "0x13714F0",
+      "code": "4C 8B DC 41 56 48 81 EC 90 0C 00 00 48 8B 05 0D AB 2C 01 48 33 C4 48 89 84 24 80 0C 00 00 48 8B 05 E3 B9 10",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "item", "type": "uint32_t", "meaning": "the warbond item's seasonPassItemId"},
+        {"name": "cost", "type": "int32_t", "meaning": "its price"},
+        {"name": "currency", "type": "uint32_t", "meaning": "the mixId of the currency it is charged in (the warbond's; requisition 0xD7150EEC, Forge Credits 0x6C3C83C1)"}
+      ],
+      "hook": false,
+      "meaning": "Builds the buy request for a warbond item and records it as the progression's pending buy; its callers are the warbond page view and the MVVM popup. HellForge patches its entry so the currency is the item's own",
+      "source": "HellForge's per-item warbond currency (warbonds.c InstallWarbondItems)"
+    },
+    "FinishWarbondPurchase": {
+      "rva": "0x13751D0",
+      "code": "4C 8B DC 57 48 81 EC 90 03 00 00 48 8B 05 2E 6E 2C 01 48 33 C4 48 89 84 24 60 03 00 00 80 B9 D8 99 77 01 00",
+      "returns": "void",
+      "params": [
+        {"name": "progression", "type": "uint8_t*", "meaning": "the progression manager: hf_global_Progression (its pending buy at +0x17799D8, the item at +0x17799DC)"}
+      ],
+      "hook": true,
+      "meaning": "Completes the reply to a warbond buy: charges the pending buy and appends its item, once, to the purchased list (count +0xD8A58, ids from +0xD8A5C). HellForge's detour takes a repeatable mod item out of the list again so it sells again",
+      "source": "HellForge's repeatable warbond items (warbonds.c InstallWarbondRepeat)"
+    },
+    "SpawnWarbondShowcase": {
+      "rva": "0x13050B0",
+      "code": "48 89 6C 24 20 56 48 81 EC D0 00 00 00 48 8B 05 4C 6F 33 01 48 33 C4 48 89 84 24 B0 00 00 00 48 8B 35 12 85",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "character", "type": "uint32_t", "meaning": "the showcase character's id (a row of the character table at game.dll+0x32B1E60)"}
+      ],
+      "hook": true,
+      "meaning": "Spawns the Helldiver shown beside a warbond's card from its character row (kit, pose and weapon), on a card change. HellForge's detour fills a mod warbond's row once the catalogue and armory are ready",
+      "source": "HellForge's warbond showcase (warbond_showcase.c)"
+    },
+    "UpdateWarbondSpent": {
+      "rva": "0x194A700",
+      "code": "48 89 5C 24 10 55 56 57 48 81 EC 90 00 00 00 48 8B 81 30 21 00 00 0F 28 DA 0F 29 7C 24 70 48 8B F9 44 0F 29",
+      "returns": "void",
+      "params": [
+        {"name": "widget", "type": "uint8_t*", "meaning": "the spent widget: its data block (a card's or the page view) at +0x2130, last frame's at +0x2138, its text element at +0x378"},
+        {"name": "a", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "b", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Updates the \"#COUNT Medal(s) spent\" widget on the Acquisition Center's cards and a warbond's page header. HellForge's detour gives it the text of the warbond's own currency",
+      "source": "HellForge's warbond texts (warbond_texts.c)"
+    },
+    "UpdateWarbondPager": {
+      "rva": "0x1947950",
+      "code": "48 89 5C 24 10 48 89 74 24 20 57 48 83 EC 30 48 8B 91 E8 7A 00 00 48 8B D9 33 FF 0F 29 74 24 20 0F 28 F1 48",
+      "returns": "void",
+      "params": [
+        {"name": "pager", "type": "uint8_t*", "meaning": "the Acquisition Center's pager (its panel + 0x110): {count, current} read through [+0x7AE8], last frame's through [+0x7AF0]"},
+        {"name": "dt", "type": "float", "meaning": "the frame's time"}
+      ],
+      "hook": false,
+      "meaning": "Lays out and lights the Acquisition Center pager's 32 dots for the card count and the current card. HellForge redirects its one call (0x194345A) to show pages of 32 past 32 warbonds",
+      "source": "HellForge's warbond pager (warbond_pager.c)"
+    },
+    "WarbondPagerInput": {
+      "rva": "0x1947730",
+      "code": "40 55 57 41 57 48 83 EC 30 8B 01 4D 8B F9 C1 E8 04 48 8B EA 48 8B F9 A8 01 0F 84 E7 01 00 00 48 89 74 24 58",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "pager", "type": "uint8_t*", "meaning": "the Acquisition Center's pager"},
+        {"name": "rdx", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The pager's input: a clicked dot becomes the card to select (+0x7B14); nonzero when that changed. HellForge redirects its one call (0x1943384)",
+      "source": "HellForge's warbond pager (warbond_pager.c)"
+    },
+    "SetElementText": {
+      "rva": "0x143BF90",
+      "code": "48 83 EC 28 4C 8B D9 39 91 10 01 00 00 0F 84 80 00 00 00 89 91 10 01 00 00 48 8B 91 70 02 00 00 48 85 D2 74",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "a UI text element of kind 0x1C0000 (kind: its +0 & 0x3C0000); its text id is at +0x110"},
+        {"name": "text", "type": "uint32_t", "meaning": "the text id"}
+      ],
+      "hook": false,
+      "meaning": "Sets a UI text element's text id, which it then resolves through the engine's text function (mod texts included). The stratagem picker's headings and the warbond spent widget use it",
+      "source": "HellForge's stratagem categories (stratagem_categories.c) and warbond texts (warbond_texts.c)"
+    },
+    "SetElementTextAlt": {
+      "rva": "0x1441720",
+      "code": "48 83 EC 28 4C 8B D9 39 91 10 01 00 00 0F 84 80 00 00 00 89 91 10 01 00 00 48 8B 91 70 02 00 00 48 85 D2 74",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "a UI text element of kind 0x200000 (kind: its +0 & 0x3C0000); its text id is at +0x110"},
+        {"name": "text", "type": "uint32_t", "meaning": "the text id"}
+      ],
+      "hook": false,
+      "meaning": "SetElementText for text elements of kind 0x200000",
+      "source": "HellForge's warbond texts (warbond_texts.c)"
+    },
+    "SetElementNumber": {
+      "rva": "0x143CAD0",
+      "code": "48 83 EC 28 4C 8B D1 48 81 C1 10 01 00 00 E8 0D DA FF FF 84 C0 74 5E 41 8B 92 B8 00 00 00 8B C2 83 C8 02 41",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "a UI text element"},
+        {"name": "name", "type": "uint32_t", "meaning": "the hash of the variable in its text (the picker heading's available count 0xEB646556, its total 0x4442EB89)"},
+        {"name": "value", "type": "uint32_t", "meaning": "the number"}
+      ],
+      "hook": false,
+      "meaning": "Fills a number variable in a UI text element's text",
+      "source": "HellForge's stratagem categories (stratagem_categories.c PickerHeaderCategory)"
+    },
+    "SetWidgetVisible": {
+      "rva": "0x14508E0",
+      "code": "48 83 EC 28 44 8B 01 4C 8B D1 41 8B C0 45 8B C8 83 E0 EF 41 83 C9 10 84 D2 44 0F 44 C8 44 89 09 45 3B C1 74",
+      "returns": "void",
+      "params": [
+        {"name": "widget", "type": "void*", "meaning": "the UI widget"},
+        {"name": "visible", "type": "uint8_t", "meaning": "1 shown, 0 hidden"}
+      ],
+      "hook": false,
+      "meaning": "Shows or hides a UI widget. HellForge's locked-warbond button calls it on the button's price",
+      "source": "HellForge's locked warbonds (forge_credits.c)"
+    },
+    "SetElementColour": {
+      "rva": "0x1448690",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 56 57 41 57 48 83 EC 20 F3 0F 10 41 48 48 8B F2 0F 2E 02 48 8B F9 0F 8A CD 00",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"},
+        {"name": "rgb", "type": "const float*", "meaning": "its colour (3 floats: red, green, blue)"}
+      ],
+      "hook": false,
+      "meaning": "Sets a UI element's colour. HellForge's warbond prices call it to tint a sample price in the sample's colour",
+      "source": "HellForge's warbond prices (warbonds.c WarbondPriceColour)"
+    },
+    "SetPickerHeading": {
+      "rva": "0x18CEC00",
+      "code": "85 D2 0F 84 BF 01 00 00 53 48 83 EC 40 48 8B 05 E4 E2 BA 01 48 8B D9 48 89 6C 24 50 33 ED 44 8B C5 44 8B 88",
+      "returns": "void",
+      "params": [
+        {"name": "widget", "type": "uint8_t*", "meaning": "the heading widget: its title element at +0x110, its counts element at +0x3C8"},
+        {"name": "key", "type": "uint32_t", "meaning": "the key of the section's first candidate"}
+      ],
+      "hook": false,
+      "meaning": "Fills a stratagem picker section heading (its title and its available and total counts). HellForge redirects its call in the list's realize pass (0x18D2E85) to title mods' selection categories (hf->add_stratagem_category)",
+      "source": "HellForge's stratagem categories (stratagem_categories.c)"
+    },
+    "StratagemAvailable": {
+      "rva": "0x136FC20",
+      "code": "48 89 5C 24 08 48 8B D9 85 D2 75 09 4C 8D 15 3D B8 45 02 EB 0D 8B C2 4C 8D 15 C2 B9 45 02 4D 8B 14 C2 45 8B",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "account", "type": "void*", "meaning": "the progression manager: hf_global_Progression"},
+        {"name": "type", "type": "uint32_t", "meaning": "the StratagemType (HF_STRATAGEM_..., or a mod's)"}
+      ],
+      "hook": false,
+      "meaning": "Whether the player has a stratagem available to take, as the picker's heading counts it",
+      "source": "HellForge's stratagem categories (stratagem_categories.c PickerCategoryCounts)"
+    },
+    "SortArray": {
+      "rva": "0x20BE230",
+      "code": "41 54 41 55 41 56 48 81 EC 50 04 00 00 48 8B 05 CC DD 57 00 48 33 C4 48 89 84 24 10 04 00 00 4D 8B E1 4D 8B",
+      "returns": "void",
+      "params": [
+        {"name": "data", "type": "void*", "meaning": "the array"},
+        {"name": "count", "type": "uint64_t", "meaning": "its element count"},
+        {"name": "width", "type": "uint64_t", "meaning": "an element's size in bytes"},
+        {"name": "compare", "type": "const void*", "meaning": "the comparator: int (const void*, const void*)"}
+      ],
+      "hook": false,
+      "meaning": "Sorts an array with a comparator, qsort's arguments. The stratagem picker sorts its candidates with it (call 0x18D8C40), which HellForge redirects to group mods' categories",
+      "source": "HellForge's stratagem categories (stratagem_categories.c PickerSortCategories)"
+    },
+    "HighestDifficulty": {
+      "rva": "0x11EBB40",
+      "code": "48 89 5C 24 10 57 48 83 EC 20 BB 0A 00 00 00 C7 44 24 30 AC 8C 21 AF 8B FB C7 44 24 34 A9 BE AB FA 45 33 C0",
+      "returns": "uint32_t",
+      "params": [],
+      "hook": false,
+      "meaning": "Returns the highest difficulty level a player may choose: min(10, the online override \"0xAF218CAC 0xFAABBEA9\", which it finds with FindConfigSetting). Every read of the difficulty table clamps the level to it; once a mod's add_difficulty is installed its 10 is 11",
+      "source": "HellForge's level 11 (difficulty.c, DIF_MAX_FN and the live override)"
+    },
+    "FindConfigSetting": {
+      "rva": "0x12E7990",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 85 D2 4C 8B D1 B9 78 20 01 00 B8 28 60 00",
+      "returns": "const uint8_t*",
+      "params": [
+        {"name": "config", "type": "void*", "meaning": "the game's config: hf_global_GameConfig"},
+        {"name": "online", "type": "uint32_t", "meaning": "HighestDifficulty passes 1: the online overrides (config +0x12078) are looked in before the defaults (+0xC050)"},
+        {"name": "key", "type": "uint32_t", "meaning": "the setting's key, a 32-bit hash"}
+      ],
+      "hook": false,
+      "meaning": "Finds a config setting by key in the config's open-addressing tables of 48-byte entries. Returns the setting (+0xC its type, 6 a u32; +0x10 its value) or NULL",
+      "source": "HellForge's live level 11 (difficulty.c, DifficultyCapValue and kCapSitePin)"
+    },
+    "ShowDifficultyWidget": {
+      "rva": "0x19A28D0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20 8B F2 48 8B E9 E8 4C 92 84 FF",
+      "returns": "void",
+      "params": [
+        {"name": "widget", "type": "void*", "meaning": "the difficulty bar's widget"},
+        {"name": "level", "type": "uint32_t", "meaning": "the widget's difficulty level (the bar passes its index + 1)"}
+      ],
+      "hook": false,
+      "meaning": "Shows the chosen widget of the war table's difficulty bar: its level's number, name and icon from the difficulty table, and its band sprite (a 10-entry array read by level - 1)",
+      "source": "HellForge's level 11 (difficulty.c header; difficulty_ui.c, DIF_ICON_CALL)"
+    },
+    "ComputeMissionRating": {
+      "rva": "0x19C4E70",
+      "code": "4C 8B DC 49 89 5B 18 55 56 57 41 54 41 55 41 56 41 57 49 8D AB 18 F7 FF FF 48 81 EC B0 09 00 00 45 0F 29 93",
+      "returns": "float",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Rates the mission on the pause map and at mission end against a table of 10 rows of thresholds, indexed by the mission's level - 1",
+      "source": "HellForge's level 11 (difficulty.c, kLevelLoads 0x19C5084)"
+    },
+    "EnemyDirectorTick": {
+      "rva": "0x94EB90",
+      "code": "40 55 41 56 48 8D AC 24 78 F0 FF FF B8 88 10 00 00 E8 1A 5A 7B 01 48 2B E0 44 0F 29 84 24 30 10 00 00 48 8B",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (its caller passes its rdi + 0x771F48)"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The enemy director's per-frame step: reads each faction's roaming patrol interval (difficulty row +0x2A0, f32 s) and most living patrol enemies (+0x2AC, u32) from the mission's difficulty row",
+      "source": "HellForge's difficulty patrols (difficulty.c, PatrolLevelRow)"
+    },
+    "ArenaAllocate": {
+      "rva": "0x173B8D0",
+      "code": "40 56 41 56 48 83 EC 38 4D 8B F0 48 8B F1 48 85 D2 0F 84 61 01 00 00 48 89 6C 24 60 48 8D 6A FF 49 03 E8 4C",
+      "returns": "void*",
+      "params": [
+        {"name": "arena", "type": "void*", "meaning": "the arena (the level generator's generation arena: a pass's [rsi])"},
+        {"name": "size", "type": "uint32_t", "meaning": "bytes"},
+        {"name": "alignment", "type": "uint32_t", "meaning": "the alignment; HellForge passes 8"}
+      ],
+      "hook": false,
+      "meaning": "Allocates from an arena; the level generator's passes take their scratch tables from the generation arena with it",
+      "source": "HellForge's larger maps (difficulty_maps.c, kZoneClearStub)"
+    },
+    "GameMemset": {
+      "rva": "0x208AAA0",
+      "code": "4C 8B D9 0F B6 D2 49 B9 01 01 01 01 01 01 01 01 4C 0F AF CA 49 83 F8 10 0F 86 F2 00 00 00 66 49 0F 6E C1 66",
+      "returns": "void*",
+      "params": [
+        {"name": "dest", "type": "void*", "meaning": "the memory"},
+        {"name": "value", "type": "int32_t", "meaning": "the byte to fill with (HellForge passes 0)"},
+        {"name": "size", "type": "uint64_t", "meaning": "bytes"}
+      ],
+      "hook": false,
+      "meaning": "game.dll's memset",
+      "source": "HellForge's larger maps (difficulty_maps.c, kZoneClearStub)"
+    },
+    "CreateGenerationBlock": {
+      "rva": "0xF6E710",
+      "code": "48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 48 89 78 20 41 56 48 81 EC B0 00 00 00 48 8B F2 0F 29 70 E8 48",
+      "returns": "void",
+      "params": [
+        {"name": "level", "type": "void*", "meaning": "the level (lg): its caller, the world's creation, passes the world's +0xAE288"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Makes the level generator's generation block G (the level's locations, their types, the minimap's arrays, the mission stamps, the objective list, places and clusters), once per world (from 0xAB8B70)",
+      "source": "HellForge's larger maps (difficulty_block.c)"
+    },
+    "InitLevel": {
+      "rva": "0xF71220",
+      "code": "48 8B C4 48 89 58 18 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 28 FD FF FF 48 81 EC A0 03 00 00 0F 29 70 B8",
+      "returns": "void",
+      "params": [
+        {"name": "level", "type": "void*", "meaning": "the level (lg): the world passes its +0xAE288"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Level init: copies the generation settings' radii into the level (lg+0x2D78..+0x2D8C), sets the map type (lg+0x2DE0) and the view rect a war-table preview is drawn in (lg+0x2D94)",
+      "source": "HellForge's larger maps (difficulty_maps.c, kRadiiStub)"
+    },
+    "GenerateRouteCells": {
+      "rva": "0xFD03E0",
+      "code": "48 8B C4 48 89 58 08 89 50 10 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 18 FF FF FF 48 81 EC B0 01 00 00 48",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm3", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The level generator's route cells: a Poisson disc of sites at the generation settings' spacing (+4, 40 m) in the disk (+0xC, 680 m) around the world's centre, into fixed arrays (975 vertices, 1621 edges, 1024 cells) it does not check",
+      "source": "HellForge's larger maps (difficulty_maps.c)"
+    },
+    "GenerateRouteCellVoronoi": {
+      "rva": "0xF93800",
+      "code": "48 89 5C 24 20 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 60 FC FF FF 48 81 EC A0 04 00 00 0F 29 B4 24 90",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Level generator pass op 3: fills each route cell with points at its cell type's size (+0x18C) / 2 (grid) or / 4 (Poisson) and builds their diagrams into the block's areas (13224) and vertices (26205), unchecked",
+      "source": "HellForge's larger maps (difficulty_maps.c, kCellSpacingStub)"
+    },
+    "GenerateSubregionHeights": {
+      "rva": "0xF64E30",
+      "code": "48 8B C4 48 89 58 10 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 F8 F8 FF FF 48 81 EC D0 07 00 00 44 0F 29 40",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Level generator pass op 4: gives every area of a route cell the height of its cell type's curve at t = clamp(d / 64 m), d its distance to the nearest route point",
+      "source": "HellForge's larger maps (difficulty_terrain.c)"
+    },
+    "GenerateVoronoi": {
+      "rva": "0xF3F8E0",
+      "code": "48 8B C4 4C 89 40 18 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 D8 FE FF FF 48 81 EC E8 01 00",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Level generator pass op 0x25: lays a 16 m grid (generation settings +0) over the site square, keeps the points within the disk and runs jc_voronoi on them (arrays of 5680 sites, 5849 vertices, 11528 edges, unchecked)",
+      "source": "HellForge's larger maps (difficulty_maps.c, kGridStub)"
+    },
+    "FinalizeVoronoi": {
+      "rva": "0xF68050",
+      "code": "40 55 53 56 57 41 55 41 56 48 8D AC 24 A8 FC FF FF 48 81 EC 58 04 00 00 48 8B 05 A1 3F 6D 01 48 33 C4 48 89",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Level generator pass op 0xA4 on map type 1: rebuilds the route cells from points laid over the whole site square at each cell type's size (+0x18C), grid or Poisson. A failure has the level generated again",
+      "source": "HellForge's larger maps (difficulty_maps.c, difficulty_towns.c)"
+    },
+    "ForceFlattenZones": {
+      "rva": "0xF4C100",
+      "code": "48 8B C4 48 89 58 10 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 48 FE FF FF 48 81 EC 80 02 00 00 0F 29 70 B8",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Level generator pass op 0x3E (force_flatten_zones): groups connected cells whose type sets a height (+0x208) and flattens every zone cell to its group's height, one plateau per town",
+      "source": "HellForge's larger maps (difficulty_maps.c, kZoneClearStub)"
+    },
+    "SelectSubRegionCellsFromHeightGroup": {
+      "rva": "0xF37500",
+      "code": "4C 8B DC 55 53 56 57 41 56 41 57 49 8D AB A8 FC FF FF 48 81 EC 28 04 00 00 45 0F 29 43 98 45 0F 29 4B 88 48",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Gives each route cell of a type 0/1 map a subregion by a noise value sampled at the cell (SampleSubregionNoise): its zone cells become the map's towns",
+      "source": "HellForge's larger maps (difficulty_towns.c, kTownNoiseStub)"
+    },
+    "SampleSubregionNoise": {
+      "rva": "0xF3A2E0",
+      "code": "48 8B C4 48 89 58 18 48 89 70 20 F3 0F 11 48 10 57 48 81 EC C0 00 00 00 8B B1 08 01 00 00 33 FF 0F 29 70 E8",
+      "returns": "float",
+      "params": [
+        {"name": "noise", "type": "void*", "meaning": "the noise SelectSubRegionCellsFromHeightGroup passes (its frame's [rbp-0x70])"},
+        {"name": "x", "type": "float", "meaning": "x in world metres (0..2048)"},
+        {"name": "y", "type": "float", "meaning": "y in world metres"}
+      ],
+      "hook": false,
+      "meaning": "The noise value at a point, which picks a route cell's subregion",
+      "source": "HellForge's larger maps (difficulty_towns.c, kTownNoiseStub)"
+    },
+    "GenerateLocationClusters": {
+      "rva": "0xF79520",
+      "code": "4C 8B DC 4D 89 43 18 49 89 4B 08 53 55 56 57 41 54 41 55 41 56 41 57 48 81 EC 08 01 00 00 48 8B 41 38 0F 57",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Level generator pass op 0x18: groups the level's locations (bases, outposts, objectives) into clusters of 24 (G+0x896FB0, 8 x 0xE0: members +0x10, count +0xD0, kind +0xD8), a few per kind, their centres on a ring at 0.6 to 0.8 of the playable radius",
+      "source": "HellForge's larger maps (difficulty_block.c, difficulty_cities.c)"
+    },
+    "SpreadLocations": {
+      "rva": "0xF7C310",
+      "code": "48 8B C4 4C 89 40 18 48 89 50 10 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 08 FE FF FF 48 81",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Level generator pass op 0x8B: places each location as near its cluster's centre as the gaps allow, sorted by distance from the nearest location of its kind. A failure has the level generated again",
+      "source": "HellForge's larger maps (difficulty_maps.c, kSpreadReferenceStub)"
+    },
+    "SpreadLocationsCities": {
+      "rva": "0xFB41B0",
+      "code": "48 89 5C 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 F0 48 81 EC 10 01 00 00 48 8B 05 3D 7E 68 01 48",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (the pass dispatcher passes a static of game.dll)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Level generator pass op 0x8C (SpreadLocations_Cities): spreads the important locations (G+0x11A715C of 256) on city maps, flagging each in a 128-entry stack array",
+      "source": "HellForge's larger maps (difficulty_cities.c)"
+    },
+    "GenerateOutpostLocations": {
+      "rva": "0xF7E250",
+      "code": "48 8B C4 48 89 58 20 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 C8 FA FF FF 48 81 EC 00 06 00 00 0F 29 70 B8",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Places the level's outposts from the location-group sets: an item is offered only if a class in its list (+0x198, count +0x1A0) has weight on the map's layout and its difficulty word (+0x60) admits the mission's level (lg+0xF9)",
+      "source": "HellForge's city strongholds (difficulty_cities.c)"
+    },
+    "GenerateObjectiveLocations": {
+      "rva": "0xF8F1D0",
+      "code": "48 89 5C 24 20 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 20 FD FF FF 48 81 EC E0 03 00 00 44 0F 29 94 24",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Places the mission's objectives on the map: one place per placement attempt, retries included (G+0x8ABCC0, 16 pointers, count G+0x11A7170), unchecked",
+      "source": "HellForge's more objectives (difficulty_block.c)"
+    },
+    "AddImportantLocations": {
+      "rva": "0xF90DC0",
+      "code": "48 8B C4 48 89 58 20 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 88 FD FF FF 48 81 EC 40 03 00 00 0F 29 70 B8",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Adds the extraction points to the level's objective and extraction places (G+0x8ABCC0, count G+0x11A7170)",
+      "source": "HellForge's more objectives (difficulty_block.c)"
+    },
+    "GenerateMissionStampList": {
+      "rva": "0xF8E530",
+      "code": "48 89 54 24 10 48 89 4C 24 08 56 41 54 41 56 48 81 EC 00 01 00 00 48 8B 41 08 4D 8B F0 4C 8B 49 20 45 33 D2",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes a static of game.dll)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Fills the mission stamp list (G+0x8BBD70, 128 x 0x10: set, group, item, objective id), stamps made per objective, without a check",
+      "source": "HellForge's more objectives (difficulty_block.c)"
+    },
+    "FixUnreachableAreas": {
+      "rva": "0xF67980",
+      "code": "48 89 5C 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 50 FF FF FF 48 81 EC B0 01 00 00 48 8B 05 6A 46",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Opens pockets of route cells that have no walkable neighbour; when it cannot, the level is generated again (lg+0xF954 counts the restarts)",
+      "source": "HellForge's larger maps (difficulty_diag.c)"
+    },
+    "CullUnitsOutsidePlayableArea": {
+      "rva": "0xF25A00",
+      "code": "48 8B C4 48 89 58 08 48 89 70 10 48 89 78 18 41 56 48 81 EC 40 01 00 00 0F 29 70 E8 41 8B D8 0F 29 78 D8 4C",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "level", "type": "void*", "meaning": "the level (lg): its callers pass the pass context's +0x18"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (its callers pass a pointer + 0x1990)"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm3", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Level generator op 0x6D, per unit: keeps a level's units within the playable radius (1024 x lg+0x2D70) and strips the rest at random, fading out to the border (lg+0x2D74)",
+      "source": "HellForge's larger maps (difficulty_cities.c, kCullRadiusStub)"
+    },
+    "GenerateCityRoads": {
+      "rva": "0xFA9E10",
+      "code": "48 8B C4 4C 89 40 18 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 18 FE FF FF 48 81 EC A8 02 00",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Level generator pass op 0xA7 (generate_city_roads): a footprint per road edge, then the city cells' buildings in cell order, stopping when the footprint list is full",
+      "source": "HellForge's larger maps (difficulty_maps.c, kCityCapacities)"
+    },
+    "CreateCityFootprintList": {
+      "rva": "0xFA8FE0",
+      "code": "48 89 5C 24 20 55 56 57 41 54 41 55 41 56 41 57 B8 F0 10 00 00 E8 C6 B5 15 01 48 2B E0 48 8B 05 0C 30 69 01",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (its caller passes the same pointer in r8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "void*", "meaning": "not reviewed: pass it on (its caller passes a block it allocated with ArenaAllocate and cleared)"}
+      ],
+      "hook": false,
+      "meaning": "Gives the city pass record its footprint list: 0x800 x 0x60 from the generation arena, its capacity at record +0x284",
+      "source": "HellForge's larger maps (difficulty_maps.c, kCityCapacities)"
+    },
+    "FlattenCityRoads": {
+      "rva": "0xFAF130",
+      "code": "4C 8B DC 55 53 56 49 8D AB 28 FC FF FF 48 81 EC C0 04 00 00 48 8B 05 C5 CE 68 01 48 33 C4 48 89 85 F0 02 00",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi + 8)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (the pass dispatcher passes its rsi)"},
+        {"name": "pass", "type": "void*", "meaning": "the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)"}
+      ],
+      "hook": false,
+      "meaning": "Dresses each city street: road ribbons and junction discs, the pieces at an edge's ends (+0x240, +0x250) and spaced street props (+0x270) up to their reach past the playable radius",
+      "source": "HellForge's larger maps (difficulty_streets.c)"
+    },
+    "StampIndexSize": {
+      "rva": "0xC048E0",
+      "code": "48 89 5C 24 08 57 48 83 EC 70 0F 29 74 24 60 0F 28 F0 0F 29 7C 24 50 0F 28 F9 44 0F 29 44 24 40 44 0F 28 C2",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "xmm0", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm2", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The size of the level generator's stamp index (10757 slots after a bitset)",
+      "source": "HellForge's larger maps (difficulty_maps.c, kStampIndex)"
+    },
+    "StampIndexCheckLayout": {
+      "rva": "0xC04AB0",
+      "code": "40 53 48 83 EC 50 0F 29 74 24 40 0F 28 F2 0F 29 7C 24 30 0F 28 F9 44 0F 29 44 24 20 44 0F 28 C0 F3 0F 5E C6",
+      "returns": "void",
+      "params": [
+        {"name": "xmm0", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm2", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Checks the layout of the level generator's stamp index against its slot count",
+      "source": "HellForge's larger maps (difficulty_maps.c, kStampIndex)"
+    },
+    "HashMapInsert": {
+      "rva": "0x172F790",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 44 8B 51 08 33 C0 44 8B 59 10 41 8B F0 44 0F AF DA 44 8B CA 41",
+      "returns": "void",
+      "params": [
+        {"name": "table", "type": "void*", "meaning": "the hash table"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The game's open-addressing hash insert (704 callers): probes every slot for the key or an empty one. HellForge's guard skips and counts an entry when the table is full",
+      "source": "HellForge's hash insert guard (difficulty_maps.c, DIF_HASH_INSERT_END)"
+    },
+    "SetupDestructionRecordMap": {
+      "rva": "0x13DF7D0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 81 EC A0 00 00 00 48 8B 3D 57 6B F4 01 33 F6 48 8B D9 48 8B 87 E8 10 00",
+      "returns": "void",
+      "params": [
+        {"name": "owner", "type": "void*", "meaning": "the map's owner: the slot pointer at +0xC5F48 and count at +0xC5F50 are its"}
+      ],
+      "hook": false,
+      "meaning": "Sets up the destruction-record map of hf_global_DestructionRecords: its slot pointer (+0xC5F48) and count (+0xC5F50; 0x8000 inline slots at +0x5F48)",
+      "source": "HellForge's larger maps (difficulty_maps.c, InstallRecordMap)"
+    },
+    "RegisterStaticDestructionRecords": {
+      "rva": "0x13E0200",
+      "code": "48 8B C4 48 89 48 08 53 56 57 41 57 48 81 EC 98 00 00 00 4C 89 60 D8 48 8D 48 B0 4C 89 70 C8 48 8B FA 4C 8B",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Registers the world's static destructibles in the destruction-record map, probing it inline",
+      "source": "HellForge's larger maps (difficulty_maps.c; difficulty_towns.c, DIF_RECORD_STORE)"
+    },
+    "SelectObjectives": {
+      "rva": "0x1756730",
+      "code": "4C 8B DC 55 53 57 49 8D AB A8 F1 FF FF 48 81 EC 40 0F 00 00 48 8B 05 C5 58 EE 00 48 33 C4 48 89 85 E0 0D 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "inputs", "type": "uint8_t*", "meaning": "+0 seed (u32), +8 the mission row (0..161), +0xC faction, +0x10 difficulty level, +0x14 a byte the selection never reads"},
+        {"name": "ids", "type": "uint32_t*", "meaning": "receives the objective ids (32 places)"},
+        {"name": "classes", "type": "uint32_t*", "meaning": "receives each one's class (0 main, 1 step, 3 optional), or NULL"}
+      ],
+      "hook": false,
+      "meaning": "Selects a mission's objectives from its mission row and returns how many. Every caller uses it: war table, mission descriptor, preview, telemetry; HellForge's second primary runs it again for a partner mission",
+      "source": "HellForge's two missions in one (difficulty_missions.c, g_select)"
+    },
+    "LaunchMission": {
+      "rva": "0xAD0010",
+      "code": "40 55 41 54 41 55 48 8D AC 24 10 ED FF FF B8 F0 13 00 00 E8 98 45 63 01 48 2B E0 48 8B 05 DE BF B6 01 48 33",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Launches the mission: lists the entity deltas its HiveMind gets (the mission row's, the modifiers', up to 10 resource hashes) before the spawn applies them",
+      "source": "HellForge's mission countdown (difficulty_countdown.c)"
+    },
+    "MissionTimerWidget": {
+      "rva": "0x17BA940",
+      "code": "40 55 56 41 56 48 8D 6C 24 B9 48 81 EC 90 00 00 00 48 8B 05 B8 16 E8 00 48 33 C4 48 89 45 E7 48 8B F1 48 81",
+      "returns": "void",
+      "params": [
+        {"name": "widget", "type": "void*", "meaning": "the timer widget"}
+      ],
+      "hook": false,
+      "meaning": "The mission's timer widget: the countdown's total less what is left (hf_global_HiveMindManager +0x51948) is the elapsed time and its segments",
+      "source": "HellForge's mission countdown (difficulty_countdown.c, kWidgetTimeStub)"
+    },
+    "UpdateHudObjectives": {
+      "rva": "0x18B42F0",
+      "code": "40 55 53 56 57 41 57 48 8D AC 24 50 FE FF FF 48 81 EC B0 02 00 00 48 8B 05 03 7D D8 00 48 33 C4 48 89 85 00",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The in-mission HUD's objective updater: copies every objective instance's id (hf_global_ObjectiveManager) into a 16-entry stack list to number them, and gives each map marker one of the map's 16 marker slots",
+      "source": "HellForge's more objectives (difficulty_missions.c, kHudListSites)"
+    },
+    "UpdateMapScreen": {
+      "rva": "0x18A7C60",
+      "code": "40 53 55 48 81 EC E8 00 00 00 44 3B 05 1B CD BD 01 41 8B D8 44 0F 29 64 24 50 48 8B E9 44 0F 28 E1 75 14 44",
+      "returns": "void",
+      "params": [
+        {"name": "map", "type": "void*", "meaning": "the map object (its caller passes its +0x1A0E28)"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Runs every frame while the map is open, through the HUD's objective updater (UpdateHudObjectives)",
+      "source": "HellForge's map marker slots (difficulty_missions.c)"
+    },
+    "BuildMapMarkerSlots": {
+      "rva": "0x18A5580",
+      "code": "48 8B C4 48 89 58 08 48 89 70 10 48 89 78 18 55 41 54 41 55 41 56 41 57 48 8D A8 08 FF FF FF 48 81 EC D0 01",
+      "returns": "void",
+      "params": [
+        {"name": "map", "type": "void*", "meaning": "the map object (its caller passes its +0x1A0E28; the slots at +0xF958)"},
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its caller passes 5, which the function stores at map +0x110 itself)"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Builds the map object's 16 marker slots (+0xF958, 0x2B8 each; its tracker list follows at +0x12518)",
+      "source": "HellForge's map marker slots (difficulty_missions.c)"
+    },
+    "HudMandatoryObjectives": {
+      "rva": "0x17CF690",
+      "code": "4C 8B DC 53 57 41 57 48 81 EC 80 00 00 00 48 8B 05 6B C9 E6 00 48 33 C4 48 89 44 24 70 48 8B 1D EC 76 B5 01",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The HUD's list of the mission's class 0 and 1 objectives (main objectives and steps), 16 at most",
+      "source": "HellForge's two missions in one (difficulty_missions.c, DIF_MANDATORY_MAX)"
+    },
+    "MissionHudTopBar": {
+      "rva": "0x17CB8E0",
+      "code": "48 8B C4 55 56 48 8D 68 A1 48 81 EC E8 00 00 00 0F 29 78 C8 44 0F 29 50 98 48 8B 05 10 07 E7 00 48 33 C4 48",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The mission HUD's top bar: shows the difficulty row's level number and icon (row +0x10, through SetImageWithBase)",
+      "source": "HellForge's level 11 icon (difficulty_ui.c, DIF_HUD_ICON_CALL)"
+    },
+    "BuildMissionResult": {
+      "rva": "0x62EC20",
+      "code": "48 8B C4 48 89 58 08 55 56 57 41 54 41 55 41 56 41 57 48 81 EC 50 0E 00 00 0F 29 70 B8 0F 29 78 A8 44 0F 29",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its caller passes hf_global_ScoreManager)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Builds the mission result record: its badges (+0x14C8: {id, amount} x 32, count +0x15C8), up to 11 before its objective loop, one per objective instance with a badge, up to 5 after",
+      "source": "HellForge's more objectives (difficulty_missions.c, kBadgeStub)"
+    },
+    "TelemetrySelectedMission": {
+      "rva": "0x148F2A0",
+      "code": "40 55 57 41 55 41 57 48 8D AC 24 78 FD FF FF 48 81 EC 88 03 00 00 48 8B 05 53 CD 1A 01 48 33 C4 48 89 85 70",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "uint8_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Writes the SelectedMission telemetry line when a mission is chosen on the war table: difficulty, race, game mode and objective names, into a 512-byte stack buffer",
+      "source": "HellForge's more objectives (difficulty_missions.c, kTelemetryStub)"
+    },
+    "TelemetryMissionEnd": {
+      "rva": "0x1347A10",
+      "code": "41 56 48 81 EC 30 03 00 00 48 8B 05 F0 45 2F 01 48 33 C4 48 89 84 24 00 03 00 00 80 B9 76 12 03 00 00 4C 8B",
+      "returns": "void",
+      "params": [
+        {"name": "telemetry", "type": "void*", "meaning": "the telemetry: hf_global_Telemetry"}
+      ],
+      "hook": false,
+      "meaning": "The mission-end telemetry: keeps up to 16 objective instances in hf_global_Telemetry's record (+0x31820)",
+      "source": "HellForge's more objectives (difficulty_missions.c, kTelemetryCountStub)"
+    },
+    "RollArtilleryShell": {
+      "rva": "0x9F3250",
+      "code": "45 85 C9 0F 84 94 03 00 00 4C 8B DC 55 53 56 57 49 8D AB 18 F8 FF FF 48 81 EC C8 08 00 00 48 8B 05 9B 8D C4",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read (its caller passes a global's object)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "A SEAF Artillery side objective's spawn point rolls its shell: each kind in the unit's script data table 0x3268FC21 ({kind, weight}) is matched to its ObjectiveShell record and one is picked by weight with the objective's seeded random numbers",
+      "source": "HellForge's heavy artillery (difficulty_artillery.c, kShellWeightPin)"
+    },
+    "ArtilleryAim": {
+      "rva": "0x617E50",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 70 48 8B 05 9D 41 02 02 48",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The SEAF Artillery's aim: reads the shell's speed and gravity from its projectile row, through SolveBallisticAim",
+      "source": "HellForge's artillery reach (difficulty_artillery.c)"
+    },
+    "SolveBallisticAim": {
+      "rva": "0x13B1BD0",
+      "code": "40 53 55 56 57 48 81 EC 28 01 00 00 44 0F 29 94 24 D0 00 00 00 41 0F B6 E9 F3 45 0F 10 50 2C 49 8B D8 F3 44",
+      "returns": "float",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint8_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The ballistic solver the artillery's aim uses, with the projectile row's speed and gravity",
+      "source": "HellForge's artillery reach (difficulty_artillery.c)"
+    },
+    "PredictProjectileLanding": {
+      "rva": "0x13B18B0",
+      "code": "48 8B C4 48 89 58 10 48 89 68 18 48 89 70 20 57 48 81 EC D0 00 00 00 48 8B 9C 24 08 01 00 00 49 8B F1 0F 29",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm2", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: pass it on (a caller passes 2)"},
+        {"name": "s6", "type": "float*", "meaning": "not reviewed: pass it on (a caller reads a float from it afterwards)"}
+      ],
+      "hook": false,
+      "meaning": "Predicts where a projectile lands, from its row's speed and gravity",
+      "source": "HellForge's artillery reach (difficulty_artillery.c)"
+    },
+    "GenerateRegionMissions": {
+      "rva": "0x11E44D0",
+      "code": "4C 8B DC 56 41 56 48 81 EC 28 01 00 00 48 8B 05 2C 7B 45 01 48 33 C4 48 89 84 24 F0 00 00 00 45 33 D2 4C 89",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Generates the war table mission board's region missions (Super Earth's mega cities: slots 30..109 of a planet's 110, 10 levels per region)",
+      "source": "HellForge's level 11 board (difficulty_ui.c, DIF_BOARD_REGION_MAX)"
+    },
+    "GenerateCampaignPlanetMissions": {
+      "rva": "0x11E3C10",
+      "code": "40 55 53 41 54 41 55 41 56 41 57 48 8D 6C 24 E8 48 81 EC 18 01 00 00 48 8B 05 E2 83 45 01 48 33 C4 48 89 45",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Generates a campaign planet's missions on the war table's mission board (slots 0..29, 3 per level)",
+      "source": "HellForge's level 11 board (difficulty_ui.c, DIF_BOARD_PLANET_SITE)"
+    },
+    "GenerateDefencePlanetMissions": {
+      "rva": "0x11E4060",
+      "code": "4C 8B DC 41 54 41 57 48 81 EC 28 01 00 00 48 8B 05 9B 7F 45 01 48 33 C4 48 89 84 24 E0 00 00 00 0F 57 C9 48",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Generates a defence planet's missions on the war table's mission board (slots 0..29, 3 per level)",
+      "source": "HellForge's level 11 board (difficulty_ui.c, DIF_BOARD_DEFENCE_SITE)"
+    },
+    "DifficultyBarBuild": {
+      "rva": "0x19CFB40",
+      "code": "48 8B C4 48 89 58 08 48 89 70 10 48 89 78 18 55 41 54 41 55 41 56 41 57 48 8D 68 B8 48 81 EC 20 01 00 00 0F",
+      "returns": "void",
+      "params": [
+        {"name": "bar", "type": "void*", "meaning": "the bar"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on (the callers pass 10 or 0x33)"}
+      ],
+      "hook": false,
+      "meaning": "Builds the war table's difficulty bar: a carousel of one widget per level up to the highest (bar + 0x598 + i * 0x910, room for 10)",
+      "source": "HellForge's level 11 bar (difficulty_ui.c, kBarSites)"
+    },
+    "DifficultyBarDestroy": {
+      "rva": "0x19D1090",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 33 DB E8 9C AA 81 FF 85 C0 74 2B 0F 1F 84 00 00 00 00 00 8B C3 48 8D",
+      "returns": "void",
+      "params": [
+        {"name": "bar", "type": "void*", "meaning": "the bar"}
+      ],
+      "hook": false,
+      "meaning": "Destroys the war table difficulty bar's widgets",
+      "source": "HellForge's level 11 bar (difficulty_ui.c, kBarSites)"
+    },
+    "DifficultyBarChoose": {
+      "rva": "0x19D1110",
+      "code": "4C 8B DC 49 89 5B 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 A0 48 81 EC 60 01 00 00 41 0F 29 73 B8 48",
+      "returns": "void",
+      "params": [
+        {"name": "bar", "type": "void*", "meaning": "the bar"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on (the callers pass 0 or 1)"},
+        {"name": "r9", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "Chooses a level on the war table's difficulty bar",
+      "source": "HellForge's level 11 bar (difficulty_ui.c, kBarSites)"
+    },
+    "SetImageSprite": {
+      "rva": "0x144F800",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 41 0F B6 F8 48 8B D9 48 85 D2 75 0F 48 8B 5C 24 30 48 83 C4 20 5F E9 6B 72 FF",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the image element"},
+        {"name": "sprite", "type": "uint64_t", "meaning": "the atlas sprite (a difficulty row's icon, +0x10)"},
+        {"name": "zero", "type": "uint8_t", "meaning": "0"}
+      ],
+      "hook": false,
+      "meaning": "Sets an image element to an atlas sprite (atlas sprites only), which gives the element its resource (+0x148)",
+      "source": "HellForge's level 11 icon (difficulty_ui.c, kIconStub)"
+    },
+    "SetImageSpriteOrTexture": {
+      "rva": "0x1450160",
+      "code": "48 89 5C 24 10 57 48 83 EC 30 8B 01 48 8B DA 25 00 00 3C 00 48 8B F9 3D 00 00 0C 00 74 36 45 33 C9 4C 8B C2",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the image element"},
+        {"name": "resource", "type": "uint64_t", "meaning": "the sprite or texture; a texture goes to the element's image slot (SetElementResourceSlot)"}
+      ],
+      "hook": false,
+      "meaning": "The image setter the stratagem icons use: an atlas sprite, else a texture of that name (through SetElementResourceSlot)",
+      "source": "HellForge's level 11 icon (difficulty_ui.c)"
+    },
+    "SetElementResourceSlot": {
+      "rva": "0x1449A70",
+      "code": "48 8B C4 89 50 10 48 83 EC 58 48 89 58 18 48 89 68 F8 48 89 70 F0 48 89 78 E8 49 8B F8 4C 89 60 E0 4C 89 68",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"},
+        {"name": "slot", "type": "uint32_t", "meaning": "the slot's name hash (0x3AA8B87E the image)"},
+        {"name": "resource", "type": "uint64_t", "meaning": "the resource (a texture)"},
+        {"name": "sprite", "type": "uint8_t", "meaning": "whether it is a sprite: 0 a texture"},
+        {"name": "zero", "type": "uint8_t", "meaning": "0"}
+      ],
+      "hook": false,
+      "meaning": "Puts a resource into a UI element's slot: what SetImageSpriteOrTexture calls for a texture. HellForge gives a level-11 icon its texture with it",
+      "source": "HellForge's level 11 icon (difficulty_ui.c, kIconStub)"
+    },
+    "SetImageWithBase": {
+      "rva": "0x1450230",
+      "code": "48 89 5C 24 10 57 48 83 EC 30 49 8B D8 48 8B F9 45 0F B6 C1 E8 B7 F5 FF FF 8B 07 25 00 00 3C 00 3D 00 00 0C",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the image element"},
+        {"name": "base", "type": "uint64_t", "meaning": "the base sprite, set first through SetImageSprite (the mission HUD passes 0x9448536C2D6AE780)"},
+        {"name": "image", "type": "uint64_t", "meaning": "the image, then put in the element's image slot (SetElementResourceSlot)"},
+        {"name": "zero", "type": "uint8_t", "meaning": "0"}
+      ],
+      "hook": false,
+      "meaning": "Sets an image element from a base sprite and an image: the mission HUD's top bar sets the difficulty icon with it",
+      "source": "HellForge's level 11 icon (difficulty_ui.c, kHudIconPin)"
+    },
+    "UiElementRect": {
+      "rva": "0x143EEF0",
+      "code": "4C 89 44 24 18 48 89 54 24 10 48 83 EC 28 F3 0F 10 81 14 01 00 00 0F 2E 44 24 38 7A 35 75 33 F3 0F 10 81 18",
+      "returns": "void",
+      "params": [
+        {"name": "element", "type": "void*", "meaning": "the UI element"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "A UI element's rect: the mission card's minimap calls it after setting its UV rect",
+      "source": "HellForge's mission card view (difficulty_ui.c, DIF_CARD_VIEW_CALL)"
+    },
+    "MissionCardMinimap": {
+      "rva": "0x18760E0",
+      "code": "48 8B C4 48 89 58 18 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 28 FD FF FF 48 81 EC A0 03 00 00 0F 29 70 B8",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The war table mission card's minimap (element panel+0x220): a fixed UV rect of the 2048 m texture (0.275 to 0.725) and its markers at fixed scales",
+      "source": "HellForge's mission card view (difficulty_ui.c)"
+    },
+    "WarTableHologramUpdate": {
+      "rva": "0x142D870",
+      "code": "40 55 53 56 48 8D AC 24 70 FF FF FF 48 81 EC 90 01 00 00 44 0F 29 8C 24 30 01 00 00 44 0F 29 BC 24 D0 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "hologram", "type": "void*", "meaning": "the hologram's UI object (+0x8D704 the scale, +0x8D70C half the playable radius)"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "level", "type": "void*", "meaning": "the level (lg): its caller passes the world's +0xAE288"},
+        {"name": "xmm3", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The war table's 3D hologram, per frame (a UI object): the mission's scale (+0x8D704, 6.6) and half the playable radius from the preview record (+0x8D70C)",
+      "source": "HellForge's hologram scale (difficulty_ui.c, kHoloStubs)"
+    },
+    "WarTableHologramZoom": {
+      "rva": "0x14329B0",
+      "code": "40 57 48 81 EC F0 00 00 00 F3 0F 10 81 00 D7 08 00 0F 28 D1 0F 2E C2 48 8B F9 7A 06 0F 84 2E 05 00 00 F3 0F",
+      "returns": "void",
+      "params": [
+        {"name": "hologram", "type": "void*", "meaning": "the hologram's UI object (+0x8D704 the scale)"},
+        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The war table hologram's zoom slider: blends the scale (+0x8D704) from 6.6 to 11",
+      "source": "HellForge's hologram scale (difficulty_ui.c, kHoloStubs)"
+    },
+    "WarTableHologramHeightAt": {
+      "rva": "0x1432F10",
+      "code": "48 89 54 24 10 53 48 83 EC 20 80 B9 09 D7 08 00 00 48 8B D9 0F 84 DB 00 00 00 F3 0F 10 44 24 38 F3 0F 59 05",
+      "returns": "float",
+      "params": [
+        {"name": "hologram", "type": "void*", "meaning": "the hologram's UI object"},
+        {"name": "rdx", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The war table hologram's terrain height lookup",
+      "source": "HellForge's hologram labels (difficulty_ui.c)"
+    },
+    "WarTableHologramTerrainHeight": {
+      "rva": "0x1433460",
+      "code": "48 83 EC 18 0F 28 E2 0F 57 C0 0F 2E E0 7A 1F 75 1D 8B 81 EC D6 08 00 F2 0F 10 81 E4 D6 08 00 F2 0F 11 02 89",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "hologram", "type": "void*", "meaning": "the hologram's UI object (+0x8D704 the scale)"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on (its callers pass a local it writes 8 bytes to)"},
+        {"name": "xmm2", "type": "float", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": false,
+      "meaning": "The war table hologram's terrain height: the map's lowest point lifted above the table's plane by a lift that follows the scale (+0x8D704)",
+      "source": "HellForge's hologram lift (difficulty_ui.c, DIF_HOLO_LIFT_SITE)"
     }
   }
 }

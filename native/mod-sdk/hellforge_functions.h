@@ -183,4 +183,1320 @@ static inline HfFn_SetVelocity hf_fn_SetVelocity(HfMod* mod) { return (HfFn_SetV
 typedef void (*HfFn_FireProjectile)(void* system, uint32_t type, const float* position, const float* direction, uint32_t entity, uint32_t zero, uint64_t zero2);
 static inline HfFn_FireProjectile hf_fn_FireProjectile(HfMod* mod) { return (HfFn_FireProjectile)hf_function_(mod, "FireProjectile"); }
 
+/* QueueDamage (game.dll+0x129F910; call only). Queues a damage request (4096 a frame: hf_global_CombatQueues'
+ * damage_count) that the frame's drain applies. hf->injure is the checked way to call it, on a limb of this machine's
+ * Helldiver.
+ *   unused     NULL
+ *   kind       the damage kind (HfDamageEvent.kind; injure passes 6, ability, as the VG-70's own self-damage does)
+ *   a3         injure passes 0
+ *   target     the entity damaged
+ *   amount     the damage
+ *   a6         injure passes 1
+ *   network    a network id: injure passes the Helldiver's own
+ *   network2   a network id: injure passes the Helldiver's own
+ *   creditor   the peer id credited: injure passes the one in the Helldiver's health record (+0x38)
+ *   a10        injure passes 0
+ *   f11        injure passes 0
+ *   f12        injure passes 0
+ *   f13        injure passes 0
+ *   direction  the hit's direction (3 floats; injure passes 0, 0, -1)
+ *   position   the hit's position (3 floats; injure passes 0, 0, 0)
+ *   actor      the hit actor: injure passes the limb's, from the engine's UnitActorByName (helldivers2.exe 0x799DE0)
+ *   a17        injure passes 9
+ *   a18        injure passes 0
+ *   scale      injure passes 1.0
+ * From HD2Runtime 0.40.1 research event-combat, player-injury-path; HellForge's injure (actions.c). */
+typedef void (*HfFn_QueueDamage)(void* unused, uint32_t kind, uint32_t a3, uint32_t target, uint32_t amount, uint8_t a6, uint32_t network, uint32_t network2, uint64_t creditor, uint32_t a10, float f11, float f12, float f13, const float* direction, const float* position, uint32_t actor, uint32_t a17, uint32_t a18, float scale);
+static inline HfFn_QueueDamage hf_fn_QueueDamage(HfMod* mod) { return (HfFn_QueueDamage)hf_function_(mod, "QueueDamage"); }
+
+/* NeedsAmmo (game.dll+0x9AD7D0; call only). Whether a Helldiver needs ammunition (1) or not (0), as the Supply Pack's
+ * self-use asks. hf->resupply_from_pack calls it before TryStartAction.
+ *   unused  NULL
+ *   entity  the Helldiver
+ * From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c). */
+typedef uint8_t (*HfFn_NeedsAmmo)(void* unused, uint32_t entity);
+static inline HfFn_NeedsAmmo hf_fn_NeedsAmmo(HfMod* mod) { return (HfFn_NeedsAmmo)hf_function_(mod, "NeedsAmmo"); }
+
+/* TryStartAction (game.dll+0xA431D0; call only). Starts an action on an entity if it is free to: 1 started, 0 not.
+ * hf->resupply_from_pack is the checked way to call it.
+ *   context  the entity's action context: hf_global_ActionManager + 0x53E170 + 0x1238 index (+0 the entity, +8 the
+ *            running action)
+ *   request  3 u32: the action (2629, the Supply Pack's self-use), the game's no-action id (u32 at game.dll+0x3483C5C),
+ *            the context's +0xC
+ * From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c). */
+typedef uint8_t (*HfFn_TryStartAction)(void* context, const uint32_t* request);
+static inline HfFn_TryStartAction hf_fn_TryStartAction(HfMod* mod) { return (HfFn_TryStartAction)hf_function_(mod, "TryStartAction"); }
+
+/* RequestEntitySpawn (game.dll+0xFD9710; call only). The entity spawn request: makes an entity of a resource at a pose;
+ * returns out. hf->spawn_pelican is the checked way to call it (host only, in a mission, with shuttle_transport).
+ *   out       receives the new entity's id (0: none made)
+ *   resource  the entity's resource id (HF_ENTITY_...), registered in this mission
+ *   spawn     0x58 bytes: +0 1, +4 network id (0x7FFF none), +8 the pose (4x4 floats, the position in the last row),
+ *             +0x48 a pointer to a 0x8A0-byte spawn context (a transport Pelican's hover point at +0x610)
+ * From HD2Runtime 0.40.1 research pelican; HellForge's spawn_pelican (actions.c). */
+typedef uint32_t* (*HfFn_RequestEntitySpawn)(uint32_t* out, uint64_t resource, void* spawn);
+static inline HfFn_RequestEntitySpawn hf_fn_RequestEntitySpawn(HfMod* mod) { return (HfFn_RequestEntitySpawn)hf_function_(mod, "RequestEntitySpawn"); }
+
+/* AbilityTick (game.dll+0x11509E0; call only). Runs one tick of an ability, switching on its id through a 2867-entry
+ * table: 1 when it is done, 0 while it runs (and for an unknown id). HellForge points its id check at a stub for
+ * abilities of its own (hf->add_ability).
+ *   ctx   the ability's context: +8 the entity it runs on
+ *   id    the ability (1 .. 2867; HellForge's own from 2868)
+ *   tick  the tick, 60 a second from 0
+ * From HellForge's abilities (abilities.c). */
+typedef uint8_t (*HfFn_AbilityTick)(void* ctx, uint32_t id, uint32_t tick);
+static inline HfFn_AbilityTick hf_fn_AbilityTick(HfMod* mod) { return (HfFn_AbilityTick)hf_function_(mod, "AbilityTick"); }
+
+/* SiloMissileArmedAbility (game.dll+0x110F270; call only). Ability 2088, the Solo Silo missile's armed ability, which
+ * its launch starts: tick 0 the launch blast (explosion 172), tick 2 it leaves the rack, tick 120 it arms and is done
+ * (1).
+ *   ctx   the ability's context: +8 the missile
+ *   tick  the tick, 60 a second from 0
+ * From HellForge's abilities (abilities.c). */
+typedef uint8_t (*HfFn_SiloMissileArmedAbility)(void* ctx, uint32_t tick);
+static inline HfFn_SiloMissileArmedAbility hf_fn_SiloMissileArmedAbility(HfMod* mod) { return (HfFn_SiloMissileArmedAbility)hf_function_(mod, "SiloMissileArmedAbility"); }
+
+/* LinkedMissile (game.dll+0x76B410; call only). The missile a silo's targeting remote is linked to; returns out.
+ *   linkers  the WeaponLinker manager: hf_global_WeaponLinkerManager
+ *   out      receives the missile (the no-entity id when the link names none)
+ *   remote   a silo's targeting remote
+ * From HellForge's silo countdown (abilities.c). */
+typedef uint32_t* (*HfFn_LinkedMissile)(void* linkers, uint32_t* out, uint32_t remote);
+static inline HfFn_LinkedMissile hf_fn_LinkedMissile(HfMod* mod) { return (HfFn_LinkedMissile)hf_function_(mod, "LinkedMissile"); }
+
+/* LinkerRecord (game.dll+0x4FD6F0; call only). A WeaponLinker instance's record (12 bytes; +4 0x06212002 a silo
+ * remote's link, which launches its missile): this machine's copy for an instance it has authority over, else the
+ * resource's shared one. NULL for no descriptor.
+ *   descriptor  a linker instance's descriptor (hf_global_WeaponLinkerManager's descriptors, by index)
+ * From HellForge's silo countdown (abilities.c). */
+typedef uint8_t* (*HfFn_LinkerRecord)(void* descriptor);
+static inline HfFn_LinkerRecord hf_fn_LinkerRecord(HfMod* mod) { return (HfFn_LinkerRecord)hf_function_(mod, "LinkerRecord"); }
+
+/* LinkedRack (game.dll+0x76B4C0; call only). The hellpod rack a silo's targeting remote is linked to; returns out.
+ *   linkers  the WeaponLinker manager: hf_global_WeaponLinkerManager
+ *   out      receives the rack (the no-entity id when the link names none)
+ *   remote   a silo's targeting remote
+ * From HellForge's silo countdown (abilities.c). */
+typedef uint32_t* (*HfFn_LinkedRack)(void* linkers, uint32_t* out, uint32_t remote);
+static inline HfFn_LinkedRack hf_fn_LinkedRack(HfMod* mod) { return (HfFn_LinkedRack)hf_function_(mod, "LinkedRack"); }
+
+/* SetMissileEngine (game.dll+0x645B80; call only). Turns a seeking missile's engine on or off, as a silo remote's link
+ * does at a launch.
+ *   missiles  the SeekingMissile manager: hf_global_SeekingMissileManager
+ *   missile   the missile
+ *   on        1 on, 0 off (its instance's +0x35)
+ * From HellForge's silo countdown (abilities.c). */
+typedef void (*HfFn_SetMissileEngine)(void* missiles, uint32_t missile, uint8_t on);
+static inline HfFn_SetMissileEngine hf_fn_SetMissileEngine(HfMod* mod) { return (HfFn_SetMissileEngine)hf_function_(mod, "SetMissileEngine"); }
+
+/* LaunchMissile (game.dll+0x645940; call only). Launches a seeking missile: sets off its explosive, which starts its
+ * armed ability (2088 for the Solo Silo's), and marks it launched (its instance's +0x36).
+ *   missiles  the SeekingMissile manager: hf_global_SeekingMissileManager
+ *   missile   the missile
+ * From HellForge's silo countdown (abilities.c). */
+typedef void (*HfFn_LaunchMissile)(void* missiles, uint32_t missile);
+static inline HfFn_LaunchMissile hf_fn_LaunchMissile(HfMod* mod) { return (HfFn_LaunchMissile)hf_function_(mod, "LaunchMissile"); }
+
+/* SetExplosiveOwner (game.dll+0x8CE620; call only). Names an explosive's owner, as a silo remote's link does for its
+ * missile at a launch.
+ *   explosives  the Explosive manager: hf_global_ExplosiveManager
+ *   entity      the explosive (a missile)
+ *   owner       its owner entity
+ * From HellForge's silo countdown (abilities.c). */
+typedef void (*HfFn_SetExplosiveOwner)(void* explosives, uint32_t entity, uint32_t owner);
+static inline HfFn_SetExplosiveOwner hf_fn_SetExplosiveOwner(HfMod* mod) { return (HfFn_SetExplosiveOwner)hf_function_(mod, "SetExplosiveOwner"); }
+
+/* SetGuidanceTarget (game.dll+0x919940; call only). Sets an entity's guidance target, as a silo remote's link does with
+ * its laser's point.
+ *   unused  NULL
+ *   entity  the guided entity (a missile in hf_global_GuidanceTargets' map)
+ *   point   the point it flies to (3 floats)
+ * From HellForge's silo countdown (abilities.c). */
+typedef void (*HfFn_SetGuidanceTarget)(void* unused, uint32_t entity, const float* point);
+static inline HfFn_SetGuidanceTarget hf_fn_SetGuidanceTarget(HfMod* mod) { return (HfFn_SetGuidanceTarget)hf_function_(mod, "SetGuidanceTarget"); }
+
+/* RackReleaseItem (game.dll+0x9374D0; call only). Has a hellpod rack let go of an item, as a silo remote's link does at
+ * a launch.
+ *   racks  the HellpodRack manager: hf_global_HellpodRackManager
+ *   rack   the rack
+ *   item   the item it lets go of (a silo's missile)
+ * From HellForge's silo countdown (abilities.c). */
+typedef void (*HfFn_RackReleaseItem)(void* racks, uint32_t rack, uint32_t item);
+static inline HfFn_RackReleaseItem hf_fn_RackReleaseItem(HfMod* mod) { return (HfFn_RackReleaseItem)hf_function_(mod, "RackReleaseItem"); }
+
+/* StartAbility (game.dll+0x7CAF40; hook or call). Starts an ability on an entity; the ability manager then ticks it
+ * (AbilityTick). HellForge's silo countdown starts its ability on the missile with it, and its shield wall detours it
+ * to see enemies' charges.
+ *   abilities  the ability manager: hf_global_AbilityManager
+ *   entity     the entity it runs on
+ *   ability    the ability (ids travel in 12 bits)
+ *   mode       1 on the machine with authority over the entity; 2 without it, whose start is always sent on
+ *   speed      1.0 in HellForge's calls
+ *   s6         not reviewed: pass it on
+ *   s7         not reviewed: pass it on
+ * From HellForge's silo countdown (abilities.c) and shield wall hook (shield_block.c). */
+typedef uint64_t (*HfFn_StartAbility)(void* abilities, uint32_t entity, uint32_t ability, uint32_t mode, float speed, uint64_t s6, uint64_t s7);
+static inline HfFn_StartAbility hf_fn_StartAbility(HfMod* mod) { return (HfFn_StartAbility)hf_function_(mod, "StartAbility"); }
+static inline int hf_hook_StartAbility(HfMod* mod, HfFn_StartAbility detour, HfFn_StartAbility* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "StartAbility", (void*)detour, (void**)original, priority);
+}
+
+/* BehaviourUpdate (game.dll+0x472F60; call only). Updates an entity's behaviour, switching on its id through a
+ * 693-entry table, on the machine with authority over the entity. HellForge points its id check at a stub for
+ * behaviours of its own (hf->add_behaviour).
+ *   ctx  {EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage)
+ *   id   the behaviour (1 .. 693; HellForge's own from 694)
+ *   dt   the frame's time
+ * From HellForge's behaviours (behaviours.c). */
+typedef void (*HfFn_BehaviourUpdate)(void* ctx, uint32_t id, float dt);
+static inline HfFn_BehaviourUpdate hf_fn_BehaviourUpdate(HfMod* mod) { return (HfFn_BehaviourUpdate)hf_function_(mod, "BehaviourUpdate"); }
+
+/* BehaviourStage (game.dll+0x48EE50; call only). Moves an entity's behaviour to a stage, switching on its id through a
+ * 693-entry table. HellForge points its id check at a stub for behaviours of its own.
+ *   ctx    {EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage)
+ *   id     the behaviour (1 .. 693)
+ *   stage  the stage it enters
+ * From HellForge's behaviours (behaviours.c). */
+typedef void (*HfFn_BehaviourStage)(void* ctx, uint32_t id, uint32_t stage);
+static inline HfFn_BehaviourStage hf_fn_BehaviourStage(HfMod* mod) { return (HfFn_BehaviourStage)hf_function_(mod, "BehaviourStage"); }
+
+/* BehaviourEvent (game.dll+0x4966D0; call only). Hands an event to an entity's behaviour, switching on its id through a
+ * 693-entry table. HellForge points its id check at a stub for behaviours of its own.
+ *   ctx   {EntityInfo*, P*}: P the behaviour record + 8
+ *   id    the behaviour (1 .. 693)
+ *   hash  the event's name hash
+ * From HellForge's behaviours (behaviours.c). */
+typedef void (*HfFn_BehaviourEvent)(void* ctx, uint32_t id, uint32_t hash);
+static inline HfFn_BehaviourEvent hf_fn_BehaviourEvent(HfMod* mod) { return (HfFn_BehaviourEvent)hf_function_(mod, "BehaviourEvent"); }
+
+/* BehaviourResume (game.dll+0x493BE0; call only). Resumes a behaviour on a machine without authority, after its record
+ * arrives from the network: for the transport Pelican (667) it sends the mover to the replicated flight target
+ * (P+0x1BC). HellForge sends its own behaviours into its base's case.
+ *   ctx  {EntityInfo*, P*}: P the behaviour record + 8
+ *   id   the behaviour
+ * From HellForge's behaviours, co-op (behaviours.c). */
+typedef void (*HfFn_BehaviourResume)(void* ctx, uint32_t id);
+static inline HfFn_BehaviourResume hf_fn_BehaviourResume(HfMod* mod) { return (HfFn_BehaviourResume)hf_function_(mod, "BehaviourResume"); }
+
+/* PelicanTransportUpdate (game.dll+0x45C760; call only). Behaviour 667's update, the transport Pelican: flies to the
+ * beacon (stages 1-3), hovers (6, entered with P+0x180 = now), releases its cargo after 6 s, departs and is removed.
+ * HellForge's Pelican behaviours (hf->add_behaviour) run it.
+ *   ctx  {EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage)
+ * From HellForge's behaviours (behaviours.c). */
+typedef void (*HfFn_PelicanTransportUpdate)(void* ctx);
+static inline HfFn_PelicanTransportUpdate hf_fn_PelicanTransportUpdate(HfMod* mod) { return (HfFn_PelicanTransportUpdate)hf_function_(mod, "PelicanTransportUpdate"); }
+
+/* PelicanTransportStage (game.dll+0x45BD00; call only). Behaviour 667's stage change, the transport Pelican.
+ *   ctx    {EntityInfo*, P*}
+ *   stage  the stage it enters (6: the hover)
+ * From HellForge's behaviours (behaviours.c). */
+typedef void (*HfFn_PelicanTransportStage)(void* ctx, int32_t stage);
+static inline HfFn_PelicanTransportStage hf_fn_PelicanTransportStage(HfMod* mod) { return (HfFn_PelicanTransportStage)hf_function_(mod, "PelicanTransportStage"); }
+
+/* PelicanTransportEvent (game.dll+0x45BBE0; call only). Behaviour 667's event handler, the transport Pelican.
+ *   ctx   {EntityInfo*, P*}
+ *   hash  the event's name hash
+ * From HellForge's behaviours (behaviours.c). */
+typedef void (*HfFn_PelicanTransportEvent)(void* ctx, uint32_t hash);
+static inline HfFn_PelicanTransportEvent hf_fn_PelicanTransportEvent(HfMod* mod) { return (HfFn_PelicanTransportEvent)hf_function_(mod, "PelicanTransportEvent"); }
+
+/* BehaviourOwnPosition (game.dll+0x4BC5D0; call only). A behaviour's entity's own position: its unit's root node from
+ * the scene graph; returns out.
+ *   out  receives the position (3 floats)
+ *   ctx  {EntityInfo*, P*}
+ * From HellForge's behaviours (behaviours.c). */
+typedef float* (*HfFn_BehaviourOwnPosition)(float* out, void* ctx);
+static inline HfFn_BehaviourOwnPosition hf_fn_BehaviourOwnPosition(HfMod* mod) { return (HfFn_BehaviourOwnPosition)hf_function_(mod, "BehaviourOwnPosition"); }
+
+/* BehaviourOrbitStep (game.dll+0x4D5E60; call only). The extraction Pelican's orbit step: writes the next point on its
+ * orbit to P+0x1BC (the replicated flight target).
+ *   ctx       {EntityInfo*, P*}
+ *   position  where the entity is (3 floats)
+ *   unused    NULL
+ *   height    the orbit's height
+ *   radius    the orbit's radius
+ * From HellForge's behaviours (behaviours.c). */
+typedef void (*HfFn_BehaviourOrbitStep)(void* ctx, const float* position, void* unused, float height, float radius);
+static inline HfFn_BehaviourOrbitStep hf_fn_BehaviourOrbitStep(HfMod* mod) { return (HfFn_BehaviourOrbitStep)hf_function_(mod, "BehaviourOrbitStep"); }
+
+/* BehaviourMoveTo (game.dll+0x4D1150; call only). Sends a flying behaviour's mover to a point.
+ *   ctx     {EntityInfo*, P*}
+ *   target  the point to fly to (3 floats)
+ * From HellForge's behaviours (behaviours.c). */
+typedef void (*HfFn_BehaviourMoveTo)(void* ctx, const float* target);
+static inline HfFn_BehaviourMoveTo hf_fn_BehaviourMoveTo(HfMod* mod) { return (HfFn_BehaviourMoveTo)hf_function_(mod, "BehaviourMoveTo"); }
+
+/* BehaviourFace (game.dll+0x4C1530; call only). Sets the hover controller's desired facing, turning a hovering
+ * behaviour's body.
+ *   ctx        {EntityInfo*, P*}
+ *   direction  the direction to face (3 floats)
+ * From HellForge's behaviours (behaviours.c). */
+typedef void (*HfFn_BehaviourFace)(void* ctx, const float* direction);
+static inline HfFn_BehaviourFace hf_fn_BehaviourFace(HfMod* mod) { return (HfFn_BehaviourFace)hf_function_(mod, "BehaviourFace"); }
+
+/* BehaviourTargetPosition (game.dll+0x4B0C40; call only). Where a behaviour's target is (a turret's aim point); returns
+ * out.
+ *   out   receives the position (3 floats)
+ *   ctx   {EntityInfo*, P*} (a mounted turret's: P+0x10 its target, P+0x70 set while it has one)
+ *   self  the entity's own position (3 floats)
+ * From HellForge's behaviours (behaviours.c, behaviour_turret.c). */
+typedef float* (*HfFn_BehaviourTargetPosition)(float* out, void* ctx, const float* self);
+static inline HfFn_BehaviourTargetPosition hf_fn_BehaviourTargetPosition(HfMod* mod) { return (HfFn_BehaviourTargetPosition)hf_function_(mod, "BehaviourTargetPosition"); }
+
+/* PelicanTurretIdle (game.dll+0x44F310; call only). Behaviour 645's stage 1 update (idle), the Pelican's chin turret.
+ *   ctx  {EntityInfo*, P*}
+ *   dt   the frame's time
+ * From HellForge's Pelican turret (behaviours.c, behaviour_turret.c). */
+typedef void (*HfFn_PelicanTurretIdle)(void* ctx, float dt);
+static inline HfFn_PelicanTurretIdle hf_fn_PelicanTurretIdle(HfMod* mod) { return (HfFn_PelicanTurretIdle)hf_function_(mod, "PelicanTurretIdle"); }
+
+/* TurretActive (game.dll+0x4B0810; call only). Whether a behaviour's turret is active (behaviour 645's firing stage
+ * tests it).
+ *   ctx  {EntityInfo*, P*}
+ * From HellForge's Pelican turret (behaviours.c, behaviour_turret.c). */
+typedef uint8_t (*HfFn_TurretActive)(void* ctx);
+static inline HfFn_TurretActive hf_fn_TurretActive(HfMod* mod) { return (HfFn_TurretActive)hf_function_(mod, "TurretActive"); }
+
+/* TurretHasAmmo (game.dll+0x4BB080; call only). Whether a behaviour's turret has ammunition (behaviour 645's firing
+ * stage tests it).
+ *   ctx  {EntityInfo*, P*}
+ * From HellForge's Pelican turret (behaviours.c, behaviour_turret.c). */
+typedef uint8_t (*HfFn_TurretHasAmmo)(void* ctx);
+static inline HfFn_TurretHasAmmo hf_fn_TurretHasAmmo(HfMod* mod) { return (HfFn_TurretHasAmmo)hf_function_(mod, "TurretHasAmmo"); }
+
+/* PelicanTurretStage (game.dll+0x450AD0; call only). Behaviour 645's stage change, the Pelican's chin turret.
+ *   ctx    {EntityInfo*, P*}
+ *   stage  the stage it enters: 1 idle, 2 aim, 3 fire, 4 inactive
+ * From HellForge's Pelican turret (behaviours.c, behaviour_turret.c). */
+typedef void (*HfFn_PelicanTurretStage)(void* ctx, int32_t stage);
+static inline HfFn_PelicanTurretStage hf_fn_PelicanTurretStage(HfMod* mod) { return (HfFn_PelicanTurretStage)hf_function_(mod, "PelicanTurretStage"); }
+
+/* BehaviourSetTarget (game.dll+0x4AF4E0; call only). Installs a perception entry as a behaviour's target (P+0x10), or
+ * clears it.
+ *   ctx    {EntityInfo*, P*}
+ *   entry  a perceiver's entry for the target (FindPerceptionEntry; +4 its position), or NULL to clear
+ * From HellForge's Pelican turret (behaviours.c, behaviour_turret.c). */
+typedef void (*HfFn_BehaviourSetTarget)(void* ctx, const uint8_t* entry);
+static inline HfFn_BehaviourSetTarget hf_fn_BehaviourSetTarget(HfMod* mod) { return (HfFn_BehaviourSetTarget)hf_function_(mod, "BehaviourSetTarget"); }
+
+/* WeaponDegreesTo (game.dll+0x7582D0; call only). The angle in degrees between a weapon's forward and a point.
+ *   unused    NULL
+ *   entity    the weapon's entity (a turret)
+ *   position  a point (3 floats)
+ * From HellForge's Pelican turret (behaviour_turret.c). */
+typedef float (*HfFn_WeaponDegreesTo)(void* unused, uint32_t entity, const float* position);
+static inline HfFn_WeaponDegreesTo hf_fn_WeaponDegreesTo(HfMod* mod) { return (HfFn_WeaponDegreesTo)hf_function_(mod, "WeaponDegreesTo"); }
+
+/* IsValidTarget (game.dll+0x8858A0; call only). Whether an entity is a valid target: it exists, is alive and has no
+ * flag 25.
+ *   unused  NULL
+ *   entity  the entity
+ *   info    the entity's info, or NULL to look it up
+ * From HellForge's Pelican turret (behaviour_turret.c). */
+typedef uint8_t (*HfFn_IsValidTarget)(void* unused, uint32_t entity, void* info);
+static inline HfFn_IsValidTarget hf_fn_IsValidTarget(HfMod* mod) { return (HfFn_IsValidTarget)hf_function_(mod, "IsValidTarget"); }
+
+/* FindPerceptionEntry (game.dll+0x8891C0; call only). A perceiver's entry for an entity (+4 its position), or NULL when
+ * it has none.
+ *   perception  the perceivers: hf_global_PerceptionManager
+ *   perceiver   the perceiving entity (a turret's P+0x60)
+ *   entity      the perceived entity
+ * From HellForge's Pelican turret (behaviour_turret.c). */
+typedef uint8_t* (*HfFn_FindPerceptionEntry)(void* perception, uint32_t perceiver, uint32_t entity);
+static inline HfFn_FindPerceptionEntry hf_fn_FindPerceptionEntry(HfMod* mod) { return (HfFn_FindPerceptionEntry)hf_function_(mod, "FindPerceptionEntry"); }
+
+/* MagazineRounds (game.dll+0x742900; call only). The rounds in a weapon's magazine.
+ *   magazines  the magazines: hf_global_MagazineManager
+ *   entity     the weapon's entity
+ * From HellForge's Pelican turret refill (behaviour_turret.c). */
+typedef int32_t (*HfFn_MagazineRounds)(void* magazines, uint32_t entity);
+static inline HfFn_MagazineRounds hf_fn_MagazineRounds(HfMod* mod) { return (HfFn_MagazineRounds)hf_function_(mod, "MagazineRounds"); }
+
+/* AddMagazineRounds (game.dll+0x76E080; call only). Adds rounds to a weapon's magazine, on the machine with authority
+ * over it.
+ *   unused  NULL
+ *   entity  the weapon's entity (in hf_global_MagazineRefills' map)
+ *   add     the rounds to add
+ * From HellForge's Pelican turret refill (behaviour_turret.c). */
+typedef void (*HfFn_AddMagazineRounds)(void* unused, uint32_t entity, int32_t add);
+static inline HfFn_AddMagazineRounds hf_fn_AddMagazineRounds(HfMod* mod) { return (HfFn_AddMagazineRounds)hf_function_(mod, "AddMagazineRounds"); }
+
+/* MagazineCapacity (game.dll+0x743410; call only). A weapon's magazine capacity.
+ *   unused  NULL (ignored)
+ *   entity  the weapon's entity
+ * From HellForge's Pelican turret refill (behaviour_turret.c). */
+typedef int32_t (*HfFn_MagazineCapacity)(void* unused, uint32_t entity);
+static inline HfFn_MagazineCapacity hf_fn_MagazineCapacity(HfMod* mod) { return (HfFn_MagazineCapacity)hf_function_(mod, "MagazineCapacity"); }
+
+/* WeaponWithinDegrees (game.dll+0x4B54D0; call only). Whether a behaviour's weapon points within max_degrees of a
+ * point: behaviour 645's fire gate.
+ *   ctx          {EntityInfo*, P*} of the turret's behaviour
+ *   position     the aim point (3 floats)
+ *   max_degrees  the most the weapon may be off (behaviour 645: 2)
+ * From HellForge's Pelican turret (behaviour_turret.c). */
+typedef uint8_t (*HfFn_WeaponWithinDegrees)(void* ctx, const float* position, float max_degrees);
+static inline HfFn_WeaponWithinDegrees hf_fn_WeaponWithinDegrees(HfMod* mod) { return (HfFn_WeaponWithinDegrees)hf_function_(mod, "WeaponWithinDegrees"); }
+
+/* EntityDescriptor (game.dll+0xFD9D40; call only). An entity's descriptor in this machine's world: +0 its resource
+ * (u64), +0xC its unit's index, +0x14 bit 0 set where this machine has authority over it; NULL for none.
+ *   entity  the entity
+ * From HellForge's behaviours and co-op diagnostics (behaviours.c, abilities.c, coop_diag.c). */
+typedef uint8_t* (*HfFn_EntityDescriptor)(uint32_t entity);
+static inline HfFn_EntityDescriptor hf_fn_EntityDescriptor(HfMod* mod) { return (HfFn_EntityDescriptor)hf_function_(mod, "EntityDescriptor"); }
+
+/* MarkReplicated (game.dll+0x8449B0; call only). Marks fields of an entity's behaviour record replicated, so the other
+ * machines receive them; does nothing without authority.
+ *   unused  NULL
+ *   entity  a networked entity
+ *   mask    the fields to send (0xE00: a behaviour's flight target, P+0x1BC)
+ * From HellForge's behaviours, co-op (behaviours.c). */
+typedef void (*HfFn_MarkReplicated)(void* unused, uint32_t entity, uint32_t mask);
+static inline HfFn_MarkReplicated hf_fn_MarkReplicated(HfMod* mod) { return (HfFn_MarkReplicated)hf_function_(mod, "MarkReplicated"); }
+
+/* ShieldRecord (game.dll+0x4FB390; call only). A shield's record (the stats' Shield record: +0 the radius, +0x78 the
+ * bubble unit), as the game's own readers get it; NULL for no binding.
+ *   binding  a shield's binding (hf_global_ShieldManager's bindings, by index)
+ * From HellForge's shield block (shield_block.c). */
+typedef uint8_t* (*HfFn_ShieldRecord)(void* binding);
+static inline HfFn_ShieldRecord hf_fn_ShieldRecord(HfMod* mod) { return (HfFn_ShieldRecord)hf_function_(mod, "ShieldRecord"); }
+
+/* MoveObject (game.dll+0x59FED0; hook or call). One object's motion for a frame, on the motion jobs, ending at the
+ * single write of its position (MotionManager's positions). HellForge's shield wall detours it to hold enemies outside
+ * a bubble.
+ *   motion  the motion manager: hf_global_MotionManager
+ *   index   the object's motion index
+ *   dt      the frame's time
+ *   r9      not reviewed: pass it on
+ *   s5      not reviewed: pass it on
+ *   s6      not reviewed: pass it on
+ * From HellForge's shield wall hook (shield_block.c). */
+typedef void (*HfFn_MoveObject)(void* motion, uint32_t index, float dt, uint64_t r9, uint64_t s5, uint64_t s6);
+static inline HfFn_MoveObject hf_fn_MoveObject(HfMod* mod) { return (HfFn_MoveObject)hf_function_(mod, "MoveObject"); }
+static inline int hf_hook_MoveObject(HfMod* mod, HfFn_MoveObject detour, HfFn_MoveObject* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MoveObject", (void*)detour, (void**)original, priority);
+}
+
+/* SpawnProjectile (game.dll+0x13A9830; call only). Spawns a shot into the projectile pool, copying its flight and
+ * armour penetration from its rows; returns its slot (its hit record at pool + 0x4D040 + 0xC8 slot). HellForge
+ * redirects the ProjectileWeapon pellet call (0x616612) to give other players' shots their own rows. The artillery's
+ * shells fly from it, with their ProjectileSettings row's speed (+0x20), drag (+0x28) and gravity.
+ *   pool        the projectile pool: hf_global_ProjectileSystem
+ *   descriptor  the shot: +0x10 its ProjectileSettings row (pointer), +0x18 the weapon's entity
+ *   extra       not reviewed: the ProjectileWeapon fire path passes its own
+ * From HellForge's co-op round stats (rounds.c); HellForge's artillery reach (difficulty_artillery.c). */
+typedef uint32_t (*HfFn_SpawnProjectile)(void* pool, uint8_t* descriptor, void* extra);
+static inline HfFn_SpawnProjectile hf_fn_SpawnProjectile(HfMod* mod) { return (HfFn_SpawnProjectile)hf_function_(mod, "SpawnProjectile"); }
+
+/* CatalogueAddItem (game.dll+0x136EC00; call only). Appends a record to the item catalogue
+ * (hf_global_ProgressionManager), as the login's catalogue reply does. On the game thread; CatalogueSort after.
+ *   unused          0
+ *   mix_id          the item's mixId
+ *   item_id         the item's itemId
+ *   parent          its parent in the catalogue (children link to the root appended just before them)
+ *   field           the record's +0x10
+ *   flag            the record's +0xB4 byte
+ *   buy             the buy prices (a record's +0x1C)
+ *   buy_count       4
+ *   sell            the sell prices (a record's +0x4C)
+ *   sell_count      4
+ *   dwords          a record's four dwords at +0x7C
+ *   dword_count     4
+ *   required        the required items (a record's +0x90)
+ *   required_count  how many (at most 8)
+ *   category        the item's category
+ *   max_cap         the most one can own
+ * From KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c). */
+typedef uint64_t (*HfFn_CatalogueAddItem)(uint64_t unused, uint32_t mix_id, uint32_t item_id, uint32_t parent, int32_t field, uint8_t flag, const void* buy, uint32_t buy_count, const void* sell, uint32_t sell_count, const uint32_t* dwords, uint32_t dword_count, const uint32_t* required, uint32_t required_count, uint32_t category, uint32_t max_cap);
+static inline HfFn_CatalogueAddItem hf_fn_CatalogueAddItem(HfMod* mod) { return (HfFn_CatalogueAddItem)hf_function_(mod, "CatalogueAddItem"); }
+
+/* CatalogueSort (game.dll+0x136E6A0; call only). Sorts the item catalogue again, into its categories' starts (it only
+ * adds to them: they are zeroed first). On the game thread.
+ * From KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c). */
+typedef void (*HfFn_CatalogueSort)(void);
+static inline HfFn_CatalogueSort hf_fn_CatalogueSort(HfMod* mod) { return (HfFn_CatalogueSort)hf_function_(mod, "CatalogueSort"); }
+
+/* AddItemAmount (game.dll+0x136EF80; call only). Adds to an owned item as the buy/v2 reply does: no popup, no backend
+ * request. On the game thread.
+ *   manager  the progression manager: hf_global_ProgressionManager
+ *   mix_id   the item's mixId (one the catalogue lacks is ignored)
+ *   amount   how many to add
+ *   source   0
+ *   text     NULL
+ *   extra    0
+ * From KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c). */
+typedef void (*HfFn_AddItemAmount)(void* manager, uint32_t mix_id, uint32_t amount, uint32_t source, const uint8_t* text, int32_t extra);
+static inline HfFn_AddItemAmount hf_fn_AddItemAmount(HfMod* mod) { return (HfFn_AddItemAmount)hf_function_(mod, "AddItemAmount"); }
+
+/* RemoveItemAmount (game.dll+0x136F5E0; call only). Takes an amount of an owned item away. On the game thread.
+ *   manager  the progression manager: hf_global_ProgressionManager
+ *   mix_id   the item's mixId (one the catalogue lacks is ignored)
+ *   amount   how many to take away
+ * From KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c). */
+typedef void (*HfFn_RemoveItemAmount)(void* manager, uint32_t mix_id, uint32_t amount);
+static inline HfFn_RemoveItemAmount hf_fn_RemoveItemAmount(HfMod* mod) { return (HfFn_RemoveItemAmount)hf_function_(mod, "RemoveItemAmount"); }
+
+/* LoadEntities (game.dll+0xFDB440; hook or call). Loads the game's entity data (generated_entities.dl_bin) into the
+ * entity state: the entity map, short ids and component tables. HellForge's weapon and entity registry adds the mods'
+ * entities right after it returns.
+ *   state  the entity state: hf_global_EntityManager's object
+ * From HellForge's weapon registry (registry.c, registry_load.c EntityLoaderDetour). */
+typedef void (*HfFn_LoadEntities)(void* state);
+static inline HfFn_LoadEntities hf_fn_LoadEntities(HfMod* mod) { return (HfFn_LoadEntities)hf_function_(mod, "LoadEntities"); }
+static inline int hf_hook_LoadEntities(HfMod* mod, HfFn_LoadEntities detour, HfFn_LoadEntities* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LoadEntities", (void*)detour, (void**)original, priority);
+}
+
+/* BuildArmoryList (game.dll+0x9F1CC0; hook or call). Builds the armory's list from the loadout entries (component 29)
+ * into a fixed 193-entry object: per-type starts at +0x1B24, counts at +0x1B40, 32-byte entries. HellForge's detour
+ * replaces it with a larger list of its own (hf_global_Armory points there).
+ *   list  the armory list object it fills
+ * From HellForge's weapon registry (registry.c, registry_load.c ArmoryBuilderDetour). */
+typedef void (*HfFn_BuildArmoryList)(void* list);
+static inline HfFn_BuildArmoryList hf_fn_BuildArmoryList(HfMod* mod) { return (HfFn_BuildArmoryList)hf_function_(mod, "BuildArmoryList"); }
+static inline int hf_hook_BuildArmoryList(HfMod* mod, HfFn_BuildArmoryList detour, HfFn_BuildArmoryList* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "BuildArmoryList", (void*)detour, (void**)original, priority);
+}
+
+/* ArmoryEntryOf (game.dll+0x11E7C60; call only). The armory entry of a loadout id, found by walking the armory's
+ * per-type ranges (hf_global_Armory): 32 bytes, the loadout id at +0 and the entity at +8 (u64); NULL when the armory
+ * lists none.
+ *   id  the loadout id (a weapon's, as in its loadout entry)
+ * From HellForge's registry self-check (registry_load.c SelfCheck). */
+typedef uint8_t* (*HfFn_ArmoryEntryOf)(uint32_t id);
+static inline HfFn_ArmoryEntryOf hf_fn_ArmoryEntryOf(HfMod* mod) { return (HfFn_ArmoryEntryOf)hf_function_(mod, "ArmoryEntryOf"); }
+
+/* EngineText (game.dll+0x17802E0; call only). game.dll's wrapper of the engine's text function (the slot at +1000 of
+ * hf_global_EngineApi's table): the text of an id, as a UTF-8 string. HellForge points that slot at its own, so mod
+ * texts answer here too; the armory calls the slot directly, so hook the slot, not this, to change texts.
+ *   id  the text id (a strings entry, or one HellForge added for a mod)
+ * From HellForge's mod text (registry.c HookText). */
+typedef const uint8_t* (*HfFn_EngineText)(uint32_t id);
+static inline HfFn_EngineText hf_fn_EngineText(HfMod* mod) { return (HfFn_EngineText)hf_function_(mod, "EngineText"); }
+
+/* OpenMenuPresenter (game.dll+0x14C0550; hook or call). Opens a menu presenter on this machine's ship UI. HellForge's
+ * terminal detour turns presenter 6 (the information terminal) into 41 (the lobby browser) or opens nothing when an
+ * editor shows its own browser.
+ *   manager    the presenter manager
+ *   presenter  the menu presenter to open (6 the information terminal, 41 the debug lobby browser)
+ *   arg        not reviewed: pass it on
+ * From HellForge's information terminal (terminal.c). */
+typedef uint64_t (*HfFn_OpenMenuPresenter)(void* manager, int32_t presenter, void* arg);
+static inline HfFn_OpenMenuPresenter hf_fn_OpenMenuPresenter(HfMod* mod) { return (HfFn_OpenMenuPresenter)hf_function_(mod, "OpenMenuPresenter"); }
+static inline int hf_hook_OpenMenuPresenter(HfMod* mod, HfFn_OpenMenuPresenter detour, HfFn_OpenMenuPresenter* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "OpenMenuPresenter", (void*)detour, (void**)original, priority);
+}
+
+/* MenuSoundUpdate (game.dll+0x13270B0; hook or call). The menu sound manager's update, once a frame on the game thread,
+ * in missions and on the ship. HellForge's detour runs package requests and hf->on_game_thread callbacks there, before
+ * the game's own update.
+ *   manager  the menu sound manager
+ *   dt       the frame's time (seconds)
+ * From HellForge's game thread (packages.c TickDetour). */
+typedef void (*HfFn_MenuSoundUpdate)(void* manager, float dt);
+static inline HfFn_MenuSoundUpdate hf_fn_MenuSoundUpdate(HfMod* mod) { return (HfFn_MenuSoundUpdate)hf_function_(mod, "MenuSoundUpdate"); }
+static inline int hf_hook_MenuSoundUpdate(HfMod* mod, HfFn_MenuSoundUpdate detour, HfFn_MenuSoundUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MenuSoundUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* RequestPackages (game.dll+0x12FE350; call only). Takes a reference on packages so the engine loads and keeps them.
+ * Game thread only: it changes the system's reference map without a lock, and a full map writes to address 0.
+ * hf->load_package is the checked way to call it.
+ *   system  the RefcountedPackageSystem: hf_global_PackageSystem
+ *   ids     the package ids
+ *   count   how many ids (HellForge passes 1)
+ * From HD2Runtime 0.40.1 domains/package_residency; HellForge's load_package (packages.c). */
+typedef void (*HfFn_RequestPackages)(void* system, const uint64_t* ids, uint32_t count);
+static inline HfFn_RequestPackages hf_fn_RequestPackages(HfMod* mod) { return (HfFn_RequestPackages)hf_function_(mod, "RequestPackages"); }
+
+/* EntityOfNetwork (game.dll+0xFD9BA0; call only). The entity a network id names on this machine now, written to out
+ * (and out returned). hf->entity_of_network is the checked way to call it.
+ *   out      where it writes the entity (the game's no-entity id when there is none)
+ *   network  the network id (handle)
+ * From HellForge's entity_of_network (channel.c; the pin in abilities.c). */
+typedef uint32_t* (*HfFn_EntityOfNetwork)(uint32_t* out, uint32_t network);
+static inline HfFn_EntityOfNetwork hf_fn_EntityOfNetwork(HfMod* mod) { return (HfFn_EntityOfNetwork)hf_function_(mod, "EntityOfNetwork"); }
+/* EntityOfHandle: EntityOfNetwork's former name, kept for mods written with it; use EntityOfNetwork. */
+typedef HfFn_EntityOfNetwork HfFn_EntityOfHandle;
+static inline HfFn_EntityOfNetwork hf_fn_EntityOfHandle(HfMod* mod) { return hf_fn_EntityOfNetwork(mod); }
+
+/* QueryLoadoutPreview (game.dll+0x18E9D50; hook or call). The loadout unit-preview query: the record a loadout slot's
+ * preview shows; a missing loadout row gives a zero record. HellForge's detour breaks its fallback's endless self-call
+ * (G-8 Immolation in the hellpod).
+ *   out        the 0x4C-byte preview record it fills, returned
+ *   alternate  1 for the fallback query (the game's missing-child fallback calls itself with 1)
+ *   slot       the loadout slot
+ *   mode       the preview mode
+ *   context    the query's context
+ * From HellForge's loadout preview guard (loadout_preview.c). */
+typedef void* (*HfFn_QueryLoadoutPreview)(void* out, uint8_t alternate, uint32_t slot, uint32_t mode, void* context);
+static inline HfFn_QueryLoadoutPreview hf_fn_QueryLoadoutPreview(HfMod* mod) { return (HfFn_QueryLoadoutPreview)hf_function_(mod, "QueryLoadoutPreview"); }
+static inline int hf_hook_QueryLoadoutPreview(HfMod* mod, HfFn_QueryLoadoutPreview detour, HfFn_QueryLoadoutPreview* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "QueryLoadoutPreview", (void*)detour, (void**)original, priority);
+}
+
+/* PushArmoryLoadout (game.dll+0x11F5010; call only). The armory's commit: pushes this machine's player's loadout from
+ * the profile to its PlayerHistory record (hf_global_PlayerHistory), the way a boot's validation applies a changed
+ * weapon. Game thread; its request is handled a few frames later.
+ * From HellForge's loadout scrub (loadout_scrub.c). */
+typedef void (*HfFn_PushArmoryLoadout)(void);
+static inline HfFn_PushArmoryLoadout hf_fn_PushArmoryLoadout(HfMod* mod) { return (HfFn_PushArmoryLoadout)hf_function_(mod, "PushArmoryLoadout"); }
+
+/* RollCacheLoot (game.dll+0xF3A800; hook or call). Level generation's QueueRandomCacheLootRewardsPackages pass: rolls
+ * each random loot cache against the generation settings' cache loot tables. HellForge's detour sets the Super Credits
+ * tables' weight to the plan's Forge Credits chance before the roll.
+ *   params   the pass's parameters
+ *   rdx      not reviewed: pass it on
+ *   context  the level generation context: [[[+0x18] + 0x2D0] + 0x68] the generation settings, their cache loot tables
+ *            at +0x90 (count +0x98, 0x28 bytes each: u32 id, i32 weight, i32 min and max difficulty, entries at +0x18,
+ *            count +0x20)
+ *   r9       not reviewed: pass it on
+ * From HellForge's Forge Credits loot chance (forge_credits.c). */
+typedef uint64_t (*HfFn_RollCacheLoot)(void* params, uint64_t rdx, uint8_t* context, uint64_t r9);
+static inline HfFn_RollCacheLoot hf_fn_RollCacheLoot(HfMod* mod) { return (HfFn_RollCacheLoot)hf_function_(mod, "RollCacheLoot"); }
+static inline int hf_hook_RollCacheLoot(HfMod* mod, HfFn_RollCacheLoot detour, HfFn_RollCacheLoot* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "RollCacheLoot", (void*)detour, (void**)original, priority);
+}
+
+/* RequestWarbondPurchase (game.dll+0x13714F0; call only). Builds the buy request for a warbond item and records it as
+ * the progression's pending buy; its callers are the warbond page view and the MVVM popup. HellForge patches its entry
+ * so the currency is the item's own.
+ *   rcx       not reviewed: pass it on
+ *   item      the warbond item's seasonPassItemId
+ *   cost      its price
+ *   currency  the mixId of the currency it is charged in (the warbond's; requisition 0xD7150EEC, Forge Credits
+ *             0x6C3C83C1)
+ * From HellForge's per-item warbond currency (warbonds.c InstallWarbondItems). */
+typedef void (*HfFn_RequestWarbondPurchase)(uint64_t rcx, uint32_t item, int32_t cost, uint32_t currency);
+static inline HfFn_RequestWarbondPurchase hf_fn_RequestWarbondPurchase(HfMod* mod) { return (HfFn_RequestWarbondPurchase)hf_function_(mod, "RequestWarbondPurchase"); }
+
+/* FinishWarbondPurchase (game.dll+0x13751D0; hook or call). Completes the reply to a warbond buy: charges the pending
+ * buy and appends its item, once, to the purchased list (count +0xD8A58, ids from +0xD8A5C). HellForge's detour takes a
+ * repeatable mod item out of the list again so it sells again.
+ *   progression  the progression manager: hf_global_Progression (its pending buy at +0x17799D8, the item at +0x17799DC)
+ * From HellForge's repeatable warbond items (warbonds.c InstallWarbondRepeat). */
+typedef void (*HfFn_FinishWarbondPurchase)(uint8_t* progression);
+static inline HfFn_FinishWarbondPurchase hf_fn_FinishWarbondPurchase(HfMod* mod) { return (HfFn_FinishWarbondPurchase)hf_function_(mod, "FinishWarbondPurchase"); }
+static inline int hf_hook_FinishWarbondPurchase(HfMod* mod, HfFn_FinishWarbondPurchase detour, HfFn_FinishWarbondPurchase* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "FinishWarbondPurchase", (void*)detour, (void**)original, priority);
+}
+
+/* SpawnWarbondShowcase (game.dll+0x13050B0; hook or call). Spawns the Helldiver shown beside a warbond's card from its
+ * character row (kit, pose and weapon), on a card change. HellForge's detour fills a mod warbond's row once the
+ * catalogue and armory are ready.
+ *   unused     not reviewed: pass it on
+ *   character  the showcase character's id (a row of the character table at game.dll+0x32B1E60)
+ * From HellForge's warbond showcase (warbond_showcase.c). */
+typedef void (*HfFn_SpawnWarbondShowcase)(void* unused, uint32_t character);
+static inline HfFn_SpawnWarbondShowcase hf_fn_SpawnWarbondShowcase(HfMod* mod) { return (HfFn_SpawnWarbondShowcase)hf_function_(mod, "SpawnWarbondShowcase"); }
+static inline int hf_hook_SpawnWarbondShowcase(HfMod* mod, HfFn_SpawnWarbondShowcase detour, HfFn_SpawnWarbondShowcase* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "SpawnWarbondShowcase", (void*)detour, (void**)original, priority);
+}
+
+/* UpdateWarbondSpent (game.dll+0x194A700; hook or call). Updates the "#COUNT Medal(s) spent" widget on the Acquisition
+ * Center's cards and a warbond's page header. HellForge's detour gives it the text of the warbond's own currency.
+ *   widget  the spent widget: its data block (a card's or the page view) at +0x2130, last frame's at +0x2138, its text
+ *           element at +0x378
+ *   a       not reviewed: pass it on
+ *   b       not reviewed: pass it on
+ * From HellForge's warbond texts (warbond_texts.c). */
+typedef void (*HfFn_UpdateWarbondSpent)(uint8_t* widget, float a, float b);
+static inline HfFn_UpdateWarbondSpent hf_fn_UpdateWarbondSpent(HfMod* mod) { return (HfFn_UpdateWarbondSpent)hf_function_(mod, "UpdateWarbondSpent"); }
+static inline int hf_hook_UpdateWarbondSpent(HfMod* mod, HfFn_UpdateWarbondSpent detour, HfFn_UpdateWarbondSpent* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UpdateWarbondSpent", (void*)detour, (void**)original, priority);
+}
+
+/* UpdateWarbondPager (game.dll+0x1947950; call only). Lays out and lights the Acquisition Center pager's 32 dots for
+ * the card count and the current card. HellForge redirects its one call (0x194345A) to show pages of 32 past 32
+ * warbonds.
+ *   pager  the Acquisition Center's pager (its panel + 0x110): {count, current} read through [+0x7AE8], last frame's
+ *          through [+0x7AF0]
+ *   dt     the frame's time
+ * From HellForge's warbond pager (warbond_pager.c). */
+typedef void (*HfFn_UpdateWarbondPager)(uint8_t* pager, float dt);
+static inline HfFn_UpdateWarbondPager hf_fn_UpdateWarbondPager(HfMod* mod) { return (HfFn_UpdateWarbondPager)hf_function_(mod, "UpdateWarbondPager"); }
+
+/* WarbondPagerInput (game.dll+0x1947730; call only). The pager's input: a clicked dot becomes the card to select
+ * (+0x7B14); nonzero when that changed. HellForge redirects its one call (0x1943384).
+ *   pager  the Acquisition Center's pager
+ *   rdx    not reviewed: pass it on
+ *   r8     not reviewed: pass it on
+ *   r9     not reviewed: pass it on
+ * From HellForge's warbond pager (warbond_pager.c). */
+typedef uint32_t (*HfFn_WarbondPagerInput)(uint8_t* pager, uint64_t rdx, uint64_t r8, uint64_t r9);
+static inline HfFn_WarbondPagerInput hf_fn_WarbondPagerInput(HfMod* mod) { return (HfFn_WarbondPagerInput)hf_function_(mod, "WarbondPagerInput"); }
+
+/* SetElementText (game.dll+0x143BF90; call only). Sets a UI text element's text id, which it then resolves through the
+ * engine's text function (mod texts included). The stratagem picker's headings and the warbond spent widget use it.
+ *   element  a UI text element of kind 0x1C0000 (kind: its +0 & 0x3C0000); its text id is at +0x110
+ *   text     the text id
+ * From HellForge's stratagem categories (stratagem_categories.c) and warbond texts (warbond_texts.c). */
+typedef void (*HfFn_SetElementText)(void* element, uint32_t text);
+static inline HfFn_SetElementText hf_fn_SetElementText(HfMod* mod) { return (HfFn_SetElementText)hf_function_(mod, "SetElementText"); }
+
+/* SetElementTextAlt (game.dll+0x1441720; call only). SetElementText for text elements of kind 0x200000.
+ *   element  a UI text element of kind 0x200000 (kind: its +0 & 0x3C0000); its text id is at +0x110
+ *   text     the text id
+ * From HellForge's warbond texts (warbond_texts.c). */
+typedef void (*HfFn_SetElementTextAlt)(void* element, uint32_t text);
+static inline HfFn_SetElementTextAlt hf_fn_SetElementTextAlt(HfMod* mod) { return (HfFn_SetElementTextAlt)hf_function_(mod, "SetElementTextAlt"); }
+
+/* SetElementNumber (game.dll+0x143CAD0; call only). Fills a number variable in a UI text element's text.
+ *   element  a UI text element
+ *   name     the hash of the variable in its text (the picker heading's available count 0xEB646556, its total
+ *            0x4442EB89)
+ *   value    the number
+ * From HellForge's stratagem categories (stratagem_categories.c PickerHeaderCategory). */
+typedef void (*HfFn_SetElementNumber)(void* element, uint32_t name, uint32_t value);
+static inline HfFn_SetElementNumber hf_fn_SetElementNumber(HfMod* mod) { return (HfFn_SetElementNumber)hf_function_(mod, "SetElementNumber"); }
+
+/* SetWidgetVisible (game.dll+0x14508E0; call only). Shows or hides a UI widget. HellForge's locked-warbond button calls
+ * it on the button's price.
+ *   widget   the UI widget
+ *   visible  1 shown, 0 hidden
+ * From HellForge's locked warbonds (forge_credits.c). */
+typedef void (*HfFn_SetWidgetVisible)(void* widget, uint8_t visible);
+static inline HfFn_SetWidgetVisible hf_fn_SetWidgetVisible(HfMod* mod) { return (HfFn_SetWidgetVisible)hf_function_(mod, "SetWidgetVisible"); }
+
+/* SetElementColour (game.dll+0x1448690; call only). Sets a UI element's colour. HellForge's warbond prices call it to
+ * tint a sample price in the sample's colour.
+ *   element  the UI element
+ *   rgb      its colour (3 floats: red, green, blue)
+ * From HellForge's warbond prices (warbonds.c WarbondPriceColour). */
+typedef void (*HfFn_SetElementColour)(void* element, const float* rgb);
+static inline HfFn_SetElementColour hf_fn_SetElementColour(HfMod* mod) { return (HfFn_SetElementColour)hf_function_(mod, "SetElementColour"); }
+
+/* SetPickerHeading (game.dll+0x18CEC00; call only). Fills a stratagem picker section heading (its title and its
+ * available and total counts). HellForge redirects its call in the list's realize pass (0x18D2E85) to title mods'
+ * selection categories (hf->add_stratagem_category).
+ *   widget  the heading widget: its title element at +0x110, its counts element at +0x3C8
+ *   key     the key of the section's first candidate
+ * From HellForge's stratagem categories (stratagem_categories.c). */
+typedef void (*HfFn_SetPickerHeading)(uint8_t* widget, uint32_t key);
+static inline HfFn_SetPickerHeading hf_fn_SetPickerHeading(HfMod* mod) { return (HfFn_SetPickerHeading)hf_function_(mod, "SetPickerHeading"); }
+
+/* StratagemAvailable (game.dll+0x136FC20; call only). Whether the player has a stratagem available to take, as the
+ * picker's heading counts it.
+ *   account  the progression manager: hf_global_Progression
+ *   type     the StratagemType (HF_STRATAGEM_..., or a mod's)
+ * From HellForge's stratagem categories (stratagem_categories.c PickerCategoryCounts). */
+typedef uint8_t (*HfFn_StratagemAvailable)(void* account, uint32_t type);
+static inline HfFn_StratagemAvailable hf_fn_StratagemAvailable(HfMod* mod) { return (HfFn_StratagemAvailable)hf_function_(mod, "StratagemAvailable"); }
+
+/* SortArray (game.dll+0x20BE230; call only). Sorts an array with a comparator, qsort's arguments. The stratagem picker
+ * sorts its candidates with it (call 0x18D8C40), which HellForge redirects to group mods' categories.
+ *   data     the array
+ *   count    its element count
+ *   width    an element's size in bytes
+ *   compare  the comparator: int (const void*, const void*)
+ * From HellForge's stratagem categories (stratagem_categories.c PickerSortCategories). */
+typedef void (*HfFn_SortArray)(void* data, uint64_t count, uint64_t width, const void* compare);
+static inline HfFn_SortArray hf_fn_SortArray(HfMod* mod) { return (HfFn_SortArray)hf_function_(mod, "SortArray"); }
+
+/* HighestDifficulty (game.dll+0x11EBB40; call only). Returns the highest difficulty level a player may choose: min(10,
+ * the online override "0xAF218CAC 0xFAABBEA9", which it finds with FindConfigSetting). Every read of the difficulty
+ * table clamps the level to it; once a mod's add_difficulty is installed its 10 is 11.
+ * From HellForge's level 11 (difficulty.c, DIF_MAX_FN and the live override). */
+typedef uint32_t (*HfFn_HighestDifficulty)(void);
+static inline HfFn_HighestDifficulty hf_fn_HighestDifficulty(HfMod* mod) { return (HfFn_HighestDifficulty)hf_function_(mod, "HighestDifficulty"); }
+
+/* FindConfigSetting (game.dll+0x12E7990; call only). Finds a config setting by key in the config's open-addressing
+ * tables of 48-byte entries. Returns the setting (+0xC its type, 6 a u32; +0x10 its value) or NULL.
+ *   config  the game's config: hf_global_GameConfig
+ *   online  HighestDifficulty passes 1: the online overrides (config +0x12078) are looked in before the defaults
+ *           (+0xC050)
+ *   key     the setting's key, a 32-bit hash
+ * From HellForge's live level 11 (difficulty.c, DifficultyCapValue and kCapSitePin). */
+typedef const uint8_t* (*HfFn_FindConfigSetting)(void* config, uint32_t online, uint32_t key);
+static inline HfFn_FindConfigSetting hf_fn_FindConfigSetting(HfMod* mod) { return (HfFn_FindConfigSetting)hf_function_(mod, "FindConfigSetting"); }
+
+/* ShowDifficultyWidget (game.dll+0x19A28D0; call only). Shows the chosen widget of the war table's difficulty bar: its
+ * level's number, name and icon from the difficulty table, and its band sprite (a 10-entry array read by level - 1).
+ *   widget  the difficulty bar's widget
+ *   level   the widget's difficulty level (the bar passes its index + 1)
+ * From HellForge's level 11 (difficulty.c header; difficulty_ui.c, DIF_ICON_CALL). */
+typedef void (*HfFn_ShowDifficultyWidget)(void* widget, uint32_t level);
+static inline HfFn_ShowDifficultyWidget hf_fn_ShowDifficultyWidget(HfMod* mod) { return (HfFn_ShowDifficultyWidget)hf_function_(mod, "ShowDifficultyWidget"); }
+
+/* ComputeMissionRating (game.dll+0x19C4E70; call only). Rates the mission on the pause map and at mission end against a
+ * table of 10 rows of thresholds, indexed by the mission's level - 1.
+ *   rcx  not reviewed: pass it on
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on
+ *   r9   not reviewed: pass it on
+ * From HellForge's level 11 (difficulty.c, kLevelLoads 0x19C5084). */
+typedef float (*HfFn_ComputeMissionRating)(void* rcx, void* rdx, uint32_t r8, uint32_t r9);
+static inline HfFn_ComputeMissionRating hf_fn_ComputeMissionRating(HfMod* mod) { return (HfFn_ComputeMissionRating)hf_function_(mod, "ComputeMissionRating"); }
+
+/* EnemyDirectorTick (game.dll+0x94EB90; call only). The enemy director's per-frame step: reads each faction's roaming
+ * patrol interval (difficulty row +0x2A0, f32 s) and most living patrol enemies (+0x2AC, u32) from the mission's
+ * difficulty row.
+ *   rcx   not reviewed: pass it on (its caller passes its rdi + 0x771F48)
+ *   xmm1  not reviewed: pass it on
+ * From HellForge's difficulty patrols (difficulty.c, PatrolLevelRow). */
+typedef void (*HfFn_EnemyDirectorTick)(void* rcx, float xmm1);
+static inline HfFn_EnemyDirectorTick hf_fn_EnemyDirectorTick(HfMod* mod) { return (HfFn_EnemyDirectorTick)hf_function_(mod, "EnemyDirectorTick"); }
+
+/* ArenaAllocate (game.dll+0x173B8D0; call only). Allocates from an arena; the level generator's passes take their
+ * scratch tables from the generation arena with it.
+ *   arena      the arena (the level generator's generation arena: a pass's [rsi])
+ *   size       bytes
+ *   alignment  the alignment; HellForge passes 8
+ * From HellForge's larger maps (difficulty_maps.c, kZoneClearStub). */
+typedef void* (*HfFn_ArenaAllocate)(void* arena, uint32_t size, uint32_t alignment);
+static inline HfFn_ArenaAllocate hf_fn_ArenaAllocate(HfMod* mod) { return (HfFn_ArenaAllocate)hf_function_(mod, "ArenaAllocate"); }
+
+/* GameMemset (game.dll+0x208AAA0; call only). game.dll's memset.
+ *   dest   the memory
+ *   value  the byte to fill with (HellForge passes 0)
+ *   size   bytes
+ * From HellForge's larger maps (difficulty_maps.c, kZoneClearStub). */
+typedef void* (*HfFn_GameMemset)(void* dest, int32_t value, uint64_t size);
+static inline HfFn_GameMemset hf_fn_GameMemset(HfMod* mod) { return (HfFn_GameMemset)hf_function_(mod, "GameMemset"); }
+
+/* CreateGenerationBlock (game.dll+0xF6E710; call only). Makes the level generator's generation block G (the level's
+ * locations, their types, the minimap's arrays, the mission stamps, the objective list, places and clusters), once per
+ * world (from 0xAB8B70).
+ *   level  the level (lg): its caller, the world's creation, passes the world's +0xAE288
+ *   rdx    not reviewed: pass it on
+ * From HellForge's larger maps (difficulty_block.c). */
+typedef void (*HfFn_CreateGenerationBlock)(void* level, void* rdx);
+static inline HfFn_CreateGenerationBlock hf_fn_CreateGenerationBlock(HfMod* mod) { return (HfFn_CreateGenerationBlock)hf_function_(mod, "CreateGenerationBlock"); }
+
+/* InitLevel (game.dll+0xF71220; call only). Level init: copies the generation settings' radii into the level
+ * (lg+0x2D78..+0x2D8C), sets the map type (lg+0x2DE0) and the view rect a war-table preview is drawn in (lg+0x2D94).
+ *   level  the level (lg): the world passes its +0xAE288
+ *   rdx    not reviewed: pass it on
+ *   r8     not reviewed: pass it on
+ *   r9     not reviewed: pass it on
+ * From HellForge's larger maps (difficulty_maps.c, kRadiiStub). */
+typedef void (*HfFn_InitLevel)(void* level, void* rdx, uint32_t r8, uint64_t r9);
+static inline HfFn_InitLevel hf_fn_InitLevel(HfMod* mod) { return (HfFn_InitLevel)hf_function_(mod, "InitLevel"); }
+
+/* GenerateRouteCells (game.dll+0xFD03E0; call only). The level generator's route cells: a Poisson disc of sites at the
+ * generation settings' spacing (+4, 40 m) in the disk (+0xC, 680 m) around the world's centre, into fixed arrays (975
+ * vertices, 1621 edges, 1024 cells) it does not check.
+ *   rcx   not reviewed: pass it on
+ *   rdx   not reviewed: pass it on
+ *   r8    not reviewed: pass it on
+ *   xmm3  not reviewed: pass it on
+ * From HellForge's larger maps (difficulty_maps.c). */
+typedef void (*HfFn_GenerateRouteCells)(void* rcx, uint32_t rdx, uint64_t r8, float xmm3);
+static inline HfFn_GenerateRouteCells hf_fn_GenerateRouteCells(HfMod* mod) { return (HfFn_GenerateRouteCells)hf_function_(mod, "GenerateRouteCells"); }
+
+/* GenerateRouteCellVoronoi (game.dll+0xF93800; call only). Level generator pass op 3: fills each route cell with points
+ * at its cell type's size (+0x18C) / 2 (grid) or / 4 (Poisson) and builds their diagrams into the block's areas (13224)
+ * and vertices (26205), unchecked.
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_maps.c, kCellSpacingStub). */
+typedef void (*HfFn_GenerateRouteCellVoronoi)(void* rcx, void* rdx, void* pass);
+static inline HfFn_GenerateRouteCellVoronoi hf_fn_GenerateRouteCellVoronoi(HfMod* mod) { return (HfFn_GenerateRouteCellVoronoi)hf_function_(mod, "GenerateRouteCellVoronoi"); }
+
+/* GenerateSubregionHeights (game.dll+0xF64E30; call only). Level generator pass op 4: gives every area of a route cell
+ * the height of its cell type's curve at t = clamp(d / 64 m), d its distance to the nearest route point.
+ *   rcx     not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   unused  not read (the pass dispatcher passes its rsi)
+ *   pass    the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_terrain.c). */
+typedef void (*HfFn_GenerateSubregionHeights)(void* rcx, uint64_t unused, void* pass);
+static inline HfFn_GenerateSubregionHeights hf_fn_GenerateSubregionHeights(HfMod* mod) { return (HfFn_GenerateSubregionHeights)hf_function_(mod, "GenerateSubregionHeights"); }
+
+/* GenerateVoronoi (game.dll+0xF3F8E0; call only). Level generator pass op 0x25: lays a 16 m grid (generation settings
+ * +0) over the site square, keeps the points within the disk and runs jc_voronoi on them (arrays of 5680 sites, 5849
+ * vertices, 11528 edges, unchecked).
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_maps.c, kGridStub). */
+typedef void (*HfFn_GenerateVoronoi)(void* rcx, void* rdx, void* pass);
+static inline HfFn_GenerateVoronoi hf_fn_GenerateVoronoi(HfMod* mod) { return (HfFn_GenerateVoronoi)hf_function_(mod, "GenerateVoronoi"); }
+
+/* FinalizeVoronoi (game.dll+0xF68050; call only). Level generator pass op 0xA4 on map type 1: rebuilds the route cells
+ * from points laid over the whole site square at each cell type's size (+0x18C), grid or Poisson. A failure has the
+ * level generated again.
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_maps.c, difficulty_towns.c). */
+typedef void (*HfFn_FinalizeVoronoi)(void* rcx, void* rdx, void* pass);
+static inline HfFn_FinalizeVoronoi hf_fn_FinalizeVoronoi(HfMod* mod) { return (HfFn_FinalizeVoronoi)hf_function_(mod, "FinalizeVoronoi"); }
+
+/* ForceFlattenZones (game.dll+0xF4C100; call only). Level generator pass op 0x3E (force_flatten_zones): groups
+ * connected cells whose type sets a height (+0x208) and flattens every zone cell to its group's height, one plateau per
+ * town.
+ *   rcx     not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   unused  not read (the pass dispatcher passes its rsi)
+ *   pass    the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_maps.c, kZoneClearStub). */
+typedef void (*HfFn_ForceFlattenZones)(void* rcx, uint64_t unused, void* pass);
+static inline HfFn_ForceFlattenZones hf_fn_ForceFlattenZones(HfMod* mod) { return (HfFn_ForceFlattenZones)hf_function_(mod, "ForceFlattenZones"); }
+
+/* SelectSubRegionCellsFromHeightGroup (game.dll+0xF37500; call only). Gives each route cell of a type 0/1 map a
+ * subregion by a noise value sampled at the cell (SampleSubregionNoise): its zone cells become the map's towns.
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_towns.c, kTownNoiseStub). */
+typedef void (*HfFn_SelectSubRegionCellsFromHeightGroup)(void* rcx, void* rdx, void* pass);
+static inline HfFn_SelectSubRegionCellsFromHeightGroup hf_fn_SelectSubRegionCellsFromHeightGroup(HfMod* mod) { return (HfFn_SelectSubRegionCellsFromHeightGroup)hf_function_(mod, "SelectSubRegionCellsFromHeightGroup"); }
+
+/* SampleSubregionNoise (game.dll+0xF3A2E0; call only). The noise value at a point, which picks a route cell's
+ * subregion.
+ *   noise  the noise SelectSubRegionCellsFromHeightGroup passes (its frame's [rbp-0x70])
+ *   x      x in world metres (0..2048)
+ *   y      y in world metres
+ * From HellForge's larger maps (difficulty_towns.c, kTownNoiseStub). */
+typedef float (*HfFn_SampleSubregionNoise)(void* noise, float x, float y);
+static inline HfFn_SampleSubregionNoise hf_fn_SampleSubregionNoise(HfMod* mod) { return (HfFn_SampleSubregionNoise)hf_function_(mod, "SampleSubregionNoise"); }
+
+/* GenerateLocationClusters (game.dll+0xF79520; call only). Level generator pass op 0x18: groups the level's locations
+ * (bases, outposts, objectives) into clusters of 24 (G+0x896FB0, 8 x 0xE0: members +0x10, count +0xD0, kind +0xD8), a
+ * few per kind, their centres on a ring at 0.6 to 0.8 of the playable radius.
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_block.c, difficulty_cities.c). */
+typedef void (*HfFn_GenerateLocationClusters)(void* rcx, void* rdx, void* pass);
+static inline HfFn_GenerateLocationClusters hf_fn_GenerateLocationClusters(HfMod* mod) { return (HfFn_GenerateLocationClusters)hf_function_(mod, "GenerateLocationClusters"); }
+
+/* SpreadLocations (game.dll+0xF7C310; call only). Level generator pass op 0x8B: places each location as near its
+ * cluster's centre as the gaps allow, sorted by distance from the nearest location of its kind. A failure has the level
+ * generated again.
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_maps.c, kSpreadReferenceStub). */
+typedef void (*HfFn_SpreadLocations)(void* rcx, void* rdx, void* pass);
+static inline HfFn_SpreadLocations hf_fn_SpreadLocations(HfMod* mod) { return (HfFn_SpreadLocations)hf_function_(mod, "SpreadLocations"); }
+
+/* SpreadLocationsCities (game.dll+0xFB41B0; call only). Level generator pass op 0x8C (SpreadLocations_Cities): spreads
+ * the important locations (G+0x11A715C of 256) on city maps, flagging each in a 128-entry stack array.
+ *   rcx     not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   unused  not read (the pass dispatcher passes a static of game.dll)
+ *   pass    the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_cities.c). */
+typedef void (*HfFn_SpreadLocationsCities)(void* rcx, uint64_t unused, void* pass);
+static inline HfFn_SpreadLocationsCities hf_fn_SpreadLocationsCities(HfMod* mod) { return (HfFn_SpreadLocationsCities)hf_function_(mod, "SpreadLocationsCities"); }
+
+/* GenerateOutpostLocations (game.dll+0xF7E250; call only). Places the level's outposts from the location-group sets: an
+ * item is offered only if a class in its list (+0x198, count +0x1A0) has weight on the map's layout and its difficulty
+ * word (+0x60) admits the mission's level (lg+0xF9).
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's city strongholds (difficulty_cities.c). */
+typedef void (*HfFn_GenerateOutpostLocations)(void* rcx, void* rdx, void* pass);
+static inline HfFn_GenerateOutpostLocations hf_fn_GenerateOutpostLocations(HfMod* mod) { return (HfFn_GenerateOutpostLocations)hf_function_(mod, "GenerateOutpostLocations"); }
+
+/* GenerateObjectiveLocations (game.dll+0xF8F1D0; call only). Places the mission's objectives on the map: one place per
+ * placement attempt, retries included (G+0x8ABCC0, 16 pointers, count G+0x11A7170), unchecked.
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's more objectives (difficulty_block.c). */
+typedef void (*HfFn_GenerateObjectiveLocations)(void* rcx, void* rdx, void* pass);
+static inline HfFn_GenerateObjectiveLocations hf_fn_GenerateObjectiveLocations(HfMod* mod) { return (HfFn_GenerateObjectiveLocations)hf_function_(mod, "GenerateObjectiveLocations"); }
+
+/* AddImportantLocations (game.dll+0xF90DC0; call only). Adds the extraction points to the level's objective and
+ * extraction places (G+0x8ABCC0, count G+0x11A7170).
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's more objectives (difficulty_block.c). */
+typedef void (*HfFn_AddImportantLocations)(void* rcx, void* rdx, void* pass);
+static inline HfFn_AddImportantLocations hf_fn_AddImportantLocations(HfMod* mod) { return (HfFn_AddImportantLocations)hf_function_(mod, "AddImportantLocations"); }
+
+/* GenerateMissionStampList (game.dll+0xF8E530; call only). Fills the mission stamp list (G+0x8BBD70, 128 x 0x10: set,
+ * group, item, objective id), stamps made per objective, without a check.
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes a static of game.dll)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's more objectives (difficulty_block.c). */
+typedef void (*HfFn_GenerateMissionStampList)(void* rcx, void* rdx, void* pass);
+static inline HfFn_GenerateMissionStampList hf_fn_GenerateMissionStampList(HfMod* mod) { return (HfFn_GenerateMissionStampList)hf_function_(mod, "GenerateMissionStampList"); }
+
+/* FixUnreachableAreas (game.dll+0xF67980; call only). Opens pockets of route cells that have no walkable neighbour;
+ * when it cannot, the level is generated again (lg+0xF954 counts the restarts).
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_diag.c). */
+typedef void (*HfFn_FixUnreachableAreas)(void* rcx, void* rdx, void* pass);
+static inline HfFn_FixUnreachableAreas hf_fn_FixUnreachableAreas(HfMod* mod) { return (HfFn_FixUnreachableAreas)hf_function_(mod, "FixUnreachableAreas"); }
+
+/* CullUnitsOutsidePlayableArea (game.dll+0xF25A00; call only). Level generator op 0x6D, per unit: keeps a level's units
+ * within the playable radius (1024 x lg+0x2D70) and strips the rest at random, fading out to the border (lg+0x2D74).
+ *   level  the level (lg): its callers pass the pass context's +0x18
+ *   rdx    not reviewed: pass it on (its callers pass a pointer + 0x1990)
+ *   r8     not reviewed: pass it on
+ *   xmm3   not reviewed: pass it on
+ * From HellForge's larger maps (difficulty_cities.c, kCullRadiusStub). */
+typedef uint8_t (*HfFn_CullUnitsOutsidePlayableArea)(void* level, void* rdx, uint32_t r8, float xmm3);
+static inline HfFn_CullUnitsOutsidePlayableArea hf_fn_CullUnitsOutsidePlayableArea(HfMod* mod) { return (HfFn_CullUnitsOutsidePlayableArea)hf_function_(mod, "CullUnitsOutsidePlayableArea"); }
+
+/* GenerateCityRoads (game.dll+0xFA9E10; call only). Level generator pass op 0xA7 (generate_city_roads): a footprint per
+ * road edge, then the city cells' buildings in cell order, stopping when the footprint list is full.
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_maps.c, kCityCapacities). */
+typedef void (*HfFn_GenerateCityRoads)(void* rcx, void* rdx, void* pass);
+static inline HfFn_GenerateCityRoads hf_fn_GenerateCityRoads(HfMod* mod) { return (HfFn_GenerateCityRoads)hf_function_(mod, "GenerateCityRoads"); }
+
+/* CreateCityFootprintList (game.dll+0xFA8FE0; call only). Gives the city pass record its footprint list: 0x800 x 0x60
+ * from the generation arena, its capacity at record +0x284.
+ *   rcx  not reviewed: pass it on (its caller passes the same pointer in r8)
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on
+ *   s5   not reviewed: pass it on
+ *   s6   not reviewed: pass it on (its caller passes a block it allocated with ArenaAllocate and cleared)
+ * From HellForge's larger maps (difficulty_maps.c, kCityCapacities). */
+typedef uint8_t (*HfFn_CreateCityFootprintList)(void* rcx, void* rdx, void* r8, uint64_t s5, void* s6);
+static inline HfFn_CreateCityFootprintList hf_fn_CreateCityFootprintList(HfMod* mod) { return (HfFn_CreateCityFootprintList)hf_function_(mod, "CreateCityFootprintList"); }
+
+/* FlattenCityRoads (game.dll+0xFAF130; call only). Dresses each city street: road ribbons and junction discs, the
+ * pieces at an edge's ends (+0x240, +0x250) and spaced street props (+0x270) up to their reach past the playable
+ * radius.
+ *   rcx   not reviewed: pass it on (the pass dispatcher passes its rsi + 8)
+ *   rdx   not reviewed: pass it on (the pass dispatcher passes its rsi)
+ *   pass  the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg)
+ * From HellForge's larger maps (difficulty_streets.c). */
+typedef void (*HfFn_FlattenCityRoads)(void* rcx, void* rdx, void* pass);
+static inline HfFn_FlattenCityRoads hf_fn_FlattenCityRoads(HfMod* mod) { return (HfFn_FlattenCityRoads)hf_function_(mod, "FlattenCityRoads"); }
+
+/* StampIndexSize (game.dll+0xC048E0; call only). The size of the level generator's stamp index (10757 slots after a
+ * bitset).
+ *   xmm0  not reviewed: pass it on
+ *   xmm1  not reviewed: pass it on
+ *   xmm2  not reviewed: pass it on
+ * From HellForge's larger maps (difficulty_maps.c, kStampIndex). */
+typedef uint32_t (*HfFn_StampIndexSize)(float xmm0, float xmm1, float xmm2);
+static inline HfFn_StampIndexSize hf_fn_StampIndexSize(HfMod* mod) { return (HfFn_StampIndexSize)hf_function_(mod, "StampIndexSize"); }
+
+/* StampIndexCheckLayout (game.dll+0xC04AB0; call only). Checks the layout of the level generator's stamp index against
+ * its slot count.
+ *   xmm0  not reviewed: pass it on
+ *   xmm1  not reviewed: pass it on
+ *   xmm2  not reviewed: pass it on
+ * From HellForge's larger maps (difficulty_maps.c, kStampIndex). */
+typedef void (*HfFn_StampIndexCheckLayout)(float xmm0, float xmm1, float xmm2);
+static inline HfFn_StampIndexCheckLayout hf_fn_StampIndexCheckLayout(HfMod* mod) { return (HfFn_StampIndexCheckLayout)hf_function_(mod, "StampIndexCheckLayout"); }
+
+/* HashMapInsert (game.dll+0x172F790; call only). The game's open-addressing hash insert (704 callers): probes every
+ * slot for the key or an empty one. HellForge's guard skips and counts an entry when the table is full.
+ *   table  the hash table
+ *   rdx    not reviewed: pass it on
+ *   r8     not reviewed: pass it on
+ * From HellForge's hash insert guard (difficulty_maps.c, DIF_HASH_INSERT_END). */
+typedef void (*HfFn_HashMapInsert)(void* table, uint32_t rdx, uint32_t r8);
+static inline HfFn_HashMapInsert hf_fn_HashMapInsert(HfMod* mod) { return (HfFn_HashMapInsert)hf_function_(mod, "HashMapInsert"); }
+
+/* SetupDestructionRecordMap (game.dll+0x13DF7D0; call only). Sets up the destruction-record map of
+ * hf_global_DestructionRecords: its slot pointer (+0xC5F48) and count (+0xC5F50; 0x8000 inline slots at +0x5F48).
+ *   owner  the map's owner: the slot pointer at +0xC5F48 and count at +0xC5F50 are its
+ * From HellForge's larger maps (difficulty_maps.c, InstallRecordMap). */
+typedef void (*HfFn_SetupDestructionRecordMap)(void* owner);
+static inline HfFn_SetupDestructionRecordMap hf_fn_SetupDestructionRecordMap(HfMod* mod) { return (HfFn_SetupDestructionRecordMap)hf_function_(mod, "SetupDestructionRecordMap"); }
+
+/* RegisterStaticDestructionRecords (game.dll+0x13E0200; call only). Registers the world's static destructibles in the
+ * destruction-record map, probing it inline.
+ *   rcx  not reviewed: pass it on
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on
+ * From HellForge's larger maps (difficulty_maps.c; difficulty_towns.c, DIF_RECORD_STORE). */
+typedef void (*HfFn_RegisterStaticDestructionRecords)(void* rcx, void* rdx, uint32_t r8);
+static inline HfFn_RegisterStaticDestructionRecords hf_fn_RegisterStaticDestructionRecords(HfMod* mod) { return (HfFn_RegisterStaticDestructionRecords)hf_function_(mod, "RegisterStaticDestructionRecords"); }
+
+/* SelectObjectives (game.dll+0x1756730; call only). Selects a mission's objectives from its mission row and returns how
+ * many. Every caller uses it: war table, mission descriptor, preview, telemetry; HellForge's second primary runs it
+ * again for a partner mission.
+ *   inputs   +0 seed (u32), +8 the mission row (0..161), +0xC faction, +0x10 difficulty level, +0x14 a byte the
+ *            selection never reads
+ *   ids      receives the objective ids (32 places)
+ *   classes  receives each one's class (0 main, 1 step, 3 optional), or NULL
+ * From HellForge's two missions in one (difficulty_missions.c, g_select). */
+typedef uint32_t (*HfFn_SelectObjectives)(uint8_t* inputs, uint32_t* ids, uint32_t* classes);
+static inline HfFn_SelectObjectives hf_fn_SelectObjectives(HfMod* mod) { return (HfFn_SelectObjectives)hf_function_(mod, "SelectObjectives"); }
+
+/* LaunchMission (game.dll+0xAD0010; call only). Launches the mission: lists the entity deltas its HiveMind gets (the
+ * mission row's, the modifiers', up to 10 resource hashes) before the spawn applies them.
+ *   rcx  not reviewed: pass it on
+ * From HellForge's mission countdown (difficulty_countdown.c). */
+typedef void (*HfFn_LaunchMission)(void* rcx);
+static inline HfFn_LaunchMission hf_fn_LaunchMission(HfMod* mod) { return (HfFn_LaunchMission)hf_function_(mod, "LaunchMission"); }
+
+/* MissionTimerWidget (game.dll+0x17BA940; call only). The mission's timer widget: the countdown's total less what is
+ * left (hf_global_HiveMindManager +0x51948) is the elapsed time and its segments.
+ *   widget  the timer widget
+ * From HellForge's mission countdown (difficulty_countdown.c, kWidgetTimeStub). */
+typedef void (*HfFn_MissionTimerWidget)(void* widget);
+static inline HfFn_MissionTimerWidget hf_fn_MissionTimerWidget(HfMod* mod) { return (HfFn_MissionTimerWidget)hf_function_(mod, "MissionTimerWidget"); }
+
+/* UpdateHudObjectives (game.dll+0x18B42F0; call only). The in-mission HUD's objective updater: copies every objective
+ * instance's id (hf_global_ObjectiveManager) into a 16-entry stack list to number them, and gives each map marker one
+ * of the map's 16 marker slots.
+ *   rcx  not reviewed: pass it on
+ * From HellForge's more objectives (difficulty_missions.c, kHudListSites). */
+typedef void (*HfFn_UpdateHudObjectives)(void* rcx);
+static inline HfFn_UpdateHudObjectives hf_fn_UpdateHudObjectives(HfMod* mod) { return (HfFn_UpdateHudObjectives)hf_function_(mod, "UpdateHudObjectives"); }
+
+/* UpdateMapScreen (game.dll+0x18A7C60; call only). Runs every frame while the map is open, through the HUD's objective
+ * updater (UpdateHudObjectives).
+ *   map   the map object (its caller passes its +0x1A0E28)
+ *   xmm1  not reviewed: pass it on
+ *   r8    not reviewed: pass it on
+ * From HellForge's map marker slots (difficulty_missions.c). */
+typedef void (*HfFn_UpdateMapScreen)(void* map, float xmm1, uint32_t r8);
+static inline HfFn_UpdateMapScreen hf_fn_UpdateMapScreen(HfMod* mod) { return (HfFn_UpdateMapScreen)hf_function_(mod, "UpdateMapScreen"); }
+
+/* BuildMapMarkerSlots (game.dll+0x18A5580; call only). Builds the map object's 16 marker slots (+0xF958, 0x2B8 each;
+ * its tracker list follows at +0x12518).
+ *   map     the map object (its caller passes its +0x1A0E28; the slots at +0xF958)
+ *   unused  not read (its caller passes 5, which the function stores at map +0x110 itself)
+ *   r8      not reviewed: pass it on
+ *   r9      not reviewed: pass it on
+ * From HellForge's map marker slots (difficulty_missions.c). */
+typedef void (*HfFn_BuildMapMarkerSlots)(void* map, uint64_t unused, void* r8, void* r9);
+static inline HfFn_BuildMapMarkerSlots hf_fn_BuildMapMarkerSlots(HfMod* mod) { return (HfFn_BuildMapMarkerSlots)hf_function_(mod, "BuildMapMarkerSlots"); }
+
+/* HudMandatoryObjectives (game.dll+0x17CF690; call only). The HUD's list of the mission's class 0 and 1 objectives
+ * (main objectives and steps), 16 at most.
+ *   rcx  not reviewed: pass it on
+ * From HellForge's two missions in one (difficulty_missions.c, DIF_MANDATORY_MAX). */
+typedef void (*HfFn_HudMandatoryObjectives)(void* rcx);
+static inline HfFn_HudMandatoryObjectives hf_fn_HudMandatoryObjectives(HfMod* mod) { return (HfFn_HudMandatoryObjectives)hf_function_(mod, "HudMandatoryObjectives"); }
+
+/* MissionHudTopBar (game.dll+0x17CB8E0; call only). The mission HUD's top bar: shows the difficulty row's level number
+ * and icon (row +0x10, through SetImageWithBase).
+ *   rcx   not reviewed: pass it on
+ *   xmm1  not reviewed: pass it on
+ * From HellForge's level 11 icon (difficulty_ui.c, DIF_HUD_ICON_CALL). */
+typedef void (*HfFn_MissionHudTopBar)(void* rcx, float xmm1);
+static inline HfFn_MissionHudTopBar hf_fn_MissionHudTopBar(HfMod* mod) { return (HfFn_MissionHudTopBar)hf_function_(mod, "MissionHudTopBar"); }
+
+/* BuildMissionResult (game.dll+0x62EC20; call only). Builds the mission result record: its badges (+0x14C8: {id,
+ * amount} x 32, count +0x15C8), up to 11 before its objective loop, one per objective instance with a badge, up to 5
+ * after.
+ *   unused  not read (its caller passes hf_global_ScoreManager)
+ *   rdx     not reviewed: pass it on
+ *   r8      not reviewed: pass it on
+ * From HellForge's more objectives (difficulty_missions.c, kBadgeStub). */
+typedef void (*HfFn_BuildMissionResult)(uint64_t unused, void* rdx, void* r8);
+static inline HfFn_BuildMissionResult hf_fn_BuildMissionResult(HfMod* mod) { return (HfFn_BuildMissionResult)hf_function_(mod, "BuildMissionResult"); }
+
+/* TelemetrySelectedMission (game.dll+0x148F2A0; call only). Writes the SelectedMission telemetry line when a mission is
+ * chosen on the war table: difficulty, race, game mode and objective names, into a 512-byte stack buffer.
+ *   rcx  not reviewed: pass it on
+ *   rdx  not reviewed: pass it on
+ * From HellForge's more objectives (difficulty_missions.c, kTelemetryStub). */
+typedef uint8_t (*HfFn_TelemetrySelectedMission)(void* rcx, uint8_t rdx);
+static inline HfFn_TelemetrySelectedMission hf_fn_TelemetrySelectedMission(HfMod* mod) { return (HfFn_TelemetrySelectedMission)hf_function_(mod, "TelemetrySelectedMission"); }
+
+/* TelemetryMissionEnd (game.dll+0x1347A10; call only). The mission-end telemetry: keeps up to 16 objective instances in
+ * hf_global_Telemetry's record (+0x31820).
+ *   telemetry  the telemetry: hf_global_Telemetry
+ * From HellForge's more objectives (difficulty_missions.c, kTelemetryCountStub). */
+typedef void (*HfFn_TelemetryMissionEnd)(void* telemetry);
+static inline HfFn_TelemetryMissionEnd hf_fn_TelemetryMissionEnd(HfMod* mod) { return (HfFn_TelemetryMissionEnd)hf_function_(mod, "TelemetryMissionEnd"); }
+
+/* RollArtilleryShell (game.dll+0x9F3250; call only). A SEAF Artillery side objective's spawn point rolls its shell:
+ * each kind in the unit's script data table 0x3268FC21 ({kind, weight}) is matched to its ObjectiveShell record and one
+ * is picked by weight with the objective's seeded random numbers.
+ *   unused  not read (its caller passes a global's object)
+ *   rdx     not reviewed: pass it on
+ *   r8      not reviewed: pass it on
+ *   r9      not reviewed: pass it on
+ * From HellForge's heavy artillery (difficulty_artillery.c, kShellWeightPin). */
+typedef void (*HfFn_RollArtilleryShell)(uint64_t unused, void* rdx, uint32_t r8, uint32_t r9);
+static inline HfFn_RollArtilleryShell hf_fn_RollArtilleryShell(HfMod* mod) { return (HfFn_RollArtilleryShell)hf_function_(mod, "RollArtilleryShell"); }
+
+/* ArtilleryAim (game.dll+0x617E50; call only). The SEAF Artillery's aim: reads the shell's speed and gravity from its
+ * projectile row, through SolveBallisticAim.
+ *   rcx  not reviewed: pass it on
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on
+ *   r9   not reviewed: pass it on
+ *   s5   not reviewed: pass it on
+ * From HellForge's artillery reach (difficulty_artillery.c). */
+typedef uint8_t (*HfFn_ArtilleryAim)(void* rcx, uint32_t rdx, void* r8, uint8_t r9, void* s5);
+static inline HfFn_ArtilleryAim hf_fn_ArtilleryAim(HfMod* mod) { return (HfFn_ArtilleryAim)hf_function_(mod, "ArtilleryAim"); }
+
+/* SolveBallisticAim (game.dll+0x13B1BD0; call only). The ballistic solver the artillery's aim uses, with the projectile
+ * row's speed and gravity.
+ *   rcx  not reviewed: pass it on
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on
+ *   r9   not reviewed: pass it on
+ *   s5   not reviewed: pass it on
+ *   s6   not reviewed: pass it on
+ *   s7   not reviewed: pass it on
+ * From HellForge's artillery reach (difficulty_artillery.c). */
+typedef float (*HfFn_SolveBallisticAim)(void* rcx, void* rdx, void* r8, uint8_t r9, uint8_t s5, uint32_t s6, float s7);
+static inline HfFn_SolveBallisticAim hf_fn_SolveBallisticAim(HfMod* mod) { return (HfFn_SolveBallisticAim)hf_function_(mod, "SolveBallisticAim"); }
+
+/* PredictProjectileLanding (game.dll+0x13B18B0; call only). Predicts where a projectile lands, from its row's speed and
+ * gravity.
+ *   rcx   not reviewed: pass it on
+ *   rdx   not reviewed: pass it on
+ *   xmm2  not reviewed: pass it on
+ *   r9    not reviewed: pass it on
+ *   s5    not reviewed: pass it on (a caller passes 2)
+ *   s6    not reviewed: pass it on (a caller reads a float from it afterwards)
+ * From HellForge's artillery reach (difficulty_artillery.c). */
+typedef void (*HfFn_PredictProjectileLanding)(void* rcx, void* rdx, float xmm2, void* r9, uint32_t s5, float* s6);
+static inline HfFn_PredictProjectileLanding hf_fn_PredictProjectileLanding(HfMod* mod) { return (HfFn_PredictProjectileLanding)hf_function_(mod, "PredictProjectileLanding"); }
+
+/* GenerateRegionMissions (game.dll+0x11E44D0; call only). Generates the war table mission board's region missions
+ * (Super Earth's mega cities: slots 30..109 of a planet's 110, 10 levels per region).
+ *   rcx  not reviewed: pass it on
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on
+ * From HellForge's level 11 board (difficulty_ui.c, DIF_BOARD_REGION_MAX). */
+typedef void (*HfFn_GenerateRegionMissions)(void* rcx, void* rdx, void* r8);
+static inline HfFn_GenerateRegionMissions hf_fn_GenerateRegionMissions(HfMod* mod) { return (HfFn_GenerateRegionMissions)hf_function_(mod, "GenerateRegionMissions"); }
+
+/* GenerateCampaignPlanetMissions (game.dll+0x11E3C10; call only). Generates a campaign planet's missions on the war
+ * table's mission board (slots 0..29, 3 per level).
+ *   rcx  not reviewed: pass it on
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on
+ * From HellForge's level 11 board (difficulty_ui.c, DIF_BOARD_PLANET_SITE). */
+typedef void (*HfFn_GenerateCampaignPlanetMissions)(void* rcx, void* rdx, void* r8);
+static inline HfFn_GenerateCampaignPlanetMissions hf_fn_GenerateCampaignPlanetMissions(HfMod* mod) { return (HfFn_GenerateCampaignPlanetMissions)hf_function_(mod, "GenerateCampaignPlanetMissions"); }
+
+/* GenerateDefencePlanetMissions (game.dll+0x11E4060; call only). Generates a defence planet's missions on the war
+ * table's mission board (slots 0..29, 3 per level).
+ *   rcx  not reviewed: pass it on
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on
+ * From HellForge's level 11 board (difficulty_ui.c, DIF_BOARD_DEFENCE_SITE). */
+typedef void (*HfFn_GenerateDefencePlanetMissions)(void* rcx, void* rdx, void* r8);
+static inline HfFn_GenerateDefencePlanetMissions hf_fn_GenerateDefencePlanetMissions(HfMod* mod) { return (HfFn_GenerateDefencePlanetMissions)hf_function_(mod, "GenerateDefencePlanetMissions"); }
+
+/* DifficultyBarBuild (game.dll+0x19CFB40; call only). Builds the war table's difficulty bar: a carousel of one widget
+ * per level up to the highest (bar + 0x598 + i * 0x910, room for 10).
+ *   bar  the bar
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on
+ *   r9   not reviewed: pass it on (the callers pass 10 or 0x33)
+ * From HellForge's level 11 bar (difficulty_ui.c, kBarSites). */
+typedef void (*HfFn_DifficultyBarBuild)(void* bar, void* rdx, void* r8, uint32_t r9);
+static inline HfFn_DifficultyBarBuild hf_fn_DifficultyBarBuild(HfMod* mod) { return (HfFn_DifficultyBarBuild)hf_function_(mod, "DifficultyBarBuild"); }
+
+/* DifficultyBarDestroy (game.dll+0x19D1090; call only). Destroys the war table difficulty bar's widgets.
+ *   bar  the bar
+ * From HellForge's level 11 bar (difficulty_ui.c, kBarSites). */
+typedef void (*HfFn_DifficultyBarDestroy)(void* bar);
+static inline HfFn_DifficultyBarDestroy hf_fn_DifficultyBarDestroy(HfMod* mod) { return (HfFn_DifficultyBarDestroy)hf_function_(mod, "DifficultyBarDestroy"); }
+
+/* DifficultyBarChoose (game.dll+0x19D1110; call only). Chooses a level on the war table's difficulty bar.
+ *   bar  the bar
+ *   rdx  not reviewed: pass it on
+ *   r8   not reviewed: pass it on (the callers pass 0 or 1)
+ *   r9   not reviewed: pass it on
+ * From HellForge's level 11 bar (difficulty_ui.c, kBarSites). */
+typedef void (*HfFn_DifficultyBarChoose)(void* bar, uint32_t rdx, uint8_t r8, void* r9);
+static inline HfFn_DifficultyBarChoose hf_fn_DifficultyBarChoose(HfMod* mod) { return (HfFn_DifficultyBarChoose)hf_function_(mod, "DifficultyBarChoose"); }
+
+/* SetImageSprite (game.dll+0x144F800; call only). Sets an image element to an atlas sprite (atlas sprites only), which
+ * gives the element its resource (+0x148).
+ *   element  the image element
+ *   sprite   the atlas sprite (a difficulty row's icon, +0x10)
+ *   zero     0
+ * From HellForge's level 11 icon (difficulty_ui.c, kIconStub). */
+typedef void (*HfFn_SetImageSprite)(void* element, uint64_t sprite, uint8_t zero);
+static inline HfFn_SetImageSprite hf_fn_SetImageSprite(HfMod* mod) { return (HfFn_SetImageSprite)hf_function_(mod, "SetImageSprite"); }
+
+/* SetImageSpriteOrTexture (game.dll+0x1450160; call only). The image setter the stratagem icons use: an atlas sprite,
+ * else a texture of that name (through SetElementResourceSlot).
+ *   element   the image element
+ *   resource  the sprite or texture; a texture goes to the element's image slot (SetElementResourceSlot)
+ * From HellForge's level 11 icon (difficulty_ui.c). */
+typedef void (*HfFn_SetImageSpriteOrTexture)(void* element, uint64_t resource);
+static inline HfFn_SetImageSpriteOrTexture hf_fn_SetImageSpriteOrTexture(HfMod* mod) { return (HfFn_SetImageSpriteOrTexture)hf_function_(mod, "SetImageSpriteOrTexture"); }
+
+/* SetElementResourceSlot (game.dll+0x1449A70; call only). Puts a resource into a UI element's slot: what
+ * SetImageSpriteOrTexture calls for a texture. HellForge gives a level-11 icon its texture with it.
+ *   element   the UI element
+ *   slot      the slot's name hash (0x3AA8B87E the image)
+ *   resource  the resource (a texture)
+ *   sprite    whether it is a sprite: 0 a texture
+ *   zero      0
+ * From HellForge's level 11 icon (difficulty_ui.c, kIconStub). */
+typedef void (*HfFn_SetElementResourceSlot)(void* element, uint32_t slot, uint64_t resource, uint8_t sprite, uint8_t zero);
+static inline HfFn_SetElementResourceSlot hf_fn_SetElementResourceSlot(HfMod* mod) { return (HfFn_SetElementResourceSlot)hf_function_(mod, "SetElementResourceSlot"); }
+
+/* SetImageWithBase (game.dll+0x1450230; call only). Sets an image element from a base sprite and an image: the mission
+ * HUD's top bar sets the difficulty icon with it.
+ *   element  the image element
+ *   base     the base sprite, set first through SetImageSprite (the mission HUD passes 0x9448536C2D6AE780)
+ *   image    the image, then put in the element's image slot (SetElementResourceSlot)
+ *   zero     0
+ * From HellForge's level 11 icon (difficulty_ui.c, kHudIconPin). */
+typedef void (*HfFn_SetImageWithBase)(void* element, uint64_t base, uint64_t image, uint8_t zero);
+static inline HfFn_SetImageWithBase hf_fn_SetImageWithBase(HfMod* mod) { return (HfFn_SetImageWithBase)hf_function_(mod, "SetImageWithBase"); }
+
+/* UiElementRect (game.dll+0x143EEF0; call only). A UI element's rect: the mission card's minimap calls it after setting
+ * its UV rect.
+ *   element  the UI element
+ *   rdx      not reviewed: pass it on
+ *   r8       not reviewed: pass it on
+ * From HellForge's mission card view (difficulty_ui.c, DIF_CARD_VIEW_CALL). */
+typedef void (*HfFn_UiElementRect)(void* element, void* rdx, void* r8);
+static inline HfFn_UiElementRect hf_fn_UiElementRect(HfMod* mod) { return (HfFn_UiElementRect)hf_function_(mod, "UiElementRect"); }
+
+/* MissionCardMinimap (game.dll+0x18760E0; call only). The war table mission card's minimap (element panel+0x220): a
+ * fixed UV rect of the 2048 m texture (0.275 to 0.725) and its markers at fixed scales.
+ *   rcx   not reviewed: pass it on
+ *   xmm1  not reviewed: pass it on
+ * From HellForge's mission card view (difficulty_ui.c). */
+typedef void (*HfFn_MissionCardMinimap)(void* rcx, float xmm1);
+static inline HfFn_MissionCardMinimap hf_fn_MissionCardMinimap(HfMod* mod) { return (HfFn_MissionCardMinimap)hf_function_(mod, "MissionCardMinimap"); }
+
+/* WarTableHologramUpdate (game.dll+0x142D870; call only). The war table's 3D hologram, per frame (a UI object): the
+ * mission's scale (+0x8D704, 6.6) and half the playable radius from the preview record (+0x8D70C).
+ *   hologram  the hologram's UI object (+0x8D704 the scale, +0x8D70C half the playable radius)
+ *   xmm1      not reviewed: pass it on
+ *   level     the level (lg): its caller passes the world's +0xAE288
+ *   xmm3      not reviewed: pass it on
+ * From HellForge's hologram scale (difficulty_ui.c, kHoloStubs). */
+typedef void (*HfFn_WarTableHologramUpdate)(void* hologram, float xmm1, void* level, float xmm3);
+static inline HfFn_WarTableHologramUpdate hf_fn_WarTableHologramUpdate(HfMod* mod) { return (HfFn_WarTableHologramUpdate)hf_function_(mod, "WarTableHologramUpdate"); }
+
+/* WarTableHologramZoom (game.dll+0x14329B0; call only). The war table hologram's zoom slider: blends the scale
+ * (+0x8D704) from 6.6 to 11.
+ *   hologram  the hologram's UI object (+0x8D704 the scale)
+ *   xmm1      not reviewed: pass it on
+ * From HellForge's hologram scale (difficulty_ui.c, kHoloStubs). */
+typedef void (*HfFn_WarTableHologramZoom)(void* hologram, float xmm1);
+static inline HfFn_WarTableHologramZoom hf_fn_WarTableHologramZoom(HfMod* mod) { return (HfFn_WarTableHologramZoom)hf_function_(mod, "WarTableHologramZoom"); }
+
+/* WarTableHologramHeightAt (game.dll+0x1432F10; call only). The war table hologram's terrain height lookup.
+ *   hologram  the hologram's UI object
+ *   rdx       not reviewed: pass it on
+ * From HellForge's hologram labels (difficulty_ui.c). */
+typedef float (*HfFn_WarTableHologramHeightAt)(void* hologram, uint64_t rdx);
+static inline HfFn_WarTableHologramHeightAt hf_fn_WarTableHologramHeightAt(HfMod* mod) { return (HfFn_WarTableHologramHeightAt)hf_function_(mod, "WarTableHologramHeightAt"); }
+
+/* WarTableHologramTerrainHeight (game.dll+0x1433460; call only). The war table hologram's terrain height: the map's
+ * lowest point lifted above the table's plane by a lift that follows the scale (+0x8D704).
+ *   hologram  the hologram's UI object (+0x8D704 the scale)
+ *   rdx       not reviewed: pass it on (its callers pass a local it writes 8 bytes to)
+ *   xmm2      not reviewed: pass it on
+ * From HellForge's hologram lift (difficulty_ui.c, DIF_HOLO_LIFT_SITE). */
+typedef uint64_t (*HfFn_WarTableHologramTerrainHeight)(void* hologram, void* rdx, float xmm2);
+static inline HfFn_WarTableHologramTerrainHeight hf_fn_WarTableHologramTerrainHeight(HfMod* mod) { return (HfFn_WarTableHologramTerrainHeight)hf_function_(mod, "WarTableHologramTerrainHeight"); }
+
 #endif
