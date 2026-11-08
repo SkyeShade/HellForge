@@ -431,17 +431,17 @@ local backend to answer on this PC, and the block to refuse a connection to the 
   its block is an older one that does not hold the game to HellForge's backend alone. The session places it again with
   one Windows prompt; if that does not work, connect to the internet and press Play, or run Settings > Installation.
 
-Without an internet connection the check cannot test the internet: Windows refuses the connection before the block
-sees it (error 10050, 10051 or 10065). The check counts the PC as offline in two cases:
+Without an internet connection the check's TCP connection to the internet fails before the block can refuse it (error
+10050, 10051 or 10065). The block still counts as proved in two cases:
 
-- Windows has no route out.
-- Windows has a route but reports no internet itself, the taskbar's "No internet". Wi-Fi joined to a network with no
-  way on does this. The report's `internetConnectivity` holds Windows' connectivity flags; 0x40 and 0x400 mean
-  internet.
+- Windows has no route out, so nothing can leave the PC.
+- The check's UDP datagram to the same address is refused by the block (`externalIpv4UdpError` 10013 in the report).
+  The block judges it the same way as a connection, and it does not depend on the network answering. This is the case
+  for Wi-Fi joined to a network with no way on.
 
-The session then checks the block on this PC alone. While the game runs it checks again against the internet every 10
-seconds, and at once when the PC gains a route. If the block does not hold then, HellForge stops the game ("connected
-to the internet during the session"). `network-probe-online.json` records the latest of those checks.
+The session then checks the block again every 10 seconds while the game runs, and at once when Windows starts sending
+through another adapter. A failed check runs once more; if it fails again, HellForge stops the game ("The network
+block's check failed while the game was running"). `network-probe-online.json` records the latest of those checks.
 
 The session's `network-probe.json` (and `network-probe-again.json` after the block was placed again) records what the
 check saw; include the logs when you ask.

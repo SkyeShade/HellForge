@@ -17,43 +17,27 @@ public static class OfflineControlNetworkProbe {
         // IPAddr is in_addr's form (network byte order): the address bytes as they are, read as one value
         return GetBestInterface(BitConverter.ToUInt32(IPAddress.Parse(address).GetAddressBytes(), 0), out index);
     }
-    // Windows' Network List Manager (netlistmgr.h). INetworkListManager derives from IDispatch; GetConnectivity is its
-    // seventh method. The six before it are declared only to hold their places in the table and are never called.
-    [ComImport, Guid("DCB00000-570F-4A9B-8D69-199FDBA5723B"), InterfaceType(ComInterfaceType.InterfaceIsDual)]
-    interface INetworkListManager {
-        [PreserveSig] int GetNetworks(int flags, out IntPtr networks);
-        [PreserveSig] int GetNetwork(Guid id, out IntPtr network);
-        [PreserveSig] int GetNetworkConnections(out IntPtr connections);
-        [PreserveSig] int GetNetworkConnection(Guid id, out IntPtr connection);
-        [PreserveSig] int IsConnectedToInternet(out short connected);
-        [PreserveSig] int IsConnected(out short connected);
-        [PreserveSig] int GetConnectivity(out int connectivity);
-    }
-    [ComImport, Guid("DCB00C01-570F-4A9B-8D69-199FDBA5723B")]
-    class NetworkListManager { }
-    // NLM_CONNECTIVITY_IPV4_INTERNET | NLM_CONNECTIVITY_IPV6_INTERNET
-    const int Internet = 0x40 | 0x400;
-    // Windows' own verdict on this PC's connectivity (the taskbar's "No internet"): the NLM_CONNECTIVITY flags of
-    // INetworkListManager::GetConnectivity, or -1 when they could not be read (which never counts as offline).
-    static int Connectivity() {
-        object manager = null;
-        try {
-            manager = new NetworkListManager();
-            int flags;
-            return ((INetworkListManager)manager).GetConnectivity(out flags) == 0 ? flags : -1;
-        } catch(Exception) {
-            return -1;
-        } finally {
-            if(manager != null) Marshal.ReleaseComObject(manager);
+    // One UDP datagram to the address (the discard port, 9): 0 when Windows sent it, else the send's Winsock error. With a
+    // route out, the first datagram is judged at WFP's ALE connect layer before it leaves, and the block's BLOCK filter
+    // names only the program, with no protocol (native/network-block/hellforge_wfp.c, AddPair), so a holding block refuses
+    // it (WSAEACCES, 10013). Unlike the TCP connect, nothing here waits on the next hop or on the network answering: a
+    // refused datagram proves the block on the outside whether or not the PC is online, and a sent one means it does not
+    // hold. Without a route the send fails in the stack (10051, 10065), as the connect does.
+    static int Datagram(string address) {
+        using(var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)) {
+            try {
+                socket.SendTo(new byte[1], new IPEndPoint(IPAddress.Parse(address), 9));
+                return 0;
+            } catch(SocketException error) { return error.ErrorCode; }
         }
     }
-    // The outside connect failed in the stack (WSAENETDOWN, WSAENETUNREACH or WSAEHOSTUNREACH; the WFP block's refusal is
-    // always WSAEACCES) on a PC that is offline: no route out, or a route (a network with no way on, ticket 0352) while
-    // Windows sees no internet on either protocol. A route with the internet up fails: a router's unreachable answer
-    // means the connect got out.
-    static bool Offline(int route, int connectivity, int error) {
+    // The outside TCP connect failed in the stack (WSAENETDOWN, WSAENETUNREACH or WSAEHOSTUNREACH; the WFP block's own
+    // refusal is always WSAEACCES) on a PC where the block is proved anyway: no route out (nothing can leave), or the
+    // outside datagram refused by the block (Datagram; ticket 0352: a route while offline, the connect failing on the next
+    // hop). A route with a datagram that went out fails: the connect's unreachable may be a router's answer.
+    static bool Offline(int route, int datagram, int error) {
         if(error != 10050 && error != 10051 && error != 10065) return false;
-        return route != 0 || (connectivity >= 0 && (connectivity & Internet) == 0);
+        return route != 0 || datagram == 10013;
     }
     static int External(AddressFamily family, string address) {
         using(var socket = new Socket(family, SocketType.Stream, ProtocolType.Tcp)) {
@@ -106,8 +90,8 @@ public static class OfflineControlNetworkProbe {
             }
         }
         int route = Route("192.0.2.1");
-        int connectivity = Connectivity();
         int v4 = External(AddressFamily.InterNetwork, "192.0.2.1");
+        int datagram = Datagram("192.0.2.1");
         int v6 = External(AddressFamily.InterNetworkV6, "2001:db8::1");
         string narrowing = "";
         int otherError = 0;
@@ -116,8 +100,8 @@ public static class OfflineControlNetworkProbe {
             narrowing = ",\"loopbackTcpError\":" + Loopback(port) + ",\"otherLoopbackTcpError\":" + otherError;
         }
         File.WriteAllText(args[1], "{\"loopbackHttpPassed\":" + (local ? "true" : "false") +
-            ",\"externalIpv4TcpError\":" + v4 + ",\"externalIpv4RouteError\":" + route + ",\"internetConnectivity\":" + connectivity + ",\"externalIpv6TcpError\":" + v6 + narrowing + "}");
-        bool outside = v4 == 10013 || (other > 0 && Offline(route, connectivity, v4));
+            ",\"externalIpv4TcpError\":" + v4 + ",\"externalIpv4RouteError\":" + route + ",\"externalIpv4UdpError\":" + datagram + ",\"externalIpv6TcpError\":" + v6 + narrowing + "}");
+        bool outside = v4 == 10013 || (other > 0 && Offline(route, datagram, v4));
         return local && outside && (other == 0 || otherError == 10013) ? 0 : 1;
     }
 }
