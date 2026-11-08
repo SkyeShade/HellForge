@@ -70,6 +70,9 @@ public static class ModDataBuilder
                             added.Add(key);
                         }
                         break;
+                    case TextureResource texture:
+                        AddTexture(resources, texture, added);
+                        break;
                     case CopyResource copy:
                         AddCopy(resources, copy, added);
                         break;
@@ -123,6 +126,16 @@ public static class ModDataBuilder
                 AddResource(resources, copy.Where, named, RenamePhysics(Read(physics, From(copy)), copy.From, copied.Name));
                 added.Add(named);
             }
+        }
+
+        void AddTexture(Dictionary<ResourceKey, ResourceParts> resources, TextureResource texture, HashSet<ResourceKey> added)
+        {
+            var key = new ResourceKey(ResourceTypes.Texture, Hash(texture.Name));
+            ResourceParts parts;
+            try { parts = TextureImage.Build([.. texture.Pngs.Select(p => File.ReadAllBytes(Path.Combine(modFolder, p)))], texture.Format, texture.Category); }
+            catch (InvalidDataException error) { throw new InvalidDataException($"{texture.Where}: {error.Message}"); }
+            AddResource(resources, texture.Where, key, parts);
+            added.Add(key);
         }
 
         // A unit written from the mod's glTF model, and the physics of the game unit it names under its name.
@@ -293,6 +306,7 @@ public static class ModDataBuilder
         foreach (var replace in copy.Replace) ResourceEdits.Replace(main, replace.From, replace.To, replace.At);
         if (copy.Curves is { } curves) EditCurves(main, curves);
         if (copy.Colours != null) ResourceEdits.SetMaterialColours(main, copy.Colours);
+        if (copy.Textures != null) ResourceEdits.SetMaterialTextures(main, copy.Textures);
         if (copy.Lut != null) gpu = ResourceEdits.RecolourLut(main, gpu, copy.Lut);
         if (copy.Mesh is { } mesh)
         {

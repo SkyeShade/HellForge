@@ -56,7 +56,7 @@ Lua mods (HD2Runtime, Bingus Shared Loader and the mods made for them) come as p
 ## Data specs
 
 A data spec, `hellforge-data.json` beside the manifest, describes data made from the game's own resources: a recoloured
-model, an effect copy, a weapon's sound banks, your own geometry, a stratagem icon. HellForge builds it from each
+model, an effect copy, a weapon's sound banks, your own geometry and textures, a stratagem icon. HellForge builds it from each
 player's game copy when a session starts, caches it, and stages it like `data/` (after the mod's own `data/`, if it has
 both).
 
@@ -108,6 +108,8 @@ mod, never a game resource's name. The copy can then be changed, in this order:
   `"colour": "#3070FF"` (that hue and saturation at the key's brightness). `"keys": n` requires exactly n keys to
   change; without it, at least one must.
 - `colours`: a material's RGB parameters by name (`0x<IdString32>` or the name): `{"0xB4138578": [0, 0.35, 1]}`.
+- `textures`: a material's textures by slot (the slot's name or `0x<IdString32>`): `{"base_data":
+  "yourname/your_mod/rifle/base_data"}`, your own texture or a game texture ([textures](textures.md)).
 - `lut`: a material's colour lookup texture, with a row per material zone and column 0 the base colour. `zonesFrom`
   makes every row first take this row's values, `columns` (`{"<column>": colour}`) sets columns in every row, and
   `rows` (`{"<row>": {"<column>": colour}}`) sets single cells. Alpha is kept and the mips are rebuilt.
@@ -160,6 +162,12 @@ crashes on an icon without one). `"prepare": "auto"` turns a red-and-white pictu
 takes the category's colour and green becomes white. The default, `"raw"`, uses the pixels as they are, and `"image"`
 keeps the picture's colours and transparency for widgets that draw it as it is (a difficulty icon).
 
+### texture
+
+`texture` builds a texture of your own from a PNG in the mod folder, or an array texture from a list of them:
+`{"texture": "textures/rifle_data.png", "name": "yourname/your_mod/rifle/base_data", "format": "bc3"}`. A material
+copy's `textures` puts it in a slot ([textures](textures.md)).
+
 ### animations
 
 `animations` gives a unit copy in the same patch animations of its own from a JSON file in the mod folder:
@@ -186,8 +194,8 @@ the built files, because with the same game build they are the same bytes on eve
 installation's cache, and with `--game-data <game/data> --out <folder>` anywhere. In the repository, use
 `scripts/Build-Mod.ps1 <folder> -Install <installation>`.
 
-Examples: `golden-liberator` (a model recoloured gold through its lookup texture), `talon-liberator` (blue effect copies
-and another weapon's sound banks), `cube-gun` (an OBJ model), `model-carbine` (a glTF model), `animated-liberator`
+Examples: `golden-liberator` (a model recoloured gold), `talon-liberator` (blue effect copies
+and another weapon's sound banks), `cube-gun` (an OBJ model), `model-carbine` (a glTF model, textures), `animated-liberator`
 (animations), `blue-sentry` (a sentry) and `stratagem-compendium` (icons).
 
 ## Native edits in the manifest
