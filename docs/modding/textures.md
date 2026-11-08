@@ -74,7 +74,7 @@ from a colour texture. Community tools (filediver) read their slots so:
 
 | Slot | Game texture | Holds |
 |---|---|---|
-| `base_data` | BC7, 1024 x 1024 | R, G: the surface normal's X and Y; B: ambient occlusion; A: roughness |
+| `base_data` | BC7, 1024 x 1024 | R, G: the tangent-space normal's X and Y, green up as Blender and glTF bake them; B: ambient occlusion, near 1 on open surfaces; A: wear, 0.5 for none |
 | `id_masks_array` | RGBA8, 256 x 256, 2 layers | which material zone each pixel is: channel c of layer l at 0.5 or more picks zone 4l + c |
 | `material_lut` | RGBA16F, 23 x 8 | one row per zone: base colour (column 0), metal, roughness and detail settings |
 | `decal_sheet` | BC3, 2048 x 2048 | the weapon's decals and markings |

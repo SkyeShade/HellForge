@@ -214,6 +214,16 @@ static class DataBuilderTests
                 "Given normals turn with the mesh; a corner without one takes its face's.");
             reject(() => UnitMesh.ReadObj("v 0 0 0\nf 1 2 3\n", 1, true));
             reject(() => UnitMesh.ReadObj("v 0 0 0\n", 1, true));
+            // A quad in the XY plane facing +Z, u along +X and v along -Y (the game's v runs down the texture): the
+            // tangent follows +u and the bitangent the engine decodes (cross(n, t), negated when A is 3) points up the
+            // texture (+Y here), as on the game's own weapon meshes, so Blender's and glTF's normal maps keep their green.
+            var quad = new UnitMesh.Mesh([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], [[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]],
+                [[0, 1], [1, 1], [1, 0], [0, 0]], [0, 1, 2, 0, 2, 3]);
+            var frames = UnitMesh.Tangents(quad);
+            var packed = UnitMesh.PackNormal(quad.Normals[0], frames[0].T, frames[0].Sign);
+            double[] bitangent = [0, 1, 0]; // cross((0, 0, 1), (1, 0, 0))
+            if (packed >> 30 == 3) bitangent = [0, -1, 0];
+            check(frames[0].T[0] > 0.99 && bitangent[1] > 0, $"The bitangent points down the texture (sign {frames[0].Sign}): normal maps' green is inverted.");
 
             var folder = Directory.CreateDirectory(Path.Combine(root, "mesh-spec")).FullName;
             Directory.CreateDirectory(Path.Combine(folder, "models"));

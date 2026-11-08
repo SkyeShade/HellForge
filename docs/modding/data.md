@@ -83,7 +83,7 @@ both).
 ```
 
 Each patch becomes one archive per bundle in `archives`. Bundles are 16 lowercase hex digits: the bundles that load with
-what your mod adds, such as the base weapon's, or `007e093ca718ca1a` for UI icons. Resources and references are
+what your mod adds, such as a vanilla weapon's, or `007e093ca718ca1a` for UI icons. Resources and references are
 `0x<hash>` or a name (hashed as the game hashes them). Types are names (`unit`, `material`, `texture`, `particles`,
 `wwise_bank`, ...) or `0x<hash>`. Colours are `[r, g, b]` as the game stores them, or `"#RRGGBB"`.
 
@@ -241,7 +241,7 @@ The game loads it by that id like its own loose archives, so your resources load
 - Every player in a session runs the same mods, so each machine has the same package. In co-op HellForge asks friends'
   machines to load the packages this machine holds.
 - A package holds only what its patch lists. A resource it references must be in it too, or be loaded by another
-  package: include a game material's textures, or keep the patch on the base weapon's bundles.
+  package: include a game material's textures, or keep the patch on the bundles that load them.
 - Its id must not be an archive of the game's, and two mods may not use one package.
 - A mod with a package cannot be added or changed while the game runs; it waits for the next session.
 

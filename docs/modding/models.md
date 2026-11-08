@@ -50,7 +50,7 @@ glTF's Y-up back to the game's Z-up, (x, y, z) to (x, -z, y).
 
 Every node is a joint with the node's name, and HellForge adds the root joint `StingrayEntityRoot` above the scene's
 root nodes. Names must be unique. The game finds a weapon's hands, sight and attachment points by joint name, so a
-weapon model has these joints. On the AR-23 Liberator they are at:
+weapon model has these joints. On the AR-23 Liberator they are at the positions below.
 
 | Joint | Position (x, y, z) |
 |---|---|
@@ -66,6 +66,15 @@ weapon model has these joints. On the AR-23 Liberator they are at:
 | `ejector` | 0.007, -0.139, 0.123 |
 
 Put them where your gun's grip, sights and muzzle are. The carbine of `liberator-variants` has them at the Liberator's places.
+
+The hand joints also carry the hands' orientation: the game puts each hand in its joint's rotation. Joints with no
+rotation twist the hands and the rifle is held oddly. Give them the vanilla rotations, in the unit's frame (x, y, z,
+w; the glTF node holds x, z, -y, w):
+
+| Joint | Rotation, BR-14 Adjudicator (the Liberator's are almost the same) |
+|---|---|
+| `IK_right` | 0.5097, 0.4911, 0.4622, 0.5342 |
+| `IK_left` | 0.8937, 0.2392, -0.3789, -0.0215 |
 
 ## Meshes, LODs and shadows
 
@@ -92,7 +101,8 @@ textures.
 ## Physics and animations
 
 `physics` gives the unit a game unit's collision under its own name. Without it the engine gives the unit a default
-body. For a weapon, name its base weapon's unit.
+body that does not fall. Give a weapon a collision of its size, and its magazine too: the magazine a reload drops is
+its own unit and hangs in the air without one.
 
 `animationsFrom` makes the unit play a game unit's animations, its bones and state machine. Their clips hold each joint's
 whole local transform, not an offset from rest. So every joint those animations move must be a joint of your model,
@@ -104,6 +114,7 @@ can be anything.
 - Each vertex is rigid on one joint. Vertices are written with three UV sets (the first repeated when the file has
   fewer), as most of the game's weapons have them.
 - The unit has no lights.
-- A weapon's attachments (magazine, muzzle, optic) are still its base's units, drawn at your `attach_` joints.
+- A weapon's magazine, muzzle and optic are units of their own (`magazine_unit`, `add_attachment`), drawn at the
+  `attach_` joints.
 
 Example: the carbine of `liberator-variants`, an original carbine of boxes with its charging handle on the `bolt` joint.

@@ -41,9 +41,9 @@ per frame. You describe the change once, in `hellforge_mod_init`, and the loader
 data (and again if the game reloads it), before `HF_EVENT_ENTITIES_READY` reaches any mod. You never time an edit with
 an event ([how mods run](concepts.md#when-your-code-runs)).
 
-New content is always a copy of something vanilla: a new stratagem copies a vanilla stratagem's settings, a new weapon
-copies a vanilla weapon. You give the copy a name and change what you want; everything else stays the base's. The name
-is the copy's identity. Its ids come from the name (an entity's resource id is the name's hash) or are numbered in the
+Most new content is a copy of something vanilla: a new stratagem copies a vanilla stratagem's settings. You give the
+copy a name and change what you want; everything else stays the base's. A new weapon is the exception: it copies no
+weapon and is built from its class and your declaration ([weapons](#weapons)). The name is the content's identity. Its ids come from the name (an entity's resource id is the name's hash) or are numbered in the
 order of mod ids (stratagem, projectile and damage types). So every player's game agrees on them without talking.
 
 A copy of premium content (a premium warbond's or a Steam DLC's weapon, a Superstore item) is in a player's armory only

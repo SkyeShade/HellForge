@@ -403,7 +403,8 @@ public static class UnitMesh
         return r | g << 10 | b << 20 | (sign < 0 ? 3u : 0u) << 30;
     }
 
-    // Per-vertex tangents and handedness from the UV derivatives of their triangles.
+    // Per-vertex tangents and handedness from the UV derivatives of their triangles. The game's bitangent points up the
+    // texture (-v), as in its own weapon meshes and in Blender's and glTF's normal maps: one along +v inverts their green.
     internal static List<(double[] T, int Sign)> Tangents(Mesh mesh)
     {
         int count = mesh.Positions.Count;
@@ -435,7 +436,7 @@ public static class UnitMesh
             var d = Dot(t[i], n);
             double[] tv = [t[i][0] - n[0] * d, t[i][1] - n[1] * d, t[i][2] - n[2] * d];
             tv = Dot(tv, tv) < 1e-20 ? Normalize(Math.Abs(n[2]) < Math.Abs(n[1]) ? [n[1], -n[0], 0] : [n[2], 0, -n[0]]) : Normalize(tv);
-            list.Add((tv, Dot(Cross(n, tv), b[i]) >= 0 ? 1 : -1));
+            list.Add((tv, Dot(Cross(n, tv), b[i]) >= 0 ? -1 : 1));
         }
         return list;
     }
