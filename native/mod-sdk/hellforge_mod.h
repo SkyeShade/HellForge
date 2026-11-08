@@ -92,38 +92,25 @@ typedef struct HfWeapon
 {
     uint32_t size;           /* sizeof(HfWeapon) */
     uint32_t base;           /* SDK 2 to 16: the weapon it copied. SDK 17 refuses a weapon that names one: set 0 */
-    /* Its model: a unit resource the mod's data provides (a copy of the base's unit with other materials, say). The name
-     * also identifies the weapon: its entity is the name's hash and its loadout id the top 32 bits of that, so every
-     * player's game agrees. Keep it unique, prefixed with your name and mod. */
+    /* Its model: a unit resource the mod's data provides. The name also identifies the weapon: its entity is the name's
+     * hash and its loadout id the top 32 bits of that, so every player's game agrees. Keep it unique, prefixed with your
+     * name and mod. */
     const char* unit;
     /* Its text, shown wherever the game names it (the armory shows "<designation> <NAME>"). UTF-8, one language for
-     * every game language. NULL keeps the base's text: the name is required to give it text of its own. */
-    const char* designation; /* "AR-23G" */
-    const char* name;        /* "Liberator Gold" (an upper-case copy is made for the places that use one) */
+     * every game language. The name is required; designation and description may be NULL. */
+    const char* designation; /* "BR-76" */
+    const char* name;        /* "Adaptive" (an upper-case copy is made for the places that use one) */
     const char* description; /* may be NULL */
-    /* Components the weapon gets records of its own in, NULL-terminated ({"WeaponMagazineComponentData", NULL}), each a
-     * copy of the base's: after HF_EVENT_ENTITIES_READY, component_record(name, weapon_entity(id), ...) finds them, and
-     * changing them changes this weapon only. Any other component's record stays shared with the base (component_record
-     * refuses shared records, so the base can't be changed by mistake). NULL: none. */
+    /* SDK 2 to 16 only (records of its own beside its base's). SDK 17 ignores it: the weapon owns every record. */
     const char* const* own_components;
-    /* SDK 3: the projectile it fires (a vanilla type, or one add_projectile returned; 0: its base's). Its own
-     * ProjectileWeapon record names it and its default ammunition is removed, so it fires it like any vanilla weapon
-     * without ammunition attachments (no ammunition can set its projectile back). */
+    /* The projectile it fires: a vanilla type (1 .. 350) or one add_projectile returned. Required. */
     uint32_t projectile;
-    /* SDK 3: a vanilla weapon (its loadout id, e.g. HF_ITEM_LAS16_SICKLE) whose firing sounds it makes, or 0 for its
-     * base's: its own ProjectileWeapon record takes that weapon's sound events. Their sound banks must load with it: the
-     * mod's data puts them in the weapon's archive patch (examples/mods/talon-liberator). */
+    /* SDK 3 to 16 only (another weapon's firing sounds). SDK 17 refuses a non-zero value: set its sound events with
+     * hf_set, and name the bank in audio_package. */
     uint32_t sound_from;
-    /* HellForge 2026-10-31 (older ones ignore it): 1 gives it a record of its own in every component of its base (a copy
-     * of the base's), as HfEntity.own_all does for an entity: it shares nothing with its base, so an edit of the base
-     * never changes it and its own edits never change the base. The in-game editor then gives it a page with every field
-     * of its base's page; without it, the page has only the records it owns (own_components, and its ProjectileWeapon
-     * record when it has a projectile of its own). Its log names any component HellForge could not copy (record size
-     * unknown), which it still shares. */
+    /* SDK 2 to 16 only (a record of its own in every component of its base). SDK 17 ignores it. */
     uint32_t own_all;
-    /* SDK 17: the beam or arc it fires (a vanilla type, or one add_beam or add_arc returned; 0: its base's). Its base must
-     * fire one: a beam weapon's or an arc weapon's own record names the type, and everything else about the beam or arc
-     * is in the type's row. */
+    /* Must be 0: the primary class fires projectiles. */
     uint32_t beam;
     uint32_t arc;
     /* SDK 17: what makes it standalone. It copies no weapon: its entity has the class's component list and a record of

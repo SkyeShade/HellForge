@@ -53,7 +53,7 @@ it builds from the file, so mod sync treats it as content ([data specs](data.md#
         "fire": { "clip": "fire", "end": "fire_done", "on": { "fire": "fire", "fire_done": "idle" } } } },
     { "default": "Empty_State", "states": {
         "Empty_State": { "empty": true, "on": { "reload": ["reload", 0.2] } },
-        "reload": { "clip": "reload", "end": "reload_done", "on": { "reload_done": "Empty_State" } } } }
+        "reload": { "clip": "reload", "end": "reload_done", "on": { "reload_done": "Empty_State", "reset": ["Empty_State", 0.05] } } } }
   ]
 }
 ```
@@ -142,9 +142,11 @@ The rest transforms show each joint's axes. On the Liberator, the bolt runs back
 ## Timing a reload
 
 The weapon's reload ability starts the gun's `reload` state together with the Helldiver's own reload, and plays both at
-one speed. Make your reload clips as long as the base weapon's, so the magazine stays in the Helldiver's hand:
+one speed. Make your reload clips as long as the vanilla weapon's whose `reload_ability` you use, so the magazine stays
+in the Helldiver's hand. A standalone weapon also sets `WeaponReload.duration` to that length (the class leaves it 0),
+and its reload states need a `reset` exit, or an interrupted reload leaves the gun in its reload pose:
 
-| Base weapon | `reload` | `reload_fast` |
+| Reload of | `reload` | `reload_fast` |
 |---|---|---|
 | AR-23 Liberator | 3.333 s | 2.167 s |
 | BR-14 Adjudicator | 3.0 s | 1.833 s |
