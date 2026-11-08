@@ -165,7 +165,7 @@ static class DataBuilderTests
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"test/mod/unit","colour":[1,1,1]}]}""", "unknown field colour");
             Refused("""{"archives":["NOTHEX"],"resources":[""" + copy + "]}", "16 lowercase hex");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"unit"}]}""", "the mod's own resource path");
-            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include, icon, texture, animations, model or sounds");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, shader, include, icon, texture, animations, model or sounds");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"../icon.png","name":"test/mod/icon"}]}""", "a .png file in the mod folder");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"missing.png","name":"test/mod/icon"}]}""", "missing.png is missing");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"particles","copy":"0x1","name":"test/mod/fx","curves":{"preset":"pink"}}]}""", "warm-to-blue");
@@ -369,6 +369,40 @@ static class DataBuilderTests
             catch (InvalidDataException error) { check(error.Message.Contains("include them from the game"), "Refused for another reason: " + error.Message); }
             try { ModDataBuilder.Build(Spec("""{"type":"texture","include":["0x4242"],"source":"steam"}"""), mod, gameReader, output + "3", steamReader); throw new Exception("Missing."); }
             catch (InvalidDataException error) { check(error.Message.Contains("0x0000000000004242 (Steam)"), "A missing Steam resource is not named: " + error.Message); }
+        });
+
+        test("A material on a shader (\"shader\" in place of \"copy\") takes the shader's slots and values, its textures declared", () =>
+        {
+            var folder = Path.Combine(root, "shader-material");
+            if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            var game = Path.Combine(folder, "game");
+            var shader = LaidOut(0, [(0xA, 0x100), (0xB, 0x200)], [(0, 0x50, 0)], [7]);
+            BinaryPrimitives.WriteUInt32LittleEndian(shader.AsSpan(0x10), 0x3A9A90);
+            var shaderArchive = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts>
+            {
+                [new(ResourceTypes.Material, 0x9999)] = new(shader, [1, 2, 3], []),
+                [new(ResourceTypes.Material, 0x7777)] = new(LaidOut(0x9999, [(0xA, 0x101), (0xB, 0x201)], [(0, 0x50, 0)], [8]), [], []),
+            });
+            WriteBundles(game, new() { ["1111111111111111"] = shaderArchive.Archive, ["1111111111111111.gpu_resources"] = shaderArchive.Gpu });
+            var mod = Directory.CreateDirectory(Path.Combine(folder, "mod")).FullName;
+            DataSpec Spec(string resource)
+            {
+                File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{{resource}}]}]}""");
+                return DataSpecs.Load(mod)!;
+            }
+            using var reader = new GameDataReader(game);
+            var output = Path.Combine(folder, "out");
+            ModDataBuilder.Build(Spec("""{"type":"material","shader":"0x9999","name":"test/mod/m_rifle","textures":{"0xB":"0x555"}}"""), mod, reader, output);
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0.gpu_resources")), []);
+            var made = built[new(ResourceTypes.Material, EngineHash.Murmur64A("test/mod/m_rifle"u8))];
+            check(BinaryPrimitives.ReadUInt64LittleEndian(made.Main.AsSpan(0x18)) == 0x9999 && BinaryPrimitives.ReadUInt32LittleEndian(made.Main.AsSpan(0x10)) == 0 &&
+                made.Gpu.Length == 0, "The material is not a child of the shader without its code.");
+            check(BinaryPrimitives.ReadUInt64LittleEndian(made.Main.AsSpan(0x88 + 8)) == 0x100 && BinaryPrimitives.ReadUInt64LittleEndian(made.Main.AsSpan(0x88 + 16)) == 0x555 &&
+                Value(made.Main, 0x50) == 7, "Its undeclared texture and its values are not the shader's, or its declared texture is missing.");
+            reject(() => Spec("""{"type":"unit","shader":"0x9999","name":"test/mod/u"}"""));
+            try { ModDataBuilder.Build(Spec("""{"type":"material","shader":"0x7777","name":"test/mod/m2"}"""), mod, reader, output + "2"); throw new Exception("A child was taken as a shader."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("not a shader"), "Refused for another reason: " + error.Message); }
         });
 
         test("Resources come from a past build with \"source\": {\"build\": ...}, read from what was fetched into the mod's folder", () =>

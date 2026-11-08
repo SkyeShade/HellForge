@@ -128,6 +128,18 @@ public static class ResourceEdits
             if (textures.TryGetValue(slots[i], out var id)) BinaryPrimitives.WriteUInt64LittleEndian(material.AsSpan(0x88 + 4 * count + 8 * i), id);
     }
 
+    // A material on a shader: the shader's main part (its texture slots, parameters and their values) with the shader as
+    // its parent (+0x18) and +0x10 cleared, as the game's weapon materials on that shader are; the shader's code (its GPU
+    // part) stays the shader's. Its textures and colours are then set like a copy's.
+    public static byte[] MaterialOnShader(byte[] shader, ulong id)
+    {
+        if (Material.Read(shader).Parent != 0) throw new InvalidDataException("it is not a shader: it has a parent of its own.");
+        var main = shader.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(main.AsSpan(0x10), 0);
+        BinaryPrimitives.WriteUInt64LittleEndian(main.AsSpan(0x18), id);
+        return main;
+    }
+
     // A material of another game build in the layout of `parent`, the game copy's material it derives from (+0x18): the
     // parent's texture slots and parameters, each taking the source's texture or value of the same name (the parent's own
     // where the source has none), so the shader the game copy has reads every value where it expects it. Slots and

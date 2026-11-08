@@ -127,6 +127,17 @@ mod, never a game resource's name. The copy can then be changed, in this order:
 
 A `unit` copy also gets its base's physics under its own name, because the engine finds a unit's physics by its name.
 
+### shader
+
+`shader` builds a material of your own on a game shader, copying no other material:
+`{"type": "material", "shader": "0x6B9F33361B025760", "name": "yourname/your_mod/rifle/m_weapon", "textures": {...}}`.
+
+- The material takes the shader's texture slots, parameters and their values, with the shader as its parent.
+- Set your textures with `textures` and colours with `colours`, as on a copy. Unset slots keep the shader's texture.
+- `0x6B9F33361B025760` is the shader the game's weapons use. Its decal sheet is blank, so the weapon shows no decals
+  unless you set `decal_sheet`.
+- The shader must be one: a material with a parent of its own is refused.
+
 ### include
 
 `include` adds game resources of `type` under their own names, unchanged: what a copy needs loaded with it, such as the

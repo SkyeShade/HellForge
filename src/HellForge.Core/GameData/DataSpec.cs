@@ -34,7 +34,11 @@ public abstract record DataResource(string Where)
 }
 public sealed record CopyResource(string Where, ulong Type, ulong From, string Name, IReadOnlyDictionary<int, ulong> Expect,
     IReadOnlyList<Replacement> Replace, CurveEdit? Curves, IReadOnlyDictionary<uint, double[]>? Colours, ResourceEdits.LutRecolour? Lut, MeshFile? Mesh = null,
-    IReadOnlyDictionary<uint, ulong>? Textures = null) : DataResource(Where);
+    IReadOnlyDictionary<uint, ulong>? Textures = null) : DataResource(Where)
+{
+    // A material built on the shader From (a material with no parent of its own) rather than a copy of another material.
+    public bool FromShader { get; init; }
+}
 // A unit copy's own geometry: an OBJ in the mod folder (UnitMesh), scaled, Y-up or the game's Z-up; with UnitSpace its
 // coordinates are the unit's own (the frame its joints and attach points are in), otherwise its render mesh's.
 public sealed record MeshFile(string Obj, double Scale, bool YUp, bool UnitSpace = false);
@@ -189,8 +193,8 @@ public static partial class DataSpecs
     static DataResource Resource(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{at}: a resource is an object.");
-        var kinds = new[] { "copy", "include", "icon", "texture", "animations", "model", "sounds" }.Where(k => e.TryGetProperty(k, out _)).ToList();
-        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon, texture, animations, model or sounds.");
+        var kinds = new[] { "copy", "shader", "include", "icon", "texture", "animations", "model", "sounds" }.Where(k => e.TryGetProperty(k, out _)).ToList();
+        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, shader, include, icon, texture, animations, model or sounds.");
         switch (kinds[0])
         {
             case "include": return ReadInclude(e, at);
@@ -324,11 +328,13 @@ public static partial class DataSpecs
         return list;
     }
 
-    // A copy, its edits read in the spec's order.
+    // A copy, its edits read in the spec's order; or a material on a shader ("shader" in place of "copy").
     static CopyResource ReadCopy(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
-        Fields(e, at, "type", "copy", "name", "expect", "replace", "curves", "colours", "textures", "lut", "mesh", "source");
+        Fields(e, at, "type", "copy", "shader", "name", "expect", "replace", "curves", "colours", "textures", "lut", "mesh", "source");
         var type = Type(e, at);
+        var shader = e.TryGetProperty("shader", out _);
+        if (shader && type != ResourceTypes.Material) throw new InvalidDataException($"{at}: shader is for a material.");
         var expect = ReadExpect(e, at);
         var replace = ReadReplace(e, at);
         var curves = ReadCurves(e, at);
@@ -337,7 +343,8 @@ public static partial class DataSpecs
         var lut = ReadLut(e, at);
         var mesh = ReadMesh(e, at, type, folder, inputs);
         var (steam, build) = Source(e, at);
-        return new CopyResource(at, type, Id(Property(e, "copy", at), at), Name(e, at), expect, replace, curves, colours, lut, mesh, textures) { Steam = steam, Build = build };
+        var from = Id(Property(e, shader ? "shader" : "copy", at), at);
+        return new CopyResource(at, type, from, Name(e, at), expect, replace, curves, colours, lut, mesh, textures) { Steam = steam, Build = build, FromShader = shader };
     }
 
     static Dictionary<int, ulong> ReadExpect(JsonElement e, string at)

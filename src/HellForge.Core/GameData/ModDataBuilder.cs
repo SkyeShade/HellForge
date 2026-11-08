@@ -116,7 +116,12 @@ public static class ModDataBuilder
         void AddCopy(Dictionary<ResourceKey, ResourceParts> resources, CopyResource copy, HashSet<ResourceKey> added)
         {
             var copied = new ResourceKey(copy.Type, Hash(copy.Name));
-            try { AddResource(resources, copy.Where, copied, Edit(copy, Read(new(copy.Type, copy.From), From(copy)), modFolder)); }
+            try
+            {
+                var source = Read(new(copy.Type, copy.From), From(copy));
+                if (copy.FromShader) source = new(ResourceEdits.MaterialOnShader(source.Main, copy.From), [], []);
+                AddResource(resources, copy.Where, copied, Edit(copy, source, modFolder));
+            }
             catch (InvalidDataException error) when (!error.Message.StartsWith(copy.Where, StringComparison.Ordinal))
             {
                 throw new InvalidDataException($"{copy.Where} ({ResourceTypes.Describe(copy.Type)} 0x{copy.From:X16}): {error.Message}");
