@@ -252,13 +252,23 @@ HF_ASSERT_OFFSET(HfDepositManager, amounts, 0x50);
 HF_ASSERT_OFFSET(HfDepositManager, definitions, 0xA0);
 static inline HfDepositManager* hf_global_DepositManager(HfMod* mod) { return (HfDepositManager*)hf_global_object_(mod, "DepositManager"); }
 
-/* ActionManager (game.dll+0x3326D20, a pointer to it). The entities' actions. At +0xF8 a map of entities to indexes;
- * descriptor pointers at +0x110 + 8 index (+8 the entity); each index's action context at +0x53E170 + 0x1238 index (+0
- * the entity, +8 the running action, TryStartAction's first argument) and its state flags at +0x53E880 and +0x53E888
- * (u64 each) of the same stride.
+/* AvatarManager (game.dll+0x3326D20, a pointer to it). The Helldivers' avatars (the AvatarComponent manager, component
+ * world +0x956128): their movement, stamina and actions. At +0xF8 a map of entities to indexes; descriptor pointers at
+ * +0x110 + 8 index (+8 the entity); the avatars simulated here take the first indexes (their count at +0x70); each
+ * index's simulation block at +0x53E170 + 0x1238 index begins with its action context (+0 the entity, +8 the running
+ * action, TryStartAction's first argument), its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride;
+ * AvatarSettings' private copies inline from +0x547D24 (0x354 bytes each).
  * From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c). */
-typedef struct HfActionManager HfActionManager;
-static inline HfActionManager* hf_global_ActionManager(HfMod* mod) { return (HfActionManager*)hf_global_object_(mod, "ActionManager"); }
+typedef struct HfAvatarManager
+{
+    uint8_t _unknown_00[0x70];
+    uint32_t simulated;                  /* +0x70 avatars simulated on this machine: they take the first indexes, and AvatarUpdate runs only those */
+} HfAvatarManager;
+HF_ASSERT_OFFSET(HfAvatarManager, simulated, 0x70);
+static inline HfAvatarManager* hf_global_AvatarManager(HfMod* mod) { return (HfAvatarManager*)hf_global_object_(mod, "AvatarManager"); }
+/* ActionManager: AvatarManager's former name, kept for mods written with it; use AvatarManager. */
+typedef HfAvatarManager HfActionManager;
+static inline HfAvatarManager* hf_global_ActionManager(HfMod* mod) { return hf_global_AvatarManager(mod); }
 
 /* WieldableManager (game.dll+0x3326730, a pointer to it). Wieldable items (weapons). At +0x18 a map of entities to
  * indexes.
@@ -419,16 +429,22 @@ static inline HfGuidanceTargets* hf_global_GuidanceTargets(HfMod* mod) { return 
 typedef struct HfExplosiveManager HfExplosiveManager;
 static inline HfExplosiveManager* hf_global_ExplosiveManager(HfMod* mod) { return (HfExplosiveManager*)hf_global_object_(mod, "ExplosiveManager"); }
 
-/* RemoteOwners (game.dll+0x3326DC0, a pointer to it). The owner of a silo's targeting remote. At +0x20 a map of
- * entities to indexes.
- * From HellForge's silo countdown (abilities.c). */
-typedef struct HfRemoteOwners
+/* EquipmentManager (game.dll+0x3326DC0, a pointer to it). The Equipment component manager (component 233, component
+ * world +0xE9F8F0; how held items are wielded, holstered and dropped): EquipmentUpdate's first argument;
+ * EquipmentRecord looks in its private copies. At +0x20 a map of entities to indexes; a silo's targeting remote's owner
+ * is at +4 of its instance record.
+ * From HellForge's silo countdown (abilities.c); the component world's setter 0x568230, the record resolver 0x5092B0
+ * and the world update 0x571250 (0x5731D9). */
+typedef struct HfEquipmentManager
 {
     uint8_t _unknown_00[0x40];
     void* records;                       /* +0x40 48 bytes per index: +4 the owner entity */
-} HfRemoteOwners;
-HF_ASSERT_OFFSET(HfRemoteOwners, records, 0x40);
-static inline HfRemoteOwners* hf_global_RemoteOwners(HfMod* mod) { return (HfRemoteOwners*)hf_global_object_(mod, "RemoteOwners"); }
+} HfEquipmentManager;
+HF_ASSERT_OFFSET(HfEquipmentManager, records, 0x40);
+static inline HfEquipmentManager* hf_global_EquipmentManager(HfMod* mod) { return (HfEquipmentManager*)hf_global_object_(mod, "EquipmentManager"); }
+/* RemoteOwners: EquipmentManager's former name, kept for mods written with it; use EquipmentManager. */
+typedef HfEquipmentManager HfRemoteOwners;
+static inline HfEquipmentManager* hf_global_RemoteOwners(HfMod* mod) { return hf_global_EquipmentManager(mod); }
 
 /* HellpodRackManager (game.dll+0x3326A58, a pointer to it). Hellpod racks (RackReleaseItem's first argument). At +0x28
  * a map of entities to indexes.
@@ -475,16 +491,39 @@ typedef struct HfPerceptionManager
 HF_ASSERT_OFFSET(HfPerceptionManager, records, 0x50);
 static inline HfPerceptionManager* hf_global_PerceptionManager(HfMod* mod) { return (HfPerceptionManager*)hf_global_object_(mod, "PerceptionManager"); }
 
-/* MagazineManager (game.dll+0x3326660, a pointer to it). Weapons' magazines: MagazineRounds' first argument.
- * From HellForge's Pelican turret refill (behaviour_turret.c). */
-typedef struct HfMagazineManager HfMagazineManager;
-static inline HfMagazineManager* hf_global_MagazineManager(HfMod* mod) { return (HfMagazineManager*)hf_global_object_(mod, "MagazineManager"); }
+/* WeaponManager (game.dll+0x3326660, a pointer to it). The weapon manager (component world +0xE9FC38): WeaponUpdate's,
+ * OwnSpareAmmo's, SpendRound's and MagazineRounds' first argument.
+ * From HellForge's Pelican turret refill (behaviour_turret.c); the component world's setter 0x568230 and the world
+ * update 0x571250 (0x573245); HD2Runtime 0.40.1 research team-reload-ammo (own spare total 0x744180 on the weapon
+ * manager 0x3326660). */
+typedef struct HfWeaponManager HfWeaponManager;
+static inline HfWeaponManager* hf_global_WeaponManager(HfMod* mod) { return (HfWeaponManager*)hf_global_object_(mod, "WeaponManager"); }
+/* MagazineManager: WeaponManager's former name, kept for mods written with it; use WeaponManager. */
+typedef HfWeaponManager HfMagazineManager;
+static inline HfWeaponManager* hf_global_MagazineManager(HfMod* mod) { return hf_global_WeaponManager(mod); }
 
-/* MagazineRefills (game.dll+0x3326648, a pointer to it). The magazines AddMagazineRounds refills. At +0x20 a map of
- * entities to indexes (the refill's own lookup).
- * From HellForge's Pelican turret refill (behaviour_turret.c). */
-typedef struct HfMagazineRefills HfMagazineRefills;
-static inline HfMagazineRefills* hf_global_MagazineRefills(HfMod* mod) { return (HfMagazineRefills*)hf_global_object_(mod, "MagazineRefills"); }
+/* WeaponMagazines (game.dll+0x3326648, a pointer to it). The WeaponMagazine component manager (component 5, component
+ * world +0x180): a magazine weapon's spare magazines and rounds. AddMagazineRounds refills it; WeaponMagazineRecord
+ * looks in its private copies.
+ * From HellForge's Pelican turret refill (behaviour_turret.c); the component world's setter 0x568230 and the record
+ * resolver 0x4F3740; HD2Runtime 0.40.1 research team-reload-ammo (magazine manager 0x3326648: hash +0x20, descriptors
+ * +0x38, records +0x50). */
+typedef struct HfWeaponMagazines
+{
+    uint8_t _unknown_00[0x20];
+    void* hash;                          /* +0x20 the hash of the entities that have an instance (8-byte rows: entity, instance index) */
+    uint8_t _unknown_28[0x10];
+    void* descriptors;                   /* +0x38 each instance's entity descriptor (8 bytes each: +0 type, +8 entity) */
+    uint8_t _unknown_40[0x10];
+    void* live;                          /* +0x50 each instance's live row, 12 bytes: +0 spare magazines (network field 0xEC64918B), +4 rounds in the magazine (MagazineRounds returns it) */
+} HfWeaponMagazines;
+HF_ASSERT_OFFSET(HfWeaponMagazines, hash, 0x20);
+HF_ASSERT_OFFSET(HfWeaponMagazines, descriptors, 0x38);
+HF_ASSERT_OFFSET(HfWeaponMagazines, live, 0x50);
+static inline HfWeaponMagazines* hf_global_WeaponMagazines(HfMod* mod) { return (HfWeaponMagazines*)hf_global_object_(mod, "WeaponMagazines"); }
+/* MagazineRefills: WeaponMagazines's former name, kept for mods written with it; use WeaponMagazines. */
+typedef HfWeaponMagazines HfMagazineRefills;
+static inline HfWeaponMagazines* hf_global_MagazineRefills(HfMod* mod) { return hf_global_WeaponMagazines(mod); }
 
 /* WeaponTargeting (game.dll+0x3326D30, a pointer to it). Weapons' targeting. At +0x150 a map of entities to indexes.
  * From HellForge's Pelican turret (behaviours.c). */
@@ -731,7 +770,13 @@ typedef struct HfHiveMindManager
     uint32_t timer_count;                /* +0x67C the mission's timers (hf->freeze_mission_timer needs 1) */
     uint8_t _unknown_680[0x30];
     void* director;                      /* +0x6B0 the timer's director: +8 the game mode's entity (u32) */
-    uint8_t _unknown_6B8[0x51290];
+    uint8_t _unknown_6B8[0x511CC];
+    uint32_t guard_compositions;         /* +0x51884 the compiled map guard (outpost) compositions, family 3; their rows inline from +0x41138 */
+    uint8_t _unknown_51888[0x4];
+    uint32_t reinforcement_compositions; /* +0x5188C the compiled reinforcement compositions, family 4; their rows inline from +0x432F8 (PickReinforcementComposition reads them) */
+    uint8_t _unknown_51890[0x24];
+    float guard_budget;                  /* +0x518B4 the outposts' guard budget, which the map guards spend */
+    uint8_t _unknown_518B8[0x90];
     float countdown_left;                /* +0x51948 the mission countdown left, s */
     uint8_t expired;                     /* +0x5194C set once the timer has run out */
     uint8_t _unknown_5194D[0x1];
@@ -740,6 +785,9 @@ typedef struct HfHiveMindManager
 HF_ASSERT_OFFSET(HfHiveMindManager, level, 0x650);
 HF_ASSERT_OFFSET(HfHiveMindManager, timer_count, 0x67C);
 HF_ASSERT_OFFSET(HfHiveMindManager, director, 0x6B0);
+HF_ASSERT_OFFSET(HfHiveMindManager, guard_compositions, 0x51884);
+HF_ASSERT_OFFSET(HfHiveMindManager, reinforcement_compositions, 0x5188C);
+HF_ASSERT_OFFSET(HfHiveMindManager, guard_budget, 0x518B4);
 HF_ASSERT_OFFSET(HfHiveMindManager, countdown_left, 0x51948);
 HF_ASSERT_OFFSET(HfHiveMindManager, expired, 0x5194C);
 HF_ASSERT_OFFSET(HfHiveMindManager, paused, 0x5194E);
@@ -967,6 +1015,412 @@ static inline HfLinkedAmmo* hf_global_LinkedAmmo(HfMod* mod) { return (HfLinkedA
  * From HD2Runtime 0.40.1 research event-mission (corpse); CorpseSource 0x870310. */
 typedef struct HfCorpses HfCorpses;
 static inline HfCorpses* hf_global_Corpses(HfMod* mod) { return (HfCorpses*)hf_global_object_(mod, "Corpses"); }
+
+/* WeaponWindUps (game.dll+0x33267A0, a pointer to it). The WeaponWindUp component manager (component 70, component
+ * world +0x1B29B8): WindUpUpdate's first argument; WeaponWindUpRecord looks in its private copies.
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order; the world update 0x571250 passes it to WindUpUpdate (0x57178C). */
+typedef struct HfWeaponWindUps HfWeaponWindUps;
+static inline HfWeaponWindUps* hf_global_WeaponWindUps(HfMod* mod) { return (HfWeaponWindUps*)hf_global_object_(mod, "WeaponWindUps"); }
+
+/* Recharges (game.dll+0x3326768, a pointer to it). The Recharge component manager (component 99, component world
+ * +0x1C6F50; jump and hover packs' recharge): RechargeRecord looks in its private copies.
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order; HD2Runtime 0.40.1 research shield-recharge (recharge manager 0x3326768). */
+typedef struct HfRecharges HfRecharges;
+static inline HfRecharges* hf_global_Recharges(HfMod* mod) { return (HfRecharges*)hf_global_object_(mod, "Recharges"); }
+
+/* WeaponReloads (game.dll+0x3326A70, a pointer to it). The WeaponReload component manager (component 113, component
+ * world +0x7571C8). At +0x20 the hash of the entities that have an instance (the out-of-ammo handler's test);
+ * WeaponReloadRecord looks in its private copies.
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order; HD2Runtime 0.40.1 research component-membership (instance hash +0x20, resolver 0x4FD220). */
+typedef struct HfWeaponReloads HfWeaponReloads;
+static inline HfWeaponReloads* hf_global_WeaponReloads(HfMod* mod) { return (HfWeaponReloads*)hf_global_object_(mod, "WeaponReloads"); }
+
+/* WeaponRoundsManager (game.dll+0x3326CF0, a pointer to it). The WeaponRounds component manager (component 117,
+ * component world +0x757398; weapons loaded round by round). WeaponRoundsRecord looks in its private copies.
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order; HD2Runtime 0.40.1 research team-reload-ammo (rounds manager 0x3326CF0). */
+typedef struct HfWeaponRoundsManager
+{
+    uint8_t _unknown_00[0x18];
+    uint32_t count;                      /* +0x18 instances (the world update's loop bound, 0x57201C) */
+    uint8_t _unknown_1C[0x24];
+    void* descriptors;                   /* +0x40 each instance's entity descriptor (8 bytes each: +0 type, +8 entity) */
+    uint8_t _unknown_48[0x10];
+    void* live;                          /* +0x58 each instance's live row, 20 bytes: +0 its own spare rounds (network field 0x9A34C336) */
+} HfWeaponRoundsManager;
+HF_ASSERT_OFFSET(HfWeaponRoundsManager, count, 0x18);
+HF_ASSERT_OFFSET(HfWeaponRoundsManager, descriptors, 0x40);
+HF_ASSERT_OFFSET(HfWeaponRoundsManager, live, 0x58);
+static inline HfWeaponRoundsManager* hf_global_WeaponRoundsManager(HfMod* mod) { return (HfWeaponRoundsManager*)hf_global_object_(mod, "WeaponRoundsManager"); }
+
+/* WeaponCharges (game.dll+0x3326C20, a pointer to it). The WeaponCharge component manager (component 204, component
+ * world +0x75F1D8): WeaponChargeUpdate's first argument; WeaponChargeRecord looks in its private copies.
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order; HD2Runtime 0.40.1 research railgun-charge (charge update 0x73C8F0, resolver 0x5052C0). */
+typedef struct HfWeaponCharges HfWeaponCharges;
+static inline HfWeaponCharges* hf_global_WeaponCharges(HfMod* mod) { return (HfWeaponCharges*)hf_global_object_(mod, "WeaponCharges"); }
+
+/* Throwers (game.dll+0x3326880, a pointer to it). The Thrower component manager (component 258, component world
+ * +0xEB5CF0): ThrowerUpdate's first argument; ThrowerRecord looks in its private copies.
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order; the world update 0x571250 passes it to ThrowerUpdate (0x57369F). */
+typedef struct HfThrowers HfThrowers;
+static inline HfThrowers* hf_global_Throwers(HfMod* mod) { return (HfThrowers*)hf_global_object_(mod, "Throwers"); }
+
+/* Throwables (game.dll+0x33264C0, a pointer to it). The Throwable component manager (component 259, component world
+ * +0xEB5DA8; grenades and thrown knives): ThrowableUpdate's first argument. Its records come from the type lookup
+ * ThrowableTypeRecord only (no private copies).
+ * From the component world's setter 0x568230 (cells stored in component order: the one after Thrower 258, before
+ * Jumppack 264 with four between) and the world update 0x571250, which passes it to ThrowableUpdate (0x5736AE). */
+typedef struct HfThrowables HfThrowables;
+static inline HfThrowables* hf_global_Throwables(HfMod* mod) { return (HfThrowables*)hf_global_object_(mod, "Throwables"); }
+
+/* ArcWeapons (game.dll+0x3326C10, a pointer to it). The ArcWeapon component manager (component 265, component world
+ * +0xEB64A0; the Arc Thrower's arcs): ArcWeaponUpdate's first argument; ArcWeaponRecord looks in its private copies.
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order; the world update 0x571250 calls ArcWeaponUpdate for each instance (0x57374E). */
+typedef struct HfArcWeapons
+{
+    uint8_t _unknown_00[0x38];
+    uint32_t count;                      /* +0x38 instances (the world update's loop bound, 0x573737) */
+} HfArcWeapons;
+HF_ASSERT_OFFSET(HfArcWeapons, count, 0x38);
+static inline HfArcWeapons* hf_global_ArcWeapons(HfMod* mod) { return (HfArcWeapons*)hf_global_object_(mod, "ArcWeapons"); }
+
+/* WeaponHeats (game.dll+0x3326D48, a pointer to it). The WeaponHeat component manager (component 266, component world
+ * +0xEB6570): WeaponHeatUpdate's first argument; WeaponHeatRecord looks in its private copies.
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order; HD2Runtime 0.40.1 research overheat-cooling, reload-heat-knife. */
+typedef struct HfWeaponHeats
+{
+    uint8_t _unknown_00[0x18];
+    uint32_t count;                      /* +0x18 instances (WeaponHeatUpdate's loop bound, 0x764988) */
+    uint8_t _unknown_1C[0x24];
+    void* descriptors;                   /* +0x40 each instance's entity descriptor (8 bytes each: +8 entity, +0x14 bit 1 owned by this machine; WeaponHeatUpdate steps only those) */
+} HfWeaponHeats;
+HF_ASSERT_OFFSET(HfWeaponHeats, count, 0x18);
+HF_ASSERT_OFFSET(HfWeaponHeats, descriptors, 0x40);
+static inline HfWeaponHeats* hf_global_WeaponHeats(HfMod* mod) { return (HfWeaponHeats*)hf_global_object_(mod, "WeaponHeats"); }
+
+/* AbilityWeapons (game.dll+0x3326A10, a pointer to it). The AbilityWeapon component manager (component 267, component
+ * world +0xEB6620; weapons whose fire starts an ability: the C4 detonator, the silo's targeting remote):
+ * AbilityWeaponUpdate's first argument. Its records come from the type lookup AbilityWeaponTypeRecord.
+ * From the component world's setter 0x568230 (cells stored in component order: between WeaponHeat 266 and component
+ * 269) and the world update 0x571250, which passes it to AbilityWeaponUpdate (0x573773). */
+typedef struct HfAbilityWeapons HfAbilityWeapons;
+static inline HfAbilityWeapons* hf_global_AbilityWeapons(HfMod* mod) { return (HfAbilityWeapons*)hf_global_object_(mod, "AbilityWeapons"); }
+
+/* MeleeWeapons (game.dll+0x3326B78, a pointer to it). The MeleeWeapon component manager (component 268, component world
+ * +0xEB6670). Its records come from the type lookup at game.dll+0x50E360 (not mapped: it follows a jmp, so it does not
+ * pass the start check).
+ * From the component world's setter 0x568230 (cells stored in component order: the second between WeaponHeat 266 and
+ * component 269); HD2Runtime 0.40.1 research knife-melee (0xA6A0B7 reads the MeleeWeapon record's stamina cost). */
+typedef struct HfMeleeWeapons HfMeleeWeapons;
+static inline HfMeleeWeapons* hf_global_MeleeWeapons(HfMod* mod) { return (HfMeleeWeapons*)hf_global_object_(mod, "MeleeWeapons"); }
+
+/* WeaponCustomizations (game.dll+0x3326A38, a pointer to it). The WeaponCustomization component manager (component 271,
+ * component world +0xEB6810; a weapon's attachment slots and units): WeaponCustomizationUpdate's first argument;
+ * WeaponCustomizationRecord looks in its private copies.
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order; the world update 0x571250 passes it to WeaponCustomizationUpdate (0x5737CA). */
+typedef struct HfWeaponCustomizations HfWeaponCustomizations;
+static inline HfWeaponCustomizations* hf_global_WeaponCustomizations(HfMod* mod) { return (HfWeaponCustomizations*)hf_global_object_(mod, "WeaponCustomizations"); }
+
+/* AiSpawnerManager (game.dll+0x33265C8, a pointer to it). The AiSpawnerComponent manager (component world +0x75EA20):
+ * The AI spawners (the director's spawn points and breaches). At +0x28 a map of entities to indexes.
+ * From game.dll: AiSpawnerComponent's growth function 0x7FB4D0 names it and its add helpers load this cell; the world's
+ * constructor (0x568230) stores component world +0x75EA20 here. */
+typedef struct HfAiSpawnerManager
+{
+    uint8_t _unknown_00[0x28];
+    void* map;                           /* +0x28 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfAiSpawnerManager;
+HF_ASSERT_OFFSET(HfAiSpawnerManager, map, 0x28);
+static inline HfAiSpawnerManager* hf_global_AiSpawnerManager(HfMod* mod) { return (HfAiSpawnerManager*)hf_global_object_(mod, "AiSpawnerManager"); }
+
+/* BugholeManager (game.dll+0x33267B0, a pointer to it). The BugholeComponent manager (component world +0x7C56B0): Bug
+ * holes (Terminid nests' holes). At +0x28 a map of entities to indexes.
+ * From game.dll: BugholeComponent's growth function 0x859400 names it and its add helpers load this cell; the world's
+ * constructor (0x568230) stores component world +0x7C56B0 here. */
+typedef struct HfBugholeManager
+{
+    uint8_t _unknown_00[0x28];
+    void* map;                           /* +0x28 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfBugholeManager;
+HF_ASSERT_OFFSET(HfBugholeManager, map, 0x28);
+static inline HfBugholeManager* hf_global_BugholeManager(HfMod* mod) { return (HfBugholeManager*)hf_global_object_(mod, "BugholeManager"); }
+
+/* VehicleMotionManager (game.dll+0x3326458, a pointer to it). The VehicleMotionComponent manager (component world
+ * +0x7C72E8): Vehicle motion (vehicles' and mechs' driving physics). At +0x40 a map of entities to indexes.
+ * From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: VehicleMotionComponent's
+ * growth function 0x71AA70 names it and its add helpers load this cell; the world's constructor (0x568230) stores
+ * component world +0x7C72E8 here. */
+typedef struct HfVehicleMotionManager
+{
+    uint8_t _unknown_00[0x40];
+    void* map;                           /* +0x40 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfVehicleMotionManager;
+HF_ASSERT_OFFSET(HfVehicleMotionManager, map, 0x40);
+static inline HfVehicleMotionManager* hf_global_VehicleMotionManager(HfMod* mod) { return (HfVehicleMotionManager*)hf_global_object_(mod, "VehicleMotionManager"); }
+
+/* VehicleManager (game.dll+0x3326668, a pointer to it). The VehicleComponent manager (component world +0x1C6348):
+ * Vehicles and mechs (VehicleSettings resolves their records; private copies at +0xC0, copy map at +0x80). At +0x38 a
+ * map of entities to indexes.
+ * From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: VehicleComponent's growth
+ * function 0x703B40 names it and its add helpers load this cell; the world's constructor (0x568230) stores component
+ * world +0x1C6348 here. */
+typedef struct HfVehicleManager
+{
+    uint8_t _unknown_00[0x38];
+    void* map;                           /* +0x38 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfVehicleManager;
+HF_ASSERT_OFFSET(HfVehicleManager, map, 0x38);
+static inline HfVehicleManager* hf_global_VehicleManager(HfMod* mod) { return (HfVehicleManager*)hf_global_object_(mod, "VehicleManager"); }
+
+/* SquadTransportManager (game.dll+0x3326CC0, a pointer to it). The SquadTransportComponent manager (component world
+ * +0x1C6EB0): Squad transports (enemy dropships carrying a squad). At +0x20 a map of entities to indexes.
+ * From game.dll: SquadTransportComponent's growth function 0x6887B0 names it and its add helpers load this cell; the
+ * world's constructor (0x568230) stores component world +0x1C6EB0 here. */
+typedef struct HfSquadTransportManager
+{
+    uint8_t _unknown_00[0x20];
+    void* map;                           /* +0x20 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfSquadTransportManager;
+HF_ASSERT_OFFSET(HfSquadTransportManager, map, 0x20);
+static inline HfSquadTransportManager* hf_global_SquadTransportManager(HfMod* mod) { return (HfSquadTransportManager*)hf_global_object_(mod, "SquadTransportManager"); }
+
+/* SquadFormationManager (game.dll+0x3326A88, a pointer to it). The SquadTransportFormationComponent manager (component
+ * world +0x757568): Squad transport formations (the squad slots of a dropship). At +0x18 a map of entities to indexes.
+ * From game.dll: SquadTransportFormationComponent's growth function 0x68A550 names it and its add helpers load this
+ * cell; the world's constructor (0x568230) stores component world +0x757568 here. */
+typedef struct HfSquadFormationManager
+{
+    uint8_t _unknown_00[0x18];
+    void* map;                           /* +0x18 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfSquadFormationManager;
+HF_ASSERT_OFFSET(HfSquadFormationManager, map, 0x18);
+static inline HfSquadFormationManager* hf_global_SquadFormationManager(HfMod* mod) { return (HfSquadFormationManager*)hf_global_object_(mod, "SquadFormationManager"); }
+
+/* GoreManager (game.dll+0x33264D0, a pointer to it). The GoreComponent manager (component world +0x7FF2F8): Gore
+ * (dismemberment state). At +0x156DA0 a map of entities to indexes.
+ * From game.dll: GoreComponent's growth function 0x9090B0 names it and its add helpers load this cell; the world's
+ * constructor (0x568230) stores component world +0x7FF2F8 here. */
+typedef struct HfGoreManager
+{
+    uint8_t _unknown_00[0x156DA0];
+    void* map;                           /* +0x156DA0 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfGoreManager;
+HF_ASSERT_OFFSET(HfGoreManager, map, 0x156DA0);
+static inline HfGoreManager* hf_global_GoreManager(HfMod* mod) { return (HfGoreManager*)hf_global_object_(mod, "GoreManager"); }
+
+/* StratagemBlockerManager (game.dll+0x3326568, a pointer to it). The StratagemBlockerComponent manager (component world
+ * +0x1E60): Stratagem blockers (what jams stratagems in an area). At +0x18 a map of entities to indexes.
+ * From game.dll: StratagemBlockerComponent's growth function 0x9E30F0 names it and its add helpers load this cell; the
+ * world's constructor (0x568230) stores component world +0x1E60 here. */
+typedef struct HfStratagemBlockerManager
+{
+    uint8_t _unknown_00[0x18];
+    void* map;                           /* +0x18 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfStratagemBlockerManager;
+HF_ASSERT_OFFSET(HfStratagemBlockerManager, map, 0x18);
+static inline HfStratagemBlockerManager* hf_global_StratagemBlockerManager(HfMod* mod) { return (HfStratagemBlockerManager*)hf_global_object_(mod, "StratagemBlockerManager"); }
+
+/* OrbitalAbilityManager (game.dll+0x33267F0, a pointer to it). The OrbitalAbilityComponent manager (component world
+ * +0xF064A8): Orbital abilities (OrbitalAbilitySettings resolves their records; private copies at +0xD8, copy map at
+ * +0x98). At +0x58 a map of entities to indexes.
+ * From game.dll: OrbitalAbilityComponent's growth function 0x5F6D40 names it and its add helpers load this cell; the
+ * world's constructor (0x568230) stores component world +0xF064A8 here. */
+typedef struct HfOrbitalAbilityManager
+{
+    uint8_t _unknown_00[0x58];
+    void* map;                           /* +0x58 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfOrbitalAbilityManager;
+HF_ASSERT_OFFSET(HfOrbitalAbilityManager, map, 0x58);
+static inline HfOrbitalAbilityManager* hf_global_OrbitalAbilityManager(HfMod* mod) { return (HfOrbitalAbilityManager*)hf_global_object_(mod, "OrbitalAbilityManager"); }
+
+/* HellpodPayloadManager (game.dll+0x3326560, a pointer to it). The HellpodPayloadComponent manager (component world
+ * +0x75C1B8): Hellpod payloads (what a hellpod delivers; HellpodPayloadSettings resolves their records, private copies
+ * at +0xA0, copy map at +0x60). At +0x28 a map of entities to indexes.
+ * From game.dll: HellpodPayloadComponent's growth function 0x933700 names it and its add helpers load this cell; the
+ * world's constructor (0x568230) stores component world +0x75C1B8 here. */
+typedef struct HfHellpodPayloadManager
+{
+    uint8_t _unknown_00[0x28];
+    void* map;                           /* +0x28 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfHellpodPayloadManager;
+HF_ASSERT_OFFSET(HfHellpodPayloadManager, map, 0x28);
+static inline HfHellpodPayloadManager* hf_global_HellpodPayloadManager(HfMod* mod) { return (HfHellpodPayloadManager*)hf_global_object_(mod, "HellpodPayloadManager"); }
+
+/* UnitManager (game.dll+0x3326508, a pointer to it). The UnitComponent manager (component world +0x1B4170): The
+ * entities' units (their scene units; UnitSettings resolves their records, private copies at +0xC0, copy map at +0x80).
+ * At +0x40 a map of entities to indexes.
+ * From game.dll: UnitComponent's growth function 0x6E98E0 names it and its add helpers load this cell; the world's
+ * constructor (0x568230) stores component world +0x1B4170 here. */
+typedef struct HfUnitManager
+{
+    uint8_t _unknown_00[0x40];
+    void* map;                           /* +0x40 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfUnitManager;
+HF_ASSERT_OFFSET(HfUnitManager, map, 0x40);
+static inline HfUnitManager* hf_global_UnitManager(HfMod* mod) { return (HfUnitManager*)hf_global_object_(mod, "UnitManager"); }
+
+/* RotationManager (game.dll+0x33264A0, a pointer to it). The RotationComponent manager (component world +0xF065D8):
+ * Rotation (how entities turn; RotationSettings resolves their records, private copies at +0xB8, copy map at +0x78). At
+ * +0x38 a map of entities to indexes.
+ * From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: RotationComponent's growth
+ * function 0x625CE0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component
+ * world +0xF065D8 here. */
+typedef struct HfRotationManager
+{
+    uint8_t _unknown_00[0x38];
+    void* map;                           /* +0x38 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfRotationManager;
+HF_ASSERT_OFFSET(HfRotationManager, map, 0x38);
+static inline HfRotationManager* hf_global_RotationManager(HfMod* mod) { return (HfRotationManager*)hf_global_object_(mod, "RotationManager"); }
+
+/* DisplacementManager (game.dll+0x3326AC8, a pointer to it). The DisplacementComponent manager (component world
+ * +0xEB71D8): Displacement (DisplacementSettings resolves their records, private copies at +0xA0, copy map at +0x60).
+ * At +0x20 a map of entities to indexes.
+ * From HD2Runtime 0.40.1 research hoverpack-components (code.managers.displacement); game.dll: DisplacementComponent's
+ * growth function 0x88FE20 names it and its add helpers load this cell; the world's constructor (0x568230) stores
+ * component world +0xEB71D8 here. */
+typedef struct HfDisplacementManager
+{
+    uint8_t _unknown_00[0x20];
+    void* map;                           /* +0x20 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfDisplacementManager;
+HF_ASSERT_OFFSET(HfDisplacementManager, map, 0x20);
+static inline HfDisplacementManager* hf_global_DisplacementManager(HfMod* mod) { return (HfDisplacementManager*)hf_global_object_(mod, "DisplacementManager"); }
+
+/* JumppackManager (game.dll+0x3326BB8, a pointer to it). The JumppackComponent manager (component world +0xEB63F8):
+ * Jump packs and hover packs (JumppackSettings resolves their records, private copies at +0xA0, copy map at +0x60). At
+ * +0x20 a map of entities to indexes.
+ * From HD2Runtime 0.40.1 research hoverpack-components (model.perInstanceState, code.managers.jumppack); game.dll:
+ * JumppackComponent's growth function 0x9B8380 names it and its add helpers load this cell; the world's constructor
+ * (0x568230) stores component world +0xEB63F8 here. */
+typedef struct HfJumppackManager
+{
+    uint8_t _unknown_00[0x20];
+    void* map;                           /* +0x20 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+    uint8_t _unknown_28[0x18];
+    void* hover_input;                   /* +0x40 12 bytes per index: the replicated hover input vector */
+    void* flight;                        /* +0x48 76 bytes per index: +0 launch latch, +1 sustain latch, +4 launch elapsed (f32 s), +8 sustain elapsed (f32 s), +0xC launch window (f32 s) */
+    void* flags;                         /* +0x50 5 bytes per index, replicated: +0 active, +1 sustain, +2 hover launch, +3 mode toggle, +4 thrusting */
+} HfJumppackManager;
+HF_ASSERT_OFFSET(HfJumppackManager, map, 0x20);
+HF_ASSERT_OFFSET(HfJumppackManager, hover_input, 0x40);
+HF_ASSERT_OFFSET(HfJumppackManager, flight, 0x48);
+HF_ASSERT_OFFSET(HfJumppackManager, flags, 0x50);
+static inline HfJumppackManager* hf_global_JumppackManager(HfMod* mod) { return (HfJumppackManager*)hf_global_object_(mod, "JumppackManager"); }
+
+/* EagleManager (game.dll+0x3326650, a pointer to it). The EagleComponent manager (component world +0xF0B300): The Eagle
+ * jets in flight (EagleSettings resolves their records, private copies at +0xB0, copy map at +0x70). At +0x30 a map of
+ * entities to indexes.
+ * From HD2Runtime 0.40.1 research eagle-components (nativeModel); game.dll: EagleComponent's growth function 0x8A9730
+ * names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF0B300
+ * here. */
+typedef struct HfEagleManager
+{
+    uint8_t _unknown_00[0x30];
+    void* map;                           /* +0x30 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+    uint8_t _unknown_38[0x20];
+    void* records;                       /* +0x58 0xFC bytes per index, the jet: +0xC its target index (9 none), +0x10 targets tracked (<= 8), +0x14 8 target entities, +0x54 aim point (3 f32), +0x68 releases so far, +0x70 attacking (u8), +0x78 jet position (3 f32), +0xD4 velocity (3 f32), +0xE0 speed (f32) */
+    void* flight;                        /* +0x60 28 bytes per index: +0 the approach start position, +0xC the target point at the call (3 f32 each) */
+} HfEagleManager;
+HF_ASSERT_OFFSET(HfEagleManager, map, 0x30);
+HF_ASSERT_OFFSET(HfEagleManager, records, 0x58);
+HF_ASSERT_OFFSET(HfEagleManager, flight, 0x60);
+static inline HfEagleManager* hf_global_EagleManager(HfMod* mod) { return (HfEagleManager*)hf_global_object_(mod, "EagleManager"); }
+
+/* EncounterManager (game.dll+0x3326618, a pointer to it). The EncounterComponent manager (component world +0x7C4D30):
+ * The director's encounters: its reinforcements (EncounterUpdate picks a composition and sends it by transport or
+ * breach). At +0x948 a map of entities to indexes.
+ * From HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement pins in 0x8B8A20); game.dll: EncounterComponent's
+ * growth function 0x8BAAE0 names it and its add helpers load this cell; the world's constructor (0x568230) stores
+ * component world +0x7C4D30 here. */
+typedef struct HfEncounterManager
+{
+    uint8_t _unknown_00[0x948];
+    void* map;                           /* +0x948 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfEncounterManager;
+HF_ASSERT_OFFSET(HfEncounterManager, map, 0x948);
+static inline HfEncounterManager* hf_global_EncounterManager(HfMod* mod) { return (HfEncounterManager*)hf_global_object_(mod, "EncounterManager"); }
+
+/* AiSquadManager (game.dll+0x33265A0, a pointer to it). The AiSquadComponent manager (component world +0xF05068): AI
+ * squads. A squad's record (0x2510 bytes) queues the enemies it is to spawn: up to 32 entries of 0xC8 bytes from
+ * +0xC08, their count at +0x2508 (a 33rd entry overruns the count and crashes the game). At +0x20 a map of entities to
+ * indexes.
+ * From HD2Runtime 0.40.1 research spawn-capacity-dev11 (queue); its add helper 0x54D680 (count +0xC, descriptors +0x38,
+ * records +0x40); game.dll: AiSquadComponent's growth function 0x806520 names it and its add helpers load this cell;
+ * the world's constructor (0x568230) stores component world +0xF05068 here. */
+typedef struct HfAiSquadManager
+{
+    uint8_t _unknown_00[0xC];
+    uint32_t count;                      /* +0xC squads in use */
+    uint8_t _unknown_10[0x10];
+    void* map;                           /* +0x20 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+    uint8_t _unknown_28[0x10];
+    void* descriptors;                   /* +0x38 descriptor pointers by index (+8 the entity) */
+    void* records;                       /* +0x40 the squad records, 0x2510 bytes each, by index */
+} HfAiSquadManager;
+HF_ASSERT_OFFSET(HfAiSquadManager, count, 0xC);
+HF_ASSERT_OFFSET(HfAiSquadManager, map, 0x20);
+HF_ASSERT_OFFSET(HfAiSquadManager, descriptors, 0x38);
+HF_ASSERT_OFFSET(HfAiSquadManager, records, 0x40);
+static inline HfAiSquadManager* hf_global_AiSquadManager(HfMod* mod) { return (HfAiSquadManager*)hf_global_object_(mod, "AiSquadManager"); }
+
+/* SensorEyeManager (game.dll+0x3326520, a pointer to it). The SensorEyeComponent manager (component world +0x75ED20):
+ * Sensor eyes (what enemies and sentries see with: SensorEyeRanges' first argument; SensorEyeSettings resolves their
+ * records, private copies at +0xB0). At +0x30 a map of entities to indexes.
+ * From HD2Runtime 0.40.1 research sentry-components (sensor manager game+0x3326520); game.dll: SensorEyeComponent's
+ * growth function 0x64EB50 names it and its add helpers load this cell; the world's constructor (0x568230) stores
+ * component world +0x75ED20 here. */
+typedef struct HfSensorEyeManager
+{
+    uint8_t _unknown_00[0x30];
+    void* map;                           /* +0x30 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfSensorEyeManager;
+HF_ASSERT_OFFSET(HfSensorEyeManager, map, 0x30);
+static inline HfSensorEyeManager* hf_global_SensorEyeManager(HfMod* mod) { return (HfSensorEyeManager*)hf_global_object_(mod, "SensorEyeManager"); }
+
+/* TurretManager (game.dll+0x3326D70, a pointer to it). The TurretComponent manager (component world +0xEB5060): Turrets
+ * (sentries, mounted guns: TurretUpdate's first argument; TurretSettings resolves their records, private copies at
+ * +0xA8). At +0x28 a map of entities to indexes.
+ * From HD2Runtime 0.40.1 research sentry-components and vehicle-mech-components (turret manager game+0x3326D70);
+ * game.dll: TurretComponent's growth function 0x6E1120 names it and its add helpers load this cell; the world's
+ * constructor (0x568230) stores component world +0xEB5060 here. */
+typedef struct HfTurretManager
+{
+    uint8_t _unknown_00[0x28];
+    void* map;                           /* +0x28 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfTurretManager;
+HF_ASSERT_OFFSET(HfTurretManager, map, 0x28);
+static inline HfTurretManager* hf_global_TurretManager(HfMod* mod) { return (HfTurretManager*)hf_global_object_(mod, "TurretManager"); }
+
+/* LocomotionManager (game.dll+0x3326CF8, a pointer to it). The LocomotionComponent manager (component world +0xF06698):
+ * Locomotion (how characters move; private copies at +0xA8, copy map at +0x68). At +0x20 a map of entities to indexes.
+ * From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers: LocomotionComponentData); game.dll:
+ * LocomotionComponent's growth function 0x9CE510 names it and its add helpers load this cell; the world's constructor
+ * (0x568230) stores component world +0xF06698 here. */
+typedef struct HfLocomotionManager
+{
+    uint8_t _unknown_00[0x20];
+    void* map;                           /* +0x20 the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it */
+} HfLocomotionManager;
+HF_ASSERT_OFFSET(HfLocomotionManager, map, 0x20);
+static inline HfLocomotionManager* hf_global_LocomotionManager(HfMod* mod) { return (HfLocomotionManager*)hf_global_object_(mod, "LocomotionManager"); }
 
 #pragma pack(pop)
 

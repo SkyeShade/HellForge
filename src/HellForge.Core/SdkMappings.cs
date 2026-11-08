@@ -73,7 +73,7 @@ public sealed class SdkMappings
     static readonly string[] GlobalFieldTypes = ["u8", "u16", "u32", "i32", "f32", "u64", "ptr"];
 
     // The C types a function's arguments and return value may have (and void, for a return value).
-    public static readonly string[] ParamTypes = ["uint8_t", "int32_t", "uint32_t", "int64_t", "uint64_t", "float", "void*", "const void*",
+    public static readonly string[] ParamTypes = ["uint8_t", "uint16_t", "int16_t", "int32_t", "uint32_t", "int64_t", "uint64_t", "float", "void*", "const void*",
         "uint8_t*", "const uint8_t*", "int32_t*", "const int32_t*", "uint32_t*", "const uint32_t*", "uint64_t*", "const uint64_t*", "float*", "const float*", "char*", "const char*"];
     // Names an argument can't take: C's keywords, and mod (the hf_ wrappers' own argument).
     static readonly HashSet<string> CKeywords = ["auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",

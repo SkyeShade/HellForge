@@ -16,8 +16,8 @@ there) and `mappings/` (functions, globals, fields and content); do not edit it 
 ## Contents
 
 - [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-the-lobby-browser-hfbrowsestate-check-hf-size-before-calling), [SDK 16](#sdk-16-game-functions-and-globals-by-name-hellforge_functionsh-hellforge_globalsh-check-hf-size), [SDK 16](#sdk-16-the-mods-status-check-hf-size-before-calling), [SDK 16](#sdk-16-the-mod-channel-co-op-docsmoddingconceptsmd-co-op), [SDK 16](#sdk-16-live-mods-see-the-top-of-this-file-check-hf-size-before-calling), [SDK 17](#sdk-17-explosions-check-hf-size-before-calling), [SDK 17](#sdk-17-beams-and-arcs-check-hf-size-before-calling)
-- [Functions](#functions): [ConsumeDamageEvent](#consumedamageevent), [KillDispatch](#killdispatch), [ActivateStratagemBeacon](#activatestratagembeacon), [SpawnEntity](#spawnentity), [RequestExplosion](#requestexplosion), [AddHealthFraction](#addhealthfraction), [RestoreZone](#restorezone), [QueueStatusRequest](#queuestatusrequest), [SetVelocity](#setvelocity), [FireProjectile](#fireprojectile), [QueueDamage](#queuedamage), [NeedsAmmo](#needsammo), [TryStartAction](#trystartaction), [RequestEntitySpawn](#requestentityspawn), [AbilityTick](#abilitytick), [SiloMissileArmedAbility](#silomissilearmedability), [LinkedMissile](#linkedmissile), [LinkerRecord](#linkerrecord), [LinkedRack](#linkedrack), [SetMissileEngine](#setmissileengine), [LaunchMissile](#launchmissile), [SetExplosiveOwner](#setexplosiveowner), [SetGuidanceTarget](#setguidancetarget), [RackReleaseItem](#rackreleaseitem), [StartAbility](#startability), [BehaviourUpdate](#behaviourupdate), [BehaviourStage](#behaviourstage), [BehaviourEvent](#behaviourevent), [BehaviourResume](#behaviourresume), [PelicanTransportUpdate](#pelicantransportupdate), [PelicanTransportStage](#pelicantransportstage), [PelicanTransportEvent](#pelicantransportevent), [BehaviourOwnPosition](#behaviourownposition), [BehaviourOrbitStep](#behaviourorbitstep), [BehaviourMoveTo](#behaviourmoveto), [BehaviourFace](#behaviourface), [BehaviourTargetPosition](#behaviourtargetposition), [PelicanTurretIdle](#pelicanturretidle), [TurretActive](#turretactive), [TurretHasAmmo](#turrethasammo), [PelicanTurretStage](#pelicanturretstage), [BehaviourSetTarget](#behavioursettarget), [WeaponDegreesTo](#weapondegreesto), [IsValidTarget](#isvalidtarget), [FindPerceptionEntry](#findperceptionentry), [MagazineRounds](#magazinerounds), [AddMagazineRounds](#addmagazinerounds), [MagazineCapacity](#magazinecapacity), [WeaponWithinDegrees](#weaponwithindegrees), [EntityDescriptor](#entitydescriptor), [MarkReplicated](#markreplicated), [ShieldRecord](#shieldrecord), [MoveObject](#moveobject), [SpawnProjectile](#spawnprojectile), [CatalogueAddItem](#catalogueadditem), [CatalogueSort](#cataloguesort), [AddItemAmount](#additemamount), [RemoveItemAmount](#removeitemamount), [LoadEntities](#loadentities), [BuildArmoryList](#buildarmorylist), [ArmoryEntryOf](#armoryentryof), [EngineText](#enginetext), [OpenMenuPresenter](#openmenupresenter), [MenuSoundUpdate](#menusoundupdate), [RequestPackages](#requestpackages), [EntityOfNetwork](#entityofnetwork), [QueryLoadoutPreview](#queryloadoutpreview), [PushArmoryLoadout](#pusharmoryloadout), [RollCacheLoot](#rollcacheloot), [RequestWarbondPurchase](#requestwarbondpurchase), [FinishWarbondPurchase](#finishwarbondpurchase), [SpawnWarbondShowcase](#spawnwarbondshowcase), [UpdateWarbondSpent](#updatewarbondspent), [UpdateWarbondPager](#updatewarbondpager), [WarbondPagerInput](#warbondpagerinput), [SetElementText](#setelementtext), [SetElementTextAlt](#setelementtextalt), [SetElementNumber](#setelementnumber), [SetWidgetVisible](#setwidgetvisible), [SetElementColour](#setelementcolour), [SetPickerHeading](#setpickerheading), [StratagemAvailable](#stratagemavailable), [SortArray](#sortarray), [HighestDifficulty](#highestdifficulty), [FindConfigSetting](#findconfigsetting), [ShowDifficultyWidget](#showdifficultywidget), [ComputeMissionRating](#computemissionrating), [EnemyDirectorTick](#enemydirectortick), [ArenaAllocate](#arenaallocate), [GameMemset](#gamememset), [CreateGenerationBlock](#creategenerationblock), [InitLevel](#initlevel), [GenerateRouteCells](#generateroutecells), [GenerateRouteCellVoronoi](#generateroutecellvoronoi), [GenerateSubregionHeights](#generatesubregionheights), [GenerateVoronoi](#generatevoronoi), [FinalizeVoronoi](#finalizevoronoi), [ForceFlattenZones](#forceflattenzones), [SelectSubRegionCellsFromHeightGroup](#selectsubregioncellsfromheightgroup), [SampleSubregionNoise](#samplesubregionnoise), [GenerateLocationClusters](#generatelocationclusters), [SpreadLocations](#spreadlocations), [SpreadLocationsCities](#spreadlocationscities), [GenerateOutpostLocations](#generateoutpostlocations), [GenerateObjectiveLocations](#generateobjectivelocations), [AddImportantLocations](#addimportantlocations), [GenerateMissionStampList](#generatemissionstamplist), [FixUnreachableAreas](#fixunreachableareas), [CullUnitsOutsidePlayableArea](#cullunitsoutsideplayablearea), [GenerateCityRoads](#generatecityroads), [CreateCityFootprintList](#createcityfootprintlist), [FlattenCityRoads](#flattencityroads), [StampIndexSize](#stampindexsize), [StampIndexCheckLayout](#stampindexchecklayout), [HashMapInsert](#hashmapinsert), [SetupDestructionRecordMap](#setupdestructionrecordmap), [RegisterStaticDestructionRecords](#registerstaticdestructionrecords), [SelectObjectives](#selectobjectives), [LaunchMission](#launchmission), [MissionTimerWidget](#missiontimerwidget), [UpdateHudObjectives](#updatehudobjectives), [UpdateMapScreen](#updatemapscreen), [BuildMapMarkerSlots](#buildmapmarkerslots), [HudMandatoryObjectives](#hudmandatoryobjectives), [MissionHudTopBar](#missionhudtopbar), [BuildMissionResult](#buildmissionresult), [TelemetrySelectedMission](#telemetryselectedmission), [TelemetryMissionEnd](#telemetrymissionend), [RollArtilleryShell](#rollartilleryshell), [ArtilleryAim](#artilleryaim), [SolveBallisticAim](#solveballisticaim), [PredictProjectileLanding](#predictprojectilelanding), [GenerateRegionMissions](#generateregionmissions), [GenerateCampaignPlanetMissions](#generatecampaignplanetmissions), [GenerateDefencePlanetMissions](#generatedefenceplanetmissions), [DifficultyBarBuild](#difficultybarbuild), [DifficultyBarDestroy](#difficultybardestroy), [DifficultyBarChoose](#difficultybarchoose), [SetImageSprite](#setimagesprite), [SetImageSpriteOrTexture](#setimagespriteortexture), [SetElementResourceSlot](#setelementresourceslot), [SetImageWithBase](#setimagewithbase), [UiElementRect](#uielementrect), [MissionCardMinimap](#missioncardminimap), [WarTableHologramUpdate](#wartablehologramupdate), [WarTableHologramZoom](#wartablehologramzoom), [WarTableHologramHeightAt](#wartablehologramheightat), [WarTableHologramTerrainHeight](#wartablehologramterrainheight), [EngineRenderStep](#enginerenderstep), [UnitSetLocalPose](#unitsetlocalpose), [UpdateUnit](#updateunit), [UnitFromHandle](#unitfromhandle), [MainWorld](#mainworld), [UnitNodeWorldPosition](#unitnodeworldposition), [UnitActorByName](#unitactorbyname), [SetResourceOverride](#setresourceoverride), [ClearResourceOverride](#clearresourceoverride), [CanGetResource](#cangetresource), [TransportCleanup](#transportcleanup), [DestroyConnection](#destroyconnection), [SessionPeersRemoved](#sessionpeersremoved), [NetworkManagerUpdate](#networkmanagerupdate), [CollisionFilterPairs](#collisionfilterpairs), [PhysicsHandleBody](#physicshandlebody), [CreateNavmeshCut](#createnavmeshcut), [RemoveNavmeshCuts](#removenavmeshcuts), [EnableNavmeshCuts](#enablenavmeshcuts), [NavWorldSetup](#navworldsetup), [BuildNavTile](#buildnavtile), [BuildPhysicsPools](#buildphysicspools), [EngineAllocatorAllocate](#engineallocatorallocate), [DestroyNetworkTypeEntry](#destroynetworktypeentry), [FindPackage](#findpackage), [PackageHasLoaded](#packagehasloaded), [LobbyMemberData](#lobbymemberdata), [LobbySetMemberData](#lobbysetmemberdata), [RegistryAllocate](#registryallocate), [ProjectileWeaponCopy](#projectileweaponcopy), [MagazineCopy](#magazinecopy), [AttachToUnit](#attachtounit), [SetBehaviour](#setbehaviour), [UnlinkRelation](#unlinkrelation), [RemoveEntity](#removeentity), [DestroyEntity](#destroyentity), [CloseStratagemSelector](#closestratagemselector), [SetStratagemCardEnabled](#setstratagemcardenabled), [SetLobbySetting](#setlobbysetting), [SetQuickplay](#setquickplay), [ReleasePackages](#releasepackages), [BeamInfoOf](#beaminfoof), [DamageInfoOf](#damageinfoof), [ProjectileInfoOf](#projectileinfoof), [PluginUpdate](#pluginupdate), [GameUpdate](#gameupdate), [PlayLoadoutSound](#playloadoutsound), [CreditorOf](#creditorof), [PickEnemy](#pickenemy), [EntityAttribute](#entityattribute), [ApplyDamage](#applydamage), [IsDead](#isdead), [HealthRecord](#healthrecord), [RestoreHealth](#restorehealth), [HealthSettings](#healthsettings), [SetLifeState](#setlifestate), [HealthManagerUpdate](#healthmanagerupdate), [DrainCombatQueues](#draincombatqueues), [EnqueueDamageEvent](#enqueuedamageevent), [ProduceDamage](#producedamage), [InitHitInfo](#inithitinfo), [EntityToNetwork](#entitytonetwork), [HealthZoneOfNode](#healthzoneofnode), [BuildDamageValues](#builddamagevalues), [IsBoosterActive](#isboosteractive), [ApplyStatus](#applystatus), [HasStatus](#hasstatus), [RemoveStatus](#removestatus), [AddStat](#addstat), [StatsPlayerIndex](#statsplayerindex), [StatMapLookup](#statmaplookup), [BuildScore](#buildscore), [KillCreditListener](#killcreditlistener), [PassiveValue](#passivevalue), [ChangeState](#changestate), [SetPlayerAvatar](#setplayeravatar), [SetPlayerState](#setplayerstate), [TurretSettings](#turretsettings), [SensorEyeSettings](#sensoreyesettings), [ProjectileWeaponRecord](#projectileweaponrecord), [WeaponDataRecord](#weapondatarecord), [BeamWeaponRecord](#beamweaponrecord), [WeaponProjectileType](#weaponprojectiletype), [ProjectileFire](#projectilefire), [GenericFire](#genericfire), [WeaponHeatStep](#weaponheatstep), [SpendRound](#spendround), [ProjectileWeaponUpdate](#projectileweaponupdate), [BeamWeaponUpdate](#beamweaponupdate), [BeamShot](#beamshot), [ReloadMagazine](#reloadmagazine), [TurretUpdate](#turretupdate), [TurretSpeedFactor](#turretspeedfactor), [SensorEyeRanges](#sensoreyeranges), [PerceptionUpdate](#perceptionupdate), [WindUpUpdate](#windupupdate), [ApplyAttribute](#applyattribute), [UpdateCustomization](#updatecustomization), [UpdateCustomizations](#updatecustomizations), [SetArmorKit](#setarmorkit), [SetHelmetKit](#sethelmetkit), [SetCapeKit](#setcapekit), [PlayerSlot](#playerslot), [BehaviourExplosion](#behaviourexplosion), [RequestExplosionAt](#requestexplosionat), [ExplosionKick](#explosionkick), [ExplosionGather](#explosiongather), [ProcessExplosion](#processexplosion), [ProjectileKick](#projectilekick), [BehaviourStartAbility](#behaviourstartability), [CorpseSource](#corpsesource), [StatusReceivable](#statusreceivable), [FlushNetworkFields](#flushnetworkfields), [Wield](#wield), [SwitchWeapon](#switchweapon), [QueueFieldWrite](#queuefieldwrite), [BeamTypeOf](#beamtypeof), [OutOfAmmo](#outofammo), [ChargeFire](#chargefire), [EncyclopediaRecord](#encyclopediarecord), [PickerCatalogueItem](#pickercatalogueitem), [NavigationRecord](#navigationrecord), [BehaviourStageCount](#behaviourstagecount), [BehaviourEventSlot](#behavioureventslot), [BehaviourSlotEvent](#behaviourslotevent), [FillDistancesTo](#filldistancesto), [UpdateImageUv](#updateimageuv), [HiveMindDefinition](#hiveminddefinition), [UnloadDamageList](#unloaddamagelist), [CollectOperationsForDifficulty](#collectoperationsfordifficulty), [FinalizeVoronoiStructured](#finalizevoronoistructured), [ReVoronoi](#revoronoi), [PlaceRoadProps](#placeroadprops), [StampIndexInit](#stampindexinit), [StampIndexInsert](#stampindexinsert), [CreateMinimapTexture](#createminimaptexture), [UpdateMissionCardDuration](#updatemissioncardduration), [SetupPhysicsConfig](#setupphysicsconfig), [SiloRemoteLink](#siloremotelink), [LaserDesignatorUpdate](#laserdesignatorupdate), [LinkRemoteOnPickup](#linkremoteonpickup), [MissilePreDestroy](#missilepredestroy), [CompactLinkerCopies](#compactlinkercopies), [SiloRemoteCleanup](#siloremotecleanup), [PelicanTurretAim](#pelicanturretaim), [RealizePellet](#realizepellet), [NetworkApplyState](#networkapplystate), [BehaviourSpawnSetup](#behaviourspawnsetup), [BehaviourNetworkFill](#behaviournetworkfill), [LoadProjectileList](#loadprojectilelist), [UnloadProjectileList](#unloadprojectilelist), [ProjectileLookupA](#projectilelookupa), [ProjectileLookupB](#projectilelookupb), [AttachmentItemById](#attachmentitembyid), [EntityDelta](#entitydelta), [RemoveSessionPeer](#removesessionpeer), [IsSteamFriend](#issteamfriend), [ApplySpawnDeltas](#applyspawndeltas), [HiveMindOf](#hivemindof), [RegisterDestructible](#registerdestructible), [LoadDestructibleIndex](#loaddestructibleindex), [DestructibleIndexEntry](#destructibleindexentry), [PlayerNearness](#playernearness), [BuildWarbondPager](#buildwarbondpager), [RefreshWarbondBuyButton](#refreshwarbondbuybutton), [UpdateWarbondBuyButton](#updatewarbondbuybutton), [WarbondScreenData](#warbondscreendata), [BuildWarbondList](#buildwarbondlist), [UpdateWarbondPanel](#updatewarbondpanel), [DrawWarbondClaimButton](#drawwarbondclaimbutton), [UpdateWarbondPage](#updatewarbondpage), [ItemPresetKit](#itempresetkit), [ValidateBootLoadout](#validatebootloadout), [StratagemPackages](#stratagempackages), [ReleaseUnusedSharedStratagems](#releaseunusedsharedstratagems), [LoadStratagemSettings](#loadstratagemsettings), [BuildStratagemPicker](#buildstratagempicker), [MasteryPackageOf](#masterypackageof), [BuildCustomizationList](#buildcustomizationlist), [CreateWorld](#createworld), [StretchCityTemplate](#stretchcitytemplate), [LaySites](#laysites), [KeepTownEdges](#keeptownedges), [BuildingPlaced](#buildingplaced), [AreaRimHeight](#arearimheight), [FindPocketNeighbour](#findpocketneighbour), [SendMissionEndTelemetry](#sendmissionendtelemetry), [MissionResultReport](#missionresultreport), [ObjectiveSpawnSetup](#objectivespawnsetup), [RateOfFireCycle](#rateoffirecycle), [WeaponFunctionPress](#weaponfunctionpress), [ProjectileWeaponRateSeed](#projectileweaponrateseed), [ProjectileWeaponNetApply](#projectileweaponnetapply), [ProjectileWeaponSystemPass](#projectileweaponsystempass), [SetCurrentFireMode](#setcurrentfiremode), [WeaponFunctionValue](#weaponfunctionvalue), [WeaponApplyReplicatedTrigger](#weaponapplyreplicatedtrigger), [RpcFireSingleRound](#rpcfiresingleround), [RpcFireSingleRoundAdvanced](#rpcfiresingleroundadvanced), [SendFireSingleRoundAdvanced](#sendfiresingleroundadvanced), [RpcAddProjectileToManager](#rpcaddprojectiletomanager), [SetWielder](#setwielder), [ProjectileWeaponNetInit](#projectileweaponnetinit), [WeaponBuild](#weaponbuild), [ProjectileWeaponEnterOwned](#projectileweaponenterowned), [OwnsWarbond](#ownswarbond), [WarbondCurrencyToken](#warbondcurrencytoken), [HasCatalogueItem](#hascatalogueitem)
-- [Globals](#globals): [Game](#game), [PlayerManager](#playermanager), [LocalUser](#localuser), [GameMode](#gamemode), [EntityManager](#entitymanager), [HealthManager](#healthmanager), [MotionManager](#motionmanager), [ExplosionQueue](#explosionqueue), [ProjectileSystem](#projectilesystem), [CombatQueues](#combatqueues), [ScoreManager](#scoremanager), [WielderManager](#wieldermanager), [InventoryManager](#inventorymanager), [Destructibles](#destructibles), [DestructionRecords](#destructionrecords), [DepositManager](#depositmanager), [ActionManager](#actionmanager), [WieldableManager](#wieldablemanager), [FactionManager](#factionmanager), [BehaviourManager](#behaviourmanager), [TagManager](#tagmanager), [Clock](#clock), [EngineApi](#engineapi), [EngineUnitApi](#engineunitapi), [WwiseApi](#wwiseapi), [AbilityManager](#abilitymanager), [WeaponLinkerManager](#weaponlinkermanager), [SeekingMissileManager](#seekingmissilemanager), [LaserDesignatorManager](#laserdesignatormanager), [GuidanceTargets](#guidancetargets), [ExplosiveManager](#explosivemanager), [RemoteOwners](#remoteowners), [HellpodRackManager](#hellpodrackmanager), [AttachableManager](#attachablemanager), [MountManager](#mountmanager), [DropAnchors](#dropanchors), [PerceptionManager](#perceptionmanager), [MagazineManager](#magazinemanager), [MagazineRefills](#magazinerefills), [WeaponTargeting](#weapontargeting), [ShieldManager](#shieldmanager), [CustomizationManager](#customizationmanager), [BombardmentManager](#bombardmentmanager), [Progression](#progression), [PlayerHistory](#playerhistory), [Profile](#profile), [MenuStates](#menustates), [MenuStack](#menustack), [Armory](#armory), [ThumbnailManager](#thumbnailmanager), [PackageSystem](#packagesystem), [GameConfig](#gameconfig), [NavigationSystem](#navigationsystem), [PhysicsPlugin](#physicsplugin), [ObjectiveManager](#objectivemanager), [HiveMindManager](#hivemindmanager), [Telemetry](#telemetry), [GuardForces](#guardforces), [UnitRegistry](#unitregistry), [EngineCore](#enginecore), [NetworkManager](#networkmanager), [NetworkConfigOwner](#networkconfigowner), [EngineEntityIndex](#engineentityindex), [NavWorlds](#navworlds), [PhysicsProperties](#physicsproperties), [CollisionFilterA](#collisionfiltera), [CollisionFilterB](#collisionfilterb), [StatusReceivers](#statusreceivers), [ComponentWorld](#componentworld), [GameModeMission](#gamemodemission), [CareerStats](#careerstats), [ProjectileWeapons](#projectileweapons), [WeaponDatas](#weapondatas), [BeamWeapons](#beamweapons), [LinkedAmmo](#linkedammo), [Corpses](#corpses)
+- [Functions](#functions): [ConsumeDamageEvent](#consumedamageevent), [KillDispatch](#killdispatch), [ActivateStratagemBeacon](#activatestratagembeacon), [SpawnEntity](#spawnentity), [RequestExplosion](#requestexplosion), [AddHealthFraction](#addhealthfraction), [RestoreZone](#restorezone), [QueueStatusRequest](#queuestatusrequest), [SetVelocity](#setvelocity), [FireProjectile](#fireprojectile), [QueueDamage](#queuedamage), [NeedsAmmo](#needsammo), [TryStartAction](#trystartaction), [RequestEntitySpawn](#requestentityspawn), [AbilityTick](#abilitytick), [SiloMissileArmedAbility](#silomissilearmedability), [LinkedMissile](#linkedmissile), [LinkerRecord](#linkerrecord), [LinkedRack](#linkedrack), [SetMissileEngine](#setmissileengine), [LaunchMissile](#launchmissile), [SetExplosiveOwner](#setexplosiveowner), [SetGuidanceTarget](#setguidancetarget), [RackReleaseItem](#rackreleaseitem), [StartAbility](#startability), [BehaviourUpdate](#behaviourupdate), [BehaviourStage](#behaviourstage), [BehaviourEvent](#behaviourevent), [BehaviourResume](#behaviourresume), [PelicanTransportUpdate](#pelicantransportupdate), [PelicanTransportStage](#pelicantransportstage), [PelicanTransportEvent](#pelicantransportevent), [BehaviourOwnPosition](#behaviourownposition), [BehaviourOrbitStep](#behaviourorbitstep), [BehaviourMoveTo](#behaviourmoveto), [BehaviourFace](#behaviourface), [BehaviourTargetPosition](#behaviourtargetposition), [PelicanTurretIdle](#pelicanturretidle), [TurretActive](#turretactive), [TurretHasAmmo](#turrethasammo), [PelicanTurretStage](#pelicanturretstage), [BehaviourSetTarget](#behavioursettarget), [WeaponDegreesTo](#weapondegreesto), [IsValidTarget](#isvalidtarget), [FindPerceptionEntry](#findperceptionentry), [MagazineRounds](#magazinerounds), [AddMagazineRounds](#addmagazinerounds), [MagazineCapacity](#magazinecapacity), [WeaponWithinDegrees](#weaponwithindegrees), [EntityDescriptor](#entitydescriptor), [MarkReplicated](#markreplicated), [ShieldRecord](#shieldrecord), [MoveObject](#moveobject), [SpawnProjectile](#spawnprojectile), [CatalogueAddItem](#catalogueadditem), [CatalogueSort](#cataloguesort), [AddItemAmount](#additemamount), [RemoveItemAmount](#removeitemamount), [LoadEntities](#loadentities), [BuildArmoryList](#buildarmorylist), [ArmoryEntryOf](#armoryentryof), [EngineText](#enginetext), [OpenMenuPresenter](#openmenupresenter), [MenuSoundUpdate](#menusoundupdate), [RequestPackages](#requestpackages), [EntityOfNetwork](#entityofnetwork), [QueryLoadoutPreview](#queryloadoutpreview), [PushArmoryLoadout](#pusharmoryloadout), [RollCacheLoot](#rollcacheloot), [RequestWarbondPurchase](#requestwarbondpurchase), [FinishWarbondPurchase](#finishwarbondpurchase), [SpawnWarbondShowcase](#spawnwarbondshowcase), [UpdateWarbondSpent](#updatewarbondspent), [UpdateWarbondPager](#updatewarbondpager), [WarbondPagerInput](#warbondpagerinput), [SetElementText](#setelementtext), [SetElementTextAlt](#setelementtextalt), [SetElementNumber](#setelementnumber), [SetWidgetVisible](#setwidgetvisible), [SetElementColour](#setelementcolour), [SetPickerHeading](#setpickerheading), [StratagemAvailable](#stratagemavailable), [SortArray](#sortarray), [HighestDifficulty](#highestdifficulty), [FindConfigSetting](#findconfigsetting), [ShowDifficultyWidget](#showdifficultywidget), [ComputeMissionRating](#computemissionrating), [EnemyDirectorTick](#enemydirectortick), [ArenaAllocate](#arenaallocate), [GameMemset](#gamememset), [CreateGenerationBlock](#creategenerationblock), [InitLevel](#initlevel), [GenerateRouteCells](#generateroutecells), [GenerateRouteCellVoronoi](#generateroutecellvoronoi), [GenerateSubregionHeights](#generatesubregionheights), [GenerateVoronoi](#generatevoronoi), [FinalizeVoronoi](#finalizevoronoi), [ForceFlattenZones](#forceflattenzones), [SelectSubRegionCellsFromHeightGroup](#selectsubregioncellsfromheightgroup), [SampleSubregionNoise](#samplesubregionnoise), [GenerateLocationClusters](#generatelocationclusters), [SpreadLocations](#spreadlocations), [SpreadLocationsCities](#spreadlocationscities), [GenerateOutpostLocations](#generateoutpostlocations), [GenerateObjectiveLocations](#generateobjectivelocations), [AddImportantLocations](#addimportantlocations), [GenerateMissionStampList](#generatemissionstamplist), [FixUnreachableAreas](#fixunreachableareas), [CullUnitsOutsidePlayableArea](#cullunitsoutsideplayablearea), [GenerateCityRoads](#generatecityroads), [CreateCityFootprintList](#createcityfootprintlist), [FlattenCityRoads](#flattencityroads), [StampIndexSize](#stampindexsize), [StampIndexCheckLayout](#stampindexchecklayout), [HashMapInsert](#hashmapinsert), [SetupDestructionRecordMap](#setupdestructionrecordmap), [RegisterStaticDestructionRecords](#registerstaticdestructionrecords), [SelectObjectives](#selectobjectives), [LaunchMission](#launchmission), [MissionTimerWidget](#missiontimerwidget), [UpdateHudObjectives](#updatehudobjectives), [UpdateMapScreen](#updatemapscreen), [BuildMapMarkerSlots](#buildmapmarkerslots), [HudMandatoryObjectives](#hudmandatoryobjectives), [MissionHudTopBar](#missionhudtopbar), [BuildMissionResult](#buildmissionresult), [TelemetrySelectedMission](#telemetryselectedmission), [TelemetryMissionEnd](#telemetrymissionend), [RollArtilleryShell](#rollartilleryshell), [ArtilleryAim](#artilleryaim), [SolveBallisticAim](#solveballisticaim), [PredictProjectileLanding](#predictprojectilelanding), [GenerateRegionMissions](#generateregionmissions), [GenerateCampaignPlanetMissions](#generatecampaignplanetmissions), [GenerateDefencePlanetMissions](#generatedefenceplanetmissions), [DifficultyBarBuild](#difficultybarbuild), [DifficultyBarDestroy](#difficultybardestroy), [DifficultyBarChoose](#difficultybarchoose), [SetImageSprite](#setimagesprite), [SetImageSpriteOrTexture](#setimagespriteortexture), [SetElementResourceSlot](#setelementresourceslot), [SetImageWithBase](#setimagewithbase), [UiElementRect](#uielementrect), [MissionCardMinimap](#missioncardminimap), [WarTableHologramUpdate](#wartablehologramupdate), [WarTableHologramZoom](#wartablehologramzoom), [WarTableHologramHeightAt](#wartablehologramheightat), [WarTableHologramTerrainHeight](#wartablehologramterrainheight), [EngineRenderStep](#enginerenderstep), [UnitSetLocalPose](#unitsetlocalpose), [UpdateUnit](#updateunit), [UnitFromHandle](#unitfromhandle), [MainWorld](#mainworld), [UnitNodeWorldPosition](#unitnodeworldposition), [UnitActorByName](#unitactorbyname), [SetResourceOverride](#setresourceoverride), [ClearResourceOverride](#clearresourceoverride), [CanGetResource](#cangetresource), [TransportCleanup](#transportcleanup), [DestroyConnection](#destroyconnection), [SessionPeersRemoved](#sessionpeersremoved), [NetworkManagerUpdate](#networkmanagerupdate), [CollisionFilterPairs](#collisionfilterpairs), [PhysicsHandleBody](#physicshandlebody), [CreateNavmeshCut](#createnavmeshcut), [RemoveNavmeshCuts](#removenavmeshcuts), [EnableNavmeshCuts](#enablenavmeshcuts), [NavWorldSetup](#navworldsetup), [BuildNavTile](#buildnavtile), [BuildPhysicsPools](#buildphysicspools), [EngineAllocatorAllocate](#engineallocatorallocate), [DestroyNetworkTypeEntry](#destroynetworktypeentry), [FindPackage](#findpackage), [PackageHasLoaded](#packagehasloaded), [LobbyMemberData](#lobbymemberdata), [LobbySetMemberData](#lobbysetmemberdata), [RegistryAllocate](#registryallocate), [ProjectileWeaponCopy](#projectileweaponcopy), [MagazineCopy](#magazinecopy), [AttachToUnit](#attachtounit), [SetBehaviour](#setbehaviour), [UnlinkRelation](#unlinkrelation), [RemoveEntity](#removeentity), [DestroyEntity](#destroyentity), [CloseStratagemSelector](#closestratagemselector), [SetStratagemCardEnabled](#setstratagemcardenabled), [SetLobbySetting](#setlobbysetting), [SetQuickplay](#setquickplay), [ReleasePackages](#releasepackages), [BeamInfoOf](#beaminfoof), [DamageInfoOf](#damageinfoof), [ProjectileInfoOf](#projectileinfoof), [PluginUpdate](#pluginupdate), [GameUpdate](#gameupdate), [PlayLoadoutSound](#playloadoutsound), [CreditorOf](#creditorof), [PickEnemy](#pickenemy), [EntityAttribute](#entityattribute), [ApplyDamage](#applydamage), [IsDead](#isdead), [HealthRecord](#healthrecord), [RestoreHealth](#restorehealth), [HealthSettings](#healthsettings), [SetLifeState](#setlifestate), [HealthManagerUpdate](#healthmanagerupdate), [DrainCombatQueues](#draincombatqueues), [EnqueueDamageEvent](#enqueuedamageevent), [ProduceDamage](#producedamage), [InitHitInfo](#inithitinfo), [EntityToNetwork](#entitytonetwork), [HealthZoneOfNode](#healthzoneofnode), [BuildDamageValues](#builddamagevalues), [IsBoosterActive](#isboosteractive), [ApplyStatus](#applystatus), [HasStatus](#hasstatus), [RemoveStatus](#removestatus), [AddStat](#addstat), [StatsPlayerIndex](#statsplayerindex), [StatMapLookup](#statmaplookup), [BuildScore](#buildscore), [KillCreditListener](#killcreditlistener), [PassiveValue](#passivevalue), [ChangeState](#changestate), [SetPlayerAvatar](#setplayeravatar), [SetPlayerState](#setplayerstate), [TurretSettings](#turretsettings), [SensorEyeSettings](#sensoreyesettings), [ProjectileWeaponRecord](#projectileweaponrecord), [WeaponDataRecord](#weapondatarecord), [BeamWeaponRecord](#beamweaponrecord), [WeaponProjectileType](#weaponprojectiletype), [ProjectileFire](#projectilefire), [GenericFire](#genericfire), [WeaponHeatStep](#weaponheatstep), [SpendRound](#spendround), [ProjectileWeaponUpdate](#projectileweaponupdate), [BeamWeaponUpdate](#beamweaponupdate), [BeamShot](#beamshot), [ReloadMagazine](#reloadmagazine), [TurretUpdate](#turretupdate), [TurretSpeedFactor](#turretspeedfactor), [SensorEyeRanges](#sensoreyeranges), [PerceptionUpdate](#perceptionupdate), [WindUpUpdate](#windupupdate), [ApplyAttribute](#applyattribute), [UpdateCustomization](#updatecustomization), [UpdateCustomizations](#updatecustomizations), [SetArmorKit](#setarmorkit), [SetHelmetKit](#sethelmetkit), [SetCapeKit](#setcapekit), [PlayerSlot](#playerslot), [BehaviourExplosion](#behaviourexplosion), [RequestExplosionAt](#requestexplosionat), [ExplosionKick](#explosionkick), [ExplosionGather](#explosiongather), [ProcessExplosion](#processexplosion), [ProjectileKick](#projectilekick), [BehaviourStartAbility](#behaviourstartability), [CorpseSource](#corpsesource), [StatusReceivable](#statusreceivable), [FlushNetworkFields](#flushnetworkfields), [Wield](#wield), [SwitchWeapon](#switchweapon), [QueueFieldWrite](#queuefieldwrite), [BeamTypeOf](#beamtypeof), [OutOfAmmo](#outofammo), [ChargeFire](#chargefire), [EncyclopediaRecord](#encyclopediarecord), [PickerCatalogueItem](#pickercatalogueitem), [NavigationRecord](#navigationrecord), [BehaviourStageCount](#behaviourstagecount), [BehaviourEventSlot](#behavioureventslot), [BehaviourSlotEvent](#behaviourslotevent), [FillDistancesTo](#filldistancesto), [UpdateImageUv](#updateimageuv), [HiveMindDefinition](#hiveminddefinition), [UnloadDamageList](#unloaddamagelist), [CollectOperationsForDifficulty](#collectoperationsfordifficulty), [FinalizeVoronoiStructured](#finalizevoronoistructured), [ReVoronoi](#revoronoi), [PlaceRoadProps](#placeroadprops), [StampIndexInit](#stampindexinit), [StampIndexInsert](#stampindexinsert), [CreateMinimapTexture](#createminimaptexture), [UpdateMissionCardDuration](#updatemissioncardduration), [SetupPhysicsConfig](#setupphysicsconfig), [SiloRemoteLink](#siloremotelink), [LaserDesignatorUpdate](#laserdesignatorupdate), [LinkRemoteOnPickup](#linkremoteonpickup), [MissilePreDestroy](#missilepredestroy), [CompactLinkerCopies](#compactlinkercopies), [SiloRemoteCleanup](#siloremotecleanup), [PelicanTurretAim](#pelicanturretaim), [RealizePellet](#realizepellet), [NetworkApplyState](#networkapplystate), [BehaviourSpawnSetup](#behaviourspawnsetup), [BehaviourNetworkFill](#behaviournetworkfill), [LoadProjectileList](#loadprojectilelist), [UnloadProjectileList](#unloadprojectilelist), [ProjectileLookupA](#projectilelookupa), [ProjectileLookupB](#projectilelookupb), [AttachmentItemById](#attachmentitembyid), [EntityDelta](#entitydelta), [RemoveSessionPeer](#removesessionpeer), [IsSteamFriend](#issteamfriend), [ApplySpawnDeltas](#applyspawndeltas), [HiveMindOf](#hivemindof), [RegisterDestructible](#registerdestructible), [LoadDestructibleIndex](#loaddestructibleindex), [DestructibleIndexEntry](#destructibleindexentry), [PlayerNearness](#playernearness), [BuildWarbondPager](#buildwarbondpager), [RefreshWarbondBuyButton](#refreshwarbondbuybutton), [UpdateWarbondBuyButton](#updatewarbondbuybutton), [WarbondScreenData](#warbondscreendata), [BuildWarbondList](#buildwarbondlist), [UpdateWarbondPanel](#updatewarbondpanel), [DrawWarbondClaimButton](#drawwarbondclaimbutton), [UpdateWarbondPage](#updatewarbondpage), [ItemPresetKit](#itempresetkit), [ValidateBootLoadout](#validatebootloadout), [StratagemPackages](#stratagempackages), [ReleaseUnusedSharedStratagems](#releaseunusedsharedstratagems), [LoadStratagemSettings](#loadstratagemsettings), [BuildStratagemPicker](#buildstratagempicker), [MasteryPackageOf](#masterypackageof), [BuildCustomizationList](#buildcustomizationlist), [CreateWorld](#createworld), [StretchCityTemplate](#stretchcitytemplate), [LaySites](#laysites), [KeepTownEdges](#keeptownedges), [BuildingPlaced](#buildingplaced), [AreaRimHeight](#arearimheight), [FindPocketNeighbour](#findpocketneighbour), [SendMissionEndTelemetry](#sendmissionendtelemetry), [MissionResultReport](#missionresultreport), [ObjectiveSpawnSetup](#objectivespawnsetup), [RateOfFireCycle](#rateoffirecycle), [WeaponFunctionPress](#weaponfunctionpress), [ProjectileWeaponRateSeed](#projectileweaponrateseed), [ProjectileWeaponNetApply](#projectileweaponnetapply), [ProjectileWeaponSystemPass](#projectileweaponsystempass), [SetCurrentFireMode](#setcurrentfiremode), [WeaponFunctionValue](#weaponfunctionvalue), [WeaponApplyReplicatedTrigger](#weaponapplyreplicatedtrigger), [RpcFireSingleRound](#rpcfiresingleround), [RpcFireSingleRoundAdvanced](#rpcfiresingleroundadvanced), [SendFireSingleRoundAdvanced](#sendfiresingleroundadvanced), [RpcAddProjectileToManager](#rpcaddprojectiletomanager), [SetWielder](#setwielder), [ProjectileWeaponNetInit](#projectileweaponnetinit), [WeaponBuild](#weaponbuild), [ProjectileWeaponEnterOwned](#projectileweaponenterowned), [OwnsWarbond](#ownswarbond), [WarbondCurrencyToken](#warbondcurrencytoken), [HasCatalogueItem](#hascatalogueitem), [WeaponMagazineRecord](#weaponmagazinerecord), [WeaponWindUpRecord](#weaponwinduprecord), [RechargeRecord](#rechargerecord), [WeaponReloadRecord](#weaponreloadrecord), [WeaponRoundsRecord](#weaponroundsrecord), [WeaponChargeRecord](#weaponchargerecord), [EquipmentRecord](#equipmentrecord), [ThrowerRecord](#throwerrecord), [ArcWeaponRecord](#arcweaponrecord), [WeaponHeatRecord](#weaponheatrecord), [WeaponCustomizationRecord](#weaponcustomizationrecord), [WeaponMagazineTypeRecord](#weaponmagazinetyperecord), [RechargeTypeRecord](#rechargetyperecord), [WeaponReloadTypeRecord](#weaponreloadtyperecord), [WeaponRoundsTypeRecord](#weaponroundstyperecord), [EquipmentTypeRecord](#equipmenttyperecord), [ThrowerTypeRecord](#throwertyperecord), [ThrowableTypeRecord](#throwabletyperecord), [ArcWeaponTypeRecord](#arcweapontyperecord), [WeaponHeatTypeRecord](#weaponheattyperecord), [AbilityWeaponTypeRecord](#abilityweapontyperecord), [WeaponCustomizationTypeRecord](#weaponcustomizationtyperecord), [WeaponUpdate](#weaponupdate), [WeaponDataUpdate](#weapondataupdate), [WeaponHeatUpdate](#weaponheatupdate), [WeaponHeatInstanceStep](#weaponheatinstancestep), [WeaponChargeUpdate](#weaponchargeupdate), [ChargeRelease](#chargerelease), [ChargeOvercharge](#chargeovercharge), [ChargeMultiplier](#chargemultiplier), [EquipmentUpdate](#equipmentupdate), [ThrowerUpdate](#throwerupdate), [ThrowableUpdate](#throwableupdate), [ArcWeaponUpdate](#arcweaponupdate), [AbilityWeaponUpdate](#abilityweaponupdate), [WeaponCustomizationUpdate](#weaponcustomizationupdate), [StartReload](#startreload), [CanReload](#canreload), [ReloadStateHas](#reloadstatehas), [WeaponReloadBusy](#weaponreloadbusy), [OwnSpareAmmo](#ownspareammo), [WeaponRefill](#weaponrefill), [MagazineRefill](#magazinerefill), [RoundsRefill](#roundsrefill), [HeatsinkRefill](#heatsinkrefill), [AbilityWeaponModeSettings](#abilityweaponmodesettings), [AbilityWeaponFire](#abilityweaponfire), [MeleeHitVolumeStart](#meleehitvolumestart), [UnitSettings](#unitsettings), [VehicleSettings](#vehiclesettings), [HellpodPayloadSettings](#hellpodpayloadsettings), [AvatarSettings](#avatarsettings), [JumppackSettings](#jumppacksettings), [DisplacementSettings](#displacementsettings), [OrbitalAbilitySettings](#orbitalabilitysettings), [RotationSettings](#rotationsettings), [EagleSettings](#eaglesettings), [VehicleUpdate](#vehicleupdate), [SquadTransportUpdate](#squadtransportupdate), [HellpodPayloadUpdate](#hellpodpayloadupdate), [AiSpawnerUpdate](#aispawnerupdate), [BugholeUpdate](#bugholeupdate), [VehicleMotionUpdate](#vehiclemotionupdate), [AvatarUpdate](#avatarupdate), [DisplacementUpdate](#displacementupdate), [OrbitalAbilityUpdate](#orbitalabilityupdate), [EagleUpdate](#eagleupdate), [EncounterUpdate](#encounterupdate), [GuardForceUpdate](#guardforceupdate), [EagleStage](#eaglestage), [EagleTrackAim](#eagletrackaim), [EagleStrike](#eaglestrike), [EagleFlight](#eagleflight), [JumppackTimers](#jumppacktimers), [JumppackFlight](#jumppackflight), [SetJumppackActive](#setjumppackactive), [JumppackTakeOff](#jumppacktakeoff), [PickPatrolComposition](#pickpatrolcomposition), [SpawnSquad](#spawnsquad), [PatrolClock](#patrolclock), [PickReinforcementComposition](#pickreinforcementcomposition), [DispatchReinforcement](#dispatchreinforcement), [FillOutpost](#filloutpost), [UnitSetLocalPosition](#unitsetlocalposition), [UnitSetLocalRotation](#unitsetlocalrotation), [UnitSetLocalScale](#unitsetlocalscale), [UnitTeleportLocalPosition](#unitteleportlocalposition), [UnitTeleportLocalPose](#unitteleportlocalpose), [WorldSetUnitMoving](#worldsetunitmoving), [UnitDeltaPosition](#unitdeltaposition), [UnitDeltaRotation](#unitdeltarotation), [UnitDeltaPose](#unitdeltapose), [UnitTeleportLocalRotation](#unitteleportlocalrotation), [UnitTeleportLocalScale](#unitteleportlocalscale), [WorldSpawnUnit](#worldspawnunit), [WorldDestroyUnit](#worlddestroyunit), [WorldQueueUnitsDestroy](#worldqueueunitsdestroy), [WorldLinkUnitHandles](#worldlinkunithandles), [WorldLinkUnit](#worldlinkunit), [WorldUnlinkUnit](#worldunlinkunit), [WorldMendUnit](#worldmendunit), [WorldUpdate](#worldupdate), [WorldUpdateScene](#worldupdatescene), [WorldCreateLineObject](#worldcreatelineobject), [LineObjectAddLine](#lineobjectaddline), [LineObjectAddCone](#lineobjectaddcone), [LineObjectAddCircle](#lineobjectaddcircle), [LineObjectAddSphere](#lineobjectaddsphere), [LineObjectAddHalfSphere](#lineobjectaddhalfsphere), [LineObjectAddBox](#lineobjectaddbox), [LineObjectAddCapsule](#lineobjectaddcapsule), [LineObjectDispatch](#lineobjectdispatch), [MurmurHash64A](#murmurhash64a), [MaterialSetScalar](#materialsetscalar), [MaterialSetVector2](#materialsetvector2), [MaterialSetVector3](#materialsetvector3), [MaterialSetVector4](#materialsetvector4), [MaterialSetMatrix4x4](#materialsetmatrix4x4), [MaterialSetTexture](#materialsettexture), [MaterialSetResource](#materialsetresource), [MaterialSetShaderPassFlag](#materialsetshaderpassflag), [MaterialReinitializeShader](#materialreinitializeshader), [CameraWorldToScreen](#cameraworldtoscreen), [CameraScreenToWorld](#camerascreentoworld), [CameraSyncRange](#camerasyncrange), [CameraSyncFrustum](#camerasyncfrustum), [CameraSetLocal](#camerasetlocal), [CameraInsideFrustum](#camerainsidefrustum), [GuiAddPrimitive](#guiaddprimitive), [GuiRect](#guirect), [ResourceManagerGet](#resourcemanagerget), [ResourceManagerCanGet](#resourcemanagercanget), [ResourceManagerSetOverride](#resourcemanagersetoverride), [ResourceManagerClearOverride](#resourcemanagerclearoverride), [MurmurHash64ALower](#murmurhash64alower), [RendererWindowSize](#rendererwindowsize), [ReleaseWorld](#releaseworld), [CreateViewport](#createviewport), [WorldDestroyViewport](#worlddestroyviewport), [NetworkCreateGameSession](#networkcreategamesession), [NetworkShutdownGameSession](#networkshutdowngamesession), [LevelIsPointInsideVolume](#levelispointinsidevolume), [LevelRandomPointInsideVolume](#levelrandompointinsidevolume), [LevelHasVolume](#levelhasvolume), [LevelUnitIndex](#levelunitindex), [LevelSpawnAllLayers](#levelspawnalllayers), [UnitAnimationFindVariable](#unitanimationfindvariable), [UnitAnimationHasVariable](#unitanimationhasvariable), [UnitAnimationGetVariable](#unitanimationgetvariable), [UnitAnimationSetVariable](#unitanimationsetvariable), [UnitSetUnitVisibility](#unitsetunitvisibility), [UnitSetVisibilityGroup](#unitsetvisibilitygroup), [UnitCrossfadeAnimation](#unitcrossfadeanimation), [UnitCrossfadeAnimationSetTime](#unitcrossfadeanimationsettime), [UnitCopySceneGraphLocalFrom](#unitcopyscenegraphlocalfrom), [UnitSetBonesLod](#unitsetboneslod), [UnitAnimationFindConstraintTarget](#unitanimationfindconstrainttarget), [UnitAnimationSetConstraintTargetPosition](#unitanimationsetconstrainttargetposition), [LightSync](#lightsync), [LightSetEnabled](#lightsetenabled), [WorldDestroyLevel](#worlddestroylevel), [WorldDestroyPrefab](#worlddestroyprefab), [WorldPlayCameraShake](#worldplaycamerashake), [WorldStopCameraShake](#worldstopcamerashake), [WorldUpdateAnimations](#worldupdateanimations), [GuiManagerDestroyGui](#guimanagerdestroygui)
+- [Globals](#globals): [Game](#game), [PlayerManager](#playermanager), [LocalUser](#localuser), [GameMode](#gamemode), [EntityManager](#entitymanager), [HealthManager](#healthmanager), [MotionManager](#motionmanager), [ExplosionQueue](#explosionqueue), [ProjectileSystem](#projectilesystem), [CombatQueues](#combatqueues), [ScoreManager](#scoremanager), [WielderManager](#wieldermanager), [InventoryManager](#inventorymanager), [Destructibles](#destructibles), [DestructionRecords](#destructionrecords), [DepositManager](#depositmanager), [AvatarManager](#avatarmanager), [WieldableManager](#wieldablemanager), [FactionManager](#factionmanager), [BehaviourManager](#behaviourmanager), [TagManager](#tagmanager), [Clock](#clock), [EngineApi](#engineapi), [EngineUnitApi](#engineunitapi), [WwiseApi](#wwiseapi), [AbilityManager](#abilitymanager), [WeaponLinkerManager](#weaponlinkermanager), [SeekingMissileManager](#seekingmissilemanager), [LaserDesignatorManager](#laserdesignatormanager), [GuidanceTargets](#guidancetargets), [ExplosiveManager](#explosivemanager), [EquipmentManager](#equipmentmanager), [HellpodRackManager](#hellpodrackmanager), [AttachableManager](#attachablemanager), [MountManager](#mountmanager), [DropAnchors](#dropanchors), [PerceptionManager](#perceptionmanager), [WeaponManager](#weaponmanager), [WeaponMagazines](#weaponmagazines), [WeaponTargeting](#weapontargeting), [ShieldManager](#shieldmanager), [CustomizationManager](#customizationmanager), [BombardmentManager](#bombardmentmanager), [Progression](#progression), [PlayerHistory](#playerhistory), [Profile](#profile), [MenuStates](#menustates), [MenuStack](#menustack), [Armory](#armory), [ThumbnailManager](#thumbnailmanager), [PackageSystem](#packagesystem), [GameConfig](#gameconfig), [NavigationSystem](#navigationsystem), [PhysicsPlugin](#physicsplugin), [ObjectiveManager](#objectivemanager), [HiveMindManager](#hivemindmanager), [Telemetry](#telemetry), [GuardForces](#guardforces), [UnitRegistry](#unitregistry), [EngineCore](#enginecore), [NetworkManager](#networkmanager), [NetworkConfigOwner](#networkconfigowner), [EngineEntityIndex](#engineentityindex), [NavWorlds](#navworlds), [PhysicsProperties](#physicsproperties), [CollisionFilterA](#collisionfiltera), [CollisionFilterB](#collisionfilterb), [StatusReceivers](#statusreceivers), [ComponentWorld](#componentworld), [GameModeMission](#gamemodemission), [CareerStats](#careerstats), [ProjectileWeapons](#projectileweapons), [WeaponDatas](#weapondatas), [BeamWeapons](#beamweapons), [LinkedAmmo](#linkedammo), [Corpses](#corpses), [WeaponWindUps](#weaponwindups), [Recharges](#recharges), [WeaponReloads](#weaponreloads), [WeaponRoundsManager](#weaponroundsmanager), [WeaponCharges](#weaponcharges), [Throwers](#throwers), [Throwables](#throwables), [ArcWeapons](#arcweapons), [WeaponHeats](#weaponheats), [AbilityWeapons](#abilityweapons), [MeleeWeapons](#meleeweapons), [WeaponCustomizations](#weaponcustomizations), [AiSpawnerManager](#aispawnermanager), [BugholeManager](#bugholemanager), [VehicleMotionManager](#vehiclemotionmanager), [VehicleManager](#vehiclemanager), [SquadTransportManager](#squadtransportmanager), [SquadFormationManager](#squadformationmanager), [GoreManager](#goremanager), [StratagemBlockerManager](#stratagemblockermanager), [OrbitalAbilityManager](#orbitalabilitymanager), [HellpodPayloadManager](#hellpodpayloadmanager), [UnitManager](#unitmanager), [RotationManager](#rotationmanager), [DisplacementManager](#displacementmanager), [JumppackManager](#jumppackmanager), [EagleManager](#eaglemanager), [EncounterManager](#encountermanager), [AiSquadManager](#aisquadmanager), [SensorEyeManager](#sensoreyemanager), [TurretManager](#turretmanager), [LocomotionManager](#locomotionmanager)
 - [Components](#components): [HfProjectileWeapon](#hfprojectileweapon), [HfWeaponData](#hfweapondata), [HfWeaponMagazine](#hfweaponmagazine), [HfTag](#hftag), [HfMount](#hfmount), [HfBehavior](#hfbehavior), [HfLoadoutPackage](#hfloadoutpackage), [HfDeposit](#hfdeposit), [HfHealth](#hfhealth), [HfJumppack](#hfjumppack), [HfRecharge](#hfrecharge), [HfShield](#hfshield), [HfHellpodPayload](#hfhellpodpayload), [HfSensorEye](#hfsensoreye), [HfTurret](#hfturret), [HfWeaponWindUp](#hfweaponwindup), [HfBeamWeapon](#hfbeamweapon), [HfWeaponHeat](#hfweaponheat), [HfEagle](#hfeagle), [HfThrower](#hfthrower), [HfBombardment](#hfbombardment), [HfExplosive](#hfexplosive), [HfThrowable](#hfthrowable), [HfVehicleMotion](#hfvehiclemotion), [HfWeaponCharge](#hfweaponcharge), [HfWeaponReload](#hfweaponreload), [HfWeaponRounds](#hfweaponrounds), [HfArcWeapon](#hfarcweapon), [HfHiveMind](#hfhivemind), [HfOrbitalAbility](#hforbitalability), [HfRotation](#hfrotation), [HfDisplacement](#hfdisplacement), [HfSeekingMissile](#hfseekingmissile), [HfLoadoutEntry](#hfloadoutentry), [HfHellpodRack](#hfhellpodrack), [HfAvatar](#hfavatar), [HfInventory](#hfinventory), [HfMeleeWeapon](#hfmeleeweapon), [HfAbilityWeapon](#hfabilityweapon), [HfUnit](#hfunit), [HfSquadTransportFormation](#hfsquadtransportformation), [HfSquadTransport](#hfsquadtransport), [HfGore](#hfgore), [HfAiSpawner](#hfaispawner), [HfStratagemBlocker](#hfstratagemblocker), [HfBughole](#hfbughole), [HfEquipment](#hfequipment), [HfWieldable](#hfwieldable), [HfAttachable](#hfattachable), [HfWeaponCustomization](#hfweaponcustomization)
 - [Settings tables](#settings-tables): [HfDifficultySettings](#hfdifficultysettings), [HfDamageInfo](#hfdamageinfo), [HfProjectileSettings](#hfprojectilesettings), [HfStratagemSettings](#hfstratagemsettings), [HfExplosionSettings](#hfexplosionsettings), [HfArcSettings](#hfarcsettings), [HfBeamSettings](#hfbeamsettings), [HfStatusEffectSettings](#hfstatuseffectsettings), [HfBoosterSettings](#hfboostersettings), [HfPassiveModifier](#hfpassivemodifier), [HfPassiveStat](#hfpassivestat), [HfMeleeHitVolume](#hfmeleehitvolume), [HfEnemyRoster](#hfenemyroster), [HfEnemyRosterLevel11](#hfenemyrosterlevel11), [HfEnemyComposition](#hfenemycomposition), [HfDemolitionTemplate](#hfdemolitiontemplate)
 - [Content](#content): [HF_ITEM_...](#hf_item_-168-hf_kind_item), [HF_PROJECTILE_...](#hf_projectile_-61-hf_kind_projectile), [HF_STRATAGEM_...](#hf_stratagem_-149-hf_kind_stratagem), [HF_BEHAVIOUR_...](#hf_behaviour_-2-hf_kind_behaviour), [HF_ENTITY_...](#hf_entity_-369-hf_kind_entity), [HF_DAMAGE_...](#hf_damage_-342-hf_kind_damage), [HF_PACKAGE_...](#hf_package_-1-hf_kind_package), [HF_TAG_...](#hf_tag_-1-hf_kind_tag), [HF_TRAIT_...](#hf_trait_-29-hf_kind_trait), [HF_CATEGORY_...](#hf_category_-5-hf_kind_category), [HF_BEAM_...](#hf_beam_-3-hf_kind_beam), [HF_BOOSTER_...](#hf_booster_-20-hf_kind_booster), [HF_EXPLOSION_...](#hf_explosion_-295-hf_kind_explosion), [HF_WEAPON_BEAM_...](#hf_weapon_beam_-1-hf_kind_weapon_beam), [HF_ARC_...](#hf_arc_-1-hf_kind_arc)
@@ -436,7 +436,7 @@ typedef uint8_t (*HfFn_TryStartAction)(void* context, const uint32_t* request);
 
 | Argument | Type | Meaning |
 |---|---|---|
-| `context` | `void*` | the entity's action context: hf_global_ActionManager + 0x53E170 + 0x1238 index (+0 the entity, +8 the running action) |
+| `context` | `void*` | the entity's action context: hf_global_AvatarManager + 0x53E170 + 0x1238 index (+0 the entity, +8 the running action) |
 | `request` | `const uint32_t*` | 3 u32: the action (2629, the Supply Pack's self-use), the game's no-action id (u32 at game.dll+0x3483C5C), the context's +0xC |
 
 ### RequestEntitySpawn
@@ -879,12 +879,12 @@ typedef uint8_t* (*HfFn_FindPerceptionEntry)(void* perception, uint32_t perceive
 `game.dll+0x742900`, call only. The rounds in a weapon's magazine. From HellForge's Pelican turret refill (behaviour_turret.c).
 
 ```c
-typedef int32_t (*HfFn_MagazineRounds)(void* magazines, uint32_t entity);
+typedef int32_t (*HfFn_MagazineRounds)(void* weapons, uint32_t entity);
 ```
 
 | Argument | Type | Meaning |
 |---|---|---|
-| `magazines` | `void*` | the magazines: hf_global_MagazineManager |
+| `weapons` | `void*` | the magazines: hf_global_WeaponManager |
 | `entity` | `uint32_t` | the weapon's entity |
 
 ### AddMagazineRounds
@@ -898,7 +898,7 @@ typedef void (*HfFn_AddMagazineRounds)(void* unused, uint32_t entity, int32_t ad
 | Argument | Type | Meaning |
 |---|---|---|
 | `unused` | `void*` | NULL |
-| `entity` | `uint32_t` | the weapon's entity (in hf_global_MagazineRefills' map) |
+| `entity` | `uint32_t` | the weapon's entity (in hf_global_WeaponMagazines' map) |
 | `add` | `int32_t` | the rounds to add |
 
 ### MagazineCapacity
@@ -1445,16 +1445,16 @@ typedef float (*HfFn_ComputeMissionRating)(void* rcx, void* rdx, uint32_t r8, ui
 
 ### EnemyDirectorTick
 
-`game.dll+0x94EB90`, call only. The enemy director's per-frame step: reads each faction's roaming patrol interval (difficulty row +0x2A0, f32 s) and most living patrol enemies (+0x2AC, u32) from the mission's difficulty row. From HellForge's difficulty patrols (difficulty.c, PatrolLevelRow).
+`game.dll+0x94EB90`, hook or call. The enemy director's per-frame step: reads each faction's roaming patrol interval (difficulty row +0x2A0, f32 s) and most living patrol enemies (+0x2AC, u32) from the mission's difficulty row. From HellForge's difficulty patrols (difficulty.c, PatrolLevelRow).
 
 ```c
-typedef void (*HfFn_EnemyDirectorTick)(void* rcx, float xmm1);
+typedef void (*HfFn_EnemyDirectorTick)(void* hivemind, float dt);
 ```
 
 | Argument | Type | Meaning |
 |---|---|---|
-| `rcx` | `void*` | not reviewed: pass it on (its caller passes its rdi + 0x771F48) |
-| `xmm1` | `float` | not reviewed: pass it on |
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `dt` | `float` | the frame time, s |
 
 ### ArenaAllocate
 
@@ -3515,12 +3515,12 @@ typedef void (*HfFn_WeaponHeatStep)(uint64_t rcx, uint32_t weapon, uint8_t r8);
 `game.dll+0x744690`, hook or call. Spends one round of a weapon (magazine, rounds or linked ammunition), shared by every output family; the beam spends one per pulse. From HD2Runtime 0.40.1 research component-swap-liberator-beam (round consumption); beam-conversion-coverage (roundSpend).
 
 ```c
-typedef void (*HfFn_SpendRound)(void* magazines, uint32_t weapon);
+typedef void (*HfFn_SpendRound)(void* weapons, uint32_t weapon);
 ```
 
 | Argument | Type | Meaning |
 |---|---|---|
-| `magazines` | `void*` | the MagazineManager |
+| `weapons` | `void*` | the WeaponManager |
 | `weapon` | `uint32_t` | the weapon entity |
 
 ### ProjectileWeaponUpdate
@@ -3650,7 +3650,7 @@ typedef void (*HfFn_WindUpUpdate)(void* windups, float dt);
 
 | Argument | Type | Meaning |
 |---|---|---|
-| `windups` | `void*` | the WeaponWindUp manager (component world +0x1B29B8) |
+| `windups` | `void*` | WeaponWindUps (component world +0x1B29B8) |
 | `dt` | `float` | the frame time |
 
 ### ApplyAttribute
@@ -5222,6 +5222,2264 @@ typedef uint8_t (*HfFn_HasCatalogueItem)(void* account, uint32_t item);
 | `account` | `void*` | the progression manager: hf_global_Progression |
 | `item` | `uint32_t` | the item's id |
 
+### WeaponMagazineRecord
+
+`game.dll+0x4F3740`, hook or call. The entity's WeaponMagazineComponentData (component 5): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponMagazineTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponMagazineRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponWindUpRecord
+
+`game.dll+0x4F8090`, hook or call. The entity's WeaponWindUpComponentData (component 70): its own copy in the manager's private copies if it has one, else its type's shared record (the type lookup at game.dll+0x4F7C70, reached only by this tail jump, so not mapped); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponWindUpRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### RechargeRecord
+
+`game.dll+0x4FBC30`, hook or call. The entity's RechargeComponentData (component 99): its own copy in the manager's private copies if it has one, else its type's shared record (RechargeTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_RechargeRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponReloadRecord
+
+`game.dll+0x4FD220`, hook or call. The entity's WeaponReloadComponentData (component 113): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponReloadTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponReloadRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponRoundsRecord
+
+`game.dll+0x4FDD20`, hook or call. The entity's WeaponRoundsComponentData (component 117): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponRoundsTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponRoundsRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponChargeRecord
+
+`game.dll+0x5052C0`, hook or call. The entity's WeaponChargeComponentData (component 204): its own copy in the manager's private copies if it has one, else its type's shared record (the type lookup at game.dll+0x504D80, reached only by this tail jump, so not mapped); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponChargeRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### EquipmentRecord
+
+`game.dll+0x5092B0`, hook or call. The entity's EquipmentComponentData (component 233): its own copy in the manager's private copies if it has one, else its type's shared record (EquipmentTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_EquipmentRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### ThrowerRecord
+
+`game.dll+0x50CCC0`, hook or call. The entity's ThrowerComponentData (component 258): its own copy in the manager's private copies if it has one, else its type's shared record (ThrowerTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_ThrowerRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### ArcWeaponRecord
+
+`game.dll+0x50DC50`, hook or call. The entity's ArcWeaponComponentData (component 265): its own copy in the manager's private copies if it has one, else its type's shared record (ArcWeaponTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_ArcWeaponRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponHeatRecord
+
+`game.dll+0x50E1F0`, hook or call. The entity's WeaponHeatComponentData (component 266): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponHeatTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponHeatRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponCustomizationRecord
+
+`game.dll+0x50F150`, hook or call. The entity's WeaponCustomizationComponentData (component 271): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponCustomizationTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponCustomizationRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponMagazineTypeRecord
+
+`game.dll+0x4F32F0`, hook or call. An entity type's shared WeaponMagazineComponentData (component 5) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponMagazineTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### RechargeTypeRecord
+
+`game.dll+0x4FB850`, hook or call. An entity type's shared RechargeComponentData (component 99) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_RechargeTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponReloadTypeRecord
+
+`game.dll+0x4FCE20`, hook or call. An entity type's shared WeaponReloadComponentData (component 113) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponReloadTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponRoundsTypeRecord
+
+`game.dll+0x4FD8E0`, hook or call. An entity type's shared WeaponRoundsComponentData (component 117) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponRoundsTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### EquipmentTypeRecord
+
+`game.dll+0x508E90`, hook or call. An entity type's shared EquipmentComponentData (component 233) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_EquipmentTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### ThrowerTypeRecord
+
+`game.dll+0x50C720`, hook or call. An entity type's shared ThrowerComponentData (component 258) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_ThrowerTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### ThrowableTypeRecord
+
+`game.dll+0x50CD90`, hook or call. An entity type's shared ThrowableComponentData (component 259) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_ThrowableTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### ArcWeaponTypeRecord
+
+`game.dll+0x50D900`, hook or call. An entity type's shared ArcWeaponComponentData (component 265) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_ArcWeaponTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponHeatTypeRecord
+
+`game.dll+0x50DD30`, hook or call. An entity type's shared WeaponHeatComponentData (component 266) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponHeatTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### AbilityWeaponTypeRecord
+
+`game.dll+0x50E2C0`, hook or call. An entity type's shared AbilityWeaponComponentData (component 267) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_AbilityWeaponTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponCustomizationTypeRecord
+
+`game.dll+0x50ED80`, hook or call. An entity type's shared WeaponCustomizationComponentData (component 271) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponCustomizationTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponUpdate
+
+`game.dll+0x7406A0`, hook or call. The weapon manager's frame, right after the WeaponData frames: among its calls AbilityWeaponFire (an ability weapon's pending fire) and WeaponChargeRecord. From the world update 0x571250 (0x573245); HD2Runtime 0.40.1 research railgun-charge (0x7406A0 weapon update).
+
+```c
+typedef void (*HfFn_WeaponUpdate)(void* weapons, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the weapon manager (hf_global_WeaponManager, component world +0xE9FC38) |
+| `dt` | `float` | the frame time |
+
+### WeaponDataUpdate
+
+`game.dll+0x753DB0`, hook or call. One WeaponData instance's frame (its record from WeaponDataRecord, the current fire mode); the world update calls it for every instance. From the world update 0x571250 (loop at 0x573220, count at WeaponDatas +0x20).
+
+```c
+typedef void (*HfFn_WeaponDataUpdate)(void* weapondata, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapondata` | `void*` | WeaponDatas |
+| `index` | `uint32_t` | the instance index |
+| `dt` | `float` | the frame time |
+
+### WeaponHeatUpdate
+
+`game.dll+0x764970`, hook or call. The WeaponHeat frame: WeaponHeatInstanceStep for every instance this machine owns (descriptor +0x14 bit 1), then each weapon's reload-dependent heat state (WeaponReloadBusy). From the world update 0x571250 (0x573767).
+
+```c
+typedef void (*HfFn_WeaponHeatUpdate)(void* heats, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `heats` | `void*` | WeaponHeats |
+| `dt` | `float` | the frame time |
+
+### WeaponHeatInstanceStep
+
+`game.dll+0x762F60`, hook or call. One weapon's heat for a frame, on its owner: charging adds heat, else it cools at +128 per second (overheated or charging: +140, none when +144 is set) times the climate multiplier; heat at the capacity +96 sets the overheated flag when +80 is set, heat down to +100 clears it. The heat (live row +0x58, 12 bytes: +4 heat, +8 overheated) goes out as network field 0xA5023836. From HD2Runtime 0.40.1 research overheat-cooling (heatStep 0x762F60), reload-heat-knife; WeaponHeatUpdate's call 0x7649CB.
+
+```c
+typedef void (*HfFn_WeaponHeatInstanceStep)(void* heats, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `heats` | `void*` | WeaponHeats |
+| `index` | `uint32_t` | the instance index |
+| `dt` | `float` | the frame time (xmm2, read after the leaf WeaponHeatRecord call) |
+
+### WeaponChargeUpdate
+
+`game.dll+0x73C8F0`, hook or call. The WeaponCharge frame: the charge time of every charging weapon rises while the trigger is held, and the charge levels decide the release (ChargeRelease) or, past the overcharge, ChargeOvercharge. From the world update 0x571250 (0x572EF2); HD2Runtime 0.40.1 research railgun-charge (0x73C8F0 charge update).
+
+```c
+typedef void (*HfFn_WeaponChargeUpdate)(void* charges, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `charges` | `void*` | WeaponCharges |
+| `dt` | `float` | the frame time |
+
+### ChargeRelease
+
+`game.dll+0x73D8C0`, hook or call. Releases a weapon's charge: on the machine that owns the instance (descriptor +0x14 bit 1) it fires the charge level's projectile through ChargeFire, once per burst shot. From HD2Runtime 0.40.1 research railgun-charge (0x73D8C0 fire helper, burst and per-state projectile); WeaponChargeUpdate's four calls.
+
+```c
+typedef void (*HfFn_ChargeRelease)(void* charges, void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `charges` | `void*` | WeaponCharges |
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### ChargeOvercharge
+
+`game.dll+0x73DC60`, hook or call. A weapon held past its overcharge: on the machine that owns it the weapon is removed and its explosion set off. From HD2Runtime 0.40.1 research railgun-charge (0x73DC60 overcharge failure: weapon removed, explosion); WeaponChargeUpdate's calls 0x73CCC4 and 0x73CDBA.
+
+```c
+typedef void (*HfFn_ChargeOvercharge)(uint64_t unused, void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### ChargeMultiplier
+
+`game.dll+0x73E280`, hook or call. A charged shot's multiplier from the weapon's charge time (live row +0x40, 40 bytes, +8): below full charge (+0x18) from at_min to 1, above it from 1 to at_overcharge. The charge fire (0x73E725, 0x73E7E5) and the arc spawn (0x13B3F79, 0x13B401B) scale their shot with it, each passing a pair of charge record fields. From HD2Runtime 0.40.1 research railgun-charge (0x73E280 charge scaling lerp); callers 0x73E725, 0x73E7E5, 0x13B3F79, 0x13B401B.
+
+```c
+typedef float (*HfFn_ChargeMultiplier)(void* charges, uint32_t weapon, float at_min, float at_overcharge);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `charges` | `void*` | WeaponCharges |
+| `weapon` | `uint32_t` | the weapon entity |
+| `at_min` | `float` | the value at the minimum charge (charge record +0) |
+| `at_overcharge` | `float` | the value at the overcharge (record +0x30) |
+
+### EquipmentUpdate
+
+`game.dll+0x8C16E0`, hook or call. The Equipment frame (the component of how held items are wielded, holstered and dropped). From the world update 0x571250 (0x5731D9).
+
+```c
+typedef void (*HfFn_EquipmentUpdate)(void* equipment, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `equipment` | `void*` | hf_global_EquipmentManager (the Equipment component manager) |
+| `dt` | `float` | the frame time |
+
+### ThrowerUpdate
+
+`game.dll+0x6CB140`, hook or call. The Thrower frame: throws the salvos of a thrower (mine dispensers and the like) by spawning their projectiles (SpawnProjectile). From the world update 0x571250 (0x57369F); its call to SpawnProjectile.
+
+```c
+typedef void (*HfFn_ThrowerUpdate)(void* throwers, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `throwers` | `void*` | Throwers |
+| `dt` | `float` | the frame time |
+
+### ThrowableUpdate
+
+`game.dll+0x6C3AE0`, hook or call. The Throwable frame: thrown grenades and knives (records from ThrowableTypeRecord), queuing their network fields. From the world update 0x571250 (0x5736AE).
+
+```c
+typedef void (*HfFn_ThrowableUpdate)(void* throwables, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `throwables` | `void*` | Throwables |
+| `dt` | `float` | the frame time |
+
+### ArcWeaponUpdate
+
+`game.dll+0x80DDD0`, hook or call. One ArcWeapon instance's frame (its record from ArcWeaponRecord). From the world update 0x571250 (loop at 0x573742, count at ArcWeapons +0x38).
+
+```c
+typedef void (*HfFn_ArcWeaponUpdate)(void* arcs, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `arcs` | `void*` | ArcWeapons |
+| `index` | `uint32_t` | the instance index |
+| `dt` | `float` | the frame time |
+
+### AbilityWeaponUpdate
+
+`game.dll+0x7D67B0`, hook or call. The AbilityWeapon frame: reads each instance's record (AbilityWeaponTypeRecord) and may start its ability (StartAbility). From the world update 0x571250 (0x573773, no frame time).
+
+```c
+typedef void (*HfFn_AbilityWeaponUpdate)(void* abilityweapons);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `abilityweapons` | `void*` | AbilityWeapons |
+
+### WeaponCustomizationUpdate
+
+`game.dll+0x74ACE0`, hook or call. The WeaponCustomization frame: each weapon's attachments (records from WeaponCustomizationRecord). From the world update 0x571250 (0x5737CA).
+
+```c
+typedef void (*HfFn_WeaponCustomizationUpdate)(void* customizations, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `customizations` | `void*` | WeaponCustomizations |
+| `dt` | `float` | the frame time |
+
+### StartReload
+
+`game.dll+0x774B60`, hook or call. Starts a weapon's reload: unless forced, CanReload must agree; then it starts the WeaponReload record's ability (+4) through StartAbility at the reload speed (player stats, the +56 duration override). A record with ability 0 has no reload. From HD2Runtime 0.40.1 research reload-heat-knife (0x774EDB..0x774F49); the avatar input's calls 0xA7F4AE, 0xA7F78E.
+
+```c
+typedef void (*HfFn_StartReload)(void* reloads, uint32_t weapon, uint8_t force);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `reloads` | `void*` | WeaponReloads |
+| `weapon` | `uint32_t` | the weapon entity |
+| `force` | `uint8_t` | 1 skips the CanReload check; the avatar's input passes 0 |
+
+### CanReload
+
+`game.dll+0x775580`, hook or call. The reload gate: 1 when the weapon may reload now: its own spare total (OwnSpareAmmo) above 0, or else a worn backpack that can feed it. From HD2Runtime 0.40.1 research team-reload-ammo (reload gate 0x775580, 0x775997 setg); StartReload's call 0x774D3A.
+
+```c
+typedef uint8_t (*HfFn_CanReload)(void* reloads, uint32_t weapon, uint8_t r8, uint8_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `reloads` | `void*` | WeaponReloads |
+| `weapon` | `uint32_t` | the weapon entity |
+| `r8` | `uint8_t` | not reviewed: pass it on (every caller passes 0) |
+| `r9` | `uint8_t` | not reviewed: pass it on (every caller passes 0) |
+
+### ReloadStateHas
+
+`game.dll+0x7776F0`, hook or call. Whether a weapon's reload state (WeaponReloads +0x50, a u32 per instance) has any of the bits in mask; 0 when the weapon has no WeaponReload instance. From game.dll 0x7776F0 (its probe of WeaponReloads +0x20 and test of +0x50); WeaponReloadBusy's calls.
+
+```c
+typedef uint8_t (*HfFn_ReloadStateHas)(void* reloads, uint32_t weapon, uint32_t mask);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `reloads` | `void*` | WeaponReloads |
+| `weapon` | `uint32_t` | the weapon entity |
+| `mask` | `uint32_t` | the state bits to test |
+
+### WeaponReloadBusy
+
+`game.dll+0x7777A0`, hook or call. Whether a weapon's reload is under way: a reload state bit 1, 8 or 0x20 without its pair 2, 0x10 or 0x40, or bit 4 (ReloadStateHas on WeaponReloads). From game.dll 0x7777A0; callers WeaponHeatUpdate 0x7649EF and 0x744BE2.
+
+```c
+typedef uint8_t (*HfFn_WeaponReloadBusy)(uint64_t unused, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### OwnSpareAmmo
+
+`game.dll+0x744180`, hook or call. A weapon's own spare total: by its type, the spare magazines, spare rounds or spare heatsinks, plus a mounted shared deposit. From HD2Runtime 0.40.1 research team-reload-ammo (own spare total 0x744180, on the weapon manager 0x3326660).
+
+```c
+typedef uint32_t (*HfFn_OwnSpareAmmo)(void* weapons, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the weapon manager (hf_global_WeaponManager) |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### WeaponRefill
+
+`game.dll+0x757F70`, hook or call. Refills one weapon from a resupply: MagazineRefill for a magazine weapon, else RoundsRefill for one loaded by rounds, else HeatsinkRefill. resupply_all calls it for every carried weapon. From HD2Runtime 0.40.1 research team-reload-ammo (0x880E20 resupply_all through 0x757F70).
+
+```c
+typedef void (*HfFn_WeaponRefill)(uint64_t unused, uint32_t weapon, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+| `scale` | `float` | the share of a resupply's amount |
+
+### MagazineRefill
+
+`game.dll+0x76E6D0`, hook or call. Gives a weapon spare magazines from a resupply: min(spare + max(1, magazines_from_supply x scale), the maximum), sent as network field 0xEC64918B; on the weapon's owner. From HD2Runtime 0.40.1 research team-reload-ammo (magazines 0x76E6D0, write at 0x76E7E1).
+
+```c
+typedef void (*HfFn_MagazineRefill)(uint64_t unused, uint32_t weapon, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+| `scale` | `float` | the share of a resupply's amount |
+
+### RoundsRefill
+
+`game.dll+0x77A430`, hook or call. Gives a weapon loaded by rounds spare rounds from a resupply (rounds_from_supply x scale, up to the maximum). From HD2Runtime 0.40.1 research team-reload-ammo (rounds 0x77A430).
+
+```c
+typedef void (*HfFn_RoundsRefill)(uint64_t unused, uint32_t weapon, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+| `scale` | `float` | the share of a resupply's amount |
+
+### HeatsinkRefill
+
+`game.dll+0x764FA0`, hook or call. Gives a heat weapon spare heatsinks from a resupply (its WeaponHeat record), sent as network field 0xEC64918B. From game.dll 0x764FA0 (WeaponRefill's third case); HD2Runtime 0.40.1 research dev19-heatsinks.
+
+```c
+typedef void (*HfFn_HeatsinkRefill)(uint64_t unused, uint32_t weapon, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+| `scale` | `float` | the share of a resupply's amount |
+
+### AbilityWeaponModeSettings
+
+`game.dll+0x7D5FB0`, hook or call. An ability weapon's settings for its current fire mode: the AbilityWeapon record + 40 x mode (+0 the ability, +32 spends a round, +33 always); NULL without an AbilityWeapon instance. From components.json AbilityWeapon (game.dll 0x7D5FB0); callers 0x744CD9, 0x7D608E, 0x7D6784.
+
+```c
+typedef void* (*HfFn_AbilityWeaponModeSettings)(uint64_t unused, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### AbilityWeaponFire
+
+`game.dll+0x7D6080`, hook or call. An ability weapon fires: starts its fire mode's ability on the weapon (StartAbility) and, when the mode says so, spends a round (SpendRound). From components.json AbilityWeapon (game.dll 0x7D6080); WeaponUpdate's call 0x7408D3, GenericFire's 0x7420D0.
+
+```c
+typedef void (*HfFn_AbilityWeaponFire)(uint64_t unused, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### MeleeHitVolumeStart
+
+`game.dll+0x7D38D0`, call only. Starts a melee hit volume: a melee ability's handler passes its template, which is copied into the entity's active attack record (the manager at game.dll+0x3326830, 0x4BD8 bytes per instance), so edits to a template reach later swings only. From HD2Runtime 0.40.1 research knife-melee (handlers load their volume with a RIP-relative lea r8 and call 0x7D38D0).
+
+```c
+typedef void (*HfFn_MeleeHitVolumeStart)(uint64_t unused, uint32_t entity, const void* volume);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `entity` | `uint32_t` | the attacking entity (the ability's entity) |
+| `volume` | `const void*` | the MeleeHitVolume template (0xF8 bytes, static in game.dll) |
+
+### UnitSettings
+
+`game.dll+0x4F9B60`, hook or call. The entity's UnitComponentData (0x88 bytes): its own copy in the UnitManager (private copies at +0xC0) if it has one, else the shared type record. From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_UnitSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### VehicleSettings
+
+`game.dll+0x4FA7A0`, hook or call. The entity's VehicleComponentData (0xE78 bytes): its own copy in the VehicleManager (private copies at +0xC0) if it has one, else the shared type record. From HD2Runtime 0.40.1 research vehicle-mech-components (resolvedAccessor 0x4FA7A0); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_VehicleSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### HellpodPayloadSettings
+
+`game.dll+0x5011F0`, hook or call. The entity's HellpodPayloadComponentData (0xC bytes): its own copy in the HellpodPayloadManager (private copies at +0xA0) if it has one, else the shared type record. From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_HellpodPayloadSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### AvatarSettings
+
+`game.dll+0x508DB0`, hook or call. The avatar's AvatarComponentData (0x354 bytes: the Helldiver's movement speeds, +0x10 jog, +0x14 sprint, and stamina values, read every frame): its own copy in the avatar manager hf_global_AvatarManager (inline from +0x547D24) if it has one, else the shared type record. From HD2Runtime 0.40.1 research avatar-fields (avatarResolver_0x508DB0, fields); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_AvatarSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### JumppackSettings
+
+`game.dll+0x50D830`, hook or call. The entity's JumppackComponentData (0x118 bytes: the jump pack's and hover pack's flight values, read every frame, so a change applies on the next frame): its own copy in the JumppackManager (private copies at +0xA0) if it has one, else the shared type record. From HD2Runtime 0.40.1 research hoverpack-components (lifecycle.resolver 0x50D830); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_JumppackSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### DisplacementSettings
+
+`game.dll+0x50FA40`, hook or call. The entity's DisplacementComponentData (0x278 bytes): its own copy in the DisplacementManager (private copies at +0xA0) if it has one, else the shared type record. From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_DisplacementSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### OrbitalAbilitySettings
+
+`game.dll+0x512E20`, hook or call. The entity's OrbitalAbilityComponentData (0x228 bytes): its own copy in the OrbitalAbilityManager (private copies at +0xD8) if it has one, else the shared type record. From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_OrbitalAbilitySettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### RotationSettings
+
+`game.dll+0x513690`, hook or call. The entity's RotationComponentData (0x138 bytes): its own copy in the RotationManager (private copies at +0xB8) if it has one, else the shared type record. From HD2Runtime 0.40.1 research vehicle-mech-components (resolvedAccessor 0x513690); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_RotationSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### EagleSettings
+
+`game.dll+0x514B40`, hook or call. The Eagle jet's EagleComponentData (0x98 bytes: +0x10 its payload kind, +0x18 its strike projectile, +0x4C its speed, +0x78 its attack distance): its own copy in the EagleManager (private copies at +0xB0) if it has one, else the shared type record. The update, the strike and the jet's set-up resolve it every time. From HD2Runtime 0.40.1 research eagle-components (pins.resolver, readPaths).
+
+```c
+typedef void* (*HfFn_EagleSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### VehicleUpdate
+
+`game.dll+0x6FEF80`, hook or call. The vehicle system's frame: vehicles and mechs. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_VehicleUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x1C6348: hf_global_VehicleManager |
+| `dt` | `float` | the frame time, s |
+
+### SquadTransportUpdate
+
+`game.dll+0x6864D0`, hook or call. The squad transport system's frame: enemy dropships and the squads they carry, which it spawns through SpawnSquad. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_SquadTransportUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x1C6EB0: hf_global_SquadTransportManager |
+| `dt` | `float` | the frame time, s |
+
+### HellpodPayloadUpdate
+
+`game.dll+0x9322D0`, hook or call. The hellpod payload system's frame. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_HellpodPayloadUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x75C1B8: hf_global_HellpodPayloadManager |
+| `dt` | `float` | the frame time, s |
+
+### AiSpawnerUpdate
+
+`game.dll+0x7F7820`, hook or call. The AI spawner system's frame: the spawners spawn their squads through SpawnSquad. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_AiSpawnerUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x75EA20: hf_global_AiSpawnerManager |
+| `dt` | `float` | the frame time, s |
+
+### BugholeUpdate
+
+`game.dll+0x857F90`, hook or call. The bug hole system's frame: holes spawn their bugs through SpawnSquad with the HiveMindManager. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_BugholeUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x7C56B0: hf_global_BugholeManager |
+| `dt` | `float` | the frame time, s |
+
+### VehicleMotionUpdate
+
+`game.dll+0x7152F0`, hook or call. The vehicle motion system's frame: the vehicles' and mechs' driving physics. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_VehicleMotionUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x7C72E8: hf_global_VehicleMotionManager |
+| `dt` | `float` | the frame time, s |
+
+### AvatarUpdate
+
+`game.dll+0x829E90`, hook or call. The avatar system's frame, for the avatars simulated here (the manager's first +0x70 indexes): movement speed from AvatarSettings and stamina regeneration. The world update (0x571250) calls it every frame. From HD2Runtime 0.40.1 research avatar-fields (avatarUpdate_0x829E90); game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_AvatarUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x956128: hf_global_AvatarManager |
+| `dt` | `float` | the frame time, s |
+
+### DisplacementUpdate
+
+`game.dll+0x88A700`, hook or call. The displacement system's frame. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_DisplacementUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0xEB71D8: hf_global_DisplacementManager |
+| `dt` | `float` | the frame time, s |
+
+### OrbitalAbilityUpdate
+
+`game.dll+0x5F35B0`, hook or call. The orbital ability system's frame. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_OrbitalAbilityUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0xF064A8: hf_global_OrbitalAbilityManager |
+| `dt` | `float` | the frame time, s |
+
+### EagleUpdate
+
+`game.dll+0x8A7A90`, hook or call. The Eagle system's frame: for each jet (indexes below the manager's +0x20) it resolves EagleSettings and runs EagleStage, EagleTrackAim, EagleStrike and EagleFlight, then the flyby sound. The world update (0x571250) calls it every frame. From HD2Runtime 0.40.1 research eagle-components (pins.update); game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_EagleUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0xF0B300: hf_global_EagleManager |
+| `dt` | `float` | the frame time, s |
+
+### EncounterUpdate
+
+`game.dll+0x8B8A20`, hook or call. The director's reinforcements: an encounter picks a composition (PickReinforcementComposition) and sends it to the faction's transport or breach (DispatchReinforcement). The world update (0x571250) calls it every frame. From HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement pins); game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_EncounterUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x7C4D30: hf_global_EncounterManager |
+| `dt` | `float` | the frame time, s |
+
+### GuardForceUpdate
+
+`game.dll+0x9110E0`, hook or call. The outposts' frame: it fills an outpost with its guards (FillOutpost) when it needs them. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_GuardForceUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x771410: hf_global_GuardForces |
+| `dt` | `float` | the frame time, s |
+
+### EagleStage
+
+`game.dll+0x8A2990`, hook or call. Moves an Eagle jet through its stages and sets its speed per stage (EagleSettings +0x50, +0x54). EagleUpdate calls it for each jet. From HD2Runtime 0.40.1 research eagle-components (pins.stage); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+
+```c
+typedef void (*HfFn_EagleStage)(void* eagles, uint32_t index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `eagles` | `void*` | the Eagle manager: hf_global_EagleManager |
+| `index` | `uint32_t` | the jet's index (its record at the manager's +0x58 + 0xFC index) |
+
+### EagleTrackAim
+
+`game.dll+0x8A37D0`, hook or call. Keeps an Eagle jet's aim point on its targets, leading moving ones by its strike projectile's speed. EagleUpdate calls it for each jet. From HD2Runtime 0.40.1 research eagle-components (pins.tracking); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+
+```c
+typedef void (*HfFn_EagleTrackAim)(void* eagles, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `eagles` | `void*` | the Eagle manager: hf_global_EagleManager |
+| `index` | `uint32_t` | the jet's index (its record at the manager's +0x58 + 0xFC index) |
+| `dt` | `float` | the frame time, s |
+
+### EagleStrike
+
+`game.dll+0x8A4410`, hook or call. An Eagle jet's attack: by its payload kind (EagleSettings +0x10: strafe, rockets, bombs) it starts within its attack distance and releases its strike projectiles. EagleUpdate calls it for each jet. From HD2Runtime 0.40.1 research eagle-components (pins.strike); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+
+```c
+typedef void (*HfFn_EagleStrike)(void* eagles, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `eagles` | `void*` | the Eagle manager: hf_global_EagleManager |
+| `index` | `uint32_t` | the jet's index (its record at the manager's +0x58 + 0xFC index) |
+| `dt` | `float` | the frame time, s |
+
+### EagleFlight
+
+`game.dll+0x8A59E0`, hook or call. An Eagle jet's flight model. EagleUpdate calls it for each jet. From HD2Runtime 0.40.1 research eagle-components (pins.stage: the flight model 0x8A59E0); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+
+```c
+typedef void (*HfFn_EagleFlight)(void* eagles, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `eagles` | `void*` | the Eagle manager: hf_global_EagleManager |
+| `index` | `uint32_t` | the jet's index (its record at the manager's +0x58 + 0xFC index) |
+| `dt` | `float` | the frame time, s |
+
+### JumppackTimers
+
+`game.dll+0x9B5EC0`, hook or call. A jump pack's or hover pack's timers, abilities and visual sway, every frame. The world update runs it for each index below the manager's +0x10. From HD2Runtime 0.40.1 research hoverpack-components (code.functions); game.dll: the world update's loop at 0x573700.
+
+```c
+typedef void (*HfFn_JumppackTimers)(void* jumppacks, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `jumppacks` | `void*` | the jump pack manager: hf_global_JumppackManager |
+| `index` | `uint32_t` | the pack's index |
+| `dt` | `float` | the frame time, s |
+
+### JumppackFlight
+
+`game.dll+0x9B4790`, hook or call. A jump pack's or hover pack's flight physics, every frame: launch, sustain, air control, hover and fuel; it deactivates the pack (SetJumppackActive) when the meter runs out. The world update runs it for each index below the manager's +0x14. From HD2Runtime 0.40.1 research hoverpack-components (code.functions, model); game.dll: the world update's loop at 0x573720.
+
+```c
+typedef void (*HfFn_JumppackFlight)(void* jumppacks, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `jumppacks` | `void*` | the jump pack manager: hf_global_JumppackManager |
+| `index` | `uint32_t` | the pack's index |
+| `dt` | `float` | the frame time, s |
+
+### SetJumppackActive
+
+`game.dll+0x9B3420`, hook or call. Activates or deactivates an entity's jump pack or hover pack. From HD2Runtime 0.40.1 research hoverpack-components (code.functions: activate/deactivate); game.dll: its seven callers (r8b, r9b).
+
+```c
+typedef void (*HfFn_SetJumppackActive)(void* jumppacks, uint32_t entity, uint8_t active, uint8_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `jumppacks` | `void*` | the jump pack manager: hf_global_JumppackManager |
+| `entity` | `uint32_t` | the pack's entity |
+| `active` | `uint8_t` | 1 activates it (the take-off passes 1), 0 deactivates it |
+| `r9` | `uint8_t` | not reviewed: pass it on (0 from the flight physics) |
+
+### JumppackTakeOff
+
+`game.dll+0xA63790`, hook or call. The jump pack's take-off, from the avatar's state: the hop's values, and SetJumppackActive(..., 1). From HD2Runtime 0.40.1 research hoverpack-components (code.functions: take-off (avatar state)); game.dll: its call to SetJumppackActive at 0xA63B71.
+
+```c
+typedef void (*HfFn_JumppackTakeOff)(void* rcx, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (its caller passes its rsi + 0xB68) |
+| `dt` | `float` | the frame time, s |
+
+### PickPatrolComposition
+
+`game.dll+0x959950`, hook or call. Picks the composition of a scheduled patrol from the compiled patrol compositions (family 1, the HiveMind's +0x3A538): a 0xD8-byte entry, or NULL. EnemyDirectorTick spawns it with SpawnSquad. From HD2Runtime 0.40.1 research spawn-channels-dev10 (scheduled patrol selection, family 1); game.dll: its call in EnemyDirectorTick (0x9514BD).
+
+```c
+typedef void* (*HfFn_PickPatrolComposition)(void* hivemind, uint32_t rdx, void* r8, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+
+### SpawnSquad
+
+`game.dll+0x953580`, hook or call. Spawns a squad of enemies from a composition at a position: the director's patrols (EnemyDirectorTick), spawners (AiSpawnerUpdate), bug holes (BugholeUpdate), dropships (SquadTransportUpdate) and outposts (FillOutpost) all spawn through it. Returns the squad, or NULL. From HD2Runtime 0.40.1 research spawn-channels-dev10 (selected patrol creation); game.dll: its six callers' stack arguments (+0x20 to +0x48) and the return they test.
+
+```c
+typedef void* (*HfFn_SpawnSquad)(void* hivemind, void* composition, const float* position, uint32_t r9, uint32_t flags, uint64_t s6, uint64_t s7, uint64_t s8, float s9, uint32_t s10);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `composition` | `void*` | the composition to spawn, as the pickers return it |
+| `position` | `const float*` | where (3 f32); nothing spawns outside the bounds it checks |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+| `flags` | `uint32_t` | flag bits (it tests bits 0, 1 and 6); each caller passes its own constant |
+| `s6` | `uint64_t` | not reviewed: pass it on |
+| `s7` | `uint64_t` | not reviewed: pass it on |
+| `s8` | `uint64_t` | not reviewed: pass it on |
+| `s9` | `float` | not reviewed: pass it on |
+| `s10` | `uint32_t` | not reviewed: pass it on |
+
+### PatrolClock
+
+`game.dll+0x959740`, hook or call. The patrol clock: the frame time scaled by the HiveMind's progress and player-count multipliers (HiveMindComponentData +0x1DC, +0x1F0, +0x204), which EnemyDirectorTick takes off the patrol timer. Higher is faster. From HD2Runtime 0.40.1 research spawn-channels-dev10 (patrolClock); game.dll: its call at 0x951680 and the subss after it.
+
+```c
+typedef float (*HfFn_PatrolClock)(void* hivemind, float dt, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `dt` | `float` | the frame time, s |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### PickReinforcementComposition
+
+`game.dll+0x957E10`, hook or call. Picks a reinforcement composition (family 4, the HiveMind's +0x432F8, count +0x5188C) for a position; EncounterUpdate then dispatches it. From HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement manager selects composition); game.dll: its call at 0x8B981B (rcx from 0x3326D10).
+
+```c
+typedef uint32_t (*HfFn_PickReinforcementComposition)(void* hivemind, void* rdx, const float* position, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `position` | `const float*` | the position (3 f32) |
+| `r9` | `uint32_t` | not reviewed: pass it on (0xFFFFFFFF from EncounterUpdate) |
+
+### DispatchReinforcement
+
+`game.dll+0x8B7900`, hook or call. Sends a selected reinforcement to the faction's transport or breach; returns a time (s) that EncounterUpdate adds to the frame time and keeps in the encounter's record (+0x24). From HD2Runtime 0.40.1 research spawn-channels-dev10 (faction transport/breach dispatcher); game.dll: its call at 0x8B98D9 and the addss after it.
+
+```c
+typedef float (*HfFn_DispatchReinforcement)(void* encounters, uint32_t rdx, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `encounters` | `void*` | the encounter manager: hf_global_EncounterManager |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### FillOutpost
+
+`game.dll+0x90E150`, hook or call. Fills an outpost with its guards from the map guard compositions (family 3, the HiveMind's +0x41138), spending the guard budget (HiveMind +0x518B4): it picks enemies with PickEnemy and spawns them through 0x90D2A0, which calls SpawnSquad. GuardForceUpdate calls it. From HD2Runtime 0.40.1 research spawn-channels-dev10 (map guard pins 0x90E25D, 0x90EAE0); game.dll: its callers in GuardForceUpdate.
+
+```c
+typedef void (*HfFn_FillOutpost)(void* guardforces, uint32_t outpost);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `guardforces` | `void*` | the outposts' manager: hf_global_GuardForces |
+| `outpost` | `uint32_t` | the outpost's entity |
+
+### UnitSetLocalPosition
+
+`helldivers2.exe+0x1FC650`, hook or call. Sets a unit node's local position (floats 9-11 of its 16-float local pose), marks the node changed and the unit moving (WorldSetUnitMoving, 5). Unit.set_local_position calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetLocalPosition)(uint32_t unit, int32_t node, const float* position);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root; the binding takes it 1-based and subtracts the Lua index base) |
+| `position` | `const float*` | x, y, z |
+
+### UnitSetLocalRotation
+
+`helldivers2.exe+0x1FC7A0`, hook or call. Sets a unit node's local rotation from a quaternion (made a 3x3 by 0x12C780, keeping position and scale), marks the node changed and the unit moving. Unit.set_local_rotation calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetLocalRotation)(uint32_t unit, int32_t node, const float* rotation);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `rotation` | `const float*` | a quaternion x, y, z, w |
+
+### UnitSetLocalScale
+
+`helldivers2.exe+0x1FC8F0`, hook or call. Sets a unit node's local scale (floats 12-14 of its local pose) through the unit's own set-local-pose (its vtable +0x278). Unit.set_local_scale calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetLocalScale)(uint32_t unit, int32_t node, const float* scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `scale` | `const float*` | x, y, z |
+
+### UnitTeleportLocalPosition
+
+`helldivers2.exe+0x1FD3F0`, hook or call. Unit.teleport_local_position's engine side: writes the node's local position like UnitSetLocalPosition, marks the node changed and the unit moving (WorldSetUnitMoving, 5).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitTeleportLocalPosition)(uint32_t unit, int32_t node, const float* position);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `position` | `const float*` | x, y, z |
+
+### UnitTeleportLocalPose
+
+`helldivers2.exe+0x1FD350`, hook or call. Writes a unit node's whole local pose, marks the node changed and the unit moving. Unit.teleport_local_pose calls it with the unit object.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitTeleportLocalPose)(void* unit, int32_t node, const float* pose);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `void*` | the unit object (UnitFromHandle), not a handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `pose` | `const float*` | the 16-float local pose (as UnitSetLocalPose) |
+
+### WorldSetUnitMoving
+
+`helldivers2.exe+0x1AF180`, hook or call. Marks a unit moving: tells the unit (its vtable +0xB0) and, when its +0x38 is -1, appends it to the world's moving list (+0x230490) under the world's lock (+0x230460). Unit.set_moving and every Unit/Camera/Light/Mesh local pose setter reach it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldSetUnitMoving)(void* world, void* unit, uint32_t frames);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the unit's world (the unit's +0x18) |
+| `unit` | `void*` | the unit object (UnitFromHandle) |
+| `frames` | `uint32_t` | passed to the unit's vtable +0xB0 (Unit.set_moving's optional count, default 1; the pose setters pass 5) |
+
+### UnitDeltaPosition
+
+`helldivers2.exe+0x1FD7D0`, hook or call. How far a unit node moved: computed from its scene graph's last world poses (+0x30, copied from +0x28 when unset) and its current ones (+0x28); returns out. Unit.delta_position calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_UnitDeltaPosition)(float* out, uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | where the 3 floats go (returned) |
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+
+### UnitDeltaRotation
+
+`helldivers2.exe+0x1FD9D0`, hook or call. How far a unit node turned between its last and current world pose, as a quaternion; returns out. Unit.delta_rotation calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_UnitDeltaRotation)(float* out, uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | where the quaternion (4 floats) goes (returned) |
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+
+### UnitDeltaPose
+
+`helldivers2.exe+0x1FDE40`, hook or call. A unit node's pose change between its last and current world pose (16 floats); returns out. Unit.delta_pose calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_UnitDeltaPose)(float* out, uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | where the 16-float pose goes (returned) |
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+
+### UnitTeleportLocalRotation
+
+`helldivers2.exe+0x1FD570`, hook or call. Unit.teleport_local_rotation's engine side: writes the node's local rotation from a quaternion (keeping position and scale), marks the node changed and the unit moving.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitTeleportLocalRotation)(uint32_t unit, int32_t node, const float* rotation);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `rotation` | `const float*` | a quaternion x, y, z, w |
+
+### UnitTeleportLocalScale
+
+`helldivers2.exe+0x1FD680`, hook or call. Unit.teleport_local_scale's engine side: writes the node's local scale, marks the node changed and the unit moving.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitTeleportLocalScale)(uint32_t unit, int32_t node, const float* scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `scale` | `const float*` | x, y, z |
+
+### WorldSpawnUnit
+
+`helldivers2.exe+0x1A7E50`, hook or call. Spawns a unit in a world from its resource and returns the unit object (+0x08 its handle, which World.spawn_unit hands to Lua). World.spawn_unit calls it; so do game.dll-facing paths (0x1AA5CE, 0x2D1EF6, 0x2E0DAA).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_WorldSpawnUnit)(void* world, const uint64_t* resource, const uint64_t* name, const float* pose, uint32_t s5, uint64_t s6, uint8_t s7, uint64_t s8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `resource` | `const uint64_t*` | the unit resource's name hash (resolved with the unit type 0xE0A48D0BE9A7453F) |
+| `name` | `const uint64_t*` | an optional id64 World.spawn_unit takes after the pose (0 when none); passed on to 0x1A7FC0 |
+| `pose` | `const float*` | the spawn pose, a 4x4 matrix (rows x, y, z axes then translation; identity by default) |
+| `s5` | `uint32_t` | not reviewed: pass it on (the binding passes 0) |
+| `s6` | `uint64_t` | not reviewed: pass it on (the binding passes 0) |
+| `s7` | `uint8_t` | not reviewed: pass it on (World.spawn_unit's optional bool after the name, default 1) |
+| `s8` | `uint64_t` | not reviewed: pass it on (the binding passes 0) |
+
+### WorldDestroyUnit
+
+`helldivers2.exe+0x1AECC0`, hook or call. Destroys a unit now and frees it from its world. World.destroy_unit calls it when the unit's vtable +0x1B0 returns null (otherwise WorldQueueUnitsDestroy).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldDestroyUnit)(void* world, void* unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world (the unit's +0x18) |
+| `unit` | `void*` | the unit object (UnitFromHandle) |
+
+### WorldQueueUnitsDestroy
+
+`helldivers2.exe+0x12D2D0`, hook or call. Queues units for destruction: takes each handle out of the unit registry (bumps its generation, clears its slot) and adds it to the world's queue counted at +0x10030. World.destroy_unit uses it for units whose vtable +0x1B0 is set.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldQueueUnitsDestroy)(void* world, const uint32_t* units, uint32_t count);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `units` | `const uint32_t*` | the units' handles |
+| `count` | `uint32_t` | how many |
+
+### WorldLinkUnitHandles
+
+`helldivers2.exe+0x3361C0`, hook or call. Links one unit to another's node by handles: resolves both (UnitFromHandle) and tail-calls WorldLinkUnit. World.link_unit calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldLinkUnitHandles)(void* world, uint32_t child, int32_t child_node, uint32_t parent, uint32_t s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `child` | `uint32_t` | the child unit's handle |
+| `child_node` | `int32_t` | the child's node (0 the root) |
+| `parent` | `uint32_t` | the parent unit's handle |
+| `s5` | `uint32_t` | the parent's node (0 the root); forwarded to WorldLinkUnit |
+
+### WorldLinkUnit
+
+`helldivers2.exe+0x1AF240`, hook or call. Links a unit's node to a parent unit's node in a world: puts the child in the world's linked list (+0x2304B0), the parent at the child's +0x1D0 and the child in the parent's +0x1D8 list.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldLinkUnit)(void* world, void* child, int32_t child_node, void* parent, uint16_t s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `child` | `void*` | the child unit object |
+| `child_node` | `int32_t` | the child's node (0 the root) |
+| `parent` | `void*` | the parent unit object |
+| `s5` | `uint16_t` | the parent's node (0 the root), read from the stack as a 16-bit index |
+
+### WorldUnlinkUnit
+
+`helldivers2.exe+0x1AF780`, hook or call. Unlinks a unit from its parent and takes it out of the world's linked list (+0x2304B0). World.unlink_unit calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldUnlinkUnit)(void* world, void* unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `unit` | `void*` | the unit object (UnitFromHandle) |
+
+### WorldMendUnit
+
+`helldivers2.exe+0x3351C0`, hook or call. World.mend_unit's engine side: asks the unit (vtable +0x48 with the index) and when that succeeds marks it moving (WorldSetUnitMoving, 1); 1 when it did.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint8_t (*HfFn_WorldMendUnit)(void* world, uint32_t unit, int32_t index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `unit` | `uint32_t` | the unit's handle |
+| `index` | `int32_t` | passed to the unit's vtable +0x48 (the binding takes it 1-based) |
+
+### WorldUpdate
+
+`helldivers2.exe+0x333BD0`, hook or call. Updates a world by a time step. World.update calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldUpdate)(void* world, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `dt` | `float` | the time step (the binding's default is EngineCore +0x560) |
+
+### WorldUpdateScene
+
+`helldivers2.exe+0x1B0B10`, hook or call. Updates a world's scene graph by a time step. World.update_scene and World.update_with_callback call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldUpdateScene)(void* world, float dt, float xmm2);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `dt` | `float` | the time step |
+| `xmm2` | `float` | not reviewed: pass it on (the binding passes EngineCore +0x55C) |
+
+### WorldCreateLineObject
+
+`helldivers2.exe+0x1B3AD0`, hook or call. Makes a debug line object in a world and records it in the world's line object map (+0x230638); returns it. World.create_line_object calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_WorldCreateLineObject)(void* world, uint8_t no_depth_test, uint8_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `no_depth_test` | `uint8_t` | 1 draws through geometry (the world's line renderer +0x230608 instead of +0x230600) |
+| `r8` | `uint8_t` | not reviewed: pass it on (1 picks the renderer at +0x230610; the binding passes 0) |
+
+### LineObjectAddLine
+
+`helldivers2.exe+0x4E1820`, hook or call. Adds one debug line to a line object; it shows once the object is dispatched (LineObjectDispatch). LineObject.add_line calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddLine)(void* line_object, uint32_t color, const float* from, const float* to);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object (WorldCreateLineObject): +0x08 its lines, 28 bytes each (from, to, color) |
+| `color` | `uint32_t` | ARGB, a byte each (Lua's Color(a, r, g, b)) |
+| `from` | `const float*` | x, y, z |
+| `to` | `const float*` | x, y, z |
+
+### LineObjectAddCone
+
+`helldivers2.exe+0x4E46D0`, hook or call. Adds a debug cone's lines to a line object. LineObject.add_cone calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddCone)(void* line_object, uint32_t color, const float* from, const float* to, float s5, int32_t s6, int32_t s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `from` | `const float*` | one end, x, y, z (Lua's from) |
+| `to` | `const float*` | the other end, x, y, z (Lua's to) |
+| `s5` | `float` | the base radius |
+| `s6` | `int32_t` | segments (Lua default 20) |
+| `s7` | `int32_t` | bars (Lua default 10) |
+
+### LineObjectAddCircle
+
+`helldivers2.exe+0x4E1FD0`, hook or call. Adds a debug circle's lines to a line object. LineObject.add_circle calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddCircle)(void* line_object, uint32_t color, const float* center, float radius, const float* s5, int32_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `center` | `const float*` | x, y, z |
+| `radius` | `float` | the radius |
+| `s5` | `const float*` | the normal, x, y, z |
+| `s6` | `int32_t` | segments (Lua default 20) |
+
+### LineObjectAddSphere
+
+`helldivers2.exe+0x4E2FC0`, hook or call. Adds a debug sphere's lines to a line object. LineObject.add_sphere calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddSphere)(void* line_object, uint32_t color, const float* center, float radius, int32_t s5, int32_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `center` | `const float*` | x, y, z |
+| `radius` | `float` | the radius (0 adds nothing) |
+| `s5` | `int32_t` | segments (Lua default 20) |
+| `s6` | `int32_t` | parts (Lua default 2) |
+
+### LineObjectAddHalfSphere
+
+`helldivers2.exe+0x4E3380`, hook or call. Adds a debug half sphere's lines to a line object. LineObject.add_half_sphere calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddHalfSphere)(void* line_object, uint32_t color, const float* center, float radius, const float* s5, int32_t s6, int32_t s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `center` | `const float*` | x, y, z |
+| `radius` | `float` | the radius |
+| `s5` | `const float*` | the direction it faces, x, y, z |
+| `s6` | `int32_t` | segments |
+| `s7` | `int32_t` | parts |
+
+### LineObjectAddBox
+
+`helldivers2.exe+0x4E3AC0`, hook or call. Adds a debug box's 12 edges to a line object. LineObject.add_box calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddBox)(void* line_object, uint32_t color, const float* pose, const float* extents);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `pose` | `const float*` | the box's pose, a 4x4 matrix |
+| `extents` | `const float*` | half sizes x, y, z |
+
+### LineObjectAddCapsule
+
+`helldivers2.exe+0x4E4040`, hook or call. Adds a debug capsule's lines to a line object. LineObject.add_capsule calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddCapsule)(void* line_object, uint32_t color, const float* from, const float* to, float s5, int32_t s6, int32_t unused, int32_t s8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `from` | `const float*` | one end's centre, x, y, z |
+| `to` | `const float*` | the other end's centre |
+| `s5` | `float` | the radius |
+| `s6` | `int32_t` | segments |
+| `unused` | `int32_t` | not read (its home slot is reused as scratch) |
+| `s8` | `int32_t` | bars (the binding's 8th Lua argument) |
+
+### LineObjectDispatch
+
+`helldivers2.exe+0x4E5EC0`, hook or call. Sends a line object's lines to the renderer for drawing (a packet of 28 bytes a line plus a header). LineObject.dispatch calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectDispatch)(void* renderer, void* render, void* line_object);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `renderer` | `void*` | the line renderer the object was made with (the world's line object map +0x230638 entry) |
+| `render` | `void*` | the world's render interface ([world +0x2301F8] +0x10); its +0x98 gives the packet allocator |
+| `line_object` | `void*` | the line object: +0x08 its line count |
+
+### MurmurHash64A
+
+`helldivers2.exe+0x5D5840`, hook or call. MurmurHash64A (multiplier 0xC6A4A7935BD1E995): the engine's name hash. With seed 0 it is the IdString64 every binding makes from a string; its high 32 bits are the IdString32 (Material variable names). Called from everywhere (378 binding sites).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint64_t (*HfFn_MurmurHash64A)(const char* key, int32_t len, uint64_t seed);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `key` | `const char*` | the bytes (a name) |
+| `len` | `int32_t` | how many bytes |
+| `seed` | `uint64_t` | the seed (0 for Stingray's IdString64) |
+
+### MaterialSetScalar
+
+`helldivers2.exe+0x4F33D0`, hook or call. Sets a material's scalar shader variable: queues a render command (7) with the material's id, the variable and the value; nothing when the material has no render id. Material.set_scalar calls it, as does the game's material variable code (0xCCD06).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetScalar)(void* material, uint32_t variable, float value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material (Mesh.material's light userdata): +0x04 its render id (0xFFFFFF none), +0x08 the render interface |
+| `variable` | `uint32_t` | the variable's IdString32 (the high half of MurmurHash64A of its name) |
+| `value` | `float` | the value |
+
+### MaterialSetVector2
+
+`helldivers2.exe+0x4F3580`, hook or call. Sets a material's 2-float shader variable through a queued render command. Material.set_vector2 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetVector2)(void* material, uint32_t variable, const float* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `variable` | `uint32_t` | the variable's IdString32 |
+| `value` | `const float*` | x, y |
+
+### MaterialSetVector3
+
+`helldivers2.exe+0x4F3650`, hook or call. Sets a material's 3-float shader variable through a queued render command. Material.set_vector3 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetVector3)(void* material, uint32_t variable, const float* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `variable` | `uint32_t` | the variable's IdString32 |
+| `value` | `const float*` | x, y, z |
+
+### MaterialSetVector4
+
+`helldivers2.exe+0x4F3730`, hook or call. Sets a material's 4-float shader variable through a queued render command. Material.set_vector4 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetVector4)(void* material, uint32_t variable, const float* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `variable` | `uint32_t` | the variable's IdString32 |
+| `value` | `const float*` | x, y, z, w |
+
+### MaterialSetMatrix4x4
+
+`helldivers2.exe+0x30F330`, hook or call. Sets a material's 4x4 matrix shader variable through a queued render command. Material.set_matrix4x4 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetMatrix4x4)(void* material, uint32_t variable, const float* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `variable` | `uint32_t` | the variable's IdString32 |
+| `value` | `const float*` | 16 floats |
+
+### MaterialSetTexture
+
+`helldivers2.exe+0x30F1B0`, hook or call. Points a material's texture slot at a loaded texture resource. Material.set_texture calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetTexture)(void* material, uint32_t slot, uint64_t texture);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `slot` | `uint32_t` | the texture slot's IdString32 |
+| `texture` | `uint64_t` | the texture resource's name hash (looked up as type 0xCD4238C6A0C69E32) |
+
+### MaterialSetResource
+
+`helldivers2.exe+0x4F3230`, hook or call. Binds a resource object to a material slot (stored in the material's table at +0x20, count +0x18). Material.set_resource calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetResource)(void* material, uint32_t slot, void* resource);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `slot` | `uint32_t` | the slot's IdString32 |
+| `resource` | `void*` | the resource object (the binding's third argument, a light userdata) |
+
+### MaterialSetShaderPassFlag
+
+`helldivers2.exe+0x30F150`, hook or call. Turns a shader pass flag on or off for a material and sends the new bits (0x4F39F0). Material.set_shader_pass_flag calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetShaderPassFlag)(void* material, uint32_t flag, uint32_t enabled);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material: +0x40 its pass flag bits |
+| `flag` | `uint32_t` | the flag's IdString32 (found in the engine's flag list 0x1A102D0) |
+| `enabled` | `uint32_t` | 1 sets, 0 clears |
+
+### MaterialReinitializeShader
+
+`helldivers2.exe+0x30F420`, hook or call. Queues a render command that rebuilds a material's shader. Material.reinitialize_shader calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialReinitializeShader)(void* material);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+
+### CameraWorldToScreen
+
+`helldivers2.exe+0x4D40F0`, hook or call. Projects a world point to screen pixels with a camera's world pose and projection. Camera.world_to_screen calls it with the window's size unless given a Vector2 size.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_CameraWorldToScreen)(float* out, void* camera, const float* position, int32_t width, int32_t s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | 3 floats: screen x and y, and the depth (the binding returns the depth as a second value); returned |
+| `camera` | `void*` | the camera (Unit.camera): +0x04 its render id, +0x18 its unit's scene graph, +0x20 its node, +0x28 near, +0x2C far, +0x30 projection type, +0x34 vertical fov |
+| `position` | `const float*` | the world point, x, y, z |
+| `width` | `int32_t` | the viewport's width in pixels |
+| `s5` | `int32_t` | the viewport's height in pixels |
+
+### CameraScreenToWorld
+
+`helldivers2.exe+0x4D3BD0`, hook or call. Unprojects a screen point at a depth to a world point with a camera. Camera.screen_to_world calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_CameraScreenToWorld)(float* out, void* camera, const float* position, float depth, int32_t s5, int32_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | the world point, 3 floats; returned |
+| `camera` | `void*` | the camera |
+| `position` | `const float*` | the screen point, 3 floats as Lua's Vector3 |
+| `depth` | `float` | the distance along the view |
+| `s5` | `int32_t` | the viewport's width in pixels |
+| `s6` | `int32_t` | the viewport's height in pixels |
+
+### CameraSyncRange
+
+`helldivers2.exe+0x4CFA10`, hook or call. Queues a render command (4) carrying a camera's near and far range and projection type. Camera.set_near_range, set_far_range and set_projection_type write the field and call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_CameraSyncRange)(void* camera);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `camera` | `void*` | the camera: +0x28 near, +0x2C far, +0x30 projection type |
+
+### CameraSyncFrustum
+
+`helldivers2.exe+0x4CFAB0`, hook or call. Queues a render command carrying a camera's fov and frustum fields (+0x34, 32 bytes). Camera.set_vertical_fov, set_orthographic_view, set_frustum and set_frustum_half_angles write the fields and call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_CameraSyncFrustum)(void* camera);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `camera` | `void*` | the camera: +0x34 the vertical fov and the frustum fields to +0x53 |
+
+### CameraSetLocal
+
+`helldivers2.exe+0x4CF620`, hook or call. Queues a render command with a camera's local matrix. Camera.set_local calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_CameraSetLocal)(void* camera, const float* pose, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `camera` | `void*` | the camera |
+| `pose` | `const float*` | a 4x4 matrix |
+| `r8` | `uint32_t` | not reviewed: pass it on (the binding passes 0; it goes into the command) |
+
+### CameraInsideFrustum
+
+`helldivers2.exe+0x30DCC0`, hook or call. How far a world point is inside a camera's frustum (above 0 inside). Camera.inside_frustum calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float (*HfFn_CameraInsideFrustum)(void* camera, const float* point);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `camera` | `void*` | the camera |
+| `point` | `const float*` | the world point, x, y, z |
+
+### GuiAddPrimitive
+
+`helldivers2.exe+0x267990`, hook or call. Queues a gui render command (0xA) for a primitive with the gui's current transform and returns where its vertices go (36 bytes each), for the caller to fill. Every Gui drawing call reaches it (Gui.rect, triangle, bitmap and their update/destroy).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_GuiAddPrimitive)(void* gui, uint32_t id, uint32_t layer, uint32_t vertices, void* s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `gui` | `void*` | the gui (World.create_screen_gui's): +0x04 its render id, +0x98 the next primitive id |
+| `id` | `uint32_t` | the primitive's id |
+| `layer` | `uint32_t` | the draw layer |
+| `vertices` | `uint32_t` | how many vertices (6 for a rect, 3 for a triangle) |
+| `s5` | `void*` | the material (its +0x04 render id), or NULL |
+
+### GuiRect
+
+`helldivers2.exe+0x262060`, hook or call. Draws (or redraws) a coloured rectangle in a gui as two triangles through GuiAddPrimitive. Gui.rect and Gui.update_rect call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_GuiRect)(void* gui, uint32_t id, const void* rect);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `gui` | `void*` | the gui |
+| `id` | `uint32_t` | the rect's id (the binding passes the gui's +0x98, then adds 1 and returns it to Lua) |
+| `rect` | `const void*` | the rect: f32 x, y, z (0), width, height (Lua default 100 each), u32 layer +0x14, u32 color ARGB +0x18, then 16 zero bytes |
+
+### ResourceManagerGet
+
+`helldivers2.exe+0x5F2290`, hook or call. A loaded resource's data, following resource overrides, under the manager's lock (+0x2D8). Application.get_animation calls it (type 0x931E336D7646CC26), as do 25 other binding sites.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_ResourceManagerGet)(void* manager, const uint64_t* type, const uint64_t* name, uint64_t* resolved);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the resource manager (EngineCore +0x3F8) |
+| `type` | `const uint64_t*` | the resource type hash |
+| `name` | `const uint64_t*` | the resource name hash |
+| `resolved` | `uint64_t*` | NULL, or receives the name the override table (+0x2E8) gave for it |
+
+### ResourceManagerCanGet
+
+`helldivers2.exe+0x5F2160`, hook or call. Whether a resource is loaded and can be had now. Application.can_get calls it; CanGetResource wraps it with plain hashes.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint8_t (*HfFn_ResourceManagerCanGet)(void* manager, const uint64_t* type, const uint64_t* name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the resource manager (EngineCore +0x3F8) |
+| `type` | `const uint64_t*` | the resource type hash |
+| `name` | `const uint64_t*` | the resource name hash |
+
+### ResourceManagerSetOverride
+
+`helldivers2.exe+0x5F26F0`, hook or call. Points later lookups of a resource name at another name (through 0x5F3210). Application.set_resource_override calls it; SetResourceOverride is the plain-hash version.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_ResourceManagerSetOverride)(void* manager, const uint64_t* type, const uint64_t* name, const uint64_t* target);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the resource manager (EngineCore +0x3F8) |
+| `type` | `const uint64_t*` | the resource type hash |
+| `name` | `const uint64_t*` | the name looked up |
+| `target` | `const uint64_t*` | the name found instead |
+
+### ResourceManagerClearOverride
+
+`helldivers2.exe+0x5F27D0`, hook or call. Takes a resource override out under the manager's lock (+0x2D8). Application.clear_resource_override calls it; ClearResourceOverride wraps it with plain hashes.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_ResourceManagerClearOverride)(void* manager, const uint64_t* type, const uint64_t* name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the resource manager (EngineCore +0x3F8) |
+| `type` | `const uint64_t*` | the resource type hash |
+| `name` | `const uint64_t*` | the overridden name |
+
+### MurmurHash64ALower
+
+`helldivers2.exe+0x5D5960`, hook or call. MurmurHash64A of a name with every byte lowercased first (0x12BC14C); the third argument register's home slot is reused as scratch, so no seed is read. Application.string_to_id64 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint64_t (*HfFn_MurmurHash64ALower)(const char* key, int32_t len, uint64_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `key` | `const char*` | the bytes (a name) |
+| `len` | `int32_t` | how many bytes |
+| `r8` | `uint64_t` | not reviewed: pass it on (the code may read it) |
+
+### RendererWindowSize
+
+`helldivers2.exe+0x10AE20`, hook or call. The pixel size of a window's back buffer. Application.back_buffer_size, Application.resolution and Camera.world_to_screen call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_RendererWindowSize)(void* renderer, uint32_t window, uint32_t* width, uint32_t* height);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `renderer` | `void*` | the renderer (EngineCore +0x338) |
+| `window` | `uint32_t` | the window or render target id (0xFFFFFF in the low 24 bits reads the size from the renderer's +0x1168 object) |
+| `width` | `uint32_t*` | receives the width (1280 when unknown) |
+| `height` | `uint32_t*` | receives the height (720 when unknown) |
+
+### ReleaseWorld
+
+`helldivers2.exe+0x317FB0`, hook or call. Destroys a world: shuts its systems down, frees it through EngineCore's vtable +0x40 and takes it out of the engine's world list (EngineCore +0x590 count, +0x598 array). Application.release_world calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_ReleaseWorld)(void* world);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+
+### CreateViewport
+
+`helldivers2.exe+0x76B40`, hook or call. Makes a viewport for a world from a named viewport template and returns it. Application.create_viewport calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_CreateViewport)(void* engine, void* world, uint32_t template);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `engine` | `void*` | EngineCore |
+| `world` | `void*` | the world |
+| `template` | `uint32_t` | the viewport template's IdString32 (the engine itself passes 0x7A991573) |
+
+### WorldDestroyViewport
+
+`helldivers2.exe+0x1B3D20`, hook or call. Destroys a viewport and takes it out of its world's viewport list. Application.destroy_viewport calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldDestroyViewport)(void* world, void* viewport);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world: +0x2308F0 its viewport count, +0x2308F8 the viewports |
+| `viewport` | `void*` | the viewport (CreateViewport) |
+
+### NetworkCreateGameSession
+
+`helldivers2.exe+0x171A20`, hook or call. Makes the network manager's game session (0x6140 bytes, built by 0x28D640) at its +0xA8, then runs NetworkManagerUpdate. Network.create_game_session calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_NetworkCreateGameSession)(void* manager);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the network manager (NetworkManager): +0xA8 the game session it makes |
+
+### NetworkShutdownGameSession
+
+`helldivers2.exe+0x171AE0`, hook or call. Destroys the network manager's game session and clears its +0xA8. Network.shutdown_game_session calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_NetworkShutdownGameSession)(void* manager);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the network manager (NetworkManager) |
+
+### LevelIsPointInsideVolume
+
+`helldivers2.exe+0x32C4B0`, hook or call. Whether a point is inside one of a level's named volumes (1 inside). Level.is_point_inside_volume calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_LevelIsPointInsideVolume)(void* level, uint32_t volume, const float* point);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level (World.load_level's) |
+| `volume` | `uint32_t` | the volume's IdString32 |
+| `point` | `const float*` | x, y, z |
+
+### LevelRandomPointInsideVolume
+
+`helldivers2.exe+0x32BA90`, hook or call. A random point inside one of a level's named volumes. Level.random_point_inside_volume calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_LevelRandomPointInsideVolume)(float* out, void* level, uint32_t volume);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | the point, 3 floats; returned |
+| `level` | `void*` | the level |
+| `volume` | `uint32_t` | the volume's IdString32 |
+
+### LevelHasVolume
+
+`helldivers2.exe+0x32CE50`, hook or call. Whether a level has a volume of that name (non-zero yes). Level.has_volume calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_LevelHasVolume)(void* level, uint32_t volume);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level |
+| `volume` | `uint32_t` | the volume's IdString32 |
+
+### LevelUnitIndex
+
+`helldivers2.exe+0xEAA20`, hook or call. A unit's index in its level, -1 when the level does not own it. Level.unit_index calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_LevelUnitIndex)(void* level, void* unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level: +0x2B8 its unit-to-index hash map (count +0x2C8, bucket count +0x2CC) |
+| `unit` | `void*` | the unit object (UnitFromHandle) |
+
+### LevelSpawnAllLayers
+
+`helldivers2.exe+0xDB230`, hook or call. Spawns every layer of a level. Level.spawn_all_layers calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LevelSpawnAllLayers)(void* level);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level |
+
+### UnitAnimationFindVariable
+
+`helldivers2.exe+0x201C20`, hook or call. The index of a variable in a unit's animation state machine (the unit's vtable +0x1B0); -1 and a logged error when the unit has none. Unit.animation_find_variable calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_UnitAnimationFindVariable)(uint32_t unit, uint32_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `name` | `uint32_t` | the variable's IdString32 |
+
+### UnitAnimationHasVariable
+
+`helldivers2.exe+0x201CD0`, hook or call. Whether a unit's animation state machine has a variable of that name (non-zero yes). Unit.animation_has_variable calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitAnimationHasVariable)(uint32_t unit, uint32_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `name` | `uint32_t` | the variable's IdString32 |
+
+### UnitAnimationGetVariable
+
+`helldivers2.exe+0x201D50`, hook or call. An animation state machine variable's value. Unit.animation_get_variable calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float (*HfFn_UnitAnimationGetVariable)(uint32_t unit, int32_t index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `index` | `int32_t` | the variable's index (UnitAnimationFindVariable) |
+
+### UnitAnimationSetVariable
+
+`helldivers2.exe+0x201DF0`, hook or call. Sets an animation state machine variable. Unit.animation_set_variable calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitAnimationSetVariable)(uint32_t unit, int32_t index, float value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `index` | `int32_t` | the variable's index (UnitAnimationFindVariable) |
+| `value` | `float` | the value |
+
+### UnitSetUnitVisibility
+
+`helldivers2.exe+0x205680`, hook or call. Shows or hides a whole unit: queues a world command (0x15) in the unit's world (a 0x58-byte slot at +0x10038, taken with a lock add on +0x170038). Unit.set_unit_visibility calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetUnitVisibility)(uint32_t unit, uint8_t visible, uint8_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `visible` | `uint8_t` | 1 shows, 0 hides |
+| `r8` | `uint8_t` | not reviewed: pass it on (Unit.set_unit_visibility's optional third argument, 1 when absent) |
+
+### UnitSetVisibilityGroup
+
+`helldivers2.exe+0x205870`, hook or call. Shows or hides one of a unit's visibility groups: tells the unit (its vtable +0xC0) and queues a world command (0x16). Unit.set_visibility calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetVisibilityGroup)(uint32_t unit, uint32_t group, uint32_t visible);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `group` | `uint32_t` | the visibility group's IdString32 |
+| `visible` | `uint32_t` | 1 shows, 0 hides |
+
+### UnitCrossfadeAnimation
+
+`helldivers2.exe+0x200D80`, hook or call. Crossfades a unit's animation player to an animation and returns the id the binding hands back to Lua. Unit.crossfade_animation calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_UnitCrossfadeAnimation)(uint32_t unit, uint64_t animation, int32_t layer, float blend_time, uint32_t s5, uint32_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `animation` | `uint64_t` | the animation's IdString64 |
+| `layer` | `int32_t` | the layer (the binding takes it 1-based; 0 when absent) |
+| `blend_time` | `float` | the crossfade time in seconds (0 when absent) |
+| `s5` | `uint32_t` | loop: 1 loops (Lua's 5th argument, default 1) |
+| `s6` | `uint32_t` | blend type: 1 when Lua's 6th argument is "offset", 0 for "normal" or absent |
+
+### UnitCrossfadeAnimationSetTime
+
+`helldivers2.exe+0x201130`, hook or call. Sets the play time of a crossfade on a unit's animation player (its vtable +0x1A8), passing on to 0x561010 with the time as a double. Unit.crossfade_animation_set_time calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitCrossfadeAnimationSetTime)(uint32_t unit, uint32_t id, float time, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `id` | `uint32_t` | the crossfade's id (UnitCrossfadeAnimation) |
+| `time` | `float` | the time |
+| `r9` | `uint32_t` | not reviewed: pass it on (Lua's optional 4th argument, default 0; given to 0x561010) |
+
+### UnitCopySceneGraphLocalFrom
+
+`helldivers2.exe+0x204880`, hook or call. Copies another unit's scene graph local poses onto a unit. Unit.copy_scene_graph_local_from calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitCopySceneGraphLocalFrom)(uint32_t unit, uint32_t source);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `source` | `uint32_t` | the handle of the unit whose local poses are copied |
+
+### UnitSetBonesLod
+
+`helldivers2.exe+0x202D30`, hook or call. Sets a unit's animation bones LOD. Unit.set_bones_lod calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetBonesLod)(uint32_t unit, int32_t lod);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `lod` | `int32_t` | the bones LOD level |
+
+### UnitAnimationFindConstraintTarget
+
+`helldivers2.exe+0x202EA0`, hook or call. The index of a named constraint target in a unit's animation state machine (the binding adds the Lua index base). Unit.animation_find_constraint_target calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_UnitAnimationFindConstraintTarget)(uint32_t unit, uint32_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `name` | `uint32_t` | the constraint target's IdString32 |
+
+### UnitAnimationSetConstraintTargetPosition
+
+`helldivers2.exe+0x203120`, hook or call. Sets an animation constraint target from a position. Unit.animation_set_constraint_target calls it when given a Vector3.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitAnimationSetConstraintTargetPosition)(uint32_t unit, int32_t index, const float* position);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `index` | `int32_t` | the target's index (UnitAnimationFindConstraintTarget) |
+| `position` | `const float*` | x, y, z |
+
+### LightSync
+
+`helldivers2.exe+0x50BF90`, hook or call. Queues a render command (0x80 bytes) with a light's current settings; every Light setter writes its field and then calls it (Light.set_color, set_intensity, set_falloff_end, set_casts_shadows...).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LightSync)(void* light);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `light` | `void*` | the light (Unit.light): +0x08 its render interface, +0x20 colour r, g, b, +0x2C intensity, +0x34 falloff end, +0x60 flags (bit 1 disabled) |
+
+### LightSetEnabled
+
+`helldivers2.exe+0x50BE10`, hook or call. Turns a light on or off, syncs it (LightSync) and tells the renderer's light list. Light.set_enabled calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LightSetEnabled)(void* light, uint8_t enabled);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `light` | `void*` | the light |
+| `enabled` | `uint8_t` | 1 on, 0 off (clears or sets bit 1 of +0x60) |
+
+### WorldDestroyLevel
+
+`helldivers2.exe+0x338960`, hook or call. Destroys a level: flushes the world's pending unit queues (0x12D600) when needed, takes the level out of the world's list and frees it. World.destroy_level calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldDestroyLevel)(void* world, void* level, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world: +0x230588 its level count, +0x230590 the levels |
+| `level` | `void*` | the level (World.load_level's) |
+| `r8` | `uint32_t` | not reviewed: pass it on (the binding passes 1; non-zero also calls the renderer's 0x108780) |
+
+### WorldDestroyPrefab
+
+`helldivers2.exe+0x338D60`, hook or call. Destroys a prefab the world loaded, the same way WorldDestroyLevel does a level. World.destroy_prefab calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldDestroyPrefab)(void* world, void* prefab, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `prefab` | `void*` | the prefab (World.load_prefab's) |
+| `r8` | `uint32_t` | not reviewed: pass it on (the binding passes 1) |
+
+### WorldPlayCameraShake
+
+`helldivers2.exe+0x337810`, hook or call. Plays a camera shake at a world position and returns its id. World.play_camera_shake calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_WorldPlayCameraShake)(void* world, uint64_t shake, const float* position, float near, float s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world: +0x2308C0 its camera shake manager |
+| `shake` | `uint64_t` | the camera shake's IdString64 |
+| `position` | `const float*` | where it happens, x, y, z |
+| `near` | `float` | Lua's 4th argument (Stingray: the distance of full effect) |
+| `s5` | `float` | Lua's 5th argument (Stingray: the distance of no effect) |
+
+### WorldStopCameraShake
+
+`helldivers2.exe+0x22D8A0`, hook or call. Stops a playing camera shake. World.stop_camera_shake calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldStopCameraShake)(void* shakes, int32_t id, uint8_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `shakes` | `void*` | the world's camera shake manager (world +0x2308C0) |
+| `id` | `int32_t` | the shake's id (WorldPlayCameraShake) |
+| `r8` | `uint8_t` | not reviewed: pass it on (Lua's optional 3rd argument) |
+
+### WorldUpdateAnimations
+
+`helldivers2.exe+0x1B0670`, hook or call. Runs a world's animation update for a time step. World.update_animations, update_animations_with_callback and update_with_callback call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldUpdateAnimations)(void* world, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `dt` | `float` | the time step (default EngineCore +0x560) |
+
+### GuiManagerDestroyGui
+
+`helldivers2.exe+0x273110`, hook or call. Destroys a gui (World.create_screen_gui or create_world_gui's). World.destroy_gui calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_GuiManagerDestroyGui)(void* guis, void* gui);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `guis` | `void*` | the world's gui manager (world +0x230890) |
+| `gui` | `void*` | the gui |
+
 ## Globals
 
 The game's objects by name (`hellforge_globals.h`, SDK 16), from `mappings/globals.json`: its managers and queues,
@@ -5373,9 +7631,13 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 | `amounts` | +0x50 | ptr | 8 bytes per deposit: +0 the supplies left (u32) |
 | `definitions` | +0xA0 | ptr | the overriding definitions, 0x98 bytes each (+0x24 the self-use ability: 2629 for the B-1 Supply Pack) |
 
-### ActionManager
+### AvatarManager
 
-`game.dll+0x3326D20` (a pointer to it), `HfActionManager`. The entities' actions. At +0xF8 a map of entities to indexes; descriptor pointers at +0x110 + 8 index (+8 the entity); each index's action context at +0x53E170 + 0x1238 index (+0 the entity, +8 the running action, TryStartAction's first argument) and its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride. From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c).
+`game.dll+0x3326D20` (a pointer to it), `HfAvatarManager`. The Helldivers' avatars (the AvatarComponent manager, component world +0x956128): their movement, stamina and actions. At +0xF8 a map of entities to indexes; descriptor pointers at +0x110 + 8 index (+8 the entity); the avatars simulated here take the first indexes (their count at +0x70); each index's simulation block at +0x53E170 + 0x1238 index begins with its action context (+0 the entity, +8 the running action, TryStartAction's first argument), its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride; AvatarSettings' private copies inline from +0x547D24 (0x354 bytes each). From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c). Former names: `ActionManager`.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `simulated` | +0x70 | u32 | avatars simulated on this machine: they take the first indexes, and AvatarUpdate runs only those |
 
 ### WieldableManager
 
@@ -5485,9 +7747,9 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 
 `game.dll+0x3326728` (a pointer to it), `HfExplosiveManager`. Explosives (SetExplosiveOwner's first argument). At +0x38 a map of entities to indexes. From HellForge's silo countdown (abilities.c).
 
-### RemoteOwners
+### EquipmentManager
 
-`game.dll+0x3326DC0` (a pointer to it), `HfRemoteOwners`. The owner of a silo's targeting remote. At +0x20 a map of entities to indexes. From HellForge's silo countdown (abilities.c).
+`game.dll+0x3326DC0` (a pointer to it), `HfEquipmentManager`. The Equipment component manager (component 233, component world +0xE9F8F0; how held items are wielded, holstered and dropped): EquipmentUpdate's first argument; EquipmentRecord looks in its private copies. At +0x20 a map of entities to indexes; a silo's targeting remote's owner is at +4 of its instance record. From HellForge's silo countdown (abilities.c); the component world's setter 0x568230, the record resolver 0x5092B0 and the world update 0x571250 (0x5731D9). Former names: `RemoteOwners`.
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
@@ -5525,13 +7787,19 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 |---|---|---|---|
 | `records` | +0x50 | ptr | the perceiver records, 0x13F8 bytes each |
 
-### MagazineManager
+### WeaponManager
 
-`game.dll+0x3326660` (a pointer to it), `HfMagazineManager`. Weapons' magazines: MagazineRounds' first argument. From HellForge's Pelican turret refill (behaviour_turret.c).
+`game.dll+0x3326660` (a pointer to it), `HfWeaponManager`. The weapon manager (component world +0xE9FC38): WeaponUpdate's, OwnSpareAmmo's, SpendRound's and MagazineRounds' first argument. From HellForge's Pelican turret refill (behaviour_turret.c); the component world's setter 0x568230 and the world update 0x571250 (0x573245); HD2Runtime 0.40.1 research team-reload-ammo (own spare total 0x744180 on the weapon manager 0x3326660). Former names: `MagazineManager`.
 
-### MagazineRefills
+### WeaponMagazines
 
-`game.dll+0x3326648` (a pointer to it), `HfMagazineRefills`. The magazines AddMagazineRounds refills. At +0x20 a map of entities to indexes (the refill's own lookup). From HellForge's Pelican turret refill (behaviour_turret.c).
+`game.dll+0x3326648` (a pointer to it), `HfWeaponMagazines`. The WeaponMagazine component manager (component 5, component world +0x180): a magazine weapon's spare magazines and rounds. AddMagazineRounds refills it; WeaponMagazineRecord looks in its private copies. From HellForge's Pelican turret refill (behaviour_turret.c); the component world's setter 0x568230 and the record resolver 0x4F3740; HD2Runtime 0.40.1 research team-reload-ammo (magazine manager 0x3326648: hash +0x20, descriptors +0x38, records +0x50). Former names: `MagazineRefills`.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `hash` | +0x20 | ptr | the hash of the entities that have an instance (8-byte rows: entity, instance index) |
+| `descriptors` | +0x38 | ptr | each instance's entity descriptor (8 bytes each: +0 type, +8 entity) |
+| `live` | +0x50 | ptr | each instance's live row, 12 bytes: +0 spare magazines (network field 0xEC64918B), +4 rounds in the magazine (MagazineRounds returns it) |
 
 ### WeaponTargeting
 
@@ -5678,6 +7946,9 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 | `level` | +0x650 | ptr | the mission's level (lg): its difficulty level at +0xF9 (u8) |
 | `timer_count` | +0x67C | u32 | the mission's timers (hf->freeze_mission_timer needs 1) |
 | `director` | +0x6B0 | ptr | the timer's director: +8 the game mode's entity (u32) |
+| `guard_compositions` | +0x51884 | u32 | the compiled map guard (outpost) compositions, family 3; their rows inline from +0x41138 |
+| `reinforcement_compositions` | +0x5188C | u32 | the compiled reinforcement compositions, family 4; their rows inline from +0x432F8 (PickReinforcementComposition reads them) |
+| `guard_budget` | +0x518B4 | f32 | the outposts' guard budget, which the map guards spend |
 | `countdown_left` | +0x51948 | f32 | the mission countdown left, s |
 | `expired` | +0x5194C | u8 | set once the timer has run out |
 | `paused` | +0x5194E | u8 | 1 while the timer is paused |
@@ -5819,6 +8090,237 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 ### Corpses
 
 `game.dll+0x3326920` (a pointer to it), `HfCorpses`. The corpse component: per corpse the link to the entity it came from (CorpseSource). At +0x28 a map of entity ids to indexes (capacity +0x30, empty key +0x34, hash multiplier +0x38); per index a 0x38-byte record at +0x50 (+0 the source network id) and a 0x48-byte spawn record at +0x48 (+0x3C the source entity). From HD2Runtime 0.40.1 research event-mission (corpse); CorpseSource 0x870310.
+
+### WeaponWindUps
+
+`game.dll+0x33267A0` (a pointer to it), `HfWeaponWindUps`. The WeaponWindUp component manager (component 70, component world +0x1B29B8): WindUpUpdate's first argument; WeaponWindUpRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 passes it to WindUpUpdate (0x57178C).
+
+### Recharges
+
+`game.dll+0x3326768` (a pointer to it), `HfRecharges`. The Recharge component manager (component 99, component world +0x1C6F50; jump and hover packs' recharge): RechargeRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research shield-recharge (recharge manager 0x3326768).
+
+### WeaponReloads
+
+`game.dll+0x3326A70` (a pointer to it), `HfWeaponReloads`. The WeaponReload component manager (component 113, component world +0x7571C8). At +0x20 the hash of the entities that have an instance (the out-of-ammo handler's test); WeaponReloadRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research component-membership (instance hash +0x20, resolver 0x4FD220).
+
+### WeaponRoundsManager
+
+`game.dll+0x3326CF0` (a pointer to it), `HfWeaponRoundsManager`. The WeaponRounds component manager (component 117, component world +0x757398; weapons loaded round by round). WeaponRoundsRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research team-reload-ammo (rounds manager 0x3326CF0).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0x18 | u32 | instances (the world update's loop bound, 0x57201C) |
+| `descriptors` | +0x40 | ptr | each instance's entity descriptor (8 bytes each: +0 type, +8 entity) |
+| `live` | +0x58 | ptr | each instance's live row, 20 bytes: +0 its own spare rounds (network field 0x9A34C336) |
+
+### WeaponCharges
+
+`game.dll+0x3326C20` (a pointer to it), `HfWeaponCharges`. The WeaponCharge component manager (component 204, component world +0x75F1D8): WeaponChargeUpdate's first argument; WeaponChargeRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research railgun-charge (charge update 0x73C8F0, resolver 0x5052C0).
+
+### Throwers
+
+`game.dll+0x3326880` (a pointer to it), `HfThrowers`. The Thrower component manager (component 258, component world +0xEB5CF0): ThrowerUpdate's first argument; ThrowerRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 passes it to ThrowerUpdate (0x57369F).
+
+### Throwables
+
+`game.dll+0x33264C0` (a pointer to it), `HfThrowables`. The Throwable component manager (component 259, component world +0xEB5DA8; grenades and thrown knives): ThrowableUpdate's first argument. Its records come from the type lookup ThrowableTypeRecord only (no private copies). From the component world's setter 0x568230 (cells stored in component order: the one after Thrower 258, before Jumppack 264 with four between) and the world update 0x571250, which passes it to ThrowableUpdate (0x5736AE).
+
+### ArcWeapons
+
+`game.dll+0x3326C10` (a pointer to it), `HfArcWeapons`. The ArcWeapon component manager (component 265, component world +0xEB64A0; the Arc Thrower's arcs): ArcWeaponUpdate's first argument; ArcWeaponRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 calls ArcWeaponUpdate for each instance (0x57374E).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0x38 | u32 | instances (the world update's loop bound, 0x573737) |
+
+### WeaponHeats
+
+`game.dll+0x3326D48` (a pointer to it), `HfWeaponHeats`. The WeaponHeat component manager (component 266, component world +0xEB6570): WeaponHeatUpdate's first argument; WeaponHeatRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research overheat-cooling, reload-heat-knife.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0x18 | u32 | instances (WeaponHeatUpdate's loop bound, 0x764988) |
+| `descriptors` | +0x40 | ptr | each instance's entity descriptor (8 bytes each: +8 entity, +0x14 bit 1 owned by this machine; WeaponHeatUpdate steps only those) |
+
+### AbilityWeapons
+
+`game.dll+0x3326A10` (a pointer to it), `HfAbilityWeapons`. The AbilityWeapon component manager (component 267, component world +0xEB6620; weapons whose fire starts an ability: the C4 detonator, the silo's targeting remote): AbilityWeaponUpdate's first argument. Its records come from the type lookup AbilityWeaponTypeRecord. From the component world's setter 0x568230 (cells stored in component order: between WeaponHeat 266 and component 269) and the world update 0x571250, which passes it to AbilityWeaponUpdate (0x573773).
+
+### MeleeWeapons
+
+`game.dll+0x3326B78` (a pointer to it), `HfMeleeWeapons`. The MeleeWeapon component manager (component 268, component world +0xEB6670). Its records come from the type lookup at game.dll+0x50E360 (not mapped: it follows a jmp, so it does not pass the start check). From the component world's setter 0x568230 (cells stored in component order: the second between WeaponHeat 266 and component 269); HD2Runtime 0.40.1 research knife-melee (0xA6A0B7 reads the MeleeWeapon record's stamina cost).
+
+### WeaponCustomizations
+
+`game.dll+0x3326A38` (a pointer to it), `HfWeaponCustomizations`. The WeaponCustomization component manager (component 271, component world +0xEB6810; a weapon's attachment slots and units): WeaponCustomizationUpdate's first argument; WeaponCustomizationRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 passes it to WeaponCustomizationUpdate (0x5737CA).
+
+### AiSpawnerManager
+
+`game.dll+0x33265C8` (a pointer to it), `HfAiSpawnerManager`. The AiSpawnerComponent manager (component world +0x75EA20): The AI spawners (the director's spawn points and breaches). At +0x28 a map of entities to indexes. From game.dll: AiSpawnerComponent's growth function 0x7FB4D0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x75EA20 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x28 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### BugholeManager
+
+`game.dll+0x33267B0` (a pointer to it), `HfBugholeManager`. The BugholeComponent manager (component world +0x7C56B0): Bug holes (Terminid nests' holes). At +0x28 a map of entities to indexes. From game.dll: BugholeComponent's growth function 0x859400 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7C56B0 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x28 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### VehicleMotionManager
+
+`game.dll+0x3326458` (a pointer to it), `HfVehicleMotionManager`. The VehicleMotionComponent manager (component world +0x7C72E8): Vehicle motion (vehicles' and mechs' driving physics). At +0x40 a map of entities to indexes. From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: VehicleMotionComponent's growth function 0x71AA70 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7C72E8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x40 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### VehicleManager
+
+`game.dll+0x3326668` (a pointer to it), `HfVehicleManager`. The VehicleComponent manager (component world +0x1C6348): Vehicles and mechs (VehicleSettings resolves their records; private copies at +0xC0, copy map at +0x80). At +0x38 a map of entities to indexes. From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: VehicleComponent's growth function 0x703B40 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1C6348 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x38 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### SquadTransportManager
+
+`game.dll+0x3326CC0` (a pointer to it), `HfSquadTransportManager`. The SquadTransportComponent manager (component world +0x1C6EB0): Squad transports (enemy dropships carrying a squad). At +0x20 a map of entities to indexes. From game.dll: SquadTransportComponent's growth function 0x6887B0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1C6EB0 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### SquadFormationManager
+
+`game.dll+0x3326A88` (a pointer to it), `HfSquadFormationManager`. The SquadTransportFormationComponent manager (component world +0x757568): Squad transport formations (the squad slots of a dropship). At +0x18 a map of entities to indexes. From game.dll: SquadTransportFormationComponent's growth function 0x68A550 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x757568 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x18 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### GoreManager
+
+`game.dll+0x33264D0` (a pointer to it), `HfGoreManager`. The GoreComponent manager (component world +0x7FF2F8): Gore (dismemberment state). At +0x156DA0 a map of entities to indexes. From game.dll: GoreComponent's growth function 0x9090B0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7FF2F8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x156DA0 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### StratagemBlockerManager
+
+`game.dll+0x3326568` (a pointer to it), `HfStratagemBlockerManager`. The StratagemBlockerComponent manager (component world +0x1E60): Stratagem blockers (what jams stratagems in an area). At +0x18 a map of entities to indexes. From game.dll: StratagemBlockerComponent's growth function 0x9E30F0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1E60 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x18 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### OrbitalAbilityManager
+
+`game.dll+0x33267F0` (a pointer to it), `HfOrbitalAbilityManager`. The OrbitalAbilityComponent manager (component world +0xF064A8): Orbital abilities (OrbitalAbilitySettings resolves their records; private copies at +0xD8, copy map at +0x98). At +0x58 a map of entities to indexes. From game.dll: OrbitalAbilityComponent's growth function 0x5F6D40 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF064A8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x58 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### HellpodPayloadManager
+
+`game.dll+0x3326560` (a pointer to it), `HfHellpodPayloadManager`. The HellpodPayloadComponent manager (component world +0x75C1B8): Hellpod payloads (what a hellpod delivers; HellpodPayloadSettings resolves their records, private copies at +0xA0, copy map at +0x60). At +0x28 a map of entities to indexes. From game.dll: HellpodPayloadComponent's growth function 0x933700 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x75C1B8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x28 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### UnitManager
+
+`game.dll+0x3326508` (a pointer to it), `HfUnitManager`. The UnitComponent manager (component world +0x1B4170): The entities' units (their scene units; UnitSettings resolves their records, private copies at +0xC0, copy map at +0x80). At +0x40 a map of entities to indexes. From game.dll: UnitComponent's growth function 0x6E98E0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1B4170 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x40 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### RotationManager
+
+`game.dll+0x33264A0` (a pointer to it), `HfRotationManager`. The RotationComponent manager (component world +0xF065D8): Rotation (how entities turn; RotationSettings resolves their records, private copies at +0xB8, copy map at +0x78). At +0x38 a map of entities to indexes. From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: RotationComponent's growth function 0x625CE0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF065D8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x38 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### DisplacementManager
+
+`game.dll+0x3326AC8` (a pointer to it), `HfDisplacementManager`. The DisplacementComponent manager (component world +0xEB71D8): Displacement (DisplacementSettings resolves their records, private copies at +0xA0, copy map at +0x60). At +0x20 a map of entities to indexes. From HD2Runtime 0.40.1 research hoverpack-components (code.managers.displacement); game.dll: DisplacementComponent's growth function 0x88FE20 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xEB71D8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### JumppackManager
+
+`game.dll+0x3326BB8` (a pointer to it), `HfJumppackManager`. The JumppackComponent manager (component world +0xEB63F8): Jump packs and hover packs (JumppackSettings resolves their records, private copies at +0xA0, copy map at +0x60). At +0x20 a map of entities to indexes. From HD2Runtime 0.40.1 research hoverpack-components (model.perInstanceState, code.managers.jumppack); game.dll: JumppackComponent's growth function 0x9B8380 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xEB63F8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+| `hover_input` | +0x40 | ptr | 12 bytes per index: the replicated hover input vector |
+| `flight` | +0x48 | ptr | 76 bytes per index: +0 launch latch, +1 sustain latch, +4 launch elapsed (f32 s), +8 sustain elapsed (f32 s), +0xC launch window (f32 s) |
+| `flags` | +0x50 | ptr | 5 bytes per index, replicated: +0 active, +1 sustain, +2 hover launch, +3 mode toggle, +4 thrusting |
+
+### EagleManager
+
+`game.dll+0x3326650` (a pointer to it), `HfEagleManager`. The EagleComponent manager (component world +0xF0B300): The Eagle jets in flight (EagleSettings resolves their records, private copies at +0xB0, copy map at +0x70). At +0x30 a map of entities to indexes. From HD2Runtime 0.40.1 research eagle-components (nativeModel); game.dll: EagleComponent's growth function 0x8A9730 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF0B300 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x30 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+| `records` | +0x58 | ptr | 0xFC bytes per index, the jet: +0xC its target index (9 none), +0x10 targets tracked (<= 8), +0x14 8 target entities, +0x54 aim point (3 f32), +0x68 releases so far, +0x70 attacking (u8), +0x78 jet position (3 f32), +0xD4 velocity (3 f32), +0xE0 speed (f32) |
+| `flight` | +0x60 | ptr | 28 bytes per index: +0 the approach start position, +0xC the target point at the call (3 f32 each) |
+
+### EncounterManager
+
+`game.dll+0x3326618` (a pointer to it), `HfEncounterManager`. The EncounterComponent manager (component world +0x7C4D30): The director's encounters: its reinforcements (EncounterUpdate picks a composition and sends it by transport or breach). At +0x948 a map of entities to indexes. From HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement pins in 0x8B8A20); game.dll: EncounterComponent's growth function 0x8BAAE0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7C4D30 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x948 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### AiSquadManager
+
+`game.dll+0x33265A0` (a pointer to it), `HfAiSquadManager`. The AiSquadComponent manager (component world +0xF05068): AI squads. A squad's record (0x2510 bytes) queues the enemies it is to spawn: up to 32 entries of 0xC8 bytes from +0xC08, their count at +0x2508 (a 33rd entry overruns the count and crashes the game). At +0x20 a map of entities to indexes. From HD2Runtime 0.40.1 research spawn-capacity-dev11 (queue); its add helper 0x54D680 (count +0xC, descriptors +0x38, records +0x40); game.dll: AiSquadComponent's growth function 0x806520 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF05068 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0xC | u32 | squads in use |
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+| `descriptors` | +0x38 | ptr | descriptor pointers by index (+8 the entity) |
+| `records` | +0x40 | ptr | the squad records, 0x2510 bytes each, by index |
+
+### SensorEyeManager
+
+`game.dll+0x3326520` (a pointer to it), `HfSensorEyeManager`. The SensorEyeComponent manager (component world +0x75ED20): Sensor eyes (what enemies and sentries see with: SensorEyeRanges' first argument; SensorEyeSettings resolves their records, private copies at +0xB0). At +0x30 a map of entities to indexes. From HD2Runtime 0.40.1 research sentry-components (sensor manager game+0x3326520); game.dll: SensorEyeComponent's growth function 0x64EB50 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x75ED20 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x30 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### TurretManager
+
+`game.dll+0x3326D70` (a pointer to it), `HfTurretManager`. The TurretComponent manager (component world +0xEB5060): Turrets (sentries, mounted guns: TurretUpdate's first argument; TurretSettings resolves their records, private copies at +0xA8). At +0x28 a map of entities to indexes. From HD2Runtime 0.40.1 research sentry-components and vehicle-mech-components (turret manager game+0x3326D70); game.dll: TurretComponent's growth function 0x6E1120 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xEB5060 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x28 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### LocomotionManager
+
+`game.dll+0x3326CF8` (a pointer to it), `HfLocomotionManager`. The LocomotionComponent manager (component world +0xF06698): Locomotion (how characters move; private copies at +0xA8, copy map at +0x68). At +0x20 a map of entities to indexes. From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers: LocomotionComponentData); game.dll: LocomotionComponent's growth function 0x9CE510 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF06698 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
 
 ## Components
 

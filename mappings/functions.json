@@ -216,7 +216,7 @@
       "code": "48 89 5C 24 08 57 48 83 EC 20 48 8B FA 48 8B D9 E8 1B FF FF FF 84 C0 75 24 48 8B CB E8 5F 00 00 00 84 C0 74 18 48 8B D7",
       "returns": "uint8_t",
       "params": [
-        {"name": "context", "type": "void*", "meaning": "the entity's action context: hf_global_ActionManager + 0x53E170 + 0x1238 index (+0 the entity, +8 the running action)"},
+        {"name": "context", "type": "void*", "meaning": "the entity's action context: hf_global_AvatarManager + 0x53E170 + 0x1238 index (+0 the entity, +8 the running action)"},
         {"name": "request", "type": "const uint32_t*", "meaning": "3 u32: the action (2629, the Supply Pack's self-use), the game's no-action id (u32 at game.dll+0x3483C5C), the context's +0xC"}
       ],
       "hook": false,
@@ -631,7 +631,7 @@
       "code": "48 89 5C 24 20 55 56 57 48 83 EC 20 3B 15 0E 13 D4 02 8B DA 4C 8B C9 74 43 44 8B 41 30 33 F6 44 8B 51 38 8B D6 44 0F AF",
       "returns": "int32_t",
       "params": [
-        {"name": "magazines", "type": "void*", "meaning": "the magazines: hf_global_MagazineManager"},
+        {"name": "weapons", "type": "void*", "meaning": "the magazines: hf_global_WeaponManager"},
         {"name": "entity", "type": "uint32_t", "meaning": "the weapon's entity"}
       ],
       "hook": false,
@@ -644,7 +644,7 @@
       "returns": "void",
       "params": [
         {"name": "unused", "type": "void*", "meaning": "NULL"},
-        {"name": "entity", "type": "uint32_t", "meaning": "the weapon's entity (in hf_global_MagazineRefills' map)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the weapon's entity (in hf_global_WeaponMagazines' map)"},
         {"name": "add", "type": "int32_t", "meaning": "the rounds to add"}
       ],
       "hook": false,
@@ -1165,10 +1165,10 @@
       "code": "40 55 41 56 48 8D AC 24 78 F0 FF FF B8 88 10 00 00 E8 1A 5A 7B 01 48 2B E0 44 0F 29 84 24 30 10 00 00 48 8B",
       "returns": "void",
       "params": [
-        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (its caller passes its rdi + 0x771F48)"},
-        {"name": "xmm1", "type": "float", "meaning": "not reviewed: pass it on"}
+        {"name": "hivemind", "type": "void*", "meaning": "the HiveMind manager: hf_global_HiveMindManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
       ],
-      "hook": false,
+      "hook": true,
       "meaning": "The enemy director's per-frame step: reads each faction's roaming patrol interval (difficulty row +0x2A0, f32 s) and most living patrol enemies (+0x2AC, u32) from the mission's difficulty row",
       "source": "HellForge's difficulty patrols (difficulty.c, PatrolLevelRow)"
     },
@@ -3120,7 +3120,7 @@
       "code": "48 89 4C 24 08 53 55 56 57 41 55 41 57 48 83 EC 38 8B 3D 79 F5 D3 02 45 33 FF 4C 8B 2D AF 1F BE 02",
       "returns": "void",
       "params": [
-        {"name": "magazines", "type": "void*", "meaning": "the MagazineManager"},
+        {"name": "weapons", "type": "void*", "meaning": "the WeaponManager"},
         {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"}
       ],
       "hook": true,
@@ -3241,7 +3241,7 @@
       "code": "48 8B C4 53 41 54 41 55 48 81 EC 80 00 00 00 33 DB 44 0F 29 40 A8 44 0F 28 C1 4C 8B E9 44 8B E3",
       "returns": "void",
       "params": [
-        {"name": "windups", "type": "void*", "meaning": "the WeaponWindUp manager (component world +0x1B29B8)"},
+        {"name": "windups", "type": "void*", "meaning": "WeaponWindUps (component world +0x1B29B8)"},
         {"name": "dt", "type": "float", "meaning": "the frame time"}
       ],
       "hook": true,
@@ -4708,6 +4708,2181 @@
       "hook": true,
       "meaning": "Whether the player holds a catalogue item",
       "source": "HellForge research forge-credits-tint (README.md, locked warbonds)"
+    },
+    "WeaponMagazineRecord": {
+      "rva": "0x4F3740",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 C8 04 F9 02 0F 84 94 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's WeaponMagazineComponentData (component 5): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponMagazineTypeRecord); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "WeaponWindUpRecord": {
+      "rva": "0x4F8090",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 78 BB F8 02 0F 84 94 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's WeaponWindUpComponentData (component 70): its own copy in the manager's private copies if it has one, else its type's shared record (the type lookup at game.dll+0x4F7C70, reached only by this tail jump, so not mapped); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "RechargeRecord": {
+      "rva": "0x4FBC30",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 D8 7F F8 02 0F 84 92 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's RechargeComponentData (component 99): its own copy in the manager's private copies if it has one, else its type's shared record (RechargeTypeRecord); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "WeaponReloadRecord": {
+      "rva": "0x4FD220",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 E8 69 F8 02 0F 84 94 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's WeaponReloadComponentData (component 113): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponReloadTypeRecord); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "WeaponRoundsRecord": {
+      "rva": "0x4FDD20",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 E8 5E F8 02 0F 84 93 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's WeaponRoundsComponentData (component 117): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponRoundsTypeRecord); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "WeaponChargeRecord": {
+      "rva": "0x5052C0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 48 E9 F7 02 0F 84 93 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's WeaponChargeComponentData (component 204): its own copy in the manager's private copies if it has one, else its type's shared record (the type lookup at game.dll+0x504D80, reached only by this tail jump, so not mapped); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "EquipmentRecord": {
+      "rva": "0x5092B0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 58 A9 F7 02 0F 84 93 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's EquipmentComponentData (component 233): its own copy in the manager's private copies if it has one, else its type's shared record (EquipmentTypeRecord); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "ThrowerRecord": {
+      "rva": "0x50CCC0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 48 6F F7 02 0F 84 93 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's ThrowerComponentData (component 258): its own copy in the manager's private copies if it has one, else its type's shared record (ThrowerTypeRecord); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "ArcWeaponRecord": {
+      "rva": "0x50DC50",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 B8 5F F7 02 0F 84 A4 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's ArcWeaponComponentData (component 265): its own copy in the manager's private copies if it has one, else its type's shared record (ArcWeaponTypeRecord); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "WeaponHeatRecord": {
+      "rva": "0x50E1F0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 18 5A F7 02 0F 84 93 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's WeaponHeatComponentData (component 266): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponHeatTypeRecord); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "WeaponCustomizationRecord": {
+      "rva": "0x50F150",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 B8 4A F7 02 0F 84 A3 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's WeaponCustomizationComponentData (component 271): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponCustomizationTypeRecord); NULL when the type has none",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order"
+    },
+    "WeaponMagazineTypeRecord": {
+      "rva": "0x4F32F0",
+      "code": "48 85 C9 74 71 48 8B 05 9C 8C F7 02 44 8B C1 4C 8B 90 A0 24 F1 00 48 B8 65 9D 2B 0F 48 D6 B9 F2 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared WeaponMagazineComponentData (component 5) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "RechargeTypeRecord": {
+      "rva": "0x4FB850",
+      "code": "48 85 C9 74 6C 48 8B 05 3C 07 F7 02 44 8B C1 4C 8B 90 90 27 F1 00 48 B8 AB AA AA AA AA AA AA AA 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared RechargeComponentData (component 99) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "WeaponReloadTypeRecord": {
+      "rva": "0x4FCE20",
+      "code": "48 85 C9 74 71 48 8B 05 6C F1 F6 02 44 8B C1 4C 8B 90 00 28 F1 00 48 B8 6D C6 F7 47 0A 26 73 10 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared WeaponReloadComponentData (component 113) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "WeaponRoundsTypeRecord": {
+      "rva": "0x4FD8E0",
+      "code": "48 85 C9 74 6C 48 8B 05 AC E6 F6 02 44 8B C1 4C 8B 90 20 28 F1 00 48 B8 15 AE 47 E1 7A 14 AE 47 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared WeaponRoundsComponentData (component 117) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "EquipmentTypeRecord": {
+      "rva": "0x508E90",
+      "code": "48 85 C9 74 71 48 8B 05 FC 30 F6 02 44 8B C1 4C 8B 90 C0 2B F1 00 48 B8 BF A0 2F E8 0B FA 82 BE 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared EquipmentComponentData (component 233) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "ThrowerTypeRecord": {
+      "rva": "0x50C720",
+      "code": "48 85 C9 74 6C 48 8B 05 6C F8 F5 02 44 8B C1 4C 8B 90 88 2C F1 00 48 B8 CD CC CC CC CC CC CC CC 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared ThrowerComponentData (component 258) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "ThrowableTypeRecord": {
+      "rva": "0x50CD90",
+      "code": "48 85 C9 74 6C 48 8B 05 FC F1 F5 02 44 8B C1 4C 8B 90 90 2C F1 00 48 B8 C9 42 16 B2 90 85 2C 64 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared ThrowableComponentData (component 259) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "ArcWeaponTypeRecord": {
+      "rva": "0x50D900",
+      "code": "48 85 C9 74 6C 48 8B 05 8C E6 F5 02 44 8B C1 4C 8B 90 C0 2C F1 00 48 B8 CD CC CC CC CC CC CC CC 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared ArcWeaponComponentData (component 265) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "WeaponHeatTypeRecord": {
+      "rva": "0x50DD30",
+      "code": "48 85 C9 74 6C 48 8B 05 5C E2 F5 02 44 8B C1 4C 8B 90 C8 2C F1 00 48 B8 1B 61 B9 A7 11 96 7B 1A 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared WeaponHeatComponentData (component 266) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "AbilityWeaponTypeRecord": {
+      "rva": "0x50E2C0",
+      "code": "48 85 C9 74 6C 48 8B 05 CC DC F5 02 44 8B C1 4C 8B 90 D0 2C F1 00 48 B8 8F E3 38 8E E3 38 8E E3 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared AbilityWeaponComponentData (component 267) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "WeaponCustomizationTypeRecord": {
+      "rva": "0x50ED80",
+      "code": "48 85 C9 74 71 48 8B 05 0C D2 F5 02 44 8B C1 4C 8B 90 F0 2C F1 00 48 B8 89 E6 AC 41 F1 B4 C7 55 48 F7",
+      "returns": "void*",
+      "params": [
+        {"name": "type", "type": "uint64_t", "meaning": "the entity type's resource hash (an entity descriptor's +0)"}
+      ],
+      "hook": true,
+      "meaning": "An entity type's shared WeaponCustomizationComponentData (component 271) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf",
+      "source": "game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership)"
+    },
+    "WeaponUpdate": {
+      "rva": "0x7406A0",
+      "code": "48 89 5C 24 10 48 89 4C 24 08 55 56 57 41 54 41 55 41 56 41 57 48 81 EC 90 00 00 00 8B 41 18 45 33 E4",
+      "returns": "void",
+      "params": [
+        {"name": "weapons", "type": "void*", "meaning": "the weapon manager (hf_global_WeaponManager, component world +0xE9FC38)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The weapon manager's frame, right after the WeaponData frames: among its calls AbilityWeaponFire (an ability weapon's pending fire) and WeaponChargeRecord",
+      "source": "the world update 0x571250 (0x573245); HD2Runtime 0.40.1 research railgun-charge (0x7406A0 weapon update)"
+    },
+    "WeaponDataUpdate": {
+      "rva": "0x753DB0",
+      "code": "4C 8B DC 49 89 5B 18 55 56 57 41 54 41 55 41 56 41 57 48 81 EC A0 00 00 00 41 0F 29 73 B8 48 8B 05 3B",
+      "returns": "void",
+      "params": [
+        {"name": "weapondata", "type": "void*", "meaning": "WeaponDatas"},
+        {"name": "index", "type": "uint32_t", "meaning": "the instance index"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "One WeaponData instance's frame (its record from WeaponDataRecord, the current fire mode); the world update calls it for every instance",
+      "source": "the world update 0x571250 (loop at 0x573220, count at WeaponDatas +0x20)"
+    },
+    "WeaponHeatUpdate": {
+      "rva": "0x764970",
+      "code": "48 8B C4 41 56 41 57 48 83 EC 48 45 33 FF 0F 29 70 C8 0F 28 F1 4C 8B F1 44 39 79 18 0F 86 3A 02 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "heats", "type": "void*", "meaning": "WeaponHeats"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The WeaponHeat frame: WeaponHeatInstanceStep for every instance this machine owns (descriptor +0x14 bit 1), then each weapon's reload-dependent heat state (WeaponReloadBusy)",
+      "source": "the world update 0x571250 (0x573767)"
+    },
+    "WeaponHeatInstanceStep": {
+      "rva": "0x762F60",
+      "code": "48 89 5C 24 10 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 40 48 8B 41 40 48 8B F1 8B DA 0F 29 74 24 30",
+      "returns": "void",
+      "params": [
+        {"name": "heats", "type": "void*", "meaning": "WeaponHeats"},
+        {"name": "index", "type": "uint32_t", "meaning": "the instance index"},
+        {"name": "dt", "type": "float", "meaning": "the frame time (xmm2, read after the leaf WeaponHeatRecord call)"}
+      ],
+      "hook": true,
+      "meaning": "One weapon's heat for a frame, on its owner: charging adds heat, else it cools at +128 per second (overheated or charging: +140, none when +144 is set) times the climate multiplier; heat at the capacity +96 sets the overheated flag when +80 is set, heat down to +100 clears it. The heat (live row +0x58, 12 bytes: +4 heat, +8 overheated) goes out as network field 0xA5023836",
+      "source": "HD2Runtime 0.40.1 research overheat-cooling (heatStep 0x762F60), reload-heat-knife; WeaponHeatUpdate's call 0x7649CB"
+    },
+    "WeaponChargeUpdate": {
+      "rva": "0x73C8F0",
+      "code": "40 55 53 48 8D AC 24 A8 FE FF FF 48 81 EC 58 02 00 00 44 0F 29 B4 24 B0 01 00 00 48 8B 05 FE F6 EF 01",
+      "returns": "void",
+      "params": [
+        {"name": "charges", "type": "void*", "meaning": "WeaponCharges"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The WeaponCharge frame: the charge time of every charging weapon rises while the trigger is held, and the charge levels decide the release (ChargeRelease) or, past the overcharge, ChargeOvercharge",
+      "source": "the world update 0x571250 (0x572EF2); HD2Runtime 0.40.1 research railgun-charge (0x73C8F0 charge update)"
+    },
+    "ChargeRelease": {
+      "rva": "0x73D8C0",
+      "code": "48 89 5C 24 20 48 89 54 24 10 55 56 57 41 55 41 56 48 83 EC 30 8B 42 08 33 F6 3B 05 54 63 D4 02 4C 8B",
+      "returns": "void",
+      "params": [
+        {"name": "charges", "type": "void*", "meaning": "WeaponCharges"},
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "Releases a weapon's charge: on the machine that owns the instance (descriptor +0x14 bit 1) it fires the charge level's projectile through ChargeFire, once per burst shot",
+      "source": "HD2Runtime 0.40.1 research railgun-charge (0x73D8C0 fire helper, burst and per-state projectile); WeaponChargeUpdate's four calls"
+    },
+    "ChargeOvercharge": {
+      "rva": "0x73DC60",
+      "code": "48 85 D2 0F 84 04 04 00 00 4C 8B DC 41 57 48 81 EC 40 01 00 00 48 8B 05 94 E3 EF 01 48 33 C4 48 89 84",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "A weapon held past its overcharge: on the machine that owns it the weapon is removed and its explosion set off",
+      "source": "HD2Runtime 0.40.1 research railgun-charge (0x73DC60 overcharge failure: weapon removed, explosion); WeaponChargeUpdate's calls 0x73CCC4 and 0x73CDBA"
+    },
+    "ChargeMultiplier": {
+      "rva": "0x73E280",
+      "code": "48 83 EC 28 3B 15 AA 59 D4 02 0F 28 E3 48 89 5C 24 30 0F 28 EA 48 89 7C 24 20 48 8B F9 75 07 B8 FF FF",
+      "returns": "float",
+      "params": [
+        {"name": "charges", "type": "void*", "meaning": "WeaponCharges"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "at_min", "type": "float", "meaning": "the value at the minimum charge (charge record +0)"},
+        {"name": "at_overcharge", "type": "float", "meaning": "the value at the overcharge (record +0x30)"}
+      ],
+      "hook": true,
+      "meaning": "A charged shot's multiplier from the weapon's charge time (live row +0x40, 40 bytes, +8): below full charge (+0x18) from at_min to 1, above it from 1 to at_overcharge. The charge fire (0x73E725, 0x73E7E5) and the arc spawn (0x13B3F79, 0x13B401B) scale their shot with it, each passing a pair of charge record fields",
+      "source": "HD2Runtime 0.40.1 research railgun-charge (0x73E280 charge scaling lerp); callers 0x73E725, 0x73E7E5, 0x13B3F79, 0x13B401B"
+    },
+    "EquipmentUpdate": {
+      "rva": "0x8C16E0",
+      "code": "48 8B C4 41 54 41 55 48 83 EC 78 45 33 E4 0F 29 78 B8 0F 28 F9 4C 8B E9 44 39 61 10 0F 86 D9 03 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "equipment", "type": "void*", "meaning": "hf_global_EquipmentManager (the Equipment component manager)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The Equipment frame (the component of how held items are wielded, holstered and dropped)",
+      "source": "the world update 0x571250 (0x5731D9)"
+    },
+    "ThrowerUpdate": {
+      "rva": "0x6CB140",
+      "code": "4C 8B DC 55 57 49 8D AB 28 FD FF FF 48 81 EC C8 03 00 00 41 0F 29 7B B8 48 8B 05 B1 0E F7 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "throwers", "type": "void*", "meaning": "Throwers"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The Thrower frame: throws the salvos of a thrower (mine dispensers and the like) by spawning their projectiles (SpawnProjectile)",
+      "source": "the world update 0x571250 (0x57369F); its call to SpawnProjectile"
+    },
+    "ThrowableUpdate": {
+      "rva": "0x6C3AE0",
+      "code": "4C 8B DC 55 53 41 54 49 8D AB B8 FB FF FF 48 81 EC 30 05 00 00 45 0F 29 9B 68 FF FF FF 48 8B 05 0C 85",
+      "returns": "void",
+      "params": [
+        {"name": "throwables", "type": "void*", "meaning": "Throwables"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The Throwable frame: thrown grenades and knives (records from ThrowableTypeRecord), queuing their network fields",
+      "source": "the world update 0x571250 (0x5736AE)"
+    },
+    "ArcWeaponUpdate": {
+      "rva": "0x80DDD0",
+      "code": "48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 48 83 EC 40 48 8B 41 60 4C 8B E1 4C 8B 71 70 44 8B C2 0F",
+      "returns": "void",
+      "params": [
+        {"name": "arcs", "type": "void*", "meaning": "ArcWeapons"},
+        {"name": "index", "type": "uint32_t", "meaning": "the instance index"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "One ArcWeapon instance's frame (its record from ArcWeaponRecord)",
+      "source": "the world update 0x571250 (loop at 0x573742, count at ArcWeapons +0x38)"
+    },
+    "AbilityWeaponUpdate": {
+      "rva": "0x7D67B0",
+      "code": "41 55 41 57 48 83 EC 48 45 33 FF 4C 8B E9 44 39 79 0C 0F 86 86 01 00 00 48 89 5C 24 60 48 89 6C 24 68",
+      "returns": "void",
+      "params": [
+        {"name": "abilityweapons", "type": "void*", "meaning": "AbilityWeapons"}
+      ],
+      "hook": true,
+      "meaning": "The AbilityWeapon frame: reads each instance's record (AbilityWeaponTypeRecord) and may start its ability (StartAbility)",
+      "source": "the world update 0x571250 (0x573773, no frame time)"
+    },
+    "WeaponCustomizationUpdate": {
+      "rva": "0x74ACE0",
+      "code": "4C 8B DC 56 48 81 EC C0 00 00 00 33 C0 41 0F 29 7B B8 0F 28 F9 48 8B F1 48 89 4C 24 38 89 44 24 28 39",
+      "returns": "void",
+      "params": [
+        {"name": "customizations", "type": "void*", "meaning": "WeaponCustomizations"},
+        {"name": "dt", "type": "float", "meaning": "the frame time"}
+      ],
+      "hook": true,
+      "meaning": "The WeaponCustomization frame: each weapon's attachments (records from WeaponCustomizationRecord)",
+      "source": "the world update 0x571250 (0x5737CA)"
+    },
+    "StartReload": {
+      "rva": "0x774B60",
+      "code": "48 8B C4 44 88 40 18 48 89 48 08 56 57 41 55 48 81 EC B0 00 00 00 8B 3D B8 F0 D0 02 8B F2 4C 8B 2D EB",
+      "returns": "void",
+      "params": [
+        {"name": "reloads", "type": "void*", "meaning": "WeaponReloads"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "force", "type": "uint8_t", "meaning": "1 skips the CanReload check; the avatar's input passes 0"}
+      ],
+      "hook": true,
+      "meaning": "Starts a weapon's reload: unless forced, CanReload must agree; then it starts the WeaponReload record's ability (+4) through StartAbility at the reload speed (player stats, the +56 duration override). A record with ability 0 has no reload",
+      "source": "HD2Runtime 0.40.1 research reload-heat-knife (0x774EDB..0x774F49); the avatar input's calls 0xA7F4AE, 0xA7F78E"
+    },
+    "CanReload": {
+      "rva": "0x775580",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 54 41 55 41 56 41 57 48 81 EC 90 00 00 00 48 8B 05",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "reloads", "type": "void*", "meaning": "WeaponReloads"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on (every caller passes 0)"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on (every caller passes 0)"}
+      ],
+      "hook": true,
+      "meaning": "The reload gate: 1 when the weapon may reload now: its own spare total (OwnSpareAmmo) above 0, or else a worn backpack that can feed it",
+      "source": "HD2Runtime 0.40.1 research team-reload-ammo (reload gate 0x775580, 0x775997 setg); StartReload's call 0x774D3A"
+    },
+    "ReloadStateHas": {
+      "rva": "0x7776F0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 3B 15 28 C5 D0 02 45 8B F0 4C 8B D9",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "reloads", "type": "void*", "meaning": "WeaponReloads"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "mask", "type": "uint32_t", "meaning": "the state bits to test"}
+      ],
+      "hook": true,
+      "meaning": "Whether a weapon's reload state (WeaponReloads +0x50, a u32 per instance) has any of the bits in mask; 0 when the weapon has no WeaponReload instance",
+      "source": "game.dll 0x7776F0 (its probe of WeaponReloads +0x20 and test of +0x50); WeaponReloadBusy's calls"
+    },
+    "WeaponReloadBusy": {
+      "rva": "0x7777A0",
+      "code": "40 53 48 83 EC 20 48 8B 1D C3 F2 BA 02 41 B8 01 00 00 00 48 8B CB E8 35 FF FF FF 84 C0 74 12 41 B8 02",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"}
+      ],
+      "hook": true,
+      "meaning": "Whether a weapon's reload is under way: a reload state bit 1, 8 or 0x20 without its pair 2, 0x10 or 0x40, or bit 4 (ReloadStateHas on WeaponReloads)",
+      "source": "game.dll 0x7777A0; callers WeaponHeatUpdate 0x7649EF and 0x744BE2"
+    },
+    "OwnSpareAmmo": {
+      "rva": "0x744180",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20 3B 15 80 FA D3 02 4C 8B",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "weapons", "type": "void*", "meaning": "the weapon manager (hf_global_WeaponManager)"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"}
+      ],
+      "hook": true,
+      "meaning": "A weapon's own spare total: by its type, the spare magazines, spare rounds or spare heatsinks, plus a mounted shared deposit",
+      "source": "HD2Runtime 0.40.1 research team-reload-ammo (own spare total 0x744180, on the weapon manager 0x3326660)"
+    },
+    "WeaponRefill": {
+      "rva": "0x757F70",
+      "code": "48 83 EC 28 3B 15 A6 BC D2 02 0F 84 89 01 00 00 48 8B 05 C1 E6 BC 02 45 33 C0 48 89 5C 24 30 41 8B C8",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "scale", "type": "float", "meaning": "the share of a resupply's amount"}
+      ],
+      "hook": true,
+      "meaning": "Refills one weapon from a resupply: MagazineRefill for a magazine weapon, else RoundsRefill for one loaded by rounds, else HeatsinkRefill. resupply_all calls it for every carried weapon",
+      "source": "HD2Runtime 0.40.1 research team-reload-ammo (0x880E20 resupply_all through 0x757F70)"
+    },
+    "MagazineRefill": {
+      "rva": "0x76E6D0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 30 3B 15 30 55 D1 02 8B DA",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "scale", "type": "float", "meaning": "the share of a resupply's amount"}
+      ],
+      "hook": true,
+      "meaning": "Gives a weapon spare magazines from a resupply: min(spare + max(1, magazines_from_supply x scale), the maximum), sent as network field 0xEC64918B; on the weapon's owner",
+      "source": "HD2Runtime 0.40.1 research team-reload-ammo (magazines 0x76E6D0, write at 0x76E7E1)"
+    },
+    "RoundsRefill": {
+      "rva": "0x77A430",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 56 41 57 48 83 EC 30 3B 15 D2 97 D0 02 8B DA 4C 8B",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "scale", "type": "float", "meaning": "the share of a resupply's amount"}
+      ],
+      "hook": true,
+      "meaning": "Gives a weapon loaded by rounds spare rounds from a resupply (rounds_from_supply x scale, up to the maximum)",
+      "source": "HD2Runtime 0.40.1 research team-reload-ammo (rounds 0x77A430)"
+    },
+    "HeatsinkRefill": {
+      "rva": "0x764FA0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 30 3B 15 60 EC D1 02 8B DA",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"},
+        {"name": "scale", "type": "float", "meaning": "the share of a resupply's amount"}
+      ],
+      "hook": true,
+      "meaning": "Gives a heat weapon spare heatsinks from a resupply (its WeaponHeat record), sent as network field 0xEC64918B",
+      "source": "game.dll 0x764FA0 (WeaponRefill's third case); HD2Runtime 0.40.1 research dev19-heatsinks"
+    },
+    "AbilityWeaponModeSettings": {
+      "rva": "0x7D5FB0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 20 3B 15 6A DC CA 02 74 54 48 8B 05 3D 0A B5",
+      "returns": "void*",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"}
+      ],
+      "hook": true,
+      "meaning": "An ability weapon's settings for its current fire mode: the AbilityWeapon record + 40 x mode (+0 the ability, +32 spends a round, +33 always); NULL without an AbilityWeapon instance",
+      "source": "components.json AbilityWeapon (game.dll 0x7D5FB0); callers 0x744CD9, 0x7D608E, 0x7D6784"
+    },
+    "AbilityWeaponFire": {
+      "rva": "0x7D6080",
+      "code": "48 89 4C 24 08 56 41 54 48 83 EC 68 8B F2 E8 1D FF FF FF 4C 8B E0 48 85 C0 0F 84 B8 01 00 00 48 89 9C",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "weapon", "type": "uint32_t", "meaning": "the weapon entity"}
+      ],
+      "hook": true,
+      "meaning": "An ability weapon fires: starts its fire mode's ability on the weapon (StartAbility) and, when the mode says so, spends a round (SpendRound)",
+      "source": "components.json AbilityWeapon (game.dll 0x7D6080); WeaponUpdate's call 0x7408D3, GenericFire's 0x7420D0"
+    },
+    "MeleeHitVolumeStart": {
+      "rva": "0x7D38D0",
+      "code": "48 89 5C 24 10 48 89 7C 24 18 55 41 56 41 57 48 8D AC 24 40 FC FF FF 48 81 EC C0 04 00 00 4C 8B 15 3B",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "uint64_t", "meaning": "not read"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the attacking entity (the ability's entity)"},
+        {"name": "volume", "type": "const void*", "meaning": "the MeleeHitVolume template (0xF8 bytes, static in game.dll)"}
+      ],
+      "hook": false,
+      "meaning": "Starts a melee hit volume: a melee ability's handler passes its template, which is copied into the entity's active attack record (the manager at game.dll+0x3326830, 0x4BD8 bytes per instance), so edits to a template reach later swings only",
+      "source": "HD2Runtime 0.40.1 research knife-melee (handlers load their volume with a RIP-relative lea r8 and call 0x7D38D0)"
+    },
+    "UnitSettings": {
+      "rva": "0x4F9B60",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 A8 A0 F8 02 0F 84 A3 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's UnitComponentData (0x88 bytes): its own copy in the UnitManager (private copies at +0xC0) if it has one, else the shared type record",
+      "source": "game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json"
+    },
+    "VehicleSettings": {
+      "rva": "0x4FA7A0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 68 94 F8 02 0F 84 A3 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's VehicleComponentData (0xE78 bytes): its own copy in the VehicleManager (private copies at +0xC0) if it has one, else the shared type record",
+      "source": "HD2Runtime 0.40.1 research vehicle-mech-components (resolvedAccessor 0x4FA7A0); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json"
+    },
+    "HellpodPayloadSettings": {
+      "rva": "0x5011F0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 18 2A F8 02 0F 84 94 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's HellpodPayloadComponentData (0xC bytes): its own copy in the HellpodPayloadManager (private copies at +0xA0) if it has one, else the shared type record",
+      "source": "game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json"
+    },
+    "AvatarSettings": {
+      "rva": "0x508DB0",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 58 AE F7 02 0F 84 A6 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The avatar's AvatarComponentData (0x354 bytes: the Helldiver's movement speeds, +0x10 jog, +0x14 sprint, and stamina values, read every frame): its own copy in the avatar manager hf_global_AvatarManager (inline from +0x547D24) if it has one, else the shared type record",
+      "source": "HD2Runtime 0.40.1 research avatar-fields (avatarResolver_0x508DB0, fields); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json"
+    },
+    "JumppackSettings": {
+      "rva": "0x50D830",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 D8 63 F7 02 0F 84 93 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's JumppackComponentData (0x118 bytes: the jump pack's and hover pack's flight values, read every frame, so a change applies on the next frame): its own copy in the JumppackManager (private copies at +0xA0) if it has one, else the shared type record",
+      "source": "HD2Runtime 0.40.1 research hoverpack-components (lifecycle.resolver 0x50D830); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json"
+    },
+    "DisplacementSettings": {
+      "rva": "0x50FA40",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 C8 41 F7 02 0F 84 93 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's DisplacementComponentData (0x278 bytes): its own copy in the DisplacementManager (private copies at +0xA0) if it has one, else the shared type record",
+      "source": "game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json"
+    },
+    "OrbitalAbilitySettings": {
+      "rva": "0x512E20",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 E8 0D F7 02 0F 84 A3 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's OrbitalAbilityComponentData (0x228 bytes): its own copy in the OrbitalAbilityManager (private copies at +0xD8) if it has one, else the shared type record",
+      "source": "game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json"
+    },
+    "RotationSettings": {
+      "rva": "0x513690",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 78 05 F7 02 0F 84 A3 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The entity's RotationComponentData (0x138 bytes): its own copy in the RotationManager (private copies at +0xB8) if it has one, else the shared type record",
+      "source": "HD2Runtime 0.40.1 research vehicle-mech-components (resolvedAccessor 0x513690); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json"
+    },
+    "EagleSettings": {
+      "rva": "0x514B40",
+      "code": "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 C8 F0 F6 02 0F 84 93 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "descriptor", "type": "void*", "meaning": "the entity's descriptor (+8 the entity); NULL gives NULL"}
+      ],
+      "hook": true,
+      "meaning": "The Eagle jet's EagleComponentData (0x98 bytes: +0x10 its payload kind, +0x18 its strike projectile, +0x4C its speed, +0x78 its attack distance): its own copy in the EagleManager (private copies at +0xB0) if it has one, else the shared type record. The update, the strike and the jet's set-up resolve it every time",
+      "source": "HD2Runtime 0.40.1 research eagle-components (pins.resolver, readPaths)"
+    },
+    "VehicleUpdate": {
+      "rva": "0x6FEF80",
+      "code": "40 55 53 41 55 41 57 48 8D AC 24 28 F7 FF FF 48 81 EC F8 09 00 00 44 0F 29 AC 24 60 09 00 00 48 8B 05 6A D0 F3 01",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0x1C6348: hf_global_VehicleManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The vehicle system's frame: vehicles and mechs. The world update (0x571250) calls it every frame",
+      "source": "game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "SquadTransportUpdate": {
+      "rva": "0x6864D0",
+      "code": "48 8B C4 53 55 48 81 EC 88 00 00 00 8B 59 10 48 8B E9 4C 89 60 E0 45 33 E4 0F 29 78 A8 0F 28 F9",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0x1C6EB0: hf_global_SquadTransportManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The squad transport system's frame: enemy dropships and the squads they carry, which it spawns through SpawnSquad. The world update (0x571250) calls it every frame",
+      "source": "game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "HellpodPayloadUpdate": {
+      "rva": "0x9322D0",
+      "code": "4C 8B DC 53 41 56 48 83 EC 78 33 C0 0F 29 74 24 50 4C 8B F1 0F 29 7C 24 40 0F 28 F9 89 84 24 90 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0x75C1B8: hf_global_HellpodPayloadManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The hellpod payload system's frame. The world update (0x571250) calls it every frame",
+      "source": "game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "AiSpawnerUpdate": {
+      "rva": "0x7F7820",
+      "code": "4C 8B DC 53 57 48 81 EC 38 01 00 00 41 0F 29 73 C8 45 0F 29 43 A8 45 0F 29 4B 98 48 8B 05 CE 47 E4 01",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0x75EA20: hf_global_AiSpawnerManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The AI spawner system's frame: the spawners spawn their squads through SpawnSquad. The world update (0x571250) calls it every frame",
+      "source": "game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "BugholeUpdate": {
+      "rva": "0x857F90",
+      "code": "4C 8B DC 55 53 56 57 41 55 49 8D AB 78 F5 FF FF 48 81 EC 60 0B 00 00 48 8B 05 62 40 DE 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0x7C56B0: hf_global_BugholeManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The bug hole system's frame: holes spawn their bugs through SpawnSquad with the HiveMindManager. The world update (0x571250) calls it every frame",
+      "source": "game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "VehicleMotionUpdate": {
+      "rva": "0x7152F0",
+      "code": "40 55 57 48 8D AC 24 88 EB FF FF B8 88 15 00 00 E8 BB F2 9E 01 48 2B E0 44 0F 29 9C 24 00 15 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0x7C72E8: hf_global_VehicleMotionManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The vehicle motion system's frame: the vehicles' and mechs' driving physics. The world update (0x571250) calls it every frame",
+      "source": "game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "AvatarUpdate": {
+      "rva": "0x829E90",
+      "code": "4C 8B DC 55 57 41 55 49 8D AB 08 FB FF FF 48 81 EC 00 06 00 00 48 8B 05 64 21 E1 01 48 33 C4 48 89 85 18 04 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0x956128: hf_global_AvatarManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The avatar system's frame, for the avatars simulated here (the manager's first +0x70 indexes): movement speed from AvatarSettings and stamina regeneration. The world update (0x571250) calls it every frame",
+      "source": "HD2Runtime 0.40.1 research avatar-fields (avatarUpdate_0x829E90); game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "DisplacementUpdate": {
+      "rva": "0x88A700",
+      "code": "48 8B C4 48 89 58 20 55 56 57 41 56 41 57 48 8D A8 08 FD FF FF 48 81 EC F0 03 00 00 0F 29 70 C8",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0xEB71D8: hf_global_DisplacementManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The displacement system's frame. The world update (0x571250) calls it every frame",
+      "source": "game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "OrbitalAbilityUpdate": {
+      "rva": "0x5F35B0",
+      "code": "48 8B C4 48 89 58 20 55 56 57 41 56 41 57 48 8D A8 D8 FA FF FF 48 81 EC 00 06 00 00 0F 29 70 C8",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0xF064A8: hf_global_OrbitalAbilityManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The orbital ability system's frame. The world update (0x571250) calls it every frame",
+      "source": "game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "EagleUpdate": {
+      "rva": "0x8A7A90",
+      "code": "41 56 48 81 EC 80 00 00 00 48 8B 05 C8 E9 A7 02 4C 8B F1 0F 29 74 24 50 0F 28 F1 83 B8 88 00 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0xF0B300: hf_global_EagleManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The Eagle system's frame: for each jet (indexes below the manager's +0x20) it resolves EagleSettings and runs EagleStage, EagleTrackAim, EagleStrike and EagleFlight, then the flyby sound. The world update (0x571250) calls it every frame",
+      "source": "HD2Runtime 0.40.1 research eagle-components (pins.update); game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "EncounterUpdate": {
+      "rva": "0x8B8A20",
+      "code": "40 55 53 41 55 48 8D AC 24 30 EE FF FF B8 D0 12 00 00 E8 89 BB 84 01 48 2B E0 44 0F 29 94 24 70 12 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0x7C4D30: hf_global_EncounterManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The director's reinforcements: an encounter picks a composition (PickReinforcementComposition) and sends it to the faction's transport or breach (DispatchReinforcement). The world update (0x571250) calls it every frame",
+      "source": "HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement pins); game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "GuardForceUpdate": {
+      "rva": "0x9110E0",
+      "code": "4C 8B DC 49 89 5B 08 49 89 73 10 49 89 7B 18 55 41 54 41 55 41 56 41 57 49 8D AB 28 FF FF FF 48 81 EC B0 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the component world +0x771410: hf_global_GuardForces"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The outposts' frame: it fills an outpost with its guards (FillOutpost) when it needs them. The world update (0x571250) calls it every frame",
+      "source": "game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only"
+    },
+    "EagleStage": {
+      "rva": "0x8A2990",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 F0 48 81 EC 10 01 00 00 0F 29 BC 24 00 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "eagles", "type": "void*", "meaning": "the Eagle manager: hf_global_EagleManager"},
+        {"name": "index", "type": "uint32_t", "meaning": "the jet's index (its record at the manager's +0x58 + 0xFC index)"}
+      ],
+      "hook": true,
+      "meaning": "Moves an Eagle jet through its stages and sets its speed per stage (EagleSettings +0x50, +0x54). EagleUpdate calls it for each jet",
+      "source": "HD2Runtime 0.40.1 research eagle-components (pins.stage); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9)"
+    },
+    "EagleTrackAim": {
+      "rva": "0x8A37D0",
+      "code": "4C 8B DC 49 89 5B 18 55 56 57 41 54 41 55 41 56 41 57 49 8D AB 38 FF FF FF 48 81 EC 90 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "eagles", "type": "void*", "meaning": "the Eagle manager: hf_global_EagleManager"},
+        {"name": "index", "type": "uint32_t", "meaning": "the jet's index (its record at the manager's +0x58 + 0xFC index)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "Keeps an Eagle jet's aim point on its targets, leading moving ones by its strike projectile's speed. EagleUpdate calls it for each jet",
+      "source": "HD2Runtime 0.40.1 research eagle-components (pins.tracking); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9)"
+    },
+    "EagleStrike": {
+      "rva": "0x8A4410",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 10 FB FF FF 48 81 EC F0 05 00 00 44 0F 29 94 24 A0 05 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "eagles", "type": "void*", "meaning": "the Eagle manager: hf_global_EagleManager"},
+        {"name": "index", "type": "uint32_t", "meaning": "the jet's index (its record at the manager's +0x58 + 0xFC index)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "An Eagle jet's attack: by its payload kind (EagleSettings +0x10: strafe, rockets, bombs) it starts within its attack distance and releases its strike projectiles. EagleUpdate calls it for each jet",
+      "source": "HD2Runtime 0.40.1 research eagle-components (pins.strike); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9)"
+    },
+    "EagleFlight": {
+      "rva": "0x8A59E0",
+      "code": "48 8B C4 48 89 58 18 55 56 57 41 54 41 55 41 56 41 57 48 8D A8 F8 FD FF FF 48 81 EC D0 02 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "eagles", "type": "void*", "meaning": "the Eagle manager: hf_global_EagleManager"},
+        {"name": "index", "type": "uint32_t", "meaning": "the jet's index (its record at the manager's +0x58 + 0xFC index)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "An Eagle jet's flight model. EagleUpdate calls it for each jet",
+      "source": "HD2Runtime 0.40.1 research eagle-components (pins.stage: the flight model 0x8A59E0); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9)"
+    },
+    "JumppackTimers": {
+      "rva": "0x9B5EC0",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 D0 FE FF FF 48 81 EC 30 02 00 00 0F 29 B4 24 20 02 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "jumppacks", "type": "void*", "meaning": "the jump pack manager: hf_global_JumppackManager"},
+        {"name": "index", "type": "uint32_t", "meaning": "the pack's index"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "A jump pack's or hover pack's timers, abilities and visual sway, every frame. The world update runs it for each index below the manager's +0x10",
+      "source": "HD2Runtime 0.40.1 research hoverpack-components (code.functions); game.dll: the world update's loop at 0x573700"
+    },
+    "JumppackFlight": {
+      "rva": "0x9B4790",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 50 FF FF FF 48 81 EC B0 01 00 00 44 0F 29 B4 24 20 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "jumppacks", "type": "void*", "meaning": "the jump pack manager: hf_global_JumppackManager"},
+        {"name": "index", "type": "uint32_t", "meaning": "the pack's index"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "A jump pack's or hover pack's flight physics, every frame: launch, sustain, air control, hover and fuel; it deactivates the pack (SetJumppackActive) when the meter runs out. The world update runs it for each index below the manager's +0x14",
+      "source": "HD2Runtime 0.40.1 research hoverpack-components (code.functions, model); game.dll: the world update's loop at 0x573720"
+    },
+    "SetJumppackActive": {
+      "rva": "0x9B3420",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 54 41 55 41 56 41 57 48 81 EC 90 00 00 00 48 8B 05 CA 8B C8 01",
+      "returns": "void",
+      "params": [
+        {"name": "jumppacks", "type": "void*", "meaning": "the jump pack manager: hf_global_JumppackManager"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the pack's entity"},
+        {"name": "active", "type": "uint8_t", "meaning": "1 activates it (the take-off passes 1), 0 deactivates it"},
+        {"name": "r9", "type": "uint8_t", "meaning": "not reviewed: pass it on (0 from the flight physics)"}
+      ],
+      "hook": true,
+      "meaning": "Activates or deactivates an entity's jump pack or hover pack",
+      "source": "HD2Runtime 0.40.1 research hoverpack-components (code.functions: activate/deactivate); game.dll: its seven callers (r8b, r9b)"
+    },
+    "JumppackTakeOff": {
+      "rva": "0xA63790",
+      "code": "48 89 5C 24 18 48 89 6C 24 20 56 57 41 54 41 56 41 57 48 83 EC 70 48 8B 05 63 88 BD 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "rcx", "type": "void*", "meaning": "not reviewed: pass it on (its caller passes its rsi + 0xB68)"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"}
+      ],
+      "hook": true,
+      "meaning": "The jump pack's take-off, from the avatar's state: the hop's values, and SetJumppackActive(..., 1)",
+      "source": "HD2Runtime 0.40.1 research hoverpack-components (code.functions: take-off (avatar state)); game.dll: its call to SetJumppackActive at 0xA63B71"
+    },
+    "PickPatrolComposition": {
+      "rva": "0x959950",
+      "code": "40 53 55 56 57 41 54 41 55 41 57 B8 F0 52 00 00 E8 5B AC 7A 01 48 2B E0 0F 29 B4 24 E0 52 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "hivemind", "type": "void*", "meaning": "the HiveMind manager: hf_global_HiveMindManager"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Picks the composition of a scheduled patrol from the compiled patrol compositions (family 1, the HiveMind's +0x3A538): a 0xD8-byte entry, or NULL. EnemyDirectorTick spawns it with SpawnSquad",
+      "source": "HD2Runtime 0.40.1 research spawn-channels-dev10 (scheduled patrol selection, family 1); game.dll: its call in EnemyDirectorTick (0x9514BD)"
+    },
+    "SpawnSquad": {
+      "rva": "0x953580",
+      "code": "40 55 53 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 A8 FD FF FF 48 81 EC 58 03 00 00 44 0F 29 BC 24 B0 02 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "hivemind", "type": "void*", "meaning": "the HiveMind manager: hf_global_HiveMindManager"},
+        {"name": "composition", "type": "void*", "meaning": "the composition to spawn, as the pickers return it"},
+        {"name": "position", "type": "const float*", "meaning": "where (3 f32); nothing spawns outside the bounds it checks"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "flags", "type": "uint32_t", "meaning": "flag bits (it tests bits 0, 1 and 6); each caller passes its own constant"},
+        {"name": "s6", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s9", "type": "float", "meaning": "not reviewed: pass it on"},
+        {"name": "s10", "type": "uint32_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Spawns a squad of enemies from a composition at a position: the director's patrols (EnemyDirectorTick), spawners (AiSpawnerUpdate), bug holes (BugholeUpdate), dropships (SquadTransportUpdate) and outposts (FillOutpost) all spawn through it. Returns the squad, or NULL",
+      "source": "HD2Runtime 0.40.1 research spawn-channels-dev10 (selected patrol creation); game.dll: its six callers' stack arguments (+0x20 to +0x48) and the return they test"
+    },
+    "PatrolClock": {
+      "rva": "0x959740",
+      "code": "48 89 7C 24 18 41 56 48 83 EC 50 83 B9 80 06 00 00 00 4D 8B F0 0F 29 74 24 40 48 8B F9 44 0F 29 44 24 20",
+      "returns": "float",
+      "params": [
+        {"name": "hivemind", "type": "void*", "meaning": "the HiveMind manager: hf_global_HiveMindManager"},
+        {"name": "dt", "type": "float", "meaning": "the frame time, s"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "The patrol clock: the frame time scaled by the HiveMind's progress and player-count multipliers (HiveMindComponentData +0x1DC, +0x1F0, +0x204), which EnemyDirectorTick takes off the patrol timer. Higher is faster",
+      "source": "HD2Runtime 0.40.1 research spawn-channels-dev10 (patrolClock); game.dll: its call at 0x951680 and the subss after it"
+    },
+    "PickReinforcementComposition": {
+      "rva": "0x957E10",
+      "code": "4C 8B DC 49 89 5B 10 49 89 6B 18 49 89 73 20 57 48 83 EC 70 F3 41 0F 10 00 48 8B F2 F3 41 0F 10 48 04",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "hivemind", "type": "void*", "meaning": "the HiveMind manager: hf_global_HiveMindManager"},
+        {"name": "rdx", "type": "void*", "meaning": "not reviewed: pass it on"},
+        {"name": "position", "type": "const float*", "meaning": "the position (3 f32)"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on (0xFFFFFFFF from EncounterUpdate)"}
+      ],
+      "hook": true,
+      "meaning": "Picks a reinforcement composition (family 4, the HiveMind's +0x432F8, count +0x5188C) for a position; EncounterUpdate then dispatches it",
+      "source": "HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement manager selects composition); game.dll: its call at 0x8B981B (rcx from 0x3326D10)"
+    },
+    "DispatchReinforcement": {
+      "rva": "0x8B7900",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 EC 70 48 8B 05 ED 46 D8 01",
+      "returns": "float",
+      "params": [
+        {"name": "encounters", "type": "void*", "meaning": "the encounter manager: hf_global_EncounterManager"},
+        {"name": "rdx", "type": "uint32_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r8", "type": "void*", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Sends a selected reinforcement to the faction's transport or breach; returns a time (s) that EncounterUpdate adds to the frame time and keeps in the encounter's record (+0x24)",
+      "source": "HD2Runtime 0.40.1 research spawn-channels-dev10 (faction transport/breach dispatcher); game.dll: its call at 0x8B98D9 and the addss after it"
+    },
+    "FillOutpost": {
+      "rva": "0x90E150",
+      "code": "4C 8B DC 55 53 56 57 41 56 49 8D AB 18 FD FF FF 48 81 EC C0 03 00 00 48 8B 05 A2 DE D2 01 48 33 C4",
+      "returns": "void",
+      "params": [
+        {"name": "guardforces", "type": "void*", "meaning": "the outposts' manager: hf_global_GuardForces"},
+        {"name": "outpost", "type": "uint32_t", "meaning": "the outpost's entity"}
+      ],
+      "hook": true,
+      "meaning": "Fills an outpost with its guards from the map guard compositions (family 3, the HiveMind's +0x41138), spending the guard budget (HiveMind +0x518B4): it picks enemies with PickEnemy and spawns them through 0x90D2A0, which calls SpawnSquad. GuardForceUpdate calls it",
+      "source": "HD2Runtime 0.40.1 research spawn-channels-dev10 (map guard pins 0x90E25D, 0x90EAE0); game.dll: its callers in GuardForceUpdate"
+    },
+    "UnitSetLocalPosition": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FC650",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 60 49 8B D8 48 63 FA E8 56 12 EA FF 48 8B C8 48 8B F0",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root; the binding takes it 1-based and subtracts the Lua index base)"},
+        {"name": "position", "type": "const float*", "meaning": "x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "Sets a unit node's local position (floats 9-11 of its 16-float local pose), marks the node changed and the unit moving (WorldSetUnitMoving, 5). Unit.set_local_position calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitSetLocalRotation": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FC7A0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 81 EC A0 00 00 00 44 0F 29 B4 24 90 00 00 00 49 8B D8 48 63 FA",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"},
+        {"name": "rotation", "type": "const float*", "meaning": "a quaternion x, y, z, w"}
+      ],
+      "hook": true,
+      "meaning": "Sets a unit node's local rotation from a quaternion (made a 3x3 by 0x12C780, keeping position and scale), marks the node changed and the unit moving. Unit.set_local_rotation calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitSetLocalScale": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FC8F0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 60 49 8B F8 48 63 F2 E8 B6 0F EA FF 48 8B C8 48 8B D8",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"},
+        {"name": "scale", "type": "const float*", "meaning": "x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "Sets a unit node's local scale (floats 12-14 of its local pose) through the unit's own set-local-pose (its vtable +0x278). Unit.set_local_scale calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitTeleportLocalPosition": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FD3F0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 41 56 48 81 EC 90 00 00 00 49 8B F8 48 63 F2 E8 AD 04 EA FF",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"},
+        {"name": "position", "type": "const float*", "meaning": "x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "Unit.teleport_local_position's engine side: writes the node's local position like UnitSetLocalPosition, marks the node changed and the unit moving (WorldSetUnitMoving, 5).",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitTeleportLocalPose": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FD350",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B 01 49 8B D8 48 63 FA 48 8B F1 FF 90 E8 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "void*", "meaning": "the unit object (UnitFromHandle), not a handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"},
+        {"name": "pose", "type": "const float*", "meaning": "the 16-float local pose (as UnitSetLocalPose)"}
+      ],
+      "hook": true,
+      "meaning": "Writes a unit node's whole local pose, marks the node changed and the unit moving. Unit.teleport_local_pose calls it with the unit object.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldSetUnitMoving": {
+      "module": "helldivers2.exe",
+      "rva": "0x1AF180",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B 02 48 8B FA 48 8B D9 41 8B D0 48 8B CF FF 90 B0 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the unit's world (the unit's +0x18)"},
+        {"name": "unit", "type": "void*", "meaning": "the unit object (UnitFromHandle)"},
+        {"name": "frames", "type": "uint32_t", "meaning": "passed to the unit's vtable +0xB0 (Unit.set_moving's optional count, default 1; the pose setters pass 5)"}
+      ],
+      "hook": true,
+      "meaning": "Marks a unit moving: tells the unit (its vtable +0xB0) and, when its +0x38 is -1, appends it to the world's moving list (+0x230490) under the world's lock (+0x230460). Unit.set_moving and every Unit/Camera/Light/Mesh local pose setter reach it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitDeltaPosition": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FD7D0",
+      "code": "48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 48 89 78 20 41 56 48 81 EC C0 00 00 00 0F 29 78 E8",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "where the 3 floats go (returned)"},
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"}
+      ],
+      "hook": true,
+      "meaning": "How far a unit node moved: computed from its scene graph's last world poses (+0x30, copied from +0x28 when unset) and its current ones (+0x28); returns out. Unit.delta_position calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitDeltaRotation": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FD9D0",
+      "code": "48 8B C4 53 55 56 57 41 56 48 81 EC A0 01 00 00 0F 29 70 C8 48 8B E9 0F 29 78 B8 8B CA 44 0F 29 40 A8",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "where the quaternion (4 floats) goes (returned)"},
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"}
+      ],
+      "hook": true,
+      "meaning": "How far a unit node turned between its last and current world pose, as a quaternion; returns out. Unit.delta_rotation calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitDeltaPose": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FDE40",
+      "code": "48 8B C4 53 55 56 57 41 56 48 81 EC 90 01 00 00 0F 29 70 C8 48 8B E9 0F 29 78 B8 8B CA 44 0F 29 40 A8",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "where the 16-float pose goes (returned)"},
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"}
+      ],
+      "hook": true,
+      "meaning": "A unit node's pose change between its last and current world pose (16 floats); returns out. Unit.delta_pose calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitTeleportLocalRotation": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FD570",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 41 56 48 81 EC C0 00 00 00 49 8B D8 48 63 F2 E8 2D 03 EA FF",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"},
+        {"name": "rotation", "type": "const float*", "meaning": "a quaternion x, y, z, w"}
+      ],
+      "hook": true,
+      "meaning": "Unit.teleport_local_rotation's engine side: writes the node's local rotation from a quaternion (keeping position and scale), marks the node changed and the unit moving.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitTeleportLocalScale": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FD680",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 20 41 56 48 81 EC 90 00 00 00 49 8B F8 48 63 F2 E8 1D 02 EA FF",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root)"},
+        {"name": "scale", "type": "const float*", "meaning": "x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "Unit.teleport_local_scale's engine side: writes the node's local scale, marks the node changed and the unit moving.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldSpawnUnit": {
+      "module": "helldivers2.exe",
+      "rva": "0x1A7E50",
+      "code": "48 89 5C 24 18 48 89 6C 24 20 56 57 41 54 41 56 41 57 48 83 EC 60 65 48 8B 04 25 58 00 00 00 49 8B E9",
+      "returns": "void*",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "resource", "type": "const uint64_t*", "meaning": "the unit resource's name hash (resolved with the unit type 0xE0A48D0BE9A7453F)"},
+        {"name": "name", "type": "const uint64_t*", "meaning": "an optional id64 World.spawn_unit takes after the pose (0 when none); passed on to 0x1A7FC0"},
+        {"name": "pose", "type": "const float*", "meaning": "the spawn pose, a 4x4 matrix (rows x, y, z axes then translation; identity by default)"},
+        {"name": "s5", "type": "uint32_t", "meaning": "not reviewed: pass it on (the binding passes 0)"},
+        {"name": "s6", "type": "uint64_t", "meaning": "not reviewed: pass it on (the binding passes 0)"},
+        {"name": "s7", "type": "uint8_t", "meaning": "not reviewed: pass it on (World.spawn_unit's optional bool after the name, default 1)"},
+        {"name": "s8", "type": "uint64_t", "meaning": "not reviewed: pass it on (the binding passes 0)"}
+      ],
+      "hook": true,
+      "meaning": "Spawns a unit in a world from its resource and returns the unit object (+0x08 its handle, which World.spawn_unit hands to Lua). World.spawn_unit calls it; so do game.dll-facing paths (0x1AA5CE, 0x2D1EF6, 0x2E0DAA).",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldDestroyUnit": {
+      "module": "helldivers2.exe",
+      "rva": "0x1AECC0",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 56 57 41 56 48 83 EC 20 48 8B 42 30 48 8B FA 48 8B F1 48 85 C0 74 05",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world (the unit's +0x18)"},
+        {"name": "unit", "type": "void*", "meaning": "the unit object (UnitFromHandle)"}
+      ],
+      "hook": true,
+      "meaning": "Destroys a unit now and frees it from its world. World.destroy_unit calls it when the unit's vtable +0x1B0 returns null (otherwise WorldQueueUnitsDestroy).",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldQueueUnitsDestroy": {
+      "module": "helldivers2.exe",
+      "rva": "0x12D2D0",
+      "code": "40 56 41 54 41 55 41 56 41 57 48 83 EC 20 45 8B E0 4C 8B F2 4C 8B E9 45 8B F8 F0 44 0F C1 B9 30 00 01 00",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "units", "type": "const uint32_t*", "meaning": "the units' handles"},
+        {"name": "count", "type": "uint32_t", "meaning": "how many"}
+      ],
+      "hook": true,
+      "meaning": "Queues units for destruction: takes each handle out of the unit registry (bumps its generation, clears its slot) and adds it to the world's queue counted at +0x10030. World.destroy_unit uses it for units whose vtable +0x1B0 is set.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldLinkUnitHandles": {
+      "module": "helldivers2.exe",
+      "rva": "0x3361C0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 48 8B E9 41 8B D9 8B CA 41 8B F0 E8 DC 76 D6 FF",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "child", "type": "uint32_t", "meaning": "the child unit's handle"},
+        {"name": "child_node", "type": "int32_t", "meaning": "the child's node (0 the root)"},
+        {"name": "parent", "type": "uint32_t", "meaning": "the parent unit's handle"},
+        {"name": "s5", "type": "uint32_t", "meaning": "the parent's node (0 the root); forwarded to WorldLinkUnit"}
+      ],
+      "hook": true,
+      "meaning": "Links one unit to another's node by handles: resolves both (UnitFromHandle) and tail-calls WorldLinkUnit. World.link_unit calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldLinkUnit": {
+      "module": "helldivers2.exe",
+      "rva": "0x1AF240",
+      "code": "48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 48 89 78 20 41 56 48 81 EC 90 00 00 00 FF 81 6C 09 23 00",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "child", "type": "void*", "meaning": "the child unit object"},
+        {"name": "child_node", "type": "int32_t", "meaning": "the child's node (0 the root)"},
+        {"name": "parent", "type": "void*", "meaning": "the parent unit object"},
+        {"name": "s5", "type": "uint16_t", "meaning": "the parent's node (0 the root), read from the stack as a 16-bit index"}
+      ],
+      "hook": true,
+      "meaning": "Links a unit's node to a parent unit's node in a world: puts the child in the world's linked list (+0x2304B0), the parent at the child's +0x1D0 and the child in the parent's +0x1D8 list.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldUnlinkUnit": {
+      "module": "helldivers2.exe",
+      "rva": "0x1AF780",
+      "code": "40 53 48 83 EC 20 FF 81 6C 09 23 00 48 8B DA 48 8B 02 48 89 7C 24 38 48 8B F9 48 8B CA FF 90 20 02 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "unit", "type": "void*", "meaning": "the unit object (UnitFromHandle)"}
+      ],
+      "hook": true,
+      "meaning": "Unlinks a unit from its parent and takes it out of the world's linked list (+0x2304B0). World.unlink_unit calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldMendUnit": {
+      "module": "helldivers2.exe",
+      "rva": "0x3351C0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B F1 41 8B D8 8B CA E8 E4 86 D6 FF 8B D3 48 8B C8",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "index", "type": "int32_t", "meaning": "passed to the unit's vtable +0x48 (the binding takes it 1-based)"}
+      ],
+      "hook": true,
+      "meaning": "World.mend_unit's engine side: asks the unit (vtable +0x48 with the index) and when that succeeds marks it moving (WorldSetUnitMoving, 1); 1 when it did.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldUpdate": {
+      "module": "helldivers2.exe",
+      "rva": "0x333BD0",
+      "code": "40 53 48 83 EC 40 48 8B 05 4B C6 6D 01 48 8B D9 48 8B 89 50 00 23 00 0F 29 74 24 30 0F 29 7C 24 20",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "dt", "type": "float", "meaning": "the time step (the binding's default is EngineCore +0x560)"}
+      ],
+      "hook": true,
+      "meaning": "Updates a world by a time step. World.update calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldUpdateScene": {
+      "module": "helldivers2.exe",
+      "rva": "0x1B0B10",
+      "code": "48 8B C4 48 89 58 10 48 89 70 18 48 89 78 20 55 41 54 41 55 41 56 41 57 48 8D 68 A8 48 81 EC 30 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "dt", "type": "float", "meaning": "the time step"},
+        {"name": "xmm2", "type": "float", "meaning": "not reviewed: pass it on (the binding passes EngineCore +0x55C)"}
+      ],
+      "hook": true,
+      "meaning": "Updates a world's scene graph by a time step. World.update_scene and World.update_with_callback call it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldCreateLineObject": {
+      "module": "helldivers2.exe",
+      "rva": "0x1B3AD0",
+      "code": "48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 20 48 8B F9 45 84 C0 74 09 48 8B B1 10 06 23 00 EB 14",
+      "returns": "void*",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "no_depth_test", "type": "uint8_t", "meaning": "1 draws through geometry (the world's line renderer +0x230608 instead of +0x230600)"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on (1 picks the renderer at +0x230610; the binding passes 0)"}
+      ],
+      "hook": true,
+      "meaning": "Makes a debug line object in a world and records it in the world's line object map (+0x230638); returns it. World.create_line_object calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LineObjectAddLine": {
+      "module": "helldivers2.exe",
+      "rva": "0x4E1820",
+      "code": "48 89 5C 24 08 57 48 83 EC 40 41 8B 40 08 48 8D 59 08 F2 41 0F 10 00 8B FA 8B 13 8B 4B 04 89 44 24 28",
+      "returns": "void",
+      "params": [
+        {"name": "line_object", "type": "void*", "meaning": "the line object (WorldCreateLineObject): +0x08 its lines, 28 bytes each (from, to, color)"},
+        {"name": "color", "type": "uint32_t", "meaning": "ARGB, a byte each (Lua's Color(a, r, g, b))"},
+        {"name": "from", "type": "const float*", "meaning": "x, y, z"},
+        {"name": "to", "type": "const float*", "meaning": "x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "Adds one debug line to a line object; it shows once the object is dispatched (LineObjectDispatch). LineObject.add_line calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LineObjectAddCone": {
+      "module": "helldivers2.exe",
+      "rva": "0x4E46D0",
+      "code": "48 8B C4 48 89 58 18 55 56 41 55 41 56 41 57 48 81 EC 10 01 00 00 0F 29 70 C8 4D 8B F1 F3 41 0F 10 70 04",
+      "returns": "void",
+      "params": [
+        {"name": "line_object", "type": "void*", "meaning": "the line object"},
+        {"name": "color", "type": "uint32_t", "meaning": "ARGB"},
+        {"name": "from", "type": "const float*", "meaning": "one end, x, y, z (Lua's from)"},
+        {"name": "to", "type": "const float*", "meaning": "the other end, x, y, z (Lua's to)"},
+        {"name": "s5", "type": "float", "meaning": "the base radius"},
+        {"name": "s6", "type": "int32_t", "meaning": "segments (Lua default 20)"},
+        {"name": "s7", "type": "int32_t", "meaning": "bars (Lua default 10)"}
+      ],
+      "hook": true,
+      "meaning": "Adds a debug cone's lines to a line object. LineObject.add_cone calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LineObjectAddCircle": {
+      "module": "helldivers2.exe",
+      "rva": "0x4E1FD0",
+      "code": "48 8B C4 55 57 41 54 41 56 41 57 48 81 EC F0 00 00 00 0F 29 70 C8 4D 8B E0 0F 29 78 B8 0F 28 F3",
+      "returns": "void",
+      "params": [
+        {"name": "line_object", "type": "void*", "meaning": "the line object"},
+        {"name": "color", "type": "uint32_t", "meaning": "ARGB"},
+        {"name": "center", "type": "const float*", "meaning": "x, y, z"},
+        {"name": "radius", "type": "float", "meaning": "the radius"},
+        {"name": "s5", "type": "const float*", "meaning": "the normal, x, y, z"},
+        {"name": "s6", "type": "int32_t", "meaning": "segments (Lua default 20)"}
+      ],
+      "hook": true,
+      "meaning": "Adds a debug circle's lines to a line object. LineObject.add_circle calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LineObjectAddSphere": {
+      "module": "helldivers2.exe",
+      "rva": "0x4E2FC0",
+      "code": "48 8B C4 48 89 78 20 55 41 54 41 57 48 8D 68 A8 48 81 EC 40 01 00 00 44 0F 29 40 B8 49 8B F8 44 0F 29 48 A8",
+      "returns": "void",
+      "params": [
+        {"name": "line_object", "type": "void*", "meaning": "the line object"},
+        {"name": "color", "type": "uint32_t", "meaning": "ARGB"},
+        {"name": "center", "type": "const float*", "meaning": "x, y, z"},
+        {"name": "radius", "type": "float", "meaning": "the radius (0 adds nothing)"},
+        {"name": "s5", "type": "int32_t", "meaning": "segments (Lua default 20)"},
+        {"name": "s6", "type": "int32_t", "meaning": "parts (Lua default 2)"}
+      ],
+      "hook": true,
+      "meaning": "Adds a debug sphere's lines to a line object. LineObject.add_sphere calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LineObjectAddHalfSphere": {
+      "module": "helldivers2.exe",
+      "rva": "0x4E3380",
+      "code": "48 8B C4 48 89 58 10 48 89 70 18 55 57 41 54 41 55 41 56 48 8D A8 18 FF FF FF 48 81 EC C0 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "line_object", "type": "void*", "meaning": "the line object"},
+        {"name": "color", "type": "uint32_t", "meaning": "ARGB"},
+        {"name": "center", "type": "const float*", "meaning": "x, y, z"},
+        {"name": "radius", "type": "float", "meaning": "the radius"},
+        {"name": "s5", "type": "const float*", "meaning": "the direction it faces, x, y, z"},
+        {"name": "s6", "type": "int32_t", "meaning": "segments"},
+        {"name": "s7", "type": "int32_t", "meaning": "parts"}
+      ],
+      "hook": true,
+      "meaning": "Adds a debug half sphere's lines to a line object. LineObject.add_half_sphere calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LineObjectAddBox": {
+      "module": "helldivers2.exe",
+      "rva": "0x4E3AC0",
+      "code": "48 8B C4 48 89 58 08 48 89 70 10 48 89 78 18 55 41 54 41 55 41 56 41 57 48 8D 6C 24 A0 48 81 EC 60 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "line_object", "type": "void*", "meaning": "the line object"},
+        {"name": "color", "type": "uint32_t", "meaning": "ARGB"},
+        {"name": "pose", "type": "const float*", "meaning": "the box's pose, a 4x4 matrix"},
+        {"name": "extents", "type": "const float*", "meaning": "half sizes x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "Adds a debug box's 12 edges to a line object. LineObject.add_box calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LineObjectAddCapsule": {
+      "module": "helldivers2.exe",
+      "rva": "0x4E4040",
+      "code": "4C 89 4C 24 20 48 89 4C 24 08 55 41 54 41 55 41 57 48 8D 6C 24 B8 48 81 EC 48 01 00 00 F3 41 0F 10 59 04",
+      "returns": "void",
+      "params": [
+        {"name": "line_object", "type": "void*", "meaning": "the line object"},
+        {"name": "color", "type": "uint32_t", "meaning": "ARGB"},
+        {"name": "from", "type": "const float*", "meaning": "one end's centre, x, y, z"},
+        {"name": "to", "type": "const float*", "meaning": "the other end's centre"},
+        {"name": "s5", "type": "float", "meaning": "the radius"},
+        {"name": "s6", "type": "int32_t", "meaning": "segments"},
+        {"name": "unused", "type": "int32_t", "meaning": "not read (its home slot is reused as scratch)"},
+        {"name": "s8", "type": "int32_t", "meaning": "bars (the binding's 8th Lua argument)"}
+      ],
+      "hook": true,
+      "meaning": "Adds a debug capsule's lines to a line object. LineObject.add_capsule calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LineObjectDispatch": {
+      "module": "helldivers2.exe",
+      "rva": "0x4E5EC0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 30 41 8B 68 08 48 8B F1",
+      "returns": "void",
+      "params": [
+        {"name": "renderer", "type": "void*", "meaning": "the line renderer the object was made with (the world's line object map +0x230638 entry)"},
+        {"name": "render", "type": "void*", "meaning": "the world's render interface ([world +0x2301F8] +0x10); its +0x98 gives the packet allocator"},
+        {"name": "line_object", "type": "void*", "meaning": "the line object: +0x08 its line count"}
+      ],
+      "hook": true,
+      "meaning": "Sends a line object's lines to the renderer for drawing (a packet of 28 bytes a line plus a header). LineObject.dispatch calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MurmurHash64A": {
+      "module": "helldivers2.exe",
+      "rva": "0x5D5840",
+      "code": "48 89 5C 24 08 4C 63 DA 4C 8B D1 41 8B C3 4D 8B CB 99 48 BB 95 E9 D1 5B 93 A7 A4 C6 83 E2 07 03 C2",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "key", "type": "const char*", "meaning": "the bytes (a name)"},
+        {"name": "len", "type": "int32_t", "meaning": "how many bytes"},
+        {"name": "seed", "type": "uint64_t", "meaning": "the seed (0 for Stingray's IdString64)"}
+      ],
+      "hook": true,
+      "meaning": "MurmurHash64A (multiplier 0xC6A4A7935BD1E995): the engine's name hash. With seed 0 it is the IdString64 every binding makes from a string; its high 32 bits are the IdString32 (Material variable names). Called from everywhere (378 binding sites).",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MaterialSetScalar": {
+      "module": "helldivers2.exe",
+      "rva": "0x4F33D0",
+      "code": "48 89 5C 24 10 56 48 83 EC 40 48 8B 41 08 8B DA 0F 29 74 24 30 0F 28 F2 48 8B F1 48 85 C0 0F 84 92 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "material", "type": "void*", "meaning": "the material (Mesh.material's light userdata): +0x04 its render id (0xFFFFFF none), +0x08 the render interface"},
+        {"name": "variable", "type": "uint32_t", "meaning": "the variable's IdString32 (the high half of MurmurHash64A of its name)"},
+        {"name": "value", "type": "float", "meaning": "the value"}
+      ],
+      "hook": true,
+      "meaning": "Sets a material's scalar shader variable: queues a render command (7) with the material's id, the variable and the value; nothing when the material has no render id. Material.set_scalar calls it, as does the game's material variable code (0xCCD06).",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MaterialSetVector2": {
+      "module": "helldivers2.exe",
+      "rva": "0x4F3580",
+      "code": "48 89 5C 24 10 48 89 74 24 18 41 56 48 83 EC 30 48 8B 41 08 4D 8B F0 8B DA 48 8B F1 48 85 C0 0F 84 94 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "material", "type": "void*", "meaning": "the material"},
+        {"name": "variable", "type": "uint32_t", "meaning": "the variable's IdString32"},
+        {"name": "value", "type": "const float*", "meaning": "x, y"}
+      ],
+      "hook": true,
+      "meaning": "Sets a material's 2-float shader variable through a queued render command. Material.set_vector2 calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MaterialSetVector3": {
+      "module": "helldivers2.exe",
+      "rva": "0x4F3650",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 56 48 83 EC 30 48 8B 41 08 49 8B E8 8B DA 48 8B F1 48 85 C0 0F 84 9D 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "material", "type": "void*", "meaning": "the material"},
+        {"name": "variable", "type": "uint32_t", "meaning": "the variable's IdString32"},
+        {"name": "value", "type": "const float*", "meaning": "x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "Sets a material's 3-float shader variable through a queued render command. Material.set_vector3 calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MaterialSetVector4": {
+      "module": "helldivers2.exe",
+      "rva": "0x4F3730",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 56 48 83 EC 30 48 8B 41 08 49 8B E8 8B DA 48 8B F1 48 85 C0 0F 84 94 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "material", "type": "void*", "meaning": "the material"},
+        {"name": "variable", "type": "uint32_t", "meaning": "the variable's IdString32"},
+        {"name": "value", "type": "const float*", "meaning": "x, y, z, w"}
+      ],
+      "hook": true,
+      "meaning": "Sets a material's 4-float shader variable through a queued render command. Material.set_vector4 calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MaterialSetMatrix4x4": {
+      "module": "helldivers2.exe",
+      "rva": "0x30F330",
+      "code": "48 89 6C 24 18 48 89 74 24 20 57 48 83 EC 30 48 8B 41 08 49 8B F0 8B EA 48 8B F9 48 85 C0 0F 84 B5 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "material", "type": "void*", "meaning": "the material"},
+        {"name": "variable", "type": "uint32_t", "meaning": "the variable's IdString32"},
+        {"name": "value", "type": "const float*", "meaning": "16 floats"}
+      ],
+      "hook": true,
+      "meaning": "Sets a material's 4x4 matrix shader variable through a queued render command. Material.set_matrix4x4 calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MaterialSetTexture": {
+      "module": "helldivers2.exe",
+      "rva": "0x30F1B0",
+      "code": "40 53 56 57 48 83 EC 20 48 8B 05 09 10 70 01 49 8B D8 8B FA 48 C7 44 24 40 00 00 00 00 48 8B F1",
+      "returns": "void",
+      "params": [
+        {"name": "material", "type": "void*", "meaning": "the material"},
+        {"name": "slot", "type": "uint32_t", "meaning": "the texture slot's IdString32"},
+        {"name": "texture", "type": "uint64_t", "meaning": "the texture resource's name hash (looked up as type 0xCD4238C6A0C69E32)"}
+      ],
+      "hook": true,
+      "meaning": "Points a material's texture slot at a loaded texture resource. Material.set_texture calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MaterialSetResource": {
+      "module": "helldivers2.exe",
+      "rva": "0x4F3230",
+      "code": "48 89 5C 24 10 48 89 6C 24 18 57 41 56 41 57 48 83 EC 30 44 8B 49 18 45 33 FF 4D 8B F0 8B DA 48 8B E9",
+      "returns": "void",
+      "params": [
+        {"name": "material", "type": "void*", "meaning": "the material"},
+        {"name": "slot", "type": "uint32_t", "meaning": "the slot's IdString32"},
+        {"name": "resource", "type": "void*", "meaning": "the resource object (the binding's third argument, a light userdata)"}
+      ],
+      "hook": true,
+      "meaning": "Binds a resource object to a material slot (stored in the material's table at +0x20, count +0x18). Material.set_resource calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MaterialSetShaderPassFlag": {
+      "module": "helldivers2.exe",
+      "rva": "0x30F150",
+      "code": "40 53 48 83 EC 20 4C 8B 1D 73 11 70 01 33 C0 48 8B D9 45 8B 13 45 85 D2 74 13 4D 8B 5B 08 66 90",
+      "returns": "void",
+      "params": [
+        {"name": "material", "type": "void*", "meaning": "the material: +0x40 its pass flag bits"},
+        {"name": "flag", "type": "uint32_t", "meaning": "the flag's IdString32 (found in the engine's flag list 0x1A102D0)"},
+        {"name": "enabled", "type": "uint32_t", "meaning": "1 sets, 0 clears"}
+      ],
+      "hook": true,
+      "meaning": "Turns a shader pass flag on or off for a material and sends the new bits (0x4F39F0). Material.set_shader_pass_flag calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MaterialReinitializeShader": {
+      "module": "helldivers2.exe",
+      "rva": "0x30F420",
+      "code": "40 57 48 83 EC 30 48 8B 41 08 48 8B F9 48 85 C0 0F 84 99 00 00 00 81 79 04 FF FF FF 00 0F 84 8C 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "material", "type": "void*", "meaning": "the material"}
+      ],
+      "hook": true,
+      "meaning": "Queues a render command that rebuilds a material's shader. Material.reinitialize_shader calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "CameraWorldToScreen": {
+      "module": "helldivers2.exe",
+      "rva": "0x4D40F0",
+      "code": "48 8B C4 48 89 58 08 48 89 68 10 48 89 70 18 57 48 81 EC 60 01 00 00 0F 29 70 E8 48 8B FA 48 63 52 20",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "3 floats: screen x and y, and the depth (the binding returns the depth as a second value); returned"},
+        {"name": "camera", "type": "void*", "meaning": "the camera (Unit.camera): +0x04 its render id, +0x18 its unit's scene graph, +0x20 its node, +0x28 near, +0x2C far, +0x30 projection type, +0x34 vertical fov"},
+        {"name": "position", "type": "const float*", "meaning": "the world point, x, y, z"},
+        {"name": "width", "type": "int32_t", "meaning": "the viewport's width in pixels"},
+        {"name": "s5", "type": "int32_t", "meaning": "the viewport's height in pixels"}
+      ],
+      "hook": true,
+      "meaning": "Projects a world point to screen pixels with a camera's world pose and projection. Camera.world_to_screen calls it with the window's size unless given a Vector2 size.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "CameraScreenToWorld": {
+      "module": "helldivers2.exe",
+      "rva": "0x4D3BD0",
+      "code": "48 8B C4 48 89 58 08 57 48 81 EC 60 01 00 00 44 0F 29 48 B8 48 8B DA 44 0F 29 60 88 44 0F 28 CB",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "the world point, 3 floats; returned"},
+        {"name": "camera", "type": "void*", "meaning": "the camera"},
+        {"name": "position", "type": "const float*", "meaning": "the screen point, 3 floats as Lua's Vector3"},
+        {"name": "depth", "type": "float", "meaning": "the distance along the view"},
+        {"name": "s5", "type": "int32_t", "meaning": "the viewport's width in pixels"},
+        {"name": "s6", "type": "int32_t", "meaning": "the viewport's height in pixels"}
+      ],
+      "hook": true,
+      "meaning": "Unprojects a screen point at a depth to a world point with a camera. Camera.screen_to_world calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "CameraSyncRange": {
+      "module": "helldivers2.exe",
+      "rva": "0x4CFA10",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 48 8B 41 08 48 8B F9 41 B9 08 00 00 00 48 8B 10 45 8D 41 1C 48 8B 9A 98 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "camera", "type": "void*", "meaning": "the camera: +0x28 near, +0x2C far, +0x30 projection type"}
+      ],
+      "hook": true,
+      "meaning": "Queues a render command (4) carrying a camera's near and far range and projection type. Camera.set_near_range, set_far_range and set_projection_type write the field and call it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "CameraSyncFrustum": {
+      "module": "helldivers2.exe",
+      "rva": "0x4CFAB0",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 48 8B 41 08 48 8B F9 41 B9 08 00 00 00 48 8B 10 45 8D 41 30 48 8B 9A 98 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "camera", "type": "void*", "meaning": "the camera: +0x34 the vertical fov and the frustum fields to +0x53"}
+      ],
+      "hook": true,
+      "meaning": "Queues a render command carrying a camera's fov and frustum fields (+0x34, 32 bytes). Camera.set_vertical_fov, set_orthographic_view, set_frustum and set_frustum_half_angles write the fields and call it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "CameraSetLocal": {
+      "module": "helldivers2.exe",
+      "rva": "0x4CF620",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 48 8B 41 08 48 8B F9 41 8B F0 48 8B EA",
+      "returns": "void",
+      "params": [
+        {"name": "camera", "type": "void*", "meaning": "the camera"},
+        {"name": "pose", "type": "const float*", "meaning": "a 4x4 matrix"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on (the binding passes 0; it goes into the command)"}
+      ],
+      "hook": true,
+      "meaning": "Queues a render command with a camera's local matrix. Camera.set_local calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "CameraInsideFrustum": {
+      "module": "helldivers2.exe",
+      "rva": "0x30DCC0",
+      "code": "48 83 EC 58 48 8B 05 F5 24 70 01 4C 8B D2 4C 8B D9 4C 8B 80 38 03 00 00 41 80 B8 80 14 00 00 00",
+      "returns": "float",
+      "params": [
+        {"name": "camera", "type": "void*", "meaning": "the camera"},
+        {"name": "point", "type": "const float*", "meaning": "the world point, x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "How far a world point is inside a camera's frustum (above 0 inside). Camera.inside_frustum calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "GuiAddPrimitive": {
+      "module": "helldivers2.exe",
+      "rva": "0x267990",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 56 41 57 48 83 EC 30 43 8D 04 C9 4C 8B F9 44 8D 1C 85 2C 00 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "gui", "type": "void*", "meaning": "the gui (World.create_screen_gui's): +0x04 its render id, +0x98 the next primitive id"},
+        {"name": "id", "type": "uint32_t", "meaning": "the primitive's id"},
+        {"name": "layer", "type": "uint32_t", "meaning": "the draw layer"},
+        {"name": "vertices", "type": "uint32_t", "meaning": "how many vertices (6 for a rect, 3 for a triangle)"},
+        {"name": "s5", "type": "void*", "meaning": "the material (its +0x04 render id), or NULL"}
+      ],
+      "hook": true,
+      "meaning": "Queues a gui render command (0xA) for a primitive with the gui's current transform and returns where its vertices go (36 bytes each), for the caller to fill. Every Gui drawing call reaches it (Gui.rect, triangle, bitmap and their update/destroy).",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "GuiRect": {
+      "module": "helldivers2.exe",
+      "rva": "0x262060",
+      "code": "40 53 48 83 EC 40 49 8B D8 48 C7 44 24 20 00 00 00 00 45 8B 40 14 41 B9 06 00 00 00 E8 0F 59 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "gui", "type": "void*", "meaning": "the gui"},
+        {"name": "id", "type": "uint32_t", "meaning": "the rect's id (the binding passes the gui's +0x98, then adds 1 and returns it to Lua)"},
+        {"name": "rect", "type": "const void*", "meaning": "the rect: f32 x, y, z (0), width, height (Lua default 100 each), u32 layer +0x14, u32 color ARGB +0x18, then 16 zero bytes"}
+      ],
+      "hook": true,
+      "meaning": "Draws (or redraws) a coloured rectangle in a gui as two triangles through GuiAddPrimitive. Gui.rect and Gui.update_rect call it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "ResourceManagerGet": {
+      "module": "helldivers2.exe",
+      "rva": "0x5F2290",
+      "code": "4C 89 44 24 18 48 89 54 24 10 53 55 56 57 41 55 41 56 41 57 48 83 EC 30 44 8B 99 C0 02 00 00 33 F6",
+      "returns": "void*",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the resource manager (EngineCore +0x3F8)"},
+        {"name": "type", "type": "const uint64_t*", "meaning": "the resource type hash"},
+        {"name": "name", "type": "const uint64_t*", "meaning": "the resource name hash"},
+        {"name": "resolved", "type": "uint64_t*", "meaning": "NULL, or receives the name the override table (+0x2E8) gave for it"}
+      ],
+      "hook": true,
+      "meaning": "A loaded resource's data, following resource overrides, under the manager's lock (+0x2D8). Application.get_animation calls it (type 0x931E336D7646CC26), as do 25 other binding sites.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "ResourceManagerCanGet": {
+      "module": "helldivers2.exe",
+      "rva": "0x5F2160",
+      "code": "40 53 41 56 41 57 48 83 EC 30 48 8B 02 48 8B D9 8B 89 C0 02 00 00 45 33 C9 4D 8B F8 4C 8B F2 85 C9",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the resource manager (EngineCore +0x3F8)"},
+        {"name": "type", "type": "const uint64_t*", "meaning": "the resource type hash"},
+        {"name": "name", "type": "const uint64_t*", "meaning": "the resource name hash"}
+      ],
+      "hook": true,
+      "meaning": "Whether a resource is loaded and can be had now. Application.can_get calls it; CanGetResource wraps it with plain hashes.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "ResourceManagerSetOverride": {
+      "module": "helldivers2.exe",
+      "rva": "0x5F26F0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 41 56 41 57 48 83 EC 20 4D 8B F9 4D 8B F0 48 8B F2",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the resource manager (EngineCore +0x3F8)"},
+        {"name": "type", "type": "const uint64_t*", "meaning": "the resource type hash"},
+        {"name": "name", "type": "const uint64_t*", "meaning": "the name looked up"},
+        {"name": "target", "type": "const uint64_t*", "meaning": "the name found instead"}
+      ],
+      "hook": true,
+      "meaning": "Points later lookups of a resource name at another name (through 0x5F3210). Application.set_resource_override calls it; SetResourceOverride is the plain-hash version.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "ResourceManagerClearOverride": {
+      "module": "helldivers2.exe",
+      "rva": "0x5F27D0",
+      "code": "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 30 4C 8D B1 D8 02 00 00 49 8B F8 48 8D B1 E8 02 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the resource manager (EngineCore +0x3F8)"},
+        {"name": "type", "type": "const uint64_t*", "meaning": "the resource type hash"},
+        {"name": "name", "type": "const uint64_t*", "meaning": "the overridden name"}
+      ],
+      "hook": true,
+      "meaning": "Takes a resource override out under the manager's lock (+0x2D8). Application.clear_resource_override calls it; ClearResourceOverride wraps it with plain hashes.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "MurmurHash64ALower": {
+      "module": "helldivers2.exe",
+      "rva": "0x5D5960",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 4C 89 44 24 18 56 57 41 56 48 83 EC 20 48 63 F2 49 BE 95 E9 D1 5B 93 A7 A4 C6",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "key", "type": "const char*", "meaning": "the bytes (a name)"},
+        {"name": "len", "type": "int32_t", "meaning": "how many bytes"},
+        {"name": "r8", "type": "uint64_t", "meaning": "not reviewed: pass it on (the code may read it)"}
+      ],
+      "hook": true,
+      "meaning": "MurmurHash64A of a name with every byte lowercased first (0x12BC14C); the third argument register's home slot is reused as scratch, so no seed is read. Application.string_to_id64 calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "RendererWindowSize": {
+      "module": "helldivers2.exe",
+      "rva": "0x10AE20",
+      "code": "40 53 48 83 EC 20 80 B9 80 14 00 00 00 49 8B D8 44 8B D2 4C 8B D9 74 0E 8B 81 B0 13 00 00 85 C0",
+      "returns": "void",
+      "params": [
+        {"name": "renderer", "type": "void*", "meaning": "the renderer (EngineCore +0x338)"},
+        {"name": "window", "type": "uint32_t", "meaning": "the window or render target id (0xFFFFFF in the low 24 bits reads the size from the renderer's +0x1168 object)"},
+        {"name": "width", "type": "uint32_t*", "meaning": "receives the width (1280 when unknown)"},
+        {"name": "height", "type": "uint32_t*", "meaning": "receives the height (720 when unknown)"}
+      ],
+      "hook": true,
+      "meaning": "The pixel size of a window's back buffer. Application.back_buffer_size, Application.resolution and Camera.world_to_screen call it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "ReleaseWorld": {
+      "module": "helldivers2.exe",
+      "rva": "0x317FB0",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 48 8B 3D 47 82 6F 01 48 8B D9 48 8B 89 50 00 23 00 E8 70 E0 23 00",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"}
+      ],
+      "hook": true,
+      "meaning": "Destroys a world: shuts its systems down, frees it through EngineCore's vtable +0x40 and takes it out of the engine's world list (EngineCore +0x590 count, +0x598 array). Application.release_world calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "CreateViewport": {
+      "module": "helldivers2.exe",
+      "rva": "0x76B40",
+      "code": "48 89 5C 24 10 56 57 41 56 48 83 EC 30 48 8B 89 38 03 00 00 48 8B F2 48 81 C1 08 19 00 00 44 89 44 24 60",
+      "returns": "void*",
+      "params": [
+        {"name": "engine", "type": "void*", "meaning": "EngineCore"},
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "template", "type": "uint32_t", "meaning": "the viewport template's IdString32 (the engine itself passes 0x7A991573)"}
+      ],
+      "hook": true,
+      "meaning": "Makes a viewport for a world from a named viewport template and returns it. Application.create_viewport calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldDestroyViewport": {
+      "module": "helldivers2.exe",
+      "rva": "0x1B3D20",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 41 56 48 83 EC 20 48 8B F1 48 8B FA 48 8D 4A 50 E8 5C 34 30 00",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world: +0x2308F0 its viewport count, +0x2308F8 the viewports"},
+        {"name": "viewport", "type": "void*", "meaning": "the viewport (CreateViewport)"}
+      ],
+      "hook": true,
+      "meaning": "Destroys a viewport and takes it out of its world's viewport list. Application.destroy_viewport calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "NetworkCreateGameSession": {
+      "module": "helldivers2.exe",
+      "rva": "0x171A20",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 40 48 8B 81 A0 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the network manager (NetworkManager): +0xA8 the game session it makes"}
+      ],
+      "hook": true,
+      "meaning": "Makes the network manager's game session (0x6140 bytes, built by 0x28D640) at its +0xA8, then runs NetworkManagerUpdate. Network.create_game_session calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "NetworkShutdownGameSession": {
+      "module": "helldivers2.exe",
+      "rva": "0x171AE0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B B9 A8 00 00 00 48 8B D9 48 8B 35 88 16 9A 01",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the network manager (NetworkManager)"}
+      ],
+      "hook": true,
+      "meaning": "Destroys the network manager's game session and clears its +0xA8. Network.shutdown_game_session calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LevelIsPointInsideVolume": {
+      "module": "helldivers2.exe",
+      "rva": "0x32C4B0",
+      "code": "4C 89 44 24 18 89 54 24 10 48 89 4C 24 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 48 F8 FF FF",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "level", "type": "void*", "meaning": "the level (World.load_level's)"},
+        {"name": "volume", "type": "uint32_t", "meaning": "the volume's IdString32"},
+        {"name": "point", "type": "const float*", "meaning": "x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "Whether a point is inside one of a level's named volumes (1 inside). Level.is_point_inside_volume calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LevelRandomPointInsideVolume": {
+      "module": "helldivers2.exe",
+      "rva": "0x32BA90",
+      "code": "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 48 89 4C 24 08 55 41 54 41 55 41 56 41 57 48 8D AC 24 40 F8 FF FF",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "the point, 3 floats; returned"},
+        {"name": "level", "type": "void*", "meaning": "the level"},
+        {"name": "volume", "type": "uint32_t", "meaning": "the volume's IdString32"}
+      ],
+      "hook": true,
+      "meaning": "A random point inside one of a level's named volumes. Level.random_point_inside_volume calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LevelHasVolume": {
+      "module": "helldivers2.exe",
+      "rva": "0x32CE50",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 41 54 41 55 41 56 41 57 48 8D AC 24 50 F8 FF FF",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "level", "type": "void*", "meaning": "the level"},
+        {"name": "volume", "type": "uint32_t", "meaning": "the volume's IdString32"}
+      ],
+      "hook": true,
+      "meaning": "Whether a level has a volume of that name (non-zero yes). Level.has_volume calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LevelUnitIndex": {
+      "module": "helldivers2.exe",
+      "rva": "0xEAA20",
+      "code": "48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 20 83 B9 C8 02 00 00 00 BE FF FF FF FF 89 74 24 30 48 8B FA",
+      "returns": "int32_t",
+      "params": [
+        {"name": "level", "type": "void*", "meaning": "the level: +0x2B8 its unit-to-index hash map (count +0x2C8, bucket count +0x2CC)"},
+        {"name": "unit", "type": "void*", "meaning": "the unit object (UnitFromHandle)"}
+      ],
+      "hook": true,
+      "meaning": "A unit's index in its level, -1 when the level does not own it. Level.unit_index calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LevelSpawnAllLayers": {
+      "module": "helldivers2.exe",
+      "rva": "0xDB230",
+      "code": "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 55 41 54 41 55 41 56 41 57 48 8D AC 24 50 F8 FF FF",
+      "returns": "void",
+      "params": [
+        {"name": "level", "type": "void*", "meaning": "the level"}
+      ],
+      "hook": true,
+      "meaning": "Spawns every layer of a level. Level.spawn_all_layers calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitAnimationFindVariable": {
+      "module": "helldivers2.exe",
+      "rva": "0x201C20",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B DA E8 8F BC E9 FF 48 8B C8 48 8B F8 4C 8B 00 41 FF 90 B0 01 00 00",
+      "returns": "int32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "name", "type": "uint32_t", "meaning": "the variable's IdString32"}
+      ],
+      "hook": true,
+      "meaning": "The index of a variable in a unit's animation state machine (the unit's vtable +0x1B0); -1 and a logged error when the unit has none. Unit.animation_find_variable calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitAnimationHasVariable": {
+      "module": "helldivers2.exe",
+      "rva": "0x201CD0",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B DA E8 DF BB E9 FF 48 8B C8 48 8B F8 4C 8B 00 41 FF 90 B0 01 00 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "name", "type": "uint32_t", "meaning": "the variable's IdString32"}
+      ],
+      "hook": true,
+      "meaning": "Whether a unit's animation state machine has a variable of that name (non-zero yes). Unit.animation_has_variable calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitAnimationGetVariable": {
+      "module": "helldivers2.exe",
+      "rva": "0x201D50",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B FA E8 5F BB E9 FF 48 8B C8 48 8B D8 4C 8B 00 41 FF 90 B0 01 00 00",
+      "returns": "float",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "index", "type": "int32_t", "meaning": "the variable's index (UnitAnimationFindVariable)"}
+      ],
+      "hook": true,
+      "meaning": "An animation state machine variable's value. Unit.animation_get_variable calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitAnimationSetVariable": {
+      "module": "helldivers2.exe",
+      "rva": "0x201DF0",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 0F 29 74 24 20 0F 28 F2 8B FA E8 B7 BA E9 FF 48 8B C8 48 8B D8 4C 8B 00",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "index", "type": "int32_t", "meaning": "the variable's index (UnitAnimationFindVariable)"},
+        {"name": "value", "type": "float", "meaning": "the value"}
+      ],
+      "hook": true,
+      "meaning": "Sets an animation state machine variable. Unit.animation_set_variable calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitSetUnitVisibility": {
+      "module": "helldivers2.exe",
+      "rva": "0x205680",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 41 0F B6 F0 8B FA 8B D9 E8 24 82 E9 FF 4C 8B 50 18",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "visible", "type": "uint8_t", "meaning": "1 shows, 0 hides"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on (Unit.set_unit_visibility's optional third argument, 1 when absent)"}
+      ],
+      "hook": true,
+      "meaning": "Shows or hides a whole unit: queues a world command (0x15) in the unit's world (a 0x58-byte slot at +0x10038, taken with a lock add on +0x170038). Unit.set_unit_visibility calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitSetVisibilityGroup": {
+      "module": "helldivers2.exe",
+      "rva": "0x205870",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 20 41 8B E8 8B F2 8B F9 E8 30 80 E9 FF",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "group", "type": "uint32_t", "meaning": "the visibility group's IdString32"},
+        {"name": "visible", "type": "uint32_t", "meaning": "1 shows, 0 hides"}
+      ],
+      "hook": true,
+      "meaning": "Shows or hides one of a unit's visibility groups: tells the unit (its vtable +0xC0) and queues a world command (0x16). Unit.set_visibility calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitCrossfadeAnimation": {
+      "module": "helldivers2.exe",
+      "rva": "0x200D80",
+      "code": "48 89 5C 24 18 48 89 6C 24 20 56 57 41 54 41 56 41 57 48 81 EC 90 00 00 00 0F 29 B4 24 80 00 00 00",
+      "returns": "int32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "animation", "type": "uint64_t", "meaning": "the animation's IdString64"},
+        {"name": "layer", "type": "int32_t", "meaning": "the layer (the binding takes it 1-based; 0 when absent)"},
+        {"name": "blend_time", "type": "float", "meaning": "the crossfade time in seconds (0 when absent)"},
+        {"name": "s5", "type": "uint32_t", "meaning": "loop: 1 loops (Lua's 5th argument, default 1)"},
+        {"name": "s6", "type": "uint32_t", "meaning": "blend type: 1 when Lua's 6th argument is \"offset\", 0 for \"normal\" or absent"}
+      ],
+      "hook": true,
+      "meaning": "Crossfades a unit's animation player to an animation and returns the id the binding hands back to Lua. Unit.crossfade_animation calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitCrossfadeAnimationSetTime": {
+      "module": "helldivers2.exe",
+      "rva": "0x201130",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 30 0F 29 74 24 20 41 8B D9 0F 28 F2 8B F2 E8 6F C7 E9 FF",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "id", "type": "uint32_t", "meaning": "the crossfade's id (UnitCrossfadeAnimation)"},
+        {"name": "time", "type": "float", "meaning": "the time"},
+        {"name": "r9", "type": "uint32_t", "meaning": "not reviewed: pass it on (Lua's optional 4th argument, default 0; given to 0x561010)"}
+      ],
+      "hook": true,
+      "meaning": "Sets the play time of a crossfade on a unit's animation player (its vtable +0x1A8), passing on to 0x561010 with the time as a double. Unit.crossfade_animation_set_time calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitCopySceneGraphLocalFrom": {
+      "module": "helldivers2.exe",
+      "rva": "0x204880",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B DA E8 2F 90 E9 FF 48 8B C8 4C 8B 00 41 FF 90 E8 00 00 00 8B CB",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "source", "type": "uint32_t", "meaning": "the handle of the unit whose local poses are copied"}
+      ],
+      "hook": true,
+      "meaning": "Copies another unit's scene graph local poses onto a unit. Unit.copy_scene_graph_local_from calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitSetBonesLod": {
+      "module": "helldivers2.exe",
+      "rva": "0x202D30",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B FA E8 7F AB E9 FF 48 8B C8 48 8B D8 4C 8B 00 41 FF 90 A8 01 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "lod", "type": "int32_t", "meaning": "the bones LOD level"}
+      ],
+      "hook": true,
+      "meaning": "Sets a unit's animation bones LOD. Unit.set_bones_lod calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitAnimationFindConstraintTarget": {
+      "module": "helldivers2.exe",
+      "rva": "0x202EA0",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B DA E8 0F AA E9 FF 48 8B C8 48 8B F8 4C 8B 00 41 FF 90 B0 01 00 00",
+      "returns": "int32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "name", "type": "uint32_t", "meaning": "the constraint target's IdString32"}
+      ],
+      "hook": true,
+      "meaning": "The index of a named constraint target in a unit's animation state machine (the binding adds the Lua index base). Unit.animation_find_constraint_target calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "UnitAnimationSetConstraintTargetPosition": {
+      "module": "helldivers2.exe",
+      "rva": "0x203120",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 81 EC 90 00 00 00 49 8B F0 8B DA E8 84 A7 E9 FF 48 8B C8 48 8B F8",
+      "returns": "void",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "index", "type": "int32_t", "meaning": "the target's index (UnitAnimationFindConstraintTarget)"},
+        {"name": "position", "type": "const float*", "meaning": "x, y, z"}
+      ],
+      "hook": true,
+      "meaning": "Sets an animation constraint target from a position. Unit.animation_set_constraint_target calls it when given a Vector3.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LightSync": {
+      "module": "helldivers2.exe",
+      "rva": "0x50BF90",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 48 8B 41 08 48 8B F9 41 B9 08 00 00 00 48 8B 10 45 8D 41 78 48 8B 9A 98 00 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "light", "type": "void*", "meaning": "the light (Unit.light): +0x08 its render interface, +0x20 colour r, g, b, +0x2C intensity, +0x34 falloff end, +0x60 flags (bit 1 disabled)"}
+      ],
+      "hook": true,
+      "meaning": "Queues a render command (0x80 bytes) with a light's current settings; every Light setter writes its field and then calls it (Light.set_color, set_intensity, set_falloff_end, set_casts_shadows...).",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "LightSetEnabled": {
+      "module": "helldivers2.exe",
+      "rva": "0x50BE10",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 30 83 61 60 FD 48 8B F9 0F B6 F2 8B C6 83 F0 01 03 C0",
+      "returns": "void",
+      "params": [
+        {"name": "light", "type": "void*", "meaning": "the light"},
+        {"name": "enabled", "type": "uint8_t", "meaning": "1 on, 0 off (clears or sets bit 1 of +0x60)"}
+      ],
+      "hook": true,
+      "meaning": "Turns a light on or off, syncs it (LightSync) and tells the renderer's light list. Light.set_enabled calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldDestroyLevel": {
+      "module": "helldivers2.exe",
+      "rva": "0x338960",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 20 57 48 83 EC 30 4C 8B 49 20 41 8B E8 48 8B FA 48 8B D9",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world: +0x230588 its level count, +0x230590 the levels"},
+        {"name": "level", "type": "void*", "meaning": "the level (World.load_level's)"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on (the binding passes 1; non-zero also calls the renderer's 0x108780)"}
+      ],
+      "hook": true,
+      "meaning": "Destroys a level: flushes the world's pending unit queues (0x12D600) when needed, takes the level out of the world's list and frees it. World.destroy_level calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldDestroyPrefab": {
+      "module": "helldivers2.exe",
+      "rva": "0x338D60",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 30 4C 8B 49 20 41 8B E8 48 8B FA 48 8B D9",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "prefab", "type": "void*", "meaning": "the prefab (World.load_prefab's)"},
+        {"name": "r8", "type": "uint32_t", "meaning": "not reviewed: pass it on (the binding passes 1)"}
+      ],
+      "hook": true,
+      "meaning": "Destroys a prefab the world loaded, the same way WorldDestroyLevel does a level. World.destroy_prefab calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldPlayCameraShake": {
+      "module": "helldivers2.exe",
+      "rva": "0x337810",
+      "code": "48 89 5C 24 18 55 56 57 48 83 EC 40 48 8B A9 C0 08 23 00 49 8B F0 48 8B DA 48 89 54 24 68 48 8B F9",
+      "returns": "int32_t",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world: +0x2308C0 its camera shake manager"},
+        {"name": "shake", "type": "uint64_t", "meaning": "the camera shake's IdString64"},
+        {"name": "position", "type": "const float*", "meaning": "where it happens, x, y, z"},
+        {"name": "near", "type": "float", "meaning": "Lua's 4th argument (Stingray: the distance of full effect)"},
+        {"name": "s5", "type": "float", "meaning": "Lua's 5th argument (Stingray: the distance of no effect)"}
+      ],
+      "hook": true,
+      "meaning": "Plays a camera shake at a world position and returns its id. World.play_camera_shake calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldStopCameraShake": {
+      "module": "helldivers2.exe",
+      "rva": "0x22D8A0",
+      "code": "89 54 24 10 57 48 83 EC 30 0F B7 D2 0F 29 74 24 20 48 8D 3C 92 48 C1 E7 04 48 03 79 28 45 84 C0",
+      "returns": "void",
+      "params": [
+        {"name": "shakes", "type": "void*", "meaning": "the world's camera shake manager (world +0x2308C0)"},
+        {"name": "id", "type": "int32_t", "meaning": "the shake's id (WorldPlayCameraShake)"},
+        {"name": "r8", "type": "uint8_t", "meaning": "not reviewed: pass it on (Lua's optional 3rd argument)"}
+      ],
+      "hook": true,
+      "meaning": "Stops a playing camera shake. World.stop_camera_shake calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "WorldUpdateAnimations": {
+      "module": "helldivers2.exe",
+      "rva": "0x1B0670",
+      "code": "40 57 48 83 EC 50 FF 81 80 08 23 00 0F 28 C1 F3 0F 58 81 74 08 23 00 0F 29 7C 24 30 48 8B F9 0F 28 F9",
+      "returns": "void",
+      "params": [
+        {"name": "world", "type": "void*", "meaning": "the world"},
+        {"name": "dt", "type": "float", "meaning": "the time step (default EngineCore +0x560)"}
+      ],
+      "hook": true,
+      "meaning": "Runs a world's animation update for a time step. World.update_animations, update_animations_with_callback and update_with_callback call it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "GuiManagerDestroyGui": {
+      "module": "helldivers2.exe",
+      "rva": "0x273110",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 48 8B DA 48 8B 89 80 00 00 00 E8 54 63 E5 FF 48 85 DB 74 17",
+      "returns": "void",
+      "params": [
+        {"name": "guis", "type": "void*", "meaning": "the world's gui manager (world +0x230890)"},
+        {"name": "gui", "type": "void*", "meaning": "the gui"}
+      ],
+      "hook": true,
+      "meaning": "Destroys a gui (World.create_screen_gui or create_world_gui's). World.destroy_gui calls it.",
+      "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
     }
   }
 }

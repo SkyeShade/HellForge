@@ -211,13 +211,17 @@
       },
       "source": "HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c)"
     },
-    "ActionManager": {
+    "AvatarManager": {
       "rva": "0x3326D20",
       "witnesses": [
         {"rva": "0x289F36", "code": "48 8B 15 E3 CD 09 03 33 DB F2 44 0F"},
         {"rva": "0x289FC8", "code": "48 8B 15 51 CD 09 03 FF C3 3B 5A 6C"}
       ],
-      "meaning": "The entities' actions. At +0xF8 a map of entities to indexes; descriptor pointers at +0x110 + 8 index (+8 the entity); each index's action context at +0x53E170 + 0x1238 index (+0 the entity, +8 the running action, TryStartAction's first argument) and its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride",
+      "aliases": ["ActionManager"],
+      "meaning": "The Helldivers' avatars (the AvatarComponent manager, component world +0x956128): their movement, stamina and actions. At +0xF8 a map of entities to indexes; descriptor pointers at +0x110 + 8 index (+8 the entity); the avatars simulated here take the first indexes (their count at +0x70); each index's simulation block at +0x53E170 + 0x1238 index begins with its action context (+0 the entity, +8 the running action, TryStartAction's first argument), its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride; AvatarSettings' private copies inline from +0x547D24 (0x354 bytes each)",
+      "fields": {
+        "simulated": {"offset": "0x70", "type": "u32", "meaning": "avatars simulated on this machine: they take the first indexes, and AvatarUpdate runs only those"}
+      },
       "source": "HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c)"
     },
     "WieldableManager": {
@@ -387,17 +391,18 @@
       "meaning": "Explosives (SetExplosiveOwner's first argument). At +0x38 a map of entities to indexes",
       "source": "HellForge's silo countdown (abilities.c)"
     },
-    "RemoteOwners": {
+    "EquipmentManager": {
       "rva": "0x3326DC0",
       "witnesses": [
         {"rva": "0xC30B8", "code": "48 8B 3D 01 3D 26 03 4C 89 74 24 38"},
         {"rva": "0x4A5D9B", "code": "48 8B 05 1E 10 E8 02 45 33 C0 48 89"}
       ],
-      "meaning": "The owner of a silo's targeting remote. At +0x20 a map of entities to indexes",
+      "aliases": ["RemoteOwners"],
+      "meaning": "The Equipment component manager (component 233, component world +0xE9F8F0; how held items are wielded, holstered and dropped): EquipmentUpdate's first argument; EquipmentRecord looks in its private copies. At +0x20 a map of entities to indexes; a silo's targeting remote's owner is at +4 of its instance record",
       "fields": {
         "records": {"offset": "0x40", "type": "ptr", "meaning": "48 bytes per index: +4 the owner entity"}
       },
-      "source": "HellForge's silo countdown (abilities.c)"
+      "source": "HellForge's silo countdown (abilities.c); the component world's setter 0x568230, the record resolver 0x5092B0 and the world update 0x571250 (0x5731D9)"
     },
     "HellpodRackManager": {
       "rva": "0x3326A58",
@@ -453,23 +458,30 @@
       },
       "source": "HellForge's Pelican turret (behaviours.c, behaviour_turret.c)"
     },
-    "MagazineManager": {
+    "WeaponManager": {
       "rva": "0x3326660",
       "witnesses": [
         {"rva": "0x4BAB2D", "code": "4C 8B 1D 2C BB E6 02 45 8B 43 30 45"},
         {"rva": "0x4BAD36", "code": "48 8B 1D 23 B9 E6 02 44 8B 4B 30 44"}
       ],
-      "meaning": "Weapons' magazines: MagazineRounds' first argument",
-      "source": "HellForge's Pelican turret refill (behaviour_turret.c)"
+      "aliases": ["MagazineManager"],
+      "meaning": "The weapon manager (component world +0xE9FC38): WeaponUpdate's, OwnSpareAmmo's, SpendRound's and MagazineRounds' first argument",
+      "source": "HellForge's Pelican turret refill (behaviour_turret.c); the component world's setter 0x568230 and the world update 0x571250 (0x573245); HD2Runtime 0.40.1 research team-reload-ammo (own spare total 0x744180 on the weapon manager 0x3326660)"
     },
-    "MagazineRefills": {
+    "WeaponMagazines": {
       "rva": "0x3326648",
       "witnesses": [
         {"rva": "0x3A6F09", "code": "48 8B 05 38 F7 F7 02 48 8B 48 50 39"},
         {"rva": "0x3A6F30", "code": "48 8B 05 11 F7 F7 02 48 8B 48 50 83"}
       ],
-      "meaning": "The magazines AddMagazineRounds refills. At +0x20 a map of entities to indexes (the refill's own lookup)",
-      "source": "HellForge's Pelican turret refill (behaviour_turret.c)"
+      "aliases": ["MagazineRefills"],
+      "meaning": "The WeaponMagazine component manager (component 5, component world +0x180): a magazine weapon's spare magazines and rounds. AddMagazineRounds refills it; WeaponMagazineRecord looks in its private copies",
+      "fields": {
+        "hash": {"offset": "0x20", "type": "ptr", "meaning": "the hash of the entities that have an instance (8-byte rows: entity, instance index)"},
+        "descriptors": {"offset": "0x38", "type": "ptr", "meaning": "each instance's entity descriptor (8 bytes each: +0 type, +8 entity)"},
+        "live": {"offset": "0x50", "type": "ptr", "meaning": "each instance's live row, 12 bytes: +0 spare magazines (network field 0xEC64918B), +4 rounds in the magazine (MagazineRounds returns it)"}
+      },
+      "source": "HellForge's Pelican turret refill (behaviour_turret.c); the component world's setter 0x568230 and the record resolver 0x4F3740; HD2Runtime 0.40.1 research team-reload-ammo (magazine manager 0x3326648: hash +0x20, descriptors +0x38, records +0x50)"
     },
     "WeaponTargeting": {
       "rva": "0x3326D30",
@@ -689,6 +701,9 @@
         "level": {"offset": "0x650", "type": "ptr", "meaning": "the mission's level (lg): its difficulty level at +0xF9 (u8)"},
         "timer_count": {"offset": "0x67C", "type": "u32", "meaning": "the mission's timers (hf->freeze_mission_timer needs 1)"},
         "director": {"offset": "0x6B0", "type": "ptr", "meaning": "the timer's director: +8 the game mode's entity (u32)"},
+        "guard_compositions": {"offset": "0x51884", "type": "u32", "meaning": "the compiled map guard (outpost) compositions, family 3; their rows inline from +0x41138"},
+        "reinforcement_compositions": {"offset": "0x5188C", "type": "u32", "meaning": "the compiled reinforcement compositions, family 4; their rows inline from +0x432F8 (PickReinforcementComposition reads them)"},
+        "guard_budget": {"offset": "0x518B4", "type": "f32", "meaning": "the outposts' guard budget, which the map guards spend"},
         "countdown_left": {"offset": "0x51948", "type": "f32", "meaning": "the mission countdown left, s"},
         "expired": {"offset": "0x5194C", "type": "u8", "meaning": "set once the timer has run out"},
         "paused": {"offset": "0x5194E", "type": "u8", "meaning": "1 while the timer is paused"}
@@ -930,6 +945,374 @@
       ],
       "meaning": "The corpse component: per corpse the link to the entity it came from (CorpseSource). At +0x28 a map of entity ids to indexes (capacity +0x30, empty key +0x34, hash multiplier +0x38); per index a 0x38-byte record at +0x50 (+0 the source network id) and a 0x48-byte spawn record at +0x48 (+0x3C the source entity)",
       "source": "HD2Runtime 0.40.1 research event-mission (corpse); CorpseSource 0x870310"
+    },
+    "WeaponWindUps": {
+      "rva": "0x33267A0",
+      "witnesses": [
+        {"rva": "0x4F80B2", "code": "4C 8B 1D E7 E6 E2 02 45 33 C0 48 89"},
+        {"rva": "0x52050A", "code": "48 8B 1D 8F 62 E0 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "The WeaponWindUp component manager (component 70, component world +0x1B29B8): WindUpUpdate's first argument; WeaponWindUpRecord looks in its private copies",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 passes it to WindUpUpdate (0x57178C)"
+    },
+    "Recharges": {
+      "rva": "0x3326768",
+      "witnesses": [
+        {"rva": "0x4FBC52", "code": "4C 8B 1D 0F AB E2 02 45 33 C0 48 89"},
+        {"rva": "0x525C1A", "code": "48 8B 1D 47 0B E0 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "The Recharge component manager (component 99, component world +0x1C6F50; jump and hover packs' recharge): RechargeRecord looks in its private copies",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research shield-recharge (recharge manager 0x3326768)"
+    },
+    "WeaponReloads": {
+      "rva": "0x3326A70",
+      "witnesses": [
+        {"rva": "0x4FD242", "code": "4C 8B 1D 27 98 E2 02 45 33 C0 48 89"},
+        {"rva": "0x52839A", "code": "48 8B 1D CF E6 DF 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "The WeaponReload component manager (component 113, component world +0x7571C8). At +0x20 the hash of the entities that have an instance (the out-of-ammo handler's test); WeaponReloadRecord looks in its private copies",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research component-membership (instance hash +0x20, resolver 0x4FD220)"
+    },
+    "WeaponRoundsManager": {
+      "rva": "0x3326CF0",
+      "witnesses": [
+        {"rva": "0x4AE28B", "code": "48 8B 05 5E 8A E7 02 45 33 C0 48 89"},
+        {"rva": "0x4AE31A", "code": "4C 8B 15 CF 89 E7 02 75 18 B8 FF FF"}
+      ],
+      "meaning": "The WeaponRounds component manager (component 117, component world +0x757398; weapons loaded round by round). WeaponRoundsRecord looks in its private copies",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research team-reload-ammo (rounds manager 0x3326CF0)",
+      "fields": {
+        "count": {"offset": "0x18", "type": "u32", "meaning": "instances (the world update's loop bound, 0x57201C)"},
+        "descriptors": {"offset": "0x40", "type": "ptr", "meaning": "each instance's entity descriptor (8 bytes each: +0 type, +8 entity)"},
+        "live": {"offset": "0x58", "type": "ptr", "meaning": "each instance's live row, 20 bytes: +0 its own spare rounds (network field 0x9A34C336)"}
+      }
+    },
+    "WeaponCharges": {
+      "rva": "0x3326C20",
+      "witnesses": [
+        {"rva": "0x5052E2", "code": "4C 8B 1D 37 19 E2 02 45 33 C0 48 89"},
+        {"rva": "0x538EBA", "code": "48 8B 1D 5F DD DE 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "The WeaponCharge component manager (component 204, component world +0x75F1D8): WeaponChargeUpdate's first argument; WeaponChargeRecord looks in its private copies",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research railgun-charge (charge update 0x73C8F0, resolver 0x5052C0)"
+    },
+    "Throwers": {
+      "rva": "0x3326880",
+      "witnesses": [
+        {"rva": "0x50CCE2", "code": "4C 8B 1D 97 9B E1 02 45 33 C0 48 89"},
+        {"rva": "0x54470A", "code": "48 8B 35 6F 21 DE 02 4C 8B F1 8B 6E"}
+      ],
+      "meaning": "The Thrower component manager (component 258, component world +0xEB5CF0): ThrowerUpdate's first argument; ThrowerRecord looks in its private copies",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 passes it to ThrowerUpdate (0x57369F)"
+    },
+    "Throwables": {
+      "rva": "0x33264C0",
+      "witnesses": [
+        {"rva": "0x26DD0D", "code": "48 8B 0D AC 87 0B 03 C6 44 24 38 01"},
+        {"rva": "0x498B1D", "code": "48 8B 0D 9C D9 E8 02 C6 44 24 38 01"}
+      ],
+      "meaning": "The Throwable component manager (component 259, component world +0xEB5DA8; grenades and thrown knives): ThrowableUpdate's first argument. Its records come from the type lookup ThrowableTypeRecord only (no private copies)",
+      "source": "the component world's setter 0x568230 (cells stored in component order: the one after Thrower 258, before Jumppack 264 with four between) and the world update 0x571250, which passes it to ThrowableUpdate (0x5736AE)"
+    },
+    "ArcWeapons": {
+      "rva": "0x3326C10",
+      "witnesses": [
+        {"rva": "0x50DC72", "code": "4C 8B 1D 97 8F E1 02 45 33 C0 48 89"},
+        {"rva": "0x545CEA", "code": "48 8B 1D 1F 0F DE 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "The ArcWeapon component manager (component 265, component world +0xEB64A0; the Arc Thrower's arcs): ArcWeaponUpdate's first argument; ArcWeaponRecord looks in its private copies",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 calls ArcWeaponUpdate for each instance (0x57374E)",
+      "fields": {
+        "count": {"offset": "0x38", "type": "u32", "meaning": "instances (the world update's loop bound, 0x573737)"}
+      }
+    },
+    "WeaponHeats": {
+      "rva": "0x3326D48",
+      "witnesses": [
+        {"rva": "0x32A416", "code": "4C 8B 1D 2B C9 FF 02 33 D2 45 8B 4B"},
+        {"rva": "0x4AC07A", "code": "4C 8B 15 C7 AC E7 02 75 14 B8 FF FF"}
+      ],
+      "meaning": "The WeaponHeat component manager (component 266, component world +0xEB6570): WeaponHeatUpdate's first argument; WeaponHeatRecord looks in its private copies",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research overheat-cooling, reload-heat-knife",
+      "fields": {
+        "count": {"offset": "0x18", "type": "u32", "meaning": "instances (WeaponHeatUpdate's loop bound, 0x764988)"},
+        "descriptors": {"offset": "0x40", "type": "ptr", "meaning": "each instance's entity descriptor (8 bytes each: +8 entity, +0x14 bit 1 owned by this machine; WeaponHeatUpdate steps only those)"}
+      }
+    },
+    "AbilityWeapons": {
+      "rva": "0x3326A10",
+      "witnesses": [
+        {"rva": "0x54624A", "code": "48 8B 1D BF 07 DE 02 48 8B F9 44 8B"},
+        {"rva": "0x5462CF", "code": "48 8B 1D 3A 07 DE 02 48 8B FA 48 8B"}
+      ],
+      "meaning": "The AbilityWeapon component manager (component 267, component world +0xEB6620; weapons whose fire starts an ability: the C4 detonator, the silo's targeting remote): AbilityWeaponUpdate's first argument. Its records come from the type lookup AbilityWeaponTypeRecord",
+      "source": "the component world's setter 0x568230 (cells stored in component order: between WeaponHeat 266 and component 269) and the world update 0x571250, which passes it to AbilityWeaponUpdate (0x573773)"
+    },
+    "MeleeWeapons": {
+      "rva": "0x3326B78",
+      "witnesses": [
+        {"rva": "0x5464FA", "code": "48 8B 1D 77 06 DE 02 48 8B F9 44 8B"},
+        {"rva": "0x54657A", "code": "48 8B 1D F7 05 DE 02 48 8B F9 8B 43"}
+      ],
+      "meaning": "The MeleeWeapon component manager (component 268, component world +0xEB6670). Its records come from the type lookup at game.dll+0x50E360 (not mapped: it follows a jmp, so it does not pass the start check)",
+      "source": "the component world's setter 0x568230 (cells stored in component order: the second between WeaponHeat 266 and component 269); HD2Runtime 0.40.1 research knife-melee (0xA6A0B7 reads the MeleeWeapon record's stamina cost)"
+    },
+    "WeaponCustomizations": {
+      "rva": "0x3326A38",
+      "witnesses": [
+        {"rva": "0x50F172", "code": "4C 8B 1D BF 78 E1 02 45 33 C0 48 89"},
+        {"rva": "0x546AAA", "code": "48 8B 1D 87 FF DD 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "The WeaponCustomization component manager (component 271, component world +0xEB6810; a weapon's attachment slots and units): WeaponCustomizationUpdate's first argument; WeaponCustomizationRecord looks in its private copies",
+      "source": "game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 passes it to WeaponCustomizationUpdate (0x5737CA)"
+    },
+    "AiSpawnerManager": {
+      "rva": "0x33265C8",
+      "witnesses": [
+        {"rva": "0x4AD18B", "code": "48 8B 05 36 94 E7 02 45 33 C0 48 89"},
+        {"rva": "0x4AD21A", "code": "4C 8B 15 A7 93 E7 02 75 14 B8 FF FF"}
+      ],
+      "meaning": "The AiSpawnerComponent manager (component world +0x75EA20): The AI spawners (the director's spawn points and breaches). At +0x28 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x28", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "game.dll: AiSpawnerComponent's growth function 0x7FB4D0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x75EA20 here"
+    },
+    "BugholeManager": {
+      "rva": "0x33267B0",
+      "witnesses": [
+        {"rva": "0x53BE2A", "code": "48 8B 1D 7F A9 DE 02 48 8B F9 44 8B"},
+        {"rva": "0x53BEBF", "code": "48 8B 1D EA A8 DE 02 48 8B FA 48 8B"}
+      ],
+      "meaning": "The BugholeComponent manager (component world +0x7C56B0): Bug holes (Terminid nests' holes). At +0x28 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x28", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "game.dll: BugholeComponent's growth function 0x859400 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7C56B0 here"
+    },
+    "VehicleMotionManager": {
+      "rva": "0x3326458",
+      "witnesses": [
+        {"rva": "0x13F9AB", "code": "48 8B 15 A6 6A 1E 03 33 C9 48 89 6C"},
+        {"rva": "0x4AA42B", "code": "48 8B 05 26 C0 E7 02 45 33 C0 48 89"}
+      ],
+      "meaning": "The VehicleMotionComponent manager (component world +0x7C72E8): Vehicle motion (vehicles' and mechs' driving physics). At +0x40 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x40", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: VehicleMotionComponent's growth function 0x71AA70 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7C72E8 here"
+    },
+    "VehicleManager": {
+      "rva": "0x3326668",
+      "witnesses": [
+        {"rva": "0x45D304", "code": "4C 8B 1D 5D 93 EC 02 8B D5 45 8B 4B"},
+        {"rva": "0x4AA23B", "code": "48 8B 05 26 C4 E7 02 45 33 C0 48 89"}
+      ],
+      "meaning": "The VehicleComponent manager (component world +0x1C6348): Vehicles and mechs (VehicleSettings resolves their records; private copies at +0xC0, copy map at +0x80). At +0x38 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x38", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: VehicleComponent's growth function 0x703B40 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1C6348 here"
+    },
+    "SquadTransportManager": {
+      "rva": "0x3326CC0",
+      "witnesses": [
+        {"rva": "0x4C61F7", "code": "4C 8B 15 C2 0A E6 02 8B 40 08 3B 05"},
+        {"rva": "0x5254C4", "code": "48 8B 3D F5 17 E0 02 48 8B E9 8B 77"}
+      ],
+      "meaning": "The SquadTransportComponent manager (component world +0x1C6EB0): Squad transports (enemy dropships carrying a squad). At +0x20 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x20", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "game.dll: SquadTransportComponent's growth function 0x6887B0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1C6EB0 here"
+    },
+    "SquadFormationManager": {
+      "rva": "0x3326A88",
+      "witnesses": [
+        {"rva": "0x529B3A", "code": "48 8B 1D 47 CF DF 02 48 8B F9 44 8B"},
+        {"rva": "0x529B9A", "code": "48 8B 1D E7 CE DF 02 48 8B F9 8B 43"}
+      ],
+      "meaning": "The SquadTransportFormationComponent manager (component world +0x757568): Squad transport formations (the squad slots of a dropship). At +0x18 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x18", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "game.dll: SquadTransportFormationComponent's growth function 0x68A550 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x757568 here"
+    },
+    "GoreManager": {
+      "rva": "0x33264D0",
+      "witnesses": [
+        {"rva": "0x131509", "code": "4C 8B 35 C0 4F 1F 03 8B 40 08 3B 05"},
+        {"rva": "0x4CE583", "code": "4C 8B 3D 46 7F E5 02 8B 40 08 3B 05"}
+      ],
+      "meaning": "The GoreComponent manager (component world +0x7FF2F8): Gore (dismemberment state). At +0x156DA0 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x156DA0", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "game.dll: GoreComponent's growth function 0x9090B0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7FF2F8 here"
+    },
+    "StratagemBlockerManager": {
+      "rva": "0x3326568",
+      "witnesses": [
+        {"rva": "0x51992A", "code": "48 8B 1D 37 CC E0 02 48 8B F9 44 8B"},
+        {"rva": "0x51998A", "code": "48 8B 1D D7 CB E0 02 48 8B F9 8B 43"}
+      ],
+      "meaning": "The StratagemBlockerComponent manager (component world +0x1E60): Stratagem blockers (what jams stratagems in an area). At +0x18 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x18", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "game.dll: StratagemBlockerComponent's growth function 0x9E30F0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1E60 here"
+    },
+    "OrbitalAbilityManager": {
+      "rva": "0x33267F0",
+      "witnesses": [
+        {"rva": "0x512E42", "code": "4C 8B 1D A7 39 E1 02 45 33 C0 48 89"},
+        {"rva": "0x54E554", "code": "48 8B 3D 95 82 DD 02 48 8B E9 8B 77"}
+      ],
+      "meaning": "The OrbitalAbilityComponent manager (component world +0xF064A8): Orbital abilities (OrbitalAbilitySettings resolves their records; private copies at +0xD8, copy map at +0x98). At +0x58 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x58", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "game.dll: OrbitalAbilityComponent's growth function 0x5F6D40 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF064A8 here"
+    },
+    "HellpodPayloadManager": {
+      "rva": "0x3326560",
+      "witnesses": [
+        {"rva": "0x4CC498", "code": "4C 8B 1D C1 A0 E5 02 33 C9 48 89 5C"},
+        {"rva": "0x501212", "code": "4C 8B 1D 47 53 E2 02 45 33 C0 48 89"}
+      ],
+      "meaning": "The HellpodPayloadComponent manager (component world +0x75C1B8): Hellpod payloads (what a hellpod delivers; HellpodPayloadSettings resolves their records, private copies at +0xA0, copy map at +0x60). At +0x28 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x28", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "game.dll: HellpodPayloadComponent's growth function 0x933700 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x75C1B8 here"
+    },
+    "UnitManager": {
+      "rva": "0x3326508",
+      "witnesses": [
+        {"rva": "0x4A457A", "code": "4C 8B 15 87 1F E8 02 75 17 B8 FF FF"},
+        {"rva": "0x4B625D", "code": "4C 8B 35 A4 02 E7 02 45 8B C1 45 8B"}
+      ],
+      "meaning": "The UnitComponent manager (component world +0x1B4170): The entities' units (their scene units; UnitSettings resolves their records, private copies at +0xC0, copy map at +0x80). At +0x40 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x40", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "game.dll: UnitComponent's growth function 0x6E98E0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1B4170 here"
+    },
+    "RotationManager": {
+      "rva": "0x33264A0",
+      "witnesses": [
+        {"rva": "0xBADA1", "code": "48 8B 0D F8 B6 26 03 8B 50 08 E8 30"},
+        {"rva": "0xBAF06", "code": "48 8B 0D 93 B5 26 03 8B 50 08 E8 CB"}
+      ],
+      "meaning": "The RotationComponent manager (component world +0xF065D8): Rotation (how entities turn; RotationSettings resolves their records, private copies at +0xB8, copy map at +0x78). At +0x38 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x38", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: RotationComponent's growth function 0x625CE0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF065D8 here"
+    },
+    "DisplacementManager": {
+      "rva": "0x3326AC8",
+      "witnesses": [
+        {"rva": "0x50FA62", "code": "4C 8B 1D 5F 70 E1 02 45 33 C0 48 89"},
+        {"rva": "0x547494", "code": "48 8B 3D 2D F6 DD 02 48 8B E9 8B 77"}
+      ],
+      "meaning": "The DisplacementComponent manager (component world +0xEB71D8): Displacement (DisplacementSettings resolves their records, private copies at +0xA0, copy map at +0x60). At +0x20 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x20", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "HD2Runtime 0.40.1 research hoverpack-components (code.managers.displacement); game.dll: DisplacementComponent's growth function 0x88FE20 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xEB71D8 here"
+    },
+    "JumppackManager": {
+      "rva": "0x3326BB8",
+      "witnesses": [
+        {"rva": "0x50D852", "code": "4C 8B 1D 5F 93 E1 02 45 33 C0 48 89"},
+        {"rva": "0x545AEA", "code": "48 8B 1D C7 10 DE 02 48 8B F9 44 8B"}
+      ],
+      "meaning": "The JumppackComponent manager (component world +0xEB63F8): Jump packs and hover packs (JumppackSettings resolves their records, private copies at +0xA0, copy map at +0x60). At +0x20 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x20", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"},
+        "hover_input": {"offset": "0x40", "type": "ptr", "meaning": "12 bytes per index: the replicated hover input vector"},
+        "flight": {"offset": "0x48", "type": "ptr", "meaning": "76 bytes per index: +0 launch latch, +1 sustain latch, +4 launch elapsed (f32 s), +8 sustain elapsed (f32 s), +0xC launch window (f32 s)"},
+        "flags": {"offset": "0x50", "type": "ptr", "meaning": "5 bytes per index, replicated: +0 active, +1 sustain, +2 hover launch, +3 mode toggle, +4 thrusting"}
+      },
+      "source": "HD2Runtime 0.40.1 research hoverpack-components (model.perInstanceState, code.managers.jumppack); game.dll: JumppackComponent's growth function 0x9B8380 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xEB63F8 here"
+    },
+    "EagleManager": {
+      "rva": "0x3326650",
+      "witnesses": [
+        {"rva": "0x4B4971", "code": "48 8B 05 D8 1C E7 02 41 8B D7 44 8B"},
+        {"rva": "0x514B62", "code": "4C 8B 1D E7 1A E1 02 45 33 C0 48 89"}
+      ],
+      "meaning": "The EagleComponent manager (component world +0xF0B300): The Eagle jets in flight (EagleSettings resolves their records, private copies at +0xB0, copy map at +0x70). At +0x30 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x30", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"},
+        "records": {"offset": "0x58", "type": "ptr", "meaning": "0xFC bytes per index, the jet: +0xC its target index (9 none), +0x10 targets tracked (<= 8), +0x14 8 target entities, +0x54 aim point (3 f32), +0x68 releases so far, +0x70 attacking (u8), +0x78 jet position (3 f32), +0xD4 velocity (3 f32), +0xE0 speed (f32)"},
+        "flight": {"offset": "0x60", "type": "ptr", "meaning": "28 bytes per index: +0 the approach start position, +0xC the target point at the call (3 f32 each)"}
+      },
+      "source": "HD2Runtime 0.40.1 research eagle-components (nativeModel); game.dll: EagleComponent's growth function 0x8A9730 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF0B300 here"
+    },
+    "EncounterManager": {
+      "rva": "0x3326618",
+      "witnesses": [
+        {"rva": "0x4B0680", "code": "48 8B 05 91 5F E7 02 83 B8 34 09 00"},
+        {"rva": "0x4DC09C", "code": "48 8B 0D 75 A5 E4 02 C6 44 24 30 00"}
+      ],
+      "meaning": "The EncounterComponent manager (component world +0x7C4D30): The director's encounters: its reinforcements (EncounterUpdate picks a composition and sends it by transport or breach). At +0x948 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x948", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement pins in 0x8B8A20); game.dll: EncounterComponent's growth function 0x8BAAE0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7C4D30 here"
+    },
+    "AiSquadManager": {
+      "rva": "0x33265A0",
+      "witnesses": [
+        {"rva": "0x4A4AB2", "code": "4C 8B 1D E7 1A E8 02 41 B9 FF FF FF"},
+        {"rva": "0x4A4B8B", "code": "48 8B 05 0E 1A E8 02 45 33 C0 48 89"}
+      ],
+      "meaning": "The AiSquadComponent manager (component world +0xF05068): AI squads. A squad's record (0x2510 bytes) queues the enemies it is to spawn: up to 32 entries of 0xC8 bytes from +0xC08, their count at +0x2508 (a 33rd entry overruns the count and crashes the game). At +0x20 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x20", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"},
+        "count": {"offset": "0xC", "type": "u32", "meaning": "squads in use"},
+        "descriptors": {"offset": "0x38", "type": "ptr", "meaning": "descriptor pointers by index (+8 the entity)"},
+        "records": {"offset": "0x40", "type": "ptr", "meaning": "the squad records, 0x2510 bytes each, by index"}
+      },
+      "source": "HD2Runtime 0.40.1 research spawn-capacity-dev11 (queue); its add helper 0x54D680 (count +0xC, descriptors +0x38, records +0x40); game.dll: AiSquadComponent's growth function 0x806520 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF05068 here"
+    },
+    "SensorEyeManager": {
+      "rva": "0x3326520",
+      "witnesses": [
+        {"rva": "0x1E4300", "code": "48 8B 35 19 22 14 03 8B 50 08 8B 05"},
+        {"rva": "0x4A8F4B", "code": "48 8B 05 CE D5 E7 02 45 33 C0 48 89"}
+      ],
+      "meaning": "The SensorEyeComponent manager (component world +0x75ED20): Sensor eyes (what enemies and sentries see with: SensorEyeRanges' first argument; SensorEyeSettings resolves their records, private copies at +0xB0). At +0x30 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x30", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "HD2Runtime 0.40.1 research sentry-components (sensor manager game+0x3326520); game.dll: SensorEyeComponent's growth function 0x64EB50 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x75ED20 here"
+    },
+    "TurretManager": {
+      "rva": "0x3326D70",
+      "witnesses": [
+        {"rva": "0x4AA0EB", "code": "48 8B 05 7E CC E7 02 45 33 C0 48 89"},
+        {"rva": "0x4B0823", "code": "48 8B 15 46 65 E7 02 33 C9 48 89 74"}
+      ],
+      "meaning": "The TurretComponent manager (component world +0xEB5060): Turrets (sentries, mounted guns: TurretUpdate's first argument; TurretSettings resolves their records, private copies at +0xA8). At +0x28 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x28", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "HD2Runtime 0.40.1 research sentry-components and vehicle-mech-components (turret manager game+0x3326D70); game.dll: TurretComponent's growth function 0x6E1120 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xEB5060 here"
+    },
+    "LocomotionManager": {
+      "rva": "0x3326CF8",
+      "witnesses": [
+        {"rva": "0x4A737B", "code": "48 8B 05 76 F9 E7 02 45 33 C0 48 89"},
+        {"rva": "0x4A740A", "code": "4C 8B 15 E7 F8 E7 02 75 18 B8 FF FF"}
+      ],
+      "meaning": "The LocomotionComponent manager (component world +0xF06698): Locomotion (how characters move; private copies at +0xA8, copy map at +0x68). At +0x20 a map of entities to indexes",
+      "fields": {
+        "map": {"offset": "0x20", "type": "ptr", "meaning": "the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it"}
+      },
+      "source": "HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers: LocomotionComponentData); game.dll: LocomotionComponent's growth function 0x9CE510 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF06698 here"
     }
   }
 }

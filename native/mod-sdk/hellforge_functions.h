@@ -219,7 +219,7 @@ static inline HfFn_NeedsAmmo hf_fn_NeedsAmmo(HfMod* mod) { return (HfFn_NeedsAmm
 
 /* TryStartAction (game.dll+0xA431D0; call only). Starts an action on an entity if it is free to: 1 started, 0 not.
  * hf->resupply_from_pack is the checked way to call it.
- *   context  the entity's action context: hf_global_ActionManager + 0x53E170 + 0x1238 index (+0 the entity, +8 the
+ *   context  the entity's action context: hf_global_AvatarManager + 0x53E170 + 0x1238 index (+0 the entity, +8 the
  *            running action)
  *   request  3 u32: the action (2629, the Supply Pack's self-use), the game's no-action id (u32 at game.dll+0x3483C5C),
  *            the context's +0xC
@@ -507,16 +507,16 @@ typedef uint8_t* (*HfFn_FindPerceptionEntry)(void* perception, uint32_t perceive
 static inline HfFn_FindPerceptionEntry hf_fn_FindPerceptionEntry(HfMod* mod) { return (HfFn_FindPerceptionEntry)hf_function_(mod, "FindPerceptionEntry"); }
 
 /* MagazineRounds (game.dll+0x742900; call only). The rounds in a weapon's magazine.
- *   magazines  the magazines: hf_global_MagazineManager
- *   entity     the weapon's entity
+ *   weapons  the magazines: hf_global_WeaponManager
+ *   entity   the weapon's entity
  * From HellForge's Pelican turret refill (behaviour_turret.c). */
-typedef int32_t (*HfFn_MagazineRounds)(void* magazines, uint32_t entity);
+typedef int32_t (*HfFn_MagazineRounds)(void* weapons, uint32_t entity);
 static inline HfFn_MagazineRounds hf_fn_MagazineRounds(HfMod* mod) { return (HfFn_MagazineRounds)hf_function_(mod, "MagazineRounds"); }
 
 /* AddMagazineRounds (game.dll+0x76E080; call only). Adds rounds to a weapon's magazine, on the machine with authority
  * over it.
  *   unused  NULL
- *   entity  the weapon's entity (in hf_global_MagazineRefills' map)
+ *   entity  the weapon's entity (in hf_global_WeaponMagazines' map)
  *   add     the rounds to add
  * From HellForge's Pelican turret refill (behaviour_turret.c). */
 typedef void (*HfFn_AddMagazineRounds)(void* unused, uint32_t entity, int32_t add);
@@ -939,14 +939,18 @@ static inline HfFn_ShowDifficultyWidget hf_fn_ShowDifficultyWidget(HfMod* mod) {
 typedef float (*HfFn_ComputeMissionRating)(void* rcx, void* rdx, uint32_t r8, uint32_t r9);
 static inline HfFn_ComputeMissionRating hf_fn_ComputeMissionRating(HfMod* mod) { return (HfFn_ComputeMissionRating)hf_function_(mod, "ComputeMissionRating"); }
 
-/* EnemyDirectorTick (game.dll+0x94EB90; call only). The enemy director's per-frame step: reads each faction's roaming
- * patrol interval (difficulty row +0x2A0, f32 s) and most living patrol enemies (+0x2AC, u32) from the mission's
- * difficulty row.
- *   rcx   not reviewed: pass it on (its caller passes its rdi + 0x771F48)
- *   xmm1  not reviewed: pass it on
+/* EnemyDirectorTick (game.dll+0x94EB90; hook or call). The enemy director's per-frame step: reads each faction's
+ * roaming patrol interval (difficulty row +0x2A0, f32 s) and most living patrol enemies (+0x2AC, u32) from the
+ * mission's difficulty row.
+ *   hivemind  the HiveMind manager: hf_global_HiveMindManager
+ *   dt        the frame time, s
  * From HellForge's difficulty patrols (difficulty.c, PatrolLevelRow). */
-typedef void (*HfFn_EnemyDirectorTick)(void* rcx, float xmm1);
+typedef void (*HfFn_EnemyDirectorTick)(void* hivemind, float dt);
 static inline HfFn_EnemyDirectorTick hf_fn_EnemyDirectorTick(HfMod* mod) { return (HfFn_EnemyDirectorTick)hf_function_(mod, "EnemyDirectorTick"); }
+static inline int hf_hook_EnemyDirectorTick(HfMod* mod, HfFn_EnemyDirectorTick detour, HfFn_EnemyDirectorTick* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EnemyDirectorTick", (void*)detour, (void**)original, priority);
+}
 
 /* ArenaAllocate (game.dll+0x173B8D0; call only). Allocates from an arena; the level generator's passes take their
  * scratch tables from the generation arena with it.
@@ -2669,11 +2673,11 @@ static inline int hf_hook_WeaponHeatStep(HfMod* mod, HfFn_WeaponHeatStep detour,
 
 /* SpendRound (game.dll+0x744690; hook or call). Spends one round of a weapon (magazine, rounds or linked ammunition),
  * shared by every output family; the beam spends one per pulse.
- *   magazines  the MagazineManager
- *   weapon     the weapon entity
+ *   weapons  the WeaponManager
+ *   weapon   the weapon entity
  * From HD2Runtime 0.40.1 research component-swap-liberator-beam (round consumption); beam-conversion-coverage
  * (roundSpend). */
-typedef void (*HfFn_SpendRound)(void* magazines, uint32_t weapon);
+typedef void (*HfFn_SpendRound)(void* weapons, uint32_t weapon);
 static inline HfFn_SpendRound hf_fn_SpendRound(HfMod* mod) { return (HfFn_SpendRound)hf_function_(mod, "SpendRound"); }
 static inline int hf_hook_SpendRound(HfMod* mod, HfFn_SpendRound detour, HfFn_SpendRound* original, int32_t priority)
 {
@@ -2793,7 +2797,7 @@ static inline int hf_hook_PerceptionUpdate(HfMod* mod, HfFn_PerceptionUpdate det
 
 /* WindUpUpdate (game.dll+0x78A420; hook or call). The weapon wind-up frame: spin progress rises by dt / settings +0
  * while the trigger is held; on release settings +4 <= 0 resets it, else it falls by dt / settings +0.
- *   windups  the WeaponWindUp manager (component world +0x1B29B8)
+ *   windups  WeaponWindUps (component world +0x1B29B8)
  *   dt       the frame time
  * From HD2Runtime 0.40.1 research sentry-components (windUpUpdate). */
 typedef void (*HfFn_WindUpUpdate)(void* windups, float dt);
@@ -4168,6 +4172,2241 @@ static inline HfFn_HasCatalogueItem hf_fn_HasCatalogueItem(HfMod* mod) { return 
 static inline int hf_hook_HasCatalogueItem(HfMod* mod, HfFn_HasCatalogueItem detour, HfFn_HasCatalogueItem* original, int32_t priority)
 {
     return hf_hook_function_(mod, "HasCatalogueItem", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponMagazineRecord (game.dll+0x4F3740; hook or call). The entity's WeaponMagazineComponentData (component 5): its
+ * own copy in the manager's private copies if it has one, else its type's shared record (WeaponMagazineTypeRecord);
+ * NULL when the type has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_WeaponMagazineRecord)(void* descriptor);
+static inline HfFn_WeaponMagazineRecord hf_fn_WeaponMagazineRecord(HfMod* mod) { return (HfFn_WeaponMagazineRecord)hf_function_(mod, "WeaponMagazineRecord"); }
+static inline int hf_hook_WeaponMagazineRecord(HfMod* mod, HfFn_WeaponMagazineRecord detour, HfFn_WeaponMagazineRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponMagazineRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponWindUpRecord (game.dll+0x4F8090; hook or call). The entity's WeaponWindUpComponentData (component 70): its own
+ * copy in the manager's private copies if it has one, else its type's shared record (the type lookup at
+ * game.dll+0x4F7C70, reached only by this tail jump, so not mapped); NULL when the type has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_WeaponWindUpRecord)(void* descriptor);
+static inline HfFn_WeaponWindUpRecord hf_fn_WeaponWindUpRecord(HfMod* mod) { return (HfFn_WeaponWindUpRecord)hf_function_(mod, "WeaponWindUpRecord"); }
+static inline int hf_hook_WeaponWindUpRecord(HfMod* mod, HfFn_WeaponWindUpRecord detour, HfFn_WeaponWindUpRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponWindUpRecord", (void*)detour, (void**)original, priority);
+}
+
+/* RechargeRecord (game.dll+0x4FBC30; hook or call). The entity's RechargeComponentData (component 99): its own copy in
+ * the manager's private copies if it has one, else its type's shared record (RechargeTypeRecord); NULL when the type
+ * has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_RechargeRecord)(void* descriptor);
+static inline HfFn_RechargeRecord hf_fn_RechargeRecord(HfMod* mod) { return (HfFn_RechargeRecord)hf_function_(mod, "RechargeRecord"); }
+static inline int hf_hook_RechargeRecord(HfMod* mod, HfFn_RechargeRecord detour, HfFn_RechargeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "RechargeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponReloadRecord (game.dll+0x4FD220; hook or call). The entity's WeaponReloadComponentData (component 113): its own
+ * copy in the manager's private copies if it has one, else its type's shared record (WeaponReloadTypeRecord); NULL when
+ * the type has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_WeaponReloadRecord)(void* descriptor);
+static inline HfFn_WeaponReloadRecord hf_fn_WeaponReloadRecord(HfMod* mod) { return (HfFn_WeaponReloadRecord)hf_function_(mod, "WeaponReloadRecord"); }
+static inline int hf_hook_WeaponReloadRecord(HfMod* mod, HfFn_WeaponReloadRecord detour, HfFn_WeaponReloadRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponReloadRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponRoundsRecord (game.dll+0x4FDD20; hook or call). The entity's WeaponRoundsComponentData (component 117): its own
+ * copy in the manager's private copies if it has one, else its type's shared record (WeaponRoundsTypeRecord); NULL when
+ * the type has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_WeaponRoundsRecord)(void* descriptor);
+static inline HfFn_WeaponRoundsRecord hf_fn_WeaponRoundsRecord(HfMod* mod) { return (HfFn_WeaponRoundsRecord)hf_function_(mod, "WeaponRoundsRecord"); }
+static inline int hf_hook_WeaponRoundsRecord(HfMod* mod, HfFn_WeaponRoundsRecord detour, HfFn_WeaponRoundsRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponRoundsRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponChargeRecord (game.dll+0x5052C0; hook or call). The entity's WeaponChargeComponentData (component 204): its own
+ * copy in the manager's private copies if it has one, else its type's shared record (the type lookup at
+ * game.dll+0x504D80, reached only by this tail jump, so not mapped); NULL when the type has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_WeaponChargeRecord)(void* descriptor);
+static inline HfFn_WeaponChargeRecord hf_fn_WeaponChargeRecord(HfMod* mod) { return (HfFn_WeaponChargeRecord)hf_function_(mod, "WeaponChargeRecord"); }
+static inline int hf_hook_WeaponChargeRecord(HfMod* mod, HfFn_WeaponChargeRecord detour, HfFn_WeaponChargeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponChargeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* EquipmentRecord (game.dll+0x5092B0; hook or call). The entity's EquipmentComponentData (component 233): its own copy
+ * in the manager's private copies if it has one, else its type's shared record (EquipmentTypeRecord); NULL when the
+ * type has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_EquipmentRecord)(void* descriptor);
+static inline HfFn_EquipmentRecord hf_fn_EquipmentRecord(HfMod* mod) { return (HfFn_EquipmentRecord)hf_function_(mod, "EquipmentRecord"); }
+static inline int hf_hook_EquipmentRecord(HfMod* mod, HfFn_EquipmentRecord detour, HfFn_EquipmentRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EquipmentRecord", (void*)detour, (void**)original, priority);
+}
+
+/* ThrowerRecord (game.dll+0x50CCC0; hook or call). The entity's ThrowerComponentData (component 258): its own copy in
+ * the manager's private copies if it has one, else its type's shared record (ThrowerTypeRecord); NULL when the type has
+ * none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_ThrowerRecord)(void* descriptor);
+static inline HfFn_ThrowerRecord hf_fn_ThrowerRecord(HfMod* mod) { return (HfFn_ThrowerRecord)hf_function_(mod, "ThrowerRecord"); }
+static inline int hf_hook_ThrowerRecord(HfMod* mod, HfFn_ThrowerRecord detour, HfFn_ThrowerRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ThrowerRecord", (void*)detour, (void**)original, priority);
+}
+
+/* ArcWeaponRecord (game.dll+0x50DC50; hook or call). The entity's ArcWeaponComponentData (component 265): its own copy
+ * in the manager's private copies if it has one, else its type's shared record (ArcWeaponTypeRecord); NULL when the
+ * type has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_ArcWeaponRecord)(void* descriptor);
+static inline HfFn_ArcWeaponRecord hf_fn_ArcWeaponRecord(HfMod* mod) { return (HfFn_ArcWeaponRecord)hf_function_(mod, "ArcWeaponRecord"); }
+static inline int hf_hook_ArcWeaponRecord(HfMod* mod, HfFn_ArcWeaponRecord detour, HfFn_ArcWeaponRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ArcWeaponRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponHeatRecord (game.dll+0x50E1F0; hook or call). The entity's WeaponHeatComponentData (component 266): its own
+ * copy in the manager's private copies if it has one, else its type's shared record (WeaponHeatTypeRecord); NULL when
+ * the type has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_WeaponHeatRecord)(void* descriptor);
+static inline HfFn_WeaponHeatRecord hf_fn_WeaponHeatRecord(HfMod* mod) { return (HfFn_WeaponHeatRecord)hf_function_(mod, "WeaponHeatRecord"); }
+static inline int hf_hook_WeaponHeatRecord(HfMod* mod, HfFn_WeaponHeatRecord detour, HfFn_WeaponHeatRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponHeatRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponCustomizationRecord (game.dll+0x50F150; hook or call). The entity's WeaponCustomizationComponentData (component
+ * 271): its own copy in the manager's private copies if it has one, else its type's shared record
+ * (WeaponCustomizationTypeRecord); NULL when the type has none.
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type
+ * lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component
+ * order. */
+typedef void* (*HfFn_WeaponCustomizationRecord)(void* descriptor);
+static inline HfFn_WeaponCustomizationRecord hf_fn_WeaponCustomizationRecord(HfMod* mod) { return (HfFn_WeaponCustomizationRecord)hf_function_(mod, "WeaponCustomizationRecord"); }
+static inline int hf_hook_WeaponCustomizationRecord(HfMod* mod, HfFn_WeaponCustomizationRecord detour, HfFn_WeaponCustomizationRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponCustomizationRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponMagazineTypeRecord (game.dll+0x4F32F0; hook or call). An entity type's shared WeaponMagazineComponentData
+ * (component 5) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when
+ * the type has no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_WeaponMagazineTypeRecord)(uint64_t type);
+static inline HfFn_WeaponMagazineTypeRecord hf_fn_WeaponMagazineTypeRecord(HfMod* mod) { return (HfFn_WeaponMagazineTypeRecord)hf_function_(mod, "WeaponMagazineTypeRecord"); }
+static inline int hf_hook_WeaponMagazineTypeRecord(HfMod* mod, HfFn_WeaponMagazineTypeRecord detour, HfFn_WeaponMagazineTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponMagazineTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* RechargeTypeRecord (game.dll+0x4FB850; hook or call). An entity type's shared RechargeComponentData (component 99)
+ * from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has
+ * no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_RechargeTypeRecord)(uint64_t type);
+static inline HfFn_RechargeTypeRecord hf_fn_RechargeTypeRecord(HfMod* mod) { return (HfFn_RechargeTypeRecord)hf_function_(mod, "RechargeTypeRecord"); }
+static inline int hf_hook_RechargeTypeRecord(HfMod* mod, HfFn_RechargeTypeRecord detour, HfFn_RechargeTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "RechargeTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponReloadTypeRecord (game.dll+0x4FCE20; hook or call). An entity type's shared WeaponReloadComponentData
+ * (component 113) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL
+ * when the type has no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_WeaponReloadTypeRecord)(uint64_t type);
+static inline HfFn_WeaponReloadTypeRecord hf_fn_WeaponReloadTypeRecord(HfMod* mod) { return (HfFn_WeaponReloadTypeRecord)hf_function_(mod, "WeaponReloadTypeRecord"); }
+static inline int hf_hook_WeaponReloadTypeRecord(HfMod* mod, HfFn_WeaponReloadTypeRecord detour, HfFn_WeaponReloadTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponReloadTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponRoundsTypeRecord (game.dll+0x4FD8E0; hook or call). An entity type's shared WeaponRoundsComponentData
+ * (component 117) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL
+ * when the type has no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_WeaponRoundsTypeRecord)(uint64_t type);
+static inline HfFn_WeaponRoundsTypeRecord hf_fn_WeaponRoundsTypeRecord(HfMod* mod) { return (HfFn_WeaponRoundsTypeRecord)hf_function_(mod, "WeaponRoundsTypeRecord"); }
+static inline int hf_hook_WeaponRoundsTypeRecord(HfMod* mod, HfFn_WeaponRoundsTypeRecord detour, HfFn_WeaponRoundsTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponRoundsTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* EquipmentTypeRecord (game.dll+0x508E90; hook or call). An entity type's shared EquipmentComponentData (component 233)
+ * from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has
+ * no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_EquipmentTypeRecord)(uint64_t type);
+static inline HfFn_EquipmentTypeRecord hf_fn_EquipmentTypeRecord(HfMod* mod) { return (HfFn_EquipmentTypeRecord)hf_function_(mod, "EquipmentTypeRecord"); }
+static inline int hf_hook_EquipmentTypeRecord(HfMod* mod, HfFn_EquipmentTypeRecord detour, HfFn_EquipmentTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EquipmentTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* ThrowerTypeRecord (game.dll+0x50C720; hook or call). An entity type's shared ThrowerComponentData (component 258)
+ * from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has
+ * no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_ThrowerTypeRecord)(uint64_t type);
+static inline HfFn_ThrowerTypeRecord hf_fn_ThrowerTypeRecord(HfMod* mod) { return (HfFn_ThrowerTypeRecord)hf_function_(mod, "ThrowerTypeRecord"); }
+static inline int hf_hook_ThrowerTypeRecord(HfMod* mod, HfFn_ThrowerTypeRecord detour, HfFn_ThrowerTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ThrowerTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* ThrowableTypeRecord (game.dll+0x50CD90; hook or call). An entity type's shared ThrowableComponentData (component 259)
+ * from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has
+ * no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_ThrowableTypeRecord)(uint64_t type);
+static inline HfFn_ThrowableTypeRecord hf_fn_ThrowableTypeRecord(HfMod* mod) { return (HfFn_ThrowableTypeRecord)hf_function_(mod, "ThrowableTypeRecord"); }
+static inline int hf_hook_ThrowableTypeRecord(HfMod* mod, HfFn_ThrowableTypeRecord detour, HfFn_ThrowableTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ThrowableTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* ArcWeaponTypeRecord (game.dll+0x50D900; hook or call). An entity type's shared ArcWeaponComponentData (component 265)
+ * from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has
+ * no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_ArcWeaponTypeRecord)(uint64_t type);
+static inline HfFn_ArcWeaponTypeRecord hf_fn_ArcWeaponTypeRecord(HfMod* mod) { return (HfFn_ArcWeaponTypeRecord)hf_function_(mod, "ArcWeaponTypeRecord"); }
+static inline int hf_hook_ArcWeaponTypeRecord(HfMod* mod, HfFn_ArcWeaponTypeRecord detour, HfFn_ArcWeaponTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ArcWeaponTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponHeatTypeRecord (game.dll+0x50DD30; hook or call). An entity type's shared WeaponHeatComponentData (component
+ * 266) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type
+ * has no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_WeaponHeatTypeRecord)(uint64_t type);
+static inline HfFn_WeaponHeatTypeRecord hf_fn_WeaponHeatTypeRecord(HfMod* mod) { return (HfFn_WeaponHeatTypeRecord)hf_function_(mod, "WeaponHeatTypeRecord"); }
+static inline int hf_hook_WeaponHeatTypeRecord(HfMod* mod, HfFn_WeaponHeatTypeRecord detour, HfFn_WeaponHeatTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponHeatTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* AbilityWeaponTypeRecord (game.dll+0x50E2C0; hook or call). An entity type's shared AbilityWeaponComponentData
+ * (component 267) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL
+ * when the type has no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_AbilityWeaponTypeRecord)(uint64_t type);
+static inline HfFn_AbilityWeaponTypeRecord hf_fn_AbilityWeaponTypeRecord(HfMod* mod) { return (HfFn_AbilityWeaponTypeRecord)hf_function_(mod, "AbilityWeaponTypeRecord"); }
+static inline int hf_hook_AbilityWeaponTypeRecord(HfMod* mod, HfFn_AbilityWeaponTypeRecord detour, HfFn_AbilityWeaponTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "AbilityWeaponTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponCustomizationTypeRecord (game.dll+0x50ED80; hook or call). An entity type's shared
+ * WeaponCustomizationComponentData (component 271) from the loaded component table: an open-addressing probe of the
+ * table's (type, record) rows; NULL when the type has no row. A leaf.
+ *   type  the entity type's resource hash (an entity descriptor's +0)
+ * From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research
+ * entity-component-table-pointers, component-membership). */
+typedef void* (*HfFn_WeaponCustomizationTypeRecord)(uint64_t type);
+static inline HfFn_WeaponCustomizationTypeRecord hf_fn_WeaponCustomizationTypeRecord(HfMod* mod) { return (HfFn_WeaponCustomizationTypeRecord)hf_function_(mod, "WeaponCustomizationTypeRecord"); }
+static inline int hf_hook_WeaponCustomizationTypeRecord(HfMod* mod, HfFn_WeaponCustomizationTypeRecord detour, HfFn_WeaponCustomizationTypeRecord* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponCustomizationTypeRecord", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponUpdate (game.dll+0x7406A0; hook or call). The weapon manager's frame, right after the WeaponData frames: among
+ * its calls AbilityWeaponFire (an ability weapon's pending fire) and WeaponChargeRecord.
+ *   weapons  the weapon manager (hf_global_WeaponManager, component world +0xE9FC38)
+ *   dt       the frame time
+ * From the world update 0x571250 (0x573245); HD2Runtime 0.40.1 research railgun-charge (0x7406A0 weapon update). */
+typedef void (*HfFn_WeaponUpdate)(void* weapons, float dt);
+static inline HfFn_WeaponUpdate hf_fn_WeaponUpdate(HfMod* mod) { return (HfFn_WeaponUpdate)hf_function_(mod, "WeaponUpdate"); }
+static inline int hf_hook_WeaponUpdate(HfMod* mod, HfFn_WeaponUpdate detour, HfFn_WeaponUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponDataUpdate (game.dll+0x753DB0; hook or call). One WeaponData instance's frame (its record from
+ * WeaponDataRecord, the current fire mode); the world update calls it for every instance.
+ *   weapondata  WeaponDatas
+ *   index       the instance index
+ *   dt          the frame time
+ * From the world update 0x571250 (loop at 0x573220, count at WeaponDatas +0x20). */
+typedef void (*HfFn_WeaponDataUpdate)(void* weapondata, uint32_t index, float dt);
+static inline HfFn_WeaponDataUpdate hf_fn_WeaponDataUpdate(HfMod* mod) { return (HfFn_WeaponDataUpdate)hf_function_(mod, "WeaponDataUpdate"); }
+static inline int hf_hook_WeaponDataUpdate(HfMod* mod, HfFn_WeaponDataUpdate detour, HfFn_WeaponDataUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponDataUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponHeatUpdate (game.dll+0x764970; hook or call). The WeaponHeat frame: WeaponHeatInstanceStep for every instance
+ * this machine owns (descriptor +0x14 bit 1), then each weapon's reload-dependent heat state (WeaponReloadBusy).
+ *   heats  WeaponHeats
+ *   dt     the frame time
+ * From the world update 0x571250 (0x573767). */
+typedef void (*HfFn_WeaponHeatUpdate)(void* heats, float dt);
+static inline HfFn_WeaponHeatUpdate hf_fn_WeaponHeatUpdate(HfMod* mod) { return (HfFn_WeaponHeatUpdate)hf_function_(mod, "WeaponHeatUpdate"); }
+static inline int hf_hook_WeaponHeatUpdate(HfMod* mod, HfFn_WeaponHeatUpdate detour, HfFn_WeaponHeatUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponHeatUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponHeatInstanceStep (game.dll+0x762F60; hook or call). One weapon's heat for a frame, on its owner: charging adds
+ * heat, else it cools at +128 per second (overheated or charging: +140, none when +144 is set) times the climate
+ * multiplier; heat at the capacity +96 sets the overheated flag when +80 is set, heat down to +100 clears it. The heat
+ * (live row +0x58, 12 bytes: +4 heat, +8 overheated) goes out as network field 0xA5023836.
+ *   heats  WeaponHeats
+ *   index  the instance index
+ *   dt     the frame time (xmm2, read after the leaf WeaponHeatRecord call)
+ * From HD2Runtime 0.40.1 research overheat-cooling (heatStep 0x762F60), reload-heat-knife; WeaponHeatUpdate's call
+ * 0x7649CB. */
+typedef void (*HfFn_WeaponHeatInstanceStep)(void* heats, uint32_t index, float dt);
+static inline HfFn_WeaponHeatInstanceStep hf_fn_WeaponHeatInstanceStep(HfMod* mod) { return (HfFn_WeaponHeatInstanceStep)hf_function_(mod, "WeaponHeatInstanceStep"); }
+static inline int hf_hook_WeaponHeatInstanceStep(HfMod* mod, HfFn_WeaponHeatInstanceStep detour, HfFn_WeaponHeatInstanceStep* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponHeatInstanceStep", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponChargeUpdate (game.dll+0x73C8F0; hook or call). The WeaponCharge frame: the charge time of every charging
+ * weapon rises while the trigger is held, and the charge levels decide the release (ChargeRelease) or, past the
+ * overcharge, ChargeOvercharge.
+ *   charges  WeaponCharges
+ *   dt       the frame time
+ * From the world update 0x571250 (0x572EF2); HD2Runtime 0.40.1 research railgun-charge (0x73C8F0 charge update). */
+typedef void (*HfFn_WeaponChargeUpdate)(void* charges, float dt);
+static inline HfFn_WeaponChargeUpdate hf_fn_WeaponChargeUpdate(HfMod* mod) { return (HfFn_WeaponChargeUpdate)hf_function_(mod, "WeaponChargeUpdate"); }
+static inline int hf_hook_WeaponChargeUpdate(HfMod* mod, HfFn_WeaponChargeUpdate detour, HfFn_WeaponChargeUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponChargeUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* ChargeRelease (game.dll+0x73D8C0; hook or call). Releases a weapon's charge: on the machine that owns the instance
+ * (descriptor +0x14 bit 1) it fires the charge level's projectile through ChargeFire, once per burst shot.
+ *   charges     WeaponCharges
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From HD2Runtime 0.40.1 research railgun-charge (0x73D8C0 fire helper, burst and per-state projectile);
+ * WeaponChargeUpdate's four calls. */
+typedef void (*HfFn_ChargeRelease)(void* charges, void* descriptor);
+static inline HfFn_ChargeRelease hf_fn_ChargeRelease(HfMod* mod) { return (HfFn_ChargeRelease)hf_function_(mod, "ChargeRelease"); }
+static inline int hf_hook_ChargeRelease(HfMod* mod, HfFn_ChargeRelease detour, HfFn_ChargeRelease* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ChargeRelease", (void*)detour, (void**)original, priority);
+}
+
+/* ChargeOvercharge (game.dll+0x73DC60; hook or call). A weapon held past its overcharge: on the machine that owns it
+ * the weapon is removed and its explosion set off.
+ *   unused      not read
+ *   descriptor  the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL
+ * From HD2Runtime 0.40.1 research railgun-charge (0x73DC60 overcharge failure: weapon removed, explosion);
+ * WeaponChargeUpdate's calls 0x73CCC4 and 0x73CDBA. */
+typedef void (*HfFn_ChargeOvercharge)(uint64_t unused, void* descriptor);
+static inline HfFn_ChargeOvercharge hf_fn_ChargeOvercharge(HfMod* mod) { return (HfFn_ChargeOvercharge)hf_function_(mod, "ChargeOvercharge"); }
+static inline int hf_hook_ChargeOvercharge(HfMod* mod, HfFn_ChargeOvercharge detour, HfFn_ChargeOvercharge* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ChargeOvercharge", (void*)detour, (void**)original, priority);
+}
+
+/* ChargeMultiplier (game.dll+0x73E280; hook or call). A charged shot's multiplier from the weapon's charge time (live
+ * row +0x40, 40 bytes, +8): below full charge (+0x18) from at_min to 1, above it from 1 to at_overcharge. The charge
+ * fire (0x73E725, 0x73E7E5) and the arc spawn (0x13B3F79, 0x13B401B) scale their shot with it, each passing a pair of
+ * charge record fields.
+ *   charges        WeaponCharges
+ *   weapon         the weapon entity
+ *   at_min         the value at the minimum charge (charge record +0)
+ *   at_overcharge  the value at the overcharge (record +0x30)
+ * From HD2Runtime 0.40.1 research railgun-charge (0x73E280 charge scaling lerp); callers 0x73E725, 0x73E7E5, 0x13B3F79,
+ * 0x13B401B. */
+typedef float (*HfFn_ChargeMultiplier)(void* charges, uint32_t weapon, float at_min, float at_overcharge);
+static inline HfFn_ChargeMultiplier hf_fn_ChargeMultiplier(HfMod* mod) { return (HfFn_ChargeMultiplier)hf_function_(mod, "ChargeMultiplier"); }
+static inline int hf_hook_ChargeMultiplier(HfMod* mod, HfFn_ChargeMultiplier detour, HfFn_ChargeMultiplier* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ChargeMultiplier", (void*)detour, (void**)original, priority);
+}
+
+/* EquipmentUpdate (game.dll+0x8C16E0; hook or call). The Equipment frame (the component of how held items are wielded,
+ * holstered and dropped).
+ *   equipment  hf_global_EquipmentManager (the Equipment component manager)
+ *   dt         the frame time
+ * From the world update 0x571250 (0x5731D9). */
+typedef void (*HfFn_EquipmentUpdate)(void* equipment, float dt);
+static inline HfFn_EquipmentUpdate hf_fn_EquipmentUpdate(HfMod* mod) { return (HfFn_EquipmentUpdate)hf_function_(mod, "EquipmentUpdate"); }
+static inline int hf_hook_EquipmentUpdate(HfMod* mod, HfFn_EquipmentUpdate detour, HfFn_EquipmentUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EquipmentUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* ThrowerUpdate (game.dll+0x6CB140; hook or call). The Thrower frame: throws the salvos of a thrower (mine dispensers
+ * and the like) by spawning their projectiles (SpawnProjectile).
+ *   throwers  Throwers
+ *   dt        the frame time
+ * From the world update 0x571250 (0x57369F); its call to SpawnProjectile. */
+typedef void (*HfFn_ThrowerUpdate)(void* throwers, float dt);
+static inline HfFn_ThrowerUpdate hf_fn_ThrowerUpdate(HfMod* mod) { return (HfFn_ThrowerUpdate)hf_function_(mod, "ThrowerUpdate"); }
+static inline int hf_hook_ThrowerUpdate(HfMod* mod, HfFn_ThrowerUpdate detour, HfFn_ThrowerUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ThrowerUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* ThrowableUpdate (game.dll+0x6C3AE0; hook or call). The Throwable frame: thrown grenades and knives (records from
+ * ThrowableTypeRecord), queuing their network fields.
+ *   throwables  Throwables
+ *   dt          the frame time
+ * From the world update 0x571250 (0x5736AE). */
+typedef void (*HfFn_ThrowableUpdate)(void* throwables, float dt);
+static inline HfFn_ThrowableUpdate hf_fn_ThrowableUpdate(HfMod* mod) { return (HfFn_ThrowableUpdate)hf_function_(mod, "ThrowableUpdate"); }
+static inline int hf_hook_ThrowableUpdate(HfMod* mod, HfFn_ThrowableUpdate detour, HfFn_ThrowableUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ThrowableUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* ArcWeaponUpdate (game.dll+0x80DDD0; hook or call). One ArcWeapon instance's frame (its record from ArcWeaponRecord).
+ *   arcs   ArcWeapons
+ *   index  the instance index
+ *   dt     the frame time
+ * From the world update 0x571250 (loop at 0x573742, count at ArcWeapons +0x38). */
+typedef void (*HfFn_ArcWeaponUpdate)(void* arcs, uint32_t index, float dt);
+static inline HfFn_ArcWeaponUpdate hf_fn_ArcWeaponUpdate(HfMod* mod) { return (HfFn_ArcWeaponUpdate)hf_function_(mod, "ArcWeaponUpdate"); }
+static inline int hf_hook_ArcWeaponUpdate(HfMod* mod, HfFn_ArcWeaponUpdate detour, HfFn_ArcWeaponUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ArcWeaponUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* AbilityWeaponUpdate (game.dll+0x7D67B0; hook or call). The AbilityWeapon frame: reads each instance's record
+ * (AbilityWeaponTypeRecord) and may start its ability (StartAbility).
+ *   abilityweapons  AbilityWeapons
+ * From the world update 0x571250 (0x573773, no frame time). */
+typedef void (*HfFn_AbilityWeaponUpdate)(void* abilityweapons);
+static inline HfFn_AbilityWeaponUpdate hf_fn_AbilityWeaponUpdate(HfMod* mod) { return (HfFn_AbilityWeaponUpdate)hf_function_(mod, "AbilityWeaponUpdate"); }
+static inline int hf_hook_AbilityWeaponUpdate(HfMod* mod, HfFn_AbilityWeaponUpdate detour, HfFn_AbilityWeaponUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "AbilityWeaponUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponCustomizationUpdate (game.dll+0x74ACE0; hook or call). The WeaponCustomization frame: each weapon's attachments
+ * (records from WeaponCustomizationRecord).
+ *   customizations  WeaponCustomizations
+ *   dt              the frame time
+ * From the world update 0x571250 (0x5737CA). */
+typedef void (*HfFn_WeaponCustomizationUpdate)(void* customizations, float dt);
+static inline HfFn_WeaponCustomizationUpdate hf_fn_WeaponCustomizationUpdate(HfMod* mod) { return (HfFn_WeaponCustomizationUpdate)hf_function_(mod, "WeaponCustomizationUpdate"); }
+static inline int hf_hook_WeaponCustomizationUpdate(HfMod* mod, HfFn_WeaponCustomizationUpdate detour, HfFn_WeaponCustomizationUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponCustomizationUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* StartReload (game.dll+0x774B60; hook or call). Starts a weapon's reload: unless forced, CanReload must agree; then it
+ * starts the WeaponReload record's ability (+4) through StartAbility at the reload speed (player stats, the +56
+ * duration override). A record with ability 0 has no reload.
+ *   reloads  WeaponReloads
+ *   weapon   the weapon entity
+ *   force    1 skips the CanReload check; the avatar's input passes 0
+ * From HD2Runtime 0.40.1 research reload-heat-knife (0x774EDB..0x774F49); the avatar input's calls 0xA7F4AE, 0xA7F78E.
+ * */
+typedef void (*HfFn_StartReload)(void* reloads, uint32_t weapon, uint8_t force);
+static inline HfFn_StartReload hf_fn_StartReload(HfMod* mod) { return (HfFn_StartReload)hf_function_(mod, "StartReload"); }
+static inline int hf_hook_StartReload(HfMod* mod, HfFn_StartReload detour, HfFn_StartReload* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "StartReload", (void*)detour, (void**)original, priority);
+}
+
+/* CanReload (game.dll+0x775580; hook or call). The reload gate: 1 when the weapon may reload now: its own spare total
+ * (OwnSpareAmmo) above 0, or else a worn backpack that can feed it.
+ *   reloads  WeaponReloads
+ *   weapon   the weapon entity
+ *   r8       not reviewed: pass it on (every caller passes 0)
+ *   r9       not reviewed: pass it on (every caller passes 0)
+ * From HD2Runtime 0.40.1 research team-reload-ammo (reload gate 0x775580, 0x775997 setg); StartReload's call 0x774D3A.
+ * */
+typedef uint8_t (*HfFn_CanReload)(void* reloads, uint32_t weapon, uint8_t r8, uint8_t r9);
+static inline HfFn_CanReload hf_fn_CanReload(HfMod* mod) { return (HfFn_CanReload)hf_function_(mod, "CanReload"); }
+static inline int hf_hook_CanReload(HfMod* mod, HfFn_CanReload detour, HfFn_CanReload* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "CanReload", (void*)detour, (void**)original, priority);
+}
+
+/* ReloadStateHas (game.dll+0x7776F0; hook or call). Whether a weapon's reload state (WeaponReloads +0x50, a u32 per
+ * instance) has any of the bits in mask; 0 when the weapon has no WeaponReload instance.
+ *   reloads  WeaponReloads
+ *   weapon   the weapon entity
+ *   mask     the state bits to test
+ * From game.dll 0x7776F0 (its probe of WeaponReloads +0x20 and test of +0x50); WeaponReloadBusy's calls. */
+typedef uint8_t (*HfFn_ReloadStateHas)(void* reloads, uint32_t weapon, uint32_t mask);
+static inline HfFn_ReloadStateHas hf_fn_ReloadStateHas(HfMod* mod) { return (HfFn_ReloadStateHas)hf_function_(mod, "ReloadStateHas"); }
+static inline int hf_hook_ReloadStateHas(HfMod* mod, HfFn_ReloadStateHas detour, HfFn_ReloadStateHas* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ReloadStateHas", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponReloadBusy (game.dll+0x7777A0; hook or call). Whether a weapon's reload is under way: a reload state bit 1, 8
+ * or 0x20 without its pair 2, 0x10 or 0x40, or bit 4 (ReloadStateHas on WeaponReloads).
+ *   unused  not read
+ *   weapon  the weapon entity
+ * From game.dll 0x7777A0; callers WeaponHeatUpdate 0x7649EF and 0x744BE2. */
+typedef uint8_t (*HfFn_WeaponReloadBusy)(uint64_t unused, uint32_t weapon);
+static inline HfFn_WeaponReloadBusy hf_fn_WeaponReloadBusy(HfMod* mod) { return (HfFn_WeaponReloadBusy)hf_function_(mod, "WeaponReloadBusy"); }
+static inline int hf_hook_WeaponReloadBusy(HfMod* mod, HfFn_WeaponReloadBusy detour, HfFn_WeaponReloadBusy* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponReloadBusy", (void*)detour, (void**)original, priority);
+}
+
+/* OwnSpareAmmo (game.dll+0x744180; hook or call). A weapon's own spare total: by its type, the spare magazines, spare
+ * rounds or spare heatsinks, plus a mounted shared deposit.
+ *   weapons  the weapon manager (hf_global_WeaponManager)
+ *   weapon   the weapon entity
+ * From HD2Runtime 0.40.1 research team-reload-ammo (own spare total 0x744180, on the weapon manager 0x3326660). */
+typedef uint32_t (*HfFn_OwnSpareAmmo)(void* weapons, uint32_t weapon);
+static inline HfFn_OwnSpareAmmo hf_fn_OwnSpareAmmo(HfMod* mod) { return (HfFn_OwnSpareAmmo)hf_function_(mod, "OwnSpareAmmo"); }
+static inline int hf_hook_OwnSpareAmmo(HfMod* mod, HfFn_OwnSpareAmmo detour, HfFn_OwnSpareAmmo* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "OwnSpareAmmo", (void*)detour, (void**)original, priority);
+}
+
+/* WeaponRefill (game.dll+0x757F70; hook or call). Refills one weapon from a resupply: MagazineRefill for a magazine
+ * weapon, else RoundsRefill for one loaded by rounds, else HeatsinkRefill. resupply_all calls it for every carried
+ * weapon.
+ *   unused  not read
+ *   weapon  the weapon entity
+ *   scale   the share of a resupply's amount
+ * From HD2Runtime 0.40.1 research team-reload-ammo (0x880E20 resupply_all through 0x757F70). */
+typedef void (*HfFn_WeaponRefill)(uint64_t unused, uint32_t weapon, float scale);
+static inline HfFn_WeaponRefill hf_fn_WeaponRefill(HfMod* mod) { return (HfFn_WeaponRefill)hf_function_(mod, "WeaponRefill"); }
+static inline int hf_hook_WeaponRefill(HfMod* mod, HfFn_WeaponRefill detour, HfFn_WeaponRefill* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WeaponRefill", (void*)detour, (void**)original, priority);
+}
+
+/* MagazineRefill (game.dll+0x76E6D0; hook or call). Gives a weapon spare magazines from a resupply: min(spare + max(1,
+ * magazines_from_supply x scale), the maximum), sent as network field 0xEC64918B; on the weapon's owner.
+ *   unused  not read
+ *   weapon  the weapon entity
+ *   scale   the share of a resupply's amount
+ * From HD2Runtime 0.40.1 research team-reload-ammo (magazines 0x76E6D0, write at 0x76E7E1). */
+typedef void (*HfFn_MagazineRefill)(uint64_t unused, uint32_t weapon, float scale);
+static inline HfFn_MagazineRefill hf_fn_MagazineRefill(HfMod* mod) { return (HfFn_MagazineRefill)hf_function_(mod, "MagazineRefill"); }
+static inline int hf_hook_MagazineRefill(HfMod* mod, HfFn_MagazineRefill detour, HfFn_MagazineRefill* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MagazineRefill", (void*)detour, (void**)original, priority);
+}
+
+/* RoundsRefill (game.dll+0x77A430; hook or call). Gives a weapon loaded by rounds spare rounds from a resupply
+ * (rounds_from_supply x scale, up to the maximum).
+ *   unused  not read
+ *   weapon  the weapon entity
+ *   scale   the share of a resupply's amount
+ * From HD2Runtime 0.40.1 research team-reload-ammo (rounds 0x77A430). */
+typedef void (*HfFn_RoundsRefill)(uint64_t unused, uint32_t weapon, float scale);
+static inline HfFn_RoundsRefill hf_fn_RoundsRefill(HfMod* mod) { return (HfFn_RoundsRefill)hf_function_(mod, "RoundsRefill"); }
+static inline int hf_hook_RoundsRefill(HfMod* mod, HfFn_RoundsRefill detour, HfFn_RoundsRefill* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "RoundsRefill", (void*)detour, (void**)original, priority);
+}
+
+/* HeatsinkRefill (game.dll+0x764FA0; hook or call). Gives a heat weapon spare heatsinks from a resupply (its WeaponHeat
+ * record), sent as network field 0xEC64918B.
+ *   unused  not read
+ *   weapon  the weapon entity
+ *   scale   the share of a resupply's amount
+ * From game.dll 0x764FA0 (WeaponRefill's third case); HD2Runtime 0.40.1 research dev19-heatsinks. */
+typedef void (*HfFn_HeatsinkRefill)(uint64_t unused, uint32_t weapon, float scale);
+static inline HfFn_HeatsinkRefill hf_fn_HeatsinkRefill(HfMod* mod) { return (HfFn_HeatsinkRefill)hf_function_(mod, "HeatsinkRefill"); }
+static inline int hf_hook_HeatsinkRefill(HfMod* mod, HfFn_HeatsinkRefill detour, HfFn_HeatsinkRefill* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "HeatsinkRefill", (void*)detour, (void**)original, priority);
+}
+
+/* AbilityWeaponModeSettings (game.dll+0x7D5FB0; hook or call). An ability weapon's settings for its current fire mode:
+ * the AbilityWeapon record + 40 x mode (+0 the ability, +32 spends a round, +33 always); NULL without an AbilityWeapon
+ * instance.
+ *   unused  not read
+ *   weapon  the weapon entity
+ * From components.json AbilityWeapon (game.dll 0x7D5FB0); callers 0x744CD9, 0x7D608E, 0x7D6784. */
+typedef void* (*HfFn_AbilityWeaponModeSettings)(uint64_t unused, uint32_t weapon);
+static inline HfFn_AbilityWeaponModeSettings hf_fn_AbilityWeaponModeSettings(HfMod* mod) { return (HfFn_AbilityWeaponModeSettings)hf_function_(mod, "AbilityWeaponModeSettings"); }
+static inline int hf_hook_AbilityWeaponModeSettings(HfMod* mod, HfFn_AbilityWeaponModeSettings detour, HfFn_AbilityWeaponModeSettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "AbilityWeaponModeSettings", (void*)detour, (void**)original, priority);
+}
+
+/* AbilityWeaponFire (game.dll+0x7D6080; hook or call). An ability weapon fires: starts its fire mode's ability on the
+ * weapon (StartAbility) and, when the mode says so, spends a round (SpendRound).
+ *   unused  not read
+ *   weapon  the weapon entity
+ * From components.json AbilityWeapon (game.dll 0x7D6080); WeaponUpdate's call 0x7408D3, GenericFire's 0x7420D0. */
+typedef void (*HfFn_AbilityWeaponFire)(uint64_t unused, uint32_t weapon);
+static inline HfFn_AbilityWeaponFire hf_fn_AbilityWeaponFire(HfMod* mod) { return (HfFn_AbilityWeaponFire)hf_function_(mod, "AbilityWeaponFire"); }
+static inline int hf_hook_AbilityWeaponFire(HfMod* mod, HfFn_AbilityWeaponFire detour, HfFn_AbilityWeaponFire* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "AbilityWeaponFire", (void*)detour, (void**)original, priority);
+}
+
+/* MeleeHitVolumeStart (game.dll+0x7D38D0; call only). Starts a melee hit volume: a melee ability's handler passes its
+ * template, which is copied into the entity's active attack record (the manager at game.dll+0x3326830, 0x4BD8 bytes per
+ * instance), so edits to a template reach later swings only.
+ *   unused  not read
+ *   entity  the attacking entity (the ability's entity)
+ *   volume  the MeleeHitVolume template (0xF8 bytes, static in game.dll)
+ * From HD2Runtime 0.40.1 research knife-melee (handlers load their volume with a RIP-relative lea r8 and call
+ * 0x7D38D0). */
+typedef void (*HfFn_MeleeHitVolumeStart)(uint64_t unused, uint32_t entity, const void* volume);
+static inline HfFn_MeleeHitVolumeStart hf_fn_MeleeHitVolumeStart(HfMod* mod) { return (HfFn_MeleeHitVolumeStart)hf_function_(mod, "MeleeHitVolumeStart"); }
+
+/* UnitSettings (game.dll+0x4F9B60; hook or call). The entity's UnitComponentData (0x88 bytes): its own copy in the
+ * UnitManager (private copies at +0xC0) if it has one, else the shared type record.
+ *   descriptor  the entity's descriptor (+8 the entity); NULL gives NULL
+ * From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump
+ * to the component's type lookup), stride checked against components.json. */
+typedef void* (*HfFn_UnitSettings)(void* descriptor);
+static inline HfFn_UnitSettings hf_fn_UnitSettings(HfMod* mod) { return (HfFn_UnitSettings)hf_function_(mod, "UnitSettings"); }
+static inline int hf_hook_UnitSettings(HfMod* mod, HfFn_UnitSettings detour, HfFn_UnitSettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitSettings", (void*)detour, (void**)original, priority);
+}
+
+/* VehicleSettings (game.dll+0x4FA7A0; hook or call). The entity's VehicleComponentData (0xE78 bytes): its own copy in
+ * the VehicleManager (private copies at +0xC0) if it has one, else the shared type record.
+ *   descriptor  the entity's descriptor (+8 the entity); NULL gives NULL
+ * From HD2Runtime 0.40.1 research vehicle-mech-components (resolvedAccessor 0x4FA7A0); game.dll: the resolver shape of
+ * SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup),
+ * stride checked against components.json. */
+typedef void* (*HfFn_VehicleSettings)(void* descriptor);
+static inline HfFn_VehicleSettings hf_fn_VehicleSettings(HfMod* mod) { return (HfFn_VehicleSettings)hf_function_(mod, "VehicleSettings"); }
+static inline int hf_hook_VehicleSettings(HfMod* mod, HfFn_VehicleSettings detour, HfFn_VehicleSettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "VehicleSettings", (void*)detour, (void**)original, priority);
+}
+
+/* HellpodPayloadSettings (game.dll+0x5011F0; hook or call). The entity's HellpodPayloadComponentData (0xC bytes): its
+ * own copy in the HellpodPayloadManager (private copies at +0xA0) if it has one, else the shared type record.
+ *   descriptor  the entity's descriptor (+8 the entity); NULL gives NULL
+ * From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump
+ * to the component's type lookup), stride checked against components.json. */
+typedef void* (*HfFn_HellpodPayloadSettings)(void* descriptor);
+static inline HfFn_HellpodPayloadSettings hf_fn_HellpodPayloadSettings(HfMod* mod) { return (HfFn_HellpodPayloadSettings)hf_function_(mod, "HellpodPayloadSettings"); }
+static inline int hf_hook_HellpodPayloadSettings(HfMod* mod, HfFn_HellpodPayloadSettings detour, HfFn_HellpodPayloadSettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "HellpodPayloadSettings", (void*)detour, (void**)original, priority);
+}
+
+/* AvatarSettings (game.dll+0x508DB0; hook or call). The avatar's AvatarComponentData (0x354 bytes: the Helldiver's
+ * movement speeds, +0x10 jog, +0x14 sprint, and stamina values, read every frame): its own copy in the avatar manager
+ * hf_global_AvatarManager (inline from +0x547D24) if it has one, else the shared type record.
+ *   descriptor  the entity's descriptor (+8 the entity); NULL gives NULL
+ * From HD2Runtime 0.40.1 research avatar-fields (avatarResolver_0x508DB0, fields); game.dll: the resolver shape of
+ * SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup),
+ * stride checked against components.json. */
+typedef void* (*HfFn_AvatarSettings)(void* descriptor);
+static inline HfFn_AvatarSettings hf_fn_AvatarSettings(HfMod* mod) { return (HfFn_AvatarSettings)hf_function_(mod, "AvatarSettings"); }
+static inline int hf_hook_AvatarSettings(HfMod* mod, HfFn_AvatarSettings detour, HfFn_AvatarSettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "AvatarSettings", (void*)detour, (void**)original, priority);
+}
+
+/* JumppackSettings (game.dll+0x50D830; hook or call). The entity's JumppackComponentData (0x118 bytes: the jump pack's
+ * and hover pack's flight values, read every frame, so a change applies on the next frame): its own copy in the
+ * JumppackManager (private copies at +0xA0) if it has one, else the shared type record.
+ *   descriptor  the entity's descriptor (+8 the entity); NULL gives NULL
+ * From HD2Runtime 0.40.1 research hoverpack-components (lifecycle.resolver 0x50D830); game.dll: the resolver shape of
+ * SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup),
+ * stride checked against components.json. */
+typedef void* (*HfFn_JumppackSettings)(void* descriptor);
+static inline HfFn_JumppackSettings hf_fn_JumppackSettings(HfMod* mod) { return (HfFn_JumppackSettings)hf_function_(mod, "JumppackSettings"); }
+static inline int hf_hook_JumppackSettings(HfMod* mod, HfFn_JumppackSettings detour, HfFn_JumppackSettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "JumppackSettings", (void*)detour, (void**)original, priority);
+}
+
+/* DisplacementSettings (game.dll+0x50FA40; hook or call). The entity's DisplacementComponentData (0x278 bytes): its own
+ * copy in the DisplacementManager (private copies at +0xA0) if it has one, else the shared type record.
+ *   descriptor  the entity's descriptor (+8 the entity); NULL gives NULL
+ * From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump
+ * to the component's type lookup), stride checked against components.json. */
+typedef void* (*HfFn_DisplacementSettings)(void* descriptor);
+static inline HfFn_DisplacementSettings hf_fn_DisplacementSettings(HfMod* mod) { return (HfFn_DisplacementSettings)hf_function_(mod, "DisplacementSettings"); }
+static inline int hf_hook_DisplacementSettings(HfMod* mod, HfFn_DisplacementSettings detour, HfFn_DisplacementSettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "DisplacementSettings", (void*)detour, (void**)original, priority);
+}
+
+/* OrbitalAbilitySettings (game.dll+0x512E20; hook or call). The entity's OrbitalAbilityComponentData (0x228 bytes): its
+ * own copy in the OrbitalAbilityManager (private copies at +0xD8) if it has one, else the shared type record.
+ *   descriptor  the entity's descriptor (+8 the entity); NULL gives NULL
+ * From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump
+ * to the component's type lookup), stride checked against components.json. */
+typedef void* (*HfFn_OrbitalAbilitySettings)(void* descriptor);
+static inline HfFn_OrbitalAbilitySettings hf_fn_OrbitalAbilitySettings(HfMod* mod) { return (HfFn_OrbitalAbilitySettings)hf_function_(mod, "OrbitalAbilitySettings"); }
+static inline int hf_hook_OrbitalAbilitySettings(HfMod* mod, HfFn_OrbitalAbilitySettings detour, HfFn_OrbitalAbilitySettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "OrbitalAbilitySettings", (void*)detour, (void**)original, priority);
+}
+
+/* RotationSettings (game.dll+0x513690; hook or call). The entity's RotationComponentData (0x138 bytes): its own copy in
+ * the RotationManager (private copies at +0xB8) if it has one, else the shared type record.
+ *   descriptor  the entity's descriptor (+8 the entity); NULL gives NULL
+ * From HD2Runtime 0.40.1 research vehicle-mech-components (resolvedAccessor 0x513690); game.dll: the resolver shape of
+ * SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup),
+ * stride checked against components.json. */
+typedef void* (*HfFn_RotationSettings)(void* descriptor);
+static inline HfFn_RotationSettings hf_fn_RotationSettings(HfMod* mod) { return (HfFn_RotationSettings)hf_function_(mod, "RotationSettings"); }
+static inline int hf_hook_RotationSettings(HfMod* mod, HfFn_RotationSettings detour, HfFn_RotationSettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "RotationSettings", (void*)detour, (void**)original, priority);
+}
+
+/* EagleSettings (game.dll+0x514B40; hook or call). The Eagle jet's EagleComponentData (0x98 bytes: +0x10 its payload
+ * kind, +0x18 its strike projectile, +0x4C its speed, +0x78 its attack distance): its own copy in the EagleManager
+ * (private copies at +0xB0) if it has one, else the shared type record. The update, the strike and the jet's set-up
+ * resolve it every time.
+ *   descriptor  the entity's descriptor (+8 the entity); NULL gives NULL
+ * From HD2Runtime 0.40.1 research eagle-components (pins.resolver, readPaths). */
+typedef void* (*HfFn_EagleSettings)(void* descriptor);
+static inline HfFn_EagleSettings hf_fn_EagleSettings(HfMod* mod) { return (HfFn_EagleSettings)hf_function_(mod, "EagleSettings"); }
+static inline int hf_hook_EagleSettings(HfMod* mod, HfFn_EagleSettings detour, HfFn_EagleSettings* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EagleSettings", (void*)detour, (void**)original, priority);
+}
+
+/* VehicleUpdate (game.dll+0x6FEF80; hook or call). The vehicle system's frame: vehicles and mechs. The world update
+ * (0x571250) calls it every frame.
+ *   manager  the component world +0x1C6348: hf_global_VehicleManager
+ *   dt       the frame time, s
+ * From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and
+ * xmm1 only. */
+typedef void (*HfFn_VehicleUpdate)(void* manager, float dt);
+static inline HfFn_VehicleUpdate hf_fn_VehicleUpdate(HfMod* mod) { return (HfFn_VehicleUpdate)hf_function_(mod, "VehicleUpdate"); }
+static inline int hf_hook_VehicleUpdate(HfMod* mod, HfFn_VehicleUpdate detour, HfFn_VehicleUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "VehicleUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* SquadTransportUpdate (game.dll+0x6864D0; hook or call). The squad transport system's frame: enemy dropships and the
+ * squads they carry, which it spawns through SpawnSquad. The world update (0x571250) calls it every frame.
+ *   manager  the component world +0x1C6EB0: hf_global_SquadTransportManager
+ *   dt       the frame time, s
+ * From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and
+ * xmm1 only. */
+typedef void (*HfFn_SquadTransportUpdate)(void* manager, float dt);
+static inline HfFn_SquadTransportUpdate hf_fn_SquadTransportUpdate(HfMod* mod) { return (HfFn_SquadTransportUpdate)hf_function_(mod, "SquadTransportUpdate"); }
+static inline int hf_hook_SquadTransportUpdate(HfMod* mod, HfFn_SquadTransportUpdate detour, HfFn_SquadTransportUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "SquadTransportUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* HellpodPayloadUpdate (game.dll+0x9322D0; hook or call). The hellpod payload system's frame. The world update
+ * (0x571250) calls it every frame.
+ *   manager  the component world +0x75C1B8: hf_global_HellpodPayloadManager
+ *   dt       the frame time, s
+ * From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and
+ * xmm1 only. */
+typedef void (*HfFn_HellpodPayloadUpdate)(void* manager, float dt);
+static inline HfFn_HellpodPayloadUpdate hf_fn_HellpodPayloadUpdate(HfMod* mod) { return (HfFn_HellpodPayloadUpdate)hf_function_(mod, "HellpodPayloadUpdate"); }
+static inline int hf_hook_HellpodPayloadUpdate(HfMod* mod, HfFn_HellpodPayloadUpdate detour, HfFn_HellpodPayloadUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "HellpodPayloadUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* AiSpawnerUpdate (game.dll+0x7F7820; hook or call). The AI spawner system's frame: the spawners spawn their squads
+ * through SpawnSquad. The world update (0x571250) calls it every frame.
+ *   manager  the component world +0x75EA20: hf_global_AiSpawnerManager
+ *   dt       the frame time, s
+ * From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and
+ * xmm1 only. */
+typedef void (*HfFn_AiSpawnerUpdate)(void* manager, float dt);
+static inline HfFn_AiSpawnerUpdate hf_fn_AiSpawnerUpdate(HfMod* mod) { return (HfFn_AiSpawnerUpdate)hf_function_(mod, "AiSpawnerUpdate"); }
+static inline int hf_hook_AiSpawnerUpdate(HfMod* mod, HfFn_AiSpawnerUpdate detour, HfFn_AiSpawnerUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "AiSpawnerUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* BugholeUpdate (game.dll+0x857F90; hook or call). The bug hole system's frame: holes spawn their bugs through
+ * SpawnSquad with the HiveMindManager. The world update (0x571250) calls it every frame.
+ *   manager  the component world +0x7C56B0: hf_global_BugholeManager
+ *   dt       the frame time, s
+ * From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and
+ * xmm1 only. */
+typedef void (*HfFn_BugholeUpdate)(void* manager, float dt);
+static inline HfFn_BugholeUpdate hf_fn_BugholeUpdate(HfMod* mod) { return (HfFn_BugholeUpdate)hf_function_(mod, "BugholeUpdate"); }
+static inline int hf_hook_BugholeUpdate(HfMod* mod, HfFn_BugholeUpdate detour, HfFn_BugholeUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "BugholeUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* VehicleMotionUpdate (game.dll+0x7152F0; hook or call). The vehicle motion system's frame: the vehicles' and mechs'
+ * driving physics. The world update (0x571250) calls it every frame.
+ *   manager  the component world +0x7C72E8: hf_global_VehicleMotionManager
+ *   dt       the frame time, s
+ * From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and
+ * xmm1 only. */
+typedef void (*HfFn_VehicleMotionUpdate)(void* manager, float dt);
+static inline HfFn_VehicleMotionUpdate hf_fn_VehicleMotionUpdate(HfMod* mod) { return (HfFn_VehicleMotionUpdate)hf_function_(mod, "VehicleMotionUpdate"); }
+static inline int hf_hook_VehicleMotionUpdate(HfMod* mod, HfFn_VehicleMotionUpdate detour, HfFn_VehicleMotionUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "VehicleMotionUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* AvatarUpdate (game.dll+0x829E90; hook or call). The avatar system's frame, for the avatars simulated here (the
+ * manager's first +0x70 indexes): movement speed from AvatarSettings and stamina regeneration. The world update
+ * (0x571250) calls it every frame.
+ *   manager  the component world +0x956128: hf_global_AvatarManager
+ *   dt       the frame time, s
+ * From HD2Runtime 0.40.1 research avatar-fields (avatarUpdate_0x829E90); game.dll: the world update's call (lea rcx,
+ * [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only. */
+typedef void (*HfFn_AvatarUpdate)(void* manager, float dt);
+static inline HfFn_AvatarUpdate hf_fn_AvatarUpdate(HfMod* mod) { return (HfFn_AvatarUpdate)hf_function_(mod, "AvatarUpdate"); }
+static inline int hf_hook_AvatarUpdate(HfMod* mod, HfFn_AvatarUpdate detour, HfFn_AvatarUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "AvatarUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* DisplacementUpdate (game.dll+0x88A700; hook or call). The displacement system's frame. The world update (0x571250)
+ * calls it every frame.
+ *   manager  the component world +0xEB71D8: hf_global_DisplacementManager
+ *   dt       the frame time, s
+ * From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and
+ * xmm1 only. */
+typedef void (*HfFn_DisplacementUpdate)(void* manager, float dt);
+static inline HfFn_DisplacementUpdate hf_fn_DisplacementUpdate(HfMod* mod) { return (HfFn_DisplacementUpdate)hf_function_(mod, "DisplacementUpdate"); }
+static inline int hf_hook_DisplacementUpdate(HfMod* mod, HfFn_DisplacementUpdate detour, HfFn_DisplacementUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "DisplacementUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* OrbitalAbilityUpdate (game.dll+0x5F35B0; hook or call). The orbital ability system's frame. The world update
+ * (0x571250) calls it every frame.
+ *   manager  the component world +0xF064A8: hf_global_OrbitalAbilityManager
+ *   dt       the frame time, s
+ * From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and
+ * xmm1 only. */
+typedef void (*HfFn_OrbitalAbilityUpdate)(void* manager, float dt);
+static inline HfFn_OrbitalAbilityUpdate hf_fn_OrbitalAbilityUpdate(HfMod* mod) { return (HfFn_OrbitalAbilityUpdate)hf_function_(mod, "OrbitalAbilityUpdate"); }
+static inline int hf_hook_OrbitalAbilityUpdate(HfMod* mod, HfFn_OrbitalAbilityUpdate detour, HfFn_OrbitalAbilityUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "OrbitalAbilityUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* EagleUpdate (game.dll+0x8A7A90; hook or call). The Eagle system's frame: for each jet (indexes below the manager's
+ * +0x20) it resolves EagleSettings and runs EagleStage, EagleTrackAim, EagleStrike and EagleFlight, then the flyby
+ * sound. The world update (0x571250) calls it every frame.
+ *   manager  the component world +0xF0B300: hf_global_EagleManager
+ *   dt       the frame time, s
+ * From HD2Runtime 0.40.1 research eagle-components (pins.update); game.dll: the world update's call (lea rcx, [world +
+ * offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only. */
+typedef void (*HfFn_EagleUpdate)(void* manager, float dt);
+static inline HfFn_EagleUpdate hf_fn_EagleUpdate(HfMod* mod) { return (HfFn_EagleUpdate)hf_function_(mod, "EagleUpdate"); }
+static inline int hf_hook_EagleUpdate(HfMod* mod, HfFn_EagleUpdate detour, HfFn_EagleUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EagleUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* EncounterUpdate (game.dll+0x8B8A20; hook or call). The director's reinforcements: an encounter picks a composition
+ * (PickReinforcementComposition) and sends it to the faction's transport or breach (DispatchReinforcement). The world
+ * update (0x571250) calls it every frame.
+ *   manager  the component world +0x7C4D30: hf_global_EncounterManager
+ *   dt       the frame time, s
+ * From HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement pins); game.dll: the world update's call (lea
+ * rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only. */
+typedef void (*HfFn_EncounterUpdate)(void* manager, float dt);
+static inline HfFn_EncounterUpdate hf_fn_EncounterUpdate(HfMod* mod) { return (HfFn_EncounterUpdate)hf_function_(mod, "EncounterUpdate"); }
+static inline int hf_hook_EncounterUpdate(HfMod* mod, HfFn_EncounterUpdate detour, HfFn_EncounterUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EncounterUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* GuardForceUpdate (game.dll+0x9110E0; hook or call). The outposts' frame: it fills an outpost with its guards
+ * (FillOutpost) when it needs them. The world update (0x571250) calls it every frame.
+ *   manager  the component world +0x771410: hf_global_GuardForces
+ *   dt       the frame time, s
+ * From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and
+ * xmm1 only. */
+typedef void (*HfFn_GuardForceUpdate)(void* manager, float dt);
+static inline HfFn_GuardForceUpdate hf_fn_GuardForceUpdate(HfMod* mod) { return (HfFn_GuardForceUpdate)hf_function_(mod, "GuardForceUpdate"); }
+static inline int hf_hook_GuardForceUpdate(HfMod* mod, HfFn_GuardForceUpdate detour, HfFn_GuardForceUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "GuardForceUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* EagleStage (game.dll+0x8A2990; hook or call). Moves an Eagle jet through its stages and sets its speed per stage
+ * (EagleSettings +0x50, +0x54). EagleUpdate calls it for each jet.
+ *   eagles  the Eagle manager: hf_global_EagleManager
+ *   index   the jet's index (its record at the manager's +0x58 + 0xFC index)
+ * From HD2Runtime 0.40.1 research eagle-components (pins.stage); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+ * */
+typedef void (*HfFn_EagleStage)(void* eagles, uint32_t index);
+static inline HfFn_EagleStage hf_fn_EagleStage(HfMod* mod) { return (HfFn_EagleStage)hf_function_(mod, "EagleStage"); }
+static inline int hf_hook_EagleStage(HfMod* mod, HfFn_EagleStage detour, HfFn_EagleStage* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EagleStage", (void*)detour, (void**)original, priority);
+}
+
+/* EagleTrackAim (game.dll+0x8A37D0; hook or call). Keeps an Eagle jet's aim point on its targets, leading moving ones
+ * by its strike projectile's speed. EagleUpdate calls it for each jet.
+ *   eagles  the Eagle manager: hf_global_EagleManager
+ *   index   the jet's index (its record at the manager's +0x58 + 0xFC index)
+ *   dt      the frame time, s
+ * From HD2Runtime 0.40.1 research eagle-components (pins.tracking); game.dll: EagleUpdate's calls (0x8A7BA2 to
+ * 0x8A7BC9). */
+typedef void (*HfFn_EagleTrackAim)(void* eagles, uint32_t index, float dt);
+static inline HfFn_EagleTrackAim hf_fn_EagleTrackAim(HfMod* mod) { return (HfFn_EagleTrackAim)hf_function_(mod, "EagleTrackAim"); }
+static inline int hf_hook_EagleTrackAim(HfMod* mod, HfFn_EagleTrackAim detour, HfFn_EagleTrackAim* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EagleTrackAim", (void*)detour, (void**)original, priority);
+}
+
+/* EagleStrike (game.dll+0x8A4410; hook or call). An Eagle jet's attack: by its payload kind (EagleSettings +0x10:
+ * strafe, rockets, bombs) it starts within its attack distance and releases its strike projectiles. EagleUpdate calls
+ * it for each jet.
+ *   eagles  the Eagle manager: hf_global_EagleManager
+ *   index   the jet's index (its record at the manager's +0x58 + 0xFC index)
+ *   dt      the frame time, s
+ * From HD2Runtime 0.40.1 research eagle-components (pins.strike); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+ * */
+typedef void (*HfFn_EagleStrike)(void* eagles, uint32_t index, float dt);
+static inline HfFn_EagleStrike hf_fn_EagleStrike(HfMod* mod) { return (HfFn_EagleStrike)hf_function_(mod, "EagleStrike"); }
+static inline int hf_hook_EagleStrike(HfMod* mod, HfFn_EagleStrike detour, HfFn_EagleStrike* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EagleStrike", (void*)detour, (void**)original, priority);
+}
+
+/* EagleFlight (game.dll+0x8A59E0; hook or call). An Eagle jet's flight model. EagleUpdate calls it for each jet.
+ *   eagles  the Eagle manager: hf_global_EagleManager
+ *   index   the jet's index (its record at the manager's +0x58 + 0xFC index)
+ *   dt      the frame time, s
+ * From HD2Runtime 0.40.1 research eagle-components (pins.stage: the flight model 0x8A59E0); game.dll: EagleUpdate's
+ * calls (0x8A7BA2 to 0x8A7BC9). */
+typedef void (*HfFn_EagleFlight)(void* eagles, uint32_t index, float dt);
+static inline HfFn_EagleFlight hf_fn_EagleFlight(HfMod* mod) { return (HfFn_EagleFlight)hf_function_(mod, "EagleFlight"); }
+static inline int hf_hook_EagleFlight(HfMod* mod, HfFn_EagleFlight detour, HfFn_EagleFlight* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "EagleFlight", (void*)detour, (void**)original, priority);
+}
+
+/* JumppackTimers (game.dll+0x9B5EC0; hook or call). A jump pack's or hover pack's timers, abilities and visual sway,
+ * every frame. The world update runs it for each index below the manager's +0x10.
+ *   jumppacks  the jump pack manager: hf_global_JumppackManager
+ *   index      the pack's index
+ *   dt         the frame time, s
+ * From HD2Runtime 0.40.1 research hoverpack-components (code.functions); game.dll: the world update's loop at 0x573700.
+ * */
+typedef void (*HfFn_JumppackTimers)(void* jumppacks, uint32_t index, float dt);
+static inline HfFn_JumppackTimers hf_fn_JumppackTimers(HfMod* mod) { return (HfFn_JumppackTimers)hf_function_(mod, "JumppackTimers"); }
+static inline int hf_hook_JumppackTimers(HfMod* mod, HfFn_JumppackTimers detour, HfFn_JumppackTimers* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "JumppackTimers", (void*)detour, (void**)original, priority);
+}
+
+/* JumppackFlight (game.dll+0x9B4790; hook or call). A jump pack's or hover pack's flight physics, every frame: launch,
+ * sustain, air control, hover and fuel; it deactivates the pack (SetJumppackActive) when the meter runs out. The world
+ * update runs it for each index below the manager's +0x14.
+ *   jumppacks  the jump pack manager: hf_global_JumppackManager
+ *   index      the pack's index
+ *   dt         the frame time, s
+ * From HD2Runtime 0.40.1 research hoverpack-components (code.functions, model); game.dll: the world update's loop at
+ * 0x573720. */
+typedef void (*HfFn_JumppackFlight)(void* jumppacks, uint32_t index, float dt);
+static inline HfFn_JumppackFlight hf_fn_JumppackFlight(HfMod* mod) { return (HfFn_JumppackFlight)hf_function_(mod, "JumppackFlight"); }
+static inline int hf_hook_JumppackFlight(HfMod* mod, HfFn_JumppackFlight detour, HfFn_JumppackFlight* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "JumppackFlight", (void*)detour, (void**)original, priority);
+}
+
+/* SetJumppackActive (game.dll+0x9B3420; hook or call). Activates or deactivates an entity's jump pack or hover pack.
+ *   jumppacks  the jump pack manager: hf_global_JumppackManager
+ *   entity     the pack's entity
+ *   active     1 activates it (the take-off passes 1), 0 deactivates it
+ *   r9         not reviewed: pass it on (0 from the flight physics)
+ * From HD2Runtime 0.40.1 research hoverpack-components (code.functions: activate/deactivate); game.dll: its seven
+ * callers (r8b, r9b). */
+typedef void (*HfFn_SetJumppackActive)(void* jumppacks, uint32_t entity, uint8_t active, uint8_t r9);
+static inline HfFn_SetJumppackActive hf_fn_SetJumppackActive(HfMod* mod) { return (HfFn_SetJumppackActive)hf_function_(mod, "SetJumppackActive"); }
+static inline int hf_hook_SetJumppackActive(HfMod* mod, HfFn_SetJumppackActive detour, HfFn_SetJumppackActive* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "SetJumppackActive", (void*)detour, (void**)original, priority);
+}
+
+/* JumppackTakeOff (game.dll+0xA63790; hook or call). The jump pack's take-off, from the avatar's state: the hop's
+ * values, and SetJumppackActive(..., 1).
+ *   rcx  not reviewed: pass it on (its caller passes its rsi + 0xB68)
+ *   dt   the frame time, s
+ * From HD2Runtime 0.40.1 research hoverpack-components (code.functions: take-off (avatar state)); game.dll: its call to
+ * SetJumppackActive at 0xA63B71. */
+typedef void (*HfFn_JumppackTakeOff)(void* rcx, float dt);
+static inline HfFn_JumppackTakeOff hf_fn_JumppackTakeOff(HfMod* mod) { return (HfFn_JumppackTakeOff)hf_function_(mod, "JumppackTakeOff"); }
+static inline int hf_hook_JumppackTakeOff(HfMod* mod, HfFn_JumppackTakeOff detour, HfFn_JumppackTakeOff* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "JumppackTakeOff", (void*)detour, (void**)original, priority);
+}
+
+/* PickPatrolComposition (game.dll+0x959950; hook or call). Picks the composition of a scheduled patrol from the
+ * compiled patrol compositions (family 1, the HiveMind's +0x3A538): a 0xD8-byte entry, or NULL. EnemyDirectorTick
+ * spawns it with SpawnSquad.
+ *   hivemind  the HiveMind manager: hf_global_HiveMindManager
+ *   rdx       not reviewed: pass it on
+ *   r8        not reviewed: pass it on
+ *   r9        not reviewed: pass it on
+ * From HD2Runtime 0.40.1 research spawn-channels-dev10 (scheduled patrol selection, family 1); game.dll: its call in
+ * EnemyDirectorTick (0x9514BD). */
+typedef void* (*HfFn_PickPatrolComposition)(void* hivemind, uint32_t rdx, void* r8, uint32_t r9);
+static inline HfFn_PickPatrolComposition hf_fn_PickPatrolComposition(HfMod* mod) { return (HfFn_PickPatrolComposition)hf_function_(mod, "PickPatrolComposition"); }
+static inline int hf_hook_PickPatrolComposition(HfMod* mod, HfFn_PickPatrolComposition detour, HfFn_PickPatrolComposition* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "PickPatrolComposition", (void*)detour, (void**)original, priority);
+}
+
+/* SpawnSquad (game.dll+0x953580; hook or call). Spawns a squad of enemies from a composition at a position: the
+ * director's patrols (EnemyDirectorTick), spawners (AiSpawnerUpdate), bug holes (BugholeUpdate), dropships
+ * (SquadTransportUpdate) and outposts (FillOutpost) all spawn through it. Returns the squad, or NULL.
+ *   hivemind     the HiveMind manager: hf_global_HiveMindManager
+ *   composition  the composition to spawn, as the pickers return it
+ *   position     where (3 f32); nothing spawns outside the bounds it checks
+ *   r9           not reviewed: pass it on
+ *   flags        flag bits (it tests bits 0, 1 and 6); each caller passes its own constant
+ *   s6           not reviewed: pass it on
+ *   s7           not reviewed: pass it on
+ *   s8           not reviewed: pass it on
+ *   s9           not reviewed: pass it on
+ *   s10          not reviewed: pass it on
+ * From HD2Runtime 0.40.1 research spawn-channels-dev10 (selected patrol creation); game.dll: its six callers' stack
+ * arguments (+0x20 to +0x48) and the return they test. */
+typedef void* (*HfFn_SpawnSquad)(void* hivemind, void* composition, const float* position, uint32_t r9, uint32_t flags, uint64_t s6, uint64_t s7, uint64_t s8, float s9, uint32_t s10);
+static inline HfFn_SpawnSquad hf_fn_SpawnSquad(HfMod* mod) { return (HfFn_SpawnSquad)hf_function_(mod, "SpawnSquad"); }
+static inline int hf_hook_SpawnSquad(HfMod* mod, HfFn_SpawnSquad detour, HfFn_SpawnSquad* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "SpawnSquad", (void*)detour, (void**)original, priority);
+}
+
+/* PatrolClock (game.dll+0x959740; hook or call). The patrol clock: the frame time scaled by the HiveMind's progress and
+ * player-count multipliers (HiveMindComponentData +0x1DC, +0x1F0, +0x204), which EnemyDirectorTick takes off the patrol
+ * timer. Higher is faster.
+ *   hivemind  the HiveMind manager: hf_global_HiveMindManager
+ *   dt        the frame time, s
+ *   r8        not reviewed: pass it on
+ * From HD2Runtime 0.40.1 research spawn-channels-dev10 (patrolClock); game.dll: its call at 0x951680 and the subss
+ * after it. */
+typedef float (*HfFn_PatrolClock)(void* hivemind, float dt, void* r8);
+static inline HfFn_PatrolClock hf_fn_PatrolClock(HfMod* mod) { return (HfFn_PatrolClock)hf_function_(mod, "PatrolClock"); }
+static inline int hf_hook_PatrolClock(HfMod* mod, HfFn_PatrolClock detour, HfFn_PatrolClock* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "PatrolClock", (void*)detour, (void**)original, priority);
+}
+
+/* PickReinforcementComposition (game.dll+0x957E10; hook or call). Picks a reinforcement composition (family 4, the
+ * HiveMind's +0x432F8, count +0x5188C) for a position; EncounterUpdate then dispatches it.
+ *   hivemind  the HiveMind manager: hf_global_HiveMindManager
+ *   rdx       not reviewed: pass it on
+ *   position  the position (3 f32)
+ *   r9        not reviewed: pass it on (0xFFFFFFFF from EncounterUpdate)
+ * From HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement manager selects composition); game.dll: its call
+ * at 0x8B981B (rcx from 0x3326D10). */
+typedef uint32_t (*HfFn_PickReinforcementComposition)(void* hivemind, void* rdx, const float* position, uint32_t r9);
+static inline HfFn_PickReinforcementComposition hf_fn_PickReinforcementComposition(HfMod* mod) { return (HfFn_PickReinforcementComposition)hf_function_(mod, "PickReinforcementComposition"); }
+static inline int hf_hook_PickReinforcementComposition(HfMod* mod, HfFn_PickReinforcementComposition detour, HfFn_PickReinforcementComposition* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "PickReinforcementComposition", (void*)detour, (void**)original, priority);
+}
+
+/* DispatchReinforcement (game.dll+0x8B7900; hook or call). Sends a selected reinforcement to the faction's transport or
+ * breach; returns a time (s) that EncounterUpdate adds to the frame time and keeps in the encounter's record (+0x24).
+ *   encounters  the encounter manager: hf_global_EncounterManager
+ *   rdx         not reviewed: pass it on
+ *   r8          not reviewed: pass it on
+ * From HD2Runtime 0.40.1 research spawn-channels-dev10 (faction transport/breach dispatcher); game.dll: its call at
+ * 0x8B98D9 and the addss after it. */
+typedef float (*HfFn_DispatchReinforcement)(void* encounters, uint32_t rdx, void* r8);
+static inline HfFn_DispatchReinforcement hf_fn_DispatchReinforcement(HfMod* mod) { return (HfFn_DispatchReinforcement)hf_function_(mod, "DispatchReinforcement"); }
+static inline int hf_hook_DispatchReinforcement(HfMod* mod, HfFn_DispatchReinforcement detour, HfFn_DispatchReinforcement* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "DispatchReinforcement", (void*)detour, (void**)original, priority);
+}
+
+/* FillOutpost (game.dll+0x90E150; hook or call). Fills an outpost with its guards from the map guard compositions
+ * (family 3, the HiveMind's +0x41138), spending the guard budget (HiveMind +0x518B4): it picks enemies with PickEnemy
+ * and spawns them through 0x90D2A0, which calls SpawnSquad. GuardForceUpdate calls it.
+ *   guardforces  the outposts' manager: hf_global_GuardForces
+ *   outpost      the outpost's entity
+ * From HD2Runtime 0.40.1 research spawn-channels-dev10 (map guard pins 0x90E25D, 0x90EAE0); game.dll: its callers in
+ * GuardForceUpdate. */
+typedef void (*HfFn_FillOutpost)(void* guardforces, uint32_t outpost);
+static inline HfFn_FillOutpost hf_fn_FillOutpost(HfMod* mod) { return (HfFn_FillOutpost)hf_function_(mod, "FillOutpost"); }
+static inline int hf_hook_FillOutpost(HfMod* mod, HfFn_FillOutpost detour, HfFn_FillOutpost* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "FillOutpost", (void*)detour, (void**)original, priority);
+}
+
+/* UnitSetLocalPosition (helldivers2.exe+0x1FC650; hook or call). Sets a unit node's local position (floats 9-11 of its
+ * 16-float local pose), marks the node changed and the unit moving (WorldSetUnitMoving, 5). Unit.set_local_position
+ * calls it..
+ *   unit      the unit's handle
+ *   node      the scene graph node (0 the root; the binding takes it 1-based and subtracts the Lua index base)
+ *   position  x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitSetLocalPosition)(uint32_t unit, int32_t node, const float* position);
+static inline HfFn_UnitSetLocalPosition hf_fn_UnitSetLocalPosition(HfMod* mod) { return (HfFn_UnitSetLocalPosition)hf_function_(mod, "UnitSetLocalPosition"); }
+static inline int hf_hook_UnitSetLocalPosition(HfMod* mod, HfFn_UnitSetLocalPosition detour, HfFn_UnitSetLocalPosition* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitSetLocalPosition", (void*)detour, (void**)original, priority);
+}
+
+/* UnitSetLocalRotation (helldivers2.exe+0x1FC7A0; hook or call). Sets a unit node's local rotation from a quaternion
+ * (made a 3x3 by 0x12C780, keeping position and scale), marks the node changed and the unit moving.
+ * Unit.set_local_rotation calls it..
+ *   unit      the unit's handle
+ *   node      the scene graph node (0 the root)
+ *   rotation  a quaternion x, y, z, w
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitSetLocalRotation)(uint32_t unit, int32_t node, const float* rotation);
+static inline HfFn_UnitSetLocalRotation hf_fn_UnitSetLocalRotation(HfMod* mod) { return (HfFn_UnitSetLocalRotation)hf_function_(mod, "UnitSetLocalRotation"); }
+static inline int hf_hook_UnitSetLocalRotation(HfMod* mod, HfFn_UnitSetLocalRotation detour, HfFn_UnitSetLocalRotation* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitSetLocalRotation", (void*)detour, (void**)original, priority);
+}
+
+/* UnitSetLocalScale (helldivers2.exe+0x1FC8F0; hook or call). Sets a unit node's local scale (floats 12-14 of its local
+ * pose) through the unit's own set-local-pose (its vtable +0x278). Unit.set_local_scale calls it..
+ *   unit   the unit's handle
+ *   node   the scene graph node (0 the root)
+ *   scale  x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitSetLocalScale)(uint32_t unit, int32_t node, const float* scale);
+static inline HfFn_UnitSetLocalScale hf_fn_UnitSetLocalScale(HfMod* mod) { return (HfFn_UnitSetLocalScale)hf_function_(mod, "UnitSetLocalScale"); }
+static inline int hf_hook_UnitSetLocalScale(HfMod* mod, HfFn_UnitSetLocalScale detour, HfFn_UnitSetLocalScale* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitSetLocalScale", (void*)detour, (void**)original, priority);
+}
+
+/* UnitTeleportLocalPosition (helldivers2.exe+0x1FD3F0; hook or call). Unit.teleport_local_position's engine side:
+ * writes the node's local position like UnitSetLocalPosition, marks the node changed and the unit moving
+ * (WorldSetUnitMoving, 5)..
+ *   unit      the unit's handle
+ *   node      the scene graph node (0 the root)
+ *   position  x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitTeleportLocalPosition)(uint32_t unit, int32_t node, const float* position);
+static inline HfFn_UnitTeleportLocalPosition hf_fn_UnitTeleportLocalPosition(HfMod* mod) { return (HfFn_UnitTeleportLocalPosition)hf_function_(mod, "UnitTeleportLocalPosition"); }
+static inline int hf_hook_UnitTeleportLocalPosition(HfMod* mod, HfFn_UnitTeleportLocalPosition detour, HfFn_UnitTeleportLocalPosition* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitTeleportLocalPosition", (void*)detour, (void**)original, priority);
+}
+
+/* UnitTeleportLocalPose (helldivers2.exe+0x1FD350; hook or call). Writes a unit node's whole local pose, marks the node
+ * changed and the unit moving. Unit.teleport_local_pose calls it with the unit object..
+ *   unit  the unit object (UnitFromHandle), not a handle
+ *   node  the scene graph node (0 the root)
+ *   pose  the 16-float local pose (as UnitSetLocalPose)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitTeleportLocalPose)(void* unit, int32_t node, const float* pose);
+static inline HfFn_UnitTeleportLocalPose hf_fn_UnitTeleportLocalPose(HfMod* mod) { return (HfFn_UnitTeleportLocalPose)hf_function_(mod, "UnitTeleportLocalPose"); }
+static inline int hf_hook_UnitTeleportLocalPose(HfMod* mod, HfFn_UnitTeleportLocalPose detour, HfFn_UnitTeleportLocalPose* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitTeleportLocalPose", (void*)detour, (void**)original, priority);
+}
+
+/* WorldSetUnitMoving (helldivers2.exe+0x1AF180; hook or call). Marks a unit moving: tells the unit (its vtable +0xB0)
+ * and, when its +0x38 is -1, appends it to the world's moving list (+0x230490) under the world's lock (+0x230460).
+ * Unit.set_moving and every Unit/Camera/Light/Mesh local pose setter reach it..
+ *   world   the unit's world (the unit's +0x18)
+ *   unit    the unit object (UnitFromHandle)
+ *   frames  passed to the unit's vtable +0xB0 (Unit.set_moving's optional count, default 1; the pose setters pass 5)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldSetUnitMoving)(void* world, void* unit, uint32_t frames);
+static inline HfFn_WorldSetUnitMoving hf_fn_WorldSetUnitMoving(HfMod* mod) { return (HfFn_WorldSetUnitMoving)hf_function_(mod, "WorldSetUnitMoving"); }
+static inline int hf_hook_WorldSetUnitMoving(HfMod* mod, HfFn_WorldSetUnitMoving detour, HfFn_WorldSetUnitMoving* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldSetUnitMoving", (void*)detour, (void**)original, priority);
+}
+
+/* UnitDeltaPosition (helldivers2.exe+0x1FD7D0; hook or call). How far a unit node moved: computed from its scene
+ * graph's last world poses (+0x30, copied from +0x28 when unset) and its current ones (+0x28); returns out.
+ * Unit.delta_position calls it..
+ *   out   where the 3 floats go (returned)
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef float* (*HfFn_UnitDeltaPosition)(float* out, uint32_t unit, int32_t node);
+static inline HfFn_UnitDeltaPosition hf_fn_UnitDeltaPosition(HfMod* mod) { return (HfFn_UnitDeltaPosition)hf_function_(mod, "UnitDeltaPosition"); }
+static inline int hf_hook_UnitDeltaPosition(HfMod* mod, HfFn_UnitDeltaPosition detour, HfFn_UnitDeltaPosition* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitDeltaPosition", (void*)detour, (void**)original, priority);
+}
+
+/* UnitDeltaRotation (helldivers2.exe+0x1FD9D0; hook or call). How far a unit node turned between its last and current
+ * world pose, as a quaternion; returns out. Unit.delta_rotation calls it..
+ *   out   where the quaternion (4 floats) goes (returned)
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef float* (*HfFn_UnitDeltaRotation)(float* out, uint32_t unit, int32_t node);
+static inline HfFn_UnitDeltaRotation hf_fn_UnitDeltaRotation(HfMod* mod) { return (HfFn_UnitDeltaRotation)hf_function_(mod, "UnitDeltaRotation"); }
+static inline int hf_hook_UnitDeltaRotation(HfMod* mod, HfFn_UnitDeltaRotation detour, HfFn_UnitDeltaRotation* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitDeltaRotation", (void*)detour, (void**)original, priority);
+}
+
+/* UnitDeltaPose (helldivers2.exe+0x1FDE40; hook or call). A unit node's pose change between its last and current world
+ * pose (16 floats); returns out. Unit.delta_pose calls it..
+ *   out   where the 16-float pose goes (returned)
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef float* (*HfFn_UnitDeltaPose)(float* out, uint32_t unit, int32_t node);
+static inline HfFn_UnitDeltaPose hf_fn_UnitDeltaPose(HfMod* mod) { return (HfFn_UnitDeltaPose)hf_function_(mod, "UnitDeltaPose"); }
+static inline int hf_hook_UnitDeltaPose(HfMod* mod, HfFn_UnitDeltaPose detour, HfFn_UnitDeltaPose* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitDeltaPose", (void*)detour, (void**)original, priority);
+}
+
+/* UnitTeleportLocalRotation (helldivers2.exe+0x1FD570; hook or call). Unit.teleport_local_rotation's engine side:
+ * writes the node's local rotation from a quaternion (keeping position and scale), marks the node changed and the unit
+ * moving..
+ *   unit      the unit's handle
+ *   node      the scene graph node (0 the root)
+ *   rotation  a quaternion x, y, z, w
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitTeleportLocalRotation)(uint32_t unit, int32_t node, const float* rotation);
+static inline HfFn_UnitTeleportLocalRotation hf_fn_UnitTeleportLocalRotation(HfMod* mod) { return (HfFn_UnitTeleportLocalRotation)hf_function_(mod, "UnitTeleportLocalRotation"); }
+static inline int hf_hook_UnitTeleportLocalRotation(HfMod* mod, HfFn_UnitTeleportLocalRotation detour, HfFn_UnitTeleportLocalRotation* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitTeleportLocalRotation", (void*)detour, (void**)original, priority);
+}
+
+/* UnitTeleportLocalScale (helldivers2.exe+0x1FD680; hook or call). Unit.teleport_local_scale's engine side: writes the
+ * node's local scale, marks the node changed and the unit moving..
+ *   unit   the unit's handle
+ *   node   the scene graph node (0 the root)
+ *   scale  x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitTeleportLocalScale)(uint32_t unit, int32_t node, const float* scale);
+static inline HfFn_UnitTeleportLocalScale hf_fn_UnitTeleportLocalScale(HfMod* mod) { return (HfFn_UnitTeleportLocalScale)hf_function_(mod, "UnitTeleportLocalScale"); }
+static inline int hf_hook_UnitTeleportLocalScale(HfMod* mod, HfFn_UnitTeleportLocalScale detour, HfFn_UnitTeleportLocalScale* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitTeleportLocalScale", (void*)detour, (void**)original, priority);
+}
+
+/* WorldSpawnUnit (helldivers2.exe+0x1A7E50; hook or call). Spawns a unit in a world from its resource and returns the
+ * unit object (+0x08 its handle, which World.spawn_unit hands to Lua). World.spawn_unit calls it; so do game.dll-facing
+ * paths (0x1AA5CE, 0x2D1EF6, 0x2E0DAA)..
+ *   world     the world
+ *   resource  the unit resource's name hash (resolved with the unit type 0xE0A48D0BE9A7453F)
+ *   name      an optional id64 World.spawn_unit takes after the pose (0 when none); passed on to 0x1A7FC0
+ *   pose      the spawn pose, a 4x4 matrix (rows x, y, z axes then translation; identity by default)
+ *   s5        not reviewed: pass it on (the binding passes 0)
+ *   s6        not reviewed: pass it on (the binding passes 0)
+ *   s7        not reviewed: pass it on (World.spawn_unit's optional bool after the name, default 1)
+ *   s8        not reviewed: pass it on (the binding passes 0)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void* (*HfFn_WorldSpawnUnit)(void* world, const uint64_t* resource, const uint64_t* name, const float* pose, uint32_t s5, uint64_t s6, uint8_t s7, uint64_t s8);
+static inline HfFn_WorldSpawnUnit hf_fn_WorldSpawnUnit(HfMod* mod) { return (HfFn_WorldSpawnUnit)hf_function_(mod, "WorldSpawnUnit"); }
+static inline int hf_hook_WorldSpawnUnit(HfMod* mod, HfFn_WorldSpawnUnit detour, HfFn_WorldSpawnUnit* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldSpawnUnit", (void*)detour, (void**)original, priority);
+}
+
+/* WorldDestroyUnit (helldivers2.exe+0x1AECC0; hook or call). Destroys a unit now and frees it from its world.
+ * World.destroy_unit calls it when the unit's vtable +0x1B0 returns null (otherwise WorldQueueUnitsDestroy)..
+ *   world  the world (the unit's +0x18)
+ *   unit   the unit object (UnitFromHandle)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldDestroyUnit)(void* world, void* unit);
+static inline HfFn_WorldDestroyUnit hf_fn_WorldDestroyUnit(HfMod* mod) { return (HfFn_WorldDestroyUnit)hf_function_(mod, "WorldDestroyUnit"); }
+static inline int hf_hook_WorldDestroyUnit(HfMod* mod, HfFn_WorldDestroyUnit detour, HfFn_WorldDestroyUnit* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldDestroyUnit", (void*)detour, (void**)original, priority);
+}
+
+/* WorldQueueUnitsDestroy (helldivers2.exe+0x12D2D0; hook or call). Queues units for destruction: takes each handle out
+ * of the unit registry (bumps its generation, clears its slot) and adds it to the world's queue counted at +0x10030.
+ * World.destroy_unit uses it for units whose vtable +0x1B0 is set..
+ *   world  the world
+ *   units  the units' handles
+ *   count  how many
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldQueueUnitsDestroy)(void* world, const uint32_t* units, uint32_t count);
+static inline HfFn_WorldQueueUnitsDestroy hf_fn_WorldQueueUnitsDestroy(HfMod* mod) { return (HfFn_WorldQueueUnitsDestroy)hf_function_(mod, "WorldQueueUnitsDestroy"); }
+static inline int hf_hook_WorldQueueUnitsDestroy(HfMod* mod, HfFn_WorldQueueUnitsDestroy detour, HfFn_WorldQueueUnitsDestroy* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldQueueUnitsDestroy", (void*)detour, (void**)original, priority);
+}
+
+/* WorldLinkUnitHandles (helldivers2.exe+0x3361C0; hook or call). Links one unit to another's node by handles: resolves
+ * both (UnitFromHandle) and tail-calls WorldLinkUnit. World.link_unit calls it..
+ *   world       the world
+ *   child       the child unit's handle
+ *   child_node  the child's node (0 the root)
+ *   parent      the parent unit's handle
+ *   s5          the parent's node (0 the root); forwarded to WorldLinkUnit
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldLinkUnitHandles)(void* world, uint32_t child, int32_t child_node, uint32_t parent, uint32_t s5);
+static inline HfFn_WorldLinkUnitHandles hf_fn_WorldLinkUnitHandles(HfMod* mod) { return (HfFn_WorldLinkUnitHandles)hf_function_(mod, "WorldLinkUnitHandles"); }
+static inline int hf_hook_WorldLinkUnitHandles(HfMod* mod, HfFn_WorldLinkUnitHandles detour, HfFn_WorldLinkUnitHandles* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldLinkUnitHandles", (void*)detour, (void**)original, priority);
+}
+
+/* WorldLinkUnit (helldivers2.exe+0x1AF240; hook or call). Links a unit's node to a parent unit's node in a world: puts
+ * the child in the world's linked list (+0x2304B0), the parent at the child's +0x1D0 and the child in the parent's
+ * +0x1D8 list..
+ *   world       the world
+ *   child       the child unit object
+ *   child_node  the child's node (0 the root)
+ *   parent      the parent unit object
+ *   s5          the parent's node (0 the root), read from the stack as a 16-bit index
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldLinkUnit)(void* world, void* child, int32_t child_node, void* parent, uint16_t s5);
+static inline HfFn_WorldLinkUnit hf_fn_WorldLinkUnit(HfMod* mod) { return (HfFn_WorldLinkUnit)hf_function_(mod, "WorldLinkUnit"); }
+static inline int hf_hook_WorldLinkUnit(HfMod* mod, HfFn_WorldLinkUnit detour, HfFn_WorldLinkUnit* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldLinkUnit", (void*)detour, (void**)original, priority);
+}
+
+/* WorldUnlinkUnit (helldivers2.exe+0x1AF780; hook or call). Unlinks a unit from its parent and takes it out of the
+ * world's linked list (+0x2304B0). World.unlink_unit calls it..
+ *   world  the world
+ *   unit   the unit object (UnitFromHandle)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldUnlinkUnit)(void* world, void* unit);
+static inline HfFn_WorldUnlinkUnit hf_fn_WorldUnlinkUnit(HfMod* mod) { return (HfFn_WorldUnlinkUnit)hf_function_(mod, "WorldUnlinkUnit"); }
+static inline int hf_hook_WorldUnlinkUnit(HfMod* mod, HfFn_WorldUnlinkUnit detour, HfFn_WorldUnlinkUnit* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldUnlinkUnit", (void*)detour, (void**)original, priority);
+}
+
+/* WorldMendUnit (helldivers2.exe+0x3351C0; hook or call). World.mend_unit's engine side: asks the unit (vtable +0x48
+ * with the index) and when that succeeds marks it moving (WorldSetUnitMoving, 1); 1 when it did..
+ *   world  the world
+ *   unit   the unit's handle
+ *   index  passed to the unit's vtable +0x48 (the binding takes it 1-based)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef uint8_t (*HfFn_WorldMendUnit)(void* world, uint32_t unit, int32_t index);
+static inline HfFn_WorldMendUnit hf_fn_WorldMendUnit(HfMod* mod) { return (HfFn_WorldMendUnit)hf_function_(mod, "WorldMendUnit"); }
+static inline int hf_hook_WorldMendUnit(HfMod* mod, HfFn_WorldMendUnit detour, HfFn_WorldMendUnit* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldMendUnit", (void*)detour, (void**)original, priority);
+}
+
+/* WorldUpdate (helldivers2.exe+0x333BD0; hook or call). Updates a world by a time step. World.update calls it..
+ *   world  the world
+ *   dt     the time step (the binding's default is EngineCore +0x560)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldUpdate)(void* world, float dt);
+static inline HfFn_WorldUpdate hf_fn_WorldUpdate(HfMod* mod) { return (HfFn_WorldUpdate)hf_function_(mod, "WorldUpdate"); }
+static inline int hf_hook_WorldUpdate(HfMod* mod, HfFn_WorldUpdate detour, HfFn_WorldUpdate* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldUpdate", (void*)detour, (void**)original, priority);
+}
+
+/* WorldUpdateScene (helldivers2.exe+0x1B0B10; hook or call). Updates a world's scene graph by a time step.
+ * World.update_scene and World.update_with_callback call it..
+ *   world  the world
+ *   dt     the time step
+ *   xmm2   not reviewed: pass it on (the binding passes EngineCore +0x55C)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldUpdateScene)(void* world, float dt, float xmm2);
+static inline HfFn_WorldUpdateScene hf_fn_WorldUpdateScene(HfMod* mod) { return (HfFn_WorldUpdateScene)hf_function_(mod, "WorldUpdateScene"); }
+static inline int hf_hook_WorldUpdateScene(HfMod* mod, HfFn_WorldUpdateScene detour, HfFn_WorldUpdateScene* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldUpdateScene", (void*)detour, (void**)original, priority);
+}
+
+/* WorldCreateLineObject (helldivers2.exe+0x1B3AD0; hook or call). Makes a debug line object in a world and records it
+ * in the world's line object map (+0x230638); returns it. World.create_line_object calls it..
+ *   world          the world
+ *   no_depth_test  1 draws through geometry (the world's line renderer +0x230608 instead of +0x230600)
+ *   r8             not reviewed: pass it on (1 picks the renderer at +0x230610; the binding passes 0)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void* (*HfFn_WorldCreateLineObject)(void* world, uint8_t no_depth_test, uint8_t r8);
+static inline HfFn_WorldCreateLineObject hf_fn_WorldCreateLineObject(HfMod* mod) { return (HfFn_WorldCreateLineObject)hf_function_(mod, "WorldCreateLineObject"); }
+static inline int hf_hook_WorldCreateLineObject(HfMod* mod, HfFn_WorldCreateLineObject detour, HfFn_WorldCreateLineObject* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldCreateLineObject", (void*)detour, (void**)original, priority);
+}
+
+/* LineObjectAddLine (helldivers2.exe+0x4E1820; hook or call). Adds one debug line to a line object; it shows once the
+ * object is dispatched (LineObjectDispatch). LineObject.add_line calls it..
+ *   line_object  the line object (WorldCreateLineObject): +0x08 its lines, 28 bytes each (from, to, color)
+ *   color        ARGB, a byte each (Lua's Color(a, r, g, b))
+ *   from         x, y, z
+ *   to           x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LineObjectAddLine)(void* line_object, uint32_t color, const float* from, const float* to);
+static inline HfFn_LineObjectAddLine hf_fn_LineObjectAddLine(HfMod* mod) { return (HfFn_LineObjectAddLine)hf_function_(mod, "LineObjectAddLine"); }
+static inline int hf_hook_LineObjectAddLine(HfMod* mod, HfFn_LineObjectAddLine detour, HfFn_LineObjectAddLine* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LineObjectAddLine", (void*)detour, (void**)original, priority);
+}
+
+/* LineObjectAddCone (helldivers2.exe+0x4E46D0; hook or call). Adds a debug cone's lines to a line object.
+ * LineObject.add_cone calls it..
+ *   line_object  the line object
+ *   color        ARGB
+ *   from         one end, x, y, z (Lua's from)
+ *   to           the other end, x, y, z (Lua's to)
+ *   s5           the base radius
+ *   s6           segments (Lua default 20)
+ *   s7           bars (Lua default 10)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LineObjectAddCone)(void* line_object, uint32_t color, const float* from, const float* to, float s5, int32_t s6, int32_t s7);
+static inline HfFn_LineObjectAddCone hf_fn_LineObjectAddCone(HfMod* mod) { return (HfFn_LineObjectAddCone)hf_function_(mod, "LineObjectAddCone"); }
+static inline int hf_hook_LineObjectAddCone(HfMod* mod, HfFn_LineObjectAddCone detour, HfFn_LineObjectAddCone* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LineObjectAddCone", (void*)detour, (void**)original, priority);
+}
+
+/* LineObjectAddCircle (helldivers2.exe+0x4E1FD0; hook or call). Adds a debug circle's lines to a line object.
+ * LineObject.add_circle calls it..
+ *   line_object  the line object
+ *   color        ARGB
+ *   center       x, y, z
+ *   radius       the radius
+ *   s5           the normal, x, y, z
+ *   s6           segments (Lua default 20)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LineObjectAddCircle)(void* line_object, uint32_t color, const float* center, float radius, const float* s5, int32_t s6);
+static inline HfFn_LineObjectAddCircle hf_fn_LineObjectAddCircle(HfMod* mod) { return (HfFn_LineObjectAddCircle)hf_function_(mod, "LineObjectAddCircle"); }
+static inline int hf_hook_LineObjectAddCircle(HfMod* mod, HfFn_LineObjectAddCircle detour, HfFn_LineObjectAddCircle* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LineObjectAddCircle", (void*)detour, (void**)original, priority);
+}
+
+/* LineObjectAddSphere (helldivers2.exe+0x4E2FC0; hook or call). Adds a debug sphere's lines to a line object.
+ * LineObject.add_sphere calls it..
+ *   line_object  the line object
+ *   color        ARGB
+ *   center       x, y, z
+ *   radius       the radius (0 adds nothing)
+ *   s5           segments (Lua default 20)
+ *   s6           parts (Lua default 2)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LineObjectAddSphere)(void* line_object, uint32_t color, const float* center, float radius, int32_t s5, int32_t s6);
+static inline HfFn_LineObjectAddSphere hf_fn_LineObjectAddSphere(HfMod* mod) { return (HfFn_LineObjectAddSphere)hf_function_(mod, "LineObjectAddSphere"); }
+static inline int hf_hook_LineObjectAddSphere(HfMod* mod, HfFn_LineObjectAddSphere detour, HfFn_LineObjectAddSphere* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LineObjectAddSphere", (void*)detour, (void**)original, priority);
+}
+
+/* LineObjectAddHalfSphere (helldivers2.exe+0x4E3380; hook or call). Adds a debug half sphere's lines to a line object.
+ * LineObject.add_half_sphere calls it..
+ *   line_object  the line object
+ *   color        ARGB
+ *   center       x, y, z
+ *   radius       the radius
+ *   s5           the direction it faces, x, y, z
+ *   s6           segments
+ *   s7           parts
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LineObjectAddHalfSphere)(void* line_object, uint32_t color, const float* center, float radius, const float* s5, int32_t s6, int32_t s7);
+static inline HfFn_LineObjectAddHalfSphere hf_fn_LineObjectAddHalfSphere(HfMod* mod) { return (HfFn_LineObjectAddHalfSphere)hf_function_(mod, "LineObjectAddHalfSphere"); }
+static inline int hf_hook_LineObjectAddHalfSphere(HfMod* mod, HfFn_LineObjectAddHalfSphere detour, HfFn_LineObjectAddHalfSphere* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LineObjectAddHalfSphere", (void*)detour, (void**)original, priority);
+}
+
+/* LineObjectAddBox (helldivers2.exe+0x4E3AC0; hook or call). Adds a debug box's 12 edges to a line object.
+ * LineObject.add_box calls it..
+ *   line_object  the line object
+ *   color        ARGB
+ *   pose         the box's pose, a 4x4 matrix
+ *   extents      half sizes x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LineObjectAddBox)(void* line_object, uint32_t color, const float* pose, const float* extents);
+static inline HfFn_LineObjectAddBox hf_fn_LineObjectAddBox(HfMod* mod) { return (HfFn_LineObjectAddBox)hf_function_(mod, "LineObjectAddBox"); }
+static inline int hf_hook_LineObjectAddBox(HfMod* mod, HfFn_LineObjectAddBox detour, HfFn_LineObjectAddBox* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LineObjectAddBox", (void*)detour, (void**)original, priority);
+}
+
+/* LineObjectAddCapsule (helldivers2.exe+0x4E4040; hook or call). Adds a debug capsule's lines to a line object.
+ * LineObject.add_capsule calls it..
+ *   line_object  the line object
+ *   color        ARGB
+ *   from         one end's centre, x, y, z
+ *   to           the other end's centre
+ *   s5           the radius
+ *   s6           segments
+ *   unused       not read (its home slot is reused as scratch)
+ *   s8           bars (the binding's 8th Lua argument)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LineObjectAddCapsule)(void* line_object, uint32_t color, const float* from, const float* to, float s5, int32_t s6, int32_t unused, int32_t s8);
+static inline HfFn_LineObjectAddCapsule hf_fn_LineObjectAddCapsule(HfMod* mod) { return (HfFn_LineObjectAddCapsule)hf_function_(mod, "LineObjectAddCapsule"); }
+static inline int hf_hook_LineObjectAddCapsule(HfMod* mod, HfFn_LineObjectAddCapsule detour, HfFn_LineObjectAddCapsule* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LineObjectAddCapsule", (void*)detour, (void**)original, priority);
+}
+
+/* LineObjectDispatch (helldivers2.exe+0x4E5EC0; hook or call). Sends a line object's lines to the renderer for drawing
+ * (a packet of 28 bytes a line plus a header). LineObject.dispatch calls it..
+ *   renderer     the line renderer the object was made with (the world's line object map +0x230638 entry)
+ *   render       the world's render interface ([world +0x2301F8] +0x10); its +0x98 gives the packet allocator
+ *   line_object  the line object: +0x08 its line count
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LineObjectDispatch)(void* renderer, void* render, void* line_object);
+static inline HfFn_LineObjectDispatch hf_fn_LineObjectDispatch(HfMod* mod) { return (HfFn_LineObjectDispatch)hf_function_(mod, "LineObjectDispatch"); }
+static inline int hf_hook_LineObjectDispatch(HfMod* mod, HfFn_LineObjectDispatch detour, HfFn_LineObjectDispatch* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LineObjectDispatch", (void*)detour, (void**)original, priority);
+}
+
+/* MurmurHash64A (helldivers2.exe+0x5D5840; hook or call). MurmurHash64A (multiplier 0xC6A4A7935BD1E995): the engine's
+ * name hash. With seed 0 it is the IdString64 every binding makes from a string; its high 32 bits are the IdString32
+ * (Material variable names). Called from everywhere (378 binding sites)..
+ *   key   the bytes (a name)
+ *   len   how many bytes
+ *   seed  the seed (0 for Stingray's IdString64)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef uint64_t (*HfFn_MurmurHash64A)(const char* key, int32_t len, uint64_t seed);
+static inline HfFn_MurmurHash64A hf_fn_MurmurHash64A(HfMod* mod) { return (HfFn_MurmurHash64A)hf_function_(mod, "MurmurHash64A"); }
+static inline int hf_hook_MurmurHash64A(HfMod* mod, HfFn_MurmurHash64A detour, HfFn_MurmurHash64A* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MurmurHash64A", (void*)detour, (void**)original, priority);
+}
+
+/* MaterialSetScalar (helldivers2.exe+0x4F33D0; hook or call). Sets a material's scalar shader variable: queues a render
+ * command (7) with the material's id, the variable and the value; nothing when the material has no render id.
+ * Material.set_scalar calls it, as does the game's material variable code (0xCCD06)..
+ *   material  the material (Mesh.material's light userdata): +0x04 its render id (0xFFFFFF none), +0x08 the render
+ *             interface
+ *   variable  the variable's IdString32 (the high half of MurmurHash64A of its name)
+ *   value     the value
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_MaterialSetScalar)(void* material, uint32_t variable, float value);
+static inline HfFn_MaterialSetScalar hf_fn_MaterialSetScalar(HfMod* mod) { return (HfFn_MaterialSetScalar)hf_function_(mod, "MaterialSetScalar"); }
+static inline int hf_hook_MaterialSetScalar(HfMod* mod, HfFn_MaterialSetScalar detour, HfFn_MaterialSetScalar* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MaterialSetScalar", (void*)detour, (void**)original, priority);
+}
+
+/* MaterialSetVector2 (helldivers2.exe+0x4F3580; hook or call). Sets a material's 2-float shader variable through a
+ * queued render command. Material.set_vector2 calls it..
+ *   material  the material
+ *   variable  the variable's IdString32
+ *   value     x, y
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_MaterialSetVector2)(void* material, uint32_t variable, const float* value);
+static inline HfFn_MaterialSetVector2 hf_fn_MaterialSetVector2(HfMod* mod) { return (HfFn_MaterialSetVector2)hf_function_(mod, "MaterialSetVector2"); }
+static inline int hf_hook_MaterialSetVector2(HfMod* mod, HfFn_MaterialSetVector2 detour, HfFn_MaterialSetVector2* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MaterialSetVector2", (void*)detour, (void**)original, priority);
+}
+
+/* MaterialSetVector3 (helldivers2.exe+0x4F3650; hook or call). Sets a material's 3-float shader variable through a
+ * queued render command. Material.set_vector3 calls it..
+ *   material  the material
+ *   variable  the variable's IdString32
+ *   value     x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_MaterialSetVector3)(void* material, uint32_t variable, const float* value);
+static inline HfFn_MaterialSetVector3 hf_fn_MaterialSetVector3(HfMod* mod) { return (HfFn_MaterialSetVector3)hf_function_(mod, "MaterialSetVector3"); }
+static inline int hf_hook_MaterialSetVector3(HfMod* mod, HfFn_MaterialSetVector3 detour, HfFn_MaterialSetVector3* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MaterialSetVector3", (void*)detour, (void**)original, priority);
+}
+
+/* MaterialSetVector4 (helldivers2.exe+0x4F3730; hook or call). Sets a material's 4-float shader variable through a
+ * queued render command. Material.set_vector4 calls it..
+ *   material  the material
+ *   variable  the variable's IdString32
+ *   value     x, y, z, w
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_MaterialSetVector4)(void* material, uint32_t variable, const float* value);
+static inline HfFn_MaterialSetVector4 hf_fn_MaterialSetVector4(HfMod* mod) { return (HfFn_MaterialSetVector4)hf_function_(mod, "MaterialSetVector4"); }
+static inline int hf_hook_MaterialSetVector4(HfMod* mod, HfFn_MaterialSetVector4 detour, HfFn_MaterialSetVector4* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MaterialSetVector4", (void*)detour, (void**)original, priority);
+}
+
+/* MaterialSetMatrix4x4 (helldivers2.exe+0x30F330; hook or call). Sets a material's 4x4 matrix shader variable through a
+ * queued render command. Material.set_matrix4x4 calls it..
+ *   material  the material
+ *   variable  the variable's IdString32
+ *   value     16 floats
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_MaterialSetMatrix4x4)(void* material, uint32_t variable, const float* value);
+static inline HfFn_MaterialSetMatrix4x4 hf_fn_MaterialSetMatrix4x4(HfMod* mod) { return (HfFn_MaterialSetMatrix4x4)hf_function_(mod, "MaterialSetMatrix4x4"); }
+static inline int hf_hook_MaterialSetMatrix4x4(HfMod* mod, HfFn_MaterialSetMatrix4x4 detour, HfFn_MaterialSetMatrix4x4* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MaterialSetMatrix4x4", (void*)detour, (void**)original, priority);
+}
+
+/* MaterialSetTexture (helldivers2.exe+0x30F1B0; hook or call). Points a material's texture slot at a loaded texture
+ * resource. Material.set_texture calls it..
+ *   material  the material
+ *   slot      the texture slot's IdString32
+ *   texture   the texture resource's name hash (looked up as type 0xCD4238C6A0C69E32)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_MaterialSetTexture)(void* material, uint32_t slot, uint64_t texture);
+static inline HfFn_MaterialSetTexture hf_fn_MaterialSetTexture(HfMod* mod) { return (HfFn_MaterialSetTexture)hf_function_(mod, "MaterialSetTexture"); }
+static inline int hf_hook_MaterialSetTexture(HfMod* mod, HfFn_MaterialSetTexture detour, HfFn_MaterialSetTexture* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MaterialSetTexture", (void*)detour, (void**)original, priority);
+}
+
+/* MaterialSetResource (helldivers2.exe+0x4F3230; hook or call). Binds a resource object to a material slot (stored in
+ * the material's table at +0x20, count +0x18). Material.set_resource calls it..
+ *   material  the material
+ *   slot      the slot's IdString32
+ *   resource  the resource object (the binding's third argument, a light userdata)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_MaterialSetResource)(void* material, uint32_t slot, void* resource);
+static inline HfFn_MaterialSetResource hf_fn_MaterialSetResource(HfMod* mod) { return (HfFn_MaterialSetResource)hf_function_(mod, "MaterialSetResource"); }
+static inline int hf_hook_MaterialSetResource(HfMod* mod, HfFn_MaterialSetResource detour, HfFn_MaterialSetResource* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MaterialSetResource", (void*)detour, (void**)original, priority);
+}
+
+/* MaterialSetShaderPassFlag (helldivers2.exe+0x30F150; hook or call). Turns a shader pass flag on or off for a material
+ * and sends the new bits (0x4F39F0). Material.set_shader_pass_flag calls it..
+ *   material  the material: +0x40 its pass flag bits
+ *   flag      the flag's IdString32 (found in the engine's flag list 0x1A102D0)
+ *   enabled   1 sets, 0 clears
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_MaterialSetShaderPassFlag)(void* material, uint32_t flag, uint32_t enabled);
+static inline HfFn_MaterialSetShaderPassFlag hf_fn_MaterialSetShaderPassFlag(HfMod* mod) { return (HfFn_MaterialSetShaderPassFlag)hf_function_(mod, "MaterialSetShaderPassFlag"); }
+static inline int hf_hook_MaterialSetShaderPassFlag(HfMod* mod, HfFn_MaterialSetShaderPassFlag detour, HfFn_MaterialSetShaderPassFlag* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MaterialSetShaderPassFlag", (void*)detour, (void**)original, priority);
+}
+
+/* MaterialReinitializeShader (helldivers2.exe+0x30F420; hook or call). Queues a render command that rebuilds a
+ * material's shader. Material.reinitialize_shader calls it..
+ *   material  the material
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_MaterialReinitializeShader)(void* material);
+static inline HfFn_MaterialReinitializeShader hf_fn_MaterialReinitializeShader(HfMod* mod) { return (HfFn_MaterialReinitializeShader)hf_function_(mod, "MaterialReinitializeShader"); }
+static inline int hf_hook_MaterialReinitializeShader(HfMod* mod, HfFn_MaterialReinitializeShader detour, HfFn_MaterialReinitializeShader* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MaterialReinitializeShader", (void*)detour, (void**)original, priority);
+}
+
+/* CameraWorldToScreen (helldivers2.exe+0x4D40F0; hook or call). Projects a world point to screen pixels with a camera's
+ * world pose and projection. Camera.world_to_screen calls it with the window's size unless given a Vector2 size..
+ *   out       3 floats: screen x and y, and the depth (the binding returns the depth as a second value); returned
+ *   camera    the camera (Unit.camera): +0x04 its render id, +0x18 its unit's scene graph, +0x20 its node, +0x28 near,
+ *             +0x2C far, +0x30 projection type, +0x34 vertical fov
+ *   position  the world point, x, y, z
+ *   width     the viewport's width in pixels
+ *   s5        the viewport's height in pixels
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef float* (*HfFn_CameraWorldToScreen)(float* out, void* camera, const float* position, int32_t width, int32_t s5);
+static inline HfFn_CameraWorldToScreen hf_fn_CameraWorldToScreen(HfMod* mod) { return (HfFn_CameraWorldToScreen)hf_function_(mod, "CameraWorldToScreen"); }
+static inline int hf_hook_CameraWorldToScreen(HfMod* mod, HfFn_CameraWorldToScreen detour, HfFn_CameraWorldToScreen* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "CameraWorldToScreen", (void*)detour, (void**)original, priority);
+}
+
+/* CameraScreenToWorld (helldivers2.exe+0x4D3BD0; hook or call). Unprojects a screen point at a depth to a world point
+ * with a camera. Camera.screen_to_world calls it..
+ *   out       the world point, 3 floats; returned
+ *   camera    the camera
+ *   position  the screen point, 3 floats as Lua's Vector3
+ *   depth     the distance along the view
+ *   s5        the viewport's width in pixels
+ *   s6        the viewport's height in pixels
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef float* (*HfFn_CameraScreenToWorld)(float* out, void* camera, const float* position, float depth, int32_t s5, int32_t s6);
+static inline HfFn_CameraScreenToWorld hf_fn_CameraScreenToWorld(HfMod* mod) { return (HfFn_CameraScreenToWorld)hf_function_(mod, "CameraScreenToWorld"); }
+static inline int hf_hook_CameraScreenToWorld(HfMod* mod, HfFn_CameraScreenToWorld detour, HfFn_CameraScreenToWorld* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "CameraScreenToWorld", (void*)detour, (void**)original, priority);
+}
+
+/* CameraSyncRange (helldivers2.exe+0x4CFA10; hook or call). Queues a render command (4) carrying a camera's near and
+ * far range and projection type. Camera.set_near_range, set_far_range and set_projection_type write the field and call
+ * it..
+ *   camera  the camera: +0x28 near, +0x2C far, +0x30 projection type
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_CameraSyncRange)(void* camera);
+static inline HfFn_CameraSyncRange hf_fn_CameraSyncRange(HfMod* mod) { return (HfFn_CameraSyncRange)hf_function_(mod, "CameraSyncRange"); }
+static inline int hf_hook_CameraSyncRange(HfMod* mod, HfFn_CameraSyncRange detour, HfFn_CameraSyncRange* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "CameraSyncRange", (void*)detour, (void**)original, priority);
+}
+
+/* CameraSyncFrustum (helldivers2.exe+0x4CFAB0; hook or call). Queues a render command carrying a camera's fov and
+ * frustum fields (+0x34, 32 bytes). Camera.set_vertical_fov, set_orthographic_view, set_frustum and
+ * set_frustum_half_angles write the fields and call it..
+ *   camera  the camera: +0x34 the vertical fov and the frustum fields to +0x53
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_CameraSyncFrustum)(void* camera);
+static inline HfFn_CameraSyncFrustum hf_fn_CameraSyncFrustum(HfMod* mod) { return (HfFn_CameraSyncFrustum)hf_function_(mod, "CameraSyncFrustum"); }
+static inline int hf_hook_CameraSyncFrustum(HfMod* mod, HfFn_CameraSyncFrustum detour, HfFn_CameraSyncFrustum* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "CameraSyncFrustum", (void*)detour, (void**)original, priority);
+}
+
+/* CameraSetLocal (helldivers2.exe+0x4CF620; hook or call). Queues a render command with a camera's local matrix.
+ * Camera.set_local calls it..
+ *   camera  the camera
+ *   pose    a 4x4 matrix
+ *   r8      not reviewed: pass it on (the binding passes 0; it goes into the command)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_CameraSetLocal)(void* camera, const float* pose, uint32_t r8);
+static inline HfFn_CameraSetLocal hf_fn_CameraSetLocal(HfMod* mod) { return (HfFn_CameraSetLocal)hf_function_(mod, "CameraSetLocal"); }
+static inline int hf_hook_CameraSetLocal(HfMod* mod, HfFn_CameraSetLocal detour, HfFn_CameraSetLocal* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "CameraSetLocal", (void*)detour, (void**)original, priority);
+}
+
+/* CameraInsideFrustum (helldivers2.exe+0x30DCC0; hook or call). How far a world point is inside a camera's frustum
+ * (above 0 inside). Camera.inside_frustum calls it..
+ *   camera  the camera
+ *   point   the world point, x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef float (*HfFn_CameraInsideFrustum)(void* camera, const float* point);
+static inline HfFn_CameraInsideFrustum hf_fn_CameraInsideFrustum(HfMod* mod) { return (HfFn_CameraInsideFrustum)hf_function_(mod, "CameraInsideFrustum"); }
+static inline int hf_hook_CameraInsideFrustum(HfMod* mod, HfFn_CameraInsideFrustum detour, HfFn_CameraInsideFrustum* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "CameraInsideFrustum", (void*)detour, (void**)original, priority);
+}
+
+/* GuiAddPrimitive (helldivers2.exe+0x267990; hook or call). Queues a gui render command (0xA) for a primitive with the
+ * gui's current transform and returns where its vertices go (36 bytes each), for the caller to fill. Every Gui drawing
+ * call reaches it (Gui.rect, triangle, bitmap and their update/destroy)..
+ *   gui       the gui (World.create_screen_gui's): +0x04 its render id, +0x98 the next primitive id
+ *   id        the primitive's id
+ *   layer     the draw layer
+ *   vertices  how many vertices (6 for a rect, 3 for a triangle)
+ *   s5        the material (its +0x04 render id), or NULL
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void* (*HfFn_GuiAddPrimitive)(void* gui, uint32_t id, uint32_t layer, uint32_t vertices, void* s5);
+static inline HfFn_GuiAddPrimitive hf_fn_GuiAddPrimitive(HfMod* mod) { return (HfFn_GuiAddPrimitive)hf_function_(mod, "GuiAddPrimitive"); }
+static inline int hf_hook_GuiAddPrimitive(HfMod* mod, HfFn_GuiAddPrimitive detour, HfFn_GuiAddPrimitive* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "GuiAddPrimitive", (void*)detour, (void**)original, priority);
+}
+
+/* GuiRect (helldivers2.exe+0x262060; hook or call). Draws (or redraws) a coloured rectangle in a gui as two triangles
+ * through GuiAddPrimitive. Gui.rect and Gui.update_rect call it..
+ *   gui   the gui
+ *   id    the rect's id (the binding passes the gui's +0x98, then adds 1 and returns it to Lua)
+ *   rect  the rect: f32 x, y, z (0), width, height (Lua default 100 each), u32 layer +0x14, u32 color ARGB +0x18, then
+ *         16 zero bytes
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_GuiRect)(void* gui, uint32_t id, const void* rect);
+static inline HfFn_GuiRect hf_fn_GuiRect(HfMod* mod) { return (HfFn_GuiRect)hf_function_(mod, "GuiRect"); }
+static inline int hf_hook_GuiRect(HfMod* mod, HfFn_GuiRect detour, HfFn_GuiRect* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "GuiRect", (void*)detour, (void**)original, priority);
+}
+
+/* ResourceManagerGet (helldivers2.exe+0x5F2290; hook or call). A loaded resource's data, following resource overrides,
+ * under the manager's lock (+0x2D8). Application.get_animation calls it (type 0x931E336D7646CC26), as do 25 other
+ * binding sites..
+ *   manager   the resource manager (EngineCore +0x3F8)
+ *   type      the resource type hash
+ *   name      the resource name hash
+ *   resolved  NULL, or receives the name the override table (+0x2E8) gave for it
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void* (*HfFn_ResourceManagerGet)(void* manager, const uint64_t* type, const uint64_t* name, uint64_t* resolved);
+static inline HfFn_ResourceManagerGet hf_fn_ResourceManagerGet(HfMod* mod) { return (HfFn_ResourceManagerGet)hf_function_(mod, "ResourceManagerGet"); }
+static inline int hf_hook_ResourceManagerGet(HfMod* mod, HfFn_ResourceManagerGet detour, HfFn_ResourceManagerGet* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ResourceManagerGet", (void*)detour, (void**)original, priority);
+}
+
+/* ResourceManagerCanGet (helldivers2.exe+0x5F2160; hook or call). Whether a resource is loaded and can be had now.
+ * Application.can_get calls it; CanGetResource wraps it with plain hashes..
+ *   manager  the resource manager (EngineCore +0x3F8)
+ *   type     the resource type hash
+ *   name     the resource name hash
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef uint8_t (*HfFn_ResourceManagerCanGet)(void* manager, const uint64_t* type, const uint64_t* name);
+static inline HfFn_ResourceManagerCanGet hf_fn_ResourceManagerCanGet(HfMod* mod) { return (HfFn_ResourceManagerCanGet)hf_function_(mod, "ResourceManagerCanGet"); }
+static inline int hf_hook_ResourceManagerCanGet(HfMod* mod, HfFn_ResourceManagerCanGet detour, HfFn_ResourceManagerCanGet* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ResourceManagerCanGet", (void*)detour, (void**)original, priority);
+}
+
+/* ResourceManagerSetOverride (helldivers2.exe+0x5F26F0; hook or call). Points later lookups of a resource name at
+ * another name (through 0x5F3210). Application.set_resource_override calls it; SetResourceOverride is the plain-hash
+ * version..
+ *   manager  the resource manager (EngineCore +0x3F8)
+ *   type     the resource type hash
+ *   name     the name looked up
+ *   target   the name found instead
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_ResourceManagerSetOverride)(void* manager, const uint64_t* type, const uint64_t* name, const uint64_t* target);
+static inline HfFn_ResourceManagerSetOverride hf_fn_ResourceManagerSetOverride(HfMod* mod) { return (HfFn_ResourceManagerSetOverride)hf_function_(mod, "ResourceManagerSetOverride"); }
+static inline int hf_hook_ResourceManagerSetOverride(HfMod* mod, HfFn_ResourceManagerSetOverride detour, HfFn_ResourceManagerSetOverride* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ResourceManagerSetOverride", (void*)detour, (void**)original, priority);
+}
+
+/* ResourceManagerClearOverride (helldivers2.exe+0x5F27D0; hook or call). Takes a resource override out under the
+ * manager's lock (+0x2D8). Application.clear_resource_override calls it; ClearResourceOverride wraps it with plain
+ * hashes..
+ *   manager  the resource manager (EngineCore +0x3F8)
+ *   type     the resource type hash
+ *   name     the overridden name
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_ResourceManagerClearOverride)(void* manager, const uint64_t* type, const uint64_t* name);
+static inline HfFn_ResourceManagerClearOverride hf_fn_ResourceManagerClearOverride(HfMod* mod) { return (HfFn_ResourceManagerClearOverride)hf_function_(mod, "ResourceManagerClearOverride"); }
+static inline int hf_hook_ResourceManagerClearOverride(HfMod* mod, HfFn_ResourceManagerClearOverride detour, HfFn_ResourceManagerClearOverride* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ResourceManagerClearOverride", (void*)detour, (void**)original, priority);
+}
+
+/* MurmurHash64ALower (helldivers2.exe+0x5D5960; hook or call). MurmurHash64A of a name with every byte lowercased first
+ * (0x12BC14C); the third argument register's home slot is reused as scratch, so no seed is read.
+ * Application.string_to_id64 calls it..
+ *   key  the bytes (a name)
+ *   len  how many bytes
+ *   r8   not reviewed: pass it on (the code may read it)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef uint64_t (*HfFn_MurmurHash64ALower)(const char* key, int32_t len, uint64_t r8);
+static inline HfFn_MurmurHash64ALower hf_fn_MurmurHash64ALower(HfMod* mod) { return (HfFn_MurmurHash64ALower)hf_function_(mod, "MurmurHash64ALower"); }
+static inline int hf_hook_MurmurHash64ALower(HfMod* mod, HfFn_MurmurHash64ALower detour, HfFn_MurmurHash64ALower* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "MurmurHash64ALower", (void*)detour, (void**)original, priority);
+}
+
+/* RendererWindowSize (helldivers2.exe+0x10AE20; hook or call). The pixel size of a window's back buffer.
+ * Application.back_buffer_size, Application.resolution and Camera.world_to_screen call it..
+ *   renderer  the renderer (EngineCore +0x338)
+ *   window    the window or render target id (0xFFFFFF in the low 24 bits reads the size from the renderer's +0x1168
+ *             object)
+ *   width     receives the width (1280 when unknown)
+ *   height    receives the height (720 when unknown)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_RendererWindowSize)(void* renderer, uint32_t window, uint32_t* width, uint32_t* height);
+static inline HfFn_RendererWindowSize hf_fn_RendererWindowSize(HfMod* mod) { return (HfFn_RendererWindowSize)hf_function_(mod, "RendererWindowSize"); }
+static inline int hf_hook_RendererWindowSize(HfMod* mod, HfFn_RendererWindowSize detour, HfFn_RendererWindowSize* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "RendererWindowSize", (void*)detour, (void**)original, priority);
+}
+
+/* ReleaseWorld (helldivers2.exe+0x317FB0; hook or call). Destroys a world: shuts its systems down, frees it through
+ * EngineCore's vtable +0x40 and takes it out of the engine's world list (EngineCore +0x590 count, +0x598 array).
+ * Application.release_world calls it..
+ *   world  the world
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_ReleaseWorld)(void* world);
+static inline HfFn_ReleaseWorld hf_fn_ReleaseWorld(HfMod* mod) { return (HfFn_ReleaseWorld)hf_function_(mod, "ReleaseWorld"); }
+static inline int hf_hook_ReleaseWorld(HfMod* mod, HfFn_ReleaseWorld detour, HfFn_ReleaseWorld* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ReleaseWorld", (void*)detour, (void**)original, priority);
+}
+
+/* CreateViewport (helldivers2.exe+0x76B40; hook or call). Makes a viewport for a world from a named viewport template
+ * and returns it. Application.create_viewport calls it..
+ *   engine    EngineCore
+ *   world     the world
+ *   template  the viewport template's IdString32 (the engine itself passes 0x7A991573)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void* (*HfFn_CreateViewport)(void* engine, void* world, uint32_t template);
+static inline HfFn_CreateViewport hf_fn_CreateViewport(HfMod* mod) { return (HfFn_CreateViewport)hf_function_(mod, "CreateViewport"); }
+static inline int hf_hook_CreateViewport(HfMod* mod, HfFn_CreateViewport detour, HfFn_CreateViewport* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "CreateViewport", (void*)detour, (void**)original, priority);
+}
+
+/* WorldDestroyViewport (helldivers2.exe+0x1B3D20; hook or call). Destroys a viewport and takes it out of its world's
+ * viewport list. Application.destroy_viewport calls it..
+ *   world     the world: +0x2308F0 its viewport count, +0x2308F8 the viewports
+ *   viewport  the viewport (CreateViewport)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldDestroyViewport)(void* world, void* viewport);
+static inline HfFn_WorldDestroyViewport hf_fn_WorldDestroyViewport(HfMod* mod) { return (HfFn_WorldDestroyViewport)hf_function_(mod, "WorldDestroyViewport"); }
+static inline int hf_hook_WorldDestroyViewport(HfMod* mod, HfFn_WorldDestroyViewport detour, HfFn_WorldDestroyViewport* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldDestroyViewport", (void*)detour, (void**)original, priority);
+}
+
+/* NetworkCreateGameSession (helldivers2.exe+0x171A20; hook or call). Makes the network manager's game session (0x6140
+ * bytes, built by 0x28D640) at its +0xA8, then runs NetworkManagerUpdate. Network.create_game_session calls it..
+ *   manager  the network manager (NetworkManager): +0xA8 the game session it makes
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_NetworkCreateGameSession)(void* manager);
+static inline HfFn_NetworkCreateGameSession hf_fn_NetworkCreateGameSession(HfMod* mod) { return (HfFn_NetworkCreateGameSession)hf_function_(mod, "NetworkCreateGameSession"); }
+static inline int hf_hook_NetworkCreateGameSession(HfMod* mod, HfFn_NetworkCreateGameSession detour, HfFn_NetworkCreateGameSession* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "NetworkCreateGameSession", (void*)detour, (void**)original, priority);
+}
+
+/* NetworkShutdownGameSession (helldivers2.exe+0x171AE0; hook or call). Destroys the network manager's game session and
+ * clears its +0xA8. Network.shutdown_game_session calls it..
+ *   manager  the network manager (NetworkManager)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_NetworkShutdownGameSession)(void* manager);
+static inline HfFn_NetworkShutdownGameSession hf_fn_NetworkShutdownGameSession(HfMod* mod) { return (HfFn_NetworkShutdownGameSession)hf_function_(mod, "NetworkShutdownGameSession"); }
+static inline int hf_hook_NetworkShutdownGameSession(HfMod* mod, HfFn_NetworkShutdownGameSession detour, HfFn_NetworkShutdownGameSession* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "NetworkShutdownGameSession", (void*)detour, (void**)original, priority);
+}
+
+/* LevelIsPointInsideVolume (helldivers2.exe+0x32C4B0; hook or call). Whether a point is inside one of a level's named
+ * volumes (1 inside). Level.is_point_inside_volume calls it..
+ *   level   the level (World.load_level's)
+ *   volume  the volume's IdString32
+ *   point   x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef uint32_t (*HfFn_LevelIsPointInsideVolume)(void* level, uint32_t volume, const float* point);
+static inline HfFn_LevelIsPointInsideVolume hf_fn_LevelIsPointInsideVolume(HfMod* mod) { return (HfFn_LevelIsPointInsideVolume)hf_function_(mod, "LevelIsPointInsideVolume"); }
+static inline int hf_hook_LevelIsPointInsideVolume(HfMod* mod, HfFn_LevelIsPointInsideVolume detour, HfFn_LevelIsPointInsideVolume* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LevelIsPointInsideVolume", (void*)detour, (void**)original, priority);
+}
+
+/* LevelRandomPointInsideVolume (helldivers2.exe+0x32BA90; hook or call). A random point inside one of a level's named
+ * volumes. Level.random_point_inside_volume calls it..
+ *   out     the point, 3 floats; returned
+ *   level   the level
+ *   volume  the volume's IdString32
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef float* (*HfFn_LevelRandomPointInsideVolume)(float* out, void* level, uint32_t volume);
+static inline HfFn_LevelRandomPointInsideVolume hf_fn_LevelRandomPointInsideVolume(HfMod* mod) { return (HfFn_LevelRandomPointInsideVolume)hf_function_(mod, "LevelRandomPointInsideVolume"); }
+static inline int hf_hook_LevelRandomPointInsideVolume(HfMod* mod, HfFn_LevelRandomPointInsideVolume detour, HfFn_LevelRandomPointInsideVolume* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LevelRandomPointInsideVolume", (void*)detour, (void**)original, priority);
+}
+
+/* LevelHasVolume (helldivers2.exe+0x32CE50; hook or call). Whether a level has a volume of that name (non-zero yes).
+ * Level.has_volume calls it..
+ *   level   the level
+ *   volume  the volume's IdString32
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef uint32_t (*HfFn_LevelHasVolume)(void* level, uint32_t volume);
+static inline HfFn_LevelHasVolume hf_fn_LevelHasVolume(HfMod* mod) { return (HfFn_LevelHasVolume)hf_function_(mod, "LevelHasVolume"); }
+static inline int hf_hook_LevelHasVolume(HfMod* mod, HfFn_LevelHasVolume detour, HfFn_LevelHasVolume* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LevelHasVolume", (void*)detour, (void**)original, priority);
+}
+
+/* LevelUnitIndex (helldivers2.exe+0xEAA20; hook or call). A unit's index in its level, -1 when the level does not own
+ * it. Level.unit_index calls it..
+ *   level  the level: +0x2B8 its unit-to-index hash map (count +0x2C8, bucket count +0x2CC)
+ *   unit   the unit object (UnitFromHandle)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef int32_t (*HfFn_LevelUnitIndex)(void* level, void* unit);
+static inline HfFn_LevelUnitIndex hf_fn_LevelUnitIndex(HfMod* mod) { return (HfFn_LevelUnitIndex)hf_function_(mod, "LevelUnitIndex"); }
+static inline int hf_hook_LevelUnitIndex(HfMod* mod, HfFn_LevelUnitIndex detour, HfFn_LevelUnitIndex* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LevelUnitIndex", (void*)detour, (void**)original, priority);
+}
+
+/* LevelSpawnAllLayers (helldivers2.exe+0xDB230; hook or call). Spawns every layer of a level. Level.spawn_all_layers
+ * calls it..
+ *   level  the level
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LevelSpawnAllLayers)(void* level);
+static inline HfFn_LevelSpawnAllLayers hf_fn_LevelSpawnAllLayers(HfMod* mod) { return (HfFn_LevelSpawnAllLayers)hf_function_(mod, "LevelSpawnAllLayers"); }
+static inline int hf_hook_LevelSpawnAllLayers(HfMod* mod, HfFn_LevelSpawnAllLayers detour, HfFn_LevelSpawnAllLayers* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LevelSpawnAllLayers", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationFindVariable (helldivers2.exe+0x201C20; hook or call). The index of a variable in a unit's animation
+ * state machine (the unit's vtable +0x1B0); -1 and a logged error when the unit has none. Unit.animation_find_variable
+ * calls it..
+ *   unit  the unit's handle
+ *   name  the variable's IdString32
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef int32_t (*HfFn_UnitAnimationFindVariable)(uint32_t unit, uint32_t name);
+static inline HfFn_UnitAnimationFindVariable hf_fn_UnitAnimationFindVariable(HfMod* mod) { return (HfFn_UnitAnimationFindVariable)hf_function_(mod, "UnitAnimationFindVariable"); }
+static inline int hf_hook_UnitAnimationFindVariable(HfMod* mod, HfFn_UnitAnimationFindVariable detour, HfFn_UnitAnimationFindVariable* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationFindVariable", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationHasVariable (helldivers2.exe+0x201CD0; hook or call). Whether a unit's animation state machine has a
+ * variable of that name (non-zero yes). Unit.animation_has_variable calls it..
+ *   unit  the unit's handle
+ *   name  the variable's IdString32
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef uint32_t (*HfFn_UnitAnimationHasVariable)(uint32_t unit, uint32_t name);
+static inline HfFn_UnitAnimationHasVariable hf_fn_UnitAnimationHasVariable(HfMod* mod) { return (HfFn_UnitAnimationHasVariable)hf_function_(mod, "UnitAnimationHasVariable"); }
+static inline int hf_hook_UnitAnimationHasVariable(HfMod* mod, HfFn_UnitAnimationHasVariable detour, HfFn_UnitAnimationHasVariable* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationHasVariable", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationGetVariable (helldivers2.exe+0x201D50; hook or call). An animation state machine variable's value.
+ * Unit.animation_get_variable calls it..
+ *   unit   the unit's handle
+ *   index  the variable's index (UnitAnimationFindVariable)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef float (*HfFn_UnitAnimationGetVariable)(uint32_t unit, int32_t index);
+static inline HfFn_UnitAnimationGetVariable hf_fn_UnitAnimationGetVariable(HfMod* mod) { return (HfFn_UnitAnimationGetVariable)hf_function_(mod, "UnitAnimationGetVariable"); }
+static inline int hf_hook_UnitAnimationGetVariable(HfMod* mod, HfFn_UnitAnimationGetVariable detour, HfFn_UnitAnimationGetVariable* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationGetVariable", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationSetVariable (helldivers2.exe+0x201DF0; hook or call). Sets an animation state machine variable.
+ * Unit.animation_set_variable calls it..
+ *   unit   the unit's handle
+ *   index  the variable's index (UnitAnimationFindVariable)
+ *   value  the value
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitAnimationSetVariable)(uint32_t unit, int32_t index, float value);
+static inline HfFn_UnitAnimationSetVariable hf_fn_UnitAnimationSetVariable(HfMod* mod) { return (HfFn_UnitAnimationSetVariable)hf_function_(mod, "UnitAnimationSetVariable"); }
+static inline int hf_hook_UnitAnimationSetVariable(HfMod* mod, HfFn_UnitAnimationSetVariable detour, HfFn_UnitAnimationSetVariable* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationSetVariable", (void*)detour, (void**)original, priority);
+}
+
+/* UnitSetUnitVisibility (helldivers2.exe+0x205680; hook or call). Shows or hides a whole unit: queues a world command
+ * (0x15) in the unit's world (a 0x58-byte slot at +0x10038, taken with a lock add on +0x170038).
+ * Unit.set_unit_visibility calls it..
+ *   unit     the unit's handle
+ *   visible  1 shows, 0 hides
+ *   r8       not reviewed: pass it on (Unit.set_unit_visibility's optional third argument, 1 when absent)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitSetUnitVisibility)(uint32_t unit, uint8_t visible, uint8_t r8);
+static inline HfFn_UnitSetUnitVisibility hf_fn_UnitSetUnitVisibility(HfMod* mod) { return (HfFn_UnitSetUnitVisibility)hf_function_(mod, "UnitSetUnitVisibility"); }
+static inline int hf_hook_UnitSetUnitVisibility(HfMod* mod, HfFn_UnitSetUnitVisibility detour, HfFn_UnitSetUnitVisibility* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitSetUnitVisibility", (void*)detour, (void**)original, priority);
+}
+
+/* UnitSetVisibilityGroup (helldivers2.exe+0x205870; hook or call). Shows or hides one of a unit's visibility groups:
+ * tells the unit (its vtable +0xC0) and queues a world command (0x16). Unit.set_visibility calls it..
+ *   unit     the unit's handle
+ *   group    the visibility group's IdString32
+ *   visible  1 shows, 0 hides
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitSetVisibilityGroup)(uint32_t unit, uint32_t group, uint32_t visible);
+static inline HfFn_UnitSetVisibilityGroup hf_fn_UnitSetVisibilityGroup(HfMod* mod) { return (HfFn_UnitSetVisibilityGroup)hf_function_(mod, "UnitSetVisibilityGroup"); }
+static inline int hf_hook_UnitSetVisibilityGroup(HfMod* mod, HfFn_UnitSetVisibilityGroup detour, HfFn_UnitSetVisibilityGroup* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitSetVisibilityGroup", (void*)detour, (void**)original, priority);
+}
+
+/* UnitCrossfadeAnimation (helldivers2.exe+0x200D80; hook or call). Crossfades a unit's animation player to an animation
+ * and returns the id the binding hands back to Lua. Unit.crossfade_animation calls it..
+ *   unit        the unit's handle
+ *   animation   the animation's IdString64
+ *   layer       the layer (the binding takes it 1-based; 0 when absent)
+ *   blend_time  the crossfade time in seconds (0 when absent)
+ *   s5          loop: 1 loops (Lua's 5th argument, default 1)
+ *   s6          blend type: 1 when Lua's 6th argument is "offset", 0 for "normal" or absent
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef int32_t (*HfFn_UnitCrossfadeAnimation)(uint32_t unit, uint64_t animation, int32_t layer, float blend_time, uint32_t s5, uint32_t s6);
+static inline HfFn_UnitCrossfadeAnimation hf_fn_UnitCrossfadeAnimation(HfMod* mod) { return (HfFn_UnitCrossfadeAnimation)hf_function_(mod, "UnitCrossfadeAnimation"); }
+static inline int hf_hook_UnitCrossfadeAnimation(HfMod* mod, HfFn_UnitCrossfadeAnimation detour, HfFn_UnitCrossfadeAnimation* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitCrossfadeAnimation", (void*)detour, (void**)original, priority);
+}
+
+/* UnitCrossfadeAnimationSetTime (helldivers2.exe+0x201130; hook or call). Sets the play time of a crossfade on a unit's
+ * animation player (its vtable +0x1A8), passing on to 0x561010 with the time as a double.
+ * Unit.crossfade_animation_set_time calls it..
+ *   unit  the unit's handle
+ *   id    the crossfade's id (UnitCrossfadeAnimation)
+ *   time  the time
+ *   r9    not reviewed: pass it on (Lua's optional 4th argument, default 0; given to 0x561010)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitCrossfadeAnimationSetTime)(uint32_t unit, uint32_t id, float time, uint32_t r9);
+static inline HfFn_UnitCrossfadeAnimationSetTime hf_fn_UnitCrossfadeAnimationSetTime(HfMod* mod) { return (HfFn_UnitCrossfadeAnimationSetTime)hf_function_(mod, "UnitCrossfadeAnimationSetTime"); }
+static inline int hf_hook_UnitCrossfadeAnimationSetTime(HfMod* mod, HfFn_UnitCrossfadeAnimationSetTime detour, HfFn_UnitCrossfadeAnimationSetTime* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitCrossfadeAnimationSetTime", (void*)detour, (void**)original, priority);
+}
+
+/* UnitCopySceneGraphLocalFrom (helldivers2.exe+0x204880; hook or call). Copies another unit's scene graph local poses
+ * onto a unit. Unit.copy_scene_graph_local_from calls it..
+ *   unit    the unit's handle
+ *   source  the handle of the unit whose local poses are copied
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitCopySceneGraphLocalFrom)(uint32_t unit, uint32_t source);
+static inline HfFn_UnitCopySceneGraphLocalFrom hf_fn_UnitCopySceneGraphLocalFrom(HfMod* mod) { return (HfFn_UnitCopySceneGraphLocalFrom)hf_function_(mod, "UnitCopySceneGraphLocalFrom"); }
+static inline int hf_hook_UnitCopySceneGraphLocalFrom(HfMod* mod, HfFn_UnitCopySceneGraphLocalFrom detour, HfFn_UnitCopySceneGraphLocalFrom* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitCopySceneGraphLocalFrom", (void*)detour, (void**)original, priority);
+}
+
+/* UnitSetBonesLod (helldivers2.exe+0x202D30; hook or call). Sets a unit's animation bones LOD. Unit.set_bones_lod calls
+ * it..
+ *   unit  the unit's handle
+ *   lod   the bones LOD level
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitSetBonesLod)(uint32_t unit, int32_t lod);
+static inline HfFn_UnitSetBonesLod hf_fn_UnitSetBonesLod(HfMod* mod) { return (HfFn_UnitSetBonesLod)hf_function_(mod, "UnitSetBonesLod"); }
+static inline int hf_hook_UnitSetBonesLod(HfMod* mod, HfFn_UnitSetBonesLod detour, HfFn_UnitSetBonesLod* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitSetBonesLod", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationFindConstraintTarget (helldivers2.exe+0x202EA0; hook or call). The index of a named constraint target in
+ * a unit's animation state machine (the binding adds the Lua index base). Unit.animation_find_constraint_target calls
+ * it..
+ *   unit  the unit's handle
+ *   name  the constraint target's IdString32
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef int32_t (*HfFn_UnitAnimationFindConstraintTarget)(uint32_t unit, uint32_t name);
+static inline HfFn_UnitAnimationFindConstraintTarget hf_fn_UnitAnimationFindConstraintTarget(HfMod* mod) { return (HfFn_UnitAnimationFindConstraintTarget)hf_function_(mod, "UnitAnimationFindConstraintTarget"); }
+static inline int hf_hook_UnitAnimationFindConstraintTarget(HfMod* mod, HfFn_UnitAnimationFindConstraintTarget detour, HfFn_UnitAnimationFindConstraintTarget* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationFindConstraintTarget", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationSetConstraintTargetPosition (helldivers2.exe+0x203120; hook or call). Sets an animation constraint
+ * target from a position. Unit.animation_set_constraint_target calls it when given a Vector3..
+ *   unit      the unit's handle
+ *   index     the target's index (UnitAnimationFindConstraintTarget)
+ *   position  x, y, z
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_UnitAnimationSetConstraintTargetPosition)(uint32_t unit, int32_t index, const float* position);
+static inline HfFn_UnitAnimationSetConstraintTargetPosition hf_fn_UnitAnimationSetConstraintTargetPosition(HfMod* mod) { return (HfFn_UnitAnimationSetConstraintTargetPosition)hf_function_(mod, "UnitAnimationSetConstraintTargetPosition"); }
+static inline int hf_hook_UnitAnimationSetConstraintTargetPosition(HfMod* mod, HfFn_UnitAnimationSetConstraintTargetPosition detour, HfFn_UnitAnimationSetConstraintTargetPosition* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationSetConstraintTargetPosition", (void*)detour, (void**)original, priority);
+}
+
+/* LightSync (helldivers2.exe+0x50BF90; hook or call). Queues a render command (0x80 bytes) with a light's current
+ * settings; every Light setter writes its field and then calls it (Light.set_color, set_intensity, set_falloff_end,
+ * set_casts_shadows...)..
+ *   light  the light (Unit.light): +0x08 its render interface, +0x20 colour r, g, b, +0x2C intensity, +0x34 falloff
+ *          end, +0x60 flags (bit 1 disabled)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LightSync)(void* light);
+static inline HfFn_LightSync hf_fn_LightSync(HfMod* mod) { return (HfFn_LightSync)hf_function_(mod, "LightSync"); }
+static inline int hf_hook_LightSync(HfMod* mod, HfFn_LightSync detour, HfFn_LightSync* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LightSync", (void*)detour, (void**)original, priority);
+}
+
+/* LightSetEnabled (helldivers2.exe+0x50BE10; hook or call). Turns a light on or off, syncs it (LightSync) and tells the
+ * renderer's light list. Light.set_enabled calls it..
+ *   light    the light
+ *   enabled  1 on, 0 off (clears or sets bit 1 of +0x60)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_LightSetEnabled)(void* light, uint8_t enabled);
+static inline HfFn_LightSetEnabled hf_fn_LightSetEnabled(HfMod* mod) { return (HfFn_LightSetEnabled)hf_function_(mod, "LightSetEnabled"); }
+static inline int hf_hook_LightSetEnabled(HfMod* mod, HfFn_LightSetEnabled detour, HfFn_LightSetEnabled* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "LightSetEnabled", (void*)detour, (void**)original, priority);
+}
+
+/* WorldDestroyLevel (helldivers2.exe+0x338960; hook or call). Destroys a level: flushes the world's pending unit queues
+ * (0x12D600) when needed, takes the level out of the world's list and frees it. World.destroy_level calls it..
+ *   world  the world: +0x230588 its level count, +0x230590 the levels
+ *   level  the level (World.load_level's)
+ *   r8     not reviewed: pass it on (the binding passes 1; non-zero also calls the renderer's 0x108780)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldDestroyLevel)(void* world, void* level, uint32_t r8);
+static inline HfFn_WorldDestroyLevel hf_fn_WorldDestroyLevel(HfMod* mod) { return (HfFn_WorldDestroyLevel)hf_function_(mod, "WorldDestroyLevel"); }
+static inline int hf_hook_WorldDestroyLevel(HfMod* mod, HfFn_WorldDestroyLevel detour, HfFn_WorldDestroyLevel* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldDestroyLevel", (void*)detour, (void**)original, priority);
+}
+
+/* WorldDestroyPrefab (helldivers2.exe+0x338D60; hook or call). Destroys a prefab the world loaded, the same way
+ * WorldDestroyLevel does a level. World.destroy_prefab calls it..
+ *   world   the world
+ *   prefab  the prefab (World.load_prefab's)
+ *   r8      not reviewed: pass it on (the binding passes 1)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldDestroyPrefab)(void* world, void* prefab, uint32_t r8);
+static inline HfFn_WorldDestroyPrefab hf_fn_WorldDestroyPrefab(HfMod* mod) { return (HfFn_WorldDestroyPrefab)hf_function_(mod, "WorldDestroyPrefab"); }
+static inline int hf_hook_WorldDestroyPrefab(HfMod* mod, HfFn_WorldDestroyPrefab detour, HfFn_WorldDestroyPrefab* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldDestroyPrefab", (void*)detour, (void**)original, priority);
+}
+
+/* WorldPlayCameraShake (helldivers2.exe+0x337810; hook or call). Plays a camera shake at a world position and returns
+ * its id. World.play_camera_shake calls it..
+ *   world     the world: +0x2308C0 its camera shake manager
+ *   shake     the camera shake's IdString64
+ *   position  where it happens, x, y, z
+ *   near      Lua's 4th argument (Stingray: the distance of full effect)
+ *   s5        Lua's 5th argument (Stingray: the distance of no effect)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef int32_t (*HfFn_WorldPlayCameraShake)(void* world, uint64_t shake, const float* position, float near, float s5);
+static inline HfFn_WorldPlayCameraShake hf_fn_WorldPlayCameraShake(HfMod* mod) { return (HfFn_WorldPlayCameraShake)hf_function_(mod, "WorldPlayCameraShake"); }
+static inline int hf_hook_WorldPlayCameraShake(HfMod* mod, HfFn_WorldPlayCameraShake detour, HfFn_WorldPlayCameraShake* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldPlayCameraShake", (void*)detour, (void**)original, priority);
+}
+
+/* WorldStopCameraShake (helldivers2.exe+0x22D8A0; hook or call). Stops a playing camera shake. World.stop_camera_shake
+ * calls it..
+ *   shakes  the world's camera shake manager (world +0x2308C0)
+ *   id      the shake's id (WorldPlayCameraShake)
+ *   r8      not reviewed: pass it on (Lua's optional 3rd argument)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldStopCameraShake)(void* shakes, int32_t id, uint8_t r8);
+static inline HfFn_WorldStopCameraShake hf_fn_WorldStopCameraShake(HfMod* mod) { return (HfFn_WorldStopCameraShake)hf_function_(mod, "WorldStopCameraShake"); }
+static inline int hf_hook_WorldStopCameraShake(HfMod* mod, HfFn_WorldStopCameraShake detour, HfFn_WorldStopCameraShake* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldStopCameraShake", (void*)detour, (void**)original, priority);
+}
+
+/* WorldUpdateAnimations (helldivers2.exe+0x1B0670; hook or call). Runs a world's animation update for a time step.
+ * World.update_animations, update_animations_with_callback and update_with_callback call it..
+ *   world  the world
+ *   dt     the time step (default EngineCore +0x560)
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_WorldUpdateAnimations)(void* world, float dt);
+static inline HfFn_WorldUpdateAnimations hf_fn_WorldUpdateAnimations(HfMod* mod) { return (HfFn_WorldUpdateAnimations)hf_function_(mod, "WorldUpdateAnimations"); }
+static inline int hf_hook_WorldUpdateAnimations(HfMod* mod, HfFn_WorldUpdateAnimations detour, HfFn_WorldUpdateAnimations* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "WorldUpdateAnimations", (void*)detour, (void**)original, priority);
+}
+
+/* GuiManagerDestroyGui (helldivers2.exe+0x273110; hook or call). Destroys a gui (World.create_screen_gui or
+ * create_world_gui's). World.destroy_gui calls it..
+ *   guis  the world's gui manager (world +0x230890)
+ *   gui   the gui
+ * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
+typedef void (*HfFn_GuiManagerDestroyGui)(void* guis, void* gui);
+static inline HfFn_GuiManagerDestroyGui hf_fn_GuiManagerDestroyGui(HfMod* mod) { return (HfFn_GuiManagerDestroyGui)hf_function_(mod, "GuiManagerDestroyGui"); }
+static inline int hf_hook_GuiManagerDestroyGui(HfMod* mod, HfFn_GuiManagerDestroyGui detour, HfFn_GuiManagerDestroyGui* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "GuiManagerDestroyGui", (void*)detour, (void**)original, priority);
 }
 
 #endif
