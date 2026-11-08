@@ -15,8 +15,8 @@
  * - Online: the job position is the point snapped to the navmesh (0xA13520), and the squad repaths at once:
  *   0x5B36C0(_, squad, point) stores it at nav +0x60 and sets the repath byte +0x90 (P; it looks the squad up in the
  *   navigation component [game+0x3326418] without a miss check, so the loader checks the hash first). Within
- *   LW_HEAR_NEAR of the point each member is told: 0x888E50(NULL, member, source, point, 40.0) writes the hearing entry
- *   a player's shot writes, so the awareness update runs the game's own investigation (alert 2, behaviour state 7, a
+ *   LW_HEAR_NEAR of the point each member is told: 0x888E50(NULL, its awareness detector (Behavior +0x68, LwAwareDetector),
+ *   source, point, 40.0) writes the hearing entry a player's shot writes, so the awareness update runs the game's own investigation (alert 2, behaviour state 7, a
  *   point 3-9 m around the centre) and returns the member to its squad after its settings' timer. The intent ends when
  *   every member is back at alert 0 (at least 10 s after) or after 90 s; a member at alert 3 or more ends it at once
  *   (the fight is the game's). */
@@ -147,12 +147,23 @@ static int LwIntentGoal(LwSquad* q)
     if (q->intentStage == 0) { q->intentSent = 1; if (!LwSquadGoTo(q, q->target)) LwIntentEnd(q, "no navmesh at the point"); }
     return 1;
 }
+/* The detector the awareness update reads for a unit: [Behavior record + 0x68] (0x7ECF70 returns [game+0x3326740] +0x60
+ * records + 0x1F8 idx + 8, and 0x7EB262 reads +0x60 from it; the record it compares is that id's, 0x7EB2C0). The game's
+ * ears report to it too (the dispatch passes the ear's detector entity to 0x888E50, 0x64AE81). It is a separate entity
+ * (lw103a: always the member's id - 1), not the unit, so the hearing write goes to it. 0 when not found. */
+static uint32_t LwAwareDetector(uint32_t unit)
+{
+    uintptr_t beh = 0, recs = 0; uint32_t bi = 0, det;
+    if (!EvpPtr(g_lw.game + 0x3326740u, &beh) || !EvpHash(beh + 0x40, unit, 8, 4, &bi) || !EvpPtr(beh + 0x60, &recs)) return 0;
+    det = EvpU32(recs + 0x1F8ull * bi + 0x68, 0);
+    return det == EvpU32(g_lw.game + 0x3483C4Cu, 0xFFFFFFFFu) ? 0 : det;
+}
 /* What 0x888E50 left for the first member (the write's own exits: the member not in the detector hash [game+0x3326548]
  * +0x30, its entity flag +0x14 bit 0 clear, the source's tag bit 25 from 0x4A9710 (Tags [game+0x3326430] hash +0x18,
  * values [+0x38] + 8 idx), the source not in the faction registry (then slot 0 +0x1228, which the awareness update
  * never reads)); the entry in the hostile list (+0x310 count, +0x318 + 0x50 i: +0 source, +0x20 heard time, +0x38
  * hearing, +0x48 flags) is what the awareness update compares with the settings' +0x2BC (0x7EB694). */
-static void LwHearReadBack(const LwSquad* q, uint32_t member, uint32_t source)
+static void LwHearReadBack(const LwSquad* q, uint32_t member, uint32_t source) /* member: the detector entity written */
 {
     uintptr_t det = 0, recs = 0, ents = 0, ent = 0, tags = 0, tagv = 0; uint32_t di = 0, ti = 0; uint64_t tag = 0;
     int inHash = EvpPtr(g_lw.game + 0x3326548u, &det) && EvpHash(det + 0x30, member, 8, 4, &di) && EvpPtr(det + 0x50, &recs);
@@ -196,8 +207,8 @@ static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const flo
         uint32_t source = q->intentSource;
         if (!LwPlayerSide(source)) { source = 0; for (int i = 0; i < g_lwWorld.playersAt && !source; i++) if (LwPlayerSide(g_lwWorld.avatars[i])) source = g_lwWorld.avatars[i]; }
         int told = 0;
-        if (source) for (int k = 0; k < n; k++) { ((HearFn)(g_lw.game + 0x888E50u))(NULL, members[k], source, q->target, 40.0f); told++; }
-        LwHearReadBack(q, members[0], source);
+        if (source) for (int k = 0; k < n; k++) { uint32_t det = LwAwareDetector(members[k]); if (det) { ((HearFn)(g_lw.game + 0x888E50u))(NULL, det, source, q->target, 40.0f); told++; } }
+        LwHearReadBack(q, LwAwareDetector(members[0]), source);
         g_lwHear.told += (uint32_t)told;
         q->intentStage = 1; q->intentStageAt = now; q->intentPeak = 0; q->intentPeakAt = 0;
         /* the awareness update's gates before the hearing test (0x7EB000): AiEnemy +0xE4 bits 0x2 / 0x4 / 0x8 / 0x20 take
