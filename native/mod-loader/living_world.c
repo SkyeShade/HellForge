@@ -2708,7 +2708,7 @@ static void LwTestGarrisons(int seq)
     }
 }
 
-static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32_t* u, uint32_t n);
+static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, uintptr_t l, uintptr_t points, const uint32_t* u, uint32_t n);
 static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t r, uintptr_t l, uintptr_t points, uint32_t n, const uint32_t* u, uint8_t active, uint8_t refill);
 static void LwGarrisonsTick(void)
 {

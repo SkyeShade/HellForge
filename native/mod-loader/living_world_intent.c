@@ -735,7 +735,7 @@ static void LwRetakeGarrison(LwGarrison* g, uintptr_t d, uintptr_t s, uintptr_t 
     if (!g->retake) return;
     if (active && g->lastRefill && !refill) g->fillAt = now + 5000; /* the refill path ran (it zeroes the flag after the fill, 0x91229D) */
     g->lastRefill = refill;
-    if (g->fillAt && now >= g->fillAt) { g->fillAt = 0; LwRetakeFilled(g, d, r, u, n); }
+    if (g->fillAt && now >= g->fillAt) { g->fillAt = 0; LwRetakeFilled(g, d, r, l, points, u, n); }
     uint32_t owed = 0;
     for (uint32_t p = 0; p < n; p++) owed += (g->allow[p / 32] & u[p / 32] & (1u << (p % 32))) != 0;
     if (!active && !refill) /* after a despawn (players left): cleared garrisons never fill on activation, so arm it again */
@@ -854,7 +854,7 @@ static int LwRetakeApply(LwSquad* q, LwGarrison* g)
     uint32_t allow[3] = {0, 0, 0}, restore[3] = {0, 0, 0}; int k = q->survivors, chosen = 0, fresh = 0, owed = 0, killed = 0, unfit = 0;
     float budget = 0; int64_t masks = LwFillMasks(d, &budget, NULL, 0); /* -1: unread, every point may open (the fill check returns what does not appear) */
     /* killed points first: the fill made units there before (lw108a, lw109b: 9 of 9 filled again); then never filled with U
-     * set; points filled with U set and never killed last (lw113c: 0 of 9 filled; why is open) */
+     * set; owed points last: their pick was refused before (a per-type cap in a busy update, KB living-world-p2-retake) */
     for (int pass = 0; pass < 3 && chosen < k; pass++)
         for (uint32_t p = 0; p < n && chosen < k; p++)
         {
@@ -1033,6 +1033,8 @@ static void LwRetakeReturn(LwGarrison* g, int missing)
 {
     int node = LwNearestNode(g->center[0], g->center[1]), slot = -1;
     for (int i = 0; i < g_lwWorld.count && slot < 0; i++) if (g_lwSquads[i].state == LW_FREE) slot = i;
+    /* a vanilla map places few squads and none may have died (lw114a: 13 of 13 in use); the table has room past them */
+    if (slot < 0 && node >= 0 && g->absorbedDef && g_lwWorld.count < LW_SQUADS_MAX) slot = g_lwWorld.count++;
     if (node < 0 || slot < 0 || !g->absorbedDef)
     {
         Note("living world: retaken garrison %08X: %d of its units did not appear at the fill and cannot return (%s)", g->entity, missing, node < 0 ? "no route node" : slot < 0 ? "no free squad slot" : "no group");
@@ -1047,7 +1049,7 @@ static void LwRetakeReturn(LwGarrison* g, int missing)
         (double)q->pos[0], (double)q->pos[1]);
 }
 /* 5 s after a retaken garrison filled (LwGarrisonsTick): its living units by point, against the points the retake opened */
-static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32_t* u, uint32_t n)
+static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, uintptr_t l, uintptr_t points, const uint32_t* u, uint32_t n)
 {
     uint32_t at[3]; int living = LwGarrisonLiving(EvpU32(d + 0x10, 0x7FFFu), at), inside = 0, outside = 0, opened = 0, owed = 0;
     if (LwTestTraceOn()) /* test runs: the values that decide an empty fill (lw113c), at each fill */
@@ -1074,10 +1076,19 @@ static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32
     if (missing > pending) missing = pending;
     if (missing > 0 && g->fillTries < 2 && LwPlayerWithin(g->center, 150.0f)) /* a gate of that moment (a type cap, the room) may pass on another fill */
     {
+        /* 0x90D2A0 takes the point (0x40 at 0x90D46A) before a per-type cap or the queue can refuse it, and a refill skips
+         * taken points (0x90E417, 0x340 tests), so an empty owed point retries only once it is open again (lw114a) */
+        int reopened = 0;
+        for (uint32_t p = 0; p < n; p++)
+        {
+            uint32_t bit = 1u << (p % 32), w = p / 32, gi = EvpU32(l + 0x28 + 4u * p, 0xFFFFFFFFu), flags = 0;
+            if (!(g->allow[w] & u[w] & bit) || (at[w] & bit) || gi >= 0x100000 || SafeRead(points + 0x58u * gi + 0x24, &flags, 4) || !(flags & 0x40)) continue;
+            flags &= ~0x40u; reopened += !LwPoke(points + 0x58u * gi + 0x24, &flags, 4);
+        }
         uint8_t one = 1;
-        if (!LwPoke(r + 0x1B4F, &one, 1)) { g->fillTries++; g->lastRefill = 1; /* the game may take the flag before the next read */ Note("living world: retaken garrison %08X: %d units missing after the fill; refill armed again (%u of 2)", g->entity, missing, g->fillTries); return; }
+        if (!LwPoke(r + 0x1B4F, &one, 1)) { g->fillTries++; g->lastRefill = 1; /* the game may take the flag before the next read */ Note("living world: retaken garrison %08X: %d units missing after the fill; %d empty points opened again, refill armed again (%u of 2)", g->entity, missing, reopened, g->fillTries); return; }
     }
-    if (living >= 0) for (int w = 0; w < 3; w++) g->allow[w] &= at[w]; /* an opened point the fill left empty (no group fits it, or the 70 room) is not owed later */
+    if (living >= 0) for (int w = 0; w < 3; w++) g->allow[w] &= at[w]; /* an opened point the fill left empty (a type cap, the room) is not owed later */
     g->absorbed = 0;
     if (missing > 0) LwRetakeReturn(g, missing);
 }
