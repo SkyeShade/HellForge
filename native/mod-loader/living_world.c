@@ -2481,7 +2481,7 @@ static void LwSquadsTick(void)
                 g_lwWorld.goals, g_lwWorld.goalNoFace, g_lwWorld.goalReplans, g_lwWorld.goalStuck);
         g_lwWorld.goals = g_lwWorld.goalNoFace = g_lwWorld.goalReplans = g_lwWorld.goalStuck = 0;
         LwNavTypeDump(); /* test (HELLFORGE_LW_TEST_NAV=1): agent types and obstacle areas, twice a level */
-        { LONG spared = InterlockedExchange(&g_lwSpared, 0); if (spared) Note("living world: obstacle smashes (30 s): %ld squad-mate targets spared", (long)spared); }
+        { LONG spared = InterlockedExchange(&g_lwSpared, 0); if (spared) Note("living world: obstacle smashes (30 s): squad mates kept out of the zones %ld times (a mate is tested again every frame of a zone)", (long)spared); }
         if (g_lwWorld.heights)
             Note("living world: ground (30 s): %u member positions, %u more than 1.5 m under the drawn ground (worst %.1f m), %u more than 3 m over it (worst %.1f m)",
                 g_lwWorld.heights, g_lwWorld.underGround, (double)g_lwWorld.worstUnder, g_lwWorld.overGround, (double)g_lwWorld.worstOver);
