@@ -11,7 +11,7 @@ namespace HellForge.Core.GameData;
 //   copy     a game resource under the mod's own name, optionally edited: references replaced, colour curves,
 //            material colours, a colour lookup texture recoloured;
 //   include  game resources unchanged under their own names (what a copy needs loaded with it);
-//   icon, texture  a stratagem icon (texture and GUI material) or a texture (TextureImage) from PNGs in the mod folder.
+//   icon, texture, sounds  a stratagem icon, a texture (TextureImage) or a sound bank (SoundBank) from the mod's files.
 // A copy or include reads the player's game copy, or with "source": "steam" the newer build of the player's own Steam install,
 // or with "source": {"build": ...} a past build's (cut content), fetched from Steam once (BuildResources). An include from Steam or a past build must be new to the copy.
 //   mesh     (on a unit copy) the mod's own geometry from an OBJ in the mod folder, in every render and shadow mesh.
@@ -49,6 +49,9 @@ public sealed record AnimationsResource(string Where, string File, string Unit) 
 // weapons' own), and optionally a game unit whose physics it takes under its name and one whose animations it plays.
 public sealed record ModelResource(string Where, string Name, string File, IReadOnlyDictionary<string, ulong> Materials, IReadOnlyList<double>? LodSizes,
     ulong? Physics, ulong? AnimationsFrom) : DataResource(Where);
+// A sound bank of the mod's own: its events from WAVs in the mod folder, under a copy of a game bank's root mixer.
+public sealed record SoundsResource(string Where, string Name, IReadOnlyList<SoundFile> Sounds, ulong MixerBank, uint Mixer) : DataResource(Where);
+public sealed record SoundFile(string Event, string Wav, double Gain);
 public sealed record Replacement(ulong From, ulong To, IReadOnlyList<int>? At);
 // Warm colour curve keys recoloured by a preset or towards a colour; Keys, if given, is how many keys must change.
 public sealed record CurveEdit(string? Preset, double[]? Colour, int? Keys);
@@ -70,6 +73,9 @@ public static partial class DataSpecs
     [GeneratedRegex("^0x[0-9A-Fa-f]{1,8}$")]
     private static partial Regex Hash32();
 
+    [GeneratedRegex("^[A-Za-z0-9_]{1,100}$")]
+    private static partial Regex EventName();
+
     [GeneratedRegex("^#[0-9A-Fa-f]{6}$")]
     private static partial Regex HexColour();
 
@@ -77,7 +83,7 @@ public static partial class DataSpecs
     // reviewed for it: a unit's mesh (and its physics), a material's colours and textures, a texture's colour lookup, an effect's
     // colour curves. An include also takes the game's sound banks: it adds the game's own bytes unchanged.
     static readonly HashSet<ulong> CopiedTypes = [ResourceTypes.Unit, ResourceTypes.Material, ResourceTypes.Texture, ResourceTypes.Particles];
-    static readonly HashSet<ulong> IncludedTypes = [.. CopiedTypes, ResourceTypes.Hash("wwise_bank"), ResourceTypes.Hash("wwise_dep")];
+    static readonly HashSet<ulong> IncludedTypes = [.. CopiedTypes, ResourceTypes.WwiseBank, ResourceTypes.WwiseDependency];
 
     // Whether HellForge checks everything the spec builds, so mod sync may take it from any host: no "replace" (it writes
     // any 8 bytes over any value at any offset), only the types above (never lua), and each edit only on its own type.
@@ -183,8 +189,8 @@ public static partial class DataSpecs
     static DataResource Resource(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{at}: a resource is an object.");
-        var kinds = new[] { "copy", "include", "icon", "texture", "animations", "model" }.Where(k => e.TryGetProperty(k, out _)).ToList();
-        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon, texture, animations or model.");
+        var kinds = new[] { "copy", "include", "icon", "texture", "animations", "model", "sounds" }.Where(k => e.TryGetProperty(k, out _)).ToList();
+        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon, texture, animations, model or sounds.");
         switch (kinds[0])
         {
             case "include": return ReadInclude(e, at);
@@ -192,6 +198,7 @@ public static partial class DataSpecs
             case "texture": return ReadTexture(e, at, folder, inputs);
             case "animations": return ReadAnimations(e, at, folder, inputs);
             case "model": return ReadModel(e, at, folder, inputs);
+            case "sounds": return ReadSounds(e, at, folder, inputs);
         }
         return ReadCopy(e, at, folder, inputs);
     }
@@ -254,6 +261,31 @@ public static partial class DataSpecs
                 : name.Length > 0 ? TextureImage.Category(name) : throw new InvalidDataException($"{at}: category is a name, such as normal, or 0x<8 hex digits>.");
         }
         return new TextureResource(at, Name(e, at), pngs, format, category);
+    }
+
+    static SoundsResource ReadSounds(JsonElement e, string at, string? folder, ISet<string> inputs)
+    {
+        Fields(e, at, "sounds", "name", "mixer_bank", "mixer");
+        var sounds = Items(e, "sounds", at).Select((s, i) => ReadSound(s, $"{at}.sounds[{i}]", folder, inputs)).ToList();
+        if (sounds.Count == 0) throw new InvalidDataException($"{at}: sounds lists no sounds.");
+        var mixer = Text(e, "mixer", at);
+        if (!Hash32().IsMatch(mixer)) throw new InvalidDataException($"{at}: mixer is a root actor-mixer of mixer_bank, 0x<8 hex digits>.");
+        return new SoundsResource(at, Name(e, at), sounds, Id(Property(e, "mixer_bank", at), $"{at}.mixer_bank"),
+            uint.Parse(mixer[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture));
+    }
+
+    static SoundFile ReadSound(JsonElement s, string at, string? folder, ISet<string> inputs)
+    {
+        Fields(s, at, "event", "wav", "gain");
+        var name = Text(s, "event", at);
+        if (!EventName().IsMatch(name)) throw new InvalidDataException($"{at}: event is a name of letters, digits and _ (up to 100), prefixed with yours.");
+        var wav = Text(s, "wav", at).Replace('\\', '/');
+        if (!InModFolder(wav) || !wav.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException($"{at}: wav is a .wav file in the mod folder.");
+        if (folder != null && !File.Exists(Path.Combine(folder, wav))) throw new InvalidDataException($"{at}: {wav} is missing.");
+        inputs.Add(wav);
+        var gain = s.TryGetProperty("gain", out var g) && g.ValueKind == JsonValueKind.Number ? g.GetDouble() : s.TryGetProperty("gain", out _) ? double.NaN : 0;
+        if (!double.IsFinite(gain) || gain is < -96 or > 24) throw new InvalidDataException($"{at}: gain is a number of dB, -96 to 24.");
+        return new SoundFile(name, wav, gain);
     }
 
     static ModelResource ReadModel(JsonElement e, string at, string? folder, ISet<string> inputs)

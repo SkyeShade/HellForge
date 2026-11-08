@@ -1571,6 +1571,16 @@ static inline int hf_set_field_(HfMod* mod, HfRef entity, HfField field, HfValue
 #define hf_tag(mod, entity, tag, present) HF_API(mod)->set_tag((mod), (entity), (tag), (present))
 #define hf_mount(mod, entity, slot, carried) HF_API(mod)->mount((mod), (entity), (slot), (carried))
 
+/* A Wwise event's id from its name (FNV-1 of the lower-case name): an event of the mod's data spec "sounds", for the
+ * record fields that name sound events, such as hf_set(mod, rifle, ProjectileWeapon, fire_single_audio_event,
+ * HF_U32(hf_wwise_id("yourname_rifle_fire"))). */
+static inline uint32_t hf_wwise_id(const char* name)
+{
+    uint32_t h = 2166136261u;
+    for (; *name; name++) h = (h * 16777619u) ^ (uint32_t)(uint8_t)(*name >= 'A' && *name <= 'Z' ? *name + 32 : *name);
+    return h;
+}
+
 /* set_live's flags. */
 #define HF_LIVE_SHARED 0x1u /* the target's record may be one other entities share */
 #define HF_LIVE_BASE 0x2u   /* with value NULL: back to the field's base (get_live), not just to the value from before
