@@ -163,7 +163,7 @@ static void LwRushMembers(LwSquad* q, const uint32_t* members, int n, int on)
         if (settings) ((StateSpeedFn)(g_lw.game + 0x7F0180u))(mgr, members[k], settings + (LwAlert(members[k]) >= 3 ? 0x64 : 0x24));
         done++;
     }
-    q->rushed = (uint8_t)(on && done > 0);
+    q->rushed = (uint8_t)(on && done > 0); q->rushedN = (uint8_t)(on ? done : 0);
     if (on && done) Note("living world: squad %d runs to the fight at %.2f m/s (%d members)", (int)(q - g_lwSquads), (double)pace, done);
 }
 /* its fight still on: the slot is live and not reused since (a fight born after the squad was sent is another one) */
@@ -322,7 +322,8 @@ static void LwReinforceOnline(LwSquad* q, const uint32_t* members, int n, const 
     if (q->intentStage == 0)
     {
         if (!q->intentSent && q->jobSet) { q->intentSent = 1; if (!LwSquadGoTo(q, q->target)) { LwIntentEnd(q, "no navmesh at the point"); return; } }
-        if (q->intentSent && !q->rushed && !engaged) LwRushMembers(q, members, n, 1);
+        /* members come online over several ticks (lw113f: 2 of 9 listed on the first): the newly listed run too */
+        if (q->intentSent && !engaged && (!q->rushed || n > q->rushedN)) LwRushMembers(q, members, n, 1);
         if (LwFightOf(q) && now >= q->retargetAt && LwDist2(g_lwFights[q->fight].pos, q->target[0], q->target[1]) > 30.0f * 30.0f) /* the fight moved */
         { memcpy(q->target, g_lwFights[q->fight].pos, sizeof q->target); q->retargetAt = now + 10000; if (q->jobSet) LwSquadGoTo(q, q->target); }
         int there = LwDist2(at, q->target[0], q->target[1]) <= LW_FIGHT_JOIN * LW_FIGHT_JOIN;
@@ -970,7 +971,7 @@ static void LwTestClear(int seq, uint32_t entity)
     for (int i = 0; i < g_lwGarrisonCount; i++)
     {
         LwGarrison* g = &g_lwGarrisons[i]; uint8_t active = 0;
-        if ((entity && g->entity != entity) || !g->plainBase || g->cleared || !g->haveCenter || g->index >= EvpU32(gf + 0x10, 0) || SafeRead(synced + 0x40u * g->index + 0x38, &active, 1) || !active ||
+        if ((entity && g->entity != entity) || !g->plainBase || (g->cleared && !g->retake) || !g->haveCenter || g->index >= EvpU32(gf + 0x10, 0) || SafeRead(synced + 0x40u * g->index + 0x38, &active, 1) || !active ||
             EvpU32(runtime + 0x1B58u * g->index + 0x384, 0) == 0) continue;
         float d2 = LwDist2(g_lwWorld.players[0], g->center[0], g->center[1]);
         if (d2 < bd) { bd = d2; best = g; }
@@ -1055,7 +1056,12 @@ static void LwRetakeFilled(LwGarrison* g, uintptr_t d, uintptr_t r, const uint32
     }
     Note("living world: retaken garrison %08X filled: %u units listed, %d living; points with a living unit: %d of the %d opened, %d elsewhere; %d opened points still owed (U set); cleared stays %u",
         g->entity, EvpU32(r + 0x384, 0), living, inside, opened, outside, owed, (unsigned)g->cleared);
+    /* missing = opened points still owed (U set) with no living unit: a fill unit killed before this check has U cleared
+     * by the kill path (0x910527 -> 0x90F9F0) and is not missing (audit 2c, 7) */
+    int pending = 0;
+    for (uint32_t p = 0; p < n; p++) { uint32_t bit = 1u << (p % 32), w = p / 32; pending += (g->allow[w] & u[w] & bit) && !(at[w] & bit); }
     int missing = living >= 0 ? (int)g->absorbed - inside - outside : 0;
+    if (missing > pending) missing = pending;
     if (missing > 0 && g->fillTries < 2 && LwPlayerWithin(g->center, 150.0f)) /* a gate of that moment (a type cap, the room) may pass on another fill */
     {
         uint8_t one = 1;
@@ -1283,6 +1289,23 @@ static int LwIntentHold(LwSquad* q, float nx, float ny)
     }
     q->held = 1;
     return 1;
+}
+/* LwWalk, offline, at the end of its path (or with none): an INVESTIGATE or REINFORCE squad inside the band where no
+ * squad comes online, or whose point lies in it, waits at the band's edge through LwIntentHold with the point as its
+ * next step: inside, it steps back out. One that already reached its point there goes back to walking in (stage 0),
+ * so it comes online at the edge and walks the rest with its online goal (audit 2c, 5: 7 of 16 offline arrivals were
+ * inside 150 m of a player, unseen). 1 = it waits. */
+static int LwIntentInside(LwSquad* q)
+{
+    float rMin = g_lwWorld.rMin > 0 ? g_lwWorld.rMin : LW_R_MIN;
+    if (q->intentStage != 0 && LwNearestPlayer2(q->pos[0], q->pos[1]) < rMin * rMin)
+    {
+        Note("living world: squad %d (%s) is at its point inside the spawn band, %.0f m from the nearest player: it walks in online from the band's edge", (int)(q - g_lwSquads),
+            q->intent == LW_REINFORCE ? "reinforcing" : "investigating", (double)sqrtf(LwNearestPlayer2(q->pos[0], q->pos[1])));
+        q->intentStage = 0; q->intentSent = 0;
+    }
+    if (q->intentStage != 0) return 0;
+    return LwIntentHold(q, q->target[0], q->target[1]);
 }
 
 /* 2 s after "clear garrison": the spawners left and cleared (test notes; called from LwRetakeScan's tick) */

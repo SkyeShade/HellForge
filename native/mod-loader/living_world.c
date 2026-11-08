@@ -490,10 +490,10 @@ typedef struct LwSquad
     uint32_t intentPeak; float intentPeakAt, intentFrom; /* the most members at once at alert 2+ (REINFORCE: 3+) at the point; seconds to the first; m from the point when sent */
     int16_t garrison; /* RETAKE: its g_lwGarrisons index */
     uint16_t home1; /* 2d: its home region + 1 (0 = none yet) */
-    int8_t fight; uint8_t rushed, tells; ULONGLONG retargetAt, tellAt; /* REINFORCE: its fight (g_lwFights index); members sped up (0x7EFFC0); fight target tells; next goal refresh, next tell */
+    int8_t fight; uint8_t rushed, rushedN, tells; ULONGLONG retargetAt, tellAt; /* REINFORCE: its fight (g_lwFights index); members sped up (0x7EFFC0), how many; fight target tells; next goal refresh, next tell */
 } LwSquad;
 static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
-static void LwIntentOffline(LwSquad* q); static int LwIntentHold(LwSquad* q, float nx, float ny); static int LwTerritoryGoalOk(const LwSquad* q, int node); static void LwTerritoryTick(void); static void LwIntentTrace(void); static void LwRetakeScan(void); static void LwTestClear(int seq, uint32_t entity); static void LwRetakeWait(int seq, float s); static void LwRetakeUnfit(int seq); static int64_t LwFillMasks(uintptr_t desc, float* budget, char* trace, size_t traceLen); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
+static void LwIntentOffline(LwSquad* q); static int LwIntentHold(LwSquad* q, float nx, float ny); static int LwIntentInside(LwSquad* q); static int LwTerritoryGoalOk(const LwSquad* q, int node); static void LwTerritoryTick(void); static void LwIntentTrace(void); static void LwRetakeScan(void); static void LwTestClear(int seq, uint32_t entity); static void LwRetakeWait(int seq, float s); static void LwRetakeUnfit(int seq); static int64_t LwFillMasks(uintptr_t desc, float* budget, char* trace, size_t traceLen); static void LwNoiseDrain(void); static void LwHearNote(void); static void LwFightScan(void); static void LwRushNote(void); static void LwTestNoise(int seq, int type, float dx, float dy);
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
 {
@@ -678,6 +678,7 @@ static void LwPopulate(void)
 static void LwWalk(LwSquad* q, float dt)
 {
     if (q->pulled) return;
+    if ((q->intent == LW_INVESTIGATE || q->intent == LW_REINFORCE) && q->pathAt >= q->pathLen && LwIntentInside(q)) return; /* audit 2c, 5 */
     if (q->pathAt >= q->pathLen) { if (LwIntentArrived(q)) return; LwPlan(q); if (q->pathLen == 0) return; }
     float step = q->speed * (q->intent == LW_REINFORCE && q->intentStage == 0 ? LW_RUSH : 1.0f) * dt; /* reinforcements run (Phase 2b) */
     while (step > 0 && q->pathAt < q->pathLen)
