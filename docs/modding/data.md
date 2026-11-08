@@ -165,6 +165,7 @@ keeps the picture's colours and transparency for widgets that draw it as it is (
 `animations` gives a unit copy in the same patch animations of its own from a JSON file in the mod folder:
 `{"animations": "animations/rifle.json", "unit": "yourname/your_mod/rifle"}`. The file lists the joints that move, the
 clips and the state machine that plays them on the weapon's events ([animations](animations.md)).
+
 ### model
 
 `model` builds a unit of your own from a glTF 2.0 file (a `.glb` from Blender) in the mod folder:
