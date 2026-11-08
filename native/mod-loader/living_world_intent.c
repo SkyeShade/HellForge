@@ -11,7 +11,8 @@
  * (table 0x2140320: {range, intensity} per type) x loudness x LW_HEAR_FAR, at most LW_HEAR_MAX. Up to two calm PATROL
  * squads inside the reach, nearest first, turn INVESTIGATE (an online squad within the template's own range hears it
  * natively and is left alone).
- * - Offline: a route path to the node nearest the point; there it searches for 30-60 s, then patrols again.
+ * - Offline: a route path toward the point, then the last leg straight to it (LwIntentLeg); there it searches for
+ *   30-60 s, then patrols again.
  * - Online: the job position is the point snapped to the navmesh (0xA13520), and the squad repaths at once:
  *   0x5B36C0(_, squad, point) stores it at nav +0x60 and sets the repath byte +0x90 (P; it looks the squad up in the
  *   navigation component [game+0x3326418] without a miss check, so the loader checks the hash first). Within
@@ -775,12 +776,13 @@ static int LwGarrisonLiving(uint32_t net, uint32_t* mask)
     }
     return found;
 }
-/* Phase B of the fill 0x90E150 for an enemy garrison (settings 0x505D80(descriptor) mode +0xC == 0; modes 1-3 have no
- * phase-B groups, 0x94BE4F): a group g of dir+0x41138 (0xD8 bytes, count dir+0x51884) can fill an open point
+/* Phase B of the fill 0x90E150 for a garrison whose settings 0x505D80(descriptor) have mode +0xC == 0 (the director's
+ * groups; modes 1-3 below): a group g of dir+0x41138 (0xD8 bytes, count dir+0x51884) can fill an open point
  * ((flags & 0x340) == 0) when 0x94BC80([g+0xA8], difficulty, players, tags) holds, the per-type cap 0x952FF0(dir, g, 1,
  * 2) does not block it, its cost [g+0xD4] fits the budget ([settings] if > 0, else dir+0x518B4 x [settings+4]) and the
  * point's mask +0x28 meets M(g): the type of g's entry 0 resolved by 0x949B80, then 0x510790 (+8) (0x90EB50..0x90EC6C).
- * Returns the union of M over those groups (0: none), with the budget; -1 when unreadable. All five are pure. */
+ * Returns the union of M over those groups (0: none), with the budget; -1 when unknown (mode 1) or unreadable. All five
+ * are pure. */
 static int LwFillPinsOk(void)
 {
     static int ok = -1;
@@ -810,7 +812,11 @@ static int64_t LwFillMasks(uintptr_t desc, float* budget, char* trace, size_t tr
     SafeRead(set, &b, 4); SafeRead(set + 4, &scale, 4); SafeRead(dir + 0x518B4, &base, 4);
     if (!(b > 0)) b = base * scale;
     *budget = b;
-    if (mode != 0) { if (trace) snprintf(trace, traceLen, "mode %u: no phase-B groups", mode); return 0; }
+    /* modes 2 and 3 pass r9d = 0 (0x90E2D6, 0x90E2AE) and the builder 0x94BE10 returns with no group (0x94BEB3); mode 1
+     * builds its groups from roster 0x21CB890 at each fill with random picks (0x90E2EC), so they are not known before it:
+     * every point may open, and the fill check returns what does not appear */
+    if (mode == 2 || mode == 3) { if (trace) snprintf(trace, traceLen, "mode %u: no phase-B groups", mode); return 0; }
+    if (mode != 0) { if (trace) snprintf(trace, traceLen, "mode %u: groups built at the fill", mode); return -1; }
     uint32_t count = EvpU32(dir + 0x51884, 0), diff = EvpU32(dir + 0x518C4, 0), np = EvpU32(players + 0x84, 0), nrows = EvpU32(table + 8, 0);
     int64_t masks = 0; size_t at = 0;
     for (uint32_t k = 0; k < count && k < 64; k++)
