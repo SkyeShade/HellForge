@@ -464,6 +464,7 @@ static uintptr_t LwSlotOf(uintptr_t dir, uintptr_t def)
 #define LW_SPEED_DEFAULT 2.0f /* m/s until a squad's own walking speed was seen online (D) */
 #define LW_RESERVE 12u        /* the 70 room's share kept for garrison top-ups and SEAF (KB "Spawn gates and the online budget") */
 enum { LW_FREE, LW_OFFLINE, LW_PENDING, LW_ONLINE };
+enum { LW_PATROL = 0, LW_INVESTIGATE = 1 }; /* a squad's intent (Phase 2, living_world_intent.c) */
 typedef struct LwSquad
 {
     uint8_t state, survivors, cap, jobSet, pathLen, pathAt;
@@ -483,7 +484,11 @@ typedef struct LwSquad
     uint32_t groundId[32]; float groundAt[32][3]; /* each member's last 5 s sample on the ground (the fall note) */
     float band; uint32_t bandGen; uintptr_t bandDef; /* LwSquadBand's cache */
     uint8_t pulled;                 /* 2: held in place by the test stage until it comes online (the only value) */
+    uint8_t intent, intentStage, intentSent; /* Phase 2 (living_world_intent.c): LW_PATROL / LW_INVESTIGATE; 1 = at the point; goal sent online */
+    float target[3]; uint32_t intentSource, intentSearch; ULONGLONG intentAt, intentStageAt, intentFree;
 } LwSquad;
+static int LwIntentArrived(LwSquad* q); static int LwIntentGoal(LwSquad* q); static void LwIntentOnline(LwSquad* q, const uint32_t* members, int n, const float* at);
+static void LwIntentOffline(LwSquad* q); static void LwNoiseDrain(void); static void LwHearNote(void);
 static LwSquad g_lwSquads[LW_SQUADS_MAX];
 static struct
 {
@@ -666,7 +671,7 @@ static void LwPopulate(void)
 static void LwWalk(LwSquad* q, float dt)
 {
     if (q->pulled) return;
-    if (q->pathAt >= q->pathLen) { LwPlan(q); if (q->pathLen == 0) return; }
+    if (q->pathAt >= q->pathLen) { if (LwIntentArrived(q)) return; LwPlan(q); if (q->pathLen == 0) return; }
     float step = q->speed * dt;
     while (step > 0 && q->pathAt < q->pathLen)
     {
@@ -1303,6 +1308,7 @@ static int LwNodeHasFace(int node)
 
 static void LwSendGoal(LwSquad* q)
 {
+    if (LwIntentGoal(q)) return; /* an intent picks the destination (Phase 2) */
     if (q->pathAt >= q->pathLen) LwPlan(q);
     if (q->pathAt >= q->pathLen || LwJobRecord(q->squad) == 0 || LwSquadRecord(q->squad) == 0) return;
     if (!LwNodeHasFace(q->path[q->pathAt])) /* the next node has no navmesh: another destination whose next node has */
@@ -1510,6 +1516,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
         }
     }
     q->pos[0] = at[0]; q->pos[1] = at[1];
+    LwIntentOnline(q, members, n, at);
     /* test instrument (HELLFORGE_LW_TEST_TRACE=1): once per squad, when its leader is within 120 m of a player and that
      * player's eye sees its chest (the sight ray), a note for a screenshot aimed at it */
     static int testView = -1;
@@ -1528,7 +1535,7 @@ static void LwOnlineTick(LwSquad* q, int* removals)
                     (double)lead[1], (double)lead[2], (double)sqrtf(LwDist2(g_lwWorld.players[i], lead[0], lead[1])), i + 1, n, q->lost, q->farOn ? " (by sightline)" : "");
             }
         }
-    if (q->pathAt < q->pathLen && LwDist2(at, g_lwNodes[q->path[q->pathAt]].x, g_lwNodes[q->path[q->pathAt]].y) < LW_ARRIVE * LW_ARRIVE)
+    if (q->intent == LW_PATROL && q->pathAt < q->pathLen && LwDist2(at, g_lwNodes[q->path[q->pathAt]].x, g_lwNodes[q->path[q->pathAt]].y) < LW_ARRIVE * LW_ARRIVE)
     {
         q->node = q->path[q->pathAt++];
         if (q->jobSet) LwSendGoal(q);
@@ -1577,7 +1584,8 @@ static void LwOnlineTick(LwSquad* q, int* removals)
     q->state = LW_OFFLINE; q->squad = 0; g_lwWorld.onlineUnits -= q->alive; g_lwWorld.offlined++;
     if (swapped) q->retry = now + 60000; /* displaced by a far squad in sight: not straight back */
     int node = LwNearestNode(at[0], at[1]);
-    if (node >= 0 && q->pathAt >= q->pathLen) { q->node = (uint16_t)node; LwPlan(q); }
+    if (node >= 0 && q->intent != LW_PATROL) { q->node = (uint16_t)node; LwIntentOffline(q); }
+    else if (node >= 0 && q->pathAt >= q->pathLen) { q->node = (uint16_t)node; LwPlan(q); }
     if (q->survivors == 0) q->state = LW_FREE;
 }
 
@@ -2401,6 +2409,7 @@ static void LwSquadsTick(void)
     LwTestKeepAlive(); /* test runs: the Helldiver healed to full */
     LwDrawnTick(); /* the main view's drawn state of far squads (test instrument, HELLFORGE_LW_DRAWN=1) */
     LwTestCommands(); /* test commands from the harness (hellforge_lw_test), run here on the game thread */
+    LwNoiseDrain(); /* Phase 2a: noises since the last tick send squads to investigate */
     for (int i = 0; i < g_lwWorld.count && !waiting; i++) waiting = g_lwSquads[i].state == LW_OFFLINE && g_lwSquads[i].cycled == 1;
     for (int i = 0; i < g_lwWorld.count; i++)
     {
@@ -2484,6 +2493,7 @@ static void LwSquadsTick(void)
         g_lwWorld.goals = g_lwWorld.goalNoFace = g_lwWorld.goalReplans = g_lwWorld.goalStuck = 0;
         LwNavTypeDump(); /* test (HELLFORGE_LW_TEST_NAV=1): agent types and obstacle areas, twice a level */
         { LONG spared = InterlockedExchange(&g_lwSpared, 0); if (spared) Note("living world: obstacle smashes (30 s): squad mates kept out of the zones %ld times (a mate is tested again every frame of a zone)", (long)spared); }
+        LwHearNote();
         { LONG spared = InterlockedExchange(&g_lwBlastSpared, 0); if (spared) Note("living world: obstacle smash explosions (30 s): squad mates left out %ld times", (long)spared); }
         if (g_lwWorld.heights)
             Note("living world: ground (30 s): %u member positions, %u more than 1.5 m under the drawn ground (worst %.1f m), %u more than 3 m over it (worst %.1f m)",
@@ -3921,3 +3931,5 @@ static void LivingTickBody(void)
     LwGarrisonsTick();
     LwSquadsTick();
 }
+
+#include "living_world_intent.c" /* Phase 2: squad intents (investigate noise) */
