@@ -3002,7 +3002,7 @@ static void LwInstallNavConnectNote(void)
  * before the apply runs: kind (r8d), amount (arg8), DamageInfo id (arg16), hash (arg17), the damager (arg5) and attacker
  * (arg6) net ids as entities (0xFD9BA0(out, net), as the apply converts them at 0x923BED / 0x923BF9; its prologue copies
  * arg6 / arg5 to [rbp+0] / [rbp+4] at 0x92361E..0x923630), each one's resource, position and alert, and the caller. H2:
- * each explosion the spawner 0x13C0A80 (rdx pos, r8d type, r9d source, arg5 attacker) makes within 15 m of an online loader
+ * each explosion the spawner 0x13C0A80 (rdx pos, r8d type, r9d source, arg5 attacker; entity ids) makes within 15 m of an online loader
  * member, with its caller (0x8CB1FF a grenade / explosive, 0x11AD469 an ability's bone explosion). The original is
  * called last with every argument it reads (checked by me: the apply reads up to entry rsp+0x98, 19 arguments; the spawner
  * up to entry rsp+0x78 ([rsp+0xB0] after its push and 0x30), 15; lw95a crashed at 0x13C0CCB on its 13th, a pointer, when
@@ -3071,8 +3071,10 @@ static uint64_t LwHitBlast(uint64_t self, const float* pos, uint64_t type, uint6
         if (closeTo >= 0 && InterlockedIncrement(&g_lwHitNotes) <= 4000)
         {
             char who[2][200];
-            LwHitWho(LwNetEntity((uint32_t)source), who[0], sizeof who[0]);
-            LwHitWho(LwNetEntity((uint32_t)attacker), who[1], sizeof who[1]);
+            /* entity ids, not net ids: the hit pass hands record +0x10 / +0x14 to 0x12A1210 (0x13C4457), which looks them up in
+             * the entity state's id hash (0xFD9D40, +0xF1AEB0); the net conversion printed 00000000 up to lw100a */
+            LwHitWho((uint32_t)source, who[0], sizeof who[0]);
+            LwHitWho((uint32_t)attacker, who[1], sizeof who[1]);
             /* the spawner's caller can lie in relocated code outside game.dll (audit 1h, 15: game+0x606999C): the unwound chain,
              * each frame named in game.dll or not */
             void* frames[8]; char chain[256]; size_t at = 0; chain[0] = 0;
