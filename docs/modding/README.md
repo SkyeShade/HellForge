@@ -99,7 +99,7 @@ The example mods:
 | `blue-sentry` | a new sentry stratagem with a recoloured model |
 | `stratagem-compendium` | eleven stratagems, one file per family: Pelicans with turrets and a behaviour, a sentry, barrages, expendables, a silo with a countdown ability |
 | `stratagem-categories` | stratagem selection headings and their order ([how headings work](../stratagem-categories.md)) |
-| `alpha-scavenger` | a new enemy beside the vanilla ones: an entity copy and its place in the spawn rosters |
+| `alpha-scavenger` | a new enemy tied to no vanilla one: an entity, its roster row, its squads and a replacement rule |
 | `hell-forge` | difficulty 11 |
 | `hell-swarm` | a difficulty's settings row, changed directly |
 | `vanilla-plus` | live edits of every stratagem's settings, and code patches: game code checked against the build, then changed (a branch, a jump to a stub of its own) |

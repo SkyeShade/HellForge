@@ -201,6 +201,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 - `add_enemy`: `int (HfMod* mod, const HfEnemy* enemy)`. Adds an enemy to the spawn director's rosters (see HfEnemy). Call it from hellforge_mod_init. 0 added (its rows are made once the entity data loads, and the log counts them), 1 refused (the mod's log says why).
 - `add_enemy_swap`: `int (HfMod* mod, const HfEnemySwap* swap)`. Adds a replacement rule (see HfEnemySwap). Call it from hellforge_mod_init. 0 added, 1 refused (the log says why).
+- `add_enemy_squad`: `int (HfMod* mod, const HfEnemySquad* squad)`. Adds a squad (see HfEnemySquad). Call it from hellforge_mod_init. 0 added (its rows are made with the enemies'), 1 refused (the mod's log says why).
 
 ## Functions
 
