@@ -47,7 +47,7 @@ The rest of this page goes through each item. Contributors will find more detail
 [engine-roadmap.md](engine-roadmap.md) (session runner, local backend, mod loader, stand-ins) and
 [sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
 
-Versions: HellForge 0.4.0-beta, engine 0.1.47, mod SDK 16.
+Versions: HellForge 0.4.0-beta, engine 0.1.48, mod SDK 17.
 
 ## Done in 0.2.0-beta
 
