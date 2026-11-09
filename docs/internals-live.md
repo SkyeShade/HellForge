@@ -334,6 +334,8 @@ Every write, live or from Local Stats at boot (`StatsDirectorReady`), is checked
 - weights are finite;
 - a weight of 0 keeps a weighted row for its enemy at that level on every planet. The rows with the same roster key are
   one enemy. A row stays while no other weighted one draws on every planet it draws on, judged by its planet tags.
+  At boot a file's roster lines of 0 are judged after its other lines. A live change is judged against the rows as
+  they are, so raise the new row before you zero the old one.
 
 The last rule is there because the director picks an enemy by its key and weight. With no row to pick, the game hands
 the spawn a null enemy, and a bug hole or fabricator of it crashed the game at `game.dll+0x9530F5`. Writes that skip
@@ -341,10 +343,11 @@ these checks, such as a Lua mod's own, meet `native/mod-loader/spawn_guards.c`:
 
 - the spawn refuses a null enemy, as it refuses one its gates turn away;
 - a spawner's queue drops a null entry and goes on to the next;
-- `modloader.log` counts both (`spawn guards: ...`).
+- the three callers of the pick that read a missing row unchecked (`game.dll+0x802000`, `+0x8694EA`, `+0x90F315`) ask
+  again for the family's rows of any weight, so they get a row of weight 0;
+- `modloader.log` counts all three (`spawn guards: ...`).
 
-The guards cover only the spawn and the spawner queue. Other code that uses the pick, such as `game.dll+0x8694EA`, still
-crashes on an enemy with no row.
+A family with no row that passes the planet's tags, whatever its weights, still has nothing to give these callers.
 
 The director reads these tables when a mission is set up, so a change applies from the next mission. Only the host's
 tables decide what spawns. None of it is proven in game yet (HD2Runtime's director research is offline). Demolition

@@ -224,6 +224,29 @@ static void DirectorFixture(void)
     memcpy(&f, rows[2] + 5 * DIR_ROSTER_ROW + 0x30 + 8, 4); assert(f == 3);
     memcpy(&f, g_dirGame + kDifficultyCopies[0] + 4 * DIF_ROW + 0xE8, 4); assert(f == 640); /* copied to the others */
     g_statCount = saved;
+    /* a weight moved within a family: its 0 waits for the file's other lines, unless a later line writes its field */
+    uint8_t* moved = rows[0] + 2 * DIR_ROSTER_ROW;
+    memcpy(moved, &key, 4);
+    StatEdit lower = empty, raise = empty, again = empty;
+    raise.record = 2; memcpy(&raise.value, &one_f, 4); strcpy(raise.label, "raise");
+    f = 0.5f; memcpy(&again.value, &f, 4); strcpy(again.label, "again");
+    g_stats[g_statCount++] = lower; g_stats[g_statCount++] = raise;
+    g_directorDone = 0;
+    StatsDirectorReady();
+    assert(g_stats[saved].applied && g_stats[saved + 1].applied);
+    memcpy(&f, rows[0] + DIR_ROSTER_ROW + 0x30 + 36, 4); assert(f == 0);
+    memcpy(&f, moved + 0x30 + 36, 4); assert(f == 1);
+    g_statCount = saved;
+    memcpy(rows[0] + DIR_ROSTER_ROW + 0x30 + 36, &one_f, 4);
+    memset(moved + 0x30, 0, 0x28);
+    g_stats[g_statCount++] = lower; g_stats[g_statCount++] = raise; g_stats[g_statCount++] = again;
+    g_directorDone = 0;
+    StatsDirectorReady();
+    memcpy(&f, rows[0] + DIR_ROSTER_ROW + 0x30 + 36, 4); assert(f == 0.5f); /* load order: the later line's value */
+    memcpy(&f, moved + 0x30 + 36, 4); assert(f == 1);
+    g_statCount = saved;
+    memset(moved, 0, DIR_ROSTER_ROW);
+    memcpy(rows[0] + DIR_ROSTER_ROW + 0x30 + 36, &one_f, 4);
 
     g_editCount = 0;
     g_directorImage = DirectorGame;
