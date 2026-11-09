@@ -332,16 +332,19 @@ Every write, live or from Local Stats at boot (`StatsDirectorReady`), is checked
 - the lowest tech level and player count may not exceed the highest;
 - tech levels go to 11 only with level 11;
 - weights are finite;
-- a weight of 0 keeps a weighted row for its enemy at that level. The rows with the same roster key are one enemy, and
-  the last weighted row stays, as does the last one that needs no planet tag.
+- a weight of 0 keeps a weighted row for its enemy at that level on every planet. The rows with the same roster key are
+  one enemy. A row stays while no other weighted one draws on every planet it draws on, judged by its planet tags.
 
 The last rule is there because the director picks an enemy by its key and weight. With no row to pick, the game hands
 the spawn a null enemy, and a bug hole or fabricator of it crashed the game at `game.dll+0x9530F5`. Writes that skip
-these checks, such as a Lua mod's own, meet `native/mod-loader/spawn_guards.c` instead:
+these checks, such as a Lua mod's own, meet `native/mod-loader/spawn_guards.c`:
 
 - the spawn refuses a null enemy, as it refuses one its gates turn away;
 - a spawner's queue drops a null entry and goes on to the next;
 - `modloader.log` counts both (`spawn guards: ...`).
+
+The guards cover only the spawn and the spawner queue. Other code that uses the pick, such as `game.dll+0x8694EA`, still
+crashes on an enemy with no row.
 
 The director reads these tables when a mission is set up, so a change applies from the next mission. Only the host's
 tables decide what spawns. None of it is proven in game yet (HD2Runtime's director research is offline). Demolition

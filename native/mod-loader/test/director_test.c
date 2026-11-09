@@ -92,19 +92,40 @@ static void DirectorFixture(void)
     assert(DirectorRefuses("EnemyRoster", tier1, 36, &zero, 4) == NULL);  /* already 0 there: nothing changes */
     assert(DirectorRefuses("EnemyRoster", tier2, 36, &one_f, 4) == NULL); /* a weight above 0 is always allowed */
     /* a third row of the family, weighted at level 10 but only on planets with its tag: tier 2 stays the untagged one */
-    uint32_t tag = 0xDF4CB4E5u;
-    memcpy(scav + 2 * DIR_ROSTER_ROW + 0x58, &tag, 4);
-    memcpy(scav + 2 * DIR_ROSTER_ROW + 0x30 + 36, &one_f, 4);
+    uint32_t tag = 0xDF4CB4E5u, tagB = 0xFD8B9706u, tagC = 0x33FA1AB8u;
+    uint8_t* third = scav + 2 * DIR_ROSTER_ROW;
+    uint8_t* tier2row = scav + DIR_ROSTER_ROW;
+    memcpy(third + 0x58, &tag, 4);
+    memcpy(third + 0x30 + 36, &one_f, 4);
     assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag"));
     assert(DirectorRefuses("EnemyRoster", tier2 + DIR_ROSTER_ROW, 36, &zero, 4) == NULL); /* the tagged one may go */
-    memcpy(scav + 2 * DIR_ROSTER_ROW + 0x58, &zero, 4);
-    memcpy(scav + 2 * DIR_ROSTER_ROW + 0x68 + 8, &tag, 4); /* a tag that rules it out is a tag too */
+    memcpy(third + 0x58, &zero, 4);
+    memcpy(third + 0x68 + 8, &tag, 4); /* after an empty exclude slot: the game reads no further, so it draws everywhere */
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
+    memcpy(third + 0x68, &tag, 4); /* a tag that rules it out is a tag too */
     assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag"));
     memcpy(scav + 3 * DIR_ROSTER_ROW + 0x30 + 36, &one_f, 4); /* a fourth, untagged: tier 2 may go */
     assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
     uint32_t otherKey = 0x5BD8103u; /* another family's weight does not count */
     memcpy(scav + 3 * DIR_ROSTER_ROW, &otherKey, 4);
     assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag"));
+    /* tagged rows judged tag by tag (Illuminate rows need different subfactions): tier 2 needs tag or tagB */
+    memset(third + 0x58, 0, 0x20);
+    memcpy(tier2row + 0x58, &tag, 4);
+    memcpy(tier2row + 0x5C, &tagB, 4);
+    memcpy(third + 0x58, &tag, 4);
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag")); /* nothing left on tagB planets */
+    memcpy(third + 0x60, &tagB, 4);
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
+    memcpy(third + 0x68, &tagC, 4); /* the third rules out tagC planets, which tier 2 draws on */
+    assert(strstr(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4), "planet tag"));
+    memcpy(tier2row + 0x68, &tagC, 4); /* tier 2 rules them out too */
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
+    memset(third + 0x60, 0, 4);
+    memcpy(tier2row + 0x6C, &tagB, 4); /* a need it rules out itself draws nowhere */
+    assert(DirectorRefuses("EnemyRoster", tier2, 36, &zero, 4) == NULL);
+    memset(tier2row + 0x58, 0, 0x20);
+    memset(third + 0x58, 0, 0x20);
     /* level 11 added: the weights at +0x2C, level 11's at +0x54, both judged */
     for (int r = 0; r < 4; r++) memset(scav + r * DIR_ROSTER_ROW + 0x2C, 0, 0x2C);
     for (int l = 3; l < 11; l++) memcpy(scav + DIR_ROSTER_ROW + 0x2C + 4 * l, &one_f, 4);

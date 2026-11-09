@@ -1,12 +1,13 @@
 /* The game's crash on an enemy family with nothing to spawn, build 25480438 (game.dll+0x9530F5, reading 0x18). The
  * director picks a family's enemy by weight at the mission's level (0x953150); with no weighted row it returns -1, and
  * its callers hand the spawn (0x953580) a null enemy, which reads it unchecked. Roster edits that empty a family are
- * refused (director.c); these guards catch the rest (Lua writes, other tables). Included by director.c: AllocateNearGame
- * (damage.c), PinMatches (packages.c), JournalPut (live_code.c), LoaderHook and HookRemove (hooks.c). */
+ * refused (director.c); these guards cover the spawn and the spawner queue for writes that skip that check. Other users
+ * of a pick still crash on one (0x8694EA reads [0+8] at 0x86950C). Included by director.c: AllocateNearGame (damage.c),
+ * PinMatches (packages.c), JournalPut (live_code.c), LoaderHook and HookRemove (hooks.c). */
 
 /* The spawn: (director, enemy row, position, count, then six on the stack). Every path reads the row (0x952FF0's cap
- * check, at +0x18 or +0xA8); its gates already refuse a spawn by returning null (0x954079), so every caller handles a
- * null spawn. A null row is refused the same way, before the function's frame. */
+ * check, at +0x18 or +0xA8); its gates already refuse a spawn by returning null (0x954079). A null row is refused the
+ * same way, before the function's frame: a caller that reads the result unchecked (0x6862E2) crashed on it anyway. */
 #define SG_SPAWN 0x953580u
 #define SG_SPAWN_UNCHECKED 0x95300Eu /* 0x952FF0: the path without a null check */
 #define SG_SPAWN_READ 0x9530F5u

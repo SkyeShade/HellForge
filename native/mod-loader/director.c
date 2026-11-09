@@ -132,13 +132,31 @@ static const char* DirectorWeightRefuses(float value)
     return !isfinite(value) || value < 0 || value > 10000 ? "a spawn weight is 0 to 10000" : NULL;
 }
 
-/* Whether a roster row draws on every planet: no tag it needs (+0x58, four) and none that rules it out (+0x68, four), as
- * the director's tag test 0x177E3C0 reads them. */
-static int DirectorRowUntagged(uintptr_t base)
+/* A roster row's planet tags (+0x58), as the director's tag test 0x177E3C0 reads them: a tag in exclude (up to the
+ * first 0) on the planet rules the row out; need[0] of 0 draws on every planet, else any of the four needs does. */
+typedef struct { uint32_t need[4], exclude[4]; } DirectorTags;
+
+static int DirectorExcludes(const DirectorTags* tags, uint32_t tag)
 {
-    uint32_t need = 1, exclude[4] = {1, 1, 1, 1};
-    if (SafeRead(base + 0x58, &need, 4) || SafeRead(base + 0x68, exclude, sizeof exclude)) return 0;
-    return need == 0 && (exclude[0] | exclude[1] | exclude[2] | exclude[3]) == 0;
+    for (int i = 0; i < 4 && tags->exclude[i] != 0; i++)
+        if (tags->exclude[i] == tag) return 1;
+    return 0;
+}
+
+/* Whether mine draws through its need n: n 0 alone when it needs none (every planet), else a need it does not rule out. */
+static int DirectorDraws(const DirectorTags* mine, int n)
+{
+    return mine->need[0] == 0 ? n == 0 : mine->need[n] != 0 && !DirectorExcludes(mine, mine->need[n]);
+}
+
+/* Whether other draws on every planet mine draws on through tag (0: every planet). Which tags a planet has together is
+ * not known here, so other needs no tag or this one, and rules out only planets mine rules out too. */
+static int DirectorCovers(const DirectorTags* other, const DirectorTags* mine, uint32_t tag)
+{
+    int draws = other->need[0] == 0;
+    for (int i = 0; i < 4 && !draws; i++) draws = tag != 0 && other->need[i] == tag;
+    for (int i = 0; i < 4 && draws && other->exclude[i] != 0; i++) draws = DirectorExcludes(mine, other->exclude[i]);
+    return draws;
 }
 
 /* The roster whose rows hold the row at base, and its count; 0 when none does. */
@@ -152,42 +170,49 @@ static uintptr_t DirectorRosterHolding(uintptr_t game, uintptr_t base, uint64_t*
     return 0;
 }
 
-/* The family's other rows (key, all but base) with a weight above 0 at row + at; *untagged counts the untagged ones. */
-static int DirectorFamilyOthers(uintptr_t rows, uint64_t count, uintptr_t base, uint32_t key, uint32_t at, int* untagged)
+typedef struct { uintptr_t rows, base; uint64_t count; uint32_t key, at; } DirectorFamily;
+
+/* The family's rows other than mine (base) with a weight above 0 at row + at; *bare counts the tags mine draws through
+ * that none of them covers. */
+static int DirectorFamilyOthers(const DirectorFamily* f, const DirectorTags* mine, int* bare)
 {
-    int others = 0;
-    *untagged = 0;
-    for (uint64_t i = 0; i < count; i++)
+    int others = 0, covered[4] = {0, 0, 0, 0};
+    for (uint64_t i = 0; i < f->count; i++)
     {
-        uintptr_t row = rows + i * DIR_ROSTER_ROW;
+        uintptr_t row = f->rows + i * DIR_ROSTER_ROW;
         uint32_t k = 0;
         float w = 0;
-        if (row == base || SafeRead(row, &k, 4) || k != key || SafeRead(row + at, &w, 4) || !(w > 0)) continue;
+        DirectorTags tags;
+        if (row == f->base || SafeRead(row, &k, 4) || k != f->key || SafeRead(row + f->at, &w, 4) || !(w > 0) ||
+            SafeRead(row + 0x58, &tags, sizeof tags)) continue;
         others++;
-        *untagged += DirectorRowUntagged(row);
+        for (int n = 0; n < 4; n++) covered[n] |= DirectorDraws(mine, n) && DirectorCovers(&tags, mine, mine->need[n]);
     }
+    *bare = 0;
+    for (int n = 0; n < 4; n++) *bare += DirectorDraws(mine, n) && !covered[n];
     return others;
 }
 
 /* A weight of 0 (weights: the row DirectorRow gave). The director picks an enemy by its family key (+0) among the
- * roster's rows with a weight at the mission's level. With none it hands the spawn a null enemy, and a bug hole or
- * fabricator of that enemy crashes the game (spawn_guards.c). So the last weighted row of a family at a level, or its
- * last untagged one, keeps its weight. */
+ * roster's rows that pass the planet's tags with a weight at the mission's level. With none it hands the spawn a null
+ * enemy, and a bug hole or fabricator of that enemy crashes the game (spawn_guards.c). So a row keeps its weight while
+ * it is its family's last at that level on some planet. */
 static const char* DirectorFamilyRefuses(const char* kind, uintptr_t weights, uint32_t offset)
 {
     uintptr_t game = g_directorImage(NULL);
     int moved = DirectorWeightsMoved(game), eleven = !strcmp(kind, "EnemyRosterLevel11");
     if (moved < 0 || (eleven && !moved)) return NULL;
-    uint32_t first = moved ? 0x2C : 0x30, at = first + (eleven ? 40 : offset), key = 0;
+    uint32_t first = moved ? 0x2C : 0x30, at = first + (eleven ? 40 : offset);
     uintptr_t base = weights - (eleven ? 0x54 : first);
-    uint64_t count = 0;
-    uintptr_t rows = DirectorRosterHolding(game, base, &count);
-    float mine = 0;
-    if (rows == 0 || SafeRead(base, &key, 4) || SafeRead(base + at, &mine, 4) || !(mine > 0)) return NULL;
-    int untagged = 0, others = DirectorFamilyOthers(rows, count, base, key, at, &untagged);
+    DirectorFamily family = {0, base, 0, 0, at};
+    DirectorTags mine;
+    float weight = 0;
+    family.rows = DirectorRosterHolding(game, base, &family.count);
+    if (family.rows == 0 || SafeRead(base, &family.key, 4) || SafeRead(base + at, &weight, 4) || !(weight > 0) ||
+        SafeRead(base + 0x58, &mine, sizeof mine)) return NULL;
+    int bare = 0, others = DirectorFamilyOthers(&family, &mine, &bare);
     if (others == 0) return "the last spawn weight of its enemy at this level: a bug hole or fabricator of that enemy would crash the game";
-    if (untagged == 0 && DirectorRowUntagged(base))
-        return "its enemy's last spawn weight at this level that needs no planet tag: on other planets a spawner of it would crash the game";
+    if (bare != 0) return "its enemy's last spawn weight at this level on planets with one of its planet tags: a spawner of it there would crash the game";
     return NULL;
 }
 

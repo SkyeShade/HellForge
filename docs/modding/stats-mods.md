@@ -41,7 +41,7 @@ The file is organised by category, then by target, then by field:
   Difficulties go by their level (`"7"`), roster rows and compositions by the HD2R Editor's keys
   (`"terminids/row_0"`: `"spawn.weight_3"`, `"spawn.weight_11"`; `"automatons/family_1/row_0"`: `"composition.group_0_count"`).
   A composition's group counts total at most 32, and these apply from the next mission, on the host. A roster weight
-  of 0 that leaves an enemy with nothing to spawn at that level is refused.
+  of 0 that leaves an enemy with nothing to spawn at that level on some planet is refused.
 - Fields go by their full names (`weapon.fire_rate`, `deposit.capacity`), or by short aliases where the target has the
   field: `rpm`, `magazine`, `fuse`, `cooldown`, `uses`, projectile `speed`, and damage `standard` and `durable`. Not
   every weapon has a magazine field, and not every throwable a fuse. Recoil is edited through its four input fields.
