@@ -123,6 +123,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Direct3D 11 crashes in the Armory and at mission start.** Browsing armour crashed the game at
+  `helldivers2.exe+0x732040`, and a slow PC could crash at `+0x626296` as a mission loaded. A freed texture is now bound
+  empty instead of read, and a full job pool is waited out
+  ([crash guards](docs/crash-guards.md)).
 - **A mod's own weapon mesh in the right place on every LOD and its shadow.** A data spec's `mesh` put the shadow 20 cm
   off the gun on an Adjudicator copy (4.5 cm on a Liberator), and hung a Liberator copy's LOD2 on its fire selector. Each
   render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new

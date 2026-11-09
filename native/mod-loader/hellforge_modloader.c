@@ -601,6 +601,7 @@ static void ChannelInstall(uintptr_t game);
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
+#include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -795,13 +796,12 @@ static void WatchInstalls(void)
 {
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
-    if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsColour();
-    if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsRoll();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { InstallForgeCreditsColour(); InstallForgeCreditsRoll(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
-    if (g_fired[HF_EVENT_GAME_LOADED]) ShieldBlockInstall();
-    if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
+    RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
