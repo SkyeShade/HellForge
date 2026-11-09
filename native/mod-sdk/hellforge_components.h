@@ -222,13 +222,18 @@ typedef struct HfWeaponData
     float sway;                                  /* +0x68 sway multiplier (unverified) [respawn] */
     uint8_t _unknown_6C[4];
     uint8_t suppressed;                          /* +0x70 1: suppressed (unverified) [respawn] */
-    uint8_t _unknown_71[27];
+    uint8_t _unknown_71[3];
+    float aim_zoom[3];                           /* +0x74 scope magnification per zeroing stage: the aiming camera field of view is divided by it (1: none) (unverified) [respawn] */
+    uint8_t _unknown_80[12];
     uint32_t burst_rounds;                       /* +0x8C rounds per burst (unverified) [respawn] */
     uint32_t fire_modes[3];                      /* +0x90 fire-mode slots: primary, secondary, tertiary (unverified) [respawn] */
     uint8_t _unknown_9C[28];
     uint32_t weapon_function_left;               /* +0xB8 left weapon function (unverified) [respawn] */
     uint32_t weapon_function_right;              /* +0xBC right weapon function (unverified) [respawn] */
-    uint8_t _unknown_C0[164];
+    uint8_t _unknown_C0[148];
+    float scope_zeroing[3];                      /* +0x154 scope zeroing distance per stage in metres; the lens material gets the current one as zeroing_dist (unverified) [respawn] */
+    uint8_t scope_lens_hides_weapon;             /* +0x160 1: the weapon's materials cut out what lies behind the optic's g_lens disc (lens_cutout_enabled) (unverified) [respawn] */
+    uint8_t _unknown_161[3];
     float ergonomics;                            /* +0x164 ergonomics (unverified) [respawn] */
     uint8_t _unknown_168[27];
     uint8_t stationary_while_firing;             /* +0x183 1: the wielder stands still while firing (unverified) [respawn] */
@@ -274,6 +279,8 @@ HF_ASSERT_OFFSET(HfWeaponData, sway, 104);
 #define HF_TYPE_WeaponData_sway HF_TYPE_F32
 HF_ASSERT_OFFSET(HfWeaponData, suppressed, 112);
 #define HF_TYPE_WeaponData_suppressed HF_TYPE_U8
+HF_ASSERT_OFFSET(HfWeaponData, aim_zoom, 116);
+#define HF_TYPE_WeaponData_aim_zoom HF_TYPE_F32
 HF_ASSERT_OFFSET(HfWeaponData, burst_rounds, 140);
 #define HF_TYPE_WeaponData_burst_rounds HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponData, fire_modes, 144);
@@ -282,6 +289,10 @@ HF_ASSERT_OFFSET(HfWeaponData, weapon_function_left, 184);
 #define HF_TYPE_WeaponData_weapon_function_left HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponData, weapon_function_right, 188);
 #define HF_TYPE_WeaponData_weapon_function_right HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, scope_zeroing, 340);
+#define HF_TYPE_WeaponData_scope_zeroing HF_TYPE_F32
+HF_ASSERT_OFFSET(HfWeaponData, scope_lens_hides_weapon, 352);
+#define HF_TYPE_WeaponData_scope_lens_hides_weapon HF_TYPE_U8
 HF_ASSERT_OFFSET(HfWeaponData, ergonomics, 356);
 #define HF_TYPE_WeaponData_ergonomics HF_TYPE_F32
 HF_ASSERT_OFFSET(HfWeaponData, stationary_while_firing, 387);

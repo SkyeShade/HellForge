@@ -507,7 +507,7 @@ public sealed class RegisteredItems(string path)
         entry["isConsumable"] = false;
         entry["requiredLevel"] = 0;
         entry["progressionCategory"] = category;
-        entry["tags"] = tags;
+        entry["tags"] = tags.DeepClone();   // a node has one parent: every standalone weapon is given the same tags
         entry["requiredItems"] = new JsonArray();
         entry["buyPrice"] = new JsonArray();
         entry["sellPrice"] = new JsonArray();
