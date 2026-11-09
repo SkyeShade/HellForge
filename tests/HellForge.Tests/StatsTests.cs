@@ -226,7 +226,7 @@ static class StatsTests
             var patriot = StatsCatalog.Sections(Vehicle("EXO-45 Patriot Exosuit"));
             check(patriot.Select(s => s.Title).SequenceEqual(["Hellpod / Call-in", "Weapon · Left gun", "Weapon · Right gun", "Health & Armor", "Damage Zones"]),
                 "Patriot page: " + string.Join(", ", patriot.Select(s => s.Title)));
-            check(patriot[4].Groups.Select(g => g.Title).Take(4).SequenceEqual(["Zone 0", "Zone 1", "Cockpit rear", "Hips"]) &&
+            check(patriot[4].Groups.Select(g => g.Title).Take(4).SequenceEqual(["Cockpit front left", "Cockpit front right", "Cockpit rear", "Hips"]) &&
                 patriot[4].Groups.All(g => g.Rows.Count == 5), "Zones by their native names, armor, health and share each, and their explosion share.");
             var fields = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
             check(fields["zone_2.armor"] is { Component: "HealthComponentData", Offset: 1840 } && fields["rotation.turn_speed"].Component == "RotationComponentData",
