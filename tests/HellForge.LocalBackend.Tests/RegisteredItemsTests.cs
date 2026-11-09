@@ -279,5 +279,12 @@ static class RegisteredItemsTests
         log.Clear();
         var clash = new RegisteredItems(file) { Source = items.Source, Log = log.Add };
         check(clash.Served().Count == 0 && log.Any(l => l.Contains("another package's id")), "A standalone weapon took a vanilla package's id.");
+
+        // Two standalone weapons (two mods, or one mod's two) are both served, each with the class's tags.
+        File.WriteAllText(file, $$"""{"format":1,"items":[{"mixId":{{Rifle}},"standalone":true,"class":"primary","mod":"test.rifle","package":{{Package}}},{"mixId":{{Rifle + 1}},"standalone":true,"class":"primary","mod":"test.other","package":{{Package + 1}}}]}""");
+        var pair = new RegisteredItems(file) { Source = items.Source, Log = _ => { } };
+        var both = (JsonArray)JsonNode.Parse(pair.Apply("/Progression/items", vanillaCatalogue).GetRawText())!;
+        check(both.OfType<JsonObject>().Count(i => (uint)i["mixId"]! is Rifle or Rifle + 1 && i["tags"]!.ToJsonString() == tags) == 2,
+            "Two standalone weapons are not both served with the class's tags.");
     }
 }
