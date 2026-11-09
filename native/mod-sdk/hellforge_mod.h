@@ -285,28 +285,68 @@ typedef struct HfAttachment
 #define HF_ENEMY_AUTOMATONS 2u
 #define HF_ENEMY_ILLUMINATE 4u
 
-/* A new enemy in the spawn director's rosters (SDK 17, add_enemy), beside the vanilla ones: every roster row of a vanilla
- * enemy (`like`) is copied for the mod's unit, with the same group, planet tags, cap and budget, and its spawn weights
- * scaled. Squads that draw from that group then spawn either enemy, by weight (docs/modding/enemies.md).
- * Zero-initialize it and set `size`:
- *
- *     HfEnemy alpha = {sizeof alpha};
- *     alpha.name = "my_name/my_mod/alpha_scavenger";
- *     alpha.unit = api->add_entity(mod, &copy);
- *     alpha.like = 0x9A8A3AAE287B230Cull;
- *     api->add_enemy(mod, &alpha); */
+#define HF_ENEMY_LEVELS 10
+/* HfEnemy flags */
+#define HF_ENEMY_ALWAYS_LOADED 1u /* a mission loads its packages though no squad names its group (it spawns by other means) */
+
+/* A new enemy in the spawn director's rosters (SDK 17, add_enemy): a row of its own, tied to no vanilla enemy. The
+ * director spawns by group: a squad asks for some of a group's enemies, and the group's rows share the draw by their
+ * weights. `group` is a vanilla group ("Scavenger": the enemy joins every squad that draws it) or a name of your own,
+ * which only your squads draw (add_enemy_squad). Zero-initialize it and set `size`; docs/modding/enemies.md has the
+ * groups, each field and a whole example.
+ * Shorthand: with `like` set, that vanilla enemy's rows are copied for the unit instead (group, tags, cap, cost and
+ * budget), their weights times `weight`; `group` and the fields after it are then not read. */
 typedef struct HfEnemy
 {
     uint32_t size;          /* sizeof(HfEnemy) */
-    uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins; 0: every faction roster `like` is in */
+    uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins (with `like`, 0: every roster `like` is in) */
     const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
-    uint64_t unit;          /* the entity it spawns: one add_entity or register_entity returned, or a vanilla one; best
-                             * a copy of `like` (it needs what `like`'s spawns need, e.g. its transport formations) */
-    uint64_t like;          /* the vanilla enemy whose roster rows it copies (its resource id) */
-    float weight;           /* x like's spawn weights (0 means 1) */
+    uint64_t unit;          /* the entity it spawns: one add_entity or register_entity returned, or a vanilla one */
+    uint64_t like;          /* 0, or the vanilla enemy whose roster rows are copied (the shorthand above) */
+    float weight;           /* x the spawn weights (0 means 1) */
     uint32_t lowest_level;  /* difficulty levels it spawns at, 1 to 10 (0: no bound); level 11 takes level 10's weight */
     uint32_t highest_level;
+    const char* group;      /* its spawn group's name */
+    float weights[HF_ENEMY_LEVELS]; /* its share of the group's draw at difficulty 1 to 10; 0: not at that level */
+    float cost;             /* what one costs a squad's budget, in the director's points (a Scavenger 6, a Charger 100) */
+    float budget;           /* its weight in the count of enemies alive (0 means 1; a Bile Titan 8) */
+    uint32_t alive_cap;     /* at most this many alive at once where the game checks a row's cap; 0: no cap */
+    uint32_t size_class;    /* 0 small, 1 medium, 2 heavy, 3 the largest, as the game's rows mark their enemies */
+    uint32_t flags;         /* HF_ENEMY_ALWAYS_LOADED */
+    const char* with_tags[4];    /* director tags: it spawns only while one of them is on (none: always) */
+    const char* without_tags[4]; /* ... and never while one of these is on */
 } HfEnemy;
+
+#define HF_SQUAD_MEMBERS 8
+/* HfEnemySquad kinds: where the director uses the squad. */
+#define HF_SQUAD_PATROL 1u      /* a patrol roaming the map */
+#define HF_SQUAD_GUARD 2u       /* placed at the map's guard positions (the game ships none) */
+#define HF_SQUAD_OUTPOST 3u     /* an outpost's or objective's garrison; members' counts are a pool (the game uses 999) */
+#define HF_SQUAD_ENCOUNTER 4u   /* reinforcements: a bug breach, a dropship (it carries any Automaton or Illuminate one) */
+#define HF_SQUAD_BORDER 5u      /* crossing the map's border (the game's Shriekers and Gunships) */
+#define HF_SQUAD_CONVOY 6u      /* a convoy; a mission takes 8 kinds at most */
+#define HF_SQUAD_AIR_SUPPORT 7u /* called in from the air (the game's Illuminate attack ships) */
+
+/* A new squad (SDK 17, add_enemy_squad): a mix of spawn groups the director may send, beside the game's squads of its
+ * kind. This is how an enemy in a group of your own reaches the map. A mission takes the squads whose levels, players
+ * and tags fit and whose groups each have an enemy with weight at its level, then draws among them by `weight`.
+ * Zero-initialize it and set `size`; docs/modding/enemies.md has an example. */
+typedef struct HfEnemySquad
+{
+    uint32_t size;          /* sizeof(HfEnemySquad) */
+    uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins; each must have every group */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint32_t kind;          /* HF_SQUAD_... */
+    uint32_t lowest_level;  /* the difficulty levels it is sent at, 1 to 10 (0: no bound); 10 covers level 11 */
+    uint32_t highest_level;
+    uint32_t lowest_players;  /* the player counts it is sent at, 1 to 4 (0: no bound) */
+    uint32_t highest_players;
+    float weight;           /* its share of the draw among the squads of its kind (the game's: 0.01 to 3) */
+    float cost;             /* x its members' cost in the director's budget (0 means 1) */
+    struct { const char* group; uint32_t count; } members[HF_SQUAD_MEMBERS]; /* up to 8 groups, 32 enemies in all
+                             * (HF_SQUAD_OUTPOST: any count) */
+    const char* with_tags[8]; /* director tags: sent only while one of them is on (none: always) */
+} HfEnemySquad;
 
 /* A replacement rule (SDK 17, add_enemy_swap): while it is on, the director spawns `replacement` where it would spawn
  * `unit`, as the game's own rules turn bots into jump-pack bots under a planet's modifier. Of the rules that match a
@@ -318,7 +358,7 @@ typedef struct HfEnemySwap
     uint32_t size;          /* sizeof(HfEnemySwap) */
     uint32_t factions;      /* the rosters it applies in (HF_ENEMY_...; 0: any), each only if it has a row of `unit` */
     const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
-    uint64_t unit;          /* the enemy replaced: a vanilla one, or an add_enemy unit */
+    uint64_t unit;          /* the enemy replaced: any unit of a roster row, the game's or a mod's */
     uint64_t replacement;   /* the entity spawned instead: one add_entity or register_entity returned, or a vanilla one */
     const char* tag;        /* the director tag that turns it on, e.g. "GM_BotAssault"; NULL: always on */
     uint32_t lowest_level;  /* the difficulty levels it applies at (0: 1 and 100, as the game's rules) */
@@ -1605,6 +1645,9 @@ typedef struct HfApi
     int (*add_enemy)(HfMod* mod, const HfEnemy* enemy);
     /* Adds a replacement rule (see HfEnemySwap). Call it from hellforge_mod_init. 0 added, 1 refused (the log says why). */
     int (*add_enemy_swap)(HfMod* mod, const HfEnemySwap* swap);
+    /* Adds a squad (see HfEnemySquad). Call it from hellforge_mod_init. 0 added (its rows are made with the enemies'),
+     * 1 refused (the mod's log says why). */
+    int (*add_enemy_squad)(HfMod* mod, const HfEnemySquad* squad);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

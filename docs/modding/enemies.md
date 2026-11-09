@@ -5,88 +5,157 @@
 This page is for code mod authors who want the game to spawn an enemy of their own, or a vanilla one it no longer
 spawns. You should know how to add an entity: see [new entities](content.md#new-entities).
 
-`add_enemy` (SDK 17) makes the game spawn an entity as an enemy, beside the vanilla ones. No vanilla enemy is replaced.
-You name a vanilla enemy it is `like`, and it spawns wherever that one does.
+Three calls (SDK 17) do it, and none ties your enemy to a vanilla one:
+
+| Call | What it adds |
+|---|---|
+| `add_enemy` | a roster row: your entity, its spawn group, weights, cost and limits |
+| `add_enemy_squad` | a squad: a mix of groups the game may send |
+| `add_enemy_swap` | a replacement rule: one enemy spawns where another would |
+
+Call them from `hellforge_mod_init`, after checking `hf->size` for the last one you use: older SDK 17 builds lack them.
+Each returns 0 when accepted and 1 when refused. The rows are made when the entity data has loaded, and your mod's log
+then says what each entry got, or why it got nothing. `examples/mods/alpha-scavenger` is a whole mod.
+
+## How the game spawns enemies
+
+- Each faction has a roster. A roster row names an enemy, its group, and a spawn weight per difficulty.
+- A squad lists up to 8 groups with a count each. The game sends squads, and fills each count from the group's rows
+  by weight.
+- So an enemy reaches the map in one of two ways. In a vanilla group, every squad that draws the group may spawn it.
+  In a group of your own, only your squads do.
+
+## Add the enemy
 
 ```c
-HfEnemy alpha = {sizeof alpha};
-alpha.name = "alpha_scavenger";
-alpha.unit = scavenger_copy;       /* add_entity or register_entity's id, or a vanilla entity */
-alpha.like = 0x9A8A3AAE287B230Cull; /* scavenger_tier_2: "resource" in mappings/entities.json */
-alpha.weight = 0.5f;               /* half as likely as that one */
-alpha.lowest_level = 6;            /* from difficulty 6 */
-if (hf->size >= offsetof(HfApi, add_enemy) + sizeof hf->add_enemy) hf->add_enemy(mod, &alpha);
+HfEnemy brute = {sizeof brute};
+brute.name = "brute";
+brute.unit = brute_entity;            /* add_entity or register_entity's id, or a vanilla entity */
+brute.factions = HF_ENEMY_TERMINIDS;
+brute.group = "my_name/my_mod/brutes"; /* a name of your own, or a vanilla group such as "Scavenger" */
+for (int level = 4; level <= HF_ENEMY_LEVELS; level++) brute.weights[level - 1] = 1.0f;
+brute.cost = 40.0f;
+hf->add_enemy(mod, &brute);
 ```
 
-Call `add_enemy` from `hellforge_mod_init`, after the `hf->size` check: older SDK 17 builds lack it. It returns 0 when
-the enemy is accepted and 1 when it is refused. The rows
-are made when the entity data has loaded, and your mod's log then counts them or says why there are none.
-`examples/mods/alpha-scavenger` is a whole mod, with a replacement rule too.
+| Field | Meaning |
+|---|---|
+| `factions` | the rosters it joins: `HF_ENEMY_TERMINIDS`, `HF_ENEMY_AUTOMATONS`, `HF_ENEMY_ILLUMINATE` |
+| `group` | its spawn group's name, under 96 bytes |
+| `weights` | its share of the group's draw at difficulty 1 to 10; 0 keeps it out of that level. Level 11 uses level 10's |
+| `weight` | multiplies every weight (0 means 1) |
+| `lowest_level`, `highest_level` | no weight outside them (0: no bound) |
+| `cost` | what one costs a squad's budget, in the game's points: a Scavenger 6, a Warrior 15, a Charger 100 |
+| `budget` | its weight in the count of living enemies (0 means 1; a Bile Titan has 8) |
+| `alive_cap` | at most this many alive at once (0: no cap). In a squad, the group's first row decides the cap |
+| `size_class` | 0 small, 1 medium, 2 heavy, 3 the largest, as the game marks its own rows |
+| `with_tags`, `without_tags` | up to 4 [director tags](#director-tags) each: it spawns only while one of the first is on, never while one of the second is |
+| `flags` | `HF_ENEMY_ALWAYS_LOADED`: a mission loads its packages though no squad names its group |
 
-## What spawns it
+A vanilla group keeps its own enemies: yours shares the draw with them. The game's groups are:
 
-The game picks enemies from rosters, one per faction. A roster row names an enemy, the group it belongs to, the planets
-it appears on and a spawn weight per difficulty. Squads draw from groups, by weight.
+| Faction | Groups |
+|---|---|
+| Terminids | `Scavenger`, `Scav Spitter`, `Scav Predator`, `Warrior`, `Warrior Acid`, `Hunter`, `Brood Commander`, `Charger`, `Boomer`, `Strider`, `Stalker`, `Shrieker`, `Impaler`, `Prowler`, `Dragon`, `Hive Lord`, and 17 more |
+| Automatons | `Conscript`, `Conscript Commander`, `Conscript MG`, `Conscript Jump`, `Conscript RPG`, `Berserker`, `Soldier`, `Soldier MG`, `Soldier RPG`, `Scout Walker`, `Lieutenant`, `Tank`, `Gunship`, `Spawner`, `Assault Walker`, and 15 more |
+| Illuminate | `corrupted`, `champion`, `champion_staff`, `champion_jet`, `champion_beamer`, `observer`, `tripod`, `engineer`, `exomech`, `attack_ship`, `warmachine`, and 10 more |
 
-- HellForge copies every roster row of `like` for your unit. Your enemy joins the same groups, on the same planets,
-  with the same cap and budget weight.
-- `weight` multiplies the copied spawn weights (0 means 1). The vanilla enemy keeps its own, so the group spawns both.
-- `lowest_level` and `highest_level` (1 to 10, 0 for no bound) set its weight to 0 outside them. Level 11 counts as
-  level 10.
-- `factions` picks the rosters: `HF_ENEMY_TERMINIDS`, `HF_ENEMY_AUTOMATONS`, `HF_ENEMY_ILLUMINATE`, or 0 for every
-  faction roster that has a row of `like`.
-- HellForge sets no number of enemies; a roster holds up to 65,535 rows. The game's rows keep their places, and
-  yours follow them.
+### Shorthand: beside a vanilla enemy
+
+Set `like` to a vanilla enemy's resource id and leave `group` and the fields after it out. HellForge then copies every
+roster row of that enemy for your unit, with `weight` and the level bounds applied. `factions` may be 0: every roster
+`like` is in.
+
+## Add a squad
+
+```c
+HfEnemySquad pack = {sizeof pack};
+pack.name = "brute_pack";
+pack.factions = HF_ENEMY_TERMINIDS;
+pack.kind = HF_SQUAD_PATROL;
+pack.members[0].group = "my_name/my_mod/brutes"; pack.members[0].count = 2;
+pack.members[1].group = "Scavenger";             pack.members[1].count = 5;
+pack.weight = 1.0f;
+pack.lowest_level = 4;
+hf->add_enemy_squad(mod, &pack);
+```
+
+| Kind | Where the game uses it |
+|---|---|
+| `HF_SQUAD_PATROL` | patrols roaming the map |
+| `HF_SQUAD_OUTPOST` | the garrison of outposts and objectives; a member's count is a pool (the game uses 999) |
+| `HF_SQUAD_ENCOUNTER` | reinforcements: bug breaches and dropships |
+| `HF_SQUAD_BORDER` | flyers crossing the map's border |
+| `HF_SQUAD_CONVOY` | convoys |
+| `HF_SQUAD_AIR_SUPPORT` | air support (the game's Illuminate attack ships) |
+
+- A mission takes the squads whose levels, player counts and tags fit. Among those of a kind it draws by `weight`;
+  the game's squads use 0.01 to 3.
+- A squad whose group has no enemy with weight at the mission's level is left out of that mission.
+- Each roster in `factions` must have an enemy in every group. If one lacks a group, the squad is not added there
+  and your log says so.
+- A squad holds 32 enemies at most, except an outpost's pool.
+- `cost` multiplies the members' cost in the director's budget (0 means 1).
+- `with_tags` holds up to 8 [director tags](#director-tags): the squad is sent only while one is on.
+- An outpost squad with no tag, or with a tag that is on, is taken at every level and player count. The game's
+  outposts work this way.
 
 ## Replacement rules
 
-`add_enemy_swap` (SDK 17) adds a rule like the game's own modifier rules: while it is on, `replacement` spawns where
-`unit` would. Use it for a variant that only appears under a modifier.
+`add_enemy_swap` adds a rule like the game's own modifier rules: while it is on, `replacement` spawns where `unit`
+would. Use it for a variant that only appears under a modifier.
 
 ```c
 HfEnemySwap predator = {sizeof predator};
-predator.name = "alpha_predator";
-predator.unit = scavenger_copy;     /* the enemy replaced: vanilla, or an add_enemy unit */
-predator.replacement = predator_copy;
+predator.name = "brute_predator";
+predator.unit = brute_entity;       /* the enemy replaced: any unit of a roster row */
+predator.replacement = predator_entity;
 predator.tag = "BugPredators";      /* NULL: always on */
 predator.priority = 5;
 hf->add_enemy_swap(mod, &predator);
 ```
 
-- `tag` is a director tag, a planet's or a mission's. The table below lists the game's.
 - `lowest_level` and `highest_level` bound the difficulty (0: any).
 - Of the rules that match a spawn, the highest `priority` wins. The game's rules use 0 to 9. Of equal priorities the
   earlier rule wins, and the game's rules come before yours.
 - A replacement can be replaced again, 3 times in a row at most, and only by a rule whose priority is not lower.
-  HellForge leaves out a rule that would make a longer chain, or a loop, with the game's and other mods' rules. Your
-  mod's log says so.
+  HellForge leaves out a rule that would make a longer chain, or a loop. Your mod's log says so.
 - A rule applies in a faction's roster only when that roster has a row of `unit`.
 - `budget` is the replacement's weight in the enemy budget when it has no roster row. 0 takes the replaced enemy's.
 - `cost` multiplies the replaced enemy's cost in a squad's budget (0 means 1).
 
+## Director tags
+
+A planet or a mission turns tags on. Rows, squads and rules name them.
+
 | Faction | Tags |
 |---|---|
-| Terminids | `BugAcid`, `BugArmored`, `BugPredators`, `BugFlyers`, `BugFodder`, `BugCrawlers`, `BugBalanced`, `GM_BugSuperPredators`, `GM_BugGloom`, `GM_BugBurrowers`, `GM_BugDragon_Traveler`, `GM_BugShrieker_Traveler`, `GM_BugHiveLord` |
-| Automatons | `BotAssault`, `BotPhalanx`, `BotArtillery`, `BotAir`, `BotPanzer`, `BotBalanced`, `GM_BotAssault`, `GM_BotCyborgs`, `GM_BotGunships_Traveler`, `GM_IvoryLegion` |
-| Illuminate | `IlluminateStraggler`, `GM_IlluminateWarmachine_Traveler`, `GM_IlluminateEngineers`, `GM_IlluminateInvasion`, `GM_IlluminateHarvest`, `GM_IlluminateBodyHorror` |
+| Terminids | `BugAcid`, `BugArmored`, `BugPredators`, `BugFodder`, `BugCrawlers`, `BugBalanced`, `GM_BugSuperPredators`, `GM_BugGloom`, `GM_BugBurrowers`, `GM_BugDragon_Traveler`, `GM_BugShrieker_Traveler` |
+| Automatons | `BotAssault`, `BotPhalanx`, `BotArtillery`, `BotAir`, `BotPanzer`, `BotBalanced`, `GM_BotAssault`, `GM_BotCyborgs`, `GM_IvoryLegion` |
+| Illuminate | `GM_IlluminateWarmachine_Traveler`, `GM_IlluminateEngineers`, `GM_IlluminateInvasion`, `GM_IlluminateHarvest`, `GM_IlluminateBodyHorror` |
 | Any | `HordeOnly`, `GM_SEAF` |
+
+## What the entity needs
+
+Any entity the game has can be an enemy's unit. HellForge answers the game's reads that a vanilla enemy's data would:
+
+- **Packages.** The entity's resources must be loaded when it spawns, or the game crashes. A copy of a vanilla enemy
+  shares its base's packages, which the mission loads for a roster row. Any other entity must load its own (see
+  [data mods](data.md)).
+- **Outposts.** An enemy with no `Behavior` record takes no garrison place: an outpost squad of its group stays unused.
+- **Dropships.** An enemy with no `SquadTransportFormation` record rides as a single-seat passenger.
+- **Free spawns.** Some spawns need the enemy's navigation record. An entity without one is skipped by those.
 
 ## Limits and co-op
 
-- The entity must exist when the entity data has loaded: a vanilla one, or one your mod or another added. An entry
-  whose entity is missing is left out.
-- The unit must be able to spawn the ways `like` does. A copy of `like` always can. Two cases are refused, because
-  the game would crash on them. The same holds for a rule's replacement and the enemy it replaces.
-  - A unit without a `Behavior` record, such as a prop or a weapon.
-  - When transports carry `like` (dropships carry most Automatons), a unit without that enemy's
-    `SquadTransportFormation` record.
-- A mission loads the packages of your entity's base. An entity that needs a package of its own must load it itself
-  (see [data mods](data.md)).
-- `like` must be an enemy of a faction roster. The rosters all factions share take no new rows.
-- New squad mixes (compositions) are not part of this: your enemy joins existing groups.
+- The entity must exist when the entity data has loaded. An entry whose entity is missing is left out.
+- A mission's plan holds 96 kinds of patrol, 64 of encounter, 32 of outpost and 8 each of border, convoy and air
+  support. When more fit a mission, HellForge leaves an even spread out, the game's and the mods' alike, and logs it.
+- Squads of the game's guard-position and straggler kinds cannot be added.
+- The rosters all factions share take no new rows.
 - The game's enemy budget holds 64 places for the kinds of enemy alive at once. An enemy type takes one place for
-  each spawn source it is alive from. A Terminid mission at difficulty 5 held 11 to 14. With the table full, a further
-  kind still spawns but is not counted: its cap on living enemies does not apply. The log says when that happens.
-- Enemies are added when the game starts. A mod set up while the game runs gets a refusal from both calls.
+  each spawn source it is alive from. With the table full, a further kind still spawns but is not counted: its cap on
+  living enemies does not apply. The log says when that happens.
+- Enemies are added when the game starts. A mod set up while the game runs gets a refusal from all three calls.
 - Only the host's rosters decide what spawns. Every player needs the mod, for the entity.
-- When a live mod is taken out, its rows stop spawning and its rules stop matching.
+- When a live mod is taken out, its enemies, squads and rules leave the rosters once no mission is running.

@@ -26,11 +26,24 @@ static const struct { uint32_t roster, bit, faction, rules; } kErFactions[ER_FAC
     {0, HF_ENEMY_TERMINIDS, 2, 21}, {2, HF_ENEMY_AUTOMATONS, 8, 39}, {1, HF_ENEMY_ILLUMINATE, 4, 3}};
 /* The rosters every faction shares, in the order the budget's scan takes them after the faction's own. */
 static const uint32_t kErShared[3] = {4, 3, 5};
+/* Each faction's group names, a char* per game row (0x94B570 and 0xAD51B0 index them by a row's number). */
+static const uint32_t kErNames[ER_FACTIONS] = {0x21C8E50u, 0x21C8910u, 0x21C9A60u};
 static const uint8_t kErBudgetPin[] = {0x48, 0x8b, 0x05, 0xc9, 0xb2, 0x9d, 0x02, 0x8b, 0x88, 0xbc, 0x18, 0x05, 0x00, 0x33, 0xc0, 0x83,
     0xf9, 0x02, 0x0f, 0x85, 0xbe, 0x00, 0x00, 0x00, 0x8b, 0xc8};
 
 /* state: 0 waiting for the rosters to grow, 1 in them (rows: how many it got), -1 refused then. */
-typedef struct ErEnemy { HfMod* mod; char name[192]; uint64_t unit, like; float weight; uint32_t factions, lowest, highest; int state, rows; } ErEnemy;
+typedef struct ErEnemy
+{
+    HfMod* mod;
+    char name[192];
+    uint64_t unit, like; /* like 0: a row of its own, from the fields after `rows` */
+    float weight;
+    uint32_t factions, lowest, highest;
+    int state, rows, gone; /* gone: its mod was taken out */
+    char group[96];
+    uint32_t key, cap, sizeClass, flags, with[4], without[4];
+    float weights[DIF_VANILLA], cost, budget;
+} ErEnemy;
 typedef struct ErSwap
 {
     HfMod* mod;
@@ -38,10 +51,10 @@ typedef struct ErSwap
     uint64_t unit, replacement;
     uint32_t factions, tag, lowest, highest, priority;
     float budget, cost;
-    int state, rules;
+    int state, rules, gone;
 } ErSwap;
 /* A faction's grown arrays; the mod entry (its index) behind each row and rule after the game's. */
-typedef struct ErGrown { uint8_t* rows; uint8_t* rules; uint64_t rowCount, ruleCount; int* rowOwner; int* ruleOwner; } ErGrown;
+typedef struct ErGrown { uint8_t* rows; uint8_t* rules; uint64_t rowCount, ruleCount; int* rowOwner; int* ruleOwner; const char** names; } ErGrown;
 
 static StableArray g_erEnemyStore = {NULL, sizeof(ErEnemy), ER_CEILING, 0};
 static StableArray g_erSwapStore = {NULL, sizeof(ErSwap), ER_CEILING, 0};
@@ -61,7 +74,19 @@ static ErEnemy* ErEnemyAt(int i) { return (ErEnemy*)(g_erEnemyStore.base + (size
 static ErSwap* ErSwapAt(int i) { return (ErSwap*)(g_erSwapStore.base + (size_t)i * sizeof(ErSwap)); }
 
 /* Whether the rosters are still to grow: director.c holds roster edits back until then, so they land in the copies. */
-static int EnemyRostersPending(void) { return g_erState == 0 && (g_erEnemyCount > 0 || g_erSwapCount > 0); }
+static int g_erSquadCount;
+static int EnemyRostersPending(void) { return g_erState == 0 && (g_erEnemyCount > 0 || g_erSwapCount > 0 || g_erSquadCount > 0); }
+static const char* EnemyGuardsInstall(uintptr_t game);          /* enemy_guards.c */
+static const char* EnemyNamesInstall(uintptr_t game);
+static void EnemyGuardsWatch(void);
+static const char* EnemySquadsGrow(uintptr_t game, int moved);  /* enemy_squads.c */
+static void EnemySquadsForget(void);
+static void EnemySquadsMark(const HfMod* mod);
+static void EnemySquadsWatch(void);
+static void EnemySquadsTell(const char* why);
+static uint64_t EnemySquadsAdded(void);
+static void ErForgetGone(void);
+static int g_erForgetting; /* entries of mods taken out wait for the mission's end */
 
 /* Whether the game has this entity: in its entity map, and not one of a mod's that was refused. */
 static int ErEntityInMap(uint64_t entity)
@@ -71,37 +96,6 @@ static int ErEntityInMap(uint64_t entity)
 }
 /* The native fixture replaces it. */
 static int (*g_erEntityKnown)(uint64_t entity) = ErEntityInMap;
-
-/* An entity's SquadTransportFormation record (component 122: two entries of 24 bytes, a formation id first), or NULL.
- * A transport looks each passenger's up (0x4FE170) and reads its formation's entry with no check (0x684A70, 0x684B51):
- * an enemy drawn for a transport without that entry crashes the game. */
-#define ER_FORMATIONS 122u
-static const uint8_t* ErFormationsOf(uint64_t entity)
-{
-    uint8_t* table = StatePointer(EntityState(), REG_TABLES + 8 * ER_FORMATIONS);
-    uint32_t slots = SlotsOf(ER_FORMATIONS), record = 0;
-    uint8_t* row = table != NULL && slots != 0 ? FindRow(table, slots, 16, entity) : NULL;
-    if (row == NULL) return NULL;
-    memcpy(&record, row + 8, 4);
-    return table + (size_t)slots * 16 + (size_t)record * 48;
-}
-static const uint8_t* (*g_erFormations)(uint64_t entity) = ErFormationsOf;
-
-/* Whether `unit` can ride every transport `as` can: each formation of `as`'s record is in `unit`'s. */
-static int ErRidesAs(uint64_t unit, uint64_t as)
-{
-    const uint8_t* need = g_erFormations(as);
-    const uint8_t* have = g_erFormations(unit);
-    if (need == NULL || need == have) return 1;
-    for (int n = 0; n < 2; n++)
-    {
-        uint32_t id, found = 0;
-        memcpy(&id, need + n * 24, 4);
-        for (int h = 0; have != NULL && h < 2; h++) found |= memcmp(have + h * 24, &id, 4) == 0;
-        if (id != 0 && !found) return 0;
-    }
-    return 1;
-}
 
 /* ---- the API -------------------------------------------------------------------------------------------------------- */
 
@@ -132,6 +126,47 @@ static int ErLevelsRefused(HfMod* mod, const char* what, const char* name, uint3
     return 1;
 }
 
+static uint32_t ErHash(const char* text) { return text != NULL && text[0] != 0 ? (uint32_t)(Murmur64A(text, strlen(text)) >> 32) : 0; }
+
+/* Four tags' hashes with no gap: the game's lists end at their first 0 (0x177E3C0). */
+static void ErTags(uint32_t* tags, const char* const* names)
+{
+    for (int i = 0, n = 0; i < 4; i++) if (ErHash(names[i])) tags[n++] = ErHash(names[i]);
+}
+
+static int ErWeightsRefused(HfMod* mod, const HfEnemy* def, const char* name, ErEnemy* e)
+{
+    float most = 0;
+    for (uint32_t i = 0; i < DIF_VANILLA; i++)
+    {
+        if (!isfinite(def->weights[i]) || def->weights[i] < 0 || def->weights[i] > 1000) { ApiLog(mod, "add_enemy(%s): its weights are 0 to 1000", name); return 1; }
+        e->weights[i] = def->weights[i];
+        most = def->weights[i] > most ? def->weights[i] : most;
+    }
+    if (most <= 0) { ApiLog(mod, "add_enemy(%s): it needs a weight above 0 at some level", name); return 1; }
+    return 0;
+}
+
+/* An enemy with a row of its own (no `like`): its fields into e, or 1 when one is refused. A group's key is the game's
+ * hash of its name, as its tags' are; key 0 ends a squad's member list, so no group may hash to it. */
+static int ErOwnRefused(HfMod* mod, const HfEnemy* def, const char* name, ErEnemy* e)
+{
+    if (def->size < sizeof(HfEnemy)) { ApiLog(mod, "add_enemy(%s): without `like` it needs the whole HfEnemy (its size is too small)", name); return 1; }
+    if (def->factions == 0 || ErHash(def->group) == 0 || strlen(def->group) >= sizeof e->group)
+    { ApiLog(mod, "add_enemy(%s): without `like` it needs its factions and a group (a name under 96 bytes)", name); return 1; }
+    if (ErWeightsRefused(mod, def, name, e)) return 1;
+    if (!isfinite(def->cost) || def->cost < 0 || def->cost > 100000 || !isfinite(def->budget) || def->budget < 0 || def->budget > 1000 ||
+        def->alive_cap > 100000 || def->size_class > 3 || (def->flags & ~HF_ENEMY_ALWAYS_LOADED))
+    { ApiLog(mod, "add_enemy(%s): its cost is 0 to 100000, its budget 0 to 1000, its cap up to 100000, its size class 0 to 3", name); return 1; }
+    snprintf(e->group, sizeof e->group, "%s", def->group);
+    e->key = ErHash(def->group);
+    e->cost = def->cost; e->budget = def->budget > 0 ? def->budget : 1.0f;
+    e->cap = def->alive_cap; e->sizeClass = def->size_class; e->flags = def->flags;
+    ErTags(e->with, def->with_tags);
+    ErTags(e->without, def->without_tags);
+    return 0;
+}
+
 /* add_enemy (SDK 17): kept until the entity data loads, when the rosters grow (ErGrow). */
 static int ApiAddEnemy(HfMod* mod, const HfEnemy* def)
 {
@@ -141,7 +176,7 @@ static int ApiAddEnemy(HfMod* mod, const HfEnemy* def)
     const char* name = Identity(mod, def->name, identity, sizeof identity);
     if (ErRefused(mod, "add_enemy", name, def->factions) ||
         ErLevelsRefused(mod, "add_enemy", name, def->lowest_level, def->highest_level, DIF_VANILLA)) return 1;
-    if (def->unit == 0 || def->like == 0) { ApiLog(mod, "add_enemy(%s): it needs a unit and the enemy it is like", name); return 1; }
+    if (def->unit == 0) { ApiLog(mod, "add_enemy(%s): it needs a unit", name); return 1; }
     if (!isfinite(def->weight) || def->weight < 0 || def->weight > 1000) { ApiLog(mod, "add_enemy(%s): its weight is 0 to 1000", name); return 1; }
     if (!StableRoom(&g_erEnemyStore, (size_t)g_erEnemyCount + 1)) { ApiLog(mod, "add_enemy(%s): no memory for more enemies", name); return 1; }
     ErEnemy e = {0};
@@ -150,9 +185,11 @@ static int ApiAddEnemy(HfMod* mod, const HfEnemy* def)
     e.unit = def->unit; e.like = def->like;
     e.weight = def->weight > 0 ? def->weight : 1.0f;
     e.factions = def->factions; e.lowest = def->lowest_level; e.highest = def->highest_level;
+    if (e.like == 0 && ErOwnRefused(mod, def, name, &e)) return 1;
     *ErEnemyAt(g_erEnemyCount) = e;
     g_erEnemyCount++;
-    ApiLog(mod, "adding enemy %s: %016llx beside %016llx, its weights x %g", name, (unsigned long long)e.unit, (unsigned long long)e.like, e.weight);
+    if (e.like) ApiLog(mod, "adding enemy %s: %016llx beside %016llx, its weights x %g", name, (unsigned long long)e.unit, (unsigned long long)e.like, e.weight);
+    else ApiLog(mod, "adding enemy %s: %016llx in the group %s (%08x)", name, (unsigned long long)e.unit, e.group, e.key);
     return 0;
 }
 
@@ -314,6 +351,40 @@ static uint64_t ErRowsOf(const uint8_t* rows, uint64_t count, uint64_t unit)
 
 static int ErJoins(const ErEnemy* e, uint32_t f) { return e->state >= 0 && (e->factions == 0 || (e->factions & kErFactions[f].bit)); }
 
+/* The rows an enemy gets in faction f: one of its own, or one per row of its `like`. */
+static uint64_t ErRowsFor(const ErEnemy* e, uint32_t f, const uint8_t* rows, uint64_t count)
+{
+    return !ErJoins(e, f) ? 0 : e->like ? ErRowsOf(rows, count, e->like) : 1;
+}
+
+static float ErLevelWeight(const ErEnemy* e, uint32_t level, float weight)
+{
+    return (e->lowest && level < e->lowest) || (e->highest && level > e->highest) ? 0.0f : weight * e->weight;
+}
+
+/* A row of the mod's own: every field the game reads from it. +0x14 stays 0 (its readers ask only for 2, the game's
+ * own mark) and +0x1C/+0x28 too (a spawn on death; level 11's weights take that room). */
+static void ErOwnRow(uint8_t* row, const ErEnemy* e, int moved)
+{
+    uint32_t levels = moved ? DIF_VANILLA + 1 : DIF_VANILLA, at = moved ? 0x2C : 0x30;
+    memset(row, 0, ER_ROW);
+    memcpy(row, &e->key, 4);
+    memcpy(row + 8, &e->unit, 8);
+    memcpy(row + 0x10, &e->sizeClass, 4);
+    memcpy(row + 0x18, &e->cap, 4);
+    memcpy(row + 0x20, &e->cost, 4);
+    memcpy(row + 0x24, &e->budget, 4);
+    for (uint32_t i = 0; i < levels; i++)
+    {
+        uint32_t level = i < DIF_VANILLA ? i + 1 : DIF_VANILLA;
+        float weight = ErLevelWeight(e, level, e->weights[level - 1]);
+        memcpy(row + at + 4 * i, &weight, 4);
+    }
+    memcpy(row + 0x58, e->with, sizeof e->with);
+    memcpy(row + 0x68, e->without, sizeof e->without);
+    row[0x78] = (e->flags & HF_ENEMY_ALWAYS_LOADED) != 0;
+}
+
 /* A copy of `like`'s row for the mod's unit: its weights scaled, 0 outside its levels. Level 11's weight, where the
  * rows have one (moved), counts as level 10's; rows without one get it from level 10's when difficulty.c moves them. */
 static void ErRow(uint8_t* row, const uint8_t* like, const ErEnemy* e, int moved)
@@ -326,25 +397,38 @@ static void ErRow(uint8_t* row, const uint8_t* like, const ErEnemy* e, int moved
         uint32_t level = i < DIF_VANILLA ? i + 1 : DIF_VANILLA;
         float weight;
         memcpy(&weight, row + at + 4 * i, 4);
-        weight = (e->lowest && level < e->lowest) || (e->highest && level > e->highest) ? 0.0f : weight * e->weight;
+        weight = ErLevelWeight(e, level, weight);
         memcpy(row + at + 4 * i, &weight, 4);
     }
 }
 
-/* The mod enemies' rows after the game's `count` in g->rows (room made by ErGrowFaction); each entry's rows counted. */
+/* The mod enemies' rows after the game's `count` in g->rows (room made by ErGrowFaction); each entry's rows counted.
+ * g->names gets each row's group name: 0x94B570 and 0xAD51B0 name a group by the index of its first row. */
+static void ErAppendRow(ErGrown* g, uint64_t count, int entry, const char* name)
+{
+    g->names[g->rowCount] = name;
+    g->rowOwner[g->rowCount - count] = entry;
+    g->rowCount++;
+    ErEnemyAt(entry)->rows++;
+}
+
 static void ErAppendRows(ErGrown* g, uint32_t f, uint64_t count, int moved)
 {
     for (int i = 0; i < g_erEnemyCount; i++)
     {
         ErEnemy* e = ErEnemyAt(i);
-        for (uint64_t r = 0; ErJoins(e, f) && r < count; r++)
+        if (!ErJoins(e, f)) continue;
+        if (e->like == 0)
+        {
+            ErOwnRow(g->rows + g->rowCount * ER_ROW, e, moved);
+            ErAppendRow(g, count, i, e->group);
+        }
+        for (uint64_t r = 0; e->like != 0 && r < count; r++)
         {
             const uint8_t* like = g->rows + r * ER_ROW;
             if (memcmp(like + 8, &e->like, 8) != 0) continue;
             ErRow(g->rows + g->rowCount * ER_ROW, like, e, moved);
-            g->rowOwner[g->rowCount - count] = i;
-            g->rowCount++;
-            e->rows++;
+            ErAppendRow(g, count, i, g->names[r]);
         }
     }
 }
@@ -443,7 +527,7 @@ static const char* ErVanilla(uintptr_t game, uint32_t f, const uint8_t** rows, c
 static int ErRoom(ErGrown* g, uint32_t f, uint64_t rows, uint64_t rules)
 {
     uint64_t joining = 0;
-    for (int i = 0; i < g_erEnemyCount; i++) joining += ErJoins(ErEnemyAt(i), f) ? ErRowsOf(g->rows, rows, ErEnemyAt(i)->like) : 0;
+    for (int i = 0; i < g_erEnemyCount; i++) joining += ErRowsFor(ErEnemyAt(i), f, g->rows, rows);
     if (rows + joining > ER_ROWS_MAX) return 1;
     size_t rowBytes = (size_t)(rows + joining) * ER_ROW, ruleBytes = (size_t)(rules + (uint64_t)g_erSwapCount) * ER_RULE;
     size_t ownerBytes = (size_t)(joining + (uint64_t)g_erSwapCount + 1) * sizeof(int);
@@ -451,6 +535,9 @@ static int ErRoom(ErGrown* g, uint32_t f, uint64_t rows, uint64_t rules)
     if (block == NULL) return 1;
     memcpy(block, g->rows, (size_t)rows * ER_ROW);
     memcpy(block + rowBytes, g->rules, (size_t)rules * ER_RULE);
+    const char** names = (const char**)(void*)AllocateNearGame(g_erGame, (size_t)(rows + joining) * 8);
+    if (names == NULL || SafeRead(g_erGame + kErNames[f], names, (size_t)rows * 8)) { VirtualFree(block, 0, MEM_RELEASE); return 1; }
+    g->names = names;
     g->rows = block;
     g->rules = block + rowBytes;
     g->rowOwner = (int*)(void*)(block + rowBytes + ruleBytes);
@@ -481,37 +568,15 @@ static const char* ErGrowFaction(uintptr_t game, uint32_t f, int moved)
     return NULL;
 }
 
-/* Whether an entity has a Behavior record (component 284). The director reads an enemy's with no check (0x510790, then
- * 0x90EC29 and 0x90F069): a prop or weapon drawn as an enemy crashes the game. */
-#define ER_BEHAVIOR 284u
-static int ErBehaviorOf(uint64_t entity)
-{
-    uint8_t* table = StatePointer(EntityState(), REG_TABLES + 8 * ER_BEHAVIOR);
-    uint32_t slots = SlotsOf(ER_BEHAVIOR);
-    return table != NULL && slots != 0 && FindRow(table, slots, 16, entity) != NULL;
-}
-static int (*g_erBehaves)(uint64_t entity) = ErBehaviorOf;
-
-/* Why `unit` cannot stand where `as` does, or NULL: it is an AI unit when `as` is one, and rides its transports. */
-static const char* ErStandsFor(uint64_t unit, uint64_t as)
-{
-    if (g_erBehaves(as) && !g_erBehaves(unit)) return "it has no Behavior record, so it is not an AI unit";
-    if (!ErRidesAs(unit, as)) return "it has no SquadTransportFormation for the transports that carry that enemy";
-    return NULL;
-}
-
 /* Entries whose entities the game does not have are refused before any row is made: the director would spawn them. */
 static void ErCheckEntities(void)
 {
-    const char* why;
     for (int i = 0; i < g_erEnemyCount; i++)
     {
         ErEnemy* e = ErEnemyAt(i);
         if (ModGone(e->mod) || !e->mod->loaded) e->state = -1;
         else if (!g_erEntityKnown(e->unit))
         { e->state = -1; ApiLog(e->mod, "add_enemy(%s): the game has no entity %016llx; not added", e->name, (unsigned long long)e->unit); }
-        else if ((why = ErStandsFor(e->unit, e->like)) != NULL)
-        { e->state = -1; ApiLog(e->mod, "add_enemy(%s): the unit cannot stand for %016llx: %s; not added (base the unit on that enemy)", e->name, (unsigned long long)e->like, why); }
     }
     for (int i = 0; i < g_erSwapCount; i++)
     {
@@ -519,8 +584,6 @@ static void ErCheckEntities(void)
         if (ModGone(s->mod) || !s->mod->loaded) s->state = -1;
         else if (!g_erEntityKnown(s->unit) || !g_erEntityKnown(s->replacement))
         { s->state = -1; ApiLog(s->mod, "add_enemy_swap(%s): the game has not both its entities; not added", s->name); }
-        else if ((why = ErStandsFor(s->replacement, s->unit)) != NULL)
-        { s->state = -1; ApiLog(s->mod, "add_enemy_swap(%s): the replacement cannot stand for %016llx: %s; not added", s->name, (unsigned long long)s->unit, why); }
     }
 }
 
@@ -559,6 +622,7 @@ static const char* ErGrow(void)
     if (moved < 0) return "an enemy weight read is not the reviewed one";
     const char* why = ErPairGuardInstall(game);
     if (why == NULL) why = ErBudgetInstall(game);
+    if (why == NULL) why = EnemyGuardsInstall(game);
     if (why != NULL) return why;
     ErCheckEntities();
     for (uint32_t f = 0; f < ER_FACTIONS; f++)
@@ -569,6 +633,8 @@ static const char* ErGrow(void)
         g_erGrown[f].rowCount = g_erGrown[f].ruleCount = 0; /* not counted as added */
         Note("enemies: roster %u not grown: %s", kErFactions[f].roster, failed);
     }
+    if (why == NULL) why = EnemyNamesInstall(game);
+    if (why == NULL) why = EnemySquadsGrow(game, moved);
     ErReportEnemies();
     ErReportSwaps();
     return why;
@@ -581,6 +647,7 @@ static void ErTellPending(const char* why)
         if (ErEnemyAt(i)->state == 0) { ErEnemyAt(i)->state = -1; ApiLog(ErEnemyAt(i)->mod, "add_enemy(%s): not added: %s", ErEnemyAt(i)->name, why); }
     for (int i = 0; why != NULL && i < g_erSwapCount; i++)
         if (ErSwapAt(i)->state == 0) { ErSwapAt(i)->state = -1; ApiLog(ErSwapAt(i)->mod, "add_enemy_swap(%s): not added: %s", ErSwapAt(i)->name, why); }
+    EnemySquadsTell(why);
 }
 
 /* What the pair guard caught, at most every 10 s. */
@@ -597,7 +664,7 @@ static void ErPairsWatch(void)
  * mission reads them. */
 static void WatchEnemyRosters(void)
 {
-    if (g_erState == 1) ErPairsWatch();
+    if (g_erState == 1) { ErPairsWatch(); ErForgetGone(); EnemySquadsWatch(); EnemyGuardsWatch(); }
     if (!EnemyRostersPending() || !g_fired[HF_EVENT_GAME_LOADED]) return;
     if (g_erSince == 0) g_erSince = GetTickCount64();
     if (!g_fired[HF_EVENT_ENTITIES_READY])
@@ -617,23 +684,46 @@ static void WatchEnemyRosters(void)
         rows += g_erGrown[f].rowCount ? g_erGrown[f].rowCount - kRosters[kErFactions[f].roster].rows : 0;
         rules += g_erGrown[f].ruleCount ? g_erGrown[f].ruleCount - kErFactions[f].rules : 0;
     }
-    Note("enemies: %llu roster row(s) and %llu replacement rule(s) added%s%s", (unsigned long long)rows, (unsigned long long)rules,
-        why ? "; not all: " : "", why ? why : "");
+    Note("enemies: %llu roster row(s), %llu replacement rule(s) and %llu squad(s) added%s%s", (unsigned long long)rows, (unsigned long long)rules,
+        (unsigned long long)EnemySquadsAdded(), why ? "; not all: " : "", why ? why : "");
 }
 
-/* A mod taken out (live_code.c): its rows lose their weights and its rules never match. Its entities stay, as
- * tombstones, so a row the director already picked still spawns. */
-static void EnemyRostersForget(const HfMod* mod)
+/* Whether a mission runs: the director's +0x680 is 1 from its start to the return to the ship. */
+static int ErMissionRuns(void)
 {
+    uint64_t director = 0;
+    uint32_t running = 0;
+    if (g_erGame == 0 || SafeRead(g_erGame + ER_DIRECTOR, &director, 8) || director == 0) return 0;
+    return !SafeRead((uintptr_t)director + 0x680, &running, 4) && running != 0;
+}
+
+/* The rows and rules of mods taken out lose their weights and never match. Not while a mission runs: its plan holds
+ * squads that draw those groups, and a group with no row left to draw crashes the game (0x949BF9). */
+static void ErForgetGone(void)
+{
+    if (!g_erForgetting || ErMissionRuns()) return;
+    g_erForgetting = 0;
     for (uint32_t f = 0; f < ER_FACTIONS; f++)
     {
         ErGrown* g = &g_erGrown[f];
         if (g->rowOwner == NULL) continue;
         uint64_t rows = kRosters[kErFactions[f].roster].rows, rules = kErFactions[f].rules;
         for (uint64_t r = rows; r < g->rowCount; r++)
-            if (ErEnemyAt(g->rowOwner[r - rows])->mod == mod) memset(g->rows + r * ER_ROW + 0x2C, 0, 0x2C);
+            if (ErEnemyAt(g->rowOwner[r - rows])->gone) memset(g->rows + r * ER_ROW + 0x2C, 0, 0x2C);
         uint32_t never = ER_NEVER;
         for (uint64_t r = rules; r < g->ruleCount; r++)
-            if (ErSwapAt(g->ruleOwner[r - rules])->mod == mod) memcpy(g->rules + r * ER_RULE + 0x20, &never, 4);
+            if (ErSwapAt(g->ruleOwner[r - rules])->gone) memcpy(g->rules + r * ER_RULE + 0x20, &never, 4);
     }
+    EnemySquadsForget();
+}
+
+/* A mod taken out (live_code.c): its entries are marked, and dropped from the rosters once no mission runs. Its
+ * entities stay, as tombstones, so a row the director already picked still spawns. */
+static void EnemyRostersForget(const HfMod* mod)
+{
+    for (int i = 0; i < g_erEnemyCount; i++) if (ErEnemyAt(i)->mod == mod) ErEnemyAt(i)->gone = 1;
+    for (int i = 0; i < g_erSwapCount; i++) if (ErSwapAt(i)->mod == mod) ErSwapAt(i)->gone = 1;
+    EnemySquadsMark(mod);
+    g_erForgetting = 1;
+    ErForgetGone();
 }
