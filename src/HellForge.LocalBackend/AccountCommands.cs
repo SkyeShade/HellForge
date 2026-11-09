@@ -45,7 +45,7 @@ public static class AccountCommands
         {
             using var snapshot = OpenSnapshot(profileDir, steamAccount, error);
             if (snapshot == null) return 1;
-            var settings = AccountImportSettings.Load(AccountImportSettings.PathIn(profileDir));
+            var settings = AccountImportSettings.Load(AccountImportSettings.PathIn(profileDir), template);
             using var store = ProfileStore.Open(profileDir, template);
             store.Import(snapshot, settings, PaidContentSet.Load());
             output.WriteLine("Imported the account snapshot into " + store.FilePath);

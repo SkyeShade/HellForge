@@ -47,7 +47,7 @@ The rest of this page goes through each item. Contributors will find more detail
 [engine-roadmap.md](engine-roadmap.md) (session runner, local backend, mod loader, stand-ins) and
 [sdk-roadmap.md](sdk-roadmap.md) (the mod SDK).
 
-Versions: HellForge 0.4.0-beta, engine 0.1.47, mod SDK 16.
+Versions: HellForge 0.4.0-beta, engine 0.1.48, mod SDK 17.
 
 ## Done in 0.2.0-beta
 
@@ -240,8 +240,9 @@ weights are in the [SDK roadmap, phase 5b](sdk-roadmap.md#events-hooks-and-regis
 
 Status: planned. The design isn't decided yet.
 
-A new profile starts from a template: `starter` (a fresh player just out of basic training) or `unlock-all`
-(everything, at the top level). For now the local backend pays out with simple placeholder rules (`MissionService.cs`):
+A new profile starts from a template. `live-like` is the default: a starter profile until Sync Inventory, then your live
+account, with the premium warbonds you own open. `starter` is a fresh player just out of basic training, who buys owned
+premium warbonds with Forge Credits. `unlock-all` has everything, at the top level. For now the local backend pays out with simple placeholder rules (`MissionService.cs`):
 XP based on difficulty, success and objectives, requisition and medals based on difficulty, and whatever samples the
 game reports you looted. Your primary gains the same XP as you do.
 
@@ -327,4 +328,4 @@ swap the files and restart. Pre-releases would only show to players who opt in.
 | Smart App Control blocks HellForge's unsigned programs and DLLs ("An Application Control policy has blocked this file"). Setup and the launcher warn, and name the blocked file; signing is being decided ([code-signing.md](code-signing.md)) | Turn Smart App Control off. Windows may not let you turn it back on without a reset ([troubleshooting.md](troubleshooting.md#smart-app-control)) |
 | HellForge's editor and the HD2R Editor clash | Use one at a time |
 | Antivirus programs can quarantine HellForge's files | Add an exclusion for the install folder ([troubleshooting.md](troubleshooting.md#antivirus)) |
-| A crash at `helldivers2.exe+0x626296` | When the game closes it's the game's own crash on quitting, nothing to fix. It was also seen once while a mission loaded (#228), which is still being looked at: please attach the crash report |
+| A crash at `helldivers2.exe+0x626296` | When the game closes it's the game's own crash on quitting, nothing to fix. During play it is the job pool running full, which HellForge now waits out ([crash guards](crash-guards.md)). If `modloader.log` says the pool was `still full after 10 s`, please attach the crash report |

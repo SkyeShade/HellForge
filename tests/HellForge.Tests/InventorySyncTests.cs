@@ -1588,6 +1588,11 @@ static class InventorySyncTests
         check(!defaults.AutoApply && defaults.Includes("level") && defaults.RuleFor("level") == ImportRule.Higher && defaults.RuleFor("armory") == ImportRule.Merge,
             "Wrong defaults for numbers or items.");
         check(!defaults.Includes("ship") && !defaults.Includes("onboarding"), "Ship and tutorial progress are imported by default.");
+        // A live-like profile takes everything by default, at each category's first rule; a saved file still wins.
+        var liveLike = new AccountImportSettings(ProfileStore.LiveLikeTemplate);
+        check(AccountImportSettings.Categories.All(c => liveLike.Includes(c.Id) && liveLike.RuleFor(c.Id) == c.Rules[0]) && !liveLike.AutoApply,
+            "A live-like profile does not import every category by default.");
+        check(!new AccountImportSettings("starter").Includes("ship"), "A starter profile imports its ship by default.");
         check(RefusesArgument(() => defaults.Set("level", true, ImportRule.Merge)), "Level took a rule it does not offer.");
         check(RefusesArgument(() => defaults.Set("super-credits", true, ImportRule.Vanilla)), "An unknown category was taken.");
 
@@ -1606,6 +1611,8 @@ static class InventorySyncTests
             "A hand-edited rule a category does not offer was taken.");
         check(!edited.Includes("packages") && edited.RuleFor("packages") == ImportRule.Vanilla, "A valid hand-edited choice was dropped.");
         check(!AccountImportSettings.Load(Path.Combine(root, "import-settings", "missing.json")).AutoApply, "A missing file is not the defaults.");
+        check(AccountImportSettings.Load(Path.Combine(root, "import-settings", "missing.json"), ProfileStore.LiveLikeTemplate).Includes("ship") &&
+            !AccountImportSettings.Load(path, ProfileStore.LiveLikeTemplate).Includes("packages"), "A live-like profile's defaults or saved file were not used.");
 
         // Warbond unlocks have no checkbox: as in vanilla by default, every item, or none; never left out by include alone.
         var warbonds = new AccountImportSettings();

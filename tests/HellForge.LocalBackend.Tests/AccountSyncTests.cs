@@ -166,6 +166,16 @@ static class AccountSyncTests
         using var dev = ProfileStore.Open(null, "unlock-all");
         dev.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]);
         check(Served(dev).Contains(steeled.Tokens[0]), "An unlock-all profile was not handed its owned warbond.");
+
+        // So is a live-like profile (#282), starting with starter's items; starter and older templates buy theirs.
+        check(!ProfileStore.EarnsWarbonds("unlock-all") && !ProfileStore.EarnsWarbonds(HellForge.Core.ProfileStore.LiveLikeTemplate) &&
+            ProfileStore.EarnsWarbonds("starter") && ProfileStore.EarnsWarbonds(null), "The wrong templates buy their owned warbonds.");
+        using var liveLike = ProfileStore.Open(null, HellForge.Core.ProfileStore.LiveLikeTemplate);
+        using var fresh = ProfileStore.Open(null, "starter");
+        check(Items(liveLike.Current()).Keys.Order().SequenceEqual(Items(fresh.Current()).Keys.Order()), "A live-like profile does not start as a starter one.");
+        liveLike.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }])
+            { EarnWarbonds = ProfileStore.EarnsWarbonds(HellForge.Core.ProfileStore.LiveLikeTemplate) };
+        check(Served(liveLike).Contains(steeled.Tokens[0]), "A live-like profile was not handed its owned warbond.");
     }
 
     // A ship away from any planet: the live server's location has a warId and planetIndex of -1 (tickets 0120, 0128). The

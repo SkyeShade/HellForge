@@ -99,6 +99,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **New profiles start live-like.** The new `live-like` template is a starter profile until you run Sync Inventory.
+  The sync then brings in everything it can from your live account: level, unlocks, ship modules, medals and samples,
+  the ship's name and the tutorial progress. The premium warbonds you own open without a purchase in Forge Credits. It is the first profile of a new installation and the launcher's first choice. Existing profiles keep
+  their template, and `starter` stays for earning everything again (#282, #262).
 - **`hf_global_EngineApi`'s fields say what they are.** `table` is now `application` and `scene_graph` is now `unit`:
   the engine's C API keeps one table per domain, and these two are the Application and Unit functions. A mod that
   read either field by its old name needs the new one; the offsets are unchanged.
@@ -129,6 +133,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Direct3D 11 crashes in the Armory and at mission start.** Browsing armour crashed the game at
+  `helldivers2.exe+0x732040`, and a slow PC could crash at `+0x626296` as a mission loaded. A freed texture is now bound
+  empty instead of read, and a full job pool is waited out while jobs finish
+  ([crash guards](docs/crash-guards.md)).
 - **A mod's own weapon mesh in the right place on every LOD and its shadow.** A data spec's `mesh` put the shadow 20 cm
   off the gun on an Adjudicator copy (4.5 cm on a Liberator), and hung a Liberator copy's LOD2 on its fire selector. Each
   render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new

@@ -316,8 +316,13 @@ def main():
                  if item["isConsumable"] and item["progressionCategory"] == BOOSTER_CATEGORY and item["mixId"] not in held]
     unlock_all = [{"mixId": item["mixId"], "amount": 1, "isDiscovered": True} for item in items if not item["isConsumable"]] + boosters
     (out / "profile-templates.json").write_text(json.dumps({
-        "scope": "Inventory templates for new local profiles. unlock-all is a development profile that grants every non-consumable catalogue item, including content the account may not own, and every booster.",
+        "scope": "Inventory templates for new local profiles. live-like starts as starter and takes the live account at Sync Inventory, with owned premium warbonds open. unlock-all is a development profile that grants every non-consumable catalogue item, including content the account may not own, and every booster.",
         "templates": {
+            # live-like is starter until Sync Inventory, which takes the live account (HellForge.Core AccountImportSettings);
+            # the backend opens its owned premium warbonds without a Forge Credits purchase (ProfileStore.EarnsWarbonds).
+            "live-like": {"description": "Like your live account: a starter profile until you run Sync Inventory, which then brings in your level, unlocks, ship, medals and samples, and opens the premium warbonds you own.", "items": starter,
+                          "progression": {"onboardingFlags": onboarding_flags, "packageProgress": tutorial,
+                                          "activeSeasonPass": default_season_pass, "purchasedSeasonPassItems": []}},
             "starter": {"description": "Fresh player after basic training: AR-23 Liberator, P-2 Peacemaker, G-12 High Explosive.", "items": starter,
                         "progression": {"onboardingFlags": onboarding_flags, "packageProgress": tutorial,
                                         "activeSeasonPass": default_season_pass, "purchasedSeasonPassItems": []}},

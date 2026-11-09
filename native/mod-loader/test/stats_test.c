@@ -17,6 +17,7 @@
 #include "log_header_test.c"
 #include "mod_identity_test.c"
 #include "mod_status_test.c"
+#include "render_guards_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -4491,6 +4492,7 @@ int main(int argc, char** argv)
     SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
     ArmoryDiagFixture();
     ShieldBlockFixture();
+    RenderGuardsFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "

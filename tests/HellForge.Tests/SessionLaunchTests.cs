@@ -11,7 +11,7 @@ static class SessionLaunchTests
             install.Create(SupportedBuild.Current.BuildId);
             Directory.CreateDirectory(install.App);
             File.WriteAllText(Path.Combine(install.App, "profile-templates.json"),
-                """{"templates": {"starter": {"description": "New player", "items": []}, "unlock-all": {"description": "Everything", "items": [1, 2]}}}""");
+                """{"templates": {"live-like": {"description": "Like live", "items": []}, "starter": {"description": "New player", "items": []}, "unlock-all": {"description": "Everything", "items": [1, 2]}}}""");
             return new InstallSessionPaths(install);
         }
 
@@ -50,6 +50,23 @@ static class SessionLaunchTests
             check(ProfileStore.Create(paths, "friends", "starter") != null, "The same name twice.");
             check(ProfileStore.Create(paths, "Bad Name", "starter") != null && ProfileStore.Create(paths, "x", "two words") != null, "Plain names only.");
             check(ProfileStore.List(paths).Select(p => p.Name).SequenceEqual(["default", "friends"]), "Both listed, by name.");
+        });
+
+        test("A profile an older launcher named with capitals is listed under its lowercase name, still selected (#260)", () =>
+        {
+            var paths = Install("launch-profile-case");
+            _ = ProfileStore.List(paths);
+            var old = Path.Combine(paths.ProfilesRoot, "Avaleine");
+            Directory.CreateDirectory(old);
+            File.WriteAllText(Path.Combine(old, "launcher.json"), """{"template": "starter"}""");
+            File.WriteAllText(Path.Combine(old, "profile.json"), "{}");
+            ProfileStore.SaveSelected(paths, "Avaleine");
+            check(ProfileStore.List(paths).Select(p => p.Name).SequenceEqual(["avaleine", "default"]), "Listed as avaleine.");
+            check(Directory.GetDirectories(paths.ProfilesRoot).Select(Path.GetFileName).Contains("avaleine") &&
+                File.Exists(Path.Combine(paths.ProfilesRoot, "avaleine", "profile.json")), "The folder is renamed with its progress.");
+            check(ProfileStore.LoadSelected(paths) == "avaleine", "The selection follows the rename.");
+            check(ProfileStore.Create(paths, "avaleine", "starter") is { } taken && taken.Contains("already exists", StringComparison.Ordinal),
+                "Its name is now plainly taken.");
         });
 
         test("The session runner gets exactly the launcher's command line for each choice", () =>
