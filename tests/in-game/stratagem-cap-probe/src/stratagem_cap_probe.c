@@ -78,6 +78,12 @@ static void MissionStarted(HfMod* mod, const HfStateEvent* state, void* user)
 {
     g_missionSeen = 1;
     LOG("PROBE mission started%s", g_set ? "" : " FAIL without the loadout set");
+    uintptr_t game = hf->module_base("game.dll", NULL), loadout = game ? LocalLoadout(game) : 0;
+    uint32_t slots = loadout ? U32(loadout + LS_SLOT_COUNT) : 0;
+    char line[160] = "";
+    for (uint32_t k = 0; k < slots && k < 8; k++)
+        snprintf(line + strlen(line), sizeof line - strlen(line), " %u", U32(loadout + LS_SLOTS + (uintptr_t)k * 0x30));
+    LOG("PROBE mission loadout:%s (%u slots)", line, slots);
 }
 
 static void Called(HfMod* mod, const HfStratagemEvent* event, void* user)
