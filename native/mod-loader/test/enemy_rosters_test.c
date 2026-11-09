@@ -1,7 +1,8 @@
 /* Enemies mods add to the faction rosters (enemy_rosters.c) on a fake game.dll image: the refusals, the grown copies
  * (the game's rows first, a mod's row a scaled copy of its like's, rules after the game's), entries without an entity or
  * a row left out, the budget's weight through the stub, its pair table's guard, rule chains, level 11 added after the
- * growth, edits held back until the rosters grew, a mod taken out, units without their like's transport formations.
+ * growth, edits held back until the rosters grew, a mod taken out (once no mission runs); a row of the mod's own and its
+ * squads, the guards for an enemy without Behavior or transport records, the group names, the plan arrays' bound.
  * Included by stats_test.c after director_test.c. */
 
 #define ERT_LIKE 0xAAAull
@@ -11,19 +12,97 @@
 #define ERT_SHARED 0x777ull
 #define ERT_CARRIED 0xCCCull /* an enemy transports carry: it has a formation record */
 #define ERT_RIDER 0xDDDull   /* another entity with that formation */
-#define ERT_PROP 0xEEEull    /* an entity with no Behavior record */
+#define ERT_PROP 0xEEEull    /* an entity that is no enemy of the game's */
+#define ERT_GROUP "tester/enemies/own_group"
 
 static int ErtKnown(uint64_t entity)
 {
     return entity == ERT_LIKE || entity == ERT_UNIT || entity == ERT_BUG_UNIT || entity == ERT_SWAPPED || entity == ERT_CARRIED || entity == ERT_RIDER || entity == ERT_PROP;
 }
-static int ErtBehaves(uint64_t entity) { return entity != ERT_PROP && ErtKnown(entity); }
 
-/* Formation records: the carried enemy's one formation, the rider's two (that one among them); none for the rest. */
-static const uint8_t* ErtFormations(uint64_t entity)
+/* The game's seat entry of a formation: a 6 x 2 one of node kind 3. */
+static const uint8_t* ErtSeat(uint32_t id)
 {
-    static const uint32_t carried[12] = {0x77}, rider[12] = {0x55, 0, 0, 0, 0, 0, 0x77};
-    return entity == ERT_CARRIED ? (const uint8_t*)carried : entity == ERT_RIDER ? (const uint8_t*)rider : NULL;
+    static uint32_t entry[6];
+    entry[0] = id; entry[1] = 6; entry[2] = 2; entry[3] = 7; entry[4] = 3;
+    return (const uint8_t*)entry;
+}
+
+static uint64_t ErtNext(void* a, void* roster, const uint8_t* rows, uint32_t count, uint8_t* out, uint32_t* outCount, uint64_t level,
+    uint64_t players, void* tags, uint64_t flagA, uint64_t flagB)
+{
+    for (uint32_t i = 0; i < count; i++) memcpy(out + (size_t)i * ES_ENTRY, &i, 4); /* every row fits the mission */
+    *outCount = count;
+    return 7;
+}
+static const char* ErtHook(uintptr_t game) { g_esSelectOriginal = (void*)ErtNext; return NULL; }
+
+/* What the guards patch, on the fake image: the seven calls, the six name reads, and two lookups that run (Behavior's
+ * finds no record; the formations' gives back its argument as the record). The squad families of two rosters. */
+static void ErtGuardsImage(uint8_t* image)
+{
+    static const uint8_t none[] = {0x31,0xc0,0xc3}, same[] = {0x48,0x89,0xc8,0xc3}; /* xor eax, eax; ret / mov rax, rcx; ret */
+    for (size_t i = 0; i < EG_CALLS; i++) memcpy(image + kEgCalls[i].site, kEgCalls[i].pin, 5);
+    for (uint32_t f = 0; f < ER_FACTIONS; f++) for (int k = 0; k < 2; k++) memcpy(image + kEgNameReads[f][k], &kErNames[f], 4);
+    memcpy(image + EG_BEHAVIOR, none, sizeof none);
+    memcpy(image + EG_FORMATION, same, sizeof same);
+    DWORD previous;
+    VirtualProtect(image + EG_FORMATION, 0x20000, PAGE_EXECUTE_READWRITE, &previous); /* both lookups */
+    for (int k = 0; k < 8; k++)
+    {
+        uint64_t pair[2] = {(uint64_t)(uintptr_t)calloc(80, ES_ROW), k == 0 ? 79 : k == 2 ? 17 : 1};
+        memcpy(image + kRosters[1].descriptor + 0x20 + 0x10 * k, pair, sizeof pair);
+        pair[0] = (uint64_t)(uintptr_t)calloc(64, ES_ROW); pair[1] = k == 2 ? 27 : 1;
+        memcpy(image + kRosters[0].descriptor + 0x20 + 0x10 * k, pair, sizeof pair);
+    }
+}
+
+/* The stubs as the game's calls enter them: no Behavior record gives the zeroed one; a formation record with the id
+ * comes back as it is, one without it (or none) gives a single seat placed as the game's entry of that formation. */
+static void ErtGuards(uintptr_t game)
+{
+    typedef const uint8_t* (*Lookup)(const void* entity);
+    typedef const uint8_t* (*ByRegister)(const void* entity, uint32_t id, Lookup stub);
+    static const uint8_t thunk[] = {0x53, 0x89,0xd3, 0x48,0x83,0xec,0x20, 0x41,0xff,0xd0, 0x48,0x83,0xc4,0x20, 0x5b, 0xc3}; /* ebx = edx; call r8 */
+    Lookup stubs[EG_CALLS];
+    for (size_t i = 0; i < EG_CALLS; i++)
+    {
+        int32_t rel;
+        uint8_t* site = (uint8_t*)(game + kEgCalls[i].site);
+        memcpy(&rel, site + 1, 4);
+        assert(site[0] == 0xe8);
+        stubs[i] = (Lookup)(void*)(site + 5 + rel);
+    }
+    assert(stubs[0] == stubs[1] && stubs[3] == stubs[4] && stubs[5] == stubs[6] && stubs[3] != stubs[5]);
+    assert(stubs[0](NULL) == g_egNoBehavior);
+    uint32_t has[12] = {0x11, 2, 2, 0, 0, 0, EG_FORMATION_ID, 1, 1}, hasNot[12] = {0x11, 2, 2}, seat[6];
+    assert(stubs[5](has) == (const uint8_t*)has);
+    const uint8_t* made = stubs[5](hasNot);
+    memcpy(seat, made, sizeof seat);
+    assert(made != (const uint8_t*)hasNot && seat[0] == EG_FORMATION_ID && seat[1] == 1 && seat[2] == 1 && seat[3] == 7 && seat[4] == 3);
+    assert(stubs[5](NULL) == made && g_egSeatCount == 1); /* kept per formation */
+    uint8_t* code = (uint8_t*)VirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    memcpy(code, thunk, sizeof thunk);
+    ByRegister byRegister = (ByRegister)(void*)code;
+    assert(byRegister(has, 0x11, stubs[3]) == (const uint8_t*)has && byRegister(has, EG_FORMATION_ID, stubs[3]) == (const uint8_t*)has);
+    made = byRegister(has, 0x22, stubs[3]);
+    memcpy(seat, made, sizeof seat);
+    assert(made != (const uint8_t*)has && seat[0] == 0x22 && seat[1] == 1 && seat[4] == 3 && g_egSeatCount == 2);
+}
+
+/* The plan builder's detour: a family that fits its plan array goes straight on; a larger one is cut to the array's
+ * size, spread over the rows that fit; an array that is not the plan's is left alone. */
+static void ErtSelect(void)
+{
+    static uint8_t plan[0x9000];
+    uint32_t* count = (uint32_t*)(void*)(plan + 0x8DE0); /* the air support array: 8 entries */
+    uint32_t first, last, own = 0;
+    assert(EsSelect(NULL, NULL, NULL, 5, plan, count, (uint64_t)0, (uint64_t)0, NULL, (uint64_t)0, (uint64_t)0) == 7 && *count == 5);
+    assert(EsSelect(NULL, NULL, NULL, 20, plan, count, (uint64_t)0, (uint64_t)0, NULL, (uint64_t)0, (uint64_t)0) == 7 && *count == 8 && g_esLeftOut == 12);
+    memcpy(&first, plan, 4); memcpy(&last, plan + 7 * ES_ENTRY, 4);
+    assert(first < last && last == 19);
+    static uint8_t other[20 * ES_ENTRY];
+    assert(EsSelect(NULL, NULL, NULL, 20, other, &own, (uint64_t)0, (uint64_t)0, NULL, (uint64_t)0, (uint64_t)0) == 7 && own == 20);
 }
 
 /* A roster row of `unit`: weights 1 to 10 at levels 1 to 10, a cap and a budget weight. */
@@ -57,6 +136,36 @@ static void ErtRefusals(HfMod* mod)
     assert(g_erEnemyCount == 0 && g_erSwapCount == 0 && !EnemyRostersPending());
 }
 
+/* An enemy with a row of its own in the Illuminate roster, tied to no game enemy, and squads of its group. */
+static void ErtAddOwn(HfMod* mod)
+{
+    HfEnemy e = {sizeof e};
+    e.name = "tester/enemies/own"; e.unit = ERT_PROP;
+    assert(ApiAddEnemy(mod, &e) == 1); /* no like: it needs its factions and a group */
+    e.factions = HF_ENEMY_ILLUMINATE; e.group = ERT_GROUP;
+    assert(ApiAddEnemy(mod, &e) == 1); /* no weight at any level */
+    e.weights[4] = 2.0f; e.weights[9] = 3.0f; e.size_class = 4;
+    assert(ApiAddEnemy(mod, &e) == 1);
+    e.size_class = 2; e.cost = 40.0f; e.alive_cap = 6; e.flags = HF_ENEMY_ALWAYS_LOADED; e.weight = 2.0f; e.highest_level = 9;
+    e.with_tags[1] = "GM_BotAssault"; e.without_tags[0] = "GM_SEAF";
+    assert(ApiAddEnemy(mod, &e) == 0);
+    HfEnemySquad s = {sizeof s};
+    s.name = "tester/enemies/own_patrol"; s.factions = HF_ENEMY_ILLUMINATE; s.kind = HF_SQUAD_PATROL; s.weight = 1.5f;
+    assert(ApiAddEnemySquad(mod, &s) == 1); /* no member */
+    s.members[1].group = ERT_GROUP; s.members[1].count = 33;
+    assert(ApiAddEnemySquad(mod, &s) == 1); /* over 32 enemies */
+    s.members[1].count = 3; s.kind = 2;
+    assert(ApiAddEnemySquad(mod, &s) == 1); /* no such kind */
+    s.kind = HF_SQUAD_PATROL; s.lowest_level = 5; s.with_tags[2] = "GM_SEAF";
+    assert(ApiAddEnemySquad(mod, &s) == 0);
+    assert(ApiAddEnemySquad(mod, &s) == 1); /* its name is taken */
+    s.name = "tester/enemies/no_group"; s.members[1].group = "tester/enemies/nobody";
+    assert(ApiAddEnemySquad(mod, &s) == 0); /* refused when the rosters grow: no enemy in its group */
+    s.name = "tester/enemies/pool"; s.kind = HF_SQUAD_OUTPOST; s.members[1].group = ERT_GROUP; s.members[1].count = 999; s.factions = HF_ENEMY_ILLUMINATE | HF_ENEMY_TERMINIDS;
+    assert(ApiAddEnemySquad(mod, &s) == 0); /* the Terminid roster has no enemy of the group: Illuminate only */
+    assert(g_erEnemyCount == 6 && g_erSquadCount == 3);
+}
+
 static void ErtAdd(HfMod* mod)
 {
     HfEnemy e = {sizeof e};
@@ -69,11 +178,7 @@ static void ErtAdd(HfMod* mod)
     assert(ApiAddEnemy(mod, &e) == 0);
     e.name = "tester/enemies/bug_only"; e.unit = ERT_BUG_UNIT; e.like = ERT_LIKE; e.weight = 0; e.factions = HF_ENEMY_TERMINIDS;
     assert(ApiAddEnemy(mod, &e) == 0);
-    e.name = "tester/enemies/no_formation"; e.unit = ERT_UNIT; e.like = ERT_CARRIED; e.factions = 0;
-    assert(ApiAddEnemy(mod, &e) == 0);
-    e.name = "tester/enemies/rider"; e.unit = ERT_RIDER;
-    assert(ApiAddEnemy(mod, &e) == 0);
-    e.name = "tester/enemies/prop"; e.unit = ERT_PROP; e.like = ERT_LIKE;
+    e.name = "tester/enemies/rider"; e.unit = ERT_RIDER; e.like = ERT_CARRIED; e.factions = 0; /* any entity will do */
     assert(ApiAddEnemy(mod, &e) == 0);
     HfEnemySwap s = {sizeof s};
     s.name = "tester/enemies/assault"; s.unit = ERT_UNIT; s.replacement = ERT_SWAPPED; s.tag = "GM_BotAssault"; s.priority = 5;
@@ -82,11 +187,41 @@ static void ErtAdd(HfMod* mod)
     assert(ApiAddEnemySwap(mod, &s) == 0);
     s.name = "tester/enemies/no_row_there"; s.replacement = ERT_SWAPPED; s.factions = HF_ENEMY_ILLUMINATE;
     assert(ApiAddEnemySwap(mod, &s) == 0);
-    s.name = "tester/enemies/no_formation_rule"; s.unit = ERT_CARRIED; s.replacement = ERT_UNIT; s.factions = 0;
-    assert(ApiAddEnemySwap(mod, &s) == 0);
-    s.name = "tester/enemies/prop_rule"; s.unit = ERT_UNIT; s.replacement = ERT_PROP;
-    assert(ApiAddEnemySwap(mod, &s) == 0);
-    assert(g_erEnemyCount == 7 && g_erSwapCount == 5 && EnemyRostersPending());
+    assert(g_erEnemyCount == 5 && g_erSwapCount == 3 && EnemyRostersPending());
+    ErtAddOwn(mod);
+}
+
+/* The row of its own: every field as given, its weights x 2 up to level 9; its group's name where the game's name reads
+ * now look; its squads after the game's in their families. */
+static void ErtCheckOwn(uintptr_t game, const uint8_t* row)
+{
+    uint32_t key = ErHash(ERT_GROUP), u[4]; uint64_t unit; float f[2], w[10];
+    memcpy(u, row, 4); memcpy(&unit, row + 8, 8); memcpy(u + 1, row + 0x10, 12); memcpy(f, row + 0x20, 8); memcpy(w, row + 0x30, sizeof w);
+    assert(u[0] == key && unit == ERT_PROP && u[1] == 2 && u[2] == 0 && u[3] == 6 && f[0] == 40.0f && f[1] == 1.0f);
+    assert(w[3] == 0 && w[4] == 4.0f && w[8] == 0 && w[9] == 0 && row[0x78] == 1);
+    memcpy(u, row + 0x58, 16); assert(u[0] == 0xAE2ED4E9u && u[1] == 0);
+    memcpy(u, row + 0x68, 16); assert(u[0] == ErHash("GM_SEAF") && u[1] == 0);
+    int32_t disp;
+    memcpy(&disp, (void*)(game + kEgNameReads[2][0]), 4);
+    const char** names = (const char**)(game + (intptr_t)disp);
+    assert(names == g_erGrown[2].names && !strcmp(names[46], ERT_GROUP) && names[0] == NULL);
+    memcpy(&disp, (void*)(game + kEgNameReads[0][1]), 4);
+    assert((const char**)(game + (intptr_t)disp) == g_erGrown[0].names);
+    uint64_t pair[2];
+    memcpy(pair, (void*)(game + kRosters[1].descriptor + 0x20), sizeof pair);
+    const uint8_t* squad = (const uint8_t*)(uintptr_t)pair[0] + 79 * ES_ROW;
+    assert(pair[1] == 80 && EnemySquadsIn(1, 0) == 1 && EnemySquadsIn(1, 2) == 1 && EnemySquadsIn(0, 2) == 0);
+    memcpy(u, squad, 12); memcpy(f, squad + 0xE0, 8);
+    assert(u[0] == key && u[1] == 3 && u[2] == 0 && f[0] == 1.5f && f[1] == 1.0f);
+    memcpy(u, squad + 0xEC, 16); assert(u[0] == 5 && u[1] == 10 && u[2] == 1 && u[3] == 4);
+    memcpy(u, squad + 0x60, 8); assert(u[0] == ErHash("GM_SEAF") && u[1] == 0);
+    memcpy(&unit, squad + 0x100, 8); memcpy(u, squad + 0xFC, 4); memcpy(u + 1, squad + 0x110, 4);
+    assert(unit == ES_SQUAD_ENTITY && u[0] == ES_ID && u[1] == ES_PATROL_KIND);
+    memcpy(pair, (void*)(game + kRosters[1].descriptor + 0x40), sizeof pair);
+    squad = (const uint8_t*)(uintptr_t)pair[0] + 17 * ES_ROW;
+    memcpy(u, squad, 8); memcpy(&unit, squad + 0x100, 8); memcpy(u + 2, squad + 0xFC, 4);
+    assert(pair[1] == 18 && u[0] == key && u[1] == 999 && unit == 0 && u[2] == key);
+    assert(EsAt(0)->state == 1 && EsAt(1)->state == -1 && EsAt(2)->state == 1 && EsAt(2)->rows == 1);
 }
 
 /* The Automaton roster (kRosters[2]) after the growth: 61 game rows as they were, then alpha's two. */
@@ -121,7 +256,8 @@ static void ErtCheckRows(uintptr_t game, const uint8_t* before)
     memcpy(&unit, (const uint8_t*)(uintptr_t)pair[0] + 46 * ER_ROW + 8, 8); assert(unit == ERT_BUG_UNIT);
     memcpy(&f, (const uint8_t*)(uintptr_t)pair[0] + 46 * ER_ROW + 0x30, 4); assert(f == 1.0f); /* weight 0 means x 1 */
     memcpy(pair, (void*)(game + kRosters[1].descriptor), sizeof pair);
-    assert(pair[1] == 46 && pair[3] == 3);
+    assert(pair[1] == 47 && pair[3] == 3);
+    ErtCheckOwn(game, (const uint8_t*)(uintptr_t)pair[0] + 46 * ER_ROW);
 }
 
 /* The budget's weight, through the stub as the game enters it (the unit in rdx). */
@@ -234,8 +370,9 @@ static void EnemyRostersFixture(void)
     g_directorImage = DirFakeImage;
     g_dirGame = image;
     g_erEntityKnown = ErtKnown;
-    g_erFormations = ErtFormations;
-    g_erBehaves = ErtBehaves;
+    g_egSeat = ErtSeat;
+    g_esHook = ErtHook;
+    ErtGuardsImage(image);
     int wasLoaded = mod->loaded;
     mod->loaded = 1;
     InterlockedExchange(&g_fired[HF_EVENT_GAME_LOADED], 1);
@@ -251,9 +388,10 @@ static void EnemyRostersFixture(void)
     WatchEnemyRosters();
     assert(g_erState == 1 && !EnemyRostersPending());
     assert(ErEnemyAt(0)->state == 1 && ErEnemyAt(0)->rows == 3 && ErEnemyAt(1)->state == -1 && ErEnemyAt(2)->state == -1 && ErEnemyAt(3)->rows == 1);
-    assert(ErEnemyAt(4)->state == -1 && ErEnemyAt(5)->state == 1 && ErEnemyAt(5)->rows == 1 && ErSwapAt(3)->state == -1); /* formations */
+    assert(ErEnemyAt(4)->state == 1 && ErEnemyAt(4)->rows == 1 && ErEnemyAt(5)->state == 1 && ErEnemyAt(5)->rows == 1);
     assert(ErSwapAt(0)->state == 1 && ErSwapAt(0)->rules == 2 && ErSwapAt(1)->state == -1 && ErSwapAt(2)->state == -1);
-    assert(ErEnemyAt(6)->state == -1 && ErSwapAt(4)->state == -1); /* no Behavior record */
+    ErtGuards(game);
+    ErtSelect();
     ErtCheckPairGuard(game);
     ErtChains();
     ErtCheckRows(game, rows[2]);
@@ -277,14 +415,22 @@ static void EnemyRostersFixture(void)
     static uint8_t before[61 * ER_ROW];
     uint32_t lowest;
     memcpy(before, g_erGrown[1].rows, sizeof before); /* g_erGrown[1]: the Automatons */
-    EnemyRostersForget(mod);
+    uint32_t running = 1, squadKey;
+    memcpy(director + 0x680, &running, 4);
+    EnemyRostersForget(mod); /* a mission runs: its plan may hold their squads, so nothing changes yet */
+    assert(memcmp(g_erGrown[1].rows + 61 * ER_ROW + 0x2C, none, sizeof none) != 0);
+    running = 0;
+    memcpy(director + 0x680, &running, 4);
+    WatchEnemyRosters();
+    memcpy(&squadKey, g_esGrown[2][0].rows + 79 * ES_ROW, 4);
+    assert(squadKey == 0 && memcmp(g_erGrown[2].rows + 46 * ER_ROW + 0x2C, none, sizeof none) == 0);
     assert(memcmp(g_erGrown[1].rows + 61 * ER_ROW + 0x2C, none, sizeof none) == 0);
     assert(memcmp(g_erGrown[1].rows, before, sizeof before) == 0);
     memcpy(&lowest, g_erGrown[1].rules + 39 * ER_RULE + 0x20, 4); assert(lowest == ER_NEVER);
 
     g_erEntityKnown = ErEntityInMap;
-    g_erFormations = ErFormationsOf;
-    g_erBehaves = ErBehaviorOf;
+    g_egSeat = EgSeatInGame;
+    g_esHook = EsHookGame;
     mod->loaded = wasLoaded;
     g_directorImage = DirectorGame;
     g_difficultyAdded = added; g_difficultyState = state;

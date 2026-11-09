@@ -315,3 +315,5 @@ static uint32_t DirectorStride(const char* kind)
 
 #include "spawn_guards.c" /* the game-side half: a null enemy from writes these checks never see */
 #include "enemy_rosters.c" /* enemies mods add to the faction rosters (SDK 17) */
+#include "enemy_guards.c"
+#include "enemy_squads.c"
