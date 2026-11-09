@@ -11,9 +11,10 @@ static class SessionHeader
         SessionFacts.Collect(engine, new SessionSettings(options.Sandbox, War(options), options.LocalPlayFab, options.Multiplayer, options.EngineLog,
             Environment.GetEnvironmentVariable("HELLFORGE_CRASH_DUMP") is { Length: > 0 }, options.GameOptions), WineVersion());
 
-    // live, frozen, or open with its seed and what it deals
+    // hellforge with its server, live, frozen, or open with its seed and what it deals
     static string War(PlayOptions options)
     {
+        if (options.HellForgeWar != null && !options.OpenWar) return $"{ProfileStore.WarHellForge} ({options.WarServer ?? HellForge.Core.WarServer.Default})";
         if (options.LiveWar != null) return ProfileStore.WarLive;
         if (!options.OpenWar) return ProfileStore.WarFrozen;
         return $"{ProfileStore.WarOpen} (seed {options.WarSeed.ToString(CultureInfo.InvariantCulture)}, subfactions {(options.DealSubfactions ? "yes" : "no")}, " +

@@ -41,13 +41,13 @@ try
             steam-bridge host | inner | check [socket]
 
             For launchers of their own (docs/external-launchers.md); --install defaults to the installation this is in:
-            play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
+            play [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url>] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                  [--steam-udp yes | no] [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
             stop [--install <folder>] [--run <session folder>] [--wait yes] [--now yes]
             status [--install <folder>]
             profiles [--install <folder>] [--create <name> --template <template>]
-            fetch-war [--install <folder>]
+            fetch-war [--install <folder>] [--war hellforge | live] [--war-server <url>]
             mods [--install <folder>]
             languages [--install <folder>] [--steam-root <Steam folder>]
             language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
@@ -56,7 +56,7 @@ try
             mod-switch [--install <folder>] --id <mod id> --on yes | no
             mod-order [--install <folder>] --ids <id,id,... top first>
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
-            settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
+            settings [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url> | default] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                      [--steam-udp yes | no] [--strangers yes | no | default] [--live-changes yes | no] [--forge-credits <0-100> | default] [--game-options <options>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
@@ -145,16 +145,17 @@ try
         "verified-list-sign" => ["--list", "--key"],
         "verified-list-check" => ["--list", "--signature"],
         "mod-tools" => ["--install", "--ide"],
-        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
+        "play" => ["--install", "--profile", "--war", "--war-server", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
         "stop" => ["--install", "--run", "--wait", "--now"],
-        "status" or "fetch-war" or "mods" => ["--install"],
+        "status" or "mods" => ["--install"],
+        "fetch-war" => ["--install", "--war", "--war-server"],
         "profiles" => ["--install", "--create", "--template"],
         "mod-add" => ["--install", "--file"],
         "mod-remove" => ["--install", "--id"],
         "mod-switch" => ["--install", "--id", "--on"],
         "mod-order" => ["--install", "--ids"],
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
-        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--strangers", "--live-changes", "--forge-credits", "--game-options"],
+        "settings" => ["--install", "--profile", "--war", "--war-server", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--strangers", "--live-changes", "--forge-credits", "--game-options"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };

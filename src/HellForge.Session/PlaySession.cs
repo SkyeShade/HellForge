@@ -1165,7 +1165,8 @@ sealed partial class PlaySession(PlayOptions options)
         WaitForBackendReady(Path.Combine(evidence, "ready.json"));
     }
 
-    // Follows the live galactic war read-only through the community mirror; fetched before the backend is ready.
+    // Follows the HellForge war (its server's snapshot), or the live galactic war read-only through the community mirror;
+    // either is fetched before the backend is ready.
     // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
     void WarArguments(ProcessStartInfo start)
     {
@@ -1176,6 +1177,12 @@ sealed partial class PlaySession(PlayOptions options)
             if (options.WarSeed != 0) { start.ArgumentList.Add("--war-seed"); start.ArgumentList.Add(options.WarSeed.ToString(System.Globalization.CultureInfo.InvariantCulture)); result["warSeed"] = options.WarSeed; }
             if (!options.DealSubfactions) { start.ArgumentList.Add("--war-subfactions"); start.ArgumentList.Add("no"); result["warSubfactions"] = false; }
             if (!options.DealSeaf) { start.ArgumentList.Add("--war-seaf"); start.ArgumentList.Add("no"); result["warSeaf"] = false; }
+        }
+        else if (options.HellForgeWar != null)
+        {
+            start.ArgumentList.Add("--war"); start.ArgumentList.Add("hellforge"); result["war"] = "hellforge";
+            start.ArgumentList.Add("--war-cache"); start.ArgumentList.Add(Path.GetFullPath(options.HellForgeWar));
+            if (options.WarServer != null) { start.ArgumentList.Add("--war-server"); start.ArgumentList.Add(options.WarServer); result["warServer"] = options.WarServer; }
         }
         else if (options.LiveWar != null) { start.ArgumentList.Add("--live-war"); start.ArgumentList.Add(Path.GetFullPath(options.LiveWar)); result["liveWar"] = true; }
     }

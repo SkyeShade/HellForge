@@ -8,9 +8,10 @@ namespace HellForge.Core;
 // the next session's mods after a mod sync (a ModSyncSession file), for that one session. Sandbox: low integrity on
 // Windows, or the native Linux domain (ProfileStore.LoadSandbox). FullOwnershipCheck: ask Steam even when a recent ownership check still holds
 // (SteamOwnershipRecord), for that one session. SteamUdp: co-op over Steam relays, UDP to Valve's relays only
-// (ProfileStore.LoadSteamUdp, #62).
+// (ProfileStore.LoadSteamUdp, #62). WarServer: the HellForge war's server for that one session (else
+// ProfileStore.LoadWarServer).
 public sealed record SessionOptions(bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, IReadOnlyList<string> GameOptions,
-    string? ModSync = null, bool Sandbox = false, bool FullOwnershipCheck = false, bool SteamUdp = false);
+    string? ModSync = null, bool Sandbox = false, bool FullOwnershipCheck = false, bool SteamUdp = false, string? WarServer = null);
 
 // Starts and stops the engine's session runner (HellForge.Session.exe play). It owns every safety step (verified copy,
 // Steam ownership, network block, cleanup); this class only starts it and asks it to stop. It runs without a window and
@@ -38,8 +39,9 @@ public sealed class SessionRunner
             "--profile", Map(Path.TrimEndingDirectorySeparator(Path.GetFullPath(profile.Folder))), "--template", profile.Template };
         if (options.LocalPlayFab) arguments.Add("--local-playfab");
         if (options.SdkShims) arguments.Add("--multiplayer");
-        var warArguments = WarArguments(paths, options.War);
-        if (warArguments.Count == 2 && warArguments[0] == "--live-war") warArguments[1] = Map(warArguments[1]);
+        var warArguments = WarArguments(paths, options.War, options.WarServer);
+        for (var i = 0; i + 1 < warArguments.Count; i++)
+            if (warArguments[i] is "--live-war" or "--hellforge-war") warArguments[i + 1] = Map(warArguments[i + 1]);
         arguments.AddRange(warArguments);
         if (options.EngineLog) arguments.Add("--engine-log");
         // the player's launch options, for the session runner to add to the game's command line (GameLaunchOptions)
@@ -50,13 +52,19 @@ public sealed class SessionRunner
         return arguments;
     }
 
-    // The galactic war (ProfileStore.LoadWar): the live war through the mirror, or the all-planets war; the frozen war needs nothing.
+    // The galactic war (ProfileStore.LoadWar): the HellForge war from its server (cached per server, WarServer.CachePath),
+    // the live war through the mirror, or the all-planets war; the frozen war needs nothing.
     // A war script beside it (war-script.json: major orders, dispatches, reward mail; docs/war-script.md) goes with any war.
-    static List<string> WarArguments(ISessionPaths paths, string war)
+    static List<string> WarArguments(ISessionPaths paths, string war, string? warServer)
     {
         var script = Path.Combine(paths.HostRoot, "war-script.json");
         List<string> scripted = File.Exists(script) ? ["--war-script", script] : [];
         if (war == ProfileStore.WarLive) return [.. scripted, "--live-war", Path.Combine(paths.HostRoot, "live-war.json")];
+        if (war == ProfileStore.WarHellForge)
+        {
+            var server = warServer ?? ProfileStore.LoadWarServer(paths);
+            return [.. scripted, "--hellforge-war", WarServer.CachePath(paths.HostRoot, server), "--war-server", server];
+        }
         if (war != ProfileStore.WarOpen) return scripted;
         var arguments = new List<string>(scripted) { "--open-war" };
         // its seed (0 needs nothing), and whether it deals its subfactions and SEAF allies (on needs nothing)

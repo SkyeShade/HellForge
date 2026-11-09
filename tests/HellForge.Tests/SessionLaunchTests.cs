@@ -15,10 +15,10 @@ static class SessionLaunchTests
             return new InstallSessionPaths(install);
         }
 
-        test("Sessions start from the launcher's saved choices: live war, multiplayer, engine log and no crash dump unless changed", () =>
+        test("Sessions start from the launcher's saved choices: HellForge war, multiplayer, engine log and no crash dump unless changed", () =>
         {
             var paths = Install("launch-settings");
-            check(ProfileStore.LoadWar(paths) == ProfileStore.WarLive && ProfileStore.LoadLocalPlayFab(paths) && ProfileStore.LoadSdkShims(paths) &&
+            check(ProfileStore.LoadWar(paths) == ProfileStore.WarHellForge && ProfileStore.LoadLocalPlayFab(paths) && ProfileStore.LoadSdkShims(paths) &&
                 ProfileStore.LoadEngineLog(paths) && !ProfileStore.LoadCrashDump(paths) && ProfileStore.LoadLaunchOptions(paths) == "",
                 "Defaults without a settings file.");
             check(!ProfileStore.LoadSteamUdp(paths), "Co-op over Steam relays is off without a settings file.");
@@ -32,6 +32,40 @@ static class SessionLaunchTests
             check(ProfileStore.LoadWar(paths) == ProfileStore.WarOpen && ProfileStore.LoadCrashDump(paths), "Saved choices are read back.");
             File.WriteAllText(paths.SettingsFile, """{"selectedProfile": "default", "liveWar": false}""");
             check(ProfileStore.LoadWar(paths) == ProfileStore.WarFrozen, "A settings file from before the war choice keeps its live-war switch.");
+            File.WriteAllText(paths.SettingsFile, """{"selectedProfile": "default", "liveWar": true}""");
+            check(ProfileStore.LoadWar(paths) == ProfileStore.WarLive, "A settings file from before the war choice keeps the live war it had.");
+            File.WriteAllText(paths.SettingsFile, """{"selectedProfile": "default", "war": "live"}""");
+            check(ProfileStore.LoadWar(paths) == ProfileStore.WarLive, "A saved live war stays live.");
+            File.WriteAllText(paths.SettingsFile, """{"selectedProfile": "default"}""");
+            check(ProfileStore.LoadWar(paths) == ProfileStore.WarHellForge, "A settings file that never named a war gets the HellForge war.");
+        });
+
+        test("The HellForge war's server: normalised, https or http to this PC only, saved, overridden by HELLFORGE_WAR_SERVER, cached per server", () =>
+        {
+            check(WarServer.Normalize("https://war.example.com/") == "https://war.example.com" && WarServer.Normalize("https://war.example.com/war//") == "https://war.example.com/war" &&
+                WarServer.Normalize(" http://localhost:5093/ ") == "http://localhost:5093" && WarServer.Normalize("http://127.0.0.1:5093") == "http://127.0.0.1:5093",
+                "Addresses are not normalised.");
+            check(WarServer.Normalize("http://war.example.com") == null && WarServer.Normalize("ftp://localhost") == null && WarServer.Normalize("https://x.test/?a=1") == null &&
+                WarServer.Normalize("war.example.com") == null && WarServer.Normalize("") == null && WarServer.Normalize("https://user:pw@x.test") == null,
+                "An address a session may not use was accepted.");
+            var paths = Install("launch-war-server");
+            check(ProfileStore.LoadWarServer(paths) == WarServer.Default, "The default server is not HellForge's.");
+            check(ProfileStore.SaveWarServer(paths, "http://localhost:5093/") && ProfileStore.LoadWarServer(paths) == "http://localhost:5093", "A local server was not saved.");
+            check(!ProfileStore.SaveWarServer(paths, "http://war.example.com") && ProfileStore.LoadWarServer(paths) == "http://localhost:5093", "A plain-http remote server was saved.");
+            ProfileStore.SaveCrashDump(paths, true);
+            check(ProfileStore.LoadWarServer(paths) == "http://localhost:5093", "Another save lost the server.");
+            Environment.SetEnvironmentVariable(WarServer.EnvironmentVariable, "https://other.example.com/");
+            try { check(ProfileStore.LoadWarServer(paths) == "https://other.example.com" && ProfileStore.LoadSavedWarServer(paths) == "http://localhost:5093", "HELLFORGE_WAR_SERVER does not override."); }
+            finally { Environment.SetEnvironmentVariable(WarServer.EnvironmentVariable, null); }
+            check(ProfileStore.SaveWarServer(paths, "") && ProfileStore.LoadWarServer(paths) == WarServer.Default, "An empty server does not go back to the default.");
+            var local = WarServer.CachePath(paths.HostRoot, "http://localhost:5093");
+            check(local != WarServer.CachePath(paths.HostRoot, "http://localhost:5094") && local != WarServer.CachePath(paths.HostRoot, WarServer.Default) &&
+                local == WarServer.CachePath(paths.HostRoot, "http://localhost:5093") && Path.GetDirectoryName(Path.GetDirectoryName(local)) == paths.HostRoot,
+                "The cache is not one per server, in the host's folder: " + local);
+            var id = InstallId.Get(paths.HostRoot);
+            check(id != Guid.Empty && InstallId.Get(paths.HostRoot) == id && File.Exists(Path.Combine(paths.HostRoot, InstallId.FileName)), "The installation's id is not kept.");
+            File.WriteAllText(Path.Combine(paths.HostRoot, InstallId.FileName), "not a guid");
+            check(InstallId.Get(paths.HostRoot) is var remade && remade != id && InstallId.Get(paths.HostRoot) == remade, "A broken id is not made again and kept.");
         });
 
         test("A fresh installation gets a default profile; profiles are made only from listed templates and plain names", () =>
@@ -50,6 +84,12 @@ static class SessionLaunchTests
         {
             var paths = Install("launch-arguments");
             var profile = ProfileStore.List(paths)[0];
+            var hellforge = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarHellForge, false, false, []));
+            check(hellforge.SequenceEqual(["play", "--install", paths.Install.Root, "--profile", profile.Folder, "--template", profile.Template,
+                "--hellforge-war", WarServer.CachePath(paths.HostRoot, WarServer.Default), "--war-server", WarServer.Default]), "HellForge war: " + string.Join(" ", hellforge));
+            var local = SessionRunner.Arguments(paths, profile, new(false, false, ProfileStore.WarHellForge, false, false, [], WarServer: "http://localhost:5093"));
+            check(local.SkipWhile(a => a != "--hellforge-war").Take(4).SequenceEqual(["--hellforge-war", WarServer.CachePath(paths.HostRoot, "http://localhost:5093"), "--war-server", "http://localhost:5093"]),
+                "A session's own war server: " + string.Join(" ", local));
             var live = SessionRunner.Arguments(paths, profile, new(true, true, ProfileStore.WarLive, true, false, []));
             check(live.SequenceEqual(["play", "--install", paths.Install.Root, "--profile", profile.Folder, "--template", profile.Template,
                 "--local-playfab", "--multiplayer", "--live-war", paths.LiveWarCache, "--engine-log"]), "Live war: " + string.Join(" ", live));

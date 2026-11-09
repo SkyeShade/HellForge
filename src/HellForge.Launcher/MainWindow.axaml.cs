@@ -129,11 +129,31 @@ public partial class MainWindow : Window
         InitializeStrangers();
         InitializeLiveChanges();
         var war = ProfileStore.LoadWar(paths);
+        WarHellForgeRadio.IsChecked = war == ProfileStore.WarHellForge;
         WarLiveRadio.IsChecked = war == ProfileStore.WarLive;
         WarFrozenRadio.IsChecked = war == ProfileStore.WarFrozen;
         WarOpenRadio.IsChecked = war == ProfileStore.WarOpen;
-        foreach (var (radio, mode) in new[] { (WarLiveRadio, ProfileStore.WarLive), (WarFrozenRadio, ProfileStore.WarFrozen), (WarOpenRadio, ProfileStore.WarOpen) })
+        foreach (var (radio, mode) in new[] { (WarHellForgeRadio, ProfileStore.WarHellForge), (WarLiveRadio, ProfileStore.WarLive),
+                     (WarFrozenRadio, ProfileStore.WarFrozen), (WarOpenRadio, ProfileStore.WarOpen) })
             radio.IsCheckedChanged += (_, _) => { if (radio.IsChecked == true) ProfileStore.SaveWar(paths, mode); };
+        // the HellForge war's server (WarServer): shown with that war, empty for HellForge's own, saved once it is an address
+        // a session may use
+        WarServerOptions.IsVisible = WarHellForgeRadio.IsChecked == true;
+        WarHellForgeRadio.IsCheckedChanged += (_, _) => WarServerOptions.IsVisible = WarHellForgeRadio.IsChecked == true;
+        var savedServer = ProfileStore.LoadSavedWarServer(paths);
+        WarServerBox.Watermark = HellForge.Core.WarServer.Default;
+        WarServerBox.Text = savedServer == HellForge.Core.WarServer.Default ? "" : savedServer;
+        WarServerBox.TextChanged += (_, _) =>
+        {
+            var saved = ProfileStore.SaveWarServer(paths, WarServerBox.Text ?? "");
+            WarServerWarning.Text = saved ? "" : "Not a server address yet: https://..., or http://localhost:<port> for one on this PC.";
+            WarServerWarning.IsVisible = !saved;
+        };
+        if (Environment.GetEnvironmentVariable(HellForge.Core.WarServer.EnvironmentVariable) is { Length: > 0 } fromEnvironment)
+        {
+            WarServerWarning.Text = $"{HellForge.Core.WarServer.EnvironmentVariable} is set, so sessions use {fromEnvironment} instead.";
+            WarServerWarning.IsVisible = true;
+        }
         // the all-planets war's deals (subfactions, SEAF allies) and their seed: typed (a whole number) or rolled, saved as
         // they change
         DealSubfactionsBox.IsChecked = ProfileStore.LoadDealSubfactions(paths);

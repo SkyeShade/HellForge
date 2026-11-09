@@ -393,6 +393,13 @@ if [ "${HELLFORGE_SKIP_LIVE_WAR:-}" != 1 ]; then
   else echo "Could not fetch the live galactic war; the session serves the last one fetched (or the built-in war)." >&2; fi
   # (proton can return before a Windows program ends: the fetch finishes before the namespace is entered)
   for _ in $(seq 1 30); do pgrep -f "LocalBackend.exe fetch-live-war" >/dev/null || break; sleep 1; done
+  # The HellForge war too, from the installation's war server (HELLFORGE_WAR_SERVER, else the saved one, else
+  # HellForge's), into that server's cache. Missions are not reported from inside the namespace.
+  installZ="Z:$(printf '%s' "$INSTALL" | tr '/' '\\')"
+  hf_runtime_arguments run "$backend" fetch-hellforge-war "$installZ"
+  if timeout -k 10 60 "${HF_RUNTIME_ARGV[@]}" 9>&- 1>&2; then echo "Fetched the HellForge war." >&2
+  else echo "Could not fetch the HellForge war; the session serves the last one fetched (or the built-in war)." >&2; fi
+  for _ in $(seq 1 30); do pgrep -f "LocalBackend.exe fetch-hellforge-war" >/dev/null || break; sleep 1; done
 fi
 
 # The mod tools, once, also now while there is a network: source mods are compiled before a session starts, where the

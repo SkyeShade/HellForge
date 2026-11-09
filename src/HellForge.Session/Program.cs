@@ -2,7 +2,7 @@ using HellForge.Session;
 
 // HellForge.Session.exe: the engine's session runner (docs/engine.md).
 //   play --install <installation> --profile <profile folder> [--template <name>] [--local-playfab] [--multiplayer]
-//        [--live-war <cache file> | --open-war] [--engine-log] [--game-options <the player's launch options>]
+//        [--hellforge-war <cache file> [--war-server <url>] | --live-war <cache file> | --open-war] [--engine-log] [--game-options <the player's launch options>]
 //        [--mod-sync <the mod sync session file>] [--full-ownership-check] [--sandbox]   (--full-ownership-check: ask Steam
 //        even when a recent ownership check of this installation still holds, SteamOwnershipRecord; --sandbox, or HELLFORGE_SANDBOX=1: the game at low integrity
 //        with the Steam broker, docs/steam-bridge.md; in development)
@@ -13,7 +13,7 @@ using HellForge.Session;
 // A session reports through its run folder (logs/sessions/<run>: result.json and the rest, as the launcher reads them);
 // anything that stops it before that folder exists goes to logs/session-runner.log.
 const string Usage = "Usage: HellForge.Session play --install <installation> --profile <profile folder> [--template <name>] " +
-    "[--local-playfab] [--multiplayer] [--live-war <cache file> | --open-war] [--engine-log] [--game-options <options>] [--mod-sync <file>] [--full-ownership-check] [--sandbox] | host --spec <file> | version | census <log>";
+    "[--local-playfab] [--multiplayer] [--hellforge-war <cache file> [--war-server <url>] | --live-war <cache file> | --open-war] [--engine-log] [--game-options <options>] [--mod-sync <file>] [--full-ownership-check] [--sandbox] | host --spec <file> | version | census <log>";
 
 if (args.Length == 1 && args[0] == "version")
 {
@@ -45,6 +45,8 @@ for (var i = 1; i < args.Length; i++)
         case "--profile": options.Profile = Value(); break;
         case "--template": options.Template = Value(); break;
         case "--live-war": options.LiveWar = Value(); break;
+        case "--hellforge-war": options.HellForgeWar = Value(); break;
+        case "--war-server": options.WarServer = Value(); break;
         case "--war-script": options.WarScript = Value(); break;
         case "--open-war": options.OpenWar = true; break;
         case "--war-seed": options.WarSeed = uint.Parse(Value(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture); break;
@@ -85,6 +87,8 @@ sealed class PlayOptions
     public string? Profile { get; set; }
     public string? Template { get; set; }
     public string? LiveWar { get; set; }
+    public string? HellForgeWar { get; set; } /* the HellForge war's cache file (backend --war hellforge --war-cache) */
+    public string? WarServer { get; set; } /* its server (backend --war-server; HELLFORGE_WAR_SERVER or the default without it) */
     public string? WarScript { get; set; } /* major orders, dispatches, reward mail (backend --war-script) */
     public bool OpenWar { get; set; } /* the all-planets war (backend --war open) */
     public uint WarSeed { get; set; } /* its seed for subfactions and SEAF allies (backend --war-seed) */
