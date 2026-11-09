@@ -315,17 +315,21 @@ typedef struct HfEnemy
     uint32_t flags;         /* HF_ENEMY_ALWAYS_LOADED */
     const char* with_tags[4];    /* director tags: it spawns only while one of them is on (none: always) */
     const char* without_tags[4]; /* ... and never while one of these is on */
+    uint64_t packages[2];   /* 0, or packages its entity needs (as load_package takes them): loaded and held for the
+                             * session, so it can spawn. A copy of a vanilla enemy needs none: missions load its base's */
 } HfEnemy;
 
 #define HF_SQUAD_MEMBERS 8
 /* HfEnemySquad kinds: where the director uses the squad. */
 #define HF_SQUAD_PATROL 1u      /* a patrol roaming the map */
-#define HF_SQUAD_GUARD 2u       /* placed at the map's guard positions (the game ships none) */
+#define HF_SQUAD_GUARD 2u       /* placed at a mission's guard positions when it starts (the game ships no such squad) */
 #define HF_SQUAD_OUTPOST 3u     /* an outpost's or objective's garrison; members' counts are a pool (the game uses 999) */
 #define HF_SQUAD_ENCOUNTER 4u   /* reinforcements: a bug breach, a dropship (it carries any Automaton or Illuminate one) */
 #define HF_SQUAD_BORDER 5u      /* crossing the map's border (the game's Shriekers and Gunships) */
 #define HF_SQUAD_CONVOY 6u      /* a convoy; a mission takes 8 kinds at most */
 #define HF_SQUAD_AIR_SUPPORT 7u /* called in from the air (the game's Illuminate attack ships) */
+#define HF_SQUAD_STRAGGLER 8u   /* the stragglers a mission sends now and then: one squad a mission, the game's first that
+                                 * fits or one of the mods', drawn by weight */
 
 /* A new squad (SDK 17, add_enemy_squad): a mix of spawn groups the director may send, beside the game's squads of its
  * kind. This is how an enemy in a group of your own reaches the map. A mission takes the squads whose levels, players

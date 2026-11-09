@@ -42,6 +42,7 @@ typedef struct ErEnemy
     int state, rows, gone; /* gone: its mod was taken out */
     char group[96];
     uint32_t key, cap, sizeClass, flags, with[4], without[4];
+    uint64_t packages[2];
     float weights[DIF_VANILLA], cost, budget;
 } ErEnemy;
 typedef struct ErSwap
@@ -151,7 +152,7 @@ static int ErWeightsRefused(HfMod* mod, const HfEnemy* def, const char* name, Er
  * hash of its name, as its tags' are; key 0 ends a squad's member list, so no group may hash to it. */
 static int ErOwnRefused(HfMod* mod, const HfEnemy* def, const char* name, ErEnemy* e)
 {
-    if (def->size < sizeof(HfEnemy)) { ApiLog(mod, "add_enemy(%s): without `like` it needs the whole HfEnemy (its size is too small)", name); return 1; }
+    if (def->size < offsetof(HfEnemy, without_tags) + sizeof def->without_tags) { ApiLog(mod, "add_enemy(%s): without `like` it needs the whole HfEnemy (its size is too small)", name); return 1; }
     if (def->factions == 0 || ErHash(def->group) == 0 || strlen(def->group) >= sizeof e->group)
     { ApiLog(mod, "add_enemy(%s): without `like` it needs its factions and a group (a name under 96 bytes)", name); return 1; }
     if (ErWeightsRefused(mod, def, name, e)) return 1;
@@ -186,6 +187,7 @@ static int ApiAddEnemy(HfMod* mod, const HfEnemy* def)
     e.weight = def->weight > 0 ? def->weight : 1.0f;
     e.factions = def->factions; e.lowest = def->lowest_level; e.highest = def->highest_level;
     if (e.like == 0 && ErOwnRefused(mod, def, name, &e)) return 1;
+    if (def->size >= offsetof(HfEnemy, packages) + sizeof def->packages) memcpy(e.packages, def->packages, sizeof e.packages);
     *ErEnemyAt(g_erEnemyCount) = e;
     g_erEnemyCount++;
     if (e.like) ApiLog(mod, "adding enemy %s: %016llx beside %016llx, its weights x %g", name, (unsigned long long)e.unit, (unsigned long long)e.like, e.weight);
@@ -568,6 +570,24 @@ static const char* ErGrowFaction(uintptr_t game, uint32_t f, int moved)
     return NULL;
 }
 
+/* The packages the enemies name, asked for once the entries are known to stay: resident for the session, as a mod's
+ * load_package leaves them. An enemy whose package fails stays out: its spawn would read a unit that is not loaded. */
+static int ApiLoadPackage(HfMod* mod, uint64_t package); /* packages.c */
+static int (*g_erWantPackage)(HfMod* mod, uint64_t package) = ApiLoadPackage;
+static void ErWantPackages(void)
+{
+    for (int i = 0; i < g_erEnemyCount; i++)
+    {
+        ErEnemy* e = ErEnemyAt(i);
+        for (int k = 0; e->state >= 0 && k < 2; k++)
+        {
+            if (e->packages[k] == 0 || g_erWantPackage(e->mod, e->packages[k])) continue;
+            e->state = -1;
+            ApiLog(e->mod, "add_enemy(%s): its package %016llx could not be loaded; not added", e->name, (unsigned long long)e->packages[k]);
+        }
+    }
+}
+
 /* Entries whose entities the game does not have are refused before any row is made: the director would spawn them. */
 static void ErCheckEntities(void)
 {
@@ -625,6 +645,7 @@ static const char* ErGrow(void)
     if (why == NULL) why = EnemyGuardsInstall(game);
     if (why != NULL) return why;
     ErCheckEntities();
+    ErWantPackages();
     for (uint32_t f = 0; f < ER_FACTIONS; f++)
     {
         const char* failed = ErGrowFaction(game, f, moved);
