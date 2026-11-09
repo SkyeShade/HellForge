@@ -6883,6 +6883,60 @@
       "hook": true,
       "meaning": "Destroys a gui (World.create_screen_gui or create_world_gui's). World.destroy_gui calls it.",
       "source": "the Lua binding's disassembly in helldivers2.exe (build 25480438)"
+    },
+    "SpawnEntityAddComponents": {
+      "rva": "0x581320",
+      "code": "4C 8B DC 55 53 49 8D AB 78 F7 FF FF 48 81 EC 78 09 00 00 48 8B 05 D6 AC 0B 02 48 33 C4 48 89 85 30 08 00 00 49 89 73 E8",
+      "returns": "void",
+      "params": [
+        {"name": "components", "type": "void*", "meaning": "the entity manager's component callbacks (EntityManager + 0x40): one array of 324 function pointers per callback kind, indexed by component type"},
+        {"name": "record", "type": "uint8_t*", "meaning": "the new entity's world record (+0 the entity, u64; +0x10 its network id, u32; +0x14 its flags)"},
+        {"name": "info", "type": "const uint8_t*", "meaning": "the SpawnInfo SpawnEntity was given: +0 authority byte (1: this machine is in charge of it)"},
+        {"name": "ids", "type": "void*", "meaning": "the object at EntityManager + 0x8: the spawned entity's id goes into its table at +0xB020"}
+      ],
+      "hook": true,
+      "meaning": "SpawnEntity's first component pass: for each of the new entity's components, its add callback with the spawn data (kind 1), then its setup callback with a scratch buffer (kind 2). Every machine runs it for every spawn, remote ones included; the entity is not in the network id map yet",
+      "source": "HellForge research (build 25480438): SpawnEntity's call at 0xFDC25A, the callback table filled at 0x551B60"
+    },
+    "SpawnEntityFinishComponents": {
+      "rva": "0x581780",
+      "code": "40 53 57 41 54 41 55 48 81 EC C8 00 00 00 48 8B 05 7B A8 0B 02 48 33 C4 48 89 84 24 A0 00 00 00 4C 8B 0D F1 A7 EE 02",
+      "returns": "void",
+      "params": [
+        {"name": "components", "type": "void*", "meaning": "the entity manager's component callbacks (EntityManager + 0x40)"},
+        {"name": "record", "type": "uint8_t*", "meaning": "the new entity's world record"},
+        {"name": "info", "type": "const uint8_t*", "meaning": "the SpawnInfo SpawnEntity was given"}
+      ],
+      "hook": true,
+      "meaning": "SpawnEntity's last component pass: each of the new entity's components' finish callback (kind 3), after every component exists and the entity is in the network id map. A detour that runs after the original sees the entity fully set up, before SpawnEntity returns",
+      "source": "HellForge research (build 25480438): SpawnEntity's call at 0xFDC2B1, the callback table filled at 0x551B60"
+    },
+    "ActivateEntity": {
+      "rva": "0xFDBB40",
+      "code": "4C 8B DC 55 53 57 41 54 49 8D 6B B8 48 81 EC 28 01 00 00 48 8B 05 B6 04 66 01 48 33 C4 48 89 45 00 48 8B 1D 30 04 49 02",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "not read"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity's network id"},
+        {"name": "ctx", "type": "uint64_t", "meaning": "the caller's second argument (through the thunk), passed on unchanged to each component's activate callbacks"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Switches an entity on in this machine's world: finds it by network id, sets bit 0 of its record's flags (+0x14) and runs each of its components' activate callbacks (kinds 6, then 7), unless a tag or a session flag holds it back. The session calls it through LocalUser's entity callbacks (+0xB3D0, set at 0x134D470, via a thunk at 0xBA0670)",
+      "source": "HellForge research (build 25480438): 0xFDBB40, its thunks at 0xBA0670 and 0xFDA130, the callback table filled at 0x551B60"
+    },
+    "DeactivateEntity": {
+      "rva": "0xFDBEA0",
+      "code": "48 89 5C 24 18 48 89 7C 24 20 41 56 48 83 EC 20 48 8B 3D E1 00 49 02 4D 8B F0 8B DA 80 BF 28 F8 F3 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "not read"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity's network id"},
+        {"name": "ctx", "type": "uint64_t", "meaning": "the caller's second argument (through the thunk), passed on unchanged to each component's deactivate callbacks"}
+      ],
+      "hook": true,
+      "meaning": "Switches an entity off in this machine's world: finds it by network id and, if it is on (bit 0 of its record's flags, +0x14), runs each of its components' deactivate callbacks (kinds 9, then 8) and clears the bit. The entity stays in the world. The session calls it through LocalUser's entity callbacks (+0xB3D8, set at 0x134D470, via a thunk at 0xBA0680)",
+      "source": "HellForge research (build 25480438): 0xFDBEA0, its thunks at 0xBA0680 and 0xFDA140, 0x581E10"
     }
   }
 }

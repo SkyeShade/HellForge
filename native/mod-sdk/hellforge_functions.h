@@ -6409,4 +6409,68 @@ static inline int hf_hook_GuiManagerDestroyGui(HfMod* mod, HfFn_GuiManagerDestro
     return hf_hook_function_(mod, "GuiManagerDestroyGui", (void*)detour, (void**)original, priority);
 }
 
+/* SpawnEntityAddComponents (game.dll+0x581320; hook or call). SpawnEntity's first component pass: for each of the new
+ * entity's components, its add callback with the spawn data (kind 1), then its setup callback with a scratch buffer
+ * (kind 2). Every machine runs it for every spawn, remote ones included; the entity is not in the network id map yet.
+ *   components  the entity manager's component callbacks (EntityManager + 0x40): one array of 324 function pointers per
+ *               callback kind, indexed by component type
+ *   record      the new entity's world record (+0 the entity, u64; +0x10 its network id, u32; +0x14 its flags)
+ *   info        the SpawnInfo SpawnEntity was given: +0 authority byte (1: this machine is in charge of it)
+ *   ids         the object at EntityManager + 0x8: the spawned entity's id goes into its table at +0xB020
+ * From HellForge research (build 25480438): SpawnEntity's call at 0xFDC25A, the callback table filled at 0x551B60. */
+typedef void (*HfFn_SpawnEntityAddComponents)(void* components, uint8_t* record, const uint8_t* info, void* ids);
+static inline HfFn_SpawnEntityAddComponents hf_fn_SpawnEntityAddComponents(HfMod* mod) { return (HfFn_SpawnEntityAddComponents)hf_function_(mod, "SpawnEntityAddComponents"); }
+static inline int hf_hook_SpawnEntityAddComponents(HfMod* mod, HfFn_SpawnEntityAddComponents detour, HfFn_SpawnEntityAddComponents* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "SpawnEntityAddComponents", (void*)detour, (void**)original, priority);
+}
+
+/* SpawnEntityFinishComponents (game.dll+0x581780; hook or call). SpawnEntity's last component pass: each of the new
+ * entity's components' finish callback (kind 3), after every component exists and the entity is in the network id map.
+ * A detour that runs after the original sees the entity fully set up, before SpawnEntity returns.
+ *   components  the entity manager's component callbacks (EntityManager + 0x40)
+ *   record      the new entity's world record
+ *   info        the SpawnInfo SpawnEntity was given
+ * From HellForge research (build 25480438): SpawnEntity's call at 0xFDC2B1, the callback table filled at 0x551B60. */
+typedef void (*HfFn_SpawnEntityFinishComponents)(void* components, uint8_t* record, const uint8_t* info);
+static inline HfFn_SpawnEntityFinishComponents hf_fn_SpawnEntityFinishComponents(HfMod* mod) { return (HfFn_SpawnEntityFinishComponents)hf_function_(mod, "SpawnEntityFinishComponents"); }
+static inline int hf_hook_SpawnEntityFinishComponents(HfMod* mod, HfFn_SpawnEntityFinishComponents detour, HfFn_SpawnEntityFinishComponents* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "SpawnEntityFinishComponents", (void*)detour, (void**)original, priority);
+}
+
+/* ActivateEntity (game.dll+0xFDBB40; hook or call). Switches an entity on in this machine's world: finds it by network
+ * id, sets bit 0 of its record's flags (+0x14) and runs each of its components' activate callbacks (kinds 6, then 7),
+ * unless a tag or a session flag holds it back. The session calls it through LocalUser's entity callbacks (+0xB3D0, set
+ * at 0x134D470, via a thunk at 0xBA0670).
+ *   unused  not read
+ *   entity  the entity's network id
+ *   ctx     the caller's second argument (through the thunk), passed on unchanged to each component's activate
+ *           callbacks
+ *   r9      not reviewed: pass it on
+ * From HellForge research (build 25480438): 0xFDBB40, its thunks at 0xBA0670 and 0xFDA130, the callback table filled at
+ * 0x551B60. */
+typedef void (*HfFn_ActivateEntity)(void* unused, uint32_t entity, uint64_t ctx, uint64_t r9);
+static inline HfFn_ActivateEntity hf_fn_ActivateEntity(HfMod* mod) { return (HfFn_ActivateEntity)hf_function_(mod, "ActivateEntity"); }
+static inline int hf_hook_ActivateEntity(HfMod* mod, HfFn_ActivateEntity detour, HfFn_ActivateEntity* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "ActivateEntity", (void*)detour, (void**)original, priority);
+}
+
+/* DeactivateEntity (game.dll+0xFDBEA0; hook or call). Switches an entity off in this machine's world: finds it by
+ * network id and, if it is on (bit 0 of its record's flags, +0x14), runs each of its components' deactivate callbacks
+ * (kinds 9, then 8) and clears the bit. The entity stays in the world. The session calls it through LocalUser's entity
+ * callbacks (+0xB3D8, set at 0x134D470, via a thunk at 0xBA0680).
+ *   unused  not read
+ *   entity  the entity's network id
+ *   ctx     the caller's second argument (through the thunk), passed on unchanged to each component's deactivate
+ *           callbacks
+ * From HellForge research (build 25480438): 0xFDBEA0, its thunks at 0xBA0680 and 0xFDA140, 0x581E10. */
+typedef void (*HfFn_DeactivateEntity)(void* unused, uint32_t entity, uint64_t ctx);
+static inline HfFn_DeactivateEntity hf_fn_DeactivateEntity(HfMod* mod) { return (HfFn_DeactivateEntity)hf_function_(mod, "DeactivateEntity"); }
+static inline int hf_hook_DeactivateEntity(HfMod* mod, HfFn_DeactivateEntity detour, HfFn_DeactivateEntity* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "DeactivateEntity", (void*)detour, (void**)original, priority);
+}
+
 #endif

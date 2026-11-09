@@ -12,9 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
-- **512 more game functions and 93 more game globals by name.** `hf_fn_` and `hf_global_` now reach 522 functions and
+- **516 more game functions and 93 more game globals by name.** `hf_fn_` and `hf_global_` now reach 526 functions and
   108 globals, in game.dll and helldivers2.exe. They cover damage, health and status effects, weapons and their heat,
-  charge and reloads, eagles, jump packs, vehicles, the director's patrols and reinforcements, and the level generator.
+  charge and reloads, eagles, jump packs, vehicles, the director's patrols and reinforcements, the level generator, and
+  an entity's life on this machine: its components' spawn passes and the entity being switched on and off.
   On the engine side: spawning and moving units, animation variables, debug lines, materials, cameras, level volumes
   and network sessions. Each function's first bytes are checked against the game, and its arguments come from the code
   that calls it ([hooking by name](docs/modding/hooks.md#hooking-by-name)).

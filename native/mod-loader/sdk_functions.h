@@ -529,5 +529,9 @@ static const SdkFunction kSdkFunctions[] = {
     {"WorldStopCameraShake", "helldivers2.exe", 0x22D8A0u, "89 54 24 10 57 48 83 EC 30 0F B7 D2 0F 29 74 24 20 48 8D 3C 92 48 C1 E7 04 48 03 79 28 45 84 C0", 1},
     {"WorldUpdateAnimations", "helldivers2.exe", 0x1B0670u, "40 57 48 83 EC 50 FF 81 80 08 23 00 0F 28 C1 F3 0F 58 81 74 08 23 00 0F 29 7C 24 30 48 8B F9 0F 28 F9", 1},
     {"GuiManagerDestroyGui", "helldivers2.exe", 0x273110u, "48 89 5C 24 08 57 48 83 EC 20 48 8B F9 48 8B DA 48 8B 89 80 00 00 00 E8 54 63 E5 FF 48 85 DB 74 17", 1},
+    {"SpawnEntityAddComponents", "game.dll", 0x581320u, "4C 8B DC 55 53 49 8D AB 78 F7 FF FF 48 81 EC 78 09 00 00 48 8B 05 D6 AC 0B 02 48 33 C4 48 89 85 30 08 00 00 49 89 73 E8", 1},
+    {"SpawnEntityFinishComponents", "game.dll", 0x581780u, "40 53 57 41 54 41 55 48 81 EC C8 00 00 00 48 8B 05 7B A8 0B 02 48 33 C4 48 89 84 24 A0 00 00 00 4C 8B 0D F1 A7 EE 02", 1},
+    {"ActivateEntity", "game.dll", 0xFDBB40u, "4C 8B DC 55 53 57 41 54 49 8D 6B B8 48 81 EC 28 01 00 00 48 8B 05 B6 04 66 01 48 33 C4 48 89 45 00 48 8B 1D 30 04 49 02", 1},
+    {"DeactivateEntity", "game.dll", 0xFDBEA0u, "48 89 5C 24 18 48 89 7C 24 20 41 56 48 83 EC 20 48 8B 3D E1 00 49 02 4D 8B F0 8B DA 80 BF 28 F8 F3 00 00", 1},
     {0},
 };
