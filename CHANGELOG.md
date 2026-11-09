@@ -92,6 +92,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **New profiles start live-like.** The new `live-like` template is a starter profile until you run Sync Inventory.
+  The sync then brings in everything it can from your live account: level, unlocks, ship modules, medals and samples,
+  the ship's name and the tutorial progress. The premium warbonds you own open without a purchase in Forge Credits. It is the first profile of a new installation and the launcher's first choice. Existing profiles keep
+  their template, and `starter` stays for earning everything again (#282, #262).
 - **No fixed limit on mods' entities and weapons.** Mods together could register 64 entity blocks and 512 entities and
   weapons. HellForge now takes as many as the game's own tables hold (its entity map has room for about 2,187 more),
   at boot and in live changes. A strat pack and a compendium together no longer run out (#307).
