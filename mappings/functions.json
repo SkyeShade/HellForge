@@ -6500,7 +6500,7 @@
       "params": [
         {"name": "engine", "type": "void*", "meaning": "EngineCore"},
         {"name": "world", "type": "void*", "meaning": "the world"},
-        {"name": "template", "type": "uint32_t", "meaning": "the viewport template's IdString32 (the engine itself passes 0x7A991573)"}
+        {"name": "viewport_template", "type": "uint32_t", "meaning": "the viewport template's IdString32 (the engine itself passes 0x7A991573)"}
       ],
       "hook": true,
       "meaning": "Makes a viewport for a world from a named viewport template and returns it. Application.create_viewport calls it.",

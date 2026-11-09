@@ -7093,14 +7093,14 @@ typedef void (*HfFn_ReleaseWorld)(void* world);
 `helldivers2.exe+0x76B40`, hook or call. Makes a viewport for a world from a named viewport template and returns it. Application.create_viewport calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
 
 ```c
-typedef void* (*HfFn_CreateViewport)(void* engine, void* world, uint32_t template);
+typedef void* (*HfFn_CreateViewport)(void* engine, void* world, uint32_t viewport_template);
 ```
 
 | Argument | Type | Meaning |
 |---|---|---|
 | `engine` | `void*` | EngineCore |
 | `world` | `void*` | the world |
-| `template` | `uint32_t` | the viewport template's IdString32 (the engine itself passes 0x7A991573) |
+| `viewport_template` | `uint32_t` | the viewport template's IdString32 (the engine itself passes 0x7A991573) |
 
 ### WorldDestroyViewport
 

@@ -6043,11 +6043,11 @@ static inline int hf_hook_ReleaseWorld(HfMod* mod, HfFn_ReleaseWorld detour, HfF
 
 /* CreateViewport (helldivers2.exe+0x76B40; hook or call). Makes a viewport for a world from a named viewport template
  * and returns it. Application.create_viewport calls it..
- *   engine    EngineCore
- *   world     the world
- *   template  the viewport template's IdString32 (the engine itself passes 0x7A991573)
+ *   engine             EngineCore
+ *   world              the world
+ *   viewport_template  the viewport template's IdString32 (the engine itself passes 0x7A991573)
  * From the Lua binding's disassembly in helldivers2.exe (build 25480438). */
-typedef void* (*HfFn_CreateViewport)(void* engine, void* world, uint32_t template);
+typedef void* (*HfFn_CreateViewport)(void* engine, void* world, uint32_t viewport_template);
 static inline HfFn_CreateViewport hf_fn_CreateViewport(HfMod* mod) { return (HfFn_CreateViewport)hf_function_(mod, "CreateViewport"); }
 static inline int hf_hook_CreateViewport(HfMod* mod, HfFn_CreateViewport detour, HfFn_CreateViewport* original, int32_t priority)
 {
