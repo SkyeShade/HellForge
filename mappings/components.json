@@ -507,6 +507,14 @@
           "verified": false,
           "source": "stats-schema"
         },
+        "aim_zoom": {
+          "offset": 116,
+          "type": "f32",
+          "count": 3,
+          "meaning": "scope magnification per zeroing stage: the aiming camera field of view is divided by it (1: none)",
+          "verified": false,
+          "source": "game.dll 25480438: R-63 base records 1, 1, 1; its 10x optic attachment delta writes 2, 3, 4"
+        },
         "burst_rounds": {
           "offset": 140,
           "type": "u32",
@@ -535,6 +543,21 @@
           "meaning": "right weapon function",
           "verified": false,
           "source": "stats-schema"
+        },
+        "scope_zeroing": {
+          "offset": 340,
+          "type": "f32",
+          "count": 3,
+          "meaning": "scope zeroing distance per stage in metres; the lens material gets the current one as zeroing_dist",
+          "verified": false,
+          "source": "game.dll 25480438: R-63 10x optic delta writes 50, 100, 200; lens update 0x74C78C"
+        },
+        "scope_lens_hides_weapon": {
+          "offset": 352,
+          "type": "u8",
+          "meaning": "1: the weapon's materials cut out what lies behind the optic's g_lens disc (lens_cutout_enabled)",
+          "verified": false,
+          "source": "game.dll 25480438: R-63 10x optic delta writes 1; lens cutout 0x74E310, 0x74DE40"
         },
         "ergonomics": {
           "offset": 356,

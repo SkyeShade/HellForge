@@ -608,10 +608,13 @@ Group `firing_sounds` (every firing sound, silenced or not): `use_midi_event_sys
 | `spread_distribution` | +0x5C | u8 | respawn | how rounds spread within it (unverified) |
 | `sway` | +0x68 | f32 | respawn | sway multiplier (unverified) |
 | `suppressed` | +0x70 | u8 | respawn | 1: suppressed (unverified) |
+| `aim_zoom` | +0x74 | f32[3] | respawn | scope magnification per zeroing stage: the aiming camera field of view is divided by it (1: none) (unverified) |
 | `burst_rounds` | +0x8C | u32 | respawn | rounds per burst (unverified) |
 | `fire_modes` | +0x90 | u32[3] | respawn | fire-mode slots: primary, secondary, tertiary (unverified) |
 | `weapon_function_left` | +0xB8 | u32 | respawn | left weapon function (unverified) |
 | `weapon_function_right` | +0xBC | u32 | respawn | right weapon function (unverified) |
+| `scope_zeroing` | +0x154 | f32[3] | respawn | scope zeroing distance per stage in metres; the lens material gets the current one as zeroing_dist (unverified) |
+| `scope_lens_hides_weapon` | +0x160 | u8 | respawn | 1: the weapon's materials cut out what lies behind the optic's g_lens disc (lens_cutout_enabled) (unverified) |
 | `ergonomics` | +0x164 | f32 | respawn | ergonomics (unverified) |
 | `stationary_while_firing` | +0x183 | u8 | respawn | 1: the wielder stands still while firing (unverified) |
 | `crosshair_type` | +0x190 | u32 | respawn | crosshair (unverified) |

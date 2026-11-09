@@ -12,6 +12,8 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Scopes can magnify.** WeaponData's `aim_zoom`, `scope_zeroing` and `scope_lens_hides_weapon` are named fields, so
+  an optic attachment's `changes` set the zoom and zeroing distance per stage, as the game's own scopes do.
 - **Mods can animate their weapons.** A data spec's `animations` names a JSON file with the joints that move, their clips
   and the state machine that plays them on the game's events. HellForge builds the unit copy's own bones, clips and
   state machine from it ([animations](docs/modding/animations.md)). `HellForge.Cli unit-joints` lists a unit's joints,

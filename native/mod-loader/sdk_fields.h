@@ -67,10 +67,13 @@ static const SdkField kSdkFieldsWeaponData[] = {
     {"spread_distribution", 92, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
     {"sway", 104, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"suppressed", 112, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"aim_zoom", 116, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"burst_rounds", 140, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"fire_modes", 144, 12, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"weapon_function_left", 184, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"weapon_function_right", 188, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"scope_zeroing", 340, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"scope_lens_hides_weapon", 352, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
     {"ergonomics", 356, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"stationary_while_firing", 387, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
     {"crosshair_type", 400, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1204,7 +1207,7 @@ static const SdkField kSdkFieldsWeaponCustomization[] = {
 };
 static const SdkComponent kSdkComponents[] = {
     {"ProjectileWeapon", "ProjectileWeaponComponentData", 25480438u, 616u, kSdkFieldsProjectileWeapon, 53, 0, 321},
-    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 28, 0, 236},
+    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 31, 0, 236},
     {"WeaponMagazine", "WeaponMagazineComponentData", 25480438u, 160u, kSdkFieldsWeaponMagazine, 9, 0, 5},
     {"Tag", "TagComponentData", 25480438u, 544u, kSdkFieldsTag, 2, 0, 3},
     {"Mount", "MountComponentData", 25480438u, 120u, kSdkFieldsMount, 10, 0, 283},
