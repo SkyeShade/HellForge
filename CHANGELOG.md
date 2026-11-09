@@ -99,6 +99,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **`hf_global_EngineApi`'s fields say what they are.** `table` is now `application` and `scene_graph` is now `unit`:
+  the engine's C API keeps one table per domain, and these two are the Application and Unit functions. A mod that
+  read either field by its old name needs the new one; the offsets are unchanged.
 - **No fixed limit on mods' entities and weapons.** Mods together could register 64 entity blocks and 512 entities and
   weapons. HellForge now takes as many as the game's own tables hold (its entity map has room for about 2,187 more),
   at boot and in live changes. A strat pack and a compendium together no longer run out (#307).

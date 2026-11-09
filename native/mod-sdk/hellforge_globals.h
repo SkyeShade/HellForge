@@ -325,18 +325,20 @@ typedef struct HfClock
 HF_ASSERT_OFFSET(HfClock, now, 0x18);
 static inline HfClock* hf_global_Clock(HfMod* mod) { return (HfClock*)hf_global_object_(mod, "Clock"); }
 
-/* EngineApi (game.dll+0x3326308, a pointer to it). The engine's API table (helldivers2.exe's), which the game calls
- * into.
+/* EngineApi (game.dll+0x3326308, a pointer to it). The engine's C API (helldivers2.exe's), which the game calls into:
+ * one pointer per domain (input, world, application, unit, camera, material, ...), each to that domain's table of
+ * functions.
  * From HellForge's Pelican turret (behaviour_turret.c) and ability sounds (abilities.c); HellForge's mod text
- * (registry.c HookText). */
+ * (registry.c HookText); the C API's layout: Stingray's ScriptApi order (input, world, application, unit, ...), checked
+ * against the tables' contents. */
 typedef struct HfEngineApi
 {
     uint8_t _unknown_00[0x10];
-    void* table;                         /* +0x10 its function table, in helldivers2.exe's data: at +1000 the text function, const char* (u32 id), which HellForge points at its own to answer mod texts */
-    void* scene_graph;                   /* +0x18 the scene graph's functions: +0x88 a node's world position (unit, node), +0x748 the unit of an index */
+    void* application;                   /* +0x10 the Application functions (helldivers2.exe+0x27C9E60): +0x3E8 the text of an id, const char* (u32 id), which HellForge points at its own to answer mod texts; +0x378 the resource manager's lock (ResourceOverride) */
+    void* unit;                          /* +0x18 the Unit functions (helldivers2.exe+0x27C8F10): +0x88 a node's world position (unit, node), +0x748 the unit object for a handle (jumps to UnitFromHandle) */
 } HfEngineApi;
-HF_ASSERT_OFFSET(HfEngineApi, table, 0x10);
-HF_ASSERT_OFFSET(HfEngineApi, scene_graph, 0x18);
+HF_ASSERT_OFFSET(HfEngineApi, application, 0x10);
+HF_ASSERT_OFFSET(HfEngineApi, unit, 0x18);
 static inline HfEngineApi* hf_global_EngineApi(HfMod* mod) { return (HfEngineApi*)hf_global_object_(mod, "EngineApi"); }
 
 /* EngineUnitApi (game.dll+0x3326310, a pointer to it). An engine API table in helldivers2.exe

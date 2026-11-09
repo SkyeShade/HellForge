@@ -2024,7 +2024,7 @@
         {"name": "node", "type": "int32_t", "meaning": "the scene graph node"}
       ],
       "hook": true,
-      "meaning": "A unit node's world position (3 floats in its world pose): the scene graph table's (EngineApi +0x18, 0x27C8F10) +0x88",
+      "meaning": "A unit node's world position (3 floats in its world pose): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x88",
       "source": "HellForge's Pelican turret (behaviour_turret.c); the slot resolved in the decoded image"
     },
     "UnitActorByName": {
@@ -2053,8 +2053,8 @@
         {"name": "target", "type": "uint64_t", "meaning": "the name it finds instead"}
       ],
       "hook": true,
-      "meaning": "Points every later lookup of a resource name at another resource's name, under the resource manager's lock (the API table's +0x378). Objects already made keep what they had",
-      "source": "HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60)"
+      "meaning": "Points every later lookup of a resource name at another resource's name, under the resource manager's lock (the Application table's +0x378). Objects already made keep what they had",
+      "source": "HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60)"
     },
     "ClearResourceOverride": {
       "module": "helldivers2.exe",
@@ -2067,7 +2067,7 @@
       ],
       "hook": true,
       "meaning": "Takes a resource override out (the API table's +0x380)",
-      "source": "HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60)"
+      "source": "HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60)"
     },
     "CanGetResource": {
       "module": "helldivers2.exe",
@@ -2080,7 +2080,7 @@
       ],
       "hook": true,
       "meaning": "Whether a resource is loaded and can be had now (the API table's +0x388)",
-      "source": "HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60)"
+      "source": "HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60)"
     },
     "TransportCleanup": {
       "module": "helldivers2.exe",

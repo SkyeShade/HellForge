@@ -2358,7 +2358,7 @@ typedef void* (*HfFn_MainWorld)(void);
 
 ### UnitNodeWorldPosition
 
-`helldivers2.exe+0x1FD190`, hook or call. A unit node's world position (3 floats in its world pose): the scene graph table's (EngineApi +0x18, 0x27C8F10) +0x88. From HellForge's Pelican turret (behaviour_turret.c); the slot resolved in the decoded image.
+`helldivers2.exe+0x1FD190`, hook or call. A unit node's world position (3 floats in its world pose): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x88. From HellForge's Pelican turret (behaviour_turret.c); the slot resolved in the decoded image.
 
 ```c
 typedef const float* (*HfFn_UnitNodeWorldPosition)(uint32_t unit, int32_t node);
@@ -2385,7 +2385,7 @@ typedef uint32_t (*HfFn_UnitActorByName)(uint32_t unit, uint32_t name, uint32_t*
 
 ### SetResourceOverride
 
-`helldivers2.exe+0x3217C0`, hook or call. Points every later lookup of a resource name at another resource's name, under the resource manager's lock (the API table's +0x378). Objects already made keep what they had. From HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60).
+`helldivers2.exe+0x3217C0`, hook or call. Points every later lookup of a resource name at another resource's name, under the resource manager's lock (the Application table's +0x378). Objects already made keep what they had. From HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60).
 
 ```c
 typedef void (*HfFn_SetResourceOverride)(uint64_t type, uint64_t name, uint64_t target);
@@ -2399,7 +2399,7 @@ typedef void (*HfFn_SetResourceOverride)(uint64_t type, uint64_t name, uint64_t 
 
 ### ClearResourceOverride
 
-`helldivers2.exe+0x321900`, hook or call. Takes a resource override out (the API table's +0x380). From HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60).
+`helldivers2.exe+0x321900`, hook or call. Takes a resource override out (the API table's +0x380). From HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60).
 
 ```c
 typedef void (*HfFn_ClearResourceOverride)(uint64_t type, uint64_t name);
@@ -2412,7 +2412,7 @@ typedef void (*HfFn_ClearResourceOverride)(uint64_t type, uint64_t name);
 
 ### CanGetResource
 
-`helldivers2.exe+0x321930`, hook or call. Whether a resource is loaded and can be had now (the API table's +0x388). From HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60).
+`helldivers2.exe+0x321930`, hook or call. Whether a resource is loaded and can be had now (the API table's +0x388). From HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60).
 
 ```c
 typedef uint8_t (*HfFn_CanGetResource)(uint64_t type, uint64_t name);
@@ -7740,12 +7740,12 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 
 ### EngineApi
 
-`game.dll+0x3326308` (a pointer to it), `HfEngineApi`. The engine's API table (helldivers2.exe's), which the game calls into. From HellForge's Pelican turret (behaviour_turret.c) and ability sounds (abilities.c); HellForge's mod text (registry.c HookText).
+`game.dll+0x3326308` (a pointer to it), `HfEngineApi`. The engine's C API (helldivers2.exe's), which the game calls into: one pointer per domain (input, world, application, unit, camera, material, ...), each to that domain's table of functions. From HellForge's Pelican turret (behaviour_turret.c) and ability sounds (abilities.c); HellForge's mod text (registry.c HookText); the C API's layout: Stingray's ScriptApi order (input, world, application, unit, ...), checked against the tables' contents.
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
-| `table` | +0x10 | ptr | its function table, in helldivers2.exe's data: at +1000 the text function, const char* (u32 id), which HellForge points at its own to answer mod texts |
-| `scene_graph` | +0x18 | ptr | the scene graph's functions: +0x88 a node's world position (unit, node), +0x748 the unit of an index |
+| `application` | +0x10 | ptr | the Application functions (helldivers2.exe+0x27C9E60): +0x3E8 the text of an id, const char* (u32 id), which HellForge points at its own to answer mod texts; +0x378 the resource manager's lock (ResourceOverride) |
+| `unit` | +0x18 | ptr | the Unit functions (helldivers2.exe+0x27C8F10): +0x88 a node's world position (unit, node), +0x748 the unit object for a handle (jumps to UnitFromHandle) |
 
 ### EngineUnitApi
 

@@ -291,12 +291,12 @@
         {"rva": "0xB7EA8", "code": "48 8B 0D 59 E4 26 03 48 89 5C 24 30"},
         {"rva": "0xB7F1C", "code": "48 8B 0D E5 E3 26 03 48 89 5C 24 30"}
       ],
-      "meaning": "The engine's API table (helldivers2.exe's), which the game calls into",
+      "meaning": "The engine's C API (helldivers2.exe's), which the game calls into: one pointer per domain (input, world, application, unit, camera, material, ...), each to that domain's table of functions",
       "fields": {
-        "table": {"offset": "0x10", "type": "ptr", "meaning": "its function table, in helldivers2.exe's data: at +1000 the text function, const char* (u32 id), which HellForge points at its own to answer mod texts"},
-        "scene_graph": {"offset": "0x18", "type": "ptr", "meaning": "the scene graph's functions: +0x88 a node's world position (unit, node), +0x748 the unit of an index"}
+        "application": {"offset": "0x10", "type": "ptr", "meaning": "the Application functions (helldivers2.exe+0x27C9E60): +0x3E8 the text of an id, const char* (u32 id), which HellForge points at its own to answer mod texts; +0x378 the resource manager's lock (ResourceOverride)"},
+        "unit": {"offset": "0x18", "type": "ptr", "meaning": "the Unit functions (helldivers2.exe+0x27C8F10): +0x88 a node's world position (unit, node), +0x748 the unit object for a handle (jumps to UnitFromHandle)"}
       },
-      "source": "HellForge's Pelican turret (behaviour_turret.c) and ability sounds (abilities.c); HellForge's mod text (registry.c HookText)"
+      "source": "HellForge's Pelican turret (behaviour_turret.c) and ability sounds (abilities.c); HellForge's mod text (registry.c HookText); the C API's layout: Stingray's ScriptApi order (input, world, application, unit, ...), checked against the tables' contents"
     },
     "EngineUnitApi": {
       "rva": "0x3326310",

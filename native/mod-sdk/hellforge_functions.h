@@ -1561,7 +1561,7 @@ static inline int hf_hook_MainWorld(HfMod* mod, HfFn_MainWorld detour, HfFn_Main
 }
 
 /* UnitNodeWorldPosition (helldivers2.exe+0x1FD190; hook or call). A unit node's world position (3 floats in its world
- * pose): the scene graph table's (EngineApi +0x18, 0x27C8F10) +0x88.
+ * pose): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x88.
  *   unit  the unit's handle
  *   node  the scene graph node
  * From HellForge's Pelican turret (behaviour_turret.c); the slot resolved in the decoded image. */
@@ -1593,11 +1593,12 @@ static inline int hf_hook_UnitFindActor(HfMod* mod, HfFn_UnitActorByName detour,
 }
 
 /* SetResourceOverride (helldivers2.exe+0x3217C0; hook or call). Points every later lookup of a resource name at another
- * resource's name, under the resource manager's lock (the API table's +0x378). Objects already made keep what they had.
+ * resource's name, under the resource manager's lock (the Application table's +0x378). Objects already made keep what
+ * they had.
  *   type    the resource type hash
  *   name    the resource name hash looked up
  *   target  the name it finds instead
- * From HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60). */
+ * From HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60). */
 typedef void (*HfFn_SetResourceOverride)(uint64_t type, uint64_t name, uint64_t target);
 static inline HfFn_SetResourceOverride hf_fn_SetResourceOverride(HfMod* mod) { return (HfFn_SetResourceOverride)hf_function_(mod, "SetResourceOverride"); }
 static inline int hf_hook_SetResourceOverride(HfMod* mod, HfFn_SetResourceOverride detour, HfFn_SetResourceOverride* original, int32_t priority)
@@ -1609,7 +1610,7 @@ static inline int hf_hook_SetResourceOverride(HfMod* mod, HfFn_SetResourceOverri
  * +0x380).
  *   type  the resource type hash
  *   name  the overridden name
- * From HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60). */
+ * From HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60). */
 typedef void (*HfFn_ClearResourceOverride)(uint64_t type, uint64_t name);
 static inline HfFn_ClearResourceOverride hf_fn_ClearResourceOverride(HfMod* mod) { return (HfFn_ClearResourceOverride)hf_function_(mod, "ClearResourceOverride"); }
 static inline int hf_hook_ClearResourceOverride(HfMod* mod, HfFn_ClearResourceOverride detour, HfFn_ClearResourceOverride* original, int32_t priority)
@@ -1621,7 +1622,7 @@ static inline int hf_hook_ClearResourceOverride(HfMod* mod, HfFn_ClearResourceOv
  * table's +0x388).
  *   type  the resource type hash
  *   name  the resource name hash
- * From HellForge's live data (live_data.c); the engine API table (EngineApi +0x10, 0x27C9E60). */
+ * From HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60). */
 typedef uint8_t (*HfFn_CanGetResource)(uint64_t type, uint64_t name);
 static inline HfFn_CanGetResource hf_fn_CanGetResource(HfMod* mod) { return (HfFn_CanGetResource)hf_function_(mod, "CanGetResource"); }
 static inline int hf_hook_CanGetResource(HfMod* mod, HfFn_CanGetResource detour, HfFn_CanGetResource* original, int32_t priority)
