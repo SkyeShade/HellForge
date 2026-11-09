@@ -16,6 +16,8 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | --- | --- |
 | `sdk16.json` | SDK 16's names in the game: hooks by name (`HF_HOOK`), typed events (`hf_on_...`), game functions (`hf_fn_...`) and game globals with their fields (`hf_global_...`) |
 | `sdk-probe/` | the test mod `sdk16.json` runs (`hellforge.sdk-probe`), never shipped: one `PROBE <check> ok` or `PROBE <check> FAIL <why>` line per check in its log |
+| `rpc17.json` | SDK 17's RPCs in the game: `rpc_listen` on every RPC on the ship and in a mission, their arguments, the readers, and `rpc_send`'s refusals in solo |
+| `rpc-probe/` | the test mod `rpc17.json` runs (`hellforge.rpc-probe`), never shipped; it sends nothing outside solo |
 
 ## Running one
 

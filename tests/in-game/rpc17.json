@@ -1,0 +1,24 @@
+{
+  "about": "SDK 17 in the real game: rpc_listen on every RPC, its arguments and readers, rpc_send's refusals (tests/in-game/README.md).",
+  "mods": [
+    "rpc-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {"name": "the mod loads with SDK 17", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "rpc_listen takes HF_RPC_ALL", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc_listen all ok"},
+    {"name": "rpc_listen refuses an RPC the build lacks", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc_listen unknown refused ok"},
+    {"name": "the RPC dispatch is hooked once the game is loaded", "log": "modloader.log", "contains": "rpc: hooked the RPC dispatch"},
+    {"name": "RPCs arrive on the ship", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc ship received ok"},
+    {"name": "RPCs arrive in the mission", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc mission received ok"},
+    {"name": "the ship's RPCs are well formed", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc ship arguments ok"},
+    {"name": "every RPC's arguments are well formed", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc mission arguments ok"},
+    {"name": "the readers decode what arrives", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc mission readers ok"},
+    {"name": "rpc_send is refused in solo", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc_send solo refused ok"},
+    {"name": "rpc_send refuses wrong arguments", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc_send wrong arguments refused ok"},
+    {"name": "the wrong arguments are named as the reason, before solo", "log": "mod-hellforge.rpc-probe.log", "contains": "rpc_send(rpc_pickup_entity) refused: argument 0 is kind 2, not 1"},
+    {"name": "rpc_send refuses an RPC the build lacks", "log": "mod-hellforge.rpc-probe.log", "contains": "PROBE rpc_send unknown refused ok"},
+    {"name": "no probe check failed", "log": "mod-hellforge.rpc-probe.log", "absent_regex": "PROBE .* FAIL"}
+  ]
+}

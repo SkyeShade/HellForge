@@ -259,8 +259,10 @@ static int ApiRpcSend(HfMod* mod, uint32_t rpc, uint64_t to, const HfRpcArg* arg
     if (known == NULL) { ApiLog(mod, "rpc_send refused: 0x%08X is no RPC of this build", rpc); return 1; }
     char why[160];
     uint64_t target = 0;
-    uintptr_t game = RpcSendReady(why, sizeof why);
-    if (game == 0 || !RpcArgsMatch(known, args, count, why, sizeof why) || !RpcSendTarget(game, to, &target, why, sizeof why))
+    uintptr_t game = 0;
+    /* the arguments first: a wrong list is the mod's bug in any session, so solo reports it too */
+    if (!RpcArgsMatch(known, args, count, why, sizeof why) || (game = RpcSendReady(why, sizeof why)) == 0
+        || !RpcSendTarget(game, to, &target, why, sizeof why))
     { ApiLog(mod, "rpc_send(%s) refused: %s", known->name, why); return 1; }
     ((RpcSendFn)(game + RPC_SEND))(rpc, target, args, count);
     return 0;
