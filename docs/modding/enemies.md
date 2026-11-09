@@ -5,7 +5,7 @@
 This page is for code mod authors who want the game to spawn an enemy of their own, or a vanilla one it no longer
 spawns. You should know how to add an entity: see [new entities](content.md#new-entities).
 
-`add_enemy` (SDK 18) makes the game spawn an entity as an enemy, beside the vanilla ones. No vanilla enemy is replaced.
+`add_enemy` (SDK 17) makes the game spawn an entity as an enemy, beside the vanilla ones. No vanilla enemy is replaced.
 You name a vanilla enemy it is `like`, and it spawns wherever that one does.
 
 ```c
@@ -18,7 +18,8 @@ alpha.lowest_level = 6;            /* from difficulty 6 */
 if (hf->size >= offsetof(HfApi, add_enemy) + sizeof hf->add_enemy) hf->add_enemy(mod, &alpha);
 ```
 
-Call `add_enemy` from `hellforge_mod_init`. It returns 0 when the enemy is accepted and 1 when it is refused. The rows
+Call `add_enemy` from `hellforge_mod_init`, after the `hf->size` check: older SDK 17 builds lack it. It returns 0 when
+the enemy is accepted and 1 when it is refused. The rows
 are made when the entity data has loaded, and your mod's log then counts them or says why there are none.
 `examples/mods/alpha-scavenger` is a whole mod, with a replacement rule too.
 
@@ -39,7 +40,7 @@ it appears on and a spawn weight per difficulty. Squads draw from groups, by wei
 
 ## Replacement rules
 
-`add_enemy_swap` (SDK 18) adds a rule like the game's own modifier rules: while it is on, `replacement` spawns where
+`add_enemy_swap` (SDK 17) adds a rule like the game's own modifier rules: while it is on, `replacement` spawns where
 `unit` would. Use it for a variant that only appears under a modifier.
 
 ```c
@@ -74,9 +75,11 @@ hf->add_enemy_swap(mod, &predator);
 
 - The entity must exist when the entity data has loaded: a vanilla one, or one your mod or another added. An entry
   whose entity is missing is left out.
-- The unit must be able to spawn the ways `like` does. A copy of `like` always can. When transports carry `like`
-  (dropships carry most Automatons), a unit without that enemy's `SquadTransportFormation` record is refused, because
-  the game would crash on it. The same holds for a rule's replacement and the enemy it replaces.
+- The unit must be able to spawn the ways `like` does. A copy of `like` always can. Two cases are refused, because
+  the game would crash on them. The same holds for a rule's replacement and the enemy it replaces.
+  - A unit without a `Behavior` record, such as a prop or a weapon.
+  - When transports carry `like` (dropships carry most Automatons), a unit without that enemy's
+    `SquadTransportFormation` record.
 - A mission loads the packages of your entity's base. An entity that needs a package of its own must load it itself
   (see [data mods](data.md)).
 - `like` must be an enemy of a faction roster. The rosters all factions share take no new rows.

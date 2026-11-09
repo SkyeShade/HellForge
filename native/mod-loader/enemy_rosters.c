@@ -1,4 +1,4 @@
-/* Enemies mods add to the spawn director's faction rosters (SDK 18: add_enemy, add_enemy_swap; docs/modding/enemies.md).
+/* Enemies mods add to the spawn director's faction rosters (SDK 17: add_enemy, add_enemy_swap; docs/modding/enemies.md).
  * Included by director.c at its end (kRosters, DirectorWeightsMoved, g_directorImage); the entity map is registry.c's.
  *
  * A roster descriptor (kRosters, read-only data) holds {rows, count} for its unit rows (0x80 bytes) at +0 and for its
@@ -132,7 +132,7 @@ static int ErLevelsRefused(HfMod* mod, const char* what, const char* name, uint3
     return 1;
 }
 
-/* add_enemy (SDK 18): kept until the entity data loads, when the rosters grow (ErGrow). */
+/* add_enemy (SDK 17): kept until the entity data loads, when the rosters grow (ErGrow). */
 static int ApiAddEnemy(HfMod* mod, const HfEnemy* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfEnemy, highest_level) + sizeof def->highest_level)
@@ -156,7 +156,7 @@ static int ApiAddEnemy(HfMod* mod, const HfEnemy* def)
     return 0;
 }
 
-/* add_enemy_swap (SDK 18): a rule, kept as add_enemy's rows are. Its tag is the game's hash of the tag's name. */
+/* add_enemy_swap (SDK 17): a rule, kept as add_enemy's rows are. Its tag is the game's hash of the tag's name. */
 static int ApiAddEnemySwap(HfMod* mod, const HfEnemySwap* def)
 {
     if (mod == NULL || def == NULL || def->size < offsetof(HfEnemySwap, budget) + sizeof def->budget)
@@ -481,17 +481,37 @@ static const char* ErGrowFaction(uintptr_t game, uint32_t f, int moved)
     return NULL;
 }
 
+/* Whether an entity has a Behavior record (component 284). The director reads an enemy's with no check (0x510790, then
+ * 0x90EC29 and 0x90F069): a prop or weapon drawn as an enemy crashes the game. */
+#define ER_BEHAVIOR 284u
+static int ErBehaviorOf(uint64_t entity)
+{
+    uint8_t* table = StatePointer(EntityState(), REG_TABLES + 8 * ER_BEHAVIOR);
+    uint32_t slots = SlotsOf(ER_BEHAVIOR);
+    return table != NULL && slots != 0 && FindRow(table, slots, 16, entity) != NULL;
+}
+static int (*g_erBehaves)(uint64_t entity) = ErBehaviorOf;
+
+/* Why `unit` cannot stand where `as` does, or NULL: it is an AI unit when `as` is one, and rides its transports. */
+static const char* ErStandsFor(uint64_t unit, uint64_t as)
+{
+    if (g_erBehaves(as) && !g_erBehaves(unit)) return "it has no Behavior record, so it is not an AI unit";
+    if (!ErRidesAs(unit, as)) return "it has no SquadTransportFormation for the transports that carry that enemy";
+    return NULL;
+}
+
 /* Entries whose entities the game does not have are refused before any row is made: the director would spawn them. */
 static void ErCheckEntities(void)
 {
+    const char* why;
     for (int i = 0; i < g_erEnemyCount; i++)
     {
         ErEnemy* e = ErEnemyAt(i);
         if (ModGone(e->mod) || !e->mod->loaded) e->state = -1;
         else if (!g_erEntityKnown(e->unit))
         { e->state = -1; ApiLog(e->mod, "add_enemy(%s): the game has no entity %016llx; not added", e->name, (unsigned long long)e->unit); }
-        else if (!ErRidesAs(e->unit, e->like))
-        { e->state = -1; ApiLog(e->mod, "add_enemy(%s): transports carry %016llx, and its unit has no SquadTransportFormation for them; not added (base the unit on that enemy)", e->name, (unsigned long long)e->like); }
+        else if ((why = ErStandsFor(e->unit, e->like)) != NULL)
+        { e->state = -1; ApiLog(e->mod, "add_enemy(%s): the unit cannot stand for %016llx: %s; not added (base the unit on that enemy)", e->name, (unsigned long long)e->like, why); }
     }
     for (int i = 0; i < g_erSwapCount; i++)
     {
@@ -499,8 +519,8 @@ static void ErCheckEntities(void)
         if (ModGone(s->mod) || !s->mod->loaded) s->state = -1;
         else if (!g_erEntityKnown(s->unit) || !g_erEntityKnown(s->replacement))
         { s->state = -1; ApiLog(s->mod, "add_enemy_swap(%s): the game has not both its entities; not added", s->name); }
-        else if (!ErRidesAs(s->replacement, s->unit))
-        { s->state = -1; ApiLog(s->mod, "add_enemy_swap(%s): transports carry %016llx, and the replacement has no SquadTransportFormation for them; not added", s->name, (unsigned long long)s->unit); }
+        else if ((why = ErStandsFor(s->replacement, s->unit)) != NULL)
+        { s->state = -1; ApiLog(s->mod, "add_enemy_swap(%s): the replacement cannot stand for %016llx: %s; not added", s->name, (unsigned long long)s->unit, why); }
     }
 }
 

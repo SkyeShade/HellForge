@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 18
+#define HF_MOD_SDK_VERSION 17
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -280,12 +280,12 @@ typedef struct HfAttachment
     uint32_t weapon_count;
 } HfAttachment;
 
-/* The faction rosters of the enemy spawn director, for HfEnemy and HfEnemySwap (SDK 18). */
+/* The faction rosters of the enemy spawn director, for HfEnemy and HfEnemySwap (SDK 17). */
 #define HF_ENEMY_TERMINIDS 1u
 #define HF_ENEMY_AUTOMATONS 2u
 #define HF_ENEMY_ILLUMINATE 4u
 
-/* A new enemy in the spawn director's rosters (SDK 18, add_enemy), beside the vanilla ones: every roster row of a vanilla
+/* A new enemy in the spawn director's rosters (SDK 17, add_enemy), beside the vanilla ones: every roster row of a vanilla
  * enemy (`like`) is copied for the mod's unit, with the same group, planet tags, cap and budget, and its spawn weights
  * scaled. Squads that draw from that group then spawn either enemy, by weight (docs/modding/enemies.md).
  * Zero-initialize it and set `size`:
@@ -308,7 +308,7 @@ typedef struct HfEnemy
     uint32_t highest_level;
 } HfEnemy;
 
-/* A replacement rule (SDK 18, add_enemy_swap): while it is on, the director spawns `replacement` where it would spawn
+/* A replacement rule (SDK 17, add_enemy_swap): while it is on, the director spawns `replacement` where it would spawn
  * `unit`, as the game's own rules turn bots into jump-pack bots under a planet's modifier. Of the rules that match a
  * spawn, the one of highest priority wins. A replacement can be replaced again, 3 times in a row at most: a rule that
  * would make a longer chain or a loop with the other rules is left out (the log says so). Zero-initialize it and set
@@ -1599,7 +1599,7 @@ typedef struct HfApi
      * weapons once the game has loaded its items; the session's backend makes it the player's. */
     uint32_t (*add_attachment)(HfMod* mod, const HfAttachment* attachment);
 
-    /* ---- SDK 18: enemies (check hf->size before calling) ----------------------------------------------------------- */
+    /* ---- SDK 17: enemies (check hf->size before calling) ----------------------------------------------------------- */
     /* Adds an enemy to the spawn director's rosters (see HfEnemy). Call it from hellforge_mod_init. 0 added (its rows are
      * made once the entity data loads, and the log counts them), 1 refused (the mod's log says why). */
     int (*add_enemy)(HfMod* mod, const HfEnemy* enemy);

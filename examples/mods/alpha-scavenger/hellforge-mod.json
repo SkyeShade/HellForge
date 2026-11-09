@@ -7,6 +7,6 @@
   "gameplay": true,
   "code": {
     "dll": "alpha_scavenger.dll",
-    "sdk": 18
+    "sdk": 17
   }
 }

@@ -12,7 +12,7 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
-- **Mods can add enemies without replacing one (SDK 18).** `add_enemy` puts an entity in the spawn rosters beside a
+- **Mods can add enemies without replacing one (SDK 17).** `add_enemy` puts an entity in the spawn rosters beside a
   vanilla enemy it is like: the same groups and planets, its own spawn weights and difficulty range. `add_enemy_swap`
   adds a replacement rule under a director tag. The rosters grow with the mods' rows
   ([new enemies](docs/modding/enemies.md)).

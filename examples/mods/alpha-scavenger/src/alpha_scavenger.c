@@ -3,6 +3,7 @@
  * the same planets, a third as often, from difficulty 4. No vanilla enemy is replaced. On planets of the BugPredators
  * constellation, a replacement rule (add_enemy_swap) turns each Alpha into an Alpha Predator, a second copy.
  * Build: HellForge builds the sources before each session, or scripts/Build-Mod.ps1 examples/mods/alpha-scavenger. */
+#include <stddef.h>
 #include "hellforge_mod.h"
 
 #define SCAVENGER_TIER_2 0x9A8A3AAE287B230Cull /* mappings/entities.json: "scavenger_tier_2", "resource" */
@@ -24,7 +25,7 @@ static const HfEntityDef predatorDef = {
 
 HF_MOD_EXPORT int hellforge_mod_init(const HfApi* hf, HfMod* mod)
 {
-    if (hf->version < 18) return 1;
+    if (hf->version < 17 || hf->size < offsetof(HfApi, add_enemy_swap) + sizeof hf->add_enemy_swap) return 1;
     HfRef alpha = hf->register_entity(mod, &alphaDef);
     if (!alpha) return 1;
     HfEnemy enemy = {sizeof enemy};

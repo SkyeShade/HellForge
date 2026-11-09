@@ -11,11 +11,13 @@
 #define ERT_SHARED 0x777ull
 #define ERT_CARRIED 0xCCCull /* an enemy transports carry: it has a formation record */
 #define ERT_RIDER 0xDDDull   /* another entity with that formation */
+#define ERT_PROP 0xEEEull    /* an entity with no Behavior record */
 
 static int ErtKnown(uint64_t entity)
 {
-    return entity == ERT_LIKE || entity == ERT_UNIT || entity == ERT_BUG_UNIT || entity == ERT_SWAPPED || entity == ERT_CARRIED || entity == ERT_RIDER;
+    return entity == ERT_LIKE || entity == ERT_UNIT || entity == ERT_BUG_UNIT || entity == ERT_SWAPPED || entity == ERT_CARRIED || entity == ERT_RIDER || entity == ERT_PROP;
 }
+static int ErtBehaves(uint64_t entity) { return entity != ERT_PROP && ErtKnown(entity); }
 
 /* Formation records: the carried enemy's one formation, the rider's two (that one among them); none for the rest. */
 static const uint8_t* ErtFormations(uint64_t entity)
@@ -71,6 +73,8 @@ static void ErtAdd(HfMod* mod)
     assert(ApiAddEnemy(mod, &e) == 0);
     e.name = "tester/enemies/rider"; e.unit = ERT_RIDER;
     assert(ApiAddEnemy(mod, &e) == 0);
+    e.name = "tester/enemies/prop"; e.unit = ERT_PROP; e.like = ERT_LIKE;
+    assert(ApiAddEnemy(mod, &e) == 0);
     HfEnemySwap s = {sizeof s};
     s.name = "tester/enemies/assault"; s.unit = ERT_UNIT; s.replacement = ERT_SWAPPED; s.tag = "GM_BotAssault"; s.priority = 5;
     assert(ApiAddEnemySwap(mod, &s) == 0);
@@ -80,7 +84,9 @@ static void ErtAdd(HfMod* mod)
     assert(ApiAddEnemySwap(mod, &s) == 0);
     s.name = "tester/enemies/no_formation_rule"; s.unit = ERT_CARRIED; s.replacement = ERT_UNIT; s.factions = 0;
     assert(ApiAddEnemySwap(mod, &s) == 0);
-    assert(g_erEnemyCount == 6 && g_erSwapCount == 4 && EnemyRostersPending());
+    s.name = "tester/enemies/prop_rule"; s.unit = ERT_UNIT; s.replacement = ERT_PROP;
+    assert(ApiAddEnemySwap(mod, &s) == 0);
+    assert(g_erEnemyCount == 7 && g_erSwapCount == 5 && EnemyRostersPending());
 }
 
 /* The Automaton roster (kRosters[2]) after the growth: 61 game rows as they were, then alpha's two. */
@@ -229,6 +235,7 @@ static void EnemyRostersFixture(void)
     g_dirGame = image;
     g_erEntityKnown = ErtKnown;
     g_erFormations = ErtFormations;
+    g_erBehaves = ErtBehaves;
     int wasLoaded = mod->loaded;
     mod->loaded = 1;
     InterlockedExchange(&g_fired[HF_EVENT_GAME_LOADED], 1);
@@ -246,6 +253,7 @@ static void EnemyRostersFixture(void)
     assert(ErEnemyAt(0)->state == 1 && ErEnemyAt(0)->rows == 3 && ErEnemyAt(1)->state == -1 && ErEnemyAt(2)->state == -1 && ErEnemyAt(3)->rows == 1);
     assert(ErEnemyAt(4)->state == -1 && ErEnemyAt(5)->state == 1 && ErEnemyAt(5)->rows == 1 && ErSwapAt(3)->state == -1); /* formations */
     assert(ErSwapAt(0)->state == 1 && ErSwapAt(0)->rules == 2 && ErSwapAt(1)->state == -1 && ErSwapAt(2)->state == -1);
+    assert(ErEnemyAt(6)->state == -1 && ErSwapAt(4)->state == -1); /* no Behavior record */
     ErtCheckPairGuard(game);
     ErtChains();
     ErtCheckRows(game, rows[2]);
@@ -276,6 +284,7 @@ static void EnemyRostersFixture(void)
 
     g_erEntityKnown = ErEntityInMap;
     g_erFormations = ErFormationsOf;
+    g_erBehaves = ErBehaviorOf;
     mod->loaded = wasLoaded;
     g_directorImage = DirectorGame;
     g_difficultyAdded = added; g_difficultyState = state;
