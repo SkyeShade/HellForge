@@ -49,7 +49,7 @@ generating it again would undo those changes. [multiplayer.md](multiplayer.md) s
 
 ## The package and its version
 
-The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.47). HellForge's own version,
+The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.48). HellForge's own version,
 `Version` in the same file, is separate (currently 0.4.0-beta).
 
 Besides the folders in the table, the package holds `engine.json` and the licences (`LICENSE`, `LICENSE-EXCEPTION`).
