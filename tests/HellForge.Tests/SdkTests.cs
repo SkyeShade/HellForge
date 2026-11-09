@@ -219,7 +219,8 @@ static class SdkTests
         {
             var json = Rpcs(Rpc("rpc_pickup_entity", entity + "," + entity) + "," +
                 Rpc("rpc_set_list", """{"type":"0x1","name":"float","kind":"array","max_count":4,"element":{"type":"0x2","kind":"vector3","bits":16,"min":-1,"max":1}}""") + "," +
-                Rpc("rpc_ping", ""));
+                Rpc("rpc_ping", "") + "," +
+                Rpc("rpc_set_item", """{"type":"0x77C59B29","name":"id_string64","kind":"id64"}"""));
             var files = SdkRpcs.Parse(json).Generate();
             var header = files["native/mod-sdk/hellforge_rpcs.h"];
             check(header.Contains("#define HF_RPC_PICKUP_ENTITY 0x04365DCFu") &&
@@ -230,6 +231,8 @@ static class SdkTests
                 "An array of vector3 named after a keyword type, and room for its elements: " + header);
             check(header.Contains("static inline int hf_rpc_ping_read(const HfRpcEvent* e)") && header.Contains("hf_rpc_send_(mod, HF_RPC_PING, to, NULL, 0)"),
                 "No arguments, no struct.");
+            check(header.Contains("    uint64_t id_string64;") && header.Contains("hf_rpc_take_(e, &at, 7u)"),
+                "A name hash is a uint64_t the game passes as kind 7, not u64's 9: " + header);
             var table = files["native/mod-loader/sdk_rpcs.h"];
             check(table.Contains("{0x04365DCFu, \"rpc_pickup_entity\", 1, 2,") && table.Contains("    {10, 3, 4, 0, 16},") && table.Contains("#define SDK_RPCS_BUILD \"1\""),
                 "The loader's rows: " + table);

@@ -861,9 +861,10 @@ typedef struct HfShareEvent
 /* SDK 17: the game's own RPCs, its network messages (rpc_listen, rpc_send; hellforge_rpcs.h names every one and gives
  * it a typed struct, reader and sender; docs/modding/networking.md). An argument as the game passes it: its kind, its
  * size (a string's length in bytes; 0 for an array) and where its value is. An array is one HF_RPC_KIND_ARRAY entry,
- * whose value is not a pointer but the element count, followed by that many element entries. Values: bool an int32_t
+ * whose value is not a pointer but the element count, followed by that many element entries. Values: bool a uint8_t
  * 0 or 1, int an int32_t, float a float, vector3 and direction 3 floats, vector2 2, quaternion 4 (x, y, z, w), string a
- * NUL-terminated char array, u32 a uint32_t, u64 a uint64_t (an id, or a peer). */
+ * NUL-terminated char array, u32 a uint32_t, u64 a uint64_t (an id, or a peer), id64 a uint64_t name hash (an
+ * id_string64: a resource's or an item's name, MurmurHash64A). */
 #define HF_RPC_KIND_BOOL 0u
 #define HF_RPC_KIND_INT 1u
 #define HF_RPC_KIND_FLOAT 2u
@@ -871,6 +872,7 @@ typedef struct HfShareEvent
 #define HF_RPC_KIND_QUATERNION 4u
 #define HF_RPC_KIND_STRING 5u
 #define HF_RPC_KIND_U32 6u
+#define HF_RPC_KIND_ID64 7u
 #define HF_RPC_KIND_U64 9u
 #define HF_RPC_KIND_ARRAY 10u
 #define HF_RPC_KIND_DIRECTION 11u

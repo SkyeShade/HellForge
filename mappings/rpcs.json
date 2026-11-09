@@ -3059,12 +3059,12 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         },
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         },
         {
           "type": "0x4FB78ECB",
@@ -4007,7 +4007,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         }
       ]
     },
@@ -5122,7 +5122,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         },
         {
           "type": "0x78E9B8EC",
@@ -6615,7 +6615,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         }
       ]
     },
@@ -8574,7 +8574,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         },
         {
           "type": "0xF917269C",
@@ -8807,7 +8807,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         },
         {
           "type": "0x64CE4436",
@@ -9394,7 +9394,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         },
         {
           "type": "0x78E9B8EC",
@@ -10260,7 +10260,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         }
       ]
     },
@@ -10373,7 +10373,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         }
       ]
     },
@@ -11248,7 +11248,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         }
       ]
     },
@@ -14429,7 +14429,7 @@
         {
           "type": "0x77C59B29",
           "name": "id_string64",
-          "kind": "u64"
+          "kind": "id64"
         },
         {
           "type": "0xE57C92F3",

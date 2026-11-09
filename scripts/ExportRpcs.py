@@ -21,8 +21,10 @@ import struct
 import sys
 from pathlib import Path
 
-KINDS = {0: "bool", 1: "int", 2: "float", 3: "vector3", 4: "quaternion", 5: "string", 6: "u32", 7: "u64", 8: "u64",
-         9: "u64", 10: "array", 11: "direction", 12: "vector2"}
+# The config's kind is the one the game passes the argument with (its RPC argument list): 7 is id_string64, a name hash,
+# which goes as 64 bits like u64 but keeps its own kind; no type of build 25480438 has kind 8.
+KINDS = {0: "bool", 1: "int", 2: "float", 3: "vector3", 4: "quaternion", 5: "string", 6: "u32", 7: "id64", 9: "u64",
+         10: "array", 11: "direction", 12: "vector2"}
 
 
 class Reader:

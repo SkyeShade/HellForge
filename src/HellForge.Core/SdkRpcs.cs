@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace HellForge.Core;
 
 // One argument of an RPC, as the game's network configuration declares it (mappings/rpcs.json). Kind: bool, int, float,
-// vector3, vector2, quaternion, direction, string, u32, u64, array. Bits/Min/Max: an int's or float's width and range;
+// vector3, vector2, quaternion, direction, string, u32, u64, id64 (a name hash), array. Bits/Min/Max: an int's or float's width and range;
 // MaxCount and Element: an array's.
 public sealed record SdkRpcArg(string Name, string Kind, int Bits, double Min, double Max, int MaxCount, SdkRpcArg? Element);
 // One RPC: its name (rpc_...), its name's hash (the id mods use), its place in this build's vanilla configuration,
@@ -21,7 +21,7 @@ public sealed class SdkRpcs
     // HfRpcArg kinds (the game's own numbering of the network types' kinds)
     static readonly Dictionary<string, int> Kinds = new()
     {
-        ["bool"] = 0, ["int"] = 1, ["float"] = 2, ["vector3"] = 3, ["quaternion"] = 4, ["string"] = 5, ["u32"] = 6, ["u64"] = 9,
+        ["bool"] = 0, ["int"] = 1, ["float"] = 2, ["vector3"] = 3, ["quaternion"] = 4, ["string"] = 5, ["u32"] = 6, ["id64"] = 7, ["u64"] = 9,
         ["array"] = 10, ["direction"] = 11, ["vector2"] = 12,
     };
     // the game's message buffer holds 0x4B0 bytes; an argument list longer than this is refused before it is built
@@ -119,7 +119,7 @@ public sealed class SdkRpcs
     {
         "bool" => ("uint8_t", ""), "int" => ("int32_t", ""), "float" => ("float", ""), "vector3" or "direction" => ("float", "[3]"),
         "vector2" => ("float", "[2]"), "quaternion" => ("float", "[4]"), "string" => ("const char*", ""), "u32" => ("uint32_t", ""),
-        "u64" => ("uint64_t", ""), _ => throw new InvalidDataException(kind)
+        "u64" or "id64" => ("uint64_t", ""), _ => throw new InvalidDataException(kind)
     };
 
     static string Describe(SdkRpcArg a) => a.Kind switch
@@ -129,6 +129,7 @@ public sealed class SdkRpcs
             $"{a.Kind}, {a.Bits} bits over {a.Min.ToString(CultureInfo.InvariantCulture)}..{a.Max.ToString(CultureInfo.InvariantCulture)}",
         "array" => $"up to {a.MaxCount} x {Describe(a.Element!)}",
         "string" => "string, at most 2047 bytes",
+        "id64" => "id64, a name hash",
         _ => a.Kind,
     };
 

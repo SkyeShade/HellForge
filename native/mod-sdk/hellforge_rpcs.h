@@ -4659,8 +4659,8 @@ static inline int hf_rpc_share_target_send(HfMod* mod, uint64_t to, const HfRpc_
 /* rpc_from_partyleader_join_request:
  *   arg0                     u64
  *   arg1                     up to 5 x u64
- *   id_string64              u64
- *   id_string64_2            u64
+ *   id_string64              id64, a name hash
+ *   id_string64_2            id64, a name hash
  *   arg4                     int, 3 bits, 0..7
  *   bool_value               bool
  *   bool_value_2             bool
@@ -4695,12 +4695,12 @@ static inline int hf_rpc_from_partyleader_join_request_read(const HfRpcEvent* e,
         out->arg1[i] = *(const uint64_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64_2 = *(const uint64_t*)v;
     }
@@ -4734,8 +4734,8 @@ static inline int hf_rpc_from_partyleader_join_request_send(HfMod* mod, uint64_t
     {
         a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->arg1[i]; a[n].value = &in->arg1[i]; n++;
     }
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64_2; a[n].value = &in->id_string64_2; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64_2; a[n].value = &in->id_string64_2; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->arg4; a[n].value = &in->arg4; n++;
     f[nf] = in->bool_value != 0;
     a[n].kind = 0u; a[n].size = 4; a[n].value = &f[nf++]; n++;
@@ -6045,7 +6045,7 @@ static inline int hf_rpc_unwield_weapon_send(HfMod* mod, uint64_t to, const HfRp
  *   entity_4                 int, 15 bits, 0..32767
  *   entity_5                 int, 15 bits, 0..32767
  *   entity_6                 int, 15 bits, 0..32767
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  */
 #define HF_RPC_SET_INVENTORY 0x42729286u
 typedef struct HfRpc_set_inventory
@@ -6093,7 +6093,7 @@ static inline int hf_rpc_set_inventory_read(const HfRpcEvent* e, HfRpc_set_inven
         out->entity_6 = *(const int32_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -6109,7 +6109,7 @@ static inline int hf_rpc_set_inventory_send(HfMod* mod, uint64_t to, const HfRpc
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->entity_4; a[n].value = &in->entity_4; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->entity_5; a[n].value = &in->entity_5; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->entity_6; a[n].value = &in->entity_6; n++;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     return hf_rpc_send_(mod, HF_RPC_SET_INVENTORY, to, a, n);
 }
 
@@ -7896,7 +7896,7 @@ static inline int hf_rpc_score_sync_bool_send(HfMod* mod, uint64_t to, const HfR
 
 /* rpc_score_sync_weapon_unsigned (session-bound):
  *   id_string32              u32
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  *   unsigned_value           int, 32 bits, 0..0
  */
 #define HF_RPC_SCORE_SYNC_WEAPON_UNSIGNED 0x59F01A31u
@@ -7916,7 +7916,7 @@ static inline int hf_rpc_score_sync_weapon_unsigned_read(const HfRpcEvent* e, Hf
         out->id_string32 = *(const uint32_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -7932,7 +7932,7 @@ static inline int hf_rpc_score_sync_weapon_unsigned_send(HfMod* mod, uint64_t to
     HfRpcArg a[3];
     uint32_t n = 0;
     a[n].kind = 6u; a[n].size = (uint32_t)sizeof in->id_string32; a[n].value = &in->id_string32; n++;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->unsigned_value; a[n].value = &in->unsigned_value; n++;
     return hf_rpc_send_(mod, HF_RPC_SCORE_SYNC_WEAPON_UNSIGNED, to, a, n);
 }
@@ -10282,7 +10282,7 @@ static inline int hf_rpc_request_booster_send(HfMod* mod, uint64_t to, const HfR
 }
 
 /* rpc_from_host_set_debug_level:
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  */
 #define HF_RPC_FROM_HOST_SET_DEBUG_LEVEL 0x71C7CBFBu
 typedef struct HfRpc_from_host_set_debug_level
@@ -10294,7 +10294,7 @@ static inline int hf_rpc_from_host_set_debug_level_read(const HfRpcEvent* e, HfR
     uint32_t at = 0;
     if (e->rpc != HF_RPC_FROM_HOST_SET_DEBUG_LEVEL) return 1;
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -10304,7 +10304,7 @@ static inline int hf_rpc_from_host_set_debug_level_send(HfMod* mod, uint64_t to,
 {
     HfRpcArg a[1];
     uint32_t n = 0;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     return hf_rpc_send_(mod, HF_RPC_FROM_HOST_SET_DEBUG_LEVEL, to, a, n);
 }
 
@@ -13336,7 +13336,7 @@ static inline int hf_rpc_attach_simple_send(HfMod* mod, uint64_t to, const HfRpc
 
 /* rpc_score_sync_weapon_float (session-bound):
  *   id_string32              u32
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  *   arg2                     float, 31 bits over 0..10000000
  */
 #define HF_RPC_SCORE_SYNC_WEAPON_FLOAT 0x948A9FBCu
@@ -13356,7 +13356,7 @@ static inline int hf_rpc_score_sync_weapon_float_read(const HfRpcEvent* e, HfRpc
         out->id_string32 = *(const uint32_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -13372,7 +13372,7 @@ static inline int hf_rpc_score_sync_weapon_float_send(HfMod* mod, uint64_t to, c
     HfRpcArg a[3];
     uint32_t n = 0;
     a[n].kind = 6u; a[n].size = (uint32_t)sizeof in->id_string32; a[n].value = &in->id_string32; n++;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     a[n].kind = 2u; a[n].size = (uint32_t)sizeof in->arg2; a[n].value = &in->arg2; n++;
     return hf_rpc_send_(mod, HF_RPC_SCORE_SYNC_WEAPON_FLOAT, to, a, n);
 }
@@ -13712,7 +13712,7 @@ static inline int hf_rpc_on_auto_reinforce_send(HfMod* mod, uint64_t to) { retur
 /* rpc_targeting_decal (session-bound):
  *   entity                   int, 15 bits, 0..32767
  *   entity_2                 int, 15 bits, 0..32767
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  *   vector3                  vector3, 31 bits over -10000..10000
  *   unsigned_value           int, 32 bits, 0..0
  */
@@ -13740,7 +13740,7 @@ static inline int hf_rpc_targeting_decal_read(const HfRpcEvent* e, HfRpc_targeti
         out->entity_2 = *(const int32_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -13762,7 +13762,7 @@ static inline int hf_rpc_targeting_decal_send(HfMod* mod, uint64_t to, const HfR
     uint32_t n = 0;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->entity; a[n].value = &in->entity; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->entity_2; a[n].value = &in->entity_2; n++;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     a[n].kind = 3u; a[n].size = (uint32_t)sizeof in->vector3; a[n].value = in->vector3; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->unsigned_value; a[n].value = &in->unsigned_value; n++;
     return hf_rpc_send_(mod, HF_RPC_TARGETING_DECAL, to, a, n);
@@ -14654,7 +14654,7 @@ static inline int hf_rpc_on_notified_send(HfMod* mod, uint64_t to, const HfRpc_o
 
 /* rpc_score_sync_weapon_bool (session-bound):
  *   id_string32              u32
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  *   unsigned_value           int, 32 bits, 0..0
  */
 #define HF_RPC_SCORE_SYNC_WEAPON_BOOL 0xA7BEF9AAu
@@ -14674,7 +14674,7 @@ static inline int hf_rpc_score_sync_weapon_bool_read(const HfRpcEvent* e, HfRpc_
         out->id_string32 = *(const uint32_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -14690,7 +14690,7 @@ static inline int hf_rpc_score_sync_weapon_bool_send(HfMod* mod, uint64_t to, co
     HfRpcArg a[3];
     uint32_t n = 0;
     a[n].kind = 6u; a[n].size = (uint32_t)sizeof in->id_string32; a[n].value = &in->id_string32; n++;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->unsigned_value; a[n].value = &in->unsigned_value; n++;
     return hf_rpc_send_(mod, HF_RPC_SCORE_SYNC_WEAPON_BOOL, to, a, n);
 }
@@ -16002,7 +16002,7 @@ static inline int hf_rpc_sync_stratagem_loadout_to_hotjoiner_read(const HfRpcEve
 static inline int hf_rpc_sync_stratagem_loadout_to_hotjoiner_send(HfMod* mod, uint64_t to) { return hf_rpc_send_(mod, HF_RPC_SYNC_STRATAGEM_LOADOUT_TO_HOTJOINER, to, NULL, 0); }
 
 /* rpc_debug_load_soundbank (session-bound):
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  */
 #define HF_RPC_DEBUG_LOAD_SOUNDBANK 0xB3890778u
 typedef struct HfRpc_debug_load_soundbank
@@ -16014,7 +16014,7 @@ static inline int hf_rpc_debug_load_soundbank_read(const HfRpcEvent* e, HfRpc_de
     uint32_t at = 0;
     if (e->rpc != HF_RPC_DEBUG_LOAD_SOUNDBANK) return 1;
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -16024,7 +16024,7 @@ static inline int hf_rpc_debug_load_soundbank_send(HfMod* mod, uint64_t to, cons
 {
     HfRpcArg a[1];
     uint32_t n = 0;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     return hf_rpc_send_(mod, HF_RPC_DEBUG_LOAD_SOUNDBANK, to, a, n);
 }
 
@@ -16175,7 +16175,7 @@ static inline int hf_rpc_set_animation_states_large_send(HfMod* mod, uint64_t to
 /* rpc_give_stims (session-bound):
  *   entity                   int, 15 bits, 0..32767
  *   unsigned_value           int, 32 bits, 0..0
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  */
 #define HF_RPC_GIVE_STIMS 0xB42289F4u
 typedef struct HfRpc_give_stims
@@ -16199,7 +16199,7 @@ static inline int hf_rpc_give_stims_read(const HfRpcEvent* e, HfRpc_give_stims* 
         out->unsigned_value = *(const int32_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -16211,7 +16211,7 @@ static inline int hf_rpc_give_stims_send(HfMod* mod, uint64_t to, const HfRpc_gi
     uint32_t n = 0;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->entity; a[n].value = &in->entity; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->unsigned_value; a[n].value = &in->unsigned_value; n++;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     return hf_rpc_send_(mod, HF_RPC_GIVE_STIMS, to, a, n);
 }
 
@@ -17497,7 +17497,7 @@ static inline int hf_rpc_panic_exit_send(HfMod* mod, uint64_t to, const HfRpc_pa
 
 /* rpc_set_throwable_path (session-bound):
  *   entity                   int, 15 bits, 0..32767
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  */
 #define HF_RPC_SET_THROWABLE_PATH 0xC41012B5u
 typedef struct HfRpc_set_throwable_path
@@ -17515,7 +17515,7 @@ static inline int hf_rpc_set_throwable_path_read(const HfRpcEvent* e, HfRpc_set_
         out->entity = *(const int32_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -17526,7 +17526,7 @@ static inline int hf_rpc_set_throwable_path_send(HfMod* mod, uint64_t to, const 
     HfRpcArg a[2];
     uint32_t n = 0;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->entity; a[n].value = &in->entity; n++;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     return hf_rpc_send_(mod, HF_RPC_SET_THROWABLE_PATH, to, a, n);
 }
 
@@ -22384,7 +22384,7 @@ static inline int hf_rpc_voiceover_queue_entry_send(HfMod* mod, uint64_t to, con
  *   vector3                  vector3, 31 bits over -10000..10000
  *   arg2                     int, 10 bits, 0..1023
  *   arg3                     int, 9 bits, 0..511
- *   id_string64              u64
+ *   id_string64              id64, a name hash
  *   id_string32              u32
  *   float_value              float, 31 bits over -10000..10000
  *   float_value_2            float, 31 bits over -10000..10000
@@ -22430,7 +22430,7 @@ static inline int hf_rpc_fire_single_round_advanced_read(const HfRpcEvent* e, Hf
         out->arg3 = *(const int32_t*)v;
     }
     {
-        const void* v = hf_rpc_take_(e, &at, 9u);
+        const void* v = hf_rpc_take_(e, &at, 7u);
         if (v == NULL) return 1;
         out->id_string64 = *(const uint64_t*)v;
     }
@@ -22471,7 +22471,7 @@ static inline int hf_rpc_fire_single_round_advanced_send(HfMod* mod, uint64_t to
     a[n].kind = 3u; a[n].size = (uint32_t)sizeof in->vector3; a[n].value = in->vector3; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->arg2; a[n].value = &in->arg2; n++;
     a[n].kind = 1u; a[n].size = (uint32_t)sizeof in->arg3; a[n].value = &in->arg3; n++;
-    a[n].kind = 9u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
+    a[n].kind = 7u; a[n].size = (uint32_t)sizeof in->id_string64; a[n].value = &in->id_string64; n++;
     a[n].kind = 6u; a[n].size = (uint32_t)sizeof in->id_string32; a[n].value = &in->id_string32; n++;
     a[n].kind = 2u; a[n].size = (uint32_t)sizeof in->float_value; a[n].value = &in->float_value; n++;
     a[n].kind = 2u; a[n].size = (uint32_t)sizeof in->float_value_2; a[n].value = &in->float_value_2; n++;

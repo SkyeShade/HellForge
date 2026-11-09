@@ -61,7 +61,7 @@ static uint32_t RpcValueBits(uint32_t kind, uint32_t bits, uint32_t size)
     case HF_RPC_KIND_DIRECTION: return 1 + 2 * bits;
     case HF_RPC_KIND_STRING: return 11 + 7 + 8 * size;
     case HF_RPC_KIND_U32: return 7 + 32;
-    case HF_RPC_KIND_U64: return 7 + 64;
+    case HF_RPC_KIND_U64: case HF_RPC_KIND_ID64: return 7 + 64;
     default: return 0;
     }
 }

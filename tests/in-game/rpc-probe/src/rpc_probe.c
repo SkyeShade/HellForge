@@ -25,18 +25,29 @@ static int g_sendChecked, g_listedShip, g_listedMission;
 static ULONGLONG g_askedAt;    /* when the joiner asked the host, 0 before and once answered */
 static long g_requestsFromPeers;
 
-/* Whether every entry of an event is a kind the game uses, an array's count within what follows. */
-static int ArgsSane(const HfRpcEvent* e)
+/* The first entry of an event that is not a kind the game uses, an array whose count runs past what follows, or a value
+ * without a pointer; -1 when every entry is well formed (and -2 for a count without a list). */
+static int FirstBadArg(const HfRpcEvent* e)
 {
-    if (e->count > 0 && e->args == NULL) return 0;
+    if (e->count > 0 && e->args == NULL) return -2;
     for (uint32_t i = 0; i < e->count; i++)
     {
         uint32_t k = e->args[i].kind;
-        if (k > HF_RPC_KIND_VECTOR2 || k == 7 || k == 8) return 0;
-        if (k == HF_RPC_KIND_ARRAY && (uint32_t)(uintptr_t)e->args[i].value > e->count - i - 1) return 0;
-        if (k != HF_RPC_KIND_ARRAY && e->args[i].value == NULL) return 0;
+        if (k > HF_RPC_KIND_VECTOR2 || k == 8) return (int)i;
+        if (k == HF_RPC_KIND_ARRAY && (uint32_t)(uintptr_t)e->args[i].value > e->count - i - 1) return (int)i;
+        if (k != HF_RPC_KIND_ARRAY && e->args[i].value == NULL) return (int)i;
     }
-    return 1;
+    return -1;
+}
+
+/* The first few malformed events in full, so a FAIL says which RPC and which entry. */
+static void LogBad(const HfRpcEvent* e, int at)
+{
+    static int logged;
+    if (logged++ >= 8) return;
+    LOG("PROBE bad rpc 0x%08X from %llx: %u entries, entry %d", e->rpc, (unsigned long long)e->sender, e->count, at);
+    for (uint32_t i = 0; e->args != NULL && i < e->count && i < 12; i++)
+        LOG("PROBE bad rpc   [%u] kind %u size %u value %p", i, e->args[i].kind, e->args[i].size, e->args[i].value);
 }
 
 /* A few readers on the RPCs a mission sends often: they must decode what the game itself decoded. */
@@ -46,6 +57,9 @@ static void TryReaders(const HfRpcEvent* e)
     if (e->rpc == HF_RPC_PICKUP_ENTITY) { HfRpc_pickup_entity p; r = hf_rpc_pickup_entity_read(e, &p); }
     else if (e->rpc == HF_RPC_ADD_PROJECTILE_TO_MANAGER) { HfRpc_add_projectile_to_manager p; r = hf_rpc_add_projectile_to_manager_read(e, &p); }
     else if (e->rpc == HF_RPC_FIRE_SINGLE_ROUND) { HfRpc_fire_single_round p; r = hf_rpc_fire_single_round_read(e, &p); }
+    /* these two carry an id_string64 (kind 7), which only co-op sends */
+    else if (e->rpc == HF_RPC_SET_INVENTORY) { HfRpc_set_inventory p; r = hf_rpc_set_inventory_read(e, &p); }
+    else if (e->rpc == HF_RPC_SET_THROWABLE_PATH) { HfRpc_set_throwable_path p; r = hf_rpc_set_throwable_path_read(e, &p); }
     if (r == 0) g_decoded++;
     else if (r == 1) g_decodeFailed++;
 }
@@ -54,7 +68,8 @@ static int OnRpc(HfMod* mod, const HfRpcEvent* e, void* user)
 {
     (void)mod; (void)user;
     g_received++;
-    if (!ArgsSane(e)) g_badArgs++;
+    int bad = FirstBadArg(e);
+    if (bad != -1) { g_badArgs++; LogBad(e, bad); }
     TryReaders(e);
     if (e->rpc == HF_RPC_REQUEST_HOSTABILITY) g_requestsFromPeers++;
     if (e->rpc == HF_RPC_HOSTABILITY && g_askedAt != 0)
@@ -96,7 +111,9 @@ static void Tick(HfMod* mod, float dt, void* user)
     g_lastLog = now;
     uint32_t state = hf->game_state(mod);
     if (state == HF_STATE_MISSION && g_lastState != HF_STATE_MISSION) g_missionSince = now;
-    if (state != HF_STATE_MISSION && g_lastState == HF_STATE_MISSION && !g_listedMission) { List("mission"); g_listedMission = 1; }
+    /* the mission's tally 30 s in (a solo run's mission lasts about 40 s, a co-op one is stopped in it) or as it ends */
+    if (!g_listedMission && g_lastState == HF_STATE_MISSION && (state != HF_STATE_MISSION || now - g_missionSince > 30000))
+    { List("mission"); g_listedMission = 1; }
     /* the ship ends on its first change of state (to loading, usually), and the mission's counts start afresh */
     if (state != HF_STATE_SHIP && g_lastState == HF_STATE_SHIP && !g_listedShip) { List("ship"); g_listedShip = 1; Reset(); }
     g_lastState = state;

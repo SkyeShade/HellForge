@@ -130,7 +130,7 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_request_mission_over` | `0x3330AB9F` | none |
 | `rpc_set_animation_states` | `0x34B17419` | `entity` int, 15 bits, 0..32767; `arg1` up to 3 x int, 32 bits, 0..0 |
 | `rpc_share_target` | `0x3588F5A1` | `entity` int, 15 bits, 0..32767; `vector3` vector3, 31 bits over -10000..10000; `entity_2` int, 15 bits, 0..32767; `vector3_2` vector3, 31 bits over -10000..10000; `float_value` float, 31 bits over -10000..10000; `unsigned_value` int, 32 bits, 0..0; `float_value_2` float, 31 bits over -10000..10000; `id_string32` u32 |
-| `rpc_from_partyleader_join_request` (any time) | `0x359461FE` | `arg0` u64; `arg1` up to 5 x u64; `id_string64` u64; `id_string64_2` u64; `arg4` int, 3 bits, 0..7; `bool_value` bool; `bool_value_2` bool |
+| `rpc_from_partyleader_join_request` (any time) | `0x359461FE` | `arg0` u64; `arg1` up to 5 x u64; `id_string64` id64, a name hash; `id_string64_2` id64, a name hash; `arg4` int, 3 bits, 0..7; `bool_value` bool; `bool_value_2` bool |
 | `rpc_request_hostability` | `0x36334D22` | none |
 | `rpc_store_entity` | `0x367D8909` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767 |
 | `rpc_start_status_effect_damage` | `0x368A8A25` | `entity` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0; `arg2` int, 7 bits, 0..127; `entity_2` int, 15 bits, 0..32767; `peer_id` u64 |
@@ -162,7 +162,7 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_nag_for_respawn` | `0x40BD50CC` | `entity` int, 15 bits, 0..32767 |
 | `rpc_debug_force_ready_up` | `0x41A6D1FB` | none |
 | `rpc_unwield_weapon` | `0x423A4034` | `entity` int, 15 bits, 0..32767; `arg1` int, 4 bits, 0..15 |
-| `rpc_set_inventory` | `0x42729286` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `entity_3` int, 15 bits, 0..32767; `entity_4` int, 15 bits, 0..32767; `entity_5` int, 15 bits, 0..32767; `entity_6` int, 15 bits, 0..32767; `id_string64` u64 |
+| `rpc_set_inventory` | `0x42729286` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `entity_3` int, 15 bits, 0..32767; `entity_4` int, 15 bits, 0..32767; `entity_5` int, 15 bits, 0..32767; `entity_6` int, 15 bits, 0..32767; `id_string64` id64, a name hash |
 | `rpc_on_force_to_loadout` | `0x42F5D99F` | `entity` int, 15 bits, 0..32767 |
 | `rpc_set_countdown_state` | `0x4326B4D3` | `entity` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0; `unsigned_value_2` int, 32 bits, 0..0 |
 | `rpc_trigger_ship_game_event` | `0x433A8DC0` | `id_string32` u32 |
@@ -210,7 +210,7 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_set_zone_enabled` | `0x582E8E85` | `entity` int, 15 bits, 0..32767; `arg1` int, 4 bits, 0..15; `bool_value` bool |
 | `rpc_physics_uniform_impulse` | `0x5845F11C` | `entity` int, 15 bits, 0..32767; `vector3` vector3, 31 bits over -10000..10000 |
 | `rpc_score_sync_bool` | `0x592F0D74` | `id_string32` u32; `unsigned_value` int, 32 bits, 0..0 |
-| `rpc_score_sync_weapon_unsigned` | `0x59F01A31` | `id_string32` u32; `id_string64` u64; `unsigned_value` int, 32 bits, 0..0 |
+| `rpc_score_sync_weapon_unsigned` | `0x59F01A31` | `id_string32` u32; `id_string64` id64, a name hash; `unsigned_value` int, 32 bits, 0..0 |
 | `rpc_remove_encounters_within` | `0x5ABB091E` | `arg0` int, 3 bits, 0..7; `vector3` vector3, 31 bits over -10000..10000; `float_value` float, 31 bits over -10000..10000 |
 | `rpc_hellpad_confirmation_result` | `0x5AC3BB74` | `arg0` int, 8 bits, 0..255; `bool_value` bool |
 | `rpc_set_level_restarting` | `0x5B79489D` | none |
@@ -269,7 +269,7 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_from_host_set_generation_seed` (any time) | `0x716C6176` | `network_string` string, at most 2047 bytes |
 | `rpc_stratagem_confirmation_result` | `0x719E68DE` | `entity` int, 15 bits, 0..32767; `bool_value` bool |
 | `rpc_request_booster` (any time) | `0x71C061C5` | `booster` int, 5 bits, 0..31 |
-| `rpc_from_host_set_debug_level` (any time) | `0x71C7CBFB` | `id_string64` u64 |
+| `rpc_from_host_set_debug_level` (any time) | `0x71C7CBFB` | `id_string64` id64, a name hash |
 | `rpc_abort_dialogue` | `0x71E946F0` | `entity` int, 15 bits, 0..32767 |
 | `rpc_increment_total_number_of_dropped_loot` | `0x723D4A53` | none |
 | `rpc_loot_pick_up_request` | `0x72E20E4E` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767 |
@@ -353,7 +353,7 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_update_hold_minigame_value` | `0x941CF43D` | `entity` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0; `float_value` float, 31 bits over -10000..10000 |
 | `rpc_set_entering` | `0x943369BC` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `arg2` int, 4 bits, 0..15 |
 | `rpc_attach_simple` | `0x947D285A` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0 |
-| `rpc_score_sync_weapon_float` | `0x948A9FBC` | `id_string32` u32; `id_string64` u64; `arg2` float, 31 bits over 0..10000000 |
+| `rpc_score_sync_weapon_float` | `0x948A9FBC` | `id_string32` u32; `id_string64` id64, a name hash; `arg2` float, 31 bits over 0..10000000 |
 | `rpc_extraction_zone_discovered` | `0x95B2503C` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767 |
 | `rpc_snap_rotation` | `0x95D6B006` | `entity` int, 15 bits, 0..32767; `quaternion` quaternion |
 | `rpc_trigger_particle_event` | `0x95D8E79E` | `entity` int, 15 bits, 0..32767; `arg1` int, 5 bits, 0..31 |
@@ -364,7 +364,7 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_pickup_payload` | `0x99B0C1BB` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `arg2` int, 3 bits, 0..7 |
 | `rpc_from_host_ready_peer_added` | `0x9A4F9510` | `peer_id` u64 |
 | `rpc_on_auto_reinforce` | `0x9B3DECA7` | none |
-| `rpc_targeting_decal` | `0x9BCBB84D` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `id_string64` u64; `vector3` vector3, 31 bits over -10000..10000; `unsigned_value` int, 32 bits, 0..0 |
+| `rpc_targeting_decal` | `0x9BCBB84D` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `id_string64` id64, a name hash; `vector3` vector3, 31 bits over -10000..10000; `unsigned_value` int, 32 bits, 0..0 |
 | `rpc_fire_system_delta_cell_list` | `0x9BEAB4DC` | `arg0` up to 64 x int, 32 bits, 0..0 |
 | `rpc_from_host_set_shipname_start` (any time) | `0x9BF86D8C` | none |
 | `rpc_set_job_position` | `0x9C93533D` | `entity` int, 15 bits, 0..32767; `vector3` vector3, 31 bits over -10000..10000 |
@@ -391,7 +391,7 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_set_active_passenger` | `0xA4A69BA2` | `entity` int, 15 bits, 0..32767; `bool_value` bool |
 | `rpc_from_client_completed_loadout_load` (any time) | `0xA4E4ECFC` | `peer_id` u64; `unsigned_value` int, 32 bits, 0..0 |
 | `rpc_on_notified` | `0xA62E6EA9` | `entity` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0; `float_value` float, 31 bits over -10000..10000; `float_value_2` float, 31 bits over -10000..10000 |
-| `rpc_score_sync_weapon_bool` | `0xA7BEF9AA` | `id_string32` u32; `id_string64` u64; `unsigned_value` int, 32 bits, 0..0 |
+| `rpc_score_sync_weapon_bool` | `0xA7BEF9AA` | `id_string32` u32; `id_string64` id64, a name hash; `unsigned_value` int, 32 bits, 0..0 |
 | `rpc_set_damage_owner` | `0xA7CF9A72` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767 |
 | `rpc_request_cycle_seat` | `0xA7ECE676` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `seat_index` int, 5 bits, -1..30; `arg3` int, 1 bits, 0..1 |
 | `rpc_external_switch_state_reset` | `0xA8909C39` | `entity` int, 15 bits, 0..32767 |
@@ -423,12 +423,12 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_mine_triggered` | `0xB29CD3AE` | `entity` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0; `bool_value` bool |
 | `rpc_sync_stratagems` (any time) | `0xB2E77CAE` | `entity` int, 15 bits, 0..32767; `arg1` up to 16 x int, 32 bits, 0..0; `arg2` up to 16 x int, 32 bits, 0..0; `arg3` up to 16 x u64; `arg4` up to 32 x int, 32 bits, 0..0; `arg5` up to 16 x bool; `arg6` u64 |
 | `rpc_sync_stratagem_loadout_to_hotjoiner` (any time) | `0xB317CB48` | none |
-| `rpc_debug_load_soundbank` | `0xB3890778` | `id_string64` u64 |
+| `rpc_debug_load_soundbank` | `0xB3890778` | `id_string64` id64, a name hash |
 | `rpc_oil_rig_drilling_start` | `0xB38F718C` | `entity` int, 15 bits, 0..32767 |
 | `rpc_set_ragdoll_enabled` | `0xB390C486` | `entity` int, 15 bits, 0..32767; `bool_value` bool |
 | `rpc_start_upload_discovery` | `0xB3C816CD` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767 |
 | `rpc_set_animation_states_large` | `0xB419B858` | `entity` int, 15 bits, 0..32767; `arg1` up to 32 x int, 32 bits, 0..0 |
-| `rpc_give_stims` | `0xB42289F4` | `entity` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0; `id_string64` u64 |
+| `rpc_give_stims` | `0xB42289F4` | `entity` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0; `id_string64` id64, a name hash |
 | `rpc_objective_link_to_guard_force_member` | `0xB45D681B` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767 |
 | `rpc_load_player_loadout_for_peer` (any time) | `0xB4ACFE77` | `peer_id` u64; `arg1` int, 2 bits, 0..3; `arg2` int, 1 bits, 0..1; `unsigned_value` int, 32 bits, 0..0 |
 | `rpc_respond_to_emote` | `0xB4DC1B0C` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0 |
@@ -463,7 +463,7 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_from_client_synced_task_done` (any time) | `0xC237BE1C` | `synced_task` int, 2 bits, 0..3; `arg1` int, 3 bits, 0..7 |
 | `rpc_change_status_effect_mask` | `0xC2537DEB` | `entity` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0; `arg2` up to 2 x u64 |
 | `rpc_panic_exit` | `0xC29846F8` | `entity` int, 15 bits, 0..32767 |
-| `rpc_set_throwable_path` | `0xC41012B5` | `entity` int, 15 bits, 0..32767; `id_string64` u64 |
+| `rpc_set_throwable_path` | `0xC41012B5` | `entity` int, 15 bits, 0..32767; `id_string64` id64, a name hash |
 | `rpc_transport_dropped` | `0xC521A7FB` | `entity` int, 15 bits, 0..32767; `entity_2` int, 15 bits, 0..32767; `unsigned_value` int, 32 bits, 0..0 |
 | `rpc_trigger_projectile_explosion` | `0xC64D92F0` | `unsigned_value` int, 32 bits, 0..0; `position` vector3, 17 bits over -2000..2000; `direction` direction; `arg3` vector3, 14 bits over -2000..2000; `bool_value` bool; `bool_value_2` bool; `arg6` int, 9 bits, 0..511 |
 | `rpc_force_exit_seat_collection` | `0xC698216F` | `entity` int, 15 bits, 0..32767; `seat_index` int, 5 bits, -1..30 |
@@ -564,7 +564,7 @@ that name is known, else `arg<n>`. Session-bound RPCs only travel inside a game 
 | `rpc_drop_carryable` | `0xEB8231B8` | `entity` int, 15 bits, 0..32767; `bool_value` bool |
 | `rpc_sync_galactic_war_data_sent` (any time) | `0xED1913C9` | none |
 | `rpc_voiceover_queue_entry` | `0xEEBD4E06` | `id_string32` u32; `unsigned_value` int, 32 bits, 0..0; `id_string32_2` u32; `entity` int, 15 bits, 0..32767; `float_value` float, 31 bits over -10000..10000; `id_string32_3` u32; `id_string32_4` u32; `id_string32_5` u32 |
-| `rpc_fire_single_round_advanced` | `0xEF829147` | `entity` int, 15 bits, 0..32767; `vector3` vector3, 31 bits over -10000..10000; `arg2` int, 10 bits, 0..1023; `arg3` int, 9 bits, 0..511; `id_string64` u64; `id_string32` u32; `float_value` float, 31 bits over -10000..10000; `float_value_2` float, 31 bits over -10000..10000; `float_value_3` float, 31 bits over -10000..10000; `bool_value` bool |
+| `rpc_fire_single_round_advanced` | `0xEF829147` | `entity` int, 15 bits, 0..32767; `vector3` vector3, 31 bits over -10000..10000; `arg2` int, 10 bits, 0..1023; `arg3` int, 9 bits, 0..511; `id_string64` id64, a name hash; `id_string32` u32; `float_value` float, 31 bits over -10000..10000; `float_value_2` float, 31 bits over -10000..10000; `float_value_3` float, 31 bits over -10000..10000; `bool_value` bool |
 | `rpc_set_ragdoll_pose` | `0xEF9068B0` | `entity` int, 15 bits, 0..32767; `ragdoll_pose` int, 3 bits, 0..7; `bool_value` bool |
 | `rpc_game_object_sync_done_to` | `0xF004B017` | none |
 | `rpc_material_variable_vector4` | `0xF01B53AC` | `entity` int, 15 bits, 0..32767; `arg1` int, 4 bits, 0..15; `float_value` float, 31 bits over -10000..10000; `float_value_2` float, 31 bits over -10000..10000; `float_value_3` float, 31 bits over -10000..10000; `float_value_4` float, 31 bits over -10000..10000 |
