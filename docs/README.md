@@ -37,6 +37,7 @@ The modding guide, in reading order:
    [The asset kit](modding/assets.md): sharing patch files made from the game's resources without Arrowhead's bytes.
 6. [Content](modding/content.md): changing and adding weapons, projectiles, stratagems, entities, behaviours, abilities
    and difficulties.
+   [New enemies](modding/enemies.md): an entity in the spawn rosters beside the vanilla enemies, and replacement rules.
    [Warbonds](modding/warbonds.md): warbonds of a mod's own, selling game items and its weapons and stratagems.
 7. [Logic at run time](modding/runtime.md): events, actions, live edits and the game thread.
 8. [Hooks and game memory](modding/hooks.md): hooking game functions and reading and patching memory where the SDK has

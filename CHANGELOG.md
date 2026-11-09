@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Mods can add enemies without replacing one (SDK 17).** `add_enemy` puts an entity in the spawn rosters beside a
+  vanilla enemy it is like: the same groups and planets, its own spawn weights and difficulty range. `add_enemy_swap`
+  adds a replacement rule under a director tag. The rosters grow with the mods' rows
+  ([new enemies](docs/modding/enemies.md)).
 - **Mods can animate their weapons.** A data spec's `animations` names a JSON file with the joints that move, their clips
   and the state machine that plays them on the game's events. HellForge builds the unit copy's own bones, clips and
   state machine from it ([animations](docs/modding/animations.md)). `HellForge.Cli unit-joints` lists a unit's joints,

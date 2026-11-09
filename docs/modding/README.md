@@ -44,6 +44,7 @@ friends compare in co-op.
 | change an existing weapon or stratagem in code | [Content: changing existing content](content.md#changing-existing-content) |
 | add a new stratagem, weapon or entity | [Content](content.md), after [your first mod](first-mod.md) |
 | put your stratagems under a heading of their own | [Content: selection headings](content.md#selection-headings) |
+| make the game spawn an enemy of your own beside the vanilla ones | [New enemies](enemies.md) |
 | sell items on a warbond of your own, in a currency you choose | [Warbonds](warbonds.md) |
 | recolour a model or ship your own model, sound or icon | [Data mods](data.md) |
 | share patch files made from the game's resources (kitbashes, backports, cut content) without Arrowhead's bytes | [The asset kit](assets.md) |
@@ -98,6 +99,7 @@ The example mods:
 | `blue-sentry` | a new sentry stratagem with a recoloured model |
 | `stratagem-compendium` | eleven stratagems, one file per family: Pelicans with turrets and a behaviour, a sentry, barrages, expendables, a silo with a countdown ability |
 | `stratagem-categories` | stratagem selection headings and their order ([how headings work](../stratagem-categories.md)) |
+| `alpha-scavenger` | a new enemy beside the vanilla ones: an entity copy and its place in the spawn rosters |
 | `hell-forge` | difficulty 11 |
 | `hell-swarm` | a difficulty's settings row, changed directly |
 | `vanilla-plus` | live edits of every stratagem's settings, and code patches: game code checked against the build, then changed (a branch, a jump to a stub of its own) |

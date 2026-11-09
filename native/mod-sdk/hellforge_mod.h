@@ -280,6 +280,55 @@ typedef struct HfAttachment
     uint32_t weapon_count;
 } HfAttachment;
 
+/* The faction rosters of the enemy spawn director, for HfEnemy and HfEnemySwap (SDK 17). */
+#define HF_ENEMY_TERMINIDS 1u
+#define HF_ENEMY_AUTOMATONS 2u
+#define HF_ENEMY_ILLUMINATE 4u
+
+/* A new enemy in the spawn director's rosters (SDK 17, add_enemy), beside the vanilla ones: every roster row of a vanilla
+ * enemy (`like`) is copied for the mod's unit, with the same group, planet tags, cap and budget, and its spawn weights
+ * scaled. Squads that draw from that group then spawn either enemy, by weight (docs/modding/enemies.md).
+ * Zero-initialize it and set `size`:
+ *
+ *     HfEnemy alpha = {sizeof alpha};
+ *     alpha.name = "my_name/my_mod/alpha_scavenger";
+ *     alpha.unit = api->add_entity(mod, &copy);
+ *     alpha.like = 0x9A8A3AAE287B230Cull;
+ *     api->add_enemy(mod, &alpha); */
+typedef struct HfEnemy
+{
+    uint32_t size;          /* sizeof(HfEnemy) */
+    uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins; 0: every faction roster `like` is in */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint64_t unit;          /* the entity it spawns: one add_entity or register_entity returned, or a vanilla one; best
+                             * a copy of `like` (it needs what `like`'s spawns need, e.g. its transport formations) */
+    uint64_t like;          /* the vanilla enemy whose roster rows it copies (its resource id) */
+    float weight;           /* x like's spawn weights (0 means 1) */
+    uint32_t lowest_level;  /* difficulty levels it spawns at, 1 to 10 (0: no bound); level 11 takes level 10's weight */
+    uint32_t highest_level;
+} HfEnemy;
+
+/* A replacement rule (SDK 17, add_enemy_swap): while it is on, the director spawns `replacement` where it would spawn
+ * `unit`, as the game's own rules turn bots into jump-pack bots under a planet's modifier. Of the rules that match a
+ * spawn, the one of highest priority wins. A replacement can be replaced again, 3 times in a row at most: a rule that
+ * would make a longer chain or a loop with the other rules is left out (the log says so). Zero-initialize it and set
+ * `size`. */
+typedef struct HfEnemySwap
+{
+    uint32_t size;          /* sizeof(HfEnemySwap) */
+    uint32_t factions;      /* the rosters it applies in (HF_ENEMY_...; 0: any), each only if it has a row of `unit` */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint64_t unit;          /* the enemy replaced: a vanilla one, or an add_enemy unit */
+    uint64_t replacement;   /* the entity spawned instead: one add_entity or register_entity returned, or a vanilla one */
+    const char* tag;        /* the director tag that turns it on, e.g. "GM_BotAssault"; NULL: always on */
+    uint32_t lowest_level;  /* the difficulty levels it applies at (0: 1 and 100, as the game's rules) */
+    uint32_t highest_level;
+    uint32_t priority;      /* the game's rules use 0 to 9 */
+    float budget;           /* the enemy budget's weight of the replacement where it has no roster row of its own (0: the
+                             * replaced enemy's) */
+    float cost;             /* x the replaced enemy's cost in a squad's budget (0 means 1; the game's rules use 0.5 to 1.2) */
+} HfEnemySwap;
+
 /* A new stratagem (SDK 4, add_stratagem): a copy of a vanilla stratagem's settings under a StratagemType of its own,
  * with its own name, description, input code and icon. What it does when called (its payload, beacon and the packages
  * it loads) stays the base's, except its ship-upgrade (level) packages. Zero-initialize it and set `size`:
@@ -1549,6 +1598,13 @@ typedef struct HfApi
      * Returns its item id, or 0 (the mod's log says why). 128 across all mods. Customization screens list it on its
      * weapons once the game has loaded its items; the session's backend makes it the player's. */
     uint32_t (*add_attachment)(HfMod* mod, const HfAttachment* attachment);
+
+    /* ---- SDK 17: enemies (check hf->size before calling) ----------------------------------------------------------- */
+    /* Adds an enemy to the spawn director's rosters (see HfEnemy). Call it from hellforge_mod_init. 0 added (its rows are
+     * made once the entity data loads, and the log counts them), 1 refused (the mod's log says why). */
+    int (*add_enemy)(HfMod* mod, const HfEnemy* enemy);
+    /* Adds a replacement rule (see HfEnemySwap). Call it from hellforge_mod_init. 0 added, 1 refused (the log says why). */
+    int (*add_enemy_swap)(HfMod* mod, const HfEnemySwap* swap);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */
