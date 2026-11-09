@@ -8,6 +8,7 @@
 #include "live_sync_test.c"
 #include "channel_test.c"
 #include "director_test.c"
+#include "spawn_guards_test.c"
 #include "shots_test.c"
 #include "rounds_test.c"
 #include "network_types_test.c"
@@ -4240,6 +4241,7 @@ int main(int argc, char** argv)
     PassivesFixture();
     RefsFixture();
     DirectorFixture();
+    SpawnGuardsFixture();
     ShotsFixture();
     RoundsFixture();
     PerksFixture();
