@@ -32,6 +32,23 @@ It prints a JSON verdict (`passed`, each check with the log lines it matched) an
 `modtest.json`, beside the session's logs (`hellforge-session/`). The mission makes the same requests a solo deploy
 does, to the session's local backend.
 
+## Running one in co-op
+
+`modtest` plays solo. `rpc-probe` also checks co-op: the joiner sends the host one `rpc_request_hostability`, a query
+the host's game answers. Two test installations on one PC play together with the harness's `pair.py`. From the
+harness's folder:
+
+```powershell
+py livemods.py setup --hellforge-root <host installation> --copy <HellForge>\tests\in-game\rpc-probe --on hellforge.rpc-probe
+py livemods.py setup --hellforge-root <joiner installation> --copy <HellForge>\tests\in-game\rpc-probe --on hellforge.rpc-probe
+py pair.py pickup --host <host installation> --joiner <joiner installation>
+```
+
+`pickup` joins them and deploys the squad. Read `mod-hellforge.rpc-probe.log` in each installation's newest
+`logs\sessions\<run>\` folder once the mission's tally is there, 30 s into the mission. The joiner's log must say
+`PROBE rpc_send arrived ok`, the host's `PROBE rpc_send to itself refused ok`, and neither may have a `FAIL`. Then
+end both with `py pair.py stop` and run `py livemods.py teardown --hellforge-root <installation>` for each.
+
 ## Adding a check
 
 A probe writes what it checks to its log; the expectations file says which lines must be there (`contains`, `regex`
