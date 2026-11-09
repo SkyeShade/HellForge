@@ -858,6 +858,46 @@ typedef struct HfShareEvent
     uint8_t value[HF_SHARE_VALUE_MAX];
 } HfShareEvent;
 
+/* SDK 17: the game's own RPCs, its network messages (rpc_listen, rpc_send; hellforge_rpcs.h names every one and gives
+ * it a typed struct, reader and sender; docs/modding/networking.md). An argument as the game passes it: its kind, its
+ * size (a string's length in bytes; 0 for an array) and where its value is. An array is one HF_RPC_KIND_ARRAY entry,
+ * whose value is not a pointer but the element count, followed by that many element entries. Values: bool an int32_t
+ * 0 or 1, int an int32_t, float a float, vector3 and direction 3 floats, vector2 2, quaternion 4 (x, y, z, w), string a
+ * NUL-terminated char array, u32 a uint32_t, u64 a uint64_t (an id, or a peer). */
+#define HF_RPC_KIND_BOOL 0u
+#define HF_RPC_KIND_INT 1u
+#define HF_RPC_KIND_FLOAT 2u
+#define HF_RPC_KIND_VECTOR3 3u
+#define HF_RPC_KIND_QUATERNION 4u
+#define HF_RPC_KIND_STRING 5u
+#define HF_RPC_KIND_U32 6u
+#define HF_RPC_KIND_U64 9u
+#define HF_RPC_KIND_ARRAY 10u
+#define HF_RPC_KIND_DIRECTION 11u
+#define HF_RPC_KIND_VECTOR2 12u
+typedef struct HfRpcArg
+{
+    uint32_t kind;
+    uint32_t size;
+    const void* value;
+} HfRpcArg;
+/* One RPC this machine received, on the game thread before the game's own receiver runs. sender: the peer that sent it;
+ * rpc: its id (HF_RPC_...); args: count entries, valid during the listener's call only. */
+typedef struct HfRpcEvent
+{
+    uint64_t sender;
+    uint32_t rpc;
+    uint32_t count;
+    const HfRpcArg* args;
+} HfRpcEvent;
+/* What an RPC listener returns: HF_RPC_KEEP lets the message go on (later listeners, then the game's receiver);
+ * HF_RPC_DROP stops it here, as if it never arrived. */
+#define HF_RPC_KEEP 0
+#define HF_RPC_DROP 1
+/* rpc_listen's rpc for every RPC (a log or a filter of all messages). */
+#define HF_RPC_ALL 0u
+typedef int (*HfRpcListener)(HfMod* mod, const HfRpcEvent* event, void* user);
+
 /* SDK 11 actions: what a mod makes the game do, through the game's own functions (HD2Runtime 0.40.1's research), on the
  * game thread (an event listener's or on_game_thread's call; from another thread an action waits for the next game
  * update and answers HF_ACT_QUEUED). Each answers HF_ACT_..., or 0 refused (last_log says why). The local Helldiver:
@@ -1549,6 +1589,18 @@ typedef struct HfApi
      * Returns its item id, or 0 (the mod's log says why). 128 across all mods. Customization screens list it on its
      * weapons once the game has loaded its items; the session's backend makes it the player's. */
     uint32_t (*add_attachment)(HfMod* mod, const HfAttachment* attachment);
+    /* ---- SDK 17: the game's RPCs (hellforge_rpcs.h; docs/modding/networking.md; check hf->size before calling) ------- */
+    /* Listens to an RPC (its HF_RPC_... id, or HF_RPC_ALL for every one) as this machine receives it: on the game thread,
+     * before the game's own receiver, highest priority first (equal priorities in the order they listened). A listener
+     * that returns HF_RPC_DROP stops the message: later listeners and the game don't see it. Call it from
+     * hellforge_mod_init on. 0 listening, 1 refused (an RPC this build doesn't have; the mod's log says why). */
+    int (*rpc_listen)(HfMod* mod, uint32_t rpc, HfRpcListener listener, void* user, int32_t priority);
+    /* Sends one of the game's RPCs (hellforge_rpcs.h's hf_rpc_<name>_send builds the arguments): to HF_TO_ALL (every
+     * other machine of the session), HF_TO_HOST, or a peer (an HfRpcEvent's sender). The game encodes each argument
+     * by its declared type, so values outside a type's range are clamped or wrap. Game thread only. 0 sent, 1 refused
+     * (another thread, an unknown RPC, arguments that are not its declared ones, a session-bound RPC outside a session,
+     * the host as the target on the host; the mod's log says why). */
+    int (*rpc_send)(HfMod* mod, uint32_t rpc, uint64_t to, const HfRpcArg* args, uint32_t count);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */
@@ -1711,6 +1763,9 @@ static inline int hf_on_game_thread(HfMod* mod, HfTickCallback callback, void* u
 
 /* SDK 16: game globals by name (hf_global_..., Hf<Name>), generated from mappings/globals.json. */
 #include "hellforge_globals.h"
+
+/* SDK 17: the game's RPCs by name (HF_RPC_..., HfRpc_..., hf_rpc_..._read and _send) are in hellforge_rpcs.h, generated
+ * from mappings/rpcs.json. It is large (every RPC of the game), so a mod includes it itself, after this file. */
 
 /* Implemented by the mod. */
 #ifndef HF_MOD_LOADER

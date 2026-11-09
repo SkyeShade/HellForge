@@ -41,12 +41,14 @@ The modding guide, in reading order:
 7. [Logic at run time](modding/runtime.md): events, actions, live edits and the game thread.
 8. [Hooks and game memory](modding/hooks.md): hooking game functions and reading and patching memory where the SDK has
    nothing yet.
+   [The game's network messages](modding/networking.md): listening to, stopping and sending the game's RPCs.
 9. [Debugging](modding/debugging.md): logs, refusals, crashes and testing with friends.
 10. [Tools and sharing](modding/tools.md): IDEs, building from a terminal or the repository, prebuilt mods, releasing.
 
 Reference and related pages:
 
 - [SDK reference](sdk-reference.md): every API call, component field and content constant (generated from the SDK).
+- [The game's RPCs](rpcs.md): every network message of the game with its arguments (generated from the mappings).
 - [Launchers of your own](external-launchers.md): for authors of mod managers and launchers; `HellForge.Cli.exe` and the
   files it reads and writes.
 - [Mods that change while the game runs](modding/live.md): for code mod authors; what HellForge does when a mod is

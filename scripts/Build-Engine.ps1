@@ -228,6 +228,13 @@ if($LASTEXITCODE){throw 'Compiling the hook test mod failed.'}
 & $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I $sdk `
     (Join-Path $project 'native/mod-loader/test/live_test_mod.c') -o (Join-Path $testOut 'live_test_mod.dll')
 if($LASTEXITCODE){throw 'Compiling the live test mod failed.'}
+# hellforge_rpcs.h is generated and mods include it themselves: it must compile as C and as C++ (rpc_test_mod.c).
+& $zig cc -target x86_64-windows-gnu -shared -O1 -std=c11 -Wall -Wextra -Werror -s -I $sdk `
+    (Join-Path $project 'native/mod-loader/test/rpc_test_mod.c') -o (Join-Path $testOut 'rpc_test_mod.dll')
+if($LASTEXITCODE){throw 'Compiling the RPC test mod as C failed.'}
+& $zig c++ -target x86_64-windows-gnu -shared -O1 -std=c++17 -Wall -Wextra -Werror -s -I $sdk -x c++ `
+    (Join-Path $project 'native/mod-loader/test/rpc_test_mod.c') -o (Join-Path $testOut 'rpc_test_mod_cpp.dll')
+if($LASTEXITCODE){throw 'Compiling the RPC test mod as C++ failed.'}
 & $zig cc -target x86_64-windows-gnu -O1 -std=c11 -Wall -Werror -Wno-unused-parameter -I $sdk -I (Join-Path $minHook 'include') -I (Join-Path $minHook 'src') `
     (Join-Path $project 'native/mod-loader/test/stats_test.c') (Join-Path $minHook 'src/buffer.c') (Join-Path $minHook 'src/hook.c') `
     (Join-Path $minHook 'src/trampoline.c') (Join-Path $minHook 'src/hde/hde64.c') -o (Join-Path $testOut 'stats_test.exe')

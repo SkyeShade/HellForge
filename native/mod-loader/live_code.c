@@ -288,6 +288,7 @@ static void ForgetOnGameThread(void* arg)
     for (int i = 0; i < g_actRuleCount; i++) if (g_actRules[i].mod != mod) g_actRules[rules++] = g_actRules[i];
     g_actRuleCount = rules;
     ReleaseSRWLockExclusive(&g_actRulesLock);
+    RpcForget(mod);
 }
 
 static void CallbacksForget(const HfMod* mod)

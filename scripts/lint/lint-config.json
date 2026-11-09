@@ -27,6 +27,7 @@
     "native/mod-loader/sdk_fields.h",
     "native/mod-loader/sdk_functions.h",
     "native/mod-loader/sdk_globals.h",
+    "native/mod-loader/sdk_rpcs.h",
     "native/mod-loader/state_move_sites.h",
     "native/mod-loader/stats-layouts.h",
     "native/mod-loader/stratagem_bounds.h",
@@ -35,6 +36,7 @@
     "native/mod-sdk/hellforge_content.h",
     "native/mod-sdk/hellforge_functions.h",
     "native/mod-sdk/hellforge_globals.h",
+    "native/mod-sdk/hellforge_rpcs.h",
     "src/HellForge.Session/EarlyConstructor.cs",
     "src/HellForge.Session/HostBoundedProcess.cs",
     "src/HellForge.Session/LocalRoutingPatch.cs"
