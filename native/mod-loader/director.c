@@ -38,6 +38,7 @@
 static const uint32_t kDemolitionTail[DIR_DEMOLITION_ROWS][2] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 1}, {0, 0},
     {0, 0}, {0, 0}};
 
+static int EnemyRostersPending(void); /* enemy_rosters.c */
 static uintptr_t DirectorGame(size_t* size) { return ApiModuleBase("game.dll", size); }
 /* game.dll's image; the native fixture replaces it. */
 static uintptr_t (*g_directorImage)(size_t* size) = DirectorGame;
@@ -51,13 +52,13 @@ static int DirectorWeightsMoved(uintptr_t game)
     return disp == 0x2C ? 1 : disp == 0x30 ? 0 : -1;
 }
 
-/* A roster's rows and count as reviewed, or 0. */
+/* A roster's rows and count, or 0: the game's rows, and after them those mods added (enemy_rosters.c). */
 static uintptr_t DirectorRoster(uintptr_t game, uint32_t roster, uint64_t* count)
 {
     uint64_t rows = 0;
     *count = 0;
     if (roster >= sizeof kRosters / sizeof kRosters[0] || SafeRead(game + kRosters[roster].descriptor, &rows, 8) ||
-        SafeRead(game + kRosters[roster].descriptor + 8, count, 8) || rows == 0 || *count != kRosters[roster].rows) return 0;
+        SafeRead(game + kRosters[roster].descriptor + 8, count, 8) || rows == 0 || *count < kRosters[roster].rows || *count > 0xFFFF) return 0;
     return (uintptr_t)rows;
 }
 
@@ -107,6 +108,7 @@ static uintptr_t DirectorRow(const char* kind, uint64_t id, int* ready)
     if (game == 0 || size != DIR_IMAGE || strcmp(g_build, "25480438")) { *ready = game == 0; return 0; }
     if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRow(game, id, ready);
     if (g_difficultyAdded && g_difficultyState == 0) { *ready = 0; return 0; } /* the weights are about to move */
+    if (EnemyRostersPending()) { *ready = 0; return 0; } /* the rows are about to move to larger copies */
     uint32_t roster = (uint32_t)(id >> 16), row = (uint32_t)(id & 0xFFFF);
     uint64_t count = 0;
     uintptr_t rows = DirectorRoster(game, roster, &count);
@@ -312,3 +314,4 @@ static uint32_t DirectorStride(const char* kind)
 }
 
 #include "spawn_guards.c" /* the game-side half: a null enemy from writes these checks never see */
+#include "enemy_rosters.c" /* enemies mods add to the faction rosters (SDK 18) */

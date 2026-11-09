@@ -124,7 +124,7 @@ Copy-Item -LiteralPath (Join-Path $project 'docs/modding') -Destination $sdkDocs
 foreach($name in @('sdk-reference.md','mods.md','lua-bridge.md','external-launchers.md')){Copy-Item -LiteralPath (Join-Path $project ('docs/'+$name)) -Destination $sdkDocs}
 # Example mods to read and copy into mods/ (docs/modding/first-mod.md): their tracked files only (no local builds), with their
 # CMake include pointed at the SDK's own cmake folder. more-voices is left out: it waits for wrapped game functions.
-foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','cube-gun','model-carbine','machine-gun-10k-code','talon-liberator','golden-liberator','animated-liberator','hell-forge','hell-swarm','stats-example','machine-gun-10k','vanilla-plus','warbond-example')){
+foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','cube-gun','model-carbine','machine-gun-10k-code','talon-liberator','golden-liberator','animated-liberator','hell-forge','hell-swarm','alpha-scavenger','stats-example','machine-gun-10k','vanilla-plus','warbond-example')){
     foreach($file in @(git -C $project ls-files ('examples/mods/'+$name))){
         $destination=Join-Path $sdkTarget $file # app/sdk/examples/mods/<name>/...
         New-Item -ItemType Directory (Split-Path -Parent $destination) -Force|Out-Null

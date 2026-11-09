@@ -4,7 +4,7 @@
 
 This chapter is for code mod authors who want to change the game's weapons, stratagems and other entities, or add new
 ones. New content can be entities, weapons, projectiles and damage types, stratagems and their selection headings,
-behaviours, abilities and a difficulty level.
+behaviours, abilities and a difficulty level. Putting an entity in the spawn rosters is in [new enemies](enemies.md).
 
 After reading it you will be able to:
 
