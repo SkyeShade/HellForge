@@ -1,6 +1,7 @@
 /* Enemies mods add to the faction rosters (enemy_rosters.c) on a fake game.dll image: the refusals, the grown copies
  * (the game's rows first, a mod's row a scaled copy of its like's, rules after the game's), entries without an entity or
- * a row left out, the budget's weight through the stub, edits held back until the rosters grew, a mod taken out.
+ * a row left out, the budget's weight through the stub, its pair table's guard, rule chains, level 11 added after the
+ * growth, edits held back until the rosters grew, a mod taken out.
  * Included by stats_test.c after director_test.c. */
 
 #define ERT_LIKE 0xAAAull
@@ -59,7 +60,9 @@ static void ErtAdd(HfMod* mod)
     assert(ApiAddEnemySwap(mod, &s) == 0);
     s.name = "tester/enemies/no_replacement"; s.replacement = 0x998;
     assert(ApiAddEnemySwap(mod, &s) == 0);
-    assert(g_erEnemyCount == 4 && g_erSwapCount == 2 && EnemyRostersPending());
+    s.name = "tester/enemies/no_row_there"; s.replacement = ERT_SWAPPED; s.factions = HF_ENEMY_ILLUMINATE;
+    assert(ApiAddEnemySwap(mod, &s) == 0);
+    assert(g_erEnemyCount == 4 && g_erSwapCount == 3 && EnemyRostersPending());
 }
 
 /* The Automaton roster (kRosters[2]) after the growth: 61 game rows as they were, then alpha's two. */
@@ -115,6 +118,40 @@ static void ErtCheckBudget(uintptr_t game, uint8_t* director)
     assert(budget(0, ERT_LIKE) == 0 && budget(0, ERT_SHARED) == 2.0f); /* no faction roster: the shared ones only */
 }
 
+/* The budget's appends jump to their caves: the site's own load, the bound, back below it, else on without a pair. */
+static void ErtCheckPairGuard(uintptr_t game)
+{
+    for (int i = 0; i < 2; i++)
+    {
+        const uint8_t* site = (const uint8_t*)(game + kErPairSites[i].site);
+        const uint8_t* cave = g_erPairCave + i * ER_PAIR_CAVE;
+        uint32_t n = kErPairSites[i].size;
+        int32_t rel;
+        memcpy(&rel, site + 1, 4);
+        assert(site[0] == 0xe9 && site + 5 + rel == cave && site[5] == 0x90 && (n == 6 || site[6] == 0x90));
+        assert(memcmp(site + n, kErPairSites[i].pin + n, 16 - n) == 0); /* what follows the load is untouched */
+        assert(memcmp(cave, kErPairSites[i].pin, n) == 0 && cave[n] == 0x83 && cave[n + 1] == 0xf8 && cave[n + 2] == 64 && cave[n + 3] == 0x73);
+        memcpy(&rel, cave + n + 6, 4);
+        assert(cave[n + 5] == 0xe9 && (uintptr_t)(cave + n + 10 + rel) == game + kErPairSites[i].resume);
+        memcpy(&rel, cave + n + 24, 4);
+        assert(cave[n + 23] == 0xe9 && (uintptr_t)(cave + n + 28 + rel) == game + kErPairSites[i].skip);
+    }
+}
+
+/* Rules in a row: three are the game's limit, a fourth or a loop is too long. */
+static void ErtChains(void)
+{
+    uint8_t rules[5 * ER_RULE] = {0};
+    for (uint64_t i = 0; i < 4; i++) { uint64_t from = 0x10 + i, to = 0x11 + i; memcpy(rules + i * ER_RULE + 8, &from, 8); memcpy(rules + i * ER_RULE + 0x10, &to, 8); }
+    assert(!ErChainTooLong(rules, 3) && ErChainTooLong(rules, 4));
+    uint64_t back = 0x10;
+    memcpy(rules + 1 * ER_RULE + 0x10, &back, 8); /* 0x10 -> 0x11 -> 0x10 */
+    assert(ErChainTooLong(rules, 2));
+    uint32_t higher = 2;
+    memcpy(rules + 0x28, &higher, 4); /* the way back has a lower priority: the game stops there */
+    assert(!ErChainTooLong(rules, 2));
+}
+
 /* A row copied where level 11 moved the weights: 11 of them from +0x2C, level 11 judged as level 10. */
 static void ErtMovedRow(void)
 {
@@ -145,7 +182,9 @@ static void EnemyRostersFixture(void)
     for (int r = 0; r < 6; r++)
     {
         rows[r] = (uint8_t*)calloc(kRosters[r].rows, ER_ROW);
-        uint64_t pair[4] = {(uint64_t)(uintptr_t)rows[r], kRosters[r].rows, (uint64_t)(uintptr_t)calloc(rules[r] + 1, ER_RULE), rules[r]};
+        uint8_t* rule = (uint8_t*)calloc(rules[r] + 1, ER_RULE);
+        for (uint64_t i = 0; i < rules[r]; i++) { uint64_t from = 0x5000 + i, to = 0x6000 + i; memcpy(rule + i * ER_RULE + 8, &from, 8); memcpy(rule + i * ER_RULE + 0x10, &to, 8); }
+        uint64_t pair[4] = {(uint64_t)(uintptr_t)rows[r], kRosters[r].rows, (uint64_t)(uintptr_t)rule, rules[r]};
         memcpy(image + kRosters[r].descriptor, pair, sizeof pair);
     }
     ErtRow(rows[2] + 5 * ER_ROW, ERT_LIKE, 15.0f);
@@ -154,6 +193,11 @@ static void EnemyRostersFixture(void)
     ErtRow(rows[4] + 3 * ER_ROW, ERT_SHARED, 2.0f);
     image[kWeightReaders[0][0] + kWeightReaders[0][1]] = 0x30;
     memcpy(image + ER_BUDGET, kErBudgetPin, sizeof kErBudgetPin);
+    for (int i = 0; i < 2; i++)
+    {
+        memcpy(image + kErPairSites[i].site, kErPairSites[i].pin, 16);
+        memcpy(image + kErPairSites[i].skip, kErPairSites[i].skipPin, 5);
+    }
     uint64_t at = (uint64_t)(uintptr_t)director;
     uint32_t faction = 8;
     memcpy(image + ER_DIRECTOR, &at, 8);
@@ -177,20 +221,33 @@ static void EnemyRostersFixture(void)
     WatchEnemyRosters();
     assert(g_erState == 1 && !EnemyRostersPending());
     assert(ErEnemyAt(0)->state == 1 && ErEnemyAt(0)->rows == 3 && ErEnemyAt(1)->state == -1 && ErEnemyAt(2)->state == -1 && ErEnemyAt(3)->rows == 1);
-    assert(ErSwapAt(0)->state == 1 && ErSwapAt(0)->rules == 2 && ErSwapAt(1)->state == -1);
+    assert(ErSwapAt(0)->state == 1 && ErSwapAt(0)->rules == 2 && ErSwapAt(1)->state == -1 && ErSwapAt(2)->state == -1);
+    ErtCheckPairGuard(game);
+    ErtChains();
     ErtCheckRows(game, rows[2]);
     ErtCheckBudget(game, director);
     ErtMovedRow();
+    /* level 11 added after the growth: the mod's rows move with the game's, level 11 taking level 10's weight */
+    DifficultyInstall move = {0};
+    move.game = game;
+    float w10, w11, first;
+    assert(MoveRosterWeights(&move) == NULL && DirectorWeightsMoved(game) == 1);
+    memcpy(&first, g_erGrown[1].rows + 61 * ER_ROW + 0x2C + 4 * 3, 4);
+    memcpy(&w10, g_erGrown[1].rows + 61 * ER_ROW + 0x2C + 4 * 9, 4);
+    memcpy(&w11, g_erGrown[1].rows + 61 * ER_ROW + 0x54, 4);
+    assert(first == 2.0f && w10 == 5.0f && w11 == 5.0f);
     HfEnemy late = {sizeof late};
     late.name = "tester/enemies/late"; late.unit = ERT_UNIT; late.like = ERT_LIKE;
     assert(ApiAddEnemy(mod, &late) == 1);
 
     /* its mod taken out: no weight left in its rows, its rule out of every level's reach; the game's rows as they were */
-    EnemyRostersForget(mod);
     static const uint8_t none[0x2C];
+    static uint8_t before[61 * ER_ROW];
     uint32_t lowest;
-    assert(memcmp(g_erGrown[1].rows + 61 * ER_ROW + 0x2C, none, sizeof none) == 0); /* g_erGrown[1]: the Automatons */
-    assert(memcmp(g_erGrown[1].rows, rows[2], 61 * ER_ROW) == 0);
+    memcpy(before, g_erGrown[1].rows, sizeof before); /* g_erGrown[1]: the Automatons */
+    EnemyRostersForget(mod);
+    assert(memcmp(g_erGrown[1].rows + 61 * ER_ROW + 0x2C, none, sizeof none) == 0);
+    assert(memcmp(g_erGrown[1].rows, before, sizeof before) == 0);
     memcpy(&lowest, g_erGrown[1].rules + 39 * ER_RULE + 0x20, 4); assert(lowest == ER_NEVER);
 
     g_erEntityKnown = ErEntityInMap;

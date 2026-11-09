@@ -20,7 +20,7 @@ if (hf->size >= offsetof(HfApi, add_enemy) + sizeof hf->add_enemy) hf->add_enemy
 
 Call `add_enemy` from `hellforge_mod_init`. It returns 0 when the enemy is accepted and 1 when it is refused. The rows
 are made when the entity data has loaded, and your mod's log then counts them or says why there are none.
-`examples/mods/alpha-scavenger` is a whole mod.
+`examples/mods/alpha-scavenger` is a whole mod, with a replacement rule too.
 
 ## What spawns it
 
@@ -48,13 +48,16 @@ predator.unit = scavenger_copy;     /* the enemy replaced: vanilla, or an add_en
 predator.replacement = predator_copy;
 predator.tag = "GM_BugSuperPredators"; /* NULL: always on */
 predator.priority = 5;
-hf->add_enemy_swap(mod, &assault);
+hf->add_enemy_swap(mod, &predator);
 ```
 
 - `tag` is a director tag, a planet's or a mission's. The table below lists the game's.
 - `lowest_level` and `highest_level` bound the difficulty (0: any).
-- Of the rules that match a spawn, the highest `priority` wins. The game's rules use 0 to 9. A replacement can be
-  replaced again, up to 5 times.
+- Of the rules that match a spawn, the highest `priority` wins. The game's rules use 0 to 9.
+- A replacement can be replaced again, 3 times in a row at most, and only by a rule whose priority is not lower.
+  HellForge leaves out a rule that would make a longer chain, or a loop, with the game's and other mods' rules. Your
+  mod's log says so.
+- A rule applies in a faction's roster only when that roster has a row of `unit`.
 - `budget` is the replacement's weight in the enemy budget when it has no roster row. 0 takes the replaced enemy's.
 
 | Faction | Tags |
@@ -72,7 +75,10 @@ hf->add_enemy_swap(mod, &assault);
   (see [data mods](data.md)).
 - `like` must be an enemy of a faction roster. The rosters all factions share take no new rows.
 - New squad mixes (compositions) are not part of this: your enemy joins existing groups.
-- The game tracks at most 64 pairs of enemy type and spawn source alive at once. Each new enemy type alive adds
-  pairs, so add few types to one faction.
+- The game's enemy budget holds 64 kinds of enemy alive at once, counted per spawn source (patrol, outpost, breach):
+  one enemy type takes up to three places. A Terminid mission at difficulty 5 held 11 to 14. With the table full, a
+  further kind still spawns but is not counted: its cap on living enemies does not apply. The log says when that
+  happens.
+- Enemies are added when the game starts. A mod set up while the game runs gets a refusal from both calls.
 - Only the host's rosters decide what spawns. Every player needs the mod, for the entity.
 - When a live mod is taken out, its rows stop spawning and its rules stop matching.

@@ -1,6 +1,7 @@
 /* Alpha Scavenger: a new enemy beside the vanilla ones (docs/modding/enemies.md). The entity is a copy of the tier 2
  * Scavenger with more health; add_enemy copies that Scavenger's roster rows for it, so it spawns in the same groups on
- * the same planets, a third as often, from difficulty 4. No vanilla enemy is replaced.
+ * the same planets, a third as often, from difficulty 4. No vanilla enemy is replaced. On planets with the Predator
+ * Strain, a replacement rule (add_enemy_swap) turns each Alpha into an Alpha Predator, a second copy with more health.
  * Build: HellForge builds the sources before each session, or scripts/Build-Mod.ps1 examples/mods/alpha-scavenger. */
 #include "hellforge_mod.h"
 
@@ -12,6 +13,13 @@ static const HfEntityDef alphaDef = {
     .name = "skyeshade/alpha_scavenger/entity",
     .base = SCAVENGER_TIER_2,
     .set = alphaSet,
+};
+static const HfSet predatorSet[] = {{HF_FIELD(Health, health), HF_I32(600)}, {0}};
+static const HfEntityDef predatorDef = {
+    .size = sizeof(HfEntityDef),
+    .name = "skyeshade/alpha_scavenger/predator_entity",
+    .base = SCAVENGER_TIER_2,
+    .set = predatorSet,
 };
 
 HF_MOD_EXPORT int hellforge_mod_init(const HfApi* hf, HfMod* mod)
@@ -25,5 +33,14 @@ HF_MOD_EXPORT int hellforge_mod_init(const HfApi* hf, HfMod* mod)
     enemy.like = SCAVENGER_TIER_2;
     enemy.weight = 0.33f;
     enemy.lowest_level = 4;
-    return hf->add_enemy(mod, &enemy);
+    if (hf->add_enemy(mod, &enemy)) return 1;
+    HfRef predator = hf->register_entity(mod, &predatorDef);
+    if (!predator) return 1;
+    HfEnemySwap strain = {sizeof strain};
+    strain.name = "skyeshade/alpha_scavenger/predator_rule";
+    strain.unit = alpha;
+    strain.replacement = predator;
+    strain.tag = "GM_BugSuperPredators";
+    strain.priority = 5;
+    return hf->add_enemy_swap(mod, &strain);
 }

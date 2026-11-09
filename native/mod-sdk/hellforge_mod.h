@@ -309,12 +309,13 @@ typedef struct HfEnemy
 
 /* A replacement rule (SDK 18, add_enemy_swap): while it is on, the director spawns `replacement` where it would spawn
  * `unit`, as the game's own rules turn bots into jump-pack bots under a planet's modifier. Of the rules that match a
- * spawn, the one of highest priority wins; a replacement can be replaced again, up to 5 times. Zero-initialize it and
- * set `size`. */
+ * spawn, the one of highest priority wins. A replacement can be replaced again, 3 times in a row at most: a rule that
+ * would make a longer chain or a loop with the other rules is left out (the log says so). Zero-initialize it and set
+ * `size`. */
 typedef struct HfEnemySwap
 {
     uint32_t size;          /* sizeof(HfEnemySwap) */
-    uint32_t factions;      /* the rosters it applies in (HF_ENEMY_...); 0: every faction roster with a row of `unit` */
+    uint32_t factions;      /* the rosters it applies in (HF_ENEMY_...; 0: any), each only if it has a row of `unit` */
     const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
     uint64_t unit;          /* the enemy replaced: a vanilla one, or an add_enemy unit */
     uint64_t replacement;   /* the entity spawned instead: one add_entity or register_entity returned, or a vanilla one */

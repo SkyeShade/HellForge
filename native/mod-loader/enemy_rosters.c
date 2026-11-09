@@ -17,6 +17,8 @@
 #define ER_FACTION_AT 0x518BCu /* its mission's faction: 2, 8 or 4 */
 #define ER_BUDGET 0x94BA40u
 #define ER_NEVER 0xFFFFFFFFu   /* a rule's lowest level that no level reaches */
+#define ER_CHAIN 3u            /* replacements in a row the game takes; a fourth sends 0x949B80 down its error path */
+#define ER_PAIRS 64u           /* the budget's pairs of unit type and spawn source its lookups reach */
 #define ER_WAIT_MS 120000u     /* for the entity data, as the director's stats pass waits */
 
 /* The faction rosters: kRosters' index, the SDK's bit, the director's faction id, the game's rule count. */
@@ -48,7 +50,10 @@ static int g_erState; /* 0 not grown yet, 1 grown, -1 not (logged) */
 static ErGrown g_erGrown[ER_FACTIONS];
 static uintptr_t g_erGame;
 static uint8_t* g_erStub;
-static ULONGLONG g_erSince;
+static uint8_t* g_erPairCave;
+static ULONGLONG g_erSince, g_erPairsReportedAt;
+static volatile LONG g_erPairsFull;
+static LONG g_erPairsFullReported;
 
 static int JournalPut(uintptr_t address, const uint8_t* bytes, size_t size); /* live_code.c */
 
@@ -80,7 +85,8 @@ static HfMod* ErNamed(const char* name)
 static int ErRefused(HfMod* mod, const char* what, const char* name, uint32_t factions)
 {
     if (name == NULL || name[0] == 0 || strlen(name) >= sizeof ErEnemyAt(0)->name) { ApiLog(mod, "%s: it needs a name (under 192 bytes)", what); return 1; }
-    if (g_erState != 0 || g_fired[HF_EVENT_ENTITIES_READY]) { ApiLog(mod, "%s(%s): too late; call it from hellforge_mod_init", what, name); return 1; }
+    if (g_erState != 0 || g_fired[HF_EVENT_ENTITIES_READY])
+    { ApiLog(mod, "%s(%s): too late; the rosters are made when the game starts (call it from hellforge_mod_init; not in a live set-up)", what, name); return 1; }
     if (factions & ~(HF_ENEMY_TERMINIDS | HF_ENEMY_AUTOMATONS | HF_ENEMY_ILLUMINATE))
     { ApiLog(mod, "%s(%s): its factions are HF_ENEMY_TERMINIDS, HF_ENEMY_AUTOMATONS and HF_ENEMY_ILLUMINATE", what, name); return 1; }
     HfMod* other = ErNamed(name);
@@ -218,6 +224,53 @@ static const char* ErBudgetInstall(uintptr_t game)
     return JournalPut(game + ER_BUDGET, jump, sizeof jump) ? "the enemy budget's weight lookup could not be replaced" : NULL;
 }
 
+/* AiEnemyBudget keeps a pair per unit type and spawn source alive: 24 bytes each from +0x1010, their count at +0x1640,
+ * a pair gone when its last enemy dies (0xA2D700). Its two appends (0xA2BE29, 0xA2D6A9) check no bound and its lookups
+ * reach 64, so a 65th pair is never found again and the 67th write lands on the count. More enemy types alive make
+ * more pairs: a full table takes no new pair. That type's alive count is then not kept (its cap, 0x952FF0, sees none). */
+#define ER_PAIR_COUNT 0x1640u
+static const struct { uint32_t site, size, resume, skip; uint8_t pin[16]; uint8_t skipPin[5]; } kErPairSites[2] = {
+    {0xA2BE29u, 7, 0xA2BE30u, 0xA2BE62u, {0x41,0x8b,0x85,0x40,0x16,0x00,0x00,0x4c,0x8d,0x0c,0x40,0x4b,0x89,0x94,0xcd,0x10}, {0x48,0x8b,0x05,0x87,0x10}},
+    {0xA2D6A9u, 6, 0xA2D6AFu, 0xA2D6E0u, {0x8b,0x83,0x40,0x16,0x00,0x00,0x4c,0x8d,0x0c,0x40,0x4a,0x89,0x94,0xcb,0x10,0x10}, {0x48,0x8b,0x5c,0x24,0x30}}};
+#define ER_PAIR_CAVE 0x40 /* each site's cave in the page */
+
+/* A site's cave: its own load of the count (mov eax, [r13 or rbx + 0x1640]), back to the append below 64, else counted
+ * and on to where the game goes without a new pair. rax is dead at both skip targets. */
+static void ErPairCave(uint8_t* c, uintptr_t game, int site)
+{
+    static const uint8_t full[] = {0x83,0xf8,ER_PAIRS, 0x73,0x05}; /* cmp eax, 64; jae full (past the jump back) */
+    static const uint8_t count[] = {0xf0,0xff,0x00};               /* lock inc dword [rax] */
+    memcpy(c, kErPairSites[site].pin, kErPairSites[site].size); c += kErPairSites[site].size;
+    memcpy(c, full, sizeof full); c += sizeof full;
+    c = SgJump(c, 0xe9, game + kErPairSites[site].resume);
+    c = SgImm64(c, (uint64_t)(uintptr_t)&g_erPairsFull);
+    memcpy(c, count, sizeof count); c += sizeof count;
+    SgJump(c, 0xe9, game + kErPairSites[site].skip);
+}
+
+/* Both appends through their caves (a jump over each site's load, padded with nops). NULL, or why not. */
+static const char* ErPairGuardInstall(uintptr_t game)
+{
+    for (int i = 0; i < 2; i++)
+        if (!PinMatches(game + kErPairSites[i].site, kErPairSites[i].pin, 16) || !PinMatches(game + kErPairSites[i].skip, kErPairSites[i].skipPin, 5))
+            return "the enemy budget's pair table is not the reviewed one";
+    uint8_t* cave = AllocateNearGame(game, 0x1000);
+    if (cave == NULL) return "no memory near game.dll for the enemy budget's guard";
+    DWORD previous;
+    for (int i = 0; i < 2; i++) ErPairCave(cave + i * ER_PAIR_CAVE, game, i);
+    VirtualProtect(cave, 0x1000, PAGE_EXECUTE_READ, &previous);
+    FlushInstructionCache(GetCurrentProcess(), cave, 0x1000);
+    g_erPairCave = cave;
+    for (int i = 0; i < 2; i++)
+    {
+        uint8_t jump[7] = {0xe9, 0, 0, 0, 0, 0x90, 0x90};
+        int32_t rel = (int32_t)((intptr_t)(cave + i * ER_PAIR_CAVE) - (intptr_t)(game + kErPairSites[i].site + 5));
+        memcpy(jump + 1, &rel, 4);
+        if (JournalPut(game + kErPairSites[i].site, jump, kErPairSites[i].size)) return "the enemy budget's pair table could not be guarded";
+    }
+    return NULL;
+}
+
 /* ---- growing a faction's roster -------------------------------------------------------------------------------------- */
 
 static uint64_t ErRowsOf(const uint8_t* rows, uint64_t count, uint64_t unit)
@@ -264,11 +317,41 @@ static void ErAppendRows(ErGrown* g, uint32_t f, uint64_t count, int moved)
     }
 }
 
-/* Whether a rule applies in faction f: the factions it names, or with none every roster that has a row of its unit. */
+/* Whether a rule applies in faction f: one of the factions it names (any, with none) whose roster has a row of its unit.
+ * A unit of a shared roster only is left out: the package loader resolves those rows with no faction's rules. */
 static int ErSwapIn(const ErSwap* s, uint32_t f, const ErGrown* g)
 {
-    if (s->state < 0) return 0;
-    return s->factions ? (s->factions & kErFactions[f].bit) != 0 : ErRowsOf(g->rows, g->rowCount, s->unit) > 0;
+    if (s->state < 0 || (s->factions && !(s->factions & kErFactions[f].bit))) return 0;
+    return ErRowsOf(g->rows, g->rowCount, s->unit) > 0;
+}
+
+/* Whether `left` replacements in a row can start at `unit`, whatever the rules' tags and levels. As 0x949B80 chains
+ * them: a rule follows another only with a priority not below it (`floor`; the game's Illuminate rules loop but for that). */
+static int ErChains(const uint8_t* rules, uint64_t count, uint64_t unit, uint32_t left, uint32_t floor)
+{
+    if (left == 0) return 1;
+    for (uint64_t i = 0; i < count; i++)
+    {
+        const uint8_t* rule = rules + i * ER_RULE;
+        uint64_t next;
+        uint32_t priority;
+        memcpy(&next, rule + 0x10, 8);
+        memcpy(&priority, rule + 0x28, 4);
+        if (memcmp(rule + 8, &unit, 8) == 0 && priority >= floor && ErChains(rules, count, next, left - 1, priority)) return 1;
+    }
+    return 0;
+}
+
+/* Whether the rules hold a chain longer than the game takes (a loop of rules is one). */
+static int ErChainTooLong(const uint8_t* rules, uint64_t count)
+{
+    for (uint64_t i = 0; i < count; i++)
+    {
+        uint64_t unit;
+        memcpy(&unit, rules + i * ER_RULE + 8, 8);
+        if (ErChains(rules, count, unit, ER_CHAIN + 1, 0)) return 1;
+    }
+    return 0;
 }
 
 /* A rule as the game's (0x949B80 reads +0, +8, +0x10, +0x20..+0x28; the budget +0x1C; nothing reads +0x18, 1.0 in most
@@ -289,6 +372,26 @@ static void ErRule(uint8_t* rule, const ErSwap* s, const ErGrown* g)
     memcpy(rule + 0x20, &lowest, 4);
     memcpy(rule + 0x24, &highest, 4);
     memcpy(rule + 0x28, &s->priority, 4);
+}
+
+/* The mods' rules after the game's `count` in g->rules. A rule that would make a chain too long is left out. */
+static void ErAppendRules(ErGrown* g, uint32_t f, uint64_t count)
+{
+    for (int i = 0; i < g_erSwapCount; i++)
+    {
+        ErSwap* s = ErSwapAt(i);
+        if (!ErSwapIn(s, f, g)) continue;
+        ErRule(g->rules + g->ruleCount * ER_RULE, s, g);
+        if (ErChainTooLong(g->rules, g->ruleCount + 1))
+        {
+            ApiLog(s->mod, "add_enemy_swap(%s): with the other rules it would replace over %u times in a row, or in a loop; left out of the %s",
+                s->name, ER_CHAIN, f == 0 ? "Terminids" : f == 1 ? "Automatons" : "Illuminate");
+            continue;
+        }
+        g->ruleOwner[g->ruleCount - count] = i;
+        g->ruleCount++;
+        s->rules++;
+    }
 }
 
 /* Faction f's pairs as reviewed, not grown yet: NULL with its rows and rules, or why not. */
@@ -337,14 +440,7 @@ static const char* ErGrowFaction(uintptr_t game, uint32_t f, int moved)
     if (ErRoom(g, f, rowCount, ruleCount)) { memset(g, 0, sizeof *g); return "no memory for a larger enemy roster, or over 65535 rows"; }
     g->rowCount = rowCount; g->ruleCount = ruleCount;
     ErAppendRows(g, f, rowCount, moved);
-    for (int i = 0; i < g_erSwapCount; i++)
-    {
-        if (!ErSwapIn(ErSwapAt(i), f, g)) continue;
-        ErRule(g->rules + g->ruleCount * ER_RULE, ErSwapAt(i), g);
-        g->ruleOwner[g->ruleCount - ruleCount] = i;
-        g->ruleCount++;
-        ErSwapAt(i)->rules++;
-    }
+    ErAppendRules(g, f, ruleCount);
     MemoryBarrier(); /* the copies are whole before a pair shows them */
     uintptr_t d = game + kRosters[kErFactions[f].roster].descriptor;
     uint64_t at[2] = {(uint64_t)(uintptr_t)g->rows, (uint64_t)(uintptr_t)g->rules};
@@ -359,13 +455,15 @@ static void ErCheckEntities(void)
     for (int i = 0; i < g_erEnemyCount; i++)
     {
         ErEnemy* e = ErEnemyAt(i);
-        if (ModGone(e->mod) || !g_erEntityKnown(e->unit))
+        if (ModGone(e->mod)) e->state = -1;
+        else if (!g_erEntityKnown(e->unit))
         { e->state = -1; ApiLog(e->mod, "add_enemy(%s): the game has no entity %016llx; not added", e->name, (unsigned long long)e->unit); }
     }
     for (int i = 0; i < g_erSwapCount; i++)
     {
         ErSwap* s = ErSwapAt(i);
-        if (ModGone(s->mod) || !g_erEntityKnown(s->unit) || !g_erEntityKnown(s->replacement))
+        if (ModGone(s->mod)) s->state = -1;
+        else if (!g_erEntityKnown(s->unit) || !g_erEntityKnown(s->replacement))
         { s->state = -1; ApiLog(s->mod, "add_enemy_swap(%s): the game has not both its entities; not added", s->name); }
     }
 }
@@ -391,7 +489,7 @@ static void ErReportSwaps(void)
         if (s->state < 0) continue;
         s->state = s->rules > 0 ? 1 : -1;
         if (s->rules > 0) ApiLog(s->mod, "enemy rule %s: in %d roster(s)", s->name, s->rules);
-        else ApiLog(s->mod, "add_enemy_swap(%s): no faction roster has a row of %016llx; not added", s->name, (unsigned long long)s->unit);
+        else ApiLog(s->mod, "add_enemy_swap(%s): no rule made (its factions' rosters need a row of %016llx); not added", s->name, (unsigned long long)s->unit);
     }
 }
 
@@ -403,23 +501,38 @@ static const char* ErGrow(void)
     if (game == 0 || size != DIR_IMAGE || strcmp(g_build, "25480438")) return "unsupported game build";
     int moved = DirectorWeightsMoved(game);
     if (moved < 0) return "an enemy weight read is not the reviewed one";
-    const char* why = ErBudgetInstall(game);
+    const char* why = ErPairGuardInstall(game);
+    if (why == NULL) why = ErBudgetInstall(game);
     if (why != NULL) return why;
     ErCheckEntities();
     for (uint32_t f = 0; f < ER_FACTIONS; f++)
     {
         const char* failed = ErGrowFaction(game, f, moved);
-        if (failed != NULL) { why = failed; Note("enemies: roster %u not grown: %s", kErFactions[f].roster, failed); }
+        if (failed == NULL) continue;
+        why = failed;
+        g_erGrown[f].rowCount = g_erGrown[f].ruleCount = 0; /* not counted as added */
+        Note("enemies: roster %u not grown: %s", kErFactions[f].roster, failed);
     }
     ErReportEnemies();
     ErReportSwaps();
     return why;
 }
 
+/* What the pair guard caught, at most every 10 s. */
+static void ErPairsWatch(void)
+{
+    LONG full = g_erPairsFull;
+    if (full == g_erPairsFullReported || GetTickCount64() - g_erPairsReportedAt < 10000) return;
+    g_erPairsReportedAt = GetTickCount64();
+    g_erPairsFullReported = full;
+    Note("enemies: the enemy budget's table was full (%u kinds of enemy and spawn source alive) %ld time(s) so far; those spawns are not counted in it", ER_PAIRS, (long)full);
+}
+
 /* The watch loop: the rosters grow once the entity data loaded (the entities are checked against it), before any
  * mission reads them. */
 static void WatchEnemyRosters(void)
 {
+    if (g_erState == 1) ErPairsWatch();
     if (!EnemyRostersPending() || !g_fired[HF_EVENT_GAME_LOADED]) return;
     if (g_erSince == 0) g_erSince = GetTickCount64();
     if (!g_fired[HF_EVENT_ENTITIES_READY])
