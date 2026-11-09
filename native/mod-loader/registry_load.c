@@ -311,6 +311,12 @@ static void TakeModel(uint8_t* state, const Weapon* w, uint64_t baseEntity)
 {
     static const uint16_t model[][2] = {{88, 136}, {28, 32}, {299, 352}, {298, 152}, {223, 1544}, {104, 3912},
         {91, 3704}, {159, 4836}, {225, 456}};
+    /* Ground vehicles name their model's parts in far more records than these (damage zones, seats, mounts, wheels, tracks,
+     * legs), and half a model hangs the game at spawn, so a ground vehicle keeps its own. */
+    uint8_t* electrics = StatePointer(state, REG_TABLES + 8 * REG_VEHICLE_ELECTRICS);
+    uint32_t es = SlotsOf(REG_VEHICLE_ELECTRICS);
+    if (electrics != NULL && es != 0 && (FindRow(electrics, es, 16, baseEntity) != NULL || FindRow(electrics, es, 16, w->modelFrom) != NULL))
+    { ApiLog(w->mod, "%s: model_from ignored: a ground vehicle keeps its base's model", w->name); return; }
     int taken = 0, missing = 0;
     for (size_t k = 0; k < sizeof model / sizeof model[0]; k++)
     {

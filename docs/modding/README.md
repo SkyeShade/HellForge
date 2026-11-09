@@ -98,6 +98,7 @@ The example mods:
 | `blue-sentry` | a new sentry stratagem with a recoloured model |
 | `stratagem-compendium` | eleven stratagems, one file per family: Pelicans with turrets and a behaviour, a sentry, barrages, expendables, a silo with a countdown ability |
 | `stratagem-categories` | stratagem selection headings and their order ([how headings work](../stratagem-categories.md)) |
+| `vehicle-variants` | two new vehicles, an exosuit and an FRV, each a copy of a vanilla one with a Pelican drop stratagem |
 | `hell-forge` | difficulty 11 |
 | `hell-swarm` | a difficulty's settings row, changed directly |
 | `vanilla-plus` | live edits of every stratagem's settings, and code patches: game code checked against the build, then changed (a branch, a jump to a stub of its own) |
