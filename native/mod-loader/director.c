@@ -132,6 +132,65 @@ static const char* DirectorWeightRefuses(float value)
     return !isfinite(value) || value < 0 || value > 10000 ? "a spawn weight is 0 to 10000" : NULL;
 }
 
+/* Whether a roster row draws on every planet: no tag it needs (+0x58, four) and none that rules it out (+0x68, four), as
+ * the director's tag test 0x177E3C0 reads them. */
+static int DirectorRowUntagged(uintptr_t base)
+{
+    uint32_t need = 1, exclude[4] = {1, 1, 1, 1};
+    if (SafeRead(base + 0x58, &need, 4) || SafeRead(base + 0x68, exclude, sizeof exclude)) return 0;
+    return need == 0 && (exclude[0] | exclude[1] | exclude[2] | exclude[3]) == 0;
+}
+
+/* The roster whose rows hold the row at base, and its count; 0 when none does. */
+static uintptr_t DirectorRosterHolding(uintptr_t game, uintptr_t base, uint64_t* count)
+{
+    for (uint32_t r = 0; r < DIF_ROSTERS; r++)
+    {
+        uintptr_t rows = DirectorRoster(game, r, count);
+        if (rows != 0 && base >= rows && base < rows + *count * DIR_ROSTER_ROW && (base - rows) % DIR_ROSTER_ROW == 0) return rows;
+    }
+    return 0;
+}
+
+/* The family's other rows (key, all but base) with a weight above 0 at row + at; *untagged counts the untagged ones. */
+static int DirectorFamilyOthers(uintptr_t rows, uint64_t count, uintptr_t base, uint32_t key, uint32_t at, int* untagged)
+{
+    int others = 0;
+    *untagged = 0;
+    for (uint64_t i = 0; i < count; i++)
+    {
+        uintptr_t row = rows + i * DIR_ROSTER_ROW;
+        uint32_t k = 0;
+        float w = 0;
+        if (row == base || SafeRead(row, &k, 4) || k != key || SafeRead(row + at, &w, 4) || !(w > 0)) continue;
+        others++;
+        *untagged += DirectorRowUntagged(row);
+    }
+    return others;
+}
+
+/* A weight of 0 (weights: the row DirectorRow gave). The director picks an enemy by its family key (+0) among the
+ * roster's rows with a weight at the mission's level. With none it hands the spawn a null enemy, and a bug hole or
+ * fabricator of that enemy crashes the game (spawn_guards.c). So the last weighted row of a family at a level, or its
+ * last untagged one, keeps its weight. */
+static const char* DirectorFamilyRefuses(const char* kind, uintptr_t weights, uint32_t offset)
+{
+    uintptr_t game = g_directorImage(NULL);
+    int moved = DirectorWeightsMoved(game), eleven = !strcmp(kind, "EnemyRosterLevel11");
+    if (moved < 0 || (eleven && !moved)) return NULL;
+    uint32_t first = moved ? 0x2C : 0x30, at = first + (eleven ? 40 : offset), key = 0;
+    uintptr_t base = weights - (eleven ? 0x54 : first);
+    uint64_t count = 0;
+    uintptr_t rows = DirectorRosterHolding(game, base, &count);
+    float mine = 0;
+    if (rows == 0 || SafeRead(base, &key, 4) || SafeRead(base + at, &mine, 4) || !(mine > 0)) return NULL;
+    int untagged = 0, others = DirectorFamilyOthers(rows, count, base, key, at, &untagged);
+    if (others == 0) return "the last spawn weight of its enemy at this level: a bug hole or fabricator of that enemy would crash the game";
+    if (untagged == 0 && DirectorRowUntagged(base))
+        return "its enemy's last spawn weight at this level that needs no planet tag: on other planets a spawner of it would crash the game";
+    return NULL;
+}
+
 /* A group's count (now: the composition as it would be): its group names enemies, and the groups fit the squad queue. */
 static const char* DirectorGroupRefuses(const uint8_t* now, uint32_t offset, uint32_t bits)
 {
@@ -184,7 +243,11 @@ static const char* DirectorRefuses(const char* kind, uintptr_t row, uint32_t off
     memcpy(&bits, bytes, 4);
     memcpy(&value, bytes, 4);
     if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRefuses(offset, bits);
-    if (strcmp(kind, "EnemyComposition")) return DirectorWeightRefuses(value);
+    if (strcmp(kind, "EnemyComposition"))
+    {
+        const char* why = DirectorWeightRefuses(value);
+        return why != NULL || value > 0 ? why : DirectorFamilyRefuses(kind, row, offset);
+    }
     return DirectorCompositionRefuses(row, offset, bytes, bits, value);
 }
 
@@ -222,3 +285,5 @@ static uint32_t DirectorStride(const char* kind)
     return !strcmp(kind, "EnemyRoster") ? 40u : !strcmp(kind, "EnemyRosterLevel11") ? 4u : !strcmp(kind, "EnemyComposition") ? DIR_COMPOSITION_ROW :
         !strcmp(kind, "DemolitionTemplate") ? DIR_DEMOLITION_ROW : !strcmp(kind, "DifficultySettings") ? DIF_ROW : 0u;
 }
+
+#include "spawn_guards.c" /* the game-side half: a null enemy from writes these checks never see */
