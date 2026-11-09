@@ -20,6 +20,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     public WarClock? WarClock { get; init; }
     public AccountKeys? AccountKeys { get; init; }
     public LiveWar? LiveWar { get; init; }
+    // The HellForge war (backend --war hellforge): served in the live war's place, and told of the game's missions.
+    public HellForgeWar? HellForgeWar { get; init; }
     public FriendPresence? Presence { get; init; }
     public RegisteredItems? RegisteredItems { get; init; }
     public bool OpenWar { get; init; }
@@ -118,11 +120,11 @@ public static partial class LocalBackend
     {
         CheckSettings(settings);
         var fixtures = Fixtures(settings);
-        // --war open: the all-planets war (OpenWar) replaces the live war.
-        var liveWar = settings.OpenWar ? null : settings.LiveWar;
+        // --war open: the all-planets war (OpenWar) replaces the live war; the HellForge war does too.
+        IServedWar? liveWar = settings.OpenWar ? null : (IServedWar?)settings.HellForgeWar ?? settings.LiveWar;
         var profile = settings.Profile;
         if (settings.StartupFixtures) profile ??= ProfileStore.Open(null);
-        var missions = profile != null ? new MissionService(profile, settings.Pickups) : null;
+        var missions = profile != null ? new MissionService(profile, settings.Pickups) { Reports = settings.OpenWar ? null : settings.HellForgeWar } : null;
         // Friends' lobbies and profiles for the social tab, filled by multiplayer when a caller supplies it.
         var presence = settings.Presence ?? new FriendPresence();
         var playFab = new PlayFabService(presence);
@@ -157,7 +159,7 @@ public static partial class LocalBackend
         var warServices = settings.StartupFixtures ? new WarServices(settings.WarScript, warClock, profile, () => accountKeys.LocalId ?? 0, message =>
         {
             lock (warLog) File.AppendAllText(warLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + message + Environment.NewLine);
-        }) : null;
+        }, settings.OpenWar ? null : settings.HellForgeWar) : null;
         Directory.CreateDirectory(settings.EvidenceDirectory);
         var auditPath = Path.Combine(settings.EvidenceDirectory, "requests.jsonl");
         // A fresh evidence directory prevents accidental mixing of runs.
@@ -239,16 +241,19 @@ public static partial class LocalBackend
         return seasonPassDetails;
     }
 
-    // A startup path's body: the local profile's, else the live war's (for a path the fixtures serve), else the synthetic
-    // fixture's; source says which, for the audit.
-    sealed class StartupBodies(ProfileStore? profile, LiveWar? liveWar, Dictionary<string, JsonElement> fixtures)
+    // A startup path's body: the local profile's, else the live or HellForge war's (for a path the fixtures serve), else
+    // the synthetic fixture's; source says which, for the audit.
+    sealed class StartupBodies(ProfileStore? profile, IServedWar? liveWar, Dictionary<string, JsonElement> fixtures)
     {
         public bool TryGet(string path, out JsonElement body, out string source)
         {
             source = "local_profile";
             if (profile != null && profile.TryGetResponse(path, out body)) return true;
-            source = "live_war";
-            if (liveWar != null && fixtures.ContainsKey(path) && liveWar.TryGet(path, out body)) return true;
+            if (liveWar != null && fixtures.ContainsKey(path) && liveWar.TryGet(path, out body))
+            {
+                source = liveWar.Source;
+                return true;
+            }
             source = "synthetic_startup_fixture";
             return fixtures.TryGetValue(path, out body);
         }

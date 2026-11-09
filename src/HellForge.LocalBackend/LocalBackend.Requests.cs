@@ -129,14 +129,18 @@ public static partial class LocalBackend
             if (Profile != null && request.Path.Value is "/Progression/ShipName" or "/Progression/OnboardingState")
                 return await ShipNameOrOnboardingAsync(context, Profile);
             if (Startup.TryGet(request.Path.Value ?? "", out var startupBody, out var source))
-            {
-                // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems);
-                // premium warbonds the account does not own have no price in it (OwnershipFilter).
-                var served = RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody;
-                if (request.Path.Value == "/Progression/items" && Profile?.Ownership is { } ownership) served = ownership.FilterCatalogueResponse(served);
-                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, War?.Apply(request.Path.Value!, served) ?? served);
-            }
+                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, Served(request.Path.Value!, startupBody));
             return Unsupported();
+        }
+
+        // A startup body as served: weapons code mods registered this session join the catalogue, packages and inventory
+        // (RegisteredItems); premium warbonds the account does not own have no price in it (OwnershipFilter); a war
+        // script's additions join the war's bodies (WarServices).
+        JsonElement Served(string path, JsonElement body)
+        {
+            var served = RegisteredItems?.Apply(path, body) ?? body;
+            if (path == "/Progression/items" && Profile?.Ownership is { } ownership) served = ownership.FilterCatalogueResponse(served);
+            return War?.Apply(path, served) ?? served;
         }
 
         // The launcher's Mods page while the session runs: what a change would do (GET), or make it (POST)

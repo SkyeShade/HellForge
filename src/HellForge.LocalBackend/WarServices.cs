@@ -23,8 +23,10 @@ namespace HellForge.LocalBackend;
 // galactic war effects and Status additions join whichever war is served. The file is read again whenever it changes,
 // so an edit shows in game at the next poll. Mail is how a reward reaches every player, whether they played or not: each
 // profile claims each mail once (progression "hellforgeClaimedMail"). Nothing paid and never Super Credits.
+// With the HellForge war (backend --war hellforge, HellForgeWar) its server's major orders and dispatches come first,
+// as the server sent them, and a war script's follow (16 at most in all).
 // Every reply here was run through the client's own parser in an emulator; none has been tried in game yet.
-public sealed class WarServices(string? scriptPath, WarClock clock, ProfileStore? profile, Func<ulong> localAccount, Action<string> log)
+public sealed class WarServices(string? scriptPath, WarClock clock, ProfileStore? profile, Func<ulong> localAccount, Action<string> log, HellForgeWar? shared = null)
 {
     public const int WarId = LiveWar.WarId;
     const int MajorOrder = 4, PersonalOrder = 0, MaxEntries = 16, MaxTasks = 8, MaxRewards = 3;
@@ -56,11 +58,11 @@ public sealed class WarServices(string? scriptPath, WarClock clock, ProfileStore
         var current = Script();
         return Route(path) switch
         {
-            "assignments" when method == "GET" => (Assignments(current, path.StartsWith("/v2/Assignment/War", StringComparison.Ordinal) ? "majorOrders" : "personalOrders",
-                path.StartsWith("/v2/Assignment/War", StringComparison.Ordinal) ? MajorOrder : PersonalOrder), "war_assignments"),
+            "assignments" when method == "GET" && path == $"/v2/Assignment/War/{WarId}" => (Shared(shared?.Assignments?.EnumerateArray(), Assignments(current, "majorOrders", MajorOrder)), "war_assignments"),
+            "assignments" when method == "GET" => (Assignments(current, "personalOrders", PersonalOrder), "war_assignments"),
             "assignments" => (new JsonObject(), "assignment_progress"),
             "complete" => (Complete(current, body), "assignment_complete"),
-            "news" => (News(current, query), "war_news"),
+            "news" => (Shared(shared?.News(From(query), MaxEntries), News(current, query)), "war_news"),
             "episodes" => (new JsonObject { ["episodes"] = new JsonArray() }, "war_episodes"),
             "pes" => (new JsonObject { ["isValid"] = false }, "pes_configuration"),
             "inbox" => (Inbox(current, body), "mail_inbox"),
@@ -68,6 +70,23 @@ public sealed class WarServices(string? scriptPath, WarClock clock, ProfileStore
             _ => (new JsonObject(), "acknowledged")
         };
     }
+
+    // The HellForge war's entries (the server's bytes), then the war script's, 16 at most.
+    static JsonArray Shared(IEnumerable<JsonElement>? served, JsonArray scripted)
+    {
+        if (served == null) return scripted;
+        var merged = new JsonArray([.. served.Take(MaxEntries).Select(e => JsonNode.Parse(e.GetRawText()))]);
+        foreach (var entry in scripted.ToList())
+        {
+            if (merged.Count == MaxEntries) break;
+            scripted.Remove(entry);
+            merged.Add(entry);
+        }
+        return merged;
+    }
+
+    static long From(IQueryCollection query) =>
+        long.TryParse(query["fromTimeStamp"], NumberStyles.None, CultureInfo.InvariantCulture, out var t) ? t : 0;
 
     // The war script's additions to a war body the game was served: its effect definitions to /WarSeason/GalacticWarEffects
     // (an id already there is replaced), and its "status" arrays appended to /WarSeason/801/Status.
@@ -217,7 +236,7 @@ public sealed class WarServices(string? scriptPath, WarClock clock, ProfileStore
     // message is free text; <i=1>..</i> and <i=2>..</i> are yellow, <i=3>..</i> white (a heading).
     JsonArray News(JsonElement? current, IQueryCollection query)
     {
-        var from = long.TryParse(query["fromTimeStamp"], NumberStyles.None, CultureInfo.InvariantCulture, out var t) ? t : 0;
+        var from = From(query);
         var news = new JsonArray();
         foreach (var dispatch in List(current, "dispatches")
                      .Where(d => d.TryGetProperty("id", out _) && d.TryGetProperty("published", out var p) && p.GetInt64() > from && p.GetInt64() <= clock.Seconds)

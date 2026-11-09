@@ -685,6 +685,9 @@ try
     await LiveWarTests.Run(root, Check);
     results.Add(new { mode = "live-war", outcome = "passed" });
     Console.WriteLine("PASS live war: mirror headers, served status and clock, offline cache, fetched before a session with no network, refusals");
+    await HellForgeWarTests.Run(root, Check);
+    results.Add(new { mode = "hellforge-war", outcome = "passed" });
+    Console.WriteLine("PASS HellForge war: snapshot checks, each route served the server's bytes, cache per server and offline, mission start, heartbeats and end with the install id, a server down, slow or refusing never changing or delaying the game's replies");
     await OpenWarTests.Run(root, Check);
     results.Add(new { mode = "open-war", outcome = "passed" });
     Console.WriteLine("PASS all-planets war: a liberation on every planet, nearest fronts, served in place of the frozen war");

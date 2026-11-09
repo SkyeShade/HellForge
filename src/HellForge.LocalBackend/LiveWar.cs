@@ -13,7 +13,7 @@ namespace HellForge.LocalBackend;
 // Where a session has no way out at all (Linux: the game, the launcher and this backend run in a network namespace with
 // loopback only), the war is fetched before the namespace is entered (FetchOnceAsync, "fetch-live-war"), and the
 // session serves that copy without trying the mirror (cacheOnly): the war does not move until the next launch.
-public sealed class LiveWar : IAsyncDisposable
+public sealed class LiveWar : IServedWar, IAsyncDisposable
 {
     public const string Mirror = "https://api.helldivers2.dev";
     public const int WarId = 801;
@@ -75,6 +75,7 @@ public sealed class LiveWar : IAsyncDisposable
     }
 
     public bool HasWar { get { lock (gate) return status != null; } }
+    public string Source => "live_war";
 
     // Fetches the live war once into the cache file, for a session that will have no network (true when it was fetched).
     public static async Task<bool> FetchOnceAsync(string cachePath, Action<string> log, HttpMessageHandler? handler = null, string mirror = Mirror)
@@ -128,7 +129,8 @@ public sealed class LiveWar : IAsyncDisposable
     }
 
     // The game's parsers expect the shapes war-data.json was checked with; anything else keeps the previous war.
-    static void Validate(JsonElement info, JsonElement live)
+    // (HellForgeWar checks its snapshot's warInfo and status the same way.)
+    internal static void Validate(JsonElement info, JsonElement live)
     {
         static bool Array(JsonElement body, string name) => body.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array;
         if (info.ValueKind != JsonValueKind.Object || live.ValueKind != JsonValueKind.Object) throw new InvalidDataException("not JSON objects");

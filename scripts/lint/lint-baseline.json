@@ -9,7 +9,6 @@
     {"unit": "HellForge.Core", "file": "GameData/ForgeCredits.cs", "rule": "R10", "function": "ForgeCredits.WithoutOldArt", "value": 21},
     {"unit": "HellForge.Core", "file": "GameData/IconImage.cs", "rule": "R10", "function": "IconImage.Bc5Mips", "value": 16},
     {"unit": "HellForge.Core", "file": "GameData/IconImage.cs", "rule": "R10", "function": "IconImage.HalfRgba", "value": 18},
-    {"unit": "HellForge.LocalBackend", "file": "LocalBackend.Requests.cs", "rule": "R10", "function": "LocalBackend.Requests.GameRouteAsync", "value": 16},
     {"unit": "HellForge.LocalBackend", "file": "Multiplayer/DirectoryService.cs", "rule": "R10", "function": "DirectoryService.BrowseAsync", "value": 16},
     {"unit": "HellForge.LocalBackend", "file": "Multiplayer/MultiplayerHost.cs", "rule": "R10", "function": "MultiplayerHost.Start", "value": 17},
     {"unit": "editor", "file": "app_lobbies.cpp", "rule": "R10", "function": "DrawTermDetail", "value": 24},
