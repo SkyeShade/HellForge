@@ -300,7 +300,8 @@ typedef struct HfEnemy
     uint32_t size;          /* sizeof(HfEnemy) */
     uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins; 0: every faction roster `like` is in */
     const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
-    uint64_t unit;          /* the entity it spawns: one add_entity or register_entity returned, or a vanilla one */
+    uint64_t unit;          /* the entity it spawns: one add_entity or register_entity returned, or a vanilla one; best
+                             * a copy of `like` (it needs what `like`'s spawns need, e.g. its transport formations) */
     uint64_t like;          /* the vanilla enemy whose roster rows it copies (its resource id) */
     float weight;           /* x like's spawn weights (0 means 1) */
     uint32_t lowest_level;  /* difficulty levels it spawns at, 1 to 10 (0: no bound); level 11 takes level 10's weight */
@@ -325,6 +326,7 @@ typedef struct HfEnemySwap
     uint32_t priority;      /* the game's rules use 0 to 9 */
     float budget;           /* the enemy budget's weight of the replacement where it has no roster row of its own (0: the
                              * replaced enemy's) */
+    float cost;             /* x the replaced enemy's cost in a squad's budget (0 means 1; the game's rules use 0.5 to 1.2) */
 } HfEnemySwap;
 
 /* A new stratagem (SDK 4, add_stratagem): a copy of a vanilla stratagem's settings under a StratagemType of its own,

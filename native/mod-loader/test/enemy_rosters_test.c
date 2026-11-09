@@ -1,7 +1,7 @@
 /* Enemies mods add to the faction rosters (enemy_rosters.c) on a fake game.dll image: the refusals, the grown copies
  * (the game's rows first, a mod's row a scaled copy of its like's, rules after the game's), entries without an entity or
  * a row left out, the budget's weight through the stub, its pair table's guard, rule chains, level 11 added after the
- * growth, edits held back until the rosters grew, a mod taken out.
+ * growth, edits held back until the rosters grew, a mod taken out, units without their like's transport formations.
  * Included by stats_test.c after director_test.c. */
 
 #define ERT_LIKE 0xAAAull
@@ -9,8 +9,20 @@
 #define ERT_BUG_UNIT 0x222ull
 #define ERT_SWAPPED 0x333ull
 #define ERT_SHARED 0x777ull
+#define ERT_CARRIED 0xCCCull /* an enemy transports carry: it has a formation record */
+#define ERT_RIDER 0xDDDull   /* another entity with that formation */
 
-static int ErtKnown(uint64_t entity) { return entity == ERT_LIKE || entity == ERT_UNIT || entity == ERT_BUG_UNIT || entity == ERT_SWAPPED; }
+static int ErtKnown(uint64_t entity)
+{
+    return entity == ERT_LIKE || entity == ERT_UNIT || entity == ERT_BUG_UNIT || entity == ERT_SWAPPED || entity == ERT_CARRIED || entity == ERT_RIDER;
+}
+
+/* Formation records: the carried enemy's one formation, the rider's two (that one among them); none for the rest. */
+static const uint8_t* ErtFormations(uint64_t entity)
+{
+    static const uint32_t carried[12] = {0x77}, rider[12] = {0x55, 0, 0, 0, 0, 0, 0x77};
+    return entity == ERT_CARRIED ? (const uint8_t*)carried : entity == ERT_RIDER ? (const uint8_t*)rider : NULL;
+}
 
 /* A roster row of `unit`: weights 1 to 10 at levels 1 to 10, a cap and a budget weight. */
 static void ErtRow(uint8_t* row, uint64_t unit, float budget)
@@ -55,6 +67,10 @@ static void ErtAdd(HfMod* mod)
     assert(ApiAddEnemy(mod, &e) == 0);
     e.name = "tester/enemies/bug_only"; e.unit = ERT_BUG_UNIT; e.like = ERT_LIKE; e.weight = 0; e.factions = HF_ENEMY_TERMINIDS;
     assert(ApiAddEnemy(mod, &e) == 0);
+    e.name = "tester/enemies/no_formation"; e.unit = ERT_UNIT; e.like = ERT_CARRIED; e.factions = 0;
+    assert(ApiAddEnemy(mod, &e) == 0);
+    e.name = "tester/enemies/rider"; e.unit = ERT_RIDER;
+    assert(ApiAddEnemy(mod, &e) == 0);
     HfEnemySwap s = {sizeof s};
     s.name = "tester/enemies/assault"; s.unit = ERT_UNIT; s.replacement = ERT_SWAPPED; s.tag = "GM_BotAssault"; s.priority = 5;
     assert(ApiAddEnemySwap(mod, &s) == 0);
@@ -62,7 +78,9 @@ static void ErtAdd(HfMod* mod)
     assert(ApiAddEnemySwap(mod, &s) == 0);
     s.name = "tester/enemies/no_row_there"; s.replacement = ERT_SWAPPED; s.factions = HF_ENEMY_ILLUMINATE;
     assert(ApiAddEnemySwap(mod, &s) == 0);
-    assert(g_erEnemyCount == 4 && g_erSwapCount == 3 && EnemyRostersPending());
+    s.name = "tester/enemies/no_formation_rule"; s.unit = ERT_CARRIED; s.replacement = ERT_UNIT; s.factions = 0;
+    assert(ApiAddEnemySwap(mod, &s) == 0);
+    assert(g_erEnemyCount == 6 && g_erSwapCount == 4 && EnemyRostersPending());
 }
 
 /* The Automaton roster (kRosters[2]) after the growth: 61 game rows as they were, then alpha's two. */
@@ -71,7 +89,7 @@ static void ErtCheckRows(uintptr_t game, const uint8_t* before)
     uint64_t pair[4];
     memcpy(pair, (void*)(game + kRosters[2].descriptor), sizeof pair);
     const uint8_t* rows = (const uint8_t*)(uintptr_t)pair[0];
-    assert(rows != before && pair[1] == 63 && memcmp(rows, before, 61 * ER_ROW) == 0);
+    assert(rows != before && pair[1] == 64 && memcmp(rows, before, 61 * ER_ROW) == 0); /* alpha's two, the rider's one */
     const uint8_t* mine = rows + 61 * ER_ROW;
     uint64_t unit; uint32_t cap; float f;
     memcpy(&unit, mine + 8, 8); memcpy(&cap, mine + 0x18, 4); memcpy(&f, mine + 0x24, 4);
@@ -82,7 +100,8 @@ static void ErtCheckRows(uintptr_t game, const uint8_t* before)
     memcpy(&unit, mine + ER_ROW + 8, 8); assert(unit == ERT_UNIT);
     int ready;
     assert(DirectorRow("EnemyRoster", (2u << 16) | 62, &ready) == (uintptr_t)mine + ER_ROW + 0x30 && ready);
-    assert(DirectorRow("EnemyRoster", (2u << 16) | 63, &ready) == 0);
+    memcpy(&unit, mine + 2 * ER_ROW + 8, 8); assert(unit == ERT_RIDER);
+    assert(DirectorRow("EnemyRoster", (2u << 16) | 64, &ready) == 0);
     /* its rule after the game's 39 */
     const uint8_t* rule = (const uint8_t*)(uintptr_t)pair[2] + 39 * ER_RULE;
     uint32_t tag, range[3]; uint64_t units[2]; float weights[2];
@@ -191,6 +210,7 @@ static void EnemyRostersFixture(void)
     ErtRow(rows[2] + 9 * ER_ROW, ERT_LIKE, 15.0f);
     ErtRow(rows[0] + 1 * ER_ROW, ERT_LIKE, 6.0f);
     ErtRow(rows[4] + 3 * ER_ROW, ERT_SHARED, 2.0f);
+    ErtRow(rows[2] + 20 * ER_ROW, ERT_CARRIED, 15.0f);
     image[kWeightReaders[0][0] + kWeightReaders[0][1]] = 0x30;
     memcpy(image + ER_BUDGET, kErBudgetPin, sizeof kErBudgetPin);
     for (int i = 0; i < 2; i++)
@@ -208,6 +228,9 @@ static void EnemyRostersFixture(void)
     g_directorImage = DirFakeImage;
     g_dirGame = image;
     g_erEntityKnown = ErtKnown;
+    g_erFormations = ErtFormations;
+    int wasLoaded = mod->loaded;
+    mod->loaded = 1;
     InterlockedExchange(&g_fired[HF_EVENT_GAME_LOADED], 1);
     InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], 0);
 
@@ -221,6 +244,7 @@ static void EnemyRostersFixture(void)
     WatchEnemyRosters();
     assert(g_erState == 1 && !EnemyRostersPending());
     assert(ErEnemyAt(0)->state == 1 && ErEnemyAt(0)->rows == 3 && ErEnemyAt(1)->state == -1 && ErEnemyAt(2)->state == -1 && ErEnemyAt(3)->rows == 1);
+    assert(ErEnemyAt(4)->state == -1 && ErEnemyAt(5)->state == 1 && ErEnemyAt(5)->rows == 1 && ErSwapAt(3)->state == -1); /* formations */
     assert(ErSwapAt(0)->state == 1 && ErSwapAt(0)->rules == 2 && ErSwapAt(1)->state == -1 && ErSwapAt(2)->state == -1);
     ErtCheckPairGuard(game);
     ErtChains();
@@ -251,6 +275,8 @@ static void EnemyRostersFixture(void)
     memcpy(&lowest, g_erGrown[1].rules + 39 * ER_RULE + 0x20, 4); assert(lowest == ER_NEVER);
 
     g_erEntityKnown = ErEntityInMap;
+    g_erFormations = ErFormationsOf;
+    mod->loaded = wasLoaded;
     g_directorImage = DirectorGame;
     g_difficultyAdded = added; g_difficultyState = state;
     InterlockedExchange(&g_fired[HF_EVENT_GAME_LOADED], loaded);

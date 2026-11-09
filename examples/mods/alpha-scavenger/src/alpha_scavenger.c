@@ -1,7 +1,7 @@
 /* Alpha Scavenger: a new enemy beside the vanilla ones (docs/modding/enemies.md). The entity is a copy of the tier 2
  * Scavenger with more health; add_enemy copies that Scavenger's roster rows for it, so it spawns in the same groups on
- * the same planets, a third as often, from difficulty 4. No vanilla enemy is replaced. On planets with the Predator
- * Strain, a replacement rule (add_enemy_swap) turns each Alpha into an Alpha Predator, a second copy with more health.
+ * the same planets, a third as often, from difficulty 4. No vanilla enemy is replaced. On planets of the BugPredators
+ * constellation, a replacement rule (add_enemy_swap) turns each Alpha into an Alpha Predator, a second copy.
  * Build: HellForge builds the sources before each session, or scripts/Build-Mod.ps1 examples/mods/alpha-scavenger. */
 #include "hellforge_mod.h"
 
@@ -40,7 +40,7 @@ HF_MOD_EXPORT int hellforge_mod_init(const HfApi* hf, HfMod* mod)
     strain.name = "skyeshade/alpha_scavenger/predator_rule";
     strain.unit = alpha;
     strain.replacement = predator;
-    strain.tag = "GM_BugSuperPredators";
+    strain.tag = "BugPredators";
     strain.priority = 5;
     return hf->add_enemy_swap(mod, &strain);
 }

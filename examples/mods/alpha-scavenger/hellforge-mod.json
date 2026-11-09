@@ -3,7 +3,7 @@
   "id": "skyeshade.alpha-scavenger",
   "name": "Alpha Scavenger",
   "version": "0.1.0",
-  "description": "An example of a new enemy: a tougher Scavenger that spawns beside the vanilla ones from difficulty 4, without replacing any, and a replacement rule for Predator Strain planets. Source in src/.",
+  "description": "An example of a new enemy: a tougher Scavenger that spawns beside the vanilla ones from difficulty 4, without replacing any, and a replacement rule for planets of the Predators constellation. Source in src/.",
   "gameplay": true,
   "code": {
     "dll": "alpha_scavenger.dll",

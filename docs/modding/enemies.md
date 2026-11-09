@@ -34,7 +34,8 @@ it appears on and a spawn weight per difficulty. Squads draw from groups, by wei
   level 10.
 - `factions` picks the rosters: `HF_ENEMY_TERMINIDS`, `HF_ENEMY_AUTOMATONS`, `HF_ENEMY_ILLUMINATE`, or 0 for every
   faction roster that has a row of `like`.
-- There is no set number of enemies. The game's rows keep their places, and yours follow them.
+- HellForge sets no number of enemies; a roster holds up to 65,535 rows. The game's rows keep their places, and
+  yours follow them.
 
 ## Replacement rules
 
@@ -46,19 +47,21 @@ HfEnemySwap predator = {sizeof predator};
 predator.name = "alpha_predator";
 predator.unit = scavenger_copy;     /* the enemy replaced: vanilla, or an add_enemy unit */
 predator.replacement = predator_copy;
-predator.tag = "GM_BugSuperPredators"; /* NULL: always on */
+predator.tag = "BugPredators";      /* NULL: always on */
 predator.priority = 5;
 hf->add_enemy_swap(mod, &predator);
 ```
 
 - `tag` is a director tag, a planet's or a mission's. The table below lists the game's.
 - `lowest_level` and `highest_level` bound the difficulty (0: any).
-- Of the rules that match a spawn, the highest `priority` wins. The game's rules use 0 to 9.
+- Of the rules that match a spawn, the highest `priority` wins. The game's rules use 0 to 9. Of equal priorities the
+  earlier rule wins, and the game's rules come before yours.
 - A replacement can be replaced again, 3 times in a row at most, and only by a rule whose priority is not lower.
   HellForge leaves out a rule that would make a longer chain, or a loop, with the game's and other mods' rules. Your
   mod's log says so.
 - A rule applies in a faction's roster only when that roster has a row of `unit`.
 - `budget` is the replacement's weight in the enemy budget when it has no roster row. 0 takes the replaced enemy's.
+- `cost` multiplies the replaced enemy's cost in a squad's budget (0 means 1).
 
 | Faction | Tags |
 |---|---|
@@ -71,14 +74,16 @@ hf->add_enemy_swap(mod, &predator);
 
 - The entity must exist when the entity data has loaded: a vanilla one, or one your mod or another added. An entry
   whose entity is missing is left out.
+- The unit must be able to spawn the ways `like` does. A copy of `like` always can. When transports carry `like`
+  (dropships carry most Automatons), a unit without that enemy's `SquadTransportFormation` record is refused, because
+  the game would crash on it. The same holds for a rule's replacement and the enemy it replaces.
 - A mission loads the packages of your entity's base. An entity that needs a package of its own must load it itself
   (see [data mods](data.md)).
 - `like` must be an enemy of a faction roster. The rosters all factions share take no new rows.
 - New squad mixes (compositions) are not part of this: your enemy joins existing groups.
-- The game's enemy budget holds 64 kinds of enemy alive at once, counted per spawn source (patrol, outpost, breach):
-  one enemy type takes up to three places. A Terminid mission at difficulty 5 held 11 to 14. With the table full, a
-  further kind still spawns but is not counted: its cap on living enemies does not apply. The log says when that
-  happens.
+- The game's enemy budget holds 64 places for the kinds of enemy alive at once. An enemy type takes one place for
+  each spawn source it is alive from. A Terminid mission at difficulty 5 held 11 to 14. With the table full, a further
+  kind still spawns but is not counted: its cap on living enemies does not apply. The log says when that happens.
 - Enemies are added when the game starts. A mod set up while the game runs gets a refusal from both calls.
 - Only the host's rosters decide what spawns. Every player needs the mod, for the entity.
 - When a live mod is taken out, its rows stop spawning and its rules stop matching.

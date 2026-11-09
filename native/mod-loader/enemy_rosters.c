@@ -37,7 +37,7 @@ typedef struct ErSwap
     char name[192];
     uint64_t unit, replacement;
     uint32_t factions, tag, lowest, highest, priority;
-    float budget;
+    float budget, cost;
     int state, rules;
 } ErSwap;
 /* A faction's grown arrays; the mod entry (its index) behind each row and rule after the game's. */
@@ -71,6 +71,37 @@ static int ErEntityInMap(uint64_t entity)
 }
 /* The native fixture replaces it. */
 static int (*g_erEntityKnown)(uint64_t entity) = ErEntityInMap;
+
+/* An entity's SquadTransportFormation record (component 122: two entries of 24 bytes, a formation id first), or NULL.
+ * A transport looks each passenger's up (0x4FE170) and reads its formation's entry with no check (0x684A70, 0x684B51):
+ * an enemy drawn for a transport without that entry crashes the game. */
+#define ER_FORMATIONS 122u
+static const uint8_t* ErFormationsOf(uint64_t entity)
+{
+    uint8_t* table = StatePointer(EntityState(), REG_TABLES + 8 * ER_FORMATIONS);
+    uint32_t slots = SlotsOf(ER_FORMATIONS), record = 0;
+    uint8_t* row = table != NULL && slots != 0 ? FindRow(table, slots, 16, entity) : NULL;
+    if (row == NULL) return NULL;
+    memcpy(&record, row + 8, 4);
+    return table + (size_t)slots * 16 + (size_t)record * 48;
+}
+static const uint8_t* (*g_erFormations)(uint64_t entity) = ErFormationsOf;
+
+/* Whether `unit` can ride every transport `as` can: each formation of `as`'s record is in `unit`'s. */
+static int ErRidesAs(uint64_t unit, uint64_t as)
+{
+    const uint8_t* need = g_erFormations(as);
+    const uint8_t* have = g_erFormations(unit);
+    if (need == NULL || need == have) return 1;
+    for (int n = 0; n < 2; n++)
+    {
+        uint32_t id, found = 0;
+        memcpy(&id, need + n * 24, 4);
+        for (int h = 0; have != NULL && h < 2; h++) found |= memcmp(have + h * 24, &id, 4) == 0;
+        if (id != 0 && !found) return 0;
+    }
+    return 1;
+}
 
 /* ---- the API -------------------------------------------------------------------------------------------------------- */
 
@@ -145,6 +176,7 @@ static int ApiAddEnemySwap(HfMod* mod, const HfEnemySwap* def)
     s.unit = def->unit; s.replacement = def->replacement;
     s.factions = def->factions; s.lowest = def->lowest_level; s.highest = def->highest_level;
     s.priority = def->priority; s.budget = def->budget;
+    if (def->size >= offsetof(HfEnemySwap, cost) + sizeof def->cost && isfinite(def->cost) && def->cost > 0 && def->cost <= 100) s.cost = def->cost;
     if (def->tag != NULL && def->tag[0] != 0) s.tag = (uint32_t)(Murmur64A(def->tag, strlen(def->tag)) >> 32);
     *ErSwapAt(g_erSwapCount) = s;
     g_erSwapCount++;
@@ -354,11 +386,11 @@ static int ErChainTooLong(const uint8_t* rules, uint64_t count)
     return 0;
 }
 
-/* A rule as the game's (0x949B80 reads +0, +8, +0x10, +0x20..+0x28; the budget +0x1C; nothing reads +0x18, 1.0 in most
- * of the game's). Its budget weight defaults to that of the replaced enemy's row. */
+/* A rule as the game's: 0x949B80 reads +0, +8, +0x10 and +0x20..+0x28, the budget +0x1C, and 0x949FBD +0x18, a factor
+ * on the replaced row's cost (+0x20; 0.5 to 1.2 in the game's). Its budget weight defaults to the replaced row's. */
 static void ErRule(uint8_t* rule, const ErSwap* s, const ErGrown* g)
 {
-    float one = 1.0f, budget = s->budget;
+    float cost = s->cost > 0 ? s->cost : 1.0f, budget = s->budget;
     uint32_t lowest = s->lowest ? s->lowest : 1, highest = s->highest ? s->highest : 100;
     for (uint64_t i = 0; budget <= 0 && i < g->rowCount; i++)
         if (memcmp(g->rows + i * ER_ROW + 8, &s->unit, 8) == 0) memcpy(&budget, g->rows + i * ER_ROW + 0x24, 4);
@@ -367,7 +399,7 @@ static void ErRule(uint8_t* rule, const ErSwap* s, const ErGrown* g)
     memcpy(rule, &s->tag, 4);
     memcpy(rule + 8, &s->unit, 8);
     memcpy(rule + 0x10, &s->replacement, 8);
-    memcpy(rule + 0x18, &one, 4);
+    memcpy(rule + 0x18, &cost, 4);
     memcpy(rule + 0x1C, &budget, 4);
     memcpy(rule + 0x20, &lowest, 4);
     memcpy(rule + 0x24, &highest, 4);
@@ -455,16 +487,20 @@ static void ErCheckEntities(void)
     for (int i = 0; i < g_erEnemyCount; i++)
     {
         ErEnemy* e = ErEnemyAt(i);
-        if (ModGone(e->mod)) e->state = -1;
+        if (ModGone(e->mod) || !e->mod->loaded) e->state = -1;
         else if (!g_erEntityKnown(e->unit))
         { e->state = -1; ApiLog(e->mod, "add_enemy(%s): the game has no entity %016llx; not added", e->name, (unsigned long long)e->unit); }
+        else if (!ErRidesAs(e->unit, e->like))
+        { e->state = -1; ApiLog(e->mod, "add_enemy(%s): transports carry %016llx, and its unit has no SquadTransportFormation for them; not added (base the unit on that enemy)", e->name, (unsigned long long)e->like); }
     }
     for (int i = 0; i < g_erSwapCount; i++)
     {
         ErSwap* s = ErSwapAt(i);
-        if (ModGone(s->mod)) s->state = -1;
+        if (ModGone(s->mod) || !s->mod->loaded) s->state = -1;
         else if (!g_erEntityKnown(s->unit) || !g_erEntityKnown(s->replacement))
         { s->state = -1; ApiLog(s->mod, "add_enemy_swap(%s): the game has not both its entities; not added", s->name); }
+        else if (!ErRidesAs(s->replacement, s->unit))
+        { s->state = -1; ApiLog(s->mod, "add_enemy_swap(%s): transports carry %016llx, and the replacement has no SquadTransportFormation for them; not added", s->name, (unsigned long long)s->unit); }
     }
 }
 
@@ -518,6 +554,15 @@ static const char* ErGrow(void)
     return why;
 }
 
+/* Entries no row or rule was tried for (the growth stopped before them): why, in their mods' logs. */
+static void ErTellPending(const char* why)
+{
+    for (int i = 0; why != NULL && i < g_erEnemyCount; i++)
+        if (ErEnemyAt(i)->state == 0) { ErEnemyAt(i)->state = -1; ApiLog(ErEnemyAt(i)->mod, "add_enemy(%s): not added: %s", ErEnemyAt(i)->name, why); }
+    for (int i = 0; why != NULL && i < g_erSwapCount; i++)
+        if (ErSwapAt(i)->state == 0) { ErSwapAt(i)->state = -1; ApiLog(ErSwapAt(i)->mod, "add_enemy_swap(%s): not added: %s", ErSwapAt(i)->name, why); }
+}
+
 /* What the pair guard caught, at most every 10 s. */
 static void ErPairsWatch(void)
 {
@@ -540,10 +585,12 @@ static void WatchEnemyRosters(void)
         if (GetTickCount64() - g_erSince < ER_WAIT_MS) return;
         g_erState = -1;
         Note("enemies: not added; the entity data did not load");
+        ErTellPending("the entity data did not load");
         return;
     }
     const char* why = ErGrow();
     g_erState = why == NULL ? 1 : -1;
+    ErTellPending(why);
     uint64_t rows = 0, rules = 0;
     for (uint32_t f = 0; f < ER_FACTIONS; f++)
     {
