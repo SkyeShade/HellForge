@@ -17,7 +17,8 @@ namespace HellForge.LocalBackend;
 // hosts too, after friends: the map asks /lobby/accounts for the hosts of the lobbies its search returned.
 public sealed class FriendPresence
 {
-    public sealed record Friend(ulong SteamId, string Name);
+    // Protocol: the HellForge protocol the friend's backend gives in its Steam presence (null: not known).
+    public sealed record Friend(ulong SteamId, string Name, string? Protocol = null);
     // Listings: the digests (DirectoryData.Digest) of the directory listings the friend's backend says it published, the
     // newest first (the one before stays good while Steam may still hold it).
     sealed record Lobby(string LobbyId, string ConnectionString, JsonObject Body, DateTime Heard, string[] Listings);
@@ -243,6 +244,14 @@ public sealed class FriendPresence
             string[] listings = listing == null ? [] : before.Length > 0 && before[0] == listing ? before : [listing, .. before.Take(1)];
             friendLobbies[friend] = new Lobby(lobbyId, connectionString, body, DateTime.UtcNow, listings);
         }
+    }
+
+    // The friends' lobbies heard from within Fresh (the browse API lists them beside the directory's).
+    public IReadOnlyList<(ulong Friend, string LobbyId, string ConnectionString, JsonObject Body)> FriendLobbies()
+    {
+        lock (gate)
+            return [.. friendLobbies.Where(f => DateTime.UtcNow - f.Value.Heard <= Fresh)
+                .Select(f => (f.Key, f.Value.LobbyId, f.Value.ConnectionString, f.Value.Body.DeepClone().AsObject()))];
     }
 
     public void ClearFriendLobby(ulong friend)

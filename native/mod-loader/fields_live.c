@@ -207,7 +207,15 @@ static void KeepUnder(int index, int above)
 static int ApplyLive(int index, int replaced, const FieldEdit* previous)
 {
     FieldEdit* q = &g_edits[index];
-    if (q->table || g_fired[HF_EVENT_ENTITIES_READY]) ApplyEdit(q);
+    if (q->table || g_fired[HF_EVENT_ENTITIES_READY])
+    {
+        ApplyEdit(q);
+        /* where it went: what the game then reads there is what a live edit's effect depends on */
+        uint32_t now = 0, before = 0;
+        if (!q->failed && q->field->size <= 4) { memcpy(&now, q->value, q->field->size); memcpy(&before, q->original, q->field->size); }
+        if (!q->failed) ApiLog(q->mod, "set_live: %s.%s of %016llx at %p: %08x (before the live edits %08x)", q->component->name,
+            q->field->name, (unsigned long long)q->entity, (void*)q->address, now, q->hasOriginal ? before : now);
+    }
     if (q->failed && replaced) *q = *previous;
     else if (q->failed) RemoveEdit(index);
     else return 1;
@@ -251,6 +259,7 @@ static int PlaceLiveEdit(HfMod* mod, FieldEdit* e, int index)
 static int ApiSetLive(HfMod* mod, HfRef target, const HfField* field, const HfValue* value, uint32_t flags)
 {
     const SdkComponent* c = NULL;
+    if (value != NULL && ModGone(mod)) return 0;
     const SdkField* f = mod != NULL ? ResolveField(mod, "set_live", field, &c) : NULL;
     if (f == NULL) return 0;
     AcquireSRWLockExclusive(&g_fieldsLock);

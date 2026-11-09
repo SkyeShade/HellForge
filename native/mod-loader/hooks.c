@@ -14,8 +14,11 @@
  *      function goes before its earlier one;
  *   2. HellForge's own hooks last, nearest the game's code (the newest first): what a mod's detour passes on is what
  *      HellForge's events see.
- * Hooks stay for the session. A mod must call the original through the variable it passed: HellForge rewrites it when a
- * hook goes in after it in the chain. */
+ * A mod's hooks stay until it is taken out (a live change, SDK 16) or it unhooks one: a link leaves its chain the way
+ * it went in, one pointer write (the link before it, or the head stub, now leads where the link's original led), so a
+ * call in flight through it finishes and later ones skip it; the function stays patched, its chain maybe empty. A mod
+ * must call the original through the variable it passed: HellForge rewrites it when a hook goes in after it in the
+ * chain. */
 
 /* Every other thread of the process suspended (0 none could be), to patch code they may run; FarResume undoes it. */
 #define FAR_THREADS 1024
@@ -463,6 +466,7 @@ static int HookAdd(HfMod* mod, const char* what, uintptr_t target, void* detour,
     char where[128];
     HookWhere(target, where, sizeof where);
     if (target == 0 || detour == NULL || original == NULL) { HookRefused(mod, what, target, detour); return 1; }
+    if (ModGone(mod)) { ApiLog(mod, "hook refused: the mod is being taken out"); return 1; }
     HookLink link = HookLinkOf(mod, what, detour, original, priority);
 
     AcquireSRWLockExclusive(&g_hookLock);
@@ -517,6 +521,58 @@ static int ApiCodeMatches(uintptr_t address, const char* pattern)
     if (address == 0 || count == 0 || HookedCode(address, code, count)) return 0;
     for (size_t i = 0; i < count; i++) if (mask[i] && code[i] != bytes[i]) return 0;
     return 1;
+}
+
+/* Takes link `at` out of chain h: the pointer that led to it now leads where its original led. Under g_hookLock. */
+static void HookUnlink(HookTarget* h, int at)
+{
+    void* next = *h->links[at].original;
+    SetPointer(at == 0 ? StubPointer(h->stubs) : h->links[at - 1].original, next);
+    char where[128];
+    HookWhere(h->target, where, sizeof where);
+    Note("hooks: %s's hook of %s left its chain (%d left)", h->links[at].owner, where, h->count - 1);
+    for (int i = at; i < h->count - 1; i++) h->links[i] = h->links[i + 1];
+    h->count--;
+}
+
+/* Every hook of mod `mod` out of its chain (a live change takes the mod out: live_code.c). The number taken out. */
+static int HookRemoveMod(const HfMod* mod)
+{
+    int removed = 0;
+    AcquireSRWLockExclusive(&g_hookLock);
+    for (LONG t = 0; t < g_hookTargetCount; t++)
+        for (int i = g_hookTargets[t].count - 1; i >= 0; i--)
+            if (g_hookTargets[t].links[i].mod == mod) { HookUnlink(&g_hookTargets[t], i); removed++; }
+    if (removed) HookReport();
+    ReleaseSRWLockExclusive(&g_hookLock);
+    return removed;
+}
+
+/* One link of `target`, a mod's (mod) or HellForge's own with that detour (mod NULL), out of its chain. 0 when it was
+ * there. */
+static int HookRemove(const HfMod* mod, uintptr_t target, void* detour)
+{
+    int found = 0;
+    AcquireSRWLockExclusive(&g_hookLock);
+    for (LONG t = 0; t < g_hookTargetCount && !found; t++)
+    {
+        HookTarget* h = &g_hookTargets[t];
+        if (h->target != target) continue;
+        for (int i = h->count - 1; i >= 0 && !found; i--)
+            if (mod != NULL ? h->links[i].mod == mod : h->links[i].mod == NULL && h->links[i].detour == detour) { HookUnlink(h, i); found = 1; }
+    }
+    if (found) HookReport();
+    ReleaseSRWLockExclusive(&g_hookLock);
+    return found ? 0 : 1;
+}
+
+/* HfApi.unhook (SDK 16): the mod's own hook of target out of its chain. */
+static int ApiUnhook(HfMod* mod, uintptr_t target)
+{
+    if (mod == NULL || target == 0) return 1;
+    int result = HookRemove(mod, target, NULL);
+    if (result) ApiLog(mod, "unhook: the mod has no hook of 0x%llx", (unsigned long long)target);
+    return result;
 }
 
 /* HfApi.hook (SDK 1) and hook_ex (SDK 13). */

@@ -31,8 +31,9 @@ friends compare in co-op.
   `%USERPROFILE%\HellForge` when Documents is in OneDrive) with a `mods` folder where every mod lives.
 - For stats and data mods, a text editor. Nothing else.
 - For code mods, the mod tools as well: HellForge's pinned Zig compiler, plus CMake and Ninja if you want an IDE. The
-  launcher installs them for you into the installation's `tools` folder (the Mods page's **Install mod tools**), and a
-  session fetches Zig by itself the first time it has a mod to build. Nothing is installed system-wide.
+  launcher installs them for you into the installation's `tools` folder (the Mods page's **Install mod tools**), and
+  HellForge fetches the Zig it needs on the first source mod (on Linux the wrapper fetches the native Zig before the
+  session). Nothing is installed system-wide.
 
 ## Where to start
 
@@ -47,6 +48,7 @@ friends compare in co-op.
 | react to kills, damage or missions | [Logic at run time](runtime.md) |
 | change something the SDK does not cover yet | [Hooks and game memory](hooks.md) |
 | find out why a mod does not load or crashes | [Debugging](debugging.md) |
+| let your mod change while the game runs (mod sync without a restart) | [Mods that change while the game runs](live.md) |
 
 ## The learning path
 

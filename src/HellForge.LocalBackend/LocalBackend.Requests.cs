@@ -28,7 +28,9 @@ public static partial class LocalBackend
         public required AccountKeys AccountKeys { get; init; }
         public required RegisteredItems? RegisteredItems { get; init; }
         public required StartupBodies Startup { get; init; }
+        public required Multiplayer.BrowseApi? Browse { get; init; }
         public required string AuditPath { get; init; }
+        public LiveModsHub? LiveMods { get; init; }
         // Issued session IDs, used only to classify the Authorization header in the audit.
         readonly ConcurrentDictionary<string, byte> sessions = new(StringComparer.Ordinal);
         readonly object auditLock = new();
@@ -95,8 +97,10 @@ public static partial class LocalBackend
             if (!FromLocalProgram(request)) return new(StatusCodes.Status403Forbidden, "web_page_rejected", Error("HELLFORGE_NOT_FROM_THIS_PC"));
             if (request.Path == "/config/locator.json") return Locator(context);
             if (request.Path == "/Account/Login") return await LoginAsync(context);
+            if (request.Path == "/hellforge/live-mods") return await LiveModsAsync(context);
             if (request.Path.StartsWithSegments("/lobby", out var lobbyPath)) return await LobbyAsync(context, lobbyPath.Value ?? "");
             if (request.Path == "/Account/Keys") return await AccountKeysAsync(context);
+            if (request.Path.StartsWithSegments("/hellforge/v1/lobbies", out var browsePath)) return await BrowseAsync(context, browsePath.Value ?? "");
             if (request.Path.StartsWithSegments("/SeasonPass", out var seasonPassId) && seasonPassId.Value is { Length: > 1 } idPath &&
                 SeasonPassDetails.TryGetValue(idPath[1..], out var seasonPassDetail))
                 return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, "season_pass_detail", seasonPassDetail);
@@ -125,11 +129,32 @@ public static partial class LocalBackend
             if (Profile != null && request.Path.Value is "/Progression/ShipName" or "/Progression/OnboardingState")
                 return await ShipNameOrOnboardingAsync(context, Profile);
             if (Startup.TryGet(request.Path.Value ?? "", out var startupBody, out var source))
-                // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems).
-                return OtherMethod(context, HttpMethods.IsGet, "GET") ??
-                    new Reply(StatusCodes.Status200OK, source, War?.Apply(request.Path.Value!, RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody) ??
-                        RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody);
+            {
+                // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems);
+                // premium warbonds the account does not own have no price in it (OwnershipFilter).
+                var served = RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody;
+                if (request.Path.Value == "/Progression/items" && Profile?.Ownership is { } ownership) served = ownership.FilterCatalogueResponse(served);
+                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, War?.Apply(request.Path.Value!, served) ?? served);
+            }
             return Unsupported();
+        }
+
+        // The launcher's Mods page while the session runs: what a change would do (GET), or make it (POST)
+        // (LiveMods; HellForge-Open docs/mods.md "Changing mods while you play").
+        async Task<Reply> LiveModsAsync(HttpContext context)
+        {
+            var request = context.Request;
+            if (OtherMethod(context, method => HttpMethods.IsGet(method) || HttpMethods.IsPost(method), "GET, POST") is { } rejected) return rejected;
+            if (LiveMods?.Service is not { } service)
+                return new(StatusCodes.Status409Conflict, "live_mods_unavailable", Error("HELLFORGE_LIVE_MODS_UNAVAILABLE"));
+            var result = HttpMethods.IsGet(request.Method) ? service.Preview() : await service.ApplyAsync(null, false, "", context.RequestAborted);
+            static JsonArray Texts(IEnumerable<string> texts) => [.. texts.Select(t => (JsonNode?)t)];
+            var outcome = result.Applied ? "live_mods_applied" : HttpMethods.IsGet(request.Method) ? "live_mods_previewed" : "live_mods_not_applied";
+            return new(StatusCodes.Status200OK, outcome, new JsonObject
+            {
+                ["live"] = result.Live, ["applied"] = result.Applied, ["changes"] = Texts(result.Changes), ["blocking"] = Texts(result.Blocking),
+                ["detail"] = result.Detail, ["digest"] = result.Digest
+            });
         }
 
         static Reply Locator(HttpContext context)
@@ -176,6 +201,34 @@ public static partial class LocalBackend
                 AccountKeys.Log?.Invoke($"This player's key was received with the login ({publicKey.GetString()!.Length} characters).");
             }
             else AccountKeys.Log?.Invoke("The login carried no usable player key; friends cannot be admitted to this player's games.");
+        }
+
+        // The lobby browser's API (Multiplayer.BrowseApi): GET the list, POST <id>/join for an invitation.
+        async Task<Reply> BrowseAsync(HttpContext context, string rest)
+        {
+            var segments = rest.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments is [])
+            {
+                if (OtherMethod(context, HttpMethods.IsGet, "GET") is { } rejected) return rejected;
+                if (Browse == null) return new(StatusCodes.Status200OK, "browse_unavailable",
+                    new JsonObject { ["version"] = Multiplayer.BrowseApi.Version, ["available"] = false, ["reason"] = "This backend has no lobby browser.", ["lobbies"] = new JsonArray() });
+                return new(StatusCodes.Status200OK, "browse_listed", (await Browse.ListAsync()).DeepClone());
+            }
+            if (segments is ["quick"])
+            {
+                if (OtherMethod(context, HttpMethods.IsPost, "POST") is { } rejected) return rejected;
+                if (Browse == null) return new(StatusCodes.Status503ServiceUnavailable, "browse_unavailable", Error("HELLFORGE_MULTIPLAYER_OFF"));
+                var (status, outcome, body) = await Browse.QuickJoinAsync();
+                return new(status, outcome, body);
+            }
+            if (segments is [var lobbyId, "join"])
+            {
+                if (OtherMethod(context, HttpMethods.IsPost, "POST") is { } rejected) return rejected;
+                if (Browse == null) return new(StatusCodes.Status503ServiceUnavailable, "browse_unavailable", Error("HELLFORGE_MULTIPLAYER_OFF"));
+                var (status, outcome, body) = Browse.Join(lobbyId);
+                return new(status, outcome, body);
+            }
+            return Unsupported();
         }
 
         // The game's own lobby for friends' social tabs and the lobby directory, and friends' and the directory's lobbies

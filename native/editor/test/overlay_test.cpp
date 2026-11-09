@@ -10,7 +10,7 @@
  * must get in front of it again and still draw, the overlay still called, and the shared method table left alone (with
  * a real RivaTuner in the process, RivaTuner is that overlay). Then the overlay takes its hook off, the code put back as
  * it was before the editor: the editor must put its own hook back.
- * Usage: overlay_test.exe <hellforge_editor.dll> [<screenshot.bmp> [<editor folder: editor-catalog.json, game-icons.bin>]]
+ * Usage: overlay_test.exe <hellforge_editor.dll> [<screenshot.bmp> [<editor folder: editor-catalog*.json, game-icons.bin>]]
  * HELLFORGE_EDITOR_TEST_D3D11=1: the window presents with Direct3D 11 instead, as the game does with --use-d3d11.
  * HELLFORGE_EDITOR_TEST_NO_OVERLAY_QUEUE=1: no overlay queue (a real overlay, RivaTuner say, tried on its own).
  * HELLFORGE_EDITOR_HDR=pq:200: the editor draws in HDR10 at 200 nits (the editor reads it), and its colours on screen must
@@ -38,6 +38,9 @@ static void* g_drawnQueue; /* the queue the editor says it draws on (D3D12) */
 static int g_again; /* times the editor got in front of an overlay that hooked over it */
 static int g_putBack; /* times the editor put its own hook back after an overlay put the code back as it was */
 static int g_modPage, g_modApplied; /* a mod's stratagem: its page made, its saved value sent to its own row */
+/* mod weapons' pages: the fields of the one owning every record and of the one owning its fire record (-1 no page), and
+ * whether the one sharing every record was left without one */
+static int g_goldFields = -1, g_swiftFields = -1, g_plainNoPage;
 static char g_modDir[MAX_PATH] = "";
 static HfSession g_sessionNow; /* the co-op role the stand-in loader reports */
 static void Session(HfMod*, HfSession* out) { *out = g_sessionNow; }
@@ -75,6 +78,37 @@ static int SyncAnswer(HfMod*, uint32_t version, uint32_t answer, const char* id)
     if (answer == HF_SYNC_OPEN) snprintf(g_syncOpened, sizeof g_syncOpened, "%s", id ? id : "");
     return 1;
 }
+/* the lobby browser (SDK 16): the backend's list as the editor reads it, and the asks it makes */
+static HfBrowseState g_browseNow = {sizeof(HfBrowseState)};
+static HfBrowseLobby g_browseList[3];
+static int g_browseRefreshes, g_browseJoins, g_browseQuick, g_browseAllowStrangers, g_lobbiesAlone, g_lobbiesGone;
+static char g_browseJoined[65];
+static int BrowseState(HfMod*, HfBrowseState* out)
+{
+    uint32_t size = out->size;
+    memcpy(out, &g_browseNow, size < sizeof g_browseNow ? size : sizeof g_browseNow);
+    out->size = size;
+    return 1;
+}
+static int BrowseLobby(HfMod*, uint32_t index, HfBrowseLobby* out)
+{
+    if (index >= g_browseNow.lobbies || index >= 3) return 0;
+    uint32_t size = out->size;
+    memcpy(out, &g_browseList[index], size < sizeof(HfBrowseLobby) ? size : sizeof(HfBrowseLobby));
+    out->size = size;
+    return 1;
+}
+static int BrowseAsk(HfMod*, uint32_t ask, const char* id)
+{
+    if (ask == HF_BROWSE_REFRESH) { g_browseRefreshes++; return 1; }
+    if (ask == HF_BROWSE_QUICK) { g_browseQuick++; return 1; }
+    if (ask == HF_BROWSE_ALLOW_STRANGERS) { g_browseAllowStrangers++; return 1; }
+    if (ask == HF_BROWSE_SHOWN || ask == HF_BROWSE_HIDDEN || ask == HF_BROWSE_SHOW_EDITED_STATS) return 1;
+    if (ask != HF_BROWSE_JOIN || id == NULL) return 0;
+    g_browseJoins++;
+    snprintf(g_browseJoined, sizeof g_browseJoined, "%s", id);
+    return 1;
+}
 static void SyncOffer(uint32_t state, uint32_t version, uint64_t bytes, uint64_t done)
 {
     g_syncNow = {};
@@ -101,10 +135,15 @@ static void Log(HfMod*, const char* format, ...)
     if (strstr(line, "the editor's hook is back in place")) g_putBack++;
     if (strstr(line, "staged (APPLY writes them)")) g_presetImports++;
     if (strstr(line, "A/MG-101 Heavy MG Sentry gets a page")) g_modPage = 1;
+    if (strstr(line, "AR-23G Liberator Gold gets a page") && strstr(line, "'s, ")) g_goldFields = atoi(strstr(line, "'s, ") + 4);
+    if (strstr(line, "AR-23S Liberator Swift gets a page") && strstr(line, "'s, ")) g_swiftFields = atoi(strstr(line, "'s, ") + 4);
+    if (strstr(line, "test/mod/liberator_plain has no page: it shares every record")) g_plainNoPage = 1;
     if (strstr(line, "editor: mod sync") && strstr(line, "the dialog opens")) g_syncOpens++;
     if (strstr(line, "the mod sync prompt shows over the game")) g_syncAlone++;
     if (strstr(line, "the mod sync prompt goes")) g_syncGone++;
     if (strstr(line, "the trust warning for")) g_syncWarnings++;
+    if (strstr(line, "the lobby browser shows over the game")) g_lobbiesAlone++;
+    if (strstr(line, "the lobby browser goes")) g_lobbiesGone++;
     if (strstr(line, "sound: the editor opens")) g_editorOpens++;
 }
 static const char* Build() { return "25480438"; }
@@ -213,6 +252,17 @@ static int GetStat(HfMod*, const HfStat* stat, HfLiveValue* out)
 /* A mod's content, as the loader lists it: a copy of the A/MG-43 sentry's stratagem (type 150) dropping a copy of the
  * sentry (its own designation) that fires a copy of its round dealing a copy of its damage. */
 static const HfEditorEntity kModEntities[] = {{0xABCDull, 0x37CDE43876BA26BBull}, {0, 0}};
+static uint32_t g_extraWeapons;
+static const uint64_t kLiberator = 0x968211C0033DCE64ull, kWeaponOwnsAll = 0xBEEF01, kWeaponSharesAll = 0xBEEF02, kWeaponOwnsFire = 0xBEEF03;
+/* An entity's record of a component, as the loader answers: a vanilla entity's and the sentry copy's (own_all) are
+ * their own; of the Liberator copies, the first owns every record (HfWeapon.own_all), the second none, the third only
+ * its ProjectileWeapon record (a projectile of its own). A copy's shared record is refused (0), as the loader does. */
+static uintptr_t ComponentRecord(const char* component, uint64_t resource, uint32_t* stride)
+{
+    if (stride) *stride = 64;
+    if (resource == kWeaponSharesAll || (resource == kWeaponOwnsFire && strcmp(component, "ProjectileWeaponComponentData") != 0)) return 0;
+    return (uintptr_t)(resource * 0x100 + strlen(component)) | 1;
+}
 static int Content(HfMod*, uint32_t index, HfContent* out)
 {
     HfContent c = {};
@@ -226,7 +276,27 @@ static int Content(HfMod*, uint32_t index, HfContent* out)
     case 1: c.kind = HF_KIND_ENTITY; c.id = 0xABCD; c.base = 0x37CDE43876BA26BBull; c.name = "test/mod/hmg_entity"; c.designation = "A/MG-101"; break;
     case 2: c.kind = HF_KIND_PROJECTILE; c.id = 400; c.base = 148; c.link = 700; c.name = "test/mod/round"; break;
     case 3: c.kind = HF_KIND_DAMAGE; c.id = 700; c.base = 125; c.name = "test/mod/damage"; break;
-    default: return 0;
+    /* HELLFORGE_EDITOR_TEST_WEAPONS=<n>: n more Liberator copies owning every record, as a large weapon pack (the editor
+     * logs how long its mod pages took) */
+    case 4: case 5: case 6: /* three Liberator copies (ComponentRecord: what each owns) */
+        c.kind = HF_KIND_ITEM; c.id = 0x1110 + index; c.base = HF_ITEM_AR23_LIBERATOR; c.base_entity = kLiberator;
+        c.entity = index == 4 ? kWeaponOwnsAll : index == 5 ? kWeaponSharesAll : kWeaponOwnsFire;
+        c.name = index == 4 ? "test/mod/liberator_gold" : index == 5 ? "test/mod/liberator_plain" : "test/mod/liberator_swift";
+        c.title = index == 4 ? "Liberator Gold" : index == 5 ? "Liberator Plain" : "Liberator Swift";
+        c.designation = index == 4 ? "AR-23G" : index == 5 ? "AR-23P" : "AR-23S";
+        break;
+    default:
+        if (index - 7 >= g_extraWeapons) return 0;
+        {
+            static char names[512][32], designations[512][8], titles[512][16];
+            uint32_t n = index - 7;
+            snprintf(names[n], sizeof names[n], "test/mod/stress_%03u", n + 1);
+            snprintf(designations[n], sizeof designations[n], "T-%03u", n + 1);
+            snprintf(titles[n], sizeof titles[n], "Test %03u", n + 1);
+            c.kind = HF_KIND_ITEM; c.id = 0x2000 + n; c.base = HF_ITEM_AR23_LIBERATOR; c.base_entity = kLiberator; c.entity = 0xC0DE0000ull + n;
+            c.name = names[n]; c.designation = designations[n]; c.title = titles[n];
+        }
+        break;
     }
     *out = c;
     return 1;
@@ -284,9 +354,13 @@ int main(int argc, char** argv)
     g_api.get_live = GetLive;
     g_api.last_log = LastLog; g_api.logs_folder = LogsFolder; g_api.get_stat = GetStat; g_api.session = Session; g_api.stats_source = StatsSource;
     g_api.content = Content;
+    g_api.component_record = ComponentRecord;
+    g_extraWeapons = getenv("HELLFORGE_EDITOR_TEST_WEAPONS") ? (uint32_t)atoi(getenv("HELLFORGE_EDITOR_TEST_WEAPONS")) : 0;
+    if (g_extraWeapons > 512) g_extraWeapons = 512;
     g_api.mods = Mods;
     g_api.notice = Notice;
     g_api.sync_state = SyncState; g_api.sync_mod = SyncMod; g_api.sync_answer = SyncAnswer;
+    g_api.browse_state = BrowseState; g_api.browse_lobby = BrowseLobby; g_api.browse_ask = BrowseAsk;
     g_modsView = getenv("HELLFORGE_EDITOR_TEST_VIEW") != NULL && !strcmp(getenv("HELLFORGE_EDITOR_TEST_VIEW"), "mods");
     g_enemiesView = getenv("HELLFORGE_EDITOR_TEST_VIEW") != NULL && !strcmp(getenv("HELLFORGE_EDITOR_TEST_VIEW"), "enemies");
     /* the editor's folder in a mods folder of the test's own: its catalogue and icons, and Local Stats next to it */
@@ -300,7 +374,17 @@ int main(int argc, char** argv)
     {
         CreateDirectoryA(mods, NULL);
         CreateDirectoryA(g_folder, NULL);
-        catalogued = CopyInto(argv[3], g_folder, "editor-catalog.json");
+        /* the catalogue: its index and every category's file */
+        char pattern[MAX_PATH];
+        snprintf(pattern, sizeof pattern, "%s\\editor-catalog*.json", argv[3]);
+        WIN32_FIND_DATAA found;
+        if (HANDLE find = FindFirstFileA(pattern, &found); find != INVALID_HANDLE_VALUE)
+        {
+            do CopyInto(argv[3], g_folder, found.cFileName); while (FindNextFileA(find, &found));
+            FindClose(find);
+        }
+        snprintf(pattern, sizeof pattern, "%s\\editor-catalog.json", g_folder);
+        catalogued = GetFileAttributesA(pattern) != INVALID_FILE_ATTRIBUTES;
         CopyInto(argv[3], g_folder, "game-icons.bin");
         /* the mod: its data names its icon's image (a 4 x 4 BMP here); a cooldown the editor saved for its stratagem */
         snprintf(g_modDir, sizeof g_modDir, "%s\\test-mod", mods);
@@ -384,6 +468,12 @@ int main(int argc, char** argv)
     {
         printf("  mod stratagem: page %s, its saved cooldown sent to its own row %d time(s)\n", g_modPage ? "made" : "NOT made", g_modApplied);
         if (!g_modPage || g_modApplied != 1) { puts("FAIL a mod's stratagem got no page, or its saved value did not reach its own row"); return 1; }
+        printf("  mod weapons: own_all %d field(s), its own fire record %d, shares everything: %s\n", g_goldFields, g_swiftFields,
+            g_plainNoPage ? "no page" : "a page");
+        /* the Liberator's live fields: 15 handling and fire, 3 rates of fire, 5 armory traits (stats snapshot reads and
+         * choices, its displayed armor penetration, stay off copies) */
+        if (g_goldFields != 23 || g_swiftFields != 3 || !g_plainNoPage)
+        { puts("FAIL a mod weapon's page is not the fields of the records it owns"); return 1; }
     }
 
     ID3D12CommandAllocator* allocator = NULL; ID3D12GraphicsCommandList* list = NULL; ID3D12Fence* fence = NULL; ID3D12DescriptorHeap* rtvHeap = NULL;
@@ -917,9 +1007,11 @@ int main(int argc, char** argv)
         if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-sync-progress.bmp"); Screenshot(shot, width, height); }
         Key(window, VK_ESCAPE); frames(4); /* hides the window: the download goes on */
         bool kept = g_syncAnswers[HF_SYNC_DECLINE] == 1;
-        SyncOffer(HF_SYNC_READY, 2, 3u << 20, 3u << 20); armed();
+        SyncOffer(HF_SYNC_READY, 2, 3u << 20, 3u << 20); g_syncNow.flags = HF_SYNC_LIVE; armed(); /* the running game takes them */
+        if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-sync-live.bmp"); Screenshot(shot, width, height); }
         Key(window, VK_RETURN); frames(4);
         bool restarted = g_syncAnswers[HF_SYNC_RESTART] == 1;
+        g_syncNow.flags = 0;
         SyncOffer(HF_SYNC_OFFER, 3, 3u << 20, 0); armed();
         Key(window, 'B'); frames(4);
         bool blocked = g_syncAnswers[HF_SYNC_BLOCK] == 1 && !strcmp(g_syncBlocked, "friend.tanks");
@@ -977,6 +1069,62 @@ int main(int argc, char** argv)
             "a click after a second trusts %s (%s)\n", warned ? "yes" : "NO", unarmed ? "yes" : "NO", noEnter ? "yes" : "NO", back ? "yes" : "NO",
             opened ? "yes" : "NO", g_syncOpened, trusted ? "yes" : "NO", g_syncTrusted);
         if (!warned || !unarmed || !noEnter || !back || !opened || !trusted) { puts("FAIL the mod sync TRUST warning or GET IT did not answer as expected"); failures++; }
+        /* the lobby browser (SDK 16): the terminal's count going up opens it full screen over the game, asking for a list; J leaves
+         * the joinable lobbies (the stranger's goes), Enter joins the selected one, and the backend's invitation closes it
+         * for the game's. Opened again from the terminal: on the stranger's lobby A shows the warning before Play with
+         * strangers goes on, and only Y turns it on; Q asks for Quick Play; Esc closes it without joining. */
+        g_browseList[0] = {sizeof(HfBrowseLobby), HF_LOBBY_UNJOINABLE, 0, 1, 4, 7, -1, 2, 0, "steam-1", "Stranger One", "It needs mods installed by hand."};
+        g_browseList[1] = {sizeof(HfBrowseLobby), HF_LOBBY_READY, HF_LOBBY_FLAG_FRIEND | HF_LOBBY_FLAG_JOINABLE, 2, 4, 9, 118, 0, 0, "steam-2", "Friend Host", ""};
+        g_browseList[2] = {sizeof(HfBrowseLobby), HF_LOBBY_DOWNLOAD, HF_LOBBY_FLAG_JOINABLE | HF_LOBBY_FLAG_MISSION, 3, 4, 10, 5, 3, 5u << 20, "steam-3", "Modded Host", ""};
+        g_browseList[0].fix = HF_LOBBY_FIX_STRANGERS;
+        g_browseNow.state = HF_BROWSE_READY; g_browseNow.version = 1; g_browseNow.lobbies = 3;
+        frames(40);
+        int refreshes = g_browseRefreshes, lobbiesAlone = g_lobbiesAlone, lobbiesGone = g_lobbiesGone;
+        bool idle = g_lobbiesAlone == lobbiesAlone && refreshes == 0;
+        g_browseNow.terminal = 1; frames(40);
+        bool shown = g_lobbiesAlone == lobbiesAlone + 1 && g_browseRefreshes == refreshes + 1;
+        armed();
+        if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-lobbies.bmp"); Screenshot(shot, width, height); }
+        Key(window, 'J'); frames(4);
+        Key(window, VK_RETURN); frames(4);
+        bool joined = g_browseJoins == 1 && !strcmp(g_browseJoined, "steam-2");
+        g_browseNow.state = HF_BROWSE_INVITED; frames(40);
+        bool invited = g_lobbiesGone == lobbiesGone + 1;
+        g_browseNow.state = HF_BROWSE_READY; g_browseNow.version = 2; g_browseNow.terminal = 2; frames(40); armed();
+        Key(window, 'J'); frames(4); /* every lobby again: the stranger's is first */
+        Key(window, VK_UP); Key(window, VK_UP); Key(window, VK_UP); frames(4);
+        Key(window, 'A'); frames(4);
+        bool warnedFirst = g_browseAllowStrangers == 0;
+        if (argc > 2 && dot) { snprintf(dot, (size_t)(shot + sizeof shot - dot), "-strangers.bmp"); Screenshot(shot, width, height); }
+        Key(window, 'Q'); frames(4); /* the warning holds the keys */
+        bool held = g_browseQuick == 0;
+        Key(window, 'Y'); frames(4);
+        bool allowed = g_browseAllowStrangers == 1;
+        Key(window, 'Q'); frames(4);
+        bool quick = g_browseQuick == 1;
+        Key(window, VK_ESCAPE); armed(); /* the screen powers off, then the browser goes */
+        bool escaped = g_lobbiesAlone == lobbiesAlone + 2 && g_lobbiesGone == lobbiesGone + 2 && g_browseJoins == 1 && g_editorOpens == editorOpens;
+        printf("  lobby browser: idle until the terminal %s, the terminal opens it alone %s, J then Enter joins the friend's lobby %s (%s), "
+            "the invitation closes it %s, Esc closes it %s\n", idle ? "yes" : "NO", shown ? "yes" : "NO", joined ? "yes" : "NO", g_browseJoined,
+            invited ? "yes" : "NO", escaped ? "yes" : "NO");
+        printf("  lobby browser: A warns before Play with strangers %s, the warning holds other keys %s, Y turns it on %s, Q asks for Quick Play %s\n",
+            warnedFirst ? "yes" : "NO", held ? "yes" : "NO", allowed ? "yes" : "NO", quick ? "yes" : "NO");
+        if (!idle || !shown || !joined || !invited || !escaped || !warnedFirst || !held || !allowed || !quick)
+        { puts("FAIL the lobby browser did not open, join, warn, quick-join or close as expected"); failures++; }
+        /* claimed by another mod (browse_state's owner): the terminal no longer opens the editor's browser; released, it does */
+        snprintf(g_browseNow.owner, sizeof g_browseNow.owner, "echelon.browser");
+        frames(40);
+        int claimedAlone = g_lobbiesAlone, claimedRefreshes = g_browseRefreshes;
+        g_browseNow.terminal = 3; frames(40);
+        bool stepsAside = g_lobbiesAlone == claimedAlone && g_browseRefreshes == claimedRefreshes;
+        g_browseNow.owner[0] = 0; frames(40);
+        g_browseNow.terminal = 4; frames(40);
+        bool reopened = g_lobbiesAlone == claimedAlone + 1;
+        armed();
+        Key(window, VK_ESCAPE); armed();
+        printf("  lobby browser: claimed by a mod, the terminal leaves it to the mod %s; released, the terminal opens it %s\n",
+            stepsAside ? "yes" : "NO", reopened ? "yes" : "NO");
+        if (!stepsAside || !reopened) { puts("FAIL the editor's lobby browser did not step aside for a mod's claim"); failures++; }
     }
     HRESULT removed = d3d11 ? device11->GetDeviceRemovedReason() : device->GetDeviceRemovedReason();
     if (removed != S_OK) { printf("FAIL device removed 0x%08lx\n", (unsigned long)removed); failures++; }

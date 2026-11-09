@@ -4,11 +4,18 @@
 #include <assert.h>
 #include "stratagem_categories_test.c"
 #include "loadout_preview_test.c"
+#include "armory_diag_test.c"
 #include "live_sync_test.c"
+#include "channel_test.c"
 #include "director_test.c"
 #include "shots_test.c"
 #include "rounds_test.c"
 #include "network_types_test.c"
+#include "table_growth_test.c"
+#include "crash_notes_test.c"
+#include "log_header_test.c"
+#include "mod_identity_test.c"
+#include "mod_status_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -354,6 +361,11 @@ static void DifficultyFixture(void)
     for (int i = 0; i < 2; i++) memcpy(game + kTownRingSites[i].site, kTownRingSites[i].pin, 8);
     memcpy(game + DIF_TOWN_REACH_SITE, kTownReachPin, 8);
     for (int i = 0; i < 2; i++) memcpy(game + kTownEdgeRefusals[i].site, kTownEdgeRefusals[i].pin, 6);
+    for (int i = 0; i < 4; i++) memcpy(game + kStreetBorderSites[i].site, kStreetBorderSites[i].pin, kStreetBorderSites[i].length);
+    memcpy(game + DIF_STREET_PROPS_SITE, kStreetPropsPin, sizeof kStreetPropsPin);
+    memcpy(game + DIF_RECORD_SETUP, kRecordSetupPin, sizeof kRecordSetupPin);
+    memcpy(game + DIF_TERRAIN_RAMP_SITE, kTerrainRampPin, 9);
+    for (int i = 0; i < 2; i++) memcpy(game + kTerrainStores[i].site, kTerrainStores[i].pin, 13);
     for (int i = 0; i < 4; i++) memcpy(game + kClusterAppends[i].site, kClusterAppends[i].pin, kClusterAppends[i].load + kClusterAppends[i].store + kClusterAppends[i].inc);
     memcpy(game + DIF_FLAGS_CLEAR, kFlagsClearPin, 32); memcpy(game + DIF_FLAGS_READ, kFlagsReadPin, 4);
     for (int i = 0; i < 3; i++) memcpy(game + kFlagsWrites[i].site, kFlagsWrites[i].pin, kFlagsWrites[i].length);
@@ -362,6 +374,8 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_CAPTURE_SITE, kCapturePin, sizeof kCapturePin);
     memcpy(game + DIF_TELEMETRY_SITE, kTelemetryPin, sizeof kTelemetryPin);
     memcpy(game + DIF_SPAWNER_SITE, kSpawnerPin, sizeof kSpawnerPin);
+    memcpy(game + DIF_MINE_SITE, kMinePin, sizeof kMinePin);
+    memcpy(game + DIF_MINE_DONE_JUMP, kMineDonePin, sizeof kMineDonePin);
     memcpy(game + DIF_MARKER_LOOP_SITE, kMarkerLoopPin, sizeof kMarkerLoopPin);
     memcpy(game + DIF_MARKER_ROUTE_SITE, kMarkerRoutePin, sizeof kMarkerRoutePin);
     memcpy(game + DIF_TIMER_SITE, kTimerPin, sizeof kTimerPin);
@@ -1522,6 +1536,95 @@ static void TownsFixture(void)
     TownsFixtureOnce(0);
 }
 
+/* The destruction-record map's setup (InstallRecordMap), run as machine code: the setup's own bytes at 0x13DF870, a
+ * harness entering them with rbx the owner and rsp 16-aligned, its exit at 0x13DF889. Unpatched it keeps the 0x8000
+ * inline slots; patched an owner gets 0x10000 slots of its own (again for the same owner), the qword clearing the empty
+ * key, and a ninth owner takes the buffer set up longest ago. */
+typedef void (*RecordSetupFn)(uint8_t* owner);
+static void RecordMapFixture(void)
+{
+    uintptr_t game = TownGame();
+    assert(VirtualAlloc((void*)(game + 0x13DF000u), 0x1000, MEM_COMMIT, PAGE_EXECUTE_READWRITE) != NULL);
+    TownPut(game, DIF_RECORD_SETUP, kRecordSetupPin, sizeof kRecordSetupPin);
+    static const uint8_t in[] = {0x53, 0x48, 0x89, 0xCB, 0x48, 0x83, 0xEC, 0x20}; /* push rbx; mov rbx, rcx; sub rsp, 0x20 */
+    static const uint8_t out[] = {0x48, 0x83, 0xC4, 0x20, 0x5B, 0xC3};             /* add rsp, 0x20; pop rbx; ret */
+    TownHarness(game, 0x13F0C00u, in, sizeof in, DIF_RECORD_SETUP);
+    TownPut(game, DIF_RECORD_SETUP_BACK, out, sizeof out);
+    RecordSetupFn setup = (RecordSetupFn)(void*)(game + 0x13F0C00u);
+    uint8_t* owners[DIF_RECORD_MAPS + 1];
+    for (int i = 0; i <= DIF_RECORD_MAPS; i++)
+        assert((owners[i] = (uint8_t*)VirtualAlloc(NULL, 0xC6000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)) != NULL);
+    uint32_t empty = 0xFFFFFFFFu;
+    memcpy(owners[0] + 0xC5F54, &empty, 4);
+    setup(owners[0]);
+    assert(*(uint8_t**)(owners[0] + 0xC5F48) == owners[0] + 0x5F48 && *(uint64_t*)(owners[0] + 0xC5F50) == 0x8000u);
+
+    float savedScale = g_difficulty.mapScale;
+    g_difficulty.mapScale = 2.0f;
+    DifficultyInstall d = {game};
+    assert(RecordMapFailed(game) == NULL && InstallRecordMap(&d) == NULL && *(uint8_t*)(game + DIF_RECORD_SETUP) == 0xE9);
+    memcpy(owners[0] + 0xC5F54, &empty, 4);
+    setup(owners[0]);
+    uint64_t* first = *(uint64_t**)(owners[0] + 0xC5F48);
+    assert(first != NULL && (uint8_t*)first != owners[0] + 0x5F48 && *(uint64_t*)(owners[0] + 0xC5F50) == DIF_RECORD_SLOTS);
+    first[DIF_RECORD_SLOTS - 1] = 7; /* the whole buffer is writable */
+    setup(owners[0]);
+    assert(*(uint64_t**)(owners[0] + 0xC5F48) == first);
+    for (int i = 1; i < DIF_RECORD_MAPS; i++)
+    {
+        setup(owners[i]);
+        uint64_t* own = *(uint64_t**)(owners[i] + 0xC5F48);
+        assert(own != NULL && own != first && *(uint64_t*)(owners[i] + 0xC5F50) == DIF_RECORD_SLOTS);
+    }
+    setup(owners[DIF_RECORD_MAPS]);
+    assert(*(uint64_t**)(owners[DIF_RECORD_MAPS] + 0xC5F48) == first && g_recordKept == 0);
+    g_difficulty.mapScale = savedScale;
+    for (int i = 0; i <= DIF_RECORD_MAPS; i++) VirtualFree(owners[i], 0, MEM_RELEASE);
+    VirtualFree((void*)game, 0, MEM_RELEASE);
+}
+
+/* Terrain on larger maps: an area within an objective's stamp radius + 16 m is found, through a location-group item and
+ * through a direct one; outside it, or for a location with no item, it is not. */
+static void TerrainFixture(void)
+{
+    uint8_t* level = calloc(1, 0x3000);
+    uint8_t* block = calloc(1, DIF_OBJECTIVE_COUNT + 4);
+    uint8_t* items = calloc(2, 0x1C8);
+    uint8_t groups[2][0x18] = {{0}}, set[0x38] = {0};
+    assert(level != NULL && block != NULL && items != NULL);
+    uint64_t pointer = (uint64_t)(uintptr_t)block;
+    memcpy(level + 0x2C8, &pointer, 8);
+    float radius[2] = {50.0f, 20.0f};
+    memcpy(items + 0xD8, &radius[0], 4);                 /* group 1, item 0: 50 m */
+    memcpy(items + 0x1C8 + 0xD8, &radius[1], 4);         /* the direct item: 20 m */
+    pointer = (uint64_t)(uintptr_t)items; memcpy(groups[1] + 8, &pointer, 8);
+    uint32_t one = 1, two = 2; memcpy(groups[1] + 0x10, &one, 4);
+    pointer = (uint64_t)(uintptr_t)groups; memcpy(set + 0x28, &pointer, 8); memcpy(set + 0x30, &two, 4);
+    uint64_t direct = (uint64_t)(uintptr_t)(items + 0x1C8);
+    uint8_t* locations = block + DIF_OBJECTIVE_LOCATIONS;
+    const float at[3][2] = {{100.0f, 100.0f}, {500.0f, 500.0f}, {900.0f, 900.0f}};
+    for (int i = 0; i < 3; i++) memcpy(locations + 0x108 * i + 0xA4, at[i], 8);
+    pointer = (uint64_t)(uintptr_t)set; memcpy(locations, &pointer, 8);
+    uint32_t kind = DIF_LOCATION_GROUP_SET; memcpy(locations + 8, &kind, 4);
+    locations[0xA1] = 1; locations[0xA2] = 0;
+    pointer = (uint64_t)(uintptr_t)&direct; memcpy(locations + 0x108, &pointer, 8);
+    locations[0x108 + 0xA2] = 0;
+    memcpy(locations + 0x210, &pointer, 8);
+    locations[0x210 + 0xA2] = 0xFF;                      /* no item: skipped */
+    uint32_t count = 3; memcpy(block + DIF_OBJECTIVE_COUNT, &count, 4);
+    uint8_t area[0x90] = {0};
+    const struct { float x, y; int inside; } cases[6] = {{140, 100, 1}, {165, 100, 1}, {167, 100, 0}, {510, 530, 1}, {537, 500, 0}, {900, 900, 0}};
+    LONG before = g_terrainRaised;
+    for (int i = 0; i < 6; i++)
+    {
+        memcpy(area + 0x80, &cases[i].x, 4); memcpy(area + 0x84, &cases[i].y, 4);
+        assert(TerrainNearObjective((uintptr_t)level, area) == cases[i].inside);
+    }
+    assert(g_terrainRaised - before == 3);
+    assert(TerrainNearObjective(0, area) == 0);
+    free(items); free(block); free(level);
+}
+
 /* SDK 6 named fields: records by (component, entity); ones other entities share are found only for reading. */
 typedef struct FakeRecord { const char* component; uint64_t entity; uint8_t* bytes; uint32_t stride; int shared; } FakeRecord;
 static FakeRecord g_fakeRecords[16];
@@ -2013,7 +2116,7 @@ static void LuaBridgeFixture(void)
     }
 
     strcpy(editor->id, editorId);
-    for (int i = mods; i < g_modCount; i++) memset(&g_mods[i], 0, sizeof g_mods[i]);
+    for (int i = mods; i < g_modCount; i++) { memset(&g_mods[i], 0, sizeof g_mods[i]); g_mods[i].order = i; }
     g_modCount = mods;
     for (int i = 0; i < g_fakeRecordCount; i++) free(g_fakeRecords[i].bytes);
     g_fakeRecordCount = g_componentCount = g_editCount = 0;
@@ -2500,6 +2603,18 @@ static void OwnAllFixture(void)
         records[(size_t)theirs * size] ^= 0xFF; /* the base changes; the copy does not */
         assert(records[(size_t)mine * size] != records[(size_t)theirs * size]);
     }
+    /* its records are edited as its own once the data has loaded too (set_live, the editor's pages), not only those it
+     * named; without own_all, one it did not name is refused */
+    {
+        const SdkComponent* fire = SdkComponentNamed("ProjectileWeaponComponentData");
+        int fired = g_fired[HF_EVENT_ENTITIES_READY];
+        g_fired[HF_EVENT_ENTITIES_READY] = 1;
+        assert(fire != NULL && EditTarget(&g_mods[0], "set_live", hmg, fire) == 0);
+        g_weapons[0].ownAll = 0;
+        assert(EditTarget(&g_mods[0], "set_live", hmg, fire) == -1);
+        g_weapons[0].ownAll = 1;
+        g_fired[HF_EVENT_ENTITIES_READY] = fired;
+    }
     /* content lists it with its base; a caller's older, smaller struct gets no more than it holds */
     {
         HfContent c = {sizeof c};
@@ -2507,6 +2622,30 @@ static void OwnAllFixture(void)
         for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c)
             if (c.kind == HF_KIND_ENTITY && c.id == hmg) found = c.base == base && !strcmp(c.name, "fixture/hmg-sentry") && !strcmp(c.mod, g_mods[0].id);
         assert(found);
+        /* an arsenal weapon: own_all taken from its HfWeapon; listed last once registered, with its entities and its own
+         * text (the editor gives it a page), not while pending */
+        HfWeapon gold = {sizeof gold};
+        gold.base = 0x5678; gold.unit = "fixture/liberator_gold"; gold.designation = "AR-23G"; gold.name = "Liberator Gold"; gold.own_all = 1;
+        uint32_t goldId = ApiAddWeapon(&g_mods[0], &gold);
+        Weapon* w = &g_weapons[g_weaponCount - 1];
+        assert(goldId != 0 && w->id == goldId && w->ownAll && !w->plain && w->state == 0);
+        int listed = 0;
+        for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c) listed += c.kind == HF_KIND_ITEM;
+        assert(listed == 0);
+        w->state = 1;
+        w->copies = base;
+        uint32_t last = 0;
+        for (uint32_t i = 0; ApiContent(&g_mods[0], i, &c); i++, c.size = sizeof c)
+            if (c.kind == HF_KIND_ITEM)
+            {
+                assert(c.id == goldId && c.base == 0x5678 && c.entity == w->entity && c.base_entity == base && !strcmp(c.name, "fixture/liberator_gold") &&
+                    !strcmp(c.title, "Liberator Gold") && !strcmp(c.designation, "AR-23G") && !strcmp(c.mod, g_mods[0].id));
+                listed++;
+                last = i;
+            }
+        HfContent after = {sizeof after};
+        assert(listed == 1 && !ApiContent(&g_mods[0], last + 1, &after));
+        g_weaponCount--; /* the fixture's other checks know the sentry only */
         uint8_t small[offsetof(HfContent, designation) + 8];
         memset(small, 0xEE, sizeof small);
         ((HfContent*)small)->size = offsetof(HfContent, designation);
@@ -2540,6 +2679,64 @@ static uint64_t FakeConsume(void* system, uint8_t* event, uint64_t r8, uint64_t 
 {
     g_consumed = event;
     return r9 + 1;
+}
+
+/* Typed events (hf_on_<event>, hellforge_mod.h): the listener gets its kind's struct; a damage-pre one changes the hit. */
+static HfDamageEvent g_typedDamage;
+static int g_typedCalls;
+static void TypedDamage(HfMod* mod, const HfDamageEvent* damage, void* user) { g_typedDamage = *damage; g_typedCalls++; }
+static void TypedPre(HfMod* mod, HfDamagePreEvent* pre, void* user) { pre->damage.amount = *(const int32_t*)user; }
+
+static void TypedEvents(HfMod* mod, uint8_t* event)
+{
+    HfApi api = {0};
+    api.size = (uint32_t)sizeof api;
+    api.subscribe = ApiSubscribe;
+    const HfApi* was = mod->api;
+    mod->api = &api;
+    static const int32_t halved = 75;
+    assert(hf_on_damage(mod, TypedDamage, NULL, 0) == 0 && hf_on_damage_pre(mod, TypedPre, (void*)&halved, 0) == 0);
+    assert(hf_on_damage(mod, NULL, NULL, 0) == 1); /* refused */
+    api.size = (uint32_t)offsetof(HfApi, subscribe); /* a loader before SDK 7: refused, nothing called */
+    assert(hf_on_damage(mod, TypedDamage, NULL, 0) == 1);
+    api.size = (uint32_t)sizeof api;
+    g_typedCalls = 0;
+    ConsumeDamageDetour(NULL, event, 0, 0, 0, 0);
+    int32_t applied;
+    memcpy(&applied, event + 0x2C, 4);
+    assert(applied == 75 && g_typedCalls == 1 && g_typedDamage.info.kind == HF_ON_DAMAGE && g_typedDamage.amount == 75 &&
+        g_typedDamage.target == 0x400777 && g_typedDamage.position[1] == 2.0f);
+    mod->api = was;
+}
+
+static int g_manyTicks, g_manyHeard;
+static void ManyTick(HfMod* mod, float dt, void* user) { g_manyTicks++; }
+static void ManyHeard(HfMod* mod, const HfEventInfo* event, void* user) { g_manyHeard++; }
+
+/* Many mods: on_game_thread and subscribe have no limit; the tables grow, and every callback and listener still runs. */
+static void ManyModsFixture(void)
+{
+    TickTable* ticks = g_ticks;
+    int listeners = g_listenerCount, tick = g_tickState;
+    LONG listening = g_listening;
+    g_tickState = 1; g_manyTicks = 0; g_manyHeard = 0;
+    for (int i = 0; i < 500; i++)
+    {
+        HfMod* mod = &g_mods[i % MAX_MODS];
+        assert(ApiOnGameThread(mod, ManyTick, NULL));
+        assert(ApiSubscribe(mod, HF_ON_KILL, ManyHeard, NULL, INT32_MIN));
+    }
+    LONG before = ticks ? ticks->count : 0;
+    assert(g_ticks->count == before + 500 && g_ticks->capacity >= g_ticks->count && g_listenerCount == listeners + 500);
+    for (LONG i = before; i < g_ticks->count; i++) g_ticks->entries[i].callback(g_ticks->entries[i].mod, 0.016f, g_ticks->entries[i].user);
+    assert(g_manyTicks == 500);
+    int loaded[MAX_MODS];
+    for (int i = 0; i < MAX_MODS; i++) { loaded[i] = g_mods[i].loaded; g_mods[i].loaded = 1; }
+    HfEventInfo kill = {sizeof kill, HF_ON_KILL, 0};
+    Dispatch(&kill);
+    assert(g_manyHeard == 500);
+    for (int i = 0; i < MAX_MODS; i++) g_mods[i].loaded = loaded[i];
+    g_ticks = ticks; g_listenerCount = listeners; g_listening = listening; g_tickState = tick;
 }
 
 static void EventsFixture(void)
@@ -2600,6 +2797,8 @@ static void EventsFixture(void)
     assert(g_heardCount == 1 && g_queued == 1);
     EventsTick();
     assert(g_heardCount == 2 && g_queued == 0 && g_lastDamage.info.update == g_updates);
+    g_gameThread = thread;
+    TypedEvents(mod, event);
 
     g_listenerCount = 0; g_listening = 0; g_eventsGame = 0; g_playerCount = 0; g_lastState = 0; g_consumeDamage = NULL;
     free(player); free(peers); free(players); free(gameState); free(game);
@@ -3132,9 +3331,9 @@ static void SetupOrderFixture(void)
 /* The behaviour stubs against a synthetic game (behaviours.c InstallBehaviours): every pinned function and dispatch site
  * as reviewed, then the resume stub run. A HellForge behaviour resumes as its base does (the transport as 667: its
  * flight target re-sent on other machines), any other id takes the switch's default. */
-static void BehaviourStubsFixture(void)
+/* A synthetic game for the behaviour stubs: every pinned function and dispatch site as reviewed. */
+static uint8_t* BehaviourGame(size_t size)
 {
-    size_t size = 0x1000000;
     uint8_t* game = VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
     assert(game);
     for (int f = 0; f < F_COUNT; f++) memcpy(game + kBhvFunctions[f].rva, kBhvFunctions[f].pin, 32);
@@ -3146,14 +3345,14 @@ static void BehaviourStubsFixture(void)
     }
     memcpy(game + kBhvSites[S_RESUME].ja - 6, kBhvResumePin, sizeof kBhvResumePin);
     memcpy(game + BHV_RESUME_SWITCH, kBhvResumeSwitchPin, sizeof kBhvResumeSwitchPin);
-    HfMod* mod = &g_mods[0];
-    g_behaviourCount = 0; g_behaviourState = 0;
-    HfBehaviour transport = {sizeof transport}, turret = {sizeof turret};
-    transport.base = HF_BEHAVIOUR_PELICAN_TRANSPORT;
-    turret.base = HF_BEHAVIOUR_PELICAN_TURRET;
-    assert(ApiAddBehaviour(mod, &transport) == BHV_FIRST && ApiAddBehaviour(mod, &turret) == BHV_FIRST + 1);
-    assert(InstallBehaviours((uintptr_t)game) == 1 && g_behaviourState == 1);
-    /* the switch, resume's end and the branch's own target, after the pins were checked: each answers what it was given */
+    return game;
+}
+
+/* Once the stubs are in: resume's switch, its end and the branch's own target answer what they were given, and the
+ * patched branch is resume as the game would call it. */
+typedef int (*ResumeFn)(void* ctx, uint32_t index);
+static ResumeFn BehaviourResume(uint8_t* game)
+{
     static const uint8_t cases[] = {0x89, 0xD0, 0xC3};                          /* mov eax, edx; ret */
     static const uint8_t none[] = {0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xC3};          /* mov eax, -1; ret */
     static const uint8_t onward[] = {0xB8, 0xFE, 0xFF, 0xFF, 0xFF, 0xC3};        /* mov eax, -2; ret */
@@ -3162,13 +3361,26 @@ static void BehaviourStubsFixture(void)
     memcpy(game + kBhvSites[S_RESUME].target, onward, sizeof onward);
     int32_t rel;
     memcpy(&rel, game + kBhvSites[S_RESUME].ja + 2, 4);
-    typedef int (*ResumeFn)(void* ctx, uint32_t index);
-    ResumeFn resume = (ResumeFn)(game + kBhvSites[S_RESUME].ja + 6 + rel);
+    return (ResumeFn)(game + kBhvSites[S_RESUME].ja + 6 + rel);
+}
+
+static void BehaviourStubsFixture(void)
+{
+    size_t size = 0x1000000;
+    uint8_t* game = BehaviourGame(size);
+    HfMod* mod = &g_mods[0];
+    g_behaviourCount = 0; g_behaviourState = 0;
+    HfBehaviour transport = {sizeof transport}, turret = {sizeof turret};
+    transport.base = HF_BEHAVIOUR_PELICAN_TRANSPORT;
+    turret.base = HF_BEHAVIOUR_PELICAN_TURRET;
+    assert(ApiAddBehaviour(mod, &transport) == BHV_FIRST && ApiAddBehaviour(mod, &turret) == BHV_FIRST + 1);
+    assert(InstallBehaviours((uintptr_t)game) == 1 && g_behaviourState == 1);
+    ResumeFn resume = BehaviourResume(game);
     assert((uint8_t*)resume < game || (uint8_t*)resume >= game + size); /* patched into HellForge's block */
     assert(resume(NULL, BHV_FIRST) == (int)(BHV_PELICAN_TRANSPORT - BHV_RESUME_FIRST));   /* 694 resumes as 667 */
     assert(resume(NULL, BHV_FIRST + 1) == (int)(BHV_PELICAN_TURRET - BHV_RESUME_FIRST)); /* 695 as 645 */
     assert(resume(NULL, BHV_FIRST + 2) == -2 && resume(NULL, 300) == -2 && resume(NULL, BHV_PELICAN_TRANSPORT) == -2); /* every other id as before */
-    g_behaviourCount = 0; g_behaviourState = 0; g_bhvGame = 0;
+    g_behaviourCount = 0; g_behaviourState = 0; g_bhvGame = 0; g_bhvBlock = NULL;
     VirtualFree(game, 0, MEM_RELEASE);
 }
 
@@ -3545,15 +3757,237 @@ static void HookChainFixture(void)
     assert(((volatile ChainFn)ChainTarget2)(5) == 2 * 5 + 7 + 110 && !strcmp(g_trail, "ba"));
 }
 
+/* B.4: which debug exceptions FieldWatchHit claims. Dr6 bits 0-2 name the watchpoint; when bits 0-3 are clear, a system
+ * that does not report Dr6 (Wine) still sends the trap of a thread FieldWatch armed, unless TF is a single step of
+ * someone else's. Every combination of code, Dr6, TF and armed. */
+static void FieldWatchClaimFixture(void)
+{
+    static const DWORD codes[] = {EXCEPTION_SINGLE_STEP, EXCEPTION_BREAKPOINT, EXCEPTION_ACCESS_VIOLATION};
+    static const DWORD64 dr6s[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        0x4000000000000000ull, 0xFFFFFFFFFFFFFFFFull};
+    for (size_t c = 0; c < sizeof codes / sizeof codes[0]; c++)
+        for (size_t d = 0; d < sizeof dr6s / sizeof dr6s[0]; d++)
+            for (int tf = 0; tf < 2; tf++)
+                for (int armed = 0; armed < 2; armed++)
+                {
+                    int expected = FIELD_WATCH_PASS;
+                    if (codes[c] == EXCEPTION_SINGLE_STEP && (dr6s[d] & 7) != 0) expected = FIELD_WATCH_CLAIM;
+                    else if (codes[c] == EXCEPTION_SINGLE_STEP && (dr6s[d] & 0xF) == 0 && armed && !tf) expected = FIELD_WATCH_CLAIM_UNKNOWN;
+                    assert(FieldWatchClaim(codes[c], dr6s[d], tf ? 0x100 : 0, armed) == expected);
+                }
+    /* the exact B.3 context: single step, Dr6=0, TF clear, on an armed thread is ours; unarmed and TF single steps pass */
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0, 1) == FIELD_WATCH_CLAIM_UNKNOWN);
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0x100, 1) == FIELD_WATCH_PASS);
+    assert(FieldWatchClaim(EXCEPTION_SINGLE_STEP, 0, 0, 0) == FIELD_WATCH_PASS);
+    puts("PASS field watch: Dr6 names the watchpoint, Dr6=0 on an armed thread with TF clear is claimed, TF single steps and unarmed threads pass on");
+}
+
+/* The map preview watchpoints are off unless HELLFORGE_DIFFICULTY_FIELDWATCH=1: with it unset, 0 or anything else,
+ * FieldWatch runs no self-test, arms no thread (another thread's debug registers stay clear) and records no field. */
+static DWORD WINAPI FieldWatchIdle(void* event) { WaitForSingleObject(event, INFINITE); return 0; }
+static void FieldWatchOffFixture(void)
+{
+    static float fields[0x10];
+    HANDLE event = CreateEventW(NULL, TRUE, FALSE, NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchIdle, event, 0, NULL);
+    assert(event != NULL && thread != NULL);
+    const wchar_t* offValues[] = {NULL, L"0", L"yes"};
+    for (int i = 0; i < 3; i++)
+    {
+        SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", offValues[i]);
+        assert(!FieldWatchEnabled());
+        FieldWatch((uintptr_t)fields);
+        assert(g_fieldWatched == 0 && g_fieldWatchThreadCount == 0);
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(GetThreadContext(thread, &context));
+        assert(context.Dr0 == 0 && context.Dr1 == 0 && context.Dr2 == 0 && (context.Dr7 & 0x3F) == 0);
+    }
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", L"1");
+    assert(FieldWatchEnabled());
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
+    SetEvent(event);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+    CloseHandle(event);
+    puts("PASS field watch off by default: unset, 0 or another value arms no thread; 1 turns it on");
+}
+
+/* B.4 end to end: the real self-test, then FieldWatch arming a helper of this test process; the helper reads and
+ * writes a watched buffer at +0 and +0x10. Nothing here needs game.dll. */
+static volatile LONG g_fieldE2eBuffer[8];
+static volatile LONG g_fieldE2eThreadId;
+static HANDLE g_fieldE2eReady, g_fieldE2eGo;
+
+static DWORD WINAPI FieldWatchE2eThread(void* unused)
+{
+    g_fieldE2eThreadId = (LONG)GetCurrentThreadId();
+    if (g_fieldE2eReady == NULL || !SetEvent(g_fieldE2eReady)) return 0;
+    if (g_fieldE2eGo == NULL || WaitForSingleObject(g_fieldE2eGo, 5000) != WAIT_OBJECT_0) return 0;
+    g_fieldE2eBuffer[0] = 1;
+    LONG first = g_fieldE2eBuffer[0];
+    g_fieldE2eBuffer[4] = 2;
+    LONG second = g_fieldE2eBuffer[4];
+    return (DWORD)(first + second);
+}
+
+static void FieldWatchEndToEndFixture(void)
+{
+    int works = FieldWatchSelfTest();
+    LONG before = g_fieldHitCount;
+    g_fieldE2eReady = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldE2eGo = CreateEventW(NULL, FALSE, FALSE, NULL);
+    assert(g_fieldE2eReady != NULL && g_fieldE2eGo != NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchE2eThread, NULL, 0, NULL);
+    assert(thread != NULL);
+    assert(WaitForSingleObject(g_fieldE2eReady, 5000) == WAIT_OBJECT_0);
+    FieldWatch((uintptr_t)g_fieldE2eBuffer);
+    assert(SetEvent(g_fieldE2eGo));
+    assert(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0); /* alive: no trap reached the default handler */
+    DWORD exit = 0;
+    assert(GetExitCodeThread(thread, &exit) && exit == 3);
+    CloseHandle(thread);
+    CloseHandle(g_fieldE2eReady);
+    CloseHandle(g_fieldE2eGo);
+    g_fieldE2eReady = g_fieldE2eGo = NULL;
+    if (works)
+    {
+        assert(g_fieldHitCount > before);
+        assert(FieldWatchArmed((DWORD)g_fieldE2eThreadId));
+    }
+    else
+    {
+        assert(g_fieldWatchThreadCount == 0);
+        assert(g_fieldHitCount == before);
+    }
+    puts("PASS field watch: the self-test ran for real; an armed helper's watched reads and writes were claimed, and a system without watchpoints arms nothing");
+}
+
+/* B.4b end to end: a helper of this test process touches a watched buffer past the 48 places; then the loader's
+ * FieldWatchTick clears its Dr0-Dr2 and their Dr7 bits, and a later touch traps no more. A preview record is known
+ * first, so Dr2 (L2, Dr7 bit 4) is armed too, as in a game with the war table open. Nothing here needs game.dll. */
+static volatile LONG g_fieldCapBuffer[8];
+static volatile LONG g_fieldCapRecord; /* the preview record's +0x240, never touched */
+static HANDLE g_fieldCapReady, g_fieldCapGo, g_fieldCapFilled, g_fieldCapDone;
+
+#define FIELD_CAP_TOUCH(n) g_fieldCapBuffer[(n) & 4] = (LONG)(n)
+static DWORD WINAPI FieldWatchCapThread(void* unused)
+{
+    if (g_fieldCapReady == NULL || !SetEvent(g_fieldCapReady)) return 0;
+    if (g_fieldCapGo == NULL || WaitForSingleObject(g_fieldCapGo, 5000) != WAIT_OBJECT_0) return 0;
+    FIELD_CAP_TOUCH(0); FIELD_CAP_TOUCH(1); FIELD_CAP_TOUCH(2); FIELD_CAP_TOUCH(3);
+    FIELD_CAP_TOUCH(4); FIELD_CAP_TOUCH(5); FIELD_CAP_TOUCH(6); FIELD_CAP_TOUCH(7);
+    FIELD_CAP_TOUCH(8); FIELD_CAP_TOUCH(9); FIELD_CAP_TOUCH(10); FIELD_CAP_TOUCH(11);
+    FIELD_CAP_TOUCH(12); FIELD_CAP_TOUCH(13); FIELD_CAP_TOUCH(14); FIELD_CAP_TOUCH(15);
+    FIELD_CAP_TOUCH(16); FIELD_CAP_TOUCH(17); FIELD_CAP_TOUCH(18); FIELD_CAP_TOUCH(19);
+    FIELD_CAP_TOUCH(20); FIELD_CAP_TOUCH(21); FIELD_CAP_TOUCH(22); FIELD_CAP_TOUCH(23);
+    FIELD_CAP_TOUCH(24); FIELD_CAP_TOUCH(25); FIELD_CAP_TOUCH(26); FIELD_CAP_TOUCH(27);
+    FIELD_CAP_TOUCH(28); FIELD_CAP_TOUCH(29); FIELD_CAP_TOUCH(30); FIELD_CAP_TOUCH(31);
+    FIELD_CAP_TOUCH(32); FIELD_CAP_TOUCH(33); FIELD_CAP_TOUCH(34); FIELD_CAP_TOUCH(35);
+    FIELD_CAP_TOUCH(36); FIELD_CAP_TOUCH(37); FIELD_CAP_TOUCH(38); FIELD_CAP_TOUCH(39);
+    FIELD_CAP_TOUCH(40); FIELD_CAP_TOUCH(41); FIELD_CAP_TOUCH(42); FIELD_CAP_TOUCH(43);
+    FIELD_CAP_TOUCH(44); FIELD_CAP_TOUCH(45); FIELD_CAP_TOUCH(46); FIELD_CAP_TOUCH(47);
+    FIELD_CAP_TOUCH(48); FIELD_CAP_TOUCH(49); FIELD_CAP_TOUCH(50); FIELD_CAP_TOUCH(51);
+    FIELD_CAP_TOUCH(52); FIELD_CAP_TOUCH(53); FIELD_CAP_TOUCH(54); FIELD_CAP_TOUCH(55);
+    if (g_fieldCapFilled != NULL) SetEvent(g_fieldCapFilled);
+    if (g_fieldCapGo == NULL || WaitForSingleObject(g_fieldCapGo, 5000) != WAIT_OBJECT_0) return 0;
+    g_fieldCapBuffer[0] = 99;
+    if (g_fieldCapDone != NULL) SetEvent(g_fieldCapDone);
+    return 7;
+}
+#undef FIELD_CAP_TOUCH
+
+static void FieldWatchCapFixture(void)
+{
+    int works = FieldWatchSelfTest();
+    LONG hitsBefore = g_fieldHitCount, trapsBefore = g_fieldTrapCount;
+    g_fieldCapReady = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldCapGo = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldCapFilled = CreateEventW(NULL, FALSE, FALSE, NULL);
+    g_fieldCapDone = CreateEventW(NULL, FALSE, FALSE, NULL);
+    assert(g_fieldCapReady != NULL && g_fieldCapGo != NULL && g_fieldCapFilled != NULL && g_fieldCapDone != NULL);
+    HANDLE thread = CreateThread(NULL, 0, FieldWatchCapThread, NULL, 0, NULL);
+    assert(thread != NULL);
+    assert(WaitForSingleObject(g_fieldCapReady, 5000) == WAIT_OBJECT_0);
+    uintptr_t recordBefore = g_previewRecord;
+    g_previewRecord = (uintptr_t)&g_fieldCapRecord - 0x240;
+    FieldWatch((uintptr_t)g_fieldCapBuffer);
+    if (works)
+    {
+        CONTEXT armed = {0};
+        armed.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(SuspendThread(thread) != (DWORD)-1);
+        assert(GetThreadContext(thread, &armed));
+        assert(ResumeThread(thread) != (DWORD)-1);
+        /* Wine may report zeros here (it does in the exception handler); when it reports them, Dr2 is armed */
+        assert(armed.Dr7 == 0 || (armed.Dr2 == (uintptr_t)&g_fieldCapRecord && (armed.Dr7 & 0x10) != 0));
+    }
+    assert(SetEvent(g_fieldCapGo));
+    assert(WaitForSingleObject(g_fieldCapFilled, 5000) == WAIT_OBJECT_0); /* the helper touched 56 places */
+    if (works)
+    {
+        assert(g_fieldHitCount == FIELD_WATCH_HITS && g_fieldTrapCount > trapsBefore);
+        assert(!g_fieldWatchOff);
+        FieldWatchTick();
+        assert(g_fieldWatchOff);
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        assert(SuspendThread(thread) != (DWORD)-1);
+        assert(GetThreadContext(thread, &context));
+        assert(context.Dr0 == 0 && context.Dr1 == 0 && context.Dr2 == 0 && (context.Dr7 & FIELD_WATCH_DR7_BITS) == 0);
+        assert(ResumeThread(thread) != (DWORD)-1);
+        LONG trapsCleared = g_fieldTrapCount;
+        assert(SetEvent(g_fieldCapGo));
+        assert(WaitForSingleObject(g_fieldCapDone, 5000) == WAIT_OBJECT_0);
+        assert(g_fieldTrapCount == trapsCleared && g_fieldHitCount == FIELD_WATCH_HITS); /* the later touch trapped no more */
+    }
+    else
+    {
+        assert(g_fieldHitCount == hitsBefore && g_fieldWatchThreadCount == 0 && !g_fieldWatchOff);
+        FieldWatchTick();
+        assert(!g_fieldWatchOff);
+        assert(SetEvent(g_fieldCapGo));
+        assert(WaitForSingleObject(g_fieldCapDone, 5000) == WAIT_OBJECT_0);
+    }
+    DWORD exit = 0;
+    assert(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0);
+    assert(GetExitCodeThread(thread, &exit) && exit == 7); /* the process and its helper survived */
+    CloseHandle(thread);
+    CloseHandle(g_fieldCapReady);
+    CloseHandle(g_fieldCapGo);
+    CloseHandle(g_fieldCapFilled);
+    CloseHandle(g_fieldCapDone);
+    g_fieldCapReady = g_fieldCapGo = g_fieldCapFilled = g_fieldCapDone = NULL;
+    g_previewRecord = recordBefore;
+    puts("PASS field watch: past the 48 places the loader's thread clears the armed threads' Dr0-Dr2 and all their Dr7 bits (Dr2's L2 too), logs once, and later touches do not trap");
+}
+
+#include "live_mods_test.c" /* after the helpers it shares (Edit, FixtureLoad) */
+#include "live_content_test.c" /* after live_mods_test.c and the behaviour and registry helpers */
+
 int main(int argc, char** argv)
 {
     strcpy(g_build, "25480438");
+    for (int i = 0; i < MAX_MODS; i++) g_mods[i].order = i; /* load order as the plan creates them */
     for (int i = 0; i < 2; i++) { g_mods[i].loaded = 1; g_mods[i].log = INVALID_HANDLE_VALUE; }
     strcpy(g_mods[0].id, "a"); strcpy(g_mods[1].id, "b");
     g_modCount = 2;
     FieldsFixture();
     LiveFixture();
     LiveSyncFixture();
+    LiveModsFixture();
+    OwnLiveFixture();
+    LiveCodeFixture();
+    EditsForgetFixture();
+    NetTypesFixture();
+    HotDataFixture();
+    ContentNumbersFixture();
+    ContentInstallFixture();
+    ContentWeaponsFixture();
+    ContentDifficultyFixture();
+    ChannelGameFixture();
+    ChannelFixture();
+    LiveBrowseFixture();
     LuaBridgeFixture();
     ActionsFixture();
     PassivesFixture();
@@ -3580,6 +4014,7 @@ int main(int argc, char** argv)
     FarHookFixture();
     HookChainFixture();
     EventsFixture();
+    ManyModsFixture();
     AbilitiesFixture();
     LooseGuardFixture();
     ReaperFixture();
@@ -3588,6 +4023,7 @@ int main(int argc, char** argv)
     RegisteredItemsFixture();
     SetupOrderFixture();
     BehaviourStubsFixture();
+    ContentBehaviourFixture();
     ExtraFixtures();
     MeleeFixture();
     Component* c = &g_components[0]; g_componentCount = 1;
@@ -3708,9 +4144,10 @@ int main(int argc, char** argv)
     wchar_t temporary[MAX_PATH], plan[MAX_PATH];
     assert(GetTempPathW(MAX_PATH, temporary) && GetTempFileNameW(temporary, L"hfs", 0, plan));
     FILE* file = _wfopen(plan, L"wb"); assert(file);
-    fputs("mod\ta\tfixture\t-\nstat\ta\tcomponent\tFixture\t0000000000000001\t0\t0\tu32\t00000014\t0000000A\t0\t1\t0\tfixture\n", file);
+    fputs("mod\ta\tfixture\t-\nmod_version\ta\t1.2.3 beta\nmod_version\tnobody\t9\nstat\ta\tcomponent\tFixture\t0000000000000001\t0\t0\tu32\t00000014\t0000000A\t0\t1\t0\tfixture\n", file);
     fclose(file); g_statCount = 0; g_modCount = 0;
     assert(ReadPlan(plan) == 0 && g_statCount == 1 && g_modCount == 1 && !wcscmp(g_mods[0].dll, L"-"));
+    assert(!strcmp(g_mods[0].version, "1.2.3 beta")); /* a version for no mod of the plan is dropped */
     assert(g_stats[0].hasExpect && g_stats[0].expect == 10 && g_stats[0].value == 20);
     /* More observations than the loader once held (16384), and one it cannot read: the plan, and its mods, still load. */
     file = _wfopen(plan, L"wb"); assert(file);
@@ -3718,6 +4155,7 @@ int main(int argc, char** argv)
     fputs("observe\tNoSuchTable\t-\t0\t1\t4\ti32\nmod\ta\tfixture\t-\n", file);
     fclose(file); g_statCount = 0; g_modCount = 0; g_statsProbeCount = 0; g_statsProbesSkipped = 0;
     assert(ReadPlan(plan) == 0 && g_modCount == 1 && g_statsProbeCount == 20000 && g_statsProbesSkipped == 1);
+    assert(g_mods[0].version[0] == 0); /* a plan without the line: no version */
     g_statsProbeCount = 0;
     DeleteFileW(plan);
     if (argc == 3)
@@ -3747,12 +4185,22 @@ int main(int argc, char** argv)
         assert(!ModuleAt(0, where, sizeof where) && !ModuleAt((uintptr_t)heap, where, sizeof where));
         free(heap);
     }
+    CrashNotesFixture();
+    LogHeaderFixture();
+    ModIdentityFixture();
+    StatusFixture();
     DifficultyFixture();
     ClusterRingsFixture();
     TownsFixture();
+    RecordMapFixture();
+    TerrainFixture();
     NetSwitchFixture();
     NetworkTypesFixture();
     NetworkWidthFixture();
+    GrowthMagicFixture();
+    GrowthLookupFixture();
+    GrowthSitesFixture();
+    GrowthTableFixture();
     {
         /* game.dll mapped at the top of the address space (a tester's PC: level 11 refused, "no memory within 2 GB"):
          * nothing fits above it, so the moved tables go below it, still within a signed 32-bit offset */
@@ -3785,11 +4233,18 @@ int main(int argc, char** argv)
     }
     StratagemCategoriesFixture();
     LoadoutPreviewFixture();
+    FieldWatchClaimFixture();
+    FieldWatchOffFixture();
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", L"1"); /* the diagnostic's own tests opt in */
+    FieldWatchEndToEndFixture();
+    FieldWatchCapFixture();
+    SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
+    ArmoryDiagFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
-        "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
+        "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
         "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; registered items: a full registry's export, names escaped; "
-        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn");
+        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 167 sites, a table grown, built again on a reload and grown again");
     return 0;
 }

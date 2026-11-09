@@ -1,0 +1,185 @@
+{
+  "format": 1,
+  "build": "25480438",
+  "note": "Game globals by name (SDK 16, hellforge_globals.h): cells in a module's data that hold a pointer to one of the game's objects (a manager, a queue), and the fields of that object the research has named. witnesses: 1 to 3 instructions of the game's code that load the cell (rva, and its bytes with the ones after it); the generator checks that each points at the cell, and the loader that one of them reads as reviewed before it hands the cell out (two, so a later patch over one of them does not lose the global). aliases: former names the loader still resolves (a renamed global keeps working for mods built with its old name; functions.json has them too). Offsets are from the start of the object. The loader resolves them only on this build: a new game build revalidates every entry.",
+  "globals": {
+    "Game": {
+      "rva": "0x3326340",
+      "witnesses": [
+        {"rva": "0x144024", "code": "48 8B 0D 15 23 1E 03 48 BF F3 9D E1"},
+        {"rva": "0x1CFC38", "code": "48 8B 15 01 67 15 03 0F 57 C9 48 8B"}
+      ],
+      "meaning": "The Game: the session's top object, whose state the game's ChangeState (game.dll+0xAB2FA0) sets",
+      "fields": {
+        "state": {"offset": "0xAC21C", "type": "u32", "meaning": "the game's state (HF_STATE_...; hf->game_state reads it)"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-state; HellForge's HF_ON_STATE poll (event_sources.c)"
+    },
+    "PlayerManager": {
+      "rva": "0x3326468",
+      "witnesses": [
+        {"rva": "0x3A4BDE", "code": "48 8B 05 83 18 F8 02 48 8D 54 24 48"},
+        {"rva": "0x3A9DC2", "code": "48 8B 15 9F C6 F7 02 0F B6 E8 83 BA"}
+      ],
+      "meaning": "The players of the session. Per slot i (0 to count - 1): the peer id at +0x2C8 + 0x38 i (u64), its lifecycle at +0x2E0 + 0x38 i (u32: 2 waiting to respawn, 3 spawned), its player entity at [+0xE8 + 8 i] + 8 (u32), its Helldiver's network id at +0x3A8 + 0x20 i. Slots move as players leave: tell players apart by peer id",
+      "fields": {
+        "count": {"offset": "0x84", "type": "u32", "meaning": "players in the session (at most 4)"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-mission; HellForge's HF_ON_PLAYER_SPAWN poll (event_sources.c)"
+    },
+    "LocalUser": {
+      "rva": "0x347CEF0",
+      "witnesses": [
+        {"rva": "0x4C375B", "code": "48 8B 05 8E 97 FB 02 44 8B 41 08 48"},
+        {"rva": "0x517FDC", "code": "48 8B 05 0D 4F F6 02 48 C7 01 00 00"}
+      ],
+      "meaning": "This machine's user",
+      "fields": {
+        "peer": {"offset": "0xB398", "type": "u64", "meaning": "this machine's player's peer id (HfPlayerEvent.peer)"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-mission; HellForge's local player (event_sources.c)"
+    },
+    "GameMode": {
+      "rva": "0x33266A0",
+      "witnesses": [
+        {"rva": "0x38013B", "code": "48 8B 05 5E 65 FA 02 48 8B D9 83 78"},
+        {"rva": "0x38031C", "code": "48 8B 05 7D 63 FA 02 83 78 08 00 74"}
+      ],
+      "meaning": "The game mode",
+      "fields": {
+        "mode": {"offset": "0x8", "type": "u32", "meaning": "1 in a mission"},
+        "mission": {"offset": "0x38", "type": "ptr", "meaning": "the mission's data: +0x14 bit 0 set on the host, +8 the game mode's entity (u32)"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-actions; HellForge's actions (actions.c ActMission)"
+    },
+    "EntityManager": {
+      "rva": "0x346BF98",
+      "witnesses": [
+        {"rva": "0xBA043", "code": "48 8B 0D 4E 1F 3B 03 8B 50 08 48 83"},
+        {"rva": "0xBA0F5", "code": "48 8B 0D 9C 1E 3B 03 8B 50 08 E8 0C"}
+      ],
+      "meaning": "The entities of this machine's world. At +0xF22EC8 a hash map of network ids to slots (8-byte keys, 4-byte values), and at +0xF32F20 the network objects by slot, 24 bytes each (+0 the entity id, u32); at +0xF1AEB0 the map of entity ids, at +0xF32F18 their descriptors",
+      "source": "HD2Runtime 0.40.1 research event-combat; HellForge's event polls (event_polls.c)"
+    },
+    "HealthManager": {
+      "rva": "0x3326688",
+      "witnesses": [
+        {"rva": "0x4A441A", "code": "4C 8B 15 67 22 E8 02 75 07 B8 FF FF"},
+        {"rva": "0x38AF95", "code": "48 8B 0D EC B6 F9 02 45 33 C0 48 89"}
+      ],
+      "meaning": "Every entity's health. At +0x1030 a hash map of entity ids to indexes (8-byte keys, 4-byte values); an index's descriptor names its entity (+0 resource u64, +8 entity u32, +12 unit, +16 network id, +20 bit 0 owned here); its record holds health (i32) at +0x14 and its life (u32: 0 alive, 1 downed, 2 or more dead) at +0x19C; its ext record the maximum health (i32) at +0x14",
+      "fields": {
+        "count": {"offset": "0x1020", "type": "u32", "meaning": "indexes in use"},
+        "descriptors": {"offset": "0x1048", "type": "ptr", "meaning": "an array of descriptor pointers, by index"},
+        "records": {"offset": "0x1058", "type": "ptr", "meaning": "the health records, 0x1B8 bytes each, by index"},
+        "ext": {"offset": "0x1060", "type": "ptr", "meaning": "the ext records, 0x1C bytes each, by index"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-combat; HellForge's HF_ON_HEAL poll (event_polls.c) and heal (actions.c)"
+    },
+    "MotionManager": {
+      "rva": "0x3326558",
+      "witnesses": [
+        {"rva": "0xBAD7C", "code": "48 8B 0D D5 B7 26 03 45 33 C9 45 33"},
+        {"rva": "0xBAEE4", "code": "48 8B 0D 6D B6 26 03 41 B0 01 8B 50"}
+      ],
+      "meaning": "Entities that move. At +0x48A0 a hash map of entity ids to indexes (8-byte keys, 4-byte values); an index's descriptor names its entity at +8 (u32) and has bit 0 of +0x14 set while it is live; its record starts with its velocity (3 floats, m/s)",
+      "fields": {
+        "count": {"offset": "0x4880", "type": "u32", "meaning": "indexes in use"},
+        "descriptors": {"offset": "0x48B8", "type": "ptr", "meaning": "an array of descriptor pointers, by index"},
+        "records": {"offset": "0x48C8", "type": "ptr", "meaning": "the motion records, 0x84 bytes each, by index"}
+      },
+      "source": "HD2Runtime 0.40.1 research player-avatar-actions; HellForge's add_velocity (actions.c)"
+    },
+    "ExplosionQueue": {
+      "rva": "0x346D558",
+      "witnesses": [
+        {"rva": "0x4C8A2D", "code": "4C 8B 25 24 4B FA 02 F2 0F 10 00 44"},
+        {"rva": "0x6939F5", "code": "48 8B 0D 5C 9B DD 02 44 8B C8 44 89"}
+      ],
+      "meaning": "The explosion requests of this frame: RequestExplosion's queue",
+      "fields": {
+        "count": {"offset": "0x20", "type": "u32", "meaning": "requests queued (256 at most: RequestExplosion refuses more)"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-explosions; HellForge's spawn_explosion (actions.c)"
+    },
+    "ProjectileSystem": {
+      "rva": "0x347CEA8",
+      "witnesses": [
+        {"rva": "0x5F5E03", "code": "48 8B 0D 9E 70 E8 02 4C 89 75 00 C7"},
+        {"rva": "0x612F0B", "code": "48 8B 05 96 9F E6 02 F2 0F 11 B5 E0"}
+      ],
+      "meaning": "The projectiles in flight: FireProjectile's system and the projectile pool",
+      "fields": {
+        "running": {"offset": "0x28", "type": "u8", "meaning": "1 while projectiles run (in a mission)"}
+      },
+      "source": "HD2Runtime 0.40.1 research projectile-ballistics; HellForge's spawn_projectile and shot rules (actions.c)"
+    },
+    "CombatQueues": {
+      "rva": "0x347CF38",
+      "witnesses": [
+        {"rva": "0x5F31AD", "code": "48 8B 0D 84 9D E8 02 F3 0F 11 45 90"},
+        {"rva": "0x5F3413", "code": "48 8B 0D 1E 9B E8 02 4C 8D 45 10 45"}
+      ],
+      "meaning": "This frame's damage and status requests, which the frame's drain applies (QueueDamage, QueueStatusRequest)",
+      "fields": {
+        "damage_count": {"offset": "0x201120", "type": "u32", "meaning": "damage requests queued (4096 at most)"},
+        "status_count": {"offset": "0x201134", "type": "u32", "meaning": "status requests queued (4096 at most)"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-combat; HellForge's injure and apply_status (actions.c)"
+    },
+    "ScoreManager": {
+      "rva": "0x3326AE0",
+      "witnesses": [
+        {"rva": "0x53E136", "code": "48 8B 1D A3 89 DE 02 4C 8B C9 44 8B"},
+        {"rva": "0x53E1BA", "code": "48 8B 1D 1F 89 DE 02 48 8B F9 8B 83"}
+      ],
+      "meaning": "The players' mission stats. At +0x37D58 a map of player entities to indexes; the index's record at +0x37D98 + 0x28 index: a stat table, and 64 source blocks of 0x148 bytes at [record + 0x18], each a resource and 16 stat entries (HF_STAT_...)",
+      "source": "HD2Runtime 0.40.1 research event-mission; HellForge's HF_ON_STAT poll (event_polls.c)"
+    },
+    "WielderManager": {
+      "rva": "0x3326420",
+      "witnesses": [
+        {"rva": "0x4AAB0A", "code": "4C 8B 15 0F B9 E7 02 75 14 B8 FF FF"},
+        {"rva": "0x4AABCA", "code": "4C 8B 15 4F B8 E7 02 75 17 B8 FF FF"}
+      ],
+      "meaning": "What entities hold. At +0x30 a map of entities to instances; an instance's slot 0 (its hand) at [+0x60] + 0x1D0 instance",
+      "fields": {
+        "slots": {"offset": "0x60", "type": "ptr", "meaning": "the instances' slots, 0x1D0 bytes per instance"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-wielder; HellForge's HF_ON_WEAPON poll (event_polls.c)"
+    },
+    "InventoryManager": {
+      "rva": "0x3326738",
+      "witnesses": [
+        {"rva": "0x3A9E00", "code": "4C 8B 05 31 C9 F7 02 33 DB 8B CB 45"},
+        {"rva": "0x3ACE69", "code": "4C 8B 0D C8 98 F7 02 48 89 6C 24 30"}
+      ],
+      "meaning": "The Helldivers' inventories. At +0x28 a map of entities to records; a record's inventory selection at +0x1C (u32: 1 primary, 2 secondary, 3 support, 4 or 5 a held item)",
+      "fields": {
+        "records": {"offset": "0x50", "type": "ptr", "meaning": "the inventory records, 0x30 bytes each"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-wielder; HellForge's HF_ON_WEAPON poll (event_polls.c)"
+    },
+    "Destructibles": {
+      "rva": "0x3326550",
+      "witnesses": [
+        {"rva": "0x4A501B", "code": "48 8B 05 2E 15 E8 02 45 33 C0 48 89"},
+        {"rva": "0x4B21A7", "code": "48 8B 0D A2 43 E7 02 45 33 C0 48 89"}
+      ],
+      "meaning": "The world's destructible objects. Their descriptor pointers at +0x4030 and world indexes at +0x6030, one per destructible",
+      "fields": {
+        "count": {"offset": "0xC", "type": "u32", "meaning": "destructibles"}
+      },
+      "source": "HD2Runtime 0.40.1 research event-destruction; HellForge's HF_ON_BUGHOLE poll (event_polls.c)"
+    },
+    "DestructionRecords": {
+      "rva": "0x346D528",
+      "witnesses": [
+        {"rva": "0x4B1E1B", "code": "48 8B 0D 06 B7 FB 02 E8 29 FA F2 00"},
+        {"rva": "0x4C5B4F", "code": "48 8B 1D D2 79 FA 02 66 66 0F 1F 84"}
+      ],
+      "meaning": "The destruction state of the world's destructibles: records of 12 bytes at +0xC5F78 by world index (+0 unit, +7 stage u8, +8 bit 0 registered)",
+      "source": "HD2Runtime 0.40.1 research event-destruction; HellForge's HF_ON_BUGHOLE poll (event_polls.c)"
+    }
+  }
+}

@@ -223,6 +223,15 @@ static uintptr_t BoosterRow(uint64_t value)
     return table ? table + (uintptr_t)value * BOOSTER_ROW : 0;
 }
 
+/* A booster edit's field in the table (0: not read as reviewed), or 0 with *why. Also live_mods.c's lookup. */
+static uintptr_t BoosterField(const StatEdit* e, uintptr_t table, const char** why)
+{
+    if (!table || strcmp(g_build, "25480438")) { *why = "the booster table is not as reviewed"; return 0; }
+    if (e->own || e->record < 1 || e->record >= (int64_t)BOOSTER_ROWS || e->offset < 4 || e->offset > BOOSTER_ROW - 4 || e->offset % 4)
+    { *why = "no such booster row or field"; return 0; }
+    return table + (uintptr_t)e->record * BOOSTER_ROW + e->offset;
+}
+
 /* Stats edits of the booster table, once it is readable (refused if it never is within 60 s of the entity data). */
 static void StatsBoostersReady(void)
 {
@@ -237,10 +246,10 @@ static void StatsBoostersReady(void)
     {
         StatEdit* e = &g_stats[i];
         if (strcmp(e->kind, "BoosterSettings") || !e->mod->loaded) continue;
-        if (!table || strcmp(g_build, "25480438")) StatsRefuse(e, "the booster table is not as reviewed");
-        else if (e->own || e->record < 1 || e->record >= (int64_t)BOOSTER_ROWS || e->offset < 4 || e->offset > BOOSTER_ROW - 4 || e->offset % 4)
-            StatsRefuse(e, "no such booster row or field");
-        else StatsWrite(e, table + (uintptr_t)e->record * BOOSTER_ROW + e->offset);
+        const char* why = NULL;
+        uintptr_t at = BoosterField(e, table, &why);
+        if (!at) StatsRefuse(e, why);
+        else StatsWrite(e, at);
     }
 }
 
@@ -267,29 +276,47 @@ static uintptr_t MeleeVolume(uint64_t rva)
     return 0;
 }
 
+/* A hit volume edit's field, or 0 with *why. Also the live stats layer's lookup (live_stats.c). */
+static uintptr_t MeleeField(const StatEdit* e, const char** why)
+{
+    uintptr_t row = strcmp(g_build, "25480438") ? 0 : MeleeVolume((uint64_t)e->record);
+    if (!row) { *why = "the hit volume is not as reviewed"; return 0; }
+    if (e->own || e->offset < 4 || e->offset > MELEE_VOLUME_SIZE - 4 || e->offset % 4) { *why = "no such hit volume field"; return 0; }
+    return row + e->offset;
+}
+
 static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready); /* fields.c */
+
+/* A difficulty row's or a spawn director row's field (director.c), checked as a live edit is (a squad within the queue's
+ * capacity, ranges in order), its row in *row; 0 with *why. Also the live stats layer's lookup (live_stats.c). */
+static uintptr_t DirectorField(StatEdit* e, uintptr_t* row, const char** why)
+{
+    uint32_t stride = DirectorStride(e->kind), size = StatSize(e);
+    int found = 1;
+    *row = strcmp(g_build, "25480438") || e->record < 0 ? 0 : TableRowOf(e->kind, (uint64_t)e->record, &found);
+    if (!*row) { *why = "no such row, or its table is not as reviewed"; return 0; }
+    if (e->own || e->offset > stride - size || (size == 4 && e->offset % 4)) { *why = "no such field in its row"; return 0; }
+    if ((*why = DirectorRefuses(e->kind, *row, e->offset, &e->value, size)) != NULL) return 0;
+    return *row + e->offset;
+}
 
 /* One difficulty, roster or composition edit, checked as a live edit is. */
 static void StatsDirectorEdit(StatEdit* e)
 {
-    uint32_t stride = DirectorStride(e->kind), size = StatSize(e);
-    if (!stride || !e->mod->loaded) return;
-    int found = 1;
-    uintptr_t row = strcmp(g_build, "25480438") || e->record < 0 ? 0 : TableRowOf(e->kind, (uint64_t)e->record, &found);
+    if (!DirectorStride(e->kind) || !e->mod->loaded) return;
+    uintptr_t row = 0;
     const char* why = NULL;
-    if (!row) { StatsRefuse(e, "no such row, or its table is not as reviewed"); return; }
-    if (e->own || e->offset > stride - size || (size == 4 && e->offset % 4)) { StatsRefuse(e, "no such field in its row"); return; }
-    if ((why = DirectorRefuses(e->kind, row, e->offset, &e->value, size)) != NULL) { StatsRefuse(e, why); return; }
-    uint32_t before = 0;
-    SafeRead(row + e->offset, &before, size);
-    StatsWrite(e, row + e->offset);
+    uintptr_t at = DirectorField(e, &row, &why);
+    if (!at) { StatsRefuse(e, why); return; }
+    uint32_t before = 0, size = StatSize(e);
+    SafeRead(at, &before, size);
+    StatsWrite(e, at);
     if (e->applied && !strcmp(e->kind, "DifficultySettings")) DifficultyMirror(row, e->offset, &before, &e->value, size);
 }
 
 /* Stats edits of the difficulty rows and the spawn director's rosters and compositions (director.c), once level 11 is in
- * place (or none was added) and game.dll's data reads as reviewed; refused if that never happens within 120 s. Each is
- * checked as a live edit is (a squad within the queue's capacity, ranges in order); a difficulty row of the game's own
- * table goes to every copy that held the same bytes. */
+ * place (or none was added) and game.dll's data reads as reviewed; refused if that never happens within 120 s. A
+ * difficulty row of the game's own table goes to every copy that held the same bytes. */
 static int g_directorDone;
 static void StatsDirectorReady(void)
 {
@@ -319,10 +346,10 @@ static void StatsMeleeReady(void)
     {
         StatEdit* e = &g_stats[i];
         if (strcmp(e->kind, "MeleeHitVolume") || !e->mod->loaded) continue;
-        uintptr_t row = strcmp(g_build, "25480438") ? 0 : MeleeVolume((uint64_t)e->record);
-        if (!row) StatsRefuse(e, "the hit volume is not as reviewed");
-        else if (e->own || e->offset < 4 || e->offset > MELEE_VOLUME_SIZE - 4 || e->offset % 4) StatsRefuse(e, "no such hit volume field");
-        else StatsWrite(e, row + e->offset);
+        const char* why = NULL;
+        uintptr_t at = MeleeField(e, &why);
+        if (!at) StatsRefuse(e, why);
+        else StatsWrite(e, at);
     }
 }
 

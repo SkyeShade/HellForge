@@ -104,13 +104,27 @@ static int StatsPerksNamed(void)
     return any;
 }
 
+/* A perk edit's field (0: the entry is not as reviewed, with *ready 0 while the manager is not there yet). */
+static uintptr_t PerkFieldOf(const StatEdit* e, int* ready)
+{
+    uint32_t stride = !strcmp(e->kind, "PassiveModifier") ? 16 : 12;
+    uintptr_t at = e->offset >= 4 && e->offset <= stride - 4 && !e->own && e->record >= 0 ? PerkRow(e->kind, (uint64_t)e->record, ready) : 0;
+    return at ? at + e->offset : 0;
+}
+
+/* A perk edit's field, or 0 (live_stats.c's lookup). */
+static uintptr_t PerkField(const StatEdit* e)
+{
+    int ready = 0;
+    return PerkFieldOf(e, &ready);
+}
+
 static void StatsPerkEdit(StatEdit* e, int* ready)
 {
     if (strncmp(e->kind, "Passive", 7) || !e->mod->loaded) return;
-    uint32_t stride = !strcmp(e->kind, "PassiveModifier") ? 16 : 12;
-    uintptr_t at = e->offset >= 4 && e->offset <= stride - 4 && !e->own && e->record >= 0 ? PerkRow(e->kind, (uint64_t)e->record, ready) : 0;
+    uintptr_t at = PerkFieldOf(e, ready);
     if (!at) StatsRefuse(e, "the armor perk's entry is not as reviewed");
-    else StatsWrite(e, at + e->offset);
+    else StatsWrite(e, at);
 }
 
 /* The stats pass's perk edits, once the passive rows are readable (refused if they never are within 120 s of the

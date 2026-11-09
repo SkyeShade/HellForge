@@ -16,9 +16,10 @@ reaches PlayFab, Arrowhead's services or vanilla players' sessions.
 2. Compare modlist codes. Friends need the same gameplay mods, in the same versions with the same files; the order is
    up to each player, and cosmetic mods, packs and Lua mods are each player's own. The Mods page shows the code.
    [mods.md](mods.md#playing-with-friends) describes what each player sees when a join is refused. When the host shares
-   their mods, the joiner can download them and restart with them instead
-   ([mods.md](mods.md#playing-with-other-mods)). Once the restarted game is on the ship, the host's invitation to their
-   lobby waits in game: accept it to join.
+   their mods, the joiner can download them and play with them instead
+   ([mods.md](mods.md#playing-with-other-mods)): the running game takes them without a restart when it can (APPLY AND
+   JOIN), and the host's invitation comes at once; otherwise the game restarts, and once it is on the ship the invitation
+   waits in game. Accept it to join.
 3. Start a session. In the game's social menu, the friends list shows Steam friends who are playing HELLDIVERS 2 with
    HellForge running, and you join their game from there. Steam sign-in, Steam friends and Steam lobbies are the real
    ones.
@@ -31,8 +32,9 @@ reaches PlayFab, Arrowhead's services or vanilla players' sessions.
    [Stats in co-op](#stats-in-co-op) says what each way means for what other players see.
 5. When the host leaves, the lobby closes for everyone, as HD2's host ends the session. If you were playing with the
    host's stats, your own come back.
-6. Who may reach you at all is "Play with strangers" (Settings > MULTIPLAYER), off by default: off, only your Steam
-   friends reach your backend, and the Galactic Map shows your friends' public lobbies only. See
+6. Who may reach you at all is "Play with strangers" (Settings > MULTIPLAYER): on by default while your next session is
+   sandboxed, and off when it is not, unless you have chosen on or off yourself. Off, only your Steam friends reach your
+   backend, and the Galactic Map shows your friends' public lobbies only. See
    [Play with strangers](#play-with-strangers) for what turning it on risks.
 7. The game's own Privacy setting (Options) decides who may join a lobby you host:
    - **Public:** with Play with strangers on, any HellForge player; with it off, your Steam friends only, and the lobby is
@@ -133,16 +135,27 @@ Paths in the table are under `src/HellForge.LocalBackend/`. Endpoint ids request
 1000; each friend's endpoints take ids in a block of 64 starting at 4096. The lobby's size limit is the game's own
 `maxMembers`. Test transports (in memory, and loopback UDP) stand in for Steam in the tests.
 
-The protocol is `hellforge-mp-6`: mods set up in id order, added entities numbered by resource id, and mod content
-values in `stats.set`. A backend with another protocol is refused.
+The feature protocol is `hellforge-mp-9`, at wire level `1` (`LobbyService.Protocol`, `LobbyService.WireLevel`).
+`LobbyService.Compatible` accepts it; later feature versions can be added there while they keep wire level 1 and
+older features still answer. The directory lists `hf.wire` beside `hellforge` and searches by `hf.wire` equal, so a
+directory does not have to know every feature version; `DirectoryService.Valid` still checks that the listing's
+feature protocol is compatible. Joins and rejoins use `Compatible` too. Protocol 9: per-player mods leave the modlist
+digest, the mod set carries both tiers, bundled mods count by `coopLevel`, and the directory searches by the wire
+level; earlier steps below name the protocols they used.
+
+**HellForge 0.3 (`hellforge-mp-8`, `LobbyService.LegacyProtocol`).** Protocol 9 changed what must match, not the frames,
+so `Compatible` accepts 0.3's too, and this backend speaks down to it ([HellForge 0.3 players](#hellforge-03-players)).
+Older protocols are refused as another HellForge.
 
 | Frames | Names |
 |---|---|
 | Pipe (stand-in to backend) | `hello` |
 | Lobby | `lobby.create`, `lobby.join`, `lobby.update`, `lobby.leave`, `lobby.kick`, `lobby.invite`, `lobby.find`, `lobby.result`, `lobby.memberAdded`, `lobby.memberRemoved`, `lobby.updated`, `lobby.disconnected`, `lobby.found`, `lobby.inviteReceived`, `lobby.refused` |
 | Party | `party.host`, `party.connect`, `party.endpoint`, `party.endpointGone`, `party.leave`, `party.message`, `party.kick`, `party.connected`, `party.endpointCreated`, `party.endpointDestroyed`, `party.deviceJoined`, `party.deviceLeft`, `party.networkGone` |
-| Between backends only | `peer.ping`, `account.key`, `presence`, `presence.hello`, `stats.set`, `war.clock`, `lobby.invited`, `lobby.rejoin`, `lobby.rejoined` |
+| Between backends only | `peer.ping`, `account.key`, `presence`, `presence.hello`, `stats.set`, `war.clock`, `lobby.invited`, `lobby.rejoin`, `lobby.rejoined`, `mods.info`, `mods.offer`, `mods.files`, `mods.get`, `mods.filelist`, `mods.chunk` |
+| Mod channel (between backends) | `mods.msg`, `mods.share`, `mods.sharesnap` |
 | Live-edit pipe (backend to game) | `session`, `notice`, `set`, `reset`, `base`, `get` |
+| Live-edit pipe, SDK 16 (both ways) | `message`, `share`, `sharereset` (backend to game); `send`, `share` (game to backend) |
 
 ### Joining and the modlist gate
 
@@ -152,16 +165,22 @@ member properties must keep to PlayFab's limits (below). The host's backend chec
 1. whether the joiner may join at all: not kicked from this lobby, and allowed by its privacy
    ([Lobby privacy, invitations and kicks](#lobby-privacy-invitations-and-kicks)). This comes first, so a refused
    stranger is never offered the host's mods;
-2. the protocol;
-3. the modlist digest, so a mismatch is refused before the game sees a member join;
+2. the protocol (`LobbyService.Compatible`: `hellforge-mp-9` at wire level 1, or 0.3's `hellforge-mp-8`);
+3. the modlist digest, so a mismatch is refused before the game sees a member join (a 0.3 joiner's mods are compared
+   one by one instead: [HellForge 0.3 players](#hellforge-03-players));
 4. whether the lobby is locked or full.
 
 A refused join is answered with HRESULT `0x89236227` ("lobby not joinable"), after `lobby.refused` with the reason.
 
-The digest is a SHA-256 over the gameplay mods sorted by id (id, version and file hashes), so load order does not
-count. It leaves out the Local Stats mod (`zz.local.stats`), cosmetic mods, mods made only of Lua patches, and files a
-zipped mod writes into its own folder. The joiner's backend also sends its gameplay mods one by one (`--mod-list`, the
-session's `modlist.txt`, HellForge.Core's `ModlistDiff`), so the refusal can name the mods that differ. The host sends
+The digest is a SHA-256 over the shared gameplay mods sorted by id (id, version and file hashes), so load order does
+not count. It leaves out the Local Stats mod (`zz.local.stats`), cosmetic mods, mods made only of Lua patches, files a
+zipped mod writes into its own folder, and **per-player gameplay mods**: stats-only mods, texture/sound/text-only patch
+mods, and mods whose manifest says `"coop": "per-player"`. A bundled mod with `"coopLevel"` contributes
+`id|bundled|<coopLevel>` instead of file hashes, and any other mod with one `id|coop|<coopLevel>`
+(`ModSets.MatchLines`): its author's promise that copies at one level play together, so a fix release does not split
+players. Mod sync still checks every downloaded byte against the content hash, and a joiner whose copy is at the host's
+level plays its own copy (`SyncItem.LocalHash`). The joiner's backend also sends its shared gameplay mods one by one
+(`--mod-list`, the session's `modlist.txt`, HellForge.Core's `ModlistDiff`), so the refusal can name the mods that differ. The host sends
 `lobby.refused` [reason, up to 6 lines for the joiner's game]. Both backends turn it into notices ("Couldn't join
 <host>" for the joiner, "<friend> couldn't join" for the host) and post them to their game over the live-edit pipe
 (`notice`), and the in-game editor draws them over the game: the joiner's as a panel, the host's (kind `brief`,
@@ -169,7 +188,10 @@ session's `modlist.txt`, HellForge.Core's `ModlistDiff`), so the refusal can nam
 still interoperate.
 
 Once a join is accepted, the host sends `war.clock`, and the joiner's backend adopts the host's war time. A time below
-0 or above 20 years is ignored, whoever sends it.
+0 or above 20 years is ignored, whoever sends it. Then the host sends `mods.info` [lobby id, its set in ModSet's wire
+form, with a `tier` of `shared` or `per-player` per entry]. The joiner's backend takes one `mods.info` per join, only
+from the host whose lobby it joined, and if the host's per-player mods differ it shows a brief notice: "<host> plays
+with 2 mods you don't: <names>. Each player keeps their own." Nothing downloads for those; each player keeps their own.
 
 Lobby frames from other machines keep to PlayFab's limits (`PFLobby.h`): at most 30 lobby, member and search
 properties each, at most 60 changes in one update, and the result within the limits. HellForge also caps a key at 64
@@ -242,27 +264,31 @@ Which of the two kick calls HD2 makes is not known, so both are covered:
 
 ### Mod sync
 
-A joiner refused for different gameplay mods can take the host's (protocol `hellforge-mp-7`). Before the refusal the
-host sends its mod set (`mods.offer`); the joiner's backend plans the difference (`ModSyncPlan` in HellForge.Core) and
-the in-game editor shows the MOD SYNC prompt (SDK 14 `sync_state`, `sync_mod`, `sync_answer`). On accept the joiner
+A joiner refused for different gameplay mods can take the host's (protocol `hellforge-mp-9`). Before the refusal the
+host sends its mod set (`mods.offer`); the joiner's backend plans the difference (`ModSyncPlan` in HellForge.Core),
+which ignores per-player entries (they never download and are never an off), and the in-game editor shows the MOD SYNC
+prompt (SDK 14 `sync_state`, `sync_mod`, `sync_answer`). On accept the joiner
 downloads each mod's counted files from the host over the Steam link (`mods.files`, `mods.get`; speeds in
-[Mod sync speed](#mod-sync-speed)), checks every file and the whole mod (`SyncedStore.Install`), keeps it in `mods/.synced/<id>@<hash>/`, and the
-launcher restarts the session with the host's mods (`--mod-sync`). Each mod's class comes from the bytes received,
+[Mod sync speed](#mod-sync-speed)), checks every file and the whole mod (`SyncedStore.Install`), keeps it in `mods/.synced/<id>@<hash>/`, and then either
+the running game takes the host's set (`LiveMods.ApplySyncAsync`: one live change of the session's mods, docs/mods.md
+"Changing mods while you play", and a rejoin as soon as the game is on the ship, `MultiplayerHost.RejoinAfterLiveSync`)
+or the launcher restarts the session with the host's mods (`--mod-sync`). Each mod's class comes from the bytes received,
 with one rule for every host, Steam friends included (`ModSets.ClassOf`). Content (data specs HellForge checks all of,
 `DataSpecs.Unchecked`; schema stats; network field types) downloads from any host. Code and raw data (binary data
 patches, data specs with `"replace"` or unreviewed resource types such as `lua`, raw stats lines, `componentWrites`)
 download only when `data/verified-mods.json` names their exact content hash (from any host) or the player trusted it. A
-Steam friend's unverified one is `SyncAction.Trust` ("needs your trust"); a stranger's is too when the joiner's game is
-sandboxed (the backend's `--sandbox true`, `MultiplayerSettings.Sandboxed`), and otherwise `SyncAction.Manual`. The
-prompt's TRUST, after a warning (a harder one for a stranger's: `HF_SYNC_FLAG_STRANGER`, the offer file's `"stranger"`),
-answers `trust`, which adds `{id, hash, name, version, from, since}` (and `"stranger": true` for a stranger's) to
+Steam friend's unverified one is `SyncAction.Trust` ("needs your trust"); a stranger's is `SyncAction.Manual`, sandboxed
+or not, and the host refuses to serve it to a non-friend (`ModSync.Serve`: "the host shares mods HellForge has not
+checked with Steam friends only"). The prompt's TRUST, after a warning, answers `trust`, which adds
+`{id, hash, name, version, from, since}` (an earlier test build also wrote `"stranger": true` for a stranger's) to
 `"trusted"` in `mods/hellforge-mods.json` (`ModSettings`, beside `"blocked"`; the Mods page lists and untrusts them) and
 makes the offer again, downloading once nothing else waits. The joiner's checks then take the verified list or that
-list (`ModSync.Allowed`; a stranger's trust counts only in a sandboxed session), every byte checked as before. The
-session after the sync runs a synced mod trusted only from a stranger only when it is sandboxed too (`mods-stage
---sandbox`, `ModSyncSession.Resolve`); otherwise it plays the player's own mods and says why. Hosts serve code and raw
-mods to whoever their grant covers; a 0.3.0-beta host served them to Steam friends alone, so a stranger's download
-from one fails with its refusal. A mod's manifest `url` (an `https://` address,
+list (`ModSync.Allowed`; a stranger's trust counts only in a sandboxed session), every byte checked as before. A synced
+code or raw mod counts as `have` in the plan (`ModSyncPlan.Make`, its class read from the stored files) and loads in the
+session after the sync (`ModSyncSession.Resolve`, `mods-stage --sandbox`) only while it is verified now or trusted for
+that session; otherwise the plan treats it as missing, and Resolve plays the player's own mods and says why. A host
+serves content and verified mods to whoever its grant covers, and unverified code and raw mods to Steam friends alone,
+as a 0.3.0-beta host did. A mod's manifest `url` (an `https://` address,
 `ModCatalog.WebAddress`) travels in its mod set entry; GET IT answers `open`, and the joiner's backend opens that
 address (checked again) in the default browser. Bundled mods never download. The host side is
 `src/HellForge.LocalBackend/Multiplayer/ModSync.cs`; the protocol and limits are in
@@ -293,8 +319,9 @@ through the game's own invitation path, the one a friend's invitation takes. Hel
   admitted whatever the lobby's privacy, and a stranger's Steam session and join pass the stranger gate
   (`LobbyService.Welcome`). An invited player stays invited, as a refusal never removes an invitation. A kick removes
   the expectation.
-- **Older hosts.** A host from before `lobby.rejoin` does not answer, and the joiner's game says the host did not
-  answer. The protocol stays `hellforge-mp-7`.
+- **Other protocols and older hosts.** A host whose feature protocol `Compatible` refuses (now anything but
+  `hellforge-mp-9`) counts as another HellForge; later feature versions are added there while wire level 1 stays. A host
+  from before `lobby.rejoin` does not answer, and the joiner's game says the host did not answer.
 
 ### Mod sync speed
 
@@ -383,15 +410,16 @@ most 360 ms (40 ms of that is the one-way delay). A fixed window of 16 chunks wo
 Mod sync and public lobbies bring mods from people a player may not know. What limits them:
 - **What downloads by itself** is only what HellForge checks itself (data specs, schema stats, network field types),
   read from the bytes received, with the same rule for every host. Code and raw data need the verified list, or the
-  player's own trust after a warning: a Steam friend's, or a stranger's while the game is sandboxed
-  ([Mod sync](#mod-sync)).
+  player's own trust after a warning, for a Steam friend's mod only: a host serves unverified code and raw data to its
+  Steam friends alone ([Mod sync](#mod-sync)).
 - **Synced mods load only in the synced session.** They sit in `mods/.synced`, which normal sessions never load, and
   the player's own Mods page never changes.
 - **The copy is off the internet.** The network block lets the copied game reach only this PC (loopback).
 - **The game cannot start other programs.** The session runner puts the game in a job whose active-process limit is 1
   (`HostBoundedProcess`). That costs the game's crash reporter, already blocked from the network, and the DLSS updater
-  Steam's overlay starts. The Crash dump setting lifts the limit, because the loader starts `HellForge.Cli` to write
-  the dump; so does `HELLFORGE_ALLOW_CHILD_PROCESSES=1`, for diagnosing. The session's `result.json` says which
+  Steam's overlay starts. The loader writes the small crash dump from inside the game; the Crash dump setting (a full
+  dump) lifts the limit, because the loader starts `HellForge.Cli` to write that one; so does
+  `HELLFORGE_ALLOW_CHILD_PROCESSES=1`, for diagnosing. The session's `result.json` says which
   (`childProcesses`).
 - **HellForge's own programs stay as they are.** For the session, every file of the installation's `app` folder is held
   read-only, as the game copy's are: nothing the game runs can replace the launcher, the session runner, the backend
@@ -422,30 +450,36 @@ What this does not stop: unsandboxed, code in the game runs with the player's ow
 their files, write those outside HellForge's held folders, and reach other programs of the same user. Sandboxed (at
 low integrity, [steam-bridge.md](steam-bridge.md)), it can still read their files, and send what it reads through the
 game's traffic, to the lobby's other players among others. That is why code from another player downloads only when
-HellForge has verified it, or when the player trusts it: from a friend, or from a stranger only while sandboxed, with
-a warning that names what the sandbox does not stop.
+HellForge has verified it, or when the player trusts it, and only from a Steam friend: a stranger's unverified code is
+never sent, sandboxed or not.
 
 ### Public lobbies (the lobby directory)
 
 Each backend lists the public lobby its game hosts as an Invisible Steam lobby of the game's app, held beside the game's
 own (`Multiplayer/SteamLobbyDirectory.cs`, `LobbyDirectory.cs`, `DirectoryService.cs`). Its data carries the lobby's
-PlayFab search properties, its record with every account id but the host's at 0, its mod set and whether the host plays
-with edited stats. The lobby stand-in sends the game's `PFMultiplayerFindLobbies` to the backend (`lobby.find`), which
+PlayFab search properties, its record with every account id but the host's at 0, its feature protocol (`hellforge`),
+its wire level (`hf.wire`), its mod set and whether the host plays with edited stats. The lobby stand-in sends the
+game's `PFMultiplayerFindLobbies` to the backend (`lobby.find`), which
 searches the directory and evaluates the game's filter, drops lobbies the player could not join, and answers
-`lobby.found`. The map's records come from the listings (`POST /lobby/accounts`).
+`lobby.found`. The map's records come from the listings (`POST /lobby/accounts`). The directory query asks for
+`hf.wire` equal to this build's `LobbyService.WireLevel`, then `DirectoryService.Valid` checks the listing's
+`hellforge` with `LobbyService.Compatible`.
 
-All of this needs [Play with strangers](#play-with-strangers): off, the Steam link accepts no one who is not a Steam
-friend. On, it accepts someone who is not a Steam friend only while it deals with them (`StrangerGate.cs`):
+All of this needs [Play with strangers](#play-with-strangers) effective for the session (on by default when the game is
+sandboxed, off otherwise, unless the player chose). Off, the Steam link accepts no one who is not a Steam friend. On, it
+accepts someone who is not a Steam friend only while it deals with them (`StrangerGate.cs`):
 - while a lobby is listed (and Steam holds the listing);
 - a member or host of a lobby here;
 - a machine a lobby here expects back;
 - a mod download.
 
 A lobby is listed only while it is Public, the player's `"listPublic"` switch is on (the Mods page; on by default) and
-Play with strangers is on.
+Play with strangers is effective on.
 
 A stranger's listing is checked before anything of it reaches the game (`DirectoryService.Valid`, `LobbyRecords.cs`).
 One that breaks any of the following is left out whole:
+- a feature protocol `LobbyService.Compatible` accepts (`hf.protocol`, else `hellforge`: now `hellforge-mp-9`, or
+  0.3's `hellforge-mp-8`), with `hf.wire` the directory's wire level or `hellforge` 0.3's (the searches filter those);
 - a GUID lobby id, and a connection string naming the listing's host;
 - 1 to 4 members, with a limit of 2 to 8 (the game makes its lobbies for 8);
 - a lock of 0 or 1;
@@ -479,19 +513,31 @@ Which lobbies a search shows is mod sync's rule (`ModSync.Joinable`), and it use
 (`ModSyncPlan`):
 - A Steam friend's lobby running code or raw mods that are not verified is shown, because joining brings the MOD SYNC
   prompt with TRUST.
-- A stranger's lobby running such mods is shown to a sandboxed player, for the same reason, and hidden from an
-  unsandboxed one, because they are mods to install by hand.
+- A stranger's lobby running such mods is hidden, because they are mods to install by hand.
 
 Each search logs what it found, what it showed, and why it left out the rest: `Directory: search "<the game's filter>": 2
-listed, 1 shown (1 left out: it needs mods installed by hand)`. The reasons are:
+listed, 1 shown (1 left out: its host's unchecked mods download only in a sandboxed session)`. The reasons are:
 - `this machine's own lobby`, which Steam's search returns too;
 - `malformed (...)`;
 - `the game's filter`, which covers clauses Steam's search does not apply, such as difficulty ranges and member counts;
 - `its host plays with edited stats`;
 - `its mod list is malformed`;
 - `it runs a blocked mod`;
-- `its host runs another HellForge version`;
+- `its host runs an older HellForge (<bundled mod> <its version>, yours <yours>): the host needs to update`, `its host
+  runs a newer HellForge (...): update HellForge to join`, or `its host runs another HellForge version` when the
+  versions do not compare;
+- `its host's unchecked mods download only from a Steam friend` (a stranger's unverified code or raw data, which the
+  host sends to Steam friends alone);
 - `it needs mods installed by hand`.
+
+After that line, each lobby left out (except this machine's own) gets a line of its own, naming its host, the reason
+and, for a mod plan, the mods in the way with why (`ModSync.Check`, `DirectoryService.LeftOutLine`): `Directory: left
+out 1100001029d1b02: its host's unchecked mods download only from a Steam friend: Code 1 (test.code): stranger code, not
+verified.` A mod's why is `share off` (the host does not share its mods), `stranger code, not verified` or `stranger raw
+data, not verified` (unverified code or raw data from a host who is not a Steam friend), `bundled differs` (another
+HellForge) or `blocked`. A line names at most 8 mods, then how many more; a search writes at most 10 lines, then how
+many more; and the lines are written only when they differ from the last search's, since the map and the debug browser
+search every few seconds.
 
 Until 2026-10-23 a search left this machine's own lobby out without counting it. On the first two-PC test, "1 listed, 0
 shown" was the searching player's own lobby, not the friend's:
@@ -503,12 +549,124 @@ shown" was the searching player's own lobby, not the friend's:
 `HELLFORGE_TEST_STRANGERS=1` makes a backend treat friends as strangers, for testing with two friends' PCs. Details and
 open questions: [Step 7](#step-7-public-lobbies-on-the-galactic-map-2026-10-22).
 
+**The lobby browser** (`Multiplayer/BrowseApi.cs`, `DirectoryService.BrowseAsync`). Besides the map's per-planet
+searches, the backend lists every lobby the directory has, with no planet or difficulty filter, and friends' lobbies
+heard through presence. Each comes with the join check a search makes (`ModSync.Check`): lobbies the map would leave
+out for their mods stay in the list, with why, so the player sees what keeps them out. It runs at most one directory
+search every 2 s. Joining a listed lobby hands the game an invitation (`LobbyService.InviteLocal`, as a rejoin after a
+mod sync does), so the game's own join runs only when the player accepts it. The API is
+`GET /hellforge/v1/lobbies` and `POST /hellforge/v1/lobbies/<id>/join` on the loopback HTTP, for programs on this PC
+only ([external-launchers.md](external-launchers.md#the-lobby-browser-api)). The game's own debug lobby browser
+(menu presenter 41, DebugServerBrowser) searches with an empty filter every ~4 s, so the map's search answers it as
+well (seen live on 2026-10-30: a bare list of one row per lobby, or "NO SERVERS").
+
+**The ship's information terminal opens the lobby browser** (`native/mod-loader/terminal.c`, build 25480438). The
+terminal across from the Armory is menu presenter 6 (InformationTerminal). It needs Arrowhead's news, Major Order and
+statistics services; offline the game asks for `NewsFeed/801`, `v2/Assignment/War/801`, the war and profile statistics
+and `Episode/801`, gets 501 for each, and closes the terminal into an error popup. The loader hooks the presenter
+manager's open (game.dll+0x14C0550, which the game calls directly; the table entry at +0x14C0350 that Ship Station
+Hotkeys calls checks the open stack and jumps to it) and opens presenter 41 when 6 is asked for. Seen live on
+2026-10-30: walking up to the terminal and Ship Station Hotkeys' Control Center key both open the browser, and a click
+closes it. Ship Station Hotkeys checks that entry's first bytes through `code_matches`, which reads through hooks, so it
+still matches. Each presenter asked for is logged once with its caller (`terminal: the game opens menu presenter N`).
+`HELLFORGE_TERMINAL=news` keeps the terminal as the game has it.
+
+**The in-game browser** (SDK 16; `native/mod-loader/live_browse.c`, `LiveBrowse` in `Multiplayer/BrowseApi.cs`,
+`native/editor/app_lobbies.cpp`). An editor asks over the live-edit pipe (`browseask refresh|join <lobby id>`), and the
+backend answers with the API's own list: one `browselobby` line per lobby (at most 128), then `browsestate`, which
+publishes them, as mod sync's `syncmod` and `syncstate` do. A search under way (`searching`) and a join's outcome
+(`invited`, `failed`) are a `browsestate` of the same version, which keeps the lobbies. The terminal hook counts each
+redirect, and `browse_state`'s `terminal` carries the count: the in-game editor opens its LOBBY BROWSER panel when it
+goes up (and on Ctrl+L), alone over the game and holding its input like the MOD SYNC prompt. The panel asks for a
+new list every 10 s while it shows. A join closes it once the invitation is in the game, where the player accepts it.
+It is a placeholder for Echelon's browser, which can use the same calls or the HTTP API
+([lobby-browser.md](lobby-browser.md)). A mod that draws its own asks `HF_BROWSE_CLAIM` (the first claim holds until
+released; `browse_state`'s `owner` names it): the editor then opens no browser, from the terminal or Ctrl+L, closes
+one that shows, and only the owner's `HF_BROWSE_SHOWN` and `HF_BROWSE_HIDDEN` move the terminal's camera.
+
+**Quick Play and the hidden lobbies.** `browseask quick -` (Q or QUICK PLAY) lists again and joins `BrowseApi.Best`'s
+lobby, the same as `POST /hellforge/v1/lobbies/quick`; `browsestate` says `invited` with the host's name, or `failed`
+when nothing can be joined. The browse API lists what a map search leaves out: a stranger's lobby with Play with
+strangers off is listed (not contacted, its record not remembered for the map) as unjoinable with the fix `strangers`,
+and one whose host shares edited stats with `editedStats` (`JoinCheck.Fix`, the `browselobby` line's last word,
+`HfBrowseLobby.fix`). Selecting one, A (or the button) offers the setting: Play with strangers only after the launcher's
+warning, on the screen, and TURN ON (Y); `browseask allow strangers|editedstats` then turns it on for this session only
+(`MultiplayerHost.AllowForSession`: the stranger setting's `AllowForSession`, `ModSync.ShowEditedStatsThisSession`) and
+lists again. Nothing is saved: any mod in the game can send the ask, so the launcher's switch and the Mods page stay the
+player's, and the next session uses them again. Only the game's pipe can ask that, not the HTTP API. Every ask ends in a
+state that is not `searching`: a search that fails or times out, or a list the game refuses, is answered `failed` with
+the old list kept, and the editor gives up on a search or a join with no answer after 60 s. A stranger's lobby running
+unverified code or raw mods has no fix: a host sends those to Steam friends alone. A squad is at most 4 although the
+game's lobby has 8 PlayFab places: a listing's `hf.slots` counts to 4, and the browser shows a lobby of 4 as full
+(`DirectoryService.SquadSize`, also for older HellForge versions' listings, which count to 8). Each browse logs its
+counts when they change (`Directory: browse: N listed, M joinable (...)`) and, like a search, one line per lobby it
+cannot join (`Directory: browse: cannot join <host>: <why>: <mods>`), so a tester's log says what keeps lobbies out.
+
+**The terminal's camera** (`native/mod-loader/terminal_camera.c`, build 25480438). The terminal has no camera move of
+its own, so the loader makes one. When an editor read `browse_state` in the last 3 s, the terminal opens no presenter
+at all, and when the player pressed E at it (the open is called from game.dll; Ship Station Hotkeys' key calls the
+table entry from its own code and gets the browser without a glide) the camera glides for 1.1 s from the player's view to the wall screen, square to it and close enough that it
+fills the view, and `browse_state`'s `camera` goes `moving`, then `held`. The editor draws nothing (and holds input)
+until it is held, then powers its full-screen browser on and says `HF_BROWSE_SHOWN`; closing it says `HF_BROWSE_HIDDEN`
+and the camera glides back in 0.8 s. Held with no `HF_BROWSE_SHOWN` for 4 s, it glides back by itself. Without an
+editor the terminal still opens presenter 41. The glide hooks the engine's script render step (helldivers2.exe +
+0x689BC0): after it, the camera unit's pose (the main world's unit with a camera at the world's last render pose) is
+blended toward the terminal's and set with the engine's own `set_local_pose` and `update_unit`, so the frame renders
+with it. Lua's `render()` setting the pose does the same, which is how it was found; game.dll's camera code sets it
+before that step. The pins cover the five engine functions it calls; any mismatch turns it off (`camera` stays
+`none`) and the browser shows at once.
+
+#### Searching past Steam's cut
+
+Steam returns at most 50 lobbies a search (`DirectoryQuery.MaxResults`), and HellForge's own checks run after that, so
+once more than 50 are listed the joinable ones could be cut. Each listing also carries `hf.digest` (the host's modlist
+digest) and `hf.open` (`1` when the host shares and every shared mod downloads for anyone without trust: content or
+verified, `ModSync.Open`). `DirectoryService.Gather` runs the plain search first; when it comes back full, it also
+searches for `hf.digest` equal to this session's digest and for `hf.open` equal to `1`, and puts those first. Then it
+searches for 0.3's listings ([HellForge 0.3 players](#hellforge-03-players)). Each listing counts once. Below the cut
+a search costs one Steam search more than before (0.3's).
+
+#### HellForge 0.3 players
+
+0.3's backends speak `hellforge-mp-8`. Their frames are this protocol's; they differ in what must match: 0.3 counts
+every gameplay mod as shared (stats mods too) and bundled mods by their files, which differ between releases. This
+backend meets them both ways (tested against the 0.3.0 release's backend, two processes over loopback UDP and a folder
+directory, 2026-10-30):
+
+- **Finding each other.** 0.3 searches for `hellforge` equal to its protocol. A listing here that 0.3 can join (no
+  shared bundled mod on) carries `hellforge: hellforge-mp-8`, this HellForge's protocol in `hf.protocol`, 0.3's form of
+  the set in `hf.mods` (`ModSet.Legacy`: the shared mods that are not bundled, with `ModSet.LegacyDigest`, the digest
+  0.3 takes from them) and the whole set in `hf.modset`. This backend searches for 0.3's listings too
+  (`DirectoryService.Legacy`), and the browse API marks them `"older": true`.
+- **A 0.3 joiner.** It sends its own digest, which counts its bundled in-game editor's files, so the host compares its
+  mods one by one (`ModSync.LegacyAdmits`): each shared mod of the host's with the same content (a bundled one by id),
+  and nothing else but mods the host runs per player. Refused, it is offered `ModSet.Legacy`, which its mod sync reads:
+  it turns off what the host lacks (its editor, its stats mods), downloads what it may, restarts and rejoins with the
+  legacy digest, which the host admits.
+- **A 0.3 host.** A host known as 0.3's (its listing, its Steam presence's protocol) is joined in its protocol
+  (`ModSync.JoinAs`). The plan reads its bundled mods as this machine's own at `ModSets.LegacyBundledLevel` (1: their
+  co-op behaviour has not changed since). When this session plays exactly the host's shared mods the join carries the
+  host's own digest; otherwise the host refuses and offers its set, and the sync session after it is marked `legacy`:
+  `ModSyncSession.Resolve` and `AutoRejoin` check it mod by mod, since the host's digest counts its own editor's files,
+  and the rejoin and the join after it speak 0.3's protocol with the host's digest (`ModSync.Rejoining`).
+- A host with a shared bundled mod on (Hell Forge's difficulty, Vanilla Plus) is not listed for 0.3, whose mod sync
+  would call it another HellForge version; 0.3 friends who run the same bundled mod still join it.
+
 ### Play with strangers
 
-Off by default, in `mods/hellforge-mods.json` (`playWithStrangers`): the launcher's Settings > MULTIPLAYER switch, or
-`HellForge.Cli settings --strangers yes|no` ([external-launchers.md](external-launchers.md#profiles-and-settings)). The
-backend reads it again within 2 s of a change, also during a session, and never more than once per 2 s however many
-frames strangers send (`Multiplayer/StrangerSetting.cs`).
+The player's choice lives in `mods/hellforge-mods.json` as `"strangers": "on"` or `"off"` and is written only when
+chosen; with no key the default is **on when the game is sandboxed, off otherwise** (`StrangersEffective`). A legacy
+`"playWithStrangers"` keeps its value: true is on, and false stays off. Older settings saves wrote false for every
+player, so it cannot tell "never chosen" from "turned off"; off is the side that cannot let a stranger in unasked, and
+the launcher's "Use default" link clears it. The launcher's Settings > MULTIPLAYER switch shows the value the next
+session would use, with "On by default while your game is sandboxed" or "Off by default: <the sandbox's reason>" under
+it. Moving the switch stores the explicit choice; "Use default" removes the key. `HellForge.Cli settings --strangers
+yes|no|default` ([external-launchers.md](external-launchers.md#profiles-and-settings)) does the same; its JSON output
+has `playWithStrangers` (the effective bool) and `playWithStrangersChosen` (`true`, `false` or `null`). The backend
+reads the effective value again within 2 s of a change, also during a session, and never more than once per 2 s however
+many frames strangers send (`Multiplayer/StrangerSetting.cs`); its first read logs once which rule applies and why. The
+first session that runs with the sandbox default on shows the stranger warning in the launcher's Play page once;
+`strangersWarned` in the same file remembers it.
 
 Off:
 - every frame from someone who is not a Steam friend is dropped (`StrangerGate`; logged once a minute per machine),
@@ -553,7 +711,8 @@ taken to be SteamID64s; unanswered ids are logged.
 
 By default every player keeps their own Local Stats, and joiners can edit as the host can. A host may share its stats
 instead (ModSettings `hostStats`, the Mods page switch "Everyone plays with my editor changes", under "When I host"); then
-everyone in its lobby plays with the host's. Protocol `hellforge-mp-8`. How host's stats were first built is under
+everyone in its lobby plays with the host's. First carried by protocol `hellforge-mp-8`; the current feature protocol is
+`hellforge-mp-9`. How host's stats were first built is under
 [step 5](#step-5-stats-in-co-op-the-hosts-values-everywhere-2026-10-17), and the per-player default under
 [step 10](#step-10-every-players-own-stats-and-the-lobbys-assets-2026-10-23).
 
@@ -614,6 +773,22 @@ other machine in the lobby load them too.
 - Nothing yet makes a change wait until friends have its package. A friend's game starts loading as soon as the change
   is applied (and on joining), which is normally long before anyone calls in what it changed; a vehicle called in at
   once may still show a missing asset on a friend's screen until its package is resident.
+
+### Pickups in co-op
+
+A pile picked up on the map (Forge Credits, medals, requisition slips) is sent by the picking player's game alone:
+`POST /Operation/Mission/Activity` to its own backend once every player confirmed it, with the lobby's account ids
+(`MissionService`). The reply pays each of them the same amount; the game adds its own share and forwards the others'
+to their games. `PickupShare` (`src/HellForge.LocalBackend/Multiplayer/PickupShare.cs`) tells their backends, so the
+share is in their profiles too and survives a reload:
+
+- The picking backend sends `pickup.paid` [mission id, pile, activityId32, participant count, account ids]: a joiner
+  to the host of the lobby it joined, a host to every participant in its lobby. The host credits itself when listed
+  and passes a joiner's on to the other participants in its lobby.
+- A backend takes it only from a machine in a lobby with it (the host it joined, or a member of its own) that names
+  itself among the participants. It works out the amount from the pile itself (`MissionService.Rewards`) and pays a
+  pile once: `ProfileStore.ApplyPickup` saves the receipt (`progression.paidPiles`, "mission/pile", the last 256) with
+  the item, so a relayed copy, a retried request or a restart adds nothing.
 
 ### Shots in co-op
 
@@ -697,6 +872,26 @@ others' guns. Research: `HD2Mods\research\coop-weapon-stats` (part B).
   demolition (read by damage id per hit; the damage list is not moved for this), and shots spawned anywhere else
   (sentries, vehicles, stratagems). Which machine decides damage is unchanged: the shooter's.
 
+### The mod channel in co-op
+
+A code mod can talk to the same mod on the other players' machines, and keep a small table its host owns (SDK 16;
+[modding/concepts.md](modding/concepts.md#co-op)). `ModChannel`
+(`src/HellForge.LocalBackend/Multiplayer/ModChannel.cs`) carries it, shaped like `AssetShare`.
+
+- The game's live pipe carries its mods' lines: `send <mod id> <all|host|peer hex> <data hex>` for a message and
+  `share <mod id> <key hex> <value hex or ->` for a row the host set. A joiner's backend sends its game's messages to
+  the host as `mods.msg` [mod id, from hex, target, data]; the host delivers those that name it to its own game and
+  relays the rest to the machines they name (or to every other member for `all`). Every receiving backend sends
+  `message <seq> <mod id> <from hex> <data hex>` to its game, which raises `HF_ON_MESSAGE` for that mod alone.
+- The host's rows are its table: `mods.share` [version, mod id, key hex, value] is one change (no value: removed),
+  and `mods.sharesnap` [version, count, (mod id, key hex, value) * count] is the whole table to a member whose version
+  is behind, which is how a late joiner gets it. A joining or reconnecting game is sent `sharereset` then a `share`
+  line per row it holds; the same lines carry the host's changes. The game raises `HF_ON_SHARE` for its own mod.
+- The host enforces the caps: a message at most 1024 bytes and 64 a second from each machine, a value at most 64
+  bytes, 512 rows a mod. A joiner's share frame is refused, so only the host's rows can grow the table.
+- Rows go when the host removes them or the lobby ends or this machine leaves it; the game is sent `sharereset` then.
+  A game whose live protocol is 1 gets none of these lines; an older backend ignores the frames.
+
 ### When the host leaves
 
 When the lobby's owner leaves, the lobby closes for everyone (`lobby.disconnected`, reason LobbyDeleted). When the
@@ -721,14 +916,8 @@ the list of added content. The game's host can change mid-mission, while HellFor
 
 ### GameGuard
 
-GameGuard, the anti-cheat the supported build shipped with, does not run in a session, because the session turns it
-off. While the copied game starts, the session runner pauses it at an early point and changes its exe in memory (never
-on disk) so that it skips the static constructor that starts GameGuard and the three checks of GameGuard's status that
-would otherwise end the game: one at start-up and two later (`src/HellForge.Session/EarlyConstructor.cs`, applied as
-`SkipConstructorAndMainCheck` in `PlaySession.cs`). Each place is checked byte for byte before it is changed and read
-back after. On a mismatch the change is undone, or the game is ended, and the session stops. HellForge no longer copies
-GameGuard's files into an installation. The copy is also blocked from the internet, and HELLDIVERS 2 builds after the
-one HellForge runs (25480438) use Easy Anti-Cheat instead.
+GameGuard, the anti-cheat the supported build shipped with, does not run in a HellForge session, which is offline and
+blocked from the internet, and HellForge does not copy GameGuard's files into an installation.
 
 ### Tests
 
@@ -991,7 +1180,7 @@ it in [Playing with other mods](mods.md). Protocol `hellforge-mp-7`.
   - A Steam friend's code or raw mod that is not verified is offered for trust (`trust` in the plan, the offer
     `blocked` until none waits). `trust <mod id>` is taken only for such a mod of the current offer: its id and hash go
     on the player's trusted list with the host's name and SteamID64, and the offer is made again; when nothing else
-    waits, its download starts at once. A stranger's are `manual` whatever the player trusted.
+    waits, its download starts at once. A stranger's are `manual` whatever the player trusted, sandboxed or not.
   - `open <mod id>` opens the mod's `url` from the host's set in the default browser (at most once a second), after
     `ModCatalog.WebAddress` checks it again; nothing else is ever started.
   - The offer is also written to `<run>/backend/mod-sync.json`.
@@ -1295,3 +1484,44 @@ never ran its behaviours on the others' machines; a silo launch did not carry ov
 or vanished, with no flight or blast), so the silo launches on every machine again; a host's Orbital Plasma Barrage was
 unseen by the friend, and the friend's landing showed on the host's previous beacon on the host's screen; and a host's
 custom support weapon's shots were unseen by the friend.
+
+### Step 11: matchmaking overhaul (2026-10-30)
+
+Why: friends were refused for mods that only change what one PC sees, bundled mods built at different times could
+split a lobby, every protocol change shut every older HellForge out, and an unsandboxed session treated strangers the
+same as a sandboxed one when nobody had chosen.
+
+- **Per-player mods.** Stats-only mods, texture/sound/text-only patch mods, and manifest `"coop": "per-player"` mods
+  leave the modlist digest and the download plan. They are listed in their own PER PLAYER group on the Mods page and
+  in `mods` as `per-player`; a manifest can force `"shared"` or `"per-player"`, and a per-player declaration that would
+  change the wire (network field types) or numbered resources (a data spec) is refused. The mod set still carries
+  every gameplay mod, with an optional `"tier"` per entry, so a joiner can hear which per-player mods the host has.
+- **Bundled mods count by co-op level.** A bundled manifest's `"coopLevel"` replaces its file hashes in the digest
+  (`id|bundled|<level>`); bump it for changes other machines see or need, not for one-machine fixes. The in-game editor
+  is `"coop": "per-player"`. Bundled mods without the field keep the old file comparison.
+- **One protocol for a family of releases.** `LobbyService.Protocol` is `hellforge-mp-9` and `WireLevel` is 1;
+  `Compatible` is the join/rejoin check, and the directory filters by `hf.wire` while `DirectoryService.Valid` checks
+  the feature protocol. Later feature versions can stay compatible at the same wire level.
+- **Strangers follow the sandbox default.** `"strangers": "on"`/`"off"` is stored only when the player chooses; with no
+  key it is on in a sandboxed session and off otherwise. A legacy `playWithStrangers` true or false still counts (false
+  stays off: older saves cannot tell it from never chosen, and off cannot let a stranger in unasked). The launcher
+  switch shows the effective next-session value, with the default and its reason, a "Use default" link, and a one-time
+  warning in the Play page on the first sandboxed session that uses the default. `settings --strangers yes|no|default`
+  exposes the same choice to external launchers.
+- **A joiner hears per-player differences.** After accepting a join the host sends `mods.info` [lobby id, set wire];
+  the joiner takes one per join, only from that host, and shows a brief "<host> plays with N mods you don't: ... Each
+  player keeps their own." Nothing downloads for those, and `ModSyncPlan` ignores per-player entries entirely.
+
+### Step 12: Steam's cut, mods with a coop level, and HellForge 0.3 players (2026-10-30)
+
+- **Past Steam's cut.** Listings carry `hf.open`; a search that comes back full also asks for the session's own digest
+  and for open lobbies, and shows those first ([Searching past Steam's cut](#searching-past-steams-cut)).
+- **`coopLevel` for any mod.** Copies of a mod at one level play together whatever their files; a raised level splits
+  players. A joiner at the host's level plays its own copy.
+- **HellForge 0.3.** Its protocol is accepted and spoken back ([HellForge 0.3 players](#hellforge-03-players)). The
+  test ran 0.3.0's backend (built from `v0.3.0-beta`) and this branch's as two processes, each driven over its pipe as
+  its game would, with a bundled editor of each release's own and a content mod. Results: a 0.3 joiner with the host's
+  mods joined a 0.4 host (admitted mod by mod: "joins with HellForge 0.3"); a 0.3 joiner with a stats mod more was
+  refused, took the offer ("Ready, test.ammo have, hellforge.editor off, test.stats off"), restarted and rejoined; a
+  0.4 joiner joined a 0.3 host as `hellforge-mp-8`; a 0.4 joiner of a 0.3 host with a stats mod more downloaded it,
+  restarted, was invited back and rejoined. Not covered: two games in a mission together.

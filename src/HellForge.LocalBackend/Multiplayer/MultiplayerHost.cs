@@ -25,7 +25,10 @@ public sealed class MultiplayerHost : IAsyncDisposable
     public PartyService Party { get; }
     // The host's stats for joiners, and this game's when joined (null without a peer link or the session's mods folder).
     public StatsShare? Stats { get; private set; }
+    public PickupShare? Pickups { get; private set; }
     public AssetShare? Assets { get; private set; }
+    // The mod channel of the lobby (SDK 16): messages between the same mod and the host's shared table.
+    public ModChannel? Channel { get; private set; }
     // Mod sync: joiners download this session's mods, and this machine the mods of a host it could not join (null
     // without a peer link or the session's mods folder).
     public ModSync? Sync { get; private set; }
@@ -62,6 +65,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         presence = settings.Presence;
         this.warClock = warClock;
         logFile = new StreamWriter(Path.Combine(settings.EvidenceDirectory, "multiplayer.log"), append: true) { AutoFlush = true };
+        Log(HellForge.Core.LogHeader.Line(DateTimeOffset.Now, utcTimes: true));
         peersFile = Path.Combine(settings.EvidenceDirectory, PeersFileName);
         transport = CreateTransport(settings.Link, Log);
         pipes = new PipeHost(settings.PipeName, Log);
@@ -69,6 +73,10 @@ public sealed class MultiplayerHost : IAsyncDisposable
         // off the lobby service's lock; a peer admitted or joined is listed before its game hears of it (ListPeer)
         Lobby.HostedChanged += () => Task.Run(WritePeers);
         Lobby.PeerAdmitted += ListPeer;
+        // the squad's other joiners too (three or more players): a game may talk to each of them, not only to the host
+        Lobby.MateAdded += ListPeer;
+        // and out again at once when they leave (not after PinnedFor)
+        Lobby.MateRemoved += peer => { lock (peersGate) pinned.Remove(peer); Task.Run(WritePeers); };
         Lobby.LocalJoinStarted += (owner, _) => { ListPeer(owner); Task.Run(WritePeers); };
         // A refused join, in both games (the in-game editor shows it over the game): the joiner's says why, the host's who,
         // briefly, in a corner.
@@ -100,15 +108,21 @@ public sealed class MultiplayerHost : IAsyncDisposable
                 else if (frame.Type.StartsWith("party.", StringComparison.Ordinal)) Party.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("stats.", StringComparison.Ordinal)) Stats?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("assets.", StringComparison.Ordinal)) Assets?.FromPeer(peer, frame);
+                else if (frame.Type is "mods.msg" or "mods.share" or "mods.sharesnap") Channel?.FromPeer(peer, frame);
                 else if (frame.Type.StartsWith("mods.", StringComparison.Ordinal)) Sync?.FromPeer(peer, frame);
-                else if (frame.Type == "war.clock" && warClock != null && Lobby.HostsJoinedLobby(peer) && long.TryParse(frame.Text(0), out var seconds))
-                {
-                    // Any host, a stranger's too, only within a war's possible time: from its start to MaxWarSeconds.
-                    if (seconds is < 0 or > MaxWarSeconds) { Log($"Ignored the host's war time ({seconds} s): out of range."); return; }
-                    warClock.Set(seconds);
-                    Log($"War time set to the host's ({seconds} s).");
-                }
+                else if (frame.Type.StartsWith("pickup.", StringComparison.Ordinal)) Pickups?.FromPeer(peer, frame);
+                else if (frame.Type == "war.clock") FromPeerWarClock(peer, frame);
             };
+    }
+
+    // The host's war time, from the host of the lobby this machine joined: any host, a stranger's too, only within a war's
+    // possible time (from its start to MaxWarSeconds).
+    void FromPeerWarClock(ulong peer, Frame frame)
+    {
+        if (warClock == null || !Lobby.HostsJoinedLobby(peer) || !long.TryParse(frame.Text(0), out var seconds)) return;
+        if (seconds is < 0 or > MaxWarSeconds) { Log($"Ignored the host's war time ({seconds} s): out of range."); return; }
+        warClock.Set(seconds);
+        Log($"War time set to the host's ({seconds} s).");
     }
 
     public static MultiplayerHost Start(MultiplayerSettings settings)
@@ -126,14 +140,16 @@ public sealed class MultiplayerHost : IAsyncDisposable
                     new StatsShareOptions(() => ModSettings.Read(modsFolder).HostStats, settings.SandboxStats));
                 var stats = host.Stats;
                 host.Assets = new AssetShare(host.transport, host.Lobby, stats.Live, host.Log, () => stats.LocalStats, () => stats.LobbyPlaysHostStats);
+                host.Channel = new ModChannel(host.transport, host.Lobby, stats.Live, host.Log);
                 host.Log("Stats: every player keeps their own unless the host shares its (the Mods page); the lobby's packages load on every machine; this game's live-edit pipe is served here.");
             }
             catch (Exception error) when (error is ArgumentException or InvalidDataException or IOException) { host.Log("Stats sharing is off: " + error.Message); }
         }
+        if (host.transport != null && settings.Pickups != null) host.Pickups = new PickupShare(host.transport, host.Lobby, settings.Pickups, host.Log);
         if (host.transport != null && modsFolder != null) host.StartSync(modsFolder, settings.ModSetFile, evidenceDirectory, settings.Sandboxed);
         host.modsFolder = modsFolder;
         directory ??= host.transport != null && settings.DirectoryFolder != null ? new FolderLobbyDirectory(settings.DirectoryFolder, host.transport.LocalId) : null;
-        host.StartDirectory(directory ?? (host.transport as SteamPeerTransport)?.Directory, modsFolder);
+        host.StartDirectory(directory ?? (host.transport as SteamPeerTransport)?.Directory, modsFolder, settings.Sandboxed);
         // The transport knows this machine's SteamID only once started.
         if (host.transport != null && accountKeys != null) host.keyExchange = new AccountKeyExchange(host.transport, accountKeys, host.Log);
         // before the pipes: the game's first lobby must not be missed
@@ -143,6 +159,24 @@ public sealed class MultiplayerHost : IAsyncDisposable
         host.Log($"Multiplayer ready: pipe {pipeName}, link {(host.transport == null ? "none" : link.Split(':')[0])}" +
             (host.transport != null ? $", local peer {LobbyService.EntityId(host.transport.LocalId)}" : "") + ".");
         return host;
+    }
+
+    // The session's mods changed while it runs (LiveMods): joins are checked against the new digest, and mod sync's offers
+    // and the directory's listing carry the new set.
+    public void ModsChanged(ModSet set)
+    {
+        Sync?.SetOwn(set);
+        if (Sync != null) Lobby.ModSetWire = Sync.OwnWire; // the mods.info joiners take from now on
+        Lobby.SetMods(set.Digest, ModlistDiff.Encode(set.Fingerprints()));
+        Log($"The session's mods changed live; their digest is now {set.Digest}.");
+    }
+
+    // A live change of the session's mods is being made (true), or ended without changing them (false): friends' joins
+    // wait for it (LobbyService.ModsChanging).
+    public void ModsChanging(bool changing)
+    {
+        Lobby.ModsChanging(changing);
+        Log(changing ? "The session's mods are changing live; friends' joins wait until the game reports the change." : "The live change left the session's mods as they were.");
     }
 
     // The session folder is the evidence folder's parent; the next session's mods go to the installation's temp folder.
@@ -155,10 +189,18 @@ public sealed class MultiplayerHost : IAsyncDisposable
         // the published verified list the session runner fetched for this session, when it is signed (VerifiedMods)
         var verifiedSource = VerifiedMods.UseInstallation(install);
         Log($"Mod sync: verified list {verifiedSource.ToString().ToLowerInvariant()}, serial {VerifiedMods.Current.Serial}, {VerifiedMods.All.Count} mod(s).");
-        Sync = new ModSync(transport!, new ModSyncPaths(modsFolder, Path.GetDirectoryName(Path.GetFullPath(evidenceDirectory))!, evidenceDirectory,
+        var sync = new ModSync(transport!, new ModSyncPaths(modsFolder, Path.GetDirectoryName(Path.GetFullPath(evidenceDirectory))!, evidenceDirectory,
             ModSyncSession.PathIn(install)), own, FriendName, Log, sandboxed: sandboxed);
-        Lobby.ModsRefused = Sync.OfferMods;
-        Sync.Expected = Lobby.JoinedRecently;
+        Sync = sync;
+        Lobby.ModsRefused = sync.OfferMods;
+        Lobby.LegacyAdmits = sync.LegacyAdmits;
+        Lobby.JoinAs = sync.JoinAs;
+        sync.Expected = Lobby.JoinedRecently;
+        // A host advertises its set after a remote joins; a joiner takes one mods.info per new join and notes per-player
+        // differences in the corner.
+        Lobby.ModSetWire = sync.OwnWire;
+        Lobby.LocalJoinStarted += (host, lobbyId) => sync.JoinStarted(host, lobbyId);
+        sync.Notice += text => Stats?.Notice("brief", text, []);
         if (Stats?.Live is { } live)
         {
             Sync.Display = new LiveSyncDisplay(live);
@@ -168,28 +210,67 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Log($"Mod sync: {(own != null ? own.Mods.Count + " gameplay mods to share" : "nothing to share")}; offers go to {(Sync.Display != null ? "the game" : "the session log only")}.");
     }
 
+    // The lobby browser in this session's game (LiveBrowse, SDK 16), over the live-edit pipe mod sync shares.
+    public LiveBrowse? Browser { get; private set; }
+    public void ShowBrowser(BrowseApi browse)
+    {
+        if (Stats?.Live is { } live) Browser ??= new LiveBrowse(browse, live, Log, AllowForSession);
+    }
+
     // After a mod sync restart (--rejoin): the game is invited back into the host's lobby once it is on the ship (AutoRejoin).
     void StartRejoin(string file, string modDigest)
     {
-        var (target, reason) = AutoRejoin.Read(file, transport!.LocalId, modDigest, DateTime.UtcNow);
+        var (target, reason) = AutoRejoin.Read(file, transport!.LocalId, modDigest, DateTime.UtcNow, Sync?.Own);
         if (target == null) { Log("Rejoin: not rejoining, because " + reason); return; }
-        var rejoin = Rejoin = new AutoRejoin(target, modDigest, (peer, frame) => transport.Send(peer, frame.Encode(), reliable: true), Lobby.InviteLocal,
+        StartRejoin(target, modDigest);
+    }
+
+    // After the running game took a host's mods without a restart (LiveMods, mod sync's APPLY AND JOIN): the host is asked
+    // at once when the game is on the ship (it has its own lobby), else once it gets there (a change on the title screen,
+    // a Steam invitation's join that failed there, say). digest: this session's modlist digest now, the host's.
+    public void RejoinAfterLiveSync(ModSyncSession session, string digest)
+    {
+        if (transport == null) return;
+        var (target, reason) = AutoRejoin.From(session, transport.LocalId, digest, Sync?.Own);
+        if (target == null) { Log("Rejoin: not rejoining, because " + reason); return; }
+        StartRejoin(target, digest);
+    }
+
+    void StartRejoin(AutoRejoin.Target target, string modDigest)
+    {
+        if (target.Legacy) Sync?.Rejoining(target.Host, target.Digest);
+        var rejoin = new AutoRejoin(target, modDigest, (peer, frame) => transport!.Send(peer, frame.Encode(), reliable: true), Lobby.InviteLocal,
             (kind, title, lines) =>
             {
                 if (Stats != null) Stats.Notice(kind, title, lines);
                 else Log($"Notice not shown, no live-edit pipe: {title}");
             }, Log);
+        Rejoin?.Dispose(); /* a rejoin from an earlier sync of this session ends: this one is the player's latest */
+        Rejoin = rejoin;
         rejoin.Attach(Lobby);
+        if (Lobby.HostedLobbies().Any(l => l.LocalOwner)) rejoin.GameReady(); /* on the ship already; else its lobby's creation */
         rejoin.Start();
+    }
+
+    StrangerSetting? strangers;
+
+    // The lobby browser's "allow" (LiveBrowse): Play with strangers or edited-stats lobbies, for this session only; false
+    // when this session has no such setting to change.
+    bool AllowForSession(string what)
+    {
+        if (what == "strangers") { strangers?.AllowForSession(); return strangers != null; }
+        if (Sync is not { } sync) return false;
+        sync.ShowEditedStatsThisSession = true;
+        return true;
     }
 
     // The lobby directory and the gate for strangers, who reach this machine through it only.
     // modsFolder: where the Mods page keeps the switch that lists this player's public lobbies (ModSettings.ListPublic; on
-    // without one).
-    void StartDirectory(ILobbyDirectory? directory, string? modsFolder)
+    // without one). sandboxed: whether this session's game is, which decides the stranger default when the player never chose.
+    void StartDirectory(ILobbyDirectory? directory, string? modsFolder, bool sandboxed)
     {
         if (transport == null) return;
-        var setting = new StrangerSetting(modsFolder);
+        var setting = strangers = new StrangerSetting(modsFolder, sandboxed: sandboxed, log: Log);
         bool StrangersAllowed() => setting.Allowed;
         if (directory != null && presence != null)
             Directory = new DirectoryService(directory, Lobby, presence, transport.LocalId, pipes.SendLobby, Log, new DirectorySettings(Sync,
@@ -200,8 +281,8 @@ public sealed class MultiplayerHost : IAsyncDisposable
         var link = transport;
         Lobby.JoinRefusal = peer => link.IsFriend(peer) || StrangersAllowed() ? null :
             ["This player is not a Steam friend, and Play with strangers is off.", "Turn it on in the launcher's Multiplayer settings to join public lobbies."];
-        Log((Directory != null ? "Directory: public lobbies are listed and searched" : "Directory: off (no lobby directory for this link)") +
-            (StrangersAllowed() ? "; Play with strangers is on." : "; Play with strangers is off: friends only."));
+        Log(Directory != null ? "Directory: public lobbies are listed and searched" : "Directory: off (no lobby directory for this link)");
+        _ = StrangersAllowed(); // the first read logs which stranger rule applies and why
     }
 
     // A machine this one deals with: in a lobby hosted here, hosting one joined (or being joined) from here, a mod download,
@@ -239,17 +320,18 @@ public sealed class MultiplayerHost : IAsyncDisposable
         throw new ArgumentException("--link must be none, steam:<steam_api64.dll> or udp:<id>:<port>:<peer>=<port>,...");
     }
 
-    // The co-op peers file (PeersFileName), written whole when the set changed: the lobby and Party peers, and the peers
-    // listed ahead of them (ListPeer) until those list them too or PinnedFor has passed, so a list read just before an
-    // admission cannot take the new peer out again. Each change starts one (Task.Run) and they can reach peersGate in any
-    // order: one whose list was read before a later one's is not written after it, so a list from before a kick cannot put
-    // the kicked peer back until the next heartbeat. (A list read after a ticket holds every change made before it.)
+    // The co-op peers file (PeersFileName), written whole when the set changed: the lobby and Party peers, the other
+    // members of a friend's lobby this game is in (LobbyService.LobbyMates; one who left is written out at once,
+    // MateRemoved), and the peers listed ahead of them (ListPeer) until those list them too or PinnedFor has passed, so a list read
+    // just before an admission cannot take the new peer out again. Each change starts one (Task.Run) and they can reach
+    // peersGate in any order: one whose list was read before a later one's is not written after it, so a list from
+    // before a kick cannot put the kicked peer back until the next heartbeat. (A list read after a ticket holds every change made before it.)
     void WritePeers()
     {
         try
         {
             var ticket = Interlocked.Increment(ref peersTicket);
-            var listed = Lobby.Peers().Concat(Party.Peers()).ToHashSet();
+            var listed = Lobby.Peers().Concat(Party.Peers()).Concat(Lobby.LobbyMates()).ToHashSet();
             lock (peersGate)
             {
                 if (ticket < peersWrittenTicket) return;
@@ -332,6 +414,10 @@ public sealed class MultiplayerHost : IAsyncDisposable
         if (presence == null || transport is not IFriendSource source) return;
         var friends = source.HellForgeFriends;
         presence.SetFriends(friends);
+        // a friend whose presence gives HellForge 0.3's protocol is joined with it (ModSync.JoinAs)
+        foreach (var friend in friends.Where(f => f.Protocol != null))
+            if (friend.Protocol == LobbyService.LegacyProtocol) Sync?.LegacyHost(friend.SteamId, null);
+            else Sync?.NotLegacy(friend.SteamId);
         List<ulong> hello, periodic = [];
         lock (presenceGate)
         {
@@ -412,6 +498,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Rejoin?.Dispose();
         if (Directory != null) await Directory.DisposeAsync();
         if (Sync != null) await Sync.DisposeAsync();
+        if (Channel != null) await Channel.DisposeAsync();
         if (Assets != null) await Assets.DisposeAsync();
         if (Stats != null) await Stats.DisposeAsync();
         await pipes.DisposeAsync();
@@ -440,4 +527,6 @@ public sealed record MultiplayerSettings(string PipeName, string Link, string Mo
     public string? SandboxStats { get; init; }
     // Whether the session's game is sandboxed: mod sync then lets the player trust a stranger's code and raw mods.
     public bool Sandboxed { get; init; }
+    // The backend's pickups, shared with the lobby's other backends (PickupShare).
+    public PickupRelay? Pickups { get; init; }
 }

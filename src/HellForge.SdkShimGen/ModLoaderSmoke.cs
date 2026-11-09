@@ -27,6 +27,7 @@ public static unsafe class ModLoaderSmoke
         var pin = NativeLibrary.GetExport(game, "hellforge_fake_pin");
         var target = (delegate* unmanaged<int, int>)NativeLibrary.GetExport(game, "hellforge_fake_target");
         Expect(target(5) == 16, "The fake target works before hooking");
+        var byName = ByNamePlan(game, Expect, out var named);
 
         // The engine's field types (not yet "loaded"): bool, then deposit_value as the game has it.
         var rows = (byte*)NativeMemory.AllocZeroed(2 * 0x18);
@@ -75,9 +76,13 @@ public static unsafe class ModLoaderSmoke
             .Append("build\tsmoke\n").Append($"logs\t{root}\n")
             .Append($"game_pin\tfake_game.dll\t{(long)pin - gameBase:x}\t7575488b15fafc06024881c2e4030000\n")
             .Append($"network_config\tfake_game.dll\t{(long)holder - gameBase:x}\n")
+            .Append(byName)
             .Append($"entity_region\t{profile.EntityRegionSize}\t{profile.MapHeader}\n")
             .Append($"component\tDepositComponentData\t{schema.Offset}\t{schema.Header}\t{schema.Index}\t{schema.Indices}\t{schema.Records}\t{schema.RecordOffset}\t{schema.Stride}\n")
             .Append($"mod\ttest.hook\t{hookFolder}\t{Path.Combine(hookFolder, "hook_test_mod.dll")}\n")
+            .Append("mod_version\ttest.hook\t9.9.9-smoke\n")
+            // a DLL that is not there: modloader.log gives Windows' error
+            .Append($"mod\ttest.missing\t{hookFolder}\t{Path.Combine(hookFolder, "missing.dll")}\n")
             .Append($"mod\ttest.hook2\t{hookFolder2}\t{Path.Combine(hookFolder2, "hook_test_mod.dll")}\n")
             .Append($"mod\tskyeshade.machine-gun-10k-code\t{gunFolder}\t{Path.Combine(gunFolder, "machine_gun_10k.dll")}\n");
         // The Stratagem Compendium: every definition, field and value it registers is accepted (no game data needed yet).
@@ -95,6 +100,8 @@ public static unsafe class ModLoaderSmoke
         File.Copy(Path.Combine(standIns, "steam_api64.dll"), Path.Combine(root, "steam_api64.dll"));
         Environment.SetEnvironmentVariable("HELLFORGE_MODLOADER", Path.Combine(root, "hellforge_modloader.dll"));
         Environment.SetEnvironmentVariable("HELLFORGE_MODLOADER_PLAN", planPath);
+        // the session runner's two events for this "game" (SDK 16, the session's end), made before the loader starts
+        using var endSignal = SessionEndSignal.Create(Environment.ProcessId)!;
         NativeLibrary.Load(Path.Combine(root, "steam_api64.dll"));
 
         string Log(string name) => File.Exists(Path.Combine(root, name)) ? ReadShared(Path.Combine(root, name)) : "";
@@ -129,7 +136,15 @@ public static unsafe class ModLoaderSmoke
                 "The Stratagem Compendium's only refusals are the smoke plan's missing components: " + Log("mod-skyeshade.stratagem-compendium.log"));
         }
         Expect(Log("mod-test.hook.log").Contains("pattern found the pin"), "find_pattern finds the pin");
+        var hookHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(hookFolder, "hook_test_mod.dll"))));
+        Expect(Log("modloader.log").Contains($"test.hook: version 9.9.9-smoke, hook_test_mod.dll, SHA-256 {hookHash}"),
+            "modloader.log gives a code mod's version and its DLL's SHA-256");
+        Expect(Log("modloader.log").Contains("test.hook2: version not given, hook_test_mod.dll, SHA-256 " + hookHash), "A mod without a version line says so");
+        Expect(Log("modloader.log").Contains("test.missing: not loaded (the DLL could not be loaded: Windows error 126: "), "A DLL that does not load gives its error");
+        Expect(CloudSmoke.OpensDated(Path.Combine(root, "modloader.log")), "modloader.log opens with its dated line");
+        Expect(CloudSmoke.OpensDated(Path.Combine(root, "mod-test.hook.log")), "A mod's log opens with its dated line");
         Expect(target(5) == 2016, "Both detours run, each calling the next, then the original");
+        ExpectByName(Log, WaitFor, named, Expect);
         Expect(WaitFor(() => Marshal.ReadInt32(record) == 10000 && Marshal.ReadInt32(record + 4) == 10000 && Marshal.ReadInt32(record + 8) == 5000),
             "The Machine Gun mod fills the backpack's deposit record once the entity data is ready");
 
@@ -151,16 +166,73 @@ public static unsafe class ModLoaderSmoke
         Expect(WaitFor(() => rows[0x18 + 13] == 14), "The Machine Gun mod widens deposit_value once the network configuration is ready");
         Expect(rows[13] == 1, "Other field types are untouched");
         Expect(Log("mod-skyeshade.machine-gun-10k-code.log").Contains("holds up to 16383"), "The mod logs to its own log");
+        SessionEndChecks(root, endSignal, Expect);
 
         Console.WriteLine($"Mod loader smoke: {(problems.Count == 0 ? "passed" : problems.Count + " problem(s)")}; logs in {root}");
         foreach (var problem in problems) Console.Error.WriteLine("  failed: " + problem);
         return problems.Count == 0 ? 0 : 1;
     }
 
+    // SDK 16: the hook-test mods' status in mod-status.tsv, then the session's end as the session runner tells it: the mods
+    // hear it, the loader answers, and their status says so.
+    static void SessionEndChecks(string root, SessionEndSignal endSignal, Action<bool, string> expect)
+    {
+        string Log(string name) => File.Exists(Path.Combine(root, name)) ? ReadShared(Path.Combine(root, name)) : "";
+        var statuses = ModStatus.Read(root);
+        expect(statuses?.GetValueOrDefault("test.hook") == "detour installed", "set_status reaches mod-status.tsv, its tab a space: " + Log(ModStatus.FileName));
+        expect(statuses?.GetValueOrDefault("test.hook2") == "detour installed", "Each mod has its own status");
+        expect(Log("mod-test.hook.log").Contains("status: detour installed"), "The mod's log records its status");
+        expect(endSignal.Signal(TimeSpan.FromSeconds(5)), "The loader answers the session's end");
+        expect(Log("modloader.log").Contains("session end: the session is stopping"), "modloader.log notes the session's end");
+        expect(Log("mod-test.hook.log").Contains("heard the session end") && Log("mod-test.hook2.log").Contains("heard the session end"),
+            "Both hook-test mods hear the session's end");
+        expect(ModStatus.Read(root)?.GetValueOrDefault("test.hook") == "session over", "A status set at the session's end is kept");
+    }
+
     static string ReadShared(string path)
     {
         using var reader = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
         return reader.ReadToEnd();
+    }
+
+    // Functions and globals by name (SDK 16): plan lines mapping two of the fake game's functions, one to hook, one only
+    // to call, and its global cell, witnessed by its user's load of it (mov reg, [rip+disp32]). named: the one to hook.
+    static string ByNamePlan(nint game, Action<bool, string> expect, out nint named)
+    {
+        static string Code(nint at) => string.Join(' ', Enumerable.Range(0, 12).Select(i => Marshal.ReadByte(at + i).ToString("X2")));
+        named = NativeLibrary.GetExport(game, "hellforge_fake_named");
+        var callOnly = NativeLibrary.GetExport(game, "hellforge_fake_call_only");
+        expect(((delegate* unmanaged<int, int>)named)(5) == 10, "The fake named function works before hooking");
+        var fakeGlobal = NativeLibrary.GetExport(game, "hellforge_fake_global");
+        var globalUser = NativeLibrary.GetExport(game, "hellforge_fake_global_user");
+        var witness = Enumerable.Range(0, 32).Select(i => globalUser + i).FirstOrDefault(at =>
+            Marshal.ReadByte(at) is 0x48 or 0x4C && Marshal.ReadByte(at + 1) == 0x8B && (Marshal.ReadByte(at + 2) & 0xC7) == 0x05 &&
+            at + 7 + Marshal.ReadInt32(at + 3) == fakeGlobal);
+        expect(witness != 0, "The fake game's global user loads the global RIP-relative");
+        var gameBase = (long)game;
+        return $"function\tFakeNamed\tfake_game.dll\t{(long)named - gameBase:x}\t1\t{Code(named)}\n" +
+            $"function\tFakeCallOnly\tfake_game.dll\t{(long)callOnly - gameBase:x}\t0\t{Code(callOnly)}\n" +
+            $"global\tFakeGlobal\tfake_game.dll\t{(long)fakeGlobal - gameBase:x}\t{(long)witness - gameBase:x}\t{Code(witness)}\n";
+    }
+
+    // Hooks by name, asked for in init before the game loaded: both go in once it is, each adding 100; function and global
+    // find what the plan maps, and refuse what it does not.
+    static void ExpectByName(Func<string, string> log, Func<Func<bool>, bool> waitFor, nint named, Action<bool, string> expect)
+    {
+        var hook = log("mod-test.hook.log");
+        expect(hook.Contains("named hook asked for") && hook.Contains("unknown name refused") && hook.Contains("call-only refused"),
+            "hook_function takes a mapped name and refuses an unknown one and a call-only one: " + hook);
+        expect(waitFor(() => log("mod-test.hook.log").Contains("hooked FakeNamed by name") && log("mod-test.hook2.log").Contains("hooked FakeNamed by name")),
+            "Both hooks by name go in once the game is loaded");
+        expect(((delegate* unmanaged<int, int>)named)(5) == 210, "Both hooks by name run, each calling the next, then the original");
+        hook = log("mod-test.hook.log");
+        expect(hook.Contains("function by name found"), "function finds a mapped function once the game is loaded");
+        var loader = log("modloader.log");
+        expect(loader.Contains("the session's is smoke: only the plan's 2 function(s) by name") &&
+            loader.Contains("the session's is smoke: only the plan's 1 global(s) by name"),
+            "On a build the mappings are not for, only the plan's functions and globals are named, and the log says so");
+        expect(hook.Contains("global by name found") && hook.Contains("unknown global refused"),
+            "global finds a mapped global's cell once its witness reads as reviewed, and refuses an unknown name: " + hook);
     }
 
     [DllImport("kernel32.dll", SetLastError = true)] static extern nint VirtualAlloc(nint address, nuint size, uint type, uint protect);

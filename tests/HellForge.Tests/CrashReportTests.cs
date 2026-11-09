@@ -56,6 +56,15 @@ static class CrashReportTests
             check(SessionFacts.From(JsonDocument.Parse("[]").RootElement) == null, "An old session's missing facts were read.");
         });
 
+        test("A log's dated line: the local date and time, the offset from UTC and which times follow", () =>
+        {
+            check(LogHeader.Line(new DateTimeOffset(2026, 10, 26, 5, 34, 56, TimeSpan.FromHours(-7)), utcTimes: true) ==
+                "log opened 2026-10-26 05:34:56 local time (UTC-07:00); the times below are UTC", "West of UTC.");
+            check(LogHeader.Line(new DateTimeOffset(2026, 10, 26, 18, 4, 56, new TimeSpan(5, 30, 0)), utcTimes: false) ==
+                "log opened 2026-10-26 18:04:56 local time (UTC+05:30); the times below are local", "East of UTC, local times.");
+            check(LogHeader.Line(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero), utcTimes: true).Contains("(UTC+00:00)"), "UTC itself.");
+        });
+
         test("System facts: Windows 11 by its build, NVIDIA's driver number, and what this PC says", () =>
         {
             check(SystemFacts.Describe(10, 0, 26100, 4652, "24H2") == "Windows 11 24H2 (10.0.26100.4652)" && SystemFacts.Describe(10, 0, 19044, 2364, null) == "Windows 10 (10.0.19044.2364)",
@@ -65,6 +74,28 @@ static class CrashReportTests
             var here = SystemFacts.Windows();
             check(here.Length > 0 && Privacy.Scrub(here) == here, "This PC's system names it: " + here);
             check(SystemFacts.Gpus().All(g => g.Name.Length > 0 && Privacy.Scrub(g.Name) == g.Name), "A GPU entry is empty or names the PC.");
+        });
+
+        test("Crash reports keep the OS name when this PC is named fedora", () =>
+        {
+            const string system = "Fedora Linux 44 (KDE Plasma Desktop Edition)";
+            var fedora = new Privacy(@"C:\Users\Alex", ["fedora"], "/home/alex", system);
+            var scrub = new ReportPrivacy(fedora, []);
+            var line = "This PC now: " + system;
+            check(scrub.ApplyNames(line) == line, "The OS name was scrubbed: " + scrub.ApplyNames(line));
+            check(scrub.Apply(system + @" at C:\Users\Alex and /home/alex") == system + @" at %USERPROFILE% and ~",
+                "The OS line kept the user folders: " + scrub.Apply(system + @" at C:\Users\Alex and /home/alex"));
+        });
+
+        test("A PC named after a word of the OS name is still scrubbed in other text", () =>
+        {
+            const string system = "Fedora Linux 44 (KDE Plasma Desktop Edition)";
+            var fedora = new Privacy(@"C:\Users\Alex", ["fedora"], "/home/alex", system);
+            var line = system + " on host fedora";
+            check(new ReportPrivacy(fedora, []).Apply(line) == system + " on host PC", "The PC name outside the OS name was kept: " + fedora.Apply(line));
+            var gaming = new Privacy(@"C:\Users\Alex", ["fedora-gaming"], "/home/alex", system);
+            check(gaming.Apply(system + " on host fedora-gaming") == system + " on host PC",
+                "A longer PC name was kept: " + gaming.Apply(system + " on host fedora-gaming"));
         });
 
         test("Mod lines carry each mod's version and content hash", () =>
@@ -87,6 +118,7 @@ static class CrashReportTests
         test("A session crashed when the game left a dump, or ended by itself with an error or a crash note; not when it was stopped", () =>
         {
             check(CrashReport.Crashed(Session(new string('1', 32), """{"gameLaunched": true, "gameExitCode": "0xC0000005"}""")), "An access violation exit.");
+            check(CrashReport.ExitText(Path.Combine(sessions, new string('1', 32))) == "0xC0000005 (access violation)", "The launcher's text for the exit.");
             check(!CrashReport.Crashed(Session(new string('2', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""")), "A clean exit.");
             check(!CrashReport.Crashed(Session(new string('3', 32), """{"gameLaunched": true, "observationStoppedBySignal": true, "gameExitCode": "0x00000001"}""")),
                 "A session the launcher stopped.");
@@ -94,13 +126,29 @@ static class CrashReportTests
             var noted = Session(new string('5', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""", sandboxed: true);
             File.WriteAllText(Path.Combine(noted, "game", "modloader.log"), "10:00:00.000 crash: fail-fast about to end the game (thread 7, asked from ucrtbase.dll+0x9a1b); stack:\n");
             check(CrashReport.Crashed(noted), "A crash the mod loader noted in a sandboxed session's log.");
+            check(CrashReport.FirstCrashLine(noted)?.Contains("crash: fail-fast", StringComparison.Ordinal) == true,
+                "The first crash note was not returned for result.json.");
+            if (OperatingSystem.IsLinux())
+            {
+                var linked = Session(new string('8', 32), """{"gameLaunched": true, "gameExitCode": "0x00000000"}""", sandboxed: true);
+                var outside = Path.Combine(root, "crash-report-links", "modloader.log");
+                Directory.CreateDirectory(Path.GetDirectoryName(outside)!);
+                File.WriteAllText(outside, "10:00:00.000 crash: c0000005 on thread 1 at game.dll+0x1\n");
+                File.CreateSymbolicLink(Path.Combine(linked, "game", "modloader.log"), outside);
+                check(CrashReport.LoaderLog(linked) == null && CrashReport.FirstCrashLine(linked) == null && !CrashReport.Crashed(linked),
+                    "CrashReport followed a linked modloader.log.");
+            }
             var dumped = Session(new string('6', 32), "{}");
             File.WriteAllBytes(Path.Combine(dumped, "crash-42.dmp"), [0x4D, 0x44, 0x4D, 0x50]);
             check(CrashReport.Crashed(dumped), "A session that left a dump.");
+            check(CrashReport.ExitText(dumped) == null, "No exit code kept: no text.");
+            check(CrashReport.ExitText(Session(new string('8', 32), """{"gameLaunched": true, "exitCode": "-1073741515"}""")) ==
+                "0xC0000135 (a DLL the game needs could not be found)", "The runner's own exit code, as a start-up DLL failure.");
             var handled = Session(new string('7', 32), """{"gameLaunched": true, "observationStoppedBySignal": true, "gameExitCode": "0x00000001"}""");
             File.WriteAllBytes(Path.Combine(handled, "crash-43.dmp"), [0x4D, 0x44, 0x4D, 0x50]);
             check(!CrashReport.Crashed(handled), "A session the launcher stopped after a fault the game handled left a dump.");
-            check(CrashReport.Meaning(0xC0000005) == "access violation" && CrashReport.Meaning(0x1) == null, "Exit code meanings.");
+            check(CrashReport.Meaning(0xC0000005) == "access violation" && CrashReport.Meaning(0xC0000094) == "integer divide by zero" &&
+                CrashReport.Meaning(0x1) == null, "Exit code meanings.");
         });
 
         var crashed = Session(new string('c', 32), $$"""
@@ -130,6 +178,25 @@ static class CrashReportTests
             check(fault.Code == "c0000005" && fault.Thread == "4242" && fault.Where == "game.dll+0xf8f670" && fault.ByModule == "game.dll+0xf8f670" && fault.Line == 260,
                 $"Fault: {fault}");
             check(CrashReport.FindFault(["10:00:00.000 nothing here"]) == null, "A fault in a log without one.");
+        });
+
+        test("A crash in the game's text-input setup under a Wine without msctf's function provider names its cause (#112)", () =>
+        {
+            // The note as the loader wrote it in the tester's report (Wine 10.0, GetFunctionProvider returned E_NOTIMPL).
+            string[] log =
+            [
+                "14:30:47.920 hooks: local.native-atmosphere-control hooked helldivers2.exe+0x4fc590 (priority 0; 1 of 1 in its chain)",
+                "14:30:48.006 crash: c0000005 on thread 856 at helldivers2.exe+0x6738c7 (0x1406738c7), reading 0x0; rax 80004001 rbx a40168 rcx 0",
+                "14:30:48.006 crash: by module: at helldivers2.exe+0x6738c7; rdx helldivers2.exe+0x1690a98; stack outside the game: msctf.dll+0xec82"
+            ];
+            var fault = CrashReport.FindFault(log);
+            var cause = CrashReport.KnownCause(fault, "25480438");
+            check(cause != null && cause.Contains("msctf", StringComparison.Ordinal) && cause.Contains("Proton 11", StringComparison.Ordinal) &&
+                  cause.Contains("not caused by HellForge", StringComparison.Ordinal), "Cause: " + cause);
+            check(CrashReport.KnownCause(fault, "25480439") == null, "The offset was matched for another game build.");
+            check(CrashReport.KnownCause(fault! with { Where = "helldivers2.exe+0x6738ca" }, "25480438") == null, "Another address was matched.");
+            check(CrashReport.KnownCause(fault! with { Code = "c0000096" }, "25480438") == null, "Another exception was matched.");
+            check(CrashReport.KnownCause(null, "25480438") == null, "A run without a crash got a cause.");
         });
 
         test("The friends the backend counted are left out, also when their profile never arrived", () =>
@@ -180,6 +247,22 @@ static class CrashReportTests
                 using var reader = new StreamReader(zip.GetEntry("summary.txt")!.Open());
                 check(reader.ReadToEnd().Contains("cannot be scrubbed"), "The summary does not warn that the dump cannot be scrubbed.");
             }
+        });
+
+        test("The summary gives Windows' record of the crash, scrubbed, or says Windows had none; older sessions have no such line (#203)", () =>
+        {
+            var recorded = Session(new string('e', 32), """
+                {"status": "failed", "gameLaunched": true, "gameExitCode": "0xC0000005",
+                 "failure": "The game closed while starting, before HellForge could connect it to the local backend (exit code 0xC0000005).",
+                 "windowsCrash": {"module": "hook64.dll", "offset": "0x2f3c1", "code": "0xC0000005", "modulePath": "C:\\Users\\Alex\\AppData\\Local\\Overlay\\hook64.dll", "owner": "other"}}
+                """);
+            var summary = CrashReport.Summary(recorded, new ReportPrivacy(Pc, []), DateTime.UtcNow, false);
+            check(summary.Contains("Windows' crash record: 0xC0000005 in hook64.dll+0x2f3c1 (other: %USERPROFILE%\\AppData\\Local\\Overlay\\hook64.dll)") &&
+                  summary.Contains("Failure: The game closed while starting") && !summary.Contains("Alex"), summary);
+            var none = Session(new string('f', 32), """{"status": "failed", "gameLaunched": true, "gameExitCode": "0xC0000005", "windowsCrash": "none"}""");
+            check(CrashReport.Summary(none, new ReportPrivacy(Pc, []), DateTime.UtcNow, false).Contains("Windows' crash record: none"), "Windows had none.");
+            var older = Session(new string('0', 32), """{"status": "failed", "gameLaunched": true, "gameExitCode": "0xC0000005"}""");
+            check(!CrashReport.Summary(older, new ReportPrivacy(Pc, []), DateTime.UtcNow, false).Contains("Windows' crash record"), "A session that did not look.");
         });
 
         test("A session from before the facts were kept still gets a summary, with this PC's system", () =>

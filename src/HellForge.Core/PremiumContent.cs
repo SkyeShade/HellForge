@@ -125,16 +125,33 @@ public static class PremiumMods
 {
     public sealed record Result(List<ModManifest> Loaded, List<string> Locked, List<string> Problems);
 
+    const string ProgressionData = "progression-data.json";
+
     // A session's check (mods-stage): ownership from the profile's snapshot, read only when a mod declares premium content.
     // Without the installation's progression data, nothing premium counts as owned.
     public static Result ForSession(InstallLayout install, string? snapshotDir, ulong? steamAccount, IReadOnlyList<ModManifest> loadOrder)
     {
         if (loadOrder.All(mod => mod.Premium.Count == 0)) return new Result([.. loadOrder], [], []);
-        var data = Path.Combine(install.App, "progression-data.json");
+        var data = Path.Combine(install.App, ProgressionData);
         if (File.Exists(data)) return Apply(loadOrder, PremiumContent.ForSnapshot(data, snapshotDir, steamAccount));
         var result = Apply(loadOrder, PremiumContent.Nothing);
         result.Problems.Insert(0, "Premium mods: " + data + " is missing, so none of their premium content counts as owned. Reinstall HellForge.");
         return result;
+    }
+
+    // What a running session's live change counts as owned (the backend's LiveMods): the session's own rule, the profile's
+    // snapshot sealed for the Steam account, when both are known and the installation's progression data reads; otherwise
+    // nothing at all, so a live change that cannot tell holds back every mod built on premium content for a restart.
+    public static PremiumContent ForLiveChange(InstallLayout install, string? snapshotDir, ulong? steamAccount)
+    {
+        var data = Path.Combine(install.App, ProgressionData);
+        if (snapshotDir == null || steamAccount == null || !File.Exists(data)) return PremiumContent.Nothing;
+        try { return PremiumContent.ForSnapshot(data, snapshotDir, steamAccount); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException or
+            FormatException or ArgumentException)
+        {
+            return PremiumContent.Nothing;
+        }
     }
 
     public static Result Apply(IReadOnlyList<ModManifest> loadOrder, PremiumContent ownership)

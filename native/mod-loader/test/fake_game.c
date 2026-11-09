@@ -15,3 +15,27 @@ __declspec(dllexport) __attribute__((noinline)) int hellforge_fake_target(int x)
     y = y * 3 + 1;
     return y;
 }
+
+/* A cell a live test mod writes through the API, and the loader puts back when it takes the mod out (live_mods_test.c). */
+__declspec(dllexport) volatile uint32_t hellforge_fake_cell = 5;
+
+/* Functions by name (SDK 16): the smoke plan's `function` lines map these two, the first to hook, the second only to
+ * call. */
+__declspec(dllexport) __attribute__((noinline)) int hellforge_fake_named(int x)
+{
+    volatile int y = x;
+    y = y * 2;
+    return y;
+}
+__declspec(dllexport) __attribute__((noinline)) int hellforge_fake_call_only(int x)
+{
+    volatile int y = x;
+    y = y + 7;
+    return y;
+}
+
+/* A global by name (SDK 16): a cell holding a pointer to an object, and a function whose load of it the smoke plan's
+ * `global` line names as its witness. */
+static int g_fakeObject = 1234;
+__declspec(dllexport) void* volatile hellforge_fake_global = &g_fakeObject;
+__declspec(dllexport) __attribute__((noinline)) void* hellforge_fake_global_user(void) { return hellforge_fake_global; }

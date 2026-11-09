@@ -17,10 +17,13 @@ namespace HellForge.LocalBackend;
 //   POST /Progression/ProgressionPackage/AcquireUnlockableItem  0x1b13fab5  {packageId32, targetLevel, itemMixId,
 //                              expectedCost} (weapon attachments). Neither reply is parsed (0xb64d30, 0xb666a0).
 // Super Credits are never spent or granted, and nothing paid (OwnershipFilter's rules) is sold: a premium warbond's items
-// only to a player who owns one of its tokens.
+// only to a player who owns one of its tokens. Forge Credits (PaidContentSet.ForgeCreditsWallet) buy a premium warbond's
+// token at its Super Credits price, only one the player owns on the live game (the verified snapshot): the client's
+// unlock (0x136c3a0) is /Progression/buy/v2 {mixId: token, amount: 1, expectedCost: [{mixId: 0xCF875032, amount}]}, and
+// the reply takes the price from the wallet the client shows (a negative amount on 0xCF875032 would change nothing).
 public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> catalogue)
 {
-    public static bool Handles(string path) => path is "/SeasonPass/item/buy" or "/Progression/buy/v2"
+    public static bool Handles(string path) => path is "/SeasonPass/item/buy" or "/Progression/buy/v2" or "/StoreFront/buy"
         or "/Progression/ProgressionPackage/AcquireLevel" or "/Progression/ProgressionPackage/AcquireUnlockableItem";
 
     static readonly Lazy<JsonDocument> Progression = new(() => LocalBackend.LoadResource("progression-data.json"));
@@ -35,6 +38,7 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         {
             "/SeasonPass/item/buy" => WarbondItem(body),
             "/Progression/buy/v2" => StoreItem(body),
+            "/StoreFront/buy" => StoreFrontItem(body),
             "/Progression/ProgressionPackage/AcquireLevel" => PackageLevel(body),
             _ => UnlockableItem(body)
         };
@@ -61,7 +65,12 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
             if (ProfileStore.Held(inventory, spent) < page.GetProperty("totalMedalsRequired").GetInt64() || ProfileStore.Held(inventory, medals) < cost) return false;
             ProfileStore.AddItem(inventory, medals, -cost);
             ProfileStore.AddItem(inventory, spent, cost);
-            foreach (var (content, amount) in Contents(mixId, 1)) granted.Add((JsonNode)new JsonObject { ["mixId"] = content, ["amount"] = ProfileStore.AddItem(inventory, content, amount) });
+            foreach (var (content, amount) in Contents(mixId, 1))
+            {
+                /* a page's Super Credits (73 items, all into the wallet 0xCBFFC645, which is never stored) pay Forge Credits */
+                var paid = PaidContentSet.IsSuperCredits(content) ? PaidContentSet.ForgeCreditsWallet : content;
+                granted.Add((JsonNode)new JsonObject { ["mixId"] = paid, ["amount"] = ProfileStore.AddItem(inventory, paid, amount) });
+            }
             if (!repeatable) { bought.Add((JsonNode)itemId); progression["purchasedSeasonPassItems"] = bought; }
             return true;
         });
@@ -75,8 +84,36 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
     JsonNode? StoreItem(JsonElement body)
     {
         if (!Whole(body, "mixId", out var id) || id is <= 0 or > uint.MaxValue) return null;
+        return StoreItem((uint)id, Whole(body, "amount", out var n) ? n : 1);
+    }
+
+    // A store front's item (the requisition terminal's stratagems: /StoreFront/buy 0xdf12cd01,
+    // {expectedCost:[{mixId, amount}], salesId, warId}): the item its store front lists under the salesId (or a mixId),
+    // sold as StoreItem sells it. The reply goes through the warbond item's parser (0x105a470, the case at 0x12ca52b):
+    // {items:[{mixId, amount}]}, which the client adds; unlike a warbond page it does not take the price itself, so the
+    // price is in the list too, negative (in game 2026-11-03: without it the requisition shown never went down).
+    JsonNode? StoreFrontItem(JsonElement body)
+    {
         var count = Whole(body, "amount", out var n) ? n : 1;
-        var mixId = (uint)id;
+        var mixId = Whole(body, "mixId", out var id) && id is > 0 and <= uint.MaxValue ? (uint)id : ListedItem(body);
+        return mixId != 0 && StoreItem(mixId, count) is JsonArray sold ? StoreFrontReply(sold) : null;
+    }
+
+    // StoreItem's reply ([{mixId, amount}], the price negative) as /StoreFront/buy's: {items:[...]}.
+    public static JsonObject StoreFrontReply(JsonArray sold) => new() { ["items"] = sold.DeepClone() };
+
+    static uint ListedItem(JsonElement body)
+    {
+        if (!body.TryGetProperty("salesId", out var sales) || sales.ValueKind != JsonValueKind.String) return 0;
+        var listed = Progression.Value.RootElement.GetProperty("storeFront").EnumerateArray()
+            .SelectMany(front => front.GetProperty("sections").EnumerateArray()).SelectMany(section => section.GetProperty("items").EnumerateArray())
+            .FirstOrDefault(item => item.GetProperty("salesId").GetString() == sales.GetString());
+        return listed.ValueKind == JsonValueKind.Object ? listed.GetProperty("mixId").GetUInt32() : 0;
+    }
+
+    JsonNode? StoreItem(uint mixId, long count)
+    {
+        if (Paid.WarbondTokens.Contains(mixId)) return WarbondToken(mixId);
         if (count is < 1 or > 100 || Paid.IsPaid(mixId) || catalogue(mixId) is not { } item) return null;
         if (!item.TryGetProperty("buyPrice", out var price) || price.ValueKind != JsonValueKind.Array || price.GetArrayLength() == 0) return null;
         var cost = Costs(price, count);
@@ -87,6 +124,23 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
             if (cost.Any(c => ProfileStore.Held(inventory, c.Key) < c.Value)) return false;
             foreach (var (currency, amount) in cost) reply.Add((JsonNode)new JsonObject { ["mixId"] = currency, ["amount"] = ProfileStore.AddItem(inventory, currency, -amount) });
             reply.Insert(0, (JsonNode)new JsonObject { ["mixId"] = mixId, ["amount"] = ProfileStore.AddItem(inventory, mixId, count) });
+            return true;
+        });
+        return saved ? reply : null;
+    }
+
+    // A premium warbond's token for Forge Credits: owned on the live game, not held yet, its Super Credits price in the wallet.
+    JsonNode? WarbondToken(uint token)
+    {
+        if (profile.Ownership is not { } ownership || !ownership.Owns(token) || catalogue(token) is not { } item ||
+            !item.TryGetProperty("buyPrice", out var price) || price.ValueKind != JsonValueKind.Array || Costs(price, 1) is not { } cost ||
+            !cost.TryGetValue(PaidContentSet.SuperCreditPrice, out var credits) || cost.Count != 1 || credits <= 0) return null;
+        var reply = new JsonArray();
+        var saved = profile.TryChange((_, inventory) =>
+        {
+            if (ProfileStore.Held(inventory, token) > 0 || ProfileStore.Held(inventory, PaidContentSet.ForgeCreditsWallet) < credits) return false;
+            reply.Add((JsonNode)new JsonObject { ["mixId"] = token, ["amount"] = ProfileStore.AddItem(inventory, token, 1) });
+            reply.Add((JsonNode)new JsonObject { ["mixId"] = PaidContentSet.ForgeCreditsWallet, ["amount"] = ProfileStore.AddItem(inventory, PaidContentSet.ForgeCreditsWallet, -credits) });
             return true;
         });
         return saved ? reply : null;
@@ -184,12 +238,14 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         return null;
     }
 
-    // The profile's progress entry of a package ({id32, level, progress} in progression.packageProgress), made at level 0.
+    // The profile's progress entry of a package (progression.packageProgress), made at level 0 with every field the
+    // client's /Progression parser wants (ProfileStore.CompletePackageEntry).
     static JsonObject PackageEntry(JsonObject progression, long id32)
     {
         if (progression["packageProgress"] is not JsonArray list) progression["packageProgress"] = list = new JsonArray();
         var entry = list.OfType<JsonObject>().FirstOrDefault(e => Whole(e, "id32") == id32);
-        if (entry == null) list.Add((JsonNode)(entry = new JsonObject { ["id32"] = id32, ["level"] = 0, ["progress"] = 0 }));
+        if (entry == null) list.Add((JsonNode)(entry = new JsonObject { ["id32"] = id32, ["level"] = 0 }));
+        ProfileStore.CompletePackageEntry(entry);
         return entry;
     }
 

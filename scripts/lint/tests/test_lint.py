@@ -196,6 +196,23 @@ class Baseline(unittest.TestCase):
                       out)
         self.assertIn('0 error(s), 1 warning(s)', out)
 
+    def test_warnings_as_errors(self):
+        """check --warnings-as-errors fails on a new warning-rule violation and on a known one that grew."""
+        self.write(cs(f'void F(int a) {{\n{branches(16)}\n}}'))
+        code, out = self.repo.run('check', '--warnings-as-errors')
+        self.assertEqual(code, 1, out)
+        self.assertIn('ERROR R10 cognitive-complexity  app A.cs:2  A.F  (new, or over the limit for the first time)', out)
+        self.assertIn('0 error(s), 1 warning(s)', out)
+        self.assertIn('warnings are errors', out)
+        self.assertEqual(self.repo.run('update', '--allow-increase')[0], 0)
+        code, out = self.repo.run('check', '--warnings-as-errors')   # known and unchanged: passes
+        self.assertEqual(code, 0, out)
+        self.write(cs(f'void F(int a) {{\n{branches(17)}\n}}'))     # known, grew
+        self.assertEqual(self.repo.run('check')[0], 0)
+        code, out = self.repo.run('check', '--warnings-as-errors')
+        self.assertEqual(code, 1, out)
+        self.assertIn('ERROR R10 cognitive-complexity  app A.cs:2  A.F  (known, grew:', out)
+
     def test_signature_and_first_line(self):
         """The identity is the function's name: a changed signature line keeps it, and R15 is the file's."""
         fields = '\n'.join(f'int x{i};' for i in range(1000))

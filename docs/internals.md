@@ -76,33 +76,42 @@ entities are numbered by their resource ids.
 This section explains how HellForge compiles code mods that ship their sources, and when it trusts a cached build.
 
 A code mod that ships its sources (C or C++ under `src/`) is built by HellForge, not by its author. Before every
-session that has it enabled, `HellForge.Cli mods-stage` compiles it with the SDK's pinned Zig and the same flags on
+session that has it enabled, `HellForge.Cli mods-stage` gets the build with the SDK's pinned Zig and the same flags on
 every machine, into `<installation>/temp/mod-builds/<mod id>/`, and the loader loads that build. A DLL in the mod's own
 folder (an IDE's build, say) is not used. The code is in `src/HellForge.Core/ModBuilds.cs`.
+
+On Linux the session runs under Wine, where the pinned `zig.exe` does not work (issue 81). The wrapper therefore runs a
+native build agent before it enters the namespace (`app/cli-linux/HellForge.Cli build-source-mods --install
+<installation>`, which calls the same `ModBuilds`); the session finds the build ready and does not compile. A source mod
+without a build there is reported and stays off, never compiled with `zig.exe` under Wine.
 
 ### The cache
 
 A build is kept under its key: a hash of the mod's manifest and every file under `src/`, the SDK's headers, the
-compiler (its pinned archive) and flags, and the game build. A change to any of them builds the mod again, so a mod
-follows a game update by itself as long as the names it uses still exist.
+compiler's identity (`zig 0.17.0 / x86_64-windows-gnu`, not its archive) and flags, and the game build. A change to any
+of them builds the mod again, so a mod follows a game update by itself as long as the names it uses still exist. The
+"hf-source-key-v2" salt marks the identity scheme: a native Linux build and a Windows session of the same sources and
+pin share one key.
 
 ### The check
 
-`record.json` beside the build holds its key, the sources' hash and the DLL's SHA-256. A session uses the build only
-when all three still match; a stale, corrupted or swapped DLL is built again and never loaded. This guards against
-accidents and casual swaps, not against someone with access to the installation (who could edit the sources or the
-record too).
+`record.json` beside the build holds its key, the sources' hash and the DLL's SHA-256 (an optional compiler and host
+say which build made it). A session uses the build only when all three still match; a stale, corrupted or swapped DLL
+is built again and never loaded. This guards against accidents and casual swaps, not against someone with access to the
+installation (who could edit the sources or the record too).
 
 ### Errors
 
 A mod that does not compile stays off for that session, and the session still runs. The record keeps the compiler's
 message (file and line), which the launcher's Mods page shows on the mod's card, and the same sources are not compiled
-again. Build now in the mod's ⋮ menu (or `HellForge.Cli build-mod --mod <mods>/<mod>`) makes the same build at once.
+again. Build now in the mod's ⋮ menu (or `HellForge.Cli build-mod --mod <mods>/<mod>`) makes the same build at once; on
+Linux it runs the native agent.
 
 ### Tools and friends
 
-The first source mod fetches the pinned Zig into `<installation>/tools` (checksummed) if it is not there. The modlist
-digest takes a source mod's sources, not a DLL, so friends who play together build identical mods.
+The first source mod fetches the pinned Zig into `<installation>/tools` (checksummed) if it is not there: `zig.exe` on
+Windows, and `zig-linux/zig` natively on Linux (both pinned in `app/sdk/tools.json`). The modlist digest takes a source
+mod's sources, not a DLL, so friends who play together build identical mods.
 
 ### Prebuilt DLLs
 
@@ -149,7 +158,22 @@ entities together), the loader widens both to 12 bits (4,096 types) when it adds
 fits keeps the game's own wire format. Every player in a game runs the same mods, so every one widens or none does. If
 the widths are not the ones reviewed, or the set needs more than 4,096, the first types that fit get one and the rest
 are logged (`registry_load.c` `AddNetworkTypes`). Other limits come first for many sets, each refused on its own: a
-component table's compiled slots, the loadout index (193 more weapons) and the game's 4,096 catalogue items.
+component table's compiled slots (below) and the game's 4,096 catalogue items.
+
+**Growing component tables.** Each component table (an index of S rows `{entity, record, 0}`, probed from `entity % S`,
+then its records) has its slot count S compiled into every lookup of it: the probe bound, the wrap, the modulus (a
+multiply by a magic number and a shift, or a mask), where the records start and the default record's address. Before
+the weapons are added, the loader counts the rows they will take in each table, and a table they would fill past three
+quarters is built again at about twice the rows (an S its constants can hold) and every constant that encodes its S is
+rewritten, with the game's other threads paused, in the same pause as the game is pointed at the new table
+(`table_growth.c`, after a design by CowboyBingus). Each instruction is checked against its reviewed bytes first; if
+one differs, nothing is written and the table stays as it was. Only tables whose every site is known grow: the 16 that
+weapons and stratagems use, among them the loadout index (table 29, which also grows only while HellForge's armory
+builder replaces the game's), from a static scan of game.dll build 25480438 (`table_growth_sites.h`, generated by
+`scripts/ExportTableGrowth.py`). A table the entity loader makes again at its vanilla size is built again at the grown
+size before the game reads it. Tables 233 (Equipment) and 321 (ProjectileWeapon) also appear, as data, in
+helldivers2.exe's protected code, which was not analysed; the log says so when they grow. Any other table that is full
+refuses the entities that do not fit, as before.
 
 ### Projectiles and damage
 
@@ -440,6 +464,28 @@ spacing grows with the disk too (0xF3FB04), rounded up to a quarter metre so the
 inexact spacing makes near-degenerate circles and extra vertices, overruns the vertex array, and the pass retries
 forever (the war table's "Receiving Geodetic Data"). At 2 x the spacing is 24.5 m.
 
+GenerateSubregionHeights (op 4, 0xF64E30) gives each area its cell type's curve at `t = clamp(d / 64 m)`, `d` the
+distance to the nearest route point (the 1/64 at 0xF651FA). With the cells farther apart, far more ground lies at
+`t = 1`: flat terraces, and lake curves (4-13 m below 0) at their deepest under objectives. An objective in a low cell
+takes a corner height of exactly 0 (0xF3B957), so its pad followed the area layer under the region's water (-0.25 to
+-4.5 m), and an ICBM silo's lower platform flooded. Above 1, the ramp is 64 m x spacing / 40 (difficulty_terrain.c), and
+the two stores of the area height (0xF655A9, 0xF656F9) keep it at or above 0 within an objective's stamp radius + 16 m
+(the important locations, G+0x8996B0, 0x108 each, count G+0x11A715C; the radius is the location item's +0xD8).
+
+The SEAF Artillery fires the projectile of the shell at the head of its queue. Its six shells' rows (71, 339, 99, 145,
+10, 92) fly alike: 300 m/s, gravity x 10, drag 0.5. That reaches about 710 m, and a 2 x map is up to 1550 m across. The
+aim (0x617E50, solver 0x13B1BD0) and the landing prediction (0x13B18B0) read speed and gravity from the row the shell
+flies with. Above 1, a watch poll (difficulty_artillery.c) sets each row in a mission at the level (the world's level
+generator, +0xF9): speed x sqrt(map_scale) and drag x 1 / map_scale. That keeps k v^2 / g, so the arc scales by
+map_scale and the aim follows it. In a mission at another level the rows are put back where they still hold what was
+written.
+
+`HF_DIFFICULTY_HEAVY_ARTILLERY` changes the side objective's shells. Its stamps place 12 to 28 spawn points (unit
+C5A8CB32B972E580), and each rolls one shell (0x9F3250) from the unit's script data table 0x3268FC21 of {shell kind
+(ObjectiveShell +0x10), weight}: Explosive 20, Napalm, Smoke and Static Field 10, High-Yield 5, Mini Nuke 1. The roll
+skips weights of 0 or less and picks by weight with the objective's seeded random numbers. A stub at the weight's load
+(0x9F342F) gives a level-11 mission Explosive 10, High-Yield 5 and Mini Nuke 5, and every other kind 0.
+
 GenerateRouteCellVoronoi (op 3, 0xF93800) fills each route cell with points at its type's size / 2 or / 4. Level 10
 makes 11954 areas of 13224, in proportion to the generated area, so that spacing grows with the disk too (0xF9420F,
 x 1.04, in quarter metres).
@@ -460,7 +506,15 @@ proxy units G+0x118BEFC and G+0x118FEFC, 4096 and 16384 x 4) follow with 4 x the
 ran over the scatter into the terrain merge slots (G+0x8758A8). The block is then 0x15A9280 bytes.
 
 Blocks are made with a world, after the loader installs this; if one exists already, the move is skipped. Structured
-maps (map type 2, another generator) keep level 10's size.
+maps (map type 2, the mega cities, another generator) grow too: their revoronoi, grid and vertex buckets are scaled the
+same way (difficulty_cities.c).
+
+City streets: FlattenCityRoads (0xFAF130) gives a street its end pieces (+0x240/+0x250) and spaced props (+0x270) only
+up to their reach (30 m on most city types) past the playable radius, and the road-prop placer (0xFB1DB0) tests each
+position the same way. On a larger map those four tests measure from the border, as the town placers do
+(difficulty_streets.c, `HELLFORGE_D11_TOWN_BORDER=0` keeps the radius), so streets are dressed wherever buildings stand.
+The road props per edge (`rand % type+0x230 + 1`, 0xFB2925) are a fixed count; on a larger map's 1.5 x longer edges the
+count is x 3/2 (`HELLFORGE_D11_STREET_PROPS=0` keeps it).
 
 The mission distance factors (10 levels x 3, read unclamped at 7 sites) move to a table with level 11's.
 
@@ -637,10 +691,11 @@ Every mapped field has an `applies` timing in `mappings/components.json` (a comp
 shown as a `[tag]` in `hellforge_components.h`:
 
 - `now`: the next time the game reads it (projectile, damage, explosion, arc, beam and status settings, the difficulty
-  director's budgets and patrols);
+  director's budgets and patrols, a stratagem's cooldown and call-in time at its next call, an orbital's tracking);
 - `respawn`: when the entity is next made (component records: weapons, backpacks, vehicles, sentries; the next spawn,
   re-equip or call-in);
-- `mission`: when the next mission loads (stratagem settings, packages, level generation).
+- `mission`: when the next mission loads (packages, level generation, a stratagem's uses: the game copies them into each
+  player's stratagem record at the hellpod launch).
 
 `appliesVerified` marks timings confirmed from game code. The rest are inferred from where the game reads the field,
 and the header marks them with a "?" (`[respawn?]`). Every stats-schema field is a mapped field (the schema's fields were imported into
@@ -719,9 +774,13 @@ bytes are checked.
 The in-game editor (`native/editor`, F8; built by `scripts/Build-Editor.ps1`) is a code mod on these calls, with the HD2R
 Editor's layout and look.
 
-Its catalogue (`editor-catalog.json`, from `HellForge.Cli editor-data`) holds the primaries, secondaries, throwables,
+Its catalogue (from `HellForge.Cli editor-data`, `EditorCatalog.cs`) holds the primaries, secondaries, throwables,
 stratagems and boosters with their stats fields, and the armor perks (two choice rows with a picker, kept in the
-editor's settings and set again at every boot). Its weapon and grenade silhouettes are the game's own HUD sprites, and
+editor's settings and set again at every boot). It is an index, `editor-catalog.json` (the categories, the references
+and HD2R Editor's ids), and a file per category, `editor-catalog-<category>.json`: the editor reads no file of 64 MB or
+more, and the whole catalogue in one file was 48 MB. The editor reads every file at start, because rows on the same
+bytes are linked across categories (a damage type on a weapon's page and on the Damage Types page). A test keeps every
+file under a quarter of the limit. Its weapon and grenade silhouettes are the game's own HUD sprites, and
 its text is in the game's own FS Sinclair, both extracted from the installation's game copy into the editor's folder
 (`game-icons.bin`, `fs-sinclair*.ttf`; never published). Its buttons play the game's menu sounds through the game's own
 UI sound path (checked byte for byte; silent on another build).

@@ -1,36 +1,41 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace HellForge.Core;
 
 // A session's logs (logs/sessions/<run id>: the session runner's result, the mod loader's and the backend's logs, the
-// game's own, a crash dump when asked for) stay for the next sessions to compare, but not for ever: with crash dumps and
-// engine logs they reached gigabytes. When the launcher opens and when a session ends, only the newest Keep stay. Only
-// folders named as a run id, directly in the sessions folder, are removed; a folder in use (a session still writing) is
-// left.
+// game's own, a crash dump) stay for the next sessions to compare, but not for ever: with crash dumps and engine logs
+// they reached gigabytes. When the launcher opens and when a session ends, only the newest Keep stay, and of the older
+// ones the newest KeepCrashes that ended in a crash (CrashReport.Crashed): a crash report is often asked for after a few
+// more sessions. Only folders named as a run id, directly in the sessions folder, are removed; a folder in use (a
+// session still writing) is left.
 public static partial class SessionLogs
 {
     public const int Keep = 10;
+    public const int KeepCrashes = 5;
 
     [GeneratedRegex("^[0-9a-f]{32}$")]
     private static partial Regex RunId();
 
     public sealed record Pruned(int Removed, long Bytes, int Skipped);
 
-    public static Pruned Prune(string sessionsFolder, int keep = Keep)
+    public static Pruned Prune(string sessionsFolder, int keep = Keep, int keepCrashes = KeepCrashes)
     {
         if (!Directory.Exists(sessionsFolder)) return new(0, 0, 0);
-        LocalInstall.NoLinks(sessionsFolder);
+        sessionsFolder = LocalInstall.NoLinks(sessionsFolder, sessionsFolder);
         var runs = new DirectoryInfo(sessionsFolder).GetDirectories()
             .Where(d => RunId().IsMatch(d.Name) && (d.Attributes & FileAttributes.ReparsePoint) == 0)
             .OrderByDescending(d => d.CreationTimeUtc).ThenByDescending(d => d.Name, StringComparer.Ordinal).ToList();
         int removed = 0, skipped = 0;
         long bytes = 0;
-        foreach (var run in runs.Skip(keep))
+        var older = runs.Skip(keep).ToList();
+        var crashes = older.Where(run => CrashReport.Crashed(run.FullName)).Take(keepCrashes).Select(run => run.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var run in older.Where(run => !crashes.Contains(run.FullName)))
         {
             long size = 0;
             try
             {
-                size = run.EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length);
+                size = LocalInstall.FilesNoLinks(run.FullName).Sum(file => new FileInfo(file).Length);
                 run.Delete(recursive: true);
                 removed++;
                 bytes += size;
@@ -50,7 +55,8 @@ public static partial class SessionLogs
     {
         if (!Directory.Exists(sessionsFolder)) return [];
         var runs = new List<Run>();
-        foreach (var folder in new DirectoryInfo(sessionsFolder).GetDirectories().Where(d => RunId().IsMatch(d.Name)))
+        foreach (var folder in new DirectoryInfo(sessionsFolder).GetDirectories()
+                     .Where(d => RunId().IsMatch(d.Name) && (d.Attributes & FileAttributes.ReparsePoint) == 0))
         {
             string? Text(System.Text.Json.JsonElement root, string name) =>
                 root.TryGetProperty(name, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
@@ -102,8 +108,46 @@ public static partial class SessionLogs
     {
         int written, skipped;
         using (var zip = System.IO.Compression.ZipFile.Open(target, System.IO.Compression.ZipArchiveMode.Create))
+        {
             (written, skipped) = AddTo(zip, run, gameLogs, new(Privacy.Current.ApplyBytes, Privacy.Scrub, "", Dumps: true));
+            // a game that would not close: which of the session's programs were still running when the logs were saved
+            using (var writer = new StreamWriter(zip.CreateEntry(Path.GetFileName(run) + "/" + ProcessesFile, System.IO.Compression.CompressionLevel.Optimal).Open(),
+                       new System.Text.UTF8Encoding(false)))
+                writer.Write(Privacy.Scrub(RunningProcesses(DateTime.UtcNow, Process.GetProcesses())));
+            written++;
+        }
         return new(target, written, skipped);
+    }
+
+    public const string ProcessesFile = "processes-now.txt";
+
+    // The programs of a session, and those that hold a quitting or crashed game open (Windows Error Reporting, the game's
+    // crash reporter, GameGuard), by name.
+    static readonly string[] SessionPrograms = ["helldivers2", "HellForge.Session", "HellForge.LocalBackend", "HellForge.CaptureProxy",
+        "hellforge_steam_broker", "HellForge.Cli", "HellForge.Launcher", "WerFault", "WerFaultSecure", "crs-handler", "GameGuard", "GameMon", "GameMon64"];
+
+    // The session's programs among `processes` (all of them disposed), one line each: name, id, how long it has run, its
+    // threads, whether its window answers (Windows), its path. What `tasklist /v` would tell of a game that would not close.
+    public static string RunningProcesses(DateTime nowUtc, IEnumerable<Process> processes)
+    {
+        var text = new System.Text.StringBuilder($"Session programs running at {nowUtc:o} (the logs were saved then):\n");
+        var lines = new List<string>();
+        foreach (var process in processes)
+            using (process)
+            {
+                string name;
+                try { name = process.ProcessName; } catch (InvalidOperationException) { continue; }
+                if (!SessionPrograms.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
+                string Try(Func<string> read) { try { return read(); } catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { return "?"; } }
+                var age = Try(() => ((int)(nowUtc - process.StartTime.ToUniversalTime()).TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s");
+                var threads = Try(() => process.Threads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                var responding = OperatingSystem.IsWindows() ? Try(() => process.MainWindowHandle == 0 ? "no window" : process.Responding ? "responding" : "NOT RESPONDING") : "?";
+                var path = Try(() => process.MainModule?.FileName ?? "?");
+                lines.Add($"{name} pid {process.Id}: running {age}, {threads} thread(s), {responding}, {path}");
+            }
+        if (lines.Count == 0) text.Append("none\n");
+        foreach (var line in lines.Order(StringComparer.OrdinalIgnoreCase)) text.Append(line).Append('\n');
+        return text.ToString();
     }
 
     // How a run's files go into a zip: the text files' scrub, the names' scrub, the folder they go in (a crash report's
@@ -137,18 +181,21 @@ public static partial class SessionLogs
 
     static List<(string File, string Name)> ExportFiles(string run, string? gameLogs)
     {
-        // programs are left out (the run's steam-link folder holds a copy of Valve's steam_api64.dll, which is no log), and
-        // so is what a sandboxed game kept of the player's (InExport)
-        var files = Directory.EnumerateFiles(run, "*", SearchOption.AllDirectories)
+        // programs are left out, and so is what a sandboxed game kept of the player's (InExport). Links are skipped, never
+        // followed: a session folder can hold the game's .steam links or a link it planted itself.
+        var files = LocalInstall.FilesNoLinks(run)
             .Where(file => !Path.GetExtension(file).Equals(".dll", StringComparison.OrdinalIgnoreCase) &&
                            !Path.GetExtension(file).Equals(".exe", StringComparison.OrdinalIgnoreCase) && InExport(Path.GetRelativePath(run, file)))
             .Select(file => (file, name: Path.Combine(Path.GetFileName(run), Path.GetRelativePath(run, file)))).ToList();
         if (!Directory.Exists(Path.Combine(run, "engine-logs")) && gameLogs != null && Directory.Exists(gameLogs))
         {
             var started = Directory.GetCreationTimeUtc(run);
-            files.AddRange(new DirectoryInfo(gameLogs).GetFiles("console_*.txt")
-                .Where(f => f.LastWriteTimeUtc >= started && f.Length < 200L * 1024 * 1024)
-                .Select(f => (f.FullName, Path.Combine(Path.GetFileName(run), "engine-logs", "logs-" + f.Name))));
+            foreach (var file in LocalInstall.FilesNoLinks(gameLogs, "console_*.txt", recursive: false))
+            {
+                var info = new FileInfo(file);
+                if (info.LastWriteTimeUtc >= started && info.Length < 200L * 1024 * 1024)
+                    files.Add((file, Path.Combine(Path.GetFileName(run), "engine-logs", "logs-" + info.Name)));
+            }
         }
         return files;
     }

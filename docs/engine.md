@@ -42,12 +42,13 @@ Some parts are not in the engine package. The in-game editor (`native/editor`) i
 
 The session runner's `src/HellForge.Session/EarlyConstructor.cs` is generated from `scripts/EarlyConstructorExperiment.cs`
 (pinned by its SHA-256) by `scripts/HostEarlyConstructor.Common.ps1`, with `HostLaterStatusExperiment.ps1` alongside.
-[multiplayer.md](multiplayer.md) says what it does.
+It was changed by hand since, as its header says (how the boundary is polled and how the game is frozen there), so
+generating it again would undo those changes. [multiplayer.md](multiplayer.md) says what it does.
 
 ## The package and its version
 
-The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.41). HellForge's own version,
-`Version` in the same file, is separate (currently 0.3.0-beta).
+The engine's version is `EngineVersion` in `Directory.Build.props` (currently 0.1.42). HellForge's own version,
+`Version` in the same file, is separate (currently 0.4.0-beta).
 
 Besides the folders in the table, the package holds `engine.json` and the licences (`LICENSE`, `LICENSE-EXCEPTION`).
 `engine.json` lists the engine version, the game build, the commit and every file's SHA-256. `sdk-shims/build.json`
@@ -73,6 +74,7 @@ is checked against its pin and is never committed or shipped.
 | Parameter | What it does |
 |---|---|
 | `-SteamApi <path>` | the game's `bin/steam_api64.dll`. By default the script finds it in the Steam libraries listed under `HKCU:\Software\Valve\Steam`. |
+| `-SteamExports <path>` | a text-only export manifest created from the pinned DLL by `dotnet run --project src/HellForge.SdkShimGen -- manifest <steam_api64.dll> <manifest.json>`. For Windows runners without Steam, this avoids uploading or committing the DLL; the build validates its SHA-256 pin. Mutually exclusive with `-SteamApi`. |
 | `-SkipSmoke` | builds everything but skips running the native tests, the smoke tests and the NativeAOT backend comparison |
 
 In order, the script:
@@ -123,7 +125,7 @@ the engine that `scripts/Build-Engine.ps1` last staged in `artifacts/engine-pack
 The engine build runs:
 
 - `native/mod-loader/test/stats_test.c`: the loader's stats pass and more, on synthetic component and settings tables
-  (it includes `stratagem_categories_test.c` and `loadout_preview_test.c`);
+  (it includes `stratagem_categories_test.c`, `loadout_preview_test.c` and `armory_diag_test.c`);
 - `native/common/test/privacy_test.c`: native logs do not name the PC;
 - `native/steam-cloud/test/net_gate_test.c`: the network gate in the built `steam_api64.dll`, all groups and the `dns`
   group alone;

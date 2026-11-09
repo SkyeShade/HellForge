@@ -76,7 +76,8 @@ From the repository root:
 py -3 scripts/lint/lint.py                         # unit x rule table
 py -3 scripts/lint/lint.py scan --list             # every violation, with its detail
 py -3 scripts/lint/lint.py scan --json             # machine-readable output
-py -3 scripts/lint/lint.py check                   # what a change adds against the baseline (CI runs this)
+py -3 scripts/lint/lint.py check                   # what a change adds against the baseline
+py -3 scripts/lint/lint.py check --warnings-as-errors # the same, failing on warnings too (CI runs this)
 py -3 scripts/lint/lint.py update                  # rewrite the baseline after fixes; refuses increases
 py -3 scripts/lint/lint.py update --allow-increase # accept increases: reviewed ones
 ```
@@ -101,7 +102,8 @@ compares a scan with it:
 - **What fails:** a violation of an error rule (R12, R13, R14) that the baseline does not have: new code over a limit,
   or an existing function pushed over one for the first time. A duplicated run counts at both of its copies.
 - **What warns:** the same for a warning rule (R10, R11, R15), and any known violation that grew (`known, grew:
-  baseline 16, now 17`). Warnings do not fail `check`.
+  baseline 16, now 17`). Warnings do not fail a plain `check`; `check --warnings-as-errors`, which CI runs,
+  fails on them as on errors.
 - **What is fixed:** a known violation that got smaller or went is listed as "lower - run update"; `update` then
   lowers the baseline.
 - Each error and warning names its line, function and detail, and ends with a pointer here and to `lint-ok`. In GitHub
@@ -111,7 +113,8 @@ compares a scan with it:
   baseline with what the scan found.
 - `update` keeps the entries of units outside `--only`.
 
-Exit codes: 0 means OK (warnings allowed); 1 means errors (`check`) or a refused update; 2 means a configuration or
+Exit codes: 0 means OK (warnings allowed, unless `--warnings-as-errors`); 1 means errors (`check`), warnings with
+`--warnings-as-errors`, or a refused update; 2 means a configuration or
 parse error, or a baseline of an older format (regenerate it with `update --allow-increase`).
 
 ## Configuration

@@ -159,13 +159,16 @@ static int PublishDeltaArrays(const DeltaTable* t, uint8_t* const moved[4])
     return 1;
 }
 
-/* The mission launch's jump to the stub that lists the countdown delta: 0 if it could not be written. */
+/* The mission launch's jump to the stub that lists the countdown delta: 0 if it could not be written. It is patched
+ * after the install steps (when the delta is named), so the site audit records it here. */
 static int PatchLaunch(uintptr_t game, const uint8_t* launchStub)
 {
     uint8_t jump[12] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
-    int32_t rel = (int32_t)((uintptr_t)launchStub - (game + DIF_LAUNCH_SITE + 5));
+    int32_t rel = DifficultyJumpRel(game + DIF_LAUNCH_SITE, (uintptr_t)launchStub);
     memcpy(jump + 1, &rel, 4);
-    return !ApiWrite(game + DIF_LAUNCH_SITE, jump, sizeof jump);
+    int written = !ApiWrite(game + DIF_LAUNCH_SITE, jump, sizeof jump);
+    if (written) StorePatch(game + DIF_LAUNCH_SITE, jump, sizeof jump);
+    return written;
 }
 
 /* The countdown delta into the table: its arrays moved, its name in the free slot `empty` last, the launch patched once. */
@@ -331,11 +334,11 @@ static const char* JumpToTimeStubs(DifficultyInstall* d)
     if (!OwnCountdown()) return NULL;
     uintptr_t game = d->game;
     uint8_t card[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90}, widget[13];
-    int32_t rel = (int32_t)((uintptr_t)d->cardTimeStub - (game + DIF_CARD_TIME_SITE + 5));
+    int32_t rel = DifficultyJumpRel(game + DIF_CARD_TIME_SITE, (uintptr_t)d->cardTimeStub);
     memcpy(card + 1, &rel, 4);
     memset(widget, 0x90, sizeof widget);
     widget[0] = 0xE9;
-    rel = (int32_t)((uintptr_t)d->widgetTimeStub - (game + DIF_WIDGET_TIME_SITE + 5));
+    rel = DifficultyJumpRel(game + DIF_WIDGET_TIME_SITE, (uintptr_t)d->widgetTimeStub);
     memcpy(widget + 1, &rel, 4);
     if (ApiWrite(game + DIF_CARD_TIME_SITE, card, sizeof card) || ApiWrite(game + DIF_WIDGET_TIME_SITE, widget, sizeof widget))
         return "the mission card's duration could not be given the level's countdown";

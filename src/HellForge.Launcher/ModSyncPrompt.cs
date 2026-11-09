@@ -74,12 +74,14 @@ public partial class MainWindow
             button.Click += (_, _) => AnswerModSync(runDirectory, offer, answer);
             buttons.Children.Add(button);
         }
+        // the running game takes the host's mods without a restart when it can (live mods), as the in-game prompt says
+        var join = offer.Live ? "APPLY AND JOIN" : "RESTART TO JOIN";
         switch (offer.State)
         {
-            case "offer" when offer.Bytes == 0: Add("RESTART TO JOIN", "restart", true); Add("CANCEL", "decline", false); break;
+            case "offer" when offer.Bytes == 0: Add(join, "restart", true); Add("CANCEL", "decline", false); break;
             case "offer": Add("DOWNLOAD AND RESTART", "accept", true); Add("CANCEL", "decline", false); break;
             case "downloading": Add("CANCEL", "decline", false); break;
-            case "ready": Add("RESTART TO JOIN", "restart", true); Add("CANCEL", "decline", false); break;
+            case "ready": Add(join, "restart", true); Add("CANCEL", "decline", false); break;
             default: Add("OK", "decline", false); break; // blocked or failed: nothing to do but close it
         }
         ModSyncPanel.Children.Add(buttons);
@@ -87,8 +89,8 @@ public partial class MainWindow
     }
 
     // The in-game prompt's TRUST warning (app.cpp DrawTrust), in the card's place; its button takes a click only after a
-    // second, so a click meant for the card underneath never trusts a mod. A stranger's (offered only to a sandboxed game)
-    // says what the sandbox does not stop.
+    // second, so a click meant for the card underneath never trusts a mod. A stranger's says what the sandbox does not stop (the
+    // plan no longer offers a stranger's mod for trust: it is the player's to install; the warning stays as a backstop).
     void RenderTrust(string runDirectory, ModSyncOffer offer, ModSyncOffer.Mod mod)
     {
         var name = (mod.Name.Length > 0 ? mod.Name : mod.Id) + " " + mod.Version;

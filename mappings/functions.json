@@ -1,0 +1,174 @@
+{
+  "format": 1,
+  "build": "25480438",
+  "note": "Game functions by name (SDK 16, hellforge_functions.h): each one's place in its module (rva), its first bytes as reviewed (code, an IDA-style pattern the loader checks before every use, through other hooks), its C signature and what each argument is. hook: true only where the signature is whole (every argument the function takes, unnamed ones as pass-through slots, and its return value), so a detour passes everything on; the others are for calling. The loader resolves them only on this build: a new game build revalidates every entry.",
+  "functions": {
+    "ConsumeDamageEvent": {
+      "rva": "0x12A7D40",
+      "code": "40 55 53 57 41 55 41 56 41 57 48 8D AC 24 68 FF FF FF 48 81 EC B8 01 00 00 48 8B 05 B0 42 39 01",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "system", "type": "void*", "meaning": "the damage system"},
+        {"name": "event", "type": "uint8_t*", "meaning": "the DamageEvent: +0 target entity, +4 kind, +8 element, +0x10 dealer and +0x14 owner network ids, +0x18 creditor peer (u64), +0x2C amount (i32), +0x50 the hit position (3 floats)"},
+        {"name": "r8", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "r9", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s5", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Takes one damage event from this machine's queue in the frame's drain, before ApplyDamage's armour and multipliers. HF_ON_DAMAGE and HF_ON_DAMAGE_PRE come from it; a detour that changes the amount at +0x2C changes the damage",
+      "source": "HD2Runtime 0.40.1 research event-combat; HellForge's HF_ON_DAMAGE hook (event_sources.c)"
+    },
+    "KillDispatch": {
+      "rva": "0xB96310",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 48 83 EC 40 48 8B 2D 41 0B 79 02 33 F6 41 8B D9 41 8B F8 4C",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "context", "type": "void*", "meaning": "the kill context"},
+        {"name": "creditor", "type": "uint64_t", "meaning": "the peer id the kill is credited to"},
+        {"name": "victim", "type": "uint32_t", "meaning": "the entity killed"},
+        {"name": "dealer", "type": "uint32_t", "meaning": "the entity that dealt the killing damage"},
+        {"name": "kind", "type": "uint32_t", "meaning": "the damage kind (HfDamageEvent.kind)"},
+        {"name": "element", "type": "uint32_t", "meaning": "the damage element"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Tells the game something was killed, on the victim's owner. HF_ON_KILL comes from it",
+      "source": "HD2Runtime 0.40.1 research event-combat; HellForge's HF_ON_KILL hook (event_sources.c)"
+    },
+    "ActivateStratagemBeacon": {
+      "rva": "0x6ABDB0",
+      "code": "48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 B0 FC FF FF 48 81 EC 50 04 00 00 48",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the stratagem manager"},
+        {"name": "element", "type": "int32_t", "meaning": "the beacon's element"},
+        {"name": "thrower", "type": "uint32_t", "meaning": "the throwing player's entity"},
+        {"name": "position", "type": "const float*", "meaning": "where the beacon landed (3 floats)"},
+        {"name": "record", "type": "void*", "meaning": "the beacon's record"},
+        {"name": "type", "type": "uint32_t", "meaning": "the StratagemType (HF_STRATAGEM_..., or a mod's from add_stratagem)"},
+        {"name": "s7", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s8", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s9", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s10", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Activates a stratagem's beacon once it lands, once per beacon, on the thrower's machine. HF_ON_STRATAGEM comes from it",
+      "source": "HD2Runtime 0.40.1 research event-actions; HellForge's HF_ON_STRATAGEM hook (event_sources.c)"
+    },
+    "SpawnEntity": {
+      "rva": "0xFDC140",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 54 41 56 41 57 48 83 EC 30 4C 8B A1 20 F8 F3 00 48 8B F1 48 8B 05 79 A2 34 02 49",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the entity manager"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the new entity's id in this session"},
+        {"name": "resource", "type": "uint64_t", "meaning": "the entity's resource id (HF_ENTITY_..., or a mod's)"},
+        {"name": "info", "type": "const uint8_t*", "meaning": "the SpawnInfo: +0 authority byte (1: this machine is in charge of it), +4 network id (u32)"},
+        {"name": "s5", "type": "uint64_t", "meaning": "not reviewed: pass it on"},
+        {"name": "s6", "type": "uint64_t", "meaning": "not reviewed: pass it on"}
+      ],
+      "hook": true,
+      "meaning": "Spawns an entity into this machine's world, remote spawns included. HF_ON_SPAWN comes from it, after the original returns",
+      "source": "HD2Runtime 0.40.1 research event-actions; HellForge's HF_ON_SPAWN hook (event_sources.c)"
+    },
+    "RequestExplosion": {
+      "rva": "0x13C0A80",
+      "code": "40 53 48 83 EC 30 8B 41 20 4C 8B DA 48 8B D9 3D 00 01 00 00 0F 83 69 02 00 00",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "queue", "type": "void*", "meaning": "the explosion queue: hf_global_ExplosionQueue (256 requests a frame)"},
+        {"name": "position", "type": "const float*", "meaning": "where (3 floats)"},
+        {"name": "type", "type": "uint32_t", "meaning": "the ExplosionSettings row"},
+        {"name": "source", "type": "uint32_t", "meaning": "the entity it comes from"},
+        {"name": "owner", "type": "uint32_t", "meaning": "the entity that owns it"},
+        {"name": "creditor", "type": "uint64_t", "meaning": "the peer id its kills are credited to"},
+        {"name": "a7", "type": "uint64_t", "meaning": "the game's callers pass 0"},
+        {"name": "a8", "type": "uint64_t", "meaning": "the game's callers pass NULL"},
+        {"name": "a9", "type": "uint64_t", "meaning": "the game's callers pass 1"},
+        {"name": "a10", "type": "uint64_t", "meaning": "the game's callers pass 0"},
+        {"name": "a11", "type": "uint64_t", "meaning": "the game's callers pass NULL"},
+        {"name": "a12", "type": "uint64_t", "meaning": "the game's callers pass NULL"},
+        {"name": "a13", "type": "uint64_t", "meaning": "the game's callers pass NULL"},
+        {"name": "a14", "type": "uint64_t", "meaning": "the game's callers pass 0"},
+        {"name": "a15", "type": "uint64_t", "meaning": "the game's callers pass 0"}
+      ],
+      "hook": true,
+      "meaning": "Requests an explosion in this machine's world: projectile impacts, explosives, stratagems, chained blasts. HF_ON_EXPLOSION comes from it; hf->spawn_explosion is the checked way to call it",
+      "source": "HD2Runtime 0.40.1 research event-explosions; HellForge's HF_ON_EXPLOSION hook (event_sources.c)"
+    },
+    "AddHealthFraction": {
+      "rva": "0x91E920",
+      "code": "48 8B C4 48 89 58 10 48 89 70 18 48 89 78 20 55 41 54 41 55 41 56 41 57 48 8D 68 A1 48 81 EC F0 00 00 00 0F 29 70 C8",
+      "returns": "void",
+      "params": [
+        {"name": "manager", "type": "void*", "meaning": "the health manager: hf_global_HealthManager"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity healed"},
+        {"name": "fraction", "type": "float", "meaning": "the share of its maximum health to add, to its health and every limb"}
+      ],
+      "hook": false,
+      "meaning": "Heals an entity by a share of its maximum health. hf->heal is the checked way to call it",
+      "source": "HD2Runtime 0.40.1 research player-injury-path; HellForge's heal (actions.c)"
+    },
+    "RestoreZone": {
+      "rva": "0x65B2D0",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 54 41 56 41 57 48 83 EC 70",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity"},
+        {"name": "zone", "type": "uint32_t", "meaning": "the damage zone's name hash (a Helldiver's head 0x8C5570C9, torso 0xAA1DB0B0, arms 0x1880288E and 0xB6F2BAF5, legs 0x64A3FA1D and 0x87B05FF4)"}
+      ],
+      "hook": false,
+      "meaning": "Restores one damage zone (a limb) to full. hf->heal_limb is the checked way to call it",
+      "source": "HD2Runtime 0.40.1 research player-injury-path; HellForge's heal_limb (actions.c)"
+    },
+    "QueueStatusRequest": {
+      "rva": "0x129F170",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 20 57 48 83 EC 20 44 3B 05 95 4A 1E 02 41 8B D8 48 8B 35 A3 DD 1D 02 8B EA 74 5C",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "status", "type": "uint32_t", "meaning": "the StatusEffectSettings row (HF_STATUS_...)"},
+        {"name": "target", "type": "uint32_t", "meaning": "the entity"},
+        {"name": "buildup", "type": "float", "meaning": "how much of the status builds up"},
+        {"name": "instigator", "type": "uint32_t", "meaning": "the entity that caused it"},
+        {"name": "zero", "type": "uint32_t", "meaning": "0"}
+      ],
+      "hook": false,
+      "meaning": "Queues a status buildup on an entity (4096 a frame: hf_global_CombatQueues' status_count). Host only. hf->apply_status is the checked way to call it",
+      "source": "HD2Runtime 0.40.1 research event-combat; HellForge's apply_status (actions.c)"
+    },
+    "SetVelocity": {
+      "rva": "0x4A7550",
+      "code": "48 89 5C 24 18 57 48 83 EC 20 3B 15 C0 C6 FD 02 48 8B 1D F1 EF E7 02 48 89 6C 24 30",
+      "returns": "void",
+      "params": [
+        {"name": "unused", "type": "void*", "meaning": "NULL"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity, which must have a motion record"},
+        {"name": "velocity", "type": "const float*", "meaning": "its new velocity (3 floats, m/s)"}
+      ],
+      "hook": false,
+      "meaning": "Sets an entity's velocity. hf->add_velocity is the checked way to push the local Helldiver",
+      "source": "HD2Runtime 0.40.1 research player-avatar-actions; HellForge's add_velocity (actions.c)"
+    },
+    "FireProjectile": {
+      "rva": "0x13A8F50",
+      "code": "4C 8B DC 4D 89 63 18 4D 89 6B 20 55 41 56 41 57 49 8D AB 28 F6 FF FF 48 81 EC C0 0A 00 00 48 8B 05 9B 30 29 01 48 33 C4 48 89 85 30 09 00 00 4C 8B 25 22 3F 0D 02 4D 8B F1 4D 8B E8 44 8B FA 41 80 7C 24 28 00 0F 84 10 08 00 00",
+      "returns": "void",
+      "params": [
+        {"name": "system", "type": "void*", "meaning": "the projectile system: hf_global_ProjectileSystem (running while its running field is 1)"},
+        {"name": "type", "type": "uint32_t", "meaning": "the ProjectileSettings row (HF_PROJECTILE_..., or a mod's)"},
+        {"name": "position", "type": "const float*", "meaning": "where it starts (3 floats)"},
+        {"name": "direction", "type": "const float*", "meaning": "its direction, unit length (3 floats)"},
+        {"name": "entity", "type": "uint32_t", "meaning": "the entity that fires it"},
+        {"name": "zero", "type": "uint32_t", "meaning": "0"},
+        {"name": "zero2", "type": "uint64_t", "meaning": "0"}
+      ],
+      "hook": false,
+      "meaning": "Fires a projectile. Host only, in a mission, with the projectile's package loaded. hf->spawn_projectile is the checked way to call it",
+      "source": "HD2Runtime 0.40.1 research projectile-ballistics; HellForge's spawn_projectile (actions.c)"
+    }
+  }
+}

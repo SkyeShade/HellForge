@@ -9,16 +9,18 @@ using HellForge.Session;
 //   version
 //   census <network-census.jsonl>   (a session's network census, summarised as the session's result.json holds it)
 //   network-probe <backend port> <report>   (the network block's probe as a Linux session runs it, PlaySession.NetworkProbeInProcess)
+//   host --spec <gameOut/domain/launch.json>   (the sandbox domain host; started by hf-sandbox, not by the launcher)
 // A session reports through its run folder (logs/sessions/<run>: result.json and the rest, as the launcher reads them);
 // anything that stops it before that folder exists goes to logs/session-runner.log.
 const string Usage = "Usage: HellForge.Session play --install <installation> --profile <profile folder> [--template <name>] " +
-    "[--local-playfab] [--multiplayer] [--live-war <cache file> | --open-war] [--engine-log] [--game-options <options>] [--mod-sync <file>] [--full-ownership-check] [--sandbox] | version | census <log>";
+    "[--local-playfab] [--multiplayer] [--live-war <cache file> | --open-war] [--engine-log] [--game-options <options>] [--mod-sync <file>] [--full-ownership-check] [--sandbox] | host --spec <file> | version | census <log>";
 
 if (args.Length == 1 && args[0] == "version")
 {
     Console.WriteLine(typeof(PlaySession).Assembly.GetName().Version);
     return 0;
 }
+if (args is ["host", "--spec", var spec]) return SandboxDomainHost.Run(spec);
 if (args.Length == 2 && args[0] == "census")
 {
     Console.WriteLine(NetworkCensus.Summarize(args[1]).ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));

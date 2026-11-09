@@ -22,10 +22,22 @@ public sealed record LiveApplies(string When, bool Verified)
     } + (Verified ? "" : " (expected)");
 }
 
+// Mod sync's state for the in-game editor (LiveEditServer.SyncStateAsync): the offer's version, its state word, the host,
+// the download's bytes and how many are done, the offer's mods, and the message. Live: answering "restart" changes the
+// running game's mods instead of restarting it (HF_SYNC_LIVE, SDK 16).
+public readonly record struct SyncStateLine(int Version, string State, string Host, long Bytes, long Done, int Mods, bool Live, string Message);
+
 public sealed record LiveResult(bool Ok, string Detail, uint? Bits = null)
 {
     public static readonly LiveResult NotConnected = new(false, "the game is not connected");
 }
+
+// One lobby of the in-game lobby browser's list (LiveEditServer.BrowseLobbyAsync): words as native/mod-loader/live_browse.c
+// reads them. Verdict: ready, download, trust, unjoinable, blocked, full, locked or unknown; Flags: friend, mission, joinable.
+// Players: the names, comma separated; ModList: the host's shared mods a join would change ("Name version: action"),
+// semicolon separated; Fix: the setting that would let it in (strangers, editedstats), or "".
+public sealed record LiveLobby(string Verdict, IReadOnlyList<string> Flags, int Members, int MaxMembers, long? Difficulty, long? Planet, int Mods,
+    long DownloadBytes, string LobbyId, string Host, string Reason, string Players = "", string ModList = "", string Fix = "");
 
 // The launcher's end of live editing (native/mod-loader/live.c): a named pipe, \\.\pipe\hellforge-live-<run id>, that
 // the session's mod loader connects to; current user only, one game at a time. Each request names a stats field as
@@ -33,7 +45,9 @@ public sealed record LiveResult(bool Ok, string Detail, uint? Bits = null)
 // the caller decides (a friend's game would not have the change).
 public sealed class LiveEditServer : IAsyncDisposable
 {
-    public const int Protocol = 1;
+    // Protocol 2 adds the mod channel's lines (native/mod-loader/channel.c); a protocol 1 game gets the older ones only.
+    public const int Protocol = 2;
+    const int OldestProtocol = 1;
     readonly string name, build;
     readonly CancellationTokenSource stop = new();
     readonly SemaphoreSlim sending = new(1, 1);
@@ -45,15 +59,18 @@ public sealed class LiveEditServer : IAsyncDisposable
 
     public static string PipeName(string runId) => "hellforge-live-" + runId;
 
-    // The game's hello: its build and the stats schema it was planned with; empty until a game connects.
+    // The game's hello: its build, the stats schema it was planned with, and its live protocol; empty until a game
+    // connects, and 0 while none does.
     public string GameBuild { get; private set; } = "";
     public string GameSchema { get; private set; } = "";
+    public int GameProtocol { get; private set; }
     public bool Connected { get; private set; }
     // The connected game runs another build or schema than this HellForge: requests are not sent.
     public bool Mismatched => Connected && (GameBuild != build || GameSchema != "-" && GameSchema != StatsSchema.Fingerprint);
     public event Action? StateChanged;
-    // A line the game sent on its own (not a reply), split at its tabs: mod sync's "syncanswer", and "packages" (this
-    // game's own packages, for friends: AssetShare) (native/mod-loader/live.c).
+    // A line the game sent on its own (not a reply), split at its tabs: mod sync's "syncanswer", "packages" (this
+    // game's own packages, for friends: AssetShare), and the mod channel's "send" and "share" (ModChannel)
+    // (native/mod-loader/live.c).
     public event Action<string[]>? Received;
 
     // build: the game build the session must run (the schema's; a test harness passes its own).
@@ -84,6 +101,7 @@ public sealed class LiveEditServer : IAsyncDisposable
             finally
             {
                 Connected = false;
+                GameProtocol = 0;
                 writer = null;
                 pipe = null;
                 lock (pending) { foreach (var waiter in pending.Values) waiter.TrySetResult("-\trefused\tthe game disconnected"); pending.Clear(); }
@@ -97,9 +115,10 @@ public sealed class LiveEditServer : IAsyncDisposable
     void Receive(string line)
     {
         var parts = line.Split('\t');
-        if (parts[0] == "hello" && parts.Length == 4 && parts[1] == Protocol.ToString(CultureInfo.InvariantCulture))
+        if (parts[0] == "hello" && parts.Length == 4 &&
+            int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var protocol) && protocol is >= OldestProtocol and <= Protocol)
         {
-            (GameBuild, GameSchema, Connected) = (parts[2], parts[3], true);
+            (GameBuild, GameSchema, GameProtocol, Connected) = (parts[2], parts[3], protocol, true);
             StateChanged?.Invoke();
         }
         else if (int.TryParse(parts[0], CultureInfo.InvariantCulture, out var seq))
@@ -142,6 +161,15 @@ public sealed class LiveEditServer : IAsyncDisposable
     // (native/mod-loader/rounds.c): "<peer hex>=<entry>;<entry>..." comma separated, "-" none (AssetShare.Rounds).
     public Task<LiveResult> RoundsAsync(string list) => SendAsync("rounds", list);
 
+    // The mod channel (SDK 16, native/mod-loader/channel.c): a message from the same mod on another machine, one row of
+    // the host's shared table (no value: removed), and the lobby changing (every row goes, then its snapshot follows).
+    public Task<LiveResult> MessageAsync(string modId, ulong from, byte[] data) =>
+        SendAsync("message", Field(modId) + "\t" + from.ToString("x16", CultureInfo.InvariantCulture) + "\t" + Convert.ToHexString(data).ToLowerInvariant());
+    public Task<LiveResult> ShareAsync(string modId, ulong key, byte[]? value) =>
+        SendAsync("share", Field(modId) + "\t" + key.ToString("x16", CultureInfo.InvariantCulture) + "\t" +
+            (value is { Length: > 0 } ? Convert.ToHexString(value).ToLowerInvariant() : "-"));
+    public Task<LiveResult> ShareResetAsync() => SendAsync("sharereset", "");
+
     // A "packages" or "preload" list: package ids, 16 hex digits each, comma separated, "-" none. Null when malformed.
     public static SortedSet<ulong>? Packages(string list, int max)
     {
@@ -169,8 +197,19 @@ public sealed class LiveEditServer : IAsyncDisposable
         SendAsync("syncmod", string.Join('\t', Invariant(version), Invariant(index), ModSyncPlan.ActionName(item.Action), ModSets.ClassName(item.Mod.Class),
             Invariant(item.Mod.Bytes), Field(item.Mod.Id), Field(item.Mod.Name), Field(item.Mod.Version), ModCatalog.WebAddress(item.Mod.Url) ?? "-") +
             (stranger ? "\tstranger" : ""));
-    public Task<LiveResult> SyncStateAsync(int version, string state, string host, long bytes, long done, int mods, string message) =>
-        SendAsync("syncstate", string.Join('\t', Invariant(version), state, Field(host), Invariant(bytes), Invariant(done), Invariant(mods), Field(message)));
+    public Task<LiveResult> SyncStateAsync(SyncStateLine line) =>
+        SendAsync("syncstate", string.Join('\t', Invariant(line.Version), line.State, Field(line.Host), Invariant(line.Bytes), Invariant(line.Done),
+            Invariant(line.Mods), line.Live ? "1" : "0", Field(line.Message)));
+
+    // The lobby browser (HfApi browse_state / browse_lobby, SDK 16): a list's lobbies, index 0 up, then its state, which
+    // publishes them in the game. A search under way or a join's outcome is the state alone, with the same version and count.
+    public Task<LiveResult> BrowseLobbyAsync(int version, int index, LiveLobby lobby) =>
+        SendAsync("browselobby", string.Join('\t', Invariant(version), Invariant(index), lobby.Verdict, lobby.Flags.Count > 0 ? string.Join(',', lobby.Flags) : "-",
+            Invariant(lobby.Members), Invariant(lobby.MaxMembers), lobby.Difficulty is { } d ? Invariant(d) : "-", lobby.Planet is { } p ? Invariant(p) : "-",
+            Invariant(lobby.Mods), Invariant(lobby.DownloadBytes), lobby.LobbyId, Field(lobby.Host), Field(lobby.Reason), Field(lobby.Players),
+            string.Concat(lobby.ModList.Where(c => !char.IsControl(c)).Take(250)), lobby.Fix is "strangers" or "editedstats" ? lobby.Fix : "-"));
+    public Task<LiveResult> BrowseStateAsync(int version, string state, int lobbies, string message) =>
+        SendAsync("browsestate", string.Join('\t', Invariant(version), state, Invariant(lobbies), Field(message)));
 
     static string Invariant(long number) => number.ToString(CultureInfo.InvariantCulture);
     // Text inside one field: no tabs, line breaks or other control characters, at most 200 characters.
@@ -195,7 +234,16 @@ public sealed class LiveEditServer : IAsyncDisposable
         var parts = reply.Split('\t');
         if (parts.Length >= 3 && parts[1] == "ok")
             return new(true, parts[2], parts.Length >= 4 && uint.TryParse(parts[3], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var bits) ? bits : null);
-        return new(false, parts.Length >= 3 ? parts[2] : "malformed reply");
+        // a refusal's reason, and for a live mod change its explanation after a tab
+        return new(false, parts.Length >= 3 ? string.Join('\t', parts[2..]) : "malformed reply");
+    }
+
+    // A line of a live change of the session's mods (LiveModPlan.Lines; native/mod-loader/live_mods.c), its fields sent as
+    // they are: a stats label, a folder. Field-level text was checked by the plan (no tabs or line breaks).
+    public Task<LiveResult> ModAsync(string verb, IReadOnlyList<string> fields)
+    {
+        if (fields.Any(f => f.Length == 0 || f.Any(char.IsControl))) return Task.FromResult(new LiveResult(false, "malformed\ta field is empty or holds a control character"));
+        return SendAsync(verb, string.Join('\t', fields));
     }
 
     public async ValueTask DisposeAsync()

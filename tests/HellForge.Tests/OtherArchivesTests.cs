@@ -61,10 +61,10 @@ static class OtherArchivesTests
     static byte[] Text(string text) => Encoding.UTF8.GetBytes(text);
     static string Manifest(string id) => $$"""{"format":1,"id":"{{id}}","name":"{{id}}","version":"1","gameplay":true}""";
 
-    // A 7z written by Windows' tar (as CosmeticPacksTests' does).
+    // A 7z written by the system's libarchive tar: Windows' tar.exe, or bsdtar on Linux (as CosmeticPacksTests' does).
     static void SevenZip(string from, string what, string archive)
     {
-        var tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
+        var tar = OperatingSystem.IsLinux() ? "bsdtar" : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(tar)
             { ArgumentList = { "--format", "7zip", "-cf", archive, "-C", from, what }, UseShellExecute = false, CreateNoWindow = true })!;
         process.WaitForExit();
@@ -112,6 +112,11 @@ static class OtherArchivesTests
 
         test("A .rar or .7z dropped into the mods folder is added as a folder; one already installed, or broken, stays and says why", () =>
         {
+            if (OperatingSystem.IsLinux() && !File.Exists("/usr/bin/bsdtar"))
+            {
+                Console.WriteLine("  (skipped: no bsdtar to write the test's .7z)");
+                return;
+            }
             var install = new InstallLayout(Path.Combine(root, "dropped-install"));
             install.Create("25480438");
             Directory.CreateDirectory(install.Mods);

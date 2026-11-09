@@ -19,8 +19,11 @@ struct Host
 
 void Init(const Host& host);
 /* Content mods added (SDK 7, HfApi.content), once every mod has registered it: a page for each custom stratagem, and
- * its saved values (mod-stats.json) applied. Before the editor first draws (its icons go into the atlas). */
+ * its saved values (mod-stats.json) applied. Before the editor first draws (its icons go into the atlas); again after a
+ * live change of the session's mods, for the stratagems it added (pages already made stay). */
 void AddModContent();
+/* SDK 16 HF_EVENT_MODS_CHANGED (on the change's thread): the next Tick adds the content the change brought. */
+void ModsChanged();
 /* Pixels per 1080p unit for a screen: the editor's scale (the fonts are baked for it). */
 float PixelScale(float width, float height);
 /* Every frame, open or not (the window's lock held): HellForge's messages, the co-op role, and the mod content values

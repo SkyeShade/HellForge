@@ -2,7 +2,8 @@
  * publishes them; progress keeping the mods; malformed and incomplete offers refused; long text cut on a whole
  * character; answers queued only for the current offer. Then the real pipe: LiveWatch connected to a server here, an
  * offer sent, and an answer written while LiveWatch waits on its read (a synchronous pipe would hold it until the next
- * request), and the offer withdrawn when the server goes. Included by stats_test.c. */
+ * request), and the offer withdrawn when the server goes. Then the lobby browser's lines (SDK 16, live_browse.c), held and
+ * published the same way, and the editor's asks. Included by stats_test.c. */
 
 static void SyncLine(const char* text, char* reply, size_t size)
 {
@@ -63,7 +64,7 @@ static void LiveSyncPipeFixture(void)
     assert(ApiSyncAnswer(NULL, 21, HF_SYNC_ACCEPT, NULL));
     assert(SyncServerLine(server, line, sizeof line) && !strcmp(line, "syncanswer\t21\taccept\t-"));
     /* and requests are still answered after it */
-    SyncServerSend(server, "syncstate\t3\t21\tdownloading\tFriend Two\t5000\t2500\t1\t\n");
+    SyncServerSend(server, "syncstate\t3\t21\tdownloading\tFriend Two\t5000\t2500\t1\t0\t\n");
     assert(SyncServerLine(server, line, sizeof line) && !strcmp(line, "3\tok\tnow"));
     assert(ApiSyncState(NULL, &state) && state.state == HF_SYNC_DOWNLOADING && state.done == 2500);
     /* the backend goes: the offer with it, and answers are no longer queued */
@@ -92,7 +93,7 @@ static void LiveSyncFixture(void)
     SyncLine("syncmod\t2\t5\t1\tmanual\tcode\t200\tfriend.guns\tGuns\t1.1\thttps://example.com/mods/guns?v=1.1", reply, sizeof reply);
     assert(!strcmp(reply, "2\tok\tnow"));
     assert(!ApiSyncState(NULL, &state) && !ApiSyncMod(NULL, 0, &mod));
-    SyncLine("syncstate\t3\t5\toffer\tFriend One\t1048576\t0\t2\t", reply, sizeof reply); /* an empty message */
+    SyncLine("syncstate\t3\t5\toffer\tFriend One\t1048576\t0\t2\t0\t", reply, sizeof reply); /* an empty message */
     assert(!strcmp(reply, "3\tok\tnow"));
     assert(ApiSyncState(NULL, &state) && state.state == HF_SYNC_OFFER && state.version == 5 && state.mods == 2 && state.bytes == 1048576 &&
         state.done == 0 && !strcmp(state.host, "Friend One") && state.message[0] == 0 && state.size == sizeof state);
@@ -103,11 +104,11 @@ static void LiveSyncFixture(void)
     assert(!ApiSyncMod(NULL, 2, &mod));
 
     /* progress: the same version, its mods kept */
-    SyncLine("syncstate\t4\t5\tdownloading\tFriend One\t1048576\t524288\t2\tdownloading Tanks", reply, sizeof reply);
+    SyncLine("syncstate\t4\t5\tdownloading\tFriend One\t1048576\t524288\t2\t0\tdownloading Tanks", reply, sizeof reply);
     assert(!strcmp(reply, "4\tok\tnow"));
     assert(ApiSyncState(NULL, &state) && state.state == HF_SYNC_DOWNLOADING && state.done == 524288 && !strcmp(state.message, "downloading Tanks"));
     assert(ApiSyncMod(NULL, 1, &mod) && !strcmp(mod.id, "friend.guns"));
-    SyncLine("syncstate\t5\t5\tdownloading\tFriend One\t1048576\t600000\t3\t", reply, sizeof reply);
+    SyncLine("syncstate\t5\t5\tdownloading\tFriend One\t1048576\t600000\t3\t0\t", reply, sizeof reply);
     assert(!strncmp(reply, "5\trefused\t", 10)); /* a mod count changed without its mods */
 
     /* a new version: its syncstate without all of its syncmod lines is refused, the old offer stays */
@@ -123,6 +124,17 @@ static void LiveSyncFixture(void)
     assert(ApiSyncState(NULL, &state) && state.state == HF_SYNC_READY && state.version == 6 && state.mods == 2);
     assert(ApiSyncMod(NULL, 0, &mod) && mod.action == HF_SYNC_MOD_TRUST && mod.kind == HF_SYNC_CLASS_CODE && mod.url[0] == 0 && mod.flags == 0);
     assert(ApiSyncMod(NULL, 1, &mod) && mod.action == HF_SYNC_MOD_OFF && mod.kind == HF_SYNC_CLASS_RAW && !strcmp(mod.id, "mine.extra") && mod.url[0] == 0);
+
+    /* the running game can take the host's mods (HF_SYNC_LIVE, SDK 16): a syncstate with its flags field; an unknown
+     * flag is refused */
+    assert(state.flags == 0);
+    SyncLine("syncstate\t20\t6\tready\tFriend One\t0\t0\t2\t1\t", reply, sizeof reply);
+    assert(!strcmp(reply, "20\tok\tnow") && ApiSyncState(NULL, &state) && state.flags == HF_SYNC_LIVE && state.mods == 2);
+    SyncLine("syncstate\t21\t6\tready\tFriend One\t0\t0\t2\t2\t", reply, sizeof reply);
+    assert(!strncmp(reply, "21\trefused\t", 11) && ApiSyncState(NULL, &state) && state.flags == HF_SYNC_LIVE);
+    /* a line without the field (an older backend) says 0 */
+    SyncLine("syncstate\t22\t6\tready\tFriend One\t0\t0\t2\tready", reply, sizeof reply);
+    assert(!strcmp(reply, "22\tok\tnow") && ApiSyncState(NULL, &state) && state.flags == 0 && !strcmp(state.message, "ready"));
 
     /* malformed lines: refused, nothing changes */
     const char* bad[] = {
@@ -168,7 +180,7 @@ static void LiveSyncFixture(void)
     SyncLine(line, reply, sizeof reply);
     char host[100];
     memset(host, 'h', 90); host[90] = 0;
-    snprintf(line, sizeof line, "syncstate\t21\t8\tblocked\t%s\t9\t0\t1\tyou blocked\tfriend.tanks", host);
+    snprintf(line, sizeof line, "syncstate\t21\t8\tblocked\t%s\t9\t0\t1\t0\tyou blocked\tfriend.tanks", host);
     SyncLine(line, reply, sizeof reply);
     assert(!strcmp(reply, "21\tok\tnow"));
     assert(ApiSyncState(NULL, &state) && state.state == HF_SYNC_BLOCKED && strlen(state.host) == sizeof state.host - 1 &&
@@ -203,7 +215,7 @@ static void LiveSyncFixture(void)
     assert(!ApiSyncAnswer(NULL, 8, HF_SYNC_RESTART, NULL)); /* no backend */
 
     /* withdrawn: state none of a new version, then the pipe going clears it */
-    SyncLine("syncstate\t22\t9\tnone\t\t0\t0\t0\t", reply, sizeof reply);
+    SyncLine("syncstate\t22\t9\tnone\t\t0\t0\t0\t0\t", reply, sizeof reply);
     assert(!strcmp(reply, "22\tok\tnow") && !ApiSyncState(NULL, &state) && state.state == HF_SYNC_NONE && state.version == 9);
 
     /* a stranger's mod to trust (a sandboxed game's offer): flagged, its address kept; a 12th field that is not "stranger"
@@ -221,4 +233,117 @@ static void LiveSyncFixture(void)
     assert(!ApiSyncState(NULL, &state) && state.version == 0);
 
     LiveSyncPipeFixture();
+}
+
+/* SDK 16, the lobby browser: a list's browselobby lines wait for its browsestate; a search under way and a join's outcome
+ * keep the lobbies; malformed lines refused; asks queued only with a backend, a join only for a lobby id; the terminal's
+ * count carried with the state; the list gone with the backend; the first mod to claim the browser holding it. */
+static void LiveBrowseFixture(void)
+{
+    char reply[512];
+    HfBrowseState state = {sizeof state};
+    HfBrowseLobby lobby = {sizeof lobby};
+    assert(!ApiBrowseState(NULL, &state) && state.state == HF_BROWSE_NONE && state.size == sizeof state && !ApiBrowseLobby(NULL, 0, &lobby));
+
+    SyncLine("browselobby\t1\t3\t0\tready\tfriend,joinable\t2\t4\t7\t118\t0\t0\tsteam-1\tFriend One\t\tFriend One, Two\tTanks 2.0: have\t-", reply, sizeof reply);
+    assert(!strcmp(reply, "1\tok\tnow"));
+    SyncLine("browselobby\t2\t3\t1\tunjoinable\t-\t1\t4\t-\t-\t3\t0\tsteam-2\tStranger\tits host is not a Steam friend\t\t\tstrangers", reply, sizeof reply);
+    assert(!strcmp(reply, "2\tok\tnow"));
+    SyncLine("browselobby\t3\t3\t2\tdownload\tmission,joinable\t3\t4\t10\t5\t2\t1048576\tsteam-3\t\t\t\t\teditedstats", reply, sizeof reply);
+    assert(!strcmp(reply, "3\tok\tnow"));
+    assert(!ApiBrowseLobby(NULL, 0, &lobby)); /* not published yet */
+    SyncLine("browsestate\t4\t3\tready\t3\t", reply, sizeof reply);
+    assert(!strcmp(reply, "4\tok\tnow"));
+    assert(ApiBrowseState(NULL, &state) == 0 && state.state == HF_BROWSE_READY && state.version == 3 && state.lobbies == 3); /* 0: no backend */
+    assert(ApiBrowseLobby(NULL, 0, &lobby) && lobby.verdict == HF_LOBBY_READY && lobby.flags == (HF_LOBBY_FLAG_FRIEND | HF_LOBBY_FLAG_JOINABLE) &&
+        lobby.members == 2 && lobby.max_members == 4 && lobby.difficulty == 7 && lobby.planet == 118 && !strcmp(lobby.lobby_id, "steam-1") &&
+        !strcmp(lobby.host, "Friend One") && lobby.reason[0] == 0 && !strcmp(lobby.players, "Friend One, Two") && !strcmp(lobby.mod_list, "Tanks 2.0: have") &&
+        lobby.fix == HF_LOBBY_FIX_NONE);
+    assert(ApiBrowseLobby(NULL, 1, &lobby) && lobby.verdict == HF_LOBBY_UNJOINABLE && lobby.flags == 0 && lobby.difficulty == -1 && lobby.planet == -1 &&
+        lobby.mods == 3 && !strcmp(lobby.reason, "its host is not a Steam friend") && lobby.fix == HF_LOBBY_FIX_STRANGERS);
+    assert(ApiBrowseLobby(NULL, 2, &lobby) && lobby.verdict == HF_LOBBY_DOWNLOAD && (lobby.flags & HF_LOBBY_FLAG_MISSION) && lobby.download_bytes == 1048576 &&
+        lobby.host[0] == 0 && lobby.fix == HF_LOBBY_FIX_EDITED_STATS);
+    assert(!ApiBrowseLobby(NULL, 3, &lobby));
+
+    /* a search under way, then a join's outcome: the same version keeps its lobbies; another count is refused */
+    SyncLine("browsestate\t5\t3\tsearching\t3\t", reply, sizeof reply);
+    assert(!strcmp(reply, "5\tok\tnow") && (ApiBrowseState(NULL, &state), state.state == HF_BROWSE_SEARCHING) && ApiBrowseLobby(NULL, 2, &lobby));
+    SyncLine("browsestate\t6\t3\tinvited\t3\tAccept the invitation in game to join.", reply, sizeof reply);
+    ApiBrowseState(NULL, &state);
+    assert(!strcmp(reply, "6\tok\tnow") && state.state == HF_BROWSE_INVITED && !strcmp(state.message, "Accept the invitation in game to join."));
+    SyncLine("browsestate\t7\t3\tready\t2\t", reply, sizeof reply);
+    assert(strstr(reply, "\trefused\t") != NULL);
+    /* a new version without all of its lines is refused, the old list stays; an empty list needs none */
+    SyncLine("browselobby\t8\t4\t1\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-9\tA\t\t\t\t-", reply, sizeof reply);
+    SyncLine("browsestate\t9\t4\tready\t2\t", reply, sizeof reply);
+    assert(strstr(reply, "missing") != NULL && (ApiBrowseState(NULL, &state), state.version == 3));
+    SyncLine("browsestate\t10\t5\tunavailable\t0\tMultiplayer is off for this session.", reply, sizeof reply);
+    ApiBrowseState(NULL, &state);
+    assert(!strcmp(reply, "10\tok\tnow") && state.state == HF_BROWSE_UNAVAILABLE && state.lobbies == 0 && !ApiBrowseLobby(NULL, 0, &lobby));
+
+    const char* bad[] = {
+        "browselobby\t11\t6\t0\tgreat\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\t-",       /* an unknown verdict */
+        "browselobby\t12\t6\t0\tready\tvip\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\t-",      /* an unknown flag */
+        "browselobby\t13\t6\t128\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\t-",      /* past the 128th lobby */
+        "browselobby\t14\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam 1\tA\t\t\t\t-",       /* a space in the lobby id */
+        "browselobby\t15\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\t\tA\t\t\t\t-",              /* no lobby id */
+        "browselobby\t16\t6\t0\tready\t-\t1\t4\t-1\t-\t0\t0\tsteam-1\tA\t\t\t\t-",      /* a difficulty that is not a number */
+        "browselobby\t17\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t-",           /* a field short */
+        "browselobby\t20\t6\t0\tready\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\tvip",     /* an unknown fix */
+        "browsestate\t18\t6\tjoining\t0\t",                                          /* an unknown state */
+        "browsestate\t19\t6\tready\t129\t",                                          /* too many lobbies */
+    };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++)
+    {
+        SyncLine(bad[i], reply, sizeof reply);
+        assert(strstr(reply, "\trefused\t") != NULL);
+    }
+
+    /* asks: only with a backend; a join names a lobby id */
+    assert(!ApiBrowseAsk(NULL, HF_BROWSE_REFRESH, NULL));
+    AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 1; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
+    assert(ApiBrowseState(NULL, &state) == 1);
+    assert(!ApiBrowseAsk(NULL, 9, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_JOIN, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_JOIN, "steam\t1"));
+    assert(ApiBrowseAsk(NULL, HF_BROWSE_REFRESH, "ignored") && ApiBrowseAsk(NULL, HF_BROWSE_JOIN, "steam-1") && ApiBrowseAsk(NULL, HF_BROWSE_QUICK, NULL) &&
+        ApiBrowseAsk(NULL, HF_BROWSE_ALLOW_STRANGERS, NULL) && ApiBrowseAsk(NULL, HF_BROWSE_SHOW_EDITED_STATS, "ignored"));
+    g_liveOut[g_liveOutUsed] = 0;
+    assert(!strcmp(g_liveOut, "browseask\trefresh\t-\nbrowseask\tjoin\tsteam-1\nbrowseask\tquick\t-\nbrowseask\tallow\tstrangers\n"
+        "browseask\tallow\teditedstats\n"));
+    AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 0; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
+
+    /* the terminal's count goes with the state, and stays when the backend goes */
+    InterlockedExchange(&g_terminalOpens, 2);
+    BrowseClear();
+    assert(!ApiBrowseState(NULL, &state) && state.state == HF_BROWSE_NONE && state.version == 0 && state.terminal == 2);
+    InterlockedExchange(&g_terminalOpens, 0);
+
+    /* a claim: the first mod holds the browser until it releases it, and only it moves the terminal's camera; no backend
+     * needed, and the owner stays when the backend goes */
+    HfMod first = {0}, second = {0};
+    snprintf(first.id, sizeof first.id, "echelon.browser");
+    snprintf(second.id, sizeof second.id, "other.browser");
+    assert(!ApiBrowseAsk(NULL, HF_BROWSE_CLAIM, NULL) && !ApiBrowseAsk(&second, HF_BROWSE_RELEASE, NULL));
+    assert(ApiBrowseAsk(&first, HF_BROWSE_CLAIM, NULL) && ApiBrowseAsk(&first, HF_BROWSE_CLAIM, NULL) && !ApiBrowseAsk(&second, HF_BROWSE_CLAIM, NULL));
+    ApiBrowseState(NULL, &state);
+    assert(!strcmp(state.owner, "echelon.browser"));
+    assert(!ApiBrowseAsk(&second, HF_BROWSE_SHOWN, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_HIDDEN, NULL) && !ApiBrowseAsk(&second, HF_BROWSE_RELEASE, NULL));
+    assert(ApiBrowseAsk(&first, HF_BROWSE_SHOWN, NULL) && ApiBrowseAsk(&first, HF_BROWSE_HIDDEN, NULL));
+    /* and only it turns a setting on for the session */
+    AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 1; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
+    assert(!ApiBrowseAsk(&second, HF_BROWSE_ALLOW_STRANGERS, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_SHOW_EDITED_STATS, NULL) && g_liveOutUsed == 0);
+    assert(ApiBrowseAsk(&first, HF_BROWSE_ALLOW_STRANGERS, NULL) && ApiBrowseAsk(&second, HF_BROWSE_REFRESH, NULL));
+    g_liveOut[g_liveOutUsed] = 0;
+    assert(!strcmp(g_liveOut, "browseask\tallow\tstrangers\nbrowseask\trefresh\t-\n"));
+    AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 0; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
+    BrowseClear();
+    ApiBrowseState(NULL, &state);
+    assert(!strcmp(state.owner, "echelon.browser"));
+    HfBrowseState older = {offsetof(HfBrowseState, owner)}; /* a mod built before the owner: the loader writes no further */
+    memset(older.owner, 'x', sizeof older.owner);
+    ApiBrowseState(NULL, &older);
+    assert(older.owner[0] == 'x' && older.size == offsetof(HfBrowseState, owner));
+    assert(ApiBrowseAsk(&first, HF_BROWSE_RELEASE, NULL) && !ApiBrowseAsk(&first, HF_BROWSE_RELEASE, NULL));
+    ApiBrowseState(NULL, &state);
+    assert(state.owner[0] == 0 && ApiBrowseAsk(NULL, HF_BROWSE_HIDDEN, NULL));
+    assert(ApiBrowseAsk(&second, HF_BROWSE_CLAIM, NULL) && ApiBrowseAsk(&second, HF_BROWSE_RELEASE, NULL));
 }

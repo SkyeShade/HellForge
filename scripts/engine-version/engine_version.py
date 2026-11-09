@@ -52,6 +52,7 @@ ENGINE_SOURCES = (
     'data/profile-templates.json',
     'data/progression-data.json',
     'data/verified-mods.json',
+    'data/forge-credits/',
     # the build and its pins, and the scripts the package ships
     'scripts/Build-Engine.ps1',
     'scripts/Get-BuildTools.ps1',
@@ -64,11 +65,13 @@ ENGINE_SOURCES = (
     'LICENSE-EXCEPTION',
 )
 # Named by the engine's build but not part of what it ships: the version itself, the tool that runs the table
-# generator (its code is in Core), the build's smoke tests and their example mods.
+# generator (its code is in Core), the build's smoke tests and their example mods, and the optional signing step (it
+# adds signatures when a certificate is configured, and changes nothing otherwise).
 BUILD_ONLY = (
     PROPS,
     'src/HellForge.Cli/',
     'scripts/Build-Mod.ps1',
+    'scripts/Sign-Files.ps1',
     'scripts/Test-BackendAot.ps1',
     'examples/',
 )
