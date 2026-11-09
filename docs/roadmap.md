@@ -137,7 +137,8 @@ the game's content only appears when the war sets it up, and "All planets open" 
 
 ### A HellForge galactic war
 
-Status: step 1 built (war scripts). The research is in HD2Mods `research/galactic-war`.
+Status: step 1 built (war scripts); step 3's client side built (the backend follows a war server, reports missions;
+[hellforge-war.md](hellforge-war.md)), not yet tried in game. The research is in HD2Mods `research/galactic-war`.
 
 The goal is a galactic war HellForge runs, which players join and staff steer from the website: planets, liberation and
 defense, major orders, dispatches, subfactions, planet modifiers (an extra stratagem on a planet, cooldowns) and rewards
@@ -148,8 +149,11 @@ shows what the backend serves and reports each mission. The steps:
    file each player has. Built; the in-game tests are next.
 2. The war moving on its own in the backend: planet health and regeneration, defense timers, planets changing hands,
    and missions counting towards planets and major orders.
-3. A HellForge war server running that state for everyone, with signed snapshots (like the verified list), and each
-   backend following it the way it follows the live war today.
+3. A HellForge war server running that state for everyone, and each backend following it the way it follows the live
+   war. The backend side is built: `--war hellforge`, the default war, fetches the server's snapshot every minute,
+   caches it per server, and reports mission starts, heartbeats and ends. The server is its own service
+   (`war.hf-mod.com`, not live yet). Still to do: signed snapshots (like the verified list), reports from Linux sessions
+   (through the launcher), and showing a mission's impact in game.
 4. Staff tools on the website: planets, effects, events, the major order and dispatch editors, reward mail.
 5. Engine support for what the war data can't do: banning or changing a stratagem on one planet, task text of our own,
    weather hazards.

@@ -130,10 +130,10 @@ public static partial class ProfileStore
 
     // The galactic war a session serves: the HellForge war shared by HellForge players (backend --war hellforge,
     // WarServer), the live war read-only through the community mirror (backend --live-war), the frozen war HellForge
-    // ships, or the all-planets war made from it (backend --war open). The HellForge war unless chosen otherwise, since
-    // 0.5: an installation that saved its settings before keeps the war it had (every save wrote "war", so one never
-    // changed cannot be told from one chosen), and a settings file from before the choice keeps its live-war switch
-    // ("liveWar").
+    // ships, or the all-planets war made from it (backend --war open). The HellForge war unless chosen otherwise, from
+    // the release after 0.4.0-beta: an installation that saved its settings before keeps the war it had (every save
+    // wrote "war", so one never changed cannot be told from one chosen), and a settings file from before the choice keeps
+    // its live-war switch ("liveWar").
     public const string WarHellForge = "hellforge", WarLive = "live", WarFrozen = "frozen", WarOpen = "open";
     public static readonly string[] Wars = [WarHellForge, WarLive, WarFrozen, WarOpen];
     public static string LoadWar(ISessionPaths paths)

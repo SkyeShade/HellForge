@@ -8,15 +8,17 @@ A war script is a JSON file that adds to the galactic war HellForge serves. It c
 - galactic war effects (planet modifiers such as an extra stratagem, cooldowns, subfactions) and additions to the war
   status (where those effects go, defense events, campaigns).
 
-This is the first step towards a HellForge galactic war run from the website. For now the file lives on each player's
-PC, so everyone in a lobby should use the same file. Nothing here has been tried in game yet: every reply was run
+This was the first step towards a HellForge galactic war; the war every HellForge player shares now comes from a war
+server ([hellforge-war.md](hellforge-war.md)), and a war script adds to it like to any other war. The file lives on
+each player's PC, so everyone in a lobby should use the same file. Nothing here has been tried in game yet: every reply was run
 through the game's own parsers in an emulator, but which task lines and modifiers the game shows still needs testing
 (HD2Mods `research/galactic-war`, "Unknowns / in-game tests").
 
 ## Where it goes
 
 Put `war-script.json` in your HellForge folder, beside `live-war.json`. The next session serves it with whichever war you
-picked (live, frozen or all planets open). HellForge reads the file again whenever it changes, and the game polls every
+picked (HellForge war, live, frozen or all planets open). With the HellForge war, the server's major orders and
+dispatches come first and the script's follow. HellForge reads the file again whenever it changes, and the game polls every
 30 to 60 seconds, so an edit shows up on the ship within a minute. A file that doesn't parse is ignored and the last good
 one stays; the session's `backend/war-script.log` says which. Comments (`//`) and trailing commas are allowed.
 

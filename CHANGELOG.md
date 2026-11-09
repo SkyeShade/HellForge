@@ -50,6 +50,11 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   buys stratagems and store items, samples buy ship module upgrades, and requisition buys weapon attachments. Each
   purchase is saved to your profile. Before, claiming a warbond item failed with an error and medals could only come
   from the map. Premium warbonds still need to be owned in the normal game (#232).
+- **The HellForge war**, now the default war (Settings > GALACTIC WAR > HellForge war): one galactic war shared by every
+  HellForge player, with its own major orders and dispatches, from HellForge's war server. The war updates every minute
+  while you play, and your missions count towards it. Without a connection the last war fetched is used, and without
+  that the frozen war. Installations that saved their settings before keep the war they had. Settings has a War server
+  field for trying a server of your own ([docs/hellforge-war.md](docs/hellforge-war.md)).
 - **War scripts.** A `war-script.json` in your HellForge folder adds your own major orders, dispatches, reward mail and
   planet modifiers (such as an extra stratagem for everyone on a planet) to the war, and edits show in game within a
   minute ([docs/war-script.md](docs/war-script.md)). Mail rewards can be claimed once by every player. The major order,
@@ -379,6 +384,9 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### For launcher developers
 
+- `play`, `settings` and `fetch-war` take `--war hellforge` (the default for new installations) and `--war-server <url>`;
+  `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it. `fetch-war` fetches the HellForge war unless
+  the saved war is the live one, and prints `war` and `server` ([docs/external-launchers.md](docs/external-launchers.md)).
 - `HellForge.Cli steam-download --out <folder>` downloads the supported build from Steam's servers for the account
   that signs in with a QR code (on standard error), as setup does; `--file` fetches one file of the build and
   `--dry-run yes` prints the plan only. `--sign-in steamcmd` lets Valve's SteamCMD download it instead (into
