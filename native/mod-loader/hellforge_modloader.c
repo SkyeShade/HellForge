@@ -376,10 +376,11 @@ static int FieldTypes(uintptr_t* rows, uint32_t* count)
     return 0;
 }
 
-static uintptr_t FindFieldType(const char* name)
+/* The field type row whose name hashes to `hash`, when exactly one does; 0 otherwise. */
+static uintptr_t FindFieldTypeHash(uint32_t hash)
 {
     uintptr_t rows;
-    uint32_t count, hash = (uint32_t)(Murmur64A(name, strlen(name)) >> 32), found = 0;
+    uint32_t count, found = 0;
     uintptr_t match = 0;
     if (FieldTypes(&rows, &count)) return 0;
     for (uint32_t i = 0; i < count; i++)
@@ -389,6 +390,11 @@ static uintptr_t FindFieldType(const char* name)
         if (rowHash == hash) { match = rows + (uintptr_t)i * 0x18; found++; }
     }
     return found == 1 ? match : 0;
+}
+
+static uintptr_t FindFieldType(const char* name)
+{
+    return FindFieldTypeHash((uint32_t)(Murmur64A(name, strlen(name)) >> 32));
 }
 
 static int ApiNetworkFieldType(const char* name, HfFieldType* type)
@@ -835,6 +841,7 @@ static void WatchNetwork(void)
     Note("network configuration ready (%u field types)", count);
     RegisterNetworkTypes();
     NetApplyAll(); /* the mods' networkFieldTypes (nettypes.c) */
+    WidenStratagemField(); /* stratagems.c: before any session, as every peer with these mods does */
     Fire(HF_EVENT_NETWORK_READY);
 }
 

@@ -314,8 +314,14 @@ instructions, and 69 bounds on the type grow by the number of new stratagems. Th
 move with it. Every instruction and bound is checked against the reviewed game build first, and anything else adds no
 stratagem. The review is in `artifacts/stratagem-registry/BOUNDS.md` (not committed).
 
-All mods together can add 48 new stratagems, because the loadout picker lists at most 150 available stratagems and up
-to 96 vanilla ones can be available. A new stratagem:
+All mods together can add 1,024 new stratagems (types 150 to 1,173). The loadout picker keeps one candidate record and
+one pointer per type on its stack, so its frame (six instructions and its unwind data) is sized for all of them. In
+co-op a type travels in an 8-bit network field (type 255 at most); past 256 types it is widened to 16 bits when the
+network configuration loads, before any session, and every player with the same mods picks the same width. Eight
+instructions that index the loadout's per-type choices by type go through guards, and when the stratagem settings load
+again the rows-loaded count keeps the list's length. What holds them in practice: the picker shows 256 cards (the game
+drops the rest), so about 160 new ones show at once, and the item catalogue (two items each, shared with mod weapons).
+The research is in `research\content-limits\stratagems-wide` (not committed). A new stratagem:
 
 - does not load its base's ship-upgrade (level) packages, since the loadout keeps one per vanilla type;
 - never counts in the mission statistics;

@@ -204,6 +204,10 @@ static uint8_t* ContentGame(size_t size)
         memcpy(game + kStratagemBounds[i].rva + kStratagemBounds[i].immAt, &kStratagemBounds[i].value, kStratagemBounds[i].width);
     memcpy(game + STR_PICKER_BOUND, kPickerBoundPin, sizeof kPickerBoundPin);
     memcpy(game + STR_PICKER_PAD, kPickerPadPin, sizeof kPickerPadPin);
+    for (size_t i = 0; i < sizeof kChoiceGuards / sizeof kChoiceGuards[0]; i++) memcpy(game + kChoiceGuards[i].rva, kChoiceGuards[i].pin, kChoiceGuards[i].length);
+    memcpy(game + STR_COUNT_STORE, kCountStorePin, sizeof kCountStorePin);
+    for (size_t i = 0; i < sizeof kPickerFrame / sizeof kPickerFrame[0]; i++) memcpy(game + kPickerFrame[i].rva, kPickerFrame[i].pin, kPickerFrame[i].length);
+    memcpy(game + STR_PICKER_UNWIND, kPickerUnwindPin, sizeof kPickerUnwindPin);
     *(uint32_t*)(game + STR_ROWS_LOADED) = STR_VANILLA - 1;
     memcpy(game + DMG_CLEAR, kDamageClearPin, sizeof kDamageClearPin);
     for (size_t i = 0; i < sizeof kDamageSites / sizeof kDamageSites[0]; i++)
@@ -482,7 +486,9 @@ static void ContentInstallFixture(void)
     assert((int)g_textsServed == g_textCount && !g_textsHeld && TextDetour(madeId, NULL, NULL, NULL) == g_texts[textsBefore].text);
     uintptr_t table = (uintptr_t)g_stratagemTable;
     Stratagem* s = &g_stratagems[0];
-    assert(table && StratagemSitesAt(g, table) && BoundsAt(g, 1) && !memcmp(game + STR_PICKER_PAD, kPickerPad, sizeof kPickerPad));
+    assert(table && StratagemSitesAt(g, table) && BoundsAt(g, 1) && game[STR_PICKER_PAD] == kPickerPad[0] && *(uint32_t*)(game + STR_PICKER_PAD + 1) == STR_TYPES &&
+        !memcmp(game + STR_PICKER_PAD + 5, kPickerPad + 5, sizeof kPickerPad - 5)); /* the clear: every type's record */
+    assert(*(uint32_t*)(table + STR_LENGTH_AT) == STR_VANILLA + 1 && game[kChoiceGuards[0].rva] == 0xE9 && PickerFrameFailed(g) != NULL); /* guards and frame in, live */
     assert(*(uint8_t**)(table + type * 8) == s->row && *(uint32_t*)s->row == type && *(uint32_t*)(s->row + 4) == s->stable &&
         *(float*)(s->row + 0x68) == 5.0f && *(const char**)(table + STR_NAMES_AT + type * 8) == s->name &&
         !strcmp(*(const char**)(table + STR_NAMES_AT + (type + 1) * 8), "Count"));
