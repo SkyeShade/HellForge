@@ -93,8 +93,17 @@ static int RenderGuardPoolWait(uint32_t spins, const uint8_t* pool)
     LONG ms = waited > 0x7FFFFFFF ? 0x7FFFFFFF : (LONG)waited, longest;
     while ((longest = g_rgPoolLongestMs) < ms && InterlockedCompareExchange(&g_rgPoolLongestMs, ms, longest) != longest) {}
     int again = 0;
-    if (now - w->moved >= g_rgPoolStallMs) InterlockedIncrement(&g_rgPoolStalled);
-    else if (waited >= g_rgPoolWaitMs) InterlockedIncrement(&g_rgPoolGaveUp);
+    /* logged here, not by the watch thread: the game crashes as soon as this returns 0 */
+    if (now - w->moved >= g_rgPoolStallMs)
+    {
+        InterlockedIncrement(&g_rgPoolStalled);
+        Note("render guards: a full job pool saw no job finish for %llu ms (the game quitting, or stuck); the game's own failure follows", g_rgPoolStallMs);
+    }
+    else if (waited >= g_rgPoolWaitMs)
+    {
+        InterlockedIncrement(&g_rgPoolGaveUp);
+        Note("render guards: a full job pool was still full after %llu s while jobs finished; the game's own failure follows", g_rgPoolWaitMs / 1000);
+    }
     else again = 1;
     if (again) Sleep(1);
     SetLastError(error);
@@ -165,12 +174,26 @@ static int RgPinned(uintptr_t exe)
         PinMatches(exe + RG_POOL_FREED_AT, kRgPoolFreedPin, sizeof kRgPoolFreedPin);
 }
 
+/* Every rel32 between a cave page and the patched code, both ways: the near search may land below the exe. */
+static int RgInReach(uintptr_t cave, uintptr_t exe)
+{
+    int64_t up = (int64_t)(exe + RG_COMPUTE_NULL + 0x100 - cave), down = (int64_t)(cave + 0x1000 - (exe + RG_POOL_RETRY));
+    return up < 0x7FFF0000 && up > -0x7FFF0000 && down < 0x7FFF0000 && down > -0x7FFF0000;
+}
+
+/* A page for the caves that every jump reaches, or NULL. */
+static uint8_t* RgCavePage(uintptr_t exe)
+{
+    uint8_t* cave = AllocateNearGame(exe, 0x1000);
+    return cave != NULL && RgInReach((uintptr_t)cave, exe) ? cave : NULL; /* one unused page kept: it may be the shared arena's */
+}
+
 /* The caves, then each site's jump, written with no thread in it. A site is whole on its own, so one that fails leaves
  * the others guarding. 1 installed (maybe in part), 0 not. */
 static int RenderGuardsInstallAt(uintptr_t exe)
 {
     if (g_rgTls == TLS_OUT_OF_INDEXES) g_rgTls = TlsAlloc();
-    uint8_t* cave = g_rgTls != TLS_OUT_OF_INDEXES ? AllocateNearGame(exe, 0x1000) : NULL;
+    uint8_t* cave = g_rgTls != TLS_OUT_OF_INDEXES ? RgCavePage(exe) : NULL;
     if (cave == NULL) { Note("render guards: not installed; no memory near the game's exe"); return 0; }
     uint8_t* at[RG_SITES + 1];
     uint8_t* c = cave;
@@ -236,10 +259,6 @@ static void RenderGuardsReport(void)
     if (!changed || (g_rgPoolWaits == g_rgPoolReported && !ended)) return;
     g_rgPoolReported = g_rgPoolWaits;
     Note("render guards: the job pool ran full %ld time(s), longest wait %ld ms", (long)g_rgPoolReported, (long)g_rgPoolLongestMs);
-    if (stalled != g_rgPoolStalledReported)
-        Note("render guards: a full job pool saw no job finish for %llu ms (the game quitting, or stuck); the game's own failure follows", g_rgPoolStallMs);
-    if (gaveUp != g_rgPoolGaveUpReported)
-        Note("render guards: a full job pool was still full after %llu s while jobs finished; the game's own failure follows", g_rgPoolWaitMs / 1000);
     g_rgPoolStalledReported = stalled;
     g_rgPoolGaveUpReported = gaveUp;
 }

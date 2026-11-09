@@ -27,7 +27,7 @@ crash.
 - **Constant buffers of a material** (`0x73197D`, `0x730701`). Their null path reads data inside the material, which
   is not a safe stand-in for a resource that was freed.
 - **Copy, update and command lookups.** They take handles from the command the game is issuing, not from a material,
-  and have no null path.
+  and no crash report shows them.
 - **The cause.** Why a resource is freed while a material still binds it is unknown.
 
 ## In the log

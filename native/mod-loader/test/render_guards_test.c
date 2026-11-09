@@ -62,6 +62,8 @@ static void RenderGuardsFixture(void)
     assert(!RgPinned(exe)); /* another build's code is left alone */
     image[kRgSites[2].rva + 3] ^= 1;
 
+    assert(RgInReach(exe + 0x10000000, exe) && RgInReach(exe - 0x10000000, exe));
+    assert(!RgInReach(exe + 0x90000000ull, exe) && !RgInReach(exe - 0x7FFF0000ull, exe)); /* a jump would not reach */
     assert(RenderGuardsInstallAt(exe));
     for (size_t i = 0; i < RG_SITES; i++) assert(image[kRgSites[i].rva] == 0xe9);
     assert(image[RG_POOL_EMPTY] == 0xe9);
