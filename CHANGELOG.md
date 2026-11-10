@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **New vehicles as copies of vanilla ones.** The `vehicle-variants` example adds the EXO-45H Heavy Patriot (a quicker
+  turn and a 2000-round machine gun) and the M-102R Rally FRV (quicker steering), each called in by a Pelican drop
+  stratagem of its own. A ground vehicle ignores `model_from`, since its seats, wheels, tracks and damage zones name
+  its own model's parts (#327).
 - **Mods can add enemies of their own (SDK 17).** `add_enemy` gives an entity a roster row with its own spawn group,
   weights, cost and limits, tied to no vanilla enemy. `add_enemy_squad` adds squads that send those groups as patrols,
   guards, stragglers, outpost garrisons, reinforcements, border flyers, convoys or air support. `add_enemy_swap` adds
@@ -157,6 +161,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **A copy with records of its own no longer crashes the game when it spawns.** The game reads past a record into the
+  next one, and HellForge's copy of a component table ended right after the newest record. Calling in a vehicle copy
+  whose Health record was the last one crashed at its beacon (#327).
+- **A Pelican drop loads its cargo's package.** A stratagem without a package of its own took the payload's last
+  entity's first, so a vehicle drop loaded the Pelican's package instead of the vehicle's (#327).
 - **Mod stratagems no longer read past the loadout's level choices.** Six places in the game read a per-type choice
   that has only 150 entries for every stratagem, mod ones included, and two more could write there; they now see no
   choice for a mod stratagem. When the game loaded its stratagem settings again, the count of stratagems went back to

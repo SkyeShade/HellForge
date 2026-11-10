@@ -92,6 +92,7 @@
 #define REG_PROJECTILE_WEAPON_STRIDE 616u
 #define REG_BEHAVIOUR 284u
 #define REG_BEHAVIOUR_STRIDE 12u /* BehaviorComponentData: +0 behaviour id, +4 task cooldown, +8 task user */
+#define REG_VEHICLE_ELECTRICS 231u /* VehicleElectricsComponentData: only ground vehicles have one (FRVs, tanks, exosuits) */
 
 static const uint8_t kLoaderPin[16] = {0x48, 0x89, 0x5c, 0x24, 0x18, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57};
 static const uint8_t kBuilderPin[16] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x7c, 0x24, 0x10, 0x48, 0x8b, 0x05, 0xc7, 0xa2, 0xa7};
@@ -323,6 +324,19 @@ static uint8_t* StatePointer(uint8_t* state, uint32_t offset)
 {
     uintptr_t value = 0;
     return state != NULL && !SafeRead((uintptr_t)state + offset, &value, 8) ? (uint8_t*)value : NULL;
+}
+
+/* Whether a copy's model_from is ignored (TakeModel): ground vehicles name their model's parts in far more records than
+ * it takes (damage zones, seats, mounts, wheels, tracks, legs), and half a model hangs the game at spawn, so a ground
+ * vehicle, as the base or as the donor, keeps its base's model. */
+static int KeepsGroundModel(uint8_t* state, const Weapon* w, uint64_t baseEntity)
+{
+    uint8_t* electrics = StatePointer(state, REG_TABLES + 8 * REG_VEHICLE_ELECTRICS);
+    uint32_t slots = SlotsOf(REG_VEHICLE_ELECTRICS);
+    if (electrics == NULL || slots == 0) return 0;
+    if (FindRow(electrics, slots, 16, baseEntity) == NULL && FindRow(electrics, slots, 16, w->modelFrom) == NULL) return 0;
+    ApiLog(w->mod, "%s: model_from ignored: a ground vehicle keeps its base's model", w->name);
+    return 1;
 }
 
 static int SetStatePointer(uint8_t* state, uint32_t offset, const void* value)
@@ -947,10 +961,11 @@ static OwnedTable* OwnedCopy(uint8_t* state, uint32_t c, uint32_t stride, uint32
     uint32_t recordBytes = bytes > slots * 16u ? bytes - slots * 16u : 0;
     uint32_t first = (recordBytes + stride - 1) / stride; /* the first record index after every vanilla byte */
     /* address space for RegRoom() records after the vanilla ones; pages committed as records are added (OwnRecord): an
-     * own_all entity copies every table, and the room committed at once would take about 216 KB for each record of it */
+     * own_all entity copies every table, and the room committed at once would take about 216 KB for each record of it.
+     * One record more is reserved for the space committed after the last one (OwnRecord). */
     uint32_t room = RegRoom();
     size_t vanillaBytes = 32 + (size_t)slots * 16 + (size_t)first * stride;
-    size_t size = vanillaBytes + (size_t)room * stride;
+    size_t size = vanillaBytes + ((size_t)room + 1) * stride;
     uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_READWRITE);
     if (copy == NULL) return NULL;
     if (VirtualAlloc(copy, vanillaBytes, MEM_COMMIT, PAGE_READWRITE) == NULL) { VirtualFree(copy, 0, MEM_RELEASE); return NULL; }
@@ -980,8 +995,11 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
     memcpy(&mine, row + 8, 4);
     if (baseEntity != entity && mine >= owned->first && mine < owned->next) return records + (size_t)mine * stride; /* its own already */
     if (owned->next >= owned->end) return NULL;
-    /* its page committed before the record is written or named (the copy reserves the room, OwnedCopy) */
-    if (VirtualAlloc(records + (size_t)owned->next * stride, stride, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
+    /* its pages committed before the record is written or named (the copy reserves the room, OwnedCopy), and a record's
+     * worth after it: the game reads past a record into the next one, which every record of its own tables has (Health,
+     * component 224: SyncedHealthComponent's spawn at game.dll 0x6B1A8D reads 0x6848 bytes of a 0x5650-byte record, so a
+     * called-in vehicle whose record was the last one committed ran into reserved memory) */
+    if (VirtualAlloc(records + (size_t)owned->next * stride, 2 * (size_t)stride, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
     uint32_t baseRecord, record = owned->next++;
     memcpy(&baseRecord, baseRow + 8, 4);
     memcpy(records + (size_t)record * stride, records + (size_t)baseRecord * stride, stride);

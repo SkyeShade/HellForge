@@ -391,7 +391,7 @@ static void GiveOwnRecords(WeaponLoad* L, Weapon* w, uint64_t baseEntity, const 
     OwnBeamArc(state, w, baseEntity, &kFiredBeam, BeamTypeUsable(w->beam), w->beam);
     OwnBeamArc(state, w, baseEntity, &kFiredArc, ArcTypeUsable(w->arc), w->arc);
     if (w->text[0] != 0 || w->text[2] != 0 || w->text[3] != 0) OwnTextRecord(state, w, Donor(w, REG_TEXT_COMPONENT, baseEntity));
-    if (w->modelFrom != 0) TakeModel(state, w, baseEntity);
+    if (w->modelFrom != 0 && !KeepsGroundModel(state, w, baseEntity)) TakeModel(state, w, baseEntity);
     if (w->behaviour != 0) OwnBehaviour(state, w, Donor(w, REG_BEHAVIOUR, baseEntity));
     OwnNamedRecords(state, w, baseEntity);
     if (w->ownAll) OwnAllRecords(state, w, baseEntity, components, componentCount);

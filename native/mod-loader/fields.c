@@ -763,8 +763,9 @@ static void ApplyEdit(FieldEdit* e)
 }
 
 /* A mod stratagem that names no package (HfStratagem.package 0) but a payload loads the package of the entity it drops:
- * the payload's LoadoutPackage record (a mod entity's own, else its model's or base's), last payload entity first (a
- * Pelican drop's vehicle). Done once the entity data and the stratagem rows both exist, again after a reload. */
+ * the payload's LoadoutPackage record (a mod entity's own, else its model's or base's), first payload entity first: a
+ * Pelican drop's cargo before its Pelican, whose package (the extraction Pelican's) every mission loads anyway. Done once
+ * the entity data and the stratagem rows both exist, again after a reload. */
 static int g_packagesInferred;
 
 /* For an entity a mod added: the entity whose model it takes, else its base (0 for any other). */
@@ -776,11 +777,11 @@ static uint64_t ModelOrBase(uint64_t entity)
     return source;
 }
 
-/* The package of a stratagem's payload (its last payload entity first), or 0; *from: the entity whose record names it. */
+/* The package of a stratagem's payload (its first payload entity first), or 0; *from: the entity whose record names it. */
 static uint64_t PayloadPackage(const Stratagem* st, const SdkComponent* c, const SdkField* f, uint64_t* from)
 {
     uint64_t package = 0;
-    for (uint32_t k = st->payloadCount; k-- > 0 && package == 0;)
+    for (uint32_t k = 0; k < st->payloadCount && package == 0; k++)
     {
         uint64_t entity = st->payload[k];
         if (entity == 0) continue;
