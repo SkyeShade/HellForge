@@ -33,7 +33,7 @@
 #include "ownership.c" /* items made owned, and given back */
 #include "loadout_scrub.c" /* the loadout without what a removed mod added */
 
-#define LC_MAX 512 /* entries of any numbered kind HellForge has room for (weapons and entities grow: their tombs are Weapon.tomb) */
+#define LC_MAX 1024 /* entries of any numbered kind HellForge has room for (weapons and entities grow: their tombs are Weapon.tomb) */
 /* table: the settings table edits name its rows in by their number (fields.c), or NULL */
 typedef struct LiveKind { const char* name; void* entries; size_t stride, nameAt; uint32_t* count; uint32_t max, first; const char* table; } LiveKind;
 _Static_assert(offsetof(Stratagem, mod) == 0 && offsetof(Projectile, mod) == 0 && offsetof(Damage, mod) == 0 && offsetof(Behaviour, mod) == 0 &&
@@ -513,7 +513,7 @@ static const char* LiveStratagem(LivePlan* plan, uint8_t* table, uint32_t index,
     static uint8_t* spare;
     static uint32_t spareUsed;
     int added = index >= g_lcBefore[LC_STRATAGEM], owned = added || g_lcShadowed[LC_STRATAGEM][index] != LC_STAND_SAME;
-    s->row = added ? table + STR_ROWS_AT + (size_t)index * STR_ROW : LiveSpareRow(&spare, &spareUsed, STR_ROW, STR_MAX_NEW);
+    s->row = added ? StratagemNewRow(index) : LiveSpareRow(&spare, &spareUsed, STR_ROW, STR_MAX_NEW);
     const char* failed = s->row != NULL ? StratagemRow(s, home, table) : NULL;
     if (s->row == NULL || failed != NULL) return failed != NULL ? failed : "no memory for its row";
     const char* name = home->name;
@@ -541,7 +541,7 @@ static const char* LiveStratagems(LivePlan* plan, char* why, size_t size)
     uint32_t count = STR_VANILLA + g_stratagemCount;
     if (g_stratagemTable == NULL && (failed = StratagemMove(plan->game, table, LivePut)) != NULL) return LiveFailed(why, size, "stratagems", failed);
     LivePut((uintptr_t)table + STR_NAMES_AT + count * 8, &g_stratagemCountName, 8); /* "Count" after the last type */
-    if (g_stratagemCount > g_lcBefore[LC_STRATAGEM] && (failed = StratagemRaise(plan->game, count, g_stratagemTable == NULL, LivePut)) != NULL)
+    if (g_stratagemCount > g_lcBefore[LC_STRATAGEM] && (failed = StratagemRaise(plan->game, table, count, g_stratagemTable == NULL, LivePut)) != NULL)
         return LiveFailed(why, size, "stratagems", failed);
     if (g_stratagemTable == NULL) plan->stratagems = table;
     return NULL;

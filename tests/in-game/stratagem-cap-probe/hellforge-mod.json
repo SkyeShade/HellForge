@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.stratagem-cap-probe",
+  "name": "Stratagem cap probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: adds 300 stratagems (types 150 to 449, past the 8-bit co-op type), puts the last one in the loadout on the ship, and logs one PROBE line per check for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "stratagem_cap_probe.dll", "sdk": 16 }
+}
