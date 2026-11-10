@@ -16,8 +16,8 @@ there) and `mappings/` (functions, globals, fields and content); do not edit it 
 ## Contents
 
 - [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-the-lobby-browser-hfbrowsestate-check-hf-size-before-calling), [SDK 16](#sdk-16-game-functions-and-globals-by-name-hellforge_functionsh-hellforge_globalsh-check-hf-size), [SDK 16](#sdk-16-the-mods-status-check-hf-size-before-calling), [SDK 16](#sdk-16-the-mod-channel-co-op-docsmoddingconceptsmd-co-op), [SDK 16](#sdk-16-live-mods-see-the-top-of-this-file-check-hf-size-before-calling), [SDK 17](#sdk-17-explosions-check-hf-size-before-calling), [SDK 17](#sdk-17-beams-and-arcs-check-hf-size-before-calling), [SDK 17](#sdk-17-enemies-check-hf-size-before-calling)
-- [Functions](#functions): [ConsumeDamageEvent](#consumedamageevent), [KillDispatch](#killdispatch), [ActivateStratagemBeacon](#activatestratagembeacon), [SpawnEntity](#spawnentity), [RequestExplosion](#requestexplosion), [AddHealthFraction](#addhealthfraction), [RestoreZone](#restorezone), [QueueStatusRequest](#queuestatusrequest), [SetVelocity](#setvelocity), [FireProjectile](#fireprojectile)
-- [Globals](#globals): [Game](#game), [PlayerManager](#playermanager), [LocalUser](#localuser), [GameMode](#gamemode), [EntityManager](#entitymanager), [HealthManager](#healthmanager), [MotionManager](#motionmanager), [ExplosionQueue](#explosionqueue), [ProjectileSystem](#projectilesystem), [CombatQueues](#combatqueues), [ScoreManager](#scoremanager), [WielderManager](#wieldermanager), [InventoryManager](#inventorymanager), [Destructibles](#destructibles), [DestructionRecords](#destructionrecords)
+- [Functions](#functions): [ConsumeDamageEvent](#consumedamageevent), [KillDispatch](#killdispatch), [ActivateStratagemBeacon](#activatestratagembeacon), [SpawnEntity](#spawnentity), [RequestExplosion](#requestexplosion), [AddHealthFraction](#addhealthfraction), [RestoreZone](#restorezone), [QueueStatusRequest](#queuestatusrequest), [SetVelocity](#setvelocity), [FireProjectile](#fireprojectile), [QueueDamage](#queuedamage), [NeedsAmmo](#needsammo), [TryStartAction](#trystartaction), [RequestEntitySpawn](#requestentityspawn), [AbilityTick](#abilitytick), [SiloMissileArmedAbility](#silomissilearmedability), [LinkedMissile](#linkedmissile), [LinkerRecord](#linkerrecord), [LinkedRack](#linkedrack), [SetMissileEngine](#setmissileengine), [LaunchMissile](#launchmissile), [SetExplosiveOwner](#setexplosiveowner), [SetGuidanceTarget](#setguidancetarget), [RackReleaseItem](#rackreleaseitem), [StartAbility](#startability), [BehaviourUpdate](#behaviourupdate), [BehaviourStage](#behaviourstage), [BehaviourEvent](#behaviourevent), [BehaviourResume](#behaviourresume), [PelicanTransportUpdate](#pelicantransportupdate), [PelicanTransportStage](#pelicantransportstage), [PelicanTransportEvent](#pelicantransportevent), [BehaviourOwnPosition](#behaviourownposition), [BehaviourOrbitStep](#behaviourorbitstep), [BehaviourMoveTo](#behaviourmoveto), [BehaviourFace](#behaviourface), [BehaviourTargetPosition](#behaviourtargetposition), [PelicanTurretIdle](#pelicanturretidle), [TurretActive](#turretactive), [TurretHasAmmo](#turrethasammo), [PelicanTurretStage](#pelicanturretstage), [BehaviourSetTarget](#behavioursettarget), [WeaponDegreesTo](#weapondegreesto), [IsValidTarget](#isvalidtarget), [FindPerceptionEntry](#findperceptionentry), [MagazineRounds](#magazinerounds), [AddMagazineRounds](#addmagazinerounds), [MagazineCapacity](#magazinecapacity), [WeaponWithinDegrees](#weaponwithindegrees), [EntityDescriptor](#entitydescriptor), [MarkReplicated](#markreplicated), [ShieldRecord](#shieldrecord), [MoveObject](#moveobject), [SpawnProjectile](#spawnprojectile), [CatalogueAddItem](#catalogueadditem), [CatalogueSort](#cataloguesort), [AddItemAmount](#additemamount), [RemoveItemAmount](#removeitemamount), [LoadEntities](#loadentities), [BuildArmoryList](#buildarmorylist), [ArmoryEntryOf](#armoryentryof), [EngineText](#enginetext), [OpenMenuPresenter](#openmenupresenter), [MenuSoundUpdate](#menusoundupdate), [RequestPackages](#requestpackages), [EntityOfNetwork](#entityofnetwork), [QueryLoadoutPreview](#queryloadoutpreview), [PushArmoryLoadout](#pusharmoryloadout), [RollCacheLoot](#rollcacheloot), [RequestWarbondPurchase](#requestwarbondpurchase), [FinishWarbondPurchase](#finishwarbondpurchase), [SpawnWarbondShowcase](#spawnwarbondshowcase), [UpdateWarbondSpent](#updatewarbondspent), [UpdateWarbondPager](#updatewarbondpager), [WarbondPagerInput](#warbondpagerinput), [SetElementText](#setelementtext), [SetElementTextAlt](#setelementtextalt), [SetElementNumber](#setelementnumber), [SetWidgetVisible](#setwidgetvisible), [SetElementColour](#setelementcolour), [SetPickerHeading](#setpickerheading), [StratagemAvailable](#stratagemavailable), [SortArray](#sortarray), [HighestDifficulty](#highestdifficulty), [FindConfigSetting](#findconfigsetting), [ShowDifficultyWidget](#showdifficultywidget), [ComputeMissionRating](#computemissionrating), [EnemyDirectorTick](#enemydirectortick), [ArenaAllocate](#arenaallocate), [GameMemset](#gamememset), [CreateGenerationBlock](#creategenerationblock), [InitLevel](#initlevel), [GenerateRouteCells](#generateroutecells), [GenerateRouteCellVoronoi](#generateroutecellvoronoi), [GenerateSubregionHeights](#generatesubregionheights), [GenerateVoronoi](#generatevoronoi), [FinalizeVoronoi](#finalizevoronoi), [ForceFlattenZones](#forceflattenzones), [SelectSubRegionCellsFromHeightGroup](#selectsubregioncellsfromheightgroup), [SampleSubregionNoise](#samplesubregionnoise), [GenerateLocationClusters](#generatelocationclusters), [SpreadLocations](#spreadlocations), [SpreadLocationsCities](#spreadlocationscities), [GenerateOutpostLocations](#generateoutpostlocations), [GenerateObjectiveLocations](#generateobjectivelocations), [AddImportantLocations](#addimportantlocations), [GenerateMissionStampList](#generatemissionstamplist), [FixUnreachableAreas](#fixunreachableareas), [CullUnitsOutsidePlayableArea](#cullunitsoutsideplayablearea), [GenerateCityRoads](#generatecityroads), [CreateCityFootprintList](#createcityfootprintlist), [FlattenCityRoads](#flattencityroads), [StampIndexSize](#stampindexsize), [StampIndexCheckLayout](#stampindexchecklayout), [HashMapInsert](#hashmapinsert), [SetupDestructionRecordMap](#setupdestructionrecordmap), [RegisterStaticDestructionRecords](#registerstaticdestructionrecords), [SelectObjectives](#selectobjectives), [LaunchMission](#launchmission), [MissionTimerWidget](#missiontimerwidget), [UpdateHudObjectives](#updatehudobjectives), [UpdateMapScreen](#updatemapscreen), [BuildMapMarkerSlots](#buildmapmarkerslots), [HudMandatoryObjectives](#hudmandatoryobjectives), [MissionHudTopBar](#missionhudtopbar), [BuildMissionResult](#buildmissionresult), [TelemetrySelectedMission](#telemetryselectedmission), [TelemetryMissionEnd](#telemetrymissionend), [RollArtilleryShell](#rollartilleryshell), [ArtilleryAim](#artilleryaim), [SolveBallisticAim](#solveballisticaim), [PredictProjectileLanding](#predictprojectilelanding), [GenerateRegionMissions](#generateregionmissions), [GenerateCampaignPlanetMissions](#generatecampaignplanetmissions), [GenerateDefencePlanetMissions](#generatedefenceplanetmissions), [DifficultyBarBuild](#difficultybarbuild), [DifficultyBarDestroy](#difficultybardestroy), [DifficultyBarChoose](#difficultybarchoose), [SetImageSprite](#setimagesprite), [SetImageSpriteOrTexture](#setimagespriteortexture), [SetElementResourceSlot](#setelementresourceslot), [SetImageWithBase](#setimagewithbase), [UiElementRect](#uielementrect), [MissionCardMinimap](#missioncardminimap), [WarTableHologramUpdate](#wartablehologramupdate), [WarTableHologramZoom](#wartablehologramzoom), [WarTableHologramHeightAt](#wartablehologramheightat), [WarTableHologramTerrainHeight](#wartablehologramterrainheight), [EngineRenderStep](#enginerenderstep), [UnitSetLocalPose](#unitsetlocalpose), [UpdateUnit](#updateunit), [UnitFromHandle](#unitfromhandle), [MainWorld](#mainworld), [UnitNodeWorldPosition](#unitnodeworldposition), [UnitActorByName](#unitactorbyname), [SetResourceOverride](#setresourceoverride), [ClearResourceOverride](#clearresourceoverride), [CanGetResource](#cangetresource), [TransportCleanup](#transportcleanup), [DestroyConnection](#destroyconnection), [SessionPeersRemoved](#sessionpeersremoved), [NetworkManagerUpdate](#networkmanagerupdate), [CollisionFilterPairs](#collisionfilterpairs), [PhysicsHandleBody](#physicshandlebody), [CreateNavmeshCut](#createnavmeshcut), [RemoveNavmeshCuts](#removenavmeshcuts), [EnableNavmeshCuts](#enablenavmeshcuts), [NavWorldSetup](#navworldsetup), [BuildNavTile](#buildnavtile), [BuildPhysicsPools](#buildphysicspools), [EngineAllocatorAllocate](#engineallocatorallocate), [DestroyNetworkTypeEntry](#destroynetworktypeentry), [FindPackage](#findpackage), [PackageHasLoaded](#packagehasloaded), [LobbyMemberData](#lobbymemberdata), [LobbySetMemberData](#lobbysetmemberdata), [RegistryAllocate](#registryallocate), [ProjectileWeaponCopy](#projectileweaponcopy), [MagazineCopy](#magazinecopy), [AttachToUnit](#attachtounit), [SetBehaviour](#setbehaviour), [UnlinkRelation](#unlinkrelation), [RemoveEntity](#removeentity), [DestroyEntity](#destroyentity), [CloseStratagemSelector](#closestratagemselector), [SetStratagemCardEnabled](#setstratagemcardenabled), [SetLobbySetting](#setlobbysetting), [SetQuickplay](#setquickplay), [ReleasePackages](#releasepackages), [BeamInfoOf](#beaminfoof), [DamageInfoOf](#damageinfoof), [ProjectileInfoOf](#projectileinfoof), [PluginUpdate](#pluginupdate), [GameUpdate](#gameupdate), [PlayLoadoutSound](#playloadoutsound), [CreditorOf](#creditorof), [PickEnemy](#pickenemy), [EntityAttribute](#entityattribute), [ApplyDamage](#applydamage), [IsDead](#isdead), [HealthRecord](#healthrecord), [RestoreHealth](#restorehealth), [HealthSettings](#healthsettings), [SetLifeState](#setlifestate), [HealthManagerUpdate](#healthmanagerupdate), [DrainCombatQueues](#draincombatqueues), [EnqueueDamageEvent](#enqueuedamageevent), [ProduceDamage](#producedamage), [InitHitInfo](#inithitinfo), [EntityToNetwork](#entitytonetwork), [HealthZoneOfNode](#healthzoneofnode), [BuildDamageValues](#builddamagevalues), [IsBoosterActive](#isboosteractive), [ApplyStatus](#applystatus), [HasStatus](#hasstatus), [RemoveStatus](#removestatus), [AddStat](#addstat), [StatsPlayerIndex](#statsplayerindex), [StatMapLookup](#statmaplookup), [BuildScore](#buildscore), [KillCreditListener](#killcreditlistener), [PassiveValue](#passivevalue), [ChangeState](#changestate), [SetPlayerAvatar](#setplayeravatar), [SetPlayerState](#setplayerstate), [TurretSettings](#turretsettings), [SensorEyeSettings](#sensoreyesettings), [ProjectileWeaponRecord](#projectileweaponrecord), [WeaponDataRecord](#weapondatarecord), [BeamWeaponRecord](#beamweaponrecord), [WeaponProjectileType](#weaponprojectiletype), [ProjectileFire](#projectilefire), [GenericFire](#genericfire), [WeaponHeatStep](#weaponheatstep), [SpendRound](#spendround), [ProjectileWeaponUpdate](#projectileweaponupdate), [BeamWeaponUpdate](#beamweaponupdate), [BeamShot](#beamshot), [ReloadMagazine](#reloadmagazine), [TurretUpdate](#turretupdate), [TurretSpeedFactor](#turretspeedfactor), [SensorEyeRanges](#sensoreyeranges), [PerceptionUpdate](#perceptionupdate), [WindUpUpdate](#windupupdate), [ApplyAttribute](#applyattribute), [UpdateCustomization](#updatecustomization), [UpdateCustomizations](#updatecustomizations), [SetArmorKit](#setarmorkit), [SetHelmetKit](#sethelmetkit), [SetCapeKit](#setcapekit), [PlayerSlot](#playerslot), [BehaviourExplosion](#behaviourexplosion), [RequestExplosionAt](#requestexplosionat), [ExplosionKick](#explosionkick), [ExplosionGather](#explosiongather), [ProcessExplosion](#processexplosion), [ProjectileKick](#projectilekick), [BehaviourStartAbility](#behaviourstartability), [CorpseSource](#corpsesource), [StatusReceivable](#statusreceivable), [FlushNetworkFields](#flushnetworkfields), [Wield](#wield), [SwitchWeapon](#switchweapon), [QueueFieldWrite](#queuefieldwrite), [BeamTypeOf](#beamtypeof), [OutOfAmmo](#outofammo), [ChargeFire](#chargefire), [EncyclopediaRecord](#encyclopediarecord), [PickerCatalogueItem](#pickercatalogueitem), [NavigationRecord](#navigationrecord), [BehaviourStageCount](#behaviourstagecount), [BehaviourEventSlot](#behavioureventslot), [BehaviourSlotEvent](#behaviourslotevent), [FillDistancesTo](#filldistancesto), [UpdateImageUv](#updateimageuv), [HiveMindDefinition](#hiveminddefinition), [UnloadDamageList](#unloaddamagelist), [CollectOperationsForDifficulty](#collectoperationsfordifficulty), [FinalizeVoronoiStructured](#finalizevoronoistructured), [ReVoronoi](#revoronoi), [PlaceRoadProps](#placeroadprops), [StampIndexInit](#stampindexinit), [StampIndexInsert](#stampindexinsert), [CreateMinimapTexture](#createminimaptexture), [UpdateMissionCardDuration](#updatemissioncardduration), [SetupPhysicsConfig](#setupphysicsconfig), [SiloRemoteLink](#siloremotelink), [LaserDesignatorUpdate](#laserdesignatorupdate), [LinkRemoteOnPickup](#linkremoteonpickup), [MissilePreDestroy](#missilepredestroy), [CompactLinkerCopies](#compactlinkercopies), [SiloRemoteCleanup](#siloremotecleanup), [PelicanTurretAim](#pelicanturretaim), [RealizePellet](#realizepellet), [NetworkApplyState](#networkapplystate), [BehaviourSpawnSetup](#behaviourspawnsetup), [BehaviourNetworkFill](#behaviournetworkfill), [LoadProjectileList](#loadprojectilelist), [UnloadProjectileList](#unloadprojectilelist), [ProjectileLookupA](#projectilelookupa), [ProjectileLookupB](#projectilelookupb), [AttachmentItemById](#attachmentitembyid), [EntityDelta](#entitydelta), [RemoveSessionPeer](#removesessionpeer), [IsSteamFriend](#issteamfriend), [ApplySpawnDeltas](#applyspawndeltas), [HiveMindOf](#hivemindof), [RegisterDestructible](#registerdestructible), [LoadDestructibleIndex](#loaddestructibleindex), [DestructibleIndexEntry](#destructibleindexentry), [PlayerNearness](#playernearness), [BuildWarbondPager](#buildwarbondpager), [RefreshWarbondBuyButton](#refreshwarbondbuybutton), [UpdateWarbondBuyButton](#updatewarbondbuybutton), [WarbondScreenData](#warbondscreendata), [BuildWarbondList](#buildwarbondlist), [UpdateWarbondPanel](#updatewarbondpanel), [DrawWarbondClaimButton](#drawwarbondclaimbutton), [UpdateWarbondPage](#updatewarbondpage), [ItemPresetKit](#itempresetkit), [ValidateBootLoadout](#validatebootloadout), [StratagemPackages](#stratagempackages), [ReleaseUnusedSharedStratagems](#releaseunusedsharedstratagems), [LoadStratagemSettings](#loadstratagemsettings), [BuildStratagemPicker](#buildstratagempicker), [MasteryPackageOf](#masterypackageof), [BuildCustomizationList](#buildcustomizationlist), [CreateWorld](#createworld), [StretchCityTemplate](#stretchcitytemplate), [LaySites](#laysites), [KeepTownEdges](#keeptownedges), [BuildingPlaced](#buildingplaced), [AreaRimHeight](#arearimheight), [FindPocketNeighbour](#findpocketneighbour), [SendMissionEndTelemetry](#sendmissionendtelemetry), [MissionResultReport](#missionresultreport), [ObjectiveSpawnSetup](#objectivespawnsetup), [RateOfFireCycle](#rateoffirecycle), [WeaponFunctionPress](#weaponfunctionpress), [ProjectileWeaponRateSeed](#projectileweaponrateseed), [ProjectileWeaponNetApply](#projectileweaponnetapply), [ProjectileWeaponSystemPass](#projectileweaponsystempass), [SetCurrentFireMode](#setcurrentfiremode), [WeaponFunctionValue](#weaponfunctionvalue), [WeaponApplyReplicatedTrigger](#weaponapplyreplicatedtrigger), [RpcFireSingleRound](#rpcfiresingleround), [RpcFireSingleRoundAdvanced](#rpcfiresingleroundadvanced), [SendFireSingleRoundAdvanced](#sendfiresingleroundadvanced), [RpcAddProjectileToManager](#rpcaddprojectiletomanager), [SetWielder](#setwielder), [ProjectileWeaponNetInit](#projectileweaponnetinit), [WeaponBuild](#weaponbuild), [ProjectileWeaponEnterOwned](#projectileweaponenterowned), [OwnsWarbond](#ownswarbond), [WarbondCurrencyToken](#warbondcurrencytoken), [HasCatalogueItem](#hascatalogueitem), [WeaponMagazineRecord](#weaponmagazinerecord), [WeaponWindUpRecord](#weaponwinduprecord), [RechargeRecord](#rechargerecord), [WeaponReloadRecord](#weaponreloadrecord), [WeaponRoundsRecord](#weaponroundsrecord), [WeaponChargeRecord](#weaponchargerecord), [EquipmentRecord](#equipmentrecord), [ThrowerRecord](#throwerrecord), [ArcWeaponRecord](#arcweaponrecord), [WeaponHeatRecord](#weaponheatrecord), [WeaponCustomizationRecord](#weaponcustomizationrecord), [WeaponMagazineTypeRecord](#weaponmagazinetyperecord), [RechargeTypeRecord](#rechargetyperecord), [WeaponReloadTypeRecord](#weaponreloadtyperecord), [WeaponRoundsTypeRecord](#weaponroundstyperecord), [EquipmentTypeRecord](#equipmenttyperecord), [ThrowerTypeRecord](#throwertyperecord), [ThrowableTypeRecord](#throwabletyperecord), [ArcWeaponTypeRecord](#arcweapontyperecord), [WeaponHeatTypeRecord](#weaponheattyperecord), [AbilityWeaponTypeRecord](#abilityweapontyperecord), [WeaponCustomizationTypeRecord](#weaponcustomizationtyperecord), [WeaponUpdate](#weaponupdate), [WeaponDataUpdate](#weapondataupdate), [WeaponHeatUpdate](#weaponheatupdate), [WeaponHeatInstanceStep](#weaponheatinstancestep), [WeaponChargeUpdate](#weaponchargeupdate), [ChargeRelease](#chargerelease), [ChargeOvercharge](#chargeovercharge), [ChargeMultiplier](#chargemultiplier), [EquipmentUpdate](#equipmentupdate), [ThrowerUpdate](#throwerupdate), [ThrowableUpdate](#throwableupdate), [ArcWeaponUpdate](#arcweaponupdate), [AbilityWeaponUpdate](#abilityweaponupdate), [WeaponCustomizationUpdate](#weaponcustomizationupdate), [StartReload](#startreload), [CanReload](#canreload), [ReloadStateHas](#reloadstatehas), [WeaponReloadBusy](#weaponreloadbusy), [OwnSpareAmmo](#ownspareammo), [WeaponRefill](#weaponrefill), [MagazineRefill](#magazinerefill), [RoundsRefill](#roundsrefill), [HeatsinkRefill](#heatsinkrefill), [AbilityWeaponModeSettings](#abilityweaponmodesettings), [AbilityWeaponFire](#abilityweaponfire), [MeleeHitVolumeStart](#meleehitvolumestart), [UnitSettings](#unitsettings), [VehicleSettings](#vehiclesettings), [HellpodPayloadSettings](#hellpodpayloadsettings), [AvatarSettings](#avatarsettings), [JumppackSettings](#jumppacksettings), [DisplacementSettings](#displacementsettings), [OrbitalAbilitySettings](#orbitalabilitysettings), [RotationSettings](#rotationsettings), [EagleSettings](#eaglesettings), [VehicleUpdate](#vehicleupdate), [SquadTransportUpdate](#squadtransportupdate), [HellpodPayloadUpdate](#hellpodpayloadupdate), [AiSpawnerUpdate](#aispawnerupdate), [BugholeUpdate](#bugholeupdate), [VehicleMotionUpdate](#vehiclemotionupdate), [AvatarUpdate](#avatarupdate), [DisplacementUpdate](#displacementupdate), [OrbitalAbilityUpdate](#orbitalabilityupdate), [EagleUpdate](#eagleupdate), [EncounterUpdate](#encounterupdate), [GuardForceUpdate](#guardforceupdate), [EagleStage](#eaglestage), [EagleTrackAim](#eagletrackaim), [EagleStrike](#eaglestrike), [EagleFlight](#eagleflight), [JumppackTimers](#jumppacktimers), [JumppackFlight](#jumppackflight), [SetJumppackActive](#setjumppackactive), [JumppackTakeOff](#jumppacktakeoff), [PickPatrolComposition](#pickpatrolcomposition), [SpawnSquad](#spawnsquad), [PatrolClock](#patrolclock), [PickReinforcementComposition](#pickreinforcementcomposition), [DispatchReinforcement](#dispatchreinforcement), [FillOutpost](#filloutpost), [UnitSetLocalPosition](#unitsetlocalposition), [UnitSetLocalRotation](#unitsetlocalrotation), [UnitSetLocalScale](#unitsetlocalscale), [UnitTeleportLocalPosition](#unitteleportlocalposition), [UnitTeleportLocalPose](#unitteleportlocalpose), [WorldSetUnitMoving](#worldsetunitmoving), [UnitDeltaPosition](#unitdeltaposition), [UnitDeltaRotation](#unitdeltarotation), [UnitDeltaPose](#unitdeltapose), [UnitTeleportLocalRotation](#unitteleportlocalrotation), [UnitTeleportLocalScale](#unitteleportlocalscale), [WorldSpawnUnit](#worldspawnunit), [WorldDestroyUnit](#worlddestroyunit), [WorldQueueUnitsDestroy](#worldqueueunitsdestroy), [WorldLinkUnitHandles](#worldlinkunithandles), [WorldLinkUnit](#worldlinkunit), [WorldUnlinkUnit](#worldunlinkunit), [WorldMendUnit](#worldmendunit), [WorldUpdate](#worldupdate), [WorldUpdateScene](#worldupdatescene), [WorldCreateLineObject](#worldcreatelineobject), [LineObjectAddLine](#lineobjectaddline), [LineObjectAddCone](#lineobjectaddcone), [LineObjectAddCircle](#lineobjectaddcircle), [LineObjectAddSphere](#lineobjectaddsphere), [LineObjectAddHalfSphere](#lineobjectaddhalfsphere), [LineObjectAddBox](#lineobjectaddbox), [LineObjectAddCapsule](#lineobjectaddcapsule), [LineObjectDispatch](#lineobjectdispatch), [MurmurHash64A](#murmurhash64a), [MaterialSetScalar](#materialsetscalar), [MaterialSetVector2](#materialsetvector2), [MaterialSetVector3](#materialsetvector3), [MaterialSetVector4](#materialsetvector4), [MaterialSetMatrix4x4](#materialsetmatrix4x4), [MaterialSetTexture](#materialsettexture), [MaterialSetResource](#materialsetresource), [MaterialSetShaderPassFlag](#materialsetshaderpassflag), [MaterialReinitializeShader](#materialreinitializeshader), [CameraWorldToScreen](#cameraworldtoscreen), [CameraScreenToWorld](#camerascreentoworld), [CameraSyncRange](#camerasyncrange), [CameraSyncFrustum](#camerasyncfrustum), [CameraSetLocal](#camerasetlocal), [CameraInsideFrustum](#camerainsidefrustum), [GuiAddPrimitive](#guiaddprimitive), [GuiRect](#guirect), [ResourceManagerGet](#resourcemanagerget), [ResourceManagerCanGet](#resourcemanagercanget), [ResourceManagerSetOverride](#resourcemanagersetoverride), [ResourceManagerClearOverride](#resourcemanagerclearoverride), [MurmurHash64ALower](#murmurhash64alower), [RendererWindowSize](#rendererwindowsize), [ReleaseWorld](#releaseworld), [CreateViewport](#createviewport), [WorldDestroyViewport](#worlddestroyviewport), [NetworkCreateGameSession](#networkcreategamesession), [NetworkShutdownGameSession](#networkshutdowngamesession), [LevelIsPointInsideVolume](#levelispointinsidevolume), [LevelRandomPointInsideVolume](#levelrandompointinsidevolume), [LevelHasVolume](#levelhasvolume), [LevelUnitIndex](#levelunitindex), [LevelSpawnAllLayers](#levelspawnalllayers), [UnitAnimationFindVariable](#unitanimationfindvariable), [UnitAnimationHasVariable](#unitanimationhasvariable), [UnitAnimationGetVariable](#unitanimationgetvariable), [UnitAnimationSetVariable](#unitanimationsetvariable), [UnitSetUnitVisibility](#unitsetunitvisibility), [UnitSetVisibilityGroup](#unitsetvisibilitygroup), [UnitCrossfadeAnimation](#unitcrossfadeanimation), [UnitCrossfadeAnimationSetTime](#unitcrossfadeanimationsettime), [UnitCopySceneGraphLocalFrom](#unitcopyscenegraphlocalfrom), [UnitSetBonesLod](#unitsetboneslod), [UnitAnimationFindConstraintTarget](#unitanimationfindconstrainttarget), [UnitAnimationSetConstraintTargetPosition](#unitanimationsetconstrainttargetposition), [LightSync](#lightsync), [LightSetEnabled](#lightsetenabled), [WorldDestroyLevel](#worlddestroylevel), [WorldDestroyPrefab](#worlddestroyprefab), [WorldPlayCameraShake](#worldplaycamerashake), [WorldStopCameraShake](#worldstopcamerashake), [WorldUpdateAnimations](#worldupdateanimations), [GuiManagerDestroyGui](#guimanagerdestroygui), [SpawnEntityAddComponents](#spawnentityaddcomponents), [SpawnEntityFinishComponents](#spawnentityfinishcomponents), [ActivateEntity](#activateentity), [DeactivateEntity](#deactivateentity)
+- [Globals](#globals): [Game](#game), [PlayerManager](#playermanager), [LocalUser](#localuser), [GameMode](#gamemode), [EntityManager](#entitymanager), [HealthManager](#healthmanager), [MotionManager](#motionmanager), [ExplosionQueue](#explosionqueue), [ProjectileSystem](#projectilesystem), [CombatQueues](#combatqueues), [ScoreManager](#scoremanager), [WielderManager](#wieldermanager), [InventoryManager](#inventorymanager), [Destructibles](#destructibles), [DestructionRecords](#destructionrecords), [DepositManager](#depositmanager), [AvatarManager](#avatarmanager), [WieldableManager](#wieldablemanager), [FactionManager](#factionmanager), [BehaviourManager](#behaviourmanager), [TagManager](#tagmanager), [Clock](#clock), [EngineApi](#engineapi), [EngineUnitApi](#engineunitapi), [WwiseApi](#wwiseapi), [AbilityManager](#abilitymanager), [WeaponLinkerManager](#weaponlinkermanager), [SeekingMissileManager](#seekingmissilemanager), [LaserDesignatorManager](#laserdesignatormanager), [GuidanceTargets](#guidancetargets), [ExplosiveManager](#explosivemanager), [EquipmentManager](#equipmentmanager), [HellpodRackManager](#hellpodrackmanager), [AttachableManager](#attachablemanager), [MountManager](#mountmanager), [DropAnchors](#dropanchors), [PerceptionManager](#perceptionmanager), [WeaponManager](#weaponmanager), [WeaponMagazines](#weaponmagazines), [WeaponTargeting](#weapontargeting), [ShieldManager](#shieldmanager), [CustomizationManager](#customizationmanager), [BombardmentManager](#bombardmentmanager), [Progression](#progression), [PlayerHistory](#playerhistory), [Profile](#profile), [MenuStates](#menustates), [MenuStack](#menustack), [Armory](#armory), [ThumbnailManager](#thumbnailmanager), [PackageSystem](#packagesystem), [GameConfig](#gameconfig), [NavigationSystem](#navigationsystem), [PhysicsPlugin](#physicsplugin), [ObjectiveManager](#objectivemanager), [HiveMindManager](#hivemindmanager), [Telemetry](#telemetry), [GuardForces](#guardforces), [UnitRegistry](#unitregistry), [EngineCore](#enginecore), [NetworkManager](#networkmanager), [NetworkConfigOwner](#networkconfigowner), [EngineEntityIndex](#engineentityindex), [NavWorlds](#navworlds), [PhysicsProperties](#physicsproperties), [CollisionFilterA](#collisionfiltera), [CollisionFilterB](#collisionfilterb), [StatusReceivers](#statusreceivers), [ComponentWorld](#componentworld), [GameModeMission](#gamemodemission), [CareerStats](#careerstats), [ProjectileWeapons](#projectileweapons), [WeaponDatas](#weapondatas), [BeamWeapons](#beamweapons), [LinkedAmmo](#linkedammo), [Corpses](#corpses), [WeaponWindUps](#weaponwindups), [Recharges](#recharges), [WeaponReloads](#weaponreloads), [WeaponRoundsManager](#weaponroundsmanager), [WeaponCharges](#weaponcharges), [Throwers](#throwers), [Throwables](#throwables), [ArcWeapons](#arcweapons), [WeaponHeats](#weaponheats), [AbilityWeapons](#abilityweapons), [MeleeWeapons](#meleeweapons), [WeaponCustomizations](#weaponcustomizations), [AiSpawnerManager](#aispawnermanager), [BugholeManager](#bugholemanager), [VehicleMotionManager](#vehiclemotionmanager), [VehicleManager](#vehiclemanager), [SquadTransportManager](#squadtransportmanager), [SquadFormationManager](#squadformationmanager), [GoreManager](#goremanager), [StratagemBlockerManager](#stratagemblockermanager), [OrbitalAbilityManager](#orbitalabilitymanager), [HellpodPayloadManager](#hellpodpayloadmanager), [UnitManager](#unitmanager), [RotationManager](#rotationmanager), [DisplacementManager](#displacementmanager), [JumppackManager](#jumppackmanager), [EagleManager](#eaglemanager), [EncounterManager](#encountermanager), [AiSquadManager](#aisquadmanager), [SensorEyeManager](#sensoreyemanager), [TurretManager](#turretmanager), [LocomotionManager](#locomotionmanager)
 - [Components](#components): [HfProjectileWeapon](#hfprojectileweapon), [HfWeaponData](#hfweapondata), [HfWeaponMagazine](#hfweaponmagazine), [HfTag](#hftag), [HfMount](#hfmount), [HfBehavior](#hfbehavior), [HfLoadoutPackage](#hfloadoutpackage), [HfDeposit](#hfdeposit), [HfHealth](#hfhealth), [HfJumppack](#hfjumppack), [HfRecharge](#hfrecharge), [HfShield](#hfshield), [HfHellpodPayload](#hfhellpodpayload), [HfSensorEye](#hfsensoreye), [HfTurret](#hfturret), [HfWeaponWindUp](#hfweaponwindup), [HfBeamWeapon](#hfbeamweapon), [HfWeaponHeat](#hfweaponheat), [HfEagle](#hfeagle), [HfThrower](#hfthrower), [HfBombardment](#hfbombardment), [HfExplosive](#hfexplosive), [HfThrowable](#hfthrowable), [HfVehicleMotion](#hfvehiclemotion), [HfWeaponCharge](#hfweaponcharge), [HfWeaponReload](#hfweaponreload), [HfWeaponRounds](#hfweaponrounds), [HfArcWeapon](#hfarcweapon), [HfHiveMind](#hfhivemind), [HfOrbitalAbility](#hforbitalability), [HfRotation](#hfrotation), [HfDisplacement](#hfdisplacement), [HfSeekingMissile](#hfseekingmissile), [HfLoadoutEntry](#hfloadoutentry), [HfHellpodRack](#hfhellpodrack), [HfAvatar](#hfavatar), [HfInventory](#hfinventory), [HfMeleeWeapon](#hfmeleeweapon), [HfAbilityWeapon](#hfabilityweapon), [HfUnit](#hfunit), [HfSquadTransportFormation](#hfsquadtransportformation), [HfSquadTransport](#hfsquadtransport), [HfGore](#hfgore), [HfAiSpawner](#hfaispawner), [HfStratagemBlocker](#hfstratagemblocker), [HfBughole](#hfbughole), [HfEquipment](#hfequipment), [HfWieldable](#hfwieldable), [HfAttachable](#hfattachable), [HfWeaponCustomization](#hfweaponcustomization)
 - [Settings tables](#settings-tables): [HfDifficultySettings](#hfdifficultysettings), [HfDamageInfo](#hfdamageinfo), [HfProjectileSettings](#hfprojectilesettings), [HfStratagemSettings](#hfstratagemsettings), [HfExplosionSettings](#hfexplosionsettings), [HfArcSettings](#hfarcsettings), [HfBeamSettings](#hfbeamsettings), [HfStatusEffectSettings](#hfstatuseffectsettings), [HfBoosterSettings](#hfboostersettings), [HfPassiveModifier](#hfpassivemodifier), [HfPassiveStat](#hfpassivestat), [HfMeleeHitVolume](#hfmeleehitvolume), [HfEnemyRoster](#hfenemyroster), [HfEnemyRosterLevel11](#hfenemyrosterlevel11), [HfEnemyComposition](#hfenemycomposition), [HfDemolitionTemplate](#hfdemolitiontemplate)
 - [Content](#content): [HF_ITEM_...](#hf_item_-168-hf_kind_item), [HF_PROJECTILE_...](#hf_projectile_-61-hf_kind_projectile), [HF_STRATAGEM_...](#hf_stratagem_-149-hf_kind_stratagem), [HF_BEHAVIOUR_...](#hf_behaviour_-2-hf_kind_behaviour), [HF_ENTITY_...](#hf_entity_-369-hf_kind_entity), [HF_DAMAGE_...](#hf_damage_-342-hf_kind_damage), [HF_PACKAGE_...](#hf_package_-1-hf_kind_package), [HF_TAG_...](#hf_tag_-1-hf_kind_tag), [HF_TRAIT_...](#hf_trait_-29-hf_kind_trait), [HF_CATEGORY_...](#hf_category_-5-hf_kind_category), [HF_BEAM_...](#hf_beam_-3-hf_kind_beam), [HF_BOOSTER_...](#hf_booster_-20-hf_kind_booster), [HF_EXPLOSION_...](#hf_explosion_-295-hf_kind_explosion), [HF_WEAPON_BEAM_...](#hf_weapon_beam_-1-hf_kind_weapon_beam), [HF_ARC_...](#hf_arc_-1-hf_kind_arc)
@@ -389,6 +389,7161 @@ typedef void (*HfFn_FireProjectile)(void* system, uint32_t type, const float* po
 | `zero` | `uint32_t` | 0 |
 | `zero2` | `uint64_t` | 0 |
 
+### QueueDamage
+
+`game.dll+0x129F910`, call only. Queues a damage request (4096 a frame: hf_global_CombatQueues' damage_count) that the frame's drain applies. hf->injure is the checked way to call it, on a limb of this machine's Helldiver. From HD2Runtime 0.40.1 research event-combat, player-injury-path; HellForge's injure (actions.c).
+
+```c
+typedef void (*HfFn_QueueDamage)(void* unused, uint32_t kind, uint32_t a3, uint32_t target, uint32_t amount, uint8_t a6, uint32_t network, uint32_t network2, uint64_t creditor, uint32_t a10, float f11, float f12, float f13, const float* direction, const float* position, uint32_t actor, uint32_t a17, uint32_t a18, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | NULL |
+| `kind` | `uint32_t` | the damage kind (HfDamageEvent.kind; injure passes 6, ability, as the VG-70's own self-damage does) |
+| `a3` | `uint32_t` | injure passes 0 |
+| `target` | `uint32_t` | the entity damaged |
+| `amount` | `uint32_t` | the damage |
+| `a6` | `uint8_t` | injure passes 1 |
+| `network` | `uint32_t` | a network id: injure passes the Helldiver's own |
+| `network2` | `uint32_t` | a network id: injure passes the Helldiver's own |
+| `creditor` | `uint64_t` | the peer id credited: injure passes the one in the Helldiver's health record (+0x38) |
+| `a10` | `uint32_t` | injure passes 0 |
+| `f11` | `float` | injure passes 0 |
+| `f12` | `float` | injure passes 0 |
+| `f13` | `float` | injure passes 0 |
+| `direction` | `const float*` | the hit's direction (3 floats; injure passes 0, 0, -1) |
+| `position` | `const float*` | the hit's position (3 floats; injure passes 0, 0, 0) |
+| `actor` | `uint32_t` | the hit actor: injure passes the limb's, from the engine's UnitActorByName (helldivers2.exe 0x799DE0) |
+| `a17` | `uint32_t` | injure passes 9 |
+| `a18` | `uint32_t` | injure passes 0 |
+| `scale` | `float` | injure passes 1.0 |
+
+### NeedsAmmo
+
+`game.dll+0x9AD7D0`, call only. Whether a Helldiver needs ammunition (1) or not (0), as the Supply Pack's self-use asks. hf->resupply_from_pack calls it before TryStartAction. From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c).
+
+```c
+typedef uint8_t (*HfFn_NeedsAmmo)(void* unused, uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | NULL |
+| `entity` | `uint32_t` | the Helldiver |
+
+### TryStartAction
+
+`game.dll+0xA431D0`, call only. Starts an action on an entity if it is free to: 1 started, 0 not. hf->resupply_from_pack is the checked way to call it. From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c).
+
+```c
+typedef uint8_t (*HfFn_TryStartAction)(void* context, const uint32_t* request);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `context` | `void*` | the entity's action context: hf_global_AvatarManager + 0x53E170 + 0x1238 index (+0 the entity, +8 the running action) |
+| `request` | `const uint32_t*` | 3 u32: the action (2629, the Supply Pack's self-use), the game's no-action id (u32 at game.dll+0x3483C5C), the context's +0xC |
+
+### RequestEntitySpawn
+
+`game.dll+0xFD9710`, call only. The entity spawn request: makes an entity of a resource at a pose; returns out. hf->spawn_pelican is the checked way to call it (host only, in a mission, with shuttle_transport). From HD2Runtime 0.40.1 research pelican; HellForge's spawn_pelican (actions.c).
+
+```c
+typedef uint32_t* (*HfFn_RequestEntitySpawn)(uint32_t* out, uint64_t resource, void* spawn);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `uint32_t*` | receives the new entity's id (0: none made) |
+| `resource` | `uint64_t` | the entity's resource id (HF_ENTITY_...), registered in this mission |
+| `spawn` | `void*` | 0x58 bytes: +0 1, +4 network id (0x7FFF none), +8 the pose (4x4 floats, the position in the last row), +0x48 a pointer to a 0x8A0-byte spawn context (a transport Pelican's hover point at +0x610) |
+
+### AbilityTick
+
+`game.dll+0x11509E0`, call only. Runs one tick of an ability, switching on its id through a 2867-entry table: 1 when it is done, 0 while it runs (and for an unknown id). HellForge points its id check at a stub for abilities of its own (hf->add_ability). From HellForge's abilities (abilities.c).
+
+```c
+typedef uint8_t (*HfFn_AbilityTick)(void* ctx, uint32_t id, uint32_t tick);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | the ability's context: +8 the entity it runs on |
+| `id` | `uint32_t` | the ability (1 .. 2867; HellForge's own from 2868) |
+| `tick` | `uint32_t` | the tick, 60 a second from 0 |
+
+### SiloMissileArmedAbility
+
+`game.dll+0x110F270`, call only. Ability 2088, the Solo Silo missile's armed ability, which its launch starts: tick 0 the launch blast (explosion 172), tick 2 it leaves the rack, tick 120 it arms and is done (1). From HellForge's abilities (abilities.c).
+
+```c
+typedef uint8_t (*HfFn_SiloMissileArmedAbility)(void* ctx, uint32_t tick);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | the ability's context: +8 the missile |
+| `tick` | `uint32_t` | the tick, 60 a second from 0 |
+
+### LinkedMissile
+
+`game.dll+0x76B410`, call only. The missile a silo's targeting remote is linked to; returns out. From HellForge's silo countdown (abilities.c).
+
+```c
+typedef uint32_t* (*HfFn_LinkedMissile)(void* linkers, uint32_t* out, uint32_t remote);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `linkers` | `void*` | the WeaponLinker manager: hf_global_WeaponLinkerManager |
+| `out` | `uint32_t*` | receives the missile (the no-entity id when the link names none) |
+| `remote` | `uint32_t` | a silo's targeting remote |
+
+### LinkerRecord
+
+`game.dll+0x4FD6F0`, call only. A WeaponLinker instance's record (12 bytes; +4 0x06212002 a silo remote's link, which launches its missile): this machine's copy for an instance it has authority over, else the resource's shared one. NULL for no descriptor. From HellForge's silo countdown (abilities.c).
+
+```c
+typedef uint8_t* (*HfFn_LinkerRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | a linker instance's descriptor (hf_global_WeaponLinkerManager's descriptors, by index) |
+
+### LinkedRack
+
+`game.dll+0x76B4C0`, call only. The hellpod rack a silo's targeting remote is linked to; returns out. From HellForge's silo countdown (abilities.c).
+
+```c
+typedef uint32_t* (*HfFn_LinkedRack)(void* linkers, uint32_t* out, uint32_t remote);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `linkers` | `void*` | the WeaponLinker manager: hf_global_WeaponLinkerManager |
+| `out` | `uint32_t*` | receives the rack (the no-entity id when the link names none) |
+| `remote` | `uint32_t` | a silo's targeting remote |
+
+### SetMissileEngine
+
+`game.dll+0x645B80`, call only. Turns a seeking missile's engine on or off, as a silo remote's link does at a launch. From HellForge's silo countdown (abilities.c).
+
+```c
+typedef void (*HfFn_SetMissileEngine)(void* missiles, uint32_t missile, uint8_t on);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `missiles` | `void*` | the SeekingMissile manager: hf_global_SeekingMissileManager |
+| `missile` | `uint32_t` | the missile |
+| `on` | `uint8_t` | 1 on, 0 off (its instance's +0x35) |
+
+### LaunchMissile
+
+`game.dll+0x645940`, call only. Launches a seeking missile: sets off its explosive, which starts its armed ability (2088 for the Solo Silo's), and marks it launched (its instance's +0x36). From HellForge's silo countdown (abilities.c).
+
+```c
+typedef void (*HfFn_LaunchMissile)(void* missiles, uint32_t missile);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `missiles` | `void*` | the SeekingMissile manager: hf_global_SeekingMissileManager |
+| `missile` | `uint32_t` | the missile |
+
+### SetExplosiveOwner
+
+`game.dll+0x8CE620`, call only. Names an explosive's owner, as a silo remote's link does for its missile at a launch. From HellForge's silo countdown (abilities.c).
+
+```c
+typedef void (*HfFn_SetExplosiveOwner)(void* explosives, uint32_t entity, uint32_t owner);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `explosives` | `void*` | the Explosive manager: hf_global_ExplosiveManager |
+| `entity` | `uint32_t` | the explosive (a missile) |
+| `owner` | `uint32_t` | its owner entity |
+
+### SetGuidanceTarget
+
+`game.dll+0x919940`, call only. Sets an entity's guidance target, as a silo remote's link does with its laser's point. From HellForge's silo countdown (abilities.c).
+
+```c
+typedef void (*HfFn_SetGuidanceTarget)(void* unused, uint32_t entity, const float* point);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | NULL |
+| `entity` | `uint32_t` | the guided entity (a missile in hf_global_GuidanceTargets' map) |
+| `point` | `const float*` | the point it flies to (3 floats) |
+
+### RackReleaseItem
+
+`game.dll+0x9374D0`, call only. Has a hellpod rack let go of an item, as a silo remote's link does at a launch. From HellForge's silo countdown (abilities.c).
+
+```c
+typedef void (*HfFn_RackReleaseItem)(void* racks, uint32_t rack, uint32_t item);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `racks` | `void*` | the HellpodRack manager: hf_global_HellpodRackManager |
+| `rack` | `uint32_t` | the rack |
+| `item` | `uint32_t` | the item it lets go of (a silo's missile) |
+
+### StartAbility
+
+`game.dll+0x7CAF40`, hook or call. Starts an ability on an entity; the ability manager then ticks it (AbilityTick). HellForge's silo countdown starts its ability on the missile with it, and its shield wall detours it to see enemies' charges. From HellForge's silo countdown (abilities.c) and shield wall hook (shield_block.c).
+
+```c
+typedef uint64_t (*HfFn_StartAbility)(void* abilities, uint32_t entity, uint32_t ability, uint32_t mode, float speed, uint64_t s6, uint64_t s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `abilities` | `void*` | the ability manager: hf_global_AbilityManager |
+| `entity` | `uint32_t` | the entity it runs on |
+| `ability` | `uint32_t` | the ability (ids travel in 12 bits) |
+| `mode` | `uint32_t` | 1 on the machine with authority over the entity; 2 without it, whose start is always sent on |
+| `speed` | `float` | 1.0 in HellForge's calls |
+| `s6` | `uint64_t` | not reviewed: pass it on |
+| `s7` | `uint64_t` | not reviewed: pass it on |
+
+### BehaviourUpdate
+
+`game.dll+0x472F60`, call only. Updates an entity's behaviour, switching on its id through a 693-entry table, on the machine with authority over the entity. HellForge points its id check at a stub for behaviours of its own (hf->add_behaviour). From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_BehaviourUpdate)(void* ctx, uint32_t id, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage) |
+| `id` | `uint32_t` | the behaviour (1 .. 693; HellForge's own from 694) |
+| `dt` | `float` | the frame's time |
+
+### BehaviourStage
+
+`game.dll+0x48EE50`, call only. Moves an entity's behaviour to a stage, switching on its id through a 693-entry table. HellForge points its id check at a stub for behaviours of its own. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_BehaviourStage)(void* ctx, uint32_t id, uint32_t stage);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage) |
+| `id` | `uint32_t` | the behaviour (1 .. 693) |
+| `stage` | `uint32_t` | the stage it enters |
+
+### BehaviourEvent
+
+`game.dll+0x4966D0`, call only. Hands an event to an entity's behaviour, switching on its id through a 693-entry table. HellForge points its id check at a stub for behaviours of its own. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_BehaviourEvent)(void* ctx, uint32_t id, uint32_t hash);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*}: P the behaviour record + 8 |
+| `id` | `uint32_t` | the behaviour (1 .. 693) |
+| `hash` | `uint32_t` | the event's name hash |
+
+### BehaviourResume
+
+`game.dll+0x493BE0`, call only. Resumes a behaviour on a machine without authority, after its record arrives from the network: for the transport Pelican (667) it sends the mover to the replicated flight target (P+0x1BC). HellForge sends its own behaviours into its base's case. From HellForge's behaviours, co-op (behaviours.c).
+
+```c
+typedef void (*HfFn_BehaviourResume)(void* ctx, uint32_t id);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*}: P the behaviour record + 8 |
+| `id` | `uint32_t` | the behaviour |
+
+### PelicanTransportUpdate
+
+`game.dll+0x45C760`, call only. Behaviour 667's update, the transport Pelican: flies to the beacon (stages 1-3), hovers (6, entered with P+0x180 = now), releases its cargo after 6 s, departs and is removed. HellForge's Pelican behaviours (hf->add_behaviour) run it. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_PelicanTransportUpdate)(void* ctx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*}: P the behaviour record + 8 (P+0 the stage) |
+
+### PelicanTransportStage
+
+`game.dll+0x45BD00`, call only. Behaviour 667's stage change, the transport Pelican. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_PelicanTransportStage)(void* ctx, int32_t stage);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+| `stage` | `int32_t` | the stage it enters (6: the hover) |
+
+### PelicanTransportEvent
+
+`game.dll+0x45BBE0`, call only. Behaviour 667's event handler, the transport Pelican. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_PelicanTransportEvent)(void* ctx, uint32_t hash);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+| `hash` | `uint32_t` | the event's name hash |
+
+### BehaviourOwnPosition
+
+`game.dll+0x4BC5D0`, call only. A behaviour's entity's own position: its unit's root node from the scene graph; returns out. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef float* (*HfFn_BehaviourOwnPosition)(float* out, void* ctx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | receives the position (3 floats) |
+| `ctx` | `void*` | {EntityInfo*, P*} |
+
+### BehaviourOrbitStep
+
+`game.dll+0x4D5E60`, call only. The extraction Pelican's orbit step: writes the next point on its orbit to P+0x1BC (the replicated flight target). From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_BehaviourOrbitStep)(void* ctx, const float* position, void* unused, float height, float radius);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+| `position` | `const float*` | where the entity is (3 floats) |
+| `unused` | `void*` | NULL |
+| `height` | `float` | the orbit's height |
+| `radius` | `float` | the orbit's radius |
+
+### BehaviourMoveTo
+
+`game.dll+0x4D1150`, call only. Sends a flying behaviour's mover to a point. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_BehaviourMoveTo)(void* ctx, const float* target);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+| `target` | `const float*` | the point to fly to (3 floats) |
+
+### BehaviourFace
+
+`game.dll+0x4C1530`, call only. Sets the hover controller's desired facing, turning a hovering behaviour's body. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_BehaviourFace)(void* ctx, const float* direction);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+| `direction` | `const float*` | the direction to face (3 floats) |
+
+### BehaviourTargetPosition
+
+`game.dll+0x4B0C40`, call only. Where a behaviour's target is (a turret's aim point); returns out. From HellForge's behaviours (behaviours.c, behaviour_turret.c).
+
+```c
+typedef float* (*HfFn_BehaviourTargetPosition)(float* out, void* ctx, const float* self);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | receives the position (3 floats) |
+| `ctx` | `void*` | {EntityInfo*, P*} (a mounted turret's: P+0x10 its target, P+0x70 set while it has one) |
+| `self` | `const float*` | the entity's own position (3 floats) |
+
+### PelicanTurretIdle
+
+`game.dll+0x44F310`, call only. Behaviour 645's stage 1 update (idle), the Pelican's chin turret. From HellForge's Pelican turret (behaviours.c, behaviour_turret.c).
+
+```c
+typedef void (*HfFn_PelicanTurretIdle)(void* ctx, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+| `dt` | `float` | the frame's time |
+
+### TurretActive
+
+`game.dll+0x4B0810`, call only. Whether a behaviour's turret is active (behaviour 645's firing stage tests it). From HellForge's Pelican turret (behaviours.c, behaviour_turret.c).
+
+```c
+typedef uint8_t (*HfFn_TurretActive)(void* ctx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+
+### TurretHasAmmo
+
+`game.dll+0x4BB080`, call only. Whether a behaviour's turret has ammunition (behaviour 645's firing stage tests it). From HellForge's Pelican turret (behaviours.c, behaviour_turret.c).
+
+```c
+typedef uint8_t (*HfFn_TurretHasAmmo)(void* ctx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+
+### PelicanTurretStage
+
+`game.dll+0x450AD0`, call only. Behaviour 645's stage change, the Pelican's chin turret. From HellForge's Pelican turret (behaviours.c, behaviour_turret.c).
+
+```c
+typedef void (*HfFn_PelicanTurretStage)(void* ctx, int32_t stage);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+| `stage` | `int32_t` | the stage it enters: 1 idle, 2 aim, 3 fire, 4 inactive |
+
+### BehaviourSetTarget
+
+`game.dll+0x4AF4E0`, call only. Installs a perception entry as a behaviour's target (P+0x10), or clears it. From HellForge's Pelican turret (behaviours.c, behaviour_turret.c).
+
+```c
+typedef void (*HfFn_BehaviourSetTarget)(void* ctx, const uint8_t* entry);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} |
+| `entry` | `const uint8_t*` | a perceiver's entry for the target (FindPerceptionEntry; +4 its position), or NULL to clear |
+
+### WeaponDegreesTo
+
+`game.dll+0x7582D0`, call only. The angle in degrees between a weapon's forward and a point. From HellForge's Pelican turret (behaviour_turret.c).
+
+```c
+typedef float (*HfFn_WeaponDegreesTo)(void* unused, uint32_t entity, const float* position);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | NULL |
+| `entity` | `uint32_t` | the weapon's entity (a turret) |
+| `position` | `const float*` | a point (3 floats) |
+
+### IsValidTarget
+
+`game.dll+0x8858A0`, call only. Whether an entity is a valid target: it exists, is alive and has no flag 25. From HellForge's Pelican turret (behaviour_turret.c).
+
+```c
+typedef uint8_t (*HfFn_IsValidTarget)(void* unused, uint32_t entity, void* info);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | NULL |
+| `entity` | `uint32_t` | the entity |
+| `info` | `void*` | the entity's info, or NULL to look it up |
+
+### FindPerceptionEntry
+
+`game.dll+0x8891C0`, call only. A perceiver's entry for an entity (+4 its position), or NULL when it has none. From HellForge's Pelican turret (behaviour_turret.c).
+
+```c
+typedef uint8_t* (*HfFn_FindPerceptionEntry)(void* perception, uint32_t perceiver, uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `perception` | `void*` | the perceivers: hf_global_PerceptionManager |
+| `perceiver` | `uint32_t` | the perceiving entity (a turret's P+0x60) |
+| `entity` | `uint32_t` | the perceived entity |
+
+### MagazineRounds
+
+`game.dll+0x742900`, call only. The rounds in a weapon's magazine. From HellForge's Pelican turret refill (behaviour_turret.c).
+
+```c
+typedef int32_t (*HfFn_MagazineRounds)(void* weapons, uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the magazines: hf_global_WeaponManager |
+| `entity` | `uint32_t` | the weapon's entity |
+
+### AddMagazineRounds
+
+`game.dll+0x76E080`, call only. Adds rounds to a weapon's magazine, on the machine with authority over it. From HellForge's Pelican turret refill (behaviour_turret.c).
+
+```c
+typedef void (*HfFn_AddMagazineRounds)(void* unused, uint32_t entity, int32_t add);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | NULL |
+| `entity` | `uint32_t` | the weapon's entity (in hf_global_WeaponMagazines' map) |
+| `add` | `int32_t` | the rounds to add |
+
+### MagazineCapacity
+
+`game.dll+0x743410`, call only. A weapon's magazine capacity. From HellForge's Pelican turret refill (behaviour_turret.c).
+
+```c
+typedef int32_t (*HfFn_MagazineCapacity)(void* unused, uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | NULL (ignored) |
+| `entity` | `uint32_t` | the weapon's entity |
+
+### WeaponWithinDegrees
+
+`game.dll+0x4B54D0`, call only. Whether a behaviour's weapon points within max_degrees of a point: behaviour 645's fire gate. From HellForge's Pelican turret (behaviour_turret.c).
+
+```c
+typedef uint8_t (*HfFn_WeaponWithinDegrees)(void* ctx, const float* position, float max_degrees);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*} of the turret's behaviour |
+| `position` | `const float*` | the aim point (3 floats) |
+| `max_degrees` | `float` | the most the weapon may be off (behaviour 645: 2) |
+
+### EntityDescriptor
+
+`game.dll+0xFD9D40`, call only. An entity's descriptor in this machine's world: +0 its resource (u64), +0xC its unit's index, +0x14 bit 0 set where this machine has authority over it; NULL for none. From HellForge's behaviours and co-op diagnostics (behaviours.c, abilities.c, coop_diag.c).
+
+```c
+typedef uint8_t* (*HfFn_EntityDescriptor)(uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `entity` | `uint32_t` | the entity |
+
+### MarkReplicated
+
+`game.dll+0x8449B0`, call only. Marks fields of an entity's behaviour record replicated, so the other machines receive them; does nothing without authority. From HellForge's behaviours, co-op (behaviours.c).
+
+```c
+typedef void (*HfFn_MarkReplicated)(void* unused, uint32_t entity, uint32_t mask);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | NULL |
+| `entity` | `uint32_t` | a networked entity |
+| `mask` | `uint32_t` | the fields to send (0xE00: a behaviour's flight target, P+0x1BC) |
+
+### ShieldRecord
+
+`game.dll+0x4FB390`, call only. A shield's record (the stats' Shield record: +0 the radius, +0x78 the bubble unit), as the game's own readers get it; NULL for no binding. From HellForge's shield block (shield_block.c).
+
+```c
+typedef uint8_t* (*HfFn_ShieldRecord)(void* binding);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `binding` | `void*` | a shield's binding (hf_global_ShieldManager's bindings, by index) |
+
+### MoveObject
+
+`game.dll+0x59FED0`, hook or call. One object's motion for a frame, on the motion jobs, ending at the single write of its position (MotionManager's positions). HellForge's shield wall detours it to hold enemies outside a bubble. From HellForge's shield wall hook (shield_block.c).
+
+```c
+typedef void (*HfFn_MoveObject)(void* motion, uint32_t index, float dt, uint64_t r9, uint64_t s5, uint64_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `motion` | `void*` | the motion manager: hf_global_MotionManager |
+| `index` | `uint32_t` | the object's motion index |
+| `dt` | `float` | the frame's time |
+| `r9` | `uint64_t` | not reviewed: pass it on |
+| `s5` | `uint64_t` | not reviewed: pass it on |
+| `s6` | `uint64_t` | not reviewed: pass it on |
+
+### SpawnProjectile
+
+`game.dll+0x13A9830`, call only. Spawns a shot into the projectile pool, copying its flight and armour penetration from its rows; returns its slot (its hit record at pool + 0x4D040 + 0xC8 slot). HellForge redirects the ProjectileWeapon pellet call (0x616612) to give other players' shots their own rows. The artillery's shells fly from it, with their ProjectileSettings row's speed (+0x20), drag (+0x28) and gravity. From HellForge's co-op round stats (rounds.c); HellForge's artillery reach (difficulty_artillery.c).
+
+```c
+typedef uint32_t (*HfFn_SpawnProjectile)(void* pool, uint8_t* descriptor, void* extra);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `pool` | `void*` | the projectile pool: hf_global_ProjectileSystem |
+| `descriptor` | `uint8_t*` | the shot: +0x10 its ProjectileSettings row (pointer), +0x18 the weapon's entity |
+| `extra` | `void*` | not reviewed: the ProjectileWeapon fire path passes its own |
+
+### CatalogueAddItem
+
+`game.dll+0x136EC00`, call only. Appends a record to the item catalogue (hf_global_ProgressionManager), as the login's catalogue reply does. On the game thread; CatalogueSort after. From KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c).
+
+```c
+typedef uint64_t (*HfFn_CatalogueAddItem)(uint64_t unused, uint32_t mix_id, uint32_t item_id, uint32_t parent, int32_t field, uint8_t flag, const void* buy, uint32_t buy_count, const void* sell, uint32_t sell_count, const uint32_t* dwords, uint32_t dword_count, const uint32_t* required, uint32_t required_count, uint32_t category, uint32_t max_cap);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | 0 |
+| `mix_id` | `uint32_t` | the item's mixId |
+| `item_id` | `uint32_t` | the item's itemId |
+| `parent` | `uint32_t` | its parent in the catalogue (children link to the root appended just before them) |
+| `field` | `int32_t` | the record's +0x10 |
+| `flag` | `uint8_t` | the record's +0xB4 byte |
+| `buy` | `const void*` | the buy prices (a record's +0x1C) |
+| `buy_count` | `uint32_t` | 4 |
+| `sell` | `const void*` | the sell prices (a record's +0x4C) |
+| `sell_count` | `uint32_t` | 4 |
+| `dwords` | `const uint32_t*` | a record's four dwords at +0x7C |
+| `dword_count` | `uint32_t` | 4 |
+| `required` | `const uint32_t*` | the required items (a record's +0x90) |
+| `required_count` | `uint32_t` | how many (at most 8) |
+| `category` | `uint32_t` | the item's category |
+| `max_cap` | `uint32_t` | the most one can own |
+
+### CatalogueSort
+
+`game.dll+0x136E6A0`, call only. Sorts the item catalogue again, into its categories' starts (it only adds to them: they are zeroed first). On the game thread. From KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c).
+
+```c
+typedef void (*HfFn_CatalogueSort)(void);
+```
+
+### AddItemAmount
+
+`game.dll+0x136EF80`, call only. Adds to an owned item as the buy/v2 reply does: no popup, no backend request. On the game thread. From KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c).
+
+```c
+typedef void (*HfFn_AddItemAmount)(void* manager, uint32_t mix_id, uint32_t amount, uint32_t source, const uint8_t* text, int32_t extra);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the progression manager: hf_global_ProgressionManager |
+| `mix_id` | `uint32_t` | the item's mixId (one the catalogue lacks is ignored) |
+| `amount` | `uint32_t` | how many to add |
+| `source` | `uint32_t` | 0 |
+| `text` | `const uint8_t*` | NULL |
+| `extra` | `int32_t` | 0 |
+
+### RemoveItemAmount
+
+`game.dll+0x136F5E0`, call only. Takes an amount of an owned item away. On the game thread. From KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c).
+
+```c
+typedef void (*HfFn_RemoveItemAmount)(void* manager, uint32_t mix_id, uint32_t amount);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the progression manager: hf_global_ProgressionManager |
+| `mix_id` | `uint32_t` | the item's mixId (one the catalogue lacks is ignored) |
+| `amount` | `uint32_t` | how many to take away |
+
+### LoadEntities
+
+`game.dll+0xFDB440`, hook or call. Loads the game's entity data (generated_entities.dl_bin) into the entity state: the entity map, short ids and component tables. HellForge's weapon and entity registry adds the mods' entities right after it returns. From HellForge's weapon registry (registry.c, registry_load.c EntityLoaderDetour).
+
+```c
+typedef void (*HfFn_LoadEntities)(void* state);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `state` | `void*` | the entity state: hf_global_EntityManager's object |
+
+### BuildArmoryList
+
+`game.dll+0x9F1CC0`, hook or call. Builds the armory's list from the loadout entries (component 29) into a fixed 193-entry object: per-type starts at +0x1B24, counts at +0x1B40, 32-byte entries. HellForge's detour replaces it with a larger list of its own (hf_global_Armory points there). From HellForge's weapon registry (registry.c, registry_load.c ArmoryBuilderDetour).
+
+```c
+typedef void (*HfFn_BuildArmoryList)(void* list);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `list` | `void*` | the armory list object it fills |
+
+### ArmoryEntryOf
+
+`game.dll+0x11E7C60`, call only. The armory entry of a loadout id, found by walking the armory's per-type ranges (hf_global_Armory): 32 bytes, the loadout id at +0 and the entity at +8 (u64); NULL when the armory lists none. From HellForge's registry self-check (registry_load.c SelfCheck).
+
+```c
+typedef uint8_t* (*HfFn_ArmoryEntryOf)(uint32_t id);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint32_t` | the loadout id (a weapon's, as in its loadout entry) |
+
+### EngineText
+
+`game.dll+0x17802E0`, call only. game.dll's wrapper of the engine's text function (the slot at +1000 of hf_global_EngineApi's table): the text of an id, as a UTF-8 string. HellForge points that slot at its own, so mod texts answer here too; the armory calls the slot directly, so hook the slot, not this, to change texts. From HellForge's mod text (registry.c HookText).
+
+```c
+typedef const uint8_t* (*HfFn_EngineText)(uint32_t id);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint32_t` | the text id (a strings entry, or one HellForge added for a mod) |
+
+### OpenMenuPresenter
+
+`game.dll+0x14C0550`, hook or call. Opens a menu presenter on this machine's ship UI. HellForge's terminal detour turns presenter 6 (the information terminal) into 41 (the lobby browser) or opens nothing when an editor shows its own browser. From HellForge's information terminal (terminal.c).
+
+```c
+typedef uint64_t (*HfFn_OpenMenuPresenter)(void* manager, int32_t presenter, void* arg);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the presenter manager |
+| `presenter` | `int32_t` | the menu presenter to open (6 the information terminal, 41 the debug lobby browser) |
+| `arg` | `void*` | not reviewed: pass it on |
+
+### MenuSoundUpdate
+
+`game.dll+0x13270B0`, hook or call. The menu sound manager's update, once a frame on the game thread, in missions and on the ship. HellForge's detour runs package requests and hf->on_game_thread callbacks there, before the game's own update. From HellForge's game thread (packages.c TickDetour).
+
+```c
+typedef void (*HfFn_MenuSoundUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the menu sound manager |
+| `dt` | `float` | the frame's time (seconds) |
+
+### RequestPackages
+
+`game.dll+0x12FE350`, call only. Takes a reference on packages so the engine loads and keeps them. Game thread only: it changes the system's reference map without a lock, and a full map writes to address 0. hf->load_package is the checked way to call it. From HD2Runtime 0.40.1 domains/package_residency; HellForge's load_package (packages.c).
+
+```c
+typedef void (*HfFn_RequestPackages)(void* system, const uint64_t* ids, uint32_t count);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `system` | `void*` | the RefcountedPackageSystem: hf_global_PackageSystem |
+| `ids` | `const uint64_t*` | the package ids |
+| `count` | `uint32_t` | how many ids (HellForge passes 1) |
+
+### EntityOfNetwork
+
+`game.dll+0xFD9BA0`, call only. The entity a network id names on this machine now, written to out (and out returned). hf->entity_of_network is the checked way to call it. From HellForge's entity_of_network (channel.c; the pin in abilities.c). Former names: `EntityOfHandle`.
+
+```c
+typedef uint32_t* (*HfFn_EntityOfNetwork)(uint32_t* out, uint32_t network);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `uint32_t*` | where it writes the entity (the game's no-entity id when there is none) |
+| `network` | `uint32_t` | the network id (handle) |
+
+### QueryLoadoutPreview
+
+`game.dll+0x18E9D50`, hook or call. The loadout unit-preview query: the record a loadout slot's preview shows; a missing loadout row gives a zero record. HellForge's detour breaks its fallback's endless self-call (G-8 Immolation in the hellpod). From HellForge's loadout preview guard (loadout_preview.c).
+
+```c
+typedef void* (*HfFn_QueryLoadoutPreview)(void* out, uint8_t alternate, uint32_t slot, uint32_t mode, void* context);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `void*` | the 0x4C-byte preview record it fills, returned |
+| `alternate` | `uint8_t` | 1 for the fallback query (the game's missing-child fallback calls itself with 1) |
+| `slot` | `uint32_t` | the loadout slot |
+| `mode` | `uint32_t` | the preview mode |
+| `context` | `void*` | the query's context |
+
+### PushArmoryLoadout
+
+`game.dll+0x11F5010`, call only. The armory's commit: pushes this machine's player's loadout from the profile to its PlayerHistory record (hf_global_PlayerHistory), the way a boot's validation applies a changed weapon. Game thread; its request is handled a few frames later. From HellForge's loadout scrub (loadout_scrub.c).
+
+```c
+typedef void (*HfFn_PushArmoryLoadout)(void);
+```
+
+### RollCacheLoot
+
+`game.dll+0xF3A800`, hook or call. Level generation's QueueRandomCacheLootRewardsPackages pass: rolls each random loot cache against the generation settings' cache loot tables. HellForge's detour sets the Super Credits tables' weight to the plan's Forge Credits chance before the roll. From HellForge's Forge Credits loot chance (forge_credits.c).
+
+```c
+typedef uint64_t (*HfFn_RollCacheLoot)(void* params, uint64_t rdx, uint8_t* context, uint64_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `params` | `void*` | the pass's parameters |
+| `rdx` | `uint64_t` | not reviewed: pass it on |
+| `context` | `uint8_t*` | the level generation context: [[[+0x18] + 0x2D0] + 0x68] the generation settings, their cache loot tables at +0x90 (count +0x98, 0x28 bytes each: u32 id, i32 weight, i32 min and max difficulty, entries at +0x18, count +0x20) |
+| `r9` | `uint64_t` | not reviewed: pass it on |
+
+### RequestWarbondPurchase
+
+`game.dll+0x13714F0`, call only. Builds the buy request for a warbond item and records it as the progression's pending buy; its callers are the warbond page view and the MVVM popup. HellForge patches its entry so the currency is the item's own. HellForge's warbond items replace its first bytes with a jump, so hf_fn_ gives NULL while they are installed. From HellForge's per-item warbond currency (warbonds.c InstallWarbondItems).
+
+```c
+typedef void (*HfFn_RequestWarbondPurchase)(uint64_t rcx, uint32_t item, int32_t cost, uint32_t currency);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint64_t` | not reviewed: pass it on |
+| `item` | `uint32_t` | the warbond item's seasonPassItemId |
+| `cost` | `int32_t` | its price |
+| `currency` | `uint32_t` | the mixId of the currency it is charged in (the warbond's; requisition 0xD7150EEC, Forge Credits 0x6C3C83C1) |
+
+### FinishWarbondPurchase
+
+`game.dll+0x13751D0`, hook or call. Completes the reply to a warbond buy: charges the pending buy and appends its item, once, to the purchased list (count +0xD8A58, ids from +0xD8A5C). HellForge's detour takes a repeatable mod item out of the list again so it sells again. From HellForge's repeatable warbond items (warbonds.c InstallWarbondRepeat).
+
+```c
+typedef void (*HfFn_FinishWarbondPurchase)(uint8_t* progression);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `progression` | `uint8_t*` | the progression manager: hf_global_Progression (its pending buy at +0x17799D8, the item at +0x17799DC) |
+
+### SpawnWarbondShowcase
+
+`game.dll+0x13050B0`, hook or call. Spawns the Helldiver shown beside a warbond's card from its character row (kit, pose and weapon), on a card change. HellForge's detour fills a mod warbond's row once the catalogue and armory are ready. From HellForge's warbond showcase (warbond_showcase.c).
+
+```c
+typedef void (*HfFn_SpawnWarbondShowcase)(void* unused, uint32_t character);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | not reviewed: pass it on |
+| `character` | `uint32_t` | the showcase character's id (a row of the character table at game.dll+0x32B1E60) |
+
+### UpdateWarbondSpent
+
+`game.dll+0x194A700`, hook or call. Updates the "#COUNT Medal(s) spent" widget on the Acquisition Center's cards and a warbond's page header. HellForge's detour gives it the text of the warbond's own currency. From HellForge's warbond texts (warbond_texts.c).
+
+```c
+typedef void (*HfFn_UpdateWarbondSpent)(uint8_t* widget, float a, float b);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `widget` | `uint8_t*` | the spent widget: its data block (a card's or the page view) at +0x2130, last frame's at +0x2138, its text element at +0x378 |
+| `a` | `float` | not reviewed: pass it on |
+| `b` | `float` | not reviewed: pass it on |
+
+### UpdateWarbondPager
+
+`game.dll+0x1947950`, call only. Lays out and lights the Acquisition Center pager's 32 dots for the card count and the current card. HellForge redirects its one call (0x194345A) to show pages of 32 past 32 warbonds. From HellForge's warbond pager (warbond_pager.c).
+
+```c
+typedef void (*HfFn_UpdateWarbondPager)(uint8_t* pager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `pager` | `uint8_t*` | the Acquisition Center's pager (its panel + 0x110): {count, current} read through [+0x7AE8], last frame's through [+0x7AF0] |
+| `dt` | `float` | the frame's time |
+
+### WarbondPagerInput
+
+`game.dll+0x1947730`, call only. The pager's input: a clicked dot becomes the card to select (+0x7B14); nonzero when that changed. HellForge redirects its one call (0x1943384). From HellForge's warbond pager (warbond_pager.c).
+
+```c
+typedef uint32_t (*HfFn_WarbondPagerInput)(uint8_t* pager, uint64_t rdx, uint64_t r8, uint64_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `pager` | `uint8_t*` | the Acquisition Center's pager |
+| `rdx` | `uint64_t` | not reviewed: pass it on |
+| `r8` | `uint64_t` | not reviewed: pass it on |
+| `r9` | `uint64_t` | not reviewed: pass it on |
+
+### SetElementText
+
+`game.dll+0x143BF90`, call only. Sets a UI text element's text id, which it then resolves through the engine's text function (mod texts included). The stratagem picker's headings and the warbond spent widget use it. From HellForge's stratagem categories (stratagem_categories.c) and warbond texts (warbond_texts.c).
+
+```c
+typedef void (*HfFn_SetElementText)(void* element, uint32_t text);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `element` | `void*` | a UI text element of kind 0x1C0000 (kind: its +0 & 0x3C0000); its text id is at +0x110 |
+| `text` | `uint32_t` | the text id |
+
+### SetElementTextAlt
+
+`game.dll+0x1441720`, call only. SetElementText for text elements of kind 0x200000. From HellForge's warbond texts (warbond_texts.c).
+
+```c
+typedef void (*HfFn_SetElementTextAlt)(void* element, uint32_t text);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `element` | `void*` | a UI text element of kind 0x200000 (kind: its +0 & 0x3C0000); its text id is at +0x110 |
+| `text` | `uint32_t` | the text id |
+
+### SetElementNumber
+
+`game.dll+0x143CAD0`, call only. Fills a number variable in a UI text element's text. From HellForge's stratagem categories (stratagem_categories.c PickerHeaderCategory).
+
+```c
+typedef void (*HfFn_SetElementNumber)(void* element, uint32_t name, uint32_t value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `element` | `void*` | a UI text element |
+| `name` | `uint32_t` | the hash of the variable in its text (the picker heading's available count 0xEB646556, its total 0x4442EB89) |
+| `value` | `uint32_t` | the number |
+
+### SetWidgetVisible
+
+`game.dll+0x14508E0`, call only. Shows or hides a UI widget. HellForge's locked-warbond button calls it on the button's price. From HellForge's locked warbonds (forge_credits.c).
+
+```c
+typedef void (*HfFn_SetWidgetVisible)(void* widget, uint8_t visible);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `widget` | `void*` | the UI widget |
+| `visible` | `uint8_t` | 1 shown, 0 hidden |
+
+### SetElementColour
+
+`game.dll+0x1448690`, call only. Sets a UI element's colour. HellForge's warbond prices call it to tint a sample price in the sample's colour. From HellForge's warbond prices (warbonds.c WarbondPriceColour).
+
+```c
+typedef void (*HfFn_SetElementColour)(void* element, const float* rgb);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `element` | `void*` | the UI element |
+| `rgb` | `const float*` | its colour (3 floats: red, green, blue) |
+
+### SetPickerHeading
+
+`game.dll+0x18CEC00`, call only. Fills a stratagem picker section heading (its title and its available and total counts). HellForge redirects its call in the list's realize pass (0x18D2E85) to title mods' selection categories (hf->add_stratagem_category). From HellForge's stratagem categories (stratagem_categories.c).
+
+```c
+typedef void (*HfFn_SetPickerHeading)(uint8_t* widget, uint32_t key);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `widget` | `uint8_t*` | the heading widget: its title element at +0x110, its counts element at +0x3C8 |
+| `key` | `uint32_t` | the key of the section's first candidate |
+
+### StratagemAvailable
+
+`game.dll+0x136FC20`, call only. Whether the player has a stratagem available to take, as the picker's heading counts it. From HellForge's stratagem categories (stratagem_categories.c PickerCategoryCounts).
+
+```c
+typedef uint8_t (*HfFn_StratagemAvailable)(void* account, uint32_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `account` | `void*` | the progression manager: hf_global_Progression |
+| `type` | `uint32_t` | the StratagemType (HF_STRATAGEM_..., or a mod's) |
+
+### SortArray
+
+`game.dll+0x20BE230`, call only. Sorts an array with a comparator, qsort's arguments. The stratagem picker sorts its candidates with it (call 0x18D8C40), which HellForge redirects to group mods' categories. From HellForge's stratagem categories (stratagem_categories.c PickerSortCategories).
+
+```c
+typedef void (*HfFn_SortArray)(void* data, uint64_t count, uint64_t width, const void* compare);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `data` | `void*` | the array |
+| `count` | `uint64_t` | its element count |
+| `width` | `uint64_t` | an element's size in bytes |
+| `compare` | `const void*` | the comparator: int (const void*, const void*) |
+
+### HighestDifficulty
+
+`game.dll+0x11EBB40`, call only. Returns the highest difficulty level a player may choose: min(10, the online override "0xAF218CAC 0xFAABBEA9", which it finds with FindConfigSetting). Every read of the difficulty table clamps the level to it; once a mod's add_difficulty is installed its 10 is 11. From HellForge's level 11 (difficulty.c, DIF_MAX_FN and the live override).
+
+```c
+typedef uint32_t (*HfFn_HighestDifficulty)(void);
+```
+
+### FindConfigSetting
+
+`game.dll+0x12E7990`, call only. Finds a config setting by key in the config's open-addressing tables of 48-byte entries. Returns the setting (+0xC its type, 6 a u32; +0x10 its value) or NULL. From HellForge's live level 11 (difficulty.c, DifficultyCapValue and kCapSitePin).
+
+```c
+typedef const uint8_t* (*HfFn_FindConfigSetting)(void* config, uint32_t online, uint32_t key);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `config` | `void*` | the game's config: hf_global_GameConfig |
+| `online` | `uint32_t` | HighestDifficulty passes 1: the online overrides (config +0x12078) are looked in before the defaults (+0xC050) |
+| `key` | `uint32_t` | the setting's key, a 32-bit hash |
+
+### ShowDifficultyWidget
+
+`game.dll+0x19A28D0`, call only. Shows the chosen widget of the war table's difficulty bar: its level's number, name and icon from the difficulty table, and its band sprite (a 10-entry array read by level - 1). From HellForge's level 11 (difficulty.c header; difficulty_ui.c, DIF_ICON_CALL).
+
+```c
+typedef void (*HfFn_ShowDifficultyWidget)(void* widget, uint32_t level);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `widget` | `void*` | the difficulty bar's widget |
+| `level` | `uint32_t` | the widget's difficulty level (the bar passes its index + 1) |
+
+### ComputeMissionRating
+
+`game.dll+0x19C4E70`, call only. Rates the mission on the pause map and at mission end against a table of 10 rows of thresholds, indexed by the mission's level - 1. From HellForge's level 11 (difficulty.c, kLevelLoads 0x19C5084).
+
+```c
+typedef float (*HfFn_ComputeMissionRating)(void* rcx, void* rdx, uint32_t r8, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+
+### EnemyDirectorTick
+
+`game.dll+0x94EB90`, hook or call. The enemy director's per-frame step: reads each faction's roaming patrol interval (difficulty row +0x2A0, f32 s) and most living patrol enemies (+0x2AC, u32) from the mission's difficulty row. From HellForge's difficulty patrols (difficulty.c, PatrolLevelRow).
+
+```c
+typedef void (*HfFn_EnemyDirectorTick)(void* hivemind, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `dt` | `float` | the frame time, s |
+
+### ArenaAllocate
+
+`game.dll+0x173B8D0`, call only. Allocates from an arena; the level generator's passes take their scratch tables from the generation arena with it. From HellForge's larger maps (difficulty_maps.c, kZoneClearStub).
+
+```c
+typedef void* (*HfFn_ArenaAllocate)(void* arena, uint32_t size, uint32_t alignment);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `arena` | `void*` | the arena (the level generator's generation arena: a pass's [rsi]) |
+| `size` | `uint32_t` | bytes |
+| `alignment` | `uint32_t` | the alignment; HellForge passes 8 |
+
+### GameMemset
+
+`game.dll+0x208AAA0`, call only. game.dll's memset. From HellForge's larger maps (difficulty_maps.c, kZoneClearStub).
+
+```c
+typedef void* (*HfFn_GameMemset)(void* dest, int32_t value, uint64_t size);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `dest` | `void*` | the memory |
+| `value` | `int32_t` | the byte to fill with (HellForge passes 0) |
+| `size` | `uint64_t` | bytes |
+
+### CreateGenerationBlock
+
+`game.dll+0xF6E710`, call only. Makes the level generator's generation block G (the level's locations, their types, the minimap's arrays, the mission stamps, the objective list, places and clusters), once per world (from 0xAB8B70). From HellForge's larger maps (difficulty_block.c).
+
+```c
+typedef void (*HfFn_CreateGenerationBlock)(void* level, void* rdx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level (lg): its caller, the world's creation, passes the world's +0xAE288 |
+| `rdx` | `void*` | not reviewed: pass it on |
+
+### InitLevel
+
+`game.dll+0xF71220`, call only. Level init: copies the generation settings' radii into the level (lg+0x2D78..+0x2D8C), sets the map type (lg+0x2DE0) and the view rect a war-table preview is drawn in (lg+0x2D94). From HellForge's larger maps (difficulty_maps.c, kRadiiStub).
+
+```c
+typedef void (*HfFn_InitLevel)(void* level, void* rdx, uint32_t r8, uint64_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level (lg): the world passes its +0xAE288 |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+| `r9` | `uint64_t` | not reviewed: pass it on |
+
+### GenerateRouteCells
+
+`game.dll+0xFD03E0`, call only. The level generator's route cells: a Poisson disc of sites at the generation settings' spacing (+4, 40 m) in the disk (+0xC, 680 m) around the world's centre, into fixed arrays (975 vertices, 1621 edges, 1024 cells) it does not check. From HellForge's larger maps (difficulty_maps.c).
+
+```c
+typedef void (*HfFn_GenerateRouteCells)(void* rcx, uint32_t rdx, uint64_t r8, float xmm3);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `uint64_t` | not reviewed: pass it on |
+| `xmm3` | `float` | not reviewed: pass it on |
+
+### GenerateRouteCellVoronoi
+
+`game.dll+0xF93800`, call only. Level generator pass op 3: fills each route cell with points at its cell type's size (+0x18C) / 2 (grid) or / 4 (Poisson) and builds their diagrams into the block's areas (13224) and vertices (26205), unchecked. From HellForge's larger maps (difficulty_maps.c, kCellSpacingStub).
+
+```c
+typedef void (*HfFn_GenerateRouteCellVoronoi)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### GenerateSubregionHeights
+
+`game.dll+0xF64E30`, call only. Level generator pass op 4: gives every area of a route cell the height of its cell type's curve at t = clamp(d / 64 m), d its distance to the nearest route point. From HellForge's larger maps (difficulty_terrain.c).
+
+```c
+typedef void (*HfFn_GenerateSubregionHeights)(void* rcx, uint64_t unused, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `unused` | `uint64_t` | not read (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### GenerateVoronoi
+
+`game.dll+0xF3F8E0`, call only. Level generator pass op 0x25: lays a 16 m grid (generation settings +0) over the site square, keeps the points within the disk and runs jc_voronoi on them (arrays of 5680 sites, 5849 vertices, 11528 edges, unchecked). From HellForge's larger maps (difficulty_maps.c, kGridStub).
+
+```c
+typedef void (*HfFn_GenerateVoronoi)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### FinalizeVoronoi
+
+`game.dll+0xF68050`, call only. Level generator pass op 0xA4 on map type 1: rebuilds the route cells from points laid over the whole site square at each cell type's size (+0x18C), grid or Poisson. A failure has the level generated again. From HellForge's larger maps (difficulty_maps.c, difficulty_towns.c).
+
+```c
+typedef void (*HfFn_FinalizeVoronoi)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### ForceFlattenZones
+
+`game.dll+0xF4C100`, call only. Level generator pass op 0x3E (force_flatten_zones): groups connected cells whose type sets a height (+0x208) and flattens every zone cell to its group's height, one plateau per town. From HellForge's larger maps (difficulty_maps.c, kZoneClearStub).
+
+```c
+typedef void (*HfFn_ForceFlattenZones)(void* rcx, uint64_t unused, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `unused` | `uint64_t` | not read (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### SelectSubRegionCellsFromHeightGroup
+
+`game.dll+0xF37500`, call only. Gives each route cell of a type 0/1 map a subregion by a noise value sampled at the cell (SampleSubregionNoise): its zone cells become the map's towns. From HellForge's larger maps (difficulty_towns.c, kTownNoiseStub).
+
+```c
+typedef void (*HfFn_SelectSubRegionCellsFromHeightGroup)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### SampleSubregionNoise
+
+`game.dll+0xF3A2E0`, call only. The noise value at a point, which picks a route cell's subregion. From HellForge's larger maps (difficulty_towns.c, kTownNoiseStub).
+
+```c
+typedef float (*HfFn_SampleSubregionNoise)(void* noise, float x, float y);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `noise` | `void*` | the noise SelectSubRegionCellsFromHeightGroup passes (its frame's [rbp-0x70]) |
+| `x` | `float` | x in world metres (0..2048) |
+| `y` | `float` | y in world metres |
+
+### GenerateLocationClusters
+
+`game.dll+0xF79520`, call only. Level generator pass op 0x18: groups the level's locations (bases, outposts, objectives) into clusters of 24 (G+0x896FB0, 8 x 0xE0: members +0x10, count +0xD0, kind +0xD8), a few per kind, their centres on a ring at 0.6 to 0.8 of the playable radius. From HellForge's larger maps (difficulty_block.c, difficulty_cities.c).
+
+```c
+typedef void (*HfFn_GenerateLocationClusters)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### SpreadLocations
+
+`game.dll+0xF7C310`, call only. Level generator pass op 0x8B: places each location as near its cluster's centre as the gaps allow, sorted by distance from the nearest location of its kind. A failure has the level generated again. From HellForge's larger maps (difficulty_maps.c, kSpreadReferenceStub).
+
+```c
+typedef void (*HfFn_SpreadLocations)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### SpreadLocationsCities
+
+`game.dll+0xFB41B0`, call only. Level generator pass op 0x8C (SpreadLocations_Cities): spreads the important locations (G+0x11A715C of 256) on city maps, flagging each in a 128-entry stack array. From HellForge's larger maps (difficulty_cities.c).
+
+```c
+typedef void (*HfFn_SpreadLocationsCities)(void* rcx, uint64_t unused, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `unused` | `uint64_t` | not read (the pass dispatcher passes a static of game.dll) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### GenerateOutpostLocations
+
+`game.dll+0xF7E250`, call only. Places the level's outposts from the location-group sets: an item is offered only if a class in its list (+0x198, count +0x1A0) has weight on the map's layout and its difficulty word (+0x60) admits the mission's level (lg+0xF9). From HellForge's city strongholds (difficulty_cities.c).
+
+```c
+typedef void (*HfFn_GenerateOutpostLocations)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### GenerateObjectiveLocations
+
+`game.dll+0xF8F1D0`, call only. Places the mission's objectives on the map: one place per placement attempt, retries included (G+0x8ABCC0, 16 pointers, count G+0x11A7170), unchecked. From HellForge's more objectives (difficulty_block.c).
+
+```c
+typedef void (*HfFn_GenerateObjectiveLocations)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### AddImportantLocations
+
+`game.dll+0xF90DC0`, call only. Adds the extraction points to the level's objective and extraction places (G+0x8ABCC0, count G+0x11A7170). From HellForge's more objectives (difficulty_block.c).
+
+```c
+typedef void (*HfFn_AddImportantLocations)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### GenerateMissionStampList
+
+`game.dll+0xF8E530`, call only. Fills the mission stamp list (G+0x8BBD70, 128 x 0x10: set, group, item, objective id), stamps made per objective, without a check. From HellForge's more objectives (difficulty_block.c).
+
+```c
+typedef void (*HfFn_GenerateMissionStampList)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes a static of game.dll) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### FixUnreachableAreas
+
+`game.dll+0xF67980`, call only. Opens pockets of route cells that have no walkable neighbour; when it cannot, the level is generated again (lg+0xF954 counts the restarts). From HellForge's larger maps (difficulty_diag.c).
+
+```c
+typedef void (*HfFn_FixUnreachableAreas)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### CullUnitsOutsidePlayableArea
+
+`game.dll+0xF25A00`, call only. Level generator op 0x6D, per unit: keeps a level's units within the playable radius (1024 x lg+0x2D70) and strips the rest at random, fading out to the border (lg+0x2D74). From HellForge's larger maps (difficulty_cities.c, kCullRadiusStub).
+
+```c
+typedef uint8_t (*HfFn_CullUnitsOutsidePlayableArea)(void* level, void* rdx, uint32_t r8, float xmm3);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level (lg): its callers pass the pass context's +0x18 |
+| `rdx` | `void*` | not reviewed: pass it on (its callers pass a pointer + 0x1990) |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+| `xmm3` | `float` | not reviewed: pass it on |
+
+### GenerateCityRoads
+
+`game.dll+0xFA9E10`, call only. Level generator pass op 0xA7 (generate_city_roads): a footprint per road edge, then the city cells' buildings in cell order, stopping when the footprint list is full. From HellForge's larger maps (difficulty_maps.c, kCityCapacities).
+
+```c
+typedef void (*HfFn_GenerateCityRoads)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### CreateCityFootprintList
+
+`game.dll+0xFA8FE0`, call only. Gives the city pass record its footprint list: 0x800 x 0x60 from the generation arena, its capacity at record +0x284. From HellForge's larger maps (difficulty_maps.c, kCityCapacities).
+
+```c
+typedef uint8_t (*HfFn_CreateCityFootprintList)(void* rcx, void* rdx, void* r8, uint64_t s5, void* s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (its caller passes the same pointer in r8) |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+| `s5` | `uint64_t` | not reviewed: pass it on |
+| `s6` | `void*` | not reviewed: pass it on (its caller passes a block it allocated with ArenaAllocate and cleared) |
+
+### FlattenCityRoads
+
+`game.dll+0xFAF130`, call only. Dresses each city street: road ribbons and junction discs, the pieces at an edge's ends (+0x240, +0x250) and spaced street props (+0x270) up to their reach past the playable radius. From HellForge's larger maps (difficulty_streets.c).
+
+```c
+typedef void (*HfFn_FlattenCityRoads)(void* rcx, void* rdx, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `rdx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### StampIndexSize
+
+`game.dll+0xC048E0`, call only. The size of the level generator's stamp index (10757 slots after a bitset). From HellForge's larger maps (difficulty_maps.c, kStampIndex).
+
+```c
+typedef uint32_t (*HfFn_StampIndexSize)(float xmm0, float xmm1, float xmm2);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `xmm0` | `float` | not reviewed: pass it on |
+| `xmm1` | `float` | not reviewed: pass it on |
+| `xmm2` | `float` | not reviewed: pass it on |
+
+### StampIndexCheckLayout
+
+`game.dll+0xC04AB0`, call only. Checks the layout of the level generator's stamp index against its slot count. From HellForge's larger maps (difficulty_maps.c, kStampIndex).
+
+```c
+typedef void (*HfFn_StampIndexCheckLayout)(float xmm0, float xmm1, float xmm2);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `xmm0` | `float` | not reviewed: pass it on |
+| `xmm1` | `float` | not reviewed: pass it on |
+| `xmm2` | `float` | not reviewed: pass it on |
+
+### HashMapInsert
+
+`game.dll+0x172F790`, call only. The game's open-addressing hash insert (704 callers): probes every slot for the key or an empty one. HellForge's guard skips and counts an entry when the table is full. From HellForge's hash insert guard (difficulty_maps.c, DIF_HASH_INSERT_END).
+
+```c
+typedef void (*HfFn_HashMapInsert)(void* table, uint32_t rdx, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `table` | `void*` | the hash table |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+
+### SetupDestructionRecordMap
+
+`game.dll+0x13DF7D0`, call only. Sets up the destruction-record map of hf_global_DestructionRecords: its slot pointer (+0xC5F48) and count (+0xC5F50; 0x8000 inline slots at +0x5F48). From HellForge's larger maps (difficulty_maps.c, InstallRecordMap).
+
+```c
+typedef void (*HfFn_SetupDestructionRecordMap)(void* owner);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `owner` | `void*` | the map's owner: the slot pointer at +0xC5F48 and count at +0xC5F50 are its |
+
+### RegisterStaticDestructionRecords
+
+`game.dll+0x13E0200`, call only. Registers the world's static destructibles in the destruction-record map, probing it inline. From HellForge's larger maps (difficulty_maps.c; difficulty_towns.c, DIF_RECORD_STORE).
+
+```c
+typedef void (*HfFn_RegisterStaticDestructionRecords)(void* rcx, void* rdx, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+
+### SelectObjectives
+
+`game.dll+0x1756730`, call only. Selects a mission's objectives from its mission row and returns how many. Every caller uses it: war table, mission descriptor, preview, telemetry; HellForge's second primary runs it again for a partner mission. From HellForge's two missions in one (difficulty_missions.c, g_select).
+
+```c
+typedef uint32_t (*HfFn_SelectObjectives)(uint8_t* inputs, uint32_t* ids, uint32_t* classes);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `inputs` | `uint8_t*` | +0 seed (u32), +8 the mission row (0..161), +0xC faction, +0x10 difficulty level, +0x14 a byte the selection never reads |
+| `ids` | `uint32_t*` | receives the objective ids (32 places) |
+| `classes` | `uint32_t*` | receives each one's class (0 main, 1 step, 3 optional), or NULL |
+
+### LaunchMission
+
+`game.dll+0xAD0010`, call only. Launches the mission: lists the entity deltas its HiveMind gets (the mission row's, the modifiers', up to 10 resource hashes) before the spawn applies them. From HellForge's mission countdown (difficulty_countdown.c).
+
+```c
+typedef void (*HfFn_LaunchMission)(void* rcx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+
+### MissionTimerWidget
+
+`game.dll+0x17BA940`, call only. The mission's timer widget: the countdown's total less what is left (hf_global_HiveMindManager +0x51948) is the elapsed time and its segments. From HellForge's mission countdown (difficulty_countdown.c, kWidgetTimeStub).
+
+```c
+typedef void (*HfFn_MissionTimerWidget)(void* widget);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `widget` | `void*` | the timer widget |
+
+### UpdateHudObjectives
+
+`game.dll+0x18B42F0`, call only. The in-mission HUD's objective updater: copies every objective instance's id (hf_global_ObjectiveManager) into a 16-entry stack list to number them, and gives each map marker one of the map's 16 marker slots. From HellForge's more objectives (difficulty_missions.c, kHudListSites).
+
+```c
+typedef void (*HfFn_UpdateHudObjectives)(void* rcx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+
+### UpdateMapScreen
+
+`game.dll+0x18A7C60`, call only. Runs every frame while the map is open, through the HUD's objective updater (UpdateHudObjectives). From HellForge's map marker slots (difficulty_missions.c).
+
+```c
+typedef void (*HfFn_UpdateMapScreen)(void* map, float xmm1, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `map` | `void*` | the map object (its caller passes its +0x1A0E28) |
+| `xmm1` | `float` | not reviewed: pass it on |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+
+### BuildMapMarkerSlots
+
+`game.dll+0x18A5580`, call only. Builds the map object's 16 marker slots (+0xF958, 0x2B8 each; its tracker list follows at +0x12518). From HellForge's map marker slots (difficulty_missions.c).
+
+```c
+typedef void (*HfFn_BuildMapMarkerSlots)(void* map, uint64_t unused, void* r8, void* r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `map` | `void*` | the map object (its caller passes its +0x1A0E28; the slots at +0xF958) |
+| `unused` | `uint64_t` | not read (its caller passes 5, which the function stores at map +0x110 itself) |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `void*` | not reviewed: pass it on |
+
+### HudMandatoryObjectives
+
+`game.dll+0x17CF690`, call only. The HUD's list of the mission's class 0 and 1 objectives (main objectives and steps), 16 at most. From HellForge's two missions in one (difficulty_missions.c, DIF_MANDATORY_MAX).
+
+```c
+typedef void (*HfFn_HudMandatoryObjectives)(void* rcx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+
+### MissionHudTopBar
+
+`game.dll+0x17CB8E0`, call only. The mission HUD's top bar: shows the difficulty row's level number and icon (row +0x10, through SetImageWithBase). From HellForge's level 11 icon (difficulty_ui.c, DIF_HUD_ICON_CALL).
+
+```c
+typedef void (*HfFn_MissionHudTopBar)(void* rcx, float xmm1);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `xmm1` | `float` | not reviewed: pass it on |
+
+### BuildMissionResult
+
+`game.dll+0x62EC20`, call only. Builds the mission result record: its badges (+0x14C8: {id, amount} x 32, count +0x15C8), up to 11 before its objective loop, one per objective instance with a badge, up to 5 after. From HellForge's more objectives (difficulty_missions.c, kBadgeStub).
+
+```c
+typedef void (*HfFn_BuildMissionResult)(uint64_t unused, void* rdx, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (its caller passes hf_global_ScoreManager) |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### TelemetrySelectedMission
+
+`game.dll+0x148F2A0`, call only. Writes the SelectedMission telemetry line when a mission is chosen on the war table: difficulty, race, game mode and objective names, into a 512-byte stack buffer. From HellForge's more objectives (difficulty_missions.c, kTelemetryStub).
+
+```c
+typedef uint8_t (*HfFn_TelemetrySelectedMission)(void* rcx, uint8_t rdx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `uint8_t` | not reviewed: pass it on |
+
+### TelemetryMissionEnd
+
+`game.dll+0x1347A10`, call only. The mission-end telemetry: keeps up to 16 objective instances in hf_global_Telemetry's record (+0x31820). From HellForge's more objectives (difficulty_missions.c, kTelemetryCountStub).
+
+```c
+typedef void (*HfFn_TelemetryMissionEnd)(void* telemetry);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `telemetry` | `void*` | the telemetry: hf_global_Telemetry |
+
+### RollArtilleryShell
+
+`game.dll+0x9F3250`, call only. A SEAF Artillery side objective's spawn point rolls its shell: each kind in the unit's script data table 0x3268FC21 ({kind, weight}) is matched to its ObjectiveShell record and one is picked by weight with the objective's seeded random numbers. From HellForge's heavy artillery (difficulty_artillery.c, kShellWeightPin).
+
+```c
+typedef void (*HfFn_RollArtilleryShell)(uint64_t unused, void* rdx, uint32_t r8, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (its caller passes a global's object) |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+
+### ArtilleryAim
+
+`game.dll+0x617E50`, call only. The SEAF Artillery's aim: reads the shell's speed and gravity from its projectile row, through SolveBallisticAim. From HellForge's artillery reach (difficulty_artillery.c).
+
+```c
+typedef uint8_t (*HfFn_ArtilleryAim)(void* rcx, uint32_t rdx, void* r8, uint8_t r9, void* s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `uint8_t` | not reviewed: pass it on |
+| `s5` | `void*` | not reviewed: pass it on |
+
+### SolveBallisticAim
+
+`game.dll+0x13B1BD0`, call only. The ballistic solver the artillery's aim uses, with the projectile row's speed and gravity. From HellForge's artillery reach (difficulty_artillery.c).
+
+```c
+typedef float (*HfFn_SolveBallisticAim)(void* rcx, void* rdx, void* r8, uint8_t r9, uint8_t s5, uint32_t s6, float s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `uint8_t` | not reviewed: pass it on |
+| `s5` | `uint8_t` | not reviewed: pass it on |
+| `s6` | `uint32_t` | not reviewed: pass it on |
+| `s7` | `float` | not reviewed: pass it on |
+
+### PredictProjectileLanding
+
+`game.dll+0x13B18B0`, call only. Predicts where a projectile lands, from its row's speed and gravity. From HellForge's artillery reach (difficulty_artillery.c).
+
+```c
+typedef void (*HfFn_PredictProjectileLanding)(void* rcx, void* rdx, float xmm2, void* r9, uint32_t s5, float* s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `xmm2` | `float` | not reviewed: pass it on |
+| `r9` | `void*` | not reviewed: pass it on |
+| `s5` | `uint32_t` | not reviewed: pass it on (a caller passes 2) |
+| `s6` | `float*` | not reviewed: pass it on (a caller reads a float from it afterwards) |
+
+### GenerateRegionMissions
+
+`game.dll+0x11E44D0`, call only. Generates the war table mission board's region missions (Super Earth's mega cities: slots 30..109 of a planet's 110, 10 levels per region). From HellForge's level 11 board (difficulty_ui.c, DIF_BOARD_REGION_MAX).
+
+```c
+typedef void (*HfFn_GenerateRegionMissions)(void* rcx, void* rdx, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### GenerateCampaignPlanetMissions
+
+`game.dll+0x11E3C10`, call only. Generates a campaign planet's missions on the war table's mission board (slots 0..29, 3 per level). From HellForge's level 11 board (difficulty_ui.c, DIF_BOARD_PLANET_SITE).
+
+```c
+typedef void (*HfFn_GenerateCampaignPlanetMissions)(void* rcx, void* rdx, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### GenerateDefencePlanetMissions
+
+`game.dll+0x11E4060`, call only. Generates a defence planet's missions on the war table's mission board (slots 0..29, 3 per level). From HellForge's level 11 board (difficulty_ui.c, DIF_BOARD_DEFENCE_SITE).
+
+```c
+typedef void (*HfFn_GenerateDefencePlanetMissions)(void* rcx, void* rdx, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### DifficultyBarBuild
+
+`game.dll+0x19CFB40`, call only. Builds the war table's difficulty bar: a carousel of one widget per level up to the highest (bar + 0x598 + i * 0x910, room for 10). From HellForge's level 11 bar (difficulty_ui.c, kBarSites).
+
+```c
+typedef void (*HfFn_DifficultyBarBuild)(void* bar, void* rdx, void* r8, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `bar` | `void*` | the bar |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `uint32_t` | not reviewed: pass it on (the callers pass 10 or 0x33) |
+
+### DifficultyBarDestroy
+
+`game.dll+0x19D1090`, call only. Destroys the war table difficulty bar's widgets. From HellForge's level 11 bar (difficulty_ui.c, kBarSites).
+
+```c
+typedef void (*HfFn_DifficultyBarDestroy)(void* bar);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `bar` | `void*` | the bar |
+
+### DifficultyBarChoose
+
+`game.dll+0x19D1110`, call only. Chooses a level on the war table's difficulty bar. From HellForge's level 11 bar (difficulty_ui.c, kBarSites).
+
+```c
+typedef void (*HfFn_DifficultyBarChoose)(void* bar, uint32_t rdx, uint8_t r8, void* r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `bar` | `void*` | the bar |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `uint8_t` | not reviewed: pass it on (the callers pass 0 or 1) |
+| `r9` | `void*` | not reviewed: pass it on |
+
+### SetImageSprite
+
+`game.dll+0x144F800`, call only. Sets an image element to an atlas sprite (atlas sprites only), which gives the element its resource (+0x148). From HellForge's level 11 icon (difficulty_ui.c, kIconStub).
+
+```c
+typedef void (*HfFn_SetImageSprite)(void* element, uint64_t sprite, uint8_t zero);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `element` | `void*` | the image element |
+| `sprite` | `uint64_t` | the atlas sprite (a difficulty row's icon, +0x10) |
+| `zero` | `uint8_t` | 0 |
+
+### SetImageSpriteOrTexture
+
+`game.dll+0x1450160`, call only. The image setter the stratagem icons use: an atlas sprite, else a texture of that name (through SetElementResourceSlot). From HellForge's level 11 icon (difficulty_ui.c).
+
+```c
+typedef void (*HfFn_SetImageSpriteOrTexture)(void* element, uint64_t resource);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `element` | `void*` | the image element |
+| `resource` | `uint64_t` | the sprite or texture; a texture goes to the element's image slot (SetElementResourceSlot) |
+
+### SetElementResourceSlot
+
+`game.dll+0x1449A70`, call only. Puts a resource into a UI element's slot: what SetImageSpriteOrTexture calls for a texture. HellForge gives a level-11 icon its texture with it. From HellForge's level 11 icon (difficulty_ui.c, kIconStub).
+
+```c
+typedef void (*HfFn_SetElementResourceSlot)(void* element, uint32_t slot, uint64_t resource, uint8_t sprite, uint8_t zero);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `element` | `void*` | the UI element |
+| `slot` | `uint32_t` | the slot's name hash (0x3AA8B87E the image) |
+| `resource` | `uint64_t` | the resource (a texture) |
+| `sprite` | `uint8_t` | whether it is a sprite: 0 a texture |
+| `zero` | `uint8_t` | 0 |
+
+### SetImageWithBase
+
+`game.dll+0x1450230`, call only. Sets an image element from a base sprite and an image: the mission HUD's top bar sets the difficulty icon with it. From HellForge's level 11 icon (difficulty_ui.c, kHudIconPin).
+
+```c
+typedef void (*HfFn_SetImageWithBase)(void* element, uint64_t base, uint64_t image, uint8_t zero);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `element` | `void*` | the image element |
+| `base` | `uint64_t` | the base sprite, set first through SetImageSprite (the mission HUD passes 0x9448536C2D6AE780) |
+| `image` | `uint64_t` | the image, then put in the element's image slot (SetElementResourceSlot) |
+| `zero` | `uint8_t` | 0 |
+
+### UiElementRect
+
+`game.dll+0x143EEF0`, call only. A UI element's rect: the mission card's minimap calls it after setting its UV rect. From HellForge's mission card view (difficulty_ui.c, DIF_CARD_VIEW_CALL).
+
+```c
+typedef void (*HfFn_UiElementRect)(void* element, void* rdx, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `element` | `void*` | the UI element |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### MissionCardMinimap
+
+`game.dll+0x18760E0`, call only. The war table mission card's minimap (element panel+0x220): a fixed UV rect of the 2048 m texture (0.275 to 0.725) and its markers at fixed scales. From HellForge's mission card view (difficulty_ui.c).
+
+```c
+typedef void (*HfFn_MissionCardMinimap)(void* rcx, float xmm1);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `xmm1` | `float` | not reviewed: pass it on |
+
+### WarTableHologramUpdate
+
+`game.dll+0x142D870`, call only. The war table's 3D hologram, per frame (a UI object): the mission's scale (+0x8D704, 6.6) and half the playable radius from the preview record (+0x8D70C). From HellForge's hologram scale (difficulty_ui.c, kHoloStubs).
+
+```c
+typedef void (*HfFn_WarTableHologramUpdate)(void* hologram, float xmm1, void* level, float xmm3);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hologram` | `void*` | the hologram's UI object (+0x8D704 the scale, +0x8D70C half the playable radius) |
+| `xmm1` | `float` | not reviewed: pass it on |
+| `level` | `void*` | the level (lg): its caller passes the world's +0xAE288 |
+| `xmm3` | `float` | not reviewed: pass it on |
+
+### WarTableHologramZoom
+
+`game.dll+0x14329B0`, call only. The war table hologram's zoom slider: blends the scale (+0x8D704) from 6.6 to 11. From HellForge's hologram scale (difficulty_ui.c, kHoloStubs).
+
+```c
+typedef void (*HfFn_WarTableHologramZoom)(void* hologram, float xmm1);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hologram` | `void*` | the hologram's UI object (+0x8D704 the scale) |
+| `xmm1` | `float` | not reviewed: pass it on |
+
+### WarTableHologramHeightAt
+
+`game.dll+0x1432F10`, call only. The war table hologram's terrain height lookup. From HellForge's hologram labels (difficulty_ui.c).
+
+```c
+typedef float (*HfFn_WarTableHologramHeightAt)(void* hologram, uint64_t rdx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hologram` | `void*` | the hologram's UI object |
+| `rdx` | `uint64_t` | not reviewed: pass it on |
+
+### WarTableHologramTerrainHeight
+
+`game.dll+0x1433460`, call only. The war table hologram's terrain height: the map's lowest point lifted above the table's plane by a lift that follows the scale (+0x8D704). From HellForge's hologram lift (difficulty_ui.c, DIF_HOLO_LIFT_SITE).
+
+```c
+typedef uint64_t (*HfFn_WarTableHologramTerrainHeight)(void* hologram, void* rdx, float xmm2);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hologram` | `void*` | the hologram's UI object (+0x8D704 the scale) |
+| `rdx` | `void*` | not reviewed: pass it on (its callers pass a local it writes 8 bytes to) |
+| `xmm2` | `float` | not reviewed: pass it on |
+
+### EngineRenderStep
+
+`helldivers2.exe+0x689BC0`, call only. The engine's script render step, once a frame: calls the boot script's render(), which renders the world and takes the camera unit's pose then, so a pose set before it is the one the frame renders with. HellForge hooks it; its return value is not reviewed (it ends in a tail call), so it is not marked for hooking by name. From HellForge's terminal camera (terminal_camera.c).
+
+```c
+typedef void (*HfFn_EngineRenderStep)(void* game);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `game` | `void*` | the engine's game object (the boot script's; this is its vtable 0x1690DF0's +0x20) |
+
+### UnitSetLocalPose
+
+`helldivers2.exe+0x1FCAD0`, hook or call. Sets a unit's scene graph node's local pose and marks it changed (the engine's set_local_pose, its scene graph table 0x27C8F10 +0x60); UpdateUnit applies it. From HellForge's terminal camera (terminal_camera.c).
+
+```c
+typedef void (*HfFn_UnitSetLocalPose)(uint32_t unit, int32_t node, const float* pose);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `pose` | `const float*` | the local pose, 16 floats: rotation rows right, forward, up, then position and scale |
+
+### UpdateUnit
+
+`helldivers2.exe+0x1B2DC0`, hook or call. Updates a unit in its world after its pose was set: its world poses from the local ones (the engine's update_unit). From HellForge's terminal camera (terminal_camera.c).
+
+```c
+typedef void (*HfFn_UpdateUnit)(void* world, void* unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world (MainWorld) |
+| `unit` | `void*` | the unit object (UnitFromHandle) |
+
+### UnitFromHandle
+
+`helldivers2.exe+0x9D8C0`, hook or call. The unit object for a handle, through the unit registry (UnitRegistry) under its lock; NULL when the handle is stale. From HellForge's terminal camera (terminal_camera.c); HellForge's unit positions (event_polls.c).
+
+```c
+typedef void* (*HfFn_UnitFromHandle)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle (index in the low 22 bits, generation above) |
+
+### MainWorld
+
+`helldivers2.exe+0x317DE0`, hook or call. The engine's main world, chosen from the engine's worlds (EngineCore +0x590 count, +0x598 array; the API table 0x27C9E60 +0x18). A world: +0x2305B8 its unit count, +0x2305C0 the units, +0x230920 its last render pose (a 4x4). From HellForge's terminal camera (terminal_camera.c).
+
+```c
+typedef void* (*HfFn_MainWorld)(void);
+```
+
+### UnitNodeWorldPosition
+
+`helldivers2.exe+0x1FD190`, hook or call. A unit node's world position (3 floats in its world pose): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x88. From HellForge's Pelican turret (behaviour_turret.c); the slot resolved in the decoded image.
+
+```c
+typedef const float* (*HfFn_UnitNodeWorldPosition)(uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node |
+
+### UnitActorByName
+
+`helldivers2.exe+0x799DE0`, hook or call. The unit's physics actor of that name, 0xFFFFFFFF when it has none (EngineUnitApi +0x10). hf->injure passes the limb's to QueueDamage. From HellForge's injure (actions.c); EngineUnitApi's table at 0x27CD4C0. Former names: `UnitFindActor`.
+
+```c
+typedef uint32_t (*HfFn_UnitActorByName)(uint32_t unit, uint32_t name, uint32_t* index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `name` | `uint32_t` | the actor's name hash |
+| `index` | `uint32_t*` | NULL, or where the actor's index in the unit's actor list goes (-1 when none) |
+
+### SetResourceOverride
+
+`helldivers2.exe+0x3217C0`, hook or call. Points every later lookup of a resource name at another resource's name, under the resource manager's lock (the Application table's +0x378). Objects already made keep what they had. From HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60).
+
+```c
+typedef void (*HfFn_SetResourceOverride)(uint64_t type, uint64_t name, uint64_t target);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the resource type hash |
+| `name` | `uint64_t` | the resource name hash looked up |
+| `target` | `uint64_t` | the name it finds instead |
+
+### ClearResourceOverride
+
+`helldivers2.exe+0x321900`, hook or call. Takes a resource override out (the API table's +0x380). From HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60).
+
+```c
+typedef void (*HfFn_ClearResourceOverride)(uint64_t type, uint64_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the resource type hash |
+| `name` | `uint64_t` | the overridden name |
+
+### CanGetResource
+
+`helldivers2.exe+0x321930`, hook or call. Whether a resource is loaded and can be had now (the API table's +0x388). From HellForge's live data (live_data.c); the Application table (EngineApi +0x10, 0x27C9E60).
+
+```c
+typedef uint8_t (*HfFn_CanGetResource)(uint64_t type, uint64_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the resource type hash |
+| `name` | `uint64_t` | the resource name hash |
+
+### TransportCleanup
+
+`helldivers2.exe+0x2ABE20`, hook or call. The network transport's cleanup (its vtable 0x1676270 +0xA0, called from NetworkManagerUpdate): destroys a dead connection (+0x1878C) only when no list (session, lobbies, the manager's own) wants its peer. HellForge hooks it to close a crashed friend's connection. From HellForge's dead connection reaper (netreap.c).
+
+```c
+typedef void (*HfFn_TransportCleanup)(void* transport, void* wanted, void* removed);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `transport` | `void*` | the transport (NetworkManager +0x98): +0xA0 its connection count, +0xA8 the connections |
+| `wanted` | `void*` | the peers some list still wants |
+| `removed` | `void*` | the removed peers it fills |
+
+### DestroyConnection
+
+`helldivers2.exe+0x2AA8A0`, hook or call. Destroys one of the transport's connections and takes it out of the transport's array (which closes up). From HellForge's dead connection reaper (netreap.c).
+
+```c
+typedef void (*HfFn_DestroyConnection)(void* transport, void* connection, uint64_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `transport` | `void*` | the transport |
+| `connection` | `void*` | the connection: +0x10 its peer id |
+| `r8` | `uint64_t` | not reviewed: pass it on (one caller passes it; the function keeps it) |
+
+### SessionPeersRemoved
+
+`helldivers2.exe+0x292FC0`, hook or call. Tells the game session these peers' connections are gone. From HellForge's dead connection reaper (netreap.c).
+
+```c
+typedef void (*HfFn_SessionPeersRemoved)(void* session, const void* removed);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `session` | `void*` | the game session (NetworkManager +0xA8; its vtable 0x1675B70 +0xE0) |
+| `removed` | `const void*` | the peers: {u32 count, u32 capacity, u64* peers} |
+
+### NetworkManagerUpdate
+
+`helldivers2.exe+0x172080`, hook or call. The network manager's update, every frame: calls the transport's cleanup (TransportCleanup, at 0x172466). From HellForge's dead connection reaper (netreap.c).
+
+```c
+typedef void (*HfFn_NetworkManagerUpdate)(void* manager);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the network manager (NetworkManager) |
+
+### CollisionFilterPairs
+
+`helldivers2.exe+0xCE5A10`, hook or call. Both collision filters' pair check (their slot +0x18), on the physics threads for new pairs of nearby bodies: compacts the pairs the collision matrix lets through and returns how many are kept. HellForge's detour drops grenade and shield pairs. From HellForge's shield block (shield_block.c).
+
+```c
+typedef int32_t (*HfFn_CollisionFilterPairs)(void* filter, void* world, uint32_t* pairs, int32_t count);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `filter` | `void*` | the collision filter (CollisionFilterA or CollisionFilterB) |
+| `world` | `void*` | the physics world: +0x38 its bodies, 0xA0 bytes each |
+| `pairs` | `uint32_t*` | body id pairs (2 x u32, the low 24 bits the body) |
+| `count` | `int32_t` | how many pairs |
+
+### PhysicsHandleBody
+
+`helldivers2.exe+0x77D6F0`, hook or call. A physics handle's world index (4 when the handle is -1) and its body id. From HellForge's shield block (shield_block.c).
+
+```c
+typedef uint32_t (*HfFn_PhysicsHandleBody)(uint32_t handle, uint32_t* body);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `handle` | `uint32_t` | a physics actor handle |
+| `body` | `uint32_t*` | its body id goes here (0xFFFFFF none) |
+
+### CreateNavmeshCut
+
+`helldivers2.exe+0x812CC0`, hook or call. Makes a navmesh cut (a silhouette generator) in a world; 0 when it fails. HellForge calls it with denormals flushed (MXCSR) and only while the world's cut lock (0x27C6350 + 8 x world) is set. From HellForge's shield block (shield_block.c).
+
+```c
+typedef uint32_t (*HfFn_CreateNavmeshCut)(const void* args);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `args` | `const void*` | the cut: u32 type (2), world, material (0x400003E6 is material 6), enable; then the transform, a key, the hull points and sizes and their counts (SbCutArgs) |
+
+### RemoveNavmeshCuts
+
+`helldivers2.exe+0x8127A0`, hook or call. Removes navmesh cuts (turning them off first through EnableNavmeshCuts). From HellForge's shield block (shield_block.c).
+
+```c
+typedef void (*HfFn_RemoveNavmeshCuts)(uint32_t* cuts, uint32_t count);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `cuts` | `uint32_t*` | the cuts' handles |
+| `count` | `uint32_t` | how many |
+
+### EnableNavmeshCuts
+
+`helldivers2.exe+0x812AE0`, hook or call. Turns navmesh cuts on or off. From HellForge's shield block (shield_block.c).
+
+```c
+typedef void (*HfFn_EnableNavmeshCuts)(uint32_t* cuts, uint32_t count, uint32_t on);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `cuts` | `uint32_t*` | the cuts' handles |
+| `count` | `uint32_t` | how many |
+| `on` | `uint32_t` | 1 on, 0 off |
+
+### NavWorldSetup
+
+`helldivers2.exe+0x7B45C0`, hook or call. Sets up a navigation world once at startup: 8 x 8 tiles of 128 m, +-512 m around the centre, which every mission reuses (NavWorlds). From HellForge's larger maps (difficulty_maps.c).
+
+```c
+typedef void (*HfFn_NavWorldSetup)(uint32_t id, const float* min, const float* max, const float* r9, const float* s5, float s6, uint32_t s7, uint32_t s8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint32_t` | the nav world's id (below the count at 0x27C30C0) |
+| `min` | `const float*` | the world's min x, y, z (its +0x08) |
+| `max` | `const float*` | the world's max x, y, z (its +0x14) |
+| `r9` | `const float*` | not reviewed: pass it on |
+| `s5` | `const float*` | not reviewed: pass it on |
+| `s6` | `float` | not reviewed: pass it on |
+| `s7` | `uint32_t` | not reviewed: pass it on |
+| `s8` | `uint32_t` | not reviewed: pass it on |
+
+### BuildNavTile
+
+`helldivers2.exe+0x89A6C0`, hook or call. Builds a navmesh tile's terrain (Recast): sizes its heightfield from a hard-coded 128 m (0x89A85E) while it rasterises the tile's real bounds; HellForge points that read at 256.0 for 256 m tiles. From HellForge's larger maps (difficulty_maps.c).
+
+```c
+typedef void* (*HfFn_BuildNavTile)(void* result, uint32_t rdx, const void* r8, uint32_t r9, uint64_t s5, uint64_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `result` | `void*` | where its 16-byte result goes (also returned) |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `const void*` | not reviewed: pass it on |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+| `s5` | `uint64_t` | not reviewed: pass it on |
+| `s6` | `uint64_t` | not reviewed: pass it on |
+
+### BuildPhysicsPools
+
+`helldivers2.exe+0x795630`, hook or call. Builds a physics world's pools (bodies, actors, ragdolls, cutters) from the config in one block; HellForge raises the sizes before the setup runs. From HellForge's larger maps (difficulty_maps.c).
+
+```c
+typedef void (*HfFn_BuildPhysicsPools)(const void* config, void* block, uint32_t size);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `config` | `const void*` | the physics config's pool sizes (filled by game.dll's physics plugin setup) |
+| `block` | `void*` | the one block every pool lives in |
+| `size` | `uint32_t` | the block's size |
+
+### EngineAllocatorAllocate
+
+`helldivers2.exe+0x58EC0`, hook or call. Allocates from an engine allocator (through its slot +0x30); arrays from it are freed through its slot +0x40. From HellForge's network types (registry_load.c).
+
+```c
+typedef void* (*HfFn_EngineAllocatorAllocate)(void* allocator, uint64_t size, uint32_t align);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `allocator` | `void*` | an engine allocator (this is slot 7 of several allocator vtables) |
+| `size` | `uint64_t` | bytes |
+| `align` | `uint32_t` | alignment |
+
+### DestroyNetworkTypeEntry
+
+`helldivers2.exe+0x175B60`, hook or call. Frees a network configuration entry's two arrays ({count, capacity, data, allocator} at +0x18 and +0x30), only those with a capacity; run when the game quits. From HellForge's network types (registry_load.c).
+
+```c
+typedef void (*HfFn_DestroyNetworkTypeEntry)(void* entry);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `entry` | `void*` | an 80-byte network configuration entry |
+
+### FindPackage
+
+`helldivers2.exe+0x60DA80`, hook or call. The engine's package lookup: the package object with that id, or null. From HD2Runtime 0.40.1 domains/package_residency loader.engine.findPackageRva (core/assets.lua proves its bytes).
+
+```c
+typedef void* (*HfFn_FindPackage)(void* resources, uint64_t id);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `resources` | `void*` | the engine's resource manager |
+| `id` | `uint64_t` | the package id |
+
+### PackageHasLoaded
+
+`helldivers2.exe+0x321330`, hook or call. 1 when the engine knows the package and every part of it is loaded (part state 4), else 0. From HD2Runtime 0.40.1 domains/package_residency loader.engine.hasLoadedRva (core/assets.lua proves its bytes).
+
+```c
+typedef uint32_t (*HfFn_PackageHasLoaded)(uint64_t id);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint64_t` | the package id |
+
+### LobbyMemberData
+
+`helldivers2.exe+0x8C6F30`, hook or call. A lobby member's property as the PlayFab SDK holds it, or null. An engine API slot (+0x118) that game.dll calls for its own member keys. From HD2Runtime 0.40.1 runtime/windows_write.lua native_lobby_read; domains/peer_messaging api.memberDataRva.
+
+```c
+typedef const char* (*HfFn_LobbyMemberData)(void* lobby, uint64_t peer, const char* key);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `lobby` | `void*` | the engine lobby |
+| `peer` | `uint64_t` | the member's peer id |
+| `key` | `const char*` | the property name |
+
+### LobbySetMemberData
+
+`helldivers2.exe+0x8C7010`, hook or call. Posts this machine's own lobby member properties (one PFLobbyPostUpdate) and returns the HRESULT (0: queued). An engine API slot (+0x120). From HD2Runtime 0.40.1 runtime/windows_write.lua native_lobby_publish; domains/peer_messaging api.setMemberDataRva.
+
+```c
+typedef int32_t (*HfFn_LobbySetMemberData)(void* lobby, uint32_t count, const void* keys, const void* values);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `lobby` | `void*` | the engine lobby |
+| `count` | `uint32_t` | how many properties |
+| `keys` | `const void*` | the property names (an array of const char*) |
+| `values` | `const void*` | the values (an array of const char*) |
+
+### RegistryAllocate
+
+`helldivers2.exe+0x5C2E10`, hook or call. The allocate of the text registry's allocator (its vtable +0x30): allocates through the backing allocator and returns out. From HD2Runtime 0.40.1 runtime/text_resources.lua native.allocate; domains/text_resources growth.
+
+```c
+typedef void* (*HfFn_RegistryAllocate)(void* allocator, uint64_t* out, uint64_t size, uint64_t align);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `allocator` | `void*` | the allocator (the text registry's, at registry +0x10) |
+| `out` | `uint64_t*` | receives {pointer, size} |
+| `size` | `uint64_t` | bytes (0: an empty result) |
+| `align` | `uint64_t` | the alignment |
+
+### ProjectileWeaponCopy
+
+`game.dll+0x61AF10`, hook or call. Gives one entity its own per-instance ProjectileWeapon record: a copy of its type's record with the delta's patches. An entity that already has one is left as it is. From HD2Runtime 0.40.1 runtime/windows_write.lua native_weapon_copy; domains/pelican gatling.copy.
+
+```c
+typedef void (*HfFn_ProjectileWeaponCopy)(void* manager, void* handle, const uint32_t* delta);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the ProjectileWeapon component manager |
+| `handle` | `void*` | the entity's handle record |
+| `delta` | `const uint32_t*` | a delta entry {kind, first patch, count, 0}; all zero applies no patch |
+
+### MagazineCopy
+
+`game.dll+0x770B10`, hook or call. Gives one entity its own per-instance magazine record: a copy of its type's record with the delta's patches. One that already has a copy is left as it is. From HD2Runtime 0.40.1 runtime/windows_write.lua native_magazine_copy; domains/pelican gatling.magazineCopy.
+
+```c
+typedef void (*HfFn_MagazineCopy)(void* manager, void* record, const uint32_t* delta);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the WeaponMagazine component manager |
+| `record` | `void*` | the entity's world record |
+| `delta` | `const uint32_t*` | a delta entry {kind, first patch, count, 0}; all zero applies no patch |
+
+### AttachToUnit
+
+`game.dll+0x812540`, hook or call. Attaches a child entity to a node of a parent unit at an offset and rotation: the call the mount system makes for each child it attaches. From HD2Runtime 0.40.1 runtime/windows_write.lua native_attach; runtime/pelican_gatling.lua.
+
+```c
+typedef void (*HfFn_AttachToUnit)(void* manager, uint32_t child, uint32_t link, uint32_t node, const float* offset, const float* rotation, float s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the attachable manager |
+| `child` | `uint32_t` | the entity to attach |
+| `link` | `uint32_t` | the parent's unit link |
+| `node` | `uint32_t` | the parent node index |
+| `offset` | `const float*` | the offset (3 floats) |
+| `rotation` | `const float*` | the rotation quaternion (x, y, z, w), 16-byte aligned (read with an aligned load) |
+| `s7` | `float` | HD2Runtime passes 0.0 |
+
+### SetBehaviour
+
+`game.dll+0x843EA0`, hook or call. Changes an entity's AI behaviour the game's own way: leaves the old one through BehaviourStage with 0, writes and replicates the id (MarkReplicated) and enters the new one at stage 1. Nothing happens if it already runs that behaviour. From HD2Runtime 0.40.1 runtime/windows_write.lua native_set_behaviour; runtime/pelican_weapon.lua.
+
+```c
+typedef void (*HfFn_SetBehaviour)(void* unused, uint32_t entity, uint32_t behaviour);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | not read: callers pass the BehaviourManager, which it loads itself |
+| `entity` | `uint32_t` | the entity |
+| `behaviour` | `uint32_t` | the new behaviour id (213 is the Gatling Sentry's AI) |
+
+### UnlinkRelation
+
+`game.dll+0xB0B020`, hook or call. Removes a child's relation to its parent: the call the mount system makes before it removes a child. A child without that relation is left as it is. From HD2Runtime 0.40.1 runtime/windows_write.lua native_relation_unlink; runtime/pelican_gatling.lua.
+
+```c
+typedef void (*HfFn_UnlinkRelation)(uint32_t child, void* owner, uint32_t parent);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `child` | `uint32_t` | the child entity |
+| `owner` | `void*` | the relation's owner (the mount manager for a mounted child) |
+| `parent` | `uint32_t` | the parent entity |
+
+### RemoveEntity
+
+`game.dll+0xFDC310`, hook or call. Asks for an entity to be removed. Deferred: on the host it is queued in the world's removal map, and the pending-removal pass destroys it. From HD2Runtime 0.40.1 runtime/windows_write.lua native_remove_entity; runtime/pelican_gatling.lua.
+
+```c
+typedef void (*HfFn_RemoveEntity)(void* world, uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the EntityManager (hf_global_EntityManager) |
+| `entity` | `uint32_t` | the entity |
+
+### DestroyEntity
+
+`game.dll+0xFDC820`, hook or call. Destroys one entity now: what the pending-removal pass (0xFDC7E0) calls for each queued entity. From HD2Runtime 0.40.1 runtime/windows_write.lua native_destroy_entity; runtime/pelican_gatling.lua.
+
+```c
+typedef void (*HfFn_DestroyEntity)(void* world, void* record, uint8_t forced);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the EntityManager |
+| `record` | `void*` | the entity's own world record (null: nothing happens) |
+| `forced` | `uint8_t` | 0 keeps the ownership check: a networked entity must pass the network layer's check, any other must have been created here |
+
+### CloseStratagemSelector
+
+`game.dll+0x146F3B0`, hook or call. Closes the open stratagem selection on the loadout screen: what Back on a focused stratagem slot calls. From HD2Runtime 0.40.1 runtime/windows_write.lua native_selector_close; domains/stratagem_selector selectorClose.
+
+```c
+typedef void (*HfFn_CloseStratagemSelector)(void* ui);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ui` | `void*` | the loadout UI |
+
+### SetStratagemCardEnabled
+
+`game.dll+0x18D1440`, hook or call. Greys or un-greys one stratagem card: finds the card with that key, writes its enabled byte and, for a realized card, its grey bit and redraw. The game's post-pick refresh calls it with 0. From HD2Runtime 0.40.1 runtime/windows_write.lua native_card_enable; runtime/stratagem_card_enable.lua.
+
+```c
+typedef void (*HfFn_SetStratagemCardEnabled)(void* list, uint32_t key, uint8_t enabled);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `list` | `void*` | the stratagem card list |
+| `key` | `uint32_t` | the card's key |
+| `enabled` | `uint8_t` | 1 enabled, 0 greyed |
+
+### SetLobbySetting
+
+`game.dll+0x11ED0B0`, call only. Sets one lobby setting the way the options menu does; for id 0 it writes settings +0x174 and the lobby's PrivacyMode key. It dispatches on the id through a jump table. From HD2Runtime 0.40.1 runtime/matchmaking_safety.lua set_privacy; domains/matchmaking_safety setter.
+
+```c
+typedef void (*HfFn_SetLobbySetting)(void* settings, uint32_t id, const void* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `settings` | `void*` | the lobby settings |
+| `id` | `uint32_t` | the setting id (0 is privacy) |
+| `value` | `const void*` | the new value (null: nothing happens) |
+
+### SetQuickplay
+
+`game.dll+0x133E6E0`, hook or call. Starts or stops Quickplay matchmaking. (matchmaker, 0, -1, 0x7FFFFFFF, 0, 0, 0, 0) is the stop that the galactic war map's cancel makes. From HD2Runtime 0.40.1 runtime/matchmaking_safety.lua stop_quickplay; domains/matchmaking_safety stopQuickplay.
+
+```c
+typedef void (*HfFn_SetQuickplay)(void* matchmaker, uint8_t on, int32_t r8, int32_t r9, uint8_t s5, uint8_t s6, uint8_t s7, uint8_t s8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `matchmaker` | `void*` | the matchmaker |
+| `on` | `uint8_t` | 0 stops Quickplay |
+| `r8` | `int32_t` | not reviewed: the stop passes -1 |
+| `r9` | `int32_t` | not reviewed: the stop passes 0x7FFFFFFF |
+| `s5` | `uint8_t` | not reviewed: the stop passes 0 |
+| `s6` | `uint8_t` | not reviewed: the stop passes 0 |
+| `s7` | `uint8_t` | not reviewed: the stop passes 0 |
+| `s8` | `uint8_t` | not reviewed: the stop passes 0 |
+
+### ReleasePackages
+
+`game.dll+0x12FE4E0`, hook or call. Drops a reference that RequestPackages took on packages. Same shape as RequestPackages, and the same game-thread-only rule. From HD2Runtime 0.40.1 domains/package_residency loader.releaseRva (core/assets.lua proves its bytes).
+
+```c
+typedef void (*HfFn_ReleasePackages)(void* system, const uint64_t* ids, uint32_t count);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `system` | `void*` | the RefcountedPackageSystem: hf_global_PackageSystem |
+| `ids` | `const uint64_t*` | the package ids |
+| `count` | `uint32_t` | how many ids (0: nothing) |
+
+### BeamInfoOf
+
+`game.dll+0x11D8020`, hook or call. The BeamInfo row of a beam type, from the beam table at game.dll+0x37C8250 (31 slots of 0x70 bytes). A leaf with no .pdata entry. From HD2Runtime 0.40.1 domains/beam_conversion rows (GetBeamInfo).
+
+```c
+typedef void* (*HfFn_BeamInfoOf)(uint32_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint32_t` | the BeamType (0: the default row) |
+
+### DamageInfoOf
+
+`game.dll+0x11F8EA0`, hook or call. The DamageInfo row of a damage id, from the table at game.dll+0x37C60C0 (650 slots of 76 bytes). A leaf with no .pdata entry. From HD2Runtime 0.40.1 domains/beam_conversion rows (GetDamageInfo).
+
+```c
+typedef void* (*HfFn_DamageInfoOf)(uint32_t id);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint32_t` | the damage id (0: the default row) |
+
+### ProjectileInfoOf
+
+`game.dll+0x11EC7C0`, hook or call. The ProjectileInfo row of a projectile type, from the table at game.dll+0x37C7670 (351 types). A leaf with no .pdata entry. From HD2Runtime 0.40.1 domains/projectile_rows table; domains/beam_conversion projectileRow.
+
+```c
+typedef void* (*HfFn_ProjectileInfoOf)(uint32_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint32_t` | the projectile type (0: the default row) |
+
+### PluginUpdate
+
+`game.dll+0x4EE6C0`, hook or call. The game plugin's per-frame entry point, registered in the plugin API table (no direct callers): runs two engine callbacks, then GameUpdate with the Game and the frame time. From HD2Runtime 0.40.1 sdk/docs/custom-text.md; sdk/docs/events.md; domains/text_resources pins.
+
+```c
+typedef void (*HfFn_PluginUpdate)(float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `dt` | `float` | the frame time |
+
+### GameUpdate
+
+`game.dll+0xAB5000`, hook or call. The game's world update, once a frame on the game thread on every machine: kicks the explosion queue, runs the entity and component updates, later gathers the explosions, and checks for a language change. From HD2Runtime 0.40.1 sdk/docs/events.md; sdk/docs/custom-text.md.
+
+```c
+typedef void (*HfFn_GameUpdate)(void* unused, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | not read: PluginUpdate passes the Game, which it loads itself |
+| `dt` | `float` | the frame time |
+
+### PlayLoadoutSound
+
+`game.dll+0x1327F50`, hook or call. Posts a UI sound the way the loadout screen does: the key becomes a Wwise event id, which it posts through the WwiseWorld. From HD2Runtime 0.40.1 runtime/ui_sound.lua.
+
+```c
+typedef void (*HfFn_PlayLoadoutSound)(void* unused, uint32_t key);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | not read |
+| `key` | `uint32_t` | the sound key, remapped to a Wwise event id |
+
+### CreditorOf
+
+`game.dll+0x129C690`, hook or call. The peer id that gets the credit for what an owner does: the peer owning the owner's network object. From HD2Runtime 0.40.1 runtime/pelican_weapon.lua (Creditor(owner)). Former names: `Creditor`.
+
+```c
+typedef uint64_t (*HfFn_CreditorOf)(void* unused, uint32_t owner);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | not read |
+| `owner` | `uint32_t` | the owner entity |
+
+### PickEnemy
+
+`game.dll+0x953150`, hook or call. Picks an enemy type from a spawn group, weighted by the mission difficulty (row +0x30 has ten weights). Every spawn that picks an enemy type calls it; it returns 0xFFFFFFFF when nothing qualifies. From HD2Runtime 0.40.1 runtime/enemy_spawn_weights.lua; domains/enemy_spawn_weights pins.
+
+```c
+typedef uint32_t (*HfFn_PickEnemy)(void* manager, uint32_t group, void* roster, uint8_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the spawn manager |
+| `group` | `uint32_t` | the spawn group key |
+| `roster` | `void*` | the roster |
+| `r9` | `uint8_t` | not reviewed: pass it on |
+
+### EntityAttribute
+
+`game.dll+0x11D9DF0`, hook or call. An entity's attribute record by key (a float at +8), or null. It is the only reader of the armor passive slots and maps an avatar to its kits' passives. From HD2Runtime 0.40.1 runtime/player_passives.lua; sdk/docs/armor-passives.md.
+
+```c
+typedef void* (*HfFn_EntityAttribute)(uint32_t entity, uint32_t key, uint32_t flags);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `entity` | `uint32_t` | the entity (an avatar) |
+| `key` | `uint32_t` | the attribute key hash |
+| `flags` | `uint32_t` | which sources to read (callers pass 1 or 3) |
+
+### ApplyDamage
+
+`game.dll+0x9235F0`, hook or call. Applies one damage to an entity's health: acceptance mask, element and Vitality multipliers, zone health, downing and death (KillDispatch). ConsumeDamageEvent calls it with the DamageEvent's fields, on the machine that drains the queue. From HD2Runtime 0.40.1 research event-combat (damage_apply, 15 stack args); ConsumeDamageEvent's call at 0x12A82EB.
+
+```c
+typedef void (*HfFn_ApplyDamage)(void* health, uint32_t target, uint32_t kind, uint32_t element, uint32_t dealer, uint32_t owner, uint64_t creditor, int32_t amount, uint32_t s9, float s10, float* position, float* s12, uint32_t s13, uint8_t s14, uint8_t s15, uint32_t s16, uint32_t s17, uint32_t s18, uint8_t s19);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `health` | `void*` | the HealthManager (HealthManager global) |
+| `target` | `uint32_t` | the entity hit (DamageEvent +0) |
+| `kind` | `uint32_t` | the damage kind (DamageEvent +4) |
+| `element` | `uint32_t` | the damage element (DamageEvent +8) |
+| `dealer` | `uint32_t` | the dealer's network id (DamageEvent +0x10) |
+| `owner` | `uint32_t` | the owner's network id (DamageEvent +0x14) |
+| `creditor` | `uint64_t` | the peer the damage is credited to (DamageEvent +0x18) |
+| `amount` | `int32_t` | the damage (DamageEvent +0x2C), before armour and multipliers |
+| `s9` | `uint32_t` | not reviewed: pass it on (DamageEvent +0x30) |
+| `s10` | `float` | not reviewed: pass it on (DamageEvent +0x34) |
+| `position` | `float*` | 3 floats: the hit position (DamageEvent +0x50) |
+| `s12` | `float*` | not reviewed: pass it on (3 floats, DamageEvent +0x44) |
+| `s13` | `uint32_t` | not reviewed: pass it on |
+| `s14` | `uint8_t` | not reviewed: pass it on (DamageEvent +0x28) |
+| `s15` | `uint8_t` | not reviewed: pass it on |
+| `s16` | `uint32_t` | not reviewed: pass it on (DamageEvent +0x5C) |
+| `s17` | `uint32_t` | not reviewed: pass it on (DamageEvent +0x60, kept in the record at +0x40) |
+| `s18` | `uint32_t` | not reviewed: pass it on (DamageEvent +0x20, the hit-ring key) |
+| `s19` | `uint8_t` | not reviewed: pass it on |
+
+### IsDead
+
+`game.dll+0x927050`, hook or call. 1 when the entity's health record says dead (life state +0x19C >= 2); 0 when alive, downed or without a health record. From HD2Runtime 0.40.1 research event-combat (is_dead).
+
+```c
+typedef uint8_t (*HfFn_IsDead)(void* health, uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `health` | `void*` | the HealthManager |
+| `entity` | `uint32_t` | the entity |
+
+### HealthRecord
+
+`game.dll+0x4A4410`, call only. The entity's health record (0x1B8 bytes in the HealthManager's records at +0x1058). An entity with no record gives a bad pointer, not NULL: check first. No code calls it. From HD2Runtime 0.40.1 research event-combat (health_record_getter).
+
+```c
+typedef void* (*HfFn_HealthRecord)(uint64_t unused, uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `entity` | `uint32_t` | the entity |
+
+### RestoreHealth
+
+`game.dll+0x91E500`, hook or call. Sets an entity's health to fraction x its maximum and revives a downed one (life state 0); does nothing to the dead. The stim's status handler calls it. From HD2Runtime 0.40.1 research event-combat (heal_set_fraction, stim_restore_call).
+
+```c
+typedef void (*HfFn_RestoreHealth)(void* health, uint32_t entity, uint64_t unused, float fraction);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `health` | `void*` | the HealthManager |
+| `entity` | `uint32_t` | the entity |
+| `unused` | `uint64_t` | not read |
+| `fraction` | `float` | the health to set, as a fraction of the maximum |
+
+### HealthSettings
+
+`game.dll+0x507920`, hook or call. The entity's HealthComponentData: its private copy if it has one, else the shared type record (0x5650 bytes each). From HD2Runtime 0.40.1 research event-combat (settings_getter).
+
+```c
+typedef void* (*HfFn_HealthSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (HealthManager +0x1048 per index) |
+
+### SetLifeState
+
+`game.dll+0x91C240`, hook or call. Raises a health record's life state (+0x19C; a lower state is ignored) and runs what follows the change. ApplyDamage calls it, and the update calls it when the replicated state differs. From HD2Runtime 0.40.1 research event-combat (set_life_state); callers 0x9204BD and 0x9256F4.
+
+```c
+typedef void (*HfFn_SetLifeState)(void* health, uint32_t index, uint32_t state, uint32_t kind, uint32_t element);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `health` | `void*` | the HealthManager |
+| `index` | `uint32_t` | the health record index (not the entity) |
+| `state` | `uint32_t` | the new life state (0 alive, 1 downed, 2 dead) |
+| `kind` | `uint32_t` | the damage kind that caused it |
+| `element` | `uint32_t` | the damage element that caused it |
+
+### HealthManagerUpdate
+
+`game.dll+0x920260`, hook or call. The HealthManager's frame update: regeneration, time since damage, damage-over-time deaths and the replicated life state. From HD2Runtime 0.40.1 research event-combat (update).
+
+```c
+typedef void (*HfFn_HealthManagerUpdate)(void* health, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `health` | `void*` | the HealthManager |
+| `dt` | `float` | the frame time in seconds |
+
+### DrainCombatQueues
+
+`game.dll+0x12A6EF0`, hook or call. The frame's drain of the combat queues: up to 16 damage events per call through ConsumeDamageEvent, then the status and other queues. From HD2Runtime 0.40.1 research event-combat (queue_drain); HD2Runtime 0.40.1 research event-actions.
+
+```c
+typedef void (*HfFn_DrainCombatQueues)(void* queues);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `queues` | `void*` | the combat queues (CombatQueues global) |
+
+### EnqueueDamageEvent
+
+`game.dll+0x129EF00`, call only. Copies a DamageEvent into this machine's damage queue (CombatQueues +0x1120, 4096 at most; a full queue drops it). No code calls it. From HD2Runtime 0.40.1 research event-combat (enqueue_copy).
+
+```c
+typedef void (*HfFn_EnqueueDamageEvent)(uint64_t unused, void* event);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `event` | `void*` | a whole DamageEvent (0x70 bytes) to copy |
+
+### ProduceDamage
+
+`game.dll+0x129DD30`, hook or call. Turns a hit into a queued DamageEvent (damage = trunc(values +0) times the target's attribute) and queues the hit's status effects when the armour factor is not 0. Every damage source's hit goes through it. From HD2Runtime 0.40.1 research event-combat (producer); HD2Runtime 0.40.1 research direct-hit-damage.
+
+```c
+typedef void (*HfFn_ProduceDamage)(uint64_t unused, float* values, void* hit, uint32_t key);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `values` | `float*` | the DamageValues (+0 damage, +4 armour factor) |
+| `hit` | `void*` | the hit event (+0 kind, +4 element, +0x20 target, +0x84 dealer and +0x104 owner network ids, +0x110 creditor) |
+| `key` | `uint32_t` | stored in the DamageEvent at +0x20 |
+
+### InitHitInfo
+
+`game.dll+0x12A15E0`, hook or call. Fills a hit event from its source: target, hit zone and armour, and the DamageInfo row's element and damage. From HD2Runtime 0.40.1 research event-combat (hit_init); HD2Runtime 0.40.1 research direct-hit-damage.
+
+```c
+typedef void (*HfFn_InitHitInfo)(uint64_t rcx, void* hit, uint32_t kind, uint32_t r9, uint64_t s5, void* source, uint64_t s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint64_t` | not reviewed: pass it on |
+| `hit` | `void*` | the hit event to fill |
+| `kind` | `uint32_t` | the hit kind (hit +0) |
+| `r9` | `uint32_t` | not reviewed: pass it on (hit +0xC) |
+| `s5` | `uint64_t` | not reviewed: pass it on |
+| `source` | `void*` | the source struct (+0xC, +0x1C hit node, +0x20, +0x24 DamageInfo id) |
+| `s7` | `uint64_t` | not reviewed: pass it on |
+
+### EntityToNetwork
+
+`game.dll+0xFD9AF0`, hook or call. The network id of an entity (EntityOfNetwork's inverse); 0x7FFF when it has none. From HD2Runtime 0.40.1 research event-state (set_player_avatar's call at 0x6079CF).
+
+```c
+typedef uint32_t (*HfFn_EntityToNetwork)(uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `entity` | `uint32_t` | the entity |
+
+### HealthZoneOfNode
+
+`game.dll+0x922060`, hook or call. The health zone a hit node belongs to (zones at settings +0x208, 0x228 bytes each, 38 at most); the default zone (settings +0x40) when none lists it. From HD2Runtime 0.40.1 research direct-hit-damage (0x922060).
+
+```c
+typedef void* (*HfFn_HealthZoneOfNode)(uint64_t unused, void* settings, uint32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `settings` | `void*` | the HealthComponentData (HealthSettings) |
+| `node` | `uint32_t` | the hit node's hash |
+
+### BuildDamageValues
+
+`game.dll+0x129DC30`, hook or call. Builds a hit's DamageValues with the builder of its kind (+0 damage, -1 to kill; +4 armour factor) and returns values. From HD2Runtime 0.40.1 research direct-hit-damage (DamageValues).
+
+```c
+typedef float* (*HfFn_BuildDamageValues)(uint64_t rcx, float* values, void* hit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint64_t` | not reviewed: pass it on |
+| `values` | `float*` | the DamageValues to fill (0x24 bytes) |
+| `hit` | `void*` | the hit event |
+
+### IsBoosterActive
+
+`game.dll+0x856D40`, hook or call. 1 when the mission has the booster (ApplyDamage asks it for Vitality, id 1). From HD2Runtime 0.40.1 research event-combat (damage_apply 0x923A8A).
+
+```c
+typedef uint8_t (*HfFn_IsBoosterActive)(uint64_t unused, uint32_t booster);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `booster` | `uint32_t` | the booster id |
+
+### ApplyStatus
+
+`game.dll+0x699E40`, hook or call. Applies a status to an entity owned here: susceptibility and buildup decide, then the type's handler runs. Weather Insulated (56) refuses 53..55. From HD2Runtime 0.40.1 research acid-storm-attachment.
+
+```c
+typedef void (*HfFn_ApplyStatus)(void* receivers, uint32_t entity, uint32_t type, uint32_t r9, float buildup, uint32_t s6, uint64_t s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `receivers` | `void*` | the status receivers (StatusReceivers global) |
+| `entity` | `uint32_t` | the target |
+| `type` | `uint32_t` | the status type |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+| `buildup` | `float` | the strength, against the target's susceptibility |
+| `s6` | `uint32_t` | not reviewed: pass it on |
+| `s7` | `uint64_t` | not reviewed: pass it on |
+
+### HasStatus
+
+`game.dll+0x69B1F0`, hook or call. 1 when the entity has the status. From HD2Runtime 0.40.1 research acid-storm-attachment.
+
+```c
+typedef uint8_t (*HfFn_HasStatus)(void* receivers, uint32_t entity, int32_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `receivers` | `void*` | the status receivers (StatusReceivers global) |
+| `entity` | `uint32_t` | the entity |
+| `type` | `int32_t` | the status type |
+
+### RemoveStatus
+
+`game.dll+0x69AB60`, hook or call. Ends a status on an entity: the type's handler runs with apply = 0. From HD2Runtime 0.40.1 research acid-storm-attachment.
+
+```c
+typedef void (*HfFn_RemoveStatus)(void* receivers, uint32_t entity, uint32_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `receivers` | `void*` | the status receivers |
+| `entity` | `uint32_t` | the entity |
+| `type` | `uint32_t` | the status type |
+
+### AddStat
+
+`game.dll+0x62C930`, hook or call. Adds amount to one of a player's mission stats, overall and under its source. Kills, deaths, stims, shots and damage all count through it. From HD2Runtime 0.40.1 research event-combat (add_stat); HD2Runtime 0.40.1 research event-state (addStatCallSites).
+
+```c
+typedef void (*HfFn_AddStat)(void* stats, uint64_t peer, uint32_t key, uint32_t amount, uint32_t source, uint64_t resource);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `stats` | `void*` | the ScoreManager (ScoreManager global) |
+| `peer` | `uint64_t` | the player's peer id |
+| `key` | `uint32_t` | the stat key (HF_STAT_..., e.g. 0xD494C5CC dealt_kills) |
+| `amount` | `uint32_t` | added to the stat |
+| `source` | `uint32_t` | the source entity, or the invalid entity to use resource |
+| `resource` | `uint64_t` | the source resource, read when source is the invalid entity |
+
+### StatsPlayerIndex
+
+`game.dll+0x62C710`, hook or call. The ScoreManager index of the player with this peer id (through PlayerManager +0x2C8); 0xFFFFFFFF when none. From HD2Runtime 0.40.1 research event-combat (player_index).
+
+```c
+typedef uint32_t (*HfFn_StatsPlayerIndex)(void* stats, uint64_t peer);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `stats` | `void*` | the ScoreManager (ScoreManager global) |
+| `peer` | `uint64_t` | the player's peer id |
+
+### StatMapLookup
+
+`game.dll+0x1731A60`, hook or call. The 20-byte entry of a u32-keyed map that holds key, or the empty slot that ends its probe; NULL when the map is full. The stat tables use it (an entry's +4 is the stat's value). From HD2Runtime 0.40.1 research event-combat (stat_map_lookup).
+
+```c
+typedef void* (*HfFn_StatMapLookup)(void* map, uint32_t key);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `map` | `void*` | the map: +0 entries (20 bytes each, u32 key first), +8 capacity, +0xC empty key, +0x10 hash multiplier |
+| `key` | `uint32_t` | the key |
+
+### BuildScore
+
+`game.dll+0x630130`, hook or call. Fills a player's end-of-mission score from the stat keys. From HD2Runtime 0.40.1 research event-combat (score_getter).
+
+```c
+typedef void (*HfFn_BuildScore)(void* stats, uint32_t* score, uint32_t index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `stats` | `void*` | the ScoreManager (ScoreManager global) |
+| `score` | `uint32_t*` | the score to fill: +0 dealt_damage, +4 dealt_kills, +8 dealt_team_kills, +0xC melee kills, +0x10 team damage, +0x28 stims used, +0x30 reinforcements called, +0x34 received damage |
+| `index` | `uint32_t` | the player's ScoreManager index (StatsPlayerIndex) |
+
+### KillCreditListener
+
+`game.dll+0x129FD00`, hook or call. KillDispatch's listener that counts a kill in the creditor's mission stats (dealt_kills, team kills, melee kills) when the victim's KillScore is above 0. From HD2Runtime 0.40.1 research event-combat (kill_credit); KillDispatch's call at 0xB96392.
+
+```c
+typedef void (*HfFn_KillCreditListener)(void* listener, void* context, uint64_t creditor, uint32_t victim, uint32_t dealer, uint32_t kind, uint32_t element);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `listener` | `void*` | the listener's registration |
+| `context` | `void*` | KillDispatch's context |
+| `creditor` | `uint64_t` | the peer the kill is credited to |
+| `victim` | `uint32_t` | the entity killed |
+| `dealer` | `uint32_t` | the entity that dealt the killing damage |
+| `kind` | `uint32_t` | the damage kind |
+| `element` | `uint32_t` | the damage element: passed, not read |
+
+### PassiveValue
+
+`game.dll+0x11DA090`, hook or call. A value after one passive's modifiers of a key: (the last Set, else base) plus every Add, times every Multiply; base when the passive has none. From HD2Runtime 0.40.1 research player-attributes (PassiveValue).
+
+```c
+typedef float (*HfFn_PassiveValue)(uint32_t passive, float base, uint32_t key);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `passive` | `uint32_t` | the passive id |
+| `base` | `float` | the value without the passive |
+| `key` | `uint32_t` | the attribute key |
+
+### ChangeState
+
+`game.dll+0xAB2FA0`, hook or call. Changes the game state: runs the old state's exit handler, writes Game +0xAC21C and runs the new state's enter handler (Mission zeroes the StateGame block). HF_ON_STATE polls the value it writes. From HD2Runtime 0.40.1 research event-state (gameStateMachine).
+
+```c
+typedef void (*HfFn_ChangeState)(void* game, uint32_t state, void* data);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `game` | `void*` | the Game (Game global) |
+| `state` | `uint32_t` | the new state (HF_STATE_...: 1 Splash .. 6 PrepareMission) |
+| `data` | `void*` | passed to the new state's enter handler; may be NULL |
+
+### SetPlayerAvatar
+
+`game.dll+0x607820`, hook or call. Sets a player's avatar (+0x108 + 0x70 per owned player, network id at +0x3A8 + 0x20 per player) and its state to Spawned (3). From HD2Runtime 0.40.1 research event-state (playerManager).
+
+```c
+typedef void (*HfFn_SetPlayerAvatar)(void* players, uint32_t player, uint32_t avatar);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `players` | `void*` | the PlayerManager |
+| `player` | `uint32_t` | the player entity |
+| `avatar` | `uint32_t` | the avatar entity |
+
+### SetPlayerState
+
+`game.dll+0x608A90`, hook or call. Sets a player's lifecycle state (PlayerManager +0x2E0 + 0x38 per player). From HD2Runtime 0.40.1 research event-state (playerManager set_player_state).
+
+```c
+typedef void (*HfFn_SetPlayerState)(void* players, uint32_t player, uint32_t state);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `players` | `void*` | the PlayerManager |
+| `player` | `uint32_t` | the player entity |
+| `state` | `uint32_t` | the lifecycle state (2 WaitingForRespawnTimer, 3 Spawned; 0 and 1 unnamed) |
+
+### TurretSettings
+
+`game.dll+0x50B8B0`, hook or call. The entity's TurretComponentData (0x4C bytes: +8 vertical, +0xC horizontal turn speed): its own copy in the turret manager (game.dll+0x3326D70, copies +0xA8) if it has one, else the shared type record. From HD2Runtime 0.40.1 research sentry-components (turretSettingsResolver).
+
+```c
+typedef void* (*HfFn_TurretSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### SensorEyeSettings
+
+`game.dll+0x503BC0`, hook or call. The entity's SensorEyeComponentData (0x2C bytes: the vision ranges the sensor copies at spawn): its own copy if it has one, else the shared type record. From HD2Runtime 0.40.1 research sentry-components (sensorEyeResolver).
+
+```c
+typedef void* (*HfFn_SensorEyeSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### ProjectileWeaponRecord
+
+`game.dll+0x515100`, hook or call. The weapon's ProjectileWeaponComponentData (+0 the projectile type): its own copy in ProjectileWeapons if it has one, else the shared type record. From HD2Runtime 0.40.1 research component-swap-liberator-beam; HD2Runtime 0.40.1 research beam-conversion-add-layout.
+
+```c
+typedef void* (*HfFn_ProjectileWeaponRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the weapon entity's descriptor (+8 the entity); NULL gives NULL |
+
+### WeaponDataRecord
+
+`game.dll+0x509A40`, hook or call. The weapon's WeaponData record (0x4D0 bytes; fire modes, the input bindings): its own copy in WeaponDatas if it has one, else the shared type record. From HD2Runtime 0.40.1 research carrier-weapon-clone.
+
+```c
+typedef void* (*HfFn_WeaponDataRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the weapon entity's descriptor (+8 the entity); NULL gives NULL |
+
+### BeamWeaponRecord
+
+`game.dll+0x50ECC0`, hook or call. The weapon's BeamWeaponComponentData (+0 the beam type): its own copy in BeamWeapons if it has one, else the shared type record. From HD2Runtime 0.40.1 research beam-damage-per-weapon; component-swap-liberator-beam.
+
+```c
+typedef void* (*HfFn_BeamWeaponRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the weapon entity's descriptor (+8 the entity); NULL gives NULL |
+
+### WeaponProjectileType
+
+`game.dll+0x7456D0`, hook or call. The projectile type the weapon fires now, by its components: the magazine's round type or pattern, WeaponRounds' primary or alternate magazine, linked ammunition, else ProjectileWeapon +0. From HD2Runtime 0.40.1 research fired-type-callers (resolver 0x7456D0). Former names: `ResolveFiredType`.
+
+```c
+typedef uint32_t (*HfFn_WeaponProjectileType)(uint64_t unused, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### ProjectileFire
+
+`game.dll+0x6128B0`, hook or call. Fires one shot of a weapon's projectiles; type 0 resolved to 0 fires nothing. The ProjectileWeapon update, the heat step and GenericFire all shoot through it. From HD2Runtime 0.40.1 research fired-type-callers (fire 0x6128B0); HD2Runtime 0.40.1 research beam-conversion-add-layout (projectileFire). Former names: `ProjectileWeaponFire`.
+
+```c
+typedef void (*HfFn_ProjectileFire)(void* projectiles, uint32_t weapon, uint8_t r8, uint64_t r9, uint32_t s5, uint32_t type, uint64_t s7, uint32_t s8, float s9, float s10, float s11);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `projectiles` | `void*` | ProjectileWeapons (the ProjectileWeapons global) |
+| `weapon` | `uint32_t` | the weapon entity |
+| `r8` | `uint8_t` | not reviewed: pass it on |
+| `r9` | `uint64_t` | not reviewed: pass it on |
+| `s5` | `uint32_t` | not reviewed: pass it on |
+| `type` | `uint32_t` | the projectile type to fire; 0: the weapon's own (WeaponProjectileType) |
+| `s7` | `uint64_t` | not reviewed: pass it on |
+| `s8` | `uint32_t` | not reviewed: pass it on |
+| `s9` | `float` | not reviewed: pass it on |
+| `s10` | `float` | not reviewed: pass it on |
+| `s11` | `float` | not reviewed: pass it on |
+
+### GenericFire
+
+`game.dll+0x741DF0`, hook or call. The generic fire: hands the shot to ProjectileFire (its arguments 5 to 11 pass through) when the weapon has a ProjectileWeapon or ArcWeapon instance, else returns. Charged releases and the heat levels fire through it. From HD2Runtime 0.40.1 research fired-type-callers; HD2Runtime 0.40.1 research beam-conversion-coverage (genericFire).
+
+```c
+typedef void (*HfFn_GenericFire)(uint64_t rcx, uint64_t unused, uint32_t weapon, uint64_t r9, uint32_t s5, uint32_t type, uint64_t s7, uint32_t s8, float s9, float s10, float s11, uint8_t s12);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint64_t` | not reviewed: pass it on |
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+| `r9` | `uint64_t` | not reviewed: pass it on |
+| `s5` | `uint32_t` | not reviewed: pass it on |
+| `type` | `uint32_t` | the projectile type; 0: the weapon's own |
+| `s7` | `uint64_t` | not reviewed: pass it on |
+| `s8` | `uint32_t` | not reviewed: pass it on |
+| `s9` | `float` | not reviewed: pass it on |
+| `s10` | `float` | not reviewed: pass it on |
+| `s11` | `float` | not reviewed: pass it on |
+| `s12` | `uint8_t` | not reviewed: pass it on |
+
+### WeaponHeatStep
+
+`game.dll+0x7627B0`, hook or call. Adds one shot's heat to a weapon with a WeaponHeat instance and fires the projectile of the heat level reached (its own type per stage). From HD2Runtime 0.40.1 research beam-conversion-add-layout (heatStep); HD2Runtime 0.40.1 research fired-type-callers.
+
+```c
+typedef void (*HfFn_WeaponHeatStep)(uint64_t rcx, uint32_t weapon, uint8_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint64_t` | not reviewed: pass it on |
+| `weapon` | `uint32_t` | the weapon entity |
+| `r8` | `uint8_t` | not reviewed: pass it on |
+
+### SpendRound
+
+`game.dll+0x744690`, hook or call. Spends one round of a weapon (magazine, rounds or linked ammunition), shared by every output family; the beam spends one per pulse. From HD2Runtime 0.40.1 research component-swap-liberator-beam (round consumption); beam-conversion-coverage (roundSpend).
+
+```c
+typedef void (*HfFn_SpendRound)(void* weapons, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the WeaponManager |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### ProjectileWeaponUpdate
+
+`game.dll+0x616AC0`, hook or call. One ProjectileWeapon instance's frame: its fire timer and trigger, then the shot (through the heat step when the weapon has WeaponHeat). From HD2Runtime 0.40.1 research beam-conversion-add-layout (projectileUpdate).
+
+```c
+typedef void (*HfFn_ProjectileWeaponUpdate)(void* projectiles, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `projectiles` | `void*` | ProjectileWeapons |
+| `index` | `uint32_t` | the instance index |
+| `dt` | `float` | the frame time |
+
+### BeamWeaponUpdate
+
+`game.dll+0x83E200`, hook or call. One BeamWeapon instance's frame: the charge gate and the beam shot from the trigger byte. From HD2Runtime 0.40.1 research beam-conversion-add-layout (beamUpdate); HD2Runtime 0.40.1 research beam-damage-per-weapon.
+
+```c
+typedef void (*HfFn_BeamWeaponUpdate)(void* beams, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `beams` | `void*` | BeamWeapons |
+| `index` | `uint32_t` | the instance index (0x70-byte instances) |
+| `dt` | `float` | the frame time |
+
+### BeamShot
+
+`game.dll+0x83F9D0`, hook or call. One beam pulse: spends a round and runs the heat step of the weapon's own WeaponHeat; no authority test on the way. From HD2Runtime 0.40.1 research beam-conversion-coverage (beamShot); beam-damage-per-weapon.
+
+```c
+typedef void (*HfFn_BeamShot)(uint64_t rcx, uint64_t rdx, uint8_t r8, uint64_t r9, uint64_t s5, uint64_t s6, uint64_t s7, uint32_t s8, uint64_t unused, uint64_t s10);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint64_t` | not reviewed: pass it on |
+| `rdx` | `uint64_t` | not reviewed: pass it on |
+| `r8` | `uint8_t` | not reviewed: pass it on |
+| `r9` | `uint64_t` | not reviewed: pass it on |
+| `s5` | `uint64_t` | not reviewed: pass it on |
+| `s6` | `uint64_t` | not reviewed: pass it on |
+| `s7` | `uint64_t` | not reviewed: pass it on |
+| `s8` | `uint32_t` | not reviewed: pass it on |
+| `unused` | `uint64_t` | not read |
+| `s10` | `uint64_t` | not reviewed: pass it on |
+
+### ReloadMagazine
+
+`game.dll+0x7768F0`, hook or call. The reload refill: spends one spare magazine (one unit from the parent's deposit when shared) and fills the magazine, queuing the network field writes. From HD2Runtime 0.40.1 research ammo-network-fields; liberator-beam-chamber.
+
+```c
+typedef void (*HfFn_ReloadMagazine)(uint64_t rcx, uint32_t weapon, uint32_t r8, uint8_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint64_t` | not reviewed: pass it on |
+| `weapon` | `uint32_t` | the weapon entity |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+| `r9` | `uint8_t` | not reviewed: pass it on |
+
+### TurretUpdate
+
+`game.dll+0x6DEDB0`, hook or call. The turret system's frame: turns every turret toward its targeting direction, yaw then pitch, with the instance's turn speeds and the settings' limits (TurretSettings, resolved every frame). From HD2Runtime 0.40.1 research sentry-components (turretUpdate).
+
+```c
+typedef void (*HfFn_TurretUpdate)(void* turrets, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `turrets` | `void*` | the turret component's manager (component world +0xEB5060) |
+| `dt` | `float` | the frame time |
+
+### TurretSpeedFactor
+
+`game.dll+0x6DE820`, hook or call. A new turret's turn speed factor from the ship-module modifiers (1.0 by default); turret creation stores it in the instance at +4. From HD2Runtime 0.40.1 research sentry-components (turretSpeedFactor, turretSpawnCopy).
+
+```c
+typedef float (*HfFn_TurretSpeedFactor)(uint64_t unused, uint64_t rdx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `rdx` | `uint64_t` | not reviewed: pass it on |
+
+### SensorEyeRanges
+
+`game.dll+0x64C3C0`, hook or call. Sets a sensor's vision ranges in its instance (+0xC, +0x10, +0x14) to its SensorEyeSettings ranges times scale and keeps scale at +0x20. From HD2Runtime 0.40.1 research sentry-components (sensorEyeRanges).
+
+```c
+typedef void (*HfFn_SensorEyeRanges)(void* sensors, uint32_t entity, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `sensors` | `void*` | the sensor eye manager (entity map at +0x30) |
+| `entity` | `uint32_t` | the sensor entity |
+| `scale` | `float` | the factor for the SensorEyeSettings ranges |
+
+### PerceptionUpdate
+
+`game.dll+0x887760`, hook or call. The perception frame: every perceiver's sensors mark what they sense (the proximity sensors without a line-of-sight ray). From HD2Runtime 0.40.1 research sentry-components (perceptionUpdate, sensorProximity).
+
+```c
+typedef void (*HfFn_PerceptionUpdate)(void* perception, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `perception` | `void*` | the perception manager (component world +0xEEB908) |
+| `dt` | `float` | the frame time |
+
+### WindUpUpdate
+
+`game.dll+0x78A420`, hook or call. The weapon wind-up frame: spin progress rises by dt / settings +0 while the trigger is held; on release settings +4 <= 0 resets it, else it falls by dt / settings +0. From HD2Runtime 0.40.1 research sentry-components (windUpUpdate).
+
+```c
+typedef void (*HfFn_WindUpUpdate)(void* windups, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `windups` | `void*` | WeaponWindUps (component world +0x1B29B8) |
+| `dt` | `float` | the frame time |
+
+### ApplyAttribute
+
+`game.dll+0x87A3C0`, call only. Applies the entity's armour or helmet modifier of a key (EntityAttribute with flags 3) to *value: Set stores, Add and Time add, Multiply multiplies; no modifier leaves it. No code calls it. From HD2Runtime 0.40.1 research player-attributes (ApplyAttribute).
+
+```c
+typedef void (*HfFn_ApplyAttribute)(uint32_t entity, uint32_t key, float* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `entity` | `uint32_t` | the entity |
+| `key` | `uint32_t` | the attribute key |
+| `value` | `float*` | the value to modify in place |
+
+### UpdateCustomization
+
+`game.dll+0x874520`, hook or call. Moves one player's pending customization to the applied record; when the new kit's package is ready it copies the kit ids and sets the applied armour and helmet passives (+0x3C, +0x38) from the kit. From HD2Runtime 0.40.1 research player-attributes (updatePlayerCustomization).
+
+```c
+typedef void (*HfFn_UpdateCustomization)(void* customizations, uint32_t index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `customizations` | `void*` | the CustomizationManager (CustomizationManager global) |
+| `index` | `uint32_t` | the record index |
+
+### UpdateCustomizations
+
+`game.dll+0x874D80`, hook or call. The customization frame: UpdateCustomization for every record, then the 2 passive ids of every player slot, loading and unloading their packages when they change. From HD2Runtime 0.40.1 research player-attributes (updateAll).
+
+```c
+typedef void (*HfFn_UpdateCustomizations)(void* customizations, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `customizations` | `void*` | the CustomizationManager (CustomizationManager global) |
+| `dt` | `float` | the frame time |
+
+### SetArmorKit
+
+`game.dll+0x8760B0`, hook or call. Sets a player's pending armour kit (pending record +0xC, network field 0xB7D3A2EC); UpdateCustomization applies it and its passive. From HD2Runtime 0.40.1 research player-attributes (setKit armor).
+
+```c
+typedef void (*HfFn_SetArmorKit)(void* customizations, uint32_t entity, uint32_t kit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `customizations` | `void*` | the CustomizationManager (CustomizationManager global) |
+| `entity` | `uint32_t` | the player entity |
+| `kit` | `uint32_t` | the armour kit id |
+
+### SetHelmetKit
+
+`game.dll+0x875CD0`, hook or call. Sets a player's pending helmet kit (pending record +4); UpdateCustomization applies it and its passive. From HD2Runtime 0.40.1 research player-attributes (setKit helmet).
+
+```c
+typedef void (*HfFn_SetHelmetKit)(void* customizations, uint32_t entity, uint32_t kit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `customizations` | `void*` | the CustomizationManager (CustomizationManager global) |
+| `entity` | `uint32_t` | the player entity |
+| `kit` | `uint32_t` | the helmet kit id |
+
+### SetCapeKit
+
+`game.dll+0x875EC0`, hook or call. Sets a player's pending cape kit (pending record +8). From HD2Runtime 0.40.1 research player-attributes (setKit cape).
+
+```c
+typedef void (*HfFn_SetCapeKit)(void* customizations, uint32_t entity, uint32_t kit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `customizations` | `void*` | the CustomizationManager (CustomizationManager global) |
+| `entity` | `uint32_t` | the player entity |
+| `kit` | `uint32_t` | the cape kit id |
+
+### PlayerSlot
+
+`game.dll+0x606820`, hook or call. A player's slot (0 to 3), kept at PlayerManager +0x3B4 + 0x20 per player; the customization update reads each slot's passives with it. From HD2Runtime 0.40.1 research player-attributes (updateAll: 0x606820 = player slot of an entity).
+
+```c
+typedef uint32_t (*HfFn_PlayerSlot)(void* players, uint32_t player);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `players` | `void*` | the PlayerManager |
+| `player` | `uint32_t` | the player entity |
+
+### BehaviourExplosion
+
+`game.dll+0x4C89C0`, hook or call. Requests an explosion at a node of the behaving entity's unit: into the ExplosionQueue (RequestExplosionAt) and to the peers. Enemy behaviours and abilities call it. From HD2Runtime 0.40.1 research event-actions (behavior explosion wrapper); HD2Runtime 0.40.1 research explosion-identities.
+
+```c
+typedef void (*HfFn_BehaviourExplosion)(void* context, uint32_t type, uint32_t node, uint8_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `context` | `void*` | the behaviour's context (+0 the entity's descriptor) |
+| `type` | `uint32_t` | the explosion type |
+| `node` | `uint32_t` | the hash of the unit node it goes off at |
+| `r9` | `uint8_t` | not reviewed: pass it on |
+
+### RequestExplosionAt
+
+`game.dll+0x13C6D30`, hook or call. Queues an explosion request at a position through RequestExplosion; BehaviourExplosion and the ability explosion wrapper use it. From HD2Runtime 0.40.1 research event-actions; HD2Runtime 0.40.1 research explosion-identities (0x13C6D30).
+
+```c
+typedef void (*HfFn_RequestExplosionAt)(void* queue, uint64_t unused, float* position, uint32_t type, uint32_t s5, uint32_t s6, uint64_t s7, uint32_t s8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `queue` | `void*` | the ExplosionQueue |
+| `unused` | `uint64_t` | not read (its home is scratch) |
+| `position` | `float*` | 3 floats: where |
+| `type` | `uint32_t` | the explosion type |
+| `s5` | `uint32_t` | not reviewed: pass it on |
+| `s6` | `uint32_t` | not reviewed: pass it on |
+| `s7` | `uint64_t` | not reviewed: pass it on |
+| `s8` | `uint32_t` | not reviewed: pass it on |
+
+### ExplosionKick
+
+`game.dll+0x13C5420`, hook or call. Starts this frame's explosions: up to 8 queued requests (kicked count at +0x24), early in the world update. From HD2Runtime 0.40.1 research event-explosions (explosion kick).
+
+```c
+typedef void (*HfFn_ExplosionKick)(void* explosions);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `explosions` | `void*` | the explosion system (the ExplosionQueue's object, Game + 0x1C9DAF8) |
+
+### ExplosionGather
+
+`game.dll+0x13C6180`, hook or call. Finishes the kicked explosions later in the same world update (ProcessExplosion for each, in order) and moves the rest of the queue to the front. From HD2Runtime 0.40.1 research event-explosions (explosion gather).
+
+```c
+typedef void (*HfFn_ExplosionGather)(void* explosions);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `explosions` | `void*` | the explosion system |
+
+### ProcessExplosion
+
+`game.dll+0x13C0D10`, hook or call. Processes one kicked explosion request: its hits, damage and effects. From HD2Runtime 0.40.1 research event-explosions (process one explosion); event-actions (the game drains the queue).
+
+```c
+typedef void (*HfFn_ProcessExplosion)(void* explosions, uint64_t rdx, uint64_t offset);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `explosions` | `void*` | the explosion system |
+| `rdx` | `uint64_t` | not reviewed: pass it on |
+| `offset` | `uint64_t` | the request's offset in the explosion system: 0x28 + 0x98 per entry |
+
+### ProjectileKick
+
+`game.dll+0x13AB0E0`, hook or call. The projectile step of the world update, after the explosion kick: its impacts request explosions after the kick. From HD2Runtime 0.40.1 research event-explosions (projectile kick).
+
+```c
+typedef void (*HfFn_ProjectileKick)(void* projectiles);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `projectiles` | `void*` | the projectile system (Game + 0x44F7E30) |
+
+### BehaviourStartAbility
+
+`game.dll+0x4C3210`, hook or call. Starts an ability on the behaving entity: StartAbility with the AbilityManager, mode 1 and speed 1.0, returning its result. From HD2Runtime 0.40.1 research event-actions (ability play); HD2Runtime 0.40.1 research pelican-cas.
+
+```c
+typedef uint64_t (*HfFn_BehaviourStartAbility)(void* context, uint32_t ability);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `context` | `void*` | the behaviour's context (+0 the entity's descriptor) |
+| `ability` | `uint32_t` | the ability |
+
+### CorpseSource
+
+`game.dll+0x870310`, hook or call. For a corpse (Corpses global), the descriptor of the entity it came from; NULL when the entity is no corpse. Entity removal consults it. From HD2Runtime 0.40.1 research event-mission (corpse link).
+
+```c
+typedef void* (*HfFn_CorpseSource)(uint64_t unused, uint32_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `entity` | `uint32_t` | the entity |
+
+### StatusReceivable
+
+`game.dll+0x6994F0`, hook or call. 1 when the entity can receive the status (StatusReceivers' susceptibility rule, the same as ApplyStatus's); the status queue checks it first. From HD2Runtime 0.40.1 research event-actions (the target can receive the type); acid-storm-attachment.
+
+```c
+typedef uint8_t (*HfFn_StatusReceivable)(uint64_t unused, uint32_t entity, int32_t type, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `entity` | `uint32_t` | the target |
+| `type` | `int32_t` | the status type |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+
+### FlushNetworkFields
+
+`game.dll+0xFDC780`, hook or call. The sync point: flushes every batched network field write (clamped and sent), before and after the frame's update phases. From HD2Runtime 0.40.1 research team-reload-ammo (sync point 0xFDC780); event-explosions.
+
+```c
+typedef void (*HfFn_FlushNetworkFields)(void* entities, uint8_t rdx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `entities` | `void*` | the EntityManager |
+| `rdx` | `uint8_t` | not reviewed: pass it on |
+
+### Wield
+
+`game.dll+0x785DE0`, hook or call. Puts an item in a wielder's slot (slot record +0 holds the entity) and wields it. The weapon switch calls it. From HD2Runtime 0.40.1 research event-wielder.
+
+```c
+typedef void (*HfFn_Wield)(void* wielders, uint32_t wielder, uint32_t slot, uint32_t item, uint32_t s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `wielders` | `void*` | the WielderManager |
+| `wielder` | `uint32_t` | the wielding entity |
+| `slot` | `uint32_t` | the wield slot (5, 0x50 bytes each) |
+| `item` | `uint32_t` | the item entity held in the slot |
+| `s5` | `uint32_t` | not reviewed: pass it on |
+
+### SwitchWeapon
+
+`game.dll+0x9AAA50`, hook or call. Selects an inventory slot and wields its item (Wield). From HD2Runtime 0.40.1 research event-wielder.
+
+```c
+typedef void (*HfFn_SwitchWeapon)(void* inventory, uint32_t entity, uint32_t selection);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `inventory` | `void*` | the InventoryManager |
+| `entity` | `uint32_t` | the inventory's entity |
+| `selection` | `uint32_t` | the slot to select (record +0x1C; 1..5 pick record +0, +4, +8, +0x10) |
+
+### QueueFieldWrite
+
+`game.dll+0xFD97E0`, hook or call. Queues one replicated field write {network id, field hash, value pointer} in the batch (0x800 entries) that FlushNetworkFields clamps and sends; every replicated gameplay field change goes through it. From HD2Runtime 0.40.1 research ammo-network-fields; component-swap-liberator-beam (network field write).
+
+```c
+typedef void (*HfFn_QueueFieldWrite)(uint32_t network, uint32_t field, void* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `network` | `uint32_t` | the object's network id (0x7FFF: nothing is queued) |
+| `field` | `uint32_t` | the network field's hash |
+| `value` | `void*` | the live value (read when the batch is flushed) |
+
+### BeamTypeOf
+
+`game.dll+0x83FD50`, hook or call. The weapon's beam type: BeamWeaponRecord +0, re-read at every shot; 0xFFFFFFFF for the invalid entity. From HD2Runtime 0.40.1 research beam-damage-per-weapon (BeamType = 0x83FD50).
+
+```c
+typedef uint32_t (*HfFn_BeamTypeOf)(void* beams, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `beams` | `void*` | BeamWeapons |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### OutOfAmmo
+
+`game.dll+0x753A10`, hook or call. The out-of-ammo handler: returns at once when the weapon has a WeaponReload instance; otherwise it uses the weapon's WeaponData (its AutoDropAbility, the expendables' drop). From HD2Runtime 0.40.1 research carrier-weapon-clone (out-of-ammo handler 0x753A10).
+
+```c
+typedef void (*HfFn_OutOfAmmo)(void* weapondata, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapondata` | `void*` | WeaponDatas |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### ChargeFire
+
+`game.dll+0x741A00`, hook or call. Fires a charged release through GenericFire with its own type (the charge level's projectile). The charge release 0x73D8C0 calls it. From HD2Runtime 0.40.1 research fired-type-callers (callers of the charge fire 0x741A00); HD2Runtime 0.40.1 research beam-conversion-coverage.
+
+```c
+typedef void (*HfFn_ChargeFire)(uint64_t rcx, uint32_t rdx, uint32_t type, uint64_t r9, uint32_t s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint64_t` | not reviewed: pass it on |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `type` | `uint32_t` | the projectile type of the charge level; 0: the weapon's own |
+| `r9` | `uint64_t` | not reviewed: pass it on |
+| `s5` | `uint32_t` | not reviewed: pass it on |
+
+### EncyclopediaRecord
+
+`game.dll+0x4F8A50`, call only. The entity's EncyclopediaEntryComponentData record (component 76; +0 its name text id, +0x24 its designation text id), by open addressing over 1330 slots; NULL for 0 or an entity without one. From HellForge's weapon registry (registry.c REG_ENCYCLOPEDIA_LOOKUP).
+
+```c
+typedef uint8_t* (*HfFn_EncyclopediaRecord)(uint64_t entity);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `entity` | `uint64_t` | the entity resource's hash (an armory entry's +8, a weapon's entity) |
+
+### PickerCatalogueItem
+
+`game.dll+0x1372290`, call only. The player's catalogue item (24 bytes, at account + 0xB9CE4) for a stratagem type, or NULL when the catalogue has none: what the picker's heading counts as selectable before StratagemAvailable. From HellForge's stratagem categories (stratagem_categories.c PickerCategoryCounts).
+
+```c
+typedef uint8_t* (*HfFn_PickerCatalogueItem)(void* account, uint32_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `account` | `void*` | the progression manager: hf_global_Progression |
+| `type` | `uint32_t` | the StratagemType (HF_STRATAGEM_..., or a mod's) |
+
+### NavigationRecord
+
+`game.dll+0x505B40`, call only. The resource's Navigation component record (+4 its navigation profile hash, +8 a radius), by open addressing over a static table; NULL for 0 or a resource without one. From HellForge's shield block (shield_block.c SB_NAV_RECORD).
+
+```c
+typedef uint8_t* (*HfFn_NavigationRecord)(uint64_t resource);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `resource` | `uint64_t` | the entity resource's hash (a moving object's +0) |
+
+### BehaviourStageCount
+
+`game.dll+0x495F20`, call only. How many stages a behaviour has; 0 for an unknown id, and such an entity never enters stage 1. HellForge points its id check at a stub that answers for its own behaviours with their base's count. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef uint32_t (*HfFn_BehaviourStageCount)(uint32_t id);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint32_t` | the behaviour (1 .. 693) |
+
+### BehaviourEventSlot
+
+`game.dll+0x47A240`, call only. The network slot a behaviour sends an event in; 0x1F when the behaviour does not replicate it. Paired with BehaviourSlotEvent; HellForge's stub answers for its own ids with their base's slot. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef uint32_t (*HfFn_BehaviourEventSlot)(uint32_t id, uint32_t event);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint32_t` | the behaviour (1 .. 693) |
+| `event` | `uint32_t` | the event's hash |
+
+### BehaviourSlotEvent
+
+`game.dll+0x484B60`, call only. The event hash a behaviour's network slot stands for, as a replicated event is turned back into one; 0 for none. The inverse of BehaviourEventSlot. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef uint32_t (*HfFn_BehaviourSlotEvent)(uint32_t id, uint32_t slot);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint32_t` | the behaviour (1 .. 693) |
+| `slot` | `uint32_t` | the network slot an event arrived in |
+
+### FillDistancesTo
+
+`game.dll+0xF7A430`, call only. Writes each candidate's squared 2D distance from a point into its third float, before SpreadLocations sorts them by it (comparator 0xF7A5A0). SpreadLocations read location -1 here on level-11 city maps until HellForge gave it location 0. From HellForge's location spread fix (difficulty.c DIF_SPREAD_REFERENCE); research d11-map-centre.
+
+```c
+typedef void (*HfFn_FillDistancesTo)(float* candidates, uint32_t count, float* centre);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `candidates` | `float*` | the candidates, 12 bytes each: x, y, and +8 the squared distance it writes |
+| `count` | `uint32_t` | how many candidates |
+| `centre` | `float*` | the reference point (x, y): SpreadLocations passes its reference location's cluster centre, +0xE0 |
+
+### UpdateImageUv
+
+`game.dll+0x143F3C0`, call only. Recomputes an image element's UV rect (+0x124..+0x130) from its base UV and its sprite sub-rect; a sub-rect of 0, 0, 1, 1 copies the base. HellForge's difficulty icon stub resets the sub-rect and ends here. From HellForge's difficulty bar icons (difficulty.c); HD2Runtime's stratagem slot icons (uv_for).
+
+```c
+typedef void (*HfFn_UpdateImageUv)(uint8_t* image);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `image` | `uint8_t*` | the image element: +0x114 its base UV rect (4 floats), +0x134 the sprite sub-rect (x, y, w, h) |
+
+### HiveMindDefinition
+
+`game.dll+0x505F50`, call only. The resource's shared HiveMindComponent definition (0x43C bytes; +0x74 the mission countdown in seconds), by open addressing over 38 slots; NULL for none. The mission spawn and the war table's mission card copy it and apply deltas; the shared one is never written. From HellForge's mission countdown (difficulty.c DIF_TIMER_SITE notes).
+
+```c
+typedef uint8_t* (*HfFn_HiveMindDefinition)(uint64_t resource);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `resource` | `uint64_t` | the entity resource's hash |
+
+### UnloadDamageList
+
+`game.dll+0x11F8E30`, call only. Releases the damage list's resource and, when asked, clears the DamageInfo id list (called through a table, not directly). A reload never clears past slot 649, so HellForge's moved list keeps its added rows. From HellForge's damage types (damage.c kDamageClearPin).
+
+```c
+typedef void (*HfFn_UnloadDamageList)(uint8_t clear);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `clear` | `uint8_t` | nonzero: also zero the DamageInfo list's 650 slots (0x1450 bytes at game + 0x37C60C0) |
+
+### CollectOperationsForDifficulty
+
+`game.dll+0x11E4CD0`, hook or call. Collects the operation settings rows (25 of 0x490, lowest and highest difficulty at +0xC / +0x10) that allow a difficulty and match the caller's kind, and returns how many: the war table's mission board only offers a level they allow, so HellForge lets every row allowing 10 allow 11. From HellForge's level 11 (difficulty.c DIF_OPERATIONS).
+
+```c
+typedef uint32_t (*HfFn_CollectOperationsForDifficulty)(uint64_t unused, uint32_t rdx, uint32_t r8, uint32_t difficulty, uint32_t s5, uint32_t s6, uint64_t unused2, uint32_t* rows);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (callers leave the value they store in s5) |
+| `rdx` | `uint32_t` | not reviewed: pass it on (callers pass a u16 of their descriptor, +0x10; it goes on to 0x12DF110) |
+| `r8` | `uint32_t` | not reviewed: pass it on (-1 or a looked-up id; it goes on to 0x12DF110) |
+| `difficulty` | `uint32_t` | the difficulty level (callers pass a byte, their descriptor's +0x20) |
+| `s5` | `uint32_t` | not reviewed: must equal the operation row's u32 before its highest difficulty (6 adds an account check) |
+| `s6` | `uint32_t` | not reviewed: must equal the operation row's u32 4 bytes below its lowest difficulty |
+| `unused2` | `uint64_t` | not read |
+| `rows` | `uint32_t*` | receives the index (0..24) of each matching operation row |
+
+### FinalizeVoronoiStructured
+
+`game.dll+0xFBBB20`, hook or call. FinalizeVoronoi on structured maps (map type 2: mega cities, factories): welds vertices through a 24 x 24 bucket grid whose blocks come from a pool of 512 (+0xBA60, 0xA08 each, count +0x14CA60); 0 on failure. HellForge gives the pool 576 blocks. From HellForge's larger maps (difficulty.c kBucketPool).
+
+```c
+typedef uint8_t (*HfFn_FinalizeVoronoiStructured)(void* pass, uint64_t unused, void* r8, void* r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `pass` | `void*` | the pass context: +0 the generation arena, +8 = lg+0x2D20 (the level's radii) |
+| `unused` | `uint64_t` | not read |
+| `r8` | `void*` | not reviewed: pass it on (FinalizeVoronoi passes a {u32 count, u32, pointer} list of its own; the weld reads count and pointer) |
+| `r9` | `void*` | not reviewed: pass it on (a second {u32, u32} list, cleared and filled by the weld) |
+
+### ReVoronoi
+
+`game.dll+0xFD0E00`, hook or call. Level generator op 0xA3 (revoronoi) on structured maps: refills the land around the city with a Poisson disc at the nature cell size (+0x18C), kept apart from the city's sites; returns the new diagram or NULL. HellForge grows the cell size on larger maps. From HellForge's larger maps (difficulty.c kReVoronoiStubs).
+
+```c
+typedef void* (*HfFn_ReVoronoi)(void* rcx, void* rdx, void* r8, void* pass, void* s5, uint32_t* count);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (a {u32 count, u32, pointer} list from the pass's state, 32-byte entries) |
+| `rdx` | `void*` | not reviewed: pass it on (a second such list) |
+| `r8` | `void*` | not reviewed: pass it on (the pass's state +0) |
+| `pass` | `void*` | the pass context: +0 the generation arena, +8 = lg+0x2D20 (the level's radii) |
+| `s5` | `void*` | not reviewed: pass it on (the level + 0x1990) |
+| `count` | `uint32_t*` | an output count it zeroes first |
+
+### PlaceRoadProps
+
+`game.dll+0xFB1DB0`, hook or call. Places one road prop of a city street (its caller runs it rand % type+0x230 + 1 times per edge), testing the position against its rule's reach (+0x54) past the playable radius. HellForge measures that reach from the border on larger maps. From HellForge's city streets (difficulty_streets.c kStreetBorderSites).
+
+```c
+typedef void (*HfFn_PlaceRoadProps)(void* rcx, void* rdx, void* r8, void* r9, uint32_t s5, uint32_t s6, uint32_t s7, uint8_t s8, void* s9, void* s10, void* s11, void* s12);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `void*` | not reviewed: pass it on |
+| `s5` | `uint32_t` | not reviewed: pass it on |
+| `s6` | `uint32_t` | not reviewed: pass it on |
+| `s7` | `uint32_t` | not reviewed: pass it on |
+| `s8` | `uint8_t` | not reviewed: pass it on |
+| `s9` | `void*` | not reviewed: pass it on |
+| `s10` | `void*` | not reviewed: pass it on |
+| `s11` | `void*` | not reviewed: pass it on |
+| `s12` | `void*` | not reviewed: pass it on |
+
+### StampIndexInit
+
+`game.dll+0xC04B80`, call only. Sets up the level generator's stamp index over an area: placed stamps, locations and roads by cell, for overlap tests (10757 slots after a bitset; slots + 1 at +0x1C). HellForge gives it 16383 slots. From HellForge's larger maps (difficulty.c stamp index sites).
+
+```c
+typedef void (*HfFn_StampIndexInit)(void* index, float x0, float y0, float x1, float y1, float cell, uint64_t unused, uint64_t unused2, uint64_t unused3, uint64_t unused4, void* memory);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `index` | `void*` | the stamp index (the level generator's + 8) |
+| `x0` | `float` | the area's lowest x (0) |
+| `y0` | `float` | the area's lowest y (0) |
+| `x1` | `float` | the area's highest x (the map's size) |
+| `y1` | `float` | the area's highest y |
+| `cell` | `float` | a cell's side |
+| `unused` | `uint64_t` | not read |
+| `unused2` | `uint64_t` | not read |
+| `unused3` | `uint64_t` | not read |
+| `unused4` | `uint64_t` | not read |
+| `memory` | `void*` | its storage, StampIndexSize bytes |
+
+### StampIndexInsert
+
+`game.dll+0xC04EF0`, hook or call. Takes a free slot of the level generator's stamp index for a rect and links it into every cell the rect covers; returns the slot's record (callers write the stamp's id at +0) or NULL when full (17 callers; a full index used to be written through that NULL). From HellForge's larger maps (difficulty.c stamp index sites).
+
+```c
+typedef uint32_t* (*HfFn_StampIndexInsert)(void* index, float x0, float y0, float x1, float y1, uint64_t* slot);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `index` | `void*` | the stamp index (the level generator's + 8) |
+| `x0` | `float` | the rect's lowest x |
+| `y0` | `float` | the rect's lowest y |
+| `x1` | `float` | the rect's highest x |
+| `y1` | `float` | the rect's highest y |
+| `slot` | `uint64_t*` | receives the slot's cell mask, or 0 when the index is full |
+
+### CreateMinimapTexture
+
+`game.dll+0xF586A0`, hook or call. Level generator pass: captures the level's minimap texture with the level's radii. From HellForge's larger-map diagnostic (difficulty.c DIF_CAPTURE_SITE).
+
+```c
+typedef void (*HfFn_CreateMinimapTexture)(void* rcx, uint64_t unused, void* pass);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the pass dispatcher passes its rsi + 8) |
+| `unused` | `uint64_t` | not read (the pass dispatcher passes its rsi) |
+| `pass` | `void*` | the pass context: +8 = lg+0x2D20 (the level's radii), +0x18 the level (lg) |
+
+### UpdateMissionCardDuration
+
+`game.dll+0x1A12D70`, hook or call. The war table mission card's duration: the mode's HiveMind definition with only the mission row's delta (+0x360) applied in a copy, its seconds divided by 60 into the card's minutes (0x1A131CC). HellForge shows the added level's own countdown there. From HellForge's mission countdown (difficulty.c DIF_CARD_TIME_SITE).
+
+```c
+typedef void (*HfFn_UpdateMissionCardDuration)(void* card, uint64_t unused, const uint8_t* mission);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `card` | `void*` | the war table's mission card widget |
+| `unused` | `uint64_t` | not read |
+| `mission` | `const uint8_t*` | the mission descriptor: +9 its level, +0x1A its mission row (u16), +0x1D its modifier count, +0x20 the modifiers |
+
+### SetupPhysicsConfig
+
+`game.dll+0x4EE160`, hook or call. game.dll's plugin setup_game, once per process (from its plugin table, no direct caller): takes the engine's APIs, then fills the engine's physics config with its pool sizes, from which the exe builds every world's pools. HellForge raises those sizes before it runs. From HellForge's physics pools (difficulty.c).
+
+```c
+typedef void (*HfFn_SetupPhysicsConfig)(void* get_api);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `get_api` | `void*` | the engine's API getter, (u32 id) -> API table; it asks for ids 0x28, 0x1F, 6 and more |
+
+### SiloRemoteLink
+
+`game.dll+0x76B580`, hook or call. A silo remote's link, which its laser update runs every frame: while the remote's linker record says a silo link (+4 0x06212002) and the missile is not launched yet, it launches it (engine, explosive set off), names the explosive's owner, sets its guidance target to the laser's point and has the rack let it go. HellForge's silo countdown repeats these steps in this order. From HellForge's silo countdown (abilities.c kLaunchFunctions).
+
+```c
+typedef void (*HfFn_SiloRemoteLink)(uint64_t unused, uint32_t remote);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (its caller passes hf_global_WeaponLinkerManager's cell) |
+| `remote` | `uint32_t` | the targeting remote's entity |
+
+### LaserDesignatorUpdate
+
+`game.dll+0x9BF6D0`, hook or call. Updates every laser designator for a frame (a silo remote's laser) and calls each remote's link (SiloRemoteLink), which launches the missile on the first frame the laser marks a point. From HellForge's silo countdown (abilities.c).
+
+```c
+typedef void (*HfFn_LaserDesignatorUpdate)(void* designators);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `designators` | `void*` | the laser designators (the world system passes its + 0x75C2B8) |
+
+### LinkRemoteOnPickup
+
+`game.dll+0x76AAB0`, call only. Links a silo's targeting remote to its missile when it is picked up: the rack's items in the SeekingMissile manager, and the missile's +8 names the remote's network handle. Reached through a component callback thunk (0x528870). From HellForge's silo countdown (abilities.c).
+
+```c
+typedef void (*HfFn_LinkRemoteOnPickup)(uint64_t unused, uint8_t* event, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (its thunk loads a manager into it) |
+| `event` | `uint8_t*` | the component event: +8 the entity |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### MissilePreDestroy
+
+`game.dll+0x642570`, call only. A seeking missile's pre-destroy callback: on the machine with authority over its remote, takes the remote out of its holder's hands, looking it up among the attachables and reading the record unchecked. HellForge guards that read (engine 0.1.21, InstallLooseGuard) for a remote attached to nothing. From HellForge's silo countdown (abilities.c ABL_GUARD_LOOKUP).
+
+```c
+typedef void (*HfFn_MissilePreDestroy)(uint64_t unused, uint8_t* event);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (its thunk passes the event in both) |
+| `event` | `uint8_t*` | the component event: +8 the entity (the missile), +0xC compared with the remote's attachable record |
+
+### CompactLinkerCopies
+
+`game.dll+0x76D280`, call only. A WeaponLinker's destroy callback: drops the entity's linker copy and moves the last copy into the freed slot, so a record pointer kept across frames can name another remote's. Returns the event's +0x10. From HellForge's silo countdown (abilities.c LinkRecord).
+
+```c
+typedef uint32_t (*HfFn_CompactLinkerCopies)(uint64_t unused, uint8_t* event);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (its thunk passes the event in both) |
+| `event` | `uint8_t*` | the component event: +8 the entity; +0x10 what it returns |
+
+### SiloRemoteCleanup
+
+`game.dll+0x76BC70`, hook or call. Removes a silo remote once it is dropped and its rack is gone (ability 2089); runs only for a silo link, so a remote whose linker record HellForge marked as no link stays until the launch. From HellForge's silo countdown (abilities.c).
+
+```c
+typedef void (*HfFn_SiloRemoteCleanup)(void* linkers, uint32_t remote, uint32_t r8, uint8_t* r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `linkers` | `void*` | the linker manager its caller walks |
+| `remote` | `uint32_t` | the remote's entity |
+| `r8` | `uint32_t` | not reviewed: pass it on (its caller's index) |
+| `r9` | `uint8_t*` | not reviewed: pass it on (the linker record; +8 read) |
+
+### PelicanTurretAim
+
+`game.dll+0x44FE20`, hook or call. Behaviour 645's (the Pelican's chin turret) stage 2, aim: at least 1.5 s, until within 2 degrees of its target, re-scoring its perceiver's entries. HellForge's turret aims without the wait. From HellForge's behaviours (behaviours.c).
+
+```c
+typedef void (*HfFn_PelicanTurretAim)(void* ctx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `void*` | {EntityInfo*, P*}: P the behaviour record + 8 |
+
+### RealizePellet
+
+`game.dll+0x615940`, hook or call. Emits one pellet of a ProjectileWeapon shot: builds its descriptor and spawns it into the projectile pool (SpawnProjectile, at 0x616612), on every machine. HellForge swaps the programmable round per player at 0x615B23 and gives other players' shots their own rows at the pool call. From HellForge's per-player shots (shots.c); research projectile-per-player (ProjectileWeapon_RealizePellet).
+
+```c
+typedef void (*HfFn_RealizePellet)(void* manager, uint32_t index, uint32_t type, const uint8_t* transform, uint32_t owner, float s6, uint32_t s7, uint8_t s8, float s9, float s10, float s11, uint8_t s12);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the ProjectileWeapon component manager |
+| `index` | `uint32_t` | the weapon's component index (not its entity) |
+| `type` | `uint32_t` | the projectile type chosen (a programmable round may replace it, 0x615B23) |
+| `transform` | `const uint8_t*` | the shot's transform: +0x10 its direction, +0x30 its position |
+| `owner` | `uint32_t` | the owner or wielder entity (its creditor comes from Creditor) |
+| `s6` | `float` | not reviewed: pass it on (copied into the pool's options) |
+| `s7` | `uint32_t` | not reviewed: pass it on (a shot random or token) |
+| `s8` | `uint8_t` | not reviewed: pass it on |
+| `s9` | `float` | not reviewed: pass it on |
+| `s10` | `float` | not reviewed: pass it on |
+| `s11` | `float` | not reviewed: pass it on |
+| `s12` | `uint8_t` | not reviewed: pass it on (selects the ProjectileWeapon +0x108 option) |
+
+### NetworkApplyState
+
+`game.dll+0xBC2D30`, hook or call. Applies the state another machine sent for one of its network objects, by the object's network type through a table of the 1,855 vanilla types (0xBC2DB3). HellForge moves the table and gives each added type its base type's case. From HellForge's network apply (netapply.c NET_SWITCH_LOAD).
+
+```c
+typedef void (*HfFn_NetworkApplyState)(void* source, uint32_t network_id, uint8_t full);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `source` | `void*` | not reviewed: pass it on (the engine object the state is read from; passed on to the engine's state readers) |
+| `network_id` | `uint32_t` | the network object's id |
+| `full` | `uint8_t` | which engine reader it uses (+0xB0 when nonzero, else +0xA8): 1 at the object's creation and for each frame's data, 0 at a migration |
+
+### BehaviourSpawnSetup
+
+`game.dll+0x842200`, call only. Sets up an entity's behaviour record at its spawn; without authority over the entity it leaves the record empty, to be filled from what arrives (BehaviourNetworkFill). From HellForge's behaviours (behaviours.c, co-op).
+
+```c
+typedef void (*HfFn_BehaviourSpawnSetup)(void* manager, uint8_t* event, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the behaviour manager (its thunk, 0x549110, loads it) |
+| `event` | `uint8_t*` | the component event: +8 the entity |
+| `r8` | `void*` | not reviewed: pass it on (the thunk's second argument) |
+
+### BehaviourNetworkFill
+
+`game.dll+0x842690`, call only. Fills a behaviour record from what arrives from the machine with authority: the id, the stage and the fields, ending with BehaviourResume. So a new behaviour resumes as its base does. From HellForge's behaviours (behaviours.c, co-op).
+
+```c
+typedef void (*HfFn_BehaviourNetworkFill)(uint64_t unused, uint8_t* event);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (its thunk passes the event in both) |
+| `event` | `uint8_t*` | the component event: +8 the entity |
+
+### LoadProjectileList
+
+`game.dll+0x11EC5A0`, hook or call. Loads the projectile settings file and fills the projectile list (game + 0x37C7670, ProjectileType -> 272-byte row): clears exactly 351 slots and fills 1..350 of whichever list its instructions name, so HellForge's moved list keeps its new types over a reload. From HellForge's projectile types (projectiles.c).
+
+```c
+typedef void (*HfFn_LoadProjectileList)(void);
+```
+
+### UnloadProjectileList
+
+`game.dll+0x11EC760`, hook or call. Releases the projectile settings file and, when asked, clears the projectile list. From HellForge's projectile types (projectiles.c).
+
+```c
+typedef void (*HfFn_UnloadProjectileList)(uint8_t clear);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `clear` | `uint8_t` | nonzero: also zero the list's 351 slots (0xAF8 bytes) |
+
+### ProjectileLookupA
+
+`game.dll+0x75A0D0`, hook or call. One of the two lookups that bound a projectile type (0x75A376: cmp type, 351; above it, nothing). HellForge raises the bound to 351 + the new types. From HellForge's projectile types (projectiles.c).
+
+```c
+typedef void (*HfFn_ProjectileLookupA)(uint64_t unused, void* out, uint32_t kind, uint32_t value, void* s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `out` | `void*` | not reviewed: pass it on (a buffer its caller reads) |
+| `kind` | `uint32_t` | not reviewed: pass it on (1..12: the switch it takes) |
+| `value` | `uint32_t` | not reviewed: pass it on (for one kind the projectile type) |
+| `s5` | `void*` | not reviewed: pass it on |
+
+### ProjectileLookupB
+
+`game.dll+0x1829110`, hook or call. The other lookup that bounds a projectile type (0x1829374: cmp r14, 351; above it, another branch); it calls ProjectileLookupA. HellForge raises the bound to 351 + the new types. From HellForge's projectile types (projectiles.c).
+
+```c
+typedef void (*HfFn_ProjectileLookupB)(uint8_t* rcx, uint32_t rdx, uint32_t r8, uint8_t r9, void* s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint8_t*` | not reviewed: pass it on (an object of 0x678-byte rows; its +0x3C0 is read) |
+| `rdx` | `uint32_t` | not reviewed: pass it on (its caller's +0x350..+0x35C) |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+| `r9` | `uint8_t` | not reviewed: pass it on |
+| `s5` | `void*` | not reviewed: pass it on |
+
+### AttachmentItemById
+
+`game.dll+0x11F46F0`, call only. An attachment item (0x58 bytes, its id at +8) by id, walking every attachment group (u32 group count at game + 0x348DA98, group pointers at game + 0x37C5B50, each {items*, u32 count}); NULL for none. From HellForge's attachment registry research (attachment-registry NOTES.md).
+
+```c
+typedef uint8_t* (*HfFn_AttachmentItemById)(uint32_t id);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint32_t` | the attachment item's id |
+
+### EntityDelta
+
+`game.dll+0x5154C0`, call only. A delta's entry ({component count, first}) in the game's entity delta table ({pointer, count} x 5 at [game + 0x346BF98] + 0xF12E98), by open addressing; NULL for none. The spawn dereferences it unchecked, so an id a machine lacks crashes it. From HellForge's mission countdown (difficulty.c DIF_DELTA_TABLE); research per-player-deployables.
+
+```c
+typedef uint8_t* (*HfFn_EntityDelta)(uint64_t resource);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `resource` | `uint64_t` | the delta's resource hash |
+
+### RemoveSessionPeer
+
+`game.dll+0x108D190`, hook or call. The host removes a peer from the game session. HellForge then destroys that peer's dead connection, so a friend who crashed can connect again. From HellForge's rejoin (netreap.c).
+
+```c
+typedef void (*HfFn_RemoveSessionPeer)(void* session, uint64_t peer, uint32_t r8, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `session` | `void*` | not reviewed: pass it on (its +0 the game session object; +0x1D470 its peers) |
+| `peer` | `uint64_t` | the peer id removed |
+| `r8` | `uint32_t` | not reviewed: pass it on (2 at every caller) |
+| `r9` | `uint32_t` | not reviewed: pass it on (0 at every caller; logged) |
+
+### IsSteamFriend
+
+`game.dll+0x13EFEA0`, hook or call. The friends-only join check: asks the platform's friend list about a peer id. HellForge keeps Steam ids as peer ids, so it answers for a Steam friend. From HellForge's rejoin (netreap.c, 0x108BCFF -> 0x13EFEA0).
+
+```c
+typedef uint8_t (*HfFn_IsSteamFriend)(uint64_t unused, uint64_t peer);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `peer` | `uint64_t` | the peer id (HellForge's is the Steam id) |
+
+### ApplySpawnDeltas
+
+`game.dll+0x5740B0`, call only. Applies a spawn's entity deltas to the new entity's components (the mission's HiveMind gets a private copy of its definition, HiveMind case 0x57525C): on the machine with authority at the create pass, elsewhere the replicated list after it. It reads EntityDelta's answer unchecked. From HellForge's mission countdown (difficulty.c); research per-player-deployables.
+
+```c
+typedef void (*HfFn_ApplySpawnDeltas)(void* rcx, uint8_t* descriptor, void* r8, void* r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the spawner, or a manager) |
+| `descriptor` | `uint8_t*` | the entity descriptor: +0 its resource, +8 its entity |
+| `r8` | `void*` | not reviewed: pass it on (the delta list, {u32 count; u64 ids[10]}) |
+| `r9` | `void*` | not reviewed: pass it on |
+
+### HiveMindOf
+
+`game.dll+0x506580`, call only. An entity's HiveMindComponent record (+0x74 the mission countdown, which the countdown readers take as the duration): its own in hf_global_HiveMindManager (+0x519AC, 0x43C each), else the shared definition (HiveMindDefinition); NULL for NULL. From HellForge's mission countdown (difficulty.c DIF_TIMER_SITE notes).
+
+```c
+typedef uint8_t* (*HfFn_HiveMindOf)(const uint8_t* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `const uint8_t*` | the entity descriptor: +0 its resource, +8 its entity |
+
+### RegisterDestructible
+
+`game.dll+0x883200`, call only. Registers a unit for destruction from the destructible index (DestructibleIndexEntry): a unit missing from it logs "Could not find any destructible index data" and is never registered, which also skips some of its havok actors. Its holes take a record from a ring of 1024 (0x13E0760). From HellForge's unit copies (registry.c DESTR_INDEX); research d11-bug-holes.
+
+```c
+typedef void (*HfFn_RegisterDestructible)(uint64_t unused, uint8_t* event, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (its thunk, 0x526870, passes the event in rdx) |
+| `event` | `uint8_t*` | the component event: +8 the entity, +0xC its world index |
+| `r8` | `void*` | not reviewed: pass it on (the thunk's second argument) |
+
+### LoadDestructibleIndex
+
+`game.dll+0xF6EC10`, call only. Fills the destructible index ([[game + 0x3326550]] + 0x2C60) from its baked resource (type 0xB8FD4D2CEDE20ED7) when the level loads: 16-byte entries {u64 unit name, u64 the unit's destruction settings}. From HellForge's unit copies (registry.c DESTR_INDEX).
+
+```c
+typedef void (*HfFn_LoadDestructibleIndex)(void* level);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level (its +0xF720 is set) |
+
+### DestructibleIndexEntry
+
+`game.dll+0xFC45C0`, call only. A unit's entry in the destructible index, probed from slot (i + 2 x name) & (capacity - 1) to the first empty name; NULL for none. HellForge enters its unit copies as their base. From HellForge's unit copies (registry.c).
+
+```c
+typedef uint8_t* (*HfFn_DestructibleIndexEntry)(void* index, uint64_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `index` | `void*` | the destructible index: +8 its table, +0x10 its capacity |
+| `unit` | `uint64_t` | the unit's name hash |
+
+### PlayerNearness
+
+`game.dll+0x4B3B80`, hook or call. How near the nearest living player is to a point: 1 - (squared distance / radius squared) for the nearest within the radius, 0 when none is. The Pelican's turret uses it to spare targets near players. From HellForge's behaviours (OpenEngine behaviours.c, a living player near a point).
+
+```c
+typedef float (*HfFn_PlayerNearness)(uint64_t unused, const float* point, float radius);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `point` | `const float*` | the point (3 floats) |
+| `radius` | `float` | the radius |
+
+### BuildWarbondPager
+
+`game.dll+0x19430B0`, hook or call. Builds the Acquisition Center's warbond pager and its 32 dots over a {count, current} pair. HellForge pages it past 32 cards (right after it, 0x1968015). From HellForge's warbond pager (warbond_pager.c WB_PAGER_INIT).
+
+```c
+typedef void (*HfFn_BuildWarbondPager)(uint8_t* screen, uint32_t* pair, void* r8, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `screen` | `uint8_t*` | the Acquisition Center panel W (the pager at +0x110) |
+| `pair` | `uint32_t*` | the {count, current} pair the pager reads (stored at W + 0x87E8; the AC passes its state + 0x320) |
+| `r8` | `void*` | not reviewed: pass it on (stored at W + 0x87F0; the callers pass the same pointer) |
+| `r9` | `uint32_t` | not reviewed: pass it on (0x65 or 0x66 by caller) |
+
+### RefreshWarbondBuyButton
+
+`game.dll+0x1969F30`, hook or call. Refreshes the warbond buy button's look: per-variant border, highlight, fills and star (the premium variant's branch only), then its label (0x196A229). HellForge recolours it for Forge Credits. From HellForge's Forge Credits (forge_credits.c); research forge-credits-tint.
+
+```c
+typedef void (*HfFn_RefreshWarbondBuyButton)(uint8_t* button);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `button` | `uint8_t*` | the BUY PREMIUM WARBOND button: its variant at [+0x2E58] + 0x60 (0 plain, 1 premium, 2 legendary) |
+
+### UpdateWarbondBuyButton
+
+`game.dll+0x1969E00`, hook or call. Updates the warbond buy button: refreshes it (RefreshWarbondBuyButton), then its state, 4 (owned: no hover, no press, no price, label UNLOCKED) when the warbond's data says owned (+0x64), else idle, hover or press. From HellForge's Forge Credits (forge_credits.c); research forge-credits-tint.
+
+```c
+typedef void (*HfFn_UpdateWarbondBuyButton)(uint8_t* button, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `button` | `uint8_t*` | the BUY PREMIUM WARBOND button |
+| `dt` | `float` | the frame's time |
+
+### WarbondScreenData
+
+`game.dll+0x196CE10`, hook or call. Fills a warbond screen's data: its variant, whether it is owned and its price. A warbond with no token priced in Super Credits counts as owned (0x196CE86, the free-warbond rule), which HellForge narrows to free variants. From HellForge's Forge Credits (forge_credits.c); research forge-credits-tint.
+
+```c
+typedef void (*HfFn_WarbondScreenData)(uint8_t* ctx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `ctx` | `uint8_t*` | {u32 warbond id, data*}: data +0x60 variant, +0x64 owned, +0x68 / +0x78 the price currency type and price, +0x80 / +0x90 an alternative currency and price |
+
+### BuildWarbondList
+
+`game.dll+0x1963860`, hook or call. The Acquisition Center's warbond list builder: counts each warbond's tokens that have any price; with none it sets owned = 1, else owned = OwnsWarbond. HellForge makes a priced-less premium one stay locked. From HellForge's Forge Credits (forge_credits.c); research forge-credits-tint.
+
+```c
+typedef void (*HfFn_BuildWarbondList)(int32_t rcx, uint8_t* rdx, uint8_t* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `int32_t` | not reviewed: pass it on (its callers' object +0x590) |
+| `rdx` | `uint8_t*` | not reviewed: pass it on (the object) |
+| `r8` | `uint8_t*` | not reviewed: pass it on (the object + 0x3E0) |
+
+### UpdateWarbondPanel
+
+`game.dll+0x193A530`, hook or call. Updates a warbond page's item panel widget; for an item the player cannot afford it shows NOT ENOUGH MEDALS (0x193A6B6), which HellForge names in the item's own currency. From HellForge's warbond texts (warbond_texts.c WB_DEAR_SITE).
+
+```c
+typedef void (*HfFn_UpdateWarbondPanel)(uint8_t* widget);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `widget` | `uint8_t*` | the item panel widget (its panel at +0x21068) |
+
+### DrawWarbondClaimButton
+
+`game.dll+0x19302C0`, hook or call. Draws a warbond item's claim button; in state 3 (cannot afford) it reads NOT ENOUGH MEDALS (0x1930754), which HellForge names in the item's own currency. From HellForge's warbond texts (warbond_texts.c WB_BUTTON_DEAR_SITE).
+
+```c
+typedef void (*HfFn_DrawWarbondClaimButton)(uint8_t* button);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `button` | `uint8_t*` | the claim button (its panel at +0x2F40) |
+
+### UpdateWarbondPage
+
+`game.dll+0x1975060`, hook or call. Updates a warbond page, setting its lock text ("Spend #COUNT more medals to unlock", 0x19751AA / 0x19751B9) on every call. HellForge's stub gives a mod warbond its own currency's text. From HellForge's warbond texts (warbond_texts.c kWbLockSites).
+
+```c
+typedef void (*HfFn_UpdateWarbondPage)(uint8_t* page);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `page` | `uint8_t*` | the warbond page view |
+
+### ItemPresetKit
+
+`game.dll+0x139CCD0`, hook or call. The preset path: finds an item's kit through the catalogue hierarchy {index, mixId, kit} (kit type +0x28 in hf_global_CustomizationManager's object). HellForge's warbond showcase finds a mod warbond item's kit the same way. From HellForge's warbond showcase (warbond_showcase.c).
+
+```c
+typedef uint32_t (*HfFn_ItemPresetKit)(uint64_t unused, uint32_t rdx, uint32_t r8, float xmm3, uint32_t s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `rdx` | `uint32_t` | not reviewed: pass it on (0 returns at once) |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+| `xmm3` | `float` | not reviewed: pass it on |
+| `s5` | `uint32_t` | not reviewed: pass it on |
+
+### ValidateBootLoadout
+
+`game.dll+0x1750870`, call only. A boot's loadout validation: an unknown weapon becomes the default loadout's of its kind and is pushed through the armory's commit (PushArmoryLoadout). HellForge's loadout scrub does the same after a live change takes content out. From HellForge's loadout scrub (loadout_scrub.c).
+
+```c
+typedef void (*HfFn_ValidateBootLoadout)(void* out);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `void*` | not reviewed: its callers pass a stack record |
+
+### StratagemPackages
+
+`game.dll+0x1753080`, hook or call. Acquires or releases a stratagem's packages from the row table[type] names at that moment (the package system counts holds per package id). A type another mod takes over in between would release that mod's row's packages. From HellForge's loadout scrub (loadout_scrub.c).
+
+```c
+typedef uint32_t (*HfFn_StratagemPackages)(void* rcx, uint32_t type, uint64_t unused, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (a stack record of its callers') |
+| `type` | `uint32_t` | the StratagemType |
+| `unused` | `uint64_t` | not read |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+
+### ReleaseUnusedSharedStratagems
+
+`game.dll+0x1367690`, call only. A per-update pass of the players' loadouts: releases each shared stratagem (PlayerHistory + 0x45410, 64 entries of 0x6C) no world object uses. From HellForge's loadout scrub (loadout_scrub.c).
+
+```c
+typedef void (*HfFn_ReleaseUnusedSharedStratagems)(void* rcx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+
+### LoadStratagemSettings
+
+`game.dll+0x11F2080`, hook or call. Loads generated_stratagem_settings.dl_bin into the stratagem list: clears exactly 150 slots (0x4B0 bytes), sets table[row +0] = row and counts the vanilla rows (game + 0x348E3FC). A reload never clears the moved list's new slots, but resets the count, which HellForge raises again. From HellForge's stratagems (stratagems.c kStratagemClearPin).
+
+```c
+typedef void (*HfFn_LoadStratagemSettings)(void);
+```
+
+### BuildStratagemPicker
+
+`game.dll+0x18D8710`, call only. The stratagem picker's list: walks the types (bound 0x18D8AA9 mov edi, 0x96) into 150 stack candidates {key, section, type, order, enabled, blocked, pad} and sorts them. HellForge grows the walk and its categories reorder the candidates. From HellForge's stratagems (stratagems.c); HellForge's stratagem categories (stratagem_categories.c).
+
+```c
+typedef void (*HfFn_BuildStratagemPicker)(uint8_t* rcx, uint32_t rdx, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `uint8_t*` | not reviewed: pass it on (its caller's object + 0xD2850) |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### MasteryPackageOf
+
+`game.dll+0x11F4F00`, call only. A weapon's mastery package, through its WeaponCustomizationComponentData record (component 271, package id32 at +0x12FC); NULL for none. HellForge gives each registered weapon a record naming its own package. From HellForge's weapon registry (registry.c).
+
+```c
+typedef uint8_t* (*HfFn_MasteryPackageOf)(uint32_t id);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `id` | `uint32_t` | the weapon's loadout id |
+
+### BuildCustomizationList
+
+`game.dll+0x1493770`, hook or call. The armory's customization screen builder: lists the weapon's mastery package's level unlocks and rewards (no bound on its 64 entries) and sorts them; an unlock no attachment matched left an empty entry and crashed the sort. From HellForge's weapon registry (registry.c); research attachment-registry.
+
+```c
+typedef void (*HfFn_BuildCustomizationList)(uint8_t* screen, const uint32_t* weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `screen` | `uint8_t*` | the customization screen's list X (entries at +0x40, 64 of 0x18; fields at +0x640) |
+| `weapon` | `const uint32_t*` | the weapon's loadout id |
+
+### CreateWorld
+
+`game.dll+0xAB8B70`, call only. Creates a world for a level, with its level generator's block (CreateGenerationBlock). A block made before HellForge's larger-map install keeps the old layout. From HellForge's larger maps (difficulty.c DIF_LOCATIONS).
+
+```c
+typedef void (*HfFn_CreateWorld)(uint8_t* owner);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `owner` | `uint8_t*` | not reviewed: its +0xAE288 the level |
+
+### StretchCityTemplate
+
+`game.dll+0xFB9610`, hook or call. Lays a structured map's (mega city, factory) fixed template of sites stretched over the city's rect: positions scale with the map, the count is fixed. From HellForge's larger maps (difficulty.c); research d11-city-blocks, d11-sparse-cities.
+
+```c
+typedef void (*HfFn_StretchCityTemplate)(void* arena, float xmm1, uint8_t r8, uint8_t* r9, void* s5, void* s6, void* s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `arena` | `void*` | the arena it allocates from (passed on to ArenaAllocate) |
+| `xmm1` | `float` | not reviewed: pass it on (the level's +0x680 or +0x67C) |
+| `r8` | `uint8_t` | not reviewed: pass it on (2 takes another path) |
+| `r9` | `uint8_t*` | not reviewed: pass it on (+0x198 a divisor) |
+| `s5` | `void*` | not reviewed: pass it on |
+| `s6` | `void*` | not reviewed: pass it on |
+| `s7` | `void*` | not reviewed: pass it on |
+
+### LaySites
+
+`game.dll+0xC126C0`, hook or call. Lays the level generator's route sites over an area, as a grid (map type 1, grid = 1) or a Poisson disc, and returns the site list (from 0xF2D370, which it ends in). A grid of inexact spacing splits its corners, so HellForge rounds a larger map's spacing to quarter metres. From HellForge's larger maps (difficulty.c).
+
+```c
+typedef void* (*HfFn_LaySites)(uint8_t grid, void* rdx, float spacing, void* r9, void* s5, void* s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `grid` | `uint8_t` | 1: a grid at the spacing; 0: a Poisson disc |
+| `rdx` | `void*` | not reviewed: pass it on (passed on to 0xF2D370) |
+| `spacing` | `float` | the spacing |
+| `r9` | `void*` | not reviewed: pass it on (passed on to 0xF2D370) |
+| `s5` | `void*` | not reviewed: pass it on (passed on to 0xF2D370) |
+| `s6` | `void*` | not reviewed: pass it on |
+
+### KeepTownEdges
+
+`game.dll+0xF31BD0`, hook or call. For a zone town's wall rules (subregion stamps, op 0x2B): keeps a slot's area edges that border another type (the town's ring) within a reach of the slot; 0 when none is in reach. From HellForge's town walls (difficulty_towns.c); research d11-sparse-cities.
+
+```c
+typedef uint8_t (*HfFn_KeepTownEdges)(void* rcx, void* rdx, void* r8, void* r9, float reach, uint8_t s6, uint32_t s7, void* s8, void* s9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `void*` | not reviewed: pass it on |
+| `reach` | `float` | the reach from the slot (25 m; HellForge scales it on larger maps) |
+| `s6` | `uint8_t` | not reviewed: pass it on |
+| `s7` | `uint32_t` | not reviewed: pass it on |
+| `s8` | `void*` | not reviewed: pass it on |
+| `s9` | `void*` | not reviewed: pass it on |
+
+### BuildingPlaced
+
+`game.dll+0xFC9C10`, hook or call. Records a building a town or city placed: enters its rect in the stamp index (StampIndexInsert). HellForge counts the buildings placed through it (0xF99AAE). From HellForge's towns (difficulty_towns.c DIF_TOWN_PLACED).
+
+```c
+typedef void (*HfFn_BuildingPlaced)(void* rcx, uint8_t* building, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (the generator's +0x20) |
+| `building` | `uint8_t*` | the placed stamp: +0xB0..+0xBC its rect |
+| `r8` | `uint32_t` | not reviewed: pass it on |
+
+### AreaRimHeight
+
+`game.dll+0xF64A60`, hook or call. An area's rim height (its rule's +0x34), which GenerateSubregionHeights stores at the area's +0x88. From HellForge's terrain (difficulty_terrain.c); research d11-heightmaps.
+
+```c
+typedef float (*HfFn_AreaRimHeight)(void* rcx, float xmm1, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `xmm1` | `float` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on (the area's +0x80) |
+
+### FindPocketNeighbour
+
+`game.dll+0xF66B80`, hook or call. FixUnreachableAreas' search for a walkable neighbour to open for a pocket of route cells; 0 for none, and then the level is generated again. HellForge lets a larger map's level go on from the 7th try. From HellForge's larger maps (difficulty.c DIF_UNREACHABLE_GO_ON).
+
+```c
+typedef uint8_t (*HfFn_FindPocketNeighbour)(void* rcx, uint32_t rdx, void* r8, uint8_t r9, void* s5, void* s6, void* s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `uint8_t` | not reviewed: pass it on |
+| `s5` | `void*` | not reviewed: pass it on |
+| `s6` | `void*` | not reviewed: pass it on |
+| `s7` | `void*` | not reviewed: pass it on |
+
+### SendMissionEndTelemetry
+
+`game.dll+0x13462C0`, hook or call. Reads the mission-end telemetry record (TelemetryMissionEnd's, hf_global_Telemetry + 0x31820) and sends it with an outcome: two 16-place stack arrays of objective instances, its count and loop stopping at 16. From HellForge's level 11 (difficulty.c, mission-end telemetry).
+
+```c
+typedef void (*HfFn_SendMissionEndTelemetry)(uint64_t unused, const uint8_t* outcome, uint8_t r8, uint8_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (callers pass a player) |
+| `outcome` | `const uint8_t*` | the outcome's name ("disconnected", "host_abandoned", "abandoned", ...) |
+| `r8` | `uint8_t` | not reviewed: pass it on |
+| `r9` | `uint8_t` | not reviewed: pass it on |
+
+### MissionResultReport
+
+`game.dll+0x1380840`, call only. Builds the mission result (BuildMissionResult, a record on its stack: badges at +0x14C8, {id, amount} x 32, count +0x15C8) and reports it. From HellForge's level 11 (difficulty.c DIF_BADGE_SITE).
+
+```c
+typedef void (*HfFn_MissionResultReport)(void* rcx, void* rdx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on |
+| `rdx` | `void*` | not reviewed: pass it on (a record of its caller's) |
+
+### ObjectiveSpawnSetup
+
+`game.dll+0x5DEF00`, call only. Sets up an objective's network record at its spawn: discovered_state (+0x44) starts at 1 (unknown: not on the map) for optional objectives, by the objective's class (0x5DF35B). HellForge's radar station starts at 0. From HellForge's radar station (difficulty.c DIF_RADAR_STATE_SITE).
+
+```c
+typedef void (*HfFn_ObjectiveSpawnSetup)(uint64_t unused, uint8_t* event, void* r8, void* r9, void* s5, void* s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (its thunk, 0x5243B0, loads a manager into it) |
+| `event` | `uint8_t*` | the component event: +8 the entity |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `void*` | not reviewed: pass it on |
+| `s5` | `void*` | not reviewed: pass it on |
+| `s6` | `void*` | not reviewed: pass it on |
+
+### RateOfFireCycle
+
+`game.dll+0x617960`, hook or call. A rate-of-fire selector press: moves a ProjectileWeapon to its next rate and returns the new rate index. Reached from WeaponFunctionPress (function type 2). From HellForge research coop-weapon-stats (hooks.jsonl) RofCycle.
+
+```c
+typedef uint32_t (*HfFn_RateOfFireCycle)(uint64_t unused, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (the manager is loaded from [game + 0x33266D8]) |
+| `weapon` | `uint32_t` | the weapon's entity |
+
+### WeaponFunctionPress
+
+`game.dll+0x7552D0`, call only. Dispatches a press of a weapon's bound function (fire mode, rate of fire, ...) by its type. From HellForge research coop-weapon-stats (hooks.jsonl) WeaponFunctionPress dispatch.
+
+```c
+typedef void (*HfFn_WeaponFunctionPress)(void* weapons, uint32_t weapon, uint32_t function);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the Weapon component manager ([game + 0x3326CE0]) |
+| `weapon` | `uint32_t` | the weapon's entity |
+| `function` | `uint32_t` | the bound WeaponFunctionType (1..12; the Weapon instance's +0x350 / +0x354) |
+
+### ProjectileWeaponRateSeed
+
+`game.dll+0x6117C0`, call only. Seeds a ProjectileWeapon's rate struct, only on the machine with authority over it (the current RPM is networked from there). From HellForge research coop-weapon-stats (hooks.jsonl) PwRateSeed.
+
+```c
+typedef void (*HfFn_ProjectileWeaponRateSeed)(void* manager, const uint8_t* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the ProjectileWeapon manager ([game + 0x33266D8]) |
+| `descriptor` | `const uint8_t*` | the entity descriptor: +8 the entity, +0x10 its network id, +0x14 bit 0 authority here |
+
+### ProjectileWeaponNetApply
+
+`game.dll+0x6190C0`, hook or call. Applies a ProjectileWeapon's received network state (one of NetworkApplyState's cases). From HellForge research coop-weapon-stats (hooks.jsonl) PwNetApply.
+
+```c
+typedef void (*HfFn_ProjectileWeaponNetApply)(void* manager, uint32_t weapon, const uint8_t* buffer, uint32_t* cursor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the ProjectileWeapon manager |
+| `weapon` | `uint32_t` | the weapon's entity |
+| `buffer` | `const uint8_t*` | the received state |
+| `cursor` | `uint32_t*` | the read offset into it, advanced by 12 |
+
+### ProjectileWeaponSystemPass
+
+`game.dll+0x617550`, hook or call. The ProjectileWeapon system's frame pass, from the world update: resets a weapon's rate when its fire-rate modifier changed, then runs the fire timers. From HellForge research coop-weapon-stats (hooks.jsonl) PwSystemPass.
+
+```c
+typedef void (*HfFn_ProjectileWeaponSystemPass)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the ProjectileWeapon manager |
+| `dt` | `float` | the update's time step |
+
+### SetCurrentFireMode
+
+`game.dll+0x755F90`, call only. Sets a weapon's fire mode and sends its RPM entry again. From HellForge research coop-weapon-stats (hooks.jsonl) SetCurrentFireMode.
+
+```c
+typedef uint32_t (*HfFn_SetCurrentFireMode)(void* weapons, uint32_t weapon, uint32_t mode);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the Weapon component manager |
+| `weapon` | `uint32_t` | the weapon's entity |
+| `mode` | `uint32_t` | the new FireMode |
+
+### WeaponFunctionValue
+
+`game.dll+0x755BA0`, call only. A weapon function's current value for an input: for rate of fire, the current rate index. From HellForge research coop-weapon-stats (hooks.jsonl) WeaponFunctionValue getter.
+
+```c
+typedef uint32_t (*HfFn_WeaponFunctionValue)(void* weapons, uint32_t weapon, uint32_t input);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the Weapon component manager |
+| `weapon` | `uint32_t` | the weapon's entity |
+| `input` | `uint32_t` | the input (0 left, 1 right) |
+
+### WeaponApplyReplicatedTrigger
+
+`game.dll+0x746460`, hook or call. Applies another machine's trigger state to its weapon's copy here (the trigger byte into the manager's +0x58); it builds no projectile itself. One of NetworkApplyState's cases. From HellForge research projectile-per-player (hooks.jsonl) Weapon_ApplyReplicatedTrigger.
+
+```c
+typedef void (*HfFn_WeaponApplyReplicatedTrigger)(void* weapons, uint32_t weapon, const uint8_t* buffer, uint32_t* cursor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the Weapon manager |
+| `weapon` | `uint32_t` | the weapon's local entity |
+| `buffer` | `const uint8_t*` | the decoded component-field bytes |
+| `cursor` | `uint32_t*` | the read offset into them, advanced by 4 |
+
+### RpcFireSingleRound
+
+`game.dll+0xBBD5B0`, call only. The receiver of a simple fire message (rpc_fire_single_round): resolves the weapon by its network id and fires it through the generic dispatch into ProjectileWeaponFire with type 0. A table callback. From HellForge research projectile-per-player (hooks.jsonl) RPC_FireSingleRound.
+
+```c
+typedef void (*HfFn_RpcFireSingleRound)(uint64_t unused, const uint8_t* args);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (an opaque dispatch context) |
+| `args` | `const uint8_t*` | the decoded RPC arguments, 16 bytes each with the payload pointer at +8; the first is the weapon's network id |
+
+### RpcFireSingleRoundAdvanced
+
+`game.dll+0xBC1010`, call only. The receiver of an advanced fire message (rpc_fire_single_round_advanced): fires the weapon with the sent type (skipping ResolveFiredType) and multipliers. A table callback (pointer at game + 0x214D430). From HellForge research coop-weapon-stats (hooks.jsonl) rpc_fire_single_round_advanced receiver.
+
+```c
+typedef void (*HfFn_RpcFireSingleRoundAdvanced)(uint64_t unused, const uint8_t* args);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (an opaque dispatch context) |
+| `args` | `const uint8_t*` | the decoded RPC arguments, 16 bytes each with the payload pointer at +8: 0 the weapon's network id, 3 an explicit projectile type, 6..8 three per-shot multipliers |
+
+### SendFireSingleRoundAdvanced
+
+`game.dll+0xBF2A10`, hook or call. Sends a shot to the other machines as an advanced fire message, from ProjectileWeaponFire and the charge fire. From HellForge research coop-weapon-stats (hooks.jsonl) rpc_fire_single_round_advanced sender.
+
+```c
+typedef void (*HfFn_SendFireSingleRoundAdvanced)(uint64_t unused, uint32_t weapon, const float* direction, uint32_t token, uint32_t type, uint64_t s6, uint32_t s7, float speed, float damage, float penetration);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon's entity (sent as its network id) |
+| `direction` | `const float*` | a vec3 |
+| `token` | `uint32_t` | the shot token |
+| `type` | `uint32_t` | an explicit projectile type (payload 3); the fire function's own send passes 0 |
+| `s6` | `uint64_t` | not reviewed: pass it on |
+| `s7` | `uint32_t` | not reviewed: pass it on |
+| `speed` | `float` | a per-shot speed multiplier |
+| `damage` | `float` | a per-shot damage multiplier |
+| `penetration` | `float` | a per-shot penetration multiplier |
+
+### RpcAddProjectileToManager
+
+`game.dll+0xBB9950`, call only. The receiver of rpc_add_projectile_to_manager (config index 428): spawns a projectile of the sent type through 0xB86F10, which reads the projectile list with no bound. A table callback. From HellForge research coop-weapon-stats (hooks.jsonl) rpc_add_projectile_to_manager receiver.
+
+```c
+typedef void (*HfFn_RpcAddProjectileToManager)(uint64_t unused, const uint8_t* args);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `args` | `const uint8_t*` | the decoded RPC arguments; the projectile type at [[args + 0x38]] |
+
+### SetWielder
+
+`game.dll+0x79B480`, hook or call. Sets who wields a weapon (hf_global_WieldableManager's), at a pickup and other transfers. From HellForge research projectile-per-player (hooks.jsonl) Wieldable_SetWielder.
+
+```c
+typedef void (*HfFn_SetWielder)(uint64_t unused, uint32_t weapon, uint32_t wielder);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read (the manager is loaded from a global) |
+| `weapon` | `uint32_t` | the weapon's local entity |
+| `wielder` | `uint32_t` | its new wielder's local entity (0 or none when it is let go) |
+
+### ProjectileWeaponNetInit
+
+`game.dll+0x618EB0`, hook or call. Builds a ProjectileWeapon's network state fields at its creation (from the create pass's init table). From HellForge research coop-weapon-stats (hooks.jsonl) PwNetInit.
+
+```c
+typedef void (*HfFn_ProjectileWeaponNetInit)(uint64_t unused, const uint8_t* descriptor, uint64_t unused2, uint8_t* fields, uint32_t* count, void* allocator);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `descriptor` | `const uint8_t*` | the entity descriptor (+8 the entity) |
+| `unused2` | `uint64_t` | not read |
+| `fields` | `uint8_t*` | the field entries it appends to, {u32 hash, u32 kind, u64 value pointer} |
+| `count` | `uint32_t*` | the entry count, raised per field |
+| `allocator` | `void*` | an allocator holder (12 bytes are taken from it) |
+
+### WeaponBuild
+
+`game.dll+0x752370`, call only. Builds a Weapon instance: copies its input bindings (WeaponData +0xB8 / +0xBC into the instance's +0x350 / +0x354). A component callback. From HellForge research coop-weapon-stats (hooks.jsonl) WeaponBuild.
+
+```c
+typedef void (*HfFn_WeaponBuild)(uint64_t unused, const uint8_t* descriptor, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `descriptor` | `const uint8_t*` | the entity descriptor (+8 the entity) |
+| `r8` | `void*` | not reviewed: pass it on (a creation context) |
+
+### ProjectileWeaponEnterOwned
+
+`game.dll+0x61A260`, call only. Moves a ProjectileWeapon into the owned partition when this machine gains authority over it (MigrateToThisMachine's table), zeroing its rate struct. From HellForge research coop-weapon-stats (hooks.jsonl) PwEnterOwnedPartition.
+
+```c
+typedef void (*HfFn_ProjectileWeaponEnterOwned)(uint64_t unused, const uint8_t* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `descriptor` | `const uint8_t*` | the entity descriptor |
+
+### OwnsWarbond
+
+`game.dll+0x136E470`, hook or call. Whether the player owns a warbond: walks the season-pass list (account + 0x17492D8, 0x64 each) and answers 1 when the player holds any of its tokens (+0x14..+0x20, HasCatalogueItem). From HellForge research forge-credits-tint (README.md, locked warbonds).
+
+```c
+typedef uint8_t (*HfFn_OwnsWarbond)(uint64_t unused, uint32_t warbond);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `warbond` | `uint32_t` | the warbond's id |
+
+### WarbondCurrencyToken
+
+`game.dll+0x136C270`, call only. The warbond token whose first price (buyPrice[0].mixId) is the currency type's, only when it has no second price; 0 otherwise. WarbondScreenData and the warbond list take a warbond with none as free (owned). From HellForge research forge-credits-tint (README.md, locked warbonds).
+
+```c
+typedef void (*HfFn_WarbondCurrencyToken)(uint64_t unused, uint32_t* out, uint32_t warbond, uint32_t currency);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `out` | `uint32_t*` | receives the token (0 for none) |
+| `warbond` | `uint32_t` | the warbond's id |
+| `currency` | `uint32_t` | the currency type (2 = Super Credits, 0xCF875032) |
+
+### HasCatalogueItem
+
+`game.dll+0x136FB40`, hook or call. Whether the player holds a catalogue item. From HellForge research forge-credits-tint (README.md, locked warbonds).
+
+```c
+typedef uint8_t (*HfFn_HasCatalogueItem)(void* account, uint32_t item);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `account` | `void*` | the progression manager: hf_global_Progression |
+| `item` | `uint32_t` | the item's id |
+
+### WeaponMagazineRecord
+
+`game.dll+0x4F3740`, hook or call. The entity's WeaponMagazineComponentData (component 5): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponMagazineTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponMagazineRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponWindUpRecord
+
+`game.dll+0x4F8090`, hook or call. The entity's WeaponWindUpComponentData (component 70): its own copy in the manager's private copies if it has one, else its type's shared record (the type lookup at game.dll+0x4F7C70, reached only by this tail jump, so not mapped); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponWindUpRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### RechargeRecord
+
+`game.dll+0x4FBC30`, hook or call. The entity's RechargeComponentData (component 99): its own copy in the manager's private copies if it has one, else its type's shared record (RechargeTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_RechargeRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponReloadRecord
+
+`game.dll+0x4FD220`, hook or call. The entity's WeaponReloadComponentData (component 113): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponReloadTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponReloadRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponRoundsRecord
+
+`game.dll+0x4FDD20`, hook or call. The entity's WeaponRoundsComponentData (component 117): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponRoundsTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponRoundsRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponChargeRecord
+
+`game.dll+0x5052C0`, hook or call. The entity's WeaponChargeComponentData (component 204): its own copy in the manager's private copies if it has one, else its type's shared record (the type lookup at game.dll+0x504D80, reached only by this tail jump, so not mapped); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponChargeRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### EquipmentRecord
+
+`game.dll+0x5092B0`, hook or call. The entity's EquipmentComponentData (component 233): its own copy in the manager's private copies if it has one, else its type's shared record (EquipmentTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_EquipmentRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### ThrowerRecord
+
+`game.dll+0x50CCC0`, hook or call. The entity's ThrowerComponentData (component 258): its own copy in the manager's private copies if it has one, else its type's shared record (ThrowerTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_ThrowerRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### ArcWeaponRecord
+
+`game.dll+0x50DC50`, hook or call. The entity's ArcWeaponComponentData (component 265): its own copy in the manager's private copies if it has one, else its type's shared record (ArcWeaponTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_ArcWeaponRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponHeatRecord
+
+`game.dll+0x50E1F0`, hook or call. The entity's WeaponHeatComponentData (component 266): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponHeatTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponHeatRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponCustomizationRecord
+
+`game.dll+0x50F150`, hook or call. The entity's WeaponCustomizationComponentData (component 271): its own copy in the manager's private copies if it has one, else its type's shared record (WeaponCustomizationTypeRecord); NULL when the type has none. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order.
+
+```c
+typedef void* (*HfFn_WeaponCustomizationRecord)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### WeaponMagazineTypeRecord
+
+`game.dll+0x4F32F0`, hook or call. An entity type's shared WeaponMagazineComponentData (component 5) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponMagazineTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### RechargeTypeRecord
+
+`game.dll+0x4FB850`, hook or call. An entity type's shared RechargeComponentData (component 99) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_RechargeTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponReloadTypeRecord
+
+`game.dll+0x4FCE20`, hook or call. An entity type's shared WeaponReloadComponentData (component 113) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponReloadTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponRoundsTypeRecord
+
+`game.dll+0x4FD8E0`, hook or call. An entity type's shared WeaponRoundsComponentData (component 117) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponRoundsTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### EquipmentTypeRecord
+
+`game.dll+0x508E90`, hook or call. An entity type's shared EquipmentComponentData (component 233) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_EquipmentTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### ThrowerTypeRecord
+
+`game.dll+0x50C720`, hook or call. An entity type's shared ThrowerComponentData (component 258) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_ThrowerTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### ThrowableTypeRecord
+
+`game.dll+0x50CD90`, hook or call. An entity type's shared ThrowableComponentData (component 259) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_ThrowableTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### ArcWeaponTypeRecord
+
+`game.dll+0x50D900`, hook or call. An entity type's shared ArcWeaponComponentData (component 265) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_ArcWeaponTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponHeatTypeRecord
+
+`game.dll+0x50DD30`, hook or call. An entity type's shared WeaponHeatComponentData (component 266) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponHeatTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### AbilityWeaponTypeRecord
+
+`game.dll+0x50E2C0`, hook or call. An entity type's shared AbilityWeaponComponentData (component 267) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_AbilityWeaponTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponCustomizationTypeRecord
+
+`game.dll+0x50ED80`, hook or call. An entity type's shared WeaponCustomizationComponentData (component 271) from the loaded component table: an open-addressing probe of the table's (type, record) rows; NULL when the type has no row. A leaf. From game.dll's type lookups: [game.dll+0x346BF98] + 0xF12478 + 8 x the component index (HD2Runtime 0.40.1 research entity-component-table-pointers, component-membership).
+
+```c
+typedef void* (*HfFn_WeaponCustomizationTypeRecord)(uint64_t type);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `type` | `uint64_t` | the entity type's resource hash (an entity descriptor's +0) |
+
+### WeaponUpdate
+
+`game.dll+0x7406A0`, hook or call. The weapon manager's frame, right after the WeaponData frames: among its calls AbilityWeaponFire (an ability weapon's pending fire) and WeaponChargeRecord. From the world update 0x571250 (0x573245); HD2Runtime 0.40.1 research railgun-charge (0x7406A0 weapon update).
+
+```c
+typedef void (*HfFn_WeaponUpdate)(void* weapons, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the weapon manager (hf_global_WeaponManager, component world +0xE9FC38) |
+| `dt` | `float` | the frame time |
+
+### WeaponDataUpdate
+
+`game.dll+0x753DB0`, hook or call. One WeaponData instance's frame (its record from WeaponDataRecord, the current fire mode); the world update calls it for every instance. From the world update 0x571250 (loop at 0x573220, count at WeaponDatas +0x20).
+
+```c
+typedef void (*HfFn_WeaponDataUpdate)(void* weapondata, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapondata` | `void*` | WeaponDatas |
+| `index` | `uint32_t` | the instance index |
+| `dt` | `float` | the frame time |
+
+### WeaponHeatUpdate
+
+`game.dll+0x764970`, hook or call. The WeaponHeat frame: WeaponHeatInstanceStep for every instance this machine owns (descriptor +0x14 bit 1), then each weapon's reload-dependent heat state (WeaponReloadBusy). From the world update 0x571250 (0x573767).
+
+```c
+typedef void (*HfFn_WeaponHeatUpdate)(void* heats, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `heats` | `void*` | WeaponHeats |
+| `dt` | `float` | the frame time |
+
+### WeaponHeatInstanceStep
+
+`game.dll+0x762F60`, hook or call. One weapon's heat for a frame, on its owner: charging adds heat, else it cools at +128 per second (overheated or charging: +140, none when +144 is set) times the climate multiplier; heat at the capacity +96 sets the overheated flag when +80 is set, heat down to +100 clears it. The heat (live row +0x58, 12 bytes: +4 heat, +8 overheated) goes out as network field 0xA5023836. From HD2Runtime 0.40.1 research overheat-cooling (heatStep 0x762F60), reload-heat-knife; WeaponHeatUpdate's call 0x7649CB.
+
+```c
+typedef void (*HfFn_WeaponHeatInstanceStep)(void* heats, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `heats` | `void*` | WeaponHeats |
+| `index` | `uint32_t` | the instance index |
+| `dt` | `float` | the frame time (xmm2, read after the leaf WeaponHeatRecord call) |
+
+### WeaponChargeUpdate
+
+`game.dll+0x73C8F0`, hook or call. The WeaponCharge frame: the charge time of every charging weapon rises while the trigger is held, and the charge levels decide the release (ChargeRelease) or, past the overcharge, ChargeOvercharge. From the world update 0x571250 (0x572EF2); HD2Runtime 0.40.1 research railgun-charge (0x73C8F0 charge update).
+
+```c
+typedef void (*HfFn_WeaponChargeUpdate)(void* charges, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `charges` | `void*` | WeaponCharges |
+| `dt` | `float` | the frame time |
+
+### ChargeRelease
+
+`game.dll+0x73D8C0`, hook or call. Releases a weapon's charge: on the machine that owns the instance (descriptor +0x14 bit 1) it fires the charge level's projectile through ChargeFire, once per burst shot. From HD2Runtime 0.40.1 research railgun-charge (0x73D8C0 fire helper, burst and per-state projectile); WeaponChargeUpdate's four calls.
+
+```c
+typedef void (*HfFn_ChargeRelease)(void* charges, void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `charges` | `void*` | WeaponCharges |
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### ChargeOvercharge
+
+`game.dll+0x73DC60`, hook or call. A weapon held past its overcharge: on the machine that owns it the weapon is removed and its explosion set off. From HD2Runtime 0.40.1 research railgun-charge (0x73DC60 overcharge failure: weapon removed, explosion); WeaponChargeUpdate's calls 0x73CCC4 and 0x73CDBA.
+
+```c
+typedef void (*HfFn_ChargeOvercharge)(uint64_t unused, void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `descriptor` | `void*` | the entity's descriptor (+0 its type resource, +8 the entity); NULL gives NULL |
+
+### ChargeMultiplier
+
+`game.dll+0x73E280`, hook or call. A charged shot's multiplier from the weapon's charge time (live row +0x40, 40 bytes, +8): below full charge (+0x18) from at_min to 1, above it from 1 to at_overcharge. The charge fire (0x73E725, 0x73E7E5) and the arc spawn (0x13B3F79, 0x13B401B) scale their shot with it, each passing a pair of charge record fields. From HD2Runtime 0.40.1 research railgun-charge (0x73E280 charge scaling lerp); callers 0x73E725, 0x73E7E5, 0x13B3F79, 0x13B401B.
+
+```c
+typedef float (*HfFn_ChargeMultiplier)(void* charges, uint32_t weapon, float at_min, float at_overcharge);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `charges` | `void*` | WeaponCharges |
+| `weapon` | `uint32_t` | the weapon entity |
+| `at_min` | `float` | the value at the minimum charge (charge record +0) |
+| `at_overcharge` | `float` | the value at the overcharge (record +0x30) |
+
+### EquipmentUpdate
+
+`game.dll+0x8C16E0`, hook or call. The Equipment frame (the component of how held items are wielded, holstered and dropped). From the world update 0x571250 (0x5731D9).
+
+```c
+typedef void (*HfFn_EquipmentUpdate)(void* equipment, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `equipment` | `void*` | hf_global_EquipmentManager (the Equipment component manager) |
+| `dt` | `float` | the frame time |
+
+### ThrowerUpdate
+
+`game.dll+0x6CB140`, hook or call. The Thrower frame: throws the salvos of a thrower (mine dispensers and the like) by spawning their projectiles (SpawnProjectile). From the world update 0x571250 (0x57369F); its call to SpawnProjectile.
+
+```c
+typedef void (*HfFn_ThrowerUpdate)(void* throwers, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `throwers` | `void*` | Throwers |
+| `dt` | `float` | the frame time |
+
+### ThrowableUpdate
+
+`game.dll+0x6C3AE0`, hook or call. The Throwable frame: thrown grenades and knives (records from ThrowableTypeRecord), queuing their network fields. From the world update 0x571250 (0x5736AE).
+
+```c
+typedef void (*HfFn_ThrowableUpdate)(void* throwables, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `throwables` | `void*` | Throwables |
+| `dt` | `float` | the frame time |
+
+### ArcWeaponUpdate
+
+`game.dll+0x80DDD0`, hook or call. One ArcWeapon instance's frame (its record from ArcWeaponRecord). From the world update 0x571250 (loop at 0x573742, count at ArcWeapons +0x38).
+
+```c
+typedef void (*HfFn_ArcWeaponUpdate)(void* arcs, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `arcs` | `void*` | ArcWeapons |
+| `index` | `uint32_t` | the instance index |
+| `dt` | `float` | the frame time |
+
+### AbilityWeaponUpdate
+
+`game.dll+0x7D67B0`, hook or call. The AbilityWeapon frame: reads each instance's record (AbilityWeaponTypeRecord) and may start its ability (StartAbility). From the world update 0x571250 (0x573773, no frame time).
+
+```c
+typedef void (*HfFn_AbilityWeaponUpdate)(void* abilityweapons);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `abilityweapons` | `void*` | AbilityWeapons |
+
+### WeaponCustomizationUpdate
+
+`game.dll+0x74ACE0`, hook or call. The WeaponCustomization frame: each weapon's attachments (records from WeaponCustomizationRecord). From the world update 0x571250 (0x5737CA).
+
+```c
+typedef void (*HfFn_WeaponCustomizationUpdate)(void* customizations, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `customizations` | `void*` | WeaponCustomizations |
+| `dt` | `float` | the frame time |
+
+### StartReload
+
+`game.dll+0x774B60`, hook or call. Starts a weapon's reload: unless forced, CanReload must agree; then it starts the WeaponReload record's ability (+4) through StartAbility at the reload speed (player stats, the +56 duration override). A record with ability 0 has no reload. From HD2Runtime 0.40.1 research reload-heat-knife (0x774EDB..0x774F49); the avatar input's calls 0xA7F4AE, 0xA7F78E.
+
+```c
+typedef void (*HfFn_StartReload)(void* reloads, uint32_t weapon, uint8_t force);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `reloads` | `void*` | WeaponReloads |
+| `weapon` | `uint32_t` | the weapon entity |
+| `force` | `uint8_t` | 1 skips the CanReload check; the avatar's input passes 0 |
+
+### CanReload
+
+`game.dll+0x775580`, hook or call. The reload gate: 1 when the weapon may reload now: its own spare total (OwnSpareAmmo) above 0, or else a worn backpack that can feed it. From HD2Runtime 0.40.1 research team-reload-ammo (reload gate 0x775580, 0x775997 setg); StartReload's call 0x774D3A.
+
+```c
+typedef uint8_t (*HfFn_CanReload)(void* reloads, uint32_t weapon, uint8_t r8, uint8_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `reloads` | `void*` | WeaponReloads |
+| `weapon` | `uint32_t` | the weapon entity |
+| `r8` | `uint8_t` | not reviewed: pass it on (every caller passes 0) |
+| `r9` | `uint8_t` | not reviewed: pass it on (every caller passes 0) |
+
+### ReloadStateHas
+
+`game.dll+0x7776F0`, hook or call. Whether a weapon's reload state (WeaponReloads +0x50, a u32 per instance) has any of the bits in mask; 0 when the weapon has no WeaponReload instance. From game.dll 0x7776F0 (its probe of WeaponReloads +0x20 and test of +0x50); WeaponReloadBusy's calls.
+
+```c
+typedef uint8_t (*HfFn_ReloadStateHas)(void* reloads, uint32_t weapon, uint32_t mask);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `reloads` | `void*` | WeaponReloads |
+| `weapon` | `uint32_t` | the weapon entity |
+| `mask` | `uint32_t` | the state bits to test |
+
+### WeaponReloadBusy
+
+`game.dll+0x7777A0`, hook or call. Whether a weapon's reload is under way: a reload state bit 1, 8 or 0x20 without its pair 2, 0x10 or 0x40, or bit 4 (ReloadStateHas on WeaponReloads). From game.dll 0x7777A0; callers WeaponHeatUpdate 0x7649EF and 0x744BE2.
+
+```c
+typedef uint8_t (*HfFn_WeaponReloadBusy)(uint64_t unused, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### OwnSpareAmmo
+
+`game.dll+0x744180`, hook or call. A weapon's own spare total: by its type, the spare magazines, spare rounds or spare heatsinks, plus a mounted shared deposit. From HD2Runtime 0.40.1 research team-reload-ammo (own spare total 0x744180, on the weapon manager 0x3326660).
+
+```c
+typedef uint32_t (*HfFn_OwnSpareAmmo)(void* weapons, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `weapons` | `void*` | the weapon manager (hf_global_WeaponManager) |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### WeaponRefill
+
+`game.dll+0x757F70`, hook or call. Refills one weapon from a resupply: MagazineRefill for a magazine weapon, else RoundsRefill for one loaded by rounds, else HeatsinkRefill. resupply_all calls it for every carried weapon. From HD2Runtime 0.40.1 research team-reload-ammo (0x880E20 resupply_all through 0x757F70).
+
+```c
+typedef void (*HfFn_WeaponRefill)(uint64_t unused, uint32_t weapon, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+| `scale` | `float` | the share of a resupply's amount |
+
+### MagazineRefill
+
+`game.dll+0x76E6D0`, hook or call. Gives a weapon spare magazines from a resupply: min(spare + max(1, magazines_from_supply x scale), the maximum), sent as network field 0xEC64918B; on the weapon's owner. From HD2Runtime 0.40.1 research team-reload-ammo (magazines 0x76E6D0, write at 0x76E7E1).
+
+```c
+typedef void (*HfFn_MagazineRefill)(uint64_t unused, uint32_t weapon, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+| `scale` | `float` | the share of a resupply's amount |
+
+### RoundsRefill
+
+`game.dll+0x77A430`, hook or call. Gives a weapon loaded by rounds spare rounds from a resupply (rounds_from_supply x scale, up to the maximum). From HD2Runtime 0.40.1 research team-reload-ammo (rounds 0x77A430).
+
+```c
+typedef void (*HfFn_RoundsRefill)(uint64_t unused, uint32_t weapon, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+| `scale` | `float` | the share of a resupply's amount |
+
+### HeatsinkRefill
+
+`game.dll+0x764FA0`, hook or call. Gives a heat weapon spare heatsinks from a resupply (its WeaponHeat record), sent as network field 0xEC64918B. From game.dll 0x764FA0 (WeaponRefill's third case); HD2Runtime 0.40.1 research dev19-heatsinks.
+
+```c
+typedef void (*HfFn_HeatsinkRefill)(uint64_t unused, uint32_t weapon, float scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+| `scale` | `float` | the share of a resupply's amount |
+
+### AbilityWeaponModeSettings
+
+`game.dll+0x7D5FB0`, hook or call. An ability weapon's settings for its current fire mode: the AbilityWeapon record + 40 x mode (+0 the ability, +32 spends a round, +33 always); NULL without an AbilityWeapon instance. From components.json AbilityWeapon (game.dll 0x7D5FB0); callers 0x744CD9, 0x7D608E, 0x7D6784.
+
+```c
+typedef void* (*HfFn_AbilityWeaponModeSettings)(uint64_t unused, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### AbilityWeaponFire
+
+`game.dll+0x7D6080`, hook or call. An ability weapon fires: starts its fire mode's ability on the weapon (StartAbility) and, when the mode says so, spends a round (SpendRound). From components.json AbilityWeapon (game.dll 0x7D6080); WeaponUpdate's call 0x7408D3, GenericFire's 0x7420D0.
+
+```c
+typedef void (*HfFn_AbilityWeaponFire)(uint64_t unused, uint32_t weapon);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `weapon` | `uint32_t` | the weapon entity |
+
+### MeleeHitVolumeStart
+
+`game.dll+0x7D38D0`, call only. Starts a melee hit volume: a melee ability's handler passes its template, which is copied into the entity's active attack record (the manager at game.dll+0x3326830, 0x4BD8 bytes per instance), so edits to a template reach later swings only. From HD2Runtime 0.40.1 research knife-melee (handlers load their volume with a RIP-relative lea r8 and call 0x7D38D0).
+
+```c
+typedef void (*HfFn_MeleeHitVolumeStart)(uint64_t unused, uint32_t entity, const void* volume);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `uint64_t` | not read |
+| `entity` | `uint32_t` | the attacking entity (the ability's entity) |
+| `volume` | `const void*` | the MeleeHitVolume template (0xF8 bytes, static in game.dll) |
+
+### UnitSettings
+
+`game.dll+0x4F9B60`, hook or call. The entity's UnitComponentData (0x88 bytes): its own copy in the UnitManager (private copies at +0xC0) if it has one, else the shared type record. From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_UnitSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### VehicleSettings
+
+`game.dll+0x4FA7A0`, hook or call. The entity's VehicleComponentData (0xE78 bytes): its own copy in the VehicleManager (private copies at +0xC0) if it has one, else the shared type record. From HD2Runtime 0.40.1 research vehicle-mech-components (resolvedAccessor 0x4FA7A0); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_VehicleSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### HellpodPayloadSettings
+
+`game.dll+0x5011F0`, hook or call. The entity's HellpodPayloadComponentData (0xC bytes): its own copy in the HellpodPayloadManager (private copies at +0xA0) if it has one, else the shared type record. From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_HellpodPayloadSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### AvatarSettings
+
+`game.dll+0x508DB0`, hook or call. The avatar's AvatarComponentData (0x354 bytes: the Helldiver's movement speeds, +0x10 jog, +0x14 sprint, and stamina values, read every frame): its own copy in the avatar manager hf_global_AvatarManager (inline from +0x547D24) if it has one, else the shared type record. From HD2Runtime 0.40.1 research avatar-fields (avatarResolver_0x508DB0, fields); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_AvatarSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### JumppackSettings
+
+`game.dll+0x50D830`, hook or call. The entity's JumppackComponentData (0x118 bytes: the jump pack's and hover pack's flight values, read every frame, so a change applies on the next frame): its own copy in the JumppackManager (private copies at +0xA0) if it has one, else the shared type record. From HD2Runtime 0.40.1 research hoverpack-components (lifecycle.resolver 0x50D830); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_JumppackSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### DisplacementSettings
+
+`game.dll+0x50FA40`, hook or call. The entity's DisplacementComponentData (0x278 bytes): its own copy in the DisplacementManager (private copies at +0xA0) if it has one, else the shared type record. From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_DisplacementSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### OrbitalAbilitySettings
+
+`game.dll+0x512E20`, hook or call. The entity's OrbitalAbilityComponentData (0x228 bytes): its own copy in the OrbitalAbilityManager (private copies at +0xD8) if it has one, else the shared type record. From game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_OrbitalAbilitySettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### RotationSettings
+
+`game.dll+0x513690`, hook or call. The entity's RotationComponentData (0x138 bytes): its own copy in the RotationManager (private copies at +0xB8) if it has one, else the shared type record. From HD2Runtime 0.40.1 research vehicle-mech-components (resolvedAccessor 0x513690); game.dll: the resolver shape of SensorEyeSettings and TurretSettings (the manager's copy map, else a tail jump to the component's type lookup), stride checked against components.json.
+
+```c
+typedef void* (*HfFn_RotationSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### EagleSettings
+
+`game.dll+0x514B40`, hook or call. The Eagle jet's EagleComponentData (0x98 bytes: +0x10 its payload kind, +0x18 its strike projectile, +0x4C its speed, +0x78 its attack distance): its own copy in the EagleManager (private copies at +0xB0) if it has one, else the shared type record. The update, the strike and the jet's set-up resolve it every time. From HD2Runtime 0.40.1 research eagle-components (pins.resolver, readPaths).
+
+```c
+typedef void* (*HfFn_EagleSettings)(void* descriptor);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `descriptor` | `void*` | the entity's descriptor (+8 the entity); NULL gives NULL |
+
+### VehicleUpdate
+
+`game.dll+0x6FEF80`, hook or call. The vehicle system's frame: vehicles and mechs. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_VehicleUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x1C6348: hf_global_VehicleManager |
+| `dt` | `float` | the frame time, s |
+
+### SquadTransportUpdate
+
+`game.dll+0x6864D0`, hook or call. The squad transport system's frame: enemy dropships and the squads they carry, which it spawns through SpawnSquad. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_SquadTransportUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x1C6EB0: hf_global_SquadTransportManager |
+| `dt` | `float` | the frame time, s |
+
+### HellpodPayloadUpdate
+
+`game.dll+0x9322D0`, hook or call. The hellpod payload system's frame. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_HellpodPayloadUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x75C1B8: hf_global_HellpodPayloadManager |
+| `dt` | `float` | the frame time, s |
+
+### AiSpawnerUpdate
+
+`game.dll+0x7F7820`, hook or call. The AI spawner system's frame: the spawners spawn their squads through SpawnSquad. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_AiSpawnerUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x75EA20: hf_global_AiSpawnerManager |
+| `dt` | `float` | the frame time, s |
+
+### BugholeUpdate
+
+`game.dll+0x857F90`, hook or call. The bug hole system's frame: holes spawn their bugs through SpawnSquad with the HiveMindManager. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_BugholeUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x7C56B0: hf_global_BugholeManager |
+| `dt` | `float` | the frame time, s |
+
+### VehicleMotionUpdate
+
+`game.dll+0x7152F0`, hook or call. The vehicle motion system's frame: the vehicles' and mechs' driving physics. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_VehicleMotionUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x7C72E8: hf_global_VehicleMotionManager |
+| `dt` | `float` | the frame time, s |
+
+### AvatarUpdate
+
+`game.dll+0x829E90`, hook or call. The avatar system's frame, for the avatars simulated here (the manager's first +0x70 indexes): movement speed from AvatarSettings and stamina regeneration. The world update (0x571250) calls it every frame. From HD2Runtime 0.40.1 research avatar-fields (avatarUpdate_0x829E90); game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_AvatarUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x956128: hf_global_AvatarManager |
+| `dt` | `float` | the frame time, s |
+
+### DisplacementUpdate
+
+`game.dll+0x88A700`, hook or call. The displacement system's frame. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_DisplacementUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0xEB71D8: hf_global_DisplacementManager |
+| `dt` | `float` | the frame time, s |
+
+### OrbitalAbilityUpdate
+
+`game.dll+0x5F35B0`, hook or call. The orbital ability system's frame. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_OrbitalAbilityUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0xF064A8: hf_global_OrbitalAbilityManager |
+| `dt` | `float` | the frame time, s |
+
+### EagleUpdate
+
+`game.dll+0x8A7A90`, hook or call. The Eagle system's frame: for each jet (indexes below the manager's +0x20) it resolves EagleSettings and runs EagleStage, EagleTrackAim, EagleStrike and EagleFlight, then the flyby sound. The world update (0x571250) calls it every frame. From HD2Runtime 0.40.1 research eagle-components (pins.update); game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_EagleUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0xF0B300: hf_global_EagleManager |
+| `dt` | `float` | the frame time, s |
+
+### EncounterUpdate
+
+`game.dll+0x8B8A20`, hook or call. The director's reinforcements: an encounter picks a composition (PickReinforcementComposition) and sends it to the faction's transport or breach (DispatchReinforcement). The world update (0x571250) calls it every frame. From HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement pins); game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_EncounterUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x7C4D30: hf_global_EncounterManager |
+| `dt` | `float` | the frame time, s |
+
+### GuardForceUpdate
+
+`game.dll+0x9110E0`, hook or call. The outposts' frame: it fills an outpost with its guards (FillOutpost) when it needs them. The world update (0x571250) calls it every frame. From game.dll: the world update's call (lea rcx, [world + offset]; movaps xmm1, the frame time); live.py: rcx and xmm1 only.
+
+```c
+typedef void (*HfFn_GuardForceUpdate)(void* manager, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the component world +0x771410: hf_global_GuardForces |
+| `dt` | `float` | the frame time, s |
+
+### EagleStage
+
+`game.dll+0x8A2990`, hook or call. Moves an Eagle jet through its stages and sets its speed per stage (EagleSettings +0x50, +0x54). EagleUpdate calls it for each jet. From HD2Runtime 0.40.1 research eagle-components (pins.stage); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+
+```c
+typedef void (*HfFn_EagleStage)(void* eagles, uint32_t index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `eagles` | `void*` | the Eagle manager: hf_global_EagleManager |
+| `index` | `uint32_t` | the jet's index (its record at the manager's +0x58 + 0xFC index) |
+
+### EagleTrackAim
+
+`game.dll+0x8A37D0`, hook or call. Keeps an Eagle jet's aim point on its targets, leading moving ones by its strike projectile's speed. EagleUpdate calls it for each jet. From HD2Runtime 0.40.1 research eagle-components (pins.tracking); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+
+```c
+typedef void (*HfFn_EagleTrackAim)(void* eagles, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `eagles` | `void*` | the Eagle manager: hf_global_EagleManager |
+| `index` | `uint32_t` | the jet's index (its record at the manager's +0x58 + 0xFC index) |
+| `dt` | `float` | the frame time, s |
+
+### EagleStrike
+
+`game.dll+0x8A4410`, hook or call. An Eagle jet's attack: by its payload kind (EagleSettings +0x10: strafe, rockets, bombs) it starts within its attack distance and releases its strike projectiles. EagleUpdate calls it for each jet. From HD2Runtime 0.40.1 research eagle-components (pins.strike); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+
+```c
+typedef void (*HfFn_EagleStrike)(void* eagles, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `eagles` | `void*` | the Eagle manager: hf_global_EagleManager |
+| `index` | `uint32_t` | the jet's index (its record at the manager's +0x58 + 0xFC index) |
+| `dt` | `float` | the frame time, s |
+
+### EagleFlight
+
+`game.dll+0x8A59E0`, hook or call. An Eagle jet's flight model. EagleUpdate calls it for each jet. From HD2Runtime 0.40.1 research eagle-components (pins.stage: the flight model 0x8A59E0); game.dll: EagleUpdate's calls (0x8A7BA2 to 0x8A7BC9).
+
+```c
+typedef void (*HfFn_EagleFlight)(void* eagles, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `eagles` | `void*` | the Eagle manager: hf_global_EagleManager |
+| `index` | `uint32_t` | the jet's index (its record at the manager's +0x58 + 0xFC index) |
+| `dt` | `float` | the frame time, s |
+
+### JumppackTimers
+
+`game.dll+0x9B5EC0`, hook or call. A jump pack's or hover pack's timers, abilities and visual sway, every frame. The world update runs it for each index below the manager's +0x10. From HD2Runtime 0.40.1 research hoverpack-components (code.functions); game.dll: the world update's loop at 0x573700.
+
+```c
+typedef void (*HfFn_JumppackTimers)(void* jumppacks, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `jumppacks` | `void*` | the jump pack manager: hf_global_JumppackManager |
+| `index` | `uint32_t` | the pack's index |
+| `dt` | `float` | the frame time, s |
+
+### JumppackFlight
+
+`game.dll+0x9B4790`, hook or call. A jump pack's or hover pack's flight physics, every frame: launch, sustain, air control, hover and fuel; it deactivates the pack (SetJumppackActive) when the meter runs out. The world update runs it for each index below the manager's +0x14. From HD2Runtime 0.40.1 research hoverpack-components (code.functions, model); game.dll: the world update's loop at 0x573720.
+
+```c
+typedef void (*HfFn_JumppackFlight)(void* jumppacks, uint32_t index, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `jumppacks` | `void*` | the jump pack manager: hf_global_JumppackManager |
+| `index` | `uint32_t` | the pack's index |
+| `dt` | `float` | the frame time, s |
+
+### SetJumppackActive
+
+`game.dll+0x9B3420`, hook or call. Activates or deactivates an entity's jump pack or hover pack. From HD2Runtime 0.40.1 research hoverpack-components (code.functions: activate/deactivate); game.dll: its seven callers (r8b, r9b).
+
+```c
+typedef void (*HfFn_SetJumppackActive)(void* jumppacks, uint32_t entity, uint8_t active, uint8_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `jumppacks` | `void*` | the jump pack manager: hf_global_JumppackManager |
+| `entity` | `uint32_t` | the pack's entity |
+| `active` | `uint8_t` | 1 activates it (the take-off passes 1), 0 deactivates it |
+| `r9` | `uint8_t` | not reviewed: pass it on (0 from the flight physics) |
+
+### JumppackTakeOff
+
+`game.dll+0xA63790`, hook or call. The jump pack's take-off, from the avatar's state: the hop's values, and SetJumppackActive(..., 1). From HD2Runtime 0.40.1 research hoverpack-components (code.functions: take-off (avatar state)); game.dll: its call to SetJumppackActive at 0xA63B71.
+
+```c
+typedef void (*HfFn_JumppackTakeOff)(void* rcx, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `rcx` | `void*` | not reviewed: pass it on (its caller passes its rsi + 0xB68) |
+| `dt` | `float` | the frame time, s |
+
+### PickPatrolComposition
+
+`game.dll+0x959950`, hook or call. Picks the composition of a scheduled patrol from the compiled patrol compositions (family 1, the HiveMind's +0x3A538): a 0xD8-byte entry, or NULL. EnemyDirectorTick spawns it with SpawnSquad. From HD2Runtime 0.40.1 research spawn-channels-dev10 (scheduled patrol selection, family 1); game.dll: its call in EnemyDirectorTick (0x9514BD).
+
+```c
+typedef void* (*HfFn_PickPatrolComposition)(void* hivemind, uint32_t rdx, void* r8, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+
+### SpawnSquad
+
+`game.dll+0x953580`, hook or call. Spawns a squad of enemies from a composition at a position: the director's patrols (EnemyDirectorTick), spawners (AiSpawnerUpdate), bug holes (BugholeUpdate), dropships (SquadTransportUpdate) and outposts (FillOutpost) all spawn through it. Returns the squad, or NULL. From HD2Runtime 0.40.1 research spawn-channels-dev10 (selected patrol creation); game.dll: its six callers' stack arguments (+0x20 to +0x48) and the return they test.
+
+```c
+typedef void* (*HfFn_SpawnSquad)(void* hivemind, void* composition, const float* position, uint32_t r9, uint32_t flags, uint64_t s6, uint64_t s7, uint64_t s8, float s9, uint32_t s10);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `composition` | `void*` | the composition to spawn, as the pickers return it |
+| `position` | `const float*` | where (3 f32); nothing spawns outside the bounds it checks |
+| `r9` | `uint32_t` | not reviewed: pass it on |
+| `flags` | `uint32_t` | flag bits (it tests bits 0, 1 and 6); each caller passes its own constant |
+| `s6` | `uint64_t` | not reviewed: pass it on |
+| `s7` | `uint64_t` | not reviewed: pass it on |
+| `s8` | `uint64_t` | not reviewed: pass it on |
+| `s9` | `float` | not reviewed: pass it on |
+| `s10` | `uint32_t` | not reviewed: pass it on |
+
+### PatrolClock
+
+`game.dll+0x959740`, hook or call. The patrol clock: the frame time scaled by the HiveMind's progress and player-count multipliers (HiveMindComponentData +0x1DC, +0x1F0, +0x204), which EnemyDirectorTick takes off the patrol timer. Higher is faster. From HD2Runtime 0.40.1 research spawn-channels-dev10 (patrolClock); game.dll: its call at 0x951680 and the subss after it.
+
+```c
+typedef float (*HfFn_PatrolClock)(void* hivemind, float dt, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `dt` | `float` | the frame time, s |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### PickReinforcementComposition
+
+`game.dll+0x957E10`, hook or call. Picks a reinforcement composition (family 4, the HiveMind's +0x432F8, count +0x5188C) for a position; EncounterUpdate then dispatches it. From HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement manager selects composition); game.dll: its call at 0x8B981B (rcx from 0x3326D10).
+
+```c
+typedef uint32_t (*HfFn_PickReinforcementComposition)(void* hivemind, void* rdx, const float* position, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `hivemind` | `void*` | the HiveMind manager: hf_global_HiveMindManager |
+| `rdx` | `void*` | not reviewed: pass it on |
+| `position` | `const float*` | the position (3 f32) |
+| `r9` | `uint32_t` | not reviewed: pass it on (0xFFFFFFFF from EncounterUpdate) |
+
+### DispatchReinforcement
+
+`game.dll+0x8B7900`, hook or call. Sends a selected reinforcement to the faction's transport or breach; returns a time (s) that EncounterUpdate adds to the frame time and keeps in the encounter's record (+0x24). From HD2Runtime 0.40.1 research spawn-channels-dev10 (faction transport/breach dispatcher); game.dll: its call at 0x8B98D9 and the addss after it.
+
+```c
+typedef float (*HfFn_DispatchReinforcement)(void* encounters, uint32_t rdx, void* r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `encounters` | `void*` | the encounter manager: hf_global_EncounterManager |
+| `rdx` | `uint32_t` | not reviewed: pass it on |
+| `r8` | `void*` | not reviewed: pass it on |
+
+### FillOutpost
+
+`game.dll+0x90E150`, hook or call. Fills an outpost with its guards from the map guard compositions (family 3, the HiveMind's +0x41138), spending the guard budget (HiveMind +0x518B4): it picks enemies with PickEnemy and spawns them through 0x90D2A0, which calls SpawnSquad. GuardForceUpdate calls it. From HD2Runtime 0.40.1 research spawn-channels-dev10 (map guard pins 0x90E25D, 0x90EAE0); game.dll: its callers in GuardForceUpdate.
+
+```c
+typedef void (*HfFn_FillOutpost)(void* guardforces, uint32_t outpost);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `guardforces` | `void*` | the outposts' manager: hf_global_GuardForces |
+| `outpost` | `uint32_t` | the outpost's entity |
+
+### UnitSetLocalPosition
+
+`helldivers2.exe+0x1FC650`, hook or call. Sets a unit node's local position (floats 9-11 of its 16-float local pose), marks the node changed and the unit moving (WorldSetUnitMoving, 5). Unit.set_local_position calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetLocalPosition)(uint32_t unit, int32_t node, const float* position);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root; the binding takes it 1-based and subtracts the Lua index base) |
+| `position` | `const float*` | x, y, z |
+
+### UnitSetLocalRotation
+
+`helldivers2.exe+0x1FC7A0`, hook or call. Sets a unit node's local rotation from a quaternion (made a 3x3 by 0x12C780, keeping position and scale), marks the node changed and the unit moving. Unit.set_local_rotation calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetLocalRotation)(uint32_t unit, int32_t node, const float* rotation);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `rotation` | `const float*` | a quaternion x, y, z, w |
+
+### UnitSetLocalScale
+
+`helldivers2.exe+0x1FC8F0`, hook or call. Sets a unit node's local scale (floats 12-14 of its local pose) through the unit's own set-local-pose (its vtable +0x278). Unit.set_local_scale calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetLocalScale)(uint32_t unit, int32_t node, const float* scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `scale` | `const float*` | x, y, z |
+
+### UnitTeleportLocalPosition
+
+`helldivers2.exe+0x1FD3F0`, hook or call. Unit.teleport_local_position's engine side: writes the node's local position like UnitSetLocalPosition, marks the node changed and the unit moving (WorldSetUnitMoving, 5).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitTeleportLocalPosition)(uint32_t unit, int32_t node, const float* position);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `position` | `const float*` | x, y, z |
+
+### UnitTeleportLocalPose
+
+`helldivers2.exe+0x1FD350`, hook or call. Writes a unit node's whole local pose, marks the node changed and the unit moving. Unit.teleport_local_pose calls it with the unit object.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitTeleportLocalPose)(void* unit, int32_t node, const float* pose);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `void*` | the unit object (UnitFromHandle), not a handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `pose` | `const float*` | the 16-float local pose (as UnitSetLocalPose) |
+
+### WorldSetUnitMoving
+
+`helldivers2.exe+0x1AF180`, hook or call. Marks a unit moving: tells the unit (its vtable +0xB0) and, when its +0x38 is -1, appends it to the world's moving list (+0x230490) under the world's lock (+0x230460). Unit.set_moving and every Unit/Camera/Light/Mesh local pose setter reach it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldSetUnitMoving)(void* world, void* unit, uint32_t frames);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the unit's world (the unit's +0x18) |
+| `unit` | `void*` | the unit object (UnitFromHandle) |
+| `frames` | `uint32_t` | passed to the unit's vtable +0xB0 (Unit.set_moving's optional count, default 1; the pose setters pass 5) |
+
+### UnitDeltaPosition
+
+`helldivers2.exe+0x1FD7D0`, hook or call. How far a unit node moved: computed from its scene graph's last world poses (+0x30, copied from +0x28 when unset) and its current ones (+0x28); returns out. Unit.delta_position calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_UnitDeltaPosition)(float* out, uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | where the 3 floats go (returned) |
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+
+### UnitDeltaRotation
+
+`helldivers2.exe+0x1FD9D0`, hook or call. How far a unit node turned between its last and current world pose, as a quaternion; returns out. Unit.delta_rotation calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_UnitDeltaRotation)(float* out, uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | where the quaternion (4 floats) goes (returned) |
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+
+### UnitDeltaPose
+
+`helldivers2.exe+0x1FDE40`, hook or call. A unit node's pose change between its last and current world pose (16 floats); returns out. Unit.delta_pose calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_UnitDeltaPose)(float* out, uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | where the 16-float pose goes (returned) |
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+
+### UnitTeleportLocalRotation
+
+`helldivers2.exe+0x1FD570`, hook or call. Unit.teleport_local_rotation's engine side: writes the node's local rotation from a quaternion (keeping position and scale), marks the node changed and the unit moving.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitTeleportLocalRotation)(uint32_t unit, int32_t node, const float* rotation);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `rotation` | `const float*` | a quaternion x, y, z, w |
+
+### UnitTeleportLocalScale
+
+`helldivers2.exe+0x1FD680`, hook or call. Unit.teleport_local_scale's engine side: writes the node's local scale, marks the node changed and the unit moving.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitTeleportLocalScale)(uint32_t unit, int32_t node, const float* scale);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root) |
+| `scale` | `const float*` | x, y, z |
+
+### WorldSpawnUnit
+
+`helldivers2.exe+0x1A7E50`, hook or call. Spawns a unit in a world from its resource and returns the unit object (+0x08 its handle, which World.spawn_unit hands to Lua). World.spawn_unit calls it; so do game.dll-facing paths (0x1AA5CE, 0x2D1EF6, 0x2E0DAA).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_WorldSpawnUnit)(void* world, const uint64_t* resource, const uint64_t* name, const float* pose, uint32_t s5, uint64_t s6, uint8_t s7, uint64_t s8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `resource` | `const uint64_t*` | the unit resource's name hash (resolved with the unit type 0xE0A48D0BE9A7453F) |
+| `name` | `const uint64_t*` | an optional id64 World.spawn_unit takes after the pose (0 when none); passed on to 0x1A7FC0 |
+| `pose` | `const float*` | the spawn pose, a 4x4 matrix (rows x, y, z axes then translation; identity by default) |
+| `s5` | `uint32_t` | not reviewed: pass it on (the binding passes 0) |
+| `s6` | `uint64_t` | not reviewed: pass it on (the binding passes 0) |
+| `s7` | `uint8_t` | not reviewed: pass it on (World.spawn_unit's optional bool after the name, default 1) |
+| `s8` | `uint64_t` | not reviewed: pass it on (the binding passes 0) |
+
+### WorldDestroyUnit
+
+`helldivers2.exe+0x1AECC0`, hook or call. Destroys a unit now and frees it from its world. World.destroy_unit calls it when the unit's vtable +0x1B0 returns null (otherwise WorldQueueUnitsDestroy).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldDestroyUnit)(void* world, void* unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world (the unit's +0x18) |
+| `unit` | `void*` | the unit object (UnitFromHandle) |
+
+### WorldQueueUnitsDestroy
+
+`helldivers2.exe+0x12D2D0`, hook or call. Queues units for destruction: takes each handle out of the unit registry (bumps its generation, clears its slot) and adds it to the world's queue counted at +0x10030. World.destroy_unit uses it for units whose vtable +0x1B0 is set.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldQueueUnitsDestroy)(void* world, const uint32_t* units, uint32_t count);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `units` | `const uint32_t*` | the units' handles |
+| `count` | `uint32_t` | how many |
+
+### WorldLinkUnitHandles
+
+`helldivers2.exe+0x3361C0`, hook or call. Links one unit to another's node by handles: resolves both (UnitFromHandle) and tail-calls WorldLinkUnit. World.link_unit calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldLinkUnitHandles)(void* world, uint32_t child, int32_t child_node, uint32_t parent, uint32_t s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `child` | `uint32_t` | the child unit's handle |
+| `child_node` | `int32_t` | the child's node (0 the root) |
+| `parent` | `uint32_t` | the parent unit's handle |
+| `s5` | `uint32_t` | the parent's node (0 the root); forwarded to WorldLinkUnit |
+
+### WorldLinkUnit
+
+`helldivers2.exe+0x1AF240`, hook or call. Links a unit's node to a parent unit's node in a world: puts the child in the world's linked list (+0x2304B0), the parent at the child's +0x1D0 and the child in the parent's +0x1D8 list.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldLinkUnit)(void* world, void* child, int32_t child_node, void* parent, uint16_t s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `child` | `void*` | the child unit object |
+| `child_node` | `int32_t` | the child's node (0 the root) |
+| `parent` | `void*` | the parent unit object |
+| `s5` | `uint16_t` | the parent's node (0 the root), read from the stack as a 16-bit index |
+
+### WorldUnlinkUnit
+
+`helldivers2.exe+0x1AF780`, hook or call. Unlinks a unit from its parent and takes it out of the world's linked list (+0x2304B0). World.unlink_unit calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldUnlinkUnit)(void* world, void* unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `unit` | `void*` | the unit object (UnitFromHandle) |
+
+### WorldMendUnit
+
+`helldivers2.exe+0x3351C0`, hook or call. World.mend_unit's engine side: asks the unit (vtable +0x48 with the index) and when that succeeds marks it moving (WorldSetUnitMoving, 1); 1 when it did.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint8_t (*HfFn_WorldMendUnit)(void* world, uint32_t unit, int32_t index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `unit` | `uint32_t` | the unit's handle |
+| `index` | `int32_t` | passed to the unit's vtable +0x48 (the binding takes it 1-based) |
+
+### WorldUpdate
+
+`helldivers2.exe+0x333BD0`, hook or call. Updates a world by a time step. World.update calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldUpdate)(void* world, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `dt` | `float` | the time step (the binding's default is EngineCore +0x560) |
+
+### WorldUpdateScene
+
+`helldivers2.exe+0x1B0B10`, hook or call. Updates a world's scene graph by a time step. World.update_scene and World.update_with_callback call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldUpdateScene)(void* world, float dt, float xmm2);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `dt` | `float` | the time step |
+| `xmm2` | `float` | not reviewed: pass it on (the binding passes EngineCore +0x55C) |
+
+### WorldCreateLineObject
+
+`helldivers2.exe+0x1B3AD0`, hook or call. Makes a debug line object in a world and records it in the world's line object map (+0x230638); returns it. World.create_line_object calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_WorldCreateLineObject)(void* world, uint8_t no_depth_test, uint8_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `no_depth_test` | `uint8_t` | 1 draws through geometry (the world's line renderer +0x230608 instead of +0x230600) |
+| `r8` | `uint8_t` | not reviewed: pass it on (1 picks the renderer at +0x230610; the binding passes 0) |
+
+### LineObjectAddLine
+
+`helldivers2.exe+0x4E1820`, hook or call. Adds one debug line to a line object; it shows once the object is dispatched (LineObjectDispatch). LineObject.add_line calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddLine)(void* line_object, uint32_t color, const float* from, const float* to);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object (WorldCreateLineObject): +0x08 its lines, 28 bytes each (from, to, color) |
+| `color` | `uint32_t` | ARGB, a byte each (Lua's Color(a, r, g, b)) |
+| `from` | `const float*` | x, y, z |
+| `to` | `const float*` | x, y, z |
+
+### LineObjectAddCone
+
+`helldivers2.exe+0x4E46D0`, hook or call. Adds a debug cone's lines to a line object. LineObject.add_cone calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddCone)(void* line_object, uint32_t color, const float* from, const float* to, float s5, int32_t s6, int32_t s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `from` | `const float*` | one end, x, y, z (Lua's from) |
+| `to` | `const float*` | the other end, x, y, z (Lua's to) |
+| `s5` | `float` | the base radius |
+| `s6` | `int32_t` | segments (Lua default 20) |
+| `s7` | `int32_t` | bars (Lua default 10) |
+
+### LineObjectAddCircle
+
+`helldivers2.exe+0x4E1FD0`, hook or call. Adds a debug circle's lines to a line object. LineObject.add_circle calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddCircle)(void* line_object, uint32_t color, const float* center, float radius, const float* s5, int32_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `center` | `const float*` | x, y, z |
+| `radius` | `float` | the radius |
+| `s5` | `const float*` | the normal, x, y, z |
+| `s6` | `int32_t` | segments (Lua default 20) |
+
+### LineObjectAddSphere
+
+`helldivers2.exe+0x4E2FC0`, hook or call. Adds a debug sphere's lines to a line object. LineObject.add_sphere calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddSphere)(void* line_object, uint32_t color, const float* center, float radius, int32_t s5, int32_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `center` | `const float*` | x, y, z |
+| `radius` | `float` | the radius (0 adds nothing) |
+| `s5` | `int32_t` | segments (Lua default 20) |
+| `s6` | `int32_t` | parts (Lua default 2) |
+
+### LineObjectAddHalfSphere
+
+`helldivers2.exe+0x4E3380`, hook or call. Adds a debug half sphere's lines to a line object. LineObject.add_half_sphere calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddHalfSphere)(void* line_object, uint32_t color, const float* center, float radius, const float* s5, int32_t s6, int32_t s7);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `center` | `const float*` | x, y, z |
+| `radius` | `float` | the radius |
+| `s5` | `const float*` | the direction it faces, x, y, z |
+| `s6` | `int32_t` | segments |
+| `s7` | `int32_t` | parts |
+
+### LineObjectAddBox
+
+`helldivers2.exe+0x4E3AC0`, hook or call. Adds a debug box's 12 edges to a line object. LineObject.add_box calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddBox)(void* line_object, uint32_t color, const float* pose, const float* extents);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `pose` | `const float*` | the box's pose, a 4x4 matrix |
+| `extents` | `const float*` | half sizes x, y, z |
+
+### LineObjectAddCapsule
+
+`helldivers2.exe+0x4E4040`, hook or call. Adds a debug capsule's lines to a line object. LineObject.add_capsule calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectAddCapsule)(void* line_object, uint32_t color, const float* from, const float* to, float s5, int32_t s6, int32_t unused, int32_t s8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `line_object` | `void*` | the line object |
+| `color` | `uint32_t` | ARGB |
+| `from` | `const float*` | one end's centre, x, y, z |
+| `to` | `const float*` | the other end's centre |
+| `s5` | `float` | the radius |
+| `s6` | `int32_t` | segments |
+| `unused` | `int32_t` | not read (its home slot is reused as scratch) |
+| `s8` | `int32_t` | bars (the binding's 8th Lua argument) |
+
+### LineObjectDispatch
+
+`helldivers2.exe+0x4E5EC0`, hook or call. Sends a line object's lines to the renderer for drawing (a packet of 28 bytes a line plus a header). LineObject.dispatch calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LineObjectDispatch)(void* renderer, void* render, void* line_object);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `renderer` | `void*` | the line renderer the object was made with (the world's line object map +0x230638 entry) |
+| `render` | `void*` | the world's render interface ([world +0x2301F8] +0x10); its +0x98 gives the packet allocator |
+| `line_object` | `void*` | the line object: +0x08 its line count |
+
+### MurmurHash64A
+
+`helldivers2.exe+0x5D5840`, hook or call. MurmurHash64A (multiplier 0xC6A4A7935BD1E995): the engine's name hash. With seed 0 it is the IdString64 every binding makes from a string; its high 32 bits are the IdString32 (Material variable names). Called from everywhere (378 binding sites).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint64_t (*HfFn_MurmurHash64A)(const char* key, int32_t len, uint64_t seed);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `key` | `const char*` | the bytes (a name) |
+| `len` | `int32_t` | how many bytes |
+| `seed` | `uint64_t` | the seed (0 for Stingray's IdString64) |
+
+### MaterialSetScalar
+
+`helldivers2.exe+0x4F33D0`, hook or call. Sets a material's scalar shader variable: queues a render command (7) with the material's id, the variable and the value; nothing when the material has no render id. Material.set_scalar calls it, as does the game's material variable code (0xCCD06).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetScalar)(void* material, uint32_t variable, float value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material (Mesh.material's light userdata): +0x04 its render id (0xFFFFFF none), +0x08 the render interface |
+| `variable` | `uint32_t` | the variable's IdString32 (the high half of MurmurHash64A of its name) |
+| `value` | `float` | the value |
+
+### MaterialSetVector2
+
+`helldivers2.exe+0x4F3580`, hook or call. Sets a material's 2-float shader variable through a queued render command. Material.set_vector2 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetVector2)(void* material, uint32_t variable, const float* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `variable` | `uint32_t` | the variable's IdString32 |
+| `value` | `const float*` | x, y |
+
+### MaterialSetVector3
+
+`helldivers2.exe+0x4F3650`, hook or call. Sets a material's 3-float shader variable through a queued render command. Material.set_vector3 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetVector3)(void* material, uint32_t variable, const float* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `variable` | `uint32_t` | the variable's IdString32 |
+| `value` | `const float*` | x, y, z |
+
+### MaterialSetVector4
+
+`helldivers2.exe+0x4F3730`, hook or call. Sets a material's 4-float shader variable through a queued render command. Material.set_vector4 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetVector4)(void* material, uint32_t variable, const float* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `variable` | `uint32_t` | the variable's IdString32 |
+| `value` | `const float*` | x, y, z, w |
+
+### MaterialSetMatrix4x4
+
+`helldivers2.exe+0x30F330`, hook or call. Sets a material's 4x4 matrix shader variable through a queued render command. Material.set_matrix4x4 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetMatrix4x4)(void* material, uint32_t variable, const float* value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `variable` | `uint32_t` | the variable's IdString32 |
+| `value` | `const float*` | 16 floats |
+
+### MaterialSetTexture
+
+`helldivers2.exe+0x30F1B0`, hook or call. Points a material's texture slot at a loaded texture resource. Material.set_texture calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetTexture)(void* material, uint32_t slot, uint64_t texture);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `slot` | `uint32_t` | the texture slot's IdString32 |
+| `texture` | `uint64_t` | the texture resource's name hash (looked up as type 0xCD4238C6A0C69E32) |
+
+### MaterialSetResource
+
+`helldivers2.exe+0x4F3230`, hook or call. Binds a resource object to a material slot (stored in the material's table at +0x20, count +0x18). Material.set_resource calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetResource)(void* material, uint32_t slot, void* resource);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+| `slot` | `uint32_t` | the slot's IdString32 |
+| `resource` | `void*` | the resource object (the binding's third argument, a light userdata) |
+
+### MaterialSetShaderPassFlag
+
+`helldivers2.exe+0x30F150`, hook or call. Turns a shader pass flag on or off for a material and sends the new bits (0x4F39F0). Material.set_shader_pass_flag calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialSetShaderPassFlag)(void* material, uint32_t flag, uint32_t enabled);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material: +0x40 its pass flag bits |
+| `flag` | `uint32_t` | the flag's IdString32 (found in the engine's flag list 0x1A102D0) |
+| `enabled` | `uint32_t` | 1 sets, 0 clears |
+
+### MaterialReinitializeShader
+
+`helldivers2.exe+0x30F420`, hook or call. Queues a render command that rebuilds a material's shader. Material.reinitialize_shader calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_MaterialReinitializeShader)(void* material);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `material` | `void*` | the material |
+
+### CameraWorldToScreen
+
+`helldivers2.exe+0x4D40F0`, hook or call. Projects a world point to screen pixels with a camera's world pose and projection. Camera.world_to_screen calls it with the window's size unless given a Vector2 size.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_CameraWorldToScreen)(float* out, void* camera, const float* position, int32_t width, int32_t s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | 3 floats: screen x and y, and the depth (the binding returns the depth as a second value); returned |
+| `camera` | `void*` | the camera (Unit.camera): +0x04 its render id, +0x18 its unit's scene graph, +0x20 its node, +0x28 near, +0x2C far, +0x30 projection type, +0x34 vertical fov |
+| `position` | `const float*` | the world point, x, y, z |
+| `width` | `int32_t` | the viewport's width in pixels |
+| `s5` | `int32_t` | the viewport's height in pixels |
+
+### CameraScreenToWorld
+
+`helldivers2.exe+0x4D3BD0`, hook or call. Unprojects a screen point at a depth to a world point with a camera. Camera.screen_to_world calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_CameraScreenToWorld)(float* out, void* camera, const float* position, float depth, int32_t s5, int32_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | the world point, 3 floats; returned |
+| `camera` | `void*` | the camera |
+| `position` | `const float*` | the screen point, 3 floats as Lua's Vector3 |
+| `depth` | `float` | the distance along the view |
+| `s5` | `int32_t` | the viewport's width in pixels |
+| `s6` | `int32_t` | the viewport's height in pixels |
+
+### CameraSyncRange
+
+`helldivers2.exe+0x4CFA10`, hook or call. Queues a render command (4) carrying a camera's near and far range and projection type. Camera.set_near_range, set_far_range and set_projection_type write the field and call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_CameraSyncRange)(void* camera);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `camera` | `void*` | the camera: +0x28 near, +0x2C far, +0x30 projection type |
+
+### CameraSyncFrustum
+
+`helldivers2.exe+0x4CFAB0`, hook or call. Queues a render command carrying a camera's fov and frustum fields (+0x34, 32 bytes). Camera.set_vertical_fov, set_orthographic_view, set_frustum and set_frustum_half_angles write the fields and call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_CameraSyncFrustum)(void* camera);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `camera` | `void*` | the camera: +0x34 the vertical fov and the frustum fields to +0x53 |
+
+### CameraSetLocal
+
+`helldivers2.exe+0x4CF620`, hook or call. Queues a render command with a camera's local matrix. Camera.set_local calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_CameraSetLocal)(void* camera, const float* pose, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `camera` | `void*` | the camera |
+| `pose` | `const float*` | a 4x4 matrix |
+| `r8` | `uint32_t` | not reviewed: pass it on (the binding passes 0; it goes into the command) |
+
+### CameraInsideFrustum
+
+`helldivers2.exe+0x30DCC0`, hook or call. How far a world point is inside a camera's frustum (above 0 inside). Camera.inside_frustum calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float (*HfFn_CameraInsideFrustum)(void* camera, const float* point);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `camera` | `void*` | the camera |
+| `point` | `const float*` | the world point, x, y, z |
+
+### GuiAddPrimitive
+
+`helldivers2.exe+0x267990`, hook or call. Queues a gui render command (0xA) for a primitive with the gui's current transform and returns where its vertices go (36 bytes each), for the caller to fill. Every Gui drawing call reaches it (Gui.rect, triangle, bitmap and their update/destroy).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_GuiAddPrimitive)(void* gui, uint32_t id, uint32_t layer, uint32_t vertices, void* s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `gui` | `void*` | the gui (World.create_screen_gui's): +0x04 its render id, +0x98 the next primitive id |
+| `id` | `uint32_t` | the primitive's id |
+| `layer` | `uint32_t` | the draw layer |
+| `vertices` | `uint32_t` | how many vertices (6 for a rect, 3 for a triangle) |
+| `s5` | `void*` | the material (its +0x04 render id), or NULL |
+
+### GuiRect
+
+`helldivers2.exe+0x262060`, hook or call. Draws (or redraws) a coloured rectangle in a gui as two triangles through GuiAddPrimitive. Gui.rect and Gui.update_rect call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_GuiRect)(void* gui, uint32_t id, const void* rect);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `gui` | `void*` | the gui |
+| `id` | `uint32_t` | the rect's id (the binding passes the gui's +0x98, then adds 1 and returns it to Lua) |
+| `rect` | `const void*` | the rect: f32 x, y, z (0), width, height (Lua default 100 each), u32 layer +0x14, u32 color ARGB +0x18, then 16 zero bytes |
+
+### ResourceManagerGet
+
+`helldivers2.exe+0x5F2290`, hook or call. A loaded resource's data, following resource overrides, under the manager's lock (+0x2D8). Application.get_animation calls it (type 0x931E336D7646CC26), as do 25 other binding sites.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_ResourceManagerGet)(void* manager, const uint64_t* type, const uint64_t* name, uint64_t* resolved);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the resource manager (EngineCore +0x3F8) |
+| `type` | `const uint64_t*` | the resource type hash |
+| `name` | `const uint64_t*` | the resource name hash |
+| `resolved` | `uint64_t*` | NULL, or receives the name the override table (+0x2E8) gave for it |
+
+### ResourceManagerCanGet
+
+`helldivers2.exe+0x5F2160`, hook or call. Whether a resource is loaded and can be had now. Application.can_get calls it; CanGetResource wraps it with plain hashes.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint8_t (*HfFn_ResourceManagerCanGet)(void* manager, const uint64_t* type, const uint64_t* name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the resource manager (EngineCore +0x3F8) |
+| `type` | `const uint64_t*` | the resource type hash |
+| `name` | `const uint64_t*` | the resource name hash |
+
+### ResourceManagerSetOverride
+
+`helldivers2.exe+0x5F26F0`, hook or call. Points later lookups of a resource name at another name (through 0x5F3210). Application.set_resource_override calls it; SetResourceOverride is the plain-hash version.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_ResourceManagerSetOverride)(void* manager, const uint64_t* type, const uint64_t* name, const uint64_t* target);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the resource manager (EngineCore +0x3F8) |
+| `type` | `const uint64_t*` | the resource type hash |
+| `name` | `const uint64_t*` | the name looked up |
+| `target` | `const uint64_t*` | the name found instead |
+
+### ResourceManagerClearOverride
+
+`helldivers2.exe+0x5F27D0`, hook or call. Takes a resource override out under the manager's lock (+0x2D8). Application.clear_resource_override calls it; ClearResourceOverride wraps it with plain hashes.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_ResourceManagerClearOverride)(void* manager, const uint64_t* type, const uint64_t* name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the resource manager (EngineCore +0x3F8) |
+| `type` | `const uint64_t*` | the resource type hash |
+| `name` | `const uint64_t*` | the overridden name |
+
+### MurmurHash64ALower
+
+`helldivers2.exe+0x5D5960`, hook or call. MurmurHash64A of a name with every byte lowercased first (0x12BC14C); the third argument register's home slot is reused as scratch, so no seed is read. Application.string_to_id64 calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint64_t (*HfFn_MurmurHash64ALower)(const char* key, int32_t len, uint64_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `key` | `const char*` | the bytes (a name) |
+| `len` | `int32_t` | how many bytes |
+| `r8` | `uint64_t` | not reviewed: pass it on (the code may read it) |
+
+### RendererWindowSize
+
+`helldivers2.exe+0x10AE20`, hook or call. The pixel size of a window's back buffer. Application.back_buffer_size, Application.resolution and Camera.world_to_screen call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_RendererWindowSize)(void* renderer, uint32_t window, uint32_t* width, uint32_t* height);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `renderer` | `void*` | the renderer (EngineCore +0x338) |
+| `window` | `uint32_t` | the window or render target id (0xFFFFFF in the low 24 bits reads the size from the renderer's +0x1168 object) |
+| `width` | `uint32_t*` | receives the width (1280 when unknown) |
+| `height` | `uint32_t*` | receives the height (720 when unknown) |
+
+### ReleaseWorld
+
+`helldivers2.exe+0x317FB0`, hook or call. Destroys a world: shuts its systems down, frees it through EngineCore's vtable +0x40 and takes it out of the engine's world list (EngineCore +0x590 count, +0x598 array). Application.release_world calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_ReleaseWorld)(void* world);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+
+### CreateViewport
+
+`helldivers2.exe+0x76B40`, hook or call. Makes a viewport for a world from a named viewport template and returns it. Application.create_viewport calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void* (*HfFn_CreateViewport)(void* engine, void* world, uint32_t viewport_template);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `engine` | `void*` | EngineCore |
+| `world` | `void*` | the world |
+| `viewport_template` | `uint32_t` | the viewport template's IdString32 (the engine itself passes 0x7A991573) |
+
+### WorldDestroyViewport
+
+`helldivers2.exe+0x1B3D20`, hook or call. Destroys a viewport and takes it out of its world's viewport list. Application.destroy_viewport calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldDestroyViewport)(void* world, void* viewport);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world: +0x2308F0 its viewport count, +0x2308F8 the viewports |
+| `viewport` | `void*` | the viewport (CreateViewport) |
+
+### NetworkCreateGameSession
+
+`helldivers2.exe+0x171A20`, hook or call. Makes the network manager's game session (0x6140 bytes, built by 0x28D640) at its +0xA8, then runs NetworkManagerUpdate. Network.create_game_session calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_NetworkCreateGameSession)(void* manager);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the network manager (NetworkManager): +0xA8 the game session it makes |
+
+### NetworkShutdownGameSession
+
+`helldivers2.exe+0x171AE0`, hook or call. Destroys the network manager's game session and clears its +0xA8. Network.shutdown_game_session calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_NetworkShutdownGameSession)(void* manager);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `manager` | `void*` | the network manager (NetworkManager) |
+
+### LevelIsPointInsideVolume
+
+`helldivers2.exe+0x32C4B0`, hook or call. Whether a point is inside one of a level's named volumes (1 inside). Level.is_point_inside_volume calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_LevelIsPointInsideVolume)(void* level, uint32_t volume, const float* point);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level (World.load_level's) |
+| `volume` | `uint32_t` | the volume's IdString32 |
+| `point` | `const float*` | x, y, z |
+
+### LevelRandomPointInsideVolume
+
+`helldivers2.exe+0x32BA90`, hook or call. A random point inside one of a level's named volumes. Level.random_point_inside_volume calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float* (*HfFn_LevelRandomPointInsideVolume)(float* out, void* level, uint32_t volume);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | the point, 3 floats; returned |
+| `level` | `void*` | the level |
+| `volume` | `uint32_t` | the volume's IdString32 |
+
+### LevelHasVolume
+
+`helldivers2.exe+0x32CE50`, hook or call. Whether a level has a volume of that name (non-zero yes). Level.has_volume calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_LevelHasVolume)(void* level, uint32_t volume);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level |
+| `volume` | `uint32_t` | the volume's IdString32 |
+
+### LevelUnitIndex
+
+`helldivers2.exe+0xEAA20`, hook or call. A unit's index in its level, -1 when the level does not own it. Level.unit_index calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_LevelUnitIndex)(void* level, void* unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level: +0x2B8 its unit-to-index hash map (count +0x2C8, bucket count +0x2CC) |
+| `unit` | `void*` | the unit object (UnitFromHandle) |
+
+### LevelSpawnAllLayers
+
+`helldivers2.exe+0xDB230`, hook or call. Spawns every layer of a level. Level.spawn_all_layers calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LevelSpawnAllLayers)(void* level);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `level` | `void*` | the level |
+
+### UnitAnimationFindVariable
+
+`helldivers2.exe+0x201C20`, hook or call. The index of a variable in a unit's animation state machine (the unit's vtable +0x1B0); -1 and a logged error when the unit has none. Unit.animation_find_variable calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_UnitAnimationFindVariable)(uint32_t unit, uint32_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `name` | `uint32_t` | the variable's IdString32 |
+
+### UnitAnimationHasVariable
+
+`helldivers2.exe+0x201CD0`, hook or call. Whether a unit's animation state machine has a variable of that name (non-zero yes). Unit.animation_has_variable calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitAnimationHasVariable)(uint32_t unit, uint32_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `name` | `uint32_t` | the variable's IdString32 |
+
+### UnitAnimationGetVariable
+
+`helldivers2.exe+0x201D50`, hook or call. An animation state machine variable's value. Unit.animation_get_variable calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef float (*HfFn_UnitAnimationGetVariable)(uint32_t unit, int32_t index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `index` | `int32_t` | the variable's index (UnitAnimationFindVariable) |
+
+### UnitAnimationSetVariable
+
+`helldivers2.exe+0x201DF0`, hook or call. Sets an animation state machine variable. Unit.animation_set_variable calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitAnimationSetVariable)(uint32_t unit, int32_t index, float value);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `index` | `int32_t` | the variable's index (UnitAnimationFindVariable) |
+| `value` | `float` | the value |
+
+### UnitSetUnitVisibility
+
+`helldivers2.exe+0x205680`, hook or call. Shows or hides a whole unit: queues a world command (0x15) in the unit's world (a 0x58-byte slot at +0x10038, taken with a lock add on +0x170038). Unit.set_unit_visibility calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetUnitVisibility)(uint32_t unit, uint8_t visible, uint8_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `visible` | `uint8_t` | 1 shows, 0 hides |
+| `r8` | `uint8_t` | not reviewed: pass it on (Unit.set_unit_visibility's optional third argument, 1 when absent) |
+
+### UnitSetVisibilityGroup
+
+`helldivers2.exe+0x205870`, hook or call. Shows or hides one of a unit's visibility groups: tells the unit (its vtable +0xC0) and queues a world command (0x16). Unit.set_visibility calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetVisibilityGroup)(uint32_t unit, uint32_t group, uint32_t visible);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `group` | `uint32_t` | the visibility group's IdString32 |
+| `visible` | `uint32_t` | 1 shows, 0 hides |
+
+### UnitCrossfadeAnimation
+
+`helldivers2.exe+0x200D80`, hook or call. Crossfades a unit's animation player to an animation and returns the id the binding hands back to Lua. Unit.crossfade_animation calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_UnitCrossfadeAnimation)(uint32_t unit, uint64_t animation, int32_t layer, float blend_time, uint32_t s5, uint32_t s6);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `animation` | `uint64_t` | the animation's IdString64 |
+| `layer` | `int32_t` | the layer (the binding takes it 1-based; 0 when absent) |
+| `blend_time` | `float` | the crossfade time in seconds (0 when absent) |
+| `s5` | `uint32_t` | loop: 1 loops (Lua's 5th argument, default 1) |
+| `s6` | `uint32_t` | blend type: 1 when Lua's 6th argument is "offset", 0 for "normal" or absent |
+
+### UnitCrossfadeAnimationSetTime
+
+`helldivers2.exe+0x201130`, hook or call. Sets the play time of a crossfade on a unit's animation player (its vtable +0x1A8), passing on to 0x561010 with the time as a double. Unit.crossfade_animation_set_time calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitCrossfadeAnimationSetTime)(uint32_t unit, uint32_t id, float time, uint32_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `id` | `uint32_t` | the crossfade's id (UnitCrossfadeAnimation) |
+| `time` | `float` | the time |
+| `r9` | `uint32_t` | not reviewed: pass it on (Lua's optional 4th argument, default 0; given to 0x561010) |
+
+### UnitCopySceneGraphLocalFrom
+
+`helldivers2.exe+0x204880`, hook or call. Copies another unit's scene graph local poses onto a unit. Unit.copy_scene_graph_local_from calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitCopySceneGraphLocalFrom)(uint32_t unit, uint32_t source);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `source` | `uint32_t` | the handle of the unit whose local poses are copied |
+
+### UnitSetBonesLod
+
+`helldivers2.exe+0x202D30`, hook or call. Sets a unit's animation bones LOD. Unit.set_bones_lod calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitSetBonesLod)(uint32_t unit, int32_t lod);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `lod` | `int32_t` | the bones LOD level |
+
+### UnitAnimationFindConstraintTarget
+
+`helldivers2.exe+0x202EA0`, hook or call. The index of a named constraint target in a unit's animation state machine (the binding adds the Lua index base). Unit.animation_find_constraint_target calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_UnitAnimationFindConstraintTarget)(uint32_t unit, uint32_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `name` | `uint32_t` | the constraint target's IdString32 |
+
+### UnitAnimationSetConstraintTargetPosition
+
+`helldivers2.exe+0x203120`, hook or call. Sets an animation constraint target from a position. Unit.animation_set_constraint_target calls it when given a Vector3.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_UnitAnimationSetConstraintTargetPosition)(uint32_t unit, int32_t index, const float* position);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `index` | `int32_t` | the target's index (UnitAnimationFindConstraintTarget) |
+| `position` | `const float*` | x, y, z |
+
+### LightSync
+
+`helldivers2.exe+0x50BF90`, hook or call. Queues a render command (0x80 bytes) with a light's current settings; every Light setter writes its field and then calls it (Light.set_color, set_intensity, set_falloff_end, set_casts_shadows...).. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LightSync)(void* light);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `light` | `void*` | the light (Unit.light): +0x08 its render interface, +0x20 colour r, g, b, +0x2C intensity, +0x34 falloff end, +0x60 flags (bit 1 disabled) |
+
+### LightSetEnabled
+
+`helldivers2.exe+0x50BE10`, hook or call. Turns a light on or off, syncs it (LightSync) and tells the renderer's light list. Light.set_enabled calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_LightSetEnabled)(void* light, uint8_t enabled);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `light` | `void*` | the light |
+| `enabled` | `uint8_t` | 1 on, 0 off (clears or sets bit 1 of +0x60) |
+
+### WorldDestroyLevel
+
+`helldivers2.exe+0x338960`, hook or call. Destroys a level: flushes the world's pending unit queues (0x12D600) when needed, takes the level out of the world's list and frees it. World.destroy_level calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldDestroyLevel)(void* world, void* level, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world: +0x230588 its level count, +0x230590 the levels |
+| `level` | `void*` | the level (World.load_level's) |
+| `r8` | `uint32_t` | not reviewed: pass it on (the binding passes 1; non-zero also calls the renderer's 0x108780) |
+
+### WorldDestroyPrefab
+
+`helldivers2.exe+0x338D60`, hook or call. Destroys a prefab the world loaded, the same way WorldDestroyLevel does a level. World.destroy_prefab calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldDestroyPrefab)(void* world, void* prefab, uint32_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `prefab` | `void*` | the prefab (World.load_prefab's) |
+| `r8` | `uint32_t` | not reviewed: pass it on (the binding passes 1) |
+
+### WorldPlayCameraShake
+
+`helldivers2.exe+0x337810`, hook or call. Plays a camera shake at a world position and returns its id. World.play_camera_shake calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef int32_t (*HfFn_WorldPlayCameraShake)(void* world, uint64_t shake, const float* position, float near, float s5);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world: +0x2308C0 its camera shake manager |
+| `shake` | `uint64_t` | the camera shake's IdString64 |
+| `position` | `const float*` | where it happens, x, y, z |
+| `near` | `float` | Lua's 4th argument (Stingray: the distance of full effect) |
+| `s5` | `float` | Lua's 5th argument (Stingray: the distance of no effect) |
+
+### WorldStopCameraShake
+
+`helldivers2.exe+0x22D8A0`, hook or call. Stops a playing camera shake. World.stop_camera_shake calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldStopCameraShake)(void* shakes, int32_t id, uint8_t r8);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `shakes` | `void*` | the world's camera shake manager (world +0x2308C0) |
+| `id` | `int32_t` | the shake's id (WorldPlayCameraShake) |
+| `r8` | `uint8_t` | not reviewed: pass it on (Lua's optional 3rd argument) |
+
+### WorldUpdateAnimations
+
+`helldivers2.exe+0x1B0670`, hook or call. Runs a world's animation update for a time step. World.update_animations, update_animations_with_callback and update_with_callback call it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_WorldUpdateAnimations)(void* world, float dt);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `world` | `void*` | the world |
+| `dt` | `float` | the time step (default EngineCore +0x560) |
+
+### GuiManagerDestroyGui
+
+`helldivers2.exe+0x273110`, hook or call. Destroys a gui (World.create_screen_gui or create_world_gui's). World.destroy_gui calls it.. From the Lua binding's disassembly in helldivers2.exe (build 25480438).
+
+```c
+typedef void (*HfFn_GuiManagerDestroyGui)(void* guis, void* gui);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `guis` | `void*` | the world's gui manager (world +0x230890) |
+| `gui` | `void*` | the gui |
+
+### SpawnEntityAddComponents
+
+`game.dll+0x581320`, hook or call. SpawnEntity's first component pass: for each of the new entity's components, its add callback with the spawn data (kind 1), then its setup callback with a scratch buffer (kind 2). Every machine runs it for every spawn, remote ones included; the entity is not in the network id map yet. From HellForge research (build 25480438): SpawnEntity's call at 0xFDC25A, the callback table filled at 0x551B60.
+
+```c
+typedef void (*HfFn_SpawnEntityAddComponents)(void* components, uint8_t* record, const uint8_t* info, void* ids);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `components` | `void*` | the entity manager's component callbacks (EntityManager + 0x40): one array of 324 function pointers per callback kind, indexed by component type |
+| `record` | `uint8_t*` | the new entity's world record (+0 the entity, u64; +0x10 its network id, u32; +0x14 its flags) |
+| `info` | `const uint8_t*` | the SpawnInfo SpawnEntity was given: +0 authority byte (1: this machine is in charge of it) |
+| `ids` | `void*` | the object at EntityManager + 0x8: the spawned entity's id goes into its table at +0xB020 |
+
+### SpawnEntityFinishComponents
+
+`game.dll+0x581780`, hook or call. SpawnEntity's last component pass: each of the new entity's components' finish callback (kind 3), after every component exists and the entity is in the network id map. A detour that runs after the original sees the entity fully set up, before SpawnEntity returns. From HellForge research (build 25480438): SpawnEntity's call at 0xFDC2B1, the callback table filled at 0x551B60.
+
+```c
+typedef void (*HfFn_SpawnEntityFinishComponents)(void* components, uint8_t* record, const uint8_t* info);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `components` | `void*` | the entity manager's component callbacks (EntityManager + 0x40) |
+| `record` | `uint8_t*` | the new entity's world record |
+| `info` | `const uint8_t*` | the SpawnInfo SpawnEntity was given |
+
+### ActivateEntity
+
+`game.dll+0xFDBB40`, hook or call. Switches an entity on in this machine's world: finds it by network id, sets bit 0 of its record's flags (+0x14) and runs each of its components' activate callbacks (kinds 6, then 7), unless a tag or a session flag holds it back. The session calls it through LocalUser's entity callbacks (+0xB3D0, set at 0x134D470, via a thunk at 0xBA0670). From HellForge research (build 25480438): 0xFDBB40, its thunks at 0xBA0670 and 0xFDA130, the callback table filled at 0x551B60.
+
+```c
+typedef void (*HfFn_ActivateEntity)(void* unused, uint32_t entity, uint64_t ctx, uint64_t r9);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | not read |
+| `entity` | `uint32_t` | the entity's network id |
+| `ctx` | `uint64_t` | the caller's second argument (through the thunk), passed on unchanged to each component's activate callbacks |
+| `r9` | `uint64_t` | not reviewed: pass it on |
+
+### DeactivateEntity
+
+`game.dll+0xFDBEA0`, hook or call. Switches an entity off in this machine's world: finds it by network id and, if it is on (bit 0 of its record's flags, +0x14), runs each of its components' deactivate callbacks (kinds 9, then 8) and clears the bit. The entity stays in the world. The session calls it through LocalUser's entity callbacks (+0xB3D8, set at 0x134D470, via a thunk at 0xBA0680). From HellForge research (build 25480438): 0xFDBEA0, its thunks at 0xBA0680 and 0xFDA140, 0x581E10.
+
+```c
+typedef void (*HfFn_DeactivateEntity)(void* unused, uint32_t entity, uint64_t ctx);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unused` | `void*` | not read |
+| `entity` | `uint32_t` | the entity's network id |
+| `ctx` | `uint64_t` | the caller's second argument (through the thunk), passed on unchanged to each component's deactivate callbacks |
+
 ## Globals
 
 The game's objects by name (`hellforge_globals.h`, SDK 16), from `mappings/globals.json`: its managers and queues,
@@ -403,7 +7558,9 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
+| `wwise_world` | +0x10F8 | ptr | the WwiseWorld: +0x4148 its default source (u32), heard everywhere |
 | `state` | +0xAC21C | u32 | the game's state (HF_STATE_...; hf->game_state reads it) |
+| `level` | +0xAE288 | ptr | the mission's level (the level generator, lg): +0xF9 its difficulty level (u8), +0x2C8 its generation block, +0x2D70 the playable radius / 1024 (f32) |
 
 ### PlayerManager
 
@@ -420,6 +7577,7 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
 | `peer` | +0xB398 | u64 | this machine's player's peer id (HfPlayerEvent.peer) |
+| `host_peer` | +0xB3A8 | u64 | the game's host's peer id (it changes with a host migration) |
 
 ### GameMode
 
@@ -433,6 +7591,13 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 ### EntityManager
 
 `game.dll+0x346BF98` (a pointer to it), `HfEntityManager`. The entities of this machine's world. At +0xF22EC8 a hash map of network ids to slots (8-byte keys, 4-byte values), and at +0xF32F20 the network objects by slot, 24 bytes each (+0 the entity id, u32); at +0xF1AEB0 the map of entity ids, at +0xF32F18 their descriptors. From HD2Runtime 0.40.1 research event-combat; HellForge's event polls (event_polls.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `component_tables` | +0xF12478 | ptr | component table 0; table c's pointer at +8 c: rows {u64 entity, u32 record, u32 0} from entity % slots, then the records |
+| `entity_deltas` | +0xF12E98 | ptr | the entity deltas a weapon's chosen attachments key into (by their add_path); reloaded at every use |
+| `entity_map` | +0xF12EA0 | ptr | the entity map: 4096 rows of {u64 entity, u16* components, u64 component count, u32 short id, u32 0}, from entity % 4096 |
+| `short_ids` | +0xF12EA8 | ptr | the short ids: sorted {u32 short id, u32 map row}; an entity's index here is its type in the engine |
 
 ### HealthManager
 
@@ -454,6 +7619,8 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 | `count` | +0x4880 | u32 | indexes in use |
 | `descriptors` | +0x48B8 | ptr | an array of descriptor pointers, by index |
 | `records` | +0x48C8 | ptr | the motion records, 0x84 bytes each, by index |
+| `positions` | +0x48D0 | ptr | 0xA4 bytes per index: the position (3 floats) MoveObject writes |
+| `sources` | +0x48D8 | ptr | 0x2C bytes per index: the position motion starts from each frame (3 floats; relative for an object riding a parent, the record's +0x3C not -1) |
 
 ### ExplosionQueue
 
@@ -506,11 +7673,718 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
+| `index` | +0x0 | ptr | the destructible index's holder: at +0x2C68 its table of 16-byte entries {u64 unit name, u64 the unit's destruction settings}, at +0x2C70 its capacity (u32, a power of two), probed from (i + 2 name) & (capacity - 1) |
 | `count` | +0xC | u32 | destructibles |
 
 ### DestructionRecords
 
 `game.dll+0x346D528` (a pointer to it), `HfDestructionRecords`. The destruction state of the world's destructibles: records of 12 bytes at +0xC5F78 by world index (+0 unit, +7 stage u8, +8 bit 0 registered). From HD2Runtime 0.40.1 research event-destruction; HellForge's HF_ON_BUGHOLE poll (event_polls.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `slots` | +0xC5F48 | ptr | the record map's slots (0x8000 inline at +0x5F48) |
+| `slot_count` | +0xC5F50 | u32 | the record map's slots (a power of two; mask count - 1) |
+| `empty_key` | +0xC5F54 | u32 | the record map's empty key |
+
+### DepositManager
+
+`game.dll+0x33265E8` (a pointer to it), `HfDepositManager`. Entities that hand out supplies (a Supply Pack). At +0x20 a map of entities to deposits; at +0x60 a map of entities to definition overrides. From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `amounts` | +0x50 | ptr | 8 bytes per deposit: +0 the supplies left (u32) |
+| `definitions` | +0xA0 | ptr | the overriding definitions, 0x98 bytes each (+0x24 the self-use ability: 2629 for the B-1 Supply Pack) |
+
+### AvatarManager
+
+`game.dll+0x3326D20` (a pointer to it), `HfAvatarManager`. The Helldivers' avatars (the AvatarComponent manager, component world +0x956128): their movement, stamina and actions. At +0xF8 a map of entities to indexes; descriptor pointers at +0x110 + 8 index (+8 the entity); the avatars simulated here take the first indexes (their count at +0x70); each index's simulation block at +0x53E170 + 0x1238 index begins with its action context (+0 the entity, +8 the running action, TryStartAction's first argument), its state flags at +0x53E880 and +0x53E888 (u64 each) of the same stride; AvatarSettings' private copies inline from +0x547D24 (0x354 bytes each). From HD2Runtime 0.40.1 research player-equipment; HellForge's resupply_from_pack (actions.c). Former names: `ActionManager`.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `simulated` | +0x70 | u32 | avatars simulated on this machine: they take the first indexes, and AvatarUpdate runs only those |
+
+### WieldableManager
+
+`game.dll+0x3326730` (a pointer to it), `HfWieldableManager`. Wieldable items (weapons). At +0x18 a map of entities to indexes. From HellForge's credit_to_player (actions.c) and co-op shot swaps (shots.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `wielders` | +0x38 | ptr | the wielder of each index (u32 entity each) |
+
+### FactionManager
+
+`game.dll+0x3326CB8` (a pointer to it), `HfFactionManager`. The entities' factions. At +0x12050 a map of entities to indexes. From HellForge's credit_to_player (actions.c) and Pelican turret (behaviours.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `masks` | +0x12078 | ptr | the faction mask of each index (u32 each; bit 0 the Helldivers' side) |
+
+### BehaviourManager
+
+`game.dll+0x3326740` (a pointer to it), `HfBehaviourManager`. The entities' behaviours. At +0x40 a map of entities to indexes. From HellForge's behaviours (behaviours.c) and spawn_pelican (actions.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `handles` | +0x58 | ptr | a pointer per index: +8 the entity (u32), +0x10 its network handle (0x7FFF: none) |
+| `records` | +0x60 | ptr | the behaviour records, 0x1F8 bytes each; P (record + 8) is a behaviour's state, P+0 its stage |
+
+### TagManager
+
+`game.dll+0x3326430` (a pointer to it), `HfTagManager`. The entities' tag words. At +0x18 a map of entities to indexes. From HellForge's credit_to_player (actions.c) and Pelican turret (behaviours.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `tags` | +0x38 | ptr | the tag word of each index (u64 each): 0x10000000 its kills credited to no one, bit 35 never targeted |
+
+### Clock
+
+`game.dll+0x3326348` (a pointer to it), `HfClock`. The game's clock, which behaviours time themselves by. From HellForge's behaviours (behaviours.c) and spawn_pelican (actions.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `now` | +0x18 | u64 | now, in microseconds |
+
+### EngineApi
+
+`game.dll+0x3326308` (a pointer to it), `HfEngineApi`. The engine's C API (helldivers2.exe's), which the game calls into: one pointer per domain (input, world, application, unit, camera, material, ...), each to that domain's table of functions. From HellForge's Pelican turret (behaviour_turret.c) and ability sounds (abilities.c); HellForge's mod text (registry.c HookText); the C API's layout: Stingray's ScriptApi order (input, world, application, unit, ...), checked against the tables' contents.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `application` | +0x10 | ptr | the Application functions (helldivers2.exe+0x27C9E60): +0x3E8 the text of an id, const char* (u32 id), which HellForge points at its own to answer mod texts; +0x378 the resource manager's lock (ResourceOverride) |
+| `unit` | +0x18 | ptr | the Unit functions (helldivers2.exe+0x27C8F10): +0x88 a node's world position (unit, node), +0x748 the unit object for a handle (jumps to UnitFromHandle) |
+
+### EngineUnitApi
+
+`game.dll+0x3326310` (a pointer to it), `HfEngineUnitApi`. An engine API table in helldivers2.exe (helldivers2.exe+0x27CD4C0 on this build). From HellForge's injure (actions.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `actor_by_name` | +0x10 | ptr | UnitActorByName (helldivers2.exe 0x799DE0): (unit, actor name hash, NULL) -> the actor, 0xFFFFFFFF none |
+
+### WwiseApi
+
+`game.dll+0x3326318` (a pointer to it), `HfWwiseApi`. The Wwise plugin's API table; its functions take the WwiseWorld (hf_global_Game's wwise_world). From HellForge's ability sounds (abilities.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `post` | +0x338 | ptr | posts a sound: (world, event, game object, flags) |
+| `unit_source` | +0x590 | ptr | the source on a unit's node: (world, unit, node) |
+| `source_object` | +0x5A0 | ptr | a source's game object: (world, source), -1 when the source is gone |
+
+### AbilityManager
+
+`game.dll+0x3326640` (a pointer to it), `HfAbilityManager`. The abilities running on entities: StartAbility's first argument. At +0x18 a map of entities to indexes; it ticks each ability at 60 a second (AbilityTick). From HellForge's silo countdown (abilities.c) and shield wall (shield_block.c).
+
+### WeaponLinkerManager
+
+`game.dll+0x33267F8` (a pointer to it), `HfWeaponLinkerManager`. WeaponLinker instances (a silo's targeting remote linked to its missile and rack). At +0x20 a map of entities to indexes; its copies of the records of instances this machine has authority over (12 bytes each) are compacted when one goes. From HellForge's silo countdown (abilities.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `descriptors` | +0x38 | ptr | a descriptor pointer per index (LinkerRecord's argument) |
+| `copy_count` | +0x90 | u32 | record copies in use |
+| `copies` | +0x98 | ptr | the record copies, 12 bytes each |
+
+### SeekingMissileManager
+
+`game.dll+0x3326DF0` (a pointer to it), `HfSeekingMissileManager`. Seeking missiles (a silo's). At +0x20 a map of entities to indexes. From HellForge's silo countdown (abilities.c) and co-op diagnostics (coop_diag.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `rows` | +0x48 | ptr | 0xC0 bytes per index: +0x48 the missile's position (3 floats) |
+| `instances` | +0x50 | ptr | 0x38 bytes per index: +8 its remote's network handle, +0xC its guidance target, +0x35 engine byte, +0x36 launched byte |
+
+### LaserDesignatorManager
+
+`game.dll+0x3326960` (a pointer to it), `HfLaserDesignatorManager`. Laser designators (a silo remote's laser). At +0x30 a map of entities to indexes. From HellForge's silo countdown (abilities.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `instances` | +0x58 | ptr | 0x38 bytes per index: +0x2C the marked point (3 floats) |
+| `on` | +0x60 | ptr | a byte per index: the laser on |
+
+### GuidanceTargets
+
+`game.dll+0x3326BD8` (a pointer to it), `HfGuidanceTargets`. Guided entities' targets (SetGuidanceTarget). At +0x840 a map of entities to indexes. From HellForge's silo countdown (abilities.c).
+
+### ExplosiveManager
+
+`game.dll+0x3326728` (a pointer to it), `HfExplosiveManager`. Explosives (SetExplosiveOwner's first argument). At +0x38 a map of entities to indexes. From HellForge's silo countdown (abilities.c).
+
+### EquipmentManager
+
+`game.dll+0x3326DC0` (a pointer to it), `HfEquipmentManager`. The Equipment component manager (component 233, component world +0xE9F8F0; how held items are wielded, holstered and dropped): EquipmentUpdate's first argument; EquipmentRecord looks in its private copies. At +0x20 a map of entities to indexes; a silo's targeting remote's owner is at +4 of its instance record. From HellForge's silo countdown (abilities.c); the component world's setter 0x568230, the record resolver 0x5092B0 and the world update 0x571250 (0x5731D9). Former names: `RemoteOwners`.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `records` | +0x40 | ptr | 48 bytes per index: +4 the owner entity |
+
+### HellpodRackManager
+
+`game.dll+0x3326A58` (a pointer to it), `HfHellpodRackManager`. Hellpod racks (RackReleaseItem's first argument). At +0x28 a map of entities to indexes. From HellForge's silo countdown (abilities.c).
+
+### AttachableManager
+
+`game.dll+0x3326698` (a pointer to it), `HfAttachableManager`. Attachables (what sits in someone's hands). At +0x18 a map of entities to indexes; records of 0xAC bytes (+0 the holder's link). From HellForge's loose remote guard (abilities.c).
+
+### MountManager
+
+`game.dll+0x3326438` (a pointer to it), `HfMountManager`. Mounts (a Pelican's turret). At +0x20 a map of entities to indexes. From HellForge's Pelican behaviours (behaviours.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `records` | +0x48 | ptr | 6 u32 per index: the mounted children 0 to 4 first |
+
+### DropAnchors
+
+`game.dll+0x3326658` (a pointer to it), `HfDropAnchors`. Drop positions (a transport Pelican's beacon). At +0x30 a map of entities to indexes. From HellForge's Pelican behaviours (behaviours.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `records` | +0x60 | ptr | 0x20 bytes per index: +0 the anchor |
+
+### PerceptionManager
+
+`game.dll+0x3326548` (a pointer to it), `HfPerceptionManager`. Perceivers and what they sense (FindPerceptionEntry's first argument). At +0x30 a map of entities to indexes. From HellForge's Pelican turret (behaviours.c, behaviour_turret.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `records` | +0x50 | ptr | the perceiver records, 0x13F8 bytes each |
+
+### WeaponManager
+
+`game.dll+0x3326660` (a pointer to it), `HfWeaponManager`. The weapon manager (component world +0xE9FC38): WeaponUpdate's, OwnSpareAmmo's, SpendRound's and MagazineRounds' first argument. From HellForge's Pelican turret refill (behaviour_turret.c); the component world's setter 0x568230 and the world update 0x571250 (0x573245); HD2Runtime 0.40.1 research team-reload-ammo (own spare total 0x744180 on the weapon manager 0x3326660). Former names: `MagazineManager`.
+
+### WeaponMagazines
+
+`game.dll+0x3326648` (a pointer to it), `HfWeaponMagazines`. The WeaponMagazine component manager (component 5, component world +0x180): a magazine weapon's spare magazines and rounds. AddMagazineRounds refills it; WeaponMagazineRecord looks in its private copies. From HellForge's Pelican turret refill (behaviour_turret.c); the component world's setter 0x568230 and the record resolver 0x4F3740; HD2Runtime 0.40.1 research team-reload-ammo (magazine manager 0x3326648: hash +0x20, descriptors +0x38, records +0x50). Former names: `MagazineRefills`.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `hash` | +0x20 | ptr | the hash of the entities that have an instance (8-byte rows: entity, instance index) |
+| `descriptors` | +0x38 | ptr | each instance's entity descriptor (8 bytes each: +0 type, +8 entity) |
+| `live` | +0x50 | ptr | each instance's live row, 12 bytes: +0 spare magazines (network field 0xEC64918B), +4 rounds in the magazine (MagazineRounds returns it) |
+
+### WeaponTargeting
+
+`game.dll+0x3326D30` (a pointer to it), `HfWeaponTargeting`. Weapons' targeting. At +0x150 a map of entities to indexes. From HellForge's Pelican turret (behaviours.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `records` | +0x178 | ptr | the targeting records, 0xD0 bytes each |
+| `network` | +0x180 | ptr | their network blocks, 0x18 bytes each |
+
+### ShieldManager
+
+`game.dll+0x3326630` (a pointer to it), `HfShieldManager`. The shields standing (relay bubbles, shield packs): a map of 8-byte entries {key, index} (index 0xFFFFFFFF: none) and, per index, a binding, a row and a live state. From HellForge's shield block (shield_block.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x30 | ptr | the map's entries, 8 bytes each |
+| `capacity` | +0x38 | u32 | the map's entries |
+| `empty` | +0x3C | u32 | the key of an empty entry |
+| `bindings` | +0x48 | ptr | a binding pointer per index (ShieldRecord's argument) |
+| `rows` | +0x50 | ptr | 0x88 bytes per index: +0 the physics handle |
+| `live` | +0x58 | ptr | 0x14 bytes per index: +2 broken (u8), +4 health |
+
+### CustomizationManager
+
+`game.dll+0x33264F8` (a pointer to it), `HfCustomizationManager`. The players' armor and its passives. At +0x30 the passive ids' slots (u32 each, 42 ids); at +0x930 a map of entities to records, their descriptor pointers at +0x948; per record an applied block at +0x96C + 0x44 record (+0x38 the helmet passive, +0x3C the armor passive). Kit records: the kit id at +0 (u32), its type at +0x28 (u32: 0 armour, 1 helmet, 2 cape). From HD2Runtime 0.40.1 research player-attributes; HellForge's set_passives and armor perks (passives.c, perks.c); HellForge's warbond showcase (warbond_showcase.c WarbondItemKit). Former names: `KitList`.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `kits` | +0x0 | ptr | the armor kits (a kit row's +0x1C its passive) |
+| `kit_count` | +0x8 | u32 | the kits |
+| `passives` | +0x20 | ptr | pointers to the passive rows (0x34 bytes each), by slot |
+| `passive_count` | +0x28 | u32 | the passive rows (32) |
+| `record_count` | +0x8E8 | u32 | records in use (at most 4, one a player) |
+
+### BombardmentManager
+
+`game.dll+0x3326CE8` (a pointer to it), `HfBombardmentManager`. Bombardments (an orbital barrage). At +0x30 a map of entities to indexes, filled within the spawn. From HellForge's co-op diagnostics (coop_diag.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `blocks` | +0x60 | ptr | 0x1C bytes per index: +0 shells a salvo, +4 salvos, +8 the target, +0x14 heading, +0x18 seed |
+
+### Progression
+
+`game.dll+0x347CEF8` (a pointer to it), `HfProgression`. The progression manager: this machine's player's account (catalogue, warbonds, purchases). Its purchased warbond items from +0xD8A5C (u32 ids). HellForge moves its warbond list and catalogue elsewhere when mods add warbonds, so do not read those from it. The player's progression: the item catalogue and inventory in one table (a part of the game state, which HellForge enlarges: its catalogue moves past the state's old end, state_moves.c). As the game has it: a count at +0x1CE0, 0xB8-byte records from +0x1CE4 (+4 mixId, +8 itemId, +0xC category, +0xB0 amount). From HellForge's warbonds (warbonds.c) and loadout scrub (loadout_scrub.c); KB hellforge-live-mod-sync-re-content; HellForge's live-added items (ownership.c, state_moves.c). Former names: `ProgressionManager`.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `bought_count` | +0xD8A58 | u32 | warbond items purchased (5280 at most), their ids following |
+| `login` | +0xDDCF8 | u32 | the login's state: 12 once logged in |
+| `pending_buy` | +0x17799D8 | u8 | nonzero while a warbond buy waits for its reply |
+| `pending_item` | +0x17799DC | u32 | the pending buy's seasonPassItemId |
+
+### PlayerHistory
+
+`game.dll+0x347CE50` (a pointer to it), `HfPlayerHistory`. The players' loadouts. Records of 0x1690 bytes from +0: the peer id at +0 (u64), the loadout at +0x38 (stratagem slots of 0x30 bytes at +0x188 with the type at +0, their count at +0x788), its loaded copy at +0xA28 (load type +0x9E4: 2 for a mission). Loadouts of players who left at +0x2FD10 (0x9F0 each); the shared stratagems at +0x45410 (64 of 0x6C: {type, choice, state}). From HellForge's loadout scrub (loadout_scrub.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0x2D200 | u32 | records in use |
+| `left_count` | +0x2FD0C | u32 | loadouts kept for players who left |
+
+### Profile
+
+`game.dll+0x347CDD8` (a pointer to it), `HfProfile`. This machine's player's saved loadout. At +0x4C 32 {stratagem stable id, uses} pairs (u32 each). From HellForge's loadout scrub (loadout_scrub.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `primary` | +0x40 | u32 | the primary weapon's loadout id |
+| `secondary` | +0x44 | u32 | the secondary weapon's loadout id |
+| `throwable` | +0x48 | u32 | the throwable's loadout id |
+
+### MenuStates
+
+`game.dll+0x347CE28` (a pointer to it), `HfMenuStates`. The UI state machine. Its state stack: 5 u32 from +0x429C, the top at +0x429C + 4 (depth - 1) (5 the Armory, 14 the mission briefing's loadout). Its presenter (+0x4294) is 0 while no menu is open. From HellForge's loadout scrub (loadout_scrub.c) and armory diagnostics (armory_diag.c); HellForge's live level 11 (difficulty.c, DifficultyCapTick). Former names: `UiManager`.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `presenter` | +0x4294 | u32 | the menu presenter open (14 the loadout screen) |
+| `depth` | +0x42B0 | u32 | states on the stack (1 to 5) |
+
+### MenuStack
+
+`game.dll+0x347CE38` (a pointer to it), `HfMenuStack`. The menu stack. From HellForge's loadout scrub (loadout_scrub.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `top` | +0x0 | u32 | the menu on top (11 the loadout screen) |
+
+### Armory
+
+`game.dll+0x33269E8` (a pointer to it), `HfArmory`. The armory's list (BuildArmoryList's, or HellForge's larger copy when mods add weapons): 32-byte entries, the loadout id at +0 and the entity at +8 (u64). Type t's entries start at entry [+0x1B24 + 4 t] and number [+0x1B40 + 4 t] (u32; 7 types, 1 primary, 2 support, 3 secondary). From HellForge's weapon registry (registry.c, registry_load.c) and warbond showcase (warbond_showcase.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `starts` | +0x1B24 | u32 | type 0's first entry; type t's at +4 t |
+| `counts` | +0x1B40 | u32 | type 0's entries; type t's at +4 t |
+
+### ThumbnailManager
+
+`game.dll+0x347CD80` (a pointer to it), `HfThumbnailManager`. The Armory's thumbnail manager: six cards of up to 15 icon requests rendered into one atlas. Card c's state at +1832 + 1816 c (u32, 8 complete), its request count at +1836 + 1816 c, its requests of 120 bytes from +32 + 1816 c (+24 the item's id, +100 its kind 0 weapon to 4 cape, +104 its stage: 1 waiting, 2 submitted, 3 unit available, 4 done). From HellForge's armory diagnostics (armory_diag.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `active_card` | +0x2B38 | u32 | the card being generated (0xFFFFFFFF none) |
+| `phase` | +0x2B58 | u32 | the active card's phase |
+
+### PackageSystem
+
+`game.dll+0x347CEB0` (a pointer to it), `HfPackageSystem`. The RefcountedPackageSystem: RequestPackages' system. Its reference map has 16-byte entries keyed by package id (u64, 0 empty) and no overflow path. From HD2Runtime 0.40.1 domains/package_residency; HellForge's load_package (packages.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x0 | ptr | the reference map's entries |
+| `capacity` | +0x8 | u32 | the map's entries |
+
+### GameConfig
+
+`game.dll+0x347CDF8` (a pointer to it), `HfGameConfig`. The game's config settings: FindConfigSetting's config. Two open-addressing tables of 48-byte entries, the online overrides at +0x12078 and the defaults at +0xC050 (each {entries, capacity +8, empty key +0xC, multiplier +0x10}; an entry's type at +0x14, its value at +0x18). From HellForge's live level 11 (difficulty.c, DifficultyCapValue).
+
+### NavigationSystem
+
+`game.dll+0x33263C8` (a pointer to it), `HfNavigationSystem`. The engine's navigation interface, a table of functions: its +8 sets up a nav world's navmesh grid (ecx the nav world's id), called for each mission's level (setup_navmeshgrid, pass 0x68) and for the ship. From HellForge's larger maps' navmesh (difficulty_maps.c, DIF_NAV_SYSTEM).
+
+### PhysicsPlugin
+
+`game.dll+0x3326380` (a pointer to it), `HfPhysicsPlugin`. Set by the physics plugin setup's first call (SetupPhysicsConfig, once per process): 0 until the engine's physics pools are set up. From HellForge's physics pools (difficulty_maps.c, DIF_PHYSICS_SETUP).
+
+### ObjectiveManager
+
+`game.dll+0x3326DA0` (a pointer to it), `HfObjectiveManager`. The mission's objective instances, which the HUD's objective updater (UpdateHudObjectives) numbers. From HellForge's more objectives (difficulty_missions.c, kHudListSites).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `instance_count` | +0x24 | u32 | objective instances in the mission |
+
+### HiveMindManager
+
+`game.dll+0x3326D10` (a pointer to it), `HfHiveMindManager`. The mission's HiveMind: the enemy director and the mission's countdowns. The mission's countdowns. With one timer, its slot at +0x51948: +4 a byte set once it has run out, +6 its pause byte (1 paused), which the countdown's update honours; hf->freeze_mission_timer writes it, host only. From HellForge's mission countdown (difficulty_countdown.c, kWidgetTimeStub); HD2Runtime 0.40.1 research mission-timer; HellForge's freeze_mission_timer (actions.c). Former names: `MissionTimers`.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `level` | +0x650 | ptr | the mission's level (lg): its difficulty level at +0xF9 (u8) |
+| `timer_count` | +0x67C | u32 | the mission's timers (hf->freeze_mission_timer needs 1) |
+| `director` | +0x6B0 | ptr | the timer's director: +8 the game mode's entity (u32) |
+| `guard_compositions` | +0x51884 | u32 | the compiled map guard (outpost) compositions, family 3; their rows inline from +0x41138 |
+| `reinforcement_compositions` | +0x5188C | u32 | the compiled reinforcement compositions, family 4; their rows inline from +0x432F8 (PickReinforcementComposition reads them) |
+| `guard_budget` | +0x518B4 | f32 | the outposts' guard budget, which the map guards spend |
+| `countdown_left` | +0x51948 | f32 | the mission countdown left, s |
+| `expired` | +0x5194C | u8 | set once the timer has run out |
+| `paused` | +0x5194E | u8 | 1 while the timer is paused |
+
+### Telemetry
+
+`game.dll+0x347CE18` (a pointer to it), `HfTelemetry`. The game's telemetry: the mission-end telemetry record (TelemetryMissionEnd) at +0x31820 keeps 16 objective instances. From HellForge's more objectives (difficulty_missions.c, DIF_TELEMETRY_COUNT_SITE).
+
+### GuardForces
+
+`game.dll+0x33265C0` (a pointer to it), `HfGuardForces`. The mission's outposts (GuardForce records). A record (0x2B8 bytes): +0x2A8 its size (1 small, 2 medium, 3 large, 4 stronghold), +0x2AB whether it is active. From HellForge's level 11 watch (difficulty_diag.c, WatchOutposts).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0xC | u32 | outposts |
+| `records` | +0x48 | ptr | the GuardForce records, 0x2B8 bytes each |
+
+### UnitRegistry
+
+`helldivers2.exe+0x1A100F0` (a pointer to it), `HfUnitRegistry`. The engine's unit registry: every unit by its handle's index (UnitFromHandle reads it under its lock at +0xD0). From HellForge's unit positions (event_polls.c EVP_EXE_UNITS).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `objects` | +0x88 | ptr | the units, a pointer each by index |
+| `count` | +0x98 | u32 | how many indexes |
+| `generations` | +0xA0 | ptr | a byte per index: its generation (handle >> 22) |
+
+### EngineCore
+
+`helldivers2.exe+0x1A10208` (a pointer to it), `HfEngineCore`. The engine's core object: its worlds, its resource manager and its resource overrides. From HellForge's packages (reference_data.h PKG_EXE_ENGINE) and live data (live_data.c); MainWorld and SetResourceOverride read it.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `overrides` | +0x3F8 | ptr | the resource override store (SetResourceOverride) |
+| `resource_manager` | +0x400 | ptr | the resource manager: +0x208 its package store (+0x80 count, +0x88 packages), +0x218 its load queue (24-byte entries, head +0x321C, tail +0x3220) |
+| `world_count` | +0x590 | u32 | how many worlds |
+| `worlds` | +0x598 | ptr | the worlds, a pointer each |
+
+### NetworkManager
+
+`helldivers2.exe+0x1A10278` (a pointer to it), `HfNetworkManager`. The engine's network manager (NetworkManagerUpdate). From HellForge's dead connection reaper (netreap.c) and network width (registry_load.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `config` | +0x0 | ptr | the network configuration: +0x0C the type width, +0x10 field type count, +0x18 field types, +0x28/+0x40/+0x70 the entity type arrays |
+| `transport` | +0x98 | ptr | the transport: +0xA0 its connection count, +0xA8 the connections |
+| `session` | +0xA8 | ptr | the game session (+0x18 its configuration, +0x4870 its copy of the type width) |
+| `kept_count` | +0xD0 | u32 | how many peers the game asked to keep |
+| `kept` | +0xD8 | ptr | those peers' ids (u64) |
+
+### NetworkConfigOwner
+
+`helldivers2.exe+0x1A10268` (a pointer to it), `HfNetworkConfigOwner`. The object whose +0 is the engine's network configuration (the plan's network_config, [[cell]]); in the decoded image it holds the same pointer as NetworkManager. From HellForge's network types (registry.c, hellforge_modloader.c FieldTypes).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `config` | +0x0 | ptr | the network configuration (see NetworkManager's config) |
+
+### EngineEntityIndex
+
+`helldivers2.exe+0x1B135B8` (a pointer to it), `HfEngineEntityIndex`. The engine's entity index: whether an entity handle is alive (its generation). From HellForge's entity checks (event_polls.c EVP_EXE_ENTITIES).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `size` | +0x80 | u32 | how many indexes |
+| `generations` | +0x88 | ptr | a byte per index: its generation (handle >> 22 & 0xFF) |
+
+### NavWorlds
+
+`helldivers2.exe+0x27C30B8` (a pointer to it), `HfNavWorlds`. The navigation worlds, a pointer each by id (their count is the u32 at 0x27C30C0). A nav world: +0x08 min x, y, +0x14 max x, y, +0x6710 its grid (2 x u16), +0x6718 the tile size, +0x671C..+0x6728 the grid's min and max. From HellForge's larger maps (difficulty_maps.c DIF_NAV_WORLDS).
+
+### PhysicsProperties
+
+`helldivers2.exe+0x27C5E48` (a pointer to it), `HfPhysicsProperties`. The engine's physics properties: the collision filters by name. From HellForge's shield block (shield_block.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `filter_count` | +0xF8 | u32 | how many collision filters |
+| `filter_names` | +0x100 | ptr | their name hashes (u32 each); a filter's row is its place here |
+
+### CollisionFilterA
+
+`helldivers2.exe+0x27C5E40` (a pointer to it), `HfCollisionFilterA`. One of the two collision filters (its slot +0x18 is CollisionFilterPairs). From HellForge's shield block (shield_block.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `matrix` | +0x28 | u32 | the collision matrix's first word: 16 bytes per filter row, a bit per other filter |
+
+### CollisionFilterB
+
+`helldivers2.exe+0x27C5B90` (a pointer to it), `HfCollisionFilterB`. The other collision filter (its slot +0x18 is CollisionFilterPairs too). From HellForge's shield block (shield_block.c).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `matrix` | +0x28 | u32 | the collision matrix's first word: 16 bytes per filter row, a bit per other filter |
+
+### StatusReceivers
+
+`game.dll+0x3326620` (a pointer to it), `HfStatusReceivers`. The status effect receivers: ApplyStatus's, HasStatus's and RemoveStatus's first argument. At +0x12C0 a map of entity ids to indexes (8-byte entries; capacity +0x12C8, empty key +0x12CC, hash multiplier +0x12D0). From HD2Runtime 0.40.1 research acid-storm-attachment; HasStatus's callers at 0x4B5241 and 0x4B85A6.
+
+### ComponentWorld
+
+`game.dll+0x346BFC8` (a pointer to it), `HfComponentWorld`. The component world, EntityManager + 0x40: the component manager globals point inside it (HealthManager at +0x7C6230, ScoreManager at +0x7C7368, PlayerManager at +0xEA0818). Re-pointed together with EntityManager. From HD2Runtime 0.40.1 research event-state (componentWorld).
+
+### GameModeMission
+
+`game.dll+0x3326D60` (a pointer to it), `HfGameModeMission`. The game_mode_mission component (capacity 1), the mission's game-mode state beside GameMode. From HD2Runtime 0.40.1 research event-state (gameModeMission).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `max` | +0x48 | u32 | the most instances seen |
+| `count` | +0x50 | u32 | instances (0 or 1) |
+| `descriptor` | +0x80 | ptr | the instance's entity descriptor |
+
+### CareerStats
+
+`game.dll+0x346D570` (a pointer to it), `HfCareerStats`. The player's career stats from the backend (the UI's "Kills: %u" line reads them). From HD2Runtime 0.40.1 research event-combat (careerStats, career_kills_ui 0x17B4680).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `kills` | +0x14 | u32 | career kills, the larger of the local and server values |
+
+### ProjectileWeapons
+
+`game.dll+0x33266D8` (a pointer to it), `HfProjectileWeapons`. The ProjectileWeapon component: ProjectileFire's first argument; ProjectileWeaponRecord looks in its private copies. From HD2Runtime 0.40.1 research loadout-pod (projectileWeapon); vehicle-mech-components.
+
+### WeaponDatas
+
+`game.dll+0x3326CE0` (a pointer to it), `HfWeaponDatas`. The WeaponData component (weapon_data): WeaponDataRecord looks in its private copies. From HD2Runtime 0.40.1 research loadout-pod (weaponData); railgun-charge.
+
+### BeamWeapons
+
+`game.dll+0x3326A20` (a pointer to it), `HfBeamWeapons`. The BeamWeapon component (0x70-byte instances): BeamWeaponUpdate's first argument; BeamWeaponRecord looks in its private copies. From HD2Runtime 0.40.1 research beam-damage-per-weapon; component-swap-liberator-beam.
+
+### LinkedAmmo
+
+`game.dll+0x3326AA8` (a pointer to it), `HfLinkedAmmo`. The WeaponLinkedAmmo component: WeaponProjectileType reads its round type for weapons with linked ammunition. From HD2Runtime 0.40.1 research loadout-pod (linkedAmmo); fired-type-callers.
+
+### Corpses
+
+`game.dll+0x3326920` (a pointer to it), `HfCorpses`. The corpse component: per corpse the link to the entity it came from (CorpseSource). At +0x28 a map of entity ids to indexes (capacity +0x30, empty key +0x34, hash multiplier +0x38); per index a 0x38-byte record at +0x50 (+0 the source network id) and a 0x48-byte spawn record at +0x48 (+0x3C the source entity). From HD2Runtime 0.40.1 research event-mission (corpse); CorpseSource 0x870310.
+
+### WeaponWindUps
+
+`game.dll+0x33267A0` (a pointer to it), `HfWeaponWindUps`. The WeaponWindUp component manager (component 70, component world +0x1B29B8): WindUpUpdate's first argument; WeaponWindUpRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 passes it to WindUpUpdate (0x57178C).
+
+### Recharges
+
+`game.dll+0x3326768` (a pointer to it), `HfRecharges`. The Recharge component manager (component 99, component world +0x1C6F50; jump and hover packs' recharge): RechargeRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research shield-recharge (recharge manager 0x3326768).
+
+### WeaponReloads
+
+`game.dll+0x3326A70` (a pointer to it), `HfWeaponReloads`. The WeaponReload component manager (component 113, component world +0x7571C8). At +0x20 the hash of the entities that have an instance (the out-of-ammo handler's test); WeaponReloadRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research component-membership (instance hash +0x20, resolver 0x4FD220).
+
+### WeaponRoundsManager
+
+`game.dll+0x3326CF0` (a pointer to it), `HfWeaponRoundsManager`. The WeaponRounds component manager (component 117, component world +0x757398; weapons loaded round by round). WeaponRoundsRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research team-reload-ammo (rounds manager 0x3326CF0).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0x18 | u32 | instances (the world update's loop bound, 0x57201C) |
+| `descriptors` | +0x40 | ptr | each instance's entity descriptor (8 bytes each: +0 type, +8 entity) |
+| `live` | +0x58 | ptr | each instance's live row, 20 bytes: +0 its own spare rounds (network field 0x9A34C336) |
+
+### WeaponCharges
+
+`game.dll+0x3326C20` (a pointer to it), `HfWeaponCharges`. The WeaponCharge component manager (component 204, component world +0x75F1D8): WeaponChargeUpdate's first argument; WeaponChargeRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research railgun-charge (charge update 0x73C8F0, resolver 0x5052C0).
+
+### Throwers
+
+`game.dll+0x3326880` (a pointer to it), `HfThrowers`. The Thrower component manager (component 258, component world +0xEB5CF0): ThrowerUpdate's first argument; ThrowerRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 passes it to ThrowerUpdate (0x57369F).
+
+### Throwables
+
+`game.dll+0x33264C0` (a pointer to it), `HfThrowables`. The Throwable component manager (component 259, component world +0xEB5DA8; grenades and thrown knives): ThrowableUpdate's first argument. Its records come from the type lookup ThrowableTypeRecord only (no private copies). From the component world's setter 0x568230 (cells stored in component order: the one after Thrower 258, before Jumppack 264 with four between) and the world update 0x571250, which passes it to ThrowableUpdate (0x5736AE).
+
+### ArcWeapons
+
+`game.dll+0x3326C10` (a pointer to it), `HfArcWeapons`. The ArcWeapon component manager (component 265, component world +0xEB64A0; the Arc Thrower's arcs): ArcWeaponUpdate's first argument; ArcWeaponRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 calls ArcWeaponUpdate for each instance (0x57374E).
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0x38 | u32 | instances (the world update's loop bound, 0x573737) |
+
+### WeaponHeats
+
+`game.dll+0x3326D48` (a pointer to it), `HfWeaponHeats`. The WeaponHeat component manager (component 266, component world +0xEB6570): WeaponHeatUpdate's first argument; WeaponHeatRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; HD2Runtime 0.40.1 research overheat-cooling, reload-heat-knife.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0x18 | u32 | instances (WeaponHeatUpdate's loop bound, 0x764988) |
+| `descriptors` | +0x40 | ptr | each instance's entity descriptor (8 bytes each: +8 entity, +0x14 bit 1 owned by this machine; WeaponHeatUpdate steps only those) |
+
+### AbilityWeapons
+
+`game.dll+0x3326A10` (a pointer to it), `HfAbilityWeapons`. The AbilityWeapon component manager (component 267, component world +0xEB6620; weapons whose fire starts an ability: the C4 detonator, the silo's targeting remote): AbilityWeaponUpdate's first argument. Its records come from the type lookup AbilityWeaponTypeRecord. From the component world's setter 0x568230 (cells stored in component order: between WeaponHeat 266 and component 269) and the world update 0x571250, which passes it to AbilityWeaponUpdate (0x573773).
+
+### MeleeWeapons
+
+`game.dll+0x3326B78` (a pointer to it), `HfMeleeWeapons`. The MeleeWeapon component manager (component 268, component world +0xEB6670). Its records come from the type lookup at game.dll+0x50E360 (not mapped: it follows a jmp, so it does not pass the start check). From the component world's setter 0x568230 (cells stored in component order: the second between WeaponHeat 266 and component 269); HD2Runtime 0.40.1 research knife-melee (0xA6A0B7 reads the MeleeWeapon record's stamina cost).
+
+### WeaponCustomizations
+
+`game.dll+0x3326A38` (a pointer to it), `HfWeaponCustomizations`. The WeaponCustomization component manager (component 271, component world +0xEB6810; a weapon's attachment slots and units): WeaponCustomizationUpdate's first argument; WeaponCustomizationRecord looks in its private copies. From game.dll's record resolvers (the shared template: the manager's private-copy map, then a tail jump to the type lookup) and the component world's setter 0x568230, which stores each manager's address in its cell in component order; the world update 0x571250 passes it to WeaponCustomizationUpdate (0x5737CA).
+
+### AiSpawnerManager
+
+`game.dll+0x33265C8` (a pointer to it), `HfAiSpawnerManager`. The AiSpawnerComponent manager (component world +0x75EA20): The AI spawners (the director's spawn points and breaches). At +0x28 a map of entities to indexes. From game.dll: AiSpawnerComponent's growth function 0x7FB4D0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x75EA20 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x28 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### BugholeManager
+
+`game.dll+0x33267B0` (a pointer to it), `HfBugholeManager`. The BugholeComponent manager (component world +0x7C56B0): Bug holes (Terminid nests' holes). At +0x28 a map of entities to indexes. From game.dll: BugholeComponent's growth function 0x859400 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7C56B0 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x28 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### VehicleMotionManager
+
+`game.dll+0x3326458` (a pointer to it), `HfVehicleMotionManager`. The VehicleMotionComponent manager (component world +0x7C72E8): Vehicle motion (vehicles' and mechs' driving physics). At +0x40 a map of entities to indexes. From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: VehicleMotionComponent's growth function 0x71AA70 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7C72E8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x40 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### VehicleManager
+
+`game.dll+0x3326668` (a pointer to it), `HfVehicleManager`. The VehicleComponent manager (component world +0x1C6348): Vehicles and mechs (VehicleSettings resolves their records; private copies at +0xC0, copy map at +0x80). At +0x38 a map of entities to indexes. From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: VehicleComponent's growth function 0x703B40 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1C6348 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x38 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### SquadTransportManager
+
+`game.dll+0x3326CC0` (a pointer to it), `HfSquadTransportManager`. The SquadTransportComponent manager (component world +0x1C6EB0): Squad transports (enemy dropships carrying a squad). At +0x20 a map of entities to indexes. From game.dll: SquadTransportComponent's growth function 0x6887B0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1C6EB0 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### SquadFormationManager
+
+`game.dll+0x3326A88` (a pointer to it), `HfSquadFormationManager`. The SquadTransportFormationComponent manager (component world +0x757568): Squad transport formations (the squad slots of a dropship). At +0x18 a map of entities to indexes. From game.dll: SquadTransportFormationComponent's growth function 0x68A550 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x757568 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x18 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### GoreManager
+
+`game.dll+0x33264D0` (a pointer to it), `HfGoreManager`. The GoreComponent manager (component world +0x7FF2F8): Gore (dismemberment state). At +0x156DA0 a map of entities to indexes. From game.dll: GoreComponent's growth function 0x9090B0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7FF2F8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x156DA0 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### StratagemBlockerManager
+
+`game.dll+0x3326568` (a pointer to it), `HfStratagemBlockerManager`. The StratagemBlockerComponent manager (component world +0x1E60): Stratagem blockers (what jams stratagems in an area). At +0x18 a map of entities to indexes. From game.dll: StratagemBlockerComponent's growth function 0x9E30F0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1E60 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x18 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### OrbitalAbilityManager
+
+`game.dll+0x33267F0` (a pointer to it), `HfOrbitalAbilityManager`. The OrbitalAbilityComponent manager (component world +0xF064A8): Orbital abilities (OrbitalAbilitySettings resolves their records; private copies at +0xD8, copy map at +0x98). At +0x58 a map of entities to indexes. From game.dll: OrbitalAbilityComponent's growth function 0x5F6D40 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF064A8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x58 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### HellpodPayloadManager
+
+`game.dll+0x3326560` (a pointer to it), `HfHellpodPayloadManager`. The HellpodPayloadComponent manager (component world +0x75C1B8): Hellpod payloads (what a hellpod delivers; HellpodPayloadSettings resolves their records, private copies at +0xA0, copy map at +0x60). At +0x28 a map of entities to indexes. From game.dll: HellpodPayloadComponent's growth function 0x933700 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x75C1B8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x28 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### UnitManager
+
+`game.dll+0x3326508` (a pointer to it), `HfUnitManager`. The UnitComponent manager (component world +0x1B4170): The entities' units (their scene units; UnitSettings resolves their records, private copies at +0xC0, copy map at +0x80). At +0x40 a map of entities to indexes. From game.dll: UnitComponent's growth function 0x6E98E0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x1B4170 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x40 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### RotationManager
+
+`game.dll+0x33264A0` (a pointer to it), `HfRotationManager`. The RotationComponent manager (component world +0xF065D8): Rotation (how entities turn; RotationSettings resolves their records, private copies at +0xB8, copy map at +0x78). At +0x38 a map of entities to indexes. From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers); game.dll: RotationComponent's growth function 0x625CE0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF065D8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x38 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### DisplacementManager
+
+`game.dll+0x3326AC8` (a pointer to it), `HfDisplacementManager`. The DisplacementComponent manager (component world +0xEB71D8): Displacement (DisplacementSettings resolves their records, private copies at +0xA0, copy map at +0x60). At +0x20 a map of entities to indexes. From HD2Runtime 0.40.1 research hoverpack-components (code.managers.displacement); game.dll: DisplacementComponent's growth function 0x88FE20 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xEB71D8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### JumppackManager
+
+`game.dll+0x3326BB8` (a pointer to it), `HfJumppackManager`. The JumppackComponent manager (component world +0xEB63F8): Jump packs and hover packs (JumppackSettings resolves their records, private copies at +0xA0, copy map at +0x60). At +0x20 a map of entities to indexes. From HD2Runtime 0.40.1 research hoverpack-components (model.perInstanceState, code.managers.jumppack); game.dll: JumppackComponent's growth function 0x9B8380 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xEB63F8 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+| `hover_input` | +0x40 | ptr | 12 bytes per index: the replicated hover input vector |
+| `flight` | +0x48 | ptr | 76 bytes per index: +0 launch latch, +1 sustain latch, +4 launch elapsed (f32 s), +8 sustain elapsed (f32 s), +0xC launch window (f32 s) |
+| `flags` | +0x50 | ptr | 5 bytes per index, replicated: +0 active, +1 sustain, +2 hover launch, +3 mode toggle, +4 thrusting |
+
+### EagleManager
+
+`game.dll+0x3326650` (a pointer to it), `HfEagleManager`. The EagleComponent manager (component world +0xF0B300): The Eagle jets in flight (EagleSettings resolves their records, private copies at +0xB0, copy map at +0x70). At +0x30 a map of entities to indexes. From HD2Runtime 0.40.1 research eagle-components (nativeModel); game.dll: EagleComponent's growth function 0x8A9730 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF0B300 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x30 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+| `records` | +0x58 | ptr | 0xFC bytes per index, the jet: +0xC its target index (9 none), +0x10 targets tracked (<= 8), +0x14 8 target entities, +0x54 aim point (3 f32), +0x68 releases so far, +0x70 attacking (u8), +0x78 jet position (3 f32), +0xD4 velocity (3 f32), +0xE0 speed (f32) |
+| `flight` | +0x60 | ptr | 28 bytes per index: +0 the approach start position, +0xC the target point at the call (3 f32 each) |
+
+### EncounterManager
+
+`game.dll+0x3326618` (a pointer to it), `HfEncounterManager`. The EncounterComponent manager (component world +0x7C4D30): The director's encounters: its reinforcements (EncounterUpdate picks a composition and sends it by transport or breach). At +0x948 a map of entities to indexes. From HD2Runtime 0.40.1 research spawn-channels-dev10 (reinforcement pins in 0x8B8A20); game.dll: EncounterComponent's growth function 0x8BAAE0 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x7C4D30 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x948 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### AiSquadManager
+
+`game.dll+0x33265A0` (a pointer to it), `HfAiSquadManager`. The AiSquadComponent manager (component world +0xF05068): AI squads. A squad's record (0x2510 bytes) queues the enemies it is to spawn: up to 32 entries of 0xC8 bytes from +0xC08, their count at +0x2508 (a 33rd entry overruns the count and crashes the game). At +0x20 a map of entities to indexes. From HD2Runtime 0.40.1 research spawn-capacity-dev11 (queue); its add helper 0x54D680 (count +0xC, descriptors +0x38, records +0x40); game.dll: AiSquadComponent's growth function 0x806520 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF05068 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `count` | +0xC | u32 | squads in use |
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+| `descriptors` | +0x38 | ptr | descriptor pointers by index (+8 the entity) |
+| `records` | +0x40 | ptr | the squad records, 0x2510 bytes each, by index |
+
+### SensorEyeManager
+
+`game.dll+0x3326520` (a pointer to it), `HfSensorEyeManager`. The SensorEyeComponent manager (component world +0x75ED20): Sensor eyes (what enemies and sentries see with: SensorEyeRanges' first argument; SensorEyeSettings resolves their records, private copies at +0xB0). At +0x30 a map of entities to indexes. From HD2Runtime 0.40.1 research sentry-components (sensor manager game+0x3326520); game.dll: SensorEyeComponent's growth function 0x64EB50 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0x75ED20 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x30 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### TurretManager
+
+`game.dll+0x3326D70` (a pointer to it), `HfTurretManager`. The TurretComponent manager (component world +0xEB5060): Turrets (sentries, mounted guns: TurretUpdate's first argument; TurretSettings resolves their records, private copies at +0xA8). At +0x28 a map of entities to indexes. From HD2Runtime 0.40.1 research sentry-components and vehicle-mech-components (turret manager game+0x3326D70); game.dll: TurretComponent's growth function 0x6E1120 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xEB5060 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x28 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
+
+### LocomotionManager
+
+`game.dll+0x3326CF8` (a pointer to it), `HfLocomotionManager`. The LocomotionComponent manager (component world +0xF06698): Locomotion (how characters move; private copies at +0xA8, copy map at +0x68). At +0x20 a map of entities to indexes. From HD2Runtime 0.40.1 research vehicle-mech-components (lifecycle.managers: LocomotionComponentData); game.dll: LocomotionComponent's growth function 0x9CE510 names it and its add helpers load this cell; the world's constructor (0x568230) stores component world +0xF06698 here.
+
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `map` | +0x20 | ptr | the entity map's entries, 8 bytes each (entity u32, index u32); the map's capacity (u32) is 8 bytes after this field, its empty key 0xC after it, its hash multiplier 0x10 after it |
 
 ## Components
 

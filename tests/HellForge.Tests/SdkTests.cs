@@ -79,15 +79,17 @@ static class SdkTests
                 "No functions: an empty table.");
         });
 
-        test("Function mappings refuse bad types, names, code, offsets, other builds and duplicate names", () =>
+        test("Function mappings refuse bad types, C and C++ keywords as names, code, offsets, other builds and duplicate names", () =>
         {
             foreach (var entries in new[]
             {
                 Function("Bad", true, param: """{"name":"x","type":"double","meaning":"m"}"""),
                 Function("Bad", true, param: """{"name":"int","type":"uint32_t","meaning":"m"}"""),
+                Function("Bad", true, param: """{"name":"template","type":"uint32_t","meaning":"m"}"""),   // C++: the editor builds the headers as C++
                 Function("Bad", true, param: """{"name":"mod","type":"uint32_t","meaning":"m"}"""),
                 Function("Bad", true, param: """{"name":"manager","type":"uint32_t","meaning":"m"}"""),
-                Function("Bad", true, returns: "uint16_t"),
+                Function("Bad", true, returns: "int8_t"),
+                Function("Bad", true, param: """{"name":"x","type":"const char**","meaning":"m"}"""),
                 Function("Bad", true, code: "48 89 5C"),
                 Function("Bad", true, code: "?? 89 5C 24 08 57 48 83"),
                 Function("Bad", true, code: "48 89 5C 24 08 57 48 8G"),

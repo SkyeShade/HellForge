@@ -20,6 +20,14 @@ On `dev`, since 0.4.0-beta.
 - **Entities built from parts (SDK 17).** `parts` in `register_entity` and `add_entity` takes each component's record
   from an entity of your choice, with or without a base
   ([an entity from parts](docs/modding/enemies.md#an-entity-from-parts)).
+- **516 more game functions and 93 more game globals by name.** `hf_fn_` and `hf_global_` now reach 526 functions and
+  108 globals, in game.dll and helldivers2.exe. Each function's first bytes are checked against the game, and its
+  arguments come from the code that calls it ([hooking by name](docs/modding/hooks.md#hooking-by-name)). They cover:
+  - damage, health and status effects, and weapons with their heat, charge and reloads
+  - eagles, jump packs, vehicles, the director's patrols and reinforcements, and the level generator
+  - an entity's life on this machine: its components' spawn passes and the entity being switched on and off
+  - in the engine: spawning and moving units, animation variables, debug lines, materials, cameras, level volumes and
+    network sessions (#335)
 - **Mods can animate their weapons.** A data spec's `animations` names a JSON file with the joints that move, their clips
   and the state machine that plays them on the game's events. HellForge builds the unit copy's own bones, clips and
   state machine from it ([animations](docs/modding/animations.md)). `HellForge.Cli unit-joints` lists a unit's joints,
@@ -104,6 +112,9 @@ On `dev`, since 0.4.0-beta.
   The sync then brings in everything it can from your live account: level, unlocks, ship modules, medals and samples,
   the ship's name and the tutorial progress. The premium warbonds you own open without a purchase in Forge Credits. It is the first profile of a new installation and the launcher's first choice. Existing profiles keep
   their template, and `starter` stays for earning everything again (#282, #262).
+- **`hf_global_EngineApi`'s fields say what they are.** `table` is now `application` and `scene_graph` is now `unit`:
+  the engine's C API keeps one table per domain, and these two are the Application and Unit functions. A mod that
+  read either field by its old name needs the new one; the offsets are unchanged (#335).
 - **No fixed limit on mods' entities and weapons.** Mods together could register 64 entity blocks and 512 entities and
   weapons. HellForge now takes as many as the game's own tables hold (its entity map has room for about 2,187 more),
   at boot and in live changes. A strat pack and a compendium together no longer run out (#307).
