@@ -128,6 +128,9 @@ typedef struct HfWeapon
     uint32_t arc;
 } HfWeapon;
 
+/* A part of an entity (SDK 17, HfEntity.parts): a component's name ("#52": its number) and the entity whose record it takes. */
+typedef struct HfEntityPart { const char* component; uint64_t from; } HfEntityPart;
+
 /* A new entity of any kind (SDK 4, add_entity): a copy of a vanilla entity (a Pelican, a turret...) under a resource
  * name of its own, sharing every component record of its base except the ones it owns. No loadout, armory or catalogue
  * entry (add_weapon is for arsenal weapons). Zero-initialize it and set `size`:
@@ -144,7 +147,7 @@ typedef struct HfWeapon
 typedef struct HfEntity
 {
     uint32_t size;                      /* sizeof(HfEntity) */
-    uint64_t base;                      /* the vanilla entity resource it copies (HF_ENTITY_...) */
+    uint64_t base;                      /* the vanilla entity resource it copies (HF_ENTITY_...); 0 with `parts` */
     const char* name;                   /* unique: "my_name/my_mod/entity"; the entity's resource id is this name's hash */
     const char* unit;                   /* a unit resource for its model (the mod's data provides it); NULL: the base's */
     const char* const* own_components;  /* NULL-terminated component names it gets records of its own in, or NULL */
@@ -163,6 +166,7 @@ typedef struct HfEntity
     const char* title;        /* "Heavy MG Sentry" */
     const char* designation;  /* "A/MG-101" */
     const char* description;
+    const HfEntityPart* parts; /* SDK 17: NULL, or its components one by one, {NULL}-ended (docs/modding/enemies.md) */
 } HfEntity;
 
 /* A new behaviour (SDK 4, add_behaviour): a vanilla behaviour extended by HellForge, under an id of its own (694 and
@@ -260,6 +264,114 @@ typedef struct HfArc
     const char* name;   /* names it in the logs; unique, prefixed with your name and mod */
     uint32_t damage;    /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
 } HfArc;
+
+/* A new weapon attachment (SDK 17, add_attachment): a copy of a vanilla customization item (a magazine, muzzle, optic...)
+ * under an id of its own, with the base's slot, stat changes and look in the armory, offered on weapons mods added.
+ * Zero-initialize it and set `size`. */
+typedef struct HfAttachment
+{
+    uint32_t size;      /* sizeof(HfAttachment) */
+    uint32_t base;      /* the vanilla item it copies (its id, e.g. a magazine the base weapon takes) */
+    const char* name;   /* its id is the thin hash of this; unique, prefixed with your name and mod */
+    /* A magazine's, muzzle's or optic's model: a unit resource the mod's data provides, drawn at the weapon's attach_
+     * joint in place of the base's. 0 keeps the base's (and is required for other slots). */
+    uint64_t unit;
+    /* Its text in the armory (UTF-8); NULL keeps the base's. An upper-case copy of the name is made. */
+    const char* name_text;
+    const char* description;
+    /* The weapons offering it: loadout ids add_weapon returned (up to 16). Their base must take the base item's slot. */
+    const uint32_t* weapons;
+    uint32_t weapon_count;
+} HfAttachment;
+
+/* The faction rosters of the enemy spawn director, for HfEnemy and HfEnemySwap (SDK 17). */
+#define HF_ENEMY_TERMINIDS 1u
+#define HF_ENEMY_AUTOMATONS 2u
+#define HF_ENEMY_ILLUMINATE 4u
+
+#define HF_ENEMY_LEVELS 10
+/* HfEnemy flags */
+#define HF_ENEMY_ALWAYS_LOADED 1u /* a mission loads its packages though no squad names its group (it spawns by other means) */
+
+/* A new enemy in the spawn director's rosters (SDK 17, add_enemy): a row of its own, tied to no vanilla enemy. The
+ * director spawns by group: a squad asks for some of a group's enemies, and the group's rows share the draw by their
+ * weights. `group` is a vanilla group ("Scavenger": the enemy joins every squad that draws it) or a name of your own,
+ * which only your squads draw (add_enemy_squad). Zero-initialize it and set `size`; docs/modding/enemies.md has the
+ * groups, each field and a whole example.
+ * Shorthand: with `like` set, that vanilla enemy's rows are copied for the unit instead (group, tags, cap, cost and
+ * budget), their weights times `weight`; `group` and the fields after it are then not read. */
+typedef struct HfEnemy
+{
+    uint32_t size;          /* sizeof(HfEnemy) */
+    uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins (with `like`, 0: every roster `like` is in) */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint64_t unit;          /* the entity it spawns: one add_entity or register_entity returned, or a vanilla one */
+    uint64_t like;          /* 0, or the vanilla enemy whose roster rows are copied (the shorthand above) */
+    float weight;           /* x the spawn weights (0 means 1) */
+    uint32_t lowest_level;  /* difficulty levels it spawns at, 1 to 10 (0: no bound); level 11 takes level 10's weight */
+    uint32_t highest_level;
+    const char* group;      /* its spawn group's name */
+    float weights[HF_ENEMY_LEVELS]; /* its share of the group's draw at difficulty 1 to 10; 0: not at that level */
+    float cost;             /* what one costs a squad's budget, in the director's points (a Scavenger 6, a Charger 100) */
+    float budget;           /* its weight in the count of enemies alive (0 means 1; a Bile Titan 8) */
+    uint32_t alive_cap;     /* at most this many alive at once where the game checks a row's cap; 0: no cap */
+    uint32_t size_class;    /* 0 small, 1 medium, 2 heavy, 3 the largest, as the game's rows mark their enemies */
+    uint32_t flags;         /* HF_ENEMY_ALWAYS_LOADED */
+    const char* with_tags[4];    /* director tags: it spawns only while one of them is on (none: always) */
+    const char* without_tags[4]; /* ... and never while one of these is on */
+    uint64_t packages[2];   /* 0, or packages its entity needs (as load_package's): loaded and held for the session */
+} HfEnemy;
+
+#define HF_SQUAD_MEMBERS 8
+/* HfEnemySquad kinds: where the director uses the squad. */
+#define HF_SQUAD_PATROL 1u      /* a patrol roaming the map */
+#define HF_SQUAD_GUARD 2u       /* placed at a mission's guard positions when it starts (the game ships no such squad) */
+#define HF_SQUAD_OUTPOST 3u     /* an outpost's or objective's garrison; members' counts are a pool (the game uses 999) */
+#define HF_SQUAD_ENCOUNTER 4u   /* reinforcements: a bug breach, a dropship (it carries any Automaton or Illuminate one) */
+#define HF_SQUAD_BORDER 5u      /* crossing the map's border (the game's Shriekers and Gunships) */
+#define HF_SQUAD_CONVOY 6u      /* a convoy; a mission takes 8 kinds at most */
+#define HF_SQUAD_AIR_SUPPORT 7u /* called in from the air (the game's Illuminate attack ships) */
+#define HF_SQUAD_STRAGGLER 8u   /* stragglers: one squad a mission, the game's first that fits or a mod's, by weight */
+
+/* A new squad (SDK 17, add_enemy_squad): a mix of spawn groups the director may send, beside the game's squads of its
+ * kind. This is how an enemy in a group of your own reaches the map. A mission takes the squads whose levels, players
+ * and tags fit and whose groups each have an enemy with weight at its level, then draws among them by `weight`.
+ * Zero-initialize it and set `size`; docs/modding/enemies.md has an example. */
+typedef struct HfEnemySquad
+{
+    uint32_t size;          /* sizeof(HfEnemySquad) */
+    uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins; each must have every group */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint32_t kind;          /* HF_SQUAD_... */
+    uint32_t lowest_level, highest_level;     /* the difficulty levels it is sent at, 1 to 10 (0: no bound); 10 covers level 11 */
+    uint32_t lowest_players, highest_players; /* the player counts it is sent at, 1 to 4 (0: no bound) */
+    float weight;           /* its share of the draw among the squads of its kind (the game's: 0.01 to 3) */
+    float cost;             /* x its members' cost in the director's budget (0 means 1) */
+    struct { const char* group; uint32_t count; } members[HF_SQUAD_MEMBERS]; /* up to 8 groups, 32 enemies in all
+                             * (HF_SQUAD_OUTPOST: any count) */
+    const char* with_tags[8]; /* director tags: sent only while one of them is on (none: always) */
+} HfEnemySquad;
+
+/* A replacement rule (SDK 17, add_enemy_swap): while it is on, the director spawns `replacement` where it would spawn
+ * `unit`, as the game's own rules turn bots into jump-pack bots under a planet's modifier. Of the rules that match a
+ * spawn, the one of highest priority wins. A replacement can be replaced again, 3 times in a row at most: a rule that
+ * would make a longer chain or a loop with the other rules is left out (the log says so). Zero-initialize it and set
+ * `size`. */
+typedef struct HfEnemySwap
+{
+    uint32_t size;          /* sizeof(HfEnemySwap) */
+    uint32_t factions;      /* the rosters it applies in (HF_ENEMY_...; 0: any), each only if it has a row of `unit` */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint64_t unit;          /* the enemy replaced: any unit of a roster row, the game's or a mod's */
+    uint64_t replacement;   /* the entity spawned instead: one add_entity or register_entity returned, or a vanilla one */
+    const char* tag;        /* the director tag that turns it on, e.g. "GM_BotAssault"; NULL: always on */
+    uint32_t lowest_level;  /* the difficulty levels it applies at (0: 1 and 100, as the game's rules) */
+    uint32_t highest_level;
+    uint32_t priority;      /* the game's rules use 0 to 9 */
+    float budget;           /* the enemy budget's weight of the replacement where it has no roster row of its own (0: the
+                             * replaced enemy's) */
+    float cost;             /* x the replaced enemy's cost in a squad's budget (0 means 1; the game's rules use 0.5 to 1.2) */
+} HfEnemySwap;
 
 /* A new stratagem (SDK 4, add_stratagem): a copy of a vanilla stratagem's settings under a StratagemType of its own,
  * with its own name, description, input code and icon. What it does when called (its payload, beacon and the packages
@@ -1136,6 +1248,7 @@ struct HfEntityDef
     const char* title;             /* SDK 7: its text, as HfEntity's (NULL: the base's) */
     const char* designation;
     const char* description;
+    const HfEntityPart* parts;     /* SDK 17: its components one by one, as HfEntity.parts; `base` may then be 0 */
 };
 
 /* Changes to an existing entity as a definition block (edit_entity): the same lists as HfEntityDef's. A vanilla entity's
@@ -1233,13 +1346,14 @@ typedef struct HfApi
 
     /* ---- SDK 4 ---------------------------------------------------------------------------------------------------- */
     /* Adds a new stratagem (see HfStratagem). Call it from hellforge_mod_init. Returns its StratagemType (150 and up),
-     * or 0 (the mod's log says why). The game has room for 48 new stratagems in all mods together. */
+     * or 0 (the mod's log says why). There is room for 1,024 new stratagems in all mods together. */
     uint32_t (*add_stratagem)(HfMod* mod, const HfStratagem* stratagem);
     /* The 400-byte settings row of a stratagem a mod added, once the game has loaded its stratagems, or 0. +0 type and
      * +4 stable id must stay; HD2Runtime's research names the rest (docs/internals.md "Stratagems"). */
     uintptr_t (*stratagem_row)(uint32_t type);
     /* Adds a new entity (see HfEntity). Call it from hellforge_mod_init. Returns its resource id, or 0 (the mod's log
-     * says why). Entities and weapons share room for 64. */
+     * says why). Entities and weapons share the game's entity map, about 2,187 more across all mods; HellForge sets no
+     * number of its own. */
     uint64_t (*add_entity)(HfMod* mod, const HfEntity* entity);
     /* Adds a new behaviour (see HfBehaviour). Call it from hellforge_mod_init. Returns its id (694 and up), or 0 (the
      * mod's log says why). An entity given it runs its base instead if HellForge could not install it. */
@@ -1306,10 +1420,11 @@ typedef struct HfApi
      * spawns, package requests), before the game's update. Keep it short; it runs every frame. Returns 1, or 0 when
      * the game thread's update could not be hooked (modloader.log says why). Check hf->size before calling. */
     int (*on_game_thread)(HfMod* mod, HfTickCallback callback, void* user);
-    /* Loads a package (by its resource name hash, as mappings/references.json lists them) and holds it for the session,
-     * through the game's own package system on the game thread: HF_PACKAGE_RESIDENT once the engine has all of it,
-     * HF_PACKAGE_LOADING until then (call it again to see), 0 refused or failed (not a catalogue package, HellForge's
-     * 64 held already, or not loaded within 90 seconds; the mod's log says why). Loading is per client: other players
+    /* Loads a package (by its resource name hash, as mappings/references.json lists them, or since SDK 17 a data spec's
+     * own "package" of any mod of the session) and holds it for the session, through the game's own package system on
+     * the game thread: HF_PACKAGE_RESIDENT once the engine has all of it, HF_PACKAGE_LOADING until then (call it again
+     * to see), 0 refused or failed (neither kind, HellForge's 64 held already, or not loaded within 90 seconds; the
+     * mod's log says why). Loading is per client: other players
      * load their own. A reference set_live or a stats file writes (a donor projectile, an explosion) loads its packages
      * itself. */
     int (*load_package)(HfMod* mod, uint64_t package);
@@ -1524,6 +1639,20 @@ typedef struct HfApi
     /* The 104-byte ArcSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must
      * stay. */
     uintptr_t (*arc_row)(uint32_t type);
+    /* Adds a weapon attachment (see HfAttachment). Call it from hellforge_mod_init, after add_weapon for its weapons.
+     * Returns its item id, or 0 (the mod's log says why). 128 across all mods. Customization screens list it on its
+     * weapons once the game has loaded its items; the session's backend makes it the player's. */
+    uint32_t (*add_attachment)(HfMod* mod, const HfAttachment* attachment);
+
+    /* ---- SDK 17: enemies (check hf->size before calling) ----------------------------------------------------------- */
+    /* Adds an enemy to the spawn director's rosters (see HfEnemy). Call it from hellforge_mod_init. 0 added (its rows are
+     * made once the entity data loads, and the log counts them), 1 refused (the mod's log says why). */
+    int (*add_enemy)(HfMod* mod, const HfEnemy* enemy);
+    /* Adds a replacement rule (see HfEnemySwap). Call it from hellforge_mod_init. 0 added, 1 refused (the log says why). */
+    int (*add_enemy_swap)(HfMod* mod, const HfEnemySwap* swap);
+    /* Adds a squad (see HfEnemySquad). Call it from hellforge_mod_init. 0 added (its rows are made with the enemies'),
+     * 1 refused (the mod's log says why). */
+    int (*add_enemy_squad)(HfMod* mod, const HfEnemySquad* squad);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */
@@ -1545,6 +1674,16 @@ static inline int hf_set_field_(HfMod* mod, HfRef entity, HfField field, HfValue
 #define hf_set(mod, entity, C, f, value) hf_set_field_((mod), (entity), HF_LITERAL(HfField) HF_FIELD(C, f), HF_LITERAL(HfValue) value)
 #define hf_tag(mod, entity, tag, present) HF_API(mod)->set_tag((mod), (entity), (tag), (present))
 #define hf_mount(mod, entity, slot, carried) HF_API(mod)->mount((mod), (entity), (slot), (carried))
+
+/* A Wwise event's id from its name (FNV-1 of the lower-case name): an event of the mod's data spec "sounds", for the
+ * record fields that name sound events, such as hf_set(mod, rifle, ProjectileWeapon, fire_single_audio_event,
+ * HF_U32(hf_wwise_id("yourname_rifle_fire"))). */
+static inline uint32_t hf_wwise_id(const char* name)
+{
+    uint32_t h = 2166136261u;
+    for (; *name; name++) h = (h * 16777619u) ^ (uint32_t)(uint8_t)(*name >= 'A' && *name <= 'Z' ? *name + 32 : *name);
+    return h;
+}
 
 /* set_live's flags. */
 #define HF_LIVE_SHARED 0x1u /* the target's record may be one other entities share */

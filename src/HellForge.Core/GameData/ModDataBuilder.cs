@@ -70,12 +70,48 @@ public static class ModDataBuilder
                             added.Add(key);
                         }
                         break;
+                    case TextureResource texture:
+                        AddTexture(resources, texture, added);
+                        break;
                     case CopyResource copy:
                         AddCopy(resources, copy, added);
                         break;
+                    case ModelResource model:
+                        AddModel(resources, model, added);
+                        break;
+                    case SoundsResource sounds:
+                        AddSounds(resources, sounds, added);
+                        break;
                 }
+            foreach (var animations in patch.Resources.OfType<AnimationsResource>())
+                AddAnimations(resources, animations, added);
             return resources;
         }
+        // A unit copy's own animations: its bones and state machine under the unit's name, its clips beside it, and the
+        // unit pointed at them (header +0x08 bones, +0x20 state machine).
+        void AddAnimations(Dictionary<ResourceKey, ResourceParts> resources, AnimationsResource a, HashSet<ResourceKey> added)
+        {
+            var name = Hash(a.Unit);
+            var unitKey = new ResourceKey(ResourceTypes.Unit, name);
+            if (!resources.TryGetValue(unitKey, out var unit))
+                throw new InvalidDataException($"{a.Where}: unit {a.Unit} is not a unit copy in this patch; copy a unit under that name first.");
+            AnimationSet.Built set;
+            try { set = AnimationSet.Build(File.ReadAllText(Path.Combine(modFolder, a.File)), a.Unit, AnimationSet.UnitJoints(unit.Main)); }
+            catch (Exception error) when (error is InvalidDataException or System.Text.Json.JsonException) { throw new InvalidDataException($"{a.Where} ({a.File}): {error.Message}"); }
+            var main = unit.Main.ToArray();
+            BitConverter.TryWriteBytes(main.AsSpan(0x08), name);
+            BitConverter.TryWriteBytes(main.AsSpan(0x20), name);
+            resources[unitKey] = unit with { Main = main };
+            void Add(ResourceKey key, byte[] data)
+            {
+                AddResource(resources, a.Where, key, new(data, [], []));
+                added.Add(key);
+            }
+            Add(new(ResourceTypes.Bones, name), set.Bones);
+            Add(new(ResourceTypes.StateMachine, name), set.Machine);
+            foreach (var (clip, data) in set.Clips) Add(new(ResourceTypes.Animation, Hash(AnimationSet.ClipName(a.Unit, clip))), data);
+        }
+
         // A copy under its own name, edited, and a unit copy's physics under that name too.
         void AddCopy(Dictionary<ResourceKey, ResourceParts> resources, CopyResource copy, HashSet<ResourceKey> added)
         {
@@ -95,13 +131,54 @@ public static class ModDataBuilder
             }
         }
 
-        var built = new List<(IReadOnlyList<string> Archives, byte[] Archive, byte[] Gpu, byte[] Stream)>();
+        void AddTexture(Dictionary<ResourceKey, ResourceParts> resources, TextureResource texture, HashSet<ResourceKey> added)
+        {
+            var key = new ResourceKey(ResourceTypes.Texture, Hash(texture.Name));
+            ResourceParts parts;
+            try { parts = TextureImage.Build([.. texture.Pngs.Select(p => File.ReadAllBytes(Path.Combine(modFolder, p)))], texture.Format, texture.Category); }
+            catch (InvalidDataException error) { throw new InvalidDataException($"{texture.Where}: {error.Message}"); }
+            AddResource(resources, texture.Where, key, parts);
+            added.Add(key);
+        }
+
+        // A sound bank and its dependency resource under the bank's name; its mixer comes from the player's game bank.
+        void AddSounds(Dictionary<ResourceKey, ResourceParts> resources, SoundsResource sounds, HashSet<ResourceKey> added)
+        {
+            var mixerBank = Read(new(ResourceTypes.WwiseBank, sounds.MixerBank), "game").Main;
+            (byte[] Bank, byte[] Dependency) built;
+            try { built = SoundBank.Build(sounds.Name, [.. sounds.Sounds.Select(s => new SoundBank.Sound(s.Event, File.ReadAllBytes(Path.Combine(modFolder, s.Wav)), s.Gain))], mixerBank, sounds.Mixer); }
+            catch (InvalidDataException error) { throw new InvalidDataException($"{sounds.Where}: {error.Message}"); }
+            foreach (var (type, data) in new[] { (ResourceTypes.WwiseBank, built.Bank), (ResourceTypes.WwiseDependency, built.Dependency) })
+            {
+                var key = new ResourceKey(type, Hash(sounds.Name));
+                AddResource(resources, sounds.Where, key, new(data, [], []));
+                added.Add(key);
+            }
+        }
+
+        // A unit written from the mod's glTF model, and the physics of the game unit it names under its name.
+        void AddModel(Dictionary<ResourceKey, ResourceParts> resources, ModelResource model, HashSet<ResourceKey> added)
+        {
+            var key = new ResourceKey(ResourceTypes.Unit, Hash(model.Name));
+            AddResource(resources, model.Where, key, BuildModel(model, modFolder, model.AnimationsFrom is { } of ? (Read(new(ResourceTypes.Unit, of), "game").Main, Read(new(ResourceTypes.Hash("bones"), of), "game").Main) : null));
+            added.Add(key);
+            if (model.Physics is not { } from) return;
+            var physics = new ResourceKey(ResourceTypes.Physics, from);
+            if (!Has(physics, "game")) throw new InvalidDataException($"{model.Where}: unit 0x{from:X16} has no physics in the game data.");
+            var named = new ResourceKey(ResourceTypes.Physics, key.Name);
+            AddResource(resources, model.Where, named, RenamePhysics(Read(physics, "game"), from, key.Name));
+            added.Add(named);
+        }
+
+        var built = new List<(IReadOnlyList<string> Archives, bool Whole, byte[] Archive, byte[] Gpu, byte[] Stream)>();
         var added = new HashSet<ResourceKey>();
         foreach (var patch in spec.Patches)
         {
             var (archive, gpu, stream) = ResourceArchive.Write(PatchResources(patch, added));
-            built.Add((patch.Archives, archive, gpu, stream));
+            built.Add((patch.Package is { } package ? [PackageFile(package)] : patch.Archives, patch.Package != null, archive, gpu, stream));
         }
+        var shipped = spec.Patches.Select(p => p.Package).OfType<ModDataPackage>().Where(p => game.HasArchive(PackageFile(p))).Select(p => p.Name).ToList();
+        if (shipped.Count > 0) throw new InvalidDataException("these packages' ids are archives of the game; name them otherwise: " + string.Join(", ", shipped) + ".");
         // What a mod adds has a name of its own: a copy or icon may not stand in for one of the game's resources.
         var taken = game.Find(added).Keys.Select(k => k.ToString()).Order(StringComparer.Ordinal).ToList();
         if (taken.Count > 0) throw new InvalidDataException("these names are the game's own resources; give them names of the mod's: " + string.Join(", ", taken) + ".");
@@ -120,6 +197,8 @@ public static class ModDataBuilder
             CopyResource copy => copy.Type == ResourceTypes.Unit ? [new ResourceKey(copy.Type, copy.From), new ResourceKey(ResourceTypes.Physics, copy.From)]
                 : [new ResourceKey(copy.Type, copy.From)],
             IncludeResources include => include.Ids.Select(id => new ResourceKey(include.Type, id)),
+            ModelResource model => ModelSources(model),
+            SoundsResource sounds => [new ResourceKey(ResourceTypes.WwiseBank, sounds.MixerBank)],
             _ => []
         }).ToHashSet();
         var gameSources = Sources(false);
@@ -164,6 +243,39 @@ public static class ModDataBuilder
     }
 
     // A resource into a patch; a key it has already must come with the same bytes.
+    // What a model reads from the game: the physics it names (its absence is reported by the model) and the bones and
+    // state machine of the unit whose animations it plays.
+    static IEnumerable<ResourceKey> ModelSources(ModelResource model)
+    {
+        if (model.Physics is { } physics) yield return new(ResourceTypes.Physics, physics);
+        if (model.AnimationsFrom is not { } of) yield break;
+        yield return new(ResourceTypes.Unit, of);
+        yield return new(ResourceTypes.Hash("bones"), of);
+        yield return new(ResourceTypes.Hash("state_machine"), of);
+    }
+
+    // A model's unit; a mistake in the file is reported with the resource and the file.
+    static ResourceParts BuildModel(ModelResource model, string modFolder, (byte[] Unit, byte[] Bones)? animated)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(model.File) ?? "";
+            var nodes = Gltf.Read(File.ReadAllBytes(Path.Combine(modFolder, model.File)), uri =>
+                DataSpecs.InModFolder(Path.Combine(dir, uri).Replace('\\', '/')) ? File.ReadAllBytes(Path.Combine(modFolder, dir, uri)) : throw new InvalidDataException($"buffer {uri} is outside the mod folder."));
+            // a game unit's animations: its bones and state machine are named after it (every unit's header points at its own)
+            var animations = model.AnimationsFrom ?? 0;
+            var unit = ModelUnit.Build(nodes, model.Materials, model.LodSizes, animations, animations);
+            if (animated is { } a) ModelUnit.CheckAnimations(unit, a.Unit, a.Bones);
+            var (main, gpu) = UnitWriter.Write(unit);
+            return new(main, gpu, []);
+        }
+        catch (Exception error) when (error is InvalidDataException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException or FormatException
+            or ArgumentOutOfRangeException or IndexOutOfRangeException or IOException)
+        {
+            throw new InvalidDataException($"{model.Where} ({model.File}): {error.Message}");
+        }
+    }
+
     static void AddResource(Dictionary<ResourceKey, ResourceParts> resources, string where, ResourceKey key, ResourceParts parts)
     {
         if (resources.TryGetValue(key, out var other) && !(other.Main.AsSpan().SequenceEqual(parts.Main)
@@ -172,21 +284,25 @@ public static class ModDataBuilder
         resources[key] = parts;
     }
 
-    // Each patch written for each archive it names, numbered per archive in the spec's order: the file names.
-    static List<string> WriteFiles(string output, List<(IReadOnlyList<string> Archives, byte[] Archive, byte[] Gpu, byte[] Stream)> built)
+    // A package's archive: data/<its id>, as the game names its own loose archives.
+    public static string PackageFile(ModDataPackage package) => package.Id.ToString("x16", System.Globalization.CultureInfo.InvariantCulture);
+
+    // Each patch written for each archive it names, numbered per archive in the spec's order, and each package as its
+    // whole archive: the file names.
+    static List<string> WriteFiles(string output, List<(IReadOnlyList<string> Archives, bool Whole, byte[] Archive, byte[] Gpu, byte[] Stream)> built)
     {
         Directory.CreateDirectory(output);
         var files = new List<string>();
         var next = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var (targets, archive, gpu, stream) in built)
+        foreach (var (targets, whole, archive, gpu, stream) in built)
             foreach (var target in targets)
             {
-                var name = $"{target}.patch_{next.GetValueOrDefault(target)}";
+                var name = whole ? target : $"{target}.patch_{next.GetValueOrDefault(target)}";
                 next[target] = next.GetValueOrDefault(target) + 1;
                 File.WriteAllBytes(Path.Combine(output, name), archive);
                 File.WriteAllBytes(Path.Combine(output, name + ".gpu_resources"), gpu);
                 files.AddRange([name, name + ".gpu_resources"]);
-                if (stream.Length == 0) continue;
+                if (stream.Length == 0 && !whole) continue; /* a package's archive always has one: the engine crashes when it cannot open it */
                 File.WriteAllBytes(Path.Combine(output, name + ".stream"), stream);
                 files.Add(name + ".stream");
             }
@@ -215,11 +331,12 @@ public static class ModDataBuilder
         foreach (var replace in copy.Replace) ResourceEdits.Replace(main, replace.From, replace.To, replace.At);
         if (copy.Curves is { } curves) EditCurves(main, curves);
         if (copy.Colours != null) ResourceEdits.SetMaterialColours(main, copy.Colours);
+        if (copy.Textures != null) ResourceEdits.SetMaterialTextures(main, copy.Textures);
         if (copy.Lut != null) gpu = ResourceEdits.RecolourLut(main, gpu, copy.Lut);
         if (copy.Mesh is { } mesh)
         {
             if (source.Stream.Length != 0) throw new InvalidDataException("the model streams part of itself; HellForge cannot replace its mesh yet.");
-            var (meshMain, meshGpu) = UnitMesh.Replace(main, gpu, UnitMesh.ReadObj(File.ReadAllText(Path.Combine(modFolder, mesh.Obj)), mesh.Scale, mesh.YUp));
+            var (meshMain, meshGpu) = UnitMesh.Replace(main, gpu, UnitMesh.ReadObj(File.ReadAllText(Path.Combine(modFolder, mesh.Obj)), mesh.Scale, mesh.YUp), mesh.UnitSpace);
             return new(meshMain, meshGpu, source.Stream);
         }
         return new(main, gpu, source.Stream);

@@ -226,7 +226,7 @@ static class StatsTests
             var patriot = StatsCatalog.Sections(Vehicle("EXO-45 Patriot Exosuit"));
             check(patriot.Select(s => s.Title).SequenceEqual(["Hellpod / Call-in", "Weapon · Left gun", "Weapon · Right gun", "Health & Armor", "Damage Zones"]),
                 "Patriot page: " + string.Join(", ", patriot.Select(s => s.Title)));
-            check(patriot[4].Groups.Select(g => g.Title).Take(4).SequenceEqual(["Zone 0", "Zone 1", "Cockpit rear", "Hips"]) &&
+            check(patriot[4].Groups.Select(g => g.Title).Take(4).SequenceEqual(["Cockpit front left", "Cockpit front right", "Cockpit rear", "Hips"]) &&
                 patriot[4].Groups.All(g => g.Rows.Count == 5), "Zones by their native names, armor, health and share each, and their explosion share.");
             var fields = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
             check(fields["zone_2.armor"] is { Component: "HealthComponentData", Offset: 1840 } && fields["rotation.turn_speed"].Component == "RotationComponentData",
@@ -310,6 +310,8 @@ static class StatsTests
                 bastion["zone_0.affected_by_explosions"] is { Offset: 843, Storage: "u8" }, "Explosion shares: the default zone's and each zone's own, with its flag.");
             foreach (var (kind, name) in new[] { ("stratagems", "FX-12 Shield Generator Relay"), ("throwables", "G/SH-39 Shield"), ("backpacks", "SH-32 Shield Generator Pack") })
                 check(StatsSchema.Current.Targets[kind][name].Fields["shield.blocks_grenades"] is { Offset: 337, Storage: "u8" }, name + ": stopping grenades is a flag in the Shield record's padding");
+            check(StatsSchema.Current.Targets["stratagems"]["FX-12 Shield Generator Relay"].Fields["shield.blocks_enemies"] is { Offset: 338, Storage: "u8" } &&
+                !StatsSchema.Current.Targets["backpacks"]["SH-32 Shield Generator Pack"].Fields.ContainsKey("shield.blocks_enemies"), "Stopping enemies is the relay's alone");
             var shield = StatsSchema.Current.Targets["backpacks"]["SH-20 Ballistic Shield Backpack"].Fields;
             check(shield["zone.explosive_damage_percentage"].Offset == 844 && shield["entity.explosive_damage_percentage"].Record == 292, "The ballistic shield's explosion shares.");
             var row = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "SH-20 Ballistic Shield Backpack")!["page"]!.AsArray()

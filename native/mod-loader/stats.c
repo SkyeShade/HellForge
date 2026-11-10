@@ -108,6 +108,7 @@ static void StatsWrite(StatEdit* e, uintptr_t address)
     if (ApiWrite(address, &e->value, size) || SafeRead(address, &current, size) || current != e->value)
     { StatsRefuse(e, "write verification failed"); return; }
     e->address = address; e->original = original; e->applied = 1;
+    if (e->offset == 76 && strstr(e->component, "Shield")) NetShieldHealthSet(e->value);
     StatsNoteShots(e, original);
     ApiLog(e->mod, "stats %s: applied (%08x -> %08x)%s", e->label, original, e->value, e->own ? " to its own record" : "");
 }

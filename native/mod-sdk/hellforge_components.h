@@ -2354,7 +2354,8 @@ typedef struct HfShield
     float recharge_rate;                         /* +0x60 shield.recharge_rate (unverified) [now?] */
     uint8_t _unknown_64[237];
     uint8_t blocks_grenades;                     /* +0x151 Stops grenades (unverified) [now] */
-    uint8_t _unknown_152[6];
+    uint8_t blocks_enemies;                      /* +0x152 Stops enemies (unverified) [now?] */
+    uint8_t _unknown_153[5];
 } HfShield;
 HF_ASSERT_SIZE(HfShield, 344);
 HF_ASSERT_OFFSET(HfShield, radius, 0);
@@ -2371,6 +2372,8 @@ HF_ASSERT_OFFSET(HfShield, recharge_rate, 96);
 #define HF_TYPE_Shield_recharge_rate HF_TYPE_F32
 HF_ASSERT_OFFSET(HfShield, blocks_grenades, 337);
 #define HF_TYPE_Shield_blocks_grenades HF_TYPE_U8
+HF_ASSERT_OFFSET(HfShield, blocks_enemies, 338);
+#define HF_TYPE_Shield_blocks_enemies HF_TYPE_U8
 
 /* HellpodPayloadComponentData (component 164, 12-byte records): (from the stats schema) */
 #define HfHellpodPayload_INFO "HellpodPayloadComponentData", 25480438u
@@ -2825,13 +2828,73 @@ HF_ASSERT_OFFSET(HfWeaponCharge, overcharge_limit_seconds, 208);
 #define HfWeaponReload_INFO "WeaponReloadComponentData", 25480438u
 typedef struct HfWeaponReload
 {
-    uint8_t _unknown_00[56];
+    uint8_t manual_clearing;                     /* +0x00 1: a jam is cleared by hand (unverified) [respawn?] */
+    uint8_t allow_move;                          /* +0x01 1: may move while reloading [respawn?] */
+    uint8_t _unknown_02[2];
+    uint32_t ability;                            /* +0x04 the reload ability, which times the reload (2785 Adjudicator, 2739 Liberator) [respawn?] */
+    uint32_t event_type_0;                       /* +0x08 reload animation 0's kind: 1 normal, 3 fast [respawn?] */
+    uint32_t weapon_event_0;                     /* +0x0C reload animation 0: the weapon's own state machine event (reload) [respawn?] */
+    uint32_t wielder_event_0;                    /* +0x10 reload animation 0: the Helldiver's animation event (reload_battlerifle) [respawn?] */
+    uint32_t event_type_1;                       /* +0x14 reload animation 1's kind: 1 normal, 3 fast [respawn?] */
+    uint32_t weapon_event_1;                     /* +0x18 reload animation 1: the weapon's own state machine event (reload) [respawn?] */
+    uint32_t wielder_event_1;                    /* +0x1C reload animation 1: the Helldiver's animation event (reload_battlerifle) [respawn?] */
+    uint32_t event_type_2;                       /* +0x20 reload animation 2's kind: 1 normal, 3 fast (unverified) [respawn?] */
+    uint32_t weapon_event_2;                     /* +0x24 reload animation 2: the weapon's own state machine event (reload) (unverified) [respawn?] */
+    uint32_t wielder_event_2;                    /* +0x28 reload animation 2: the Helldiver's animation event (reload_battlerifle) (unverified) [respawn?] */
+    uint32_t event_type_3;                       /* +0x2C reload animation 3's kind: 1 normal, 3 fast (unverified) [respawn?] */
+    uint32_t weapon_event_3;                     /* +0x30 reload animation 3: the weapon's own state machine event (reload) (unverified) [respawn?] */
+    uint32_t wielder_event_3;                    /* +0x34 reload animation 3: the Helldiver's animation event (reload_battlerifle) (unverified) [respawn?] */
     float duration;                              /* +0x38 Reload duration override (0 = native) (seconds) (unverified) [respawn?] */
-    uint8_t _unknown_3C[20];
+    uint8_t has_shared_deposit;                  /* +0x3C 1: reloads from a shared ammunition deposit (unverified) [respawn?] */
+    uint8_t _unknown_3D[3];
+    uint32_t vo_normal;                          /* +0x40 voice line event of a reload [respawn?] */
+    uint32_t vo_last_magazine;                   /* +0x44 voice line event of the last magazine [respawn?] */
+    uint32_t vo_no_magazines;                    /* +0x48 voice line event with no magazines left [respawn?] */
+    uint32_t vo_no_magazines_no_backpack;        /* +0x4C voice line event with no magazines and no backpack (unverified) [respawn?] */
 } HfWeaponReload;
 HF_ASSERT_SIZE(HfWeaponReload, 80);
+HF_ASSERT_OFFSET(HfWeaponReload, manual_clearing, 0);
+#define HF_TYPE_WeaponReload_manual_clearing HF_TYPE_U8
+HF_ASSERT_OFFSET(HfWeaponReload, allow_move, 1);
+#define HF_TYPE_WeaponReload_allow_move HF_TYPE_U8
+HF_ASSERT_OFFSET(HfWeaponReload, ability, 4);
+#define HF_TYPE_WeaponReload_ability HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, event_type_0, 8);
+#define HF_TYPE_WeaponReload_event_type_0 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, weapon_event_0, 12);
+#define HF_TYPE_WeaponReload_weapon_event_0 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, wielder_event_0, 16);
+#define HF_TYPE_WeaponReload_wielder_event_0 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, event_type_1, 20);
+#define HF_TYPE_WeaponReload_event_type_1 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, weapon_event_1, 24);
+#define HF_TYPE_WeaponReload_weapon_event_1 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, wielder_event_1, 28);
+#define HF_TYPE_WeaponReload_wielder_event_1 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, event_type_2, 32);
+#define HF_TYPE_WeaponReload_event_type_2 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, weapon_event_2, 36);
+#define HF_TYPE_WeaponReload_weapon_event_2 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, wielder_event_2, 40);
+#define HF_TYPE_WeaponReload_wielder_event_2 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, event_type_3, 44);
+#define HF_TYPE_WeaponReload_event_type_3 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, weapon_event_3, 48);
+#define HF_TYPE_WeaponReload_weapon_event_3 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, wielder_event_3, 52);
+#define HF_TYPE_WeaponReload_wielder_event_3 HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponReload, duration, 56);
 #define HF_TYPE_WeaponReload_duration HF_TYPE_F32
+HF_ASSERT_OFFSET(HfWeaponReload, has_shared_deposit, 60);
+#define HF_TYPE_WeaponReload_has_shared_deposit HF_TYPE_U8
+HF_ASSERT_OFFSET(HfWeaponReload, vo_normal, 64);
+#define HF_TYPE_WeaponReload_vo_normal HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, vo_last_magazine, 68);
+#define HF_TYPE_WeaponReload_vo_last_magazine HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, vo_no_magazines, 72);
+#define HF_TYPE_WeaponReload_vo_no_magazines HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponReload, vo_no_magazines_no_backpack, 76);
+#define HF_TYPE_WeaponReload_vo_no_magazines_no_backpack HF_TYPE_U32
 
 /* WeaponRoundsComponentData (component 117, 136-byte records): (from the stats schema) */
 #define HfWeaponRounds_INFO "WeaponRoundsComponentData", 25480438u
@@ -3705,13 +3768,15 @@ HF_ASSERT_OFFSET(HfEnemyComposition, maximum_players, 248);
 #define HfUnit_INFO "UnitComponentData", 25480438u
 typedef struct HfUnit
 {
-    uint8_t _unknown_00[8];
+    uint64_t unit;                               /* +0x00 its unit resource (name hash); add_weapon sets it from HfWeapon.unit [respawn?] */
     float scale_min;                             /* +0x08 Scale min (unverified) [respawn?] */
     uint8_t _unknown_0C[4];
     float radius;                                /* +0x10 Radius (unverified) [respawn?] */
     uint8_t _unknown_14[116];
 } HfUnit;
 HF_ASSERT_SIZE(HfUnit, 136);
+HF_ASSERT_OFFSET(HfUnit, unit, 0);
+#define HF_TYPE_Unit_unit HF_TYPE_U64
 HF_ASSERT_OFFSET(HfUnit, scale_min, 8);
 #define HF_TYPE_Unit_scale_min HF_TYPE_F32
 HF_ASSERT_OFFSET(HfUnit, radius, 16);
@@ -3841,6 +3906,241 @@ HF_ASSERT_OFFSET(HfDemolitionTemplate, index, 0);
 #define HF_TYPE_DemolitionTemplate_index HF_TYPE_U32
 HF_ASSERT_OFFSET(HfDemolitionTemplate, force, 4);
 #define HF_TYPE_DemolitionTemplate_force HF_TYPE_U32
+
+/* EquipmentComponentData (component 233, 232-byte records): how a held item is wielded, holstered and dropped: nodes, timings, the Helldiver's animations and grip */
+#define HfEquipment_INFO "EquipmentComponentData", 25480438u
+typedef struct HfEquipment
+{
+    uint32_t wield_node;                         /* +0x00 the hand joint it is held at (thin hash of the name: attach_hand_r) [respawn?] */
+    float wield_rotation[3];                     /* +0x04 rotation offset at the wield node (degrees) (unverified) [respawn?] */
+    float wield_position[3];                     /* +0x10 position offset at the wield node (metres) (unverified) [respawn?] */
+    uint32_t holster_node;                       /* +0x1C the joint it is holstered at (thin hash: sling) [respawn?] */
+    float holster_rotation[3];                   /* +0x20 rotation offset at the holster node (degrees) [respawn?] */
+    float holster_position[3];                   /* +0x2C position offset at the holster node (metres) [respawn?] */
+    float holster_duration;                      /* +0x38 seconds to holster [respawn?] */
+    float wield_duration;                        /* +0x3C seconds to wield [respawn?] */
+    float pickup_duration;                       /* +0x40 seconds to pick up [respawn?] */
+    uint8_t _unknown_44[4];
+    uint32_t wield_animation;                    /* +0x48 the Helldiver's wield animation event (thin hash: draw_primary) [respawn?] */
+    uint32_t pickup_animation;                   /* +0x4C the Helldiver's pickup animation event (pickup_weapon) [respawn?] */
+    uint32_t holster_animation;                  /* +0x50 the Helldiver's holster animation event (holster_primary) [respawn?] */
+    uint32_t drop_animation;                     /* +0x54 the Helldiver's drop animation event (unverified) [respawn?] */
+    uint32_t ammocheck_animation;                /* +0x58 the Helldiver's ammunition check animation event (ammocheck_marksmanrifle) [respawn?] */
+    uint8_t _unknown_5C[4];
+    float holster_duration_attach;               /* +0x60 seconds before it moves to the holster node [respawn?] */
+    float wield_duration_attach;                 /* +0x64 seconds before it moves to the wield node [respawn?] */
+    float attach_lerp_time;                      /* +0x68 seconds it blends between nodes [respawn?] */
+    uint8_t _unknown_6C[4];
+    uint32_t wield_animation_self;               /* +0x70 its own state machine's wield event (draw) [respawn?] */
+    uint32_t pickup_animation_self;              /* +0x74 its own state machine's pickup event (unverified) [respawn?] */
+    uint32_t holster_animation_self;             /* +0x78 its own state machine's holster event (sheath) [respawn?] */
+    uint8_t _unknown_7C[4];
+    uint32_t equipment_type;                     /* +0x80 equipment type (1 for arsenal weapons) [respawn?] */
+    uint8_t _unknown_84[4];
+    uint32_t drop_mode;                          /* +0x88 how it drops (1 for arsenal weapons) [respawn?] */
+    uint8_t _unknown_8C[12];
+    uint64_t drop_icon;                          /* +0x98 the HUD icon of a dropped one (a resource name hash) [respawn?] */
+    uint32_t pickup_audio_event;                 /* +0xA0 sound event on pickup (unverified) [respawn?] */
+    uint8_t _unknown_A4[12];
+    uint32_t switch_wield_audio_event;           /* +0xB0 sound event when switched to [respawn?] */
+    uint32_t switch_holster_audio_event;         /* +0xB4 sound event when switched away from [respawn?] */
+    uint32_t pickup_ability;                     /* +0xB8 ability run on pickup (93 for arsenal weapons) [respawn?] */
+    uint32_t drop_ability;                       /* +0xBC ability run on drop (unverified) [respawn?] */
+    uint32_t grip_type;                          /* +0xC0 the Helldiver's grip: 10 rifle, 14 plasma rifle, 15 marksman rifle, 70 PDW, 80 pump shotgun, 90 bullpup rifle [respawn?] */
+    uint8_t one_handed;                          /* +0xC4 1: held in one hand (unverified) [respawn?] */
+    uint8_t allow_wield_on_ship;                 /* +0xC5 1: may be held on the ship (unverified) [respawn?] */
+    uint8_t show_in_pickup_widget;               /* +0xC6 1: named in the pickup prompt [respawn?] */
+    uint8_t _unknown_C7[1];
+    uint64_t holster_unit;                       /* +0xC8 a unit shown in its place when holstered (unverified) [respawn?] */
+    uint8_t _unknown_D0[8];
+    uint32_t wwise_index;                        /* +0xD8 its equipment sound switch index [respawn?] */
+    uint8_t _unknown_DC[8];
+    uint32_t left_hand_node;                     /* +0xE4 the joint the left hand reaches for (thin hash: attach_hand_l) [respawn?] */
+} HfEquipment;
+HF_ASSERT_SIZE(HfEquipment, 232);
+HF_ASSERT_OFFSET(HfEquipment, wield_node, 0);
+#define HF_TYPE_Equipment_wield_node HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, wield_rotation, 4);
+#define HF_TYPE_Equipment_wield_rotation HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, wield_position, 16);
+#define HF_TYPE_Equipment_wield_position HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, holster_node, 28);
+#define HF_TYPE_Equipment_holster_node HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, holster_rotation, 32);
+#define HF_TYPE_Equipment_holster_rotation HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, holster_position, 44);
+#define HF_TYPE_Equipment_holster_position HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, holster_duration, 56);
+#define HF_TYPE_Equipment_holster_duration HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, wield_duration, 60);
+#define HF_TYPE_Equipment_wield_duration HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, pickup_duration, 64);
+#define HF_TYPE_Equipment_pickup_duration HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, wield_animation, 72);
+#define HF_TYPE_Equipment_wield_animation HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, pickup_animation, 76);
+#define HF_TYPE_Equipment_pickup_animation HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, holster_animation, 80);
+#define HF_TYPE_Equipment_holster_animation HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, drop_animation, 84);
+#define HF_TYPE_Equipment_drop_animation HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, ammocheck_animation, 88);
+#define HF_TYPE_Equipment_ammocheck_animation HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, holster_duration_attach, 96);
+#define HF_TYPE_Equipment_holster_duration_attach HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, wield_duration_attach, 100);
+#define HF_TYPE_Equipment_wield_duration_attach HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, attach_lerp_time, 104);
+#define HF_TYPE_Equipment_attach_lerp_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfEquipment, wield_animation_self, 112);
+#define HF_TYPE_Equipment_wield_animation_self HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, pickup_animation_self, 116);
+#define HF_TYPE_Equipment_pickup_animation_self HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, holster_animation_self, 120);
+#define HF_TYPE_Equipment_holster_animation_self HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, equipment_type, 128);
+#define HF_TYPE_Equipment_equipment_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, drop_mode, 136);
+#define HF_TYPE_Equipment_drop_mode HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, drop_icon, 152);
+#define HF_TYPE_Equipment_drop_icon HF_TYPE_U64
+HF_ASSERT_OFFSET(HfEquipment, pickup_audio_event, 160);
+#define HF_TYPE_Equipment_pickup_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, switch_wield_audio_event, 176);
+#define HF_TYPE_Equipment_switch_wield_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, switch_holster_audio_event, 180);
+#define HF_TYPE_Equipment_switch_holster_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, pickup_ability, 184);
+#define HF_TYPE_Equipment_pickup_ability HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, drop_ability, 188);
+#define HF_TYPE_Equipment_drop_ability HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, grip_type, 192);
+#define HF_TYPE_Equipment_grip_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, one_handed, 196);
+#define HF_TYPE_Equipment_one_handed HF_TYPE_U8
+HF_ASSERT_OFFSET(HfEquipment, allow_wield_on_ship, 197);
+#define HF_TYPE_Equipment_allow_wield_on_ship HF_TYPE_U8
+HF_ASSERT_OFFSET(HfEquipment, show_in_pickup_widget, 198);
+#define HF_TYPE_Equipment_show_in_pickup_widget HF_TYPE_U8
+HF_ASSERT_OFFSET(HfEquipment, holster_unit, 200);
+#define HF_TYPE_Equipment_holster_unit HF_TYPE_U64
+HF_ASSERT_OFFSET(HfEquipment, wwise_index, 216);
+#define HF_TYPE_Equipment_wwise_index HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEquipment, left_hand_node, 228);
+#define HF_TYPE_Equipment_left_hand_node HF_TYPE_U32
+
+/* WieldableComponentData (component 111, 32-byte records): aiming down sights and the events of taking it in hand */
+#define HfWieldable_INFO "WieldableComponentData", 25480438u
+typedef struct HfWieldable
+{
+    uint8_t allow_ads;                           /* +0x00 1: may aim down sights [respawn?] */
+    uint8_t _unknown_01[3];
+    uint32_t wielder_enter_event;                /* +0x04 the Helldiver's animation event when taken in hand (unverified) [respawn?] */
+    uint32_t wielder_exit_event;                 /* +0x08 the Helldiver's animation event when put away (unverified) [respawn?] */
+    uint32_t wield_state_audio_event;            /* +0x0C sound event of the wield state [respawn?] */
+    uint32_t self_enter_event;                   /* +0x10 its own state machine's event when taken in hand (unverified) [respawn?] */
+    uint32_t self_exit_event;                    /* +0x14 its own state machine's event when put away (unverified) [respawn?] */
+    uint8_t _unknown_18[8];
+} HfWieldable;
+HF_ASSERT_SIZE(HfWieldable, 32);
+HF_ASSERT_OFFSET(HfWieldable, allow_ads, 0);
+#define HF_TYPE_Wieldable_allow_ads HF_TYPE_U8
+HF_ASSERT_OFFSET(HfWieldable, wielder_enter_event, 4);
+#define HF_TYPE_Wieldable_wielder_enter_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWieldable, wielder_exit_event, 8);
+#define HF_TYPE_Wieldable_wielder_exit_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWieldable, wield_state_audio_event, 12);
+#define HF_TYPE_Wieldable_wield_state_audio_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWieldable, self_enter_event, 16);
+#define HF_TYPE_Wieldable_self_enter_event HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWieldable, self_exit_event, 20);
+#define HF_TYPE_Wieldable_self_exit_event HF_TYPE_U32
+
+/* AttachableComponentData (component 262, 64-byte records): how it attaches to a Helldiver or other unit, and its physics actor */
+#define HfAttachable_INFO "AttachableComponentData", 25480438u
+typedef struct HfAttachable
+{
+    uint32_t dynamic_actor;                      /* +0x00 the unit's physics actor used while it is loose (thin hash: collision) [respawn?] */
+    uint32_t attached_dynamic_actor;             /* +0x04 the physics actor used while it is attached (unverified) [respawn?] */
+    uint8_t use_all_dynamic_actors;              /* +0x08 1: every physics actor of the unit (unverified) [respawn?] */
+    uint8_t _unknown_09[3];
+    float offset[3];                             /* +0x0C position offset when attached (unverified) [respawn?] */
+    float rotation_offset[3];                    /* +0x18 rotation offset when attached (unverified) [respawn?] */
+    uint32_t offset_node;                        /* +0x24 the joint the offsets are from (unverified) [respawn?] */
+    uint32_t attach_animation;                   /* +0x28 its animation event on attach (unverified) [respawn?] */
+    uint32_t parent_attach_animation;            /* +0x2C the parent's animation event on attach (unverified) [respawn?] */
+    uint32_t detach_animation;                   /* +0x30 its animation event on detach (unverified) [respawn?] */
+    uint32_t parent_detach_animation;            /* +0x34 the parent's animation event on detach (unverified) [respawn?] */
+    uint8_t _unknown_38[2];
+    uint8_t inherit_angular_momentum;            /* +0x3A 1: keeps the parent's spin when it comes loose [respawn?] */
+    uint8_t _unknown_3B[5];
+} HfAttachable;
+HF_ASSERT_SIZE(HfAttachable, 64);
+HF_ASSERT_OFFSET(HfAttachable, dynamic_actor, 0);
+#define HF_TYPE_Attachable_dynamic_actor HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAttachable, attached_dynamic_actor, 4);
+#define HF_TYPE_Attachable_attached_dynamic_actor HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAttachable, use_all_dynamic_actors, 8);
+#define HF_TYPE_Attachable_use_all_dynamic_actors HF_TYPE_U8
+HF_ASSERT_OFFSET(HfAttachable, offset, 12);
+#define HF_TYPE_Attachable_offset HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAttachable, rotation_offset, 24);
+#define HF_TYPE_Attachable_rotation_offset HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAttachable, offset_node, 36);
+#define HF_TYPE_Attachable_offset_node HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAttachable, attach_animation, 40);
+#define HF_TYPE_Attachable_attach_animation HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAttachable, parent_attach_animation, 44);
+#define HF_TYPE_Attachable_parent_attach_animation HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAttachable, detach_animation, 48);
+#define HF_TYPE_Attachable_detach_animation HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAttachable, parent_detach_animation, 52);
+#define HF_TYPE_Attachable_parent_detach_animation HF_TYPE_U32
+HF_ASSERT_OFFSET(HfAttachable, inherit_angular_momentum, 58);
+#define HF_TYPE_Attachable_inherit_angular_momentum HF_TYPE_U8
+
+/* WeaponCustomizationComponentData (component 271, 4872-byte records): a weapon's attachment slots, default attachments and the attachment units it names itself */
+#define HfWeaponCustomization_INFO "WeaponCustomizationComponentData", 25480438u
+typedef struct HfWeaponCustomization
+{
+    uint32_t defaults[20];                       /* +0x00 up to 10 default attachments, {slot, item id} pairs (slots: 1 underbarrel, 2 optics, 3 paint, 4 muzzle, 5 magazine, 6 ammunition, 8 internals, 9 triggers) [respawn?] */
+    uint32_t slots[10];                          /* +0x50 the slots the player may change in the armory (0: none) [respawn?] */
+    uint64_t optics_unit;                        /* +0x78 the optic unit spawned at attach_optic without an optic attachment (resource name hash; 0: none) (unverified) [respawn?] */
+    uint64_t magazine_unit;                      /* +0x80 the magazine unit spawned at attach_mag without a magazine attachment (the Adjudicator names its magazine here) [respawn?] */
+    uint8_t _unknown_88[8];
+    uint64_t magazine_secondary_unit;            /* +0x90 a second magazine unit (unverified) [respawn?] */
+    uint8_t _unknown_98[8];
+    uint64_t muzzle_unit;                        /* +0xA0 the muzzle unit spawned at attach_muzzle without a muzzle attachment [respawn?] */
+    float optics_crosshair[2];                   /* +0xA8 the optic's crosshair parameters (unverified) [respawn?] */
+    uint8_t _unknown_B0[16];
+    uint64_t underbarrel_entity;                 /* +0xC0 the underbarrel entity without an underbarrel attachment (unverified) [respawn?] */
+    uint8_t _unknown_C8[4480];
+    uint32_t trigger_settings[13];               /* +0x1248 trigger settings [respawn?] */
+    uint8_t _unknown_127C[4];
+    uint32_t magazine_adjusting_nodes[24];       /* +0x1280 magazine joints shown one per remaining round (thin hashes: bullet_01..) [respawn?] */
+    uint8_t _unknown_12E0[40];
+} HfWeaponCustomization;
+HF_ASSERT_SIZE(HfWeaponCustomization, 4872);
+HF_ASSERT_OFFSET(HfWeaponCustomization, defaults, 0);
+#define HF_TYPE_WeaponCustomization_defaults HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponCustomization, slots, 80);
+#define HF_TYPE_WeaponCustomization_slots HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponCustomization, optics_unit, 120);
+#define HF_TYPE_WeaponCustomization_optics_unit HF_TYPE_U64
+HF_ASSERT_OFFSET(HfWeaponCustomization, magazine_unit, 128);
+#define HF_TYPE_WeaponCustomization_magazine_unit HF_TYPE_U64
+HF_ASSERT_OFFSET(HfWeaponCustomization, magazine_secondary_unit, 144);
+#define HF_TYPE_WeaponCustomization_magazine_secondary_unit HF_TYPE_U64
+HF_ASSERT_OFFSET(HfWeaponCustomization, muzzle_unit, 160);
+#define HF_TYPE_WeaponCustomization_muzzle_unit HF_TYPE_U64
+HF_ASSERT_OFFSET(HfWeaponCustomization, optics_crosshair, 168);
+#define HF_TYPE_WeaponCustomization_optics_crosshair HF_TYPE_F32
+HF_ASSERT_OFFSET(HfWeaponCustomization, underbarrel_entity, 192);
+#define HF_TYPE_WeaponCustomization_underbarrel_entity HF_TYPE_U64
+HF_ASSERT_OFFSET(HfWeaponCustomization, trigger_settings, 4680);
+#define HF_TYPE_WeaponCustomization_trigger_settings HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponCustomization, magazine_adjusting_nodes, 4736);
+#define HF_TYPE_WeaponCustomization_magazine_adjusting_nodes HF_TYPE_U32
 
 #pragma pack(pop)
 

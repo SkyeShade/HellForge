@@ -13,7 +13,7 @@
  * map has no overflow path (a full one writes to address 0), so nothing is requested with it 3/4 full, and HellForge
  * holds at most 64 packages. Whether a package is resident is read from the engine's package list (helldivers2.exe;
  * its has_loaded and package lookup functions checked): known with every part in state 4; else loading, queued or
- * absent. A package not resident 90 s after its request has failed. Only the catalogue's packages are requested.
+ * absent. A package not resident 90 s after its request has failed. Only catalogue and mods' own packages are requested.
  *
  * Co-op (docs/multiplayer.md "Assets in co-op"): every player keeps their own edits, and what a friend's edit puts in the
  * game (a vehicle's swapped weapon, a pod's pickup) is created on every machine, so each machine needs its package. The
@@ -55,6 +55,11 @@ typedef struct HeldPackage
     char why[160];
 } HeldPackage;
 static HeldPackage g_held[PKG_MAX_HELD];
+/* The mods' own packages from the plan; ref.name points at name. */
+typedef struct ModPackage { RefPackage ref; char name[96]; int session; } ModPackage;
+static ModPackage g_modPackages[PKG_MAX_HELD];
+static int g_modPackageCount;
+static int g_modPackagesWanted;         /* the session ones were asked for (ModPackagesTick) */
 static int g_heldCount;
 static SRWLOCK g_packagesLock = SRWLOCK_INIT;
 static int g_packagesProven;            /* 1 the pins read as reviewed */
@@ -147,7 +152,43 @@ static int PackageResident(uint64_t id)
 static const RefPackage* CataloguePackage(uint64_t id)
 {
     for (size_t i = 0; i < sizeof kRefPackages / sizeof kRefPackages[0]; i++) if (kRefPackages[i].id == id) return &kRefPackages[i];
+    for (int i = 0; i < g_modPackageCount; i++) if (g_modPackages[i].ref.id == id) return &g_modPackages[i].ref;
     return NULL;
+}
+
+/* package <mod id> <id hex> <session|request>: a mod's own package. 1 when it is a package line; a malformed one is
+ * skipped, as the other modules' plan lines are. */
+static int PackagePlanLine(char** f, int n)
+{
+    if (n < 1 || strcmp(f[0], "package")) return 0;
+    char* end = NULL;
+    uint64_t id = n == 4 && strlen(f[2]) == 16 ? strtoull(f[2], &end, 16) : 0;
+    int session = n == 4 && !strcmp(f[3], "session");
+    if (id == 0 || end == NULL || *end || (!session && strcmp(f[3], "request"))) return 1;
+    if (CataloguePackage(id) != NULL || g_modPackageCount == PKG_MAX_HELD) return 1; /* known already, or no room */
+    ModPackage* p = &g_modPackages[g_modPackageCount++];
+    snprintf(p->name, sizeof p->name, "%s's package", f[1]);
+    p->ref.id = id;
+    p->ref.name = p->name;
+    p->session = session;
+    return 1;
+}
+
+static int PackageWant(uint64_t id, const char** name, const char** why);
+
+/* On the game thread: the mods' session packages asked for once the package system is set up, so their 90 s start
+ * then. Each is this machine's own (sent to friends, who run the same mods). */
+static void ModPackagesTick(void)
+{
+    double fill;
+    if (g_modPackagesWanted || g_modPackageCount == 0 || PackageSystem(&fill) == 0) return;
+    g_modPackagesWanted = 1;
+    for (int i = 0; i < g_modPackageCount; i++)
+    {
+        const char *name, *why;
+        if (g_modPackages[i].session && PackageWant(g_modPackages[i].ref.id, &name, &why) == PKG_FAILED)
+            Note("package %016llx (%s) not loaded: %s", (unsigned long long)g_modPackages[i].ref.id, name, why);
+    }
 }
 
 static void LivePackagesChanged(void); /* live.c: this machine's own packages changed, for the session's backend */
@@ -197,7 +238,7 @@ static int PackageHeldState(HeldPackage* held, uint64_t id, int* changed)
  * *added (may be NULL): 1 when this call asked for it first. */
 static int PackageWantAs(uint64_t id, int own, const char** name, const char** why, int* added)
 {
-    static const char* const notInCatalogue = "it is not a package HellForge's catalogue names";
+    static const char* const notInCatalogue = "it is neither a package HellForge's catalogue names nor one of the mods' own";
     const RefPackage* known = CataloguePackage(id);
     *name = known != NULL ? known->name : "?";
     if (added != NULL) *added = 0;
@@ -286,17 +327,21 @@ static void PackagesRequest(void)
     if (changed) LivePackagesChanged();
 }
 
+#include "attachments.c" /* mods' weapon attachments, made on this file's game-thread update */
+
 static void EventsTick(void); /* events.c */
 static void ArmoryDiagTick(void); /* armory_diag.c */
 
-static void ShieldBlockTick(void); /* shield_block.c */
+static void ShieldBlockTick(float dt); /* shield_block.c */
 static void TickDetour(void* manager, float dt)
 {
     InterlockedExchange64(&g_tickLast, (LONG64)GetTickCount64());
     EventsTick();
+    ModPackagesTick();
     PackagesRequest();
+    AttachmentsTick();
     ArmoryDiagTick();
-    ShieldBlockTick();
+    ShieldBlockTick(dt);
     TickTable* ticks = g_ticks;
     LONG count = ticks ? ticks->count : 0;
     for (LONG i = 0; i < count; i++) ticks->entries[i].callback(ticks->entries[i].mod, dt, ticks->entries[i].user);
@@ -346,7 +391,7 @@ static int ApiOnGameThread(HfMod* mod, HfTickCallback callback, void* user)
     return 1;
 }
 
-/* SDK 6: a catalogue package loaded and held for the session. */
+/* SDK 6: a catalogue package, or a mod's own (SDK 17), loaded and held for the session. */
 static int ApiLoadPackage(HfMod* mod, uint64_t package)
 {
     const char *name, *why;

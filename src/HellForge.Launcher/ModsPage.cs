@@ -154,6 +154,8 @@ public partial class MainWindow
         List<string> problems;
         // a .rar or .7z dropped into the mods folder is added as a folder first, as Add mods... adds one
         var dropped = paths.InstallRoot != null ? ModInstaller.TakeDropped(new InstallLayout(paths.InstallRoot)) : [];
+        // and mod files written over through a staged link since (ModStaging.Notices): reinstalling the mod clears its line
+        if (paths.InstallRoot != null) dropped.AddRange(ModStaging.Notices(new InstallLayout(paths.InstallRoot)));
         try { (mods, problems) = ModCatalog.Load(paths.ModsFolder); problems.InsertRange(0, dropped); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -599,7 +601,9 @@ public partial class MainWindow
             return ("Its sources could not be read: " + Privacy.Scrub(error.Message), Orange);
         }
         return record == null ? ("Built from its sources when a session starts.", Light)
-            : record.Error != null && current ? ("Did not compile; it stays off until fixed:\n" + record.Error, Red)
+            : record.Error != null && ModBuilds.ToolsFailure(record.Error)
+                ? ("Its last build failed in the mod tools (Zig), not in the mod: the next session unpacks Zig again and builds it.", Orange)
+            : record.Error != null && current ? ("Did not compile; it stays off until fixed (Build now compiles it again):\n" + record.Error, Red)
             : record.Error != null ? ("Its last build did not compile; the sources changed since, so the next session builds it again.", Orange)
             : current ? ($"Built {record.Built.ToLocalTime():g}; sessions reuse this build until its sources change.", Light)
             : ("Its sources, the SDK or the game build changed: the next session builds it again.", Orange);

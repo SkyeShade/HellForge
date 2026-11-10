@@ -758,9 +758,15 @@ try
     Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; the live pipe");
     await LiveModsTests.Run(root, Check);
     results.Add(new { mode = "live-mods", outcome = "passed" });
+    IdleKickTests.Run(Check);
+    results.Add(new { mode = "idle-kick", outcome = "passed" });
+    Console.WriteLine("PASS idle kick: served off, every other override unchanged");
     RegisteredItemsTests.Run(root, Check);
     results.Add(new { mode = "registered-items", outcome = "passed" });
     Console.WriteLine("PASS registered items: child hash, catalogue children, mastery package, progress, inventory");
+    await ModWarbondsTests.Run(root, Check);
+    results.Add(new { mode = "mod-warbonds", outcome = "passed" });
+    Console.WriteLine("PASS mod warbonds: the spec's checks and ids, listed after the game's within the list's room and the bought items' room, pages, spent counter, sold in their currency, page gates, mods' items held once bought, unlock-all, premium refused");
     MasteryTests.Run(root, Check);
     results.Add(new { mode = "weapon-mastery", outcome = "passed" });
     Console.WriteLine("PASS weapon mastery: missions earn, once; a mod weapon's own level, items and purchases, saved apart; the launcher's levels; caching");

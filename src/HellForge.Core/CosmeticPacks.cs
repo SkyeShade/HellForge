@@ -32,10 +32,15 @@ public static partial class CosmeticPacks
         if (ModCatalog.ManifestIn(folder) != null) return false;
         if (Directory.EnumerateFiles(folder).Any(f => ModCatalog.PatchFile().IsMatch(Path.GetFileName(f)))) return true;
         var manifest = Path.Combine(folder, ManifestName);
-        if (!File.Exists(manifest)) return false;
+        return File.Exists(manifest) && IsPackManifest(File.ReadAllText(manifest));
+    }
+
+    // A manifest.json's text names options or a Guid (IsPack; ModInstaller reads it from a zip).
+    internal static bool IsPackManifest(string text)
+    {
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(manifest), new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+            using var document = JsonDocument.Parse(text, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
             return document.RootElement.ValueKind == JsonValueKind.Object &&
                 (document.RootElement.TryGetProperty("Options", out _) || document.RootElement.TryGetProperty("Guid", out _));
         }

@@ -335,10 +335,11 @@ sealed partial class PlaySession(PlayOptions options)
         // --modset: the gameplay mods with their content hashes, for the backend (mod sync); --session-mods: the mods the
         // session runs, which the backend can change without a restart (LiveMods); --sync: after a mod sync, the host's mods
         // instead of the player's own (ModSyncSession).
+        // --mod-warbonds: the warbonds the mods add (HellForge.Core ModWarbonds), for the backend.
         // --premium-snapshot, --premium-locked: mods built on premium content follow the profile's account snapshot
         // (HellForge.Core PremiumMods); the locked ones' items stay out of the inventory (the backend's --premium-locked).
         string[] stage = ["mods-stage", "--install", install.Root, "--plan", loaderPlan, "--logs", gameOut, "--progress", Path.Combine(run, "mod-builds.json"),
-            "--modset", ModSetFile, "--session-mods", SessionModsFile, .. PremiumStageArguments(profileDirectory)];
+            "--modset", ModSetFile, "--session-mods", SessionModsFile, "--mod-warbonds", ModWarbondsFile, .. PremiumStageArguments(profileDirectory)];
         if (options.ModSync != null) stage = [.. stage, "--sync", Path.GetFullPath(options.ModSync), "--sandbox", options.Sandbox ? "yes" : "no"];
         var planText = HellForgeCli(stage);
         if (Tools.ParseJson(planText ?? "") is not JsonObject plan) throw new SessionFailure("Mods could not be loaded; see cli-output.txt in this session's log folder.");
@@ -482,6 +483,9 @@ sealed partial class PlaySession(PlayOptions options)
     // The session's mod set (mods-stage --modset), for the backend's mod sync.
     string ModSetFile => Path.Combine(run, "modset.json");
     string SessionModsFile => Path.Combine(run, "session-mods.json");
+
+    // The warbonds the session's mods add (mods-stage --mod-warbonds), for the backend.
+    string ModWarbondsFile => Path.Combine(run, "mod-warbonds.json");
 
     // The mods whose items stay locked for this player (mods-stage --premium-locked), for the backend.
     string PremiumLockedFile => Path.Combine(run, "premium-locked.json");
@@ -957,7 +961,7 @@ sealed partial class PlaySession(PlayOptions options)
             throw new SessionFailure("The network block's check program is missing (" + probe + "). Antivirus programs sometimes remove it: " +
                 "restore it from quarantine and exclude the HellForge folder, or run Settings > Installation again to put the block back.");
         var problem = RunNetworkProbe(probe, linuxNamespace, wfpOnly, "network-probe.json");
-        if (problem == null) return;
+        if (problem == null) { NoteOffline(probe); return; }
         if (linuxNamespace) throw new SessionFailure($"The network namespace is not holding: {problem}.");
         if (!wfpOnly) throw new SessionFailure($"The network block is not holding: {problem}. Run Settings > Installation to place it again.");
         result["networkControlBefore"] = result["networkControl"]?.DeepClone();
@@ -967,6 +971,7 @@ sealed partial class PlaySession(PlayOptions options)
         {
             result["networkBlockRepaired"] = true;
             Say("The network block was placed again and holds.");
+            NoteOffline(probe);
             return;
         }
         throw new SessionFailure(why != null
@@ -1147,7 +1152,7 @@ sealed partial class PlaySession(PlayOptions options)
         if (!File.Exists(backend)) throw new SessionFailure("The local backend is missing; reinstall HellForge.");
         var start = new ProcessStartInfo(backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in new[] { "--port", install.BackendPort.ToString(), "--startup-fixtures", "true", "--lifetime-seconds", "0", "--evidence", evidence,
-                     "--profile-dir", profileDirectoryUsed, "--capture-mission-bodies", "true", "--premium-locked", PremiumLockedFile,
+                     "--profile-dir", profileDirectoryUsed, "--capture-mission-bodies", "true", "--premium-locked", PremiumLockedFile, "--mod-warbonds", ModWarbondsFile,
                      "--catalogue", GameCatalog.CopyForSession(install.Root, run) ?? throw new SessionFailure(GameCatalog.SyncFirst) }) start.ArgumentList.Add(argument);
         if (options.Template != null) { start.ArgumentList.Add("--profile-template"); start.ArgumentList.Add(options.Template); }
         if (options.Sandbox) { start.ArgumentList.Add("--sandbox"); start.ArgumentList.Add("true"); }

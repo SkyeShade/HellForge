@@ -26,6 +26,7 @@ public static partial class LocalBackend
         public required WarClock WarClock { get; init; }
         public required AccountKeys AccountKeys { get; init; }
         public required RegisteredItems? RegisteredItems { get; init; }
+        public ModWarbondService? ModWarbonds { get; init; }
         public required StartupBodies Startup { get; init; }
         public required Multiplayer.BrowseApi? Browse { get; init; }
         public required string AuditPath { get; init; }
@@ -103,6 +104,10 @@ public static partial class LocalBackend
             if (request.Path.StartsWithSegments("/SeasonPass", out var seasonPassId) && seasonPassId.Value is { Length: > 1 } idPath &&
                 SeasonPassDetails.TryGetValue(idPath[1..], out var seasonPassDetail))
                 return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, "season_pass_detail", seasonPassDetail);
+            // a mod's warbond's pages (ModWarbondService)
+            if (request.Path.StartsWithSegments("/SeasonPass", out var modPassId) && modPassId.Value is { Length: > 1 } modIdPath &&
+                ModWarbonds?.Detail(modIdPath[1..]) is { } modDetail)
+                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, "mod_warbond_detail", modDetail);
             return await GameRouteAsync(context);
         }
 
@@ -131,6 +136,8 @@ public static partial class LocalBackend
                 // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems);
                 // premium warbonds the account does not own have no price in it (OwnershipFilter).
                 var served = RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody;
+                // mods' warbonds: their list entries, spent counters and, on unlock-all, their purchases (ModWarbondService)
+                served = ModWarbonds?.Apply(request.Path.Value!, served) ?? served;
                 if (request.Path.Value == "/Progression/items" && Profile?.Ownership is { } ownership) served = ownership.FilterCatalogueResponse(served);
                 return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, served);
             }

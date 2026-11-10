@@ -51,6 +51,20 @@ static class RegisteredItemsTests
         var inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
         check(inventory.Contains(Gold) && !inventory.Contains(goldChildren[0]), "The inventory lacks the weapon, or mirrors what its base holds.");
 
+        // An attachment a mod adds (attachments.c), a copy of Liberator attachment 3441477456 offered on the gold one: its
+        // child of the gold Liberator in that weapon's run, held with the weapon; a weapon it is not offered on gets none.
+        const uint Drum = 0x0D12A001;
+        File.WriteAllText(file, $$"""{"format":1,"items":[{"mixId":{{Gold}},"copyOf":{{Liberator}},"mod":"test","unit":"test/gold"}],"attachments":[{"mixId":{{Drum}},"copyOf":3441477456,"weapons":[{{Gold}}]}]}""");
+        catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
+        at = catalogue.Select((item, index) => (item, index)).First(x => (uint)x.item!["mixId"]! == Gold).index;
+        var goldRun = catalogue.Skip(at + 1).TakeWhile(i => (uint?)i!["parentId"] == Gold).OfType<JsonObject>().ToList();
+        var drumChild = goldRun.SingleOrDefault(i => (uint)i["itemId"]! == Drum);
+        check(drumChild != null && (uint)drumChild["mixId"]! == RegisteredItems.WeaponChild(Drum, Gold) && goldRun.Count == baseChildren.Count + 1 &&
+            !catalogue.OfType<JsonObject>().Any(i => (uint)i["itemId"]! == Drum && (uint?)i["parentId"] != Gold),
+            "The attachment is not a child of the gold Liberator alone, in its run.");
+        inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
+        check(inventory.Contains(RegisteredItems.WeaponChild(Drum, Gold)), "The attachment's child is not held with the weapon.");
+
         // A stratagem a code mod adds (stratagems.c): a copy of the Orbital Airburst Strike's item (stable id 1560416221)
         // and its child, the child's itemId being the new stable id. An entry whose base is not known yet waits.
         const uint Strike = 1560416221, Item = 0x1234ABCD, Stable = 0x0BADF00D;

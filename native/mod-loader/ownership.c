@@ -28,7 +28,6 @@
 #define OWN_CATALOGUE g_catalogue.catalogue
 #define OWN_INVENTORY g_catalogue.inventory
 #define OWN_MAX g_catalogue.items
-#define OWN_ITEMS 512 /* LC_MAX: what one change can add */
 #define OWN_ROOM 256  /* catalogue items a new item may take with its children */
 
 static const uint8_t kOwnApplyPin[47] = {0x44, 0x89, 0x44, 0x24, 0x18, 0x48, 0x89, 0x4C, 0x24, 0x08, 0x53, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56,
@@ -115,7 +114,9 @@ static const char* const kOwnNoBase[] = {"a new weapon's base has no root item i
     "a new stratagem's base has no item in the catalogue; it is owned from the next session",
     "level 10's unlock item is not in the catalogue; level 11's is owned from the next session"};
 typedef struct OwnItem { int kind; uint32_t mixId, stable, baseStable, baseMixId; int take; } OwnItem;
-typedef struct OwnBatch { OwnItem items[OWN_ITEMS]; int count, added, owned, taken; const char* why; } OwnBatch;
+/* items: grown as a change adds them (live_content.c LiveOwn), capacity entries; a change may own or give back every
+ * weapon and entity its mods had, more than any fixed number */
+typedef struct OwnBatch { OwnItem* items; int count, capacity, added, owned, taken; const char* why; } OwnBatch;
 
 /* A stratagem's records: the base's child (category 10, itemId its stable id) and its item (the child's parent). */
 static int OwnStratagem(uintptr_t manager, const OwnItem* item)

@@ -331,7 +331,23 @@ Every write, live or from Local Stats at boot (`StatsDirectorReady`), is checked
 - a group with no roster key takes no count;
 - the lowest tech level and player count may not exceed the highest;
 - tech levels go to 11 only with level 11;
-- weights are finite.
+- weights are finite;
+- a weight of 0 keeps a weighted row for its enemy at that level on every planet. The rows with the same roster key are
+  one enemy. A row stays while no other weighted one draws on every planet it draws on, judged by its planet tags.
+  At boot a file's roster lines of 0 are judged after its other lines. A live change is judged against the rows as
+  they are, so raise the new row before you zero the old one.
+
+The last rule is there because the director picks an enemy by its key and weight. With no row to pick, the game hands
+the spawn a null enemy, and a bug hole or fabricator of it crashed the game at `game.dll+0x9530F5`. Writes that skip
+these checks, such as a Lua mod's own, meet `native/mod-loader/spawn_guards.c`:
+
+- the spawn refuses a null enemy, as it refuses one its gates turn away;
+- a spawner's queue drops a null entry and goes on to the next;
+- the three callers of the pick that read a missing row unchecked (`game.dll+0x802000`, `+0x8694EA`, `+0x90F315`) ask
+  again for the family's rows of any weight, so they get a row of weight 0;
+- `modloader.log` counts all three (`spawn guards: ...`).
+
+A family with no row that passes the planet's tags, whatever its weights, still has nothing to give these callers.
 
 The director reads these tables when a mission is set up, so a change applies from the next mission. Only the host's
 tables decide what spawns. None of it is proven in game yet (HD2Runtime's director research is offline). Demolition
@@ -474,6 +490,11 @@ integer types (kind 1) can be widened, to at most 31 bits.
 The engine validates every integer field written to the network against `min .. min + 2^bits - 1` and clamps it in
 place (exe 0x34BAB0). So a wider type raises that limit for every field of that type. All players must run the same
 edit, and the modlist digest makes sure of that.
+
+The in-game editor widens `deposit_value` to 20 bits this way, which makes backpack ammo editable past 1,023 and makes
+the editor a shared mod: a different copy is another HellForge version. Float types are clamped to their range too. Shield
+health is row 371 (0..10000, 7 bits), so a shield set past that raises the row's maximum (`NetShieldHealth`). The width
+stays, so a player who does not own the shield sees its health in coarser steps.
 
 The game keeps entity component records in one private allocation of a fixed size whose first 28 bytes are the entity
 map header. HellForge finds it, and each component's index, exactly as HD2Runtime's `core/entity_catalog.lua` does. It

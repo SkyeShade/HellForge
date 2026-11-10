@@ -28,18 +28,40 @@ marks them CODE.
    lists it and waits. Press Add to replace the installed one, whose files are deleted, or Cancel.
 
 Copying a mod into the mods folder yourself works too (Open mods folder opens it), and the page shows it at once. A
-`.zip` loads as it is. A `.rar` or `.7z` is unpacked into a folder of its own and the archive is removed, the next time
-the Mods page loads or a session starts. When a dropped archive holds a mod that is installed already, it stays as it is
-and Mod notices says so: use Add mods... to replace the installed one.
+`.zip` loads as it is. A `.rar` or `.7z`, and a zipped cosmetic pack, is unpacked into a folder of its own and the
+archive is removed, the next time the Mods page loads or a session starts.
+
+When a dropped archive holds a mod that is installed already, it stays as it is and Mod notices says so: use Add mods...
+to replace the installed one. When every file it holds is in the installed mod with the same bytes, it is only a second
+copy: it is removed, and Mod notices says so.
 
 Some things to know:
 
 - `.rar` (RAR 4 and 5) and `.7z` files are unpacked by HellForge itself, on Windows 10 and 11 and under Wine. Only plain
   files and folders come out. A password-protected archive, one split into parts, or one with links or paths outside
   itself is refused: unpack it yourself and add its folder.
-- Keep a mod as its zip: HellForge unpacks it by itself. Two copies of one mod (a zip and a folder with the same id) load
-  neither, and the page says so.
+- Keep a gameplay mod as its zip: HellForge unpacks it by itself. Two copies of one mod (a zip and a folder with the same
+  id) load neither, and the page says so.
+- Cosmetic packs are kept as folders: a zipped pack becomes one, with its options and its place in the order. A zip kept
+  beside its unpacked copy would hold the pack twice.
 - Files that are not mods are listed under Mod notices with the reason, until the next Add mods.
+
+### Disk space
+
+PLAY puts each mod's patches into the game copy's data folder as hard links to the mod's own files where it can, not as
+second copies:
+
+- **Windows:** every patch. While the game runs, a mod's patch files cannot be saved over, as the game's cannot.
+- **Linux:** the files HellForge keeps itself (zips' unpacked copies, mods from hosts). A mod folder's patches are copied,
+  since Linux lets a program write to a file the game is reading.
+
+A drive without hard links (FAT32, exFAT) gets copies. A gameplay mod kept as a zip is on the drive twice, as its zip and
+its unpacked copy: the zip is what friends compare. Explorer's folder sizes count a linked file once in each folder, so
+the drive's free space is what shows the saving.
+
+A staged patch is the mod's file under a second name, so change the mod, not the file in the game's data folder. Written
+over there, the mod's file changes too. The next session start finds it: a file HellForge keeps itself is made again,
+and for a mod folder Mod notices says which file changed, so you can reinstall the mod.
 
 ## The Mods page
 
@@ -50,8 +72,9 @@ cosmetic packs, Lua mods and mods that say they are not gameplay mods; friends n
   Open folder. It also has Build now for a mod with sources, Prepare for sharing for your own folder mods, and Remove... for
   your own mods (not the bundled mods or Local Stats). Remove asks before it deletes the mod's files.
 - Tags on the right say what a mod is, among them CODE, DATA, STATS, PACK, LUA, ZIP and BUNDLED (shipped with
-  HellForge). DID NOT COMPILE marks a source mod whose last build failed; it stays off until fixed, and its details show
-  the compiler's message.
+  HellForge). DID NOT COMPILE marks a source mod whose last build failed; it stays off until fixed (or Build now compiles
+  it again), and its details show the compiler's message. A build that failed in the mod tools (Zig), not in the mod, is
+  not marked: the next session unpacks Zig again and builds the mod.
 - PREMIUM marks a mod built on Arrowhead's premium content (a premium warbond, Superstore items, a Steam DLC). What it
   adds is yours only when you bought that content in the normal game and synced it (Profile > Account sync). PREMIUM:
   LOCKED means the selected profile's synced account lacks it: the mod loads, but its weapons and stratagems stay

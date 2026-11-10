@@ -115,6 +115,19 @@ public static class ResourceEdits
         if (missing.Count > 0) throw new InvalidDataException("the material has no parameter " + string.Join(", ", missing) + ".");
     }
 
+    // A material's textures by slot: the slot ids (thin hashes of names such as base_data) at 0x88, then the textures'
+    // resource names as u64, one per slot (the count at 0x40). Every named slot must be in the material.
+    public static void SetMaterialTextures(byte[] material, IReadOnlyDictionary<uint, ulong> textures)
+    {
+        var count = material.Length < 0x88 ? -1 : BinaryPrimitives.ReadInt32LittleEndian(material.AsSpan(0x40));
+        if (count < 0 || 0x88 + 12L * count > material.Length) throw new InvalidDataException("the material's texture list is malformed.");
+        var slots = Enumerable.Range(0, count).Select(i => BinaryPrimitives.ReadUInt32LittleEndian(material.AsSpan(0x88 + 4 * i))).ToList();
+        var missing = textures.Keys.Where(k => !slots.Contains(k)).Select(k => $"0x{k:X8}").ToList();
+        if (missing.Count > 0) throw new InvalidDataException("the material has no texture slot " + string.Join(", ", missing) + ".");
+        for (var i = 0; i < count; i++)
+            if (textures.TryGetValue(slots[i], out var id)) BinaryPrimitives.WriteUInt64LittleEndian(material.AsSpan(0x88 + 4 * count + 8 * i), id);
+    }
+
     // A material of another game build in the layout of `parent`, the game copy's material it derives from (+0x18): the
     // parent's texture slots and parameters, each taking the source's texture or value of the same name (the parent's own
     // where the source has none), so the shader the game copy has reads every value where it expects it. Slots and

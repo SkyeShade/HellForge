@@ -70,6 +70,13 @@ static int ContentCommit(void)
     return 1;
 }
 
+/* Every tombstone cleared: the numbered kinds' and the weapons' (Weapon.tomb). */
+static void ContentTombsClear(void)
+{
+    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    for (size_t i = 0; i < g_weaponStore.committed; i++) g_weapons[i].tomb = 0;
+}
+
 static void ContentNumbersFixture(void)
 {
     ContentEventsSave();
@@ -77,7 +84,7 @@ static void ContentNumbersFixture(void)
     uint32_t stratagems = g_stratagemCount, behaviours = g_behaviourCount;
     int stratagemState = g_stratagemState, behaviourState = g_behaviourState;
     g_stratagemCount = g_behaviourCount = 0;
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     /* the boot: b's stratagem 150 */
     g_stratagemState = 0;
     InterlockedExchange(&g_fired[HF_EVENT_GAME_LOADED], 0);
@@ -170,7 +177,7 @@ static void ContentNumbersFixture(void)
     printf("  live content: numbered by mod id then call order (load order aside), a new version stands in, tombstones taken back and "
         "taken over by another mod, 3 refusals\n");
 
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     g_stratagemCount = stratagems;
     g_behaviourCount = behaviours;
     g_stratagemState = stratagemState;
@@ -197,6 +204,10 @@ static uint8_t* ContentGame(size_t size)
         memcpy(game + kStratagemBounds[i].rva + kStratagemBounds[i].immAt, &kStratagemBounds[i].value, kStratagemBounds[i].width);
     memcpy(game + STR_PICKER_BOUND, kPickerBoundPin, sizeof kPickerBoundPin);
     memcpy(game + STR_PICKER_PAD, kPickerPadPin, sizeof kPickerPadPin);
+    for (size_t i = 0; i < sizeof kChoiceGuards / sizeof kChoiceGuards[0]; i++) memcpy(game + kChoiceGuards[i].rva, kChoiceGuards[i].pin, kChoiceGuards[i].length);
+    memcpy(game + STR_COUNT_STORE, kCountStorePin, sizeof kCountStorePin);
+    for (size_t i = 0; i < sizeof kPickerFrame / sizeof kPickerFrame[0]; i++) memcpy(game + kPickerFrame[i].rva, kPickerFrame[i].pin, kPickerFrame[i].length);
+    memcpy(game + STR_PICKER_UNWIND, kPickerUnwindPin, sizeof kPickerUnwindPin);
     *(uint32_t*)(game + STR_ROWS_LOADED) = STR_VANILLA - 1;
     memcpy(game + DMG_CLEAR, kDamageClearPin, sizeof kDamageClearPin);
     for (size_t i = 0; i < sizeof kDamageSites / sizeof kDamageSites[0]; i++)
@@ -431,7 +442,7 @@ static void ContentInstallFixture(void)
     g_stratagemCount = g_projectileCount = g_damageCount = 0;
     g_stratagemState = g_projectileState = g_damageState = 1; /* the boot had none: nothing moved */
     g_stratagemTable = NULL; g_projectileTable = NULL; g_damageTable = NULL; g_projectileBlock = NULL;
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     FakeCatalogue();
     for (int event = HF_EVENT_GAME_LOADED; event <= HF_EVENT_PROJECTILES_READY; event++) InterlockedExchange(&g_fired[event], 1);
 
@@ -475,7 +486,9 @@ static void ContentInstallFixture(void)
     assert((int)g_textsServed == g_textCount && !g_textsHeld && TextDetour(madeId, NULL, NULL, NULL) == g_texts[textsBefore].text);
     uintptr_t table = (uintptr_t)g_stratagemTable;
     Stratagem* s = &g_stratagems[0];
-    assert(table && StratagemSitesAt(g, table) && BoundsAt(g, 1) && !memcmp(game + STR_PICKER_PAD, kPickerPad, sizeof kPickerPad));
+    assert(table && StratagemSitesAt(g, table) && BoundsAt(g, 1) && game[STR_PICKER_PAD] == kPickerPad[0] && *(uint32_t*)(game + STR_PICKER_PAD + 1) == STR_TYPES &&
+        !memcmp(game + STR_PICKER_PAD + 5, kPickerPad + 5, sizeof kPickerPad - 5)); /* the clear: every type's record */
+    assert(*(uint32_t*)(table + STR_LENGTH_AT) == STR_VANILLA + 1 && game[kChoiceGuards[0].rva] == 0xE9 && PickerFrameFailed(g) != NULL); /* guards and frame in, live */
     assert(*(uint8_t**)(table + type * 8) == s->row && *(uint32_t*)s->row == type && *(uint32_t*)(s->row + 4) == s->stable &&
         *(float*)(s->row + 0x68) == 5.0f && *(const char**)(table + STR_NAMES_AT + type * 8) == s->name &&
         !strcmp(*(const char**)(table + STR_NAMES_AT + (type + 1) * 8), "Count"));
@@ -522,7 +535,8 @@ static void ContentInstallFixture(void)
     ContentTakeovers(g, history, n);
     ContentTakeoverLists(g, m);
     /* a weapon going: the profile's back to the default and pushed; one the push did not reach set in the record */
-    Scrub weapon = {.weapons = {0x777}, .weaponCount = 1};
+    uint32_t goingWeapons[] = {0x777};
+    Scrub weapon = {.weapons = goingWeapons, .weaponCount = 1};
     *(uint32_t*)(profile + 0x44) = 0x777;
     *(uint32_t*)(loadout + 0x60) = 0x777;
     uint8_t* peers = (uint8_t*)calloc(1, 0xB3A0);
@@ -544,7 +558,7 @@ static void ContentInstallFixture(void)
     VirtualFree(game, 0, MEM_RELEASE);
     g_lcFixtureGame = 0;
     g_lcFixtureGameSize = 0;
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     g_stratagemTable = NULL; g_projectileTable = NULL; g_damageTable = NULL; g_projectileBlock = NULL;
     g_stratagemCount = stratagems; g_projectileCount = projectiles; g_damageCount = damages;
     g_stratagemState = g_projectileState = g_damageState = 0;
@@ -693,6 +707,7 @@ static void ContentWeaponsFixture(void)
     g_weapons[2] = g_weapons[1]; /* its set-up's twin */
     g_weaponCount = 3;
     g_lcWeaponsBefore = 2;
+    assert(LiveCarryReset());
     g_lrCarry[1] = 2;
     LiveRegistryCarry(&carried);
     assert(g_weaponCount == 2 && carried.items.count == 1 && carried.items.items[0].kind == OWN_WEAPON &&
@@ -720,6 +735,28 @@ static void ContentWeaponsFixture(void)
     ContentChange(NULL, z2);
     uint64_t third = ContentEntity(z2, base, last);
     assert(third != 0 && ContentCommit() && g_weaponCount == 3 && g_weapons[2].shortId == 80 && FindRow(behaviours, 2008, 16, third) != NULL);
+    /* the game's entity map without a free row for a new entity that numbers right: the change refused whole, nothing
+     * registered (RegisterWeapon would refuse it alone while the others went in) */
+    {
+        uint64_t top = third > first ? third : first;
+        if (second > top) top = second;
+        static uint8_t filler[REG_MAP_SLOTS];
+        for (uint32_t i = 0; i < REG_MAP_SLOTS; i++)
+        {
+            uint64_t key;
+            memcpy(&key, map + (size_t)i * 32, 8);
+            filler[i] = key == 0;
+            key = 0xF100000000000000ull + i;
+            if (filler[i]) memcpy(map + (size_t)i * 32, &key, 8);
+        }
+        char full[32], why[512];
+        ContentEntityName("z", top, 0, full);
+        HfMod* z3 = ContentMod("z");
+        ContentChange(NULL, z3);
+        assert(ContentEntity(z3, base, full) != 0 && LiveNumbersCheck(why, sizeof why) != NULL && strstr(why, "entity map") != NULL);
+        assert(!ContentCommit() && g_weaponCount == 3 && g_regListCount == 4);
+        for (uint32_t i = 0; i < REG_MAP_SLOTS; i++) if (filler[i]) memset(map + (size_t)i * 32, 0, 8);
+    }
     /* a field set from hellforge_mod_init, before the entity has a record (a live rack's slots, a live missile's blast):
      * nothing to write yet, and written once the entity is registered */
     uint64_t highest = third > first ? third : first;
@@ -751,7 +788,7 @@ static void ContentWeaponsFixture(void)
     g_componentCount = savedComponents;
     printf("  live content: entities registered live in resource id order (copies made at the first), a new version's and a returning one's kept (a weapon owned again), 4 refusals (one a full component table)\n");
 
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     g_weaponCount = 0; g_loadoutTable = NULL; g_regList = NULL; g_regListCount = 0; g_ownedCount = 0;
     g_registryHooked = hooked; g_registryActive = active;
     g_game = was;
@@ -824,13 +861,14 @@ static void ContentDifficultyFixture(void)
     /* the unlock item: level 10's copied; owned when level 10's is */
     FakeCatalogue();
     FakeOwnAdd(0, kDifficultyItems[DIF_VANILLA - 1], kDifficultyItems[DIF_VANILLA - 1], 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 0, 1); /* level 10's unlock item: category 0, as the login files it */
-    OwnBatch batch = {.items = {{OWN_DIFFICULTY, 0xD1FF, 0, 0, kDifficultyItems[DIF_VANILLA - 1], 0}}, .count = 1};
+    OwnItem unlock = {OWN_DIFFICULTY, 0xD1FF, 0, 0, kDifficultyItems[DIF_VANILLA - 1], 0};
+    OwnBatch batch = {.items = &unlock, .count = 1};
     g_fakeOwnedCount = 0;
     OwnBatchStep(&batch);
     assert(batch.added == 1 && batch.owned == 0 && OwnEntry((uintptr_t)g_fakeCatalogue, 0xD1FF, 0, 0) >= 0);
     int level10 = OwnEntry((uintptr_t)g_fakeCatalogue, kDifficultyItems[DIF_VANILLA - 1], 0, 0);
     *(uint32_t*)(OwnRecordAt((uintptr_t)g_fakeCatalogue, level10) + 0x14) = 2;
-    OwnBatch again = {.items = {{OWN_DIFFICULTY, 0xD1FF, 0, 0, kDifficultyItems[DIF_VANILLA - 1], 0}}, .count = 1};
+    OwnBatch again = {.items = &unlock, .count = 1};
     OwnBatchStep(&again);
     assert(again.added == 0 && again.owned == 1 && g_fakeOwned[0] == 0xD1FF);
     g_ownAdd = NULL; g_ownSort = NULL; g_ownRemove = NULL; g_ownManager = NULL; g_ownApply = NULL;

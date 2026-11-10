@@ -44,6 +44,8 @@ friends compare in co-op.
 | change an existing weapon or stratagem in code | [Content: changing existing content](content.md#changing-existing-content) |
 | add a new stratagem, weapon or entity | [Content](content.md), after [your first mod](first-mod.md) |
 | put your stratagems under a heading of their own | [Content: selection headings](content.md#selection-headings) |
+| make the game spawn an enemy of your own beside the vanilla ones | [New enemies](enemies.md) |
+| sell items on a warbond of your own, in a currency you choose | [Warbonds](warbonds.md) |
 | recolour a model or ship your own model, sound or icon | [Data mods](data.md) |
 | share patch files made from the game's resources (kitbashes, backports, cut content) without Arrowhead's bytes | [The asset kit](assets.md) |
 | react to kills, damage or missions | [Logic at run time](runtime.md) |
@@ -92,9 +94,12 @@ The example mods:
 | `golden-liberator` | a new arsenal weapon with a recoloured model, in about 20 lines |
 | `talon-liberator` | a weapon with a projectile of its own, recoloured effects and another weapon's sounds |
 | `cube-gun` | a weapon with a model of your own, from an OBJ file |
+| `animated-liberator` | a weapon with animations of its own: a bolt that kicks back and a magazine change |
+| `model-carbine` | a weapon whose whole unit is built from a glTF model and its own textures: joints, meshes, LODs, a material copy |
 | `blue-sentry` | a new sentry stratagem with a recoloured model |
 | `stratagem-compendium` | eleven stratagems, one file per family: Pelicans with turrets and a behaviour, a sentry, barrages, expendables, a silo with a countdown ability |
 | `stratagem-categories` | stratagem selection headings and their order ([how headings work](../stratagem-categories.md)) |
+| `alpha-scavenger` | a new enemy tied to no vanilla one: an entity, its roster row, its squads and a replacement rule |
 | `hell-forge` | difficulty 11 |
 | `hell-swarm` | a difficulty's settings row, changed directly |
 | `vanilla-plus` | live edits of every stratagem's settings, and code patches: game code checked against the build, then changed (a branch, a jump to a stub of its own) |

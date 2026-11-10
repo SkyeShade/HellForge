@@ -24,8 +24,16 @@ session; the Windows `zig.exe` is not started under Wine.
 - The check. A build is used only when its record still matches its sources and its DLL's hash. A stale or swapped DLL
   is built again, never loaded.
 - Errors. A mod that does not compile stays off for that session, and its row on the Mods page shows the compiler's
-  message (file and line). **Build now** in its ⋮ menu compiles it at once; with unchanged sources it shows the last
-  result instead of compiling again.
+  message (file and line). Unchanged sources are not compiled again before a session. **Build now** in its ⋮ menu
+  compiles it at once, even with unchanged sources.
+- Damaged mod tools. An antivirus that removes files from Zig's folder breaks every build, though no mod is at fault.
+  Zig builds its own runtime libraries from its `lib` folder before a mod's code, and says `sub-compilation of ...
+  failed` when that fails. A missing C header would look like the mod's own mistake, so unpacking Zig also writes
+  `.hellforge-files`: each of its files, with its size.
+- Repairing them. When a build fails with that message, or the list finds a file gone or changed, HellForge unpacks Zig
+  again from its archive in `tools/downloads`. It empties Zig's cache and builds once more, and keeps only a failure with
+  Zig whole. A Zig unpacked without the list (by an older HellForge, or `scripts/Setup-ModTools.ps1`) is checked by the
+  message alone until it is unpacked again.
 - A DLL in the mod's own folder (an IDE's build) is not loaded. The session loads HellForge's build.
 
 ## IDEs
@@ -54,6 +62,7 @@ HellForge.Cli assets-check --mod <folder>                                       
 HellForge.Cli assets-strip --mod <folder> [--out <folder>]                           # the mod without them, plus a recipe
 HellForge.Cli check-stats --mod <folder>                                             # check a stats mod
 HellForge.Cli build-data --mod <folder> --install <installation>                     # build a data spec
+HellForge.Cli unit-joints --install <installation> --unit <0x hash or name>          # a unit's joints, for animations
 HellForge.Cli mod-hash --mod <folder or zip>                                         # its content hash (mod sync)
 ```
 

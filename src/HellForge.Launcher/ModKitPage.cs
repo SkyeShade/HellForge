@@ -113,7 +113,7 @@ public partial class MainWindow
                 else
                 {
                     var dll = ModBuilds.Ensure(install, sdk, mod, SupportedBuild.Current.BuildId,
-                        line => Dispatcher.UIThread.Post(() => Append(line, LauncherLine)));
+                        line => Dispatcher.UIThread.Post(() => Append(line, LauncherLine)), new(RebuildFailed: true));
                     Dispatcher.UIThread.Post(() => Append($"{mod.Id} is built ({new FileInfo(dll).Length / 1024} KB); the next session loads it.", Green));
                 }
             }

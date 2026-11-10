@@ -52,9 +52,9 @@ kept as a loose folder counts by every file in it, so share mods as zips.
 Each session stages the data mods into the copied game, loads the code mods into it and applies the declarative native
 edits while the game runs. Nothing is changed in the normal game.
 
-Staging copies only what changed since the last session. A patch already staged from the same file (same size and time)
-stays, so an unchanged modlist starts without copying anything. For the same reason, `mods/.unpacked` keeps the zips'
-hashes and the files they ship (`.zip-hashes.json`, `.zip-files.json`).
+Staging places only what changed since the last session: a patch staged from the same file (same size and time) stays.
+For the same reason, `mods/.unpacked` keeps the zips' hashes and the files they ship (`.zip-hashes.json`,
+`.zip-files.json`). Staged patches are hard links where possible ([disk space](mods.md#disk-space)).
 
 The session's `result.json` lists what loaded (`mods`) and the status of network edits (`nativeMods`).
 `native-mods.log` records network edits, and `mod-<id>.log` records stats and legacy component edits.
@@ -116,8 +116,9 @@ the installation, who could edit the sources or the record too.
 
 A mod that does not compile stays off for that session, and the session still runs. The record keeps the compiler's
 message (file and line), which the launcher's Mods page shows on the mod's card. The same sources are not compiled again.
-Build now in the mod's ⋮ menu (or `HellForge.Cli build-mod --mod <mods>/<mod>`) makes the same build at once. On Linux it
-runs the native agent.
+Build now in the mod's ⋮ menu (or `HellForge.Cli build-mod --mod <mods>/<mod>`) compiles at once, even unchanged
+sources. On Linux it runs the native agent. Zig's own failures are never kept
+([damaged mod tools](modding/tools.md#how-hellforge-builds-mods)).
 
 ### Tools and friends
 
@@ -193,8 +194,8 @@ In multiplayer, the weapon is part of the mod's code, which the modlist gate alr
 
 **Network types past 2,048.** Every weapon and entity a mod adds takes a network type, a copy of its base's. The game
 sends a type in 11 bits, so 2,048 types fit, 1,855 of them vanilla. Two things hold that width: the network
-configuration's width byte, and network field type 431, which names a corpse's source type. HellForge allows 512 weapons
-and entities together.
+configuration's width byte, and network field type 431, which names a corpse's source type. At boot the entity map
+limits them.
 
 For a mod set with more types than fit, the loader widens both to 12 bits (4,096 types) when it adds the types. It does
 so only then: a set that fits keeps the game's own wire format. Every player in a game runs the same mods, so every one
@@ -313,8 +314,8 @@ instructions, and 69 bounds on the type grow by the number of new stratagems. Th
 move with it. Every instruction and bound is checked against the reviewed game build first, and anything else adds no
 stratagem. The review is in `artifacts/stratagem-registry/BOUNDS.md` (not committed).
 
-All mods together can add 48 new stratagems, because the loadout picker lists at most 150 available stratagems and up
-to 96 vanilla ones can be available. A new stratagem:
+All mods together can add 1,024 new stratagems; past 256 types their co-op field widens to 16 bits. The picker shows
+256 cards, about 160 new ones. A new stratagem:
 
 - does not load its base's ship-upgrade (level) packages, since the loadout keeps one per vanilla type;
 - never counts in the mission statistics;

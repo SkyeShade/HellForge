@@ -155,6 +155,10 @@ static HfApi g_api;
 
 #include "patch_registry.c" /* B.2: the writes the difficulty install makes, for the site audit */
 
+/* ---- arrays whose entries never move ---------------------------------------------------------------------------- */
+
+#include "stable_array.c" /* the registry's and the definition blocks' growable arrays */
+
 /* ---- memory ----------------------------------------------------------------------------------------------------- */
 
 static int SafeRead(uintptr_t address, void* buffer, size_t size)
@@ -363,41 +367,6 @@ static uint64_t Murmur64A(const void* key, size_t length)
     return h ^ (h >> 47);
 }
 
-/* The engine's field type table: [[module+rva]] -> count at +0x10, rows (0x18 bytes) at +0x18. */
-static int FieldTypes(uintptr_t* rows, uint32_t* count)
-{
-    uintptr_t base = ApiModuleBase(g_networkModule, NULL), holder = 0, config = 0;
-    if (base == 0 || SafeRead(base + g_networkRva, &holder, 8) || holder == 0 || SafeRead(holder, &config, 8) || config == 0) return 1;
-    if (SafeRead(config + 0x10, count, 4) || SafeRead(config + 0x18, rows, 8) || *count == 0 || *count > 8192 || *rows == 0) return 1;
-    return 0;
-}
-
-static uintptr_t FindFieldType(const char* name)
-{
-    uintptr_t rows;
-    uint32_t count, hash = (uint32_t)(Murmur64A(name, strlen(name)) >> 32), found = 0;
-    uintptr_t match = 0;
-    if (FieldTypes(&rows, &count)) return 0;
-    for (uint32_t i = 0; i < count; i++)
-    {
-        uint32_t rowHash;
-        if (SafeRead(rows + (uintptr_t)i * 0x18, &rowHash, 4)) return 0;
-        if (rowHash == hash) { match = rows + (uintptr_t)i * 0x18; found++; }
-    }
-    return found == 1 ? match : 0;
-}
-
-static int ApiNetworkFieldType(const char* name, HfFieldType* type)
-{
-    uintptr_t row = name != NULL && type != NULL ? FindFieldType(name) : 0;
-    uint8_t bytes[0x18];
-    if (row == 0 || SafeRead(row, bytes, sizeof bytes)) return 1;
-    type->kind = bytes[12];
-    type->bits = bytes[13];
-    memcpy(&type->min, bytes + 16, 4);
-    return 0;
-}
-
 #include "nettypes.c" /* what mods ask of the field types: the plan's nettype lines, set_network_field_bits, live changes */
 
 /* ---- entity component records ----------------------------------------------------------------------------------- */
@@ -570,7 +539,7 @@ static void ChannelInstall(uintptr_t game);
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */
 #include "difficulty_install.c" /* after every difficulty file: the checks and the install, in their order */
-#include "director.c" /* after difficulty.c: its rosters and the difficulty copies */
+#include "director.c" /* after difficulty.c: its rosters and the difficulty copies; enemy_rosters.c with it */
 #include "behaviours.c"
 #include "behaviour_turret.c" /* right after behaviours.c: the turret behaviour (TurretUpdate) */
 #include "crash_notes.c" /* after behaviours.c: the crash and freeze notes (BHV_CLOCK) */
@@ -578,6 +547,11 @@ static void ChannelInstall(uintptr_t game);
 #include "loadout_preview.c"
 #include "armory_diag.c" /* the Armory thumbnails' stalls, from packages.c's game-thread update */
 #include "forge_credits.c"
+#include "warbonds.c" /* after forge_credits.c: mods' warbonds in the game's warbond table */
+#include "warbond_list.c" /* after warbonds.c: more than the game's 32 warbonds */
+#include "warbond_pager.c" /* after warbond_list.c: the Acquisition Center's pager past 32 cards */
+#include "warbond_texts.c" /* after warbond_list.c: the spent and unlock texts in a mod warbond's currency */
+#include "warbond_showcase.c" /* after warbond_texts.c: the Helldiver and background beside a mod warbond's card */
 #include "terminal_camera.c" /* before terminal.c: the terminal starts its glide */
 #include "terminal.c"
 #include "abilities.c"
@@ -592,6 +566,7 @@ static void ChannelInstall(uintptr_t game);
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
+#include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -779,19 +754,19 @@ static void WatchStats(void)
     if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); StatsDirectorReady(); ShotsTick(); RoundsTick(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SpawnGuardsWatch(); ShotsTick(); RoundsTick(); }
 }
 
 static void WatchInstalls(void)
 {
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
-    if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsColour();
-    if (g_fired[HF_EVENT_GAME_LOADED]) InstallForgeCreditsRoll();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { InstallForgeCreditsColour(); InstallForgeCreditsRoll(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
+    if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
-    if (g_fired[HF_EVENT_GAME_LOADED]) ShieldBlockInstall();
-    if (g_fired[HF_EVENT_GAME_LOADED]) EventsInstall();
+    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
+    RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
@@ -825,6 +800,7 @@ static void WatchNetwork(void)
     Note("network configuration ready (%u field types)", count);
     RegisterNetworkTypes();
     NetApplyAll(); /* the mods' networkFieldTypes (nettypes.c) */
+    WidenStratagemField(); /* stratagems.c: before any session, as every peer with these mods does */
     Fire(HF_EVENT_NETWORK_READY);
 }
 
@@ -894,6 +870,7 @@ static void WatchRunning(void)
     if (g_difficultyState == 1 && g_game != 0) DifficultyDelta(g_game);
     if (g_difficultyCapPending) DifficultyCapTick(g_game); /* a live level 11 (live_content.c) */
     if (g_fired[HF_EVENT_NETWORK_READY] && g_difficultyState == 1) DifficultyNetwork();
+    if (g_fired[HF_EVENT_NETWORK_READY]) NetShieldHealth();
     AuditPatchSites(); /* also while the level was refused: its earlier steps' patches are still live */
     if (g_fired[HF_EVENT_ENTITIES_READY]) StatsSnapshotReady(ApiModuleBase("game.dll", NULL));
 }
@@ -988,7 +965,7 @@ static int PlanGame(char** f, int n)
 {
     if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
     if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
-    if (FnPlanLine(f, n) || GlPlanLine(f, n)) return 1;
+    if (FnPlanLine(f, n) || GlPlanLine(f, n) || WarbondPlanLine(f, n) || PackagePlanLine(f, n)) return 1;
     if (n == 2 && strcmp(f[0], "forge_credits_chance") == 0) { int p = atoi(f[1]); g_forgeCreditChance = p < 0 ? 0 : p > 100 ? 100 : p; return 1; }
     if (n >= 4 && strcmp(f[0], "game_pin") == 0)
     {
@@ -1117,7 +1094,7 @@ static void ApiInit(void)
         ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
-        ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow};
+        ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiAddEnemy, ApiAddEnemySwap, ApiAddEnemySquad};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */

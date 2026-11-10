@@ -56,7 +56,7 @@ Lua mods (HD2Runtime, Bingus Shared Loader and the mods made for them) come as p
 ## Data specs
 
 A data spec, `hellforge-data.json` beside the manifest, describes data made from the game's own resources: a recoloured
-model, an effect copy, a weapon's sound banks, your own geometry, a stratagem icon. HellForge builds it from each
+model, an effect copy, a weapon's sound banks, your own geometry and textures, a stratagem icon. HellForge builds it from each
 player's game copy when a session starts, caches it, and stages it like `data/` (after the mod's own `data/`, if it has
 both).
 
@@ -87,6 +87,9 @@ what your mod adds, such as the base weapon's, or `007e093ca718ca1a` for UI icon
 `0x<hash>` or a name (hashed as the game hashes them). Types are names (`unit`, `material`, `texture`, `particles`,
 `wwise_bank`, ...) or `0x<hash>`. Colours are `[r, g, b]` as the game stores them, or `"#RRGGBB"`.
 
+A patch can instead be a package of your own: `"package": "yourname/your_mod/rifle"` in place of `archives`
+([packages of your own](#packages-of-your-own)).
+
 Each resource is one of the following.
 
 ### copy
@@ -108,13 +111,19 @@ mod, never a game resource's name. The copy can then be changed, in this order:
   `"colour": "#3070FF"` (that hue and saturation at the key's brightness). `"keys": n` requires exactly n keys to
   change; without it, at least one must.
 - `colours`: a material's RGB parameters by name (`0x<IdString32>` or the name): `{"0xB4138578": [0, 0.35, 1]}`.
+- `textures`: a material's textures by slot (the slot's name or `0x<IdString32>`): `{"base_data":
+  "yourname/your_mod/rifle/base_data"}`, your own texture or a game texture ([textures](textures.md)).
 - `lut`: a material's colour lookup texture, with a row per material zone and column 0 the base colour. `zonesFrom`
   makes every row first take this row's values, `columns` (`{"<column>": colour}`) sets columns in every row, and
   `rows` (`{"<row>": {"<column>": colour}}`) sets single cells. Alpha is kept and the mips are rebuilt.
 - `mesh` (on a `unit`): your own geometry from a Wavefront OBJ in the mod folder, `{"obj": "models/cube.obj", "scale":
-  1, "yUp": true}`. Every render and shadow mesh in every LOD gets it, rigid on the unit's main bone and centred on its
-  mesh joint (a weapon's grip area). Materials, physics, hitboxes and attachment points (the muzzle) stay the base's, so
-  recolour the materials in the same patch. Models HellForge cannot rebuild yet are refused with the reason.
+  1, "yUp": true, "unitSpace": false}`. Every render and shadow mesh in every LOD gets it, rigid on the unit's main bone.
+  Models HellForge cannot rebuild yet are refused with the reason.
+  - By default the mesh is centred on the render mesh's joint (a weapon's grip area). With `"unitSpace": true` it sits
+    at the OBJ's own coordinates in the unit, the frame of the unit's joints and attachment points. For a weapon that is
+    +Y to the muzzle, +Z up and +X to its right: Blender's coordinates when Blender writes the OBJ.
+  - Materials, physics, hitboxes and attachment points (the muzzle, magazine, optic) stay the base's. Recolour the
+    materials in the same patch and model around the attachment points. Its UVs sample the base material's own textures.
 
 A `unit` copy also gets its base's physics under its own name, because the engine finds a unit's physics by its name.
 
@@ -156,6 +165,70 @@ crashes on an icon without one). `"prepare": "auto"` turns a red-and-white pictu
 takes the category's colour and green becomes white. The default, `"raw"`, uses the pixels as they are, and `"image"`
 keeps the picture's colours and transparency for widgets that draw it as it is (a difficulty icon).
 
+### texture
+
+`texture` builds a texture of your own from a PNG in the mod folder, or an array texture from a list of them:
+`{"texture": "textures/rifle_data.png", "name": "yourname/your_mod/rifle/base_data", "format": "bc3"}`. A material
+copy's `textures` puts it in a slot ([textures](textures.md)).
+
+### animations
+
+`animations` gives a unit copy in the same patch animations of its own from a JSON file in the mod folder:
+`{"animations": "animations/rifle.json", "unit": "yourname/your_mod/rifle"}`. The file lists the joints that move, the
+clips and the state machine that plays them on the weapon's events ([animations](animations.md)).
+
+### model
+
+`model` builds a unit of your own from a glTF 2.0 file (a `.glb` from Blender) in the mod folder:
+`{"model": "models/carbine.glb", "name": "yourname/your_mod/carbine", "materials": {"Body": "0x7F112ACD09A5E523"}}`. Every
+node becomes a joint, every mesh draws rigid on its node, and node names give LODs and shadow casters
+([models](models.md)).
+
+### sounds
+
+`sounds` builds a sound bank of your own from WAV files in the mod folder, with one event per file. Name the bank, list
+its sounds, and name a mixer of a game bank whose routing, 3D placement and distance curve your sounds use.
+
+```json
+{ "sounds": [{ "event": "yourname_rifle_fire", "wav": "sounds/fire.wav", "gain": -3 }],
+  "name": "yourname/your_mod/rifle_sounds",
+  "mixer_bank": "content/audio/wep_cr1_adjudicator", "mixer": "0x2D200575" }
+```
+
+| Field | Value |
+|---|---|
+| `event` | the event's name: letters, digits and `_`, prefixed with yours; its id is `hf_wwise_id(name)` |
+| `wav` | a 16-bit PCM WAV, mono or stereo, 8 to 96 kHz |
+| `gain` | dB added to the sound, -96 to 24 (default 0) |
+| `mixer_bank`, `mixer` | a game bank and one of its root actor-mixers: no parent, its own output bus |
+
+- The bank and its `wwise_dep` take `name`. Put them in the package or bundle that loads with what plays them, such as
+  the weapon's package.
+- A record field that names a sound event takes the id: `hf_set(mod, rifle, ProjectileWeapon, fire_single_audio_event,
+  HF_U32(hf_wwise_id("yourname_rifle_fire")))`.
+- Sounds are stored uncompressed, about 94 KB a second for mono at 48 kHz. Keep them short.
+
+### Packages of your own
+
+A patch with `package` becomes a whole archive of its own, `data/<id>`, where the id is the hash of the package's name.
+The game loads it by that id like its own loose archives, so your resources load without a game bundle.
+
+```json
+{ "package": "yourname/your_mod/rifle", "load": "session", "resources": [ ... ] }
+```
+
+| `load` | The package loads |
+|---|---|
+| `"session"` (the default) | when the game starts, and stays for the session |
+| `"request"` | only when asked: `load_package` from code ([packages](runtime.md#packages)), or a record that names it |
+
+- Every player in a session runs the same mods, so each machine has the same package. In co-op HellForge asks friends'
+  machines to load the packages this machine holds.
+- A package holds only what its patch lists. A resource it references must be in it too, or be loaded by another
+  package: include a game material's textures, or keep the patch on the base weapon's bundles.
+- Its id must not be an archive of the game's, and two mods may not use one package.
+- A mod with a package cannot be added or changed while the game runs; it waits for the next session.
+
 ### Checks
 
 Everything is checked before anything is written. Every resource the spec names must exist (all missing ones are
@@ -169,9 +242,9 @@ the built files, because with the same game build they are the same bytes on eve
 installation's cache, and with `--game-data <game/data> --out <folder>` anywhere. In the repository, use
 `scripts/Build-Mod.ps1 <folder> -Install <installation>`.
 
-Examples: `golden-liberator` (a model recoloured gold through its lookup texture), `talon-liberator` (blue effect
-copies and another weapon's sound banks), `cube-gun` (an OBJ model), `blue-sentry` (a sentry) and
-`stratagem-compendium` (icons).
+Examples: `golden-liberator` (a model recoloured gold), `talon-liberator` (blue effect copies
+and another weapon's sound banks), `cube-gun` (an OBJ model), `model-carbine` (a glTF model, textures), `animated-liberator`
+(animations), `blue-sentry` (a sentry) and `stratagem-compendium` (icons).
 
 ## Native edits in the manifest
 

@@ -149,10 +149,11 @@ try
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data", "--verify-all"],
         "migrate" => ["--install", "--from", "--appdata"],
-        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods"],
+        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods", "--mod-warbonds"],
         "mods-live" => ["--install", "--session-mods", "--target", "--seed"],
         "build-source-mods" => ["--install", "--progress", "--sync", "--sandbox"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
+        "unit-joints" => ["--install", "--game-data", "--unit"],
         "check-stats" => ["--mod"],
         "sdk-headers" => ["--repo", "--mode"],
         "editor-data" => ["--out", "--install", "--game"],
@@ -309,7 +310,10 @@ try
             // The installation's mods: data mods are staged into the copy, and the plan and modlist digest are printed.
             var modInstall = new InstallLayout(Required("--install"));
             if (!modInstall.Exists) throw new InvalidDataException($"{modInstall.Root} is not a HellForge installation.");
-            // The mods HellForge ships (the in-game editor) are put in place, or updated, first.
+            // Staged links written over since the last session first (ModStaging.CheckLinks): what HellForge keeps of them is
+            // made again as the mods load; they are not problems of this session's mods, which all load. Then the mods
+            // HellForge ships (the in-game editor) are put in place, or updated.
+            foreach (var line in ModStaging.CheckLinks(modInstall)) Console.Error.WriteLine(line); // the Mods page shows a mod's (Notices)
             var bundledProblems = BundledMods.Sync(modInstall, Console.Error.WriteLine);
             // a .rar or .7z dropped into mods/ is added as a folder first (ModInstaller.TakeDropped)
             bundledProblems.AddRange(ModInstaller.TakeDropped(modInstall));
@@ -367,6 +371,15 @@ try
                 progress: p => WriteProgress(progressFile, p));
             active = built;
             modProblems.AddRange(buildProblems);
+            // Warbonds the loaded mods add (ModWarbonds: hellforge-warbonds.json), checked and written for the backend
+            // (--mod-warbonds, which the session passes on); one with a mistake is left out and the session says why.
+            List<ModWarbonds.Warbond> modWarbonds = [];
+            if (options.TryGetValue("--mod-warbonds", out var warbondsFile))
+            {
+                (modWarbonds, var warbondProblems) = ModWarbonds.Load(active);
+                modProblems.AddRange(warbondProblems);
+                ModWarbonds.Write(warbondsFile, modWarbonds);
+            }
             // The premium warbonds the profile's synced account does not own look locked in Acquisitions (WarbondLocks): the
             // same ownership the backend serves. Art that cannot be built stays as it is; the session goes on.
             string? warbondLocks = null;
@@ -392,12 +405,23 @@ try
             {
                 modProblems.Add("Forge Credits art: not shown this session (" + error.Message + ").");
             }
-            var staged = ModStaging.Stage(modInstall, active, [.. new[] { forgeCredits, warbondLocks }.OfType<string>()]);
+            // The mods' warbonds' own pictures (ModWarbondArt); one that cannot be built shows the game's placeholder.
+            string? warbondArt = null;
+            try
+            {
+                (modWarbonds, warbondArt, var artProblems) = ModWarbondArt.Prepare(modInstall, modWarbonds);
+                modProblems.AddRange(artProblems);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                modProblems.Add("Mod warbond art: the game's placeholder this session (" + error.Message + ").");
+            }
+            var staged = ModStaging.Stage(modInstall, active, [.. new[] { forgeCredits, warbondLocks, warbondArt }.OfType<string>()]);
             // Code, stats and legacy component mods all need the in-process loader plan.
             var code = active.Where(m => m.NeedsLoader).ToList();
             if (options.TryGetValue("--plan", out var planPath))
                 File.WriteAllText(planPath, ModLoaderPlan.Text(code, Path.GetFullPath(Required("--logs")), EntityProfile.Current, SupportedBuild.Current.BuildId,
-                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance));
+                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance, modWarbonds));
             // The gameplay mods with their content hashes, for the backend (mod sync: joiners whose mods differ get it), and
             // the digest's mods one by one (ModlistDiff's wire form), so a refused co-op join can say which differ.
             var modSet = ModSet.Of(active);
@@ -411,7 +435,7 @@ try
                 codeMods = code.Count,
                 loaderRequired = true, // read-only stats snapshots are also collected without mods
                 disabled = mods.Where(m => !m.Enabled).Select(m => m.Id),
-                problems = modProblems, staged, stagedCopied = ModStaging.LastCounts.Copied, stagedKept = ModStaging.LastCounts.Kept,
+                problems = modProblems, staged, stagedCopied = ModStaging.LastCounts.Copied, stagedLinked = ModStaging.LastLinked, stagedKept = ModStaging.LastCounts.Kept,
                 native = active.Any(m => m.HasNative), digest, modlist = ModlistDiff.Encode(compared), syncedWith, premiumLocked = premium.Locked
             };
             break;
@@ -480,7 +504,7 @@ try
             var sourceMods = activeMods.Count(m => m.HasSource);
             var progressFile = options.GetValueOrDefault("--progress");
             var (prebuilt, buildProblems) = ModBuilds.Prepare(buildInstall, ModSdk.Find(buildInstall.Root), activeMods, SupportedBuild.Current.BuildId,
-                Console.Error.WriteLine, installTools: false, progress: p => WriteProgress(progressFile, p));
+                Console.Error.WriteLine, new(InstallTools: false), progress: p => WriteProgress(progressFile, p));
             result = new { install = buildInstall.Root, sourceMods, built = prebuilt.Count(m => m.HasSource), problems = buildProblems };
             break;
         }
@@ -514,8 +538,10 @@ try
             string dll;
             if (layout != null && built.HasSource)
             {
-                // as a session does: the pinned Zig fetched on first need, then the session's build
-                var (ready, buildProblems) = ModBuilds.Prepare(layout, ModSdk.Find(modFolder), [built], SupportedBuild.Current.BuildId, Console.Error.WriteLine);
+                // as a session does: the pinned Zig fetched on first need, then the session's build (compiled again even when
+                // its unchanged sources did not compile before: Build now on the Mods page runs this on Linux)
+                var (ready, buildProblems) = ModBuilds.Prepare(layout, ModSdk.Find(modFolder), [built], SupportedBuild.Current.BuildId, Console.Error.WriteLine,
+                    new(RebuildFailed: true));
                 if (buildProblems.Count > 0) throw new InvalidDataException(string.Join("\n", buildProblems));
                 dll = ready[0].BuiltDll!;
             }
@@ -667,6 +693,16 @@ try
                 result = new { output, files = ModDataBuilder.Build(spec, modFolder, game, output, steamGame) };
             }
             else result = new { checkedSpec = Path.Combine(modFolder, DataSpecs.FileName), patches = spec.Patches.Count, resources, inputs = spec.Inputs };
+            break;
+        }
+        case "unit-joints":
+        {
+            // A unit's joints for a mod's animations: thin name hash, name where known, local rest transform.
+            using var game = new GameDataReader(options.TryGetValue("--install", out var jointsInstall) ? Path.Combine(new InstallLayout(jointsInstall).Game, "data") : Required("--game-data"));
+            result = AnimationSet.Named(game, Required("--unit")).Select(j => new
+            {
+                hash = $"0x{j.Joint.Name:X8}", name = j.Name, position = j.Joint.Position, rotation = j.Joint.Rotation, scale = j.Joint.Scale
+            }).ToList();
             break;
         }
         case "migrate":

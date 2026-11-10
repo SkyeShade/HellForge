@@ -1,6 +1,43 @@
 {
- "scope": "Inventory templates for new local profiles. unlock-all is a development profile that grants every non-consumable catalogue item, including content the account may not own, and every booster.",
+ "scope": "Inventory templates for new local profiles. live-like starts as starter and takes the live account at Sync Inventory, with owned premium warbonds open. unlock-all is a development profile that grants every non-consumable catalogue item, including content the account may not own, and every booster.",
  "templates": {
+  "live-like": {
+   "description": "Like your live account: a starter profile until you run Sync Inventory, which then brings in your level, unlocks, ship, medals and samples, and opens the premium warbonds you own.",
+   "items": [
+    {
+     "mixId": 2852344585,
+     "amount": 1,
+     "isDiscovered": true,
+     "name": "AR-23 Liberator"
+    },
+    {
+     "mixId": 2811723672,
+     "amount": 1,
+     "isDiscovered": true,
+     "name": "P-2 Peacemaker"
+    },
+    {
+     "mixId": 3191303848,
+     "amount": 1,
+     "isDiscovered": true,
+     "name": "G-12 High Explosive"
+    }
+   ],
+   "progression": {
+    "onboardingFlags": 16351099,
+    "packageProgress": [
+     {
+      "id32": 515780825,
+      "level": 9,
+      "progress": 0,
+      "sortOrder": 0,
+      "claimedLevels": []
+     }
+    ],
+    "activeSeasonPass": 1929468580,
+    "purchasedSeasonPassItems": []
+   }
+  },
   "starter": {
    "description": "Fresh player after basic training: AR-23 Liberator, P-2 Peacemaker, G-12 High Explosive (the onboarding chain's unlock items and the stratagems every account owns, Orbital Precision Strike and MG-43 Machine Gun, are added by ProfileStore).",
    "items": [

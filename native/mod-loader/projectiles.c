@@ -27,7 +27,7 @@
 
 #define PRJ_TABLE 0x37C7670u
 #define PRJ_VANILLA 351u
-#define PRJ_MAX_NEW 512u /* what REG_MAX_WEAPONS weapons could each fire: the list is HellForge's own once moved */
+#define PRJ_MAX_NEW 512u /* what 512 weapons could each fire: the list is HellForge's own once moved */
 #define PRJ_ROW 272u
 #define PRJ_DAMAGE_AT 0x3Cu
 #define PRJ_VISUAL_AT 0x48u

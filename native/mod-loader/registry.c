@@ -66,13 +66,15 @@
 #define REG_LOADOUT_STRIDE 32u
 #define REG_ARMORY_FIRST 219u /* the first entry after the armory list's count fields (0x1B24..0x1B5C) */
 #define REG_ARMORY_TYPES 7
-/* Weapons and entities mods add, together. Each needs a network type: build 25480438 has 1855 (NET_VANILLA_TYPES), and
- * the game sends a type in 11 bits, 193 more at most, unless HellForge widens it to 12 for a mod set with more
- * (registry_load.c WidenNetworkTypes; 2,241 more). Other walls come first for many sets, and each refuses on its own:
- * a component table's compiled index slots (ComponentsUnderstood), the loadout index (193 more weapons), the entity map
- * (2,187 more rows), and for weapons the armory's 256 cards a list (registry_load.c ArmoryRoom) and the game's catalogue
- * (RegisteredItems.cs). 512: the research's target (research\entity-limit\README.md). */
-#define REG_MAX_WEAPONS 512
+/* Weapons and entities mods add, together. HellForge sets no number of its own: g_weapons and the arrays beside it grow
+ * as mods add them (stable_array.c), and HellForge's copies of the game's tables have room for as many as the game's
+ * entity map can hold (RegRoom). What refuses an entity is the game's, each wall on its own and logged by name: its
+ * network type (build 25480438 has 1855, NET_VANILLA_TYPES; the game sends a type in 11 bits, 193 more at most, unless
+ * HellForge widens it to 12 for a mod set with more: registry_load.c WidenNetworkTypes, 2,241 more), the entity map
+ * (4096 rows, 2,187 free), a component table's compiled index slots where HellForge cannot grow it (ComponentsUnderstood,
+ * table_growth.c), and for weapons the armory's 256 cards a list (registry_load.c ArmoryRoom) and the game's catalogue
+ * (RegisteredItems.cs). REG_WEAPON_CEILING bounds the address space g_weapons reserves, far past every one of them. */
+#define REG_WEAPON_CEILING 65536u
 #define REG_UNIT 88u
 #define REG_UNIT_STRIDE 136u
 #define REG_MAX_OWNED 325 /* component tables HellForge keeps its own copies of (an own_all entity: every one it has): one each, every
@@ -131,6 +133,10 @@ static const SlotCount kSlots[] = {
 
 #include "component_sizes.h" /* kComponentShapes: every table's slots, records and record size (ComponentStride) */
 
+#define REG_MAX_PARTS 128
+#define REG_COMPONENT_SLOTS 324u /* the game's per-component function tables (0x581320's walks do not check) */
+typedef struct EntityPart { uint64_t from; uint32_t component; uint32_t unused; } EntityPart;
+
 typedef struct Weapon
 {
     HfMod* mod;
@@ -155,14 +161,22 @@ typedef struct Weapon
     uint64_t copies;     /* the entity it was registered as a copy of (its map row's components are that entity's) */
     char title[96];      /* add_entity: its title (HfEntity.title), or "" */
     char designation[64]; /* add_entity: its designation (HfEntity.designation), or "" */
+    int tomb;            /* left by a mod a live change took out (live_content.c LiveTomb(LC_WEAPON, i)) */
+    EntityPart* parts;   /* add_entity: its components one by one (HfEntity.parts), never freed; NULL: its base's */
+    int partCount;
+    uint16_t* list;      /* its own component list, once registered from parts: the game holds the pointer */
 } Weapon;
 
 /* Mod text by id, answered by the text lookup detour: four for each weapon or entity (name, upper-case name, description,
  * designation), three for each stratagem (stratagems.c asserts its STR_MAX_NEW fits) and two for the difficulty. Weapons
- * once shared 4 * REG_MAX_WEAPONS with the others, so a full pack left a stratagem with its base's name. */
-#define REG_STRATAGEM_TEXTS (48 * 3)
+ * once shared a fixed 4 * 512 with the others, so a full pack left a stratagem with its base's name. They grow as they are added
+ * (stable_array.c: TextDetour reads them on the game thread while a live change adds more). */
+#define REG_STRATAGEM_TEXTS (1024 * 3)
 typedef struct ModText { uint32_t id; char* text; } ModText;
-static ModText g_texts[REG_MAX_WEAPONS * 4 + REG_STRATAGEM_TEXTS + 2];
+/* + four for each mod warbond (warbonds.c: its name and the line above it, each in two cases), 99 at most */
+#define REG_TEXT_CEILING ((size_t)REG_WEAPON_CEILING * 4 + REG_STRATAGEM_TEXTS + 2 + 4 * 99)
+static ModText* g_texts;
+static StableArray g_textStore = {NULL, sizeof(ModText), REG_TEXT_CEILING, 0};
 static int g_textCount;
 /* The texts the engine is answered from: the first g_textsServed. A live change's set-ups add theirs while it is staged
  * (g_textsHeld): they are served once it is made (TextsPublish), and a refused change's are never served. A text is never
@@ -174,35 +188,72 @@ static volatile LONG g_networkTypesAdded; /* 0, 1 being added, 2 done */
 /* The network types RegisterNetworkTypes added, as the configuration numbered them, with the vanilla type each copies
  * and the two entities (netapply.c gives each its base's case in the network apply switch). */
 typedef struct NetworkType { uint32_t index, base; uint64_t entity, baseEntity; const char* name; HfMod* mod; } NetworkType;
-static NetworkType g_networkTypes[REG_MAX_WEAPONS];
+static NetworkType* g_networkTypes; /* grown as types are added (stable_array.c: netapply.c reads them) */
+static StableArray g_networkTypeStore = {NULL, sizeof(NetworkType), REG_WEAPON_CEILING, 0};
 static uint32_t g_networkTypeCount, g_networkVanillaTypes;
-static uint8_t *g_netEntries, *g_netOwn, *g_netValues; /* the arrays it made (count + REG_MAX_WEAPONS each), once it has */
+static uint8_t *g_netEntries, *g_netOwn, *g_netValues; /* the arrays it made (g_netCapacity entries each), once it has */
+static uint32_t g_netCapacity;
+
+/* Room for one more network type in g_networkTypes: 1, or 0 (out of memory). */
+static int NetworkTypeRoom(void)
+{
+    if (!StableRoom(&g_networkTypeStore, (size_t)g_networkTypeCount + 1)) return 0;
+    g_networkTypes = (NetworkType*)g_networkTypeStore.base;
+    return 1;
+}
 
 typedef void (*EntityLoaderFn)(void* state);
 typedef void (*ArmoryBuilderFn)(void* list);
 
-static Weapon g_weapons[REG_MAX_WEAPONS];
+/* Every weapon and entity mods added, in the order added: grown as they are (stable_array.c), so an entry other threads
+ * read stays where it is. */
+static Weapon* g_weapons;
+static StableArray g_weaponStore = {NULL, sizeof(Weapon), REG_WEAPON_CEILING, 0};
 static int g_weaponCount;
 
-/* The registered weapons and entities by resource id (hashed from their unit names): an order every machine with the
- * same mods shares, whatever order it loads them in. */
-static void WeaponOrder(int order[REG_MAX_WEAPONS])
+/* Room for entries [0, count) of g_weapons: 1, or 0 past REG_WEAPON_CEILING or out of memory. */
+static int WeaponRoom(int count)
 {
+    if (count < 0 || !StableRoom(&g_weaponStore, (size_t)count)) return 0;
+    g_weapons = (Weapon*)g_weaponStore.base;
+    return 1;
+}
+
+/* The new records or entries HellForge's copies of the game's tables (the loadout table, the short-id list, the armory,
+ * component tables) are made with room for. Every one belongs to an entity with a row of the game's entity map
+ * (RegisterWeapon takes one for each, a tombstone keeps its own, and each entity has at most one record in a table), so
+ * none needs more than the map's rows: a copy made once, at boot or by a live change, never runs out before the map
+ * does. Its pages are committed as it fills where that matters (OwnedCopy), so the room costs address space. */
+static uint32_t RegRoom(void) { return REG_MAP_SLOTS; }
+
+/* Whether one more weapon or entity may be added: g_weapons has room for it (REG_WEAPON_CEILING, memory). */
+static int WeaponSlotFree(void) { return WeaponRoom(g_weaponCount + 1); }
+
+static int WeaponOrderCompare(const void* a, const void* b)
+{
+    uint64_t x = g_weapons[*(const int*)a].entity, y = g_weapons[*(const int*)b].entity;
+    return x < y ? -1 : x > y ? 1 : *(const int*)a - *(const int*)b;
+}
+
+/* The registered weapons and entities by resource id (hashed from their unit names): an order every machine with the
+ * same mods shares, whatever order it loads them in. A new array of g_weaponCount indices (at least one) for the caller
+ * to free, or NULL out of memory (logged). */
+static int* WeaponOrder(void)
+{
+    int* order = (int*)malloc(sizeof(int) * (size_t)(g_weaponCount > 0 ? g_weaponCount : 1));
+    if (order == NULL) { Note("registry: out of memory ordering %d weapons and entities", g_weaponCount); return NULL; }
     for (int i = 0; i < g_weaponCount; i++) order[i] = i;
-    for (int i = 1; i < g_weaponCount; i++)
-        for (int j = i; j > 0 && g_weapons[order[j - 1]].entity > g_weapons[order[j]].entity; j--)
-        {
-            int t = order[j];
-            order[j] = order[j - 1];
-            order[j - 1] = t;
-        }
+    qsort(order, (size_t)g_weaponCount, sizeof order[0], WeaponOrderCompare);
+    return order;
 }
 
 static uintptr_t g_game;
 static uint8_t* g_loadoutTable; /* HellForge's copy of component 29 (pointer to its index, as the game's) */
 static uint32_t g_loadoutRecords;
-static uint8_t* g_regList;      /* HellForge's copy of the short-id list (its 32-byte header first: room for REG_MAX_WEAPONS more) */
+static uint32_t g_loadoutCapacity; /* the records its copy has room for */
+static uint8_t* g_regList;      /* HellForge's copy of the short-id list (its 32-byte header first: room for RegRoom() more) */
 static uint32_t g_regListCount; /* its entries */
+static uint32_t g_regListCapacity; /* the entries it has room for */
 static uint8_t* g_armory;
 /* HellForge's copies of component tables that registered weapons have records of their own in (besides component 29). */
 /* from: the table the copy was made of (fromBytes after its header), which HellForge's addresses in it follow out of
@@ -349,6 +400,7 @@ static const char* JsonText(const char* text, char* out, size_t size)
 }
 
 /* registered-items.json's text into text (size bytes); its length. Complete only when it is below size - REG_ITEM_ROOM. */
+static int AttachmentItems(char* text, int n, int size); /* attachments.c */
 static int RegisteredItemsText(char* text, int size)
 {
     char mod[6 * 80 + 1], name[6 * 192 + 1];
@@ -363,7 +415,9 @@ static int RegisteredItemsText(char* text, int size)
     int before = n;
     n = StratagemItems(text, n, size, listed == 0);
     n = DifficultyItems(text, n, size, listed == 0 && n == before);
-    return n + snprintf(text + n, size - n, "]}\n");
+    n += snprintf(text + n, size - n, "]");
+    n = AttachmentItems(text, n, size);
+    return n + snprintf(text + n, size - n, "}\n");
 }
 
 /* Every weapon, stratagem and difficulty mods registered, for the backend (RegisteredItems.cs). The text grows until all
@@ -446,15 +500,24 @@ static int OwnComponents(HfMod* mod, const char* what, const char* name, const c
     return 0;
 }
 
+static void LiveRefuseRoom(HfMod* mod, const char* what, const char* name, const char* why); /* live_content.c */
+
+/* Why WeaponSlotFree refused (logged). In a live change the whole change is refused (live_content.c LiveRefuseRoom), never
+ * made with part of a mod's content. */
+static void WeaponsFull(HfMod* mod, const char* what, const char* name, int live)
+{
+    char why[192];
+    snprintf(why, sizeof why, "mods added %d weapons and entities already, or there is no memory for more", g_weaponCount);
+    if (live) LiveRefuseRoom(mod, what, name, why);
+    else ApiLog(mod, "%s(%s): %s", what, name, why);
+}
+
 /* Whether a weapon of this unit can be added now; logged when not. */
 static int WeaponAddable(HfMod* mod, const char* unit, int live)
 {
     if (unit == NULL || unit[0] == 0 || strlen(unit) >= sizeof g_weapons[0].name) { ApiLog(mod, "add_weapon: it needs a unit name (under 192 bytes)"); return 0; }
-    if ((g_fired[HF_EVENT_ENTITIES_READY] && !live) || g_weaponCount >= REG_MAX_WEAPONS)
-    {
-        ApiLog(mod, "add_weapon(%s): too late or too many weapons; call it from hellforge_mod_init", unit);
-        return 0;
-    }
+    if (g_fired[HF_EVENT_ENTITIES_READY] && !live) { ApiLog(mod, "add_weapon(%s): too late; call it from hellforge_mod_init", unit); return 0; }
+    if (!WeaponSlotFree()) { WeaponsFull(mod, "add_weapon", unit, live); return 0; }
     return 1;
 }
 
@@ -552,13 +615,67 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
 static int EntityAddable(HfMod* mod, const HfEntity* def, const char* name, int live)
 {
     if (name == NULL || name[0] == 0 || strlen(name) >= sizeof g_weapons[0].name) { ApiLog(mod, "add_entity: it needs a name (under 192 bytes)"); return 0; }
-    if ((g_fired[HF_EVENT_ENTITIES_READY] && !live) || g_weaponCount >= REG_MAX_WEAPONS)
-    {
-        ApiLog(mod, "add_entity(%s): too late or too many entities; call it from hellforge_mod_init", name);
-        return 0;
-    }
-    if (def->base == 0) { ApiLog(mod, "add_entity(%s): it needs a base entity", name); return 0; }
+    if (g_fired[HF_EVENT_ENTITIES_READY] && !live) { ApiLog(mod, "add_entity(%s): too late; call it from hellforge_mod_init", name); return 0; }
+    if (!WeaponSlotFree()) { WeaponsFull(mod, "add_entity", name, live); return 0; }
+    int parts = def->size >= offsetof(HfEntity, parts) + sizeof def->parts && def->parts != NULL;
+    if (def->base == 0 && !parts) { ApiLog(mod, "add_entity(%s): it needs a base entity or parts", name); return 0; }
+    if (parts && live) { ApiLog(mod, "add_entity(%s): an entity from parts is added when the game starts, not while it runs", name); return 0; }
     return 1;
+}
+
+/* A part's component: by name, or "#52" for one HellForge has no name for (a component with no records). */
+static uint32_t PartComponent(const char* name)
+{
+    const Component* c = name[0] == '#' ? NULL : ComponentNamed(name);
+    if (name[0] != '#') return c != NULL ? c->index : UINT32_MAX;
+    char* end;
+    unsigned long index = strtoul(name + 1, &end, 10);
+    return end != name + 1 && *end == 0 ? (uint32_t)index : UINT32_MAX;
+}
+
+static const char* PartRefused(const char* name, uint32_t c, uint64_t from)
+{
+    if (c == UINT32_MAX) return "HellForge does not know that component; see docs/sdk-reference.md";
+    if (c >= REG_COMPONENT_SLOTS) return "not a component an entity can list";
+    return from == 0 && name[0] != '#' ? "it names no entity to take the record from" : NULL;
+}
+
+/* The mod's parts into w: 1 if refused (logged). A part of a component twice counts once, the later one. */
+static int EntityParts(HfMod* mod, const char* name, const HfEntity* def, Weapon* w)
+{
+    const HfEntityPart* p = def->size >= offsetof(HfEntity, parts) + sizeof def->parts ? def->parts : NULL;
+    int count = 0;
+    while (p != NULL && p[count].component != NULL) count++;
+    if (count == 0) return 0;
+    if (count > REG_MAX_PARTS || (w->parts = calloc((size_t)count, sizeof w->parts[0])) == NULL)
+    { ApiLog(mod, "add_entity(%s): too many parts (%d, at most %d)", name, count, REG_MAX_PARTS); return 1; }
+    for (int i = 0; i < count; i++)
+    {
+        uint32_t c = PartComponent(p[i].component);
+        const char* why = PartRefused(p[i].component, c, p[i].from);
+        if (why != NULL) { ApiLog(mod, "add_entity(%s): part %s: %s", name, p[i].component, why); return 1; }
+        int at = 0;
+        while (at < w->partCount && w->parts[at].component != c) at++;
+        w->parts[at] = (EntityPart){p[i].from, c, 0};
+        w->partCount += at == w->partCount;
+    }
+    return 0;
+}
+
+/* The entity whose record of component c the weapon takes: a part's (HfEntity.parts), else its base. */
+static uint64_t Donor(const Weapon* w, uint32_t c, uint64_t baseEntity)
+{
+    for (int i = 0; i < w->partCount; i++) if (w->parts[i].component == c) return w->parts[i].from;
+    return baseEntity;
+}
+
+static void EntityAdding(HfMod* mod, const Weapon* w, const char* name, uint64_t base)
+{
+    if (w->partCount) ApiLog(mod, "adding entity %s (%016llx) from %d part(s)%s", name, (unsigned long long)w->entity, w->partCount, base ? " over its base" : "");
+    else if (w->ownAll) ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx with records of its own in every component", name,
+        (unsigned long long)w->entity, (unsigned long long)base);
+    else ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx, %d record(s) of its own", name, (unsigned long long)w->entity,
+        (unsigned long long)base, w->ownCount);
 }
 
 /* What the mod's HfEntity gives it besides its base: a unit, a behaviour, another entity's model, own_all. */
@@ -615,15 +732,12 @@ static uint64_t ApiAddEntity(HfMod* mod, const HfEntity* def)
     snprintf(w.name, sizeof w.name, "%s", name);
     EntityOptions(def, &w);
     EntityText(def, name, &w);
-    if (OwnComponents(mod, "add_entity", name, def->own_components, &w)) return 0;
+    if (OwnComponents(mod, "add_entity", name, def->own_components, &w) || EntityParts(mod, name, def, &w)) return 0;
     w.state = live ? 2 : 0;
     g_weapons[g_weaponCount] = w;
     MemoryBarrier(); /* the entry is whole before the count shows it */
     g_weaponCount++;
-    if (w.ownAll) ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx with records of its own in every component", name,
-        (unsigned long long)entity, (unsigned long long)def->base);
-    else ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx, %d record(s) of its own", name, (unsigned long long)entity,
-        (unsigned long long)def->base, w.ownCount);
+    EntityAdding(mod, &w, name, def->base);
     return entity;
 }
 
@@ -832,19 +946,24 @@ static OwnedTable* OwnedCopy(uint8_t* state, uint32_t c, uint32_t stride, uint32
     memcpy(&bytes, table - 12, 4); /* the table's size after its 28-byte header */
     uint32_t recordBytes = bytes > slots * 16u ? bytes - slots * 16u : 0;
     uint32_t first = (recordBytes + stride - 1) / stride; /* the first record index after every vanilla byte */
-    size_t size = 32 + (size_t)slots * 16 + ((size_t)first + REG_MAX_WEAPONS) * stride;
-    uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    /* address space for RegRoom() records after the vanilla ones; pages committed as records are added (OwnRecord): an
+     * own_all entity copies every table, and the room committed at once would take about 216 KB for each record of it */
+    uint32_t room = RegRoom();
+    size_t vanillaBytes = 32 + (size_t)slots * 16 + (size_t)first * stride;
+    size_t size = vanillaBytes + (size_t)room * stride;
+    uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_READWRITE);
     if (copy == NULL) return NULL;
+    if (VirtualAlloc(copy, vanillaBytes, MEM_COMMIT, PAGE_READWRITE) == NULL) { VirtualFree(copy, 0, MEM_RELEASE); return NULL; }
     memcpy(copy, table - 32, 32 + (size_t)bytes);
     owned = &g_owned[g_ownedCount++];
-    *owned = (OwnedTable){c, stride, first, first, first + REG_MAX_WEAPONS, copy + 32, table, bytes};
+    *owned = (OwnedTable){c, stride, first, first, first + room, copy + 32, table, bytes};
     SetStatePointer(state, REG_TABLES + 8 * c, owned->index);
     Note("registry: component %u copied (%u slots, %u-byte records, new records from %u)", c, slots, stride, first);
     return owned;
 }
 
 /* A record of the weapon's own in component table c: HellForge's copy of the table (made once per load: the vanilla table,
- * then room for REG_MAX_WEAPONS records after every vanilla byte), a copy of the base's record placed after the vanilla
+ * then room for RegRoom() records after every vanilla byte), a copy of the base's record placed after the vanilla
  * records, and the weapon's index row naming it. Returns the new record (or the one it has already), or NULL. */
 static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t baseEntity, uint64_t entity)
 {
@@ -854,13 +973,15 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
     OwnedTable* owned = OwnedCopy(state, c, stride, slots, table);
     if (owned == NULL) return NULL;
     uint8_t* records = owned->index + (size_t)slots * 16;
-    uint8_t* baseRow = FindRow(owned->index, slots, 16, baseEntity);
+    uint8_t* baseRow = baseEntity != 0 ? FindRow(owned->index, slots, 16, baseEntity) : NULL; /* key 0 is a free row */
     uint8_t* row = FindRow(owned->index, slots, 16, entity);
     if (baseRow == NULL || row == NULL || owned->stride != stride) return NULL;
     uint32_t mine;
     memcpy(&mine, row + 8, 4);
     if (baseEntity != entity && mine >= owned->first && mine < owned->next) return records + (size_t)mine * stride; /* its own already */
     if (owned->next >= owned->end) return NULL;
+    /* its page committed before the record is written or named (the copy reserves the room, OwnedCopy) */
+    if (VirtualAlloc(records + (size_t)owned->next * stride, stride, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
     uint32_t baseRecord, record = owned->next++;
     memcpy(&baseRecord, baseRow + 8, 4);
     memcpy(records + (size_t)record * stride, records + (size_t)baseRecord * stride, stride);
@@ -915,7 +1036,8 @@ static void HookText(void)
 
 static uint32_t AddText(const char* text, const char* key, uint32_t salt)
 {
-    if (text == NULL || text[0] == 0 || g_textCount >= (int)(sizeof g_texts / sizeof g_texts[0])) return 0;
+    if (text == NULL || text[0] == 0 || !StableRoom(&g_textStore, (size_t)g_textCount + 1)) return 0;
+    g_texts = (ModText*)g_textStore.base;
     size_t length = strlen(text);
     char* copy = (char*)malloc(length + 1);
     if (copy == NULL) return 0;

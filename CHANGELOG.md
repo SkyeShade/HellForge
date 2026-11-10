@@ -12,6 +12,43 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Mods can add enemies of their own (SDK 17).** `add_enemy` gives an entity a roster row with its own spawn group,
+  weights, cost and limits, tied to no vanilla enemy. `add_enemy_squad` adds squads that send those groups as patrols,
+  guards, stragglers, outpost garrisons, reinforcements, border flyers, convoys or air support. `add_enemy_swap` adds
+  a replacement rule. An enemy names the packages its entity needs, and HellForge loads them. No vanilla enemy is
+  replaced, and any entity can be an enemy ([new enemies](docs/modding/enemies.md)).
+- **Entities built from parts (SDK 17).** `parts` in `register_entity` and `add_entity` takes each component's record
+  from an entity of your choice, with or without a base
+  ([an entity from parts](docs/modding/enemies.md#an-entity-from-parts)).
+- **516 more game functions and 93 more game globals by name.** `hf_fn_` and `hf_global_` now reach 526 functions and
+  108 globals, in game.dll and helldivers2.exe. Each function's first bytes are checked against the game, and its
+  arguments come from the code that calls it ([hooking by name](docs/modding/hooks.md#hooking-by-name)). They cover:
+  - damage, health and status effects, and weapons with their heat, charge and reloads
+  - eagles, jump packs, vehicles, the director's patrols and reinforcements, and the level generator
+  - an entity's life on this machine: its components' spawn passes and the entity being switched on and off
+  - in the engine: spawning and moving units, animation variables, debug lines, materials, cameras, level volumes and
+    network sessions (#335)
+- **Mods can animate their weapons.** A data spec's `animations` names a JSON file with the joints that move, their clips
+  and the state machine that plays them on the game's events. HellForge builds the unit copy's own bones, clips and
+  state machine from it ([animations](docs/modding/animations.md)). `HellForge.Cli unit-joints` lists a unit's joints,
+  and the `animated-liberator` example kicks its bolt back on each shot and drops its magazine on a reload.
+- **Mods can build weapons from their own models.** A data spec's `model` turns a glTF 2.0 file (a `.glb` from Blender)
+  into a unit of the mod's own. Every node becomes a joint, every mesh draws rigid on its node, and node names give LODs
+  and shadow casters ([models](docs/modding/models.md)). The `model-carbine` example builds a whole weapon this way.
+- **Mods can bring their own textures.** A data spec's `texture` builds a texture from PNG files in the mod folder,
+  in RGBA8 or BC1, BC3, BC4 or BC5, with its mips and as an array of layers. A material copy's `textures` puts it in a
+  slot by name ([textures](docs/modding/textures.md)).
+- **Mods can have packages of their own.** A data spec patch with `package` becomes a whole archive under the package's
+  id. It loads when the game starts, or with `"load": "request"` only through `load_package` (SDK 17), which now takes
+  a mod's own packages ([packages of your own](docs/modding/data.md#packages-of-your-own)).
+- **Mods can add attachments to their weapons (SDK 17).** `add_attachment` copies a vanilla magazine, muzzle, optic or
+  other item under an id of its own, optionally with the mod's own model, and offers it on weapons mods added. The
+  player holds it from the start ([attachments](docs/modding/content.md#attachments-of-your-own)).
+- **Sound banks of a mod's own.** A data spec's `sounds` builds a Wwise bank from WAV files, one event each, routed like
+  a game bank's mixer. `hf_wwise_id` gives an event's id for the records that play it ([sounds](docs/modding/data.md#sounds)).
+- **A weapon's handling records have named fields.** Equipment, Wieldable, Attachable and WeaponCustomization, all of
+  WeaponReload and Unit's `unit` can be set by name, so a weapon can name only assets of its own
+  ([a weapon of your own](docs/modding/content.md#a-weapon-of-your-own)).
 - **New explosion, beam and arc types for mods (SDK 17).** `add_explosion`, `add_beam` and `add_arc` copy a vanilla type
   with its own damage, radii, length or chained arc, up to 512 of each across all mods. A projectile names its blasts in
   `impact_explosion` and `expiry_explosion`, and a weapon its `beam` or `arc`
@@ -20,10 +57,30 @@ On `dev`, since 0.4.0-beta.
   for mods (#298).
 - **A mod weapon's own explosion, beam and arc in the editor.** Its page shows them with the damage they deal, and mods'
   explosions are offered wherever the editor picks an explosion (#298).
+- **Mods can add warbonds.** A mod's `hellforge-warbonds.json` lists warbonds with up to 15 pages of up to 10 items each,
+  priced in medals, requisition, samples or Forge Credits, with later pages opened by what was spent
+  ([warbonds](docs/modding/warbonds.md)).
+  - Pages can sell game items and the mod's own weapons and stratagems, which stay out of the armory until bought.
+  - Up to 99 mod warbonds are listed after the game's, where the game lists 32 warbonds in all. Each has its own name,
+    look and art (a plain card without any), and its prices and texts show its currency. Past 32 warbonds the column of
+    dots beside the cards shows the group of up to 32 the current one is in.
+  - Each has its own Helldiver beside its card: a game warbond's background and pose, and the armor, helmet, cape and
+    armory weapon the mod names (its own weapons included).
+  - A warbond can cost Forge Credits, paid once with the game's warbond button, and an item can have a currency of its
+    own, which the claim button names when the player cannot afford it. Only prices in the warbond's own currency count
+    as spent on it.
+  - An item the player has already, from the game's warbonds or another mod's, shows claimed and is not sold again.
 - **Shields that stop grenades.** The FX-12 Shield Generator Relay, G/SH-39 Shield and SH-32 Shield Generator Pack have a
   **Stops grenades** setting in the editor, off by default. Grenades, throwing knives and self-destruct drones bounce off
   the bubble from outside, and ones thrown from inside still leave. Helldivers, enemies, vehicles and
   stratagem balls pass as before.
+- **Shields that stop enemies.** The FX-12 Shield Generator Relay has a **Stops enemies** setting in the editor, off by
+  default. Enemies stop at the bubble and break it with their own attacks, charges end there with their hit reaction,
+  and pounces stop on it. Enemies already inside stay inside, and Helldivers pass.
+- **Shields past 10,000 health.** A shield set stronger than that keeps its value: the network type that capped it now
+  widens to match.
+- **Backpack ammo past 1,023.** The editor now takes backpack ammo up to 1,048,575 on any backpack. The HellForge Editor
+  widens `deposit_value` to 20 bits for everyone, so it now counts as a shared mod: friends need the same HellForge version.
 - **Mod sync from your own game.** A host's mods' game patch files are written from the joiner's own game wherever it
   has the same bytes, and only the rest downloads. The host lists each archive part with its SHA-256 (`mods.parts`),
   and every file is still checked against the host's. **Index my game** on the Mods page finds renamed game files too.
@@ -48,11 +105,31 @@ On `dev`, since 0.4.0-beta.
 - **Data specs: resources from past builds.** `"source": {"build": "2024-03-01"}` (a day, or a data manifest) on a
   `copy` or `include` takes the resource from that build. Each player fetches just those resources from Steam once, with
   the same prompt, and the mod ships only its spec ([data specs](docs/modding/data.md#source-a-past-build)).
+- **Room for 1,024 new stratagems across all mods (was 48).** The loadout picker's frame is sized for every type, and
+  past 106 new stratagems the type travels in co-op in 16 bits instead of 8, so every player needs the same mods, as
+  before. The picker still shows 256 cards, about 160 of them new ones
+  ([limits](docs/modding/content.md#limits); #342).
 
 ### Changed
 
 - **A new HellForge logo.** The launcher, its window and desktop icon, the installer and the in-game editor show the
   crown in its frame (#299).
+- **Vehicle damage zones have their names.** The editor's vehicle pages showed most zones as "Zone 0", "Zone 1" and
+  so on. Every zone on all 11 vehicles now has the game's own name. The Bastion has its hull front, ammo boxes and side
+  and track panels; the FRVs have their doors, hatches, lights and tyres. The exosuits' cockpit fronts and the GATER
+  rig's wheels are named too. Stats files keep their keys (`zone_3.armor`) (#329).
+- **New profiles start live-like.** The new `live-like` template is a starter profile until you run Sync Inventory.
+  The sync then brings in everything it can from your live account: level, unlocks, ship modules, medals and samples,
+  the ship's name and the tutorial progress. The premium warbonds you own open without a purchase in Forge Credits. It is the first profile of a new installation and the launcher's first choice. Existing profiles keep
+  their template, and `starter` stays for earning everything again (#282, #262).
+- **`hf_global_EngineApi`'s fields say what they are.** `table` is now `application` and `scene_graph` is now `unit`:
+  the engine's C API keeps one table per domain, and these two are the Application and Unit functions. A mod that
+  read either field by its old name needs the new one; the offsets are unchanged (#335).
+- **No fixed limit on mods' entities and weapons.** Mods together could register 64 entity blocks and 512 entities and
+  weapons. HellForge now takes as many as the game's own tables hold (its entity map has room for about 2,187 more),
+  at boot and in live changes. A strat pack and a compendium together no longer run out (#307).
+- **No idle kick.** Alone on the ship, 15 minutes without touching the controls no longer sends you back to the title
+  screen, and the countdown warning before it is gone (#304).
 - **A mod download from a host no longer stops at 10 minutes.** The grant now stays on while the download goes on
   (2 minutes past each request, at most 6 hours), so a large mod over a slow link finishes; one left idle still ends.
   The host keeps the player expected back while they download, so the rejoin after a long download is still let in
@@ -63,14 +140,53 @@ On `dev`, since 0.4.0-beta.
   packages, level table or warbond list. Sync Inventory copies them from what the normal game receives when it logs in,
   cut to what the supported build knows, so a new installation needs one sync before its first PLAY. The warbond
   pages and the requisition store, which the normal game doesn't read at login, still ship (#296).
+- **Mods take far less disk space.** PLAY no longer puts a second copy of every mod's patches into the game's data
+  folder. On Windows they are links to the mod's own files; on Linux the files HellForge keeps itself are linked and
+  mod folders still copied ([disk space](docs/mods.md#disk-space)). While the game runs on Windows, a mod's patch files
+  cannot be saved over, as game files cannot. A staged patch written over in the game's data folder is found at the
+  next session start (#306).
+- **Zipped cosmetic packs are kept as folders.** A zip next to its unpacked copy held the pack twice. Add mods puts a
+  zipped pack in as a folder, and one already in the mods folder becomes one, with its options and place kept. A
+  `.rar`, `.7z` or zipped pack dropped into the mods folder whose files the installed mod already has is removed as a
+  second copy (#306).
 
 ### Fixed
 
+- **Mod stratagems no longer read past the loadout's level choices.** Six places in the game read a per-type choice
+  that has only 150 entries for every stratagem, mod ones included, and two more could write there; they now see no
+  choice for a mod stratagem. When the game loaded its stratagem settings again, the count of stratagems went back to
+  the vanilla 149 while mod stratagems stayed, and it now stays at the full list (#342).
+- **Direct3D 11 crashes in the Armory and at mission start.** Browsing armour crashed the game at
+  `helldivers2.exe+0x732040`, and a slow PC could crash at `+0x626296` as a mission loaded. A freed texture is now bound
+  empty instead of read, and a full job pool is waited out while jobs finish
+  ([crash guards](docs/crash-guards.md)).
+- **A mod's own weapon mesh in the right place on every LOD and its shadow.** A data spec's `mesh` put the shadow 20 cm
+  off the gun on an Adjudicator copy (4.5 cm on a Liberator), and hung a Liberator copy's LOD2 on its fire selector. Each
+  render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new
+  `"unitSpace": true` the OBJ keeps its own coordinates, the frame the weapon's attachment points are in
+  ([data specs](docs/modding/data.md)).
+- **A crash in missions with edited spawn weights (`game.dll+0x9530F5`).** A roster weight of 0 that left an enemy
+  with no weight at a level, such as Scavengers at difficulty 10, made bug holes spawn a null enemy. Such an edit is now
+  refused, also when only planets with a given tag lose it. For writes that bypass the check, the spawn and bug-hole
+  queues skip a null enemy, and the game's other unchecked picks take a row of weight 0
+  ([live editing](docs/internals-live.md#spawning)).
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
+- **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
+  block with "not stopping the game's connections to the internet (error 10065)", asked for administrator consent and
+  failed again. It still did on a PC that keeps a network route while offline. Offline, the block is now proved by
+  the PC having no route out, or by its refusing a UDP datagram to the internet. While the game runs it is checked
+  again every 10 seconds, and HellForge stops the game if it does not hold (#300, #317).
+- **Code mods stuck on "did not compile" after the mod tools were damaged.** An antivirus that removed files from
+  HellForge's Zig made every source mod fail in Zig's own libraries ("sub-compilation of libzigc failed"). That failure
+  was kept as the mod's, so restoring Zig or running Check and repair changed nothing. HellForge now notices a damaged
+  Zig, unpacks it again from its download and builds the mod. Only a mod's own errors are kept, and Build now always
+  compiles again (#301).
 
 ### For contributors
 
+- **Nightlies have a Linux installer:** `HellForge-Nightly-Linux-Installer.tar.gz`, once this workflow is on `main`
+  (#309).
 - `tests/HellForge.LocalBackend.Tests` needs the game's catalogues: `HELLFORGE_TEST_CATALOGUE` names a folder with
   `progression-data.json` and `item-catalog.json` (an installation's `catalogue` folder after a sync). Without one the
   suite is skipped with a warning. CI takes them from a private test-data repository

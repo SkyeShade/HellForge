@@ -120,8 +120,6 @@
     {"unit": "mod-loader", "file": "live_mods.c", "rule": "R16", "function": "", "value": 37},
     {"unit": "mod-loader", "file": "live_own.c", "rule": "R10", "function": "TxnOwnApply", "value": 17},
     {"unit": "mod-loader", "file": "live_own.c", "rule": "R16", "function": "", "value": 12},
-    {"unit": "mod-loader", "file": "live_registry.c", "rule": "R10", "function": "LiveNetworkTypes", "value": 17},
-    {"unit": "mod-loader", "file": "live_registry.c", "rule": "R10", "function": "LiveWeaponsCheck", "value": 16},
     {"unit": "mod-loader", "file": "live_registry.c", "rule": "R16", "function": "", "value": 19},
     {"unit": "mod-loader", "file": "live_stats.c", "rule": "R10", "function": "TxnAboveUnder", "value": 16},
     {"unit": "mod-loader", "file": "live_stats.c", "rule": "R10", "function": "TxnPlaceStats", "value": 17},
