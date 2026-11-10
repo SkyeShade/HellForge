@@ -9,7 +9,7 @@
  * The table is the only structure on the path sized to the vanilla types (exe and game.dll, code and memory).
  * The table moves into HellForge's space near game.dll (an image-relative u32 per type) with an entry for each added type:
  * its base type's case, as a copy keeps its base's component list and field layout (registry.c copies the base's map
- * row). A type whose component list is not its base's keeps the exit: a migration applies the whole state, and a case
+ * row). A type whose networked components are not its base's keeps the exit: a migration applies the whole state, and a case
  * would write through a missing component's index -1. Then the displacement, then the bound. Installed from the watch loop
  * once the code is decoded. The switch runs only for other machines' objects, and the displacement (0xBC2DB6..B9) straddles
  * two qwords, so once a co-op session has started (a game launched into a lobby, whose session can start before the code
@@ -107,9 +107,9 @@ static uint32_t NetMapTypes(uint32_t* table, uint32_t* highest, uint32_t* mapped
         }
         if (t->index > *highest) *highest = t->index;
         uint64_t own[2], copied[2];
-        if (!NetComponents(map, t->entity, own) || !NetComponents(map, t->baseEntity, copied) || own[0] != copied[0] || own[1] != copied[1])
+        if (!NetComponents(map, t->entity, own) || !NetComponents(map, t->baseEntity, copied) || !SameNetworked(EntityState(), own, copied))
         {
-            Note("network: type %u (%s) has not its base's component list; it keeps the exit (its copies get no state)", t->index, t->name);
+            Note("network: type %u (%s) has not its base's networked components; it keeps the exit (its copies get no state)", t->index, t->name);
             kept++;
             continue;
         }

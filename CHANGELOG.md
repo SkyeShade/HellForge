@@ -12,6 +12,14 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Mods can add enemies of their own (SDK 17).** `add_enemy` gives an entity a roster row with its own spawn group,
+  weights, cost and limits, tied to no vanilla enemy. `add_enemy_squad` adds squads that send those groups as patrols,
+  guards, stragglers, outpost garrisons, reinforcements, border flyers, convoys or air support. `add_enemy_swap` adds
+  a replacement rule. An enemy names the packages its entity needs, and HellForge loads them. No vanilla enemy is
+  replaced, and any entity can be an enemy ([new enemies](docs/modding/enemies.md)).
+- **Entities built from parts (SDK 17).** `parts` in `register_entity` and `add_entity` takes each component's record
+  from an entity of your choice, with or without a base
+  ([an entity from parts](docs/modding/enemies.md#an-entity-from-parts)).
 - **516 more game functions and 93 more game globals by name.** `hf_fn_` and `hf_global_` now reach 526 functions and
   108 globals, in game.dll and helldivers2.exe. Each function's first bytes are checked against the game, and its
   arguments come from the code that calls it ([hooking by name](docs/modding/hooks.md#hooking-by-name)). They cover:
@@ -143,6 +151,11 @@ On `dev`, since 0.4.0-beta.
   render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new
   `"unitSpace": true` the OBJ keeps its own coordinates, the frame the weapon's attachment points are in
   ([data specs](docs/modding/data.md)).
+- **A crash in missions with edited spawn weights (`game.dll+0x9530F5`).** A roster weight of 0 that left an enemy
+  with no weight at a level, such as Scavengers at difficulty 10, made bug holes spawn a null enemy. Such an edit is now
+  refused, also when only planets with a given tag lose it. For writes that bypass the check, the spawn and bug-hole
+  queues skip a null enemy, and the game's other unchecked picks take a row of weight 0
+  ([live editing](docs/internals-live.md#spawning)).
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
 - **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
