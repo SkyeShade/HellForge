@@ -37,7 +37,8 @@ public sealed record CopyResource(string Where, ulong Type, ulong From, string N
     IReadOnlyDictionary<uint, ulong>? Textures = null, IReadOnlyList<ShaderFile>? Shaders = null) : DataResource(Where);
 // A unit copy's own geometry: an OBJ in the mod folder (UnitMesh), scaled, Y-up or the game's Z-up; with UnitSpace its
 // coordinates are the unit's own (the frame its joints and attach points are in), otherwise its render mesh's.
-public sealed record MeshFile(string Obj, double Scale, bool YUp, bool UnitSpace = false);
+// With Parts, each object of the OBJ rides the unit joint it is named after, in the unit's own space (UnitMesh).
+public sealed record MeshFile(string Obj, double Scale, bool YUp, bool UnitSpace = false, bool Parts = false);
 // A material copy's own code for a shader stage: the stage's offset in the GPU part, a compiled shader in the mod folder, and
 // for a shader host's stage what the game's stage must be.
 public sealed record ShaderFile(int Offset, string Dxbc, HostStage? Host = null);
@@ -468,7 +469,7 @@ public static partial class DataSpecs
     {
         if (!e.TryGetProperty("mesh", out var meshSpec)) return null;
         if (type != ResourceTypes.Unit) throw new InvalidDataException($"{at}: mesh is for a unit copy.");
-        Fields(meshSpec, $"{at}.mesh", "obj", "scale", "yUp", "unitSpace");
+        Fields(meshSpec, $"{at}.mesh", "obj", "scale", "yUp", "unitSpace", "parts");
         var obj = Text(meshSpec, "obj", $"{at}.mesh").Replace('\\', '/');
         if (Path.IsPathRooted(obj) || obj.Split('/').Any(part => part is "" or "." or "..") || !obj.EndsWith(".obj", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"{at}.mesh: obj is an .obj file in the mod folder, such as \"models/cube.obj\".");
@@ -476,8 +477,9 @@ public static partial class DataSpecs
         var scale = meshSpec.TryGetProperty("scale", out var sc) ? (sc.ValueKind == JsonValueKind.Number && sc.GetDouble() is > 0 and < 1000 and var v ? v : throw new InvalidDataException($"{at}.mesh: scale is a positive number.")) : 1.0;
         var yUp = !meshSpec.TryGetProperty("yUp", out var up) || (up.ValueKind is JsonValueKind.True or JsonValueKind.False ? up.GetBoolean() : throw new InvalidDataException($"{at}.mesh: yUp is true or false."));
         var unitSpace = meshSpec.TryGetProperty("unitSpace", out var us) && (us.ValueKind is JsonValueKind.True or JsonValueKind.False ? us.GetBoolean() : throw new InvalidDataException($"{at}.mesh: unitSpace is true or false."));
+        var parts = meshSpec.TryGetProperty("parts", out var pa) && (pa.ValueKind is JsonValueKind.True or JsonValueKind.False ? pa.GetBoolean() : throw new InvalidDataException($"{at}.mesh: parts is true or false."));
         inputs.Add(obj);
-        return new(obj, scale, yUp, unitSpace);
+        return new(obj, scale, yUp, unitSpace, parts);
     }
 
     // "source": "game" (the default), "steam", or {"build": "<depot>:<manifest>"} / {"build": "yyyy-MM-dd"} (the build of

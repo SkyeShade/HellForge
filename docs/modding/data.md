@@ -125,6 +125,8 @@ mod, never a game resource's name. The copy can then be changed, in this order:
     +Y to the muzzle, +Z up and +X to its right: Blender's coordinates when Blender writes the OBJ.
   - Materials, physics, hitboxes and attachment points (the muzzle, magazine, optic) stay the base's. Recolour the
     materials in the same patch and model around the attachment points. Its UVs sample the base material's own textures.
+  - With `"parts": true` each object of the OBJ rides the unit joint it is named after, in the unit's own space, so a
+    vehicle's wheels turn ([new vehicles](vehicles.md#a-model-of-its-own)).
 
 A `unit` copy also gets its base's physics under its own name, because the engine finds a unit's physics by its name.
 
