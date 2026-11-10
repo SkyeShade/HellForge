@@ -6,7 +6,7 @@
  * type's network entry, and the apply switch's case for the type writes through each of its components' instances
  * (netapply.c). A key the entry lacks and a component the case has but the entity lacks both crash. So the entity's
  * networked components must be exactly those of one of the game's types, whose entry and case it takes. */
-#define REG_NET_FIELDS 0xF0CB30u
+#define REG_NET_FIELDS 0xF0CB70u /* 0x581509 reads [r12 + 8 * c + 0xF0CB30], r12 the entity state + 0x40 (0xFDC250) */
 typedef struct ComponentSet { uint64_t bits[(REG_COMPONENT_SLOTS + 63) / 64]; } ComponentSet;
 
 static ComponentSet NetworkedSet(uint8_t* state, const uint16_t* list, uint64_t count)
