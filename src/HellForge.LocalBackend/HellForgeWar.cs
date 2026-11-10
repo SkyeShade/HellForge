@@ -322,13 +322,21 @@ public sealed class HellForgeWar : IServedWar, IAsyncDisposable
         catch (Exception error) when (error is InvalidOperationException or FormatException or OverflowException) { log($"A mission end was not reported ({error.Message})."); }
     }
 
-    // POST /Operation/Abandon: its running missions end as lost, so the server stops counting the player at once (a
-    // ticket nobody ends only lapses after its heartbeats stop).
+    // POST /Operation/Abandon {operationIds: [...]}: those operations' running missions end as lost, so the server stops
+    // counting the player at once (a ticket nobody ends only lapses after its heartbeats stop). A body that names no
+    // operation ends every running mission.
     public void OperationAbandoned(JsonElement body)
     {
         if (!Reports) return;
-        var operationId = body.ValueKind == JsonValueKind.Object ? Long(body, "operationId") ?? Long(body, "id") : null;
-        foreach (var mission in running.Values.Distinct().Where(m => operationId == null || m.Operation == operationId).ToList())
+        var abandoned = new HashSet<long>();
+        if (body.ValueKind == JsonValueKind.Object)
+        {
+            if (body.TryGetProperty("operationIds", out var ids) && ids.ValueKind == JsonValueKind.Array)
+                foreach (var id in ids.EnumerateArray())
+                    if (id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out var number)) abandoned.Add(number);
+            if ((Long(body, "operationId") ?? Long(body, "id")) is { } single) abandoned.Add(single);
+        }
+        foreach (var mission in running.Values.Distinct().Where(m => abandoned.Count == 0 || abandoned.Contains(m.Operation)).ToList())
             End(mission, false, "abandoned");
     }
 

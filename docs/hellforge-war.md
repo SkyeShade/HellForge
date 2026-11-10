@@ -35,7 +35,7 @@ The backend tells the server about each mission from the game's own requests:
 | `Operation/Mission/Start` | `POST /v1/mission/start` `{installId, planetIndex, difficulty, race}`, which answers a ticket |
 | while the mission runs | `POST /v1/mission/heartbeat` `{ticket}` every 2 minutes, which the server uses to count players per planet |
 | `Operation/Mission/end` | `POST /v1/mission/end` `{ticket, success}`, which answers `{impact, capped}` |
-| `Operation/Abandon` | nothing; the heartbeats stop and the server lets the ticket lapse |
+| `Operation/Abandon` `{operationIds}` | `POST /v1/mission/end` `{ticket, success: false}` for each running mission of those operations |
 
 Each report goes out in the background with a 5 second timeout. The game's request is answered as before, whether the
 server answers, refuses or is down; a report that fails is logged and dropped. The impact the server answers is logged
