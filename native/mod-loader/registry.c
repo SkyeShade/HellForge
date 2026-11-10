@@ -623,11 +623,21 @@ static int EntityAddable(HfMod* mod, const HfEntity* def, const char* name, int 
     return 1;
 }
 
-static const char* PartRefused(const Component* c, uint64_t from)
+/* A part's component: by name, or "#52" for one HellForge has no name for (a component with no records). */
+static uint32_t PartComponent(const char* name)
 {
-    if (c == NULL) return "HellForge does not know that component; see docs/sdk-reference.md";
-    if (c->index >= REG_COMPONENT_SLOTS) return "not a component an entity can list";
-    return from == 0 ? "it names no entity to take the record from" : NULL;
+    const Component* c = name[0] == '#' ? NULL : ComponentNamed(name);
+    if (name[0] != '#') return c != NULL ? c->index : UINT32_MAX;
+    char* end;
+    unsigned long index = strtoul(name + 1, &end, 10);
+    return end != name + 1 && *end == 0 ? (uint32_t)index : UINT32_MAX;
+}
+
+static const char* PartRefused(const char* name, uint32_t c, uint64_t from)
+{
+    if (c == UINT32_MAX) return "HellForge does not know that component; see docs/sdk-reference.md";
+    if (c >= REG_COMPONENT_SLOTS) return "not a component an entity can list";
+    return from == 0 && name[0] != '#' ? "it names no entity to take the record from" : NULL;
 }
 
 /* The mod's parts into w: 1 if refused (logged). A part of a component twice counts once, the later one. */
@@ -641,12 +651,12 @@ static int EntityParts(HfMod* mod, const char* name, const HfEntity* def, Weapon
     { ApiLog(mod, "add_entity(%s): too many parts (%d, at most %d)", name, count, REG_MAX_PARTS); return 1; }
     for (int i = 0; i < count; i++)
     {
-        const Component* c = ComponentNamed(p[i].component);
-        const char* why = PartRefused(c, p[i].from);
+        uint32_t c = PartComponent(p[i].component);
+        const char* why = PartRefused(p[i].component, c, p[i].from);
         if (why != NULL) { ApiLog(mod, "add_entity(%s): part %s: %s", name, p[i].component, why); return 1; }
         int at = 0;
-        while (at < w->partCount && w->parts[at].component != c->index) at++;
-        w->parts[at] = (EntityPart){p[i].from, c->index, 0};
+        while (at < w->partCount && w->parts[at].component != c) at++;
+        w->parts[at] = (EntityPart){p[i].from, c, 0};
         w->partCount += at == w->partCount;
     }
     return 0;

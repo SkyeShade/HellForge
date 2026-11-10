@@ -128,7 +128,7 @@ typedef struct HfWeapon
     uint32_t arc;
 } HfWeapon;
 
-/* A part of an entity (SDK 17, HfEntity.parts): a component's name and the entity whose record of it the new one takes. */
+/* A part of an entity (SDK 17, HfEntity.parts): a component's name ("#52": its number) and the entity whose record it takes. */
 typedef struct HfEntityPart { const char* component; uint64_t from; } HfEntityPart;
 
 /* A new entity of any kind (SDK 4, add_entity): a copy of a vanilla entity (a Pelican, a turret...) under a resource

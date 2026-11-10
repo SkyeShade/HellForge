@@ -2731,12 +2731,12 @@ static void OwnAllFixture(void)
     assert(hmg == Murmur64A("fixture/hmg-sentry", 18) && g_weapons[0].ownAll);
     /* entities from parts: one with no base, whose networked components (70) are the second type's; one whose networked
      * components (321 alone) no type has; one over a base, a part replacing a record */
-    static const HfEntityPart both[] = {{"BehaviorComponentData", 0x37CDE43876BA26BBull}, {"SeventyComponentData", 0x1234}, {NULL, 0}};
+    static const HfEntityPart both[] = {{"BehaviorComponentData", 0x37CDE43876BA26BBull}, {"#70", 0x1234}, {"#300", 0}, {NULL, 0}};
     static const HfEntityPart lone[] = {{"ProjectileWeaponComponentData", 0x37CDE43876BA26BBull}, {NULL, 0}};
     static const HfEntityPart swap[] = {{"SeventyComponentData", 0x1234}, {NULL, 0}};
     HfEntity made = {sizeof made};
     made.name = "fixture/made"; made.parts = both;
-    assert(ApiAddEntity(&g_mods[0], &made) == 0 || g_weapons[1].partCount == 2);
+    assert(ApiAddEntity(&g_mods[0], &made) != 0 && g_weapons[1].partCount == 3);
     uint64_t madeId = g_weapons[1].entity;
     made.name = "fixture/lone"; made.parts = lone;
     assert(ApiAddEntity(&g_mods[0], &made) != 0);
@@ -2754,7 +2754,7 @@ static void OwnAllFixture(void)
         uint32_t record;
         assert(m->state == 1 && row != NULL && m->copies == other && m->baseShortId == 78 && m->baseEntity == 0);
         memcpy(&madeList, row + 8, 8); memcpy(&madeCount, row + 16, 8);
-        assert(madeCount == 2 && madeList == m->list && madeList[0] == 70 && madeList[1] == 284);
+        assert(madeCount == 3 && madeList == m->list && madeList[0] == 70 && madeList[1] == 284 && madeList[2] == 300); /* 300 has no table */
         memcpy(&record, FindRow(StatePointer(state, REG_TABLES + 8 * 284), 2008, 16, madeId) + 8, 4); assert(record == 7); /* the base's */
         memcpy(&record, FindRow(StatePointer(state, REG_TABLES + 8 * 70), 18, 16, madeId) + 8, 4); assert(record == 0);   /* the other's */
         assert(l->state == -1 && FindRow(map, REG_MAP_SLOTS, 32, l->entity) == NULL);

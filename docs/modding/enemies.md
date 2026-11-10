@@ -174,6 +174,8 @@ static const HfEntityDef brute = {.size = sizeof brute, .name = "brute", .parts 
 - A part's record is shared with the entity it comes from. The block's changes, or `own_all`, give yours a record
   of its own, which you then edit freely.
 - A part may come from an entity your mod registered earlier.
+- Some components hold no records, and HellForge has no name for them. Name one by its number, as `"#52"`; its
+  `from` is not read.
 - The game sends some components' state to other players. Those components of your entity, taken together, must be
   the ones some entity of the game has: yours takes that entity's network type. When no entity matches, yours is not
   added, and your mod's log says so. Components that are not sent, such as `BehaviorComponentData`, are free.
