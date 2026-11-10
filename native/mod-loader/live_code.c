@@ -448,6 +448,7 @@ static int CodeRemove(HfMod* mod, uint32_t reason)
     EditsForget(mod);
     DefinitionsForget(mod);
     ExtrasForget(mod);
+    EnemyRostersForget(mod);
     NetForget(mod);
     AcquireSRWLockExclusive(&g_passivesLock);
     int passives = g_passivesMod == mod;

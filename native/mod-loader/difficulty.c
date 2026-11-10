@@ -612,6 +612,7 @@ static const char* EnemyReadersFailed(uintptr_t game)
     return NULL;
 }
 
+static uint64_t EnemySquadsIn(size_t roster, uint32_t family); /* enemy_squads.c */
 /* Roster r's eight composition families, those up to tech 10 counted in *toTen. */
 static const char* CompositionsFailed(uintptr_t game, size_t r, uint32_t* toTen)
 {
@@ -620,7 +621,7 @@ static const char* CompositionsFailed(uintptr_t game, size_t r, uint32_t* toTen)
         uint64_t family = 0, families = 0;
         if (SafeRead(game + kRosters[r].descriptor + 0x20 + 0x10 * k, &family, 8) || SafeRead(game + kRosters[r].descriptor + 0x28 + 0x10 * k, &families, 8))
             return "an enemy composition family is unreadable";
-        for (uint64_t i = 0; family != 0 && i < families; i++)
+        for (uint64_t i = 0; family != 0 && i + EnemySquadsIn(r, k) < families; i++) /* the game's rows: mods' come after */
         {
             uint32_t highest = 0;
             if (SafeRead(family + i * 0x118 + 0xF0, &highest, 4)) return "an enemy composition is unreadable";
@@ -635,7 +636,7 @@ static const char* RosterFailed(uintptr_t game, size_t r, uint32_t* toTen)
 {
     uint64_t rows = 0, count = 0;
     if (SafeRead(game + kRosters[r].descriptor, &rows, 8) || SafeRead(game + kRosters[r].descriptor + 8, &count, 8) ||
-        rows == 0 || count != kRosters[r].rows)
+        rows == 0 || count < kRosters[r].rows || count > 0xFFFF)
         return "an enemy roster is not the reviewed one";
     for (uint64_t i = 0; i < count; i++)
     {
@@ -824,9 +825,10 @@ static const char* MoveRosterWeights(DifficultyInstall* d)
 {
     for (size_t r = 0; r < DIF_ROSTERS; r++)
     {
-        uint64_t rows = 0;
+        uint64_t rows = 0, count = 0; /* the live count: mods' rows (enemy_rosters.c) move with the game's */
         SafeRead(d->game + kRosters[r].descriptor, &rows, 8);
-        for (uint32_t i = 0; i < kRosters[r].rows; i++)
+        SafeRead(d->game + kRosters[r].descriptor + 8, &count, 8);
+        for (uint64_t i = 0; i < count; i++)
         {
             float weights[DIF_VANILLA + 1];
             if (SafeRead(rows + i * 0x80 + 0x30, weights, DIF_VANILLA * 4)) return "an enemy roster row is unreadable";

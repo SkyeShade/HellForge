@@ -330,6 +330,21 @@ static void StatsDirectorEdit(StatEdit* e)
     if (e->applied && !strcmp(e->kind, "DifficultySettings")) DifficultyMirror(row, e->offset, &before, &e->value, size);
 }
 
+/* Whether a roster weight of 0 waits for the pass's other lines: it is judged against the rows as they are (director.c),
+ * so a file that moves a family's weight to another row keeps both lines. One a later line writes over keeps its place. */
+static int StatsDirectorWaits(int i)
+{
+    const StatEdit* e = &g_stats[i];
+    if (strncmp(e->kind, "EnemyRoster", 11) || (e->value & 0x7FFFFFFFu) != 0) return 0;
+    for (int j = i + 1; j < g_statCount; j++)
+    {
+        const StatEdit* later = &g_stats[j];
+        if (!strcmp(later->kind, e->kind) && later->record == e->record && later->offset == e->offset && later->mod != NULL && later->mod->loaded)
+            return 0;
+    }
+    return 1;
+}
+
 /* Stats edits of the difficulty rows and the spawn director's rosters and compositions (director.c), once level 11 is in
  * place (or none was added) and game.dll's data reads as reviewed; refused if that never happens within 120 s. A
  * difficulty row of the game's own table goes to every copy that held the same bytes. */
@@ -345,7 +360,8 @@ static void StatsDirectorReady(void)
         if (DirectorStride(g_stats[i].kind) && g_stats[i].mod->loaded) TableRowOf(g_stats[i].kind, (uint64_t)g_stats[i].record, &ready);
     if (!ready && now - first < 120000) return;
     g_directorDone = 1;
-    for (int i = 0; i < g_statCount; i++) StatsDirectorEdit(&g_stats[i]);
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < g_statCount; i++) if (StatsDirectorWaits(i) == pass) StatsDirectorEdit(&g_stats[i]);
 }
 
 /* Stats edits of the hit volumes, once game.dll's data reads as reviewed (refused if it never does within 60 s). */

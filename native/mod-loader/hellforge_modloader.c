@@ -574,7 +574,7 @@ static void ChannelInstall(uintptr_t game);
 #include "difficulty_block.c" /* the generation block's moved arrays */
 #include "difficulty_diag.c" /* its diagnostics and their watch */
 #include "difficulty_install.c" /* after every difficulty file: the checks and the install, in their order */
-#include "director.c" /* after difficulty.c: its rosters and the difficulty copies */
+#include "director.c" /* after difficulty.c: its rosters and the difficulty copies; enemy_rosters.c with it */
 #include "behaviours.c"
 #include "behaviour_turret.c" /* right after behaviours.c: the turret behaviour (TurretUpdate) */
 #include "crash_notes.c" /* after behaviours.c: the crash and freeze notes (BHV_CLOCK) */
@@ -789,7 +789,7 @@ static void WatchStats(void)
     if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); StatsDirectorReady(); ShotsTick(); RoundsTick(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SpawnGuardsWatch(); ShotsTick(); RoundsTick(); }
 }
 
 static void WatchInstalls(void)
@@ -1128,7 +1128,7 @@ static void ApiInit(void)
         ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
-        ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiRpcListen, ApiRpcSend};
+        ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiAddEnemy, ApiAddEnemySwap, ApiAddEnemySquad, ApiRpcListen, ApiRpcSend};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */

@@ -9,6 +9,8 @@
 #include "channel_test.c"
 #include "rpc_test.c"
 #include "director_test.c"
+#include "enemy_rosters_test.c"
+#include "spawn_guards_test.c"
 #include "shots_test.c"
 #include "rounds_test.c"
 #include "network_types_test.c"
@@ -253,6 +255,7 @@ static void NetSwitchFixture(void)
         memcpy(row, &rows[i].entity, 8); memcpy(row + 8, &rows[i].list, 8); memcpy(row + 16, &rows[i].count, 8);
     }
     memcpy(state + REG_MAP, &map, 8);
+    memcpy(state + REG_NET_FIELDS + 8 * 3, &map, 8); /* component 3 is networked: the odd type lacks it */
     uintptr_t savedGame = g_game;
     g_game = (uintptr_t)game;
     LONG savedAdded = g_networkTypesAdded;
@@ -2701,17 +2704,67 @@ static void OwnAllFixture(void)
     uint64_t count = 5;
     uint32_t shortId = 77, mapIndex = (uint32_t)((row - map) / 32), listBytes = 8;
     memcpy(row, &base, 8); memcpy(row + 8, &list, 8); memcpy(row + 16, &count, 8); memcpy(row + 24, &shortId, 4);
-    uint8_t* shortIds = calloc(1, 32 + 8);
+    uint8_t* shortIds = calloc(1, 32 + 16);
     memcpy(shortIds + 20, &listBytes, 4); memcpy(shortIds + 32, &shortId, 4); memcpy(shortIds + 36, &mapIndex, 4);
     SetStatePointer(state, REG_MAP, map);
     SetStatePointer(state, REG_LIST, shortIds + 32);
+    /* a second game type, of components 284 and 70; 70 and 321 are networked */
+    static uint16_t otherComponents[] = {70, 284};
+    {
+        uint8_t* otherRow = FreeRow(map, REG_MAP_SLOTS, 32, other);
+        uint16_t* otherList = otherComponents;
+        uint64_t two = 2;
+        uint32_t otherShort = 78, otherIndex = (uint32_t)((otherRow - map) / 32);
+        memcpy(otherRow, &other, 8); memcpy(otherRow + 8, &otherList, 8); memcpy(otherRow + 16, &two, 8); memcpy(otherRow + 24, &otherShort, 4);
+        listBytes = 16;
+        memcpy(shortIds + 20, &listBytes, 4); memcpy(shortIds + 40, &otherShort, 4); memcpy(shortIds + 44, &otherIndex, 4);
+        SetStatePointer(state, REG_NET_FIELDS + 8 * 70, map);
+        SetStatePointer(state, REG_NET_FIELDS + 8 * 321, map);
+        Component* c = &g_components[g_componentCount++];
+        memset(c, 0, sizeof *c); strcpy(c->name, "BehaviorComponentData"); c->index = 284; c->stride = 12; c->records = 1005; c->recordOffset = 2008 * 16; c->indices = 2008;
+        c = &g_components[g_componentCount++];
+        memset(c, 0, sizeof *c); strcpy(c->name, "SeventyComponentData"); c->index = 70; c->stride = 36; c->records = 10; c->recordOffset = 18 * 16; c->indices = 18;
+    }
 
     HfEntity e = {sizeof e};
     e.base = base; e.name = "fixture/hmg-sentry"; e.own_all = 1;
     uint64_t hmg = ApiAddEntity(&g_mods[0], &e);
     assert(hmg == Murmur64A("fixture/hmg-sentry", 18) && g_weapons[0].ownAll);
+    /* entities from parts: one with no base, whose networked components (70) are the second type's; one whose networked
+     * components (321 alone) no type has; one over a base, a part replacing a record */
+    static const HfEntityPart both[] = {{"BehaviorComponentData", 0x37CDE43876BA26BBull}, {"#70", 0x1234}, {"#300", 0}, {NULL, 0}};
+    static const HfEntityPart lone[] = {{"ProjectileWeaponComponentData", 0x37CDE43876BA26BBull}, {NULL, 0}};
+    static const HfEntityPart swap[] = {{"SeventyComponentData", 0x1234}, {NULL, 0}};
+    HfEntity made = {sizeof made};
+    made.name = "fixture/made"; made.parts = both;
+    assert(ApiAddEntity(&g_mods[0], &made) != 0 && g_weapons[1].partCount == 3);
+    uint64_t madeId = g_weapons[1].entity;
+    made.name = "fixture/lone"; made.parts = lone;
+    assert(ApiAddEntity(&g_mods[0], &made) != 0);
+    made.name = "fixture/swapped"; made.parts = swap; made.base = base;
+    uint64_t swapped = ApiAddEntity(&g_mods[0], &made);
+    made.name = "fixture/nothing"; made.parts = NULL; made.base = 0;
+    assert(swapped != 0 && ApiAddEntity(&g_mods[0], &made) == 0 && g_weaponCount == 4); /* neither a base nor parts */
     RegisterWeapons();
     assert(g_weapons[0].state == 1 && FindRow(map, REG_MAP_SLOTS, 32, hmg) != NULL);
+    {
+        const Weapon *m = &g_weapons[1], *l = &g_weapons[2], *sw = &g_weapons[3];
+        uint8_t* row = FindRow(map, REG_MAP_SLOTS, 32, madeId);
+        uint16_t* madeList;
+        uint64_t madeCount;
+        uint32_t record;
+        assert(m->state == 1 && row != NULL && m->copies == other && m->baseShortId == 78 && m->baseEntity == 0);
+        memcpy(&madeList, row + 8, 8); memcpy(&madeCount, row + 16, 8);
+        assert(madeCount == 3 && madeList == m->list && madeList[0] == 70 && madeList[1] == 284 && madeList[2] == 300); /* 300 has no table */
+        memcpy(&record, FindRow(StatePointer(state, REG_TABLES + 8 * 284), 2008, 16, madeId) + 8, 4); assert(record == 7); /* the base's */
+        memcpy(&record, FindRow(StatePointer(state, REG_TABLES + 8 * 70), 18, 16, madeId) + 8, 4); assert(record == 0);   /* the other's */
+        assert(l->state == -1 && FindRow(map, REG_MAP_SLOTS, 32, l->entity) == NULL);
+        row = FindRow(map, REG_MAP_SLOTS, 32, swapped);
+        assert(sw->state == 1 && row != NULL && sw->copies == base && sw->baseShortId == 77);
+        memcpy(&madeCount, row + 16, 8); assert(madeCount == 5);
+        memcpy(&record, FindRow(StatePointer(state, REG_TABLES + 8 * 70), 18, 16, swapped) + 8, 4); assert(record == 0);
+        memcpy(&record, FindRow(StatePointer(state, REG_TABLES + 8 * 321), 542, 16, swapped) + 8, 4); assert(record == 3);
+    }
     for (int i = 0; i < 4; i++)
     {
         uint32_t slots = tables[i].slots, size = tables[i].size, mine, theirs;
@@ -4242,6 +4295,8 @@ int main(int argc, char** argv)
     PassivesFixture();
     RefsFixture();
     DirectorFixture();
+    EnemyRostersFixture();
+    SpawnGuardsFixture();
     ShotsFixture();
     RoundsFixture();
     PerksFixture();
@@ -4500,6 +4555,6 @@ int main(int argc, char** argv)
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
         "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; registered items: a full registry's export, names escaped; "
-        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again");
+        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again");
     return 0;
 }
