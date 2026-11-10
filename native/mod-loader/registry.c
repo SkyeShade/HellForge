@@ -326,6 +326,19 @@ static uint8_t* StatePointer(uint8_t* state, uint32_t offset)
     return state != NULL && !SafeRead((uintptr_t)state + offset, &value, 8) ? (uint8_t*)value : NULL;
 }
 
+/* Whether a copy's model_from is ignored (TakeModel): ground vehicles name their model's parts in far more records than
+ * it takes (damage zones, seats, mounts, wheels, tracks, legs), and half a model hangs the game at spawn, so a ground
+ * vehicle, as the base or as the donor, keeps its base's model. */
+static int KeepsGroundModel(uint8_t* state, const Weapon* w, uint64_t baseEntity)
+{
+    uint8_t* electrics = StatePointer(state, REG_TABLES + 8 * REG_VEHICLE_ELECTRICS);
+    uint32_t slots = SlotsOf(REG_VEHICLE_ELECTRICS);
+    if (electrics == NULL || slots == 0) return 0;
+    if (FindRow(electrics, slots, 16, baseEntity) == NULL && FindRow(electrics, slots, 16, w->modelFrom) == NULL) return 0;
+    ApiLog(w->mod, "%s: model_from ignored: a ground vehicle keeps its base's model", w->name);
+    return 1;
+}
+
 static int SetStatePointer(uint8_t* state, uint32_t offset, const void* value)
 {
     uintptr_t v = (uintptr_t)value;
