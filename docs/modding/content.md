@@ -650,14 +650,12 @@ or damage's fields are there only where a mod added it, so the page never edits 
 
 ### Limits
 
-There is room for 1,024 new stratagems across all mods. The loadout picker shows 256 cards, so about 160 new ones show
-at once next to the vanilla ones; the rest are added but have no card. A new stratagem never counts in mission
-statistics, is never a mission's random pick, and does not load its base's ship-upgrade packages.
+All mods share room for 1,024 new stratagems; the picker shows about 160. A new stratagem never counts in
+mission statistics, is never a random pick, and does not load its base's ship-upgrade packages.
 
 ### Co-op
 
-Peers exchange stratagem types as numbers, so every player must run the same mods; the modlist code makes sure of it.
-Past 106 new stratagems the type travels in 16 bits instead of 8, which also needs the same mods on every machine.
+Peers exchange stratagem types as numbers, so every player needs the same mods (the modlist code checks).
 
 ## Selection headings
 

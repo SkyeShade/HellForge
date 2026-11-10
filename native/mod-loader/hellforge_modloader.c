@@ -367,47 +367,6 @@ static uint64_t Murmur64A(const void* key, size_t length)
     return h ^ (h >> 47);
 }
 
-/* The engine's field type table: [[module+rva]] -> count at +0x10, rows (0x18 bytes) at +0x18. */
-static int FieldTypes(uintptr_t* rows, uint32_t* count)
-{
-    uintptr_t base = ApiModuleBase(g_networkModule, NULL), holder = 0, config = 0;
-    if (base == 0 || SafeRead(base + g_networkRva, &holder, 8) || holder == 0 || SafeRead(holder, &config, 8) || config == 0) return 1;
-    if (SafeRead(config + 0x10, count, 4) || SafeRead(config + 0x18, rows, 8) || *count == 0 || *count > 8192 || *rows == 0) return 1;
-    return 0;
-}
-
-/* The field type row whose name hashes to `hash`, when exactly one does; 0 otherwise. */
-static uintptr_t FindFieldTypeHash(uint32_t hash)
-{
-    uintptr_t rows;
-    uint32_t count, found = 0;
-    uintptr_t match = 0;
-    if (FieldTypes(&rows, &count)) return 0;
-    for (uint32_t i = 0; i < count; i++)
-    {
-        uint32_t rowHash;
-        if (SafeRead(rows + (uintptr_t)i * 0x18, &rowHash, 4)) return 0;
-        if (rowHash == hash) { match = rows + (uintptr_t)i * 0x18; found++; }
-    }
-    return found == 1 ? match : 0;
-}
-
-static uintptr_t FindFieldType(const char* name)
-{
-    return FindFieldTypeHash((uint32_t)(Murmur64A(name, strlen(name)) >> 32));
-}
-
-static int ApiNetworkFieldType(const char* name, HfFieldType* type)
-{
-    uintptr_t row = name != NULL && type != NULL ? FindFieldType(name) : 0;
-    uint8_t bytes[0x18];
-    if (row == 0 || SafeRead(row, bytes, sizeof bytes)) return 1;
-    type->kind = bytes[12];
-    type->bits = bytes[13];
-    memcpy(&type->min, bytes + 16, 4);
-    return 0;
-}
-
 #include "nettypes.c" /* what mods ask of the field types: the plan's nettype lines, set_network_field_bits, live changes */
 
 /* ---- entity component records ----------------------------------------------------------------------------------- */

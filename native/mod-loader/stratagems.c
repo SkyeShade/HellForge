@@ -18,16 +18,10 @@
  *              there when the loader runs again (it sets it back to the rows it loaded, 0x11F2230; kCountStub).
  *   picker 0x18D8710  one register is both the bound of its walk over the types (0x18D8AA9 mov edi, 0x96) and the
  *              count of 150 stack records it then clears; the walk's bound grows and the clear's count is set again
- *              in the alignment padding before the clear (0x18D8AE5). Its frame holds 150 candidate records and 150
- *              pointers, so it is sized once for every type HellForge has room for (WidenPicker: six instructions and
- *              the unwind data), and the clear clears them all.
- *   loadout +0x78C u32[150]  a level-package choice per type, written only for types whose row lists level packages
- *              (+0x118 / +0x120): new rows list none. Six readers index it by the type unchecked, so a new type read
- *              past its end, and its decoder and writer would write past it; each goes through a guard (kChoiceGuards).
+ *              in the alignment padding before the clear (0x18D8AE5); its frame is sized for every type (WidenPicker).
+ *   loadout +0x78C u32[150]  a level-package choice per type: what indexes it by the type is guarded (kChoiceGuards).
  *   co-op      a type travels as field type 0xC2EB5C15, 8 bits: past 256 types it travels in 16 (WidenStratagemField).
- * research content-limits\stratagems-wide has the evidence for all of these. What else holds new stratagems: the
- * picker shows 256 cards (the game drops the rest; about 160 new ones next to the vanilla ones) and the item catalogue
- * (each stratagem is two items, shared with mod weapons; RegisteredItems.cs).
+ * Evidence: research content-limits\stratagems-wide; the limits that remain are in docs/internals.md "Registries".
  * Row members HellForge sets (HD2Runtime stratagem research): +0 type, +4 stable id (the catalogue's itemId of the
  * stratagem's kind-10 item and the saved loadout's identity), +0x28 / +0x2C / +0x30 name, cased name and description
  * text ids, +0x40 / +0x48 pointer to the input's u32 directions (1 up, 2 right, 3 down, 4 left) and their count, +0x50
@@ -699,6 +693,23 @@ static void StratagemsInstalled(uint8_t* table, uintptr_t game, uint32_t count, 
             g_stratagems[i].stable, (unsigned long long)(g_stratagems[i].icon ? g_stratagems[i].icon : *(uint64_t*)(g_stratagems[i].row + 0xB0)));
 }
 
+/* Builds every new stratagem's row and names its type in the moved names list; NULL, or why a row was refused. */
+static const char* StratagemFillRows(uint8_t* table)
+{
+    uint8_t* names = table + STR_NAMES_AT;
+    memcpy(names + (STR_VANILLA + g_stratagemCount) * 8, &g_stratagemCountName, 8); /* "Count" after the new ones */
+    for (uint32_t i = 0; i < g_stratagemCount; i++)
+    {
+        Stratagem* s = &g_stratagems[i];
+        s->row = StratagemNewRow(i);
+        const char* why = StratagemRow(s, s, table);
+        if (why != NULL) return why;
+        const char* name = s->name;
+        memcpy(names + s->type * 8, &name, 8);
+    }
+    return NULL;
+}
+
 /* Polled after GAME_LOADED until it returns 1: moves the list and adds the rows once the game has loaded its stratagem
  * settings. pinsReady: the grace period for code still being decoded is over. */
 static int InstallStratagems(uintptr_t game, int pinsReady)
@@ -714,16 +725,7 @@ static int InstallStratagems(uintptr_t game, int pinsReady)
     if (g_stratagemField < 0) return RefuseStratagems("their types do not fit the network's 8-bit stratagem field");
     uint8_t* table = StratagemBlock(game, &why);
     if (table == NULL) return RefuseStratagems(why);
-    uint8_t* names = table + STR_NAMES_AT;
-    memcpy(names + (STR_VANILLA + g_stratagemCount) * 8, &g_stratagemCountName, 8); /* "Count" after the new ones */
-    for (uint32_t i = 0; i < g_stratagemCount; i++)
-    {
-        Stratagem* s = &g_stratagems[i];
-        s->row = StratagemNewRow(i);
-        if ((why = StratagemRow(s, s, table)) != NULL) return RefuseStratagems(why);
-        const char* name = s->name;
-        memcpy(names + s->type * 8, &name, 8);
-    }
+    if ((why = StratagemFillRows(table)) != NULL) return RefuseStratagems(why);
     /* The new rows first (no code reaches them yet), then the instructions, then the bounds that let code reach them. */
     for (uint32_t i = 0; i < g_stratagemCount; i++) memcpy(table + g_stratagems[i].type * 8, &g_stratagems[i].row, 8);
     uint32_t count = STR_VANILLA + g_stratagemCount;
