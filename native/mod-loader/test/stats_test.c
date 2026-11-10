@@ -7,6 +7,7 @@
 #include "armory_diag_test.c"
 #include "live_sync_test.c"
 #include "channel_test.c"
+#include "rpc_test.c"
 #include "director_test.c"
 #include "enemy_rosters_test.c"
 #include "spawn_guards_test.c"
@@ -4292,6 +4293,7 @@ int main(int argc, char** argv)
     ContentDifficultyFixture();
     ChannelGameFixture();
     ChannelFixture();
+    RpcFixture();
     LiveBrowseFixture();
     LuaBridgeFixture();
     ActionsFixture();

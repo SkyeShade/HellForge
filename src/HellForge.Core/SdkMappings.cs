@@ -77,6 +77,7 @@ public sealed class SdkMappings
         "uint8_t*", "const uint8_t*", "int32_t*", "const int32_t*", "uint32_t*", "const uint32_t*", "uint64_t*", "const uint64_t*", "float*", "const float*", "char*", "const char*"];
     // Names an argument can't take: C's and C++'s keywords (the headers are also built as C++, by the in-game editor and
     // C++ mods), and mod (the hf_ wrappers' own argument).
+    internal static bool IsKeyword(string name) => CKeywords.Contains(name);
     static readonly HashSet<string> CKeywords = ["auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
         "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed",
         "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "bool", "mod",
@@ -447,7 +448,10 @@ public sealed class SdkMappings
         var stale = new List<string>();
         // Line endings as git checks them out (CRLF on Windows with core.autocrlf): compared and parsed as LF.
         var api = File.ReadAllText(Path.Combine(repository, "native", "mod-sdk", "hellforge_mod.h")).ReplaceLineEndings("\n");
-        foreach (var (path, text) in Load(Path.Combine(repository, "mappings")).Generate(api))
+        var generated = new Dictionary<string, string>(Load(Path.Combine(repository, "mappings")).Generate(api));
+        if (SdkRpcs.Load(Path.Combine(repository, "mappings")) is { } rpcs)
+            foreach (var (path, text) in rpcs.Generate()) generated[path] = text;
+        foreach (var (path, text) in generated)
         {
             var file = Path.Combine(repository, path);
             if (File.Exists(file) && File.ReadAllText(file).ReplaceLineEndings("\n") == text.ReplaceLineEndings("\n")) continue;

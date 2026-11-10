@@ -923,33 +923,9 @@ typedef struct HfDamagePreEvent
     uint32_t cancel;
 } HfDamagePreEvent;
 
-/* SDK 16: the mod channel's caps and targets (send, share_set). A message holds at most HF_MESSAGE_MAX bytes; a shared
- * row's value at most HF_SHARE_VALUE_MAX bytes; a mod's table at most HF_SHARE_ROWS rows. */
-#define HF_MESSAGE_MAX 1024u
-#define HF_SHARE_VALUE_MAX 64u
-#define HF_SHARE_ROWS 512u
-/* send's to: every other machine of the lobby, or its host. A peer id from HfMessageEvent.from names one machine. */
-#define HF_TO_ALL 0xFFFFFFFFFFFFFFFFull
-#define HF_TO_HOST 0xFFFFFFFFFFFFFFFEull
-
-/* SDK 16: a message from the same mod on another machine of the lobby (send, HF_ON_MESSAGE). `from` is the sender's peer
- * id (the host's when it came from the host); data holds `bytes` bytes, at most HF_MESSAGE_MAX. Valid during the call. */
-typedef struct HfMessageEvent
-{
-    HfEventInfo info;
-    uint64_t from;
-    uint32_t bytes;
-    uint8_t data[HF_MESSAGE_MAX];
-} HfMessageEvent;
-/* SDK 16: one row of this mod's shared table (share_set, share_get, share_row; HF_ON_SHARE), raised on the game thread
- * when a row arrives, changes or goes (bytes 0: removed). Valid during the call. */
-typedef struct HfShareEvent
-{
-    HfEventInfo info;
-    uint64_t key;
-    uint32_t bytes;
-    uint8_t value[HF_SHARE_VALUE_MAX];
-} HfShareEvent;
+/* Co-op: the mod channel's caps, targets and events (SDK 16: send, share_set) and the game's RPCs as rpc_listen and
+ * rpc_send pass them (SDK 17: HfRpcArg, HfRpcEvent, HfRpcListener). */
+#include "hellforge_net.h"
 
 /* SDK 11 actions: what a mod makes the game do, through the game's own functions (HD2Runtime 0.40.1's research), on the
  * game thread (an event listener's or on_game_thread's call; from another thread an action waits for the next game
@@ -1653,6 +1629,19 @@ typedef struct HfApi
     /* Adds a squad (see HfEnemySquad). Call it from hellforge_mod_init. 0 added (its rows are made with the enemies'),
      * 1 refused (the mod's log says why). */
     int (*add_enemy_squad)(HfMod* mod, const HfEnemySquad* squad);
+
+    /* ---- SDK 17: the game's RPCs (hellforge_rpcs.h; docs/modding/networking.md; check hf->size before calling) ------- */
+    /* Listens to an RPC (its HF_RPC_... id, or HF_RPC_ALL for every one) as this machine receives it: on the game thread,
+     * before the game's own receiver, highest priority first (equal priorities in the order they listened). A listener
+     * that returns HF_RPC_DROP stops the message: later listeners and the game don't see it. Call it from
+     * hellforge_mod_init on. 0 listening, 1 refused (an RPC this build doesn't have; the mod's log says why). */
+    int (*rpc_listen)(HfMod* mod, uint32_t rpc, HfRpcListener listener, void* user, int32_t priority);
+    /* Sends one of the game's RPCs (hellforge_rpcs.h's hf_rpc_<name>_send builds the arguments): to HF_TO_ALL (every
+     * other machine of the session), HF_TO_HOST, or a peer (an HfRpcEvent's sender). The game encodes each argument
+     * by its declared type, so values outside a type's range are clamped or wrap. Game thread only. 0 sent, 1 refused
+     * (another thread, solo, an unknown RPC, arguments that are not its declared ones, HF_TO_HOST on the host; the
+     * mod's log says why). */
+    int (*rpc_send)(HfMod* mod, uint32_t rpc, uint64_t to, const HfRpcArg* args, uint32_t count);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */
@@ -1815,6 +1804,9 @@ static inline int hf_on_game_thread(HfMod* mod, HfTickCallback callback, void* u
 
 /* SDK 16: game globals by name (hf_global_..., Hf<Name>), generated from mappings/globals.json. */
 #include "hellforge_globals.h"
+
+/* SDK 17: the game's RPCs by name (HF_RPC_..., HfRpc_..., hf_rpc_..._read and _send) are in hellforge_rpcs.h, generated
+ * from mappings/rpcs.json. It is large (every RPC of the game), so a mod includes it itself, after this file. */
 
 /* Implemented by the mod. */
 #ifndef HF_MOD_LOADER
