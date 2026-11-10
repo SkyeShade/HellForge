@@ -1,0 +1,217 @@
+{
+ "format": 1,
+ "build": "25480438",
+ "note": "Shader hosts (scripts/ExportShaderHosts.py): the root materials a data spec's \"shader\" resource copies, per game build. digest pins each stage; inputs, outputs and bindings say what it has, and the builder compares a mod's shader with the stage in the game file, not with these lists. docs/modding/shaders.md.",
+ "hosts": {
+  "decal": {
+   "root": "0xFDE0D8CB17821DC0",
+   "draws": "in the decals pass, on what is already drawn inside the unit box",
+   "stages": [
+    {
+     "offset": "0x11C38",
+     "size": 11688,
+     "digest": "CF990255280B82315E9B399DB6EB6B79"
+    }
+   ],
+   "unit": {
+    "copy": "0x1B798F4F99A0B8C8",
+    "material": "0x79F6761BE6F61772",
+    "at": "0x69C"
+   },
+   "mesh": false,
+   "inputs": [
+    "v0 SV_POSITION0 xyzw",
+    "v1 TEXCOORD0 xyzw",
+    "v2 TEXCOORD1 xyzw",
+    "v3 TEXCOORD2 xyzw",
+    "v4 TEXCOORD3 xyzw"
+   ],
+   "outputs": [
+    "o0 SV_TARGET0 xyzw",
+    "o1 SV_TARGET1 xyzw",
+    "o2 SV_TARGET2 xyzw",
+    "o3 SV_TARGET3 xyzw",
+    "o4 SV_TARGET4 xyzw"
+   ],
+   "bindings": [
+    "s0 __samp_normal",
+    "t0 __tex_vrs_mask_shader_read",
+    "t1 atmospheric_lookup",
+    "t2 __tex_normal",
+    "t3 __tex_linear_depth",
+    "t4 __tex_gbuffer1_copy",
+    "b0 global_viewport 816",
+    "b1 c_per_object 352"
+   ]
+  },
+  "transparent": {
+   "root": "0x717B4E0431528B44",
+   "draws": "a mesh in hdr_transparent, added to the scene, both walls",
+   "stages": [
+    {
+     "offset": "0x335F0",
+     "size": 63564,
+     "digest": "7E02688AB104A55D6D15981B113D63CB"
+    },
+    {
+     "offset": "0x46E00",
+     "size": 63564,
+     "digest": "7E02688AB104A55D6D15981B113D63CB"
+    },
+    {
+     "offset": "0x673E8",
+     "size": 63564,
+     "digest": "7E02688AB104A55D6D15981B113D63CB"
+    },
+    {
+     "offset": "0x7ABF8",
+     "size": 63564,
+     "digest": "7E02688AB104A55D6D15981B113D63CB"
+    }
+   ],
+   "child": {
+    "copy": "0xBF6C75E150316E2A",
+    "parentAt": "0x18"
+   },
+   "unit": {
+    "copy": "0x1B798F4F99A0B8C8",
+    "material": "0x79F6761BE6F61772",
+    "at": "0x69C"
+   },
+   "mesh": true,
+   "inputs": [
+    "v0 SV_POSITION0 xyzw",
+    "v1 TEXCOORD0 xyzw",
+    "v2 TEXCOORD1 xyzw",
+    "v3 TEXCOORD2 xyz",
+    "v4 TEXCOORD3 xyz",
+    "v5 TEXCOORD4 xyz",
+    "v6 TEXCOORD5 xyz",
+    "v7 TEXCOORD6 xyz",
+    "v8 TEXCOORD7 xy",
+    "v9 SV_IsFrontFace0 x"
+   ],
+   "outputs": [
+    "o0 SV_TARGET0 xyzw",
+    "o1 SV_TARGET1 x",
+    "o2 SV_TARGET2 xyzw"
+   ],
+   "bindings": [
+    "s0 __samp_noise_map_02",
+    "s1 __samp_clamp_linear",
+    "s2 __samp_clamp_point",
+    "s3 __samp_sun_shadow_map",
+    "s4 __samp_local_lights_shadow_atlas",
+    "s5 __samp_ies_lookup",
+    "s6 __samp_volumetric_clouds_shadows_final",
+    "s7 __samp_volumetric_fog_3d_image",
+    "s8 __samp_volumetric_clouds_color",
+    "t0 dynamic_dof_lookup",
+    "t1 atmospheric_lookup",
+    "t2 shield_hits",
+    "t3 __tex_noise_map_02",
+    "t4 __tex_energy_lines_texture",
+    "t5 __tex_noise_map_01",
+    "t6 __tex_normal_map_02",
+    "t7 __tex_normal_map_01",
+    "t8 cs_cluster_buffer",
+    "t9 cs_light_index_buffer",
+    "t10 cs_light_data_buffer",
+    "t11 cs_light_shadow_matrices_buffer",
+    "t12 __tex_sun_shadow_map",
+    "t13 __tex_local_lights_shadow_atlas",
+    "t14 __tex_closest_reflection_map",
+    "t15 __tex_specular_brdf_lut",
+    "t16 __tex_ies_lookup",
+    "t17 __tex_volumetric_clouds_shadows_final",
+    "t18 __tex_volumetric_fog_3d_image",
+    "t19 __tex_volumetric_clouds_color",
+    "t20 __tex_linear_depth",
+    "b0 global_viewport 816",
+    "b1 context_camera 320",
+    "b2 sun_direction 16",
+    "b3 sun_color 32",
+    "b4 c_atmosphere_common 160",
+    "b5 c_cloud_start_stop 16",
+    "b6 lighting_data 352",
+    "b7 clustered_shading_data 208",
+    "b8 c_per_instance 640"
+   ]
+  },
+  "refract": {
+   "root": "0xB45631ACD16D5183",
+   "draws": "a mesh in hdr_transparent_pre, replacing the scene behind it, near wall only",
+   "stages": [
+    {
+     "offset": "0x19E38",
+     "size": 61276,
+     "digest": "55DF10F2548567163D4C723CDCBB7537"
+    }
+   ],
+   "unit": {
+    "copy": "0x1B798F4F99A0B8C8",
+    "material": "0x79F6761BE6F61772",
+    "at": "0x69C"
+   },
+   "mesh": true,
+   "inputs": [
+    "v0 SV_POSITION0 xyzw",
+    "v1 TEXCOORD0 xyz",
+    "v2 TEXCOORD1 xyz",
+    "v3 TEXCOORD2 xyz",
+    "v4 TEXCOORD3 xyz",
+    "v5 TEXCOORD4 xyzw",
+    "v6 TEXCOORD5 xy"
+   ],
+   "outputs": [
+    "o0 SV_TARGET0 xyzw",
+    "o1 SV_TARGET1 x",
+    "o2 SV_TARGET2 xyzw"
+   ],
+   "bindings": [
+    "s0 __samp_flow_map",
+    "s1 __samp_water_noise",
+    "s2 __samp_clamp_linear",
+    "s3 __samp_clamp_point",
+    "s4 __samp_sun_shadow_map",
+    "s5 __samp_local_lights_shadow_atlas",
+    "s6 __samp_ies_lookup",
+    "s7 __samp_volumetric_clouds_shadows_final",
+    "s8 __samp_volumetric_fog_3d_image",
+    "s9 __samp_volumetric_clouds_color",
+    "s10 __samp_light_probe_space_specular",
+    "t0 dynamic_dof_lookup",
+    "t1 atmospheric_lookup",
+    "t2 __tex_flow_map",
+    "t3 __tex_water_noise",
+    "t4 __tex_water_normal_map",
+    "t5 __tex_global_diffuse_map",
+    "t6 cs_cluster_buffer",
+    "t7 cs_light_index_buffer",
+    "t8 cs_light_data_buffer",
+    "t9 cs_light_shadow_matrices_buffer",
+    "t10 __tex_sun_shadow_map",
+    "t11 __tex_local_lights_shadow_atlas",
+    "t12 __tex_closest_reflection_map",
+    "t13 __tex_specular_brdf_lut",
+    "t14 __tex_ies_lookup",
+    "t15 __tex_volumetric_clouds_shadows_final",
+    "t16 __tex_volumetric_fog_3d_image",
+    "t17 __tex_volumetric_clouds_color",
+    "t18 __tex_light_probe_space_specular",
+    "t19 __tex_hdr0",
+    "t20 __tex_linear_depth",
+    "b0 global_viewport 816",
+    "b1 context_camera 320",
+    "b2 sun_direction 16",
+    "b3 sun_color 32",
+    "b4 c_atmosphere_common 160",
+    "b5 c_cloud_start_stop 16",
+    "b6 lighting_data 352",
+    "b7 clustered_shading_data 208",
+    "b8 c_per_object 16",
+    "b9 c_per_instance 128"
+   ]
+  }
+ }
+}

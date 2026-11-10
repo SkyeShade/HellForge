@@ -288,6 +288,7 @@ static void ForgetOnGameThread(void* arg)
     for (int i = 0; i < g_actRuleCount; i++) if (g_actRules[i].mod != mod) g_actRules[rules++] = g_actRules[i];
     g_actRuleCount = rules;
     ReleaseSRWLockExclusive(&g_actRulesLock);
+    RpcForget(mod);
 }
 
 static void CallbacksForget(const HfMod* mod)
@@ -447,6 +448,7 @@ static int CodeRemove(HfMod* mod, uint32_t reason)
     EditsForget(mod);
     DefinitionsForget(mod);
     ExtrasForget(mod);
+    EnemyRostersForget(mod);
     NetForget(mod);
     AcquireSRWLockExclusive(&g_passivesLock);
     int passives = g_passivesMod == mod;

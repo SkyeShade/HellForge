@@ -34,19 +34,23 @@ The modding guide, in reading order:
    [Animations](modding/animations.md): a unit copy's own joints, clips and state machine from a JSON file.
    [Models](modding/models.md): a unit of your own from a glTF file: joints, meshes, LODs and materials.
    [Textures](modding/textures.md): textures of your own from PNG files, and putting them in a material.
+   [Shaders](modding/shaders.md): your own pixel shaders in a data spec.
    [The asset kit](modding/assets.md): sharing patch files made from the game's resources without Arrowhead's bytes.
 6. [Content](modding/content.md): changing and adding weapons, projectiles, stratagems, entities, behaviours, abilities
    and difficulties.
+   [New enemies](modding/enemies.md): enemies with roster rows and squads of their own, and replacement rules.
    [Warbonds](modding/warbonds.md): warbonds of a mod's own, selling game items and its weapons and stratagems.
 7. [Logic at run time](modding/runtime.md): events, actions, live edits and the game thread.
 8. [Hooks and game memory](modding/hooks.md): hooking game functions and reading and patching memory where the SDK has
    nothing yet.
+   [The game's network messages](modding/networking.md): listening to, stopping and sending the game's RPCs.
 9. [Debugging](modding/debugging.md): logs, refusals, crashes and testing with friends.
 10. [Tools and sharing](modding/tools.md): IDEs, building from a terminal or the repository, prebuilt mods, releasing.
 
 Reference and related pages:
 
 - [SDK reference](sdk-reference.md): every API call, component field and content constant (generated from the SDK).
+- [The game's RPCs](rpcs.md): every network message of the game with its arguments (generated from the mappings).
 - [Launchers of your own](external-launchers.md): for authors of mod managers and launchers; `HellForge.Cli.exe` and the
   files it reads and writes.
 - [Mods that change while the game runs](modding/live.md): for code mod authors; what HellForge does when a mod is
@@ -65,6 +69,8 @@ Reference and related pages:
   which game tables move or grow, and what each part of the level changes.
 - [Stats, live editing and events](internals-live.md): the stats pass at load, live editing, the in-game editor and live
   pipe, event sources and native edits.
+- [Crash guards in the renderer](crash-guards.md): the two crashes of the game's renderer that HellForge guards, and why
+  each guard is safe.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in
   each profile.
 - [Code signing and Smart App Control](code-signing.md): for maintainers; which files Smart App Control blocks, what

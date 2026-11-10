@@ -73,12 +73,19 @@ public sealed class SdkMappings
     static readonly string[] GlobalFieldTypes = ["u8", "u16", "u32", "i32", "f32", "u64", "ptr"];
 
     // The C types a function's arguments and return value may have (and void, for a return value).
-    public static readonly string[] ParamTypes = ["uint8_t", "int32_t", "uint32_t", "int64_t", "uint64_t", "float", "void*", "const void*",
-        "uint8_t*", "const uint8_t*", "uint32_t*", "const uint32_t*", "float*", "const float*"];
-    // Names an argument can't take: C's keywords, and mod (the hf_ wrappers' own argument).
+    public static readonly string[] ParamTypes = ["uint8_t", "uint16_t", "int16_t", "int32_t", "uint32_t", "int64_t", "uint64_t", "float", "void*", "const void*",
+        "uint8_t*", "const uint8_t*", "int32_t*", "const int32_t*", "uint32_t*", "const uint32_t*", "uint64_t*", "const uint64_t*", "float*", "const float*", "char*", "const char*"];
+    // Names an argument can't take: C's and C++'s keywords (the headers are also built as C++, by the in-game editor and
+    // C++ mods), and mod (the hf_ wrappers' own argument).
+    internal static bool IsKeyword(string name) => CKeywords.Contains(name);
     static readonly HashSet<string> CKeywords = ["auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
         "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed",
-        "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "bool", "mod"];
+        "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "bool", "mod",
+        "alignas", "alignof", "and", "and_eq", "asm", "bitand", "bitor", "catch", "char8_t", "char16_t", "char32_t", "class", "compl",
+        "concept", "consteval", "constexpr", "constinit", "const_cast", "co_await", "co_return", "co_yield", "decltype", "delete",
+        "dynamic_cast", "explicit", "export", "false", "friend", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr",
+        "operator", "or", "or_eq", "private", "protected", "public", "reinterpret_cast", "requires", "static_assert", "static_cast",
+        "template", "this", "thread_local", "throw", "true", "try", "typeid", "typename", "using", "virtual", "wchar_t", "xor", "xor_eq"];
 
     // Content kinds, in header order: (JSON key, constant prefix, C type of the ids, what the ids are for).
     static readonly (string Key, string Prefix, bool Wide, string Doc)[] Kinds =
@@ -304,7 +311,7 @@ public sealed class SdkMappings
             Allowed(p, at + " param", "name", "type", "meaning");
             var param = new SdkParam(Text(p, "name"), Text(p, "type"), Text(p, "meaning"));
             Identifier(param.Name, $"{at} param {param.Name}");
-            if (CKeywords.Contains(param.Name) || parameters.Any(q => q.Name == param.Name)) throw new InvalidDataException($"{at}: param {param.Name} is a C keyword, mod, or named twice.");
+            if (CKeywords.Contains(param.Name) || parameters.Any(q => q.Name == param.Name)) throw new InvalidDataException($"{at}: param {param.Name} is a C or C++ keyword, mod, or named twice.");
             if (!ParamTypes.Contains(param.Type)) throw new InvalidDataException($"{at}: param {param.Name}'s type {param.Type} is not one of {string.Join(", ", ParamTypes)}.");
             parameters.Add(param);
         }
@@ -441,7 +448,10 @@ public sealed class SdkMappings
         var stale = new List<string>();
         // Line endings as git checks them out (CRLF on Windows with core.autocrlf): compared and parsed as LF.
         var api = File.ReadAllText(Path.Combine(repository, "native", "mod-sdk", "hellforge_mod.h")).ReplaceLineEndings("\n");
-        foreach (var (path, text) in Load(Path.Combine(repository, "mappings")).Generate(api))
+        var generated = new Dictionary<string, string>(Load(Path.Combine(repository, "mappings")).Generate(api));
+        if (SdkRpcs.Load(Path.Combine(repository, "mappings")) is { } rpcs)
+            foreach (var (path, text) in rpcs.Generate()) generated[path] = text;
+        foreach (var (path, text) in generated)
         {
             var file = Path.Combine(repository, path);
             if (File.Exists(file) && File.ReadAllText(file).ReplaceLineEndings("\n") == text.ReplaceLineEndings("\n")) continue;

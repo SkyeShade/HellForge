@@ -23,6 +23,7 @@ public static class ModDataBuilder
 
     public static List<string> Build(DataSpec spec, string modFolder, GameDataReader game, string output, GameDataReader? steam = null)
     {
+        if (spec.Patches.Any(p => p.Resources.Any(r => r is ShaderResource))) spec = ShaderHosts.Current.Expand(spec);
         if (spec.UsesSteam && steam == null) throw new InvalidDataException("it takes resources from HELLDIVERS 2 as Steam has it installed, and Steam's copy was not found.");
         var (found, foundSteam) = FindSources(spec, game, steam);
         var past = PastSources(spec, modFolder, game);
@@ -333,6 +334,13 @@ public static class ModDataBuilder
         if (copy.Colours != null) ResourceEdits.SetMaterialColours(main, copy.Colours);
         if (copy.Textures != null) ResourceEdits.SetMaterialTextures(main, copy.Textures);
         if (copy.Lut != null) gpu = ResourceEdits.RecolourLut(main, gpu, copy.Lut);
+        if (copy.Shaders is { Count: > 0 } shaders)
+        {
+            foreach (var shader in shaders) shader.Host?.Check(gpu);
+            gpu = ShaderSplice.ApplyAll(gpu, shaders.Select(s => (s.Offset, File.ReadAllBytes(Path.Combine(modFolder, s.Dxbc)), s.Dxbc)).ToList());
+            ShaderSplice.RenameMaterial(gpu, Hash(copy.Name));
+            ShaderSplice.RenameTemplates(gpu, Hash(copy.Name));
+        }
         if (copy.Mesh is { } mesh)
         {
             if (source.Stream.Length != 0) throw new InvalidDataException("the model streams part of itself; HellForge cannot replace its mesh yet.");

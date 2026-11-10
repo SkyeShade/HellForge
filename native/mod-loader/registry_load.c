@@ -88,9 +88,10 @@ static int ComponentsUnderstood(uint8_t* state, const Weapon* w, uint64_t baseEn
         uint8_t* t = StatePointer(state, REG_TABLES + 8 * c);
         if (t == NULL) continue; /* a component without data */
         uint32_t slots = SlotsOf(c);
-        if (slots == 0 || FindRow(t, slots, 16, baseEntity) == NULL || FindRow(t, slots, 16, w->entity) != NULL)
+        uint64_t donor = Donor(w, c, baseEntity);
+        if (slots == 0 || donor == 0 || FindRow(t, slots, 16, donor) == NULL || FindRow(t, slots, 16, w->entity) != NULL)
         {
-            ApiLog(w->mod, "%s: component %u of the base is not understood (slots %u); not registered", w->name, c, slots);
+            ApiLog(w->mod, "%s: component %u is not understood, or its source has no record of it (slots %u); not registered", w->name, c, slots);
             return 0;
         }
         /* The game compiles each table's slot count into its lookups: a full table that GrowForPending could not grow
@@ -114,7 +115,7 @@ static void ShareComponentRows(const WeaponLoad* L, const Weapon* w, uint64_t ba
         uint8_t* t = c == REG_LOADOUT ? NULL : StatePointer(L->state, REG_TABLES + 8 * c);
         if (t == NULL) continue;
         uint32_t slots = SlotsOf(c);
-        uint8_t* row = FindRow(t, slots, 16, baseEntity);
+        uint8_t* row = FindRow(t, slots, 16, Donor(w, c, baseEntity));
         uint8_t* slot = FreeRow(t, slots, 16, w->entity);
         uint8_t entry[16];
         memcpy(entry, &w->entity, 8);
@@ -322,9 +323,10 @@ static void TakeModel(uint8_t* state, const Weapon* w, uint64_t baseEntity)
     {
         uint32_t c = model[k][0], stride = model[k][1], slots = SlotsOf(c);
         uint8_t* t = StatePointer(state, REG_TABLES + 8 * c);
-        if (t == NULL || slots == 0 || FindRow(t, slots, 16, baseEntity) == NULL) continue; /* the base has none */
+        uint64_t from = Donor(w, c, baseEntity);
+        if (t == NULL || slots == 0 || from == 0 || FindRow(t, slots, 16, from) == NULL) continue; /* the base has none */
         if (FindRow(t, slots, 16, w->modelFrom) == NULL) { missing++; continue; }
-        uint8_t* own = OwnRecord(state, c, stride, baseEntity, w->entity);
+        uint8_t* own = OwnRecord(state, c, stride, from, w->entity);
         t = StatePointer(state, REG_TABLES + 8 * c); /* now HellForge's copy */
         uint8_t* donorRow = FindRow(t, slots, 16, w->modelFrom);
         if (own == NULL || donorRow == NULL) { missing++; continue; }
@@ -357,7 +359,7 @@ static void OwnNamedRecords(uint8_t* state, const Weapon* w, uint64_t baseEntity
 {
     for (int k = 0; k < w->ownCount; k++)
     {
-        if (OwnRecord(state, w->own[k], w->ownStride[k], baseEntity, w->entity) != NULL) ApiLog(w->mod, "%s: its own record of component %u", w->name, w->own[k]);
+        if (OwnRecord(state, w->own[k], w->ownStride[k], Donor(w, w->own[k], baseEntity), w->entity) != NULL) ApiLog(w->mod, "%s: its own record of component %u", w->name, w->own[k]);
         else ApiLog(w->mod, "%s: could not give it its own record of component %u (does its base have one?); it shares the base's", w->name, w->own[k]);
     }
 }
@@ -372,7 +374,7 @@ static void OwnAllRecords(uint8_t* state, const Weapon* w, uint64_t baseEntity, 
         uint32_t c = components[k];
         if (c == REG_LOADOUT || StatePointer(state, REG_TABLES + 8 * c) == NULL) continue;
         uint32_t stride = ComponentStride(state, c);
-        if (stride != 0 && OwnRecord(state, c, stride, baseEntity, w->entity) != NULL) { own++; continue; }
+        if (stride != 0 && OwnRecord(state, c, stride, Donor(w, c, baseEntity), w->entity) != NULL) { own++; continue; }
         size_t at = strlen(sharedList);
         if (at + 8 < sizeof sharedList) snprintf(sharedList + at, sizeof sharedList - at, "%s%u", shared ? ", " : "", c);
         shared++;
@@ -386,17 +388,17 @@ static void OwnAllRecords(uint8_t* state, const Weapon* w, uint64_t baseEntity, 
 static void GiveOwnRecords(WeaponLoad* L, Weapon* w, uint64_t baseEntity, const uint16_t* components, uint64_t componentCount)
 {
     uint8_t* state = L->state;
-    if (w->plain) PlainLoadoutRecord(L, w, baseEntity);
-    if (!w->plain || w->unit != 0) OwnUnitRecord(state, w, baseEntity);
+    if (w->plain && Donor(w, REG_LOADOUT, baseEntity) != 0) PlainLoadoutRecord(L, w, Donor(w, REG_LOADOUT, baseEntity));
+    if (!w->plain || w->unit != 0) OwnUnitRecord(state, w, Donor(w, REG_UNIT, baseEntity));
     uint8_t* customization = OwnCustomization(state, w, baseEntity);
     uint8_t* fireRecord = OwnFireRecord(state, w, baseEntity);
     if (fireRecord != NULL && w->soundFrom != 0) TakeSounds(L, w, fireRecord);
     if (fireRecord != NULL && w->projectile != 0) OwnProjectile(w, fireRecord, customization);
     OwnBeamArc(state, w, baseEntity, &kFiredBeam, BeamTypeUsable(w->beam), w->beam);
     OwnBeamArc(state, w, baseEntity, &kFiredArc, ArcTypeUsable(w->arc), w->arc);
-    if (w->text[0] != 0 || w->text[2] != 0 || w->text[3] != 0) OwnTextRecord(state, w, baseEntity);
+    if (w->text[0] != 0 || w->text[2] != 0 || w->text[3] != 0) OwnTextRecord(state, w, Donor(w, REG_TEXT_COMPONENT, baseEntity));
     if (w->modelFrom != 0) TakeModel(state, w, baseEntity);
-    if (w->behaviour != 0) OwnBehaviour(state, w, baseEntity);
+    if (w->behaviour != 0) OwnBehaviour(state, w, Donor(w, REG_BEHAVIOUR, baseEntity));
     OwnNamedRecords(state, w, baseEntity);
     if (w->ownAll) OwnAllRecords(state, w, baseEntity, components, componentCount);
 }
@@ -495,6 +497,8 @@ static int RegisterRoom(const WeaponLoad* L, const Weapon* w, const uint8_t* map
     return full == NULL;
 }
 
+static uint64_t Components(const WeaponLoad* L, Weapon* w, const uint8_t* baseRow, uint16_t** list, uint8_t** netRow); /* entity_parts.c */
+
 /* Adds one pending weapon or entity: a map row of its own over its base's components, sharing their records but the
  * ones it owns. 1 when it was registered (w->state 1), else 0 (-1, logged). */
 static int RegisterWeapon(WeaponLoad* L, Weapon* w)
@@ -505,13 +509,13 @@ static int RegisterWeapon(WeaponLoad* L, Weapon* w)
     if (baseRecord < 0 || !ArmoryRoom(L, w, baseRecord)) return 0;
     uint64_t baseEntity = w->plain ? w->baseEntity : LoadoutOwner(L->index, (uint32_t)baseRecord);
     uint8_t* baseRow = baseEntity ? FindRow(L->map, REG_MAP_SLOTS, 32, baseEntity) : NULL;
-    if (baseRow == NULL) { ApiLog(w->mod, "%s: the base's entity was not found; not registered", w->name); return 0; }
+    if (baseRow == NULL && (baseEntity != 0 || w->partCount == 0)) { ApiLog(w->mod, "%s: the base's entity was not found; not registered", w->name); return 0; }
     if (FindRow(L->map, REG_MAP_SLOTS, 32, w->entity) != NULL) { ApiLog(w->mod, "%s: entity %016llx exists already; not registered", w->name, (unsigned long long)w->entity); return 0; }
     uint16_t* components;
-    uint64_t componentCount;
-    memcpy(&components, baseRow + 8, 8);
-    memcpy(&componentCount, baseRow + 16, 8);
-    w->copies = baseEntity;
+    uint8_t* netRow = baseRow; /* the game type whose network type it takes */
+    uint64_t componentCount = Components(L, w, baseRow, &components, &netRow);
+    if (componentCount == 0) return 0;
+    memcpy(&w->copies, netRow, 8);
     if (!ComponentsUnderstood(L->state, w, baseEntity, components, componentCount)) return 0;
     uint8_t* mapRow = FreeRow(L->map, REG_MAP_SLOTS, 32, w->entity);
     uint8_t* loadoutRow = !w->plain ? FreeRow(L->index, SlotsOf(REG_LOADOUT), 16, w->entity) : NULL;
@@ -519,7 +523,7 @@ static int RegisterWeapon(WeaponLoad* L, Weapon* w)
     ShareComponentRows(L, w, baseEntity, components, componentCount);
     GiveOwnRecords(L, w, baseEntity, components, componentCount);
     uint32_t record = w->plain ? 0 : OwnLoadoutRecord(L, w, baseRecord, loadoutRow);
-    uint32_t shortId = AppendEntity(L, w, baseRow, mapRow, components, componentCount);
+    uint32_t shortId = AppendEntity(L, w, netRow, mapRow, components, componentCount);
     w->state = 1;
     if (w->plain)
         ApiLog(w->mod, "%s registered: entity %016llx, short id %u, %llu components", w->name, (unsigned long long)w->entity,
@@ -599,6 +603,7 @@ static void PendingRows(uint8_t* map, uint8_t* loadout, uint32_t records, uint32
         uint64_t base = w->state == state && (skip == NULL || !skip(i)) ? PendingBase(loadout, records, w, state) : 0;
         uint8_t* baseRow = base != 0 ? FindRow(map, REG_MAP_SLOTS, 32, base) : NULL;
         if (baseRow != NULL) BaseRows(baseRow, w->plain, rows);
+        for (int k = 0; w->state == state && k < w->partCount; k++) rows[w->parts[k].component]++; /* a part: a row at most */
     }
 }
 
@@ -1231,3 +1236,5 @@ static void StartRegistry(void)
         StatsApplyComponents(EntityState());
     }
 }
+
+#include "entity_parts.c"

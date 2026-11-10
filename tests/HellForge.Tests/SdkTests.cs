@@ -79,15 +79,17 @@ static class SdkTests
                 "No functions: an empty table.");
         });
 
-        test("Function mappings refuse bad types, names, code, offsets, other builds and duplicate names", () =>
+        test("Function mappings refuse bad types, C and C++ keywords as names, code, offsets, other builds and duplicate names", () =>
         {
             foreach (var entries in new[]
             {
                 Function("Bad", true, param: """{"name":"x","type":"double","meaning":"m"}"""),
                 Function("Bad", true, param: """{"name":"int","type":"uint32_t","meaning":"m"}"""),
+                Function("Bad", true, param: """{"name":"template","type":"uint32_t","meaning":"m"}"""),   // C++: the editor builds the headers as C++
                 Function("Bad", true, param: """{"name":"mod","type":"uint32_t","meaning":"m"}"""),
                 Function("Bad", true, param: """{"name":"manager","type":"uint32_t","meaning":"m"}"""),
-                Function("Bad", true, returns: "uint16_t"),
+                Function("Bad", true, returns: "int8_t"),
+                Function("Bad", true, param: """{"name":"x","type":"const char**","meaning":"m"}"""),
                 Function("Bad", true, code: "48 89 5C"),
                 Function("Bad", true, code: "?? 89 5C 24 08 57 48 83"),
                 Function("Bad", true, code: "48 89 5C 24 08 57 48 8G"),
@@ -203,6 +205,55 @@ static class SdkTests
             reject(() => SdkMappings.Parse(Components(round), """{"format":1,"build":"1","tags":{"A":{"id":"1"},"a":{"id":"2"}}}"""));
             reject(() => SdkMappings.Parse(Components(round), """{"format":1,"build":"2"}"""));
             reject(() => SdkMappings.Parse(Components(round), """{"format":1,"build":"1","items":{"Wide":{"id":"0x100000000"}}}"""));
+        });
+
+        // RPCs: rpc_pickup_entity's hash is EngineHash.Id32 of its name (the real one, 0x04365DCF).
+        static string Rpc(string name, string args, string? hash = null) =>
+            $$"""
+            "{{name}}":{"hash":"0x{{(hash ?? EngineHash.Id32(name).ToString("X8"))}}","index":0,"session_bound":true,"args":[{{args}}]}
+            """;
+        static string Rpcs(string entries) => """{"format":1,"build":"1","rpcs":{""" + entries + "}}";
+        const string entity = """{"type":"0x9831CA89","name":"entity","kind":"int","bits":15,"min":0,"max":32767}""";
+
+        test("RPCs become ids, typed structs, readers and senders, and the loader's table (keywords and repeats renamed)", () =>
+        {
+            var json = Rpcs(Rpc("rpc_pickup_entity", entity + "," + entity) + "," +
+                Rpc("rpc_set_list", """{"type":"0x1","name":"float","kind":"array","max_count":4,"element":{"type":"0x2","kind":"vector3","bits":16,"min":-1,"max":1}}""") + "," +
+                Rpc("rpc_ping", "") + "," +
+                Rpc("rpc_set_item", """{"type":"0x77C59B29","name":"id_string64","kind":"id64"}"""));
+            var files = SdkRpcs.Parse(json).Generate();
+            var header = files["native/mod-sdk/hellforge_rpcs.h"];
+            check(header.Contains("#define HF_RPC_PICKUP_ENTITY 0x04365DCFu") &&
+                header.Contains("typedef struct HfRpc_pickup_entity\n{\n    int32_t entity;\n    int32_t entity_2;\n} HfRpc_pickup_entity;") &&
+                header.Contains("static inline int hf_rpc_pickup_entity_read(const HfRpcEvent* e, HfRpc_pickup_entity* out)") &&
+                header.Contains("static inline int hf_rpc_pickup_entity_send(HfMod* mod, uint64_t to, const HfRpc_pickup_entity* in)"), "A struct, reader and sender: " + header);
+            check(header.Contains("    uint32_t float_value_count;\n    float float_value[4][3];") && header.Contains("HfRpcArg a[5];"),
+                "An array of vector3 named after a keyword type, and room for its elements: " + header);
+            check(header.Contains("static inline int hf_rpc_ping_read(const HfRpcEvent* e)") && header.Contains("hf_rpc_send_(mod, HF_RPC_PING, to, NULL, 0)"),
+                "No arguments, no struct.");
+            check(header.Contains("    uint64_t id_string64;") && header.Contains("hf_rpc_take_(e, &at, 7u)"),
+                "A name hash is a uint64_t the game passes as kind 7, not u64's 9: " + header);
+            var table = files["native/mod-loader/sdk_rpcs.h"];
+            check(table.Contains("{0x04365DCFu, \"rpc_pickup_entity\", 1, 2,") && table.Contains("    {10, 3, 4, 0, 16},") && table.Contains("#define SDK_RPCS_BUILD \"1\""),
+                "The loader's rows: " + table);
+            var lines = table.Split('\n').Where(l => l.StartsWith("    {0x", StringComparison.Ordinal)).Select(l => l[7..15]).ToList();
+            check(lines.SequenceEqual(lines.Order(StringComparer.Ordinal)), "Sorted by hash for the loader's search.");
+            check(files["docs/rpcs.md"].Contains("| `rpc_pickup_entity` | `0x04365DCF` | `entity` int, 15 bits, 0..32767; `entity_2`"), "The reference.");
+        });
+
+        test("RPC mappings refuse a hash that is not the name's, bad names and kinds, arrays of arrays and too-long arrays, and repeats", () =>
+        {
+            foreach (var json in new[]
+            {
+                Rpcs(Rpc("rpc_pickup_entity", entity, "12345678")),
+                Rpcs(Rpc("pickup_entity", entity)),
+                Rpcs(Rpc("rpc_Pickup", entity)),
+                Rpcs(Rpc("rpc_odd", """{"type":"0x1","kind":"matrix"}""")),
+                Rpcs(Rpc("rpc_nested", """{"type":"0x1","kind":"array","max_count":2,"element":{"type":"0x2","kind":"array","max_count":2,"element":{"type":"0x3","kind":"bool"}}}""")),
+                Rpcs(Rpc("rpc_long", """{"type":"0x1","kind":"array","max_count":129,"element":{"type":"0x2","kind":"bool"}}""")),
+                """{"format":2,"build":"1","rpcs":{}}""",
+                Rpcs(Rpc("rpc_ping", "") + "," + Rpc("rpc_ping", "")),
+            }) reject(() => SdkRpcs.Parse(json));
         });
     }
 }

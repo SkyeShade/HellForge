@@ -12,6 +12,27 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Mods can add enemies of their own (SDK 17).** `add_enemy` gives an entity a roster row with its own spawn group,
+  weights, cost and limits, tied to no vanilla enemy. `add_enemy_squad` adds squads that send those groups as patrols,
+  guards, stragglers, outpost garrisons, reinforcements, border flyers, convoys or air support. `add_enemy_swap` adds
+  a replacement rule. An enemy names the packages its entity needs, and HellForge loads them. No vanilla enemy is
+  replaced, and any entity can be an enemy ([new enemies](docs/modding/enemies.md)).
+- **Entities built from parts (SDK 17).** `parts` in `register_entity` and `add_entity` takes each component's record
+  from an entity of your choice, with or without a base
+  ([an entity from parts](docs/modding/enemies.md#an-entity-from-parts)).
+- **Mods can listen to and send the game's own network messages (SDK 17).** Every RPC of the game has an id, a struct
+  of its arguments, a reader and a sender in `hellforge_rpcs.h` (592 in this build). `rpc_listen` runs a mod's code as
+  this machine receives one, before the game's, and may stop it. `rpc_send` sends one after checking it against the
+  game's declaration, so a wrong one is refused instead of crashing the game ([networking](docs/modding/networking.md),
+  [the RPC reference](docs/rpcs.md); #341).
+- **516 more game functions and 93 more game globals by name.** `hf_fn_` and `hf_global_` now reach 526 functions and
+  108 globals, in game.dll and helldivers2.exe. Each function's first bytes are checked against the game, and its
+  arguments come from the code that calls it ([hooking by name](docs/modding/hooks.md#hooking-by-name)). They cover:
+  - damage, health and status effects, and weapons with their heat, charge and reloads
+  - eagles, jump packs, vehicles, the director's patrols and reinforcements, and the level generator
+  - an entity's life on this machine: its components' spawn passes and the entity being switched on and off
+  - in the engine: spawning and moving units, animation variables, debug lines, materials, cameras, level volumes and
+    network sessions (#335)
 - **Mods can animate their weapons.** A data spec's `animations` names a JSON file with the joints that move, their clips
   and the state machine that plays them on the game's events. HellForge builds the unit copy's own bones, clips and
   state machine from it ([animations](docs/modding/animations.md)). `HellForge.Cli unit-joints` lists a unit's joints,
@@ -89,13 +110,26 @@ On `dev`, since 0.4.0-beta.
 - **Data specs: resources from past builds.** `"source": {"build": "2024-03-01"}` (a day, or a data manifest) on a
   `copy` or `include` takes the resource from that build. Each player fetches just those resources from Steam once, with
   the same prompt, and the mod ships only its spec ([data specs](docs/modding/data.md#source-a-past-build)).
+- **Room for 1,024 new stratagems across all mods (was 48).** The loadout picker's frame is sized for every type, and
+  past 106 new stratagems the type travels in co-op in 16 bits instead of 8, so every player needs the same mods, as
+  before. The picker still shows 256 cards, about 160 of them new ones
+  ([limits](docs/modding/content.md#limits); #342).
 
 ### Changed
 
+- **A new HellForge logo.** The launcher, its window and desktop icon, the installer and the in-game editor show the
+  crown in its frame (#299).
+- **Vehicle damage zones have their names.** The editor's vehicle pages showed most zones as "Zone 0", "Zone 1" and
+  so on. Every zone on all 11 vehicles now has the game's own name. The Bastion has its hull front, ammo boxes and side
+  and track panels; the FRVs have their doors, hatches, lights and tyres. The exosuits' cockpit fronts and the GATER
+  rig's wheels are named too. Stats files keep their keys (`zone_3.armor`) (#329).
 - **New profiles start live-like.** The new `live-like` template is a starter profile until you run Sync Inventory.
   The sync then brings in everything it can from your live account: level, unlocks, ship modules, medals and samples,
   the ship's name and the tutorial progress. The premium warbonds you own open without a purchase in Forge Credits. It is the first profile of a new installation and the launcher's first choice. Existing profiles keep
   their template, and `starter` stays for earning everything again (#282, #262).
+- **`hf_global_EngineApi`'s fields say what they are.** `table` is now `application` and `scene_graph` is now `unit`:
+  the engine's C API keeps one table per domain, and these two are the Application and Unit functions. A mod that
+  read either field by its old name needs the new one; the offsets are unchanged (#335).
 - **No fixed limit on mods' entities and weapons.** Mods together could register 64 entity blocks and 512 entities and
   weapons. HellForge now takes as many as the game's own tables hold (its entity map has room for about 2,187 more),
   at boot and in live changes. A strat pack and a compendium together no longer run out (#307).
@@ -123,11 +157,24 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Mod stratagems no longer read past the loadout's level choices.** Six places in the game read a per-type choice
+  that has only 150 entries for every stratagem, mod ones included, and two more could write there; they now see no
+  choice for a mod stratagem. When the game loaded its stratagem settings again, the count of stratagems went back to
+  the vanilla 149 while mod stratagems stayed, and it now stays at the full list (#342).
+- **Direct3D 11 crashes in the Armory and at mission start.** Browsing armour crashed the game at
+  `helldivers2.exe+0x732040`, and a slow PC could crash at `+0x626296` as a mission loaded. A freed texture is now bound
+  empty instead of read, and a full job pool is waited out while jobs finish
+  ([crash guards](docs/crash-guards.md)).
 - **A mod's own weapon mesh in the right place on every LOD and its shadow.** A data spec's `mesh` put the shadow 20 cm
   off the gun on an Adjudicator copy (4.5 cm on a Liberator), and hung a Liberator copy's LOD2 on its fire selector. Each
   render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new
   `"unitSpace": true` the OBJ keeps its own coordinates, the frame the weapon's attachment points are in
   ([data specs](docs/modding/data.md)).
+- **A crash in missions with edited spawn weights (`game.dll+0x9530F5`).** A roster weight of 0 that left an enemy
+  with no weight at a level, such as Scavengers at difficulty 10, made bug holes spawn a null enemy. Such an edit is now
+  refused, also when only planets with a given tag lose it. For writes that bypass the check, the spawn and bug-hole
+  queues skip a null enemy, and the game's other unchecked picks take a row of weight 0
+  ([live editing](docs/internals-live.md#spawning)).
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
 - **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
@@ -153,6 +200,13 @@ On `dev`, since 0.4.0-beta.
   sizes, Markdown structure, links and filler words, plus code comment blocks of over 10 lines. Existing text is in a
   baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))
   (#277).
+
+### For mod makers
+
+- **Your own pixel shaders in data mods.** A data spec's `shader` resource puts a compiled shader in one of three hosts,
+  `decal`, `transparent` or `refract`, and HellForge builds the materials and a unit for it. A shader that does not fit
+  its host is refused with the reason, shader headers name what each host can read, and a mod with a shader counts as
+  unchecked for mod sync ([shaders](docs/modding/shaders.md)) (#265).
 
 ## 0.4.0-beta (2026-11-05)
 

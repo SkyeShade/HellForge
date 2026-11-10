@@ -44,10 +44,13 @@ friends compare in co-op.
 | change an existing weapon or stratagem in code | [Content: changing existing content](content.md#changing-existing-content) |
 | add a new stratagem, weapon or entity | [Content](content.md), after [your first mod](first-mod.md) |
 | put your stratagems under a heading of their own | [Content: selection headings](content.md#selection-headings) |
+| make the game spawn an enemy of your own beside the vanilla ones | [New enemies](enemies.md) |
 | sell items on a warbond of your own, in a currency you choose | [Warbonds](warbonds.md) |
 | recolour a model or ship your own model, sound or icon | [Data mods](data.md) |
+| make effects with your own pixel shaders | [Shaders](shaders.md), after [Data mods](data.md) |
 | share patch files made from the game's resources (kitbashes, backports, cut content) without Arrowhead's bytes | [The asset kit](assets.md) |
 | react to kills, damage or missions | [Logic at run time](runtime.md) |
+| react to the game's network messages, or send them | [The game's network messages](networking.md) |
 | change something the SDK does not cover yet | [Hooks and game memory](hooks.md) |
 | find out why a mod does not load or crashes | [Debugging](debugging.md) |
 | let your mod change while the game runs (mod sync without a restart) | [Mods that change while the game runs](live.md) |
@@ -63,6 +66,7 @@ Read the pages in this order the first time. Each one ends with a link to the ne
 3. [Stats mods](stats-mods.md): number changes without code, `hellforge-stats.json`, and the in-game editor's Local
    Stats.
 4. [Data mods](data.md): models, textures, effects, sounds and icons, as game patches, cosmetic packs or data specs.
+   [Shaders](shaders.md) adds your own pixel shaders to a data spec.
    Patch files that hold the game's own bytes ship through [the asset kit](assets.md).
 5. [Content](content.md): changing existing weapons, stratagems and entities by field name, and adding new content of
    every kind.
@@ -81,6 +85,7 @@ the SDK, so keep it open beside the guide pages.
 |---|---|---|
 | these guide pages | `app/sdk/docs/modding` | `docs/modding` |
 | the SDK headers (`hellforge_mod.h` documents every call) | `app/sdk` | `native/mod-sdk` |
+| the shader headers | `app/sdk/shaders` | `native/mod-sdk/shaders` |
 | the template, filled in as "My Mod", ready to copy | `app/sdk/template-mod` | none (`scripts/Publish-HellForge.ps1` makes it) |
 | the template with placeholders, which `new-mod` fills in | `app/sdk/templates/c-mod` | `templates/c-mod` |
 | the example mods | `app/sdk/examples/mods` | `examples/mods` |
@@ -98,6 +103,7 @@ The example mods:
 | `blue-sentry` | a new sentry stratagem with a recoloured model |
 | `stratagem-compendium` | eleven stratagems, one file per family: Pelicans with turrets and a behaviour, a sentry, barrages, expendables, a silo with a countdown ability |
 | `stratagem-categories` | stratagem selection headings and their order ([how headings work](../stratagem-categories.md)) |
+| `alpha-scavenger` | a new enemy tied to no vanilla one: an entity, its roster row, its squads and a replacement rule |
 | `vehicle-variants` | two new vehicles, an exosuit and an FRV, each a copy of a vanilla one with a Pelican drop stratagem |
 | `hell-forge` | difficulty 11 |
 | `hell-swarm` | a difficulty's settings row, changed directly |

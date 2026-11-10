@@ -16,6 +16,10 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | --- | --- |
 | `sdk16.json` | SDK 16's names in the game: hooks by name (`HF_HOOK`), typed events (`hf_on_...`), game functions (`hf_fn_...`) and game globals with their fields (`hf_global_...`) |
 | `sdk-probe/` | the test mod `sdk16.json` runs (`hellforge.sdk-probe`), never shipped: one `PROBE <check> ok` or `PROBE <check> FAIL <why>` line per check in its log |
+| `rpc17.json` | SDK 17's RPCs in the game: `rpc_listen` on every RPC on the ship and in a mission, their arguments, the readers, and `rpc_send`'s refusals in solo |
+| `rpc-probe/` | the test mod `rpc17.json` runs (`hellforge.rpc-probe`), never shipped; it sends nothing outside solo |
+| `stratagem-cap.json` | room for 1,024 new stratagems: 300 added (types 150 to 449), the co-op type field at 16 bits, type 449 in the loadout before the mission and called in by its code (needs the harness's `call` step) |
+| `stratagem-cap-probe/` | the test mod `stratagem-cap.json` runs (`hellforge.stratagem-cap-probe`), never shipped |
 
 ## Running one
 
@@ -29,6 +33,23 @@ py harness.py --target hellforge --hellforge-root <test installation> modtest <H
 It prints a JSON verdict (`passed`, each check with the log lines it matched) and writes it to the harness run's
 `modtest.json`, beside the session's logs (`hellforge-session/`). The mission makes the same requests a solo deploy
 does, to the session's local backend.
+
+## Running one in co-op
+
+`modtest` plays solo. `rpc-probe` also checks co-op: the joiner sends the host one `rpc_request_hostability`, a query
+the host's game answers. Two test installations on one PC play together with the harness's `pair.py`. From the
+harness's folder:
+
+```powershell
+py livemods.py setup --hellforge-root <host installation> --copy <HellForge>\tests\in-game\rpc-probe --on hellforge.rpc-probe
+py livemods.py setup --hellforge-root <joiner installation> --copy <HellForge>\tests\in-game\rpc-probe --on hellforge.rpc-probe
+py pair.py pickup --host <host installation> --joiner <joiner installation>
+```
+
+`pickup` joins them and deploys the squad. Read `mod-hellforge.rpc-probe.log` in each installation's newest
+`logs\sessions\<run>\` folder once the mission's tally is there, 30 s into the mission. The joiner's log must say
+`PROBE rpc_send arrived ok`, the host's `PROBE rpc_send to itself refused ok`, and neither may have a `FAIL`. Then
+end both with `py pair.py stop` and run `py livemods.py teardown --hellforge-root <installation>` for each.
 
 ## Adding a check
 

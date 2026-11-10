@@ -992,6 +992,7 @@ static HfEntity EntityOfDefinition(const HfEntityDef* def, const char** own, uin
         entity.designation = def->designation;
         entity.description = def->description;
     }
+    if (def->size >= offsetof(HfEntityDef, parts) + sizeof def->parts) entity.parts = def->parts;
     return entity;
 }
 

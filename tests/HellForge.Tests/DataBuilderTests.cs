@@ -165,7 +165,7 @@ static class DataBuilderTests
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"test/mod/unit","colour":[1,1,1]}]}""", "unknown field colour");
             Refused("""{"archives":["NOTHEX"],"resources":[""" + copy + "]}", "16 lowercase hex");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"unit"}]}""", "the mod's own resource path");
-            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include, icon, texture, animations, model or sounds");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include, icon, texture, animations, model, sounds or shader");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"../icon.png","name":"test/mod/icon"}]}""", "a .png file in the mod folder");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"missing.png","name":"test/mod/icon"}]}""", "missing.png is missing");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"particles","copy":"0x1","name":"test/mod/fx","curves":{"preset":"pink"}}]}""", "warm-to-blue");
