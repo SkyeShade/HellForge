@@ -24,7 +24,7 @@ On `dev`, since 0.4.0-beta.
   of its arguments, a reader and a sender in `hellforge_rpcs.h` (592 in this build). `rpc_listen` runs a mod's code as
   this machine receives one, before the game's, and may stop it. `rpc_send` sends one after checking it against the
   game's declaration, so a wrong one is refused instead of crashing the game ([networking](docs/modding/networking.md),
-  [the RPC reference](docs/rpcs.md)).
+  [the RPC reference](docs/rpcs.md); #341).
 - **516 more game functions and 93 more game globals by name.** `hf_fn_` and `hf_global_` now reach 526 functions and
   108 globals, in game.dll and helldivers2.exe. Each function's first bytes are checked against the game, and its
   arguments come from the code that calls it ([hooking by name](docs/modding/hooks.md#hooking-by-name)). They cover:
