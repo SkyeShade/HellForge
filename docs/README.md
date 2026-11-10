@@ -34,6 +34,7 @@ The modding guide, in reading order:
    [Animations](modding/animations.md): a unit copy's own joints, clips and state machine from a JSON file.
    [Models](modding/models.md): a unit of your own from a glTF file: joints, meshes, LODs and materials.
    [Textures](modding/textures.md): textures of your own from PNG files, and putting them in a material.
+   [Shaders](modding/shaders.md): your own pixel shaders in a data spec.
    [The asset kit](modding/assets.md): sharing patch files made from the game's resources without Arrowhead's bytes.
 6. [Content](modding/content.md): changing and adding weapons, projectiles, stratagems, entities, behaviours, abilities
    and difficulties.

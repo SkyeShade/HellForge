@@ -11,6 +11,7 @@ mod ships no game bytes.
 
 - [Patch files](#patch-files) and [cosmetic packs](#cosmetic-packs)
 - [Data specs](#data-specs): copies and recolours, your own models, icons, sounds
+- [Shaders](shaders.md): your own pixel shaders in a data spec
 - [Native edits in the manifest](#native-edits-in-the-manifest)
 
 ## Patch files

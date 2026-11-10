@@ -710,6 +710,7 @@ ModTests.Register(Test, Check, Reject, root);
 StatsTests.Register(Test, Check, Reject, root);
 DataBuilderTests.Register(Test, Check, Reject, root);
 SoundBankTests.Register(Test, Check, Reject, root);
+ShaderTests.Register(Test, Check, Reject, root);
 WarbondLocksTests.Register(Test, Check, Reject, root);
 ForgeCreditsTests.Register(Test, Check, Reject, root);
 ForgeCreditsTests.RegisterChance(Test, Check, Reject, root);
