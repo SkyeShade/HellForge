@@ -24,7 +24,7 @@ typedef struct PickerCandidate
     uint8_t enabled, blocked, padding[2];
 } PickerCandidate;
 _Static_assert(sizeof(PickerCandidate) == 20, "native picker candidate layout");
-static PickerCandidate g_pickerCandidates[STR_VANILLA];
+static PickerCandidate g_pickerCandidates[STR_TYPES]; /* one per type, as the picker's frame (WidenPicker) */
 static size_t g_pickerCandidateCount;
 typedef int (*PickerCompare)(const void*, const void*);
 static void (*g_pickerSort)(void*, size_t, size_t, PickerCompare);
@@ -93,7 +93,7 @@ static uint32_t StratagemSelectionSection(uint32_t type, uint32_t vanilla)
 static void PickerSortCategories(void* data, size_t count, size_t width, PickerCompare compare)
 {
     g_pickerCandidateCount = 0;
-    if (g_stratagemCategoriesActive && width == sizeof(PickerCandidate) && count <= STR_VANILLA)
+    if (g_stratagemCategoriesActive && width == sizeof(PickerCandidate) && count <= STR_TYPES)
     {
         PickerCandidate* candidates = data;
         for (size_t i = 0; i < count; i++)

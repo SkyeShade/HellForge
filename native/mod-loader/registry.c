@@ -171,7 +171,7 @@ typedef struct Weapon
  * designation), three for each stratagem (stratagems.c asserts its STR_MAX_NEW fits) and two for the difficulty. Weapons
  * once shared a fixed 4 * 512 with the others, so a full pack left a stratagem with its base's name. They grow as they are added
  * (stable_array.c: TextDetour reads them on the game thread while a live change adds more). */
-#define REG_STRATAGEM_TEXTS (48 * 3)
+#define REG_STRATAGEM_TEXTS (1024 * 3)
 typedef struct ModText { uint32_t id; char* text; } ModText;
 /* + four for each mod warbond (warbonds.c: its name and the line above it, each in two cases), 99 at most */
 #define REG_TEXT_CEILING ((size_t)REG_WEAPON_CEILING * 4 + REG_STRATAGEM_TEXTS + 2 + 4 * 99)
