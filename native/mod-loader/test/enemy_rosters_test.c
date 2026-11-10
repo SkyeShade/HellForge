@@ -14,6 +14,9 @@
 #define ERT_RIDER 0xDDDull   /* another entity with that formation */
 #define ERT_PROP 0xEEEull    /* an entity that is no enemy of the game's */
 #define ERT_GROUP "tester/enemies/own_group"
+#define ERT_NO_PACKAGE 0xBADull
+static int g_ertPackages;
+static int ErtWantPackage(HfMod* mod, uint64_t package) { g_ertPackages++; return package != ERT_NO_PACKAGE; }
 
 static int ErtKnown(uint64_t entity)
 {
@@ -50,7 +53,7 @@ static void ErtGuardsImage(uint8_t* image)
     VirtualProtect(image + EG_FORMATION, 0x20000, PAGE_EXECUTE_READWRITE, &previous); /* both lookups */
     for (int k = 0; k < 8; k++)
     {
-        uint64_t pair[2] = {(uint64_t)(uintptr_t)calloc(80, ES_ROW), k == 0 ? 79 : k == 2 ? 17 : 1};
+        uint64_t pair[2] = {(uint64_t)(uintptr_t)calloc(80, ES_ROW), k == 0 ? 79 : k == 2 ? 17 : k == 5 ? 21 : 1};
         memcpy(image + kRosters[1].descriptor + 0x20 + 0x10 * k, pair, sizeof pair);
         pair[0] = (uint64_t)(uintptr_t)calloc(64, ES_ROW); pair[1] = k == 2 ? 27 : 1;
         memcpy(image + kRosters[0].descriptor + 0x20 + 0x10 * k, pair, sizeof pair);
@@ -90,6 +93,47 @@ static void ErtGuards(uintptr_t game)
     assert(made != (const uint8_t*)has && seat[0] == 0x22 && seat[1] == 1 && seat[4] == 3 && g_egSeatCount == 2);
 }
 
+/* Stragglers: the game's entries alone stay as they are; with a mod's squad among them one of the first and the mods'
+ * comes first, by weight, and stays the mission's until it ends. */
+static uint64_t ErtNextStragglers(void* a, void* roster, const uint8_t* rows, uint32_t count, uint8_t* out, uint32_t* outCount, uint64_t level,
+    uint64_t players, void* tags, uint64_t flagA, uint64_t flagB)
+{
+    float weight = 1.0f;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        uint64_t row = (uint64_t)(uintptr_t)(rows + (size_t)i * ES_ROW);
+        uint8_t* entry = out + (size_t)i * ES_ENTRY;
+        memcpy(entry, &i, 4); memcpy(entry + 0xA8, &row, 8); memcpy(entry + 0xC0, &weight, 4);
+    }
+    *outCount = count;
+    return 7;
+}
+
+static void ErtStragglers(void)
+{
+    static uint8_t plan[0xB000];
+    uint32_t* count = (uint32_t*)(void*)(plan + 0xAF98);
+    const EsGrown* g = &g_esGrown[2][ES_STRAGGLERS];
+    uint32_t first, seen[2] = {0, 0};
+    assert(g->count == 22 && g->game == 21);
+    g_esSelectOriginal = (void*)ErtNextStragglers;
+    assert(EsSelect(NULL, NULL, g->rows, 21, plan, count, (uint64_t)0, (uint64_t)0, NULL, (uint64_t)0, (uint64_t)0) == 7 && *count == 21);
+    memcpy(&first, plan, 4); assert(first == 0 && g_esStraggler == 0); /* no mod's squad fits: the game's first */
+    for (int i = 0; i < 200; i++)
+    {
+        g_esStraggler = 0; /* a new mission */
+        EsSelect(NULL, NULL, g->rows, 22, plan, count, (uint64_t)0, (uint64_t)0, NULL, (uint64_t)0, (uint64_t)0);
+        memcpy(&first, plan, 4);
+        assert(*count == 22 && (first == 0 || first == 21));
+        seen[first == 21]++;
+        uint32_t again;
+        EsSelect(NULL, NULL, g->rows, 22, plan, count, (uint64_t)0, (uint64_t)0, NULL, (uint64_t)0, (uint64_t)0);
+        memcpy(&again, plan, 4); assert(again == first); /* the same mission: the same squad */
+    }
+    assert(seen[0] > 20 && seen[1] > 20);
+    g_esSelectOriginal = (void*)ErtNext;
+}
+
 /* The plan builder's detour: a family that fits its plan array goes straight on; a larger one is cut to the array's
  * size, spread over the rows that fit; an array that is not the plan's is left alone. */
 static void ErtSelect(void)
@@ -101,6 +145,7 @@ static void ErtSelect(void)
     assert(EsSelect(NULL, NULL, NULL, 20, plan, count, (uint64_t)0, (uint64_t)0, NULL, (uint64_t)0, (uint64_t)0) == 7 && *count == 8 && g_esLeftOut == 12);
     memcpy(&first, plan, 4); memcpy(&last, plan + 7 * ES_ENTRY, 4);
     assert(first < last && last == 19);
+    ErtStragglers();
     static uint8_t other[20 * ES_ENTRY];
     assert(EsSelect(NULL, NULL, NULL, 20, other, &own, (uint64_t)0, (uint64_t)0, NULL, (uint64_t)0, (uint64_t)0) == 7 && own == 20);
 }
@@ -154,7 +199,7 @@ static void ErtAddOwn(HfMod* mod)
     assert(ApiAddEnemySquad(mod, &s) == 1); /* no member */
     s.members[1].group = ERT_GROUP; s.members[1].count = 33;
     assert(ApiAddEnemySquad(mod, &s) == 1); /* over 32 enemies */
-    s.members[1].count = 3; s.kind = 2;
+    s.members[1].count = 3; s.kind = 9;
     assert(ApiAddEnemySquad(mod, &s) == 1); /* no such kind */
     s.kind = HF_SQUAD_PATROL; s.lowest_level = 5; s.with_tags[2] = "GM_SEAF";
     assert(ApiAddEnemySquad(mod, &s) == 0);
@@ -163,7 +208,15 @@ static void ErtAddOwn(HfMod* mod)
     assert(ApiAddEnemySquad(mod, &s) == 0); /* refused when the rosters grow: no enemy in its group */
     s.name = "tester/enemies/pool"; s.kind = HF_SQUAD_OUTPOST; s.members[1].group = ERT_GROUP; s.members[1].count = 999; s.factions = HF_ENEMY_ILLUMINATE | HF_ENEMY_TERMINIDS;
     assert(ApiAddEnemySquad(mod, &s) == 0); /* the Terminid roster has no enemy of the group: Illuminate only */
-    assert(g_erEnemyCount == 6 && g_erSquadCount == 3);
+    s.name = "tester/enemies/straggler"; s.kind = HF_SQUAD_STRAGGLER; s.members[1].count = 4; s.factions = HF_ENEMY_ILLUMINATE; s.weight = 3.0f;
+    assert(ApiAddEnemySquad(mod, &s) == 0);
+    s.name = "tester/enemies/guard"; s.kind = HF_SQUAD_GUARD;
+    assert(ApiAddEnemySquad(mod, &s) == 0);
+    e.name = "tester/enemies/no_package"; e.packages[1] = ERT_NO_PACKAGE; /* its package fails: left out */
+    assert(ApiAddEnemy(mod, &e) == 0);
+    e.name = "tester/enemies/packaged"; e.packages[1] = 0; e.packages[0] = 0x9AC; e.group = "tester/enemies/packaged_group";
+    assert(ApiAddEnemy(mod, &e) == 0);
+    assert(g_erEnemyCount == 8 && g_erSquadCount == 5);
 }
 
 static void ErtAdd(HfMod* mod)
@@ -222,6 +275,11 @@ static void ErtCheckOwn(uintptr_t game, const uint8_t* row)
     memcpy(u, squad, 8); memcpy(&unit, squad + 0x100, 8); memcpy(u + 2, squad + 0xFC, 4);
     assert(pair[1] == 18 && u[0] == key && u[1] == 999 && unit == 0 && u[2] == key);
     assert(EsAt(0)->state == 1 && EsAt(1)->state == -1 && EsAt(2)->state == 1 && EsAt(2)->rows == 1);
+    /* a guard squad takes a patrol's fixed fields; the family's one game row stays first */
+    memcpy(pair, (void*)(game + kRosters[1].descriptor + 0x30), sizeof pair);
+    squad = (const uint8_t*)(uintptr_t)pair[0] + ES_ROW;
+    memcpy(&unit, squad + 0x100, 8); memcpy(u, squad, 8);
+    assert(pair[1] == 2 && unit == ES_SQUAD_ENTITY && u[0] == key && u[1] == 4 && EsAt(3)->state == 1 && EsAt(4)->state == 1);
 }
 
 /* The Automaton roster (kRosters[2]) after the growth: 61 game rows as they were, then alpha's two. */
@@ -256,7 +314,8 @@ static void ErtCheckRows(uintptr_t game, const uint8_t* before)
     memcpy(&unit, (const uint8_t*)(uintptr_t)pair[0] + 46 * ER_ROW + 8, 8); assert(unit == ERT_BUG_UNIT);
     memcpy(&f, (const uint8_t*)(uintptr_t)pair[0] + 46 * ER_ROW + 0x30, 4); assert(f == 1.0f); /* weight 0 means x 1 */
     memcpy(pair, (void*)(game + kRosters[1].descriptor), sizeof pair);
-    assert(pair[1] == 47 && pair[3] == 3);
+    assert(pair[1] == 48 && pair[3] == 3 && g_ertPackages == 2); /* own and packaged; no_package stayed out */
+    assert(ErEnemyAt(6)->state == -1 && ErEnemyAt(7)->state == 1);
     ErtCheckOwn(game, (const uint8_t*)(uintptr_t)pair[0] + 46 * ER_ROW);
 }
 
@@ -372,6 +431,7 @@ static void EnemyRostersFixture(void)
     g_erEntityKnown = ErtKnown;
     g_egSeat = ErtSeat;
     g_esHook = ErtHook;
+    g_erWantPackage = ErtWantPackage;
     ErtGuardsImage(image);
     int wasLoaded = mod->loaded;
     mod->loaded = 1;
@@ -431,6 +491,7 @@ static void EnemyRostersFixture(void)
     g_erEntityKnown = ErEntityInMap;
     g_egSeat = EgSeatInGame;
     g_esHook = EsHookGame;
+    g_erWantPackage = ApiLoadPackage;
     mod->loaded = wasLoaded;
     g_directorImage = DirectorGame;
     g_difficultyAdded = added; g_difficultyState = state;

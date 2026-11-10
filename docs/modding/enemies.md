@@ -51,6 +51,7 @@ hf->add_enemy(mod, &brute);
 | `size_class` | 0 small, 1 medium, 2 heavy, 3 the largest, as the game marks its own rows |
 | `with_tags`, `without_tags` | up to 4 [director tags](#director-tags) each: it spawns only while one of the first is on, never while one of the second is |
 | `flags` | `HF_ENEMY_ALWAYS_LOADED`: a mission loads its packages though no squad names its group |
+| `packages` | up to 2 packages the entity needs, as `load_package` takes them (0: none). See [What the entity needs](#what-the-entity-needs) |
 
 A vanilla group keeps its own enemies: yours shares the draw with them. The game's groups are:
 
@@ -88,6 +89,8 @@ hf->add_enemy_squad(mod, &pack);
 | `HF_SQUAD_BORDER` | flyers crossing the map's border |
 | `HF_SQUAD_CONVOY` | convoys |
 | `HF_SQUAD_AIR_SUPPORT` | air support (the game's Illuminate attack ships) |
+| `HF_SQUAD_GUARD` | placed at a mission's guard positions when it starts, where the mission has any. The game ships no guard squad |
+| `HF_SQUAD_STRAGGLER` | the small groups a mission sends now and then |
 
 - A mission takes the squads whose levels, player counts and tags fit. Among those of a kind it draws by `weight`;
   the game's squads use 0.01 to 3.
@@ -99,6 +102,8 @@ hf->add_enemy_squad(mod, &pack);
 - `with_tags` holds up to 8 [director tags](#director-tags): the squad is sent only while one is on.
 - An outpost squad with no tag, or with a tag that is on, is taken at every level and player count. The game's
   outposts work this way.
+- A mission uses one straggler squad throughout. The game takes its first that fits. With mods' squads fitting too,
+  HellForge draws one by `weight` among that first squad and the mods'.
 
 ## Replacement rules
 
@@ -137,21 +142,52 @@ A planet or a mission turns tags on. Rows, squads and rules name them.
 
 ## What the entity needs
 
-Any entity the game has can be an enemy's unit. HellForge answers the game's reads that a vanilla enemy's data would:
+Any entity the game has can be an enemy's unit, one [built from parts](#an-entity-from-parts) with no base
+included. HellForge answers the game's reads that a vanilla enemy's data would:
 
 - **Packages.** The entity's resources must be loaded when it spawns, or the game crashes. A copy of a vanilla enemy
-  shares its base's packages, which the mission loads for a roster row. Any other entity must load its own (see
-  [data mods](data.md)).
+  shares its base's packages, which the mission loads for a roster row. For any other entity, name its packages in
+  `packages`: HellForge loads them when the game starts and holds them for the session. An enemy whose package
+  cannot be loaded is left out, and your log says why.
 - **Outposts.** An enemy with no `Behavior` record takes no garrison place: an outpost squad of its group stays unused.
 - **Dropships.** An enemy with no `SquadTransportFormation` record rides as a single-seat passenger.
 - **Free spawns.** Some spawns need the enemy's navigation record. An entity without one is skipped by those.
 
+## An entity from parts
+
+`parts` (SDK 17) builds an entity component by component instead of copying one base. Each part names a component and
+the entity whose record of it yours takes. Set `.size = sizeof(HfEntityDef)`.
+
+```c
+static const HfEntityPart bruteParts[] = {
+    {"UnitComponentData", HF_ENTITY_CHARGER},
+    {"HealthComponentData", HF_ENTITY_BILE_WARRIOR},
+    {"BehaviorComponentData", HF_ENTITY_RUPTURE_WARRIOR},
+    /* ... and every other component it needs */
+    {0}
+};
+static const HfEntityDef brute = {.size = sizeof brute, .name = "brute", .parts = bruteParts};
+```
+
+- With no `base`, the entity has the parts and no other component. With a `base`, a part replaces the base's record
+  of that component, or adds a component the base lacks.
+- A part's record is shared with the entity it comes from. The block's changes, or `own_all`, give yours a record
+  of its own, which you then edit freely.
+- A part may come from an entity your mod registered earlier.
+- The game sends some components' state to other players. Those components of your entity, taken together, must be
+  the ones some entity of the game has: yours takes that entity's network type. When no entity matches, yours is not
+  added, and your mod's log says so. Components that are not sent, such as `BehaviorComponentData`, are free.
+- HellForge refuses a list the game would crash on: a component whose record the entity named lacks, or one of the
+  four components that read `UnitComponentData`, `HealthComponentData` or `VehicleMotionComponentData` without them.
+- Records still have to fit together. A record that names bones or nodes of another model misbehaves in ways
+  HellForge cannot check, so take the records tied to a model from one entity, as [Model](content.md#model) lists them.
+- An entity from parts is added when the game starts, not by a mod set up while it runs.
+
 ## Limits and co-op
 
 - The entity must exist when the entity data has loaded. An entry whose entity is missing is left out.
-- A mission's plan holds 96 kinds of patrol, 64 of encounter, 32 of outpost and 8 each of border, convoy and air
-  support. When more fit a mission, HellForge leaves an even spread out, the game's and the mods' alike, and logs it.
-- Squads of the game's guard-position and straggler kinds cannot be added.
+- A mission's plan holds 96 kinds of patrol, 64 of encounter, 32 each of outpost, guard and straggler, and 8 each of
+  border, convoy and air support. When more fit a mission, HellForge leaves an even spread out, the game's and the mods' alike, and logs it.
 - The rosters all factions share take no new rows.
 - The game's enemy budget holds 64 places for the kinds of enemy alive at once. An enemy type takes one place for
   each spawn source it is alive from. With the table full, a further kind still spawns but is not counted: its cap on

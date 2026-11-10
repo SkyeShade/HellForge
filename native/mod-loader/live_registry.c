@@ -48,7 +48,7 @@ static int WeaponSame(const Weapon* a, const Weapon* b)
 {
     if (a->plain != b->plain || a->base != b->base || a->id != b->id || a->baseEntity != b->baseEntity || a->unit != b->unit ||
         a->behaviour != b->behaviour || a->modelFrom != b->modelFrom || a->projectile != b->projectile || a->soundFrom != b->soundFrom ||
-        a->ownAll != b->ownAll || a->ownCount != b->ownCount || memcmp(a->text, b->text, sizeof a->text))
+        a->ownAll != b->ownAll || a->ownCount != b->ownCount || a->partCount != b->partCount || memcmp(a->text, b->text, sizeof a->text))
         return 0;
     for (int k = 0; k < a->ownCount; k++) if (a->own[k] != b->own[k]) return 0;
     return SameText(a->name, b->name) && SameText(a->title, b->title) && SameText(a->designation, b->designation);
@@ -359,7 +359,7 @@ static void LiveNetSwitch(uintptr_t game)
         const NetworkType* t = &g_networkTypes[k];
         uint64_t own[2], copied[2];
         if (t->index >= NET_TABLE_SLOTS || t->base >= NET_VANILLA_TYPES || !NetComponents(map, t->entity, own) || !NetComponents(map, t->baseEntity, copied) ||
-            own[0] != copied[0] || own[1] != copied[1])
+            !SameNetworked(EntityState(), own, copied))
         { Note("network: type %u (%s) keeps the exit (its copies get no state)", t->index, t->name); continue; }
         g_netSwitchTable[t->index] = g_netSwitchTable[t->base];
         if (t->index > highest) highest = t->index;

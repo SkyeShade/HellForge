@@ -128,6 +128,9 @@ typedef struct HfWeapon
     uint32_t arc;
 } HfWeapon;
 
+/* A part of an entity (SDK 17, HfEntity.parts): a component's name and the entity whose record of it the new one takes. */
+typedef struct HfEntityPart { const char* component; uint64_t from; } HfEntityPart;
+
 /* A new entity of any kind (SDK 4, add_entity): a copy of a vanilla entity (a Pelican, a turret...) under a resource
  * name of its own, sharing every component record of its base except the ones it owns. No loadout, armory or catalogue
  * entry (add_weapon is for arsenal weapons). Zero-initialize it and set `size`:
@@ -144,7 +147,7 @@ typedef struct HfWeapon
 typedef struct HfEntity
 {
     uint32_t size;                      /* sizeof(HfEntity) */
-    uint64_t base;                      /* the vanilla entity resource it copies (HF_ENTITY_...) */
+    uint64_t base;                      /* the vanilla entity resource it copies (HF_ENTITY_...); 0 with `parts` */
     const char* name;                   /* unique: "my_name/my_mod/entity"; the entity's resource id is this name's hash */
     const char* unit;                   /* a unit resource for its model (the mod's data provides it); NULL: the base's */
     const char* const* own_components;  /* NULL-terminated component names it gets records of its own in, or NULL */
@@ -163,6 +166,7 @@ typedef struct HfEntity
     const char* title;        /* "Heavy MG Sentry" */
     const char* designation;  /* "A/MG-101" */
     const char* description;
+    const HfEntityPart* parts; /* SDK 17: NULL, or its components one by one, {NULL}-ended (docs/modding/enemies.md) */
 } HfEntity;
 
 /* A new behaviour (SDK 4, add_behaviour): a vanilla behaviour extended by HellForge, under an id of its own (694 and
@@ -315,17 +319,19 @@ typedef struct HfEnemy
     uint32_t flags;         /* HF_ENEMY_ALWAYS_LOADED */
     const char* with_tags[4];    /* director tags: it spawns only while one of them is on (none: always) */
     const char* without_tags[4]; /* ... and never while one of these is on */
+    uint64_t packages[2];   /* 0, or packages its entity needs (as load_package's): loaded and held for the session */
 } HfEnemy;
 
 #define HF_SQUAD_MEMBERS 8
 /* HfEnemySquad kinds: where the director uses the squad. */
 #define HF_SQUAD_PATROL 1u      /* a patrol roaming the map */
-#define HF_SQUAD_GUARD 2u       /* placed at the map's guard positions (the game ships none) */
+#define HF_SQUAD_GUARD 2u       /* placed at a mission's guard positions when it starts (the game ships no such squad) */
 #define HF_SQUAD_OUTPOST 3u     /* an outpost's or objective's garrison; members' counts are a pool (the game uses 999) */
 #define HF_SQUAD_ENCOUNTER 4u   /* reinforcements: a bug breach, a dropship (it carries any Automaton or Illuminate one) */
 #define HF_SQUAD_BORDER 5u      /* crossing the map's border (the game's Shriekers and Gunships) */
 #define HF_SQUAD_CONVOY 6u      /* a convoy; a mission takes 8 kinds at most */
 #define HF_SQUAD_AIR_SUPPORT 7u /* called in from the air (the game's Illuminate attack ships) */
+#define HF_SQUAD_STRAGGLER 8u   /* stragglers: one squad a mission, the game's first that fits or a mod's, by weight */
 
 /* A new squad (SDK 17, add_enemy_squad): a mix of spawn groups the director may send, beside the game's squads of its
  * kind. This is how an enemy in a group of your own reaches the map. A mission takes the squads whose levels, players
@@ -337,10 +343,8 @@ typedef struct HfEnemySquad
     uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins; each must have every group */
     const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
     uint32_t kind;          /* HF_SQUAD_... */
-    uint32_t lowest_level;  /* the difficulty levels it is sent at, 1 to 10 (0: no bound); 10 covers level 11 */
-    uint32_t highest_level;
-    uint32_t lowest_players;  /* the player counts it is sent at, 1 to 4 (0: no bound) */
-    uint32_t highest_players;
+    uint32_t lowest_level, highest_level;     /* the difficulty levels it is sent at, 1 to 10 (0: no bound); 10 covers level 11 */
+    uint32_t lowest_players, highest_players; /* the player counts it is sent at, 1 to 4 (0: no bound) */
     float weight;           /* its share of the draw among the squads of its kind (the game's: 0.01 to 3) */
     float cost;             /* x its members' cost in the director's budget (0 means 1) */
     struct { const char* group; uint32_t count; } members[HF_SQUAD_MEMBERS]; /* up to 8 groups, 32 enemies in all
@@ -1244,6 +1248,7 @@ struct HfEntityDef
     const char* title;             /* SDK 7: its text, as HfEntity's (NULL: the base's) */
     const char* designation;
     const char* description;
+    const HfEntityPart* parts;     /* SDK 17: its components one by one, as HfEntity.parts; `base` may then be 0 */
 };
 
 /* Changes to an existing entity as a definition block (edit_entity): the same lists as HfEntityDef's. A vanilla entity's

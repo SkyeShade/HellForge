@@ -23,8 +23,10 @@
 static const struct { uint32_t kind, family, rows[ER_FACTIONS], span, cap; const char* name; } kEsKinds[] = {
     {HF_SQUAD_PATROL, 0, {39, 44, 79}, 0x17344u, 96, "patrol"},     {HF_SQUAD_OUTPOST, 2, {27, 32, 17}, 0x1074Cu, 32, "outpost"},
     {HF_SQUAD_ENCOUNTER, 3, {50, 50, 51}, 0xE594u, 64, "encounter"}, {HF_SQUAD_BORDER, 4, {6, 4, 1}, 0xEC50u, 8, "border"},
-    {HF_SQUAD_CONVOY, 6, {1, 5, 1}, 0x949Cu, 8, "convoy"},           {HF_SQUAD_AIR_SUPPORT, 7, {1, 1, 3}, 0x8DE0u, 8, "air support"}};
+    {HF_SQUAD_CONVOY, 6, {1, 5, 1}, 0x949Cu, 8, "convoy"},           {HF_SQUAD_AIR_SUPPORT, 7, {1, 1, 3}, 0x8DE0u, 8, "air support"},
+    {HF_SQUAD_GUARD, 1, {1, 1, 1}, 0x12248u, 32, "guard"},           {HF_SQUAD_STRAGGLER, 5, {8, 8, 21}, 0xAF98u, 32, "straggler"}};
 #define ES_KINDS (sizeof kEsKinds / sizeof kEsKinds[0])
+#define ES_STRAGGLERS 7 /* the stragglers' place in kEsKinds */
 static const uint8_t kEsSelectPin[] = {0x40,0x57,0x41,0x55,0x48,0x81,0xec,0x08,0x01,0x00,0x00,0x48,0x8b,0x05,0xee,0x01};
 
 typedef struct EsSquad
@@ -45,6 +47,9 @@ static void* g_esSelectOriginal;
 static uint8_t* g_esScratch;
 static uint32_t g_esScratchRows;
 static SRWLOCK g_esLock = SRWLOCK_INIT;
+static uint64_t g_esStraggler; /* the row a mission's stragglers were drawn as, until it ends */
+static uint64_t g_esRandom;
+static int g_esMissionRan;
 static volatile LONG g_esLeftOut;
 static LONG g_esLeftOutReported;
 static ULONGLONG g_esReportedAt;
@@ -122,8 +127,71 @@ static uint32_t EsKeep(uint8_t* out, const uint8_t* scratch, uint32_t got, uint3
     return kept;
 }
 
-/* 0x94BE10's detour. A family no larger than its plan array, or an array that is not one of the plan's (0x90E150 passes
- * its own, for one row), goes straight on. */
+/* Whether a plan entry came from a mod's straggler row (+0xA8: its row). */
+static int EsModStraggler(const uint8_t* entry)
+{
+    uint64_t row;
+    memcpy(&row, entry + 0xA8, 8);
+    for (uint32_t f = 0; f < ER_FACTIONS; f++)
+    {
+        const EsGrown* g = &g_esGrown[f][ES_STRAGGLERS];
+        uintptr_t rows = (uintptr_t)g->rows;
+        if (rows != 0 && row >= rows + g->game * ES_ROW && row < rows + g->count * ES_ROW) return 1;
+    }
+    return 0;
+}
+
+static float EsRandom(void)
+{
+    if (g_esRandom == 0) { LARGE_INTEGER now; QueryPerformanceCounter(&now); g_esRandom = (uint64_t)now.QuadPart | 1; }
+    g_esRandom ^= g_esRandom << 13; g_esRandom ^= g_esRandom >> 7; g_esRandom ^= g_esRandom << 17;
+    return (float)(g_esRandom >> 40) / 16777216.0f;
+}
+
+/* The straggler entry among the first (the game's choice) and the mods', by weight (+0xC0): `pass` 0 the one a
+ * mission already drew, 1 a new draw at `at` of their weights' sum. -1 none. */
+static int EsStragglerPick(const uint8_t* out, uint32_t count, int pass, float at)
+{
+    for (uint32_t i = 0; i < count; i++)
+    {
+        const uint8_t* entry = out + (size_t)i * ES_ENTRY;
+        uint64_t row;
+        float weight;
+        memcpy(&row, entry + 0xA8, 8);
+        memcpy(&weight, entry + 0xC0, 4);
+        if (i != 0 && !EsModStraggler(entry)) continue;
+        if (pass == 0 ? row == g_esStraggler : (at -= weight > 0 ? weight : 0) < 0) return (int)i;
+    }
+    return -1;
+}
+
+/* The game's stragglers are its plan's first entry and no other (0x95B250 takes the array as the entry). So with a
+ * mod's squad among them one is drawn and put first, the same one for the whole mission: live squads hold the entry. */
+static void EsStraggler(uint8_t* out, uint32_t count)
+{
+    float sum = 0;
+    int mods = 0;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        float weight;
+        memcpy(&weight, out + (size_t)i * ES_ENTRY + 0xC0, 4);
+        int mine = EsModStraggler(out + (size_t)i * ES_ENTRY);
+        if (i == 0 || mine) sum += weight > 0 ? weight : 0;
+        mods += mine;
+    }
+    if (mods == 0) return;
+    int pick = EsStragglerPick(out, count, 0, 0);
+    if (pick < 0) pick = EsStragglerPick(out, count, 1, EsRandom() * sum);
+    if (pick < 0) pick = 0;
+    memcpy(&g_esStraggler, out + (size_t)pick * ES_ENTRY + 0xA8, 8);
+    uint8_t first[ES_ENTRY];
+    memcpy(first, out, ES_ENTRY);
+    memcpy(out, out + (size_t)pick * ES_ENTRY, ES_ENTRY);
+    memcpy(out + (size_t)pick * ES_ENTRY, first, ES_ENTRY);
+}
+
+/* 0x94BE10's detour. An array that is not one of the plan's (0x90E150 passes its own, for one row) goes straight on, as
+ * does a family no larger than its plan array. */
 static uint64_t EsSelect(void* a, void* roster, const uint8_t* rows, uint32_t count, ...)
 {
     va_list stack; /* the seven arguments the game passes on the stack, as they lie there */
@@ -135,15 +203,21 @@ static uint64_t EsSelect(void* a, void* roster, const uint8_t* rows, uint32_t co
     uint64_t flagA = va_arg(stack, uint64_t), flagB = va_arg(stack, uint64_t);
     va_end(stack);
     EsSelectFn next = (EsSelectFn)g_esSelectOriginal;
-    uint32_t cap = 0;
-    for (size_t k = 0; k < ES_KINDS; k++) if ((uintptr_t)outCount - (uintptr_t)out == kEsKinds[k].span) cap = kEsKinds[k].cap;
-    if (cap == 0 || count <= cap || count > g_esScratchRows) return next(a, roster, rows, count, out, outCount, level, players, tags, flagA, flagB);
+    size_t kind = ES_KINDS;
+    for (size_t k = 0; k < ES_KINDS; k++) if ((uintptr_t)outCount - (uintptr_t)out == kEsKinds[k].span) kind = k;
+    if (kind == ES_KINDS) return next(a, roster, rows, count, out, outCount, level, players, tags, flagA, flagB);
+    uint32_t cap = kEsKinds[kind].cap, got = 0;
+    uint64_t result;
     AcquireSRWLockExclusive(&g_esLock);
-    uint32_t got = 0;
-    uint64_t result = next(a, roster, rows, count, g_esScratch, &got, level, players, tags, flagA, flagB);
-    if (got > cap) InterlockedExchangeAdd(&g_esLeftOut, (LONG)(got - cap));
-    *outCount = got <= cap ? got : EsKeep(out, g_esScratch, got, cap);
-    if (got <= cap) memcpy(out, g_esScratch, (size_t)got * ES_ENTRY);
+    if (count <= cap || count > g_esScratchRows) result = next(a, roster, rows, count, out, outCount, level, players, tags, flagA, flagB);
+    else
+    {
+        result = next(a, roster, rows, count, g_esScratch, &got, level, players, tags, flagA, flagB);
+        if (got > cap) InterlockedExchangeAdd(&g_esLeftOut, (LONG)(got - cap));
+        *outCount = got <= cap ? got : EsKeep(out, g_esScratch, got, cap);
+        if (got <= cap) memcpy(out, g_esScratch, (size_t)got * ES_ENTRY);
+    }
+    if (kind == ES_STRAGGLERS) EsStraggler(out, *outCount);
     ReleaseSRWLockExclusive(&g_esLock);
     return result;
 }
@@ -160,6 +234,9 @@ static int EsGroupIn(uint32_t f, uint32_t key)
     for (uint64_t r = 0; g->rows != NULL && r < g->rowCount; r++) if (memcmp(g->rows + r * ER_ROW, &key, 4) == 0) return 1;
     return 0;
 }
+
+/* Guard squads (the game ships none) spawn through a plan entry as patrols do (0x94E580 to 0x953580, then 0x954DD3
+ * spawns the entry's squad entity), and the game's straggler rows hold the patrols' fixed fields: both take those. */
 
 /* A squad's row. Level 10 covers level 11 where difficulty.c already widened the game's rows (moved); else it widens
  * this one with them. The fields the SDK does not set are those every game squad of the kind has. */
@@ -308,12 +385,15 @@ static void EnemySquadsForget(void)
                 if (EsAt(g_esGrown[f][k].owner[r - g_esGrown[f][k].game])->gone) memset(g_esGrown[f][k].rows + r * ES_ROW, 0, 4);
 }
 
-/* What the plan arrays left out, at most every 10 s. */
+/* What the plan arrays left out, at most every 10 s; a mission's end frees the next one's straggler draw. */
 static void EnemySquadsWatch(void)
 {
+    int runs = ErMissionRuns();
+    if (g_esMissionRan && !runs) { AcquireSRWLockExclusive(&g_esLock); g_esStraggler = 0; ReleaseSRWLockExclusive(&g_esLock); }
+    g_esMissionRan = runs;
     LONG left = g_esLeftOut;
     if (left == g_esLeftOutReported || GetTickCount64() - g_esReportedAt < 10000) return;
     g_esReportedAt = GetTickCount64();
     g_esLeftOutReported = left;
-    Note("enemy squads: %ld squad(s) that fit a mission left out of its plan so far; a mission takes 96 kinds of patrol, 64 of encounter, 32 of outpost and 8 of the rest", (long)left);
+    Note("enemy squads: %ld squad(s) that fit a mission left out of its plan so far; a mission takes 96 kinds of patrol, 64 of encounter, 32 of outpost, guard and straggler, and 8 of the rest", (long)left);
 }
