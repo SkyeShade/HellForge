@@ -117,6 +117,8 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **A new HellForge logo.** The launcher, its window and desktop icon, the installer and the in-game editor show the
+  crown in its frame (#299).
 - **Vehicle damage zones have their names.** The editor's vehicle pages showed most zones as "Zone 0", "Zone 1" and
   so on. Every zone on all 11 vehicles now has the game's own name. The Bastion has its hull front, ammo boxes and side
   and track panels; the FRVs have their doors, hatches, lights and tyres. The exosuits' cockpit fronts and the GATER
