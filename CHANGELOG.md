@@ -112,6 +112,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **Vehicle damage zones have their names.** The editor's vehicle pages showed most zones as "Zone 0", "Zone 1" and
+  so on. Every zone on all 11 vehicles now has the game's own name. The Bastion has its hull front, ammo boxes and side
+  and track panels; the FRVs have their doors, hatches, lights and tyres. The exosuits' cockpit fronts and the GATER
+  rig's wheels are named too. Stats files keep their keys (`zone_3.armor`) (#329).
 - **New profiles start live-like.** The new `live-like` template is a starter profile until you run Sync Inventory.
   The sync then brings in everything it can from your live account: level, unlocks, ship modules, medals and samples,
   the ship's name and the tutorial progress. The premium warbonds you own open without a purchase in Forge Credits. It is the first profile of a new installation and the launcher's first choice. Existing profiles keep
