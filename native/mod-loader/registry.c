@@ -948,10 +948,11 @@ static OwnedTable* OwnedCopy(uint8_t* state, uint32_t c, uint32_t stride, uint32
     uint32_t recordBytes = bytes > slots * 16u ? bytes - slots * 16u : 0;
     uint32_t first = (recordBytes + stride - 1) / stride; /* the first record index after every vanilla byte */
     /* address space for RegRoom() records after the vanilla ones; pages committed as records are added (OwnRecord): an
-     * own_all entity copies every table, and the room committed at once would take about 216 KB for each record of it */
+     * own_all entity copies every table, and the room committed at once would take about 216 KB for each record of it.
+     * One record more is reserved for the space committed after the last one (OwnRecord). */
     uint32_t room = RegRoom();
     size_t vanillaBytes = 32 + (size_t)slots * 16 + (size_t)first * stride;
-    size_t size = vanillaBytes + (size_t)room * stride;
+    size_t size = vanillaBytes + ((size_t)room + 1) * stride;
     uint8_t* copy = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_READWRITE);
     if (copy == NULL) return NULL;
     if (VirtualAlloc(copy, vanillaBytes, MEM_COMMIT, PAGE_READWRITE) == NULL) { VirtualFree(copy, 0, MEM_RELEASE); return NULL; }
@@ -981,8 +982,11 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
     memcpy(&mine, row + 8, 4);
     if (baseEntity != entity && mine >= owned->first && mine < owned->next) return records + (size_t)mine * stride; /* its own already */
     if (owned->next >= owned->end) return NULL;
-    /* its page committed before the record is written or named (the copy reserves the room, OwnedCopy) */
-    if (VirtualAlloc(records + (size_t)owned->next * stride, stride, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
+    /* its pages committed before the record is written or named (the copy reserves the room, OwnedCopy), and a record's
+     * worth after it: the game reads past a record into the next one, which every record of its own tables has (Health,
+     * component 224: SyncedHealthComponent's spawn at game.dll 0x6B1A8D reads 0x6848 bytes of a 0x5650-byte record, so a
+     * called-in vehicle whose record was the last one committed ran into reserved memory) */
+    if (VirtualAlloc(records + (size_t)owned->next * stride, 2 * (size_t)stride, MEM_COMMIT, PAGE_READWRITE) == NULL) return NULL;
     uint32_t baseRecord, record = owned->next++;
     memcpy(&baseRecord, baseRow + 8, 4);
     memcpy(records + (size_t)record * stride, records + (size_t)baseRecord * stride, stride);
