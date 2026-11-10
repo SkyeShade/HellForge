@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "patches": [
+    {
+      "package": "hellforge/vehicle_model/box_buggy",
+      "load": "session",
+      "resources": [
+        {
+          "type": "unit",
+          "copy": "0xCC21C7FFD3EBEFB9",
+          "name": "hellforge/vehicle_model/box_buggy",
+          "mesh": { "obj": "models/box_buggy.obj", "parts": true }
+        }
+      ]
+    }
+  ]
+}
