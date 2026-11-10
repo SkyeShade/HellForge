@@ -100,7 +100,7 @@ On `dev`, since 0.4.0-beta.
 - **Room for 1,024 new stratagems across all mods (was 48).** The loadout picker's frame is sized for every type, and
   past 106 new stratagems the type travels in co-op in 16 bits instead of 8, so every player needs the same mods, as
   before. The picker still shows 256 cards, about 160 of them new ones
-  ([limits](docs/modding/content.md#limits)).
+  ([limits](docs/modding/content.md#limits); #342).
 
 ### Changed
 
@@ -138,7 +138,7 @@ On `dev`, since 0.4.0-beta.
 - **Mod stratagems no longer read past the loadout's level choices.** Six places in the game read a per-type choice
   that has only 150 entries for every stratagem, mod ones included, and two more could write there; they now see no
   choice for a mod stratagem. When the game loaded its stratagem settings again, the count of stratagems went back to
-  the vanilla 149 while mod stratagems stayed, and it now stays at the full list.
+  the vanilla 149 while mod stratagems stayed, and it now stays at the full list (#342).
 - **Direct3D 11 crashes in the Armory and at mission start.** Browsing armour crashed the game at
   `helldivers2.exe+0x732040`, and a slow PC could crash at `+0x626296` as a mission loaded. A freed texture is now bound
   empty instead of read, and a full job pool is waited out while jobs finish
