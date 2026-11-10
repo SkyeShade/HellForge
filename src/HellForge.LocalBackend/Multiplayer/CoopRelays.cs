@@ -32,6 +32,11 @@ public sealed class CoopRelays
         new(Environment.GetEnvironmentVariable("HELLFORGE_LINUX_NETNS") == "1", Environment.GetEnvironmentVariable("HELLFORGE_STEAM_UDP") == "1",
             Environment.GetEnvironmentVariable("HELLFORGE_STEAM_UDP_PROBLEM"), evidenceDirectory, log);
 
+    // A udp: link (several installations on one PC) reaches its peer over loopback: no relay is needed, so joins stay
+    // open whatever the switch says. Any other link follows the environment.
+    public static CoopRelays ForLink(string link, string evidenceDirectory, Action<string> log) =>
+        link.StartsWith("udp:", StringComparison.Ordinal) ? new(false, true, null, evidenceDirectory, log) : FromEnvironment(evidenceDirectory, log);
+
     // Whether a join can reach another machine.
     public bool Open
     {

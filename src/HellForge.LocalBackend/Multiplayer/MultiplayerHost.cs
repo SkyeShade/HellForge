@@ -130,7 +130,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         var (pipeName, link, modDigest, evidenceDirectory) = settings;
         var (accountKeys, modsFolder, directory, rejoinFile) = (settings.AccountKeys, settings.ModsFolder, settings.Directory, settings.RejoinFile);
         var host = new MultiplayerHost(settings);
-        host.Relays = settings.Relays ?? CoopRelays.FromEnvironment(evidenceDirectory, host.Log);
+        host.Relays = settings.Relays ?? CoopRelays.ForLink(link, evidenceDirectory, host.Log);
         host.Relays.LogState();
         host.transport?.Start();
         // The session's live-edit pipe is "hellforge-live-" + the run id, the pipe name's own suffix ("hellforge-<run id>").
