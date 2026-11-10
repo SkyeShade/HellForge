@@ -17,6 +17,9 @@ On `dev`, since 0.4.0-beta.
   guards, stragglers, outpost garrisons, reinforcements, border flyers, convoys or air support. `add_enemy_swap` adds
   a replacement rule. An enemy names the packages its entity needs, and HellForge loads them. No vanilla enemy is
   replaced, and any entity can be an enemy ([new enemies](docs/modding/enemies.md)).
+- **Entities built from parts (SDK 17).** `parts` in `register_entity` and `add_entity` takes each component's record
+  from an entity of your choice, with or without a base
+  ([an entity from parts](docs/modding/enemies.md#an-entity-from-parts)).
 - **Mods can animate their weapons.** A data spec's `animations` names a JSON file with the joints that move, their clips
   and the state machine that plays them on the game's events. HellForge builds the unit copy's own bones, clips and
   state machine from it ([animations](docs/modding/animations.md)). `HellForge.Cli unit-joints` lists a unit's joints,

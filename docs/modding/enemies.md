@@ -142,7 +142,8 @@ A planet or a mission turns tags on. Rows, squads and rules name them.
 
 ## What the entity needs
 
-Any entity the game has can be an enemy's unit. HellForge answers the game's reads that a vanilla enemy's data would:
+Any entity the game has can be an enemy's unit, one [built from parts](#an-entity-from-parts) with no base
+included. HellForge answers the game's reads that a vanilla enemy's data would:
 
 - **Packages.** The entity's resources must be loaded when it spawns, or the game crashes. A copy of a vanilla enemy
   shares its base's packages, which the mission loads for a roster row. For any other entity, name its packages in
@@ -151,6 +152,36 @@ Any entity the game has can be an enemy's unit. HellForge answers the game's rea
 - **Outposts.** An enemy with no `Behavior` record takes no garrison place: an outpost squad of its group stays unused.
 - **Dropships.** An enemy with no `SquadTransportFormation` record rides as a single-seat passenger.
 - **Free spawns.** Some spawns need the enemy's navigation record. An entity without one is skipped by those.
+
+## An entity from parts
+
+`parts` (SDK 17) builds an entity component by component instead of copying one base. Each part names a component and
+the entity whose record of it yours takes. Set `.size = sizeof(HfEntityDef)`.
+
+```c
+static const HfEntityPart bruteParts[] = {
+    {"UnitComponentData", HF_ENTITY_CHARGER},
+    {"HealthComponentData", HF_ENTITY_BILE_WARRIOR},
+    {"BehaviorComponentData", HF_ENTITY_RUPTURE_WARRIOR},
+    /* ... and every other component it needs */
+    {0}
+};
+static const HfEntityDef brute = {.size = sizeof brute, .name = "brute", .parts = bruteParts};
+```
+
+- With no `base`, the entity has the parts and no other component. With a `base`, a part replaces the base's record
+  of that component, or adds a component the base lacks.
+- A part's record is shared with the entity it comes from. The block's changes, or `own_all`, give yours a record
+  of its own, which you then edit freely.
+- A part may come from an entity your mod registered earlier.
+- The game sends some components' state to other players. Those components of your entity, taken together, must be
+  the ones some entity of the game has: yours takes that entity's network type. When no entity matches, yours is not
+  added, and your mod's log says so. Components that are not sent, such as `BehaviorComponentData`, are free.
+- HellForge refuses a list the game would crash on: a component whose record the entity named lacks, or one of the
+  four components that read `UnitComponentData`, `HealthComponentData` or `VehicleMotionComponentData` without them.
+- Records still have to fit together. A record that names bones or nodes of another model misbehaves in ways
+  HellForge cannot check, so take the records tied to a model from one entity, as [Model](content.md#model) lists them.
+- An entity from parts is added when the game starts, not by a mod set up while it runs.
 
 ## Limits and co-op
 

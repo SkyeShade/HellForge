@@ -133,6 +133,10 @@ static const SlotCount kSlots[] = {
 
 #include "component_sizes.h" /* kComponentShapes: every table's slots, records and record size (ComponentStride) */
 
+#define REG_MAX_PARTS 128
+#define REG_COMPONENT_SLOTS 324u /* the game's per-component function tables (0x581320's walks do not check) */
+typedef struct EntityPart { uint64_t from; uint32_t component; uint32_t unused; } EntityPart;
+
 typedef struct Weapon
 {
     HfMod* mod;
@@ -158,6 +162,9 @@ typedef struct Weapon
     char title[96];      /* add_entity: its title (HfEntity.title), or "" */
     char designation[64]; /* add_entity: its designation (HfEntity.designation), or "" */
     int tomb;            /* left by a mod a live change took out (live_content.c LiveTomb(LC_WEAPON, i)) */
+    EntityPart* parts;   /* add_entity: its components one by one (HfEntity.parts), never freed; NULL: its base's */
+    int partCount;
+    uint16_t* list;      /* its own component list, once registered from parts: the game holds the pointer */
 } Weapon;
 
 /* Mod text by id, answered by the text lookup detour: four for each weapon or entity (name, upper-case name, description,
@@ -610,8 +617,55 @@ static int EntityAddable(HfMod* mod, const HfEntity* def, const char* name, int 
     if (name == NULL || name[0] == 0 || strlen(name) >= sizeof g_weapons[0].name) { ApiLog(mod, "add_entity: it needs a name (under 192 bytes)"); return 0; }
     if (g_fired[HF_EVENT_ENTITIES_READY] && !live) { ApiLog(mod, "add_entity(%s): too late; call it from hellforge_mod_init", name); return 0; }
     if (!WeaponSlotFree()) { WeaponsFull(mod, "add_entity", name, live); return 0; }
-    if (def->base == 0) { ApiLog(mod, "add_entity(%s): it needs a base entity", name); return 0; }
+    int parts = def->size >= offsetof(HfEntity, parts) + sizeof def->parts && def->parts != NULL;
+    if (def->base == 0 && !parts) { ApiLog(mod, "add_entity(%s): it needs a base entity or parts", name); return 0; }
+    if (parts && live) { ApiLog(mod, "add_entity(%s): an entity from parts is added when the game starts, not while it runs", name); return 0; }
     return 1;
+}
+
+static const char* PartRefused(const Component* c, uint64_t from)
+{
+    if (c == NULL) return "HellForge does not know that component; see docs/sdk-reference.md";
+    if (c->index >= REG_COMPONENT_SLOTS) return "not a component an entity can list";
+    return from == 0 ? "it names no entity to take the record from" : NULL;
+}
+
+/* The mod's parts into w: 1 if refused (logged). A part of a component twice counts once, the later one. */
+static int EntityParts(HfMod* mod, const char* name, const HfEntity* def, Weapon* w)
+{
+    const HfEntityPart* p = def->size >= offsetof(HfEntity, parts) + sizeof def->parts ? def->parts : NULL;
+    int count = 0;
+    while (p != NULL && p[count].component != NULL) count++;
+    if (count == 0) return 0;
+    if (count > REG_MAX_PARTS || (w->parts = calloc((size_t)count, sizeof w->parts[0])) == NULL)
+    { ApiLog(mod, "add_entity(%s): too many parts (%d, at most %d)", name, count, REG_MAX_PARTS); return 1; }
+    for (int i = 0; i < count; i++)
+    {
+        const Component* c = ComponentNamed(p[i].component);
+        const char* why = PartRefused(c, p[i].from);
+        if (why != NULL) { ApiLog(mod, "add_entity(%s): part %s: %s", name, p[i].component, why); return 1; }
+        int at = 0;
+        while (at < w->partCount && w->parts[at].component != c->index) at++;
+        w->parts[at] = (EntityPart){p[i].from, c->index, 0};
+        w->partCount += at == w->partCount;
+    }
+    return 0;
+}
+
+/* The entity whose record of component c the weapon takes: a part's (HfEntity.parts), else its base. */
+static uint64_t Donor(const Weapon* w, uint32_t c, uint64_t baseEntity)
+{
+    for (int i = 0; i < w->partCount; i++) if (w->parts[i].component == c) return w->parts[i].from;
+    return baseEntity;
+}
+
+static void EntityAdding(HfMod* mod, const Weapon* w, const char* name, uint64_t base)
+{
+    if (w->partCount) ApiLog(mod, "adding entity %s (%016llx) from %d part(s)%s", name, (unsigned long long)w->entity, w->partCount, base ? " over its base" : "");
+    else if (w->ownAll) ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx with records of its own in every component", name,
+        (unsigned long long)w->entity, (unsigned long long)base);
+    else ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx, %d record(s) of its own", name, (unsigned long long)w->entity,
+        (unsigned long long)base, w->ownCount);
 }
 
 /* What the mod's HfEntity gives it besides its base: a unit, a behaviour, another entity's model, own_all. */
@@ -668,15 +722,12 @@ static uint64_t ApiAddEntity(HfMod* mod, const HfEntity* def)
     snprintf(w.name, sizeof w.name, "%s", name);
     EntityOptions(def, &w);
     EntityText(def, name, &w);
-    if (OwnComponents(mod, "add_entity", name, def->own_components, &w)) return 0;
+    if (OwnComponents(mod, "add_entity", name, def->own_components, &w) || EntityParts(mod, name, def, &w)) return 0;
     w.state = live ? 2 : 0;
     g_weapons[g_weaponCount] = w;
     MemoryBarrier(); /* the entry is whole before the count shows it */
     g_weaponCount++;
-    if (w.ownAll) ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx with records of its own in every component", name,
-        (unsigned long long)entity, (unsigned long long)def->base);
-    else ApiLog(mod, "adding entity %s (%016llx) as a copy of %016llx, %d record(s) of its own", name, (unsigned long long)entity,
-        (unsigned long long)def->base, w.ownCount);
+    EntityAdding(mod, &w, name, def->base);
     return entity;
 }
 
@@ -912,7 +963,7 @@ static uint8_t* OwnRecord(uint8_t* state, uint32_t c, uint32_t stride, uint64_t 
     OwnedTable* owned = OwnedCopy(state, c, stride, slots, table);
     if (owned == NULL) return NULL;
     uint8_t* records = owned->index + (size_t)slots * 16;
-    uint8_t* baseRow = FindRow(owned->index, slots, 16, baseEntity);
+    uint8_t* baseRow = baseEntity != 0 ? FindRow(owned->index, slots, 16, baseEntity) : NULL; /* key 0 is a free row */
     uint8_t* row = FindRow(owned->index, slots, 16, entity);
     if (baseRow == NULL || row == NULL || owned->stride != stride) return NULL;
     uint32_t mine;
