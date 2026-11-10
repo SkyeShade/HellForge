@@ -133,7 +133,7 @@ static class HellForgeWarTests
                 check(server.Seen("/v1/mission/heartbeat").Count <= beats + 1, "Heartbeats went on after the mission ended.");
                 check(Poll.Until(() => { lock (log) return log.Any(l => l.Contains("impact 1234.5", StringComparison.Ordinal)); }, 5), "The impact was not logged.");
 
-                // An abandoned operation stops its mission's heartbeats, with no end reported.
+                // An abandoned operation ends its mission as lost, and its heartbeats stop.
                 await Post("/Operation/Create", "{\"operations\":[{\"id\":32,\"planetIndex\":5,\"difficulty\":3,\"race\":3}]}");
                 await Post("/Operation/Mission/Start", "{\"operationId\":32,\"missionIndex\":0}");
                 check(Poll.Until(() => server.Seen("/v1/mission/start").Count == 2, 10), "The second mission start was not reported.");
@@ -141,7 +141,9 @@ static class HellForgeWarTests
                 await Task.Delay(300);
                 var afterAbandon = server.Seen("/v1/mission/heartbeat").Count;
                 await Task.Delay(400);
-                check(server.Seen("/v1/mission/heartbeat").Count <= afterAbandon + 1 && server.Seen("/v1/mission/end").Count == 1, "An abandoned mission kept beating or was ended.");
+                check(server.Seen("/v1/mission/heartbeat").Count <= afterAbandon + 1, "An abandoned mission kept beating.");
+                check(Poll.Until(() => server.Seen("/v1/mission/end").Count == 2, 10) && server.Seen("/v1/mission/end")[1].Body.EndsWith(",\"success\":false}", StringComparison.Ordinal),
+                    "An abandoned mission was not reported as lost.");
 
                 // A server that hangs, then one that refuses, then one that is gone: the game's replies are the same and prompt.
                 var withServer = ended;

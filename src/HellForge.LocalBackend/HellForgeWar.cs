@@ -316,27 +316,35 @@ public sealed class HellForgeWar : IServedWar, IAsyncDisposable
             var mission = (body.TryGetProperty("missionId", out var id) && id.ValueKind == JsonValueKind.String && running.TryGetValue(id.GetString()!, out var byId) ? byId : null)
                 ?? (running.TryGetValue((Long(body, "operationId") ?? -1) + "/" + (Long(body, "missionIndex") ?? 0).ToString(CultureInfo.InvariantCulture), out var byIndex) ? byIndex : null);
             if (mission == null) return;
-            Forget(mission);
             var success = body.TryGetProperty("missionSuccess", out var won) && won.ValueKind == JsonValueKind.True;
-            _ = Track(async () =>
-            {
-                if (await mission.Ticket is not { } ticket) return 0;
-                using var reply = await PostAsync("v1/mission/end", new JsonObject { ["ticket"] = ticket, ["success"] = success }, CancellationToken.None);
-                if (reply != null)
-                    log($"Mission end reported ({(success ? "won" : "lost")}): impact {(reply.RootElement.TryGetProperty("impact", out var impact) ? impact.GetRawText() : "none")}" +
-                        (reply.RootElement.TryGetProperty("capped", out var capped) && capped.ValueKind == JsonValueKind.True ? ", capped." : "."));
-                return 0;
-            });
+            End(mission, success, success ? "won" : "lost");
         }
         catch (Exception error) when (error is InvalidOperationException or FormatException or OverflowException) { log($"A mission end was not reported ({error.Message})."); }
     }
 
-    // POST /Operation/Abandon: its missions' heartbeats stop (the server lets an unended ticket lapse).
+    // POST /Operation/Abandon: its running missions end as lost, so the server stops counting the player at once (a
+    // ticket nobody ends only lapses after its heartbeats stop).
     public void OperationAbandoned(JsonElement body)
     {
         if (!Reports) return;
         var operationId = body.ValueKind == JsonValueKind.Object ? Long(body, "operationId") ?? Long(body, "id") : null;
-        foreach (var mission in running.Values.Distinct().Where(m => operationId == null || m.Operation == operationId)) Forget(mission);
+        foreach (var mission in running.Values.Distinct().Where(m => operationId == null || m.Operation == operationId).ToList())
+            End(mission, false, "abandoned");
+    }
+
+    // The mission's end, reported in the background; its heartbeat stops.
+    void End(Running mission, bool success, string how)
+    {
+        Forget(mission);
+        _ = Track(async () =>
+        {
+            if (await mission.Ticket is not { } ticket) return 0;
+            using var reply = await PostAsync("v1/mission/end", new JsonObject { ["ticket"] = ticket, ["success"] = success }, CancellationToken.None);
+            if (reply != null)
+                log($"Mission end reported ({how}): impact {(reply.RootElement.TryGetProperty("impact", out var impact) ? impact.GetRawText() : "none")}" +
+                    (reply.RootElement.TryGetProperty("capped", out var capped) && capped.ValueKind == JsonValueKind.True ? ", capped." : "."));
+            return 0;
+        });
     }
 
     void Forget(Running mission)
