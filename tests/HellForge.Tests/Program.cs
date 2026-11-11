@@ -807,6 +807,7 @@ WineserverWaitTests.Register(Test, Check, Reject, root);
 LinuxPrefixCaseTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
 GameCatalogTests.Register(Test, Check, Reject, root);
+EarlySessionFailureTests.Register(Test, Check, root);
 CaptureGameEndTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);
