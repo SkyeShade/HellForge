@@ -1269,6 +1269,10 @@ typedef struct HfGenerationCapacity
     uint32_t block_bytes;     /* filled in: the size of the generator's block with these capacities */
     uint32_t moved;           /* filled in: 1 once the game's code uses these capacities (level 11 is installed
                                  with them), 0 before that or when it kept its own arrays */
+    /* Lists HellForge leaves where the game has them unless a mod asks for more than the game's own places:
+     * the important locations (objectives, extraction, outposts, points of interest and their satellites: 256, up
+     * to 1024) and the linked ones (a satellite and the location it belongs to: 64, up to 1024). */
+    uint32_t important_locations, linked_locations;
 } HfGenerationCapacity;
 
 typedef struct HfApi

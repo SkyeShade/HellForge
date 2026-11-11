@@ -65,16 +65,33 @@
 /* The places above are the layout when no mod asked for more (generation_capacity): the regions follow each other in
  * this order, so more places in one move every later one, and the layout is worked out from the capacities. */
 enum { GEN_A, GEN_B, GEN_TYPES, GEN_P, GEN_S, GEN_U, GEN_V, GEN_STAMPS, GEN_OBJLIST, GEN_PLACES, GEN_PLACE_SET, GEN_CLUSTERS, GEN_REGIONS };
+/* Lists the block's move leaves alone: each moves to the end, after the clusters, only when a mod asks for more than the
+ * game's own places (region bytes 0: it stays where it is). */
+enum { GEN_IMPORTANT = GEN_REGIONS, GEN_LINKED, GEN_ALL };
+enum { GEN_FIELD_IMPORTANT = 5, GEN_FIELD_LINKED, GEN_FIELDS };
 typedef struct GenerationLayout
 {
     HfGenerationCapacity caps;
-    struct { uint32_t at, bytes; } region[GEN_REGIONS];
+    struct { uint32_t at, bytes; } region[GEN_ALL];
     uint32_t minimapScale, objectiveList, block;
 } GenerationLayout;
 #define DIF_MINIMAP_STEP 0x1000u /* the proxies' vanilla places: the minimap's four arrays grow by whole multiples */
-/* {HellForge's own, the most a request gets}. Locations: the stamp index keeps a location's id in 16 bits (0xF35054). */
-static const uint32_t kGenerationLimits[5][2] = {{DIF_LOCATIONS, 65024u}, {4u * DIF_MINIMAP_STEP, 8u * DIF_MINIMAP_STEP},
-    {DIF_STAMPS, 16384u}, {DIF_PLACES, 8192u}, {DIF_PLACE_SET, 4096u}};
+/* {HellForge's own or, for a list it leaves alone, the game's; the most a request gets}. Locations: the stamp index keeps
+ * a location's id in 16 bits (0xF35054). Important locations: the cities' flags hold 1024 (difficulty_cities.c). */
+static const uint32_t kGenerationLimits[GEN_FIELDS][2] = {{DIF_LOCATIONS, 65024u}, {4u * DIF_MINIMAP_STEP, 8u * DIF_MINIMAP_STEP},
+    {DIF_STAMPS, 16384u}, {DIF_PLACES, 8192u}, {DIF_PLACE_SET, 4096u}, {256u, 1024u}, {64u, 1024u}};
+#include "important_sites.h"
+/* A list moved on request: its region and capacity field, where the game has it, an element's size, and its sites. */
+typedef struct GenerationExtra
+{
+    uint8_t region, field;
+    uint32_t old, element;
+    const LocationSite* refs; uint32_t refCount;
+    const LocationSite* caps; uint32_t capCount;
+} GenerationExtra;
+static const GenerationExtra kGenerationExtras[GEN_ALL - GEN_REGIONS] = {
+    {GEN_IMPORTANT, GEN_FIELD_IMPORTANT, 0x8996B0u, 0x108u, kImportantRefs, sizeof kImportantRefs / sizeof kImportantRefs[0], NULL, 0},
+    {GEN_LINKED, GEN_FIELD_LINKED, 0x8AB6C0u, 0x18u, kLinkedRefs, sizeof kLinkedRefs / sizeof kLinkedRefs[0], NULL, 0}};
 static HfGenerationCapacity g_generationWant; /* the largest of every mod's request; 0 where none asked */
 static GenerationLayout g_generation;         /* worked out when first needed (block 0: not yet) */
 static int g_generationMoved;                 /* the game's code uses g_generation */
@@ -82,7 +99,8 @@ static volatile LONG* g_stampsLeftOut;        /* mission stamps past the list's 
 
 static uint32_t* GenerationField(HfGenerationCapacity* c, int i)
 {
-    uint32_t* const fields[5] = {&c->locations, &c->minimap_proxies, &c->mission_stamps, &c->places, &c->place_set};
+    uint32_t* const fields[GEN_FIELDS] = {&c->locations, &c->minimap_proxies, &c->mission_stamps, &c->places, &c->place_set,
+        &c->important_locations, &c->linked_locations};
     return fields[i];
 }
 
@@ -92,11 +110,11 @@ static void GenerationLayoutOf(const HfGenerationCapacity* want, GenerationLayou
     memset(l, 0, sizeof *l);
     l->caps = *want;
     l->caps.size = sizeof l->caps;
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < GEN_FIELDS; i++)
     {
         uint32_t* field = GenerationField(&l->caps, i), unit = i == 1 ? DIF_MINIMAP_STEP : 16u;
-        if (*field < kGenerationLimits[i][0]) *field = kGenerationLimits[i][0];
-        *field = (*field + unit - 1) / unit * unit;
+        if (*field <= kGenerationLimits[i][0]) *field = kGenerationLimits[i][0];
+        else *field = (*field + unit - 1) / unit * unit;
     }
     uint32_t k = l->minimapScale = l->caps.minimap_proxies / DIF_MINIMAP_STEP;
     const uint32_t bytes[GEN_REGIONS] = {l->caps.locations * 0xE0u, l->caps.locations * 0x40u, DIF_LOCATION_TYPES * 0x10u,
@@ -104,6 +122,16 @@ static void GenerationLayoutOf(const HfGenerationCapacity* want, GenerationLayou
         DIF_PLACES_NEW - DIF_OBJLIST_REGION, l->caps.places * 8u, l->caps.place_set * 0x10u, DIF_CLUSTERS * 0xE0u};
     uint32_t at = DIF_LOCATIONS_A_NEW;
     for (int i = 0; i < GEN_REGIONS; i++) { l->region[i].at = at; l->region[i].bytes = bytes[i]; at += bytes[i]; }
+    for (int i = 0; i < GEN_ALL - GEN_REGIONS; i++)
+    {
+        const GenerationExtra* x = &kGenerationExtras[i];
+        uint32_t places = *GenerationField(&l->caps, x->field);
+        if (places <= kGenerationLimits[x->field][0]) continue;
+        at = ((at + 0xFu) & ~0xFu) + x->old % 16u; /* as the game has it within 16 bytes: its code may load it aligned */
+        l->region[x->region].at = at; l->region[x->region].bytes = places * x->element;
+        at += places * x->element;
+    }
+    at = (at + 0xFu) & ~0xFu;
     l->objectiveList = l->region[GEN_OBJLIST].at + (DIF_OBJLIST_NEW - DIF_OBJLIST_REGION);
     l->caps.block_bytes = l->block = at;
 }
@@ -120,10 +148,10 @@ static const char* GenerationMerge(HfGenerationCapacity* all, const HfGeneration
     HfGenerationCapacity w = {0};
     if (want->size < offsetof(HfGenerationCapacity, place_set) + sizeof want->place_set) return "its size is not set (HfGenerationCapacity want = {sizeof want})";
     memcpy(&w, want, want->size < sizeof w ? want->size : sizeof w);
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < GEN_FIELDS; i++)
         if (*GenerationField(&w, i) > kGenerationLimits[i][1])
-            return "locations are at most 65024, minimap_proxies 32768, mission_stamps 16384, places 8192, place_set 4096";
-    for (int i = 0; i < 5; i++)
+            return "a capacity is over its limit (hellforge_mod.h, HfGenerationCapacity, has each field's)";
+    for (int i = 0; i < GEN_FIELDS; i++)
         if (*GenerationField(&w, i) > *GenerationField(all, i)) *GenerationField(all, i) = *GenerationField(&w, i);
     return NULL;
 }
@@ -341,18 +369,41 @@ static const uint8_t kStampAppendStub[33] = {
 /* NULL when no two regions overlap, each holds its capacity and the block ends with the last one. */
 static const char* GenerationRegionsFailed(const GenerationLayout* l)
 {
-    const uint32_t places[GEN_REGIONS][2] = {{l->caps.locations, 0xE0u}, {l->caps.locations, 0x40u}, {DIF_LOCATION_TYPES, 0x10u},
+    uint32_t places[GEN_ALL][2] = {{l->caps.locations, 0xE0u}, {l->caps.locations, 0x40u}, {DIF_LOCATION_TYPES, 0x10u},
         {0x1000u * l->minimapScale, 0x30u}, {0x800u * l->minimapScale, 0x58u}, {0x1000u * l->minimapScale, 4u}, {0x4000u * l->minimapScale, 4u},
         {l->caps.mission_stamps, 0x10u}, {1u, DIF_PLACES_NEW - DIF_OBJLIST_REGION}, {l->caps.places, 8u}, {l->caps.place_set, 0x10u}, {DIF_CLUSTERS, 0xE0u}};
+    uint32_t phase[GEN_ALL] = {0};
+    for (int i = 0; i < GEN_ALL - GEN_REGIONS; i++)
+    {
+        const GenerationExtra* x = &kGenerationExtras[i];
+        HfGenerationCapacity caps = l->caps;
+        places[x->region][0] = *GenerationField(&caps, x->field); places[x->region][1] = x->element;
+        phase[x->region] = x->old % 16u;
+    }
     uint32_t end = kGenerationBlockSize[0].value; /* the game's own block: its arrays stay where they are */
-    for (int i = 0; i < GEN_REGIONS; i++)
+    for (int i = 0; i < GEN_ALL; i++)
     {
         uint32_t at = l->region[i].at, bytes = l->region[i].bytes;
-        if (at < end || at % 16u != 0 || bytes == 0 || bytes > 0x7FFFFFFFu - at) return "two regions of the generation block's layout overlap";
+        if (i >= GEN_REGIONS && bytes == 0 && at == 0) continue; /* a list left where the game has it */
+        if (at < end || at % 16u != phase[i] || bytes == 0 || bytes > 0x7FFFFFFFu - at) return "two regions of the generation block's layout overlap";
         if ((uint64_t)places[i][0] * places[i][1] != bytes) return "a capacity of the generation block is not its region's";
         end = at + bytes;
     }
-    return l->block != end ? "the generation block's size is not its layout's end" : NULL;
+    return l->block != ((end + 0xFu) & ~0xFu) ? "the generation block's size is not its layout's end" : NULL;
+}
+
+/* A moved list's reference: its field's offset kept. */
+static uint32_t ExtraMovedIn(const GenerationLayout* l, const GenerationExtra* x, uint32_t value) { return l->region[x->region].at + (value - x->old); }
+
+static const char* ExtraRefsFailed(const GenerationLayout* l)
+{
+    for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++)
+    {
+        const GenerationExtra* x = &kGenerationExtras[e];
+        for (uint32_t i = 0; l->region[x->region].bytes != 0 && i < x->refCount; i++)
+            if (!GEN_INSIDE(l, x->region, ExtraMovedIn(l, x, x->refs[i].value))) return "a reference to a list moved on request would leave it";
+    }
+    return NULL;
 }
 
 /* NULL when every value the move writes addresses its own region. */
@@ -368,7 +419,7 @@ static const char* GenerationRefsFailed(const GenerationLayout* l)
         uint32_t value = ObjectiveListValue(l, i, &kind);
         if (kind != 0 && !GEN_INSIDE(l, GEN_OBJLIST, kind == 2 ? 0u - value : value)) return "an objective list reference would leave the list";
     }
-    return NULL;
+    return ExtraRefsFailed(l);
 }
 
 /* Run before anything is written: a layout that fails moves nothing. */
@@ -400,6 +451,25 @@ static const char* LocationRefsFailed(uintptr_t game)
     return NULL;
 }
 
+/* The sites of each list a request moves: the reviewed ones, or the list cannot follow the block's layout. */
+static const char* GenerationExtrasFailed(uintptr_t game)
+{
+    const GenerationLayout* l = Generation();
+    for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++)
+    {
+        const GenerationExtra* x = &kGenerationExtras[e];
+        if (l->region[x->region].bytes == 0) continue;
+        for (uint32_t i = 0; i < x->refCount + x->capCount; i++)
+        {
+            const LocationSite* site = i < x->refCount ? &x->refs[i] : &x->caps[i - x->refCount];
+            uint32_t value = 0;
+            if (SafeRead(game + site->rva + site->at, &value, 4) || value != site->value)
+                return "a list a mod's generation capacity moves is not the reviewed one";
+        }
+    }
+    return NULL;
+}
+
 static const char* ObjectiveListFailed(uintptr_t game)
 {
     if (!DifficultyNeedsBlock()) return NULL;
@@ -410,6 +480,8 @@ static const char* ObjectiveListFailed(uintptr_t game)
             memcmp(bytes, kObjectiveListSites[i].pin, kObjectiveListSites[i].length) != 0)
             return "the map generator's objective list is not the reviewed one (more objectives need it)";
     }
+    const char* extras = GenerationExtrasFailed(game);
+    if (extras != NULL) return extras;
     uint8_t append[7];
     if (g_generationAsked && (SafeRead(game + DIF_STAMP_APPEND_SITE, append, 7) || memcmp(append, kStampAppendPin, 7) != 0))
         return "the mission stamps' append is not the reviewed one (a mod's generation capacity needs it)";
@@ -515,6 +587,37 @@ static const char* RaiseClusterCounts(uintptr_t game)
     return NULL;
 }
 
+/* The lists a request moves: their references, and the capacities the game reads. */
+static const char* MoveGenerationExtras(uintptr_t game)
+{
+    const GenerationLayout* l = Generation();
+    for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++)
+    {
+        const GenerationExtra* x = &kGenerationExtras[e];
+        if (l->region[x->region].bytes == 0) continue;
+        HfGenerationCapacity caps = l->caps;
+        uint32_t places = *GenerationField(&caps, x->field);
+        for (uint32_t i = 0; i < x->refCount; i++)
+        {
+            uint32_t moved = ExtraMovedIn(l, x, x->refs[i].value);
+            if (ApiWrite(game + x->refs[i].rva + x->refs[i].at, &moved, 4)) return "a list moved on request could not be moved";
+        }
+        for (uint32_t i = 0; i < x->capCount; i++)
+            if (ApiWrite(game + x->caps[i].rva + x->caps[i].at, &places, 4)) return "a capacity raised on request could not be raised";
+        Note("difficulty: a list moved on request: G+0x%X now G+0x%X with %u places (%u instructions, %u capacities)", x->old, l->region[x->region].at, places, x->refCount, x->capCount);
+    }
+    return NULL;
+}
+
+/* Where the important locations are in a block and how many it holds: the game's own place unless a request moved them. */
+static uint32_t ImportantLocations(uint32_t* places)
+{
+    const GenerationLayout* l = Generation();
+    int moved = g_generationMoved && l->region[GEN_IMPORTANT].bytes != 0;
+    *places = moved ? l->caps.important_locations : 256u;
+    return moved ? l->region[GEN_IMPORTANT].at : DIF_OBJECTIVE_LOCATIONS;
+}
+
 /* With a request, the mission stamps' append stops at the list's places (no request: the game's own append stays). */
 static const char* GuardMissionStamps(uintptr_t game)
 {
@@ -561,7 +664,7 @@ static const char* MoveGenerationBlock(DifficultyInstall* d)
     const char* layout = GenerationLayoutFailed(l);
     if (layout != NULL) return layout;
     static const char* (*const moves[])(uintptr_t game) = {MoveLocations, MoveLocationTypes, MoveMinimapAndStamps, MoveObjectivePlaces, RaiseClusterCounts,
-        GuardMissionStamps};
+        GuardMissionStamps, MoveGenerationExtras};
     for (size_t i = 0; i < sizeof moves / sizeof moves[0]; i++)
     {
         const char* why = moves[i](d->game);

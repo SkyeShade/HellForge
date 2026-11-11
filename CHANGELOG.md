@@ -228,6 +228,9 @@ On `dev`, since 0.4.0-beta.
   of locations, minimap shapes, mission stamps and objective places for the largest request among the installed mods.
   The mod need not be the one that added the level. Without a request nothing changes
   ([room in the map generator](docs/modding/hooks.md#room-in-the-map-generator)) (#364).
+- **More lists a mod can enlarge on level-11 maps.** `generation_capacity` also takes the important locations
+  (objectives, outposts, points of interest and their satellites) and the linked locations, up to 1024 each. They stay
+  as the game has them unless a mod asks, and mods built before these fields keep working.
 - **Your own pixel shaders in data mods.** A data spec's `shader` resource puts a compiled shader in one of three hosts,
   `decal`, `transparent` or `refract`, and HellForge builds the materials and a unit for it. A shader that does not fit
   its host is refused with the reason, shader headers name what each host can read, and a mod with a shader counts as

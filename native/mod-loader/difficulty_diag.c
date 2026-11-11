@@ -407,8 +407,10 @@ static void NoteMissionMap(void)
         Note("difficulty: the mission's destruction-record map: %u of %u slots used (%u static records), %ld setup(s) kept level 10's slots",
             used, slotCount, statics, g_recordKept);
     }
-    Note("difficulty: the mission's map (type %u): important locations %u of 256 (cities flag 1024), city walls %u / %u / %u of 64 / 128 / 128, vertices %u of 975, route cells %u of 1024, edges %u of 1621, locations %u of %u",
-        type, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[7], counts[6], Generation()->caps.locations);
+    uint32_t importantPlaces;
+    ImportantLocations(&importantPlaces);
+    Note("difficulty: the mission's map (type %u): important locations %u of %u (cities flag 1024), city walls %u / %u / %u of 64 / 128 / 128, vertices %u of 975, route cells %u of 1024, edges %u of 1621, locations %u of %u",
+        type, counts[0], importantPlaces, counts[1], counts[2], counts[3], counts[4], counts[5], counts[7], counts[6], Generation()->caps.locations);
 }
 
 static int WatchLaunch(void)

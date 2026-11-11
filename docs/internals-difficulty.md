@@ -278,6 +278,12 @@ Three things follow from a layout that moves:
 - **A guard on the mission stamps.** Their append (0xF8E935) takes no capacity. With a request, a stub at 0xF8E925
   leaves out a stamp past the last place and counts it.
 
+Two more lists move only when a mod asks for more than the game's places: the important locations (G+0x8996B0, 256 x
+0x108, 129 instructions) and the linked locations (G+0x8AB6C0, 64 x 0x18, 7 instructions). They go after the clusters,
+and each keeps its place within 16 bytes. No instruction addresses a later element by a fixed offset, so the first
+element's references carry the whole list. The terrain step's own reader follows the moved list. Important locations
+stop at 1024, the size of the cities' flags.
+
 A request makes the level need the moved block, even a level with no larger map or extra objectives. A level added
 while the game runs keeps the arrays it found. Locations stop at 65024 because the stamp index keeps a location's id in
 16 bits (0xF35054).

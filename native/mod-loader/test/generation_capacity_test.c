@@ -2,7 +2,7 @@
  * the layout and every byte the move writes are the fixed ones this file keeps; a large request keeps its regions apart
  * and every reference inside its own. Included by stats_test.c. */
 
-#define GC_IMAGE 0x1800000u /* past the last site (0x177DECD) */
+#define GC_IMAGE 0x1900000u /* past the last site (0x18B63A3) */
 
 static uint8_t* GcImage(void)
 {
@@ -22,6 +22,13 @@ static uint8_t* GcImage(void)
     GC_PLANT(kClusterRefs, 16);
     GC_PLANT(kClusterCaps, 16);
     #undef GC_PLANT
+    for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++)
+        for (uint32_t i = 0; i < kGenerationExtras[e].refCount + kGenerationExtras[e].capCount; i++)
+        {
+            const GenerationExtra* x = &kGenerationExtras[e];
+            const LocationSite* site = i < x->refCount ? &x->refs[i] : &x->caps[i - x->refCount];
+            memcpy(game + site->rva + site->at, &site->value, 4);
+        }
     memcpy(game + kClusterCountSites[0].site, kClusterCountPinA, 9); memcpy(game + kClusterCountSites[1].site, kClusterCountPinB, 7);
     for (int i = 0; i < 74; i++) memcpy(game + kObjectiveListSites[i].rva, kObjectiveListSites[i].pin, kObjectiveListSites[i].length);
     memcpy(game + DIF_STAMP_APPEND_SITE, kStampAppendPin, sizeof kStampAppendPin);
@@ -67,6 +74,20 @@ static void GenerationDefaultFixture(const uint8_t* game)
     assert(l.caps.locations == 8192 && l.caps.minimap_proxies == 16384 && l.caps.mission_stamps == 1024 && l.caps.places == 512 && l.caps.place_set == 256);
     assert(GenerationLayoutFailed(&l) == NULL && !g_generationAsked && !memcmp(Generation(), &l, sizeof l));
     for (int i = 0, kind; i < 74; i++) assert(ObjectiveListValue(&l, i, &kind) == kObjectiveListSites[i].value);
+    /* the lists moved only on request stay where the game has them, with its places */
+    uint32_t places = 0;
+    for (int i = GEN_REGIONS; i < GEN_ALL; i++) assert(l.region[i].at == 0 && l.region[i].bytes == 0);
+    assert(l.caps.important_locations == 256 && l.caps.linked_locations == 64 && ImportantLocations(&places) == 0x8996B0u && places == 256);
+    /* the install's own steps write none of those lists' sites (this image holds zeros there): a request can move them
+     * after every other step */
+    for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++)
+        for (uint32_t i = 0; i < kGenerationExtras[e].refCount + kGenerationExtras[e].capCount; i++)
+        {
+            const GenerationExtra* x = &kGenerationExtras[e];
+            const LocationSite* site = i < x->refCount ? &x->refs[i] : &x->caps[i - x->refCount];
+            static const uint8_t zeros[16];
+            assert(!memcmp(game + site->rva, zeros, site->at + 4u));
+        }
     /* nothing of a request's is installed, and the mod reads the moved block's capacities */
     static const uint8_t untouched[7];
     assert(!memcmp(game + DIF_STAMP_APPEND_SITE, untouched, 7) && g_stampsLeftOut == NULL);
@@ -87,12 +108,28 @@ static void GenerationCapacityFixture(void)
     over.places = 600; over.locations = 65025;
     assert(GenerationMerge(&all, &a) == NULL && GenerationMerge(&all, &b) == NULL && GenerationMerge(&all, &over) != NULL && GenerationMerge(&all, &unsized) != NULL);
     assert(all.locations == 65024 && all.minimap_proxies == 20000 && all.mission_stamps == 2000 && all.places == 100 && all.place_set == 0);
+    /* a mod built with the struct's first fields only: its request counts, the later lists stay, and no more than its
+     * size is filled in */
+    struct { HfGenerationCapacity c; uint32_t after; } early = {{offsetof(HfGenerationCapacity, important_locations)}, 0xA5A5A5A5u};
+    early.c.important_locations = 0xA5A5A5A5u; early.c.linked_locations = 0xA5A5A5A5u; /* not the mod's: past its size */
+    early.c.place_set = 300;
+    assert(GenerationMerge(&all, &early.c) == NULL && all.place_set == 300 && all.important_locations == 0 && all.linked_locations == 0);
+    assert(ApiGenerationCapacity(&g_mods[0], NULL, &early.c) == 0 && early.c.size == offsetof(HfGenerationCapacity, important_locations) &&
+        early.c.moved == 1 && early.c.important_locations == 0xA5A5A5A5u && early.c.linked_locations == 0xA5A5A5A5u && early.after == 0xA5A5A5A5u);
+    all.place_set = 0;
+    over.locations = 0; over.places = 0; over.important_locations = 1025;
+    assert(GenerationMerge(&all, &over) != NULL && all.important_locations == 0);
+    a.important_locations = 1000; a.linked_locations = 100;
+    assert(GenerationMerge(&all, &a) == NULL && all.important_locations == 1000 && all.linked_locations == 100);
     GenerationLayout l, bad;
     GenerationLayoutOf(&all, &l);
     assert(l.caps.locations == 65024 && l.caps.minimap_proxies == 20480 && l.minimapScale == 5 && l.caps.mission_stamps == 2000 && l.caps.places == 512 && l.caps.place_set == 256);
     assert(GenerationLayoutFailed(&l) == NULL);
-    for (int i = 0; i + 1 < GEN_REGIONS; i++) assert(l.region[i].at + l.region[i].bytes <= l.region[i + 1].at);
-    assert(l.region[GEN_A].at >= 0x11A7268u && l.region[GEN_CLUSTERS].at + l.region[GEN_CLUSTERS].bytes == l.block);
+    for (int i = 0; i + 1 < GEN_ALL; i++) assert(l.region[i].bytes != 0 && l.region[i].at + l.region[i].bytes <= l.region[i + 1].at);
+    assert(l.region[GEN_A].at >= 0x11A7268u && l.region[GEN_ALL - 1].at + l.region[GEN_ALL - 1].bytes <= l.block && l.block % 16u == 0);
+    assert(l.caps.important_locations == 1008 && l.region[GEN_IMPORTANT].bytes == 1008u * 0x108u && l.caps.linked_locations == 112 &&
+        l.region[GEN_LINKED].bytes == 112u * 0x18u);
+    for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++) assert(l.region[kGenerationExtras[e].region].at % 16u == kGenerationExtras[e].old % 16u);
     /* the objective list lies past the grown arrays, and the negated displacement follows it */
     assert(l.objectiveList > l.region[GEN_STAMPS].at && l.objectiveList != 0x15AD370u);
     int negated = 0;
@@ -109,9 +146,12 @@ static void GenerationCapacityFixture(void)
     bad = l; bad.objectiveList = 0x15AD370u; assert(GenerationLayoutFailed(&bad) != NULL);
     bad = l; bad.block += 16; assert(GenerationLayoutFailed(&bad) != NULL);
     bad = l; bad.region[GEN_A].bytes -= 0xE0u; assert(GenerationLayoutFailed(&bad) != NULL);
+    bad = l; bad.region[GEN_IMPORTANT].at = bad.region[GEN_CLUSTERS].at; assert(GenerationLayoutFailed(&bad) != NULL);
+    bad = l; bad.region[GEN_LINKED].at = 0x8AB6C0u; assert(GenerationLayoutFailed(&bad) != NULL);
+    bad = l; bad.region[GEN_IMPORTANT].bytes = 0x108u; assert(GenerationLayoutFailed(&bad) != NULL);
     /* every limit at once still fits a signed 32-bit displacement */
     HfGenerationCapacity most = {sizeof most};
-    for (int i = 0; i < 5; i++) *GenerationField(&most, i) = kGenerationLimits[i][1];
+    for (int i = 0; i < GEN_FIELDS; i++) *GenerationField(&most, i) = kGenerationLimits[i][1];
     assert(GenerationMerge(&all, &most) == NULL);
     GenerationLayoutOf(&all, &bad);
     assert(GenerationLayoutFailed(&bad) == NULL && bad.block < 0x7FFFFFFFu && bad.caps.mission_stamps == 16384 && bad.minimapScale == 8);
@@ -176,10 +216,29 @@ static void GenerationCapacityFixture(void)
         memcpy(&rel, stub + 29, 4); assert(stub + 33 + rel == game + DIF_STAMP_APPEND_SKIP);
         memcpy(&rel, stub + 24, 4); assert(stub + 28 + rel == (const uint8_t*)g_stampsLeftOut && *g_stampsLeftOut == 0);
     }
+    /* each list moved on request: every reference inside its region with its field's offset, capacities raised, and the
+     * loader's own reader follows */
+    for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++)
+    {
+        const GenerationExtra* x = &kGenerationExtras[e];
+        HfGenerationCapacity caps = l.caps;
+        for (uint32_t i = 0; i < x->refCount; i++)
+        {
+            uint32_t v = GcRead(game, &x->refs[i]);
+            assert(GcInside(&l, x->region, v) && v - l.region[x->region].at == x->refs[i].value - x->old);
+        }
+        for (uint32_t i = 0; i < x->capCount; i++) assert(GcRead(game, &x->caps[i]) == *GenerationField(&caps, x->field));
+    }
+    {
+        uint32_t places = 0;
+        assert(ImportantLocations(&places) == l.region[GEN_IMPORTANT].at && places == 1008);
+    }
     /* a changed append is refused before anything is written */
     game[DIF_STAMP_APPEND_SITE] = 0xE9;
     assert(ObjectiveListFailed(d.game) != NULL);
+    memcpy(game + DIF_STAMP_APPEND_SITE, kStampAppendPin, sizeof kStampAppendPin); /* and so is a moved list's changed site */
+    assert(ObjectiveListFailed(d.game) != NULL);
     g_generationWant = saved; g_generationAsked = 0; g_generation.block = 0;
     VirtualFree(plain, 0, MEM_RELEASE); VirtualFree(fixed, 0, MEM_RELEASE);
-    printf("PASS generation capacity: no request writes the fixed layout's bytes, requests combine and are refused late or over a limit, a large layout's regions and references, the negated displacement, the stamps' guard\n");
+    printf("PASS generation capacity: no request writes the fixed layout's bytes, requests combine and are refused late or over a limit, a large layout's regions and references, the negated displacement, the stamps' guard, lists moved on request and a shorter struct\n");
 }
