@@ -12,6 +12,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **A data spec can fix a game shader.** The new `edit` entry changes bytes in one of the game's shader stages; HellForge
+  signs the stage again and refuses the edit on a game build whose shader differs
+  ([data specs](docs/modding/data.md#edit)).
 - **New vehicles as copies of vanilla ones.** The `vehicle-variants` example adds the EXO-45H Heavy Patriot (a quicker
   turn and a 2000-round machine gun) and the M-102R Rally FRV (quicker steering), each called in by a Pelican drop
   stratagem of its own. A ground vehicle ignores `model_from`, since its seats, wheels, tracks and damage zones name
