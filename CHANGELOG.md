@@ -200,7 +200,7 @@ On `dev`, since 0.4.0-beta.
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
 - **Save logs to Desktop works after a start that failed.** With no session yet it said "No session logs yet", though
   the reason was in `logs/session-runner.log`. The zip now has a `start` folder with that log and the Linux wrapper's
-  logs, with or without a session ([session logs](docs/troubleshooting.md)).
+  logs, with or without a session ([session logs](docs/troubleshooting.md)) (#361).
 - **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
   block with "not stopping the game's connections to the internet (error 10065)", asked for administrator consent and
   failed again. It still did on a PC that keeps a network route while offline. Offline, the block is now proved by
