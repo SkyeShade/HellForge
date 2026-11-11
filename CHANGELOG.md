@@ -231,6 +231,9 @@ On `dev`, since 0.4.0-beta.
 - **More lists a mod can enlarge on level-11 maps.** `generation_capacity` also takes the important locations
   (objectives, outposts, points of interest and their satellites) and the linked locations, up to 1024 each. They stay
   as the game has them unless a mod asks, and mods built before these fields keep working.
+- **Room for a larger route graph.** `generation_capacity` takes the route graph's nodes (up to 2304), edges (up to
+  3456) and road points (up to 65520). The game adds nodes and edges without a check, so a map with more route cells
+  than the game's needs them. Unasked, the graph stays as the game has it.
 - **Your own pixel shaders in data mods.** A data spec's `shader` resource puts a compiled shader in one of three hosts,
   `decal`, `transparent` or `refract`, and HellForge builds the materials and a unit for it. A shader that does not fit
   its host is refused with the reason, shader headers name what each host can read, and a mod with a shader counts as

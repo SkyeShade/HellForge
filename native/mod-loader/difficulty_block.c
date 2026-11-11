@@ -67,8 +67,8 @@
 enum { GEN_A, GEN_B, GEN_TYPES, GEN_P, GEN_S, GEN_U, GEN_V, GEN_STAMPS, GEN_OBJLIST, GEN_PLACES, GEN_PLACE_SET, GEN_CLUSTERS, GEN_REGIONS };
 /* Lists the block's move leaves alone: each moves to the end, after the clusters, only when a mod asks for more than the
  * game's own places (region bytes 0: it stays where it is). */
-enum { GEN_IMPORTANT = GEN_REGIONS, GEN_LINKED, GEN_ALL };
-enum { GEN_FIELD_IMPORTANT = 5, GEN_FIELD_LINKED, GEN_FIELDS };
+enum { GEN_IMPORTANT = GEN_REGIONS, GEN_LINKED, GEN_ROUTE_NODES, GEN_ROUTE_EDGES, GEN_ROUTE_CLASSES, GEN_ROUTE_POINTS, GEN_ALL };
+enum { GEN_FIELD_IMPORTANT = 5, GEN_FIELD_LINKED, GEN_FIELD_ROUTE_NODES, GEN_FIELD_ROUTE_EDGES, GEN_FIELD_ROUTE_POINTS, GEN_FIELDS };
 typedef struct GenerationLayout
 {
     HfGenerationCapacity caps;
@@ -77,10 +77,13 @@ typedef struct GenerationLayout
 } GenerationLayout;
 #define DIF_MINIMAP_STEP 0x1000u /* the proxies' vanilla places: the minimap's four arrays grow by whole multiples */
 /* {HellForge's own or, for a list it leaves alone, the game's; the most a request gets}. Locations: the stamp index keeps
- * a location's id in 16 bits (0xF35054). Important locations: the cities' flags hold 1024 (difficulty_cities.c). */
+ * a location's id in 16 bits (0xF35054). Important locations: the cities' flags hold 1024 (difficulty_cities.c). Road
+ * points: the road entries name a point in 16 bits (0xF30D24). */
 static const uint32_t kGenerationLimits[GEN_FIELDS][2] = {{DIF_LOCATIONS, 65024u}, {4u * DIF_MINIMAP_STEP, 8u * DIF_MINIMAP_STEP},
-    {DIF_STAMPS, 16384u}, {DIF_PLACES, 8192u}, {DIF_PLACE_SET, 4096u}, {256u, 1024u}, {64u, 1024u}};
+    {DIF_STAMPS, 16384u}, {DIF_PLACES, 8192u}, {DIF_PLACE_SET, 4096u}, {256u, 1024u}, {64u, 1024u},
+    {975u, 2304u}, {1621u, 3456u}, {9936u, 65520u}};
 #include "important_sites.h"
+#include "route_sites.h"
 /* A list moved on request: its region and capacity field, where the game has it, an element's size, and its sites. */
 typedef struct GenerationExtra
 {
@@ -91,7 +94,11 @@ typedef struct GenerationExtra
 } GenerationExtra;
 static const GenerationExtra kGenerationExtras[GEN_ALL - GEN_REGIONS] = {
     {GEN_IMPORTANT, GEN_FIELD_IMPORTANT, 0x8996B0u, 0x108u, kImportantRefs, sizeof kImportantRefs / sizeof kImportantRefs[0], NULL, 0},
-    {GEN_LINKED, GEN_FIELD_LINKED, 0x8AB6C0u, 0x18u, kLinkedRefs, sizeof kLinkedRefs / sizeof kLinkedRefs[0], NULL, 0}};
+    {GEN_LINKED, GEN_FIELD_LINKED, 0x8AB6C0u, 0x18u, kLinkedRefs, sizeof kLinkedRefs / sizeof kLinkedRefs[0], NULL, 0},
+    {GEN_ROUTE_NODES, GEN_FIELD_ROUTE_NODES, 0x8C4E40u, 0x98u, kRouteNodeRefs, sizeof kRouteNodeRefs / sizeof kRouteNodeRefs[0], kRouteNodeCaps, sizeof kRouteNodeCaps / sizeof kRouteNodeCaps[0]},
+    {GEN_ROUTE_EDGES, GEN_FIELD_ROUTE_EDGES, 0x937348u, 0x48u, kRouteEdgeRefs, sizeof kRouteEdgeRefs / sizeof kRouteEdgeRefs[0], kRouteEdgeCaps, sizeof kRouteEdgeCaps / sizeof kRouteEdgeCaps[0]},
+    {GEN_ROUTE_CLASSES, GEN_FIELD_ROUTE_EDGES, 0x11A1F98u, 1u, kRouteClassRefs, sizeof kRouteClassRefs / sizeof kRouteClassRefs[0], kRouteClassCaps, sizeof kRouteClassCaps / sizeof kRouteClassCaps[0]},
+    {GEN_ROUTE_POINTS, GEN_FIELD_ROUTE_POINTS, 0x9568E4u, 8u, kRoutePointRefs, sizeof kRoutePointRefs / sizeof kRoutePointRefs[0], kRoutePointCaps, sizeof kRoutePointCaps / sizeof kRoutePointCaps[0]}};
 static HfGenerationCapacity g_generationWant; /* the largest of every mod's request; 0 where none asked */
 static GenerationLayout g_generation;         /* worked out when first needed (block 0: not yet) */
 static int g_generationMoved;                 /* the game's code uses g_generation */
@@ -100,7 +107,7 @@ static volatile LONG* g_stampsLeftOut;        /* mission stamps past the list's 
 static uint32_t* GenerationField(HfGenerationCapacity* c, int i)
 {
     uint32_t* const fields[GEN_FIELDS] = {&c->locations, &c->minimap_proxies, &c->mission_stamps, &c->places, &c->place_set,
-        &c->important_locations, &c->linked_locations};
+        &c->important_locations, &c->linked_locations, &c->route_nodes, &c->route_edges, &c->route_points};
     return fields[i];
 }
 

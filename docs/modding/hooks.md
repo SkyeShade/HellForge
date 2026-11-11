@@ -426,15 +426,20 @@ if (hf->size >= offsetof(HfApi, generation_capacity) + sizeof(void*)) hf->genera
 | `place_set` | the places' set | 256 | 4096 |
 | `important_locations` | objectives, extraction, outposts, points of interest, satellites | 256 | 1024 |
 | `linked_locations` | each satellite with the location it belongs to | 64 | 1024 |
+| `route_nodes` | the route graph's nodes | 975 | 2304 |
+| `route_edges` | the route graph's edges, with a class byte each | 1621 | 3456 |
+| `route_points` | the road points along the edges | 9936 | 65520 |
 
 - Call it from `hellforge_mod_init`. The game makes these arrays once, so a later call returns 1 and changes nothing.
   The same goes for a mod loaded while the game runs, and for a field over its limit. Your log says why.
 - When several mods ask, each field gets the largest request.
 - The larger arrays exist once level 11 is installed, so a mod must have added the level.
 - Without a request, HellForge installs level 11 exactly as before.
-- `important_locations` and `linked_locations` came later than the first five fields. A mod built with the shorter
-  struct keeps working: HellForge reads and fills no more than the struct's `size`.
-- HellForge leaves those two lists where the game has them, with the game's places, unless a mod asks for more.
+- The fields from `important_locations` on came later than the first five. A mod built with a shorter struct keeps
+  working: HellForge reads and fills no more than the struct's `size`.
+- HellForge leaves those later lists where the game has them, with the game's places, unless a mod asks for more.
+  Each one moves by itself.
+- The game clears each route list and sizes its lookup tables by the capacity, so ask for what your map needs.
 
 To read the result, call it again later with `want` NULL and a `have` struct. `have.moved` is 1 when the game uses the
 capacities in `have`:

@@ -78,6 +78,7 @@ static void GenerationDefaultFixture(const uint8_t* game)
     uint32_t places = 0;
     for (int i = GEN_REGIONS; i < GEN_ALL; i++) assert(l.region[i].at == 0 && l.region[i].bytes == 0);
     assert(l.caps.important_locations == 256 && l.caps.linked_locations == 64 && ImportantLocations(&places) == 0x8996B0u && places == 256);
+    assert(l.caps.route_nodes == 975 && l.caps.route_edges == 1621 && l.caps.route_points == 9936);
     /* the install's own steps write none of those lists' sites (this image holds zeros there): a request can move them
      * after every other step */
     for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++)
@@ -119,8 +120,35 @@ static void GenerationCapacityFixture(void)
     all.place_set = 0;
     over.locations = 0; over.places = 0; over.important_locations = 1025;
     assert(GenerationMerge(&all, &over) != NULL && all.important_locations == 0);
-    a.important_locations = 1000; a.linked_locations = 100;
-    assert(GenerationMerge(&all, &a) == NULL && all.important_locations == 1000 && all.linked_locations == 100);
+    /* and one built before the route graph's fields */
+    struct { HfGenerationCapacity c; uint32_t after; } middle = {{offsetof(HfGenerationCapacity, route_nodes)}, 0xA5A5A5A5u};
+    middle.c.route_nodes = 0xA5A5A5A5u; middle.c.route_edges = 0xA5A5A5A5u; middle.c.route_points = 0xA5A5A5A5u;
+    middle.c.linked_locations = 70;
+    assert(GenerationMerge(&all, &middle.c) == NULL && all.linked_locations == 70 && all.route_nodes == 0 && all.route_edges == 0 && all.route_points == 0);
+    assert(ApiGenerationCapacity(&g_mods[0], NULL, &middle.c) == 0 && middle.c.linked_locations == 64 && middle.c.route_nodes == 0xA5A5A5A5u &&
+        middle.c.route_points == 0xA5A5A5A5u && middle.after == 0xA5A5A5A5u);
+    all.linked_locations = 0;
+    for (int i = 0; i < 3; i++)
+    {
+        HfGenerationCapacity most = {sizeof most};
+        *GenerationField(&most, GEN_FIELD_ROUTE_NODES + i) = kGenerationLimits[GEN_FIELD_ROUTE_NODES + i][1] + 1u;
+        assert(GenerationMerge(&all, &most) != NULL);
+        *GenerationField(&most, GEN_FIELD_ROUTE_NODES + i) -= 1u;
+        HfGenerationCapacity alone = {0};
+        GenerationLayout one;
+        assert(GenerationMerge(&alone, &most) == NULL);
+        GenerationLayoutOf(&alone, &one);
+        /* one list at its limit moves alone (the edges take their class bytes along); the game's own places move none */
+        assert(GenerationLayoutFailed(&one) == NULL && *GenerationField(&one.caps, GEN_FIELD_ROUTE_NODES + i) == kGenerationLimits[GEN_FIELD_ROUTE_NODES + i][1]);
+        for (int r = GEN_REGIONS; r < GEN_ALL; r++)
+            assert((one.region[r].bytes != 0) == (r == (i == 0 ? GEN_ROUTE_NODES : i == 1 ? GEN_ROUTE_EDGES : GEN_ROUTE_POINTS) || (i == 1 && r == GEN_ROUTE_CLASSES)));
+        *GenerationField(&alone, GEN_FIELD_ROUTE_NODES + i) = kGenerationLimits[GEN_FIELD_ROUTE_NODES + i][0];
+        GenerationLayoutOf(&alone, &one);
+        assert(one.block == 0x15B1100u && one.region[GEN_ROUTE_NODES + (i == 2 ? 3 : i)].bytes == 0);
+    }
+    assert(all.route_nodes == 0 && all.route_edges == 0 && all.route_points == 0);
+    a.important_locations = 1000; a.linked_locations = 100; a.route_nodes = 2000; a.route_edges = 3000; a.route_points = 60000;
+    assert(GenerationMerge(&all, &a) == NULL && all.important_locations == 1000 && all.linked_locations == 100 && all.route_edges == 3000);
     GenerationLayout l, bad;
     GenerationLayoutOf(&all, &l);
     assert(l.caps.locations == 65024 && l.caps.minimap_proxies == 20480 && l.minimapScale == 5 && l.caps.mission_stamps == 2000 && l.caps.places == 512 && l.caps.place_set == 256);
@@ -129,6 +157,9 @@ static void GenerationCapacityFixture(void)
     assert(l.region[GEN_A].at >= 0x11A7268u && l.region[GEN_ALL - 1].at + l.region[GEN_ALL - 1].bytes <= l.block && l.block % 16u == 0);
     assert(l.caps.important_locations == 1008 && l.region[GEN_IMPORTANT].bytes == 1008u * 0x108u && l.caps.linked_locations == 112 &&
         l.region[GEN_LINKED].bytes == 112u * 0x18u);
+    assert(l.caps.route_nodes == 2000 && l.region[GEN_ROUTE_NODES].bytes == 2000u * 0x98u && l.caps.route_edges == 3008 &&
+        l.region[GEN_ROUTE_EDGES].bytes == 3008u * 0x48u && l.region[GEN_ROUTE_CLASSES].bytes == 3008u &&
+        l.caps.route_points == 60000 && l.region[GEN_ROUTE_POINTS].bytes == 60000u * 8u);
     for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++) assert(l.region[kGenerationExtras[e].region].at % 16u == kGenerationExtras[e].old % 16u);
     /* the objective list lies past the grown arrays, and the negated displacement follows it */
     assert(l.objectiveList > l.region[GEN_STAMPS].at && l.objectiveList != 0x15AD370u);
@@ -230,6 +261,17 @@ static void GenerationCapacityFixture(void)
         for (uint32_t i = 0; i < x->capCount; i++) assert(GcRead(game, &x->caps[i]) == *GenerationField(&caps, x->field));
     }
     {
+        /* the route graph by name: the tables above could agree with each other and still be the wrong list's */
+        const struct { const LocationSite* caps; size_t count; uint32_t places; const LocationSite* ref; int region; uint32_t old; } routes[4] = {
+            {kRouteNodeCaps, sizeof kRouteNodeCaps / sizeof kRouteNodeCaps[0], 2000u, kRouteNodeRefs, GEN_ROUTE_NODES, 0x8C4E40u},
+            {kRouteEdgeCaps, sizeof kRouteEdgeCaps / sizeof kRouteEdgeCaps[0], 3008u, kRouteEdgeRefs, GEN_ROUTE_EDGES, 0x937348u},
+            {kRouteClassCaps, sizeof kRouteClassCaps / sizeof kRouteClassCaps[0], 3008u, kRouteClassRefs, GEN_ROUTE_CLASSES, 0x11A1F98u},
+            {kRoutePointCaps, sizeof kRoutePointCaps / sizeof kRoutePointCaps[0], 60000u, kRoutePointRefs, GEN_ROUTE_POINTS, 0x9568E4u}};
+        for (int r = 0; r < 4; r++)
+        {
+            for (size_t i = 0; i < routes[r].count; i++) assert(GcRead(game, &routes[r].caps[i]) == routes[r].places);
+            assert(GcRead(game, routes[r].ref) == l.region[routes[r].region].at + (routes[r].ref->value - routes[r].old));
+        }
         uint32_t places = 0;
         assert(ImportantLocations(&places) == l.region[GEN_IMPORTANT].at && places == 1008);
     }
@@ -240,5 +282,5 @@ static void GenerationCapacityFixture(void)
     assert(ObjectiveListFailed(d.game) != NULL);
     g_generationWant = saved; g_generationAsked = 0; g_generation.block = 0;
     VirtualFree(plain, 0, MEM_RELEASE); VirtualFree(fixed, 0, MEM_RELEASE);
-    printf("PASS generation capacity: no request writes the fixed layout's bytes, requests combine and are refused late or over a limit, a large layout's regions and references, the negated displacement, the stamps' guard, lists moved on request and a shorter struct\n");
+    printf("PASS generation capacity: no request writes the fixed layout's bytes, requests combine and are refused late or over a limit, a large layout's regions and references, the negated displacement, the stamps' guard, lists and the route graph moved on request, shorter structs\n");
 }

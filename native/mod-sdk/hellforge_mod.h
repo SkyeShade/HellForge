@@ -1264,8 +1264,8 @@ typedef struct HfGenerationCapacity
                                  steps of 4096 (its other lists grow in proportion) */
     uint32_t mission_stamps;  /* the objectives' candidate stamps: 1024, up to 16384. Checked: with a request, a
                                  stamp past the last place is left out */
-    uint32_t places;          /* objective and extraction placement attempts: 512, up to 8192 */
-    uint32_t place_set;       /* the places' set: 256, up to 4096 */
+    uint32_t places, place_set; /* objective and extraction placement attempts (512, up to 8192) and their set (256,
+                                   up to 4096) */
     uint32_t block_bytes;     /* filled in: the size of the generator's block with these capacities */
     uint32_t moved;           /* filled in: 1 once the game's code uses these capacities (level 11 is installed
                                  with them), 0 before that or when it kept its own arrays */
@@ -1273,6 +1273,9 @@ typedef struct HfGenerationCapacity
      * the important locations (objectives, extraction, outposts, points of interest and their satellites: 256, up
      * to 1024) and the linked ones (a satellite and the location it belongs to: 64, up to 1024). */
     uint32_t important_locations, linked_locations;
+    /* The route graph, moved the same way: its nodes (975, up to 2304), its edges (1621, up to 3456) and the road
+     * points along them (9936, up to 65520). The game reads these capacities; it appends nodes and edges unchecked. */
+    uint32_t route_nodes, route_edges, route_points;
 } HfGenerationCapacity;
 
 typedef struct HfApi
