@@ -224,6 +224,10 @@ On `dev`, since 0.4.0-beta.
 
 ### For mod makers
 
+- **A mod can ask for more room on level-11 maps (SDK 17).** `generation_capacity` enlarges the map generator's lists
+  of locations, minimap shapes, mission stamps and objective places for the largest request among the installed mods.
+  The mod need not be the one that added the level. Without a request nothing changes
+  ([room in the map generator](docs/modding/hooks.md#room-in-the-map-generator)).
 - **Your own pixel shaders in data mods.** A data spec's `shader` resource puts a compiled shader in one of three hosts,
   `decal`, `transparent` or `refract`, and HellForge builds the materials and a unit for it. A shader that does not fit
   its host is refused with the reason, shader headers name what each host can read, and a mod with a shader counts as

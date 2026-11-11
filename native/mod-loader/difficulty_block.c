@@ -62,6 +62,107 @@
 #define DIF_CLUSTERS 32u
 #define DIF_CLUSTERS_NEW (DIF_PLACE_SET_NEW + DIF_PLACE_SET * 0x10u)
 #define DIF_BLOCK_NEW (DIF_CLUSTERS_NEW + DIF_CLUSTERS * 0xE0u)
+/* The places above are the layout when no mod asked for more (generation_capacity): the regions follow each other in
+ * this order, so more places in one move every later one, and the layout is worked out from the capacities. */
+enum { GEN_A, GEN_B, GEN_TYPES, GEN_P, GEN_S, GEN_U, GEN_V, GEN_STAMPS, GEN_OBJLIST, GEN_PLACES, GEN_PLACE_SET, GEN_CLUSTERS, GEN_REGIONS };
+typedef struct GenerationLayout
+{
+    HfGenerationCapacity caps;
+    struct { uint32_t at, bytes; } region[GEN_REGIONS];
+    uint32_t minimapScale, objectiveList, block;
+} GenerationLayout;
+#define DIF_MINIMAP_STEP 0x1000u /* the proxies' vanilla places: the minimap's four arrays grow by whole multiples */
+/* {HellForge's own, the most a request gets}. Locations: the stamp index keeps a location's id in 16 bits (0xF35054). */
+static const uint32_t kGenerationLimits[5][2] = {{DIF_LOCATIONS, 65024u}, {4u * DIF_MINIMAP_STEP, 8u * DIF_MINIMAP_STEP},
+    {DIF_STAMPS, 16384u}, {DIF_PLACES, 8192u}, {DIF_PLACE_SET, 4096u}};
+static HfGenerationCapacity g_generationWant; /* the largest of every mod's request; 0 where none asked */
+static GenerationLayout g_generation;         /* worked out when first needed (block 0: not yet) */
+static int g_generationMoved;                 /* the game's code uses g_generation */
+static volatile LONG* g_stampsLeftOut;        /* mission stamps past the list's end, on the guard's read-write page */
+
+static uint32_t* GenerationField(HfGenerationCapacity* c, int i)
+{
+    uint32_t* const fields[5] = {&c->locations, &c->minimap_proxies, &c->mission_stamps, &c->places, &c->place_set};
+    return fields[i];
+}
+
+/* The layout for these capacities (each at least HellForge's own, in whole units of 16 so every region stays aligned). */
+static void GenerationLayoutOf(const HfGenerationCapacity* want, GenerationLayout* l)
+{
+    memset(l, 0, sizeof *l);
+    l->caps = *want;
+    l->caps.size = sizeof l->caps;
+    for (int i = 0; i < 5; i++)
+    {
+        uint32_t* field = GenerationField(&l->caps, i), unit = i == 1 ? DIF_MINIMAP_STEP : 16u;
+        if (*field < kGenerationLimits[i][0]) *field = kGenerationLimits[i][0];
+        *field = (*field + unit - 1) / unit * unit;
+    }
+    uint32_t k = l->minimapScale = l->caps.minimap_proxies / DIF_MINIMAP_STEP;
+    const uint32_t bytes[GEN_REGIONS] = {l->caps.locations * 0xE0u, l->caps.locations * 0x40u, DIF_LOCATION_TYPES * 0x10u,
+        0x1000u * k * 0x30u, 0x800u * k * 0x58u, 0x1000u * k * 4u, 0x4000u * k * 4u, l->caps.mission_stamps * 0x10u,
+        DIF_PLACES_NEW - DIF_OBJLIST_REGION, l->caps.places * 8u, l->caps.place_set * 0x10u, DIF_CLUSTERS * 0xE0u};
+    uint32_t at = DIF_LOCATIONS_A_NEW;
+    for (int i = 0; i < GEN_REGIONS; i++) { l->region[i].at = at; l->region[i].bytes = bytes[i]; at += bytes[i]; }
+    l->objectiveList = l->region[GEN_OBJLIST].at + (DIF_OBJLIST_NEW - DIF_OBJLIST_REGION);
+    l->caps.block_bytes = l->block = at;
+}
+
+static const GenerationLayout* Generation(void)
+{
+    if (g_generation.block == 0) GenerationLayoutOf(&g_generationWant, &g_generation);
+    return &g_generation;
+}
+
+/* One mod's request into the combined one (the largest of each): NULL, or why it is refused (then nothing changed). */
+static const char* GenerationMerge(HfGenerationCapacity* all, const HfGenerationCapacity* want)
+{
+    HfGenerationCapacity w = {0};
+    if (want->size < offsetof(HfGenerationCapacity, place_set) + sizeof want->place_set) return "its size is not set (HfGenerationCapacity want = {sizeof want})";
+    memcpy(&w, want, want->size < sizeof w ? want->size : sizeof w);
+    for (int i = 0; i < 5; i++)
+        if (*GenerationField(&w, i) > kGenerationLimits[i][1])
+            return "locations are at most 65024, minimap_proxies 32768, mission_stamps 16384, places 8192, place_set 4096";
+    for (int i = 0; i < 5; i++)
+        if (*GenerationField(&w, i) > *GenerationField(all, i)) *GenerationField(all, i) = *GenerationField(&w, i);
+    return NULL;
+}
+
+/* Why a request cannot count now, or NULL. The block is made with the world, once: only hellforge_mod_init is in time. */
+static const char* GenerationAskRefused(HfMod* mod, const HfGenerationCapacity* want)
+{
+    if (g_liveSetup != NULL && g_liveSetup == mod)
+    {
+        LiveRefuse(mod, "generation capacity", NULL, "the game makes its generation block once, as it starts");
+        return "a mod loaded while the game runs is too late";
+    }
+    if (g_difficultyState != 0 || g_fired[HF_EVENT_GAME_LOADED]) return "too late; call it from hellforge_mod_init";
+    return GenerationMerge(&g_generationWant, want);
+}
+
+/* hf->generation_capacity. */
+static int ApiGenerationCapacity(HfMod* mod, const HfGenerationCapacity* want, HfGenerationCapacity* have)
+{
+    const char* why = want == NULL ? NULL : mod == NULL ? "no mod" : GenerationAskRefused(mod, want);
+    if (why != NULL) ApiLog(mod, "generation_capacity: %s", why);
+    else if (want != NULL)
+    {
+        g_generationAsked = 1;
+        g_generation.block = 0;
+        const GenerationLayout* l = Generation();
+        ApiLog(mod, "generation capacity: with this request the block has %u locations, %u minimap proxies, %u mission stamps, %u places and a place set of %u (0x%X bytes), once level 11 is installed",
+            l->caps.locations, l->caps.minimap_proxies, l->caps.mission_stamps, l->caps.places, l->caps.place_set, l->block);
+    }
+    if (have != NULL && have->size >= 8)
+    {
+        HfGenerationCapacity now = Generation()->caps;
+        now.moved = (uint32_t)g_generationMoved;
+        uint32_t size = have->size < sizeof now ? have->size : (uint32_t)sizeof now;
+        now.size = have->size;
+        memcpy(have, &now, size);
+    }
+    return why != NULL;
+}
 static const LocationSite kPlaceListRefs[29] = {
     {0xC1AF77u, 0, 0x8ABCC0u}, {0xC1B60Fu, 0, 0x8ABCC0u}, {0xC1B887u, 0, 0x8ABCC0u}, {0xC1BB62u, 0, 0x8ABCC0u},
     {0xC1C201u, 0, 0x8ABCC0u}, {0xC1C49Eu, 0, 0x8ABCC0u}, {0xC1CA53u, 0, 0x8ABCC0u}, {0xC1CCF1u, 0, 0x8ABCC0u},
@@ -199,14 +300,82 @@ static const LocationSite kStampRefs[21] = {
     {0xC292D1u, 4, 0x8BBD70u}, {0xC2973Bu, 4, 0x8BBD70u}, {0xC2FB25u, 4, 0x8BBD70u}, {0xC30439u, 4, 0x8BBD70u},
     {0xC30701u, 4, 0x8BBD70u}, {0xC31039u, 4, 0x8BBD70u}, {0xC315F6u, 4, 0x8BBD70u}, {0xC3187Fu, 4, 0x8BBD70u},
     {0xC31FF3u, 4, 0x8BBD70u}};
-static uint32_t MinimapMoved(uint32_t value)
+static int MinimapRegion(uint32_t value) { return value == DIF_MINIMAP_P ? GEN_P : value == DIF_MINIMAP_S ? GEN_S : value == DIF_MINIMAP_U ? GEN_U : GEN_V; }
+static uint32_t MinimapMovedIn(const GenerationLayout* l, uint32_t value) { return l->region[MinimapRegion(value)].at; }
+static uint32_t MinimapMoved(uint32_t value) { return MinimapMovedIn(Generation(), value); }
+static int LocationRegion(uint32_t value) { return value >= DIF_LOCATIONS_A && value < DIF_LOCATIONS_A + 0xE0u ? GEN_A : GEN_B; }
+static uint32_t LocationMovedIn(const GenerationLayout* l, uint32_t value)
 {
-    return value == DIF_MINIMAP_P ? DIF_MINIMAP_P_NEW : value == DIF_MINIMAP_S ? DIF_MINIMAP_S_NEW : value == DIF_MINIMAP_U ? DIF_MINIMAP_U_NEW : DIF_MINIMAP_V_NEW;
+    int region = LocationRegion(value);
+    return l->region[region].at + (value - (region == GEN_A ? DIF_LOCATIONS_A : DIF_LOCATIONS_B));
 }
-static uint32_t LocationMoved(uint32_t value)
+static uint32_t LocationMoved(uint32_t value) { return LocationMovedIn(Generation(), value); }
+/* An objective list site's value: the table's were written for the list at DIF_OBJLIST_NEW. A displacement from G moves
+ * with the list (kind 1), the one negated displacement (0xF70F70, -(list + 4)) against it (kind 2), and one from the
+ * list's own start stays (kind 0). */
+#define DIF_OBJLIST_OLD 0x8BC570u
+#define DIF_OBJLIST_EXTENT 0x190u
+static uint32_t ObjectiveListValue(const GenerationLayout* l, int i, int* kind)
 {
-    if (value >= DIF_LOCATIONS_A && value < DIF_LOCATIONS_A + 0xE0u) return DIF_LOCATIONS_A_NEW + (value - DIF_LOCATIONS_A);
-    return DIF_LOCATIONS_B_NEW + (value - DIF_LOCATIONS_B);
+    uint32_t old = kObjectiveListSites[i].old, value = kObjectiveListSites[i].value, moved = l->objectiveList - DIF_OBJLIST_NEW;
+    int wide = kObjectiveListSites[i].width == 4;
+    *kind = wide && old - DIF_OBJLIST_OLD < DIF_OBJLIST_EXTENT ? 1 : wide && 0u - old - DIF_OBJLIST_OLD < DIF_OBJLIST_EXTENT ? 2 : 0;
+    return *kind == 1 ? value + moved : *kind == 2 ? value - moved : value;
+}
+
+/* The mission stamps' append (GenerateMissionStampList, 0xF8E935) takes no capacity: with a request, a stamp past the
+ * list's end is left out and counted (r12d the count; 0xF8E792 is where a stamp the game itself refuses goes on). */
+#define DIF_STAMP_APPEND_SITE 0xF8E925u
+#define DIF_STAMP_APPEND_BACK 0xF8E92Cu
+#define DIF_STAMP_APPEND_SKIP 0xF8E792u
+static const uint8_t kStampAppendPin[7] = {0x8B, 0x84, 0x24, 0x38, 0x01, 0x00, 0x00}; /* mov eax, [rsp+0x138] */
+static const uint8_t kStampAppendStub[33] = {
+    0x41, 0x81, 0xFC, 0, 0, 0, 0,                                     /*  0 cmp r12d, the places (imm32 at 3) */
+    0x73, 0x0C,                                                       /*  7 jae 21 */
+    0x8B, 0x84, 0x24, 0x38, 0x01, 0x00, 0x00,                         /*  9 mov eax, [rsp+0x138] (as before) */
+    0xE9, 0, 0, 0, 0,                                                 /* 16 jmp 0xF8E92C (rel32 at 17) */
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,                                     /* 21 lock inc dword [rip+left out] (rel32 at 24) */
+    0xE9, 0, 0, 0, 0};                                                /* 28 jmp 0xF8E792 (rel32 at 29) */
+
+#define GEN_INSIDE(l, r, value) ((value) - (l)->region[r].at < (l)->region[r].bytes)
+/* NULL when no two regions overlap, each holds its capacity and the block ends with the last one. */
+static const char* GenerationRegionsFailed(const GenerationLayout* l)
+{
+    const uint32_t places[GEN_REGIONS][2] = {{l->caps.locations, 0xE0u}, {l->caps.locations, 0x40u}, {DIF_LOCATION_TYPES, 0x10u},
+        {0x1000u * l->minimapScale, 0x30u}, {0x800u * l->minimapScale, 0x58u}, {0x1000u * l->minimapScale, 4u}, {0x4000u * l->minimapScale, 4u},
+        {l->caps.mission_stamps, 0x10u}, {1u, DIF_PLACES_NEW - DIF_OBJLIST_REGION}, {l->caps.places, 8u}, {l->caps.place_set, 0x10u}, {DIF_CLUSTERS, 0xE0u}};
+    uint32_t end = kGenerationBlockSize[0].value; /* the game's own block: its arrays stay where they are */
+    for (int i = 0; i < GEN_REGIONS; i++)
+    {
+        uint32_t at = l->region[i].at, bytes = l->region[i].bytes;
+        if (at < end || at % 16u != 0 || bytes == 0 || bytes > 0x7FFFFFFFu - at) return "two regions of the generation block's layout overlap";
+        if ((uint64_t)places[i][0] * places[i][1] != bytes) return "a capacity of the generation block is not its region's";
+        end = at + bytes;
+    }
+    return l->block != end ? "the generation block's size is not its layout's end" : NULL;
+}
+
+/* NULL when every value the move writes addresses its own region. */
+static const char* GenerationRefsFailed(const GenerationLayout* l)
+{
+    for (size_t i = 0; i < sizeof kLocationRefs / sizeof kLocationRefs[0]; i++)
+        if (!GEN_INSIDE(l, LocationRegion(kLocationRefs[i].value), LocationMovedIn(l, kLocationRefs[i].value))) return "a location reference would leave its array";
+    for (size_t i = 0; i < sizeof kMinimapRefs / sizeof kMinimapRefs[0]; i++)
+        if (!GEN_INSIDE(l, MinimapRegion(kMinimapRefs[i].value), MinimapMovedIn(l, kMinimapRefs[i].value))) return "a minimap reference would leave its array";
+    for (int i = 0; i < 74; i++)
+    {
+        int kind;
+        uint32_t value = ObjectiveListValue(l, i, &kind);
+        if (kind != 0 && !GEN_INSIDE(l, GEN_OBJLIST, kind == 2 ? 0u - value : value)) return "an objective list reference would leave the list";
+    }
+    return NULL;
+}
+
+/* Run before anything is written: a layout that fails moves nothing. */
+static const char* GenerationLayoutFailed(const GenerationLayout* l)
+{
+    const char* why = GenerationRegionsFailed(l);
+    return why != NULL ? why : GenerationRefsFailed(l);
 }
 
 /* ---- the checks (larger maps and more objectives need these) ---------------------------------------------------- */
@@ -241,6 +410,9 @@ static const char* ObjectiveListFailed(uintptr_t game)
             memcmp(bytes, kObjectiveListSites[i].pin, kObjectiveListSites[i].length) != 0)
             return "the map generator's objective list is not the reviewed one (more objectives need it)";
     }
+    uint8_t append[7];
+    if (g_generationAsked && (SafeRead(game + DIF_STAMP_APPEND_SITE, append, 7) || memcmp(append, kStampAppendPin, 7) != 0))
+        return "the mission stamps' append is not the reviewed one (a mod's generation capacity needs it)";
     return NULL;
 }
 
@@ -249,7 +421,7 @@ static const char* ObjectiveListFailed(uintptr_t game)
 /* The block's size, then the locations' references and capacities. */
 static const char* MoveLocations(uintptr_t game)
 {
-    uint32_t size = DIF_BLOCK_NEW, places = DIF_LOCATIONS;
+    uint32_t size = Generation()->block, places = Generation()->caps.locations;
     for (size_t i = 0; i < sizeof kGenerationBlockSize / sizeof kGenerationBlockSize[0]; i++)
         if (ApiWrite(game + kGenerationBlockSize[i].rva + kGenerationBlockSize[i].at, &size, 4)) return "the generation block could not be enlarged";
     for (size_t i = 0; i < sizeof kLocationRefs / sizeof kLocationRefs[0]; i++)
@@ -264,7 +436,7 @@ static const char* MoveLocations(uintptr_t game)
 
 static const char* MoveLocationTypes(uintptr_t game)
 {
-    uint32_t types = DIF_LOCATION_TYPES_C_NEW, typePlaces = DIF_LOCATION_TYPES;
+    uint32_t types = Generation()->region[GEN_TYPES].at, typePlaces = DIF_LOCATION_TYPES;
     for (size_t i = 0; i < sizeof kLocationTypeRefs / sizeof kLocationTypeRefs[0]; i++)
         if (ApiWrite(game + kLocationTypeRefs[i].rva + kLocationTypeRefs[i].at, &types, 4)) return "a location type reference could not be moved";
     for (size_t i = 0; i < sizeof kLocationTypeCaps / sizeof kLocationTypeCaps[0]; i++)
@@ -281,10 +453,10 @@ static const char* MoveMinimapAndStamps(uintptr_t game)
     }
     for (size_t i = 0; i < sizeof kMinimapCaps / sizeof kMinimapCaps[0]; i++)
     {
-        uint32_t places = kMinimapCaps[i].value * 4u;
+        uint32_t places = kMinimapCaps[i].value * Generation()->minimapScale;
         if (ApiWrite(game + kMinimapCaps[i].rva + kMinimapCaps[i].at, &places, 4)) return "a minimap capacity could not be raised";
     }
-    uint32_t stamps = DIF_STAMPS_NEW;
+    uint32_t stamps = Generation()->region[GEN_STAMPS].at;
     for (size_t i = 0; i < sizeof kStampRefs / sizeof kStampRefs[0]; i++)
         if (ApiWrite(game + kStampRefs[i].rva + kStampRefs[i].at, &stamps, 4)) return "a mission stamp reference could not be moved";
     return NULL;
@@ -293,16 +465,21 @@ static const char* MoveMinimapAndStamps(uintptr_t game)
 /* The objective list (30 places from now on), the objective and extraction places, the place set and the clusters. */
 static const char* MoveObjectivePlaces(uintptr_t game)
 {
+    const GenerationLayout* l = Generation();
     for (int i = 0; i < 74; i++)
-        if (ApiWrite(game + kObjectiveListSites[i].rva + kObjectiveListSites[i].at, &kObjectiveListSites[i].value, kObjectiveListSites[i].width))
+    {
+        int kind;
+        uint32_t value = ObjectiveListValue(l, i, &kind);
+        if (ApiWrite(game + kObjectiveListSites[i].rva + kObjectiveListSites[i].at, &value, kObjectiveListSites[i].width))
             return "an objective list reference could not be moved";
+    }
     g_objectivePlaces = DIF_OBJECTIVES_MAX;
-    uint32_t placeList = DIF_PLACES_NEW, placeSet = DIF_PLACE_SET_NEW;
+    uint32_t placeList = l->region[GEN_PLACES].at, placeSet = l->region[GEN_PLACE_SET].at;
     for (size_t i = 0; i < sizeof kPlaceListRefs / sizeof kPlaceListRefs[0]; i++)
         if (ApiWrite(game + kPlaceListRefs[i].rva + kPlaceListRefs[i].at, &placeList, 4)) return "an objective place reference could not be moved";
     for (size_t i = 0; i < sizeof kPlaceSetRefs / sizeof kPlaceSetRefs[0]; i++)
         if (ApiWrite(game + kPlaceSetRefs[i].rva + kPlaceSetRefs[i].at, &placeSet, 4)) return "a place set reference could not be moved";
-    uint32_t clusters = DIF_CLUSTERS_NEW, clusterPlaces = DIF_CLUSTERS;
+    uint32_t clusters = l->region[GEN_CLUSTERS].at, clusterPlaces = DIF_CLUSTERS;
     for (int i = 0; i < 16; i++)
         if (ApiWrite(game + kClusterRefs[i].rva + kClusterRefs[i].at, &clusters, 4) ||
             ApiWrite(game + kClusterCaps[i].rva + kClusterCaps[i].at, &clusterPlaces, 4)) return "a location cluster reference could not be moved";
@@ -338,6 +515,28 @@ static const char* RaiseClusterCounts(uintptr_t game)
     return NULL;
 }
 
+/* With a request, the mission stamps' append stops at the list's places (no request: the game's own append stays). */
+static const char* GuardMissionStamps(uintptr_t game)
+{
+    if (!g_generationAsked) return NULL;
+    uint8_t* stub = AllocateNearGame(game, 0x2000);
+    if (stub == NULL) return "no memory within 2 GB of game.dll for the mission stamps' guard";
+    uint32_t places = Generation()->caps.mission_stamps;
+    memcpy(stub, kStampAppendStub, sizeof kStampAppendStub);
+    memcpy(stub + 3, &places, 4);
+    int32_t rel = (int32_t)(int64_t)(game + DIF_STAMP_APPEND_BACK - (uintptr_t)(stub + 21)); memcpy(stub + 17, &rel, 4);
+    g_stampsLeftOut = (volatile LONG*)(stub + 0x1000);
+    rel = (int32_t)(int64_t)((uintptr_t)g_stampsLeftOut - (uintptr_t)(stub + 28)); memcpy(stub + 24, &rel, 4);
+    rel = (int32_t)(int64_t)(game + DIF_STAMP_APPEND_SKIP - (uintptr_t)(stub + 33)); memcpy(stub + 29, &rel, 4);
+    DWORD protect;
+    if (!VirtualProtect(stub, 0x1000, PAGE_EXECUTE_READ, &protect)) return "the mission stamps' guard could not be made executable";
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x1000);
+    uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+    rel = DifficultyJumpRel(game + DIF_STAMP_APPEND_SITE, (uintptr_t)stub); memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(game + DIF_STAMP_APPEND_SITE, jump, sizeof jump)) return "the mission stamps' append could not be guarded";
+    return NULL;
+}
+
 /* The generation block a level generator has now, or 0. */
 static uintptr_t GenerationBlock(uintptr_t game)
 {
@@ -358,14 +557,22 @@ static const char* MoveGenerationBlock(DifficultyInstall* d)
         Note("difficulty: a generation block exists already (0x%llx): the locations keep 2740 places and the mission stamps 128; larger maps and more objectives may overrun them", (unsigned long long)block);
         return NULL;
     }
-    static const char* (*const moves[])(uintptr_t game) = {MoveLocations, MoveLocationTypes, MoveMinimapAndStamps, MoveObjectivePlaces, RaiseClusterCounts};
+    const GenerationLayout* l = Generation();
+    const char* layout = GenerationLayoutFailed(l);
+    if (layout != NULL) return layout;
+    static const char* (*const moves[])(uintptr_t game) = {MoveLocations, MoveLocationTypes, MoveMinimapAndStamps, MoveObjectivePlaces, RaiseClusterCounts,
+        GuardMissionStamps};
     for (size_t i = 0; i < sizeof moves / sizeof moves[0]; i++)
     {
         const char* why = moves[i](d->game);
         if (why != NULL) return why;
     }
     Note("difficulty: the level's locations have %u places, their types %u, the mission stamps %u and the objectives %u (block 0x%X bytes; %zu + %zu + %zu instructions, %zu + %zu capacities)",
-        DIF_LOCATIONS, DIF_LOCATION_TYPES, DIF_STAMPS, DIF_OBJECTIVES_MAX, DIF_BLOCK_NEW, sizeof kLocationRefs / sizeof kLocationRefs[0], sizeof kLocationTypeRefs / sizeof kLocationTypeRefs[0],
+        l->caps.locations, DIF_LOCATION_TYPES, l->caps.mission_stamps, DIF_OBJECTIVES_MAX, l->block, sizeof kLocationRefs / sizeof kLocationRefs[0], sizeof kLocationTypeRefs / sizeof kLocationTypeRefs[0],
         sizeof kStampRefs / sizeof kStampRefs[0], sizeof kLocationCaps / sizeof kLocationCaps[0], sizeof kLocationTypeCaps / sizeof kLocationTypeCaps[0]);
+    g_generationMoved = 1;
+    if (g_generationAsked)
+        Note("difficulty: a mod asked for generation capacity: %u minimap proxies, %u places, a place set of %u; a mission stamp past the %uth is left out",
+            l->caps.minimap_proxies, l->caps.places, l->caps.place_set, l->caps.mission_stamps);
     return NULL;
 }

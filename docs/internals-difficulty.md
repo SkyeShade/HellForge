@@ -261,6 +261,27 @@ The minimap's arrays follow with 4 x their places:
 They grow because a 2 x map's proxies ran over the scatter into the terrain merge slots (G+0x8758A8). The block is then
 0x15A9280 bytes.
 
+### Capacity a mod asks for
+
+`generation_capacity` lets any mod ask for more places in five of the moved arrays: locations, minimap, mission stamps,
+places and place set. The layout is therefore worked out, not fixed (`GenerationLayoutOf` in `difficulty_block.c`). The
+regions keep their order, each starts where the one before ends, and with no request the result is the fixed layout
+above.
+
+Three things follow from a layout that moves:
+
+- **The objective list's table.** Its 60 displacements from the block's start move with the list. The one negated
+  displacement (0xF70F70, minus the list's start plus 4) moves the other way. The 13 displacements from the list's own
+  start stay.
+- **A self-check before any write.** `GenerationLayoutFailed` refuses the level when two regions overlap, when the
+  block's size is not the last region's end, or when a value to be written addresses another region.
+- **A guard on the mission stamps.** Their append (0xF8E935) takes no capacity. With a request, a stub at 0xF8E925
+  leaves out a stamp past the last place and counts it.
+
+A request makes the level need the moved block, even a level with no larger map or extra objectives. A level added
+while the game runs keeps the arrays it found. Locations stop at 65024 because the stamp index keeps a location's id in
+16 bits (0xF35054).
+
 Blocks are made with a world, after the loader installs this, and if one exists already, the move is skipped. Structured
 maps (map type 2, the mega cities, another generator) grow too. Their revoronoi, grid and vertex buckets are scaled the
 same way (difficulty_cities.c).
