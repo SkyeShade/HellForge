@@ -219,7 +219,7 @@ static void RoundsRebuild(void)
     static RoundEntry entries[ROUND_ENTRIES];
     static RoundShadow shadows[ROUND_SHADOWS];
     static RoundView views[ROUND_VIEWS];
-    ShotPlayer players[4];
+    ShotPlayer players[EVT_MAX_PLAYERS];
     int playerCount;
     AcquireSRWLockShared(&g_shotsLock);
     playerCount = g_shotPlayerCount;

@@ -37,7 +37,8 @@ static ActNative g_actExplosion = {0x13C0A80u, "40534883ec308b41204c8bda488bd93d
 static ActNative g_actProjectile = {0x13A8F50u, "4c8bdc4d8963184d896b205541564157498dab28f6ffff4881ecc00a0000488b059b3029014833c4488985300900004c8b25223f0d024d8bf14d8be8448bfa41807c2428000f8410080000", 0};
 static ActNative g_actPelican = {0xFD9710u, "4c8bdc49895b1049897320574881eca0000000488b05e62866014833c4488984249000000033c0498bf84d8b4050488bda49894388488bf14989439049894398498943a0498943a8498943b0498943b8498943c0498943c8498943d0498943d84d85c0750c498d4388488947504d8d4388e80abe3000488b0d0b2849024c8bcb488bd648897c24204c8b01e820290000488bc6488b8c24900000004833cce8bdef0a014c8d9c24a0000000498b5b18498b7328498be35fc3", 0};
 
-/* Whether code or data reads as `hex` (HellForge's own rewrites of game.dll left out). */
+/* Whether code or data reads as `hex`: HellForge's own rewrites of game.dll left out (a mod's are not: they count as a
+ * difference), and a displacement a mod may move checked through its field instead (moved_fields.c). */
 static int ActBytes(uintptr_t at, const char* hex, uint32_t rvaIfGame)
 {
     uint8_t want[256], got[256];
@@ -45,6 +46,7 @@ static int ActBytes(uintptr_t at, const char* hex, uint32_t rvaIfGame)
     if (n > sizeof want) return 0;
     for (size_t i = 0; i < n; i++) want[i] = (uint8_t)(Hex(hex[2 * i]) << 4 | Hex(hex[2 * i + 1]));
     if (rvaIfGame && hellforge_lua_rewrites(rvaIfGame, (uint32_t)n)) return 1;
+    if (rvaIfGame) return MfPinMatches(at - rvaIfGame, rvaIfGame, want, n);
     return !SafeRead(at, got, n) && !memcmp(got, want, n);
 }
 typedef struct ActPin { int exe; uint32_t rva; const char* hex; } ActPin;
@@ -107,7 +109,7 @@ static uint32_t ActLocalAvatar(uintptr_t game, int dead, ActHealth* h, const cha
     int count = EvpPlayers(game, players);
     uint32_t avatar = 0;
     for (int i = 0; i < count; i++) if (players[i].local) avatar = players[i].avatar;
-    *why = "this machine's player has no Helldiver";
+    *why = count == EVP_LAYOUT ? EVP_LAYOUT_WHY : "this machine's player has no Helldiver";
     if (!avatar || !EvpAlive(avatar) || !ActHealthOf(game, avatar, h)) return 0;
     if (h->resource != ACT_AVATAR || !h->owned) { *why = "this machine's player's avatar is not a Helldiver it owns"; return 0; }
     if (!dead && h->life == 1) { *why = "the Helldiver is downed"; return 0; }
@@ -284,16 +286,21 @@ static int ActSupplyPack(HfMod* mod, uintptr_t game, uint32_t avatar, uint32_t* 
     return 1;
 }
 /* The Helldiver's action context, free to start an action: its address with *none, the game's no-action id; 0 (logged
- * when the Helldiver is busy or cannot act). */
+ * when the Helldiver is busy or cannot act). The map, descriptors and contexts are where the game's code addresses them
+ * now, the flags at +0x710 and +0x718 of the context (moved_fields.c checks the game agrees). */
 static uintptr_t ActFreeContext(HfMod* mod, uintptr_t game, uint32_t avatar, uint32_t* none)
 {
     uintptr_t actions, descriptor;
     uint32_t ai;
-    if (!EvpPtr(game + 0x3326D20u, &actions) || !EvpHash(actions + 0xF8, avatar, 8, 4, &ai) || !EvpPtr(actions + 0x110 + (uintptr_t)ai * 8, &descriptor) ||
+    int ok = 1;
+    uint32_t map = MfOffset(game, MF_AVATAR_MAP, &ok), descriptors = MfOffset(game, MF_AVATAR_DESCRIPTORS, &ok);
+    uint32_t contexts = MfOffset(game, MF_AVATAR_CONTEXT, &ok);
+    if (!ok) { ApiLog(mod, "resupply_from_pack: the avatar manager's layout is not a plausible one (the log says which part)"); return 0; }
+    if (!EvpPtr(game + 0x3326D20u, &actions) || !EvpHash(actions + map, avatar, 8, 4, &ai) || !EvpPtr(actions + descriptors + (uintptr_t)ai * 8, &descriptor) ||
         EvpU32(descriptor + 8, 0) != avatar) { ApiLog(mod, "resupply_from_pack: the Helldiver has no action record"); return 0; }
-    uintptr_t context = actions + 0x53E170 + (uintptr_t)ai * 0x1238;
+    uintptr_t context = actions + contexts + (uintptr_t)ai * 0x1238;
     uint64_t f0 = 0, f1 = 0;
-    SafeRead(actions + 0x53E880 + (uintptr_t)ai * 0x1238, &f0, 8); SafeRead(actions + 0x53E888 + (uintptr_t)ai * 0x1238, &f1, 8);
+    SafeRead(context + 0x710, &f0, 8); SafeRead(context + 0x718, &f1, 8);
     *none = EvpU32(game + 0x3483C5Cu, 0);
     if (EvpU32(context, 0) != avatar) return 0;
     if (((f1 >> 21) & 1) || EvpU32(context + 8, 0) != *none) { ApiLog(mod, "resupply_from_pack: the Helldiver is busy"); return 0; }

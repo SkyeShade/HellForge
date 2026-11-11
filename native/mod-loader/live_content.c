@@ -778,7 +778,7 @@ static void LiveContentStep(void* arg)
     if (plan->categories && !g_stratagemCategoriesActive) InstallStratagemCategories(plan->game);
     else if (g_stratagemCategoriesActive && g_stratagemCategoryCount > g_lcCategoriesBefore) OrderStratagemCategories();
     LiveRegistryStep(plan);
-    if (plan->scrubbing && g_livePlayers() <= 1 && ScrubReady(plan->game) == NULL) ScrubStep(plan->game, &plan->scrub);
+    if (plan->scrubbing && g_livePlayers() <= 1 && g_livePlayers() != EVP_LAYOUT && ScrubReady(plan->game) == NULL) ScrubStep(plan->game, &plan->scrub);
     else if (plan->scrubbing) plan->scrubFailed = 1;
     if (plan->items.count > 0) OwnBatchStep(&plan->items);
 }

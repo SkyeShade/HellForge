@@ -110,17 +110,26 @@ static HfMod* ModOfWrite(uintptr_t returnAddress)
     return mod;
 }
 
+/* A mod's write: not one of HellForge's own rewrites (NoteRewrite), so HellForge's pins over it see the difference. */
+static int ApiWriteOfMod(uintptr_t address, const void* data, size_t size)
+{
+    g_modWriting++;
+    int result = ApiWrite(address, data, size);
+    g_modWriting--;
+    return result;
+}
+
 /* HfApi.write: the caller is the mod whose DLL the call returns into (ModOfWrite). Only a live mod's writes are kept: no
  * other mod is ever taken out while the game runs (CodeRemovable), so theirs are written as before SDK 16. */
 __attribute__((noinline)) static int ApiModWrite(uintptr_t address, const void* data, size_t size)
 {
     HfMod* mod = ModOfWrite((uintptr_t)__builtin_return_address(0));
-    if (mod == NULL || !mod->live) return ApiWrite(address, data, size);
+    if (mod == NULL || !mod->live) return ApiWriteOfMod(address, data, size);
     if (ModGone(mod)) { ApiLog(mod, "write refused: the mod is being taken out"); return 1; }
     uint8_t small[256];
     uint8_t* before = size <= sizeof small ? small : (uint8_t*)malloc(size);
     int known = before != NULL && size > 0 && !SafeRead(address, before, size);
-    int result = ApiWrite(address, data, size);
+    int result = ApiWriteOfMod(address, data, size);
     if (!result)
     {
         if (known) JournalNote(mod, address, before, data, size);
@@ -131,7 +140,7 @@ __attribute__((noinline)) static int ApiModWrite(uintptr_t address, const void* 
 }
 
 /* HfApi.write_u32_if; kept, as write's, for a live mod only. */
-static int ApiModWriteU32If(HfMod* mod, uintptr_t address, uint32_t expect, uint32_t value)
+static int ApiModWriteU32IfOf(HfMod* mod, uintptr_t address, uint32_t expect, uint32_t value)
 {
     if (mod == NULL || !mod->live) return ApiWriteU32If(mod, address, expect, value);
     if (ModGone(mod)) { ApiLog(mod, "write_u32_if refused: the mod is being taken out"); return 1; }
@@ -139,6 +148,13 @@ static int ApiModWriteU32If(HfMod* mod, uintptr_t address, uint32_t expect, uint
     int known = address != 0 && !SafeRead(address, &before, 4);
     int result = ApiWriteU32If(mod, address, expect, value);
     if (!result && known && before != value) JournalNote(mod, address, (const uint8_t*)&before, &value, 4);
+    return result;
+}
+static int ApiModWriteU32If(HfMod* mod, uintptr_t address, uint32_t expect, uint32_t value)
+{
+    g_modWriting++;
+    int result = ApiModWriteU32IfOf(mod, address, expect, value);
+    g_modWriting--;
     return result;
 }
 
