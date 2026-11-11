@@ -115,9 +115,9 @@ To use them:
 2. Copy the first command (each has a Copy button), paste it into the console and press Enter. Do the same for each
    command, one at a time.
 3. Watch the progress under Game files: Steam shows no progress in its library for this download. Steam puts it in
-   `<Steam>/steamapps/content/app_553850/` (about 24 GB); the Linux Steam client may use
-   `steamrt64/steamapps/content/app_553850/` or `ubuntu12_64/steamapps/content/app_553850/` instead, and setup looks in
-   each. On Linux the bar stays empty, and setup reads the download directly from Steam's content folder; do not move it
+   `<Steam>/steamapps/content/app_553850/` (about 24 GB). The Linux Steam client often uses
+   `ubuntu12_32/steamapps/content/app_553850/` under the Steam folder instead (or `ubuntu12_64` or `steamrt64`). Setup
+   looks in each and names the folder it found under the progress. On Linux the bar stays empty, and setup reads the download directly from Steam's content folder; do not move it
    into the prefix: see [Steam's download of the supported build](linux.md#steams-download-of-the-supported-build).
 4. Setup continues by itself when every depot is complete and copies the game from the download. "Delete Steam's
    download after copying" is ticked unless you untick it, and frees the space afterwards.

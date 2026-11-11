@@ -126,8 +126,9 @@ kept. A borrowed game cannot be downloaded this way either; the card then points
 The third way, and where setup goes when another way cannot work. **Open the Steam console** opens it
 (`steam://open/console`), and each depot has its `download_depot 553850 <depot> <manifest>` command with a Copy button.
 
-The Steam app downloads each depot into `<Steam>/steamapps/content/app_553850/depot_<depot>/`. The Linux client may use
-`ubuntu12_32/steamapps`, `ubuntu12_64/steamapps` or `steamrt64/steamapps` under the Steam folder instead. Setup looks in
+The Steam app downloads each depot into `<Steam>/steamapps/content/app_553850/depot_<depot>/`. The Linux client often
+uses `ubuntu12_32/steamapps` under the Steam folder instead, or `ubuntu12_64/steamapps` or `steamrt64/steamapps`. The
+card names both likely folders, and the one Steam really uses once the download has started. Setup looks in
 all of them and takes, for each depot, the folder that holds the most of the build. So an empty folder left by an
 earlier download does not hide the real one.
 

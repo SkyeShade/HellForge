@@ -221,16 +221,19 @@ When setup needs the download, it shows a card with one `download_depot 553850 <
 When five or fewer files remain, the wizard names them. A file larger than this build's is another build's file, so
 delete it and run that depot's command again.
 
-The Linux Steam client puts what `download_depot` downloads in `<Steam>/steamapps/content/app_553850/`. It can also be
-in the same path under `<Steam>/ubuntu12_32/`, `<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, because Steam downloads
-relative to the folder its program runs from. The native setup reads these locations directly and does not move the
-depot folders:
+The Linux Steam client downloads relative to the folder its program runs from. So `download_depot` often writes to
+`<Steam>/ubuntu12_32/steamapps/content/app_553850/` (a Steam Deck does), and sometimes to the same path under
+`<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, or to `<Steam>/steamapps/content/app_553850/`. Setup's card names the
+first and the last before the download, and the folder it found once Steam has started. The native setup reads these
+locations directly and does not move the depot folders:
 
 ```text
-<Steam>/steamapps/content/app_553850/depot_553851/
-<Steam>/steamapps/content/app_553850/depot_553853/
-<Steam>/steamapps/content/app_553850/depot_553854/
+<Steam>/ubuntu12_32/steamapps/content/app_553850/depot_553851/
+<Steam>/ubuntu12_32/steamapps/content/app_553850/depot_553853/
+<Steam>/ubuntu12_32/steamapps/content/app_553850/depot_553854/
 ```
+
+The download needs about 24 GB on the drive that holds the Steam folder, wherever HellForge is installed.
 
 The download can remain in Steam's folder, or setup can delete it. **Delete Steam's download after copying** is ticked by
 default. It removes the build's depot folders from the content locations, and each `app_553850` folder when it becomes

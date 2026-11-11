@@ -516,6 +516,44 @@ Test("On Linux, the depot downloads Steam put under its client's folder (ubuntu1
     Check(!Directory.Exists(client) && !SteamDepotDownload.IsComplete(steam, build), "The ubuntu12_32 download was not deleted.");
 });
 
+Test("Setup's console card names both folders the Linux Steam client downloads into, then the one it found", () =>
+{
+    var (manifest, source, depotCache) = DepotFixture("depot-download-named");
+    var build = SupportedBuild.FromSteam(manifest, depotCache);
+    var steam = Path.Combine(root, "depot-download-named-steam");
+    var usual = Path.Combine(steam, "steamapps", "content", "app_" + build.AppId);
+    var client = Path.Combine(steam, "ubuntu12_32", "steamapps", "content", "app_" + build.AppId);
+    Check(SteamDepotDownload.TargetText(steam, build, linux: false) == usual, "Windows was not told the one folder Steam uses there.");
+    var linux = SteamDepotDownload.TargetText(steam, build, linux: true);
+    Check(linux.StartsWith(client + " or " + usual + ",", StringComparison.Ordinal),
+        "Linux was not told the client's folder first and the usual one second: " + linux);
+    Check(SteamDepotDownload.DownloadFolders(steam, build).Count == 0 && SteamDepotDownload.FoundText([]) == "",
+        "A folder was named before Steam downloaded anything.");
+
+    // Steam starts under its client folder, as on a Steam Deck: that folder is named, not the usual one.
+    var first = build.Files[0];
+    var target = Path.Combine(client, "depot_" + first.Depot, first.Path);
+    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+    File.Copy(Path.Combine(source, first.Path), target);
+    Check(SteamDepotDownload.DownloadFolders(steam, build).SequenceEqual([client]) &&
+        SteamDepotDownload.FoundText(SteamDepotDownload.DownloadFolders(steam, build)) == "\nSteam's download is in " + client,
+        "The folder Steam downloads into was not named: " + string.Join(", ", SteamDepotDownload.DownloadFolders(steam, build)));
+    // An empty folder an earlier download left in the usual place does not take its place.
+    Directory.CreateDirectory(Path.Combine(usual, "depot_" + first.Depot));
+    Check(SteamDepotDownload.DownloadFolders(steam, build).SequenceEqual([client]), "An empty earlier folder was named instead.");
+    // Depots in two places are both named.
+    if (build.Depots.Count > 1)
+    {
+        var other = build.Files.First(file => file.Depot != first.Depot);
+        var elsewhere = Path.Combine(usual, "depot_" + other.Depot, other.Path);
+        Directory.CreateDirectory(Path.GetDirectoryName(elsewhere)!);
+        File.Copy(Path.Combine(source, other.Path), elsewhere);
+        var both = SteamDepotDownload.DownloadFolders(steam, build);
+        Check(both.Count == 2 && both.Contains(client) && both.Contains(usual) &&
+            SteamDepotDownload.FoundText(both).Contains(" and ", StringComparison.Ordinal), "Depots in two folders were not both named.");
+    }
+});
+
 Test("An earlier download's empty depot folders and state files do not hide Steam's download under steamrt64 (issue 112)", () =>
 {
     var (manifest, source, depotCache) = DepotFixture("depot-download-leftover");

@@ -31,6 +31,30 @@ public static class SteamDepotDownload
     public static IReadOnlyList<string> ContentFolders(string steamRoot, SupportedBuild build) =>
         [.. SteamAppsFolders(steamRoot).Select(folder => Path.Combine(folder, "content", "app_" + build.AppId))];
 
+    // Where the console card says the download goes, before any of it is there: the usual folder, and on Linux the one
+    // under the client's own folder, which the Linux Steam client often uses instead of the usual one.
+    public static IReadOnlyList<string> ExpectedContentFolders(string steamRoot, SupportedBuild build, bool linux) =>
+        linux ? [.. ContentFolders(steamRoot, build).Take(2)] : [ContentFolder(steamRoot, build)];
+
+    // The content folders that hold the depots setup reads (DepotFolder's choice for each), once Steam has made one.
+    // Empty before the download starts.
+    public static IReadOnlyList<string> DownloadFolders(string steamRoot, SupportedBuild build) =>
+        [.. build.Depots.Select(depot => DepotFolder(steamRoot, build, depot.Id)).Where(Directory.Exists)
+            .Select(folder => Path.GetDirectoryName(folder)!).Distinct()];
+
+    // The console card's words for where Steam downloads to. The Linux client often downloads under its own folder, not
+    // where the Windows client does, so both are named; FoundText names the real one once it exists.
+    public static string TargetText(string steamRoot, SupportedBuild build, bool linux)
+    {
+        var folders = ExpectedContentFolders(steamRoot, build, linux);
+        return folders.Count == 1 ? folders[0]
+            : $"{folders[1]} or {folders[0]}, whichever your Steam uses (the progress below names the folder once Steam has started)";
+    }
+
+    // The line under the depots' progress that names the folders Steam is really downloading into.
+    public static string FoundText(IReadOnlyList<string> folders) =>
+        folders.Count == 0 ? "" : "\nSteam's download is in " + string.Join(" and ", folders);
+
     // The depot's folder: of the places Steam may have put it, the one holding most of it (the first on a tie), else the
     // usual one (while nothing is there yet). An empty depot folder left by an earlier download must not hide the real
     // one under a client folder (GitHub issue 112; the same as linux-native's #181).
