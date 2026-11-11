@@ -270,6 +270,9 @@ public partial class MainWindow : Window
         else Start();
     }
 
+    // When the session runner was last started: an early failure's reason is read only from logs written since.
+    DateTime runnerStartedUtc;
+
     void Start(string? modSync = null)
     {
         if (runner.IsRunning) return;
@@ -319,6 +322,7 @@ public partial class MainWindow : Window
         {
             previousRunId = SessionRunner.LatestRunId(paths);
             runLookupPending = true;
+            runnerStartedUtc = DateTime.UtcNow;
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
                 EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true,
                 SteamUdp: SteamUdpBox.IsChecked == true));
@@ -357,6 +361,12 @@ public partial class MainWindow : Window
                     failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
                 return false;
             }
+        // None ships, so the session runner would stop at once; on Linux only after Steam and Proton had started.
+        if (paths.InstallRoot != null && HellForge.Core.GameCatalog.Missing(paths.InstallRoot))
+        {
+            SetStatus("Sync your inventory before the first session.", Phase.Attention, HellForge.Core.GameCatalog.SyncFirst);
+            return false;
+        }
         // A finished sync's capture still forwards the normal game until it closes; ending it would cut the game off.
         if (SyncCaptureId != null)
         {
@@ -521,8 +531,22 @@ public partial class MainWindow : Window
                     " for Bash/Proton output and " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") +
                     " for errors after the Windows session runner starts."
                 : "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why.";
+        var exit = exitCode is { } code ? $"The launch process exited with code {code}." : null;
+        var reason = EarlyFailureReason();
+        if (reason != null) Append("The session runner exited before starting: " + reason, Red);
         SetStatus("The session runner exited before starting.", Phase.Failed, failureLogs,
-            exitCode is { } code ? $"The launch process exited with code {code}." : null);
+            reason == null ? exit : reason + (exit == null ? "" : " (" + exit + ")"));
+    }
+
+    // What the session runner (or, on Linux, the wrapper before it) wrote for this start: the reason itself, so the
+    // player does not have to find and open a log for it.
+    string? EarlyFailureReason()
+    {
+        if (paths.InstallRoot == null) return null;
+        var logs = Path.Combine(paths.InstallRoot, "logs");
+        if (HellForge.Core.EarlySessionFailure.Reason(logs, runnerStartedUtc) is { } reason) return reason;
+        return OperatingSystem.IsLinux() && HellForge.Core.EarlySessionFailure.WrapperLastLine(logs, runnerStartedUtc) is { } line
+            ? "The last line of " + HellForge.Core.EarlySessionFailure.LinuxWrapperLog + ": " + line : null;
     }
 
     void FindRun()

@@ -31,15 +31,25 @@ public static class GameCatalog
     public const string SyncFirst = "This installation has no game catalogue yet. Run Sync Inventory once (Profile > Account sync): " +
         "it copies the item and warbond catalogues from the normal game, which HellForge does not ship.";
 
+    // No sync has given this installation a catalogue yet, so Ensure would answer SyncFirst. It reads only, for the
+    // launcher to say so when PLAY is pressed, before a session (and on Linux, Proton) is started for nothing.
+    public static bool Missing(string installRoot) =>
+        !Captured(installRoot) && !Outputs(installRoot).All(File.Exists);
+
+    static bool Captured(string installRoot) =>
+        System.IO.Directory.Exists(CapturedDirectory(installRoot)) &&
+        File.Exists(Path.Combine(CapturedDirectory(installRoot), CapturedStampFile));
+
+    static string[] Outputs(string installRoot) => [ProgressionData(installRoot), ItemCatalog(installRoot)];
+
     // Brings the assembled files up to date with the captured catalogues and the pinned file, when either is newer.
     // Null when the assembled files are there and current; otherwise why a session cannot start.
     public static string? Ensure(string installRoot)
     {
         var captured = CapturedDirectory(installRoot);
         var pinned = Pinned(installRoot);
-        var outputs = new[] { ProgressionData(installRoot), ItemCatalog(installRoot) };
-        if (!System.IO.Directory.Exists(captured) || !File.Exists(Path.Combine(captured, CapturedStampFile)))
-            return outputs.All(File.Exists) ? null : SyncFirst;
+        var outputs = Outputs(installRoot);
+        if (!Captured(installRoot)) return outputs.All(File.Exists) ? null : SyncFirst;
         if (!File.Exists(pinned)) return "HellForge's pinned catalogue (" + pinned + ") is missing: repair or reinstall HellForge.";
         var newest = new[] { pinned }.Concat(CaptureCompletion.Catalogues.Select(entry => Path.Combine(captured, entry.File)))
             .Where(File.Exists).Max(File.GetLastWriteTimeUtc);

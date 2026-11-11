@@ -121,18 +121,9 @@ static class Launch
         }
     }
 
-    // Why the session runner stopped before it made its run folder: its last line in logs/session-runner.log, if new.
-    static string RunnerLog(InstallLayout install, DateTime sinceUtc)
-    {
-        var log = Path.Combine(install.Logs, "session-runner.log");
-        try
-        {
-            if (File.Exists(log) && File.GetLastWriteTimeUtc(log) >= sinceUtc.AddSeconds(-1))
-                return File.ReadLines(log).LastOrDefault(l => l.Length > 0) ?? "";
-        }
-        catch (IOException) { }
-        return "see " + log;
-    }
+    // Why the session runner stopped before it made its run folder: its reason in logs/session-runner.log, if new.
+    static string RunnerLog(InstallLayout install, DateTime sinceUtc) =>
+        EarlySessionFailure.Reason(install.Logs, sinceUtc) ?? "see " + Path.Combine(install.Logs, EarlySessionFailure.RunnerLog);
 
     // Reports the run's status (result.json) as it changes, until the session runner has exited. 0 when the session
     // ended normally.
