@@ -408,7 +408,7 @@ static void NoteMissionMap(void)
             used, slotCount, statics, g_recordKept);
     }
     Note("difficulty: the mission's map (type %u): important locations %u of 256 (cities flag 1024), city walls %u / %u / %u of 64 / 128 / 128, vertices %u of 975, route cells %u of 1024, edges %u of 1621, locations %u of %u",
-        type, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[7], counts[6], DIF_LOCATIONS);
+        type, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[7], counts[6], Generation()->caps.locations);
 }
 
 static int WatchLaunch(void)
@@ -430,6 +430,18 @@ static int WatchSpawners(void)
     if (spawnersLeft == dropped) return 0;
     dropped = spawnersLeft;
     Note("difficulty: the enemy director's 128 spawners are full: %u more left out so far (their outposts stay)", spawnersLeft);
+    return 1;
+}
+
+/* A request's guard on the mission stamps (difficulty_block.c): said once per change, as a cut list costs an objective
+ * candidates. */
+static int WatchStamps(void)
+{
+    static LONG dropped;
+    LONG left = g_stampsLeftOut != NULL ? *g_stampsLeftOut : 0;
+    if (left == dropped) return 0;
+    dropped = left;
+    Note("difficulty: the mission stamp list's %u places are full: %ld stamp(s) left out so far (ask for more mission_stamps)", Generation()->caps.mission_stamps, left);
     return 1;
 }
 
@@ -522,6 +534,7 @@ static void DifficultyWatch(void)
     logged += WatchLaunch();
     logged += WatchSpawners();
     logged += WatchMines();
+    logged += WatchStamps();
     logged += WatchPockets();
     logged += WatchRestarts();
 }

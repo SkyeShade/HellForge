@@ -22,6 +22,7 @@
 #include "mod_status_test.c"
 #include "render_guards_test.c"
 #include "moved_fields_test.c"
+#include "generation_capacity_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -881,6 +882,7 @@ static void DifficultyFixture(void)
             assert(v == kObjectiveListSites[i].value);
         }
         assert(g_objectivePlaces == 30);
+        GenerationDefaultFixture(game);
         {
             uint32_t sites[3] = {DIF_TELEMETRY_COUNT_SITE, DIF_TELEMETRY_LOOP_SITE, DIF_SELECTION_END};
             uint32_t backs[3] = {DIF_TELEMETRY_COUNT_SITE + 10, DIF_TELEMETRY_DONE, DIF_SELECTION_BACK};
@@ -4519,6 +4521,7 @@ int main(int argc, char** argv)
     ModIdentityFixture();
     StatusFixture();
     DifficultyFixture();
+    GenerationCapacityFixture();
     ClusterRingsFixture();
     TownsFixture();
     RecordMapFixture();
