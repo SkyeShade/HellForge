@@ -165,6 +165,9 @@ On `dev`, since 0.4.0-beta.
   zipped pack in as a folder, and one already in the mods folder becomes one, with its options and place kept. A
   `.rar`, `.7z` or zipped pack dropped into the mods folder whose files the installed mod already has is removed as a
   second copy (#306).
+- **Public lobbies of a mod's larger squad are listed.** The lobby directory took a squad as 4 players and refused
+  listings of more than 8 places, so a public lobby of a mod with eight players never showed. A lobby's squad is now
+  its places less the game's 4 spare ones. HellForge versions before this one still leave such lobbies out (#351).
 - **The Steam bridge makes lobbies of up to eight.** `CreateLobby` took four members at most. A code mod that raises
   the game's player limit now gets the lobby the game asks for (#347).
 

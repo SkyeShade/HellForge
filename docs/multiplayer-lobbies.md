@@ -87,7 +87,8 @@ One that breaks any of the following is left out whole:
   0.3's `hellforge-mp-8`). `hf.wire` must be the directory's wire level, or `hellforge` 0.3's. The searches filter
   those;
 - a GUID lobby id, and a connection string naming the listing's host;
-- 1 to 4 members, with a limit of 2 to 8 (the game makes its lobbies for 8);
+- a limit of 2 to 12 places, and at least 1 member but no more than its squad holds. The game makes its lobbies for
+  its squad and 4 places more: 8 for a squad of 4, 12 for a mod's squad of 8;
 - a lock of 0 or 1;
 - only PlayFab search keys, at most 30, within PlayFab's limits
   ([Joining and the modlist gate](multiplayer-internals.md#joining-and-the-modlist-gate));
