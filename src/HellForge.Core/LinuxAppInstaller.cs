@@ -29,6 +29,47 @@ public static class LinuxAppInstaller
     public static string Previous(InstallLayout install) => Path.Combine(install.Temp, PreviousFolder);
     public static string PreviousRoot(InstallLayout install) => Path.Combine(install.Temp, PreviousRootFolder);
 
+    // Where the installer puts HellForge in a Proton prefix: the prefix user's Documents folder.
+    public static string InstallRoot(string prefix) =>
+        Path.Combine(prefix, "pfx", "drive_c", "users", "steamuser", "Documents", "HellForge");
+
+    // Why HellForge cannot be installed into a prefix folder, or null. Checked before the prefix is prepared: the
+    // launcher refuses to run from inside steamapps, so an install there would be one that never starts. A link above
+    // the folder is resolved first, as InstallLayout does.
+    public static string? PrefixProblem(string prefix)
+    {
+        var root = new InstallLayout(InstallRoot(prefix)).Root;
+        return InstallLayout.LocationProblem(root) == null ? null
+            : "Choose a prefix folder outside Steam's steamapps folders: Steam checks, updates and deletes what is in " +
+              "them, a Proton version's own folder included. This one is inside steamapps: " + prefix;
+    }
+
+    // The native launcher's first start in a folder the installer unpacked: marks it as an installation. Null, with why
+    // in words for a window, when the folder cannot be one; the launcher shows that instead of ending without a word.
+    public static InstallLayout? FirstStart(string packageRoot, string buildId, out string? problem)
+    {
+        problem = null;
+        var install = new InstallLayout(packageRoot);
+        try
+        {
+            install.Create(buildId);
+            return install;
+        }
+        catch (InvalidDataException) when (InstallLayout.LocationProblem(install.Root) != null)
+        {
+            problem = "HellForge cannot run from inside Steam's steamapps folder: Steam checks, updates and deletes what " +
+                "is in there.\n\nThis copy is in " + install.Root + ".\n\nRun the HellForge installer again and choose " +
+                "a Proton prefix folder outside every steamapps folder, such as the installer's default or a new folder " +
+                "at the top of the same drive. Then delete this copy.";
+        }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or
+            ArgumentException or NotSupportedException)
+        {
+            problem = "HellForge could not prepare its folder (" + install.Root + "): " + error.Message;
+        }
+        return null;
+    }
+
     // Refuses while this installation has a process; unpacks the package, then replaces app/ and HellForge.exe. Returns
     // the old app folder, or null for a first install. The caller commits after the new launcher has started.
     public static string? Install(InstallLayout install, string packagePath, Action installEngine)

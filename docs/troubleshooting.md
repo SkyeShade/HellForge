@@ -63,7 +63,9 @@ Windows SmartScreen may warn that `HellForge-Setup.exe` is unrecognised. It is n
 anyway.
 
 On Linux, the graphical installer asks for a Proton prefix instead of an installation folder; see
-[linux.md](linux.md#setting-it-up).
+[linux.md](linux.md#setting-it-up). It refuses a prefix inside a `steamapps` folder. A launcher that says "HellForge
+cannot run from inside Steam's steamapps folder" was unpacked into one: run the installer again with a prefix folder
+outside `steamapps`, then delete the copy the message names.
 
 ### "This PC runs Windows 10 version ..." (Setup or the launcher closes as it starts)
 

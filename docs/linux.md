@@ -97,7 +97,8 @@ missing or does not match the supported build.
    `HellForge-Linux-Installer.tar.gz` with the archive manager too.
 3. Open the extracted folder and launch `HellForge.Launcher`. If your desktop asks, choose **Run** or **Allow executing
    file as program**.
-4. Choose a Proton version and a prefix folder. The default prefix is `~/.local/share/hellforge-prefix`.
+4. Choose a Proton version and a prefix folder. The default prefix is `~/.local/share/hellforge-prefix`. A folder
+   inside a Steam library's `steamapps`, such as a Proton version's own folder, is refused.
 
 The installer reads Steam's folders and lists the Proton versions installed there:
 
@@ -153,6 +154,8 @@ profiles and mods stay in that prefix.
 A link above the prefix also works, for example `ln -s /mnt/games/hellforge-prefix ~/.local/share/hellforge-prefix`. A
 link above the folder HellForge protects is resolved and the real folder is used. These are refused:
 
+- A prefix folder inside any `steamapps` folder, with "Choose a prefix folder outside Steam's steamapps folders".
+  Steam checks, updates and deletes what is in there. A folder at the top of the same drive, beside `steamapps`, works.
 - A link at the installation folder or inside it, with `Linked/reparse paths are not supported: <path>`. A game copy
   written through it could land somewhere else. The same rule covers the game folder and every Steam library HellForge
   reads.
