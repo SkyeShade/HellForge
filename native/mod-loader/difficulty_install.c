@@ -32,7 +32,7 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     JumpToMapStubs, MoveZoneTable, PrepareStructuredStubs, InstallVista, InstallCull, PrepareFlagsStubs, JumpToStructured,
     InstallClusterGuards, InstallAppendGuards, InstallFootprintWatch, InstallNavGrid, InstallWorld, InstallWorldStreamStep, /* a map_scale above 1 */
     MoveGenerationBlock, JumpToRestartStubs, InstallPocketSearch, JumpToCapture, JumpToTelemetry, JumpToSpawners, JumpToMapView,
-    JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs};
+    JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs, InstallHoloPlane, InstallMapHud};
 
 /* B.2: the same steps by name, so a refusal says which one (and how many completed) kept their patches. */
 static const char* const kInstallStepNames[] = {
@@ -46,7 +46,7 @@ static const char* const kInstallStepNames[] = {
     "JumpToMapStubs", "MoveZoneTable", "PrepareStructuredStubs", "InstallVista", "InstallCull", "PrepareFlagsStubs", "JumpToStructured",
     "InstallClusterGuards", "InstallAppendGuards", "InstallFootprintWatch", "InstallNavGrid", "InstallWorld", "InstallWorldStream",
     "MoveGenerationBlock", "JumpToRestartStubs", "InstallPocketSearch", "JumpToCapture", "JumpToTelemetry", "JumpToSpawners", "JumpToMapView",
-    "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs"};
+    "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs", "InstallHoloPlane", "InstallMapHud"};
 _Static_assert(sizeof kInstallStepNames / sizeof kInstallStepNames[0] == sizeof kInstallSteps / sizeof kInstallSteps[0],
     "every install step needs a name");
 #define DIF_STEP_COUNT (sizeof kInstallSteps / sizeof kInstallSteps[0])

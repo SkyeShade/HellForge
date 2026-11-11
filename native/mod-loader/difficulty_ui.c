@@ -585,3 +585,47 @@ static const char* JumpToCardStubs(DifficultyInstall* d)
     }
     return NULL;
 }
+
+/* The hologram's terrain plane (0x1433460) rises with the zoom slider's position z = (S - 6.6) / 4.4, read from the
+ * scale; the scale is 6.6 k .. 11 k on a larger map (kHoloStubs), so z went below 0 and the plane sank 0.144 (about
+ * 100 m of terrain at k = 0.45) into the clip at world z 20. The plane reads S / k instead: the same k as
+ * kHoloStubs, exactly 1 for level 10 (h = 0.19). xmm1 is free here (0x14334B3 loads it). */
+#define DIF_HOLO_PLANE_SITE 0x143348Eu /* movss xmm0, [rcx+0x8D704] (8 bytes) */
+static const uint8_t kHoloPlaneStub[49] = {
+    0xF3, 0x0F, 0x10, 0x81, 0x04, 0xD7, 0x08, 0x00, /*  0 movss xmm0, [rcx+0x8D704] (S) */
+    0xF3, 0x0F, 0x10, 0x0D, 0, 0, 0, 0,             /*  8 movss xmm1, [rip+0.19] (rel32 at 12) */
+    0xF3, 0x0F, 0x5E, 0x89, 0x0C, 0xD7, 0x08, 0x00, /* 16 divss xmm1, [rcx+0x8D70C] (h) */
+    0xF3, 0x0F, 0x5F, 0x0D, 0, 0, 0, 0,             /* 24 maxss xmm1, [rip+0.45] (rel32 at 28) */
+    0xF3, 0x0F, 0x5D, 0x0D, 0, 0, 0, 0,             /* 32 minss xmm1, [rip+1.0] (rel32 at 36) */
+    0xF3, 0x0F, 0x5E, 0xC1,                         /* 40 divss xmm0, xmm1 */
+    0xE9, 0, 0, 0, 0};                              /* 44 jmp 0x1433496 (rel32 at 45) */
+
+static const char* InstallHoloPlane(DifficultyInstall* d)
+{
+    if (!LargerMaps()) return NULL;
+    if (ApiCodeMatches(d->game + DIF_HOLO_PLANE_SITE, "F3 0F 10 81 04 D7 08 00") != 1)
+    {
+        Note("difficulty: hologram plane: the code is not the reviewed one; the plane keeps the game's height");
+        return NULL;
+    }
+    uint8_t* stub = AllocateNearGame(d->game, 0x100);
+    if (stub == NULL) return "the hologram plane's stub has no page near the game";
+    float* values = (float*)(stub + 0x40);
+    values[0] = 0.19f; values[1] = 0.45f; values[2] = 1.0f;
+    memcpy(stub, kHoloPlaneStub, sizeof kHoloPlaneStub);
+    const struct { uint8_t at; uintptr_t target; } slots[4] = {{12, (uintptr_t)&values[0]}, {28, (uintptr_t)&values[1]},
+        {36, (uintptr_t)&values[2]}, {45, d->game + DIF_HOLO_PLANE_SITE + 8}};
+    for (int i = 0; i < 4; i++)
+    {
+        int32_t rel = (int32_t)(slots[i].target - (uintptr_t)(stub + slots[i].at + 4));
+        memcpy(stub + slots[i].at, &rel, 4);
+    }
+    DWORD protect;
+    if (!VirtualProtect(stub, 0x100, PAGE_EXECUTE_READ, &protect)) return "the hologram plane's stub could not be made executable";
+    FlushInstructionCache(GetCurrentProcess(), stub, 0x100);
+    uint8_t jump[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+    int32_t rel = DifficultyJumpRel(d->game + DIF_HOLO_PLANE_SITE, (uintptr_t)stub);
+    memcpy(jump + 1, &rel, 4);
+    if (ApiWrite(d->game + DIF_HOLO_PLANE_SITE, jump, 8)) return "the hologram plane could not be fitted";
+    return NULL;
+}

@@ -4392,16 +4392,15 @@ static void WorldOpenEdgesPlain(uintptr_t gen)
         plain, streets, cityCells, unknown, plainNodes, nodes);
 }
 
-/* No water on the extra large city map, as on a vanilla city map. The level's cell types ([[level+0x2D0]], count +0xA0)
- * carry a water level at +0xE4; op 0x0A (0xF6C610 phase 0) spawns a water body for each used type (ids G+0x18008, the
- * record built at 0xC23F6A / 0xC26AD2: pass+0x10 = that table) whose level is above -500. A vanilla city map's types are
- * at -501, so it has none. The XL city map's open land takes the region's open types (s75t: types 3/4/5/30 at -4 / -3.99
- * / -1.05 / -10), whose basins lie 0.1-0.2 m under their level over 8 km2 (3 % of the map): sheets with a sawtooth
- * shoreline at the 4 m heightmap (audit 13), and WaterLevelAt (0x13D4620) reads the 16 km water map as if it were 2 km
- * (KB xl-world-streaming, water ops). So on such a level each type with a level above -500 is set to -501 before the
- * level's op 0x0A, as soon as the level's map type is set (every generation reader after it, h_macro's wet holds and the
- * tiles see a dry type), and put back at the next level's first op, while the descriptor is still in that level's table and still holds -501 (else it was unloaded or
- * replaced: left alone). */
+/* No water on a larger map (user decision: no sea there). The level's cell types ([[level+0x2D0]], count +0xA0) carry a
+ * water level at +0xE4; op 0x0A (0xF6C610 phase 0) spawns a water body for each used type (ids G+0x18008, the record
+ * built at 0xC23F6A / 0xC26AD2: pass+0x10 = that table) whose level is above -500, and draws it into the water target the
+ * briefing hologram reads. The larger map repeats vanilla relief, so those authored levels flood its dips: sheets with a
+ * sawtooth shoreline (audit 13), black puddles on the hologram (type levels down to -39 m, 9.6 % of planet 114's map), and
+ * WaterLevelAt (0x13D4620) reads the 16 km water map as if it were 2 km. So each type with a level above -500 is set to
+ * -501 (a vanilla city map's value) before the level's op 0x0A, once the level's map type is set (every generation
+ * reader after it, h_macro's wet holds and the tiles see a dry type), and put back at the next level's first op while
+ * the descriptor is still in that level's table and still holds -501 (else it was unloaded or replaced: left alone). */
 #define DRY_LEVEL -501.0f
 static struct { LONG level; uint32_t count; uint64_t type[256]; float was[256]; } g_dry = {.level = -1};
 
@@ -4412,7 +4411,44 @@ static int DryWritable(uint64_t at)
     return (mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) != 0 && !(mbi.Protect & PAGE_GUARD);
 }
 
-static void WorldDryCity(uint64_t op)
+/* The previous level's water levels back, on the types still in this level's table that still read -501. */
+static void WorldDryRestore(uint64_t table, uint32_t types)
+{
+    uint32_t restored = 0, dropped = 0;
+    for (uint32_t i = 0; i < g_dry.count; i++)
+    {
+        int live = 0;
+        for (uint32_t t = 0; t < types && !live; t++) { uint64_t d = 0; live = !SafeRead(table + 8ull * t, &d, 8) && d == g_dry.type[i]; }
+        float now = 0;
+        if (!live || SafeRead(g_dry.type[i] + 0xE4, &now, 4) || now != DRY_LEVEL || !DryWritable(g_dry.type[i] + 0xE4)) { dropped++; continue; }
+        *(volatile float*)(uintptr_t)(g_dry.type[i] + 0xE4) = g_dry.was[i];
+        restored++;
+    }
+    if (g_dry.count) Note("difficulty: extra large maps: water levels put back on %u types (%u no longer this level's or changed: left alone)", restored, dropped);
+    g_dry.count = 0;
+}
+
+static void WorldDryAll(uint64_t table, uint32_t types, uint64_t op, uint8_t mapType)
+{
+    char text[512]; size_t at = 0; text[0] = 0;
+    uint32_t refused = 0, listed = 0;
+    for (uint32_t t = 0; t < types; t++)
+    {
+        uint64_t d = 0; float level = DRY_LEVEL;
+        if (SafeRead(table + 8ull * t, &d, 8) || d == 0 || SafeRead(d + 0xE4, &level, 4) || !(level > -500.0f)) continue;
+        if (!DryWritable(d + 0xE4)) { refused++; continue; }
+        g_dry.type[g_dry.count] = d; g_dry.was[g_dry.count] = level; g_dry.count++;
+        *(volatile float*)(uintptr_t)(d + 0xE4) = DRY_LEVEL;
+        if (at >= sizeof text - 24) continue;
+        at += (size_t)snprintf(text + at, sizeof text - at, " %u (%.2f)", t, (double)level);
+        listed++;
+    }
+    Note("difficulty: larger maps: no water on map type %u (as a vanilla city map), before op 0x%02X: %u types set to %.0f:%s%s%s",
+        mapType, (unsigned)op, g_dry.count, (double)DRY_LEVEL, g_dry.count ? text : " none had one",
+        listed < g_dry.count ? " (list cut)" : "", refused ? " (some descriptors not writable: kept)" : "");
+}
+
+static void WorldDryTypes(uint64_t op)
 {
     static LONG restoredFor = -1, decided = -1;
     if (decided == g_world.levels || g_worldLevel == 0) return;
@@ -4420,22 +4456,7 @@ static void WorldDryCity(uint64_t op)
     uint32_t types = 0;
     if (SafeRead(g_worldLevel + 0x2D0, &ts, 8) || ts == 0 || SafeRead(ts, &table, 8) || table == 0 || SafeRead(ts + 0xA0, &types, 4)) return;
     if (types > 256) types = 256;
-    if (restoredFor != g_world.levels)
-    {
-        restoredFor = g_world.levels;
-        uint32_t restored = 0, dropped = 0;
-        for (uint32_t i = 0; i < g_dry.count; i++)
-        {
-            int live = 0;
-            for (uint32_t t = 0; t < types && !live; t++) { uint64_t d = 0; if (!SafeRead(table + 8ull * t, &d, 8) && d == g_dry.type[i]) live = 1; }
-            float now = 0;
-            if (live && !SafeRead(g_dry.type[i] + 0xE4, &now, 4) && now == DRY_LEVEL && DryWritable(g_dry.type[i] + 0xE4))
-            { *(volatile float*)(uintptr_t)(g_dry.type[i] + 0xE4) = g_dry.was[i]; restored++; }
-            else dropped++;
-        }
-        if (g_dry.count) Note("difficulty: extra large maps: water levels put back on %u types (%u no longer this level's or changed: left alone)", restored, dropped);
-        g_dry.count = 0;
-    }
+    if (restoredFor != g_world.levels) { restoredFor = g_world.levels; WorldDryRestore(table, types); }
     if (!(g_world.current > 1.0f)) { decided = g_world.levels; return; }
     /* the level's map type, [lg+0x2DE0]+0x1D (= [[ctx+8]+0xC0]+0x1D: the settings are lg+0x2D20); set some ops into the
      * level (s75u: not yet at its first op), so asked again at each op until it is */
@@ -4446,20 +4467,48 @@ static void WorldDryCity(uint64_t op)
         return;
     }
     decided = g_world.levels;
-    if (mapType != 2) { Note("difficulty: extra large maps: map type %u keeps its water (only the city map, type 2, is made dry)", mapType); return; }
-    char text[512]; size_t at = 0; text[0] = 0;
-    uint32_t refused = 0;
-    for (uint32_t t = 0; t < types; t++)
+    WorldDryAll(table, types, op, mapType);
+}
+
+/* No sea on a larger map. The level's sea plane ([[lg+0x2DD0]+0x44], the settings being lg+0x2D20) goes to the water
+ * manager at op 0x0A (0xF6C2F5 -> 0x13D3630: water_z_height, water_enabled, the water target the briefing hologram reads).
+ * The larger map repeats vanilla relief, whose dips under that plane become shallow sea ponds all over the map: black
+ * puddles on the hologram (16.7 % of planet 114's map at -4.5 m). -501 is a sea-less vanilla level's value; the macro
+ * relief (op 0x40) then holds no sea corners. Written at op 0x0A's first dispatch (a value written at op 0x00 does not
+ * reach it) and put back at the next level when the level still points at the same descriptor. */
+static struct { uint64_t P; float was; } g_sea;
+
+/* The previous level's sea back, when this level still points at that descriptor and it still reads -501. */
+static void WorldSeaBack(uint64_t P, float* sea)
+{
+    float now = 0;
+    if (g_sea.P && P == g_sea.P && !SafeRead(g_sea.P + 0x44, &now, 4) && now == DRY_LEVEL && DryWritable(g_sea.P + 0x44))
     {
-        uint64_t d = 0; float level = DRY_LEVEL;
-        if (SafeRead(table + 8ull * t, &d, 8) || d == 0 || SafeRead(d + 0xE4, &level, 4) || !(level > -500.0f)) continue;
-        if (!DryWritable(d + 0xE4)) { refused++; continue; }
-        g_dry.type[g_dry.count] = d; g_dry.was[g_dry.count] = level; g_dry.count++;
-        *(volatile float*)(uintptr_t)(d + 0xE4) = DRY_LEVEL;
-        if (at < sizeof text - 24) at += (size_t)snprintf(text + at, sizeof text - at, " %u (%.2f)", t, (double)level);
+        *(volatile float*)(uintptr_t)(g_sea.P + 0x44) = g_sea.was;
+        Note("difficulty: larger maps: the sea plane put back at %.2f m", (double)g_sea.was);
+        *sea = g_sea.was;
     }
-    Note("difficulty: extra large maps: the city map's open land has no water (as a vanilla city map), before op 0x%02X: %u types set to %.0f:%s%s",
-        (unsigned)op, g_dry.count, (double)DRY_LEVEL, g_dry.count ? text : " none had one", refused ? " (some descriptors not writable: kept)" : "");
+    else if (g_sea.P) Note("difficulty: larger maps: the sea plane's descriptor is no longer this level's; left alone");
+    g_sea.P = 0;
+}
+
+static void WorldNoSea(uint64_t op)
+{
+    static LONG restoredFor = -1, decided = -1;
+    if (g_worldLevel == 0) return;
+    uint64_t P = 0;
+    float sea = DRY_LEVEL;
+    int read = !SafeRead(g_worldLevel + 0x2DD0, &P, 8) && P != 0 && !SafeRead(P + 0x44, &sea, 4);
+    if (restoredFor != g_world.levels) { restoredFor = g_world.levels; WorldSeaBack(read ? P : 0, &sea); }
+    if (decided == g_world.levels || !(g_world.current > 1.0f)) return;
+    if (op != 0x0A) return;
+    decided = g_world.levels;
+    if (!read) { Note("difficulty: larger maps: the sea plane does not read at op 0x0A; it is left as it is"); return; }
+    if (!(sea > -500.0f)) return;
+    if (!DryWritable(P + 0x44)) { Note("difficulty: larger maps: the sea plane (%.2f m) is not writable; it stays", (double)sea); return; }
+    g_sea.P = P; g_sea.was = sea;
+    *(volatile float*)(uintptr_t)(P + 0x44) = DRY_LEVEL;
+    Note("difficulty: larger maps: no sea (the plane at %.2f m set to %.0f) at op 0x0A", (double)sea, (double)DRY_LEVEL);
 }
 
 /* The cell types' kill height (KB engine/zone-kill-height; subagent, checked by me in game.dll: the avatar update calls
@@ -4682,7 +4731,7 @@ static uint64_t WorldDispatch(uint64_t records, uint64_t b, uint64_t index, uint
     TerrainDiagBefore(records, index, (uint32_t)d, &diagAt, &diagOp);
     {
         uint32_t i = 0, o = 0xFFFFFFFFu;
-        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4)) { WorldKillHeight(); WorldDryCity(o); } /* once a level, before op 0x0A */
+        if (!SafeRead(index, &i, 4) && !SafeRead(records + (uint64_t)i * 0x19B0u, &o, 4)) { WorldKillHeight(); WorldDryTypes(o); WorldNoSea(o); } /* once a level, before op 0x0A */
     }
     if (g_world.current == 8.0f) WorldCamInstall();
     {
