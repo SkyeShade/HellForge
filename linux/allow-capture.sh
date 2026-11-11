@@ -9,6 +9,8 @@
 # only. The launcher then starts/stops the helper without asking again, and reinstalls when either shipped file and the
 # installed copy differ. The helper validates its own arguments and can only change HellForge's marked /etc/hosts lines
 # and run the installed relay; it never runs Wine, a game, or a command chosen by the caller.
+# sudo reads /etc/sudoers.d in lexical order and its last matching rule wins, so the rule's name starts with zz-: it
+# then sorts after a distribution's own files (SteamOS ships "sudo" and "wheel", which ask for a password).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source_helper="$here/capture-helper.sh"
@@ -17,7 +19,9 @@ helper=/usr/local/lib/hellforge/capture-helper
 hash_file=/usr/local/lib/hellforge/capture-helper.sha256
 relay=/usr/local/lib/hellforge/capture-relay
 relay_hash_file=/usr/local/lib/hellforge/capture-relay.sha256
-sudoers=/etc/sudoers.d/hellforge-capture
+sudoers=/etc/sudoers.d/zz-hellforge-capture
+# The rule's name before it sorted last; an installation that still has it is moved to the new name.
+old_sudoers=/etc/sudoers.d/hellforge-capture
 
 # sudo names the caller in SUDO_USER; pkexec names the uid in PKEXEC_UID (test-only --test-user prints this account).
 resolve_user() {
@@ -57,7 +61,7 @@ fi
 
 if [ "${1:-}" = "--remove" ]; then
   # Revoke the rule first; the installed helper is root-owned and still available for this cleanup.
-  rm -f "$sudoers"
+  rm -f "$sudoers" "$old_sudoers"
   [ -x "$helper" ] && "$helper" cleanup || true
   rm -f "$helper" "$hash_file" "$relay" "$relay_hash_file"
   rmdir /usr/local/lib/hellforge 2>/dev/null || true
@@ -91,7 +95,7 @@ printf '%s ALL=(root) NOPASSWD: %s check, %s start, %s stop, %s cleanup\n' \
 chmod 440 "$tmp"
 visudo -cf "$tmp" >/dev/null
 install -m 440 -o root -g root "$tmp" "$sudoers"
-rm -f "$tmp"
+rm -f "$tmp" "$old_sudoers"
 trap - EXIT
 echo "HellForge may now run its Account Sync helper without another password prompt ($helper, for $user)."
 echo "Installed helper SHA-256: $helper_hash"

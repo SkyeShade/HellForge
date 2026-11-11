@@ -423,6 +423,7 @@ what it installs. After the installer exits, the launcher continues the same syn
   launcher shows the terminal command instead.
 - SteamOS 3.x users without a password are told to run `passwd` first.
 - A package update that changes either shipped file makes the next sync offer the same install again.
+- So does a sudo that still asks for a password for the helper, as on SteamOS with a rule from an earlier version.
 - `allow-capture.sh --remove` removes the rule, the helper, the relay and both hashes. Uninstall offers the same
   `--remove` through pkexec.
 

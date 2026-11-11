@@ -56,9 +56,9 @@ Settings > Installation > Uninstall HellForge... shows exactly what will be remo
   is removed too.
 - The removed shell installer's app-menu entry, `~/.local/bin/hellforge-linux` command and
   `~/.config/hellforge-linux/config` saved settings, when the saved settings name this prefix.
-- The Account Sync helper, relay, their hashes and `/etc/sudoers.d/hellforge-capture`, through the same pkexec
-  confirmation and password dialog. If no polkit agent is available, the uninstall text shows the terminal `--remove`
-  command and the helper files are left for it.
+- The Account Sync helper, relay, their hashes and the sudoers rule (`/etc/sudoers.d/zz-hellforge-capture`, and
+  `hellforge-capture` from an earlier version), through the same pkexec confirmation and password dialog. If no polkit
+  agent is available, the uninstall text shows the terminal `--remove` command and the helper files are left for it.
 
 Then the launcher closes and a helper deletes:
 

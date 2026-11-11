@@ -230,9 +230,10 @@ public partial class MainWindow
     // keeps root or a password. A failed or cancelled install changes nothing and says why.
     async Task<bool> EnsureLinuxCaptureHelperAsync(string installRoot)
     {
-        if (LinuxCapture.HelperProblem(installRoot) is not { } need) return true;
         if (ConfirmOverlay.IsVisible)
         {
+            // Nothing to install means nothing to confirm; only a needed install has to wait for the open confirmation.
+            if (LinuxCapture.HelperProblem(installRoot) == null) return true;
             SetSyncStatus("Finish the open confirmation first.", Orange);
             return false;
         }
@@ -240,52 +241,78 @@ public partial class MainWindow
         SyncButton.IsEnabled = false;
         try
         {
-            ConfirmTitle.Text = "Install Account Sync helper?";
-            ConfirmText.Text = LinuxCapture.HelperInstallDescription(installRoot) + "\n\nIt is needed because: " + need;
-            (ConfirmCancel.Content, ConfirmStop.Content) = ("Cancel", "Install");
-            ConfirmButtons.IsVisible = true;
-            ConfirmOverlay.IsVisible = true;
-            confirm = new TaskCompletionSource<bool>();
-            var accepted = await confirm.Task;
-            confirm = null;
-            ConfirmOverlay.IsVisible = false;
-            if (!accepted)
-            {
-                SetSyncStatus("The capture helper was not installed; nothing changed.", Orange);
-                return false;
-            }
-            SetSyncStatus("Installing the Account Sync helper...", Gold);
-            LinuxCapture.HelperSetupResult result;
-            try { result = await Task.Run(() => LinuxCapture.InstallHelper(installRoot)); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
-                or System.ComponentModel.Win32Exception)
-            {
-                var text = "The Account Sync helper could not be installed: " + error.Message;
-                SetSyncStatus(text, Red);
-                Append("Inventory sync: " + text, Red);
-                return false;
-            }
-            if (!result.Succeeded)
-            {
-                SetSyncStatus(result.Message, result.Cancelled ? Orange : Red);
-                Append("Inventory sync: " + result.Message, result.Cancelled ? Orange : Red);
-                return false;
-            }
-            if (LinuxCapture.HelperProblem(installRoot) is { } problem)
-            {
-                var text = "The helper installer finished, but the installed copies still do not match: " + problem;
-                SetSyncStatus(text, Red);
-                Append("Inventory sync: " + text, Red);
-                return false;
-            }
-            Append("Inventory sync: " + result.Message, LauncherLine);
-            return true;
+            var (ready, need) = await LinuxCaptureHelperNeed(installRoot);
+            return need == null ? ready : await InstallLinuxCaptureHelperAsync(installRoot, need);
         }
         finally
         {
             syncStarting = false;
             SyncButton.IsEnabled = true;
         }
+    }
+
+    // Ready with no Need: sync. Not ready with no Need: refused, and said. A Need: why the installer must run (again).
+    // The files first; then sudo itself, because a later sudoers rule can ask for a password although every file is
+    // right (SteamOS). Either way the installer runs again and writes the rule that sorts last.
+    async Task<(bool Ready, string? Need)> LinuxCaptureHelperNeed(string installRoot)
+    {
+        if (LinuxCapture.HelperProblem(installRoot) is { } files) return (false, files);
+        SetSyncStatus("Checking the Account Sync helper...", Gold);
+        if (await Task.Run(LinuxCapture.HelperCheckProblem) is not { } check) return (true, null);
+        if (!LinuxCapture.InstallFixesCheck(check)) return (HelperNotReady(check), null);
+        // Another confirmation may have opened while sudo was asked; its answer must not be taken over.
+        return ConfirmOverlay.IsVisible ? (HelperNotReady("Finish the open confirmation first.", Orange), null) : (false, check);
+    }
+
+    async Task<bool> InstallLinuxCaptureHelperAsync(string installRoot, string need)
+    {
+        ConfirmTitle.Text = "Install Account Sync helper?";
+        ConfirmText.Text = LinuxCapture.HelperInstallDescription(installRoot) + "\n\nIt is needed because: " + need;
+        (ConfirmCancel.Content, ConfirmStop.Content) = ("Cancel", "Install");
+        ConfirmButtons.IsVisible = true;
+        ConfirmOverlay.IsVisible = true;
+        confirm = new TaskCompletionSource<bool>();
+        var accepted = await confirm.Task;
+        confirm = null;
+        ConfirmOverlay.IsVisible = false;
+        if (!accepted)
+        {
+            SetSyncStatus("The capture helper was not installed; nothing changed.", Orange);
+            return false;
+        }
+        SetSyncStatus("Installing the Account Sync helper...", Gold);
+        LinuxCapture.HelperSetupResult result;
+        try { result = await Task.Run(() => LinuxCapture.InstallHelper(installRoot)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        {
+            var text = "The Account Sync helper could not be installed: " + error.Message;
+            SetSyncStatus(text, Red);
+            Append("Inventory sync: " + text, Red);
+            return false;
+        }
+        if (!result.Succeeded)
+        {
+            SetSyncStatus(result.Message, result.Cancelled ? Orange : Red);
+            Append("Inventory sync: " + result.Message, result.Cancelled ? Orange : Red);
+            return false;
+        }
+        if (LinuxCapture.HelperProblem(installRoot) is { } problem)
+        {
+            var text = "The helper installer finished, but the installed copies still do not match: " + problem;
+            SetSyncStatus(text, Red);
+            Append("Inventory sync: " + text, Red);
+            return false;
+        }
+        Append("Inventory sync: " + result.Message, LauncherLine);
+        return true;
+    }
+
+    bool HelperNotReady(string text, IBrush? colour = null)
+    {
+        SetSyncStatus(text, colour ?? Red);
+        Append("Inventory sync: " + text, colour ?? Red);
+        return false;
     }
 
     static string SyncStartingText() => NativeLinux

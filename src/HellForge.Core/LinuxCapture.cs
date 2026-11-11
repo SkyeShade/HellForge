@@ -1037,6 +1037,8 @@ public static partial class LinuxCapture
     static ProcessStartInfo SudoStartInfo(IReadOnlyList<string> arguments)
     {
         var start = new ProcessStartInfo("sudo") { UseShellExecute = false, CreateNoWindow = true };
+        // sudo's own messages are read (HelperCheckProblem), so they must not follow the desktop's language.
+        start.Environment["LC_ALL"] = "C";
         start.ArgumentList.Add("-n");
         start.ArgumentList.Add(HelperPath);
         foreach (var argument in arguments) start.ArgumentList.Add(argument);

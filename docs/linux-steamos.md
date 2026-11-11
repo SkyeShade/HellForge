@@ -23,6 +23,15 @@ The only system changes in this tree are the optional `allow-namespace.sh` and t
 needed for a normal session. `allow-namespace.sh` is for Ubuntu's user-namespace restriction, which SteamOS is not
 expected to have.
 
+## The sync helper's sudoers rule
+
+SteamOS ships `sudo` and `wheel` in `/etc/sudoers.d`, and both ask for a password. Valve's newer packages name them
+`holo-group-sudo` and `holo-group-wheel`. sudo uses the last rule that matches, so HellForge's rule is named
+`zz-hellforge-capture` to be read after them.
+
+An installation from an earlier version has the rule as `hellforge-capture`, which those files override: a sync stopped
+with "sudo: a password is required". The next **Sync Inventory** offers the helper install again and moves the rule.
+
 ## Programs
 
 | Program | Needed for | Stock SteamOS 3.x |
