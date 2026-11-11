@@ -10,7 +10,7 @@ community's format, or as a data spec that HellForge builds on each player's mac
 mod ships no game bytes.
 
 - [Patch files](#patch-files) and [cosmetic packs](#cosmetic-packs)
-- [Data specs](#data-specs): copies and recolours, your own models, icons, sounds
+- [Data specs](#data-specs): copies and recolours, your own models, icons, sounds, edits to game shaders
 - [Shaders](shaders.md): your own pixel shaders in a data spec
 - [Native edits in the manifest](#native-edits-in-the-manifest)
 
@@ -208,6 +208,27 @@ its sounds, and name a mixer of a game bank whose routing, 3D placement and dist
 - A record field that names a sound event takes the id: `hf_set(mod, rifle, ProjectileWeapon, fire_single_audio_event,
   HF_U32(hf_wwise_id("yourname_rifle_fire")))`.
 - Sounds are stored uncompressed, about 94 KB a second for mono at 48 kHz. Keep them short.
+
+### edit
+
+`edit` changes one of the game's own resources in place: the patch holds it under the game's id, so it takes the
+game's place. Only shader stages in its GPU part can be edited, for a fix the game's shader gets wrong.
+
+```json
+{ "type": "shader_library", "edit": "0xC4DE51720B9CD9DB",
+  "stages": [{ "at": "0x106C", "digest": "<32 hex digits>", "set": { "0x1A4": "0B000032..." } }] }
+```
+
+| Field | Value |
+|---|---|
+| `at` | where the stage's DXBC container starts in the resource's GPU part |
+| `digest` | the game container's digest (its bytes 4 to 19, as hex) |
+| `set` | offsets inside the container, past its chunk table, and the bytes written there, as hex in file order |
+
+- HellForge signs each edited container again and keeps its stage id, so the game uses it instead of its own.
+- The digest ties the edit to one game build: on another build, or at a wrong offset, the mod's data is refused.
+- Write only bytes of your own, such as whole instructions. An edit counts as raw data for mod sync.
+- Every mod that edits the same resource replaces it whole: the top mod's edit wins.
 
 ### Packages of your own
 

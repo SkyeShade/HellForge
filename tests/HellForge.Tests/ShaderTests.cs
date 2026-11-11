@@ -280,6 +280,49 @@ static class ShaderTests
             Refused(() => ModDataBuilder.Build(other, mod, reader, Path.Combine(root, "shader-bad")), "x.dxbc: it binds my_noise at t9");
             check(!Directory.Exists(Path.Combine(root, "shader-bad")), "A shader that is refused must write nothing.");
         });
+
+        test("An edit sets bytes in a game resource's stage under its own key, signed again with its stage id kept, and refuses another stage", () =>
+        {
+            const ulong Library = 0x7101;
+            var type = ResourceTypes.Hash("shader_library");
+            var data = Directory.CreateDirectory(Path.Combine(root, "edit-game")).FullName;
+            var (gpu, stages) = Part(1);
+            var game = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [new(type, Library)] = new([1, 2, 3, 4], gpu, []) });
+            DataBuilderTests.WriteBundles(data, new Dictionary<string, byte[]> { ["1111111111111111"] = game.Archive, ["1111111111111111.gpu_resources"] = game.Gpu });
+            var size = BitConverter.ToInt32(gpu, stages[0] + 24);
+            var digest = Convert.ToHexString(gpu.AsSpan(stages[0] + 4, 16));
+            var folder = Directory.CreateDirectory(Path.Combine(root, "edit-mod")).FullName;
+            DataSpec Load(string stage)
+            {
+                File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"type":"shader_library","edit":"0x7101","stages":[{{stage}}]}]}]}""");
+                return DataSpecs.Load(folder)!;
+            }
+            string Stage(string set, string? pin = null) => $"{{\"at\":\"0x{stages[0]:X}\",\"digest\":\"{pin ?? digest}\",\"set\":{{{set}}}}}";
+            var at = size - 8;
+            var spec = Load(Stage($"\"0x{at:X}\":\"0100003A0100003A\""));
+            check(DataSpecs.Unchecked(spec)?.Contains("in place") == true, "An edit in place must be unchecked for mod sync.");
+
+            using var reader = new GameDataReader(data);
+            var output = Path.Combine(root, "edit-out");
+            var files = ModDataBuilder.Build(spec, folder, reader, output);
+            var main = Path.Combine(output, files[0]);
+            var built = ResourceArchive.Read(File.ReadAllBytes(main), File.ReadAllBytes(main + ".gpu_resources"), []);
+            check(built.Count == 1 && built.ContainsKey(new(type, Library)), "The edit is not the game's resource under its own key.");
+            var edited = built[new(type, Library)];
+            var stage = edited.Gpu.AsSpan(stages[0], size);
+            check(BitConverter.ToUInt32(edited.Gpu, stages[0] + at) == 0x3A000001 && BitConverter.ToUInt32(edited.Gpu, stages[0] + at + 4) == 0x3A000001, "The bytes were not set.");
+            check(ShaderSplice.Digest(stage).AsSpan().SequenceEqual(stage.Slice(4, 16)) && !stage.Slice(4, 16).SequenceEqual(gpu.AsSpan(stages[0] + 4, 16)), "The stage is not signed again.");
+            check(Count(edited.Gpu, StageId) == Count(gpu, StageId) && edited.Main.SequenceEqual(new byte[] { 1, 2, 3, 4 }), "The stage id or the main part changed.");
+            var changed = Enumerable.Range(0, gpu.Length).Where(i => gpu[i] != edited.Gpu[i]).ToList();
+            check(changed.All(i => i - stages[0] is >= 4 and < 20 || i - stages[0] >= at && i - stages[0] < at + 8), "Bytes outside the edit and the digest changed.");
+
+            Refused(() => ModDataBuilder.Build(Load(Stage($"\"0x{at:X}\":\"00\"", new string('0', 32))), folder, reader, Path.Combine(root, "edit-pin")), "not the signed shader the spec was written for");
+            Refused(() => ModDataBuilder.Build(Load(Stage($"\"0x{size - 2:X}\":\"00000000\"")), folder, reader, Path.Combine(root, "edit-far")), "is outside them");
+            Refused(() => ModDataBuilder.Build(Load(Stage("\"0x20\":\"00\"")), folder, reader, Path.Combine(root, "edit-table")), "is outside them");
+            Refused(() => Load(Stage($"\"0x{at:X}\":\"0000\",\"0x{at + 1:X}\":\"00\"")), "twice");
+            Refused(() => Load(Stage($"\"0x{at:X}\":\"0g\"")), "is not bytes as hex digits");
+            check(!Directory.Exists(Path.Combine(root, "edit-pin")), "A refused edit must write nothing.");
+        });
     }
 
     static void Check(byte[] game, byte[] ours) => ShaderCheck.Check(ShaderSplice.Read(game, 0, "game").Chunks, ShaderSplice.Read(ours, 0, "ours").Chunks);

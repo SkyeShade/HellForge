@@ -40,6 +40,30 @@ public static class ShaderSplice
         return output;
     }
 
+    // A game resource's stages edited in place (data spec "edit"): each must be the signed container the spec pins, the
+    // bytes stay inside it past its chunk table, and it is signed again. Its stage id is kept, unlike a copy's: the edited
+    // stage is meant to take the game's place.
+    public static byte[] EditStages(byte[] gpu, IReadOnlyList<StageEdit> stages)
+    {
+        var output = gpu.ToArray();
+        foreach (var stage in stages)
+        {
+            var (size, chunks) = Read(gpu, stage.At, $"the data at 0x{stage.At:X}");
+            var container = gpu.AsSpan(stage.At, size);
+            if (!container.Slice(4, 16).SequenceEqual(stage.Digest) || !Digest(container).AsSpan().SequenceEqual(stage.Digest))
+                throw new InvalidDataException($"the stage at 0x{stage.At:X} is not the signed shader the spec was written for (another game build?).");
+            var table = Header + 4 * chunks.Count;
+            foreach (var (offset, bytes) in stage.Set)
+            {
+                if (offset < table || (long)offset + bytes.Length > size)
+                    throw new InvalidDataException($"the stage at 0x{stage.At:X} has {size} bytes, its chunks from 0x{table:X}: set 0x{offset:X} (+{bytes.Length}) is outside them.");
+                bytes.CopyTo(output, stage.At + offset);
+            }
+            Digest(output.AsSpan(stage.At, size)).CopyTo(output, stage.At + 4);
+        }
+        return output;
+    }
+
     static byte[] Stage(byte[] gpu, int offset, byte[] compiled)
     {
         var (size, game) = Read(gpu, offset, "the game's stage");

@@ -12,6 +12,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **A data spec can fix a game shader.** The new `edit` entry changes bytes in one of the game's shader stages; HellForge
+  signs the stage again and refuses the edit on a game build whose shader differs
+  ([data specs](docs/modding/data.md#edit), #350).
 - **Mods can draw screens over the game (SDK 17).** `add_screen` adds a screen with its own key, such as a map, and
   `screen_show` opens and closes it. A modal screen takes the mouse and keys from the game while it is open. Screens
   draw shapes, text in the game's fonts, pictures and a blurred copy of the game's frame, on Direct3D 11 and 12, in SDR
