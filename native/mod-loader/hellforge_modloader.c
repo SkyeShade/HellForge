@@ -1100,7 +1100,7 @@ static void ApiInit(void)
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
         ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiAddEnemy, ApiAddEnemySwap, ApiAddEnemySquad, ApiRpcListen, ApiRpcSend,
-        ApiAddScreen, ApiScreenShow};
+        ApiAddScreen, ApiScreenShow, ApiGenerationCapacity};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */

@@ -1248,6 +1248,29 @@ typedef struct HfEditDef
     const HfMountDef* mount;
 } HfEditDef;
 
+/* Room in the map generator's arrays, for a mod that puts more on a map than level 11 does (generation_capacity). The
+ * arrays are HellForge's enlarged ones, which exist when a mod added level 11; a field left 0 keeps HellForge's size.
+ * The game appends to them without a check, except where noted: ask for what your content makes at most.
+ *
+ *     HfGenerationCapacity want = {sizeof want};
+ *     want.locations = 40000;
+ *     if (hf->size >= offsetof(HfApi, generation_capacity) + sizeof(void*)) hf->generation_capacity(mod, &want, NULL); */
+typedef struct HfGenerationCapacity
+{
+    uint32_t size;            /* sizeof(HfGenerationCapacity) */
+    uint32_t locations;       /* everything placed on the map (objectives, outposts, points of interest, placed
+                                 stamps): 8192, up to 65024 */
+    uint32_t minimap_proxies; /* the minimap's shapes, one or more per location and prop: 16384, up to 32768, in
+                                 steps of 4096 (its other lists grow in proportion) */
+    uint32_t mission_stamps;  /* the objectives' candidate stamps: 1024, up to 16384. Checked: with a request, a
+                                 stamp past the last place is left out */
+    uint32_t places;          /* objective and extraction placement attempts: 512, up to 8192 */
+    uint32_t place_set;       /* the places' set: 256, up to 4096 */
+    uint32_t block_bytes;     /* filled in: the size of the generator's block with these capacities */
+    uint32_t moved;           /* filled in: 1 once the game's code uses these capacities (level 11 is installed
+                                 with them), 0 before that or when it kept its own arrays */
+} HfGenerationCapacity;
+
 typedef struct HfApi
 {
     uint32_t version; /* HF_MOD_SDK_VERSION of the loader; functions are only ever added at the end. */
@@ -1652,6 +1675,13 @@ typedef struct HfApi
     /* Opens (1) or closes (0) one of the mod's screens, from any thread. Closing sets input->closing; draw is called
      * until it returns 0. */
     void (*screen_show)(HfMod* mod, int id, int open);
+
+    /* SDK 17: room in the map generator's arrays (see HfGenerationCapacity; check hf->size before calling). With want:
+     * asks for at least these capacities, from hellforge_mod_init only; 0 recorded, 1 refused (too late, a mod loaded
+     * while the game runs, a field over its limit; the mod's log says why, and nothing is changed). Mods' requests
+     * combine to the largest of each. With have (set its size): filled with the capacities planned and whether the
+     * game uses them yet. want may be NULL to only read. */
+    int (*generation_capacity)(HfMod* mod, const HfGenerationCapacity* want, HfGenerationCapacity* have);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

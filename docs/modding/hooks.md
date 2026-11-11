@@ -32,6 +32,7 @@ what people reach for hooks for, and its [game thread](runtime.md#the-game-threa
 - [Threads](#threads)
 - [Several mods, one function](#several-mods-one-function)
 - [Patching code](#patching-code)
+- [Room in the map generator](#room-in-the-map-generator)
 - [Reading and writing data](#reading-and-writing-data)
 - [Co-op](#co-op)
 - [When it goes wrong](#when-it-goes-wrong)
@@ -417,6 +418,45 @@ static void SteerAnywhere(HfMod* mod, HfEvent event, void* user)
   HellForge or another mod changed them first, your check fails cleanly.
 - A patch over code that a HellForge feature checks turns that feature off: HellForge takes only its own rewrites as
   known. The exception is a field's offset or capacity listed under [Fields a mod moved](#fields-a-mod-moved).
+
+## Room in the map generator
+
+`generation_capacity` (SDK 17) enlarges the map generator's arrays. Use it when your mod's hooks or patches put more
+on a level-11 map than the level does. Any mod may ask, not only the one that added the level.
+
+```c
+HfGenerationCapacity want = {sizeof want};   /* 0 in a field keeps HellForge's size */
+want.locations = 40000;
+want.mission_stamps = 4096;
+if (hf->size >= offsetof(HfApi, generation_capacity) + sizeof(void*)) hf->generation_capacity(mod, &want, NULL);
+```
+
+| Field | What it holds | HellForge's size | Most |
+|---|---|---|---|
+| `locations` | everything placed on the map | 8192 | 65024 |
+| `minimap_proxies` | the minimap's shapes, in steps of 4096 | 16384 | 32768 |
+| `mission_stamps` | the objectives' candidate stamps | 1024 | 16384 |
+| `places` | objective and extraction placement attempts | 512 | 8192 |
+| `place_set` | the places' set | 256 | 4096 |
+
+- Call it from `hellforge_mod_init`. The game makes these arrays once, so a later call returns 1 and changes nothing.
+  The same goes for a mod loaded while the game runs, and for a field over its limit. Your log says why.
+- When several mods ask, each field gets the largest request.
+- The larger arrays exist once level 11 is installed, so a mod must have added the level.
+- Without a request, HellForge installs level 11 exactly as before.
+
+To read the result, call it again later with `want` NULL and a `have` struct. `have.moved` is 1 when the game uses the
+capacities in `have`:
+
+```c
+HfGenerationCapacity have = {sizeof have};
+hf->generation_capacity(mod, NULL, &have);
+if (!have.moved || have.locations < 40000) return;   /* keep to what a level-11 map holds */
+```
+
+The game appends to these arrays without checking for room. Only `mission_stamps` is guarded: with a request, a stamp
+past the last place is left out, and `modloader.log` counts them. For the others, limit what your mod generates to
+what `have` reports.
 
 ## Reading and writing data
 
