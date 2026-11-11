@@ -448,6 +448,9 @@ If a sync was killed before it could clean up, start HellForge and press **Clean
 sudo /usr/local/lib/hellforge/capture-helper cleanup
 ```
 
+On SteamOS the helper is `/opt/hellforge/capture-helper`
+([the helper folder](linux-account-sync.md#the-root-owned-helper)).
+
 The launcher checks `/etc/hosts` for the marker on every start and, when the game is not running, runs that cleanup at
 startup. If it fails, the card offers **Clean up**. The CA record is under `logs/sync-*/capture-ca.json`. **Clean up**
 removes the recorded registry key through Wine's `reg.exe` too.

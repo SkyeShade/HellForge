@@ -1,7 +1,7 @@
 #!/bin/bash
 # HellForge's Sync Inventory helper on Linux (docs/linux.md, "Account sync"). allow-capture.sh installs this file and
-# capture-relay root-owned at /usr/local/lib/hellforge and gives the player's account a sudoers rule for this exact
-# program. The launcher then starts and stops it without another password prompt.
+# capture-relay root-owned at /usr/local/lib/hellforge (on SteamOS /opt/hellforge) and gives the player's account a
+# sudoers rule for this exact program. The launcher then starts and stops it without another password prompt.
 #
 #   capture-helper.sh check
 #   capture-helper.sh start              (root; reads the capture proxy pid from stdin)
@@ -30,8 +30,15 @@ state_dir='/run/hellforge'
 hosts_file='/etc/hosts'
 pid_file="$state_dir/capture-helper.pid"
 lock_file="$state_dir/capture-helper.lock"
-helper_path='/usr/local/lib/hellforge/capture-helper'
-relay_path='/usr/local/lib/hellforge/capture-relay'
+# allow-capture.sh installs this file and the relay together in one of these root-owned folders (SteamOS cannot write
+# /usr/local). The relay run is the one beside this file; started from anywhere else, as the tests do, it is the first.
+helper_folders=(/usr/local/lib/hellforge /opt/hellforge /var/lib/hellforge)
+helper_folder=${helper_folders[0]}
+for candidate in "${helper_folders[@]}"; do
+  [ "${BASH_SOURCE[0]}" -ef "$candidate/capture-helper" ] && helper_folder=$candidate
+done
+helper_path="$helper_folder/capture-helper"
+relay_path="$helper_folder/capture-relay"
 relay_pid=''
 watch_pid=''
 cleanup_done=''
@@ -85,10 +92,19 @@ pid_matches() {
   [[ "$cmdline" == *"$text"* ]]
 }
 
-pid_is_helper() { pid_matches "$1" "$helper_path"; }
+# A helper or relay left running by a copy in another of the folders counts too (an install that moved the helper).
+pid_is_helper() {
+  local folder
+  for folder in "${helper_folders[@]}"; do pid_matches "$1" "$folder/capture-helper" && return 0; done
+  return 1
+}
 pid_is_proxy() { pid_matches "$1" "HellForge.CaptureProxy"; }
 # The native relay, and the socat listener an older helper may have left behind.
-pid_is_relay() { pid_matches "$1" "$relay_path" || pid_matches "$1" "TCP-LISTEN:443,bind=127.0.0.1"; }
+pid_is_relay() {
+  local folder
+  for folder in "${helper_folders[@]}"; do pid_matches "$1" "$folder/capture-relay" && return 0; done
+  pid_matches "$1" "TCP-LISTEN:443,bind=127.0.0.1"
+}
 
 kill_pid() {
   local pid="$1"

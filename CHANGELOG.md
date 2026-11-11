@@ -207,6 +207,10 @@ On `dev`, since 0.4.0-beta.
   failed again. It still did on a PC that keeps a network route while offline. Offline, the block is now proved by
   the PC having no route out, or by its refusing a UDP datagram to the internet. While the game runs it is checked
   again every 10 seconds, and HellForge stops the game if it does not hold (#300, #317).
+- **Sync Inventory's helper installs on SteamOS.** The install stopped at "Read-only file system", because
+  `/usr/local` is on SteamOS's read-only image. The helper now goes to `/opt/hellforge` there, and to the next folder
+  that only root can change wherever `/usr/local` cannot be used. On SteamOS the installer also lists its sudoers rule
+  for system updates to keep ([the sync helper on SteamOS](docs/linux-steamos.md#the-sync-helper-on-steamos)).
 - **Code mods stuck on "did not compile" after the mod tools were damaged.** An antivirus that removed files from
   HellForge's Zig made every source mod fail in Zig's own libraries ("sub-compilation of libzigc failed"). That failure
   was kept as the mod's, so restoring Zig or running Check and repair changed nothing. HellForge now notices a damaged
