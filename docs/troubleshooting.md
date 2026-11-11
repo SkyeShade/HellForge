@@ -109,7 +109,10 @@ The card shows the Steam app's steps, with one `download_depot 553850 <depot> <m
 - when you choose the Steam app
 - when Steam does not allow the download after a sign-in
 - when SteamCMD cannot be set up (below)
-- always on Linux
+- always in Linux's [Proton-only fallback](linux.md#proton-only-fallback), which cannot reach Steam itself
+
+On Linux, SteamCMD opens in a terminal window (Konsole, for example). The card leaves SteamCMD out when it finds no
+terminal window program.
 
 To use them:
 
