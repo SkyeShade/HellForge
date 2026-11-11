@@ -34,11 +34,12 @@ PROPS = 'Directory.Build.props'
 # here or in BUILD_ONLY.
 ENGINE_SOURCES = (
     # native code: the mod loader with the mod SDK's headers and its common header, the PlayFab and Steam stand-ins,
-    # the Steam bridge and broker, the network block
+    # the Steam bridge and broker, the network block, the overlay host
     'native/common/',
     'native/mod-loader/',
     'native/mod-sdk/',
     'native/network-block/',
+    'native/overlay/',
     'native/sdk-shims/',
     'native/steam-cloud/',
     # the session runner and the local backend (NativeAOT), the Core library both are built with, and the generator
@@ -55,6 +56,7 @@ ENGINE_SOURCES = (
     'data/depot-history/553853.txt',
     # the build and its pins, and the scripts the package ships
     'scripts/Build-Engine.ps1',
+    'scripts/Build-Overlay.ps1',
     'scripts/Get-BuildTools.ps1',
     'scripts/Install-NetworkBlock.ps1',
     'scripts/Install-WfpBlock.ps1',

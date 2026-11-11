@@ -68,7 +68,8 @@ public sealed class SdkMappings
     static readonly HashSet<string> SdkTypes = ["Ability", "BugholeEvent", "Content", "DamageEvent", "DamagePreEvent", "EditDef",
         "EditorEntity", "EventInfo", "ExplosionEvent", "HealEvent", "Homing", "KillEvent", "LimbState", "LiveValue", "ModInfo",
         "Notice", "Passives", "PelicanCall", "PlayerEvent", "Session", "Shot", "ShotRule", "SpawnEvent", "Stat", "StatEvent",
-        "StatSource", "StateEvent", "StratagemCategory", "StratagemEvent", "SyncMod", "SyncState", "WeaponEvent", "Listener"];
+        "StatSource", "StateEvent", "StratagemCategory", "StratagemEvent", "SyncMod", "SyncState", "WeaponEvent", "Listener",
+        "Colour", "Draw", "Image", "Input", "Point", "Screen"];
     // A global's field types: the record field types and ptr, a pointer.
     static readonly string[] GlobalFieldTypes = ["u8", "u16", "u32", "i32", "f32", "u64", "ptr"];
 

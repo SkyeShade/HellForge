@@ -451,6 +451,7 @@ static int CodeRemove(HfMod* mod, uint32_t reason)
     InterlockedExchange(&mod->removing, 1);
     int failed = !g_liveOnGameThread(ForgetOnGameThread, mod);
     CallbacksForget(mod);
+    OverlayForget(mod);
     int hooks = HookRemoveMod(mod);
     if (mod->unload != NULL)
     {
