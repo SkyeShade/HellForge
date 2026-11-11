@@ -52,6 +52,25 @@ static class EarlySessionFailureTests
             File.WriteAllText(log, start + appArmor + "\n  sudo bash /x/app/linux/allow-namespace.sh   (docs/linux.md)\n");
             check(reason() == appArmor + " sudo bash /x/app/linux/allow-namespace.sh   (docs/linux.md)",
                 "A failure line ending in a colon lost its command: " + reason());
+            // With co-op relays on and no pasta, the wrapper warns in a failure's words and goes on to the real stop.
+            const string warning = "Warning: HELLFORGE_STEAM_UDP=1 needs these programs, which were not found: pasta. " +
+                "This session plays without co-op over Steam relays: lobbies are found, but none can be joined.\n" +
+                "Install them with: sudo dnf install passt python3\n";
+            File.WriteAllText(log, start + warning + bridge + "\nHellForge wrapper exiting with code 1.\n");
+            check(reason() == bridge, "A warning the wrapper went on from was the reason: " + reason());
+            File.WriteAllText(log, start + warning + "wine: could not load kernel32.dll\nHellForge wrapper exiting with code 53.\n");
+            check(reason()?.EndsWith("wrapper stopped: wine: could not load kernel32.dll", StringComparison.Ordinal) == true,
+                "A warning alone was the reason: " + reason());
+            File.WriteAllText(log, "HellForge on Linux needs these programs, which were not found: ip flock\n  ip\n  flock\n" +
+                "Install them with: sudo dnf install iproute util-linux procps-ng\n");
+            check(reason() == "HellForge on Linux needs these programs, which were not found: ip flock Install them with: " +
+                "sudo dnf install iproute util-linux procps-ng", "The missing programs lost their install command: " + reason());
+            File.WriteAllText(log, start + "A Windows program is still running in the Wine prefix /c/pfx outside HellForge's " +
+                "network namespace;\nprograms started inside would share its network. Close it (or give HellForge a prefix " +
+                "of its own: docs/linux.md).\nHellForge wrapper exiting with code 1.\n");
+            check(reason()?.EndsWith("namespace; programs started inside would share its network. Close it (or give " +
+                "HellForge a prefix of its own: docs/linux.md).", StringComparison.Ordinal) == true,
+                "A failure in two lines was cut after the first: " + reason());
             File.WriteAllText(log, start + "Entering the offline network namespace.\nwine: could not load kernel32.dll\n" +
                 "Offline namespace command exited with code 53.\nHellForge is running inside the container \"box\"; if " +
                 "this namespace step failed, the container may not allow it.\nSteam bridge did not stop after 5 seconds; " +

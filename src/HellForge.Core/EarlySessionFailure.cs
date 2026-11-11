@@ -38,18 +38,24 @@ public static partial class EarlySessionFailure
         "HellForge is running inside the container"
     ];
 
-    // Linux, for a stop before the session runner ran: the wrapper's own failure line for this start when it wrote one
-    // (the lines SteamOwnershipCheck knows), else the last line (Bash, Proton) above its closing lines, named as that.
+    // Linux, for a stop before the session runner ran: the wrapper's own failure for this start when it wrote one (the
+    // lines SteamOwnershipCheck knows), else the last line (Bash, Proton) above its closing lines, named as that.
     public static string? WrapperReason(string logsFolder, DateTime sinceUtc)
     {
         if (FreshLines(Path.Combine(logsFolder, LinuxWrapperLog), sinceUtc) is not { Count: > 0 } lines) return null;
-        if (SteamOwnershipCheck.LinuxWrapperProblem(string.Join('\n', lines)) is { } known)
+        bool Closing(string line) => WrapperClosingLines.Any(closing => line.Contains(closing, StringComparison.Ordinal));
+        // The wrapper stops at a failure, so the last one counts; its warnings use some of the same words and go on.
+        var known = lines.FindLastIndex(line => !line.TrimStart().StartsWith("Warning:", StringComparison.Ordinal) &&
+            SteamOwnershipCheck.LinuxWrapperProblem(line) != null);
+        if (known >= 0)
         {
-            // A failure line that ends in a colon has its command on the next line.
-            var next = lines.FindIndex(line => line.Trim() == known) + 1;
-            return known.EndsWith(':') && next < lines.Count ? known + " " + lines[next].Trim() : known;
+            // What follows a failure, up to the closing lines, is its second half or the command that clears it.
+            var reason = lines[known].Trim();
+            foreach (var more in lines.Skip(known + 1).TakeWhile(line => !Closing(line)).Take(3).Select(line => line.Trim()))
+                if (!reason.Contains(more, StringComparison.Ordinal)) reason += " " + more;
+            return reason;
         }
-        var last = lines.FindLast(line => !WrapperClosingLines.Any(closing => line.Contains(closing, StringComparison.Ordinal)));
+        var last = lines.FindLast(line => !Closing(line));
         return last == null ? null : "The last line of " + LinuxWrapperLog + " before the wrapper stopped: " + last.Trim();
     }
 
