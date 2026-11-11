@@ -183,7 +183,7 @@ static int ActInjureNow(HfMod* mod, uintptr_t game, uint32_t limb, int32_t damag
     ActHealth h; const char* why;
     uint32_t avatar = ActLocalAvatar(game, 0, &h, &why);
     if (!avatar) { ApiLog(mod, "injure: %s", why); return 0; }
-    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), api, actorFn, system, em;
+    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), api, actorFn, system, em, records;
     uint32_t slot;
     if (!EvpPtr(game + 0x3326310u, &api) || api != exe + 0x27CD4C0u || !EvpPtr(api + 0x10, &actorFn) || actorFn != exe + 0x799DE0u ||
         !ActBytes(actorFn, "48896c2420564881ec80000000498bf08bea", 0) || !ActPins(game, checks, sizeof checks / sizeof checks[0]))
@@ -191,8 +191,8 @@ static int ActInjureNow(HfMod* mod, uintptr_t game, uint32_t limb, int32_t damag
     uintptr_t fn = ActFunction(mod, game, &g_actQueueDamage, "injure");
     if (!fn) return 0;
     if (!EvpPtr(game + 0x347CF38u, &system) || EvpU32(system + 0x201120, 4096) >= 4096) { ApiLog(mod, "injure: the damage queue is full"); return 0; }
-    if (h.network == 0 || h.network >= 0x7FFF || !EvpPtr(game + EVP_ENTITIES, &em) || !EvpHash(em + EVP_NETWORK_MAP, h.network, 8, 4, &slot) ||
-        EvpU32(em + EVP_NETWORK_ENTITY + (uintptr_t)slot * 24, 0) != avatar || h.unit == 0) { ApiLog(mod, "injure: the Helldiver has no network object"); return 0; }
+    if (h.network == 0 || h.network >= 0x7FFF || !EvpRecords(game, &em, &records) || !EvpHash(em + EVP_NETWORK_MAP, h.network, 8, 4, &slot) ||
+        EvpU32(records + (uintptr_t)slot * 24 + 8, 0) != avatar || h.unit == 0) { ApiLog(mod, "injure: the Helldiver has no network object"); return 0; }
     uint64_t creditor = 0;
     SafeRead(h.record + 0x38, &creditor, 8);
     uint32_t actor = ((uint32_t (*)(uint32_t, uint32_t, uint32_t*))actorFn)(h.unit, kActActors[limb], NULL);

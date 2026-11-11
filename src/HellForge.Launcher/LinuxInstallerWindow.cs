@@ -224,7 +224,10 @@ sealed class LinuxInstallerWindow : Window
             Title = "Choose a folder for HellForge's Proton prefix",
             AllowMultiple = false
         });
-        if (folders.Count > 0) prefixPath.Text = folders[0].Path.LocalPath;
+        if (folders.Count == 0) return;
+        prefixPath.Text = folders[0].Path.LocalPath;
+        // Said at once, not only when Install is pressed.
+        if (LinuxAppInstaller.PrefixProblem(prefixPath.Text) is { } unusable) Status(unusable);
     }
 
     // Steam was not found in its usual folders: ask for the folder that holds steamapps and check it. The choice is saved
@@ -240,6 +243,19 @@ sealed class LinuxInstallerWindow : Window
         if (chosen == null) return null;
         if (SteamLocator.SteamFolderProblem(chosen) is { } problem) throw new InvalidDataException(problem);
         return SteamLocator.SteamFolder(chosen);
+    }
+
+    // The prefix folder as typed or chosen, checked before Proton prepares anything there: the launcher would refuse to
+    // start from a folder inside steamapps.
+    string ChosenPrefix()
+    {
+        var prefixText = prefixPath.Text?.Trim() ?? "";
+        if (prefixText.Length == 0) throw new InvalidDataException("Choose a folder for the HellForge prefix.");
+        var prefix = Path.GetFullPath(prefixText);
+        if (prefix == Path.GetPathRoot(prefix))
+            throw new InvalidDataException("Choose a folder for the HellForge prefix.");
+        if (LinuxAppInstaller.PrefixProblem(prefix) is { } unusable) throw new InvalidDataException(unusable);
+        return prefix;
     }
 
     async Task InstallAndLaunch()
@@ -261,13 +277,9 @@ sealed class LinuxInstallerWindow : Window
             if (protonChoice.SelectedIndex < 0 || protonChoice.SelectedIndex >= protons.Count)
                 throw new InvalidDataException("Choose an installed Proton version before continuing.");
             var proton = protons[protonChoice.SelectedIndex].ScriptPath;
-            var prefixText = prefixPath.Text?.Trim() ?? "";
-            if (prefixText.Length == 0) throw new InvalidDataException("Choose a folder for the HellForge prefix.");
-            var prefix = Path.GetFullPath(prefixText);
-            if (prefix == Path.GetPathRoot(prefix))
-                throw new InvalidDataException("Choose a folder for the HellForge prefix.");
+            var prefix = ChosenPrefix();
 
-            var installRoot = Path.Combine(prefix, "pfx", "drive_c", "users", "steamuser", "Documents", "HellForge");
+            var installRoot = LinuxAppInstaller.InstallRoot(prefix);
             var install = new InstallLayout(installRoot);
             var updating = File.Exists(Path.Combine(install.App, "launcher-linux", "HellForge.Launcher"));
             if (updating)

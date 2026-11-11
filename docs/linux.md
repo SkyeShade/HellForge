@@ -97,7 +97,8 @@ missing or does not match the supported build.
    `HellForge-Linux-Installer.tar.gz` with the archive manager too.
 3. Open the extracted folder and launch `HellForge.Launcher`. If your desktop asks, choose **Run** or **Allow executing
    file as program**.
-4. Choose a Proton version and a prefix folder. The default prefix is `~/.local/share/hellforge-prefix`.
+4. Choose a Proton version and a prefix folder. The default prefix is `~/.local/share/hellforge-prefix`. A folder
+   inside a Steam library's `steamapps`, such as a Proton version's own folder, is refused.
 
 The installer reads Steam's folders and lists the Proton versions installed there:
 
@@ -153,6 +154,9 @@ profiles and mods stay in that prefix.
 A link above the prefix also works, for example `ln -s /mnt/games/hellforge-prefix ~/.local/share/hellforge-prefix`. A
 link above the folder HellForge protects is resolved and the real folder is used. These are refused:
 
+- A prefix folder inside any `steamapps` folder, with "Choose a prefix folder outside Steam's steamapps folders".
+  Steam checks, updates and deletes what is in there. A folder at the top of the same drive, beside `steamapps`, works.
+  An installation that already runs in such a prefix is still updated.
 - A link at the installation folder or inside it, with `Linked/reparse paths are not supported: <path>`. A game copy
   written through it could land somewhere else. The same rule covers the game folder and every Steam library HellForge
   reads.
@@ -230,16 +234,19 @@ The Steam app's card has one `download_depot 553850 <depot> <manifest>` command 
 When five or fewer files remain, the wizard names them. A file larger than this build's is another build's file, so
 delete it and run that depot's command again.
 
-The Linux Steam client puts what `download_depot` downloads in `<Steam>/steamapps/content/app_553850/`. It can also be
-in the same path under `<Steam>/ubuntu12_32/`, `<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, because Steam downloads
-relative to the folder its program runs from. The native setup reads these locations directly and does not move the
-depot folders:
+The Linux Steam client downloads relative to the folder its program runs from. So `download_depot` often writes to
+`<Steam>/ubuntu12_32/steamapps/content/app_553850/` (a Steam Deck does), and sometimes to the same path under
+`<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, or to `<Steam>/steamapps/content/app_553850/`. Setup's card names the
+first and the last before the download, and the folder it found once Steam has written to it. The native setup reads these
+locations directly and does not move the depot folders:
 
 ```text
-<Steam>/steamapps/content/app_553850/depot_553851/
-<Steam>/steamapps/content/app_553850/depot_553853/
-<Steam>/steamapps/content/app_553850/depot_553854/
+<Steam>/ubuntu12_32/steamapps/content/app_553850/depot_553851/
+<Steam>/ubuntu12_32/steamapps/content/app_553850/depot_553853/
+<Steam>/ubuntu12_32/steamapps/content/app_553850/depot_553854/
 ```
+
+The download needs about 24 GB on the drive that holds the Steam folder, wherever HellForge is installed.
 
 The download can remain in Steam's folder, or setup can delete it. **Delete Steam's download after copying** is ticked by
 default. It removes the build's depot folders from the content locations, and each `app_553850` folder when it becomes
@@ -432,6 +439,7 @@ what it installs. After the installer exits, the launcher continues the same syn
   launcher shows the terminal command instead.
 - SteamOS 3.x users without a password are told to run `passwd` first.
 - A package update that changes either shipped file makes the next sync offer the same install again.
+- So does a sudo that still asks for a password for the helper, as on SteamOS with a rule from an earlier version.
 - `allow-capture.sh --remove` removes the rule, the helper, the relay and both hashes. Uninstall offers the same
   `--remove` through pkexec.
 
@@ -455,6 +463,9 @@ If a sync was killed before it could clean up, start HellForge and press **Clean
 ```fish
 sudo /usr/local/lib/hellforge/capture-helper cleanup
 ```
+
+On SteamOS the helper is `/opt/hellforge/capture-helper`
+([the helper folder](linux-account-sync.md#the-root-owned-helper)).
 
 The launcher checks `/etc/hosts` for the marker on every start and, when the game is not running, runs that cleanup at
 startup. If it fails, the card offers **Clean up**. The CA record is under `logs/sync-*/capture-ca.json`. **Clean up**

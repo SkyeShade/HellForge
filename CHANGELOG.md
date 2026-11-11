@@ -176,12 +176,20 @@ On `dev`, since 0.4.0-beta.
 - **A copy with records of its own no longer crashes the game when it spawns.** The game reads past a record into the
   next one, and HellForge's copy of a component table ended right after the newest record. Calling in a vehicle copy
   whose Health record was the last one crashed at its beacon (#327).
+- **Sync Inventory on SteamOS no longer stops at "sudo: a password is required".** SteamOS's own sudoers files were read
+  after HellForge's rule and asked for a password. The rule is now `/etc/sudoers.d/zz-hellforge-capture`, read last. A
+  sync checks sudo first and offers the helper install again, which moves an earlier rule ([the root-owned
+  helper](docs/linux-account-sync.md#the-root-owned-helper)) (#356).
 - **A Pelican drop loads its cargo's package.** A stratagem without a package of its own took the payload's last
   entity's first, so a vehicle drop loaded the Pelican's package instead of the vehicle's (#327).
 - **Mod stratagems no longer read past the loadout's level choices.** Six places in the game read a per-type choice
   that has only 150 entries for every stratagem, mod ones included, and two more could write there; they now see no
   choice for a mod stratagem. When the game loaded its stratagem settings again, the count of stratagems went back to
   the vanilla 149 while mod stratagems stayed, and it now stays at the full list (#342).
+- **Linux: a prefix inside Steam's `steamapps` no longer leaves a launcher that crashes at start.** The installer
+  refuses such a prefix folder, a Proton version's own folder included, before it prepares anything. A launcher already
+  unpacked there opens a window that says so and what to do ([installing on another
+  drive](docs/linux.md#installing-on-another-drive)) (#358).
 - **Direct3D 11 crashes in the Armory and at mission start.** Browsing armour crashed the game at
   `helldivers2.exe+0x732040`, and a slow PC could crash at `+0x626296` as a mission loaded. A freed texture is now bound
   empty instead of read, and a full job pool is waited out while jobs finish
@@ -195,18 +203,32 @@ On `dev`, since 0.4.0-beta.
   render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new
   `"unitSpace": true` the OBJ keeps its own coordinates, the frame the weapon's attachment points are in
   ([data specs](docs/modding/data.md)).
+- **Linux setup names the folder Steam really downloads into.** The "Use the Steam app" card named
+  `<Steam>/steamapps/content`, but the Linux Steam client often downloads under `<Steam>/ubuntu12_32`, as on a Steam
+  Deck. The card now names both, and the folder it found once Steam has written to it ([Steam's
+  download](docs/linux.md#steams-download-of-the-supported-build)) (#359).
 - **A crash in missions with edited spawn weights (`game.dll+0x9530F5`).** A roster weight of 0 that left an enemy
   with no weight at a level, such as Scavengers at difficulty 10, made bug holes spawn a null enemy. Such an edit is now
   refused, also when only planets with a given tag lose it. For writes that bypass the check, the spawn and bug-hole
   queues skip a null enemy, and the game's other unchecked picks take a row of weight 0
   ([live editing](docs/internals-live.md#spawning)).
+- **The launcher says why a session stopped before it started.** "The session runner exited before starting" now shows
+  the runner's own reason, which was only in `logs/session-runner.log`. PLAY in an installation that was never synced
+  says to run Sync Inventory first, before a session is started ([troubleshooting](docs/troubleshooting.md)) (#360).
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
+- **Save logs to Desktop works after a start that failed.** With no session yet it said "No session logs yet", though
+  the reason was in `logs/session-runner.log`. The zip now has a `start` folder with that log and the Linux wrapper's
+  logs, with or without a session ([session logs](docs/troubleshooting.md)) (#361).
 - **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
   block with "not stopping the game's connections to the internet (error 10065)", asked for administrator consent and
   failed again. It still did on a PC that keeps a network route while offline. Offline, the block is now proved by
   the PC having no route out, or by its refusing a UDP datagram to the internet. While the game runs it is checked
   again every 10 seconds, and HellForge stops the game if it does not hold (#300, #317).
+- **Sync Inventory's helper installs on SteamOS.** The install stopped at "Read-only file system", because `/usr/local`
+  is on SteamOS's read-only image. The helper now goes to `/opt/hellforge` there, and to the next folder that only root
+  can change wherever `/usr/local` cannot be used. On SteamOS the installer also lists its sudoers rule for system
+  updates to keep ([the sync helper on SteamOS](docs/linux-steamos.md#the-sync-helper-on-steamos)) (#357).
 - **Code mods stuck on "did not compile" after the mod tools were damaged.** An antivirus that removed files from
   HellForge's Zig made every source mod fail in Zig's own libraries ("sub-compilation of libzigc failed"). That failure
   was kept as the mod's, so restoring Zig or running Check and repair changed nothing. HellForge now notices a damaged
@@ -235,6 +257,10 @@ On `dev`, since 0.4.0-beta.
 - **HellForge follows per-player lists a code mod moved.** A mod that moves the player, customization, avatar or score
   manager's lists and rewrites the game's instructions for them keeps HellForge's events, actions, armor passives and
   perks. HellForge reads each offset from those instructions ([hooks](docs/modding/hooks.md#fields-a-mod-moved)) (#348).
+- **HellForge follows entity records a code mod moved.** A mod that makes room for more entities moves the entity
+  manager's records and rewrites the game's instructions for them. HellForge's player, heal, stats and weapon events
+  and its actions then read the records where those instructions address them
+  ([hooks](docs/modding/hooks.md#fields-a-mod-moved)) (#362).
 - **A mod's `write` over code HellForge checks turns that feature off.** Such a write used to pass as one of
   HellForge's own rewrites. The offsets and capacities of the moved lists above are the exception (#348).
 

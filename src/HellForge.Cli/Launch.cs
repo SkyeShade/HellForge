@@ -121,18 +121,9 @@ static class Launch
         }
     }
 
-    // Why the session runner stopped before it made its run folder: its last line in logs/session-runner.log, if new.
-    static string RunnerLog(InstallLayout install, DateTime sinceUtc)
-    {
-        var log = Path.Combine(install.Logs, "session-runner.log");
-        try
-        {
-            if (File.Exists(log) && File.GetLastWriteTimeUtc(log) >= sinceUtc.AddSeconds(-1))
-                return File.ReadLines(log).LastOrDefault(l => l.Length > 0) ?? "";
-        }
-        catch (IOException) { }
-        return "see " + log;
-    }
+    // Why the session runner stopped before it made its run folder: its reason in logs/session-runner.log, if new.
+    static string RunnerLog(InstallLayout install, DateTime sinceUtc) =>
+        EarlySessionFailure.Reason(install.Logs, sinceUtc) ?? "see " + Path.Combine(install.Logs, EarlySessionFailure.RunnerLog);
 
     // Reports the run's status (result.json) as it changes, until the session runner has exited. 0 when the session
     // ended normally.
@@ -595,12 +586,14 @@ static class Launch
         if (options.ContainsKey("--dump")) throw new ArgumentException("--dump goes with --crash-report.");
         if (options.TryGetValue("--export", out var target))
         {
-            var run = picked ?? runs.FirstOrDefault() ?? throw new InvalidDataException("No session logs yet: play a session first.");
+            var run = picked ?? runs.FirstOrDefault();
             target = Path.GetFullPath(target);
             if (File.Exists(target)) throw new ArgumentException($"{target} exists already.");
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            var exported = SessionLogs.Export(run.Folder, Path.Combine(install.UserData, "logs"), target);
-            return new { run = Describe(run), exported.Zip, exported.Files, exported.Skipped };
+            // No session yet: the logs of a start that stopped before its session folder existed, when there are any.
+            var exported = run != null ? SessionLogs.Export(run.Folder, Path.Combine(install.UserData, "logs"), target, install.Logs)
+                : SessionLogs.ExportStart(install.Logs, target) ?? throw new InvalidDataException("No session logs yet: play a session first.");
+            return new { run = run != null ? Describe(run) : null, exported.Zip, exported.Files, exported.Skipped };
         }
         var runnerLog = Path.Combine(install.Logs, "session-runner.log");
         return new

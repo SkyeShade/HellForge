@@ -781,10 +781,10 @@ public partial class MainWindow
         SignInCard.IsVisible = true;
         DownloadIntro.Text = $"Steam has {have}; this version of HellForge runs build {build.BuildId}. Steam can still download that exact build " +
             "for your account. Open the Steam console, paste each command below and press Enter, one at a time. Steam then downloads about " +
-            $"{build.TotalBytes / 1e9:0} GB into {SteamDepotDownload.ContentFolder(steamRoot, build)} (your normal game is not touched). " +
+            $"{build.TotalBytes / 1e9:0} GB into {SteamDepotDownload.TargetText(steamRoot, build, OperatingSystem.IsLinux() || LinuxNetworkBlock.UnderWine)} (your normal game is not touched). " +
             "Steam shows no progress in its library for this; the bar below does.";
         if (OperatingSystem.IsLinux())
-            DownloadIntro.Text += " Native Linux setup reads the Steam download directly from this folder; there is no move into the Proton prefix.";
+            DownloadIntro.Text += " Native Linux setup reads the Steam download directly from where Steam puts it; there is no move into the Proton prefix.";
         DownloadCommands.Children.Clear();
         foreach (var command in SteamDepotDownload.Commands(build))
         {
@@ -816,8 +816,10 @@ public partial class MainWindow
         try
         {
             var root = downloadSteamRoot;
-            var states = await Task.Run(() => SteamDepotDownload.Status(root, SupportedBuild.Current));
+            var (states, folders) = await Task.Run(() => (SteamDepotDownload.Status(root, SupportedBuild.Current),
+                SteamDepotDownload.DownloadFolders(root, SupportedBuild.Current)));
             ShowDepotProgress(states, "Steam");
+            CopyText.Text += SteamDepotDownload.FoundText(folders);
             if (states.All(s => s.Complete))
             {
                 downloadTimer?.Stop();

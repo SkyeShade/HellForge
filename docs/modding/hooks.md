@@ -194,8 +194,22 @@ displacement of an instruction that uses the field.
   aligned or not inside the manager.
 - The list's capacity is the byte at `game.dll+0x540870` (4 in the game). Size your own per-player arrays from it.
 - HellForge's events, actions, armor passives and perks follow the player, customization, avatar and score managers
-  this way. When the sites of one field disagree, the feature that reads it stays off and the log names the field.
-  The log also says when the field reads as reviewed again.
+  and the entity records this way. When the sites of one field disagree, the feature that reads it stays off and the
+  log names the field. The log also says when the field reads as reviewed again.
+
+The entity records (`EntityManager`, 24 bytes an entity) can move as well, for a mod that makes room for more
+entities. They may then lie outside the manager, before it too, so their offset is signed.
+
+| You want | Use |
+|---|---|
+| an entity's record | `hf_fn_EntityDescriptor`, the game's own lookup |
+| the entity of a network id | `hf->entity_of_network` |
+| the records' offset from the manager | 8 times the signed 4 bytes at `game.dll+0xFD9DDE` (0xF32F18 in the game) |
+
+- A mod that moves the records rewrites every instruction that addresses them. Move them before the game builds the
+  entity manager, when no record is live.
+- HellForge checks eight of those instructions against each other on every read. While they disagree it finds no
+  player's Helldiver, and the events and actions that need one wait.
 
 ## Finding a function
 
