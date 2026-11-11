@@ -234,7 +234,7 @@ On `dev`, since 0.4.0-beta.
 - **HellForge follows entity records a code mod moved.** A mod that makes room for more entities moves the entity
   manager's records and rewrites the game's instructions for them. HellForge's player, heal, stats and weapon events
   and its actions then read the records where those instructions address them
-  ([hooks](docs/modding/hooks.md#fields-a-mod-moved)).
+  ([hooks](docs/modding/hooks.md#fields-a-mod-moved)) (#362).
 - **A mod's `write` over code HellForge checks turns that feature off.** Such a write used to pass as one of
   HellForge's own rewrites. The offsets and capacities of the moved lists above are the exception (#348).
 
