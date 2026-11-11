@@ -196,10 +196,9 @@ On `dev`, since 0.4.0-beta.
   refused, also when only planets with a given tag lose it. For writes that bypass the check, the spawn and bug-hole
   queues skip a null enemy, and the game's other unchecked picks take a row of weight 0
   ([live editing](docs/internals-live.md#spawning)).
-- **The launcher says why a session stopped before it started.** "The session runner exited before starting" now
-  shows the runner's own reason, which was only in `logs/session-runner.log`. PLAY in an installation that was never
-  synced says to run Sync Inventory first, before a session is started
-  ([troubleshooting](docs/troubleshooting.md)).
+- **The launcher says why a session stopped before it started.** "The session runner exited before starting" now shows
+  the runner's own reason, which was only in `logs/session-runner.log`. PLAY in an installation that was never synced
+  says to run Sync Inventory first, before a session is started ([troubleshooting](docs/troubleshooting.md)) (#360).
 - **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
   a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
 - **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
