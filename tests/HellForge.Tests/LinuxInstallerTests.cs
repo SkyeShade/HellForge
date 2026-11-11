@@ -37,6 +37,13 @@ static class LinuxInstallerTests
             check(!File.Exists(Path.Combine(package, InstallLayout.MarkerFile)) && !Directory.Exists(Path.Combine(package, "game")),
                 "A refused first start still marked or filled the folder.");
 
+            // An installation that already runs inside steamapps keeps its updates; only a new one is refused.
+            var existing = Path.Combine(library, "steamapps", "compatdata", "553850");
+            check(LinuxAppInstaller.PrefixProblem(existing) != null, "A new installation in the game's own prefix was accepted.");
+            Directory.CreateDirectory(LinuxAppInstaller.InstallRoot(existing));
+            File.WriteAllText(Path.Combine(LinuxAppInstaller.InstallRoot(existing), InstallLayout.MarkerFile), "{}");
+            check(LinuxAppInstaller.PrefixProblem(existing) == null, "An existing installation inside steamapps can no longer be updated.");
+
             var good = LinuxAppInstaller.InstallRoot(outside);
             Directory.CreateDirectory(Path.Combine(good, "app"));
             var made = LinuxAppInstaller.FirstStart(good, "25480438", out var noProblem);

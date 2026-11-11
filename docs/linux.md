@@ -156,6 +156,7 @@ link above the folder HellForge protects is resolved and the real folder is used
 
 - A prefix folder inside any `steamapps` folder, with "Choose a prefix folder outside Steam's steamapps folders".
   Steam checks, updates and deletes what is in there. A folder at the top of the same drive, beside `steamapps`, works.
+  An installation that already runs in such a prefix is still updated.
 - A link at the installation folder or inside it, with `Linked/reparse paths are not supported: <path>`. A game copy
   written through it could land somewhere else. The same rule covers the game folder and every Steam library HellForge
   reads.

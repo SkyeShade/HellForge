@@ -35,11 +35,12 @@ public static class LinuxAppInstaller
 
     // Why HellForge cannot be installed into a prefix folder, or null. Checked before the prefix is prepared: the
     // launcher refuses to run from inside steamapps, so an install there would be one that never starts. A link above
-    // the folder is resolved first, as InstallLayout does.
+    // the folder is resolved first, as InstallLayout does. An installation that already runs there (one made under Wine
+    // before the launcher was native) is still updated: only a new one is refused.
     public static string? PrefixProblem(string prefix)
     {
-        var root = new InstallLayout(InstallRoot(prefix)).Root;
-        return InstallLayout.LocationProblem(root) == null ? null
+        var install = new InstallLayout(InstallRoot(prefix));
+        return install.Exists || InstallLayout.LocationProblem(install.Root) == null ? null
             : "Choose a prefix folder outside Steam's steamapps folders: Steam checks, updates and deletes what is in " +
               "them, a Proton version's own folder included. This one is inside steamapps: " + prefix;
     }
