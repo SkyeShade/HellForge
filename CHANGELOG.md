@@ -159,7 +159,7 @@ On `dev`, since 0.4.0-beta.
   `.rar`, `.7z` or zipped pack dropped into the mods folder whose files the installed mod already has is removed as a
   second copy (#306).
 - **The Steam bridge makes lobbies of up to eight.** `CreateLobby` took four members at most. A code mod that raises
-  the game's player limit now gets the lobby the game asks for.
+  the game's player limit now gets the lobby the game asks for (#347).
 
 ### Fixed
 
