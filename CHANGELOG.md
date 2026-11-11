@@ -218,9 +218,9 @@ On `dev`, since 0.4.0-beta.
   unchecked for mod sync ([shaders](docs/modding/shaders.md)) (#265).
 - **HellForge follows per-player lists a code mod moved.** A mod that moves the player, customization, avatar or score
   manager's lists and rewrites the game's instructions for them keeps HellForge's events, actions, armor passives and
-  perks. HellForge reads each offset from those instructions ([hooks](docs/modding/hooks.md#fields-a-mod-moved)).
+  perks. HellForge reads each offset from those instructions ([hooks](docs/modding/hooks.md#fields-a-mod-moved)) (#348).
 - **A mod's `write` over code HellForge checks turns that feature off.** Such a write used to pass as one of
-  HellForge's own rewrites. The offsets and capacities of the moved lists above are the exception.
+  HellForge's own rewrites. The offsets and capacities of the moved lists above are the exception (#348).
 
 ## 0.4.0-beta (2026-11-05)
 
