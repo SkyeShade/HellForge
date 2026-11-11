@@ -7598,7 +7598,7 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 
 ### EntityManager
 
-`game.dll+0x346BF98` (a pointer to it), `HfEntityManager`. The entities of this machine's world. At +0xF22EC8 a hash map of network ids to slots (8-byte keys, 4-byte values), and at +0xF32F20 the network objects by slot, 24 bytes each (+0 the entity id, u32); at +0xF1AEB0 the map of entity ids, at +0xF32F18 their descriptors. From HD2Runtime 0.40.1 research event-combat; HellForge's event polls (event_polls.c).
+`game.dll+0x346BF98` (a pointer to it), `HfEntityManager`. The entities of this machine's world. At +0xF22EC8 a hash map of network ids to slots (8-byte keys, 4-byte values), and at +0xF32F20 the network objects by slot, 24 bytes each (+0 the entity id, u32); at +0xF1AEB0 the map of entity ids, at +0xF32F18 their descriptors. A mod may move the descriptors, the network objects with them (they are one record): docs/modding/hooks.md "Fields a mod moved". From HD2Runtime 0.40.1 research event-combat; HellForge's event polls (event_polls.c).
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|

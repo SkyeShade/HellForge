@@ -1,15 +1,16 @@
-/* The fields of the game's per-player managers that a mod may move, for game.dll build 25480438 (docs/modding/hooks.md
- * "Fields a mod moved"). A mod that moves one of these arrays rewrites every instruction that addresses it, and the game
- * follows. HellForge reads each offset from one such instruction (the field's anchor) and requires its other sites to
- * agree, so it follows any mover that moved the array consistently. Pins over these displacements leave them open
- * (MfPinMatches): they are checked through the field instead. Included by hellforge_modloader.c before events.c. */
+/* The fields of the game's per-player managers and the entity state's records that a mod may move, for game.dll build
+ * 25480438 (docs/modding/hooks.md "Fields a mod moved"). A mod that moves one of these arrays rewrites every instruction
+ * that addresses it, and the game follows. HellForge reads each offset from one such instruction (the field's anchor)
+ * and requires its other sites to agree, so it follows any mover that moved the array consistently. Pins over these
+ * displacements leave them open (MfPinMatches): they are checked through the field instead. Included by
+ * hellforge_modloader.c before events.c. */
 
 enum
 {
     MF_PLAYER_COUNT, MF_PLAYER_PEERS, MF_PLAYER_LIFE, MF_PLAYER_DESCRIPTORS, MF_PLAYER_NETWORK, MF_PLAYER_CAP,
     MF_CUSTOM_COUNT, MF_CUSTOM_MAP, MF_CUSTOM_DESCRIPTORS, MF_CUSTOM_APPLIED, MF_CUSTOM_PENDING, MF_CUSTOM_CAP, MF_CUSTOM_BLOCK,
     MF_AVATAR_MAP, MF_AVATAR_DESCRIPTORS, MF_AVATAR_CONTEXT, MF_AVATAR_PLAYER_OBJECT,
-    MF_SCORE_MAP, MF_SCORE_RECORDS, MF_SCORE_CAP, MF_FIELDS
+    MF_SCORE_MAP, MF_SCORE_RECORDS, MF_SCORE_CAP, MF_ENTITY_RECORDS, MF_FIELDS
 };
 #define MF_FAR 0x4000000 /* no manager of the game reaches 64 MB */
 #define MF_MAX_SLOTS 16  /* HellForge's own per-player arrays (EVT_MAX_PLAYERS) */
@@ -27,13 +28,16 @@ static const MfField kMfFields[MF_FIELDS] = {
     {"the avatar descriptors", 0x110, 8, 0x10, MF_FAR}, {"the avatars' action contexts", 0x53E170, 8, 0x10, MF_FAR},
     {"the avatars' player objects", 0x5478A4, 4, 0x10, MF_FAR}, {"the score map", 0x37D58, 8, 0x10, MF_FAR},
     {"the score records", 0x37D98, 8, 0x10, MF_FAR}, {"the score records' capacity", 4, 1, 1, MF_MAX_SLOTS},
+    {"the entity records", 0xF32F18, 8, INT32_MIN, INT32_MAX}, /* a mover may put them outside the state, before it too */
 };
 
 /* An instruction that addresses a field: the code before its value (pinned: the opcode, registers, scale and the
  * stride's multiply where it comes first) and the value's width (4 a displacement, 1 a capacity's imm8). The value is
- * the field plus `add`. Each field's first site is its anchor. */
-typedef struct MfSite { uint8_t field, size, width; uint32_t rva; int32_t add; uint8_t code[14]; } MfSite;
-#define MF_SITE(field, rva, width, add, ...) {field, sizeof((uint8_t[]){__VA_ARGS__}), width, rva, add, {__VA_ARGS__}}
+ * the field plus `add`, over `by` where the code multiplies it back (MF_SITE_BY). Each field's first site is its
+ * anchor. */
+typedef struct MfSite { uint8_t field, size, width, by; uint32_t rva; int32_t add; uint8_t code[14]; } MfSite;
+#define MF_SITE_BY(field, rva, width, add, by, ...) {field, sizeof((uint8_t[]){__VA_ARGS__}), width, by, rva, add, {__VA_ARGS__}}
+#define MF_SITE(field, rva, width, add, ...) MF_SITE_BY(field, rva, width, add, 1, __VA_ARGS__)
 static const MfSite kMfSites[] = {
     /* the player manager [game + 0x3326468]: its local player lookup 0x62C710 and its add-a-player 0x540850/0x540920 */
     MF_SITE(MF_PLAYER_COUNT, 0x62C721u, 4, 0, 0x41, 0x8b, 0xc0, 0x44, 0x8b, 0x91),
@@ -77,6 +81,17 @@ static const MfSite kMfSites[] = {
     MF_SITE(MF_SCORE_RECORDS, 0x53E16Au, 4, 0, 0x48, 0x8d, 0x04, 0x92, 0x0f, 0x11, 0x84, 0xc3),
     MF_SITE(MF_SCORE_RECORDS, 0x53E176u, 4, 0x10, 0x0f, 0x11, 0x84, 0xc3),
     MF_SITE(MF_SCORE_CAP, 0x53E147u, 1, 0, 0x41, 0x8d, 0x40, 0x01, 0x83, 0xf8),
+    /* the entity state [game + 0x346BF98]: its records of 24 bytes, addressed as state + records + field, or as a count
+     * of 8 or 24 bytes that the code scales. The lookups HellForge reads as the game does (by entity 0xFD9D40, by network
+     * id 0xFD9BA0), an entity's network id 0xFD9AF0, a unit read, the state's constructor 0xFDA190, the spawner 0xFDC140
+     * and a lookup that counts from [game + 0x3326340], the object the state lies in (0xE49F0 before the state) */
+    MF_SITE_BY(MF_ENTITY_RECORDS, 0xFD9DD4u, 4, 0, 8, 0x8b, 0x40, 0x04, 0x48, 0x8d, 0x04, 0x40, 0x48, 0x8d, 0x80),
+    MF_SITE_BY(MF_ENTITY_RECORDS, 0xFD9C49u, 4, 8, 8, 0x8b, 0x40, 0x04, 0x48, 0x8d, 0x04, 0x40, 0x48, 0x8d, 0x80),
+    MF_SITE_BY(MF_ENTITY_RECORDS, 0xFD9B88u, 4, 0x10, 24, 0x8b, 0x40, 0x04, 0x48, 0x05),
+    MF_SITE(MF_ENTITY_RECORDS, 0xFD949Fu, 4, 0xC, 0x48, 0x8d, 0x0c, 0x40, 0x44, 0x8b, 0x8c, 0xcb),
+    MF_SITE(MF_ENTITY_RECORDS, 0xFDA207u, 4, 0x10, 0x48, 0x8d, 0x8b),
+    MF_SITE_BY(MF_ENTITY_RECORDS, 0xFDC1A4u, 4, 0, 8, 0x4e, 0x8d, 0x34, 0x7d), MF_SITE(MF_ENTITY_RECORDS, 0xFDC1FCu, 4, 8, 0x39, 0x8c, 0xd6),
+    MF_SITE_BY(MF_ENTITY_RECORDS, 0xAB402Bu, 4, 0xE49F0, 8, 0x41, 0x8b, 0x41, 0x04, 0x48, 0x8d, 0x04, 0x40, 0x48, 0x8d, 0x80),
 };
 #define MF_SITES (sizeof kMfSites / sizeof kMfSites[0])
 /* A field's refusal is logged once it has stood for MF_PATIENCE ms: a reader meets code that is still being decoded, or
@@ -84,7 +99,7 @@ static const MfSite kMfSites[] = {
 static volatile LONG g_mfSince[MF_FIELDS], g_mfNoted[MF_FIELDS];
 static DWORD g_mfPatience = 3000;
 
-/* A site's value less its add, when the code before it reads as reviewed; 0 not. */
+/* A site's field (its value times `by`, less its add), when the code before it reads as reviewed; 0 not. */
 static int MfSiteValue(uintptr_t game, const MfSite* s, int32_t* value)
 {
     uint8_t code[20];
@@ -92,8 +107,9 @@ static int MfSiteValue(uintptr_t game, const MfSite* s, int32_t* value)
     int32_t raw = 0;
     if (s->width == 1) raw = code[s->size];
     else memcpy(&raw, code + s->size, 4);
-    *value = (int32_t)((int64_t)raw - s->add);
-    return 1;
+    int64_t field = (int64_t)raw * s->by - s->add;
+    *value = (int32_t)field;
+    return field == *value;
 }
 
 static int MfRefuse(int field, const MfSite* s, const char* why, int32_t value)
@@ -124,7 +140,7 @@ static int MfFieldOf(uintptr_t game, int field, int32_t* out)
         if (s->field != field) continue;
         if (!MfSiteValue(game, s, &other)) return MfRefuse(field, s, "is not the reviewed instruction", 0);
         if (anchor == NULL) { anchor = s; value = other; }
-        else if (other != value) return MfRefuse(field, s, "disagrees with its anchor", other + s->add);
+        else if (other != value) return MfRefuse(field, s, "disagrees with its anchor", (other + s->add) / s->by);
     }
     if (anchor == NULL) return 0;
     if (value < f->low || value > f->high || (uint32_t)value % f->align) return MfRefuse(field, anchor, "is not a plausible offset", value);
@@ -137,6 +153,13 @@ static uint32_t MfOffset(uintptr_t game, int field, int* ok)
     int32_t v = 0;
     if (!MfFieldOf(game, field, &v)) *ok = 0;
     return (uint32_t)v;
+}
+/* A field a mover may put before its object: the offset with its sign. */
+static intptr_t MfPlace(uintptr_t game, int field, int* ok)
+{
+    int32_t v = 0;
+    if (!MfFieldOf(game, field, &v)) *ok = 0;
+    return v;
 }
 
 /* Whether code at game + rva reads as `bytes`, the moved fields' values in it left out and checked through their field
