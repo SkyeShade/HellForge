@@ -1,5 +1,6 @@
-/* The managers' fields a mod may move (moved_fields.c), on a synthetic game.dll: each field read where its instructions
- * address it, in the vanilla layout, in the one Complex Operations' eight-player build makes and with every field moved.
+/* The fields a mod may move (moved_fields.c: the managers', the entity records), on a synthetic game.dll: each field read
+ * where its instructions address it, in the vanilla layout, in the one Complex Operations' eight-player build makes and
+ * with every field moved (the entity records to before their state).
  * The game's own bytes at the sites (moved_field_bytes.h) read as the vanilla layout. A site that disagrees,
  * an implausible value and another instruction are refused; the pins over moved displacements still match; the local
  * player, the player events, the Helldiver an action finds, the Supply Pack's action context and the stats record are
@@ -14,6 +15,8 @@ static void MfStage(uint8_t* game, const int32_t* at)
     {
         const MfSite* s = &kMfSites[i];
         int32_t v = (at ? at[s->field] : kMfFields[s->field].vanilla) + s->add;
+        assert(v % s->by == 0); /* a place the scaled sites cannot hold is no layout a mover can make */
+        v /= s->by;
         memcpy(game + s->rva, s->code, s->size);
         if (s->width == 1) game[s->rva + s->size] = (uint8_t)v;
         else memcpy(game + s->rva + s->size, &v, 4);
@@ -25,7 +28,7 @@ static void MfStage(uint8_t* game, const int32_t* at)
 static void MfLayout(int32_t* at, int mode)
 {
     static const int32_t all[MF_FIELDS] = {0x90, 0x400, 0x618, 0x200, 0x800, 8, 0x9F0, 0xA38, 0xA60, 0xB00, 0xD00, 8, -0x123450,
-        0x1F8, 0x310, 0x540170, 0x54A8A4, 0x37E58, 0x37F00, 8};
+        0x1F8, 0x310, 0x540170, 0x54A8A4, 0x37E58, 0x37F00, 8, -0x7FFF0};
     for (int f = 0; f < MF_FIELDS; f++) at[f] = mode == 2 ? all[f] : kMfFields[f].vanilla;
     if (mode != 1) return;
     at[MF_PLAYER_PEERS] = 0x828; at[MF_PLAYER_LIFE] = 0x840; at[MF_PLAYER_CAP] = 8;
@@ -94,6 +97,33 @@ static void MfNotesCheck(uint8_t* game)
     DeleteFileW(path);
 }
 
+/* The entity records' refusals: a site that names another place, a scaled site whose place no offset holds, and the
+ * pins over the lookups' displacements with them; whole again once the sites agree. */
+static void MfRecordsRefusals(uint8_t* game)
+{
+    uintptr_t g = (uintptr_t)game, em, records;
+    int32_t at[MF_FIELDS], v, other = (-0x7FFF0 + 24 + 8) / 8, past = INT32_MAX;
+    EvpPlayer players[EVT_MAX_PLAYERS];
+    const EvpPin* lookup = NULL;
+    for (size_t i = 0; i < sizeof kEvpWeaponPins / sizeof kEvpWeaponPins[0]; i++) if (kEvpWeaponPins[i].rva == 0xFD9DDBu) lookup = &kEvpWeaponPins[i];
+    assert(lookup != NULL);
+    MfLayout(at, 2);
+    MfStage(game, at);
+    assert(MfFieldOf(g, MF_ENTITY_RECORDS, &v) && v == -0x7FFF0 && MfPinMatches(g, lookup->rva, lookup->bytes, lookup->size));
+    memcpy(game + 0xFD9C49u + 10, &other, 4); /* the network lookup one record on: a mover that missed a site, or is at work */
+    assert(!MfFieldOf(g, MF_ENTITY_RECORDS, &v) && EvpPlayers(g, players) == EVP_LAYOUT && !EvpRecords(g, &em, &records));
+    assert(EvpEntityResource(g, 0x400005u, NULL) == 0 && MfPinState(g, lookup->rva, lookup->bytes, lookup->size) == -1);
+    assert(!EvpProve(g, 0, kEvpPlayerPins, sizeof kEvpPlayerPins / sizeof kEvpPlayerPins[0]));
+    MfStage(game, at);
+    memcpy(game + 0xFD9B88u + 5, &past, 4); /* 24 times this is past what a displacement holds */
+    assert(!MfFieldOf(g, MF_ENTITY_RECORDS, &v));
+    MfStage(game, at);
+    game[0xFD9DD4u + 7] ^= 1; /* another instruction where the anchor was */
+    assert(!MfFieldOf(g, MF_ENTITY_RECORDS, &v) && !MfPinMatches(g, lookup->rva, lookup->bytes, lookup->size));
+    MfStage(game, at);
+    assert(MfFieldOf(g, MF_ENTITY_RECORDS, &v) && v == -0x7FFF0 && EvpProve(g, 0, kEvpPlayerPins, sizeof kEvpPlayerPins / sizeof kEvpPlayerPins[0]));
+}
+
 static int g_mfHeard;
 static HfPlayerEvent g_mfLast;
 static void MfHeard(HfMod* mod, const HfEventInfo* event, void* user) { g_mfHeard++; if (((const HfPlayerEvent*)event)->local) g_mfLast = *(const HfPlayerEvent*)event; }
@@ -110,6 +140,8 @@ static void MfFieldsCheck(uint8_t* game)
     memcpy(game + 0xA431B1u, resupply, sizeof resupply);
     uintptr_t g = (uintptr_t)game;
     /* the game's own bytes: every site of the table is that instruction, and reads its field's vanilla number */
+    for (size_t i = 0; i < sizeof kEvpWeaponPins / sizeof kEvpWeaponPins[0]; i++)
+        if (!kEvpWeaponPins[i].exe) memcpy(game + kEvpWeaponPins[i].rva, kEvpWeaponPins[i].bytes, kEvpWeaponPins[i].size);
     assert(sizeof kMfGameBytes / sizeof kMfGameBytes[0] == MF_SITES);
     for (size_t i = 0; i < MF_SITES; i++)
     {
@@ -127,7 +159,10 @@ static void MfFieldsCheck(uint8_t* game)
         assert(EvpProve(g, 0, kEvpPlayerPins, sizeof kEvpPlayerPins / sizeof kEvpPlayerPins[0]) &&
             EvpProve(g, 0, kEvpStatPins, sizeof kEvpStatPins / sizeof kEvpStatPins[0]));
         assert(ActBytes(g + 0xA431B1u, "428b841088e85300", 0xA431B1u));
+        for (size_t i = 0; i < sizeof kEvpWeaponPins / sizeof kEvpWeaponPins[0]; i++) /* the descriptor lookup's among them */
+            assert(kEvpWeaponPins[i].exe || MfPinMatches(g, kEvpWeaponPins[i].rva, kEvpWeaponPins[i].bytes, kEvpWeaponPins[i].size));
     }
+    MfRecordsRefusals(game);
     /* a site that disagrees with its anchor: the field and the pins over it are refused */
     int32_t disagree = 0x830;
     memcpy(game + 0x62C72Bu + 8, &disagree, 4);
@@ -183,12 +218,27 @@ static void MfPlayersCheck(uint8_t* game, uint8_t* exe, int eight)
     memcpy(user + EVT_LOCAL_PEER_AT, &localPeer, 8);
     uintptr_t p = (uintptr_t)manager; memcpy(game + EVT_PLAYERS, &p, 8);
     p = (uintptr_t)user; memcpy(game + EVT_LOCAL_PEER, &p, 8);
-    /* the entity manager's network map: the local player's network id -> slot 5 -> its Helldiver */
-    uint8_t* em = (uint8_t*)calloc(1, EVP_NETWORK_ENTITY + 8 * 24);
-    uint32_t netBuckets[8][2], slot = 5;
+    /* the entity manager's network map: the local player's network id -> slot 5 -> its Helldiver, in the records where
+     * the layout has them (before the manager when moved: the old place then names another entity) */
+    const size_t before = 0x80000;
+    uint8_t* emBlock = (uint8_t*)calloc(1, before + kMfFields[MF_ENTITY_RECORDS].vanilla + 8 * 24);
+    uint8_t* em = emBlock + before;
+    uint8_t* entityRecords = em + at[MF_ENTITY_RECORDS];
+    uint32_t netBuckets[8][2], idBuckets[8][2], slot = 5, crate = 0x400009u, crateIndex = 3, crateUnit = 0x55, gotUnit = 0, stale = 0xDEADu;
+    uint64_t crateResource = 0x1122334455667788ull, wrong = 0x99ull;
     MfMap(em + EVP_NETWORK_MAP, netBuckets, 0x100u + local, slot);
-    memcpy(em + EVP_NETWORK_ENTITY + slot * 24, &avatar, 4);
+    MfMap(em + EVP_ENTITY_MAP, idBuckets, crate, crateIndex);
+    if (at[MF_ENTITY_RECORDS] != kMfFields[MF_ENTITY_RECORDS].vanilla)
+    {
+        uint8_t* old = em + kMfFields[MF_ENTITY_RECORDS].vanilla;
+        memcpy(old + slot * 24 + 8, &stale, 4);
+        memcpy(old + crateIndex * 24, &wrong, 8); memcpy(old + crateIndex * 24 + 8, &crate, 4);
+    }
+    memcpy(entityRecords + slot * 24 + 8, &avatar, 4);
+    memcpy(entityRecords + crateIndex * 24, &crateResource, 8); memcpy(entityRecords + crateIndex * 24 + 8, &crate, 4);
+    memcpy(entityRecords + crateIndex * 24 + 12, &crateUnit, 4);
     p = (uintptr_t)em; memcpy(game + EVP_ENTITIES, &p, 8);
+    assert(EvpEntityResource(g, crate, &gotUnit) == crateResource && gotUnit == crateUnit && EvpEntityResource(g, crate + 1, NULL) == 0);
 
     EvpPlayer players[EVT_MAX_PLAYERS];
     assert(EvpPlayers(g, players) == (int)count && players[local].local && players[local].peer == localPeer && players[local].player == player &&
@@ -269,7 +319,7 @@ static void MfPlayersCheck(uint8_t* game, uint8_t* exe, int eight)
     memset(game + EVT_PLAYERS, 0, 8); memset(game + EVT_LOCAL_PEER, 0, 8); memset(game + EVP_ENTITIES, 0, 8); memset(game + EVP_HEALTH, 0, 8);
     memset(game + 0x3326D20u, 0, 8); memset(game + EVP_SCORE, 0, 8); memset(exe + EVP_EXE_ENTITIES, 0, 8);
     g_evpExe = 0;
-    free(score); VirtualFree(actions, 0, MEM_RELEASE); free(health); free(entities); free(em); free(user); free(manager);
+    free(score); VirtualFree(actions, 0, MEM_RELEASE); free(health); free(entities); free(emBlock); free(user); free(manager);
 }
 
 /* A mod's write into game.dll is not a rewrite of HellForge's: a pin over it reads as the difference it is. HellForge's
@@ -307,5 +357,6 @@ static void MovedFieldsFixture(void)
         "the game addresses them, vanilla, moved (eight players) and all moved over poisoned old places; a disagreeing site, "
         "implausible values and other code refused, logged once they stand and when they end; pins open over moved "
         "displacements; the local player, its events, its Helldiver, its action context and its stats record found at the "
-        "moved places");
+        "moved places; the entity records read where the game addresses them, at their own place and moved to before "
+        "their state, by entity and by network id, with the old place holding other entities; their refusals");
 }
