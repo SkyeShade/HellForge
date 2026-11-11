@@ -31,7 +31,8 @@ public static partial class LinuxCapture
     internal static string HelperFolderOf(bool steamOs, Func<string, bool> exists)
     {
         var order = InstallFolders(steamOs).Concat(HelperFolders).Distinct().ToArray();
-        return order.FirstOrDefault(folder => exists(Path.Combine(folder, HelperName))) ?? order[0];
+        // Joined with "/", not Path.Combine: these are a Linux system's paths whatever system reads this.
+        return order.FirstOrDefault(folder => exists(folder + "/" + HelperName)) ?? order[0];
     }
 
     public static string HelperInstallDescription(string installRoot) => HelperInstallDescription(installRoot, IsSteamOs());
@@ -55,7 +56,7 @@ public static partial class LinuxCapture
 
     internal static bool HelperInstalled(Func<string, bool> exists) =>
         HelperFolders.Any(folder => new[] { HelperName, HelperName + ".sha256", RelayName, RelayName + ".sha256" }
-            .Any(file => exists(Path.Combine(folder, file)))) ||
+            .Any(file => exists(folder + "/" + file))) ||
         exists(SudoersPath) || exists(LegacySudoersPath) || exists(SteamOsKeepListPath);
 
     public static HelperSetupResult InstallHelper(string installRoot, string pkexecPath = PkexecPath,

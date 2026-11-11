@@ -30,9 +30,9 @@ public static partial class LinuxCapture
     const string HelperName = "capture-helper";
     const string RelayName = "capture-relay";
     public static string HelperFolder => HelperFolderOf(IsSteamOs(), File.Exists);
-    public static string HelperPath => Path.Combine(HelperFolder, HelperName);
+    public static string HelperPath => HelperFolder + "/" + HelperName;
     public static string HelperHashPath => HelperPath + ".sha256";
-    public static string RelayPath => Path.Combine(HelperFolder, RelayName);
+    public static string RelayPath => HelperFolder + "/" + RelayName;
     public static string RelayHashPath => RelayPath + ".sha256";
     public const string HelperPidFile = "/run/hellforge/capture-helper.pid";
     public const string HelperScript = "capture-helper.sh";
