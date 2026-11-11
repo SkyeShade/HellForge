@@ -25,7 +25,7 @@ expected to have.
 
 ## The sync helper's sudoers rule
 
-SteamOS ships `sudo` and `wheel` in `/etc/sudoers.d`, and both ask for a password. Newer images name them
+SteamOS ships `sudo` and `wheel` in `/etc/sudoers.d`, and both ask for a password. Valve's newer packages name them
 `holo-group-sudo` and `holo-group-wheel`. sudo uses the last rule that matches, so HellForge's rule is named
 `zz-hellforge-capture` to be read after them.
 

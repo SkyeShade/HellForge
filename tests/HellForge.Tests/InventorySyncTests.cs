@@ -852,6 +852,27 @@ static class InventorySyncTests
             !other.Contains("asks for a password", StringComparison.Ordinal),
             "The helper's own refusal was not passed on: " + other);
 
+        check(LinuxCapture.InstallFixesCheck(password!) &&
+            LinuxCapture.InstallFixesCheck(LinuxCapture.HelperCheckProblem(new LinuxCapture.WineResult(1, "",
+                "hellforge-capture-helper: the relay is missing (/x): run allow-capture.sh again."))!) &&
+            !LinuxCapture.InstallFixesCheck(other!),
+            "The install is not offered for exactly the failures it can clear.");
+
+        // Checked on every system, also where the installer cannot be run as root of a namespace: the launcher and the
+        // script name the same two rules, and the new name is read after every drop-in SteamOS ships.
+        var script = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperInstaller));
+        if (File.Exists(script))
+        {
+            var lines = File.ReadAllLines(script);
+            check(lines.Contains("sudoers=" + LinuxCapture.SudoersPath) && lines.Contains("old_sudoers=" + LinuxCapture.LegacySudoersPath),
+                "allow-capture.sh and the launcher do not name the same sudoers rules.");
+        }
+        string[] shipped = ["holo-group-sudo", "holo-group-wheel", "holo-no-fqdn", "no-fqdn", "sudo", "wheel", "wheel-prepare-oobe-test"];
+        var name = Path.GetFileName(LinuxCapture.SudoersPath);
+        check(shipped.All(file => string.CompareOrdinal(file, name) < 0) &&
+            shipped.Any(file => string.CompareOrdinal(file, Path.GetFileName(LinuxCapture.LegacySudoersPath)) > 0),
+            "The rule's name does not sort after SteamOS's drop-ins in sudo's byte order, or the old name did.");
+
         if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: pkexec helper install)"); return; }
         var install = Directory.CreateDirectory(Path.Combine(root, "helper-check", "install")).FullName;
         var installer = Path.Combine(Directory.CreateDirectory(Path.Combine(install, "app", "linux")).FullName, LinuxCapture.HelperInstaller);

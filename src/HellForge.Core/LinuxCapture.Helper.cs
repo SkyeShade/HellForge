@@ -126,8 +126,8 @@ public static partial class LinuxCapture
             return Fallback(remove, installRoot, "The helper installer finished, but " + problem + ".");
         // The files are right, so running the installer again from a terminal would change nothing: say what blocks sudo.
         if (check != null && check() is { } blocked)
-            return new(false, false, false, "The helper and its sudoers rule were installed, but sudo still cannot run " +
-                "the helper without a password. " + blocked);
+            return new(false, false, false, "The helper and its sudoers rule were installed, but the helper's check " +
+                "still fails. " + blocked);
         return new(true, false, false, remove
             ? "Removed HellForge's Account Sync helper, relay, hashes and sudoers rule."
             : "Installed the Account Sync helper and relay; the sync continues." + (stdout.Length == 0 ? "" : " " + Tail(stdout)));
@@ -137,6 +137,13 @@ public static partial class LinuxCapture
     // command. The files can all be right while another sudoers rule that sorts later still asks for a password; the
     // launcher then offers the installer again, which writes the rule under the name that sorts last. Null means ready.
     public static string? HelperCheckProblem() => HelperCheckProblem(RunSudo(["check"], TimeSpan.FromSeconds(10)));
+
+    // Whether running the installer again can clear a failed check: it writes the rule and both root copies, so it
+    // answers sudo's password and the helper's own "run allow-capture.sh again". Anything else (a read-only /etc/hosts,
+    // a missing program) would only bring the password dialog back at every sync.
+    public static bool InstallFixesCheck(string problem) =>
+        problem.Contains("asks for a password", StringComparison.Ordinal) ||
+        problem.Contains("run allow-capture.sh again", StringComparison.Ordinal);
 
     internal static string? HelperCheckProblem(WineResult check)
     {
