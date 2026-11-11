@@ -128,7 +128,7 @@ The third way, and where setup goes when another way cannot work. **Open the Ste
 
 The Steam app downloads each depot into `<Steam>/steamapps/content/app_553850/depot_<depot>/`. The Linux client often
 uses `ubuntu12_32/steamapps` under the Steam folder instead, or `ubuntu12_64/steamapps` or `steamrt64/steamapps`. The
-card names both likely folders, and the one Steam really uses once the download has started. Setup looks in
+card names the two usual folders on Linux, and the one Steam really uses once it has written to it. Setup looks in
 all of them and takes, for each depot, the folder that holds the most of the build. So an empty folder left by an
 earlier download does not hide the real one.
 

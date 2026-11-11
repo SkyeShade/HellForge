@@ -117,7 +117,8 @@ To use them:
 3. Watch the progress under Game files: Steam shows no progress in its library for this download. Steam puts it in
    `<Steam>/steamapps/content/app_553850/` (about 24 GB). The Linux Steam client often uses
    `ubuntu12_32/steamapps/content/app_553850/` under the Steam folder instead (or `ubuntu12_64` or `steamrt64`). Setup
-   looks in each and names the folder it found under the progress. On Linux the bar stays empty, and setup reads the download directly from Steam's content folder; do not move it
+   looks in each and names the folder it found under the progress.
+   On Linux the bar stays empty, and setup reads the download directly from Steam's content folder; do not move it
    into the prefix: see [Steam's download of the supported build](linux.md#steams-download-of-the-supported-build).
 4. Setup continues by itself when every depot is complete and copies the game from the download. "Delete Steam's
    download after copying" is ticked unless you untick it, and frees the space afterwards.

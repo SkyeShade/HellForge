@@ -224,7 +224,7 @@ delete it and run that depot's command again.
 The Linux Steam client downloads relative to the folder its program runs from. So `download_depot` often writes to
 `<Steam>/ubuntu12_32/steamapps/content/app_553850/` (a Steam Deck does), and sometimes to the same path under
 `<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, or to `<Steam>/steamapps/content/app_553850/`. Setup's card names the
-first and the last before the download, and the folder it found once Steam has started. The native setup reads these
+first and the last before the download, and the folder it found once Steam has written to it. The native setup reads these
 locations directly and does not move the depot folders:
 
 ```text

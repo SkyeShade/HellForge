@@ -193,7 +193,7 @@ On `dev`, since 0.4.0-beta.
   ([data specs](docs/modding/data.md)).
 - **Linux setup names the folder Steam really downloads into.** The "Use the Steam app" card named
   `<Steam>/steamapps/content`, but the Linux Steam client often downloads under `<Steam>/ubuntu12_32`, as on a Steam
-  Deck. The card now names both, and the folder it found once Steam has started
+  Deck. The card now names both, and the folder it found once Steam has written to it
   ([Steam's download](docs/linux.md#steams-download-of-the-supported-build)).
 - **A crash in missions with edited spawn weights (`game.dll+0x9530F5`).** A roster weight of 0 that left an enemy
   with no weight at a level, such as Scavengers at difficulty 10, made bug holes spawn a null enemy. Such an edit is now

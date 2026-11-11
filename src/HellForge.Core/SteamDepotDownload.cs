@@ -36,11 +36,19 @@ public static class SteamDepotDownload
     public static IReadOnlyList<string> ExpectedContentFolders(string steamRoot, SupportedBuild build, bool linux) =>
         linux ? [.. ContentFolders(steamRoot, build).Take(2)] : [ContentFolder(steamRoot, build)];
 
-    // The content folders that hold the depots setup reads (DepotFolder's choice for each), once Steam has made one.
-    // Empty before the download starts.
-    public static IReadOnlyList<string> DownloadFolders(string steamRoot, SupportedBuild build) =>
-        [.. build.Depots.Select(depot => DepotFolder(steamRoot, build, depot.Id)).Where(Directory.Exists)
-            .Select(folder => Path.GetDirectoryName(folder)!).Distinct()];
+    // The content folders Steam has put something of the build's depots in: for each depot the folder setup reads
+    // (DepotFolder's choice), or another that holds something when that one is empty. A depot folder with nothing in it
+    // is not a download: an earlier one leaves such folders behind (GitHub issue 112). Empty before Steam has written.
+    public static IReadOnlyList<string> DownloadFolders(string steamRoot, SupportedBuild build)
+    {
+        static bool Holds(string folder) => Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any();
+        return [.. build.Depots.Select(depot =>
+        {
+            var chosen = DepotFolder(steamRoot, build, depot.Id);
+            return Holds(chosen) ? chosen
+                : ContentFolders(steamRoot, build).Select(folder => Path.Combine(folder, "depot_" + depot.Id)).FirstOrDefault(Holds);
+        }).Where(folder => folder != null).Select(folder => Path.GetDirectoryName(folder)!).Distinct()];
+    }
 
     // The console card's words for where Steam downloads to. The Linux client often downloads under its own folder, not
     // where the Windows client does, so both are named; FoundText names the real one once it exists.
@@ -48,7 +56,7 @@ public static class SteamDepotDownload
     {
         var folders = ExpectedContentFolders(steamRoot, build, linux);
         return folders.Count == 1 ? folders[0]
-            : $"{folders[1]} or {folders[0]}, whichever your Steam uses (the progress below names the folder once Steam has started)";
+            : $"{folders[1]} or {folders[0]}, usually (the progress below names the folder once Steam has written to it)";
     }
 
     // The line under the depots' progress that names the folders Steam is really downloading into.
