@@ -28,15 +28,36 @@ public static partial class EarlySessionFailure
         return entry.Length > 0 ? entry : null;
     }
 
-    // Linux: the last line the wrapper (Bash, Proton) wrote for this start, for a stop before the session runner ran.
-    public static string? WrapperLastLine(string logsFolder, DateTime sinceUtc) =>
-        FreshLines(Path.Combine(logsFolder, LinuxWrapperLog), sinceUtc) is { Count: > 0 } lines ? lines[^1].Trim() : null;
+    // What the wrapper writes on its way out, after the line that says why it stops.
+    internal static readonly string[] WrapperClosingLines =
+    [
+        "HellForge wrapper exiting with code",
+        "HellForge wrapper received SIG",
+        "Offline namespace command exited with code",
+        "Steam bridge did not stop after",
+        "HellForge is running inside the container"
+    ];
+
+    // Linux, for a stop before the session runner ran: the wrapper's own failure line for this start when it wrote one
+    // (the lines SteamOwnershipCheck knows), else the last line (Bash, Proton) above its closing lines, named as that.
+    public static string? WrapperReason(string logsFolder, DateTime sinceUtc)
+    {
+        if (FreshLines(Path.Combine(logsFolder, LinuxWrapperLog), sinceUtc) is not { Count: > 0 } lines) return null;
+        if (SteamOwnershipCheck.LinuxWrapperProblem(string.Join('\n', lines)) is { } known)
+        {
+            // A failure line that ends in a colon has its command on the next line.
+            var next = lines.FindIndex(line => line.Trim() == known) + 1;
+            return known.EndsWith(':') && next < lines.Count ? known + " " + lines[next].Trim() : known;
+        }
+        var last = lines.FindLast(line => !WrapperClosingLines.Any(closing => line.Contains(closing, StringComparison.Ordinal)));
+        return last == null ? null : "The last line of " + LinuxWrapperLog + " before the wrapper stopped: " + last.Trim();
+    }
 
     static List<string>? FreshLines(string log, DateTime sinceUtc)
     {
         try
         {
-            if (!File.Exists(log) || File.GetLastWriteTimeUtc(log) < sinceUtc - TimeSlack) return null;
+            if (!File.Exists(log) || File.GetLastWriteTimeUtc(log) + TimeSlack < sinceUtc) return null;
             using var stream = new FileStream(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using var reader = new StreamReader(stream);
             return [.. reader.ReadToEnd().Split('\n').Select(line => line.TrimEnd('\r')).Where(line => line.Trim().Length > 0)];

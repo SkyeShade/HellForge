@@ -538,15 +538,14 @@ public partial class MainWindow : Window
             reason == null ? exit : reason + (exit == null ? "" : " (" + exit + ")"));
     }
 
-    // What the session runner (or, on Linux, the wrapper before it) wrote for this start: the reason itself, so the
-    // player does not have to find and open a log for it.
+    // What the session runner (or, on Linux, the wrapper before it) wrote for this start, so the player does not have
+    // to find and open a log for it.
     string? EarlyFailureReason()
     {
         if (paths.InstallRoot == null) return null;
         var logs = Path.Combine(paths.InstallRoot, "logs");
         if (HellForge.Core.EarlySessionFailure.Reason(logs, runnerStartedUtc) is { } reason) return reason;
-        return OperatingSystem.IsLinux() && HellForge.Core.EarlySessionFailure.WrapperLastLine(logs, runnerStartedUtc) is { } line
-            ? "The last line of " + HellForge.Core.EarlySessionFailure.LinuxWrapperLog + ": " + line : null;
+        return OperatingSystem.IsLinux() ? HellForge.Core.EarlySessionFailure.WrapperReason(logs, runnerStartedUtc) : null;
     }
 
     void FindRun()
