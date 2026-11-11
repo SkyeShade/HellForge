@@ -109,7 +109,7 @@ static uint32_t ActLocalAvatar(uintptr_t game, int dead, ActHealth* h, const cha
     int count = EvpPlayers(game, players);
     uint32_t avatar = 0;
     for (int i = 0; i < count; i++) if (players[i].local) avatar = players[i].avatar;
-    *why = "this machine's player has no Helldiver";
+    *why = count == EVP_LAYOUT ? EVP_LAYOUT_WHY : "this machine's player has no Helldiver";
     if (!avatar || !EvpAlive(avatar) || !ActHealthOf(game, avatar, h)) return 0;
     if (h->resource != ACT_AVATAR || !h->owned) { *why = "this machine's player's avatar is not a Helldiver it owns"; return 0; }
     if (!dead && h->life == 1) { *why = "the Helldiver is downed"; return 0; }

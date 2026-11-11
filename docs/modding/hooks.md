@@ -195,6 +195,7 @@ displacement of an instruction that uses the field.
 - The list's capacity is the byte at `game.dll+0x540870` (4 in the game). Size your own per-player arrays from it.
 - HellForge's events, actions, armor passives and perks follow the player, customization, avatar and score managers
   this way. When the sites of one field disagree, the feature that reads it stays off and the log names the field.
+  The log also says when the field reads as reviewed again.
 
 ## Finding a function
 
@@ -400,6 +401,8 @@ static void SteerAnywhere(HfMod* mod, HfEvent event, void* user)
 - HellForge itself rewrites some of the game's code (where it moves the game's lists of projectiles, damage, stratagems
   and difficulties, and where its events read the game). Check the bytes you patch are the build's own, as above: if
   HellForge or another mod changed them first, your check fails cleanly.
+- A patch over code that a HellForge feature checks turns that feature off: HellForge takes only its own rewrites as
+  known. The exception is a field's offset or capacity listed under [Fields a mod moved](#fields-a-mod-moved).
 
 ## Reading and writing data
 

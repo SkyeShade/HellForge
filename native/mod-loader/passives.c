@@ -53,7 +53,9 @@ static int PassivesProve(uintptr_t game)
     if (g_passivesProven) return g_passivesProven > 0;
     for (size_t i = 0; i < sizeof kPassivePins / sizeof kPassivePins[0]; i++)
     {
-        if (!MfPinMatches(game, kPassivePins[i].rva, kPassivePins[i].bytes, kPassivePins[i].size))
+        int state = MfPinState(game, kPassivePins[i].rva, kPassivePins[i].bytes, kPassivePins[i].size);
+        if (state < 0) { snprintf(g_passivesStatus, sizeof g_passivesStatus, "%s", EVP_LAYOUT_WHY); return 0; } /* asked again: no verdict kept */
+        if (!state)
         {
             snprintf(g_passivesStatus, sizeof g_passivesStatus, "the game's passive code is not the reviewed one (game.dll +0x%X)", kPassivePins[i].rva);
             g_passivesProven = -1;
@@ -99,7 +101,7 @@ static uint32_t PassivesLocalEntity(uintptr_t game, LocalPassives* out, const ch
     EvpPlayer players[EVT_MAX_PLAYERS];
     uint32_t entity = 0;
     int count = EvpPlayers(game, players);
-    if (count < 0) { *why = "the player list is not readable yet"; return 0; }
+    if (count < 0) { *why = count == EVP_LAYOUT ? EVP_LAYOUT_WHY : "the player list is not readable yet"; return 0; }
     out->players = (uint32_t)count;
     for (int slot = 0; slot < count && !entity; slot++) if (players[slot].local) entity = players[slot].player;
     if (!entity) *why = "the local player is not in the player list";

@@ -37,11 +37,14 @@ typedef struct MfSite { uint8_t field, size, width; uint32_t rva; int32_t add; u
 static const MfSite kMfSites[] = {
     /* the player manager [game + 0x3326468]: its local player lookup 0x62C710 and its add-a-player 0x540850/0x540920 */
     MF_SITE(MF_PLAYER_COUNT, 0x62C721u, 4, 0, 0x41, 0x8b, 0xc0, 0x44, 0x8b, 0x91),
+    MF_SITE(MF_PLAYER_COUNT, 0x54094Cu, 4, 0, 0x80, 0x3a, 0x00, 0x8b, 0x83), MF_SITE(MF_PLAYER_COUNT, 0xACC622u, 4, 0, 0x41, 0x3b, 0x86),
     MF_SITE(MF_PLAYER_PEERS, 0x5409CAu, 4, 0, 0x48, 0x6b, 0xc2, 0x38, 0x0f, 0x57, 0xc0, 0x0f, 0x11, 0x84, 0x18),
     MF_SITE(MF_PLAYER_PEERS, 0x62C72Bu, 4, 0, 0x45, 0x85, 0xd2, 0x74, 0x17, 0x4c, 0x8d, 0x89),
     MF_SITE(MF_PLAYER_LIFE, 0x6094D7u, 4, 0, 0x48, 0x6b, 0xc2, 0x38, 0x42, 0x83, 0xbc, 0x20),
+    MF_SITE(MF_PLAYER_LIFE, 0x5408F3u, 4, 0, 0x4c, 0x89, 0x94, 0x18),
     MF_SITE(MF_PLAYER_DESCRIPTORS, 0x62C751u, 4, 0, 0x48, 0x8b, 0x8c, 0xc1),
     MF_SITE(MF_PLAYER_DESCRIPTORS, 0x5408FBu, 4, 0, 0x48, 0x89, 0x94, 0xcb),
+    MF_SITE(MF_PLAYER_DESCRIPTORS, 0xACC638u, 4, 0, 0x49, 0x8b, 0x84, 0xc6),
     MF_SITE(MF_PLAYER_NETWORK, 0xACC665u, 4, 0, 0x48, 0xc1, 0xe0, 0x05, 0x4d, 0x03, 0xe6, 0x42, 0x8b, 0x94, 0x30),
     MF_SITE(MF_PLAYER_CAP, 0x54086Au, 1, 0, 0x41, 0x8d, 0x40, 0x01, 0x83, 0xf8), MF_SITE(MF_PLAYER_CAP, 0x54093Au, 1, 0, 0xff, 0xc0, 0x83, 0xf8),
     MF_SITE(MF_PLAYER_CAP, 0x60CA9Au, 1, 0, 0xff, 0xc0, 0x83, 0xf8), MF_SITE(MF_PLAYER_CAP, 0x60CBB7u, 1, 0, 0x41, 0x8d, 0x40, 0x01, 0x83, 0xf8),
@@ -72,10 +75,14 @@ static const MfSite kMfSites[] = {
     /* the score manager [game + 0x3326AE0]: its add-a-record 0x53E130 and the stats poll's lookup 0x62C764 */
     MF_SITE(MF_SCORE_MAP, 0x53E186u, 4, 0, 0x48, 0x8d, 0x8b), MF_SITE(MF_SCORE_MAP, 0x62C78Cu, 4, 0, 0x49, 0x8b, 0xbb),
     MF_SITE(MF_SCORE_RECORDS, 0x53E16Au, 4, 0, 0x48, 0x8d, 0x04, 0x92, 0x0f, 0x11, 0x84, 0xc3),
+    MF_SITE(MF_SCORE_RECORDS, 0x53E176u, 4, 0x10, 0x0f, 0x11, 0x84, 0xc3),
     MF_SITE(MF_SCORE_CAP, 0x53E147u, 1, 0, 0x41, 0x8d, 0x40, 0x01, 0x83, 0xf8),
 };
 #define MF_SITES (sizeof kMfSites / sizeof kMfSites[0])
-static volatile LONG g_mfNoted[MF_FIELDS];
+/* A field's refusal is logged once it has stood for MF_PATIENCE ms: a reader meets code that is still being decoded, or
+ * that a mover is rewriting, for a moment. The first refusal's tick (0 none), and whether the log has the line. */
+static volatile LONG g_mfSince[MF_FIELDS], g_mfNoted[MF_FIELDS];
+static DWORD g_mfPatience = 3000;
 
 /* A site's value less its add, when the code before it reads as reviewed; 0 not. */
 static int MfSiteValue(uintptr_t game, const MfSite* s, int32_t* value)
@@ -91,9 +98,17 @@ static int MfSiteValue(uintptr_t game, const MfSite* s, int32_t* value)
 
 static int MfRefuse(int field, const MfSite* s, const char* why, int32_t value)
 {
-    if (InterlockedExchange(&g_mfNoted[field], 1) == 0)
-        Note("moved fields: %s %s at game.dll +0x%X (0x%X); what reads it is off", kMfFields[field].what, why, s->rva, (uint32_t)value);
+    DWORD now = GetTickCount() | 1;
+    LONG since = InterlockedCompareExchange(&g_mfSince[field], (LONG)now, 0);
+    if (since != 0 && now - (DWORD)since >= g_mfPatience && InterlockedExchange(&g_mfNoted[field], 1) == 0)
+        Note("moved fields: %s %s at game.dll +0x%X (0x%X); what reads it is off until it reads as reviewed", kMfFields[field].what, why, s->rva, (uint32_t)value);
     return 0;
+}
+static void MfFine(int field)
+{
+    if (g_mfSince[field] == 0) return;
+    InterlockedExchange(&g_mfSince[field], 0);
+    if (InterlockedExchange(&g_mfNoted[field], 0) == 1) Note("moved fields: %s reads as reviewed again", kMfFields[field].what);
 }
 
 /* A field's offset (or capacity): its anchor's value, when every site of the field reads as reviewed and agrees and the
@@ -113,6 +128,7 @@ static int MfFieldOf(uintptr_t game, int field, int32_t* out)
     }
     if (anchor == NULL) return 0;
     if (value < f->low || value > f->high || (uint32_t)value % f->align) return MfRefuse(field, anchor, "is not a plausible offset", value);
+    MfFine(field);
     *out = value;
     return 1;
 }
@@ -124,8 +140,9 @@ static uint32_t MfOffset(uintptr_t game, int field, int* ok)
 }
 
 /* Whether code at game + rva reads as `bytes`, the moved fields' values in it left out and checked through their field
- * instead (the passive, perk, event and action pins). */
-static int MfPinMatches(uintptr_t game, uint32_t rva, const uint8_t* bytes, size_t size)
+ * instead (the passive, perk, event and action pins): 1, 0 other code, -1 a field in it is refused (a mover may be at
+ * work: the caller asks again). */
+static int MfPinState(uintptr_t game, uint32_t rva, const uint8_t* bytes, size_t size)
 {
     uint8_t got[256];
     if (size > sizeof got || SafeRead(game + rva, got, size)) return 0;
@@ -135,8 +152,9 @@ static int MfPinMatches(uintptr_t game, uint32_t rva, const uint8_t* bytes, size
         uint32_t from = s->rva + s->size, to = from + s->width;
         if (to <= rva || from >= rva + size) continue;
         int32_t value;
-        if (!MfFieldOf(game, s->field, &value)) return 0;
+        if (!MfFieldOf(game, s->field, &value)) return -1;
         for (uint32_t at = from; at < to; at++) if (at >= rva && at < rva + size) got[at - rva] = bytes[at - rva];
     }
     return !memcmp(got, bytes, size);
 }
+static int MfPinMatches(uintptr_t game, uint32_t rva, const uint8_t* bytes, size_t size) { return MfPinState(game, rva, bytes, size) == 1; }

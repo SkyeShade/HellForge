@@ -2155,6 +2155,11 @@ static void PassivesFixtureAt(const int32_t* at32)
     assert(game && manager && players && user && descriptor && playerDescriptor);
     for (size_t i = 0; i < sizeof kPassivePins / sizeof kPassivePins[0]; i++) memcpy(game + kPassivePins[i].rva, kPassivePins[i].bytes, kPassivePins[i].size);
     MfStage(game, at32);
+    if (at32[MF_CUSTOM_COUNT] != kMfFields[MF_CUSTOM_COUNT].vanilla) /* every field moved: the old places hold no zeroes */
+    {
+        memset(manager + 0x8E0, 0xEE, 0x720); memset(players + 0x80, 0xEE, 0xF80);
+        memset(manager + at32[MF_CUSTOM_APPLIED], 0, 0x44);
+    }
     uintptr_t at;
     at = (uintptr_t)manager; memcpy(game + PSV_MANAGER, &at, 8);
     at = (uintptr_t)players; memcpy(game + EVT_PLAYERS, &at, 8);
@@ -2228,7 +2233,7 @@ static void PassivesFixtureAt(const int32_t* at32)
     game[kPassivePins[0].rva] ^= 0xFF;
     assert(ApiSetPassives(mod, 7, HF_PASSIVE_KIT) == 1);
     PassivesTick(g);
-    assert(*armor == 6 && strstr(g_passivesStatus, "not the reviewed one"));
+    assert(*armor == 6 && (strstr(g_passivesStatus, "not the reviewed one") || !strcmp(g_passivesStatus, EVP_LAYOUT_WHY))); /* the pin is a field's site */
     assert(ApiSetPassives(mod, HF_PASSIVE_KIT, HF_PASSIVE_KIT) == 1);
     g_passivesProven = 0;
     g_passivesGame = 0;
@@ -2240,6 +2245,7 @@ static void PassivesFixture(void)
     int32_t at[MF_FIELDS];
     MfLayout(at, 0); PassivesFixtureAt(at);
     MfLayout(at, 1); PassivesFixtureAt(at);
+    MfLayout(at, 2); PassivesFixtureAt(at);
 }
 
 /* References and packages (refs.c, packages.c): an explosion swap waits for its package (requested on the game thread,
@@ -4335,6 +4341,7 @@ int main(int argc, char** argv)
     HookChainFixture();
     EventsFixture();
     MovedFieldsFixture();
+    ModWriteFixture();
     ManyModsFixture();
     AbilitiesFixture();
     LooseGuardFixture();

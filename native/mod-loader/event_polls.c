@@ -190,13 +190,17 @@ static int EvpListOf(uintptr_t game, EvpList* l)
     l->network = MfOffset(game, MF_PLAYER_NETWORK, &ok); l->capacity = MfOffset(game, MF_PLAYER_CAP, &ok);
     return ok;
 }
-/* The player list: peer, player entity, Helldiver (0: none), lifecycle, local. Their count, -1 unreadable. */
+/* The player list: peer, player entity, Helldiver (0: none), lifecycle, local. Their count, -1 unreadable, EVP_LAYOUT
+ * when the game's code does not say where the list is (moved_fields.c). */
+#define EVP_LAYOUT (-2)
+#define EVP_LAYOUT_WHY "the game's code does not say where the player data is (the log's moved fields line says which part)"
 static int EvpPlayers(uintptr_t game, EvpPlayer* out)
 {
     uintptr_t manager, user, em = 0;
     uint64_t local = 0;
     EvpList l;
-    if (!EvpPtr(game + EVT_PLAYERS, &manager) || !EvpListOf(game, &l)) return -1;
+    if (!EvpListOf(game, &l)) return EVP_LAYOUT;
+    if (!EvpPtr(game + EVT_PLAYERS, &manager)) return -1;
     if (EvpPtr(game + EVT_LOCAL_PEER, &user)) SafeRead(user + EVT_LOCAL_PEER_AT, &local, 8);
     uint32_t count = EvpU32(manager + l.count, 99);
     if (count > l.capacity) return -1;

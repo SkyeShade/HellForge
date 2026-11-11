@@ -96,10 +96,11 @@ static int LivePlayers(void)
     uint32_t count = 0;
     int ok = 1;
     uint32_t at = game ? MfOffset(game, MF_PLAYER_COUNT, &ok) : 0; /* where the game's code addresses the count now */
-    if (game == 0 || !ok || SafeRead(game + EVT_PLAYERS, &manager, 8) || manager == 0 || SafeRead(manager + at, &count, 4)) return -1;
+    if (game != 0 && !ok) return EVP_LAYOUT;
+    if (game == 0 || SafeRead(game + EVT_PLAYERS, &manager, 8) || manager == 0 || SafeRead(manager + at, &count, 4)) return -1;
     return (int)count;
 }
-/* The players in the game now (-1 unknown), the entity load's state (registry.c) and the game's state: the native
+/* The players in the game now (-1 unknown, EVP_LAYOUT the count's place unknown: taken as co-op), the entity load's state (registry.c) and the game's state: the native
  * fixture replaces them. */
 static int (*g_livePlayers)(void) = LivePlayers;
 static uint8_t* (*g_liveEntityState)(void) = EntityState;
@@ -114,7 +115,9 @@ static const char* TxnGate(void)
     HfSession session;
     ApiSession(NULL, &session);
     if (session.role == HF_SESSION_JOINER) return "coop\tthis game plays in a friend's lobby";
-    if (g_livePlayers() > 1) return "coop\tanother player is in the game";
+    int players = g_livePlayers();
+    if (players == EVP_LAYOUT) return "coop\t" EVP_LAYOUT_WHY;
+    if (players > 1) return "coop\tanother player is in the game";
     uint32_t state = g_liveGameState();
     if (state == HF_STATE_PREPARE_SHIP || state == HF_STATE_PREPARE_MISSION) return "state\tthe game is loading; try again once it has";
     return NULL;
