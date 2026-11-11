@@ -15,26 +15,49 @@ public static partial class LinuxCapture
     public const string SudoersPath = "/etc/sudoers.d/zz-hellforge-capture";
     // The rule's name before it sorted last. The installer removes it; a removal removes both.
     public const string LegacySudoersPath = "/etc/sudoers.d/hellforge-capture";
+    // SteamOS drops /etc changes at an update unless a file here lists them; the installer lists the rule (SteamOS only).
+    public const string SteamOsKeepListPath = "/etc/atomic-update.conf.d/hellforge.conf";
     static readonly TimeSpan HelperInstallTimeout = TimeSpan.FromMinutes(5);
 
     // Succeeded: the installer/remover exited 0 and the post-check agreed. Cancelled: the polkit dialog was dismissed or
     // denied, so nothing changed. NeedsManual: the launcher could not show a dialog; Message carries the terminal command.
     public sealed record HelperSetupResult(bool Succeeded, bool Cancelled, bool NeedsManual, string Message);
 
-    public static string HelperInstallDescription(string installRoot)
+    // The installer's order on this system, as allow-capture.sh has it.
+    internal static IReadOnlyList<string> InstallFolders(bool steamOs) => steamOs ? [.. HelperFolders.Skip(1)] : HelperFolders;
+
+    // The folder the installed helper is in: the first in the installer's order that has one, then any other (a copy an
+    // earlier install left where it can no longer be removed is passed over). With no helper, the first choice.
+    internal static string HelperFolderOf(bool steamOs, Func<string, bool> exists)
+    {
+        var order = InstallFolders(steamOs).Concat(HelperFolders).Distinct().ToArray();
+        // Joined with "/", not Path.Combine: these are a Linux system's paths whatever system reads this.
+        return order.FirstOrDefault(folder => exists(folder + "/" + HelperName)) ?? order[0];
+    }
+
+    public static string HelperInstallDescription(string installRoot) => HelperInstallDescription(installRoot, IsSteamOs());
+
+    internal static string HelperInstallDescription(string installRoot, bool steamOs)
     {
         var installer = Path.Combine(installRoot, "app", "linux", HelperInstaller);
+        var folders = InstallFolders(steamOs);
         return "Sync Inventory needs a small root-owned helper and relay to change /etc/hosts and serve the capture on " +
-            "this PC. Installing them copies capture-helper.sh and capture-relay to /usr/local/lib/hellforge, records " +
+            "this PC. Installing them copies capture-helper.sh and capture-relay to " + folders[0] + " (to " +
+            string.Join(" or ", folders.Skip(1)) + " if that folder cannot be used), records " +
             "their SHA-256, and adds the one sudoers rule " + SudoersPath + " so this account can run only " +
-            "that helper's check, start, stop and cleanup commands without another password. The shipped installer " +
+            "that helper's check, start, stop and cleanup commands without another password. " +
+            (steamOs ? "SteamOS's /usr/local is read-only, so it is not used; " + SteamOsKeepListPath + " lists the " +
+                "rule so that a SteamOS update keeps it. " : "") + "The shipped installer " +
             installer + " runs through pkexec after you continue, so the desktop's polkit dialog asks for your password. " +
             "Remove them later with: sudo bash " + installer + " --remove";
     }
 
-    public static bool HelperInstalled() =>
-        File.Exists(HelperPath) || File.Exists(RelayPath) || File.Exists(HelperHashPath) ||
-        File.Exists(RelayHashPath) || File.Exists(SudoersPath) || File.Exists(LegacySudoersPath);
+    public static bool HelperInstalled() => HelperInstalled(File.Exists);
+
+    internal static bool HelperInstalled(Func<string, bool> exists) =>
+        HelperFolders.Any(folder => new[] { HelperName, HelperName + ".sha256", RelayName, RelayName + ".sha256" }
+            .Any(file => exists(folder + "/" + file))) ||
+        exists(SudoersPath) || exists(LegacySudoersPath) || exists(SteamOsKeepListPath);
 
     public static HelperSetupResult InstallHelper(string installRoot, string pkexecPath = PkexecPath,
         string bashPath = BashPath) =>

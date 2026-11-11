@@ -82,6 +82,14 @@ static class InventorySyncTests
         test("allow-capture.sh writes the sudoers rule that sorts last and removes the rule under its old name", () =>
             HelperInstallerRule(root, check));
 
+        test("On SteamOS allow-capture.sh installs the helper in /opt/hellforge and lists its rule for updates to keep", () =>
+            HelperInstallerSteamOs(root, check));
+
+        test("allow-capture.sh installs the helper only in a folder the account cannot change, and a removal runs no other", () =>
+            HelperInstallerFolders(root, check));
+
+        test("The launcher finds the helper in the folder this system's installer chose", () => HelperFolders(check));
+
         test("A sudo that still asks for a password is a reason to install the helper again, and is said after an install", () =>
             HelperCheck(root, check));
 
@@ -713,7 +721,13 @@ static class InventorySyncTests
         File.WriteAllText(installer, "#!/bin/sh\n");
         File.SetUnixFileMode(installer, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
-        var description = LinuxCapture.HelperInstallDescription(install);
+        var description = LinuxCapture.HelperInstallDescription(install, steamOs: false);
+        var onSteamOs = LinuxCapture.HelperInstallDescription(install, steamOs: true);
+        check(description.Contains("to /usr/local/lib/hellforge (to /opt/hellforge or /var/lib/hellforge if", StringComparison.Ordinal) &&
+            !description.Contains("SteamOS", StringComparison.Ordinal) &&
+            onSteamOs.Contains("to /opt/hellforge (to /var/lib/hellforge if", StringComparison.Ordinal) &&
+            onSteamOs.Contains(LinuxCapture.SteamOsKeepListPath, StringComparison.Ordinal),
+            "The helper confirmation does not name this system's folders, or SteamOS's keep list: " + onSteamOs);
         check(description.Contains("/usr/local/lib/hellforge", StringComparison.Ordinal) &&
             description.Contains("/etc/sudoers.d/zz-hellforge-capture", StringComparison.Ordinal) &&
             description.Contains("--remove", StringComparison.Ordinal) &&
@@ -803,10 +817,7 @@ static class InventorySyncTests
     static void HelperInstallerRule(string root, Action<bool, string> check)
     {
         if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: the sudoers rule's name)"); return; }
-        if (FakeRootScripts(root, "helper-rule") is not { } scripts) return;
-        var installer = Path.Combine(scripts, LinuxCapture.HelperInstaller);
-        var uid = RunTestProcess("id", ["-u"]).Output.Trim();
-        var user = RunTestProcess("id", ["-un"]).Output.Trim();
+        if (FakeRootScripts(root, "helper-rule") == null) return;
         var rule = Path.GetFileName(LinuxCapture.SudoersPath);
         var oldRule = Path.GetFileName(LinuxCapture.LegacySudoersPath);
         var body = string.Join("\n",
@@ -815,27 +826,145 @@ static class InventorySyncTests
             "printf '%s\\n' 'Defaults !fqdn' > /etc/sudoers.d/no-fqdn",
             "printf '%s\\n' '%wheel ALL=(root) NOPASSWD: /usr/bin/steamos-prepare-oobe-test' > /etc/sudoers.d/wheel-prepare-oobe-test",
             "printf '%s\\n' 'old rule' > /etc/sudoers.d/" + oldRule,
-            "PKEXEC_UID=" + uid + " bash " + ShQuote(installer) + " >/dev/null",
+            "PKEXEC_UID=1000 bash " + FakeRootInstaller + " >/dev/null",
             "echo \"order:$(LC_ALL=C ls /etc/sudoers.d | tr '\\n' ' ')\"",
             "echo \"mode:$(stat -c '%a %u %g' /etc/sudoers.d/" + rule + ")\"",
             "echo \"rule:$(cat /etc/sudoers.d/" + rule + ")\"",
+            "echo \"keep:$(ls /etc/atomic-update.conf.d 2>/dev/null | tr '\\n' ' ')\"",
             "printf '%s\\n' 'old rule' > /etc/sudoers.d/" + oldRule,
-            "bash " + ShQuote(installer) + " --remove >/dev/null",
+            "bash " + FakeRootInstaller + " --remove >/dev/null",
             "echo \"left:$(LC_ALL=C ls /etc/sudoers.d /usr/local/lib | tr '\\n' ' ')\"");
         if (RunAsFakeRoot(root, "helper-rule", body) is not { } run) return;
         check(run.ExitCode == 0, "The installer failed as root over SteamOS's drop-ins: " + run.Output);
-        string Line(string name) => run.Output.Split('\n').FirstOrDefault(line => line.StartsWith(name + ":", StringComparison.Ordinal))?[(name.Length + 1)..].Trim() ?? "";
-        var order = Line("order").Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        check(order.Length > 0 && order[^1] == rule, "HellForge's rule is not the last drop-in sudo reads: " + Line("order"));
-        check(!order.Contains(oldRule), "The rule under its old name was left, where SteamOS's own files override it: " + Line("order"));
+        var order = FakeRootLine(run.Output, "order").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        check(order.Length > 0 && order[^1] == rule, "HellForge's rule is not the last drop-in sudo reads: " + string.Join(' ', order));
+        check(!order.Contains(oldRule), "The rule under its old name was left, where SteamOS's own files override it: " + string.Join(' ', order));
         check(!rule.Contains('.') && !rule.EndsWith('~'), "sudo skips a drop-in whose name has a dot or ends in ~: " + rule);
-        check(Line("mode") == "440 0 0", "The rule is not root-owned with mode 440: " + Line("mode"));
-        var helper = LinuxCapture.HelperPath;
-        check(Line("rule") == $"{user} ALL=(root) NOPASSWD: {helper} check, {helper} start, {helper} stop, {helper} cleanup",
-            "The rule does not name exactly the helper's four commands for this account: " + Line("rule"));
-        check(string.Join(' ', Line("left").Split(' ', StringSplitOptions.RemoveEmptyEntries)) ==
-                "/etc/sudoers.d: no-fqdn sudo wheel wheel-prepare-oobe-test /usr/local/lib:",
-            "--remove did not remove both rule names and the helper folder, or removed another file: " + Line("left"));
+        check(FakeRootLine(run.Output, "mode") == "440 0 0", "The rule is not root-owned with mode 440: " + FakeRootLine(run.Output, "mode"));
+        var helper = LinuxCapture.HelperFolders[0] + "/capture-helper";
+        check(FakeRootLine(run.Output, "rule") == $"{FakeRootUser} ALL=(root) NOPASSWD: {helper} check, {helper} start, {helper} stop, {helper} cleanup",
+            "The rule does not name exactly the helper's four commands for this account: " + FakeRootLine(run.Output, "rule"));
+        check(FakeRootLine(run.Output, "keep").Length == 0, "A system that is not SteamOS got SteamOS's keep list.");
+        check(FakeRootLine(run.Output, "left") == "/etc/sudoers.d: no-fqdn sudo wheel wheel-prepare-oobe-test /usr/local/lib:",
+            "--remove did not remove both rule names and the helper folder, or removed another file: " + FakeRootLine(run.Output, "left"));
+    }
+
+    // SteamOS keeps /usr/local on a read-only image: the real installer, as root of a stand-in SteamOS, must put the
+    // helper in /opt/hellforge, name that helper in the rule, list the rule for SteamOS updates and leave nothing behind.
+    static void HelperInstallerSteamOs(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: the helper's folder on SteamOS)"); return; }
+        if (FakeRootScripts(root, "helper-steamos") == null) return;
+        var rule = LinuxCapture.SudoersPath;
+        var body = string.Join("\n",
+            "mount -t tmpfs -o ro,mode=755 tmpfs /usr/local",
+            "mkdir -p /var/lib/hellforge && echo stale > /var/lib/hellforge/capture-helper",
+            "PKEXEC_UID=1000 bash " + FakeRootInstaller + " >/dev/null",
+            "echo \"files:$(LC_ALL=C ls /opt/hellforge | tr '\\n' ' ')\"",
+            "echo \"owner:$(stat -c '%a %u' /opt/hellforge /opt/hellforge/capture-helper /opt/hellforge/capture-relay | tr '\\n' ' ')\"",
+            "echo \"rule:$(cat " + rule + ")\"",
+            "echo \"keep:$(cat " + LinuxCapture.SteamOsKeepListPath + ") $(stat -c '%a %u' " + LinuxCapture.SteamOsKeepListPath + ")\"",
+            "echo \"stale:$(ls /var/lib | tr '\\n' ' ')\"",
+            "echo \"check:$(/opt/hellforge/capture-helper check 2>&1 && echo ready)\"",
+            "echo \"moved:$(cd /tmp && cp /opt/hellforge/capture-helper . && ./capture-helper check 2>&1 | grep -c /usr/local/lib/hellforge/capture-relay)\"",
+            "PKEXEC_UID=1000 bash " + FakeRootInstaller + " >/dev/null && echo again:ok",
+            "bash " + FakeRootInstaller + " --remove >/dev/null",
+            "echo \"left:$(LC_ALL=C ls /opt /var/lib /etc/sudoers.d /etc/atomic-update.conf.d | tr '\\n' ' ')\"");
+        if (RunAsFakeRoot(root, "helper-steamos", body, steamOs: true) is not { } run) return;
+        check(run.ExitCode == 0, "The installer failed on a read-only /usr/local: " + run.Output);
+        string Line(string name) => FakeRootLine(run.Output, name);
+        check(Line("files") == "capture-helper capture-helper.sha256 capture-relay capture-relay.sha256",
+            "The helper, relay and hashes are not in /opt/hellforge: " + Line("files"));
+        check(Line("owner") == "755 0 755 0 755 0", "The folder, helper or relay is not root's alone: " + Line("owner"));
+        const string helper = "/opt/hellforge/capture-helper";
+        check(Line("rule") == $"{FakeRootUser} ALL=(root) NOPASSWD: {helper} check, {helper} start, {helper} stop, {helper} cleanup",
+            "The rule does not name the helper where it was installed: " + Line("rule"));
+        check(Line("keep") == rule + " 644 0", "SteamOS's keep list does not hold exactly the rule's path: " + Line("keep"));
+        check(Line("stale").Length == 0, "A helper copy in another folder was left: " + Line("stale"));
+        check(Line("check") == "ready", "The installed helper does not find the relay beside it: " + Line("check"));
+        check(Line("moved") == "1", "A helper outside the allowed folders did not fall back to the first one's relay.");
+        check(Line("again") == "ok", "A second install over the first failed.");
+        check(Line("left") == "/etc/atomic-update.conf.d: /etc/sudoers.d: /opt: /var/lib:",
+            "--remove left something of the helper on SteamOS: " + Line("left"));
+    }
+
+    // The rule lets the account run the helper as root, so the helper's folder must be one the account cannot change:
+    // the installer passes over such a folder and, with none left, installs nothing at all.
+    static void HelperInstallerFolders(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: the helper's folder checks)"); return; }
+        if (FakeRootScripts(root, "helper-folders") == null) return;
+        var body = string.Join("\n",
+            "mount -t tmpfs -o ro,mode=755 tmpfs /usr/local",
+            "chmod 777 /opt",
+            "PKEXEC_UID=1000 bash " + FakeRootInstaller + " >/dev/null",
+            "echo \"first:$(ls /var/lib/hellforge | wc -l) $(grep -c /var/lib/hellforge/capture-helper " + LinuxCapture.SudoersPath + ") $(ls /opt | wc -l)\"",
+            "echo \"keep:$(ls /etc/atomic-update.conf.d 2>/dev/null | wc -l)\"",
+            "bash " + FakeRootInstaller + " --remove >/dev/null",
+            // The account is in the group of id 0 in this stand-in system, and /var/lib becomes writable by that group.
+            "chmod 775 /var/lib",
+            "if PKEXEC_UID=1000 bash " + FakeRootInstaller + " > /tmp/refused 2>&1; then echo refused:installed; else echo refused:yes; fi",
+            "echo \"why:$(tr '\\n' ' ' < /tmp/refused)\"",
+            "echo \"left:$(ls /opt /var/lib /etc/sudoers.d | tr '\\n' ' ')\"",
+            // A helper planted where every account can write is never run as root by a removal.
+            "mkdir /opt/hellforge && printf '#!/bin/sh\\ntouch /tmp/planted-ran\\n' > /opt/hellforge/capture-helper",
+            "chmod 777 /opt/hellforge /opt/hellforge/capture-helper",
+            "bash " + FakeRootInstaller + " --remove >/dev/null",
+            "echo \"planted:$(ls /tmp/planted-ran 2>/dev/null | wc -l)\"");
+        if (RunAsFakeRoot(root, "helper-folders", body) is not { } run) return;
+        check(run.ExitCode == 0, "The folder checks did not run to the end: " + run.Output);
+        string Line(string name) => FakeRootLine(run.Output, name);
+        check(Line("first") == "4 1 0", "With /usr/local read-only and /opt open to every account, the helper did not go " +
+            "to /var/lib/hellforge alone: " + Line("first"));
+        check(Line("keep") == "0", "A system that is not SteamOS got SteamOS's keep list.");
+        check(Line("refused") == "yes", "The installer installed a helper although no folder is root's alone.");
+        var why = Line("why");
+        check(why.Contains("/usr/local/lib/hellforge: ", StringComparison.Ordinal) &&
+            why.Contains("/opt/hellforge: /opt is writable by every account", StringComparison.Ordinal) &&
+            why.Contains("/var/lib/hellforge: /var/lib is writable by a group " + FakeRootUser + " is in", StringComparison.Ordinal),
+            "The refusal does not say why each folder cannot be used: " + why);
+        check(Line("left") == "/etc/sudoers.d: /opt: /var/lib:", "A refused install left a folder or a rule: " + Line("left"));
+        check(Line("planted") == "0", "A removal ran a helper that another account could have written.");
+    }
+
+    // Checked on every system, also where the installer cannot be run as root of a namespace: the launcher, the installer
+    // and the helper name the same folders in the same order, and the launcher looks where the installer installs.
+    static void HelperFolders(Action<bool, string> check)
+    {
+        var folders = string.Join(' ', LinuxCapture.HelperFolders);
+        var installer = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperInstaller));
+        var helper = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperScript));
+        if (File.Exists(installer) && File.Exists(helper))
+        {
+            var lines = File.ReadAllLines(installer);
+            check(lines.Contains("all_folders=(" + folders + ")") && lines.Contains("keep_list=" + LinuxCapture.SteamOsKeepListPath) &&
+                lines.Contains("folders=(\"${all_folders[@]}\")") && lines.Contains("  folders=(\"${all_folders[@]:1}\")"),
+                "allow-capture.sh and the launcher do not name the same helper folders, order or keep list.");
+            check(File.ReadAllLines(helper).Contains("helper_folders=(" + folders + ")"),
+                "capture-helper.sh and the launcher do not name the same helper folders.");
+        }
+        else Console.WriteLine("  (the scripts are not in the test working directory: only the launcher's side is checked)");
+
+        check(LinuxCapture.InstallFolders(steamOs: false).SequenceEqual(LinuxCapture.HelperFolders) &&
+            LinuxCapture.InstallFolders(steamOs: true).SequenceEqual(["/opt/hellforge", "/var/lib/hellforge"]),
+            "The launcher's install order is not /usr/local first, and /opt first on SteamOS without /usr/local.");
+        string Folder(bool steamOs, params string[] present) =>
+            LinuxCapture.HelperFolderOf(steamOs, path => present.Contains(path));
+        check(Folder(false) == "/usr/local/lib/hellforge" && Folder(true) == "/opt/hellforge",
+            "With no helper installed, the folder named is not the system's first choice.");
+        check(Folder(false, "/opt/hellforge/capture-helper") == "/opt/hellforge" &&
+            Folder(true, "/var/lib/hellforge/capture-helper") == "/var/lib/hellforge",
+            "A helper in a later folder was not found.");
+        check(Folder(true, "/usr/local/lib/hellforge/capture-helper", "/opt/hellforge/capture-helper") == "/opt/hellforge" &&
+            Folder(false, "/usr/local/lib/hellforge/capture-helper", "/opt/hellforge/capture-helper") == "/usr/local/lib/hellforge" &&
+            Folder(true, "/usr/local/lib/hellforge/capture-helper") == "/usr/local/lib/hellforge",
+            "With two copies, the launcher did not take the one the installer writes first on this system.");
+        string[] parts = ["capture-helper", "capture-helper.sha256", "capture-relay", "capture-relay.sha256"];
+        check(LinuxCapture.HelperFolders.All(folder => parts.All(part => LinuxCapture.HelperInstalled(path => path == folder + "/" + part))) &&
+            LinuxCapture.HelperInstalled(path => path == LinuxCapture.SteamOsKeepListPath) &&
+            LinuxCapture.HelperInstalled(path => path == LinuxCapture.SudoersPath) &&
+            !LinuxCapture.HelperInstalled(path => path == "/opt/hellforge/unshare"),
+            "A leftover of the helper in one of its folders, or SteamOS's keep list, is not counted as installed.");
     }
 
     // HelperCheckProblem reads sudo's own answer; InstallHelper reports a rule that still does not win without sending the
@@ -889,8 +1018,15 @@ static class InventorySyncTests
         check(!stale.Succeeded && stale.NeedsManual, "sudo was asked although the installed files were already wrong.");
     }
 
-    // A copy of the installer and helper with a stand-in relay beside them, as an installation's app/linux has them.
-    // Null (and a skip line) when the scripts are not in the test working directory.
+    const string FakeRootUser = "deck";
+    const string FakeRootInstaller = "/scripts/" + LinuxCapture.HelperInstaller;
+
+    static string FakeRootLine(string output, string name) => string.Join(' ', (output.Split('\n')
+        .FirstOrDefault(line => line.StartsWith(name + ":", StringComparison.Ordinal))?[(name.Length + 1)..] ?? "")
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+    // A copy of the installer and helper with a stand-in relay beside them, as an installation's app/linux has them; the
+    // fake root has it as /scripts. Null (and a skip line) when the scripts are not in the test working directory.
     static string? FakeRootScripts(string root, string name)
     {
         var source = Path.GetFullPath("linux");
@@ -906,26 +1042,46 @@ static class InventorySyncTests
         return scripts;
     }
 
-    // Runs a bash script as root of a private user and mount namespace. Empty file systems cover the folders the
-    // installer writes (before: more of them, or other mounts) and a copy covers /etc/hosts, so the PC's own files are
-    // neither read nor changed. Null (and a skip line) where unprivileged user namespaces cannot mount, as on Ubuntu's
-    // runners with AppArmor's restriction.
-    static (int ExitCode, string Output)? RunAsFakeRoot(string root, string name, string body, string before = "")
+    // Runs a bash script as root of a stand-in system: a private user and mount namespace, changed into an empty root
+    // that has only this PC's programs (read-only), its own accounts (deck, 1000, also in the group of id 0) and empty
+    // /etc, /opt, /var/lib and /usr/local. In a user namespace the PC's own folders belong to nobody, so the installer's
+    // "root's alone" checks need folders made inside it; the PC's own files are neither read nor changed. Null (and a
+    // skip line) where unprivileged user namespaces cannot mount, as on Ubuntu's runners with AppArmor's restriction.
+    static (int ExitCode, string Output)? RunAsFakeRoot(string root, string name, string body, bool steamOs = false)
     {
         var folder = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
-        var hosts = Path.Combine(folder, "hosts");
-        File.WriteAllText(hosts, "127.0.0.1 localhost\n");
+        var scripts = Directory.CreateDirectory(Path.Combine(folder, "linux")).FullName;
+        var system = Directory.CreateDirectory(Path.Combine(folder, "system")).FullName;
+        File.WriteAllText(Path.Combine(scripts, "body.sh"), "set -eu\n" + body + "\n");
         var script = Path.Combine(folder, "fake-root.sh");
-        File.WriteAllText(script, "set -eu\n" +
-            "mount -t tmpfs tmpfs /etc/sudoers.d\nmount -t tmpfs tmpfs /usr/local\nmkdir /usr/local/lib\n" +
-            "mount -t tmpfs tmpfs /run\nmount --bind " + ShQuote(hosts) + " /etc/hosts\n" + before + "\n" + body + "\n");
+        File.WriteAllText(script, string.Join("\n",
+            "set -eu",
+            "PATH=$PATH:/usr/sbin:/sbin",
+            "R=" + ShQuote(system),
+            "mount -t tmpfs -o mode=755 tmpfs \"$R\"",
+            "mkdir -p \"$R\"/usr/local/lib \"$R\"/etc/sudoers.d \"$R\"/run \"$R\"/tmp \"$R\"/proc \"$R\"/dev \"$R\"/opt \"$R\"/var/lib \"$R\"/scripts",
+            "for d in /usr/bin /usr/sbin /usr/lib /usr/lib32 /usr/lib64 /usr/libexec /usr/share /bin /sbin /lib /lib32 /lib64; do",
+            "  if [ -L \"$d\" ]; then cp -P \"$d\" \"$R$d\"; elif [ -d \"$d\" ]; then mkdir \"$R$d\"; mount --rbind \"$d\" \"$R$d\"; fi",
+            "done",
+            "mount --rbind /proc \"$R/proc\"",
+            "mount --rbind /dev \"$R/dev\"",
+            "mount --bind " + ShQuote(scripts) + " \"$R/scripts\"",
+            "[ ! -d /etc/alternatives ] || cp -RP /etc/alternatives \"$R/etc/\"",
+            "[ ! -f /etc/ld.so.cache ] || cp /etc/ld.so.cache \"$R/etc/\"",
+            "printf '%s\\n' 'root:x:0:0::/root:/bin/bash' 'nobody:x:65534:65534::/:/bin/false' '" + FakeRootUser +
+                ":x:1000:1000::/home/" + FakeRootUser + ":/bin/bash' > \"$R/etc/passwd\"",
+            "printf '%s\\n' 'root:x:0:" + FakeRootUser + "' 'nobody:x:65534:' 'wheel:x:998:" + FakeRootUser + "' '" +
+                FakeRootUser + ":x:1000:' > \"$R/etc/group\"",
+            "printf '%s\\n' '127.0.0.1 localhost' > \"$R/etc/hosts\"",
+            "printf '%s\\n' 'NAME=\"Stand-in\"' 'ID=" + (steamOs ? "steamos" : "standin") + "' > \"$R/etc/os-release\"",
+            "exec env -i PATH=/usr/bin:/usr/sbin:/bin:/sbin chroot \"$R\" /bin/bash /scripts/body.sh") + "\n");
         string[] unshare = ["--user", "--map-root-user", "--mount", "bash"];
         try
         {
-            var probe = RunTestProcess("unshare", [.. unshare, "-c", "mount -t tmpfs tmpfs /etc/sudoers.d && mount -t tmpfs tmpfs /usr/local"]);
+            var probe = RunTestProcess("unshare", [.. unshare, "-c", "mount -t tmpfs tmpfs " + ShQuote(system)]);
             if (probe.ExitCode != 0)
             {
-                Console.WriteLine("  (skipped: this system does not let a user namespace mount over /etc/sudoers.d and /usr/local)");
+                Console.WriteLine("  (skipped: this system does not let a user namespace mount a file system)");
                 return null;
             }
         }
