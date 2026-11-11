@@ -168,15 +168,17 @@ static int SafeRead(uintptr_t address, void* buffer, size_t size)
 }
 
 /* Every range of game.dll HellForge has written (the Lua bridge's hellforge_lua_rewrites): its rva and size, a range
- * that touches the last one joined to it. A Lua runtime proving game code against reviewed bytes asks for them. */
+ * that touches the last one joined to it. A Lua runtime proving game code against reviewed bytes asks for them. A mod's
+ * own writes (HfApi.write, g_modWriting) are not HellForge's: a pin over one reads as the difference it is. */
 #define REWRITE_MAX 16384
 static uint32_t g_rewriteRva[REWRITE_MAX], g_rewriteSize[REWRITE_MAX];
 static int g_rewriteCount;
 static SRWLOCK g_rewriteLock = SRWLOCK_INIT;
+static _Thread_local int g_modWriting;
 static void NoteRewrite(uintptr_t address, size_t size)
 {
     HMODULE game = GetModuleHandleA("game.dll");
-    if (game == NULL || size == 0) return;
+    if (game == NULL || size == 0 || g_modWriting) return;
     IMAGE_NT_HEADERS64* nt = (IMAGE_NT_HEADERS64*)((uint8_t*)game + ((IMAGE_DOS_HEADER*)game)->e_lfanew);
     uintptr_t base = (uintptr_t)game;
     if (address < base || address + size > base + nt->OptionalHeader.SizeOfImage) return;
@@ -555,6 +557,7 @@ static void ChannelInstall(uintptr_t game);
 #include "terminal_camera.c" /* before terminal.c: the terminal starts its glide */
 #include "terminal.c"
 #include "abilities.c"
+#include "moved_fields.c" /* before events.c: the managers' fields a mod may move, where the game's code addresses them */
 #include "events.c"
 #include "stats.c"
 #include "fields.c" /* after stats.c: it reports conflicts with stats edits */

@@ -173,6 +173,29 @@ hf_on_game_thread(mod, EveryUpdate, NULL);
 - These are the objects the functions of [hooking by name](#hooking-by-name) take: `ExplosionQueue` is
   `RequestExplosion`'s `queue`, `ProjectileSystem` is `FireProjectile`'s `system`.
 
+### Fields a mod moved
+
+The offsets in `hellforge_globals.h` are the game's own. A mod that grows a per-player list (more than four players,
+say) moves it inside its manager and rewrites every game instruction that addresses it. The game follows; a fixed
+offset in your mod then reads stale data.
+
+HellForge reads these fields where the game's code addresses them now, and so can your mod: take the offset from the
+displacement of an instruction that uses the field.
+
+| Field (PlayerManager) | The game's offset | Read the 4 bytes at |
+|---|---|---|
+| count | 0x84 | `game.dll+0x62C727` |
+| peer ids, 0x38 a player | 0x2C8 | `game.dll+0x62C733` |
+| lifecycles, 0x38 a player | 0x2E0 | `game.dll+0x6094DF` |
+| player descriptors | 0xE8 | `game.dll+0x62C755` |
+| network ids, 0x20 a player | 0x3A8 | `game.dll+0xACC670` |
+
+- Check the instruction first (`code_matches` on the bytes before the displacement), and refuse a value that is not
+  aligned or not inside the manager.
+- The list's capacity is the byte at `game.dll+0x540870` (4 in the game). Size your own per-player arrays from it.
+- HellForge's events, actions, armor passives and perks follow the player, customization, avatar and score managers
+  this way. When the sites of one field disagree, the feature that reads it stays off and the log names the field.
+
 ## Finding a function
 
 HellForge runs one build of the game (25480438) on every machine, so an address found once stays right for as long as

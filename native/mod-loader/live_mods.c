@@ -94,7 +94,9 @@ static int LivePlayers(void)
 {
     uintptr_t game = ApiModuleBase("game.dll", NULL), manager = 0;
     uint32_t count = 0;
-    if (game == 0 || SafeRead(game + EVT_PLAYERS, &manager, 8) || manager == 0 || SafeRead(manager + 0x84, &count, 4)) return -1;
+    int ok = 1;
+    uint32_t at = game ? MfOffset(game, MF_PLAYER_COUNT, &ok) : 0; /* where the game's code addresses the count now */
+    if (game == 0 || !ok || SafeRead(game + EVT_PLAYERS, &manager, 8) || manager == 0 || SafeRead(manager + at, &count, 4)) return -1;
     return (int)count;
 }
 /* The players in the game now (-1 unknown), the entity load's state (registry.c) and the game's state: the native

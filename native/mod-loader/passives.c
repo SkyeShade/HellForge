@@ -2,9 +2,9 @@
  * hellforge_modloader.c after fields.c. A port of HD2Runtime's runtime/player_passives.lua (research
  * player-attributes-F5FEE03DCFDB.json; live-proven there for the armor slot):
  *
- * The customization manager ([game.dll +0x33264F8]) holds, per player, an applied record (+0x96C, 0x44 bytes each) whose
- * +0x3C is the armor passive and +0x38 the helmet ("second") passive: ids of the passive table, which the game's
- * attribute reader looks up (the armor slot first, then the helmet's; a bonus never stacks). The game derives both from
+ * The customization manager ([game.dll +0x33264F8]) holds, per player, an applied record (0x44 bytes, where
+ * moved_fields.c finds it) whose +0x3C is the armor passive and +0x38 the helmet ("second") passive: passive table ids,
+ * which the game's attribute reader looks up (armor first, then helmet; never stacked). The game derives both from
  * the kits worn (a kit row's +0x1C) and writes them again only when a kit changes. An override writes the slots of the
  * local player's record (found through the player list, the local peer and the manager's entity map, its descriptor
  * checked to carry the same entity) and keeps them: every 250 ms it looks again, writes a slot back after a kit change,
@@ -18,24 +18,12 @@
 #include "passive_pins.h"
 
 #define PSV_MANAGER 0x33264F8u
-#define PSV_PLAYERS 0x3326468u
-#define PSV_LOCAL_USER 0x347CEF0u
-#define PSV_LOCAL_PEER 45976u
-#define PSV_PLAYER_COUNT 132u
-#define PSV_PLAYER_PEERS 712u
-#define PSV_PLAYER_STRIDE 56u
-#define PSV_PLAYER_DESCRIPTORS 232u
 #define PSV_KITS 0u
 #define PSV_KIT_COUNT 8u
 #define PSV_PASSIVE_COUNT 40u
 #define PSV_PASSIVE_INDEX 48u
 #define PSV_PASSIVE_IDS 42u
-#define PSV_RECORD_COUNT 2280u
-#define PSV_MAP 2352u
-#define PSV_DESCRIPTORS 2376u
-#define PSV_APPLIED 2412u
 #define PSV_APPLIED_STRIDE 68u
-#define PSV_RECORDS 4u
 #define PSV_HELMET_KIT 4u
 #define PSV_ARMOR_KIT 12u
 #define PSV_SECOND 56u
@@ -65,8 +53,7 @@ static int PassivesProve(uintptr_t game)
     if (g_passivesProven) return g_passivesProven > 0;
     for (size_t i = 0; i < sizeof kPassivePins / sizeof kPassivePins[0]; i++)
     {
-        uint8_t bytes[8];
-        if (SafeRead(game + kPassivePins[i].rva, bytes, kPassivePins[i].size) || memcmp(bytes, kPassivePins[i].bytes, kPassivePins[i].size))
+        if (!MfPinMatches(game, kPassivePins[i].rva, kPassivePins[i].bytes, kPassivePins[i].size))
         {
             snprintf(g_passivesStatus, sizeof g_passivesStatus, "the game's passive code is not the reviewed one (game.dll +0x%X)", kPassivePins[i].rva);
             g_passivesProven = -1;
@@ -109,31 +96,23 @@ static int PassivesKit(uintptr_t manager, uint32_t id, uint32_t* passive, uint32
 /* the local player: the player list's entry with the local peer (out->players: how many are in); 0 with *why. */
 static uint32_t PassivesLocalEntity(uintptr_t game, LocalPassives* out, const char** why)
 {
-    uintptr_t players = 0, user = 0;
-    uint8_t peer[8];
-    uint32_t count = 0, entity = 0;
-    if (SafeRead(game + PSV_PLAYERS, &players, 8) || !players || SafeRead(players + PSV_PLAYER_COUNT, &count, 4) || count > 4 ||
-        SafeRead(game + PSV_LOCAL_USER, &user, 8) || !user || SafeRead(user + PSV_LOCAL_PEER, peer, 8))
-    { *why = "the player list is not readable yet"; return 0; }
-    out->players = count;
-    for (uint32_t slot = 0; slot < count && !entity; slot++)
-    {
-        uint8_t block[8];
-        uintptr_t descriptor = 0;
-        if (SafeRead(players + PSV_PLAYER_PEERS + slot * PSV_PLAYER_STRIDE, block, 8) || memcmp(block, peer, 8)) continue;
-        if (!SafeRead(players + PSV_PLAYER_DESCRIPTORS + slot * 8u, &descriptor, 8) && descriptor) SafeRead(descriptor + 8, &entity, 4);
-    }
+    EvpPlayer players[EVT_MAX_PLAYERS];
+    uint32_t entity = 0;
+    int count = EvpPlayers(game, players);
+    if (count < 0) { *why = "the player list is not readable yet"; return 0; }
+    out->players = (uint32_t)count;
+    for (int slot = 0; slot < count && !entity; slot++) if (players[slot].local) entity = players[slot].player;
     if (!entity) *why = "the local player is not in the player list";
     return entity;
 }
 
 /* its record: the manager's entity map, linear probing from entity x multiplier. UINT32_MAX with *why when none. */
-static uint32_t PassivesRecordOf(uintptr_t manager, uint32_t entity, const char** why)
+static uint32_t PassivesRecordOf(uintptr_t manager, uint32_t mapAt, uint32_t entity, const char** why)
 {
     uint8_t map[20];
     uintptr_t slots = 0;
     uint32_t capacity, empty, multiplier, at = UINT32_MAX;
-    if (SafeRead(manager + PSV_MAP, map, sizeof map)) { *why = "the entity map is not readable"; return UINT32_MAX; }
+    if (SafeRead(manager + mapAt, map, sizeof map)) { *why = "the entity map is not readable"; return UINT32_MAX; }
     memcpy(&slots, map, 8); memcpy(&capacity, map + 8, 4); memcpy(&empty, map + 12, 4); memcpy(&multiplier, map + 16, 4);
     if (!slots || !capacity || capacity > 64 || capacity % 2) { *why = "the entity map is not the reviewed one"; return UINT32_MAX; }
     uint32_t start = entity * multiplier;
@@ -167,22 +146,27 @@ static int PassivesLocal(uintptr_t game, LocalPassives* out, const char** why)
     memset(out, 0, sizeof *out);
     uintptr_t manager = 0;
     if (SafeRead(game + PSV_MANAGER, &manager, 8) || !manager) { *why = "the customization manager is not created yet"; return 0; }
+    int ok = 1;
+    uint32_t count = MfOffset(game, MF_CUSTOM_COUNT, &ok), map = MfOffset(game, MF_CUSTOM_MAP, &ok);
+    uint32_t descriptors = MfOffset(game, MF_CUSTOM_DESCRIPTORS, &ok), applied = MfOffset(game, MF_CUSTOM_APPLIED, &ok);
+    uint32_t capacity = MfOffset(game, MF_CUSTOM_CAP, &ok);
+    if (!ok) { *why = "the customization manager's layout is not a plausible one (the log says which part)"; return 0; }
     uint32_t passiveCount = 0, records = 0;
     int32_t index[PSV_PASSIVE_IDS];
-    if (SafeRead(manager + PSV_PASSIVE_COUNT, &passiveCount, 4) || SafeRead(manager + PSV_RECORD_COUNT, &records, 4) ||
-        SafeRead(manager + PSV_PASSIVE_INDEX, index, sizeof index) || !passiveCount || passiveCount > PSV_PASSIVE_IDS || records > PSV_RECORDS)
+    if (SafeRead(manager + PSV_PASSIVE_COUNT, &passiveCount, 4) || SafeRead(manager + count, &records, 4) ||
+        SafeRead(manager + PSV_PASSIVE_INDEX, index, sizeof index) || !passiveCount || passiveCount > PSV_PASSIVE_IDS || records > capacity)
     { *why = "the customization manager is not the reviewed one"; return 0; }
     for (uint32_t id = 0; id < PSV_PASSIVE_IDS; id++) out->passiveValid[id] = index[id] >= 0 && (uint32_t)index[id] < passiveCount;
     uint32_t entity = PassivesLocalEntity(game, out, why);
     if (!entity) return 0;
-    uint32_t at = PassivesRecordOf(manager, entity, why);
+    uint32_t at = PassivesRecordOf(manager, map, entity, why);
     if (at == UINT32_MAX) return 0;
     uintptr_t descriptor = 0;
     uint32_t carried = 0;
-    if (at >= records || at >= PSV_RECORDS || SafeRead(manager + PSV_DESCRIPTORS + at * 8u, &descriptor, 8) || !descriptor ||
+    if (at >= records || SafeRead(manager + descriptors + at * 8u, &descriptor, 8) || !descriptor ||
         SafeRead(descriptor + 8, &carried, 4) || carried != entity)
     { *why = "the record does not carry the local player's entity"; return 0; }
-    out->record = manager + PSV_APPLIED + at * PSV_APPLIED_STRIDE;
+    out->record = manager + applied + at * PSV_APPLIED_STRIDE;
     return PassivesDerived(manager, out, why);
 }
 

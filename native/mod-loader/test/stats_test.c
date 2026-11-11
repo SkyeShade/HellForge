@@ -21,6 +21,7 @@
 #include "mod_identity_test.c"
 #include "mod_status_test.c"
 #include "render_guards_test.c"
+#include "moved_fields_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -2138,12 +2139,13 @@ static void LuaBridgeFixture(void)
     InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], 0);
 }
 
-static void PassivesFixture(void)
+/* The armor passive override with the managers' fields at `at` (moved_fields_test.c MfLayout). */
+static void PassivesFixtureAt(const int32_t* at32)
 {
     uint8_t* game = (uint8_t*)VirtualAlloc(NULL, 0x3500000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     uint8_t* manager = (uint8_t*)calloc(1, 0x1000);
-    uint8_t* players = (uint8_t*)calloc(1, 0x400);
-    uint8_t* user = (uint8_t*)calloc(1, PSV_LOCAL_PEER + 16);
+    uint8_t* players = (uint8_t*)calloc(1, 0x1000);
+    uint8_t* user = (uint8_t*)calloc(1, EVT_LOCAL_PEER_AT + 16);
     uint8_t* kits[3];
     uintptr_t kitTable[3];
     uint32_t kitIds[3] = {0x111, 0x222, 0x333}, kitPassives[3] = {2, 6, 0}, kitTypes[3] = {0, 0, 1};
@@ -2152,10 +2154,11 @@ static void PassivesFixture(void)
     uint32_t entries[4] = {0xFFFFFFFFu, 0, 77, 0}; /* entity 77 in its bucket: 77 x 1 mod 2 */
     assert(game && manager && players && user && descriptor && playerDescriptor);
     for (size_t i = 0; i < sizeof kPassivePins / sizeof kPassivePins[0]; i++) memcpy(game + kPassivePins[i].rva, kPassivePins[i].bytes, kPassivePins[i].size);
+    MfStage(game, at32);
     uintptr_t at;
     at = (uintptr_t)manager; memcpy(game + PSV_MANAGER, &at, 8);
-    at = (uintptr_t)players; memcpy(game + PSV_PLAYERS, &at, 8);
-    at = (uintptr_t)user; memcpy(game + PSV_LOCAL_USER, &at, 8);
+    at = (uintptr_t)players; memcpy(game + EVT_PLAYERS, &at, 8);
+    at = (uintptr_t)user; memcpy(game + EVT_LOCAL_PEER, &at, 8);
     for (int i = 0; i < 3; i++)
     {
         kits[i] = (uint8_t*)calloc(1, 48);
@@ -2166,20 +2169,20 @@ static void PassivesFixture(void)
     uint32_t value = 3; memcpy(manager + PSV_KIT_COUNT, &value, 4);
     value = 32; memcpy(manager + PSV_PASSIVE_COUNT, &value, 4);
     for (int32_t id = 0; id < (int32_t)PSV_PASSIVE_IDS; id++) { int32_t index = id < 32 ? id : -1; memcpy(manager + PSV_PASSIVE_INDEX + id * 4, &index, 4); }
-    value = 1; memcpy(manager + PSV_RECORD_COUNT, &value, 4);
+    value = 1; memcpy(manager + at32[MF_CUSTOM_COUNT], &value, 4);
     uint8_t map[20] = {0};
     at = (uintptr_t)entries; memcpy(map, &at, 8);
     value = 2; memcpy(map + 8, &value, 4);
     value = 0xFFFFFFFFu; memcpy(map + 12, &value, 4);
     value = 1; memcpy(map + 16, &value, 4);
-    memcpy(manager + PSV_MAP, map, sizeof map);
+    memcpy(manager + at32[MF_CUSTOM_MAP], map, sizeof map);
     value = 77; memcpy(descriptor + 8, &value, 4); memcpy(playerDescriptor + 8, &value, 4);
-    at = (uintptr_t)descriptor; memcpy(manager + PSV_DESCRIPTORS, &at, 8);
-    at = (uintptr_t)playerDescriptor; memcpy(players + PSV_PLAYER_DESCRIPTORS, &at, 8);
-    value = 1; memcpy(players + PSV_PLAYER_COUNT, &value, 4);
-    memcpy(players + PSV_PLAYER_PEERS, "PEER0001", 8);
-    memcpy(user + PSV_LOCAL_PEER, "PEER0001", 8);
-    uint8_t* record = manager + PSV_APPLIED;
+    at = (uintptr_t)descriptor; memcpy(manager + at32[MF_CUSTOM_DESCRIPTORS], &at, 8);
+    at = (uintptr_t)playerDescriptor; memcpy(players + at32[MF_PLAYER_DESCRIPTORS], &at, 8);
+    value = 1; memcpy(players + at32[MF_PLAYER_COUNT], &value, 4);
+    memcpy(players + at32[MF_PLAYER_PEERS], "PEER0001", 8);
+    memcpy(user + EVT_LOCAL_PEER_AT, "PEER0001", 8);
+    uint8_t* record = manager + at32[MF_CUSTOM_APPLIED];
     uint32_t* armorKit = (uint32_t*)(record + PSV_ARMOR_KIT), *armor = (uint32_t*)(record + PSV_ARMOR), *second = (uint32_t*)(record + PSV_SECOND);
     *(uint32_t*)(record + PSV_HELMET_KIT) = 0x333;
     *armorKit = 0x111; *armor = 2; *second = 0;
@@ -2204,10 +2207,10 @@ static void PassivesFixture(void)
     assert(*armor == 9 && strstr(g_passivesStatus, "neither"));
     *armor = 7;
     /* a second player: the kits' values come back, and the override waits */
-    value = 2; memcpy(players + PSV_PLAYER_COUNT, &value, 4);
+    value = 2; memcpy(players + at32[MF_PLAYER_COUNT], &value, 4);
     PassivesTick(g);
     assert(*armor == 6 && strstr(g_passivesStatus, "solo only"));
-    value = 1; memcpy(players + PSV_PLAYER_COUNT, &value, 4);
+    value = 1; memcpy(players + at32[MF_PLAYER_COUNT], &value, 4);
     PassivesTick(g);
     assert(*armor == 7);
     /* a passive that needs a package is not given (the kits' value instead); the second slot; the armor-only one */
@@ -2231,6 +2234,12 @@ static void PassivesFixture(void)
     g_passivesGame = 0;
     g_passivesEvery = 250;
     VirtualFree(game, 0, MEM_RELEASE);
+}
+static void PassivesFixture(void)
+{
+    int32_t at[MF_FIELDS];
+    MfLayout(at, 0); PassivesFixtureAt(at);
+    MfLayout(at, 1); PassivesFixtureAt(at);
 }
 
 /* References and packages (refs.c, packages.c): an explosion swap waits for its package (requested on the game thread,
@@ -2461,6 +2470,7 @@ static void PerksFixture(void)
     uint8_t* data = (uint8_t*)VirtualAlloc(NULL, 0x10000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     assert(game && manager && data);
     for (size_t i = 0; i < sizeof kPerkPins / sizeof kPerkPins[0]; i++) memcpy(game + kPerkPins[i].rva, kPerkPins[i].bytes, kPerkPins[i].size);
+    MfStage(game, NULL);
     uintptr_t at = (uintptr_t)manager; memcpy(game + PERK_MANAGER, &at, 8);
     uint64_t* pointers = (uint64_t*)data;                 /* the rows' pointers */
     uint8_t* rows = data + 0x400;                         /* 32 rows of 0x34 */
@@ -2928,6 +2938,7 @@ static void EventsFixture(void)
 
     /* The state: polled each update; higher priority first, equal ones in subscription order; mission start and end. */
     uint8_t* game = calloc(1, 0x3500000);
+    MfStage(game, NULL);
     uint8_t* gameState = calloc(1, 0xAC220);
     uint8_t* players = calloc(1, 0x430);
     uint8_t* peers = calloc(1, 0xB3A0);
@@ -4323,6 +4334,7 @@ int main(int argc, char** argv)
     FarHookFixture();
     HookChainFixture();
     EventsFixture();
+    MovedFieldsFixture();
     ManyModsFixture();
     AbilitiesFixture();
     LooseGuardFixture();
