@@ -234,6 +234,8 @@ On `dev`, since 0.4.0-beta.
 - **Room for a larger route graph.** `generation_capacity` takes the route graph's nodes (up to 2304), edges (up to
   3456) and road points (up to 65520). The game adds nodes and edges without a check, so a map with more route cells
   than the game's needs them. Unasked, the graph stays as the game has it.
+- **Where the map generator's arrays are.** `generation_capacity` also fills in each array's offset in the generator's
+  block and the elements it holds (`regions`, by `HF_GEN_...` name), so a mod reads them instead of keeping offsets.
 - **Your own pixel shaders in data mods.** A data spec's `shader` resource puts a compiled shader in one of three hosts,
   `decal`, `transparent` or `refract`, and HellForge builds the materials and a unit for it. A shader that does not fit
   its host is refused with the reason, shader headers name what each host can read, and a mod with a shader counts as

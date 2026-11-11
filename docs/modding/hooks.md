@@ -450,6 +450,31 @@ hf->generation_capacity(mod, NULL, &have);
 if (!have.moved || have.locations < 40000) return;   /* keep to what a level-11 map holds */
 ```
 
+`have.regions` says where each array lies: its offset from the block's start (`at`) and the elements it holds
+(`places`). Read the offsets from it every session, because a request from any mod moves the arrays behind it. A list
+HellForge left alone reports the game's own offset.
+
+```c
+uint32_t b = have.regions[HF_GEN_LOCATIONS_B].at;            /* the locations' second array */
+uint32_t list = have.regions[HF_GEN_OBJECTIVE_LIST].at;      /* the objective list's row field; ids at +4 */
+uint32_t objectives = have.regions[HF_GEN_OBJECTIVE_LIST].places;
+```
+
+| Region | Element, bytes | Its capacity |
+|---|---|---|
+| `HF_GEN_LOCATIONS_A`, `HF_GEN_LOCATIONS_B` | 0xE0, 0x40 | `locations` |
+| `HF_GEN_LOCATION_TYPES` | 0x10 | 512 |
+| `HF_GEN_MINIMAP_PROXIES`, `_SHAPES`, `_U`, `_V` | 0x30, 0x58, 4, 4 | `minimap_proxies` x 1, 1/2, 1, 4 |
+| `HF_GEN_MISSION_STAMPS` | 0x10 | `mission_stamps` |
+| `HF_GEN_OBJECTIVE_LIST` | one record | 30 objectives |
+| `HF_GEN_PLACES`, `HF_GEN_PLACE_SET` | 8, 0x10 | `places`, `place_set` |
+| `HF_GEN_CLUSTERS` | 0xE0 | 32 |
+| `HF_GEN_IMPORTANT`, `HF_GEN_LINKED` | 0x108, 0x18 | `important_locations`, `linked_locations` |
+| `HF_GEN_ROUTE_NODES`, `_EDGES`, `_CLASSES`, `_POINTS` | 0x98, 0x48, 1, 8 | `route_nodes`, `route_edges` (twice), `route_points` |
+
+`have.size` says how much HellForge filled in. The regions are the last field, so a HellForge without them leaves
+them as you set them: zero the struct first and treat an `at` of 0 as unknown. `have.block_bytes` is the block's size.
+
 The game appends to these arrays without checking for room. Only `mission_stamps` is guarded: with a request, a stamp
 past the last place is left out, and `modloader.log` counts them. For the others, limit what your mod generates to
 what `have` reports.

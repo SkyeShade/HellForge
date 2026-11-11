@@ -79,6 +79,12 @@ static void GenerationDefaultFixture(const uint8_t* game)
     for (int i = GEN_REGIONS; i < GEN_ALL; i++) assert(l.region[i].at == 0 && l.region[i].bytes == 0);
     assert(l.caps.important_locations == 256 && l.caps.linked_locations == 64 && ImportantLocations(&places) == 0x8996B0u && places == 256);
     assert(l.caps.route_nodes == 975 && l.caps.route_edges == 1621 && l.caps.route_points == 9936);
+    /* the regions a mod reads: the fixed layout's offsets and places, the game's own for the lists left alone */
+    static const uint32_t fixedRegions[GEN_ALL][2] = {{0x11A7280u, 8192}, {0x1367280u, 8192}, {0x13E7280u, 512}, {0x13E9280u, 16384}, {0x14A9280u, 8192},
+        {0x1559280u, 16384}, {0x1569280u, 65536}, {0x15A9280u, 1024}, {0x15AD370u, 30}, {0x15AD500u, 512}, {0x15AE500u, 256}, {0x15AF500u, 32},
+        {0x8996B0u, 256}, {0x8AB6C0u, 64}, {0x8C4E40u, 975}, {0x937348u, 1621}, {0x11A1F98u, 1621}, {0x9568E4u, 9936}};
+    for (int i = 0; i < HF_GEN_REGIONS; i++)
+        assert(l.caps.regions[i].at == (i < GEN_ALL ? fixedRegions[i][0] : 0u) && l.caps.regions[i].places == (i < GEN_ALL ? fixedRegions[i][1] : 0u));
     /* the install's own steps write none of those lists' sites (this image holds zeros there): a request can move them
      * after every other step */
     for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++)
@@ -94,6 +100,13 @@ static void GenerationDefaultFixture(const uint8_t* game)
     assert(!memcmp(game + DIF_STAMP_APPEND_SITE, untouched, 7) && g_stampsLeftOut == NULL);
     HfGenerationCapacity have = {sizeof have}, want = {sizeof want};
     assert(ApiGenerationCapacity(&g_mods[0], NULL, &have) == 0 && have.moved == 1 && have.block_bytes == 0x15B1100u && have.locations == 8192 && have.size == sizeof have);
+    assert(!memcmp(have.regions, l.caps.regions, sizeof have.regions) && have.regions[HF_GEN_LOCATIONS_B].at == 0x1367280u &&
+        have.regions[HF_GEN_OBJECTIVE_LIST].at == kObjectiveListSites[0].value && have.regions[HF_GEN_CLUSTERS].places == 32);
+    /* a mod built before the regions gets none of them */
+    HfGenerationCapacity before = {offsetof(HfGenerationCapacity, regions)};
+    memset(before.regions, 0xA5, sizeof before.regions);
+    assert(ApiGenerationCapacity(&g_mods[0], NULL, &before) == 0 && before.route_points == 9936 && before.regions[0].at == 0xA5A5A5A5u &&
+        before.regions[HF_GEN_REGIONS - 1].places == 0xA5A5A5A5u);
     /* a request after the game loaded is refused and changes nothing */
     want.locations = 40000;
     assert(ApiGenerationCapacity(&g_mods[0], &want, &have) == 1 && have.locations == 8192 && !g_generationAsked && g_generationWant.locations == 0);
@@ -274,6 +287,32 @@ static void GenerationCapacityFixture(void)
         }
         uint32_t places = 0;
         assert(ImportantLocations(&places) == l.region[GEN_IMPORTANT].at && places == 1008);
+        /* what a mod reads is what the game's code got: each region's offset is the value at a site of its base */
+        HfGenerationCapacity got = {sizeof got};
+        const LocationSite* aBase = NULL, *bBase = NULL, *minimap[4] = {NULL, NULL, NULL, NULL};
+        for (size_t i = 0; i < sizeof kLocationRefs / sizeof kLocationRefs[0]; i++)
+        {
+            if (kLocationRefs[i].value == 0x758E20u) aBase = &kLocationRefs[i];
+            if (kLocationRefs[i].value == 0x7EEBA0u) bBase = &kLocationRefs[i];
+        }
+        for (size_t i = 0; i < sizeof kMinimapRefs / sizeof kMinimapRefs[0]; i++)
+            minimap[kMinimapRefs[i].value == 0x8198A0u ? 0 : kMinimapRefs[i].value == 0x8498A0u ? 1 : kMinimapRefs[i].value == 0x118BEFCu ? 2 : 3] = &kMinimapRefs[i];
+        assert(ApiGenerationCapacity(&g_mods[0], NULL, &got) == 0 && got.moved == 1 && aBase != NULL && bBase != NULL && got.block_bytes == GcRead(game, &kGenerationBlockSize[0]));
+        const LocationSite* bases[GEN_REGIONS] = {aBase, bBase, &kLocationTypeRefs[0], minimap[0], minimap[1], minimap[2], minimap[3], &kStampRefs[0], NULL,
+            &kPlaceListRefs[0], &kPlaceSetRefs[0], &kClusterRefs[0]};
+        const uint32_t held[GEN_REGIONS] = {65024, 65024, 512, 20480, 10240, 20480, 81920, 2000, 30, 512, 256, 32};
+        for (int i = 0; i < GEN_REGIONS; i++)
+            assert(got.regions[i].places == held[i] && (bases[i] == NULL || got.regions[i].at == GcRead(game, bases[i])));
+        assert(kObjectiveListSites[0].old == 0x8BC570u && !memcmp(game + kObjectiveListSites[0].rva + kObjectiveListSites[0].at, &got.regions[HF_GEN_OBJECTIVE_LIST].at, 4));
+        for (int e = 0; e < GEN_ALL - GEN_REGIONS; e++)
+        {
+            const GenerationExtra* x = &kGenerationExtras[e];
+            HfGenerationCapacity caps = l.caps;
+            const LocationSite* base = NULL;
+            for (uint32_t i = 0; i < x->refCount; i++) if (x->refs[i].value == x->old) base = &x->refs[i];
+            assert(base != NULL && got.regions[x->region].at == GcRead(game, base) && got.regions[x->region].places == *GenerationField(&caps, x->field));
+        }
+        for (int i = GEN_ALL; i < HF_GEN_REGIONS; i++) assert(got.regions[i].at == 0 && got.regions[i].places == 0);
     }
     /* a changed append is refused before anything is written */
     game[DIF_STAMP_APPEND_SITE] = 0xE9;
@@ -282,5 +321,5 @@ static void GenerationCapacityFixture(void)
     assert(ObjectiveListFailed(d.game) != NULL);
     g_generationWant = saved; g_generationAsked = 0; g_generation.block = 0;
     VirtualFree(plain, 0, MEM_RELEASE); VirtualFree(fixed, 0, MEM_RELEASE);
-    printf("PASS generation capacity: no request writes the fixed layout's bytes, requests combine and are refused late or over a limit, a large layout's regions and references, the negated displacement, the stamps' guard, lists and the route graph moved on request, shorter structs\n");
+    printf("PASS generation capacity: no request writes the fixed layout's bytes, requests combine and are refused late or over a limit, a large layout's regions and references, the negated displacement, the stamps' guard, lists and the route graph moved on request, shorter structs, the regions a mod reads\n");
 }

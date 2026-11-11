@@ -111,6 +111,26 @@ static uint32_t* GenerationField(HfGenerationCapacity* c, int i)
     return fields[i];
 }
 
+/* What a mod reads of the layout (HfGenerationCapacity.regions): each region's offset in the block and its places. */
+_Static_assert(HF_GEN_LOCATIONS_A == GEN_A && HF_GEN_OBJECTIVE_LIST == GEN_OBJLIST && HF_GEN_CLUSTERS == GEN_CLUSTERS && HF_GEN_IMPORTANT == GEN_IMPORTANT &&
+    HF_GEN_ROUTE_POINTS == GEN_ROUTE_POINTS && GEN_ALL <= HF_GEN_REGIONS, "the SDK names the regions in the layout's order");
+static void GenerationRegionsFor(GenerationLayout* l)
+{
+    uint32_t k = l->minimapScale;
+    const uint32_t places[GEN_REGIONS] = {l->caps.locations, l->caps.locations, DIF_LOCATION_TYPES, 0x1000u * k, 0x800u * k, 0x1000u * k, 0x4000u * k,
+        l->caps.mission_stamps, DIF_OBJECTIVES_MAX, l->caps.places, l->caps.place_set, DIF_CLUSTERS};
+    memset(l->caps.regions, 0, sizeof l->caps.regions);
+    for (int i = 0; i < GEN_REGIONS; i++) { l->caps.regions[i].at = l->region[i].at; l->caps.regions[i].places = places[i]; }
+    l->caps.regions[GEN_OBJLIST].at = l->objectiveList;
+    for (int i = 0; i < GEN_ALL - GEN_REGIONS; i++)
+    {
+        const GenerationExtra* x = &kGenerationExtras[i];
+        HfGenerationCapacity caps = l->caps;
+        l->caps.regions[x->region].at = l->region[x->region].bytes != 0 ? l->region[x->region].at : x->old;
+        l->caps.regions[x->region].places = *GenerationField(&caps, x->field);
+    }
+}
+
 /* The layout for these capacities (each at least HellForge's own, in whole units of 16 so every region stays aligned). */
 static void GenerationLayoutOf(const HfGenerationCapacity* want, GenerationLayout* l)
 {
@@ -141,6 +161,7 @@ static void GenerationLayoutOf(const HfGenerationCapacity* want, GenerationLayou
     at = (at + 0xFu) & ~0xFu;
     l->objectiveList = l->region[GEN_OBJLIST].at + (DIF_OBJLIST_NEW - DIF_OBJLIST_REGION);
     l->caps.block_bytes = l->block = at;
+    GenerationRegionsFor(l);
 }
 
 static const GenerationLayout* Generation(void)
