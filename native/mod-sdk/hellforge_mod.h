@@ -927,6 +927,9 @@ typedef struct HfDamagePreEvent
  * rpc_send pass them (SDK 17: HfRpcArg, HfRpcEvent, HfRpcListener). */
 #include "hellforge_net.h"
 
+/* SDK 17: screens over the game (add_screen, screen_show; docs/modding/overlay.md). */
+#include "hellforge_overlay.h"
+
 /* SDK 11 actions: what a mod makes the game do, through the game's own functions (HD2Runtime 0.40.1's research), on the
  * game thread (an event listener's or on_game_thread's call; from another thread an action waits for the next game
  * update and answers HF_ACT_QUEUED). Each answers HF_ACT_..., or 0 refused (last_log says why). The local Helldiver:
@@ -1642,6 +1645,13 @@ typedef struct HfApi
      * (another thread, solo, an unknown RPC, arguments that are not its declared ones, HF_TO_HOST on the host; the
      * mod's log says why). */
     int (*rpc_send)(HfMod* mod, uint32_t rpc, uint64_t to, const HfRpcArg* args, uint32_t count);
+
+    /* SDK 17: screens drawn over the game (hellforge_overlay.h, docs/modding/overlay.md). Adds one, from any thread:
+     * its id (1 and up), or 0 refused (modloader.log says why: its key is another screen's, say). */
+    int (*add_screen)(HfMod* mod, const HfScreen* screen);
+    /* Opens (1) or closes (0) one of the mod's screens, from any thread. Closing sets input->closing; draw is called
+     * until it returns 0. */
+    void (*screen_show)(HfMod* mod, int id, int open);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

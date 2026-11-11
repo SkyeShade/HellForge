@@ -705,15 +705,16 @@ static bool extra_bind_protected(const struct hf_sandbox *sandbox, const char *p
 
 static bool extra_bind_location(const struct hf_sandbox *sandbox, const char *path, mode_t mode)
 {
-    char mods[PATH_MAX], builds[PATH_MAX], session_host[PATH_MAX], loader[PATH_MAX];
+    char mods[PATH_MAX], builds[PATH_MAX], session_host[PATH_MAX], loader[PATH_MAX], overlay[PATH_MAX];
     if (hf_join(mods, sizeof(mods), sandbox->install, "mods") != 0 ||
         hf_join(builds, sizeof(builds), sandbox->install, "temp/mod-builds") != 0 ||
         hf_join(session_host, sizeof(session_host), sandbox->install, "app/session") != 0 ||
-        hf_join(loader, sizeof(loader), sandbox->install, "app/sdk-shims/hellforge_modloader.dll") != 0)
+        hf_join(loader, sizeof(loader), sandbox->install, "app/sdk-shims/hellforge_modloader.dll") != 0 ||
+        hf_join(overlay, sizeof(overlay), sandbox->install, "app/sdk-shims/hellforge_overlay.dll") != 0)
         return false;
     if (path_covers(mods, path) || path_covers(builds, path)) return true;
     if (strcmp(path, session_host) == 0) return S_ISDIR(mode);
-    if (strcmp(path, loader) == 0) return S_ISREG(mode);
+    if (strcmp(path, loader) == 0 || strcmp(path, overlay) == 0) return S_ISREG(mode);
     return false;
 }
 

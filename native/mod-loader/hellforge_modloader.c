@@ -339,6 +339,7 @@ static int SwapPointer(uintptr_t at, void* value, void** old)
 #include "hooks.c" /* every hook, a mod's or HellForge's own: one chain per function (SDK 13) */
 #include "functions.c" /* after hooks.c: game functions by name (SDK 16) */
 #include "globals.c" /* game globals by name (SDK 16) */
+#include "overlay.c" /* SDK 17 screens, drawn by hellforge_overlay.dll */
 
 /* ---- network field types ---------------------------------------------------------------------------------------- */
 
@@ -605,6 +606,7 @@ static void Fire(HfEvent event)
     LONG at = g_fireCount; /* the load events only: a live set-up hears them again, never the session's end */
     if (!g_fired[event] && event <= HF_EVENT_PROJECTILES_READY && at < 4) { g_fireOrder[at] = event; InterlockedExchange(&g_fireCount, at + 1); }
     InterlockedExchange(&g_fired[event], 1);
+    if (event == HF_EVENT_ENTITIES_READY) OverlayStartIfReady();
     Deliver(event);
 }
 
@@ -1094,7 +1096,8 @@ static void ApiInit(void)
         ApiCreditToPlayer, ApiFreezeTimer, ApiSpawnPelican, ApiModifyShots, ApiHoming, ApiStopShots, ApiNotice, ApiHookEx, ApiCodeMatches, ApiReadCode, ApiSyncState, ApiSyncMod, ApiSyncAnswer, ApiStatsSource,
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
-        ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiAddEnemy, ApiAddEnemySwap, ApiAddEnemySquad, ApiRpcListen, ApiRpcSend};
+        ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiAddEnemy, ApiAddEnemySwap, ApiAddEnemySquad, ApiRpcListen, ApiRpcSend,
+        ApiAddScreen, ApiScreenShow};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */
