@@ -8,6 +8,67 @@ static class LinuxInstallerTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
+        test("An installation inside a steamapps folder is refused by the installer and said by the launcher, not crashed on", () =>
+        {
+            // The ticket's folder: the prefix chosen inside a Proton version's own folder on a Steam library.
+            var library = Path.Combine(root, "steamapps-refusal", "GF8S5");
+            var proton = Path.Combine(library, "steamapps", "common", "Proton 7.0");
+            var outside = Path.Combine(library, "hellforge-prefix");
+            check(InstallLayout.LocationProblem(Path.Combine(proton, "pfx")) == InstallLayout.InsideSteamapps &&
+                InstallLayout.LocationProblem(Path.Combine(library, "SteamApps", "x")) == InstallLayout.InsideSteamapps,
+                "A folder under steamapps (in any case) was not refused.");
+            check(InstallLayout.LocationProblem(outside) == null && InstallLayout.LocationProblem(Path.Combine(library, "steamapps-old", "x")) == null,
+                "A folder outside steamapps was refused.");
+
+            var refused = LinuxAppInstaller.PrefixProblem(proton);
+            check(refused != null && refused.Contains("outside Steam's steamapps", StringComparison.Ordinal) &&
+                refused.Contains(proton, StringComparison.Ordinal), "The installer does not refuse a prefix inside steamapps: " + refused);
+            check(LinuxAppInstaller.PrefixProblem(outside) == null, "The installer refuses a prefix beside steamapps.");
+            check(LinuxAppInstaller.InstallRoot(outside) == Path.Combine(outside, "pfx", "drive_c", "users", "steamuser", "Documents", "HellForge"),
+                "The installation is not in the prefix user's Documents folder.");
+
+            // The launcher's first start in an unpacked package: the reason comes back for a window; nothing is thrown or made.
+            var package = LinuxAppInstaller.InstallRoot(proton);
+            Directory.CreateDirectory(Path.Combine(package, "app"));
+            var none = LinuxAppInstaller.FirstStart(package, "25480438", out var problem);
+            check(none == null && problem != null && problem.Contains("steamapps", StringComparison.Ordinal) &&
+                problem.Contains(package, StringComparison.Ordinal) && problem.Contains("installer again", StringComparison.Ordinal),
+                "The first start inside steamapps did not say where the copy is and what to do: " + problem);
+            check(!File.Exists(Path.Combine(package, InstallLayout.MarkerFile)) && !Directory.Exists(Path.Combine(package, "game")),
+                "A refused first start still marked or filled the folder.");
+
+            // An installation that already runs inside steamapps keeps its updates; only a new one is refused.
+            var existing = Path.Combine(library, "steamapps", "compatdata", "553850");
+            check(LinuxAppInstaller.PrefixProblem(existing) != null, "A new installation in the game's own prefix was accepted.");
+            Directory.CreateDirectory(LinuxAppInstaller.InstallRoot(existing));
+            File.WriteAllText(Path.Combine(LinuxAppInstaller.InstallRoot(existing), InstallLayout.MarkerFile), "{}");
+            check(LinuxAppInstaller.PrefixProblem(existing) == null, "An existing installation inside steamapps can no longer be updated.");
+
+            var good = LinuxAppInstaller.InstallRoot(outside);
+            Directory.CreateDirectory(Path.Combine(good, "app"));
+            var made = LinuxAppInstaller.FirstStart(good, "25480438", out var noProblem);
+            check(made != null && noProblem == null && made.Exists && made.ReadMarker().BuildId == "25480438",
+                "The first start outside steamapps did not make the installation: " + noProblem);
+
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: links and permissions on Linux)"); return; }
+            // A link whose name hides steamapps is resolved, as the launcher's own check resolves it.
+            var link = Path.Combine(library, "shortcut");
+            Directory.CreateDirectory(proton);
+            Directory.CreateSymbolicLink(link, proton);
+            check(LinuxAppInstaller.PrefixProblem(Path.Combine(link, "prefix")) != null, "A prefix reached through a link into steamapps was accepted.");
+            // Any other failure to prepare the folder is said too.
+            var locked = Path.Combine(root, "steamapps-refusal", "locked");
+            Directory.CreateDirectory(Path.Combine(locked, "HellForge", "app"));
+            File.SetUnixFileMode(Path.Combine(locked, "HellForge"), UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            try
+            {
+                var denied = LinuxAppInstaller.FirstStart(Path.Combine(locked, "HellForge"), "25480438", out var why);
+                check(denied == null && why != null && why.Contains("could not prepare", StringComparison.Ordinal),
+                    "A folder that cannot be written did not come back as a reason: " + why);
+            }
+            finally { File.SetUnixFileMode(Path.Combine(locked, "HellForge"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); }
+        });
+
         test("Linux app update stages the package and keeps the old app until it is committed", () =>
         {
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: native Linux update)"); return; }

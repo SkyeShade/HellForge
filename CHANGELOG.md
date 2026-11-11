@@ -186,6 +186,10 @@ On `dev`, since 0.4.0-beta.
   that has only 150 entries for every stratagem, mod ones included, and two more could write there; they now see no
   choice for a mod stratagem. When the game loaded its stratagem settings again, the count of stratagems went back to
   the vanilla 149 while mod stratagems stayed, and it now stays at the full list (#342).
+- **Linux: a prefix inside Steam's `steamapps` no longer leaves a launcher that crashes at start.** The installer
+  refuses such a prefix folder, a Proton version's own folder included, before it prepares anything. A launcher already
+  unpacked there opens a window that says so and what to do ([installing on another
+  drive](docs/linux.md#installing-on-another-drive)) (#358).
 - **Direct3D 11 crashes in the Armory and at mission start.** Browsing armour crashed the game at
   `helldivers2.exe+0x732040`, and a slow PC could crash at `+0x626296` as a mission loaded. A freed texture is now bound
   empty instead of read, and a full job pool is waited out while jobs finish
