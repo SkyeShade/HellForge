@@ -27,11 +27,12 @@ public sealed record LinuxTerminal(string Program, IReadOnlyList<string> Before)
 
     public static LinuxTerminal? Find(string? path, Func<string, bool> isProgram)
     {
+        // Linux's PATH and paths, whatever system reads this: ":" between folders, "/" inside them.
         var folders = (path ?? "").Split(':', StringSplitOptions.RemoveEmptyEntries);
         foreach (var (name, before) in Known)
             foreach (var folder in folders)
-                if (Path.IsPathRooted(folder) && isProgram(Path.Combine(folder, name)))
-                    return new(Path.Combine(folder, name), before);
+                if (folder.StartsWith('/') && isProgram(folder.TrimEnd('/') + "/" + name))
+                    return new(folder.TrimEnd('/') + "/" + name, before);
         return null;
     }
 

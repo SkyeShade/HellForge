@@ -451,12 +451,17 @@ static class SteamDownloadTests
             var fixture = new Fixture(root, "steamcmd-terminal");
             var first = LinuxTerminal.Known[0].Name;
             var bin = Path.Combine(fixture.Home, "bin");
-            var path = "relative:" + Path.Combine(fixture.Home, "none") + ":" + bin;
+            // Linux paths as text, so the search is checked on every system.
+            var path = "relative:/home/player/none:/home/player/bin/";
             check(LinuxTerminal.Find(path, _ => false) == null && LinuxTerminal.Find(null, _ => true) == null &&
                 LinuxTerminal.Find("relative", _ => true) == null, "A terminal was found where there is none.");
-            var found = LinuxTerminal.Find(path, file => file == Path.Combine(bin, first));
-            check(found != null && found.Program == Path.Combine(bin, first) && found.Before.SequenceEqual(LinuxTerminal.Known[0].Before),
+            var found = LinuxTerminal.Find(path, file => file == "/home/player/bin/" + first);
+            check(found != null && found.Program == "/home/player/bin/" + first && found.Before.SequenceEqual(LinuxTerminal.Known[0].Before),
                 "The terminal on PATH was not found with its own arguments.");
+            var later = LinuxTerminal.Known[^1];
+            check(LinuxTerminal.Find(path, file => file == "/home/player/none/" + later.Name) is { } other &&
+                other.Program == "/home/player/none/" + later.Name && other.Before.SequenceEqual(later.Before),
+                "A terminal later in the list was not found when it is the only one.");
             check(LinuxTerminal.Known.Select(known => known.Name).Distinct().Count() == LinuxTerminal.Known.Count &&
                 LinuxTerminal.Known.Any(known => known.Name == "konsole"), "The known terminals repeat, or leave out KDE's.");
             if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: runs bash stand-ins for the terminal and SteamCMD)"); return; }
