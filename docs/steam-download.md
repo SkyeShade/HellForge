@@ -146,6 +146,8 @@ them.
 - **SteamCMD needs a terminal window program**, since the launcher has no terminal for SteamCMD to ask for the
   password in. Setup uses the first it finds on `PATH`: Konsole, Ptyxis, GNOME Terminal, GNOME Console (`kgx`),
   Xfce Terminal, MATE Terminal, kitty, Alacritty, foot, WezTerm or xterm. With none, the card leaves SteamCMD out.
+  It also leaves it out when the installation's path has a `$` in it, which Konsole would fill in.
+- **A terminal that does not run SteamCMD within a minute** is given up, with the message for a closed window.
 - **A window that stays open after a failure.** When SteamCMD ends with an error, its window waits for Enter, so its
   own words can be read.
 - **The Steam app's download goes onto the drive that holds Steam**, wherever HellForge is installed. When that drive

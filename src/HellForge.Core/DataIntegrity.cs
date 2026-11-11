@@ -7,12 +7,14 @@ public sealed record GameDataAuditResult(IReadOnlyList<string> Extras, IReadOnly
 // else is moved out of game/data before launch; moving rather than deleting keeps a player's own patch recoverable.
 public static class GameDataAudit
 {
-    public static GameDataAuditResult Quarantine(InstallLayout install, SupportedBuild build)
+    // downloading: setup's audit, while the build may still be on its way from Steam. A build file's unfinished
+    // download (.partial, and the .resume a stopped one leaves) then stays, or each new start would lose it.
+    public static GameDataAuditResult Quarantine(InstallLayout install, SupportedBuild build, bool downloading = false)
     {
         var data = Path.Combine(install.Game, "data");
         if (!Directory.Exists(data)) return new([], []);
         HashSet<string> allowed;
-        try { allowed = Allowed(install, build); }
+        try { allowed = Allowed(install, build, downloading); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return new([], ["data/: could not be audited: " + error.Message]);
@@ -41,10 +43,11 @@ public static class GameDataAudit
         return new(extras, problems);
     }
 
-    static HashSet<string> Allowed(InstallLayout install, SupportedBuild build)
+    static HashSet<string> Allowed(InstallLayout install, SupportedBuild build, bool downloading)
     {
         var allowed = build.Files.Where(file => file.Path.StartsWith("data/", StringComparison.Ordinal))
             .Select(file => file.Path["data/".Length..]).ToHashSet(StringComparer.Ordinal);
+        if (downloading) allowed.UnionWith(allowed.SelectMany(file => new[] { file + ".partial", file + ".resume" }).ToArray());
         allowed.Add("settings.ini" + GameSettings.OriginalSuffix);
         allowed.UnionWith(ModStaging.Recorded(install));
         return allowed;

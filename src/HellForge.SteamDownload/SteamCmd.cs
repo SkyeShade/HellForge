@@ -114,6 +114,7 @@ public sealed class SteamCmd(string folder)
         catch (Win32Exception error) { throw new SteamCmdException($"SteamCMD did not start: {error.Message}"); }
     }
 
+    const string TerminalName = "hellforge-steamcmd-in-terminal";
     string TerminalExit => Path.Combine(Folder, "terminal-exit");
     string TerminalPid => Path.Combine(Folder, "terminal-pid");
 
@@ -127,7 +128,7 @@ public sealed class SteamCmd(string folder)
         File.Delete(TerminalExit);
         File.Delete(TerminalPid);
         var start = new ProcessStartInfo(terminal.Program) { UseShellExecute = false, WorkingDirectory = Folder };
-        string[] script = ["/bin/bash", "-c", TerminalScript(), "steamcmd-in-terminal"];
+        string[] script = ["/bin/bash", "-c", TerminalScript(), TerminalName];
         foreach (var argument in terminal.Before.Concat(script).Concat(arguments)) start.ArgumentList.Add(argument);
         try { return Process.Start(start) ?? throw new SteamCmdException("the terminal window for SteamCMD did not start."); }
         catch (Win32Exception error) { throw new SteamCmdException($"the terminal window for SteamCMD did not start: {error.Message}"); }
@@ -149,32 +150,37 @@ public sealed class SteamCmd(string folder)
 
     static string Quote(string text) => "'" + text.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
 
-    // The script's own process, while it runs: the pid it wrote, checked against that process's command line.
+    // The script's own process, while it runs: the pid it wrote, checked against the name that process was given.
     Process? TerminalScriptProcess()
     {
         try
         {
             if (!File.Exists(TerminalPid) || !int.TryParse(File.ReadAllText(TerminalPid).Trim(), out var pid)) return null;
             var commandLine = File.ReadAllText($"/proc/{pid}/cmdline").Split('\0');
-            return commandLine.Contains(TerminalScript()) ? Process.GetProcessById(pid) : null;
+            return commandLine.Contains(TerminalName) ? Process.GetProcessById(pid) : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException) { return null; }
     }
 
-    // Waits for the SteamCMD that StartInTerminal started and returns its exit code, or -1 when the window was closed
-    // before SteamCMD ended: no exit code, and neither the terminal nor the script alive for closedAfter (a terminal that
-    // hands its window on is gone at once, a moment before the script has started). Cancelled, it stops SteamCMD.
-    public async Task<int> WaitInTerminalAsync(Process terminal, CancellationToken cancellation, TimeSpan? closedAfter = null)
+    // Waits for the SteamCMD that StartInTerminal started and returns its exit code, or -1 when there is none to wait
+    // for: the window was closed, or the terminal never ran the script. Once the script has run, only its own process
+    // counts (a terminal may be one process for all its windows). Before, the terminal's process does, for startWithin;
+    // a terminal that hands its window on is gone at once, so closedAfter passes before either is given up.
+    // Cancelled, it stops SteamCMD.
+    public async Task<int> WaitInTerminalAsync(Process terminal, CancellationToken cancellation, TimeSpan? closedAfter = null,
+        TimeSpan? startWithin = null)
     {
         var grace = closedAfter ?? TimeSpan.FromSeconds(15);
-        var quiet = Stopwatch.StartNew();
+        var starting = startWithin ?? TimeSpan.FromSeconds(60);
+        var (clock, quiet, started) = (Stopwatch.StartNew(), Stopwatch.StartNew(), false);
         try
         {
             while (!File.Exists(TerminalExit))
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(500), cancellation);
                 using var script = TerminalScriptProcess();
-                if (!terminal.HasExited || script != null) quiet.Restart();
+                started |= script != null || File.Exists(TerminalPid);
+                if (script != null || !started && !terminal.HasExited && clock.Elapsed < starting) quiet.Restart();
                 else if (quiet.Elapsed >= grace && !File.Exists(TerminalExit)) return -1;
             }
             while (Running()) await Task.Delay(TimeSpan.FromSeconds(1), cancellation);

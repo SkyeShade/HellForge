@@ -473,10 +473,11 @@ static class SteamDownloadTests
                 File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 return file;
             }
-            int Run(string terminal, TimeSpan? closedAfter = null)
+            int Run(string terminal, TimeSpan? closedAfter = null, TimeSpan? startWithin = null)
             {
                 using var process = steamCmd.StartInTerminal(["+login", "some_one", "+quit"], new LinuxTerminal(terminal, ["-e"]));
-                return steamCmd.WaitInTerminalAsync(process, CancellationToken.None, closedAfter).GetAwaiter().GetResult();
+                try { return steamCmd.WaitInTerminalAsync(process, CancellationToken.None, closedAfter, startWithin).GetAwaiter().GetResult(); }
+                finally { if (!process.HasExited) process.Kill(entireProcessTree: true); }
             }
             var staying = Terminal("staying", "\"$@\" </dev/null");
             Program("printf '%s|%s|%s\\n' \"$HOME\" \"$PWD\" \"$*\" > '" + seen + "'\nexit 0");
@@ -489,10 +490,17 @@ static class SteamDownloadTests
             // A terminal that hands the window to another process and ends at once.
             // It is waited for as long as the script runs, however short the wait for a closed window is.
             Program("sleep 3\nexit 3");
-            check(Run(Terminal("handing-on", "\"$@\" </dev/null >/dev/null 2>&1 &"), TimeSpan.FromSeconds(1)) == 3,
+            check(Run(Terminal("handing-on", "\"$@\" </dev/null >/dev/null 2>&1 &"), TimeSpan.FromSeconds(3)) == 3,
                 "A terminal that ends at once hid SteamCMD's exit code.");
             // The window closed before SteamCMD ended: nothing ran, so there is no exit code to wait for.
-            check(Run(Terminal("closed", "exit 0"), TimeSpan.FromSeconds(1)) == -1, "A closed window was waited for.");
+            check(Run(Terminal("closed", "exit 0"), TimeSpan.FromSeconds(3)) == -1, "A closed window was waited for.");
+            // A terminal that stays but never runs the script is given up after the time allowed for starting.
+            check(Run(Terminal("idle", "sleep 60"), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)) == -1,
+                "A terminal that never ran SteamCMD was waited for.");
+            // One process for all of a terminal's windows: it lives on after the window with SteamCMD is closed.
+            Program("kill -9 $PPID");
+            check(Run(Terminal("one-process", "\"$@\" </dev/null &\nsleep 60"), TimeSpan.FromSeconds(3)) == -1,
+                "A closed window was waited for because its terminal's process lived on.");
             Program("sleep 30");
             using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             using var stopped = steamCmd.StartInTerminal(["+quit"], new LinuxTerminal(staying, ["-e"]));

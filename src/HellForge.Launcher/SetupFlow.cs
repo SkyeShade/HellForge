@@ -343,7 +343,7 @@ public partial class MainWindow
         {
             throw new SetupStopped("The SDK stand-ins left by an interrupted session could not be restored: " + error.Message);
         }
-        var audit = GameDataAudit.Quarantine(install, build);
+        var audit = GameDataAudit.Quarantine(install, build, downloading: true);
         if (audit.Problems.Count > 0)
             throw new SetupStopped("The game copy has a data file that cannot be used: " + audit.Problems[0]);
         if (audit.Extras.Count > 0)
@@ -550,7 +550,7 @@ public partial class MainWindow
 
     // What Steam has, in the console card's words.
     static string SteamHas(SteamGame? game, string? unusable = null) => game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
-        : unusable != null && LinuxNetworkBlock.UnderWine ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2 setup can copy from";
+        : unusable != null && LinuxNetworkBlock.UnderWine ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2 that setup can copy from";
 
     // Gets the supported build into the installation the way the player chooses on the card (SteamSignInFlow), on the copy
     // step's row. A full drive asks for space; a refused or failed download shows the Steam app's console download.

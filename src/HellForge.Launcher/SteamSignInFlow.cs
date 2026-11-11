@@ -34,10 +34,11 @@ public partial class MainWindow
     ];
 
     // The ways this setup can offer: under Wine, inside HellForge's network namespace, only the Steam app can reach Steam.
-    // On Linux SteamCMD needs a terminal window to ask for the password in, and a folder outside Steam's libraries.
+    // On Linux SteamCMD needs a terminal window to ask for the password in, and a folder outside Steam's libraries
+    // whose path a terminal passes on as it is (Konsole fills in a $NAME in its arguments).
     IReadOnlyList<DownloadChoice> OfferedChoices => DownloadChoices.Offered(reachesSteam: !LinuxNetworkBlock.Requested,
         steamCmd: !OperatingSystem.IsLinux() || (linuxTerminal ??= LinuxTerminal.Find()) != null && paths.InstallRoot is { } root &&
-            !SteamCmd.InSteamapps(Path.Combine(root, "tools", "steamcmd")));
+            !root.Contains('$') && !SteamCmd.InSteamapps(Path.Combine(root, "tools", "steamcmd")));
     LinuxTerminal? linuxTerminal;
 
     void WireSignIn()
@@ -264,7 +265,8 @@ public partial class MainWindow
         }
         SteamCmdButton.IsEnabled = false;
         SteamCmdButton.Content = "Getting SteamCMD from Valve...";
-        SignInStatus.Text = "Getting SteamCMD from Valve and checking its signature...";
+        SignInStatus.Text = OperatingSystem.IsWindows() ? "Getting SteamCMD from Valve and checking its signature..."
+            : "Getting SteamCMD from Valve...";
         steamCmdStarted.TrySetResult(account);
     }
 
