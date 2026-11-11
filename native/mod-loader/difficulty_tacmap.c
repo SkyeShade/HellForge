@@ -22,6 +22,8 @@
 #define TAC_GUARD_TYPES 0x32FCDE0u /* rows of 32 bytes; a row whose +0xC is set is never drawn */
 #define TAC_MAP 0x346D538u         /* [..] + 0x3EF168 = the HUD map MapPing takes */
 #define TAC_PING 0x18B97A0u        /* void MapPing(MapHud*, uint32_t avatar slot, const float pos[3]); game thread only */
+#define TAC_WIDGETS 0x3326E68u     /* [..]: count u32 +0x2BE8, rows of 16 from +0x2BF0: widget +0, type u32 +8 */
+#define TAC_CHAT_LOOP 0xB64B52u    /* the game's own loop over them that closes an open chat (the layout above) */
 
 typedef struct TacJob { int pending; TacPictureRequest request; LONG level; } TacJob;
 
@@ -343,11 +345,27 @@ static void TacOpened(void* user, int open)
     TacScreenOpened(g_tac.screen, open);
 }
 
-/* Only in a mission on a larger map. */
+/* The player is typing a chat line: a chat widget (type 0xC3) with its input open (+0x139B8, set by 0x185F500). The
+ * key belongs to the chat then. Unknown code: never typing, as before. */
+static int TacTyping(uintptr_t game)
+{
+    static int proven;
+    if (proven == 0)
+        proven = ApiCodeMatches(game + TAC_CHAT_LOOP, "48 05 BF 02 00 00 48 03 C0 81 7C C6 08 C3 00 00 00 75 62 4C 8B 0C C6 41 80 B9 B8 39 01 00 00") == 1 ? 1 : -1;
+    uintptr_t widgets, chat;
+    if (proven < 0 || !EvpPtr(game + TAC_WIDGETS, &widgets)) return 0;
+    uint32_t count = EvpU32(widgets + 0x2BE8, 0);
+    for (uint32_t i = 0; i < count && i < 256; i++)
+        if (EvpU32(widgets + 0x2BF8 + 16 * (uintptr_t)i, 0) == 0xC3 && EvpPtr(widgets + 0x2BF0 + 16 * (uintptr_t)i, &chat) && TacU8(chat + 0x139B8))
+            return 1;
+    return 0;
+}
+
+/* Only in a mission on a larger map, and not while a chat line is being typed. */
 static int TacCanOpen(void* user)
 {
     float size = 0, playable = 0;
-    return g_difficultyGame && TacLevel(g_difficultyGame, &size, &playable) && size > 2048.5f;
+    return g_difficultyGame && TacLevel(g_difficultyGame, &size, &playable) && size > 2048.5f && !TacTyping(g_difficultyGame);
 }
 
 /* Sets the screen up with the overlay host (once, after the game loaded); 1 done. */
