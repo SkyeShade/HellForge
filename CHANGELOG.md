@@ -14,7 +14,11 @@ On `dev`, since 0.4.0-beta.
 
 - **A data spec can fix a game shader.** The new `edit` entry changes bytes in one of the game's shader stages; HellForge
   signs the stage again and refuses the edit on a game build whose shader differs
-  ([data specs](docs/modding/data.md#edit)).
+  ([data specs](docs/modding/data.md#edit), #350).
+- **Mods can draw screens over the game (SDK 17).** `add_screen` adds a screen with its own key, such as a map, and
+  `screen_show` opens and closes it. A modal screen takes the mouse and keys from the game while it is open. Screens
+  draw shapes, text in the game's fonts, pictures and a blurred copy of the game's frame, on Direct3D 11 and 12, in SDR
+  and HDR ([screens over the game](docs/modding/overlay.md)).
 - **New vehicles as copies of vanilla ones.** The `vehicle-variants` example adds the EXO-45H Heavy Patriot (a quicker
   turn and a 2000-round machine gun) and the M-102R Rally FRV (quicker steering), each called in by a Pelican drop
   stratagem of its own. A ground vehicle ignores `model_from`, since its seats, wheels, tracks and damage zones name
@@ -161,6 +165,8 @@ On `dev`, since 0.4.0-beta.
   zipped pack in as a folder, and one already in the mods folder becomes one, with its options and place kept. A
   `.rar`, `.7z` or zipped pack dropped into the mods folder whose files the installed mod already has is removed as a
   second copy (#306).
+- **The Steam bridge makes lobbies of up to eight.** `CreateLobby` took four members at most. A code mod that raises
+  the game's player limit now gets the lobby the game asks for (#347).
 
 ### Fixed
 
@@ -219,6 +225,11 @@ On `dev`, since 0.4.0-beta.
   `decal`, `transparent` or `refract`, and HellForge builds the materials and a unit for it. A shader that does not fit
   its host is refused with the reason, shader headers name what each host can read, and a mod with a shader counts as
   unchecked for mod sync ([shaders](docs/modding/shaders.md)) (#265).
+- **HellForge follows per-player lists a code mod moved.** A mod that moves the player, customization, avatar or score
+  manager's lists and rewrites the game's instructions for them keeps HellForge's events, actions, armor passives and
+  perks. HellForge reads each offset from those instructions ([hooks](docs/modding/hooks.md#fields-a-mod-moved)) (#348).
+- **A mod's `write` over code HellForge checks turns that feature off.** Such a write used to pass as one of
+  HellForge's own rewrites. The offsets and capacities of the moved lists above are the exception (#348).
 
 ## 0.4.0-beta (2026-11-05)
 

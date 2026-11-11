@@ -207,6 +207,8 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 - `rpc_listen`: `int (HfMod* mod, uint32_t rpc, HfRpcListener listener, void* user, int32_t priority)`. Listens to an RPC (its HF_RPC_... id, or HF_RPC_ALL for every one) as this machine receives it: on the game thread, before the game's own receiver, highest priority first (equal priorities in the order they listened). A listener that returns HF_RPC_DROP stops the message: later listeners and the game don't see it. Call it from hellforge_mod_init on. 0 listening, 1 refused (an RPC this build doesn't have; the mod's log says why).
 - `rpc_send`: `int (HfMod* mod, uint32_t rpc, uint64_t to, const HfRpcArg* args, uint32_t count)`. Sends one of the game's RPCs (hellforge_rpcs.h's hf_rpc_<name>_send builds the arguments): to HF_TO_ALL (every other machine of the session), HF_TO_HOST, or a peer (an HfRpcEvent's sender). The game encodes each argument by its declared type, so values outside a type's range are clamped or wrap. Game thread only. 0 sent, 1 refused (another thread, solo, an unknown RPC, arguments that are not its declared ones, HF_TO_HOST on the host; the mod's log says why).
+- `add_screen`: `int (HfMod* mod, const HfScreen* screen)`. SDK 17: screens drawn over the game (hellforge_overlay.h, docs/modding/overlay.md). Adds one, from any thread: its id (1 and up), or 0 refused (modloader.log says why: its key is another screen's, say).
+- `screen_show`: `void (HfMod* mod, int id, int open)`. Opens (1) or closes (0) one of the mod's screens, from any thread. Closing sets input->closing; draw is called until it returns 0.
 
 ## Functions
 

@@ -5,7 +5,8 @@
 #   sdk-shims/   the PlayFab SDK stand-ins (PartyWin.dll, PlayFabMultiplayerWin.dll), the steam_api64.dll stand-in, its bridge
 #                build and the Steam broker for low-integrity sessions (steam_api64_bridge.dll, hellforge_steam_broker.exe,
 #                docs/steam-bridge.md; only with the Steamworks SDK, -SteamSdk), the mod loader
-#                (hellforge_modloader.dll, with MinHook 1.3.4: BSD-2, MinHook-LICENSE.txt) and build.json (their pins)
+#                (hellforge_modloader.dll, with MinHook 1.3.4: BSD-2, MinHook-LICENSE.txt), its overlay host
+#                (hellforge_overlay.dll, scripts/Build-Overlay.ps1, with Dear ImGui: MIT, imgui-LICENSE.txt) and build.json (pins)
 #   scripts/     the network block (Windows Firewall rules) and Steam ownership check, readable as they run
 #   engine.json  the version, the game build and every file's SHA-256; LICENSE (GPL-3.0) and LICENSE-EXCEPTION
 # Built in this repository, against its Core library, mod SDK headers and mappings (the loader's field table is
@@ -161,6 +162,9 @@ foreach($dll in @(
     (Join-Path $minHook 'src/trampoline.c') (Join-Path $minHook 'src/hde/hde64.c') -o (Join-Path $out 'hellforge_modloader.dll')
 if($LASTEXITCODE){throw 'Compiling hellforge_modloader.dll failed.'}
 Copy-Item -LiteralPath (Join-Path $minHook 'LICENSE.txt') -Destination (Join-Path $out 'MinHook-LICENSE.txt')
+# The overlay host the loader loads from its own folder for SDK 17 screens (docs/modding/overlay.md), with ImGui's licence.
+& (Join-Path $PSScriptRoot 'Build-Overlay.ps1')|Out-Null
+foreach($name in @('hellforge_overlay.dll','imgui-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $project ('artifacts/overlay/'+$name)) -Destination $out}
 $cloudSource=Join-Path $project 'native/steam-cloud/steam_cloud.c'
 if($SteamExports){
     Invoke-Generator forward-manifest $SteamExports steam_api64_hellforge $cloudSource (Join-Path $gen 'steam_api64.def')
@@ -345,7 +349,7 @@ if($NoSteamApi){
 }
 # The stand-ins, mod loader, WFP tool and broker, signed when a certificate is configured (Sign-Files.ps1), before build.json
 # pins them: the session checks them against these hashes.
-$signed=@('PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','hellforge_wfp.exe')+$(if($bridge){@('steam_api64_bridge.dll','hellforge_steam_broker.exe')}else{@()})
+$signed=@('PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','hellforge_overlay.dll','hellforge_wfp.exe')+$(if($bridge){@('steam_api64_bridge.dll','hellforge_steam_broker.exe')}else{@()})
 & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (@($signed|ForEach-Object {Join-Path $out $_})+$(if($SteamCensus){@(Join-Path $census 'steam_api64.dll')}else{@()}))
 $receipt=[ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');zig='0.17.0';
     originals=[ordered]@{'PartyWin.dll'=(Get-FileHash $partyOriginal).Hash;'PlayFabMultiplayerWin.dll'=(Get-FileHash $lobbyOriginal).Hash;'steam_api64.dll'=$steamApiPin};
@@ -365,7 +369,7 @@ if(Test-Path -LiteralPath $staging){Remove-Item -LiteralPath $staging -Recurse -
 New-Item -ItemType Directory $staging|Out-Null
 Publish-Aot $staging
 $shimTarget=New-Item -ItemType Directory (Join-Path $staging 'sdk-shims')
-foreach($name in @('build.json','PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','MinHook-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $out $name) -Destination $shimTarget}
+foreach($name in @('build.json','PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','MinHook-LICENSE.txt','hellforge_overlay.dll','imgui-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $out $name) -Destination $shimTarget}
 if($bridge){foreach($name in @('steam_api64_bridge.dll','hellforge_steam_broker.exe')){Copy-Item -LiteralPath (Join-Path $out $name) -Destination $shimTarget}}
 # build.json's standIns pin names this one with -SteamCensus, since the session checks the stand-in it swaps in against it.
 if($SteamCensus){Copy-Item -LiteralPath (Join-Path $census 'steam_api64.dll') -Destination $shimTarget -Force}

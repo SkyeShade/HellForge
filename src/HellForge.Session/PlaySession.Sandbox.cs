@@ -98,6 +98,7 @@ sealed partial class PlaySession
             : Path.TrimEndingDirectorySeparator(Path.GetFullPath(hostPath));
         var allowed = string.Equals(hostPath, Path.Combine(hostInstall, "app", "session"), StringComparison.Ordinal) ||
             string.Equals(hostPath, Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_modloader.dll"), StringComparison.Ordinal) ||
+            string.Equals(hostPath, Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_overlay.dll"), StringComparison.Ordinal) ||
             SandboxProtocol.Within(Path.Combine(hostInstall, "mods"), hostPath) ||
             SandboxProtocol.Within(Path.Combine(hostInstall, "temp", "mod-builds"), hostPath);
         if (!allowed || !(File.Exists(hostPath) || Directory.Exists(hostPath)))
@@ -137,6 +138,8 @@ sealed partial class PlaySession
         SandboxBind(Path.Combine(hostInstall, "app", "session"));
         var hostLoader = Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_modloader.dll");
         if (File.Exists(hostLoader)) SandboxBind(hostLoader);
+        var hostOverlay = Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_overlay.dll");
+        if (File.Exists(hostLoader) && File.Exists(hostOverlay)) SandboxBind(hostOverlay);
         var relay = StartSandboxPipeRelay((string)result["runId"]!);
         var control = Directory.CreateDirectory(Path.Combine(run, "control")).FullName;
         var heartbeat = Path.Combine(control, "runner.heartbeat");

@@ -59,7 +59,7 @@ static ShotRule g_shotRules[SHOT_RULES];
 static int g_shotRuleCount;
 static ShotLocal g_shotLocal[SHOT_LOCAL];
 static int g_shotLocalCount;
-static ShotPlayer g_shotPlayers[4];
+static ShotPlayer g_shotPlayers[EVT_MAX_PLAYERS];
 static int g_shotPlayerCount;
 static volatile LONG g_shotsActive; /* rules are set: co-op with every player keeping their own */
 static SRWLOCK g_shotsLock = SRWLOCK_INIT;
@@ -321,7 +321,7 @@ static void ShotsUpdate(uintptr_t game)
     AcquireSRWLockExclusive(&g_shotsLock);
     for (int i = 0; i < rules; i++) if (!copy[i].stock) native[i] = ShotLocalBase(&copy[i], native[i]);
     g_shotPlayerCount = 0;
-    for (int i = 0; i < count && i < 4; i++)
+    for (int i = 0; i < count && i < EVT_MAX_PLAYERS; i++)
         if (players[i].peer != 0) g_shotPlayers[g_shotPlayerCount++] = (ShotPlayer){players[i].peer, players[i].avatar, players[i].local};
     for (int i = 0; i < rules && i < g_shotRuleCount; i++) ShotRuleUpdate(i, &copy[i], native[i], ready[i]);
     ReleaseSRWLockExclusive(&g_shotsLock);

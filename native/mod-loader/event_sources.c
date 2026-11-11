@@ -2,10 +2,10 @@
  * research (event-state, event-mission, event-combat, event-actions) and game.dll's code (a memory image of the build;
  * the file on disk is packed, so the pins are checked in memory once the copy protection has decoded the code).
  *   state      polled: u32 [[game + 0x3326340] + 0xAC21C] (the Game's state, set by ChangeState 0xAB2FA0).
- *   players    polled: the player manager [game + 0x3326468]: count +0x84 (at most 4); per slot i, peer id u64 at
- *              +0x2C8 + 0x38i, lifecycle u32 at +0x2E0 + 0x38i (2 waiting for its respawn timer, 3 spawned), entity
- *              [+0xE8 + 8i] + 8. Slots move as players leave, so players are told apart by peer id. Local: the peer id
- *              at [[game + 0x347CEF0] + 0xB398].
+ *   players    polled: the player manager [game + 0x3326468]: count +0x84 (at most its capacity); per slot i, peer id
+ *              u64 at +0x2C8 + 0x38i, lifecycle u32 at +0x2E0 + 0x38i (2 waiting for its respawn timer, 3 spawned),
+ *              entity [+0xE8 + 8i] + 8; each offset where the game's code addresses it now (moved_fields.c). Slots move
+ *              as players leave, so players are told apart by peer id. Local: the peer id at [[game + 0x347CEF0] + 0xB398].
  *   damage     ConsumeDamageEvent 0x12A7D40 (DamageSystem*, DamageEvent*): every damage event the frame's drain takes
  *              from this machine's queue, before ApplyDamage's multipliers. DamageEvent: +0 target entity, +4 kind,
  *              +8 element, +0x10 dealer and +0x14 owner network ids, +0x18 creditor peer, +0x2C i32 amount, +0x50 the hit.
@@ -23,10 +23,9 @@
 #define EVT_STATE_GAME 0x3326340u
 #define EVT_STATE_AT 0xAC21Cu
 #define EVT_PLAYERS 0x3326468u
-#define EVT_PLAYERS_BYTES 0x430u
 #define EVT_LOCAL_PEER 0x347CEF0u
 #define EVT_LOCAL_PEER_AT 0xB398u
-#define EVT_MAX_PLAYERS 4
+#define EVT_MAX_PLAYERS MF_MAX_SLOTS /* a mod may raise the player list's capacity (moved_fields.c) */
 
 static const uint8_t kConsumeDamagePin[32] = {0x40, 0x55, 0x53, 0x57, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8d, 0xac, 0x24, 0x68, 0xff,
     0xff, 0xff, 0x48, 0x81, 0xec, 0xb8, 0x01, 0x00, 0x00, 0x48, 0x8b, 0x05, 0xb0, 0x42, 0x39, 0x01};
@@ -206,42 +205,30 @@ static KnownPlayer* KnownPlayerOf(uint64_t peer)
     return known;
 }
 
-/* Slot i of the player list (m: the manager's bytes) against the last update. */
-static void PollPlayer(const uint8_t* m, uint32_t i, uint64_t local)
+/* A player against the last update. */
+static void PollPlayer(const EvpPlayer* p)
 {
-    uint64_t peer;
-    uint32_t lifecycle, entity = 0;
-    uintptr_t player = 0;
-    memcpy(&peer, m + 0x2C8 + 0x38 * i, 8);
-    memcpy(&lifecycle, m + 0x2E0 + 0x38 * i, 4);
-    memcpy(&player, m + 0xE8 + 8 * i, 8);
-    if (player) SafeRead(player + 8, &entity, 4);
-    if (peer == 0) return;
-    KnownPlayer* known = KnownPlayerOf(peer);
+    if (p->peer == 0) return;
+    KnownPlayer* known = KnownPlayerOf(p->peer);
     if (known == NULL) return;
     known->seen = 1;
     uint32_t from = known->lifecycle;
-    known->lifecycle = lifecycle;
-    if (from == lifecycle) return;
-    uint32_t kind = lifecycle == 3 ? HF_ON_PLAYER_SPAWN : from == 3 && lifecycle == 2 ? HF_ON_PLAYER_DOWN : 0;
+    known->lifecycle = p->life;
+    if (from == p->life) return;
+    uint32_t kind = p->life == 3 ? HF_ON_PLAYER_SPAWN : from == 3 && p->life == 2 ? HF_ON_PLAYER_DOWN : 0;
     if (kind == 0 || !AnyListener(kind)) return;
-    HfPlayerEvent e = {{sizeof e, kind, 0}, peer, entity, peer == local};
+    HfPlayerEvent e = {{sizeof e, kind, 0}, p->peer, p->player, (uint32_t)p->local};
     Dispatch(&e.info);
 }
 
 /* Each player's lifecycle against the last update's: spawned (to 3), down (3 to 2). */
 static void PollPlayers(uintptr_t game)
 {
-    uintptr_t manager = 0, peers = 0;
-    uint8_t m[EVT_PLAYERS_BYTES];
-    if (SafeRead(game + EVT_PLAYERS, &manager, 8) || manager == 0 || SafeRead(manager, m, sizeof m)) return;
-    uint64_t local = 0;
-    if (!SafeRead(game + EVT_LOCAL_PEER, &peers, 8) && peers != 0) SafeRead(peers + EVT_LOCAL_PEER_AT, &local, 8);
-    uint32_t count;
-    memcpy(&count, m + 0x84, 4);
-    if (count > EVT_MAX_PLAYERS) return; /* not a player list this build has */
+    EvpPlayer players[EVT_MAX_PLAYERS];
+    int count = EvpPlayers(game, players);
+    if (count < 0) return; /* not a player list this build has */
     for (int k = 0; k < g_playerCount; k++) g_players[k].seen = 0;
-    for (uint32_t i = 0; i < count; i++) PollPlayer(m, i, local);
+    for (int i = 0; i < count; i++) PollPlayer(&players[i]);
     for (int k = 0; k < g_playerCount;) /* players who left */
         if (!g_players[k].seen) g_players[k] = g_players[--g_playerCount];
         else k++;
