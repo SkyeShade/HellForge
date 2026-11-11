@@ -352,6 +352,7 @@ On Linux, **Sync Inventory** can stop before the game opens with these messages.
 | "The capture helper was not installed; nothing changed." | The password dialog was dismissed, the password was denied, or the launcher could not show one. Sync again to get the confirmation and dialog again. |
 | "pkexec is not installed, so the launcher cannot show the desktop password dialog." or "No polkit authentication agent is running..." | The launcher could not show the desktop dialog. Its message includes the exact `sudo bash .../allow-capture.sh` command to run once from a terminal. |
 | "SteamOS 3.x may have no password set: run passwd first, then sync again." | Set a password with `passwd`, then press Sync Inventory again; the launcher installs the helper through the polkit dialog. |
+| "The helper and its sudoers rule were installed, but sudo still cannot run the helper without a password..." | Another sudoers rule is read after `/etc/sudoers.d/zz-hellforge-capture` and asks for a password: a file in `/etc/sudoers.d` that sorts later, or a line in `/etc/sudoers` below its `@includedir`. Rename or move that rule so HellForge's is read last, then sync again. |
 | "The helper installer finished, but the installed copies still do not match..." | The install ran but the helper/relay hashes still differ. The message includes the terminal installer command; run it, then sync again. |
 
 On Linux, `hellforge-linux.sh` refuses before Steam and Proton when HellForge was started inside Flatpak, a Snap or

@@ -230,9 +230,10 @@ public partial class MainWindow
     // keeps root or a password. A failed or cancelled install changes nothing and says why.
     async Task<bool> EnsureLinuxCaptureHelperAsync(string installRoot)
     {
-        if (LinuxCapture.HelperProblem(installRoot) is not { } need) return true;
         if (ConfirmOverlay.IsVisible)
         {
+            // Nothing to install means nothing to confirm; only a needed install has to wait for the open confirmation.
+            if (LinuxCapture.HelperProblem(installRoot) == null) return true;
             SetSyncStatus("Finish the open confirmation first.", Orange);
             return false;
         }
@@ -240,6 +241,10 @@ public partial class MainWindow
         SyncButton.IsEnabled = false;
         try
         {
+            // The files first; then sudo itself, because a later sudoers rule can ask for a password although every file
+            // is right (SteamOS). Either way the installer runs again and writes the rule that sorts last.
+            var need = LinuxCapture.HelperProblem(installRoot) ?? await Task.Run(LinuxCapture.HelperCheckProblem);
+            if (need == null) return true;
             ConfirmTitle.Text = "Install Account Sync helper?";
             ConfirmText.Text = LinuxCapture.HelperInstallDescription(installRoot) + "\n\nIt is needed because: " + need;
             (ConfirmCancel.Content, ConfirmStop.Content) = ("Cancel", "Install");

@@ -176,6 +176,10 @@ On `dev`, since 0.4.0-beta.
 - **A copy with records of its own no longer crashes the game when it spawns.** The game reads past a record into the
   next one, and HellForge's copy of a component table ended right after the newest record. Calling in a vehicle copy
   whose Health record was the last one crashed at its beacon (#327).
+- **Sync Inventory on SteamOS no longer stops at "sudo: a password is required".** SteamOS's own sudoers files were
+  read after HellForge's rule and asked for a password. The rule is now `/etc/sudoers.d/zz-hellforge-capture`, read
+  last. A sync checks sudo first and offers the helper install again, which moves an earlier rule
+  ([the root-owned helper](docs/linux-account-sync.md#the-root-owned-helper)).
 - **A Pelican drop loads its cargo's package.** A stratagem without a package of its own took the payload's last
   entity's first, so a vehicle drop loaded the Pelican's package instead of the vehicle's (#327).
 - **Mod stratagems no longer read past the loadout's level choices.** Six places in the game read a per-type choice

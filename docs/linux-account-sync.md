@@ -26,12 +26,18 @@ It:
 - copies `capture-helper.sh` to `/usr/local/lib/hellforge/capture-helper`, and `capture-relay` to
   `/usr/local/lib/hellforge/capture-relay`;
 - records each installed copy's SHA-256 in `capture-helper.sha256` and `capture-relay.sha256`;
-- adds `/etc/sudoers.d/hellforge-capture`, a rule for that one root-owned helper's exact `check`, `start`, `stop` and
-  `cleanup` commands.
+- adds `/etc/sudoers.d/zz-hellforge-capture`, a rule for that one root-owned helper's exact `check`, `start`, `stop`
+  and `cleanup` commands, and removes the rule's earlier name, `hellforge-capture`.
+
+sudo reads `/etc/sudoers.d` in lexical order and its last matching rule wins. The `zz-` name sorts after a
+distribution's own files, such as SteamOS's `sudo` and `wheel`, which ask for a password.
 
 There is no wildcard and no port argument. `start` reads the native proxy's pid from stdin, and the relay's ports are
 fixed. The account comes from `SUDO_USER` or, under pkexec, from `PKEXEC_UID`. After the installer exits, the launcher
 checks both installed hashes again.
+
+Before each sync the launcher also runs `sudo -n` with the helper's `check` command. If sudo asks for a password, the
+sync offers the install again, which writes the rule under the name that sorts last.
 
 The helper checks its arguments. It cannot run Wine, a game, or a program chosen by the caller. `capture-relay` is a
 tiny static C program built from `native/linux-capture`. The helper runs only the installed root-owned copy, never one

@@ -79,6 +79,12 @@ static class InventorySyncTests
 
         test("allow-capture.sh names the pkexec caller from PKEXEC_UID", () => HelperInstallerUser(check));
 
+        test("allow-capture.sh writes the sudoers rule that sorts last and removes the rule under its old name", () =>
+            HelperInstallerRule(root, check));
+
+        test("A sudo that still asks for a password is a reason to install the helper again, and is said after an install", () =>
+            HelperCheck(root, check));
+
         test("The capture helper writes and removes only its exact hosts lines against a test file", () => HelperHosts(root, check));
 
         test("The capture helper holds its lock and ends when the watched proxy pid is gone or its lifetime ends", () => HelperWatch(root, check));
@@ -709,7 +715,7 @@ static class InventorySyncTests
 
         var description = LinuxCapture.HelperInstallDescription(install);
         check(description.Contains("/usr/local/lib/hellforge", StringComparison.Ordinal) &&
-            description.Contains("/etc/sudoers.d/hellforge-capture", StringComparison.Ordinal) &&
+            description.Contains("/etc/sudoers.d/zz-hellforge-capture", StringComparison.Ordinal) &&
             description.Contains("--remove", StringComparison.Ordinal) &&
             description.Contains("pkexec", StringComparison.Ordinal),
             "The helper confirmation does not say what will be installed and how it is removed.");
@@ -790,6 +796,124 @@ static class InventorySyncTests
         });
         check(bySudo.ExitCode == 0 && bySudo.Output.Trim() == user,
             "allow-capture.sh did not resolve the caller from SUDO_USER: " + bySudo.Output);
+    }
+
+    // The real installer, run as root of a private user and mount namespace over SteamOS's own drop-ins: its rule must be
+    // read last, the rule under the old name must go, and --remove must leave neither.
+    static void HelperInstallerRule(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: the sudoers rule's name)"); return; }
+        if (FakeRootScripts(root, "helper-rule") is not { } scripts) return;
+        var installer = Path.Combine(scripts, LinuxCapture.HelperInstaller);
+        var uid = RunTestProcess("id", ["-u"]).Output.Trim();
+        var user = RunTestProcess("id", ["-un"]).Output.Trim();
+        var rule = Path.GetFileName(LinuxCapture.SudoersPath);
+        var oldRule = Path.GetFileName(LinuxCapture.LegacySudoersPath);
+        var body = string.Join("\n",
+            "printf '%s\\n' '%wheel ALL=(ALL) ALL' > /etc/sudoers.d/wheel",
+            "printf '%s\\n' '%sudo ALL=(ALL) ALL' > /etc/sudoers.d/sudo",
+            "printf '%s\\n' 'Defaults !fqdn' > /etc/sudoers.d/no-fqdn",
+            "printf '%s\\n' '%wheel ALL=(root) NOPASSWD: /usr/bin/steamos-prepare-oobe-test' > /etc/sudoers.d/wheel-prepare-oobe-test",
+            "printf '%s\\n' 'old rule' > /etc/sudoers.d/" + oldRule,
+            "PKEXEC_UID=" + uid + " bash " + ShQuote(installer) + " >/dev/null",
+            "echo \"order:$(LC_ALL=C ls /etc/sudoers.d | tr '\\n' ' ')\"",
+            "echo \"mode:$(stat -c '%a %u %g' /etc/sudoers.d/" + rule + ")\"",
+            "echo \"rule:$(cat /etc/sudoers.d/" + rule + ")\"",
+            "printf '%s\\n' 'old rule' > /etc/sudoers.d/" + oldRule,
+            "bash " + ShQuote(installer) + " --remove >/dev/null",
+            "echo \"left:$(LC_ALL=C ls /etc/sudoers.d /usr/local/lib | tr '\\n' ' ')\"");
+        if (RunAsFakeRoot(root, "helper-rule", body) is not { } run) return;
+        check(run.ExitCode == 0, "The installer failed as root over SteamOS's drop-ins: " + run.Output);
+        string Line(string name) => run.Output.Split('\n').FirstOrDefault(line => line.StartsWith(name + ":", StringComparison.Ordinal))?[(name.Length + 1)..].Trim() ?? "";
+        var order = Line("order").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        check(order.Length > 0 && order[^1] == rule, "HellForge's rule is not the last drop-in sudo reads: " + Line("order"));
+        check(!order.Contains(oldRule), "The rule under its old name was left, where SteamOS's own files override it: " + Line("order"));
+        check(!rule.Contains('.') && !rule.EndsWith('~'), "sudo skips a drop-in whose name has a dot or ends in ~: " + rule);
+        check(Line("mode") == "440 0 0", "The rule is not root-owned with mode 440: " + Line("mode"));
+        var helper = LinuxCapture.HelperPath;
+        check(Line("rule") == $"{user} ALL=(root) NOPASSWD: {helper} check, {helper} start, {helper} stop, {helper} cleanup",
+            "The rule does not name exactly the helper's four commands for this account: " + Line("rule"));
+        check(string.Join(' ', Line("left").Split(' ', StringSplitOptions.RemoveEmptyEntries)) ==
+                "/etc/sudoers.d: no-fqdn sudo wheel wheel-prepare-oobe-test /usr/local/lib:",
+            "--remove did not remove both rule names and the helper folder, or removed another file: " + Line("left"));
+    }
+
+    // HelperCheckProblem reads sudo's own answer; InstallHelper reports a rule that still does not win without sending the
+    // player to a terminal command that would write the same files again.
+    static void HelperCheck(string root, Action<bool, string> check)
+    {
+        check(LinuxCapture.HelperCheckProblem(new LinuxCapture.WineResult(0, "", "")) == null, "A passing helper check was a problem.");
+        var password = LinuxCapture.HelperCheckProblem(new LinuxCapture.WineResult(1, "", "sudo: a password is required"));
+        check(password != null && password.Contains(LinuxCapture.SudoersPath, StringComparison.Ordinal) &&
+            password.Contains("asks for a password", StringComparison.Ordinal),
+            "sudo asking for a password was not named with the rule's path: " + password);
+        var other = LinuxCapture.HelperCheckProblem(new LinuxCapture.WineResult(1, "", "hellforge-capture-helper: /etc/hosts is not writable"));
+        check(other != null && other.Contains("/etc/hosts is not writable", StringComparison.Ordinal) &&
+            !other.Contains("asks for a password", StringComparison.Ordinal),
+            "The helper's own refusal was not passed on: " + other);
+
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: pkexec helper install)"); return; }
+        var install = Directory.CreateDirectory(Path.Combine(root, "helper-check", "install")).FullName;
+        var installer = Path.Combine(Directory.CreateDirectory(Path.Combine(install, "app", "linux")).FullName, LinuxCapture.HelperInstaller);
+        File.WriteAllText(installer, "#!/bin/sh\n");
+        var pkexec = FakePkexec(Path.Combine(root, "helper-check", "pkexec"), "exit 0");
+        var blocked = LinuxCapture.InstallHelper(install, pkexec, "/usr/bin/bash", _ => null, () => password);
+        check(!blocked.Succeeded && !blocked.Cancelled && !blocked.NeedsManual &&
+            blocked.Message.Contains("asks for a password", StringComparison.Ordinal) &&
+            !blocked.Message.Contains("Install it from a terminal", StringComparison.Ordinal),
+            "A rule that does not win after the install was not reported as such: " + blocked.Message);
+        var ready = LinuxCapture.InstallHelper(install, pkexec, "/usr/bin/bash", _ => null, () => null);
+        check(ready.Succeeded, "An install whose files and rule are right did not succeed: " + ready.Message);
+        var stale = LinuxCapture.InstallHelper(install, pkexec, "/usr/bin/bash", _ => "the copies differ", () => throw new Exception("checked"));
+        check(!stale.Succeeded && stale.NeedsManual, "sudo was asked although the installed files were already wrong.");
+    }
+
+    // A copy of the installer and helper with a stand-in relay beside them, as an installation's app/linux has them.
+    // Null (and a skip line) when the scripts are not in the test working directory.
+    static string? FakeRootScripts(string root, string name)
+    {
+        var source = Path.GetFullPath("linux");
+        if (!File.Exists(Path.Combine(source, LinuxCapture.HelperInstaller)))
+        {
+            Console.WriteLine("  (skipped: linux/allow-capture.sh is not in the test working directory)");
+            return null;
+        }
+        var scripts = Directory.CreateDirectory(Path.Combine(root, name, "linux")).FullName;
+        foreach (var file in new[] { LinuxCapture.HelperInstaller, LinuxCapture.HelperScript })
+            File.Copy(Path.Combine(source, file), Path.Combine(scripts, file), overwrite: true);
+        File.WriteAllText(Path.Combine(scripts, LinuxCapture.RelayBinary), "stand-in relay\n");
+        return scripts;
+    }
+
+    // Runs a bash script as root of a private user and mount namespace. Empty file systems cover the folders the
+    // installer writes (before: more of them, or other mounts) and a copy covers /etc/hosts, so the PC's own files are
+    // neither read nor changed. Null (and a skip line) where unprivileged user namespaces cannot mount, as on Ubuntu's
+    // runners with AppArmor's restriction.
+    static (int ExitCode, string Output)? RunAsFakeRoot(string root, string name, string body, string before = "")
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        var hosts = Path.Combine(folder, "hosts");
+        File.WriteAllText(hosts, "127.0.0.1 localhost\n");
+        var script = Path.Combine(folder, "fake-root.sh");
+        File.WriteAllText(script, "set -eu\n" +
+            "mount -t tmpfs tmpfs /etc/sudoers.d\nmount -t tmpfs tmpfs /usr/local\nmkdir /usr/local/lib\n" +
+            "mount -t tmpfs tmpfs /run\nmount --bind " + ShQuote(hosts) + " /etc/hosts\n" + before + "\n" + body + "\n");
+        string[] unshare = ["--user", "--map-root-user", "--mount", "bash"];
+        try
+        {
+            var probe = RunTestProcess("unshare", [.. unshare, "-c", "mount -t tmpfs tmpfs /etc/sudoers.d && mount -t tmpfs tmpfs /usr/local"]);
+            if (probe.ExitCode != 0)
+            {
+                Console.WriteLine("  (skipped: this system does not let a user namespace mount over /etc/sudoers.d and /usr/local)");
+                return null;
+            }
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            Console.WriteLine("  (skipped: unshare is not installed)");
+            return null;
+        }
+        return RunTestProcess("unshare", [.. unshare, script]);
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
