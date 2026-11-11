@@ -61,9 +61,9 @@ static class EarlySessionFailureTests
             File.WriteAllText(log, start + warning + "wine: could not load kernel32.dll\nHellForge wrapper exiting with code 53.\n");
             check(reason()?.EndsWith("wrapper stopped: wine: could not load kernel32.dll", StringComparison.Ordinal) == true,
                 "A warning alone was the reason: " + reason());
-            File.WriteAllText(log, "HellForge on Linux needs these programs, which were not found: ip flock\n  ip\n  flock\n" +
-                "Install them with: sudo dnf install iproute util-linux procps-ng\n");
-            check(reason() == "HellForge on Linux needs these programs, which were not found: ip flock Install them with: " +
+            File.WriteAllText(log, "HellForge on Linux needs these programs, which were not found: ip unshare pgrep flock\n" +
+                "  ip\n  unshare\n  pgrep\n  flock\nInstall them with: sudo dnf install iproute util-linux procps-ng\n");
+            check(reason() == "HellForge on Linux needs these programs, which were not found: ip unshare pgrep flock Install them with: " +
                 "sudo dnf install iproute util-linux procps-ng", "The missing programs lost their install command: " + reason());
             File.WriteAllText(log, start + "A Windows program is still running in the Wine prefix /c/pfx outside HellForge's " +
                 "network namespace;\nprograms started inside would share its network. Close it (or give HellForge a prefix " +
@@ -71,7 +71,18 @@ static class EarlySessionFailureTests
             check(reason()?.EndsWith("namespace; programs started inside would share its network. Close it (or give " +
                 "HellForge a prefix of its own: docs/linux.md).", StringComparison.Ordinal) == true,
                 "A failure in two lines was cut after the first: " + reason());
+            // Inside the namespace hf-inner.sh writes its own exit line before the wrapper's.
+            const string inner = "\nhf-inner exiting with code 1.\nOffline namespace command exited with code 1.\n" +
+                "HellForge wrapper exiting with code 1.\n";
+            const string relay = "hf-inner: the Steam bridge relay did not start; Steam's loopback ports are not bridged.";
+            File.WriteAllText(log, start + "Entering the offline network namespace.\n" + relay + inner);
+            check(reason() == "The last line of linux-session-wrapper.log before the wrapper stopped: " + relay,
+                "hf-inner's exit line was the reason: " + reason());
+            File.WriteAllText(log, start + "no bridge sockets found; start hf-bridge-host.sh first" + inner);
+            check(reason() == "no bridge sockets found; start hf-bridge-host.sh first",
+                "hf-inner's exit line was added to a failure: " + reason());
             File.WriteAllText(log, start + "Entering the offline network namespace.\nwine: could not load kernel32.dll\n" +
+                "hf-inner received SIGTERM.\nhf-inner exiting with code 53.\n" +
                 "Offline namespace command exited with code 53.\nHellForge is running inside the container \"box\"; if " +
                 "this namespace step failed, the container may not allow it.\nSteam bridge did not stop after 5 seconds; " +
                 "killing it.\nHellForge wrapper exiting with code 53.\n");
@@ -84,21 +95,29 @@ static class EarlySessionFailureTests
             check(reason() == null, "An older run's wrapper reason was shown.");
         });
 
-        test("The wrapper's closing lines the launcher passes over are the ones the Linux scripts write", () =>
+        test("The closing lines the launcher passes over are the ones the Linux scripts write on their way out", () =>
         {
             if (RepositoryRoot() is not { } repository) { Console.WriteLine("  (skipped: no repository root above the test)"); return; }
-            var scripts = File.ReadAllText(Path.Combine(repository, "linux", "hellforge-linux.sh")) +
-                File.ReadAllText(Path.Combine(repository, "linux", "hf-container.sh"));
+            string Script(string name) => File.ReadAllText(Path.Combine(repository, "linux", name));
+            var wrapper = Script("hellforge-linux.sh");
+            var all = wrapper + Script("hf-inner.sh") + Script("hf-container.sh");
             foreach (var closing in EarlySessionFailure.WrapperClosingLines)
-                check(scripts.Contains(closing, StringComparison.Ordinal), "No Linux script writes: " + closing);
-            // Everything the exit trap and the failed-namespace branch echo must be on the list.
-            var wrapper = File.ReadAllText(Path.Combine(repository, "linux", "hellforge-linux.sh"));
-            var trap = wrapper[wrapper.IndexOf("cleanup() {", StringComparison.Ordinal)..wrapper.IndexOf("trap cleanup EXIT", StringComparison.Ordinal)];
-            var failed = wrapper[wrapper.IndexOf("Offline namespace command completed.", StringComparison.Ordinal)..];
-            foreach (System.Text.RegularExpressions.Match echo in
-                System.Text.RegularExpressions.Regex.Matches(trap + failed, "echo \"([^\"$]+)"))
+                check(all.Contains(closing, StringComparison.Ordinal), "No Linux script writes: " + closing);
+            // Everything a session script echoes from a trap, from its exit function or after the namespace command
+            // failed comes after the reason, so it must be on the list.
+            var late = wrapper[wrapper.IndexOf("Offline namespace command completed.", StringComparison.Ordinal)..];
+            foreach (var name in new[] { "hellforge-linux.sh", "hf-inner.sh", "hellforge-offline.sh" })
+            {
+                var text = Script(name);
+                late += string.Join('\n', text.Split('\n').Where(line => line.TrimStart().StartsWith("trap ", StringComparison.Ordinal)));
+                var exit = text.IndexOf("cleanup() {", StringComparison.Ordinal);
+                if (exit >= 0) late += text[exit..text.IndexOf("trap cleanup EXIT", exit, StringComparison.Ordinal)];
+            }
+            var echoes = System.Text.RegularExpressions.Regex.Matches(late, "echo \"([^\"$]+)");
+            check(echoes.Count >= 7, "The scripts' exit lines were not found: " + echoes.Count);
+            foreach (System.Text.RegularExpressions.Match echo in echoes)
                 check(EarlySessionFailure.WrapperClosingLines.Any(closing => echo.Groups[1].Value.Contains(closing, StringComparison.Ordinal)),
-                    "The wrapper writes a closing line the launcher would show as the reason: " + echo.Groups[1].Value);
+                    "A script writes a closing line the launcher would show as the reason: " + echo.Groups[1].Value);
         });
     }
 

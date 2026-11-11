@@ -28,9 +28,12 @@ public static partial class EarlySessionFailure
         return entry.Length > 0 ? entry : null;
     }
 
-    // What the wrapper writes on its way out, after the line that says why it stops.
+    // What the wrapper and hf-inner.sh, which it runs inside the namespace, write on their way out, after the line that
+    // says why they stop.
     internal static readonly string[] WrapperClosingLines =
     [
+        "hf-inner exiting with code",
+        "hf-inner received SIG",
         "HellForge wrapper exiting with code",
         "HellForge wrapper received SIG",
         "Offline namespace command exited with code",
@@ -51,9 +54,8 @@ public static partial class EarlySessionFailure
         {
             // What follows a failure, up to the closing lines, is its second half or the command that clears it.
             var reason = lines[known].Trim();
-            foreach (var more in lines.Skip(known + 1).TakeWhile(line => !Closing(line)).Take(3).Select(line => line.Trim()))
-                if (!reason.Contains(more, StringComparison.Ordinal)) reason += " " + more;
-            return reason;
+            var rest = lines.Skip(known + 1).TakeWhile(line => !Closing(line)).Select(line => line.Trim());
+            return string.Join(" ", rest.Where(more => !reason.Contains(more, StringComparison.Ordinal)).Take(3).Prepend(reason));
         }
         var last = lines.FindLast(line => !Closing(line));
         return last == null ? null : "The last line of " + LinuxWrapperLog + " before the wrapper stopped: " + last.Trim();
