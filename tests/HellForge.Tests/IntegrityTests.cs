@@ -96,6 +96,27 @@ static class IntegrityTests
                 "An extra was not quarantined.");
         });
 
+        test("Setup's data audit keeps a build file's unfinished download; a session's audit and other names do not", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "data-audit-download"));
+            install.Create("25480438");
+            var data = Directory.CreateDirectory(Path.Combine(install.Game, "data")).FullName;
+            var build = new SupportedBuild(1, "553850", "test", "", "", [],
+                [new SupportedFile("data/keep", 5, new string('A', 40), 1), new SupportedFile("bin/game.exe", 5, new string('B', 40), 1)]);
+            string[] unfinished = ["keep.partial", "keep.resume"];
+            string[] others = ["notes.partial", "game.exe.partial", "keep.partial.partial"];
+            foreach (var name in unfinished.Concat(others)) File.WriteAllText(Path.Combine(data, name), "part of a file");
+            var setup = GameDataAudit.Quarantine(install, build, downloading: true);
+            check(setup.Problems.Count == 0 && setup.Extras.Order().SequenceEqual(others.Select(name => "data/" + name).Order()),
+                "Setup's audit did not move exactly the names that are no build file's download: " + string.Join(", ", setup.Extras));
+            check(unfinished.All(name => File.ReadAllText(Path.Combine(data, name)) == "part of a file"),
+                "Setup's audit moved or changed a build file's unfinished download.");
+            var session = GameDataAudit.Quarantine(install, build);
+            check(session.Extras.Order().SequenceEqual(unfinished.Select(name => "data/" + name).Order()) &&
+                !unfinished.Any(name => File.Exists(Path.Combine(data, name))),
+                "A session's audit left an unfinished download in game/data: " + string.Join(", ", session.Extras));
+        });
+
         test("An unclean previous session and a clean one are told apart", () =>
         {
             var install = new InstallLayout(Path.Combine(root, "session-integrity"));
