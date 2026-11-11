@@ -1034,12 +1034,21 @@ public partial class MainWindow : Window
         {
             var run = runDirectory ?? (Directory.Exists(paths.RunsFolder)
                 ? new DirectoryInfo(paths.RunsFolder).GetDirectories().OrderByDescending(d => d.LastWriteTimeUtc).FirstOrDefault()?.FullName : null);
-            if (run == null) { Append("No session logs yet: play a session first.", Orange); return; }
             var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
                 $"HellForge-logs-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.zip");
+            // A start that stopped before its session folder existed left its reason in the installation's logs folder.
+            var installLogs = paths.InstallRoot != null ? Path.Combine(paths.InstallRoot, "logs") : null;
+            if (run == null)
+            {
+                if (installLogs != null && HellForge.Core.SessionLogs.ExportStart(installLogs, target) is { } start)
+                    Append("No session has run yet: saved the logs of the start that stopped to " + target +
+                        (start.Skipped > 0 ? $" ({start.Skipped} files in use were left out)" : ""), Green);
+                else Append("No session logs yet: play a session first.", Orange);
+                return;
+            }
             // the same zip as HellForge.Cli logs --export: scrubbed of the PC's names (SessionLogs.Export)
             var gameLogs = paths.InstallRoot != null ? Path.Combine(paths.InstallRoot, "userdata", "logs") : null;
-            var skipped = HellForge.Core.SessionLogs.Export(run, gameLogs, target).Skipped;
+            var skipped = HellForge.Core.SessionLogs.Export(run, gameLogs, target, installLogs).Skipped;
             Append("Saved the latest session's logs to " + target + (skipped > 0 ? $" ({skipped} files in use were left out)" : ""), Green);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

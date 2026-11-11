@@ -507,6 +507,10 @@ To send them to someone, open the Console page and press Save logs to Desktop. I
 your Desktop as `HellForge-logs-<date>-<time>.zip`, with the game's console logs. If a session is still running, files in
 use may be left out, and the launcher says how many.
 
+The zip's `start` folder holds the logs of a start that stopped before it had a session folder: `session-runner.log`
+and, on Linux, `linux-session-wrapper.log` and `linux-container-refusal.txt`. When no session has run yet, the zip
+holds only that folder, so the button also works after a first PLAY that failed.
+
 In the text files in the zip, your Windows user folder is written as `%USERPROFILE%` (a Linux home folder as `~`) and the
 PC's name as `PC`. Paths stay readable. The zip still names Steam accounts by their id. Files that are not text, such
 as a crash dump, go in as they are.
