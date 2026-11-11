@@ -186,6 +186,10 @@ On `dev`, since 0.4.0-beta.
   `helldivers2.exe+0x732040`, and a slow PC could crash at `+0x626296` as a mission loaded. A freed texture is now bound
   empty instead of read, and a full job pool is waited out while jobs finish
   ([crash guards](docs/crash-guards.md)).
+- **Linux setup gets the supported build with a QR code or SteamCMD, as on Windows.** It offered only the Steam app,
+  whose download goes onto the drive that holds Steam: too small on a Steam Deck with HellForge on a microSD card. The
+  QR code and SteamCMD download straight into the installation; SteamCMD opens in a terminal window. The Steam app's
+  card now says when its drive is too full ([on Linux](docs/steam-download.md#on-linux)).
 - **A mod's own weapon mesh in the right place on every LOD and its shadow.** A data spec's `mesh` put the shadow 20 cm
   off the gun on an Adjudicator copy (4.5 cm on a Liberator), and hung a Liberator copy's LOD2 on its fire selector. Each
   render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new

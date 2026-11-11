@@ -34,7 +34,11 @@ public partial class MainWindow
     ];
 
     // The ways this setup can offer: under Wine, inside HellForge's network namespace, only the Steam app can reach Steam.
-    static IReadOnlyList<DownloadChoice> OfferedChoices => DownloadChoices.Offered(reachesSteam: !LinuxNetworkBlock.Requested);
+    // On Linux SteamCMD needs a terminal window to ask for the password in, and a folder outside Steam's libraries.
+    IReadOnlyList<DownloadChoice> OfferedChoices => DownloadChoices.Offered(reachesSteam: !LinuxNetworkBlock.Requested,
+        steamCmd: !OperatingSystem.IsLinux() || (linuxTerminal ??= LinuxTerminal.Find()) != null && paths.InstallRoot is { } root &&
+            !SteamCmd.InSteamapps(Path.Combine(root, "tools", "steamcmd")));
+    LinuxTerminal? linuxTerminal;
 
     void WireSignIn()
     {
@@ -166,8 +170,12 @@ public partial class MainWindow
             var watch = WatchDepots(steamCmd.Folder, watching.Token);
             try
             {
-                using var process = steamCmd.Start(SteamCmd.Arguments(account, build), visible: true);
-                exitCode = await steamCmd.WaitAsync(process, attempt);
+                // Windows gives a console program a window of its own; on Linux a terminal program has to.
+                var terminal = OperatingSystem.IsLinux()
+                    ? linuxTerminal ?? throw new SteamCmdException("no terminal window program was found to run it in.") : null;
+                using var process = terminal != null ? steamCmd.StartInTerminal(SteamCmd.Arguments(account, build), terminal)
+                    : steamCmd.Start(SteamCmd.Arguments(account, build), visible: true);
+                exitCode = terminal != null ? await steamCmd.WaitInTerminalAsync(process, attempt) : await steamCmd.WaitAsync(process, attempt);
             }
             finally
             {

@@ -443,6 +443,93 @@ static class SteamDownloadTests
                 SteamCmd.Unfinished(5, []).Contains("Steam app"), "A failed sign-in's words: " + SteamCmd.Unfinished(5, []));
         });
 
+        test("On Linux SteamCMD runs in a terminal window: found on PATH, its exit code read from a file, a closed window noticed", () =>
+        {
+            check(DownloadChoices.Offered(reachesSteam: true, steamCmd: false).SequenceEqual([DownloadChoice.QrCode, DownloadChoice.SteamClient]) &&
+                DownloadChoices.Offered(reachesSteam: false, steamCmd: false).SequenceEqual([DownloadChoice.SteamClient]),
+                "Without a terminal window, SteamCMD is still offered, or another way went with it.");
+            var fixture = new Fixture(root, "steamcmd-terminal");
+            var first = LinuxTerminal.Known[0].Name;
+            var bin = Path.Combine(fixture.Home, "bin");
+            var path = "relative:" + Path.Combine(fixture.Home, "none") + ":" + bin;
+            check(LinuxTerminal.Find(path, _ => false) == null && LinuxTerminal.Find(null, _ => true) == null &&
+                LinuxTerminal.Find("relative", _ => true) == null, "A terminal was found where there is none.");
+            var found = LinuxTerminal.Find(path, file => file == Path.Combine(bin, first));
+            check(found != null && found.Program == Path.Combine(bin, first) && found.Before.SequenceEqual(LinuxTerminal.Known[0].Before),
+                "The terminal on PATH was not found with its own arguments.");
+            check(LinuxTerminal.Known.Select(known => known.Name).Distinct().Count() == LinuxTerminal.Known.Count &&
+                LinuxTerminal.Known.Any(known => known.Name == "konsole"), "The known terminals repeat, or leave out KDE's.");
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: runs bash stand-ins for the terminal and SteamCMD)"); return; }
+
+            // A folder with a space and an apostrophe: the script must carry such a path whole.
+            var steamCmd = new SteamCmd(Path.Combine(fixture.Home, "tools of the player's", "steamcmd"));
+            Directory.CreateDirectory(steamCmd.Folder);
+            var seen = Path.Combine(fixture.Home, "seen.txt");
+            void Program(string body) => File.WriteAllText(steamCmd.Program, "#!/bin/bash\n" + body + "\n");
+            string Terminal(string name, string body)
+            {
+                var file = Path.Combine(Directory.CreateDirectory(bin).FullName, name);
+                File.WriteAllText(file, "#!/bin/bash\n[ \"$1\" = -e ] && shift\n" + body + "\n");
+                File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                return file;
+            }
+            int Run(string terminal, TimeSpan? closedAfter = null)
+            {
+                using var process = steamCmd.StartInTerminal(["+login", "some_one", "+quit"], new LinuxTerminal(terminal, ["-e"]));
+                return steamCmd.WaitInTerminalAsync(process, CancellationToken.None, closedAfter).GetAwaiter().GetResult();
+            }
+            var staying = Terminal("staying", "\"$@\" </dev/null");
+            Program("printf '%s|%s|%s\\n' \"$HOME\" \"$PWD\" \"$*\" > '" + seen + "'\nexit 0");
+            File.SetUnixFileMode(steamCmd.Program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            check(Run(staying) == 0, "SteamCMD's exit code 0 was not read.");
+            check(File.ReadAllText(seen).Trim() == Path.Combine(steamCmd.Folder, "home") + "|" + steamCmd.Folder + "|+login some_one +quit",
+                "SteamCMD did not get its own HOME, its folder or its arguments: " + File.ReadAllText(seen));
+            Program("exit 7");
+            check(Run(staying) == 7, "SteamCMD's exit code was not passed on.");
+            // A terminal that hands the window to another process and ends at once.
+            // It is waited for as long as the script runs, however short the wait for a closed window is.
+            Program("sleep 3\nexit 3");
+            check(Run(Terminal("handing-on", "\"$@\" </dev/null >/dev/null 2>&1 &"), TimeSpan.FromSeconds(1)) == 3,
+                "A terminal that ends at once hid SteamCMD's exit code.");
+            // The window closed before SteamCMD ended: nothing ran, so there is no exit code to wait for.
+            check(Run(Terminal("closed", "exit 0"), TimeSpan.FromSeconds(1)) == -1, "A closed window was waited for.");
+            Program("sleep 30");
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using var stopped = steamCmd.StartInTerminal(["+quit"], new LinuxTerminal(staying, ["-e"]));
+            try
+            {
+                steamCmd.WaitInTerminalAsync(stopped, cancel.Token).GetAwaiter().GetResult();
+                check(false, "A cancelled wait returned.");
+            }
+            catch (OperationCanceledException) { }
+            check(stopped.WaitForExit(5000), "Cancelling did not end the terminal's process.");
+            // Cancelled with the terminal's own process already gone: the script and what it runs are ended too.
+            var marker = Path.Combine(fixture.Home, "outlived.txt");
+            Program("sleep 3\ntouch '" + marker + "'");
+            using var cancelHandedOn = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using var handedOn = steamCmd.StartInTerminal(["+quit"], new LinuxTerminal(Path.Combine(bin, "handing-on"), ["-e"]));
+            try { steamCmd.WaitInTerminalAsync(handedOn, cancelHandedOn.Token).GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { }
+            Thread.Sleep(3500);
+            check(!File.Exists(marker), "A cancelled SteamCMD went on running behind a terminal that had ended.");
+        });
+
+        test("The Steam app's card says when the drive with Steam cannot take the download", () =>
+        {
+            var drive = new DiskSpaceInfo("/home", 10_000_000_000);
+            check(SteamDepotDownload.SpaceNote(drive, 5_000_000_000, otherWays: true) == null &&
+                SteamDepotDownload.SpaceNote(new("/home", null), 50_000_000_000, otherWays: true) == null &&
+                SteamDepotDownload.SpaceNote(drive, 0, otherWays: true) == null, "A drive with room, or one that cannot be read, was called too small.");
+            var note = SteamDepotDownload.SpaceNote(drive, 23_900_000_000, otherWays: true);
+            check(note != null && note.Contains("/home", StringComparison.Ordinal) && note.Contains("10.0 GB free", StringComparison.Ordinal) &&
+                note.Contains("23.9 GB", StringComparison.Ordinal) && note.Contains("Choose another way", StringComparison.Ordinal),
+                "A full Steam drive was not named with what it has and needs: " + note);
+            check(SteamDepotDownload.SpaceNote(drive, 23_900_000_000, otherWays: false)?.Contains("Choose another way", StringComparison.Ordinal) == false,
+                "Another way was offered where there is none.");
+            // The margin counts: free space equal to the download is not enough.
+            check(SteamDepotDownload.SpaceNote(drive, 10_000_000_000, otherWays: false) != null, "A drive with no margin left counted as roomy.");
+        });
+
         test("SteamCMD is started only when Valve signed it: Valve and Valve Corp. are Valve's, nothing else is", () =>
         {
             static System.Security.Cryptography.X509Certificates.X500DistinguishedName Name(string text) => new(text);

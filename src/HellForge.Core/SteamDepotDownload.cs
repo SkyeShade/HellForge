@@ -52,6 +52,15 @@ public static class SteamDepotDownload
             return info.Exists ? Math.Min(info.Length, file.Size) : 0;
         });
 
+    // What the console card adds when the drive that holds Steam cannot take the rest of the download (it goes there,
+    // not where HellForge is installed). Null when there is room or the free space cannot be read.
+    public static string? SpaceNote(DiskSpaceInfo steamDrive, long missingBytes, bool otherWays) =>
+        steamDrive.FreeBytes is { } free && missingBytes > 0 && free < missingBytes + DiskSpace.Margin
+            ? $"The drive with Steam ({steamDrive.Name}) has {free / 1e9:0.0} GB free, and this download needs " +
+              $"{missingBytes / 1e9:0.0} GB there." +
+              (otherWays ? " Choose another way to download straight into this installation's folder instead." : "")
+            : null;
+
     public static IReadOnlyList<string> Commands(SupportedBuild build) =>
         [.. build.Depots.Select(depot => $"download_depot {build.AppId} {depot.Id} {depot.ManifestId}")];
 

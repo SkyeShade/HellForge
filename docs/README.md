@@ -127,7 +127,7 @@ On Linux, the graphical installer and native setup wizard do this instead; see
      sign-in is kept, and every file is checked against Steam's hashes. [steam-download.md](steam-download.md) explains
      how.
    - When you choose Use the Steam app, when Steam does not allow the download (a game borrowed through Steam Family
-     Sharing, for example), when SteamCMD cannot be set up, or on Linux, the Steam app downloads the supported build on
+     Sharing, for example), or when SteamCMD cannot be set up, the Steam app downloads the supported build on
      your account. The wizard shows one
      `download_depot 553850 <depot> <manifest>` command per depot (the manifests pinned in
      `supported-build.json`) to paste into the Steam console (`steam://open/console`), watches

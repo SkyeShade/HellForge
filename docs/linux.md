@@ -23,9 +23,9 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 - Steam for Linux, running and signed in to an account that owns HELLDIVERS 2, with at least one Proton installed.
   HELLDIVERS 2 itself does not need to be installed. Setup gets the supported build from Steam's installed copy, its
   depot download, or a build patch applied to a newer installed copy.
-- About 50 GB of free space while setting up. Steam's download of the supported build and HellForge's copy of the game
-  are about 24 GB each. Setup deletes the download after copying unless you untick that. A build patch needs about 2 GB
-  more while it is applied.
+- About 24 GB of free space for HellForge's copy of the game. The Steam app's download of the supported build, when
+  setup uses that way, needs about 24 GB more on the drive that holds Steam. Setup deletes the download after copying
+  unless you untick that. A build patch needs about 2 GB more while it is applied.
 - The `HellForge-Linux-Installer` artifact from a successful **Build Linux package** run. It contains the native
   launcher and `HellForge-Linux.zip`, which holds the app and no game files. The same run's `HellForge-Linux-package`
   artifact also contains `HellForge-Setup.exe` for Windows; Linux players do not run it.
@@ -159,10 +159,10 @@ link above the folder HellForge protects is resolved and the real folder is used
 - For the sandbox self-test, `/run`, because the sandbox gives the game its own private `/run`. The exception is a drive
   your desktop mounted under `/run/media/<user>/<drive>` (KDE, GNOME, SteamOS), which works, sandbox included.
 
-The supported build's copy is 23.8 GB (about 24 GB). A first setup that copies from Steam's download needs room for that
-download too, about another 24 GB, unless setup can use an installed game or a build patch. Allow at least 50 GB free on
-the prefix's drive for a first setup from Steam's download. A prefix backup is about the size of the prefix. Its default
-folder is `hellforge-backups` beside the prefix, on the same drive; choose another folder with **Choose folder**.
+The supported build's copy is 23.8 GB (about 24 GB). The QR code's and SteamCMD's downloads go straight into it. The
+Steam app's download needs about another 24 GB on the drive that holds Steam. Allow at least 50 GB free for that way
+when the prefix and Steam share a drive. A prefix backup is about the size of the prefix. Its default folder is
+`hellforge-backups` beside the prefix, on the same drive; choose another folder with **Choose folder**.
 
 What stays in the home is small: `~/Desktop/HellForge.desktop`, the shortcut setup writes (a few hundred bytes). The
 launcher, game copy, logs, profiles, mods, temporary files and backups are in the prefix. HellForge does not write
@@ -186,7 +186,8 @@ The wizard runs natively. In order, it:
    1. the installation's own copy, if every file matches the supported build;
    2. Steam's installed copy, if it is the supported build;
    3. Steam's completed `download_depot` download;
-   4. otherwise, [Steam's download of the supported build](#steams-download-of-the-supported-build).
+   4. otherwise, it gets the build from Steam now, before the next step
+      ([Steam's download of the supported build](#steams-download-of-the-supported-build)).
 6. Confirms ownership through the selected Proton ([below](#the-ownership-check)).
 7. Prepares the optional mod tools through the wrapper. These are the pinned native Linux Zig (about 55 MB, a `.tar.xz`
    from ziglang.org) that compiles source mods, and the pinned Windows Zig (about 90 MB) for an installation that is
@@ -211,7 +212,15 @@ session. The probe writes `logs/setup-ownership.json`, and that report decides. 
 
 ### Steam's download of the supported build
 
-When setup needs the download, it shows a card with one `download_depot 553850 <depot> <manifest>` command per depot.
+When setup needs the download, it shows the card Get the supported build from Steam, with the same three ways as on
+Windows ([steam-download.md](steam-download.md#on-linux)):
+
+- **Scan a QR code with your phone** (the default) and **No phone: sign in with SteamCMD** download straight into the
+  installation. SteamCMD runs in a terminal window, and is offered only when setup finds a terminal window program.
+- **Use the Steam app** downloads onto the drive that holds Steam, and setup copies from there. The card says when that
+  drive is too full. Its steps follow.
+
+The Steam app's card has one `download_depot 553850 <depot> <manifest>` command per depot.
 
 1. Press **Open the Steam console**, or run `xdg-open steam://open/console`.
 2. Paste each command into the console and press Enter, one at a time.

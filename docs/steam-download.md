@@ -27,7 +27,9 @@ player's own account. It opens on the QR code. Each way has **Choose another way
    into HellForge.
 3. **Use the Steam app:** no sign-in in HellForge at all. The Steam app on the PC downloads the build through its
    console, and HellForge copies it from there ([below](#with-the-steam-app)). It is also where setup goes when another
-   way cannot work: a game borrowed through Family Sharing, SteamCMD that cannot be set up, and Linux.
+   way cannot work: a game borrowed through Family Sharing, and SteamCMD that cannot be set up.
+
+Linux's native setup offers the same ways ([on Linux](#on-linux)).
 
 The progress of every way shows in one place, the Game files card under it.
 
@@ -93,7 +95,7 @@ started. The check is Windows' own, WinVerifyTrust, and the signer's organisatio
 (Valve's `steamcmd.exe` is signed "CN=Valve, O=Valve".) Valve updates SteamCMD itself, so no hash of it can be pinned.
 SteamCMD updates itself once, without a window, and is checked again.
 
-Then it starts in a window of its own with every command filled in except the password: `+@ShutdownOnFailedCommand 1
+Then it starts in a window of its own (on Linux, [a terminal window](#on-linux)) with every command filled in except the password: `+@ShutdownOnFailedCommand 1
 +login <account name> +download_depot 553850 <depot> <manifest>` for each pinned depot, and `+quit`. The card asks for
 the account name only: letters, digits and underscores, so it can never carry another command. It says: "Type your
 password in the SteamCMD window; it goes to Valve's own tool, not HellForge."
@@ -135,6 +137,25 @@ Setup watches the download by itself and says which file it still waits for. Onc
 copies them into the installation, each checked against the SHA-1 in `supported-build.json`. A file the Steam app wrote
 wrong is never copied. Choosing another way while setup waits starts that way instead.
 
+## On Linux
+
+The native launcher's setup offers the three ways, and gets the build before it confirms ownership, as on Windows. The
+QR code's and SteamCMD's downloads go straight into the installation, so the drive that holds Steam needs no room for
+them.
+
+- **SteamCMD needs a terminal window program**, since the launcher has no terminal for SteamCMD to ask for the
+  password in. Setup uses the first it finds on `PATH`: Konsole, Ptyxis, GNOME Terminal, GNOME Console (`kgx`),
+  Xfce Terminal, MATE Terminal, kitty, Alacritty, foot, WezTerm or xterm. With none, the card leaves SteamCMD out.
+- **A window that stays open after a failure.** When SteamCMD ends with an error, its window waits for Enter, so its
+  own words can be read.
+- **The Steam app's download goes onto the drive that holds Steam**, wherever HellForge is installed. When that drive
+  is too full, the card says how much is free and needed, and points to the other ways.
+- **A Steam app download that has already begun** is carried on with: setup then opens on the Steam app's card instead
+  of the QR code.
+
+The [Proton-only fallback](linux.md#proton-only-fallback) is the exception. There setup runs inside HellForge's network
+namespace, which has no route out, so it cannot reach Steam's servers and offers only the Steam app.
+
 ## When Steam does not allow the download
 
 Steam refuses the depot key or the manifest request code when the account that signed in does not own the game. The
@@ -143,9 +164,6 @@ download ([above](#with-the-steam-app), and
 [troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build)). It also shows it when the download from
 Steam's servers stops for another reason (a lost connection, Steam's servers refusing), and when SteamCMD cannot be set
 up. Choose another way tries the QR code or SteamCMD again; the files already downloaded are kept.
-
-On Linux, setup runs inside HellForge's network namespace, which has no route out, so it cannot reach Steam's servers
-and offers only the Steam app ([linux.md](linux.md#steams-download-of-the-supported-build)).
 
 ## After a game update
 
