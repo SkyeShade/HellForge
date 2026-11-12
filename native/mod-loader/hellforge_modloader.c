@@ -700,6 +700,8 @@ static int ApiGetStat(HfMod* mod, const HfStat* stat, HfLiveValue* out)
     return result;
 }
 
+#include "decode_top.c" /* when game.dll counts as decoded: the top of each section unpacked */
+
 static int GameLoaded(void)
 {
     uintptr_t base = ApiModuleBase(g_pinModule, NULL);
@@ -708,7 +710,7 @@ static int GameLoaded(void)
     for (int i = 0; i < g_pinCount; i++)
     {
         uint8_t bytes[32];
-        if (!SafeRead(base + g_pinRva, bytes, g_pinLength[i]) && memcmp(bytes, g_pins[i], g_pinLength[i]) == 0) return 1;
+        if (!SafeRead(base + g_pinRva, bytes, g_pinLength[i]) && memcmp(bytes, g_pins[i], g_pinLength[i]) == 0) return DecodedToTheTop(base);
     }
     return 0;
 }
@@ -1055,6 +1057,7 @@ static int ReadPlan(const wchar_t* path)
         static const char* const kPins[] = {"7575488b15fafc06024881c2e4030000", "6690488d153a1084000f1f8000000000"};
         snprintf(g_pinModule, sizeof g_pinModule, "%s", "game.dll");
         g_pinRva = 0x12b663d;
+        g_decodeTop = 1;
         for (int i = 0; i < 2; i++, g_pinCount++) g_pinLength[g_pinCount] = ParseHex(kPins[i], g_pins[g_pinCount], 32);
     }
     return 0;

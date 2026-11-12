@@ -204,6 +204,37 @@ static void StateMovesDecodeFixture(void)
         "setup_game held waits for the move, or refuses it before the allocation");
 }
 
+/* game.dll unpacked to the top (hellforge_modloader.c DecodedToTheTop): with the build's pin read, the game waits for the
+ * top of each section; one still packed holds it, until DECODE_TOP_WAIT has passed; without the build's pin it counts at once. */
+static void DecodeTopFixture(void)
+{
+    uint8_t* image = (uint8_t*)VirtualAlloc(NULL, 0x3998000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert(image != NULL);
+    uintptr_t base = (uintptr_t)image;
+    int saved = g_decodeTop;
+    g_decodeTop = 0;
+    assert(DecodedToTheTop(base)); /* a plan's own pin: as before */
+    g_decodeTop = 1;
+    g_decodePinRead = 0;
+    assert(!DecodedToTheTop(base) && g_decodePinRead != 0); /* all three still packed */
+    for (size_t i = 0; i + 1 < sizeof kDecodeTop / sizeof *kDecodeTop; i++) memcpy(image + kDecodeTop[i].rva, kDecodeTop[i].bytes, 16);
+    assert(!DecodedToTheTop(base)); /* .pdata's top still packed */
+    size_t last = sizeof kDecodeTop / sizeof *kDecodeTop - 1;
+    memcpy(image + kDecodeTop[last].rva, kDecodeTop[last].bytes, 16);
+    assert(DecodedToTheTop(base));
+    /* never unpacked: counted as decoded once the wait has passed */
+    memset(image + kDecodeTop[0].rva, 0, 16);
+    g_decodePinRead = GetTickCount64() - DECODE_TOP_WAIT + 1000;
+    assert(!DecodedToTheTop(base));
+    g_decodePinRead = GetTickCount64() - DECODE_TOP_WAIT - 1;
+    assert(DecodedToTheTop(base));
+    g_decodeTop = saved;
+    g_decodePinRead = 0;
+    VirtualFree(image, 0, MEM_RELEASE);
+    puts("PASS game.dll decoded: with the build's pin read, the top of .text, .rdata and .pdata must read as unpacked too; "
+        "one still packed holds the start until the wait runs out; a plan's own pin counts at once");
+}
+
 /* The armory's room: a list full counting its vanilla records refuses by type, and entity copies take no card. */
 static void ArmoryRoomFixture(void)
 {
