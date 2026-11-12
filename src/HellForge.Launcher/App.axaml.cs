@@ -18,8 +18,7 @@ public partial class App : Application
             var paths = LauncherPaths.Find(out var problem);
             var installerPayload = OperatingSystem.IsLinux()
                 ? Environment.GetEnvironmentVariable("HELLFORGE_INSTALLER_PAYLOAD") ??
-                    (File.Exists(Path.Combine(AppContext.BaseDirectory, "HellForge-Linux.zip"))
-                        ? Path.Combine(AppContext.BaseDirectory, "HellForge-Linux.zip") : null)
+                    HellForge.Core.LinuxAppInstaller.FindPackage(AppContext.BaseDirectory)
                 : null;
             if (OperatingSystem.IsLinux() && installerPayload != null)
                 desktop.MainWindow = new LinuxInstallerWindow(installerPayload);
