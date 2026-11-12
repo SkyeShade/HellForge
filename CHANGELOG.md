@@ -12,6 +12,11 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **25 more engine functions for units, each checked in the game.** `hf_fn_` reaches a unit's local and world pose,
+  position, rotation and scale, its meshes, nodes by name and scene graph parents. It also counts a unit's lights,
+  cameras, terrains and LOD objects, and tells whether it is alive, its animation setup, level, id and resource name. Each
+  one's arguments and return value were checked in a mission. Two have a condition, written in their description: the
+  animation modes need an animation blender, and `UnitNode` needs a name `UnitHasNode` found (#375).
 - **A data spec can fix a game shader.** The new `edit` entry changes bytes in one of the game's shader stages; HellForge
   signs the stage again and refuses the edit on a game build whose shader differs
   ([data specs](docs/modding/data.md#edit), #350).

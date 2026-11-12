@@ -6474,4 +6474,324 @@ static inline int hf_hook_DeactivateEntity(HfMod* mod, HfFn_DeactivateEntity det
     return hf_hook_function_(mod, "DeactivateEntity", (void*)detour, (void**)original, priority);
 }
 
+/* UnitLocalPosition (helldivers2.exe+0x1FC450; hook or call). A node's position in its parent's space: 3 floats, inside
+ * its local transform (UnitLocalPose +0x24): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x0.
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root), below UnitNumSceneGraphItems
+ * From the Unit table's slot 0 (+0x0) and its Lua twin Unit.local_position; the arguments from the code, the return
+ * from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef const float* (*HfFn_UnitLocalPosition)(uint32_t unit, int32_t node);
+static inline HfFn_UnitLocalPosition hf_fn_UnitLocalPosition(HfMod* mod) { return (HfFn_UnitLocalPosition)hf_function_(mod, "UnitLocalPosition"); }
+static inline int hf_hook_UnitLocalPosition(HfMod* mod, HfFn_UnitLocalPosition detour, HfFn_UnitLocalPosition* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitLocalPosition", (void*)detour, (void**)original, priority);
+}
+
+/* UnitLocalRotation (helldivers2.exe+0x1FC490; hook or call). A node's rotation in its parent's space, written to out
+ * as a quaternion; returns out: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x8.
+ *   out   where the rotation goes: a quaternion, 4 floats (x, y, z, w)
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root), below UnitNumSceneGraphItems
+ * From the Unit table's slot 1 (+0x8) and its Lua twin Unit.local_rotation; the arguments from the code, the return
+ * from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef float* (*HfFn_UnitLocalRotation)(float* out, uint32_t unit, int32_t node);
+static inline HfFn_UnitLocalRotation hf_fn_UnitLocalRotation(HfMod* mod) { return (HfFn_UnitLocalRotation)hf_function_(mod, "UnitLocalRotation"); }
+static inline int hf_hook_UnitLocalRotation(HfMod* mod, HfFn_UnitLocalRotation detour, HfFn_UnitLocalRotation* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitLocalRotation", (void*)detour, (void**)original, priority);
+}
+
+/* UnitLocalScale (helldivers2.exe+0x1FC4E0; hook or call). A node's scale in its parent's space: 3 floats, inside its
+ * local transform (UnitLocalPose +0x30): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x10.
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root), below UnitNumSceneGraphItems
+ * From the Unit table's slot 2 (+0x10) and its Lua twin Unit.local_scale; the arguments from the code, the return from
+ * the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef const float* (*HfFn_UnitLocalScale)(uint32_t unit, int32_t node);
+static inline HfFn_UnitLocalScale hf_fn_UnitLocalScale(HfMod* mod) { return (HfFn_UnitLocalScale)hf_function_(mod, "UnitLocalScale"); }
+static inline int hf_hook_UnitLocalScale(HfMod* mod, HfFn_UnitLocalScale detour, HfFn_UnitLocalScale* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitLocalScale", (void*)detour, (void**)original, priority);
+}
+
+/* UnitLocalPose (helldivers2.exe+0x1FC520; hook or call). A node's local transform: a 3x3 rotation (9 floats), then its
+ * position (+0x24, 3 floats) and scale (+0x30, 3 floats): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x18.
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root), below UnitNumSceneGraphItems
+ * From the Unit table's slot 3 (+0x18) and its Lua twin Unit.local_pose; the arguments from the code, the return from
+ * the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef const float* (*HfFn_UnitLocalPose)(uint32_t unit, int32_t node);
+static inline HfFn_UnitLocalPose hf_fn_UnitLocalPose(HfMod* mod) { return (HfFn_UnitLocalPose)hf_function_(mod, "UnitLocalPose"); }
+static inline int hf_hook_UnitLocalPose(HfMod* mod, HfFn_UnitLocalPose detour, HfFn_UnitLocalPose* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitLocalPose", (void*)detour, (void**)original, priority);
+}
+
+/* UnitWorldPose (helldivers2.exe+0x1FD220; hook or call). A node's world pose: a 4x4 matrix of floats, its position in
+ * the last row (+0x30). The game reads it from more than 1,500 places: the Unit table's (EngineApi +0x18, 0x27C8F10)
+ * +0x90.
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root), below UnitNumSceneGraphItems
+ * From the Unit table's slot 18 (+0x90) and its Lua twin Unit.world_pose; the arguments from the code, the return from
+ * the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef const float* (*HfFn_UnitWorldPose)(uint32_t unit, int32_t node);
+static inline HfFn_UnitWorldPose hf_fn_UnitWorldPose(HfMod* mod) { return (HfFn_UnitWorldPose)hf_function_(mod, "UnitWorldPose"); }
+static inline int hf_hook_UnitWorldPose(HfMod* mod, HfFn_UnitWorldPose detour, HfFn_UnitWorldPose* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitWorldPose", (void*)detour, (void**)original, priority);
+}
+
+/* UnitWorldRotation (helldivers2.exe+0x1FD1D0; hook or call). A node's world rotation, written to out as a quaternion;
+ * returns out: the Unit table's (EngineApi +0x18, 0x27C8F10) +0xb0.
+ *   out   where the rotation goes: a quaternion, 4 floats (x, y, z, w)
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root), below UnitNumSceneGraphItems
+ * From the Unit table's slot 22 (+0xb0) and its Lua twin Unit.world_rotation; the arguments from the code, the return
+ * from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef float* (*HfFn_UnitWorldRotation)(float* out, uint32_t unit, int32_t node);
+static inline HfFn_UnitWorldRotation hf_fn_UnitWorldRotation(HfMod* mod) { return (HfFn_UnitWorldRotation)hf_function_(mod, "UnitWorldRotation"); }
+static inline int hf_hook_UnitWorldRotation(HfMod* mod, HfFn_UnitWorldRotation detour, HfFn_UnitWorldRotation* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitWorldRotation", (void*)detour, (void**)original, priority);
+}
+
+/* UnitNumMeshes (helldivers2.exe+0x200CD0; hook or call). How many meshes a unit has: the Unit table's (EngineApi
+ * +0x18, 0x27C8F10) +0x1a8.
+ *   unit  the unit's handle
+ * From the Unit table's slot 53 (+0x1a8) and its Lua twin Unit.num_meshes; the arguments from the code, the return from
+ * the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitNumMeshes)(uint32_t unit);
+static inline HfFn_UnitNumMeshes hf_fn_UnitNumMeshes(HfMod* mod) { return (HfFn_UnitNumMeshes)hf_function_(mod, "UnitNumMeshes"); }
+static inline int hf_hook_UnitNumMeshes(HfMod* mod, HfFn_UnitNumMeshes detour, HfFn_UnitNumMeshes* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitNumMeshes", (void*)detour, (void**)original, priority);
+}
+
+/* UnitMesh (helldivers2.exe+0x200D20; hook or call). A unit's mesh object by index: the Unit table's (EngineApi +0x18,
+ * 0x27C8F10) +0x1b8.
+ *   unit   the unit's handle
+ *   index  the mesh, below UnitNumMeshes
+ * From the Unit table's slot 55 (+0x1b8) and its Lua twin Unit.mesh; the arguments from the code, the return from the
+ * game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef void* (*HfFn_UnitMesh)(uint32_t unit, int32_t index);
+static inline HfFn_UnitMesh hf_fn_UnitMesh(HfMod* mod) { return (HfFn_UnitMesh)hf_function_(mod, "UnitMesh"); }
+static inline int hf_hook_UnitMesh(HfMod* mod, HfFn_UnitMesh detour, HfFn_UnitMesh* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitMesh", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAlive (helldivers2.exe+0x1FEEB0; hook or call). 1 while the handle names a unit that exists, 0 once it is gone.
+ * Only the low byte is the answer: the rest of the register is left over: the Unit table's (EngineApi +0x18, 0x27C8F10)
+ * +0x720.
+ *   unit  the unit's handle
+ * From the Unit table's slot 228 (+0x720) and its Lua twin Unit.alive; the arguments from the code, the return from the
+ * game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint8_t (*HfFn_UnitAlive)(uint32_t unit);
+static inline HfFn_UnitAlive hf_fn_UnitAlive(HfMod* mod) { return (HfFn_UnitAlive)hf_function_(mod, "UnitAlive"); }
+static inline int hf_hook_UnitAlive(HfMod* mod, HfFn_UnitAlive detour, HfFn_UnitAlive* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAlive", (void*)detour, (void**)original, priority);
+}
+
+/* UnitHasAnimationBlender (helldivers2.exe+0x2016E0; hook or call). 1 when the unit has an animation blender (what the
+ * animation calls need), else 0: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x348.
+ *   unit  the unit's handle
+ * From the Unit table's slot 105 (+0x348) and its Lua twin Unit.has_animation_blender; the arguments from the code, the
+ * return from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint8_t (*HfFn_UnitHasAnimationBlender)(uint32_t unit);
+static inline HfFn_UnitHasAnimationBlender hf_fn_UnitHasAnimationBlender(HfMod* mod) { return (HfFn_UnitHasAnimationBlender)hf_function_(mod, "UnitHasAnimationBlender"); }
+static inline int hf_hook_UnitHasAnimationBlender(HfMod* mod, HfFn_UnitHasAnimationBlender detour, HfFn_UnitHasAnimationBlender* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitHasAnimationBlender", (void*)detour, (void**)original, priority);
+}
+
+/* UnitHasAnimationStateMachine (helldivers2.exe+0x2016B0; hook or call). 1 when the unit has an animation state
+ * machine, else 0: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x340.
+ *   unit  the unit's handle
+ * From the Unit table's slot 104 (+0x340) and its Lua twin Unit.has_animation_state_machine; the arguments from the
+ * code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint8_t (*HfFn_UnitHasAnimationStateMachine)(uint32_t unit);
+static inline HfFn_UnitHasAnimationStateMachine hf_fn_UnitHasAnimationStateMachine(HfMod* mod) { return (HfFn_UnitHasAnimationStateMachine)hf_function_(mod, "UnitHasAnimationStateMachine"); }
+static inline int hf_hook_UnitHasAnimationStateMachine(HfMod* mod, HfFn_UnitHasAnimationStateMachine detour, HfFn_UnitHasAnimationStateMachine* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitHasAnimationStateMachine", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationRootMode (helldivers2.exe+0x202DA0; hook or call). How the root bone's animation moves the unit, as
+ * bits: 1 position, 2 rotation, 4 scale (0 none, 7 all three); in Lua the names delta_position, delta_rotation and so
+ * on. Call it only on a unit whose UnitHasAnimationBlender is 1: it reads the blender without checking for one: the
+ * Unit table's (EngineApi +0x18, 0x27C8F10) +0x208.
+ *   unit  the unit's handle
+ * From the Unit table's slot 65 (+0x208) and its Lua twin Unit.animation_root_mode; the arguments from the code, the
+ * return from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitAnimationRootMode)(uint32_t unit);
+static inline HfFn_UnitAnimationRootMode hf_fn_UnitAnimationRootMode(HfMod* mod) { return (HfFn_UnitAnimationRootMode)hf_function_(mod, "UnitAnimationRootMode"); }
+static inline int hf_hook_UnitAnimationRootMode(HfMod* mod, HfFn_UnitAnimationRootMode detour, HfFn_UnitAnimationRootMode* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationRootMode", (void*)detour, (void**)original, priority);
+}
+
+/* UnitAnimationBoneMode (helldivers2.exe+0x202DE0; hook or call). Which parts of a bone its animation drives, as bits:
+ * 1 position, 2 rotation, 4 scale (0 none, 7 all three); in Lua position, rotation, position_and_rotation and so on.
+ * Call it only on a unit whose UnitHasAnimationBlender is 1: it reads the blender without checking for one: the Unit
+ * table's (EngineApi +0x18, 0x27C8F10) +0x210.
+ *   unit  the unit's handle
+ * From the Unit table's slot 66 (+0x210) and its Lua twin Unit.animation_bone_mode; the arguments from the code, the
+ * return from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitAnimationBoneMode)(uint32_t unit);
+static inline HfFn_UnitAnimationBoneMode hf_fn_UnitAnimationBoneMode(HfMod* mod) { return (HfFn_UnitAnimationBoneMode)hf_function_(mod, "UnitAnimationBoneMode"); }
+static inline int hf_hook_UnitAnimationBoneMode(HfMod* mod, HfFn_UnitAnimationBoneMode detour, HfFn_UnitAnimationBoneMode* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitAnimationBoneMode", (void*)detour, (void**)original, priority);
+}
+
+/* UnitNumSceneGraphItems (helldivers2.exe+0x2047B0; hook or call). How many scene graph nodes a unit has: the Unit
+ * table's (EngineApi +0x18, 0x27C8F10) +0x4f8.
+ *   unit  the unit's handle
+ * From the Unit table's slot 159 (+0x4f8) and its Lua twin Unit.num_scene_graph_items; the arguments from the code, the
+ * return from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitNumSceneGraphItems)(uint32_t unit);
+static inline HfFn_UnitNumSceneGraphItems hf_fn_UnitNumSceneGraphItems(HfMod* mod) { return (HfFn_UnitNumSceneGraphItems)hf_function_(mod, "UnitNumSceneGraphItems"); }
+static inline int hf_hook_UnitNumSceneGraphItems(HfMod* mod, HfFn_UnitNumSceneGraphItems detour, HfFn_UnitNumSceneGraphItems* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitNumSceneGraphItems", (void*)detour, (void**)original, priority);
+}
+
+/* UnitSceneGraphParent (helldivers2.exe+0x2047D0; hook or call). A node's parent, packed: the low 16 bits are 1 when
+ * the node has a parent, and the parent's node index is in the high 16 bits (the root has none): the Unit table's
+ * (EngineApi +0x18, 0x27C8F10) +0x500.
+ *   unit  the unit's handle
+ *   node  the scene graph node (0 the root), below UnitNumSceneGraphItems
+ * From the Unit table's slot 160 (+0x500) and its Lua twin Unit.scene_graph_parent; the arguments from the code, the
+ * return from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitSceneGraphParent)(uint32_t unit, int32_t node);
+static inline HfFn_UnitSceneGraphParent hf_fn_UnitSceneGraphParent(HfMod* mod) { return (HfFn_UnitSceneGraphParent)hf_function_(mod, "UnitSceneGraphParent"); }
+static inline int hf_hook_UnitSceneGraphParent(HfMod* mod, HfFn_UnitSceneGraphParent detour, HfFn_UnitSceneGraphParent* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitSceneGraphParent", (void*)detour, (void**)original, priority);
+}
+
+/* UnitNumTerrains (helldivers2.exe+0x203DD0; hook or call). How many terrains a unit has: the Unit table's (EngineApi
+ * +0x18, 0x27C8F10) +0x450.
+ *   unit  the unit's handle
+ * From the Unit table's slot 138 (+0x450) and its Lua twin Unit.num_terrains; the arguments from the code, the return
+ * from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitNumTerrains)(uint32_t unit);
+static inline HfFn_UnitNumTerrains hf_fn_UnitNumTerrains(HfMod* mod) { return (HfFn_UnitNumTerrains)hf_function_(mod, "UnitNumTerrains"); }
+static inline int hf_hook_UnitNumTerrains(HfMod* mod, HfFn_UnitNumTerrains detour, HfFn_UnitNumTerrains* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitNumTerrains", (void*)detour, (void**)original, priority);
+}
+
+/* UnitNumLodObjects (helldivers2.exe+0x204A70; hook or call). How many LOD objects a unit has: the Unit table's
+ * (EngineApi +0x18, 0x27C8F10) +0x538.
+ *   unit  the unit's handle
+ * From the Unit table's slot 167 (+0x538) and its Lua twin Unit.num_lod_objects; the arguments from the code, the
+ * return from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitNumLodObjects)(uint32_t unit);
+static inline HfFn_UnitNumLodObjects hf_fn_UnitNumLodObjects(HfMod* mod) { return (HfFn_UnitNumLodObjects)hf_function_(mod, "UnitNumLodObjects"); }
+static inline int hf_hook_UnitNumLodObjects(HfMod* mod, HfFn_UnitNumLodObjects detour, HfFn_UnitNumLodObjects* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitNumLodObjects", (void*)detour, (void**)original, priority);
+}
+
+/* UnitNumLights (helldivers2.exe+0x204CF0; hook or call). How many lights a unit has: the Unit table's (EngineApi
+ * +0x18, 0x27C8F10) +0x580.
+ *   unit  the unit's handle
+ * From the Unit table's slot 176 (+0x580) and its Lua twin Unit.num_lights; the arguments from the code, the return
+ * from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitNumLights)(uint32_t unit);
+static inline HfFn_UnitNumLights hf_fn_UnitNumLights(HfMod* mod) { return (HfFn_UnitNumLights)hf_function_(mod, "UnitNumLights"); }
+static inline int hf_hook_UnitNumLights(HfMod* mod, HfFn_UnitNumLights detour, HfFn_UnitNumLights* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitNumLights", (void*)detour, (void**)original, priority);
+}
+
+/* UnitNumCameras (helldivers2.exe+0x1FC3C0; hook or call). How many cameras a unit has: the Unit table's (EngineApi
+ * +0x18, 0x27C8F10) +0x6a0.
+ *   unit  the unit's handle
+ * From the Unit table's slot 212 (+0x6a0) and its Lua twin Unit.num_cameras; the arguments from the code, the return
+ * from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitNumCameras)(uint32_t unit);
+static inline HfFn_UnitNumCameras hf_fn_UnitNumCameras(HfMod* mod) { return (HfFn_UnitNumCameras)hf_function_(mod, "UnitNumCameras"); }
+static inline int hf_hook_UnitNumCameras(HfMod* mod, HfFn_UnitNumCameras detour, HfFn_UnitNumCameras* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitNumCameras", (void*)detour, (void**)original, priority);
+}
+
+/* UnitHasNode (helldivers2.exe+0x1FE590; hook or call). 1 when the unit has a node of this name, else 0. Only the low
+ * byte is the answer: the rest of the register is left over: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x6d0.
+ *   unit  the unit's handle
+ *   name  the node's name as an IdString32: the high 32 bits of MurmurHash64A(name, length, 0)
+ * From the Unit table's slot 218 (+0x6d0) and its Lua twin Unit.has_node; the arguments from the code, the return from
+ * the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint8_t (*HfFn_UnitHasNode)(uint32_t unit, uint32_t name);
+static inline HfFn_UnitHasNode hf_fn_UnitHasNode(HfMod* mod) { return (HfFn_UnitHasNode)hf_function_(mod, "UnitHasNode"); }
+static inline int hf_hook_UnitHasNode(HfMod* mod, HfFn_UnitHasNode detour, HfFn_UnitHasNode* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitHasNode", (void*)detour, (void**)original, priority);
+}
+
+/* UnitNode (helldivers2.exe+0x1FE5E0; hook or call). A node's index by name, below UnitNumSceneGraphItems. Call it only
+ * after UnitHasNode says 1: Lua's Unit.node stops on a missing name, and that case is not reviewed: the Unit table's
+ * (EngineApi +0x18, 0x27C8F10) +0x6d8.
+ *   unit  the unit's handle
+ *   name  the node's name as an IdString32: the high 32 bits of MurmurHash64A(name, length, 0)
+ * From the Unit table's slot 219 (+0x6d8) and its Lua twin Unit.node; the arguments from the code, the return from the
+ * game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint32_t (*HfFn_UnitNode)(uint32_t unit, uint32_t name);
+static inline HfFn_UnitNode hf_fn_UnitNode(HfMod* mod) { return (HfFn_UnitNode)hf_function_(mod, "UnitNode"); }
+static inline int hf_hook_UnitNode(HfMod* mod, HfFn_UnitNode detour, HfFn_UnitNode* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitNode", (void*)detour, (void**)original, priority);
+}
+
+/* UnitLevel (helldivers2.exe+0x1FEE50; hook or call). The level a unit belongs to, or NULL; most units have none: the
+ * Unit table's (EngineApi +0x18, 0x27C8F10) +0x710.
+ *   unit  the unit's handle
+ * From the Unit table's slot 226 (+0x710) and its Lua twin Unit.level; the arguments from the code, the return from the
+ * game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef void* (*HfFn_UnitLevel)(uint32_t unit);
+static inline HfFn_UnitLevel hf_fn_UnitLevel(HfMod* mod) { return (HfFn_UnitLevel)hf_function_(mod, "UnitLevel"); }
+static inline int hf_hook_UnitLevel(HfMod* mod, HfFn_UnitLevel detour, HfFn_UnitLevel* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitLevel", (void*)detour, (void**)original, priority);
+}
+
+/* UnitId (helldivers2.exe+0x1FEED0; hook or call). A unit's 64-bit id, or 0 when it has none. It is a value, not a
+ * pointer: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x728.
+ *   unit  the unit's handle
+ * From the Unit table's slot 229 (+0x728) and its Lua twin Unit.id; the arguments from the code, the return from the
+ * game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint64_t (*HfFn_UnitId)(uint32_t unit);
+static inline HfFn_UnitId hf_fn_UnitId(HfMod* mod) { return (HfFn_UnitId)hf_function_(mod, "UnitId"); }
+static inline int hf_hook_UnitId(HfMod* mod, HfFn_UnitId detour, HfFn_UnitId* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitId", (void*)detour, (void**)original, priority);
+}
+
+/* UnitResourceName (helldivers2.exe+0x1FC120; hook or call). The unit resource's name as an IdString64 (MurmurHash64A
+ * of the path, seed 0): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x750.
+ *   unit  the unit's handle
+ * From the Unit table's slot 234 (+0x750) and its Lua twin Unit.resource_name; the arguments from the code, the return
+ * from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef uint64_t (*HfFn_UnitResourceName)(uint32_t unit);
+static inline HfFn_UnitResourceName hf_fn_UnitResourceName(HfMod* mod) { return (HfFn_UnitResourceName)hf_function_(mod, "UnitResourceName"); }
+static inline int hf_hook_UnitResourceName(HfMod* mod, HfFn_UnitResourceName detour, HfFn_UnitResourceName* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitResourceName", (void*)detour, (void**)original, priority);
+}
+
+/* UnitDebugName (helldivers2.exe+0x1FEF30; hook or call). A unit's debug name. In this build that is "#ID[" +
+ * UnitResourceName in 16 hex digits + "]": the Unit table's (EngineApi +0x18, 0x27C8F10) +0x738.
+ *   unit  the unit's handle
+ * From the Unit table's slot 231 (+0x738) and its Lua twin Unit.debug_name; the arguments from the code, the return
+ * from the game's callers or the twin, and both checked in the game on a mission (build 25480438). */
+typedef const char* (*HfFn_UnitDebugName)(uint32_t unit);
+static inline HfFn_UnitDebugName hf_fn_UnitDebugName(HfMod* mod) { return (HfFn_UnitDebugName)hf_function_(mod, "UnitDebugName"); }
+static inline int hf_hook_UnitDebugName(HfMod* mod, HfFn_UnitDebugName detour, HfFn_UnitDebugName* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "UnitDebugName", (void*)detour, (void**)original, priority);
+}
+
 #endif
