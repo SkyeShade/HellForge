@@ -178,6 +178,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Windows, sandbox on: alt-tab no longer shows "OpenMem failed. Err=5".** The box came from a tablet driver's
+  `Wintab32.dll`, which the game loads and which, in the sandbox, is refused its own shared memory. A sandboxed game is
+  now kept from the tablet driver, as on a PC without one: the game has no use for it, and a pen still moves the mouse (#376).
 - **Windows: a session cut short no longer sends you back to first-time setup.** After a restart, a crash or a game
   that would not close, HellForge's stand-ins for three game DLLs stayed in `gamein`. The launcher took that copy for
   an unfinished setup, which then downloaded the build from Steam again. The originals now go back when the launcher

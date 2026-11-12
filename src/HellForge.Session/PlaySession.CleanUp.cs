@@ -240,7 +240,9 @@ sealed partial class PlaySession
     // named here (SandboxRefusals).
     void SayRefusals()
     {
-        if (result["networkCensus"]?["deniedTargets"] is not JsonArray denied) return;
+        var census = result["networkCensus"];
+        if (SandboxRefusals.DescribeTablet((long?)census?["tabletRefused"] ?? 0, (bool?)census?["tabletLoaded"] ?? false) is { } tablet) Say(tablet);
+        if (census?["deniedTargets"] is not JsonArray denied) return;
         var refusals = denied.OfType<JsonObject>().Select(row => new SandboxRefusals.Refusal((string?)row["to"] ?? "?", (string?)row["caller"] ?? "?",
             (long?)row["count"] ?? 1)).ToList();
         if (SandboxRefusals.Describe(refusals, (long?)result["networkCensus"]?["denied"]) is { } line) Say(line);
