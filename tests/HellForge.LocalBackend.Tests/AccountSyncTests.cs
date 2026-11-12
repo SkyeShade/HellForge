@@ -405,7 +405,8 @@ static class AccountSyncTests
         long beforeVanillaXp;
         using (var store = ProfileStore.Open(profileDir, "starter"))
         {
-            store.ApplyMissionRewards(0, new Dictionary<uint, long> { [LocalArmoryItem] = 1, [Medals] = 5, [Requisition] = 20000, [CommonSamples] = 30 });
+            store.ApplyMissionRewards(0, new Dictionary<uint, long> { [LocalArmoryItem] = 1, [Medals] = 5, [Requisition] = 20000, [CommonSamples] = 30,
+                [PaidContentSet.ForgeCreditsWallet] = 800 });
             store.TryChange((progression, _) => { ModPackages.SetLevel(progression, 0x5EED0099, 4); return true; });
             beforeVanillaXp = Experience(store.Current());
             var shipBefore = store.Current()["progression"]!["shipName"]?.ToJsonString();
@@ -420,8 +421,9 @@ static class AccountSyncTests
                 "Warbond unlocks or packages were not merged.");
             check(progression["shipName"]?.ToJsonString() == shipBefore && !progression.ContainsKey("location") && Whole(progression["onboardingFlags"]) != 16350331,
                 "Ship or tutorial imported though left out by default.");
-            check(!items.Keys.Any(PaidContentSet.IsSuperCredits) && !items.ContainsKey(ids.OwnedToken) && !items.ContainsKey(ids.StoreItem) && !items.ContainsKey(Knight),
-                "Super Credits or premium items were written into the profile.");
+            check(!items.Keys.Any(id => PaidContentSet.IsSuperCredits(id) && !PaidContentSet.IsForgeCredits(id)) && !items.ContainsKey(ids.OwnedToken) &&
+                !items.ContainsKey(ids.StoreItem) && !items.ContainsKey(Knight), "Super Credits or premium items were written into the profile.");
+            check(items.GetValueOrDefault(PaidContentSet.ForgeCreditsWallet) == 800, "An import did not keep the profile's Forge Credits as they were (or took the account's Super Credits).");
             check(ModPackages.Find(progression, 0x5EED0099) != null, "An import lost a mod weapon's level.");
         }
         check(ProfileBackups.List(profileDir) is [{ Reason: "import" }], "The first import did not back the profile up.");
@@ -519,7 +521,8 @@ static class AccountSyncTests
     }
 
     // An installation folder with a profile folder and a sealed snapshot for Player: a token, a Superstore item, DLC gear, a premium warbond
-    // item, an armory item, currencies, Super Credits, and the progression of the 2026-10-24 capture's shape.
+    // item, an armory item, currencies, Super Credits (9,000 in the wallet the game shows, which is the Forge Credits wallet locally), and the
+    // progression of the 2026-10-24 capture's shape.
     static (string ProfileDir, string SnapshotDir) Install(string root, string name, Ids ids)
     {
         var profileDir = Path.Combine(root, name, "profiles", "player");
@@ -528,7 +531,7 @@ static class AccountSyncTests
         Directory.CreateDirectory(snapshot);
         string Item(uint id, long amount) => "{\"mixId\":" + id + ",\"amount\":" + amount + ",\"isDiscovered\":true}";
         File.WriteAllText(Path.Combine(snapshot, InventorySync.InventoryFile), "{\"items\":[" + string.Join(",", Item(ids.OwnedToken, 1), Item(ids.StoreItem, 1), Item(Knight, 1),
-            Item(ids.OwnedWarbondItem, 1), Item(VanillaArmoryItem, 2), Item(Medals, 119), Item(Requisition, 50000), Item(SuperCreditWallet, 180), Item(SuperCreditPrice, 180)) +
+            Item(ids.OwnedWarbondItem, 1), Item(VanillaArmoryItem, 2), Item(Medals, 119), Item(Requisition, 50000), Item(SuperCreditWallet, 180), Item(SuperCreditPrice, 180), Item(PaidContentSet.ForgeCreditsWallet, 9000)) +
             "],\"loadouts\":[]}");
         File.WriteAllText(Path.Combine(snapshot, InventorySync.ProgressionFile), """
             {"experience":485592,"selectedProgressionPackage":131213678,"activeSeasonPass":1929468580,"onboardingState":128,"onboardingFlags":16350331,
