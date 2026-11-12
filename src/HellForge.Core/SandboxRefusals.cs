@@ -33,7 +33,38 @@ public static class SandboxRefusals
         ["fraps64.dll"] = "Fraps",
         ["action_x64.dll"] = "Action!",
         ["presentmon64.dll"] = "PresentMon",
+        ["nahimicosd.dll"] = "Nahimic's audio overlay",
+        ["nahimicmsiosd.dll"] = "Nahimic's audio overlay",
+        ["audiodevprops2.dll"] = "Nahimic's audio overlay",
     };
+
+    // Programs that crash a sandboxed game as it starts when they are refused what they ask for, and how a player turns
+    // them off. Nahimic (A-Volute's audio software, bundled with MSI, Dell, Lenovo and ASUS audio drivers) crashed every
+    // sandboxed start it was refused in, in the bug reports (#369, ticket 0402); other refused overlays never did.
+    const string TurnOffNahimic = "Turn Nahimic off (stop and disable the Nahimic service in Windows' Services app, or uninstall Nahimic)";
+    static readonly Dictionary<string, (string Name, string TurnOff)> Crashers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["nahimicosd.dll"] = ("Nahimic's audio overlay", TurnOffNahimic),
+        ["nahimicmsiosd.dll"] = ("Nahimic's audio overlay", TurnOffNahimic),
+        ["audiodevprops2.dll"] = ("Nahimic's audio overlay", TurnOffNahimic),
+    };
+
+    /// <summary>
+    /// For a sandboxed game that crashed as it started: what to do when a program known to crash it there was refused,
+    /// or null.
+    /// </summary>
+    public static string? CrashHint(IEnumerable<Refusal> refusals)
+    {
+        var modules = refusals.Select(r => ModuleOf(r.Caller)).Where(Crashers.ContainsKey).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (modules.Count == 0) return null;
+        var (name, turnOff) = Crashers[modules[0]];
+        return $"{name} ({string.Join(", ", modules)}) was in the game, and the sandbox refused it what it asked for, which crashes the game as it " +
+            $"starts. {turnOff} and press PLAY, or turn the sandbox off in Settings > Sandbox.";
+    }
+
+    /// <summary>What a sandboxed game that crashed as it started, with no known cause, is worth trying.</summary>
+    public const string CrashAdvice = "Press PLAY to try again. If it closes again, press PLAY once with the sandbox off (Settings > Sandbox): if the " +
+        "game then starts, a program on this PC breaks in the sandbox. Either way, save the crash report on the Play page and attach it to a GitHub issue.";
 
     const int NamesPerModule = 3;
 

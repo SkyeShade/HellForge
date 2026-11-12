@@ -76,6 +76,17 @@ static class LaunchFailureTests
             check(unrecorded.StartsWith("The game closed while starting, before HellForge could prepare it for the local backend " +
                 "(exit code 0xC0000005: the game crashed (access violation)). Press PLAY", StringComparison.Ordinal), "No record: " + unrecorded);
             check(LaunchFailure.Closed(LaunchFailure.Connect, 0, null, WindowsCrash.Owner.Unknown).Contains("(exit code 0x00000000)."), "A plain exit has no meaning.");
+            // sandboxed: a known crasher comes first, even over a crash recorded in Windows' code (#369: ntdll.dll); without one,
+            // a run with the sandbox off is the next thing to try; a plain exit gets no sandbox advice
+            var ntdll = rtss with { Module = "ntdll.dll", Offset = "0x1f544" };
+            var named = LaunchFailure.Closed(LaunchFailure.Prepare, AccessViolation, ntdll, WindowsCrash.Owner.Windows, true, "Nahimic's audio overlay (NahimicOSD.dll) was in the game.");
+            check(named.Contains("in ntdll.dll+0x1f544). Nahimic's audio overlay") && !named.Contains("save the crash report"), "The known crasher instead of the generic advice: " + named);
+            var sandboxed = LaunchFailure.Closed(LaunchFailure.Prepare, AccessViolation, ntdll, WindowsCrash.Owner.Windows, true);
+            check(sandboxed.Contains("press PLAY once with the sandbox off (Settings > Sandbox)") && sandboxed.Contains("save the crash report"), "A sandboxed crash: " + sandboxed);
+            check(!LaunchFailure.Closed(LaunchFailure.Prepare, AccessViolation, ntdll, WindowsCrash.Owner.Windows).Contains("sandbox"), "Unsandboxed: no sandbox advice.");
+            check(!LaunchFailure.Closed(LaunchFailure.Prepare, 1, null, WindowsCrash.Owner.Unknown, true).Contains("sandbox"), "A plain exit: no sandbox advice.");
+            check(LaunchFailure.Closed(LaunchFailure.Connect, AccessViolation, rtss, WindowsCrash.Owner.Other, true).Contains("RTSSHooks64.dll is not part of the game"),
+                "A third-party module that crashed a sandboxed game is still named.");
             // the game still runs: what part of the connect step failed
             check(LaunchFailure.NotConnected("module_not_observed").StartsWith("The game could not be connected to the local backend: it had not loaded its code " +
                 "(game.dll) after 45 seconds.", StringComparison.Ordinal), LaunchFailure.NotConnected("module_not_observed"));
