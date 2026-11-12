@@ -171,9 +171,9 @@ if($SteamExports){
 }else{
     Invoke-Generator forward $SteamApi steam_api64_hellforge $cloudSource (Join-Path $gen 'steam_api64.def')
 }
-# with the network gate (net_gate.c, MinHook), hooked in its DllMain before the game's own code runs
+# with the network and tablet gates (net_gate.c, tablet_gate.c, MinHook), hooked in its DllMain before the game's own code runs
 $minHookSources=@('src/buffer.c','src/hook.c','src/trampoline.c','src/hde/hde64.c')|ForEach-Object {Join-Path $minHook $_}
-$cloudSources=@('net_gate.c','steam_census.c','bridge_channel.c')|ForEach-Object {Join-Path $project ('native/steam-cloud/'+$_)}
+$cloudSources=@('net_gate.c','tablet_gate.c','steam_census.c','bridge_channel.c')|ForEach-Object {Join-Path $project ('native/steam-cloud/'+$_)}
 & $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I (Join-Path $minHook 'include') $cloudSource `
     @cloudSources @minHookSources (Join-Path $gen 'steam_api64.def') -ladvapi32 -o (Join-Path $out 'steam_api64.dll')
 if($LASTEXITCODE){throw 'Compiling steam_api64.dll failed.'}

@@ -66,6 +66,17 @@ public static class SandboxRefusals
             ". networkCensus.deniedTargets in result.json lists each one.";
     }
 
+    /// <summary>
+    /// The session log's line for the tablet gate (native/steam-cloud/tablet_gate.c), or null when it had nothing to do.
+    /// refused counts the refused loads; loaded is a Wintab32.dll that got past it.
+    /// </summary>
+    public static string? DescribeTablet(long refused, bool loaded) =>
+        loaded ? "The tablet driver (Wintab32.dll) loaded in the sandboxed game although the sandbox refuses it, so its \"OpenMem failed\" box can still " +
+            "show on alt-tab. networkCensus.tabletLoaded in result.json records it."
+        : refused > 0 ? $"The sandboxed game was kept from the tablet driver (Wintab32.dll) {refused} time(s). The game has no use for it, and at low " +
+            "integrity some drivers show an \"OpenMem failed\" box on every alt-tab. A pen still works as a mouse."
+        : null;
+
     static string Part((string Module, long Count, List<string> Names) m)
     {
         var who = OverlayOf(m.Module) is { } overlay ? $"{overlay} ({m.Module})" : m.Module;
