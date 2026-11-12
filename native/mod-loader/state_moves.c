@@ -42,12 +42,23 @@ _Static_assert((uint64_t)MOVE_CATALOGUE_NEW + MOVE_CATALOGUE_BYTES < 0x7FFFFFFFu
 _Static_assert((uint64_t)MOVE_STATE_BYTES + MOVE_EXTRA_BYTES < 0x7FFFFFFFull, "the allocation's size is an imm32");
 #define MOVE_COUNT(sites) (sizeof sites / sizeof *sites)
 
+/* game.dll is still being decoded when its pin first reads (WinLicense decodes it upward, and the pin is half way up):
+ * a site above the pin can read as its encoded bytes for a few ticks (bug report 0401: 0x175b030, 0x18cc90c, 0x190eee7;
+ * 2 of 103 local starts, those with the watch thread up before the decoding ended). Such code gets as long as the
+ * difficulty and network passes give it, unless the game allocates its state first. */
+#define MOVE_DECODE_WAIT 20000u
+
 static int g_stateMoves; /* 0 waiting, 1 moved, -1 left where they are */
 static int g_moveGuard;  /* the guard and the canary are on */
+static ULONGLONG g_moveWaitFrom, g_moveMovedAt; /* the first try that found a site unread; the move */
+static uint32_t g_moveTries;      /* the tries that found one */
+static uint32_t g_moveUndecoded;  /* tests: HELLFORGE_MOVE_UNDECODED=n, the first n tries find one */
+static int32_t g_moveResetRel;    /* the reset call's displacement to the stub, as written */
+static int g_moveStateSeen;       /* the game has allocated its state since the move */
 /* Where the catalogue is, from P (ownership.c reads through this): the compiled places until it moves. */
 typedef struct CatalogueLayout { uint32_t count, records, index, starts, catalogue, inventory, items; } CatalogueLayout;
-static CatalogueLayout g_catalogue = {MOVE_CATALOGUE_OLD, MOVE_CATALOGUE_OLD + 4u, MOVE_CATALOGUE_OLD + MOVE_AT_HIERARCHY(MOVE_ITEMS_OLD), MOVE_CATALOGUE_OLD + MOVE_AT_STARTS(MOVE_ITEMS_OLD),
-    MOVE_CATALOGUE_OLD + MOVE_AT_STATUS(MOVE_ITEMS_OLD), MOVE_CATALOGUE_OLD + MOVE_AT_INVENTORY(MOVE_ITEMS_OLD), MOVE_ITEMS_OLD};
+#define MOVE_LAYOUT(at, n) {(at), (at) + 4u, (at) + MOVE_AT_HIERARCHY(n), (at) + MOVE_AT_STARTS(n), (at) + MOVE_AT_STATUS(n), (at) + MOVE_AT_INVENTORY(n), (n)}
+static CatalogueLayout g_catalogue = MOVE_LAYOUT(MOVE_CATALOGUE_OLD, MOVE_ITEMS_OLD);
 
 /* A field's offset from the block's start, for `items` items. */
 static uint32_t MoveFieldAt(uint32_t field, uint32_t items)
@@ -88,18 +99,58 @@ static int32_t MoveCapacity(uint8_t formula)
     }
 }
 
-static int MoveSitesRead(uintptr_t game, const MoveSite* sites, size_t count)
+/* The first site of these that does not read as reviewed, or NULL; what it reads, in `why`. */
+static const MoveSite* MoveSitesUnread(uintptr_t game, const MoveSite* sites, size_t count, char* why, size_t size)
 {
     for (size_t i = 0; i < count; i++)
     {
         uint8_t bytes[15];
-        if (SafeRead(game + sites[i].rva, bytes, sites[i].length) || memcmp(bytes, sites[i].code, sites[i].length) != 0)
-        {
-            Note("state moves: 0x%x does not read as reviewed", sites[i].rva);
-            return 0;
-        }
+        if (SafeRead(game + sites[i].rva, bytes, sites[i].length)) { snprintf(why, size, "it cannot be read"); return &sites[i]; }
+        if (memcmp(bytes, sites[i].code, sites[i].length) == 0) continue;
+        int n = snprintf(why, size, "it reads");
+        for (uint8_t b = 0; b < sites[i].length && n > 0 && (size_t)n < size; b++) n += snprintf(why + n, size - n, " %02x", bytes[b]);
+        return &sites[i];
     }
-    return 1;
+    return NULL;
+}
+
+/* The first site the move needs that does not read as reviewed (the reset call included), or 0. */
+static uint32_t MoveUnread(uintptr_t game, char* why, size_t size)
+{
+    MoveSite reset = {MOVE_RESET_CALL, 0, 5, 1, 0, {0}};
+    memcpy(reset.code, kMoveResetCall, 5);
+    if (g_moveTries < g_moveUndecoded) { snprintf(why, size, "HELLFORGE_MOVE_UNDECODED"); return reset.rva; }
+    const struct { const MoveSite* sites; size_t count; } sets[] = {{&reset, 1}, {kMoveStateSizes, MOVE_COUNT(kMoveStateSizes)},
+        {kMovePackageSites, MOVE_COUNT(kMovePackageSites)}, {kMoveCatalogueSites, MOVE_COUNT(kMoveCatalogueSites)}, {kMoveCapacitySites, MOVE_COUNT(kMoveCapacitySites)}};
+    for (size_t i = 0; i < MOVE_COUNT(sets); i++)
+    {
+        const MoveSite* site = MoveSitesUnread(game, sets[i].sites, sets[i].count, why, size);
+        if (site != NULL) return site->rva;
+    }
+    return 0;
+}
+
+/* Whether a site's constant is `value`. */
+static int MoveSiteHolds(uintptr_t game, const MoveSite* site, int32_t value)
+{
+    int32_t now;
+    return !SafeRead(game + site->rva + site->at, &now, 4) && now == value;
+}
+
+/* The first site that no longer holds what the move wrote there (a second decoding over it), or 0. */
+static uint32_t MoveWrittenLost(uintptr_t game)
+{
+    int32_t rel;
+    if (SafeRead(game + MOVE_RESET_CALL + 1, &rel, 4) || rel != g_moveResetRel) return MOVE_RESET_CALL;
+    for (size_t i = 0; i < MOVE_COUNT(kMoveStateSizes); i++)
+        if (!MoveSiteHolds(game, &kMoveStateSizes[i], kMoveStateSizes[i].value + (int32_t)MOVE_EXTRA_BYTES)) return kMoveStateSizes[i].rva;
+    for (size_t i = 0; i < MOVE_COUNT(kMovePackageSites); i++)
+        if (!MoveSiteHolds(game, &kMovePackageSites[i], kMovePackageSites[i].value + (int32_t)(MOVE_SLOTS_NEW - MOVE_SLOTS_OLD))) return kMovePackageSites[i].rva;
+    for (size_t i = 0; i < MOVE_COUNT(kMoveCatalogueSites); i++)
+        if (!MoveSiteHolds(game, &kMoveCatalogueSites[i], kMoveCatalogueSites[i].value + MoveSiteDelta(kMoveCatalogueSites[i].kind))) return kMoveCatalogueSites[i].rva;
+    for (size_t i = 0; i < MOVE_COUNT(kMoveCapacitySites); i++)
+        if (!MoveSiteHolds(game, &kMoveCapacitySites[i], MoveCapacity(kMoveCapacitySites[i].kind))) return kMoveCapacitySites[i].rva;
+    return 0;
 }
 
 /* Each site's constant as reviewed, plus delta. 0, or nonzero when one could not be written. */
@@ -138,6 +189,14 @@ static int MoveGuardWanted(void)
     return length == 1 && value[0] == L'1';
 }
 
+/* Tests: HELLFORGE_MOVE_UNDECODED=n, how many tries find game.dll's code still being decoded (0 when unset). */
+static uint32_t MoveUndecodedWanted(void)
+{
+    wchar_t value[8];
+    DWORD length = GetEnvironmentVariableW(L"HELLFORGE_MOVE_UNDECODED", value, 8);
+    return length > 0 && length < 8 ? (uint32_t)wcstoul(value, NULL, 10) : 0;
+}
+
 /* The reset's memset, then the new slots', then (the guard on) the old slots' canary. rsi is P at the call. */
 static uint8_t* MoveResetStub(uintptr_t game)
 {
@@ -174,27 +233,53 @@ static uint8_t* MoveResetStub(uintptr_t game)
 /* The catalogue is at its new place: HellForge's readers follow, and the backend hears what the game now keeps. */
 static void MoveCatalogueLaidOut(void)
 {
-    g_catalogue = (CatalogueLayout){MOVE_CATALOGUE_NEW, MOVE_CATALOGUE_NEW + 4u, MOVE_CATALOGUE_NEW + MOVE_AT_HIERARCHY(MOVE_ITEMS), MOVE_CATALOGUE_NEW + MOVE_AT_STARTS(MOVE_ITEMS),
-        MOVE_CATALOGUE_NEW + MOVE_AT_STATUS(MOVE_ITEMS), MOVE_CATALOGUE_NEW + MOVE_AT_INVENTORY(MOVE_ITEMS), MOVE_ITEMS};
+    g_catalogue = (CatalogueLayout)MOVE_LAYOUT(MOVE_CATALOGUE_NEW, MOVE_ITEMS);
     g_gameItems = MOVE_ITEMS;
     g_gamePackages = MOVE_PACKAGES;
     WriteRegisteredItems(); /* before the game can ask: the state does not exist yet */
 }
 
+/* Every site as reviewed again, the reset call last written first. */
+static void MovePutBack(uintptr_t game)
+{
+    ApiWrite(game + MOVE_RESET_CALL + 1, kMoveResetCall + 1, 4);
+    MoveSitesWrite(game, kMoveCapacitySites, MOVE_COUNT(kMoveCapacitySites), 0);
+    MoveSitesWrite(game, kMoveCatalogueSites, MOVE_COUNT(kMoveCatalogueSites), 0);
+    MoveSitesWrite(game, kMovePackageSites, MOVE_COUNT(kMovePackageSites), 0);
+    MoveSitesWrite(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes), 0);
+}
+
+/* Called each tick until it settles: a site that does not read as reviewed yet is tried again on the next tick, as long
+ * as the game has not allocated its state and MOVE_DECODE_WAIT has not passed. */
 static void StateMoves(uintptr_t game)
 {
     uint64_t state = 1;
     if (g_stateMoves != 0 || game == 0 || SafeRead(game + MOVE_STATE, &state, 8)) return;
-    g_stateMoves = -1;
-    if (state != 0) { Note("state moves: the game state was already allocated: its arrays stay"); return; }
-    uint8_t call[5];
-    if (SafeRead(game + MOVE_RESET_CALL, call, 5) || memcmp(call, kMoveResetCall, 5) != 0 ||
-        !MoveSitesRead(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes)) || !MoveSitesRead(game, kMovePackageSites, MOVE_COUNT(kMovePackageSites)) ||
-        !MoveSitesRead(game, kMoveCatalogueSites, MOVE_COUNT(kMoveCatalogueSites)) || !MoveSitesRead(game, kMoveCapacitySites, MOVE_COUNT(kMoveCapacitySites)))
+    ULONGLONG now = GetTickCount64();
+    if (state != 0)
     {
-        Note("state moves: the code is not the reviewed one: the arrays stay");
+        g_stateMoves = -1;
+        if (g_moveWaitFrom == 0) Note("state moves: the game state was already allocated: its arrays stay");
+        else Note("state moves: the game allocated its state while game.dll's code was still being decoded (%llu ms, %u tries): its arrays stay", now - g_moveWaitFrom, g_moveTries);
         return;
     }
+    if (g_moveTries == 0) g_moveUndecoded = MoveUndecodedWanted();
+    char why[64];
+    uint32_t unread = MoveUnread(game, why, sizeof why);
+    if (unread != 0)
+    {
+        if (g_moveWaitFrom == 0)
+        {
+            g_moveWaitFrom = now;
+            Note("state moves: 0x%x does not read as reviewed (%s): waiting for game.dll's decoding", unread, why);
+        }
+        g_moveTries++;
+        if (now - g_moveWaitFrom < MOVE_DECODE_WAIT) return;
+        g_stateMoves = -1;
+        Note("state moves: 0x%x still does not read as reviewed after %llu ms (%s): the code is not the reviewed one: the arrays stay", unread, now - g_moveWaitFrom, why);
+        return;
+    }
+    g_stateMoves = -1;
     g_moveGuard = MoveGuardWanted();
     uint8_t* stub = MoveResetStub(game);
     if (stub == NULL) { Note("state moves: no stub near game.dll: the arrays stay"); return; }
@@ -206,18 +291,43 @@ static void StateMoves(uintptr_t game)
     /* The setup can have started during the writes: then it allocated at the old size, or half way through them. */
     if (failed || SafeRead(game + MOVE_STATE, &state, 8) || state != 0)
     {
-        ApiWrite(game + MOVE_RESET_CALL + 1, kMoveResetCall + 1, 4);
-        MoveSitesWrite(game, kMoveCapacitySites, MOVE_COUNT(kMoveCapacitySites), 0);
-        MoveSitesWrite(game, kMoveCatalogueSites, MOVE_COUNT(kMoveCatalogueSites), 0);
-        MoveSitesWrite(game, kMovePackageSites, MOVE_COUNT(kMovePackageSites), 0);
-        MoveSitesWrite(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes), 0);
+        MovePutBack(game);
         Note("state moves: %s: put back", failed ? "a site could not be written" : "the game state was allocated meanwhile");
         return;
     }
     g_stateMoves = 1;
+    g_moveResetRel = rel;
+    g_moveMovedAt = GetTickCount64();
     MoveCatalogueLaidOut();
     Note("state moves: package slots at P+0x%x, room for %u; catalogue at P+0x%x, room for %u items; state %u KB larger, %u sites", MOVE_SLOTS_NEW, MOVE_SLOTS_ROOM, MOVE_CATALOGUE_NEW,
         MOVE_ITEMS, MOVE_EXTRA_BYTES >> 10, (unsigned)(MOVE_COUNT(kMoveStateSizes) + MOVE_COUNT(kMovePackageSites) + MOVE_COUNT(kMoveCatalogueSites) + MOVE_COUNT(kMoveCapacitySites) + 1));
+    if (g_moveWaitFrom != 0) Note("state moves: game.dll's code read as reviewed %llu ms after the first try (%u tries)", g_moveMovedAt - g_moveWaitFrom, g_moveTries);
+}
+
+/* Each tick from the move until the game allocates its state: every written site still holds its write (a second
+ * decoding over one would split the catalogue, so then all of it goes back while that can still be done), and once the
+ * state is there, how long after the move it came: the room a late move has. */
+static void StateMovesSettle(uintptr_t game)
+{
+    if (g_stateMoves != 1 || g_moveStateSeen) return;
+    uint64_t state = 0;
+    uint32_t lost = MoveWrittenLost(game);
+    if (SafeRead(game + MOVE_STATE, &state, 8)) return;
+    ULONGLONG since = GetTickCount64() - g_moveMovedAt;
+    if (state != 0)
+    {
+        g_moveStateSeen = 1;
+        if (lost != 0) Note("state moves: 0x%x lost its write before the game allocated its state: the catalogue is split", lost);
+        else Note("state moves: the game allocated its state %llu ms after the move", since);
+        return;
+    }
+    if (lost == 0) return;
+    MovePutBack(game);
+    g_stateMoves = -1;
+    g_catalogue = (CatalogueLayout)MOVE_LAYOUT(MOVE_CATALOGUE_OLD, MOVE_ITEMS_OLD);
+    g_gameItems = g_gamePackages = 0;
+    WriteRegisteredItems();
+    Note("state moves: 0x%x lost its write %llu ms after the move, before the game allocated its state: put back", lost, since);
 }
 
 /* The old catalogue's pages, no-access, the two it shares with live data too (the slot count below it, the state's next
@@ -375,6 +485,7 @@ static void MoveGuardWatch(uintptr_t game, uintptr_t p)
 static void StateMovesWatch(uintptr_t game)
 {
     static ULONGLONG next;
+    StateMovesSettle(game);
     if (g_stateMoves != 1 || GetTickCount64() < next) return;
     next = GetTickCount64() + 1000;
     uint64_t p = 0;

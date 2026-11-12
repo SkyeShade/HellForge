@@ -243,6 +243,12 @@ end (a fixed distance from P, so the displacements stay constants) and rewrites 
 - **Capacity.** The caps, parse buffers and reset follow in the same writes, all or none. The backend serves what the
   game keeps only when told it moved (`capacity` in `registered-items.json`). A refused move leaves 4,096 items and 256
   packages, and the backend hears nothing.
+- **game.dll still decoding.** The pin that says game.dll is decoded sits half way up, and WinLicense decodes upward, so
+  for a few ticks a site above it can still read as its encoded bytes. The move tries again each tick until every site
+  reads as reviewed, for up to 20 s, and refuses once the game allocates its state first (`[Game] Setup` in the game's
+  console log, 3.5 s or more after the pin; the decoding ends within about 0.1 s). Until the state is allocated, it
+  checks every written site still holds its write, and puts all of them back if one does not. `HELLFORGE_MOVE_UNDECODED=n`
+  makes the first n tries find a site still encoded, for tests.
 - **The guard.** With `HELLFORGE_MOVE_GUARD=1` the old slots hold a canary, and any change is logged. The old
   catalogue's pages are no-access, and a vectored handler logs each access once by its address, then lets it through.
   Every such line is a site the list missed.

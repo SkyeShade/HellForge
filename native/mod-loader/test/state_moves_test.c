@@ -59,6 +59,121 @@ static void StateMovesOffsetsFixture(void)
     }
 }
 
+/* A fake game.dll for the move: every site as reviewed, the state not allocated. */
+static void MoveFakeImage(uint8_t* game)
+{
+    memcpy(game + MOVE_RESET_CALL, kMoveResetCall, 5);
+    const struct { const MoveSite* sites; size_t count; } sets[] = {{kMoveStateSizes, MOVE_COUNT(kMoveStateSizes)}, {kMovePackageSites, MOVE_COUNT(kMovePackageSites)},
+        {kMoveCatalogueSites, MOVE_COUNT(kMoveCatalogueSites)}, {kMoveCapacitySites, MOVE_COUNT(kMoveCapacitySites)}};
+    for (size_t i = 0; i < MOVE_COUNT(sets); i++)
+        for (size_t j = 0; j < sets[i].count; j++) memcpy(game + sets[i].sites[j].rva, sets[i].sites[j].code, sets[i].sites[j].length);
+    *(uint64_t*)(game + MOVE_STATE) = 0;
+}
+
+static void MoveFresh(uint8_t* game)
+{
+    MoveFakeImage(game);
+    g_stateMoves = 0; g_moveWaitFrom = g_moveMovedAt = 0; g_moveTries = g_moveUndecoded = 0; g_moveStateSeen = 0; g_moveResetRel = 0;
+    g_catalogue = (CatalogueLayout)MOVE_LAYOUT(MOVE_CATALOGUE_OLD, MOVE_ITEMS_OLD);
+    g_gameItems = g_gamePackages = 0;
+}
+
+static int MoveImageReviewed(uintptr_t game)
+{
+    char why[64];
+    uint32_t saved = g_moveUndecoded;
+    g_moveUndecoded = 0;
+    int reviewed = MoveUnread(game, why, sizeof why) == 0;
+    g_moveUndecoded = saved;
+    return reviewed;
+}
+
+/* game.dll still being decoded when its pin reads (bug report 0401): a site above the pin reads as other bytes for a few
+ * ticks. The move waits and goes ahead once it reads as reviewed; refuses once the game allocates its state first or the
+ * wait runs out, leaving every site as it was; and a write lost before the state comes puts all of it back. */
+static void StateMovesDecodeFixture(void)
+{
+    uint8_t* image = (uint8_t*)VirtualAlloc(NULL, 0x3500000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert(image != NULL);
+    uintptr_t game = (uintptr_t)image;
+    const MoveSite* late = NULL; /* 0x190eee7, the site of the report */
+    for (size_t i = 0; i < MOVE_COUNT(kMovePackageSites); i++) if (kMovePackageSites[i].rva == 0x190eee7u) late = &kMovePackageSites[i];
+    assert(late != NULL);
+    SetEnvironmentVariableW(L"HELLFORGE_MOVE_UNDECODED", NULL);
+
+    /* still encoded at the first try, decoded at the next: moved then */
+    MoveFresh(image);
+    image[late->rva + 2] ^= 0x5A;
+    StateMoves(game);
+    assert(g_stateMoves == 0 && g_moveTries == 1 && g_moveWaitFrom != 0 && g_gameItems == 0);
+    assert(MoveSiteHolds(game, &kMoveCatalogueSites[0], kMoveCatalogueSites[0].value) && MoveSiteHolds(game, &kMoveStateSizes[0], kMoveStateSizes[0].value));
+    StateMoves(game);
+    assert(g_stateMoves == 0 && g_moveTries == 2);
+    image[late->rva + 2] ^= 0x5A;
+    StateMoves(game);
+    assert(g_stateMoves == 1 && g_gameItems == MOVE_ITEMS && g_gamePackages == MOVE_PACKAGES && g_catalogue.items == MOVE_ITEMS && MoveWrittenLost(game) == 0);
+    assert(MoveSiteHolds(game, late, late->value + (int32_t)(MOVE_SLOTS_NEW - MOVE_SLOTS_OLD)));
+    /* holding until the state comes, then noted once */
+    StateMovesSettle(game);
+    assert(g_stateMoves == 1 && !g_moveStateSeen);
+    *(uint64_t*)(image + MOVE_STATE) = 1;
+    StateMovesSettle(game);
+    assert(g_stateMoves == 1 && g_moveStateSeen);
+
+    /* the reviewed image at the first try moves at once, without waiting */
+    MoveFresh(image);
+    StateMoves(game);
+    assert(g_stateMoves == 1 && g_moveTries == 0 && g_moveWaitFrom == 0);
+
+    /* the state allocated while a site is still encoded: nothing written */
+    MoveFresh(image);
+    image[late->rva] ^= 0xFF;
+    StateMoves(game);
+    assert(g_stateMoves == 0);
+    *(uint64_t*)(image + MOVE_STATE) = 1;
+    StateMoves(game);
+    assert(g_stateMoves == -1 && g_gameItems == 0 && g_catalogue.items == MOVE_ITEMS_OLD);
+    image[late->rva] ^= 0xFF;
+    assert(MoveImageReviewed(game));
+    StateMoves(game); /* settled: never tried again */
+    assert(g_stateMoves == -1);
+
+    /* other code for good: refused once MOVE_DECODE_WAIT has passed, nothing written */
+    MoveFresh(image);
+    image[kMoveCatalogueSites[100].rva] ^= 0xFF;
+    StateMoves(game);
+    assert(g_stateMoves == 0);
+    g_moveWaitFrom = GetTickCount64() - MOVE_DECODE_WAIT - 1;
+    StateMoves(game);
+    assert(g_stateMoves == -1 && g_gameItems == 0);
+    image[kMoveCatalogueSites[100].rva] ^= 0xFF;
+    assert(MoveImageReviewed(game));
+
+    /* a write undone before the state comes (a second decoding): all of it goes back, the backend hears the game's capacity */
+    MoveFresh(image);
+    StateMoves(game);
+    assert(g_stateMoves == 1);
+    int32_t original = kMoveCatalogueSites[7].value;
+    memcpy(image + kMoveCatalogueSites[7].rva + kMoveCatalogueSites[7].at, &original, 4);
+    assert(MoveWrittenLost(game) == kMoveCatalogueSites[7].rva);
+    StateMovesSettle(game);
+    assert(g_stateMoves == -1 && g_gameItems == 0 && g_gamePackages == 0 && g_catalogue.items == MOVE_ITEMS_OLD && g_catalogue.count == MOVE_CATALOGUE_OLD);
+    assert(MoveImageReviewed(game));
+
+    /* tests: HELLFORGE_MOVE_UNDECODED=3, three tries wait on a reviewed image and the fourth moves */
+    MoveFresh(image);
+    SetEnvironmentVariableW(L"HELLFORGE_MOVE_UNDECODED", L"3");
+    for (int i = 0; i < 3; i++) { StateMoves(game); assert(g_stateMoves == 0 && g_moveTries == (uint32_t)i + 1); }
+    StateMoves(game);
+    assert(g_stateMoves == 1 && g_moveTries == 3);
+    SetEnvironmentVariableW(L"HELLFORGE_MOVE_UNDECODED", NULL);
+
+    MoveFresh(image);
+    VirtualFree(image, 0, MEM_RELEASE);
+    puts("PASS state moves while game.dll decodes: a site still encoded waits and moves once it reads as reviewed; the "
+        "state allocated first, or the wait run out, writes nothing; a write lost before the state comes puts all back");
+}
+
 /* The armory's room: a list full counting its vanilla records refuses by type, and entity copies take no card. */
 static void ArmoryRoomFixture(void)
 {
