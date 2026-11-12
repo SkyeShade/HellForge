@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Mods can add patterns (SDK 18).** `add_pattern` copies a vanilla pattern under an id of its own, with the mod's
+  colour and masks in place of the base's. A copy of a weapon paint is in the armory's pattern slot of every weapon that
+  offers the base, or of the weapons the mod names. A copy of a Pelican, hellpod or vehicle skin joins the hangar for its
+  whole family. The player holds them from the start ([patterns](docs/modding/patterns.md)).
 - **25 more engine functions for units, each checked in the game.** `hf_fn_` reaches a unit's local and world pose,
   position, rotation and scale, its meshes, nodes by name and scene graph parents. It also counts a unit's lights,
   cameras, terrains and LOD objects, and tells whether it is alive, its animation setup, level, id and resource name. Each

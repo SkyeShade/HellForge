@@ -65,6 +65,8 @@ static class RegisteredItemsTests
         inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
         check(inventory.Contains(RegisteredItems.WeaponChild(Drum, Gold)), "The attachment's child is not held with the weapon.");
 
+        Patterns(file, fixtures, check);
+
         // A stratagem a code mod adds (stratagems.c): a copy of the Orbital Airburst Strike's item (stable id 1560416221)
         // and its child, the child's itemId being the new stable id. An entry whose base is not known yet waits.
         const uint Strike = 1560416221, Item = 0x1234ABCD, Stable = 0x0BADF00D;
@@ -190,5 +192,55 @@ static class RegisteredItemsTests
         var before = late.Load().Count;
         File.WriteAllText(file, Pack(Moved));
         check(late.Load().Count == before && Served(late, "/Progression/items").Count > RegisteredItems.CatalogueCap, "A loader's word that comes later counts.");
+    }
+    // Patterns a mod adds (patterns.c): a weapon pattern, a copy of Arctic Camo (1561483157) offered on every weapon
+    // offering it, gets a child at the end of each weapon's run (the gold Liberator's too), a level 1 reward in each
+    // mastery package and is held with its weapon; a unit pattern, a copy of the Pelican's Forest Camo (3520082317), is a
+    // copy of its catalogue item right after it under the Pelican, always held. A base the catalogue does not have is said.
+    static void Patterns(string file, Dictionary<string, JsonElement> fixtures, Action<bool, string> check)
+    {
+        const uint Tiger = 0x7163E501, PelicanTiger = 0x7163E502, ArcticCamo = 1561483157, PelicanCamo = 3520082317, Pelican = 2057541119, Unknown = 0x0BAD0001;
+        File.WriteAllText(file, $$"""{"format":1,"items":[{"mixId":{{Gold}},"copyOf":{{Liberator}},"mod":"test","unit":"test/gold"}],"attachments":[],"patterns":[{"mixId":{{Tiger}},"copyOf":{{ArcticCamo}},"kind":"weapon","weapons":[]},{"mixId":{{PelicanTiger}},"copyOf":{{PelicanCamo}},"kind":"unit"},{"mixId":7,"copyOf":{{Unknown}},"kind":"unit"}]}""");
+        var log = new List<string>();
+        var items = new RegisteredItems(file) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Log = log.Add };
+        var catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
+        var entries = catalogue.OfType<JsonObject>().ToList();
+        var offering = entries.Where(e => (uint?)e["itemId"] == ArcticCamo && e["parentId"] != null).Select(e => (uint)e["parentId"]!).Distinct().ToList();
+        var tigers = entries.Where(e => (uint?)e["itemId"] == Tiger).ToList();
+        check(offering.Contains(Liberator) && offering.Contains(Gold) && tigers.Count == offering.Count &&
+            tigers.All(t => (uint)t["mixId"]! == RegisteredItems.WeaponChild(Tiger, (uint)t["parentId"]!)), $"The weapon pattern is not a child of each of the {offering.Count} weapons offering its base.");
+        foreach (var weapon in new[] { Liberator, Gold })
+        {
+            var at = entries.FindIndex(e => (uint?)e["mixId"] == RegisteredItems.WeaponChild(Tiger, weapon));
+            var run = entries.FindLastIndex(e => (uint?)e["parentId"] == weapon);
+            check(at == run, $"Weapon {weapon}'s pattern child is not at the end of its run.");
+        }
+        var skinAt = entries.FindIndex(e => (uint?)e["itemId"] == PelicanCamo && (int?)e["progressionCategory"] == 4);
+        var pelicanTiger = RegisteredItems.WeaponChild(PelicanTiger, Pelican);
+        check(skinAt >= 0 && (uint?)entries[skinAt + 1]["itemId"] == PelicanTiger && (uint?)entries[skinAt + 1]["mixId"] == pelicanTiger &&
+            (int?)entries[skinAt + 1]["progressionCategory"] == 4, "The unit pattern is not a copy of its base skin right after it.");
+        check(!entries.Any(e => (uint?)e["itemId"] == 7) && log.Any(l => l.Contains($"the catalogue has no skin {Unknown}")), "A pattern of an unknown skin was served, or not said.");
+
+        var packages = (JsonArray)JsonNode.Parse(items.Apply("/Progression/ProgressionPackages", fixtures["/Progression/ProgressionPackages"]).GetRawText())!;
+        foreach (var weapon in new[] { Liberator, Gold })
+        {
+            var mastery = packages.OfType<JsonObject>().First(p => (int)p["type"]! == 2 && ((JsonArray)p["requiredItems"]!).Any(r => (uint)r! == weapon));
+            var first = mastery["levels"]!.AsArray().OfType<JsonObject>().First(l => (int)l["level"]! == 1);
+            check(first["rewards"]!.AsArray().Count(r => (int)r!["type"]! == 1 && (uint)r["id32"]! == RegisteredItems.WeaponChild(Tiger, weapon)) == 1,
+                $"Weapon {weapon}'s mastery package does not reward its pattern child at level 1, once.");
+        }
+
+        var held = JsonSerializer.SerializeToElement(new { items = new object[] { new { mixId = Liberator, amount = 1, isDiscovered = true } } });
+        var inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
+        check(inventory.Contains(RegisteredItems.WeaponChild(Tiger, Liberator)) && inventory.Contains(RegisteredItems.WeaponChild(Tiger, Gold)) &&
+            inventory.Contains(pelicanTiger), "The patterns are not held with their weapons, or the unit pattern is not held.");
+        check(offering.Where(w => w != Liberator && w != Gold).All(w => !inventory.Contains(RegisteredItems.WeaponChild(Tiger, w))), "A pattern is held on a weapon the player does not hold.");
+
+        // named weapons: only those, and one that does not offer the base is said
+        File.WriteAllText(file, $$"""{"format":1,"items":[],"patterns":[{"mixId":{{Tiger}},"copyOf":{{ArcticCamo}},"kind":"weapon","weapons":[{{Liberator}},{{Unknown}}]}]}""");
+        log.Clear();
+        catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
+        check(catalogue.OfType<JsonObject>().Where(e => (uint?)e["itemId"] == Tiger).Select(e => (uint)e["parentId"]!).SequenceEqual([Liberator]) &&
+            log.Any(l => l.Contains($"weapon {Unknown} does not offer")), "A pattern named on weapons is not on those alone.");
     }
 }
