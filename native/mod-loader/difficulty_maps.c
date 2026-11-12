@@ -90,6 +90,9 @@ static const uint8_t kNavStub[145] = {
     0x48, 0x8B, 0x00,                                                 /* 134 mov rax, [rax] */
     0xFF, 0x50, 0x08,                                                 /* 137 call [rax+8] */
     0xE9, 0, 0, 0, 0};                                                /* 140 jmp 0xC19E1C (rel32 at 141) */
+/* Another mod may pin these bytes and call the function at +65, NavRetile(id, 0), itself earlier in the ship's set-up
+ * (the PrepareShip enter), skipping this step. So the grid NavRetile writes for the ship must follow from the id, the
+ * nav world table and count, the grid's dimensions and constants alone: nothing the ship's set-up changes. */
 static const uint8_t kNavShipStub[144] = {
     STUB_PUSH_VOLATILE,                                               /*   0 push rax rcx rdx r8 r9 r10 r11 */
     0x48, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00,                         /*  11 sub rsp, 0x88 (aligned: 7 pushes + 0x88) */
