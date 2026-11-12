@@ -49,6 +49,37 @@ static class IntegrityTests
                 !File.Exists(SetupReceipt.PathFor(install) + ".partial"), "The setup receipt was not written whole.");
         });
 
+        test("A copy a killed session left with its stand-ins is complete again after recovery, and counts as set up", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "cut-short"));
+            install.Create("25480438");
+            check(SetupReceipt.FinishedBefore(install) == null, "An installation where setup never finished counted as set up.");
+            var shims = Directory.CreateDirectory(Path.Combine(install.App, "sdk-shims")).FullName;
+            var originals = Directory.CreateDirectory(Path.Combine(install.Temp, "sdk-shim-originals")).FullName;
+            var bin = Directory.CreateDirectory(Path.Combine(install.Game, "bin")).FullName;
+            var pins = new JsonObject();
+            var files = new List<SupportedFile>();
+            foreach (var name in new[] { "PartyWin.dll", "PlayFabMultiplayerWin.dll", "steam_api64.dll" })
+            {
+                var original = Encoding.UTF8.GetBytes("the build's own " + name);
+                pins[name] = Convert.ToHexString(SHA256.HashData(original));
+                files.Add(new("bin/" + name, original.Length, Convert.ToHexString(SHA1.HashData(original)), 1));
+                File.WriteAllBytes(Path.Combine(originals, name), original);
+                File.WriteAllText(Path.Combine(bin, name), "stand-in");
+            }
+            File.WriteAllText(Path.Combine(shims, "build.json"), new JsonObject { ["originals"] = pins }.ToJsonString());
+            var build = new SupportedBuild(1, "553850", "test", "", "", [], files);
+            check(build.FirstCompletenessProblem(install.Game) == "wrong size: bin/PartyWin.dll", "The stand-ins did not make the copy incomplete.");
+            check(SetupReceipt.FinishedBefore(install) == "This copy was set up and played, but",
+                "An installation whose sessions saved the SDK originals did not count as set up.");
+            SdkShimRecovery.Recover(install);
+            check(build.FirstCompletenessProblem(install.Game) == null && build.Verify(install.Game).Count == 0,
+                "The copy was not complete after the stand-ins' originals went back.");
+            SetupReceipt.Write(install);
+            check(SetupReceipt.FinishedBefore(install)?.StartsWith("Setup finished ", StringComparison.Ordinal) == true,
+                "A setup receipt did not name when setup finished.");
+        });
+
         test("The setup reason names the first missing build file", () =>
         {
             var game = Directory.CreateDirectory(Path.Combine(root, "setup-reason")).FullName;
