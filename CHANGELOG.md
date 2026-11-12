@@ -173,6 +173,12 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Windows: a session cut short no longer sends you back to first-time setup.** A restart, a crash or a game that
+  would not close left HellForge's stand-ins for three of the game's DLLs in `gamein`, and the launcher then took the
+  copy for an unfinished setup. Since the live game moved past the supported build, that setup asked to download the
+  build from Steam again. The originals now go back when the launcher opens, as on Linux. A copy that is still not
+  complete opens Check and repair with the file named, and Check and repair keeps a copy that verifies instead of
+  getting it from Steam. `hellforge play` names the file too.
 - **A copy with records of its own no longer crashes the game when it spawns.** The game reads past a record into the
   next one, and HellForge's copy of a component table ended right after the newest record. Calling in a vehicle copy
   whose Health record was the last one crashed at its beacon (#327).

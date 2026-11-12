@@ -86,7 +86,22 @@ public partial class MainWindow
         ImportBox.IsVisible = Directory.Exists(Path.Combine(EarlierGameData, "profiles")) || File.Exists(Path.Combine(EarlierGameData, "user_settings.config"));
         InstallCard.IsVisible = true;
         InstallText.Text = $"{Privacy.Scrub(install.Root)}  ·  HELLDIVERS 2 build {SupportedBuild.Current.BuildId}";
-        if (!SupportedBuild.Current.IsComplete(install.Game)) EnterSetup(repair: false);
+        // A session cut short (a restart, a crash, a game that would not close) leaves the SDK stand-ins in game/bin, a
+        // different size from the build's DLLs: their originals go back before the copy is judged, as on Linux.
+        string? recoveryError = null;
+        try { SdkShimRecovery.Recover(install); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { recoveryError = error.Message; }
+        if (SupportedBuild.Current.FirstCompletenessProblem(install.Game) is { } problem) EnterSetupFor(install, problem, recoveryError);
+    }
+
+    // A copy that is not complete: Check and repair with its first problem named once setup has finished here, otherwise
+    // first setup.
+    void EnterSetupFor(InstallLayout install, string problem, string? recoveryError = null)
+    {
+        if (SetupReceipt.FinishedBefore(install) is not { } finished) { EnterSetup(repair: false); return; }
+        var stuck = recoveryError == null ? ""
+            : $" The SDK files an interrupted session left could not be put back ({Privacy.Scrub(recoveryError)}): close HELLDIVERS 2 if it is still running, then restart HellForge.";
+        EnterSetup(repair: true, reason: $"{finished} {problem}.{stuck} Check and repair the game copy; completed files are kept.");
     }
 
     void EnterSetup(bool repair, string? reason = null)
@@ -143,7 +158,8 @@ public partial class MainWindow
 
     // The game found for setup: the supported build, Steam's root, Steam's installed game (or null), whether Steam's
     // console download holds it, and whether setup downloads it from Steam's servers (copying what Game holds).
-    sealed record SetupSource(SupportedBuild Build, string SteamRoot, SteamGame? Game, bool FromDepots, bool FromSteamServers);
+    // Existing: this installation's own copy already verifies, so nothing is copied.
+    sealed record SetupSource(SupportedBuild Build, string SteamRoot, SteamGame? Game, bool FromDepots, bool FromSteamServers, bool Existing = false);
 
     async Task RunSetup()
     {
@@ -171,7 +187,8 @@ public partial class MainWindow
             var steamApi = SteamApiPath(install, found);
             step = SetupStep.Ownership;
             await OwnershipStep(install, steamApi);
-            if (!found.FromSteamServers) { step = SetupStep.Copy; await CopyStep(install, found); }
+            if (found.Existing) SetRow(SetupStep.Copy, true, $"Nothing to copy: the game copy is build {found.Build.BuildId}, every file verified.");
+            else if (!found.FromSteamServers) { step = SetupStep.Copy; await CopyStep(install, found); }
             step = SetupStep.NetworkBlock;
             await NetworkBlockStep(install);
             step = SetupStep.Import;
@@ -518,6 +535,11 @@ public partial class MainWindow
         SetRow(SetupStep.Find, null, "Looking in your Steam libraries...", running: true);
         var build = SupportedBuild.Current;
         var steamRoot = SteamLocator.SteamRoot(install) ?? throw new SetupStopped("Steam is not installed on this PC. Install Steam and HELLDIVERS 2, then start setup again.");
+        if (await ExistingCopyVerifies(install, build))
+        {
+            SetRow(SetupStep.Find, true, $"Build {build.BuildId}, already verified in {Privacy.Scrub(install.Game)}");
+            return new(build, steamRoot, null, false, false, Existing: true);
+        }
         SteamGame? game;
         string? unusable = null;
         try { game = await Task.Run(() => SteamLocator.FindGame(steamRoot)); }
@@ -546,6 +568,26 @@ public partial class MainWindow
             ? $"Build {game.Report.Pin.BuildId} in {game.Report.Source}. Steam sends build {build.BuildId} for your account; what your install already has is copied, not downloaded."
             : $"No HELLDIVERS 2 setup can copy from. Steam sends build {build.BuildId} (about {build.TotalBytes / 1e9:0} GB) for your account.");
         return new(build, steamRoot, game, false, true);
+    }
+
+    // This installation's own copy, checked before Steam: once an interrupted session's SDK stand-ins are back, a copy
+    // that verifies needs nothing from Steam, whose installed game may have moved on to a newer build (Linux:
+    // FindLinuxGame). Every file is hashed: Check and repair does not trust the size and time cache.
+    async Task<bool> ExistingCopyVerifies(InstallLayout install, SupportedBuild build)
+    {
+        if (!build.IsComplete(install.Game))
+        {
+            if (!Directory.Exists(Path.Combine(install.Temp, "sdk-shim-originals"))) return false; // no session has run here
+            try { SdkShimRecovery.Recover(install); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                throw new SetupStopped("The SDK files an interrupted session left could not be put back: " + error.Message +
+                    " Close HELLDIVERS 2 if it is still running, then start setup again.");
+            }
+            if (!build.IsComplete(install.Game)) return false;
+        }
+        SetRow(SetupStep.Find, null, "Checking the existing HellForge game folder...", running: true);
+        return await Task.Run(() => build.Verify(install.Game).Count == 0);
     }
 
     // What Steam has, in the console card's words.
@@ -594,7 +636,7 @@ public partial class MainWindow
     }
 
     // The steam_api64.dll the ownership check uses: the downloaded copy, Steam's depot download, or the installed game.
-    static string SteamApiPath(InstallLayout install, SetupSource found) => found.FromSteamServers
+    static string SteamApiPath(InstallLayout install, SetupSource found) => found.FromSteamServers || found.Existing
         ? Path.Combine(install.Game, "bin", "steam_api64.dll")
         : found.FromDepots
             ? SteamDepotDownload.Locate(found.SteamRoot, found.Build, found.Build.Files.Single(f => f.Path == "bin/steam_api64.dll"))
