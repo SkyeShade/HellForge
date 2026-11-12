@@ -264,6 +264,53 @@ static void MovePutBack(uintptr_t game)
 
 static void MoveHoldSetup(uintptr_t game);
 
+/* A site still unread at `now`: noted (and setup_game held) at the first, refused once the wait runs out. */
+static void MoveWaitOrRefuse(uintptr_t game, uint32_t unread, const char* why, ULONGLONG now)
+{
+    g_moveUnreadRva = unread;
+    snprintf(g_moveUnreadWhy, sizeof g_moveUnreadWhy, "%s", why);
+    if (g_moveWaitFrom == 0)
+    {
+        g_moveWaitFrom = now;
+        Note("state moves: 0x%x does not read as reviewed (%s): waiting for game.dll's decoding", unread, why);
+        MoveHoldSetup(game);
+    }
+    g_moveTries++;
+    ULONGLONG wait = g_moveSetupHook == 1 ? 6 * MOVE_DECODE_WAIT : MOVE_DECODE_WAIT;
+    if (now - g_moveWaitFrom < wait) return;
+    g_stateMoves = -1;
+    Note("state moves: 0x%x still does not read as reviewed after %llu ms (%s): the code is not the reviewed one: the arrays stay", unread, now - g_moveWaitFrom, why);
+}
+
+/* Every site as moved, all or none; the game state still unallocated after the writes. */
+static void MoveWrite(uintptr_t game)
+{
+    g_stateMoves = -1;
+    g_moveGuard = MoveGuardWanted();
+    uint8_t* stub = MoveResetStub(game);
+    if (stub == NULL) { Note("state moves: no stub near game.dll: the arrays stay"); return; }
+    int32_t rel = (int32_t)((intptr_t)stub - (intptr_t)(game + MOVE_RESET_CALL + 5));
+    int failed = MoveSitesWrite(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes), (int32_t)MOVE_EXTRA_BYTES) ||
+        MoveSitesWrite(game, kMovePackageSites, MOVE_COUNT(kMovePackageSites), (int32_t)(MOVE_SLOTS_NEW - MOVE_SLOTS_OLD)) ||
+        MoveCatalogueWrite(game) ||
+        ApiWrite(game + MOVE_RESET_CALL + 1, &rel, 4);
+    /* The setup can have started during the writes: then it allocated at the old size, or half way through them. */
+    uint64_t state = 1;
+    if (failed || SafeRead(game + MOVE_STATE, &state, 8) || state != 0)
+    {
+        MovePutBack(game);
+        Note("state moves: %s: put back", failed ? "a site could not be written" : "the game state was allocated meanwhile");
+        return;
+    }
+    g_stateMoves = 1;
+    g_moveResetRel = rel;
+    g_moveMovedAt = GetTickCount64();
+    MoveCatalogueLaidOut();
+    Note("state moves: package slots at P+0x%x, room for %u; catalogue at P+0x%x, room for %u items; state %u KB larger, %u sites", MOVE_SLOTS_NEW, MOVE_SLOTS_ROOM, MOVE_CATALOGUE_NEW,
+        MOVE_ITEMS, MOVE_EXTRA_BYTES >> 10, (unsigned)(MOVE_COUNT(kMoveStateSizes) + MOVE_COUNT(kMovePackageSites) + MOVE_COUNT(kMoveCatalogueSites) + MOVE_COUNT(kMoveCapacitySites) + 1));
+    if (g_moveWaitFrom != 0) Note("state moves: game.dll's code read as reviewed %llu ms after the first try (%u tries)", g_moveMovedAt - g_moveWaitFrom, g_moveTries);
+}
+
 /* Called each tick until it settles: a site that does not read as reviewed yet is tried again on the next tick, as long
  * as the game has not allocated its state and MOVE_DECODE_WAIT has not passed (six times that while setup_game is held:
  * the hold decides). */
@@ -282,45 +329,8 @@ static void StateMovesTry(uintptr_t game)
     if (g_moveTries == 0) g_moveUndecoded = MoveUndecodedWanted();
     char why[64];
     uint32_t unread = MoveUnread(game, why, sizeof why);
-    if (unread != 0)
-    {
-        g_moveUnreadRva = unread;
-        snprintf(g_moveUnreadWhy, sizeof g_moveUnreadWhy, "%s", why);
-        if (g_moveWaitFrom == 0)
-        {
-            g_moveWaitFrom = now;
-            Note("state moves: 0x%x does not read as reviewed (%s): waiting for game.dll's decoding", unread, why);
-            MoveHoldSetup(game);
-        }
-        g_moveTries++;
-        if (now - g_moveWaitFrom < (g_moveSetupHook == 1 ? 6 * MOVE_DECODE_WAIT : MOVE_DECODE_WAIT)) return;
-        g_stateMoves = -1;
-        Note("state moves: 0x%x still does not read as reviewed after %llu ms (%s): the code is not the reviewed one: the arrays stay", unread, now - g_moveWaitFrom, why);
-        return;
-    }
-    g_stateMoves = -1;
-    g_moveGuard = MoveGuardWanted();
-    uint8_t* stub = MoveResetStub(game);
-    if (stub == NULL) { Note("state moves: no stub near game.dll: the arrays stay"); return; }
-    int32_t rel = (int32_t)((intptr_t)stub - (intptr_t)(game + MOVE_RESET_CALL + 5));
-    int failed = MoveSitesWrite(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes), (int32_t)MOVE_EXTRA_BYTES) ||
-        MoveSitesWrite(game, kMovePackageSites, MOVE_COUNT(kMovePackageSites), (int32_t)(MOVE_SLOTS_NEW - MOVE_SLOTS_OLD)) ||
-        MoveCatalogueWrite(game) ||
-        ApiWrite(game + MOVE_RESET_CALL + 1, &rel, 4);
-    /* The setup can have started during the writes: then it allocated at the old size, or half way through them. */
-    if (failed || SafeRead(game + MOVE_STATE, &state, 8) || state != 0)
-    {
-        MovePutBack(game);
-        Note("state moves: %s: put back", failed ? "a site could not be written" : "the game state was allocated meanwhile");
-        return;
-    }
-    g_stateMoves = 1;
-    g_moveResetRel = rel;
-    g_moveMovedAt = GetTickCount64();
-    MoveCatalogueLaidOut();
-    Note("state moves: package slots at P+0x%x, room for %u; catalogue at P+0x%x, room for %u items; state %u KB larger, %u sites", MOVE_SLOTS_NEW, MOVE_SLOTS_ROOM, MOVE_CATALOGUE_NEW,
-        MOVE_ITEMS, MOVE_EXTRA_BYTES >> 10, (unsigned)(MOVE_COUNT(kMoveStateSizes) + MOVE_COUNT(kMovePackageSites) + MOVE_COUNT(kMoveCatalogueSites) + MOVE_COUNT(kMoveCapacitySites) + 1));
-    if (g_moveWaitFrom != 0) Note("state moves: game.dll's code read as reviewed %llu ms after the first try (%u tries)", g_moveMovedAt - g_moveWaitFrom, g_moveTries);
+    if (unread != 0) MoveWaitOrRefuse(game, unread, why, now);
+    else MoveWrite(game);
 }
 
 static void StateMoves(uintptr_t game)
