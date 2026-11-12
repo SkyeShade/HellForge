@@ -24,16 +24,7 @@ static class NetworkCensus
             if (parsed is not JsonObject row) continue;
             if ((string?)row["gate"] is { } gate)
             {
-                if (gate == "census")
-                {
-                    summary["groups"] = row["groups"]?.DeepClone();
-                    summary["hooked"] = row["hooked"]?.DeepClone();
-                    summary["of"] = row["of"]?.DeepClone();
-                    summary["missing"] = row["missing"]?.DeepClone();
-                    summary["watchingLoads"] = row["watchingLoads"]?.DeepClone();
-                }
-                else if (gate == "module loaded") modules.Add((JsonNode?)JsonValue.Create((string?)row["module"]));
-                else if (gate == "crowded") summary["crowded"] = true; /* some counts are shared from here on (net_gate.c Seen) */
+                ReadGate(gate, row, summary, modules);
                 continue;
             }
             var key = ((string?)row["api"] ?? "?", (string?)row["to"] ?? "?", (string?)row["scope"] ?? "?", (string?)row["caller"] ?? "?");
@@ -49,6 +40,7 @@ static class NetworkCensus
         summary["programs"] = Sum(s => s == "program");
         summary["unspecified"] = Sum(s => s == "unspecified");
         summary["denied"] = Sum(s => s == "denied");
+        summary["tabletRefused"] = counts.Where(c => c.Key.Scope == "refused" && c.Key.To == "Wintab32.dll").Sum(c => c.Value);
         JsonArray List(Func<string, bool> scope) => new(counts.Where(c => scope(c.Key.Scope)).OrderByDescending(c => c.Value).Take(ListedTargets)
             .Select(c => (JsonNode?)new JsonObject { ["api"] = c.Key.Api, ["to"] = c.Key.To, ["scope"] = c.Key.Scope, ["caller"] = c.Key.Caller, ["count"] = c.Value })
             .ToArray());
@@ -56,5 +48,21 @@ static class NetworkCensus
         summary["programsStarted"] = List(s => s == "program");
         summary["deniedTargets"] = List(s => s == "denied");
         return summary;
+    }
+
+    // The gates' own lines: what each hooked, and what happened to the hooks since.
+    static void ReadGate(string gate, JsonObject row, JsonObject summary, JsonArray modules)
+    {
+        JsonObject Hooks() => new() { ["hooked"] = row["hooked"]?.DeepClone(), ["of"] = row["of"]?.DeepClone(), ["watchingLoads"] = row["watchingLoads"]?.DeepClone() };
+        if (gate == "census")
+        {
+            foreach (var (key, value) in Hooks()) summary[key] = value?.DeepClone();
+            summary["groups"] = row["groups"]?.DeepClone();
+            summary["missing"] = row["missing"]?.DeepClone();
+        }
+        else if (gate == "module loaded") modules.Add((JsonNode?)JsonValue.Create((string?)row["module"]));
+        else if (gate == "crowded") summary["crowded"] = true; /* some counts are shared from here on (net_gate.c Seen) */
+        else if (gate == "tablet") summary["tabletGate"] = Hooks();
+        else if (gate == "tablet loaded") summary["tabletLoaded"] = true; /* Wintab32 got past the tablet gate (tablet_gate.c) */
     }
 }
