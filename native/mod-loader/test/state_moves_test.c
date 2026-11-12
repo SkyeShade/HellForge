@@ -74,6 +74,7 @@ static void MoveFresh(uint8_t* game)
 {
     MoveFakeImage(game);
     g_stateMoves = 0; g_moveWaitFrom = g_moveMovedAt = 0; g_moveTries = g_moveUndecoded = 0; g_moveStateSeen = 0; g_moveResetRel = 0;
+    g_moveSetupHook = 0; g_moveSetupWait = MOVE_SETUP_WAIT;
     g_catalogue = (CatalogueLayout)MOVE_LAYOUT(MOVE_CATALOGUE_OLD, MOVE_ITEMS_OLD);
     g_gameItems = g_gamePackages = 0;
 }
@@ -168,10 +169,39 @@ static void StateMovesDecodeFixture(void)
     assert(g_stateMoves == 1 && g_moveTries == 3);
     SetEnvironmentVariableW(L"HELLFORGE_MOVE_UNDECODED", NULL);
 
+    /* setup_game reached with the move still waiting: held until it goes ahead (here the fourth try), and with it held
+     * the loader's thread waits past MOVE_DECODE_WAIT */
+    MoveFresh(image);
+    SetEnvironmentVariableW(L"HELLFORGE_MOVE_UNDECODED", L"3");
+    StateMoves(game);
+    assert(g_stateMoves == 0 && g_moveSetupHook == -1); /* the fake has no setup_game to hook */
+    g_moveSetupHook = 1;
+    g_moveWaitFrom = GetTickCount64() - MOVE_DECODE_WAIT - 1;
+    StateMoves(game);
+    assert(g_stateMoves == 0);
+    MoveBeforeSetup(game);
+    assert(g_stateMoves == 1 && g_gameItems == MOVE_ITEMS && g_moveTries == 3);
+    MoveBeforeSetup(game); /* settled: nothing more */
+    assert(g_stateMoves == 1);
+    SetEnvironmentVariableW(L"HELLFORGE_MOVE_UNDECODED", NULL);
+    /* and refused there, before the allocation, when the code never reads as reviewed: nothing written */
+    MoveFresh(image);
+    g_moveSetupWait = 30;
+    image[late->rva] ^= 0xFF;
+    StateMoves(game);
+    g_moveSetupHook = 1;
+    MoveBeforeSetup(game);
+    assert(g_stateMoves == -1 && g_gameItems == 0 && g_moveUnreadRva == late->rva);
+    StateMoves(game);
+    assert(g_stateMoves == -1);
+    image[late->rva] ^= 0xFF;
+    assert(MoveImageReviewed(game));
+
     MoveFresh(image);
     VirtualFree(image, 0, MEM_RELEASE);
     puts("PASS state moves while game.dll decodes: a site still encoded waits and moves once it reads as reviewed; the "
-        "state allocated first, or the wait run out, writes nothing; a write lost before the state comes puts all back");
+        "state allocated first, or the wait run out, writes nothing; a write lost before the state comes puts all back; "
+        "setup_game held waits for the move, or refuses it before the allocation");
 }
 
 /* The armory's room: a list full counting its vanilla records refuses by type, and entity copies take no card. */

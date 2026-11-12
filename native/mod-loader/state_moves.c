@@ -47,6 +47,13 @@ _Static_assert((uint64_t)MOVE_STATE_BYTES + MOVE_EXTRA_BYTES < 0x7FFFFFFFull, "t
  * 2 of 103 local starts, those with the watch thread up before the decoding ended). Such code gets as long as the
  * difficulty and network passes give it, unless the game allocates its state first. */
 #define MOVE_DECODE_WAIT 20000u
+/* game.dll's setup_game (functions.json SetupPhysicsConfig): the engine calls it once, through its plugin table, and it
+ * allocates the state (MOVE_STATE, at 0x4EE51B). While a site still does not read as reviewed it is held (MoveBeforeSetup):
+ * the move goes ahead or refuses there, before the allocation, never after it. It sits below the pin, so it reads as
+ * reviewed when the pin does. */
+#define MOVE_SETUP 0x4EE160u
+#define MOVE_SETUP_WAIT 10000u
+static const uint8_t kMoveSetupCode[16] = {0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x55};
 
 static int g_stateMoves; /* 0 waiting, 1 moved, -1 left where they are */
 static int g_moveGuard;  /* the guard and the canary are on */
@@ -55,6 +62,12 @@ static uint32_t g_moveTries;      /* the tries that found one */
 static uint32_t g_moveUndecoded;  /* tests: HELLFORGE_MOVE_UNDECODED=n, the first n tries find one */
 static int32_t g_moveResetRel;    /* the reset call's displacement to the stub, as written */
 static int g_moveStateSeen;       /* the game has allocated its state since the move */
+static int g_moveSetupHook;       /* setup_game held: 0 not tried, 1 hooked, -1 not */
+static void (*g_moveSetupOriginal)(void* getApi);
+static uint32_t g_moveUnreadRva;  /* the last site found unread, and what it read */
+static char g_moveUnreadWhy[64];
+static SRWLOCK g_moveLock = SRWLOCK_INIT; /* the loader's thread and, held, the game's main thread */
+static ULONGLONG g_moveSetupWait = MOVE_SETUP_WAIT; /* tests shorten it */
 /* Where the catalogue is, from P (ownership.c reads through this): the compiled places until it moves. */
 typedef struct CatalogueLayout { uint32_t count, records, index, starts, catalogue, inventory, items; } CatalogueLayout;
 #define MOVE_LAYOUT(at, n) {(at), (at) + 4u, (at) + MOVE_AT_HIERARCHY(n), (at) + MOVE_AT_STARTS(n), (at) + MOVE_AT_STATUS(n), (at) + MOVE_AT_INVENTORY(n), (n)}
@@ -249,9 +262,12 @@ static void MovePutBack(uintptr_t game)
     MoveSitesWrite(game, kMoveStateSizes, MOVE_COUNT(kMoveStateSizes), 0);
 }
 
+static void MoveHoldSetup(uintptr_t game);
+
 /* Called each tick until it settles: a site that does not read as reviewed yet is tried again on the next tick, as long
- * as the game has not allocated its state and MOVE_DECODE_WAIT has not passed. */
-static void StateMoves(uintptr_t game)
+ * as the game has not allocated its state and MOVE_DECODE_WAIT has not passed (six times that while setup_game is held:
+ * the hold decides). */
+static void StateMovesTry(uintptr_t game)
 {
     uint64_t state = 1;
     if (g_stateMoves != 0 || game == 0 || SafeRead(game + MOVE_STATE, &state, 8)) return;
@@ -268,13 +284,16 @@ static void StateMoves(uintptr_t game)
     uint32_t unread = MoveUnread(game, why, sizeof why);
     if (unread != 0)
     {
+        g_moveUnreadRva = unread;
+        snprintf(g_moveUnreadWhy, sizeof g_moveUnreadWhy, "%s", why);
         if (g_moveWaitFrom == 0)
         {
             g_moveWaitFrom = now;
             Note("state moves: 0x%x does not read as reviewed (%s): waiting for game.dll's decoding", unread, why);
+            MoveHoldSetup(game);
         }
         g_moveTries++;
-        if (now - g_moveWaitFrom < MOVE_DECODE_WAIT) return;
+        if (now - g_moveWaitFrom < (g_moveSetupHook == 1 ? 6 * MOVE_DECODE_WAIT : MOVE_DECODE_WAIT)) return;
         g_stateMoves = -1;
         Note("state moves: 0x%x still does not read as reviewed after %llu ms (%s): the code is not the reviewed one: the arrays stay", unread, now - g_moveWaitFrom, why);
         return;
@@ -304,10 +323,67 @@ static void StateMoves(uintptr_t game)
     if (g_moveWaitFrom != 0) Note("state moves: game.dll's code read as reviewed %llu ms after the first try (%u tries)", g_moveMovedAt - g_moveWaitFrom, g_moveTries);
 }
 
+static void StateMoves(uintptr_t game)
+{
+    AcquireSRWLockExclusive(&g_moveLock);
+    StateMovesTry(game);
+    ReleaseSRWLockExclusive(&g_moveLock);
+}
+
+/* On the game's main thread, as setup_game is about to allocate the state: the move is tried until it goes ahead or
+ * MOVE_SETUP_WAIT passes, and settles here, so the game never sets up with a move still to come. */
+static void MoveBeforeSetup(uintptr_t game)
+{
+    ULONGLONG from = GetTickCount64();
+    uint32_t tries = 0;
+    for (;; tries++)
+    {
+        StateMoves(game);
+        if (g_stateMoves != 0 || GetTickCount64() - from >= g_moveSetupWait) break;
+        Sleep(5);
+    }
+    ULONGLONG held = GetTickCount64() - from;
+    AcquireSRWLockExclusive(&g_moveLock);
+    if (g_stateMoves == 0)
+    {
+        g_stateMoves = -1;
+        Note("state moves: 0x%x still does not read as reviewed (%s) as the game sets up, after %llu ms held: the code is not the reviewed one: the arrays stay",
+            g_moveUnreadRva, g_moveUnreadWhy, held);
+    }
+    ReleaseSRWLockExclusive(&g_moveLock);
+    if (tries > 0) Note("state moves: the game's setup was held %llu ms (%u tries): %s", held, tries, g_stateMoves == 1 ? "moved before it" : "the arrays stay");
+}
+
+static void MoveSetupDetour(void* getApi)
+{
+    MoveBeforeSetup(ApiModuleBase("game.dll", NULL));
+    g_moveSetupOriginal(getApi);
+}
+
+/* setup_game held while the move waits (once): only on a start whose first try found a site unread. */
+static void MoveHoldSetup(uintptr_t game)
+{
+    if (g_moveSetupHook != 0) return;
+    g_moveSetupHook = -1;
+    uint8_t code[sizeof kMoveSetupCode];
+    if (SafeRead(game + MOVE_SETUP, code, sizeof code) || memcmp(code, kMoveSetupCode, sizeof code) != 0)
+    {
+        Note("state moves: setup_game does not read as reviewed: not held; the move waits for game.dll's decoding on its own");
+        return;
+    }
+    if (LoaderHook("state moves: setup hold", game + MOVE_SETUP, (void*)MoveSetupDetour, (void**)&g_moveSetupOriginal))
+    {
+        Note("state moves: setup_game could not be hooked: not held; the move waits for game.dll's decoding on its own");
+        return;
+    }
+    g_moveSetupHook = 1;
+    Note("state moves: setup_game held until the move goes ahead or refuses");
+}
+
 /* Each tick from the move until the game allocates its state: every written site still holds its write (a second
  * decoding over one would split the catalogue, so then all of it goes back while that can still be done), and once the
  * state is there, how long after the move it came: the room a late move has. */
-static void StateMovesSettle(uintptr_t game)
+static void StateMovesSettleLocked(uintptr_t game)
 {
     if (g_stateMoves != 1 || g_moveStateSeen) return;
     uint64_t state = 0;
@@ -328,6 +404,13 @@ static void StateMovesSettle(uintptr_t game)
     g_gameItems = g_gamePackages = 0;
     WriteRegisteredItems();
     Note("state moves: 0x%x lost its write %llu ms after the move, before the game allocated its state: put back", lost, since);
+}
+
+static void StateMovesSettle(uintptr_t game)
+{
+    AcquireSRWLockExclusive(&g_moveLock);
+    StateMovesSettleLocked(game);
+    ReleaseSRWLockExclusive(&g_moveLock);
 }
 
 /* The old catalogue's pages, no-access, the two it shares with live data too (the slot count below it, the state's next
