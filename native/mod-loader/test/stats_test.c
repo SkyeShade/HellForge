@@ -4532,6 +4532,7 @@ int main(int argc, char** argv)
     GrowthMagicFixture();
     GrowthLookupFixture();
     StateMovesOffsetsFixture();
+    StateMovesDecodeFixture();
     StateMovesOwnershipFixture();
     ArmoryRoomFixture();
     GrowthSitesFixture();
