@@ -180,7 +180,7 @@ On `dev`, since 0.4.0-beta.
 
 - **Ship navigation after a larger map.** The ship's obstacles were filed while the navigation grid still had a
   larger map's 256 m tiles, so the ship's navmesh could miss them or cut them in the wrong place. A grid change now
-  files every obstacle again under the new grid (#PRNUM).
+  files every obstacle again under the new grid (#378).
 - **Windows: a session cut short no longer sends you back to first-time setup.** After a restart, a crash or a game
   that would not close, HellForge's stand-ins for three game DLLs stayed in `gamein`. The launcher took that copy for
   an unfinished setup, which then downloaded the build from Steam again. The originals now go back when the launcher
