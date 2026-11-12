@@ -812,33 +812,31 @@ static int TableHeaderMatches(const Component* c, const uint8_t* table)
     return !SafeRead((uintptr_t)table - 32, header, 32) && !memcmp(header, &c->index, 4) && !memcmp(header + 4, c->header, 28);
 }
 
-/* The record the entity's one index row in table names, or -1 when it has none, several or a flagged one, or a row is
- * unreadable. */
-static int64_t OnlyRecordOf(const Component* c, const uint8_t* table, uint64_t resource)
+/* The record the entity's one index row names, or -1 when it has none, several or a flagged one. rows: the table's
+ * index rows (ReadIndexRows). */
+static int64_t OnlyRecordOf(const Component* c, const uint8_t* rows, uint64_t resource)
 {
     int64_t selected = -1;
     int owners = 0;
     for (uint32_t row = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
+        const uint8_t* entry = rows + (size_t)row * 16;
         uint64_t id;
         uint32_t record, flags;
-        if (SafeRead((uintptr_t)table + row * 16u, entry, 16)) return -1;
         memcpy(&id, entry, 8); memcpy(&record, entry + 8, 4); memcpy(&flags, entry + 12, 4);
         if (id == resource) { if (flags) return -1; owners++; selected = record; }
     }
     return owners == 1 ? selected : -1;
 }
 
-/* Whether another entity (not a copy of its base) names the record too; an unreadable row counts as one. */
-static int RecordShared(const Component* c, const uint8_t* table, uint64_t resource, uint32_t selected)
+/* Whether another entity (not a copy of its base) names the record too. */
+static int RecordShared(const Component* c, const uint8_t* rows, uint64_t resource, uint32_t selected)
 {
     for (uint32_t row = 0, sharers = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
+        const uint8_t* entry = rows + (size_t)row * 16;
         uint64_t id;
         uint32_t record;
-        if (SafeRead((uintptr_t)table + row * 16u, entry, 16)) return 1;
         memcpy(&id, entry, 8); memcpy(&record, entry + 8, 4);
         if (id != 0 && id != resource && record == selected && !CopiesBase(id) && ++sharers > 0) return 1;
     }
@@ -858,9 +856,11 @@ static uintptr_t CurrentTableRecord(const Component* c, uint64_t resource, uint3
     const OwnedTable* owned = OwnedTableOf(c->index, table);
     if (owned == NULL && !TableHeaderMatches(c, table)) return 0;
     uint32_t limit = owned != NULL ? owned->next : c->records;
-    int64_t selected = OnlyRecordOf(c, table, resource);
+    const uint8_t* rows = ReadIndexRows((uintptr_t)table, c->indices); /* an unreadable row: no record */
+    if (rows == NULL) return 0;
+    int64_t selected = OnlyRecordOf(c, rows, resource);
     if (selected < 0 || selected >= limit) return 0;
-    if (!shared && RecordShared(c, table, resource, (uint32_t)selected)) return 0;
+    if (!shared && RecordShared(c, rows, resource, (uint32_t)selected)) return 0;
     if (stride != NULL) *stride = c->stride;
     return (uintptr_t)table + (uintptr_t)c->indices * 16u + (uintptr_t)selected * c->stride;
 }
