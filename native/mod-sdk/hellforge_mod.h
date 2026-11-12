@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 17
+#define HF_MOD_SDK_VERSION 18
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -265,24 +265,7 @@ typedef struct HfArc
     uint32_t damage;    /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
 } HfArc;
 
-/* A new weapon attachment (SDK 17, add_attachment): a copy of a vanilla customization item (a magazine, muzzle, optic...)
- * under an id of its own, with the base's slot, stat changes and look in the armory, offered on weapons mods added.
- * Zero-initialize it and set `size`. */
-typedef struct HfAttachment
-{
-    uint32_t size;      /* sizeof(HfAttachment) */
-    uint32_t base;      /* the vanilla item it copies (its id, e.g. a magazine the base weapon takes) */
-    const char* name;   /* its id is the thin hash of this; unique, prefixed with your name and mod */
-    /* A magazine's, muzzle's or optic's model: a unit resource the mod's data provides, drawn at the weapon's attach_
-     * joint in place of the base's. 0 keeps the base's (and is required for other slots). */
-    uint64_t unit;
-    /* Its text in the armory (UTF-8); NULL keeps the base's. An upper-case copy of the name is made. */
-    const char* name_text;
-    const char* description;
-    /* The weapons offering it: loadout ids add_weapon returned (up to 16). Their base must take the base item's slot. */
-    const uint32_t* weapons;
-    uint32_t weapon_count;
-} HfAttachment;
+#include "hellforge_customization.h" /* HfAttachment (SDK 17) and HfPattern (SDK 18): weapon attachments and patterns */
 
 /* The faction rosters of the enemy spawn director, for HfEnemy and HfEnemySwap (SDK 17). */
 #define HF_ENEMY_TERMINIDS 1u
@@ -1700,6 +1683,12 @@ typedef struct HfApi
      * where each region lies in the block (regions, by HF_GEN_ name), and whether the game uses them yet. want may be
      * NULL to only read. */
     int (*generation_capacity)(HfMod* mod, const HfGenerationCapacity* want, HfGenerationCapacity* have);
+
+    /* ---- SDK 18: patterns (check hf->size before calling) ---------------------------------------------------------- */
+    /* Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why).
+     * 128 across all mods; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in
+     * all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data. */
+    uint32_t (*add_pattern)(HfMod* mod, const HfPattern* pattern);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

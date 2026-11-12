@@ -45,6 +45,7 @@ friends compare in co-op.
 | add a new stratagem, weapon or entity | [Content](content.md), after [your first mod](first-mod.md) |
 | put your stratagems under a heading of their own | [Content: selection headings](content.md#selection-headings) |
 | make the game spawn an enemy of your own beside the vanilla ones | [New enemies](enemies.md) |
+| add a pattern for weapons, vehicles, the hellpod or the Pelican | [Patterns](patterns.md) |
 | sell items on a warbond of your own, in a currency you choose | [Warbonds](warbonds.md) |
 | recolour a model or ship your own model, sound or icon | [Data mods](data.md) |
 | make effects with your own pixel shaders | [Shaders](shaders.md), after [Data mods](data.md) |

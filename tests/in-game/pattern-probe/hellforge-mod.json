@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.pattern-probe",
+  "name": "Pattern probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: exercises SDK 18's add_pattern (weapon paints and Pelican, hellpod, exosuit and FRV skins, a magenta pattern colour) and logs one PROBE line per check for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "pattern_probe.dll", "sdk": 18 }
+}

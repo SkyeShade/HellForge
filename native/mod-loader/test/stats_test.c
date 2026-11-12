@@ -3572,6 +3572,160 @@ static void AttachmentsFixture(void)
     VirtualFree(game, 0, MEM_RELEASE);
 }
 
+/* Patterns (patterns.c): a weapon pattern is a paint's copy among the attachments, with its pattern_lut and a mask
+ * swapped in its WeaponCustomization override; a unit pattern joins every collection holding its base skin (the hellpod
+ * and its rack), with its own row, name and deltas, waits for a skin table that is not loaded yet, stops at the list's 24,
+ * and every pattern's add_path is mapped to its base's package in HellForge's copy of the package map. */
+static void PatternsFixture(void)
+{
+    uint8_t* game = (uint8_t*)VirtualAlloc(NULL, PAT_COLLECTIONS + 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint8_t* state = (uint8_t*)VirtualAlloc(NULL, ATT_DELTAS + 0x100, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert(game && state);
+    memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
+    memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    memcpy(game + PAT_SKIN_LOOKUP, kPatSkinPin, sizeof kPatSkinPin);
+    memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin);
+    uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
+    const uint32_t arcticCamo = 0x5D125795u, podCamo = 0xB9F05F72u;
+    const uint64_t paintKey = 0x1000000000000001ull, podKey = 0x2000000000000002ull, oldLut = 0x3333000000000003ull, oldMask = 0x4444000000000004ull,
+        materialLut = 0x5555000000000005ull, newLut = 0x6666000000000006ull, newMask = 0x7777000000000007ull, package = 0x8888000000000008ull;
+    /* the weapon items: Arctic Camo, a paint (slot 3) */
+    static uint8_t items[ATT_ITEM];
+    static uint32_t paintSlot = 3;
+    memcpy(items + 8, &arcticCamo, 4); memcpy(items + 0x20, &paintKey, 8);
+    uintptr_t slots = (uintptr_t)&paintSlot; memcpy(items + 0x30, &slots, 8); uint32_t one = 1; memcpy(items + 0x38, &one, 4);
+    static struct { uint8_t* items; uint32_t count; uint32_t pad; } block;
+    block.items = items; block.count = 1;
+    at = (uintptr_t)&block; memcpy(game + ATT_TABLE, &at, 8);
+    uint32_t count = 1; memcpy(game + ATT_COUNT, &count, 4);
+    /* the deltas: the paint's WeaponCustomization override at +200, the hellpod skin's UnitCustomization override at +0 */
+    static uint8_t keys[16 * 5], data[80];
+    static uint32_t settings[4] = {1, 0, 1, 1}, comps[6] = {ATT_CUSTOMIZATION, 0, 1, ATT_UNIT_CUSTOMIZATION, 1, 1}, deltas[6] = {200, 40, 0, 0, 40, 40};
+    uint32_t second = 1;
+    memcpy(keys + 16 * (paintKey % 5), &paintKey, 8);
+    memcpy(keys + 16 * (podKey % 5), &podKey, 8); memcpy(keys + 16 * (podKey % 5) + 8, &second, 4);
+    assert(paintKey % 5 != podKey % 5);
+    for (int o = 0; o < 2; o++)
+    {
+        uint32_t material = 0xAB0 + (uint32_t)o;
+        memcpy(data + 40 * o, &material, 4);
+        memcpy(data + 40 * o + 8, &materialLut, 8);
+        memcpy(data + 40 * o + 24, &oldLut, 8);
+        memcpy(data + 40 * o + 32, &oldMask, 8);
+    }
+    static uint8_t storage[0x50];
+    void* parts[5] = {keys, settings, comps, deltas, data};
+    for (int p = 0; p < 5; p++) memcpy(storage + 0x10 * p, &parts[p], 8);
+    uint32_t five = 5; memcpy(storage + 8, &five, 4);
+    at = (uintptr_t)storage; memcpy(state + ATT_DELTAS, &at, 8);
+    /* the package map: 16 entries, the hellpod skin's add_path in its package */
+    static uint8_t map[16 * 16];
+    uint8_t* mapAt = map; memcpy(game + PAT_PACKAGES, &mapAt, 8);
+    uint32_t sixteen = 16, two = 2; memcpy(game + PAT_PACKAGES + 8, &sixteen, 4); memcpy(game + PAT_PACKAGES + 0x18, &two, 4);
+    assert(PatMapPut(map, 16, 2, 0, podKey, package) && PatMapPut(map, 16, 2, 0, paintKey, package + 1));
+    /* the skins: the hellpod (collection 1) and its rack (2), each a default and the camo; collection 0 a full one */
+    static uint8_t hellpod[2 * PAT_SKIN], rack[2 * PAT_SKIN], full[PAT_SKINS_CAP * PAT_SKIN], records[3][0x50];
+    for (int k = 0; k < 2; k++)
+    {
+        uint8_t* skins = k ? rack : hellpod;
+        memcpy(skins + PAT_SKIN + 8, &podCamo, 4); memcpy(skins + PAT_SKIN + 0x10, &podKey, 8);
+        uint32_t type = 1 + (uint32_t)k, n = 2; memcpy(records[1 + k] + 8, &type, 4); memcpy(records[1 + k] + 0x30, &n, 4);
+        uintptr_t list = (uintptr_t)skins; memcpy(records[1 + k] + 0x28, &list, 8);
+    }
+    for (uint32_t i = 0; i < PAT_SKINS_CAP; i++) { uint32_t id = 0xF000 + i; memcpy(full + i * PAT_SKIN + 8, &id, 4); }
+    memcpy(full + 3 * PAT_SKIN + 8, &podCamo, 4); memcpy(full + 3 * PAT_SKIN + 0x10, &podKey, 8); /* a collection already at the list's 24 that also holds the camo */
+    uint32_t cap = PAT_SKINS_CAP; memcpy(records[0] + 0x30, &cap, 4);
+    uintptr_t list = (uintptr_t)full; memcpy(records[0] + 0x28, &list, 8);
+    for (int k = 0; k < 3; k++) { uintptr_t r = (uintptr_t)records[k]; memcpy(game + PAT_COLLECTIONS + 8 * k, &r, 8); }
+    /* no skins loaded yet */
+
+    uintptr_t savedGame = g_game;
+    LONG savedReady = InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], 0);
+    g_game = (uintptr_t)game;
+    g_patProven = 0;
+    HfMod* mod = &g_mods[0];
+    const HfTextureSwap swaps[] = {{oldMask, newMask}};
+    static const float colours[2][3] = {{1, 0.5f, 0}, {0.1f, 0.1f, 0.1f}};
+    HfPattern paint = {sizeof paint, arcticCamo, "test/mod/tiger", "Tiger", "Stripes.", newLut, swaps, 1, colours, 2, NULL, 0};
+    HfPattern pod = {sizeof pod, podCamo, "test/mod/pod_tiger", "Tiger pod", NULL, newLut, NULL, 0, NULL, 0, NULL, 0};
+    HfPattern bad = pod; bad.name = "test/mod/bad"; bad.swap_count = HF_PATTERN_SWAPS + 1; bad.swaps = swaps;
+    HfPattern nobase = pod; nobase.name = "test/mod/nobase"; nobase.base = 0;
+    HfPattern stranger = pod; stranger.name = "test/mod/stranger"; stranger.base = 0x12345678u;
+    uint32_t tiger = ApiAddPattern(mod, &paint), podTiger = ApiAddPattern(mod, &pod);
+    assert(tiger == Thin("test/mod/tiger") && podTiger == Thin("test/mod/pod_tiger"));
+    assert(g_attachmentCount == 1 && g_attachments[0].pattern && g_patternCount == 1);
+    assert(ApiAddPattern(mod, &paint) == 0 && ApiAddPattern(mod, &bad) == 0 && ApiAddPattern(mod, &nobase) == 0);
+    assert(ApiAddPattern(mod, &stranger) != 0 && g_patternCount == 2); /* refused once the skins are there */
+
+    AttachmentsTick();
+    uint8_t* grown = StatePointer(state, ATT_DELTAS);
+    assert(grown == g_attGrown && g_attachments[0].state == 1 && g_patterns[0].state == 0); /* the skins are not loaded */
+    const uint32_t* setting = AttDeltaSetting(grown, g_attachments[0].copy.addPath);
+    assert(setting != NULL);
+    const uint32_t* comp = *(uint32_t* const*)(grown + 0x20) + 3 * setting[1];
+    const uint32_t* delta = *(uint32_t* const*)(grown + 0x30) + 3 * comp[1];
+    const uint8_t* copied = *(uint8_t* const*)(grown + 0x40) + delta[2];
+    assert(comp[0] == ATT_CUSTOMIZATION && delta[0] == 200 && *(const uint64_t*)(copied + 24) == newLut && *(const uint64_t*)(copied + 32) == newMask &&
+        *(const uint64_t*)(copied + 8) == materialLut);
+    assert(*(const uint64_t*)(data + 24) == oldLut); /* the game's own data untouched */
+    assert(*(const uint32_t*)(g_attItems + 8) == tiger && *(const void* const*)(g_attItems + 0x40) == (const void*)g_attachments[0].colours &&
+        *(const uint64_t*)(g_attItems + 0x48) == 2);
+    uint8_t* newMap = *(uint8_t**)(game + PAT_PACKAGES);
+    assert(newMap == g_patMap && newMap != map && PatMapGet(newMap, 16, 2, 0, g_attachments[0].copy.addPath) == package + 1 &&
+        PatMapGet(newMap, 16, 2, 0, podKey) == package && PatMapGet(map, 16, 2, 0, g_attachments[0].copy.addPath) == 0);
+
+    count = 3; memcpy(game + PAT_COLLECTION_COUNT, &count, 4); /* the game loads its skins */
+    AttachmentsTick();
+    uint8_t* regrown = StatePointer(state, ATT_DELTAS);
+    assert(regrown == g_attGrown && regrown != grown && g_attGrownFrom == storage && g_patterns[0].state == 1 && g_patterns[1].state == -1);
+    assert(AttDeltaSetting(regrown, g_attachments[0].copy.addPath) != NULL && g_attachments[0].state == 1);
+    setting = AttDeltaSetting(regrown, g_patterns[0].copies[1].addPath);
+    assert(g_patterns[0].has == 7u && AttDeltaSetting(regrown, g_patterns[0].copies[2].addPath) != NULL && g_patterns[0].copies[1].addPath != g_patterns[0].copies[2].addPath);
+    assert(setting != NULL);
+    comp = *(uint32_t* const*)(regrown + 0x20) + 3 * setting[1];
+    delta = *(uint32_t* const*)(regrown + 0x30) + 3 * comp[1];
+    copied = *(uint8_t* const*)(regrown + 0x40) + delta[2];
+    assert(comp[0] == ATT_UNIT_CUSTOMIZATION && *(const uint64_t*)(copied + 24) == newLut && *(const uint64_t*)(copied + 32) == oldMask);
+    for (int k = 1; k < 3; k++)
+    {
+        const uint8_t* skins = *(uint8_t* const*)(records[k] + 0x28);
+        assert(skins == g_patCollections[k].rows && *(const uint32_t*)(records[k] + 0x30) == 3);
+        assert(*(const uint32_t*)(skins + PAT_SKIN + 8) == podCamo && *(const uint32_t*)(skins + 2 * PAT_SKIN + 8) == podTiger);
+        assert(*(const uint64_t*)(skins + 2 * PAT_SKIN + 0x10) == g_patterns[0].copies[k].addPath);
+        assert(strcmp(*(const char* const*)(skins + 2 * PAT_SKIN + 0x20), "TIGER POD") == 0 && *(const uint32_t*)(skins + 2 * PAT_SKIN + 0x18) != 0);
+    }
+    assert(*(uint8_t* const*)(records[0] + 0x28) == full && *(const uint32_t*)(records[0] + 0x30) == PAT_SKINS_CAP); /* full: left alone */
+    assert(g_patterns[0].collections == 6u);
+    newMap = *(uint8_t**)(game + PAT_PACKAGES);
+    assert(PatMapGet(newMap, 16, 2, 0, g_patterns[0].copies[1].addPath) == package && PatMapGet(newMap, 16, 2, 0, g_patterns[0].copies[2].addPath) == package && PatMapGet(newMap, 16, 2, 0, g_attachments[0].copy.addPath) == package + 1);
+    AttachmentsTick(); assert(StatePointer(state, ATT_DELTAS) == regrown && *(uint8_t**)(game + PAT_PACKAGES) == newMap); /* once */
+    /* the game reloads its skins: new records, made again */
+    static uint8_t reloaded[0x50];
+    memcpy(reloaded, records[2], sizeof reloaded);
+    uintptr_t rackList = (uintptr_t)rack; memcpy(reloaded + 0x28, &rackList, 8); uint32_t n2 = 2; memcpy(reloaded + 0x30, &n2, 4);
+    uintptr_t r2 = (uintptr_t)reloaded; memcpy(game + PAT_COLLECTIONS + 16, &r2, 8);
+    AttachmentsTick();
+    assert(*(uint8_t* const*)(reloaded + 0x28) == g_patCollections[2].rows && *(const uint32_t*)(reloaded + 0x30) == 3);
+
+    static char text[REG_ITEM_ROOM + 512];
+    int n = PatternItems(text, 0, sizeof text);
+    text[n] = 0;
+    assert(strstr(text, "\"kind\":\"weapon\",\"weapons\":[]") && strstr(text, "\"kind\":\"unit\"") && Occurrences(text, "\"mixId\":") == 2); /* the refused left out */
+    n = AttachmentItems(text, 0, sizeof text);
+    text[n] = 0;
+    assert(strcmp(text, ",\"attachments\":[]") == 0); /* a weapon pattern is not an attachment for the backend */
+
+    g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL; g_attBlock.count = 0;
+    g_patternCount = 0; g_patMap = g_patMapFrom = NULL; g_patProven = 0;
+    memset(g_patCollections, 0, sizeof g_patCollections);
+    g_game = savedGame;
+    InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], savedReady);
+    VirtualFree(grown, 0, MEM_RELEASE);
+    VirtualFree(regrown, 0, MEM_RELEASE);
+    VirtualFree(state, 0, MEM_RELEASE);
+    VirtualFree(game, 0, MEM_RELEASE);
+}
+
 /* Code mods set up in id order (the same on every machine), their edits queued meanwhile kept in load order, so the top
  * mod still wins a conflict (hellforge_modloader.c SetupOrder, fields.c QueueEdit and FinishSetupEdits). */
 static void SetupOrderFixture(void)
@@ -4353,6 +4507,7 @@ int main(int argc, char** argv)
     WeaponOrderFixture();
     RegisteredItemsFixture();
     AttachmentsFixture();
+    PatternsFixture();
     SetupOrderFixture();
     BehaviourStubsFixture();
     ContentBehaviourFixture();
@@ -4581,7 +4736,7 @@ int main(int argc, char** argv)
     ShieldBlockFixture();
     RenderGuardsFixture();
     NavCarversFixture();
-    puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, one-time settings; difficulty 11; "
+    puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
