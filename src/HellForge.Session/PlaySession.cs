@@ -1103,7 +1103,7 @@ sealed partial class PlaySession(PlayOptions options)
         var code = job.Process.ExitCode;
         result["gameExitCode"] = $"0x{code:X8}";
         var crash = RecordWindowsCrash(code);
-        var closed = LaunchFailure.Closed(step, code, crash, crash != null ? CrashOwner(crash) : WindowsCrash.Owner.Unknown);
+        var closed = ClosedMessage(step, code, crash);
         // a DLL refused by code integrity: what the player can do, as when a program of HellForge's is refused
         return SmartAppControl.IsBlockStatus(code) && SmartAppControl.Warning(SmartAppControl.Current) is { } warning ? closed + " " + warning : closed;
     }

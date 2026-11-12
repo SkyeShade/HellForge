@@ -348,6 +348,8 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
 - **The tablet driver is refused** (`tablet_gate.c`): kernelbase's four `LoadLibrary` calls answer `Wintab32.dll` with
   `ERROR_MOD_NOT_FOUND`. At low integrity the driver is refused its shared memory, and Gaomon's then shows a modal
   `OpenMem failed. Err=5` on every alt-tab. The census writes each refusal; `result.json` has `networkCensus.tablet*`.
+- **Nahimic crashes a sandboxed game** as it starts (#369). The failure message names it from the census
+  (`SandboxRefusals.CrashHint`).
 - **Steam's overlay** loads with `SteamAPI_Init`, so only into the broker. `HELLFORGE_SANDBOX_OVERLAY_PROBE=1` is a
   diagnostic: the stand-in loads Steam's `GameOverlayRenderer64.dll` into the sandboxed game at `SteamAPI_Init`
   (`OverlayProbe`). The runner passes its path, from Steam's `SteamPath`, as `HELLFORGE_OVERLAY_PROBE`. The census then
