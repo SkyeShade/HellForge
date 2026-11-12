@@ -130,6 +130,9 @@ On `dev`, since 0.4.0-beta.
   past 106 new stratagems the type travels in co-op in 16 bits instead of 8, so every player needs the same mods, as
   before. The picker still shows 256 cards, about 160 of them new ones
   ([limits](docs/modding/content.md#limits); #342).
+- **The Linux installer as a zip with no archive inside.** Sites that refuse an archive inside an archive, such as Nexus
+  Mods, can offer it. Extract it once and run `HellForge.Launcher`; it installs the same files as the `.tar.gz`
+  ([Linux](docs/linux.md#graphical-installer), #381).
 
 ### Changed
 

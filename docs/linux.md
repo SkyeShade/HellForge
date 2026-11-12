@@ -29,6 +29,8 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 - The `HellForge-Linux-Installer` artifact from a successful **Build Linux package** run. It contains the native
   launcher and `HellForge-Linux.zip`, which holds the app and no game files. The same run's `HellForge-Linux-package`
   artifact also contains `HellForge-Setup.exe` for Windows; Linux players do not run it.
+  `HellForge-Linux-Installer-zip` is the same installer as a zip with no archive inside it, for sites such as Nexus Mods
+  that refuse one. It holds the package as a `HellForge-Linux` folder and the engine package as a folder.
 - The programs below.
 
 ### Programs
@@ -94,7 +96,8 @@ missing or does not match the supported build.
 
 1. Download the `HellForge-Linux-Installer` artifact from the successful Actions run.
 2. Extract its downloaded ZIP with your desktop's archive manager. Extract the resulting
-   `HellForge-Linux-Installer.tar.gz` with the archive manager too.
+   `HellForge-Linux-Installer.tar.gz` with the archive manager too. `HellForge-Linux-Installer.zip` needs one
+   extraction.
 3. Open the extracted folder and launch `HellForge.Launcher`. If your desktop asks, choose **Run** or **Allow executing
    file as program**.
 4. Choose a Proton version and a prefix folder. The default prefix is `~/.local/share/hellforge-prefix`. A folder
@@ -117,8 +120,10 @@ The installer then:
 2. Runs `proton run wineboot -u` (three minutes at most) when the prefix has no HellForge launcher yet. Only when the
    folder did not exist or was empty, it writes a `.hellforge-created` marker that uninstall later uses for its prefix
    offer.
-3. Extracts the app into `<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`.
-4. Installs the engine package from `app/engine-package.zip`.
+3. Extracts the app from `HellForge-Linux.zip`, or copies it from the `HellForge-Linux` folder, into
+   `<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`. The zip is used when both are beside the installer.
+4. Installs the engine package from `app/engine-package.zip`. A `HellForge-Linux` folder carries it as
+   `app/engine-package/`, which the installer zips back into that file first.
 5. Saves the Proton and Steam folder choices and starts the native launcher. The setup wizard starts automatically while
    the game copy is incomplete.
 
@@ -126,9 +131,10 @@ It refuses a package that is missing any of these entries:
 
 | Entries the package must have |
 |---|
-| `app/app-build.json`, `app/engine-package.zip`, the native launcher |
+| `app/app-build.json`, `app/engine-package.zip` (or `app/engine-package/engine.json`), the native launcher |
 | `app/capture-linux/HellForge.CaptureProxy`, `app/backend-linux/HellForge.LocalBackend` |
 | `app/linux/hellforge-linux.sh`, `app/linux/hf-steam.sh`, `app/linux/hf-container.sh`, `app/linux/hf-wineserver.sh` |
+| `app/linux/hf-relays.sh`, `app/linux/hf-coop-relays.sh` |
 | `app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox` |
 | `app/linux/allow-capture.sh`, `app/linux/capture-helper.sh`, `app/linux/capture-relay` |
 
