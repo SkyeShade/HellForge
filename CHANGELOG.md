@@ -178,6 +178,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Ship navigation after a larger map.** The ship's obstacles were filed while the navigation grid still had a
+  larger map's 256 m tiles, so the ship's navmesh could miss them or cut them in the wrong place. A grid change now
+  files every obstacle again under the new grid (#378).
 - **Windows, sandbox on: alt-tab no longer shows "OpenMem failed. Err=5".** The box came from a tablet driver's
   `Wintab32.dll`, which the game loads and which, in the sandbox, is refused its own shared memory. A sandboxed game is
   now kept from the tablet driver, as on a PC without one: the game has no use for it, and a pen still moves the mouse (#376).
