@@ -45,11 +45,11 @@ typedef struct HfPattern
     const char* name;            /* its id is the thin hash of this; unique, prefixed with your name and mod */
     const char* name_text;       /* its name in the armory or hangar (UTF-8); NULL keeps the base's */
     const char* description;     /* a weapon pattern's description; NULL keeps the base's */
-    /* The pattern colour: a pattern_lut texture (3 x 1, RGBA16F) your mod's data provides, put in place of every
-     * pattern_lut the base sets. 0 keeps the base's. */
+    /* A unit skin's pattern colour: a pattern_lut texture (3 x 1, RGBA16F) your mod's data provides, put in place of
+     * every pattern_lut the base sets. 0 keeps the base's. A weapon paint sets material_luts only: swap those. */
     uint64_t pattern_lut;
-    /* Other textures the base names (each material's pattern_masks_array, material_lut or decal_sheet), replaced by
-     * yours: up to HF_PATTERN_SWAPS. The mod's log lists the base's textures once the pattern is in the game. */
+    /* Textures the base names (each material's material_lut, pattern_masks_array or decal_sheet), replaced by yours:
+     * up to HF_PATTERN_SWAPS. The mod's log lists the base's textures once the pattern is in the game. */
     const HfTextureSwap* swaps;
     uint32_t swap_count;
     /* The swatch shown on its card: 1 to HF_PATTERN_COLOURS linear RGB colours; NULL keeps the base's. */

@@ -1687,7 +1687,7 @@ typedef struct HfApi
     /* ---- SDK 18: patterns (check hf->size before calling) ---------------------------------------------------------- */
     /* Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why).
      * 128 across all mods; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in
-     * all (16 are the game's). Its textures must be loaded: put them in a session package of the mod's data. */
+     * all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data. */
     uint32_t (*add_pattern)(HfMod* mod, const HfPattern* pattern);
 } HfApi;
 
