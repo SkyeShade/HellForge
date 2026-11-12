@@ -91,8 +91,8 @@ The others exist since SDK 1. Hooks stay for the session.
 HellForge names game functions the way Minecraft's mappings do (`mappings/functions.json`, generated into
 `hellforge_functions.h`). A named function has its signature as a type (`HfFn_SpawnEntity`), so the compiler checks
 your detour. Your IDE completes `hf_hook_` and `hf_fn_` with every function there is, and HellForge keeps the address
-and the check of its first bytes. When the game updates, HellForge updates where the functions are. A mod that hooks by
-name keeps working without being rebuilt, unless a function's signature itself changed.
+and the check of its first bytes. HellForge runs one game build, so a function's place never moves. A name stays once it
+ships, so a mod that hooks or calls by name keeps working on later versions of HellForge without being rebuilt.
 
 ```c
 static HfFn_SpawnEntity g_spawn;   /* calls the next hook, or the game's code */
