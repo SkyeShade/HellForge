@@ -12,6 +12,10 @@ static class PaidFloorTests
     public static void Run(string root, Action<bool, string> check)
     {
         var floor = PaidItems.Current;
+        // the list's build is the one HellForge supports and pins the catalogue to: a list left from another build would
+        // name the wrong ids and order
+        check(floor.Build == SupportedBuild.Current.BuildId && floor.Build == PinnedBuild(),
+            $"data/paid-items.json is for build {floor.Build}, not the supported {SupportedBuild.Current.BuildId} (catalogue pinned to {PinnedBuild()}): run paid-list on that build's catalogue.");
         var plain = PaidContentSet.FromCatalogue();
         var build = PaidContentSet.CatalogueBuild();
         if (build == floor.Build) SameAsCatalogue(floor, plain, check);
@@ -20,6 +24,15 @@ static class PaidFloorTests
         check(merged.MixIds.SetEquals(plain.MixIds.Union(floor.Paid)) && Tokens(merged, Owned).SequenceEqual(floor.Warbonds.Single(w => w.Id == Owned).Tokens),
             "The paid set from an unedited catalogue is not the list's.");
         Edited(root, plain, check);
+    }
+
+    // data/catalogue-pinned.json's build, read from the repository above the tests.
+    static string? PinnedBuild()
+    {
+        for (var folder = new DirectoryInfo(AppContext.BaseDirectory); folder != null; folder = folder.Parent)
+            if (File.Exists(Path.Combine(folder.FullName, "data", GameCatalog.PinnedFile)))
+                return (string?)JsonNode.Parse(File.ReadAllText(Path.Combine(folder.FullName, "data", GameCatalog.PinnedFile)))?["build"];
+        return null;
     }
 
     // The list holds exactly what the rules give for its build, so the [premium] count and every armory stay as they were.
