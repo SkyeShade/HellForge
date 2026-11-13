@@ -817,6 +817,7 @@ IntegrityTests.Register(Test, Check, root);
 WindowsSupportTests.Register(Test, Check, Reject, root);
 SmartAppControlTests.Register(Test, Check, Reject, root);
 SteamInputNoteTests.Register(Test, Check, Reject, root);
+BackendPinTests.Register(Test, Check, root);
 
 Console.WriteLine($"{passed} passed; {failed} failed. Synthetic fixtures: {root}");
 return failed == 0 ? 0 : 1;

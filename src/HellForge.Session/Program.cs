@@ -20,6 +20,12 @@ if (args.Length == 1 && args[0] == "version")
     Console.WriteLine(typeof(PlaySession).Assembly.GetName().Version);
     return 0;
 }
+// backend-pin: the backend digest compiled in (HellForge.Core BackendPin), which Build-Engine.ps1 checks; empty without one
+if (args is ["backend-pin"])
+{
+    Console.WriteLine(BuildPins.Backend);
+    return 0;
+}
 if (args is ["host", "--spec", var spec]) return SandboxDomainHost.Run(spec);
 if (args.Length == 2 && args[0] == "census")
 {

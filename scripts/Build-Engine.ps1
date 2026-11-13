@@ -323,17 +323,30 @@ if(-not $SkipSmoke){
     Invoke-Generator smoke-modloader $out $testOut $machineGun $compendium
 }
 # The session runner and the local backend, compiled ahead of time to native code (NativeAOT needs the Visual Studio
-# C++ linker, which it finds through vswhere).
+# C++ linker, which it finds through vswhere). Each is signed when a certificate is configured (Sign-Files.ps1; Smart App
+# Control blocks unsigned programs), before engine.json hashes them. The backend comes first: its signed folder's digest
+# (HellForge.Core BackendPin) is compiled into the session, which then starts no other backend.
+function Publish-App([string]$Folder,[string]$Project,[string]$Target,[string[]]$Properties){
+    Write-Output ('Compiling '+$Folder+' (NativeAOT)')
+    dotnet publish (Join-Path $project $Project) -c Release -p:DebugType=none -p:DebugSymbols=false @Properties --nologo -v q -o $Target
+    if($LASTEXITCODE){throw ('Compiling '+$Folder+' failed.')}
+    Get-ChildItem -LiteralPath $Target -File|Where-Object {$_.Extension -in @('.pdb','.dbg','.map')}|Remove-Item
+    & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path $Target
+}
 function Publish-Aot([string]$Staging){
-    foreach($app in @(@{folder='session';project='src/HellForge.Session/HellForge.Session.csproj'},@{folder='backend';project='src/HellForge.LocalBackend/HellForge.LocalBackend.csproj'})){
-        Write-Output ('Compiling '+$app.folder+' (NativeAOT)')
-        dotnet publish (Join-Path $project $app.project) -c Release -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $Staging $app.folder)
-        if($LASTEXITCODE){throw ('Compiling '+$app.folder+' failed.')}
-        Get-ChildItem -LiteralPath (Join-Path $Staging $app.folder) -File|Where-Object {$_.Extension -in @('.pdb','.dbg','.map')}|Remove-Item
-    }
-    # signed when a certificate is configured (Sign-Files.ps1; Smart App Control blocks unsigned programs), before engine.json hashes them
-    & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (Join-Path $Staging 'session'),(Join-Path $Staging 'backend')
-    if(-not $SkipSmoke){& (Join-Path $PSScriptRoot 'Test-BackendAot.ps1') -Aot (Join-Path $Staging 'backend/HellForge.LocalBackend.exe')|Select-Object -Last 1}
+    $backend=Join-Path $Staging 'backend';$session=Join-Path $Staging 'session'
+    Publish-App 'backend' 'src/HellForge.LocalBackend/HellForge.LocalBackend.csproj' $backend @()
+    $pin=(& dotnet $generator backend-digest $backend|Select-Object -Last 1)
+    if($LASTEXITCODE -or $pin -notmatch '^[0-9A-F]{64}$'){throw 'Could not compute the backend digest (HellForge.SdkShimGen backend-digest).'}
+    Publish-App 'session' 'src/HellForge.Session/HellForge.Session.csproj' $session @('-p:HellForgeBackendPin='+$pin)
+    # the session is a GUI program: run it to its end with its output in a file, and refuse a build that does not carry the pin
+    $carried=[IO.Path]::GetTempFileName()
+    try{
+        $check=Start-Process -FilePath (Join-Path $session 'HellForge.Session.exe') -ArgumentList 'backend-pin' -NoNewWindow -Wait -PassThru -RedirectStandardOutput $carried
+        if($check.ExitCode -ne 0 -or ([IO.File]::ReadAllText($carried)).Trim() -ne $pin){throw ('The session does not carry the backend digest '+$pin+'.')}
+    }finally{Remove-Item -LiteralPath $carried -ErrorAction SilentlyContinue}
+    Write-Output ('Backend pin '+$pin+' compiled into the session.')
+    if(-not $SkipSmoke){& (Join-Path $PSScriptRoot 'Test-BackendAot.ps1') -Aot (Join-Path $backend 'HellForge.LocalBackend.exe')|Select-Object -Last 1}
 }
 $env:PATH+=';'+(Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer')
 $package=Join-Path $project 'artifacts/engine-package'
