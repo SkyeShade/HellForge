@@ -218,17 +218,23 @@ static void LiveSyncFixture(void)
     SyncLine("syncstate\t22\t9\tnone\t\t0\t0\t0\t0\t", reply, sizeof reply);
     assert(!strcmp(reply, "22\tok\tnow") && !ApiSyncState(NULL, &state) && state.state == HF_SYNC_NONE && state.version == 9);
 
-    /* a stranger's mod to trust (a sandboxed game's offer): flagged, its address kept; a 12th field that is not "stranger"
-     * is refused; a later offer without it is not flagged */
+    /* a stranger's mod to trust (a sandboxed game's offer): flagged stranger and sandbox-only, its address kept; a 12th
+     * field that is neither "stranger" nor "sandboxonly" is refused; a later offer without it is not flagged */
     SyncLine("syncmod\t23\t10\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\thttps://example.com/trusty\tfriend", reply, sizeof reply);
     assert(strstr(reply, "\trefused\t") != NULL);
     SyncLine("syncmod\t24\t10\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\thttps://example.com/trusty\tstranger", reply, sizeof reply);
     SyncLine("syncstate\t25\t10\tblocked\tFar One\t0\t0\t1\t", reply, sizeof reply);
     assert(!strcmp(reply, "25\tok\tnow"));
-    assert(ApiSyncMod(NULL, 0, &mod) && mod.action == HF_SYNC_MOD_TRUST && (mod.flags & HF_SYNC_FLAG_STRANGER) && !strcmp(mod.url, "https://example.com/trusty"));
+    assert(ApiSyncMod(NULL, 0, &mod) && mod.action == HF_SYNC_MOD_TRUST && mod.flags == (HF_SYNC_FLAG_STRANGER | HF_SYNC_FLAG_SANDBOX_ONLY) &&
+           !strcmp(mod.url, "https://example.com/trusty"));
     SyncLine("syncmod\t26\t11\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\t-", reply, sizeof reply);
     SyncLine("syncstate\t27\t11\tblocked\tFriend One\t0\t0\t1\t", reply, sizeof reply);
     assert(!strcmp(reply, "27\tok\tnow") && ApiSyncMod(NULL, 0, &mod) && mod.flags == 0);
+    /* a friend's mod in a sandboxed game: a trust answered there counts only sandboxed (HF_SYNC_FLAG_SANDBOX_ONLY alone) */
+    SyncLine("syncmod\t28\t12\t0\ttrust\tcode\t300\tfar.trusty\tTrusty\t0.4.1\t-\tsandboxonly", reply, sizeof reply);
+    assert(!strcmp(reply, "28\tok\tnow"));
+    SyncLine("syncstate\t29\t12\tblocked\tFriend One\t0\t0\t1\t", reply, sizeof reply);
+    assert(!strcmp(reply, "29\tok\tnow") && ApiSyncMod(NULL, 0, &mod) && mod.flags == HF_SYNC_FLAG_SANDBOX_ONLY);
     SyncClear();
     assert(!ApiSyncState(NULL, &state) && state.version == 0);
 
@@ -280,6 +286,10 @@ static void LiveBrowseFixture(void)
     SyncLine("browsestate\t10\t5\tunavailable\t0\tMultiplayer is off for this session.", reply, sizeof reply);
     ApiBrowseState(NULL, &state);
     assert(!strcmp(reply, "10\tok\tnow") && state.state == HF_BROWSE_UNAVAILABLE && state.lobbies == 0 && !ApiBrowseLobby(NULL, 0, &lobby));
+    /* co-op over Steam relays off (Linux): a lobby out until it is on */
+    SyncLine("browselobby\t21\t6\t0\tunjoinable\t-\t1\t4\t-\t-\t0\t0\tsteam-6\tA\tCo-op over Steam relays is off\t\t\trelays", reply, sizeof reply);
+    SyncLine("browsestate\t22\t6\tready\t1\t", reply, sizeof reply);
+    assert(!strcmp(reply, "22\tok\tnow") && ApiBrowseLobby(NULL, 0, &lobby) && lobby.verdict == HF_LOBBY_UNJOINABLE && lobby.fix == HF_LOBBY_FIX_RELAYS);
 
     const char* bad[] = {
         "browselobby\t11\t6\t0\tgreat\t-\t1\t4\t-\t-\t0\t0\tsteam-1\tA\t\t\t\t-",       /* an unknown verdict */
@@ -305,10 +315,11 @@ static void LiveBrowseFixture(void)
     assert(ApiBrowseState(NULL, &state) == 1);
     assert(!ApiBrowseAsk(NULL, 9, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_JOIN, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_JOIN, "steam\t1"));
     assert(ApiBrowseAsk(NULL, HF_BROWSE_REFRESH, "ignored") && ApiBrowseAsk(NULL, HF_BROWSE_JOIN, "steam-1") && ApiBrowseAsk(NULL, HF_BROWSE_QUICK, NULL) &&
-        ApiBrowseAsk(NULL, HF_BROWSE_ALLOW_STRANGERS, NULL) && ApiBrowseAsk(NULL, HF_BROWSE_SHOW_EDITED_STATS, "ignored"));
+        ApiBrowseAsk(NULL, HF_BROWSE_ALLOW_STRANGERS, NULL) && ApiBrowseAsk(NULL, HF_BROWSE_SHOW_EDITED_STATS, "ignored") &&
+        ApiBrowseAsk(NULL, HF_BROWSE_TURN_ON_RELAYS, NULL));
     g_liveOut[g_liveOutUsed] = 0;
     assert(!strcmp(g_liveOut, "browseask\trefresh\t-\nbrowseask\tjoin\tsteam-1\nbrowseask\tquick\t-\nbrowseask\tallow\tstrangers\n"
-        "browseask\tallow\teditedstats\n"));
+        "browseask\tallow\teditedstats\nbrowseask\tallow\trelays\n"));
     AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 0; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
 
     /* the terminal's count goes with the state, and stays when the backend goes */
@@ -330,7 +341,8 @@ static void LiveBrowseFixture(void)
     assert(ApiBrowseAsk(&first, HF_BROWSE_SHOWN, NULL) && ApiBrowseAsk(&first, HF_BROWSE_HIDDEN, NULL));
     /* and only it turns a setting on for the session */
     AcquireSRWLockExclusive(&g_liveOutLock); g_liveConnected = 1; g_liveOutUsed = 0; ReleaseSRWLockExclusive(&g_liveOutLock);
-    assert(!ApiBrowseAsk(&second, HF_BROWSE_ALLOW_STRANGERS, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_SHOW_EDITED_STATS, NULL) && g_liveOutUsed == 0);
+    assert(!ApiBrowseAsk(&second, HF_BROWSE_ALLOW_STRANGERS, NULL) && !ApiBrowseAsk(NULL, HF_BROWSE_SHOW_EDITED_STATS, NULL) &&
+        !ApiBrowseAsk(&second, HF_BROWSE_TURN_ON_RELAYS, NULL) && g_liveOutUsed == 0);
     assert(ApiBrowseAsk(&first, HF_BROWSE_ALLOW_STRANGERS, NULL) && ApiBrowseAsk(&second, HF_BROWSE_REFRESH, NULL));
     g_liveOut[g_liveOutUsed] = 0;
     assert(!strcmp(g_liveOut, "browseask\tallow\tstrangers\nbrowseask\trefresh\t-\n"));

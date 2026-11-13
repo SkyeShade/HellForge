@@ -15,6 +15,7 @@ if (args.Contains("--help"))
     Console.WriteLine("Synthetic loopback-only login service. Default port 0 selects a free port. No game launch or routing changes.");
     Console.WriteLine("--profile-dir keeps a persistent local profile (requires startup fixtures); a new one starts from fixture defaults.");
     Console.WriteLine("--live-war <cache file> follows the live galactic war read-only through the community mirror " + LiveWar.Mirror + " (fetched before ready, then every 5 minutes; the cache is used offline).");
+    Console.WriteLine("HellForge.LocalBackend paid-list <catalogue folder> <file>   writes the paid item list (data/paid-items.json) from a catalogue of the supported build.");
     Console.WriteLine("HellForge.LocalBackend fetch-live-war <cache file>   fetches the live war once into the cache file, for a session with no network (HELLFORGE_LINUX_NETNS=1 serves it without refreshing).");
     Console.WriteLine("--war hellforge --war-cache <cache file> [--war-server <url>] follows the HellForge war (default " + HellForge.Core.WarServer.Default + ", or " + HellForge.Core.WarServer.EnvironmentVariable + "): its snapshot fetched before ready, then every minute, the cache used offline; the game's missions are reported to it.");
     Console.WriteLine("HellForge.LocalBackend fetch-hellforge-war <installation> [<server>]   fetches the HellForge war once into the installation's cache for that server (the installation's saved server without one), for a session with no network.");
@@ -36,6 +37,12 @@ if (args is ["profile", "show", var showDirectory])
         Console.Error.WriteLine($"HellForge local backend: {error.Message}");
         return 1;
     }
+}
+// Every other profile command opens the profile, which reads the game catalogues.
+if (args is ["profile", not "show", var commandProfile, ..] && LocalBackend.UseInstallationCatalogue(commandProfile) is { } noCatalogue)
+{
+    Console.Error.WriteLine("HellForge local backend: " + noCatalogue);
+    return 1;
 }
 if (args is ["profile", var templateCommand and ("apply-template" or "add-template-items"), var templateDirectory, var templateName])
 {
@@ -72,6 +79,14 @@ if (args is ["profile", var accountCommand and ("import-preview" or "import"), v
 }
 if (args is ["profile", "restore", var restoreDirectory, var backupFile])
     return AccountCommands.Restore(restoreDirectory, backupFile, Console.Out, Console.Error);
+// For maintainers: the compiled paid item list (HellForge.Core PaidItems, data/paid-items.json) from a catalogue of the
+// supported build, when that build changes.
+if (args is ["paid-list", var listCatalogue, var listFile])
+{
+    LocalBackend.CatalogueDirectory = Path.GetFullPath(listCatalogue);
+    File.WriteAllText(listFile, PaidContentSet.FromCatalogue().ToPaidItems(PaidContentSet.CatalogueBuild()).ToJson());
+    return 0;
+}
 if (args is ["fetch-live-war", var fetchCache])
     return await LiveWar.FetchOnceAsync(fetchCache, Console.WriteLine) ? 0 : 1;
 if (args is ["fetch-hellforge-war", var hellforgeInstall, .. var fetchServer] && fetchServer.Length <= 1)
@@ -94,6 +109,9 @@ if (args is ["fetch-hellforge-war", var hellforgeInstall, .. var fetchServer] &&
 try
 {
     var options = BackendOptions.Parse(args);
+    // The game catalogues (HellForge.Core GameCatalog): HellForge ships none, so a backend that serves the game needs the
+    // installation's, assembled from the player's own Sync Inventory.
+    if (options.GetValueOrDefault("--catalogue") is { } catalogue) LocalBackend.CatalogueDirectory = Path.GetFullPath(catalogue);
     if (!int.TryParse(options.GetValueOrDefault("--port", "0"), out var port) || port is < 0 or > 65535)
         throw new ArgumentException("Port must be between 0 and 65535.");
     var mode = options.GetValueOrDefault("--mode", "local-session") switch
@@ -122,11 +140,11 @@ try
     // a live change may bring (LiveMods.Premium).
     var snapshotDir = profileDirectory != null ? HellForge.Core.InventorySync.SnapshotDirectoryFromProfileDir(profileDirectory) : null;
     var steamAccount = HellForge.Core.SteamAccount.Current();
+    var paidContent = PaidContentSet.Load();
     if (profile != null)
     {
-        profile.Ownership =OwnershipFilter.ForSnapshot(PaidContentSet.Load(), snapshotDir, steamAccount, out var refusal);
-        // Every profile but an unlock-all one buys its owned premium warbonds with Forge Credits.
-        profile.Ownership.EarnWarbonds = profileTemplate == null || !profileTemplate.Contains("unlock-all", StringComparison.Ordinal);
+        profile.Ownership =OwnershipFilter.ForSnapshot(paidContent, snapshotDir, steamAccount, out var refusal);
+        profile.Ownership.EarnWarbonds = ProfileStore.EarnsWarbonds(profileTemplate);
         Console.Error.WriteLine(refusal != null ? "[premium] none unlocked: " + refusal
             : "[premium] " + profile.Ownership.OwnedPaidCount + " premium items from the account snapshot");
     }
@@ -141,7 +159,23 @@ try
     // Premium content mods build on: a copy of a premium base follows the player's ownership, and the mods mods-stage
     // locked (--premium-locked: their declared premium list is not owned) add nothing to the inventory.
     if (profile?.Ownership is { } ownership) registeredItems.OwnsBase = ownership.IsAllowed;
+    registeredItems.Reserved = paidContent.IsReserved;
+    registeredItems.ReservedStratagemId = paidContent.IsReservedStratagemId;
     registeredItems.LockedMods = HellForge.Core.PremiumMods.ReadLocked(options.GetValueOrDefault("--premium-locked"));
+    // --mod-warbonds <file>: the warbonds the session's mods add (mods-stage writes it; HellForge.Core ModWarbonds), sold
+    // like the game's; an unlock-all profile has bought them all.
+    IReadOnlyList<HellForge.Core.ModWarbonds.Warbond> modWarbondList = [];
+    try { modWarbondList = HellForge.Core.ModWarbonds.Read(options.GetValueOrDefault("--mod-warbonds")); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidDataException or KeyNotFoundException or InvalidOperationException or FormatException)
+    {
+        Console.Error.WriteLine("[mod warbonds] none served: the session's warbonds could not be read (" + error.Message + ")");
+    }
+    var modWarbonds = new ModWarbondService(modWarbondList)
+    {
+        IsAllowed = profile?.Ownership is { } owner ? owner.IsAllowed : null,
+        IsPaid = paidContent.IsPaid,
+        UnlockAll = profileTemplate != null && profileTemplate.Contains("unlock-all", StringComparison.Ordinal),
+    };
     // --live-war <cache file>: follow the live galactic war read-only through the community mirror (LiveWar).
     Directory.CreateDirectory(evidence);
     var liveWarLog = Path.Combine(evidence, "live-war.log");
@@ -189,7 +223,7 @@ try
     {
         StartupFixtures = startupFixtures, Profile = profile, ItemCatalog = options.GetValueOrDefault("--item-catalog"),
         FixtureOverride = options.GetValueOrDefault("--fixture-override"), CaptureMissionBodies = options.GetValueOrDefault("--capture-mission-bodies") == "true",
-        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, HellForgeWar = hellforgeWar, Presence = presence, RegisteredItems = registeredItems, OpenWar = openWar, WarSeed = warSeed,
+        WarClock = warClock, AccountKeys = accountKeys, LiveWar = liveWar, HellForgeWar = hellforgeWar, Presence = presence, RegisteredItems = registeredItems, ModWarbonds = modWarbonds, LocalAccount = steamAccount, OpenWar = openWar, WarSeed = warSeed,
         DealSubfactions = dealSubfactions, DealSeaf = dealSeaf, LiveMods = liveMods, Pickups = pickups, Browse = browse,
         // --war-script <file>: major orders, dispatches, reward mail and war additions (WarServices); read again as it changes
         WarScript = options.GetValueOrDefault("--war-script") is { } warScript ? Path.GetFullPath(warScript) : null
@@ -247,7 +281,7 @@ try
     }
     if (multiplayer != null)
     {
-        browse.Attach(multiplayer.Directory, multiplayer.Lobby, presence);
+        browse.Attach(multiplayer.Directory, multiplayer.Lobby, presence, multiplayer.Relays);
         multiplayer.ShowBrowser(browse); // the in-game browser (SDK 16)
     }
     var ready = new System.Text.Json.Nodes.JsonObject

@@ -32,14 +32,19 @@ Do not submit:
   facts needed to work with the game are fine: addresses, byte patterns, structure layouts, resource ids and field
   names, as kept in `native/mod-sdk/` and `mappings/`. Generate them with the export scripts in `scripts/` where one
   exists, and write your own code around them.
+- **Arrowhead's server data,** such as the item catalogue, packages, prices and warbond lists the game reads from the
+  API. HellForge takes them from each player's own Sync Inventory (`HellForge.Core.GameCatalog`). The ids the supported
+  build knows are fine (`data/catalogue-pinned.json`), as are the warbond pages and requisition store there, until a
+  sync can provide them as well. So is the list of which of those ids are paid (`data/paid-items.json`): ids, their
+  categories and order only, no prices. Test fixtures are synthetic, or read a catalogue from `HELLFORGE_TEST_CATALOGUE`.
 - **Arrowhead's or Sony's logos, key art, icons or other artwork,** in the launcher, the docs or a mod. HELLDIVERS is a
   trademark of Sony Interactive Entertainment. Use the name only to say what HellForge or a mod works with, never as the
   name or branding of HellForge or a mod, and never in a way that suggests either company endorses it.
 - **Leaked or confidential material,** such as internal builds, documents or source from Arrowhead, Sony or their
   partners.
-- **Ways around ownership or onto the live game.** That means removing the Steam ownership check, giving an account
-  premium content or Super Credits it doesn't own, connecting to Arrowhead's or Sony's servers, playing with people
-  outside HellForge, or getting around an active anti-cheat ([roadmap](docs/roadmap.md), "Not planned").
+- **Ways around ownership or onto the live game.** That means removing the Steam ownership check, or giving an account
+  premium content or Super Credits it doesn't own. It also means connecting to Arrowhead's or Sony's servers, playing
+  with people outside HellForge, or getting around an active anti-cheat ([roadmap](docs/roadmap.md), "Not planned").
 
 If you are not sure whether something is allowed, ask in an issue before you open the pull request. A pull request that
 breaks these rules is closed, and anything of this kind that reaches the repository is removed.
@@ -48,26 +53,39 @@ breaks these rules is closed, and anything of this kind that reaches the reposit
 
 - **`dev`** is where work comes together: open pull requests against `dev`. Development builds are made from it,
   among them a nightly build ([below](#nightly-builds)).
-- **`main`** holds releases. It changes only by a release pull request from `dev`, once that release has been checked
-  (the checklist in `.github/PULL_REQUEST_TEMPLATE/release.md`); a pull request into `main` from any other branch fails
-  its checks.
+- **`main`** holds releases. It changes only by a release pull request from a `release/X.Y` branch cut from `dev`, once
+  that release has been checked (the checklist in `.github/PULL_REQUEST_TEMPLATE/release.md`). The repository deletes a
+  merged pull request's branch, so a release never comes from `dev` itself: that would delete `dev`. After a release,
+  `main` is merged back into `dev`. A pull request into `main` from any other branch fails its checks.
 - **Checks:** every pull request runs CI (`.github/workflows/ci.yml`): the structure lint
-  (`py -3 scripts/lint/lint.py check --warnings-as-errors`, [scripts/lint/README.md](scripts/lint/README.md)), where
-  its warnings are errors too, the build, where warnings are errors, and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game
-  editor are built and tested on a maintainer's PC, since they need the game's files. CI also checks the engine's
-  version (below).
-- **The engine's version:** the engine has its own version, `EngineVersion` in `Directory.Build.props`, bumped with
-  HellForge's `Version` in the version-bump pull request before each test build or release, whenever the engine
+  (`py -3 scripts/lint/lint.py check --warnings-as-errors`, [scripts/lint/README.md](scripts/lint/README.md)), where its
+  warnings are errors too, the docs lint ([below](#writing-docs-and-comments)), the build, where warnings are errors,
+  and `scripts/Test.ps1`'s checks. A pull request is merged once they pass. The engine and the in-game editor are built
+  and tested on a maintainer's PC, since they need the game's files. CI also checks the engine's version (below).
+- **The engine's version:** the engine has its own version, `EngineVersion` in `Directory.Build.props`. It is bumped
+  with HellForge's `Version` in the version-bump pull request before each test build or release, whenever the engine
   changed since the last bump. An ordinary pull request does not bump it: say "engine bump with the next build" in its
-  description. CI's "Engine version" job (`py -3 scripts/engine-version/engine_version.py`) finds the commit that set
-  the current `EngineVersion` and lists the engine sources changed since: a warning on a pull request that changes the
-  engine, a notice when earlier merges did, and a failure on a version-bump pull request (one that changes `Version`)
-  or a release into `main` when the engine changed and `EngineVersion` did not. Engine sources are what
-  `scripts/Build-Engine.ps1` builds into the package: `native/` except the editor and the launcher stub,
-  `src/HellForge.Core`, `src/HellForge.Session`, `src/HellForge.LocalBackend`, `src/HellForge.SdkShimGen`,
-  `mappings/`, the data files they embed and the scripts the package ships, but no `test/` or `tests/` folder and no
-  `.md` file (the list is `ENGINE_SOURCES` in the script). Run it locally to see where the engine stands; add
-  `--base origin/dev` to see what a pull request would get.
+  description.
+
+  CI's "Engine version" job (`py -3 scripts/engine-version/engine_version.py`) finds the commit that set the current
+  `EngineVersion` and lists the engine sources changed since. It gives:
+
+  - a warning on a pull request that changes the engine
+  - a notice when earlier merges did
+  - a failure on a version-bump pull request (one that changes `Version`) or a release into `main`, when the engine
+    changed and `EngineVersion` did not
+
+  Engine sources are what `scripts/Build-Engine.ps1` builds into the package (the list is `ENGINE_SOURCES` in the
+  script):
+
+  - `native/` except the editor and the launcher stub
+  - `src/HellForge.Core`, `src/HellForge.Session`, `src/HellForge.LocalBackend`, `src/HellForge.SdkShimGen` and
+    `mappings/`
+  - the data files they embed and the scripts the package ships
+  - but no `test/` or `tests/` folder and no `.md` file
+
+  Run the job's script locally to see where the engine stands; add `--base origin/dev` to see what a pull request would
+  get.
 - **Launchers:** if you change a `HellForge.Cli` command, an option or its JSON output, update
   [docs/external-launchers.md](docs/external-launchers.md) in the same pull request and say so in it. Launchers built
   on the CLI read that page.
@@ -76,8 +94,8 @@ breaks these rules is closed, and anything of this kind that reaches the reposit
 
 Each night that `dev` changed, `.github/workflows/nightly.yml` builds its newest commit and publishes it as the
 **nightly** pre-release: [releases/tag/nightly](https://github.com/SkyeShade/HellForge/releases/tag/nightly), with
-`HellForge-Nightly-Setup.exe`, `HellForge-Nightly-Linux-scripts.zip` and their SHA-256 sums. Each nightly replaces the
-one before, and its `nightly` tag moves to the commit it was built from.
+`HellForge-Nightly-Setup.exe`, `HellForge-Nightly-Linux-Installer.tar.gz`, `HellForge-Nightly-Linux-scripts.zip` and
+their SHA-256 sums. Each nightly replaces the one before, and its `nightly` tag moves to the commit it was built from.
 
 - **For testers, not for playing:** nobody tests a nightly in game before it is published. Install it into a folder of
   its own. It is never GitHub's "latest" release, and its notes list what changed since the previous nightly and the
@@ -89,12 +107,12 @@ one before, and its `nightly` tag moves to the commit it was built from.
   writes it into the props file on the build machine only.
 - **Built as a release is,** with `scripts/Package-HellForge.ps1` and its checks, on CI's toolchain
   (`.github/actions/build-tools`), and also refused if any file in it is one of the game's (`supported-build.json`'s
-  hashes). GitHub's build machine has no game files and no Steamworks SDK: the engine's `steam_api64.dll` stand-in is
-  generated from `data/steam-export-manifest.json`, the text-only list of the game DLL's exports, and there is no Steam
+  hashes). GitHub's build machine has no game files and no Steamworks SDK. The engine's `steam_api64.dll` stand-in is
+  generated from `data/steam-export-manifest.json`, the text-only list of the game DLL's exports. There is no Steam
   bridge or broker, so on Windows a nightly does not offer the sandbox.
 - **By hand:** Actions > Nightly > Run workflow; leave "publish" unticked for a dry run, which keeps the files as the
   run's artifact for a week. GitHub schedules and offers this button only for the workflow on `main`, the default
-  branch; until the workflow is there, a change to it on `dev` runs it once as a dry run, and "Re-run all jobs" on that
+  branch. Until the workflow is there, a change to it on `dev` runs it once as a dry run, and "Re-run all jobs" on that
   run dry-runs `dev` as it is then.
 
 ## Changelog
@@ -102,7 +120,8 @@ one before, and its `nightly` tag moves to the commit it was built from.
 [CHANGELOG.md](CHANGELOG.md) lists what changed in each release, as a player updating from the release before sees it.
 
 - **Each pull request** that changes something a player, a modder or a launcher would notice adds its line under
-  Unreleased, in the same pull request: Added, Changed or Fixed, with the issue and pull request numbers ("(#18, #50)").
+  Unreleased, in the same pull request. The line goes under Added, Changed or Fixed, with the issue and pull request
+  numbers ("(#18, #50)").
   CLI and settings changes go under "For launcher developers", SDK changes under "For mod makers".
 - **Fixed** is only for a bug the latest release has. Something new since that release that a later pull request fixes
   goes into the line that adds it.
@@ -111,11 +130,37 @@ one before, and its `nightly` tag moves to the commit it was built from.
   empty Unreleased above it, and the GitHub release notes are written from that section. Issues its Fixed lines name
   are closed when the release lands.
 
+## Writing docs and comments
+
+Write for a reader who has five minutes and no AI to summarise for them. CI's "Docs lint" job checks what it can
+([scripts/docs-lint/README.md](scripts/docs-lint/README.md)).
+
+- **One page, one type.** A page under `docs/` is a tutorial, a how-to, a reference or an explanation
+  ([Diátaxis](https://diataxis.fr/)). Say which under the title (`<!-- diataxis: how-to -->`) and link the page from
+  [docs/README.md](docs/README.md). When a page needs two types, make two pages.
+- **The answer first.** Open with what the reader came for: the step, the fact, the reason. Background comes after.
+- **Short.** At most 35 words a sentence and 100 a paragraph. A sequence is a numbered list, and a set of facts is a
+  table or a bulleted list.
+- **No history in docs or comments.** Write what is true now. How it got there belongs in the commit message, the pull
+  request and the [changelog](CHANGELOG.md). A dated research log is not documentation; keep its findings, not its
+  diary.
+- **Comments say why.** Name the reason the code is the way it is: a constraint, a game behaviour, a trap. Do not repeat
+  what the code says. A block of more than 10 lines fails the structure lint (R16): move it into `docs/`.
+- **Plain words.** No filler (`please note`, `in order to`) and no hedges (`simply`, `basically`). Vale flags them.
+- **Placeholders in backticks**, such as `<installation>`. Outside backticks, GitHub hides `<host>` as an HTML tag.
+
 ## Building and testing
 
-You need Windows 10 or 11, the .NET 10 SDK, Visual Studio 2022 Build Tools with the C++ workload (the NativeAOT linker
-for the session runner and the local backend), and HELLDIVERS 2 installed through Steam. The `steam_api64.dll` stand-in
-is generated from the game's own DLL, which is checked against its pin and never committed or shipped.
+You need:
+
+- Windows 10 or 11
+- the .NET 10 SDK
+- Visual Studio 2022 Build Tools with the C++ workload (the NativeAOT linker for the session runner and the local
+  backend)
+- HELLDIVERS 2 installed through Steam
+
+The `steam_api64.dll` stand-in is generated from the game's own DLL, which is checked against its pin and never
+committed or shipped.
 
 ```powershell
 ./scripts/Test.ps1                # build and integration checks (no game needed)
@@ -124,7 +169,9 @@ is generated from the game's own DLL, which is checked against its pin and never
 ```
 
 - `scripts/Test.ps1` builds everything and runs the checks that need no game (`tests/HellForge.Tests`,
-  `tests/HellForge.LocalBackend.Tests`).
+  `tests/HellForge.LocalBackend.Tests`). The backend checks serve the game's catalogues, which aren't in this
+  repository: set `HELLFORGE_TEST_CATALOGUE` to an installation's `catalogue` folder after a Sync Inventory, or they
+  are skipped. CI reads them from a private test-data repository with the `HELLFORGE_TEST_DATA_TOKEN` secret.
 - `scripts/Build-Engine.ps1` builds the engine package, `artifacts/engine-package/hellforge-engine-<version>.zip` (the
   version is `EngineVersion` in `Directory.Build.props`), and runs its native and smoke tests. It needs HELLDIVERS 2
   installed through Steam.

@@ -83,5 +83,39 @@ static class SandboxSessionTests
             check(line.Contains("\\\\.\\pipe\\nvsp-1, Local\\nvsp-2, Local\\nvsp-3 and 1 more"), "Three names a module, then how many more: " + line);
             check(SandboxRefusals.Describe(refused)!.Contains(" 40 time(s)"), "Without a total, the listed ones are added up.");
         });
+
+        test("A sandboxed game that crashed as it started names a program known to crash it there (#369, ticket 0402)", () =>
+        {
+            // #369's census: Nahimic refused its mutex and shared memory, and mods' .ini files read through ucrtbase
+            List<SandboxRefusals.Refusal> nahimic =
+            [
+                new("%USERPROFILE%\\HellForge\\mods\\armored-overhaul.ini", "ucrtbase.dll+0x1f31c", 1),
+                new("AudioDevProps2Mtx64", "AudioDevProps2.dll+0x24a1e", 1),
+                new("AudioDevProps2ShM64", "AudioDevProps2.dll+0x24b10", 1),
+                new("NahimicOSDMtx64", "NahimicOSD.dll+0x3310", 1),
+                new("NahimicOSDShM64", "NahimicOSD.dll+0x3402", 1),
+            ];
+            var hint = SandboxRefusals.CrashHint(nahimic);
+            check(hint != null && hint.StartsWith("Nahimic's audio overlay (AudioDevProps2.dll, NahimicOSD.dll) was in the game", StringComparison.Ordinal) &&
+                hint.Contains("Turn Nahimic off") && hint.Contains("Settings > Sandbox"), "Nahimic is named, with both ways out: " + hint);
+            check(SandboxRefusals.Describe(nahimic)!.Contains("Nahimic's audio overlay (AudioDevProps2.dll) 2x"), "The refusals line names it too.");
+            // overlays refused in sessions that never crashed (NVIDIA's, Steam's) are no cause
+            check(SandboxRefusals.CrashHint([new("Local\\nvsp-1", "nvspcap64.dll+0x10", 5), new("Local\\SteamOverlayShm_1", "GameOverlayRenderer64.dll+0x100", 2)]) == null,
+                "No known crasher: no hint.");
+            check(SandboxRefusals.CrashHint([]) == null, "Nothing refused: no hint.");
+        });
+
+        test("The tablet gate's refusals are said in the session log, and a Wintab32.dll that got past it", () =>
+        {
+            check(SandboxRefusals.DescribeTablet(0, false) == null, "No tablet driver asked for: no line.");
+            check(SandboxRefusals.DescribeTablet(2, false) is { } kept && kept.Contains("kept from the tablet driver (Wintab32.dll) 2 time(s)"), "Refused loads are counted.");
+            check(SandboxRefusals.DescribeTablet(2, true) is { } past && past.Contains("loaded in the sandboxed game although"), "A load that got past wins.");
+            // The session's census summary (NetworkCensus.cs) reads what tablet_gate.c writes.
+            var gate = File.ReadAllText(Path.Combine("native", "steam-cloud", "tablet_gate.c"));
+            var summary = File.ReadAllText(Path.Combine("src", "HellForge.Session", "NetworkCensus.cs"));
+            foreach (var (written, read) in new[] { ("\\\"gate\\\":\\\"tablet\\\"", "gate == \"tablet\""), ("\\\"gate\\\":\\\"tablet loaded\\\"", "gate == \"tablet loaded\""),
+                ("\"Wintab32.dll\", \"refused\"", "Scope == \"refused\" && c.Key.To == \"Wintab32.dll\"") })
+                check(gate.Contains(written) && summary.Contains(read), $"tablet_gate.c writes {written}, NetworkCensus.cs reads {read}");
+        });
     }
 }

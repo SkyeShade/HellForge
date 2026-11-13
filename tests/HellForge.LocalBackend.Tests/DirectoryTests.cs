@@ -26,18 +26,18 @@ static class DirectoryTests
         public readonly string Mods;
         public readonly List<string> Log = [];
         public bool Edited;
-        public bool ListPublic = true, Strangers = true;
+        public bool ListPublic = true, Strangers = true, Relays = true;
 
-        public Node(InMemoryNetwork network, MemoryLobbyDirectory listings, ulong id, string folder, ModSet own, ILobbyDirectory? directory = null)
+        public Node(InMemoryNetwork network, MemoryLobbyDirectory listings, ulong id, string folder, ModSet own, ILobbyDirectory? directory = null, bool sandboxed = false)
         {
             Mods = System.IO.Directory.CreateDirectory(Path.Combine(folder, "mods")).FullName;
             var run = System.IO.Directory.CreateDirectory(Path.Combine(folder, "run", "backend")).FullName;
             var transport = network.Join(id);
             void Note(string line) { lock (Log) Log.Add(line); }
             Lobby = new LobbyService(transport, Inbox.Add, Note, own.Digest);
-            Sync = new ModSync(transport, new ModSyncPaths(Mods, Path.GetDirectoryName(run)!, run, ModSyncSession.PathIn(new InstallLayout(folder))), own, _ => "Player", Note, (_, _) => false);
+            Sync = new ModSync(transport, new ModSyncPaths(Mods, Path.GetDirectoryName(run)!, run, ModSyncSession.PathIn(new InstallLayout(folder))), own, _ => "Player", Note, (_, _) => false, sandboxed);
             Directory = new DirectoryService(directory ?? listings.For(id), Lobby, Presence, id, Inbox.Add, Note, new DirectorySettings(Sync, () => Edited, AutoPublish: false,
-                ListPublic: () => ListPublic, StrangersAllowed: () => Strangers));
+                ListPublic: () => ListPublic, StrangersAllowed: () => Strangers, RelaysOpen: () => Relays));
             transport.Received += (peer, bytes) =>
             {
                 var frame = Frame.Decode(bytes);
@@ -95,6 +95,8 @@ static class DirectoryTests
     public static async Task Run(string root, Action<bool, string> check)
     {
         QuickPlay(check);
+        BrowseOrder(check);
+        BrowseText(check);
         Versions(check);
         // A left-out lobby's log line: its host, the reason, the mods in the way (at most BlockersPerLine, then a count).
         var blockers = Enumerable.Range(0, 10).Select(i => new JoinBlocker(new ModSetEntry($"test.m{i}", $"M{i}", "1", new string('a', 64), 1, ModClass.Code, i),
@@ -247,7 +249,7 @@ static class DirectoryTests
 
         // A lobby running unverified code the guest lacks (a valid listing of its own: a GUID, its host's record): a Steam
         // friend's is shown, since joining brings the MOD SYNC prompt with TRUST (the first two-PC test's case); a
-        // stranger's are the player's to install (a host sends them to friends alone) and is left out, and the search log says so.
+        // stranger's are the player's to install in this unsandboxed session and is left out, and the search log says so.
         var code = new ModSet("0123456789abcdef0123456789abcdef", [new ModSetEntry("test.code", "Code", "1", new string('c', 64), 10, ModClass.Code, 0)]);
         var otherLobby = Guid.NewGuid().ToString("D");
         var other = new Dictionary<string, string>(listings.All.Single().Data)
@@ -268,13 +270,30 @@ static class DirectoryTests
         await Task.Delay(SameSearchPause);
         var withStranger = await guest.Directory.SearchAsync("u1s", MapFilter, 50);
         check(withStranger.Int(2) == 1 && withStranger.Text(3) == lobbyId, "A stranger's lobby with unverified code the guest lacks is left out.");
-        lock (guest.Log) check(guest.Log.Any(l => l.Contains("2 listed, 1 shown (1 left out: its host's unchecked mods download only from a Steam friend)")),
+        lock (guest.Log) check(guest.Log.Any(l => l.Contains("2 listed, 1 shown (1 left out: its host's unchecked mods need a sandboxed game)")),
             "The search says why: " + string.Join(" / ", guest.Log.TakeLast(2)));
-        var leftOutLine = "Directory: left out " + LobbyService.EntityId(OtherId) + ": its host's unchecked mods download only from a Steam friend: Code 1 (test.code): stranger code, not verified.";
+        var leftOutLine = "Directory: left out " + LobbyService.EntityId(OtherId) + ": its host's unchecked mods need a sandboxed game: Code 1 (test.code): stranger code, not verified.";
         lock (guest.Log) check(guest.Log.Count(l => l == leftOutLine) == 1, "The search names the stranger's mod and why: " + string.Join(" / ", guest.Log.TakeLast(3)));
         await Task.Delay(SameSearchPause);
         await guest.Directory.SearchAsync("u1t", MapFilter, 50);
         lock (guest.Log) check(guest.Log.Count(l => l == leftOutLine) == 1, "The same left-out lobby is not logged again by the next search.");
+
+        // Sandboxed, the stranger's lobby waits for the player's trust instead. The game's own search (Quick Play and SOS
+        // pick from it by a score that knows nothing of mods) answers it only when no lobby that needs no trust is there,
+        // and says why it left it out; the browser still lists it.
+        const ulong BoxedId = 76561198000000034;
+        var boxed = new Node(network, listings, BoxedId, Path.Combine(root, "boxed"), new ModSet("none", []), sandboxed: true);
+        var beside = await boxed.Directory.SearchAsync("t1", MapFilter, 50);
+        check(beside.Int(2) == 1 && beside.Text(3) == lobbyId, "Beside a lobby that needs no trust, a stranger's that waits for trust is left out.");
+        var waitsLine = "Directory: left out " + LobbyService.EntityId(OtherId) + ": " + DirectoryService.WaitsForTrust + ".";
+        lock (boxed.Log) check(boxed.Log.Any(l => l.Contains($"2 listed, 1 shown (1 left out: {DirectoryService.WaitsForTrust})")) && boxed.Log.Contains(waitsLine),
+            "The search says why: " + string.Join(" / ", boxed.Log.TakeLast(3)));
+        ModSettings.SetBlocked(boxed.Mods, "test.ammo", true); // the host's lobby is out: only the one to trust is left
+        await Task.Delay(SameSearchPause);
+        var alone = await boxed.Directory.SearchAsync("t2", MapFilter, 50);
+        check(alone.Int(2) == 1 && alone.Text(3) == otherLobby, "With no other lobby to join, the stranger's that waits for trust is answered.");
+        ModSettings.SetBlocked(boxed.Mods, "test.ammo", false);
+        await boxed.Sync.DisposeAsync();
 
         // The lobby browser's API: every lobby with no game filter, the stranger's with why it cannot be joined; one search
         // per MinInterval; a join hands the game an invitation, and only to a joinable lobby of a recent list.
@@ -292,7 +311,7 @@ static class DirectoryTests
         check(browsed.Count == 2 && open?["joinable"]?.GetValue<bool>() == true && open["host"]?.GetValue<string>() == HostId.ToString(CultureInfo.InvariantCulture),
             "The browser lists the open lobby: " + string.Join(" | ", browsed.Select(l => l.ToJsonString())));
         check(closed?["joinable"]?.GetValue<bool>() == false && (string?)closed["verdict"] == "unjoinable" &&
-            (string?)closed["reason"] == "Its host's unchecked mods download only from a Steam friend." && closed["fix"] == null &&
+            (string?)closed["reason"] == "Its host's unchecked mods need a sandboxed game." && closed["fix"] == null &&
             closed["mods"]?.AsArray().OfType<JsonObject>().Any(m => (string?)m["id"] == "test.code" && (string?)m["action"] == "manual" && (string?)m["why"] == "stranger code, not verified") == true,
             "The browser lists the stranger's lobby with why: " + closed?.ToJsonString());
         check(browse.Join(otherLobby).Status == 409 && browse.Join(Guid.NewGuid().ToString("D")).Status == 404, "Joining an unjoinable or unknown lobby is refused.");
@@ -343,6 +362,15 @@ static class DirectoryTests
         host.ListPublic = true;
         host.Directory.Publish(now + TimeSpan.FromSeconds(18.7));
         check(listings.All.Count == 1 && host.Directory.Listing, "Switched on again, it is listed.");
+        // Co-op over Steam relays off (Linux): nobody could join it, so it is not listed; on (turned on live), it is again.
+        host.Relays = false;
+        host.Directory.Publish(now + TimeSpan.FromSeconds(18.8));
+        lock (host.Log) check(listings.All.Count == 0 && !host.Directory.Listing &&
+            host.Log.Contains("Directory: this machine's public lobby is not listed: co-op over Steam relays is off, so nobody could join it."),
+            "With co-op over Steam relays off a Public lobby is not listed, and the log says why.");
+        host.Relays = true;
+        host.Directory.Publish(now + TimeSpan.FromSeconds(18.9));
+        check(listings.All.Count == 1 && host.Directory.Listing, "Co-op over Steam relays on again: it is listed.");
 
         // A lobby that turns private, locks or fills is no longer listed, at once.
         host.Lobby.FromLocal(SearchChange("u", lobbyId, HostId, "number_key6", "1"));
@@ -376,7 +404,8 @@ static class DirectoryTests
             else editedStats = true;
             return true;
         }
-        var browser = new LiveBrowse(browse, live, logged.Enqueue, Allow);
+        Func<Task<string?>> turnOn = () => Task.FromResult<string?>("not set up");
+        var browser = new LiveBrowse(browse, live, logged.Enqueue, Allow, () => turnOn());
         live.Start();
         using var pipe = new System.IO.Pipes.NamedPipeClientStream(".", LiveEditServer.PipeName(runId), System.IO.Pipes.PipeDirection.InOut,
             System.IO.Pipes.PipeOptions.Asynchronous);
@@ -406,7 +435,7 @@ static class DirectoryTests
         var open = first.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"));
         var closed = first.SingleOrDefault(l => l.Contains("\t" + otherLobby + "\t"));
         check(first.Count == 3 && first[2] == "browsestate\t1\tready\t2\t" && open != null && open.StartsWith("browselobby\t1\t", StringComparison.Ordinal) &&
-            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "Its host's unchecked mods download only from a Steam friend.", _, "Code 1: manual", "-"],
+            open.Split('\t')[4].Contains("joinable") && closed != null && closed.Split('\t') is [_, "1", _, "unjoinable", "-", _, _, _, _, "1", "0", _, _, "Its host's unchecked mods need a sandboxed game.", _, "Code 1", "-"],
             "The game gets the list: " + string.Join(" | ", first));
         var second = await Game("browseask\trefresh\t-");
         check(second.FirstOrDefault() == "browsestate\t1\tsearching\t2\t" && second.Last() == "browsestate\t2\tready\t2\t",
@@ -416,7 +445,7 @@ static class DirectoryTests
         check(joined.SequenceEqual(["browsestate\t2\tinvited\t2\tAccept the invitation in game to join. Other shared mods bring HellForge's MOD SYNC prompt."]) &&
             invite.Text(0) == lobbyId, "A join from the game hands it the invitation: " + string.Join(" | ", joined));
         var refused = await Game("browseask\tjoin\t" + otherLobby);
-        check(refused.SequenceEqual(["browsestate\t2\tfailed\t2\tIts host's unchecked mods download only from a Steam friend."]) && logged.Any(l => l.Contains("browse_lobby_not_joinable")),
+        check(refused.SequenceEqual(["browsestate\t2\tfailed\t2\tIts host's unchecked mods need a sandboxed game."]) && logged.Any(l => l.Contains("browse_lobby_not_joinable")),
             "An unjoinable lobby's join says why: " + string.Join(" | ", refused));
         var quick = await Game("browseask\tquick\t-", "invited", "failed");
         var quickInvite = guest.Next("lobby.inviteReceived", check);
@@ -436,7 +465,9 @@ static class DirectoryTests
         refuseLobbies = false;
         check(failed.Last() == "browsestate\t5\tfailed\t2\tThe list could not be shown. REFRESH to try again." && logged.Any(l => l.Contains("the game refused a lobby")),
             "A list the game refuses ends in a failed state: " + string.Join(" | ", failed));
-        check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["fix"] = JoinCheck.FixStrangers }) is { Fix: "strangers" } &&
+        await Relays(browse, guest, lobbyId, otherLobby, logged, f => turnOn = f, Game, check);
+        check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["fix"] = JoinCheck.FixRelays }) is { Fix: "relays" } &&
+            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["fix"] = JoinCheck.FixStrangers }) is { Fix: "strangers" } &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = JoinCheck.FixEditedStats }) is { Fix: "editedstats" } &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = "sandbox" }) is { Fix: "" } &&
             LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["fix"] = "vip" }) is { Fix: "" }, "A lobby's fix goes to the game by its word.");
@@ -445,6 +476,91 @@ static class DirectoryTests
             "A lobby id the loader refuses is left out; counts are kept in range.");
         GC.KeepAlive(browser);
         Directory.Delete(modsFolder, true);
+    }
+
+    // Co-op over Steam relays off (Linux, CoopRelays): every lobby that could be joined waits for it (the fix "relays"),
+    // one with mods in the way keeps its own reason; Quick Play and joins say why. The game's browser asks the launcher
+    // (the request and answer files of CoopRelaysSwitch, here answered by a stand-in) and lists again once it is on.
+    static async Task Relays(BrowseApi browse, Node guest, string lobbyId, string otherLobby, ConcurrentQueue<string> logged,
+        Action<Func<Task<string?>>> setTurnOn, Func<string, string[], Task<List<string>>> game, Action<bool, string> check)
+    {
+        var folder = Directory.CreateTempSubdirectory("hf-relays-").FullName;
+        var relays = new CoopRelays(namespaced: true, open: false, problem: null, folder, logged.Enqueue);
+        var opened = 0;
+        relays.Opened += () => Interlocked.Increment(ref opened);
+        check(!relays.Open && relays.Why == "co-op over Steam relays is off (the launcher's Settings > MULTIPLAYER)", "Off, it says where it is turned on: " + relays.Why);
+        var unchanged = new JoinCheck(false, "its host's unchecked mods need a sandboxed game", null, []);
+        check(relays.Check(unchanged) == unchanged && relays.Check(new JoinCheck(true, "", null, [])) is { Joinable: false, Fix: JoinCheck.FixRelays } &&
+            relays.Check(new JoinCheck(false, "x", null, []) { Fix = JoinCheck.FixStrangers }) is { Fix: JoinCheck.FixRelays },
+            "A lobby that could be joined, or that a setting lets in, waits for co-op; one with mods in the way keeps its reason.");
+        browse.Attach(guest.Directory, guest.Lobby, guest.Presence, relays);
+        browse.Forget();
+        var list = await browse.ListAsync();
+        var lobbies = list["lobbies"]!.AsArray().OfType<JsonObject>().ToList();
+        var open = lobbies.SingleOrDefault(l => (string?)l["lobbyId"] == lobbyId);
+        var closed = lobbies.SingleOrDefault(l => (string?)l["lobbyId"] == otherLobby);
+        check(list["coopRelays"]?["on"]?.GetValue<bool>() == false && (string?)list["coopRelays"]?["why"] == relays.Why &&
+            open?["joinable"]?.GetValue<bool>() == false && (string?)open["verdict"] == "unjoinable" && (string?)open["fix"] == JoinCheck.FixRelays &&
+            (string?)open["reason"] == "Co-op over Steam relays is off (the launcher's Settings > MULTIPLAYER)." &&
+            closed != null && closed["fix"] == null && (string?)closed["reason"] == "Its host's unchecked mods need a sandboxed game.",
+            "The API lists every lobby with what keeps it out: " + list.ToJsonString());
+        check(browse.Join(lobbyId).Status == 409, "A join is refused while co-op over Steam relays is off.");
+        var quick = await browse.QuickJoinAsync();
+        check(quick.Status == 409 && (string?)quick.Body["errorCode"] == "HELLFORGE_COOP_RELAYS_OFF" &&
+            (string?)quick.Body["message"] == "Co-op over Steam relays is off (the launcher's Settings > MULTIPLAYER): no lobby can be joined.",
+            "Quick Play says why it joins nothing: " + quick.Body.ToJsonString());
+
+        // the game's list: each lobby with its fix, and the header that says what keeps them out
+        var shown = await game("browseask\trefresh\t-", []);
+        var line = shown.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"))?.Split('\t');
+        check(line is [.., "relays"] && line[3] == "unjoinable" && shown.Last().EndsWith("\tready\t2\tCo-op over Steam relays is off, so no lobby can be joined: select one and press A to turn it on.", StringComparison.Ordinal),
+            "The game lists the lobbies with the fix and the header: " + string.Join(" | ", shown));
+        check(LiveBrowse.Message(new JsonObject { ["lobbies"] = new JsonArray(), ["coopRelays"] = new JsonObject { ["on"] = false } }, 0) ==
+            "Co-op over Steam relays is off: no lobby could be joined, and yours is not listed.", "With no lobby the header says the player's own is not listed either.");
+
+        // the launcher stand-in: answers the next ask
+        async Task Launcher(bool turned, string message)
+        {
+            var until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (!CoopRelaysSwitch.TakeRequest(folder))
+            {
+                if (DateTime.UtcNow > until) return;
+                await Task.Delay(20);
+            }
+            CoopRelaysSwitch.WriteAnswer(folder, turned, message);
+        }
+        setTurnOn(relays.TurnOnAsync);
+        var launcher = Launcher(false, "pasta could not attach to the session's network: no message. It is on from the next session: STOP, then PLAY, to join");
+        var failed = await game("browseask\tallow\trelays", []);
+        await launcher;
+        check(failed.First().EndsWith("\tsearching\t2\tTurning on co-op over Steam relays...", StringComparison.Ordinal) &&
+            failed.Last().Contains("\tfailed\t2\tCo-op over Steam relays could not open now: pasta could not attach", StringComparison.Ordinal) &&
+            System.Text.Encoding.UTF8.GetByteCount(failed.Last().Split('\t')[^1]) <= LiveBrowse.MessageBytes && !relays.Open && opened == 0,
+            "The launcher's refusal reaches the game, cut to the header: " + string.Join(" | ", failed));
+        launcher = Launcher(true, "");
+        var turnedOn = await game("browseask\tallow\trelays", []);
+        await launcher;
+        var after = turnedOn.SingleOrDefault(l => l.Contains("\t" + lobbyId + "\t"))?.Split('\t');
+        check(relays.Open && opened == 1 && after is [.., "-"] && after[4].Contains("joinable") && turnedOn.Last().Contains("\tready\t2\t", StringComparison.Ordinal) &&
+            logged.Any(l => l.StartsWith("Co-op over Steam relays: on for the rest of this session", StringComparison.Ordinal)),
+            "Turned on from the game: the lobby is joinable again: " + string.Join(" | ", turnedOn));
+        check(await relays.TurnOnAsync() == null && !File.Exists(Path.Combine(folder, CoopRelaysSwitch.RequestFile)), "Once on, nothing more is asked.");
+
+        // elsewhere (not in a namespace) it is always open; a session that could not open it says why; no folder, no ask
+        var windows = new CoopRelays(namespaced: false, open: false, problem: null, null, _ => { });
+        check(windows.Open && windows.Check(new JoinCheck(true, "", null, [])).Joinable && await windows.TurnOnAsync() == null, "Outside a namespace it is always open.");
+        var broken = new CoopRelays(namespaced: true, open: false, problem: " pasta (the passt package) is not installed\n", null, _ => { });
+        check(broken.Why == "co-op over Steam relays could not open for this session: pasta (the passt package) is not installed" &&
+            await broken.TurnOnAsync() == "this session has no backend folder to ask the launcher through", "A session that could not open it says why: " + broken.Why);
+        check(CoopRelaysSwitch.TakeAnswer(folder) == null, "No answer is left over.");
+        CoopRelaysSwitch.WriteAnswer(folder, true, "");
+        CoopRelaysSwitch.Ask(folder);
+        check(CoopRelaysSwitch.TakeAnswer(folder) == null && CoopRelaysSwitch.TakeRequest(folder) && !CoopRelaysSwitch.TakeRequest(folder),
+            "An ask clears an old answer first, and the launcher takes each ask once.");
+
+        browse.Attach(guest.Directory, guest.Lobby, guest.Presence);
+        browse.Forget();
+        Directory.Delete(folder, true);
     }
 
     // Another HellForge: whose bundled mod is older says who updates.
@@ -459,6 +575,8 @@ static class DirectoryTests
             ModSync.OtherVersion(Editor("dev"), null) == "its host runs another HellForge version", "The same or unreadable versions say neither.");
         check(DirectoryService.SquadSize(8) == 4 && DirectoryService.SquadSlots(8, 4) == 0 && DirectoryService.SquadSlots(8, 1) == 3 && DirectoryService.SquadSlots(2, 1) == 1,
             "A squad is at most 4 of the lobby's 8 places.");
+        check(DirectoryService.SquadSize(12) == 8 && DirectoryService.SquadSlots(12, 4) == 4 && DirectoryService.SquadSlots(12, 8) == 0 &&
+            DirectoryService.SquadSize(10) == 6 && DirectoryService.SquadSize(40) == 8, "A lobby of 12 places is a squad of 8: the game asks for its squad and 4 more.");
     }
 
     // Quick Play's choice (BrowseApi.Best): joinable with a slot free, a friend's first, then the least a join needs, then
@@ -481,6 +599,76 @@ static class DirectoryTests
         check(BrowseApi.Best(all.Where(l => !l.Friend))?.LobbyId == "stranger-ready-3", "Then the same mods before a download, and the fuller lobby.");
         check(BrowseApi.Best(all.Where(l => l.LobbyId.Contains("locked") || l.LobbyId.Contains("full") || l.LobbyId.Contains("blocked"))) == null,
             "Locked, full and unjoinable lobbies are never picked.");
+    }
+
+    // The shared mods a host sends to Steam friends alone (ModSync.FriendsOnlyMods, MultiplayerHost's note when its lobby
+    // is listed): code and raw data not verified, while it shares; content and bundled mods reach anyone.
+    // The browser's order (BrowseApi.Rank): joinable lobbies first, a friend's before a stranger's and mods to trust last of
+    // those, then ones a setting lets
+    // in, then full or locked ones, then those with mods in the way; and what most of those need (BrowseApi.Needed).
+    static void BrowseOrder(Action<bool, string> check)
+    {
+        static BrowseLobby Lobby(string id, bool friend, int members, JoinCheck join, bool locked = false) =>
+            new(id, "c", 1, friend, "directory", members, 4, locked, new Dictionary<string, string>(), new JsonObject(), join);
+        static ModSetEntry Mod(string id, string name, string version, string? url = null) =>
+            new(id, name, version, new string('a', 64), 1000, ModClass.Code, 0) { Url = url };
+        static JoinCheck Out(params ModSetEntry[] mods) =>
+            new(false, ModSync.SandboxOnlyWhy, null, [.. mods.Select(m => new JoinBlocker(m, SyncAction.Manual, "stranger code, not verified"))]);
+        var ready = new JoinCheck(true, "", null, []);
+        var toTrust = new JoinCheck(true, "", new ModSyncPlan([new SyncItem(Mod("d.code", "Code", "1"), SyncAction.Trust, null)]), []);
+        var strangersOff = new JoinCheck(false, DirectoryService.StrangersOff, null, []) { Fix = JoinCheck.FixStrangers };
+        var megapack = Mod("a.megapack", "Megapack", "0.2.0", "https://example.org/megapack");
+        var all = new[]
+        {
+            Lobby("out-1", false, 1, Out(megapack, Mod("b.transmog", "Transmog", "0.1.70"))), Lobby("full", false, 4, ready),
+            Lobby("strangers-off", false, 1, strangersOff), Lobby("stranger-ready", false, 2, ready),
+            Lobby("out-2", false, 1, Out(Mod("a.megapack", "Megapack", "0.1.0"), Mod("c.scope", "Scope", "2.19.8"))),
+            Lobby("locked", true, 1, ready, locked: true), Lobby("friend-ready", true, 1, ready),
+            Lobby("out-3", false, 1, Out(megapack, megapack)), Lobby("stranger-trust", false, 3, toTrust)
+        };
+        var order = all.OrderBy(BrowseApi.Rank).Select(l => l.LobbyId).ToList();
+        check(order.SequenceEqual(["friend-ready", "stranger-ready", "stranger-trust", "strangers-off", "full", "locked", "out-1", "out-2", "out-3"]),
+            "The browser lists joinable lobbies first, out-of-reach ones last: " + string.Join(", ", order));
+        var needed = BrowseApi.Needed(all).OfType<JsonObject>().ToList();
+        check(needed.Count == 3 && (string?)needed[0]["id"] == "a.megapack" && (int?)needed[0]["lobbies"] == 3 &&
+            needed[0]["versions"]!.AsArray().Select(v => (string?)v).SequenceEqual(["0.1.0", "0.2.0"]) && (string?)needed[0]["url"] == "https://example.org/megapack" &&
+            (string?)needed[1]["name"] == "Scope" && (int?)needed[1]["lobbies"] == 1 && (string?)needed[2]["name"] == "Transmog" && needed[1]["url"] == null,
+            "The mods that keep the most lobbies out come first, a lobby counted once each, with their versions: " + new JsonArray([.. needed.Select(n => (JsonNode?)n.DeepClone())]).ToJsonString());
+        check(BrowseApi.Needed([Lobby("r", false, 1, ready), Lobby("f", false, 4, ready)]).Count == 0, "Lobbies with nothing in the way need nothing.");
+    }
+
+    // What the browser shows in its few bytes: a lobby's mods fitted whole with a count of the rest (LiveBrowse.Fit), the
+    // ones in the way first, and the header's words when no lobby can be joined (LiveBrowse.Message).
+    static void BrowseText(Action<bool, string> check)
+    {
+        check(LiveBrowse.Fit(["Aa", "Bb", "Cc"], 100) == "Aa; Bb; Cc" && LiveBrowse.Fit([], 10) == "", "A list that fits is whole.");
+        // all three take 16 bytes; in 15: "Aaaa" (4) with room for "; +2 more" (9), but not "Aaaa; Bbbb" (10) with "; +1 more"
+        check(LiveBrowse.Fit(["Aaaa", "Bbbb", "Cccc"], 15) == "Aaaa; +2 more" && LiveBrowse.Fit(["Aaaa", "Bbbb", "Cccc"], 16) == "Aaaa; Bbbb; Cccc" && LiveBrowse.Fit(["Aa", "Bb", "Cc"], 10) == "Aa; Bb; Cc" &&
+            LiveBrowse.Fit(["A long name"], 5) == "+1 more", "A list that does not fit ends in how many more, never half a name.");
+        var names = Enumerable.Range(1, 30).Select(i => $"SEAF Captain \u2014 Terminal {i} 1.0.{i}").ToList();
+        var fitted = LiveBrowse.Fit(names, LiveBrowse.ModListBytes);
+        var items = fitted.Split("; ");
+        check(System.Text.Encoding.UTF8.GetByteCount(fitted) <= LiveBrowse.ModListBytes && fitted.Length <= 250 && items[^1] == $"+{30 - (items.Length - 1)} more" &&
+            items[..^1].SequenceEqual(names.Take(items.Length - 1)), "A long list fits the loader's 256 bytes and LiveEdit's 250 characters: " + fitted);
+        JsonObject Mod(string name, string action) => new() { ["id"] = name.ToLowerInvariant(), ["name"] = name, ["version"] = "1", ["tier"] = "shared", ["action"] = action };
+        var mods = new JsonArray(Mod("Dl", "download"), Mod("Have", "have"), Mod("Code", "manual"), Mod("Tr", "trust"), Mod("Raw", "manual"));
+        check(LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "unjoinable", ["mods"] = mods.DeepClone() }) is { ModList: "Code 1; Raw 1" } &&
+            LiveBrowse.Line(new JsonObject { ["lobbyId"] = "x", ["verdict"] = "trust", ["mods"] = new JsonArray(Mod("Dl", "download"), Mod("Have", "have"), Mod("Tr", "trust")) })
+                is { ModList: "Dl 1: download; Tr 1: trust" },
+            "A lobby out of reach lists only the mods in the way, by name; others say what a join does to each.");
+        static JsonObject List(params JsonObject[] lobbies) => new() { ["lobbies"] = new JsonArray(lobbies), ["needed"] = new JsonArray(
+            new JsonObject { ["name"] = "Megapack" }, new JsonObject { ["name"] = "Transmog" }) };
+        var none = LiveBrowse.Message(List(new JsonObject { ["joinable"] = false }, new JsonObject { ["joinable"] = false }), 0);
+        check(none == "No lobby you can join right now. Most need: Megapack, Transmog. Or host a Public lobby yourself.", "No lobby can be joined: " + none);
+        check(LiveBrowse.Message(List(new JsonObject { ["joinable"] = true }, new JsonObject { ["joinable"] = false }), 0) == "" &&
+            LiveBrowse.Message(List(new JsonObject { ["joinable"] = false, ["fix"] = "strangers" }), 0) == "" && LiveBrowse.Message(List(), 0) == "" &&
+            LiveBrowse.Message(List(new JsonObject { ["joinable"] = true }), 3) == "(3 more lobbies are not listed.)",
+            "With a lobby to join, a setting that lets one in, or none listed, the browser's own words stay.");
+        var many = new JsonObject { ["lobbies"] = new JsonArray(new JsonObject { ["joinable"] = false }),
+            ["needed"] = new JsonArray([.. Enumerable.Range(1, 5).Select(i => (JsonNode?)new JsonObject { ["name"] = new string('M', 30) + i })]) };
+        var cut = LiveBrowse.Message(many, 0);
+        check(System.Text.Encoding.UTF8.GetByteCount(cut) <= LiveBrowse.MessageBytes && cut.Contains(" more.") && cut.EndsWith("Or host a Public lobby yourself.", StringComparison.Ordinal),
+            "The header's message fits its 192 bytes: " + cut);
     }
 
     static async Task Hostile(MemoryLobbyDirectory listings, Node host, Node guest, Action<bool, string> check)
@@ -507,13 +695,16 @@ static class DirectoryTests
         }
         bool Valid(Dictionary<string, string> data) => DirectoryService.Valid(new DirectoryListing(OtherId, data), out _, out _, out _, out _, out _);
         check(Valid(With(_ => { })), "A stranger's well-formed listing is valid.");
+        check(Valid(With(d => { d[DirectoryKeys.MaxMembers] = "12"; d[DirectoryKeys.Members] = "7"; })), "A squad of 8 (a lobby of 12 places) with 7 members is valid.");
         var bad = new Dictionary<string, Dictionary<string, string>>
         {
             ["a forged hf.host"] = With(d => d[DirectoryKeys.Host] = HostId.ToString(CultureInfo.InvariantCulture)),
             ["a lobby id that is no GUID"] = With(d => { d[DirectoryKeys.LobbyId] = "../x"; d[DirectoryKeys.Connection] = LobbyService.ConnectionPrefix + "../x;" + LobbyService.EntityId(OtherId); }),
             ["5 members"] = With(d => d[DirectoryKeys.Members] = "5"),
             ["0 members"] = With(d => d[DirectoryKeys.Members] = "0"),
-            ["9 at most"] = With(d => d[DirectoryKeys.MaxMembers] = "9"),
+            ["13 at most"] = With(d => d[DirectoryKeys.MaxMembers] = "13"),
+            ["9 members of 12"] = With(d => { d[DirectoryKeys.MaxMembers] = "12"; d[DirectoryKeys.Members] = "9"; }),
+            ["6 members of 9"] = With(d => { d[DirectoryKeys.MaxMembers] = "9"; d[DirectoryKeys.Members] = "6"; }),
             ["a lock of 2"] = With(d => d[DirectoryKeys.Lock] = "2"),
             ["31 search properties"] = With(d => { for (var i = 1; i <= 30; i++) d["string_key" + i] = "x"; d["number_key1"] = "1"; }),
             ["a text number_key"] = With(d => d["number_key6"] = "zero"),

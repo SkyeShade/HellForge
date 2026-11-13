@@ -130,6 +130,8 @@ public sealed class MultiplayerHost : IAsyncDisposable
         var (pipeName, link, modDigest, evidenceDirectory) = settings;
         var (accountKeys, modsFolder, directory, rejoinFile) = (settings.AccountKeys, settings.ModsFolder, settings.Directory, settings.RejoinFile);
         var host = new MultiplayerHost(settings);
+        host.Relays = settings.Relays ?? CoopRelays.FromEnvironment(evidenceDirectory, host.Log);
+        host.Relays.LogState();
         host.transport?.Start();
         // The session's live-edit pipe is "hellforge-live-" + the run id, the pipe name's own suffix ("hellforge-<run id>").
         if (host.transport != null && modsFolder != null && pipeName.StartsWith("hellforge-", StringComparison.Ordinal))
@@ -186,9 +188,6 @@ public sealed class MultiplayerHost : IAsyncDisposable
         try { if (modSetFile != null) own = ModSet.Parse(File.ReadAllText(modSetFile), local: true); }
         catch (Exception error) when (error is InvalidDataException or IOException) { Log("Mod sync: this session's mod set could not be read, so joiners cannot download it: " + error.Message); }
         var install = new InstallLayout(Path.GetDirectoryName(Path.GetFullPath(modsFolder))!);
-        // the published verified list the session runner fetched for this session, when it is signed (VerifiedMods)
-        var verifiedSource = VerifiedMods.UseInstallation(install);
-        Log($"Mod sync: verified list {verifiedSource.ToString().ToLowerInvariant()}, serial {VerifiedMods.Current.Serial}, {VerifiedMods.All.Count} mod(s).");
         var sync = new ModSync(transport!, new ModSyncPaths(modsFolder, Path.GetDirectoryName(Path.GetFullPath(evidenceDirectory))!, evidenceDirectory,
             ModSyncSession.PathIn(install)), own, FriendName, Log, sandboxed: sandboxed);
         Sync = sync;
@@ -196,6 +195,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Lobby.LegacyAdmits = sync.LegacyAdmits;
         Lobby.JoinAs = sync.JoinAs;
         sync.Expected = Lobby.JoinedRecently;
+        sync.Downloading += Lobby.StillExpected;
         // A host advertises its set after a remote joins; a joiner takes one mods.info per new join and notes per-player
         // differences in the corner.
         Lobby.ModSetWire = sync.OwnWire;
@@ -210,11 +210,27 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Log($"Mod sync: {(own != null ? own.Mods.Count + " gameplay mods to share" : "nothing to share")}; offers go to {(Sync.Display != null ? "the game" : "the session log only")}.");
     }
 
+    // Co-op over Steam relays on Linux (CoopRelays): whether joins can reach other machines, and the browser's way to turn
+    // it on.
+    public CoopRelays Relays { get; private set; } = null!;
+
     // The lobby browser in this session's game (LiveBrowse, SDK 16), over the live-edit pipe mod sync shares.
     public LiveBrowse? Browser { get; private set; }
     public void ShowBrowser(BrowseApi browse)
     {
-        if (Stats?.Live is { } live) Browser ??= new LiveBrowse(browse, live, Log, AllowForSession);
+        if (Stats?.Live is { } live) Browser ??= new LiveBrowse(browse, live, Log, AllowForSession, Relays.TurnOnAsync);
+    }
+
+    // A join the game starts itself (a Steam invitation, the Galactic Map, an SOS) while co-op over Steam relays is off
+    // cannot reach the host: the player is told why and where to turn it on, instead of a join that times out.
+    void JoinWithoutRelays(ulong host, string lobbyId)
+    {
+        if (Relays.Open) return;
+        Log($"Join of {LobbyService.EntityId(host)}'s lobby {lobbyId} started while co-op over Steam relays is off: it cannot reach the host.");
+        if (Stats != null)
+            Stats.Notice("error", "Co-op over Steam relays is off", [
+                "Joining other players goes through Valve's Steam relays, which this session cannot reach, so this join will time out.",
+                "Turn it on at the ship's information terminal: open the lobby browser and press A on a lobby."]);
     }
 
     // After a mod sync restart (--rejoin): the game is invited back into the host's lobby once it is on the ship (AutoRejoin).
@@ -272,9 +288,12 @@ public sealed class MultiplayerHost : IAsyncDisposable
         if (transport == null) return;
         var setting = strangers = new StrangerSetting(modsFolder, sandboxed: sandboxed, log: Log);
         bool StrangersAllowed() => setting.Allowed;
+        var relays = Relays;
         if (directory != null && presence != null)
             Directory = new DirectoryService(directory, Lobby, presence, transport.LocalId, pipes.SendLobby, Log, new DirectorySettings(Sync,
-                () => Stats?.SharesEdited == true, ListPublic: modsFolder != null ? () => ModSettings.Read(modsFolder).ListPublic : null, StrangersAllowed: StrangersAllowed));
+                () => Stats?.SharesEdited == true, ListPublic: modsFolder != null ? () => ModSettings.Read(modsFolder).ListPublic : null, StrangersAllowed: StrangersAllowed,
+                RelaysOpen: () => relays.Open));
+        Lobby.LocalJoinStarted += JoinWithoutRelays;
         gate = new StrangerGate(transport, () => Directory?.Listing == true, Related, StrangersAllowed, Log, Lobby.Welcome);
         if (transport is SteamPeerTransport steam)
             steam.AcceptStranger = peer => StrangersAllowed() && (Directory?.Listing == true || Related(peer) || Lobby.Welcome(peer));
@@ -521,6 +540,8 @@ public sealed record MultiplayerSettings(string PipeName, string Link, string Mo
     public string? ModList { get; init; }
     public string? ModSetFile { get; init; }
     public ILobbyDirectory? Directory { get; init; }
+    // Co-op over Steam relays (tests); null: this session's, from the environment (CoopRelays.FromEnvironment).
+    public CoopRelays? Relays { get; init; }
     public string? DirectoryFolder { get; init; }
     public string? RejoinFile { get; init; }
     // A sandboxed game's editor saves (the run's game/sandbox-stats), which StatsShare shares over the mods folder's files.

@@ -24,6 +24,7 @@ sealed partial class PlaySession
             if (job.Process.HasExited) break;
             if (WatchQuit(quit, clock, ref hung)) break;
             CheckBlock(clock, blockRules, ref nextBlockCheck);
+            CheckOfflineBlock(clock);
             CheckBroker();
             RecordRedirect(playFab);
             RecordSteamInput();
@@ -101,6 +102,49 @@ sealed partial class PlaySession
         nextBlockCheck = clock.ElapsedMilliseconds + 10000;
     }
 
+    // The network block's probe while the session started offline (NoteOffline), and the watch that says when it runs
+    // and what its result means (OfflineBlockWatch).
+    string? offlineProbe;
+    OfflineBlockWatch? offlineWatch;
+
+    // The block held on an offline PC (NetworkBlockProbe.Offline, ticket 0352): proved without the outside TCP connect
+    // being refused, so the probe runs again while the game runs (CheckOfflineBlock).
+    void NoteOffline(string probe)
+    {
+        if (!NetworkBlockProbe.Offline(result["networkControl"])) return;
+        offlineProbe = probe;
+        offlineWatch = new OfflineBlockWatch(NetworkBlockProbe.BestInterface());
+        result["networkBlockOffline"] = true;
+        result["networkControlOffline"] = result["networkControl"]?.DeepClone();
+        Say("This PC has no internet connection: the network block is checked without it now, and against the internet as soon as the PC connects.");
+    }
+
+    // Started offline (NoteOffline): the probe runs again every 10 seconds, and at once when the outside's interface
+    // changes. Still offline keeps the session watched; the outside TCP connect refused proves the block online and ends the
+    // watch. A failure is checked once more at once, since a connect can outlast the probe's 2.5 seconds while Windows first
+    // looks for a next hop that does not answer; failing twice (the connect got out or waited, the datagram went out, or the
+    // block no longer holds) fails the session, and its clean-up stops the game.
+    void CheckOfflineBlock(Stopwatch clock)
+    {
+        if (offlineProbe == null || offlineWatch == null || !offlineWatch.Due(clock.ElapsedMilliseconds, NetworkBlockProbe.BestInterface())) return;
+        var problem = RunNetworkProbe(offlineProbe, false, true, "network-probe-online.json");
+        if (problem != null) problem = RunNetworkProbe(offlineProbe, false, true, "network-probe-online-again.json");
+        offlineWatch.Ran(clock.ElapsedMilliseconds);
+        switch (OfflineBlockWatch.Judge(problem, result["networkControl"]))
+        {
+            case OfflineBlockWatch.Verdict.StillOffline:
+                return;
+            case OfflineBlockWatch.Verdict.Failed:
+                throw new SessionFailure($"The network block's check failed while the game was running ({problem}). " +
+                    "HellForge stopped the game: press Play to check the block again.");
+        }
+        offlineProbe = null;
+        offlineWatch = null;
+        result["networkBlockProvenOnline"] = true;
+        Save();
+        Say("This PC is online now, and the network block stops the game's connections to the internet.");
+    }
+
     void RecordRedirect(HellForgeLocalRoutingPatch.PlayFabRedirect? playFab)
     {
         if (!Debug || playFab == null || result["playFabRedirect"] != null || playFab.Outcome == "waiting") return;
@@ -152,11 +196,9 @@ sealed partial class PlaySession
     bool StopRequested()
     {
         if (!File.Exists(Path.Combine(run, "stop-observation.signal"))) return false;
-        result["observationStoppedBySignal"] = true;
-        // "stop-now" (SessionRunner.SignalStop now: true): the game is ended at once, without asking it to close
-        if (ReadSignal() == SessionRunner.StopNowSignal) endGameNow = true;
-        // The backend's mod sync stops the session to start it again with the host's mods: the launcher does that.
-        if (ReadSignal() == "mod-sync") result["restart"] = "mod-sync";
+        // "stop-now" (SessionRunner.SignalStop now: true): the game is ended at once, without asking it to close; the
+        // backend's mod sync stops the session to start it again with the host's mods: the launcher does that.
+        if (SessionEnd.MarkStop(result, ReadSignal())) endGameNow = true;
         return true;
     }
 

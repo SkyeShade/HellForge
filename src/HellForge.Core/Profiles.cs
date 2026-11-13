@@ -24,8 +24,11 @@ public static partial class ProfileStore
 {
     public const string DefaultName = "default";
     public const string FallbackTemplate = "starter";
-    // The profile a fresh install starts with: the starter template, no paid content.
-    public const string FirstProfileTemplate = "starter";
+    // Live-like: a starter profile until Sync Inventory, which then brings in everything it can of the live account, and
+    // the premium warbonds the account owns are open without a Forge Credits purchase (#282).
+    public const string LiveLikeTemplate = "live-like";
+    // The profile a fresh install starts with, and the one the launcher offers first: live-like, no paid content until a sync.
+    public const string FirstProfileTemplate = LiveLikeTemplate;
     static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true, NewLine = "\n" };
 
     [GeneratedRegex("^[a-z0-9-]{1,32}$")]
@@ -57,6 +60,7 @@ public static partial class ProfileStore
     public static List<LocalProfile> List(ISessionPaths paths)
     {
         RetireLegacyDefault(paths);
+        LowercaseNames(paths);
         var profiles = Scan(paths);
         if (profiles.Count > 0) return profiles;
         var first = LoadTemplates(paths).Any(t => t.Name == FirstProfileTemplate) ? FirstProfileTemplate : FallbackTemplate;
@@ -93,6 +97,42 @@ public static partial class ProfileStore
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
+    // Older launchers made profiles with capital letters ("Avaleine", #260). Scan leaves them out, and on Windows they still
+    // block the lowercase name, so each is renamed to its lowercase name (through a temporary name, as a case-only move
+    // is refused on Windows) and the selection follows it. One whose lowercase name is taken stays as it is.
+    static void LowercaseNames(ISessionPaths paths)
+    {
+        try
+        {
+            if (!Directory.Exists(paths.ProfilesRoot)) return;
+            foreach (var folder in Directory.GetDirectories(paths.ProfilesRoot))
+            {
+                var name = Path.GetFileName(folder);
+                var lower = name.ToLowerInvariant();
+                if (lower == name || !IsValidName(lower) || !File.Exists(Path.Combine(folder, "launcher.json"))) continue;
+                if (Directory.GetDirectories(paths.ProfilesRoot).Any(other => Path.GetFileName(other) == lower)) continue;
+                if (Rename(folder, Path.Combine(paths.ProfilesRoot, lower)) && LoadSelected(paths) == name) SaveSelected(paths, lower);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
+
+    static bool Rename(string folder, string target)
+    {
+        var temporary = target + ".renaming";
+        try
+        {
+            Directory.Move(folder, temporary);
+            Directory.Move(temporary, target);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            if (Directory.Exists(temporary) && !Directory.Exists(folder)) Directory.Move(temporary, folder);
+            return false;
+        }
+    }
+
     static LocalProfile Load(ISessionPaths paths, string name)
     {
         var folder = Path.Combine(paths.ProfilesRoot, name);
@@ -106,7 +146,11 @@ public static partial class ProfileStore
         if (!IsValidName(name)) return "Use 1-32 lowercase letters, digits or hyphens.";
         if (!TemplateName().IsMatch(template)) return "Pick a template.";
         var folder = Path.Combine(paths.ProfilesRoot, name);
-        if (Directory.Exists(folder)) return $"A profile named \"{name}\" already exists.";
+        if (Directory.Exists(folder))
+            return Directory.GetDirectories(paths.ProfilesRoot).Select(Path.GetFileName).FirstOrDefault(other =>
+                    string.Equals(other, name, StringComparison.OrdinalIgnoreCase)) is { } hidden && hidden != name
+                ? $"The folder {Path.Combine(paths.ProfilesRoot, hidden)} already uses this name. Rename or remove it first."
+                : $"A profile named \"{name}\" already exists.";
         try
         {
             Directory.CreateDirectory(folder);
@@ -194,10 +238,12 @@ public static partial class ProfileStore
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
             LoadLaunchOptions(paths), Sandbox: enabled));
 
-    // Co-op over Steam relays: open UDP to Valve's relays only (HELLFORGE_STEAM_UDP=1, #62). Off unless chosen: a session
-    // then has no route out at all.
-    public static bool LoadSteamUdp(ISessionPaths paths) =>
-        SessionFiles.ReadJson(paths.SettingsFile) is { } settings && SessionFiles.Text(settings, "steamUdp") == "true";
+    // Co-op over Steam relays on Linux: UDP to Valve's relays only (HELLFORGE_STEAM_UDP=1, #62), so a session can play with
+    // others; TCP and every other address stay refused. On unless turned off (since the 0.4.0 beta). Kept as "coopRelays":
+    // the launchers before wrote "steamUdp": false for everyone who never chose, so that key is not read and every
+    // installation starts with co-op once. Off, a session has no route out at all, and its lobby browser offers to turn
+    // it on (CoopRelaysSwitch).
+    public static bool LoadSteamUdp(ISessionPaths paths) => LoadFlag(paths, "coopRelays");
     public static void SaveSteamUdp(ISessionPaths paths, bool enabled) =>
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
             LoadLaunchOptions(paths), SteamUdp: enabled));
@@ -249,7 +295,7 @@ public static partial class ProfileStore
             {
                 selectedProfile = saved.Profile, localPlayFab = saved.LocalPlayFab, sdkShims = saved.SdkShims, war = saved.War, liveWar = saved.War == WarLive,
                 engineLog = saved.EngineLog, crashDump = saved.CrashDump, launchOptions = saved.LaunchOptions, subfactionSeed,
-                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, steamUdp, warServer
+                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp, warServer
             }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.

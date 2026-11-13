@@ -1,5 +1,7 @@
 # Building a lobby browser
 
+<!-- diataxis: how-to -->
+
 This page is for front-end developers who build their own lobby browser on the ship's information terminal (the one
 across from the Armory). HellForge does the matchmaking: it finds the lobbies, works out what joining each one takes,
 and joins. Your browser shows the list and sends the player's choices. Layout, look, input and sound are up to you.
@@ -19,7 +21,7 @@ strangers, edited stats), and only it knows about the terminal and its camera.
 
 ## How it fits together
 
-```
+```text
  player presses E at the terminal
         │
         ▼
@@ -122,7 +124,7 @@ It returns 0 when no backend is connected. The struct is still filled: state `NO
 |---|---|---|
 | `HF_BROWSE_NONE` | nothing asked yet, or the backend isn't connected yet | a connecting state ("Connecting to the ship's network...") |
 | `HF_BROWSE_SEARCHING` | a search is running; the lobbies are still the last list's | the last list, with a searching indicator |
-| `HF_BROWSE_READY` | the list is in | the list. `message` may say "(N more lobbies are not listed.)" |
+| `HF_BROWSE_READY` | the list is in | the list. `message` may say "(N more lobbies are not listed.)", or, when lobbies are listed but none can be joined and no setting would let one in, that none can, which mods most of them need, and that the player can host |
 | `HF_BROWSE_UNAVAILABLE` | this session has no multiplayer | `message`, with no list |
 | `HF_BROWSE_INVITED` | your join (or Quick Play) worked: the game has the lobby's invitation | close the browser; the player accepts the invitation in game. After Quick Play, `message` names the host |
 | `HF_BROWSE_FAILED` | the search or the join failed | `message` (why), and keep the list |
@@ -148,11 +150,16 @@ sizeof lobby` first. Copy the whole list whenever `version` changes; the backend
 | `reason` | why it can't be joined (UTF-8), or "" |
 | `download_bytes` | what a join downloads first (`HF_LOBBY_DOWNLOAD`) |
 | `mods` | how many shared mods the host runs |
-| `mod_list` | the host's shared mods that a join would change, each with what happens to it: `"Tanks 2.0: download; Guns 1.1: trust"` (UTF-8), or "" |
+| `mod_list` | the host's shared mods that a join would change, each with what happens to it: `"Tanks 2.0: download; Guns 1.1: trust"` (UTF-8), or "". The ones in the way come first. A lobby that can't be joined (`UNJOINABLE`, `BLOCKED`) lists only those, by name and version: `"Guns 1.1; Tanks 2.0"`. Names are never cut: when not all fit, the last item is `"+N more"` |
 | `fix` | the player's setting that would let it in, below |
 
 Text fields are cut to fit on a whole UTF-8 character. Use `HF_LOBBY_FLAG_JOINABLE` to enable a join button, and
 don't work joinability out from `verdict` yourself.
+
+The list comes in this order: lobbies that can be joined now (a friend's first), then ones a `fix` would let in, then
+full or locked ones, then the ones that can't be joined. The placeholder hides that last group while any other lobby
+is shown (CAN'T JOIN, or H, shows it). It names each row by what keeps it out ("Needs sandbox", "Host must update",
+"Needs mods") and gives the whole `reason` in the selected lobby's details.
 
 | `verdict` | Joinable | Meaning | The placeholder says |
 |---|---|---|---|
@@ -160,22 +167,25 @@ don't work joinability out from `verdict` yourself.
 | `HF_LOBBY_DOWNLOAD` | yes | joins after downloading the host's shared mods (`download_bytes`), through the MOD SYNC prompt | Downloads 12.4 MB |
 | `HF_LOBBY_TRUST` | yes | a mod needs the player's trust first, in the MOD SYNC prompt | Needs your trust |
 | `HF_LOBBY_UNKNOWN` | yes | a friend's lobby heard through Steam presence; its mods are known only when joining | A friend's lobby: mods known on joining |
-| `HF_LOBBY_UNJOINABLE` | no | this machine's mods can't join it; `reason` says why | Can't join: `reason` |
-| `HF_LOBBY_BLOCKED` | no | the host runs a mod on the player's blocklist | `reason`, or "Runs a mod you blocked" |
+| `HF_LOBBY_UNJOINABLE` | no | this machine's mods can't join it; `reason` says why | Can't join: `reason` (the row: a short form, as above) |
+| `HF_LOBBY_BLOCKED` | no | the host runs a mod on the player's blocklist | `reason`, or "Runs a mod you blocked" (the row: Blocked mod) |
 | `HF_LOBBY_FULL` | no | 4 of 4 | Full |
 | `HF_LOBBY_LOCKED` | no | the host locked it | Locked |
 
 The placeholder colours these green (ready), amber (download, trust), red (can't join, blocked) and dim (full, locked,
-unknown).
+unknown). In the list, a lobby no setting lets in (can't join or blocked, no `fix`, not a friend's) is dim too: it may
+be most of them, and it is not an error.
 
 | `fix` | The setting | What your browser does |
 |---|---|---|
 | `HF_LOBBY_FIX_NONE` | none | nothing |
 | `HF_LOBBY_FIX_STRANGERS` | Play with strangers is off | offer to turn it on with `HF_BROWSE_ALLOW_STRANGERS`, **only after showing the warning below and getting a clear yes** |
-| `HF_LOBBY_FIX_EDITED_STATS` | lobbies whose host shares edited stats are hidden | offer `HF_BROWSE_SHOW_EDITED_STATS`. Tell the player they play with the host's stats there |
+| `HF_LOBBY_FIX_EDITED_STATS` | lobbies with host-enforced stat changes are hidden | offer `HF_BROWSE_SHOW_EDITED_STATS`. Tell the player they play with the host's stats there |
+| `HF_LOBBY_FIX_RELAYS` | Linux: co-op over Steam relays is off, so no join can reach any host | offer `HF_BROWSE_TURN_ON_RELAYS` before a join or Quick Play. Say what it opens: UDP to Valve's Steam relays only, kept on for later sessions. If it can't open now (`FAILED` with why), the next session starts with it |
 
 A lobby with a `fix` still has its `verdict` and `reason`. The fix is a way in, offered next to them. A stranger's lobby
-running code or raw-data mods HellForge hasn't verified has no fix: a host sends those to Steam friends only.
+running code or raw-data mods HellForge hasn't verified has no fix in an unsandboxed session: it is joined by trusting
+them in a sandboxed one.
 
 ## Actions
 
@@ -188,7 +198,8 @@ malformed ask). On 0, tell the player ("The session's backend is not connected")
 | `HF_BROWSE_JOIN` | the lobby's `lobby_id` | the game gets that lobby's invitation. The lobby must be from a list of the last 2 minutes; if not, the answer is `FAILED`, and you should search again |
 | `HF_BROWSE_QUICK` | NULL | Quick Play: a fresh search, then a join of the best joinable lobby. A friend's goes first, then the fewest changes (same mods, then the smallest download, then a friend's unknown, then trust), then the fullest. `INVITED` with the host's name, or `FAILED` when nothing can be joined |
 | `HF_BROWSE_ALLOW_STRANGERS` | NULL | turns Play with strangers on for this session only, then searches again. Nothing is saved: the launcher's switch stays the player's. While a mod holds the browser, only that mod can ask |
-| `HF_BROWSE_SHOW_EDITED_STATS` | NULL | shows lobbies whose host shares edited stats for this session only, and searches again. Same rules as above |
+| `HF_BROWSE_SHOW_EDITED_STATS` | NULL | shows lobbies with host-enforced stat changes for this session only, and searches again. Same rules as above |
+| `HF_BROWSE_TURN_ON_RELAYS` | NULL | Linux: HellForge's launcher opens co-op over Steam relays in the running session and saves it on, then searches again (`SEARCHING` with "Turning on co-op over Steam relays..." first; up to a minute). `FAILED` with why when it can't. Only the owner can ask while a mod holds the browser |
 | `HF_BROWSE_SHOWN` | NULL | your browser shows: the terminal's camera stays on the screen. This machine only |
 | `HF_BROWSE_HIDDEN` | NULL | your browser went: the camera glides back. This machine only |
 | `HF_BROWSE_CLAIM` | NULL | your mod draws the browser (see [Setting up](#setting-up)) |
@@ -200,8 +211,9 @@ downloads or is trusted without it. So close your browser on `INVITED` and tell 
 Don't promise they're in.
 
 **Refreshing.** The placeholder asks for a new list when it opens, on REFRESH (R), and every 10 s while it shows. It
-skips the 10 s refresh while a search runs or a join is pending, and shows a searching indicator for at least 0.8 s
+skips the 10 s refresh while a search runs or a join is pending. It shows a searching indicator for at least 0.8 s
 after an ask, because a list from the last 2 s comes back at once and a REFRESH that changes nothing looks broken.
+
 Every ask ends in a state other than `SEARCHING`: a search that fails or times out comes back `FAILED` with the old
 list. Still, give up on a search or a join that has no answer after 60 s, as the placeholder does, so a lost answer
 never leaves your browser searching.
@@ -232,7 +244,7 @@ The SDK has no drawing calls. Your mod draws over the game itself, the way HellF
 (`native/editor/editor.cpp`, a working example to copy from):
 
 - **Drawing.** The game renders with D3D12. The editor finds `IDXGISwapChain::Present`, `Present1` and `ResizeBuffers`
-  through a throwaway device and swap chain, hooks them with `hf->hook`, and records Dear ImGui into the back buffer
+  through a throwaway device and swap chain, and hooks them with `hf->hook`. It records Dear ImGui into the back buffer
   on the swap chain's own command queue just before the game presents. Launched with `--use-d3d11`, the game renders
   with D3D11, and the editor draws with ImGui's DX11 backend instead. Hooks made through `hf->hook` chain with
   HellForge's and other mods' hooks on the same function, so your Present hook and the editor's both run.
@@ -242,10 +254,16 @@ The SDK has no drawing calls. Your mod draws over the game itself, the way HellF
   alongside your browser.
 - **Threads.** Present runs on the game's render thread and the window procedure on the window thread. The editor
   runs its UI under one lock that both take. The SDK browse calls are safe from any thread.
-- **The look.** The placeholder fills the screen in the terminal's own CONTROL CENTER style: a blue blueprint field
-  with a grid and scanlines, filters on the left, lobbies in the middle, the selected lobby's details on the right, and
-  a power-on and power-off animation (0.55 s and 0.3 s). Its colours are the `TERM_` constants in `app_lobbies.cpp`.
-  None of this is required.
+- **The look.** None of this is required. The editor's browser is laid out like the game's own Social menu, in
+  HellForge red where the game uses yellow:
+  - the HellForge mark and MATCHMAKING over a LOBBIES tab
+  - the status, categories and filters on the left
+  - two columns of lobby cards in pages (each with a coloured edge for what joining it takes) in the middle
+  - QUICK PLAY and the colour key on the right
+  - the game's black hint strip (ESC, R, SPACE, ENTER) along the bottom
+
+  A card opens the lobby's pop-up, where Enter joins. It keeps a power-on and power-off animation (0.55 s and 0.3 s).
+  Its colours are the `LB_` constants in `app_lobbies.cpp`.
 
 ## A skeleton
 

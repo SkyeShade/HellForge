@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using HellForge.Core;
 
 namespace HellForge.LocalBackend;
 
@@ -35,6 +36,17 @@ public sealed class ProfileStore : IDisposable
     // When set, inventory responses follow its premium rules; Super Credits are never served either way.
     public OwnershipFilter? Ownership { get; set; }
 
+    // Whether a grant may give an item (OwnershipFilter.Grantable); with no rules (tests, the development backend) only
+    // Super Credits are refused.
+    public bool Grantable(uint mixId, JsonArray inventory) =>
+        Ownership?.Grantable(mixId, inventory) ?? (!PaidContentSet.IsSuperCredits(mixId) || PaidContentSet.IsForgeCredits(mixId));
+
+    // The saved inventory section, which the last gate reads the held warbond tokens from.
+    public JsonElement InventorySection()
+    {
+        lock (gate) return JsonSerializer.SerializeToElement(profile["inventory"], BackendJson.Default.JsonNode);
+    }
+
     ProfileStore(JsonObject profile, string? filePath, FileStream? lease, bool created)
     {
         this.profile = profile;
@@ -52,6 +64,11 @@ public sealed class ProfileStore : IDisposable
         using var document = LocalBackend.LoadResource("profile-templates.json");
         return document.RootElement.GetProperty("templates").EnumerateObject().Select(t => t.Name).ToArray();
     }
+
+    // Whether a profile buys the premium warbonds its account owns with Forge Credits: every template but unlock-all and
+    // live-like, which have them open as soon as a sync shows them owned.
+    public static bool EarnsWarbonds(string? template) =>
+        template == null || !(template.Contains("unlock-all", StringComparison.Ordinal) || template == HellForge.Core.ProfileStore.LiveLikeTemplate);
 
     static JsonArray TemplateItems(string template)
     {
@@ -115,7 +132,7 @@ public sealed class ProfileStore : IDisposable
             if (sectionPath != path) continue;
             lock (gate)
             {
-                body = JsonSerializer.SerializeToElement(profile[section], BackendJson.Default.JsonNode);
+                body = JsonSerializer.SerializeToElement(Served(section), BackendJson.Default.JsonNode);
                 if (section == "inventory")
                     body = Ownership?.FilterInventoryResponse(body) ?? OwnershipFilter.WithoutSuperCredits(body);
                 else if (section == "progression" && Ownership != null)
@@ -125,6 +142,22 @@ public sealed class ProfileStore : IDisposable
         }
         body = default;
         return false;
+    }
+
+    // A section as the client gets it: mod weapons' progress stays out (RegisteredItems serves what this session's mods use).
+    // Called with gate held.
+    JsonNode? Served(string section)
+    {
+        if (section != "progression" || profile[section] is not JsonObject progression || !progression.ContainsKey(ModPackages.Section)) return profile[section];
+        var served = (JsonObject)progression.DeepClone();
+        served.Remove(ModPackages.Section);
+        return served;
+    }
+
+    // What is saved about mod weapons (HellForge.Core ModPackages).
+    public JsonArray? ModProgress()
+    {
+        lock (gate) return profile["progression"]?[ModPackages.Section]?.DeepClone() as JsonArray;
     }
 
     // PUT /Progression/ShipName (builder 0x12bd3d0): {"shipName":[first, second]}. The client reads the
@@ -317,10 +350,11 @@ public sealed class ProfileStore : IDisposable
     // maxCap when one exists; unknown items are added as discovered inventory entries. Super Credits are never granted,
     // whatever the mission report claims was found. A mission id is paid once: it is saved with the rewards
     // (progression.paidMissions, the last PaidMissionsKept), so a retried Mission/end, also after a restart, pays nothing
-    // and returns false. A report without an id is paid. The receipt is diemitze's idea (PR #27).
+    // and returns false. A report without an id is paid. The receipt is diemitze's idea (PR #27). Also runs in the same
+    // change, so what it does (weapon mastery) is paid once with the rest.
     public const int PaidMissionsKept = 64;
 
-    public bool ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items, string? missionId = null) =>
+    public bool ApplyMissionRewards(long experience, IReadOnlyDictionary<uint, long> items, string? missionId = null, Action<JsonObject, JsonArray>? also = null) =>
         TryChange((progression, inventory) =>
         {
             if (!string.IsNullOrEmpty(missionId))
@@ -333,6 +367,7 @@ public sealed class ProfileStore : IDisposable
             }
             progression["experience"] = Math.Min(uint.MaxValue, Integer(progression, "experience", "progression") + Math.Max(0, experience));
             foreach (var (mix, amount) in items) AddItem(inventory, mix, amount);
+            also?.Invoke(progression, inventory);
             return true;
         });
 
@@ -491,6 +526,16 @@ public sealed class ProfileStore : IDisposable
         return changed;
     }
 
+    // The profile's progress entry of a package (progression.packageProgress), made at level 0.
+    public static JsonObject PackageEntry(JsonObject progression, long id32)
+    {
+        if (progression["packageProgress"] is not JsonArray list) progression["packageProgress"] = list = new JsonArray();
+        var entry = list.OfType<JsonObject>().FirstOrDefault(e => Whole(e["id32"]) == id32);
+        if (entry == null) list.Add((JsonNode)(entry = new JsonObject { ["id32"] = id32, ["level"] = 0 }));
+        CompletePackageEntry(entry);
+        return entry;
+    }
+
     static bool CompletePackageProgress(JsonObject profile)
     {
         if (profile["progression"]?["packageProgress"] is not JsonArray list) return false;
@@ -631,6 +676,8 @@ public sealed class ProfileStore : IDisposable
         if (progression.TryGetPropertyValue("location", out var location))
             ValidateLocation(location as JsonObject ?? throw new InvalidDataException("progression.location must be an object."));
 
+        if (progression.TryGetPropertyValue(ModPackages.Section, out var modProgress)) ValidateModProgress(modProgress);
+
         foreach (var item in Items((JsonObject)profile["inventory"]!, "inventory"))
         {
             Integer(item, "mixId", "inventory item");
@@ -639,6 +686,16 @@ public sealed class ProfileStore : IDisposable
                 throw new InvalidDataException("inventory item.isDiscovered must be true or false.");
         }
         _ = Items((JsonObject)profile["customization"]!, "customization").ToArray();
+    }
+
+    static void ValidateModProgress(JsonNode? section)
+    {
+        foreach (var node in section as JsonArray ?? throw new InvalidDataException($"progression.{ModPackages.Section} must be an array."))
+        {
+            if (node is not JsonObject entry) throw new InvalidDataException($"progression.{ModPackages.Section} entries must be objects.");
+            Integer(entry, "id32", ModPackages.Section);
+            Integer(entry, "level", ModPackages.Section);
+        }
     }
 
     static void ValidateLocation(JsonObject location)

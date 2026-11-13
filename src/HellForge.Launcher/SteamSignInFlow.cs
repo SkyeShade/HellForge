@@ -34,7 +34,12 @@ public partial class MainWindow
     ];
 
     // The ways this setup can offer: under Wine, inside HellForge's network namespace, only the Steam app can reach Steam.
-    static IReadOnlyList<DownloadChoice> OfferedChoices => DownloadChoices.Offered(reachesSteam: !LinuxNetworkBlock.Requested);
+    // On Linux SteamCMD needs a terminal window to ask for the password in, and a folder outside Steam's libraries
+    // whose path a terminal passes on as it is (Konsole fills in a $NAME in its arguments).
+    IReadOnlyList<DownloadChoice> OfferedChoices => DownloadChoices.Offered(reachesSteam: !LinuxNetworkBlock.Requested,
+        steamCmd: !OperatingSystem.IsLinux() || (linuxTerminal ??= LinuxTerminal.Find()) != null && paths.InstallRoot is { } root &&
+            !root.Contains('$') && !SteamCmd.InSteamapps(Path.Combine(root, "tools", "steamcmd")));
+    LinuxTerminal? linuxTerminal;
 
     void WireSignIn()
     {
@@ -166,8 +171,12 @@ public partial class MainWindow
             var watch = WatchDepots(steamCmd.Folder, watching.Token);
             try
             {
-                using var process = steamCmd.Start(SteamCmd.Arguments(account, build), visible: true);
-                exitCode = await steamCmd.WaitAsync(process, attempt);
+                // Windows gives a console program a window of its own; on Linux a terminal program has to.
+                var terminal = OperatingSystem.IsLinux()
+                    ? linuxTerminal ?? throw new SteamCmdException("no terminal window program was found to run it in.") : null;
+                using var process = terminal != null ? steamCmd.StartInTerminal(SteamCmd.Arguments(account, build), terminal)
+                    : steamCmd.Start(SteamCmd.Arguments(account, build), visible: true);
+                exitCode = terminal != null ? await steamCmd.WaitInTerminalAsync(process, attempt) : await steamCmd.WaitAsync(process, attempt);
             }
             finally
             {
@@ -256,7 +265,8 @@ public partial class MainWindow
         }
         SteamCmdButton.IsEnabled = false;
         SteamCmdButton.Content = "Getting SteamCMD from Valve...";
-        SignInStatus.Text = "Getting SteamCMD from Valve and checking its signature...";
+        SignInStatus.Text = OperatingSystem.IsWindows() ? "Getting SteamCMD from Valve and checking its signature..."
+            : "Getting SteamCMD from Valve...";
         steamCmdStarted.TrySetResult(account);
     }
 
@@ -283,6 +293,13 @@ public partial class MainWindow
 
     void DrawQr(string challenge)
     {
+        SignInQr.Data = QrGeometry(challenge);
+        SignInQrWait.IsVisible = false;
+    }
+
+    // The sign-in QR code as one geometry of square modules, one unit each (setup's card and the Mods page draw it).
+    static Geometry QrGeometry(string challenge)
+    {
         var modules = QrCode.Modules(challenge);
         var geometry = new StreamGeometry();
         using (var draw = geometry.Open())
@@ -298,8 +315,7 @@ public partial class MainWindow
                     draw.EndFigure(true);
                 }
         }
-        SignInQr.Data = geometry;
-        SignInQrWait.IsVisible = false;
+        return geometry;
     }
 
     // What sign-in shows, on the card (from SteamKit2's threads, so through the UI thread).

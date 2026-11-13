@@ -19,8 +19,8 @@ namespace HellForge.LocalBackend;
 //   POST /Progression/inventory/consume  0xeea479dc  body {consumedItems:[{mixId, amount}]} sent as a mission ends (the
 //                                               dispatcher has no reply case for it): acknowledged, nothing taken.
 // Rewards are local rules, not Arrowhead's: XP by difficulty, success and objectives; requisition; medals for a won
-// mission; looted samples are granted as reported by the client. Level 11 (a mod's, native/mod-loader/difficulty.c) pays
-// half as much XP and medals again as level 10. Each mission id is paid once (ProfileStore.ApplyMissionRewards).
+// mission; looted samples as the client reports them. Level 11 (a mod's, native/mod-loader/difficulty.c) pays half as much
+// XP and medals again as level 10. Each mission id is paid once (ProfileStore.ApplyMissionRewards). Mastery: docs/internals.md.
 public sealed class MissionService
 {
     public const uint RequisitionMixId = 0xD7150EEC;
@@ -35,6 +35,11 @@ public sealed class MissionService
     readonly ProfileStore profile;
     readonly ConcurrentDictionary<long, int> operationDifficulty = new();
     readonly PickupRelay? pickups;
+
+    // This session's mod weapons, set by LocalBackend: their packages earn too.
+    public RegisteredItems? Registered { get; init; }
+    // The player's Steam account, which picks them out of a report that lists the whole squad; set by the backend's program.
+    public ulong? LocalAccount { get; init; }
 
     public MissionService(ProfileStore profile, PickupRelay? pickups = null)
     {
@@ -170,7 +175,21 @@ public sealed class MissionService
         if (medals > 0) rewards.Add((JsonNode)new JsonObject { ["mixId"] = MedalsMixId, ["amount"] = medals });
         // A retried end (its reply was lost) is answered with nothing earned: the first one paid.
         var missionId = FindString(body, "missionId");
-        if (!profile.ApplyMissionRewards(experience, grants, missionId))
+        var player = LocalParticipant(body);
+        var tracks = ReportedTracks(player);
+        var updates = new JsonArray();
+        var paid = profile.ApplyMissionRewards(experience, grants, missionId, (progression, inventory) =>
+        {
+            foreach (var track in tracks)
+            {
+                var earned = WeaponMastery.Earn(track, progression, inventory, experience, id => profile.Grantable(id, inventory));
+                var update = new JsonObject { ["id32"] = earned.Package, ["level"] = earned.Level, ["progress"] = earned.Progress };
+                if (player is { } participant && participant.TryGetProperty("platformAccountId", out var account) && account.ValueKind == JsonValueKind.String)
+                    update["platformAccountId"] = account.GetString();
+                updates.Add((JsonNode)update);
+            }
+        });
+        if (!paid)
         {
             experience = 0;
             looted.Clear();
@@ -181,7 +200,7 @@ public sealed class MissionService
             ["operationId"] = FindInt(body, "operationId") ?? 0, ["missionIndex"] = FindInt(body, "missionIndex") ?? 0,
             ["missionId"] = missionId ?? "", ["experience"] = experience, ["multipliers"] = new JsonArray(),
             ["badges"] = new JsonArray(), ["campaignWon"] = false, ["impact"] = 0, ["othersImpactPlanet"] = 0,
-            ["othersImpactCommunityTarget"] = 0, ["othersImpactPlanetEvent"] = 0, ["progressionPackageUpdates"] = new JsonArray(),
+            ["othersImpactCommunityTarget"] = 0, ["othersImpactPlanetEvent"] = 0, ["progressionPackageUpdates"] = updates,
             // Heavy loot is granted above, but its reply list wants {id32, rewards: [...]} per heavy item (parser 0x105e6b0;
             // {mixId, amount} there made the client refuse the whole reply), and which id32 is not known yet.
             ["lootedItemRewards"] = Items(looted), ["lootedHeavyItemRewards"] = new JsonArray(),
@@ -189,6 +208,38 @@ public sealed class MissionService
             ["repeatingPlayer"] = false
         };
     }
+
+    // This player's entry of the report: the one with their account, else the first. A host's report lists every player, its
+    // own first (captured); a friend's backend gets no report of its own, so a friend's weapon earns nothing yet.
+    JsonElement? LocalParticipant(JsonElement body)
+    {
+        if (body.ValueKind != JsonValueKind.Object || !body.TryGetProperty("participants", out var participants) || participants.ValueKind != JsonValueKind.Array) return null;
+        JsonElement? first = null;
+        foreach (var participant in participants.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.Object))
+        {
+            first ??= participant;
+            if (LocalAccount is { } account && participant.TryGetProperty("platformAccountId", out var id) && id.ValueKind == JsonValueKind.String &&
+                id.GetString() == account.ToString(System.Globalization.CultureInfo.InvariantCulture)) return participant;
+        }
+        return first;
+    }
+
+    // The packages reported for a player, each once, that can earn: a weapon's, or a mod weapon's the player may have. The
+    // client's list holds 15, and it names one today.
+    List<MasteryTrack> ReportedTracks(JsonElement? participant)
+    {
+        var tracks = new List<MasteryTrack>();
+        if (participant is not { } player || !player.TryGetProperty("progressedPackages", out var packages) || packages.ValueKind != JsonValueKind.Array) return tracks;
+        foreach (var package in packages.EnumerateArray())
+        {
+            if (!TryInt(package, "id32", out var id) || id is <= 0 or > uint.MaxValue || tracks.Count == MaxPackageUpdates || tracks.Any(t => t.Package == id)) continue;
+            if (WeaponMastery.Vanilla((uint)id) is { } vanilla && WeaponMastery.IsWeapon(vanilla)) tracks.Add(vanilla);
+            else if (Registered?.Track((uint)id) is { } copy && !Registered.IsLeftOut(copy.Item!)) tracks.Add(copy);
+        }
+        return tracks;
+    }
+
+    const int MaxPackageUpdates = 15;
 
     public static class Rewards
     {
@@ -231,15 +282,19 @@ public sealed class MissionService
         return count;
     }
 
+    // What a report's loot may hold: the three sample kinds, requisition and medals. Super Credits found on a map are a
+    // premium currency, and Forge Credits come from their piles (Activity), so neither is loot.
+    static readonly HashSet<uint> Looted = [0xEDF6EAF5, 0xB1ED1C41, 0xDAC0E9DB, RequisitionMixId, MedalsMixId];
+
     static Dictionary<uint, long> SumItems(JsonElement body, string key)
     {
         var items = new Dictionary<uint, long>();
         foreach (var list in FindAll(body, key))
             if (list.ValueKind == JsonValueKind.Array)
                 foreach (var item in list.EnumerateArray())
-                    // Super Credits found on a map (or claimed by a modified report) are a premium currency: never granted.
+                    // Only what a mission yields (Looted): the report is the client's, so an item it names is not granted for that.
                     if (TryInt(item, "mixId", out var mix) && TryInt(item, "amount", out var amount) && mix > 0 && amount > 0 && mix <= uint.MaxValue &&
-                        !PaidContentSet.IsSuperCredits((uint)mix))
+                        Looted.Contains((uint)mix))
                         items[(uint)mix] = items.GetValueOrDefault((uint)mix) + Math.Min(amount, 10_000);
         return items;
     }

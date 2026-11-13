@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 16
+#define HF_MOD_SDK_VERSION 18
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -91,7 +91,8 @@ typedef void (*HfTickCallback)(HfMod* mod, float dt, void* user);
 typedef struct HfWeapon
 {
     uint32_t size;           /* sizeof(HfWeapon) */
-    uint32_t base;           /* the weapon it copies: a vanilla loadout id (HF_ITEM_..., or the session's arsenal.tsv) */
+    uint32_t base;           /* the weapon it copies: a vanilla loadout id (HF_ITEM_..., or the session's arsenal.tsv), or
+                              * another mod's weapon (then its premium rule is that weapon's base's; 8 copies deep at most) */
     /* Its model: a unit resource the mod's data provides (a copy of the base's unit with other materials, say). The name
      * also identifies the weapon: its entity is the name's hash and its loadout id the top 32 bits of that, so every
      * player's game agrees. Keep it unique, prefixed with your name and mod. */
@@ -121,7 +122,15 @@ typedef struct HfWeapon
      * record when it has a projectile of its own). Its log names any component HellForge could not copy (record size
      * unknown), which it still shares. */
     uint32_t own_all;
+    /* SDK 17: the beam or arc it fires (a vanilla type, or one add_beam or add_arc returned; 0: its base's). Its base must
+     * fire one: a beam weapon's or an arc weapon's own record names the type, and everything else about the beam or arc
+     * is in the type's row. */
+    uint32_t beam;
+    uint32_t arc;
 } HfWeapon;
+
+/* A part of an entity (SDK 17, HfEntity.parts): a component's name ("#52": its number) and the entity whose record it takes. */
+typedef struct HfEntityPart { const char* component; uint64_t from; } HfEntityPart;
 
 /* A new entity of any kind (SDK 4, add_entity): a copy of a vanilla entity (a Pelican, a turret...) under a resource
  * name of its own, sharing every component record of its base except the ones it owns. No loadout, armory or catalogue
@@ -139,7 +148,7 @@ typedef struct HfWeapon
 typedef struct HfEntity
 {
     uint32_t size;                      /* sizeof(HfEntity) */
-    uint64_t base;                      /* the vanilla entity resource it copies (HF_ENTITY_...) */
+    uint64_t base;                      /* the vanilla entity resource it copies (HF_ENTITY_...); 0 with `parts` */
     const char* name;                   /* unique: "my_name/my_mod/entity"; the entity's resource id is this name's hash */
     const char* unit;                   /* a unit resource for its model (the mod's data provides it); NULL: the base's */
     const char* const* own_components;  /* NULL-terminated component names it gets records of its own in, or NULL */
@@ -158,6 +167,7 @@ typedef struct HfEntity
     const char* title;        /* "Heavy MG Sentry" */
     const char* designation;  /* "A/MG-101" */
     const char* description;
+    const HfEntityPart* parts; /* SDK 17: NULL, or its components one by one, {NULL}-ended (docs/modding/enemies.md) */
 } HfEntity;
 
 /* A new behaviour (SDK 4, add_behaviour): a vanilla behaviour extended by HellForge, under an id of its own (694 and
@@ -211,6 +221,141 @@ typedef struct HfDamage
     const char* name;
     float scale;    /* x its standard and durable damage (0 means 1); the rest stays the base's */
 } HfDamage;
+
+/* A new explosion type (SDK 17, add_explosion): a copy of a vanilla ExplosionSettings row under a type of its own, with
+ * its own damage and radii; its effect, sound and packages stay the base's. Projectiles use it through
+ * HfProjectile.impact_explosion and expiry_explosion (docs/modding/content.md). Zero-initialize it and set `size`:
+ *
+ *     HfExplosion blast = {sizeof blast};
+ *     blast.base = HF_EXPLOSION_R36_ERUPTOR_IMPACT;
+ *     blast.name = "my_name/my_mod/big_blast";
+ *     blast.damage = api->add_damage(mod, &heavy);
+ *     blast.outer_radius = 12.0f;
+ *     uint32_t explosion = api->add_explosion(mod, &blast); */
+typedef struct HfExplosion
+{
+    uint32_t size;          /* sizeof(HfExplosion) */
+    uint32_t base;          /* the vanilla explosion type it copies (1 .. 422; HF_EXPLOSION_...) */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint32_t damage;        /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
+    float inner_radius;     /* metres; 0 keeps the base's */
+    float outer_radius;
+    float shockwave_radius;
+    uint32_t arc;           /* the arc it chains (vanilla, or one add_arc returned; 0: the base's) */
+} HfExplosion;
+
+/* A new beam type (SDK 17, add_beam): a copy of a vanilla BeamSettings row under a type of its own, with its own damage,
+ * radius and length; set the rest through beam_row. HfWeapon.beam fires it. Zero-initialize it and set `size`. */
+typedef struct HfBeam
+{
+    uint32_t size;      /* sizeof(HfBeam) */
+    uint32_t base;      /* the vanilla beam type it copies (1 .. 30; HF_WEAPON_BEAM_...) */
+    const char* name;   /* names it in the logs; unique, prefixed with your name and mod */
+    uint32_t damage;    /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
+    float radius;       /* metres; 0 keeps the base's */
+    float length;
+} HfBeam;
+
+/* A new arc type (SDK 17, add_arc): a copy of a vanilla ArcSettings row under a type of its own, with its own damage; set
+ * the rest through arc_row. HfWeapon.arc and HfExplosion.arc use it. Zero-initialize it and set `size`. */
+typedef struct HfArc
+{
+    uint32_t size;      /* sizeof(HfArc) */
+    uint32_t base;      /* the vanilla arc type it copies (1 .. 16; HF_ARC_...) */
+    const char* name;   /* names it in the logs; unique, prefixed with your name and mod */
+    uint32_t damage;    /* the damage id it deals (vanilla, or one add_damage returned; 0: the base's) */
+} HfArc;
+
+#include "hellforge_customization.h" /* HfAttachment (SDK 17) and HfPattern (SDK 18): weapon attachments and patterns */
+
+/* The faction rosters of the enemy spawn director, for HfEnemy and HfEnemySwap (SDK 17). */
+#define HF_ENEMY_TERMINIDS 1u
+#define HF_ENEMY_AUTOMATONS 2u
+#define HF_ENEMY_ILLUMINATE 4u
+
+#define HF_ENEMY_LEVELS 10
+/* HfEnemy flags */
+#define HF_ENEMY_ALWAYS_LOADED 1u /* a mission loads its packages though no squad names its group (it spawns by other means) */
+
+/* A new enemy in the spawn director's rosters (SDK 17, add_enemy): a row of its own, tied to no vanilla enemy. The
+ * director spawns by group: a squad asks for some of a group's enemies, and the group's rows share the draw by their
+ * weights. `group` is a vanilla group ("Scavenger": the enemy joins every squad that draws it) or a name of your own,
+ * which only your squads draw (add_enemy_squad). Zero-initialize it and set `size`; docs/modding/enemies.md has the
+ * groups, each field and a whole example.
+ * Shorthand: with `like` set, that vanilla enemy's rows are copied for the unit instead (group, tags, cap, cost and
+ * budget), their weights times `weight`; `group` and the fields after it are then not read. */
+typedef struct HfEnemy
+{
+    uint32_t size;          /* sizeof(HfEnemy) */
+    uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins (with `like`, 0: every roster `like` is in) */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint64_t unit;          /* the entity it spawns: one add_entity or register_entity returned, or a vanilla one */
+    uint64_t like;          /* 0, or the vanilla enemy whose roster rows are copied (the shorthand above) */
+    float weight;           /* x the spawn weights (0 means 1) */
+    uint32_t lowest_level;  /* difficulty levels it spawns at, 1 to 10 (0: no bound); level 11 takes level 10's weight */
+    uint32_t highest_level;
+    const char* group;      /* its spawn group's name */
+    float weights[HF_ENEMY_LEVELS]; /* its share of the group's draw at difficulty 1 to 10; 0: not at that level */
+    float cost;             /* what one costs a squad's budget, in the director's points (a Scavenger 6, a Charger 100) */
+    float budget;           /* its weight in the count of enemies alive (0 means 1; a Bile Titan 8) */
+    uint32_t alive_cap;     /* at most this many alive at once where the game checks a row's cap; 0: no cap */
+    uint32_t size_class;    /* 0 small, 1 medium, 2 heavy, 3 the largest, as the game's rows mark their enemies */
+    uint32_t flags;         /* HF_ENEMY_ALWAYS_LOADED */
+    const char* with_tags[4];    /* director tags: it spawns only while one of them is on (none: always) */
+    const char* without_tags[4]; /* ... and never while one of these is on */
+    uint64_t packages[2];   /* 0, or packages its entity needs (as load_package's): loaded and held for the session */
+} HfEnemy;
+
+#define HF_SQUAD_MEMBERS 8
+/* HfEnemySquad kinds: where the director uses the squad. */
+#define HF_SQUAD_PATROL 1u      /* a patrol roaming the map */
+#define HF_SQUAD_GUARD 2u       /* placed at a mission's guard positions when it starts (the game ships no such squad) */
+#define HF_SQUAD_OUTPOST 3u     /* an outpost's or objective's garrison; members' counts are a pool (the game uses 999) */
+#define HF_SQUAD_ENCOUNTER 4u   /* reinforcements: a bug breach, a dropship (it carries any Automaton or Illuminate one) */
+#define HF_SQUAD_BORDER 5u      /* crossing the map's border (the game's Shriekers and Gunships) */
+#define HF_SQUAD_CONVOY 6u      /* a convoy; a mission takes 8 kinds at most */
+#define HF_SQUAD_AIR_SUPPORT 7u /* called in from the air (the game's Illuminate attack ships) */
+#define HF_SQUAD_STRAGGLER 8u   /* stragglers: one squad a mission, the game's first that fits or a mod's, by weight */
+
+/* A new squad (SDK 17, add_enemy_squad): a mix of spawn groups the director may send, beside the game's squads of its
+ * kind. This is how an enemy in a group of your own reaches the map. A mission takes the squads whose levels, players
+ * and tags fit and whose groups each have an enemy with weight at its level, then draws among them by `weight`.
+ * Zero-initialize it and set `size`; docs/modding/enemies.md has an example. */
+typedef struct HfEnemySquad
+{
+    uint32_t size;          /* sizeof(HfEnemySquad) */
+    uint32_t factions;      /* HF_ENEMY_TERMINIDS | ...: the rosters it joins; each must have every group */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint32_t kind;          /* HF_SQUAD_... */
+    uint32_t lowest_level, highest_level;     /* the difficulty levels it is sent at, 1 to 10 (0: no bound); 10 covers level 11 */
+    uint32_t lowest_players, highest_players; /* the player counts it is sent at, 1 to 4 (0: no bound) */
+    float weight;           /* its share of the draw among the squads of its kind (the game's: 0.01 to 3) */
+    float cost;             /* x its members' cost in the director's budget (0 means 1) */
+    struct { const char* group; uint32_t count; } members[HF_SQUAD_MEMBERS]; /* up to 8 groups, 32 enemies in all
+                             * (HF_SQUAD_OUTPOST: any count) */
+    const char* with_tags[8]; /* director tags: sent only while one of them is on (none: always) */
+} HfEnemySquad;
+
+/* A replacement rule (SDK 17, add_enemy_swap): while it is on, the director spawns `replacement` where it would spawn
+ * `unit`, as the game's own rules turn bots into jump-pack bots under a planet's modifier. Of the rules that match a
+ * spawn, the one of highest priority wins. A replacement can be replaced again, 3 times in a row at most: a rule that
+ * would make a longer chain or a loop with the other rules is left out (the log says so). Zero-initialize it and set
+ * `size`. */
+typedef struct HfEnemySwap
+{
+    uint32_t size;          /* sizeof(HfEnemySwap) */
+    uint32_t factions;      /* the rosters it applies in (HF_ENEMY_...; 0: any), each only if it has a row of `unit` */
+    const char* name;       /* names it in the logs; unique, prefixed with your name and mod */
+    uint64_t unit;          /* the enemy replaced: any unit of a roster row, the game's or a mod's */
+    uint64_t replacement;   /* the entity spawned instead: one add_entity or register_entity returned, or a vanilla one */
+    const char* tag;        /* the director tag that turns it on, e.g. "GM_BotAssault"; NULL: always on */
+    uint32_t lowest_level;  /* the difficulty levels it applies at (0: 1 and 100, as the game's rules) */
+    uint32_t highest_level;
+    uint32_t priority;      /* the game's rules use 0 to 9 */
+    float budget;           /* the enemy budget's weight of the replacement where it has no roster row of its own (0: the
+                             * replaced enemy's) */
+    float cost;             /* x the replaced enemy's cost in a squad's budget (0 means 1; the game's rules use 0.5 to 1.2) */
+} HfEnemySwap;
 
 /* A new stratagem (SDK 4, add_stratagem): a copy of a vanilla stratagem's settings under a StratagemType of its own,
  * with its own name, description, input code and icon. What it does when called (its payload, beacon and the packages
@@ -316,6 +461,10 @@ typedef struct HfProjectile
     /* 0, or a particles resource for its second effect (row +0x70: the LAS-58 Talon's light and trail; the Liberator
      * has none): resource_hash of its name, loaded with the weapon like spawn_effect. */
     uint64_t flight_effect;
+    /* SDK 17: the explosion of a hit and of the end of its flight (vanilla types, or ones add_explosion returned; 0: the
+     * base's). */
+    uint32_t impact_explosion;
+    uint32_t expiry_explosion;
 } HfProjectile;
 
 /* A network field type: kind 1 is an integer of `bits` bits starting at `min` (range min .. min + 2^bits - 1). */
@@ -366,7 +515,8 @@ typedef struct HfDifficulty
                                     the HiveMind scales it further by progress and players); 0 keeps level 10's; up to 4 */
     uint32_t mission_stratagem;  /* a stratagem type every mission at the level grants every player, in the mission group
                                     with Reinforce and Resupply (no loadout slot; the type's own uses and cooldown), e.g.
-                                    105, the M-102 Fast Recon Vehicle; 0 none */
+                                    105, the M-102 Fast Recon Vehicle; 0 none. A paid one (premium warbond, Superstore)
+                                    is not granted, and the mod's log says why */
 } HfDifficulty;
 /* Every mission at the level is two missions in one: its own plus a partner mission of the same faction that the game
  * offers alongside it, with the partner's main objectives and their steps as the game selects them (chosen with the
@@ -606,12 +756,13 @@ typedef struct HfAbility
 typedef struct HfContent
 {
     uint32_t size;          /* sizeof(HfContent): set by the caller */
-    /* HF_KIND_STRATAGEM, HF_KIND_ENTITY, HF_KIND_PROJECTILE, HF_KIND_DAMAGE, or (HellForge 2026-10-31) HF_KIND_ITEM:
-     * an arsenal weapon of add_weapon, once it is registered */
+    /* HF_KIND_STRATAGEM, HF_KIND_ENTITY, HF_KIND_PROJECTILE, HF_KIND_DAMAGE, (HellForge 2026-10-31) HF_KIND_ITEM: an
+     * arsenal weapon of add_weapon, once it is registered, or (SDK 17) HF_KIND_EXPLOSION, HF_KIND_WEAPON_BEAM or
+     * HF_KIND_ARC, once they are installed */
     uint32_t kind;
     uint64_t id;            /* its stratagem type, entity resource, projectile type, damage id or loadout id */
     uint64_t base;          /* the vanilla one of its kind it copies */
-    uint64_t link;          /* a projectile: the damage it deals (0: its base's) */
+    uint64_t link;          /* a projectile, explosion, beam or arc: the damage it deals (0: its base's) */
     const char* mod;        /* the id of the mod that added it, and that mod's folder (UTF-8) */
     const char* folder;
     const char* name;       /* its identity */
@@ -624,6 +775,9 @@ typedef struct HfContent
     /* HellForge 2026-10-31, a weapon (HF_KIND_ITEM; older ones leave these 0): its entity resource and its base's */
     uint64_t entity;
     uint64_t base_entity;
+    /* SDK 17, a weapon: the beam and arc it fires of a mod's (0: its base's) */
+    uint32_t beam;
+    uint32_t arc;
 } HfContent;
 
 typedef struct HfEventInfo
@@ -754,33 +908,12 @@ typedef struct HfDamagePreEvent
     uint32_t cancel;
 } HfDamagePreEvent;
 
-/* SDK 16: the mod channel's caps and targets (send, share_set). A message holds at most HF_MESSAGE_MAX bytes; a shared
- * row's value at most HF_SHARE_VALUE_MAX bytes; a mod's table at most HF_SHARE_ROWS rows. */
-#define HF_MESSAGE_MAX 1024u
-#define HF_SHARE_VALUE_MAX 64u
-#define HF_SHARE_ROWS 512u
-/* send's to: every other machine of the lobby, or its host. A peer id from HfMessageEvent.from names one machine. */
-#define HF_TO_ALL 0xFFFFFFFFFFFFFFFFull
-#define HF_TO_HOST 0xFFFFFFFFFFFFFFFEull
+/* Co-op: the mod channel's caps, targets and events (SDK 16: send, share_set) and the game's RPCs as rpc_listen and
+ * rpc_send pass them (SDK 17: HfRpcArg, HfRpcEvent, HfRpcListener). */
+#include "hellforge_net.h"
 
-/* SDK 16: a message from the same mod on another machine of the lobby (send, HF_ON_MESSAGE). `from` is the sender's peer
- * id (the host's when it came from the host); data holds `bytes` bytes, at most HF_MESSAGE_MAX. Valid during the call. */
-typedef struct HfMessageEvent
-{
-    HfEventInfo info;
-    uint64_t from;
-    uint32_t bytes;
-    uint8_t data[HF_MESSAGE_MAX];
-} HfMessageEvent;
-/* SDK 16: one row of this mod's shared table (share_set, share_get, share_row; HF_ON_SHARE), raised on the game thread
- * when a row arrives, changes or goes (bytes 0: removed). Valid during the call. */
-typedef struct HfShareEvent
-{
-    HfEventInfo info;
-    uint64_t key;
-    uint32_t bytes;
-    uint8_t value[HF_SHARE_VALUE_MAX];
-} HfShareEvent;
+/* SDK 17: screens over the game (add_screen, screen_show; docs/modding/overlay.md). */
+#include "hellforge_overlay.h"
 
 /* SDK 11 actions: what a mod makes the game do, through the game's own functions (HD2Runtime 0.40.1's research), on the
  * game thread (an event listener's or on_game_thread's call; from another thread an action waits for the next game
@@ -904,6 +1037,10 @@ typedef struct HfSyncState
 #define HF_SYNC_FLAG_STRANGER 1u /* flags: the host is not the player's Steam friend. Warn harder before HF_SYNC_TRUST:
                                   * the sandbox stops the mod's writes and network, not its reads, and the host gets the
                                   * game's traffic. Never set by a backend before it */
+#define HF_SYNC_FLAG_SANDBOX_ONLY 2u /* flags: the game is sandboxed, so HF_SYNC_TRUST answered here counts only while the
+                                      * sandbox is on (any code in the game can send sync_answer; the launcher's prompt,
+                                      * outside the sandbox, gives a trust that counts everywhere). Set with
+                                      * HF_SYNC_FLAG_STRANGER too. Never set by a loader before it */
 #define HF_SYNC_CLASS_CONTENT 0u /* what HellForge checks: data specs, schema stats, network field types */
 #define HF_SYNC_CLASS_CODE 1u    /* a DLL, sources HellForge builds, or Lua */
 #define HF_SYNC_CLASS_BUNDLED 2u /* shipped with HellForge (the in-game editor) */
@@ -913,7 +1050,7 @@ typedef struct HfSyncMod
     uint32_t size;      /* sizeof(HfSyncMod): set by the caller */
     uint32_t action;    /* HF_SYNC_MOD_... */
     uint32_t kind;      /* HF_SYNC_CLASS_... */
-    uint32_t flags;     /* HF_SYNC_FLAG_STRANGER */
+    uint32_t flags;     /* HF_SYNC_FLAG_STRANGER, HF_SYNC_FLAG_SANDBOX_ONLY */
     uint64_t bytes;     /* its size */
     char id[65];
     char name[81];      /* UTF-8 */
@@ -990,12 +1127,16 @@ typedef struct HfBrowseLobby
     char reason[192];        /* why it cannot be joined (UTF-8), or "" */
     char players[128];       /* the players' names, comma separated (UTF-8), or "" */
     char mod_list[256];      /* the host's shared mods a join would change, each with what happens to it ("Tanks 2.0:
-                              * download; Guns 1.1: trust"), semicolon separated (UTF-8), or "" */
+                              * download; Guns 1.1: trust"), semicolon separated (UTF-8), or "". Those in the way come
+                              * first; a lobby that cannot be joined (UNJOINABLE, BLOCKED) lists only those, by name and
+                              * version ("Guns 1.1; Tanks 2.0"). Whole names only: a last item "+N more" counts the rest */
     uint32_t fix;            /* HF_LOBBY_FIX_...: the player's setting that would let it in (the reason says why it is out) */
 } HfBrowseLobby;
 #define HF_LOBBY_FIX_NONE 0u
 #define HF_LOBBY_FIX_STRANGERS 1u    /* a stranger's while Play with strangers is off: HF_BROWSE_ALLOW_STRANGERS */
 #define HF_LOBBY_FIX_EDITED_STATS 2u /* its host shares edited stats, which are hidden: HF_BROWSE_SHOW_EDITED_STATS */
+#define HF_LOBBY_FIX_RELAYS 3u       /* Linux: co-op over Steam relays is off, so no join reaches a host (every lobby has it):
+                                      * HF_BROWSE_TURN_ON_RELAYS */
 
 /* What an editor asks the backend for (browse_ask). */
 #define HF_BROWSE_REFRESH 1u /* search again (at most one search every 2 s, whoever asks: a sooner one shares the last) */
@@ -1012,6 +1153,10 @@ typedef struct HfBrowseLobby
 #define HF_BROWSE_CLAIM 8u   /* this mod draws the lobby browser: HellForge's editor's own steps aside (browse_state's owner).
                               * 1 when this mod holds it, 0 when another mod claimed it first; this machine only */
 #define HF_BROWSE_RELEASE 9u /* gives the browser back to HellForge's editor; 1 when this mod held it */
+#define HF_BROWSE_TURN_ON_RELAYS 10u /* Linux: turn co-op over Steam relays on (HF_LOBBY_FIX_RELAYS), the launcher's setting,
+                                      * which it keeps: UDP to Valve's Steam relays only, opened while the session runs when
+                                      * it can (browse_state SEARCHING, then a new list), else from the next session
+                                      * (FAILED, the message says why). Ask only after telling the player what it opens */
 
 typedef struct HfEntityDef HfEntityDef;
 
@@ -1067,6 +1212,7 @@ struct HfEntityDef
     const char* title;             /* SDK 7: its text, as HfEntity's (NULL: the base's) */
     const char* designation;
     const char* description;
+    const HfEntityPart* parts;     /* SDK 17: its components one by one, as HfEntity.parts; `base` may then be 0 */
 };
 
 /* Changes to an existing entity as a definition block (edit_entity): the same lists as HfEntityDef's. A vanilla entity's
@@ -1086,6 +1232,46 @@ typedef struct HfEditDef
     const uint64_t* remove_tags;
     const HfMountDef* mount;
 } HfEditDef;
+
+/* The block's regions, as HfGenerationCapacity.regions names them. An element's size in bytes: the locations' two
+ * arrays 0xE0 and 0x40, their types 0x10, the minimap's four lists 0x30, 0x58, 4 and 4, a mission stamp 0x10, a place
+ * 8, a place set entry 0x10, a cluster 0xE0, an important location 0x108, a linked one 0x18, a route node 0x98, an
+ * edge 0x48, its class 1, a road point 8. The objective list is one record: `at` is its row field (the ids at +4),
+ * `places` the objectives it holds. Later SDKs add names before HF_GEN_REGIONS; unnamed entries are 0. */
+enum { HF_GEN_LOCATIONS_A, HF_GEN_LOCATIONS_B, HF_GEN_LOCATION_TYPES, HF_GEN_MINIMAP_PROXIES, HF_GEN_MINIMAP_SHAPES, HF_GEN_MINIMAP_U,
+    HF_GEN_MINIMAP_V, HF_GEN_MISSION_STAMPS, HF_GEN_OBJECTIVE_LIST, HF_GEN_PLACES, HF_GEN_PLACE_SET, HF_GEN_CLUSTERS, HF_GEN_IMPORTANT,
+    HF_GEN_LINKED, HF_GEN_ROUTE_NODES, HF_GEN_ROUTE_EDGES, HF_GEN_ROUTE_CLASSES, HF_GEN_ROUTE_POINTS, HF_GEN_REGIONS = 32 };
+
+/* Room in the map generator's arrays, for a mod that puts more on a map than level 11 does (generation_capacity). The
+ * arrays are HellForge's enlarged ones, which exist when a mod added level 11; a field left 0 keeps HellForge's size.
+ * The game appends to them without a check, except where noted: ask for what your content makes at most.
+ *
+ *     HfGenerationCapacity want = {sizeof want};
+ *     want.locations = 40000;
+ *     if (hf->size >= offsetof(HfApi, generation_capacity) + sizeof(void*)) hf->generation_capacity(mod, &want, NULL); */
+typedef struct HfGenerationCapacity
+{
+    uint32_t size, locations; /* sizeof(HfGenerationCapacity); everything placed on the map (objectives, outposts,
+                                 points of interest, placed stamps): 8192, up to 65024 */
+    uint32_t minimap_proxies, mission_stamps; /* the minimap's shapes, one or more per location and prop: 16384, up to
+                                 32768, in steps of 4096 (its other lists grow in proportion). The objectives'
+                                 candidate stamps: 1024, up to 16384; with a request, a stamp past the last place is
+                                 left out */
+    uint32_t places, place_set; /* objective and extraction placement attempts (512, up to 8192) and their set (256,
+                                   up to 4096) */
+    uint32_t block_bytes, moved; /* filled in: the size of the generator's block with these capacities; 1 once the
+                                    game's code uses them (level 11 is installed with them), 0 before that or when it
+                                    kept its own arrays */
+    /* Lists HellForge leaves where the game has them unless a mod asks for more than the game's own places:
+     * the important locations (objectives, extraction, outposts, points of interest and their satellites: 256, up
+     * to 1024) and the linked ones (a satellite and the location it belongs to: 64, up to 1024). The route graph,
+     * moved the same way: its nodes (975, up to 2304), its edges (1621, up to 3456) and the road points along them
+     * (9936, up to 65520). The game reads the route capacities; it appends nodes and edges unchecked. */
+    uint32_t important_locations, linked_locations, route_nodes, route_edges, route_points;
+    /* Filled in: where each region lies, as an offset from the block's start, and the elements it holds. A list left
+     * where the game has it reports the game's own offset. They hold for the game's code once `moved` is 1. */
+    struct { uint32_t at, places; } regions[HF_GEN_REGIONS];
+} HfGenerationCapacity;
 
 typedef struct HfApi
 {
@@ -1139,9 +1325,9 @@ typedef struct HfApi
 
     /* ---- SDK 2 ---------------------------------------------------------------------------------------------------- */
     /* Adds a new arsenal weapon (see HfWeapon). HellForge adds it to the game's entity data when that loads, to the armory,
-     * and to the backend's item catalogue and the player's inventory; it behaves exactly like its base except for what
-     * the mod changes in its own records. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the
-     * mod's log says why). */
+     * and to the backend's item catalogue and the player's inventory (a copy of premium content only to a player who owns
+     * the original); it behaves exactly like its base except for what the mod changes in its own records. Call it from
+     * hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the mod's log says why). */
     uint32_t (*add_weapon)(HfMod* mod, const HfWeapon* weapon);
     /* The entity resource of a weapon any mod added (its loadout id), for component_record; 0 if there is none. */
     uint64_t (*weapon_entity)(uint32_t weapon);
@@ -1164,13 +1350,14 @@ typedef struct HfApi
 
     /* ---- SDK 4 ---------------------------------------------------------------------------------------------------- */
     /* Adds a new stratagem (see HfStratagem). Call it from hellforge_mod_init. Returns its StratagemType (150 and up),
-     * or 0 (the mod's log says why). The game has room for 48 new stratagems in all mods together. */
+     * or 0 (the mod's log says why). There is room for 1,024 new stratagems in all mods together. */
     uint32_t (*add_stratagem)(HfMod* mod, const HfStratagem* stratagem);
     /* The 400-byte settings row of a stratagem a mod added, once the game has loaded its stratagems, or 0. +0 type and
      * +4 stable id must stay; HD2Runtime's research names the rest (docs/internals.md "Stratagems"). */
     uintptr_t (*stratagem_row)(uint32_t type);
     /* Adds a new entity (see HfEntity). Call it from hellforge_mod_init. Returns its resource id, or 0 (the mod's log
-     * says why). Entities and weapons share room for 64. */
+     * says why). Entities and weapons share the game's entity map, about 2,187 more across all mods; HellForge sets no
+     * number of its own. */
     uint64_t (*add_entity)(HfMod* mod, const HfEntity* entity);
     /* Adds a new behaviour (see HfBehaviour). Call it from hellforge_mod_init. Returns its id (694 and up), or 0 (the
      * mod's log says why). An entity given it runs its base instead if HellForge could not install it. */
@@ -1237,10 +1424,11 @@ typedef struct HfApi
      * spawns, package requests), before the game's update. Keep it short; it runs every frame. Returns 1, or 0 when
      * the game thread's update could not be hooked (modloader.log says why). Check hf->size before calling. */
     int (*on_game_thread)(HfMod* mod, HfTickCallback callback, void* user);
-    /* Loads a package (by its resource name hash, as mappings/references.json lists them) and holds it for the session,
-     * through the game's own package system on the game thread: HF_PACKAGE_RESIDENT once the engine has all of it,
-     * HF_PACKAGE_LOADING until then (call it again to see), 0 refused or failed (not a catalogue package, HellForge's
-     * 64 held already, or not loaded within 90 seconds; the mod's log says why). Loading is per client: other players
+    /* Loads a package (by its resource name hash, as mappings/references.json lists them, or since SDK 17 a data spec's
+     * own "package" of any mod of the session) and holds it for the session, through the game's own package system on
+     * the game thread: HF_PACKAGE_RESIDENT once the engine has all of it, HF_PACKAGE_LOADING until then (call it again
+     * to see), 0 refused or failed (neither kind, HellForge's 64 held already, or not loaded within 90 seconds; the
+     * mod's log says why). Loading is per client: other players
      * load their own. A reference set_live or a stats file writes (a donor projectile, an explosion) loads its packages
      * itself. */
     int (*load_package)(HfMod* mod, uint64_t package);
@@ -1353,7 +1541,9 @@ typedef struct HfApi
     /* ---- SDK 14: mod sync (HfSyncState; check hf->size before calling) ------------------------------------------- */
     /* The current offer: 1 with *out filled (at most out->size bytes), 0 none (solo, or no backend connected). */
     int (*sync_state)(HfMod* mod, HfSyncState* out);
-    /* The index-th mod of the current offer: 1 with *out filled (at most out->size bytes), 0 past the last. */
+    /* The index-th mod of the current offer: 1 with *out filled (at most out->size bytes), 0 past the last. Its flags:
+     * HF_SYNC_FLAG_STRANGER (warn harder before HF_SYNC_TRUST) and HF_SYNC_FLAG_SANDBOX_ONLY (a sandboxed game: a trust
+     * answered here counts only in sandboxed sessions, since any code in the game can call sync_answer; say so). */
     int (*sync_mod)(HfMod* mod, uint32_t index, HfSyncMod* out);
     /* Sends the player's answer (HF_SYNC_ACCEPT ...) to the offer of that version; mod_id names the mod for
      * HF_SYNC_BLOCK, HF_SYNC_TRUST and HF_SYNC_OPEN (NULL otherwise). 1 sent; 0 not (another offer came since, or no
@@ -1373,7 +1563,8 @@ typedef struct HfApi
     /* Asks the backend for a new list (HF_BROWSE_REFRESH, lobby_id NULL) or to join lobby_id (HF_BROWSE_JOIN). 1 sent; 0
      * not (no backend connected, or a malformed ask). The answer arrives through browse_state. HF_BROWSE_QUICK joins the
      * best lobby, and HF_BROWSE_ALLOW_STRANGERS and HF_BROWSE_SHOW_EDITED_STATS turn the player's setting on for this
-     * session only, never saved (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the
+     * session only, never saved (lobby_id NULL); HF_BROWSE_TURN_ON_RELAYS turns co-op over Steam relays on, saved by the
+     * launcher (lobby_id NULL). HF_BROWSE_SHOWN and HF_BROWSE_HIDDEN stay on this machine (the
      * terminal's camera) and need no backend. While a mod holds the browser (HF_BROWSE_CLAIM), only that mod's camera and
      * setting asks count. A guide to building a browser of one's own: docs/lobby-browser.md. */
     int (*browse_ask)(HfMod* mod, uint32_t ask, const char* lobby_id);
@@ -1430,6 +1621,76 @@ typedef struct HfApi
     /* Takes the mod's own hook of target out of its chain (the function runs as if it had not been hooked by this mod;
      * a call already inside the detour finishes). 0 on success, 1 when the mod has no hook there. */
     int (*unhook)(HfMod* mod, uintptr_t target);
+
+    /* ---- SDK 17: explosions (check hf->size before calling) -------------------------------------------------------- */
+    /* Adds a new explosion type (see HfExplosion). Call it from hellforge_mod_init, before the event below. Returns its
+     * type (423 and up), or 0 (the mod's log says why). 512 across all mods. */
+    uint32_t (*add_explosion)(HfMod* mod, const HfExplosion* explosion);
+    /* The 152-byte ExplosionSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and
+     * must stay. */
+    uintptr_t (*explosion_row)(uint32_t type);
+
+    /* ---- SDK 17: beams and arcs (check hf->size before calling) ---------------------------------------------------- */
+    /* Adds a new beam type (see HfBeam). Call it from hellforge_mod_init. Returns its type (31 and up), or 0 (the mod's
+     * log says why). 512 across all mods. */
+    uint32_t (*add_beam)(HfMod* mod, const HfBeam* beam);
+    /* The 112-byte BeamSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must
+     * stay. */
+    uintptr_t (*beam_row)(uint32_t type);
+    /* Adds a new arc type (see HfArc). Call it from hellforge_mod_init. Returns its type (17 and up), or 0 (the mod's log
+     * says why). 512 across all mods. */
+    uint32_t (*add_arc)(HfMod* mod, const HfArc* arc);
+    /* The 104-byte ArcSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must
+     * stay. */
+    uintptr_t (*arc_row)(uint32_t type);
+    /* Adds a weapon attachment (see HfAttachment). Call it from hellforge_mod_init, after add_weapon for its weapons.
+     * Returns its item id, or 0 (the mod's log says why). 128 across all mods. Customization screens list it on its
+     * weapons once the game has loaded its items; the session's backend makes it the player's. */
+    uint32_t (*add_attachment)(HfMod* mod, const HfAttachment* attachment);
+
+    /* ---- SDK 17: enemies (check hf->size before calling) ----------------------------------------------------------- */
+    /* Adds an enemy to the spawn director's rosters (see HfEnemy). Call it from hellforge_mod_init. 0 added (its rows are
+     * made once the entity data loads, and the log counts them), 1 refused (the mod's log says why). */
+    int (*add_enemy)(HfMod* mod, const HfEnemy* enemy);
+    /* Adds a replacement rule (see HfEnemySwap). Call it from hellforge_mod_init. 0 added, 1 refused (the log says why). */
+    int (*add_enemy_swap)(HfMod* mod, const HfEnemySwap* swap);
+    /* Adds a squad (see HfEnemySquad). Call it from hellforge_mod_init. 0 added (its rows are made with the enemies'),
+     * 1 refused (the mod's log says why). */
+    int (*add_enemy_squad)(HfMod* mod, const HfEnemySquad* squad);
+
+    /* ---- SDK 17: the game's RPCs (hellforge_rpcs.h; docs/modding/networking.md; check hf->size before calling) ------- */
+    /* Listens to an RPC (its HF_RPC_... id, or HF_RPC_ALL for every one) as this machine receives it: on the game thread,
+     * before the game's own receiver, highest priority first (equal priorities in the order they listened). A listener
+     * that returns HF_RPC_DROP stops the message: later listeners and the game don't see it. Call it from
+     * hellforge_mod_init on. 0 listening, 1 refused (an RPC this build doesn't have; the mod's log says why). */
+    int (*rpc_listen)(HfMod* mod, uint32_t rpc, HfRpcListener listener, void* user, int32_t priority);
+    /* Sends one of the game's RPCs (hellforge_rpcs.h's hf_rpc_<name>_send builds the arguments): to HF_TO_ALL (every
+     * other machine of the session), HF_TO_HOST, or a peer (an HfRpcEvent's sender). The game encodes each argument
+     * by its declared type, so values outside a type's range are clamped or wrap. Game thread only. 0 sent, 1 refused
+     * (another thread, solo, an unknown RPC, arguments that are not its declared ones, HF_TO_HOST on the host; the
+     * mod's log says why). */
+    int (*rpc_send)(HfMod* mod, uint32_t rpc, uint64_t to, const HfRpcArg* args, uint32_t count);
+
+    /* SDK 17: screens drawn over the game (hellforge_overlay.h, docs/modding/overlay.md). Adds one, from any thread:
+     * its id (1 and up), or 0 refused (modloader.log says why: its key is another screen's, say). */
+    int (*add_screen)(HfMod* mod, const HfScreen* screen);
+    /* Opens (1) or closes (0) one of the mod's screens, from any thread. Closing sets input->closing; draw is called
+     * until it returns 0. */
+    void (*screen_show)(HfMod* mod, int id, int open);
+
+    /* SDK 17: room in the map generator's arrays (see HfGenerationCapacity; check hf->size before calling). With want:
+     * asks for at least these capacities, from hellforge_mod_init only; 0 recorded, 1 refused (too late, a mod loaded
+     * while the game runs, a field over its limit; the mod's log says why, and nothing is changed). Mods' requests
+     * combine to the largest of each. With have (set its size): filled, up to that size, with the capacities planned,
+     * where each region lies in the block (regions, by HF_GEN_ name), and whether the game uses them yet. want may be
+     * NULL to only read. */
+    int (*generation_capacity)(HfMod* mod, const HfGenerationCapacity* want, HfGenerationCapacity* have);
+
+    /* ---- SDK 18: patterns (check hf->size before calling) ---------------------------------------------------------- */
+    /* Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why).
+     * 128 across all mods; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in
+     * all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data. */
+    uint32_t (*add_pattern)(HfMod* mod, const HfPattern* pattern);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */
@@ -1451,6 +1712,16 @@ static inline int hf_set_field_(HfMod* mod, HfRef entity, HfField field, HfValue
 #define hf_set(mod, entity, C, f, value) hf_set_field_((mod), (entity), HF_LITERAL(HfField) HF_FIELD(C, f), HF_LITERAL(HfValue) value)
 #define hf_tag(mod, entity, tag, present) HF_API(mod)->set_tag((mod), (entity), (tag), (present))
 #define hf_mount(mod, entity, slot, carried) HF_API(mod)->mount((mod), (entity), (slot), (carried))
+
+/* A Wwise event's id from its name (FNV-1 of the lower-case name): an event of the mod's data spec "sounds", for the
+ * record fields that name sound events, such as hf_set(mod, rifle, ProjectileWeapon, fire_single_audio_event,
+ * HF_U32(hf_wwise_id("yourname_rifle_fire"))). */
+static inline uint32_t hf_wwise_id(const char* name)
+{
+    uint32_t h = 2166136261u;
+    for (; *name; name++) h = (h * 16777619u) ^ (uint32_t)(uint8_t)(*name >= 'A' && *name <= 'Z' ? *name + 32 : *name);
+    return h;
+}
 
 /* set_live's flags. */
 #define HF_LIVE_SHARED 0x1u /* the target's record may be one other entities share */
@@ -1582,6 +1853,9 @@ static inline int hf_on_game_thread(HfMod* mod, HfTickCallback callback, void* u
 
 /* SDK 16: game globals by name (hf_global_..., Hf<Name>), generated from mappings/globals.json. */
 #include "hellforge_globals.h"
+
+/* SDK 17: the game's RPCs by name (HF_RPC_..., HfRpc_..., hf_rpc_..._read and _send) are in hellforge_rpcs.h, generated
+ * from mappings/rpcs.json. It is large (every RPC of the game), so a mod includes it itself, after this file. */
 
 /* Implemented by the mod. */
 #ifndef HF_MOD_LOADER

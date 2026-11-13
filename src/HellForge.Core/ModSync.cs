@@ -16,14 +16,16 @@ namespace HellForge.Core;
 //            copies and includes of the reviewed types with only HellForge's own edits; DataSpecs.Unchecked), schema
 //            stats (named fields within their reviewed ranges) and network field types (integer widenings): from any host;
 //   code     a DLL, sources HellForge compiles, or a patch holding Lua: only when VerifiedMods lists its exact content, or
-//            the player trusted that exact content (ModSettings' Trusted: TRUST on the prompt, for a Steam friend's mod);
+//            the player trusted that exact content (ModSettings' Trusted: TRUST on the prompt);
 //   raw      bytes HellForge cannot check, which reach the game's own parsers or any field: binary data patches (data/),
 //            data specs with "replace" or other resource types, raw stats lines and componentWrites: as code;
 //   bundled  a mod HellForge ships (the in-game editor): never downloaded; a different one is another HellForge version.
-// Every host gets the same rule, a Steam friend too. Between players who are not Steam friends only content and verified
-// mods sync: a stranger's unverified code and raw mods are the player's to install, and a host serves them to friends alone
-// (the sandbox would stop their writes and network, not their reads, and the stranger is on the other end of the game's
-// traffic). A copy trusted from a stranger by an earlier build loads only in a sandboxed session. A synced code or raw mod
+// Every host gets the same rule, a Steam friend too. The player's trust is what opens code and raw mods, and a host serves
+// them to anyone its lobby offers them to: the risk is the joiner's to take, by the mod's exact content. From a stranger
+// that takes a sandboxed session, and such a trust counts only in one (TrustedMod.Stranger): the sandbox stops the mod's
+// writes and network, not its reads, and the stranger is on the other end of the game's traffic, which the prompt's
+// warning says. A trust answered in a sandboxed game counts only in one as well, a Steam friend's too
+// (TrustedMod.Sandboxed): any code in that game can send the answer, and must not open a mod to unsandboxed play. Unsandboxed, a stranger's unverified code and raw mods are the player's to install. A synced code or raw mod
 // counts as here, and loads, only while it is verified or trusted for the session (ModSyncPlan.Make, ModSyncSession.Resolve):
 // a mod taken off the verified list, or a trust taken back, stops it. Trust changes only which list lets a hash through:
 // every byte is checked against it as before.
@@ -392,14 +394,15 @@ public sealed class ModLocator(string modsFolder, EntityProfile? profile = null)
 
 // What joining a host's lobby takes, mod by mod (each host mod in id order, then this machine's mods the host lacks).
 //   have      this machine has it (installed, on or off, or synced before): Folder;
-//   download  a content mod, or a verified code or raw mod, or one the player trusted from a Steam friend, the host shares;
-//   manual    the host does not share, or an unverified code or raw mod whose host is not a Steam friend (such a host
-//             serves it to friends alone): the player installs it themselves (its Url, when it has one, says where);
+//   download  a content mod, or a verified code or raw mod, or one the player trusted, the host shares;
+//   manual    the host does not share, or an unverified code or raw mod whose host is not a Steam friend, unsandboxed: the
+//             player installs it themselves (its Url, when it has one, says where);
 //   blocked   on the player's blocklist;
 //   update    a mod HellForge ships differs: one of the two players runs another HellForge version;
 //   off       this machine's own gameplay mod the host does not run: left out of the synced session;
-//   trust     a code or raw mod HellForge has not verified, from a Steam friend who shares: it downloads once the player
-//             trusts that exact content (TRUST on the prompt), or the player installs it themselves.
+//   trust     a code or raw mod HellForge has not verified, from a Steam friend who shares, or from anyone who shares in a
+//             sandboxed session: it downloads once the player trusts that exact content (TRUST on the prompt), or the
+//             player installs it themselves.
 // A synced copy of a code or raw mod is "have" only while it is verified or trusted (ModSyncSession.Resolve's rule);
 // otherwise it is planned as missing.
 public enum SyncAction { Have, Download, Manual, Blocked, Update, Off, Trust }
@@ -413,10 +416,11 @@ public sealed record SyncItem(ModSetEntry Mod, SyncAction Action, string? Folder
 }
 // What lets a code or raw mod download or count: HellForge's verified list (VerifiedMods.Contains when null) and the
 // player's trusted mods (ModSettings' Trusts for this session; none when null), both by id and exact content hash; whether
-// the host is a Steam friend (a stranger's unverified ones are never offered for trust); and the class of a store copy, read
-// from its own files (SyncedStore.ClassAt when null; ModLocator.ClassOf keeps the answers).
+// the host is a Steam friend; the class of a store copy, read from its own files (SyncedStore.ClassAt when null;
+// ModLocator.ClassOf keeps the answers); and whether this session is sandboxed (a stranger's unverified ones are offered for
+// trust only then).
 public sealed record SyncTrust(Func<string, string, bool>? Verified = null, bool HostIsFriend = true, Func<string, string, bool>? Trusted = null,
-    Func<string, ModClass>? ClassOf = null);
+    Func<string, ModClass>? ClassOf = null, bool Sandboxed = false);
 
 public sealed record ModSyncPlan(IReadOnlyList<SyncItem> Items)
 {
@@ -466,14 +470,14 @@ public sealed record ModSyncPlan(IReadOnlyList<SyncItem> Items)
         return (find(mod.Id, mod.Hash), mod.Hash);
     }
 
-    // A host's mod this machine lacks: a Steam friend's unverified code and raw mods can be trusted; a stranger's are the
-    // player's to install (the host would refuse them: Multiplayer.ModSync.Serve).
+    // A host's mod this machine lacks: unverified code and raw mods download once trusted, whoever hosts them; a stranger's
+    // can be trusted only in a sandboxed session, and are the player's to install otherwise.
     static SyncAction Missing(ModSetEntry mod, bool hostShares, SyncTrust trust) =>
         mod.Class == ModClass.Bundled ? SyncAction.Update
         : !hostShares ? SyncAction.Manual
         : !ModSets.NeedsVerified(mod.Class) || (trust.Verified ?? VerifiedMods.Contains)(mod.Id, mod.Hash) ? SyncAction.Download
-        : !trust.HostIsFriend ? SyncAction.Manual
         : trust.Trusted?.Invoke(mod.Id, mod.Hash) == true ? SyncAction.Download
+        : !trust.HostIsFriend && !trust.Sandboxed ? SyncAction.Manual
         : SyncAction.Trust;
 
     // A folder found for a host's mod counts as here unless it is a store copy of a code or raw mod (its class read from its
@@ -532,10 +536,14 @@ public static class SyncedStore
             var mod = ModCatalog.Parse(folder, profile ?? EntityProfile.Current);
             if (mod.Id != id || ModSets.ContentHash(mod) != hash) return null;
             // The store stays writable while a session runs (the backend downloads into it): a file the mod does not count
-            // would load without being compared, so a copy with one is not this mod.
+            // would load without being compared, so a copy with one is not this mod. A recipe mod's rebuilt game patch
+            // files are the exception while its record says they are as rebuilt (ModAssets: each was checked against the
+            // recipe's SHA-256 when it was made).
             var counted = ModSets.Files(mod).Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+            var rebuilt = mod.AssetOutputs.Count > 0 && mod.AssetsPending == null ? mod.AssetOutputs.ToHashSet(StringComparer.Ordinal) : [];
+            if (rebuilt.Count > 0) rebuilt.Add(AssetMigration.ModAssets.RecordName);
             return Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(folder, f).Replace('\\', '/'))
-                .All(f => f == RecordName || counted.Contains(f)) ? folder : null;
+                .All(f => f == RecordName || counted.Contains(f) || rebuilt.Contains(f)) ? folder : null;
         }
         catch (Exception error) when (error is JsonException or InvalidDataException or IOException or UnauthorizedAccessException or InvalidOperationException) { return null; }
     }
@@ -666,6 +674,15 @@ public static class SyncedStore
         try
         {
             cancel.ThrowIfCancellationRequested();
+            // A mod that ships a recipe for its game patch files (ModAssets) has them rebuilt from this PC's game first, so
+            // it is checked as it loads; the host sent the recipe, never the game's bytes.
+            if (AssetMigration.ModAssets.HasRecipe(partial))
+            {
+                var install = new InstallLayout(Path.GetDirectoryName(Path.GetFullPath(modsFolder))!);
+                var problems = AssetMigration.ModAssets.Prepare([partial], () => AssetMigration.GameBuilds.Local(install));
+                if (problems.Count > 0) throw new InvalidDataException($"{expected.Id}: {problems[0].Reason}.");
+            }
+            cancel.ThrowIfCancellationRequested();
             Verify(expected, partial, verified ?? VerifiedMods.Contains, profile ?? EntityProfile.Current);
             cancel.ThrowIfCancellationRequested();
             File.WriteAllText(Path.Combine(partial, RecordName), new JsonObject { ["hash"] = expected.Hash, ["id"] = expected.Id, ["version"] = expected.Version,
@@ -696,8 +713,9 @@ public static class SyncedStore
         var files = ModSets.Files(mod);
         if (files.Count > MaxFiles || ModSets.Hash(ModSets.Block(mod, files)) != expected.Hash)
             throw new InvalidDataException($"{expected.Id}: the files do not match the host's mod.");
-        // Only the counted files may be there: anything else would load without being compared.
-        var counted = files.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+        // Only the counted files may be there: anything else would load without being compared. The files a recipe rebuilt
+        // (and its record) are pinned by the recipe, which is counted.
+        var counted = files.Select(f => f.Path).Concat(mod.AssetOutputs).Append(AssetMigration.ModAssets.RecordName).ToHashSet(StringComparer.Ordinal);
         if (Directory.GetFiles(partial, "*", SearchOption.AllDirectories).Any(f => !counted.Contains(Path.GetRelativePath(partial, f).Replace('\\', '/'))))
             throw new InvalidDataException($"{expected.Id}: it holds files the host did not list.");
         var kind = ModSets.ClassOf(mod);
@@ -858,8 +876,11 @@ public sealed record ModSyncSession(string Host, string HostName, string Connect
     {
         var kind = ModSets.ClassOf(found);
         if (!ModSets.NeedsVerified(kind) || verified(found.Id, hash) || settings.Trusts(found.Id, hash, sandboxed)) return null;
-        return !sandboxed && settings.Trusts(found.Id, hash, sandboxed: true)
+        var boxed = sandboxed ? null : settings.Trusted.FirstOrDefault(t => t.Id == found.Id && t.Hash == hash && t.SandboxOnly);
+        return boxed is { Stranger: true }
             ? $"{found.Id} came from a player who is not your Steam friend, so it runs only in a sandboxed game (Settings > Sandbox)."
+            : boxed != null
+            ? $"{found.Id} was trusted in a sandboxed game, so it runs only in one (Settings > Sandbox); trust it again outside the sandbox to play it here."
             : $"{found.Id} {ModSets.Unchecked(kind)} and is no longer on HellForge's verified list or trusted: join its host again to trust it.";
     }
 

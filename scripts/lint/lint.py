@@ -1,4 +1,4 @@
-"""HellForge's structure lint: Bingus Shared Runtime's code-structure rules (R10-R15) for C#, C and C++.
+"""HellForge's structure lint: Bingus Shared Runtime's code-structure rules (R10-R15) for C#, C and C++, and R16.
 
   py -3 scripts/lint/lint.py                         # unit x rule table
   py -3 scripts/lint/lint.py scan --list             # every violation, with its detail
@@ -8,13 +8,13 @@
   py -3 scripts/lint/lint.py update --allow-increase # accept increases (reviewed ones)
 
 (`python3` instead of `py -3` on Linux and macOS.) Rules (structure.py measures them): R10 cognitive complexity, R11
-function size, R12 parameters, R13 stack size (C and C++), R14 duplicated code, R15 file size. Suppress one on its
-reported line with `// lint-ok: R<n> <reason>`. The baseline holds the measured values per (unit, file, rule,
-function). `check` fails on a violation of an error rule (R12, R13, R14) that the baseline does not have: new code, or a
-function pushed over a limit for the first time. A new violation of a warning rule (R10, R11, R15), and a known one that
-grew, are warnings; `check --warnings-as-errors` (as CI runs it) fails on them too. Exit codes: 0 OK (warnings
-allowed unless --warnings-as-errors); 1 errors, or a refused update; 2 a configuration or parse
-error.
+function size, R12 parameters, R13 stack size (C and C++), R14 duplicated code, R15 file size, and HellForge's own R16
+comment size (a block of comment-only lines). Suppress one on its reported line with `// lint-ok: R<n> <reason>`. The
+baseline holds the measured values per (unit, file, rule, function). `check` fails on a violation of an error rule
+(R12, R13, R14) that the baseline does not have: new code, or a function pushed over a limit for the first time. A new
+violation of a warning rule (R10, R11, R15, R16), and a known one that grew, are warnings; `check
+--warnings-as-errors` (as CI runs it) fails on them too. Exit codes: 0 OK (warnings allowed unless
+--warnings-as-errors); 1 errors, or a refused update; 2 a configuration or parse error.
 """
 from __future__ import annotations
 
@@ -41,9 +41,11 @@ RULES = {
     'R13': 'stack-size',
     'R14': 'duplicated-code',
     'R15': 'module-size',
+    'R16': 'comment-size',
 }
 # What `check` does with a violation the baseline does not have; growth in a known one is a warning for every rule.
-SEVERITY = {'R10': 'warning', 'R11': 'warning', 'R12': 'error', 'R13': 'error', 'R14': 'error', 'R15': 'warning'}
+SEVERITY = {'R10': 'warning', 'R11': 'warning', 'R12': 'error', 'R13': 'error', 'R14': 'error', 'R15': 'warning',
+            'R16': 'warning'}
 SUPPRESS_RE = re.compile(r'(?://|/\*|\*)\s*lint-ok:\s*((?:R\d+\s*[, ]\s*)*R\d+)\s+\S')
 FAMILIES = {'cs': 'cs', 'c': 'c', 'cpp': 'c'}        # R14 compares within a family: C# alone, C with C++
 HELP = ('How to fix one: scripts/lint/README.md ("Rules" says what each rule wants, "The baseline" what check does). '
@@ -71,7 +73,7 @@ class Violation:
     text: str
     detail: str
     value: int
-    function: str = ''     # R10-R13: the function; R14: the one its run starts in ('' at file scope); R15: ''
+    function: str = ''     # R10-R13: the function; R14, R16: the one it starts in ('' at file scope); R15: ''
     path: str = ''         # the file from the repository's root, for annotations
 
     def key(self) -> Key:
@@ -112,7 +114,7 @@ def suppressed_rules(line: str) -> set[str]:
 # ----------------------------------------------------------------------------- rules
 
 def structure_findings(model: structure.Model, language: str, limits: dict) -> list[tuple]:
-    """R10-R13 and R15 for one file: (rule, line, detail, measured value, function)."""
+    """R10-R13, R15 and R16 for one file: (rule, line, detail, measured value, function)."""
     found = []
     for function in model.functions:
         where, name = f'{function.name}: ', function.name
@@ -133,6 +135,11 @@ def structure_findings(model: structure.Model, language: str, limits: dict) -> l
     if model.code_lines > limits['module_lines']:
         found.append(('R15', 1, f"{model.code_lines} code lines in one file (limit {limits['module_lines']})",
                       model.code_lines, ''))
+    for first, count in model.comment_blocks:
+        if count > limits['comment_lines']:
+            found.append(('R16', first, f"{count} comment lines in one block (limit {limits['comment_lines']}); keep "
+                          "what the code cannot say, move the rest to a doc or the commit message", count,
+                          around(model.functions, first)))
     return found
 
 
@@ -140,6 +147,12 @@ def enclosing(functions: list[structure.Function], line: int) -> str:
     """The innermost function with code on this line ('' at file scope): R14's identity."""
     holders = [f for f in functions if line in f.lines]
     return min(holders, key=lambda f: len(f.lines)).name if holders else ''
+
+
+def around(functions: list[structure.Function], line: int) -> str:
+    """The innermost function whose code spans this line ('' at file scope): R16's identity."""
+    holders = [f for f in functions if f.lines and min(f.lines) <= line <= max(f.lines)]
+    return min(holders, key=lambda f: max(f.lines) - min(f.lines)).name if holders else ''
 
 
 def violations(item: Parsed, findings: list[tuple]) -> tuple[list[Violation], list[Violation]]:

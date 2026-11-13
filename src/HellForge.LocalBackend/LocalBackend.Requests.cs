@@ -27,6 +27,7 @@ public static partial class LocalBackend
         public required WarClock WarClock { get; init; }
         public required AccountKeys AccountKeys { get; init; }
         public required RegisteredItems? RegisteredItems { get; init; }
+        public ModWarbondService? ModWarbonds { get; init; }
         public required StartupBodies Startup { get; init; }
         public required Multiplayer.BrowseApi? Browse { get; init; }
         public required string AuditPath { get; init; }
@@ -104,6 +105,10 @@ public static partial class LocalBackend
             if (request.Path.StartsWithSegments("/SeasonPass", out var seasonPassId) && seasonPassId.Value is { Length: > 1 } idPath &&
                 SeasonPassDetails.TryGetValue(idPath[1..], out var seasonPassDetail))
                 return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, "season_pass_detail", seasonPassDetail);
+            // a mod's warbond's pages (ModWarbondService)
+            if (request.Path.StartsWithSegments("/SeasonPass", out var modPassId) && modPassId.Value is { Length: > 1 } modIdPath &&
+                ModWarbonds?.Detail(modIdPath[1..]) is { } modDetail)
+                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, "mod_warbond_detail", modDetail);
             return await GameRouteAsync(context);
         }
 
@@ -129,18 +134,28 @@ public static partial class LocalBackend
             if (Profile != null && request.Path.Value is "/Progression/ShipName" or "/Progression/OnboardingState")
                 return await ShipNameOrOnboardingAsync(context, Profile);
             if (Startup.TryGet(request.Path.Value ?? "", out var startupBody, out var source))
-                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, Served(request.Path.Value!, startupBody));
+                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, Serve(request.Path.Value!, startupBody));
             return Unsupported();
         }
 
-        // A startup body as served: weapons code mods registered this session join the catalogue, packages and inventory
-        // (RegisteredItems); premium warbonds the account does not own have no price in it (OwnershipFilter); a war
-        // script's additions join the war's bodies (WarServices).
-        JsonElement Served(string path, JsonElement body)
+        // A startup body as served. Weapons code mods registered this session join the catalogue, packages and inventory
+        // (RegisteredItems), then mods' warbonds their list entries, spent counters and, on unlock-all, their purchases
+        // (ModWarbondService), and a war script's additions the war's bodies (WarServices). The last gate runs after them
+        // (OwnershipFilter.Gate.cs).
+        JsonElement Serve(string path, JsonElement body)
         {
             var served = RegisteredItems?.Apply(path, body) ?? body;
-            if (path == "/Progression/items" && Profile?.Ownership is { } ownership) served = ownership.FilterCatalogueResponse(served);
-            return War?.Apply(path, served) ?? served;
+            served = ModWarbonds?.Apply(path, served) ?? served;
+            served = War?.Apply(path, served) ?? served;
+            if (Profile?.Ownership is not { } ownership) return served;
+            return path switch
+            {
+                "/Progression/items" => ownership.FilterCatalogueResponse(served),
+                "/Progression/inventory" => ownership.GateInventory(served, Profile.InventorySection()),
+                "/Progression" => ownership.FilterProgressionResponse(served, Profile.InventorySection()),
+                "/Progression/ProgressionPackages" => ownership.FilterPackagesResponse(served, Profile.InventorySection()),
+                _ => served
+            };
         }
 
         // The launcher's Mods page while the session runs: what a change would do (GET), or make it (POST)

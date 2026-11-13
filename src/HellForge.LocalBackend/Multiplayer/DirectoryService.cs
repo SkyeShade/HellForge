@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using HellForge.Core;
 
 namespace HellForge.LocalBackend.Multiplayer;
 
@@ -21,7 +22,7 @@ namespace HellForge.LocalBackend.Multiplayer;
 //            (LobbyFilter), then mod sync's and the player's rules (ModSync.Joinable). What it found stays for
 //            FoundFor, so the /lobby/accounts that follows is answered for those hosts (FriendPresence).
 //   strangers' listings: nothing of one reaches the game unchecked (Valid): its HellForge keys of the right form (a GUID
-//            lobby id, the connection string naming the listing's host, 1 to 4 members of at most 2 to 8), only search
+//            lobby id, the connection string naming the listing's host, 1 to 8 members of at most 2 to 12, within its squad), only search
 //            keys string_key1..30 / number_key1..30 within PlayFab's limits (LobbyService.SearchValue), at most 30, and its
 //            records rebuilt from the schema (LobbyRecords): a listing breaking any of it is left out whole.
 //   claims:  a listing's host is its own claim on Steam. Listings claiming one host or lobby with different data are left
@@ -35,12 +36,14 @@ public sealed partial class DirectoryService : IAsyncDisposable
     // looks like one is checked (LobbyService.SearchValue).
     [GeneratedRegex("^(string|number)_key")]
     private static partial Regex SearchKey();
-    // The member counts a listing may claim: HD2's lobbies are made for 8 PlayFab members (max 8 members in every captured
-    // PFMultiplayerCreateAndJoinLobby), a squad is at most 4.
-    public const int MaxListedMembers = 4, MaxListedLimit = 8;
-    // The places left in a squad: its lobby's 8 PlayFab places stop at the squad's 4, so a full squad has no slot (Steam's
+    // The member counts a listing may claim. HD2 asks PlayFab for its squad size and 4 places more (game.dll 0x1091A9C):
+    // 8 for its squad of 4 (max 8 members in every captured PFMultiplayerCreateAndJoinLobby). A mod that raises the
+    // squad size raises that ask with it, so a lobby of 12 places has a squad of 8.
+    public const int MaxListedMembers = 8, MaxListedLimit = 12, GameSquad = 4, SpareMembers = 4;
+    // The places left in a squad: its lobby's PlayFab places stop at the squad's size, so a full squad has no slot (Steam's
     // search asks for one) and the lobby browser shows it full, not 4 of 8.
-    public static int SquadSize(int max) => Math.Min(max, MaxListedMembers);
+    public static int SquadSize(int max) =>
+        max > GameSquad + SpareMembers ? Math.Min(max - SpareMembers, MaxListedMembers) : Math.Min(max, GameSquad);
     public static int SquadSlots(int max, int members) => Math.Max(0, SquadSize(max) - members);
 
     readonly ILobbyDirectory directory;
@@ -53,6 +56,10 @@ public sealed partial class DirectoryService : IAsyncDisposable
     readonly Func<bool> editedStats;
     readonly Func<bool>? listPublic;
     bool unlistedLogged;
+    // Co-op over Steam relays (CoopRelays.Open): while it is off on Linux nobody could join this machine's lobby, so it is
+    // not listed (said once each time it turns off).
+    readonly Func<bool>? relaysOpen;
+    bool relaysOffLogged;
     readonly Func<bool>? strangersAllowed;
     readonly object gate = new();
     bool loggedOff;
@@ -70,6 +77,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
     {
         listPublic = settings.ListPublic;
         strangersAllowed = settings.StrangersAllowed;
+        relaysOpen = settings.RelaysOpen;
         this.directory = directory;
         this.lobby = lobby;
         this.presence = presence;
@@ -100,18 +108,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
     // Lists the lobby when its data changed (not more often than PublishInterval), or removes the listing.
     public void Publish(DateTime now)
     {
-        var desired = Desired();
-        if (desired != null && strangersAllowed?.Invoke() == false)
-        {
-            desired = null;
-            lock (gate)
-                if (!loggedOff)
-                {
-                    loggedOff = true;
-                    log("Directory: this machine's public lobby is not listed: Play with strangers is off (the launcher's Multiplayer settings).");
-                }
-        }
-        else if (desired != null) lock (gate) loggedOff = false;
+        var desired = UnlessStrangersOff(Desired());
         lock (gate)
         {
             if (desired == null && published == null) return;
@@ -127,21 +124,54 @@ public sealed partial class DirectoryService : IAsyncDisposable
         presence.SetLocalListing(desired == null ? null : DirectoryData.Digest(desired));
     }
 
+    // The listing, or null while Play with strangers is off (said once each time it turns off).
+    Dictionary<string, string>? UnlessStrangersOff(Dictionary<string, string>? desired)
+    {
+        if (desired == null) return null;
+        var off = strangersAllowed?.Invoke() == false;
+        lock (gate)
+        {
+            if (off && !loggedOff)
+                log("Directory: this machine's public lobby is not listed: Play with strangers is off (the launcher's Multiplayer settings).");
+            loggedOff = off;
+        }
+        return off ? null : desired;
+    }
+
     static bool Same(Dictionary<string, string> a, Dictionary<string, string> b) => a.Count == b.Count && a.All(p => b.TryGetValue(p.Key, out var v) && v == p.Value);
 
     // The listing of the public lobby this machine's game hosts, or null.
-    Dictionary<string, string>? Desired()
+    // The player's switch (read as the listing is looked at, so a change applies within a second); the first time it is
+    // off, the log says so.
+    bool Allowed()
     {
-        var hosted = lobby.HostedLobbies().FirstOrDefault(l => l.LocalOwner);
-        if (hosted == null || hosted.Locked || hosted.Members >= hosted.MaxMembers || hosted.Privacy != LobbyService.Privacy.Public) return null;
-        // the player's switch (read as the listing is looked at, so a change applies within a second)
         var allowed = listPublic?.Invoke() != false;
         if (allowed == unlistedLogged)
         {
             unlistedLogged = !allowed;
             if (!allowed) log("Directory: this player's public lobbies are not listed (Mods page: \"List my Public lobbies\" is off).");
         }
-        if (!allowed) return null;
+        return allowed;
+    }
+
+    // Whether another player could join this machine's lobby (co-op over Steam relays, read as the listing is looked at so
+    // it is listed once turned on live); the first time it could not, the log says why.
+    bool Reachable()
+    {
+        var reachable = relaysOpen?.Invoke() != false;
+        if (reachable == relaysOffLogged)
+        {
+            relaysOffLogged = !reachable;
+            if (!reachable) log("Directory: this machine's public lobby is not listed: co-op over Steam relays is off, so nobody could join it.");
+        }
+        return reachable;
+    }
+
+    Dictionary<string, string>? Desired()
+    {
+        var hosted = lobby.HostedLobbies().FirstOrDefault(l => l.LocalOwner);
+        if (hosted == null || hosted.Locked || hosted.Members >= hosted.MaxMembers || hosted.Privacy != LobbyService.Privacy.Public) return null;
+        if (!Allowed() || !Reachable()) return null;
         var data = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [DirectoryKeys.Protocol] = LobbyService.Protocol,
@@ -215,22 +245,9 @@ public sealed partial class DirectoryService : IAsyncDisposable
         var filter = LobbyFilter.Parse(filterText);
         var listings = await Gather(filter.Equalities());
         var answer = new Frame("lobby.found").Add(op).Add(0);
-        var kept = new List<DirectoryListing>();
         var refused = new Dictionary<string, int>(StringComparer.Ordinal);
         var leftOut = new List<string>();
-        var strangers = strangersAllowed?.Invoke() != false;
-        var friends = strangers ? [] : presence.Friends.Select(f => f.SteamId).ToHashSet();
-        foreach (var (listing, vouched) in Unambiguous(listings, refused))
-        {
-            if (LeftOut(listing, vouched, filter, strangers, friends, out var check) is { } why)
-            {
-                Count(refused, why);
-                if (listing.Host != localId) leftOut.Add(LeftOutLine(listing.Host, why, check));
-                continue;
-            }
-            kept.Add(listing);
-            if (kept.Count == count) break;
-        }
+        var kept = Kept(listings, filter, count, refused, leftOut);
         answer.Add(kept.Count);
         foreach (var listing in kept)
         {
@@ -244,6 +261,38 @@ public sealed partial class DirectoryService : IAsyncDisposable
             (filter.Ignored.Count > 0 ? $"; {filter.Ignored.Count} clause(s) not applied (random window, continent)" : "") + ".");
         LogLeftOut(leftOut);
         return answer;
+    }
+
+    // The listings a search answers, at most count, in the directory's order; the rest counted in refused, with a line each
+    // in leftOut. A stranger's lobby whose mods wait for the player's trust (SyncVerdict.Trust, a sandboxed game) is
+    // answered only when no other lobby is: the game's Quick Play and SOS pick among the answer by their own score, which
+    // knows nothing of mods, and a join there stops at the TRUST prompt while a lobby the player could join without one
+    // was found. A Steam friend's stays (joining a friend is the player's choice, TRUST and all); the browser lists them all.
+    List<DirectoryListing> Kept(IReadOnlyList<DirectoryListing> listings, LobbyFilter filter, int count, Dictionary<string, int> refused, List<string> leftOut)
+    {
+        var kept = new List<DirectoryListing>();
+        var waiting = new List<(DirectoryListing Listing, JoinCheck Check)>();
+        var strangers = strangersAllowed?.Invoke() != false;
+        var friends = strangers ? [] : presence.Friends.Select(f => f.SteamId).ToHashSet();
+        foreach (var (listing, vouched) in Unambiguous(listings, refused))
+        {
+            if (LeftOut(listing, vouched, filter, strangers, friends, out var check) is { } why)
+            {
+                Count(refused, why);
+                if (listing.Host != localId) leftOut.Add(LeftOutLine(listing.Host, why, check));
+                continue;
+            }
+            if (check is { Stranger: true, Plan.Verdict: SyncVerdict.Trust }) { waiting.Add((listing, check)); continue; }
+            kept.Add(listing);
+            if (kept.Count == count) break;
+        }
+        if (kept.Count == 0) return [.. waiting.Take(count).Select(w => w.Listing)];
+        foreach (var (listing, check) in waiting)
+        {
+            Count(refused, WaitsForTrust);
+            leftOut.Add(LeftOutLine(listing.Host, WaitsForTrust, check));
+        }
+        return kept;
     }
 
     // The browse API (BrowseApi; docs/external-launchers.md): every listing the directory has (the wire level, a slot free,
@@ -284,6 +333,10 @@ public sealed partial class DirectoryService : IAsyncDisposable
 
     // Why the browse API lists a stranger's lobby as one that cannot be joined (JoinCheck.FixStrangers turns it on).
     public const string StrangersOff = "its host is not a Steam friend, and Play with strangers is off";
+
+    // Why a search left out a stranger's lobby whose mods wait for the player's trust: others in the answer can be joined
+    // without it.
+    public const string WaitsForTrust = "its host's unchecked mods wait for your trust, and other lobbies can be joined without it";
 
     // The lobbies a search left out, one line each, but only when they differ from the last search's: the map searches
     // every few seconds, and the same lines again say nothing new.
@@ -440,7 +493,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
         else if (!LobbyService.Compatible(FeatureOf(listing))) why = "protocol";
         else if (!int.TryParse(data.GetValueOrDefault(DirectoryKeys.Members), NumberStyles.None, CultureInfo.InvariantCulture, out members) ||
             !int.TryParse(data.GetValueOrDefault(DirectoryKeys.MaxMembers), NumberStyles.None, CultureInfo.InvariantCulture, out max) ||
-            members is < 1 or > MaxListedMembers || max is < 2 or > MaxListedLimit || members >= max) why = "member counts";
+            max is < 2 or > MaxListedLimit || members < 1 || members > SquadSize(max) || members >= max) why = "member counts";
         else if (data.GetValueOrDefault(DirectoryKeys.Lock) is not ("0" or "1")) why = "lock";
         else if (props.Count > LobbyService.MaxProperties || props.Any(p => !LobbyService.SearchValue(p.Key, p.Value))) why = "search properties";
         else if (!recordOk || recordJson != null && ((record = LobbyRecords.Clean(recordJson, strict: true)) == null || !HostRecord(record, listing.Host)))
@@ -522,7 +575,7 @@ public sealed partial class DirectoryService : IAsyncDisposable
 // change; tests call Publish), and the player's switches, read as a listing is looked at: "List my Public lobbies"
 // (ListPublic) and Play with strangers (StrangersAllowed), each on when null.
 public sealed record DirectorySettings(ModSync? Sync, Func<bool> EditedStats, bool AutoPublish = true, Func<bool>? ListPublic = null,
-    Func<bool>? StrangersAllowed = null);
+    Func<bool>? StrangersAllowed = null, Func<bool>? RelaysOpen = null);
 
 // One lobby the browse API lists: from the directory, or a friend's lobby heard through presence (Source "friend": no
 // listing, so no mod set until a join; Join is then an empty check). Record is the lobby record as the schema rebuilt it.

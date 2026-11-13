@@ -186,8 +186,7 @@ jobs:
           }
           [IO.File]::WriteAllText((Join-Path $out 'HellForge-Nightly-SHA256SUMS.txt'), (($sums -join "`n") + "`n"))
           Get-ChildItem -LiteralPath $out | Format-Table Name, Length
-      # Every artifact named nightly-* is published. A job added beside this one uploads its own, as the native Linux
-      # package will once dev has it (linux-native, #165).
+      # Every artifact named nightly-* is published. A job added beside this one uploads its own, as linux-installer does.
       - uses: actions/upload-artifact@v4
         with:
           name: nightly-package
@@ -195,10 +194,47 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+      # For linux-installer: not a nightly-* artifact, as the installer holds this archive and is what gets published.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-app
+          path: artifacts/package/HellForge-Linux.zip
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  # The archive linux-package.yml builds for a test build, from this nightly's own files. On Linux, so that tar keeps
+  # the launcher executable; a Windows build machine can't.
+  linux-installer:
+    name: Build the Linux installer
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-app
+          path: downloaded
+      - name: Build click-to-install archive
+        run: |
+          set -euo pipefail
+          mkdir -p installer artifacts/nightly
+          unzip -q downloaded/HellForge-Linux.zip -d payload
+          cp -a payload/app/launcher-linux/. installer/
+          cp downloaded/HellForge-Linux.zip installer/
+          chmod +x installer/HellForge.Launcher
+          tar -czf artifacts/nightly/HellForge-Nightly-Linux-Installer.tar.gz -C installer .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-linux-installer
+          path: artifacts/nightly/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
   publish:
     name: Publish the nightly pre-release
-    needs: [prepare, build]
+    needs: [prepare, build, linux-installer]
     if: needs.prepare.outputs.publish == 'true' && github.repository == 'SkyeShade/HellForge'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -234,7 +270,10 @@ jobs:
           set -euo pipefail
           git merge-base --is-ancestor "$COMMIT" origin/dev || { echo "::error::$COMMIT is not on dev."; exit 1; }
           python scripts/nightly/nightly.py notes --version "$VERSION" --commit "$COMMIT" --previous "$PREVIOUS" \
-            --repository "$GH_REPO" > "$RUNNER_TEMP/notes.md"
+            --repository "$GH_REPO" --linux-installer > "$RUNNER_TEMP/notes.md"
+      - name: Add the Linux installer to the SHA-256 sums
+        working-directory: dist
+        run: sha256sum HellForge-Nightly-Linux-Installer.tar.gz >> HellForge-Nightly-SHA256SUMS.txt
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

@@ -17,6 +17,8 @@
  * A line queued while the pipe is down is dropped (send returns 1); the host's backend sends the table again when the
  * game connects. Messages are at most HF_MESSAGE_MAX bytes and 64 a second per mod. */
 
+#include "rpc.c" /* the game's RPCs for mods (SDK 17): the other half of co-op for code mods */
+
 #define CHANNEL_RATE 64u          /* messages a second a mod may send */
 #define CHANNEL_REFILL_MS 16u     /* a message's share of a second, in whole milliseconds */
 #define CHANNEL_MISSING_MAX 16    /* mod ids logged as absent at most (once each) */
@@ -28,9 +30,11 @@ typedef struct ChannelRow
     uint8_t value[HF_SHARE_VALUE_MAX];
 } ChannelRow;
 
+/* A mod's table is its id's, as the pipe's lines name it: a live change's new version keeps the rows, and the load order
+ * (which every live change renumbers) never hands one mod another's table. */
 typedef struct ChannelMod
 {
-    HfMod* mod;
+    char id[sizeof ((HfMod*)0)->id];
     uint32_t count;
     uint32_t tokens;              /* messages this mod may send now */
     ULONGLONG refilled;
@@ -89,22 +93,25 @@ static int ChannelNumber(const char* text, size_t digits, uint64_t* out)
     return 1;
 }
 
-/* The channel table of a mod, made on first use; NULL when it cannot be made or the pointer is not a session mod. */
+/* The channel table of a mod's id, made on first use; NULL when it cannot be made or the pointer is not a session mod.
+ * Tables are never freed and fill g_channels from the front; a session has at most MAX_MODS ids (one per entry). */
 static ChannelMod* ChannelFor(HfMod* mod)
 {
-    int index = ModLoadIndex(mod);
-    if (index >= MAX_MODS) return NULL;
+    if (mod == NULL || mod < g_mods || mod >= g_mods + g_modCount) return NULL;
     AcquireSRWLockExclusive(&g_channelLock);
-    ChannelMod* c = g_channels[index];
-    if (c == NULL)
+    ChannelMod* c = NULL;
+    int at = 0;
+    for (; at < MAX_MODS && g_channels[at] != NULL && c == NULL; at++)
+        if (!strcmp(g_channels[at]->id, mod->id)) c = g_channels[at];
+    if (c == NULL && at < MAX_MODS)
     {
         c = calloc(1, sizeof *c);
         if (c != NULL)
         {
-            c->mod = mod;
+            snprintf(c->id, sizeof c->id, "%s", mod->id);
             c->tokens = CHANNEL_RATE;
             c->refilled = GetTickCount64();
-            g_channels[index] = c;
+            g_channels[at] = c;
         }
     }
     ReleaseSRWLockExclusive(&g_channelLock);
@@ -362,7 +369,8 @@ static void ChannelReset(void)
             ReleaseSRWLockExclusive(&g_channelLock);
             if (!have) break;
             row.bytes = 0;
-            ChannelShareEvent(c->mod, row.key, &row);
+            HfMod* mod = ChannelModId(c->id); /* the entry of that id that runs now (a removed mod's rows go unsaid) */
+            if (mod != NULL) ChannelShareEvent(mod, row.key, &row);
         }
     }
 }
@@ -389,6 +397,7 @@ static void ChannelDisconnected(void)
  * use). Nothing is hooked. */
 static void ChannelInstall(uintptr_t game)
 {
+    RpcInstall(game); /* rpc.c: the dispatch hook, once a mod listens */
     if (g_channelState != 0 || game == 0) return;
     if (strcmp(g_build, "25480438")) { g_channelState = -1; Note("channel: game build %s is not reviewed; no mod channel", g_build); return; }
     ULONGLONG now = GetTickCount64();

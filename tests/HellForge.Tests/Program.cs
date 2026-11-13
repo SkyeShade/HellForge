@@ -516,6 +516,50 @@ Test("On Linux, the depot downloads Steam put under its client's folder (ubuntu1
     Check(!Directory.Exists(client) && !SteamDepotDownload.IsComplete(steam, build), "The ubuntu12_32 download was not deleted.");
 });
 
+Test("Setup's console card names both folders the Linux Steam client downloads into, then the one it found", () =>
+{
+    // Two depots, as the real build has several: the commands are pasted one at a time.
+    var build = new SupportedBuild(1, "553850", "100", "", "", [new SupportedDepot(11, "1"), new SupportedDepot(12, "2")],
+        [new("bin/b.dll", 3, "", 11), new("data/a.bin", 4, "", 12)]);
+    var steam = Path.Combine(root, "depot-download-named-steam");
+    var usual = Path.Combine(steam, "steamapps", "content", "app_" + build.AppId);
+    var client = Path.Combine(steam, "ubuntu12_32", "steamapps", "content", "app_" + build.AppId);
+    IReadOnlyList<string> Found() => SteamDepotDownload.DownloadFolders(steam, build);
+    void Put(string content, uint depot, string path)
+    {
+        var file = Path.Combine(content, "depot_" + depot, path);
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "x");
+    }
+    Check(SteamDepotDownload.TargetText(steam, build, linux: false) == usual, "Windows was not told the one folder Steam uses there.");
+    var linux = SteamDepotDownload.TargetText(steam, build, linux: true);
+    Check(linux.StartsWith(client + " or " + usual + ",", StringComparison.Ordinal),
+        "Linux was not told the client's folder first and the usual one second: " + linux);
+    Check(Found().Count == 0 && SteamDepotDownload.FoundText([]) == "", "A folder was named before Steam downloaded anything.");
+
+    // What an earlier download leaves in the usual place (issue 112): empty depot folders are not a download.
+    Directory.CreateDirectory(Path.Combine(usual, "depot_11"));
+    Directory.CreateDirectory(Path.Combine(usual, "depot_12"));
+    Check(Found().Count == 0, "Empty folders an earlier download left were named as Steam's download: " + string.Join(", ", Found()));
+    Directory.CreateDirectory(Path.Combine(client, "depot_11"));
+    Check(Found().Count == 0, "A depot folder Steam has not written to yet was named.");
+
+    // Steam writes under its client folder, as on a Steam Deck: that folder alone is named, the leftovers are not,
+    // also while the second depot has not started and while a file still has another name than the build's.
+    Put(client, 11, "bin/b.dll.partial");
+    Check(Found().SequenceEqual([client]) && SteamDepotDownload.FoundText(Found()) == "\nSteam's download is in " + client,
+        "The folder Steam downloads into was not named alone: " + string.Join(", ", Found()));
+    Put(client, 12, "data/a.bin");
+    Check(Found().SequenceEqual([client]), "Both depots under the client folder were not named as one folder.");
+
+    // Depots that really are in two places are both named.
+    Directory.Delete(Path.Combine(client, "depot_12"), recursive: true);
+    Put(usual, 12, "data/a.bin");
+    Check(Found().Count == 2 && Found().Contains(client) && Found().Contains(usual) &&
+        SteamDepotDownload.FoundText(Found()) == "\nSteam's download is in " + string.Join(" and ", Found()),
+        "Depots in two folders were not both named: " + string.Join(", ", Found()));
+});
+
 Test("An earlier download's empty depot folders and state files do not hide Steam's download under steamrt64 (issue 112)", () =>
 {
     var (manifest, source, depotCache) = DepotFixture("depot-download-leftover");
@@ -709,12 +753,18 @@ Test("Launch options are read as Steam takes them, and never set what a session 
 ModTests.Register(Test, Check, Reject, root);
 StatsTests.Register(Test, Check, Reject, root);
 DataBuilderTests.Register(Test, Check, Reject, root);
+SoundBankTests.Register(Test, Check, Reject, root);
+ShaderTests.Register(Test, Check, Reject, root);
 WarbondLocksTests.Register(Test, Check, Reject, root);
 ForgeCreditsTests.Register(Test, Check, Reject, root);
 ForgeCreditsTests.RegisterChance(Test, Check, Reject, root);
+AssetMigrationTests.Register(Test, Check, Reject, root);
+AssetKitTests.Register(Test, Check, Reject, root);
+AssetFetchTests.Register(Test, Check, Reject, root);
 SdkTests.Register(Test, Check, Reject, root);
 LiveEditTests.Register(Test, Check, Reject, root);
 ModKitTests.Register(Test, Check, Reject, root);
+ModToolRepairTests.Register(Test, Check, Reject, root);
 BundledModsTests.Register(Test, Check, Reject, root);
 CosmeticPacksTests.Register(Test, Check, Reject, root);
 OtherArchivesTests.Register(Test, Check, Reject, root);
@@ -725,6 +775,7 @@ VisualCppRuntimesTests.Register(Test, Check, Reject, root);
 LanguagePackTests.Register(Test, Check, Reject, root);
 PrivacyTests.Register(Test, Check, Reject, root);
 SteamDownloadTests.Register(Test, Check, Reject, root);
+SteamLoginsTests.Register(Test, Check, root);
 CrashReportTests.Register(Test, Check, Reject, root);
 SetupSourceTests.Register(Test, Check, Reject, root);
 ModStatusTests.Register(Test, Check, Reject, root);
@@ -735,6 +786,7 @@ CrashDumpTests.Register(Test, Check);
 SessionJobTests.Register(Test, Check, Reject, root);
 SandboxSessionTests.Register(Test, Check, Reject, root);
 LaunchFailureTests.Register(Test, Check, Reject, root);
+SessionEndTests.Register(Test, Check, Reject, root);
 ModsHoldTests.Register(Test, Check, Reject, root);
 NetworkBlockTests.Register(Test, Check, Reject, root);
 LinuxInstallerTests.Register(Test, Check, Reject, root);
@@ -751,9 +803,11 @@ SteamPathTests.Register(Test, Check, Reject, root);
 SteamRuntimeTests.Register(Test, Check, Reject, root);
 LinuxInvocationTests.Register(Test, Check, Reject, root);
 ContainerCheckTests.Register(Test, Check, Reject, root);
+WineserverWaitTests.Register(Test, Check, Reject, root);
 LinuxPrefixCaseTests.Register(Test, Check, Reject, root);
-VerifiedListTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);
+GameCatalogTests.Register(Test, Check, Reject, root);
+EarlySessionFailureTests.Register(Test, Check, root);
 CaptureGameEndTests.Register(Test, Check, Reject, root);
 PremiumModsTests.Register(Test, Check, Reject, root);
 OwnershipRecordTests.Register(Test, Check, Reject, root);
@@ -763,6 +817,7 @@ IntegrityTests.Register(Test, Check, root);
 WindowsSupportTests.Register(Test, Check, Reject, root);
 SmartAppControlTests.Register(Test, Check, Reject, root);
 SteamInputNoteTests.Register(Test, Check, Reject, root);
+BackendPinTests.Register(Test, Check, root);
 
 Console.WriteLine($"{passed} passed; {failed} failed. Synthetic fixtures: {root}");
 return failed == 0 ? 0 : 1;

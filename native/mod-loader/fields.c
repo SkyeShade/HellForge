@@ -32,7 +32,10 @@ typedef struct SdkContent { uint32_t kind; const char* name; uint64_t id; } SdkC
 #include "sdk_content.h"
 
 #define FIELD_MAX_EDITS (1 << 20) /* a sanity bound: the list grows as mods and editors add edits */
-#define FIELD_MAX_DEFS 64
+/* Definition blocks register_entity has seen (and the behaviours they define): grown as mods register them
+ * (stable_array.c), as many as the weapon registry takes; a sanity bound for address space, not a limit any mod set
+ * reaches before the registry's own walls (registry.c REG_WEAPON_CEILING). */
+#define FIELD_DEF_CEILING REG_WEAPON_CEILING
 #define FIELD_BEFORE 64
 
 enum { EDIT_COPY, EDIT_SET, EDIT_TAG };
@@ -65,14 +68,18 @@ typedef struct FieldEdit
 static int RefEdit(FieldEdit* e, const uint8_t* at);
 
 typedef struct EntityDefinition { const HfEntityDef* def; HfMod* mod; uint64_t entity; int busy; } EntityDefinition;
-typedef struct BehaviourDefinition { const HfBehaviour* def; uint32_t id; } BehaviourDefinition;
+typedef struct BehaviourDefinition { const HfBehaviour* def; uint32_t id; const HfMod* mod; } BehaviourDefinition;
 
 static FieldEdit* g_edits; /* grown by EditRoom (an editor applying a preset makes thousands) */
 static int g_editCapacity;
 static int g_editCount;
-static EntityDefinition g_entityDefs[FIELD_MAX_DEFS];
+/* An entry's address stays put as these grow: ApiRegisterEntity holds its block's entry while the blocks its mounts carry
+ * are registered (stable_array.c). */
+static StableArray g_entityDefStore = {NULL, sizeof(EntityDefinition), FIELD_DEF_CEILING, 0};
+#define g_entityDefs ((EntityDefinition*)g_entityDefStore.base)
 static int g_entityDefCount;
-static BehaviourDefinition g_behaviourDefs[FIELD_MAX_DEFS];
+static StableArray g_behaviourDefStore = {NULL, sizeof(BehaviourDefinition), FIELD_DEF_CEILING, 0};
+#define g_behaviourDefs ((BehaviourDefinition*)g_behaviourDefStore.base)
 static int g_behaviourDefCount;
 static int g_fieldConflicts; /* edits that overlap another mod's or a stats mod's (reported) */
 static int g_editsWaiting;   /* some edit waits for its table */
@@ -363,6 +370,9 @@ static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready)
     if (!strcmp(component, "MeleeHitVolume")) return MeleeRowOf(id, ready);
     if (!strcmp(component, "DifficultySettings")) return DifficultyRowOf(id, ready);
     if (DirectorKind(component)) return DirectorRow(component, id, ready);
+    if (!strcmp(component, "ExplosionSettings") && id >= EXP_VANILLA) return ApiExplosionRow((uint32_t)id);
+    if (!strcmp(component, "BeamSettings") && id >= BEAM_VANILLA) return ApiBeamRow((uint32_t)id);
+    if (!strcmp(component, "ArcSettings") && id >= ARC_VANILLA) return ApiArcRow((uint32_t)id);
     return ExtraRowOf(component, id, ready);
 }
 /* The table row lookup edits use; the native fixture replaces it. */
@@ -753,8 +763,9 @@ static void ApplyEdit(FieldEdit* e)
 }
 
 /* A mod stratagem that names no package (HfStratagem.package 0) but a payload loads the package of the entity it drops:
- * the payload's LoadoutPackage record (a mod entity's own, else its model's or base's), last payload entity first (a
- * Pelican drop's vehicle). Done once the entity data and the stratagem rows both exist, again after a reload. */
+ * the payload's LoadoutPackage record (a mod entity's own, else its model's or base's), first payload entity first: a
+ * Pelican drop's cargo before its Pelican, whose package (the extraction Pelican's) every mission loads anyway. Done once
+ * the entity data and the stratagem rows both exist, again after a reload. */
 static int g_packagesInferred;
 
 /* For an entity a mod added: the entity whose model it takes, else its base (0 for any other). */
@@ -766,11 +777,11 @@ static uint64_t ModelOrBase(uint64_t entity)
     return source;
 }
 
-/* The package of a stratagem's payload (its last payload entity first), or 0; *from: the entity whose record names it. */
+/* The package of a stratagem's payload (its first payload entity first), or 0; *from: the entity whose record names it. */
 static uint64_t PayloadPackage(const Stratagem* st, const SdkComponent* c, const SdkField* f, uint64_t* from)
 {
     uint64_t package = 0;
-    for (uint32_t k = st->payloadCount; k-- > 0 && package == 0;)
+    for (uint32_t k = 0; k < st->payloadCount && package == 0; k++)
     {
         uint64_t entity = st->payload[k];
         if (entity == 0) continue;
@@ -836,9 +847,9 @@ static void ApplyWaitingEdits(void)
 static uint32_t DefinedBehaviour(HfMod* mod, const HfBehaviour* def)
 {
     for (int i = 0; i < g_behaviourDefCount; i++) if (g_behaviourDefs[i].def == def) return g_behaviourDefs[i].id;
-    if (g_behaviourDefCount >= FIELD_MAX_DEFS) { ApiLog(mod, "register_entity: too many behaviours"); return 0; }
+    if (!StableRoom(&g_behaviourDefStore, (size_t)g_behaviourDefCount + 1)) { ApiLog(mod, "register_entity: no memory for more behaviours"); return 0; }
     uint32_t id = ApiAddBehaviour(mod, def);
-    if (id != 0) g_behaviourDefs[g_behaviourDefCount++] = (BehaviourDefinition){def, id};
+    if (id != 0) g_behaviourDefs[g_behaviourDefCount++] = (BehaviourDefinition){def, id, mod};
     return id;
 }
 
@@ -981,6 +992,7 @@ static HfEntity EntityOfDefinition(const HfEntityDef* def, const char** own, uin
         entity.designation = def->designation;
         entity.description = def->description;
     }
+    if (def->size >= offsetof(HfEntityDef, parts) + sizeof def->parts) entity.parts = def->parts;
     return entity;
 }
 
@@ -999,8 +1011,8 @@ static HfRef ApiRegisterEntity(HfMod* mod, const HfEntityDef* def)
     }
     char what[224];
     snprintf(what, sizeof what, "register_entity(%s)", def->name ? def->name : "?");
-    if (g_entityDefCount >= FIELD_MAX_DEFS) { ApiLog(mod, "%s: too many definitions", what); return 0; }
-    EntityDefinition* d = &g_entityDefs[g_entityDefCount++];
+    if (!StableRoom(&g_entityDefStore, (size_t)g_entityDefCount + 1)) { ApiLog(mod, "%s: no memory for more definitions", what); return 0; }
+    EntityDefinition* d = &g_entityDefs[g_entityDefCount++]; /* stays where it is while its mounts' blocks are registered */
     *d = (EntityDefinition){def, mod, 0, 1};
 
     /* Fields first: refuse the block before anything is added. */
@@ -1079,12 +1091,14 @@ static HfContent WeaponContent(const Weapon* w, uint32_t size)
         ModTextOf(w->text[3]), 0};
     c.entity = w->entity;
     c.base_entity = w->copies;
+    c.beam = BeamTypeUsable(w->beam) ? w->beam : 0;
+    c.arc = ArcTypeUsable(w->arc) ? w->arc : 0;
     return c;
 }
 
-/* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles, damage and (HellForge 2026-10-31,
- * last so the others keep their indexes) registered arsenal weapons, in the order added (what a mod taken out added is
- * left out). A stratagem without editor entities of its own lists each payload entity a mod
+/* SDK 7: the index-th piece of mod content: stratagems, then entities, projectiles, damage, (HellForge 2026-10-31)
+ * registered arsenal weapons and (SDK 17) explosions, beams and arcs, each new kind last so the others keep their indexes,
+ * in the order added (what a mod taken out added is left out). A stratagem without editor entities of its own lists each payload entity a mod
  * added, for the entity it copies. */
 static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
 {
@@ -1125,6 +1139,7 @@ static int ApiContent(HfMod* mod, uint32_t index, HfContent* out)
             c = WeaponContent(&g_weapons[i], size);
             return GIVE();
         }
+    if (AddedRowContent(&index, size, &c)) return GIVE();
     return 0;
     #undef GIVE
 }
@@ -1181,6 +1196,9 @@ static uint64_t ApiFind(uint32_t kind, const char* name)
     case HF_KIND_STRATAGEM: return StratagemNamed(name);
     case HF_KIND_PROJECTILE: return ProjectileTypeNamed(name);
     case HF_KIND_DAMAGE: return DamageNamed(name);
+    case HF_KIND_EXPLOSION: return ExplosionNamed(name);
+    case HF_KIND_WEAPON_BEAM: return RowNamed(&g_beams, name);
+    case HF_KIND_ARC: return RowNamed(&g_arcs, name);
     }
     return 0;
 }

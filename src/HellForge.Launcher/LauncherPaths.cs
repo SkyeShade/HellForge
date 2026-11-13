@@ -35,7 +35,8 @@ sealed class LauncherPaths : ISessionPaths
             Session = Path.Combine(engine, "session", "HellForge.Session.exe"), ScriptsFolder = Path.Combine(engine, "scripts"),
             Backend = Path.Combine(engine, "backend", "HellForge.LocalBackend.exe"),
             TemplatesFile = Path.Combine(root, "data", "profile-templates.json"),
-            ProgressionFile = Path.Combine(root, "data", "progression-data.json"), ProfilesRoot = Path.Combine(host, "profiles"),
+            // A development launcher reads the catalogue a sync assembled into the host folder (GameCatalog); none ships.
+            ProgressionFile = Path.Combine(host, GameCatalog.Folder, GameCatalog.ProgressionDataFile), ProfilesRoot = Path.Combine(host, "profiles"),
             SettingsFile = Path.Combine(host, "launcher-settings.json"), SessionFile = Path.Combine(host, "play-session.json"),
             RunsFolder = Path.Combine(host, "local-boots")
         };
@@ -53,20 +54,21 @@ sealed class LauncherPaths : ISessionPaths
         };
     }
 
+    public static LauncherPaths? Find() => Find(out _);
+
     // The installation containing the launcher, else the repository it was built in (the folder with the solution).
-    public static LauncherPaths? Find()
+    // problem: why an unpacked package cannot become an installation where it is, for the window shown instead.
+    public static LauncherPaths? Find(out string? problem)
     {
+        problem = null;
         if (InstallLayout.Find(AppContext.BaseDirectory) is { } install) return ForInstall(install);
         if (OperatingSystem.IsLinux())
         {
             var packageRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".."));
             var app = Path.Combine(packageRoot, "app");
             if (File.Exists(Path.Combine(app, "app-build.json")) && File.Exists(Path.Combine(app, "engine-package.zip")))
-            {
-                install = new InstallLayout(packageRoot);
-                install.Create(SupportedBuild.Current.BuildId);
-                return ForInstall(install);
-            }
+                return LinuxAppInstaller.FirstStart(packageRoot, SupportedBuild.Current.BuildId, out problem) is { } created
+                    ? ForInstall(created) : null;
         }
         var root = AppContext.BaseDirectory;
         while (root != null && !File.Exists(Path.Combine(root, "HellForge.slnx")))

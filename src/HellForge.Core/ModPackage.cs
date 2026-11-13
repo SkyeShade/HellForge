@@ -12,12 +12,18 @@ public static class ModPackage
     static readonly DateTimeOffset Stamp = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     // The files that go into the zip, relative to the mod folder with '/'.
+    // A recipe's rebuilt game patch files (ModManifest.AssetOutputs) are the game's and never go in: the recipe does.
     public static List<string> Files(ModManifest mod) =>
         Directory.GetFiles(mod.Folder, "*", SearchOption.AllDirectories)
             .Select(f => Path.GetRelativePath(mod.Folder, f).Replace('\\', '/'))
             .Where(f => !ModCatalog.IsWorkspaceFile(f))
+            .Where(f => !mod.AssetOutputs.Contains(f, StringComparer.OrdinalIgnoreCase))
             .Where(f => !mod.HasSource || !(f == mod.CodeDll || f.EndsWith(".lib", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)))
             .Order(StringComparer.Ordinal).ToList();
+
+    // A package's name without its extension: the mod's folder and version, as safe file name characters.
+    public static string BaseName(ModManifest mod) => string.Concat($"{Path.GetFileName(Path.TrimEndingDirectorySeparator(mod.Folder))}-{mod.Version}"
+        .Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_'));
 
     public static string Create(ModManifest mod, string outFolder)
     {
@@ -28,8 +34,7 @@ public static class ModPackage
         if (mod.HasCode && !mod.HasSource && !File.Exists(Path.Combine(mod.Folder, mod.CodeDll!)))
             throw new InvalidDataException($"The mod has no sources and its DLL ({mod.CodeDll}) is missing: there is nothing to run.");
         var folder = Path.GetFileName(Path.TrimEndingDirectorySeparator(mod.Folder));
-        var name = string.Concat($"{folder}-{mod.Version}".Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_')) + ".zip";
-        var target = Path.Combine(Directory.CreateDirectory(outFolder).FullName, name);
+        var target = Path.Combine(Directory.CreateDirectory(outFolder).FullName, BaseName(mod) + ".zip");
         var partial = target + ".partial";
         using (var zip = ZipFile.Open(partial, ZipArchiveMode.Create))
             foreach (var file in Files(mod))

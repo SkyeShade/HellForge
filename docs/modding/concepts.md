@@ -1,5 +1,7 @@
 # How mods run
 
+<!-- diataxis: explanation -->
+
 This page is for mod authors who have made a first mod and are planning the next one. It covers the kinds of mods, the
 manifest, when your code runs and on which thread, the three ways to change game data, how content is named, co-op,
 load order, compatibility and limits.
@@ -56,7 +58,7 @@ A mod must change something: code, data, a data spec, stats or native edits. A m
 
 ## When your code runs
 
-```
+```text
 session start   HellForge builds the source mods, stages data mods into the game copy
 game starts     the loader calls each code mod's hellforge_mod_init, in the order of mod ids    loader thread
                 HF_EVENT_GAME_LOADED first: game.dll's code is ready (find functions, hook)     loader's watch thread
@@ -150,11 +152,11 @@ game: use `hf_set` or `edit_entity` instead.
   every machine for the same reason.
 - The mod channel (SDK 16). The same code mod on every machine can send messages (`send`; `HF_ON_MESSAGE`) and share
   a table the host owns (`share_set`, `share_get`, `share_row`; `HF_ON_SHARE`). Messages are at most
-  `HF_MESSAGE_MAX` (1024) bytes and 64 a second per mod, in order per sender; nothing is sent in solo. Rows are per
-  mod: keys are the mod's own, values at most `HF_SHARE_VALUE_MAX` (64) bytes, at most `HF_SHARE_ROWS` (512) rows.
-  Only the host sets rows; every machine reads them, and a late joiner gets the whole table when it joins.
-  `is_authority(entity)` says whether this machine simulates an entity, and `entity_of_network(network)` gives the
-  entity a network id names on this machine now.
+  `HF_MESSAGE_MAX` (1024) bytes and 64 a second per mod, in order per sender; nothing is sent in solo.
+- Shared rows. Rows are per mod: keys are the mod's own, values at most `HF_SHARE_VALUE_MAX` (64) bytes, at most
+  `HF_SHARE_ROWS` (512) rows. Only the host sets rows; every machine reads them, and a late joiner gets the whole table
+  when it joins. `is_authority(entity)` says whether this machine simulates an entity, and
+  `entity_of_network(network)` gives the entity a network id names on this machine now.
 - Example: champions. The host's mod crowns some enemies and shares each crown by network id; every machine listens
   and dresses the entity it holds under that id. What the clients need travels in the value, never a decision they
   would compute differently:
@@ -189,13 +191,17 @@ builds on it, must follow that sync: it may not give premium content to players 
 
 HellForge does most of this for you.
 
-- **Copies of premium content are locked automatically.** A weapon or stratagem your mod makes as a copy of a premium
-  one (a premium warbond's weapon, a Superstore weapon, the Super Citizen Edition's MP-98 Knight) is in a player's
-  armory only when that player owns the original. It still exists on every machine, so friends with and without it
-  play together; a player without it cannot equip it.
-- **Declare what your mod recreates or builds on** in the manifest's `premium` list, when it is not a plain copy: a
-  free weapon made to play like a premium one, a premium armour's look on a free armour, a larger variant of a DLC
-  weapon. Each entry is one of:
+- **The session's backend locks copies of premium content.** A weapon, stratagem, pattern or attachment your mod
+  makes as a copy of premium content is in a player's armory only when that player owns the original. Such a copy can
+  be of a premium warbond's weapon, a Superstore weapon or the Super Citizen Edition's MP-98 Knight. The copy still
+  exists on every machine, so friends with and without it play together; a player without it cannot equip it.
+- **A copy of another mod's weapon follows that weapon's original,** up to 8 copies deep; a longer chain is locked. A
+  mod added while the game runs follows the same rules.
+- **Your items' ids must be new.** HellForge makes them from your names. An item whose id, or a child's id, is the
+  game's own or a paid item's is refused, and the backend's log names your mod.
+- **Declare what your mod recreates or builds on** in the manifest's `premium` list, when it is not a plain copy.
+  Examples are a free weapon made to play like a premium one, a premium armour's look on a free armour, or a larger
+  variant of a DLC weapon. Each entry is one of:
 
   | Entry | Owned when the player holds |
   |---|---|
@@ -219,8 +225,8 @@ HellForge does most of this for you.
   }
   ```
 
-- **What a player who does not own all of the list gets:** a gameplay mod still loads (friends keep running the same
-  mods), but none of the weapons and stratagems it adds are in their armory. A cosmetic mod (`"gameplay": false`) is not
+- **What a player who does not own all of the list gets:** a gameplay mod still loads, so friends keep running the
+  same mods. None of the weapons and stratagems it adds are in their armory. A cosmetic mod (`"gameplay": false`) is not
   loaded for them. The Mods page tags the mod PREMIUM, or PREMIUM: LOCKED for the selected profile, and its details say
   what is missing. A player who has not synced owns nothing premium.
 - **Your code's own effects are yours to gate.** HellForge locks items, not logic: a code mod that recreates a premium
@@ -229,6 +235,15 @@ HellForge does most of this for you.
 
 Cosmetic packs in the community's format have no `hellforge-mod.json` and cannot declare premium content: ship a
 premium look as a data mod with a manifest instead.
+
+These checks run on the player's own PC. HellForge decides what is paid from an id list compiled into it, not from
+the installation's catalogue. Its backend serves the catalogue's paid entries from that list and checks every reply
+that gives an item, a mod warbond's purchases included. A session also refuses a backend that is
+not the one it was built with. None of this stops a player who changes HellForge itself: a replaced session, or one
+whose compiled pin was edited, starts any backend.
+
+A difficulty's mission stratagem is never a paid one in the loader. How a joiner's game handles a mission group sent
+by a changed host is not traced yet, so that path is open.
 
 ## Load order and conflicts
 
@@ -271,9 +286,10 @@ These limits are for all mods together:
 
 | What | Room |
 |---|---|
-| New entities and weapons | 64 |
-| New projectile types | 64 (types 351 and up) |
-| New damage types | 64 (ids 650 and up) |
+| New entities and weapons | no number of HellForge's own: the game's entity map, about 2,187 rows free ([content](content.md#other-rules)) |
+| New projectile types | 512 (types 351 and up) |
+| New damage types | 512 (ids 650 and up) |
+| New explosion, beam and arc types | 512 of each |
 | New stratagems | 48 (types 150 and up) |
 | New behaviours | 8 |
 | New abilities | 8 |
@@ -283,7 +299,7 @@ These limits are for all mods together:
 | Hooks | 16 per function and 1,024 functions, HellForge's own included |
 | Event listeners, `on_game_thread` callbacks | 128, 16 |
 
-A definition block can own or change 8 components and have 8 mounts, and all mods together can have 64 blocks. An `add_*` call that
+A definition block can own or change 8 components and have 8 mounts, with no limit on blocks. An `add_*` call that
 would pass a limit returns 0 (`hook` returns non-zero), and the mod's log says why.
 
 ## Safety

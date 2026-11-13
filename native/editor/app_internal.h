@@ -352,6 +352,9 @@ struct LobbyDialog
     std::vector<int> shown;   /* the lobbies the filters leave, in list order */
     int index = 0;            /* the selected one, in shown */
     bool joinableOnly = false, friendsOnly = false;
+    bool showUnreachable = false; /* lobbies out of reach (OutOfReach) show even while others can be joined */
+    int unreachable = 0;      /* how many the other filters leave that are out of reach */
+    int hidden = 0;           /* how many of those are hidden (showUnreachable off, and something else to show) */
     int difficulty = 0;       /* the lowest difficulty shown (0 any) */
     bool terminalRead = false;
     uint32_t terminal = 0;    /* the terminal count last read: the terminal opened the browser when it goes up */
@@ -365,6 +368,11 @@ struct LobbyDialog
     std::string joining;      /* the lobby a join was asked for, until the backend answers */
     bool camera = false;      /* the terminal's camera glides to its screen: the browser waits, drawing nothing */
     bool confirmStrangers = false; /* the warning before turning Play with strangers on shows, waiting for TURN ON */
+    bool detail = false;      /* the selected lobby's pop-up shows (a card clicked, or Enter) */
+    int perPage = 8;          /* cards on a page, as last drawn (Page Up, Page Down) */
+    bool confirmRelays = false; /* the question before turning co-op over Steam relays on shows, waiting for TURN ON */
+    bool relaysAsked = false;   /* co-op over Steam relays was asked for: the backend's next ready or failed state answers */
+    std::string afterRelays;    /* what the player tried while it was off (a lobby id, or QUICK_JOIN), done once it is on */
     std::string owner;        /* the mod that claimed the browser (browse_state's owner), or "": then this one never shows */
 };
 extern LobbyDialog g_lobbies;

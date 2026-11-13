@@ -10,35 +10,62 @@ public static partial class LinuxCapture
     // Absolute, so the password dialog always comes from the system pkexec, never from a program earlier on PATH.
     public const string PkexecPath = "/usr/bin/pkexec";
     public const string BashPath = "/usr/bin/bash";
-    public const string SudoersPath = "/etc/sudoers.d/hellforge-capture";
+    // sudo reads the drop-ins in lexical order and the last matching rule wins: zz- sorts after a distribution's own
+    // files, such as SteamOS's "sudo" and "wheel", which ask for a password.
+    public const string SudoersPath = "/etc/sudoers.d/zz-hellforge-capture";
+    // The rule's name before it sorted last. The installer removes it; a removal removes both.
+    public const string LegacySudoersPath = "/etc/sudoers.d/hellforge-capture";
+    // SteamOS drops /etc changes at an update unless a file here lists them; the installer lists the rule (SteamOS only).
+    public const string SteamOsKeepListPath = "/etc/atomic-update.conf.d/hellforge.conf";
     static readonly TimeSpan HelperInstallTimeout = TimeSpan.FromMinutes(5);
 
     // Succeeded: the installer/remover exited 0 and the post-check agreed. Cancelled: the polkit dialog was dismissed or
     // denied, so nothing changed. NeedsManual: the launcher could not show a dialog; Message carries the terminal command.
     public sealed record HelperSetupResult(bool Succeeded, bool Cancelled, bool NeedsManual, string Message);
 
-    public static string HelperInstallDescription(string installRoot)
+    // The installer's order on this system, as allow-capture.sh has it.
+    internal static IReadOnlyList<string> InstallFolders(bool steamOs) => steamOs ? [.. HelperFolders.Skip(1)] : HelperFolders;
+
+    // The folder the installed helper is in: the first in the installer's order that has one, then any other (a copy an
+    // earlier install left where it can no longer be removed is passed over). With no helper, the first choice.
+    internal static string HelperFolderOf(bool steamOs, Func<string, bool> exists)
+    {
+        var order = InstallFolders(steamOs).Concat(HelperFolders).Distinct().ToArray();
+        // Joined with "/", not Path.Combine: these are a Linux system's paths whatever system reads this.
+        return order.FirstOrDefault(folder => exists(folder + "/" + HelperName)) ?? order[0];
+    }
+
+    public static string HelperInstallDescription(string installRoot) => HelperInstallDescription(installRoot, IsSteamOs());
+
+    internal static string HelperInstallDescription(string installRoot, bool steamOs)
     {
         var installer = Path.Combine(installRoot, "app", "linux", HelperInstaller);
+        var folders = InstallFolders(steamOs);
         return "Sync Inventory needs a small root-owned helper and relay to change /etc/hosts and serve the capture on " +
-            "this PC. Installing them copies capture-helper.sh and capture-relay to /usr/local/lib/hellforge, records " +
-            "their SHA-256, and adds the one sudoers rule /etc/sudoers.d/hellforge-capture so this account can run only " +
-            "that helper's check, start, stop and cleanup commands without another password. The shipped installer " +
+            "this PC. Installing them copies capture-helper.sh and capture-relay to " + folders[0] + " (to " +
+            string.Join(" or ", folders.Skip(1)) + " if that folder cannot be used), records " +
+            "their SHA-256, and adds the one sudoers rule " + SudoersPath + " so this account can run only " +
+            "that helper's check, start, stop and cleanup commands without another password. " +
+            (steamOs ? "SteamOS's /usr/local is read-only, so it is not used; " + SteamOsKeepListPath + " lists the " +
+                "rule so that a SteamOS update keeps it. " : "") + "The shipped installer " +
             installer + " runs through pkexec after you continue, so the desktop's polkit dialog asks for your password. " +
             "Remove them later with: sudo bash " + installer + " --remove";
     }
 
-    public static bool HelperInstalled() =>
-        File.Exists(HelperPath) || File.Exists(RelayPath) || File.Exists(HelperHashPath) ||
-        File.Exists(RelayHashPath) || File.Exists(SudoersPath);
+    public static bool HelperInstalled() => HelperInstalled(File.Exists);
+
+    internal static bool HelperInstalled(Func<string, bool> exists) =>
+        HelperFolders.Any(folder => new[] { HelperName, HelperName + ".sha256", RelayName, RelayName + ".sha256" }
+            .Any(file => exists(folder + "/" + file))) ||
+        exists(SudoersPath) || exists(LegacySudoersPath) || exists(SteamOsKeepListPath);
 
     public static HelperSetupResult InstallHelper(string installRoot, string pkexecPath = PkexecPath,
         string bashPath = BashPath) =>
-        RunHelperInstaller(installRoot, remove: false, pkexecPath, bashPath, HelperProblem);
+        RunHelperInstaller(installRoot, remove: false, pkexecPath, bashPath, HelperProblem, HelperCheckProblem);
 
     internal static HelperSetupResult InstallHelper(string installRoot, string pkexecPath, string bashPath,
-        Func<string, string?>? verify) =>
-        RunHelperInstaller(installRoot, remove: false, pkexecPath, bashPath, verify);
+        Func<string, string?>? verify, Func<string?>? check = null) =>
+        RunHelperInstaller(installRoot, remove: false, pkexecPath, bashPath, verify, check);
 
     public static HelperSetupResult RemoveHelper(string installRoot, string pkexecPath = PkexecPath,
         string bashPath = BashPath) =>
@@ -49,8 +76,9 @@ public static partial class LinuxCapture
         Func<string, string?>? verify) =>
         RunHelperInstaller(installRoot, remove: true, pkexecPath, bashPath, verify);
 
+    // verify: the installed files against the shipped ones. check: sudo runs the installed helper without a password.
     static HelperSetupResult RunHelperInstaller(string installRoot, bool remove, string pkexecPath, string bashPath,
-        Func<string, string?>? verify)
+        Func<string, string?>? verify, Func<string?>? check = null)
     {
         string installer;
         try
@@ -93,7 +121,7 @@ public static partial class LinuxCapture
             var stderr = error.GetAwaiter().GetResult().Trim();
             return process.ExitCode switch
             {
-                0 => VerifyHelperSetup(installRoot, remove, verify, stdout),
+                0 => VerifyHelperSetup(installRoot, remove, verify, check, stdout),
                 126 => Cancelled(remove),
                 127 when NoAuthenticationAgent(stderr) => Fallback(remove, installRoot,
                     "No polkit authentication agent is running (for example in Game Mode or a bare window manager), so the " +
@@ -114,13 +142,41 @@ public static partial class LinuxCapture
         }
     }
 
-    static HelperSetupResult VerifyHelperSetup(string installRoot, bool remove, Func<string, string?>? verify, string stdout)
+    static HelperSetupResult VerifyHelperSetup(string installRoot, bool remove, Func<string, string?>? verify,
+        Func<string?>? check, string stdout)
     {
         if (verify != null && verify(installRoot) is { } problem)
             return Fallback(remove, installRoot, "The helper installer finished, but " + problem + ".");
+        // The files are right, so running the installer again from a terminal would change nothing: say what blocks sudo.
+        if (check != null && check() is { } blocked)
+            return new(false, false, false, "The helper and its sudoers rule were installed, but the helper's check " +
+                "still fails. " + blocked);
         return new(true, false, false, remove
             ? "Removed HellForge's Account Sync helper, relay, hashes and sudoers rule."
             : "Installed the Account Sync helper and relay; the sync continues." + (stdout.Length == 0 ? "" : " " + Tail(stdout)));
+    }
+
+    // Whether sudo runs the installed helper for this account without a password, by running its harmless check
+    // command. The files can all be right while another sudoers rule that sorts later still asks for a password; the
+    // launcher then offers the installer again, which writes the rule under the name that sorts last. Null means ready.
+    public static string? HelperCheckProblem() => HelperCheckProblem(RunSudo(["check"], TimeSpan.FromSeconds(10)));
+
+    // Whether running the installer again can clear a failed check: it writes the rule and both root copies, so it
+    // answers sudo's password and the helper's own "run allow-capture.sh again". Anything else (a read-only /etc/hosts,
+    // a missing program) would only bring the password dialog back at every sync.
+    public static bool InstallFixesCheck(string problem) =>
+        problem.Contains("asks for a password", StringComparison.Ordinal) ||
+        problem.Contains("run allow-capture.sh again", StringComparison.Ordinal);
+
+    internal static string? HelperCheckProblem(WineResult check)
+    {
+        if (check.ExitCode == 0) return null;
+        // sudo -n never prompts; this is its message when no NOPASSWD rule is the last match (read with LC_ALL=C).
+        if (check.AllText.Contains("a password is required", StringComparison.OrdinalIgnoreCase))
+            return "sudo asks for a password to run HellForge's capture helper: its sudoers rule (" + SudoersPath +
+                ") is missing, or a rule read after it (a later file in /etc/sudoers.d, or a line in /etc/sudoers below " +
+                "its include) asks for one.";
+        return "The Linux capture helper's check failed: " + Tail(check.AllText) + ".";
     }
 
     static HelperSetupResult Cancelled(bool remove, string detail = "") =>

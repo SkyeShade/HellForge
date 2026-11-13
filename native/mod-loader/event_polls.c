@@ -2,15 +2,15 @@
  * event_sources.c. From HD2Runtime 0.40.1's research (event-combat, event-mission, event-wielder, event-destruction:
  * its runtime/event_sources.lua sources, the same reads, here in the game thread's update). Every read is a SafeRead; a
  * read that fails skips that check. A source starts once its pins (the instructions that use the data it reads) read as
- * reviewed, skipping any HellForge rewrote.
+ * reviewed, skipping any HellForge rewrote; a displacement a mod may move is followed instead (moved_fields.c).
  *
  *   heal     each player's Helldiver: its health record ([game + 0x3326688], the health manager: the entity hash at
  *            +0x1030, records +0x1058 of 0x1B8 bytes, health i32 +0x14, life +0x19C; max health in the ext records
  *            +0x1060 of 0x1C bytes, +0x14), every update. Health up while alive or downed is a heal. The Helldiver of a
- *            player slot: its network id [player manager + 0x3A8 + 0x20 slot] through the entity manager's network map.
+ *            player slot: its network id [player manager + 0x3A8 + 0x20 slot] through the entity manager's map and records.
  *   stats    the local player's mission stats ([game + 0x3326AE0], the score manager: the player entity's index
- *            through the map at +0x37D58, its record at +0x37D98 + 0x28 index: a stat table, and 64 source blocks of
- *            0x148 bytes at [record + 0x18], each a resource and 16 stat entries), every 100 ms.
+ *            through the map at +0x37D58, its record at +0x37D98 + 0x28 index, both followed: a stat table, and 64
+ *            source blocks of 0x148 bytes at [record + 0x18], each a resource and 16 stat entries), every 100 ms.
  *   weapon   the local Helldiver's hand: slot 0 of its wielder instance ([game + 0x3326420]: the map at +0x30, slots
  *            [+0x60] + 0x1D0 instance) and its inventory selection ([game + 0x3326738]: the map at +0x28, records
  *            [+0x50] + 0x30 record, +0x1C), every 100 ms. A held entity must be alive (the engine's generation, exe).
@@ -23,9 +23,7 @@ __declspec(dllexport) int hellforge_lua_rewrites(uint32_t rva, uint32_t size); /
 #define EVP_HEALTH 0x3326688u
 #define EVP_ENTITIES 0x346BF98u
 #define EVP_NETWORK_MAP 0xF22EC8u
-#define EVP_NETWORK_ENTITY 0xF32F20u
 #define EVP_ENTITY_MAP 0xF1AEB0u
-#define EVP_DESCRIPTORS 0xF32F18u
 #define EVP_SCORE 0x3326AE0u
 #define EVP_WIELDER 0x3326420u
 #define EVP_INVENTORY 0x3326738u
@@ -66,14 +64,14 @@ static const EvpPin kEvpHolePins[] = {
     EVP_PIN(0, 0x13E2161u, 0x8b, 0x9c, 0x96, 0x78, 0x5f, 0x0c, 0x00),
     EVP_PIN(1, 0x9D8CFu, 0x48, 0x8b, 0x35, 0x1a, 0x28, 0x97, 0x01), EVP_PIN(1, 0x9D909u, 0x48, 0x8b, 0x86, 0x88, 0x00, 0x00, 0x00)};
 
-/* 1 when every pin reads as reviewed (or HellForge rewrote it), 0 not, -1 not decoded yet (try again). */
+/* 1 when every pin reads as reviewed (or HellForge rewrote it), 0 not. */
 static int EvpProve(uintptr_t game, uintptr_t exe, const EvpPin* pins, size_t count)
 {
     for (size_t i = 0; i < count; i++)
     {
         const EvpPin* p = &pins[i];
         if (!p->exe && hellforge_lua_rewrites(p->rva, p->size)) continue;
-        if (!PinMatches((p->exe ? exe : game) + p->rva, p->bytes, p->size)) return 0;
+        if (p->exe ? !PinMatches(exe + p->rva, p->bytes, p->size) : !MfPinMatches(game, p->rva, p->bytes, p->size)) return 0;
     }
     return 1;
 }
@@ -156,22 +154,34 @@ static int EvpHash(uintptr_t header, uint32_t key, uint32_t stride, uint32_t val
     return 0;
 }
 
+/* The entity manager and its records (24 bytes each: +0 the resource, +8 the entity, +0xC its unit), which a mod may
+ * move: where the game's code addresses them now (moved_fields.c). 0 with no manager or no place the code agrees on. */
+static int EvpRecords(uintptr_t game, uintptr_t* em, uintptr_t* records)
+{
+    int ok = 1;
+    intptr_t place = MfPlace(game, MF_ENTITY_RECORDS, &ok);
+    if (!ok || !EvpPtr(game + EVP_ENTITIES, em)) return 0;
+    *records = *em + place;
+    return 1;
+}
+
 /* An entity's descriptor through the entity manager's map: its resource (type), 0 when it does not resolve. */
 static uint64_t EvpEntityResource(uintptr_t game, uint32_t entity, uint32_t* unit)
 {
-    uintptr_t em; uint32_t index; uint8_t d[24];
-    if (!entity || !EvpPtr(game + EVP_ENTITIES, &em) || !EvpHash(em + EVP_ENTITY_MAP, entity, 8, 4, &index) || index >= 0x100000 ||
-        SafeRead(em + EVP_DESCRIPTORS + (uintptr_t)index * 24, d, sizeof d)) return 0;
+    uintptr_t em, records; uint32_t index; uint8_t d[24];
+    if (!entity || !EvpRecords(game, &em, &records) || !EvpHash(em + EVP_ENTITY_MAP, entity, 8, 4, &index) || index >= 0x100000 ||
+        SafeRead(records + (uintptr_t)index * 24, d, sizeof d)) return 0;
     uint32_t named; memcpy(&named, d + 8, 4);
     if (named != entity) return 0;
     if (unit) memcpy(unit, d + 12, 4);
     uint64_t resource; memcpy(&resource, d, 8);
     return resource;
 }
+static uintptr_t g_evpExe; /* the native fixture's helldivers2.exe image (else the process's) */
 /* Whether an entity is alive in the engine (its index's generation, helldivers2.exe). */
 static int EvpAlive(uint32_t entity)
 {
-    uintptr_t exe = (uintptr_t)GetModuleHandleW(NULL), m, gens;
+    uintptr_t exe = g_evpExe ? g_evpExe : (uintptr_t)GetModuleHandleW(NULL), m, gens;
     uint32_t index = entity & 0x3FFFFFu, size;
     uint8_t gen;
     return EvpPtr(exe + EVP_EXE_ENTITIES, &m) && !SafeRead(m + 0x80, &size, 4) && index < size && EvpPtr(m + 0x88, &gens) &&
@@ -179,28 +189,44 @@ static int EvpAlive(uint32_t entity)
 }
 
 typedef struct EvpPlayer { uint64_t peer; uint32_t player, avatar, life; int local; } EvpPlayer;
-/* The player list: peer, player entity, Helldiver (0: none), lifecycle, local. Their count, -1 unreadable. */
+/* The player list's fields, where the game's code addresses them now; 0 when one is not plausible (logged). */
+typedef struct EvpList { uint32_t count, peers, life, descriptors, network, capacity; intptr_t records; } EvpList;
+static int EvpListOf(uintptr_t game, EvpList* l)
+{
+    int ok = 1;
+    l->count = MfOffset(game, MF_PLAYER_COUNT, &ok); l->peers = MfOffset(game, MF_PLAYER_PEERS, &ok);
+    l->life = MfOffset(game, MF_PLAYER_LIFE, &ok); l->descriptors = MfOffset(game, MF_PLAYER_DESCRIPTORS, &ok);
+    l->network = MfOffset(game, MF_PLAYER_NETWORK, &ok); l->capacity = MfOffset(game, MF_PLAYER_CAP, &ok);
+    l->records = MfPlace(game, MF_ENTITY_RECORDS, &ok); /* a player's Helldiver is read from them */
+    return ok;
+}
+/* The player list: peer, player entity, Helldiver (0: none), lifecycle, local. Their count, -1 unreadable, EVP_LAYOUT
+ * when the game's code does not say where the list is (moved_fields.c). */
+#define EVP_LAYOUT (-2)
+#define EVP_LAYOUT_WHY "the game's code does not say where the player data is (the log's moved fields line says which part)"
 static int EvpPlayers(uintptr_t game, EvpPlayer* out)
 {
     uintptr_t manager, user, em = 0;
     uint64_t local = 0;
+    EvpList l;
+    if (!EvpListOf(game, &l)) return EVP_LAYOUT;
     if (!EvpPtr(game + EVT_PLAYERS, &manager)) return -1;
     if (EvpPtr(game + EVT_LOCAL_PEER, &user)) SafeRead(user + EVT_LOCAL_PEER_AT, &local, 8);
-    uint32_t count = EvpU32(manager + 0x84, 99);
-    if (count > EVT_MAX_PLAYERS) return -1;
+    uint32_t count = EvpU32(manager + l.count, 99);
+    if (count > l.capacity) return -1;
     EvpPtr(game + EVP_ENTITIES, &em);
     for (uint32_t i = 0; i < count; i++)
     {
         EvpPlayer* p = &out[i];
         memset(p, 0, sizeof *p);
         uintptr_t descriptor;
-        SafeRead(manager + 0x2C8 + 0x38 * i, &p->peer, 8);
-        p->life = EvpU32(manager + 0x2E0 + 0x38 * i, 0);
-        if (EvpPtr(manager + 0xE8 + 8 * i, &descriptor)) p->player = EvpU32(descriptor + 8, 0);
+        SafeRead(manager + l.peers + 0x38 * i, &p->peer, 8);
+        p->life = EvpU32(manager + l.life + 0x38 * i, 0);
+        if (EvpPtr(manager + l.descriptors + 8 * i, &descriptor)) p->player = EvpU32(descriptor + 8, 0);
         p->local = p->peer != 0 && p->peer == local;
-        uint32_t network = EvpU32(manager + 0x3A8 + 0x20 * i, 0x7FFF), slot;
+        uint32_t network = EvpU32(manager + l.network + 0x20 * i, 0x7FFF), slot;
         if (em && network != 0x7FFF && EvpHash(em + EVP_NETWORK_MAP, network, 8, 4, &slot))
-            p->avatar = EvpU32(em + EVP_NETWORK_ENTITY + (uintptr_t)slot * 24, 0);
+            p->avatar = EvpU32(em + l.records + (uintptr_t)slot * 24 + 8, 0);
     }
     return (int)count;
 }
@@ -295,10 +321,12 @@ static int EvpStatsOf(uintptr_t game, uint32_t player, EvpStats* out)
 {
     uintptr_t score, sources;
     uint32_t index;
+    int ok = 1;
     memset(out, 0, sizeof *out);
     out->player = player;
-    if (!player || !EvpPtr(game + EVP_SCORE, &score) || !EvpHash(score + 0x37D58, player, 8, 4, &index) || index >= 4) return 0;
-    uintptr_t record = score + 0x37D98 + (uintptr_t)index * 0x28;
+    uint32_t map = MfOffset(game, MF_SCORE_MAP, &ok), records = MfOffset(game, MF_SCORE_RECORDS, &ok), capacity = MfOffset(game, MF_SCORE_CAP, &ok);
+    if (!player || !ok || !EvpPtr(game + EVP_SCORE, &score) || !EvpHash(score + map, player, 8, 4, &index) || index >= capacity) return 0;
+    uintptr_t record = score + records + (uintptr_t)index * 0x28;
     if (EvpU32(record + 8, 0) == 0) return 0; /* no stat table yet */
     for (int k = 0; k < 4; k++)
     {

@@ -1,7 +1,9 @@
 using System.Text.Json;
 using HellForge.Cli;
 using HellForge.Core;
+using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
+using HellForge.SteamDownload;
 
 try
 {
@@ -26,17 +28,18 @@ try
             migrate --install <folder> --from <artifacts/host-startup> [--appdata <folder>]
             mods-stage --install <folder> [--plan <mod loader plan file> --logs <session folder>] [--modset <file>] [--sync <mod sync session file>] [--sandbox yes|no] [--session-mods <file>]
             mods-live --install <folder> --session-mods <file> --target <file of mod folders, in load order> --seed <text>
-            build-source-mods --install <folder> [--progress <file>]
+            build-source-mods --install <folder> [--progress <file>] [--sync yes|no] [--sandbox yes|no]
             build-data --mod <mod folder> [--install <folder> | --game-data <game data folder> [--steam-data <Steam's game data folder>] --out <folder>]
             check-stats --mod <mod folder>
             sdk-headers --repo <HellForge source folder> [--mode write | check]
             new-mod --id <owner.mod-name> --name <name> (--install <folder> | --out <folder>)
             build-mod --mod <mod folder>
-            package-mod --mod <mod folder> [--out <folder>]
-            mod-hash --mod <mod folder or .zip> [--install <folder>]
-            verified-list-keygen --out <private key file>
-            verified-list-sign --list <verified-mods.json> --key <private key file>
-            verified-list-check --list <verified-mods.json> [--signature <file>]
+            package-mod --mod <mod folder> [--out <folder>] [--history yes]
+            assets-check --mod <mod folder> [--install <folder>] [--history yes]
+            assets-strip --mod <mod folder> [--out <folder>] [--install <folder>] [--history yes]
+            assets-rebuild --mod <mod folder> [--install <folder>] [--steam yes]
+            steam-signout
+            mod-hash --mod <mod folder or .zip>
             mod-tools --install <installation or source folder> [--ide yes]
             steam-bridge host | inner | check [socket]
 
@@ -74,9 +77,25 @@ try
             installed) or in --out. build-mod compiles a code mod with the SDK's pinned Zig: in an installation's mods
             folder into the build a session loads (temp/mod-builds; sessions build source mods themselves), elsewhere into
             the DLL its manifest names. build-source-mods builds every enabled source mod into temp/mod-builds before a
-            session: a Linux launcher runs it natively with the pinned Linux Zig, so the session never compiles under Wine.
+            session: a Linux launcher runs it natively with the pinned Linux Zig, so the session never compiles under Wine;
+            --sync yes also builds the host's mods a session after a mod sync plays (--sandbox: whether it is sandboxed).
             package-mod compiles a source mod, then zips it to share (the installation's exports
-            folder, or --out): sources and files, no DLL a player's HellForge would rebuild, no IDE leftovers.
+            folder, or --out): sources and files, no DLL a player's HellForge would rebuild, no IDE leftovers, and no
+            bytes of Arrowhead's: game patch files are stripped first, as assets-strip does (docs/modding/assets.md).
+            assets-check says which bytes of a mod's game patch files are Arrowhead's, from which build, and which are the
+            author's (exit code 3 when it found game content); nothing is changed. assets-strip writes the mod as it is to
+            be shared (--out, or the installation's exports folder): the author's bytes, and a recipe that rebuilds the
+            rest from each player's own game, checked by SHA-256; with a report beside it. Both compare the mod with the
+            builds on this PC (HellForge's game copy, HELLDIVERS 2 in Steam), fingerprinted once into temp/asset-kit.
+            --history yes (also for package-mod) signs in to Steam (a saved sign-in, else a QR code) and checks what the builds
+            here leave against every build since release, from Steam's depot manifests: cut content from an older build
+            is proven by its chunks' SHA-1, just those resources are fetched, and they go into the recipe too.
+            assets-rebuild rebuilds a mod's recipe into its folder, as a session does before it loads the mod; with
+            --steam yes, what it needs of builds this PC lacks (cut content from an older build) is fetched from Steam
+            first, with your own sign-in, only the chunks that hold it. These Steam sign-ins are kept: the first is a QR code
+            for the Steam app, and the token Steam returns is saved for the user only (<ApplicationData>/HellForge/
+            steam-login.json; the asset migrator's saved sign-in is tried too), so later ones need no phone.
+            steam-signout deletes HellForge's saved sign-in (steam-download's sign-in is never kept).
             mod-hash prints a mod's content hash as mod sync and HellForge's verified list (data/verified-mods.json) take
             it: a folder by its files, a zip by what it ships, as a player's HellForge loads it; with its class and an entry
             for the verified list.
@@ -130,20 +149,22 @@ try
         "create-install" => ["--root"],
         "prepare-session" => ["--install", "--profile", "--user-data", "--verify-all"],
         "migrate" => ["--install", "--from", "--appdata"],
-        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods"],
+        "mods-stage" => ["--install", "--plan", "--logs", "--progress", "--modset", "--sync", "--sandbox", "--premium-snapshot", "--premium-locked", "--session-mods", "--mod-warbonds"],
         "mods-live" => ["--install", "--session-mods", "--target", "--seed"],
-        "build-source-mods" => ["--install", "--progress"],
+        "build-source-mods" => ["--install", "--progress", "--sync", "--sandbox"],
         "build-data" => ["--mod", "--install", "--game-data", "--steam-data", "--out"],
+        "unit-joints" => ["--install", "--game-data", "--unit"],
         "check-stats" => ["--mod"],
         "sdk-headers" => ["--repo", "--mode"],
         "editor-data" => ["--out", "--install", "--game"],
         "new-mod" => ["--id", "--name", "--install", "--out"],
         "build-mod" => ["--mod"],
-        "package-mod" => ["--mod", "--out"],
-        "mod-hash" => ["--mod", "--install"],
-        "verified-list-keygen" => ["--out"],
-        "verified-list-sign" => ["--list", "--key"],
-        "verified-list-check" => ["--list", "--signature"],
+        "package-mod" => ["--mod", "--out", "--history"],
+        "assets-check" => ["--mod", "--install", "--history"],
+        "assets-rebuild" => ["--mod", "--install", "--steam"],
+        "steam-signout" => [],
+        "assets-strip" => ["--mod", "--out", "--install", "--history"],
+        "mod-hash" => ["--mod"],
         "mod-tools" => ["--install", "--ide"],
         "play" => ["--install", "--profile", "--war", "--war-server", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
         "stop" => ["--install", "--run", "--wait", "--now"],
@@ -290,12 +311,15 @@ try
             // The installation's mods: data mods are staged into the copy, and the plan and modlist digest are printed.
             var modInstall = new InstallLayout(Required("--install"));
             if (!modInstall.Exists) throw new InvalidDataException($"{modInstall.Root} is not a HellForge installation.");
-            // the published verified list this session's runner fetched (VerifiedMods), for the synced mods' checks
-            VerifiedMods.UseInstallation(modInstall);
-            // The mods HellForge ships (the in-game editor) are put in place, or updated, first.
+            // Staged links written over since the last session first (ModStaging.CheckLinks): what HellForge keeps of them is
+            // made again as the mods load; they are not problems of this session's mods, which all load. Then the mods
+            // HellForge ships (the in-game editor) are put in place, or updated.
+            foreach (var line in ModStaging.CheckLinks(modInstall)) Console.Error.WriteLine(line); // the Mods page shows a mod's (Notices)
             var bundledProblems = BundledMods.Sync(modInstall, Console.Error.WriteLine);
             // a .rar or .7z dropped into mods/ is added as a folder first (ModInstaller.TakeDropped)
             bundledProblems.AddRange(ModInstaller.TakeDropped(modInstall));
+            // a mod that ships a recipe for its game patch files has them rebuilt from this PC's game first (ModAssets)
+            var assetProblems = ModAssets.PrepareAll(modInstall, Console.Error.WriteLine);
             var (mods, modProblems) = ModCatalog.Load(Path.Combine(modInstall.Root, "mods"));
             modProblems.InsertRange(0, bundledProblems);
             var loadOrder = ModCatalog.LoadOrder(ModCatalog.Active(mods)); // bottom of the Mods page first
@@ -324,6 +348,13 @@ try
             // The synced store keeps the mods used most recently (SyncedStore.Keep), this session's among them.
             foreach (var pruned in SyncedStore.Prune(modInstall.Mods, loadOrder.Select(m => m.Folder)))
                 Console.Error.WriteLine("Mod sync: removed the downloaded mod " + pruned + ", used least recently.");
+            // a mod whose recipe could not be rebuilt here does not load: its game patch files are not there
+            foreach (var pendingMod in loadOrder.Where(m => m.AssetsPending != null))
+            {
+                var why = assetProblems.FirstOrDefault(p => string.Equals(p.Folder, Path.GetFullPath(pendingMod.Folder), StringComparison.OrdinalIgnoreCase))?.Reason ?? pendingMod.AssetsPending;
+                modProblems.Add($"{pendingMod.Name}: {why}; it is not loaded.");
+            }
+            loadOrder = loadOrder.Where(m => m.AssetsPending == null).ToList();
             // Premium content mods declare (PremiumContent), against the profile's account snapshot (--premium-snapshot): a
             // cosmetic mod the player does not own is not loaded; a gameplay one loads, its items locked by the backend
             // (--premium-locked, which the session passes on).
@@ -341,12 +372,21 @@ try
                 progress: p => WriteProgress(progressFile, p));
             active = built;
             modProblems.AddRange(buildProblems);
+            // Warbonds the loaded mods add (ModWarbonds: hellforge-warbonds.json), checked and written for the backend
+            // (--mod-warbonds, which the session passes on); one with a mistake is left out and the session says why.
+            List<ModWarbonds.Warbond> modWarbonds = [];
+            if (options.TryGetValue("--mod-warbonds", out var warbondsFile))
+            {
+                (modWarbonds, var warbondProblems) = ModWarbonds.Load(active);
+                modProblems.AddRange(warbondProblems);
+                ModWarbonds.Write(warbondsFile, modWarbonds);
+            }
             // The premium warbonds the profile's synced account does not own look locked in Acquisitions (WarbondLocks): the
             // same ownership the backend serves. Art that cannot be built stays as it is; the session goes on.
             string? warbondLocks = null;
             try
             {
-                var progressionData = Path.Combine(modInstall.App, "progression-data.json");
+                var progressionData = GameCatalog.ProgressionData(modInstall.Root);
                 if (File.Exists(progressionData))
                     warbondLocks = WarbondLocks.Prepare(modInstall,
                         PremiumContent.ForSnapshot(progressionData, options.GetValueOrDefault("--premium-snapshot"), SteamAccount.Current()), Console.Error.WriteLine);
@@ -366,12 +406,23 @@ try
             {
                 modProblems.Add("Forge Credits art: not shown this session (" + error.Message + ").");
             }
-            var staged = ModStaging.Stage(modInstall, active, [.. new[] { forgeCredits, warbondLocks }.OfType<string>()]);
+            // The mods' warbonds' own pictures (ModWarbondArt); one that cannot be built shows the game's placeholder.
+            string? warbondArt = null;
+            try
+            {
+                (modWarbonds, warbondArt, var artProblems) = ModWarbondArt.Prepare(modInstall, modWarbonds);
+                modProblems.AddRange(artProblems);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                modProblems.Add("Mod warbond art: the game's placeholder this session (" + error.Message + ").");
+            }
+            var staged = ModStaging.Stage(modInstall, active, [.. new[] { forgeCredits, warbondLocks, warbondArt }.OfType<string>()]);
             // Code, stats and legacy component mods all need the in-process loader plan.
             var code = active.Where(m => m.NeedsLoader).ToList();
             if (options.TryGetValue("--plan", out var planPath))
                 File.WriteAllText(planPath, ModLoaderPlan.Text(code, Path.GetFullPath(Required("--logs")), EntityProfile.Current, SupportedBuild.Current.BuildId,
-                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance));
+                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance, modWarbonds));
             // The gameplay mods with their content hashes, for the backend (mod sync: joiners whose mods differ get it), and
             // the digest's mods one by one (ModlistDiff's wire form), so a refused co-op join can say which differ.
             var modSet = ModSet.Of(active);
@@ -385,7 +436,7 @@ try
                 codeMods = code.Count,
                 loaderRequired = true, // read-only stats snapshots are also collected without mods
                 disabled = mods.Where(m => !m.Enabled).Select(m => m.Id),
-                problems = modProblems, staged, stagedCopied = ModStaging.LastCounts.Copied, stagedKept = ModStaging.LastCounts.Kept,
+                problems = modProblems, staged, stagedCopied = ModStaging.LastCounts.Copied, stagedLinked = ModStaging.LastLinked, stagedKept = ModStaging.LastCounts.Kept,
                 native = active.Any(m => m.HasNative), digest, modlist = ModlistDiff.Encode(compared), syncedWith, premiumLocked = premium.Locked
             };
             break;
@@ -398,12 +449,16 @@ try
             var liveInstall = new InstallLayout(Required("--install"));
             if (!liveInstall.Exists) throw new InvalidDataException($"{liveInstall.Root} is not a HellForge installation.");
             var running = SessionMods.Read(Required("--session-mods"));
-            var liveTarget = LiveModPlan.TargetOf(liveInstall.Mods, File.ReadAllLines(Required("--target")));
+            var targetLines = File.ReadAllLines(Required("--target"));
+            // a recipe's game patch files are rebuilt before the change is planned (ModAssets); one that cannot be stays out
+            var liveAssetProblems = ModAssets.Prepare(targetLines.Where(l => l.Length > 0 && Directory.Exists(l)), () => GameBuilds.Local(liveInstall), Console.Error.WriteLine);
+            var liveTarget = LiveModPlan.TargetOf(liveInstall.Mods, targetLines);
             var livePlan = LiveModPlan.Make(running, liveTarget);
             var changing = livePlan.Changes.Select(c => c.Mod).OfType<ModManifest>().Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
             // every data mod of the target with its data built (the change's, and those that stay: their bytes come back
             // where a removed mod's go); the change's source mods built
-            var (withData, liveProblems) = ModDataCache.Prepare(liveInstall, liveTarget.Where(m => changing.Contains(m.Id) || LiveModPlan.HasData(m)).ToList(), Console.Error.WriteLine);
+            var (withData, liveProblems) = ModDataCache.Prepare(liveInstall, liveTarget.Where(m => changing.Contains(m.Id) || LiveModPlan.HasData(m)).Where(m => m.AssetsPending == null).ToList(), Console.Error.WriteLine);
+            liveProblems.InsertRange(0, liveAssetProblems.Select(p => $"{Path.GetFileName(p.Folder)}: {p.Reason}"));
             var (liveBuilt, liveBuildProblems) = ModBuilds.Prepare(liveInstall, ModSdk.Find(liveInstall.Root), withData.Where(m => changing.Contains(m.Id)).ToList(),
                 SupportedBuild.Current.BuildId, Console.Error.WriteLine);
             liveProblems.AddRange(liveBuildProblems);
@@ -434,15 +489,23 @@ try
         {
             // The Linux wrapper's native agent: every enabled source mod built into temp/mod-builds before the session,
             // with the same key and record the session checks. A mod that fails is reported, and the session leaves it off.
+            // --sync yes: the session after a mod sync (the launcher's --mod-sync) plays the host's mods from the synced store:
+            // those are built too (ModBuilds.ForSession, with the session's --sandbox).
             var buildInstall = new InstallLayout(Path.GetFullPath(Required("--install")));
             if (!buildInstall.Exists) throw new InvalidDataException($"{buildInstall.Root} is not a HellForge installation.");
             var (mods, loadProblems) = ModCatalog.Load(buildInstall.Mods);
             foreach (var problem in loadProblems) Console.Error.WriteLine(problem);
-            var activeMods = ModCatalog.Active(mods);
+            bool Flag(string key) => options.GetValueOrDefault(key) switch
+            {
+                null or "no" => false,
+                "yes" => true,
+                _ => throw new ArgumentException($"{key} takes yes or no.")
+            };
+            var activeMods = ModBuilds.ForSession(buildInstall, mods, Flag("--sync"), Flag("--sandbox"), Console.Error.WriteLine);
             var sourceMods = activeMods.Count(m => m.HasSource);
             var progressFile = options.GetValueOrDefault("--progress");
             var (prebuilt, buildProblems) = ModBuilds.Prepare(buildInstall, ModSdk.Find(buildInstall.Root), activeMods, SupportedBuild.Current.BuildId,
-                Console.Error.WriteLine, installTools: false, progress: p => WriteProgress(progressFile, p));
+                Console.Error.WriteLine, new(InstallTools: false), progress: p => WriteProgress(progressFile, p));
             result = new { install = buildInstall.Root, sourceMods, built = prebuilt.Count(m => m.HasSource), problems = buildProblems };
             break;
         }
@@ -476,8 +539,10 @@ try
             string dll;
             if (layout != null && built.HasSource)
             {
-                // as a session does: the pinned Zig fetched on first need, then the session's build
-                var (ready, buildProblems) = ModBuilds.Prepare(layout, ModSdk.Find(modFolder), [built], SupportedBuild.Current.BuildId, Console.Error.WriteLine);
+                // as a session does: the pinned Zig fetched on first need, then the session's build (compiled again even when
+                // its unchanged sources did not compile before: Build now on the Mods page runs this on Linux)
+                var (ready, buildProblems) = ModBuilds.Prepare(layout, ModSdk.Find(modFolder), [built], SupportedBuild.Current.BuildId, Console.Error.WriteLine,
+                    new(RebuildFailed: true));
                 if (buildProblems.Count > 0) throw new InvalidDataException(string.Join("\n", buildProblems));
                 dll = ready[0].BuiltDll!;
             }
@@ -504,57 +569,66 @@ try
             }
             var outFolder = options.TryGetValue("--out", out var packageOut) ? packageOut
                 : layout?.Exports ?? throw new ArgumentException("Pass --out <folder>: the mod is not in an installation's mods folder.");
-            var zipPath = ModPackage.Create(mod, outFolder);
-            result = new { mod.Id, mod.Version, zip = zipPath, files = ModPackage.Files(mod).Count, kilobytes = new FileInfo(zipPath).Length / 1024 };
+            // Game patch files never go out with Arrowhead's bytes in them: they are stripped first (AssetSharing.Package), and
+            // the stripped copy is what is zipped. A mod that already ships a recipe, or has no patch files, is zipped as it is.
+            using var packageCancel = new CancellationTokenSource();
+            var packaged = AssetSharing.Package(mod, outFolder, AssetCommands.Context(layout, options.GetValueOrDefault("--history") == "yes", packageCancel));
+            if (packaged.Assets != null) Console.Error.WriteLine($"{packaged.Assets.Result.Summary}\nReport: {packaged.Assets.ReportPath}");
+            result = new { mod.Id, mod.Version, zip = packaged.Zip, files = packaged.Files, kilobytes = new FileInfo(packaged.Zip).Length / 1024, assets = packaged.Assets?.Result.Summary,
+                assetReport = packaged.Assets?.ReportPath };
             break;
         }
+        case "assets-check":
+        case "assets-strip":
+        {
+            var modFolder = Path.GetFullPath(Required("--mod"));
+            var assetInstall = AssetCommands.Installation(options.GetValueOrDefault("--install"), modFolder);
+            string? stripOut = null;
+            if (args[0] == "assets-strip")
+                stripOut = options.TryGetValue("--out", out var given) ? Path.GetFullPath(given)
+                    : assetInstall != null ? Path.Combine(assetInstall.Exports, Path.GetFileName(Path.TrimEndingDirectorySeparator(modFolder)))
+                    : throw new ArgumentException("Pass --out <folder>: the mod is not in an installation's mods folder.");
+            var check = AssetCommands.Run(modFolder, assetInstall, stripOut, history: options.GetValueOrDefault("--history") == "yes");
+            var (outcome, report) = (check.Result, check.ReportPath);
+            result = new
+            {
+                outcome = outcome.Outcome.ToString(), summary = outcome.Summary, patchBytes = outcome.ModBytes, gameBytes = outcome.FromGame,
+                unknownParts = outcome.Unknown.Count, unknownBytes = outcome.Unknown.Sum(r => r.Literal), mod = outcome.ShippedFolder, report,
+            };
+            Console.WriteLine(JsonSerializer.Serialize(result, CopyPreparer.JsonOptions));
+            return outcome.Outcome == AssetKit.Outcome.Failed ? 1 : args[0] == "assets-check" && outcome.Outcome == AssetKit.Outcome.Stripped ? 3 : 0;
+        }
+        case "assets-rebuild":
+        {
+            var modFolder = Path.GetFullPath(Required("--mod"));
+            var assetInstall = AssetCommands.Installation(options.GetValueOrDefault("--install"), modFolder);
+            var specNeedsSteam = AssetFetch.SpecNeedsSteam(modFolder);
+            if (!ModAssets.HasRecipe(modFolder) && !specNeedsSteam)
+                throw new InvalidDataException($"The mod has no recipe ({Recipe.FileName}) and no data spec resources of past builds to fetch: there is nothing to rebuild.");
+            var rebuildProblems = ModAssets.Prepare([modFolder], () => GameBuilds.Local(assetInstall), Console.Error.WriteLine);
+            var steamWanted = options.GetValueOrDefault("--steam") == "yes";
+            AssetFetch.Fetched? fetched = null;
+            if (steamWanted && (rebuildProblems is [{ Missing: { Count: > 0 } }] || specNeedsSteam))
+                fetched = AssetCommands.RebuildFromSteam(modFolder, assetInstall, recipe: rebuildProblems.Count > 0);
+            else if (rebuildProblems.Count > 0 || specNeedsSteam)
+                throw new InvalidDataException((rebuildProblems.Count > 0 ? rebuildProblems[0].Reason : "its data spec takes resources from past builds that are not fetched yet") +
+                    (rebuildProblems is [] or [{ Missing: not null }] ? "; --steam yes fetches them from Steam" : ""));
+            var rebuilt = ModAssets.Read(modFolder);
+            result = new { mod = modFolder, files = rebuilt.Outputs, ready = rebuilt.Ready, fetchedFrom = fetched?.Builds, downloadedBytes = fetched?.Downloaded };
+            break;
+        }
+        case "steam-signout":
+            result = new { signedOut = SteamLogins.Default.Forget(), file = SteamLogins.Default.OwnPath };
+            break;
         case "mod-hash":
         {
             var hashed = ModHash.Of(Path.GetFullPath(Required("--mod")));
-            // --install: against that installation's saved published list (VerifiedMods), not only the embedded one
-            if (options.TryGetValue("--install", out var hashInstall)) VerifiedMods.UseInstallation(new InstallLayout(hashInstall));
             result = new
             {
                 hashed.Id, hashed.Name, hashed.Version, hashed.Hash, @class = ModSets.ClassName(hashed.Class), hashed.Files, hashed.Url,
-                verified = VerifiedMods.Contains(hashed.Id, hashed.Hash), verifiedSerial = VerifiedMods.Current.Serial,
+                verified = VerifiedMods.Contains(hashed.Id, hashed.Hash),
                 entry = new { id = hashed.Id, name = hashed.Name, version = hashed.Version, hash = hashed.Hash, reviewed = "YYYY-MM-DD, reviewer: what was reviewed" }
             };
-            break;
-        }
-        // The published verified list (docs/verified-list.md), for maintainers: a signing key pair, a list's signature, and
-        // a check of a list and signature against the key this HellForge carries (VerifiedMods.PublicKey).
-        case "verified-list-keygen":
-        {
-            var keyFile = Path.GetFullPath(Required("--out"));
-            if (File.Exists(keyFile)) throw new IOException($"{keyFile} exists already; a key is never overwritten.");
-            var (privateKey, publicKey) = VerifiedMods.NewKey();
-            File.WriteAllText(keyFile, privateKey);
-            result = new { privateKey = keyFile, publicKey, next = "Put publicKey in VerifiedMods.PublicKey; keep the private key off the server and out of the repository." };
-            break;
-        }
-        case "verified-list-sign":
-        {
-            var listFile = Path.GetFullPath(Required("--list"));
-            var list = File.ReadAllBytes(listFile);
-            var pem = File.ReadAllText(Path.GetFullPath(Required("--key")));
-            var signature = VerifiedMods.Sign(list, pem);
-            var publicKey = VerifiedMods.PublicKeyOf(pem);
-            var listing = VerifiedMods.Checked(list, signature, publicKey);
-            File.WriteAllText(listFile + VerifiedMods.SignatureSuffix, signature);
-            result = new
-            {
-                listing.Serial, mods = listing.Mods.Count, signature = listFile + VerifiedMods.SignatureSuffix, publicKey,
-                hellForgeKey = publicKey == VerifiedMods.PublicKey, embeddedSerial = VerifiedMods.Embedded.Serial
-            };
-            break;
-        }
-        case "verified-list-check":
-        {
-            var listFile = Path.GetFullPath(Required("--list"));
-            if (VerifiedMods.PublicKey.Length == 0) throw new InvalidDataException("This HellForge carries no key for the published list (VerifiedMods.PublicKey).");
-            var listing = VerifiedMods.Checked(File.ReadAllBytes(listFile),
-                File.ReadAllText(Path.GetFullPath(options.GetValueOrDefault("--signature") ?? listFile + VerifiedMods.SignatureSuffix)), VerifiedMods.PublicKey);
-            result = new { listing.Serial, mods = listing.Mods.Select(m => $"{m.Id} {m.Version}"), embeddedSerial = VerifiedMods.Embedded.Serial };
             break;
         }
         case "mod-tools":
@@ -620,6 +694,16 @@ try
                 result = new { output, files = ModDataBuilder.Build(spec, modFolder, game, output, steamGame) };
             }
             else result = new { checkedSpec = Path.Combine(modFolder, DataSpecs.FileName), patches = spec.Patches.Count, resources, inputs = spec.Inputs };
+            break;
+        }
+        case "unit-joints":
+        {
+            // A unit's joints for a mod's animations: thin name hash, name where known, local rest transform.
+            using var game = new GameDataReader(options.TryGetValue("--install", out var jointsInstall) ? Path.Combine(new InstallLayout(jointsInstall).Game, "data") : Required("--game-data"));
+            result = AnimationSet.Named(game, Required("--unit")).Select(j => new
+            {
+                hash = $"0x{j.Joint.Name:X8}", name = j.Name, position = j.Joint.Position, rotation = j.Joint.Rotation, scale = j.Joint.Scale
+            }).ToList();
             break;
         }
         case "migrate":

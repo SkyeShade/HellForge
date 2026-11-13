@@ -1,5 +1,7 @@
 # Troubleshooting
 
+<!-- diataxis: how-to -->
+
 For players: problems people hit when setting up or playing HellForge, the message HellForge shows for each, and what
 to do. The launcher's messages are quoted as it shows them. If your problem is not here, [collect the logs](#collecting-logs)
 and [ask](#where-to-ask).
@@ -16,19 +18,28 @@ and [ask](#where-to-ask).
 
 ### Steam must be running and signed in
 
+Start Steam, sign in to the account that owns the game, and try again. The launcher's idle line is a reminder: "Ready.
+Steam must be running and signed in."
+
+When the check fails:
+
+- setup says "The ownership check did not pass: ... Make sure Steam is running and signed in, then start setup again"
+- a session fails with "Steam ownership was not confirmed: ..." followed by the reason
+
 HellForge keeps the game's Steam ownership check. It runs at setup, and before a launch unless a check passed within the
-last 7 days for the same installation, the same Steam account (the one signed in now) and the same game build; another
-account, Steam signed out, a new game build or an older check runs it again. Either way Steam must be running and signed
-in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing. When it fails, setup says "The
-ownership check did not pass: ... Make sure Steam is running and signed in, then start setup again", and a session fails
-with "Steam ownership was not confirmed: ..." followed by the reason. A failed check is never reused.
+last 7 days for all of these:
+
+- the same installation
+- the same Steam account (the one signed in now)
+- the same game build
+
+Another account, Steam signed out, a new game build or an older check runs it again. Either way Steam must be running
+and signed in to an account that owns HELLDIVERS 2 or has it through Steam Family Sharing. A failed check is never
+reused.
 
 The last passed check is kept in the installation's `temp\steam-ownership.json`, sealed for your Windows account.
 Deleting it, `HellForge.Cli play --full-ownership-check yes` or Settings > Installation's check and repair makes
 HellForge ask Steam again.
-
-Start Steam, sign in to the account that owns the game, and try again. The launcher's idle line is a reminder: "Ready.
-Steam must be running and signed in."
 
 ### "Steam is not installed on this PC"
 
@@ -52,16 +63,20 @@ Windows SmartScreen may warn that `HellForge-Setup.exe` is unrecognised. It is n
 anyway.
 
 On Linux, the graphical installer asks for a Proton prefix instead of an installation folder; see
-[linux.md](linux.md#setting-it-up).
+[linux.md](linux.md#setting-it-up). It refuses a prefix inside a `steamapps` folder. A launcher that says "HellForge
+cannot run from inside Steam's steamapps folder" was unpacked into one: run the installer again with a prefix folder
+outside `steamapps`, then delete the copy the message names.
 
 ### "This PC runs Windows 10 version ..." (Setup or the launcher closes as it starts)
 
+Setup checks this first and names your Windows. Update to Windows 10 version 22H2 or Windows 11 in Settings > Update &
+Security > Windows Update (on 22H2, install the latest updates), then run Setup again. Run `winver` to see your version
+and build.
+
 HellForge's programs are built on .NET 10, which uses the processor's hardware stack protection (Intel 11th generation
-and AMD Ryzen 5000 and later). Windows 10 needs Microsoft's fixes for it from October 2024 or later; without them every
+and AMD Ryzen 5000 and later). Windows 10 needs Microsoft's fixes for it from October 2024 or later. Without them every
 HellForge program closes as soon as it starts, and the Application event log shows ".NET Runtime" and "Application
-Error" entries with 0x80131506. Windows 10 2004, 20H2 and 21H1 never got those fixes. Setup checks this first and names
-your Windows: update to Windows 10 version 22H2 or Windows 11 in Settings > Update & Security > Windows Update (on 22H2,
-install the latest updates), then run Setup again. Run `winver` to see your version and build.
+Error" entries with 0x80131506. Windows 10 2004, 20H2 and 21H1 never got those fixes.
 
 ### Setup cannot find the supported build
 
@@ -77,9 +92,11 @@ all three ways, and every way has it:
 - **No phone: sign in with SteamCMD:** type your Steam account name (the name you sign in with) and press Start SteamCMD.
   Setup gets SteamCMD, Valve's own command-line Steam tool, from Valve and opens it in a window of its own. Type your
   password in the SteamCMD window; it goes to Valve's own tool, not HellForge. If Steam asks for a Steam Guard code
-  (by email, or from the Steam app), type it there too. SteamCMD then downloads the build; the progress shows under Game
-  files. Setup checks every file and moves it into the installation, then removes SteamCMD and what it remembered of the
-  sign-in. It needs about 24 GB free on the installation's drive.
+  (by email, or from the Steam app), type it there too.
+
+  SteamCMD then downloads the build; the progress shows under Game files. Setup checks every file and moves it into the
+  installation, then removes SteamCMD and what it remembered of the sign-in. It needs about 24 GB free on the
+  installation's drive.
 - **Use the Steam app:** no sign-in in HellForge. The Steam app on your PC downloads the build through its console, and
   setup copies it (the steps below).
 
@@ -87,17 +104,26 @@ HellForge keeps nothing of a sign-in, so the next download asks again. Every fil
 and your Steam install is only read. Pause download stops the QR code's download; setup continues where it stopped the
 next time, after you sign in again.
 
-When you choose the Steam app, when Steam does not allow the download after a sign-in, when SteamCMD cannot be set up
-(below), and always on Linux, the card shows the Steam app's steps, with one `download_depot 553850 <depot> <manifest>`
-command per depot. To use them:
+The card shows the Steam app's steps, with one `download_depot 553850 <depot> <manifest>` command per depot:
+
+- when you choose the Steam app
+- when Steam does not allow the download after a sign-in
+- when SteamCMD cannot be set up (below)
+- always in Linux's [Proton-only fallback](linux.md#proton-only-fallback), which cannot reach Steam itself
+
+On Linux, SteamCMD opens in a terminal window (Konsole, for example). The card leaves SteamCMD out when it finds no
+terminal window program.
+
+To use them:
 
 1. Press Open the Steam console, or open `steam://open/console` yourself.
 2. Copy the first command (each has a Copy button), paste it into the console and press Enter. Do the same for each
    command, one at a time.
 3. Watch the progress under Game files: Steam shows no progress in its library for this download. Steam puts it in
-   `<Steam>/steamapps/content/app_553850/` (about 24 GB); the Linux Steam client may use
-   `steamrt64/steamapps/content/app_553850/` or `ubuntu12_64/steamapps/content/app_553850/` instead, and setup looks in
-   each. On Linux the bar stays empty, and setup reads the download directly from Steam's content folder; do not move it
+   `<Steam>/steamapps/content/app_553850/` (about 24 GB). The Linux Steam client often uses
+   `ubuntu12_32/steamapps/content/app_553850/` under the Steam folder instead (or `ubuntu12_64` or `steamrt64`). Setup
+   looks in each and names the folder it found under the progress.
+   On Linux the bar stays empty, and setup reads the download directly from Steam's content folder; do not move it
    into the prefix: see [Steam's download of the supported build](linux.md#steams-download-of-the-supported-build).
 4. Setup continues by itself when every depot is complete and copies the game from the download. "Delete Steam's
    download after copying" is ticked unless you untick it, and frees the space afterwards.
@@ -133,16 +159,22 @@ continues where it stopped the next time you run setup.
 
 ### Microsoft Visual C++ runtimes
 
-The game needs two Microsoft runtimes that do not come with it: the Visual C++ 2012 Redistributable (x64), for the
-game's `lua51.dll` (MSVCR110.dll), and the Visual C++ 2015-2022 (v14) Redistributable (x64), for PartyWin, PlayFab,
-libcurl, XeSS, EOS and the upscalers (VCRUNTIME140.dll, VCRUNTIME140_1.dll, MSVCP140.dll). Steam's own install of the
-game no longer adds the 2012 one, so a fresh PC often lacks it.
+The game needs two Microsoft runtimes that do not come with it:
 
-Setup, and PLAY in an installation that lacks one (one set up with 0.2, or a runtime removed since), download
-Microsoft's installer, check it against the SHA-256 HellForge pins, and run it silently after Windows asks for
-permission. PLAY shows INSTALLING meanwhile. A runtime counts as missing when its DLL is not in System32 as a 64-bit
-DLL, so one Windows lists as installed whose DLL is gone is repaired, and a 32-bit copy put there by hand does not
-count. The installer's log is in the installation's `temp` folder.
+| Runtime | Used by | DLLs |
+|---|---|---|
+| Visual C++ 2012 Redistributable (x64) | the game's `lua51.dll` | MSVCR110.dll |
+| Visual C++ 2015-2022 (v14) Redistributable (x64) | PartyWin, PlayFab, libcurl, XeSS, EOS and the upscalers | VCRUNTIME140.dll, VCRUNTIME140_1.dll, MSVCP140.dll |
+
+Steam's own install of the game no longer adds the 2012 one, so a fresh PC often lacks it.
+
+Setup installs a missing runtime. So does PLAY in an installation that lacks one (one set up with 0.2, or a runtime
+removed since). They download Microsoft's installer, check it against the SHA-256 HellForge pins, and run it silently
+after Windows asks for permission. PLAY shows INSTALLING meanwhile. The installer's log is in the installation's `temp`
+folder.
+
+A runtime counts as missing when its DLL is not in System32 as a 64-bit DLL. So one Windows lists as installed whose DLL
+is gone is repaired, and a 32-bit copy put there by hand does not count.
 
 Only when that fails (the permission prompt declined, no connection to Microsoft, another installation running) does
 the message say why and give Microsoft's download link:
@@ -200,10 +232,10 @@ Cases HellForge already recognises:
   [the game could not be prepared](#the-game-could-not-be-prepared-or-connected), and
   [Smart App Control](#smart-app-control) for the second.
 - Sync Inventory's capture, `app\capture\HellForge.CaptureProxy.exe`, does not start. It changes the hosts file and adds
-  a certificate to Windows for the sync, which some security programs block. The launcher says which step was refused
-  and, when Windows Security Center lists a security program other than Microsoft Defender (Kaspersky, Avast, Norton and
-  the like), names it and the exact file to add to its exclusions. In Kaspersky, also tick "Do not restrict application
-  activity" in that exclusion. Other reasons the launcher gives, and what to do:
+  a certificate to Windows for the sync, which some security programs block. The launcher says which step was refused.
+  When Windows Security Center lists a security program other than Microsoft Defender (Kaspersky, Avast, Norton and the
+  like), the launcher also names it and the exact file to add to its exclusions. In Kaspersky, also tick "Do not
+  restrict application activity" in that exclusion. Other reasons the launcher gives, and what to do:
 
   | Message | What to do |
   | --- | --- |
@@ -212,8 +244,8 @@ Cases HellForge already recognises:
   | "The capture has not got ready after a minute; still waiting." | A security program is usually checking or holding the capture. It goes on if it is let through. |
   | "The capture could not reach HELLDIVERS 2's servers" | Check the internet connection. |
 
-  An earlier sync's capture that was left running (the launcher closed during a sync) is stopped by the next sync
-  itself, along with its hosts line and certificate: restarting the PC is not needed for that.
+  A capture is left running when the launcher closed during a sync. The next sync stops it itself, along with its hosts
+  line and certificate: restarting the PC is not needed for that.
 
 ## Smart App Control
 
@@ -237,9 +269,10 @@ Mods with code are blocked as well, even once HellForge is signed: the mod compi
 The session's `modloader.log` then says the mod was "not loaded (... Windows error 4551, an Application Control policy
 such as Smart App Control blocked it)".
 
-When reporting it, add the CodeIntegrity entries that name the blocked file: Event Viewer > Applications and Services
-Logs > Microsoft > Windows > CodeIntegrity > Operational, events 3077, 3033 and 3089 (right-click > Save Selected
-Events, or copy their General tab), along with [the session's logs](#collecting-logs).
+When reporting it, add the CodeIntegrity entries that name the blocked file, along with
+[the session's logs](#collecting-logs). They are in Event Viewer > Applications and Services Logs > Microsoft >
+Windows > CodeIntegrity > Operational, events 3077, 3033 and 3089. Use right-click > Save Selected Events, or copy
+their General tab.
 
 ## Sessions that fail
 
@@ -255,36 +288,41 @@ the cryo pod." Press STOP, then PLAY again: the next launch goes through.
 
 If the game closes its window but keeps running, HellForge ends it 30 seconds later and finishes the session as STOP
 does; the Play page says so when the session ends. If the window stays open but stops responding, press STOP in the
-launcher: it ends the game and everything the session started. Either way, the session's `result.json` records what the
-game was still doing (`stuckQuitting`, `gameHung` or `gameAtStop`), and Save logs to Desktop adds
-`processes-now.txt`, the session's programs that were still running when you saved the logs. When you report it, send
-that zip; if you can, save it while the game is still stuck.
+launcher: it ends the game and everything the session started.
+
+Either way, the session's `result.json` records what the game was still doing (`stuckQuitting`, `gameHung` or
+`gameAtStop`). Save logs to Desktop adds `processes-now.txt`, the session's programs that were still running when you
+saved the logs. When you report it, send that zip; if you can, save it while the game is still stuck.
 
 ### A black screen for minutes when the game starts
 
 Without a shader cache the game builds one before it shows anything, which can take several minutes with the window
 black. The launcher says "Building the shader cache (first start only, this can take a few minutes)..." meanwhile. A new
-installation starts from the normal game's shader cache when there is one, and a sandboxed session takes a copy of the
-installation's and brings it back at the end, so this should happen once.
+installation starts from the normal game's shader cache when there is one. A sandboxed session takes a copy of the
+installation's and brings it back at the end. So this should happen once.
+
+If every start is slow, play one session and quit from the game's own menu. Then send Save logs to Desktop from the next
+one. Its `result.json` says how big the shader cache was at the start and the end, whether the game wrote it, and how
+long the game took to its first request.
 
 The game saves its shader cache only when it closes by itself. STOP and closing the launcher ask it to close and wait
-up to 30 seconds; a game that crashes, or that does not close in time, keeps the cache it started with. If every start
-is slow, play one session and quit from the game's own menu, then send Save logs to Desktop from the next one: its
-`result.json` says how big the shader cache was at the start and the end, whether the game wrote it, and how long the
-game took to its first request.
+up to 30 seconds; a game that crashes, or that does not close in time, keeps the cache it started with.
 
 ### Messages before the game starts
 
 | Message | What to do |
 |---|---|
 | "Existing game or GameGuard process." | HELLDIVERS 2 (or its GameGuard) is already running. Close it, then press PLAY. |
+| "Sync your inventory before the first session." or "This installation has no game catalogue yet. Run Sync Inventory once..." | HellForge doesn't ship the game's item and warbond catalogues. Run Profile > Account sync > Sync Inventory once on any profile, then press PLAY. The launcher says so when PLAY is pressed, before it starts anything. |
+| "The game catalogue from the last Sync Inventory cannot be used (...): sync again." | Run Sync Inventory again. `logs/sync-*/launcher.log` says what was wrong with the last one. |
+| "HellForge's pinned catalogue (...) is missing: repair or reinstall HellForge." | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. |
 | "Another HellForge session is still running for this installation..." | Wait for it to end, or close `HellForge.Session.exe` in Task Manager (or restart the PC), then press PLAY again. |
 | "The game copy is not the supported build (...); repair it from the launcher." | Run Settings > Installation > Check and repair. |
 | "The game needs a Microsoft runtime this PC does not have..." | Install the runtime it names from the link it gives, then press PLAY again ([Visual C++ runtimes](#microsoft-visual-c-runtimes)). |
 | A message ending in "reinstall HellForge" (stand-ins, mod loader or local backend missing or changed) | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. If it comes back, check your antivirus ([above](#antivirus)). |
 | "Windows administrator consent was not given for the network block." | Press PLAY again and answer Yes to the Windows prompt. |
 | "The launch options cannot be used." | Fix or clear Settings > Launch options; the reason shows under the box. |
-| "The session runner exited before starting." | On Windows, check `logs\session-runner.log`. On Linux, also check `logs/linux-session-wrapper.log` for Bash and Proton output; that file can identify failures that happen before the Windows session runner starts. |
+| "The session runner exited before starting." | The line under it is the session runner's own reason, from `logs\session-runner.log`; look that reason up in this table. On Linux, when the runner never ran, it is the Linux wrapper's reason from `logs/linux-session-wrapper.log`. Where the wrapper gave none, it is the last Bash or Proton line before the wrapper stopped, and the line says so: open that log for what led to it. With no line under it, open those logs. |
 | "HellForge: Steam Linux Runtime: host mode: ..." | Information, not an error: Proton runs on the host for the reason shown (the Proton names no runtime, the runtime is not installed, or `HELLFORGE_STEAM_RUNTIME=off`). To use the runtime, start any game with that Proton once in Steam so Steam installs the runtime it names, and do not set `HELLFORGE_STEAM_RUNTIME=off`. See [linux.md](linux.md#proton-in-the-steam-linux-runtime). |
 | "the Linux sandbox self-test was run in host mode, but this session uses the Steam Linux Runtime container" (or the reverse), or "... belongs to another Steam Linux Runtime" | The sandbox self-test must run in the mode the session uses, and again after Steam updates the runtime. Run Setup again (it runs the self-test), or start the session again: the wrapper refreshes the record. |
 | "the Linux sandbox self-test could not identify the Steam Linux Runtime (VERSIONS.txt is missing or unreadable)" | The runtime's folder is damaged. In Steam, find the runtime under Library > Tools (for example Steam Linux Runtime 4.0), use Properties > Installed Files > Verify integrity, then run Setup again. |
@@ -313,13 +351,15 @@ On Linux, **Sync Inventory** can stop before the game opens with these messages.
 | "Wine could not confirm the capture CA ...: Wine reg export did not confirm the capture CA (exit ...): ...; system.reg holds the expected Blob" | The import exited 0 and `system.reg` has the key, but `reg export` produced no readable export file or Blob. That is the added check; send `launcher.log`. |
 | "Wine could not confirm the capture CA ...: reg export holds the expected Blob; the key is not in system.reg: the import did not land" | The export file has the Blob but the prefix's `system.reg` does not. The import did not reach the store. |
 | "Wine could not confirm the capture CA ...: ... the export file's Blob does not match the certificate ..." | The export succeeded but its Blob differs from the one written. Close Steam's game/tools in that prefix, then sync again; send `launcher.log`. |
-| "The capture CA record names the Steam prefix ..., but the HELLDIVERS 2 library's prefix is ... (a second Steam library?)" | The sync recorded a CA for a different `steamapps/compatdata/553850`. Start the game once from the library Steam actually uses, then sync again. |
+| "The capture CA record names the Steam prefix ..., but the HELLDIVERS 2 library's prefix is ... (a second Steam library?)" | The sync recorded a CA for a different `steamapps/compatdata/553850`. Start the game once from the library Steam uses, then sync again. |
 | "The prefix version changed from ... to ... during the import" | Evidence that a Proton upgraded the prefix while the CA was being imported. If the sync failed, close Steam's game/tools in that prefix and sync again. |
 | "Wine reg import could not remove the capture CA (exit ..., see launcher.log)", "The capture CA removal is not proven: reg export ...", or "Wine reg export did not find the capture CA key, but the key is in system.reg after the flush; the key is not proven gone." | Cleanup kept the `capture-ca.json` record so the next launcher start retries. Empty `reg export` output alone is never "removed"; close the game/tools in that prefix, then use **Clean up** again. |
 | "The Proton that opens HELLDIVERS 2's prefix could not be resolved..." | HellForge looked for Steam's `CompatToolMapping` for 553850 or its `0` default, then the prefix's `compatdata/553850/config_info` and `version`. Start HELLDIVERS 2 once through Steam: running it writes `config_info`, and the next sync can follow it. |
 | "The capture helper was not installed; nothing changed." | The password dialog was dismissed, the password was denied, or the launcher could not show one. Sync again to get the confirmation and dialog again. |
 | "pkexec is not installed, so the launcher cannot show the desktop password dialog." or "No polkit authentication agent is running..." | The launcher could not show the desktop dialog. Its message includes the exact `sudo bash .../allow-capture.sh` command to run once from a terminal. |
 | "SteamOS 3.x may have no password set: run passwd first, then sync again." | Set a password with `passwd`, then press Sync Inventory again; the launcher installs the helper through the polkit dialog. |
+| "The helper and its sudoers rule were installed, but the helper's check still fails. sudo asks for a password..." | Another sudoers rule is read after `/etc/sudoers.d/zz-hellforge-capture` and asks for a password: a file in `/etc/sudoers.d` that sorts later, or a line in `/etc/sudoers` below its `@includedir`. Rename or move that rule so HellForge's is read last, then sync again. |
+| "... No folder for the root-owned helper can be used: ..." | The installer found no folder that only root can change. The lines after it name each folder and the reason: read-only, not owned by root, or writable by other accounts. Make one of them root-owned and not writable by a group you are in (for example `sudo chown root:root /opt; sudo chmod 755 /opt`), then sync again ([the helper folder](linux-account-sync.md#the-root-owned-helper)). |
 | "The helper installer finished, but the installed copies still do not match..." | The install ran but the helper/relay hashes still differ. The message includes the terminal installer command; run it, then sync again. |
 
 On Linux, `hellforge-linux.sh` refuses before Steam and Proton when HellForge was started inside Flatpak, a Snap or
@@ -341,19 +381,22 @@ When the game closes before both are made, usually because it crashed while star
 - "The game closed while starting, before HellForge could connect it to the local backend (...)."
 
 In brackets are the game's exit code, what it means (below) and, when Windows recorded the crash, the file the game
-crashed in: "Windows recorded the crash in RTSSHooks64.dll+0x2f3c1". When that file is not part of the game, HellForge
-or Windows, another program put it into the game: an overlay, a recorder, RGB lighting or security software. The
-message names it: close that program, turn off its in-game overlay or add the HellForge folder to its exclusions, then
-press PLAY. Otherwise press PLAY again, and if the game closes again, save the crash report the Play page offers and
-attach it to an issue: its `summary.txt` has Windows' record of the crash. (0.3.0-beta said "The game could not be
-connected to the local backend." for these too.)
+crashed in: "Windows recorded the crash in RTSSHooks64.dll+0x2f3c1". (0.3.0-beta said "The game could not be connected
+to the local backend." for these too.)
+
+- When that file is not part of the game, HellForge or Windows, another program put it into the game: an overlay, a
+  recorder, RGB lighting or security software. The message names it: close that program, turn off its in-game overlay
+  or add the HellForge folder to its exclusions, then press PLAY.
+- Otherwise press PLAY again. If the game closes again, save the crash report the Play page offers and attach it to an
+  issue: its `summary.txt` has Windows' record of the crash.
 
 When the game is still running and an edit was not made:
 
 - "The game could not be prepared for the local backend."
-- "The game could not be connected to the local backend: ..." and why: the game had not loaded its code (`game.dll`)
-  after 45 seconds, its code in memory was not what HellForge expects, or HellForge's change to its memory did not go
-  through.
+- "The game could not be connected to the local backend: ..." and why, one of these:
+  - the game had not loaded its code (`game.dll`) after 45 seconds
+  - its code in memory was not what HellForge expects
+  - HellForge's change to its memory did not go through
 
 Press PLAY once more. If it fails the same way again, [save the logs](#collecting-logs) and report it. The session's
 `result.json` keeps how each edit ended (`prepare`, `connect`) and Windows' record of a crash (`windowsCrash`).
@@ -377,39 +420,62 @@ Installation > Check and repair. For the security codes, see
 
 ### Other network block messages
 
-"The network block is not holding" means the session's check of the network block did not pass: the local backend must
-answer on this PC, and a connection to the outside must be refused by the block. (Before 0.3.0 the message was
+"The network block is not holding" means the session's check of the network block did not pass. The check needs the
+local backend to answer on this PC, and the block to refuse a connection to the outside. (Before 0.3.0 the message was
 "Required loopback/egress controls failed.") The message says which part failed:
 
-- **"not stopping the game's connections to the internet"**: the block's filters no longer apply to the game. They name
-  each program by its drive's internal device path, which for a drive other than Windows' own can change after a
-  restart (for example with a USB drive or another disk plugged in), and they stay behind when the HellForge folder is
-  moved. The session places the block again by itself, with one Windows prompt. If it still does not hold, a VPN, a
-  proxy or a security program is letting the game's traffic past it: turn it off or exclude the HellForge folder.
+- **"not stopping the game's connections to the internet"**: the block's filters no longer apply to the game. The
+  session places the block again by itself, with one Windows prompt. If it still does not hold, a VPN, a proxy or a
+  security program is letting the game's traffic past it: turn it off or exclude the HellForge folder.
+
+  The filters name each program by its drive's internal device path. For a drive other than Windows' own, that path can
+  change after a restart (for example with a USB drive or another disk plugged in). The filters also stay behind when
+  the HellForge folder is moved.
 - **"stops the game reaching HellForge's own backend"**: usually an older HellForge started on an installation a newer
   one set up. Use the newer HellForge, or run Settings > Installation.
 - **"the game cannot reach HellForge's own backend on this PC"**: another firewall or security program is blocking
   connections inside this PC (loopback). Allow HellForge's folder in it.
+- **"this PC has no internet connection ... checked without one only once it is narrowed"**: the PC is offline, and
+  its block is an older one that does not hold the game to HellForge's backend alone. The session places it again with
+  one Windows prompt; if that does not work, connect to the internet and press Play, or run Settings > Installation.
+
+Without an internet connection the check's TCP connection to the internet fails before the block can refuse it (error
+10050, 10051 or 10065). The block still counts as proved in two cases:
+
+- Windows has no route out, so nothing can leave the PC.
+- The check's UDP datagram to the same address is refused by the block (`externalIpv4UdpError` 10013 in the report).
+  The block judges it the same way as a connection, and it does not depend on the network answering. This is the case
+  for Wi-Fi joined to a network with no way on.
+
+The session then checks the block again every 10 seconds while the game runs, and at once when Windows starts sending
+through another adapter. A failed check runs once more; if it fails again, HellForge stops the game ("The network
+block's check failed while the game was running"). `network-probe-online.json` records the latest of those checks.
 
 The session's `network-probe.json` (and `network-probe-again.json` after the block was placed again) records what the
 check saw; include the logs when you ask.
 
-"Network block was not installed: Linked target path: <path> is a link or a special file" means a folder or file on
-the way to the game copy is a link: a junction or symbolic link (a Documents folder moved to another drive is often
-one), a OneDrive or other cloud placeholder, or a file compressed with CompactGUI or `compact /exe`. The block refuses
-it because a link could point its files or rules elsewhere. Move HellForge to a plain folder (for example
-`C:\HellForge`), or undo the link or compression at the path the message names, then run Settings > Installation.
+"Network block was not installed: Linked target path: \<path> is a link or a special file" means a folder or file on
+the way to the game copy is a link:
+
+- a junction or symbolic link (a Documents folder moved to another drive is often one)
+- a OneDrive or other cloud placeholder
+- a file compressed with CompactGUI or `compact /exe`
+
+Move HellForge to a plain folder (for example `C:\HellForge`), or undo the link or compression at the path the message
+names, then run Settings > Installation. The block refuses a link because it could point its files or rules elsewhere.
 
 ## In the game
 
 ### Armory icons are blank
 
+`--toaster_mode` in Settings > Launch options turns texture loading off, so the icons never appear: remove it (the
+launcher warns about it under the box). If icons stay blank without it, wait ten seconds on the Armory. Then Save logs
+to Desktop and send the zip: `modloader.log` then has an "armory thumbnails: no progress" line naming the items the
+game is waiting on.
+
 The game draws every Armory icon itself (weapons, helmets, armour, capes), a page at a time, and scrolling hands it the
 next page. An icon stays blank until the game has drawn its page, and the game waits for the item's textures to load
-first. `--toaster_mode` in Settings > Launch options turns texture loading off, so the icons never appear: remove it
-(the launcher warns about it under the box). If icons stay blank without it, wait ten seconds on the Armory, then
-Save logs to Desktop and send the zip: `modloader.log` then has an "armory thumbnails: no progress" line naming the
-items the game is waiting on.
+first.
 
 ## Playing with friends
 
@@ -423,12 +489,17 @@ they are on unless you switch them off.
 
 ## Controllers
 
-With Settings > Sandbox on (the default), Steam Input can't reach the game yet: a Steam Controller, the Steam Deck's
-controls and other controllers that work only through Steam Input do nothing in the game, and Steam may send its
-desktop keys to it instead (A presses Enter, which opens the chat). While the game runs, the launcher says "Steam Input
+With Settings > Sandbox on (the default), Steam Input can't reach the game yet. A Steam Controller, the Steam Deck's
+controls and other controllers that work only through Steam Input do nothing in the game. Steam may send its desktop
+keys to it instead (A presses Enter, which opens the chat). While the game runs, the launcher says "Steam Input
 can't reach the sandboxed game" and names the controller. Xbox controllers work. With the sandbox off Steam Input works,
 but the game runs without the sandbox's protection. [The Steam bridge](steam-bridge.md#controllers-and-steam-input)
 explains why.
+
+On Linux the sandbox passes the game the controllers connected when the session starts, wired or Bluetooth. Connect
+the controller before pressing PLAY; one connected while the game runs needs the next session. Whether Steam Input's
+virtual pad reaches a sandboxed game on Linux is untested. Keyboards and mice reach the game through the window as
+always.
 
 ## Collecting logs
 
@@ -439,19 +510,29 @@ To send them to someone, open the Console page and press Save logs to Desktop. I
 your Desktop as `HellForge-logs-<date>-<time>.zip`, with the game's console logs. If a session is still running, files in
 use may be left out, and the launcher says how many.
 
+The zip's `start` folder holds the logs of a start that stopped before it had a session folder: `session-runner.log`
+and, on Linux, `linux-session-wrapper.log` and `linux-container-refusal.txt`. When no session has run yet, the zip
+holds only that folder, so the button also works after a first PLAY that failed.
+
 In the text files in the zip, your Windows user folder is written as `%USERPROFILE%` (a Linux home folder as `~`) and the
 PC's name as `PC`. Paths stay readable. The zip still names Steam accounts by their id. Files that are not text, such
 as a crash dump, go in as they are.
 
-When a session ends in a crash, the Play page says so, with the game's exit code and what it means, and offers Save
-logs to Desktop and Save crash report. Save crash report saves one zip to your Desktop
-(`HellForge-crash-report-<date>-<time>.zip`) made to be attached to a public GitHub issue: a `summary.txt` with
-HellForge's, the engine's and the game's versions, your Windows version and graphics driver, the session's settings,
-where the game crashed and which mods ran, and the session's logs. On top of the user folder and the PC's name, it
-leaves out Steam ids, IP addresses and the names of the other players HellForge's logs give. The game's own logs can
-name players in ways HellForge does not know, so read `summary.txt` before you post it. If the session wrote a crash
-dump, the launcher asks whether to add it, since a dump cannot be scrubbed. Open a GitHub issue then opens the
-new-issue page; nothing is sent until you attach the zip yourself.
+When a session ends in a crash, the Play page says so, with the game's exit code and what it means. It offers Save logs
+to Desktop and Save crash report.
+
+Save crash report saves one zip to your Desktop (`HellForge-crash-report-<date>-<time>.zip`), made to be attached to a
+public GitHub issue. It holds the session's logs and a `summary.txt` with:
+
+- HellForge's, the engine's and the game's versions
+- your Windows version and graphics driver
+- the session's settings
+- where the game crashed and which mods ran
+
+On top of the user folder and the PC's name, it leaves out Steam ids, IP addresses and the names of the other players
+HellForge's logs give. The game's own logs can name players in ways HellForge does not know, so read `summary.txt`
+before you post it. If the session wrote a crash dump, the launcher asks whether to add it, since a dump cannot be
+scrubbed. Open a GitHub issue then opens the new-issue page; nothing is sent until you attach the zip yourself.
 
 Settings > Troubleshooting has two switches for harder problems. Both apply to the next session.
 

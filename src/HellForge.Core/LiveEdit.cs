@@ -35,7 +35,7 @@ public sealed record LiveResult(bool Ok, string Detail, uint? Bits = null)
 // One lobby of the in-game lobby browser's list (LiveEditServer.BrowseLobbyAsync): words as native/mod-loader/live_browse.c
 // reads them. Verdict: ready, download, trust, unjoinable, blocked, full, locked or unknown; Flags: friend, mission, joinable.
 // Players: the names, comma separated; ModList: the host's shared mods a join would change ("Name version: action"),
-// semicolon separated; Fix: the setting that would let it in (strangers, editedstats), or "".
+// semicolon separated; Fix: the setting that would let it in (strangers, editedstats, relays), or "".
 public sealed record LiveLobby(string Verdict, IReadOnlyList<string> Flags, int Members, int MaxMembers, long? Difficulty, long? Planet, int Mods,
     long DownloadBytes, string LobbyId, string Host, string Reason, string Players = "", string ModList = "", string Fix = "");
 
@@ -192,11 +192,13 @@ public sealed class LiveEditServer : IAsyncDisposable
     // Mod sync (HfApi sync_state / sync_mod): an offer's mods, index 0 up, then its state, which publishes them in the
     // game. A progress update is the state alone, with the same version. Words, not numbers, for actions, classes and states.
     // The mod's url: where players get it (ModCatalog.WebAddress, at most 200 characters), or "-"; then "stranger" when the
-    // host is not a Steam friend (HF_SYNC_FLAG_STRANGER).
-    public Task<LiveResult> SyncModAsync(int version, int index, SyncItem item, bool stranger = false) =>
+    // host is not a Steam friend (HF_SYNC_FLAG_STRANGER, and HF_SYNC_FLAG_SANDBOX_ONLY: a stranger's is offered only to a
+    // sandboxed game), else "sandboxonly" when the game is sandboxed (HF_SYNC_FLAG_SANDBOX_ONLY: a trust answered there
+    // counts only in sandboxed sessions). A loader from before "sandboxonly" refuses that line.
+    public Task<LiveResult> SyncModAsync(int version, int index, SyncItem item, bool stranger = false, bool sandboxOnly = false) =>
         SendAsync("syncmod", string.Join('\t', Invariant(version), Invariant(index), ModSyncPlan.ActionName(item.Action), ModSets.ClassName(item.Mod.Class),
             Invariant(item.Mod.Bytes), Field(item.Mod.Id), Field(item.Mod.Name), Field(item.Mod.Version), ModCatalog.WebAddress(item.Mod.Url) ?? "-") +
-            (stranger ? "\tstranger" : ""));
+            (stranger ? "\tstranger" : sandboxOnly ? "\tsandboxonly" : ""));
     public Task<LiveResult> SyncStateAsync(SyncStateLine line) =>
         SendAsync("syncstate", string.Join('\t', Invariant(line.Version), line.State, Field(line.Host), Invariant(line.Bytes), Invariant(line.Done),
             Invariant(line.Mods), line.Live ? "1" : "0", Field(line.Message)));
@@ -207,7 +209,7 @@ public sealed class LiveEditServer : IAsyncDisposable
         SendAsync("browselobby", string.Join('\t', Invariant(version), Invariant(index), lobby.Verdict, lobby.Flags.Count > 0 ? string.Join(',', lobby.Flags) : "-",
             Invariant(lobby.Members), Invariant(lobby.MaxMembers), lobby.Difficulty is { } d ? Invariant(d) : "-", lobby.Planet is { } p ? Invariant(p) : "-",
             Invariant(lobby.Mods), Invariant(lobby.DownloadBytes), lobby.LobbyId, Field(lobby.Host), Field(lobby.Reason), Field(lobby.Players),
-            string.Concat(lobby.ModList.Where(c => !char.IsControl(c)).Take(250)), lobby.Fix is "strangers" or "editedstats" ? lobby.Fix : "-"));
+            string.Concat(lobby.ModList.Where(c => !char.IsControl(c)).Take(250)), lobby.Fix is "strangers" or "editedstats" or "relays" ? lobby.Fix : "-"));
     public Task<LiveResult> BrowseStateAsync(int version, string state, int lobbies, string message) =>
         SendAsync("browsestate", string.Join('\t', Invariant(version), state, Invariant(lobbies), Field(message)));
 

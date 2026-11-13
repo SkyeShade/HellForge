@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "example.warbonds",
+  "name": "Warbond Example",
+  "version": "1.0.0",
+  "description": "Two warbonds of game items, with no code: Forge Armory, in requisition with its own card art and an item in samples, and Black Ledger, a premium-look warbond bought once for Forge Credits whose items cost medals.",
+  "gameplay": false
+}

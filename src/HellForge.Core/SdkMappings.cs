@@ -68,17 +68,25 @@ public sealed class SdkMappings
     static readonly HashSet<string> SdkTypes = ["Ability", "BugholeEvent", "Content", "DamageEvent", "DamagePreEvent", "EditDef",
         "EditorEntity", "EventInfo", "ExplosionEvent", "HealEvent", "Homing", "KillEvent", "LimbState", "LiveValue", "ModInfo",
         "Notice", "Passives", "PelicanCall", "PlayerEvent", "Session", "Shot", "ShotRule", "SpawnEvent", "Stat", "StatEvent",
-        "StatSource", "StateEvent", "StratagemCategory", "StratagemEvent", "SyncMod", "SyncState", "WeaponEvent", "Listener"];
+        "StatSource", "StateEvent", "StratagemCategory", "StratagemEvent", "SyncMod", "SyncState", "WeaponEvent", "Listener",
+        "Colour", "Draw", "Image", "Input", "Point", "Screen"];
     // A global's field types: the record field types and ptr, a pointer.
     static readonly string[] GlobalFieldTypes = ["u8", "u16", "u32", "i32", "f32", "u64", "ptr"];
 
     // The C types a function's arguments and return value may have (and void, for a return value).
-    public static readonly string[] ParamTypes = ["uint8_t", "int32_t", "uint32_t", "int64_t", "uint64_t", "float", "void*", "const void*",
-        "uint8_t*", "const uint8_t*", "uint32_t*", "const uint32_t*", "float*", "const float*"];
-    // Names an argument can't take: C's keywords, and mod (the hf_ wrappers' own argument).
+    public static readonly string[] ParamTypes = ["uint8_t", "uint16_t", "int16_t", "int32_t", "uint32_t", "int64_t", "uint64_t", "float", "void*", "const void*",
+        "uint8_t*", "const uint8_t*", "int32_t*", "const int32_t*", "uint32_t*", "const uint32_t*", "uint64_t*", "const uint64_t*", "float*", "const float*", "char*", "const char*"];
+    // Names an argument can't take: C's and C++'s keywords (the headers are also built as C++, by the in-game editor and
+    // C++ mods), and mod (the hf_ wrappers' own argument).
+    internal static bool IsKeyword(string name) => CKeywords.Contains(name);
     static readonly HashSet<string> CKeywords = ["auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
         "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed",
-        "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "bool", "mod"];
+        "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "bool", "mod",
+        "alignas", "alignof", "and", "and_eq", "asm", "bitand", "bitor", "catch", "char8_t", "char16_t", "char32_t", "class", "compl",
+        "concept", "consteval", "constexpr", "constinit", "const_cast", "co_await", "co_return", "co_yield", "decltype", "delete",
+        "dynamic_cast", "explicit", "export", "false", "friend", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr",
+        "operator", "or", "or_eq", "private", "protected", "public", "reinterpret_cast", "requires", "static_assert", "static_cast",
+        "template", "this", "thread_local", "throw", "true", "try", "typeid", "typename", "using", "virtual", "wchar_t", "xor", "xor_eq"];
 
     // Content kinds, in header order: (JSON key, constant prefix, C type of the ids, what the ids are for).
     static readonly (string Key, string Prefix, bool Wide, string Doc)[] Kinds =
@@ -95,6 +103,9 @@ public sealed class SdkMappings
         ("categories", "HF_CATEGORY_", false, "Loadout sections and ping colours, for HfStratagem.category (row +0xB8 + 1)."),
         ("beams", "HF_BEAM_", false, "Beacon beam colours, for HfStratagem.beam (row +0xD4)."),
         ("boosters", "HF_BOOSTER_", false, "Boosters, for the BoosterSettings table (set_live, get_live): a row is the game's Booster value."),
+        ("explosions", "HF_EXPLOSION_", false, "Vanilla explosion types, for HfExplosion.base and HfProjectile.impact_explosion and expiry_explosion (the\n * game's ExplosionType; some are unnamed, and a note gives the game's own name where its hash was found)."),
+        ("weapon_beams", "HF_WEAPON_BEAM_", false, "Vanilla weapon beams, for HfBeam.base (the BeamWeapon record's +0)."),
+        ("arcs", "HF_ARC_", false, "Vanilla arcs, for HfArc.base (the ArcWeapon record's +0)."),
     ];
 
     // hellforge_mod.h's own Hf names: a component record struct can't take one.
@@ -301,7 +312,7 @@ public sealed class SdkMappings
             Allowed(p, at + " param", "name", "type", "meaning");
             var param = new SdkParam(Text(p, "name"), Text(p, "type"), Text(p, "meaning"));
             Identifier(param.Name, $"{at} param {param.Name}");
-            if (CKeywords.Contains(param.Name) || parameters.Any(q => q.Name == param.Name)) throw new InvalidDataException($"{at}: param {param.Name} is a C keyword, mod, or named twice.");
+            if (CKeywords.Contains(param.Name) || parameters.Any(q => q.Name == param.Name)) throw new InvalidDataException($"{at}: param {param.Name} is a C or C++ keyword, mod, or named twice.");
             if (!ParamTypes.Contains(param.Type)) throw new InvalidDataException($"{at}: param {param.Name}'s type {param.Type} is not one of {string.Join(", ", ParamTypes)}.");
             parameters.Add(param);
         }
@@ -393,7 +404,7 @@ public sealed class SdkMappings
     static SdkContent ParseContent((string Key, string Prefix, bool Wide, string Doc) kind, JsonProperty item, HashSet<string> constants)
     {
         var at = $"{kind.Key} \"{item.Name}\"";
-        Allowed(item.Value, at, "constant", "id", "note");
+        Allowed(item.Value, at, "constant", "id", "note", "source");
         var constant = item.Value.TryGetProperty("constant", out _) ? Text(item.Value, "constant") : Constant(item.Name);
         if (constant.Length == 0 || !constant.All(ch => ch is >= 'A' and <= 'Z' or >= '0' and <= '9' or '_') || !constants.Add(kind.Prefix + constant))
             throw new InvalidDataException($"{at}: constant {constant} is not a unique C name.");
@@ -432,13 +443,17 @@ public sealed class SdkMappings
     };
 
     // Writes the generated files under the repository root (the SDK's headers and reference, and the mod loader's
-    // tables in native/mod-loader); with check, only lists the ones that differ.
+    // tables in native/mod-loader, its paid stratagems among them); with check, only lists the ones that differ.
     public static IReadOnlyList<string> Sync(string repository, bool check)
     {
         var stale = new List<string>();
         // Line endings as git checks them out (CRLF on Windows with core.autocrlf): compared and parsed as LF.
         var api = File.ReadAllText(Path.Combine(repository, "native", "mod-sdk", "hellforge_mod.h")).ReplaceLineEndings("\n");
-        foreach (var (path, text) in Load(Path.Combine(repository, "mappings")).Generate(api))
+        var generated = new Dictionary<string, string>(Load(Path.Combine(repository, "mappings")).Generate(api));
+        if (SdkRpcs.Load(Path.Combine(repository, "mappings")) is { } rpcs)
+            foreach (var (path, text) in rpcs.Generate()) generated[path] = text;
+        generated[PaidItems.StratagemHeaderFile] = PaidItems.Parse(File.ReadAllText(Path.Combine(repository, "data", "paid-items.json"))).StratagemHeader();
+        foreach (var (path, text) in generated)
         {
             var file = Path.Combine(repository, path);
             if (File.Exists(file) && File.ReadAllText(file).ReplaceLineEndings("\n") == text.ReplaceLineEndings("\n")) continue;

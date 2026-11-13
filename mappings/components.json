@@ -1483,6 +1483,14 @@
       "layout": "25480438",
       "meaning": "an arc type",
       "fields": {
+        "damage": {
+          "offset": 36,
+          "type": "u32",
+          "meaning": "the damage id it deals (DamageInfo)",
+          "verified": true,
+          "source": "game.dll 0x176D1A8 reads it as it reads an explosion's +4; research beam-arc-registry",
+          "ref": "damage"
+        },
         "velocity": {
           "offset": 4,
           "type": "f32",
@@ -1551,6 +1559,14 @@
       "layout": "25480438",
       "meaning": "a beam type",
       "fields": {
+        "damage": {
+          "offset": 12,
+          "type": "u32",
+          "meaning": "the damage id it deals (DamageInfo)",
+          "verified": true,
+          "source": "game.dll 0x1769A34 reads it and 0x1769A3F indexes the damage list with it; research explosion-registry, beam-arc-registry",
+          "ref": "damage"
+        },
         "radius": {
           "offset": 4,
           "type": "f32",
@@ -4612,7 +4628,10 @@
           "type": "f32",
           "meaning": "shield.durability",
           "verified": false,
-          "source": "stats-schema shield.durability"
+          "source": "stats-schema shield.durability",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the shield frame update and hit path read the record through the resolver 0x4FB390"
         },
         "armor": {
           "offset": 80,
@@ -4626,21 +4645,50 @@
           "type": "f32",
           "meaning": "shield.recharge_delay",
           "verified": false,
-          "source": "stats-schema shield.recharge_delay"
+          "source": "stats-schema shield.recharge_delay",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the shield frame update reads the record through the resolver 0x4FB390"
         },
         "broken_recharge_delay": {
           "offset": 92,
           "type": "f32",
           "meaning": "shield.broken_recharge_delay",
           "verified": false,
-          "source": "stats-schema shield.broken_recharge_delay"
+          "source": "stats-schema shield.broken_recharge_delay",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the shield frame update reads the record through the resolver 0x4FB390"
         },
         "recharge_rate": {
           "offset": 96,
           "type": "f32",
           "meaning": "shield.recharge_rate",
           "verified": false,
-          "source": "stats-schema shield.recharge_rate"
+          "source": "stats-schema shield.recharge_rate",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the shield frame update reads the record through the resolver 0x4FB390"
+        },
+        "blocks_grenades": {
+          "offset": 337,
+          "type": "u8",
+          "meaning": "Stops grenades",
+          "verified": false,
+          "source": "stats-schema shield.blocks_grenades",
+          "applies": "now",
+          "appliesVerified": true,
+          "appliesSource": "shield_block.c reads the record every few frames; a marked shield changes within a second"
+        },
+        "blocks_enemies": {
+          "offset": 338,
+          "type": "u8",
+          "meaning": "Stops enemies",
+          "verified": false,
+          "source": "stats-schema shield.blocks_enemies",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "shield_block.c reads the record every few frames; a relay standing gets its ring within a second"
         }
       },
       "applies": "respawn",
@@ -5550,12 +5598,152 @@
       "layout": "25480438",
       "meaning": "(from the stats schema)",
       "fields": {
+        "manual_clearing": {
+          "offset": 0,
+          "type": "u8",
+          "meaning": "1: a jam is cleared by hand",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "allow_move": {
+          "offset": 1,
+          "type": "u8",
+          "meaning": "1: may move while reloading",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "ability": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "the reload ability, which times the reload (2785 Adjudicator, 2739 Liberator)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "event_type_0": {
+          "offset": 8,
+          "type": "u32",
+          "meaning": "reload animation 0's kind: 1 normal, 3 fast",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "weapon_event_0": {
+          "offset": 12,
+          "type": "u32",
+          "meaning": "reload animation 0: the weapon's own state machine event (reload)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "wielder_event_0": {
+          "offset": 16,
+          "type": "u32",
+          "meaning": "reload animation 0: the Helldiver's animation event (reload_battlerifle)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "event_type_1": {
+          "offset": 20,
+          "type": "u32",
+          "meaning": "reload animation 1's kind: 1 normal, 3 fast",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "weapon_event_1": {
+          "offset": 24,
+          "type": "u32",
+          "meaning": "reload animation 1: the weapon's own state machine event (reload)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "wielder_event_1": {
+          "offset": 28,
+          "type": "u32",
+          "meaning": "reload animation 1: the Helldiver's animation event (reload_battlerifle)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "event_type_2": {
+          "offset": 32,
+          "type": "u32",
+          "meaning": "reload animation 2's kind: 1 normal, 3 fast",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "weapon_event_2": {
+          "offset": 36,
+          "type": "u32",
+          "meaning": "reload animation 2: the weapon's own state machine event (reload)",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "wielder_event_2": {
+          "offset": 40,
+          "type": "u32",
+          "meaning": "reload animation 2: the Helldiver's animation event (reload_battlerifle)",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "event_type_3": {
+          "offset": 44,
+          "type": "u32",
+          "meaning": "reload animation 3's kind: 1 normal, 3 fast",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "weapon_event_3": {
+          "offset": 48,
+          "type": "u32",
+          "meaning": "reload animation 3: the weapon's own state machine event (reload)",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "wielder_event_3": {
+          "offset": 52,
+          "type": "u32",
+          "meaning": "reload animation 3: the Helldiver's animation event (reload_battlerifle)",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
         "duration": {
           "offset": 56,
           "type": "f32",
           "meaning": "Reload duration override (0 = native) (seconds)",
           "verified": false,
           "source": "stats-schema reload.duration"
+        },
+        "has_shared_deposit": {
+          "offset": 60,
+          "type": "u8",
+          "meaning": "1: reloads from a shared ammunition deposit",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "vo_normal": {
+          "offset": 64,
+          "type": "u32",
+          "meaning": "voice line event of a reload",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "vo_last_magazine": {
+          "offset": 68,
+          "type": "u32",
+          "meaning": "voice line event of the last magazine",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "vo_no_magazines": {
+          "offset": 72,
+          "type": "u32",
+          "meaning": "voice line event with no magazines left",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "vo_no_magazines_no_backpack": {
+          "offset": 76,
+          "type": "u32",
+          "meaning": "voice line event with no magazines and no backpack",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
         }
       },
       "applies": "respawn",
@@ -7399,6 +7587,13 @@
       "appliesVerified": false,
       "appliesSource": "a component record: read when the entity is made",
       "fields": {
+        "unit": {
+          "offset": 0,
+          "type": "u64",
+          "meaning": "its unit resource (name hash); add_weapon sets it from HfWeapon.unit",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
         "scale_min": {
           "offset": 8,
           "type": "f32",
@@ -7645,6 +7840,499 @@
           "source": "HD2Runtime enemy_director.lua demolition.force"
         }
       }
+    },
+    "Equipment": {
+      "component": "EquipmentComponentData",
+      "index": 233,
+      "stride": 232,
+      "layout": "25480438",
+      "meaning": "how a held item is wielded, holstered and dropped: nodes, timings, the Helldiver's animations and grip",
+      "fields": {
+        "wield_node": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "the hand joint it is held at (thin hash of the name: attach_hand_r)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "wield_rotation": {
+          "offset": 4,
+          "type": "f32",
+          "meaning": "rotation offset at the wield node (degrees)",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver",
+          "count": 3
+        },
+        "wield_position": {
+          "offset": 16,
+          "type": "f32",
+          "meaning": "position offset at the wield node (metres)",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver",
+          "count": 3
+        },
+        "holster_node": {
+          "offset": 28,
+          "type": "u32",
+          "meaning": "the joint it is holstered at (thin hash: sling)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "holster_rotation": {
+          "offset": 32,
+          "type": "f32",
+          "meaning": "rotation offset at the holster node (degrees)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record",
+          "count": 3
+        },
+        "holster_position": {
+          "offset": 44,
+          "type": "f32",
+          "meaning": "position offset at the holster node (metres)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record",
+          "count": 3
+        },
+        "holster_duration": {
+          "offset": 56,
+          "type": "f32",
+          "meaning": "seconds to holster",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "wield_duration": {
+          "offset": 60,
+          "type": "f32",
+          "meaning": "seconds to wield",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "pickup_duration": {
+          "offset": 64,
+          "type": "f32",
+          "meaning": "seconds to pick up",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "wield_animation": {
+          "offset": 72,
+          "type": "u32",
+          "meaning": "the Helldiver's wield animation event (thin hash: draw_primary)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "pickup_animation": {
+          "offset": 76,
+          "type": "u32",
+          "meaning": "the Helldiver's pickup animation event (pickup_weapon)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "holster_animation": {
+          "offset": 80,
+          "type": "u32",
+          "meaning": "the Helldiver's holster animation event (holster_primary)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "drop_animation": {
+          "offset": 84,
+          "type": "u32",
+          "meaning": "the Helldiver's drop animation event",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "ammocheck_animation": {
+          "offset": 88,
+          "type": "u32",
+          "meaning": "the Helldiver's ammunition check animation event (ammocheck_marksmanrifle)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "holster_duration_attach": {
+          "offset": 96,
+          "type": "f32",
+          "meaning": "seconds before it moves to the holster node",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "wield_duration_attach": {
+          "offset": 100,
+          "type": "f32",
+          "meaning": "seconds before it moves to the wield node",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "attach_lerp_time": {
+          "offset": 104,
+          "type": "f32",
+          "meaning": "seconds it blends between nodes",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "wield_animation_self": {
+          "offset": 112,
+          "type": "u32",
+          "meaning": "its own state machine's wield event (draw)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "pickup_animation_self": {
+          "offset": 116,
+          "type": "u32",
+          "meaning": "its own state machine's pickup event",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "holster_animation_self": {
+          "offset": 120,
+          "type": "u32",
+          "meaning": "its own state machine's holster event (sheath)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "equipment_type": {
+          "offset": 128,
+          "type": "u32",
+          "meaning": "equipment type (1 for arsenal weapons)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "drop_mode": {
+          "offset": 136,
+          "type": "u32",
+          "meaning": "how it drops (1 for arsenal weapons)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "drop_icon": {
+          "offset": 152,
+          "type": "u64",
+          "meaning": "the HUD icon of a dropped one (a resource name hash)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "pickup_audio_event": {
+          "offset": 160,
+          "type": "u32",
+          "meaning": "sound event on pickup",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "switch_wield_audio_event": {
+          "offset": 176,
+          "type": "u32",
+          "meaning": "sound event when switched to",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "switch_holster_audio_event": {
+          "offset": 180,
+          "type": "u32",
+          "meaning": "sound event when switched away from",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "pickup_ability": {
+          "offset": 184,
+          "type": "u32",
+          "meaning": "ability run on pickup (93 for arsenal weapons)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "drop_ability": {
+          "offset": 188,
+          "type": "u32",
+          "meaning": "ability run on drop",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "grip_type": {
+          "offset": 192,
+          "type": "u32",
+          "meaning": "the Helldiver's grip: 10 rifle, 14 plasma rifle, 15 marksman rifle, 70 PDW, 80 pump shotgun, 90 bullpup rifle",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "one_handed": {
+          "offset": 196,
+          "type": "u8",
+          "meaning": "1: held in one hand",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "allow_wield_on_ship": {
+          "offset": 197,
+          "type": "u8",
+          "meaning": "1: may be held on the ship",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "show_in_pickup_widget": {
+          "offset": 198,
+          "type": "u8",
+          "meaning": "1: named in the pickup prompt",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "holster_unit": {
+          "offset": 200,
+          "type": "u64",
+          "meaning": "a unit shown in its place when holstered",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "wwise_index": {
+          "offset": 216,
+          "type": "u32",
+          "meaning": "its equipment sound switch index",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "left_hand_node": {
+          "offset": 228,
+          "type": "u32",
+          "meaning": "the joint the left hand reaches for (thin hash: attach_hand_l)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        }
+      },
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "entities copy their type's records when they are made"
+    },
+    "Wieldable": {
+      "component": "WieldableComponentData",
+      "index": 111,
+      "stride": 32,
+      "layout": "25480438",
+      "meaning": "aiming down sights and the events of taking it in hand",
+      "fields": {
+        "allow_ads": {
+          "offset": 0,
+          "type": "u8",
+          "meaning": "1: may aim down sights",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "wielder_enter_event": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "the Helldiver's animation event when taken in hand",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "wielder_exit_event": {
+          "offset": 8,
+          "type": "u32",
+          "meaning": "the Helldiver's animation event when put away",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "wield_state_audio_event": {
+          "offset": 12,
+          "type": "u32",
+          "meaning": "sound event of the wield state",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "self_enter_event": {
+          "offset": 16,
+          "type": "u32",
+          "meaning": "its own state machine's event when taken in hand",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "self_exit_event": {
+          "offset": 20,
+          "type": "u32",
+          "meaning": "its own state machine's event when put away",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        }
+      },
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "entities copy their type's records when they are made"
+    },
+    "Attachable": {
+      "component": "AttachableComponentData",
+      "index": 262,
+      "stride": 64,
+      "layout": "25480438",
+      "meaning": "how it attaches to a Helldiver or other unit, and its physics actor",
+      "fields": {
+        "dynamic_actor": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "the unit's physics actor used while it is loose (thin hash: collision)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "attached_dynamic_actor": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "the physics actor used while it is attached",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "use_all_dynamic_actors": {
+          "offset": 8,
+          "type": "u8",
+          "meaning": "1: every physics actor of the unit",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "offset": {
+          "offset": 12,
+          "type": "f32",
+          "meaning": "position offset when attached",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver",
+          "count": 3
+        },
+        "rotation_offset": {
+          "offset": 24,
+          "type": "f32",
+          "meaning": "rotation offset when attached",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver",
+          "count": 3
+        },
+        "offset_node": {
+          "offset": 36,
+          "type": "u32",
+          "meaning": "the joint the offsets are from",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "attach_animation": {
+          "offset": 40,
+          "type": "u32",
+          "meaning": "its animation event on attach",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "parent_attach_animation": {
+          "offset": 44,
+          "type": "u32",
+          "meaning": "the parent's animation event on attach",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "detach_animation": {
+          "offset": 48,
+          "type": "u32",
+          "meaning": "its animation event on detach",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "parent_detach_animation": {
+          "offset": 52,
+          "type": "u32",
+          "meaning": "the parent's animation event on detach",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "inherit_angular_momentum": {
+          "offset": 58,
+          "type": "u8",
+          "meaning": "1: keeps the parent's spin when it comes loose",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        }
+      },
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "entities copy their type's records when they are made"
+    },
+    "WeaponCustomization": {
+      "component": "WeaponCustomizationComponentData",
+      "index": 271,
+      "stride": 4872,
+      "layout": "25480438",
+      "meaning": "a weapon's attachment slots, default attachments and the attachment units it names itself",
+      "fields": {
+        "defaults": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "up to 10 default attachments, {slot, item id} pairs (slots: 1 underbarrel, 2 optics, 3 paint, 4 muzzle, 5 magazine, 6 ammunition, 8 internals, 9 triggers)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record",
+          "count": 20
+        },
+        "slots": {
+          "offset": 80,
+          "type": "u32",
+          "meaning": "the slots the player may change in the armory (0: none)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record",
+          "count": 10
+        },
+        "optics_unit": {
+          "offset": 120,
+          "type": "u64",
+          "meaning": "the optic unit spawned at attach_optic without an optic attachment (resource name hash; 0: none)",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "magazine_unit": {
+          "offset": 128,
+          "type": "u64",
+          "meaning": "the magazine unit spawned at attach_mag without a magazine attachment (the Adjudicator names its magazine here)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "magazine_secondary_unit": {
+          "offset": 144,
+          "type": "u64",
+          "meaning": "a second magazine unit",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "muzzle_unit": {
+          "offset": 160,
+          "type": "u64",
+          "meaning": "the muzzle unit spawned at attach_muzzle without a muzzle attachment",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record"
+        },
+        "optics_crosshair": {
+          "offset": 168,
+          "type": "f32",
+          "meaning": "the optic's crosshair parameters",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver",
+          "count": 2
+        },
+        "underbarrel_entity": {
+          "offset": 192,
+          "type": "u64",
+          "meaning": "the underbarrel entity without an underbarrel attachment",
+          "verified": false,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver"
+        },
+        "trigger_settings": {
+          "offset": 4680,
+          "type": "u32",
+          "meaning": "trigger settings",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record",
+          "count": 13
+        },
+        "magazine_adjusting_nodes": {
+          "offset": 4736,
+          "type": "u32",
+          "meaning": "magazine joints shown one per remaining round (thin hashes: bullet_01..)",
+          "verified": true,
+          "source": "dl typelib (25988413; the record size is the same in 25480438), field name from filediver; value decoded from 25480438's BR-14 Adjudicator record",
+          "count": 24
+        }
+      },
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "the armory and the spawned weapon compose it with the chosen attachments' deltas"
     }
   }
 }

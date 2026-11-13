@@ -1,5 +1,7 @@
 # The Steam download of the supported build
 
+<!-- diataxis: explanation -->
+
 How setup gets the HELLDIVERS 2 build HellForge runs when Steam has another one, and why HellForge hosts no game files.
 
 HellForge runs one HELLDIVERS 2 build, the supported build in `src/HellForge.Core/supported-build.json`. That file pins
@@ -25,15 +27,20 @@ player's own account. It opens on the QR code. Each way has **Choose another way
    into HellForge.
 3. **Use the Steam app:** no sign-in in HellForge at all. The Steam app on the PC downloads the build through its
    console, and HellForge copies it from there ([below](#with-the-steam-app)). It is also where setup goes when another
-   way cannot work: a game borrowed through Family Sharing, SteamCMD that cannot be set up, and Linux.
+   way cannot work: a game borrowed through Family Sharing, and SteamCMD that cannot be set up.
+
+Linux's native setup offers the same ways ([on Linux](#on-linux)).
 
 The progress of every way shows in one place, the Game files card under it.
 
-Nothing is kept. HellForge's QR sign-in is not persistent: no refresh token and no Steam Guard data is written
-anywhere, and the next download asks again. Every message the sign-in shows passes through a scrubber that hides the
-tokens, and a test checks that no line of the sign-in code that shows, logs, writes or throws text names one, and that
-no password sign-in, password box or hidden password prompt is left anywhere in HellForge. The sign-in is a separate
-Steam session, so the Steam client stays signed in. Steam may email the account about a new sign-in.
+Nothing is kept. HellForge's QR sign-in for setup is not persistent: no refresh token and no Steam Guard data is written
+anywhere, and the next download asks again. The sign-in is a separate Steam session, so the Steam client stays signed
+in. Steam may email the account about a new sign-in. The asset kit's fetches of older builds are the exception: they keep
+their sign-in until you sign out ([signing in to Steam](modding/assets.md#signing-in-to-steam)).
+
+Every message the sign-in shows passes through a scrubber that hides the tokens. A test checks that no line of the
+sign-in code that shows, logs, writes or throws text names one. It also checks that no password sign-in, password box or
+hidden password prompt is left anywhere in HellForge.
 
 The download runs on [SteamKit2](https://github.com/SteamRE/SteamKit) (LGPL-2.1, as its own unchanged DLL beside
 HellForge's, which a player may replace). The code on top of it is HellForge's own. SteamKit2's licence, those of the
@@ -60,58 +67,97 @@ content, so a chunk can be copied from anywhere on the PC that holds the same by
 - **Everything else** downloads from Steam's content servers.
 
 A file already in the copy with the build's content is kept. Every other file is written into `<file>.partial` in
-order. Each chunk is used only when its SHA-1 matches, whether it was copied or downloaded; a downloaded chunk that
-does not match is tried again, three times at most. The whole file must then have the build's size and SHA-1 before it
-is renamed into place. A file that does not is deleted and setup stops. A stopped download (Pause, a closed launcher,
-a lost connection) leaves the checked beginning of the file it was writing. The next run copies that part from
-`<file>.resume` instead of downloading it again, and keeps every file already in place.
+order:
+
+1. Each chunk is used only when its SHA-1 matches, whether it was copied or downloaded. A downloaded chunk that does not
+   match is tried again, three times at most.
+2. The whole file must then have the build's size and SHA-1 before it is renamed into place. A file that does not is
+   deleted and setup stops.
+
+A stopped download (Pause, a closed launcher, a lost connection) leaves the checked beginning of the file it was
+writing. The next run copies that part from `<file>.resume` instead of downloading it again, and keeps every file
+already in place.
 
 Setup checks for room before it writes anything. On a full drive it asks for space ("Not enough free space on D:\: ...
 more is needed"); the files already written are kept. The copy is about 24 GB; the download writes it straight into the
 installation, so no second copy needs room.
 
 On this PC's Steam (build 26251122 installed, October 2026), an older manifest of depot 553853 (23.5 GB) planned against
-the installed build needed at most 0.44 GB from Steam's servers: the rest was found in the installed files. How much the
+the installed build needed at most 0.44 GB from Steam's servers. The rest was found in the installed files. How much the
 supported build needs depends on how far Steam's build has moved from it.
 
 ## With SteamCMD
 
 HellForge gets SteamCMD from Valve's own download (`https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip`, or
 `steamcmd_linux.tar.gz` on Linux) into its own tools folder, `<installation>/tools/steamcmd`, never into a Steam
-library. On Windows, `steamcmd.exe` must carry a valid Authenticode signature by Valve (Windows' own check,
-WinVerifyTrust, and the signer's organisation Valve or Valve Corp.; Valve's `steamcmd.exe` is signed "CN=Valve,
-O=Valve"), or it is deleted and never started. Valve updates SteamCMD itself, so no hash of it can be pinned. SteamCMD
-updates itself once, without a window, and is checked again.
+library. On Windows, `steamcmd.exe` must carry a valid Authenticode signature by Valve, or it is deleted and never
+started. The check is Windows' own, WinVerifyTrust, and the signer's organisation must be Valve or Valve Corp.
+(Valve's `steamcmd.exe` is signed "CN=Valve, O=Valve".) Valve updates SteamCMD itself, so no hash of it can be pinned.
+SteamCMD updates itself once, without a window, and is checked again.
 
-Then it starts in a window of its own with every command filled in except the password: `+@ShutdownOnFailedCommand 1
+Then it starts in a window of its own (on Linux, [a terminal window](#on-linux)) with every command filled in except the password: `+@ShutdownOnFailedCommand 1
 +login <account name> +download_depot 553850 <depot> <manifest>` for each pinned depot, and `+quit`. The card asks for
-the account name only (letters, digits and underscores, so it can never carry another command) and says: "Type your
-password in the SteamCMD window; it goes to Valve's own tool, not HellForge." SteamCMD asks for the password, and for a
-Steam Guard code when Steam wants one, in its window. Its `download_depot` writes each depot into
-`<SteamCMD>/steamapps/content/app_553850/depot_<depot>/` (`linux32/steamapps` on Linux), which setup reads the way it
-reads the Steam app's download, showing the progress under Game files.
+the account name only: letters, digits and underscores, so it can never carry another command. It says: "Type your
+password in the SteamCMD window; it goes to Valve's own tool, not HellForge."
 
-When SteamCMD ends (setup waits for each of its processes, since it may restart itself after an update), setup removes
-what it remembers of the sign-in: its `config` folder (`config.vdf` keeps the sign-in token, `loginusers.vdf` the
-account), `userdata`, `logs` (they name the account) and the Steam Guard files (`ssfn*`). On Linux SteamCMD runs with
-its HOME inside its own folder, so it never reaches the player's own Steam folders, and that is removed too. This
-happens however SteamCMD ended: done, closed, a failed sign-in, Stop SteamCMD or Choose another way. When the download
-is complete, each file is checked against its SHA-1 in `supported-build.json` and moved into the installation (the same
-drive, so the 24 GB need room once); a wrong file is never moved. Then the whole SteamCMD folder is deleted. When it
-ended early, the card says why in plain words and offers Start SteamCMD again, which continues the download it kept. A
-borrowed game cannot be downloaded this way either; the card then points to the Steam app.
+SteamCMD asks for the password, and for a Steam Guard code when Steam wants one, in its window. Its `download_depot`
+writes each depot into `<SteamCMD>/steamapps/content/app_553850/depot_<depot>/` (`linux32/steamapps` on Linux). Setup
+reads it the way it reads the Steam app's download, showing the progress under Game files.
+
+When SteamCMD ends, setup removes what it remembers of the sign-in. Setup waits for each of its processes first, since
+SteamCMD may restart itself after an update. It removes:
+
+- its `config` folder (`config.vdf` keeps the sign-in token, `loginusers.vdf` the account)
+- `userdata`
+- `logs` (they name the account)
+- the Steam Guard files (`ssfn*`)
+
+On Linux SteamCMD runs with its HOME inside its own folder, so it never reaches the player's own Steam folders, and that
+is removed too. This happens however SteamCMD ended: done, closed, a failed sign-in, Stop SteamCMD or Choose another
+way.
+
+When the download is complete, each file is checked against its SHA-1 in `supported-build.json` and moved into the
+installation. That is the same drive, so the 24 GB need room once. A wrong file is never moved. Then the whole SteamCMD
+folder is deleted.
+
+When it ended early, the card says why in plain words and offers Start SteamCMD again, which continues the download it
+kept. A borrowed game cannot be downloaded this way either; the card then points to the Steam app.
 
 ## With the Steam app
 
 The third way, and where setup goes when another way cannot work. **Open the Steam console** opens it
 (`steam://open/console`), and each depot has its `download_depot 553850 <depot> <manifest>` command with a Copy button.
-The Steam app downloads each depot into `<Steam>/steamapps/content/app_553850/depot_<depot>/`; the Linux client may use
-`ubuntu12_32/steamapps`, `ubuntu12_64/steamapps` or `steamrt64/steamapps` under the Steam folder instead. Setup looks in
-all of them and takes, for each depot, the folder that holds the most of the build, so an empty folder left by an
-earlier download does not hide the real one. It watches the download by itself, says which file it still waits for, and
-once every file has the build's size it copies them into the installation, each checked against the SHA-1 in
-`supported-build.json`. A file the Steam app wrote wrong is never copied. Choosing another way while setup waits starts
-that way instead.
+
+The Steam app downloads each depot into `<Steam>/steamapps/content/app_553850/depot_<depot>/`. The Linux client often
+uses `ubuntu12_32/steamapps` under the Steam folder instead, or `ubuntu12_64/steamapps` or `steamrt64/steamapps`. The
+card names the two usual folders on Linux, and the one Steam really uses once it has written to it. Setup looks in
+all of them and takes, for each depot, the folder that holds the most of the build. So an empty folder left by an
+earlier download does not hide the real one.
+
+Setup watches the download by itself and says which file it still waits for. Once every file has the build's size, it
+copies them into the installation, each checked against the SHA-1 in `supported-build.json`. A file the Steam app wrote
+wrong is never copied. Choosing another way while setup waits starts that way instead.
+
+## On Linux
+
+The native launcher's setup offers the three ways, and gets the build before it confirms ownership, as on Windows. The
+QR code's and SteamCMD's downloads go straight into the installation, so the drive that holds Steam needs no room for
+them.
+
+- **SteamCMD needs a terminal window program**, since the launcher has no terminal for SteamCMD to ask for the
+  password in. Setup uses the first it finds on `PATH`: Konsole, Ptyxis, GNOME Terminal, GNOME Console (`kgx`),
+  Xfce Terminal, MATE Terminal, kitty, Alacritty, foot, WezTerm or xterm. With none, the card leaves SteamCMD out.
+  It also leaves it out when the installation's path has a `$` in it, which Konsole would fill in.
+- **A terminal that does not run SteamCMD within a minute** is given up, with the message for a closed window.
+- **A window that stays open after a failure.** When SteamCMD ends with an error, its window waits for Enter, so its
+  own words can be read.
+- **The Steam app's download goes onto the drive that holds Steam**, wherever HellForge is installed. When that drive
+  is too full, the card says how much is free and needed, and points to the other ways.
+- **A Steam app download that has already begun** is carried on with: setup then opens on the Steam app's card instead
+  of the QR code.
+
+The [Proton-only fallback](linux.md#proton-only-fallback) is the exception. There setup runs inside HellForge's network
+namespace, which has no route out, so it cannot reach Steam's servers and offers only the Steam app.
 
 ## When Steam does not allow the download
 
@@ -121,9 +167,6 @@ download ([above](#with-the-steam-app), and
 [troubleshooting](troubleshooting.md#setup-cannot-find-the-supported-build)). It also shows it when the download from
 Steam's servers stops for another reason (a lost connection, Steam's servers refusing), and when SteamCMD cannot be set
 up. Choose another way tries the QR code or SteamCMD again; the files already downloaded are kept.
-
-On Linux, setup runs inside HellForge's network namespace, which has no route out, so it cannot reach Steam's servers
-and offers only the Steam app ([linux.md](linux.md#steams-download-of-the-supported-build)).
 
 ## After a game update
 
@@ -140,11 +183,14 @@ HellForge.Cli steam-download --out <folder> [--file <a file of the build>] [--st
                              [--sign-in qr | steamcmd] [--account <name>] [--steamcmd <folder>] [--dry-run yes]
 ```
 
-It prints the QR code in the terminal. `--file bin/SONYGame.ini` fetches one small file of the build, and `--dry-run yes`
-prints the plan: per file, the bytes known to be on this PC and the most that would download. `--sign-in steamcmd` lets
-SteamCMD download it instead, in `--steamcmd` (default: beside `--out`, as `<out>-steamcmd`): it asks for the account
-name (or takes `--account`), and SteamCMD asks for the password itself, in the same terminal; HellForge never reads it.
-With `--file` only that file's depot is downloaded. Its sign-in is forgotten after it runs, and SteamCMD is removed once
-the files are moved into `--out`. `--out` and `--steamcmd` must be outside any `steamapps` folder.
+It prints the QR code in the terminal. Its sign-in is forgotten after it runs.
+
+- `--file bin/SONYGame.ini` fetches one small file of the build. With `--file` only that file's depot is downloaded.
+- `--dry-run yes` prints the plan: per file, the bytes known to be on this PC and the most that would download.
+- `--sign-in steamcmd` lets SteamCMD download it instead, in `--steamcmd` (default: beside `--out`, as
+  `<out>-steamcmd`). It asks for the account name (or takes `--account`), and SteamCMD asks for the password itself, in
+  the same terminal; HellForge never reads it. SteamCMD is removed once the files are moved into `--out`.
+
+`--out` and `--steamcmd` must be outside any `steamapps` folder.
 
 For the rest of setup, see [the docs map](README.md#what-setup-does).

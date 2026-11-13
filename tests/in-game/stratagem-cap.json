@@ -1,0 +1,53 @@
+{
+  "about": "Room for 1,024 new stratagems in the real game: 300 added (types 150 to 449), the co-op type field widened to 16 bits, type 449 in the loadout before the mission and called in (tests/in-game/README.md).",
+  "mods": [
+    "stratagem-cap-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "script": [
+    {"wait": 25},
+    {"diag": 1},
+    {"menu": "stratagem-menu"},
+    {"call": "UUUUDDDDL"},
+    {"wait": 15},
+    {"diag": 1}
+  ],
+  "checks": [
+    {
+      "name": "the probe adds 300 stratagems",
+      "log": "mod-hellforge.stratagem-cap-probe.log",
+      "contains": "PROBE added ok: 300 stratagems, types 150 to 449"
+    },
+    {
+      "name": "past 256 types the stratagem type travels in 16 bits",
+      "log": "modloader.log",
+      "contains": "the stratagem type travels in 16 bits"
+    },
+    {
+      "name": "the list moves with all 300",
+      "log": "modloader.log",
+      "contains": "with 300 new stratagem(s); 450 types"
+    },
+    {
+      "name": "no stratagem is refused",
+      "log": "modloader.log",
+      "absent": "new stratagem(s) refused"
+    },
+    {
+      "name": "type 449 is in the loadout on the ship",
+      "log": "mod-hellforge.stratagem-cap-probe.log",
+      "contains": "PROBE loadout ok: slot 0 type 449"
+    },
+    {
+      "name": "type 449 is called in from the loadout",
+      "log": "mod-hellforge.stratagem-cap-probe.log",
+      "contains": "PROBE called ok: beacon of type 449"
+    },
+    {
+      "name": "no probe check failed",
+      "log": "mod-hellforge.stratagem-cap-probe.log",
+      "absent": "FAIL"
+    }
+  ]
+}

@@ -209,14 +209,32 @@ static int verify_protected_writes(struct hf_sandbox *sandbox)
     return 0;
 }
 
+// Every input or hidraw node in /dev and /dev/input must be a game controller at its own kernel name, and /dev/input
+// holds nothing else (hf_dev_entry); a keyboard, a mouse, a renamed node or a folder there refuses the session.
+static int verify_controller_folder(const char *folder, bool input_folder)
+{
+    DIR *dir = opendir(folder);
+    if (dir == NULL) return input_folder && errno == ENOENT ? 0 : hf_fail(folder);
+    int result = 0;
+    struct dirent *entry;
+    while (result == 0 && (entry = readdir(dir)) != NULL)
+    {
+        if (hf_dot_entry(entry->d_name) || hf_dev_entry(folder, entry->d_name, input_folder) != HF_DEV_REFUSED) continue;
+        result = hf_fail_msg("a device that is not a game controller at its own path is visible: %s/%s", folder, entry->d_name);
+    }
+    closedir(dir);
+    return result;
+}
+
 static int verify_devices(void)
 {
-    const char *forbidden[] = { "/dev/input", "/dev/uinput", "/dev/kvm", "/dev/mem", "/dev/kmem" };
+    const char *forbidden[] = { "/dev/uinput", "/dev/kvm", "/dev/mem", "/dev/kmem" };
     for (size_t index = 0; index < sizeof(forbidden) / sizeof(forbidden[0]); index++)
     {
         struct stat info;
         if (lstat(forbidden[index], &info) == 0) return hf_fail_msg("a forbidden device is visible: %s", forbidden[index]);
     }
+    if (verify_controller_folder("/dev", false) != 0 || verify_controller_folder("/dev/input", true) != 0) return 1;
     int null = open("/dev/null", O_RDWR | O_CLOEXEC);
     if (null < 0) return hf_fail("/dev/null");
     close(null);

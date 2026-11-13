@@ -1,0 +1,47 @@
+// The AR-23 copy's own animations. Positions are each joint's local position (HellForge.Cli unit-joints lists the rest
+// poses): the bolt and its carrier run back along -y, the magazine drops along -z. The reload lasts 3.333 s, the length of
+// the Liberator's reload ability, so the gun keeps pace with the Helldiver's hands.
+{
+  "bones": ["bolt", "bolt_carrier", "attach_mag"],
+  "clips": {
+    "idle": { "length": 1 },
+    "fire": {
+      "length": 0.15,
+      "keys": {
+        "bolt": { "position": [[0.03, 0, 0.255, 0.1639], [0.15, 0, 0.3369, 0.1639]] },
+        "bolt_carrier": { "position": [[0.03, 0.0009, -0.19, 0.127], [0.15, 0.0009, -0.1083, 0.127]] }
+      }
+    },
+    "reload": {
+      "length": 3.333,
+      "keys": {
+        "attach_mag": { "position": [[0.3, 0.0003, -0.1874, 0.109], [0.5, 0.0003, -0.1874, -0.6], [0.95, 0.0003, -0.1874, -0.2], [1.4, 0.0003, -0.1874, 0.109]] },
+        "bolt": { "position": [[2.6, 0, 0.3369, 0.1639], [2.75, 0, 0.255, 0.1639], [2.9, 0, 0.3369, 0.1639]] },
+        "bolt_carrier": { "position": [[2.6, 0.0009, -0.1083, 0.127], [2.75, 0.0009, -0.19, 0.127], [2.9, 0.0009, -0.1083, 0.127]] }
+      }
+    },
+    "reload_fast": {
+      "length": 2.167,
+      "keys": {
+        "attach_mag": { "position": [[0.3, 0.0003, -0.1874, 0.109], [0.5, 0.0003, -0.1874, -0.6], [0.95, 0.0003, -0.1874, -0.2], [1.4, 0.0003, -0.1874, 0.109]] }
+      }
+    }
+  },
+  "layers": [
+    {
+      "default": "idle",
+      "states": {
+        "idle": { "clip": "idle", "loop": true, "on": { "fire": "fire" } },
+        "fire": { "clip": "fire", "end": "fire_done", "on": { "fire": "fire", "fire_done": "idle" } }
+      }
+    },
+    {
+      "default": "Empty_State",
+      "states": {
+        "Empty_State": { "empty": true, "on": { "reload": ["reload", 0.2], "reload_fast": ["reload_fast", 0.2] } },
+        "reload": { "clip": "reload", "end": "reload_done", "on": { "reload_done": "Empty_State" } },
+        "reload_fast": { "clip": "reload_fast", "end": "reload_done", "on": { "reload_done": "Empty_State" } }
+      }
+    }
+  ]
+}

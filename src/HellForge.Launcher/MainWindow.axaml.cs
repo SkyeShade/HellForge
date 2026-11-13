@@ -76,7 +76,8 @@ public partial class MainWindow : Window
         ConsoleList.ItemsSource = lines;
         templates = ProfileStore.LoadTemplates(paths);
         TemplateCombo.ItemsSource = templates;
-        TemplateCombo.SelectedItem = templates.FirstOrDefault(t => t.Name == ProfileStore.FallbackTemplate) ?? templates.FirstOrDefault();
+        TemplateCombo.SelectedItem = templates.FirstOrDefault(t => t.Name == ProfileStore.FirstProfileTemplate) ??
+            templates.FirstOrDefault(t => t.Name == ProfileStore.FallbackTemplate) ?? templates.FirstOrDefault();
         ShowTemplateDescription();
         LoadProfiles(ProfileStore.LoadSelected(paths));
 
@@ -119,7 +120,8 @@ public partial class MainWindow : Window
         LocalPlayFabBox.IsCheckedChanged += (_, _) => ProfileStore.SaveLocalPlayFab(paths, LocalPlayFabBox.IsChecked == true);
         SdkShimsBox.IsChecked = ProfileStore.LoadSdkShims(paths);
         SdkShimsBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSdkShims(paths, SdkShimsBox.IsChecked == true);
-        // Co-op over Steam relays is Linux's HELLFORGE_STEAM_UDP=1 (#62): off by default, and passed to a session only.
+        // Co-op over Steam relays is Linux's HELLFORGE_STEAM_UDP=1 (#62): on by default, and passed to a session only. The
+        // game's lobby browser can turn it on while a session runs (ServeCoopRelays).
         SteamUdpOptions.IsVisible = OperatingSystem.IsLinux();
         SteamUdpBox.IsChecked = ProfileStore.LoadSteamUdp(paths);
         SteamUdpBox.IsCheckedChanged += (_, _) => ProfileStore.SaveSteamUdp(paths, SteamUdpBox.IsChecked == true);
@@ -288,6 +290,9 @@ public partial class MainWindow : Window
         else Start();
     }
 
+    // When the session runner was last started: an early failure's reason is read only from logs written since.
+    DateTime runnerStartedUtc;
+
     void Start(string? modSync = null)
     {
         if (runner.IsRunning) return;
@@ -320,6 +325,7 @@ public partial class MainWindow : Window
         // both on by default (Settings > Multiplayer): only a switch turned off is worth a line
         if (LocalPlayFabBox.IsChecked != true) Append("Local PlayFab is off (Settings > Multiplayer): co-op with friends needs it.", Orange);
         if (SdkShimsBox.IsChecked != true) Append("Lobby and session through Steam friends is off (Settings > Multiplayer): co-op with friends needs it.", Orange);
+        AppendCoopRelaysLine();
         List<string> gameOptions;
         try { gameOptions = HellForge.Core.GameLaunchOptions.Parse(LaunchOptionsBox.Text); }
         catch (InvalidDataException error)
@@ -336,6 +342,7 @@ public partial class MainWindow : Window
         {
             previousRunId = SessionRunner.LatestRunId(paths);
             runLookupPending = true;
+            runnerStartedUtc = DateTime.UtcNow;
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
                 EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true,
                 SteamUdp: SteamUdpBox.IsChecked == true));
@@ -374,6 +381,12 @@ public partial class MainWindow : Window
                     failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
                 return false;
             }
+        // None ships, so the session runner would stop at once; on Linux only after Steam and Proton had started.
+        if (paths.InstallRoot != null && HellForge.Core.GameCatalog.Missing(paths.InstallRoot))
+        {
+            SetStatus("Sync your inventory before the first session.", Phase.Attention, HellForge.Core.GameCatalog.SyncFirst);
+            return false;
+        }
         // A finished sync's capture still forwards the normal game until it closes; ending it would cut the game off.
         if (SyncCaptureId != null)
         {
@@ -447,11 +460,52 @@ public partial class MainWindow : Window
         }
         else if (!stopRequested && ShowModBuilds(out var built)) RenderSteps(BuildStep, false, built);
         if (runner.IsRunning) ShowModSync(runDirectory!);
+        if (runner.IsRunning) ServeCoopRelays(runDirectory!);
         else ModSyncCard.IsVisible = false;
         FollowModStatuses();
         // Once the result has completedUtc and the runner is gone the run cannot change again. A request backlog larger
         // than one poll's chunk is still shown first.
         if (resultFile.Finished && requests.AtEnd) runFinished = true;
+    }
+
+    // Linux: co-op over Steam relays, when it is off or cannot open (the session then plays without it, and its lobby
+    // browser says so and offers to turn it on).
+    void AppendCoopRelaysLine()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        if (SteamUdpBox.IsChecked != true)
+            Append("Co-op over Steam relays is off (Settings > Multiplayer): other players' lobbies show but can't be joined; the lobby browser can turn it on.", Orange);
+        else if (SessionRunner.SteamUdpProblem() is { } problem)
+            Append(problem + " Until then this session plays without co-op.", Orange);
+    }
+
+    // Linux: the game's lobby browser asked to turn co-op over Steam relays on (the session's backend wrote the ask in its
+    // folder; CoopRelaysSwitch). The launcher, outside the session's network namespace, opens it (hf-coop-relays.sh),
+    // keeps the switch on (the player chose it in the game), and answers. One at a time.
+    bool coopRelaysBusy;
+    void ServeCoopRelays(string run)
+    {
+        if (!OperatingSystem.IsLinux() || coopRelaysBusy || paths.InstallRoot is not { } install) return;
+        var backend = Path.Combine(run, "backend");
+        if (!CoopRelaysSwitch.TakeRequest(backend)) return;
+        coopRelaysBusy = true;
+        Append("The game's lobby browser asked to turn co-op over Steam relays on; opening it for this session...", LauncherLine);
+        ProfileStore.SaveSteamUdp(paths, true);
+        SteamUdpBox.IsChecked = true;
+        _ = Task.Run(() =>
+        {
+            var (open, message, log) = CoopRelaysSwitch.TurnOn(install, TimeSpan.FromSeconds(50));
+            var answer = open ? "" : message + ". It is on from the next session: STOP, then PLAY, to join";
+            try { CoopRelaysSwitch.WriteAnswer(backend, open, answer); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { log += "\nCould not answer the session: " + error.Message; }
+            Dispatcher.UIThread.Post(() =>
+            {
+                coopRelaysBusy = false;
+                foreach (var line in log.Split('\n', StringSplitOptions.RemoveEmptyEntries)) Append(line, LauncherLine);
+                Append(open ? "Co-op over Steam relays is on for this session (UDP to Valve's relays only) and stays on (Settings > Multiplayer)."
+                    : "Co-op over Steam relays could not open in this session: " + message + ". It is on from the next session.", open ? LauncherLine : Orange);
+            });
+        });
     }
 
     // The backend stopped the session so the launcher starts again with the host's mods it downloaded; true when it restarted.
@@ -479,26 +533,6 @@ public partial class MainWindow : Window
             ShowEarlyFailure(exitCode);
         }
         runLookupPending = false;
-    }
-
-    void ShowEarlyFailure(int? exitCode)
-    {
-        // The wrapper refuses before Steam and Proton when HellForge was started inside Flatpak, Snap or Steam's
-        // runtime container. It writes the reason for this line; without it, keep the generic early-exit advice.
-        var containerRefusal = paths.InstallRoot == null ? null : SessionRunner.LinuxContainerRefusal(paths.InstallRoot);
-        if (containerRefusal != null)
-        {
-            SetStatus("HellForge cannot start inside this container.", Phase.Failed, failure: containerRefusal);
-            return;
-        }
-        var failureLogs = paths.InstallRoot == null ? "Sessions run in installations made with HellForge-Setup."
-            : OperatingSystem.IsLinux()
-                ? "Check " + Path.Combine(paths.InstallRoot, "logs", "linux-session-wrapper.log") +
-                    " for Bash/Proton output and " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") +
-                    " for errors after the Windows session runner starts."
-                : "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why.";
-        SetStatus("The session runner exited before starting.", Phase.Failed, failureLogs,
-            exitCode is { } code ? $"The launch process exited with code {code}." : null);
     }
 
     void FindRun()
@@ -976,29 +1010,9 @@ public partial class MainWindow : Window
         for (var i = 0; i < pages.Length; i++) pages[i].IsVisible = i == index;
         SetupPage.IsVisible = false;
         if (index == 0) UpdateSyncStatus();  // Steam may have signed in to another account since
-        if (index == 2) RefreshMods();
-        if (index == 3) QueueScroll();
-    }
+        if (index == 2) RefreshMods(onlyIfChanged: true); // shows the page as drawn, then what changed
 
-    // Zips the latest session folder to the Desktop, for sending to whoever helps test (it names Steam accounts by id).
-    void SaveLogsToDesktop()
-    {
-        try
-        {
-            var run = runDirectory ?? (Directory.Exists(paths.RunsFolder)
-                ? new DirectoryInfo(paths.RunsFolder).GetDirectories().OrderByDescending(d => d.LastWriteTimeUtc).FirstOrDefault()?.FullName : null);
-            if (run == null) { Append("No session logs yet: play a session first.", Orange); return; }
-            var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-                $"HellForge-logs-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.zip");
-            // the same zip as HellForge.Cli logs --export: scrubbed of the PC's names (SessionLogs.Export)
-            var gameLogs = paths.InstallRoot != null ? Path.Combine(paths.InstallRoot, "userdata", "logs") : null;
-            var skipped = HellForge.Core.SessionLogs.Export(run, gameLogs, target).Skipped;
-            Append("Saved the latest session's logs to " + target + (skipped > 0 ? $" ({skipped} files in use were left out)" : ""), Green);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            Append("Could not save the logs: " + error.Message, Red);
-        }
+        if (index == 3) QueueScroll();
     }
 
     // The HellForge Discord server: support, news and mods (the sidebar's Discord button).

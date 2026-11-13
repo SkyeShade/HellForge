@@ -2,9 +2,9 @@
  * finds, for an editor to show (browse_state, browse_lobby), and the editor's asks back (browse_ask). Over the live pipe:
  *   backend: browselobby <seq> <version> <index> <ready|download|trust|unjoinable|blocked|full|locked|unknown>
  *                        <friend,mission,joinable or -> <members> <max members> <difficulty or -> <planet or -> <mods>
- *                        <download bytes> <lobby id> <host name> <reason> <players> <mod list> <strangers|editedstats|->
+ *                        <download bytes> <lobby id> <host name> <reason> <players> <mod list> <strangers|editedstats|relays|->
  *            browsestate <seq> <version> <none|searching|ready|unavailable|invited|failed> <lobbies> <message>
- *   loader:  browseask <refresh|join|quick|allow> <lobby id, strangers|editedstats, or ->  (unasked: the editor's ask)
+ *   loader:  browseask <refresh|join|quick|allow> <lobby id, strangers|editedstats|relays, or ->  (unasked: the editor's ask)
  * As mod sync's lines do, a version's browselobby lines come first and wait in g_browseNext (the pipe's thread alone
  * touches it); its browsestate line publishes them. A browsestate of the version already published (a search under way,
  * a join's outcome) keeps its lobbies. The terminal count is terminal.c's: how many times the ship's information
@@ -13,7 +13,7 @@
 #define BROWSE_MAX_LOBBIES 128
 static const char* const kBrowseStates[] = {"none", "searching", "ready", "unavailable", "invited", "failed"};
 static const char* const kBrowseVerdicts[] = {"ready", "download", "trust", "unjoinable", "blocked", "full", "locked", "unknown"};
-static const char* const kBrowseFixes[] = {"-", "strangers", "editedstats"};
+static const char* const kBrowseFixes[] = {"-", "strangers", "editedstats", "relays"};
 static SRWLOCK g_browseLock = SRWLOCK_INIT;
 static HfBrowseState g_browse;
 static HfBrowseLobby g_browseLobbies[BROWSE_MAX_LOBBIES];
@@ -65,7 +65,7 @@ static void BrowseLobbyLine(char* line, char* reply, size_t size)
     uint64_t version = 0, index = 0, members = 0, max = 0, mods = 0, bytes = 0;
     int32_t difficulty = -1, planet = -1;
     int verdict = n == 18 ? SyncName(f[4], kBrowseVerdicts, 8) : -1, flags = n == 18 ? BrowseFlags(f[5]) : -1;
-    int fix = n == 18 ? SyncName(f[17], kBrowseFixes, 3) : -1;
+    int fix = n == 18 ? SyncName(f[17], kBrowseFixes, 4) : -1;
     if (n != 18 || fix < 0 || !SyncNumber(f[2], &version) || version > UINT32_MAX || !SyncNumber(f[3], &index) || verdict < 0 || flags < 0 ||
         !SyncNumber(f[6], &members) || members > 64 || !SyncNumber(f[7], &max) || max > 64 || !BrowseOptional(f[8], 100, &difficulty) ||
         !BrowseOptional(f[9], 100000, &planet) || !SyncNumber(f[10], &mods) || mods > 4096 || !SyncNumber(f[11], &bytes) || !BrowseLobbyId(f[12]))
@@ -215,19 +215,32 @@ static int ApiBrowseLobby(HfMod* mod, uint32_t index, HfBrowseLobby* out)
     return 1;
 }
 
+/* The setting an ask turns on, as "browseask allow" names it (for the session, or co-op over Steam relays, which the
+ * launcher keeps); NULL for an ask that is not one. */
+static const char* BrowseSetting(uint32_t ask)
+{
+    switch (ask)
+    {
+    case HF_BROWSE_ALLOW_STRANGERS: return "strangers";
+    case HF_BROWSE_SHOW_EDITED_STATS: return "editedstats";
+    case HF_BROWSE_TURN_ON_RELAYS: return "relays";
+    default: return NULL;
+    }
+}
+
 /* SDK 16, browse_ask: a new list, a join of a listed lobby, Quick Play or a setting the browser offers, queued for the
  * backend. */
 static int ApiBrowseAsk(HfMod* mod, uint32_t ask, const char* lobbyId)
 {
     if (ask == HF_BROWSE_CLAIM || ask == HF_BROWSE_RELEASE) return BrowseClaim(mod, ask == HF_BROWSE_CLAIM);
     if (ask == HF_BROWSE_SHOWN || ask == HF_BROWSE_HIDDEN) return BrowseCamera(mod, ask == HF_BROWSE_SHOWN);
-    const char* verb = ask == HF_BROWSE_REFRESH ? "refresh" : ask == HF_BROWSE_JOIN ? "join" : ask == HF_BROWSE_QUICK ? "quick" :
-        ask == HF_BROWSE_ALLOW_STRANGERS || ask == HF_BROWSE_SHOW_EDITED_STATS ? "allow" : NULL;
+    const char* setting = BrowseSetting(ask);
+    const char* verb = ask == HF_BROWSE_REFRESH ? "refresh" : ask == HF_BROWSE_JOIN ? "join" : ask == HF_BROWSE_QUICK ? "quick" : setting ? "allow" : NULL;
     if (verb == NULL) return 0;
     if (ask == HF_BROWSE_JOIN && (lobbyId == NULL || !BrowseLobbyId(lobbyId))) return 0;
-    /* a setting for the session (the backend never saves it): while a mod holds the browser, only that mod asks */
-    if ((ask == HF_BROWSE_ALLOW_STRANGERS || ask == HF_BROWSE_SHOW_EDITED_STATS) && !BrowseMay(mod)) return 0;
-    const char* what = ask == HF_BROWSE_JOIN ? lobbyId : ask == HF_BROWSE_ALLOW_STRANGERS ? "strangers" : ask == HF_BROWSE_SHOW_EDITED_STATS ? "editedstats" : "-";
+    /* a setting: while a mod holds the browser, only that mod asks */
+    if (setting && !BrowseMay(mod)) return 0;
+    const char* what = ask == HF_BROWSE_JOIN ? lobbyId : setting ? setting : "-";
     char line[128];
     snprintf(line, sizeof line, "browseask\t%s\t%s", verb, what);
     int queued = LiveQueue(line);

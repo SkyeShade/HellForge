@@ -5,7 +5,7 @@ loads mods into it: new stratagems, weapons, stats and difficulties. You can pla
 players who run HellForge. It comes with an in-game editor (F8) and a C mod SDK with guides and examples.
 
 > [!WARNING]
-> **This is the `dev` branch: work in progress for the next release (0.4.0), experimental and possibly broken.** Players:
+> **This is the `dev` branch: work in progress for the next release (0.5.0), experimental and possibly broken.** Players:
 > install the latest numbered release from the [Releases page](https://github.com/SkyeShade/HellForge/releases) instead,
 > not the Nightly. A build of this branch shows `-dev.<n>` or `-nightly.<date>` in its version.
 
@@ -42,9 +42,17 @@ unless you show them on the Mods page.
 
 Profiles are local. A new installation's first profile starts as a fresh player after basic training (the starter
 template), and new profiles can pick another template. Sync Inventory (Profile > Account sync) brings in your own
-account's inventory and progression from the normal game. Premium items (premium warbonds, Superstore items, Steam DLC
-gear) are there only once a sync has found them on the Steam account signed in now, and Super Credits never are. The
-galactic war can follow the live war read-only from the community mirror
+account's inventory and progression from the normal game.
+
+A sync also copies the game's item and warbond catalogues, which HellForge does not ship, so an installation needs one
+sync before its first PLAY. A sync only keeps what the normal game receives when it logs in, and sends nothing of its
+own. Premium items (premium warbonds, Superstore items, Steam DLC gear) are there only once a sync has found them on the
+Steam account signed in now, and Super Credits never are.
+
+Which items are paid, and their entries in the catalogue the game is served, come from a list compiled into
+HellForge, so an edited catalogue or profile does not change them.
+
+The galactic war can follow the live war read-only from the community mirror
 [api.helldivers2.dev](https://api.helldivers2.dev), stay HellForge's frozen war, or open every planet to liberation
 (Settings > Galactic war).
 
@@ -89,15 +97,18 @@ Each step in detail, the installation's folders, updating and uninstalling are i
 
 1. Start HellForge with `HellForge.exe` at the top of the installation folder, or its shortcut, with Steam running and
    signed in.
-2. Press PLAY. The launcher builds any mods that ship their sources, verifies the game files, checks the network block
+2. Run **Sync Inventory** once (Profile > Account sync): it opens the normal game through Steam, and once you have
+   logged in it copies your inventory and the game's item and warbond catalogues. PLAY says "Sync Inventory first"
+   until an installation has had one sync, which any of its profiles can do.
+3. Press PLAY. The launcher builds any mods that ship their sources, verifies the game files, checks the network block
    and starts the game.
-3. The first launch of a new installation can stop in the cryo pod, and the launcher tells you when it does. Press STOP,
+4. The first launch of a new installation can stop in the cryo pod, and the launcher tells you when it does. Press STOP,
    then PLAY again.
-4. In game, press F8 for the in-game editor.
-5. Three mods come installed: the in-game editor, the Hell Forge difficulty (level 11) and Vanilla Plus (small fixes).
+5. In game, press F8 for the in-game editor.
+6. Three mods come installed: the in-game editor, the Hell Forge difficulty (level 11) and Vanilla Plus (small fixes).
    Add more on the Mods page: [docs/mods.md](docs/mods.md). A code mod runs inside the game with your permissions, so
    only enable code mods from people you trust.
-6. To play with friends, compare the modlist code on the Mods page (friends need the same gameplay mods), then host or
+7. To play with friends, compare the modlist code on the Mods page (friends need the same gameplay mods), then host or
    join from your Steam friends list.
 
 ## Where to go next

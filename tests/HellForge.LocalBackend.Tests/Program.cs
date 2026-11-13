@@ -8,6 +8,21 @@ using HellForge.LocalBackend;
 // CI runner the pool grows too slowly for them and a stats share's 1 s tick missed an 8 s wait (CI, 2026-10-24).
 ThreadPool.GetMinThreads(out var workers, out var ports);
 ThreadPool.SetMinThreads(Math.Max(workers, 32), ports);
+// The game catalogues (HellForge.Core GameCatalog) are not in the repository, and almost every check below serves them:
+// HELLFORGE_TEST_CATALOGUE names a folder with the two files a Sync Inventory assembles (an installation's catalogue/
+// folder, or CI's private test data). Without it the suite says so and stops; CI sets it whenever it has the data.
+if (Environment.GetEnvironmentVariable("HELLFORGE_TEST_CATALOGUE") is not { Length: > 0 } testCatalogue ||
+    !File.Exists(Path.Combine(testCatalogue, HellForge.Core.GameCatalog.ProgressionDataFile)) ||
+    !File.Exists(Path.Combine(testCatalogue, HellForge.Core.GameCatalog.ItemCatalogFile)))
+{
+    Console.WriteLine("SKIPPED: no game catalogue. Set HELLFORGE_TEST_CATALOGUE to a folder holding " +
+        HellForge.Core.GameCatalog.ProgressionDataFile + " and " + HellForge.Core.GameCatalog.ItemCatalogFile +
+        " (an installation's catalogue folder after Sync Inventory).");
+    if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+        Console.WriteLine("::warning title=Local backend checks skipped::No game catalogue (private test data) for this run.");
+    return 0;
+}
+LocalBackend.CatalogueDirectory = Path.GetFullPath(testCatalogue);
 var root = Path.GetFullPath(Path.Combine("artifacts", "local-backend-tests", Guid.NewGuid().ToString("N")));
 Directory.CreateDirectory(root);
 var results = new List<object>();
@@ -582,6 +597,7 @@ try
             // Its reply is the warbond item's shape, {items:[...]}, the price in it (negative): the client adds them all.
             var frontReply = Purchases.StoreFrontReply(new JsonArray(new JsonObject { ["mixId"] = 3499930023u, ["amount"] = 1L },
                 new JsonObject { ["mixId"] = MissionService.RequisitionMixId, ["amount"] = -5000L }));
+            Check(frontReply["packageProgress"] is JsonArray { Count: 0 }, "a store front reply lists no package progress (the client's parser needs the list)");
             Check(frontReply["items"] is JsonArray frontItems && frontItems.Count == 2 && (uint)frontItems[0]!["mixId"]! == 3499930023u &&
                 (long)frontItems[0]!["amount"]! == 1 && (uint)frontItems[1]!["mixId"]! == MissionService.RequisitionMixId && (long)frontItems[1]!["amount"]! == -5000,
                 "A store front purchase's reply is not {items:[the item, the price]}: " + frontReply.ToJsonString());
@@ -680,6 +696,8 @@ try
     Check(unpaired, "Profile accepted without startup fixtures.");
     AccountSyncTests.Run(root, Check);
     Console.WriteLine("PASS account sync: premium only from a sealed snapshot of the signed-in account, free warbond open, Super Credits never served, granted or imported, imports by category with backups and restore");
+    PaidFloorTests.Run(root, Check);
+    Console.WriteLine("PASS paid floor: the compiled list is what the catalogue's rules give, and an edited catalogue frees no paid or premium warbond item");
     results.Add(new { mode = "profile", outcome = "passed", invalidEdits = invalidEdits.Length + 1 });
     Console.WriteLine("PASS profile: fixture defaults, persistence, single server, validation, session audit");
     await LiveWarTests.Run(root, Check);
@@ -703,9 +721,10 @@ try
     // The command line: every option the session runner passes (PlaySession.StartBackend and the WarArguments and
     // MultiplayerArguments it delegates to, up to Observe; the multiplayer path the longest) is accepted; an unknown or
     // repeated one is refused.
-    // The three methods are read by name and brace-matched, so moving other methods to partial files does not change
-    // what is read. A missing method leaves its part empty and the check below fails with its message.
-    var runner = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../src/HellForge.Session/PlaySession.cs"));
+    // The three methods are read by name and brace-matched from every PlaySession partial file, so moving a method
+    // between them does not change what is read. A missing method leaves its part empty and the check below fails.
+    var sessionFolder = Path.Combine(AppContext.BaseDirectory, "../../../../../src/HellForge.Session");
+    var runner = string.Concat(Directory.GetFiles(sessionFolder, "PlaySession*.cs").Order(StringComparer.Ordinal).Select(File.ReadAllText));
     var startBackend = string.Concat(new[] { "void StartBackend(", "void WarArguments(", "void MultiplayerArguments(" }
         .Select(signature => MethodText(runner, signature)));
     var passed = System.Text.RegularExpressions.Regex.Matches(startBackend, "\"(--[a-z][a-z-]+)\"").Select(m => m.Groups[1].Value).Distinct().ToList();
@@ -739,17 +758,30 @@ try
     Console.WriteLine("PASS lobby privacy: Public, Friends only and Invite only against friends, strangers and invited players; kicks and no rejoin; invitations; frame limits; the stranger gate's limits and memory");
     await ModSyncTests.Run(root, Check);
     await ModSyncTests.Legacy(root, Check);
+    await ModSyncTests.FromOwnGame(root, Check);
     results.Add(new { mode = "mod-sync", outcome = "passed" });
-    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; trusting a friend's mods and GET IT, a stranger's unverified ones never; the live pipe; HellForge 0.3 joiners and hosts");
+    Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; trusting a friend's mods and GET IT, a stranger's unverified ones never; the live pipe; HellForge 0.3 joiners and hosts; parts from the joiner's own game and a recipe mod's missing ranges from the host");
     await RejoinTests.Run(root, Check);
     results.Add(new { mode = "rejoin", outcome = "passed" });
     Console.WriteLine("PASS rejoin after a mod sync: the rejoin file, the host expecting a machine refused for its mods back (invited, privacy changed, kicked, expired), its answers, the game on the ship invited back and joining, and each way it gives up once");
     Console.WriteLine("PASS mod sync: a refusal's offer, download, checks and restart; blocked, unshared and unverified mods; the host's limits; a lying host; the live pipe");
     await LiveModsTests.Run(root, Check);
     results.Add(new { mode = "live-mods", outcome = "passed" });
+    IdleKickTests.Run(Check);
+    results.Add(new { mode = "idle-kick", outcome = "passed" });
+    Console.WriteLine("PASS idle kick: served off, every other override unchanged");
     RegisteredItemsTests.Run(root, Check);
+    RegisteredChecksTests.Run(root, Check);
+    await GrantGateTests.Run(root, Check);
+    CatalogueRebuildTests.Run(root, Check);
     results.Add(new { mode = "registered-items", outcome = "passed" });
     Console.WriteLine("PASS registered items: child hash, catalogue children, mastery package, progress, inventory");
+    await ModWarbondsTests.Run(root, Check);
+    results.Add(new { mode = "mod-warbonds", outcome = "passed" });
+    Console.WriteLine("PASS mod warbonds: the spec's checks and ids, listed after the game's within the list's room and the bought items' room, pages, spent counter, sold in their currency, page gates, mods' items held once bought, unlock-all, premium refused");
+    MasteryTests.Run(root, Check);
+    results.Add(new { mode = "weapon-mastery", outcome = "passed" });
+    Console.WriteLine("PASS weapon mastery: missions earn, once; a mod weapon's own level, items and purchases, saved apart; the launcher's levels; caching");
 }
 catch (Exception error)
 {

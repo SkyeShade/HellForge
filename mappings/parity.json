@@ -1481,7 +1481,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Cockpit front left"
     },
     {
      "kind": "component",
@@ -1497,7 +1497,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Cockpit front left"
     },
     {
      "kind": "component",
@@ -1523,7 +1523,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Cockpit front right"
     },
     {
      "kind": "component",
@@ -1539,7 +1539,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Cockpit front right"
     },
     {
      "kind": "component",
@@ -1733,7 +1733,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Light right front"
     },
     {
      "kind": "component",
@@ -1749,7 +1749,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Light right front"
     },
     {
      "kind": "component",
@@ -1775,7 +1775,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Light left front"
     },
     {
      "kind": "component",
@@ -1791,7 +1791,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Light left front"
     }
    ],
    "EXO-49 Emancipator Exosuit": [
@@ -1835,7 +1835,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Cockpit front left"
     },
     {
      "kind": "component",
@@ -1851,7 +1851,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Cockpit front left"
     },
     {
      "kind": "component",
@@ -1877,7 +1877,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Cockpit front right"
     },
     {
      "kind": "component",
@@ -1893,7 +1893,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Cockpit front right"
     },
     {
      "kind": "component",
@@ -2087,7 +2087,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Light right front"
     },
     {
      "kind": "component",
@@ -2103,7 +2103,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Light right front"
     },
     {
      "kind": "component",
@@ -2129,7 +2129,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Light left front"
     },
     {
      "kind": "component",
@@ -2145,7 +2145,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Light left front"
     }
    ],
    "EXO-51 Lumberer Exosuit": [
@@ -2189,7 +2189,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Cockpit front left"
     },
     {
      "kind": "component",
@@ -2205,7 +2205,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Cockpit front left"
     },
     {
      "kind": "component",
@@ -2231,7 +2231,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Cockpit front right"
     },
     {
      "kind": "component",
@@ -2247,7 +2247,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Cockpit front right"
     },
     {
      "kind": "component",
@@ -2441,7 +2441,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Light right front"
     },
     {
      "kind": "component",
@@ -2457,7 +2457,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Light right front"
     },
     {
      "kind": "component",
@@ -2483,7 +2483,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Light left front"
     },
     {
      "kind": "component",
@@ -2499,7 +2499,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Light left front"
     }
    ],
    "EXO-55 Breakthrough Exosuit": [
@@ -2543,7 +2543,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Cockpit front left"
     },
     {
      "kind": "component",
@@ -2559,7 +2559,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Cockpit front left"
     },
     {
      "kind": "component",
@@ -2585,7 +2585,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Cockpit front right"
     },
     {
      "kind": "component",
@@ -2601,7 +2601,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Cockpit front right"
     },
     {
      "kind": "component",
@@ -2795,7 +2795,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Light right front"
     },
     {
      "kind": "component",
@@ -2811,7 +2811,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Light right front"
     },
     {
      "kind": "component",
@@ -2837,7 +2837,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Light left front"
     },
     {
      "kind": "component",
@@ -2853,7 +2853,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Light left front"
     }
    ],
    "FRV (Super Earth variant)": [
@@ -2897,7 +2897,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Front left wheel tire"
     },
     {
      "kind": "component",
@@ -2913,7 +2913,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Front left wheel tire"
     },
     {
      "kind": "component",
@@ -2939,7 +2939,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Front right wheel tire"
     },
     {
      "kind": "component",
@@ -2955,7 +2955,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Front right wheel tire"
     },
     {
      "kind": "component",
@@ -2981,7 +2981,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 2"
+     "section": "Back left wheel tire"
     },
     {
      "kind": "component",
@@ -2997,7 +2997,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 2"
+     "section": "Back left wheel tire"
     },
     {
      "kind": "component",
@@ -3023,7 +3023,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 3"
+     "section": "Back right wheel tire"
     },
     {
      "kind": "component",
@@ -3039,7 +3039,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 3"
+     "section": "Back right wheel tire"
     },
     {
      "kind": "component",
@@ -3149,7 +3149,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Right front door"
     },
     {
      "kind": "component",
@@ -3165,7 +3165,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Right front door"
     },
     {
      "kind": "component",
@@ -3191,7 +3191,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Left front door"
     },
     {
      "kind": "component",
@@ -3207,7 +3207,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Left front door"
     },
     {
      "kind": "component",
@@ -3233,7 +3233,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 8"
+     "section": "Right rear door"
     },
     {
      "kind": "component",
@@ -3249,7 +3249,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 8"
+     "section": "Right rear door"
     },
     {
      "kind": "component",
@@ -3275,7 +3275,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 9"
+     "section": "Left rear door"
     },
     {
      "kind": "component",
@@ -3291,7 +3291,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 9"
+     "section": "Left rear door"
     },
     {
      "kind": "component",
@@ -3359,7 +3359,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 11"
+     "section": "Top right hatch"
     },
     {
      "kind": "component",
@@ -3375,7 +3375,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 11"
+     "section": "Top right hatch"
     },
     {
      "kind": "component",
@@ -3401,7 +3401,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 12"
+     "section": "Top left hatch"
     },
     {
      "kind": "component",
@@ -3417,7 +3417,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 12"
+     "section": "Top left hatch"
     },
     {
      "kind": "component",
@@ -3485,7 +3485,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 14"
+     "section": "Front left headlights"
     },
     {
      "kind": "component",
@@ -3501,7 +3501,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 14"
+     "section": "Front left headlights"
     },
     {
      "kind": "component",
@@ -3527,7 +3527,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 15"
+     "section": "Front left foglights"
     },
     {
      "kind": "component",
@@ -3543,7 +3543,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 15"
+     "section": "Front left foglights"
     },
     {
      "kind": "component",
@@ -3569,7 +3569,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 16"
+     "section": "Front right headlights"
     },
     {
      "kind": "component",
@@ -3585,7 +3585,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 16"
+     "section": "Front right headlights"
     },
     {
      "kind": "component",
@@ -3611,7 +3611,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 17"
+     "section": "Front right foglights"
     },
     {
      "kind": "component",
@@ -3627,7 +3627,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 17"
+     "section": "Front right foglights"
     },
     {
      "kind": "component",
@@ -3653,7 +3653,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 18"
+     "section": "Front left position light"
     },
     {
      "kind": "component",
@@ -3669,7 +3669,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 18"
+     "section": "Front left position light"
     },
     {
      "kind": "component",
@@ -3695,7 +3695,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 19"
+     "section": "Front right position light"
     },
     {
      "kind": "component",
@@ -3711,7 +3711,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 19"
+     "section": "Front right position light"
     },
     {
      "kind": "component",
@@ -3737,7 +3737,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 20"
+     "section": "Right position light"
     },
     {
      "kind": "component",
@@ -3753,7 +3753,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 20"
+     "section": "Right position light"
     },
     {
      "kind": "component",
@@ -3779,7 +3779,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 21"
+     "section": "Left position light"
     },
     {
      "kind": "component",
@@ -3795,7 +3795,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 21"
+     "section": "Left position light"
     },
     {
      "kind": "component",
@@ -3821,7 +3821,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 22"
+     "section": "Back left brake light"
     },
     {
      "kind": "component",
@@ -3837,7 +3837,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 22"
+     "section": "Back left brake light"
     },
     {
      "kind": "component",
@@ -3863,7 +3863,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 23"
+     "section": "Back right brake light"
     },
     {
      "kind": "component",
@@ -3879,7 +3879,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 23"
+     "section": "Back right brake light"
     },
     {
      "kind": "component",
@@ -3905,7 +3905,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 24"
+     "section": "Back fog light"
     },
     {
      "kind": "component",
@@ -3921,7 +3921,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 24"
+     "section": "Back fog light"
     },
     {
      "kind": "component",
@@ -3947,7 +3947,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 25"
+     "section": "Back left wheel hub"
     },
     {
      "kind": "component",
@@ -3963,7 +3963,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 25"
+     "section": "Back left wheel hub"
     },
     {
      "kind": "component",
@@ -3989,7 +3989,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 26"
+     "section": "Front left wheel hub"
     },
     {
      "kind": "component",
@@ -4005,7 +4005,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 26"
+     "section": "Front left wheel hub"
     },
     {
      "kind": "component",
@@ -4031,7 +4031,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 27"
+     "section": "Back right wheel hub"
     },
     {
      "kind": "component",
@@ -4047,7 +4047,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 27"
+     "section": "Back right wheel hub"
     },
     {
      "kind": "component",
@@ -4073,7 +4073,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 28"
+     "section": "Front right wheel hub"
     },
     {
      "kind": "component",
@@ -4089,7 +4089,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 28"
+     "section": "Front right wheel hub"
     }
    ],
    "GATER Oil Rig": [
@@ -4133,7 +4133,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Left wheel front 01"
     },
     {
      "kind": "component",
@@ -4149,7 +4149,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Left wheel front 01"
     },
     {
      "kind": "component",
@@ -4175,7 +4175,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Right wheel front 01"
     },
     {
      "kind": "component",
@@ -4191,7 +4191,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Right wheel front 01"
     },
     {
      "kind": "component",
@@ -4217,7 +4217,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 2"
+     "section": "Left wheel front 02"
     },
     {
      "kind": "component",
@@ -4233,7 +4233,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 2"
+     "section": "Left wheel front 02"
     },
     {
      "kind": "component",
@@ -4259,7 +4259,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 3"
+     "section": "Right wheel front 02"
     },
     {
      "kind": "component",
@@ -4275,7 +4275,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 3"
+     "section": "Right wheel front 02"
     },
     {
      "kind": "component",
@@ -4301,7 +4301,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 4"
+     "section": "Left wheel middle 01"
     },
     {
      "kind": "component",
@@ -4317,7 +4317,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 4"
+     "section": "Left wheel middle 01"
     },
     {
      "kind": "component",
@@ -4343,7 +4343,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 5"
+     "section": "Right wheel middle 01"
     },
     {
      "kind": "component",
@@ -4359,7 +4359,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 5"
+     "section": "Right wheel middle 01"
     },
     {
      "kind": "component",
@@ -4385,7 +4385,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Left wheel rear 01"
     },
     {
      "kind": "component",
@@ -4401,7 +4401,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Left wheel rear 01"
     },
     {
      "kind": "component",
@@ -4427,7 +4427,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Right wheel rear 01"
     },
     {
      "kind": "component",
@@ -4443,7 +4443,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Right wheel rear 01"
     },
     {
      "kind": "component",
@@ -4469,7 +4469,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 8"
+     "section": "Left wheel rear 02"
     },
     {
      "kind": "component",
@@ -4485,7 +4485,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 8"
+     "section": "Left wheel rear 02"
     },
     {
      "kind": "component",
@@ -4511,7 +4511,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 9"
+     "section": "Right wheel rear 02"
     },
     {
      "kind": "component",
@@ -4527,7 +4527,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 9"
+     "section": "Right wheel rear 02"
     }
    ],
    "M-102 Gunner FRV": [
@@ -4571,7 +4571,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Front left wheel tire"
     },
     {
      "kind": "component",
@@ -4587,7 +4587,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Front left wheel tire"
     },
     {
      "kind": "component",
@@ -4613,7 +4613,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Front right wheel tire"
     },
     {
      "kind": "component",
@@ -4629,7 +4629,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Front right wheel tire"
     },
     {
      "kind": "component",
@@ -4655,7 +4655,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 2"
+     "section": "Back left wheel tire"
     },
     {
      "kind": "component",
@@ -4671,7 +4671,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 2"
+     "section": "Back left wheel tire"
     },
     {
      "kind": "component",
@@ -4697,7 +4697,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 3"
+     "section": "Back right wheel tire"
     },
     {
      "kind": "component",
@@ -4713,7 +4713,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 3"
+     "section": "Back right wheel tire"
     },
     {
      "kind": "component",
@@ -4823,7 +4823,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Right front door"
     },
     {
      "kind": "component",
@@ -4839,7 +4839,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Right front door"
     },
     {
      "kind": "component",
@@ -4865,7 +4865,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Left front door"
     },
     {
      "kind": "component",
@@ -4881,7 +4881,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Left front door"
     },
     {
      "kind": "component",
@@ -4907,7 +4907,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 8"
+     "section": "Right rear door"
     },
     {
      "kind": "component",
@@ -4923,7 +4923,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 8"
+     "section": "Right rear door"
     },
     {
      "kind": "component",
@@ -4949,7 +4949,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 9"
+     "section": "Left rear door"
     },
     {
      "kind": "component",
@@ -4965,7 +4965,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 9"
+     "section": "Left rear door"
     },
     {
      "kind": "component",
@@ -5033,7 +5033,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 11"
+     "section": "Top right hatch"
     },
     {
      "kind": "component",
@@ -5049,7 +5049,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 11"
+     "section": "Top right hatch"
     },
     {
      "kind": "component",
@@ -5075,7 +5075,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 12"
+     "section": "Top left hatch"
     },
     {
      "kind": "component",
@@ -5091,7 +5091,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 12"
+     "section": "Top left hatch"
     },
     {
      "kind": "component",
@@ -5159,7 +5159,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 14"
+     "section": "Front left headlights"
     },
     {
      "kind": "component",
@@ -5175,7 +5175,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 14"
+     "section": "Front left headlights"
     },
     {
      "kind": "component",
@@ -5201,7 +5201,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 15"
+     "section": "Front left foglights"
     },
     {
      "kind": "component",
@@ -5217,7 +5217,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 15"
+     "section": "Front left foglights"
     },
     {
      "kind": "component",
@@ -5243,7 +5243,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 16"
+     "section": "Front right headlights"
     },
     {
      "kind": "component",
@@ -5259,7 +5259,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 16"
+     "section": "Front right headlights"
     },
     {
      "kind": "component",
@@ -5285,7 +5285,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 17"
+     "section": "Front right foglights"
     },
     {
      "kind": "component",
@@ -5301,7 +5301,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 17"
+     "section": "Front right foglights"
     },
     {
      "kind": "component",
@@ -5327,7 +5327,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 18"
+     "section": "Front left position light"
     },
     {
      "kind": "component",
@@ -5343,7 +5343,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 18"
+     "section": "Front left position light"
     },
     {
      "kind": "component",
@@ -5369,7 +5369,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 19"
+     "section": "Front right position light"
     },
     {
      "kind": "component",
@@ -5385,7 +5385,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 19"
+     "section": "Front right position light"
     },
     {
      "kind": "component",
@@ -5411,7 +5411,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 20"
+     "section": "Right position light"
     },
     {
      "kind": "component",
@@ -5427,7 +5427,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 20"
+     "section": "Right position light"
     },
     {
      "kind": "component",
@@ -5453,7 +5453,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 21"
+     "section": "Left position light"
     },
     {
      "kind": "component",
@@ -5469,7 +5469,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 21"
+     "section": "Left position light"
     },
     {
      "kind": "component",
@@ -5495,7 +5495,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 22"
+     "section": "Back left brake light"
     },
     {
      "kind": "component",
@@ -5511,7 +5511,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 22"
+     "section": "Back left brake light"
     },
     {
      "kind": "component",
@@ -5537,7 +5537,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 23"
+     "section": "Back right brake light"
     },
     {
      "kind": "component",
@@ -5553,7 +5553,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 23"
+     "section": "Back right brake light"
     },
     {
      "kind": "component",
@@ -5579,7 +5579,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 24"
+     "section": "Back fog light"
     },
     {
      "kind": "component",
@@ -5595,7 +5595,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 24"
+     "section": "Back fog light"
     },
     {
      "kind": "component",
@@ -5621,7 +5621,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 25"
+     "section": "Back left wheel hub"
     },
     {
      "kind": "component",
@@ -5637,7 +5637,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 25"
+     "section": "Back left wheel hub"
     },
     {
      "kind": "component",
@@ -5663,7 +5663,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 26"
+     "section": "Front left wheel hub"
     },
     {
      "kind": "component",
@@ -5679,7 +5679,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 26"
+     "section": "Front left wheel hub"
     },
     {
      "kind": "component",
@@ -5705,7 +5705,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 27"
+     "section": "Back right wheel hub"
     },
     {
      "kind": "component",
@@ -5721,7 +5721,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 27"
+     "section": "Back right wheel hub"
     },
     {
      "kind": "component",
@@ -5747,7 +5747,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 28"
+     "section": "Front right wheel hub"
     },
     {
      "kind": "component",
@@ -5763,7 +5763,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 28"
+     "section": "Front right wheel hub"
     }
    ],
    "M-103 Supply FRV": [
@@ -5807,7 +5807,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Front left wheel tire"
     },
     {
      "kind": "component",
@@ -5823,7 +5823,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Front left wheel tire"
     },
     {
      "kind": "component",
@@ -5849,7 +5849,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Front right wheel tire"
     },
     {
      "kind": "component",
@@ -5865,7 +5865,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Front right wheel tire"
     },
     {
      "kind": "component",
@@ -5891,7 +5891,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 2"
+     "section": "Back left wheel tire"
     },
     {
      "kind": "component",
@@ -5907,7 +5907,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 2"
+     "section": "Back left wheel tire"
     },
     {
      "kind": "component",
@@ -5933,7 +5933,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 3"
+     "section": "Back right wheel tire"
     },
     {
      "kind": "component",
@@ -5949,7 +5949,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 3"
+     "section": "Back right wheel tire"
     },
     {
      "kind": "component",
@@ -6059,7 +6059,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Right front door"
     },
     {
      "kind": "component",
@@ -6075,7 +6075,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Right front door"
     },
     {
      "kind": "component",
@@ -6101,7 +6101,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Left front door"
     },
     {
      "kind": "component",
@@ -6117,7 +6117,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Left front door"
     },
     {
      "kind": "component",
@@ -6143,7 +6143,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 8"
+     "section": "Right rear door"
     },
     {
      "kind": "component",
@@ -6159,7 +6159,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 8"
+     "section": "Right rear door"
     },
     {
      "kind": "component",
@@ -6185,7 +6185,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 9"
+     "section": "Left rear door"
     },
     {
      "kind": "component",
@@ -6201,7 +6201,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 9"
+     "section": "Left rear door"
     },
     {
      "kind": "component",
@@ -6269,7 +6269,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 11"
+     "section": "Top right hatch"
     },
     {
      "kind": "component",
@@ -6285,7 +6285,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 11"
+     "section": "Top right hatch"
     },
     {
      "kind": "component",
@@ -6311,7 +6311,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 12"
+     "section": "Top left hatch"
     },
     {
      "kind": "component",
@@ -6327,7 +6327,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 12"
+     "section": "Top left hatch"
     },
     {
      "kind": "component",
@@ -6395,7 +6395,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 14"
+     "section": "Front left headlights"
     },
     {
      "kind": "component",
@@ -6411,7 +6411,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 14"
+     "section": "Front left headlights"
     },
     {
      "kind": "component",
@@ -6437,7 +6437,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 15"
+     "section": "Front left foglights"
     },
     {
      "kind": "component",
@@ -6453,7 +6453,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 15"
+     "section": "Front left foglights"
     },
     {
      "kind": "component",
@@ -6479,7 +6479,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 16"
+     "section": "Front right headlights"
     },
     {
      "kind": "component",
@@ -6495,7 +6495,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 16"
+     "section": "Front right headlights"
     },
     {
      "kind": "component",
@@ -6521,7 +6521,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 17"
+     "section": "Front right foglights"
     },
     {
      "kind": "component",
@@ -6537,7 +6537,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 17"
+     "section": "Front right foglights"
     },
     {
      "kind": "component",
@@ -6563,7 +6563,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 18"
+     "section": "Front left position light"
     },
     {
      "kind": "component",
@@ -6579,7 +6579,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 18"
+     "section": "Front left position light"
     },
     {
      "kind": "component",
@@ -6605,7 +6605,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 19"
+     "section": "Front right position light"
     },
     {
      "kind": "component",
@@ -6621,7 +6621,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 19"
+     "section": "Front right position light"
     },
     {
      "kind": "component",
@@ -6647,7 +6647,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 20"
+     "section": "Right position light"
     },
     {
      "kind": "component",
@@ -6663,7 +6663,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 20"
+     "section": "Right position light"
     },
     {
      "kind": "component",
@@ -6689,7 +6689,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 21"
+     "section": "Left position light"
     },
     {
      "kind": "component",
@@ -6705,7 +6705,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 21"
+     "section": "Left position light"
     },
     {
      "kind": "component",
@@ -6731,7 +6731,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 22"
+     "section": "Back left brake light"
     },
     {
      "kind": "component",
@@ -6747,7 +6747,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 22"
+     "section": "Back left brake light"
     },
     {
      "kind": "component",
@@ -6773,7 +6773,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 23"
+     "section": "Back right brake light"
     },
     {
      "kind": "component",
@@ -6789,7 +6789,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 23"
+     "section": "Back right brake light"
     },
     {
      "kind": "component",
@@ -6815,7 +6815,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 24"
+     "section": "Back fog light"
     },
     {
      "kind": "component",
@@ -6831,7 +6831,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 24"
+     "section": "Back fog light"
     },
     {
      "kind": "component",
@@ -6857,7 +6857,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 25"
+     "section": "Back left wheel hub"
     },
     {
      "kind": "component",
@@ -6873,7 +6873,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 25"
+     "section": "Back left wheel hub"
     },
     {
      "kind": "component",
@@ -6899,7 +6899,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 26"
+     "section": "Front left wheel hub"
     },
     {
      "kind": "component",
@@ -6915,7 +6915,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 26"
+     "section": "Front left wheel hub"
     },
     {
      "kind": "component",
@@ -6941,7 +6941,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 27"
+     "section": "Back right wheel hub"
     },
     {
      "kind": "component",
@@ -6957,7 +6957,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 27"
+     "section": "Back right wheel hub"
     },
     {
      "kind": "component",
@@ -6983,7 +6983,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 28"
+     "section": "Front right wheel hub"
     },
     {
      "kind": "component",
@@ -6999,7 +6999,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 28"
+     "section": "Front right wheel hub"
     },
     {
      "kind": "component",
@@ -7025,7 +7025,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 29"
+     "section": "Front left dirtlight"
     },
     {
      "kind": "component",
@@ -7041,7 +7041,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 29"
+     "section": "Front left dirtlight"
     },
     {
      "kind": "component",
@@ -7067,7 +7067,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 30"
+     "section": "Front right dirtlight"
     },
     {
      "kind": "component",
@@ -7083,7 +7083,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 30"
+     "section": "Front right dirtlight"
     },
     {
      "kind": "component",
@@ -7109,7 +7109,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 31"
+     "section": "Front left rooflight"
     },
     {
      "kind": "component",
@@ -7125,7 +7125,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 31"
+     "section": "Front left rooflight"
     },
     {
      "kind": "component",
@@ -7151,7 +7151,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 32"
+     "section": "Front right rooflight"
     },
     {
      "kind": "component",
@@ -7167,7 +7167,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 32"
+     "section": "Front right rooflight"
     },
     {
      "kind": "component",
@@ -7193,7 +7193,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 33"
+     "section": "Front left bullbarlight"
     },
     {
      "kind": "component",
@@ -7209,7 +7209,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 33"
+     "section": "Front left bullbarlight"
     },
     {
      "kind": "component",
@@ -7235,7 +7235,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 34"
+     "section": "Front right bullbarlight"
     },
     {
      "kind": "component",
@@ -7251,7 +7251,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 34"
+     "section": "Front right bullbarlight"
     }
    ],
    "M-104 Incinerator FRV": [
@@ -7295,7 +7295,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Front left wheel tire"
     },
     {
      "kind": "component",
@@ -7311,7 +7311,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Front left wheel tire"
     },
     {
      "kind": "component",
@@ -7337,7 +7337,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Front right wheel tire"
     },
     {
      "kind": "component",
@@ -7353,7 +7353,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Front right wheel tire"
     },
     {
      "kind": "component",
@@ -7379,7 +7379,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 2"
+     "section": "Back left wheel tire"
     },
     {
      "kind": "component",
@@ -7395,7 +7395,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 2"
+     "section": "Back left wheel tire"
     },
     {
      "kind": "component",
@@ -7421,7 +7421,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 3"
+     "section": "Back right wheel tire"
     },
     {
      "kind": "component",
@@ -7437,7 +7437,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 3"
+     "section": "Back right wheel tire"
     },
     {
      "kind": "component",
@@ -7547,7 +7547,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Right front door"
     },
     {
      "kind": "component",
@@ -7563,7 +7563,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Right front door"
     },
     {
      "kind": "component",
@@ -7589,7 +7589,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Left front door"
     },
     {
      "kind": "component",
@@ -7605,7 +7605,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Left front door"
     },
     {
      "kind": "component",
@@ -7631,7 +7631,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 8"
+     "section": "Right rear door"
     },
     {
      "kind": "component",
@@ -7647,7 +7647,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 8"
+     "section": "Right rear door"
     },
     {
      "kind": "component",
@@ -7673,7 +7673,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 9"
+     "section": "Left rear door"
     },
     {
      "kind": "component",
@@ -7689,7 +7689,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 9"
+     "section": "Left rear door"
     },
     {
      "kind": "component",
@@ -7757,7 +7757,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 11"
+     "section": "Top right hatch"
     },
     {
      "kind": "component",
@@ -7773,7 +7773,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 11"
+     "section": "Top right hatch"
     },
     {
      "kind": "component",
@@ -7799,7 +7799,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 12"
+     "section": "Top left hatch"
     },
     {
      "kind": "component",
@@ -7815,7 +7815,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 12"
+     "section": "Top left hatch"
     },
     {
      "kind": "component",
@@ -7883,7 +7883,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 14"
+     "section": "Front left headlights"
     },
     {
      "kind": "component",
@@ -7899,7 +7899,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 14"
+     "section": "Front left headlights"
     },
     {
      "kind": "component",
@@ -7925,7 +7925,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 15"
+     "section": "Front left foglights"
     },
     {
      "kind": "component",
@@ -7941,7 +7941,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 15"
+     "section": "Front left foglights"
     },
     {
      "kind": "component",
@@ -7967,7 +7967,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 16"
+     "section": "Front right headlights"
     },
     {
      "kind": "component",
@@ -7983,7 +7983,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 16"
+     "section": "Front right headlights"
     },
     {
      "kind": "component",
@@ -8009,7 +8009,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 17"
+     "section": "Front right foglights"
     },
     {
      "kind": "component",
@@ -8025,7 +8025,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 17"
+     "section": "Front right foglights"
     },
     {
      "kind": "component",
@@ -8051,7 +8051,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 18"
+     "section": "Front left position light"
     },
     {
      "kind": "component",
@@ -8067,7 +8067,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 18"
+     "section": "Front left position light"
     },
     {
      "kind": "component",
@@ -8093,7 +8093,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 19"
+     "section": "Front right position light"
     },
     {
      "kind": "component",
@@ -8109,7 +8109,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 19"
+     "section": "Front right position light"
     },
     {
      "kind": "component",
@@ -8135,7 +8135,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 20"
+     "section": "Right position light"
     },
     {
      "kind": "component",
@@ -8151,7 +8151,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 20"
+     "section": "Right position light"
     },
     {
      "kind": "component",
@@ -8177,7 +8177,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 21"
+     "section": "Left position light"
     },
     {
      "kind": "component",
@@ -8193,7 +8193,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 21"
+     "section": "Left position light"
     },
     {
      "kind": "component",
@@ -8219,7 +8219,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 22"
+     "section": "Back left brake light"
     },
     {
      "kind": "component",
@@ -8235,7 +8235,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 22"
+     "section": "Back left brake light"
     },
     {
      "kind": "component",
@@ -8261,7 +8261,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 23"
+     "section": "Back right brake light"
     },
     {
      "kind": "component",
@@ -8277,7 +8277,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 23"
+     "section": "Back right brake light"
     },
     {
      "kind": "component",
@@ -8303,7 +8303,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 24"
+     "section": "Back fog light"
     },
     {
      "kind": "component",
@@ -8319,7 +8319,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 24"
+     "section": "Back fog light"
     },
     {
      "kind": "component",
@@ -8345,7 +8345,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 25"
+     "section": "Back left wheel hub"
     },
     {
      "kind": "component",
@@ -8361,7 +8361,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 25"
+     "section": "Back left wheel hub"
     },
     {
      "kind": "component",
@@ -8387,7 +8387,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 26"
+     "section": "Front left wheel hub"
     },
     {
      "kind": "component",
@@ -8403,7 +8403,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 26"
+     "section": "Front left wheel hub"
     },
     {
      "kind": "component",
@@ -8429,7 +8429,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 27"
+     "section": "Back right wheel hub"
     },
     {
      "kind": "component",
@@ -8445,7 +8445,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 27"
+     "section": "Back right wheel hub"
     },
     {
      "kind": "component",
@@ -8471,7 +8471,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 28"
+     "section": "Front right wheel hub"
     },
     {
      "kind": "component",
@@ -8487,7 +8487,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 28"
+     "section": "Front right wheel hub"
     }
    ],
    "TD-110 Maelstrom": [
@@ -8531,7 +8531,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Hull front"
     },
     {
      "kind": "component",
@@ -8547,7 +8547,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Hull front"
     },
     {
      "kind": "component",
@@ -8573,7 +8573,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Right front block"
     },
     {
      "kind": "component",
@@ -8589,7 +8589,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Right front block"
     },
     {
      "kind": "component",
@@ -8615,7 +8615,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 2"
+     "section": "Left front block"
     },
     {
      "kind": "component",
@@ -8631,7 +8631,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 2"
+     "section": "Left front block"
     },
     {
      "kind": "component",
@@ -8657,7 +8657,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 3"
+     "section": "Right top block"
     },
     {
      "kind": "component",
@@ -8673,7 +8673,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 3"
+     "section": "Right top block"
     },
     {
      "kind": "component",
@@ -8699,7 +8699,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 4"
+     "section": "Left top block"
     },
     {
      "kind": "component",
@@ -8715,7 +8715,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 4"
+     "section": "Left top block"
     },
     {
      "kind": "component",
@@ -8741,7 +8741,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 5"
+     "section": "Back door block"
     },
     {
      "kind": "component",
@@ -8757,7 +8757,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 5"
+     "section": "Back door block"
     },
     {
      "kind": "component",
@@ -8783,7 +8783,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Right box 0"
     },
     {
      "kind": "component",
@@ -8799,7 +8799,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Right box 0"
     },
     {
      "kind": "component",
@@ -8825,7 +8825,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Right box 1"
     },
     {
      "kind": "component",
@@ -8841,7 +8841,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Right box 1"
     },
     {
      "kind": "component",
@@ -8867,7 +8867,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 8"
+     "section": "Left box 0"
     },
     {
      "kind": "component",
@@ -8883,7 +8883,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 8"
+     "section": "Left box 0"
     },
     {
      "kind": "component",
@@ -8909,7 +8909,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 9"
+     "section": "Left box 1"
     },
     {
      "kind": "component",
@@ -8925,7 +8925,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 9"
+     "section": "Left box 1"
     },
     {
      "kind": "component",
@@ -8951,7 +8951,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 10"
+     "section": "Right box 2"
     },
     {
      "kind": "component",
@@ -8967,7 +8967,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 10"
+     "section": "Right box 2"
     },
     {
      "kind": "component",
@@ -8993,7 +8993,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 11"
+     "section": "Left box 2"
     },
     {
      "kind": "component",
@@ -9009,7 +9009,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 11"
+     "section": "Left box 2"
     },
     {
      "kind": "component",
@@ -9035,7 +9035,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 12"
+     "section": "Right side panel 0"
     },
     {
      "kind": "component",
@@ -9051,7 +9051,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 12"
+     "section": "Right side panel 0"
     },
     {
      "kind": "component",
@@ -9077,7 +9077,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 13"
+     "section": "Right side panel 1"
     },
     {
      "kind": "component",
@@ -9093,7 +9093,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 13"
+     "section": "Right side panel 1"
     },
     {
      "kind": "component",
@@ -9119,7 +9119,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 14"
+     "section": "Left side panel 0"
     },
     {
      "kind": "component",
@@ -9135,7 +9135,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 14"
+     "section": "Left side panel 0"
     },
     {
      "kind": "component",
@@ -9161,7 +9161,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 15"
+     "section": "Left side panel 1"
     },
     {
      "kind": "component",
@@ -9177,7 +9177,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 15"
+     "section": "Left side panel 1"
     },
     {
      "kind": "component",
@@ -9203,7 +9203,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 16"
+     "section": "Right side track panel 0"
     },
     {
      "kind": "component",
@@ -9219,7 +9219,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 16"
+     "section": "Right side track panel 0"
     },
     {
      "kind": "component",
@@ -9245,7 +9245,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 17"
+     "section": "Right side track panel 1"
     },
     {
      "kind": "component",
@@ -9261,7 +9261,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 17"
+     "section": "Right side track panel 1"
     },
     {
      "kind": "component",
@@ -9287,7 +9287,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 18"
+     "section": "Right side track panel 2"
     },
     {
      "kind": "component",
@@ -9303,7 +9303,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 18"
+     "section": "Right side track panel 2"
     },
     {
      "kind": "component",
@@ -9329,7 +9329,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 19"
+     "section": "Right side track panel 3"
     },
     {
      "kind": "component",
@@ -9345,7 +9345,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 19"
+     "section": "Right side track panel 3"
     },
     {
      "kind": "component",
@@ -9371,7 +9371,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 20"
+     "section": "Left side track panel 0"
     },
     {
      "kind": "component",
@@ -9387,7 +9387,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 20"
+     "section": "Left side track panel 0"
     },
     {
      "kind": "component",
@@ -9413,7 +9413,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 21"
+     "section": "Left side track panel 1"
     },
     {
      "kind": "component",
@@ -9429,7 +9429,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 21"
+     "section": "Left side track panel 1"
     },
     {
      "kind": "component",
@@ -9455,7 +9455,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 22"
+     "section": "Left side track panel 2"
     },
     {
      "kind": "component",
@@ -9471,7 +9471,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 22"
+     "section": "Left side track panel 2"
     },
     {
      "kind": "component",
@@ -9497,7 +9497,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 23"
+     "section": "Left side track panel 3"
     },
     {
      "kind": "component",
@@ -9513,7 +9513,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 23"
+     "section": "Left side track panel 3"
     },
     {
      "kind": "component",
@@ -9539,7 +9539,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 24"
+     "section": "Right back panel"
     },
     {
      "kind": "component",
@@ -9555,7 +9555,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 24"
+     "section": "Right back panel"
     },
     {
      "kind": "component",
@@ -9581,7 +9581,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 25"
+     "section": "Left back panel"
     },
     {
      "kind": "component",
@@ -9597,7 +9597,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 25"
+     "section": "Left back panel"
     },
     {
      "kind": "component",
@@ -9623,7 +9623,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 26"
+     "section": "Hull extras"
     },
     {
      "kind": "component",
@@ -9639,7 +9639,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 26"
+     "section": "Hull extras"
     },
     {
      "kind": "component",
@@ -9665,7 +9665,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 27"
+     "section": "Right track"
     },
     {
      "kind": "component",
@@ -9681,7 +9681,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 27"
+     "section": "Right track"
     },
     {
      "kind": "component",
@@ -9707,7 +9707,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 28"
+     "section": "Left track"
     },
     {
      "kind": "component",
@@ -9723,7 +9723,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 28"
+     "section": "Left track"
     },
     {
      "kind": "component",
@@ -9791,7 +9791,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 30"
+     "section": "Antenna"
     },
     {
      "kind": "component",
@@ -9807,7 +9807,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 30"
+     "section": "Antenna"
     }
    ],
    "TD-220 Bastion MK XVI": [
@@ -9851,7 +9851,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 0"
+     "section": "Hull front"
     },
     {
      "kind": "component",
@@ -9867,7 +9867,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 0"
+     "section": "Hull front"
     },
     {
      "kind": "component",
@@ -9893,7 +9893,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 1"
+     "section": "Right front block"
     },
     {
      "kind": "component",
@@ -9909,7 +9909,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 1"
+     "section": "Right front block"
     },
     {
      "kind": "component",
@@ -9935,7 +9935,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 2"
+     "section": "Left front block"
     },
     {
      "kind": "component",
@@ -9951,7 +9951,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 2"
+     "section": "Left front block"
     },
     {
      "kind": "component",
@@ -9977,7 +9977,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 3"
+     "section": "Right top block"
     },
     {
      "kind": "component",
@@ -9993,7 +9993,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 3"
+     "section": "Right top block"
     },
     {
      "kind": "component",
@@ -10019,7 +10019,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 4"
+     "section": "Left top block"
     },
     {
      "kind": "component",
@@ -10035,7 +10035,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 4"
+     "section": "Left top block"
     },
     {
      "kind": "component",
@@ -10061,7 +10061,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 5"
+     "section": "Back door block"
     },
     {
      "kind": "component",
@@ -10077,7 +10077,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 5"
+     "section": "Back door block"
     },
     {
      "kind": "component",
@@ -10103,7 +10103,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 6"
+     "section": "Right box 0"
     },
     {
      "kind": "component",
@@ -10119,7 +10119,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 6"
+     "section": "Right box 0"
     },
     {
      "kind": "component",
@@ -10145,7 +10145,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 7"
+     "section": "Right box 1"
     },
     {
      "kind": "component",
@@ -10161,7 +10161,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 7"
+     "section": "Right box 1"
     },
     {
      "kind": "component",
@@ -10187,7 +10187,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 8"
+     "section": "Left box 0"
     },
     {
      "kind": "component",
@@ -10203,7 +10203,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 8"
+     "section": "Left box 0"
     },
     {
      "kind": "component",
@@ -10229,7 +10229,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 9"
+     "section": "Left box 1"
     },
     {
      "kind": "component",
@@ -10245,7 +10245,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 9"
+     "section": "Left box 1"
     },
     {
      "kind": "component",
@@ -10271,7 +10271,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 10"
+     "section": "Right box 2"
     },
     {
      "kind": "component",
@@ -10287,7 +10287,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 10"
+     "section": "Right box 2"
     },
     {
      "kind": "component",
@@ -10313,7 +10313,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 11"
+     "section": "Left box 2"
     },
     {
      "kind": "component",
@@ -10329,7 +10329,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 11"
+     "section": "Left box 2"
     },
     {
      "kind": "component",
@@ -10355,7 +10355,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 12"
+     "section": "Right side panel 0"
     },
     {
      "kind": "component",
@@ -10371,7 +10371,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 12"
+     "section": "Right side panel 0"
     },
     {
      "kind": "component",
@@ -10397,7 +10397,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 13"
+     "section": "Right side panel 1"
     },
     {
      "kind": "component",
@@ -10413,7 +10413,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 13"
+     "section": "Right side panel 1"
     },
     {
      "kind": "component",
@@ -10439,7 +10439,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 14"
+     "section": "Left side panel 0"
     },
     {
      "kind": "component",
@@ -10455,7 +10455,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 14"
+     "section": "Left side panel 0"
     },
     {
      "kind": "component",
@@ -10481,7 +10481,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 15"
+     "section": "Left side panel 1"
     },
     {
      "kind": "component",
@@ -10497,7 +10497,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 15"
+     "section": "Left side panel 1"
     },
     {
      "kind": "component",
@@ -10523,7 +10523,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 16"
+     "section": "Right side track panel 0"
     },
     {
      "kind": "component",
@@ -10539,7 +10539,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 16"
+     "section": "Right side track panel 0"
     },
     {
      "kind": "component",
@@ -10565,7 +10565,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 17"
+     "section": "Right side track panel 1"
     },
     {
      "kind": "component",
@@ -10581,7 +10581,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 17"
+     "section": "Right side track panel 1"
     },
     {
      "kind": "component",
@@ -10607,7 +10607,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 18"
+     "section": "Right side track panel 2"
     },
     {
      "kind": "component",
@@ -10623,7 +10623,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 18"
+     "section": "Right side track panel 2"
     },
     {
      "kind": "component",
@@ -10649,7 +10649,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 19"
+     "section": "Right side track panel 3"
     },
     {
      "kind": "component",
@@ -10665,7 +10665,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 19"
+     "section": "Right side track panel 3"
     },
     {
      "kind": "component",
@@ -10691,7 +10691,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 20"
+     "section": "Left side track panel 0"
     },
     {
      "kind": "component",
@@ -10707,7 +10707,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 20"
+     "section": "Left side track panel 0"
     },
     {
      "kind": "component",
@@ -10733,7 +10733,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 21"
+     "section": "Left side track panel 1"
     },
     {
      "kind": "component",
@@ -10749,7 +10749,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 21"
+     "section": "Left side track panel 1"
     },
     {
      "kind": "component",
@@ -10775,7 +10775,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 22"
+     "section": "Left side track panel 2"
     },
     {
      "kind": "component",
@@ -10791,7 +10791,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 22"
+     "section": "Left side track panel 2"
     },
     {
      "kind": "component",
@@ -10817,7 +10817,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 23"
+     "section": "Left side track panel 3"
     },
     {
      "kind": "component",
@@ -10833,7 +10833,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 23"
+     "section": "Left side track panel 3"
     },
     {
      "kind": "component",
@@ -10859,7 +10859,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 24"
+     "section": "Right back panel"
     },
     {
      "kind": "component",
@@ -10875,7 +10875,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 24"
+     "section": "Right back panel"
     },
     {
      "kind": "component",
@@ -10901,7 +10901,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 25"
+     "section": "Left back panel"
     },
     {
      "kind": "component",
@@ -10917,7 +10917,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 25"
+     "section": "Left back panel"
     },
     {
      "kind": "component",
@@ -10943,7 +10943,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 26"
+     "section": "Hull extras"
     },
     {
      "kind": "component",
@@ -10959,7 +10959,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 26"
+     "section": "Hull extras"
     },
     {
      "kind": "component",
@@ -10985,7 +10985,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 27"
+     "section": "Right track"
     },
     {
      "kind": "component",
@@ -11001,7 +11001,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 27"
+     "section": "Right track"
     },
     {
      "kind": "component",
@@ -11027,7 +11027,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 28"
+     "section": "Left track"
     },
     {
      "kind": "component",
@@ -11043,7 +11043,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 28"
+     "section": "Left track"
     },
     {
      "kind": "component",
@@ -11111,7 +11111,7 @@
       ]
      ],
      "note": "Yes: explosions hitting this zone take its own explosion share; No: the default share (Health & Armor)",
-     "section": "Zone 30"
+     "section": "Antenna"
     },
     {
      "kind": "component",
@@ -11127,7 +11127,7 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)",
-     "section": "Zone 30"
+     "section": "Antenna"
     }
    ]
   },

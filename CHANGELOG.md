@@ -4,9 +4,337 @@ What changed in each HellForge release, newest first, as a player updating from 
 are GitHub issues and pull requests (#24); short hashes are commits on `dev`. Each pull request adds its lines under
 Unreleased, and a release renames that section ([CONTRIBUTING.md](CONTRIBUTING.md#changelog)).
 
+<!-- docs-lint-ok: D5 a release log grows with every release; each section stays short -->
+
 ## Unreleased
 
-On `dev`, since 0.3.0-beta. Mod SDK 16.
+On `dev`, since 0.4.0-beta.
+
+### Added
+
+- **Mods can add patterns (SDK 18).** `add_pattern` copies a vanilla pattern under an id of its own, with the mod's
+  colour and masks in place of the base's. A copy of a weapon paint is in the armory's pattern slot of every weapon that
+  offers the base, or of the weapons the mod names. A copy of a Pelican, hellpod or vehicle skin joins the hangar for its
+  whole family. The player holds them from the start ([patterns](docs/modding/patterns.md)).
+- **25 more engine functions for units, each checked in the game.** `hf_fn_` reaches a unit's local and world pose,
+  position, rotation and scale, its meshes, nodes by name and scene graph parents. It also counts a unit's lights,
+  cameras, terrains and LOD objects, and tells whether it is alive, its animation setup, level, id and resource name. Each
+  one's arguments and return value were checked in a mission. Two have a condition, written in their description: the
+  animation modes need an animation blender, and `UnitNode` needs a name `UnitHasNode` found (#375).
+- **A data spec can fix a game shader.** The new `edit` entry changes bytes in one of the game's shader stages; HellForge
+  signs the stage again and refuses the edit on a game build whose shader differs
+  ([data specs](docs/modding/data.md#edit), #350).
+- **Mods can draw screens over the game (SDK 17).** `add_screen` adds a screen with its own key, such as a map, and
+  `screen_show` opens and closes it. A modal screen takes the mouse and keys from the game while it is open. Screens
+  draw shapes, text in the game's fonts, pictures and a blurred copy of the game's frame, on Direct3D 11 and 12, in SDR
+  and HDR ([screens over the game](docs/modding/overlay.md)).
+- **New vehicles as copies of vanilla ones.** The `vehicle-variants` example adds the EXO-45H Heavy Patriot (a quicker
+  turn and a 2000-round machine gun) and the M-102R Rally FRV (quicker steering), each called in by a Pelican drop
+  stratagem of its own. A ground vehicle ignores `model_from`, since its seats, wheels, tracks and damage zones name
+  its own model's parts (#327).
+- **Mods can add enemies of their own (SDK 17).** `add_enemy` gives an entity a roster row with its own spawn group,
+  weights, cost and limits, tied to no vanilla enemy. `add_enemy_squad` adds squads that send those groups as patrols,
+  guards, stragglers, outpost garrisons, reinforcements, border flyers, convoys or air support. `add_enemy_swap` adds
+  a replacement rule. An enemy names the packages its entity needs, and HellForge loads them. No vanilla enemy is
+  replaced, and any entity can be an enemy ([new enemies](docs/modding/enemies.md)).
+- **Entities built from parts (SDK 17).** `parts` in `register_entity` and `add_entity` takes each component's record
+  from an entity of your choice, with or without a base
+  ([an entity from parts](docs/modding/enemies.md#an-entity-from-parts)).
+- **Mods can listen to and send the game's own network messages (SDK 17).** Every RPC of the game has an id, a struct
+  of its arguments, a reader and a sender in `hellforge_rpcs.h` (592 in this build). `rpc_listen` runs a mod's code as
+  this machine receives one, before the game's, and may stop it. `rpc_send` sends one after checking it against the
+  game's declaration, so a wrong one is refused instead of crashing the game ([networking](docs/modding/networking.md),
+  [the RPC reference](docs/rpcs.md); #341).
+- **516 more game functions and 93 more game globals by name.** `hf_fn_` and `hf_global_` now reach 526 functions and
+  108 globals, in game.dll and helldivers2.exe. Each function's first bytes are checked against the game, and its
+  arguments come from the code that calls it ([hooking by name](docs/modding/hooks.md#hooking-by-name)). They cover:
+  - damage, health and status effects, and weapons with their heat, charge and reloads
+  - eagles, jump packs, vehicles, the director's patrols and reinforcements, and the level generator
+  - an entity's life on this machine: its components' spawn passes and the entity being switched on and off
+  - in the engine: spawning and moving units, animation variables, debug lines, materials, cameras, level volumes and
+    network sessions (#335)
+- **Mods can animate their weapons.** A data spec's `animations` names a JSON file with the joints that move, their clips
+  and the state machine that plays them on the game's events. HellForge builds the unit copy's own bones, clips and
+  state machine from it ([animations](docs/modding/animations.md)). `HellForge.Cli unit-joints` lists a unit's joints,
+  and the `animated-liberator` example kicks its bolt back on each shot and drops its magazine on a reload.
+- **Mods can build weapons from their own models.** A data spec's `model` turns a glTF 2.0 file (a `.glb` from Blender)
+  into a unit of the mod's own. Every node becomes a joint, every mesh draws rigid on its node, and node names give LODs
+  and shadow casters ([models](docs/modding/models.md)). The `model-carbine` example builds a whole weapon this way.
+- **Mods can bring their own textures.** A data spec's `texture` builds a texture from PNG files in the mod folder,
+  in RGBA8 or BC1, BC3, BC4 or BC5, with its mips and as an array of layers. A material copy's `textures` puts it in a
+  slot by name ([textures](docs/modding/textures.md)).
+- **Mods can have packages of their own.** A data spec patch with `package` becomes a whole archive under the package's
+  id. It loads when the game starts, or with `"load": "request"` only through `load_package` (SDK 17), which now takes
+  a mod's own packages ([packages of your own](docs/modding/data.md#packages-of-your-own)).
+- **Mods can add attachments to their weapons (SDK 17).** `add_attachment` copies a vanilla magazine, muzzle, optic or
+  other item under an id of its own, optionally with the mod's own model, and offers it on weapons mods added. The
+  player holds it from the start ([attachments](docs/modding/content.md#attachments-of-your-own)).
+- **Sound banks of a mod's own.** A data spec's `sounds` builds a Wwise bank from WAV files, one event each, routed like
+  a game bank's mixer. `hf_wwise_id` gives an event's id for the records that play it ([sounds](docs/modding/data.md#sounds)).
+- **A weapon's handling records have named fields.** Equipment, Wieldable, Attachable and WeaponCustomization, all of
+  WeaponReload and Unit's `unit` can be set by name, so a weapon can name only assets of its own
+  ([a weapon of your own](docs/modding/content.md#a-weapon-of-your-own)).
+- **New explosion, beam and arc types for mods (SDK 17).** `add_explosion`, `add_beam` and `add_arc` copy a vanilla type
+  with its own damage, radii, length or chained arc, up to 512 of each across all mods. A projectile names its blasts in
+  `impact_explosion` and `expiry_explosion`, and a weapon its `beam` or `arc`
+  ([projectiles and damage](docs/modding/content.md#projectiles-and-damage)) (#298).
+- **295 explosions and 342 damage ids by name.** The catalogue lists them as `HF_EXPLOSION_` and `HF_DAMAGE_` constants
+  for mods (#298).
+- **A mod weapon's own explosion, beam and arc in the editor.** Its page shows them with the damage they deal, and mods'
+  explosions are offered wherever the editor picks an explosion (#298).
+- **Mods can add warbonds.** A mod's `hellforge-warbonds.json` lists warbonds with up to 15 pages of up to 10 items each,
+  priced in medals, requisition, samples or Forge Credits, with later pages opened by what was spent
+  ([warbonds](docs/modding/warbonds.md)).
+  - Pages can sell game items and the mod's own weapons and stratagems, which stay out of the armory until bought.
+  - Up to 99 mod warbonds are listed after the game's, where the game lists 32 warbonds in all. Each has its own name,
+    look and art (a plain card without any), and its prices and texts show its currency. Past 32 warbonds the column of
+    dots beside the cards shows the group of up to 32 the current one is in.
+  - Each has its own Helldiver beside its card: a game warbond's background and pose, and the armor, helmet, cape and
+    armory weapon the mod names (its own weapons included).
+  - A warbond can cost Forge Credits, paid once with the game's warbond button, and an item can have a currency of its
+    own, which the claim button names when the player cannot afford it. Only prices in the warbond's own currency count
+    as spent on it.
+  - An item the player has already, from the game's warbonds or another mod's, shows claimed and is not sold again.
+- **Shields that stop grenades.** The FX-12 Shield Generator Relay, G/SH-39 Shield and SH-32 Shield Generator Pack have a
+  **Stops grenades** setting in the editor, off by default. Grenades, throwing knives and self-destruct drones bounce off
+  the bubble from outside, and ones thrown from inside still leave. Helldivers, enemies, vehicles and
+  stratagem balls pass as before.
+- **Shields that stop enemies.** The FX-12 Shield Generator Relay has a **Stops enemies** setting in the editor, off by
+  default. Enemies stop at the bubble and break it with their own attacks, charges end there with their hit reaction,
+  and pounces stop on it. Enemies already inside stay inside, and Helldivers pass.
+- **Shields past 10,000 health.** A shield set stronger than that keeps its value: the network type that capped it now
+  widens to match.
+- **Backpack ammo past 1,023.** The editor now takes backpack ammo up to 1,048,575 on any backpack. The HellForge Editor
+  widens `deposit_value` to 20 bits for everyone, so it now counts as a shared mod: friends need the same HellForge version.
+- **Mod sync from your own game.** A host's mods' game patch files are written from the joiner's own game wherever it
+  has the same bytes, and only the rest downloads. The host lists each archive part with its SHA-256 (`mods.parts`),
+  and every file is still checked against the host's. **Index my game** on the Mods page finds renamed game files too.
+  A recipe mod whose sources the joiner's game lacks (after a game update) takes just those ranges from the host's
+  rebuilt files ([mod sync from your own game](docs/multiplayer-mod-sync.md#mod-sync-from-your-own-game)).
+- **The asset kit: share mods without Arrowhead's files.** `assets-check` shows which bytes of a mod's game patch files
+  are the game's and from which build. `assets-strip`, and `package-mod` by itself, ship the author's own bytes plus a
+  recipe. Each player's HellForge rebuilds the files from that recipe, out of their own game, checked by SHA-256. The
+  Mods page and every session rebuild such mods before they load; friends and mod sync compare and send the recipe,
+  never the game's bytes ([the asset kit](docs/modding/assets.md)).
+- **The asset kit: cut content from older builds.** `--history yes` on `assets-check`, `assets-strip` and `package-mod`
+  checks what a mod still ships against every build since release. It reads Steam's depot manifests with the author's
+  own sign-in, and fingerprints just the resources it proves. A player whose recipe needs such a build gets **GET THEM
+  FROM STEAM** on the Mods page (or `assets-rebuild --steam yes`), which fetches only the chunks those pieces sit in.
+- **Prepare for sharing.** The Mods page's ⋮ menu item (formerly Zip to share) takes Arrowhead's bytes out of a mod's
+  game patch files before it zips it, as `package-mod` does. A card says what is out, with the zip, the asset report
+  and **CHECK OLDER BUILDS** for bytes that matched no build on the PC.
+- **The asset kit's Steam sign-in is kept.** GET THEM FROM STEAM, CHECK OLDER BUILDS, `--history yes` and
+  `assets-rebuild --steam yes` ask for the Steam app's QR code once. The sign-in is then kept for your user only and
+  renewed, and the asset migrator's saved sign-in is used too. **Sign out of Steam**, or `steam-signout`, forgets it.
+  Setup's download still keeps nothing ([signing in to Steam](docs/modding/assets.md#signing-in-to-steam)).
+- **Data specs: resources from past builds.** `"source": {"build": "2024-03-01"}` (a day, or a data manifest) on a
+  `copy` or `include` takes the resource from that build. Each player fetches just those resources from Steam once, with
+  the same prompt, and the mod ships only its spec ([data specs](docs/modding/data.md#source-a-past-build)).
+- **Room for 1,024 new stratagems across all mods (was 48).** The loadout picker's frame is sized for every type, and
+  past 106 new stratagems the type travels in co-op in 16 bits instead of 8, so every player needs the same mods, as
+  before. The picker still shows 256 cards, about 160 of them new ones
+  ([limits](docs/modding/content.md#limits); #342).
+- **The Linux installer as a zip with no archive inside.** Sites that refuse an archive inside an archive, such as Nexus
+  Mods, can offer it. Extract it once and run `HellForge.Launcher`; it installs the same files as the `.tar.gz`
+  ([Linux](docs/linux.md#graphical-installer), #381).
+- **The HellForge war**, now the default war (Settings > GALACTIC WAR > HellForge war): one galactic war shared by every
+  HellForge player, with its own major orders and dispatches, from HellForge's war server. The war updates every minute
+  while you play, and your missions count towards it. Without a connection the last war fetched is used, and without
+  that the frozen war. Installations that saved their settings before keep the war they had. Settings has a War server
+  field for trying a server of your own ([docs/hellforge-war.md](docs/hellforge-war.md)).
+- **War scripts.** A `war-script.json` in your HellForge folder adds your own major orders, dispatches, reward mail and
+  planet modifiers (such as an extra stratagem for everyone on a planet) to the war. Edits show in game within a
+  minute ([docs/war-script.md](docs/war-script.md)). Mail rewards can be claimed once by every player. The major order,
+  dispatch, mailbox and episode screens also get a proper empty answer now, where they got an error before.
+
+### Changed
+
+- **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
+  premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
+  list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
+  inventory, purchases (mod warbonds' too), warbond pages, mastery and mission rewards (#386).
+- **A premium weapon's mastery levels and attachments need the weapon.** They were sold and earned without it (#386).
+- **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
+  item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like
+  weapons, and a copy of another mod's weapon follows its original, up to 8 copies deep (#386).
+- **Mods added while you play own new items again, and copies only with their original.** Live changes owned nothing
+  after the game's catalogue had moved. A copy of premium content the player lacks now stays locked there too (#386).
+- **A difficulty's mission stratagem can't be a paid one.** Every player got it in every mission, owned or not. The
+  mod loader now grants none and logs why. How a joiner's game handles a changed host's mission group is not
+  traced (#386).
+- **A backend swapped on its own is refused.** A session carries its backend's digest and does not start another
+  backend. These checks run on the player's PC; a changed session gets past them (#386).
+- **A new HellForge logo.** The launcher, its window and desktop icon, the installer and the in-game editor show the
+  crown in its frame (#299).
+- **Vehicle damage zones have their names.** The editor's vehicle pages showed most zones as "Zone 0", "Zone 1" and
+  so on. Every zone on all 11 vehicles now has the game's own name. The Bastion has its hull front, ammo boxes and side
+  and track panels; the FRVs have their doors, hatches, lights and tyres. The exosuits' cockpit fronts and the GATER
+  rig's wheels are named too. Stats files keep their keys (`zone_3.armor`) (#329).
+- **New profiles start live-like.** The new `live-like` template is a starter profile until you run Sync Inventory.
+  The sync then brings in everything it can from your live account: level, unlocks, ship modules, medals and samples,
+  the ship's name and the tutorial progress. The premium warbonds you own open without a purchase in Forge Credits. It is the first profile of a new installation and the launcher's first choice. Existing profiles keep
+  their template, and `starter` stays for earning everything again (#282, #262).
+- **`hf_global_EngineApi`'s fields say what they are.** `table` is now `application` and `scene_graph` is now `unit`:
+  the engine's C API keeps one table per domain, and these two are the Application and Unit functions. A mod that
+  read either field by its old name needs the new one; the offsets are unchanged (#335).
+- **No fixed limit on mods' entities and weapons.** Mods together could register 64 entity blocks and 512 entities and
+  weapons. HellForge now takes as many as the game's own tables hold (its entity map has room for about 2,187 more),
+  at boot and in live changes. A strat pack and a compendium together no longer run out (#307).
+- **No idle kick.** Alone on the ship, 15 minutes without touching the controls no longer sends you back to the title
+  screen, and the countdown warning before it is gone (#304).
+- **A mod download from a host no longer stops at 10 minutes.** The grant now stays on while the download goes on
+  (2 minutes past each request, at most 6 hours), so a large mod over a slow link finishes; one left idle still ends.
+  The host keeps the player expected back while they download, so the rejoin after a long download is still let in
+  ([mod sync](docs/multiplayer-mod-sync.md#mod-sync-speed)).
+- **Sync Inventory only listens.** It keeps what the normal game itself receives after logging in (your progression and
+  inventory) and no longer asks Arrowhead's API for them a second time, so a sync adds no requests of its own.
+- **The game's catalogues come from your own sync.** HellForge no longer ships the item catalogue, item and progression
+  packages, level table or warbond list. Sync Inventory copies them from what the normal game receives when it logs in,
+  cut to what the supported build knows, so a new installation needs one sync before its first PLAY. The warbond
+  pages and the requisition store, which the normal game doesn't read at login, still ship (#296).
+- **Mods take far less disk space.** PLAY no longer puts a second copy of every mod's patches into the game's data
+  folder. On Windows they are links to the mod's own files; on Linux the files HellForge keeps itself are linked and
+  mod folders still copied ([disk space](docs/mods.md#disk-space)). While the game runs on Windows, a mod's patch files
+  cannot be saved over, as game files cannot. A staged patch written over in the game's data folder is found at the
+  next session start (#306).
+- **Zipped cosmetic packs are kept as folders.** A zip next to its unpacked copy held the pack twice. Add mods puts a
+  zipped pack in as a folder, and one already in the mods folder becomes one, with its options and place kept. A
+  `.rar`, `.7z` or zipped pack dropped into the mods folder whose files the installed mod already has is removed as a
+  second copy (#306).
+- **Public lobbies of a mod's larger squad are listed.** The lobby directory took a squad as 4 players and refused
+  listings of more than 8 places, so a public lobby of a mod with eight players never showed. A lobby's squad is now
+  its places less the game's 4 spare ones. HellForge versions before this one still leave such lobbies out (#351).
+- **The Steam bridge makes lobbies of up to eight.** `CreateLobby` took four members at most. A code mod that raises
+  the game's player limit now gets the lobby the game asks for (#347).
+
+### Fixed
+
+- **The Mods page no longer freezes the launcher when it opens.** With many mods, each click on 03 MODS froze the
+  window for about half a second while the page read the mods folder and drew every row again. It now reads in the
+  background, shows the page as it was at once, and redraws only what changed, a few rows at a time.
+- **Ship navigation after a larger map.** The ship's obstacles were filed while the navigation grid still had a
+  larger map's 256 m tiles, so the ship's navmesh could miss them or cut them in the wrong place. A grid change now
+  files every obstacle again under the new grid (#378).
+- **Windows, sandbox on: alt-tab no longer shows "OpenMem failed. Err=5".** The box came from a tablet driver's
+  `Wintab32.dll`, which the game loads and which, in the sandbox, is refused its own shared memory. A sandboxed game is
+  now kept from the tablet driver, as on a PC without one: the game has no use for it, and a pen still moves the mouse (#376).
+- **Windows: a session cut short no longer sends you back to first-time setup.** After a restart, a crash or a game
+  that would not close, HellForge's stand-ins for three game DLLs stayed in `gamein`. The launcher took that copy for
+  an unfinished setup, which then downloaded the build from Steam again. The originals now go back when the launcher
+  opens, as on Linux. A copy still not complete opens Check and repair with the file named, and a copy that verifies
+  needs nothing from Steam (#374).
+- **A copy with records of its own no longer crashes the game when it spawns.** The game reads past a record into the
+  next one, and HellForge's copy of a component table ended right after the newest record. Calling in a vehicle copy
+  whose Health record was the last one crashed at its beacon (#327).
+- **Sync Inventory on SteamOS no longer stops at "sudo: a password is required".** SteamOS's own sudoers files were read
+  after HellForge's rule and asked for a password. The rule is now `/etc/sudoers.d/zz-hellforge-capture`, read last. A
+  sync checks sudo first and offers the helper install again, which moves an earlier rule ([the root-owned
+  helper](docs/linux-account-sync.md#the-root-owned-helper)) (#356).
+- **A Pelican drop loads its cargo's package.** A stratagem without a package of its own took the payload's last
+  entity's first, so a vehicle drop loaded the Pelican's package instead of the vehicle's (#327).
+- **Mod stratagems no longer read past the loadout's level choices.** Six places in the game read a per-type choice
+  that has only 150 entries for every stratagem, mod ones included, and two more could write there; they now see no
+  choice for a mod stratagem. When the game loaded its stratagem settings again, the count of stratagems went back to
+  the vanilla 149 while mod stratagems stayed, and it now stays at the full list (#342).
+- **Linux: a prefix inside Steam's `steamapps` no longer leaves a launcher that crashes at start.** The installer
+  refuses such a prefix folder, a Proton version's own folder included, before it prepares anything. A launcher already
+  unpacked there opens a window that says so and what to do ([installing on another
+  drive](docs/linux.md#installing-on-another-drive)) (#358).
+- **Direct3D 11 crashes in the Armory and at mission start.** Browsing armour crashed the game at
+  `helldivers2.exe+0x732040`, and a slow PC could crash at `+0x626296` as a mission loaded. A freed texture is now bound
+  empty instead of read, and a full job pool is waited out while jobs finish
+  ([crash guards](docs/crash-guards.md)).
+- **Linux setup gets the supported build with a QR code or SteamCMD, as on Windows.** It offered only the Steam app,
+  whose download goes onto the drive that holds Steam: too small on a Steam Deck with HellForge on a microSD card. The
+  QR code and SteamCMD download straight into the installation; SteamCMD opens in a terminal window. The Steam app's
+  card now says when its drive is too full ([on Linux](docs/steam-download.md#on-linux)) (#365).
+- **A mod's own weapon mesh in the right place on every LOD and its shadow.** A data spec's `mesh` put the shadow 20 cm
+  off the gun on an Adjudicator copy (4.5 cm on a Liberator), and hung a Liberator copy's LOD2 on its fire selector. Each
+  render and shadow mesh now holds the geometry where the first render mesh does, on the weapon's main bone. With the new
+  `"unitSpace": true` the OBJ keeps its own coordinates, the frame the weapon's attachment points are in
+  ([data specs](docs/modding/data.md)).
+- **Linux setup names the folder Steam really downloads into.** The "Use the Steam app" card named
+  `<Steam>/steamapps/content`, but the Linux Steam client often downloads under `<Steam>/ubuntu12_32`, as on a Steam
+  Deck. The card now names both, and the folder it found once Steam has written to it ([Steam's
+  download](docs/linux.md#steams-download-of-the-supported-build)) (#359).
+- **A crash in missions with edited spawn weights (`game.dll+0x9530F5`).** A roster weight of 0 that left an enemy
+  with no weight at a level, such as Scavengers at difficulty 10, made bug holes spawn a null enemy. Such an edit is now
+  refused, also when only planets with a given tag lose it. For writes that bypass the check, the spawn and bug-hole
+  queues skip a null enemy, and the game's other unchecked picks take a row of weight 0
+  ([live editing](docs/internals-live.md#spawning)).
+- **The launcher says why a session stopped before it started.** "The session runner exited before starting" now shows
+  the runner's own reason, which was only in `logs/session-runner.log`. PLAY in an installation that was never synced
+  says to run Sync Inventory first, before a session is started ([troubleshooting](docs/troubleshooting.md)) (#360).
+- **Silent explosions on copied rounds.** A round that explodes, copied from a weapon not in the loadout, blew up without
+  a sound, because the sound comes with that weapon's package. HellForge now loads the package (#298).
+- **Save logs to Desktop works after a start that failed.** With no session yet it said "No session logs yet", though
+  the reason was in `logs/session-runner.log`. The zip now has a `start` folder with that log and the Linux wrapper's
+  logs, with or without a session ([session logs](docs/troubleshooting.md)) (#361).
+- **Playing with no internet connection on Windows.** With Wi-Fi off or the cable out, Play stopped at the network
+  block with "not stopping the game's connections to the internet (error 10065)", asked for administrator consent and
+  failed again. It still did on a PC that keeps a network route while offline. Offline, the block is now proved by
+  the PC having no route out, or by its refusing a UDP datagram to the internet. While the game runs it is checked
+  again every 10 seconds, and HellForge stops the game if it does not hold (#300, #317).
+- **Sync Inventory's helper installs on SteamOS.** The install stopped at "Read-only file system", because `/usr/local`
+  is on SteamOS's read-only image. The helper now goes to `/opt/hellforge` there, and to the next folder that only root
+  can change wherever `/usr/local` cannot be used. On SteamOS the installer also lists its sudoers rule for system
+  updates to keep ([the sync helper on SteamOS](docs/linux-steamos.md#the-sync-helper-on-steamos)) (#357).
+- **Code mods stuck on "did not compile" after the mod tools were damaged.** An antivirus that removed files from
+  HellForge's Zig made every source mod fail in Zig's own libraries ("sub-compilation of libzigc failed"). That failure
+  was kept as the mod's, so restoring Zig or running Check and repair changed nothing. HellForge now notices a damaged
+  Zig, unpacks it again from its download and builds the mod. Only a mod's own errors are kept, and Build now always
+  compiles again (#301).
+
+### For contributors
+
+- **Nightlies have a Linux installer:** `HellForge-Nightly-Linux-Installer.tar.gz`, once this workflow is on `main`
+  (#309).
+- `tests/HellForge.LocalBackend.Tests` needs the game's catalogues: `HELLFORGE_TEST_CATALOGUE` names a folder with
+  `progression-data.json` and `item-catalog.json` (an installation's `catalogue` folder after a sync). Without one the
+  suite is skipped with a warning. CI takes them from a private test-data repository
+  ([CONTRIBUTING.md](CONTRIBUTING.md#building-and-testing)) (#296).
+- A "Docs lint" CI job keeps docs and code comments readable. It checks page types, paragraph, sentence and page
+  sizes, Markdown structure, links and filler words, plus code comment blocks of over 10 lines. Existing text is in a
+  baseline, and a pull request sees what it adds ([CONTRIBUTING.md](CONTRIBUTING.md#writing-docs-and-comments))
+  (#277).
+
+### For mod makers
+
+- **A mod can ask for more room on level-11 maps (SDK 17).** `generation_capacity` enlarges the map generator's lists
+  of locations, minimap shapes, mission stamps and objective places for the largest request among the installed mods.
+  The mod need not be the one that added the level. Without a request nothing changes
+  ([room in the map generator](docs/modding/hooks.md#room-in-the-map-generator)) (#364).
+- **More lists a mod can enlarge on level-11 maps.** `generation_capacity` also takes the important locations
+  (objectives, outposts, points of interest and their satellites) and the linked locations, up to 1024 each. They stay
+  as the game has them unless a mod asks, and mods built before these fields keep working (#366).
+- **Room for a larger route graph.** `generation_capacity` takes the route graph's nodes (up to 2304), edges (up to
+  3456) and road points (up to 65520). The game adds nodes and edges without a check, so a map with more route cells
+  than the game's needs them. Unasked, the graph stays as the game has it (#366).
+- **Where the map generator's arrays are.** `generation_capacity` also fills in each array's offset in the generator's
+  block and the elements it holds (`regions`, by `HF_GEN_...` name), so a mod reads them instead of keeping offsets (#366).
+- **Your own pixel shaders in data mods.** A data spec's `shader` resource puts a compiled shader in one of three hosts,
+  `decal`, `transparent` or `refract`, and HellForge builds the materials and a unit for it. A shader that does not fit
+  its host is refused with the reason, shader headers name what each host can read, and a mod with a shader counts as
+  unchecked for mod sync ([shaders](docs/modding/shaders.md)) (#265).
+- **HellForge follows per-player lists a code mod moved.** A mod that moves the player, customization, avatar or score
+  manager's lists and rewrites the game's instructions for them keeps HellForge's events, actions, armor passives and
+  perks. HellForge reads each offset from those instructions ([hooks](docs/modding/hooks.md#fields-a-mod-moved)) (#348).
+- **HellForge follows entity records a code mod moved.** A mod that makes room for more entities moves the entity
+  manager's records and rewrites the game's instructions for them. HellForge's player, heal, stats and weapon events
+  and its actions then read the records where those instructions address them
+  ([hooks](docs/modding/hooks.md#fields-a-mod-moved)) (#362).
+- **A mod's `write` over code HellForge checks turns that feature off.** Such a write used to pass as one of
+  HellForge's own rewrites. The offsets and capacities of the moved lists above are the exception (#348).
+
+### For launcher developers
+
+- `play`, `settings` and `fetch-war` take `--war hellforge` (the default for new installations) and `--war-server <url>`;
+  `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it. `fetch-war` fetches the HellForge war unless
+  the saved war is the live one, and prints `war` and `server` ([docs/external-launchers.md](docs/external-launchers.md)).
+
+## 0.4.0-beta (2026-11-05)
+
+[Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.4.0-beta). Engine 0.1.47, mod SDK 16.
 
 ### Added
 
@@ -20,9 +348,52 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   Proton prefix (#90).
 - The Mods page shows what a code mod says it is doing ("In game: ..." during a session, "Last session: ..." after it),
   for mods that tell it (SDK 16) (#84).
+- **Weapons level up.** Your primary gains the mission's XP, won or lost, and mod weapons do too. A friend who joins
+  your game doesn't earn weapon XP yet (#297).
+- **Many more mod weapons.** Mods can go past the old limit of about 20 weapon copies. HellForge moves the game's item
+  catalogue at start-up, so it keeps 40,960 items and 1,024 progression packages (#297).
+- 512 new damage types and 512 new projectiles across all mods (#297).
 
 ### Changed
 
+- **Linux: co-op over Steam relays is on by default.** Without it a Linux session finds lobbies but every join times
+  out. It now starts on for everyone (an earlier "off" that was only the old default is not kept), and turning it off
+  in Settings > Multiplayer is still your choice. While it is off, or could not open (no `pasta` or `python3`: the
+  session now starts without co-op instead of refusing), the lobby browser says so on each lobby and asks before a
+  join; yes turns it on in the running game, through the launcher, and keeps it on for later sessions. Your own Public
+  lobby is not listed while nobody could join it.
+- **Public lobbies open up: you decide which mods you trust.** With your game sandboxed, a stranger's lobby running mods
+  that run code or carry unchecked data is no longer out of reach: MOD SYNC asks you to TRUST each one, after a warning
+  of what the sandbox doesn't stop. A mod you trust is stamped with its content hash and downloads without asking from
+  any lobby after that, so Quick Play can take you straight in. Your trusted list lives with your mods, so updating
+  HellForge leaves it alone, and the Mods page takes a trust back. Without the sandbox, a stranger's such mods are still
+  yours to install. HellForge's verified list is now just its own mods, built into each release; nothing is fetched
+  for it any more. Hosting, the mods you share reach anyone who joins and trusts them, so turn sharing off before
+  hosting with something you haven't released.
+- **A trust given in a sandboxed game holds only in the sandbox, a Steam friend's mod too.** Any mod in the game can
+  answer the MOD SYNC prompt as you would, so a TRUST from inside a sandboxed game no longer lets a mod run unsandboxed
+  later; the warning and the Mods page say so. Trust it again outside the sandbox (unsandboxed, or on the launcher's
+  prompt) to play it there. Trusting a mod again never narrows a trust you already gave it.
+- **Quick Play and SOS go to a lobby you can join first.** The game's own search leaves out a stranger's lobby whose
+  mods wait for your trust while other lobbies need none, so Quick Play doesn't stop at a TRUST prompt; when it is the
+  only one, it is still found. The lobby browser lists them all, as before.
+- **A new look for the lobby browser.** The terminal's lobby browser is now laid out like the game's own Social
+  menu, in HellForge red: lobby cards two by two in pages, each with a coloured edge for what joining it takes, the
+  filters on the left, QUICK PLAY on the right and the game's hint strip along the bottom. Clicking a card (or Enter)
+  opens the lobby's pop-up with its squad, what joining changes and JOIN; Space is Quick Play (#245).
+- **The lobby browser shows what you can join first.** Lobbies you can join are at the top, and lobbies no setting can
+  let you into are hidden while there are others; Show can't join (or H) shows them. Each row says in a word or two what
+  keeps you out ("Needs sandbox", "Host must update", "Needs mods") instead of a sentence cut short. A lobby's details
+  list every mod in the way that fits, and say how many more there are instead of cutting names off. When no lobby
+  can be joined, the browser says so, names the mods most of them need, and suggests hosting a Public lobby.
+- The lobby browser API lists the mods that keep the most
+  lobbies out (`needed`) and gives lobbies you can join first.
+- The armory holds 256 cards of each type, vanilla weapons counted. That leaves room for 199 new primaries, 229
+  secondaries and 81 throwables, and about 100 copies each of lasers, shotguns, plasma and melee weapons. A weapon past
+  that is refused by name in the mod's log, so a vanilla weapon never falls off the list (#297).
+- Every mod weapon has its own level, XP and attachments, starting at the lowest level, instead of copying its base's.
+  Attachments can be bought on a mod weapon's page, and the Weapon levels card lists mod weapons. A removed mod leaves
+  your vanilla progress as it was, and adding it back brings its progress back (#297).
 - After a crash the Play page says "The game crashed." with the game's exit code and what it means, instead of
   "Session ended.", and offers Save logs to Desktop beside Save crash report (#84).
 - Sessions that ended in a crash keep their logs past the newest ten, the five newest of them, so a crash report can
@@ -43,6 +414,7 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 - The crash note in `modloader.log` also covers heap corruption, stack overflows and integer divide by zero, and notes
   the first four faults of each kind instead of the first four in all (#84).
 
+<!-- markdownlint-disable-next-line MD024 -->
 ### Added
 
 - **Medals and spending what you earn.** A won mission now pays medals (2 at Trivial up to 10 at Super Helldive), and
@@ -50,15 +422,6 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   buys stratagems and store items, samples buy ship module upgrades, and requisition buys weapon attachments. Each
   purchase is saved to your profile. Before, claiming a warbond item failed with an error and medals could only come
   from the map. Premium warbonds still need to be owned in the normal game (#232).
-- **The HellForge war**, now the default war (Settings > GALACTIC WAR > HellForge war): one galactic war shared by every
-  HellForge player, with its own major orders and dispatches, from HellForge's war server. The war updates every minute
-  while you play, and your missions count towards it. Without a connection the last war fetched is used, and without
-  that the frozen war. Installations that saved their settings before keep the war they had. Settings has a War server
-  field for trying a server of your own ([docs/hellforge-war.md](docs/hellforge-war.md)).
-- **War scripts.** A `war-script.json` in your HellForge folder adds your own major orders, dispatches, reward mail and
-  planet modifiers (such as an extra stratagem for everyone on a planet) to the war, and edits show in game within a
-  minute ([docs/war-script.md](docs/war-script.md)). Mail rewards can be claimed once by every player. The major order,
-  dispatch, mailbox and episode screens also get a proper empty answer now, where they got an error before.
 - Mod weapons get a page in the in-game editor, in their base weapon's section. Setting `own_all = 1` on the weapon
   (`HfWeapon`) gives it its own copy of every record its base has, so the page shows everything the editor can change
   while the game runs. Without it, the page shows only what the weapon owns, and a weapon that owns nothing gets no
@@ -66,15 +429,12 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 - With the sandbox on, the session log now names what the sandbox refused the game, by the overlay or module that
   asked (Steam's, NVIDIA's, Discord's, RivaTuner's overlays and others), and `result.json` lists each object. This is
   what tells which overlays can be given what they need.
-- HellForge's verified mod list can now change without a HellForge update. Before each session HellForge fetches the
-  list from files.hf-mod.com and uses it only when it is signed with the maintainers' key, so mods can be added or
-  taken off between releases.
 - The ship's information terminal, across from the Armory, now opens a lobby browser instead of an error about
   Arrowhead's news service. It lists every HellForge lobby on any planet and difficulty, with what joining each takes
   (ready, a download, your trust, or why you can't), filters for joinable, friends' and difficulty, and joins with the
   lobby's invitation. Using the terminal, the camera glides up to its screen and the browser fills it. Ctrl+L in the
   in-game editor opens it too. QUICK PLAY joins the best lobby you can join, a friend's first. Lobbies a setting
-  hides (strangers' with Play with strangers off, or ones whose host shares edited stats) are listed with the setting
+  hides (strangers' with Play with strangers off, or ones with host-enforced stat changes) are listed with the setting
   that lets them in, which you can turn on from the browser for that session.
 - The Play page says when your premium content (warbonds, Superstore items, DLC gear you bought) isn't in the profile
   because it was never synced, or its sync was for another Steam account, and syncs it from there. A synced profile
@@ -105,6 +465,7 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   `-nightly.<date>` (`0.4.0-nightly.20261102`), so it is never taken for a release. Releases stay the builds to play
   on ([CONTRIBUTING.md](CONTRIBUTING.md#nightly-builds)) (#211).
 
+<!-- markdownlint-disable-next-line MD024 -->
 ### Changed
 
 - The in-game editor says when a stratagem change takes effect, as the game reads it: cooldown and call-in time from
@@ -166,6 +527,21 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### Fixed
 
+- **Linux: controllers work in a sandboxed game.** The sandbox's device folder held no input device at all, so no
+  controller of any kind reached the game, only keyboard and mouse. It now holds the game controllers connected when the
+  session starts (wired or Bluetooth), and still no keyboard, mouse or virtual input device: those stay out, so code in
+  the game can't read what you type elsewhere. A controller connected while the game runs needs the next session
+  (#254).
+- **Linux: after MOD SYNC's Restart, a sandboxed game starts again.** The game closed and the launcher never started it
+  with the host's mods: the sandbox stopped the game before the session noted why it stopped, so the launcher did not
+  know to restart it. The session now notes it either way. The game ending because HellForge stopped it (STOP, or a mod
+  sync) is no longer reported as a crash.
+- **Linux: joining a host whose mods include a source mod no longer loops.** After MOD SYNC downloaded the host's mods
+  and restarted the session, a source mod among them was never compiled (Linux builds source mods before the session,
+  and only the player's own were built), so the session left it off, the host refused the join again, and MOD SYNC
+  asked for another restart. The build before the session now builds the host's mods too.
+- If your game was launched straight into a lobby, weapons other players' mods added could stay dead on your screen for the
+  whole session. They now work however you joined.
 - With the sandbox on, the game could freeze for 30 seconds as it started, and sometimes crash (0xC0000005 in dbgcore.dll), on
   a PC with a tablet driver: its Wintab32.dll faults as it loads, and the session's crash dump waited for it (#235).
 - On Linux, Sync Inventory said "Sign in to Steam first" whenever its Steam check failed for any reason, and left no
@@ -349,6 +725,7 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   issue where a third player joining a lobby of two pushed the second player out (#202). Every sandboxed player in the
   squad needs this version: on 0.3.0-beta, the sandbox still lets that player's game reach only the host.
 
+<!-- markdownlint-disable-next-line MD024 -->
 ### For mod makers
 
 - SDK 16: game functions by name. `HF_HOOK(mod, SpawnEntity, detour, &original)` hooks a game function HellForge has
@@ -372,7 +749,8 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
   ([docs/modding/runtime.md](docs/modding/runtime.md#game-events), #179).
 - A renamed game function or global keeps its old name as an alias, so mods written or built with it keep working (#179).
 - `HfSyncMod.flags` (the field that was `reserved`): `HF_SYNC_FLAG_STRANGER` marks a mod whose host is not the player's
-  Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`.
+  Steam friend, so an editor can warn harder before `HF_SYNC_TRUST`; `HF_SYNC_FLAG_SANDBOX_ONLY` marks every mod of an
+  offer to a sandboxed game, where a trust answered with `sync_answer` counts only in sandboxed sessions.
 - SDK 16: the lobby browser. `browse_state`, `browse_lobby` and `browse_ask` give a mod the list of every HellForge
   lobby with what joining each takes, and join one; `HfBrowseState.terminal` counts the times the ship's information
   terminal opened the browser, and `HfBrowseState.camera` where the terminal's camera is (`HF_BROWSE_SHOWN` and
@@ -384,9 +762,6 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 
 ### For launcher developers
 
-- `play`, `settings` and `fetch-war` take `--war hellforge` (the default for new installations) and `--war-server <url>`;
-  `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it. `fetch-war` fetches the HellForge war unless
-  the saved war is the live one, and prints `war` and `server` ([docs/external-launchers.md](docs/external-launchers.md)).
 - `HellForge.Cli steam-download --out <folder>` downloads the supported build from Steam's servers for the account
   that signs in with a QR code (on standard error), as setup does; `--file` fetches one file of the build and
   `--dry-run yes` prints the plan only. `--sign-in steamcmd` lets Valve's SteamCMD download it instead (into
@@ -408,11 +783,6 @@ On `dev`, since 0.3.0-beta. Mod SDK 16.
 - `HellForge.Cli mods` and each session's `mods-stage` unpack a `.rar` or `.7z` dropped into the mods folder into a
   folder first. One they can't add is listed in `problems` and stays where it is. `mod-add` no longer needs Windows'
   `tar` for them.
-- `HellForge.Cli verified-list-keygen`, `verified-list-sign` and `verified-list-check` make the signing key, sign a
-  list and check one ([docs/verified-list.md](docs/verified-list.md)). `mod-hash --install` checks a mod against that
-  installation's saved list.
-- A session's `result.json` has `verifiedMods`: which list it used (`published`, `saved` or `embedded`), its serial,
-  and why a published list was not taken.
 - A session's `result.json` has `prepare` and `connect`, how the two launch edits ended (`outcome`, the wait, and when
   `game.dll` appeared), and `windowsCrash`: Windows' record of a game crash (`module`, `offset`, `code`, `modulePath`,
   `owner`), or `none` (#203, #212).

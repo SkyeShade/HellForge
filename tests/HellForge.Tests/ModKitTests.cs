@@ -369,7 +369,7 @@ static class ModKitTests
             try
             {
                 check(ModKit.NativeBuildOnly, "The wrapper's native-build marker reaches ModBuilds.");
-                var (ready, problems) = ModBuilds.Prepare(install, sdk, [mod], "25480438", installTools: false);
+                var (ready, problems) = ModBuilds.Prepare(install, sdk, [mod], "25480438", options: new(InstallTools: false));
                 check(problems.Count == 0 && ready.Count == 1 && ready[0].BuiltDll == dll &&
                     !File.Exists(marker) && !File.Exists(wineMarker),
                     "The session reused the native record without starting zig-linux or zig.exe: " + string.Join(" | ", problems));
@@ -391,6 +391,8 @@ static class ModKitTests
             var space = marker < 0 ? -1 : wrapper.IndexOf("Entering the offline network namespace.", marker, StringComparison.Ordinal);
             check(session >= 0 && build > session && marker > build && space > marker,
                 "The wrapper must build source mods before the namespace and tell the session they were built natively.");
+            check(wrapper.Contains("--mod-sync) build_sync=yes", StringComparison.Ordinal) && wrapper.Contains("--sync \"$build_sync\" --sandbox \"$build_sandbox\"", StringComparison.Ordinal),
+                "After a mod sync the wrapper must build the host's mods too (build-source-mods --sync), for the session's sandbox.");
         });
     }
 

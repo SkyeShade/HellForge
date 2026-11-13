@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.vehicle-variants",
+  "name": "Vehicle Variants",
+  "version": "0.1.0",
+  "description": "Two new vehicles as variants of vanilla ones: the EXO-45H Heavy Patriot (faster turning, a 2000-round machine gun) and the M-102R Rally FRV (quicker steering), each called in by a Pelican drop stratagem of its own. SDK 8 example.",
+  "gameplay": true,
+  "code": { "dll": "vehicle_variants.dll", "sdk": 8 }
+}

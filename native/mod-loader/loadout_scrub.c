@@ -59,7 +59,8 @@ static const uint32_t kDefaultWeapons[3] = {0xAA035309u, 0xA7977F98u, 0xBE376EA8
 /* What a change takes out that a loadout may hold: stratagem types (and their stable ids) and weapon loadout ids. */
 typedef struct Scrub
 {
-    uint32_t types[STR_MAX_NEW], stables[STR_MAX_NEW], weapons[REG_MAX_WEAPONS];
+    uint32_t types[STR_MAX_NEW], stables[STR_MAX_NEW];
+    uint32_t* weapons; /* weaponCount loadout ids, one for each weapon the change takes out (live_content.c LiveScrubList) */
     int typeCount, weaponCount, pushed, scrubbed;
 } Scrub;
 static void (*g_scrubPush)(void); /* the native fixture's armory push, else the game's */

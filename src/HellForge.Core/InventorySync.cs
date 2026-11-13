@@ -11,10 +11,10 @@ namespace HellForge.Core;
 // an import the player reviews (AccountImportSettings, HellForge.LocalBackend AccountImport).
 //
 // The capture proxy (app/capture/HellForge.CaptureProxy.exe) runs elevated: it maps the live API host to loopback in the
-// hosts file, trusts a per-run CA, terminates TLS for the normal game's login and, with that login's session, reads
-// /api/Progression and /api/Progression/inventory. It seals both for the signed-in Steam account (SnapshotSeal) as soon as
-// the inventory is in, then closes the game the sync opened (CaptureGameEnd: left running, it showed Easy Anti-Cheat's
-// "Could not connect" and closed itself), and once the game has exited removes the hosts line and the CA. The files land
+// hosts file, trusts a per-run CA, terminates TLS for the normal game and keeps the API's answers to the game's own reads
+// of /api/Progression and /inventory after its login, never a request of its own (CaptureCompletion), seals both for the
+// signed-in Steam account (SnapshotSeal), then closes the sync's game (CaptureGameEnd: left running, it showed Easy
+// Anti-Cheat's "Could not connect"), and once the game has exited removes the hosts line and the CA. The files land
 // in a private sync folder under logs/, and FinalizeCapture moves them into account-snapshot/<profile>/ once the
 // capture's state (CaptureState) says they are sealed.
 //
@@ -28,6 +28,8 @@ public static class InventorySync
     public const string InventoryFile = SnapshotSeal.InventoryFile;
     public const string ProgressionFile = SnapshotSeal.ProgressionFile;
     public const string MetadataFile = "snapshot.json";
+    // The game catalogues the capture kept (CaptureCompletion.Catalogues), in the sync folder; GameCatalog installs them.
+    public const string CatalogueFolder = "catalogue";
     // Written by the proxy once it listens; the launcher opens the game only then.
     public const string ListeningFile = CaptureState.FileName;
     // The proxy's own line in the hosts file, above its mapping.
@@ -152,6 +154,7 @@ public static class InventorySync
             "--timeout-min", TimeoutMinutes.ToString(CultureInfo.InvariantCulture),
             "--output", Path.Combine(syncDir, InventoryFile),
             "--progression", Path.Combine(syncDir, ProgressionFile),
+            "--catalogue", Path.Combine(syncDir, CatalogueFolder),
             "--evidence", syncDir,
             "--seal-key", SealKeyFor(snapshotDir),
             "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture),
@@ -213,6 +216,7 @@ public static class InventorySync
             "--timeout-min", TimeoutMinutes.ToString(CultureInfo.InvariantCulture),
             "--output", Path.Combine(syncDir, InventoryFile),
             "--progression", Path.Combine(syncDir, ProgressionFile),
+            "--catalogue", Path.Combine(syncDir, CatalogueFolder),
             "--evidence", syncDir,
             "--seal-key", SealKeyFor(snapshotDir),
             "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture),
@@ -524,11 +528,36 @@ public static class InventorySync
                 ["progression"] = File.Exists(Path.Combine(snapshotDir, ProgressionFile))
             };
             File.WriteAllText(Path.Combine(snapshotDir, MetadataFile), metadata.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+            InstallCatalogue(syncDir, snapshotDir);
             return null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return "Could not save the snapshot: " + error.Message;
+        }
+    }
+
+    // The catalogues are the installation's, not the profile's: any synced profile's capture serves every profile. One that
+    // is incomplete leaves the last ones in place and never fails the sync (the inventory and progression are already in).
+    static void InstallCatalogue(string syncDir, string snapshotDir)
+    {
+        var folder = Path.Combine(syncDir, CatalogueFolder);
+        // snapshotDir is <installation>/account-snapshot/<profile>.
+        var installRoot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(snapshotDir).TrimEnd(Path.DirectorySeparatorChar)));
+        if (installRoot == null) return;
+        if (GameCatalog.CheckCaptured(folder) is { } problem)
+        {
+            Note(syncDir, "game catalogue not taken: " + problem + (File.Exists(GameCatalog.ProgressionData(installRoot)) ? "; the last one stays" : ""));
+            return;
+        }
+        try
+        {
+            GameCatalog.Install(installRoot, folder, DateTime.UtcNow);
+            Note(syncDir, "game catalogue taken into " + GameCatalog.Directory(installRoot));
+        }
+        catch (Exception error) when (error is InvalidDataException or JsonException or IOException or UnauthorizedAccessException)
+        {
+            Note(syncDir, "game catalogue not taken: " + error.Message);
         }
     }
 

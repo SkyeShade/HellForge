@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using HellForge.Core;
 
 namespace HellForge.LocalBackend;
 
@@ -24,6 +25,10 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     public HellForgeWar? HellForgeWar { get; init; }
     public FriendPresence? Presence { get; init; }
     public RegisteredItems? RegisteredItems { get; init; }
+    // Warbonds mods add (--mod-warbonds), served beside the game's.
+    public ModWarbondService? ModWarbonds { get; init; }
+    // The player's Steam account, when known (HellForge.Core SteamAccount).
+    public ulong? LocalAccount { get; init; }
     public bool OpenWar { get; init; }
     public uint WarSeed { get; init; }
     // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
@@ -82,16 +87,39 @@ public static partial class LocalBackend
         return padded;
     }
 
+    // The folder holding the game catalogues (progression-data.json, item-catalog.json) that the installation assembled from
+    // the player's own Sync Inventory (HellForge.Core GameCatalog; the backend's --catalogue). HellForge does not ship them.
+    public static string? CatalogueDirectory { get; set; }
+
+    // The profile commands (profile import, restore, apply-template...) get no --catalogue: they take the catalogue of the
+    // installation the profile belongs to (<root>/profiles/<name>), brought up to date first. Null when it is set, else why not.
+    public static string? UseInstallationCatalogue(string profileDirectory)
+    {
+        var profile = Path.GetFullPath(profileDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (Path.GetDirectoryName(Path.GetDirectoryName(profile)) is not { Length: > 0 } root) return GameCatalog.SyncFirst;
+        if (GameCatalog.Ensure(root) is { } problem) return problem;
+        CatalogueDirectory = GameCatalog.Directory(root);
+        return null;
+    }
+
+    static readonly string[] CatalogueFiles = [GameCatalog.ProgressionDataFile, GameCatalog.ItemCatalogFile];
+
     public static JsonDocument LoadResource(string name)
     {
+        if (CatalogueFiles.Contains(name, StringComparer.Ordinal))
+        {
+            var folder = CatalogueDirectory ?? throw new InvalidOperationException(
+                "No game catalogue: start the backend with --catalogue <folder> (" + GameCatalog.SyncFirst + ")");
+            return JsonDocument.Parse(File.ReadAllBytes(Path.Combine(folder, name)));
+        }
         using var stream = typeof(LocalBackend).Assembly.GetManifestResourceStream("HellForge.LocalBackend." + name)
             ?? throw new InvalidOperationException("Missing embedded resource " + name);
         return JsonDocument.Parse(stream);
     }
 
     // A "bodySource" names an embedded data file and optional "#key" (default "items") whose value is the
-    // body: the item catalogue and progression data rebuilt from the user's own snapshot by
-    // scripts/BuildItemCatalog.py, and the game client's feature switches read from it (game-client-config.json).
+    // body: the game catalogues from the player's own Sync Inventory (CatalogueDirectory, HellForge.Core GameCatalog), and
+    // the game client's feature switches (game-client-config.json, with the idle kick turned off).
     // "reverse" serves an array source back to front: the warbond list (/SeasonPass) was read from the client's memory,
     // which holds it oldest first, and served so the game listed it oldest first, Helldivers Mobilize at the top, where
     // the live game lists the newest first.
@@ -111,7 +139,9 @@ public static partial class LocalBackend
             if (endpoint.TryGetProperty("reverse", out var reverse) && reverse.GetBoolean())
                 body = JsonSerializer.SerializeToElement(new JsonArray([.. body.EnumerateArray().Reverse()
                     .Select(entry => JsonNode.Parse(entry.GetRawText()))]), BackendJson.Default.JsonNode);
-            fixtures.Add(endpoint.GetProperty("path").GetString()!, body);
+            var path = endpoint.GetProperty("path").GetString()!;
+            if (path == "/Configuration/GameClient") body = IdleKick.TurnOff(body);
+            fixtures.Add(path, body);
         }
         return fixtures;
     }
@@ -124,7 +154,10 @@ public static partial class LocalBackend
         IServedWar? liveWar = settings.OpenWar ? null : (IServedWar?)settings.HellForgeWar ?? settings.LiveWar;
         var profile = settings.Profile;
         if (settings.StartupFixtures) profile ??= ProfileStore.Open(null);
-        var missions = profile != null ? new MissionService(profile, settings.Pickups) { Reports = settings.OpenWar ? null : settings.HellForgeWar } : null;
+        var missions = profile != null ? new MissionService(profile, settings.Pickups)
+        {
+            Registered = settings.RegisteredItems, LocalAccount = settings.LocalAccount, Reports = settings.OpenWar ? null : settings.HellForgeWar
+        } : null;
         // Friends' lobbies and profiles for the social tab, filled by multiplayer when a caller supplies it.
         var presence = settings.Presence ?? new FriendPresence();
         var playFab = new PlayFabService(presence);
@@ -143,7 +176,12 @@ public static partial class LocalBackend
             warClock.Set(war.RootElement.GetProperty("status").GetProperty("time").GetInt64());
         }
         var startup = new StartupBodies(profile, liveWar, fixtures);
-        if (settings.RegisteredItems != null) settings.RegisteredItems.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+        if (settings.RegisteredItems != null)
+        {
+            settings.RegisteredItems.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+            settings.RegisteredItems.ModProgress = profile != null ? profile.ModProgress : null;
+        }
+        if (settings.ModWarbonds != null) ConnectModWarbonds(settings.ModWarbonds, settings.RegisteredItems, startup, profile);
         // Purchases price items by the catalogue the game was served, mods' registered items included.
         JsonElement? Catalogue(uint mixId)
         {
@@ -153,7 +191,7 @@ public static partial class LocalBackend
                 if (item.TryGetProperty("mixId", out var id) && id.TryGetUInt32(out var found) && found == mixId) return item;
             return null;
         }
-        var purchases = profile != null ? new Purchases(profile, Catalogue) : null;
+        var purchases = profile != null ? new Purchases(profile, Catalogue, settings.ModWarbonds) { Registered = settings.RegisteredItems } : null;
         // The war's polled services (major orders, dispatches, mail...), with the war script's content when there is one.
         var warLog = Path.Combine(settings.EvidenceDirectory, "war-script.log");
         var warServices = settings.StartupFixtures ? new WarServices(settings.WarScript, warClock, profile, () => accountKeys.LocalId ?? 0, message =>
@@ -179,11 +217,30 @@ public static partial class LocalBackend
         {
             Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, War = warServices, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
-            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, Startup = startup, AuditPath = auditPath, Browse = settings.Browse,
+            AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, ModWarbonds = settings.ModWarbonds, Startup = startup, AuditPath = auditPath, Browse = settings.Browse,
             LiveMods = settings.LiveMods
         };
         app.Run(requests.HandleAsync);
         return app;
+    }
+
+    // Mods' warbonds read the startup bodies and the registered items, and decide which registered items the profile holds
+    // from what it has bought (its saved purchasedSeasonPassItems); what it holds leaves its items out of their pages.
+    static void ConnectModWarbonds(ModWarbondService modWarbonds, RegisteredItems? registered, StartupBodies startup, ProfileStore? profile)
+    {
+        modWarbonds.Source = path => startup.TryGet(path, out var body, out _) ? body : null;
+        modWarbonds.Registered = registered;
+        modWarbonds.Purchased = () => profile != null && profile.TryGetResponse("/Progression", out var progression) &&
+            progression.TryGetProperty("purchasedSeasonPassItems", out var bought) && bought.ValueKind == JsonValueKind.Array
+            ? bought.EnumerateArray().Where(b => b.TryGetInt64(out _)).Select(b => b.GetInt64()).ToHashSet() : new HashSet<long>();
+        modWarbonds.Holds = () => profile != null && profile.TryGetResponse("/Progression/inventory", out var inventory) &&
+            inventory.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
+            ? items.EnumerateArray().Where(i => i.TryGetProperty("mixId", out var m) && m.TryGetUInt32(out _) && i.TryGetProperty("amount", out var a) &&
+                a.TryGetInt64(out var n) && n > 0).Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet() : new HashSet<uint>();
+        if (registered == null) return;
+        registered.Withheld = modWarbonds.Withheld;
+        // each warbond's spent counter, and its token when it has one, in the catalogue and the inventory
+        registered.ReservedCatalogue = registered.ReservedInventory = modWarbonds.Warbonds.Count + modWarbonds.Warbonds.Count(w => w.HasToken);
     }
 
     static void CheckSettings(BackendSettings settings)

@@ -1,5 +1,6 @@
-# main holds releases: a pull request into it comes from this repository's dev branch, a release PR with the release
-# checklist (.github/PULL_REQUEST_TEMPLATE/release.md). Everything else goes into dev (CONTRIBUTING.md).
+# main holds releases: a pull request into it comes from a release/* branch of this repository, or its dev branch, a
+# release PR with the release checklist (.github/PULL_REQUEST_TEMPLATE/release.md). Everything else goes into dev
+# (CONTRIBUTING.md).
 name: Release source
 
 on:
@@ -10,7 +11,7 @@ permissions: {}
 
 jobs:
   from-dev:
-    name: Pull requests into main come from dev
+    name: Pull requests into main come from dev or a release branch
     runs-on: ubuntu-latest
     steps:
       - name: Check the pull request's branch
@@ -18,7 +19,11 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          if [ "$HEAD_REF" != "dev" ] || [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
-            echo "::error::Pull requests into main come from this repository's dev branch; this one is from $HEAD_REPO:$HEAD_REF. Open it against dev instead (CONTRIBUTING.md)."
+          case "$HEAD_REF" in
+            dev|release/*) from_release=yes ;;
+            *) from_release=no ;;
+          esac
+          if [ "$from_release" != yes ] || [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::Pull requests into main come from this repository's dev or release/* branches; this one is from $HEAD_REPO:$HEAD_REF. Open it against dev instead (CONTRIBUTING.md)."
             exit 1
           fi

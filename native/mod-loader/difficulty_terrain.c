@@ -56,8 +56,9 @@ static const uint8_t kTerrainStoreStub[96] = {
     0xE9, 0, 0, 0, 0,                                                 /* 84 jmp back (rel32 at 85) */
     0, 0, 0,                                                          /* 89 */
     0, 0, 0, 0};                                                      /* 92 0.0 */
-#define DIF_OBJECTIVE_LOCATIONS 0x8996B0u /* G+: the important locations, 0x108 each */
-#define DIF_OBJECTIVE_COUNT 0x11A715Cu    /* G+: their count, at most 256 */
+#define DIF_OBJECTIVE_LOCATIONS 0x8996B0u /* G+: the important locations, 0x108 each, where the game has them */
+static uint32_t ImportantLocations(uint32_t* places); /* difficulty_block.c: where they are now, and their places */
+#define DIF_OBJECTIVE_COUNT 0x11A715Cu    /* G+: their count */
 #define DIF_OBJECTIVE_MARGIN 16.0f        /* m past the stamp's radius */
 #define DIF_LOCATION_GROUP_SET 0xADC32FAAu
 static volatile LONG g_terrainRaised, g_terrainChecked; /* heights raised, and below 0 m checked */
@@ -126,12 +127,13 @@ static int TerrainNearObjective(uintptr_t level, const uint8_t* area)
     memcpy(&count, (const void*)(uintptr_t)(block + DIF_OBJECTIVE_COUNT), 4);
     memcpy(&x, area + 0x80, 4);
     memcpy(&y, area + 0x84, 4);
-    if (count > 256) count = 256;
+    uint32_t places, list = ImportantLocations(&places);
+    if (count > places) count = places;
     InterlockedIncrement(&g_terrainChecked);
     LONG sized = 0;
     for (uint32_t i = 0; i < count; i++)
     {
-        const uint8_t* location = (const uint8_t*)(uintptr_t)(block + DIF_OBJECTIVE_LOCATIONS + 0x108 * (uint64_t)i);
+        const uint8_t* location = (const uint8_t*)(uintptr_t)(block + list + 0x108 * (uint64_t)i);
         float lx, ly;
         memcpy(&lx, location + 0xA4, 4);
         memcpy(&ly, location + 0xA8, 4);

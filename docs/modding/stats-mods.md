@@ -1,5 +1,7 @@
 # Stats mods
 
+<!-- diataxis: how-to -->
+
 This page is for anyone who wants to change numbers (fire rate, magazine size, cooldowns, damage) without writing code.
 It covers the `hellforge-stats.json` file, how its changes apply, and the in-game editor that writes the same format.
 
@@ -38,7 +40,9 @@ The file is organised by category, then by target, then by field:
   named as its rows are: `"entity::entity.health"`, `"damage_zone:zone_3:zone.armor"`, `"attack:mapped_4:damage.stagger"`.
   Difficulties go by their level (`"7"`), roster rows and compositions by the HD2R Editor's keys
   (`"terminids/row_0"`: `"spawn.weight_3"`, `"spawn.weight_11"`; `"automatons/family_1/row_0"`: `"composition.group_0_count"`).
-  A composition's group counts total at most 32, and these apply from the next mission, on the host.
+  A composition's group counts total at most 32, and these apply from the next mission, on the host. A roster weight
+  of 0 that leaves an enemy with nothing to spawn at that level on some planet is refused (at boot, after a file's
+  other lines).
 - Fields go by their full names (`weapon.fire_rate`, `deposit.capacity`), or by short aliases where the target has the
   field: `rpm`, `magazine`, `fuse`, `cooldown`, `uses`, projectile `speed`, and damage `standard` and `durable`. Not
   every weapon has a magazine field, and not every throwable a fuse. Recoil is edited through its four input fields.
@@ -55,8 +59,8 @@ is a working example.
 ## How it applies
 
 - Changes apply when the game loads its data, every session. A stats-only mod (no code, Lua, data patches, data spec,
-  network field types or componentWrites) is a per-player gameplay mod, so friends do not compare it and each player
-  plays with their own; adding any of those makes it shared and then friends compare it.
+  network field types or componentWrites) is a per-player gameplay mod. Friends do not compare it, and each player
+  plays with their own. Adding any of those makes it shared, and then friends compare it.
 - Some records are shared by several items. Changing a shared record changes it for every item that uses it, and the
   mod's log warns about it. `"own": true` on an entity's entry gives that entity its own copy of the record first
   (component fields only).
@@ -87,6 +91,6 @@ EXPORT is the quickest way to share a set of changes with other players. To ship
 `hellforge-stats.json` into a mod of your own.
 
 In co-op every player keeps their own Local Stats. A host may share theirs instead; then a joiner plays with the host's,
-and the joiner's editor shows them read-only ([multiplayer.md](../multiplayer.md#stats-in-co-op)).
+and the joiner's editor shows them read-only ([Co-op in game](../multiplayer-in-game.md#stats-in-co-op)).
 
 Next: [Data mods](data.md), for models, textures, effects, sounds and icons.

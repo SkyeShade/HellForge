@@ -22,10 +22,18 @@ public static partial class LinuxCapture
     public const string ApiHost = "api.live.prod.thehelldiversgame.com";
     public const int CapturePort = 443;
     public const int ProxyPort = 18443;
-    public const string HelperPath = "/usr/local/lib/hellforge/capture-helper";
-    public const string HelperHashPath = "/usr/local/lib/hellforge/capture-helper.sha256";
-    public const string RelayPath = "/usr/local/lib/hellforge/capture-relay";
-    public const string RelayHashPath = "/usr/local/lib/hellforge/capture-relay.sha256";
+    // The folders allow-capture.sh may install the root-owned helper and relay in, first choice first. SteamOS keeps
+    // /usr/local on its read-only image, which an update replaces, so the installer starts at /opt there; it also goes
+    // down the list wherever a folder cannot be made or is not root's alone.
+    public static readonly IReadOnlyList<string> HelperFolders =
+        ["/usr/local/lib/hellforge", "/opt/hellforge", "/var/lib/hellforge"];
+    const string HelperName = "capture-helper";
+    const string RelayName = "capture-relay";
+    public static string HelperFolder => HelperFolderOf(IsSteamOs(), File.Exists);
+    public static string HelperPath => HelperFolder + "/" + HelperName;
+    public static string HelperHashPath => HelperPath + ".sha256";
+    public static string RelayPath => HelperFolder + "/" + RelayName;
+    public static string RelayHashPath => RelayPath + ".sha256";
     public const string HelperPidFile = "/run/hellforge/capture-helper.pid";
     public const string HelperScript = "capture-helper.sh";
     public const string RelayBinary = "capture-relay";
@@ -521,14 +529,17 @@ public static partial class LinuxCapture
     // shipped files, so the launcher installs the new copies through pkexec before the next sync. Null means ready.
     public static string? HelperProblem(string installRoot)
     {
-        if (!File.Exists(HelperPath)) return "The Linux capture helper is not installed.";
-        if (!File.Exists(RelayPath)) return "The Linux capture relay is not installed.";
+        // One lookup of the folder, so the four files checked are the ones beside each other.
+        var helper = HelperPath;
+        var relay = Path.Combine(Path.GetDirectoryName(helper)!, RelayName);
+        if (!File.Exists(helper)) return "The Linux capture helper is not installed.";
+        if (!File.Exists(relay)) return "The Linux capture relay is not installed.";
         try
         {
             var shippedFolder = Path.Combine(new InstallLayout(installRoot).App, "linux");
-            if (InstalledCopyProblem(HelperPath, HelperHashPath, Path.Combine(shippedFolder, HelperScript), "capture helper",
+            if (InstalledCopyProblem(helper, helper + ".sha256", Path.Combine(shippedFolder, HelperScript), "capture helper",
                     installRoot) is { } helperProblem) return helperProblem;
-            return InstalledCopyProblem(RelayPath, RelayHashPath, Path.Combine(shippedFolder, RelayBinary), "capture relay",
+            return InstalledCopyProblem(relay, relay + ".sha256", Path.Combine(shippedFolder, RelayBinary), "capture relay",
                 installRoot);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -1037,6 +1048,8 @@ public static partial class LinuxCapture
     static ProcessStartInfo SudoStartInfo(IReadOnlyList<string> arguments)
     {
         var start = new ProcessStartInfo("sudo") { UseShellExecute = false, CreateNoWindow = true };
+        // sudo's own messages are read (HelperCheckProblem), so they must not follow the desktop's language.
+        start.Environment["LC_ALL"] = "C";
         start.ArgumentList.Add("-n");
         start.ArgumentList.Add(HelperPath);
         foreach (var argument in arguments) start.ArgumentList.Add(argument);

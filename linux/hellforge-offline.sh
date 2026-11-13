@@ -3,10 +3,16 @@
 # backend and Steam's bridge, a veth adapter so Wine sees a network, and "prohibit" default routes so every outside
 # connection is refused at once (WSAEACCES, as the Windows block's probe expects). A self-test refuses to start if
 # 1.1.1.1 is reachable.
-# HELLFORGE_STEAM_UDP=1 (co-op on Linux): the namespace is made by pasta instead, so UDP leaves it (Steam's networking, which
-# co-op uses, runs inside the backend's own process and reaches Valve's relays over UDP), while TCP stays refused by a
-# policy rule ("ip rule ... ipproto tcp prohibit", the same WSAEACCES). The block is then looser than the default one, but
-# UDP only reaches Valve's relays (the list Valve publishes for the game, fetched at launch); every other address is refused.
+# HELLFORGE_STEAM_UDP=1 (co-op over Steam relays, on unless the player turned it off): pasta is attached to the
+# namespace and gives it a route, so UDP leaves it (Steam's networking, which co-op uses, runs inside the backend's own
+# process and reaches Valve's relays over UDP), while TCP stays refused by a policy rule ("ip rule ... ipproto tcp
+# prohibit", the same WSAEACCES). UDP only reaches Valve's relays (the list Valve publishes for the game, fetched at
+# launch); every other address is refused. When it cannot open (no pasta, no python3, no relay list, pasta did not bring
+# the network up), the session starts without it: HELLFORGE_STEAM_UDP=0 and HELLFORGE_STEAM_UDP_PROBLEM say why, for the
+# backend, whose lobby browser tells the player.
+# HELLFORGE_NETNS_KEEPER (a session, SessionRunner): when the session starts without the route, a small process that
+# lives as long as the session stays in the namespace's own user namespace, and its pid and start time go to that file,
+# so the launcher can turn co-op over Steam relays on while the session runs (hf-coop-relays.sh).
 # From DreamyBranch's LinuxSupport (SkyeShade/HellForge issue 1), with joshua-software-dev; docs/linux.md.
 set -euo pipefail
 [ $# -gt 0 ] || { echo "usage: $0 command [args...]" >&2; exit 2; }
@@ -40,105 +46,97 @@ if [ "$unshare" = unshare ] && [ "$(cat /proc/sys/kernel/apparmor_restrict_unpri
   exit 1
 fi
 
-# Wine opens every socket of a Windows program in the prefix's wineserver, so the network a program gets is the
-# wineserver's: a wineserver of this prefix still running outside the namespace would give the programs started inside
-# the internet (a VM test of 2026-10-21 reached 1.1.1.1 that way). One ends a few seconds after its last program: wait
-# for that, else refuse. (Wine 10 keeps the server's socket in $XDG_RUNTIME_DIR/wine, older Wine and Proton in /tmp.)
-# Proton always uses $STEAM_COMPAT_DATA_PATH/pfx, whatever WINEPREFIX says.
+# A wineserver of the session's prefix still running outside the namespace would give the programs started inside the
+# internet: waited for, then refused (hf-wineserver.sh). Proton always uses $STEAM_COMPAT_DATA_PATH/pfx, whatever
+# WINEPREFIX says.
 if [ -n "${PROTON:-}" ] && [ -n "${STEAM_COMPAT_DATA_PATH:-}" ]; then prefix="$STEAM_COMPAT_DATA_PATH/pfx"
 else prefix="${WINEPREFIX:-${STEAM_COMPAT_DATA_PATH:+$STEAM_COMPAT_DATA_PATH/pfx}}"; fi
 prefix="${prefix:-$HOME/.wine}"
-if [ -d "$prefix" ]; then
-  server="server-$(stat -L -c %D "$prefix")-$(printf %x "$(stat -L -c %i "$prefix")")"
-  wineserver_running() {
-    local s status
-    for s in "${XDG_RUNTIME_DIR:-/run/user/$uid}/wine/$server/socket" "/tmp/.wine-$uid/$server/socket"; do
-      if "$cli" steam-bridge check "$s"; then
-        return 0
-      else
-        status=$?
-      fi
-      case "$status" in
-        1) ;;
-        *)
-          echo "hellforge-offline: cannot tell whether a wineserver of $prefix is running outside the namespace: steam-bridge check exited with code $status." >&2
-          return 3
-          ;;
-      esac
-    done
-    return 1
-  }
-  wineserver_state=0
-  for _ in $(seq 1 20); do
-    wineserver_state=0
-    wineserver_running || wineserver_state=$?
-    [ "$wineserver_state" = 1 ] || break
-    sleep 1
-  done
-  case "$wineserver_state" in
-    0)
-      echo "A Windows program is still running in the Wine prefix $prefix outside HellForge's network namespace;" >&2
-      echo "programs started inside would share its network. Close it (or give HellForge a prefix of its own: docs/linux.md)." >&2
-      exit 1
-      ;;
-    1) ;;
-    *)
-      echo "hellforge-offline: cannot tell whether a wineserver of $prefix is running outside the namespace; refusing to start." >&2
-      exit 1
-      ;;
-  esac
-fi
+. "$here/hf-wineserver.sh"
+hf_wineserver_wait "$cli" "$prefix" "$uid" || exit 1
 
 # Everything below runs as root of a new user + network namespace. Default: nothing but loopback and a dead end.
 # HELLFORGE_STEAM_UDP=1: the namespace is the same, but pasta (userspace networking, no root) is attached to it from
-# outside and gives it an interface with a real route; the "ip rule" then refuses every TCP connection the way the
-# prohibit routes do, so only UDP gets out. (Running the game under `pasta -- command` instead gave it its own pid, mount,
-# ipc and hostname namespaces too, and the game quit during start.)
+# outside and gives it an interface with a real route; the relay policy (hf-relays.sh) follows before the session's
+# command starts, so only UDP to the relays ever gets out of it. (Running the game under `pasta -- command` instead gave it its own
+# pid, mount, ipc and hostname namespaces too, and the game quit during start.)
 inner='
   ip link set lo up
   if [ "$HELLFORGE_STEAM_UDP" = 1 ]; then
+    # pasta sets the route first: the kernel checks the default route'"'"'s gateway through the rules, which the relay
+    # policy would refuse. Nothing runs in the namespace yet, so the policy follows before the session starts.
     for _ in $(seq 1 100); do [ -d /sys/class/net/eth0 ] && ip -4 route show default | grep -q . && break; sleep 0.1; done
-    ip -4 route show default | grep -q . || { echo "hellforge-offline: pasta did not bring the network up (its own message, if any, is above)" >&2; exit 1; }
-    ip rule add ipproto tcp prohibit
-    ip -6 rule add ipproto tcp prohibit 2>/dev/null || true
-    # UDP only to Valve relays (address and port range each), everything else refused; loopback is in the local table.
-    while read -r addr lo hi; do
-      ip rule add pref 1000 to "$addr/32" ipproto udp dport "$lo-$hi" lookup main
-    done <<< "$HELLFORGE_UDP_RELAYS"
-    ip rule add pref 2000 prohibit
-    ip -6 rule add pref 2000 prohibit 2>/dev/null || true
-  else
-    ip link add eth0 type veth peer name veth0
-    ip addr add 192.168.1.50/24 dev eth0
-    ip link set eth0 up
-    ip link set veth0 up
+    if ! ip -4 route show default | grep -q .; then
+      HELLFORGE_STEAM_UDP_PROBLEM="pasta did not bring the session'"'"'s network up"
+    else
+      eval "$HF_RELAY_RULES"
+      if ! hf_relay_rules; then
+        HELLFORGE_STEAM_UDP_PROBLEM="the relay rules could not be set in the session'"'"'s network"
+        ip route flush default 2>/dev/null || true
+      fi
+    fi
+    if [ -n "${HELLFORGE_STEAM_UDP_PROBLEM:-}" ]; then
+      echo "hellforge-offline: co-op over Steam relays is off for this session: $HELLFORGE_STEAM_UDP_PROBLEM (pasta'"'"'s own message, if any, is above)" >&2
+      HELLFORGE_STEAM_UDP=0
+      export HELLFORGE_STEAM_UDP HELLFORGE_STEAM_UDP_PROBLEM
+    fi
+  fi
+  if [ "$HELLFORGE_STEAM_UDP" != 1 ]; then
+    if [ ! -e /sys/class/net/eth0 ]; then
+      ip link add eth0 type veth peer name veth0
+      ip addr add 192.168.1.50/24 dev eth0
+      ip link set eth0 up
+      ip link set veth0 up
+    fi
     ip route add prohibit default
     ip -6 route add prohibit default 2>/dev/null || true
+    # The keeper: in this user namespace (the one that owns the network namespace) for as long as the session runs,
+    # which this shell becomes below, and gone at most 2 s after it.
+    if [ -n "${HELLFORGE_NETNS_KEEPER:-}" ]; then
+      holder=$$
+      ( while kill -0 "$holder" 2>/dev/null; do sleep 2; done ) </dev/null >/dev/null 2>&1 &
+      read -r -a stat < "/proc/$!/stat"
+      echo "$! ${stat[21]}" > "$HELLFORGE_NETNS_KEEPER.partial" && mv -f "$HELLFORGE_NETNS_KEEPER.partial" "$HELLFORGE_NETNS_KEEPER"
+    fi
   fi
   exec unshare --user --map-user="$0" --map-group="$1" \
     env HELLFORGE_LINUX_NETNS=1 bash -c "$2" _ "${@:3}"
 '
 
+. "$here/hf-relays.sh"
+export HF_RELAY_RULES
+if [ -n "${HELLFORGE_NETNS_KEEPER:-}" ]; then
+  rm -f "$HELLFORGE_NETNS_KEEPER"
+  export HELLFORGE_NETNS_KEEPER
+fi
+unset HELLFORGE_STEAM_UDP_PROBLEM
+
+# Co-op over Steam relays needs pasta, and python3 for Valve's relay list: without either, or without a list, the
+# session starts without it and says why.
 if [ "${HELLFORGE_STEAM_UDP:-0}" = 1 ]; then
-  command -v pasta >/dev/null || { echo "HELLFORGE_STEAM_UDP=1 needs pasta (the passt package)" >&2; exit 1; }
-  # Valve's relay list for the game (the one Steam's networking uses), fetched now while this PC still has its network;
-  # the last good copy is kept so a launch without a network still works. No list, no start.
-  command -v python3 >/dev/null || { echo "HELLFORGE_STEAM_UDP=1 needs python3 (to read Valve's relay list)" >&2; exit 1; }
-  relay_cache="${XDG_CACHE_HOME:-$HOME/.cache}/hellforge/sdr-relays.txt"
-  mkdir -p "$(dirname "$relay_cache")"
-  if curl -fsS --max-time 20 'https://api.steampowered.com/ISteamApps/GetSDRConfig/v1/?appid=553850' 2>/dev/null | python3 -c '
-import json, sys
-for pop in json.load(sys.stdin)["pops"].values():
-    for r in pop.get("relays", []):
-        if "ipv4" in r: print(r["ipv4"], r["port_range"][0], r["port_range"][1])' > "$relay_cache.new" && [ -s "$relay_cache.new" ]; then
-    mv "$relay_cache.new" "$relay_cache"
+  problem=""
+  if ! command -v pasta >/dev/null; then problem="pasta (the passt package) is not installed"
   else
-    rm -f "$relay_cache.new"
-    [ -s "$relay_cache" ] && echo "hellforge-offline: could not fetch Valve's relay list, using the last one ($relay_cache)" >&2
+    relay_file=$(mktemp)
+    if problem=$(hf_relay_list 2>&1 >"$relay_file"); then
+      [ -n "$problem" ] && echo "$problem" >&2
+      problem=""
+      HELLFORGE_UDP_RELAYS=$(<"$relay_file")
+    else
+      problem=$(tail -n 1 <<< "$problem")
+    fi
+    rm -f "$relay_file"
   fi
-  [ -s "$relay_cache" ] || { echo "hellforge-offline: no relay list for UDP; refusing to open it" >&2; exit 1; }
-  HELLFORGE_UDP_RELAYS=$(<"$relay_cache")
-  echo "hellforge-offline: UDP is open to Valve's relays only ($(wc -l < "$relay_cache") addresses) for Steam's networking (co-op); everything else is refused." >&2
+  if [ -n "$problem" ]; then
+    echo "hellforge-offline: co-op over Steam relays is off for this session: $problem" >&2
+    HELLFORGE_STEAM_UDP=0
+    HELLFORGE_STEAM_UDP_PROBLEM=$problem
+    export HELLFORGE_STEAM_UDP_PROBLEM
+  fi
+fi
+
+if [ "${HELLFORGE_STEAM_UDP:-0}" = 1 ]; then
+  echo "hellforge-offline: UDP is open to Valve's relays only ($(grep -c . <<< "$HELLFORGE_UDP_RELAYS") addresses) for Steam's networking (co-op); everything else is refused." >&2
   export HELLFORGE_STEAM_UDP HELLFORGE_UDP_RELAYS
   "$unshare" --user --map-root-user --net bash -c "$inner" "$uid" "$gid" "$selftest" "$@" &
   holder=$!

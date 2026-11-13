@@ -201,6 +201,12 @@ static void KeepUnder(int index, int above)
     q->failed = 0;
 }
 
+/* A shield's health past its network type's range widens it (nettypes.c). */
+static void LiveShieldHealth(const FieldEdit* q, uint32_t bits)
+{
+    if (!strcmp(q->component->name, "Shield") && !strcmp(q->field->name, "durability")) NetShieldHealthSet(bits);
+}
+
 /* Edit `index`, the top one of its field, applied (its table row, or once the entity data is in): 1 when it applies.
  * Refused: the mod's earlier live edit of the field stays (its value is still the game's, its original still what a
  * reset puts back). */
@@ -212,7 +218,7 @@ static int ApplyLive(int index, int replaced, const FieldEdit* previous)
         ApplyEdit(q);
         /* where it went: what the game then reads there is what a live edit's effect depends on */
         uint32_t now = 0, before = 0;
-        if (!q->failed && q->field->size <= 4) { memcpy(&now, q->value, q->field->size); memcpy(&before, q->original, q->field->size); }
+        if (!q->failed && q->field->size <= 4) { memcpy(&now, q->value, q->field->size); memcpy(&before, q->original, q->field->size); LiveShieldHealth(q, now); }
         if (!q->failed) ApiLog(q->mod, "set_live: %s.%s of %016llx at %p: %08x (before the live edits %08x)", q->component->name,
             q->field->name, (unsigned long long)q->entity, (void*)q->address, now, q->hasOriginal ? before : now);
     }

@@ -561,6 +561,7 @@ void BeginEdit(const Row* row, const std::string& text, bool fresh)
     if (RefuseLocked()) return;
     std::string lock = LockOf(row), block = SlotBlock(row);
     if (!lock.empty() || !block.empty()) { Toast("Locked for now: " + (lock.empty() ? block : lock), ERROR_); return; }
+    if (row->toggle) { Stage(row, ViewOf(row).value != 0 ? 0 : 1); Sound(sounds::CLICK); return; }
     if (!row->choice.empty() || !row->pick.empty() || row->Valued()) { OpenPicker(row); return; }
     RowView v = ViewOf(row);
     g_edit.on = true;

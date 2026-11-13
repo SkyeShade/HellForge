@@ -808,6 +808,7 @@ public static class EditorCatalog
         // a field with named values (a flag, an enum, a trait or fire mode slot): picked from them
         if (f.Options.ValueKind == JsonValueKind.Array)
             json["values"] = new JsonArray(f.Choices.Select(c => (JsonNode)new JsonObject { ["value"] = c.Value, ["label"] = c.Label }).ToArray());
+        if (row.Key is "shield.blocks_grenades" or "shield.blocks_enemies") json["toggle"] = true; // a tick box, not a list of two
         // References (HD2R Editor's payload swaps): what the row picks; a status slot's number (its strength's too) and
         // the slot group; the rows a projectile swap locks (the weapon's own round), named by the swap's key.
         var pick = Pick(f);

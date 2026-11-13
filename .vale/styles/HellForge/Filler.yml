@@ -1,0 +1,29 @@
+# Words and phrases that add length and no information. Delete them, or say the specific thing.
+extends: existence
+message: "'%s' adds words, not information: delete it or say the specific thing."
+link: https://github.com/SkyeShade/HellForge/blob/dev/scripts/docs-lint/README.md#vale
+level: error
+ignorecase: true
+tokens:
+  - it(?:'s| is) (?:important|worth|crucial) (?:to note|noting|to remember|to mention)
+  - please note
+  - keep in mind that
+  - needless to say
+  - as (?:mentioned|noted|discussed) (?:above|earlier|before|previously)
+  - in order to
+  - first and foremost
+  - at the end of the day
+  - under the hood
+  - comprehensive
+  - robust
+  - seamless(?:ly)?
+  - leverag(?:e|es|ed|ing)
+  - utili[sz](?:e|es|ed|ing|ation)
+  - delv(?:e|es|ing)
+  - plethora
+  - myriad
+  - a wide (?:range|variety) of
+  - in today's
+  - game[- ]chang(?:er|ing)
+  - cutting[- ]edge
+  - powerful

@@ -107,6 +107,69 @@ static class PrivacyTests
             check(!text.Contains(profile, StringComparison.OrdinalIgnoreCase) && text.Contains(Privacy.ProfileMark), "The exported log names the user folder: " + text);
         });
 
+        test("Saved logs hold the logs of a start that stopped before its session folder existed, with or without a session", () =>
+        {
+            var install = Path.Combine(root, "logs-start");
+            var logs = Directory.CreateDirectory(Path.Combine(install, "logs")).FullName;
+            var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            List<string> Names(string zip)
+            {
+                using var archive = System.IO.Compression.ZipFile.OpenRead(zip);
+                return [.. archive.Entries.Select(e => e.FullName)];
+            }
+            string Entry(string zip, string name)
+            {
+                using var archive = System.IO.Compression.ZipFile.OpenRead(zip);
+                using var reader = new StreamReader(archive.GetEntry(name)!.Open());
+                return reader.ReadToEnd();
+            }
+
+            // Nothing was ever started: no zip is made.
+            var none = Path.Combine(install, "none.zip");
+            check(SessionLogs.ExportStart(logs, none) == null && !File.Exists(none), "An installation with no logs at all got a zip.");
+
+            // The ticket's state: PLAY stopped at "no game catalogue", so there is no session folder, only these two logs.
+            File.WriteAllText(Path.Combine(logs, "session-runner.log"), "2026-11-09 19:40:03 " + GameCatalog.SyncFirst + "\n");
+            File.WriteAllText(Path.Combine(logs, "linux-session-wrapper.log"), "HellForge: prefix " + Path.Combine(profile, "prefix") + "\n");
+            File.WriteAllText(Path.Combine(logs, "launcher-settings.txt"), "not a start log");
+            var early = Path.Combine(install, "early.zip");
+            var saved = SessionLogs.ExportStart(logs, early);
+            var names = Names(early);
+            check(saved is { Files: 3, Skipped: 0 } && names.Order().SequenceEqual(new[]
+                    { "start/linux-session-wrapper.log", "start/" + SessionLogs.ProcessesFile, "start/session-runner.log" }.Order()),
+                "With no session, the saved logs are not exactly the start logs: " + string.Join(", ", names));
+            check(Entry(early, "start/session-runner.log").Contains("no game catalogue yet", StringComparison.Ordinal),
+                "The session runner's reason is not in the saved logs.");
+            var wrapper = Entry(early, "start/linux-session-wrapper.log");
+            check(!wrapper.Contains(profile, StringComparison.OrdinalIgnoreCase) && wrapper.Contains(Privacy.ProfileMark),
+                "The saved wrapper log names the user folder: " + wrapper);
+
+            // With a session: its export also holds the start logs, since the start that failed may be a later one.
+            var run = Directory.CreateDirectory(Path.Combine(install, "logs", "sessions", new string('d', 32))).FullName;
+            File.WriteAllText(Path.Combine(run, "session.log"), "session");
+            File.WriteAllText(Path.Combine(logs, "linux-container-refusal.txt"), "HellForge cannot start inside Flatpak.\n");
+            var withRun = Path.Combine(install, "run.zip");
+            var exported = SessionLogs.Export(run, null, withRun, logs);
+            names = Names(withRun);
+            check(names.Contains("start/session-runner.log") && names.Contains("start/linux-session-wrapper.log") &&
+                names.Contains("start/linux-container-refusal.txt") && names.Any(n => n.EndsWith("/session.log")) &&
+                !names.Any(n => n.Contains("launcher-settings")) && exported.Files == names.Count,
+                "A session's export does not hold the start logs beside the session: " + string.Join(", ", names));
+            var without = Path.Combine(install, "run-only.zip");
+            SessionLogs.Export(run, null, without);
+            check(!Names(without).Any(n => n.StartsWith("start/", StringComparison.Ordinal)), "An export without the logs folder still took start logs.");
+
+            if (!OperatingSystem.IsLinux()) return;
+            // A start log that is a link is left out, never followed.
+            var secret = Path.Combine(install, "secret.txt");
+            File.WriteAllText(secret, "login token");
+            File.Delete(Path.Combine(logs, "linux-container-refusal.txt"));
+            File.CreateSymbolicLink(Path.Combine(logs, "linux-container-refusal.txt"), secret);
+            var linked = Path.Combine(install, "linked.zip");
+            SessionLogs.ExportStart(logs, linked);
+            check(!Names(linked).Contains("start/linux-container-refusal.txt"), "A start log that is a link was followed into the zip.");
+        });
+
         test("With no user folder or computer name known, text passes unchanged", () =>
         {
             var none = new Privacy(null, [null, "", "  "]);

@@ -60,18 +60,23 @@ public sealed class PremiumContent
     public static PremiumContent ForSnapshot(string progressionData, string? snapshotDir, ulong? steamAccount) =>
         Load(progressionData, OwnedItems(snapshotDir, steamAccount));
 
-    // With the player's held items given directly (tests, and the backend, which has verified them already).
+    // With the player's held items given directly (tests, and the backend, which has verified them already). The warbonds
+    // and DLC packages the compiled list knows (PaidItems) are taken from it, not from the installation's catalogue.
     public static PremiumContent Load(string progressionData, IEnumerable<uint> heldItems)
     {
         using var data = JsonDocument.Parse(File.ReadAllBytes(progressionData));
+        var floor = PaidItems.Current;
+        var floorTokens = floor.Tokens.ToHashSet();
         var warbonds = new Dictionary<uint, uint[]>();
         foreach (var pass in data.RootElement.GetProperty("seasonPassDetails").EnumerateObject().Select(p => p.Value))
         {
             var id = pass.GetProperty("id32").GetUInt32();
-            warbonds[id] = id == FreeWarbond ? [] : [.. pass.GetProperty("premiumTokenMixIds").EnumerateArray().Select(t => t.GetUInt32())];
+            warbonds[id] = id == FreeWarbond ? [] : [.. pass.GetProperty("premiumTokenMixIds").EnumerateArray().Select(t => t.GetUInt32()).Where(t => !floorTokens.Contains(t))];
         }
+        foreach (var warbond in floor.Warbonds) warbonds[warbond.Id] = warbond.Tokens;
         var packages = data.RootElement.GetProperty("itemPackages").EnumerateArray()
             .ToDictionary(p => p.GetProperty("itemMixId32").GetUInt32(), p => p.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("mixId").GetUInt32()).ToList());
+        foreach (var (package, items) in floor.DlcPackages) packages[package] = [.. items];
         var dlc = SteamDlc.ToDictionary(entry => entry.Key,
             entry => entry.Value.SelectMany(package => packages.GetValueOrDefault(package, []).Append(package)).ToHashSet(), StringComparer.Ordinal);
         return new PremiumContent(warbonds, dlc, [.. heldItems]);
@@ -83,7 +88,8 @@ public sealed class PremiumContent
         var value = requirement[(colon + 1)..];
         return requirement[..colon] switch
         {
-            "warbond" => warbondTokens.TryGetValue(uint.Parse(value, CultureInfo.InvariantCulture), out var tokens) && (tokens.Length == 0 || tokens.Any(held.Contains)),
+            "warbond" => uint.Parse(value, CultureInfo.InvariantCulture) is var warbond && warbondTokens.TryGetValue(warbond, out var tokens) &&
+                (warbond == FreeWarbond || tokens.Any(held.Contains)),
             "dlc" => dlcItems.TryGetValue(value, out var items) && items.Any(held.Contains),
             _ => held.Contains(uint.Parse(value, CultureInfo.InvariantCulture))
         };
@@ -125,17 +131,15 @@ public static class PremiumMods
 {
     public sealed record Result(List<ModManifest> Loaded, List<string> Locked, List<string> Problems);
 
-    const string ProgressionData = "progression-data.json";
-
     // A session's check (mods-stage): ownership from the profile's snapshot, read only when a mod declares premium content.
     // Without the installation's progression data, nothing premium counts as owned.
     public static Result ForSession(InstallLayout install, string? snapshotDir, ulong? steamAccount, IReadOnlyList<ModManifest> loadOrder)
     {
         if (loadOrder.All(mod => mod.Premium.Count == 0)) return new Result([.. loadOrder], [], []);
-        var data = Path.Combine(install.App, ProgressionData);
+        var data = GameCatalog.ProgressionData(install.Root);
         if (File.Exists(data)) return Apply(loadOrder, PremiumContent.ForSnapshot(data, snapshotDir, steamAccount));
         var result = Apply(loadOrder, PremiumContent.Nothing);
-        result.Problems.Insert(0, "Premium mods: " + data + " is missing, so none of their premium content counts as owned. Reinstall HellForge.");
+        result.Problems.Insert(0, "Premium mods: " + data + " is missing, so none of their premium content counts as owned. Run Sync Inventory.");
         return result;
     }
 
@@ -144,7 +148,7 @@ public static class PremiumMods
     // nothing at all, so a live change that cannot tell holds back every mod built on premium content for a restart.
     public static PremiumContent ForLiveChange(InstallLayout install, string? snapshotDir, ulong? steamAccount)
     {
-        var data = Path.Combine(install.App, ProgressionData);
+        var data = GameCatalog.ProgressionData(install.Root);
         if (snapshotDir == null || steamAccount == null || !File.Exists(data)) return PremiumContent.Nothing;
         try { return PremiumContent.ForSnapshot(data, snapshotDir, steamAccount); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException or

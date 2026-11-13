@@ -98,6 +98,7 @@ sealed partial class PlaySession
             : Path.TrimEndingDirectorySeparator(Path.GetFullPath(hostPath));
         var allowed = string.Equals(hostPath, Path.Combine(hostInstall, "app", "session"), StringComparison.Ordinal) ||
             string.Equals(hostPath, Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_modloader.dll"), StringComparison.Ordinal) ||
+            string.Equals(hostPath, Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_overlay.dll"), StringComparison.Ordinal) ||
             SandboxProtocol.Within(Path.Combine(hostInstall, "mods"), hostPath) ||
             SandboxProtocol.Within(Path.Combine(hostInstall, "temp", "mod-builds"), hostPath);
         if (!allowed || !(File.Exists(hostPath) || Directory.Exists(hostPath)))
@@ -137,6 +138,8 @@ sealed partial class PlaySession
         SandboxBind(Path.Combine(hostInstall, "app", "session"));
         var hostLoader = Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_modloader.dll");
         if (File.Exists(hostLoader)) SandboxBind(hostLoader);
+        var hostOverlay = Path.Combine(hostInstall, "app", "sdk-shims", "hellforge_overlay.dll");
+        if (File.Exists(hostLoader) && File.Exists(hostOverlay)) SandboxBind(hostOverlay);
         var relay = StartSandboxPipeRelay((string)result["runId"]!);
         var control = Directory.CreateDirectory(Path.Combine(run, "control")).FullName;
         var heartbeat = Path.Combine(control, "runner.heartbeat");
@@ -310,6 +313,9 @@ sealed partial class PlaySession
                 throw new SessionFailure("The Linux sandbox host failed: " + (current.Failure ?? "no reason was recorded"));
             if (current.State is "exited" or "stopped")
             {
+                // The supervisor stops the domain on the same stop signal, polling it every 250 ms, so the domain is
+                // usually stopped before this loop reads the signal: still record what it asked for (a mod sync's restart).
+                StopRequested();
                 RecordSandboxEnd(current, clock);
                 break;
             }
@@ -352,7 +358,7 @@ sealed partial class PlaySession
         result["gamePid"] = status.GamePid;
         result["sandboxDomainPid"] = status.DomainPid;
         var crashLine = CrashReport.FirstCrashLine(run);
-        var crashed = status.ExitCode is { } exited && exited != 0 || crashLine is { Length: > 0 } || CrashReport.Dump(run) != null;
+        var crashed = SessionEnd.Crashed(status.ExitCode, crashLine is { Length: > 0 }, CrashReport.Dump(run) != null);
         result["gameCrashed"] = crashed;
         if (status.ExitCode is { } code)
         {

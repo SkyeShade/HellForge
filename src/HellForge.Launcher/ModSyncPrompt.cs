@@ -89,8 +89,7 @@ public partial class MainWindow
     }
 
     // The in-game prompt's TRUST warning (app.cpp DrawTrust), in the card's place; its button takes a click only after a
-    // second, so a click meant for the card underneath never trusts a mod. A stranger's says what the sandbox does not stop (the
-    // plan no longer offers a stranger's mod for trust: it is the player's to install; the warning stays as a backstop).
+    // second, so a click meant for the card underneath never trusts a mod. A stranger's says what the sandbox does not stop.
     void RenderTrust(string runDirectory, ModSyncOffer offer, ModSyncOffer.Mod mod)
     {
         var name = (mod.Name.Length > 0 ? mod.Name : mod.Id) + " " + mod.Version;

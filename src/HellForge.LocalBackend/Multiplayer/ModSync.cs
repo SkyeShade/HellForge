@@ -5,48 +5,56 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using HellForge.Core;
+using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
 
 namespace HellForge.LocalBackend.Multiplayer;
 
-// Mod sync (HellForge.Core.ModSync; docs/multiplayer.md "Mod sync"): a joiner who lacks the host's gameplay mods can
-// download them and play with the host's set.
-//   host:   a joiner refused for different gameplay mods (LobbyService.ModsRefused) is sent this session's mod set
-//           (without its folders) just before the refusal, mods.offer [lobby id, set, sharing 0|1], and its machine may
-//           download for GrantTime from the first such offer (a later refusal does not extend it), at most the grant's
-//           byte budget (GrantBudget). The host serves only the set's counted files, from one worker, at most PeerRate
-//           per joiner and TotalRate in all, so its own game keeps its link. A code or raw mod HellForge has not verified
-//           goes to Steam friends alone: a stranger gets content and verified mods only, whatever their backend asks:
-//             mods.files [req, id, hash, start]                 -> mods.filelist [req, "ok", total, start, (path, size, sha256)...]
-//                                                                  (at most PageFiles files a page)
+// Mod sync (HellForge.Core.ModSync; docs/multiplayer-mod-sync.md): a joiner who lacks the host's gameplay mods can download them and play
+// with the host's set.
+//   host:   a joiner refused for different gameplay mods (LobbyService.ModsRefused) is sent this session's mod set (without its folders)
+//           just before the refusal, mods.offer [lobby id, set, sharing 0|1, PartsFlag], and its machine may download for GrantTime from
+//           the first such offer (a later refusal does not extend it), kept on GrantIdle past each request served, never past GrantLongest
+//           from the offer, within the grant's byte budget (GrantBudget). The host serves only the set's counted files, from one worker, at
+//           most PeerRate per joiner and TotalRate in all, so its own game keeps its link:
+//             mods.files [req, id, hash, start]                 -> mods.filelist [req, "ok", total, start, (path, size, sha256)...], PageFiles a page
 //             mods.get   [req, id, hash, path, offset, length]  -> mods.chunk [req, "ok", offset, bytes]
-//           or [req, "refused", reason]. The player can turn sharing off (ModSettings.Share).
-//   joiner: a mod offer for a join this machine asked for (Expected: LobbyService.JoinedRecently) becomes an offer for
-//           the game (ModSyncPlan; HfApi sync_state, the in-game editor's MOD
-//           SYNC view). A Steam friend's code or raw mod HellForge has not verified waits for the player's trust (TRUST on
-//           the prompt: that exact content goes on ModSettings' Trusted list); a stranger's is the player's to install, and
-//           GET IT opens a mod's web address in the player's browser. A trust a stranger's mod got from an earlier build
-//           counts only in a sandboxed session (Sandboxed).
-//           On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore). On
-//           restart it writes the next session's mods (ModSyncSession) and stops this session ("mod-sync" in
-//           stop-observation.signal), which the launcher starts again with them.
-public sealed class ModSync : IAsyncDisposable
+//             mods.parts [req, id, hash, start]                 -> mods.partlist (ModSync.Parts.cs), PageParts a page
+//           or [req, "refused", reason]. The player can turn sharing off (ModSettings.Share). The offer's fourth field, PartsFlag, says
+//           this host answers mods.parts (an older host's offer has three fields).
+//   joiner: a mod offer for a join this machine asked for (Expected: LobbyService.JoinedRecently) becomes an offer for the game
+//           (ModSyncPlan; HfApi sync_state, the in-game editor's MOD SYNC view). A code or raw mod HellForge has not verified waits for the
+//           player's trust (TRUST on the prompt: that exact content goes on ModSettings' Trusted list); GET IT opens a mod's web address in
+//           the player's browser. A stranger's can be trusted only in a sandboxed session and counts only in one (Sandboxed); unsandboxed
+//           it is the player's to install. A trust the sandboxed game answers counts only in sandboxed sessions too, a Steam friend's
+//           included (TrustedMod.Sandboxed): any code in that game can call sync_answer; the launcher's prompt, outside the sandbox, gives
+//           one that counts everywhere. On accept it downloads the plan's mods into the synced store, every byte checked (SyncedStore).
+//           From a host that lists parts, what this PC's own game has of a mod's game patch files is written from it, and only the rest is
+//           downloaded (SyncParts; docs "Mod sync from your own game"). On restart it writes the next session's mods (ModSyncSession) and
+//           stops this session ("mod-sync" in stop-observation.signal), which the launcher starts again with them.
+public sealed partial class ModSync : IAsyncDisposable
 {
     // PageFiles: a file list page's files (3 fields each, paths of at most 240 characters) stay within a frame's 4096
     // fields and 1 MiB.
-    // Speed (docs/multiplayer.md "Mod sync speed"): a joiner keeps Window chunks asked for at first, then as many as come
+    // Speed (docs/multiplayer-mod-sync.md "Mod sync speed"): a joiner keeps Window chunks asked for at first, then as many as come
     // back without queueing (DownloadWindow: MinWindow to MaxWindow, TargetDelay), across files. A host queues at most
     // QueuedPerPeer requests a machine (MaxWindow and room for a file list; 0.3.0-beta hosts queued 8) and paces its
     // upload to PeerRate a machine and TotalRate in all: caps against abuse, at the Steam link's own send rate
     // (SteamPeerTransport.SendRate).
     public const int ChunkBytes = 128 << 10, Window = 4, MinWindow = 2, MaxWindow = 16, QueuedPerPeer = MaxWindow + 8, PageFiles = 1000;
+    // A part list page's parts (7 fields each) stay within a frame's 4096 fields and 1 MiB.
+    public const int PageParts = 500;
+    public const string PartsFlag = "parts";
     public const long PeerRate = 8L << 20, TotalRate = 16L << 20;
     public static readonly TimeSpan TargetDelay = TimeSpan.FromMilliseconds(100), PaceBurst = TimeSpan.FromMilliseconds(40);
     // A host's refusal for more requests than it queues (the joiner then asks for fewer).
     const string TooMany = "too many requests at once";
     // Free space a download leaves on the drive besides its own bytes.
     public const long SpareDisk = 256L << 20;
-    public static readonly TimeSpan GrantTime = TimeSpan.FromMinutes(10), RequestTimeout = TimeSpan.FromSeconds(30);
+    // A large mod over a slow upload takes longer than GrantTime: the grant stays while the download goes on (GrantIdle
+    // after each request served), up to GrantLongest from the offer; the byte budget caps it as before.
+    public static readonly TimeSpan GrantTime = TimeSpan.FromMinutes(10), GrantIdle = TimeSpan.FromMinutes(2), GrantLongest = TimeSpan.FromHours(6),
+        RequestTimeout = TimeSpan.FromSeconds(30);
     public const string StopSignal = "stop-observation.signal", StopReason = "mod-sync", OfferFile = ModSyncOffer.FileName;
 
     readonly IPeerTransport transport;
@@ -82,6 +90,8 @@ public sealed class ModSync : IAsyncDisposable
         this.nameOf = nameOf;
         this.log = log;
         this.verified = verified ?? VerifiedMods.Contains;
+        LocalGames = OwnGames;
+        LocalIndex = OwnIndex;
         // downloads an earlier session left unfinished (it stopped mid-download)
         SyncedStore.Clean(modsFolder);
         serving = Task.Run(ServeAsync);
@@ -106,15 +116,18 @@ public sealed class ModSync : IAsyncDisposable
             lock (gate) open = offer != null;
             if (!open || ModSyncOffer.TakeAnswer(evidenceDirectory) is not { } parts) continue;
             log($"Mod sync: the launcher answered {parts[2]} to offer {parts[1]}.");
-            Answer(parts);
+            Answer(parts, fromLauncher: true);
         }
     }
 
     // Where the offer is shown: the game (LiveSyncDisplay) or a test.
     public ISyncDisplay? Display { get; set; }
 
-    // How long a grant lasts (GrantTime; a test shortens it).
+    // How long a grant lasts from the offer, how long each request served keeps it, and its longest (GrantTime,
+    // GrantIdle, GrantLongest; a test shortens them).
     public TimeSpan GrantFor { get; set; } = GrantTime;
+    public TimeSpan GrantIdleFor { get; set; } = GrantIdle;
+    public TimeSpan GrantLongestFor { get; set; } = GrantLongest;
 
     // The free bytes on the drive of a folder, or null when unknown (a test sets its own).
     public Func<string, long?> FreeSpace { get; set; } = FreeBytes;
@@ -147,10 +160,10 @@ public sealed class ModSync : IAsyncDisposable
         {
             switch (frame.Type)
             {
-                case "mods.files" or "mods.get": Queue(peer, frame); break;
+                case "mods.files" or "mods.get" or "mods.parts": Queue(peer, frame); break;
                 case "mods.offer": Offered(peer, frame); break;
                 case "mods.info": Info(peer, frame); break;
-                case "mods.filelist" or "mods.chunk": Answered(peer, frame); break;
+                case "mods.filelist" or "mods.chunk" or "mods.partlist": Answered(peer, frame); break;
             }
         }
         catch (InvalidDataException error) { log($"Mod sync: bad {frame.Type} from {LobbyService.EntityId(peer)}: {error.Message}"); }
@@ -158,12 +171,29 @@ public sealed class ModSync : IAsyncDisposable
 
     // ---- Host ---------------------------------------------------------------------------------------------------------
 
-    // A machine's download grant: until when, and how many bytes it may still take.
-    sealed class Grant(DateTime until, long budget)
+    // A machine's download grant: until when (kept on by Served, never past Longest), and how many bytes it may still take.
+    sealed class Grant(DateTime until, DateTime longest, long budget)
     {
-        public DateTime Until { get; } = until;
+        public DateTime Until { get; private set; } = until;
+        public DateTime Longest { get; } = longest;
         public long Left = budget;
+        DateTime told;
+
+        // A request was served: the grant stays idle for that long more (under the gate). True at most once a minute:
+        // time to tell the lobby the machine is still downloading (Downloading).
+        public bool Served(DateTime now, TimeSpan idle)
+        {
+            var kept = now + idle;
+            if (kept > Until) Until = kept < Longest ? kept : Longest;
+            if (now - told < TimeSpan.FromMinutes(1)) return false;
+            told = now;
+            return true;
+        }
     }
+
+    // A machine is still downloading this host's mods (at most once a minute): the lobby keeps it expected back
+    // (LobbyService.StillExpected), since a large download can outlast LobbyService.ExpectedBack. Raised outside the lock.
+    public event Action<ulong>? Downloading;
 
     readonly Dictionary<ulong, Grant> grants = [];
     readonly Dictionary<ulong, int> queued = [];
@@ -173,7 +203,8 @@ public sealed class ModSync : IAsyncDisposable
     long totalNext;
 
     // What one grant may download: the whole shared set twice (a retry after a failed check), and a little over.
-    long GrantBudget => 2 * (own?.Mods.Where(m => m.Tier == CoopTier.Shared).Sum(m => m.Bytes) ?? 0) + MaxWindow * ChunkBytes;
+    // A recipe mod's rebuilt game files count too: a joiner whose game lacks what the recipe needs gets them from here.
+    long GrantBudget => 2 * (own?.Mods.Where(m => m.Tier == CoopTier.Shared).Sum(m => m.Bytes + HostOutputs(m).Values.Sum(f => f.Size)) ?? 0) + MaxWindow * ChunkBytes;
 
     // A joiner with other gameplay mods is about to be refused (LobbyService.ModsRefused): this session's mod set goes to
     // them first, and they may download it for GrantTime. True when they may (this player shares, and the set is known).
@@ -192,9 +223,13 @@ public sealed class ModSync : IAsyncDisposable
             lock (gate)
             {
                 foreach (var ended in grants.Where(g => g.Value.Until <= now).Select(g => g.Key).ToList()) grants.Remove(ended);
-                if (!grants.TryGetValue(joiner, out grant)) grants[joiner] = grant = new Grant(now + GrantFor, GrantBudget);
+                if (!grants.TryGetValue(joiner, out grant)) grants[joiner] = grant = new Grant(now + GrantFor, now + GrantLongestFor, GrantBudget);
             }
-        Send(joiner, new Frame("mods.offer").Add(lobbyId).Add(wire).Add(share ? "1" : "0"));
+        var frame = new Frame("mods.offer").Add(lobbyId).Add(wire).Add(share ? "1" : "0");
+        // a 0.3 joiner reads three fields; this HellForge's joiners take the part lists, warmed now for the download
+        if (!legacy) frame.Add(PartsFlag);
+        Send(joiner, frame);
+        if (share && !legacy) WarmParts(current.Set);
         log($"Mod sync: {LobbyService.EntityId(joiner)} lacks this session's mods; " + (grant == null ? "sharing is off."
             : $"they may download them until {grant.Until:HH:mm:ss} UTC ({Megabytes(grant.Left)} left)."));
         return share;
@@ -223,6 +258,10 @@ public sealed class ModSync : IAsyncDisposable
     // and every shared mod is content or verified (the directory's hf.open, a search's second pass).
     public bool Open => own != null && Shares() && own.Mods.Where(m => m.Tier == CoopTier.Shared && m.Class != ModClass.Bundled)
         .All(m => !ModSets.NeedsVerified(m.Class) || verified(m.Id, m.Hash));
+
+    // Why a lobby is out when a stranger's unchecked mods keep it out of an unsandboxed session (Check): the browser's short
+    // label reads it (native/editor/app_lobbies.cpp ShortVerdict), so it changes with that.
+    public const string SandboxOnlyWhy = "its host's unchecked mods need a sandboxed game";
 
     // ---- HellForge 0.3 (LobbyService.LegacyProtocol) ----------------------------------------------------------------
 
@@ -301,8 +340,8 @@ public sealed class ModSync : IAsyncDisposable
     // Whether a listed lobby could be joined: the same mods, or a plan that is not blocked or unjoinable (mods to install
     // by hand, another HellForge), and edited stats only when the player shows such lobbies. The plan is the one a join
     // would make (ModSyncPlan): code and raw mods that wait for the player's trust are shown (joining brings the MOD SYNC
-    // prompt with TRUST), a stranger's unverified ones are to install by hand and hidden. A listing without a
-    // mod set is shown: the join's refusal then brings it. why: the search log's reason (DirectoryService.SearchAsync).
+    // prompt with TRUST), and unsandboxed a stranger's unverified ones are to install by hand and hidden. A listing without
+    // a mod set is shown: the join's refusal then brings it. why: the search log's reason (DirectoryService.SearchAsync).
     public bool Joinable(DirectoryListing listing, out string why)
     {
         var check = Check(listing);
@@ -316,7 +355,7 @@ public sealed class ModSync : IAsyncDisposable
     {
         var settings = ModSettings.Read(modsFolder);
         if (listing.Data.GetValueOrDefault(DirectoryKeys.Stats) == "1" && !settings.ShowEditedStats && !ShowEditedStatsThisSession)
-            return new(false, "its host plays with edited stats", null, []) { Fix = JoinCheck.FixEditedStats };
+            return new(false, "its host enforces stat changes", null, []) { Fix = JoinCheck.FixEditedStats };
         // a 0.3 host's listing (DirectoryService.Legacy) is remembered: a join to it then speaks its protocol (JoinAs)
         var legacy = DirectoryService.Legacy(listing);
         if (legacy) LegacyHost(listing.Host, null);
@@ -337,13 +376,13 @@ public sealed class ModSync : IAsyncDisposable
             SyncVerdict.Blocked => "it runs a blocked mod",
             SyncVerdict.Unjoinable when plan.Items.FirstOrDefault(i => i.Action == SyncAction.Update) is { } other => OtherVersion(other.Mod, own?.Mods.FirstOrDefault(m => m.Id == other.Mod.Id)),
             SyncVerdict.Unjoinable when !trust.HostIsFriend && shares && plan.Items.Any(i => i.Action == SyncAction.Manual) =>
-                "its host's unchecked mods download only from a Steam friend",
+                SandboxOnlyWhy,
             SyncVerdict.Unjoinable => "it needs mods installed by hand",
             _ => ""
         };
         var blocking = plan.Items.Where(i => i.Action is SyncAction.Manual or SyncAction.Blocked or SyncAction.Update)
             .Select(i => new JoinBlocker(i.Mod, i.Action, JoinCheck.Reason(i, shares))).ToList();
-        return new(plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust, why, plan, blocking) { Set = set };
+        return new(plan.Verdict is SyncVerdict.Ready or SyncVerdict.Download or SyncVerdict.Trust, why, plan, blocking) { Set = set, Stranger = !trust.HostIsFriend };
     }
 
     // Why another HellForge keeps a lobby out, and who updates: a bundled mod's version against this machine's (an older
@@ -419,8 +458,8 @@ public sealed class ModSync : IAsyncDisposable
     }
 
     // One request, answered from this session's mod set: only a mod in it, only a file it counts, only while granted and
-    // within the grant's bytes, and a code or raw mod HellForge has not verified only to a Steam friend (the joiner checks
-    // its own rule too: verified, or trusted).
+    // within the grant's bytes. Whether a mod may run is the joiner's to check (verified, or trusted), so a stranger gets
+    // code and raw mods as a friend does.
     Frame Serve(ulong peer, Frame frame)
     {
         Grant? grant;
@@ -430,28 +469,24 @@ public sealed class ModSync : IAsyncDisposable
         var mod = own?.Find(frame.Text(1), frame.Text(2));
         if (mod == null || mod.Class == ModClass.Bundled || mod.Folder == null) return Refused(frame, "not one of the host's mods");
         if (mod.Tier != CoopTier.Shared) return Refused(frame, "a per-player mod is each player's own");
-        if (ModSets.NeedsVerified(mod.Class) && !verified(mod.Id, mod.Hash) && !transport.IsFriend(peer))
-            return Refused(frame, "the host shares mods HellForge has not checked with Steam friends only");
         if (mod.Files.Count > SyncedStore.MaxFiles) return Refused(frame, $"the mod has more than {SyncedStore.MaxFiles} files");
-        return frame.Type == "mods.files" ? FilePage(frame, mod) : Chunk(frame, mod, mod.Folder, grant);
-    }
-
-    // mods.files: a page of the mod's file list.
-    static Frame FilePage(Frame frame, ModSetEntry mod)
-    {
-        if (!int.TryParse(frame.Text(3), NumberStyles.None, CultureInfo.InvariantCulture, out var start) || start >= mod.Files.Count)
-            return Refused(frame, "not a page of the mod's file list");
-        var page = mod.Files.Skip(start).Take(PageFiles).ToList();
-        var list = new Frame("mods.filelist").Add(frame.Text(0)).Add("ok").Add(mod.Files.Count).Add(start);
-        foreach (var file in page) list.Add(file.Path).Add(file.Size).Add(file.Sha256);
-        return list;
+        // a download going on keeps its grant (a request for none of the shared mods does not)
+        bool downloading;
+        lock (gate) downloading = grant.Served(DateTime.UtcNow, GrantIdleFor);
+        if (downloading) Downloading?.Invoke(peer);
+        return frame.Type switch
+        {
+            "mods.files" => FilePage(frame, mod),
+            "mods.parts" => PartPage(frame, mod),
+            _ => Chunk(frame, mod, mod.Folder, grant),
+        };
     }
 
     // mods.get: a part of one of the mod's files (in its folder), within the grant's bytes.
     Frame Chunk(Frame frame, ModSetEntry mod, string folder, Grant grant)
     {
         var path = frame.Text(3);
-        var listed = mod.Files.FirstOrDefault(f => f.Path == path);
+        var listed = mod.Files.FirstOrDefault(f => f.Path == path) ?? HostOutputs(mod).GetValueOrDefault(path);
         if (listed == null || !long.TryParse(frame.Text(4), NumberStyles.None, CultureInfo.InvariantCulture, out var offset) ||
             !int.TryParse(frame.Text(5), NumberStyles.None, CultureInfo.InvariantCulture, out var length) ||
             length is < 1 or > ChunkBytes || offset > listed.Size - length)
@@ -473,7 +508,8 @@ public sealed class ModSync : IAsyncDisposable
     }
 
     static Frame Refused(Frame request, string reason) =>
-        new Frame(request.Type == "mods.files" ? "mods.filelist" : "mods.chunk").Add(request.Count > 0 ? request.Text(0) : "").Add("refused").Add(reason);
+        new Frame(request.Type switch { "mods.files" => "mods.filelist", "mods.parts" => "mods.partlist", _ => "mods.chunk" })
+            .Add(request.Count > 0 ? request.Text(0) : "").Add("refused").Add(reason);
 
     void Send(ulong peer, Frame frame) => transport.Send(peer, frame.Encode(), reliable: true);
 
@@ -493,10 +529,13 @@ public sealed class ModSync : IAsyncDisposable
         public string State = "offer", Message = "";
         public long Done;
         public bool Live; // the running game can take the host's mods: "restart" changes them without a restart
+        public bool Parts; // the host lists its mods' parts (mods.parts): what this PC's game has is not downloaded
     }
 
     Offer? offer;
     int versions;
+    // Hosts whose last offer said they list parts (PartsFlag).
+    readonly HashSet<ulong> partHosts = [];
     CancellationTokenSource? downloading;
     readonly Dictionary<string, (ulong Peer, TaskCompletionSource<Frame> Reply)> waiting = new(StringComparer.Ordinal);
     long requestIds;
@@ -536,6 +575,9 @@ public sealed class ModSync : IAsyncDisposable
         if (Expected?.Invoke(host, lobbyId) != true) { log($"Mod sync: dropped a mod offer from {LobbyService.EntityId(host)} for a join not asked for."); return; }
         var connection = LobbyService.ConnectionPrefix + lobbyId + ";" + LobbyService.EntityId(host);
         var (set, shares) = (frame.Text(1), frame.Text(2) == "1");
+        lock (gate)
+            if (frame.Count > 3 && frame.Text(3) == PartsFlag) partHosts.Add(host);
+            else partHosts.Remove(host);
         _ = Task.Run(() =>
         {
             try
@@ -612,7 +654,7 @@ public sealed class ModSync : IAsyncDisposable
         {
             downloading?.Cancel();
             downloading = null;
-            made = offer = new Offer(++versions, host, nameOf(host), connection, set, shares, plan, legacy) { Live = live };
+            made = offer = new Offer(++versions, host, nameOf(host), connection, set, shares, plan, legacy) { Live = live, Parts = partHosts.Contains(host) };
             (made.State, made.Message) = Describe(made);
         }
         log($"Mod sync: {made.HostName}'s lobby: {plan.Verdict}, " + string.Join(", ", plan.Items.Select(i => $"{i.Mod.Id} {ModSyncPlan.ActionName(i.Action)}")) + ".");
@@ -620,7 +662,8 @@ public sealed class ModSync : IAsyncDisposable
         if (accept && plan.Verdict == SyncVerdict.Download) Accept(made);
     }
 
-    // Code and raw mods download once verified or trusted; a stranger host's unverified ones are the player's to install.
+    // Code and raw mods download once verified or trusted; unsandboxed, a stranger host's unverified ones are the player's
+    // to install.
     ModSyncPlan Plan(ModSet set, bool shares, ulong host)
     {
         var settings = ModSettings.Read(modsFolder);
@@ -629,7 +672,7 @@ public sealed class ModSync : IAsyncDisposable
     }
 
     SyncTrust Trust(ulong host, ModSettings.State settings, ModLocator found) =>
-        new(verified, transport.IsFriend(host), (id, hash) => settings.Trusts(id, hash, sandboxed), found.ClassOf);
+        new(verified, transport.IsFriend(host), (id, hash) => settings.Trusts(id, hash, sandboxed), found.ClassOf, sandboxed);
 
     // What lets a code or raw mod's exact content through on this machine: HellForge's verified list, or the player's trust
     // for this session (read again each time: the Mods page can take it back).
@@ -646,7 +689,7 @@ public sealed class ModSync : IAsyncDisposable
                 ("blocked", $"{o.HostName} runs another HellForge version ({Names(SyncAction.Update)} differs): both players need the same HellForge."),
             SyncVerdict.Unjoinable when !o.Shares => ("blocked", $"{o.HostName} does not share their mods. Install them yourself to join: {Names(SyncAction.Manual)}."),
             // (the message is cut at 191 bytes in the game: names last)
-            SyncVerdict.Unjoinable when !transport.IsFriend(o.Host) => ("blocked", $"{o.HostName} is not your Steam friend, so only mods HellForge checked download. Install these yourself to join: {Names(SyncAction.Manual)}."),
+            SyncVerdict.Unjoinable when !transport.IsFriend(o.Host) => ("blocked", $"{o.HostName} is not your Steam friend, so their unchecked mods need a sandboxed game. Or install these yourself to join: {Names(SyncAction.Manual)}."),
             SyncVerdict.Unjoinable => ("blocked", $"Install these mods yourself to join: {Names(SyncAction.Manual)}."),
             SyncVerdict.Trust => ("blocked", $"HellForge has not checked these mods. TRUST one to download it from {o.HostName}, or install it yourself: {Names(SyncAction.Trust)}."),
             SyncVerdict.Download => ("offer", $"{o.HostName} plays with {plan.Items.Count(i => i.Action == SyncAction.Download)} mod(s) you don't have ({Megabytes(plan.DownloadBytes)}). Download them and restart with {o.HostName}'s mods to join."),
@@ -670,7 +713,10 @@ public sealed class ModSync : IAsyncDisposable
     }
 
     // An answer from the game (HfApi sync_answer): "syncanswer" version accept|decline|restart|block|trust|open [mod id].
-    public void Answer(IReadOnlyList<string> parts)
+    // fromLauncher: the launcher's prompt sent it (its answer file, which a sandboxed game cannot write), not the game. Any
+    // code in the game can call sync_answer, so in a sandboxed session the game's trust counts only in sandboxed sessions
+    // (TrustedMod.Sandboxed): code there cannot open a mod to unsandboxed play, a Steam friend's included.
+    public void Answer(IReadOnlyList<string> parts, bool fromLauncher = false)
     {
         if (parts.Count < 3 || parts[0] != "syncanswer" || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var version)) return;
         Offer? current;
@@ -686,15 +732,10 @@ public sealed class ModSync : IAsyncDisposable
                 log($"Mod sync: {parts[3]} is blocked; lobbies running it are not offered again.");
                 _ = Task.Run(() => MakeOffer(current.Host, current.Connection, current.Set, current.Shares));
                 break;
-            // TRUST AND DOWNLOAD: that exact content (id and hash), only a mod the plan offers for trust (a Steam friend's,
-            // shared, not verified); the offer is made again, and downloads when nothing else waits
+            // TRUST AND DOWNLOAD: that exact content (id and hash), only a mod the plan offers for trust (shared, not
+            // verified); the offer is made again, and downloads when nothing else waits
             case "trust" when parts.Count > 3 && current.Plan.Items.FirstOrDefault(i => i.Mod.Id == parts[3] && i.Action == SyncAction.Trust) is { } item:
-                var stranger = !transport.IsFriend(current.Host);
-                ModSettings.SetTrusted(modsFolder, new TrustedMod(item.Mod.Id, item.Mod.Hash, item.Mod.Name, item.Mod.Version,
-                    $"{current.HostName} ({LobbyService.EntityId(current.Host)})", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture), stranger));
-                log($"Mod sync: the player trusts {item.Mod.Id} {item.Mod.Version} ({item.Mod.Hash[..16]}) from {current.HostName}" +
-                    (stranger ? ", not a Steam friend (sandboxed sessions only)." : "."));
-                _ = Task.Run(() => MakeOffer(current.Host, current.Connection, current.Set, current.Shares, accept: true));
+                TrustMod(current, item, fromLauncher);
                 break;
             // GET IT: the mod's own web address from the host's set (checked when the set was read, and again before it opens)
             case "open" when parts.Count > 3 && current.Set.Mods.FirstOrDefault(m => m.Id == parts[3])?.Url is { } url:
@@ -712,6 +753,19 @@ public sealed class ModSync : IAsyncDisposable
                 break;
             default: log($"Mod sync: the answer {parts[2]} does not fit the offer's state ({current.State})."); break;
         }
+    }
+
+    // TRUST AND DOWNLOAD's trust: a stranger's counts only sandboxed, and so does any the game answered in a sandboxed
+    // session (Answer); then the offer is made again.
+    void TrustMod(Offer current, SyncItem item, bool fromLauncher)
+    {
+        var stranger = !transport.IsFriend(current.Host);
+        var inSandbox = !stranger && sandboxed && !fromLauncher;
+        ModSettings.SetTrusted(modsFolder, new TrustedMod(item.Mod.Id, item.Mod.Hash, item.Mod.Name, item.Mod.Version,
+            $"{current.HostName} ({LobbyService.EntityId(current.Host)})", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture), stranger, inSandbox));
+        var only = stranger ? ", not a Steam friend (sandboxed sessions only)." : inSandbox ? ", on the sandboxed game's prompt (sandboxed sessions only)." : ".";
+        log($"Mod sync: the player trusts {item.Mod.Id} {item.Mod.Version} ({item.Mod.Hash[..16]}) from {current.HostName}{only}");
+        _ = Task.Run(() => MakeOffer(current.Host, current.Connection, current.Set, current.Shares, accept: true));
     }
 
     void Close(Offer current)
@@ -794,7 +848,8 @@ public sealed class ModSync : IAsyncDisposable
             var declared = ModSets.Declared(files.Select(f => f.Path), Read(manifest)!, Read(stats), Read(spec));
             if (declared is { } kind && !Allowed(mod.Id, mod.Hash))
                 throw new InvalidDataException($"{mod.Name} {ModSets.Unchecked(kind)} and is neither on HellForge's verified list nor trusted.");
-            await DownloadFilesAsync(current, mod, [.. files.Where(f => !first.Contains(f))], partial, window, token);
+            await DownloadRestAsync(current, mod, [.. files.Where(f => !first.Contains(f))], partial, window, token);
+            await RecipeOutputsAsync(current, mod, partial, window, token);
         }
         catch
         {
@@ -854,19 +909,12 @@ public sealed class ModSync : IAsyncDisposable
         return file;
     }
 
-    // Files in order, each written and hashed in order: their chunks are asked for on across the files (a mod of many small
-    // files waits a round trip a file no more), window.Size chunks' bytes at a time in at most window.Ceiling requests,
-    // and each whole chunk that comes back tells the window how long it took.
+    // Files in order, each written and hashed in order (PumpAsync asks for their chunks across the files).
     async Task DownloadFilesAsync(Offer current, ModSetEntry mod, IReadOnlyList<ModFile> files, string partial, DownloadWindow window, CancellationToken token)
     {
-        var asked = new Queue<(int File, long Offset, int Length, long Sent, Task<Frame> Reply)>();
-        var (asking, next) = (0, 0L); // the next chunk to ask for: its file, its offset
-        long askedBytes = 0;
         var open = -1; // the file being written
         FileStream? output = null;
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Task<Frame> Get(int file, long offset, int length) =>
-            RequestAsync(current.Host, new Frame("mods.get").Add(mod.Id).Add(mod.Hash).Add(files[file].Path).Add(offset).Add(length), token);
         // Every file before index written and checked (an empty one too), index's begun.
         async Task MoveTo(int index)
         {
@@ -885,18 +933,52 @@ public sealed class ModSync : IAsyncDisposable
                 output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
             }
         }
-        // The window's chunks asked for, across the files.
+        try
+        {
+            await PumpAsync(current, mod, files, Chunks(files), window, async (file, _, bytes) =>
+            {
+                await MoveTo(file);
+                await output!.WriteAsync(bytes, token);
+                hash.AppendData(bytes);
+            }, token);
+            await MoveTo(files.Count);
+        }
+        finally
+        {
+            if (output != null) await output.DisposeAsync();
+        }
+    }
+
+    // Each file's chunks in order.
+    static IEnumerable<(int File, long Offset, int Length)> Chunks(IReadOnlyList<ModFile> files)
+    {
+        for (var file = 0; file < files.Count; file++)
+            for (long offset = 0; offset < files[file].Size; offset += ChunkBytes)
+                yield return (file, offset, (int)Math.Min(ChunkBytes, files[file].Size - offset));
+    }
+
+    // Chunks (file, offset, length) asked for across the files, window.Size chunks' bytes at a time in at most
+    // window.Ceiling requests, and handed to write in the order asked; each whole chunk that comes back tells the window
+    // how long it took.
+    async Task PumpAsync(Offer current, ModSetEntry mod, IReadOnlyList<ModFile> files, IEnumerable<(int File, long Offset, int Length)> pieces,
+        DownloadWindow window, Func<int, long, byte[], Task> write, CancellationToken token)
+    {
+        var asked = new Queue<(int File, long Offset, int Length, long Sent, Task<Frame> Reply)>();
+        using var next = pieces.GetEnumerator();
+        var more = next.MoveNext();
+        long askedBytes = 0;
+        Task<Frame> Get(int file, long offset, int length) =>
+            RequestAsync(current.Host, new Frame("mods.get").Add(mod.Id).Add(mod.Hash).Add(files[file].Path).Add(offset).Add(length), token);
         void AskMore()
         {
-            while (asked.Count < window.Ceiling && asking < files.Count)
-                if (next >= files[asking].Size) (asking, next) = (asking + 1, 0);
-                else
-                {
-                    var length = (int)Math.Min(ChunkBytes, files[asking].Size - next);
-                    if (asked.Count > 0 && askedBytes + length > (long)window.Size * ChunkBytes) return;
-                    asked.Enqueue((asking, next, length, Stopwatch.GetTimestamp(), Get(asking, next, length)));
-                    (next, askedBytes) = (next + length, askedBytes + length);
-                }
+            while (more && asked.Count < window.Ceiling)
+            {
+                var (file, offset, length) = next.Current;
+                if (asked.Count > 0 && askedBytes + length > (long)window.Size * ChunkBytes) return;
+                asked.Enqueue((file, offset, length, Stopwatch.GetTimestamp(), Get(file, offset, length)));
+                askedBytes += length;
+                more = next.MoveNext();
+            }
         }
         // A chunk's answer. A host that queues fewer requests than this window (an older one queued 8): fewer, and this
         // one again (crowded).
@@ -913,30 +995,20 @@ public sealed class ModSync : IAsyncDisposable
             }
             return (reply, crowded);
         }
-        try
+        while (true)
         {
-            while (true)
-            {
-                AskMore();
-                if (!asked.TryDequeue(out var chunk)) break;
-                askedBytes -= chunk.Length;
-                var (reply, crowded) = await AnswerOf(chunk.Reply, chunk.File, chunk.Offset, chunk.Length);
-                if (reply.Text(1) != "ok") throw new InvalidDataException($"{mod.Name}: the host refused ({(reply.Count > 2 ? reply.Text(2) : "no reason")}).");
-                var bytes = reply.Bytes(3);
-                if (reply.Text(2) != chunk.Offset.ToString(CultureInfo.InvariantCulture) || bytes.Length != chunk.Length)
-                    throw new InvalidDataException($"{mod.Name}: the host sent the wrong part of {files[chunk.File].Path}.");
-                // only whole chunks are timed: a short one is quicker on the wire and would look like an emptier queue
-                if (!crowded && chunk.Length == ChunkBytes) window.Answered(Stopwatch.GetElapsedTime(chunk.Sent));
-                await MoveTo(chunk.File);
-                await output!.WriteAsync(bytes, token);
-                hash.AppendData(bytes);
-                Progress(current, bytes.Length);
-            }
-            await MoveTo(files.Count);
-        }
-        finally
-        {
-            if (output != null) await output.DisposeAsync();
+            AskMore();
+            if (!asked.TryDequeue(out var chunk)) break;
+            askedBytes -= chunk.Length;
+            var (reply, crowded) = await AnswerOf(chunk.Reply, chunk.File, chunk.Offset, chunk.Length);
+            if (reply.Text(1) != "ok") throw new InvalidDataException($"{mod.Name}: the host refused ({(reply.Count > 2 ? reply.Text(2) : "no reason")}).");
+            var bytes = reply.Bytes(3);
+            if (reply.Text(2) != chunk.Offset.ToString(CultureInfo.InvariantCulture) || bytes.Length != chunk.Length)
+                throw new InvalidDataException($"{mod.Name}: the host sent the wrong part of {files[chunk.File].Path}.");
+            // only whole chunks are timed: a short one is quicker on the wire and would look like an emptier queue
+            if (!crowded && chunk.Length == ChunkBytes) window.Answered(Stopwatch.GetElapsedTime(chunk.Sent));
+            await write(chunk.File, chunk.Offset, bytes);
+            Progress(current, bytes.Length);
         }
     }
 
@@ -1036,7 +1108,7 @@ public sealed class ModSync : IAsyncDisposable
     {
         SyncView view;
         lock (gate) view = new SyncView(current.Version, current.State, current.HostName, current.Plan.DownloadBytes, current.Done, current.Message, current.Plan.Items)
-            { Live = current.Live, Stranger = !transport.IsFriend(current.Host) };
+            { Live = current.Live, Stranger = !transport.IsFriend(current.Host), SandboxOnly = sandboxed };
         try
         {
             File.WriteAllText(Path.Combine(evidenceDirectory, OfferFile), new JsonObject
@@ -1063,7 +1135,7 @@ public sealed class ModSync : IAsyncDisposable
     }
 }
 
-// How many chunks a download keeps asked for (docs/multiplayer.md "Mod sync speed"). Steam networking does no congestion
+// How many chunks a download keeps asked for (docs/multiplayer-mod-sync.md "Mod sync speed"). Steam networking does no congestion
 // control (it sends at a fixed rate, SteamPeerTransport.SendRate), so the joiner keeps the queue its download makes on
 // the way short, the queue the host's game traffic waits in too: a whole chunk that came back within TargetDelay of the
 // quickest one so far adds one (about doubling each round trip; once it was ever cut, one a round trip), and one that
@@ -1108,11 +1180,13 @@ public sealed class DownloadWindow
 
 // An offer as the game shows it.
 // Live: answering "restart" changes the running game's mods (HF_SYNC_LIVE). Stranger: the host is not a Steam friend (the
-// prompt warns harder before TRUST).
+// prompt warns harder before TRUST). SandboxOnly: the game is sandboxed, so a TRUST answered there counts only in
+// sandboxed sessions (HF_SYNC_FLAG_SANDBOX_ONLY; ModSync.Answer).
 public sealed record SyncView(int Version, string State, string Host, long Bytes, long Done, string Message, IReadOnlyList<SyncItem> Items)
 {
     public bool Live { get; init; }
     public bool Stranger { get; init; }
+    public bool SandboxOnly { get; init; }
 }
 
 public interface ISyncDisplay
@@ -1147,7 +1221,7 @@ public sealed class LiveSyncDisplay(LiveEditServer live) : ISyncDisplay
                 for (var i = 0; i < items.Count; i++)
                 {
                     var item = items[i];
-                    if (!(await live.SyncModAsync(view.Version, i, item, view.Stranger)).Ok) return false;
+                    if (!(await live.SyncModAsync(view.Version, i, item, view.Stranger, view.SandboxOnly)).Ok) return false;
                 }
             return (await live.SyncStateAsync(new SyncStateLine(view.Version, view.State, view.Host, view.Bytes, view.Done, items.Count, view.Live, message))).Ok;
         }
@@ -1170,15 +1244,18 @@ public sealed record JoinCheck(bool Joinable, string Why, ModSyncPlan? Plan, IRe
     // The host's mod set as its listing carries it, both tiers (null when the plan was not made).
     public ModSet? Set { get; init; }
 
+    // The plan was made for a host who is not a Steam friend (SyncTrust.HostIsFriend false); false when no plan was made.
+    public bool Stranger { get; init; }
+
     // What one setting of the player's would change to let the lobby in (the lobby browser offers it): FixStrangers (Play
-    // with strangers is off), FixEditedStats (lobbies whose host shares edited stats are hidden), or null. A stranger's
-    // unchecked mods have none: they download only from a Steam friend, whatever this machine's settings.
+    // with strangers is off), FixEditedStats (lobbies whose host shares edited stats are hidden), FixRelays (co-op over
+    // Steam relays is off on Linux, CoopRelays), or null. A stranger's unchecked mods have none: they take a sandboxed
+    // session, which cannot change once it runs.
     public string? Fix { get; init; }
-    public const string FixStrangers = "strangers", FixEditedStats = "editedStats";
+    public const string FixStrangers = "strangers", FixEditedStats = "editedStats", FixRelays = "relays";
 
     // Why one item stands in the way: the host does not share, a stranger's unchecked mod (HellForge has not verified it,
-    // and the host sends those to Steam friends alone), a different bundled mod (another HellForge), or the player's
-    // blocklist.
+    // and this session is not sandboxed), a different bundled mod (another HellForge), or the player's blocklist.
     public static string Reason(SyncItem item, bool hostShares) => item.Action switch
     {
         SyncAction.Blocked => "blocked",

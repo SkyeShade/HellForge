@@ -180,12 +180,12 @@ if [ -n "$missing" ]; then
 fi
 
 # Co-op over Steam relays (#62) needs pasta (passt) and python3 for Valve's relay list. Warn here;
-# hellforge-offline.sh refuses before it makes the namespace when either is missing.
+# hellforge-offline.sh then starts the session without it (HELLFORGE_STEAM_UDP_PROBLEM says why).
 if [ "${HELLFORGE_STEAM_UDP:-0}" = 1 ]; then
   missing=""
   for program in pasta python3; do command -v "$program" >/dev/null || missing="$missing $program"; done
   if [ -n "$missing" ]; then
-    echo "Warning: HELLFORGE_STEAM_UDP=1 needs these programs, which were not found:$missing. Co-op over Steam relays cannot start without them." >&2
+    echo "Warning: HELLFORGE_STEAM_UDP=1 needs these programs, which were not found:$missing. This session plays without co-op over Steam relays: lobbies are found, but none can be joined." >&2
     if [ "$steamos" = 1 ]; then
       echo "SteamOS 3.x is not expected to ship pasta (passt) or python3, and a package installed after 'steamos-readonly disable' is lost on an update. Co-op over Steam relays is not available on a stock image." >&2
     elif command -v pacman >/dev/null; then echo "Install them with: sudo pacman -S --needed passt python" >&2
@@ -478,8 +478,16 @@ if session_command "$@"; then
   if [ "${HELLFORGE_SKIP_MOD_BUILDS:-}" = 1 ]; then
     echo "Skipping the source-mod build." >&2
   elif [ -x "$cliNative" ]; then
-    echo "Building the enabled source mods with the native Linux Zig..." >&2
-    timeout -k 10 1800 "$cliNative" build-source-mods --install "$INSTALL" 9>&- >&2 || echo "The source-mod build did not finish; the session reports any mod it could not build." >&2
+    # After a mod sync the session plays the host's mods (--mod-sync): build those too, as the session resolves them
+    # (a stranger's trusted mod only when the session is sandboxed: --sandbox, or HELLFORGE_SANDBOX=1 from SessionRunner).
+    build_sync=no; build_sandbox=no
+    [ "${HELLFORGE_SANDBOX:-}" = 1 ] && build_sandbox=yes
+    for argument in "$@"; do
+      case "$argument" in --mod-sync) build_sync=yes ;; --sandbox) build_sandbox=yes ;; esac
+    done
+    echo "Building the enabled source mods with the native Linux Zig$([ "$build_sync" = yes ] && echo ", and the host's after a mod sync")..." >&2
+    timeout -k 10 1800 "$cliNative" build-source-mods --install "$INSTALL" --sync "$build_sync" --sandbox "$build_sandbox" 9>&- >&2 ||
+      echo "The source-mod build did not finish; the session reports any mod it could not build." >&2
   else
     echo "The native Linux build agent is missing (app/cli-linux/HellForge.Cli); source mods stay off." >&2
   fi

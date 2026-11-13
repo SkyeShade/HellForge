@@ -264,7 +264,8 @@ static float ClassChip(const HfSyncMod& mod, float x, float cy, int z)
 }
 
 /* The TRUST warning's lines: what trusting the mod means (*lead of them, drawn brighter), then what HellForge still
- * checks. A stranger's mod (HF_SYNC_FLAG_STRANGER: offered only to a sandboxed game) says what the sandbox does not stop. */
+ * checks. A stranger's mod (HF_SYNC_FLAG_STRANGER: offered only to a sandboxed game) says what the sandbox does not stop;
+ * a friend's in a sandboxed game (HF_SYNC_FLAG_SANDBOX_ONLY) that the trust holds only there. */
 static std::vector<std::string> TrustLines(const HfSyncMod& mod, const std::string& name, const std::string& friendName, float w, size_t* lead)
 {
     std::vector<std::string> lines;
@@ -287,6 +288,10 @@ static std::vector<std::string> TrustLines(const HfSyncMod& mod, const std::stri
             : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your "
               "files, or install other programs.";
         warning += " Only trust it if you trust " + friendName + " and know where the mod comes from.";
+        /* any code in a sandboxed game can answer this prompt, so a trust given here holds only there (ModSync.Answer) */
+        if (mod.flags & HF_SYNC_FLAG_SANDBOX_ONLY)
+            warning += " Trusted here, in a sandboxed game, it will run only while the sandbox is on; the launcher's Mods page "
+                       "lists it.";
     }
     for (std::string& part : Wrapped(warning, w - 56, SZ_LABEL)) lines.push_back(std::move(part));
     *lead = lines.size();

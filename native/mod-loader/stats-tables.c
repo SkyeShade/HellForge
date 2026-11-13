@@ -180,10 +180,26 @@ static uintptr_t StatsDeltaRow(const StatEdit* e, uintptr_t base)
     return StatsDeltaFind(arrays, d, settings, component, member, e->offset);
 }
 
+/* A field of a row a mod added (explosions.c, beam_arc.c): those rows are HellForge's, outside the game's allocation. *added
+ * says there is such a row; 0 for a field past it. */
+static uintptr_t StatsAddedRow(const StatEdit* e, int* added)
+{
+    uint32_t stride = !strcmp(e->kind, "ExplosionSettings") ? EXP_ROW : !strcmp(e->kind, "BeamSettings") ? BEAM_ROW : !strcmp(e->kind, "ArcSettings") ? ARC_ROW : 0;
+    uint32_t vanilla = stride == EXP_ROW ? EXP_VANILLA : stride == BEAM_ROW ? BEAM_VANILLA : ARC_VANILLA;
+    *added = 0;
+    if (stride == 0 || e->record < (int64_t)vanilla) return 0;
+    uintptr_t row = stride == EXP_ROW ? ApiExplosionRow((uint32_t)e->record) : stride == BEAM_ROW ? ApiBeamRow((uint32_t)e->record) : ApiArcRow((uint32_t)e->record);
+    *added = row != 0;
+    return *added && e->offset >= 4 && e->offset <= stride - 4 && e->offset % 4 == 0 ? row + e->offset : 0;
+}
+
 static uintptr_t StatsExtraRow(StatEdit* e)
 {
     int kind = StatsExtraKind(e->kind);
     if (kind < 0 || e->own) return 0;
+    int added;
+    uintptr_t own = StatsAddedRow(e, &added);
+    if (added) return own;
     uintptr_t base = g_statsAllocations[kind];
     if (!base || !StatsAllocationValid(base, kind)) return 0;
     if (!strcmp(e->kind, STATUS_MULTIPLIER)) return StatsStatusRow(e, base, kind);
@@ -314,6 +330,21 @@ static void StatsDirectorEdit(StatEdit* e)
     if (e->applied && !strcmp(e->kind, "DifficultySettings")) DifficultyMirror(row, e->offset, &before, &e->value, size);
 }
 
+/* Whether a roster weight of 0 waits for the pass's other lines: it is judged against the rows as they are (director.c),
+ * so a file that moves a family's weight to another row keeps both lines. One a later line writes over keeps its place. */
+static int StatsDirectorWaits(int i)
+{
+    const StatEdit* e = &g_stats[i];
+    if (strncmp(e->kind, "EnemyRoster", 11) || (e->value & 0x7FFFFFFFu) != 0) return 0;
+    for (int j = i + 1; j < g_statCount; j++)
+    {
+        const StatEdit* later = &g_stats[j];
+        if (!strcmp(later->kind, e->kind) && later->record == e->record && later->offset == e->offset && later->mod != NULL && later->mod->loaded)
+            return 0;
+    }
+    return 1;
+}
+
 /* Stats edits of the difficulty rows and the spawn director's rosters and compositions (director.c), once level 11 is in
  * place (or none was added) and game.dll's data reads as reviewed; refused if that never happens within 120 s. A
  * difficulty row of the game's own table goes to every copy that held the same bytes. */
@@ -329,7 +360,8 @@ static void StatsDirectorReady(void)
         if (DirectorStride(g_stats[i].kind) && g_stats[i].mod->loaded) TableRowOf(g_stats[i].kind, (uint64_t)g_stats[i].record, &ready);
     if (!ready && now - first < 120000) return;
     g_directorDone = 1;
-    for (int i = 0; i < g_statCount; i++) StatsDirectorEdit(&g_stats[i]);
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < g_statCount; i++) if (StatsDirectorWaits(i) == pass) StatsDirectorEdit(&g_stats[i]);
 }
 
 /* Stats edits of the hit volumes, once game.dll's data reads as reviewed (refused if it never does within 60 s). */

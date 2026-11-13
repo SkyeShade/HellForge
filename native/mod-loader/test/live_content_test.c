@@ -70,6 +70,13 @@ static int ContentCommit(void)
     return 1;
 }
 
+/* Every tombstone cleared: the numbered kinds' and the weapons' (Weapon.tomb). */
+static void ContentTombsClear(void)
+{
+    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    for (size_t i = 0; i < g_weaponStore.committed; i++) g_weapons[i].tomb = 0;
+}
+
 static void ContentNumbersFixture(void)
 {
     ContentEventsSave();
@@ -77,7 +84,7 @@ static void ContentNumbersFixture(void)
     uint32_t stratagems = g_stratagemCount, behaviours = g_behaviourCount;
     int stratagemState = g_stratagemState, behaviourState = g_behaviourState;
     g_stratagemCount = g_behaviourCount = 0;
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     /* the boot: b's stratagem 150 */
     g_stratagemState = 0;
     InterlockedExchange(&g_fired[HF_EVENT_GAME_LOADED], 0);
@@ -170,7 +177,7 @@ static void ContentNumbersFixture(void)
     printf("  live content: numbered by mod id then call order (load order aside), a new version stands in, tombstones taken back and "
         "taken over by another mod, 3 refusals\n");
 
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     g_stratagemCount = stratagems;
     g_behaviourCount = behaviours;
     g_stratagemState = stratagemState;
@@ -197,6 +204,10 @@ static uint8_t* ContentGame(size_t size)
         memcpy(game + kStratagemBounds[i].rva + kStratagemBounds[i].immAt, &kStratagemBounds[i].value, kStratagemBounds[i].width);
     memcpy(game + STR_PICKER_BOUND, kPickerBoundPin, sizeof kPickerBoundPin);
     memcpy(game + STR_PICKER_PAD, kPickerPadPin, sizeof kPickerPadPin);
+    for (size_t i = 0; i < sizeof kChoiceGuards / sizeof kChoiceGuards[0]; i++) memcpy(game + kChoiceGuards[i].rva, kChoiceGuards[i].pin, kChoiceGuards[i].length);
+    memcpy(game + STR_COUNT_STORE, kCountStorePin, sizeof kCountStorePin);
+    for (size_t i = 0; i < sizeof kPickerFrame / sizeof kPickerFrame[0]; i++) memcpy(game + kPickerFrame[i].rva, kPickerFrame[i].pin, kPickerFrame[i].length);
+    memcpy(game + STR_PICKER_UNWIND, kPickerUnwindPin, sizeof kPickerUnwindPin);
     *(uint32_t*)(game + STR_ROWS_LOADED) = STR_VANILLA - 1;
     memcpy(game + DMG_CLEAR, kDamageClearPin, sizeof kDamageClearPin);
     for (size_t i = 0; i < sizeof kDamageSites / sizeof kDamageSites[0]; i++)
@@ -246,6 +257,8 @@ static void FakeOwnSort(void) { g_fakeSorts++; }
 static void FakeOwnApply(uintptr_t manager, uint32_t mixId, uint32_t amount, uint32_t source, const char* text, int extra)
 {
     if (g_fakeOwnedCount < 8) g_fakeOwned[g_fakeOwnedCount++] = mixId;
+    int entry = OwnEntry(manager, mixId, 0, 0); /* held now, as the game's apply leaves it */
+    if (entry >= 0) *(uint32_t*)(OwnRecordAt(manager, entry) + 0x14) = 2;
 }
 static void FakeOwnRemove(uintptr_t manager, uint32_t mixId, uint32_t amount) { g_fakeTakes++; }
 static int g_fakePushes;
@@ -261,6 +274,7 @@ static void FakeCatalogue(void)
     *(uint32_t*)(g_fakeCatalogue + OWN_INVENTORY) = 2;
     FakeOwnAdd(0, 0x5000, 0x5000, 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 11, 1);
     FakeOwnAdd(0, WeaponChild(0x1111, 0x5000), 0x1111, 0x5000, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 10, 1);
+    *(uint32_t*)(g_fakeCatalogue + OWN_RECORDS + 0x14) = 2; /* the player holds the base stratagem */
     g_ownAdd = FakeOwnAdd; g_ownSort = FakeOwnSort; g_ownRemove = FakeOwnRemove; g_ownManager = FakeManager;
     g_ownApply = FakeOwnApply;
 }
@@ -431,7 +445,7 @@ static void ContentInstallFixture(void)
     g_stratagemCount = g_projectileCount = g_damageCount = 0;
     g_stratagemState = g_projectileState = g_damageState = 1; /* the boot had none: nothing moved */
     g_stratagemTable = NULL; g_projectileTable = NULL; g_damageTable = NULL; g_projectileBlock = NULL;
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     FakeCatalogue();
     for (int event = HF_EVENT_GAME_LOADED; event <= HF_EVENT_PROJECTILES_READY; event++) InterlockedExchange(&g_fired[event], 1);
 
@@ -445,7 +459,14 @@ static void ContentInstallFixture(void)
     g_liveSetup = r;
     assert(ApiAddStratagem(r, &rs) == STR_VANILLA && g_stratagemCount == 1 && g_textCount > texts);
     g_liveSetup = NULL;
+    /* staged: not served (the engine is not answered with a change that is not made), and the refusal never frees it */
+    uint32_t stagedId = g_texts[texts].id;
+    const char* staged = g_texts[texts].text;
+    char stagedCopy[64];
+    snprintf(stagedCopy, sizeof stagedCopy, "%s", staged);
+    assert((int)g_textsServed == texts && g_textsHeld && TextDetour(stagedId, NULL, NULL, NULL) != staged);
     assert(!ContentCommit() && g_stratagemCount == 0 && g_textCount == texts && !g_lcOpen);
+    assert((int)g_textsServed == texts && !g_textsHeld && TextDetour(stagedId, NULL, NULL, NULL) != staged && !strcmp(staged, stagedCopy));
     r->loaded = 0;
     r->removed = 1;
     g_stratagemState = 1;
@@ -460,10 +481,17 @@ static void ContentInstallFixture(void)
     uint32_t projectile = ApiAddProjectile(m, &pp);
     g_liveSetup = NULL;
     uint32_t type = ContentStratagem(m, "s", 5);
+    int textsBefore = g_textCount;
+    uint32_t madeId = AddText("Made", "test.m#text", 0x31); /* a set-up's text: held while the change is staged */
+    assert(madeId != 0 && (int)g_textsServed == textsBefore && TextDetour(madeId, NULL, NULL, NULL) != g_texts[textsBefore].text);
     assert(damage == DMG_VANILLA && projectile == PRJ_VANILLA && type == STR_VANILLA && ContentCommit());
+    /* made: its texts are served */
+    assert((int)g_textsServed == g_textCount && !g_textsHeld && TextDetour(madeId, NULL, NULL, NULL) == g_texts[textsBefore].text);
     uintptr_t table = (uintptr_t)g_stratagemTable;
     Stratagem* s = &g_stratagems[0];
-    assert(table && StratagemSitesAt(g, table) && BoundsAt(g, 1) && !memcmp(game + STR_PICKER_PAD, kPickerPad, sizeof kPickerPad));
+    assert(table && StratagemSitesAt(g, table) && BoundsAt(g, 1) && game[STR_PICKER_PAD] == kPickerPad[0] && *(uint32_t*)(game + STR_PICKER_PAD + 1) == STR_TYPES &&
+        !memcmp(game + STR_PICKER_PAD + 5, kPickerPad + 5, sizeof kPickerPad - 5)); /* the clear: every type's record */
+    assert(*(uint32_t*)(table + STR_LENGTH_AT) == STR_VANILLA + 1 && game[kChoiceGuards[0].rva] == 0xE9 && PickerFrameFailed(g) != NULL); /* guards and frame in, live */
     assert(*(uint8_t**)(table + type * 8) == s->row && *(uint32_t*)s->row == type && *(uint32_t*)(s->row + 4) == s->stable &&
         *(float*)(s->row + 0x68) == 5.0f && *(const char**)(table + STR_NAMES_AT + type * 8) == s->name &&
         !strcmp(*(const char**)(table + STR_NAMES_AT + (type + 1) * 8), "Count"));
@@ -510,7 +538,8 @@ static void ContentInstallFixture(void)
     ContentTakeovers(g, history, n);
     ContentTakeoverLists(g, m);
     /* a weapon going: the profile's back to the default and pushed; one the push did not reach set in the record */
-    Scrub weapon = {.weapons = {0x777}, .weaponCount = 1};
+    uint32_t goingWeapons[] = {0x777};
+    Scrub weapon = {.weapons = goingWeapons, .weaponCount = 1};
     *(uint32_t*)(profile + 0x44) = 0x777;
     *(uint32_t*)(loadout + 0x60) = 0x777;
     uint8_t* peers = (uint8_t*)calloc(1, 0xB3A0);
@@ -532,7 +561,7 @@ static void ContentInstallFixture(void)
     VirtualFree(game, 0, MEM_RELEASE);
     g_lcFixtureGame = 0;
     g_lcFixtureGameSize = 0;
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     g_stratagemTable = NULL; g_projectileTable = NULL; g_damageTable = NULL; g_projectileBlock = NULL;
     g_stratagemCount = stratagems; g_projectileCount = projectiles; g_damageCount = damages;
     g_stratagemState = g_projectileState = g_damageState = 0;
@@ -681,6 +710,7 @@ static void ContentWeaponsFixture(void)
     g_weapons[2] = g_weapons[1]; /* its set-up's twin */
     g_weaponCount = 3;
     g_lcWeaponsBefore = 2;
+    assert(LiveCarryReset());
     g_lrCarry[1] = 2;
     LiveRegistryCarry(&carried);
     assert(g_weaponCount == 2 && carried.items.count == 1 && carried.items.items[0].kind == OWN_WEAPON &&
@@ -708,6 +738,28 @@ static void ContentWeaponsFixture(void)
     ContentChange(NULL, z2);
     uint64_t third = ContentEntity(z2, base, last);
     assert(third != 0 && ContentCommit() && g_weaponCount == 3 && g_weapons[2].shortId == 80 && FindRow(behaviours, 2008, 16, third) != NULL);
+    /* the game's entity map without a free row for a new entity that numbers right: the change refused whole, nothing
+     * registered (RegisterWeapon would refuse it alone while the others went in) */
+    {
+        uint64_t top = third > first ? third : first;
+        if (second > top) top = second;
+        static uint8_t filler[REG_MAP_SLOTS];
+        for (uint32_t i = 0; i < REG_MAP_SLOTS; i++)
+        {
+            uint64_t key;
+            memcpy(&key, map + (size_t)i * 32, 8);
+            filler[i] = key == 0;
+            key = 0xF100000000000000ull + i;
+            if (filler[i]) memcpy(map + (size_t)i * 32, &key, 8);
+        }
+        char full[32], why[512];
+        ContentEntityName("z", top, 0, full);
+        HfMod* z3 = ContentMod("z");
+        ContentChange(NULL, z3);
+        assert(ContentEntity(z3, base, full) != 0 && LiveNumbersCheck(why, sizeof why) != NULL && strstr(why, "entity map") != NULL);
+        assert(!ContentCommit() && g_weaponCount == 3 && g_regListCount == 4);
+        for (uint32_t i = 0; i < REG_MAP_SLOTS; i++) if (filler[i]) memset(map + (size_t)i * 32, 0, 8);
+    }
     /* a field set from hellforge_mod_init, before the entity has a record (a live rack's slots, a live missile's blast):
      * nothing to write yet, and written once the entity is registered */
     uint64_t highest = third > first ? third : first;
@@ -739,7 +791,7 @@ static void ContentWeaponsFixture(void)
     g_componentCount = savedComponents;
     printf("  live content: entities registered live in resource id order (copies made at the first), a new version's and a returning one's kept (a weapon owned again), 4 refusals (one a full component table)\n");
 
-    memset(g_lcTomb, 0, sizeof g_lcTomb);
+    ContentTombsClear();
     g_weaponCount = 0; g_loadoutTable = NULL; g_regList = NULL; g_regListCount = 0; g_ownedCount = 0;
     g_registryHooked = hooked; g_registryActive = active;
     g_game = was;
@@ -812,13 +864,14 @@ static void ContentDifficultyFixture(void)
     /* the unlock item: level 10's copied; owned when level 10's is */
     FakeCatalogue();
     FakeOwnAdd(0, kDifficultyItems[DIF_VANILLA - 1], kDifficultyItems[DIF_VANILLA - 1], 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 0, 1); /* level 10's unlock item: category 0, as the login files it */
-    OwnBatch batch = {.items = {{OWN_DIFFICULTY, 0xD1FF, 0, 0, kDifficultyItems[DIF_VANILLA - 1], 0}}, .count = 1};
+    OwnItem unlock = {OWN_DIFFICULTY, 0xD1FF, 0, 0, kDifficultyItems[DIF_VANILLA - 1], 0};
+    OwnBatch batch = {.items = &unlock, .count = 1};
     g_fakeOwnedCount = 0;
     OwnBatchStep(&batch);
     assert(batch.added == 1 && batch.owned == 0 && OwnEntry((uintptr_t)g_fakeCatalogue, 0xD1FF, 0, 0) >= 0);
     int level10 = OwnEntry((uintptr_t)g_fakeCatalogue, kDifficultyItems[DIF_VANILLA - 1], 0, 0);
     *(uint32_t*)(OwnRecordAt((uintptr_t)g_fakeCatalogue, level10) + 0x14) = 2;
-    OwnBatch again = {.items = {{OWN_DIFFICULTY, 0xD1FF, 0, 0, kDifficultyItems[DIF_VANILLA - 1], 0}}, .count = 1};
+    OwnBatch again = {.items = &unlock, .count = 1};
     OwnBatchStep(&again);
     assert(again.added == 0 && again.owned == 1 && g_fakeOwned[0] == 0xD1FF);
     g_ownAdd = NULL; g_ownSort = NULL; g_ownRemove = NULL; g_ownManager = NULL; g_ownApply = NULL;
@@ -827,4 +880,81 @@ static void ContentDifficultyFixture(void)
     g_difficultyState = state;
     g_modCount = mods;
     ContentEventsRestore();
+}
+
+/* The game's stratagem check as OwnStratagemHeld reads it: the first category-10 entry with the stable id, held itself
+ * or through the root before it; a later entry with the same itemId is never read, held or not. */
+static void StratagemHeldFixture(void)
+{
+    g_fakeCatalogue = (uint8_t*)calloc(1, 0xDDCF8 + 4);
+    assert(g_fakeCatalogue != NULL);
+    uintptr_t manager = (uintptr_t)g_fakeCatalogue;
+    uint32_t family[4][4] = {{0x5000, 0x5000, 0, 11}, {0x5001, 0x1111, 0x5000, 10}, {0x6000, 0x6000, 0, 11}, {0x6001, 0x1111, 0x6000, 10}};
+    for (int i = 0; i < 4; i++) FakeOwnAdd(0, family[i][0], family[i][1], family[i][2], 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, family[i][3], 1);
+    uint32_t* state[4];
+    for (int i = 0; i < 4; i++) state[i] = (uint32_t*)(OwnRecordAt(manager, i) + 0x14);
+    *state[2] = 2; *state[3] = 2;
+    assert(!OwnStratagemHeld(manager, 0x1111)); /* only the second family is held */
+    *state[0] = 4;
+    assert(OwnStratagemHeld(manager, 0x1111)); /* through its root */
+    *state[0] = 0; *state[1] = 2;
+    assert(OwnStratagemHeld(manager, 0x1111)); /* itself */
+    *state[1] = 3;
+    assert(!OwnStratagemHeld(manager, 0x1111) && !OwnStratagemHeld(manager, 0x2222));
+    free(g_fakeCatalogue);
+    g_fakeCatalogue = NULL;
+    printf("  ownership: a stratagem held by its first category-10 entry or that entry's root, never by a later entry with its stable id\n");
+}
+
+/* A session whose catalogue moved (state_moves.c): the ownership pins read as the move left them, and a live change
+ * owns a copy only when the player holds what it copies, a premium weapon or stratagem they lack never. */
+static void ContentMovedOwnershipFixture(void)
+{
+    CatalogueLayout vanilla = g_catalogue;
+    int moves = g_stateMoves;
+    /* the game image as the move leaves it: the four functions' reviewed bytes, then every catalogue site moved */
+    uint8_t* game = (uint8_t*)calloc(1, 0x1A10400);
+    assert(game != NULL);
+    memcpy(game + OWN_APPLY, kOwnApplyPin, sizeof kOwnApplyPin);
+    memcpy(game + OWN_ADD, kOwnAddPin, sizeof kOwnAddPin);
+    memcpy(game + OWN_SORT + 0x21, kOwnSortPin, sizeof kOwnSortPin);
+    memcpy(game + OWN_REMOVE, kOwnRemovePin, sizeof kOwnRemovePin);
+    g_ownGame = (uintptr_t)game;
+    g_stateMoves = 1;
+    assert(!OwnProve()); /* moved, but the code still reads as before: not the reviewed state */
+    assert(MoveCatalogueWrite((uintptr_t)game) == 0 && game[OWN_SORT + 0x21 + 0x12] != 0xE0);
+    g_stateMoves = 0;
+    assert(!OwnProve()); /* the bytes moved, the loader thinks not */
+    g_stateMoves = 1;
+    assert(OwnProve());
+    g_ownAdd = NULL; g_ownSort = NULL; g_ownRemove = NULL; g_ownManager = NULL; g_ownApply = NULL;
+    g_ownGame = 0;
+    free(game);
+
+    /* the moved catalogue: a premium weapon not held, a free one held, a paid stratagem not held; their copies, and a
+     * copy of the free weapon's copy */
+    g_catalogue = (CatalogueLayout)MOVE_LAYOUT(MOVE_CATALOGUE_NEW, MOVE_ITEMS);
+    g_fakeCatalogue = (uint8_t*)calloc(1, MOVE_CATALOGUE_NEW + MOVE_CATALOGUE_BYTES);
+    assert(g_fakeCatalogue != NULL);
+    *(uint32_t*)(g_fakeCatalogue + OWN_CATALOGUE) = 2;
+    *(uint32_t*)(g_fakeCatalogue + OWN_INVENTORY) = 2;
+    g_ownAdd = FakeOwnAdd; g_ownSort = FakeOwnSort; g_ownRemove = FakeOwnRemove; g_ownManager = FakeManager; g_ownApply = FakeOwnApply;
+    FakeOwnAdd(0, 0x7001, 0x7001, 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 1, 1);
+    FakeOwnAdd(0, 0x7002, 0x7002, 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 1, 1);
+    *(uint32_t*)(OwnRecordAt((uintptr_t)g_fakeCatalogue, 1) + 0x14) = 2;
+    FakeOwnAdd(0, 0x5000, 0x5000, 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 11, 1);
+    FakeOwnAdd(0, WeaponChild(0x1111, 0x5000), 0x1111, 0x5000, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 10, 1);
+    OwnItem items[] = {{OWN_WEAPON, 0xA001, 0, 0, 0x7001, 0}, {OWN_WEAPON, 0xA002, 0, 0, 0x7002, 0}, {OWN_WEAPON, 0xA003, 0, 0, 0xA002, 0},
+        {OWN_STRATAGEM, 0xA004, 0x2222, 0x1111, 0, 0}};
+    OwnBatch batch = {.items = items, .count = 4};
+    g_fakeOwnedCount = 0;
+    OwnBatchStep(&batch);
+    int premium = 0;
+    for (int i = 0; i < g_fakeOwnedCount; i++) premium |= g_fakeOwned[i] == 0xA001 || g_fakeOwned[i] == 0xA004;
+    assert(batch.added == 5 && batch.owned == 2 && batch.unowned == 2 && !premium && g_fakeOwnedCount == 2);
+    g_ownAdd = NULL; g_ownSort = NULL; g_ownRemove = NULL; g_ownManager = NULL; g_ownApply = NULL;
+    free(g_fakeCatalogue);
+    g_catalogue = vanilla;
+    g_stateMoves = moves;
+    printf("  live content: a moved catalogue's ownership pins read as moved; a copy of a premium weapon or stratagem the player lacks not owned, a copy of a held one (and of its copy) owned\n");
 }
