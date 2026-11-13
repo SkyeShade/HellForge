@@ -142,8 +142,8 @@ On `dev`, since 0.4.0-beta.
 
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
-  list, in its order, as the game reads a stratagem's ownership from them. It checks every reply that gives an item
-  last: the inventory, purchases (mod warbonds' too), warbond pages, mastery and mission rewards.
+  list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
+  inventory, purchases (mod warbonds' too), warbond pages, mastery and mission rewards.
 - **A premium weapon's mastery levels and attachments need the weapon.** They were sold and earned without it.
 - **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
   item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like

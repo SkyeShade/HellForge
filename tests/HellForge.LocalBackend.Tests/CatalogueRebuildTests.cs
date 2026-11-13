@@ -40,6 +40,11 @@ static class CatalogueRebuildTests
         var rootless = Clone(stock);
         rootless.Remove(rootless.OfType<JsonObject>().First(e => (uint)e["mixId"]! == premium.Parent));
         check(!Served(rootless).OfType<JsonObject>().Any(e => (uint?)e["parentId"] == premium.Parent), "A family was served without its root.");
+        Patterns(stock, paid, Served, check);
+        var booster = paid.Entries.First(e => e.Category == 5 && paid.IsReserved(e.MixId));
+        var boosted = Clone(stock);
+        boosted.Insert(0, new JsonObject { ["itemId"] = booster.ItemId, ["mixId"] = forged, ["progressionCategory"] = 5 });
+        check(First(Served(boosted), 5, booster.ItemId) == booster.MixId, "An entry added under a paid booster's itemId is found before the booster.");
         Generator(root, stock, paid, check);
         Registered(root, stock, (paid, premium.ItemId), check);
     }
@@ -56,6 +61,8 @@ static class CatalogueRebuildTests
         check(served.OfType<JsonObject>().First(e => (int)e["progressionCategory"]! == 10 && (uint)e["itemId"]! == SharedStable)["mixId"]!.GetValue<uint>() == SharedChild,
             "The shared category-10 itemId no longer finds the paid child first.");
         var stables = stock.OfType<JsonObject>().Where(e => (int)e["progressionCategory"]! == 10).Select(e => (uint)e["itemId"]!).Distinct().ToList();
+        var keys = stock.OfType<JsonObject>().Select(e => ((int)e["progressionCategory"]!, (uint)e["itemId"]!)).Where(k => k.Item1 != 2).Distinct();
+        check(keys.All(k => First(stock, k.Item1, k.Item2) == First(served, k.Item1, k.Item2)), "The rebuild changed which entry a lookup by itemId finds first.");
         foreach (var inventory in new[] { free, [.. free, owned] })
             check(stables.All(s => Holds(stock, inventory, s) == Holds(served, inventory, s)), "The rebuild changed which stratagems an unedited catalogue holds.");
     }
@@ -109,20 +116,62 @@ static class CatalogueRebuildTests
         check(items.Served().Count == 0 && log.Any(l => l.Contains("stable id", StringComparison.Ordinal)), "A mod stratagem took a paid stratagem's stable id: " + string.Join(" | ", log));
     }
 
+    // A mod's entries placed by position inside a paid family (RegisteredItems.AddPatterns): a weapon pattern's child at
+    // the end of a paid weapon's run, a unit pattern's copy of a paid child skin right after that skin. Served, each must
+    // still link to the entry its parentId names, or it is held through whatever free root comes before it.
+    static void Patterns(JsonArray stock, PaidContentSet paid, Func<JsonArray, JsonArray> served, Action<bool, string> check)
+    {
+        var weapon = paid.Entries.First(e => e.Category == 1 && e.Parent == 0 && paid.IsReserved(e.MixId) && paid.Entries.Any(c => c.Parent == e.MixId));
+        var skin = paid.Entries.First(e => e.Category == 4 && e.Parent != 0 && paid.IsReserved(e.MixId));
+        uint pattern = EngineHash.Id32("test/pattern#item"), child = EngineHash.Id32("test/pattern#weapon"), unit = EngineHash.Id32("test/pattern#unit");
+        var reply = Clone(stock);
+        var end = reply.Select((e, i) => (e, i)).Last(x => (uint?)x.e!["parentId"] == weapon.MixId).i;
+        var made = reply[end]!.DeepClone().AsObject();
+        (made["itemId"], made["mixId"]) = (pattern, child);
+        reply.Insert(end + 1, made);
+        var copy = Find(reply, new JsonObject { ["mixId"] = skin.MixId }).DeepClone().AsObject();
+        (copy["itemId"], copy["mixId"]) = (pattern, unit);
+        reply.Insert(reply.IndexOf(Find(reply, new JsonObject { ["mixId"] = skin.MixId })) + 1, copy);
+        check(Linked(reply, child) == weapon.MixId && Linked(reply, unit) == skin.Parent, "The placed pattern entries do not link as the game reads them: the check below proves nothing.");
+        var rebuilt = served(reply);
+        check(Linked(rebuilt, child) == weapon.MixId, "A mod's pattern on a paid weapon links to another weapon once rebuilt.");
+        check(Linked(rebuilt, unit) == skin.Parent, "A mod's copy of a paid skin links to another root once rebuilt.");
+    }
+
+    // The mixId of the entry the game links this one to, or null when it is a root or not served.
+    static uint? Linked(JsonArray reply, uint mixId)
+    {
+        var entries = reply.OfType<JsonObject>().ToList();
+        var i = entries.FindIndex(e => (uint)e["mixId"]! == mixId);
+        return i < 0 || Parents(entries)[i] is not (>= 0 and var parent) ? null : (uint)entries[parent]["mixId"]!;
+    }
+
+    // The mixId of the first entry of a category with this itemId, as the game's lookups find it.
+    static uint? First(JsonArray reply, int category, uint itemId) => (uint?)reply.OfType<JsonObject>()
+        .FirstOrDefault(e => (int)e["progressionCategory"]! == category && (uint)e["itemId"]! == itemId)?["mixId"];
+
+    // Each entry's parent as the game links it (0x136EC00): the run's root when its parentId names that, else the entry
+    // before it; -1 for a root.
+    static int[] Parents(List<JsonObject> entries)
+    {
+        var parents = new int[entries.Count];
+        var runRoot = -1;
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var parentId = (uint?)entries[i]["parentId"] ?? 0;
+            parents[i] = parentId == 0 ? -1 : runRoot >= 0 && (uint)entries[runRoot]["mixId"]! == parentId ? runRoot : i - 1;
+            if (parentId == 0) runRoot = i;
+        }
+        return parents;
+    }
+
     // Whether the game holds the stratagem with this stable id, from the reply's order and the held mixIds.
     static bool Holds(JsonArray reply, IReadOnlySet<uint> held, uint stable)
     {
         var entries = reply.OfType<JsonObject>().ToList();
-        int runRoot = -1;
-        for (var i = 0; i < entries.Count; i++)
-        {
-            var parentId = (uint?)entries[i]["parentId"] ?? 0;
-            var parent = parentId == 0 ? -1 : runRoot >= 0 && (uint)entries[runRoot]["mixId"]! == parentId ? runRoot : i - 1;
-            if (parentId == 0) runRoot = i;
-            if ((int)entries[i]["progressionCategory"]! != 10 || (uint)entries[i]["itemId"]! != stable) continue;
-            return held.Contains((uint)entries[i]["mixId"]!) || parent >= 0 && held.Contains((uint)entries[parent]["mixId"]!);
-        }
-        return false;
+        var parents = Parents(entries);
+        var i = entries.FindIndex(e => (int)e["progressionCategory"]! == 10 && (uint)e["itemId"]! == stable);
+        return i >= 0 && (held.Contains((uint)entries[i]["mixId"]!) || parents[i] >= 0 && held.Contains((uint)entries[parents[i]]["mixId"]!));
     }
 
     static JsonArray Clone(JsonArray items) => (JsonArray)items.DeepClone();
