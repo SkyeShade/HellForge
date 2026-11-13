@@ -541,7 +541,11 @@ typedef struct HfProjectileSettings
     uint32_t impact_explosion;                   /* +0x90 the explosion type where it hits (0: none) [now] */
     uint8_t _unknown_94[8];
     uint32_t expiry_explosion;                   /* +0x9C the explosion type when its lifetime runs out (0: none) [now] */
-    uint8_t _unknown_A0[112];
+    uint8_t _unknown_A0[16];
+    uint32_t ricochets;                          /* +0xB0 whether its rounds bounce off what they hit: 0 never; the update bounces a round only while this is not 0 and counts its bounces against it (grenade launchers and most bullets 1, lasers 0) (unverified) [now?] */
+    float ricochet_angle;                        /* +0xB4 how flat a hit must be to bounce, in degrees off straight on (0: any hit, 360: never); a round still unarmed bounces anyway (unverified) [now?] */
+    float ricochet_min_speed;                    /* +0xB8 the speed (m/s) a round must be faster than to bounce (unverified) [now?] */
+    uint8_t _unknown_BC[84];
 } HfProjectileSettings;
 HF_ASSERT_SIZE(HfProjectileSettings, 272);
 HF_ASSERT_OFFSET(HfProjectileSettings, type, 0);
@@ -570,6 +574,12 @@ HF_ASSERT_OFFSET(HfProjectileSettings, impact_explosion, 144);
 #define HF_TYPE_ProjectileSettings_impact_explosion HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileSettings, expiry_explosion, 156);
 #define HF_TYPE_ProjectileSettings_expiry_explosion HF_TYPE_U32
+HF_ASSERT_OFFSET(HfProjectileSettings, ricochets, 176);
+#define HF_TYPE_ProjectileSettings_ricochets HF_TYPE_U32
+HF_ASSERT_OFFSET(HfProjectileSettings, ricochet_angle, 180);
+#define HF_TYPE_ProjectileSettings_ricochet_angle HF_TYPE_F32
+HF_ASSERT_OFFSET(HfProjectileSettings, ricochet_min_speed, 184);
+#define HF_TYPE_ProjectileSettings_ricochet_min_speed HF_TYPE_F32
 
 /* StratagemDefinition (400-byte table rows, found by id; api->stratagem_row returns one: (HfStratagemSettings*)api->stratagem_row(...)): a stratagem: text, input, uses, cooldown, delivery, payload, packages and traits */
 #define HfStratagemSettings_INFO "StratagemDefinition", 25480438u

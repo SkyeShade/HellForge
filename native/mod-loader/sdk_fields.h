@@ -161,6 +161,9 @@ static const SdkField kSdkFieldsProjectileSettings[] = {
     {"flight_effect", 112, 8, HF_TYPE_U64, HF_APPLIES_NOW, REF_NONE},
     {"impact_explosion", 144, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_EXPLOSION},
     {"expiry_explosion", 156, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_EXPLOSION},
+    {"ricochets", 176, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"ricochet_angle", 180, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"ricochet_min_speed", 184, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsStratagemSettings[] = {
     {"type", 0, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
@@ -1195,7 +1198,7 @@ static const SdkComponent kSdkComponents[] = {
     {"Deposit", "DepositComponentData", 25480438u, 152u, kSdkFieldsDeposit, 4, 0, 177},
     {"DifficultySettings", "DifficultySettings", 25480438u, 816u, kSdkFieldsDifficultySettings, 15, 1, -1},
     {"DamageInfo", "DamageInfo", 25480438u, 76u, kSdkFieldsDamageInfo, 15, 1, -1},
-    {"ProjectileSettings", "ProjectileSettings", 25480438u, 272u, kSdkFieldsProjectileSettings, 13, 1, -1},
+    {"ProjectileSettings", "ProjectileSettings", 25480438u, 272u, kSdkFieldsProjectileSettings, 16, 1, -1},
     {"StratagemSettings", "StratagemDefinition", 25480438u, 400u, kSdkFieldsStratagemSettings, 28, 1, -1},
     {"ExplosionSettings", "ExplosionSettings", 25480438u, 152u, kSdkFieldsExplosionSettings, 5, 1, -1},
     {"ArcSettings", "ArcSettings", 25480438u, 104u, kSdkFieldsArcSettings, 9, 1, -1},
