@@ -16,7 +16,7 @@ public interface IServedWar
 }
 
 // The HellForge war (backend --war hellforge): one galactic war shared by HellForge players, run by the HellForge war
-// server (HellForge.Core.WarServer: its own service, https://war.hf-mod.com unless another is chosen). docs/hellforge-war.md.
+// server (HellForge.Core.WarServer: its own service, a placeholder address on this PC until the official one is known, unless another is chosen). docs/hellforge-war.md.
 //   GET  {server}/v1/snapshot          {schema: 1, warId: 801, sequence, generatedUtc, warInfo, status, galacticWarEffects,
 //                                      assignments, news}: the game's own bodies, served unchanged
 //   POST {server}/v1/mission/start     {installId, planetIndex, difficulty 1..11, race} -> {ticket}

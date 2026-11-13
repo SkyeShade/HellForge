@@ -4,7 +4,7 @@ The HellForge war is one galactic war shared by every HellForge player. A war se
 major orders and dispatches. Each player's backend follows that server, and each mission played counts towards it. It
 is the default war from this version on (Settings > GALACTIC WAR > HellForge war).
 
-The war server is a service of its own, not part of the website. HellForge's is `https://war.hf-mod.com`.
+The war server is a service of its own, not part of the website. HellForge's official address isn't decided yet: until it is, the default is the placeholder `http://127.0.0.1:5093`, a war server run on this PC.
 
 ## What the backend does
 
@@ -53,7 +53,7 @@ In order, the first that is set wins:
 2. the environment variable `HELLFORGE_WAR_SERVER`;
 3. the launcher's War server field (Settings > GALACTIC WAR, shown with the HellForge war), saved as `warServer` in
    `launcher-settings.json`, or `HellForge.Cli settings --war-server <url>` (`default` goes back to HellForge's);
-4. `https://war.hf-mod.com`.
+4. `http://127.0.0.1:5093` (a placeholder until the official address is known).
 
 An address must be https, or http to this PC (`localhost`, `127.0.0.1`), and has no query. Trailing slashes are dropped.
 

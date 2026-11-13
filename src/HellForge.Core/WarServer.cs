@@ -10,7 +10,8 @@ namespace HellForge.Core;
 // being tried locally), with no query, and is kept without its trailing slashes, so one server has one spelling.
 public static class WarServer
 {
-    public const string Default = "https://war.hf-mod.com", EnvironmentVariable = "HELLFORGE_WAR_SERVER";
+    // PLACEHOLDER until the official HellForge war server has its address: a war server run on this PC (its local default).
+    public const string Default = "http://127.0.0.1:5093", EnvironmentVariable = "HELLFORGE_WAR_SERVER";
 
     // The address as kept, or null when it is not one a session may use.
     public static string? Normalize(string? address)
