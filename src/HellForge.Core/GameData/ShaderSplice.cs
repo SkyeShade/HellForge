@@ -64,6 +64,44 @@ public static class ShaderSplice
         return output;
     }
 
+    // Bytes of a game resource's GPU part outside its shader stages (data spec "edit" bytes), such as the binding table that
+    // names a stage's textures. Each must find the game's own bytes: another game build or a wrong offset is refused. Bytes
+    // in a stage are refused too: its digest would no longer match and D3D would refuse it; "stages" signs again.
+    public static byte[] EditBytes(byte[] gpu, IReadOnlyList<BytesEdit> edits)
+    {
+        if (edits.Count == 0) return gpu;
+        var stages = Stages(gpu);
+        var output = gpu.ToArray();
+        foreach (var edit in edits)
+        {
+            if (edit.At < 0 || (long)edit.At + edit.Set.Length > gpu.Length)
+                throw new InvalidDataException($"bytes at 0x{edit.At:X} (+{edit.Set.Length}) are outside the GPU part's {gpu.Length} bytes.");
+            foreach (var (at, size) in stages)
+                if (edit.At < at + size && at < edit.At + edit.Set.Length)
+                    throw new InvalidDataException($"bytes at 0x{edit.At:X} (+{edit.Set.Length}) are inside the shader stage at 0x{at:X}: edit it under stages.");
+            if (!gpu.AsSpan(edit.At, edit.Expect.Length).SequenceEqual(edit.Expect))
+                throw new InvalidDataException($"the bytes at 0x{edit.At:X} are {Convert.ToHexString(gpu, edit.At, edit.Expect.Length)}, not the expected {Convert.ToHexString(edit.Expect)} (another game build?).");
+            edit.Set.CopyTo(output, edit.At);
+        }
+        return output;
+    }
+
+    // Every DXBC container in the part whose header reads.
+    static List<(int At, int Size)> Stages(byte[] gpu)
+    {
+        var stages = new List<(int At, int Size)>();
+        var magic = "DXBC"u8;
+        for (var at = gpu.AsSpan().IndexOf(magic); at >= 0;)
+        {
+            var size = 0;
+            try { size = Read(gpu, at, "").Size; } catch (InvalidDataException) { }
+            if (size > 0) stages.Add((at, size));
+            var next = gpu.AsSpan(at + (size > 0 ? size : 1)).IndexOf(magic);
+            at = next < 0 ? -1 : at + (size > 0 ? size : 1) + next;
+        }
+        return stages;
+    }
+
     static byte[] Stage(byte[] gpu, int offset, byte[] compiled)
     {
         var (size, game) = Read(gpu, offset, "the game's stage");

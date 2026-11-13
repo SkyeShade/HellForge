@@ -44,8 +44,9 @@ public sealed record ShaderFile(int Offset, string Dxbc, HostStage? Host = null)
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
 // A game resource edited in place: each stage is the signed DXBC container at At in the GPU part, which must carry Digest,
 // with bytes set at offsets inside the container.
-public sealed record EditResource(string Where, ulong Type, ulong Id, IReadOnlyList<StageEdit> Stages) : DataResource(Where);
+public sealed record EditResource(string Where, ulong Type, ulong Id, IReadOnlyList<StageEdit> Stages, IReadOnlyList<BytesEdit> Bytes) : DataResource(Where);
 public sealed record StageEdit(int At, byte[] Digest, IReadOnlyList<(int Offset, byte[] Bytes)> Set);
+public sealed record BytesEdit(int At, byte[] Expect, byte[] Set);
 public sealed record IconResource(string Where, string Name, string Png, string Prepare) : DataResource(Where);
 // A compiled shader in a named host (mappings/shader-hosts.json), under the mod's name; Mesh for a host that draws one.
 public sealed record ShaderResource(string Where, string Host, string Name, string Dxbc, MeshFile? Mesh) : DataResource(Where);
@@ -538,11 +539,19 @@ public static partial class DataSpecs
         return EngineHash.Murmur64A(Encoding.UTF8.GetBytes(text));
     }
 
-    // An edit in place: only shader stages, each pinned by the game container's digest, so another game build or a wrong
-    // offset is refused before anything is written. The bytes are the mod's own: whole instructions, not game data.
+    // An edit in place: shader stages, each pinned by the game container's digest, and bytes outside the stages, each
+    // pinned by the game's own bytes there, so another game build or a wrong offset is refused before anything is written.
     static EditResource ReadEdit(JsonElement e, string at)
     {
-        Fields(e, at, "type", "edit", "stages");
+        Fields(e, at, "type", "edit", "stages", "bytes");
+        var stages = e.TryGetProperty("stages", out _) ? ReadStages(e, at) : [];
+        var bytes = e.TryGetProperty("bytes", out _) ? ReadBytes(e, at) : [];
+        if (stages.Count == 0 && bytes.Count == 0) throw new InvalidDataException($"{at}: an edit needs stages or bytes.");
+        return new EditResource(at, Type(e, at), Id(Property(e, "edit", at), at), stages, bytes);
+    }
+
+    static List<StageEdit> ReadStages(JsonElement e, string at)
+    {
         var stages = new List<StageEdit>();
         var s = 0;
         foreach (var stage in Items(e, "stages", at))
@@ -558,9 +567,30 @@ public static partial class DataSpecs
                 if (set[i - 1].Item1 + set[i - 1].Item2.Length > set[i].Item1) throw new InvalidDataException($"{where}: set writes 0x{set[i].Item1:X} twice.");
             stages.Add(new(Offset(Text(stage, "at", where), where), digest, set));
         }
-        if (stages.Count == 0) throw new InvalidDataException($"{at}: stages are missing.");
+        if (stages.Count == 0) throw new InvalidDataException($"{at}: stages lists nothing.");
         if (stages.Select(x => x.At).Distinct().Count() != stages.Count) throw new InvalidDataException($"{at}: a stage is listed twice.");
-        return new EditResource(at, Type(e, at), Id(Property(e, "edit", at), at), stages);
+        return stages;
+    }
+
+    // "bytes": [{ "at", "expect", "set" }]: expect is what the game has there, set the same number of bytes in its place.
+    static List<BytesEdit> ReadBytes(JsonElement e, string at)
+    {
+        var bytes = new List<BytesEdit>();
+        var b = 0;
+        foreach (var item in Items(e, "bytes", at))
+        {
+            var where = $"{at}.bytes[{b++}]";
+            Fields(item, where, "at", "expect", "set");
+            var expect = HexBytes(Text(item, "expect", where), $"{where}.expect");
+            var set = HexBytes(Text(item, "set", where), $"{where}.set");
+            if (expect.Length != set.Length) throw new InvalidDataException($"{where}: expect has {expect.Length} bytes and set {set.Length}: they must be as long.");
+            bytes.Add(new(Offset(Text(item, "at", where), where), expect, set));
+        }
+        if (bytes.Count == 0) throw new InvalidDataException($"{at}: bytes lists nothing.");
+        var sorted = bytes.OrderBy(x => x.At).ToList();
+        for (var i = 1; i < sorted.Count; i++)
+            if (sorted[i - 1].At + sorted[i - 1].Set.Length > sorted[i].At) throw new InvalidDataException($"{at}: bytes writes 0x{sorted[i].At:X} twice.");
+        return bytes;
     }
 
     static byte[] HexBytes(string text, string at) =>

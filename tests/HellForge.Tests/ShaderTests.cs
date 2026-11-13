@@ -323,6 +323,63 @@ static class ShaderTests
             Refused(() => Load(Stage($"\"0x{at:X}\":\"0g\"")), "is not bytes as hex digits");
             check(!Directory.Exists(Path.Combine(root, "edit-pin")), "A refused edit must write nothing.");
         });
+
+        test("An edit sets bytes outside the stages where the game's own bytes stand, and refuses a stage's or another build's", () =>
+        {
+            const ulong Library = 0x7102;
+            var type = ResourceTypes.Hash("shader_library");
+            var data = Directory.CreateDirectory(Path.Combine(root, "bytes-game")).FullName;
+            var (gpu, stages) = Part(1);
+            BitConverter.TryWriteBytes(gpu.AsSpan(0x280), 0xEFBEADDEu);
+            var game = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [new(type, Library)] = new([1, 2, 3, 4], gpu, []) });
+            DataBuilderTests.WriteBundles(data, new Dictionary<string, byte[]> { ["1111111111111111"] = game.Archive, ["1111111111111111.gpu_resources"] = game.Gpu });
+            var size = BitConverter.ToInt32(gpu, stages[0] + 24);
+            var digest = Convert.ToHexString(gpu.AsSpan(stages[0] + 4, 16));
+            var folder = Directory.CreateDirectory(Path.Combine(root, "bytes-mod")).FullName;
+            DataSpec Load(string fields)
+            {
+                File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"type":"shader_library","edit":"0x7102"{{fields}}}]}]}""");
+                return DataSpecs.Load(folder)!;
+            }
+            static string Bytes(params string[] items) => ",\"bytes\":[" + string.Join(",", items) + "]";
+            static string Item(int at, string expect, string set) => $"{{\"at\":\"0x{at:X}\",\"expect\":\"{expect}\",\"set\":\"{set}\"}}";
+            using var reader = new GameDataReader(data);
+            ResourceParts Built(DataSpec spec, string name)
+            {
+                var output = Path.Combine(root, name);
+                var main = Path.Combine(output, ModDataBuilder.Build(spec, folder, reader, output)[0]);
+                return ResourceArchive.Read(File.ReadAllBytes(main), File.ReadAllBytes(main + ".gpu_resources"), [])[new(type, Library)];
+            }
+
+            var spec = Load(Bytes(Item(0x280, "DEADBEEF", "01020304")));
+            check(DataSpecs.Unchecked(spec)?.Contains("in place") == true, "An edit of bytes must be unchecked for mod sync.");
+            var edited = Built(spec, "bytes-out");
+            var changed = Enumerable.Range(0, gpu.Length).Where(i => gpu[i] != edited.Gpu[i]).ToList();
+            check(changed.SequenceEqual([0x280, 0x281, 0x282, 0x283]) && BitConverter.ToUInt32(edited.Gpu, 0x280) == 0x04030201u, "Only the four bytes may change.");
+            check(edited.Main.SequenceEqual(new byte[] { 1, 2, 3, 4 }), "The main part changed.");
+
+            var at = size - 8;
+            var both = Built(Load($",\"stages\":[{{\"at\":\"0x{stages[0]:X}\",\"digest\":\"{digest}\",\"set\":{{\"0x{at:X}\":\"0100003A0100003A\"}}}}]" + Bytes(Item(0x280, "DEADBEEF", "01020304"))), "bytes-both");
+            var stage = both.Gpu.AsSpan(stages[0], size);
+            check(BitConverter.ToUInt32(both.Gpu, 0x280) == 0x04030201u && BitConverter.ToUInt32(both.Gpu, stages[0] + at) == 0x3A000001 &&
+                ShaderSplice.Digest(stage).AsSpan().SequenceEqual(stage.Slice(4, 16)), "Stages and bytes in one edit must both apply, the stage signed again.");
+
+            Refused(() => Built(Load(Bytes(Item(0x280, "DEADBEEE", "01020304"))), "bytes-pin"), "not the expected DEADBEEE");
+            Refused(() => Built(Load(Bytes(Item(stages[0] + 0x40, Convert.ToHexString(gpu, stages[0] + 0x40, 2), "0000"))), "bytes-stage"), $"inside the shader stage at 0x{stages[0]:X}");
+            Refused(() => Built(Load(Bytes(Item(stages[0] - 2, Convert.ToHexString(gpu, stages[0] - 2, 4), "00000000"))), "bytes-edge"), "inside the shader stage");
+            Refused(() => Built(Load(Bytes(Item(gpu.Length - 2, "0000", "00000000"))), "bytes-short"), "must be as long");
+            Refused(() => Built(Load(Bytes(Item(gpu.Length - 2, "00000000", "00000000"))), "bytes-far"), "outside the GPU part");
+            Refused(() => Load(Bytes(Item(0x280, "DEAD", "0102"), Item(0x281, "AD", "02"))), "twice");
+            Refused(() => Load(Bytes()), "bytes lists nothing");
+            Refused(() => Load(""), "needs stages or bytes");
+            Refused(() => Load(",\"stages\":[]" + Bytes(Item(0x280, "DEADBEEF", "01020304"))), "stages lists nothing");
+            Refused(() => Load(Bytes("{\"at\":\"0x280\",\"expect\":\"DE\",\"set\":\"01\",\"why\":\"x\"}")), "unknown field why");
+            foreach (var name in new[] { "bytes-pin", "bytes-stage", "bytes-edge", "bytes-far" })
+                check(!Directory.Exists(Path.Combine(root, name)), $"A refused edit must write nothing ({name}).");
+            var stageEnd = stages[0] + size;
+            check(Built(Load(Bytes(Item(stageEnd, Convert.ToHexString(gpu, stageEnd, 4), "00000000"))), "bytes-after").Gpu.AsSpan(stageEnd, 4).SequenceEqual(new byte[4]),
+                "The bytes right after a stage are outside it.");
+        });
     }
 
     static void Check(byte[] game, byte[] ours) => ShaderCheck.Check(ShaderSplice.Read(game, 0, "game").Chunks, ShaderSplice.Read(ours, 0, "ours").Chunks);
