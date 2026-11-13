@@ -83,19 +83,20 @@ static class RegisteredItemsTests
         check(inventory.Contains(Item), "The inventory lacks the stratagem.");
 
         // Difficulty 11 (difficulty.c): its unlock item is a copy of Super Helldive's, held once Super Helldive is.
-        const uint SuperHelldive = 2695783738, HellForge = 0x5EED0011;
-        File.WriteAllText(file, $$"""{"format":1,"items":[{"kind":"difficulty","mixId":{{HellForge}},"copyOf":{{SuperHelldive}},"level":11,"mod":"test","name":"test/hell"}]}""");
+        const uint SuperHelldive = 2695783738;
+        var Hell = HellForge.Core.EngineHash.Id32("test/hell#item");
+        File.WriteAllText(file, $$"""{"format":1,"items":[{"kind":"difficulty","mixId":{{Hell}},"copyOf":{{SuperHelldive}},"level":11,"mod":"test","name":"test/hell"}]}""");
         catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
-        var unlock = catalogue.OfType<JsonObject>().SingleOrDefault(i => (uint)i["mixId"]! == HellForge);
+        var unlock = catalogue.OfType<JsonObject>().SingleOrDefault(i => (uint)i["mixId"]! == Hell);
         var superUnlock = catalogue.OfType<JsonObject>().Single(i => (uint)i["mixId"]! == SuperHelldive);
-        check(unlock != null && (uint)unlock["itemId"]! == HellForge && (int)unlock["progressionCategory"]! == (int)superUnlock["progressionCategory"]!,
+        check(unlock != null && (uint)unlock["itemId"]! == Hell && (int)unlock["progressionCategory"]! == (int)superUnlock["progressionCategory"]!,
             "The difficulty's unlock item is not a copy of Super Helldive's.");
-        check(!catalogue.OfType<JsonObject>().Any(i => (uint?)i["parentId"] == HellForge), "The difficulty's unlock item got children.");
+        check(!catalogue.OfType<JsonObject>().Any(i => (uint?)i["parentId"] == Hell), "The difficulty's unlock item got children.");
         inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
-        check(!inventory.Contains(HellForge), "Difficulty 11 was unlocked before Super Helldive.");
+        check(!inventory.Contains(Hell), "Difficulty 11 was unlocked before Super Helldive.");
         var veteran = JsonSerializer.SerializeToElement(new { items = new object[] { new { mixId = SuperHelldive, amount = 1, isDiscovered = true } } });
         inventory = JsonNode.Parse(items.Apply("/Progression/inventory", veteran).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
-        check(inventory.Contains(HellForge), "Difficulty 11 is not unlocked with Super Helldive.");
+        check(inventory.Contains(Hell), "Difficulty 11 is not unlocked with Super Helldive.");
         var client = JsonNode.Parse(items.Apply("/Configuration/GameClient", fixtures["/Configuration/GameClient"]).GetRawText())!;
         var cap = client["onlineOverrideConfiguration"]!.AsArray().OfType<JsonObject>().Single(o => (uint)o["mixId"]! == RegisteredItems.DifficultyCapOverride);
         check((string)cap["data"]! == "11", "The live game's difficulty cap of 10 still applies.");
@@ -110,14 +111,14 @@ static class RegisteredItemsTests
               {"mixId":{{Gold}},"copyOf":{{Liberator}},"mod":"test","unit":"test/gold"},
               {"kind":"stratagem","mixId":{{Item}},"stable":{{Stable}},"copyOfType":83,"copyOf":{{Strike}},"mod":"test","name":"test/s"},
               {"mixId":{{Second}},"copyOf":{{Liberator}},"mod":"test","unit":"test/second"},
-              {"kind":"difficulty","mixId":{{HellForge}},"copyOf":{{SuperHelldive}},"level":11,"mod":"test","name":"test/hell"}]}
+              {"kind":"difficulty","mixId":{{Hell}},"copyOf":{{SuperHelldive}},"level":11,"mod":"test","name":"test/hell"}]}
             """);
-        check(items.Load().Select(i => i.MixId).SequenceEqual([Gold, Item, Second, HellForge]) &&
-            RegisteredItems.Prioritized(items.Load()).Select(i => i.MixId).SequenceEqual([HellForge, Item, Gold, Second]),
+        check(items.Load().Select(i => i.MixId).SequenceEqual([Gold, Item, Second, Hell]) &&
+            RegisteredItems.Prioritized(items.Load()).Select(i => i.MixId).SequenceEqual([Hell, Item, Gold, Second]),
             "Difficulties, then stratagems, then weapons, each kind in the order it registered.");
         catalogue = (JsonArray)JsonNode.Parse(items.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
         int Index(uint mixId) => catalogue.Select((item, index) => (item, index)).Single(x => (uint)x.item!["mixId"]! == mixId).index;
-        check(Index(HellForge) < Index(Item) && Index(Item) < Index(Gold) && Index(Gold) < Index(Second) &&
+        check(Index(Hell) < Index(Item) && Index(Item) < Index(Gold) && Index(Gold) < Index(Second) &&
             Index(RegisteredItems.WeaponChild(Stable, Item)) == Index(Item) + 1 && (uint?)catalogue[Index(Gold) + 1]!["parentId"] == Gold,
             "In the catalogue: level 11, the stratagem and its child, then each weapon with its children.");
 

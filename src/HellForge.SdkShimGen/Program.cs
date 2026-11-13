@@ -23,6 +23,7 @@ const string Usage = """
     HellForge.SdkShimGen smoke-lobby-link <directory with the stand-ins> <HellForge.LocalBackend.dll>
     HellForge.SdkShimGen smoke-lobby-search <directory with PlayFabMultiplayerWin.dll> <HellForge.LocalBackend.dll>
     HellForge.SdkShimGen smoke-modloader <directory with the stand-ins and loader> <directory with the test DLLs> <Machine Gun 10k code mod>
+    HellForge.SdkShimGen backend-digest <published backend folder>   (the pin compiled into the session, HellForge.Core BackendPin)
     """;
 try
 {
@@ -48,12 +49,19 @@ try
         ["smoke-lobby-search", var searchDirectory, var searchBackend] => LobbySearchSmoke.Run(searchDirectory, searchBackend),
         ["smoke-modloader", var directory, var tests, var machineGun] => ModLoaderSmoke.Run(directory, tests, machineGun),
         ["smoke-modloader", var directory, var tests, var machineGun, var compendium] => ModLoaderSmoke.Run(directory, tests, machineGun, compendium),
+        ["backend-digest", var backendFolder] => PrintBackendDigest(backendFolder),
         _ => Fail(Usage)
     };
 }
 catch (Exception error) when (error is IOException or FormatException or InvalidDataException or BadImageFormatException or System.Text.Json.JsonException)
 {
     return Fail(error.Message);
+}
+
+static int PrintBackendDigest(string folder)
+{
+    Console.WriteLine(HellForge.Core.BackendPin.Digest(folder));
+    return 0;
 }
 
 static int Generate(string prefix, string original, string handwritten, string output, string[] headers)

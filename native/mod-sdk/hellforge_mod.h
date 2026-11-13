@@ -91,7 +91,8 @@ typedef void (*HfTickCallback)(HfMod* mod, float dt, void* user);
 typedef struct HfWeapon
 {
     uint32_t size;           /* sizeof(HfWeapon) */
-    uint32_t base;           /* the weapon it copies: a vanilla loadout id (HF_ITEM_..., or the session's arsenal.tsv) */
+    uint32_t base;           /* the weapon it copies: a vanilla loadout id (HF_ITEM_..., or the session's arsenal.tsv), or
+                              * another mod's weapon (then its premium rule is that weapon's base's; 8 copies deep at most) */
     /* Its model: a unit resource the mod's data provides (a copy of the base's unit with other materials, say). The name
      * also identifies the weapon: its entity is the name's hash and its loadout id the top 32 bits of that, so every
      * player's game agrees. Keep it unique, prefixed with your name and mod. */
@@ -514,7 +515,8 @@ typedef struct HfDifficulty
                                     the HiveMind scales it further by progress and players); 0 keeps level 10's; up to 4 */
     uint32_t mission_stratagem;  /* a stratagem type every mission at the level grants every player, in the mission group
                                     with Reinforce and Resupply (no loadout slot; the type's own uses and cooldown), e.g.
-                                    105, the M-102 Fast Recon Vehicle; 0 none */
+                                    105, the M-102 Fast Recon Vehicle; 0 none. A paid one (premium warbond, Superstore)
+                                    is not granted, and the mod's log says why */
 } HfDifficulty;
 /* Every mission at the level is two missions in one: its own plus a partner mission of the same faction that the game
  * offers alongside it, with the partner's main objectives and their steps as the game selects them (chosen with the
@@ -1323,9 +1325,9 @@ typedef struct HfApi
 
     /* ---- SDK 2 ---------------------------------------------------------------------------------------------------- */
     /* Adds a new arsenal weapon (see HfWeapon). HellForge adds it to the game's entity data when that loads, to the armory,
-     * and to the backend's item catalogue and the player's inventory; it behaves exactly like its base except for what
-     * the mod changes in its own records. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the
-     * mod's log says why). */
+     * and to the backend's item catalogue and the player's inventory (a copy of premium content only to a player who owns
+     * the original); it behaves exactly like its base except for what the mod changes in its own records. Call it from
+     * hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the mod's log says why). */
     uint32_t (*add_weapon)(HfMod* mod, const HfWeapon* weapon);
     /* The entity resource of a weapon any mod added (its loadout id), for component_record; 0 if there is none. */
     uint64_t (*weapon_entity)(uint32_t weapon);

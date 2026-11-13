@@ -415,7 +415,7 @@ static uint32_t ApiAddAttachment(HfMod* mod, const HfAttachment* def)
     return a.id;
 }
 
-/* The attachments for the backend (RegisteredItems.cs): {"mixId", "copyOf", "weapons"}, the refused left out (weapon
+/* The attachments for the backend (RegisteredItems.cs): {"mixId", "copyOf", "mod", "weapons"}, the refused left out (weapon
  * patterns are PatternItems'). */
 static int AttachmentItems(char* text, int n, int size)
 {
@@ -425,7 +425,9 @@ static int AttachmentItems(char* text, int n, int size)
     {
         const Attachment* a = &g_attachments[i];
         if (a->state < 0 || a->pattern) continue;
-        n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"weapons\":[", listed++ ? "," : "", a->id, a->base);
+        char mod[6 * 80 + 1];
+        n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"weapons\":[", listed++ ? "," : "", a->id, a->base,
+            JsonText(a->mod->id, mod, sizeof mod));
         for (uint32_t w = 0; w < a->weaponCount; w++) n += snprintf(text + n, size - n, "%s%u", w ? "," : "", a->weapons[w]);
         n += snprintf(text + n, size - n, "]}");
     }

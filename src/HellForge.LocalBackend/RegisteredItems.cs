@@ -26,10 +26,10 @@ namespace HellForge.LocalBackend;
 // /Configuration/GameClient carries the live game's cap on the difficulty level (online override 48726272, an int, "10";
 // game.dll 0x11EBB40 returns min(its own maximum, the cap)): it is raised to the level the mod added.
 // A copy's mastery is all that is saved of a registered item, apart from vanilla data, so a removed mod leaves nothing.
-// Premium content (docs/modding/concepts.md "Premium content"): a weapon or stratagem copied from content the player does
-// not own (OwnsBase: OwnershipFilter's rules), or registered by a mod whose declared premium list the player does not own
-// (LockedMods, from mods-stage), stays out of /Progression/inventory: the game knows it, the player cannot equip it.
-public sealed class RegisteredItems(string path)
+// Premium content (docs/modding/concepts.md "Premium content"): a copy of content the player does not own (OwnsBase), or
+// an item of a mod whose declared premium list they do not own (LockedMods), stays out of /Progression/inventory. An
+// entry naming a paid or a game id is refused (RegisteredItems.Checks.cs).
+public sealed partial class RegisteredItems(string path)
 {
     // Name: the name its mod registered it by (a weapon's "unit", a stratagem's "name"), which a mod's warbond names it by.
     public sealed record Item(uint MixId, uint CopyOf, uint Stable = 0, bool IsDifficulty = false, uint Level = 0, string Mod = "", string Name = "")
@@ -42,7 +42,7 @@ public sealed class RegisteredItems(string path)
     // An attachment a mod added (native/mod-loader/attachments.c): a copy of a vanilla customization item (CopyOf) offered
     // on weapons mods registered. Each weapon gets a child for it, a copy of a vanilla child of the base item, under
     // WeaponChild(attachment, weapon), held whenever the weapon is.
-    public sealed record ModAttachment(uint MixId, uint CopyOf, IReadOnlyList<uint> Weapons);
+    public sealed record ModAttachment(uint MixId, uint CopyOf, IReadOnlyList<uint> Weapons, string Mod = "");
 
     // The file's "attachments" (none in an older file).
     public static List<ModAttachment> Attachments(byte[] file)
@@ -56,7 +56,7 @@ public sealed class RegisteredItems(string path)
             foreach (var a in list.EnumerateArray())
                 if (a.TryGetProperty("mixId", out var id) && id.TryGetUInt32(out var mixId) && mixId != 0 && a.TryGetProperty("copyOf", out var copy) &&
                     copy.TryGetUInt32(out var copyOf) && a.TryGetProperty("weapons", out var weapons) && weapons.ValueKind == JsonValueKind.Array)
-                    attachments.Add(new(mixId, copyOf, [.. weapons.EnumerateArray().Where(w => w.TryGetUInt32(out _)).Select(w => w.GetUInt32())]));
+                    attachments.Add(new(mixId, copyOf, [.. weapons.EnumerateArray().Where(w => w.TryGetUInt32(out _)).Select(w => w.GetUInt32())], ModOf(a)));
             return attachments;
         }
         catch (JsonException) { return []; }
@@ -74,7 +74,7 @@ public sealed class RegisteredItems(string path)
     // skin's catalogue item (progressionCategory 4) under WeaponChild(pattern, the skin's parent) right after it, always
     // held. The game's boot check takes a pick the table knows and the player does not hold back to the default
     // (0x1750870), so a skin needs its held item.
-    public sealed record ModPattern(uint MixId, uint CopyOf, bool IsWeapon, IReadOnlyList<uint> Weapons);
+    public sealed record ModPattern(uint MixId, uint CopyOf, bool IsWeapon, IReadOnlyList<uint> Weapons, string Mod = "");
 
     // A pattern as this session serves it: the weapons its children go on, or a unit pattern's catalogue item.
     public sealed record PatternPlan(ModPattern Pattern, IReadOnlyList<uint> Weapons, uint UnitMixId = 0);
@@ -96,7 +96,7 @@ public sealed class RegisteredItems(string path)
                 if (p.TryGetProperty("mixId", out var id) && id.TryGetUInt32(out var mixId) && mixId != 0 && p.TryGetProperty("copyOf", out var copy) &&
                     copy.TryGetUInt32(out var copyOf) && copyOf != 0 && NameOf(p, "kind") is "weapon" or "unit")
                     patterns.Add(new(mixId, copyOf, NameOf(p, "kind") == "weapon", p.TryGetProperty("weapons", out var weapons) && weapons.ValueKind == JsonValueKind.Array
-                        ? [.. weapons.EnumerateArray().Where(w => w.TryGetUInt32(out _)).Select(w => w.GetUInt32())] : []));
+                        ? [.. weapons.EnumerateArray().Where(w => w.TryGetUInt32(out _)).Select(w => w.GetUInt32())] : [], ModOf(p)));
             return patterns;
         }
         catch (JsonException) { return []; }
@@ -136,6 +136,9 @@ public sealed class RegisteredItems(string path)
         public readonly Dictionary<uint, List<uint>> Offering = [];   // a child's itemId (an attachment, a paint) -> the items it is a child of
         public readonly Dictionary<uint, (uint MixId, uint? Parent)> Skins = []; // a unit skin (progressionCategory 4) by its id
         public readonly HashSet<uint> SkinParents = [];
+        public readonly HashSet<uint> Ids = [];                       // every item's mixId
+        public readonly Dictionary<uint, List<uint>> ChildIds = [];   // parent -> its children's mixIds
+        public readonly Dictionary<uint, List<uint>> ItemChildren = [];  // a child's itemId -> the children with it
 
         public Vanilla(JsonElement catalogue, JsonElement? packages)
         {
@@ -155,11 +158,19 @@ public sealed class RegisteredItems(string path)
                 Skins.TryAdd(skin, (skinMix, Field(entry, "parentId")));
                 if (Field(entry, "parentId") is { } skinParent) SkinParents.Add(skinParent);
             }
+            if (Field(entry, "mixId") is { } id) Ids.Add(id);
             if (Field(entry, "parentId") is not { } parent) return;
             if (Field(entry, "itemId") is { } item) (Offering.TryGetValue(item, out var on) ? on : Offering[item] = []).Add(parent);
             Children[parent] = Children.GetValueOrDefault(parent) + 1;
-            if (Field(entry, "mixId") is { } mixId) Parents[mixId] = parent;
+            if (Field(entry, "mixId") is { } mixId) AddChildId(mixId, parent, Field(entry, "itemId"));
             if (Field(entry, "progressionCategory") == 10 && Field(entry, "itemId") is { } stable) StratagemItems.TryAdd(stable, parent);
+        }
+
+        void AddChildId(uint mixId, uint parent, uint? itemId)
+        {
+            Parents[mixId] = parent;
+            (ChildIds.TryGetValue(parent, out var kids) ? kids : ChildIds[parent] = []).Add(mixId);
+            if (itemId is { } item) (ItemChildren.TryGetValue(item, out var with) ? with : ItemChildren[item] = []).Add(mixId);
         }
 
         void AddMastery(JsonElement package)
@@ -174,7 +185,7 @@ public sealed class RegisteredItems(string path)
     // A registered-items.json as read, and what follows from it. The mod loader adds to the file during a session (and it
     // may hold it open, so its timestamp can lag): the bytes say whether it changed.
     sealed record Session(byte[] File, List<Item> Loaded, IReadOnlyList<Item> Admitted, Dictionary<uint, MasteryTrack> Tracks, Dictionary<uint, MasteryTrack> ByWeapon, Capacity Keeps,
-        IReadOnlyList<PatternPlan> Patterns);
+        IReadOnlyList<PatternPlan> Patterns, IReadOnlyList<ModAttachment> Attachments);
 
     // Where the mod loader writes them: the game's log folder, which is the session's run (the backend evidence folder's
     // parent) or, sandboxed, the run's game folder, the one the game may write (PlaySession's gameOut). Read from the run,
@@ -220,7 +231,7 @@ public sealed class RegisteredItems(string path)
             if (session != null && bytes.AsSpan().SequenceEqual(session.File)) return session;
             var loaded = Parse(bytes);
             var keeps = Keeps(bytes);
-            var admitted = Admitted(Prioritized(loaded), keeps);
+            var admitted = Admitted(Prioritized(Checked(loaded)), keeps);
             Dictionary<uint, MasteryTrack> tracks = [], byWeapon = [];
             if (Game() is { } game)
                 foreach (var item in admitted.Where(i => i.IsWeapon))
@@ -231,7 +242,8 @@ public sealed class RegisteredItems(string path)
                         tracks[track.Package] = track;
                         byWeapon[item.MixId] = track;
                     }
-            return session = new Session(bytes, loaded, admitted, tracks, byWeapon, keeps, PlanPatterns(Patterns(bytes), admitted, keeps));
+            return session = new Session(bytes, loaded, admitted, tracks, byWeapon, keeps, PlanPatterns(Checked(Patterns(bytes), admitted), admitted, keeps),
+                Checked(Attachments(bytes), admitted));
         }
     }
 
@@ -304,7 +316,7 @@ public sealed class RegisteredItems(string path)
     {
         lock (reported)
             if (!reported.Add(pattern.MixId ^ 0x9A77E2u)) return;
-        Log($"pattern {pattern.MixId} (a copy of {pattern.CopyOf}): {why}.");
+        Log($"{(pattern.Mod.Length > 0 ? pattern.Mod + "'s " : "")}pattern {pattern.MixId} (a copy of {pattern.CopyOf}): {why}.");
     }
 
     byte[] ReadFile()
@@ -354,11 +366,11 @@ public sealed class RegisteredItems(string path)
     public MasteryTrack? Track(uint package) => Current().Tracks.GetValueOrDefault(package);
 
     // Whether the player may not have an item (a premium rule or a locked mod; mods' warbonds sell only what passes this).
-    public bool IsLocked(Item item) => Locked(item);
+    public bool IsLocked(Item item) => Locked(item, Current());
 
     // Whether the inventory leaves an item out: locked, or sold on a mod's warbond the player has not bought it from.
     // Purchases and earning refuse what it leaves out.
-    public bool IsLeftOut(Item item) => Locked(item) || Withheld?.Invoke().Contains(item.MixId) == true;
+    public bool IsLeftOut(Item item) => Locked(item, Current()) || Withheld?.Invoke().Contains(item.MixId) == true;
 
     // One entry of the file: a weapon, a stratagem or a difficulty, or null for one that is malformed or waits (copyOf 0).
     static Item? Read(JsonElement item)
@@ -371,7 +383,7 @@ public sealed class RegisteredItems(string path)
                 ? new Item(mixId, copyOf, stableId, Mod: ModOf(item), Name: NameOf(item, "name")) : null;
         if (item.TryGetProperty("kind", out kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "difficulty")
             return copyOf != 0 && item.TryGetProperty("level", out var level) && level.TryGetUInt32(out var levelValue) && levelValue is > 10 and <= 15
-                ? new Item(mixId, copyOf, IsDifficulty: true, Level: levelValue, Mod: ModOf(item)) : null;
+                ? new Item(mixId, copyOf, IsDifficulty: true, Level: levelValue, Mod: ModOf(item), Name: NameOf(item, "name")) : null;
         return new Item(mixId, copyOf, Mod: ModOf(item), Name: NameOf(item, "unit"));
     }
 
@@ -436,7 +448,7 @@ public sealed class RegisteredItems(string path)
     void Report(Item item, string why)
     {
         lock (reported)
-            if (!reported.Add(item.MixId)) return;
+            if (!reported.Add(item.MixId ^ (item.IsDifficulty ? 0xD1F0u : item.IsStratagem ? 0x57A7u : 0))) return;
         var kind = item.IsDifficulty ? "difficulty" : item.IsStratagem ? "stratagem" : "weapon";
         Log($"{(item.Mod.Length > 0 ? item.Mod + "'s " : "")}{kind} {item.MixId} is left out: {why}.");
     }
@@ -460,7 +472,7 @@ public sealed class RegisteredItems(string path)
         switch (path)
         {
             case "/Progression/items" when node is JsonArray catalogue:
-                AddCatalogue(catalogue, items, Attachments(current.File));
+                AddCatalogue(catalogue, items, current.Attachments);
                 AddPatterns(catalogue, current.Patterns);
                 break;
             case "/Progression/ProgressionPackages" when node is JsonArray packages:
@@ -648,8 +660,8 @@ public sealed class RegisteredItems(string path)
         var heldChildren = HeldChildren(held);
         var withheld = Withheld?.Invoke() ?? new HashSet<uint>();
         var keeps = current.Keeps.Inventory - ReservedInventory;
-        var attachments = Attachments(current.File);
-        foreach (var item in current.Admitted.Where(i => !Locked(i) && !withheld.Contains(i.MixId) && (!i.IsDifficulty || have.Contains(i.CopyOf)))) /* a difficulty not before level 10 is unlocked */
+        var attachments = current.Attachments.Where(a => !AttachmentLocked(a)).ToList();
+        foreach (var item in current.Admitted.Where(i => !Locked(i, current) && !withheld.Contains(i.MixId) && (!i.IsDifficulty || have.Contains(i.CopyOf)))) /* a difficulty not before level 10 is unlocked */
         {
             var own = HeldWith(item, current, saved, attachments);
             var mirrored = item.IsWeapon && !current.ByWeapon.ContainsKey(item.MixId) ? heldChildren.GetValueOrDefault(item.CopyOf) ?? [] : [];
@@ -670,7 +682,7 @@ public sealed class RegisteredItems(string path)
     // pattern's item; each pattern whole, or not at all, while the game's inventory entries hold them.
     void AddPatternsHeld(JsonArray held, HashSet<uint?> have, IReadOnlyList<PatternPlan> plans, int keeps)
     {
-        foreach (var plan in plans)
+        foreach (var plan in plans.Where(p => !PatternLocked(p)))
         {
             List<uint> own = plan.Pattern.IsWeapon ? [.. plan.Weapons.Where(w => have.Contains(w)).Select(w => WeaponChild(plan.Pattern.MixId, w))] : [plan.UnitMixId];
             own.RemoveAll(m => have.Contains(m));
@@ -809,22 +821,6 @@ public sealed class RegisteredItems(string path)
     static string ModOf(JsonElement item) => NameOf(item, "mod");
 
     static string NameOf(JsonElement item, string key) => item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : "";
-
-    // A premium mod the player does not own, or a copy of a premium base they do not own; a stratagem whose base cannot be
-    // found yet stays out too, until the game has loaded its stratagems.
-    bool Locked(Item item)
-    {
-        if (LockedMods.Contains(item.Mod)) return true;
-        if (OwnsBase == null || item.IsDifficulty) return false;
-        return BaseItem(item) is not { } baseItem || !OwnsBase(baseItem);
-    }
-
-    // The base's own item: a weapon's is copyOf; a stratagem's is the parent of the catalogue child whose itemId is its stable id.
-    uint? BaseItem(Item item)
-    {
-        if (!item.IsStratagem) return item.CopyOf;
-        return Game()?.StratagemItems.TryGetValue(item.CopyOf, out var parent) == true ? parent : null;
-    }
 
     static void RaiseDifficultyCap(JsonObject client, uint level)
     {

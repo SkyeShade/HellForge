@@ -55,7 +55,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 ### SDK 2
 
-- `add_weapon`: `uint32_t (HfMod* mod, const HfWeapon* weapon)`. Adds a new arsenal weapon (see HfWeapon). HellForge adds it to the game's entity data when that loads, to the armory, and to the backend's item catalogue and the player's inventory; it behaves exactly like its base except for what the mod changes in its own records. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the mod's log says why).
+- `add_weapon`: `uint32_t (HfMod* mod, const HfWeapon* weapon)`. Adds a new arsenal weapon (see HfWeapon). HellForge adds it to the game's entity data when that loads, to the armory, and to the backend's item catalogue and the player's inventory (a copy of premium content only to a player who owns the original); it behaves exactly like its base except for what the mod changes in its own records. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the mod's log says why).
 - `weapon_entity`: `uint64_t (uint32_t weapon)`. The entity resource of a weapon any mod added (its loadout id), for component_record; 0 if there is none.
 
 ### SDK 3

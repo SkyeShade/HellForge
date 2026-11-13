@@ -36,6 +36,17 @@ public sealed class ProfileStore : IDisposable
     // When set, inventory responses follow its premium rules; Super Credits are never served either way.
     public OwnershipFilter? Ownership { get; set; }
 
+    // Whether a grant may give an item (OwnershipFilter.Grantable); with no rules (tests, the development backend) only
+    // Super Credits are refused.
+    public bool Grantable(uint mixId, JsonArray inventory) =>
+        Ownership?.Grantable(mixId, inventory) ?? (!PaidContentSet.IsSuperCredits(mixId) || PaidContentSet.IsForgeCredits(mixId));
+
+    // The saved inventory section, which the last gate reads the held warbond tokens from.
+    public JsonElement InventorySection()
+    {
+        lock (gate) return JsonSerializer.SerializeToElement(profile["inventory"], BackendJson.Default.JsonNode);
+    }
+
     ProfileStore(JsonObject profile, string? filePath, FileStream? lease, bool created)
     {
         this.profile = profile;

@@ -919,7 +919,8 @@ static const char* LiveContentMake(char* why, size_t size, int* failed)
     LiveEditsFollow();
     *failed = !LiveSteps(&plan);
     WriteRegisteredItems();
-    Note("live content: %d write(s) under one freeze (%d page(s)); %d catalogue record(s) added, %d item(s) owned, %d given back", g_lcWriteCount,
-        g_lcPageCount, plan.items.added, plan.items.owned, plan.items.taken);
+    Note("live content: %d write(s) under one freeze (%d page(s)); %d catalogue record(s) added, %d item(s) owned, %d given back, %d not owned "
+        "(the player does not hold what it copies, or it is not in the catalogue)", g_lcWriteCount, g_lcPageCount, plan.items.added, plan.items.owned,
+        plan.items.taken, plan.items.unowned);
     return NULL;
 }
