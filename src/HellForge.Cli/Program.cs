@@ -65,6 +65,8 @@ try
                      [--deal-subfactions yes | no] [--deal-seaf yes | no] [--war-seed <number> | random]
                      [--share-mods yes | no] [--list-public yes | no] [--show-edited-stats yes | no] [--host-stats yes | no]
             mod-sync [--install <folder>] [--untrust <mod id> --hash <hash>] [--block <mod id>] [--unblock <mod id>] [--delete-downloaded yes]
+            mod-sync-offer [--install <folder>] [--run <session folder>] [--answer accept | decline | restart | trust | block | open --version <offer version> [--mod <mod id>]]
+            weapon-levels [--install <folder>] [--profile <name>] [--set <package>=<level>,... | --all <level>]
             logs [--install <folder>] [--run <session id>] [--export <file.zip> | --crash-report <file.zip> [--dump yes | no]]
 
             inspect prints JSON; prepare makes a full, hash-verified, unpatched copy; supported-build lists a
@@ -180,6 +182,8 @@ try
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
         "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--strangers", "--live-changes", "--forge-credits", "--game-options", "--deal-subfactions", "--deal-seaf", "--war-seed", "--share-mods", "--list-public", "--show-edited-stats", "--host-stats"],
         "mod-sync" => ["--install", "--untrust", "--hash", "--block", "--unblock", "--delete-downloaded"],
+        "mod-sync-offer" => ["--install", "--run", "--answer", "--version", "--mod"],
+        "weapon-levels" => ["--install", "--profile", "--set", "--all"],
         "logs" => ["--install", "--run", "--export", "--crash-report", "--dump"],
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
@@ -269,6 +273,12 @@ try
             break;
         case "mod-sync":
             result = Launch.ModSync(options);
+            break;
+        case "mod-sync-offer":
+            result = Launch.ModSyncOfferCommand(options);
+            break;
+        case "weapon-levels":
+            result = Launch.WeaponLevelsCommand(options);
             break;
         case "settings":
             result = Launch.Settings(options);

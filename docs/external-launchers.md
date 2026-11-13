@@ -72,6 +72,8 @@ standard error and exits with 1.
 | `mod-order --ids <id,id,...>` | Puts the listed mods first, top first, in that order. The others keep their order after them. Gameplay mods stay above cosmetic ones, so the order changes within each group. |
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
+| `weapon-levels [--profile <name>] [--set <package>=<level>,... \| --all <level>]` | Prints a profile's weapon levels, as the profile page's Weapon levels card shows them, and sets them between sessions (see [Weapon levels](#weapon-levels)). |
+| `mod-sync-offer [--answer <answer> --version <n> [--mod <id>]]` | Prints the running session's MOD SYNC offer and sends the player's answer, as the Play page's MOD SYNC card does (see [The MOD SYNC prompt](#the-mod-sync-prompt)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended. `--run` adds one session's files. `--export` zips a session's logs, and `--crash-report` makes its crash report (see [Logs](#logs)). |
 | `play` | Starts a session (see [Sessions](#sessions)). |
 | `stop [--run <run folder>] [--wait yes] [--now yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. `--now yes` ends the game at once instead of asking it to close first. |
@@ -253,6 +255,23 @@ Mods page does:
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
 
+### Weapon levels
+
+`weapon-levels` prints the selected profile's weapon mastery levels, or another profile's with `--profile <name>`:
+
+```json
+{"profile": "default", "used": true,
+ "weapons": [{"package": 3391943729, "weapon": "AA035309", "name": "AR-23 Liberator", "maxLevel": 25, "level": 4, "mod": false}]}
+```
+
+- `package` is the weapon's mastery track, and the id `--set` takes. `mod` is a mod weapon's own track.
+- The names come from the newest session, so before a first session some weapons show as `Weapon <id>`.
+- `used` is `false` until a session has filled the profile. Its levels cannot be set before that.
+- `--set <package>=<level>,...` sets the listed weapons. `--all <level>` sets every weapon, each held at its top level.
+- Setting a level adds the items each level up to it gives, and takes nothing away, as SAVE LEVELS does. Level `0`
+  removes the weapon's progress.
+- Both are refused while a session runs. The next session uses the new levels.
+
 ## Sessions
 
 ```text
@@ -312,6 +331,31 @@ so handle them too.
 
 One session runs at a time on a PC, because the game runs only once. `play` refuses while one is running, in any
 installation.
+
+### The MOD SYNC prompt
+
+When a player joins a host with other gameplay mods, the session offers the host's mods
+([multiplayer-mod-sync.md](multiplayer-mod-sync.md)). With the in-game editor on, the game shows the MOD SYNC prompt
+itself. Without it, HellForge.exe shows the offer on its Play page, and `mod-sync-offer` lets your launcher do the same.
+
+`mod-sync-offer` prints the newest session's offer (`--run <run folder>` picks another session), or `"offer": null`
+when none waits:
+
+- `inGamePrompt` is `true` when the editor mod is on, so the game shows the prompt itself.
+- `offer.version` numbers the offer, and `offer.state` is `offer`, `downloading`, `ready`, `blocked` or `failed`.
+- `offer.answers` lists the answers its buttons send, the main one first. `accept` downloads the host's mods and
+  restarts, `restart` joins with the mods already here, and `decline` cancels or closes the offer.
+- Each mod in `offer.mods` has its `action`: `have`, `download`, `manual`, `blocked`, `update`, `off` or `trust`.
+- A mod whose action is `trust` carries `trustWarning`, the prompt's TRUST warning, and `offer.trustNote` is the line
+  under it. `stranger: true` means the host is not the player's Steam friend.
+- `live: true` means the running game can take the host's mods without a restart.
+
+`--answer <answer> --version <n>` sends the player's choice for the offer they were shown, and the session takes it
+within a second. A newer offer refuses an old version, so read it again and show it first. `trust`, `block` and `open`
+(open the mod's page) name the mod with `--mod <id>`.
+
+Show `trustWarning` in full before you send `trust`, and make the player confirm it, as the prompt does. A trusted mod
+runs its own code or unchecked data on the player's PC.
 
 ### The lobby browser API
 

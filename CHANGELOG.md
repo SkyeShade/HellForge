@@ -332,6 +332,10 @@ On `dev`, since 0.4.0-beta.
   `--war-seed`, and the Sharing card's switches `--share-mods`, `--list-public`, `--show-edited-stats` and
   `--host-stats`. The new `mod-sync` lists the trusted, blocked and downloaded mods, and untrusts, blocks, unblocks or
   deletes the downloads ([profiles and settings](docs/external-launchers.md#profiles-and-settings), #391).
+- **The CLI reaches weapon levels and the MOD SYNC prompt.** `weapon-levels` reads and sets a profile's weapon mastery
+  levels between sessions, as the profile page does. `mod-sync-offer` shows the running session's MOD SYNC offer, with
+  each mod's TRUST warning, and sends the player's answer, as the Play page's card does
+  ([weapon levels](docs/external-launchers.md#weapon-levels), [the MOD SYNC prompt](docs/external-launchers.md#the-mod-sync-prompt)).
 
 ## 0.4.0-beta (2026-11-05)
 

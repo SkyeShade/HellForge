@@ -76,14 +76,10 @@ public partial class MainWindow
         }
         // the running game takes the host's mods without a restart when it can (live mods), as the in-game prompt says
         var join = offer.Live ? "APPLY AND JOIN" : "RESTART TO JOIN";
-        switch (offer.State)
-        {
-            case "offer" when offer.Bytes == 0: Add(join, "restart", true); Add("CANCEL", "decline", false); break;
-            case "offer": Add("DOWNLOAD AND RESTART", "accept", true); Add("CANCEL", "decline", false); break;
-            case "downloading": Add("CANCEL", "decline", false); break;
-            case "ready": Add(join, "restart", true); Add("CANCEL", "decline", false); break;
-            default: Add("OK", "decline", false); break; // blocked or failed: nothing to do but close it
-        }
+        // blocked or failed: nothing to do but close it (OK)
+        var close = offer.State is "offer" or "downloading" or "ready" ? "CANCEL" : "OK";
+        foreach (var answer in offer.Choices)
+            Add(answer switch { "accept" => "DOWNLOAD AND RESTART", "restart" => join, _ => close }, answer, answer != "decline");
         ModSyncPanel.Children.Add(buttons);
         ModSyncCard.IsVisible = true;
     }
@@ -92,23 +88,10 @@ public partial class MainWindow
     // second, so a click meant for the card underneath never trusts a mod. A stranger's says what the sandbox does not stop.
     void RenderTrust(string runDirectory, ModSyncOffer offer, ModSyncOffer.Mod mod)
     {
-        var name = (mod.Name.Length > 0 ? mod.Name : mod.Id) + " " + mod.Version;
-        var host = offer.Host.Length > 0 ? offer.Host : "the host";
-        var warning = offer.Stranger ? (mod.Class == "raw"
-            ? name + " carries game data HellForge cannot check, and " + host + " is not your Steam friend. Through a flaw in the game, data " +
-              "like this can run code on your PC."
-            : name + " runs its own code on your PC, and " + host + " is not your Steam friend.") +
-              " Your game is sandboxed: the mod cannot change your files or reach the internet, but it can read your files and send what it " +
-              "reads to " + host + " through the game. Only trust it if you know where the mod comes from. It will run only while the sandbox is on."
-            : (mod.Class == "raw"
-            ? name + " carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or " +
-              "through a flaw in the game run code on your PC that can do anything your Windows account can."
-            : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your " +
-              "files, or install other programs.") + " Only trust it if you trust " + host + " and know where the mod comes from.";
+        var warning = offer.TrustWarning(mod);
         ModSyncPanel.Children.Add(new TextBlock { Text = "TRUST THIS MOD?", Classes = { "h2" }, Foreground = Brush.Parse("#E05555"), Margin = new(0) });
         ModSyncPanel.Children.Add(new TextBlock { Text = warning, TextWrapping = TextWrapping.Wrap });
-        ModSyncPanel.Children.Add(new TextBlock { Text = "HellForge still checks that every file you download is exactly the one " + host +
-            " has. You can take the trust back on the Mods page (MOD SYNC).", TextWrapping = TextWrapping.Wrap, Classes = { "muted" } });
+        ModSyncPanel.Children.Add(new TextBlock { Text = offer.TrustNote, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new(0, 6, 0, 0) };
         var trust = new Button { Content = "TRUST THIS MOD", Classes = { "primary" }, IsEnabled = false };
         trust.Click += (_, _) => { modSyncTrust = null; AnswerModSync(runDirectory, offer, "trust", mod.Id); };
