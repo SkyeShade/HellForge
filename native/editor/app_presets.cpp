@@ -513,7 +513,7 @@ void DrawPresets(float y0, float h)
     float W = PANEL_W;
     g_cv.Rect(0, y0, W, h, PANEL, 1);
     g_cv.Text("PRESETS", 20, y0 + 24, T(20, TEXT, ui::TITLE));
-    g_cv.Text("HD2R Editor presets (.hd2rpreset.json) in the editor's presets folder. IMPORT stages their values for APPLY; SAVE OVER replaces one with your saved changes.",
+    g_cv.Text("HD2R Editor presets (.hd2rpreset.json). IMPORT stages one for APPLY; SAVE OVER replaces it with your changes.",
         20, y0 + 47, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, W - 520));
     float bx = W - 20;
     bx -= 150; if (Button("EXPORT", {bx, y0 + 16, 150, 34}, NORMAL, ui::Id("presetexport"))) ExportPreset();
