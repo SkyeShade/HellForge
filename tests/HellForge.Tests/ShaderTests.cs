@@ -369,7 +369,8 @@ static class ShaderTests
             Refused(() => Built(Load(Bytes(Item(stages[0] - 2, Convert.ToHexString(gpu, stages[0] - 2, 4), "00000000"))), "bytes-edge"), "inside the shader stage");
             Refused(() => Built(Load(Bytes(Item(gpu.Length - 2, "0000", "00000000"))), "bytes-short"), "must be as long");
             Refused(() => Built(Load(Bytes(Item(gpu.Length - 2, "00000000", "00000000"))), "bytes-far"), "outside the GPU part");
-            Refused(() => Load(Bytes(Item(0x280, "DEAD", "0102"), Item(0x281, "AD", "02"))), "twice");
+            Refused(() => Load(Bytes(Item(0x280, "DEAD", "0102"), Item(0x281, "AD", "02"))), "bytes[0] and bytes[1] both write 0x281");
+            Refused(() => Load(Bytes(Item(0x281, "AD", "02"), Item(0x280, "DEAD", "0102"))), "bytes[1] and bytes[0] both write 0x281");
             Refused(() => Load(Bytes()), "bytes lists nothing");
             Refused(() => Load(""), "needs stages or bytes");
             Refused(() => Load(",\"stages\":[]" + Bytes(Item(0x280, "DEADBEEF", "01020304"))), "stages lists nothing");
@@ -377,8 +378,22 @@ static class ShaderTests
             foreach (var name in new[] { "bytes-pin", "bytes-stage", "bytes-edge", "bytes-far" })
                 check(!Directory.Exists(Path.Combine(root, name)), $"A refused edit must write nothing ({name}).");
             var stageEnd = stages[0] + size;
-            check(Built(Load(Bytes(Item(stageEnd, Convert.ToHexString(gpu, stageEnd, 4), "00000000"))), "bytes-after").Gpu.AsSpan(stageEnd, 4).SequenceEqual(new byte[4]),
-                "The bytes right after a stage are outside it.");
+            Refused(() => Built(Load(Bytes(Item(stageEnd, Convert.ToHexString(gpu, stageEnd, 4), "00000000"))), "bytes-id"), $"touch the stage id at 0x{stageEnd:X}");
+            Refused(() => Built(Load(Bytes(Item(0x1C2, Convert.ToHexString(gpu, 0x1C2, 2), "0000"))), "bytes-record"), "touch the stage id at 0x1C0");
+            check(Built(Load(Bytes(Item(stageEnd + 4, Convert.ToHexString(gpu, stageEnd + 4, 4), "01000000"))), "bytes-after").Gpu.AsSpan(stageEnd + 4, 4).SequenceEqual(new byte[] { 1, 0, 0, 0 }),
+                "The bytes after a stage's id are outside it.");
+
+            var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(gpu));
+            string Pin(string pin) => $",\"gpu\":{pin}" + Bytes(Item(0x280, "DEADBEEF", "01020304"));
+            check(BitConverter.ToUInt32(Built(Load(Pin($"{{\"size\":{gpu.Length},\"sha256\":\"{sha}\"}}")), "pin-both").Gpu, 0x280) == 0x04030201u, "A matching pin must let the edit through.");
+            Refused(() => Built(Load(Pin($"{{\"size\":{gpu.Length + 4}}}")), "pin-size"), $"has {gpu.Length} bytes, not the {gpu.Length + 4} the spec pins");
+            Refused(() => Built(Load(Pin($"{{\"sha256\":\"{new string('0', 64)}\"}}")), "pin-sha"), $"SHA-256 is {sha}, not the");
+            Refused(() => Load(Pin("{}")), "pin size, sha256 or both");
+            Refused(() => Load(Pin("{\"sha256\":\"00\"}")), "64 hex digits");
+            Refused(() => Load(Pin("{\"size\":0}")), "size is the GPU part's length");
+            Refused(() => Load(Pin("{\"crc\":1}")), "unknown field crc");
+            foreach (var name in new[] { "bytes-id", "bytes-record", "pin-size", "pin-sha" })
+                check(!Directory.Exists(Path.Combine(root, name)), $"A refused edit must write nothing ({name}).");
         });
     }
 

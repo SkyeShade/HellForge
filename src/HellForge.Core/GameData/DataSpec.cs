@@ -44,9 +44,10 @@ public sealed record ShaderFile(int Offset, string Dxbc, HostStage? Host = null)
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
 // A game resource edited in place: each stage is the signed DXBC container at At in the GPU part, which must carry Digest,
 // with bytes set at offsets inside the container.
-public sealed record EditResource(string Where, ulong Type, ulong Id, IReadOnlyList<StageEdit> Stages, IReadOnlyList<BytesEdit> Bytes) : DataResource(Where);
+public sealed record EditResource(string Where, ulong Type, ulong Id, IReadOnlyList<StageEdit> Stages, IReadOnlyList<BytesEdit> Bytes, GpuPin? Gpu) : DataResource(Where);
 public sealed record StageEdit(int At, byte[] Digest, IReadOnlyList<(int Offset, byte[] Bytes)> Set);
 public sealed record BytesEdit(int At, byte[] Expect, byte[] Set);
+public sealed record GpuPin(int? Size, byte[]? Sha256);
 public sealed record IconResource(string Where, string Name, string Png, string Prepare) : DataResource(Where);
 // A compiled shader in a named host (mappings/shader-hosts.json), under the mod's name; Mesh for a host that draws one.
 public sealed record ShaderResource(string Where, string Host, string Name, string Dxbc, MeshFile? Mesh) : DataResource(Where);
@@ -543,11 +544,23 @@ public static partial class DataSpecs
     // pinned by the game's own bytes there, so another game build or a wrong offset is refused before anything is written.
     static EditResource ReadEdit(JsonElement e, string at)
     {
-        Fields(e, at, "type", "edit", "stages", "bytes");
+        Fields(e, at, "type", "edit", "gpu", "stages", "bytes");
         var stages = e.TryGetProperty("stages", out _) ? ReadStages(e, at) : [];
         var bytes = e.TryGetProperty("bytes", out _) ? ReadBytes(e, at) : [];
         if (stages.Count == 0 && bytes.Count == 0) throw new InvalidDataException($"{at}: an edit needs stages or bytes.");
-        return new EditResource(at, Type(e, at), Id(Property(e, "edit", at), at), stages, bytes);
+        return new EditResource(at, Type(e, at), Id(Property(e, "edit", at), at), stages, bytes, e.TryGetProperty("gpu", out var gpu) ? ReadGpuPin(gpu, $"{at}.gpu") : null);
+    }
+
+    // "gpu": { "size", "sha256" }: the whole GPU part as the spec was written for. Offsets that are right on one build can
+    // land in a moved table on the next, where each expect alone may still match.
+    static GpuPin ReadGpuPin(JsonElement e, string at)
+    {
+        Fields(e, at, "size", "sha256");
+        int? size = e.TryGetProperty("size", out var s) ? (s.ValueKind == JsonValueKind.Number && s.TryGetInt32(out var n) && n > 0 ? n : throw new InvalidDataException($"{at}: size is the GPU part's length in bytes.")) : null;
+        byte[]? sha = e.TryGetProperty("sha256", out _) ? HexBytes(Text(e, "sha256", at), $"{at}.sha256") : null;
+        if (sha != null && sha.Length != 32) throw new InvalidDataException($"{at}: sha256 is the GPU part's SHA-256 (64 hex digits).");
+        if (size == null && sha == null) throw new InvalidDataException($"{at}: pin size, sha256 or both.");
+        return new(size, sha);
     }
 
     static List<StageEdit> ReadStages(JsonElement e, string at)
@@ -587,9 +600,10 @@ public static partial class DataSpecs
             bytes.Add(new(Offset(Text(item, "at", where), where), expect, set));
         }
         if (bytes.Count == 0) throw new InvalidDataException($"{at}: bytes lists nothing.");
-        var sorted = bytes.OrderBy(x => x.At).ToList();
+        var sorted = bytes.Select((x, i) => (x.At, x.Set.Length, Index: i)).OrderBy(x => x.At).ToList();
         for (var i = 1; i < sorted.Count; i++)
-            if (sorted[i - 1].At + sorted[i - 1].Set.Length > sorted[i].At) throw new InvalidDataException($"{at}: bytes writes 0x{sorted[i].At:X} twice.");
+            if (sorted[i - 1].At + sorted[i - 1].Length > sorted[i].At)
+                throw new InvalidDataException($"{at}: bytes[{sorted[i - 1].Index}] and bytes[{sorted[i].Index}] both write 0x{sorted[i].At:X}.");
         return bytes;
     }
 

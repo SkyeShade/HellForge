@@ -96,7 +96,7 @@ public static class ModDataBuilder
         {
             var key = new ResourceKey(edit.Type, edit.Id);
             var source = Read(key, From(edit));
-            try { AddResource(resources, edit.Where, key, source with { Gpu = ShaderSplice.EditBytes(ShaderSplice.EditStages(source.Gpu, edit.Stages), edit.Bytes) }); }
+            try { AddResource(resources, edit.Where, key, source with { Gpu = ShaderSplice.EditBytes(ShaderSplice.EditStages(ShaderSplice.Pinned(source.Gpu, edit.Gpu), edit.Stages), edit.Bytes) }); }
             catch (InvalidDataException error) when (!error.Message.StartsWith(edit.Where, StringComparison.Ordinal))
             {
                 throw new InvalidDataException($"{edit.Where} ({ResourceTypes.Describe(edit.Type)} 0x{edit.Id:X16}): {error.Message}");

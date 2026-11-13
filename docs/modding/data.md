@@ -216,13 +216,14 @@ game's place. It edits the GPU part, for a fix the game's shader gets wrong: byt
 bytes outside them (`bytes`), or both.
 
 ```json
-{ "type": "shader_library", "edit": "0xC4DE51720B9CD9DB",
+{ "type": "shader_library", "edit": "0xC4DE51720B9CD9DB", "gpu": { "size": 52848 },
   "stages": [{ "at": "0x106C", "digest": "<32 hex digits>", "set": { "0x1A4": "0B000032..." } }],
   "bytes": [{ "at": "0x614", "expect": "32329E2A", "set": "<8 hex digits>" }] }
 ```
 
 | Field | Value |
 |---|---|
+| `gpu.size`, `gpu.sha256` | optional: the GPU part's length and SHA-256 on the game build the edit was written for |
 | `stages[].at` | where the stage's DXBC container starts in the resource's GPU part |
 | `stages[].digest` | the game container's digest (its bytes 4 to 19, as hex) |
 | `stages[].set` | offsets inside the container, past its chunk table, and the bytes written there, as hex in file order |
@@ -232,6 +233,11 @@ bytes outside them (`bytes`), or both.
 
 - HellForge signs each edited container again and keeps its stage id, so the game uses it instead of its own.
 - HellForge writes bytes outside the stages as they are, with no signing. Bytes inside a container are refused there.
+- A stage's id is refused too: the 4 bytes after its container and each other place that value stands, such as its
+  program's record.
+- Pin `gpu` when an edit renames a value in several places: an update that moves a table can leave each `expect`
+  matching, so only some places change. `size` is usually enough: the part's header can change between game builds
+  where nothing you edit does, and `sha256` refuses those builds too.
 - The digest and `expect` tie the edit to one game build: on another build, or at a wrong offset, the mod's data is
   refused.
 - A HellForge older than this field refuses the whole mod, as it does any field it does not know.
