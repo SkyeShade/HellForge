@@ -145,7 +145,7 @@ public partial class MainWindow
         var install = new InstallLayout(paths.InstallRoot);
         assetFetch = new CancellationTokenSource();
         var cancel = assetFetch.Token;
-        void Status(string text) => Dispatcher.UIThread.Post(() => { assetFetchStatus = text; RefreshMods(); });
+        void Status(string text) => Dispatcher.UIThread.Post(() => { assetFetchStatus = text; DrawMods(); });
         Status("Connecting to Steam...");
         try
         {
@@ -185,7 +185,7 @@ public partial class MainWindow
     // What sign-in shows, on the card (from SteamKit2's threads, so through the UI thread).
     sealed class AssetPrompt(MainWindow window) : ISignInPrompt
     {
-        public void ShowQr(string challenge) => Dispatcher.UIThread.Post(() => { window.assetQr = QrGeometry(challenge); window.RefreshMods(); });
-        public void Status(string text) => Dispatcher.UIThread.Post(() => { window.assetFetchStatus = text; window.RefreshMods(); });
+        public void ShowQr(string challenge) => Dispatcher.UIThread.Post(() => { window.assetQr = QrGeometry(challenge); window.DrawMods(); });
+        public void Status(string text) => Dispatcher.UIThread.Post(() => { window.assetFetchStatus = text; window.DrawMods(); });
     }
 }

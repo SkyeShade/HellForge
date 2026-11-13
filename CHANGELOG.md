@@ -185,6 +185,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **The Mods page no longer freezes the launcher when it opens.** With many mods, each click on 03 MODS froze the
+  window for about half a second while the page read the mods folder and drew every row again. It now reads in the
+  background, shows the page as it was at once, and redraws only what changed, a few rows at a time.
 - **Ship navigation after a larger map.** The ship's obstacles were filed while the navigation grid still had a
   larger map's 256 m tiles, so the ship's navmesh could miss them or cut them in the wrong place. A grid change now
   files every obstacle again under the new grid (#378).
