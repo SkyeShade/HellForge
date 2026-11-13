@@ -326,9 +326,9 @@ if(-not $SkipSmoke){
 # C++ linker, which it finds through vswhere). Each is signed when a certificate is configured (Sign-Files.ps1; Smart App
 # Control blocks unsigned programs), before engine.json hashes them. The backend comes first: its signed folder's digest
 # (HellForge.Core BackendPin) is compiled into the session, which then starts no other backend.
-function Publish-App([string]$Folder,[string]$Project,[string]$Target,[string[]]$Properties){
+function Publish-App([string]$Folder,[string]$Csproj,[string]$Target,[string[]]$Properties){
     Write-Output ('Compiling '+$Folder+' (NativeAOT)')
-    dotnet publish (Join-Path $project $Project) -c Release -p:DebugType=none -p:DebugSymbols=false @Properties --nologo -v q -o $Target
+    dotnet publish (Join-Path $project $Csproj) -c Release -p:DebugType=none -p:DebugSymbols=false @Properties --nologo -v q -o $Target
     if($LASTEXITCODE){throw ('Compiling '+$Folder+' failed.')}
     Get-ChildItem -LiteralPath $Target -File|Where-Object {$_.Extension -in @('.pdb','.dbg','.map')}|Remove-Item
     & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path $Target
