@@ -92,7 +92,7 @@ typedef struct HfWeapon
 {
     uint32_t size;           /* sizeof(HfWeapon) */
     uint32_t base;           /* the weapon it copies: a vanilla loadout id (HF_ITEM_..., or the session's arsenal.tsv), or
-                              * another mod's weapon (then its premium rule is that weapon's base's) */
+                              * another mod's weapon (then its premium rule is that weapon's base's; 8 copies deep at most) */
     /* Its model: a unit resource the mod's data provides (a copy of the base's unit with other materials, say). The name
      * also identifies the weapon: its entity is the name's hash and its loadout id the top 32 bits of that, so every
      * player's game agrees. Keep it unique, prefixed with your name and mod. */

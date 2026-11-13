@@ -193,9 +193,10 @@ HellForge does most of this for you.
 
 - **The session's backend locks copies of premium content.** A weapon, stratagem, pattern or attachment your mod
   makes as a copy of premium content is in a player's armory only when that player owns the original. Such a copy can
-  be of a premium warbond's weapon, a Superstore weapon or the Super Citizen Edition's MP-98 Knight. A copy of another
-  mod's weapon follows that weapon's original. The copy still exists on every machine, so friends with and without it
-  play together; a player without it cannot equip it.
+  be of a premium warbond's weapon, a Superstore weapon or the Super Citizen Edition's MP-98 Knight. The copy still
+  exists on every machine, so friends with and without it play together; a player without it cannot equip it.
+- **A copy of another mod's weapon follows that weapon's original,** up to 8 copies deep; a longer chain is locked. A
+  mod added while the game runs follows the same rules.
 - **Your items' ids must be new.** HellForge makes them from your names. An item whose id, or a child's id, is the
   game's own or a paid item's is refused, and the backend's log names your mod.
 - **Declare what your mod recreates or builds on** in the manifest's `premium` list, when it is not a plain copy.
@@ -236,7 +237,8 @@ Cosmetic packs in the community's format have no `hellforge-mod.json` and cannot
 premium look as a data mod with a manifest instead.
 
 These checks run on the player's own PC. HellForge decides what is paid from an id list compiled into it, not from
-the installation's catalogue, and checks every item its backend gives last. A session also refuses a backend that is
+the installation's catalogue. Its backend serves the catalogue's paid entries from that list and checks every reply
+that gives an item, a mod warbond's purchases included. A session also refuses a backend that is
 not the one it was built with. None of this stops a player who changes HellForge itself: a replaced session, or one
 whose compiled pin was edited, starts any backend.
 
