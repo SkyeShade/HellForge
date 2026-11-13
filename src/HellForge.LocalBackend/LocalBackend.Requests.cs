@@ -132,16 +132,26 @@ public static partial class LocalBackend
             if (Profile != null && request.Path.Value is "/Progression/ShipName" or "/Progression/OnboardingState")
                 return await ShipNameOrOnboardingAsync(context, Profile);
             if (Startup.TryGet(request.Path.Value ?? "", out var startupBody, out var source))
-            {
-                // Weapons code mods registered this session join the catalogue, packages and inventory (RegisteredItems);
-                // premium warbonds the account does not own have no price in it (OwnershipFilter).
-                var served = RegisteredItems?.Apply(request.Path.Value!, startupBody) ?? startupBody;
-                // mods' warbonds: their list entries, spent counters and, on unlock-all, their purchases (ModWarbondService)
-                served = ModWarbonds?.Apply(request.Path.Value!, served) ?? served;
-                if (request.Path.Value == "/Progression/items" && Profile?.Ownership is { } ownership) served = ownership.FilterCatalogueResponse(served);
-                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, served);
-            }
+                return OtherMethod(context, HttpMethods.IsGet, "GET") ?? new Reply(StatusCodes.Status200OK, source, Serve(request.Path.Value!, startupBody));
             return Unsupported();
+        }
+
+        // A startup body as served. Weapons code mods registered this session join the catalogue, packages and inventory
+        // (RegisteredItems), then mods' warbonds their list entries, spent counters and, on unlock-all, their purchases
+        // (ModWarbondService). The last gate runs after both (OwnershipFilter.Gate.cs).
+        JsonElement Serve(string path, JsonElement body)
+        {
+            var served = RegisteredItems?.Apply(path, body) ?? body;
+            served = ModWarbonds?.Apply(path, served) ?? served;
+            if (Profile?.Ownership is not { } ownership) return served;
+            return path switch
+            {
+                "/Progression/items" => ownership.FilterCatalogueResponse(served),
+                "/Progression/inventory" => ownership.GateInventory(served, Profile.InventorySection()),
+                "/Progression" => ownership.FilterProgressionResponse(served, Profile.InventorySection()),
+                "/Progression/ProgressionPackages" => ownership.FilterPackagesResponse(served, Profile.InventorySection()),
+                _ => served
+            };
         }
 
         // The launcher's Mods page while the session runs: what a change would do (GET), or make it (POST)

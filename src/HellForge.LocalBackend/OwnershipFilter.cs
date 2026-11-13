@@ -17,7 +17,7 @@ namespace HellForge.LocalBackend;
 // Everything else passes through. Without a verified snapshot no paid item is served.
 // A profile that earns its warbonds (EarnWarbonds: every template but unlock-all) is not handed the premium warbond tokens
 // the account owns: it buys each one with Forge Credits (Purchases.WarbondToken), and only then is the warbond open.
-public sealed class OwnershipFilter
+public sealed partial class OwnershipFilter
 {
     readonly Dictionary<uint, JsonObject> owned = [];
     // Each premium warbond token's warbond's tokens: one priced in Super Credits, and most have one priced in another item.
