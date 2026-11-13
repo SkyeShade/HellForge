@@ -200,6 +200,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Spore Burst Strain planets show it on the war table.** "All planets open" dealt the Spore Burst Strain like the other
+  subfactions, but without its war-table flag, so no planet showed it and only the others seemed to be there. Its flag
+  (effect 1386) is served and dealt with it now.
 - **The Mods page no longer freezes the launcher when it opens.** With many mods, each click on 03 MODS froze the
   window for about half a second while the page read the mods folder and drew every row again. It now reads in the
   background, shows the page as it was at once, and redraws only what changed, a few rows at a time.
