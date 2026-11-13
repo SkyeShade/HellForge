@@ -518,6 +518,10 @@ static void RemapFired(catalog::Remap& remap, const std::vector<HfContent>& all)
         if (ReadU32("ProjectileWeaponComponentData", likeEntity, 0, &a) && ReadU32("ProjectileWeaponComponentData", copyEntity, 0, &b) && a != b &&
             ModAdded(all, HF_KIND_PROJECTILE, b))
             remap.projectile[a] = b;
+        uint64_t da, db; /* a spray's damage is in the weapon's own record (SprayWeaponComponentData +0xC8) */
+        if (ReadU32("SprayWeaponComponentData", likeEntity, 0xC8, &da) && ReadU32("SprayWeaponComponentData", copyEntity, 0xC8, &db) && da != db &&
+            ModAdded(all, HF_KIND_DAMAGE, db))
+            remap.damage[da] = db;
     }
     for (auto& [a, b] : remap.projectile)
     {

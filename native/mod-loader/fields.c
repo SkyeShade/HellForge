@@ -1093,6 +1093,7 @@ static HfContent WeaponContent(const Weapon* w, uint32_t size)
     c.base_entity = w->copies;
     c.beam = BeamTypeUsable(w->beam) ? w->beam : 0;
     c.arc = ArcTypeUsable(w->arc) ? w->arc : 0;
+    c.spray_damage = DamageUsable(w->sprayDamage) ? w->sprayDamage : 0;
     return c;
 }
 

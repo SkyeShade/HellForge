@@ -2906,6 +2906,72 @@ static void OwnAllFixture(void)
     g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL; g_game = was;
 }
 
+/* Sprays (HfWeapon.spray_damage; registry_load.c OwnSpray): the weapon's own SprayWeaponComponentData record with the
+ * damage in it and its base's unchanged; a damage not installed keeps the base's; a base that does not spray changes
+ * nothing; add_weapon refuses a damage no mod added, and an older HfWeapon has none. */
+static void SprayFixture(void)
+{
+    uintptr_t was = g_game;
+    uint32_t damageCount = g_damageCount;
+    int damageState = g_damageState;
+    g_weaponCount = g_ownedCount = g_componentCount = 0;
+    const uint64_t flamer = 0x39AB99895147A3BFull, hot = 0x77, cold = 0x78, rifle = 0x1234;
+    uint8_t* game = calloc(1, REG_STATE_GLOBAL + 8);
+    uint8_t* state = calloc(1, REG_LIST + 8);
+    g_game = (uintptr_t)game; memcpy(game + REG_STATE_GLOBAL, &state, 8);
+    const uint32_t slots = 46, stride = REG_SPRAY_WEAPON_STRIDE, at = REG_SPRAY_DAMAGE_AT;
+    uint8_t* t = FakeTable(REG_SPRAY_WEAPON, slots * 16 + 24 * stride);
+    SetStatePointer(state, REG_TABLES + 8 * REG_SPRAY_WEAPON, t);
+    FakeRow(t, slots, flamer, 20);
+    FakeRow(t, slots, hot, 20); /* the registry's rows of a copy: its base's record until it owns one */
+    FakeRow(t, slots, cold, 20);
+    memcpy(t + slots * 16 + 20 * stride + at, &(uint32_t){14}, 4);
+    assert(SlotsOf(REG_SPRAY_WEAPON) == slots);
+
+    g_damageCount = 1; g_damageState = 1; /* one mod damage, installed: DMG_VANILLA */
+    Weapon w;
+    memset(&w, 0, sizeof w);
+    w.mod = &g_mods[0]; w.entity = hot; w.sprayDamage = DMG_VANILLA;
+    snprintf(w.name, sizeof w.name, "fixture/hot-flamer");
+    OwnSpray(state, &w, flamer);
+    t = StatePointer(state, REG_TABLES + 8 * REG_SPRAY_WEAPON); /* HellForge's copy of the table */
+    uint32_t mine, theirs, damage;
+    memcpy(&mine, FindRow(t, slots, 16, hot) + 8, 4);
+    memcpy(&theirs, FindRow(t, slots, 16, flamer) + 8, 4);
+    assert(theirs == 20 && mine != theirs);
+    memcpy(&damage, t + slots * 16 + (size_t)mine * stride + at, 4); assert(damage == DMG_VANILLA);
+    memcpy(&damage, t + slots * 16 + (size_t)theirs * stride + at, 4); assert(damage == 14);
+
+    /* not installed: keeps the base's; its base does not spray: nothing changes */
+    g_damageState = -1;
+    w.entity = cold;
+    OwnSpray(state, &w, flamer);
+    memcpy(&mine, FindRow(t, slots, 16, cold) + 8, 4);
+    memcpy(&damage, t + slots * 16 + (size_t)mine * stride + at, 4); assert(damage == 14);
+    g_damageState = 1;
+    uint32_t next = g_owned[0].next;
+    w.entity = hot;
+    OwnSpray(state, &w, rifle);
+    assert(g_owned[0].next == next);
+
+    /* add_weapon's check: a damage no mod added refused; vanilla and added taken; an older HfWeapon has no spray_damage */
+    HfWeapon def = {sizeof def};
+    Weapon x;
+    memset(&x, 0, sizeof x);
+    def.spray_damage = DMG_VANILLA + 1;
+    assert(WeaponSpray(&g_mods[0], "fixture/unit", &def, &x) == 1 && x.sprayDamage == 0);
+    def.spray_damage = 28;
+    assert(WeaponSpray(&g_mods[0], "fixture/unit", &def, &x) == 0 && x.sprayDamage == 28);
+    def.spray_damage = DMG_VANILLA;
+    assert(WeaponSpray(&g_mods[0], "fixture/unit", &def, &x) == 0 && x.sprayDamage == DMG_VANILLA);
+    x.sprayDamage = 0;
+    def.size = (uint32_t)offsetof(HfWeapon, spray_damage);
+    assert(WeaponSpray(&g_mods[0], "fixture/unit", &def, &x) == 0 && x.sprayDamage == 0);
+
+    g_damageCount = damageCount; g_damageState = damageState;
+    g_weaponCount = g_ownedCount = g_componentCount = 0; g_game = was;
+}
+
 /* Game events: listeners by priority, the queue, and the sources against synthetic game memory and fake originals. */
 static char g_heard[64];
 static int g_heardCount;
@@ -4713,6 +4779,7 @@ int main(int argc, char** argv)
         StatsSaveSnapshot();
     }
     OwnAllFixture();
+    SprayFixture();
     {
         /* the crash note names modules: an address in kernel32, none for the null page or a heap block */
         char where[160];
@@ -4790,7 +4857,7 @@ int main(int argc, char** argv)
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
-        "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; registered items: a full registry's export, names escaped; "
+        "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; sprays: a record of its own with its damage, refusals; registered items: a full registry's export, names escaped; "
         "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again");
     return 0;
 }

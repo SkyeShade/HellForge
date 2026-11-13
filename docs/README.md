@@ -38,6 +38,8 @@ The modding guide, in reading order:
    [The asset kit](modding/assets.md): sharing patch files made from the game's resources without Arrowhead's bytes.
 6. [Content](modding/content.md): changing and adding weapons, projectiles, stratagems, entities, behaviours, abilities
    and difficulties.
+   [Projectiles and damage](modding/projectiles.md): projectiles, damage types, explosions, beams, arcs and sprays of a
+   mod's own.
    [New enemies](modding/enemies.md): enemies with roster rows and squads of their own, and replacement rules.
    [Patterns](modding/patterns.md): patterns of a mod's own for weapons, vehicles, the hellpod and the Pelican.
    [Warbonds](modding/warbonds.md): warbonds of a mod's own, selling game items and its weapons and stratagems.

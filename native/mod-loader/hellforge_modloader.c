@@ -522,6 +522,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 static void ChannelInstall(uintptr_t game);
 #include "registry.c"
 #include "table_growth.c" /* the component tables the registry grows */
+#include "registry_fired.c" /* what a weapon fires: its beam or arc type, its spray damage */
 #include "registry_load.c" /* the registry at work when the entity data loads */
 #include "damage.c"
 #include "beam_arc.c"

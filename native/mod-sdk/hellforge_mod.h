@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 18
+#define HF_MOD_SDK_VERSION 19
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -127,6 +127,10 @@ typedef struct HfWeapon
      * is in the type's row. */
     uint32_t beam;
     uint32_t arc;
+    /* SDK 19: the damage its spray deals (a vanilla damage id, or one add_damage returned; 0: its base's). Its base must
+     * spray (a flamethrower, the Sterilizer: a SprayWeaponComponentData record): a spray has no shared settings row,
+     * so the weapon gets that record of its own with the damage in it (docs/modding/content.md "Sprays"). */
+    uint32_t spray_damage;
 } HfWeapon;
 
 /* A part of an entity (SDK 17, HfEntity.parts): a component's name ("#52": its number) and the entity whose record it takes. */
@@ -778,6 +782,8 @@ typedef struct HfContent
     /* SDK 17, a weapon: the beam and arc it fires of a mod's (0: its base's) */
     uint32_t beam;
     uint32_t arc;
+    /* SDK 19, a weapon: the damage its spray deals of a mod's (0: its base's) */
+    uint32_t spray_damage;
 } HfContent;
 
 typedef struct HfEventInfo

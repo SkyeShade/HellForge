@@ -5832,6 +5832,41 @@
       "appliesVerified": false,
       "appliesSource": "entities copy their type's records when they are made"
     },
+    "SprayWeapon": {
+      "component": "SprayWeaponComponentData",
+      "index": 315,
+      "stride": 224,
+      "layout": "25480438",
+      "meaning": "a spray weapon (flamethrowers, the Sterilizer, enemy sprays): the damage its spray deals and the projectiles an enemy spray throws, all in the weapon's own record (no shared settings row)",
+      "fields": {
+        "link_radius": {
+          "offset": 16,
+          "type": "f32",
+          "meaning": "Radius of the capsule joining consecutive spray projectiles (metres; 0: none, as on every player flamer)",
+          "verified": false,
+          "source": "game.dll 0x67DDC0 and 0x67F3D0 run the pass only when it is above 0 and size the capsule by it; research spray-registry"
+        },
+        "projectile": {
+          "offset": 196,
+          "type": "u32",
+          "meaning": "the projectile type an enemy spray throws (0 on every player flamer: the spray is its particle effect)",
+          "verified": true,
+          "source": "game.dll 0x67DC10 copies it into the spray instance (+0x80) and 0x67F3D0 indexes the projectile list with it; research spray-registry",
+          "ref": "projectile"
+        },
+        "damage": {
+          "offset": 200,
+          "type": "u32",
+          "meaning": "the damage id its spray deals (DamageInfo; 0 on enemy sprays, whose projectile deals it)",
+          "verified": true,
+          "source": "game.dll 0x6807B0 makes it the hit's DamageInfo id (source +0x24) for InitHitInfo 0x12A15E0; research spray-registry",
+          "ref": "damage"
+        }
+      },
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "entities copy their type's records when they are made"
+    },
     "BoosterSettings": {
       "component": "BoosterSettings",
       "table": true,

@@ -823,6 +823,11 @@ static const SdkField kSdkFieldsWeaponRounds[] = {
 static const SdkField kSdkFieldsArcWeapon[] = {
     {"fire_rate", 4, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
 };
+static const SdkField kSdkFieldsSprayWeapon[] = {
+    {"link_radius", 16, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"projectile", 196, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_PROJECTILE},
+    {"damage", 200, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_DAMAGE},
+};
 static const SdkField kSdkFieldsBoosterSettings[] = {
     {"granted_stratagem", 4, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
     {"tuning", 8, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
@@ -1221,6 +1226,7 @@ static const SdkComponent kSdkComponents[] = {
     {"WeaponReload", "WeaponReloadComponentData", 25480438u, 80u, kSdkFieldsWeaponReload, 21, 0, 113},
     {"WeaponRounds", "WeaponRoundsComponentData", 25480438u, 136u, kSdkFieldsWeaponRounds, 7, 0, 117},
     {"ArcWeapon", "ArcWeaponComponentData", 25480438u, 80u, kSdkFieldsArcWeapon, 1, 0, 265},
+    {"SprayWeapon", "SprayWeaponComponentData", 25480438u, 224u, kSdkFieldsSprayWeapon, 3, 0, 315},
     {"BoosterSettings", "BoosterSettings", 25480438u, 56u, kSdkFieldsBoosterSettings, 2, 1, -1},
     {"PassiveModifier", "PassiveModifier", 25480438u, 16u, kSdkFieldsPassiveModifier, 2, 1, -1},
     {"PassiveStat", "PassiveStat", 25480438u, 12u, kSdkFieldsPassiveStat, 3, 1, -1},
