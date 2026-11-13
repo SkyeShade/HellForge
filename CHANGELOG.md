@@ -327,11 +327,11 @@ On `dev`, since 0.4.0-beta.
 - **`mods` shows what the Mods page shows.** Each mod now has `unsupported`, `premium` (the premium items it was built
   on), `url` and `icon`. A source mod also has its `build`: built, failed to compile (with the compiler's message) or
   due at the next session. The tags add `native`, `premium` and `unsupported`
-  ([source mod builds](docs/external-launchers.md#source-mod-builds)).
+  ([source mod builds](docs/external-launchers.md#source-mod-builds), #390).
 - **The CLI reaches the war options and mod sync.** `settings` takes `--deal-subfactions`, `--deal-seaf` and
   `--war-seed`, and the Sharing card's switches `--share-mods`, `--list-public`, `--show-edited-stats` and
   `--host-stats`. The new `mod-sync` lists the trusted, blocked and downloaded mods, and untrusts, blocks, unblocks or
-  deletes the downloads ([profiles and settings](docs/external-launchers.md#profiles-and-settings)).
+  deletes the downloads ([profiles and settings](docs/external-launchers.md#profiles-and-settings), #391).
 
 ## 0.4.0-beta (2026-11-05)
 
