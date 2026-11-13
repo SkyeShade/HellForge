@@ -26,6 +26,8 @@ them:
                 suppressed   the Suppressed flag (WeaponData +112) of the support weapons
                 fire rate    the rate of fire (ProjectileWeapon +8, and its slots +4 and +12 where set)
                 reticle      the third-person reticle (WeaponData +400) where the weapon has one
+  durable       a vehicle's durable damage share, the default zone's (+268) and each zone's (+0xCC), as entity pages
+                show them
 """
 import json
 import struct
@@ -117,6 +119,28 @@ def weapon_rows(weapons, owner_of, tables, add):
                 for key, value in (('fire_rate.modes.x', slots[0]), ('weapon.fire_rate', slots[1]), ('fire_rate.modes.z', slots[2])):
                     if value > 0:
                         add('weapons', name, entry(key, amr[key], resource=resource, record=record))
+
+
+DURABLE_NOTE = 'Share of durable damage taken (1 = full; 0 = none)'
+
+
+def durable_rows(vehicles, tables, add):
+    """A vehicle's durable damage share: the default zone's and each zone's its page shows (entity pages' Durable resistance)."""
+    for name, v in vehicles.items():
+        health = next(f for f in v['fields'] if f['key'] == 'entity.health')
+        common = {'kind': 'component', 'component': 'HealthComponentData', 'resource': health['resource'], 'record': health['record'],
+                  'storage': 'f32', 'min': 0, 'max': 10, 'unit': 'ratio', 'shared': False, 'label': 'Durable resistance', 'note': DURABLE_NOTE}
+        add('vehicles', name, dict(common, key='entity.durable_resistance', offset=268, section='Health & Armor'))
+        sections = {}
+        for f in v['fields']:
+            if f['key'].startswith('zone_'):
+                sections[int(f['key'][5:f['key'].index('.')])] = f['section']
+        raw = tables.component('HealthComponentData').raw(health['record'])
+        for z in sorted(sections):
+            base = ZONE_BASE + z * ZONE_STRIDE
+            if struct.unpack_from('<I', raw, base + 96)[0] == 0:
+                continue  # an unpopulated zone slot
+            add('vehicles', name, dict(common, key=f'zone_{z}.durable_resistance', offset=base + 204, section=sections[z]))
 
 
 def main(dev6, out):
@@ -321,6 +345,8 @@ def main(dev6, out):
                 sections[int(f['key'][5:f['key'].index('.')])] = f['section']
         explosion_fields('vehicles', name, health['resource'], health['record'], [(z, f'zone_{z}') for z in sorted(sections)],
                          section='Health & Armor', zone_sections=sections)
+
+    durable_rows(vehicles, tables, add)
 
     count = sum(len(fs) for c in added.values() for fs in c.values())
     data = {'format': 1, 'build': '25480438',

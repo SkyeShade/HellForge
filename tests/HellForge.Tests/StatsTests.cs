@@ -227,7 +227,7 @@ static class StatsTests
             check(patriot.Select(s => s.Title).SequenceEqual(["Hellpod / Call-in", "Weapon · Left gun", "Weapon · Right gun", "Health & Armor", "Damage Zones"]),
                 "Patriot page: " + string.Join(", ", patriot.Select(s => s.Title)));
             check(patriot[4].Groups.Select(g => g.Title).Take(4).SequenceEqual(["Cockpit front left", "Cockpit front right", "Cockpit rear", "Hips"]) &&
-                patriot[4].Groups.All(g => g.Rows.Count == 5), "Zones by their native names, armor, health and share each, and their explosion share.");
+                patriot[4].Groups.All(g => g.Rows.Count == 6), "Zones by their native names, armor, health and share each, their explosion share and durable damage share.");
             var fields = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
             check(fields["zone_2.armor"] is { Component: "HealthComponentData", Offset: 1840 } && fields["rotation.turn_speed"].Component == "RotationComponentData",
                 "Zone fields at +736 + 552 per zone; the exosuit's rotation.");
@@ -328,6 +328,8 @@ static class StatsTests
                 weapons["GL-28 Belt-Fed Grenade Launcher"].Fields.ContainsKey("fire_rate.modes.z"), "The BFGL's rate of fire and its slots");
             check(weapons["LAS-98 Laser Cannon"].Fields["weapon.third_person_reticle"] is { Offset: 400 } reticle &&
                 reticle.Choices.Any(c => c.Value == 11), "The Laser Cannon's third-person reticle, its own style named");
+            var patriot = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
+            check(patriot["entity.durable_resistance"].Offset == 268 && patriot["zone_0.durable_resistance"] is { Offset: 724, Section: not null }, "A vehicle's durable damage share, default and per zone");
             var shield = StatsSchema.Current.Targets["backpacks"]["SH-20 Ballistic Shield Backpack"].Fields;
             check(shield["zone.explosive_damage_percentage"].Offset == 844 && shield["entity.explosive_damage_percentage"].Record == 292, "The ballistic shield's explosion shares.");
             var row = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "SH-20 Ballistic Shield Backpack")!["page"]!.AsArray()
