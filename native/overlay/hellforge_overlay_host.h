@@ -28,6 +28,9 @@ typedef struct HfOverlayStart
     void* window;            /* the game's HWND, or NULL: then the swap chain's own window */
     const char* font_body;   /* the game's regular face (fs-sinclair.ttf), UTF-8 path; NULL or missing: ImGui's own */
     const char* font_title;  /* its medium face (fs-sinclair-medium.ttf); NULL or missing: the body face */
+    /* The game's own mouse pointer (an HCURSOR) for its window, or NULL when unknown. While a modal screen has the
+     * mouse the host shows it instead of drawing ImGui's arrow. Optional: a start without it ends at font_title. */
+    void* (*game_cursor)(void* user, void* window);
 } HfOverlayStart;
 
 /* Hooks the swap chain and starts drawing with the next frame. Call once the game's renderer is up. 0 started (or

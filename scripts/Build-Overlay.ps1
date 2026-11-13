@@ -78,6 +78,15 @@ $exe=Join-Path $tests 'overlay_host_test.exe'
     -I (Join-Path $project 'native/overlay') -I $imgui -I (Join-Path $minHook 'include') (Join-Path $project 'native/overlay/test/overlay_host_test.cpp') @hookObjects `
     -ld3d11 -ld3d12 -ldxgi -lgdi32 -o $exe
 if($LASTEXITCODE){throw 'The overlay host test did not compile.'}
+# The mouse pointer's test needs a window but no swap chain: input.cpp with ImGui's core and Win32 backend.
+$core=@('imgui','imgui_draw','imgui_tables','imgui_widgets','imgui_demo','imgui_impl_win32')|ForEach-Object{Join-Path $objects ($_+'.o')}
+$cursorExe=Join-Path $tests 'overlay_cursor_test.exe'
+& $zig c++ @common -Wall -Werror -Wno-unused-parameter (Join-Path $project 'native/overlay/test/overlay_cursor_test.cpp') (Join-Path $project 'native/overlay/input.cpp') `
+    @core -ldwmapi -lgdi32 -luser32 -o $cursorExe
+if($LASTEXITCODE){throw 'The overlay cursor test did not compile.'}
+Write-Output '== cursor'
+& $cursorExe
+if($LASTEXITCODE){throw 'The overlay cursor test failed.'}
 # name, then the environment of that run: SDR on both APIs, then HDR10 and scRGB forced (an SDR desktop shows the values)
 $runs=@(
     @('screen12',@{}),

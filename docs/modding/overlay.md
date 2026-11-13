@@ -113,6 +113,9 @@ scRGB first, so dimming looks the same in SDR and HDR.
 Only the open modal screen added last gets buttons, wheel and keys. Every other screen gets the mouse position only. A
 screen's own key and Esc never show up in `keys`: the host takes them to open and close it.
 
+While a modal screen is open, the mouse shows as the game's own pointer, the one its menus use. When the host cannot
+find that pointer, for example after a game update, it draws Dear ImGui's arrow instead. `modloader.log` says which.
+
 ## Threads and limits
 
 - `draw` and `opened` run on the host's render thread, inside the game's Present. Keep them short: the frame waits.

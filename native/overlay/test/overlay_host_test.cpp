@@ -3,7 +3,8 @@
  * demo modal screen that uses every HfDraw call, and a non-modal one over it. It presses the modal screen's key, sends
  * mouse and keys, closes it with its key, with Esc and with hf_overlay_show, and resizes the swap chain. Each
  * screenshot is the back buffer read just before the real Present, after the host drew into it, and is checked pixel
- * by pixel against what the screens drew, in the back buffer's own encoding.
+ * by pixel against what the screens drew, in the back buffer's own encoding. The stand-in loader offers a game pointer
+ * for the first opening and none for the second: the host shows it, or ImGui draws its arrow.
  * Usage: overlay_host_test.exe <hellforge_overlay.dll> [<screenshot.bmp>]
  * HELLFORGE_OVERLAY_TEST_D3D11=1: Direct3D 11 instead of 12. HELLFORGE_OVERLAY_TEST_FORMAT=rgba8 (default) | rgb10a2 | fp16.
  * HELLFORGE_OVERLAY_HDR=pq:200 or scrgb:200 (read by the host): its colours must come out PQ-encoded or scRGB.
@@ -70,9 +71,10 @@ static int Hook(void*, uintptr_t target, void* detour, void** original)
 }
 
 /* ---- the "game": its window, device and frames ---- */
-static int g_gameKeys[256], g_gameButtons, g_gameWheel;
+static int g_gameKeys[256], g_gameButtons, g_gameWheel, g_gameSetCursor;
 static LRESULT CALLBACK GameProc(HWND window, UINT message, WPARAM w, LPARAM l)
 {
+    if (message == WM_SETCURSOR) g_gameSetCursor++;
     if (message == WM_KEYDOWN && w < 256) g_gameKeys[w]++;
     if (message == WM_LBUTTONDOWN) g_gameButtons++;
     if (message == WM_MOUSEWHEEL) g_gameWheel++;
@@ -425,6 +427,24 @@ static int HudDraw(void*, const HfDraw* d, const HfInput* in, float)
     return !in->closing;
 }
 
+/* ---- the game's own pointer, as the loader's game_cursor gives it ---- */
+static HCURSOR g_pointer;
+static bool g_offerPointer = true;
+static void* GamePointer(void*, void*) { return g_offerPointer ? g_pointer : NULL; }
+/* ShowCursor's count on this (the window's) thread */
+static int CursorCount() { int count = ShowCursor(TRUE); ShowCursor(FALSE); return count - 1; }
+static void SetCursorMessage(HWND window) { SendMessageW(window, WM_SETCURSOR, (WPARAM)window, MAKELPARAM(HTCLIENT, WM_MOUSEMOVE)); }
+/* Bright samples where ImGui's arrow would be, with its tip at the mouse (640, 360 pixels: 960, 540 units). */
+static int ArrowSamples()
+{
+    float white[3];
+    Expected(TEXT, white);
+    int lit = 0;
+    for (float y = 540; y < 568; y += 1.5f)
+        for (float x = 960; x < 978; x += 1.5f) lit += Near(Pixel(x, y), white);
+    return lit;
+}
+
 /* ---- the run ---- */
 static void Key(HWND window, WPARAM key) { SendMessageW(window, WM_KEYDOWN, key, 0); SendMessageW(window, WM_KEYUP, key, 0xC0000000); }
 static void Click(HWND window, int x, int y)
@@ -554,7 +574,13 @@ int main(int argc, char** argv)
     HfScreen clash = {sizeof clash, "Clash", 'M', 0, NULL, HudDraw, NULL, NULL};
     Check(add(&clash) == 0, "a second screen on the same key is refused");
     const char* font = getenv("HELLFORGE_OVERLAY_TEST_FONT");
-    HfOverlayStart s = {sizeof s, NULL, Log, Hook, window, font, font};
+    uint8_t andMask[128], xorMask[128];
+    memset(andMask, 0x0F, sizeof andMask);
+    memset(xorMask, 0xF0, sizeof xorMask);
+    g_pointer = CreateCursor(GetModuleHandleW(NULL), 0, 0, 32, 32, andMask, xorMask);
+    ShowCursor(FALSE); /* hidden, as a game in play has it */
+    int hidden = CursorCount();
+    HfOverlayStart s = {sizeof s, NULL, Log, Hook, window, font, font, GamePointer};
     Check(start(&s) == 0, "hf_overlay_start");
     HfScreen hud = {sizeof hud, "HUD", 0, 0, NULL, HudDraw, NULL, NULL};
     int hudId = add(&hud);
@@ -601,8 +627,23 @@ int main(int argc, char** argv)
             Check(g_demo.sawQ && fabsf(g_demo.wheelSeen - 2) < 0.01f, "keys and wheel: Q %s, wheel %.1f notches", g_demo.sawQ ? "seen" : "missing", g_demo.wheelSeen);
             Check(fabsf(g_demo.width - 1920) < 0.5f && fabsf(g_demo.pixels - 720 / 1080.0f) < 0.001f, "units: %.1f wide, %.4f pixels a unit", g_demo.width, g_demo.pixels);
         }
+        if (frame == 19)
+        {
+            int before = g_gameSetCursor;
+            SetCursorMessage(window);
+            Check(GetCursor() == g_pointer && g_pointer != NULL, "the screen shows the game's pointer");
+            Check(g_gameSetCursor == before, "the game's window procedure does not get WM_SETCURSOR while the screen is open");
+            Check(CursorCount() >= 0 && hidden < 0, "the hidden cursor is shown (count %d, hidden %d)", CursorCount(), hidden);
+            Check(Logged("screens show the game's own mouse pointer"), "the log says the game's pointer is used");
+        }
         if (frame == 20) g_wantShot = true;
-        if (frame == 21) { SaveShot(shot); if (!g_shot.empty()) CheckDrawing(); else Check(false, "a screenshot was read"); g_demo.wantUpdate = true; }
+        if (frame == 21)
+        {
+            SaveShot(shot);
+            if (!g_shot.empty()) CheckDrawing(); else Check(false, "a screenshot was read");
+            if (!g_shot.empty()) Check(ArrowSamples() == 0, "no ImGui arrow drawn at the mouse (%d bright samples)", ArrowSamples());
+            g_demo.wantUpdate = true;
+        }
         if (frame == 24) g_wantShot = true;
         if (frame == 25)
         {
@@ -642,10 +683,24 @@ int main(int argc, char** argv)
             CheckAt(1700, 800, game, "backdrop after the resize");
         }
         if (frame == 50) { Key(window, 'M'); Click(window, 300, 300); }
-        if (frame == 51) Check(g_gameButtons == buttonsBefore + 1, "closing: the game has the mouse again at once");
+        if (frame == 51)
+        {
+            Check(g_gameButtons == buttonsBefore + 1, "closing: the game has the mouse again at once");
+            int before = g_gameSetCursor;
+            SetCursorMessage(window);
+            Check(g_gameSetCursor == before + 1 && CursorCount() == hidden, "closed: WM_SETCURSOR is the game's again, its cursor count back to %d (%d)", hidden,
+                  CursorCount());
+        }
         if (frame == 60)
             Check(g_demo.closingFrames == 5 && g_demo.closedCalls == 1, "the key closed it: %d closing frames drawn, opened(0) %d time(s)", g_demo.closingFrames, g_demo.closedCalls);
-        if (frame == 62) { g_demo.closingFrames = 0; Key(window, 'M'); }
+        if (frame == 61) g_offerPointer = false;
+        if (frame == 62) { g_demo.closingFrames = 0; Key(window, 'M'); SendMessageW(window, WM_MOUSEMOVE, 0, MAKELPARAM(640, 360)); }
+        if (frame == 63)
+        {
+            Check(Logged("screens draw ImGui's arrow"), "no game pointer: the log says ImGui's arrow is drawn");
+            g_wantShot = true;
+        }
+        if (frame == 64) { SaveShot(NULL); Check(!g_shot.empty() && ArrowSamples() > 5, "no game pointer: ImGui's arrow at the mouse (%d bright samples)", ArrowSamples()); }
         if (frame == 66) { int esc = g_gameKeys[VK_ESCAPE]; Key(window, VK_ESCAPE); Check(g_gameKeys[VK_ESCAPE] == esc, "Esc closes the modal screen, not the game's menu"); }
         if (frame == 76) Check(g_demo.opened == 2 && g_demo.closedCalls == 2, "Esc closed it (opened %d, closed %d)", g_demo.opened, g_demo.closedCalls);
         if (frame == 80) { g_demo.closingFrames = 0; show(demoId, 1); }

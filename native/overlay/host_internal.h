@@ -26,6 +26,8 @@ void DrawScreens(float width, float height, float dt);
 bool ScreenKey(UINT key);
 /* The screen that has the input now (the last open modal one), for Esc; 0 none. */
 int CapturingScreen();
+/* The loader's game_cursor for the game's window; NULL when it gave none or knows none. */
+HCURSOR GameCursor();
 
 /* ---- input.cpp: the window procedure and the cursor ---- */
 void HookCursor();
@@ -34,6 +36,11 @@ void ResetInput();
 /* This frame's input for the screen that has it (mouse in back-buffer pixels until DrawScreens scales it). */
 void TakeInput(HfInput* out, bool captured, float width, float height, float unitsPerPixel);
 void ReleaseCursorClip();
+/* After a capture change: the game's pointer while a screen has the mouse (NULL: ImGui draws its arrow). */
+void FollowCursor(bool captured);
+/* Whether ImGui draws its arrow this frame: the game hides its cursor in play, and the game's pointer is unknown. */
+bool ImGuiDrawsCursor(bool captured);
+extern HCURSOR volatile g_gameCursor;
 
 /* ---- present.cpp: the swap chain's and the queue's hooks ---- */
 bool HookPresent();
