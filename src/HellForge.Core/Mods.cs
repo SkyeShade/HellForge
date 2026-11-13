@@ -1086,10 +1086,14 @@ public static class ModSettings
 
     public static HashSet<string> Disabled(string modsFolder) => Read(modsFolder).Disabled;
 
-    public static void SetEnabled(string modsFolder, string id, bool enabled) => Change(modsFolder, state =>
+    public static void SetEnabled(string modsFolder, string id, bool enabled) => SetEnabled(modsFolder, [id], enabled);
+
+    // Several mods with one write (ModBatch.Switch).
+    public static void SetEnabled(string modsFolder, IEnumerable<string> ids, bool enabled) => Change(modsFolder, state =>
     {
-        if (enabled) state.Disabled.Remove(id);
-        else state.Disabled.Add(id);
+        foreach (var id in ids)
+            if (enabled) state.Disabled.Remove(id);
+            else state.Disabled.Add(id);
     });
 
     // The Mods page's order, top first.
