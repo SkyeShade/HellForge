@@ -310,11 +310,20 @@ static class Launch
         problems.InsertRange(0, dropped);
         var active = ModCatalog.Active(mods);
         var gameplay = active.Count(ModCatalog.Counted);
+        var sdk = mods.Any(m => m.HasSource) ? ModSdk.Find(install.Root) : null;
+        var toolsReady = sdk != null && ModKit.ToolsReady(sdk);
         return new
         {
             mods = mods.Select(m => new
             {
                 m.Id, m.Name, m.Version, m.Description, m.Enabled,
+                // why this HellForge can't run it (the Mods page's UNSUPPORTED), or null
+                unsupported = m.Unsupported,
+                // a source mod's last build (ModBuilds.Status: state, when, the compiler's message), or null
+                build = ModBuilds.Status(install, m, sdk, toolsReady),
+                // the premium items it was built on (PremiumContent): the session locks it for an account that lacks them
+                premium = m.Premium.Select(p => new { requirement = p, name = PremiumContent.Describe(p) }),
+                m.Url, m.Icon,
                 group = m.Cosmetic ? "cosmetic" : ModCatalog.Tier(m) == CoopTier.PerPlayer ? "per-player" : "gameplay",
                 tags = Tags(m),
                 m.Folder, archive = m.Archive != null ? Path.Combine(install.Mods, m.Archive) : null,
@@ -338,12 +347,15 @@ static class Launch
     {
         var tags = new List<string>();
         if (mod.HasCode) tags.Add(mod.HasSource ? "source" : "code");
+        if (mod.HasNative) tags.Add("native");
         if (mod.Stats.Count > 0) tags.Add("stats");
         if (mod.DataFiles.Count > 0 || mod.HasDataSpec) tags.Add("data");
         if (mod.Pack != null) tags.Add("pack");
         if (mod.Lua) tags.Add("lua");
         if (BundledMods.ShippedFiles(mod.Folder) != null) tags.Add("bundled");
         if (mod.Id == ModCatalog.LocalStatsId) tags.Add("local-stats");
+        if (mod.Premium.Count > 0) tags.Add("premium");
+        if (mod.Unsupported != null) tags.Add("unsupported");
         return tags;
     }
 

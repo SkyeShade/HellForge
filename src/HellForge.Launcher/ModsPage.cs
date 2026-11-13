@@ -592,21 +592,19 @@ public partial class MainWindow
     // Read by the page's load, on a worker thread (the key hashes the mod's sources and the SDK's headers).
     static (string Text, IBrush Colour)? BuildStateOf(ModManifest mod, string? installRoot, ModSdk? sdk, bool toolsReady)
     {
-        if (!mod.HasSource || installRoot == null) return null;
-        var record = ModBuilds.Record(new InstallLayout(installRoot), mod.Id);
-        bool current;
-        try { current = record != null && sdk != null && toolsReady && record.Key == ModBuilds.Key(mod.Folder, sdk, SupportedBuild.Current.BuildId); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        if (installRoot == null) return null;
+        var status = ModBuilds.Status(new InstallLayout(installRoot), mod, sdk, toolsReady);
+        if (status == null) return null;
+        return status.State switch
         {
-            return ("Its sources could not be read: " + Privacy.Scrub(error.Message), Orange);
-        }
-        return record == null ? ("Built from its sources when a session starts.", Light)
-            : record.Error != null && ModBuilds.ToolsFailure(record.Error)
-                ? ("Its last build failed in the mod tools (Zig), not in the mod: the next session unpacks Zig again and builds it.", Orange)
-            : record.Error != null && current ? ("Did not compile; it stays off until fixed (Build now compiles it again):\n" + record.Error, Red)
-            : record.Error != null ? ("Its last build did not compile; the sources changed since, so the next session builds it again.", Orange)
-            : current ? ($"Built {record.Built.ToLocalTime():g}; sessions reuse this build until its sources change.", Light)
-            : ("Its sources, the SDK or the game build changed: the next session builds it again.", Orange);
+            "unreadable" => ("Its sources could not be read: " + Privacy.Scrub(status.Error!), Orange),
+            "not-built" => ("Built from its sources when a session starts.", Light),
+            "tools-failed" => ("Its last build failed in the mod tools (Zig), not in the mod: the next session unpacks Zig again and builds it.", Orange),
+            "did-not-compile" => ("Did not compile; it stays off until fixed (Build now compiles it again):\n" + status.Error, Red),
+            "changed" when status.Error != null => ("Its last build did not compile; the sources changed since, so the next session builds it again.", Orange),
+            "built" => ($"Built {status.Built!.Value.ToLocalTime():g}; sessions reuse this build until its sources change.", Light),
+            _ => ("Its sources, the SDK or the game build changed: the next session builds it again.", Orange)
+        };
     }
 
     Control Details(ModManifest mod, (string Text, IBrush Colour)? build)

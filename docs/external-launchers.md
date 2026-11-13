@@ -65,7 +65,7 @@ standard error and exits with 1.
 |---|---|
 | `status` | Prints the versions (HellForge, engine, mod SDK, game build), readiness (`ready.gameCopy`, `ready.sessionRunner`, `ready.linuxNamespace`), how the copy is kept off the internet (`networkBlock`: `wfp`, `firewall` or `linux-netns`), the launcher's settings, the last session, whether one is running, and the language packs in the copy (`languages`; English is always there). |
 | `profiles` | Lists the profiles (name, template, folder, used, selected) and the templates. `--create <name> --template <template>` makes a profile; the name is 1 to 32 lowercase letters, digits or hyphens. |
-| `mods` | Prints the Mods page's list, top first. Each mod has its id, name, version, description, enabled, group, tags, folder, archive (its zip, if it came as one), removable, and a pack's options. Also printed: the folder's problems, the modlist code friends compare (null when no gameplay mod is on) and the path of `hellforge-mods.json`. |
+| `mods` | Prints the Mods page's list, top first. Each mod has its id, name, version, description, enabled, group, tags, folder, archive (its zip, if it came as one), removable, and a pack's options. It also has `unsupported` (why this HellForge can't run it, or null), `premium` (the premium items it was built on, each with its `requirement` and `name`), `url`, `icon`, and a source mod's `build` (see [Source mod builds](#source-mod-builds)). Also printed: the folder's problems, the modlist code friends compare (null when no gameplay mod is on) and the path of `hellforge-mods.json`. |
 | `mod-add --file <path>` | Adds a mod the way the Mods page's "Add mods..." does: a `.zip`, `.rar` or `.7z`, a folder mod's `hellforge-mod.json`, or a cosmetic pack's `manifest.json`. A mod with the same id is replaced (an update). Give `--file` more than once to add several (see [Several mods at once](#several-mods-at-once)). |
 | `mod-remove --id <id>` | Deletes the mod's zip or folder. Mods HellForge ships (tag `bundled`) come back by themselves: switch these off instead. Local Stats (tag `local-stats`) cannot be removed. `--ids <id,id,...>` removes several. |
 | `mod-switch --id <id> --on yes\|no` | Switches a mod on or off. Local Stats (tag `local-stats`) is always on and refuses `--on no`. `--ids <id,id,...>` switches several. |
@@ -135,6 +135,22 @@ If you write `mods\hellforge-mods.json` yourself, it looks like this:
 | `listPublic` | Default true. Lists the player's own Public lobbies on other HellForge players' Galactic Map. |
 
 Write the whole file at once, to a temporary file and then a rename, as HellForge does.
+
+### Source mod builds
+
+A mod with C or C++ sources is compiled by HellForge before each session. `mods` gives each such mod a `build` with a
+`state`, when it was `built` and the compiler's `error`. Other mods have `build: null`.
+
+| `state` | Meaning |
+|---|---|
+| `not-built` | Never built here. The next session builds it. |
+| `built` | Built at `built`. Sessions reuse it until its sources, the SDK or the game build change. |
+| `did-not-compile` | Its current sources failed; `error` has the compiler's message. The mod stays off until it is fixed. |
+| `tools-failed` | The last build failed in the mod tools (Zig), not the mod. The next session unpacks Zig again. |
+| `changed` | Its sources, the SDK or the game build changed since the last build, so the next session builds it. `error` keeps an old failure's message. |
+| `unreadable` | Its sources could not be read; `error` says why. |
+
+The tags also name `native` (network field types or component writes), `premium` and `unsupported`.
 
 ### Several mods at once
 

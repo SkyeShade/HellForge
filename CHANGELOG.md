@@ -324,6 +324,10 @@ On `dev`, since 0.4.0-beta.
   per mod, so a launcher sending 30 mods no longer waits for 30 reads. Every id is checked first: one unknown or refused
   id changes nothing. The answer counts `done` and `failed` and lists each mod. `mod-order` no longer reads the folder
   twice ([external launchers](docs/external-launchers.md), #389).
+- **`mods` shows what the Mods page shows.** Each mod now has `unsupported`, `premium` (the premium items it was built
+  on), `url` and `icon`. A source mod also has its `build`: built, failed to compile (with the compiler's message) or
+  due at the next session. The tags add `native`, `premium` and `unsupported`
+  ([source mod builds](docs/external-launchers.md#source-mod-builds)).
 
 ## 0.4.0-beta (2026-11-05)
 
