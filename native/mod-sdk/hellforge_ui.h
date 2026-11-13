@@ -9,6 +9,9 @@
 
 /* ui_open kinds */
 #define HF_UI_OVERLAY 0u /* over the game, on the ship and in missions; no cursor of its own (not for clicking) */
+#define HF_UI_MENU 1u    /* a menu, as the game's own: the cursor shows, the player's movement and camera are held, Back
+                          * (Esc) closes it. One mod menu at a time; it opens once no game menu is open. */
 
-/* A click on a named element (ui_on): the screen and the element's name. On the game thread. */
+/* A click on a named element (ui_on): the screen and the element's name. With no element (ui_on(mod, screen, NULL, ...))
+ * it is called when the screen closes (ui_close, or Back on a menu), with element "". On the game thread. */
 typedef void (*HfUiCallback)(struct HfMod* mod, int screen, const char* element, void* user);

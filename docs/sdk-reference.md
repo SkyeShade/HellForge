@@ -217,10 +217,10 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 ### SDK 19: screens in the game's own UI (hellforge_ui.h, docs/modding/ui.md; check hf->size)
 
-- `ui_open`: `int (HfMod* mod, const char* xaml, uint32_t kind)`. Opens a screen: xaml is a file of the mod's folder ("ui/shop.xaml") or XAML text; kind HF_UI_OVERLAY. Its id, or 0 (the mod's log says why). The screen shows at the next game update; 64 across all mods.
+- `ui_open`: `int (HfMod* mod, const char* xaml, uint32_t kind)`. Opens a screen: xaml is a file of the mod's folder ("ui/shop.xaml") or XAML text; kind HF_UI_OVERLAY (over the game, not clickable) or HF_UI_MENU (a menu with the cursor, Back closes it; one at a time). Its id, or 0 (the mod's log says why). The screen shows at the next game update; 64 across all mods.
 - `ui_set`: `int (HfMod* mod, int screen, const char* element, const char* property, const char* value)`. Sets a property of a named element ("" or NULL: the screen's root) from text, as XAML would ("Text", "SUPPLY"; "Visibility", "Collapsed"; "Foreground", "#FFE900"). 0 queued, 1 refused (logged).
-- `ui_on`: `int (HfMod* mod, int screen, const char* element, HfUiCallback callback, void* user)`. Calls back when a named Button (or anything with a Command) is clicked. 0 queued, 1 refused (logged).
-- `ui_close`: `int (HfMod* mod, int screen)`
+- `ui_on`: `int (HfMod* mod, int screen, const char* element, HfUiCallback callback, void* user)`. Calls back when a named Button (or anything with a Command) is clicked; with element NULL, when the screen closes (ui_close, or the player's Back on a menu). 0 queued, 1 refused (logged).
+- `ui_close`: `int (HfMod* mod, int screen)`. Closes one of the mod's screens; a menu closes as the game closes its own. 0 queued, 1 refused (logged).
 
 ## Functions
 
