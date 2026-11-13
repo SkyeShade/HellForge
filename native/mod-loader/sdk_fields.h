@@ -822,6 +822,7 @@ static const SdkField kSdkFieldsWeaponRounds[] = {
     {"spare_rounds", 80, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"rounds_from_supply", 84, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"starting_rounds", 88, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"rounds_per_reload", 92, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsArcWeapon[] = {
     {"fire_rate", 4, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1222,7 +1223,7 @@ static const SdkComponent kSdkComponents[] = {
     {"VehicleMotion", "VehicleMotionComponentData", 25480438u, 456u, kSdkFieldsVehicleMotion, 1, 0, 225},
     {"WeaponCharge", "WeaponChargeComponentData", 25480438u, 216u, kSdkFieldsWeaponCharge, 20, 0, 204},
     {"WeaponReload", "WeaponReloadComponentData", 25480438u, 80u, kSdkFieldsWeaponReload, 21, 0, 113},
-    {"WeaponRounds", "WeaponRoundsComponentData", 25480438u, 136u, kSdkFieldsWeaponRounds, 7, 0, 117},
+    {"WeaponRounds", "WeaponRoundsComponentData", 25480438u, 136u, kSdkFieldsWeaponRounds, 8, 0, 117},
     {"ArcWeapon", "ArcWeaponComponentData", 25480438u, 80u, kSdkFieldsArcWeapon, 1, 0, 265},
     {"BoosterSettings", "BoosterSettings", 25480438u, 56u, kSdkFieldsBoosterSettings, 2, 1, -1},
     {"PassiveModifier", "PassiveModifier", 25480438u, 16u, kSdkFieldsPassiveModifier, 2, 1, -1},

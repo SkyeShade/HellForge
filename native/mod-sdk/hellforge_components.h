@@ -2918,7 +2918,8 @@ typedef struct HfWeaponRounds
     uint32_t spare_rounds;                       /* +0x50 Spare rounds (rounds) (unverified) [respawn?] */
     uint32_t rounds_from_supply;                 /* +0x54 Rounds from supply (rounds) (unverified) [respawn?] */
     uint32_t starting_rounds;                    /* +0x58 Starting rounds (rounds) (unverified) [respawn?] */
-    uint8_t _unknown_5C[44];
+    uint32_t rounds_per_reload;                  /* +0x5C Rounds each reload step loads into the feed and takes from the spare rounds (1: one by one; the AC-8 Autocannon's clip 5) [respawn?] */
+    uint8_t _unknown_60[40];
 } HfWeaponRounds;
 HF_ASSERT_SIZE(HfWeaponRounds, 136);
 HF_ASSERT_OFFSET(HfWeaponRounds, primary_projectile, 64);
@@ -2935,6 +2936,8 @@ HF_ASSERT_OFFSET(HfWeaponRounds, rounds_from_supply, 84);
 #define HF_TYPE_WeaponRounds_rounds_from_supply HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponRounds, starting_rounds, 88);
 #define HF_TYPE_WeaponRounds_starting_rounds HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponRounds, rounds_per_reload, 92);
+#define HF_TYPE_WeaponRounds_rounds_per_reload HF_TYPE_U32
 
 /* ArcWeaponComponentData (component 265, 80-byte records): (from the stats schema) */
 #define HfArcWeapon_INFO "ArcWeaponComponentData", 25480438u

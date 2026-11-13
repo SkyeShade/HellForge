@@ -9587,6 +9587,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `spare_rounds` | +0x50 | u32 | respawn? | Spare rounds (rounds) (unverified) |
 | `rounds_from_supply` | +0x54 | u32 | respawn? | Rounds from supply (rounds) (unverified) |
 | `starting_rounds` | +0x58 | u32 | respawn? | Starting rounds (rounds) (unverified) |
+| `rounds_per_reload` | +0x5C | u32 | respawn? | Rounds each reload step loads into the feed and takes from the spare rounds (1: one by one; the AC-8 Autocannon's clip 5) |
 
 ### HfArcWeapon
 

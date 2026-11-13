@@ -14,6 +14,11 @@ On `dev`, since 0.4.0-beta.
 
 - **The editor's presets can be saved over again.** Each preset in PRESETS has SAVE OVER beside IMPORT, as HD2R
   Editor had: a second click within a few seconds writes your saved changes into that preset, keeping its name.
+- **More weapon rows in the editor.** The Stalwart, FLAM-40, Sterilizer, Epoch, W.A.S.P., Meltagun, Cremator and
+  Breaching Hammer have a reload duration. Weapons that load round by round (shotguns, the Bushwhacker, the Autocannon,
+  revolvers) have Rounds per reload. Support weapons that fire have Suppressed, the BFGL and the Railgun have their
+  rate of fire, and the Laser Cannon, Epoch and Meltagun have their third-person reticle. Mods reach rounds per reload
+  as `rounds_per_reload` on `WeaponRounds`.
 - **Ricochets in the editor.** Every round's flight section has Ricochets, Ricochet angle and Ricochet minimum speed.
   Ricochets 0 keeps a grenade launcher's or grenade pistol's grenade from bouncing off what it hits (they have 1), and
   works on bullets too. Mods reach them as `ricochets`, `ricochet_angle` and `ricochet_min_speed` on a projectile row.

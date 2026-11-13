@@ -5828,6 +5828,13 @@
           "meaning": "Starting rounds (rounds)",
           "verified": false,
           "source": "stats-schema rounds.starting_rounds"
+        },
+        "rounds_per_reload": {
+          "offset": 92,
+          "type": "u32",
+          "meaning": "Rounds each reload step loads into the feed and takes from the spare rounds (1: one by one; the AC-8 Autocannon's clip 5)",
+          "verified": true,
+          "source": "game.dll 0x7768F0 (ReloadMagazine) adds it to the loaded rounds and takes it from the deposit; research editor-requests"
         }
       },
       "applies": "respawn",

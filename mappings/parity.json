@@ -11132,6 +11132,116 @@
    ]
   },
   "weapons": {
+   "40-K Meltagun": [
+    {
+     "key": "reload.duration",
+     "label": "Reload duration override (0 = native)",
+     "kind": "component",
+     "component": "WeaponReloadComponentData",
+     "resource": "0x6CFCC7F8801A0266",
+     "record": 225,
+     "offset": 56,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "seconds",
+     "shared": false,
+     "note": "Seconds the reload takes; 0 keeps the length of its reload animation (game.dll 0x774B60 scales the animation to it)"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x6CFCC7F8801A0266",
+     "record": 331,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    },
+    {
+     "key": "weapon.third_person_reticle",
+     "label": "Third-person reticle",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x6CFCC7F8801A0266",
+     "record": 331,
+     "offset": 400,
+     "storage": "u32",
+     "min": null,
+     "max": null,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       3,
+       "No reticle (3): APW-1 Anti-Materiel Rifle"
+      ],
+      [
+       4,
+       "Assault rifle (4): StA-52 Assault Rifle, AR-11 Arbitrator +55 more"
+      ],
+      [
+       5,
+       "Style 5 (5): MA5C Assault Rifle"
+      ],
+      [
+       6,
+       "Pump shotgun (6): SG-88 Break-Action Shotgun"
+      ],
+      [
+       8,
+       "Pistol (8): P-11 Stim Pistol, P-34 Breacher +1 more"
+      ],
+      [
+       9,
+       "Revolver (9): LAS-13 Trident, LAS-17 Double-Edge Sickle +2 more"
+      ],
+      [
+       10,
+       "Laser (10): LAS-12 Sai, LAS-16 Sickle +3 more"
+      ],
+      [
+       11,
+       "Laser cannon (11): LAS-98 Laser Cannon"
+      ],
+      [
+       12,
+       "Laser pulse cannon (12): LAS-99 Quasar Cannon"
+      ],
+      [
+       14,
+       "Style 14 (14): 40-K Meltagun, PLAS-45 Epoch"
+      ],
+      [
+       15,
+       "Railgun (15): RS-422 Railgun, PLAS-101 Purifier +3 more"
+      ],
+      [
+       16,
+       "Javelin (16): P-33 Missile Pistol, P-92 Warrant +2 more"
+      ],
+      [
+       17,
+       "Throwable (17): CQC-19 Stun Lance, CQC-2 Saber +8 more"
+      ]
+     ]
+    }
+   ],
    "A/AC-8 Autocannon Sentry / weapon": [
     {
      "key": "weapon.sway",
@@ -11598,6 +11708,75 @@
      "shared": false
     }
    ],
+   "AC-8 Autocannon": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xA8CFFB316F0B5C5F",
+     "record": 23,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xA8CFFB316F0B5C5F",
+     "record": 328,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "APW-1 Anti-Materiel Rifle": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x89C5493E08CA4207",
+     "record": 354,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
    "AR-11 Arbitrator / underbarrel": [
     {
      "key": "weapon.sway",
@@ -11948,6 +12127,21 @@
      "max": 1000,
      "unit": "factor",
      "shared": true
+    },
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xB9C209B4F99B5335",
+     "record": 14,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
     }
    ],
    "AR/GL-21 One-Two": [
@@ -12551,6 +12745,48 @@
      "max": 1000,
      "unit": "factor",
      "shared": true
+    },
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x02CD7321CD8445F5",
+     "record": 13,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "ARC-3 Arc Thrower": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x96DE9CD50F7306E6",
+     "record": 327,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
     }
    ],
    "AX/AR-23 Guard Dog / gun": [
@@ -12927,6 +13163,82 @@
      "shared": false
     }
    ],
+   "B/FLAM-80 Cremator": [
+    {
+     "key": "reload.duration",
+     "label": "Reload duration override (0 = native)",
+     "kind": "component",
+     "component": "WeaponReloadComponentData",
+     "resource": "0x78A8185F63A70795",
+     "record": 232,
+     "offset": 56,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "seconds",
+     "shared": false,
+     "note": "Seconds the reload takes; 0 keeps the length of its reload animation (game.dll 0x774B60 scales the animation to it)"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x78A8185F63A70795",
+     "record": 341,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "CQC-20 Breaching Hammer": [
+    {
+     "key": "reload.duration",
+     "label": "Reload duration override (0 = native)",
+     "kind": "component",
+     "component": "WeaponReloadComponentData",
+     "resource": "0x5F3EC9BDA2BD8553",
+     "record": 117,
+     "offset": 56,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "seconds",
+     "shared": false,
+     "note": "Seconds the reload takes; 0 keeps the length of its reload animation (game.dll 0x774B60 scales the animation to it)"
+    }
+   ],
+   "DBS-2 Double Freedom": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x72170A55A1F37FF1",
+     "record": 8,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
    "E/AT-12 Anti-Tank Emplacement / weapon": [
     {
      "key": "weapon.sway",
@@ -13069,6 +13381,87 @@
      "max": null,
      "unit": "degrees_per_second",
      "shared": false
+    }
+   ],
+   "EAT-17 Expendable Anti-Tank": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x80932FA0ED6901D3",
+     "record": 346,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "EAT-411 Leveller": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x7617642765AC38C7",
+     "record": 333,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "EAT-700 Expendable Napalm": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xB2B5E0D185605F9E",
+     "record": 334,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
     }
    ],
    "EXO-45 Patriot Exosuit / left_gun": [
@@ -13962,6 +14355,21 @@
      "shared": false
     },
     {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xDF51FE8D62F294BE",
+     "record": 0,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    },
+    {
      "kind": "component",
      "component": "HealthComponentData",
      "resource": "0xDF51FE8D62F294BE",
@@ -14015,6 +14423,75 @@
      "min": 0,
      "max": 10,
      "note": "Used while \"Own explosion share\" is Yes (3.4e38 = unset: the default share)"
+    }
+   ],
+   "FAF-14 Spear": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x25AA2FD4643CF4EE",
+     "record": 335,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "FLAM-40 Flamethrower": [
+    {
+     "key": "reload.duration",
+     "label": "Reload duration override (0 = native)",
+     "kind": "component",
+     "component": "WeaponReloadComponentData",
+     "resource": "0x39AB99895147A3BF",
+     "record": 228,
+     "offset": 56,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "seconds",
+     "shared": false,
+     "note": "Seconds the reload takes; 0 keeps the length of its reload animation (game.dll 0x774B60 scales the animation to it)"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x39AB99895147A3BF",
+     "record": 337,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
     }
    ],
    "FRV (Super Earth variant) / gun": [
@@ -14174,6 +14651,354 @@
      "min": 0,
      "max": 10,
      "note": "Share of explosion damage taken where a zone has no explosion share of its own (1 = full damage; 3.4e38 = unset, full damage)"
+    }
+   ],
+   "GL-15 Evictor": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x006E44327BB953FE",
+     "record": 1,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "GL-21 Grenade Launcher": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x02EECD0B1FA49630",
+     "record": 338,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "GL-28 Belt-Fed Grenade Launcher": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x88C2D09AD85A7C9F",
+     "record": 329,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    },
+    {
+     "key": "fire_rate.modes.x",
+     "label": "Rate of fire X",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x88C2D09AD85A7C9F",
+     "record": 243,
+     "offset": 4,
+     "storage": "f32",
+     "min": 0,
+     "max": 3000,
+     "unit": "rpm",
+     "shared": false
+    },
+    {
+     "key": "weapon.fire_rate",
+     "label": "Fire rate",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x88C2D09AD85A7C9F",
+     "record": 243,
+     "offset": 8,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "rpm",
+     "shared": false
+    },
+    {
+     "key": "fire_rate.modes.z",
+     "label": "Rate of fire Z",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x88C2D09AD85A7C9F",
+     "record": 243,
+     "offset": 12,
+     "storage": "f32",
+     "min": 0,
+     "max": 3000,
+     "unit": "rpm",
+     "shared": false
+    }
+   ],
+   "GL-52 De-Escalator": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xFE3B29B2CFA63F9B",
+     "record": 24,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xFE3B29B2CFA63F9B",
+     "record": 339,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "GP-31 Grenade Pistol": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x52E4334E6A128CAF",
+     "record": 19,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "GR-8 Recoilless Rifle": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x9F80D67A12A7E40F",
+     "record": 352,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "LAS-98 Laser Cannon": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xD54B9505C0F72873",
+     "record": 343,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    },
+    {
+     "key": "weapon.third_person_reticle",
+     "label": "Third-person reticle",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xD54B9505C0F72873",
+     "record": 343,
+     "offset": 400,
+     "storage": "u32",
+     "min": null,
+     "max": null,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       3,
+       "No reticle (3): APW-1 Anti-Materiel Rifle"
+      ],
+      [
+       4,
+       "Assault rifle (4): StA-52 Assault Rifle, AR-11 Arbitrator +55 more"
+      ],
+      [
+       5,
+       "Style 5 (5): MA5C Assault Rifle"
+      ],
+      [
+       6,
+       "Pump shotgun (6): SG-88 Break-Action Shotgun"
+      ],
+      [
+       8,
+       "Pistol (8): P-11 Stim Pistol, P-34 Breacher +1 more"
+      ],
+      [
+       9,
+       "Revolver (9): LAS-13 Trident, LAS-17 Double-Edge Sickle +2 more"
+      ],
+      [
+       10,
+       "Laser (10): LAS-12 Sai, LAS-16 Sickle +3 more"
+      ],
+      [
+       11,
+       "Laser cannon (11): LAS-98 Laser Cannon"
+      ],
+      [
+       12,
+       "Laser pulse cannon (12): LAS-99 Quasar Cannon"
+      ],
+      [
+       14,
+       "Style 14 (14): 40-K Meltagun, PLAS-45 Epoch"
+      ],
+      [
+       15,
+       "Railgun (15): RS-422 Railgun, PLAS-101 Purifier +3 more"
+      ],
+      [
+       16,
+       "Javelin (16): P-33 Missile Pistol, P-92 Warrant +2 more"
+      ],
+      [
+       17,
+       "Throwable (17): CQC-19 Stun Lance, CQC-2 Saber +8 more"
+      ]
+     ]
+    }
+   ],
+   "LAS-99 Quasar Cannon": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x35A61296619CC47E",
+     "record": 345,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "M-1000 Maxigun": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x43A58CB89CFA197C",
+     "record": 348,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
     }
    ],
    "M-102 Gunner FRV / gun": [
@@ -14390,6 +15215,224 @@
      "max": null,
      "unit": "degrees_per_second",
      "shared": false
+    }
+   ],
+   "M-105 Stalwart": [
+    {
+     "key": "reload.duration",
+     "label": "Reload duration override (0 = native)",
+     "kind": "component",
+     "component": "WeaponReloadComponentData",
+     "resource": "0xA6A735ACCB4A327F",
+     "record": 195,
+     "offset": 56,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "seconds",
+     "shared": false,
+     "note": "Seconds the reload takes; 0 keeps the length of its reload animation (game.dll 0x774B60 scales the animation to it)"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xA6A735ACCB4A327F",
+     "record": 299,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "M90A Shotgun": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x90DDC374F4E3D756",
+     "record": 9,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "MG-206 Heavy Machine Gun": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x2152D5147B0AC418",
+     "record": 342,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "MG-43 Machine Gun": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x11C27D3BABB38956",
+     "record": 347,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "MGX-42 Bullet Storm": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xB16C9D490AA59B77",
+     "record": 332,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "MLS-4X Commando": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x5990123D142B16CB",
+     "record": 344,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "P-11 Stim Pistol": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xD6B1FB05B9109353",
+     "record": 10,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "P-4 Senator": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x8D3D52A3B2F19402",
+     "record": 21,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "P-69 Veto": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xC780BCD79547DA0F",
+     "record": 20,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
     }
    ],
    "PLAS-101 Purifier": [
@@ -14894,6 +15937,189 @@
      "shared": false,
      "ref": "explosion",
      "note": "Set off when the overcharge time is reached, while \"Explode when the overcharge time is reached\" is Yes"
+    },
+    {
+     "key": "reload.duration",
+     "label": "Reload duration override (0 = native)",
+     "kind": "component",
+     "component": "WeaponReloadComponentData",
+     "resource": "0xE8D5F49AD7780E54",
+     "record": 237,
+     "offset": 56,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "seconds",
+     "shared": false,
+     "note": "Seconds the reload takes; 0 keeps the length of its reload animation (game.dll 0x774B60 scales the animation to it)"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xE8D5F49AD7780E54",
+     "record": 350,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    },
+    {
+     "key": "weapon.third_person_reticle",
+     "label": "Third-person reticle",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xE8D5F49AD7780E54",
+     "record": 350,
+     "offset": 400,
+     "storage": "u32",
+     "min": null,
+     "max": null,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       3,
+       "No reticle (3): APW-1 Anti-Materiel Rifle"
+      ],
+      [
+       4,
+       "Assault rifle (4): StA-52 Assault Rifle, AR-11 Arbitrator +55 more"
+      ],
+      [
+       5,
+       "Style 5 (5): MA5C Assault Rifle"
+      ],
+      [
+       6,
+       "Pump shotgun (6): SG-88 Break-Action Shotgun"
+      ],
+      [
+       8,
+       "Pistol (8): P-11 Stim Pistol, P-34 Breacher +1 more"
+      ],
+      [
+       9,
+       "Revolver (9): LAS-13 Trident, LAS-17 Double-Edge Sickle +2 more"
+      ],
+      [
+       10,
+       "Laser (10): LAS-12 Sai, LAS-16 Sickle +3 more"
+      ],
+      [
+       11,
+       "Laser cannon (11): LAS-98 Laser Cannon"
+      ],
+      [
+       12,
+       "Laser pulse cannon (12): LAS-99 Quasar Cannon"
+      ],
+      [
+       14,
+       "Style 14 (14): 40-K Meltagun, PLAS-45 Epoch"
+      ],
+      [
+       15,
+       "Railgun (15): RS-422 Railgun, PLAS-101 Purifier +3 more"
+      ],
+      [
+       16,
+       "Javelin (16): P-33 Missile Pistol, P-92 Warrant +2 more"
+      ],
+      [
+       17,
+       "Throwable (17): CQC-19 Stun Lance, CQC-2 Saber +8 more"
+      ]
+     ]
+    },
+    {
+     "key": "weapon.fire_rate",
+     "label": "Fire rate",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0xE8D5F49AD7780E54",
+     "record": 258,
+     "offset": 8,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "rpm",
+     "shared": false
+    }
+   ],
+   "R-2124 Constitution": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x7B75E5132FFD4CA6",
+     "record": 16,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "R-6 Deadeye": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xE6D932BE83729076",
+     "record": 17,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "RL-77 Airburst Rocket Launcher": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x26E40437EA275296",
+     "record": 326,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
     }
    ],
    "RS-422 Railgun": [
@@ -14912,6 +16138,216 @@
      "shared": false,
      "ref": "explosion",
      "note": "Set off when the overcharge time is reached, while \"Explode when the overcharge time is reached\" is Yes"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x2E9D0BDC48B09E60",
+     "record": 351,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    },
+    {
+     "key": "weapon.fire_rate",
+     "label": "Fire rate",
+     "kind": "component",
+     "component": "ProjectileWeaponComponentData",
+     "resource": "0x2E9D0BDC48B09E60",
+     "record": 259,
+     "offset": 8,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "rpm",
+     "shared": false
+    }
+   ],
+   "S-11 Speargun": [
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x3828E2051AA9E897",
+     "record": 340,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "SG-20 Halt": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x4E310B1FE4C52B52",
+     "record": 5,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "SG-22 Bushwhacker": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x2B28E17FFED05F7C",
+     "record": 18,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "SG-451 Cookout": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xD323DE60855898AC",
+     "record": 6,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "SG-8 Punisher": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x41EAC4A03987FAA0",
+     "record": 2,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "SG-88 Break-Action Shotgun": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x52071F49263415E4",
+     "record": 12,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x52071F49263415E4",
+     "record": 243,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+    }
+   ],
+   "SG-8S Slugger": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0x4F749E2EE26F532D",
+     "record": 4,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
+    }
+   ],
+   "SG-97 Sweeper": [
+    {
+     "key": "rounds.rounds_per_reload",
+     "label": "Rounds per reload",
+     "kind": "component",
+     "component": "WeaponRoundsComponentData",
+     "resource": "0xDCD1C835407EF7BA",
+     "record": 7,
+     "offset": 92,
+     "storage": "u32",
+     "min": 1,
+     "max": 255,
+     "unit": "rounds",
+     "shared": false,
+     "note": "Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one"
     }
    ],
    "SMG/FLAM-34 Stoker / underbarrel": [
@@ -15180,6 +16616,48 @@
      "max": 1000,
      "unit": "factor",
      "shared": true
+    }
+   ],
+   "StA-X3 W.A.S.P. Launcher": [
+    {
+     "key": "reload.duration",
+     "label": "Reload duration override (0 = native)",
+     "kind": "component",
+     "component": "WeaponReloadComponentData",
+     "resource": "0xCC786F6491FE7E65",
+     "record": 227,
+     "offset": 56,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "seconds",
+     "shared": false,
+     "note": "Seconds the reload takes; 0 keeps the length of its reload animation (game.dll 0x774B60 scales the animation to it)"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0xCC786F6491FE7E65",
+     "record": 336,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
     }
    ],
    "TD-110 Maelstrom / attach_tank_gun": [
@@ -15687,6 +17165,48 @@
      "max": null,
      "unit": "degrees_per_second",
      "shared": false
+    }
+   ],
+   "TX-41 Sterilizer": [
+    {
+     "key": "reload.duration",
+     "label": "Reload duration override (0 = native)",
+     "kind": "component",
+     "component": "WeaponReloadComponentData",
+     "resource": "0x88F61AFFF48AC8A4",
+     "record": 224,
+     "offset": 56,
+     "storage": "f32",
+     "min": null,
+     "max": null,
+     "unit": "seconds",
+     "shared": false,
+     "note": "Seconds the reload takes; 0 keeps the length of its reload animation (game.dll 0x774B60 scales the animation to it)"
+    },
+    {
+     "key": "weapon.suppressed",
+     "label": "Suppressed",
+     "kind": "component",
+     "component": "WeaponDataComponentData",
+     "resource": "0x88F61AFFF48AC8A4",
+     "record": 330,
+     "offset": 112,
+     "storage": "u8",
+     "min": 0,
+     "max": 1,
+     "unit": null,
+     "shared": false,
+     "options": [
+      [
+       0,
+       "No"
+      ],
+      [
+       1,
+       "Yes"
+      ]
+     ],
+     "note": "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
     }
    ]
   }
