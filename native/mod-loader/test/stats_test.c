@@ -4465,6 +4465,7 @@ int main(int argc, char** argv)
     BeamArcFixture();
     ContentWeaponsFixture();
     ContentDifficultyFixture();
+    ContentMovedOwnershipFixture();
     ChannelGameFixture();
     ChannelFixture();
     RpcFixture();

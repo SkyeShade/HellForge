@@ -257,6 +257,8 @@ static void FakeOwnSort(void) { g_fakeSorts++; }
 static void FakeOwnApply(uintptr_t manager, uint32_t mixId, uint32_t amount, uint32_t source, const char* text, int extra)
 {
     if (g_fakeOwnedCount < 8) g_fakeOwned[g_fakeOwnedCount++] = mixId;
+    int entry = OwnEntry(manager, mixId, 0, 0); /* held now, as the game's apply leaves it */
+    if (entry >= 0) *(uint32_t*)(OwnRecordAt(manager, entry) + 0x14) = 2;
 }
 static void FakeOwnRemove(uintptr_t manager, uint32_t mixId, uint32_t amount) { g_fakeTakes++; }
 static int g_fakePushes;
@@ -272,6 +274,7 @@ static void FakeCatalogue(void)
     *(uint32_t*)(g_fakeCatalogue + OWN_INVENTORY) = 2;
     FakeOwnAdd(0, 0x5000, 0x5000, 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 11, 1);
     FakeOwnAdd(0, WeaponChild(0x1111, 0x5000), 0x1111, 0x5000, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 10, 1);
+    *(uint32_t*)(g_fakeCatalogue + OWN_RECORDS + 0x14) = 2; /* the player holds the base stratagem */
     g_ownAdd = FakeOwnAdd; g_ownSort = FakeOwnSort; g_ownRemove = FakeOwnRemove; g_ownManager = FakeManager;
     g_ownApply = FakeOwnApply;
 }
@@ -877,4 +880,57 @@ static void ContentDifficultyFixture(void)
     g_difficultyState = state;
     g_modCount = mods;
     ContentEventsRestore();
+}
+
+/* A session whose catalogue moved (state_moves.c): the ownership pins read as the move left them, and a live change
+ * owns a copy only when the player holds what it copies, a premium weapon or stratagem they lack never. */
+static void ContentMovedOwnershipFixture(void)
+{
+    CatalogueLayout vanilla = g_catalogue;
+    int moves = g_stateMoves;
+    /* the game image as the move leaves it: the four functions' reviewed bytes, then every catalogue site moved */
+    uint8_t* game = (uint8_t*)calloc(1, 0x1A10400);
+    assert(game != NULL);
+    memcpy(game + OWN_APPLY, kOwnApplyPin, sizeof kOwnApplyPin);
+    memcpy(game + OWN_ADD, kOwnAddPin, sizeof kOwnAddPin);
+    memcpy(game + OWN_SORT + 0x21, kOwnSortPin, sizeof kOwnSortPin);
+    memcpy(game + OWN_REMOVE, kOwnRemovePin, sizeof kOwnRemovePin);
+    g_ownGame = (uintptr_t)game;
+    g_stateMoves = 1;
+    assert(!OwnProve()); /* moved, but the code still reads as before: not the reviewed state */
+    assert(MoveCatalogueWrite((uintptr_t)game) == 0 && game[OWN_SORT + 0x21 + 0x12] != 0xE0);
+    g_stateMoves = 0;
+    assert(!OwnProve()); /* the bytes moved, the loader thinks not */
+    g_stateMoves = 1;
+    assert(OwnProve());
+    g_ownAdd = NULL; g_ownSort = NULL; g_ownRemove = NULL; g_ownManager = NULL; g_ownApply = NULL;
+    g_ownGame = 0;
+    free(game);
+
+    /* the moved catalogue: a premium weapon not held, a free one held, a paid stratagem not held; their copies, and a
+     * copy of the free weapon's copy */
+    g_catalogue = (CatalogueLayout)MOVE_LAYOUT(MOVE_CATALOGUE_NEW, MOVE_ITEMS);
+    g_fakeCatalogue = (uint8_t*)calloc(1, MOVE_CATALOGUE_NEW + MOVE_CATALOGUE_BYTES);
+    assert(g_fakeCatalogue != NULL);
+    *(uint32_t*)(g_fakeCatalogue + OWN_CATALOGUE) = 2;
+    *(uint32_t*)(g_fakeCatalogue + OWN_INVENTORY) = 2;
+    g_ownAdd = FakeOwnAdd; g_ownSort = FakeOwnSort; g_ownRemove = FakeOwnRemove; g_ownManager = FakeManager; g_ownApply = FakeOwnApply;
+    FakeOwnAdd(0, 0x7001, 0x7001, 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 1, 1);
+    FakeOwnAdd(0, 0x7002, 0x7002, 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 1, 1);
+    *(uint32_t*)(OwnRecordAt((uintptr_t)g_fakeCatalogue, 1) + 0x14) = 2;
+    FakeOwnAdd(0, 0x5000, 0x5000, 0, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 11, 1);
+    FakeOwnAdd(0, WeaponChild(0x1111, 0x5000), 0x1111, 0x5000, 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, 10, 1);
+    OwnItem items[] = {{OWN_WEAPON, 0xA001, 0, 0, 0x7001, 0}, {OWN_WEAPON, 0xA002, 0, 0, 0x7002, 0}, {OWN_WEAPON, 0xA003, 0, 0, 0xA002, 0},
+        {OWN_STRATAGEM, 0xA004, 0x2222, 0x1111, 0, 0}};
+    OwnBatch batch = {.items = items, .count = 4};
+    g_fakeOwnedCount = 0;
+    OwnBatchStep(&batch);
+    int premium = 0;
+    for (int i = 0; i < g_fakeOwnedCount; i++) premium |= g_fakeOwned[i] == 0xA001 || g_fakeOwned[i] == 0xA004;
+    assert(batch.added == 5 && batch.owned == 2 && batch.unowned == 2 && !premium && g_fakeOwnedCount == 2);
+    g_ownAdd = NULL; g_ownSort = NULL; g_ownRemove = NULL; g_ownManager = NULL; g_ownApply = NULL;
+    free(g_fakeCatalogue);
+    g_catalogue = vanilla;
+    g_stateMoves = moves;
+    printf("  live content: a moved catalogue's ownership pins read as moved; a copy of a premium weapon or stratagem the player lacks not owned, a copy of a held one (and of its copy) owned\n");
 }

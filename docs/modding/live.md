@@ -90,7 +90,8 @@ The change is refused (a restart) when the number is not free:
 A new version of your mod that registers the same names again keeps its old numbers; entries under other names take
 them over as another mod's would.
 
-New items are owned at once (the catalogue's copies of the base's items, as the backend makes them at login). What a mod
+New items are owned at once (the catalogue's copies of the base's items, as the backend makes them at login). A copy
+is owned only when the player holds what it copies, so a copy of premium content they lack stays locked. What a mod
 taken out registered stays in the game's memory, so nothing that still holds it breaks. But it leaves `content()`,
 `find()`, the items you own and the loadout. A removed stratagem leaves every loadout, since a host that lacks it would
 crash on receiving it.
