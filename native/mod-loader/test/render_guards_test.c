@@ -26,8 +26,12 @@ static RgCall RgThunk(uint8_t* image, uint32_t rva, const uint8_t* prefix, size_
 static volatile LONG* g_rgTestHead;
 static volatile LONG* g_rgTestFreed;
 static volatile LONG g_rgTestStop;
+static LONG g_rgFillAfter; /* the pool's wait count before the test's take: the filler starts its 40 ms once it rises */
 static DWORD WINAPI RgFillLater(void* parameter)
 {
+    /* the wait's clock starts after the guard's spins, which a slow machine (CI) can spend most of 40 ms on: the
+     * filler sleeps from the moment the guard waits, so the wait it records is never under 20 ms */
+    while (g_rgPoolWaits == g_rgFillAfter) Sleep(1);
     Sleep(40);
     InterlockedIncrement(g_rgTestFreed);
     InterlockedExchange(g_rgTestHead, 0x5);
@@ -124,6 +128,7 @@ static void RenderGuardsFixture(void)
     assert(take(pool, 0) == (uintptr_t)pool && g_rgPoolWaits == waits); /* a free slot: no wait */
 
     *head = 0;
+    g_rgFillAfter = waits;
     HANDLE filler = CreateThread(NULL, 0, RgFillLater, NULL, 0, NULL);
     assert(filler != NULL);
     assert(take(pool, 0) == (uintptr_t)pool); /* waited for the worker, r10 kept */
