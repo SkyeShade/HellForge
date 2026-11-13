@@ -323,7 +323,7 @@ On `dev`, since 0.4.0-beta.
   of mods, and `mod-add` takes `--file` more than once. The mods folder is read once for the whole list instead of once
   per mod, so a launcher sending 30 mods no longer waits for 30 reads. Every id is checked first: one unknown or refused
   id changes nothing. The answer counts `done` and `failed` and lists each mod. `mod-order` no longer reads the folder
-  twice ([external launchers](docs/external-launchers.md)).
+  twice ([external launchers](docs/external-launchers.md), #389).
 
 ## 0.4.0-beta (2026-11-05)
 
