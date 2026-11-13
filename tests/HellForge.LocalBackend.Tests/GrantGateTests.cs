@@ -105,16 +105,25 @@ static class GrantGateTests
             "A premium weapon's unlockable was sold.");
         check(Status("/Progression/buy/v2", $$"""{"mixId":{{premiumItem}},"amount":1,"warId":801,"expectedCost":[]}""") == 400, "A premium item given a requisition price was sold.");
         check(profile.Current()["inventory"]!.ToJsonString() == before, "A refused purchase changed the inventory.");
-        EditedWarbond(root, profile, premiumItem, check);
+        EditedWarbond(root, profile, (premiumItem, paid), check);
     }
 
-    static void EditedWarbond(string root, ProfileStore profile, uint premiumItem, Action<bool, string> check)
+    // A premium item on Helldivers Mobilize's page in an edited catalogue: at a medal, and free while a forged
+    // registered-items.json entry names it (RegisteredItems refuses that entry, so it is no mod item to grant).
+    static void EditedWarbond(string root, ProfileStore profile, (uint Id, PaidContentSet Paid) premium, Action<bool, string> check)
     {
+        var (premiumItem, paid) = premium;
         var suite = LocalBackend.CatalogueDirectory!;
         var folder = Directory.CreateDirectory(Path.Combine(root, "grant-gate-catalogue")).FullName;
         var progression = JsonNode.Parse(File.ReadAllText(Path.Combine(suite, GameCatalog.ProgressionDataFile)))!.AsObject();
         var page = progression["seasonPassDetails"]![PremiumContent.FreeWarbond.ToString()]!["seasonPassPages"]![0]!;
         page["seasonPassItems"]!.AsArray().Add(new JsonObject { ["seasonPassItemId"] = 999101, ["itemMixId"] = premiumItem, ["medalCost"] = 1 });
+        page["seasonPassItems"]!.AsArray().Add(new JsonObject { ["seasonPassItemId"] = 999102, ["itemMixId"] = premiumItem, ["medalCost"] = 0 });
+        var forged = Path.Combine(folder, "registered-items.json");
+        File.WriteAllText(forged, $$"""{"format":1,"items":[{"mixId":{{premiumItem}},"copyOf":1,"mod":"test.evil","unit":"evil/a"}]}""");
+        var fixtures = LocalBackend.LoadStartupFixtures();
+        var mods = new ModWarbondService([]) { Log = _ => { },
+            Registered = new RegisteredItems(forged) { Source = path => fixtures.TryGetValue(path, out var body) ? body : null, Reserved = paid.IsReserved, Log = _ => { } } };
         File.WriteAllText(Path.Combine(folder, GameCatalog.ProgressionDataFile), progression.ToJsonString());
         File.Copy(Path.Combine(suite, GameCatalog.ItemCatalogFile), Path.Combine(folder, GameCatalog.ItemCatalogFile), true);
         try
@@ -125,6 +134,11 @@ static class GrantGateTests
             var status = shop.Handle("/SeasonPass/item/buy", body.RootElement).Status;
             check(status == 400 && ProfileStore.Held(profile.Current()["inventory"]!["items"]!.AsArray(), premiumItem) == 0,
                 "A premium item put on Helldivers Mobilize's page was sold.");
+            using var free = JsonDocument.Parse("""{"expectedCost":[],"seasonPassItemId":999102,"warId":801}""");
+            var reply = new Purchases(profile, _ => null, mods).Handle("/SeasonPass/item/buy", free.RootElement);
+            check(!mods.IsRegistered(premiumItem) && reply.Reply.ToJsonString().IndexOf(premiumItem.ToString(), StringComparison.Ordinal) < 0 &&
+                ProfileStore.Held(profile.Current()["inventory"]!["items"]!.AsArray(), premiumItem) == 0,
+                "A premium item a forged registered entry names was given free from Helldivers Mobilize's page: " + reply.Reply.ToJsonString());
         }
         finally { LocalBackend.CatalogueDirectory = suite; }
     }

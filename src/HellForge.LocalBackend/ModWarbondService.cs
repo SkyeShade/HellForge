@@ -111,7 +111,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
         var caps = new Dictionary<uint, long>();
         foreach (var item in catalogue ?? [])
             if (item.TryGetProperty("maxCap", out var cap) && cap.TryGetInt64(out var most)) caps.TryAdd(item.GetProperty("mixId").GetUInt32(), most);
-        var registered = Registered is { } r ? r.Served().Where(i => !r.IsLocked(i) && !i.IsDifficulty).ToList() : [];
+        var registered = Sellable();
         var consumables = catalogue?.Where(i => i.TryGetProperty("isConsumable", out var c) && c.ValueKind == JsonValueKind.True)
             .Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet();
         lock (reported) owned ??= (Purchased?.Invoke() ?? new HashSet<long>(), Holds?.Invoke() ?? new HashSet<uint>());
@@ -135,7 +135,7 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
     {
         if (UnlockAll || consumable || bought.Contains(itemId)) return false;
         if (holds(mixId)) return true;
-        var registered = Registered is { } r ? r.Served().ToList() : [];
+        var registered = Sellable();
         return warbonds.SelectMany(w => w.Pages.SelectMany(p => p.Items))
             .Any(i => i.Id != itemId && bought.Contains(i.Id) && ItemOf(i.Sells, null, registered, out _) == mixId);
     }
@@ -404,5 +404,9 @@ public sealed class ModWarbondService(IReadOnlyList<ModWarbonds.Warbond> warbond
 
     // Whether a mixId is a mod's registered weapon or stratagem: a purchase grants it without saving it in the profile,
     // which RegisteredItems serves while the item stays bought.
-    public bool IsRegistered(uint mixId) => Registered?.Load().Any(i => i.MixId == mixId && !i.IsDifficulty) == true;
+    public bool IsRegistered(uint mixId) => Sellable().Any(i => i.MixId == mixId);
+
+    // A mod's weapons and stratagems this session serves and the player may hold: an entry RegisteredItems refused or
+    // locks is no mod item, so a page selling its id sells a paid one.
+    List<RegisteredItems.Item> Sellable() => Registered is { } r ? r.Served().Where(i => !r.IsLocked(i) && !i.IsDifficulty).ToList() : [];
 }
