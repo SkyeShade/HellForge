@@ -245,7 +245,9 @@ public sealed class Purchases(ProfileStore profile, Func<uint, JsonElement?> cat
         if (!profile.TryGetResponse("/Progression/inventory", out var served)) return false;
         var held = served.GetProperty("items").EnumerateArray().Where(i => i.TryGetProperty("amount", out var a) && a.GetInt64() > 0)
             .Select(i => i.GetProperty("mixId").GetUInt32()).ToHashSet();
-        return warbond.GetProperty("premiumTokenMixIds").EnumerateArray().Any(t => held.Contains(t.GetUInt32()));
+        // its tokens as the compiled list has them (PaidContentSet), not as the installation's catalogue says
+        var id = warbond.GetProperty("id32").GetUInt32();
+        return Paid.Warbonds.FirstOrDefault(w => w.Id == id) is { } known && known.Tokens.Any(held.Contains);
     }
 
     // Whether the saved inventory holds an item (TryChange reads it under the profile's lock; false changes nothing).

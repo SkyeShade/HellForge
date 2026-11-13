@@ -116,7 +116,7 @@ public sealed class OwnershipFilter
     public JsonElement FilterProgressionResponse(JsonElement progressionSection, JsonElement inventorySection)
     {
         var held = Held(inventorySection);
-        var locked = Paid.Warbonds.Where(warbond => warbond.Tokens.Length > 0 && !warbond.Tokens.Any(t => Unlocked(t, held)))
+        var locked = Paid.Warbonds.Where(warbond => warbond.Id != HellForge.Core.PremiumContent.FreeWarbond && !warbond.Tokens.Any(t => Unlocked(t, held)))
             .SelectMany(warbond => warbond.Items.Select(item => item.ItemId)).ToHashSet();
         if (locked.Count == 0 || !progressionSection.TryGetProperty("purchasedSeasonPassItems", out var bought) || bought.ValueKind != JsonValueKind.Array)
             return progressionSection;

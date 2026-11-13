@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace HellForge.LocalBackend;
 
-// What the game sells for real money, and its currencies, from the game catalogues (progression-data.json and item-catalog.json, LocalBackend.CatalogueDirectory):
+// What the game sells for real money, and its currencies, from the game catalogues (LocalBackend.CatalogueDirectory) and, for every id it knows, the compiled list (WithFloor):
 // - paid items (MixIds): each premium warbond's tokens, every item priced in Super Credits (the Superstore's, also those
 //   not in the current rotation) and the gear of the Steam DLCs, unless a warbond page offers it or a progression package
 //   rewards it. A player has them only by buying them in the normal game, so the backend serves them only from a sealed
@@ -18,7 +18,7 @@ namespace HellForge.LocalBackend;
 // - parents: a catalogue item's parent (item-catalog.json parentId). A stratagem is a catalogue item with one child whose
 //   itemId is the stable id the loadout checks; a weapon's attachments are its children. Neither is on a warbond page or
 //   priced, so a child follows its parent (OwnershipFilter).
-public sealed class PaidContentSet
+public sealed partial class PaidContentSet
 {
     public const uint SuperCreditPrice = 0xCF875032;
     // The Premium wallet: the client shows its quantity as the Super Credits balance (game.dll 0x1372BD0, the wallet view).
@@ -63,7 +63,12 @@ public sealed class PaidContentSet
         Currencies = currencies;
     }
 
-    public static PaidContentSet Load()
+    // The rules applied to the installation's catalogue, then the compiled list's answers for every id it knows
+    // (WithFloor): what the backend and its profile commands use.
+    public static PaidContentSet Load() => FromCatalogue().WithFloor(HellForge.Core.PaidItems.Current);
+
+    // The rules applied to the installation's catalogue alone: what paid-list writes the compiled list from.
+    public static PaidContentSet FromCatalogue()
     {
         using var data = LocalBackend.LoadResource("progression-data.json");
         var paid = new HashSet<uint>();
@@ -120,9 +125,9 @@ public sealed class PaidContentSet
         })];
 
     // The warbonds an inventory owns: the free one, and each one whose token it holds. Ownership is never chosen in an
-    // import: it always follows the sealed snapshot.
+    // import: it always follows the sealed snapshot. A warbond with no token is not free unless it is Helldivers Mobilize.
     public IEnumerable<Warbond> OwnedWarbonds(IReadOnlySet<uint> inventory) =>
-        Warbonds.Where(warbond => warbond.Tokens.Length == 0 || warbond.Tokens.Any(inventory.Contains));
+        Warbonds.Where(warbond => warbond.Id == HellForge.Core.PremiumContent.FreeWarbond || warbond.Tokens.Any(inventory.Contains));
 
     static IEnumerable<uint> WarbondPageItems(JsonElement pass) =>
         pass.GetProperty("seasonPassPages").EnumerateArray()

@@ -696,6 +696,8 @@ try
     Check(unpaired, "Profile accepted without startup fixtures.");
     AccountSyncTests.Run(root, Check);
     Console.WriteLine("PASS account sync: premium only from a sealed snapshot of the signed-in account, free warbond open, Super Credits never served, granted or imported, imports by category with backups and restore");
+    PaidFloorTests.Run(root, Check);
+    Console.WriteLine("PASS paid floor: the compiled list is what the catalogue's rules give, and an edited catalogue frees no paid or premium warbond item");
     results.Add(new { mode = "profile", outcome = "passed", invalidEdits = invalidEdits.Length + 1 });
     Console.WriteLine("PASS profile: fixture defaults, persistence, single server, validation, session audit");
     await LiveWarTests.Run(root, Check);
