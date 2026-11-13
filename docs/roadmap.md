@@ -30,7 +30,7 @@ Nothing here has a date, and stability comes first. What each release changed is
 | Subfactions | Testing | Built for 0.3.0-dev.4, with a seed in the launcher; not fully working yet |
 | Custom missions | Later | Planned in steps |
 | Progression system | Later | Design not decided |
-| Launcher updates | Later | Planned after 0.4: update from GitHub releases |
+| Launcher updates | Later | The launcher says when a newer release is out; installing it is planned after 0.4 |
 | Custom models | Later | Mesh importer works; physics, AI and textures left |
 | 1.0 release | Later | No date yet |
 
@@ -315,11 +315,16 @@ Setup still needs a full run through its GUI on a fresh PC.
 
 ### Launcher updates
 
-Status: planned, after 0.4.
+Status: first step done; installing is planned, after 0.4.
 
-Today a new HellForge version means downloading the release and installing it by hand. The launcher should check
-GitHub releases on start, say when a newer version is out, and install it for you: download the release, check it,
-swap the files and restart. Pre-releases would only show to players who opt in.
+On start the launcher asks GitHub for HellForge's releases. When one is newer than the version it runs, the sidebar
+says "HellForge X is out" above the version, and pressing it opens that release's page. The nightly build is not
+offered, and nothing is downloaded: the new version is still installed by hand. A launcher with no internet, or one
+GitHub doesn't answer within 10 seconds, shows no notice and works as before.
+
+Next, the launcher should install it for you: download the release, check it, swap the files and restart.
+Pre-releases would then only show to players who opt in; today every HellForge release is a pre-release, so all of
+them are offered.
 
 ## Known issues
 

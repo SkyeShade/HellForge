@@ -43,6 +43,12 @@
               <Border x:Name="SidebarDot" Classes="dot" Background="{StaticResource MutedBrush}" VerticalAlignment="Center" />
               <TextBlock x:Name="SidebarState" Text="Idle" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
+            <Button x:Name="NewReleaseButton" Classes="ghost" IsVisible="False" HorizontalAlignment="Left" Margin="0,10,0,0">
+              <StackPanel Spacing="2">
+                <TextBlock x:Name="NewReleaseTitle" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap" />
+                <TextBlock Text="Open the release page" Classes="muted" FontSize="11" />
+              </StackPanel>
+            </Button>
             <TextBlock x:Name="VersionText" Classes="muted" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap" />
           </StackPanel>
 
