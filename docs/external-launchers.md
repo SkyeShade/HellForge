@@ -202,7 +202,7 @@ HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | ope
 |---|---|---|
 | `--profile` | the selected profile | which HellForge profile plays |
 | `--war` | `hellforge` | `hellforge`: the war every HellForge player shares, from its war server ([hellforge-war.md](hellforge-war.md)). `live`: the current galactic war, read-only through the community mirror. `frozen`: the war HellForge ships. `open`: every planet open. A settings file saved before the HellForge war keeps the war it had |
-| `--war-server` | the saved server, `HELLFORGE_WAR_SERVER`, else `http://127.0.0.1:5093` | the HellForge war's server for this session only: https, or http to this PC (`http://localhost:5093`) |
+| `--war-server` | `HELLFORGE_WAR_SERVER`, the saved server, else `http://127.0.0.1:5093` | the HellForge war's server for this session only: https, or http to this PC (`http://localhost:5093`) |
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
