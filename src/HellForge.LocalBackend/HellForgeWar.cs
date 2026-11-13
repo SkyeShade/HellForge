@@ -15,23 +15,13 @@ public interface IServedWar
     bool TryGet(string path, out JsonElement body);
 }
 
-// The HellForge war (backend --war hellforge): one galactic war shared by HellForge players, run by the HellForge war
-// server (HellForge.Core.WarServer: its own service, a placeholder address on this PC until the official one is known, unless another is chosen). docs/hellforge-war.md.
-//   GET  {server}/v1/snapshot          {schema: 1, warId: 801, sequence, generatedUtc, warInfo, status, galacticWarEffects,
-//                                      assignments, news}: the game's own bodies, served unchanged
-//   POST {server}/v1/mission/start     {installId, planetIndex, difficulty 1..11, race} -> {ticket}
-//   POST {server}/v1/mission/heartbeat {ticket} -> 204, every 2 minutes while the mission runs (players per planet)
-//   POST {server}/v1/mission/end       {ticket, success} -> {impact, capped}
-// The snapshot is fetched before the game starts and every minute after (30 s after a failure), and kept in a cache file
-// (WarServer.CachePath: one per server) with the time it was fetched; without the server the cached war is served, and
-// without either the frozen war. Its warinfo, Status and GalacticWarEffects take the startup bodies' place; its major
-// orders (/v2/Assignment/War/801) and dispatches (/NewsFeed/801) are WarServices'. The client's parsers want every key
-// and integers as integers, so the bodies are kept as the server's bytes (JsonElement), never rebuilt.
-// Missions are reported from the game's own requests (MissionService): Operation/Create names each operation's planet,
-// difficulty (11 for the mod loader's level, native/mod-loader/difficulty.c) and enemy; Mission/Start starts a mission
-// of one; Mission/end ends it. Each report goes out in the background with a short timeout: the game's request is
-// answered as before, whether the server answers or not. The impact the server answers is logged, not put in the
-// Mission/end reply (the client wants an integer there, and what its end screen does with it is not known).
+// The HellForge war (backend --war hellforge): one galactic war shared by HellForge players, from the HellForge war
+// server (HellForge.Core.WarServer). docs/hellforge-war.md has the server's contract, the refresh and cache rules and
+// which game requests report a mission (MissionService).
+// The client's parsers want every key and integers as integers, so the snapshot's bodies are kept as the server's bytes
+// (JsonElement), never rebuilt. A report goes out in the background with a short timeout, so the game's request is
+// answered as before whether the server answers or not. The impact is logged, not put in the Mission/end reply: the
+// client wants an integer there, and what its end screen does with it is not known.
 // Where the session has no network (Linux), the snapshot fetched before the namespace is served (cacheOnly) and no
 // mission is reported.
 public sealed class HellForgeWar : IServedWar, IAsyncDisposable
@@ -328,16 +318,19 @@ public sealed class HellForgeWar : IServedWar, IAsyncDisposable
     public void OperationAbandoned(JsonElement body)
     {
         if (!Reports) return;
-        var abandoned = new HashSet<long>();
-        if (body.ValueKind == JsonValueKind.Object)
-        {
-            if (body.TryGetProperty("operationIds", out var ids) && ids.ValueKind == JsonValueKind.Array)
-                foreach (var id in ids.EnumerateArray())
-                    if (id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out var number)) abandoned.Add(number);
-            if ((Long(body, "operationId") ?? Long(body, "id")) is { } single) abandoned.Add(single);
-        }
+        var abandoned = AbandonedOperations(body);
         foreach (var mission in running.Values.Distinct().Where(m => abandoned.Count == 0 || abandoned.Contains(m.Operation)).ToList())
             End(mission, false, "abandoned");
+    }
+
+    static HashSet<long> AbandonedOperations(JsonElement body)
+    {
+        var abandoned = new HashSet<long>();
+        if (body.ValueKind != JsonValueKind.Object) return abandoned;
+        if (body.TryGetProperty("operationIds", out var ids) && ids.ValueKind == JsonValueKind.Array)
+            abandoned.UnionWith(ids.EnumerateArray().Where(id => id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out _)).Select(id => id.GetInt64()));
+        if ((Long(body, "operationId") ?? Long(body, "id")) is { } single) abandoned.Add(single);
+        return abandoned;
     }
 
     // The mission's end, reported in the background; its heartbeat stops.

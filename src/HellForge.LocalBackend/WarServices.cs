@@ -4,28 +4,14 @@ using System.Text.Json.Nodes;
 
 namespace HellForge.LocalBackend;
 
-// The war's other services, which the game polls on the ship (HD2Mods research/galactic-war/assignments-rewards):
-//   GET  /v2/Assignment/War/801   major orders, ~30 s      0xdad1fefc  array root, at most 16 (parser 0x1077770)
-//   GET  /v2/Assignment/Player    personal orders          0xde1a3e56  the same shape
-//   POST /v2/Assignment/War, /v2/Assignment/Player         the client's progress deltas; no reply is read
-//   POST /v2/Assignment/Player/Complete  {id32}            sent once a personal order's tasks are done (0x1043d90); the
-//                                                           reply's completionRewards[].completionReward.items the client
-//                                                           adds itself, so they are saved here first
-//   GET  /NewsFeed/801?maxEntries=16&fromTimeStamp=t       dispatches, ~30 s      array root (0x107d480), lowercase keys
-//   GET  /Episode/801, /Episode/801/status                 {episodes: []}         (0x104be20, 0x104bab0)
-//   GET  /Stats/war/801/summary                            {} (0x106d040: with galaxy_stats, all 14 counters)
-//   POST /Mail/inbox                                       the mailbox, ~60 s (0x10567a0: all five header fields)
-//   POST /Mail/claim/mail {mailIds}, /Mail/claim/mail/<id> a claim: the client adds the attachments' items itself
-//                                                           (0x1373cf0), so they are saved here first
-//   POST /Mission/Session, /Pes/GetConfiguration           mission telemetry (no reply read), feature messages
-// Each got 501 before. Without a war script each answers with the empty body its parser accepts. With one (backend
-// --war-script <file>, docs/war-script.md) its major orders, personal orders, dispatches and mail are served, and its
-// galactic war effects and Status additions join whichever war is served. The file is read again whenever it changes,
-// so an edit shows in game at the next poll. Mail is how a reward reaches every player, whether they played or not: each
-// profile claims each mail once (progression "hellforgeClaimedMail"). Nothing paid and never Super Credits.
-// With the HellForge war (backend --war hellforge, HellForgeWar) its server's major orders and dispatches come first,
-// as the server sent them, and a war script's follow (16 at most in all).
-// Every reply here was run through the client's own parser in an emulator; none has been tried in game yet.
+// The war's other services, which the game polls on the ship: major and personal orders, dispatches, episodes, war
+// stats, mail and telemetry (the list, with the client's parsers: docs/war-script.md, "The services the game polls").
+// Without a war script each answers with the empty body its parser accepts. A war script's content is served, and its
+// effects and Status additions join whichever war is served; the file is read again whenever it changes.
+// Mail is how a reward reaches every player, whether they played or not: each profile claims each mail once
+// (progression "hellforgeClaimedMail"). Nothing paid and never Super Credits. The client adds a claim's items itself,
+// so they are saved here first. With the HellForge war its server's major orders and dispatches come first, as the
+// server sent them, and a war script's follow (16 at most in all).
 public sealed class WarServices(string? scriptPath, WarClock clock, ProfileStore? profile, Func<ulong> localAccount, Action<string> log, HellForgeWar? shared = null)
 {
     public const int WarId = LiveWar.WarId;

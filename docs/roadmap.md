@@ -156,8 +156,8 @@ the game's content only appears when the war sets it up, and "All planets open" 
 Status: step 1 built (war scripts); step 3's client side built (the backend follows a war server, reports missions;
 [hellforge-war.md](hellforge-war.md)), not yet tried in game. The research is in HD2Mods `research/galactic-war`.
 
-The goal is a galactic war HellForge runs, which players join and staff steer from the website: planets, liberation and
-defense, major orders, dispatches, subfactions, planet modifiers (an extra stratagem on a planet, cooldowns) and rewards
+The goal is a galactic war HellForge runs, which players join and staff steer from the website. It has planets,
+liberation and defense, major orders, dispatches, subfactions, planet modifiers (an extra stratagem on a planet, cooldowns) and rewards
 everyone can claim, including HellForge's own stratagems and cosmetics. The game simulates none of the war itself; it
 shows what the backend serves and reports each mission. The steps:
 

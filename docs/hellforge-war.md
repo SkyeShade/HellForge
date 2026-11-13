@@ -1,17 +1,21 @@
 # The HellForge war
 
+<!-- diataxis: reference -->
+
 The HellForge war is one galactic war shared by every HellForge player. A war server runs it: planets, liberation,
 major orders and dispatches. Each player's backend follows that server, and each mission played counts towards it. It
 is the default war from this version on (Settings > GALACTIC WAR > HellForge war).
 
-The war server is a service of its own, not part of the website. HellForge's official address isn't decided yet: until it is, the default is the placeholder `http://127.0.0.1:5093`, a war server run on this PC.
+The war server is a service of its own, not part of the website. HellForge's official address isn't decided yet.
+Until it is, the default is the placeholder `http://127.0.0.1:5093`, a war server run on this PC.
 
 ## What the backend does
 
 Before the game starts, and every minute while it runs, the backend fetches the server's snapshot. After a failed
 fetch it tries again 30 seconds later. A snapshot is used only when it is schema 1 for war 801, has a war time above 0
-and planets, and has every list in it. Anything else keeps the war served before. The snapshot is saved in the
-installation's `hellforge-war` folder, one file per server, with the time it was fetched, so switching servers never
+and planets, and has every list in it. Anything else keeps the war served before.
+
+The snapshot is saved in the installation's `hellforge-war` folder, one file per server, with the time it was fetched, so switching servers never
 serves another server's war. Without the server the saved copy is served, its war time moved on by the time since it
 was fetched. With neither, HellForge's frozen war is served.
 
@@ -62,7 +66,7 @@ then PLAY. Or from a terminal: `HellForge.Cli.exe play --war hellforge --war-ser
 
 ## Linux
 
-A Linux session runs in a network namespace with no way out, so the wrapper fetches the HellForge war before entering it
+A Linux session runs in a network namespace with no way out. The wrapper fetches the HellForge war before entering it
 (`fetch-hellforge-war`, as it fetches the live war), and the session serves that copy without refreshing it. Missions
 are not reported from inside the namespace. They could be later: the backend would write each report to a file in the
 installation, and the launcher, which runs outside the namespace, would send them on and pass the tickets back.

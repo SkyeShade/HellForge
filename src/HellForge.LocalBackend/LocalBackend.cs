@@ -150,13 +150,12 @@ public static partial class LocalBackend
     {
         CheckSettings(settings);
         var fixtures = Fixtures(settings);
-        // --war open: the all-planets war (OpenWar) replaces the live war; the HellForge war does too.
-        IServedWar? liveWar = settings.OpenWar ? null : (IServedWar?)settings.HellForgeWar ?? settings.LiveWar;
+        var (hellforgeWar, liveWar) = Wars(settings);
         var profile = settings.Profile;
         if (settings.StartupFixtures) profile ??= ProfileStore.Open(null);
         var missions = profile != null ? new MissionService(profile, settings.Pickups)
         {
-            Registered = settings.RegisteredItems, LocalAccount = settings.LocalAccount, Reports = settings.OpenWar ? null : settings.HellForgeWar
+            Registered = settings.RegisteredItems, LocalAccount = settings.LocalAccount, Reports = hellforgeWar
         } : null;
         // Friends' lobbies and profiles for the social tab, filled by multiplayer when a caller supplies it.
         var presence = settings.Presence ?? new FriendPresence();
@@ -192,12 +191,7 @@ public static partial class LocalBackend
             return null;
         }
         var purchases = profile != null ? new Purchases(profile, Catalogue, settings.ModWarbonds) { Registered = settings.RegisteredItems } : null;
-        // The war's polled services (major orders, dispatches, mail...), with the war script's content when there is one.
-        var warLog = Path.Combine(settings.EvidenceDirectory, "war-script.log");
-        var warServices = settings.StartupFixtures ? new WarServices(settings.WarScript, warClock, profile, () => accountKeys.LocalId ?? 0, message =>
-        {
-            lock (warLog) File.AppendAllText(warLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + message + Environment.NewLine);
-        }, settings.OpenWar ? null : settings.HellForgeWar) : null;
+        var warServices = settings.StartupFixtures ? PolledWarServices(settings, warClock, profile, accountKeys, hellforgeWar) : null;
         Directory.CreateDirectory(settings.EvidenceDirectory);
         var auditPath = Path.Combine(settings.EvidenceDirectory, "requests.jsonl");
         // A fresh evidence directory prevents accidental mixing of runs.
@@ -222,6 +216,20 @@ public static partial class LocalBackend
         };
         app.Run(requests.HandleAsync);
         return app;
+    }
+
+    // --war open: the all-planets war (OpenWar) replaces the live war; the HellForge war does too.
+    static (HellForgeWar? HellForge, IServedWar? Served) Wars(BackendSettings settings) =>
+        settings.OpenWar ? (null, null) : (settings.HellForgeWar, (IServedWar?)settings.HellForgeWar ?? settings.LiveWar);
+
+    // The war's polled services (major orders, dispatches, mail...), with the war script's content when there is one.
+    static WarServices PolledWarServices(BackendSettings settings, WarClock warClock, ProfileStore? profile, AccountKeys accountKeys, HellForgeWar? hellforgeWar)
+    {
+        var warLog = Path.Combine(settings.EvidenceDirectory, "war-script.log");
+        return new WarServices(settings.WarScript, warClock, profile, () => accountKeys.LocalId ?? 0, message =>
+        {
+            lock (warLog) File.AppendAllText(warLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + message + Environment.NewLine);
+        }, hellforgeWar);
     }
 
     // Mods' warbonds read the startup bodies and the registered items, and decide which registered items the profile holds

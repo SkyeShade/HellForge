@@ -1,5 +1,7 @@
 # War scripts: your own major orders, dispatches, rewards and planet modifiers
 
+<!-- diataxis: reference -->
+
 A war script is a JSON file that adds to the galactic war HellForge serves. It can hold:
 
 - major orders and personal orders, with your own title and briefing;
@@ -8,11 +10,12 @@ A war script is a JSON file that adds to the galactic war HellForge serves. It c
 - galactic war effects (planet modifiers such as an extra stratagem, cooldowns, subfactions) and additions to the war
   status (where those effects go, defense events, campaigns).
 
-This was the first step towards a HellForge galactic war; the war every HellForge player shares now comes from a war
-server ([hellforge-war.md](hellforge-war.md)), and a war script adds to it like to any other war. The file lives on
-each player's PC, so everyone in a lobby should use the same file. Nothing here has been tried in game yet: every reply was run
-through the game's own parsers in an emulator, but which task lines and modifiers the game shows still needs testing
-(HD2Mods `research/galactic-war`, "Unknowns / in-game tests").
+The war every HellForge player shares comes from a war server ([hellforge-war.md](hellforge-war.md)), and a war script
+adds to it as to any other war. The file lives on each player's PC, so everyone in a lobby should use the same file.
+
+Nothing here has been tried in game yet. Every reply was run through the game's own parsers in an emulator, but which
+task lines and modifiers the game shows still needs testing (HD2Mods `research/galactic-war`, "Unknowns / in-game
+tests").
 
 ## Where it goes
 
@@ -78,10 +81,14 @@ The <i=1>Automatons</i> are in retreat." }
 | `flags` | 0 unless you know better. |
 
 Up to 16 of each are served. Task value types: 1 faction (2 Terminids, 3 Automatons, 4 Illuminate, 0 any), 3 the goal,
-4 an enemy, 5 an item, 9 a difficulty (likely), 12 a planet (likely). Task types seen in the live war: 2 collect an item
-(value type 5), 3 kill enemies (value types 1, 4), 9 operations at a difficulty. The community's names for the others (4
-complete objectives, 7 complete missions, 11 liberate a planet, 12 defend planets, 13 hold a planet when the order ends,
-15 liberate more planets than are lost) are not tied to the game's code yet.
+4 an enemy, 5 an item, 9 a difficulty (likely), 12 a planet (likely).
+
+| Task type | What it is |
+|---|---|
+| 2 | Collect an item (value type 5). Seen in the live war. |
+| 3 | Kill enemies (value types 1, 4). Seen in the live war. |
+| 9 | Operations at a difficulty. Seen in the live war. |
+| 4, 7, 11, 12, 13, 15 | The community's names, not tied to the game's code yet: complete objectives, complete missions, liberate a planet, defend planets, hold a planet when the order ends, liberate more planets than are lost. |
 
 Progress is what the file says; HellForge doesn't count it from missions yet. A **major order's reward isn't paid by the
 order itself** (the game has no claim for one): send it as mail. A personal order pays its rewards when the game reports
@@ -222,3 +229,21 @@ not effects the game has.
 | TX-41 Sterilizer | 1725541340 |
 
 </details>
+
+## The services the game polls
+
+The backend answers these for any war, with or without a war script (`WarServices.cs`). Every reply was run through the
+client's own parser in an emulator; none has been tried in game yet. The addresses are the client's parsers.
+
+| Request | What it is |
+|---|---|
+| `GET /v2/Assignment/War/801` | Major orders, polled about every 30 seconds: an array, at most 16 (parser `0x1077770`). |
+| `GET /v2/Assignment/Player` | Personal orders, in the same shape. |
+| `POST /v2/Assignment/War`, `POST /v2/Assignment/Player` | The client's progress deltas. No reply is read. |
+| `POST /v2/Assignment/Player/Complete` `{id32}` | Sent once a personal order's tasks are done (`0x1043d90`). The client adds the reply's rewards itself, so the backend saves them first. |
+| `GET /NewsFeed/801?maxEntries=16&fromTimeStamp=<t>` | Dispatches, polled about every 30 seconds: an array with lowercase keys (`0x107d480`). |
+| `GET /Episode/801`, `GET /Episode/801/status` | `{episodes: []}` (`0x104be20`, `0x104bab0`). |
+| `GET /Stats/war/801/summary` | `{}` (`0x106d040`). |
+| `POST /Mail/inbox` | The mailbox, polled about every 60 seconds (`0x10567a0`). |
+| `POST /Mail/claim/mail` `{mailIds}`, `POST /Mail/claim/mail/<id>` | A claim. The client adds the attachments' items itself (`0x1373cf0`), so the backend saves them first. |
+| `POST /Mission/Session`, `POST /Pes/GetConfiguration` | Mission telemetry (no reply read) and feature messages. |
