@@ -1,0 +1,12 @@
+<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,140,0,0">
+  <Border Background="#D9101214" BorderThickness="0,3,0,0" Padding="28,14,28,18">
+    <Border.BorderBrush><SolidColorBrush Color="{StaticResource BrandYellow}"/></Border.BorderBrush>
+    <StackPanel>
+      <TextBlock x:Name="Title" Style="{StaticResource Headerstyle}" Text="UI PROBE"/>
+      <TextBlock x:Name="Body" Style="{StaticResource Body_Medium}" Text="opened"/>
+      <Button x:Name="Ok" Content="OK" Margin="0,12,0,0" HorizontalAlignment="Left" Padding="24,6"/>
+    </StackPanel>
+  </Border>
+</Grid>

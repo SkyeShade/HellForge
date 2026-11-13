@@ -1,0 +1,20 @@
+{
+  "about": "SDK 19's screens in the game's own UI: an overlay from a XAML file of the mod in the game's styles, its text set every second, a click handler set, the refusals; on the ship and in a mission (tests/in-game/README.md).",
+  "mods": [
+    "ui-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {"name": "the mod loads with SDK 19", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "ui_open takes the mod's XAML file", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE open ok"},
+    {"name": "ui_on takes the button", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE on ok"},
+    {"name": "a file outside the mod, a missing file, an unknown kind and another mod's screen are refused", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE refusals ok"},
+    {"name": "ui_set queues", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE set 2 ok"},
+    {"name": "the screen opens in the game (parsed, added)", "log": "mod-hellforge.ui-probe.log", "absent_regex": "ui_open\\(1\\): (the XAML does not parse|the game's UI is not up)"},
+    {"name": "a missing element is said", "log": "mod-hellforge.ui-probe.log", "contains": "no element named \"Nobody\""},
+    {"name": "a missing property is said", "log": "mod-hellforge.ui-probe.log", "contains": "Title.NoSuchProperty: it has no such property"},
+    {"name": "the button takes the command", "log": "mod-hellforge.ui-probe.log", "absent": "Ok.click:"},
+    {"name": "the game's Noesis functions are the reviewed ones", "log": "modloader.log", "absent": "ui: the game's"}
+  ]
+}
