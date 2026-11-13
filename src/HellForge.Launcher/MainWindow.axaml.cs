@@ -191,6 +191,11 @@ public partial class MainWindow : Window
 
         PlatformText.Text = $"{RuntimeInformation.OSDescription} · .NET {Environment.Version}";
         VersionText.Text = $"HellForge {HellForge.Core.AppVersion.Text}\nHELLDIVERS 2 build {HellForge.Core.SupportedBuild.Current.BuildId}";
+        // A newer HellForge on GitHub: shown above the version, with a link to its release page (nothing is downloaded).
+        // Not asked for the development pictures, so they stay the same.
+        NewReleaseButton.Click += (_, _) => { if (update != null) OpenLink(update.Url); };
+        if (Environment.GetEnvironmentVariable("HELLFORGE_LAUNCHER_SHOT") is not { Length: > 0 })
+            Opened += async (_, _) => ShowUpdate(await HellForge.Core.LauncherUpdate.CheckAsync(HellForge.Core.AppVersion.Text));
         if (SessionRunner.IsSupported)
         {
             SetStatus("Ready. Steam must be running and signed in.", Phase.Idle,
@@ -997,6 +1002,20 @@ public partial class MainWindow : Window
 
     // The HellForge Discord server: support, news and mods (the sidebar's Discord button).
     const string DiscordInvite = "https://discord.gg/3Yye92xCzh";
+
+    HellForge.Core.LauncherUpdate.Release? update;
+
+    // The update notice: "HellForge 0.5.0-beta is out", which opens that release's page.
+    void ShowUpdate(HellForge.Core.LauncherUpdate.Release? release)
+    {
+        if (release == null) return;
+        update = release;
+        var version = HellForge.Core.LauncherUpdate.Number.Parse(release.Tag)?.ToString() ?? release.Tag;
+        NewReleaseTitle.Text = $"HellForge {version} is out";
+        ToolTip.SetTip(NewReleaseButton, "You have " + HellForge.Core.AppVersion.Text + ". Opens " + release.Url);
+        NewReleaseButton.IsVisible = true;
+        Append($"HellForge {version} is out: {release.Url}", Gold);
+    }
 
     // A web page in the player's browser.
     async void OpenLink(string url)
