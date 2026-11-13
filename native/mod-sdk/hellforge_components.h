@@ -530,7 +530,7 @@ typedef struct HfProjectileSettings
     float gravity;                               /* +0x2C gravity factor (unverified) [now?] */
     uint8_t _unknown_30[4];
     float lifetime;                              /* +0x34 seconds before it expires (unverified) [now?] */
-    uint8_t _unknown_38[4];
+    float lifetime_variance;                     /* +0x38 how much its lifetime varies, as a share of it: each round lives lifetime +- (this x lifetime), at random (unverified) [now?] */
     uint32_t damage;                             /* +0x3C the damage id its hits deal [now?] */
     float penetration_slowdown;                  /* +0x40 slowdown when it penetrates (unverified) [now?] */
     uint8_t _unknown_44[4];
@@ -541,7 +541,8 @@ typedef struct HfProjectileSettings
     uint32_t impact_explosion;                   /* +0x90 the explosion type where it hits (0: none) [now] */
     uint8_t _unknown_94[8];
     uint32_t expiry_explosion;                   /* +0x9C the explosion type when its lifetime runs out (0: none) [now] */
-    uint8_t _unknown_A0[16];
+    float arming_distance;                       /* +0xA0 how far (m) a round with an impact payload flies before it arms: one that hits sooner bounces instead of going off (the GL-21 7, the GP-31 and GL-52 4) (unverified) [now?] */
+    uint8_t _unknown_A4[12];
     uint32_t ricochets;                          /* +0xB0 whether its rounds bounce off what they hit: 0 never; the update bounces a round only while this is not 0 and counts its bounces against it (grenade launchers and most bullets 1, lasers 0) (unverified) [now?] */
     float ricochet_angle;                        /* +0xB4 how flat a hit must be to bounce, in degrees off straight on (0: any hit, 360: never); a round still unarmed bounces anyway (unverified) [now?] */
     float ricochet_min_speed;                    /* +0xB8 the speed (m/s) a round must be faster than to bounce (unverified) [now?] */
@@ -562,6 +563,8 @@ HF_ASSERT_OFFSET(HfProjectileSettings, gravity, 44);
 #define HF_TYPE_ProjectileSettings_gravity HF_TYPE_F32
 HF_ASSERT_OFFSET(HfProjectileSettings, lifetime, 52);
 #define HF_TYPE_ProjectileSettings_lifetime HF_TYPE_F32
+HF_ASSERT_OFFSET(HfProjectileSettings, lifetime_variance, 56);
+#define HF_TYPE_ProjectileSettings_lifetime_variance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfProjectileSettings, damage, 60);
 #define HF_TYPE_ProjectileSettings_damage HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileSettings, penetration_slowdown, 64);
@@ -574,6 +577,8 @@ HF_ASSERT_OFFSET(HfProjectileSettings, impact_explosion, 144);
 #define HF_TYPE_ProjectileSettings_impact_explosion HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileSettings, expiry_explosion, 156);
 #define HF_TYPE_ProjectileSettings_expiry_explosion HF_TYPE_U32
+HF_ASSERT_OFFSET(HfProjectileSettings, arming_distance, 160);
+#define HF_TYPE_ProjectileSettings_arming_distance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfProjectileSettings, ricochets, 176);
 #define HF_TYPE_ProjectileSettings_ricochets HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileSettings, ricochet_angle, 180);
@@ -2678,7 +2683,8 @@ typedef struct HfExplosive
     float explosion_delay;                       /* +0x0C Fuse (explosion delay) (seconds) (unverified) [respawn?] */
     uint8_t _unknown_10[20];
     uint32_t explosion;                          /* +0x24 Explosion payload (unverified) [respawn?] */
-    uint8_t _unknown_28[288];
+    uint32_t impact_explosion;                   /* +0x28 the explosion where it hits something (0: none; the Solo Silo missile 420) (unverified) [respawn?] */
+    uint8_t _unknown_2C[284];
     uint32_t armed_ability;                      /* +0x148 the ability it runs once it is set off (the Solo Silo missile: 2088, its launch) [respawn?] */
     uint8_t _unknown_14C[28];
 } HfExplosive;
@@ -2689,6 +2695,8 @@ HF_ASSERT_OFFSET(HfExplosive, explosion_delay, 12);
 #define HF_TYPE_Explosive_explosion_delay HF_TYPE_F32
 HF_ASSERT_OFFSET(HfExplosive, explosion, 36);
 #define HF_TYPE_Explosive_explosion HF_TYPE_U32
+HF_ASSERT_OFFSET(HfExplosive, impact_explosion, 40);
+#define HF_TYPE_Explosive_impact_explosion HF_TYPE_U32
 HF_ASSERT_OFFSET(HfExplosive, armed_ability, 328);
 #define HF_TYPE_Explosive_armed_ability HF_TYPE_U32
 

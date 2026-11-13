@@ -17,6 +17,13 @@ On `dev`, since 0.4.0-beta.
 - **Ricochets in the editor.** Every round's flight section has Ricochets, Ricochet angle and Ricochet minimum speed.
   Ricochets 0 keeps a grenade launcher's or grenade pistol's grenade from bouncing off what it hits (they have 1), and
   works on bullets too. Mods reach them as `ricochets`, `ricochet_angle` and `ricochet_min_speed` on a projectile row.
+- **Fuses in the editor.** Every round's flight section has Lifetime, Lifetime variance and Arming distance: a grenade
+  that hits before it has flown that far bounces instead of going off. Explosion pages show their bomblets' fuse, and
+  shrapnel counts go to 512.
+- **More of the editor's missing fields.** The FAF-14 Spear, W.A.S.P., Commando, Warrant, Missile Pistol and the seeker
+  grenades have their lock-on range, and their missiles their seeker range. The B/MD C4 Pack has its charges from
+  supply, the MD-I4 Incendiary Mines a status pick, and the E/GL-21 Grenadier Battlement its gun's handling and
+  ammunition. The MS-11 Solo Silo has its remote's handling and its missile's payloads; the Spear an impact payload.
 - **Mods can add patterns (SDK 18).** `add_pattern` copies a vanilla pattern under an id of its own, with the mod's
   colour and masks in place of the base's. A copy of a weapon paint is in the armory's pattern slot of every weapon that
   offers the base, or of the weapons the mod names. A copy of a Pelican, hellpod or vehicle skin joins the hangar for its
@@ -206,6 +213,8 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **The Eagle 110mm Rocket Pods' attack duration goes above 1.6 seconds.** The editor capped it there, under the pods'
+  own 2 seconds. The pods fire one rocket per target they find, spread over this time, so more time adds no rockets.
 - **Spore Burst Strain planets show it on the war table.** "All planets open" dealt the Spore Burst Strain like the other
   subfactions, but without its war-table flag, so no planet showed it and only the others seemed to be there. Its flag
   (effect 1386) is served and dealt with it now.
