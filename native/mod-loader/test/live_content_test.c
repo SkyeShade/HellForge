@@ -882,6 +882,30 @@ static void ContentDifficultyFixture(void)
     ContentEventsRestore();
 }
 
+/* The game's stratagem check as OwnStratagemHeld reads it: the first category-10 entry with the stable id, held itself
+ * or through the root before it; a later entry with the same itemId is never read, held or not. */
+static void StratagemHeldFixture(void)
+{
+    g_fakeCatalogue = (uint8_t*)calloc(1, 0xDDCF8 + 4);
+    assert(g_fakeCatalogue != NULL);
+    uintptr_t manager = (uintptr_t)g_fakeCatalogue;
+    uint32_t family[4][4] = {{0x5000, 0x5000, 0, 11}, {0x5001, 0x1111, 0x5000, 10}, {0x6000, 0x6000, 0, 11}, {0x6001, 0x1111, 0x6000, 10}};
+    for (int i = 0; i < 4; i++) FakeOwnAdd(0, family[i][0], family[i][1], family[i][2], 0, 0, NULL, 0, NULL, 0, NULL, 0, NULL, 0, family[i][3], 1);
+    uint32_t* state[4];
+    for (int i = 0; i < 4; i++) state[i] = (uint32_t*)(OwnRecordAt(manager, i) + 0x14);
+    *state[2] = 2; *state[3] = 2;
+    assert(!OwnStratagemHeld(manager, 0x1111)); /* only the second family is held */
+    *state[0] = 4;
+    assert(OwnStratagemHeld(manager, 0x1111)); /* through its root */
+    *state[0] = 0; *state[1] = 2;
+    assert(OwnStratagemHeld(manager, 0x1111)); /* itself */
+    *state[1] = 3;
+    assert(!OwnStratagemHeld(manager, 0x1111) && !OwnStratagemHeld(manager, 0x2222));
+    free(g_fakeCatalogue);
+    g_fakeCatalogue = NULL;
+    printf("  ownership: a stratagem held by its first category-10 entry or that entry's root, never by a later entry with its stable id\n");
+}
+
 /* A session whose catalogue moved (state_moves.c): the ownership pins read as the move left them, and a live change
  * owns a copy only when the player holds what it copies, a premium weapon or stratagem they lack never. */
 static void ContentMovedOwnershipFixture(void)

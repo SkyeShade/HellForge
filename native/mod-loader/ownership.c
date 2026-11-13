@@ -188,7 +188,8 @@ static int OwnHeldAt(uintptr_t manager, int entry)
 static int OwnOwned(uintptr_t manager, uint32_t mixId) { return OwnHeldAt(manager, OwnEntry(manager, mixId, 0, 0)); }
 
 /* Whether the player holds a stratagem, as the game decides (0x136FC20): the first category-10 entry with its stable id,
- * or that entry's parent, held. */
+ * or that entry's parent, held. The game first returns not held when its row's [+0xC0]&1 or [+0x80]&2 is clear; this
+ * reads no row, so it can say held where the game does not. */
 static int OwnStratagemHeld(uintptr_t manager, uint32_t stable)
 {
     int child = OwnEntry(manager, 0, stable, 10);
