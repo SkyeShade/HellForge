@@ -6,13 +6,18 @@ namespace HellForge.Core;
 
 // The supported build's paid items as numbers only (data/paid-items.json): the premium warbonds with their tokens and pages,
 // the items each premium warbond gates, every paid item (premium tokens, Super Credits items, Steam DLC gear), the parents
-// of their children and the Steam DLC packages' contents. It is compiled in because the installation's catalogue is the
+// of their children, the Steam DLC packages' contents and the catalogue entries the backend rebuilds. It is compiled in because the installation's catalogue is the
 // player's own file: what it says about these ids is never taken over this list (HellForge.LocalBackend PaidContentSet).
 // HellForge.LocalBackend paid-list writes it from a catalogue of the supported build.
 public sealed record PaidItems(string Build, IReadOnlySet<uint> Paid, IReadOnlySet<uint> Dlc, IReadOnlyList<PaidItems.Warbond> Warbonds,
-    IReadOnlyDictionary<uint, uint[]> Gated, IReadOnlyDictionary<uint, uint> Parents, IReadOnlyDictionary<uint, uint[]> DlcPackages)
+    IReadOnlyDictionary<uint, uint[]> Gated, IReadOnlyDictionary<uint, uint> Parents, IReadOnlyDictionary<uint, uint[]> DlcPackages,
+    IReadOnlyList<PaidItems.Entry> Entries)
 {
-    public const int Format = 1;
+    public const int Format = 2;
+
+    // A catalogue entry as the game links it: its ids, category and parent (0: a root), in the catalogue's order. The
+    // game links a child to the root before it, not by parentId (0x136EC00), so these are served in this order.
+    public sealed record Entry(uint MixId, uint ItemId, int Category, uint Parent);
 
     // A warbond: its tokens in the game's order (the client buys the first), none for Helldivers Mobilize; its medal items
     // (total, consumable, spent); and its pages' items.
@@ -40,14 +45,15 @@ public sealed record PaidItems(string Build, IReadOnlySet<uint> Paid, IReadOnlyS
         var warbonds = (root["warbonds"] as JsonArray ?? []).OfType<JsonObject>().Select(w => new Warbond((uint)w["id32"]!, Ids(w["tokens"]), Ids(w["medals"]),
             [.. (w["items"] as JsonArray ?? []).OfType<JsonArray>().Select(pair => ((long)pair[0]!, (uint)pair[1]!))])).ToList();
         return new PaidItems((string?)root["build"] ?? "", Ids(root["paid"]).ToHashSet(), Ids(root["dlc"]).ToHashSet(), warbonds,
-            Map(root["gated"], Ids), Map(root["parents"], node => (uint)node!), Map(root["dlcPackages"], Ids));
+            Map(root["gated"], Ids), Map(root["parents"], node => (uint)node!), Map(root["dlcPackages"], Ids),
+            [.. (root["entries"] as JsonArray ?? []).OfType<JsonArray>().Select(e => new Entry((uint)e[0]!, (uint)e[1]!, (int)e[2]!, (uint)e[3]!))]);
     }
 
     // Sorted, one entry a line, so a regenerated file differs only where the build did.
     public string ToJson()
     {
         static string List(IEnumerable<uint> ids) => "[" + string.Join(",", ids.Order()) + "]";
-        static string Entries<T>(IReadOnlyDictionary<uint, T> map, Func<T, string> value) =>
+        static string Keyed<T>(IReadOnlyDictionary<uint, T> map, Func<T, string> value) =>
             "{\n" + string.Join(",\n", map.OrderBy(e => e.Key).Select(e => "    \"" + e.Key + "\": " + value(e.Value))) + "\n  }";
         var warbonds = Warbonds.Select(w => "    {\"id32\":" + w.Id + ",\"tokens\":[" + string.Join(",", w.Tokens) + "],\"medals\":[" + string.Join(",", w.Medals) +
             "],\"items\":[" + string.Join(",", w.Items.Select(i => "[" + i.ItemId + "," + i.MixId + "]")) + "]}");
@@ -59,9 +65,10 @@ public sealed record PaidItems(string Build, IReadOnlySet<uint> Paid, IReadOnlyS
             "\"paid\": " + List(Paid),
             "\"dlc\": " + List(Dlc),
             "\"warbonds\": [\n" + string.Join(",\n", warbonds) + "\n  ]",
-            "\"gated\": " + Entries(Gated, List),
-            "\"parents\": " + Entries(Parents, parent => parent.ToString(CultureInfo.InvariantCulture)),
-            "\"dlcPackages\": " + Entries(DlcPackages, List)
+            "\"gated\": " + Keyed(Gated, List),
+            "\"parents\": " + Keyed(Parents, parent => parent.ToString(CultureInfo.InvariantCulture)),
+            "\"dlcPackages\": " + Keyed(DlcPackages, List),
+            "\"entries\": [\n" + string.Join(",\n", Entries.Select(e => $"    [{e.MixId},{e.ItemId},{e.Category},{e.Parent}]")) + "\n  ]"
         };
         return "{\n  " + string.Join(",\n  ", fields) + "\n}\n";
     }

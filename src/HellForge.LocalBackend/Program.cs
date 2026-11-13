@@ -141,6 +141,7 @@ try
     // locked (--premium-locked: their declared premium list is not owned) add nothing to the inventory.
     if (profile?.Ownership is { } ownership) registeredItems.OwnsBase = ownership.IsAllowed;
     registeredItems.Reserved = paidContent.IsReserved;
+    registeredItems.ReservedStratagemId = paidContent.IsReservedStratagemId;
     registeredItems.LockedMods = HellForge.Core.PremiumMods.ReadLocked(options.GetValueOrDefault("--premium-locked"));
     // --mod-warbonds <file>: the warbonds the session's mods add (mods-stage writes it; HellForge.Core ModWarbonds), sold
     // like the game's; an unlock-all profile has bought them all.

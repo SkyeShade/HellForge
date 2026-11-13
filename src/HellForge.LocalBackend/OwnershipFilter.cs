@@ -100,11 +100,12 @@ public sealed partial class OwnershipFilter
 
     // The item catalogue as served: a premium warbond's token the live account does not own has no price, so the client
     // offers no purchase for it (its unlock looks for the token priced in Super Credits, game.dll 0x136C270) and nobody
-    // spends Forge Credits on a warbond they cannot have; Purchases refuses one anyway.
+    // spends Forge Credits on a warbond they cannot have; Purchases refuses one anyway. Its paid families are rebuilt from
+    // the compiled list first (PaidContentSet.Rebuilt), as the game reads ownership through their order.
     public JsonElement FilterCatalogueResponse(JsonElement catalogue)
     {
         if (catalogue.ValueKind != JsonValueKind.Array) return catalogue;
-        var node = JsonNode.Parse(catalogue.GetRawText())!.AsArray();
+        var node = Paid.Rebuilt(JsonNode.Parse(catalogue.GetRawText())!.AsArray());
         foreach (var item in node.OfType<JsonObject>())
             if (MixId(item) is { } id && Paid.WarbondTokens.Contains(id) && !Owns(id) && item["buyPrice"] is JsonArray { Count: > 0 })
                 item["buyPrice"] = new JsonArray();

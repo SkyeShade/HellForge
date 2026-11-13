@@ -15,6 +15,10 @@ public sealed partial class RegisteredItems
     // only the game's catalogue (tests, the development backend).
     public Func<uint, bool>? Reserved { get; set; }
 
+    // ItemIds of the paid stratagem entries the served catalogue is rebuilt with (PaidContentSet.IsReservedStratagemId):
+    // compiled, as an edited catalogue can leave a paid stratagem's stable id out of the game's list below.
+    public Func<uint, bool>? ReservedStratagemId { get; set; }
+
     bool Taken(uint id, Vanilla? game) => game?.Ids.Contains(id) == true || Reserved?.Invoke(id) == true;
 
     List<Item> Checked(IReadOnlyList<Item> loaded)
@@ -33,7 +37,9 @@ public sealed partial class RegisteredItems
         if (item.IsDifficulty && (item.CopyOf != LevelTenItem || item.Name.Length == 0 || item.MixId != EngineHash.Id32(item.Name + "#item")))
             return "it is not a level copied from level 10 under its name's id";
         if (Taken(item.MixId, game)) return "its id is the game's or a paid item's";
-        if (item.IsStratagem && game?.StratagemItems.ContainsKey(item.Stable) == true) return $"its stable id {item.Stable} is a game stratagem's";
+        if (item.IsStratagem && (game?.StratagemItems.ContainsKey(item.Stable) == true || ReservedStratagemId?.Invoke(item.Stable) == true ||
+            ReservedStratagemId?.Invoke(item.MixId) == true))
+            return $"its stable id {item.Stable} is a game stratagem's";
         IEnumerable<uint> made = item.IsStratagem ? [WeaponChild(item.Stable, item.MixId)]
             : item.IsWeapon ? (game?.ChildIds.GetValueOrDefault(item.CopyOf) ?? []).Select(child => Rehome(child, item.CopyOf, item.MixId)) : [];
         return made.Where(id => Taken(id, game)).Select(id => $"its child's id {id} is the game's or a paid item's").FirstOrDefault();

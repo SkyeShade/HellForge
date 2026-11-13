@@ -22,11 +22,12 @@ public sealed partial class PaidContentSet
         var warbondTokens = floorTokens.Concat(extras.SelectMany(w => w.Tokens)).ToHashSet();
         return new PaidContentSet(warbondTokens, [.. DlcItems, .. floor.Dlc], [.. MixIds, .. floor.Paid, .. warbondTokens], gated,
             [.. WarbondItems, .. floor.Warbonds.SelectMany(w => w.Items.Select(item => item.MixId))], [.. Currencies, .. floor.Warbonds.SelectMany(w => w.Medals)])
-            { Warbonds = [.. floor.Warbonds.Select(w => new Warbond(w.Id, w.Tokens, w.Items)), .. extras], Parents = parents };
+            { Warbonds = [.. floor.Warbonds.Select(w => new Warbond(w.Id, w.Tokens, w.Items)), .. extras], Parents = parents, Entries = floor.Entries };
     }
 
     // The list for build, from this set as FromCatalogue made it: the final answers, so nothing in a catalogue (an
-    // earned list, a price) can take an id out of it later. Parents: the children of every paid or gated item.
+    // earned list, a price) can take an id out of it later. Parents: the children of every paid or gated item. Entries:
+    // the families the served catalogue is rebuilt with (PaidContentSet.Rebuild.cs).
     public PaidItems ToPaidItems(string build)
     {
         using var data = LocalBackend.LoadResource("progression-data.json");
@@ -40,7 +41,7 @@ public sealed partial class PaidContentSet
         var gatedOrPaid = MixIds.Concat(warbondItemTokens.Keys).ToHashSet();
         return new PaidItems(build, MixIds, DlcItems,
             [.. Warbonds.Select(w => new PaidItems.Warbond(w.Id, w.Tokens, medals[w.Id], w.Items))],
-            warbondItemTokens, Parents.Where(entry => gatedOrPaid.Contains(entry.Value)).ToDictionary(), packages);
+            warbondItemTokens, Parents.Where(entry => gatedOrPaid.Contains(entry.Value)).ToDictionary(), packages, CompiledEntries());
     }
 
     // The build a catalogue folder was assembled for (GameCatalog writes it), for paid-list.
