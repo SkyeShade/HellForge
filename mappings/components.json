@@ -1158,6 +1158,13 @@
           "verified": false,
           "source": "stats-schema"
         },
+        "lifetime_variance": {
+          "offset": 56,
+          "type": "f32",
+          "meaning": "how much its lifetime varies, as a share of it: each round lives lifetime +- (this x lifetime), at random",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile: flight +0x34 = lifetime + lifetime x (+0x38) x (2r - 1)"
+        },
         "damage": {
           "offset": 60,
           "type": "u32",
@@ -1208,6 +1215,13 @@
           "appliesVerified": true,
           "appliesSource": "read when the shot expires",
           "ref": "explosion"
+        },
+        "arming_distance": {
+          "offset": 160,
+          "type": "f32",
+          "meaning": "how far (m) a round with an impact payload flies before it arms: one that hits sooner bounces instead of going off (the GL-21 7, the GP-31 and GL-52 4)",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile copies +0xA0 into the slot (system +0x3B044); the projectile update 0x13AC1F0 compares the distance flown at the hit with it and bounces the round while it is short"
         },
         "ricochets": {
           "offset": 176,
@@ -5313,6 +5327,14 @@
           "meaning": "Explosion payload",
           "verified": false,
           "source": "stats-schema throwable.explosion",
+          "ref": "explosion"
+        },
+        "impact_explosion": {
+          "offset": 40,
+          "type": "u32",
+          "meaning": "the explosion where it hits something (0: none; the Solo Silo missile 420)",
+          "verified": false,
+          "source": "the type library (ExplosionType, as +0x24); HD2Runtime 0.40.1 research/silo-payload-F5FEE03DCFDB.json (explosive impact 420)",
           "ref": "explosion"
         },
         "armed_ability": {

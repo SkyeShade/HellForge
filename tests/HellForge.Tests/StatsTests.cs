@@ -330,6 +330,27 @@ static class StatsTests
                 reticle.Choices.Any(c => c.Value == 11), "The Laser Cannon's third-person reticle, its own style named");
             var patriot = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
             check(patriot["entity.durable_resistance"].Offset == 268 && patriot["zone_0.durable_resistance"] is { Offset: 724, Section: not null }, "A vehicle's durable damage share, default and per zone");
+            var targets = StatsSchema.Current.Targets;
+            foreach (var name in new[] { "GL-21 Grenade Launcher", "GP-31 Grenade Pistol", "GL-52 De-Escalator" })
+                check(weapons[name].Fields.Values.Count(f => f is { Kind: "ProjectileSettings", Offset: 160, Storage: "f32" }) == 1 &&
+                    weapons[name].Fields.Values.Count(f => f is { Kind: "ProjectileSettings", Offset: 52 }) == 1, name + ": its grenade's fuse, the lifetime and the arming distance");
+            check(targets["explosions"]["Eagle Cluster Bomb (payload expiry)"].Fields["shrapnel.lifetime"] is { Kind: "ProjectileSettings", Record: 131, Offset: 52 } &&
+                targets["explosions"]["Eagle Cluster Bomb (payload expiry)"].Fields["explosion.shrapnel_count"].Max == 512 &&
+                targets["throwables"]["TM-1 Lure Mine"].Fields["explosion.shrapnel_count"].Max == 512, "Bomblets: their fuse on the explosion's page, and counts past 64");
+            check(weapons["FAF-14 Spear"].Fields["targeting.range"] is { Component: "SensorEyeComponentData", Record: 303, Offset: 0 } &&
+                weapons["FAF-14 Spear"].Fields["missile.seeker_range"].Record == 47 && weapons["StA-X3 W.A.S.P. Launcher"].Fields.ContainsKey("function_missile.seeker_range") &&
+                targets["throwables"]["G-50 Seeker"].Fields.ContainsKey("targeting.range") && !weapons["A/M-12 Mortar Sentry / weapon"].Fields.ContainsKey("targeting.range"),
+                "Lock-on ranges on the Spear, its missile, the W.A.S.P.'s two and the seekers; not twice for a sentry");
+            check(weapons["B/MD C4 Pack"].Fields["deposit.refill_amount"] is { Component: "DepositComponentData", Record: 10, Offset: 8 }, "The C4 pack's charges from supply");
+            check(targets["stratagems"]["MD-I4 Incendiary Mines"].Fields["status.type"] is { Kind: "DamageInfo", Record: 407, Offset: 44 }, "The incendiary mines' status pick");
+            var battlement = targets["stratagems"]["E/GL-21 Grenadier Battlement"].Fields;
+            check(battlement["weapon.sway"] is { Component: "WeaponDataComponentData", Record: 357 } && battlement["weapon.capacity"].Record == 262 &&
+                battlement["reload.duration"].Component == "WeaponReloadComponentData", "The Grenadier Battlement's gun: handling and ammunition on its own records");
+            var silo = weapons["MS-11 Solo Silo"].Fields;
+            check(silo["remote.sway"] is { Component: "WeaponDataComponentData", Record: 349 } && silo["fired.detonation_payload"] is { Component: "ExplosiveComponentData", Offset: 36 } &&
+                silo["fired.impact_payload"].Offset == 40 && weapons["FAF-14 Spear"].Fields["terminal.primary.impact.explosion"] is { Kind: "ProjectileSettings", Record: 225, Offset: 144 },
+                "The Solo Silo's remote handling and missile payloads; the Spear's impact payload");
+            check(targets["stratagems"]["Eagle 110mm Rocket Pods"].Fields["eagle.fire_duration"].Max >= 2, "The rocket pods' attack duration reaches its own 2 s");
             var shield = StatsSchema.Current.Targets["backpacks"]["SH-20 Ballistic Shield Backpack"].Fields;
             check(shield["zone.explosive_damage_percentage"].Offset == 844 && shield["entity.explosive_damage_percentage"].Record == 292, "The ballistic shield's explosion shares.");
             var row = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "SH-20 Ballistic Shield Backpack")!["page"]!.AsArray()

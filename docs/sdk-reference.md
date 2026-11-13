@@ -9488,6 +9488,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `arming_delay` | +0x08 | f32 | respawn? | Arming delay (seconds) (unverified) |
 | `explosion_delay` | +0x0C | f32 | respawn? | Fuse (explosion delay) (seconds) (unverified) |
 | `explosion` | +0x24 | u32 | respawn? | Explosion payload (unverified) (an explosion reference) |
+| `impact_explosion` | +0x28 | u32 | respawn? | the explosion where it hits something (0: none; the Solo Silo missile 420) (unverified) (an explosion reference) |
 | `armed_ability` | +0x148 | u32 | respawn? | the ability it runs once it is set off (the Solo Silo missile: 2088, its launch) |
 
 ### HfThrowable
@@ -10070,12 +10071,14 @@ and statuses without code.
 | `drag` | +0x28 | f32 | now? | drag (unverified) |
 | `gravity` | +0x2C | f32 | now? | gravity factor (unverified) |
 | `lifetime` | +0x34 | f32 | now? | seconds before it expires (unverified) |
+| `lifetime_variance` | +0x38 | f32 | now? | how much its lifetime varies, as a share of it: each round lives lifetime +- (this x lifetime), at random (unverified) |
 | `damage` | +0x3C | u32 | now? | the damage id its hits deal (a damage reference) |
 | `penetration_slowdown` | +0x40 | f32 | now? | slowdown when it penetrates (unverified) |
 | `spawn_effect` | +0x48 | u64 | now? | its main particle effect |
 | `flight_effect` | +0x70 | u64 | now? | its second particle effect (light and trail) |
 | `impact_explosion` | +0x90 | u32 | now | the explosion type where it hits (0: none) (an explosion reference) |
 | `expiry_explosion` | +0x9C | u32 | now | the explosion type when its lifetime runs out (0: none) (an explosion reference) |
+| `arming_distance` | +0xA0 | f32 | now? | how far (m) a round with an impact payload flies before it arms: one that hits sooner bounces instead of going off (the GL-21 7, the GP-31 and GL-52 4) (unverified) |
 | `ricochets` | +0xB0 | u32 | now? | whether its rounds bounce off what they hit: 0 never; the update bounces a round only while this is not 0 and counts its bounces against it (grenade launchers and most bullets 1, lasers 0) (unverified) |
 | `ricochet_angle` | +0xB4 | f32 | now? | how flat a hit must be to bounce, in degrees off straight on (0: any hit, 360: never); a round still unarmed bounces anyway (unverified) |
 | `ricochet_min_speed` | +0xB8 | f32 | now? | the speed (m/s) a round must be faster than to bounce (unverified) |
