@@ -515,7 +515,8 @@ typedef struct HfDifficulty
                                     the HiveMind scales it further by progress and players); 0 keeps level 10's; up to 4 */
     uint32_t mission_stratagem;  /* a stratagem type every mission at the level grants every player, in the mission group
                                     with Reinforce and Resupply (no loadout slot; the type's own uses and cooldown), e.g.
-                                    105, the M-102 Fast Recon Vehicle; 0 none */
+                                    105, the M-102 Fast Recon Vehicle; 0 none. A paid one (premium warbond, Superstore)
+                                    is not granted, and the mod's log says why */
 } HfDifficulty;
 /* Every mission at the level is two missions in one: its own plus a partner mission of the same faction that the game
  * offers alongside it, with the partner's main objectives and their steps as the game selects them (chosen with the

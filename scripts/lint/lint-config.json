@@ -19,6 +19,7 @@
     "native/mod-loader/explosion_sites.h",
     "native/mod-loader/location_sites.h",
     "native/mod-loader/melee_data.h",
+    "native/mod-loader/paid_stratagems.h",
     "native/mod-loader/passive_pins.h",
     "native/mod-loader/perk_data.h",
     "native/mod-loader/projectile_sites.h",

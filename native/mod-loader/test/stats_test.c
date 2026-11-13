@@ -322,7 +322,7 @@ static void NetSwitchFixture(void)
  * kept caller where the reviewed build has them. */
 static void DifficultyFixture(void)
 {
-    size_t size = 0x37A0000; /* up to the missions table */
+    size_t size = 0x37D0000; /* up to the stratagem list */
     uint8_t* game = VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     assert(game);
     uintptr_t base = (uintptr_t)game;
@@ -483,6 +483,17 @@ static void DifficultyFixture(void)
     HfDifficulty hell = {sizeof hell};
     hell.name = "fixture/hell_forge"; hell.title = "Hell Forge"; hell.encounter_points = 1500.0f; hell.icon = "fixture/icon"; hell.map_scale = 2.0f; hell.optional_objectives = 8; hell.major_objectives = 2; hell.outpost_scale = 2.0f; hell.mission_minutes = 72.0f; hell.flags = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS; hell.mission_stratagem = 105; hell.patrol_frequency = 2.0f; hell.patrol_cap = 1.5f;
     assert(ApiAddDifficulty(&g_mods[0], &hell) == 11 && ApiAddDifficulty(&g_mods[0], &hell) == 0);
+    /* The mission stratagem's row not loaded yet waits; the M-102 FRV's (free, in a family with paid skins) installs. */
+    {
+        int waiting;
+        const char* why = DifficultySitesFailed(base, &waiting);
+        assert(why != NULL && waiting && strstr(why, "mission stratagem"));
+        uint8_t* frv = calloc(1, STR_ROW);
+        uint32_t head[2] = {105, 0xEA902C4Bu};
+        memcpy(frv, head, 8);
+        uint64_t at = (uintptr_t)frv;
+        memcpy(game + STR_TABLE + 105 * 8, &at, 8);
+    }
     /* An unfilled copy waits, even after the grace period; a changed instruction waits, then is refused. */
     uint32_t item = *(uint32_t*)(game + kDifficultyCopies[7]);
     *(uint32_t*)(game + kDifficultyCopies[7]) = 0;
@@ -772,6 +783,43 @@ static void DifficultyFixture(void)
             assert(sets[0][0] == 0 && sets[1][4] == 105 && sets[2][3] == 105 && sets[4][4] == 105 && sets[7][5] == 105 && sets[7][4] == 128);
             memcpy(&rel, grant + 50, 4); assert(grant + 54 + rel == game + DIF_GRANT_BACK);
             memcpy(&rel, grant + 62, 4); assert(grant + 66 + rel == game + DIF_GRANT_BACK);
+        }
+        /* A paid stratagem is never a mission stratagem: a vanilla type by its row, a new type by its own stable id or its
+         * base's; an unknown type, a row of another type and a row not loaded are refused or wait. */
+        {
+            int waiting;
+            uint8_t* hellbomb = calloc(1, STR_ROW);
+            uint32_t head[2] = {120, 0x02BBFF50u}; /* the Hellbomb backpack, a premium warbond's */
+            memcpy(hellbomb, head, 8);
+            uint64_t at = (uintptr_t)hellbomb;
+            memcpy(game + STR_TABLE + 120 * 8, &at, 8);
+            assert(PaidStratagem(0x02BBFF50u) && !PaidStratagem(0xEA902C4Bu));
+            assert(GrantRefused(base, 105, &waiting) == NULL && !waiting);
+            assert(strstr(GrantRefused(base, 120, &waiting), "paid") && !waiting);
+            assert(GrantRefused(base, 121, &waiting) != NULL && waiting);
+            memcpy(game + STR_TABLE + 121 * 8, &at, 8);
+            assert(strstr(GrantRefused(base, 121, &waiting), "not the reviewed one") && !waiting);
+            memset(game + STR_TABLE + 121 * 8, 0, 8);
+            g_stratagems[0].type = 150; g_stratagems[0].base = 120; g_stratagems[0].stable = 0x12345678u; g_stratagemCount = 1;
+            assert(strstr(GrantRefused(base, 150, &waiting), "paid"));
+            g_stratagems[0].base = 105;
+            assert(GrantRefused(base, 150, &waiting) == NULL);
+            g_stratagems[0].stable = 0x02BBFF50u;
+            assert(strstr(GrantRefused(base, 150, &waiting), "paid"));
+            assert(strstr(GrantRefused(base, 151, &waiting), "not a stratagem type") && !waiting);
+            /* Refused at the install: logged, and the table read keeps the game's sets. */
+            uint8_t site[7];
+            memcpy(site, game + DIF_GRANT_SITE, 7);
+            memcpy(game + DIF_GRANT_SITE, kGrantPin, 7);
+            uint32_t granted = g_difficulty.grant;
+            g_difficulty.grant = 120;
+            DifficultyInstall refused = {base};
+            assert(InstallGrant(&refused) == NULL && !memcmp(game + DIF_GRANT_SITE, kGrantPin, 7));
+            g_difficulty.grant = granted;
+            memcpy(game + DIF_GRANT_SITE, site, 7);
+            memset(&g_stratagems[0], 0, sizeof g_stratagems[0]); g_stratagemCount = 0;
+            memset(game + STR_TABLE + 120 * 8, 0, 8);
+            free(hellbomb);
         }
         /* The hologram's mission scale writers go through their stubs; each stub's constants and way back. */
         for (int i = 0; i < 4; i++)

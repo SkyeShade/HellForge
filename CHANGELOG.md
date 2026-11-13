@@ -150,6 +150,8 @@ On `dev`, since 0.4.0-beta.
   weapons, and a copy of another mod's weapon follows its original, up to 8 copies deep.
 - **Mods added while you play own new items again, and copies only with their original.** Live changes owned nothing
   after the game's catalogue had moved. A copy of premium content the player lacks now stays locked there too.
+- **A difficulty's mission stratagem can't be a paid one.** Every player got it in every mission, owned or not. The
+  mod loader now grants none and logs why. How a joiner's game handles a changed host's mission group is not traced.
 - **A backend swapped on its own is refused.** A session carries its backend's digest and does not start another
   backend. These checks run on the player's PC; a changed session gets past them.
 - **A new HellForge logo.** The launcher, its window and desktop icon, the installer and the in-game editor show the

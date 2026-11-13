@@ -242,6 +242,9 @@ that gives an item, a mod warbond's purchases included. A session also refuses a
 not the one it was built with. None of this stops a player who changes HellForge itself: a replaced session, or one
 whose compiled pin was edited, starts any backend.
 
+A difficulty's mission stratagem is never a paid one in the loader. How a joiner's game handles a mission group sent
+by a changed host is not traced yet, so that path is open.
+
 ## Load order and conflicts
 
 The Mods page lists mods top to bottom. The bottom mod loads first and the top one wins: its data patches get the

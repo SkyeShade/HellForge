@@ -792,10 +792,9 @@ guards, and `spawner_cooldown` the time between the shared spawners' waves. An e
 - `optional_objectives` (0 to 32) and `major_objectives` (0 to 8) are together at most 18.
 - `outpost_scale` is 0 to 8, relative to level 10's outposts.
 - `mission_minutes` is 1 to 75.
-- `map_scale` is up to 2. Above 1, the SEAF Artillery's shells fly farther at the level (their range times
-  `map_scale`), so the gun still reaches across the map.
+- `map_scale` is up to 2. Above 1, the SEAF Artillery's range grows with it, so the gun still reaches across the map.
 - `patrol_frequency` and `patrol_cap` are up to 4 each.
-- `mission_stratagem` is a stratagem every player gets in missions at the level.
+- `mission_stratagem` is a stratagem every player gets in missions at the level, never a paid one.
 
 0 keeps level 10's value, except for `mission_minutes` (0 keeps the mission's own countdown) and `mission_stratagem`
 (0 grants none).

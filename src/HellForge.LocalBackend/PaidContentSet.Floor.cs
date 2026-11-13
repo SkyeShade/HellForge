@@ -39,9 +39,13 @@ public sealed partial class PaidContentSet
             .ToDictionary(package => package.GetProperty("itemMixId32").GetUInt32(),
                 package => package.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("mixId").GetUInt32()).ToArray());
         var gatedOrPaid = MixIds.Concat(warbondItemTokens.Keys).ToHashSet();
+        var entries = CompiledEntries();
+        // A stratagem is paid by its own category-10 entry or its root: a free one in a family with gated skins (the
+        // M-102 FRV) is not.
+        var stratagems = entries.Where(e => e.Category == 10 && IsReserved(e.MixId)).Select(e => e.ItemId).ToHashSet();
         return new PaidItems(build, MixIds, DlcItems,
             [.. Warbonds.Select(w => new PaidItems.Warbond(w.Id, w.Tokens, medals[w.Id], w.Items))],
-            warbondItemTokens, Parents.Where(entry => gatedOrPaid.Contains(entry.Value)).ToDictionary(), packages, CompiledEntries());
+            warbondItemTokens, Parents.Where(entry => gatedOrPaid.Contains(entry.Value)).ToDictionary(), packages, entries, stratagems);
     }
 
     // The build a catalogue folder was assembled for (GameCatalog writes it), for paid-list.
