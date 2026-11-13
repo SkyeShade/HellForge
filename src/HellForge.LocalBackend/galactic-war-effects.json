@@ -1,5 +1,5 @@
 {
- "scope": "The galactic war effects that set enemy subfactions (effect type 40: each adds one enemy tag to a planet's missions, which the spawn director's roster rows and squads require). Read from the live server's /WarSeason/GalacticWarEffects in the retained snapshots of 2026-10-14 (HD2Mods research/subfactions); the community mirror has no copy of that endpoint. Without them every planet effect the war names is inert. Each subfaction's planets also carry an effect of type 71 in the frozen war, its \"flag\" here (1306 and 1307 are always together in the frozen war; 1308 is Hive Lord's and 1309 Dragonroach's, as seen in game in 0.3.0-beta, where the other way round showed each one's flag on the other's planets; Spore Burst 1244 and Illuminate Invasion 1413 are on no planet, so theirs are unknown): the war table's subfaction flag.",
+ "scope": "The galactic war effects that set enemy subfactions (effect type 40: each adds one enemy tag to a planet's missions, which the spawn director's roster rows and squads require). Read from the live server's /WarSeason/GalacticWarEffects in the retained snapshots of 2026-10-14 (HD2Mods research/subfactions); the community mirror has no copy of that endpoint. Without them every planet effect the war names is inert. Each subfaction's planets also carry an effect of type 71 in the frozen war, its \"flag\" here (1306 and 1307 are always together in the frozen war; 1308 is Hive Lord's and 1309 Dragonroach's, as seen in game in 0.3.0-beta, where the other way round showed each one's flag on the other's planets; Spore Burst 1244 and Illuminate Invasion 1413 are on no planet; Spore Burst's is 1386, whose value is the upper half of murmur64(bugs_gloom) as the others' are bugs_burrower, bugs_dragon, bugs_hive_lord and bugs_super_predator; Illuminate Invasion's is unknown): the war table's subfaction flag.",
  "subfactions": [
   {
    "id": 1202,
@@ -16,7 +16,8 @@
   {
    "id": 1244,
    "name": "Spore Burst Strain",
-   "faction": 2
+   "faction": 2,
+   "flag": 1386
   },
   {
    "id": 1248,
@@ -397,6 +398,22 @@
    ],
    "values": [
     2693256615
+   ]
+  },
+  {
+   "id": 1386,
+   "gameplayEffectId32": 0,
+   "effectType": 71,
+   "flags": 1,
+   "nameHash": 605870314,
+   "descriptionFluffHash": 0,
+   "descriptionGamePlayLongHash": 3354608657,
+   "descriptionGamePlayShortHash": 3475180022,
+   "valueTypes": [
+    16
+   ],
+   "values": [
+    1613235729
    ]
   },
   {
