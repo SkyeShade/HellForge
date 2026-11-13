@@ -25,7 +25,8 @@ On `dev`, since 0.4.0-beta.
   signs the stage again and refuses the edit on a game build whose shader differs
   ([data specs](docs/modding/data.md#edit), #350).
 - **Mods can draw screens over the game (SDK 17).** `add_screen` adds a screen with its own key, such as a map, and
-  `screen_show` opens and closes it. A modal screen takes the mouse and keys from the game while it is open. Screens
+  `screen_show` opens and closes it. A modal screen takes the mouse and keys from the game while it is open, and the
+  mouse shows as the game's own pointer. Screens
   draw shapes, text in the game's fonts, pictures and a blurred copy of the game's frame, on Direct3D 11 and 12, in SDR
   and HDR ([screens over the game](docs/modding/overlay.md)).
 - **New vehicles as copies of vanilla ones.** The `vehicle-variants` example adds the EXO-45H Heavy Patriot (a quicker

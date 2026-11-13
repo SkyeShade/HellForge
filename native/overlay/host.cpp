@@ -62,6 +62,7 @@ void FollowCapture()
         ResetInput();
         ReleaseCursorClip();
     }
+    FollowCursor(captured != 0);
 }
 
 /* show(): the asked change of one screen; g_screensLock held. */
@@ -102,6 +103,11 @@ void Log(const char* format, ...)
 int Hook(void* target, void* detour, void** original)
 {
     return target != NULL && g_start.hook != NULL ? g_start.hook(g_start.user, (uintptr_t)target, detour, original) : 1;
+}
+
+HCURSOR GameCursor()
+{
+    return g_start.game_cursor != NULL ? (HCURSOR)g_start.game_cursor(g_start.user, g_window) : NULL;
 }
 
 bool AnyScreenWanted()
@@ -184,10 +190,10 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID)
 
 extern "C" HF_OVERLAY_API int hf_overlay_start(const HfOverlayStart* start)
 {
-    if (start == NULL || start->size < sizeof(HfOverlayStart) || start->log == NULL || start->hook == NULL) return 1;
+    if (start == NULL || start->size < offsetof(HfOverlayStart, game_cursor) || start->log == NULL || start->hook == NULL) return 1;
     if (InterlockedCompareExchange(&g_started, 1, 0) != 0) return 0;
     AcquireSRWLockExclusive(&g_logLock);
-    g_start = *start;
+    memcpy(&g_start, start, start->size < sizeof g_start ? start->size : sizeof g_start);
     for (int i = 0; i < g_earlyCount; i++) g_start.log(g_start.user, g_early[i]);
     g_earlyCount = 0;
     ReleaseSRWLockExclusive(&g_logLock);

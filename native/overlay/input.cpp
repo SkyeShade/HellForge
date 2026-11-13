@@ -1,6 +1,6 @@
 /* The game window's input while a modal screen has it: the window procedure is replaced by one that toggles screens on
  * their keys and, while a modal one is open, keeps keyboard, mouse and raw input from the game. The game's cursor
- * clipping and recentring are ignored meanwhile, so the cursor moves freely. */
+ * clipping and recentring are ignored meanwhile, so the cursor moves freely, shown as the game's own pointer. */
 #include <string.h>
 #include "host_internal.h"
 #include "imgui_impl_win32.h"
@@ -18,6 +18,7 @@ ClipCursorFn g_clipCursor;
 SetCursorPosFn g_setCursorPos;
 RawInputBufferFn g_rawInputBuffer;
 WNDPROC g_gameProc;
+int g_shownBy; /* ShowCursor(TRUE) calls made for the game's pointer; the window's thread only */
 
 /* What the window's messages said since the last frame (mouse in client pixels). */
 struct Pending
@@ -85,9 +86,27 @@ bool TakeKey(UINT message, WPARAM w, LPARAM l)
     return id != 0;
 }
 
+/* The game hides the cursor in play and sets it again on every WM_SETCURSOR, so while a screen has the mouse those go
+ * to the host, which shows the game's own pointer; true when the message was taken. The game gets them back after. */
+bool PointWithGameCursor(UINT message, LPARAM l)
+{
+    HCURSOR cursor = g_gameCursor;
+    bool ours = message == WM_SETCURSOR ? LOWORD(l) == HTCLIENT : message == WM_MOUSEMOVE;
+    if (g_captured && cursor != NULL && ours)
+    {
+        SetCursor(cursor);
+        if (g_shownBy == 0)
+            for (int count = -1; count < 0 && g_shownBy < 64; g_shownBy++) count = ShowCursor(TRUE);
+        return message == WM_SETCURSOR;
+    }
+    for (; !g_captured && g_shownBy > 0; g_shownBy--) ShowCursor(FALSE);
+    return false;
+}
+
 LRESULT CALLBACK HostProc(HWND window, UINT message, WPARAM w, LPARAM l)
 {
     if (TakeKey(message, w, l)) return 0;
+    if (PointWithGameCursor(message, l)) return TRUE;
     if (g_captured)
     {
         Note(window, message, w, l);
@@ -108,6 +127,24 @@ UINT WINAPI RawInputBufferDetour(PRAWINPUT data, PUINT size, UINT header)
     return g_captured && data != NULL ? 0 : read;
 }
 } // namespace
+
+HCURSOR volatile g_gameCursor;
+
+void FollowCursor(bool captured)
+{
+    static int said = -1;
+    HCURSOR cursor = captured ? GameCursor() : NULL;
+    g_gameCursor = cursor;
+    if (captured && said != (cursor != NULL))
+    {
+        said = cursor != NULL;
+        Log(cursor != NULL ? "overlay: screens show the game's own mouse pointer" : "overlay: the game's mouse pointer is unknown; screens draw ImGui's arrow");
+    }
+    /* the pointer changes now, not at the next mouse move; the game's window procedure gets this one back */
+    if (g_window != NULL) PostMessageW(g_window, WM_SETCURSOR, (WPARAM)g_window, MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+}
+
+bool ImGuiDrawsCursor(bool captured) { return captured && g_gameCursor == NULL; }
 
 void HookCursor()
 {
