@@ -181,13 +181,15 @@ launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
 `--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--game-options`), and also
-`--strangers yes|no|default`, `--live-changes` and `--forge-credits`. It saves the ones given, checks them as `play`
-would, and prints every setting:
+`--strangers yes|no|default`, `--live-changes`, `--forge-credits`, the war options and the mod sync switches below. It
+saves the ones given, checks them as `play` would, and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
  "gameOptions": "", "sandbox": true, "steamUdp": true, "steamBridge": true, "playWithStrangers": true,
- "playWithStrangersChosen": null, "liveChanges": false, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
+ "playWithStrangersChosen": null, "liveChanges": false, "forgeCreditChance": 30, "dealSubfactions": true, "dealSeaf": true,
+ "warSeed": 0, "shareMods": true, "listPublic": true, "showEditedStats": false, "hostStats": false,
+ "file": "<installation>\\launcher-settings.json"}
 ```
 
 `settings --live-changes yes|no` sets the experimental Change mods without restarting (off by default, read when a
@@ -219,6 +221,34 @@ It is saved in `mods\hellforge-mods.json`, not in `launcher-settings.json`, and 
 Credits (HellForge's default is 30 %; the game's was 20 % for Super Credits). It is saved in `mods\hellforge-mods.json` as
 `forgeCreditChance` and applies from the next session. Everyone in a co-op mission should use the same value: each player
 rolls the loot from the mission's seed.
+
+The all-planets war's options, as on HellForge.exe's Play page, are saved in `launcher-settings.json`:
+
+| Option | Meaning |
+|---|---|
+| `--deal-subfactions yes\|no` | Deals the war's subfactions from its seed (on by default; off keeps the frozen war's). |
+| `--deal-seaf yes\|no` | Deals the war's SEAF allies from its seed (on by default). |
+| `--war-seed <number>\|random` | The seed they are dealt from: a whole number, or `random` to roll one. `0` until one is set. |
+
+The mod sync switches, as on the Mods page's Sharing card, are saved in `mods\hellforge-mods.json`:
+
+| Option | Meaning |
+|---|---|
+| `--share-mods yes\|no` | Players who join you may download your gameplay mods (on by default). |
+| `--list-public yes\|no` | Your Public lobbies are listed on other HellForge players' Galactic Map (on by default). |
+| `--show-edited-stats yes\|no` | Public lobbies whose host plays with edited stats are shown (off by default). |
+| `--host-stats yes\|no` | Friends play with your editor changes instead of their own (off by default). |
+
+`mod-sync` lists what mod sync keeps for the player. `trusted` holds the mods trusted on the in-game MOD SYNC prompt:
+id, name, version, hash, who hosted it, since when, and whether it counts only in a sandboxed session. `blocked` holds
+the blocked mods, and `downloaded` the mods downloaded from hosts (count, bytes, folder). Its options change them as the
+Mods page does:
+
+| Option | What it does |
+|---|---|
+| `--untrust <id> --hash <hash>` | Takes the trust back and deletes that mod's download. Refused while a session runs. |
+| `--block <id>` / `--unblock <id>` | Adds a mod to the blocklist, or takes it off. Lobbies running a blocked mod are not offered. |
+| `--delete-downloaded yes` | Deletes every mod downloaded from hosts. Refused while a session runs. |
 
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
