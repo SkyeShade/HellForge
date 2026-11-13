@@ -327,7 +327,7 @@ On `dev`, since 0.4.0-beta.
 - **`mods` shows what the Mods page shows.** Each mod now has `unsupported`, `premium` (the premium items it was built
   on), `url` and `icon`. A source mod also has its `build`: built, failed to compile (with the compiler's message) or
   due at the next session. The tags add `native`, `premium` and `unsupported`
-  ([source mod builds](docs/external-launchers.md#source-mod-builds)).
+  ([source mod builds](docs/external-launchers.md#source-mod-builds), #390).
 
 ## 0.4.0-beta (2026-11-05)
 
