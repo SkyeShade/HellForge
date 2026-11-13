@@ -154,7 +154,8 @@ def main(runtime, out):
               'note': 'Fields players asked for on records the catalogues never reach (scripts/ExportEditorRequests.py).',
               'targets': {c: dict(sorted(v.items())) for c, v in sorted(added.items())},
               'shrapnel': dict(sorted(shrapnel.items(), key=lambda kv: int(kv[0])))}
-    Path(out).write_text(json.dumps(result, indent=1, ensure_ascii=False) + '\n', encoding='utf-8')
+    with open(out, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(json.dumps(result, indent=1, ensure_ascii=False) + '\n')
     print('Exported', sum(len(v) for c in added.values() for v in c.values()), 'fields and', len(shrapnel), 'shrapnel rows')
 
 
