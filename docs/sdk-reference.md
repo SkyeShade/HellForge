@@ -10075,6 +10075,9 @@ and statuses without code.
 | `flight_effect` | +0x70 | u64 | now? | its second particle effect (light and trail) |
 | `impact_explosion` | +0x90 | u32 | now | the explosion type where it hits (0: none) (an explosion reference) |
 | `expiry_explosion` | +0x9C | u32 | now | the explosion type when its lifetime runs out (0: none) (an explosion reference) |
+| `ricochets` | +0xB0 | u32 | now? | whether its rounds bounce off what they hit: 0 never; the update bounces a round only while this is not 0 and counts its bounces against it (grenade launchers and most bullets 1, lasers 0) (unverified) |
+| `ricochet_angle` | +0xB4 | f32 | now? | how flat a hit must be to bounce, in degrees off straight on (0: any hit, 360: never); a round still unarmed bounces anyway (unverified) |
+| `ricochet_min_speed` | +0xB8 | f32 | now? | the speed (m/s) a round must be faster than to bounce (unverified) |
 
 ### HfStratagemSettings
 

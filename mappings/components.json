@@ -1208,6 +1208,27 @@
           "appliesVerified": true,
           "appliesSource": "read when the shot expires",
           "ref": "explosion"
+        },
+        "ricochets": {
+          "offset": 176,
+          "type": "u32",
+          "meaning": "whether its rounds bounce off what they hit: 0 never; the update bounces a round only while this is not 0 and counts its bounces against it (grenade launchers and most bullets 1, lasers 0)",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile copies +0xB0 / +0xB4 / +0xB8 into the slot record +0x9C / +0xA0 / +0xA4; the projectile update 0x13AC1F0 reads them at its bounce"
+        },
+        "ricochet_angle": {
+          "offset": 180,
+          "type": "f32",
+          "meaning": "how flat a hit must be to bounce, in degrees off straight on (0: any hit, 360: never); a round still unarmed bounces anyway",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile copies +0xB0 / +0xB4 / +0xB8 into the slot record +0x9C / +0xA0 / +0xA4; the projectile update 0x13AC1F0 reads them at its bounce"
+        },
+        "ricochet_min_speed": {
+          "offset": 184,
+          "type": "f32",
+          "meaning": "the speed (m/s) a round must be faster than to bounce",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile copies +0xB0 / +0xB4 / +0xB8 into the slot record +0x9C / +0xA0 / +0xA4; the projectile update 0x13AC1F0 reads them at its bounce"
         }
       },
       "applies": "now",

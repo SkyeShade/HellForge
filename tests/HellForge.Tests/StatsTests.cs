@@ -312,6 +312,11 @@ static class StatsTests
                 check(StatsSchema.Current.Targets[kind][name].Fields["shield.blocks_grenades"] is { Offset: 337, Storage: "u8" }, name + ": stopping grenades is a flag in the Shield record's padding");
             check(StatsSchema.Current.Targets["stratagems"]["FX-12 Shield Generator Relay"].Fields["shield.blocks_enemies"] is { Offset: 338, Storage: "u8" } &&
                 !StatsSchema.Current.Targets["backpacks"]["SH-32 Shield Generator Pack"].Fields.ContainsKey("shield.blocks_enemies"), "Stopping enemies is the relay's alone");
+            foreach (var (name, round) in new[] { ("GL-21 Grenade Launcher", 280L), ("GP-31 Grenade Pistol", 263L), ("GL-52 De-Escalator", 222L), ("AR-23 Liberator", 276L) })
+                check(weapons[name].Fields.Single(f => f.Value is { Kind: "ProjectileSettings", Offset: 176 }) is { Value: { Record: var r, Storage: "u32", Note: not null } } && r == round &&
+                    weapons[name].Fields.Values.Any(f => f is { Kind: "ProjectileSettings", Offset: 180, Storage: "f32" }), name + ": its round's ricochets and ricochet angle (ProjectileSettings +0xB0, +0xB4)");
+            check(StatsSchema.Current.Targets["projectiles"]["280"].Fields["ricochets"] is { Offset: 176, Record: 280 } &&
+                StatsSchema.Current.Targets["projectiles"]["280"].Fields["ricochet_min_speed"].Offset == 184, "A projectile's own page has its ricochets");
             var shield = StatsSchema.Current.Targets["backpacks"]["SH-20 Ballistic Shield Backpack"].Fields;
             check(shield["zone.explosive_damage_percentage"].Offset == 844 && shield["entity.explosive_damage_percentage"].Record == 292, "The ballistic shield's explosion shares.");
             var row = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "SH-20 Ballistic Shield Backpack")!["page"]!.AsArray()

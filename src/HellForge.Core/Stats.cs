@@ -89,6 +89,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         Parity(schema);
         References(schema);
         ProjectileSources(schema);
+        Ricochets(schema);
         FiredEntities(schema);
         Entities(schema);
         Director(schema);
@@ -382,6 +383,38 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         }
     }
 
+    // A round's ricochets (ProjectileSettings +0xB0 / +0xB4 / +0xB8), after its other flight fields, wherever the schema
+    // shows its flight: the grenade launchers' rounds have 1, which is their bounce. SpawnProjectile (game.dll 0x13A9830)
+    // copies the three into the slot's record (+0x9C, +0xA0, +0xA4); the update (0x13AC1F0) bounces a round only while
+    // the first is not 0, it hits at least as flat as the angle (degrees off straight on: 0 any hit, 360 never) or is
+    // still unarmed, and it is faster than the speed.
+    static readonly (string Leaf, string Name, int Offset, string Storage, string? Unit, string Note)[] RicochetFields =
+    [
+        ("ricochets", "Ricochets", 176, "u32", "count", "Whether its rounds bounce off what they hit: 0 never (a grenade launcher's grenade then goes off or stops at the first hit). The grenade launchers have 1."),
+        ("ricochet_angle", "Ricochet angle", 180, "f32", "degrees", "How flat a hit must be to bounce, in degrees off straight on: 0 bounces at any angle, 360 never (an unarmed grenade bounces anyway)."),
+        ("ricochet_min_speed", "Ricochet minimum speed", 184, "f32", "meters_per_second", "Slower rounds stop instead of bouncing."),
+    ];
+    static void Ricochets(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets.Values.SelectMany(t => t.Values))
+            foreach (var round in target.Fields.Where(f => f.Value.Kind == "ProjectileSettings" && FlightOffsets.Contains(f.Value.Offset))
+                .GroupBy(f => (Prefix: f.Key[..(f.Key.LastIndexOf('.') + 1)], f.Value.Record)).ToList())
+                AddRicochets(target, round.Key.Prefix, round.MaxBy(f => f.Value.Order).Value);
+    }
+
+    // A round's three ricochet fields under its key prefix, after its last flight field, on that field's row.
+    static void AddRicochets(StatsTarget target, string prefix, StatsField flight)
+    {
+        var order = flight.Order;
+        foreach (var (leaf, name, offset, storage, unit, note) in RicochetFields)
+            if (!target.Fields.ContainsKey(prefix + leaf))
+                target.Fields[prefix + leaf] = flight with
+                {
+                    Name = name, Offset = offset, Storage = storage, Min = 0, Max = storage == "u32" ? 255 : null, Unit = unit, Order = ++order, Note = note,
+                    Options = default, LiveId = null, Hd2rKey = null,
+                };
+    }
+
     // Weapons whose shot spawns an entity instead of firing a projectile row (mappings/fired-entities.json,
     // research/wasp-rocket). Where the entity explodes by its own ExplosiveComponent (the P-34 Breacher's sticky charge,
     // the TD-110 Maelstrom's rockets), the row (ProjectileWeapon +0), its damage and its explosions never reach the
@@ -389,7 +422,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
     // Where a missile carries the row as its hit row, only the row's flight is retired: the missile is unit-driven and
     // flies by its SeekingMissile record, offered as missile.* (the Spear's fields; on these missiles guidance is never
     // switched on by time, as on the Spear) where the catalogue lacks them.
-    static readonly int[] FlightOffsets = [28, 32, 36, 40, 44, 64]; // pellets, velocity, mass, drag, gravity, penetration slowdown
+    static readonly int[] FlightOffsets = [28, 32, 36, 40, 44, 64, 176, 180, 184]; // pellets, velocity, mass, drag, gravity, penetration slowdown, ricochets
     static void FiredEntities(StatsSchema schema)
     {
         using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.fired-entities.json")!;
