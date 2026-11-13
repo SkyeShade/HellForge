@@ -764,6 +764,7 @@ try
     results.Add(new { mode = "idle-kick", outcome = "passed" });
     Console.WriteLine("PASS idle kick: served off, every other override unchanged");
     RegisteredItemsTests.Run(root, Check);
+    RegisteredChecksTests.Run(root, Check);
     results.Add(new { mode = "registered-items", outcome = "passed" });
     Console.WriteLine("PASS registered items: child hash, catalogue children, mastery package, progress, inventory");
     await ModWarbondsTests.Run(root, Check);

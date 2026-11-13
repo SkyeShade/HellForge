@@ -175,4 +175,10 @@ public sealed partial class PaidContentSet
 
     // A child item's parent: a stratagem's for its loadout entry, a weapon's for its attachments.
     public bool TryGetParent(uint mixId, out uint parent) => Parents.TryGetValue(mixId, out parent);
+
+    // An id no mod's entry may take or make (RegisteredItems.Reserved): paid, warbond-gated, Super Credits, or a child of
+    // a paid or gated item.
+    public bool IsReserved(uint mixId) => Gates(mixId) || TryGetParent(mixId, out var parent) && Gates(parent);
+
+    bool Gates(uint mixId) => IsPaid(mixId) || IsSuperCredits(mixId) || warbondItemTokens.ContainsKey(mixId);
 }

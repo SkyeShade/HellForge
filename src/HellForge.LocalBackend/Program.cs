@@ -121,9 +121,10 @@ try
     // a live change may bring (LiveMods.Premium).
     var snapshotDir = profileDirectory != null ? HellForge.Core.InventorySync.SnapshotDirectoryFromProfileDir(profileDirectory) : null;
     var steamAccount = HellForge.Core.SteamAccount.Current();
+    var paidContent = PaidContentSet.Load();
     if (profile != null)
     {
-        profile.Ownership =OwnershipFilter.ForSnapshot(PaidContentSet.Load(), snapshotDir, steamAccount, out var refusal);
+        profile.Ownership =OwnershipFilter.ForSnapshot(paidContent, snapshotDir, steamAccount, out var refusal);
         profile.Ownership.EarnWarbonds = ProfileStore.EarnsWarbonds(profileTemplate);
         Console.Error.WriteLine(refusal != null ? "[premium] none unlocked: " + refusal
             : "[premium] " + profile.Ownership.OwnedPaidCount + " premium items from the account snapshot");
@@ -139,6 +140,7 @@ try
     // Premium content mods build on: a copy of a premium base follows the player's ownership, and the mods mods-stage
     // locked (--premium-locked: their declared premium list is not owned) add nothing to the inventory.
     if (profile?.Ownership is { } ownership) registeredItems.OwnsBase = ownership.IsAllowed;
+    registeredItems.Reserved = paidContent.IsReserved;
     registeredItems.LockedMods = HellForge.Core.PremiumMods.ReadLocked(options.GetValueOrDefault("--premium-locked"));
     // --mod-warbonds <file>: the warbonds the session's mods add (mods-stage writes it; HellForge.Core ModWarbonds), sold
     // like the game's; an unlock-all profile has bought them all.
@@ -151,7 +153,7 @@ try
     var modWarbonds = new ModWarbondService(modWarbondList)
     {
         IsAllowed = profile?.Ownership is { } owner ? owner.IsAllowed : null,
-        IsPaid = PaidContentSet.Load().IsPaid,
+        IsPaid = paidContent.IsPaid,
         UnlockAll = profileTemplate != null && profileTemplate.Contains("unlock-all", StringComparison.Ordinal),
     };
     // --live-war <cache file>: follow the live galactic war read-only through the community mirror (LiveWar).

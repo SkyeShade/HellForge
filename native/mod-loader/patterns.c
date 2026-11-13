@@ -480,24 +480,28 @@ static uint32_t ApiAddPattern(HfMod* mod, const HfPattern* def)
     return PatIsPaint(def->base) ? PatAddWeapon(mod, def, key) : PatAddUnit(mod, def, key);
 }
 
-/* A weapon pattern for the backend: {"mixId", "copyOf", "kind": "weapon", "weapons"} (none: every weapon offering it). */
+/* A weapon pattern for the backend: {"mixId", "copyOf", "mod", "kind": "weapon", "weapons"} (none: every weapon offering it). */
 static int PatWeaponItem(char* text, int n, int size, const Attachment* a, int first)
 {
-    n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"kind\":\"weapon\",\"weapons\":[", first ? "" : ",", a->id, a->base);
+    char mod[6 * 80 + 1];
+    n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"mod\":\"%s\",\"kind\":\"weapon\",\"weapons\":[", first ? "" : ",", a->id, a->base,
+        JsonText(a->mod->id, mod, sizeof mod));
     for (uint32_t w = 0; w < a->weaponCount; w++) n += snprintf(text + n, size - n, "%s%u", w ? "," : "", a->weapons[w]);
     return n + snprintf(text + n, size - n, "]}");
 }
 
 /* The patterns for the backend (RegisteredItems.cs): weapon patterns (PatWeaponItem), then unit patterns {"mixId",
- * "copyOf", "kind": "unit"}, the refused left out. */
+ * "copyOf", "kind": "unit", "mod"}, the refused left out. */
 static int PatternItems(char* text, int n, int size)
 {
     n += snprintf(text + n, size - n, ",\"patterns\":[");
     int listed = 0;
     for (int i = 0; i < g_attachmentCount && n < size - REG_ITEM_ROOM; i++)
         if (g_attachments[i].state >= 0 && g_attachments[i].pattern) n = PatWeaponItem(text, n, size, &g_attachments[i], listed++ == 0);
+    char mod[6 * 80 + 1];
     for (int i = 0; i < g_patternCount && n < size - REG_ITEM_ROOM; i++)
         if (g_patterns[i].state >= 0)
-            n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"kind\":\"unit\"}", listed++ ? "," : "", g_patterns[i].id, g_patterns[i].base);
+            n += snprintf(text + n, size - n, "%s{\"mixId\":%u,\"copyOf\":%u,\"kind\":\"unit\",\"mod\":\"%s\"}", listed++ ? "," : "", g_patterns[i].id,
+                g_patterns[i].base, JsonText(g_patterns[i].mod->id, mod, sizeof mod));
     return n + snprintf(text + n, size - n, "]");
 }
