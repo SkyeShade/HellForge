@@ -308,70 +308,59 @@ static void UiMenuShow(void)
     UiClosed(screen);
 }
 
+/* ui_open on the game thread: a menu waits for UiMenuShow, an overlay joins the Containers grid. */
+static void UiRunOpen(UiOp* op, UiScreen* s)
+{
+    void* element = NULL;
+    ((void** (*)(void**, const char*))(UiGame() + UI_PARSE))(&element, op->text);
+    void* grid = UiContainers();
+    void* children = s->kind != HF_UI_MENU && element && grid ? ((void* (*)(void*))(UiGame() + UI_CHILDREN))(grid) : NULL;
+    const char* why = element == NULL ? "the XAML does not parse (the game's Noesis log says why)" :
+        s->kind != HF_UI_MENU ? (children == NULL ? "the game's UI is not up" : NULL) :
+        g_uiMenuScreen != 0 ? "a menu screen of a mod is open already" :
+        !UiMenuHooks() ? "this game's menus are not the reviewed ones" : NULL;
+    if (why != NULL) { s->state = -1; ApiLog(s->mod, "ui_open(%d): %s", op->screen, why); UiRelease(element); return; }
+    if (s->kind == HF_UI_MENU) g_uiMenuScreen = op->screen; /* shown by UiMenuShow */
+    else ((void (*)(void*, unsigned, void*))(*(void***)children)[5])(children, *(unsigned*)((uint8_t*)children + 0x30), element);
+    s->element = element;
+    s->state = 1;
+}
+
+/* ui_close on the game thread: a menu closes as the game closes its own (UiMenuDestroy lets go), an overlay at once. */
+static void UiRunClose(UiOp* op, UiScreen* s)
+{
+    if (s->kind == HF_UI_MENU && g_uiMenuState != NULL) { g_uiMenuState[0x10] = 1; return; }
+    if (s->kind == HF_UI_MENU) g_uiMenuScreen = 0; /* still waiting for the presenter */
+    void* grid = s->kind != HF_UI_MENU ? UiContainers() : NULL;
+    uint8_t* children = grid ? ((uint8_t* (*)(void*))(UiGame() + UI_CHILDREN))(grid) : NULL;
+    unsigned n = children ? *(unsigned*)(children + 0x30) : 0;
+    for (unsigned i = 0; i < n; i++)
+        if ((*(void***)(children + 0x28))[i] == s->element) { ((void (*)(void*, unsigned))(*(void***)children)[7])(children, i); break; }
+    UiClosed(op->screen);
+}
+
+/* ui_set or ui_on on the game thread: why not, or NULL. */
+static const char* UiRunElement(UiOp* op, UiScreen* s, void* element)
+{
+    if (op->kind == UI_SET) return UiSetString(element, op->property, op->value);
+    if (g_uiCommandCount == UI_COMMANDS) return "mods set 256 click handlers already";
+    UiCommand* c = &g_uiCommands[g_uiCommandCount++];
+    *c = (UiCommand){s->mod, op->screen, "", op->callback, op->user, NULL};
+    snprintf(c->element, sizeof c->element, "%s", op->element);
+    return UiCommandOn(s, element, c);
+}
+
 /* A queued call, run on the game thread. */
 static void UiRun(UiOp* op)
 {
     UiScreen* s = &g_uiScreens[op->screen];
-    if (op->kind == UI_OPEN)
-    {
-        void* element = NULL;
-        ((void** (*)(void**, const char*))(UiGame() + UI_PARSE))(&element, op->text);
-        if (s->kind == HF_UI_MENU)
-        {
-            const char* why = element == NULL ? "the XAML does not parse (the game's Noesis log says why)" :
-                g_uiMenuScreen != 0 ? "a menu screen of a mod is open already" :
-                !UiMenuHooks() ? "this game's menus are not the reviewed ones" : NULL;
-            if (why != NULL) { s->state = -1; ApiLog(s->mod, "ui_open(%d): %s", op->screen, why); UiRelease(element); return; }
-            s->element = element;
-            s->state = 1;
-            g_uiMenuScreen = op->screen; /* shown by UiMenuShow */
-            return;
-        }
-        void* grid = UiContainers();
-        void* children = element && grid ? ((void* (*)(void*))(UiGame() + UI_CHILDREN))(grid) : NULL;
-        if (children == NULL)
-        {
-            s->state = -1;
-            ApiLog(s->mod, "ui_open(%d): %s", op->screen, element ? "the game's UI is not up" : "the XAML does not parse (the game's Noesis log says why)");
-            UiRelease(element);
-            return;
-        }
-        ((void (*)(void*, unsigned, void*))(*(void***)children)[5])(children, *(unsigned*)((uint8_t*)children + 0x30), element);
-        s->element = element;
-        s->state = 1;
-        return;
-    }
+    if (op->kind == UI_OPEN) { UiRunOpen(op, s); return; }
     if (s->state != 1) return;
     if (op->kind == UI_ON_CLOSE) { s->closed = op->callback; s->closedUser = op->user; return; }
-    if (op->kind == UI_CLOSE)
-    {
-        if (s->kind == HF_UI_MENU)
-        {
-            if (g_uiMenuState != NULL) { g_uiMenuState[0x10] = 1; return; } /* the game closes it; UiMenuDestroy lets go */
-            g_uiMenuScreen = 0;
-            UiClosed(op->screen);
-            return;
-        }
-        void* grid = UiContainers();
-        uint8_t* children = grid ? ((uint8_t* (*)(void*))(UiGame() + UI_CHILDREN))(grid) : NULL;
-        unsigned n = children ? *(unsigned*)(children + 0x30) : 0;
-        for (unsigned i = 0; i < n; i++)
-            if ((*(void***)(children + 0x28))[i] == s->element) { ((void (*)(void*, unsigned))(*(void***)children)[7])(children, i); break; }
-        UiClosed(op->screen);
-        return;
-    }
+    if (op->kind == UI_CLOSE) { UiRunClose(op, s); return; }
     void* element = UiFind(s, op->element);
     if (element == NULL) { ApiLog(s->mod, "ui(%d): no element named \"%s\"", op->screen, op->element); return; }
-    const char* why = NULL;
-    if (op->kind == UI_SET) why = UiSetString(element, op->property, op->value);
-    else if (g_uiCommandCount == UI_COMMANDS) why = "mods set 256 click handlers already";
-    else
-    {
-        UiCommand* c = &g_uiCommands[g_uiCommandCount++];
-        *c = (UiCommand){s->mod, op->screen, "", op->callback, op->user, NULL};
-        snprintf(c->element, sizeof c->element, "%s", op->element);
-        why = UiCommandOn(s, element, c);
-    }
+    const char* why = UiRunElement(op, s, element);
     if (why != NULL) ApiLog(s->mod, "ui(%d): %s.%s: %s", op->screen, op->element, op->kind == UI_SET ? op->property : "click", why);
 }
 
