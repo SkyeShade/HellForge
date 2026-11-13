@@ -14,7 +14,7 @@ On `dev`, since 0.4.0-beta.
 
 - **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
-  downloaded: you still install the new version by hand ([roadmap](docs/roadmap.md#launcher-updates)).
+  downloaded: you still install the new version by hand ([roadmap](docs/roadmap.md#launcher-updates), #387).
 - **Mods can add patterns (SDK 18).** `add_pattern` copies a vanilla pattern under an id of its own, with the mod's
   colour and masks in place of the base's. A copy of a weapon paint is in the armory's pattern slot of every weapon that
   offers the base, or of the weapons the mod names. A copy of a Pelican, hellpod or vehicle skin joins the hangar for its
