@@ -33,6 +33,7 @@ static class RegisteredChecksTests
         var premium = premiumPaint.Select(e => (uint)e["parentId"]!).First(weapons.Contains);
         Forged(file, Items, Held, log, (store, catalogue), check);
         Copies(file, Items, Held, (premium, premiumPaint.Key), catalogue, paid, check);
+        Chains(file, Items, Held, premium, check);
         Honest(file, Items, Held, log, check);
     }
 
@@ -95,6 +96,24 @@ static class RegisteredChecksTests
         check(!inventory.Contains(RegisteredItems.WeaponChild(attachment, c)), "An attachment copied from premium weapons is held without them.");
         check(!inventory.Contains(RegisteredItems.WeaponChild(pattern, premium)) && !inventory.Any(id => id == RegisteredItems.WeaponChild(unitPattern, (uint)premiumSkin["parentId"]!)),
             "A pattern copied from premium content is held without it.");
+    }
+
+    // A chain is followed as the loader follows it (registry_load.c PendingBase): nine weapons to the game's, no further.
+    // A longer chain, a cycle or an end that is not the game's is locked, whatever its end.
+    static void Chains(string file, Func<RegisteredItems> items, Func<RegisteredItems, uint[], List<uint>> held, uint premium, Action<bool, string> check)
+    {
+        static uint Id(string chain, int i) => EngineHash.Id32($"test/{chain}{i}");
+        // chain `name`: weapons 0..count-1, each copying the next, the last copying `end` (null: weapon 0, a cycle)
+        static IEnumerable<string> Chain(string name, int count, uint? end) => Enumerable.Range(0, count).Select(i =>
+            $$"""{"mixId":{{Id(name, i)}},"copyOf":{{(i + 1 < count ? Id(name, i + 1) : end ?? Id(name, 0))}},"mod":"test","unit":"test/{{name}}{{i}}"}""");
+        var entries = Chain("nine", 9, Liberator).Concat(Chain("ten", 10, Liberator)).Concat(Chain("paid", 10, premium))
+            .Concat(Chain("loop", 3, null)).Append($$"""{"mixId":{{Id("stray", 0)}},"copyOf":{{EngineHash.Id32("test/none")}},"mod":"test","unit":"test/stray0"}""");
+        File.WriteAllText(file, "{\"format\":1,\"items\":[" + string.Join(",", entries) + "]}");
+        var inventory = held(items(), [Liberator]);
+        check(Enumerable.Range(0, 9).All(i => inventory.Contains(Id("nine", i))), "A chain of nine copies of a free weapon is not held.");
+        check(!inventory.Contains(Id("ten", 0)) && !inventory.Contains(Id("paid", 0)), "A chain longer than the loader follows is held.");
+        check(!Enumerable.Range(0, 3).Any(i => inventory.Contains(Id("loop", i))), "A cycle of copies is held.");
+        check(!inventory.Contains(Id("stray", 0)), "A copy of an id that is neither a weapon nor the game's is held.");
     }
 
     // The example mods' own entries (golden-liberator, talon-liberator, hell-forge, stratagem-compendium) as the loader

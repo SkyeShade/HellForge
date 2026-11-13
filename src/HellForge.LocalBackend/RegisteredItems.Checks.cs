@@ -80,14 +80,23 @@ public sealed partial class RegisteredItems
         if (OwnsBase == null || item.IsDifficulty) return false;
         if (item.IsStratagem)
             return Game()?.StratagemItems.TryGetValue(item.CopyOf, out var parent) != true || !OwnsBase(parent);
+        return GameBase(item, current) is not { } at || !OwnsBase(at);
+    }
+
+    // The game's weapon at the end of a copy chain, as the loader follows it (registry_load.c PendingBase: 8 copies at
+    // most, then no base). A longer chain, a cycle or an end that is not the game's has none, or one through a locked mod.
+    uint? GameBase(Item item, Session current)
+    {
         var at = item;
-        for (var depth = 0; depth < 8 && current.Admitted.FirstOrDefault(o => o.IsWeapon && o != at && o.MixId == at.CopyOf) is { } next; depth++)
+        for (var depth = 0; depth < MaxCopies && current.Admitted.FirstOrDefault(o => o.IsWeapon && o != at && o.MixId == at.CopyOf) is { } next; depth++)
         {
-            if (LockedMods.Contains(next.Mod)) return true;
+            if (LockedMods.Contains(next.Mod)) return null;
             at = next;
         }
-        return !OwnsBase(at.CopyOf);
+        return Game()?.Ids.Contains(at.CopyOf) == true ? at.CopyOf : null;
     }
+
+    const int MaxCopies = 8;
 
     // An attachment or a weapon pattern is held when the player may hold one of the game's children it copies: their
     // owners are the weapons they are offered on. A unit pattern follows its base skin's item.
