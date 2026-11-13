@@ -140,6 +140,15 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
+  premium warbond, Superstore or Steam DLC item free. The local backend checks every reply that gives an item last:
+  the inventory, purchases, warbond pages, mastery and mission rewards.
+- **A premium weapon's mastery levels and attachments need the weapon.** They were sold and earned without it.
+- **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
+  item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like
+  weapons, and a copy of another mod's weapon follows its original.
+- **A backend swapped on its own is refused.** A session carries its backend's digest and does not start another
+  backend. These checks run on the player's PC; a changed session gets past them.
 - **A new HellForge logo.** The launcher, its window and desktop icon, the installer and the in-game editor show the
   crown in its frame (#299).
 - **Vehicle damage zones have their names.** The editor's vehicle pages showed most zones as "Zone 0", "Zone 1" and

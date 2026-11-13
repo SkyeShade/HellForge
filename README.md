@@ -47,7 +47,8 @@ account's inventory and progression from the normal game.
 A sync also copies the game's item and warbond catalogues, which HellForge does not ship, so an installation needs one
 sync before its first PLAY. A sync only keeps what the normal game receives when it logs in, and sends nothing of its
 own. Premium items (premium warbonds, Superstore items, Steam DLC gear) are there only once a sync has found them on the
-Steam account signed in now, and Super Credits never are.
+Steam account signed in now, and Super Credits never are. Which items are paid comes from a list compiled into
+HellForge, so an edited catalogue or profile does not change it.
 
 The galactic war can follow the live war read-only from the community mirror
 [api.helldivers2.dev](https://api.helldivers2.dev), stay HellForge's frozen war, or open every planet to liberation
