@@ -25,6 +25,9 @@
 #include "imgui.h" /* only IMGUI_VERSION and the structs' sizes, for hf_overlay_imgui */
 #include "hellforge_overlay_host.h"
 
+/* Mods built against an older header find hide_pointer by this place, so it may never move. */
+static_assert(offsetof(HfDraw, hide_pointer) == offsetof(HfDraw, backdrop) + sizeof(void*), "hide_pointer follows backdrop");
+
 static int g_failures;
 static void Check(bool ok, const char* what, ...)
 {
@@ -366,6 +369,8 @@ struct Demo
     uint32_t pressedSeen, releasedSeen;
     float wheelSeen;
     bool sawQ;
+    bool hidePointer; /* calls hide_pointer every frame, closing ones too */
+    uint32_t drawSize;
 };
 static Demo g_demo;
 static int g_hudFrames;
@@ -381,6 +386,8 @@ static int DemoDraw(void*, const HfDraw* d, const HfInput* in, float dt)
     g.frames++;
     g.width = d->width;
     g.pixels = d->pixels;
+    g.drawSize = d->size;
+    if (g.hidePointer) d->hide_pointer();
     if (in->pressed || in->released || in->wheel != 0 || in->key_count) g.lastInput = *in;
     g.pressedSeen |= in->pressed;
     g.releasedSeen |= in->released;
@@ -423,6 +430,7 @@ static int DemoDraw(void*, const HfDraw* d, const HfInput* in, float dt)
 static int HudDraw(void*, const HfDraw* d, const HfInput* in, float)
 {
     g_hudFrames++;
+    d->hide_pointer(); /* not the screen with the input: never hides it */
     d->rect(1400, 150, 1500, 250, CYAN, 0, 0); /* over the modal screen's circle: drawn after it */
     return !in->closing;
 }
@@ -662,6 +670,19 @@ int main(int argc, char** argv)
             layout.io += 8;
             Check(imgui(&layout) == 1, "hf_overlay_imgui refuses another ImGuiIO layout");
         }
+        if (frame == 32) g_demo.hidePointer = true;
+        if (frame == 34)
+        {
+            int before = g_gameSetCursor;
+            Check(GetCursor() == NULL, "hide_pointer: the pointer is hidden from the next frame, without a mouse move");
+            SetCursorMessage(window);
+            Check(GetCursor() == NULL && g_gameSetCursor == before, "hide_pointer: WM_SETCURSOR keeps it hidden");
+            Check(g_demo.drawSize >= offsetof(HfDraw, hide_pointer) + sizeof(void*), "HfDraw's size covers hide_pointer (%u)", g_demo.drawSize);
+            g_demo.hidePointer = false;
+        }
+        if (frame == 36) Check(GetCursor() == g_pointer, "a frame without hide_pointer shows the game's pointer again");
+        if (frame == 49) g_demo.hidePointer = true; /* through its closing too */
+        if (frame == 55) g_demo.hidePointer = false;
         if (frame == 40) /* the game resizes its swap chain */
         {
             if (!g_d3d11) WaitGpu();
