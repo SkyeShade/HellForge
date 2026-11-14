@@ -776,7 +776,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
-    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); UsesInstall(); }
     AiPathBudgetWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
     EarlyStampPackagesInstall();

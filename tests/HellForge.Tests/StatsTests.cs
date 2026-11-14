@@ -382,6 +382,16 @@ static class StatsTests
             var packed = StatsData.Parse("""{"format":1,"stratagems":{"Resupply":{"stratagem.input_code":2231}}}""", profile).Single();
             check(letters.Kind == "StratagemCode" && letters.Value == 2231 && packed.Value == 2231 && letters.Offset == 0, "A stats file takes a code as letters or packed");
             reject(() => StatsData.Parse("""{"format":1,"stratagems":{"Resupply":{"stratagem.input_code":"UUUUUUUUUUU"}}}""", profile));
+            var railcannon = targets["stratagems"]["Orbital Railcannon Strike"].Fields;
+            check(railcannon[StatsSchema.UsesKey] is { Kind: "StratagemUses", Offset: 0, Storage: "u32", Min: 1, Max: 99 } uses && uses.Record == railcannon["stratagem.cooldown"].Record &&
+                targets["stratagems"].Values.Where(t => t.Family == "eagle").All(t => !t.Fields.ContainsKey(StatsSchema.UsesKey)) &&
+                targets["stratagems"]["Resupply"].Fields.ContainsKey(StatsSchema.UsesKey), "Uses before cooldown on every non-Eagle stratagem, none on the Eagles");
+            var burst = StatsData.Parse("""{"format":1,"stratagems":{"Orbital Railcannon Strike":{"stratagem.uses_before_cooldown":3}}}""", profile).Single();
+            check(burst.Kind == "StratagemUses" && burst.Value == 3, "A stats file sets it");
+            reject(() => StatsData.Parse("""{"format":1,"stratagems":{"Orbital Railcannon Strike":{"stratagem.uses_before_cooldown":0}}}""", profile));
+            var usesRow = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "Orbital Railcannon Strike")!["page"]!.AsArray()
+                .SelectMany(c => c!["subs"]!.AsArray()).SelectMany(p => p!["rows"]!.AsArray()).Single(r => r!["key"]!.GetValue<string>() == StatsSchema.UsesKey)!;
+            check(usesRow["component"]?.GetValue<string>() == "StratagemUses" && usesRow["cat"]!.GetValue<string>() == codeRow["cat"]!.GetValue<string>(), "Its editor row: live, beside the input code");
             var shield = StatsSchema.Current.Targets["backpacks"]["SH-20 Ballistic Shield Backpack"].Fields;
             check(shield["zone.explosive_damage_percentage"].Offset == 844 && shield["entity.explosive_damage_percentage"].Record == 292, "The ballistic shield's explosion shares.");
             var row = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "SH-20 Ballistic Shield Backpack")!["page"]!.AsArray()

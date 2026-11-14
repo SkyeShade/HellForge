@@ -1275,6 +1275,25 @@
         }
       }
     },
+    "StratagemUses": {
+      "component": "StratagemUses",
+      "table": true,
+      "stride": 4,
+      "layout": "25480438",
+      "meaning": "a vanilla non-Eagle stratagem's uses before cooldown (by type), kept by HellForge (native/mod-loader/stratagem_uses.c)",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "read at every call by the detour on the cooldown start (game.dll 0x135C2C0)",
+      "fields": {
+        "uses": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "how many calls before its cooldown starts (1 to 99; 1, the game's own, unless edited): until the last, the slot is ready again once the stratagem has arrived",
+          "verified": false,
+          "source": "game.dll 0x135C2C0 (the cooldown start: end = arrival + cooldown), called by the use 0xB9AAB0 on every machine; native/mod-loader/stratagem_uses.c"
+        }
+      }
+    },
     "StratagemSettings": {
       "component": "StratagemDefinition",
       "row": "stratagem_row",

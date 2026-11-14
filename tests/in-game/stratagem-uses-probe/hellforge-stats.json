@@ -1,0 +1,4 @@
+{
+  "format": 1,
+  "stratagems": { "Orbital Railcannon Strike": { "stratagem.uses_before_cooldown": 3 } }
+}
