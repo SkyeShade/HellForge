@@ -4705,7 +4705,7 @@
         {"name": "account", "type": "void*", "meaning": "the progression manager: hf_global_Progression"},
         {"name": "item", "type": "uint32_t", "meaning": "the item's id"}
       ],
-      "hook": true,
+      "hook": false,
       "meaning": "Whether the player holds a catalogue item",
       "source": "HellForge research forge-credits-tint (README.md, locked warbonds)"
     },

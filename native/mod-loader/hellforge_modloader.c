@@ -161,11 +161,8 @@ static HfApi g_api;
 
 /* ---- memory ----------------------------------------------------------------------------------------------------- */
 
-static int SafeRead(uintptr_t address, void* buffer, size_t size)
-{
-    SIZE_T read = 0;
-    return ReadProcessMemory(GetCurrentProcess(), (LPCVOID)address, buffer, size, &read) && read == size ? 0 : 1;
-}
+#include "perf_fixes.c" /* HELLFORGE_PERF_OFF: which performance fixes stay off */
+#include "safe_read.c"  /* SafeRead: small reads copied in place, a fault turned into the failure return */
 
 /* Every range of game.dll HellForge has written (the Lua bridge's hellforge_lua_rewrites): its rva and size, a range
  * that touches the last one joined to it. A Lua runtime proving game code against reviewed bytes asks for them. A mod's
@@ -338,6 +335,7 @@ static int SwapPointer(uintptr_t at, void* value, void** old)
     return 0;
 }
 
+#include "paid_guard.c" /* before hooks.c: what mods may not hook or write, and the backend's list of refused paid ids */
 #include "hooks.c" /* every hook, a mod's or HellForge's own: one chain per function (SDK 13) */
 #include "functions.c" /* after hooks.c: game functions by name (SDK 16) */
 #include "globals.c" /* game globals by name (SDK 16) */
@@ -572,6 +570,7 @@ static void ChannelInstall(uintptr_t game);
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
 #include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
+#include "perf_all.c" /* the performance fixes, after render_guards.c */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -722,7 +721,9 @@ static void WatchLoaded(void)
     Note("game.dll loaded and decoded");
     ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
+    RecordHashInstall(); /* before the plugin setup builds the destruction-record map */
     StateMoves(ApiModuleBase("game.dll", NULL)); /* before the plugin setup allocates the game state */
+    KnnGridInstall(); /* before any level is generated */
     StartCrashWorker(); /* crash_notes.c: the thread that notes a stack overflow */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
@@ -762,19 +763,31 @@ static void WatchStats(void)
     if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SpawnGuardsWatch(); ShotsTick(); RoundsTick(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SpawnGuardsWatch(); VehicleBoxWatch(); ShotsTick(); RoundsTick(); }
 }
 
 static void WatchInstalls(void)
 {
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
+    if (g_fired[HF_EVENT_GAME_LOADED]) PerfCorpseFreezeWatch();
+    HeapTrimInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallForgeCreditsColour(); InstallForgeCreditsRoll(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
+    AiPathBudgetWatch();
+    if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
+    EarlyStampPackagesInstall();
     RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
+    if (g_fired[HF_EVENT_GAME_LOADED]) OverlapGridWatch();
+    PerfSpeedTreeWatch();
+    RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
+    RenderVersionRehashWatch();
+    PerfScatterCamerasWatch();
+    TreeLimitsWatch();
+    SpanRescueInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
@@ -973,7 +986,7 @@ static int PlanGame(char** f, int n)
 {
     if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
     if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
-    if (FnPlanLine(f, n) || GlPlanLine(f, n) || WarbondPlanLine(f, n) || PackagePlanLine(f, n)) return 1;
+    if (FnPlanLine(f, n) || GlPlanLine(f, n) || WarbondPlanLine(f, n) || PackagePlanLine(f, n) || PaidGuardPlanLine(f, n)) return 1;
     if (n == 2 && strcmp(f[0], "forge_credits_chance") == 0) { int p = atoi(f[1]); g_forgeCreditChance = p < 0 ? 0 : p > 100 ? 100 : p; return 1; }
     if (n >= 4 && strcmp(f[0], "game_pin") == 0)
     {

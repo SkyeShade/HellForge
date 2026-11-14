@@ -26,6 +26,22 @@
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
 #include "stratagem_codes_test.c"
+#include "safe_read_test.c"
+#include "perf_speedtree_empty_cells_test.c"
+#include "perf_record_hash_test.c"
+#include "perf_ai_path_budget_test.c"
+#include "perf_corpse_freeze_test.c"
+#include "perf_render_job_copies_test.c"
+#include "perf_render_version_rehash_test.c"
+#include "perf_vehicle_box_test.c"
+#include "perf_heap_trim_test.c"
+#include "perf_scatter_cameras_test.c"
+#include "perf_knn_grid_test.c"
+#include "perf_spread_sort_test.c"
+#include "perf_tree_cell_limits_test.c"
+#include "perf_early_stamp_packages_test.c"
+#include "perf_overlap_grid_test.c"
+#include "perf_span_rescue_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -4569,6 +4585,7 @@ static void FieldWatchCapFixture(void)
 #include "live_mods_test.c" /* after the helpers it shares (Edit, FixtureLoad) */
 #include "live_content_test.c" /* after live_mods_test.c and the behaviour and registry helpers */
 #include "stratagem_cap_test.c" /* after live_content_test.c (ContentGame, ContentMod) */
+#include "paid_guard_test.c" /* after live_content_test.c: its fake catalogue */
 #include "explosions_test.c"
 #include "beam_arc_test.c"
 
@@ -4605,6 +4622,7 @@ int main(int argc, char** argv)
     ContentDifficultyFixture();
     ContentMovedOwnershipFixture();
     StratagemHeldFixture();
+    PaidGuardFixture();
     ChannelGameFixture();
     ChannelFixture();
     RpcFixture();
@@ -4878,6 +4896,22 @@ int main(int argc, char** argv)
     RenderGuardsFixture();
     OverlayCursorFixture();
     NavCarversFixture();
+    SafeReadFixture();
+    PerfSpeedTreeFixture();
+    RecordHashFixture();
+    PerfAiPathBudgetFixture();
+    PerfCorpseFreezeFixture();
+    RenderJobCopiesFixture();
+    RenderVersionRehashFixture();
+    VehicleBoxFixture();
+    HeapTrimFixture();
+    PerfScatterCamerasFixture();
+    KnnGridFixture();
+    PerfSpreadSortFixture();
+    TreeCellLimitsFixture();
+    EarlyStampPackagesFixture();
+    PerfOverlapGridFixture();
+    SpanRescueFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "

@@ -4,8 +4,9 @@
 #   sudo bash allow-capture.sh --remove
 # The launcher runs the same script through pkexec, so the desktop's polkit dialog asks for the password:
 #   pkexec /usr/bin/bash allow-capture.sh [--remove]
-# It copies capture-helper.sh and capture-relay to /usr/local/lib/hellforge (on SteamOS to /opt/hellforge, see below),
-# records the SHA-256 of each installed copy and gives the calling account (SUDO_USER, or PKEXEC_UID under pkexec) a
+# It copies capture-helper.sh, capture-relay and the Linux capture (app/capture-linux, as capture-proxy) to
+# /usr/local/lib/hellforge (on SteamOS to /opt/hellforge, see below), records the SHA-256 of each installed copy (of the
+# capture, of its file list: proxy_manifest) and gives the calling account (SUDO_USER, or PKEXEC_UID under pkexec) a
 # sudoers rule for that one root-owned helper only. The launcher then starts/stops the helper without asking again, and
 # reinstalls when either shipped file and the installed copy differ. The helper validates its own arguments and can only
 # change HellForge's marked /etc/hosts lines and run the installed relay; it never runs Wine, a game, or a command
@@ -16,6 +17,8 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source_helper="$here/capture-helper.sh"
 source_relay="$here/capture-relay"
+# The helper runs this root-owned copy as its signing service: the signer's key is only as safe as the program holding it.
+source_proxy="$(cd "$here/.." && pwd)/capture-linux"
 # Every folder a helper may be in, and the ones this system installs to, first choice first. SteamOS's /usr/local is on
 # its read-only image, which an update replaces; its /opt is on /home, writable and kept by updates, and /var/lib is
 # next. LinuxCapture.HelperFolders and capture-helper.sh name the same folders.
@@ -101,6 +104,12 @@ choose_folder() {
   return 1
 }
 
+# One SHA-256 over every file's SHA-256 and path, in byte order. capture-helper.sh and LinuxCapture.FolderManifestSha256
+# compute the same.
+proxy_manifest() {
+  (cd "$1" && LC_ALL=C find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | sha256sum | awk '{print $1}'
+}
+
 root_only() {
   [ -e "$1" ] && [ ! -L "$1" ] && [ "$(stat -c %u -- "$1")" = 0 ] && (( (8#$(stat -c %a -- "$1") & 8#022) == 0 ))
 }
@@ -108,6 +117,7 @@ root_only() {
 # The helper's files in one folder, and the folder when nothing else is in it. A read-only folder is left as it is.
 remove_copies() {
   rm -f "$1/capture-helper" "$1/capture-helper.sha256" "$1/capture-relay" "$1/capture-relay.sha256" 2>/dev/null || true
+  rm -rf "$1/capture-proxy" "$1/capture-proxy.new" "$1/capture-proxy.sha256" 2>/dev/null || true
   rmdir "$1" 2>/dev/null || true
 }
 
@@ -127,12 +137,17 @@ if [ "${1:-}" = "--remove" ]; then
     fi
     remove_copies "$installed"
   done
-  echo "Removed HellForge's Account Sync helper and relay."
+  # The signer goes with the helper: no other program may sign for this PC.
+  rm -f /var/lib/hellforge/snapshot-signer.pub
+  rm -rf /var/lib/private/hellforge-signer /var/lib/hellforge-signer
+  rmdir /var/lib/hellforge 2>/dev/null || true
+  echo "Removed HellForge's Account Sync helper, relay and snapshot signer."
   exit 0
 fi
 
 [ -f "$source_helper" ] || { echo "capture-helper.sh is missing beside this installer." >&2; exit 1; }
 [ -f "$source_relay" ] || { echo "capture-relay is missing beside this installer." >&2; exit 1; }
+[ -x "$source_proxy/HellForge.CaptureProxy" ] || { echo "the Linux capture ($source_proxy) is missing." >&2; exit 1; }
 bash -n "$source_helper" || { echo "capture-helper.sh is not a valid script." >&2; exit 1; }
 command -v sha256sum >/dev/null || { echo "sha256sum is missing; install coreutils first." >&2; exit 1; }
 user="$(resolve_user)"
@@ -145,17 +160,28 @@ relay=$folder/capture-relay
 relay_hash_file=$folder/capture-relay.sha256
 install -m 755 -o root -g root "$source_helper" "$helper"
 install -m 755 -o root -g root "$source_relay" "$relay"
+proxy=$folder/capture-proxy
+proxy_hash_file=$folder/capture-proxy.sha256
+rm -rf "$proxy.new"
+cp -R --no-preserve=ownership --preserve=mode "$source_proxy" "$proxy.new"
+chown -R root:root "$proxy.new"
+chmod -R u+rwX,go+rX,go-w "$proxy.new"
+rm -rf "$proxy"
+mv "$proxy.new" "$proxy"
+proxy_hash="$(proxy_manifest "$proxy")"
 helper_hash="$(sha256sum "$helper" | awk '{print $1}')"
 relay_hash="$(sha256sum "$relay" | awk '{print $1}')"
 [[ "$helper_hash" =~ ^[0-9A-Fa-f]{64}$ ]] || { echo "could not hash the installed helper." >&2; exit 1; }
 [[ "$relay_hash" =~ ^[0-9A-Fa-f]{64}$ ]] || { echo "could not hash the installed relay." >&2; exit 1; }
+[[ "$proxy_hash" =~ ^[0-9A-Fa-f]{64}$ ]] || { echo "could not hash the installed capture." >&2; exit 1; }
 printf '%s\n' "$helper_hash" > "$hash_file"
 printf '%s\n' "$relay_hash" > "$relay_hash_file"
-chmod 644 "$hash_file" "$relay_hash_file"
-chown root:root "$hash_file" "$relay_hash_file"
+printf '%s\n' "$proxy_hash" > "$proxy_hash_file"
+chmod 644 "$hash_file" "$relay_hash_file" "$proxy_hash_file"
+chown root:root "$hash_file" "$relay_hash_file" "$proxy_hash_file"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
-# No wildcards: the helper's start reads the proxy pid from stdin and its relay ports are fixed (443 -> 18443).
+# No wildcards: the helper's start reads the Steam account and the API's address from stdin, and its ports are fixed.
 printf '%s ALL=(root) NOPASSWD: %s check, %s start, %s stop, %s cleanup\n' \
   "$user" "$helper" "$helper" "$helper" "$helper" > "$tmp"
 chmod 440 "$tmp"
@@ -175,4 +201,5 @@ fi
 echo "HellForge may now run its Account Sync helper without another password prompt ($helper, for $user)."
 echo "Installed helper SHA-256: $helper_hash"
 echo "Installed relay SHA-256: $relay_hash"
+echo "Installed capture manifest SHA-256: $proxy_hash"
 echo "Remove them with: sudo bash $0 --remove"

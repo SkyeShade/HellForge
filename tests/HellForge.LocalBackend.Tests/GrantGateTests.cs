@@ -62,6 +62,12 @@ static class GrantGateTests
         check(!inventory.Contains(store), "A paid id saved in a mod weapon's heldItems (profile.json) was served.");
         check(inventory.All(filter.IsAllowed), "An unlock-all profile was served paid items without a snapshot: " +
             string.Join(",", inventory.Where(id => !filter.IsAllowed(id)).Take(5)));
+        // The loader's paid-item guard takes back what this list names, so nothing served may be on it.
+        var refused = (await Get("/hellforge/paid-guard"))["refused"]!.AsArray().Select(i => (uint)i!).ToList();
+        check(refused.SequenceEqual(refused.Order().Distinct()), "The paid guard's list is not sorted and distinct.");
+        check(refused.Contains(store) && refused.All(paid.IsReserved) && !refused.Contains(PaidContentSet.ForgeCreditsWallet) && !refused.Contains(Liberator),
+            "The paid guard's list misses a paid item, or names a free item or the Forge Credits wallet.");
+        check(!inventory.Any(refused.Contains), "The paid guard would take back a served item: " + string.Join(",", inventory.Where(refused.Contains).Take(5)));
         var served = (await Get("/Progression/ProgressionPackages")).AsArray().OfType<JsonObject>().ToList();
         var levels = served.SelectMany(p => p["levels"]!.AsArray()).OfType<JsonObject>().ToList();
         check(levels.SelectMany(l => l["rewards"]!.AsArray()).Where(r => (int)r!["type"]! == 1).All(r => filter.IsAllowed((uint)r!["id32"]!)) &&

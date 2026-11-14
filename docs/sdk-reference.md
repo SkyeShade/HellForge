@@ -5229,7 +5229,7 @@ typedef void (*HfFn_WarbondCurrencyToken)(uint64_t unused, uint32_t* out, uint32
 
 ### HasCatalogueItem
 
-`game.dll+0x136FB40`, hook or call. Whether the player holds a catalogue item. From HellForge research forge-credits-tint (README.md, locked warbonds).
+`game.dll+0x136FB40`, call only. Whether the player holds a catalogue item. From HellForge research forge-credits-tint (README.md, locked warbonds).
 
 ```c
 typedef uint8_t (*HfFn_HasCatalogueItem)(void* account, uint32_t item);

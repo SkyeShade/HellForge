@@ -72,6 +72,10 @@ Reference and related pages:
   which game tables move or grow, and what each part of the level changes.
 - [Stats, live editing and events](internals-live.md): the stats pass at load, live editing, the in-game editor and live
   pipe, event sources and native edits.
+- [Performance fixes in the engine](performance.md): what the mod loader changes so the game and HellForge do less
+  work, and how to turn a fix off.
+- [Performance fixes in level generation](performance-loading.md): the fixes that make the game's level generation
+  take less time or memory.
 - [Crash guards in the renderer](crash-guards.md): the two crashes of the game's renderer that HellForge guards, and why
   each guard is safe.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in
@@ -94,8 +98,8 @@ Reference and related pages:
   the Steam Linux Runtime and what the wrapper sets up.
 - [The Linux sandbox](linux-sandbox.md): the sandbox probe, how `hf-sandbox` runs the game in its own domain, the
   self-test and the design claims still open.
-- [Account sync on Linux](linux-account-sync.md): what Sync Inventory changes on a Linux PC (hosts file, root relay, the
-  CA in the game's prefix) and how each change is checked and undone.
+- [Account sync on Linux](linux-account-sync.md): what Sync Inventory changes on a Linux PC (hosts file, root relay,
+  snapshot signer, the CA in the game's prefix) and how each change is checked and undone.
 - [Testing HellForge on Linux](linux-testing.md): for Linux testers; what is still untested, the sandbox probe and what
   to report.
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs
