@@ -71,6 +71,18 @@ number, one base-5 digit per direction with the first lowest (Up, Right is 1 + 2
 - The code is matched on each player's own machine. The beacon tells the others which stratagem was thrown, never its
   code, so in co-op a code edit only changes what its player presses.
 
+### Uses before cooldown
+
+A non-Eagle stratagem's `stratagem.uses_before_cooldown` (1 to 99, 1 by default, as the game has it) is how many times
+it can be called before its cooldown starts. With `"Orbital Railcannon Strike": { "stratagem.uses_before_cooldown": 3 }`
+three Railcannons can be called, and then the cooldown runs. Until the last use the stratagem is ready again once it has
+arrived; when the cooldown ends, the uses come back. There is no rearm stratagem, and the Eagles keep their own rearm.
+
+- Each machine counts every player's calls, so the HUD shows a teammate's stratagem as the editing player's machine
+  sees it. A stratagem with a team cooldown is confirmed by the host, so the host's value decides it in co-op.
+- HellForge hooks the game's cooldown start (game.dll 0x135C2C0) and refuses every uses edit on a build where it
+  differs.
+
 ## How it applies
 
 - Changes apply when the game loads its data, every session. A stats-only mod (no code, Lua, data patches, data spec,

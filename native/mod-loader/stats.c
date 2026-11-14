@@ -29,9 +29,11 @@ static int StatsTableKind(const char* kind)
 {
     return !strcmp(kind, "ProjectileSettings") || !strcmp(kind, "DamageInfo") || !strcmp(kind, "StratagemDefinition") ||
         !strcmp(kind, "BoosterSettings") || !strcmp(kind, "PassiveModifier") || !strcmp(kind, "PassiveStat") || !strcmp(kind, "MeleeHitVolume") ||
-        !strcmp(kind, "DifficultySettings") || DirectorKind(kind) || !strcmp(kind, "StratagemCode");
+        !strcmp(kind, "DifficultySettings") || DirectorKind(kind) || !strcmp(kind, "StratagemCode") ||
+        !strcmp(kind, "StratagemUses");
 }
 #include "stratagem_codes.c" /* the StratagemCode kind: stratagems' input codes */
+#include "stratagem_uses.c"  /* the StratagemUses kind: uses before cooldown */
 static StatEdit g_stats[MAX_STATS];
 static int g_statCount;
 static volatile LONG g_statsComponentsReady;
@@ -96,11 +98,13 @@ static void StatsNoteShots(const StatEdit* e, uint32_t original)
         ShotsNoteLocal(e->resource, ShotsSlotOf(e->component, e->offset), original, e->value);
 }
 
-/* An edit's value checks past its field's own: a code's (stratagem_codes.c), then a reference's (refs.c). 0 when it may be
+/* An edit's value checks past its field's own: a code's or a uses count's (stratagem_codes.c, stratagem_uses.c), then a
+ * reference's (refs.c). 0 when it may be
  * written; else refused (logged) or, for a reference, waiting. */
 static int StatsChecks(StatEdit* e, uintptr_t address, uint32_t original)
 {
     const char* code = CodesRefusal(e, original);
+    if (code == NULL) code = UsesRefusal(e);
     if (code != NULL) { StatsRefuse(e, code); return 1; }
     return RefStat(e, address, original) != 0 /* REF_OK */;
 }
@@ -281,7 +285,7 @@ static uintptr_t StatsTableRow(int phase, uintptr_t table, uint32_t first, uint3
  * original), or 0 with *why. Also live_stats.c's lookup. */
 static uintptr_t StatsTableField(int phase, uintptr_t game, const StatEdit* e, const char** why)
 {
-    if (!strcmp(e->kind, "StratagemCode")) return e->own ? (*why = "a code has no own record", 0) : CodesField(e, why);
+    if (StratagemOwnKind(e->kind)) return e->own ? (*why = "HellForge's stratagem tables have no own records", 0) : StratagemOwnField(e, why);
     uint32_t count = phase == 0 ? PRJ_VANILLA : phase == 1 ? DMG_VANILLA : STR_VANILLA;
     uint32_t stride = phase == 0 ? PRJ_ROW : phase == 1 ? DMG_ROW : STR_ROW;
     if (strcmp(g_build, "25480438") || e->own || e->offset < 4 || e->offset > stride - 4 || e->offset % 4)
@@ -301,7 +305,7 @@ static void StatsApplyTable(int phase, uintptr_t game)
     for (int i = 0; i < g_statCount; i++)
     {
         StatEdit* e = &g_stats[i];
-        if ((strcmp(e->kind, kind) && (phase != 2 || strcmp(e->kind, "StratagemCode"))) || !e->mod->loaded) continue;
+        if ((strcmp(e->kind, kind) && (phase != 2 || !StratagemOwnKind(e->kind))) || !e->mod->loaded) continue;
         const char* why = NULL;
         uintptr_t at = StatsTableField(phase, game, e, &why);
         if (!at) StatsRefuse(e, why);

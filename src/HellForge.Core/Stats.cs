@@ -93,6 +93,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         FiredEntities(schema);
         EditorRequests(schema);
         InputCodes(schema);
+        UsesBeforeCooldown(schema);
         StratagemPayloads(schema);
         Entities(schema);
         Director(schema);
@@ -438,6 +439,19 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                 });
     }
     public const string InputCodeKey = "stratagem.input_code";
+
+    // Every non-Eagle stratagem's uses before cooldown (StratagemUses, by its stable id: native/mod-loader/stratagem_uses.c
+    // counts the calls and starts the cooldown at the last), after its input code. Eagles keep their rearm.
+    static void UsesBeforeCooldown(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets["stratagems"].Values.Where(t => t.Family != "eagle"))
+            if (target.Fields.FirstOrDefault(f => f.Value.Kind == "StratagemDefinition" && f.Key.StartsWith("stratagem.", StringComparison.Ordinal)).Value is { } own)
+                AddField(target, UsesKey, new StatsField("Uses before cooldown", "StratagemUses", "", "0x0", own.Record, 0, "u32", 1, 99, "uses", true, true)
+                {
+                    Order = own.Order, Note = "How many times it can be called before its cooldown starts; the uses come back when the cooldown ends. Until the last, it is ready again once it has arrived.",
+                });
+    }
+    public const string UsesKey = "stratagem.uses_before_cooldown";
 
     // An impact payload picker on every stratagem round that has none (the Eagle 110mm Rocket Pods', the orbitals'
     // shells): the round's ProjectileSettings +0x90, as the hand-held weapons' rounds have it.

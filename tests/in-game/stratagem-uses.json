@@ -1,0 +1,32 @@
+{
+  "about": "Uses before cooldown in the real game: a stats edit gives the Orbital Railcannon Strike 3 uses; with it in the loadout before the mission, three calls land 20 s apart (each once the previous strike has finished: the game holds a stratagem while its strike runs) and a fourth waits for the cooldown (tests/in-game/README.md).",
+  "mods": [
+    "stratagem-uses-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "script": [
+    {"wait": 25},
+    {"menu": "stratagem-menu"},
+    {"call": "RUDDR"},
+    {"wait": 20},
+    {"menu": "stratagem-menu"},
+    {"call": "RUDDR"},
+    {"wait": 20},
+    {"menu": "stratagem-menu"},
+    {"call": "RUDDR"},
+    {"wait": 20},
+    {"menu": "stratagem-menu"},
+    {"call": "RUDDR"},
+    {"wait": 20},
+    {"diag": 1}
+  ],
+  "checks": [
+    {"name": "the probe loads", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "the Railcannon is in the loadout on the ship", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE loadout ok: slot 0 type 58"},
+    {"name": "the cooldown start is hooked", "log": "modloader.log", "absent": "stratagem uses: game.dll"},
+    {"name": "the uses edit applies", "log": "mod-hellforge.stratagem-uses-probe.log", "regex": "stats .*uses_before_cooldown.*: applied"},
+    {"name": "three calls land before the cooldown", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE burst ok: three calls before the cooldown"},
+    {"name": "no probe check failed (a fourth call waits)", "log": "mod-hellforge.stratagem-uses-probe.log", "absent": "FAIL"}
+  ]
+}

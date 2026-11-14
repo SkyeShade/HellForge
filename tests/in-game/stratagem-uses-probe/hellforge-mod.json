@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.stratagem-uses-probe",
+  "name": "Stratagem uses probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: its stats give the Orbital Railcannon Strike 3 uses before cooldown, its code puts the Railcannon in the loadout on the ship and counts its beacons in the mission, one PROBE line per check, for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "stratagem_uses_probe.dll", "sdk": 16 }
+}

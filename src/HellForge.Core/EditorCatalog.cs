@@ -840,7 +840,7 @@ public static class EditorCatalog
     {
         var f = row.Field;
         var applies = LiveApplies.Of(f);
-        var stratagem = f.Kind is "StratagemDefinition" or "StratagemCode"; // a stratagem row: live by its type
+        var stratagem = f.Kind is "StratagemDefinition" or "StratagemCode" or "StratagemUses"; // a stratagem row: live by its type
         var type = f.LiveId ?? (stratagem && StratagemTypes.Value.TryGetValue(row.Part.Target, out var t) ? t : (ulong?)null);
         var live = applies != null && (!stratagem || type != null);
         var also = StatsCatalog.AlsoChanges(row, item.Nav is "projectiles" or "damage");
