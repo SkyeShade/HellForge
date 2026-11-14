@@ -27,6 +27,7 @@ out this way without another build.
 | `ai-path-budget` | The game's AI path threads get 0.5 ms a step instead of 2 ms, and 2 ms again while path requests wait over 500 ms | The game thread's wait for the AI step on a 16 km map: 1.0-1.5 ms to 0.2-0.3 ms a frame at 117-209 enemies |
 | `corpse-freeze` | A corpse at rest in the game's corpse ring leaves the physics world, as the game's disposal does to it later | A fight on a 16 km map: the corpses' terrain pairs 456 k to 49 k a window, median frame 18 to 15.5 ms, a trend in one direction |
 | `render-job-copies` | On Direct3D 12, each render job's copy of the resource-version table is freed once the job is recorded | On a 16 km city map, the copies standing at a peak: 561-930 MB to 4-9 MB |
+| `render-version-rehash` | The Direct3D 12 renderer's resource-version tables are rehashed short when a level load left them far too large | A 16 km map, standing still: frame 12.5-13.0 ms to 8.5 ms, about 79 to 116 fps |
 
 ## safe-read
 
@@ -203,3 +204,36 @@ its commands. Before, every pooled job context kept its largest copy for the who
 - On a normal map the table is smaller, so the saving is smaller. It is not measured.
 - `modloader.log` names the longest copy given back so far, which is the table's size.
 - A copy of over about 41,000 entries is a large allocation. On 16 km maps each job then maps fresh memory for its copy.
+
+## render-version-rehash
+
+The Direct3D 12 renderer keeps a hash table of each dynamic buffer's current version, and one of the buffers changed
+since the last frame. Tables grow when a frame needs more room and never shrink. A session's largest burst, usually a
+level load, sets their size for the rest of the session, the ship included.
+
+Every recording job copies the whole versions table, empty buckets too, and empties its copy again. On a 16 km map
+that is 56,114 entries with about 120 in use, copied about 50 times a frame: 45 % of the render thread.
+
+What changes (`native/mod-loader/perf_render_version_rehash.c`):
+
+- A hook on the device's command dispatch runs after it returns.
+- A table of 4,096 entries or more is rehashed by the game's own rehash when its peak use over the last one to two
+  seconds fills under an eighth of its buckets.
+- It gets 4 buckets for each entry of that peak, plus 19.
+
+Why the game's results stay the same:
+
+- The rehash is the routine the game grows the tables with. It inserts every entry in use again, with its value.
+- The dispatch already has the tables to itself, and the rehash runs on its thread before the call returns.
+- Nothing keeps a pointer into a table between calls. Each job works on its own copy, which is emptied first.
+- A table that needs more room grows again the game's way. The peak window keeps one from being rehashed back and
+  forth.
+
+Measured on Complex Operations' 16 km map, standing still, in alternating runs of one session: frame time 12.5-13.0 ms
+to 8.5 ms, about 79 to 116 fps. A normal map is not measured. There the fix acts only once a load grew a table to
+7,014 entries or more, the first size over the limit, and saves less in proportion.
+
+Limits:
+
+- Direct3D 12 only. Under Direct3D 11 the hooked dispatch never runs.
+- It is pinned to build 25480438's bytes. Another build leaves it off, with a line in `modloader.log`.
