@@ -42,7 +42,9 @@ On `dev`, since 0.4.0-beta.
   animation modes need an animation blender, and `UnitNode` needs a name `UnitHasNode` found (#375).
 - **A data spec can fix a game shader.** The new `edit` entry changes bytes in one of the game's shader stages; HellForge
   signs the stage again and refuses the edit on a game build whose shader differs
-  ([data specs](docs/modding/data.md#edit), #350).
+  ([data specs](docs/modding/data.md#edit), #350). It also changes bytes outside the stages, such as which texture a
+  stage reads, each only where the game's own bytes are as the spec expects. An edit can pin the whole GPU part by
+  size or SHA-256 (#400).
 - **Mods can draw screens over the game (SDK 17).** `add_screen` adds a screen with its own key, such as a map, and
   `screen_show` opens and closes it. A modal screen takes the mouse and keys from the game while it is open. The mouse
   shows as the game's own pointer, except where the screen draws its own cursor (`hide_pointer`, #399). Screens draw
