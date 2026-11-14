@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Stratagems that rearm.** Every stratagem but the Eagles has "Rearms after uses" beside its mission uses. Ticked,
+  its uses go with no cooldown between them, the cooldown starts once they are spent, and they come back when it ends;
+  the HUD shows the uses left counting down and refilling ([stats mods](docs/modding/stats-mods.md#rearms-after-uses)).
+- **RESET ALL in the editor's Errors list.** Two clicks stage a reset of every refused field, as each row's RESET does.
 - **Stratagem input codes in the editor.** Every stratagem's call-in section has Input code, shown as arrows and typed
   as U, R, D and L, 1 to 10 directions. It applies at once, the HUD's arrows too, and each player's code is their own.
   Stats files take it as letters (`"stratagem.input_code": "UULRD"`) ([stats mods](docs/modding/stats-mods.md#stratagem-input-codes)).

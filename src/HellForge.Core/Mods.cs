@@ -307,8 +307,11 @@ public static partial class ModCatalog
     // with either cannot be the player's own.
     static CoopTier DecideTier(JsonElement root, ModManifest mod, TierFacts facts)
     {
+        // A rearm tick is not the player's own: every machine refills every player's uses (native/mod-loader/stratagem_rearm.c),
+        // so the squad needs the same mod. Local Stats stays each player's (a host may share theirs).
+        var rearms = mod.Id != LocalStatsId && facts.Stats.Any(s => s.Kind == "StratagemRearm");
         var statsOnly = facts.Stats.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && facts.Data.Count == 0 && !facts.Spec &&
-            facts.Types.Count == 0 && facts.Writes.Count == 0;
+            facts.Types.Count == 0 && facts.Writes.Count == 0 && !rearms;
         var dataOnly = facts.Data.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && !facts.Spec &&
             facts.Stats.Count == 0 && facts.Types.Count == 0 && facts.Writes.Count == 0;
         var tier = ReadCoop(root) ?? (statsOnly || dataOnly && ClientOnlyPatches(mod) ? CoopTier.PerPlayer : CoopTier.Shared);

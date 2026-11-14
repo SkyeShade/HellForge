@@ -44,7 +44,7 @@ static int StatsTablePhase(const char* kind) { return !strcmp(kind, "ProjectileS
 static uintptr_t StatsObservedTable(StatEdit* e, uintptr_t game)
 {
     if (StatsExtraKind(e->kind) >= 0) return StatsExtraRow(e);
-    if (!strcmp(e->kind, "StratagemCode")) { const char* why; return CodesField(e, &why); }
+    if (StratagemOwnKind(e->kind)) { const char* why; return StratagemOwnField(e, &why); }
     int phase = StatsTablePhase(e->kind);
     uintptr_t table = StatsTableOf(phase, game);
     uint32_t count = phase == 0 ? PRJ_VANILLA : phase == 1 ? DMG_VANILLA : STR_VANILLA;
