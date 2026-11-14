@@ -175,6 +175,12 @@ class NotesTest(TempRepoTest):
         self.assertIn('HellForge-Nightly-Setup.exe', text)
         self.assertIn('no Steam bridge or broker', text)
 
+    def test_names_the_linux_installer_only_when_it_is_published(self):
+        self.assertNotIn('Linux-Installer', self.notes())
+        text = nightly.notes(self.repo.path, '0.4.0-nightly.20261102', self.last, None, 'SkyeShade/HellForge',
+                             linux_installer=True)
+        self.assertIn('HellForge-Nightly-Linux-Installer.tar.gz', text)
+
     def test_changes_since_the_previous_nightly(self):
         text = self.notes(previous=self.first)
         self.assertIn('### Changes since the previous nightly', text)

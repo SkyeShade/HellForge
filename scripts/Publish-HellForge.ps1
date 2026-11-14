@@ -124,7 +124,7 @@ Copy-Item -LiteralPath (Join-Path $project 'docs/modding') -Destination $sdkDocs
 foreach($name in @('sdk-reference.md','mods.md','lua-bridge.md','external-launchers.md')){Copy-Item -LiteralPath (Join-Path $project ('docs/'+$name)) -Destination $sdkDocs}
 # Example mods to read and copy into mods/ (docs/modding/first-mod.md): their tracked files only (no local builds), with their
 # CMake include pointed at the SDK's own cmake folder. more-voices is left out: it waits for wrapped game functions.
-foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','cube-gun','machine-gun-10k-code','talon-liberator','golden-liberator','hell-forge','hell-swarm','stats-example','machine-gun-10k','vanilla-plus')){
+foreach($name in @('stratagem-compendium','stratagem-categories','blue-sentry','cube-gun','model-carbine','machine-gun-10k-code','talon-liberator','golden-liberator','animated-liberator','hell-forge','hell-swarm','alpha-scavenger','stats-example','machine-gun-10k','vanilla-plus','warbond-example')){
     foreach($file in @(git -C $project ls-files ('examples/mods/'+$name))){
         $destination=Join-Path $sdkTarget $file # app/sdk/examples/mods/<name>/...
         New-Item -ItemType Directory (Split-Path -Parent $destination) -Force|Out-Null
@@ -160,11 +160,13 @@ foreach($name in @('hell-forge','vanilla-plus')){
     Copy-Item -LiteralPath (Join-Path $mod $dll) -Destination $target
 }
 Copy-Item -LiteralPath (Join-Path $project 'data/profile-templates.json') -Destination $staging
-Copy-Item -LiteralPath (Join-Path $project 'data/progression-data.json') -Destination $staging
-# app/linux: the Linux (Proton) scripts and their guide (docs/linux.md), for an installation copied to Linux.
+# app/catalogue-pinned.json: the ids the supported build knows of the game's catalogues, which each player's Sync Inventory
+# provides (HellForge.Core GameCatalog); HellForge ships no catalogue itself.
+Copy-Item -LiteralPath (Join-Path $project 'data/catalogue-pinned.json') -Destination $staging
+# app/linux: the Linux (Proton) scripts and their guide (docs/linux*.md: one folder, so its pages link each other).
 $linuxTarget=New-Item -ItemType Directory (Join-Path $staging 'linux')
 Copy-Item -Path (Join-Path $project 'linux/*.sh') -Destination $linuxTarget
-Copy-Item -LiteralPath (Join-Path $project 'docs/linux.md') -Destination $linuxTarget
+Copy-Item -Path (Join-Path $project 'docs/linux*.md') -Destination $linuxTarget
 $zig=(& (Join-Path $PSScriptRoot 'Get-BuildTools.ps1')).Zig
 # The unprivileged Linux sandbox programs: the phase-1 probe and the phase-2 hf-sandbox, built with the same pinned Zig and
 # shipped beside the Linux scripts. The installer makes both executable after extraction
@@ -183,7 +185,8 @@ $sandbox=Join-Path $linuxTarget 'hf-sandbox'
     (Join-Path $sandboxFolder 'hf-sandbox-guard.c') (Join-Path $sandboxFolder 'hf-sandbox-selftest.c') -o $sandbox
 if($LASTEXITCODE -or -not(Test-Path -LiteralPath $sandbox)){throw 'Building the Linux sandbox failed.'}
 # Sync Inventory's 443 relay: one static program built the same way, installed root-owned beside capture-helper.sh by
-# allow-capture.sh and executed only from /usr/local/lib/hellforge, never from the Wine-writable installation.
+# allow-capture.sh and executed only from its root-owned folder (/usr/local/lib/hellforge; /opt/hellforge on SteamOS),
+# never from the Wine-writable installation.
 $captureRelay=Join-Path $linuxTarget 'capture-relay'
 & $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s (Join-Path $project 'native/linux-capture/capture-relay.c') -o $captureRelay
 if($LASTEXITCODE -or -not(Test-Path -LiteralPath $captureRelay)){throw 'Building the Linux capture relay failed.'}

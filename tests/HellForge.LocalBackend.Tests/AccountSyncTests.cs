@@ -22,10 +22,7 @@ static class AccountSyncTests
 
     public static void Run(string root, Action<bool, string> check)
     {
-        // The Linux snapshot seal uses this synthetic machine id; the real /etc/machine-id is never read.
-        var machineId = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "machine-id")).FullName, "seal-test");
-        File.WriteAllText(machineId, "0123456789abcdef0123456789abcdef\n");
-        SnapshotSeal.MachineData.MachineIdPathForTests = machineId;
+        TestSigner.Install();
         var paid = PaidContentSet.Load();
         var ids = FindIds(paid);
         PremiumRules(paid, ids, check);
@@ -38,6 +35,27 @@ static class AccountSyncTests
         ModItems(root, paid, check);
         ForgeCredits(paid, check);
         WarbondsOtherToken(paid, check);
+        InstallationCatalogue(root, check);
+    }
+
+    // The profile commands take the catalogue of the profile's installation: without one they say to sync first, with one
+    // the backend reads it. The suite's catalogue is put back after.
+    static void InstallationCatalogue(string root, Action<bool, string> check)
+    {
+        var suite = LocalBackend.CatalogueDirectory!;
+        var install = Path.Combine(root, "catalogue-install");
+        var profile = Directory.CreateDirectory(Path.Combine(install, "profiles", "default")).FullName;
+        try
+        {
+            check(LocalBackend.UseInstallationCatalogue(profile) == GameCatalog.SyncFirst && LocalBackend.CatalogueDirectory == suite,
+                "A profile command of an installation with no catalogue was not told to sync first.");
+            var folder = Directory.CreateDirectory(GameCatalog.Directory(install)).FullName;
+            foreach (var file in new[] { GameCatalog.ProgressionDataFile, GameCatalog.ItemCatalogFile })
+                File.Copy(Path.Combine(suite, file), Path.Combine(folder, file));
+            check(LocalBackend.UseInstallationCatalogue(profile + Path.DirectorySeparatorChar) == null &&
+                LocalBackend.CatalogueDirectory == folder, "A profile command did not take its installation's catalogue.");
+        }
+        finally { LocalBackend.CatalogueDirectory = suite; }
     }
 
     // Forge Credits: a pile picked up pays every participant once (the reply the client adds and forwards), the wallet is
@@ -145,6 +163,16 @@ static class AccountSyncTests
         using var dev = ProfileStore.Open(null, "unlock-all");
         dev.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }]);
         check(Served(dev).Contains(steeled.Tokens[0]), "An unlock-all profile was not handed its owned warbond.");
+
+        // So is a live-like profile (#282), starting with starter's items; starter and older templates buy theirs.
+        check(!ProfileStore.EarnsWarbonds("unlock-all") && !ProfileStore.EarnsWarbonds(HellForge.Core.ProfileStore.LiveLikeTemplate) &&
+            ProfileStore.EarnsWarbonds("starter") && ProfileStore.EarnsWarbonds(null), "The wrong templates buy their owned warbonds.");
+        using var liveLike = ProfileStore.Open(null, HellForge.Core.ProfileStore.LiveLikeTemplate);
+        using var fresh = ProfileStore.Open(null, "starter");
+        check(Items(liveLike.Current()).Keys.Order().SequenceEqual(Items(fresh.Current()).Keys.Order()), "A live-like profile does not start as a starter one.");
+        liveLike.Ownership = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = steeled.Tokens[0], ["amount"] = 1, ["isDiscovered"] = true }])
+            { EarnWarbonds = ProfileStore.EarnsWarbonds(HellForge.Core.ProfileStore.LiveLikeTemplate) };
+        check(Served(liveLike).Contains(steeled.Tokens[0]), "A live-like profile was not handed its owned warbond.");
     }
 
     // A ship away from any planet: the live server's location has a warId and planetIndex of -1 (tickets 0120, 0128). The
@@ -155,7 +183,7 @@ static class AccountSyncTests
         var file = Path.Combine(snapshot, InventorySync.ProgressionFile);
         File.WriteAllText(file, File.ReadAllText(file).Replace("{\"warId\":801,\"planetIndex\":171,\"territoryIndex\":11}",
             "{\"warId\":-1,\"planetIndex\":-1,\"regionIndex\":-1}"));
-        SnapshotSeal.Write(snapshot, InventorySync.SealKeyFor(snapshot), Player, DateTime.UtcNow);
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow);
         var settings = new AccountImportSettings();
         settings.Set("ship", true, ImportRule.Vanilla);
         settings.Save(AccountImportSettings.PathIn(profileDir));
@@ -352,10 +380,14 @@ static class AccountSyncTests
         Refused(paid, snapshot, Sibling, "changed", check);
         File.WriteAllText(seal, sealText);
 
-        // Another installation (its own key) does not accept this one's snapshot.
+        // The seal is bound to the PC's signer, not to an installation: another installation here accepts it, while a
+        // seal from another PC's signer is refused.
         var (_, elsewhere) = Install(root, "seals-elsewhere", ids);
         foreach (var name in new[] { InventorySync.InventoryFile, InventorySync.ProgressionFile, SnapshotSeal.FileName })
             File.Copy(Path.Combine(snapshot, name), Path.Combine(elsewhere, name), overwrite: true);
+        check(OwnershipFilter.ForSnapshot(paid, elsewhere, Player, out _).OwnedPaidCount == 3, "Another installation on this PC refused its snapshot.");
+        using (var otherPc = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
+            TestSigner.Seal(elsewhere, Player, DateTime.UtcNow, otherPc);
         Refused(paid, elsewhere, Player, "another PC", check);
         check(!OwnershipFilter.ForSnapshot(paid, Path.Combine(root, "none", "account-snapshot", "p"), Player, out problem).HasRealInventory && problem == null,
             "A profile without a snapshot reported a problem or ownership.");
@@ -374,7 +406,9 @@ static class AccountSyncTests
         long beforeVanillaXp;
         using (var store = ProfileStore.Open(profileDir, "starter"))
         {
-            store.ApplyMissionRewards(0, new Dictionary<uint, long> { [LocalArmoryItem] = 1, [Medals] = 5, [Requisition] = 20000, [CommonSamples] = 30 });
+            store.ApplyMissionRewards(0, new Dictionary<uint, long> { [LocalArmoryItem] = 1, [Medals] = 5, [Requisition] = 20000, [CommonSamples] = 30,
+                [PaidContentSet.ForgeCreditsWallet] = 800 });
+            store.TryChange((progression, _) => { ModPackages.SetLevel(progression, 0x5EED0099, 4); return true; });
             beforeVanillaXp = Experience(store.Current());
             var shipBefore = store.Current()["progression"]!["shipName"]?.ToJsonString();
             store.Import(Snapshot(profileDir), new AccountImportSettings(), PaidContentSet.Load());
@@ -388,8 +422,10 @@ static class AccountSyncTests
                 "Warbond unlocks or packages were not merged.");
             check(progression["shipName"]?.ToJsonString() == shipBefore && !progression.ContainsKey("location") && Whole(progression["onboardingFlags"]) != 16350331,
                 "Ship or tutorial imported though left out by default.");
-            check(!items.Keys.Any(PaidContentSet.IsSuperCredits) && !items.ContainsKey(ids.OwnedToken) && !items.ContainsKey(ids.StoreItem) && !items.ContainsKey(Knight),
-                "Super Credits or premium items were written into the profile.");
+            check(!items.Keys.Any(id => PaidContentSet.IsSuperCredits(id) && !PaidContentSet.IsForgeCredits(id)) && !items.ContainsKey(ids.OwnedToken) &&
+                !items.ContainsKey(ids.StoreItem) && !items.ContainsKey(Knight), "Super Credits or premium items were written into the profile.");
+            check(items.GetValueOrDefault(PaidContentSet.ForgeCreditsWallet) == 800, "An import did not keep the profile's Forge Credits as they were (or took the account's Super Credits).");
+            check(ModPackages.Find(progression, 0x5EED0099) != null, "An import lost a mod weapon's level.");
         }
         check(ProfileBackups.List(profileDir) is [{ Reason: "import" }], "The first import did not back the profile up.");
         ImportsByCommand(profileDir, beforeVanillaXp, check);
@@ -486,7 +522,8 @@ static class AccountSyncTests
     }
 
     // An installation folder with a profile folder and a sealed snapshot for Player: a token, a Superstore item, DLC gear, a premium warbond
-    // item, an armory item, currencies, Super Credits, and the progression of the 2026-10-24 capture's shape.
+    // item, an armory item, currencies, Super Credits (9,000 in the wallet the game shows, which is the Forge Credits wallet locally), and the
+    // progression of the 2026-10-24 capture's shape.
     static (string ProfileDir, string SnapshotDir) Install(string root, string name, Ids ids)
     {
         var profileDir = Path.Combine(root, name, "profiles", "player");
@@ -495,14 +532,14 @@ static class AccountSyncTests
         Directory.CreateDirectory(snapshot);
         string Item(uint id, long amount) => "{\"mixId\":" + id + ",\"amount\":" + amount + ",\"isDiscovered\":true}";
         File.WriteAllText(Path.Combine(snapshot, InventorySync.InventoryFile), "{\"items\":[" + string.Join(",", Item(ids.OwnedToken, 1), Item(ids.StoreItem, 1), Item(Knight, 1),
-            Item(ids.OwnedWarbondItem, 1), Item(VanillaArmoryItem, 2), Item(Medals, 119), Item(Requisition, 50000), Item(SuperCreditWallet, 180), Item(SuperCreditPrice, 180)) +
+            Item(ids.OwnedWarbondItem, 1), Item(VanillaArmoryItem, 2), Item(Medals, 119), Item(Requisition, 50000), Item(SuperCreditWallet, 180), Item(SuperCreditPrice, 180), Item(PaidContentSet.ForgeCreditsWallet, 9000)) +
             "],\"loadouts\":[]}");
         File.WriteAllText(Path.Combine(snapshot, InventorySync.ProgressionFile), """
             {"experience":485592,"selectedProgressionPackage":131213678,"activeSeasonPass":1929468580,"onboardingState":128,"onboardingFlags":16350331,
              "packageProgress":[{"id32":2373460877,"level":10,"progress":476,"sortOrder":0,"claimedLevels":[]}],"assignments":[],
              "purchasedSeasonPassItems":[871,872],"shipName":[9,16],"location":{"warId":801,"planetIndex":171,"territoryIndex":11},"achievements":[{"id":1}]}
             """);
-        SnapshotSeal.Write(snapshot, InventorySync.SealKeyFor(snapshot), Player, DateTime.UtcNow);
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow);
         return (profileDir, snapshot);
     }
 

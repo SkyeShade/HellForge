@@ -165,7 +165,7 @@ static class DataBuilderTests
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"test/mod/unit","colour":[1,1,1]}]}""", "unknown field colour");
             Refused("""{"archives":["NOTHEX"],"resources":[""" + copy + "]}", "16 lowercase hex");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","name":"unit"}]}""", "the mod's own resource path");
-            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include or icon");
+            Refused("""{"archives":["1111111111111111"],"resources":[{"type":"unit","copy":"0x3333","include":["0x1"]}]}""", "exactly one of copy, include, icon, texture, animations, model, sounds, edit or shader");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"../icon.png","name":"test/mod/icon"}]}""", "a .png file in the mod folder");
             Refused("""{"archives":["1111111111111111"],"resources":[{"icon":"missing.png","name":"test/mod/icon"}]}""", "missing.png is missing");
             Refused("""{"archives":["1111111111111111"],"resources":[{"type":"particles","copy":"0x1","name":"test/mod/fx","curves":{"preset":"pink"}}]}""", "warm-to-blue");
@@ -209,10 +209,13 @@ static class DataBuilderTests
                 $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{"type":"{{type}}","copy":"0x3333","name":"test/mod/unit","mesh":{{mesh}}}]}]}""";
             File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), Spec("""{"obj":"models/cube.obj","scale":2,"yUp":false}"""));
             var spec = DataSpecs.Load(folder)!;
-            check(spec.Inputs.SequenceEqual(["models/cube.obj"]) && spec.Patches[0].Resources[0] is CopyResource { Mesh: { Obj: "models/cube.obj", Scale: 2, YUp: false } },
+            check(spec.Inputs.SequenceEqual(["models/cube.obj"]) && spec.Patches[0].Resources[0] is CopyResource { Mesh: { Obj: "models/cube.obj", Scale: 2, YUp: false, UnitSpace: false } },
                 "The mesh and its file are part of the spec (and of its cache key).");
+            File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), Spec("""{"obj":"models/cube.obj","unitSpace":true}"""));
+            check(DataSpecs.Load(folder)!.Patches[0].Resources[0] is CopyResource { Mesh: { UnitSpace: true, YUp: true } }, "unitSpace is read.");
             foreach (var (bad, why) in new[] { (Spec("""{"obj":"../cube.obj"}"""), "an .obj file in the mod folder"), (Spec("""{"obj":"models/none.obj"}"""), "is missing"),
-                (Spec("""{"obj":"models/cube.obj"}""", "material"), "mesh is for a unit copy"), (Spec("""{"obj":"models/cube.obj","scale":0}"""), "scale is a positive number") })
+                (Spec("""{"obj":"models/cube.obj"}""", "material"), "mesh is for a unit copy"), (Spec("""{"obj":"models/cube.obj","scale":0}"""), "scale is a positive number"),
+                (Spec("""{"obj":"models/cube.obj","unitSpace":1}"""), "unitSpace is true or false") })
             {
                 File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), bad);
                 try { DataSpecs.Load(folder); throw new Exception("Accepted: " + bad); }
@@ -367,6 +370,487 @@ static class DataBuilderTests
             try { ModDataBuilder.Build(Spec("""{"type":"texture","include":["0x4242"],"source":"steam"}"""), mod, gameReader, output + "3", steamReader); throw new Exception("Missing."); }
             catch (InvalidDataException error) { check(error.Message.Contains("0x0000000000004242 (Steam)"), "A missing Steam resource is not named: " + error.Message); }
         });
+
+        test("Resources come from a past build with \"source\": {\"build\": ...}, read from what was fetched into the mod's folder", () =>
+        {
+            var folder = Path.Combine(root, "past-source");
+            if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            var game = Path.Combine(folder, "game");
+            WriteBundles(game, new Dictionary<string, byte[]>
+            {
+                ["1111111111111111"] = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts>
+                {
+                    [new(ResourceTypes.Material, 0x9999)] = new(LaidOut(0, [(0xA, 0x100)], [(0, 0x50, 0)], [1]), [], []),
+                    [new(ResourceTypes.Texture, 0x100)] = new([1], [], []),
+                }).Archive
+            });
+            var mod = Directory.CreateDirectory(Path.Combine(folder, "mod")).FullName;
+            DataSpec Spec(string resources)
+            {
+                File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{{resources}}]}]}""");
+                return DataSpecs.Load(mod)!;
+            }
+
+            // A day names the manifest Steam published last on or before it (UTC), from the depot history HellForge ships.
+            var history = HellForge.Core.AssetMigration.DepotHistory.Embedded(553853);
+            var day = history.Where(h => h.Branch == null && h.Time < new DateTime(2024, 3, 8, 0, 0, 0, DateTimeKind.Utc)).MaxBy(h => h.Time)!;
+            var label = $"553853:{day.Manifest}";
+            const string cut = """{"type":"unit","copy":"0x3333","name":"test/mod/cut","source":{"build":"2024-03-07"}}""";
+            var port = cut + $$$""",{"type":"material","include":["0x7777"],"source":{"build":"{{{label}}}"}}""";
+            check(Spec(port).Builds.SequenceEqual([label]), $"the day and the manifest name one build: {string.Join(", ", Spec(port).Builds)}");
+            reject(() => Spec("""{"type":"unit","copy":"0x3333","source":{"build":"2023-01-01"}}"""));
+            reject(() => Spec("""{"type":"unit","copy":"0x3333","source":{"build":"553853:12345"}}"""));
+            reject(() => Spec("""{"type":"unit","copy":"0x3333","source":{"build":"2024-03-07","branch":"x"}}"""));
+            check(BuildResources.Wanted(Spec(port))[label].SetEquals([new(ResourceTypes.Unit, 0x3333), new(ResourceTypes.Physics, 0x3333), new(ResourceTypes.Material, 0x7777)]),
+                "a unit copy takes its physics too");
+
+            using var gameReader = new GameDataReader(game);
+            var output = Path.Combine(folder, "out");
+            check(BuildResources.Missing(mod, Spec(port)).SequenceEqual([label]), "nothing is fetched yet");
+            try { ModDataBuilder.Build(Spec(port), mod, gameReader, output); throw new Exception("Built without its past resources."); }
+            catch (FileNotFoundException error) { check(error.Message.Contains(label), "The build not fetched is not named: " + error.Message); }
+
+            BuildResources.Write(mod, label, new(ResourceTypes.Unit, 0x3333), new(new byte[0x40], [6, 6], []));
+            BuildResources.Write(mod, label, new(ResourceTypes.Physics, 0x3333), new(Physics(0x3333), [], []));
+            BuildResources.Write(mod, label, new(ResourceTypes.Material, 0x7777),
+                new(LaidOut(0x9999, [(0xE, 0x300), (0xA, 0x101)], [(0, 0x58, 0), (0, 0x50, 4)], [99, 42]), [], []));
+            check(BuildResources.Missing(mod, Spec(port)).Count == 0, "all fetched");
+            var stamp = BuildResources.Stamp(mod, Spec(port));
+            ModDataBuilder.Build(Spec(port), mod, gameReader, output);
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0.gpu_resources")), []);
+            var name = EngineHash.Murmur64A("test/mod/cut"u8);
+            check(built[new(ResourceTypes.Unit, name)].Gpu.SequenceEqual(new byte[] { 6, 6 }) && built.ContainsKey(new(ResourceTypes.Physics, name)),
+                "The unit of the past build was not copied with its physics.");
+            var material = built[new(ResourceTypes.Material, 0x7777)].Main;
+            check(Value(material, 0x50) == 42 && BinaryPrimitives.ReadUInt64LittleEndian(material.AsSpan(0x88 + 4)) == 0x101,
+                "The material of the past build is not in the game copy's shader layout.");
+
+            // A unit that build has without physics is copied alone; a resource it does not have is refused by name.
+            BuildResources.Write(mod, label, new(ResourceTypes.Physics, 0x3333), null);
+            check(BuildResources.Stamp(mod, Spec(port)) != stamp, "the cache key follows what was fetched");
+            ModDataBuilder.Build(Spec(cut), mod, gameReader, output + "2");
+            check(!ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output + "2", "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output + "2", "1111111111111111.patch_0.gpu_resources")), []).ContainsKey(new(ResourceTypes.Physics, name)),
+                "A physics the build does not have was made up.");
+            BuildResources.Write(mod, label, new(ResourceTypes.Texture, 0x4242), null);
+            try { ModDataBuilder.Build(Spec($$$"""{"type":"texture","include":["0x4242"],"source":{"build":"{{{label}}}"}}"""), mod, gameReader, output + "3"); throw new Exception("Missing."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("0x0000000000004242") && error.Message.Contains(label), "A resource the build lacks is not named: " + error.Message); }
+
+            // An include the game copy has already comes from the game, not a past build.
+            BuildResources.Write(mod, label, new(ResourceTypes.Texture, 0x100), new([2], [], []));
+            try { ModDataBuilder.Build(Spec($$$"""{"type":"texture","include":["0x100"],"source":{"build":"{{{label}}}"}}"""), mod, gameReader, output + "4"); throw new Exception("Shadowed."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("include them from the game"), "Refused for another reason: " + error.Message); }
+        });
+
+        test("Animation resources: bones, clips and state machines encode as the game's and read back", () =>
+        {
+            check(AnimationClip.Quantize(1) == 36043 && AnimationClip.Quantize(0) == 32767 && AnimationClip.QuantizeRotation([0, 0, 0, 1]) == 2149582851u,
+                "A scale of 1, a position of 0 or the identity rotation quantize differently from the game's clips.");
+            reject(() => AnimationClip.Quantize(11));
+            var q = AnimationClip.DequantizeRotation(AnimationClip.QuantizeRotation([0, 0, Math.Sqrt(0.5), Math.Sqrt(0.5)]));
+            check(Math.Abs(q[2] - Math.Sqrt(0.5)) < 2e-3 && Math.Abs(q[3] - Math.Sqrt(0.5)) < 2e-3, $"A quarter turn about Z does not read back: {string.Join(", ", q)}");
+
+            var bones = AnimationBones.For(["bolt", "attach_mag"]);
+            check(bones.Names.SequenceEqual(["StingrayEntityRoot", "FbxAxisSystem_ConvertNode", "bolt", "attach_mag"]), "The root entries do not come first: " + string.Join(", ", bones.Names));
+            var bonesBytes = AnimationBones.Write(bones);
+            check(AnimationBones.Write(AnimationBones.Read(bonesBytes)).SequenceEqual(bonesBytes) && AnimationBones.Read(bonesBytes).Names.SequenceEqual(bones.Names), "Bones do not read back.");
+            reject(() => AnimationBones.Read(bonesBytes[..12]));
+
+            var one = AnimationClip.Quantize([0, 0, 0]);
+            AnimationClip.Pose Rest() => new(one, AnimationClip.QuantizeRotation([0, 0, 0, 1]), AnimationClip.Quantize([1, 1, 1]));
+            var clip = new AnimationClip.Clip(0.5f, [Rest(), Rest(), Rest(), Rest()],
+            [
+                new(AnimationClip.Channel.Position, 3, 200, AnimationClip.Quantize([0, -0.1, 0]), 0),
+                new(AnimationClip.Channel.Position, 3, 500, AnimationClip.Quantize([0, -0.2, 0]), 0),
+                new(AnimationClip.Channel.Rotation, 2, 500, null, AnimationClip.QuantizeRotation([0, 0, Math.Sqrt(0.5), Math.Sqrt(0.5)])),
+            ], [new(0.25f, AnimationBones.Thin("mag_out"))]);
+            var clipBytes = AnimationClip.Write(clip);
+            var read = AnimationClip.Read(clipBytes);
+            check(AnimationClip.Write(read).SequenceEqual(clipBytes) && read.Length == 0.5f && read.Rest.Count == 4 && read.Triggers.Single().Hash == AnimationBones.Thin("mag_out"),
+                "A clip does not read back.");
+            check(BinaryPrimitives.ReadInt32LittleEndian(clipBytes.AsSpan(0x0C)) == clipBytes.Length, "A clip's first copy does not hold the file size at +0x0C.");
+            check(read.Keys.Count(k => k.Bone == 3 && k.Channel == AnimationClip.Channel.Position) == 2, "The keys of a curve do not read back.");
+            reject(() => AnimationClip.Write(clip with { Rest = [Rest()] }));
+            reject(() => AnimationClip.Read(clipBytes[..(clipBytes.Length / 2 - 4)]));
+
+            var machine = new AnimationStateMachine.Machine(1,
+            [
+                new(0,
+                [
+                    new(EngineHash.Murmur64A("idle"u8), 0, [0x1234], [1f], true, false, [(AnimationBones.Thin("reload"), 0)], [new(1, 0.1f)], [], AnimationSet.Unheard, 0,
+                        AnimationStateMachine.Speed(1), [], []),
+                    new(EngineHash.Murmur64A("reload"u8), 0, [0x5678], [1f], false, false, [], [], [new(0.2f, AnimationBones.Thin("mag_out"), 1)], AnimationBones.Thin("reload_done"), 0.1f,
+                        AnimationStateMachine.Speed(1), [], []),
+                ]),
+            ], new[] { AnimationSet.Unheard, AnimationBones.Thin("reload"), AnimationBones.Thin("reload_done"), AnimationBones.Thin("mag_out") }.Order().ToList(), [], [[0, 0, 1, 1]]);
+            var machineBytes = AnimationStateMachine.Write(machine);
+            var machineRead = AnimationStateMachine.Read(machineBytes);
+            check(AnimationStateMachine.Write(machineRead).SequenceEqual(machineBytes) && machineRead.Layers[0].States[1].EmitEnd == AnimationBones.Thin("reload_done") &&
+                machineRead.Masks.Single().SequenceEqual([0f, 0, 1, 1]), "A state machine does not read back.");
+            reject(() => AnimationStateMachine.Write(machine with { Events = [.. machine.Events.Reverse()] }));
+            reject(() => AnimationStateMachine.Read(machineBytes[..0x40]));
+        });
+
+        test("A mod's animations JSON: bones bound to the unit's joints, curves held to the end, every mistake refused by its field", () =>
+        {
+            var unit = JointedUnit();
+            var joints = AnimationSet.UnitJoints(unit);
+            check(joints.Count == 2 && joints[0].Name == AnimationBones.Thin("bolt") && joints[0].Position.SequenceEqual([0, 0.125, 0.0625]) &&
+                Math.Abs(joints[1].Rotation[2] - Math.Sqrt(0.5)) < 1e-6 && Math.Abs(joints[1].Rotation[3] - Math.Sqrt(0.5)) < 1e-6,
+                "The unit's joints (column-major rotations) do not read: " + string.Join(" | ", joints.Select(j => string.Join(",", j.Rotation))));
+            const string json = """
+                // a reload: the magazine drops and comes back, the bolt runs forward at the end
+                {"bones": ["bolt", "attach_mag"],
+                 "clips": {
+                   "idle": {"length": 1},
+                   "reload": {"length": 2, "keys": {"attach_mag": {"position": [[0.5, 0, 0, -0.2], [1.5, 0, 0, 0]]},
+                                                    "bolt": {"position": [[1.8, 0, 0.05, 0.0625]]}},
+                              "events": [[0.5, "mag_out"], [1.5, "mag_in"]]}},
+                 "layers": [{"default": "idle", "states": {
+                   "idle": {"clip": "idle", "loop": true, "on": {"reload": ["reload", 0.1]}},
+                   "reload": {"clip": "reload", "end": "reload_done", "on": {"reload_done": "idle", "0x0000BEEF": "idle"}}}}]}
+                """;
+            var built = AnimationSet.Build(json, "content/mod/gun/gun", joints);
+            check(built.Clips.Select(c => c.Clip).SequenceEqual(["idle", "reload"]), "The clips are not named as in the file.");
+            var reload = AnimationClip.Read(built.Clips[1].Data);
+            check(reload.Rest[2].Position.SequenceEqual(AnimationClip.Quantize([0, 0.125, 0.0625])) && reload.Rest[3].Rotation == AnimationClip.QuantizeRotation(joints[1].Rotation) &&
+                reload.Rest[0].Rotation == 2149582851u, "Rest poses are not the unit's joints (identity for the root entries).");
+            check(reload.Keys.Where(k => k.Bone == 2).Select(k => k.Ms).SequenceEqual([1800, 2000]) && reload.Keys.Where(k => k.Bone == 3).Select(k => k.Ms).SequenceEqual([500, 1500, 2000]),
+                "Curves are not held to the clip's end: " + string.Join(", ", reload.Keys.Select(k => $"{k.Bone}@{k.Ms}")));
+            check(reload.Triggers.Select(t => t.Hash).SequenceEqual([AnimationBones.Thin("mag_out"), AnimationBones.Thin("mag_in")]), "The clip's events are not sent.");
+            var machine = AnimationStateMachine.Read(built.Machine);
+            var states = machine.Layers.Single().States;
+            check(states[0].Clips.Single() == EngineHash.Murmur64A("content/mod/gun/gun/animation/idle"u8) && states[0].Loop && states[0].EmitEnd == AnimationSet.Unheard &&
+                states[0].Links.Single() is { Target: 1, BlendTime: 0.1f } && states[1].EmitEnd == AnimationBones.Thin("reload_done") &&
+                states[1].Events.Select(e => e.Event).Order().SequenceEqual(new[] { 0xBEEFu, AnimationBones.Thin("reload_done") }.Order()) && states[1].Links.Count == 1,
+                "The state machine does not play the clips or link the states.");
+            check(machine.Events.SequenceEqual(machine.Events.Order()) && machine.Events.Contains(AnimationBones.Thin("reload")), "The machine's events are not all listed, sorted.");
+            check(AnimationBones.Read(built.Bones).Names.Count == 4, "The bones resource does not list the root entries and the moving joints.");
+            check(AnimationSet.Named(unit, built.Bones).Select(j => j.Name).SequenceEqual(["bolt", "attach_mag"]) && AnimationSet.Named(unit, null).All(j => j.Name == null),
+                "A unit's joints are not named from its bones resource.");
+
+            void Refused(string from, string to, string reason)
+            {
+                var bad = json.Replace(from, to);
+                check(bad != json, "The refusal case does not change the file: " + from);
+                try { AnimationSet.Build(bad, "content/mod/gun/gun", joints); }
+                catch (InvalidDataException error) { check(error.Message.Contains(reason), $"Refused for another reason: {error.Message}"); return; }
+                throw new Exception("Accepted: " + to);
+            }
+            Refused("\"bones\": [\"bolt\", \"attach_mag\"]", "\"bones\": [\"bolt\", \"attach_mag\", \"stock\"]", "stock, which is not a joint of the unit");
+            Refused("\"bones\": [\"bolt\", \"attach_mag\"]", "\"bones\": [\"bolt\", \"bolt\"]", "each joint once");
+            Refused("[[0.5, 0, 0, -0.2]", "[[0, 0, 0, -0.2]", "the rest pose is the key at 0");
+            Refused("[1.5, 0, 0, 0]]", "[0.4, 0, 0, 0]]", "time order");
+            Refused("[1.5, 0, 0, 0]]", "[2.5, 0, 0, 0]]", "within the clip");
+            Refused("[1.5, 0, 0, 0]]", "[1.5, 0, 0]]", "each key is [time, 3 values]");
+            Refused("\"bolt\": {\"position\"", "\"stock\": {\"position\"", "keys names stock, which is not in bones");
+            Refused("\"clip\": \"reload\"", "\"clip\": \"inspect\"", "clip inspect is not in clips");
+            Refused("\"reload_done\": \"idle\"", "\"reload_done\": \"walk\"", "walk is not a state of this layer");
+            Refused("\"loop\": true", "\"loop\": true, \"colour\": 1", "colour is not a field here");
+            Refused("\"default\": \"idle\"", "\"default\": \"run\"", "default names one of its states");
+            Refused("\"0x0000BEEF\"", "\"0xBEEF\"", "0x<8 hex digits>");
+            Refused("[1.5, \"mag_in\"]", "[2.5, \"mag_in\"]", "outside the clip");
+            Refused("\"length\": 1}", "\"length\": 0}", "length is the clip's seconds");
+            Refused("[\"reload\", 0.1]", "[\"reload\", 11]", "the blend is 0 to 10 seconds");
+            try { AnimationSet.Build(json.Replace("\"attach_mag\"]", "\"attach_mag\"], \"rest\": {\"stock\": {}}"), "content/mod/gun/gun", joints); throw new Exception("Accepted a rest for a bone not listed."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("rest names stock"), "Refused for another reason: " + error.Message); }
+
+            // Without the unit's joints, every moving bone needs its rest given.
+            try { AnimationSet.Build(json, "content/mod/gun/gun"); throw new Exception("Built without rest poses."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("rest has no transform for bolt"), "Refused for another reason: " + error.Message); }
+            var withRest = AnimationSet.Build(json.Replace("\"attach_mag\"]", "\"attach_mag\"], \"rest\": {\"bolt\": {\"position\": [0, 0.125, 0.0625]}, \"attach_mag\": {}}"), "content/mod/gun/gun");
+            check(AnimationClip.Read(withRest.Clips[1].Data).Rest[2].Position.SequenceEqual(AnimationClip.Quantize([0, 0.125, 0.0625])), "A given rest pose is not used.");
+        });
+
+        test("A data spec's animations build for a unit copy: its bones, state machine and clips under its name, the unit pointed at them", () =>
+        {
+            var game = Path.Combine(root, "animations-game");
+            WriteGameData(game);
+            var mod = Directory.CreateDirectory(Path.Combine(root, "animations-mod")).FullName;
+            Directory.CreateDirectory(Path.Combine(mod, "animations"));
+            File.WriteAllText(Path.Combine(mod, "animations", "gun.json"), """
+                {"bones": ["attach_mag"], "clips": {"idle": {"length": 1}, "reload": {"length": 2, "keys": {"attach_mag": {"position": [[1, 0, 0, -0.2]]}}}},
+                 "layers": [{"default": "idle", "states": {"idle": {"clip": "idle", "loop": true, "on": {"reload": "reload"}}, "reload": {"clip": "reload", "end": "done", "on": {"done": "idle"}}}}]}
+                """);
+            DataSpec Spec(string resources)
+            {
+                File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{{resources}}]}]}""");
+                return DataSpecs.Load(mod)!;
+            }
+            const string copy = """{"type":"unit","copy":"0x6666","name":"test/mod/gun"}""";
+            const string animations = """{"animations":"animations/gun.json","unit":"test/mod/gun"}""";
+            var spec = Spec(copy + "," + animations);
+            check(spec.Inputs.Contains("animations/gun.json") && spec.Patches[0].Resources[1] is AnimationsResource { File: "animations/gun.json", Unit: "test/mod/gun" },
+                "The animations and their file are not part of the spec (and of its cache key).");
+            foreach (var (bad, why) in new[] { ("""{"animations":"../gun.json","unit":"test/mod/gun"}""", "a .json file in the mod folder"),
+                ("""{"animations":"animations/none.json","unit":"test/mod/gun"}""", "is missing"), ("""{"animations":"animations/gun.json"}""", "unit"),
+                ("""{"animations":"animations/gun.json","unit":"test/mod/gun","speed":2}""", "unknown field speed") })
+            {
+                try { Spec(copy + "," + bad); throw new Exception("Accepted: " + bad); }
+                catch (InvalidDataException error) { check(error.Message.Contains(why), "Refused for another reason: " + error.Message); }
+            }
+
+            using var gameReader = new GameDataReader(game);
+            var output = Path.Combine(root, "animations-out");
+            ModDataBuilder.Build(spec, mod, gameReader, output);
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0.gpu_resources")), []);
+            var name = EngineHash.Murmur64A("test/mod/gun"u8);
+            var unit = built[new(ResourceTypes.Unit, name)].Main;
+            check(BinaryPrimitives.ReadUInt64LittleEndian(unit.AsSpan(0x08)) == name && BinaryPrimitives.ReadUInt64LittleEndian(unit.AsSpan(0x20)) == name &&
+                unit.AsSpan(0x28).SequenceEqual(JointedUnit().AsSpan(0x28)), "The unit copy does not name its own bones and state machine, or more of it changed.");
+            check(built.ContainsKey(new(ResourceTypes.Bones, name)) && built.ContainsKey(new(ResourceTypes.StateMachine, name)) &&
+                built.ContainsKey(new(ResourceTypes.Animation, EngineHash.Murmur64A("test/mod/gun/animation/idle"u8))) &&
+                built.ContainsKey(new(ResourceTypes.Animation, EngineHash.Murmur64A("test/mod/gun/animation/reload"u8))), "The animation resources are missing: " +
+                string.Join(", ", built.Keys.Select(k => ResourceTypes.Describe(k.Type))));
+            var reload = AnimationClip.Read(built[new(ResourceTypes.Animation, EngineHash.Murmur64A("test/mod/gun/animation/reload"u8))].Main);
+            check(reload.Rest[2].Rotation == AnimationClip.QuantizeRotation(AnimationSet.UnitJoints(JointedUnit())[1].Rotation), "The clips' rest poses are not the copied unit's joints.");
+
+            // animations for a unit not copied in that patch, or a file with a mistake, are refused by the resource
+            try { ModDataBuilder.Build(Spec(animations), mod, gameReader, output + "2"); throw new Exception("Built animations for no unit."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("not a unit copy in this patch"), "Refused for another reason: " + error.Message); }
+            File.WriteAllText(Path.Combine(mod, "animations", "gun.json"), """{"bones": ["stock"], "clips": {"idle": {"length": 1}}, "layers": [{"default": "idle", "states": {"idle": {"clip": "idle"}}}]}""");
+            try { ModDataBuilder.Build(Spec(copy + "," + animations), mod, gameReader, output + "3"); throw new Exception("Built a bone the unit lacks."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("animations/gun.json") && error.Message.Contains("stock"), "The mistake is not named: " + error.Message); }
+        });
+
+        test("A mod's own model: glTF nodes become joints turned Z-up, meshes rigid on their nodes, LODs and shadow casters by name", () =>
+        {
+            var nodes = Gltf.Read(Glb([
+                new("root", -1, [0, 0, 0], []),
+                new("bolt", 0, [0, 0.3, 0.1], []),
+                new("body", 0, [0, 0, 0], [("Body", [-0.02, -0.2, 0], [0.02, 0.3, 0.1]), ("Grip", [-0.01, -0.1, -0.08], [0.01, -0.05, 0])]),
+                new("handle", 1, [0, 0.3, 0.1], [("Body", [0.02, 0.28, 0.09], [0.03, 0.31, 0.11])]),
+                new("body_lod1", 0, [0, 0, 0], [("Body", [-0.02, -0.2, -0.08], [0.02, 0.3, 0.1])]),
+            ]), _ => throw new Exception("no external buffers"));
+            check(nodes.Select(n => n.Name).SequenceEqual(["root", "bolt", "handle", "body", "body_lod1"]) && nodes[2].Parent == 1, "The node tree is not read parents first: " + string.Join(", ", nodes.Select(n => $"{n.Name}<{n.Parent}")));
+            var model = ModelUnit.Build(nodes, new Dictionary<string, ulong> { ["Body"] = 0x1111, ["Grip"] = 0x2222 }, null);
+            check(model.Joints[0].Name == ModelUnit.Root && model.Joints.Select(j => j.Name).Skip(1).SequenceEqual(nodes.Select(n => n.Name)) && model.Joints[2].Parent == 1,
+                "Every node is not a joint under the root.");
+            check(model.Joints[2].Translation.Zip(new[] { 0, 0.3, 0.1 }).All(p => Math.Abs(p.First - p.Second) < 1e-6), "A node's position is not turned to Z-up: " + string.Join(", ", model.Joints[2].Translation));
+            check(model.Meshes.Select(m => (m.Name, m.Lod, m.Shadow)).SequenceEqual([("lod0", 0, false), ("lod0_shadow", 0, true), ("lod1", 1, false)]),
+                "LODs and shadow casters are not named: " + string.Join(", ", model.Meshes.Select(m => m.Name)));
+            var lod0 = model.Meshes[0];
+            var body = lod0.Parts.Single(p => p.Material == "Body");
+            check(body.Vertices.Select(v => v.Joint).Distinct().Order().SequenceEqual([3, 4]) && lod0.Parts.Single(p => p.Material == "Grip").Vertices.All(v => v.Joint == 4),
+                "Vertices are not rigid on their own nodes (the handle on its node under the bolt).");
+            check(body.Vertices.Where(v => v.Joint == 3).All(v => v.Position[0] >= 0.02 - 1e-6 && Math.Abs(v.Position[1] - 0.295) < 0.016 && Math.Abs(v.Position[2] - 0.1) < 0.011),
+                "The handle's vertices are not in the unit's space (Z-up, under the bolt).");
+            check(model.Materials.Count == 2 && model.LodSizes.SequenceEqual(UnitWriter.WeaponLodSizes[..2]), "The materials or LOD sizes are not the model's.");
+
+            var (main, gpu) = UnitWriter.Write(model);
+            uint U(int at) => BinaryPrimitives.ReadUInt32LittleEndian(main.AsSpan(at));
+            check(U(0x28) == 2 && U(0x2C) == 0xA4CD36 && U(0x80) == 0 && U(0x3C) == 0x80 && U(0x38) == 0x90, "The header is not a weapon unit's.");
+            var joints = (int)U(0x34);
+            check(U(joints) == 6 && U(joints + 16 + 132 * 6) == EngineHash.Id32(ModelUnit.Root) && U((int)U(0x64)) == 3 && U((int)U(0x60)) == 3 && U((int)U(0x5C)) == 2,
+                "The unit does not hold its 6 joints, 3 meshes and 2 vertex layouts.");
+            // the handle joint's world matrix (stored transposed) is its position; its inverse bind in mesh 0's skeleton map undoes it
+            var handleWorld = joints + 16 + 64 * 6 + 64 * 3;
+            check(Math.Abs(BitConverter.ToSingle(main, handleWorld + 52) - 0.3) < 1e-6 && Math.Abs(BitConverter.ToSingle(main, handleWorld + 56) - 0.1) < 1e-6,
+                "The handle's world position is not stored.");
+            var lods = (int)U(0x30);
+            check(U(lods) == 1 && U(lods + 8) == 3 && U(lods + 24) == 2, "The LOD group does not list the model's 2 LODs.");
+            var layout = (int)U(0x5C) + (int)U((int)U(0x5C) + 4);
+            check(U(layout) == 0x0AFFFFFF && U(layout + 356) == 36 && U(layout + 420) == U(layout + 352) * 36 && gpu.Length >= U(layout + 428) + U(layout + 424),
+                "The render layout's vertices are not 36 bytes each or overrun the GPU part.");
+
+            foreach (var (bad, why) in new (Func<UnitWriter.Model>, string)[] {
+                (() => ModelUnit.Build(nodes, new Dictionary<string, ulong> { ["Body"] = 1 }, null), "no resource for the model's Grip"),
+                (() => ModelUnit.Build(nodes, new Dictionary<string, ulong> { ["Body"] = 1, ["Grip"] = 2 }, [0.5, 0.9]), "smaller than the one before"),
+                (() => ModelUnit.Build([.. nodes.Where(n => n.Name != "body" && n.Name != "handle")], new Dictionary<string, ulong> { ["Body"] = 1 }, null), "no meshes for LOD 0") })
+            {
+                try { UnitWriter.Write(bad()); throw new Exception("Accepted: " + why); }
+                catch (InvalidDataException error) { check(error.Message.Contains(why), "Refused for another reason: " + error.Message); }
+            }
+            reject(() => Gltf.Read("{\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"mode\":1}]}]}"u8.ToArray(), _ => []));
+
+            // a game unit's animations fit only joints at the animated unit's rest pose: its clips hold whole transforms
+            var baseUnit = UnitWriter.Write(model with { Joints = [.. model.Joints.Select(j => j.Name == "bolt" ? j with { Translation = [0, 0.25, 0.1] } : j)] }).Main;
+            var bones = new byte[8 + 4 * 3];
+            BinaryPrimitives.WriteUInt32LittleEndian(bones, 3);
+            foreach (var (name, k) in new[] { ("StingrayEntityRoot", 0), ("FbxAxisSystem_ConvertNode", 1), ("bolt", 2) }) BinaryPrimitives.WriteUInt32LittleEndian(bones.AsSpan(8 + 4 * k), EngineHash.Id32(name));
+            ModelUnit.CheckAnimations(model, main, bones);
+            try { ModelUnit.CheckAnimations(model, baseUnit, bones); throw new Exception("Accepted a bolt at another rest pose."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("joint bolt's rest pose"), "Refused for another reason: " + error.Message); }
+        });
+
+        test("A data spec's model builds a unit of the mod's own, with the physics of the game unit it names", () =>
+        {
+            var game = Path.Combine(root, "model-game");
+            WriteGameData(game);
+            var mod = Directory.CreateDirectory(Path.Combine(root, "model-mod")).FullName;
+            Directory.CreateDirectory(Path.Combine(mod, "models"));
+            File.WriteAllBytes(Path.Combine(mod, "models", "gun.glb"), Glb([new("body", -1, [0, 0, 0], [("Body", [-0.02, -0.2, 0], [0.02, 0.3, 0.1])])]));
+            DataSpec Spec(string resource)
+            {
+                File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{{resource}}]}]}""");
+                return DataSpecs.Load(mod)!;
+            }
+            const string model = """{"model":"models/gun.glb","name":"test/mod/gun","materials":{"Body":"0x1111"},"physics":"0x3333"}""";
+            var spec = Spec(model);
+            check(spec.Inputs.SequenceEqual(["models/gun.glb"]) && spec.Patches[0].Resources[0] is ModelResource { Name: "test/mod/gun", Physics: 0x3333, LodSizes: null } m && m.Materials["Body"] == 0x1111,
+                "The model and its file are not part of the spec.");
+            check(DataSpecs.Unchecked(spec) == null, "A model is not content HellForge checks itself.");
+            foreach (var (bad, why) in new[] { ("""{"model":"../gun.glb","name":"test/mod/gun","materials":{"Body":"0x1"}}""", "a .glb or .gltf file in the mod folder"),
+                ("""{"model":"models/none.glb","name":"test/mod/gun","materials":{"Body":"0x1"}}""", "is missing"),
+                ("""{"model":"models/gun.glb","name":"test/mod/gun","materials":{}}""", "names a material resource"),
+                ("""{"model":"models/gun.glb","name":"test/mod/gun","materials":{"Body":"0x1"},"lods":[0]}""", "share of the screen"),
+                ("""{"model":"models/gun.glb","name":"test/mod/gun","materials":{"Body":"0x1"},"colour":1}""", "unknown field colour") })
+            {
+                try { Spec(bad); throw new Exception("Accepted: " + bad); }
+                catch (InvalidDataException error) { check(error.Message.Contains(why), "Refused for another reason: " + error.Message); }
+            }
+
+            using var gameReader = new GameDataReader(game);
+            var output = Path.Combine(root, "model-out");
+            ModDataBuilder.Build(spec, mod, gameReader, output);
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0.gpu_resources")), []);
+            var name = EngineHash.Murmur64A("test/mod/gun"u8);
+            var unit = built[new(ResourceTypes.Unit, name)];
+            check(BitConverter.ToUInt32(unit.Main, 0x2C) == 0xA4CD36 && unit.Gpu.Length > 0 && BitConverter.ToUInt64(unit.Main, (int)BitConverter.ToUInt32(unit.Main, 0x70) + 8) == 0x1111,
+                "The model's unit is not written with its material.");
+            check(BinaryPrimitives.ReadUInt64LittleEndian(built[new(ResourceTypes.Physics, name)].Main.AsSpan(0x08)) == name, "The named physics is not the model's.");
+
+            try { ModDataBuilder.Build(Spec(model.Replace("\"Body\":\"0x1111\"", "\"Grip\":\"0x1111\"")), mod, gameReader, output + "2"); throw new Exception("Built without the material."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("models/gun.glb") && error.Message.Contains("Body"), "The mistake is not named: " + error.Message); }
+            try { ModDataBuilder.Build(Spec(model.Replace("0x3333", "0x4444")), mod, gameReader, output + "3"); throw new Exception("Built without physics."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("has no physics"), "Refused for another reason: " + error.Message); }
+        });
+
+        test("Textures build from PNGs in the game's unstreamed form: every format's mip chain, array layers, the category", () =>
+        {
+            var pixels = new byte[8 * 8 * 4];
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = (byte)(i % 4 == 3 ? 255 : (i * 37) % 251);
+            var png = Png(pixels, 8);
+            uint U32(byte[] b, int at) => BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(at));
+            var rgba = TextureImage.Build([png], "rgba8", TextureImage.Category("normal"));
+            check(U32(rgba.Main, 0) == 0xC322A444 && U32(rgba.Main, 8) == 0xFFFFFFFF && U32(rgba.Main, 0xC4 + 16) == 32 && U32(rgba.Main, 0xC4 + 24) == 4 &&
+                U32(rgba.Main, 0xC4 + 124) == 28 && U32(rgba.Main, 0xC4 + 136) == 1 && rgba.Main.Length == 340 && rgba.Stream.Length == 0,
+                "The RGBA8 header is not the game's unstreamed one (category, -1, pitch, 4 mips, format 28, one layer).");
+            var mean = (pixels[0] + pixels[4] + pixels[32] + pixels[36] + 2) / 4;
+            check(rgba.Gpu.Length == 4 * (64 + 16 + 4 + 1) && rgba.Gpu.AsSpan(0, 256).SequenceEqual(pixels) && rgba.Gpu[256] == mean,
+                "The RGBA8 chain is not the pixels, then box-filtered levels.");
+            foreach (var (format, dxgi, block) in new[] { ("bc1", 71, 8), ("bc3", 77, 16), ("bc4", 80, 8), ("bc5", 83, 16) })
+            {
+                var t = TextureImage.Build([png], format);
+                check(U32(t.Main, 0) == 0 && U32(t.Main, 0xC4 + 124) == dxgi && U32(t.Main, 0xC4 + 16) == 0 && t.Gpu.Length == (4 + 1 + 1 + 1) * block, $"{format}: wrong format or chain size.");
+            }
+            var array = TextureImage.Build([png, png], "bc3");
+            check(U32(array.Main, 0xC4 + 136) == 2 && array.Gpu.Length == 2 * 7 * 16 && array.Gpu.AsSpan(0, 112).SequenceEqual(array.Gpu.AsSpan(112)),
+                "An array texture is not its layers' chains one after another.");
+            var dot = TextureImage.Build([Png([1, 2, 3, 4], 1)], "rgba8");
+            check(U32(dot.Main, 0xC4 + 4) == 0x1007 && U32(dot.Main, 0xC4 + 104) == 0x1000 && dot.Gpu.SequenceEqual(new byte[] { 1, 2, 3, 4 }), "A single level keeps the mip flags.");
+            check(TextureImage.MipCount(23, 8) == 5, "The game's 23 x 8 lookups have 5 levels.");
+            reject(() => TextureImage.Build([png], "bc7"));
+            reject(() => TextureImage.Build([png, Png(new byte[4 * 4 * 4], 4)], "rgba8"));
+
+            var material = Material(0x2222);
+            ResourceEdits.SetMaterialTextures(material, new Dictionary<uint, ulong> { [0xAAAA] = 0xBEEF });
+            check(BinaryPrimitives.ReadUInt64LittleEndian(material.AsSpan(0x8C)) == 0xBEEF, "The slot's texture was not replaced.");
+            reject(() => ResourceEdits.SetMaterialTextures(Material(0x2222), new Dictionary<uint, ulong> { [0x1234] = 1 }));
+        });
+
+        test("A data spec's textures build from the mod's PNGs, and a material copy names them by slot", () =>
+        {
+            var game = Path.Combine(root, "texture-game");
+            WriteGameData(game);
+            var mod = Directory.CreateDirectory(Path.Combine(root, "texture-mod")).FullName;
+            Directory.CreateDirectory(Path.Combine(mod, "textures"));
+            File.WriteAllBytes(Path.Combine(mod, "textures", "a.png"), Png(new byte[16 * 16 * 4], 16));
+            File.WriteAllBytes(Path.Combine(mod, "textures", "b.png"), Png(new byte[16 * 16 * 4], 16));
+            DataSpec Spec(string resources)
+            {
+                File.WriteAllText(Path.Combine(mod, DataSpecs.FileName), $$"""{"format":1,"patches":[{"archives":["1111111111111111"],"resources":[{{resources}}]}]}""");
+                return DataSpecs.Load(mod)!;
+            }
+            const string texture = """{"texture":["textures/a.png","textures/b.png"],"name":"test/mod/masks","format":"rgba8","category":"0x12345678"}""";
+            const string material = """{"type":"material","copy":"0x1111","name":"test/mod/material","textures":{"0xAAAA":"test/mod/masks"}}""";
+            var spec = Spec(texture + "," + material);
+            check(spec.Inputs.Contains("textures/a.png") && spec.Inputs.Contains("textures/b.png") && DataSpecs.Unchecked(spec) == null &&
+                spec.Patches[0].Resources[0] is TextureResource { Format: "rgba8", Category: 0x12345678 } && spec.Patches[0].Resources[1] is CopyResource { Textures.Count: 1 },
+                "The texture, its PNGs or the material's textures are not part of the spec, or the spec is not checked.");
+            check(DataSpecs.Unchecked(Spec("""{"type":"unit","copy":"0x3333","name":"test/mod/u","textures":{"base_data":"0x1"}}""")) is { } why && why.Contains("as another type"),
+                "Textures on a unit copy count as checked.");
+            foreach (var (bad, reason) in new[] { ("""{"texture":"textures/a.png","name":"test/mod/t"}""", "format"),
+                ("""{"texture":"textures/a.png","name":"test/mod/t","format":"bc7"}""", "format is rgba8"),
+                ("""{"texture":"../a.png","name":"test/mod/t","format":"bc1"}""", "a .png file in the mod folder"),
+                ("""{"texture":"textures/none.png","name":"test/mod/t","format":"bc1"}""", "is missing"),
+                ("""{"type":"material","copy":"0x1111","name":"test/mod/m","textures":{}}""", "textures is empty") })
+            {
+                try { Spec(bad); throw new Exception("Accepted: " + bad); }
+                catch (InvalidDataException error) { check(error.Message.Contains(reason), "Refused for another reason: " + error.Message); }
+            }
+
+            using var gameReader = new GameDataReader(game);
+            var output = Path.Combine(root, "texture-out");
+            ModDataBuilder.Build(spec, mod, gameReader, output);
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0")),
+                File.ReadAllBytes(Path.Combine(output, "1111111111111111.patch_0.gpu_resources")), []);
+            var masks = built[new(ResourceTypes.Texture, EngineHash.Murmur64A("test/mod/masks"u8))];
+            check(BinaryPrimitives.ReadUInt32LittleEndian(masks.Main) == 0x12345678 && BinaryPrimitives.ReadUInt32LittleEndian(masks.Main.AsSpan(0xC4 + 136)) == 2 &&
+                masks.Gpu.Length == 2 * 4 * (256 + 64 + 16 + 4 + 1), "The texture is not the two PNGs as layers.");
+            check(BinaryPrimitives.ReadUInt64LittleEndian(built[new(ResourceTypes.Material, EngineHash.Murmur64A("test/mod/material"u8))].Main.AsSpan(0x8C)) == EngineHash.Murmur64A("test/mod/masks"u8),
+                "The material copy does not name the texture in its slot.");
+            File.WriteAllBytes(Path.Combine(mod, "textures", "b.png"), Png(new byte[8 * 8 * 4], 8));
+            try { ModDataBuilder.Build(spec, mod, gameReader, output + "2"); throw new Exception("Built layers of different sizes."); }
+            catch (InvalidDataException error) { check(error.Message.Contains("resources[0]") && error.Message.Contains("same size"), "The texture is not named: " + error.Message); }
+        });
+
+        test("A data spec's package builds as a whole archive of its own id, is staged under it, and the loader plan names it", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "mod-package-install"));
+            install.Create("12345");
+            var gameData = Path.Combine(install.Game, "data");
+            WriteGameData(gameData);
+            var mods = Path.Combine(install.Root, "mods");
+            var folder = Path.Combine(mods, "package-mod");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, ModCatalog.ManifestName), """{"format":1,"id":"test.package","name":"Package","version":"1"}""");
+            void Spec(string patches) => File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), $$"""{"format":1,"patches":[{{patches}}]}""");
+            const string material = """{"type":"material","copy":"0x1111","name":"test/mod/package_material"}""";
+            foreach (var (bad, reason) in new[] {
+                ("""{"archives":["1111111111111111"],"package":"test/mod/pkg","resources":[""" + material + "]}", "exactly one of archives or package"),
+                ("""{"package":"test/mod/pkg","load":"later","resources":[""" + material + "]}", "load is session or request"),
+                ("""{"archives":["1111111111111111"],"load":"session","resources":[""" + material + "]}", "load is for a package"),
+                ("""{"package":"pkg","resources":[""" + material + "]}", "the mod's own package path"),
+                ("""{"package":"test/mod/pkg","resources":[""" + material + """]},{"package":"test/mod/pkg","resources":[{"type":"texture","include":["0x2222"]}]}""", "named by two patches") })
+            {
+                Spec(bad);
+                try { DataSpecs.Load(folder); throw new Exception("Accepted: " + bad); }
+                catch (InvalidDataException error) { check(error.Message.Contains(reason), "Refused for another reason: " + error.Message); }
+            }
+            Spec("""{"package":"test/mod/pkg","resources":[""" + material + """]},{"package":"test/mod/later","load":"request","resources":[{"type":"texture","include":["0x2222"]}]}""");
+            var id = EngineHash.Murmur64A("test/mod/pkg"u8).ToString("x16");
+            var later = EngineHash.Murmur64A("test/mod/later"u8).ToString("x16");
+            var (loaded, problems) = ModCatalog.Load(mods);
+            var mod = loaded.Single();
+            check(problems.Count == 0 && mod.Packages.Count == 2 && mod.Packages[0].Session && !mod.Packages[1].Session && mod.NeedsLoader,
+                "The mod's packages are not read, or do not need the loader: " + string.Join(" | ", problems));
+            var plan = ModLoaderPlan.Text(loaded, Path.Combine(root, "package-session"), EntityProfile.Current, "25480438");
+            check(plan.Contains($"package\ttest.package\t{id}\tsession\n") && plan.Contains($"package\ttest.package\t{later}\trequest\n"), "The plan does not name the packages: " + plan);
+            check(LiveModPlan.Why(mod) is { } why && why.Contains("packages"), "A mod with packages of its own may change while the game runs.");
+
+            var (ready, failed) = ModDataCache.Prepare(install, loaded);
+            check(failed.Count == 0, "The packages were not built: " + string.Join(" | ", failed));
+            var output = ready.Single().GeneratedData!;
+            check(new[] { id, id + ".gpu_resources", id + ".stream", later, later + ".gpu_resources", later + ".stream" }.All(f => File.Exists(Path.Combine(output, f))) &&
+                !Directory.GetFiles(output).Any(f => f.Contains(".patch_")), "A package is not its whole archive with both sidecars: " + string.Join(", ", Directory.GetFiles(output).Select(Path.GetFileName)));
+            var built = ResourceArchive.Read(File.ReadAllBytes(Path.Combine(output, id)), File.ReadAllBytes(Path.Combine(output, id + ".gpu_resources")), File.ReadAllBytes(Path.Combine(output, id + ".stream")));
+            check(built.Keys.Single() == new ResourceKey(ResourceTypes.Material, EngineHash.Murmur64A("test/mod/package_material"u8)), "The package holds other resources.");
+
+            var staged = ModStaging.Stage(install, ready);
+            check(staged.Contains(id) && staged.Contains(id + ".stream") && staged.Contains(later) && File.Exists(Path.Combine(gameData, id + ".gpu_resources")) &&
+                ModStaging.Recorded(install).Contains(id), "The package is not staged under its own name: " + string.Join(", ", staged));
+            check(ModStaging.Stage(install, ready).Count == staged.Count, "Staging again changed what is staged.");
+            ModStaging.Unstage(install);
+            check(!File.Exists(Path.Combine(gameData, id)) && !File.Exists(Path.Combine(gameData, later + ".stream")), "Unstage left the package.");
+            File.WriteAllText(Path.Combine(gameData, id), "the game's own");
+            try { ModStaging.Stage(install, ready); throw new Exception("Staged over a file of the game's."); }
+            catch (InvalidDataException error) { check(error.Message.Contains(id) && File.ReadAllText(Path.Combine(gameData, id)) == "the game's own", "Refused for another reason: " + error.Message); }
+            File.Delete(Path.Combine(gameData, id));
+        });
     }
 
     // The synthetic game data: archive 1111111111111111 with a unit naming a material, the material naming a colour
@@ -382,6 +866,117 @@ static class DataBuilderTests
         foreach (var at in new[] { 0x08, 0x38, 0x40 }) BinaryPrimitives.WriteUInt64LittleEndian(main.AsSpan(at), unit);
         BinaryPrimitives.WriteUInt64LittleEndian(main.AsSpan(0x50), unit); // a body's own data that happens to hold the same bits
         return main;
+    }
+
+    // A glTF 2.0 binary as Blender exports one: nodes at positions given in the unit's frame (+Y forward, +Z up), each
+    // with boxes (material, low corner, high corner, in the unit's frame) as its mesh.
+    internal sealed record GlbNode(string Name, int Parent, double[] At, (string Material, double[] Lo, double[] Hi)[] Boxes);
+
+    internal static byte[] Glb(IReadOnlyList<GlbNode> nodes)
+    {
+        static double[] Gl(double[] p) => [p[0], p[2], -p[1]];
+        var bin = new MemoryStream();
+        var views = new List<object>();
+        var accessors = new List<object>();
+        int Add(byte[] data, int count, string type, int component)
+        {
+            while (bin.Length % 4 != 0) bin.WriteByte(0);
+            views.Add(new { buffer = 0, byteOffset = bin.Length, byteLength = data.Length });
+            bin.Write(data);
+            accessors.Add(new { bufferView = views.Count - 1, componentType = component, count, type });
+            return accessors.Count - 1;
+        }
+        static byte[] Floats(IEnumerable<double> values) => values.SelectMany(v => BitConverter.GetBytes((float)v)).ToArray();
+        var materials = nodes.SelectMany(n => n.Boxes.Select(b => b.Material)).Distinct().ToList();
+        var meshes = new List<object>();
+        var glNodes = new List<Dictionary<string, object>>();
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            var n = nodes[i];
+            var parentAt = n.Parent < 0 ? [0, 0, 0] : nodes[n.Parent].At;
+            var node = new Dictionary<string, object> { ["name"] = n.Name, ["translation"] = Gl([n.At[0] - parentAt[0], n.At[1] - parentAt[1], n.At[2] - parentAt[2]]) };
+            var children = Enumerable.Range(0, nodes.Count).Where(k => nodes[k].Parent == i).ToArray();
+            if (children.Length > 0) node["children"] = children;
+            if (n.Boxes.Length > 0)
+            {
+                var primitives = n.Boxes.GroupBy(b => b.Material).Select(group =>
+                {
+                    var (p, nm, uv, ix) = Boxes(group.ToList(), n.At);
+                    return new
+                    {
+                        attributes = new Dictionary<string, int> { ["POSITION"] = Add(Floats(p.SelectMany(Gl)), p.Count, "VEC3", 5126), ["NORMAL"] = Add(Floats(nm.SelectMany(Gl)), nm.Count, "VEC3", 5126),
+                            ["TEXCOORD_0"] = Add(Floats(uv.SelectMany(v => v)), uv.Count, "VEC2", 5126) },
+                        indices = Add(ix.SelectMany(v => BitConverter.GetBytes((ushort)v)).ToArray(), ix.Count, "SCALAR", 5123),
+                        material = materials.IndexOf(group.Key),
+                    };
+                }).ToList();
+                meshes.Add(new { name = n.Name, primitives });
+                node["mesh"] = meshes.Count - 1;
+            }
+            glNodes.Add(node);
+        }
+        while (bin.Length % 4 != 0) bin.WriteByte(0);
+        var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            asset = new { version = "2.0" }, scene = 0, scenes = new[] { new { nodes = Enumerable.Range(0, nodes.Count).Where(k => nodes[k].Parent < 0).ToArray() } },
+            nodes = glNodes, meshes, materials = materials.Select(m => new { name = m }), accessors, bufferViews = views, buffers = new[] { new { byteLength = bin.Length } },
+        });
+        var pad = (4 - json.Length % 4) % 4;
+        var file = new MemoryStream();
+        void U(uint v) => file.Write(BitConverter.GetBytes(v));
+        U(0x46546C67); U(2); U((uint)(12 + 8 + json.Length + pad + 8 + bin.Length));
+        U((uint)(json.Length + pad)); U(0x4E4F534A); file.Write(json); for (var k = 0; k < pad; k++) file.WriteByte(0x20);
+        U((uint)bin.Length); U(0x004E4942); file.Write(bin.ToArray());
+        return file.ToArray();
+    }
+
+    // Boxes as faces of 4 corners each (two triangles), relative to the node.
+    static (List<double[]> P, List<double[]> N, List<double[]> Uv, List<int> I) Boxes(List<(string Material, double[] Lo, double[] Hi)> boxes, double[] at)
+    {
+        var (p, n, uv, ix) = (new List<double[]>(), new List<double[]>(), new List<double[]>(), new List<int>());
+        foreach (var (_, lo, hi) in boxes)
+            for (var axis = 0; axis < 3; axis++)
+                foreach (var side in new[] { -1, 1 })
+                {
+                    int a = (axis + 1) % 3, b = (axis + 2) % 3;
+                    var first = p.Count;
+                    foreach (var (s, t) in side > 0 ? new[] { (0, 0), (1, 0), (1, 1), (0, 1) } : [(0, 0), (0, 1), (1, 1), (1, 0)])
+                    {
+                        var c = new double[3];
+                        c[axis] = side > 0 ? hi[axis] : lo[axis];
+                        c[a] = s == 0 ? lo[a] : hi[a];
+                        c[b] = t == 0 ? lo[b] : hi[b];
+                        p.Add([c[0] - at[0], c[1] - at[1], c[2] - at[2]]);
+                        var normal = new double[3]; normal[axis] = side;
+                        n.Add(normal);
+                        uv.Add([s, t]);
+                    }
+                    ix.AddRange([first, first + 1, first + 2, first, first + 2, first + 3]);
+                }
+        return (p, n, uv, ix);
+    }
+
+    // A unit with two joints at +0x34 as the game lays them out: bolt (no rotation, at 0, 0.125, 0.0625) and attach_mag
+    // (a quarter turn about Z, stored column-major), each joint 64 bytes, then world matrices, u16 pairs and thin names.
+    internal static byte[] JointedUnit()
+    {
+        const int at = 0x80, n = 2;
+        var unit = new byte[at + 16 + 64 * n * 2 + 4 * n + 4 * n];
+        BinaryPrimitives.WriteUInt64LittleEndian(unit.AsSpan(0x40), 0x1111);
+        BinaryPrimitives.WriteInt32LittleEndian(unit.AsSpan(0x34), at);
+        BinaryPrimitives.WriteInt32LittleEndian(unit.AsSpan(at), n);
+        void Joint(int i, float[] columnMajor, float[] position)
+        {
+            var j = at + 16 + 64 * i;
+            foreach (var (v, k) in columnMajor.Concat(position).Concat([1f, 1f, 1f]).Select((v, k) => (v, k)))
+                BinaryPrimitives.WriteSingleLittleEndian(unit.AsSpan(j + 4 * k), v);
+        }
+        Joint(0, [1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0.125f, 0.0625f]);
+        Joint(1, [0, 1, 0, -1, 0, 0, 0, 0, 1], [0, 0, 0]); // column 0 (x axis) = (0, 1, 0): x turned onto y
+        var names = at + 16 + 64 * n * 2 + 4 * n;
+        BinaryPrimitives.WriteUInt32LittleEndian(unit.AsSpan(names), AnimationBones.Thin("bolt"));
+        BinaryPrimitives.WriteUInt32LittleEndian(unit.AsSpan(names + 4), AnimationBones.Thin("attach_mag"));
+        return unit;
     }
 
     static void WriteGameData(string folder)
@@ -400,6 +995,7 @@ static class DataBuilderTests
             [new(ResourceTypes.Particles, 0x4444)] = new(Floats(curve), [], []),
             [bank] = new("bank-first"u8.ToArray(), [], Enumerable.Repeat((byte)9, 40).ToArray()),
             [new(ResourceTypes.Unit, EngineHash.Murmur64A("test/mod/taken"u8))] = new([1], [], []),
+            [new(ResourceTypes.Unit, 0x6666)] = new(JointedUnit(), [5], []),
         });
         var second = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts> { [bank] = new("bank-second"u8.ToArray(), [], [1, 2, 3]) });
         WriteBundles(folder, new Dictionary<string, byte[]>

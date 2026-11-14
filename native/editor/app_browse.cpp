@@ -332,6 +332,17 @@ static void DrawEditBuffer(float bx, float bw2, float y, float rowH)
     if ((int)(g_time * 2.2f) % 2 == 0) g_cv.Rect(bx + bw2 - 8, y + 8, 2, rowH - 16, GOLD, 6);
 }
 
+/* A flag's tick box, in the value box's place at its right edge. */
+static void DrawToggle(const RowView& v, const Area& at, ImU32 edge, ImU32 colour)
+{
+    float side = at.h - 14, x = at.x + FX_BOX + FX_BOX_W - side - 6, y = at.y + 7;
+    g_cv.Rect(x, y, side, side, BOX, 3);
+    g_cv.Frame(x, y, side, side, edge, 4);
+    if (!v.has || v.value == 0) return;
+    g_cv.Line(x + side * 0.22f, y + side * 0.52f, x + side * 0.42f, y + side * 0.74f, colour, 5, 2);
+    g_cv.Line(x + side * 0.42f, y + side * 0.74f, x + side * 0.80f, y + side * 0.26f, colour, 5, 2);
+}
+
 /* A field's value box: the value (or the number being typed) in its source's colour. */
 static void DrawValueBox(const Row* row, const RowView& v, const Area& at, bool error, bool held)
 {
@@ -340,6 +351,7 @@ static void DrawValueBox(const Row* row, const RowView& v, const Area& at, bool 
     float bx = at.x + FX_BOX, bw2 = FX_BOX_W;
     ImU32 edge, colour;
     BoxStyle(v, editing, error, held, &edge, &colour);
+    if (row->toggle) { DrawToggle(v, at, edge, colour); return; }
     g_cv.Rect(bx, y + 4, bw2, rowH - 8, BOX, 3);
     g_cv.Frame(bx, y + 4, bw2, rowH - 8, edge, 4);
     if (editing) DrawEditBuffer(bx, bw2, y, rowH);

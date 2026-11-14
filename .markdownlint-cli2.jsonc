@@ -1,0 +1,6 @@
+{
+  // Which files markdownlint-cli2 reads; the rules are in .markdownlint.jsonc. sdk-reference.md is generated
+  // (HellForge.Cli sdk-headers): fix its text in the sources it is generated from.
+  "ignores": ["docs/sdk-reference.md", "CLAUDE.md", "artifacts/**", "tickets/**", "**/node_modules/**", "**/bin/**", "**/obj/**",
+              "CLAUDE.local.md"]
+}

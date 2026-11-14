@@ -3,9 +3,9 @@ using System.IO.Compression;
 namespace HellForge.Core;
 
 // The native Linux installer's app update. The payload root is only app/ (a folder) and HellForge.exe (a file). The
-// package is unpacked into <install>/temp/app-staging; app/ is moved to <install>/temp/app-previous and HellForge.exe to
-// <install>/temp/app-previous-root. The staged files then take their place. All previous files stay until Commit, so any
-// failure can put them back.
+// package (a zip or a folder) is staged in <install>/temp/app-staging; app/ is moved to <install>/temp/app-previous and
+// HellForge.exe to <install>/temp/app-previous-root. The staged files then take their place. All previous files stay
+// until Commit, so any failure can put them back.
 public static class LinuxAppInstaller
 {
     const string StagingFolder = "app-staging";
@@ -15,6 +15,34 @@ public static class LinuxAppInstaller
     const string AppliedFolder = "applied";
     const string AppFolder = "app";
     const string LauncherProgram = "HellForge.exe";
+    const string EngineArchive = "engine-package.zip";
+    const string EngineFolder = "engine-package";
+
+    // The payload beside the installer: HellForge-Linux.zip, or the same files unpacked in HellForge-Linux/ with the
+    // engine package as a folder. Nexus Mods refuses a download with an archive inside it, so it gets the unpacked form.
+    public const string PackageArchive = "HellForge-Linux.zip";
+    public const string PackageFolder = "HellForge-Linux";
+
+    // What a package must hold before the installer prepares a prefix for it.
+    static readonly string[] RequiredEntries =
+    [
+        "app/app-build.json",
+        "app/" + EngineArchive,
+        "app/launcher-linux/HellForge.Launcher",
+        "app/capture-linux/HellForge.CaptureProxy",
+        "app/backend-linux/HellForge.LocalBackend",
+        "app/linux/hellforge-linux.sh",
+        "app/linux/hf-steam.sh",
+        "app/linux/hf-container.sh",
+        "app/linux/hf-wineserver.sh",
+        "app/linux/hf-relays.sh",
+        "app/linux/hf-coop-relays.sh",
+        "app/linux/hf-sandbox-probe",
+        "app/linux/allow-capture.sh",
+        "app/linux/capture-helper.sh",
+        "app/linux/capture-relay",
+        "app/linux/hf-sandbox"
+    ];
 
     enum RootEntryKind { Folder, File }
 
@@ -28,6 +56,78 @@ public static class LinuxAppInstaller
     public static string Staging(InstallLayout install) => Path.Combine(install.Temp, StagingFolder);
     public static string Previous(InstallLayout install) => Path.Combine(install.Temp, PreviousFolder);
     public static string PreviousRoot(InstallLayout install) => Path.Combine(install.Temp, PreviousRootFolder);
+
+    // Where the installer puts HellForge in a Proton prefix: the prefix user's Documents folder.
+    public static string InstallRoot(string prefix) =>
+        Path.Combine(prefix, "pfx", "drive_c", "users", "steamuser", "Documents", "HellForge");
+
+    // Why HellForge cannot be installed into a prefix folder, or null. Checked before the prefix is prepared: the
+    // launcher refuses to run from inside steamapps, so an install there would be one that never starts. A link above
+    // the folder is resolved first, as InstallLayout does. An installation that already runs there (one made under Wine
+    // before the launcher was native) is still updated: only a new one is refused.
+    public static string? PrefixProblem(string prefix)
+    {
+        var install = new InstallLayout(InstallRoot(prefix));
+        return install.Exists || InstallLayout.LocationProblem(install.Root) == null ? null
+            : "Choose a prefix folder outside Steam's steamapps folders: Steam checks, updates and deletes what is in " +
+              "them, a Proton version's own folder included. This one is inside steamapps: " + prefix;
+    }
+
+    // The native launcher's first start in a folder the installer unpacked: marks it as an installation. Null, with why
+    // in words for a window, when the folder cannot be one; the launcher shows that instead of ending without a word.
+    public static InstallLayout? FirstStart(string packageRoot, string buildId, out string? problem)
+    {
+        problem = null;
+        var install = new InstallLayout(packageRoot);
+        try
+        {
+            install.Create(buildId);
+            return install;
+        }
+        catch (InvalidDataException) when (InstallLayout.LocationProblem(install.Root) != null)
+        {
+            problem = "HellForge cannot run from inside Steam's steamapps folder: Steam checks, updates and deletes what " +
+                "is in there.\n\nThis copy is in " + install.Root + ".\n\nRun the HellForge installer again and choose " +
+                "a Proton prefix folder outside every steamapps folder, such as the installer's default or a new folder " +
+                "at the top of the same drive. Then delete this copy.";
+        }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or
+            ArgumentException or NotSupportedException)
+        {
+            problem = "HellForge could not prepare its folder (" + install.Root + "): " + error.Message;
+        }
+        return null;
+    }
+
+    // The package in an installer's folder, the archive first; null when there is none.
+    public static string? FindPackage(string folder)
+    {
+        var archive = Path.Combine(folder, PackageArchive);
+        if (File.Exists(archive)) return archive;
+        var unpacked = Path.Combine(folder, PackageFolder);
+        return Directory.Exists(Path.Combine(unpacked, AppFolder)) ? unpacked : null;
+    }
+
+    // Why a package (archive or folder) cannot be installed, or null.
+    public static string? PackageProblem(string packagePath)
+    {
+        Func<string, bool> has;
+        if (Directory.Exists(packagePath))
+            has = entry => File.Exists(Path.Combine(packagePath, entry));
+        else if (File.Exists(packagePath))
+        {
+            using var archive = ZipFile.OpenRead(packagePath);
+            var entries = archive.Entries.Select(entry => entry.FullName.Replace('\\', '/')).ToHashSet(StringComparer.Ordinal);
+            has = entries.Contains;
+        }
+        else return "The HellForge Linux package was not found beside this installer.";
+        foreach (var required in RequiredEntries)
+        {
+            var found = has(required) || required == "app/" + EngineArchive && has("app/" + EngineFolder + "/engine.json");
+            if (!found) return "The Linux package is incomplete; missing " + required + ".";
+        }
+        return null;
+    }
 
     // Refuses while this installation has a process; unpacks the package, then replaces app/ and HellForge.exe. Returns
     // the old app folder, or null for a first install. The caller commits after the new launcher has started.
@@ -53,21 +153,10 @@ public static class LinuxAppInstaller
         {
             if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
             Directory.CreateDirectory(staging);
-            using var archive = ZipFile.OpenRead(packagePath);
-            foreach (var entry in archive.Entries)
-            {
-                var path = Path.GetFullPath(Path.Combine(staging, entry.FullName.Replace('\\', '/')));
-                if (!LocalInstall.Within(path, staging)) throw new InvalidDataException("The package contains an unsafe path: " + entry.FullName);
-                if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
-                {
-                    Directory.CreateDirectory(path);
-                    continue;
-                }
-                if (entry.Name.Length == 0) continue;
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                entry.ExtractToFile(path);
-            }
+            if (Directory.Exists(packagePath)) CopyPackage(packagePath, staging);
+            else Extract(packagePath, staging);
             var app = Path.Combine(staging, AppFolder);
+            PackEngine(app);
             var launcher = Path.Combine(app, "launcher-linux", "HellForge.Launcher");
             var scripts = Path.Combine(app, "linux");
             if (!File.Exists(launcher) || !Directory.Exists(scripts))
@@ -80,6 +169,54 @@ public static class LinuxAppInstaller
             TryDelete(staging);
             throw new InvalidDataException("The package could not be extracted: " + error.Message + " The installed app was not changed.", error);
         }
+    }
+
+    static void Extract(string packagePath, string staging)
+    {
+        using var archive = ZipFile.OpenRead(packagePath);
+        foreach (var entry in archive.Entries)
+        {
+            var path = Path.GetFullPath(Path.Combine(staging, entry.FullName.Replace('\\', '/')));
+            if (!LocalInstall.Within(path, staging)) throw new InvalidDataException("The package contains an unsafe path: " + entry.FullName);
+            if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
+            {
+                Directory.CreateDirectory(path);
+                continue;
+            }
+            if (entry.Name.Length == 0) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            entry.ExtractToFile(path);
+        }
+    }
+
+    // A link is refused rather than followed, so nothing outside the package folder is copied into the installation.
+    static void CopyPackage(string source, string target)
+    {
+        Directory.CreateDirectory(target);
+        foreach (var entry in new DirectoryInfo(source).EnumerateFileSystemInfos("*", new EnumerationOptions { AttributesToSkip = 0 }))
+        {
+            if (entry.LinkTarget != null) throw new InvalidDataException("The package contains a link: " + entry.FullName);
+            var destination = Path.Combine(target, entry.Name);
+            if (entry is DirectoryInfo folder) CopyPackage(folder.FullName, destination);
+            else File.Copy(entry.FullName, destination);
+        }
+    }
+
+    // The launcher and setup read app/engine-package.zip, so an unpacked engine package is zipped back. Entries are named
+    // with '/' and one per file, as engine.json lists them; its hashes then check every file as for the original zip.
+    static void PackEngine(string app)
+    {
+        var folder = Path.Combine(app, EngineFolder);
+        if (!Directory.Exists(folder)) return;
+        var archivePath = Path.Combine(app, EngineArchive);
+        if (File.Exists(archivePath))
+            throw new InvalidDataException("The package holds the engine package twice, as " + EngineArchive + " and as a folder.");
+        using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+            foreach (var file in Directory.EnumerateFiles(folder, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0 })
+                .Order(StringComparer.Ordinal))
+                archive.CreateEntryFromFile(file, Path.GetRelativePath(folder, file).Replace(Path.DirectorySeparatorChar, '/'),
+                    CompressionLevel.Fastest);
+        Directory.Delete(folder, recursive: true);
     }
 
     // Moves app/ and HellForge.exe aside, moves the staged ones in, then runs installEngine before anything is removed.

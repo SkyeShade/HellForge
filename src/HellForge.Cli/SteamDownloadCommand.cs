@@ -161,7 +161,7 @@ static class SteamDownloadCommand
         return Console.ReadLine()?.Trim() is { Length: > 0 } answer ? answer : throw new ArgumentException("No answer given.");
     }
 
-    sealed class TerminalPrompt : ISignInPrompt
+    internal sealed class TerminalPrompt : ISignInPrompt
     {
         public void ShowQr(string challenge)
         {

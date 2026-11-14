@@ -495,6 +495,19 @@ static bool ModAdded(const std::vector<HfContent>& all, uint32_t kind, uint64_t 
     return false;
 }
 
+/* the explosions of round b, a mod's, against those of round a, and the damage of each */
+static void RemapBlasts(catalog::Remap& remap, const std::vector<HfContent>& all, uint64_t a, uint64_t b)
+{
+    for (uint16_t end : {(uint16_t)144, (uint16_t)156}) /* the explosion of a hit, of the end of its flight */
+    {
+        uint64_t ea, eb, da, db;
+        if (!ReadU32("ProjectileSettings", a, end, &ea) || !ReadU32("ProjectileSettings", b, end, &eb) || ea == eb || !ModAdded(all, HF_KIND_EXPLOSION, eb)) continue;
+        remap.explosion[ea] = eb;
+        if (ReadU32("ExplosionSettings", ea, 4, &da) && ReadU32("ExplosionSettings", eb, 4, &db) && da != db && ModAdded(all, HF_KIND_DAMAGE, db))
+            remap.damage[da] = db;
+    }
+}
+
 /* what each entity standing in fires, against what the page's entity fires, and the damage of each (read from the
  * game): only a projectile or damage a mod added, never a vanilla one another weapon uses too */
 static void RemapFired(catalog::Remap& remap, const std::vector<HfContent>& all)
@@ -511,6 +524,7 @@ static void RemapFired(catalog::Remap& remap, const std::vector<HfContent>& all)
         uint64_t da, db;
         if (ReadU32("ProjectileSettings", a, 0x3C, &da) && ReadU32("ProjectileSettings", b, 0x3C, &db) && da != db && ModAdded(all, HF_KIND_DAMAGE, db))
             remap.damage[da] = db;
+        RemapBlasts(remap, all, a, b);
     }
 }
 
@@ -620,6 +634,52 @@ static volatile LONG g_modsChanged;
 
 void ModsChanged() { InterlockedExchange(&g_modsChanged, 1); }
 
+/* The name a mod gave a content, without its mod's id. */
+static std::string OwnName(const HfContent& c)
+{
+    std::string name = c.name != nullptr ? c.name : "";
+    size_t at = name.rfind(':');
+    return at == std::string::npos ? name : name.substr(at + 1);
+}
+
+/* A content of that kind and id, or nullptr. */
+static const HfContent* ContentOf(const std::vector<HfContent>& all, uint32_t kind, uint64_t id)
+{
+    for (const HfContent& c : all) if (c.kind == kind && c.id == id) return &c;
+    return nullptr;
+}
+
+/* Its own explosion, beam or arc on the page, and the damage it deals: their base's rows, wherever a vanilla page has them,
+ * pointed at them. A Liberator copy's page has no explosion to remap, so these are added, not copied with the page. */
+struct OwnSpot { const char* category; const char* title; const char* role; const char* component; uint16_t damageAt; };
+static void AddOwnRows(Object* o, const catalog::CopyNames& names, const HfContent& mine, const std::vector<HfContent>& all, const OwnSpot& s)
+{
+    std::string label = std::string(s.title) + ": " + OwnName(mine);
+    g_catalog.AddOwnPart(o, names, {s.category, label, s.role, s.component, mine.base, mine.id});
+    uint64_t own, base;
+    if (!ReadU32(s.component, mine.id, s.damageAt, &own) || !ReadU32(s.component, mine.base, s.damageAt, &base) || own == base) return;
+    if (const HfContent* d = ContentOf(all, HF_KIND_DAMAGE, own))
+        g_catalog.AddOwnPart(o, names, {s.category, label + " damage", std::string(s.role) + ".damage", "DamageInfo", base, d->id});
+}
+
+static void AddFiredRows(Object* o, const catalog::CopyNames& names, const HfContent& w, const std::vector<HfContent>& all)
+{
+    uint64_t round;
+    if (ReadU32("ProjectileWeaponComponentData", w.entity, 0, &round) && ModAdded(all, HF_KIND_PROJECTILE, round))
+    {
+        uint64_t impact = 0, expiry = 0;
+        ReadU32("ProjectileSettings", round, 144, &impact);
+        ReadU32("ProjectileSettings", round, 156, &expiry);
+        const HfContent* hit = ContentOf(all, HF_KIND_EXPLOSION, impact);
+        const HfContent* end = ContentOf(all, HF_KIND_EXPLOSION, expiry);
+        if (hit != nullptr) AddOwnRows(o, names, *hit, all, {"Own explosion", impact == expiry ? "Hit and end of flight" : "Hit", "explosion.impact", "ExplosionSettings", 4});
+        if (end != nullptr && impact != expiry) AddOwnRows(o, names, *end, all, {"Own explosion", "End of flight", "explosion.expiry", "ExplosionSettings", 4});
+    }
+    if (w.size < offsetof(HfContent, arc) + sizeof w.arc) return;
+    if (const HfContent* b = ContentOf(all, HF_KIND_WEAPON_BEAM, w.beam)) AddOwnRows(o, names, *b, all, {"Own beam", "Beam", "beam", "BeamSettings", 12});
+    if (const HfContent* a = ContentOf(all, HF_KIND_ARC, w.arc)) AddOwnRows(o, names, *a, all, {"Own arc", "Arc", "arc", "ArcSettings", 36});
+}
+
 /* A mod's arsenal weapon's page: a copy of its base weapon's page in the same section, pointed at the weapon's own
  * entity and at the projectile and damage it fires where a mod added them. Only the records it owns: HfWeapon.own_all
  * gives it all of them, else own_components and its own projectile's ProjectileWeapon record. False (logged why) when
@@ -640,7 +700,8 @@ static bool AddWeaponPage(const HfContent& w, const std::vector<HfContent>& all)
     remap.entity[w.base_entity] = w.entity;
     RemapFired(remap, all);
     std::string name = PageName(w, like, w.designation != nullptr ? w.designation : "");
-    Object* o = g_catalog.AddCopy(*like, {std::string("mod/") + w.name, name, std::string("mod:") + w.name, w.name, ""}, remap, OwnField);
+    catalog::CopyNames names{std::string("mod/") + w.name, name, std::string("mod:") + w.name, w.name, ""};
+    Object* o = g_catalog.AddCopy(*like, names, remap, OwnField);
     if (o == nullptr)
     {
         api->log(g_host.mod, "editor: %s has no page: it shares every record on %s's page with it (HfWeapon.own_all gives it its own)", w.name,
@@ -648,8 +709,17 @@ static bool AddWeaponPage(const HfContent& w, const std::vector<HfContent>& all)
         return false;
     }
     o->detail = std::string("Added by ") + w.mod;
+    AddFiredRows(o, names, w, all);
     api->log(g_host.mod, "editor: %s gets a page (%s's, %d field(s) of its own)", name.c_str(), like->name.c_str(), (int)o->rows.size());
     return true;
+}
+
+/* mods' explosions, in the pickers and by name where a row shows one */
+static void AddModExplosions(const std::vector<HfContent>& all)
+{
+    for (const HfContent& c : all)
+        if (c.kind == HF_KIND_EXPLOSION && g_contentPages.insert(std::string("explosion:") + c.name).second)
+            g_catalog.references["explosion"].push_back({(double)c.id, OwnName(c), "", std::string("Added by ") + c.mod, "Mods", {}});
 }
 
 void AddModContent()
@@ -660,6 +730,7 @@ void AddModContent()
     LONGLONG started = QpcNow();
     std::vector<HfContent> all = AllContent(api);
     int pages = 0, weapons = 0;
+    AddModExplosions(all);
     for (const HfContent& s : all)
     {
         if (s.kind == HF_KIND_STRATAGEM && g_contentPages.insert(s.name).second && AddStratagemPage(s, all)) pages++;

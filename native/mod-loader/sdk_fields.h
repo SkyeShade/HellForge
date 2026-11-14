@@ -68,6 +68,7 @@ static const SdkField kSdkFieldsWeaponData[] = {
     {"crosshair_type", 400, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"fire_ability", 940, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"fire_ability_2", 944, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"fire_ability_function", 948, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsWeaponMagazine[] = {
     {"magazine_type", 0, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -155,12 +156,23 @@ static const SdkField kSdkFieldsProjectileSettings[] = {
     {"drag", 40, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"gravity", 44, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"lifetime", 52, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"lifetime_variance", 56, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"damage", 60, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_DAMAGE},
     {"penetration_slowdown", 64, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"spawn_effect", 72, 8, HF_TYPE_U64, HF_APPLIES_NOW, REF_NONE},
     {"flight_effect", 112, 8, HF_TYPE_U64, HF_APPLIES_NOW, REF_NONE},
     {"impact_explosion", 144, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_EXPLOSION},
     {"expiry_explosion", 156, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_EXPLOSION},
+    {"arming_distance", 160, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"ricochets", 176, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"ricochet_angle", 180, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"ricochet_min_speed", 184, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+};
+static const SdkField kSdkFieldsStratagemCode[] = {
+    {"packed", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+};
+static const SdkField kSdkFieldsStratagemRearm[] = {
+    {"rearms", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsStratagemSettings[] = {
     {"type", 0, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
@@ -208,10 +220,12 @@ static const SdkField kSdkFieldsArcSettings[] = {
     {"max_angle_spread_first_shot", 24, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"chain_count", 28, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
     {"max_split", 32, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"damage", 36, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_DAMAGE},
 };
 static const SdkField kSdkFieldsBeamSettings[] = {
     {"radius", 4, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"length", 8, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"damage", 12, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_DAMAGE},
 };
 static const SdkField kSdkFieldsStatusEffectSettings[] = {
     {"strength", 36, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
@@ -648,11 +662,13 @@ static const SdkField kSdkFieldsRecharge[] = {
 };
 static const SdkField kSdkFieldsShield[] = {
     {"radius", 0, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"durability", 76, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"durability", 76, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"armor", 80, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"recharge_delay", 88, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"broken_recharge_delay", 92, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
-    {"recharge_rate", 96, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"recharge_delay", 88, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"broken_recharge_delay", 92, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"recharge_rate", 96, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"blocks_grenades", 337, 1, HF_TYPE_U8, HF_APPLIES_NOW, REF_NONE},
+    {"blocks_enemies", 338, 1, HF_TYPE_U8, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsHellpodPayload[] = {
     {"lifetime", 4, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -741,6 +757,7 @@ static const SdkField kSdkFieldsExplosive[] = {
     {"arming_delay", 8, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"explosion_delay", 12, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"explosion", 36, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_EXPLOSION},
+    {"impact_explosion", 40, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_EXPLOSION},
     {"armed_ability", 328, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsThrowable[] = {
@@ -785,7 +802,27 @@ static const SdkField kSdkFieldsWeaponCharge[] = {
     {"overcharge_limit_seconds", 208, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsWeaponReload[] = {
+    {"manual_clearing", 0, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"allow_move", 1, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"ability", 4, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"event_type_0", 8, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"weapon_event_0", 12, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wielder_event_0", 16, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"event_type_1", 20, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"weapon_event_1", 24, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wielder_event_1", 28, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"event_type_2", 32, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"weapon_event_2", 36, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wielder_event_2", 40, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"event_type_3", 44, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"weapon_event_3", 48, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wielder_event_3", 52, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"duration", 56, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"has_shared_deposit", 60, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"vo_normal", 64, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"vo_last_magazine", 68, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"vo_no_magazines", 72, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"vo_no_magazines_no_backpack", 76, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsWeaponRounds[] = {
     {"primary_projectile", 64, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_PROJECTILE},
@@ -795,6 +832,7 @@ static const SdkField kSdkFieldsWeaponRounds[] = {
     {"spare_rounds", 80, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"rounds_from_supply", 84, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"starting_rounds", 88, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"rounds_per_reload", 92, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsArcWeapon[] = {
     {"fire_rate", 4, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1051,6 +1089,7 @@ static const SdkField kSdkFieldsEnemyComposition[] = {
     {"maximum_players", 248, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
 };
 static const SdkField kSdkFieldsUnit[] = {
+    {"unit", 0, 8, HF_TYPE_U64, HF_APPLIES_RESPAWN, REF_NONE},
     {"scale_min", 8, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"radius", 16, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
 };
@@ -1089,9 +1128,79 @@ static const SdkField kSdkFieldsDemolitionTemplate[] = {
     {"index", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
     {"force", 4, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
 };
+static const SdkField kSdkFieldsEquipment[] = {
+    {"wield_node", 0, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wield_rotation", 4, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wield_position", 16, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"holster_node", 28, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"holster_rotation", 32, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"holster_position", 44, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"holster_duration", 56, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wield_duration", 60, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"pickup_duration", 64, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wield_animation", 72, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"pickup_animation", 76, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"holster_animation", 80, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"drop_animation", 84, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"ammocheck_animation", 88, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"holster_duration_attach", 96, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wield_duration_attach", 100, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"attach_lerp_time", 104, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wield_animation_self", 112, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"pickup_animation_self", 116, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"holster_animation_self", 120, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"equipment_type", 128, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"drop_mode", 136, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"drop_icon", 152, 8, HF_TYPE_U64, HF_APPLIES_RESPAWN, REF_NONE},
+    {"pickup_audio_event", 160, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"switch_wield_audio_event", 176, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"switch_holster_audio_event", 180, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"pickup_ability", 184, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"drop_ability", 188, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"grip_type", 192, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"one_handed", 196, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"allow_wield_on_ship", 197, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"show_in_pickup_widget", 198, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"holster_unit", 200, 8, HF_TYPE_U64, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wwise_index", 216, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"left_hand_node", 228, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+};
+static const SdkField kSdkFieldsWieldable[] = {
+    {"allow_ads", 0, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wielder_enter_event", 4, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wielder_exit_event", 8, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"wield_state_audio_event", 12, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"self_enter_event", 16, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"self_exit_event", 20, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+};
+static const SdkField kSdkFieldsAttachable[] = {
+    {"dynamic_actor", 0, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"attached_dynamic_actor", 4, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"use_all_dynamic_actors", 8, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"offset", 12, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"rotation_offset", 24, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"offset_node", 36, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"attach_animation", 40, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"parent_attach_animation", 44, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"detach_animation", 48, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"parent_detach_animation", 52, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"inherit_angular_momentum", 58, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+};
+static const SdkField kSdkFieldsWeaponCustomization[] = {
+    {"defaults", 0, 80, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"slots", 80, 40, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"optics_unit", 120, 8, HF_TYPE_U64, HF_APPLIES_RESPAWN, REF_NONE},
+    {"magazine_unit", 128, 8, HF_TYPE_U64, HF_APPLIES_RESPAWN, REF_NONE},
+    {"magazine_secondary_unit", 144, 8, HF_TYPE_U64, HF_APPLIES_RESPAWN, REF_NONE},
+    {"muzzle_unit", 160, 8, HF_TYPE_U64, HF_APPLIES_RESPAWN, REF_NONE},
+    {"optics_crosshair", 168, 8, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"underbarrel_entity", 192, 8, HF_TYPE_U64, HF_APPLIES_RESPAWN, REF_NONE},
+    {"trigger_settings", 4680, 52, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"magazine_adjusting_nodes", 4736, 96, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+};
 static const SdkComponent kSdkComponents[] = {
     {"ProjectileWeapon", "ProjectileWeaponComponentData", 25480438u, 616u, kSdkFieldsProjectileWeapon, 45, 0, 321},
-    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 20, 0, 236},
+    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 21, 0, 236},
     {"WeaponMagazine", "WeaponMagazineComponentData", 25480438u, 160u, kSdkFieldsWeaponMagazine, 9, 0, 5},
     {"Tag", "TagComponentData", 25480438u, 544u, kSdkFieldsTag, 2, 0, 3},
     {"Mount", "MountComponentData", 25480438u, 120u, kSdkFieldsMount, 10, 0, 283},
@@ -1100,16 +1209,18 @@ static const SdkComponent kSdkComponents[] = {
     {"Deposit", "DepositComponentData", 25480438u, 152u, kSdkFieldsDeposit, 4, 0, 177},
     {"DifficultySettings", "DifficultySettings", 25480438u, 816u, kSdkFieldsDifficultySettings, 15, 1, -1},
     {"DamageInfo", "DamageInfo", 25480438u, 76u, kSdkFieldsDamageInfo, 15, 1, -1},
-    {"ProjectileSettings", "ProjectileSettings", 25480438u, 272u, kSdkFieldsProjectileSettings, 13, 1, -1},
+    {"ProjectileSettings", "ProjectileSettings", 25480438u, 272u, kSdkFieldsProjectileSettings, 18, 1, -1},
+    {"StratagemCode", "StratagemCode", 25480438u, 4u, kSdkFieldsStratagemCode, 1, 1, -1},
+    {"StratagemRearm", "StratagemRearm", 25480438u, 4u, kSdkFieldsStratagemRearm, 1, 1, -1},
     {"StratagemSettings", "StratagemDefinition", 25480438u, 400u, kSdkFieldsStratagemSettings, 28, 1, -1},
     {"ExplosionSettings", "ExplosionSettings", 25480438u, 152u, kSdkFieldsExplosionSettings, 5, 1, -1},
-    {"ArcSettings", "ArcSettings", 25480438u, 104u, kSdkFieldsArcSettings, 8, 1, -1},
-    {"BeamSettings", "BeamSettings", 25480438u, 112u, kSdkFieldsBeamSettings, 2, 1, -1},
+    {"ArcSettings", "ArcSettings", 25480438u, 104u, kSdkFieldsArcSettings, 9, 1, -1},
+    {"BeamSettings", "BeamSettings", 25480438u, 112u, kSdkFieldsBeamSettings, 3, 1, -1},
     {"StatusEffectSettings", "StatusEffectSettings", 25480438u, 152u, kSdkFieldsStatusEffectSettings, 2, 1, -1},
     {"Health", "HealthComponentData", 25480438u, 22096u, kSdkFieldsHealth, 401, 0, 224},
     {"Jumppack", "JumppackComponentData", 25480438u, 280u, kSdkFieldsJumppack, 21, 0, 264},
     {"Recharge", "RechargeComponentData", 25480438u, 4u, kSdkFieldsRecharge, 1, 0, 99},
-    {"Shield", "ShieldComponentData", 25480438u, 344u, kSdkFieldsShield, 6, 0, 94},
+    {"Shield", "ShieldComponentData", 25480438u, 344u, kSdkFieldsShield, 8, 0, 94},
     {"HellpodPayload", "HellpodPayloadComponentData", 25480438u, 12u, kSdkFieldsHellpodPayload, 1, 0, 164},
     {"SensorEye", "SensorEyeComponentData", 25480438u, 44u, kSdkFieldsSensorEye, 3, 0, 191},
     {"Turret", "TurretComponentData", 25480438u, 76u, kSdkFieldsTurret, 7, 0, 248},
@@ -1119,12 +1230,12 @@ static const SdkComponent kSdkComponents[] = {
     {"Eagle", "EagleComponentData", 25480438u, 152u, kSdkFieldsEagle, 6, 0, 320},
     {"Thrower", "ThrowerComponentData", 25480438u, 752u, kSdkFieldsThrower, 2, 0, 258},
     {"Bombardment", "BombardmentComponentData", 25480438u, 192u, kSdkFieldsBombardment, 12, 0, 193},
-    {"Explosive", "ExplosiveComponentData", 25480438u, 360u, kSdkFieldsExplosive, 4, 0, 255},
+    {"Explosive", "ExplosiveComponentData", 25480438u, 360u, kSdkFieldsExplosive, 5, 0, 255},
     {"Throwable", "ThrowableComponentData", 25480438u, 360u, kSdkFieldsThrowable, 14, 0, 259},
     {"VehicleMotion", "VehicleMotionComponentData", 25480438u, 456u, kSdkFieldsVehicleMotion, 1, 0, 225},
     {"WeaponCharge", "WeaponChargeComponentData", 25480438u, 216u, kSdkFieldsWeaponCharge, 20, 0, 204},
-    {"WeaponReload", "WeaponReloadComponentData", 25480438u, 80u, kSdkFieldsWeaponReload, 1, 0, 113},
-    {"WeaponRounds", "WeaponRoundsComponentData", 25480438u, 136u, kSdkFieldsWeaponRounds, 7, 0, 117},
+    {"WeaponReload", "WeaponReloadComponentData", 25480438u, 80u, kSdkFieldsWeaponReload, 21, 0, 113},
+    {"WeaponRounds", "WeaponRoundsComponentData", 25480438u, 136u, kSdkFieldsWeaponRounds, 8, 0, 117},
     {"ArcWeapon", "ArcWeaponComponentData", 25480438u, 80u, kSdkFieldsArcWeapon, 1, 0, 265},
     {"BoosterSettings", "BoosterSettings", 25480438u, 56u, kSdkFieldsBoosterSettings, 2, 1, -1},
     {"PassiveModifier", "PassiveModifier", 25480438u, 16u, kSdkFieldsPassiveModifier, 2, 1, -1},
@@ -1144,7 +1255,7 @@ static const SdkComponent kSdkComponents[] = {
     {"EnemyRoster", "EnemyRoster", 25480438u, 40u, kSdkFieldsEnemyRoster, 1, 1, -1},
     {"EnemyRosterLevel11", "EnemyRosterLevel11", 25480438u, 4u, kSdkFieldsEnemyRosterLevel11, 1, 1, -1},
     {"EnemyComposition", "EnemyComposition", 25480438u, 280u, kSdkFieldsEnemyComposition, 31, 1, -1},
-    {"Unit", "UnitComponentData", 25480438u, 136u, kSdkFieldsUnit, 2, 0, 88},
+    {"Unit", "UnitComponentData", 25480438u, 136u, kSdkFieldsUnit, 3, 0, 88},
     {"SquadTransportFormation", "SquadTransportFormationComponentData", 25480438u, 48u, kSdkFieldsSquadTransportFormation, 4, 0, 122},
     {"SquadTransport", "SquadTransportComponentData", 25480438u, 136u, kSdkFieldsSquadTransport, 2, 0, 97},
     {"Gore", "GoreComponentData", 25480438u, 33488u, kSdkFieldsGore, 1, 0, 230},
@@ -1152,4 +1263,8 @@ static const SdkComponent kSdkComponents[] = {
     {"StratagemBlocker", "StratagemBlockerComponentData", 25480438u, 20u, kSdkFieldsStratagemBlocker, 2, 0, 25},
     {"Bughole", "BugholeComponentData", 25480438u, 40u, kSdkFieldsBughole, 1, 0, 216},
     {"DemolitionTemplate", "DemolitionTemplate", 25480438u, 16u, kSdkFieldsDemolitionTemplate, 2, 1, -1},
+    {"Equipment", "EquipmentComponentData", 25480438u, 232u, kSdkFieldsEquipment, 35, 0, 233},
+    {"Wieldable", "WieldableComponentData", 25480438u, 32u, kSdkFieldsWieldable, 6, 0, 111},
+    {"Attachable", "AttachableComponentData", 25480438u, 64u, kSdkFieldsAttachable, 11, 0, 262},
+    {"WeaponCustomization", "WeaponCustomizationComponentData", 25480438u, 4872u, kSdkFieldsWeaponCustomization, 10, 0, 271},
 };

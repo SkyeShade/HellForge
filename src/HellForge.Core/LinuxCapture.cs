@@ -22,15 +22,28 @@ public static partial class LinuxCapture
     public const string ApiHost = "api.live.prod.thehelldiversgame.com";
     public const int CapturePort = 443;
     public const int ProxyPort = 18443;
-    public const string HelperPath = "/usr/local/lib/hellforge/capture-helper";
-    public const string HelperHashPath = "/usr/local/lib/hellforge/capture-helper.sha256";
-    public const string RelayPath = "/usr/local/lib/hellforge/capture-relay";
-    public const string RelayHashPath = "/usr/local/lib/hellforge/capture-relay.sha256";
+    // The folders allow-capture.sh may install the root-owned helper and relay in, first choice first. SteamOS keeps
+    // /usr/local on its read-only image, which an update replaces, so the installer starts at /opt there; it also goes
+    // down the list wherever a folder cannot be made or is not root's alone.
+    public static readonly IReadOnlyList<string> HelperFolders =
+        ["/usr/local/lib/hellforge", "/opt/hellforge", "/var/lib/hellforge"];
+    const string HelperName = "capture-helper";
+    const string RelayName = "capture-relay";
+    public static string HelperFolder => HelperFolderOf(IsSteamOs(), File.Exists);
+    public static string HelperPath => HelperFolder + "/" + HelperName;
+    public static string HelperHashPath => HelperPath + ".sha256";
+    public static string RelayPath => HelperFolder + "/" + RelayName;
+    public static string RelayHashPath => RelayPath + ".sha256";
     public const string HelperPidFile = "/run/hellforge/capture-helper.pid";
     public const string HelperScript = "capture-helper.sh";
     public const string RelayBinary = "capture-relay";
     public const string HelperInstaller = "allow-capture.sh";
     const string CertificateFile = "capture-ca.cer";
+    // The signing service's folders (capture-helper.sh): its run folder, readable while it runs, and the folder the helper
+    // hands the sealed account files over in, owned by the player's account.
+    public const string SignerRunFolder = "/run/hellforge-capture";
+    public const string SignerHandOverFolder = "/run/hellforge/capture-out";
+    const string ProxyCopyName = "capture-proxy";
     const string CertificateRecordFile = "capture-ca.json";
     const string HelperLogFile = "linux-capture-helper.log";
     const string RegistryCertificateRoot = @"HKEY_LOCAL_MACHINE\Software\Microsoft\SystemCertificates\Root\Certificates";
@@ -61,6 +74,8 @@ public static partial class LinuxCapture
         readonly Task<string> output;
         readonly Task<string> error;
         readonly string syncDir;
+
+        internal Process Process => process;
 
         internal HelperRun(Process process, Task<string> output, Task<string> error, string syncDir)
         {
@@ -521,15 +536,20 @@ public static partial class LinuxCapture
     // shipped files, so the launcher installs the new copies through pkexec before the next sync. Null means ready.
     public static string? HelperProblem(string installRoot)
     {
-        if (!File.Exists(HelperPath)) return "The Linux capture helper is not installed.";
-        if (!File.Exists(RelayPath)) return "The Linux capture relay is not installed.";
+        // One lookup of the folder, so the four files checked are the ones beside each other.
+        var helper = HelperPath;
+        var relay = Path.Combine(Path.GetDirectoryName(helper)!, RelayName);
+        if (!File.Exists(helper)) return "The Linux capture helper is not installed.";
+        if (!File.Exists(relay)) return "The Linux capture relay is not installed.";
         try
         {
             var shippedFolder = Path.Combine(new InstallLayout(installRoot).App, "linux");
-            if (InstalledCopyProblem(HelperPath, HelperHashPath, Path.Combine(shippedFolder, HelperScript), "capture helper",
+            if (InstalledCopyProblem(helper, helper + ".sha256", Path.Combine(shippedFolder, HelperScript), "capture helper",
                     installRoot) is { } helperProblem) return helperProblem;
-            return InstalledCopyProblem(RelayPath, RelayHashPath, Path.Combine(shippedFolder, RelayBinary), "capture relay",
-                installRoot);
+            if (InstalledCopyProblem(relay, relay + ".sha256", Path.Combine(shippedFolder, RelayBinary), "capture relay",
+                installRoot) is { } relayProblem) return relayProblem;
+            return InstalledFolderProblem(Path.Combine(Path.GetDirectoryName(helper)!, ProxyCopyName),
+                Path.Combine(new InstallLayout(installRoot).App, "capture-linux"));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -553,6 +573,68 @@ public static partial class LinuxCapture
                 return "The installed Linux " + name + " does not match its recorded SHA-256.";
         }
         return null;
+    }
+
+    // The root copy of the Linux capture, which the helper runs as the signing service, against this installation's
+    // app/capture-linux by the manifest allow-capture.sh recorded. The helper checks the copy itself against that record.
+    internal static string? InstalledFolderProblem(string installed, string shipped)
+    {
+        if (!Directory.Exists(shipped))
+            return "This installation's capture-linux folder is missing. Reinstall HellForge, then sync again.";
+        if (!Directory.Exists(installed)) return "The Linux capture's signing copy is not installed.";
+        var record = installed + ".sha256";
+        var recorded = File.Exists(record) ? File.ReadAllText(record).Trim() : "";
+        return recorded.Equals(FolderManifestSha256(shipped), StringComparison.OrdinalIgnoreCase) ? null
+            : "The installed Linux capture does not match this HellForge version.";
+    }
+
+    // allow-capture.sh's proxy_manifest: one SHA-256 over "<file SHA-256>  ./<path>" lines in byte order, links left out.
+    public static string FolderManifestSha256(string folder)
+    {
+        var paths = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+            .Where(file => (File.GetAttributes(file) & FileAttributes.ReparsePoint) == 0)
+            .Select(file => (File: file, Name: "./" + Path.GetRelativePath(folder, file).Replace('\\', '/')))
+            .OrderBy(entry => entry.Name, StringComparer.Ordinal);
+        var list = new StringBuilder();
+        foreach (var (file, name) in paths) list.Append(FileSha256(file).ToLowerInvariant()).Append("  ").Append(name).Append('\n');
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(list.ToString()))).ToLowerInvariant();
+    }
+
+    // The signing service runs as its own user, so its files reach the sync folder, where the launcher's flow reads them,
+    // by copy: the account files the helper handed over first (once), then the log, a start failure and the state. A state
+    // that says sealed waits for the account files. True once they are copied.
+    internal static bool MirrorSignerRun(string runFolder, string handOverFolder, string syncDir, bool accountFilesCopied)
+    {
+        try
+        {
+            var handedOver = File.Exists(Path.Combine(handOverFolder, SnapshotSeal.FileName));
+            if (handedOver && !accountFilesCopied)
+            {
+                foreach (var name in new[] { SnapshotSeal.InventoryFile, SnapshotSeal.ProgressionFile })
+                    CopyPrivate(Path.Combine(handOverFolder, name), Path.Combine(syncDir, name));
+                var catalogue = Path.Combine(handOverFolder, InventorySync.CatalogueFolder);
+                if (Directory.Exists(catalogue))
+                {
+                    var into = Directory.CreateDirectory(Path.Combine(syncDir, InventorySync.CatalogueFolder)).FullName;
+                    foreach (var file in Directory.EnumerateFiles(catalogue)) CopyPrivate(file, Path.Combine(into, Path.GetFileName(file)));
+                }
+                CopyPrivate(Path.Combine(handOverFolder, SnapshotSeal.FileName), Path.Combine(syncDir, SnapshotSeal.FileName));
+                accountFilesCopied = true;
+            }
+            CopyPrivate(Path.Combine(runFolder, "proxy.log"), Path.Combine(syncDir, "proxy.log"));
+            CopyPrivate(Path.Combine(runFolder, CaptureStart.FailureFile), Path.Combine(syncDir, CaptureStart.FailureFile));
+            if (CaptureState.Read(runFolder) is { } state && (!state.Sealed || accountFilesCopied))
+                CopyPrivate(Path.Combine(runFolder, CaptureState.FileName), Path.Combine(syncDir, CaptureState.FileName));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return accountFilesCopied;
+    }
+
+    static void CopyPrivate(string from, string to)
+    {
+        if (!File.Exists(from)) return;
+        File.Copy(from, to, overwrite: true);
+        RestrictPrivateFile(to);
     }
 
     // Why a capture cannot start. The caller supplies the real game and session checks; the helper checks are skipped in
@@ -917,7 +999,9 @@ public static partial class LinuxCapture
         }
     }
 
-    public static HelperRun StartHelper(string installRoot, int proxyPid, string syncDir)
+    // Starts the helper, which runs the relay and the signing capture for steamAccount; address is the API's, resolved
+    // before the hosts line points it here.
+    public static HelperRun StartHelper(string installRoot, ulong steamAccount, string address, string syncDir)
     {
         if (!File.Exists(HelperPath))
             throw new InvalidOperationException((HelperProblem(installRoot) ?? "The Linux capture helper is not installed.") +
@@ -936,7 +1020,7 @@ public static partial class LinuxCapture
         var error = process.StandardError.ReadToEndAsync();
         try
         {
-            process.StandardInput.WriteLine(proxyPid.ToString(CultureInfo.InvariantCulture));
+            process.StandardInput.WriteLine(steamAccount.ToString(CultureInfo.InvariantCulture) + " " + address);
             process.StandardInput.Close();
         }
         catch (Exception exception) when (exception is IOException or InvalidOperationException) { }
@@ -1037,6 +1121,8 @@ public static partial class LinuxCapture
     static ProcessStartInfo SudoStartInfo(IReadOnlyList<string> arguments)
     {
         var start = new ProcessStartInfo("sudo") { UseShellExecute = false, CreateNoWindow = true };
+        // sudo's own messages are read (HelperCheckProblem), so they must not follow the desktop's language.
+        start.Environment["LC_ALL"] = "C";
         start.ArgumentList.Add("-n");
         start.ArgumentList.Add(HelperPath);
         foreach (var argument in arguments) start.ArgumentList.Add(argument);

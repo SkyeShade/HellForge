@@ -295,7 +295,7 @@ public static class IconImage
     }
 
     // One BC3 alpha block: the highest and lowest alpha as endpoints, eight-value mode, nearest index per pixel.
-    static byte[] AlphaBlock(int[] alpha)
+    internal static byte[] AlphaBlock(int[] alpha)
     {
         var block = new byte[8];
         int a0 = alpha.Max(), a1 = alpha.Min();
@@ -318,7 +318,7 @@ public static class IconImage
 
     // Every mip level (largest first) of straight-alpha RGBA pixels, box-filtered with alpha weighting so transparent pixels
     // do not darken the edges.
-    static IEnumerable<(int Width, int Height, byte[] Rgba)> RgbaLevels(int width, int height, byte[] rgba, bool data = false)
+    internal static IEnumerable<(int Width, int Height, byte[] Rgba)> RgbaLevels(int width, int height, byte[] rgba, bool data = false)
     {
         var level = (byte[])rgba.Clone();
         while (true)

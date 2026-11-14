@@ -33,7 +33,7 @@ public sealed class InstallSessionPaths(InstallLayout install) : ISessionPaths
     public string Session => Path.Combine(Install.App, "session", "HellForge.Session.exe");
     public string Backend => Path.Combine(Install.App, "backend", "HellForge.LocalBackend.exe");
     public string TemplatesFile => Path.Combine(Install.App, "profile-templates.json");
-    public string ProgressionFile => Path.Combine(Install.App, "progression-data.json");
+    public string ProgressionFile => GameCatalog.ProgressionData(Install.Root);
     public string ScriptsFolder => Path.Combine(Install.App, "scripts");
     public string ProfilesRoot => Install.Profiles;
     public string SettingsFile => Path.Combine(Install.Root, "launcher-settings.json");

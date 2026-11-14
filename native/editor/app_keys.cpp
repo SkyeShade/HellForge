@@ -265,7 +265,7 @@ static void RowKeys(const Row* row, const std::vector<std::string>& chars, bool 
     /* digits start a value: everything typed this frame */
     std::string typed;
     for (auto& c : chars) if (strchr("0123456789.,-", c[0]) && (typed.size() || c[0] != ',')) typed += c;
-    if (!typed.empty() && row->choice.empty() && row->pick.empty()) BeginEdit(row, typed, false);
+    if (!typed.empty() && row->choice.empty() && row->pick.empty() && !row->toggle) BeginEdit(row, typed, false);
 }
 
 static void FieldKeys(const std::vector<std::string>& chars, bool ctrl, bool shift)

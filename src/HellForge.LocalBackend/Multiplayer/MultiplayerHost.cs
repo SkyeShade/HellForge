@@ -195,6 +195,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         Lobby.LegacyAdmits = sync.LegacyAdmits;
         Lobby.JoinAs = sync.JoinAs;
         sync.Expected = Lobby.JoinedRecently;
+        sync.Downloading += Lobby.StillExpected;
         // A host advertises its set after a remote joins; a joiner takes one mods.info per new join and notes per-player
         // differences in the corner.
         Lobby.ModSetWire = sync.OwnWire;

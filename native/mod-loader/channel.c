@@ -17,6 +17,8 @@
  * A line queued while the pipe is down is dropped (send returns 1); the host's backend sends the table again when the
  * game connects. Messages are at most HF_MESSAGE_MAX bytes and 64 a second per mod. */
 
+#include "rpc.c" /* the game's RPCs for mods (SDK 17): the other half of co-op for code mods */
+
 #define CHANNEL_RATE 64u          /* messages a second a mod may send */
 #define CHANNEL_REFILL_MS 16u     /* a message's share of a second, in whole milliseconds */
 #define CHANNEL_MISSING_MAX 16    /* mod ids logged as absent at most (once each) */
@@ -395,6 +397,7 @@ static void ChannelDisconnected(void)
  * use). Nothing is hooked. */
 static void ChannelInstall(uintptr_t game)
 {
+    RpcInstall(game); /* rpc.c: the dispatch hook, once a mod listens */
     if (g_channelState != 0 || game == 0) return;
     if (strcmp(g_build, "25480438")) { g_channelState = -1; Note("channel: game build %s is not reviewed; no mod channel", g_build); return; }
     ULONGLONG now = GetTickCount64();

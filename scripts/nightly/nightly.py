@@ -139,7 +139,8 @@ def change_section(repo: Path, commit: str, previous: str | None, release: str |
     return out + ['']
 
 
-def notes(repo: Path, version: str, commit: str, previous: str | None, repository: str) -> str:
+def notes(repo: Path, version: str, commit: str, previous: str | None, repository: str,
+          linux_installer: bool = False) -> str:
     url = f'https://github.com/{repository}'
     short = commit[:7]
     release = last_release(repo, commit)
@@ -155,6 +156,8 @@ def notes(repo: Path, version: str, commit: str, previous: str | None, repositor
         '- Download `HellForge-Nightly-Setup.exe` and run it. Install it into a folder of its own, not over the',
         '  installation you play on: a newer build can change your profiles in ways an older one does not read.',
         '- Co-op needs everyone on the same version: play with players on this same nightly.',
+        *(['- On Linux, unpack `HellForge-Nightly-Linux-Installer.tar.gz` and run `HellForge.Launcher` in it.']
+          if linux_installer else []),
         '- `HellForge-Nightly-Linux-scripts.zip` has the Linux (Proton) scripts and their guide, as a release has them.',
         '- `HellForge-Nightly-SHA256SUMS.txt` has every file\'s SHA-256.',
         '',
@@ -194,12 +197,15 @@ def main(argv: list[str] | None = None) -> int:
     notes_parser.add_argument('--commit', required=True, help='the full hash of the commit built')
     notes_parser.add_argument('--previous', default='', help='the commit the previous nightly was built from, if any')
     notes_parser.add_argument('--repository', required=True, help='OWNER/NAME on GitHub')
+    # a flag, as the schedule runs main's workflow with dev's scripts: only a workflow that publishes the file may name it
+    notes_parser.add_argument('--linux-installer', action='store_true', help='this nightly has the Linux installer')
     args = parser.parse_args(argv)
     try:
         if args.command == 'version':
             print(nightly_version(args.repo, args.date))
         else:
-            sys.stdout.write(notes(args.repo, args.version, args.commit, args.previous or None, args.repository))
+            sys.stdout.write(notes(args.repo, args.version, args.commit, args.previous or None, args.repository,
+                                   args.linux_installer))
     except (NightlyError, OSError) as error:
         print(f'nightly.py: {error}', file=sys.stderr)
         return 1

@@ -8,7 +8,8 @@ namespace HellForge.LocalBackend;
 // Merges a verified account snapshot into a profile, category by category, as the player chose (HellForge.Core
 // AccountImportSettings), and describes both sides for the launcher's review. Inventory items are sorted by
 // PaidContentSet: warbond items, currencies, and everything else as armory items. Premium items are never merged:
-// OwnershipFilter serves them straight from the snapshot. Super Credits are never taken, and none stay in a merged profile.
+// OwnershipFilter serves them straight from the snapshot. Super Credits are never taken, and none stay in a merged profile
+// but the Forge Credits the profile earned (PaidContentSet.ForgeCreditsWallet): a sync keeps them as they were.
 static class AccountImport
 {
     enum Kind { Premium, SuperCredits, Currency, Warbond, Armory }
@@ -29,7 +30,9 @@ static class AccountImport
             MergeProgression((JsonObject)merged["progression"]!, vanilla, settings);
         if (settings.Includes("warbondItems") && settings.RuleFor("warbondItems") == ImportRule.All)
             UnlockOwnedWarbonds(items, (JsonObject)merged["progression"]!, OwnedWarbondItems(snapshot, paid), paid);
-        foreach (var superCredits in items.OfType<JsonObject>().Where(i => KindOf(i, paid) == Kind.SuperCredits).ToList()) items.Remove(superCredits);
+        // the profile's own entries only: MergeItems never takes Super Credits, so the account's never become Forge Credits
+        foreach (var superCredits in items.OfType<JsonObject>().Where(i => KindOf(i, paid) == Kind.SuperCredits && !IsForgeCredits(i)).ToList())
+            items.Remove(superCredits);
         return merged;
     }
 
@@ -219,6 +222,8 @@ static class AccountImport
             _ => string.Join(", ", parts[..^1]) + " and " + parts[^1]
         };
     }
+
+    static bool IsForgeCredits(JsonObject item) => MixId(item) is { } id && PaidContentSet.IsForgeCredits(id);
 
     static Kind KindOf(JsonObject item, PaidContentSet paid) => MixId(item) is not { } id ? Kind.Armory
         : PaidContentSet.IsSuperCredits(id) ? Kind.SuperCredits

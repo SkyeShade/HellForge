@@ -11,6 +11,12 @@ public sealed record SetupReceipt(int SchemaVersion, string BuildId, DateTime Fi
 
     public static string PathFor(InstallLayout install) => Path.Combine(install.Root, FileName);
 
+    // How a damaged copy's repair reason starts when setup has finished here, or null for a setup that never did. Windows
+    // installations set up before receipts were written there count once a session has saved the SDK originals.
+    public static string? FinishedBefore(InstallLayout install) =>
+        Read(install) is { } receipt ? $"Setup finished {receipt.FinishedUtc.ToLocalTime():g}, but"
+        : Directory.Exists(Path.Combine(install.Temp, "sdk-shim-originals")) ? "This copy was set up and played, but" : null;
+
     public static SetupReceipt? Read(InstallLayout install)
     {
         var path = PathFor(install);

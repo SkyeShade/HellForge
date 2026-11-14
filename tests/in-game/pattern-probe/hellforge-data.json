@@ -1,0 +1,137 @@
+{
+  "format": 1,
+  "patches": [
+    {
+      "package": "hellforge/pattern_probe/patterns",
+      "load": "session",
+      "resources": [
+        {
+          "type": "texture",
+          "copy": "0x2A2B968B6F521DBF",
+          "name": "hellforge/pattern_probe/magenta_lut",
+          "lut": {
+            "columns": {
+              "0": [
+                1.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "type": "texture",
+          "copy": "0x1BD978D3960F3B97",
+          "name": "hellforge/pattern_probe/forest_1bd978d3960f3b97",
+          "lut": {
+            "columns": {
+              "0": [
+                1.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "type": "texture",
+          "copy": "0x29B6EE9DF3B4C1F4",
+          "name": "hellforge/pattern_probe/forest_29b6ee9df3b4c1f4",
+          "lut": {
+            "columns": {
+              "0": [
+                1.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "type": "texture",
+          "copy": "0x6C93BF50B44EFBEE",
+          "name": "hellforge/pattern_probe/forest_6c93bf50b44efbee",
+          "lut": {
+            "columns": {
+              "0": [
+                1.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "type": "texture",
+          "copy": "0x72BA1E791ED0A166",
+          "name": "hellforge/pattern_probe/forest_72ba1e791ed0a166",
+          "lut": {
+            "columns": {
+              "0": [
+                1.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "type": "texture",
+          "copy": "0x9886CE3F53F25AA0",
+          "name": "hellforge/pattern_probe/forest_9886ce3f53f25aa0",
+          "lut": {
+            "columns": {
+              "0": [
+                1.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "type": "texture",
+          "copy": "0xB2B5B31CBB19075E",
+          "name": "hellforge/pattern_probe/forest_b2b5b31cbb19075e",
+          "lut": {
+            "columns": {
+              "0": [
+                1.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "type": "texture",
+          "copy": "0xCE305B12E0F89AC7",
+          "name": "hellforge/pattern_probe/forest_ce305b12e0f89ac7",
+          "lut": {
+            "columns": {
+              "0": [
+                1.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "type": "texture",
+          "copy": "0xF86502CFC46AC046",
+          "name": "hellforge/pattern_probe/forest_f86502cfc46ac046",
+          "lut": {
+            "columns": {
+              "0": [
+                1.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -124,7 +124,7 @@ static void AddDonorViews(std::vector<Item>& items, const Row* r, int depth, dou
 {
     AddNote(items, "Fires " + RefLabel(r, value) + " now: its own round's rows are hidden until \"" + r->label + "\" is reset", depth);
     std::string donor = "Donor " + RefLabel(r, value);
-    int shown = AddViews(items, depth, donor, "ProjectileSettings", (uint64_t)value, {32, 36, 40, 44, 28, 52, 64, 144, 156});
+    int shown = AddViews(items, depth, donor, "ProjectileSettings", (uint64_t)value, {32, 36, 40, 44, 28, 52, 56, 64, 160, 176, 180, 184, 144, 156});
     double hurt;
     if (ReadSetting("ProjectileSettings", (uint64_t)value, 60, HF_TYPE_U32, &hurt) && hurt != 0)
         shown += AddViews(items, depth, donor, "DamageInfo", (uint64_t)hurt, {4, 8, 12, 16, 20, 24, 28, 32, 36, 44, 52, 60, 68});

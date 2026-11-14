@@ -75,7 +75,7 @@ public partial class MainWindow
     // After a complete sync (inventory and progression): the review, or the saved choices.
     async Task AfterCaptureAsync(LocalProfile profile)
     {
-        if (!AccountImportSettings.Load(AccountImportSettings.PathIn(profile.Folder)).AutoApply)
+        if (!AccountImportSettings.Load(AccountImportSettings.PathIn(profile.Folder), profile.Template).AutoApply)
         {
             SetSyncStatus("Synced. Choose what to import below." + CloseGameNote, Green, "Synced. Review import to choose what else to bring into the profile.");
             await ShowReviewAsync(profile);
@@ -116,7 +116,7 @@ public partial class MainWindow
     void BuildReview(LocalProfile profile, JsonElement preview)
     {
         importProfile = profile;
-        var settings = AccountImportSettings.Load(AccountImportSettings.PathIn(profile.Folder));
+        var settings = AccountImportSettings.Load(AccountImportSettings.PathIn(profile.Folder), profile.Template);
         var sides = preview.GetProperty("categories");
         ImportPremiumText.Text = "Always synced: " + preview.GetProperty("premium").GetString() + " you own. Super Credits are never imported.";
         ImportRows.Children.Clear();

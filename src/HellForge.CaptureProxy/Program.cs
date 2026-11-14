@@ -5,15 +5,15 @@
 // public CA in HELLDIVERS 2's Proton prefix through Wine.
 //
 // It maps the API host to 127.0.0.1, trusts a per-run CA (with a CRL served on loopback, since Schannel checks
-// revocation), terminates the game's TLS and forwards every request unchanged to the real API by IP. With the session
-// the login returns it reads GET /api/Progression and GET /api/Progression/inventory,
-// repeating the client headers the login carried (CaptureHeaders: the API refuses a read without Accept-Language), and
-// writes them to --progression and --output. With --seal-key and --steam-account it seals the two files for that Steam
-// account (HellForge.Core SnapshotSeal) as soon as the inventory is in, and says so in its state file (CaptureState), so
-// the launcher takes them; the backend unlocks premium items only from a seal. With --close-game it then closes the game
-// the sync opened (CaptureGameEnd), before the game gets the login's answer. It keeps forwarding until the game exits,
-// removes the hosts line and the CA, and exits 0 (1 when nothing was captured before
-// the timeout or the seal failed). Nothing else is kept. The log (proxy.log) is detailed but holds no values: for every
+// revocation), terminates the game's TLS and forwards every request unchanged to the real API by IP. It is passive: it
+// never sends a request of its own. After the login it keeps the API's answers to the game's own GET /api/Progression and
+// GET /api/Progression/inventory (CaptureCompletion) and writes them to --progression and --output, and with --catalogue
+// the game catalogues it reads (CaptureCompletion.Catalogues) to that folder, unsealed. With --sign and --steam-account it
+// signs the two account files for that Steam account (SnapshotSeal, SnapshotSigner: elevated or the Linux helper's service
+// only) and says so in its state file (CaptureState), so the launcher takes them; the backend unlocks premium items only from a
+// seal. With --close-game it then closes the game the sync opened (CaptureGameEnd), before the game gets the inventory's
+// answer. It keeps forwarding until the game exits, removes the hosts line and the CA, and exits 0 (1 when nothing was
+// captured before the timeout or the seal failed). Nothing else is kept. The log (proxy.log) is detailed but holds no values: for every
 // connection its TLS version, cipher and SNI, timings and where it failed; for every request and response the method, the
 // first two path segments, status, sizes, content types and the names of headers and query parameters; a refused
 // request's reason (CaptureLog); the key-and-count shape of what the capture keeps (CaptureDiagnostics); the game's and
@@ -43,7 +43,6 @@ using System.Text.Json;
 using HellForge.Core;
 
 const string CaName = "HellForge Capture CA";
-const string LoginPath = "/api/Account/Login", ProgressionPath = "/api/Progression", InventoryPath = "/api/Progression/inventory";
 // The redirect stays while the game runs (ForwardUntilGameExits), but never past the certificates' day.
 const int ForwardHoursAtMost = 12;
 var hostsPath = CapturePlatform.HostsPath;
@@ -53,13 +52,14 @@ var listenPort = 443;
 List<IPAddress>? fixedUpstream = null;
 var outputPath = Path.Combine(AppContext.BaseDirectory, "real-inventory.json");
 string? progressionPath = null;
+string? catalogueDir = null;
 var evidenceDir = Path.Combine(AppContext.BaseDirectory, "capture");
 bool manageHosts = true, manageCa = true, cleanupOnly = false, closeGame = false;
 var startedUtc = DateTime.UtcNow;
 // Set once this run's hosts line is in, until cleanup removes it: a line already gone at cleanup was removed by something else.
 var hostsAdded = false;
 var timeoutMin = 10;
-string? sealKey = null;
+var sign = false;
 ulong? steamAccount = null;
 // The launcher's Windows account, granted the sync folder beside this one's (it differs on a standard account).
 string? grantSid = null;
@@ -77,13 +77,15 @@ try
             case "--real-ip": fixedUpstream = [IPAddress.Parse(Next())]; break;
             case "--output": outputPath = Next(); break;
             case "--progression": progressionPath = Next(); break;
+            case "--catalogue": catalogueDir = Next(); break;
             case "--evidence": evidenceDir = Next(); break;
             case "--timeout-min": timeoutMin = Math.Max(1, int.Parse(Next(), CultureInfo.InvariantCulture)); break;
             case "--no-hosts": manageHosts = false; break;
             case "--no-ca": manageCa = false; break;
             case "--cleanup": cleanupOnly = true; break;
             case "--close-game": closeGame = true; break;
-            case "--seal-key": sealKey = Next(); break;
+            case "--sign": sign = true; break;
+            case "--shared-evidence": CapturePlatform.ShareEvidence = true; break;
             case "--steam-account": steamAccount = ulong.Parse(Next(), NumberStyles.None, CultureInfo.InvariantCulture); break;
             case "--ca-cert": caCertificatePath = Next(); break;
             case "--grant-sid":
@@ -91,19 +93,22 @@ try
                 if (!CaptureAccess.IsSid(grantSid)) throw new ArgumentException("--grant-sid needs a SID (S-1-5-...).");
                 break;
             case "--help":
-                Console.WriteLine("HellForge.CaptureProxy [--output <file>] [--progression <file>] [--evidence <dir>] [--timeout-min <n>]");
-                Console.WriteLine("  [--seal-key <file> --steam-account <SteamID64>] [--grant-sid <launcher's SID>]");
+                Console.WriteLine("HellForge.CaptureProxy [--output <file>] [--progression <file>] [--catalogue <dir>] [--evidence <dir>] [--timeout-min <n>]");
+                Console.WriteLine("  [--sign --steam-account <SteamID64>] [--shared-evidence] [--grant-sid <launcher's SID>]");
                 Console.WriteLine("  [--host <name>] [--listen-port <n>] [--real-ip <ip>]");
                 Console.WriteLine("  [--ca-cert <file>] [--close-game] [--no-hosts] [--no-ca] | --cleanup");
                 return 0;
             default: throw new ArgumentException("Unknown argument: " + args[i]);
         }
     }
-    if ((sealKey == null) != (steamAccount == null)) throw new ArgumentException("--seal-key and --steam-account go together.");
+    if (sign != (steamAccount != null)) throw new ArgumentException("--sign and --steam-account go together.");
+    // The pins (CaptureUpstreamPins) are Let's Encrypt's roots: they prove the API only together with its name.
+    if (sign && !host.Equals(CaptureUpstreamPins.ApiHost, StringComparison.OrdinalIgnoreCase))
+        throw new ArgumentException("A signing capture reads only " + CaptureUpstreamPins.ApiHost + ".");
     if (manageCa && !CapturePlatform.ManagesSystemTrustStore && caCertificatePath == null && !cleanupOnly)
         throw new ArgumentException("On Linux --ca-cert is required when the capture makes its CA.");
     // The seal covers the snapshot's own file names, side by side.
-    if (sealKey != null && (Path.GetFileName(outputPath) != SnapshotSeal.InventoryFile ||
+    if (sign && (Path.GetFileName(outputPath) != SnapshotSeal.InventoryFile ||
         progressionPath != null && Path.GetFullPath(progressionPath) != Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outputPath))!, SnapshotSeal.ProgressionFile)))
         throw new ArgumentException("A sealed capture writes " + SnapshotSeal.InventoryFile + " and " + SnapshotSeal.ProgressionFile + " in one folder.");
 }
@@ -142,7 +147,7 @@ if (OperatingSystem.IsWindows())
     Log($"sync folder private to {(grantSid == null ? "this account only (no launcher account given)" : string.Equals(grantSid, captureSid, StringComparison.OrdinalIgnoreCase) ? "this account, which is the launcher's" : "this account and the launcher's, another account")}" +
         (aclCode == 0 ? "" : $": icacls failed with code {aclCode}"));
 }
-else CapturePlatform.RestrictDirectory(evidenceDir);
+else CapturePlatform.RestrictEvidenceDirectory(evidenceDir);
 
 // What a crashed or abandoned earlier sync left goes first, so a restart of the PC is never what clears it: its capture
 // (still holding port 443, and removing the hosts line when it times out), then its hosts line (below) and its CA.
@@ -271,6 +276,17 @@ using var handler = new SocketsHttpHandler
         }
         throw new IOException("no upstream address reachable: " + last?.Message);
     },
+    // A signing capture keeps only what the API itself answered (CaptureUpstreamPins).
+    SslOptions = new SslClientAuthenticationOptions
+    {
+        RemoteCertificateValidationCallback = (_, _, chain, errors) =>
+        {
+            if (!sign) return errors == SslPolicyErrors.None;
+            if (CaptureUpstreamPins.Refusal(chain, errors) is not { } refusal) return true;
+            Log("upstream refused: " + refusal);
+            return false;
+        }
+    },
     AllowAutoRedirect = false,
     UseCookies = false,
     AutomaticDecompression = DecompressionMethods.All,
@@ -280,9 +296,11 @@ using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 
 var captured = 0;
 var sealOk = false;
-// The login's client headers, repeated on the capture's own reads (CaptureHeaders): the API refuses a read without
-// Accept-Language, which is how a live sync sealed an inventory and no progression (2026-10-26).
-Dictionary<string, string>? loginHeaders = null;
+ECDsa? signer = null;
+string? inventorySha256 = null, progressionSha256 = null;
+DateTimeOffset? inventoryDate = null;
+// What of the game's own traffic is kept, and when the capture is complete (passive: the capture sends nothing itself).
+var completion = new CaptureCompletion(progressionWanted: progressionPath != null, catalogueWanted: catalogueDir != null);
 var connections = 0;
 var tally = new CaptureTally();
 var lastRequest = Stopwatch.StartNew();
@@ -291,11 +309,23 @@ using var stop = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMin));
 try
 {
     LogStart();
+    if (sign)
+    {
+        try
+        {
+            signer = SnapshotSigner.Open(Environment.GetEnvironmentVariable("STATE_DIRECTORY"), evidenceDir, out var where);
+            Log("snapshot signer: " + where);
+        }
+        catch (Exception error) when (error is CryptographicException or IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return Fail(CaptureProblem.Signer, error.Message);
+        }
+    }
     if (manageHosts && HostsStep("hosts line", AddHosts) is { } hostsFailure) return Fail(hostsFailure.Problem, hostsFailure.Detail);
     LogResolution();
     Log($"listening on port {listenPort}");
     CaptureState.Write(evidenceDir, Environment.ProcessId, sealedCapture: false, progression: false);
-    CapturePlatform.RestrictFile(statePath);
+    CapturePlatform.RestrictEvidence(statePath);
     _ = Task.Run(WatchProcesses);
     while (!stop.IsCancellationRequested)
     {
@@ -366,7 +396,7 @@ void LogStart()
     var built = exe != null ? File.GetLastWriteTimeUtc(exe).ToString("u", CultureInfo.InvariantCulture) : "unknown";
     Log($"capture built {built}, {Environment.OSVersion.VersionString}, .NET {Environment.Version}, elevated {(CapturePlatform.IsElevated ? "yes" : "no")}");
     Log($"options: host {host}, port {listenPort}, timeout {timeoutMin} min, hosts line {(manageHosts ? "yes" : "no")}, " +
-        $"CA {(manageCa ? "yes" : "no")}, close game {(closeGame ? "yes" : "no")}, progression {(progressionPath != null ? "yes" : "no")}, seal {(sealKey != null ? "yes" : "no")}");
+        $"CA {(manageCa ? "yes" : "no")}, close game {(closeGame ? "yes" : "no")}, progression {(progressionPath != null ? "yes" : "no")}, sign {(sign ? "yes" : "no")}");
 }
 
 // Where the system now sends the API's name: 127.0.0.1 when the hosts line holds.
@@ -416,24 +446,32 @@ void LogProcessChanges(Dictionary<int, string> seen)
     foreach (var entry in now) seen[entry.Key] = entry.Value;
 }
 
-// Once the inventory is in: seal what was captured and tell the launcher, then (--close-game) end the sync's game, and
-// keep forwarding until it exits. In this order: the files are sealed and the state says so before the game is ended, so
-// the launcher always finds a finished capture; the game is ended before this returns, so it never gets the login's answer
-// and never reaches Easy Anti-Cheat's "Could not connect" (CaptureGameEnd).
+// Once the capture is complete (CaptureCompletion): seal what was captured and tell the launcher, then (--close-game) end
+// the sync's game, and keep forwarding until it exits. In this order: the files are sealed and the state says so before
+// the game is ended, so the launcher always finds a finished capture; the game is ended before this returns, normally
+// while its inventory read is still waiting for the answer, so it never reaches Easy Anti-Cheat's "Could not connect"
+// (CaptureGameEnd).
 void CompleteCapture()
 {
     var progression = progressionPath != null && File.Exists(progressionPath);
-    sealOk = sealKey == null || Step("seal", () => SnapshotSeal.Write(Path.GetDirectoryName(Path.GetFullPath(outputPath))!, sealKey, steamAccount!.Value, DateTime.UtcNow));
-    if (sealKey != null && sealOk)
+    sealOk = !sign || Step("seal", Seal);
+    if (sign && sealOk)
     {
         Log("capture sealed" + (progression ? "" : " without progression"));
-        CapturePlatform.RestrictFile(sealKey);
         CapturePlatform.RestrictFile(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outputPath))!, SnapshotSeal.FileName));
     }
     Step("state", () => CaptureState.Write(evidenceDir, Environment.ProcessId, sealOk, progression));
-    CapturePlatform.RestrictFile(statePath);
+    CapturePlatform.RestrictEvidence(statePath);
     if (closeGame) EndSyncGame();
     _ = Task.Run(ForwardUntilGameExits);
+}
+
+// Signs the hashes of what the API answered, taken as it arrived, and the API's own time of the inventory reply.
+void Seal()
+{
+    if (signer == null || inventorySha256 == null) throw new IOException("there is no signer or no inventory to seal");
+    if (inventoryDate is not { } date) throw new IOException("the API's inventory reply had no Date header");
+    SnapshotSeal.Write(Path.GetDirectoryName(Path.GetFullPath(outputPath))!, signer, steamAccount!.Value, date.UtcDateTime, inventorySha256, progressionSha256);
 }
 
 void EndSyncGame() => Log("close game: " + CaptureGameEnd.Describe(ProcessGame.EndSyncGame(startedUtc, Log)));
@@ -484,7 +522,6 @@ async Task Handle(TcpClient client)
     {
         if (await ReadRequest(ssl) is not { } request) { Log($"{id} closed before a whole request ({CaptureDiagnostics.Milliseconds(watch)})"); return; }
         var path = request.Target.Split('?')[0];
-        if (path.Equals(LoginPath, StringComparison.OrdinalIgnoreCase)) loginHeaders = request.Headers;
         LogRequest(id, request);
         stage = "asking the API";
         using var upstream = Forward(request);
@@ -495,7 +532,7 @@ async Task Handle(TcpClient client)
         Log($"{request.Method} {Shorten(path)} {(int)response.StatusCode} {responseBody.Length} bytes");
         LogResponse(id, path, response, responseBody, asked);
         stage = "keeping the capture";
-        if (response.IsSuccessStatusCode) await Capture(path, responseBody);
+        Capture(CaptureCompletion.Classify(request.Method, path), path, response.IsSuccessStatusCode, responseBody, response.Headers.Date);
         stage = "answering the game";
         await Respond(ssl, response, responseBody);
         await CheckReuse(ssl, id);
@@ -530,8 +567,8 @@ async Task<bool> Handshake(SslStream ssl, string id, Stopwatch watch)
 }
 
 static bool IsCapturePath(string path) =>
-    path.Equals(LoginPath, StringComparison.OrdinalIgnoreCase) || path.Equals(ProgressionPath, StringComparison.OrdinalIgnoreCase) ||
-    path.Equals(InventoryPath, StringComparison.OrdinalIgnoreCase);
+    path.Equals(CaptureCompletion.LoginPath, StringComparison.OrdinalIgnoreCase) || path.Equals(CaptureCompletion.ProgressionPath, StringComparison.OrdinalIgnoreCase) ||
+    path.Equals(CaptureCompletion.InventoryPath, StringComparison.OrdinalIgnoreCase);
 
 // Every request, in names and sizes only.
 void LogRequest(string id, (string Method, string Target, Dictionary<string, string> Headers, byte[] Body) request)
@@ -591,77 +628,98 @@ static async Task Respond(SslStream ssl, HttpResponseMessage response, byte[] bo
     await ssl.FlushAsync();
 }
 
-// A failure here is logged and never keeps the response from the game. Once sealed, nothing more is kept.
-async Task Capture(string path, byte[] body)
+// The capture is passive: it keeps the API's answers to the game's own reads after the login (CaptureCompletion) and
+// sends nothing itself. Runs before the game gets the answer, so --close-game can end the game before the inventory
+// reaches it. A failure here is logged and never keeps the response from the game. Once complete, nothing more is kept.
+void Capture(CaptureCompletion.Kind kind, string path, bool success, byte[] body, DateTimeOffset? date)
 {
-    if (Volatile.Read(ref captured) == 1) return;
-    try
+    if (kind == CaptureCompletion.Kind.Login)
     {
-        if (path.Equals(LoginPath, StringComparison.OrdinalIgnoreCase)) await ReadAccount(body);
-        else if (path.Equals(ProgressionPath, StringComparison.OrdinalIgnoreCase)) SaveProgression(body);
-        else if (path.Equals(InventoryPath, StringComparison.OrdinalIgnoreCase)) SaveInventory(body);
-    }
-    catch (Exception error) when (error is IOException or UnauthorizedAccessException or HttpRequestException or TaskCanceledException)
-    {
-        Log("capture failed: " + error.GetType().Name + " " + error.Message);
-    }
-}
-
-// The login's session reads what the game reads next: progression first, since the capture ends with the inventory.
-async Task ReadAccount(byte[] loginResponse)
-{
-    string? session;
-    try
-    {
-        using var login = JsonDocument.Parse(loginResponse);
-        session = login.RootElement.TryGetProperty("sessionId", out var id) ? id.GetString()
-            : login.RootElement.TryGetProperty("sessionToken", out var token) ? token.GetString() : null;
-    }
-    catch (JsonException)
-    {
-        Log("login response is not JSON");
+        if (!success) return;
+        completion.Login();
+        Log("login answered: the game's own reads that follow are kept");
         return;
     }
-    if (string.IsNullOrEmpty(session)) { Log("login response has no session"); return; }
-    if (progressionPath != null && await Get(ProgressionPath, session) is { } progression) SaveProgression(progression);
-    if (await Get(InventoryPath, session) is { } inventory) SaveInventory(inventory);
-}
-
-async Task<byte[]?> Get(string path, string session)
-{
-    using var request = new HttpRequestMessage(HttpMethod.Get, $"https://{host}{path}");
-    request.Headers.TryAddWithoutValidation("Authorization", "session " + session);
-    foreach (var (name, value) in CaptureHeaders.ForRead(loginHeaders, DateTimeOffset.UtcNow))
-        request.Headers.TryAddWithoutValidation(name, value);
-    var asked = Stopwatch.StartNew();
-    using var response = await http.SendAsync(request);
-    var body = await response.Content.ReadAsByteArrayAsync();
-    Log($"GET {path} {(int)response.StatusCode} {body.Length} bytes (login session)");
-    Log($"capture GET {path}: sent headers {CaptureLog.Names(request.Headers.Select(header => header.Key))}");
-    LogResponse("capture", path, response, body, asked);
-    return response.IsSuccessStatusCode ? body : null;
-}
-
-void SaveProgression(byte[] body)
-{
-    if (progressionPath == null) return;
-    if (!IsJsonObject(body, null)) { Log("progression response is not an object"); return; }
-    WriteAtomically(progressionPath, body);
-    Log("progression saved");
-}
-
-void SaveInventory(byte[] body)
-{
-    if (!IsJsonObject(body, "items")) { Log("inventory response has no items list"); return; }
-    if (Interlocked.CompareExchange(ref captured, 1, 0) == 1) return;
-    try { WriteAtomically(outputPath, body); }
+    if (kind == CaptureCompletion.Kind.Other) return;
+    var what = kind switch
+    {
+        CaptureCompletion.Kind.Progression => "progression",
+        CaptureCompletion.Kind.Inventory => "inventory",
+        _ => "catalogue " + CaptureCompletion.CatalogueFile(path)
+    };
+    if (completion.Refusal(kind, success, path) is { } refusal) { Log($"{what} not kept: {refusal}"); return; }
+    try
+    {
+        var saved = kind switch
+        {
+            CaptureCompletion.Kind.Progression => SaveProgression(body),
+            CaptureCompletion.Kind.Inventory => SaveInventory(body, date),
+            _ => SaveCatalogue(CaptureCompletion.CatalogueFile(path)!, body)
+        };
+        if (saved) completion.Saved(kind, DateTime.UtcNow, path);
+    }
     catch (Exception error) when (error is IOException or UnauthorizedAccessException)
     {
-        Volatile.Write(ref captured, 0);  // a later inventory may still be saved
-        throw;
+        Log("capture failed: " + error.GetType().Name + " " + error.Message);
+        return;
     }
-    Log("inventory saved");
+    if (kind == CaptureCompletion.Kind.Inventory && completion.HasInventory && completion.Missing() is { Count: > 0 } missing)
+    {
+        Log($"inventory in; waiting up to {CaptureCompletion.ResponseWait.TotalSeconds:F0} s for {string.Join(", ", missing)}");
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(CaptureCompletion.ResponseWait);
+            if (completion.Missing() is { Count: > 0 } late && !completion.Completed) Log("completing without " + string.Join(", ", late));
+            TryCompleteCapture();
+        });
+    }
+    TryCompleteCapture();
+}
+
+void TryCompleteCapture()
+{
+    if (!completion.TryComplete(DateTime.UtcNow)) return;
+    Volatile.Write(ref captured, 1);
     CompleteCapture();
+}
+
+bool SaveProgression(byte[] body)
+{
+    if (progressionPath == null) return false;
+    if (!IsJsonObject(body, null)) { Log("progression response is not an object"); return false; }
+    WriteAtomically(progressionPath, body);
+    progressionSha256 = SnapshotSeal.Sha256(body);
+    Log("progression saved");
+    return true;
+}
+
+// A catalogue the game read (CaptureCompletion.Catalogues): the API's answer as it came, a JSON list.
+bool SaveCatalogue(string file, byte[] body)
+{
+    if (catalogueDir == null) return false;
+    if (!IsJsonArray(body)) { Log($"catalogue {file} is not a list"); return false; }
+    WriteAtomically(Path.Combine(catalogueDir, file), body);
+    Log($"catalogue {file} saved");
+    return true;
+}
+
+static bool IsJsonArray(byte[] body)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(body);
+        return document.RootElement.ValueKind == JsonValueKind.Array;
+    }
+    catch (JsonException) { return false; }
+}
+
+bool SaveInventory(byte[] body, DateTimeOffset? date)
+{
+    if (!IsJsonObject(body, "items")) { Log("inventory response has no items list"); return false; }
+    WriteAtomically(outputPath, body);
+    (inventorySha256, inventoryDate) = (SnapshotSeal.Sha256(body), date);
+    Log("inventory saved");
+    return true;
 }
 
 static bool IsJsonObject(byte[] body, string? requiredArray)
@@ -688,7 +746,8 @@ static void WriteAtomically(string path, byte[] body)
 static string Shorten(string path)
 {
     var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-    return segments.Length <= 3 && path is LoginPath or ProgressionPath or InventoryPath ? path
+    return segments.Length <= 3 && (path is CaptureCompletion.LoginPath or CaptureCompletion.ProgressionPath or CaptureCompletion.InventoryPath ||
+        CaptureCompletion.CatalogueFile(path) != null) ? path
         : "/" + string.Join('/', segments.Take(2)) + (segments.Length > 2 ? "/..." : "");
 }
 
@@ -757,7 +816,7 @@ void Log(string message)
     try
     {
         File.AppendAllText(path, line + Environment.NewLine);
-        CapturePlatform.RestrictFile(path);
+        CapturePlatform.RestrictEvidence(path);
     }
     catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.Error.WriteLine("log write failed: " + error.Message); }
 }
@@ -812,7 +871,7 @@ void WriteCaCertificate(X509Certificate2 ca)
     var path = Path.GetFullPath(caCertificatePath!);
     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
     File.WriteAllBytes(path, ca.Export(X509ContentType.Cert));
-    CapturePlatform.RestrictFile(path);
+    CapturePlatform.RestrictEvidence(path);
 }
 
 // A failed hosts write: the plain reason, named more exactly where Windows can say who, goes to the log and to the sync

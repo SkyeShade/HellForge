@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using HellForge.Core.AssetMigration;
 using HellForge.Core.GameData;
 
 namespace HellForge.Core;
@@ -13,8 +14,8 @@ namespace HellForge.Core;
 // A HellForge mod: a folder in <installation>/mods with a hellforge-mod.json manifest, or a .zip of one (ModArchives), and optionally
 //   code    a DLL written against the HellForge mod SDK (native/mod-sdk/hellforge_mod.h), loaded into the game by the mod loader;
 //   data/   the game's own mod format (<bundle>.patch_<n>, .gpu_resources, .stream), staged into game/data per session;
-//   hellforge-data.json  a data spec: patches HellForge builds from the player's own game data (GameData/ModDataBuilder.cs)
-//           and stages like data/, so the mod ships no game bytes;
+//   hellforge-data.json  a data spec: patches HellForge builds from the player's own game data and stages like data/, so the mod ships no game bytes (GameData/ModDataBuilder.cs);
+//   hellforge-recipe.json  the author's patch files as a recipe that rebuilds the game's bytes in them from the player's game (ModAssets.cs);
 //   native  engine edits HellForge applies in the running game's memory (docs/modding/data.md "Native edits in the manifest"):
 //     networkFieldTypes  widen a named network field type (only widen; kind, bits and min must be as expected);
 //     componentWrites    set u32 fields of an entity's component record, only from their expected vanilla value.
@@ -45,13 +46,15 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     public bool Live { get; init; }
     public IReadOnlyList<StatsEdit> Stats { get; init; } = [];
     // The in-game loader applies its code, stats and component writes, and its network field types (its nettype lines).
-    public bool NeedsLoader => HasCode || Stats.Count > 0 || ComponentWrites.Count > 0 || NetworkFieldTypes.Count > 0;
+    public bool NeedsLoader => HasCode || Stats.Count > 0 || ComponentWrites.Count > 0 || NetworkFieldTypes.Count > 0 || Packages.Count > 0;
     // Off in the installation's hellforge-mods.json (the launcher's Mods page): listed, but not loaded.
     public bool Enabled { get; init; } = true;
     // The zip in the mods folder this mod was unpacked from (its Folder is then under mods/.unpacked), or null.
     public string? Archive { get; init; }
     // The mod has a data spec (hellforge-data.json), whose patches are generated per installation (ModDataCache).
     public bool HasDataSpec { get; init; }
+    // Its data spec's own packages, which the loader may load (the plan's package lines).
+    public IReadOnlyList<ModDataPackage> Packages { get; init; } = [];
     // Why HellForge does not check all of the data spec's output (DataSpecs.Unchecked: a "replace", or a type outside the
     // reviewed ones), or null: mod sync takes such a spec as raw data (ModSets.ClassOf).
     public string? UncheckedSpec { get; init; }
@@ -79,6 +82,11 @@ public sealed record ModManifest(string Id, string Name, string Version, string 
     // Arrowhead's premium content the mod builds on (the manifest's "premium", PremiumContent entries): a player who does
     // not own all of it gets none of the mod's weapons and stratagems, and a cosmetic mod is not loaded for them.
     public IReadOnlyList<string> Premium { get; init; } = [];
+    // The game patch files its recipe makes (hellforge-recipe.json, ModAssets), relative to its folder: rebuilt from the
+    // player's game, never counted or shared as the mod's files. AssetsPending says why they are not in place yet (the mod
+    // does not load until they are), or null.
+    public IReadOnlyList<string> AssetOutputs { get; init; } = [];
+    public string? AssetsPending { get; init; }
     // Why HellForge never loads it (LuaRuntimes.EditorUnsupported: HD2R Editor), or null. Such a mod stays listed but off,
     // whatever the Mods page's switch says.
     public string? Unsupported { get; init; }
@@ -95,7 +103,7 @@ public static partial class ModCatalog
         File.Exists(Path.Combine(folder, ManifestName)) ? Path.Combine(folder, ManifestName)
         : File.Exists(Path.Combine(folder, LegacyManifestName)) ? Path.Combine(folder, LegacyManifestName) : null;
     // The mod SDK version this HellForge provides (native/mod-sdk/hellforge_mod.h).
-    public const int SdkVersion = 16;
+    public const int SdkVersion = 19;
 
     [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}\\.dll$")]
     private static partial Regex DllName();
@@ -118,6 +126,10 @@ public static partial class ModCatalog
 
     [GeneratedRegex("^[0-9a-f]{16}\\.patch_([0-9]{1,4})(\\.gpu_resources|\\.stream)?$")]
     public static partial Regex PatchFile();
+
+    // A package's archive (a data spec's "package"), or a live change's hot package: data/<16 hex> and its sidecars.
+    [GeneratedRegex("^[0-9a-f]{16}(\\.gpu_resources|\\.stream)?$")]
+    public static partial Regex PackageFile();
 
     [GeneratedRegex("^[a-z0-9_]{1,64}$")]
     private static partial Regex FieldTypeName();
@@ -187,6 +199,8 @@ public static partial class ModCatalog
         }
         else mod = Parse(folder, profile);
         mod = mod with { Archive = archive };
+        if (mod.Pack != null && ModAssets.Read(folder) is { HasRecipe: true } packAssets)
+            mod = mod with { AssetOutputs = packAssets.Outputs, AssetsPending = packAssets.Pending };
         if (LuaRuntimes.IsEditor(folder)) return mod with { Enabled = false, Unsupported = LuaRuntimes.EditorUnsupported };
         // Local Stats (the in-game editor's saved changes) is always on: the Mods page does not list it
         return settings.Disabled.Contains(mod.Id) && mod.Id != LocalStatsId ? mod with { Enabled = false } : mod;
@@ -263,6 +277,7 @@ public static partial class ModCatalog
         var (types, writes) = ReadNative(root, profile);
         var (code, source, live) = ReadCode(root, folder);
         var (data, lua) = ReadDataFiles(folder);
+        var assets = WithRecipeData(folder, data);
         // A data spec is checked here; what it names in the game data when it is built (ModDataCache).
         var dataSpec = DataSpecs.Load(folder);
         var spec = dataSpec != null;
@@ -270,13 +285,14 @@ public static partial class ModCatalog
         if (stats.Count > 0 || writes.Count > 0) gameplay = true;
         // A mod of Lua patches alone is the player's own: client-only, outside the modlist code.
         else if (lua && code == null && types.Count == 0 && !spec) gameplay = false;
-        if (types.Count == 0 && writes.Count == 0 && data.Count == 0 && code == null && !spec && stats.Count == 0) throw new InvalidDataException("The mod changes nothing.");
+        var warbonds = File.Exists(Path.Combine(folder, ModWarbonds.FileName)); /* its warbonds (ModWarbonds.Load) */
+        if (types.Count == 0 && writes.Count == 0 && data.Count == 0 && code == null && !spec && stats.Count == 0 && !warbonds) throw new InvalidDataException("The mod changes nothing.");
         var icon = ReadIcon(root, folder);
         // "url": where players get the mod; one that is not an https:// address (WebAddress) is left out
         var url = root.TryGetProperty("url", out var urlElement) && urlElement.ValueKind == JsonValueKind.String ? WebAddress(urlElement.GetString()) : null;
         var manifest = new ModManifest(id, name, version, description, gameplay, Path.GetFullPath(folder), types, writes, data)
-            { CodeDll = code, HasSource = source, Live = live, HasDataSpec = spec, UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
-              CoopLevel = ReadCoopLevel(root), Premium = PremiumList(root) };
+            { CodeDll = code, HasSource = source, Live = live, HasDataSpec = spec, Packages = dataSpec?.Patches.Select(p => p.Package).OfType<ModDataPackage>().ToList() ?? [], UncheckedSpec = dataSpec == null ? null : DataSpecs.Unchecked(dataSpec), Stats = stats, Icon = icon, Lua = lua, Url = url,
+              CoopLevel = ReadCoopLevel(root), Premium = PremiumList(root), AssetOutputs = assets.Outputs, AssetsPending = assets.Pending ?? PastBuildsPending(folder, dataSpec) };
         return manifest with { Coop = DecideTier(root, manifest, new(code, source, data, lua, spec, stats, types, writes)) };
     }
 
@@ -291,8 +307,11 @@ public static partial class ModCatalog
     // with either cannot be the player's own.
     static CoopTier DecideTier(JsonElement root, ModManifest mod, TierFacts facts)
     {
+        // A rearm tick is not the player's own: every machine refills every player's uses (native/mod-loader/stratagem_rearm.c),
+        // so the squad needs the same mod. Local Stats stays each player's (a host may share theirs).
+        var rearms = mod.Id != LocalStatsId && facts.Stats.Any(s => s.Kind == "StratagemRearm");
         var statsOnly = facts.Stats.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && facts.Data.Count == 0 && !facts.Spec &&
-            facts.Types.Count == 0 && facts.Writes.Count == 0;
+            facts.Types.Count == 0 && facts.Writes.Count == 0 && !rearms;
         var dataOnly = facts.Data.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && !facts.Spec &&
             facts.Stats.Count == 0 && facts.Types.Count == 0 && facts.Writes.Count == 0;
         var tier = ReadCoop(root) ?? (statsOnly || dataOnly && ClientOnlyPatches(mod) ? CoopTier.PerPlayer : CoopTier.Shared);
@@ -315,6 +334,8 @@ public static partial class ModCatalog
     // resources or holds any other type makes the mod shared.
     static bool ClientOnlyPatches(ModManifest mod)
     {
+        // a recipe's patches are not there to read until they are rebuilt; asked again then (the same content hash)
+        if (mod.AssetsPending != null) return false;
         string key;
         try { key = ModSets.ContentHash(mod); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException or OverflowException or IndexOutOfRangeException)
@@ -472,6 +493,26 @@ public static partial class ModCatalog
     }
 
     // The mod's data/ patch files, in order, and whether one of them holds Lua.
+    // Why a data spec that takes resources from past builds cannot be built yet (they are not fetched), or null.
+    static string? PastBuildsPending(string folder, DataSpec? spec)
+    {
+        if (spec == null || spec.Builds.Count == 0) return null;
+        var missing = BuildResources.Missing(folder, spec);
+        return missing.Count == 0 ? null
+            : $"its data spec takes resources from {(missing.Count == 1 ? "a past build" : $"{missing.Count} past builds")} of the game that are not fetched yet ({string.Join(", ", missing)})";
+    }
+
+    // A recipe's game patch files (ModAssets) count as the mod's data before they are rebuilt: they are rebuilt before it
+    // loads. Adds its data/ files to data, in order; the recipe's state.
+    static ModAssets.Info WithRecipeData(string folder, List<string> data)
+    {
+        var assets = ModAssets.Read(folder);
+        foreach (var output in assets.Outputs.Where(o => o.StartsWith("data/", StringComparison.Ordinal) && o.IndexOf('/', 5) < 0))
+            if (!data.Contains(output[5..])) data.Add(output[5..]);
+        data.Sort(StringComparer.Ordinal);
+        return assets;
+    }
+
     static (List<string> Data, bool Lua) ReadDataFiles(string folder)
     {
         var data = new List<string>();
@@ -550,7 +591,10 @@ public static partial class ModCatalog
         var zipped = mod.Archive != null ? ModArchives.Shipped(mod.Archive, mod.Folder) : null;
         var shipped = BundledMods.ShippedFiles(mod.Folder);
         var files = zipped?.Keys ?? Directory.GetFiles(mod.Folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(mod.Folder, f).Replace('\\', '/'));
+        // the files a recipe rebuilds are the game's: the recipe counts for them (its SHA-256s pin every byte)
+        var rebuilt = mod.AssetOutputs.Count == 0 ? null : mod.AssetOutputs.ToHashSet(StringComparer.OrdinalIgnoreCase);
         return files.Where(f => !IsWorkspaceFile(f))
+            .Where(f => rebuilt == null || !rebuilt.Contains(f))
             .Where(f => shipped == null || shipped.Contains(f))
             .Where(f => !mod.HasSource || !SourceBuildOutput(mod, f))
             .Order(StringComparer.Ordinal)
@@ -612,13 +656,11 @@ public static class ModArchives
         var cache = Path.Combine(modsFolder, UnpackedFolder);
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var archives = Directory.GetFiles(modsFolder, "*.zip").Order(StringComparer.OrdinalIgnoreCase).ToList();
-        LoadHashes(cache);
         foreach (var archive in archives)
         {
             try
             {
-                var hash = ContentHash(archive);
-                var target = Path.Combine(cache, Path.GetFileNameWithoutExtension(archive) + "-" + hash);
+                var target = UnpackedFolderOf(cache, archive);
                 keep.Add(Path.GetFileName(target));
                 if (!Directory.Exists(target)) Unpack(archive, target);
                 results.Add((archive, ManifestRoot(target), null));
@@ -634,6 +676,13 @@ public static class ModArchives
                 try { Directory.Delete(stale, recursive: true); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         return results;
+    }
+
+    // Where a zip of the mods folder is unpacked: <cache>/<zip name>-<content hash> (cache: the mods folder's .unpacked).
+    internal static string UnpackedFolderOf(string cache, string archive)
+    {
+        LoadHashes(cache);
+        return Path.Combine(cache, Path.GetFileNameWithoutExtension(archive) + "-" + ContentHash(archive));
     }
 
     // A zip's content hash, kept while its size and time are unchanged: the Mods page loads the mods on every change, and
@@ -837,18 +886,23 @@ public static class ModLoaderPlan
 
     // forgeCreditChance: the share of loot caches that hold Forge Credits (ModSettings.ForgeCreditChance, else its default),
     // null to leave the game's loot roll alone.
-    public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId, int? forgeCreditChance = null)
+    // warbonds: the session's mod warbonds (ModWarbonds), for their entries in the game's warbond table.
+    // backendPort: where the session's backend listens, so the loader's paid-item guard can ask it (paid_guard.c).
+    public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId, int? forgeCreditChance = null,
+        IReadOnlyList<ModWarbonds.Warbond>? warbonds = null, int? backendPort = null)
     {
         var lines = new List<string> { "build\t" + buildId, "logs\t" + Field(logs), "network_config\t" + NetworkConfig,
             $"entity_region\t{profile.EntityRegionSize}\t{profile.MapHeader.ToLowerInvariant()}" };
+        if (backendPort is > 0 and <= 65535) lines.Add(FormattableString.Invariant($"backend_port\t{backendPort}"));
         foreach (var (name, c) in profile.Components.OrderBy(c => c.Key, StringComparer.Ordinal))
             lines.Add($"component\t{name}\t{c.Offset}\t{c.Header.ToLowerInvariant()}\t{c.Index}\t{c.Indices}\t{c.Records}\t{c.RecordOffset}\t{c.Stride}");
         lines.Add("stats_schema\t" + StatsSchema.Fingerprint);
         foreach (var key in StatsSchema.Observed) lines.Add("observe\t" + key);
         if (forgeCreditChance is { } chance) lines.Add(FormattableString.Invariant($"forge_credits_chance\t{Math.Clamp(chance, 0, 100)}"));
+        lines.AddRange(ModWarbonds.PlanLines(warbonds ?? []));
         // in the order given, a session's load order (ModCatalog.LoadOrder): code loads and stats apply in it, the last winning
         var mods = codeMods.Where(m => m.Enabled && m.NeedsLoader).ToList();
-        if (mods.Count > 64 || mods.Sum(m => StatsData.Edits(m).Count()) > StatsData.MaxEdits)
+        if (mods.Count > 64 || mods.Sum(m => StatsData.Edits(m).Count()) > StatsData.MaxEdits || mods.Sum(m => m.Packages.Count) > 64)
             throw new InvalidDataException("Mod loader plan exceeds its mod or stats edit capacity.");
         foreach (var mod in mods) lines.AddRange(ModLines(mod));
         if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (4 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 4 MiB.");
@@ -876,7 +930,7 @@ public static class ModLoaderPlan
     }
 
     // A mod's lines of the plan: the mod ("live": SDK 16, it may be taken out while the game runs), a code mod's version,
-    // its stats edits and its network field types.
+    // its stats edits, its network field types and its own packages.
     static IEnumerable<string> ModLines(ModManifest mod)
     {
         if (mod.HasCode && mod.DllPath == null) throw new InvalidDataException($"{mod.Id} is a source mod that was not built for this session.");
@@ -885,6 +939,7 @@ public static class ModLoaderPlan
         if (mod.HasCode && OneLine(mod.Version) is { Length: > 0 } version) yield return $"mod_version\t{mod.Id}\t{version}";
         foreach (var e in StatsData.Edits(mod)) yield return "stat\t" + string.Join('\t', StatFields(mod, e));
         foreach (var t in mod.NetworkFieldTypes) yield return "nettype\t" + string.Join('\t', NetFields(mod, t));
+        foreach (var p in mod.Packages) yield return $"package\t{mod.Id}\t{p.Id:x16}\t{(p.Session ? "session" : "request")}";
     }
 
     static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
@@ -1050,6 +1105,22 @@ public static class ModSettings
     });
 
     public static void SetChoice(string modsFolder, string id, CosmeticPacks.Choice choice) => Change(modsFolder, state => state.Choices[id] = choice);
+
+    // A mod whose id changed (a zipped pack without a name of its own, unpacked into a folder: ModInstaller) keeps its
+    // switch, its place in the order and its pack choice. Nothing changes when the new id has settings of its own already.
+    public static void RenameId(string modsFolder, string from, string to)
+    {
+        var state = Read(modsFolder);
+        if (from == to || state.Disabled.Contains(to) || state.Order.Contains(to) || state.Choices.ContainsKey(to) ||
+            !(state.Disabled.Contains(from) || state.Order.Contains(from) || state.Choices.ContainsKey(from))) return;
+        Change(modsFolder, s =>
+        {
+            if (s.Disabled.Remove(from)) s.Disabled.Add(to);
+            var at = s.Order.IndexOf(from);
+            if (at >= 0) s.Order[at] = to;
+            if (s.Choices.Remove(from, out var choice)) s.Choices[to] = choice;
+        });
+    }
 
     // Mod sync's blocklist: a lobby running a blocked mod is hidden and never joined (ModSyncPlan).
     public static void SetBlocked(string modsFolder, string id, bool blocked) => Change(modsFolder, state =>

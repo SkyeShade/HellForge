@@ -20,4 +20,18 @@
     <AssemblyName>HellForge.Session</AssemblyName>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../HellForge.Core/HellForge.Core.csproj" /></ItemGroup>
+  <!-- The backend's digest (HellForge.Core BackendPin), which Build-Engine.ps1 passes as -p:HellForgeBackendPin; any other
+       build has none and checks nothing. Written on every build, so a pin left in obj/ never carries over. -->
+  <Target Name="WriteBackendPin" BeforeTargets="CoreCompile">
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(HellForgeBackendPin)', '^([0-9A-F]{64})?$'))"
+      Text="HellForgeBackendPin is a SHA-256 in upper-case hex, or empty." />
+    <PropertyGroup><BackendPinFile>$(IntermediateOutputPath)BackendPin.g.cs</BackendPinFile></PropertyGroup>
+    <WriteLinesToFile File="$(BackendPinFile)" Overwrite="true" WriteOnlyWhenDifferent="true"
+      Lines="namespace HellForge.Session%3B static class BuildPins { public const string Backend = &quot;$(HellForgeBackendPin)&quot;%3B }" />
+    <ItemGroup>
+      <Compile Remove="$(BackendPinFile)" />
+      <Compile Include="$(BackendPinFile)" />
+      <FileWrites Include="$(BackendPinFile)" />
+    </ItemGroup>
+  </Target>
 </Project>

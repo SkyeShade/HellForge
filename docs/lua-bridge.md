@@ -1,5 +1,7 @@
 # Lua mods and the Lua bridge
 
+<!-- diataxis: how-to -->
+
 This page is for players who want to run Lua mods on HellForge, and for authors of Lua mods and runtimes who want to
 know how their changes reach the game. It covers adding Lua mods, what HD2Runtime does on HellForge, which edit wins a
 field, and the C interface the bridge exports.
@@ -24,8 +26,8 @@ made for HD2Runtime runs unchanged.
 
 HD2R Editor, HD2Runtime's own in-game editor, is not supported on HellForge: use HellForge's F8 editor, which edits the
 same fields and shows what each Lua mod changed. If you add HD2R Editor, the Mods page marks it UNSUPPORTED and keeps it
-switched off (it would take F8 too, build HD2Runtime's whole catalogue while the game loads, and replay its own saved
-changes over HellForge's). HD2Runtime and the other Lua mods made for it are not affected.
+switched off. It would take F8 too, build HD2Runtime's whole catalogue while the game loads, and replay its own saved
+changes over HellForge's. HD2Runtime and the other Lua mods made for it are not affected.
 
 Lua mods are listed in the CLIENT ONLY group with a LUA tag, and they are staged like any game patch. The F8 editor shows
 a value a Lua mod changed with the mod's name, `lua.<mod>`. Your own F8 changes win over a Lua mod's, and a Lua mod's
@@ -72,7 +74,7 @@ later Lua mod's replaces the earlier one's. A Lua or code mod's edit also stays 
 the boot pass wrote, for as long as the record holds it.
 
 `get_live` and `get_stat` name a Lua mod's edit as the field's holder, with its value as the base, so the F8 editor
-shows "Mod: lua.<name>" and its reset goes back to the Lua mod's value. Code mods' live edits are not named, as before.
+shows "Mod: lua.\<name>" and its reset goes back to the Lua mod's value. Code mods' live edits are not named, as before.
 
 ## The C interface
 

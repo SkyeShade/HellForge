@@ -1,0 +1,5 @@
+{
+  // Pull request templates start at "##": their text goes under the pull request's own title.
+  "extends": "../.markdownlint.jsonc",
+  "MD041": false
+}

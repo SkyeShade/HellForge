@@ -24,8 +24,11 @@ public static partial class ProfileStore
 {
     public const string DefaultName = "default";
     public const string FallbackTemplate = "starter";
-    // The profile a fresh install starts with: the starter template, no paid content.
-    public const string FirstProfileTemplate = "starter";
+    // Live-like: a starter profile until Sync Inventory, which then brings in everything it can of the live account, and
+    // the premium warbonds the account owns are open without a Forge Credits purchase (#282).
+    public const string LiveLikeTemplate = "live-like";
+    // The profile a fresh install starts with, and the one the launcher offers first: live-like, no paid content until a sync.
+    public const string FirstProfileTemplate = LiveLikeTemplate;
     static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true, NewLine = "\n" };
 
     [GeneratedRegex("^[a-z0-9-]{1,32}$")]
@@ -57,6 +60,7 @@ public static partial class ProfileStore
     public static List<LocalProfile> List(ISessionPaths paths)
     {
         RetireLegacyDefault(paths);
+        LowercaseNames(paths);
         var profiles = Scan(paths);
         if (profiles.Count > 0) return profiles;
         var first = LoadTemplates(paths).Any(t => t.Name == FirstProfileTemplate) ? FirstProfileTemplate : FallbackTemplate;
@@ -93,6 +97,42 @@ public static partial class ProfileStore
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
+    // Older launchers made profiles with capital letters ("Avaleine", #260). Scan leaves them out, and on Windows they still
+    // block the lowercase name, so each is renamed to its lowercase name (through a temporary name, as a case-only move
+    // is refused on Windows) and the selection follows it. One whose lowercase name is taken stays as it is.
+    static void LowercaseNames(ISessionPaths paths)
+    {
+        try
+        {
+            if (!Directory.Exists(paths.ProfilesRoot)) return;
+            foreach (var folder in Directory.GetDirectories(paths.ProfilesRoot))
+            {
+                var name = Path.GetFileName(folder);
+                var lower = name.ToLowerInvariant();
+                if (lower == name || !IsValidName(lower) || !File.Exists(Path.Combine(folder, "launcher.json"))) continue;
+                if (Directory.GetDirectories(paths.ProfilesRoot).Any(other => Path.GetFileName(other) == lower)) continue;
+                if (Rename(folder, Path.Combine(paths.ProfilesRoot, lower)) && LoadSelected(paths) == name) SaveSelected(paths, lower);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
+
+    static bool Rename(string folder, string target)
+    {
+        var temporary = target + ".renaming";
+        try
+        {
+            Directory.Move(folder, temporary);
+            Directory.Move(temporary, target);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            if (Directory.Exists(temporary) && !Directory.Exists(folder)) Directory.Move(temporary, folder);
+            return false;
+        }
+    }
+
     static LocalProfile Load(ISessionPaths paths, string name)
     {
         var folder = Path.Combine(paths.ProfilesRoot, name);
@@ -106,7 +146,11 @@ public static partial class ProfileStore
         if (!IsValidName(name)) return "Use 1-32 lowercase letters, digits or hyphens.";
         if (!TemplateName().IsMatch(template)) return "Pick a template.";
         var folder = Path.Combine(paths.ProfilesRoot, name);
-        if (Directory.Exists(folder)) return $"A profile named \"{name}\" already exists.";
+        if (Directory.Exists(folder))
+            return Directory.GetDirectories(paths.ProfilesRoot).Select(Path.GetFileName).FirstOrDefault(other =>
+                    string.Equals(other, name, StringComparison.OrdinalIgnoreCase)) is { } hidden && hidden != name
+                ? $"The folder {Path.Combine(paths.ProfilesRoot, hidden)} already uses this name. Rename or remove it first."
+                : $"A profile named \"{name}\" already exists.";
         try
         {
             Directory.CreateDirectory(folder);

@@ -63,6 +63,25 @@ static class CapturePlatform
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
+    // --shared-evidence: the Linux signing service runs as its own user, so the player's launcher must read its log, state
+    // and CA certificate. They hold names, sizes and the public CA only; the account files stay private (RestrictFile).
+    public static bool ShareEvidence { get; set; }
+
+    public static void RestrictEvidenceDirectory(string path)
+    {
+        if (!ShareEvidence) { RestrictDirectory(path); return; }
+        if (OperatingSystem.IsLinux())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+    }
+
+    public static void RestrictEvidence(string path)
+    {
+        if (!ShareEvidence) { RestrictFile(path); return; }
+        if (OperatingSystem.IsLinux() && File.Exists(path))
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+    }
+
     public static void FlushDns()
     {
         if (IsWindows) { Run("ipconfig", "/flushdns"); return; }

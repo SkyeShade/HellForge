@@ -10,12 +10,15 @@ static const char* (*const kDifficultyChecks[])(uintptr_t game) = {
     RestartSitesFailed, CaptureSiteFailed, MissionSitesFailed, CountdownSitesFailed, CardViewFailed, MapViewFailed,
     ArtilleryPinsFailed};
 
-/* NULL when every copy, instruction, bound and kept caller is the reviewed one; 1 in *waiting while the tables are
- * not filled yet. */
+/* NULL when every copy, instruction, bound and kept caller is the reviewed one; 1 in *waiting while the tables, or the
+ * mission stratagem's row, are not filled yet. */
 static const char* DifficultySitesFailed(uintptr_t game, int* waiting)
 {
     const char* why = DifficultyCopiesFailed(game, waiting);
     for (size_t i = 0; why == NULL && i < sizeof kDifficultyChecks / sizeof kDifficultyChecks[0]; i++) why = kDifficultyChecks[i](game);
+    /* The mission stratagem is judged by its row (GrantRefused), which the game may load after these tables. */
+    if (why == NULL && g_difficulty.grant != 0 && GrantRefused(game, g_difficulty.grant, waiting) != NULL && *waiting)
+        why = "the mission stratagem's row is not loaded yet";
     return why;
 }
 

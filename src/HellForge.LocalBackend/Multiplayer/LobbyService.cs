@@ -88,7 +88,7 @@ public sealed class LobbyService
     // Invitations a lobby remembers, and those this machine passes on to its game from one friend in a minute.
     const int MaxInvited = 64, InvitesPerMinute = 10;
     // A machine refused only for its gameplay mods is expected back for ExpectedBack (a download of up to ModSync.GrantTime,
-    // then the restart); one the host told it may rejoin, for RejoinGrace (its player accepting the invitation). At most
+    // then the restart; StillExpected keeps it on while a longer download goes on); one the host told it may rejoin, for RejoinGrace (its player accepting the invitation). At most
     // MaxExpected per lobby, the oldest dropped.
     public static readonly TimeSpan ExpectedBack = TimeSpan.FromMinutes(15), RejoinGrace = TimeSpan.FromMinutes(3);
     const int MaxExpected = 64;
@@ -394,6 +394,14 @@ public sealed class LobbyService
 
     // Whether a machine refused for its gameplay mods (or told it may rejoin) is still expected back in a lobby.
     bool ExpectedIn(HostedLobby lobby, ulong node) => lobby.Expected.TryGetValue(node, out var until) && Clock() < until;
+
+    // A machine expected back after a mod sync is still downloading (ModSync.Downloading): it stays expected for
+    // ExpectedBack from now in each lobby that still expects it. It never adds one, nor brings back one that has run out.
+    public void StillExpected(ulong node)
+    {
+        lock (gate)
+            foreach (var lobby in hosted.Values.Where(l => !l.Kicked.Contains(node) && ExpectedIn(l, node))) Expect(lobby, node, ExpectedBack);
+    }
 
     void Expect(HostedLobby lobby, ulong node, TimeSpan time)
     {

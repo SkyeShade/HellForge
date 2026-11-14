@@ -43,6 +43,15 @@ public sealed class AccountImportSettings
     readonly Dictionary<string, (bool Include, ImportRule Rule)> choices = Categories.ToDictionary(
         category => category.Id, category => (category.IncludedByDefault, category.Rules[0]), StringComparer.Ordinal);
 
+    public AccountImportSettings() { }
+
+    // A live-like profile takes every category by default, the ship and the tutorial progress too.
+    public AccountImportSettings(string? template)
+    {
+        if (template != ProfileStore.LiveLikeTemplate) return;
+        foreach (var category in Categories) choices[category.Id] = (true, category.Rules[0]);
+    }
+
     // Later syncs apply with these choices without asking.
     public bool AutoApply { get; set; }
 
@@ -61,11 +70,11 @@ public sealed class AccountImportSettings
 
     public static string PathIn(string profileFolder) => Path.Combine(profileFolder, FileName);
 
-    // A missing file gives the defaults; a category the file leaves out, or names a rule it does not offer, keeps its default.
-    // A category without a checkbox that an older file left out loads as None.
-    public static AccountImportSettings Load(string path)
+    // A missing file gives the template's defaults; a category the file leaves out, or names a rule it does not offer, keeps
+    // its default. A category without a checkbox that an older file left out loads as None.
+    public static AccountImportSettings Load(string path, string? template = null)
     {
-        var settings = new AccountImportSettings();
+        var settings = new AccountImportSettings(template);
         if (!File.Exists(path)) return settings;
         using var document = JsonDocument.Parse(File.ReadAllText(path));
         var root = document.RootElement;

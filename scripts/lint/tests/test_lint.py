@@ -284,6 +284,33 @@ class Baseline(unittest.TestCase):
             repo.close()
 
 
+def comment(count: int, indent: str = '') -> str:
+    return '\n'.join(f'{indent}// note {i}' for i in range(count))
+
+
+class Comments(unittest.TestCase):
+    def test_comment_size(self):
+        code = '\n'.join([
+            comment(10), 'int at_limit;', '',
+            '// expect: R16', comment(10), 'int over;', '',
+            '// lint-ok: R16 the protocol table below', comment(10), 'int allowed;', '',
+            'void f(void)', '{', '    int x;', comment(11, '    '), '    x++;', '}', ''])
+        repo = Repository({'src/native/notes.c': code})
+        try:
+            result = repo.scan()
+            found = {(v['file'], v['line'], v['rule']) for v in result['violations']}
+            inside = code.split('\n').index('    // note 0') + 1
+            self.assertEqual(found, repo.expected() | {('notes.c', inside, 'R16')})
+            self.assertEqual(sorted((v['value'], v['function']) for v in result['violations']), [(11, ''), (11, 'f')])
+            self.assertEqual([v['rule'] for v in result['suppressed']], ['R16'])
+            code, out = repo.run('check')
+            self.assertEqual(code, 0)                               # a warning rule
+            self.assertIn('WARNING R16 comment-size', out)
+            self.assertEqual(repo.run('check', '--warnings-as-errors')[0], 1)
+        finally:
+            repo.close()
+
+
 class CommandLine(unittest.TestCase):
     def test_errors(self):
         repo = Repository({'src/a/a.c': 'void f(void) { if (a) { }\n'})

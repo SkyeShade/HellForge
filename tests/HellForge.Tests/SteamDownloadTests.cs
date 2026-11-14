@@ -322,24 +322,32 @@ static class SteamDownloadTests
             scrubber.Forget();
             check(scrubber.Clean("hunter2-correct-horse") == "hunter2-correct-horse", "The scrubber kept its secrets.");
             check(!SteamKit2.DebugLog.Enabled, "SteamKit2's debug log is on.");
-            // the sign-in code itself: no line that shows, logs, writes or throws text names a password or a token, the
-            // session is never persistent, nothing is saved, and Steam Guard data is never read back
+            // the sign-in code itself: no line that shows, logs, writes or throws text names a password or a token, setup's
+            // session is never persistent and keeps nothing, and Steam Guard data is never read back; the asset kit's saved
+            // sign-in (SteamLogins) is the only place a token is kept, and its code is held to the same lines
             string[] sources = ["HellForge.SteamDownload/SignIn.cs", "HellForge.SteamDownload/SteamDepotSession.cs", "HellForge.SteamDownload/SteamCmd.cs",
                 "HellForge.Cli/SteamDownloadCommand.cs", "HellForge.Launcher/SteamSignInFlow.cs"];
+            string[] keeping = ["HellForge.SteamDownload/SteamLogins.cs", "HellForge.SteamDownload/AssetSharing.cs", "HellForge.Cli/AssetCommands.cs",
+                "HellForge.Launcher/ModsPage.SteamSignIn.cs", "HellForge.Launcher/ModsPage.Assets.cs", "HellForge.Launcher/ModsPage.Sharing.cs"];
             var sink = new Regex(@"\b(Status|WriteLine|Write|Append|Exception|Log|Trace|Debug|Print|Show\w*)\s*\(|\.Text\s*=(?!\s*""""\s*;)|\$""");
             var secret = new Regex(@"\b\w*(Password|password|RefreshToken|refreshToken|AccessToken|accessToken|NewGuardData|GuardData)\b");
-            foreach (var relative in sources)
+            foreach (var relative in sources.Concat(keeping))
             {
                 var path = Source(relative);
                 check(File.Exists(path), "Missing source " + relative);
                 var text = File.ReadAllText(path);
                 foreach (var line in text.Split('\n').Select(l => Regex.Replace(l, "\"(?:[^\"\\\\]|\\\\.)*\"", "\"\"")))
                     check(!(sink.IsMatch(line) && secret.IsMatch(line)), $"{relative}: a secret may reach the screen or a log: {line.Trim()}");
-                check(!Regex.IsMatch(text, @"IsPersistentSession\s*=\s*true|ShouldRememberPassword\s*=\s*true|GuardData|SaveToFile|File\.Write|File\.Append|Registry"),
-                    relative + " keeps something of the sign-in.");
+                if (sources.Contains(relative))
+                    check(!Regex.IsMatch(text, @"IsPersistentSession\s*=\s*true|ShouldRememberPassword\s*=\s*true|GuardData|SaveToFile|File\.Write|File\.Append|Registry"),
+                        relative + " keeps something of the sign-in.");
             }
             var session = File.ReadAllText(Source("HellForge.SteamDownload/SteamDepotSession.cs"));
-            check(session.Contains("IsPersistentSession = false") && session.Contains("ShouldRememberPassword = false"), "The session is not marked non-persistent.");
+            check(session.Contains("IsPersistentSession = persistent") && session.Contains("persistent: saved != null") && session.Contains("ShouldRememberPassword = false"),
+                "The session is persistent only when a sign-in is to be kept.");
+            // setup's download never passes a store, so it keeps nothing
+            foreach (var setup in new[] { "HellForge.Cli/SteamDownloadCommand.cs", "HellForge.Launcher/SteamSignInFlow.cs" })
+                check(!File.ReadAllText(Source(setup)).Contains("SteamLogins"), setup + " keeps a sign-in.");
             // no password is ever typed into HellForge: no password sign-in, no password box, no hidden prompt
             var everything = string.Join("\n", new[] { "HellForge.SteamDownload", "HellForge.Cli", "HellForge.Launcher" }
                 .SelectMany(project => Directory.EnumerateFiles(Source(project), "*.*", SearchOption.AllDirectories))
@@ -433,6 +441,106 @@ static class SteamDownloadTests
             steamCmd.Remove();
             check(SteamCmd.Unfinished(5, []).Contains("Nothing of the sign-in was kept") && SteamCmd.Unfinished(5, []).Contains("type your password") &&
                 SteamCmd.Unfinished(5, []).Contains("Steam app"), "A failed sign-in's words: " + SteamCmd.Unfinished(5, []));
+        });
+
+        test("On Linux SteamCMD runs in a terminal window: found on PATH, its exit code read from a file, a closed window noticed", () =>
+        {
+            check(DownloadChoices.Offered(reachesSteam: true, steamCmd: false).SequenceEqual([DownloadChoice.QrCode, DownloadChoice.SteamClient]) &&
+                DownloadChoices.Offered(reachesSteam: false, steamCmd: false).SequenceEqual([DownloadChoice.SteamClient]),
+                "Without a terminal window, SteamCMD is still offered, or another way went with it.");
+            var fixture = new Fixture(root, "steamcmd-terminal");
+            var first = LinuxTerminal.Known[0].Name;
+            var bin = Path.Combine(fixture.Home, "bin");
+            // Linux paths as text, so the search is checked on every system.
+            var path = "relative:/home/player/none:/home/player/bin/";
+            check(LinuxTerminal.Find(path, _ => false) == null && LinuxTerminal.Find(null, _ => true) == null &&
+                LinuxTerminal.Find("relative", _ => true) == null, "A terminal was found where there is none.");
+            var found = LinuxTerminal.Find(path, file => file == "/home/player/bin/" + first);
+            check(found != null && found.Program == "/home/player/bin/" + first && found.Before.SequenceEqual(LinuxTerminal.Known[0].Before),
+                "The terminal on PATH was not found with its own arguments.");
+            var later = LinuxTerminal.Known[^1];
+            check(LinuxTerminal.Find(path, file => file == "/home/player/none/" + later.Name) is { } other &&
+                other.Program == "/home/player/none/" + later.Name && other.Before.SequenceEqual(later.Before),
+                "A terminal later in the list was not found when it is the only one.");
+            check(LinuxTerminal.Known.Select(known => known.Name).Distinct().Count() == LinuxTerminal.Known.Count &&
+                LinuxTerminal.Known.Any(known => known.Name == "konsole"), "The known terminals repeat, or leave out KDE's.");
+            if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: runs bash stand-ins for the terminal and SteamCMD)"); return; }
+
+            // A folder with a space and an apostrophe: the script must carry such a path whole.
+            var steamCmd = new SteamCmd(Path.Combine(fixture.Home, "tools of the player's", "steamcmd"));
+            Directory.CreateDirectory(steamCmd.Folder);
+            var seen = Path.Combine(fixture.Home, "seen.txt");
+            void Program(string body) => File.WriteAllText(steamCmd.Program, "#!/bin/bash\n" + body + "\n");
+            string Terminal(string name, string body)
+            {
+                var file = Path.Combine(Directory.CreateDirectory(bin).FullName, name);
+                File.WriteAllText(file, "#!/bin/bash\n[ \"$1\" = -e ] && shift\n" + body + "\n");
+                File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                return file;
+            }
+            int Run(string terminal, TimeSpan? closedAfter = null, TimeSpan? startWithin = null)
+            {
+                using var process = steamCmd.StartInTerminal(["+login", "some_one", "+quit"], new LinuxTerminal(terminal, ["-e"]));
+                try { return steamCmd.WaitInTerminalAsync(process, CancellationToken.None, closedAfter, startWithin).GetAwaiter().GetResult(); }
+                finally { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            }
+            var staying = Terminal("staying", "\"$@\" </dev/null");
+            Program("printf '%s|%s|%s\\n' \"$HOME\" \"$PWD\" \"$*\" > '" + seen + "'\nexit 0");
+            File.SetUnixFileMode(steamCmd.Program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            check(Run(staying) == 0, "SteamCMD's exit code 0 was not read.");
+            check(File.ReadAllText(seen).Trim() == Path.Combine(steamCmd.Folder, "home") + "|" + steamCmd.Folder + "|+login some_one +quit",
+                "SteamCMD did not get its own HOME, its folder or its arguments: " + File.ReadAllText(seen));
+            Program("exit 7");
+            check(Run(staying) == 7, "SteamCMD's exit code was not passed on.");
+            // A terminal that hands the window to another process and ends at once.
+            // It is waited for as long as the script runs, however short the wait for a closed window is.
+            Program("sleep 3\nexit 3");
+            check(Run(Terminal("handing-on", "\"$@\" </dev/null >/dev/null 2>&1 &"), TimeSpan.FromSeconds(3)) == 3,
+                "A terminal that ends at once hid SteamCMD's exit code.");
+            // The window closed before SteamCMD ended: nothing ran, so there is no exit code to wait for.
+            check(Run(Terminal("closed", "exit 0"), TimeSpan.FromSeconds(3)) == -1, "A closed window was waited for.");
+            // A terminal that stays but never runs the script is given up after the time allowed for starting.
+            check(Run(Terminal("idle", "sleep 60"), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)) == -1,
+                "A terminal that never ran SteamCMD was waited for.");
+            // One process for all of a terminal's windows: it lives on after the window with SteamCMD is closed.
+            Program("kill -9 $PPID");
+            check(Run(Terminal("one-process", "\"$@\" </dev/null &\nsleep 60"), TimeSpan.FromSeconds(3)) == -1,
+                "A closed window was waited for because its terminal's process lived on.");
+            Program("sleep 30");
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using var stopped = steamCmd.StartInTerminal(["+quit"], new LinuxTerminal(staying, ["-e"]));
+            try
+            {
+                steamCmd.WaitInTerminalAsync(stopped, cancel.Token).GetAwaiter().GetResult();
+                check(false, "A cancelled wait returned.");
+            }
+            catch (OperationCanceledException) { }
+            check(stopped.WaitForExit(5000), "Cancelling did not end the terminal's process.");
+            // Cancelled with the terminal's own process already gone: the script and what it runs are ended too.
+            var marker = Path.Combine(fixture.Home, "outlived.txt");
+            Program("sleep 3\ntouch '" + marker + "'");
+            using var cancelHandedOn = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using var handedOn = steamCmd.StartInTerminal(["+quit"], new LinuxTerminal(Path.Combine(bin, "handing-on"), ["-e"]));
+            try { steamCmd.WaitInTerminalAsync(handedOn, cancelHandedOn.Token).GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { }
+            Thread.Sleep(3500);
+            check(!File.Exists(marker), "A cancelled SteamCMD went on running behind a terminal that had ended.");
+        });
+
+        test("The Steam app's card says when the drive with Steam cannot take the download", () =>
+        {
+            var drive = new DiskSpaceInfo("/home", 10_000_000_000);
+            check(SteamDepotDownload.SpaceNote(drive, 5_000_000_000, otherWays: true) == null &&
+                SteamDepotDownload.SpaceNote(new("/home", null), 50_000_000_000, otherWays: true) == null &&
+                SteamDepotDownload.SpaceNote(drive, 0, otherWays: true) == null, "A drive with room, or one that cannot be read, was called too small.");
+            var note = SteamDepotDownload.SpaceNote(drive, 23_900_000_000, otherWays: true);
+            check(note != null && note.Contains("/home", StringComparison.Ordinal) && note.Contains("10.0 GB free", StringComparison.Ordinal) &&
+                note.Contains("23.9 GB", StringComparison.Ordinal) && note.Contains("Choose another way", StringComparison.Ordinal),
+                "A full Steam drive was not named with what it has and needs: " + note);
+            check(SteamDepotDownload.SpaceNote(drive, 23_900_000_000, otherWays: false)?.Contains("Choose another way", StringComparison.Ordinal) == false,
+                "Another way was offered where there is none.");
+            // The margin counts: free space equal to the download is not enough.
+            check(SteamDepotDownload.SpaceNote(drive, 10_000_000_000, otherWays: false) != null, "A drive with no margin left counted as roomy.");
         });
 
         test("SteamCMD is started only when Valve signed it: Valve and Valve Corp. are Valve's, nothing else is", () =>

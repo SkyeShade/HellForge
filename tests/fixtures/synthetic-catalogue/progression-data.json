@@ -1,0 +1,149 @@
+{
+ "scope": "A synthetic game catalogue for checks that need one (Test-BackendAot.ps1): invented entries in the shapes GameCatalog assembles. Not the game's data.",
+ "build": "synthetic",
+ "levelSpec": [
+  {
+   "level": 1,
+   "requiredExperience": 1
+  },
+  {
+   "level": 2,
+   "requiredExperience": 100
+  },
+  {
+   "level": 3,
+   "requiredExperience": 350
+  }
+ ],
+ "itemPackages": [
+  {
+   "itemMixId32": 1001,
+   "items": [
+    {
+     "mixId": 2001,
+     "amount": 1
+    }
+   ]
+  }
+ ],
+ "seasonPass": [
+  {
+   "id32": 1929468580,
+   "medalsTotalMixId": 1101,
+   "medalsConsumableMixId": 1102,
+   "medalsSpentMixId": 1103,
+   "totalCost": 2,
+   "pageRequirements": [
+    0
+   ],
+   "premiumTokenMixIds": [
+    1104
+   ]
+  }
+ ],
+ "seasonPassDetails": {
+  "1929468580": {
+   "id32": 1929468580,
+   "medalsTotalMixId": 1101,
+   "medalsConsumableMixId": 1102,
+   "medalsSpentMixId": 1103,
+   "totalCost": 2,
+   "layoutSize": {
+    "x": 5,
+    "y": 3
+   },
+   "layoutType": 1,
+   "seasonPassPages": [
+    {
+     "totalMedalsRequired": 0,
+     "seasonPassItems": [
+      {
+       "seasonPassItemId": 1,
+       "itemMixId": 2001,
+       "medalCost": 1,
+       "gridSize": {
+        "x": 1,
+        "y": 1
+       },
+       "gridPosition": {
+        "x": 0,
+        "y": 0
+       },
+       "listSortOrder": 0,
+       "isPremium": false,
+       "isRepeatable": false
+      },
+      {
+       "seasonPassItemId": 2,
+       "itemMixId": 2002,
+       "medalCost": 1,
+       "gridSize": {
+        "x": 1,
+        "y": 1
+       },
+       "gridPosition": {
+        "x": 1,
+        "y": 0
+       },
+       "listSortOrder": 1,
+       "isPremium": false,
+       "isRepeatable": false
+      }
+     ]
+    }
+   ],
+   "premiumTokenMixIds": [
+    1104
+   ]
+  }
+ },
+ "progressionPackages": [
+  {
+   "id32": 1201,
+   "type": 2,
+   "requiredItems": [
+    2001
+   ],
+   "levels": [
+    {
+     "level": 1,
+     "requirementType": 0,
+     "requirement": 1,
+     "rewards": [],
+     "cost": [],
+     "unlockableItems": []
+    }
+   ]
+  }
+ ],
+ "storeFront": [
+  {
+   "id32": 1301,
+   "layoutType": 0,
+   "layoutSize": {
+    "x": 1,
+    "y": 1
+   },
+   "sections": [
+    {
+     "id32": 1302,
+     "bannerId32": 0,
+     "items": [
+      {
+       "salesId": "00000000-0000-4000-8000-000000000001",
+       "mixId": 2002,
+       "position": {
+        "x": 0,
+        "y": 0
+       },
+       "size": {
+        "x": 1,
+        "y": 1
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

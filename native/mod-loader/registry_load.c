@@ -12,10 +12,12 @@ typedef struct WeaponLoad
     uint8_t* table;   /* the loadout table's copy (its header), */
     uint8_t* index;   /* its index */
     uint8_t* records; /* and its records */
-    uint32_t recordCount;
+    uint32_t recordCount, recordCapacity; /* its records, and the most it has room for */
     uint8_t* newList; /* the short ids' copy (its header) */
-    uint32_t listCount, lastShort, appended;
+    uint32_t listCount, lastShort, appended, listCapacity; /* listCapacity: the entries it has room for */
     int late;
+    int cardsCounted;                 /* cards below is filled */
+    uint32_t cards[REG_ARMORY_TYPES]; /* the armory cards of each type so far (ArmoryCards) */
 } WeaponLoad;
 
 /* A row of the game's entity data (the key its first 8 bytes): at once while the entity data loads; for a live change
@@ -27,14 +29,16 @@ static void RegisterRow(const WeaponLoad* L, uint8_t* row, const uint8_t* bytes,
     ApiWrite((uintptr_t)row, bytes, 8);
 }
 
-/* HellForge's copy of the loadout table: the same index, room for the new records (the vanilla record -> row array after
- * the records is only read by the armory builder, which HellForge replaces). Short ids: appended after the largest
- * vanilla one, in the entities' order (WeaponOrder), the same on every machine. 0 (noted) out of memory. */
+/* HellForge's copy of the loadout table: the same index, room for RegRoom() new records (the vanilla record -> row array
+ * after the records is only read by the armory builder, which HellForge replaces). Short ids: appended after the largest
+ * vanilla one, in the entities' order (WeaponOrder), the same on every machine, with room for RegRoom() more. 0 (noted)
+ * out of memory. */
 static int CopyLoadoutAndList(WeaponLoad* L, const uint8_t* loadout, const uint8_t* list)
 {
+    uint32_t room = RegRoom();
     size_t indexBytes = (size_t)SlotsOf(REG_LOADOUT) * 16;
     size_t copyBytes = 32 + indexBytes + (size_t)REG_LOADOUT_RECORDS * REG_LOADOUT_STRIDE;
-    size_t newBytes = copyBytes + (size_t)REG_MAX_WEAPONS * REG_LOADOUT_STRIDE;
+    size_t newBytes = copyBytes + (size_t)room * REG_LOADOUT_STRIDE;
     uint8_t* table = (uint8_t*)VirtualAlloc(NULL, newBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (table == NULL) { Note("registry: out of memory"); return 0; }
     memcpy(table, loadout - 32, copyBytes);
@@ -42,12 +46,14 @@ static int CopyLoadoutAndList(WeaponLoad* L, const uint8_t* loadout, const uint8
     L->index = table + 32;
     L->records = L->index + indexBytes;
     L->recordCount = REG_LOADOUT_RECORDS;
+    L->recordCapacity = REG_LOADOUT_RECORDS + room;
     uint32_t listBytes = 0;
     memcpy(&listBytes, list - 12, 4);
     L->listCount = listBytes / 8;
     L->lastShort = 0;
     if (L->listCount > 0) memcpy(&L->lastShort, list + 8 * (L->listCount - 1), 4);
-    L->newList = (uint8_t*)VirtualAlloc(NULL, 32 + (size_t)(L->listCount + REG_MAX_WEAPONS) * 8, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    L->listCapacity = L->listCount + room;
+    L->newList = (uint8_t*)VirtualAlloc(NULL, 32 + (size_t)L->listCapacity * 8, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (L->newList == NULL) { VirtualFree(table, 0, MEM_RELEASE); Note("registry: out of memory"); return 0; }
     memcpy(L->newList, list - 32, 32 + (size_t)L->listCount * 8);
     L->appended = 0;
@@ -82,9 +88,10 @@ static int ComponentsUnderstood(uint8_t* state, const Weapon* w, uint64_t baseEn
         uint8_t* t = StatePointer(state, REG_TABLES + 8 * c);
         if (t == NULL) continue; /* a component without data */
         uint32_t slots = SlotsOf(c);
-        if (slots == 0 || FindRow(t, slots, 16, baseEntity) == NULL || FindRow(t, slots, 16, w->entity) != NULL)
+        uint64_t donor = Donor(w, c, baseEntity);
+        if (slots == 0 || donor == 0 || FindRow(t, slots, 16, donor) == NULL || FindRow(t, slots, 16, w->entity) != NULL)
         {
-            ApiLog(w->mod, "%s: component %u of the base is not understood (slots %u); not registered", w->name, c, slots);
+            ApiLog(w->mod, "%s: component %u is not understood, or its source has no record of it (slots %u); not registered", w->name, c, slots);
             return 0;
         }
         /* The game compiles each table's slot count into its lookups: a full table that GrowForPending could not grow
@@ -108,7 +115,7 @@ static void ShareComponentRows(const WeaponLoad* L, const Weapon* w, uint64_t ba
         uint8_t* t = c == REG_LOADOUT ? NULL : StatePointer(L->state, REG_TABLES + 8 * c);
         if (t == NULL) continue;
         uint32_t slots = SlotsOf(c);
-        uint8_t* row = FindRow(t, slots, 16, baseEntity);
+        uint8_t* row = FindRow(t, slots, 16, Donor(w, c, baseEntity));
         uint8_t* slot = FreeRow(t, slots, 16, w->entity);
         uint8_t entry[16];
         memcpy(entry, &w->entity, 8);
@@ -133,7 +140,7 @@ static void PlainLoadoutRecord(WeaponLoad* L, const Weapon* w, uint64_t baseEnti
         memcpy(&id, L->records + (size_t)r * REG_LOADOUT_STRIDE, 4);
         taken |= id == w->id;
     }
-    if (own != NULL && !taken && L->recordCount < REG_LOADOUT_RECORDS + REG_MAX_WEAPONS)
+    if (own != NULL && !taken && L->recordCount < L->recordCapacity)
     {
         uint32_t baseLoadoutRecord, mine = L->recordCount++;
         memcpy(&baseLoadoutRecord, baseLoadout + 8, 4);
@@ -261,6 +268,35 @@ static void OwnProjectile(Weapon* w, uint8_t* record, uint8_t* customization)
         removed ? "; its default ammunition is removed" : "");
 }
 
+/* The beam or arc a weapon's own record names (+0 of BeamWeaponComponentData, component 270, or ArcWeaponComponentData, 265:
+ * the only place a type reaches a weapon). Only an installed type is written: beam_arc.c says why. */
+#define REG_BEAM_WEAPON 270u
+#define REG_BEAM_WEAPON_STRIDE 120u
+#define REG_ARC_WEAPON 265u
+#define REG_ARC_WEAPON_STRIDE 80u
+#define REG_BEAM_VANILLA 31u
+#define REG_ARC_VANILLA 17u
+
+typedef struct FiredKind { const char* what; uint32_t vanilla, component, stride; } FiredKind;
+static const FiredKind kFiredBeam = {"beam", REG_BEAM_VANILLA, REG_BEAM_WEAPON, REG_BEAM_WEAPON_STRIDE};
+static const FiredKind kFiredArc = {"arc", REG_ARC_VANILLA, REG_ARC_WEAPON, REG_ARC_WEAPON_STRIDE};
+
+static void OwnBeamArc(uint8_t* state, const Weapon* w, uint64_t baseEntity, const FiredKind* k, int usable, uint32_t type)
+{
+    if (type == 0) return;
+    uint32_t c = k->component;
+    const char* what = k->what;
+    uint8_t* table = StatePointer(state, REG_TABLES + 8 * c);
+    uint8_t* record = table != NULL && FindRow(table, SlotsOf(c), 16, baseEntity) != NULL ? OwnRecord(state, c, k->stride, baseEntity, w->entity) : NULL;
+    if (record == NULL) { ApiLog(w->mod, "%s: its base has no %s record; it keeps its base's weapon", w->name, what); return; }
+    uint32_t base;
+    memcpy(&base, record, 4);
+    if (base == 0 || base >= k->vanilla) { ApiLog(w->mod, "%s: its own %s record does not name a vanilla %s (%u); it keeps its base's", w->name, what, what, base); return; }
+    if (!usable) { ApiLog(w->mod, "%s keeps its base's %s %u: type %u was not added", w->name, what, base, type); return; }
+    memcpy(record, &type, 4);
+    ApiLog(w->mod, "%s: its %s is type %u (its base's is %u)", w->name, what, type, base);
+}
+
 /* Its own encyclopedia record when it has text of its own. */
 static void OwnTextRecord(uint8_t* state, const Weapon* w, uint64_t baseEntity)
 {
@@ -281,9 +317,10 @@ static void TakeModel(uint8_t* state, const Weapon* w, uint64_t baseEntity)
     {
         uint32_t c = model[k][0], stride = model[k][1], slots = SlotsOf(c);
         uint8_t* t = StatePointer(state, REG_TABLES + 8 * c);
-        if (t == NULL || slots == 0 || FindRow(t, slots, 16, baseEntity) == NULL) continue; /* the base has none */
+        uint64_t from = Donor(w, c, baseEntity);
+        if (t == NULL || slots == 0 || from == 0 || FindRow(t, slots, 16, from) == NULL) continue; /* the base has none */
         if (FindRow(t, slots, 16, w->modelFrom) == NULL) { missing++; continue; }
-        uint8_t* own = OwnRecord(state, c, stride, baseEntity, w->entity);
+        uint8_t* own = OwnRecord(state, c, stride, from, w->entity);
         t = StatePointer(state, REG_TABLES + 8 * c); /* now HellForge's copy */
         uint8_t* donorRow = FindRow(t, slots, 16, w->modelFrom);
         if (own == NULL || donorRow == NULL) { missing++; continue; }
@@ -316,7 +353,7 @@ static void OwnNamedRecords(uint8_t* state, const Weapon* w, uint64_t baseEntity
 {
     for (int k = 0; k < w->ownCount; k++)
     {
-        if (OwnRecord(state, w->own[k], w->ownStride[k], baseEntity, w->entity) != NULL) ApiLog(w->mod, "%s: its own record of component %u", w->name, w->own[k]);
+        if (OwnRecord(state, w->own[k], w->ownStride[k], Donor(w, w->own[k], baseEntity), w->entity) != NULL) ApiLog(w->mod, "%s: its own record of component %u", w->name, w->own[k]);
         else ApiLog(w->mod, "%s: could not give it its own record of component %u (does its base have one?); it shares the base's", w->name, w->own[k]);
     }
 }
@@ -331,7 +368,7 @@ static void OwnAllRecords(uint8_t* state, const Weapon* w, uint64_t baseEntity, 
         uint32_t c = components[k];
         if (c == REG_LOADOUT || StatePointer(state, REG_TABLES + 8 * c) == NULL) continue;
         uint32_t stride = ComponentStride(state, c);
-        if (stride != 0 && OwnRecord(state, c, stride, baseEntity, w->entity) != NULL) { own++; continue; }
+        if (stride != 0 && OwnRecord(state, c, stride, Donor(w, c, baseEntity), w->entity) != NULL) { own++; continue; }
         size_t at = strlen(sharedList);
         if (at + 8 < sizeof sharedList) snprintf(sharedList + at, sizeof sharedList - at, "%s%u", shared ? ", " : "", c);
         shared++;
@@ -345,25 +382,76 @@ static void OwnAllRecords(uint8_t* state, const Weapon* w, uint64_t baseEntity, 
 static void GiveOwnRecords(WeaponLoad* L, Weapon* w, uint64_t baseEntity, const uint16_t* components, uint64_t componentCount)
 {
     uint8_t* state = L->state;
-    if (w->plain) PlainLoadoutRecord(L, w, baseEntity);
-    if (!w->plain || w->unit != 0) OwnUnitRecord(state, w, baseEntity);
+    if (w->plain && Donor(w, REG_LOADOUT, baseEntity) != 0) PlainLoadoutRecord(L, w, Donor(w, REG_LOADOUT, baseEntity));
+    if (!w->plain || w->unit != 0) OwnUnitRecord(state, w, Donor(w, REG_UNIT, baseEntity));
     uint8_t* customization = OwnCustomization(state, w, baseEntity);
     uint8_t* fireRecord = OwnFireRecord(state, w, baseEntity);
     if (fireRecord != NULL && w->soundFrom != 0) TakeSounds(L, w, fireRecord);
     if (fireRecord != NULL && w->projectile != 0) OwnProjectile(w, fireRecord, customization);
-    if (w->text[0] != 0 || w->text[2] != 0 || w->text[3] != 0) OwnTextRecord(state, w, baseEntity);
-    if (w->modelFrom != 0) TakeModel(state, w, baseEntity);
-    if (w->behaviour != 0) OwnBehaviour(state, w, baseEntity);
+    OwnBeamArc(state, w, baseEntity, &kFiredBeam, BeamTypeUsable(w->beam), w->beam);
+    OwnBeamArc(state, w, baseEntity, &kFiredArc, ArcTypeUsable(w->arc), w->arc);
+    if (w->text[0] != 0 || w->text[2] != 0 || w->text[3] != 0) OwnTextRecord(state, w, Donor(w, REG_TEXT_COMPONENT, baseEntity));
+    if (w->modelFrom != 0 && !KeepsGroundModel(state, w, baseEntity)) TakeModel(state, w, baseEntity);
+    if (w->behaviour != 0) OwnBehaviour(state, w, Donor(w, REG_BEHAVIOUR, baseEntity));
     OwnNamedRecords(state, w, baseEntity);
     if (w->ownAll) OwnAllRecords(state, w, baseEntity, components, componentCount);
+}
+
+/* The armory's weapon picker holds 256 cards of a type (game.dll 0x18D43A0, guard 0x18D43B3 drops the rest, unsaid) and the
+ * primary, secondary and throwable lists (0x18D7360) are sorted by weapon class first, so what drops is the last classes,
+ * vanilla weapons among them: research\unlimited-weapons\walls section 1. A card is an armory entry whose catalogue item
+ * the player holds (0x18DD110 takes record states 2 and 4; seen in game, a profile with 12 primaries draws 12), but every
+ * vanilla record of the type is counted, held or not, so the room is the same for every player and on every machine: who
+ * buys a warbond must not push a card off. Types 1 and 3 also claim a customization slot each (0x1034BD0: the types at
+ * 0x2152BF8), 512 of them, which two full lists cannot pass. */
+#define REG_ARMORY_CARDS 256u
+#define REG_CUSTOMIZATION_SLOTS 512u
+_Static_assert(REG_ARMORY_CARDS * 2 <= REG_CUSTOMIZATION_SLOTS, "two full lists fit the customization slots");
+
+/* An entity copy's record, which has no catalogue item and so no card. */
+static int PlainRecord(uint32_t id)
+{
+    for (int i = 0; i < g_weaponCount; i++) if (g_weapons[i].plain && g_weapons[i].id == id) return 1;
+    return 0;
+}
+
+/* The records of each type so far that are cards. */
+static void ArmoryCards(WeaponLoad* L)
+{
+    memset(L->cards, 0, sizeof L->cards);
+    for (uint32_t r = 0; r < L->recordCount; r++)
+    {
+        uint32_t id, type;
+        memcpy(&id, L->records + (size_t)r * REG_LOADOUT_STRIDE, 4);
+        memcpy(&type, L->records + (size_t)r * REG_LOADOUT_STRIDE + 4, 4);
+        if (type < REG_ARMORY_TYPES && !PlainRecord(id)) L->cards[type]++;
+    }
+    L->cardsCounted = 1;
+}
+
+/* The weapon's type of list by its base's record, when that list has a card left; else 0, and it is logged by name. Lists
+ * of other types (stratagem weapons, backpacks) have no such limit. */
+static int ArmoryRoom(WeaponLoad* L, const Weapon* w, int baseRecord)
+{
+    static const char* const kLists[REG_ARMORY_TYPES] = {[1] = "primary", [3] = "secondary", [4] = "throwable"};
+    uint32_t type;
+    memcpy(&type, L->records + (size_t)baseRecord * REG_LOADOUT_STRIDE + 4, 4);
+    if (w->plain || type >= REG_ARMORY_TYPES || kLists[type] == NULL) return 1;
+    if (!L->cardsCounted) ArmoryCards(L);
+    if (L->cards[type] < REG_ARMORY_CARDS) return 1;
+    ApiLog(w->mod, "%s: the armory's %s list is full (%u cards, vanilla weapons counted, and a card past them would push one out); not registered", w->name, kLists[type], REG_ARMORY_CARDS);
+    Note("registry: %s of %s refused: the armory's %s list is full", w->name, w->mod->id, kLists[type]);
+    return 0;
 }
 
 /* Its own loadout record: the base's with the new id. */
 static uint32_t OwnLoadoutRecord(WeaponLoad* L, const Weapon* w, int baseRecord, uint8_t* loadoutRow)
 {
-    uint32_t record = L->recordCount++;
+    uint32_t record = L->recordCount++, type;
     memcpy(L->records + (size_t)record * REG_LOADOUT_STRIDE, L->records + (size_t)baseRecord * REG_LOADOUT_STRIDE, REG_LOADOUT_STRIDE);
     memcpy(L->records + (size_t)record * REG_LOADOUT_STRIDE, &w->id, 4);
+    memcpy(&type, L->records + (size_t)record * REG_LOADOUT_STRIDE + 4, 4);
+    if (L->cardsCounted && type < REG_ARMORY_TYPES) L->cards[type]++;
     memcpy(loadoutRow + 8, &record, 4);
     memset(loadoutRow + 12, 0, 4);
     MemoryBarrier(); /* the key last: a live change's row is found whole */
@@ -390,6 +478,21 @@ static uint32_t AppendEntity(WeaponLoad* L, Weapon* w, const uint8_t* baseRow, u
     return shortId;
 }
 
+/* The rows a weapon or entity takes: a free row in the game's entity map, one in the loadout index (a weapon), and room in
+ * HellForge's copies of the loadout table and short-id list (RegRoom: as many as the map's rows, so a check that never
+ * fails). A live change checks the map and the tables before it is made (live_registry.c LiveTablesCheck). 1 when there
+ * are, else 0 (logged). */
+static int RegisterRoom(const WeaponLoad* L, const Weapon* w, const uint8_t* mapRow, const uint8_t* loadoutRow)
+{
+    const char* full = mapRow == NULL ? "the game's entity map (4096 rows)" : !w->plain && loadoutRow == NULL ? "the loadout table's index"
+        : (!w->plain && L->recordCount >= L->recordCapacity) || L->listCount + L->appended >= L->listCapacity
+        ? "HellForge's copies of the loadout table and short-id list" : NULL;
+    if (full != NULL) ApiLog(w->mod, "%s: no free row in %s; not registered", w->name, full);
+    return full == NULL;
+}
+
+static uint64_t Components(const WeaponLoad* L, Weapon* w, const uint8_t* baseRow, uint16_t** list, uint8_t** netRow); /* entity_parts.c */
+
 /* Adds one pending weapon or entity: a map row of its own over its base's components, sharing their records but the
  * ones it owns. 1 when it was registered (w->state 1), else 0 (-1, logged). */
 static int RegisterWeapon(WeaponLoad* L, Weapon* w)
@@ -397,28 +500,24 @@ static int RegisterWeapon(WeaponLoad* L, Weapon* w)
     w->state = -1;
     /* The base: its loadout record and the entity that owns it; an entity of add_entity names its base itself. */
     int baseRecord = WeaponBaseRecord(L, w);
-    if (baseRecord < 0) return 0;
+    if (baseRecord < 0 || !ArmoryRoom(L, w, baseRecord)) return 0;
     uint64_t baseEntity = w->plain ? w->baseEntity : LoadoutOwner(L->index, (uint32_t)baseRecord);
     uint8_t* baseRow = baseEntity ? FindRow(L->map, REG_MAP_SLOTS, 32, baseEntity) : NULL;
-    if (baseRow == NULL) { ApiLog(w->mod, "%s: the base's entity was not found; not registered", w->name); return 0; }
+    if (baseRow == NULL && (baseEntity != 0 || w->partCount == 0)) { ApiLog(w->mod, "%s: the base's entity was not found; not registered", w->name); return 0; }
     if (FindRow(L->map, REG_MAP_SLOTS, 32, w->entity) != NULL) { ApiLog(w->mod, "%s: entity %016llx exists already; not registered", w->name, (unsigned long long)w->entity); return 0; }
     uint16_t* components;
-    uint64_t componentCount;
-    memcpy(&components, baseRow + 8, 8);
-    memcpy(&componentCount, baseRow + 16, 8);
-    w->copies = baseEntity;
+    uint8_t* netRow = baseRow; /* the game type whose network type it takes */
+    uint64_t componentCount = Components(L, w, baseRow, &components, &netRow);
+    if (componentCount == 0) return 0;
+    memcpy(&w->copies, netRow, 8);
     if (!ComponentsUnderstood(L->state, w, baseEntity, components, componentCount)) return 0;
     uint8_t* mapRow = FreeRow(L->map, REG_MAP_SLOTS, 32, w->entity);
     uint8_t* loadoutRow = !w->plain ? FreeRow(L->index, SlotsOf(REG_LOADOUT), 16, w->entity) : NULL;
-    if (mapRow == NULL || (!w->plain && loadoutRow == NULL) || L->recordCount >= REG_LOADOUT_RECORDS + REG_MAX_WEAPONS)
-    {
-        ApiLog(w->mod, "%s: no free row; not registered", w->name);
-        return 0;
-    }
+    if (!RegisterRoom(L, w, mapRow, loadoutRow)) return 0;
     ShareComponentRows(L, w, baseEntity, components, componentCount);
     GiveOwnRecords(L, w, baseEntity, components, componentCount);
     uint32_t record = w->plain ? 0 : OwnLoadoutRecord(L, w, baseRecord, loadoutRow);
-    uint32_t shortId = AppendEntity(L, w, baseRow, mapRow, components, componentCount);
+    uint32_t shortId = AppendEntity(L, w, netRow, mapRow, components, componentCount);
     w->state = 1;
     if (w->plain)
         ApiLog(w->mod, "%s registered: entity %016llx, short id %u, %llu components", w->name, (unsigned long long)w->entity,
@@ -440,7 +539,9 @@ static void PublishWeaponLoad(const WeaponLoad* L, int first)
     g_regListCount = L->listCount + L->appended;
     if (!first) return;
     g_loadoutTable = L->index;
+    g_loadoutCapacity = L->recordCapacity;
     g_regList = L->newList;
+    g_regListCapacity = L->listCapacity;
     SetStatePointer(L->state, REG_TABLES + 8 * REG_LOADOUT, L->index);
     SetStatePointer(L->state, REG_LIST, L->newList + 32);
 }
@@ -496,6 +597,7 @@ static void PendingRows(uint8_t* map, uint8_t* loadout, uint32_t records, uint32
         uint64_t base = w->state == state && (skip == NULL || !skip(i)) ? PendingBase(loadout, records, w, state) : 0;
         uint8_t* baseRow = base != 0 ? FindRow(map, REG_MAP_SLOTS, 32, base) : NULL;
         if (baseRow != NULL) BaseRows(baseRow, w->plain, rows);
+        for (int k = 0; w->state == state && k < w->partCount; k++) rows[w->parts[k].component]++; /* a part: a row at most */
     }
 }
 
@@ -506,14 +608,17 @@ static void GrowForPending(uint8_t* state, uint8_t* map, uint8_t* loadout, uint3
     static uint32_t rows[GROW_COMPONENTS];
     memset(rows, 0, sizeof rows);
     PendingRows(map, loadout, records, rows, 0, NULL);
-    for (size_t i = 0; i < sizeof kGrowthTables / sizeof kGrowthTables[0]; i++)
+    static GrowthWish wishes[GROWTH_TABLES];
+    int count = 0;
+    for (size_t i = 0; i < GROWTH_TABLES; i++)
     {
         uint32_t c = kGrowthTables[i].component, slots = SlotsOf(c);
         uint8_t* table = StatePointer(state, REG_TABLES + 8 * c);
         if (table == NULL || rows[c] == 0) continue;
         uint32_t used = UsedRows(table, slots);
-        if (GrowthWanted(used, rows[c], slots)) GrowTable(state, c, used + rows[c]);
+        if (GrowthWanted(used, rows[c], slots)) wishes[count++] = (GrowthWish){c, used + rows[c]};
     }
+    if (count != 0) GrowTables(state, wishes, count);
 }
 
 /* Adds every pending weapon to the loaded entity data. Runs on the game's thread right after the entity loader. */
@@ -533,13 +638,14 @@ static void RegisterWeapons(void)
     loadout = LoadoutTable(state, &vanillaRecords); /* table 29 grown: the new one */
     WeaponLoad L = {state, map};
     if (!CopyLoadoutAndList(&L, loadout, list)) return;
-    int order[REG_MAX_WEAPONS];
-    WeaponOrder(order);
-    for (int k = 0; k < g_weaponCount; k++)
+    int* order = WeaponOrder();
+    for (int k = 0; order != NULL && k < g_weaponCount; k++)
         if (g_weapons[order[k]].state == 0) RegisterWeapon(&L, &g_weapons[order[k]]);
+    free(order);
     if (L.appended == 0) { VirtualFree(L.table, 0, MEM_RELEASE); VirtualFree(L.newList, 0, MEM_RELEASE); return; }
     PublishWeaponLoad(&L, 1);
     Note("registry: %u weapon(s) added (loadout records %u, entities %u)", L.appended, L.recordCount, L.listCount + L.appended);
+    WriteRegisteredItems(); /* what was refused here is not for the backend to serve */
 }
 
 typedef void* (*EngineAllocateFn)(void* allocator, size_t size, uint32_t align);
@@ -729,6 +835,7 @@ static int AddNetworkType(const NetworkConfig* n, const NetworkTypeArrays* to, W
 {
     int found = NetworkEntryOf(n->entries, n->count, w->baseShortId);
     if (found < 0 || w->shortId <= lastKey) { ApiLog(w->mod, "%s: no network type to copy (base short id %u); joining games with it may fail", w->name, w->baseShortId); return 0; }
+    if (!NetworkTypeRoom()) { ApiLog(w->mod, "%s: no network type (out of memory); joining games with it may fail", w->name); return 0; }
     if (CopyNetworkEntry(to->entries + (size_t)index * 80, n->entries + (size_t)found * 80))
         ApiLog(w->mod, "%s: its network type keeps its base's field lists (no memory for its own)", w->name);
     memcpy(to->entries + (size_t)index * 80, &w->shortId, 4);
@@ -739,6 +846,31 @@ static int AddNetworkType(const NetworkConfig* n, const NetworkTypeArrays* to, W
     return 1;
 }
 
+/* The entries the configuration's new arrays are made with: every type a 12-bit index names (the ones a live change's
+ * types take too, live_registry.c); never fewer than the ones there are and the `wanted` added now. */
+static uint32_t NetworkCapacity(uint32_t count, uint32_t wanted)
+{
+    uint32_t capacity = 1u << NET_WIDE_BITS;
+    return capacity < count + wanted ? count + wanted : capacity;
+}
+
+/* Each registered weapon's type, in short id order (WeaponOrder), at count and on, while `wanted` last: how many were
+ * added. */
+static uint32_t AddNetworkTypesInOrder(const NetworkConfig* n, const NetworkTypeArrays* to, uint32_t wanted, uint32_t lastKey)
+{
+    uint32_t added = 0;
+    int* order = WeaponOrder();
+    for (int k = 0; order != NULL && k < g_weaponCount; k++)
+    {
+        Weapon* w = &g_weapons[order[k]];
+        if (w->state != 1) continue;
+        if (added == wanted) ApiLog(w->mod, "%s: no network type (the type index is full); joining games with it may fail", w->name);
+        else if (AddNetworkType(n, to, w, n->count + added, lastKey)) { added++; lastKey = w->shortId; }
+    }
+    free(order);
+    return added;
+}
+
 static void AddNetworkTypes(const NetworkConfig* n)
 {
     uint32_t count = n->count, wanted = 0;
@@ -746,12 +878,12 @@ static void AddNetworkTypes(const NetworkConfig* n)
     int widen;
     wanted = NetworkTypesToAdd(count, wanted, &widen);
     if (wanted == 0) return;
-    uint32_t added = 0, lastKey;
+    uint32_t lastKey;
     memcpy(&lastKey, n->entries + (size_t)(count - 1) * 80, 4);
-    /* room for REG_MAX_WEAPONS more, which a live change's types take (live_registry.c), as far as the width allows */
-    uint8_t* newEntries = EngineAllocate(n->config + 0x70, (size_t)(count + REG_MAX_WEAPONS) * 80);
-    uint8_t* newOwn = EngineAllocate(n->config + 0x28, (size_t)(count + REG_MAX_WEAPONS) * 4);
-    uint8_t* newValues = EngineAllocate(n->config + 0x40, (size_t)(count + REG_MAX_WEAPONS));
+    uint32_t capacity = NetworkCapacity(count, wanted);
+    uint8_t* newEntries = EngineAllocate(n->config + 0x70, (size_t)capacity * 80);
+    uint8_t* newOwn = EngineAllocate(n->config + 0x28, (size_t)capacity * 4);
+    uint8_t* newValues = EngineAllocate(n->config + 0x40, (size_t)capacity);
     if (newEntries == NULL || newOwn == NULL || newValues == NULL)
     {
         Note("registry: the engine's allocator is not the reviewed one; the weapons have no network types (equipping them crashes)");
@@ -761,16 +893,8 @@ static void AddNetworkTypes(const NetworkConfig* n)
     memcpy(newEntries, n->entries, (size_t)count * 80);
     memcpy(newOwn, n->own, (size_t)count * 4);
     memcpy(newValues, n->values, count);
-    int order[REG_MAX_WEAPONS];
-    WeaponOrder(order);
     NetworkTypeArrays to = {newEntries, newOwn, newValues};
-    for (int k = 0; k < g_weaponCount; k++)
-    {
-        Weapon* w = &g_weapons[order[k]];
-        if (w->state != 1) continue;
-        if (added == wanted) ApiLog(w->mod, "%s: no network type (the type index is full); joining games with it may fail", w->name);
-        else if (AddNetworkType(n, &to, w, count + added, lastKey)) { added++; lastKey = w->shortId; }
-    }
+    uint32_t added = AddNetworkTypesInOrder(n, &to, wanted, lastKey);
     if (added == 0) return;
     g_networkVanillaTypes = count;
     uint32_t total = count + added;
@@ -781,6 +905,7 @@ static void AddNetworkTypes(const NetworkConfig* n)
     g_netEntries = newEntries;
     g_netOwn = newOwn;
     g_netValues = newValues;
+    g_netCapacity = capacity;
     ApiWrite(n->config + 0x28, pair, 8);
     ApiWrite(n->config + 0x40, pair, 8);
     ApiWrite(n->config + 0x70, pair, 8);
@@ -801,12 +926,14 @@ static void RegisterNetworkTypes(void)
     InterlockedExchange(&g_networkTypesAdded, 2);
 }
 
-#define REG_ARMORY_BYTES ((size_t)(REG_ARMORY_FIRST + REG_LOADOUT_RECORDS + REG_MAX_WEAPONS + 8) * 32)
+/* HellForge's armory object: the count fields, then an entry for every loadout record its copy of the loadout table has
+ * room for (CopyLoadoutAndList), and a margin. */
+static size_t ArmoryBytes(void) { return (size_t)(REG_ARMORY_FIRST + REG_LOADOUT_RECORDS + RegRoom() + 8) * 32; }
 
 /* The armory object's entries and per-type starts and counts, from the loadout table's records. */
 static void ArmoryFill(uint8_t* armory, uint8_t* table, uint32_t count)
 {
-    memset(armory, 0, REG_ARMORY_BYTES);
+    memset(armory, 0, ArmoryBytes());
     uint8_t* records = table + (size_t)SlotsOf(REG_LOADOUT) * 16;
     uint32_t counts[REG_ARMORY_TYPES] = {0}, starts[REG_ARMORY_TYPES], placed[REG_ARMORY_TYPES] = {0};
     for (uint32_t r = 0; r < count; r++)
@@ -840,7 +967,7 @@ static void BuildArmory(void)
     uint8_t* state = EntityState();
     uint32_t count;
     uint8_t* table = LoadoutTable(state, &count);
-    if (g_armory == NULL) g_armory = (uint8_t*)VirtualAlloc(NULL, REG_ARMORY_BYTES, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (g_armory == NULL) g_armory = (uint8_t*)VirtualAlloc(NULL, ArmoryBytes(), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (g_armory == NULL || table == NULL) return;
     ArmoryFill(g_armory, table, count);
     ApiWrite(g_game + REG_ARMORY_GLOBAL, &g_armory, 8);
@@ -976,10 +1103,13 @@ static void RevertWeaponProjectiles(void)
  * 0xFC45C0). A unit missing from it is never registered for destruction (0x883200: "Could not find any destructible
  * index data"), which also sets up some of its havok actors; a sentry so left had no aim and a field around it that
  * blocked players, likely for that reason. */
-#define REG_MAX_UNIT_COPIES REG_MAX_WEAPONS /* one per registered weapon or entity at most: 64 left those past it without destruction */
 #define DESTR_MANAGER 0x3326550u
 #define DESTR_INDEX 0x2C60u
-static struct { uint64_t base, copy; const char* name; HfMod* mod; } g_unitCopies[REG_MAX_UNIT_COPIES];
+/* One per registered weapon or entity at most (a fixed 64 once left those past it without destruction): grown as they are
+ * remembered (stable_array.c: the watch loop reads them). */
+typedef struct UnitCopy { uint64_t base, copy; const char* name; HfMod* mod; } UnitCopy;
+static UnitCopy* g_unitCopies;
+static StableArray g_unitCopyStore = {NULL, sizeof(UnitCopy), REG_WEAPON_CEILING, 0};
 static int g_unitCopyCount;
 static uintptr_t g_destructibleTable; /* the table the copies are in, and how many */
 static int g_destructibleEntered;
@@ -988,11 +1118,10 @@ static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64
 {
     if (base == 0 || copy == 0 || base == copy) return;
     for (int i = 0; i < g_unitCopyCount; i++) if (g_unitCopies[i].copy == copy) return;
-    if (g_unitCopyCount == REG_MAX_UNIT_COPIES) { ApiLog(mod, "%s: too many unit copies to set up as their bases", name); return; }
-    g_unitCopies[g_unitCopyCount].base = base;
-    g_unitCopies[g_unitCopyCount].copy = copy;
-    g_unitCopies[g_unitCopyCount].name = name;
-    g_unitCopies[g_unitCopyCount].mod = mod;
+    if (!StableRoom(&g_unitCopyStore, (size_t)g_unitCopyCount + 1)) { ApiLog(mod, "%s: too many unit copies to set up as their bases", name); return; }
+    g_unitCopies = (UnitCopy*)g_unitCopyStore.base;
+    g_unitCopies[g_unitCopyCount] = (UnitCopy){base, copy, name, mod};
+    MemoryBarrier(); /* the entry is whole before the count shows it (UnitCopiesTick, on the watch loop) */
     g_unitCopyCount++;
 }
 
@@ -1101,3 +1230,5 @@ static void StartRegistry(void)
         StatsApplyComponents(EntityState());
     }
 }
+
+#include "entity_parts.c"

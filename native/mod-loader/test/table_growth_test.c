@@ -79,10 +79,18 @@ static void GrowthMagicFixture(void)
     assert(with > 0 && without > 0); /* some divisors need the 65-bit form */
     /* the slot rules */
     GrowthRules any = {100000, 1, 0, 0}, mask = {128, 1, 1, 0}, records = {100000, 5, 0, 1}, tight = {20, 1, 0, 0};
-    assert(GrowthSlots(193, &any) == 386 && GrowthSlots(40, &mask) == 128 && GrowthSlots(70, &mask) == 0);
+    assert(GrowthSlots(193, &any) == 386 && GrowthSlots(40, &mask) == 128 && GrowthSlots(70, &mask) == 128);
+    GrowthRules table5 = {1270, 10, 0, 1}, none = {7, 8, 0, 0};
+    uint32_t fallback = GrowthSlots(366 + 270, &table5); /* past its cap: as many as it allows, not its vanilla 540 */
+    assert(fallback > 1200 && fallback <= 1270 && fallback % 10 == 0 && Magic64(fallback, &magic, &shift) && GrowthSlots(5, &none) == 0);
     uint32_t s = GrowthSlots(97, &records);
     assert(s >= 194 && s % 5 == 0 && Magic64(s, &magic, &shift));
-    assert(GrowthSlots(11, &tight) == 0 && GrowthSlots(10, &tight) == 20);
+    assert(GrowthSlots(11, &tight) == 20 && GrowthSlots(10, &tight) == 20);
+    int fits; /* lea eax,[rdx+rdx*4]; shl eax,2 at 20 slots -> imul eax,edx,0x70 and nops, whole, in 6 bytes */
+    uint64_t window = GrowthValue(GROW_IMUL8, 0x70, 0, 0, 0, &fits);
+    assert(fits && !memcmp(&window, "\x6B\xC2\x70\x90\x90\x90", 6) && ImmediateFits(window, 6));
+    GrowthValue(GROW_IMUL8, 128, 0, 0, 0, &fits);
+    assert(!fits);
     assert(ImmediateFits(127, 1) && !ImmediateFits(128, 1) && ImmediateFits(0x7FFFFFFF, 4) && !ImmediateFits(0x80000000ull, 4));
 }
 
@@ -137,13 +145,14 @@ static void GrowthLookupFixture(void)
     }
 
     /* all or nothing: one instruction not as reviewed, or a value too large for its immediate, writes nothing */
+    GrowthPointer badPointer = {(uintptr_t)(state + 0xF12560), (const uint8_t*)1};
     GrowthPatch wrong[6];
     memcpy(wrong, patches, sizeof wrong);
     wrong[4].original[0] ^= 0xFF;
-    assert(ApplyGrowthPatches(wrong, 6, (uintptr_t)(state + 0xF12560), (const uint8_t*)1) == 1 && !memcmp(region, kGrowthLookup, sizeof kGrowthLookup));
+    assert(ApplyGrowthPatches(wrong, 6, &badPointer, 1) == 1 && !memcmp(region, kGrowthLookup, sizeof kGrowthLookup));
     memcpy(wrong, patches, sizeof wrong);
     wrong[1].value = 200; /* past an imm8 */
-    assert(ApplyGrowthPatches(wrong, 6, (uintptr_t)(state + 0xF12560), (const uint8_t*)1) == 1 && !memcmp(region, kGrowthLookup, sizeof kGrowthLookup));
+    assert(ApplyGrowthPatches(wrong, 6, &badPointer, 1) == 1 && !memcmp(region, kGrowthLookup, sizeof kGrowthLookup));
     assert(*(uint8_t**)(state + 0xF12560) == table); /* refused: the pointer untouched too */
 
     /* a busy thread meanwhile: paused for the rewrite, running again after */
@@ -153,7 +162,8 @@ static void GrowthLookupFixture(void)
     HANDLE worker = CreateThread(NULL, 0, GrowthSpin, (void*)&spins, 0, NULL);
     assert(worker != NULL);
     while (spins == 0) Sleep(1);
-    assert(ApplyGrowthPatches(patches, 6, (uintptr_t)(state + 0xF12560), grown) == 0);
+    GrowthPointer pointer = {(uintptr_t)(state + 0xF12560), grown};
+    assert(ApplyGrowthPatches(patches, 6, &pointer, 1) == 0);
     assert(*(uint8_t**)(state + 0xF12560) == grown); /* swapped in the same pause */
     LONG before = spins;
     Sleep(20);
@@ -209,16 +219,16 @@ static void GrowthSitesFixture(void)
             int ok;
             uint64_t value = GrowthValue(c->formula, table->slots, table->stride, table->records, c->divisor, &ok);
             uint64_t mask = c->immSize == 8 ? ~0ull : (1ull << (8 * c->immSize)) - 1;
-            assert(ok && (value & mask) == stored);
+            assert(ok && (c->formula == GROW_IMUL8 || (value & mask) == stored));
             checked++;
         }
         uint32_t used = table->slots / 2, more = table->component == 62 ? 40 : 200;
         uint32_t slots = GrowthSlots(used + more, &table->rules);
-        assert(slots >= 2 * (used + more) && slots <= table->rules.maxSlots);
+        assert((slots >= 2 * (used + more) || slots >= table->rules.maxSlots * 3 / 4) && slots <= table->rules.maxSlots);
         static GrowthPatch patches[64];
         assert(table->count <= 64 && GrowthPatchesFor(table, table->slots, slots, 0x180000000ull, patches) == table->count);
         for (int i = 0; i < table->count; i++) assert(ImmediateFits(patches[i].value, patches[i].immSize));
-        if (table->component == 62) assert(GrowthSlots(used + 200, &table->rules) == 0); /* past its one-byte bounds */
+        if (table->component == 62) assert(GrowthSlots(used + 200, &table->rules) == 127); /* its one-byte bounds */
     }
     assert(checked == (int)(sizeof kGrowthConstants / sizeof kGrowthConstants[0]));
     /* table 29's constants are the six the lookup fixture rewrites, byte for byte */
@@ -272,6 +282,13 @@ static void GrowthConstantsAre(const GrowthTable* t, uintptr_t game, uint32_t sl
         assert(!memcmp(code, c->bytes, c->immOffset) && !memcmp(code + c->immOffset + c->immSize, c->bytes + c->immOffset + c->immSize,
             c->length - c->immOffset - c->immSize));
     }
+}
+
+/* One table through the batch. */
+static int GrowTable(uint8_t* state, uint32_t c, uint32_t rows)
+{
+    GrowthWish wish = {c, rows};
+    return GrowTables(state, &wish, 1);
 }
 
 /* GrowTable end to end on table 62 (42 slots, one-byte bounds), its constants laid out at their places in a stand-in for
@@ -334,10 +351,12 @@ static void GrowthTableFixture(void)
     RegrowLoaded(state); /* once */
     assert(StatePointer(state, REG_TABLES + 8 * 62) == again);
 
-    /* grown again from 82, then nothing past its one-byte bounds */
+    /* grown again from 82, up to its one-byte bounds */
     assert(GrowTable(state, 62, 60) && SlotsOf(62) == 120 && profile->indices == 120);
     GrowthConstantsAre(t, g_game, 120);
-    assert(!GrowTable(state, 62, 70) && SlotsOf(62) == 120);
+    assert(GrowTable(state, 62, 70) && SlotsOf(62) == 127); /* past twice as many rows: its largest */
+    GrowthConstantsAre(t, g_game, 127);
+    assert(!GrowTable(state, 62, 70) && SlotsOf(62) == 127); /* and nothing past its one-byte bounds */
 
     g_grownCount = 0;
     g_componentCount = savedComponents;

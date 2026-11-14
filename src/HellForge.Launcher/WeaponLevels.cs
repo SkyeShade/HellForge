@@ -9,15 +9,16 @@ using HellForge.Core;
 namespace HellForge.Launcher;
 
 // A weapon's mastery track: progression package type 2 (progression-data.json), whose required item is the weapon.
-// Level 1 gives the weapon's default attachments; each later level unlocks more (README, "Weapon levels").
-public sealed record WeaponMastery(uint Package, uint Weapon, int MaxLevel, string Name, int ArmoryType);
+// Level 1 gives the weapon's default attachments; each later level unlocks more (README, "Weapon levels"). A mod weapon's
+// track is a copy of its base's, saved apart from vanilla data (HellForge.Core ModPackages).
+public sealed record WeaponMastery(uint Package, uint Weapon, int MaxLevel, string Name, int ArmoryType, bool Mod = false);
 
 static class WeaponLevelData
 {
     static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
 
     // Every weapon with a mastery track, named from the newest session's arsenal.tsv (written by the mod loader's
-    // weapon registry) when there is one, in armory order.
+    // weapon registry) when there is one, in armory order; the mod weapons of the newest session come after their kind.
     public static List<WeaponMastery> Load(LauncherPaths paths)
     {
         List<WeaponMastery> weapons = [];
@@ -33,7 +34,25 @@ static class WeaponLevelData
             var (name, armoryType) = names.TryGetValue(weapon, out var known) ? known : ($"Weapon {weapon:X8}", 99);
             weapons.Add(new(package.GetProperty("id32").GetUInt32(), weapon, levels.GetArrayLength(), name, armoryType));
         }
+        foreach (var (weapon, baseItem) in ModWeapons(paths))
+            if (weapons.FirstOrDefault(w => w.Weapon == baseItem && !w.Mod) is { } source)
+            {
+                var (name, armoryType) = names.TryGetValue(weapon, out var known) ? known : ($"{source.Name} (mod {weapon:X8})", source.ArmoryType);
+                weapons.Add(source with { Package = WeaponIds.PackageFor(source.Package, baseItem, weapon), Weapon = weapon, Name = name, ArmoryType = armoryType, Mod = true });
+            }
         return weapons.OrderBy(w => w.ArmoryType).ThenBy(w => w.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    // The weapons the newest session's mods registered, each once; none before a first session.
+    static List<(uint Weapon, uint Base)> ModWeapons(LauncherPaths paths)
+    {
+        try
+        {
+            var newest = Directory.Exists(paths.RunsFolder)
+                ? LocalInstall.FilesNoLinks(paths.RunsFolder, "registered-items.json").Select(path => new FileInfo(path)).MaxBy(f => f.LastWriteTimeUtc) : null;
+            return newest == null ? [] : [.. ModPackages.RegisteredWeapons(newest.FullName).DistinctBy(w => w.Weapon)];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return []; }
     }
 
     static Dictionary<uint, (string, int)> Names(LauncherPaths paths)
@@ -71,12 +90,15 @@ static class WeaponLevelData
                 if (entry.TryGetProperty("id32", out var id) && id.TryGetUInt32(out var package) &&
                     entry.TryGetProperty("level", out var level) && level.TryGetInt32(out var value))
                     levels[package] = value;
+        if (profile.TryGetProperty("progression", out var section))
+            foreach (var (package, value) in ModPackages.Levels(section)) levels[package] = value;
         return levels;
     }
 
     // Sets the levels in profile.json: a progress entry per package (none at level 0), and the items every level up to
     // the new one gives or unlocks added to the inventory (nothing is taken away). Returns an error, or null.
-    public static string? Save(LauncherPaths paths, string profileFile, IReadOnlyDictionary<uint, int> levels)
+    // A mod weapon's level goes to its own entry, and its items follow it there (ModPackages.SetLevel).
+    public static string? Save(LauncherPaths paths, string profileFile, IReadOnlyDictionary<uint, int> levels, IReadOnlySet<uint>? modPackages = null)
     {
         try
         {
@@ -93,7 +115,9 @@ static class WeaponLevelData
             {
                 if (have.Add(mixId)) held.Add(new JsonObject { ["mixId"] = mixId, ["amount"] = 1, ["isDiscovered"] = true });
             }
-            foreach (var (package, level) in levels) ApplyPackageLevel(progress, package, level, packages, Grant);
+            foreach (var (package, level) in levels)
+                if (modPackages?.Contains(package) == true) ModPackages.SetLevel(progression, package, level);
+                else ApplyPackageLevel(progress, package, level, packages, Grant);
             var temporary = profileFile + ".tmp";
             File.WriteAllText(temporary, profile.ToJsonString(WriteOptions) + "\n");
             File.Move(temporary, profileFile, true);
@@ -155,7 +179,7 @@ public partial class MainWindow
         {
             if (runner.IsRunning) return;
             var levels = weaponLevelInputs.ToDictionary(p => p.Key, p => (int)(p.Value.Value ?? 0));
-            var error = WeaponLevelData.Save(paths, Selected.ProfileFile, levels);
+            var error = WeaponLevelData.Save(paths, Selected.ProfileFile, levels, weaponMasteries.Where(w => w.Mod).Select(w => w.Package).ToHashSet());
             WeaponLevelsStatus.Text = error ?? "Saved. The next session uses these levels.";
             WeaponLevelsStatus.Foreground = error != null ? Red : Light;
             if (error == null) weaponLevelsShown = levels;

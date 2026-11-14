@@ -156,8 +156,8 @@ public partial class MainWindow
         AppendSteamRemovals(text, plan);
         AppendOldScriptRemovals(text, plan.OldScript);
         if (LinuxCapture.HelperInstalled())
-            text.AppendLine("  - the Account Sync helper, relay, hashes and sudoers rule (/usr/local/lib/hellforge, " +
-                "/etc/sudoers.d/hellforge-capture), through the desktop's password dialog");
+            text.AppendLine("  - the Account Sync helper, relay, hashes and sudoers rule (" + LinuxCapture.HelperFolder + ", " +
+                LinuxCapture.SudoersPath + " or its earlier name), through the desktop's password dialog");
         AppendPrefixRemoval(text, plan);
         text.AppendLine();
         text.AppendLine("It leaves:");

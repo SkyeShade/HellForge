@@ -49,6 +49,37 @@ static class IntegrityTests
                 !File.Exists(SetupReceipt.PathFor(install) + ".partial"), "The setup receipt was not written whole.");
         });
 
+        test("A copy a killed session left with its stand-ins is complete again after recovery, and counts as set up", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "cut-short"));
+            install.Create("25480438");
+            check(SetupReceipt.FinishedBefore(install) == null, "An installation where setup never finished counted as set up.");
+            var shims = Directory.CreateDirectory(Path.Combine(install.App, "sdk-shims")).FullName;
+            var originals = Directory.CreateDirectory(Path.Combine(install.Temp, "sdk-shim-originals")).FullName;
+            var bin = Directory.CreateDirectory(Path.Combine(install.Game, "bin")).FullName;
+            var pins = new JsonObject();
+            var files = new List<SupportedFile>();
+            foreach (var name in new[] { "PartyWin.dll", "PlayFabMultiplayerWin.dll", "steam_api64.dll" })
+            {
+                var original = Encoding.UTF8.GetBytes("the build's own " + name);
+                pins[name] = Convert.ToHexString(SHA256.HashData(original));
+                files.Add(new("bin/" + name, original.Length, Convert.ToHexString(SHA1.HashData(original)), 1));
+                File.WriteAllBytes(Path.Combine(originals, name), original);
+                File.WriteAllText(Path.Combine(bin, name), "stand-in");
+            }
+            File.WriteAllText(Path.Combine(shims, "build.json"), new JsonObject { ["originals"] = pins }.ToJsonString());
+            var build = new SupportedBuild(1, "553850", "test", "", "", [], files);
+            check(build.FirstCompletenessProblem(install.Game) == "wrong size: bin/PartyWin.dll", "The stand-ins did not make the copy incomplete.");
+            check(SetupReceipt.FinishedBefore(install) == "This copy was set up and played, but",
+                "An installation whose sessions saved the SDK originals did not count as set up.");
+            SdkShimRecovery.Recover(install);
+            check(build.FirstCompletenessProblem(install.Game) == null && build.Verify(install.Game).Count == 0,
+                "The copy was not complete after the stand-ins' originals went back.");
+            SetupReceipt.Write(install);
+            check(SetupReceipt.FinishedBefore(install)?.StartsWith("Setup finished ", StringComparison.Ordinal) == true,
+                "A setup receipt did not name when setup finished.");
+        });
+
         test("The setup reason names the first missing build file", () =>
         {
             var game = Directory.CreateDirectory(Path.Combine(root, "setup-reason")).FullName;
@@ -94,6 +125,27 @@ static class IntegrityTests
             check(!File.Exists(Path.Combine(data, "extra.patch_0")) && !File.Exists(Path.Combine(data, "notes.partial")) &&
                 Directory.GetFiles(Path.Combine(install.Temp, "data-extras"), "*", SearchOption.AllDirectories).Length == 2,
                 "An extra was not quarantined.");
+        });
+
+        test("Setup's data audit keeps a build file's unfinished download; a session's audit and other names do not", () =>
+        {
+            var install = new InstallLayout(Path.Combine(root, "data-audit-download"));
+            install.Create("25480438");
+            var data = Directory.CreateDirectory(Path.Combine(install.Game, "data")).FullName;
+            var build = new SupportedBuild(1, "553850", "test", "", "", [],
+                [new SupportedFile("data/keep", 5, new string('A', 40), 1), new SupportedFile("bin/game.exe", 5, new string('B', 40), 1)]);
+            string[] unfinished = ["keep.partial", "keep.resume"];
+            string[] others = ["notes.partial", "game.exe.partial", "keep.partial.partial"];
+            foreach (var name in unfinished.Concat(others)) File.WriteAllText(Path.Combine(data, name), "part of a file");
+            var setup = GameDataAudit.Quarantine(install, build, downloading: true);
+            check(setup.Problems.Count == 0 && setup.Extras.Order().SequenceEqual(others.Select(name => "data/" + name).Order()),
+                "Setup's audit did not move exactly the names that are no build file's download: " + string.Join(", ", setup.Extras));
+            check(unfinished.All(name => File.ReadAllText(Path.Combine(data, name)) == "part of a file"),
+                "Setup's audit moved or changed a build file's unfinished download.");
+            var session = GameDataAudit.Quarantine(install, build);
+            check(session.Extras.Order().SequenceEqual(unfinished.Select(name => "data/" + name).Order()) &&
+                !unfinished.Any(name => File.Exists(Path.Combine(data, name))),
+                "A session's audit left an unfinished download in game/data: " + string.Join(", ", session.Extras));
         });
 
         test("An unclean previous session and a clean one are told apart", () =>

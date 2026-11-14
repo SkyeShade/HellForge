@@ -142,7 +142,8 @@ static class SteamAccountTests
             check(playSession.Contains("SteamAccount.TakeProbeResult(privateAccount)", StringComparison.Ordinal) &&
                   playSession.Contains("Environment.SetEnvironmentVariable(SteamAccount.EnvironmentVariable", StringComparison.Ordinal),
                 "The session's own ownership probe does not adopt its account into the session environment.");
-            var modsPage = File.ReadAllText(Path.Combine(repository, "src", "HellForge.Launcher", "ModsPage.cs"));
+            var modsPage = File.ReadAllText(Path.Combine(repository, "src", "HellForge.Launcher", "ModsPage.cs")) +
+                File.ReadAllText(Path.Combine(repository, "src", "HellForge.Launcher", "ModsPage.Load.cs"));
             check(modsPage.Contains("SteamAccount.Current()", StringComparison.Ordinal) &&
                   !modsPage.Contains("SteamAccount.Current(new InstallLayout", StringComparison.Ordinal),
                 "The Mods page starts a probe instead of using only a fresh account cache.");
@@ -162,7 +163,7 @@ static class SteamAccountTests
                 Path.Combine("src", "HellForge.Launcher", "InventorySyncFlow.cs"),
                 Path.Combine("src", "HellForge.LocalBackend", "AccountCommands.cs"),
                 Path.Combine("src", "HellForge.Cli", "Program.cs"),
-                Path.Combine("src", "HellForge.Launcher", "ModsPage.cs")
+                Path.Combine("src", "HellForge.Launcher", "ModsPage.Load.cs")
             };
             foreach (var relative in consumers)
             {
