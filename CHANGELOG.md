@@ -15,6 +15,7 @@ On `dev`, since 0.4.0-beta.
 - **Uses before cooldown.** Every stratagem but the Eagles has "Uses before cooldown" in its call-in section, 1 by
   default. At 3 the Orbital Railcannon Strike can be called three times, each as soon as the last has arrived, before
   its cooldown starts; the uses come back when it ends ([stats mods](docs/modding/stats-mods.md#uses-before-cooldown)).
+- **RESET ALL in the editor's Errors list.** Two clicks stage a reset of every refused field, as each row's RESET does.
 - **Stratagem input codes in the editor.** Every stratagem's call-in section has Input code, shown as arrows and typed
   as U, R, D and L, 1 to 10 directions. It applies at once, the HUD's arrows too, and each player's code is their own.
   Stats files take it as letters (`"stratagem.input_code": "UULRD"`) ([stats mods](docs/modding/stats-mods.md#stratagem-input-codes)).

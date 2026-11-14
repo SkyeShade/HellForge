@@ -227,6 +227,20 @@ void DrawPicker()
 
 /* The errors popup (HD2R Editor's): every refused field with HellForge's reason; a click or Enter opens it in BROWSE,
  * RESET stages it back to its default (UNDO takes that back). */
+/* RESET ALL: the first click arms it for a few seconds, the second stages a reset of every refused field, as each row's
+ * RESET does (APPLY writes them, DISCARD takes them back). */
+static float g_resetAllUntil = -1;
+
+static void ResetAllErrors(const std::vector<const Row*>& list)
+{
+    if (g_time > g_resetAllUntil) { g_resetAllUntil = g_time + 4.0f; Sound(sounds::CLICK); return; }
+    g_resetAllUntil = -1;
+    int marked = 0;
+    for (const Row* r : list) if (StageReset(r)) marked++;
+    Toast(marked ? std::to_string(marked) + " reset" + (marked == 1 ? "" : "s") + " pending: APPLY writes them, DISCARD takes them back"
+                 : "Nothing to reset: no refused field is saved in Local Stats", marked ? PENDING : FAINT);
+}
+
 void DrawErrors()
 {
     if (!g_errorsPopup.on) return;
@@ -277,6 +291,9 @@ void DrawErrors()
     g_cv.Rect(x + 12, dy, w - 24, 1, LINE, 10);
     if (g_errorsPopup.index < n) g_cv.Text(g_errors[list[g_errorsPopup.index]], x + 24, dy + 18, T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, w - 48, 11));
     if (Button("CLOSE", {x + w - 24 - 150, y + h - 40, 150, 30}, NORMAL, ui::Id("errorsdone"), 11)) { g_errorsPopup.on = false; Sound(sounds::BACK); }
+    bool armed = g_time <= g_resetAllUntil;
+    if (n > 0 && Button(armed ? "CONFIRM?" : "RESET ALL", {x + w - 24 - 312, y + h - 40, 150, 30}, armed ? DANGER : NORMAL, ui::Id("errorsresetall"), 11))
+        ResetAllErrors(list);
     g_cv.Text("\xE2\x86\x91\xE2\x86\x93 select   Enter open the field   Del reset / undo   Esc close", x + 24, y + h - 25, T(SZ_TINY, FAINT, ui::BODY, ui::LEFT, 0, 11));
 }
 } // namespace editorapp
