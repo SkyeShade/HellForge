@@ -26,6 +26,7 @@ out this way without another build.
 | `record-hash` | The destruction-record map spreads its keys over its slots instead of packing them into one run | A miss on a 16 km map: 2,316 probes to 11 |
 | `ai-path-budget` | The game's AI path threads get 0.5 ms a step instead of 2 ms, and 2 ms again while path requests wait over 500 ms | The game thread's wait for the AI step on a 16 km map: 1.0-1.5 ms to 0.2-0.3 ms a frame at 117-209 enemies |
 | `corpse-freeze` | A corpse at rest in the game's corpse ring leaves the physics world, as the game's disposal does to it later | A fight on a 16 km map: the corpses' terrain pairs 456 k to 49 k a window, median frame 18 to 15.5 ms, a trend in one direction |
+| `render-job-copies` | On Direct3D 12, each render job's copy of the resource-version table is freed once the job is recorded | On a 16 km city map, the copies standing at a peak: 561-930 MB to 4-9 MB |
 
 ## safe-read
 
@@ -162,3 +163,43 @@ Limits:
 
 - A frozen corpse stays frozen. It stays where it lies even if the ground under it changes.
 - Build 25480438 only. Another build leaves it off, with a line in `modloader.log`.
+
+## render-job-copies
+
+On Direct3D 12, a render job's copy of the renderer's resource-version table is freed as soon as the job has recorded
+its commands. Before, every pooled job context kept its largest copy for the whole session.
+
+### What the game does
+
+- The renderer keeps a table of the current version of each dynamic buffer. It grows to the most buffers updated in one
+  frame and never shrinks. Each entry is 24 bytes.
+- Each frame's commands are recorded by parallel jobs, at most 128 commands a job. Each job takes a context from a pool
+  and copies the whole table into it, empty buckets included.
+- The pool grows to the most jobs in flight, often hundreds, and keeps every context and its copy until the game quits.
+
+### What changes
+
+- The job's call of the recording (`helldivers2.exe+0x6CA31C`) is sent through the loader. After the recording returns,
+  a copy of 1,024 entries or more is freed with the game's own resize, on the job's thread.
+- The next job that takes the context copies the table again, as it already did each frame, so only its allocation is
+  new. The dispatch's emptying of the copy then has nothing to walk.
+
+### Why the results stay the same
+
+- Only the job's update pass and its recording read the copy. The job starts after its update pass, and after the
+  recording it touches only its barrier lists and its done flag.
+- The dispatch waits for every done flag before it empties the copies, and a context goes back to the pool only after
+  that wait.
+- The freed copy reads as empty, as after the dispatch's own emptying: a lookup in an empty copy already goes to the
+  renderer's table.
+- The copy's allocator is thread-safe, and the recording already allocates through it on the job threads.
+- Direct3D 11 never runs this code, so nothing changes there. The patch is pinned to build 25480438: any other code leaves
+  it off with a line in `modloader.log`.
+
+### Effect and limits
+
+- On a 16 km city map, the copies standing at a memory peak fell from 561-930 MB to 4-9 MB. Only jobs under way still
+  held a copy: 3-14 against 219-809 jobs.
+- On a normal map the table is smaller, so the saving is smaller. It is not measured.
+- `modloader.log` names the longest copy given back so far, which is the table's size.
+- A copy of over about 41,000 entries is a large allocation. On 16 km maps each job then maps fresh memory for its copy.

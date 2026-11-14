@@ -30,6 +30,7 @@
 #include "perf_record_hash_test.c"
 #include "perf_ai_path_budget_test.c"
 #include "perf_corpse_freeze_test.c"
+#include "perf_render_job_copies_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -4800,6 +4801,7 @@ int main(int argc, char** argv)
     RecordHashFixture();
     PerfAiPathBudgetFixture();
     PerfCorpseFreezeFixture();
+    RenderJobCopiesFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
