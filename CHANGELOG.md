@@ -15,7 +15,7 @@ On `dev`, since 0.4.0-beta.
 - **The in-game editor in other languages.** The editor shows its text from a word list in its `translations`
   folder, chosen on its settings page or by Windows' display language. Chinese, Japanese and Korean text uses a
   Windows font that has the characters ([translating the editor](docs/editor-translations.md)). The word-list format
-  follows YEYINGSHENZI's Chinese localization of the editor (#425).
+  follows YEYINGSHENZI's Chinese localization of the editor (#425, #426).
 - **New vehicles as copies of vanilla ones.** The `vehicle-variants` example adds the EXO-45H Heavy Patriot (a quicker
   turn and a 2000-round machine gun) and the M-102R Rally FRV (quicker steering), each called in by a Pelican drop
   stratagem of its own. A ground vehicle ignores `model_from`, since its seats, wheels, tracks and damage zones name
