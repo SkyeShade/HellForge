@@ -3,6 +3,7 @@
 #include <algorithm>
 #include "app_internal.h"
 #include "icons.h"
+#include "translate.h"
 #include "ui_marks.h"
 
 namespace editorapp
@@ -29,9 +30,27 @@ bool EntityPage(const Object* object)
         object->category == "difficulty" || FactionColour(object->category) != 0;
 }
 
-/* A line broken into lines at most max units wide, at word ends (a word wider than that is cut with "..."). */
-std::vector<std::string> Wrapped(const std::string& text, float max, float size)
+/* The text in the player's language broken into lines at most max units wide, at word ends; a word wider than that is
+ * cut with "...", unless it is not Latin: scripts without spaces (Chinese, Japanese) break between characters. Draw the
+ * lines with Shown(). */
+/* a word added to the line a character at a time, lines full of it going out */
+static void BreakCharacters(const std::string& word, float max, float size, std::string* line, std::vector<std::string>* out)
 {
+    if (!line->empty()) *line += " ";
+    for (size_t k = 0; k < word.size();)
+    {
+        size_t len = 1;
+        while (k + len < word.size() && ((unsigned char)word[k + len] & 0xC0) == 0x80) len++; /* never inside UTF-8 */
+        std::string next = *line + word.substr(k, len);
+        if (!line->empty() && g_cv.Measure(next, size, ui::BODY, true) > max) { out->push_back(*line); *line = word.substr(k, len); }
+        else *line = next;
+        k += len;
+    }
+}
+
+std::vector<std::string> Wrapped(const std::string& english, float max, float size)
+{
+    const std::string text = tr::Get(english);
     std::vector<std::string> out;
     std::string line;
     size_t i = 0;
@@ -41,9 +60,12 @@ std::vector<std::string> Wrapped(const std::string& text, float max, float size)
         std::string word = text.substr(i, space == std::string::npos ? std::string::npos : space - i);
         i = space == std::string::npos ? text.size() : space + 1;
         if (word.empty()) continue;
+        bool latin = std::none_of(word.begin(), word.end(), [](char c) { return (unsigned char)c >= 0x80; });
         std::string longer = line.empty() ? word : line + " " + word;
-        if (!line.empty() && g_cv.Measure(longer, size) > max) { out.push_back(line); line = word; }
-        else line = longer;
+        if (g_cv.Measure(longer, size, ui::BODY, true) <= max) line = longer;
+        else if (!latin) BreakCharacters(word, max, size, &line, &out);
+        else if (line.empty()) line = word;
+        else { out.push_back(line); line = word; }
     }
     if (!line.empty()) out.push_back(line);
     return out;

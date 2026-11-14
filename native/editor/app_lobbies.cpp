@@ -638,7 +638,7 @@ static void DrawLobbyStatus(const Area& a, float alpha)
     float h = std::max(a.h, 20 + 22 * (float)lines.size());
     g_cv.Rect(a.x, a.y, a.w, h, Alpha(LB_PANEL, alpha), 10);
     float ly = a.y + 10 + 11;
-    for (const std::string& line : lines) { g_cv.Text(line, a.x + 16, ly, T(SZ_LABEL, Alpha(bad ? LB_RED : LB_DIM, alpha), ui::BODY, ui::LEFT, a.w - 32, 11)); ly += 22; }
+    for (const std::string& line : lines) { g_cv.Text(line, a.x + 16, ly, Shown(T(SZ_LABEL, Alpha(bad ? LB_RED : LB_DIM, alpha), ui::BODY, ui::LEFT, a.w - 32, 11))); ly += 22; }
 }
 
 /* A category row (ALL LOBBIES, FRIENDS): red and white-edged when it is the one shown; true when clicked. */
@@ -856,7 +856,7 @@ static Area DrawPopFrame(const PopHead& p, float X, float Y, float W, float H, f
 /* Lines of wrapped text down a column; returns where the next line goes. */
 static float PopLines(const std::string& text, float x, float y, float w, ImU32 colour, float alpha)
 {
-    for (const std::string& line : Wrapped(text, w, SZ_LABEL)) { g_cv.Text(line, x, y, T(SZ_LABEL, Alpha(colour, alpha), ui::BODY, ui::LEFT, w, 15)); y += 22; }
+    for (const std::string& line : Wrapped(text, w, SZ_LABEL)) { g_cv.Text(line, x, y, Shown(T(SZ_LABEL, Alpha(colour, alpha), ui::BODY, ui::LEFT, w, 15))); y += 22; }
     return y;
 }
 
@@ -987,7 +987,7 @@ static void DrawLobbyConfirm(float X, float Y, float W, float H, float alpha, co
     Area p = DrawPopFrame({q.title, "", accent, q.warning, 30 + 22 * (float)lines.size() + 40}, X, Y, W, H, alpha);
     float x = p.x + 22, y = p.y + 60 + 30;
     g_cv.Rect(x, y - 12, 4, 22 * (float)lines.size(), Alpha(accent, alpha), 15);
-    for (const std::string& line : lines) { g_cv.Text(line, x + 16, y, T(SZ_LABEL, Alpha(LB_TEXT, alpha), ui::BODY, ui::LEFT, w - 16, 15)); y += 22; }
+    for (const std::string& line : lines) { g_cv.Text(line, x + 16, y, Shown(T(SZ_LABEL, Alpha(LB_TEXT, alpha), ui::BODY, ui::LEFT, w - 16, 15))); y += 22; }
     g_cv.Text("Esc or N cancels.", x, y + 14, T(SZ_SMALL, Alpha(LB_DIM, alpha), ui::BODY, ui::LEFT, w, 15));
     std::vector<Hint> hints = {{"ESC", "CANCEL", LB_TEXT, true, ui::Id("lobbyconfirmcancel")},
         {"Y", "YES, TURN IT ON", accent, true, ui::Id("lobbyconfirmon")}};

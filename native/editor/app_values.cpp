@@ -5,6 +5,7 @@
 #include <string.h>
 #include <algorithm>
 #include "app_internal.h"
+#include "translate.h"
 
 namespace editorapp
 {
@@ -40,6 +41,7 @@ void LoadSettings()
     hfjson::Value root;
     if (!hfjson::ReadFile(SettingsPath(), &text) || !hfjson::Parse(text, &root, nullptr)) return;
     g_soundsOn = root.GetBool("ui_sounds", true);
+    g_language = root.GetString("language", "auto");
     g_logSource = (int)root.GetNumber("log_source", 0);
     float scale = (float)root.GetNumber("ui_scale", 1);
     for (float s : UI_SCALES) if (fabsf(s - scale) < 0.001f) g_uiScale = s;
@@ -60,6 +62,7 @@ void SaveSettings()
     root.kind = hfjson::Value::Object;
     root.members.emplace_back("ui_scale", hfjson::Value::MakeNumber(g_uiScale, false));
     root.members.emplace_back("ui_sounds", hfjson::Value::MakeBool(g_soundsOn));
+    root.members.emplace_back("language", hfjson::Value::MakeString(g_language));
     root.members.emplace_back("log_source", hfjson::Value::MakeNumber(g_logSource, true));
     hfjson::Value open;
     open.kind = hfjson::Value::Array;
@@ -75,6 +78,13 @@ void SaveSettings()
     for (auto& m : g_mounts) mounts.members.emplace_back(m.first, hfjson::Value::MakeNumber(m.second, true));
     root.members.emplace_back("mounts", mounts);
     hfjson::WriteAtomically(SettingsWritePath(), hfjson::Write(root));
+}
+
+void ApplyLanguage()
+{
+    std::string tag = g_language == "auto" ? tr::AutoTag(g_host.modFolder, tr::WindowsLanguage()) : g_language;
+    if (!tr::Load(g_host.modFolder, tag))
+        g_host.api->log(g_host.mod, "editor: no translation %s in translations\\, English", tag.c_str());
 }
 
 /* ---- values ---- */

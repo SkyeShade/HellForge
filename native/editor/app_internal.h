@@ -66,6 +66,15 @@ inline TextOpts T(float size, ImU32 colour, ui::Face face = ui::BODY, ui::Align 
     o.size = size; o.colour = colour; o.face = face; o.align = align; o.max = max; o.z = z;
     return o;
 }
+/* for a line Wrapped() gave: it is in the player's language already */
+inline TextOpts Shown(TextOpts o)
+{
+    o.shown = true;
+    return o;
+}
+
+/* the settings' language loaded (translate.h): "auto" follows Windows' display language */
+void ApplyLanguage();
 
 /* ---- state (app.cpp) ---- */
 extern Host g_host;
@@ -126,6 +135,7 @@ inline void SetError(const Row* row, const std::string& why) { g_errors[row] = w
 inline void ClearError(const Row* row) { if (g_errors.erase(row)) g_errorsVersion++; }
 extern std::map<const Row*, Pend> g_pending;
 extern bool g_soundsOn;
+extern std::string g_language; /* the settings' language: "auto", "en" or a translation's tag */
 extern int g_logSource; /* the LOGS tab's source from the settings (0 HellForge's log, 1 the editor's) */
 struct Edit { bool on = false; const Row* row = nullptr; std::string buffer; bool fresh = false; };
 extern Edit g_edit;

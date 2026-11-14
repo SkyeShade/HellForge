@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **The in-game editor in other languages.** The editor shows its text from a word list in its `translations`
+  folder, chosen on its settings page or by Windows' display language. Chinese, Japanese and Korean text uses a
+  Windows font that has the characters ([translating the editor](docs/editor-translations.md)). The word-list format
+  follows YEYINGSHENZI's Chinese localization of the editor (#425, #426).
 - **Stratagem input codes in the editor.** Every stratagem's call-in section has Input code, shown as arrows and typed
   as U, R, D and L, 1 to 10 directions. It applies at once, the HUD's arrows too, and each player's code is their own.
   Stats files take it as letters (`"stratagem.input_code": "UULRD"`) ([stats mods](docs/modding/stats-mods.md#stratagem-input-codes)).

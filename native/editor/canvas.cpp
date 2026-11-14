@@ -5,6 +5,7 @@
 #include <math.h>
 #include <string.h>
 #include "canvas.h"
+#include "translate.h"
 
 namespace ui
 {
@@ -17,9 +18,17 @@ const int SIZE_COUNT = sizeof SIZES / sizeof SIZES[0];
 
 struct Metrics { float pixelHeightPerEm = 1.2f, capPerEm = 0.7f; };
 /* faux: the title face is the body font drawn twice (no FS Sinclair Medium) */
-struct Baked { ImFont* fonts[2][SIZE_COUNT] = {}; float scale = 0; Metrics metrics[2], fallback, symbols; bool faux = false; };
+struct Baked
+{
+    ImFont* fonts[2][SIZE_COUNT] = {};
+    float scale = 0;
+    Metrics metrics[2], fallback, symbols, language;
+    bool faux = false;
+    unsigned translation = 0; /* tr::Generation() the atlas was baked for */
+};
 Baked g_baked;
-std::string g_folder, g_faceFile[2], g_fallbackFile, g_symbolFile;
+std::string g_folder, g_faceFile[2], g_fallbackFile, g_symbolFile, g_languageFile;
+ImVector<ImWchar> g_languageRanges;
 
 std::string WindowsFont(const char* name)
 {
@@ -52,16 +61,24 @@ std::vector<unsigned char> FileBytes(const std::string& file)
 
 /* What a pixel height means for this font: stb_truetype sizes a font by ascender - descender (hhea), the editor's sizes
  * are em sizes (as the HD2R Editor's are); and the cap height (OS/2) the text centres on. */
+/* Where a font's tables start: a collection (.ttc, as Windows' CJK fonts are) holds several, and ImGui loads the first. */
+size_t FontStart(const std::vector<unsigned char>& data)
+{
+    if (data.size() < 16 || memcmp(&data[0], "ttcf", 4) != 0) return 0;
+    return (size_t)data[12] << 24 | (size_t)data[13] << 16 | (size_t)data[14] << 8 | data[15];
+}
+
 Metrics ReadMetrics(const std::string& file)
 {
     Metrics m;
     std::vector<unsigned char> data = FileBytes(file);
-    if (data.size() < 12) return m;
-    int tables = U16(&data[4]);
+    size_t base = FontStart(data);
+    if (base + 12 > data.size()) return m;
+    int tables = U16(&data[base + 4]);
     int upem = 0, ascender = 0, descender = 0, cap = 0;
-    for (int i = 0; i < tables && 12 + 16 * (size_t)(i + 1) <= data.size(); i++)
+    for (int i = 0; i < tables && base + 12 + 16 * (size_t)(i + 1) <= data.size(); i++)
     {
-        const unsigned char* t = &data[12 + 16 * (size_t)i];
+        const unsigned char* t = &data[base + 12 + 16 * (size_t)i];
         uint32_t offset = (uint32_t)(t[8] << 24 | t[9] << 16 | t[10] << 8 | t[11]);
         if (offset + 96 > data.size()) continue;
         const unsigned char* table = &data[offset];
@@ -101,14 +118,44 @@ static void FindFontFiles()
 static const ImWchar TEXT_RANGES[] = {0x0020, 0x00FF, 0x2010, 0x2027, 0x2030, 0x203A, 0x2122, 0x2122, 0x2212, 0x2212, 0};
 static const ImWchar SYMBOL_RANGES[] = {0x2190, 0x2193, 0x2715, 0x2715, 0};
 
+/* The translation's characters past Latin-1 (ImWchar stops at U+FFFF) and a Windows font that has them. Only these are
+ * baked: a whole CJK block would not fit the atlas at the editor's sizes. Bahnschrift has Greek and Cyrillic. */
+static void FindLanguageFont()
+{
+    g_languageRanges.clear();
+    g_languageFile.clear();
+    std::vector<uint32_t> wanted;
+    for (uint32_t c : tr::Characters()) if (c > 0xFF && c <= 0xFFFF) wanted.push_back(c);
+    if (wanted.empty()) return;
+    for (size_t i = 0; i < wanted.size();)
+    {
+        size_t j = i;
+        while (j + 1 < wanted.size() && wanted[j + 1] == wanted[j] + 1) j++;
+        g_languageRanges.push_back((ImWchar)wanted[i]);
+        g_languageRanges.push_back((ImWchar)wanted[j]);
+        i = j + 1;
+    }
+    g_languageRanges.push_back(0);
+    const std::string& tag = tr::Tag();
+    std::vector<const char*> candidates;
+    if (tag.compare(0, 2, "ja") == 0) candidates = {"YuGothM.ttc", "meiryo.ttc", "msgothic.ttc"};
+    else if (tag.compare(0, 2, "ko") == 0) candidates = {"malgun.ttf", "gulim.ttc"};
+    else if (tag.compare(0, 2, "zh") == 0) candidates = {"msyh.ttc", "simhei.ttf", "simsun.ttc"};
+    candidates.push_back("bahnschrift.ttf");
+    candidates.push_back("segoeui.ttf");
+    for (const char* name : candidates)
+        if (std::string path = WindowsFont(name); !path.empty()) { g_languageFile = path; break; }
+}
+
 /* a font merged in at the same em size (a font with a taller line takes a larger pixel height) */
-static void MergeFont(const std::string& file, const Metrics& m, float size, float s, float multiply, const ImWchar* ranges)
+static void MergeFont(const std::string& file, const Metrics& m, float size, float s, float multiply, const ImWchar* ranges,
+    int oversample = 2)
 {
     if (file.empty()) return;
     ImFontConfig config;
     config.MergeMode = true;
     config.PixelSnapH = true;
-    config.OversampleH = 2;
+    config.OversampleH = oversample;
     config.RasterizerMultiply = multiply;
     float pixels = size * s * m.pixelHeightPerEm;
     ImGui::GetIO().Fonts->AddFontFromFileTTF(file.c_str(), pixels < 6 ? 6 : pixels, &config, ranges);
@@ -130,17 +177,24 @@ static ImFont* BakeFont(const std::string& file, int face, int i, float s)
     /* what FS Sinclair lacks: other characters from the fallback, the arrows from Segoe UI Symbol */
     if (file != g_fallbackFile) MergeFont(g_fallbackFile, g_baked.fallback, SIZES[i], s, config.RasterizerMultiply, TEXT_RANGES);
     MergeFont(g_symbolFile, g_baked.symbols, SIZES[i], s, config.RasterizerMultiply, SYMBOL_RANGES);
+    /* thousands of CJK characters: no horizontal oversampling, half the atlas */
+    if (!g_languageRanges.empty())
+        MergeFont(g_languageFile, g_baked.language, SIZES[i], s, config.RasterizerMultiply, g_languageRanges.Data,
+            g_languageRanges.Size > 400 ? 1 : 2);
     return font;
 }
 
 bool BuildFonts(float s)
 {
-    if (fabsf(g_baked.scale - s) < 0.005f) return false;
+    if (fabsf(g_baked.scale - s) < 0.005f && g_baked.translation == tr::Generation()) return false;
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();
     if (g_fallbackFile.empty()) FindFontFiles();
+    FindLanguageFont();
     g_baked = Baked{};
     g_baked.scale = s;
+    g_baked.translation = tr::Generation();
+    if (!g_languageFile.empty()) g_baked.language = ReadMetrics(g_languageFile);
     std::string files[2] = {g_faceFile[BODY], g_faceFile[TITLE]};
     if (files[BODY].empty()) files[BODY] = g_fallbackFile;
     g_baked.faux = files[TITLE].empty();
@@ -173,7 +227,12 @@ void Canvas::Begin(ImDrawList* drawList, float originX, float originY, float sca
     previous.swap(regions);
     regions.clear();
     splitter.Split(list, LAYERS);
-    if (measuredAt != FontScale()) { widths.clear(); measuredAt = FontScale(); }
+    if (measuredAt != FontScale() || measuredIn != tr::Generation())
+    {
+        widths.clear();
+        measuredAt = FontScale();
+        measuredIn = tr::Generation();
+    }
     if (widths.size() > 8192) widths.clear();
 }
 
@@ -253,8 +312,9 @@ static ImFont* FontFor(float size, Face face, float* pixels)
     return font;
 }
 
-float Canvas::Measure(const std::string& text, float size, Face face)
+float Canvas::Measure(const std::string& raw, float size, Face face, bool shown)
 {
+    const std::string& text = shown ? raw : tr::Get(raw);
     std::string key = std::to_string((int)(size * 10)) + (face == TITLE ? "T" : "B") + text;
     auto found = widths.find(key);
     if (found != widths.end()) return found->second;
@@ -266,15 +326,16 @@ float Canvas::Measure(const std::string& text, float size, Face face)
     return w;
 }
 
-std::string Canvas::Fit(const std::string& text, float max, float size, Face face)
+std::string Canvas::Fit(const std::string& raw, float max, float size, Face face, bool shown)
 {
     if (max <= 0) return "";
-    if (Measure(text, size, face) <= max) return text;
+    std::string text = shown ? raw : tr::Get(raw);
+    if (Measure(text, size, face, true) <= max) return text;
     size_t lo = 0, hi = text.size();
     while (lo < hi)
     {
         size_t mid = (lo + hi + 1) / 2;
-        if (Measure(text.substr(0, mid) + "...", size, face) <= max) lo = mid; else hi = mid - 1;
+        if (Measure(text.substr(0, mid) + "...", size, face, true) <= max) lo = mid; else hi = mid - 1;
     }
     /* never cut inside a UTF-8 sequence */
     while (lo > 0 && lo < text.size() && ((unsigned char)text[lo] & 0xC0) == 0x80) lo--;
@@ -285,9 +346,9 @@ std::string Canvas::Fit(const std::string& text, float max, float size, Face fac
 
 float Canvas::Text(const std::string& raw, float x, float cy, const TextOpts& o)
 {
-    std::string text = o.max > 0 ? Fit(raw, o.max, o.size, o.face) : raw;
+    std::string text = o.max > 0 ? Fit(raw, o.max, o.size, o.face, o.shown) : o.shown ? raw : tr::Get(raw);
     if (text.empty()) return 0;
-    float w = Measure(text, o.size, o.face);
+    float w = Measure(text, o.size, o.face, true);
     if (o.align == RIGHT) x -= w;
     else if (o.align == CENTER) x -= w / 2;
     float pixels;

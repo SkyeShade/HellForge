@@ -22,11 +22,13 @@ struct TextOpts
     Align align = LEFT;
     int z = 5;
     float max = 0; /* fit to this width with "..." (0: no limit) */
+    bool shown = false; /* already in the player's language (a wrapped line): not translated again */
 };
 
 /* The fonts at a pixel scale: the game's own FS Sinclair (body) and FS Sinclair Medium (titles), extracted into the
  * editor's folder (fs-sinclair.ttf, fs-sinclair-medium.ttf), with Windows' Bahnschrift for what they lack (and in their
- * place when they are missing) and the arrows from Segoe UI Symbol. Call between frames; true when the atlas changed. */
+ * place when they are missing), the arrows from Segoe UI Symbol, and a translation's characters from a Windows font
+ * that has them. Call between frames; true when the atlas changed. */
 void SetFontFolder(const std::string& folder);
 bool BuildFonts(float pixelsPerUnit);
 float FontScale();
@@ -48,8 +50,9 @@ public:
     void Line(float x1, float y1, float x2, float y2, ImU32 colour, int z = 0, float t = 1);
     /* An open stroke through three points (a chevron), t units thick, its corner mitred sharp, on whole pixels. */
     void Chevron(ImVec2 a, ImVec2 b, ImVec2 c, ImU32 colour, int z = 0, float t = 1);
-    float Measure(const std::string& text, float size, Face face = BODY);
-    std::string Fit(const std::string& text, float max, float size, Face face = BODY);
+    /* Text is translated (translate.h) where it is measured and drawn; shown: it is already. */
+    float Measure(const std::string& text, float size, Face face = BODY, bool shown = false);
+    std::string Fit(const std::string& text, float max, float size, Face face = BODY, bool shown = false);
     /* Draws text with its cap height centred on cy; returns its width in units. */
     float Text(const std::string& text, float x, float cy, const TextOpts& o);
     /* An image at (at.x, at.y), size.x by size.y units. */
@@ -78,6 +81,7 @@ private:
     float wheel = 0;
     std::unordered_map<std::string, float> widths;
     float measuredAt = 0;
+    unsigned measuredIn = 0; /* the translation's generation the widths are for */
     void Layer(int z);
     ImVec2 Px(float x, float y) const;
 };
