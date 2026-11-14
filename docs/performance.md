@@ -34,6 +34,7 @@ out this way without another build.
 | `knn-grid` | The Hive Lord graph links its points through a grid instead of trying every pair, with the same result | Level generation on a 4 km map: 1,447 ms to 24 ms; on a 16 km map about 400 s saved |
 | `spread-sort` | Map generation's location spreading sorts its candidates with the game's own steps, the comparison inlined | The sort alone, outside the game: 55 to 28 ms for 460,000 candidates, 0.61 to 0.32 ms for 7,200 |
 | `tree-cell-limits` | After trees are taken out, SpeedTree's forest keeps both axes of the cut that limits each view to cells with trees | On a 16 km map, a view walked about 20,000 cells instead of 120,000 to 325,000 |
+| `early-stamp-packages` | A mission's stamp packages are requested during its stamp planning, before the load step that asks for them | The wait for them on a 16 km map was about 13 s; the fix's own saving is not measured |
 
 ## safe-read
 
@@ -439,3 +440,41 @@ the forest's extents on both axes. The game skips the cut when either axis has n
 - It works with `speedtree-empty-cells`: that fix makes each empty cell a view walks cheap, this one stops the walk
   over cells outside the trees' rows. Their combined effect is not measured.
 - The fix is pinned to build 25480438. Any other build leaves it off with a `modloader.log` line.
+
+## early-stamp-packages
+
+A mission load asks for its stamp packages (what the map's placed objects need) in one step, then waits
+until all are loaded. HellForge asks for the same packages a few steps earlier, during the stamp planning
+(`native/mod-loader/perf_early_stamp_packages.c`).
+
+- **Why it helps.** The engine loads one package a frame. Asked early, the packages load while the game plans its
+  stamps, so the later wait is shorter.
+- **When.** The game's own request step builds its list only from the map's location types. The loader runs that same
+  function right after the last load step that writes those types. From then on the list cannot change.
+
+Why the game's results stay the same:
+
+- The function is the game's own, with the same types and settings. Only its output list and its scratch memory are
+  HellForge's, so the load's own data is untouched.
+- A load request is not counted: asking for a package twice loads it once, and one release frees it. The game's step
+  then finds the same packages already asked for.
+- When the game's step has run, any package HellForge asked for that its list lacks is released. When the level ends
+  or reloads first, all of them are.
+- At most 480 requests are queued at once, below the engine's 512-entry queue. The rest follow on later steps.
+- The briefing's drop map and the ship load no stamps, so nothing is asked for there. A friend's game loads its own
+  copy the same way.
+
+Measured on Complex Operations' 16 km maps:
+
+- the wait for the stamp packages was about 13 s;
+- asked early, 96 to 107 packages were loaded 24 to 28 s later, and the game's own list matched them.
+
+The saving of the fix alone is not measured. On two normal-size missions the same wait was 1.5 s and 1.7 s, so the
+gain there is at most that. The effect at that size is not measured.
+
+Limits:
+
+- It is pinned to game build 25480438: the load's steps, the request function, the engine's package functions and
+  the two calls it redirects. Another build leaves it off, with a line in `modloader.log`.
+- A mod that swaps one of the engine's package functions turns it off for that load.
+- A load step added between the last type writer and the request, if it holds the types, turns it off for that load.

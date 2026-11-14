@@ -200,6 +200,9 @@ On `dev`, since 0.4.0-beta.
 - **Trees keep their view cut after one is destroyed.** The game stopped cutting each view's walk to the cells with
   trees for the rest of the level. On a 16 km map, that walk falls from up to 325,000 cells to about 20,000
   ([performance fixes](docs/performance.md#tree-cell-limits)).
+- **Missions load their props sooner.** A mission's stamp packages are requested during its stamp planning, before
+  the load step that waits for them. On a 16 km map that wait was about 13 s
+  ([performance fixes](docs/performance.md#early-stamp-packages)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the

@@ -570,18 +570,7 @@ static void ChannelInstall(uintptr_t game);
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
 #include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
-#include "perf_speedtree_empty_cells.c" /* forest cells missing from the forest hash: the empty box */
-#include "perf_record_hash.c" /* record-hash: the destruction-record map's hash multiplier */
-#include "perf_ai_path_budget.c" /* the AI path threads' time a step; the game thread calls AiPathBudgetTick */
-#include "perf_corpse_freeze.c" /* settled ring corpses frozen; the game thread calls PerfCorpseFreezeTick */
-#include "perf_render_job_copies.c" /* Direct3D 12 render jobs give their version copies back */
-#include "perf_render_version_rehash.c" /* the D3D12 version tables kept short */
-#include "perf_vehicle_box.c" /* vehicles' boxes once per motion and steering pass */
-#include "perf_heap_trim.c" /* the allocator's caches emptied once more when a load ends */
-#include "perf_scatter_cameras.c" /* the generator's water and fog cameras left out of the scatter update */
-#include "perf_knn_grid.c" /* knn-grid: the Hive Lord graph's neighbour pass on a grid */
-#include "perf_spread_sort.c" /* SpreadLocations' candidate sort */
-#include "perf_tree_cell_limits.c" /* SpeedTree's view cut kept after its forest is rebuilt */
+#include "perf_all.c" /* the performance fixes, after render_guards.c */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -790,6 +779,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
     AiPathBudgetWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
+    EarlyStampPackagesInstall();
     RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
     PerfSpeedTreeWatch();
     RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
