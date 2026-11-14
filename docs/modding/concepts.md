@@ -186,7 +186,7 @@ game: use `hf_set` or `edit_entity` instead.
 
 Arrowhead's premium content (premium warbonds, Superstore items bought with Super Credits, and the Steam DLCs' gear)
 is a player's only when they bought it in the normal game. A player brings it into HellForge with Profile > Account
-sync, which reads their own account and seals it to their PC and Steam account. A mod that ports premium content, or
+sync, which reads their own account and seals it to their PC and Steam account for 14 days. A mod that ports premium content, or
 builds on it, must follow that sync: it may not give premium content to players who have not bought it.
 
 HellForge does most of this for you.

@@ -46,7 +46,7 @@ public sealed class AccountSnapshot : IDisposable
     {
         seal = null;
         if (!InventorySync.HasSnapshot(snapshotDir)) return "there is no snapshot";
-        seal = SnapshotSeal.Verify(snapshotDir, InventorySync.SealKeyFor(snapshotDir), out var sealProblem);
+        seal = SnapshotSeal.Verify(snapshotDir, out var sealProblem);
         if (seal == null) return sealProblem ?? "the snapshot changed since it was captured, or was captured on another PC";
         if (steamAccount == null) return "Steam is not signed in";
         return seal.SteamAccount == steamAccount ? null : "the snapshot was captured for another Steam account";

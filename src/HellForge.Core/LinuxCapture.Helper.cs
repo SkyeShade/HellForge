@@ -55,7 +55,7 @@ public static partial class LinuxCapture
     public static bool HelperInstalled() => HelperInstalled(File.Exists);
 
     internal static bool HelperInstalled(Func<string, bool> exists) =>
-        HelperFolders.Any(folder => new[] { HelperName, HelperName + ".sha256", RelayName, RelayName + ".sha256" }
+        HelperFolders.Any(folder => new[] { HelperName, HelperName + ".sha256", RelayName, RelayName + ".sha256", ProxyCopyName + ".sha256" }
             .Any(file => exists(folder + "/" + file))) ||
         exists(SudoersPath) || exists(LegacySudoersPath) || exists(SteamOsKeepListPath);
 

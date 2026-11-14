@@ -1,0 +1,58 @@
+# The signing capture keeps an account only when Arrowhead's API reached it through a chain that holds one of the keys in
+# src/HellForge.Core/CaptureUpstreamPins.cs. This checks the live chain against those pins each week, so a CA change is
+# seen before players' syncs fail. A failed run means: add the new root's pin and ship it.
+#
+# GitHub runs a schedule only from this file on the default branch (main); a change to it on dev runs it once there.
+name: Upstream pins
+
+on:
+  schedule:
+    - cron: '41 5 * * 1'   # Mondays 05:41 UTC
+  workflow_dispatch:
+  push:
+    branches: [dev]
+    paths:
+      - .github/workflows/upstream-pins.yml
+      - src/HellForge.Core/CaptureUpstreamPins.cs
+
+permissions: {}
+
+jobs:
+  check:
+    name: The API's chain holds a pinned key
+    if: github.repository == 'SkyeShade/HellForge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'   # SSLSocket.get_verified_chain, which includes the trusted root
+      - name: Compare the verified chain's keys with the pins
+        shell: python
+        run: |
+          import base64, hashlib, re, socket, ssl, subprocess, sys
+
+          source = open("src/HellForge.Core/CaptureUpstreamPins.cs", encoding="utf-8").read()
+          host = re.search(r'ApiHost = "([^"]+)"', source).group(1)
+          pins = set(re.findall(r'"([A-Za-z0-9+/]{43}=)"', source))
+          context = ssl.create_default_context()
+          with socket.create_connection((host, 443), timeout=20) as raw, context.wrap_socket(raw, server_hostname=host) as tls:
+              chain = tls.get_verified_chain()
+
+          def pin(der):
+              spki = subprocess.run(["openssl", "x509", "-inform", "DER", "-pubkey", "-noout"], input=der, capture_output=True, check=True).stdout
+              key = subprocess.run(["openssl", "pkey", "-pubin", "-outform", "DER"], input=spki, capture_output=True, check=True).stdout
+              return base64.b64encode(hashlib.sha256(key).digest()).decode()
+
+          found = False
+          for der in chain:   # DER bytes, the trusted root last
+              subject = subprocess.run(["openssl", "x509", "-inform", "DER", "-subject", "-noout"], input=der, capture_output=True, check=True).stdout.decode().strip()
+              value = pin(der)
+              print(("PINNED  " if value in pins else "        ") + value + "  " + subject)
+              found = found or value in pins
+          if not found:
+              print(f"::error::{host}'s verified chain holds none of CaptureUpstreamPins' keys")
+              sys.exit(1)

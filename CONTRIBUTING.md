@@ -196,7 +196,7 @@ Fedora). From the repository root:
 
 - `scripts/test.sh` builds the launcher, the CLI and both test projects in Release, runs `tests/HellForge.Tests` and
   `tests/HellForge.LocalBackend.Tests`, the structure lint and `bash -n linux/*.sh`.
-- It skips only the checks inside those projects that need Windows (snapshot seals use Windows DPAPI, for example) and
+- It skips only the checks inside those projects that need Windows (the Steam ownership record uses Windows DPAPI, for example) and
   `scripts/Test.ps1`'s NTFS junction checks.
 - The engine, the in-game editor and the complete package need Windows. To build the package without a Windows PC, run
   the **Build Linux package** workflow:
