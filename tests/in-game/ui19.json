@@ -1,0 +1,28 @@
+{
+  "about": "SDK 19's screens in the game's own UI: an overlay from a XAML file of the mod in the game's styles, its text set every second, a click handler set, the refusals; a menu screen on the game's menu presenter opened, a second refused, closed by the mod and opened again; on the ship and in a mission (tests/in-game/README.md).",
+  "mods": [
+    "ui-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {"name": "the mod loads with SDK 19", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "ui_open takes the mod's XAML file", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE open ok"},
+    {"name": "ui_on takes the button", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE on ok"},
+    {"name": "a file outside the mod, a missing file, an unknown kind and another mod's screen are refused", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE refusals ok"},
+    {"name": "ui_set queues", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE set 2 ok"},
+    {"name": "the screen opens in the game (parsed, added)", "log": "mod-hellforge.ui-probe.log", "absent_regex": "ui_open\\(1\\): (the XAML does not parse|the game's UI is not up)"},
+    {"name": "a missing element is said", "log": "mod-hellforge.ui-probe.log", "contains": "no element named \"Nobody\""},
+    {"name": "a missing property is said", "log": "mod-hellforge.ui-probe.log", "contains": "Title.NoSuchProperty: it has no such property"},
+    {"name": "the button takes the command", "log": "mod-hellforge.ui-probe.log", "absent": "Ok.click:"},
+    {"name": "the menu screen is asked for, its buttons and close handler set", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE menu open ok 2"},
+    {"name": "the menu opens on the game's menu presenter", "log": "modloader.log", "contains": "ui: hellforge.ui-probe's menu screen 2 is up"},
+    {"name": "a second menu while one is up is refused", "log": "mod-hellforge.ui-probe.log", "contains": "ui_open(3): a menu screen of a mod is open already"},
+    {"name": "ui_close closes the menu and the mod is told", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE menu 2 closed (1 of them)"},
+    {"name": "a menu opens again after one closed", "log": "modloader.log", "contains": "ui: hellforge.ui-probe's menu screen 4 is up"},
+    {"name": "the second menu closes too", "log": "mod-hellforge.ui-probe.log", "contains": "PROBE menu 4 closed (2 of them)"},
+    {"name": "the menu buttons take their commands", "log": "mod-hellforge.ui-probe.log", "absent_regex": "(Count|Close)\\.click:"},
+    {"name": "the game's menu presenter is the reviewed one and hooked", "log": "modloader.log", "absent_regex": "ui: (the game's menu presenters are not|presenter 40 could not)"},
+    {"name": "the game's Noesis functions are the reviewed ones", "log": "modloader.log", "absent": "ui: the game's"}
+  ]
+}

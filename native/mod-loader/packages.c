@@ -328,6 +328,7 @@ static void PackagesRequest(void)
 }
 
 #include "attachments.c" /* mods' weapon attachments, made on this file's game-thread update */
+#include "ui.c"          /* mods' screens in the game's own UI, run on this file's game-thread update */
 
 static void EventsTick(void); /* events.c */
 static void ArmoryDiagTick(void); /* armory_diag.c */
@@ -345,6 +346,7 @@ static void TickDetour(void* manager, float dt)
     ModPackagesTick();
     PackagesRequest();
     AttachmentsTick();
+    UiTick();
     ArmoryDiagTick();
     SpanRescueTick();
     ShieldBlockTick(dt);

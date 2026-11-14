@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.ui-probe",
+  "name": "UI probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: SDK 19's screens in the game's own UI (ui_open, ui_set, ui_on, ui_close) and one PROBE line per check for the development harness (tests/in-game/README.md).",
+  "gameplay": false,
+  "code": { "dll": "ui_probe.dll", "sdk": 19 }
+}
