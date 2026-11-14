@@ -165,6 +165,9 @@ On `dev`, since 0.4.0-beta.
 - **HellForge reads game memory without a system call.** Its own readers and every mod's `read` copy up to 256 bytes
   in place, which cut the living world's tick on a 16 km map from 1.8 to 0.5 ms. `HELLFORGE_PERF_OFF` turns any
   performance fix off ([performance fixes](docs/performance.md)).
+- **Forests cost the renderer less near the world origin.** Forest cells with no trees stay out of every view. On a
+  16 km map that removed the render thread's waits over 3 ms; on a normal-size map the gain is about 0.04 ms a frame
+  ([performance fixes](docs/performance.md#speedtree-empty-cells)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the

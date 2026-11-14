@@ -570,6 +570,7 @@ static void ChannelInstall(uintptr_t game);
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
 #include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
+#include "perf_speedtree_empty_cells.c" /* forest cells missing from the forest hash: the empty box */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -773,6 +774,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
     RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
+    PerfSpeedTreeWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
