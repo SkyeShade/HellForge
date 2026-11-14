@@ -1,5 +1,5 @@
 {
-  "about": "Stratagem input codes in the real game: a stats edit gives Resupply Up Up Left Right Down; HellForge's arrays hold every vanilla code, the row points at the new one, and calling it drops a Resupply (tests/in-game/README.md).",
+  "about": "Stratagem input codes in the real game: a stats edit gives Resupply Up Up Left Right Down; HellForge's arrays hold every vanilla code, the edit writes the new one, and calling it (not Resupply's own code) drops a Resupply (tests/in-game/README.md).",
   "mods": [
     "stratagem-codes-probe"
   ],
@@ -17,7 +17,7 @@
     {"name": "every vanilla code is in HellForge's arrays", "log": "modloader.log", "regex": "stratagem codes: 1[0-9]{2} vanilla codes in HellForge's arrays"},
     {"name": "the readers are the reviewed ones", "log": "modloader.log", "absent": "stratagem codes: refused"},
     {"name": "the code edit applies", "log": "mod-hellforge.stratagem-codes-probe.log", "regex": "stats .*input_code.*: applied"},
-    {"name": "the Resupply row holds the new code in the mission", "log": "mod-hellforge.stratagem-codes-probe.log", "contains": "PROBE resupply code ok: 1 1 4 2 3"},
+    {"name": "the edit writes Up Up Left Right Down (packed 2231)", "log": "mod-hellforge.stratagem-codes-probe.log", "regex": "input_code: applied \\([0-9a-f]+ -> 000008b7\\)"},
     {"name": "calling the new code drops a Resupply", "log": "mod-hellforge.stratagem-codes-probe.log", "contains": "PROBE beacon of type 33"},
     {"name": "no probe check failed", "log": "mod-hellforge.stratagem-codes-probe.log", "absent": "FAIL"}
   ]
