@@ -66,9 +66,9 @@ standard error and exits with 1.
 | `status` | Prints the versions (HellForge, engine, mod SDK, game build), readiness (`ready.gameCopy`, `ready.sessionRunner`, `ready.linuxNamespace`), how the copy is kept off the internet (`networkBlock`: `wfp`, `firewall` or `linux-netns`), the launcher's settings, the last session, whether one is running, and the language packs in the copy (`languages`; English is always there). |
 | `profiles` | Lists the profiles (name, template, folder, used, selected) and the templates. `--create <name> --template <template>` makes a profile; the name is 1 to 32 lowercase letters, digits or hyphens. |
 | `mods` | Prints the Mods page's list, top first. Each mod has its id, name, version, description, enabled, group, tags, folder, archive (its zip, if it came as one), removable, and a pack's options. Also printed: the folder's problems, the modlist code friends compare (null when no gameplay mod is on) and the path of `hellforge-mods.json`. |
-| `mod-add --file <path>` | Adds a mod the way the Mods page's "Add mods..." does: a `.zip`, `.rar` or `.7z`, a folder mod's `hellforge-mod.json`, or a cosmetic pack's `manifest.json`. A mod with the same id is replaced (an update). |
-| `mod-remove --id <id>` | Deletes the mod's zip or folder. Mods HellForge ships (tag `bundled`) come back by themselves: switch these off instead. Local Stats (tag `local-stats`) cannot be removed. |
-| `mod-switch --id <id> --on yes\|no` | Switches a mod on or off. Local Stats (tag `local-stats`) is always on and refuses `--on no`. |
+| `mod-add --file <path>` | Adds a mod the way the Mods page's "Add mods..." does: a `.zip`, `.rar` or `.7z`, a folder mod's `hellforge-mod.json`, or a cosmetic pack's `manifest.json`. A mod with the same id is replaced (an update). Give `--file` more than once to add several (see [Several mods at once](#several-mods-at-once)). |
+| `mod-remove --id <id>` | Deletes the mod's zip or folder. Mods HellForge ships (tag `bundled`) come back by themselves: switch these off instead. Local Stats (tag `local-stats`) cannot be removed. `--ids <id,id,...>` removes several. |
+| `mod-switch --id <id> --on yes\|no` | Switches a mod on or off. Local Stats (tag `local-stats`) is always on and refuses `--on no`. `--ids <id,id,...>` switches several. |
 | `mod-order --ids <id,id,...>` | Puts the listed mods first, top first, in that order. The others keep their order after them. Gameplay mods stay above cosmetic ones, so the order changes within each group. |
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
@@ -135,6 +135,28 @@ If you write `mods\hellforge-mods.json` yourself, it looks like this:
 | `listPublic` | Default true. Lists the player's own Public lobbies on other HellForge players' Galactic Map. |
 
 Write the whole file at once, to a temporary file and then a rename, as HellForge does.
+
+### Several mods at once
+
+Sending a list of mods one command at a time reads the whole mods folder once per mod. Give the list to one command
+instead, which reads it once:
+
+```text
+HellForge.Cli.exe mod-remove --ids owner.one,owner.two
+HellForge.Cli.exe mod-switch --ids owner.one,owner.two --on no
+HellForge.Cli.exe mod-add --file C:\Downloads\one.zip --file C:\Downloads\two.zip
+```
+
+Every id or file is checked before anything changes. An unknown id, a mod that can't be removed or switched off, or a
+file that isn't a mod refuses the whole list, and nothing is changed. `mod-switch` saves the list with one write.
+`mod-remove` and `mod-add` then work through the list. A file that can't be deleted or copied (open in another program)
+is that mod's `error`, and the others still go. The answer counts them:
+
+```json
+{ "done": 2, "failed": 0, "mods": [ { "id": "owner.one", "removed": "...", "error": null } ] }
+```
+
+`--id` and one `--file` still print the single-mod answer they always did.
 
 ## Profiles and settings
 

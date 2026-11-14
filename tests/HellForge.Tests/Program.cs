@@ -790,6 +790,7 @@ LinuxInstallerTests.Register(Test, Check, Reject, root);
 LinuxUninstallTests.Register(Test, Check, Reject, root);
 LinuxPrefixBackupTests.Register(Test, Check, Reject, root);
 LinkRuleTests.Register(Test, Check, Reject, root);
+ModBatchTests.Register(Test, Check, Reject, root);
 SandboxCopyBackTests.Register(Test, Check, Reject, root);
 SandboxWireTests.Register(Test, Check, Reject, root);
 SandboxPipeRelayTests.Register(Test, Check);

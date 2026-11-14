@@ -318,7 +318,7 @@ static class Launch
                 group = m.Cosmetic ? "cosmetic" : ModCatalog.Tier(m) == CoopTier.PerPlayer ? "per-player" : "gameplay",
                 tags = Tags(m),
                 m.Folder, archive = m.Archive != null ? Path.Combine(install.Mods, m.Archive) : null,
-                removable = Removable(m),
+                removable = ModBatch.Removable(m),
                 // a cosmetic pack's options as its picker shows them (hellforge-mods.json "packs": "off" and the "sub" picks)
                 options = m.Pack?.Options.Select(o => new
                 {
@@ -347,9 +347,6 @@ static class Launch
         return tags;
     }
 
-    // The player's own mods; the ones HellForge ships come back by themselves, so they are switched off instead.
-    static bool Removable(ModManifest mod) => mod.Id != ModCatalog.LocalStatsId && BundledMods.ShippedFiles(mod.Folder) == null;
-
     // Mod changes wait for the session to end, as on the Mods page: a session stages the mods it started with.
     static void NoSession()
     {
@@ -370,6 +367,21 @@ static class Launch
         var mod = candidates.Single();
         var added = ModInstaller.Add(install, mod);
         return new { mod.Id, mod.Name, mod.Version, installed = added, replaced = mod.Replaces };
+    }
+
+    // mod-add with --file given more than once: every file is read before any is copied, and one that isn't a mod refuses
+    // them all (ModBatch.Add).
+    public static object ModAddMany(Dictionary<string, string> options, IReadOnlyList<string> files)
+    {
+        var install = Install(options);
+        NoSession();
+        var added = ModBatch.Add(install, files);
+        return new
+        {
+            done = added.Count(a => a.Error == null),
+            failed = added.Count(a => a.Error != null),
+            mods = added.Select(a => new { a.Mod.Id, a.Mod.Name, a.Mod.Version, installed = a.Installed, replaced = a.Mod.Replaces, error = a.Error })
+        };
     }
 
     // languages: the language packs pinned for the build, which are in the game copy and which Steam has installed (the
@@ -419,9 +431,23 @@ static class Launch
         var install = Install(options);
         NoSession();
         var mod = Find(install, id);
-        if (!Removable(mod)) throw new InvalidDataException($"{id} ships with HellForge: switch it off instead (mod-switch).");
+        if (!ModBatch.Removable(mod)) throw new InvalidDataException($"{id} ships with HellForge: switch it off instead (mod-switch).");
         ModInstaller.Remove(install, mod);
         return new { mod.Id, removed = mod.Archive != null ? Path.Combine(install.Mods, mod.Archive) : mod.Folder };
+    }
+
+    // mod-remove --ids a,b,c: one read of the mods folder for the whole list (ModBatch.Remove).
+    public static object ModRemoveMany(Dictionary<string, string> options, string ids)
+    {
+        var install = Install(options);
+        NoSession();
+        var removed = ModBatch.Remove(install, ModBatch.Ids(ids));
+        return new
+        {
+            done = removed.Count(r => r.Error == null),
+            failed = removed.Count(r => r.Error != null),
+            mods = removed.Select(r => new { r.Id, removed = r.Path, error = r.Error })
+        };
     }
 
     public static object ModSwitch(Dictionary<string, string> options, string id, string on)
@@ -433,6 +459,16 @@ static class Launch
         if (id == ModCatalog.LocalStatsId && !enabled) throw new InvalidDataException("Local Stats is always on: it holds the in-game editor's saved changes (reset them in the editor).");
         ModSettings.SetEnabled(install.Mods, id, enabled);
         return new { id, enabled };
+    }
+
+    // mod-switch --ids a,b,c --on yes | no: all of them, with one write, or none (ModBatch.Switch).
+    public static object ModSwitchMany(Dictionary<string, string> options, string ids, string on)
+    {
+        var install = Install(options);
+        NoSession();
+        var enabled = on switch { "yes" => true, "no" => false, _ => throw new ArgumentException("--on takes yes or no.") };
+        var switched = ModBatch.Switch(install, ModBatch.Ids(ids), enabled);
+        return new { done = switched.Count, failed = 0, enabled, mods = switched.Select(id => new { id, enabled }) };
     }
 
     // mod-pack: a cosmetic pack's options as its picker sets them (hellforge-mods.json "packs"): --option <name> --on
@@ -636,7 +672,9 @@ static class Launch
         foreach (var id in listed)
             if (mods.All(m => m.Id != id)) throw new ArgumentException($"No mod with the id {id} in {install.Mods}.");
         if (listed.Distinct(StringComparer.Ordinal).Count() != listed.Count) throw new ArgumentException("--ids lists a mod twice.");
-        ModSettings.SetOrder(install.Mods, listed.Concat(mods.Select(m => m.Id).Where(id => !listed.Contains(id))).ToList());
-        return new { order = ModCatalog.Load(install.Mods).Mods.Select(m => m.Id) };
+        var order = listed.Concat(mods.Select(m => m.Id).Where(id => !listed.Contains(id))).ToList();
+        ModSettings.SetOrder(install.Mods, order);
+        // the mods read above, in the order just saved: the folder isn't read a second time
+        return new { order = ModCatalog.Ordered(mods, order).Select(m => m.Id) };
     }
 }
