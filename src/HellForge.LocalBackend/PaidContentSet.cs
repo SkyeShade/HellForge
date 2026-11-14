@@ -180,5 +180,9 @@ public sealed partial class PaidContentSet
     // a paid or gated item.
     public bool IsReserved(uint mixId) => Gates(mixId) || TryGetParent(mixId, out var parent) && Gates(parent);
 
+    // Every reserved id, for the loader's paid-item guard (OwnershipFilter.Refused).
+    public IEnumerable<uint> Reserved() =>
+        MixIds.Concat(SuperCreditIds).Concat(warbondItemTokens.Keys).Concat(Parents.Where(p => Gates(p.Value)).Select(p => p.Key)).Distinct();
+
     bool Gates(uint mixId) => IsPaid(mixId) || IsSuperCredits(mixId) || warbondItemTokens.ContainsKey(mixId);
 }

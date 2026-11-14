@@ -31,6 +31,7 @@
  * unmeasured in game. Afterwards the lists are read as before; a stub's id check compares with a higher count. */
 
 #include "ownership.c" /* items made owned, and given back */
+#include "paid_guard_step.c" /* after ownership.c: paid items the backend refuses taken back */
 #include "loadout_scrub.c" /* the loadout without what a removed mod added */
 
 #define LC_MAX 1024 /* entries of any numbered kind HellForge has room for (weapons and entities grow: their tombs are Weapon.tomb) */

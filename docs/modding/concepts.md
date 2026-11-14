@@ -232,6 +232,12 @@ HellForge does most of this for you.
 - **Your code's own effects are yours to gate.** HellForge locks items, not logic: a code mod that recreates a premium
   booster's or armour passive's effect must not apply it for players without the content. Until the SDK has an
   ownership call, give such effects only to the items HellForge locks, or leave them out.
+- **Code mods may not hook or write the ownership checks and paid purchases.** These are the game's checks of what a
+  player holds, its login loadout check, and its Super Credit, Superstore and premium warbond purchases. The loader
+  refuses such a `hook`, `write` or `write_u32_if`, and its log names the mod and the function.
+- **A paid item the backend refuses is taken back.** The loader asks the session's backend which paid items the player
+  may not hold. When the game holds one, through a mod's add or a changed reply, the loader removes it once a newer
+  answer still refuses it. An item just bought survives, because the newer answer allows it.
 
 Cosmetic packs in the community's format have no `hellforge-mod.json` and cannot declare premium content: ship a
 premium look as a data mod with a manifest instead.
@@ -241,6 +247,9 @@ the installation's catalogue. Its backend serves the catalogue's paid entries fr
 that gives an item, a mod warbond's purchases included. A session also refuses a backend that is
 not the one it was built with. None of this stops a player who changes HellForge itself: a replaced session, or one
 whose compiled pin was edited, starts any backend.
+
+A code mod that patches the game without the SDK's calls also passes the loader's refusal. With no backend to answer,
+the loader takes nothing back.
 
 A difficulty's mission stratagem is never a paid one in the loader. How a joiner's game handles a mission group sent
 by a changed host is not traced yet, so that path is open.

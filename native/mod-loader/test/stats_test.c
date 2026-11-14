@@ -4481,6 +4481,7 @@ static void FieldWatchCapFixture(void)
 #include "live_mods_test.c" /* after the helpers it shares (Edit, FixtureLoad) */
 #include "live_content_test.c" /* after live_mods_test.c and the behaviour and registry helpers */
 #include "stratagem_cap_test.c" /* after live_content_test.c (ContentGame, ContentMod) */
+#include "paid_guard_test.c" /* after live_content_test.c: its fake catalogue */
 #include "explosions_test.c"
 #include "beam_arc_test.c"
 
@@ -4516,6 +4517,7 @@ int main(int argc, char** argv)
     ContentDifficultyFixture();
     ContentMovedOwnershipFixture();
     StratagemHeldFixture();
+    PaidGuardFixture();
     ChannelGameFixture();
     ChannelFixture();
     RpcFixture();
