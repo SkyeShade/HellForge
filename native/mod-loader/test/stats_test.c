@@ -13,6 +13,7 @@
 #include "spawn_guards_test.c"
 #include "shots_test.c"
 #include "rounds_test.c"
+#include "deploys_test.c"
 #include "network_types_test.c"
 #include "table_growth_test.c"
 #include "state_moves_test.c"
@@ -4704,6 +4705,7 @@ int main(int argc, char** argv)
     SpawnGuardsFixture();
     ShotsFixture();
     RoundsFixture();
+    DeploysFixture();
     PerksFixture();
     {
         /* thousands of edits (an editor applying a preset): the list grows, none refused */
