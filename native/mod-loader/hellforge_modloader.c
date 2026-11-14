@@ -781,6 +781,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
     EarlyStampPackagesInstall();
     RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
+    if (g_fired[HF_EVENT_GAME_LOADED]) OverlapGridWatch();
     PerfSpeedTreeWatch();
     RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
     RenderVersionRehashWatch();

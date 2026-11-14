@@ -190,19 +190,22 @@ On `dev`, since 0.4.0-beta.
   ([performance fixes](docs/performance.md#heap-trim)).
 - **A generating level fills less scatter it never draws.** The water and fog cameras are left out of the engine's
   scatter update. On a 16 km map that saved 4,205 MB; a normal-size map should save tens of MB
-  ([performance fixes](docs/performance.md#scatter-cameras)).
+  ([performance fixes](docs/performance-loading.md#scatter-cameras)).
 - **Missions with the Hive Lord generate faster.** Its movement graph links its points through a grid instead of trying
   every pair, with the same result. A 4 km map's pass fell from 1,447 to 24 ms
-  ([performance fixes](docs/performance.md#knn-grid)).
+  ([performance fixes](docs/performance-loading.md#knn-grid)).
 - **Map generation sorts its location candidates in half the time.** The game's own sort runs with its comparison
   inlined, so the map comes out byte for byte the same. The gain is small on a normal-size map
-  ([performance fixes](docs/performance.md#spread-sort)).
+  ([performance fixes](docs/performance-loading.md#spread-sort)).
 - **Trees keep their view cut after one is destroyed.** The game stopped cutting each view's walk to the cells with
   trees for the rest of the level. On a 16 km map, that walk falls from up to 325,000 cells to about 20,000
   ([performance fixes](docs/performance.md#tree-cell-limits)).
 - **Missions load their props sooner.** A mission's stamp packages are requested during its stamp planning, before
   the load step that waits for them. On a 16 km map that wait was about 13 s
-  ([performance fixes](docs/performance.md#early-stamp-packages)).
+  ([performance fixes](docs/performance-loading.md#early-stamp-packages)).
+- **Mission generation tests stamps only against their neighbours.** Stamp placement finds the records near each
+  candidate on a grid. On a 16 km map a test visits 8.2 records instead of 136.7; a normal-size map is not measured
+  ([performance fixes](docs/performance-loading.md#overlap-grid)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the

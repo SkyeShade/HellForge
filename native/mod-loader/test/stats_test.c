@@ -39,6 +39,7 @@
 #include "perf_spread_sort_test.c"
 #include "perf_tree_cell_limits_test.c"
 #include "perf_early_stamp_packages_test.c"
+#include "perf_overlap_grid_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -4818,6 +4819,7 @@ int main(int argc, char** argv)
     PerfSpreadSortFixture();
     TreeCellLimitsFixture();
     EarlyStampPackagesFixture();
+    PerfOverlapGridFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
