@@ -171,7 +171,7 @@ On `dev`, since 0.4.0-beta.
   Windows' key storage (the TPM where there is one), or a systemd service on Linux. The capture signs only what
   Arrowhead's API sent. Sync once after updating, then every 14 days to keep premium content. A HellForge you build
   yourself signs the same way. On Linux, premium content needs systemd
-  ([premium content is locked](docs/troubleshooting.md#premium-content-is-locked)).
+  ([premium content is locked](docs/troubleshooting.md#premium-content-is-locked)) (#404).
 - **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
   item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like
   weapons, and a copy of another mod's weapon follows its original, up to 8 copies deep (#386).
