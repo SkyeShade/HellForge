@@ -167,6 +167,11 @@ On `dev`, since 0.4.0-beta.
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
   inventory, purchases (mod warbonds' too), warbond pages, mastery and mission rewards (#386).
 - **A premium weapon's mastery levels and attachments need the weapon.** They were sold and earned without it (#386).
+- **A synced snapshot is signed by your PC and lasts 14 days.** Only administrator or root code holds the signing key:
+  Windows' key storage (the TPM where there is one), or a systemd service on Linux. The capture signs only what
+  Arrowhead's API sent. Sync once after updating, then every 14 days to keep premium content. A HellForge you build
+  yourself signs the same way. On Linux, premium content needs systemd
+  ([premium content is locked](docs/troubleshooting.md#premium-content-is-locked)) (#404).
 - **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
   item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like
   weapons, and a copy of another mod's weapon follows its original, up to 8 copies deep (#386).
