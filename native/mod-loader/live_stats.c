@@ -14,7 +14,7 @@
 /* A table or settings kind's field: 0 with *later when its boot pass has not run yet, else the field or 0 with *why. */
 static uintptr_t TxnTableAddress(StatEdit* e, int* later, const char** why)
 {
-    int phase = !strcmp(e->kind, "ProjectileSettings") ? 0 : !strcmp(e->kind, "DamageInfo") ? 1 : !strcmp(e->kind, "StratagemDefinition") ? 2 : -1;
+    int phase = CodesTablePhase(e->kind);
     int extra = StatsExtraKind(e->kind);
     uintptr_t row = 0;
     if (phase >= 0) { if (!g_statsTablesDone[phase]) { *later = 1; return 0; } return StatsTableField(phase, ApiModuleBase("game.dll", NULL), e, why); }

@@ -589,6 +589,16 @@ HF_ASSERT_OFFSET(HfProjectileSettings, ricochet_angle, 180);
 HF_ASSERT_OFFSET(HfProjectileSettings, ricochet_min_speed, 184);
 #define HF_TYPE_ProjectileSettings_ricochet_min_speed HF_TYPE_F32
 
+/* StratagemCode (4-byte table rows, found by id): a vanilla stratagem's input code (by type), kept by HellForge: the row's code points at an array of HellForge's, which follows this packed value (native/mod-loader/stratagem_codes.c) */
+#define HfStratagemCode_INFO "StratagemCode", 25480438u
+typedef struct HfStratagemCode
+{
+    uint32_t packed;                             /* +0x00 its directions, one base-5 digit each, the first lowest (1 up, 2 right, 3 down, 4 left; Up, Right = 1 + 2*5 = 11); 1 to 10 directions (unverified) [now?] */
+} HfStratagemCode;
+HF_ASSERT_SIZE(HfStratagemCode, 4);
+HF_ASSERT_OFFSET(HfStratagemCode, packed, 0);
+#define HF_TYPE_StratagemCode_packed HF_TYPE_U32
+
 /* StratagemDefinition (400-byte table rows, found by id; api->stratagem_row returns one: (HfStratagemSettings*)api->stratagem_row(...)): a stratagem: text, input, uses, cooldown, delivery, payload, packages and traits */
 #define HfStratagemSettings_INFO "StratagemDefinition", 25480438u
 typedef struct HfStratagemSettings

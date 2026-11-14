@@ -56,6 +56,21 @@ The file is organised by category, then by target, then by field:
 To check a file without starting the game, run `HellForge.Cli check-stats --mod <folder>`. `examples/mods/stats-example`
 is a working example.
 
+### Stratagem input codes
+
+A stratagem's `stratagem.input_code` is its arrows: a string of `U`, `R`, `D` and `L` (or the arrows themselves), 1 to
+10 of them, such as `"stratagems": { "Resupply": { "stratagem.input_code": "UULRD" } }`. Local Stats saves it as a
+number, one base-5 digit per direction with the first lowest (Up, Right is 1 + 2 x 5 = 11), and both forms load.
+
+- Ten is the most the game takes: the ship's arcade minigame has 10 arrows, its input matcher copies a code into a
+  12-direction buffer, and the HUD's arrows go into a 16-direction one. HellForge checks those readers in game.dll and
+  refuses every code edit on a build where they differ.
+- The game reads the code each time it is asked for it, so a change applies at once, the HUD's arrows too. HellForge
+  keeps every vanilla code in an array of its own and points the stratagem at it; taking the mod out puts the vanilla
+  code back.
+- The code is matched on each player's own machine. The beacon tells the others which stratagem was thrown, never its
+  code, so in co-op a code edit only changes what its player presses.
+
 ## How it applies
 
 - Changes apply when the game loads its data, every session. A stats-only mod (no code, Lua, data patches, data spec,

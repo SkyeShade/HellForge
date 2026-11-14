@@ -1256,6 +1256,25 @@
       "appliesVerified": false,
       "appliesSource": "rows are looked up by type when a projectile spawns"
     },
+    "StratagemCode": {
+      "component": "StratagemCode",
+      "table": true,
+      "stride": 4,
+      "layout": "25480438",
+      "meaning": "a vanilla stratagem's input code (by type), kept by HellForge: the row's code points at an array of HellForge's, which follows this packed value (native/mod-loader/stratagem_codes.c)",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "the input matcher (game.dll 0x66D8C0) and the HUD (0xA106C0) read the row's code and length each time",
+      "fields": {
+        "packed": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "its directions, one base-5 digit each, the first lowest (1 up, 2 right, 3 down, 4 left; Up, Right = 1 + 2*5 = 11); 1 to 10 directions",
+          "verified": false,
+          "source": "the arcade minigame's 10 arrows (0x17EFB4F), the matcher's 12-direction stack buffer (0x66DF7E, 0x66E161) and the 16-press input (0xA903AF); native/mod-loader/stratagem_codes.c"
+        }
+      }
+    },
     "StratagemSettings": {
       "component": "StratagemDefinition",
       "row": "stratagem_row",

@@ -24,6 +24,8 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `pattern-probe/` | the test mod `patterns18.json` runs (`hellforge.pattern-probe`), never shipped: magenta copies of Forest Camo (material LUT swaps on weapons, a pattern_lut on units) and an Arctic Camo copy |
 | `editor-engine.json` | the editor's engine-backed rows: the Eruptor's and Variable's firing ability swapped, spare heatsinks added to the Sai's Improved Cooldown heatsink; the logs prove the edits land, the mission shows what they do |
 | `editor-engine-probe/` | the stats mod `editor-engine.json` runs (`hellforge.editor-engine-probe`), never shipped |
+| `stratagem-codes.json` | stratagem input codes: a stats edit gives Resupply Up Up Left Right Down, the vanilla codes move into HellForge's arrays, and the new code calls Resupply in (needs the harness's `call` step) |
+| `stratagem-codes-probe/` | the test mod `stratagem-codes.json` runs (`hellforge.stratagem-codes-probe`), never shipped: the stats edit, the Resupply row's code in the mission, every beacon's type |
 
 ## Running one
 
