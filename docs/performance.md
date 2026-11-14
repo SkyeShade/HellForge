@@ -4,7 +4,8 @@
 
 For contributors and testers: the changes the mod loader makes so the game, and HellForge itself, do less work in
 every session. Each fix comes from measurements on Complex Operations' 16 km maps, where the game's costs are largest.
-Each one keeps the game's results and changes only how much work it takes to reach them.
+Each one keeps the game's results and changes only how much work it takes to reach them, except where its section
+says what a player sees.
 
 ## Turning a fix off
 
@@ -24,6 +25,7 @@ out this way without another build.
 | `speedtree-empty-cells` | Forest cells with no trees stay out of every view, also those that hold the world origin | 16 km map: render-thread waits over 3 ms fell from 343 to 0; a fight's 0.1% low rose from 43.4 to 51.7 fps. Normal size: about 0.04 ms a frame to gain |
 | `record-hash` | The destruction-record map spreads its keys over its slots instead of packing them into one run | A miss on a 16 km map: 2,316 probes to 11 |
 | `ai-path-budget` | The game's AI path threads get 0.5 ms a step instead of 2 ms, and 2 ms again while path requests wait over 500 ms | The game thread's wait for the AI step on a 16 km map: 1.0-1.5 ms to 0.2-0.3 ms a frame at 117-209 enemies |
+| `corpse-freeze` | A corpse at rest in the game's corpse ring leaves the physics world, as the game's disposal does to it later | A fight on a 16 km map: the corpses' terrain pairs 456 k to 49 k a window, median frame 18 to 15.5 ms, a trend in one direction |
 
 ## safe-read
 
@@ -127,3 +129,36 @@ Limits:
 - It acts only on a world whose budget is the game's 2 ms or its own 0.5 ms; a value another mod set stays.
 - It changes nothing on a game build other than 25480438, or when the game thread's update is not hooked.
 - It runs on the host and in a friend's game alike. The budget only matters on a machine with path requests queued.
+
+## corpse-freeze
+
+The game keeps the 32 newest corpses of each machine in its corpse ring. Each one keeps its ragdoll bodies in the
+physics world until 32 newer deaths push it out. In a fight, those resting bodies' contacts with the terrain are most
+of the physics step's pair work.
+
+- The game freezes a corpse only once it leaves the ring for disposal. When the corpse has moved less than 0.1 m² in a
+  second, its actors go off and its ragdoll goes out of the physics world.
+- The fix runs that same step on corpses still in the ring (`native/mod-loader/perf_corpse_freeze.c`): the same test,
+  the same two engine calls and the same skip of the actors that the game's entry asks for.
+- It runs on the game thread once a frame, after the game's own corpse update. It asks whether the unit still exists
+  before every call.
+- It leaves a corpse alone while the ragdoll pose sync still moves it. On a client, that lasts until the dead enemy's
+  old entity is gone.
+- It sends nothing over the network. Each machine freezes its own copies, as the game's disposal does.
+
+What a player sees: a corpse at rest stays where it lies. Its bodies are out of the physics world, so it no longer
+reacts to shots or explosions and no longer blocks anything. The game's own corpses behave this way once they sink.
+
+Measured on a 16 km map, in a fight with 135 to 144 enemies online:
+
+- The corpses' share of the deferred terrain pairs fell from 456 k to 49 k over four 30 s windows.
+- The median frame went from 18 to 15.5 ms.
+- A frozen corpse cannot be thawed, so this is a trend in one direction, not an on and off comparison.
+
+A fight on a normal-size map costs about as much, and the freeze ran there without a fault. Its saving at normal size
+is not measured.
+
+Limits:
+
+- A frozen corpse stays frozen. It stays where it lies even if the ground under it changes.
+- Build 25480438 only. Another build leaves it off, with a line in `modloader.log`.

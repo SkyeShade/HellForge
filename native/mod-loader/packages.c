@@ -334,6 +334,7 @@ static void ArmoryDiagTick(void); /* armory_diag.c */
 
 static void ShieldBlockTick(float dt); /* shield_block.c */
 static void AiPathBudgetTick(void); /* perf_ai_path_budget.c */
+static void PerfCorpseFreezeTick(void); /* perf_corpse_freeze.c */
 static void TickDetour(void* manager, float dt)
 {
     InterlockedExchange64(&g_tickLast, (LONG64)GetTickCount64());
@@ -344,6 +345,7 @@ static void TickDetour(void* manager, float dt)
     ArmoryDiagTick();
     ShieldBlockTick(dt);
     AiPathBudgetTick();
+    PerfCorpseFreezeTick();
     TickTable* ticks = g_ticks;
     LONG count = ticks ? ticks->count : 0;
     for (LONG i = 0; i < count; i++) ticks->entries[i].callback(ticks->entries[i].mod, dt, ticks->entries[i].user);

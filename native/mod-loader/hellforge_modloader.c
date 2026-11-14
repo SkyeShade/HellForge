@@ -573,6 +573,7 @@ static void ChannelInstall(uintptr_t game);
 #include "perf_speedtree_empty_cells.c" /* forest cells missing from the forest hash: the empty box */
 #include "perf_record_hash.c" /* record-hash: the destruction-record map's hash multiplier */
 #include "perf_ai_path_budget.c" /* the AI path threads' time a step; the game thread calls AiPathBudgetTick */
+#include "perf_corpse_freeze.c" /* settled ring corpses frozen; the game thread calls PerfCorpseFreezeTick */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -770,6 +771,7 @@ static void WatchStats(void)
 static void WatchInstalls(void)
 {
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
+    if (g_fired[HF_EVENT_GAME_LOADED]) PerfCorpseFreezeWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallForgeCreditsColour(); InstallForgeCreditsRoll(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
