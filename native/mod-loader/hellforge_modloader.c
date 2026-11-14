@@ -161,11 +161,8 @@ static HfApi g_api;
 
 /* ---- memory ----------------------------------------------------------------------------------------------------- */
 
-static int SafeRead(uintptr_t address, void* buffer, size_t size)
-{
-    SIZE_T read = 0;
-    return ReadProcessMemory(GetCurrentProcess(), (LPCVOID)address, buffer, size, &read) && read == size ? 0 : 1;
-}
+#include "perf_fixes.c" /* HELLFORGE_PERF_OFF: which performance fixes stay off */
+#include "safe_read.c"  /* SafeRead: small reads copied in place, a fault turned into the failure return */
 
 /* Every range of game.dll HellForge has written (the Lua bridge's hellforge_lua_rewrites): its rva and size, a range
  * that touches the last one joined to it. A Lua runtime proving game code against reviewed bytes asks for them. A mod's
