@@ -1,0 +1,17 @@
+{
+  "about": "Room for 1,024 new projectile types in the real game: 400 added (types 351 to 750), past the 161 that fit the projectile type's 9-bit co-op field, so the field widens to 11 bits; the first, the 161st, the 162nd and the last have rows naming their types; the session reaches the ship and a mission and comes back (tests/in-game/README.md).",
+  "mods": [
+    "projectile-cap-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {"name": "the probe loads", "log": "mod-hellforge.projectile-cap-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "400 types are added, 351 to 750", "log": "mod-hellforge.projectile-cap-probe.log", "contains": "PROBE added ok: 400 types, 351 to 750"},
+    {"name": "the list moves with all 400 and the bounds rise to 751", "log": "modloader.log", "contains": "with 400 new type(s) (bounds raised to 751)"},
+    {"name": "the projectile type's co-op field widens to 11 bits", "log": "modloader.log", "contains": "network field type cde01bfb now 11 bits"},
+    {"name": "rows below and past the old field's reach name their types", "log": "mod-hellforge.projectile-cap-probe.log", "contains": "PROBE rows ok"},
+    {"name": "no type is refused", "log": "mod-hellforge.projectile-cap-probe.log", "absent": "not added"},
+    {"name": "nothing failed", "log": "mod-hellforge.projectile-cap-probe.log", "absent": "FAIL"}
+  ]
+}

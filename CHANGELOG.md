@@ -12,6 +12,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Room for 1,024 projectile types from mods.** Mods with many weapons can add up to 1,024 new projectile types between
+  them (it was 512). Past the 161st, the co-op field that carries a projectile type widens from 9 to 11 bits on every
+  machine. Types above 511 now reach other players too; before, they were cut in synced shots and reloads.
 - **Mods can make sprays of their own (SDK 20).** `HfWeapon.spray_damage` gives a flamethrower or Sterilizer copy a
   damage of its own, in a spray record of its own, so it burns harder, or with another status, without changing the
   base. The `SprayWeapon` fields are in stats files and the editor shows a copy's own damage

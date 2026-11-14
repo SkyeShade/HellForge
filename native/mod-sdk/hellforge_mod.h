@@ -1341,7 +1341,8 @@ typedef struct HfApi
 
     /* ---- SDK 3 ---------------------------------------------------------------------------------------------------- */
     /* Adds a new projectile type (see HfProjectile). Call it from hellforge_mod_init. Returns its ProjectileType (351 and
-     * up), or 0 (the mod's log says why). 64 new types in all mods together (HellForge moves the game's list). */
+     * up), or 0 (the mod's log says why). 1,024 new types in all mods together (HellForge moves the game's list); past
+     * type 511 their co-op field widens to 11 bits on every machine (docs/modding/projectiles.md "Room and co-op"). */
     uint32_t (*add_projectile)(HfMod* mod, const HfProjectile* projectile);
     /* The 272-byte settings row of a projectile a mod added, after HF_EVENT_PROJECTILES_READY, or 0. Its +0 is the type
      * and must stay so; the rest may be changed (HD2Runtime's research names the members). */
