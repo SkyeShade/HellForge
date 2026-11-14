@@ -28,7 +28,7 @@ public sealed record StatsField(string Name, string Kind, string Component, stri
     public string Hd2rAddress => Kind switch
     {
         "component" => $"component|{Component}|{Record.ToString(CultureInfo.InvariantCulture)}|{Offset.ToString(CultureInfo.InvariantCulture)}",
-        "EntityDelta" => $"EntityDelta|{Component}|{Offset.ToString(CultureInfo.InvariantCulture)}",
+        "EntityDelta" => $"EntityDelta|{Component}|{Offset.ToString(CultureInfo.InvariantCulture)}" + (Offset == 0 ? "|" + Resource : ""), // 0: a member HellForge adds, one per attachment
         _ => $"{Kind}|{Record.ToString(CultureInfo.InvariantCulture)}|{Offset.ToString(CultureInfo.InvariantCulture)}",
     };
     public string AddressKey => $"{Kind}\t{(Component.Length == 0 ? "-" : Component)}\t{Convert.ToUInt64(Resource[2..], 16):X16}\t{Record.ToString(CultureInfo.InvariantCulture)}\t{Offset.ToString(CultureInfo.InvariantCulture)}\t{Storage}";
@@ -732,6 +732,26 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
             target.Fields[key] = field;
             if (!fieldId.StartsWith("attachment.", StringComparison.Ordinal) && fieldId.Length > "attachment.".Length)
                 target.Aliases[$"attachment.{slot.Name}.{slug}.{fieldId["attachment.".Length..]}"] = key;
+        }
+        AddHeatsinkCounts(target, slot, id, a, slug, section, ref order);
+    }
+
+    // A heatsink whose deltas leave the heatsink counts to the weapon (the LAS-12 Sai's Improved Cooldown): rows for them
+    // that HellForge adds to its deltas when set (native/mod-loader/attachment_extras.c; offset 0 names an added member).
+    // 0 keeps the weapon's own count. Not on a slot's default heatsink, whose counts are the weapon's own rows.
+    static readonly (string Id, string Label, int Member)[] HeatsinkCounts =
+        [("heatsink.starting", "Starting heatsinks", 84), ("heatsink.from_supply", "Heatsinks from supply", 88), ("heatsink.spare", "Spare heatsinks", 92)];
+    static void AddHeatsinkCounts(StatsTarget target, JsonProperty slot, string id, JsonElement a, string slug, string section, ref int order)
+    {
+        if (a.GetProperty("kind").GetString() != "heatsink" || (slot.Value.TryGetProperty("default", out var standard) && standard.GetString() == id)) return;
+        var own = a.GetProperty("fields").EnumerateArray().Select(f => f.GetProperty("id").GetString()).ToHashSet(StringComparer.Ordinal);
+        foreach (var (fieldId, label, member) in HeatsinkCounts)
+        {
+            var key = $"attachment.{slot.Name}.{slug}.{fieldId}";
+            if (own.Contains(fieldId) || target.Fields.ContainsKey(key)) continue;
+            target.Fields[key] = new StatsField(label, "EntityDelta", $"266:{member}", a.GetProperty("resource").GetString()!, a.GetProperty("record").GetInt64(),
+                0, "u32", 0, 1000, "heatsinks", true, true)
+            { Order = order++, Section = section, Note = "0 keeps the weapon's own count; set, HellForge adds it to this heatsink's changes" };
         }
     }
 

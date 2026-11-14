@@ -14,6 +14,10 @@ On `dev`, since 0.4.0-beta.
 
 - **The editor's presets can be saved over again.** Each preset in PRESETS has SAVE OVER beside IMPORT, as HD2R
   Editor had: a second click within a few seconds writes your saved changes into that preset, keeping its name.
+- **Heatsink counts on the Sai's Improved Cooldown heatsink.** Its changes left the heatsink counts to the weapon, so
+  it always had the Sai's own. The editor now has Starting heatsinks, Heatsinks from supply and Spare heatsinks on it
+  (and Heatsinks from supply on Improved Heatcapacity); set, HellForge adds them to the heatsink's changes, and 0 keeps
+  the weapon's.
 - **Firing ability in the editor.** Every hand-held weapon has the ability each shot starts: its firing motion, the
   Eruptor's bolt cycle, a shotgun's pump, the Variable's stagger. Pick another weapon's to swap the
   motion, or None to drop it; the Variable and Bullet Storm also show their fire-mode-7 one, the W.A.S.P. and Warrant

@@ -333,6 +333,12 @@ static class StatsTests
                 "The Eruptor's firing ability (its bolt cycle), with the other weapons' to choose from");
             check(weapons["VG-70 Variable"].Fields["weapon.fire_ability_2"].Offset == 944 && weapons["StA-X3 W.A.S.P. Launcher"].Fields["weapon.fire_ability_function"].Offset == 948 &&
                 !weapons["AR-23 Liberator"].Fields.ContainsKey("weapon.fire_ability_2"), "The stand-in firing abilities only where a weapon has one");
+            var sai = weapons["LAS-12 Sai"].Fields;
+            check(sai["attachment.magazine.laser_heatsink_blaster_improved_cooldown.heatsink.spare"] is { Kind: "EntityDelta", Component: "266:92", Offset: 0, Storage: "u32" } &&
+                sai.Values.Count(f => f is { Kind: "EntityDelta", Offset: 0 } && f.Resource == sai["attachment.magazine.laser_heatsink_blaster_improved_cooldown.heatsink.spare"].Resource) == 3 &&
+                !sai.ContainsKey("attachment.magazine.laser_heatsink_blaster_standard.heatsink.spare") &&
+                sai["attachment.magazine.laser_heatsink_blaster_improved_heatcapacity.heatsink.spare"].Offset != 0,
+                "The Sai's Improved Cooldown carries heatsink counts HellForge adds; the default heatsink and one with its own counts do not");
             var patriot = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
             check(patriot["entity.durable_resistance"].Offset == 268 && patriot["zone_0.durable_resistance"] is { Offset: 724, Section: not null }, "A vehicle's durable damage share, default and per zone");
             var targets = StatsSchema.Current.Targets;

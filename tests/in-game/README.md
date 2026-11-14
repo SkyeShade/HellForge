@@ -22,6 +22,8 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `stratagem-cap-probe/` | the test mod `stratagem-cap.json` runs (`hellforge.stratagem-cap-probe`), never shipped |
 | `patterns18.json` | SDK 18's patterns: two weapon patterns on every weapon taking paints, the Pelican's, hellpod's, exosuits' and FRVs' skins in every collection, their deltas and package map, the Armory's Pattern tab captured |
 | `pattern-probe/` | the test mod `patterns18.json` runs (`hellforge.pattern-probe`), never shipped: magenta copies of Forest Camo (material LUT swaps on weapons, a pattern_lut on units) and an Arctic Camo copy |
+| `editor-engine.json` | the editor's engine-backed rows: the Eruptor's and Variable's firing ability swapped, spare heatsinks added to the Sai's Improved Cooldown heatsink; the logs prove the edits land, the mission shows what they do |
+| `editor-engine-probe/` | the stats mod `editor-engine.json` runs (`hellforge.editor-engine-probe`), never shipped |
 
 ## Running one
 
