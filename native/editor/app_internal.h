@@ -207,6 +207,7 @@ extern std::map<const Row*, std::string> g_holders;
 extern bool g_holdersRead;
 inline bool IsLuaHolder(const std::string& id) { return id.rfind("lua.", 0) == 0; }
 void HolderTick(LONGLONG microseconds);
+void HoldersAgain(); /* the window opens: a fresh pass from its next HolderTick */
 struct Marks { bool error = false, pending = false, editor = false, mod = false, lua = false; };
 struct MarkCache { unsigned version = 0, stats = 0, errors = 0; std::map<const Object*, Marks> objects; std::map<std::string, Marks> navs; };
 const MarkCache& Markers();

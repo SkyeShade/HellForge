@@ -335,9 +335,11 @@ void StageResetAll()
 }
 
 /* ---- holders: the mod whose value each catalogue row holds (get_live / get_stat name it), read a few rows a frame so
- * the objects' and categories' marks and the MODS view know them without stalling the game: every frame from the
- * session's start, open or not (Tick: 0.5 ms of reads; while the editor draws, what the page's reads leave of their 1.5 ms), a pass over the catalogue
- * every 10 s. What a pass finds shows in the marks within half a second. ---- */
+ * the objects' and categories' marks and the MODS view know them without stalling the game. Closed, the editor reads
+ * the first pass only (Tick: 0.5 ms of reads a frame), so the marks are there when it first opens; these reads run on
+ * the thread that renders, which sets the frame rate. Open, a pass over the catalogue every 10 s with what the page's
+ * reads leave of their 1.5 ms, and a fresh one as it opens. What a pass finds shows in the marks within half a
+ * second. ---- */
 std::map<const Row*, std::string> g_holders;
 static size_t g_holderNext;
 static ULONGLONG g_holderPass, g_holderMarked;
@@ -352,6 +354,11 @@ static void NoteHolder(const Row* row)
     auto found = g_holders.find(row);
     if (holder.empty() && found != g_holders.end()) { g_holders.erase(found); g_holderChanged = true; }
     else if (!holder.empty() && (found == g_holders.end() || found->second != holder)) { g_holders[row] = holder; g_holderChanged = true; }
+}
+
+void HoldersAgain()
+{
+    if (g_holderNext >= g_catalog.rows.size()) g_holderPass = 0; /* a pass done: the next HolderTick starts another */
 }
 
 void HolderTick(LONGLONG microseconds)

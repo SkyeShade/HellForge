@@ -164,6 +164,25 @@ static HfApi g_api;
 #include "perf_fixes.c" /* HELLFORGE_PERF_OFF: which performance fixes stay off */
 #include "safe_read.c"  /* SafeRead: small reads copied in place, a fault turned into the failure return */
 
+/* A component's index rows (16 bytes each) in one read, into this thread's buffer (kept for its next call); NULL when
+ * they do not all read. One read a row cost the editor's live reads about a millisecond of every frame, on the thread
+ * that renders (Health alone has 1002 rows, walked twice for each field). */
+static const uint8_t* ReadIndexRows(uintptr_t address, uint32_t rows)
+{
+    static _Thread_local uint8_t* buffer;
+    static _Thread_local size_t capacity;
+    size_t size = (size_t)rows * 16;
+    if (size == 0) return NULL;
+    if (size > capacity)
+    {
+        uint8_t* grown = (uint8_t*)realloc(buffer, size);
+        if (grown == NULL) return NULL;
+        buffer = grown;
+        capacity = size;
+    }
+    return SafeRead(address, buffer, size) ? NULL : buffer;
+}
+
 /* Every range of game.dll HellForge has written (the Lua bridge's hellforge_lua_rewrites): its rva and size, a range
  * that touches the last one joined to it. A Lua runtime proving game code against reviewed bytes asks for them. A mod's
  * own writes (HfApi.write, g_modWriting) are not HellForge's: a pin over one reads as the difference it is. */
@@ -421,15 +440,14 @@ static const Component* LastComponentNamed(const char* name)
 }
 
 /* The one vanilla record of the component the resource's index rows name: its index; -1 when none or several do, or a
- * row does not read as an index row. */
-static int64_t VanillaRecordOf(const Component* c, uintptr_t region, uint64_t resource)
+ * row does not read as an index row. rows: the component's index rows (ReadIndexRows). */
+static int64_t VanillaRecordOf(const Component* c, const uint8_t* rows, uint64_t resource)
 {
     int64_t selected = -1;
     int owners = 0;
     for (uint32_t row = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
-        if (SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16)) return -1;
+        const uint8_t* entry = rows + (size_t)row * 16;
         uint64_t id;
         uint32_t record, flags;
         memcpy(&id, entry, 8);
@@ -442,12 +460,11 @@ static int64_t VanillaRecordOf(const Component* c, uintptr_t region, uint64_t re
 }
 
 /* Whether another entity (not a copy of a base) names the selected record too: refused (1) unless `shared`. */
-static int SharedRecordRefused(const Component* c, uintptr_t region, uint64_t resource, uint32_t selected, int shared)
+static int SharedRecordRefused(const Component* c, const uint8_t* rows, uint64_t resource, uint32_t selected, int shared)
 {
     for (uint32_t row = 0, sharers = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
-        SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16);
+        const uint8_t* entry = rows + (size_t)row * 16;
         uint64_t id;
         uint32_t record;
         memcpy(&id, entry, 8);
@@ -478,8 +495,10 @@ static uintptr_t ComponentRecordOf(const char* name, uint64_t resource, uint32_t
     memcpy(&index, head, 4);
     memcpy(&extent, head + 20, 4);
     if (index != c->index || memcmp(head + 4, c->header, 28) != 0 || (uint64_t)c->recordOffset + (uint64_t)c->records * c->stride > extent) return 0;
-    int64_t selected = VanillaRecordOf(c, region, resource);
-    if (selected < 0 || SharedRecordRefused(c, region, resource, (uint32_t)selected, shared)) return 0;
+    const uint8_t* rows = ReadIndexRows(region + c->offset + 28, c->indices);
+    if (rows == NULL) return 0;
+    int64_t selected = VanillaRecordOf(c, rows, resource);
+    if (selected < 0 || SharedRecordRefused(c, rows, resource, (uint32_t)selected, shared)) return 0;
     if (stride != NULL) *stride = c->stride;
     return region + c->offset + 28 + c->recordOffset + (uintptr_t)selected * c->stride;
 }
