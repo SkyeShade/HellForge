@@ -188,6 +188,9 @@ On `dev`, since 0.4.0-beta.
 - **The game gives back memory it freed during a load.** When a load ends on the ship or a mission, HellForge empties
   the game's allocator caches once more; the game itself does so only as a load starts
   ([performance fixes](docs/performance.md#heap-trim)).
+- **A generating level fills less scatter it never draws.** The water and fog cameras are left out of the engine's
+  scatter update. On a 16 km map that saved 4,205 MB; a normal-size map should save tens of MB
+  ([performance fixes](docs/performance.md#scatter-cameras)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the

@@ -30,6 +30,7 @@ out this way without another build.
 | `render-version-rehash` | The Direct3D 12 renderer's resource-version tables are rehashed short when a level load left them far too large | A 16 km map, standing still: frame 12.5-13.0 ms to 8.5 ms, about 79 to 116 fps |
 | `vehicle-box` | Each vehicle's oriented box is computed once per motion and steering pass, then copied for the other enemies | The motion pass at 213-225 enemies on a 16 km map: 6.8 ms to 0.5-0.6 ms a frame |
 | `heap-trim` | The game's allocator caches are emptied once more when a load ends on the ship or a mission | 16 km maps: 0.5 to 5.5 ms a trim on the game thread, 10 to 72 MB given back each time; not measured at normal size |
+| `scatter-cameras` | The level generator's water and fog cameras are left out of the engine's scatter update, so its node vectors stay the size of real views | 16 km map: 4,205 MB less memory on entering play. Normal size: not measured, an estimated 1/64 of that |
 
 ## safe-read
 
@@ -305,3 +306,25 @@ game trims only as a load starts, so the memory that load frees stays cached unt
 - **Pins.** The trim (`0x3245F0` in the executable), the calls it makes and both of `game.dll`'s calls of it must read
   as on build 25480438, and the engine slot must hold the trim. Otherwise the fix stays off with a `heap trim: off`
   line.
+
+## scatter-cameras
+
+While a level generates, two orthographic cameras look down on the whole 2048 m world: the water height map's (ops
+0x0A and 0x0B) and the fog volumes' (ops 0x43 to 0x45). The engine's scatter update treated each as a view. HellForge
+now leaves both out of it (`native/mod-loader/perf_scatter_cameras.c`).
+
+- **What changes.** For such a view the update grew every scatter layer's node vector to the whole map and filled
+  every cell with grass and small rocks. The engine never shrinks that vector, so the memory stayed all mission.
+- **Which views.** A view is left out only while the generator runs one of those five ops, and only when it is
+  orthographic with near 1, far 1001 and a box at least 2048 m wide. That is the water and fog cameras alone. The
+  far-scatter bake's 256 m tiles and the in-game map's views keep their scatter. So does the ambient-occlusion bake,
+  which runs before these ops.
+- **Why the results stay the same.** Neither viewport has a SpeedTree pass, so they never drew this scatter. The next
+  view's update stamps, fills and drops its own cells. A cell's scatter depends only on the cell and the layer's maps,
+  which none of the five ops writes. The water height map and the fog volumes come out as before.
+- **Measured.** Complex Operations made the same cut on its 16 km maps: 4,205 MB less memory on entering play.
+- **Normal-size maps.** The vectors follow the map's area, so the saving should be about 1/64 of that: tens of MB,
+  plus the time spent filling every cell once. It was not measured at that size.
+- **Limits.** It hooks two functions of build 25480438, the scatter update in the exe and the generator's dispatcher
+  in `game.dll`; another build keeps the game's code, with a line in `modloader.log`. A view rendered after its op
+  has ended is not left out: no saving, no harm.

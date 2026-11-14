@@ -578,6 +578,7 @@ static void ChannelInstall(uintptr_t game);
 #include "perf_render_version_rehash.c" /* the D3D12 version tables kept short */
 #include "perf_vehicle_box.c" /* vehicles' boxes once per motion and steering pass */
 #include "perf_heap_trim.c" /* the allocator's caches emptied once more when a load ends */
+#include "perf_scatter_cameras.c" /* the generator's water and fog cameras left out of the scatter update */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -788,6 +789,7 @@ static void WatchInstalls(void)
     PerfSpeedTreeWatch();
     RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
     RenderVersionRehashWatch();
+    PerfScatterCamerasWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
