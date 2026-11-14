@@ -168,6 +168,8 @@ On `dev`, since 0.4.0-beta.
 - **Forests cost the renderer less near the world origin.** Forest cells with no trees stay out of every view. On a
   16 km map that removed the render thread's waits over 3 ms; on a normal-size map the gain is about 0.04 ms a frame
   ([performance fixes](docs/performance.md#speedtree-empty-cells)).
+- **Destructible lookups no longer walk a long run of the game's map.** Its destruction-record map spreads its keys,
+  which cut a miss on a 16 km map from 2,316 probes to 11 ([performance fixes](docs/performance.md#record-hash)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the

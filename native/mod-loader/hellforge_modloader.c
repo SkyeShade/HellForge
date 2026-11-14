@@ -571,6 +571,7 @@ static void ChannelInstall(uintptr_t game);
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
 #include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
 #include "perf_speedtree_empty_cells.c" /* forest cells missing from the forest hash: the empty box */
+#include "perf_record_hash.c" /* record-hash: the destruction-record map's hash multiplier */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -721,6 +722,7 @@ static void WatchLoaded(void)
     Note("game.dll loaded and decoded");
     ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
+    RecordHashInstall(); /* before the plugin setup builds the destruction-record map */
     StateMoves(ApiModuleBase("game.dll", NULL)); /* before the plugin setup allocates the game state */
     StartCrashWorker(); /* crash_notes.c: the thread that notes a stack overflow */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
