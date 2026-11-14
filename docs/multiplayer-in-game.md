@@ -257,6 +257,9 @@ thrower's edits; the work is on the others. Research: `HD2Mods\research\per-play
   differ at once, and every read through them follows, live ones included. The owner's own machine reads its own record.
   An entity with no creator found stays as the game has it.
 - A copy lasts until its entity's id comes back, the lobby's list ends, or 64 of its kind are newer.
+- Tested in game with two players (2026-11-14): each one's relay radius and Orbital Laser duration and tracking read
+  as its owner's on both machines, through the resolvers. The creator peer reaches the remote copies. Whether the
+  bubble's drawn size follows the radius is not checked yet.
 - Not covered yet: reads that skip the resolvers. Those are Health's 0x12A15E0, 0x650B90, 0x655240 and 0x929710,
   Bombardment's two reads before the owner is known, and the readers listed in the research.
 - Not covered either: shots and shells of deployables (their projectile, damage and explosion rows), and a dropped pack
