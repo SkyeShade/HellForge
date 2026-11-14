@@ -1,9 +1,10 @@
 /* Stratagem uses probe (in-game test only, never shipped; tests/in-game/stratagem-uses.json). Its stats give the Orbital
- * Railcannon Strike (type 58) 3 uses before cooldown (native/mod-loader/stratagem_uses.c). On the ship it puts the
- * Railcannon in the player's loadout before the mission, as stratagem-cap-probe does (the local player's PlayerHistory
- * slot 0 and the profile's first pair, game build 25480438); in the mission it counts the Railcannon's beacons: the
- * harness calls it four times, 20 s apart, and only three may land before the cooldown. "PROBE <check> ok" or
- * "PROBE <check> FAIL <why>" per check. */
+ * Railcannon Strike (type 58) 3 mission uses that rearm after a 30 s cooldown (native/mod-loader/stratagem_rearm.c). On
+ * the ship it puts the Railcannon in the player's loadout before the mission, as stratagem-cap-probe does (the local
+ * player's PlayerHistory slot 0 and the profile's first pair, game build 25480438). In the mission it logs every change
+ * of the slot's uses left (the number the HUD shows) and counts the Railcannon's beacons: three land 20 s apart, a fourth
+ * waits, the uses come back after the cooldown, and a call then lands again. "PROBE <check> ok" or "PROBE <check> FAIL
+ * <why>" per check. */
 #define WIN32_LEAN_AND_MEAN
 #include <stdio.h>
 #include <string.h>
@@ -17,7 +18,8 @@ static const HfApi* hf;
 
 #define PROBE_TYPE HF_STRATAGEM_ORBITAL_RAILCANNON_STRIKE
 #define PROBE_STABLE 0xA39552A5u /* its stable id (hellforge_content.h): stratagem_row is for added stratagems only */
-static int g_set, g_beacons;
+static int g_set, g_beacons, g_spent, g_rearmed;
+static uint32_t g_left = 0xFFFFFFFEu; /* the last uses left logged */
 
 /* loadout_scrub.c */
 #define LS_HISTORY 0x347CE50u
@@ -51,9 +53,29 @@ static uintptr_t LocalLoadout(uintptr_t game)
 }
 
 /* On the ship, once logged in and the stratagems are in: the Railcannon in slot 0 and its stable id in pair 0. */
+/* In the mission: the Railcannon slot's uses left (loadout slot +4), each change logged. */
+static void WatchUses(uintptr_t game)
+{
+    uintptr_t loadout = LocalLoadout(game);
+    uint32_t slots = U32(loadout + LS_SLOT_COUNT);
+    for (uint32_t k = 0; loadout != 0 && k < slots && k < 32; k++)
+    {
+        if (U32(loadout + LS_SLOTS + (uintptr_t)k * 0x30) != PROBE_TYPE) continue;
+        uint32_t left = U32(loadout + LS_SLOTS + (uintptr_t)k * 0x30 + 4);
+        if (left == g_left) return;
+        g_left = left;
+        LOG("PROBE uses left %u", left);
+        if (left == 0) g_spent = 1;
+        if (left == 3 && g_spent && !g_rearmed) { g_rearmed = 1; LOG("PROBE rearmed ok: uses left 3 after the cooldown"); }
+        return;
+    }
+}
+
 static void Tick(HfMod* mod, float dt, void* user)
 {
     (void)mod; (void)dt; (void)user;
+    uintptr_t at = hf->module_base("game.dll", NULL);
+    if (at != 0 && hf->game_state(g_mod) == HF_STATE_MISSION) WatchUses(at);
     if (g_set || hf->game_state(g_mod) != HF_STATE_SHIP) return;
     uintptr_t game = hf->module_base("game.dll", NULL);
     uintptr_t manager = Pointer(game + LS_MANAGER);
@@ -74,7 +96,8 @@ static void Called(HfMod* mod, const HfStratagemEvent* event, void* user)
     g_beacons++;
     LOG("PROBE railcannon beacon %d", g_beacons);
     if (g_beacons == 3) LOG("PROBE burst ok: three calls before the cooldown");
-    if (g_beacons == 4) LOG("PROBE burst FAIL a fourth call got in before the cooldown");
+    if (g_beacons == 4 && !g_rearmed) LOG("PROBE burst FAIL a fourth call got in before the cooldown");
+    if (g_beacons == 4 && g_rearmed) LOG("PROBE call after the rearm ok");
 }
 
 HF_MOD_EXPORT int hellforge_mod_init(const HfApi* api, HfMod* mod)

@@ -71,17 +71,24 @@ number, one base-5 digit per direction with the first lowest (Up, Right is 1 + 2
 - The code is matched on each player's own machine. The beacon tells the others which stratagem was thrown, never its
   code, so in co-op a code edit only changes what its player presses.
 
-### Uses before cooldown
+### Rearms after uses
 
-A non-Eagle stratagem's `stratagem.uses_before_cooldown` (1 to 99, 1 by default, as the game has it) is how many times
-it can be called before its cooldown starts. With `"Orbital Railcannon Strike": { "stratagem.uses_before_cooldown": 3 }`
-three Railcannons can be called, and then the cooldown runs. Until the last use the stratagem is ready again once it has
-arrived; when the cooldown ends, the uses come back. There is no rearm stratagem, and the Eagles keep their own rearm.
+Every non-Eagle stratagem has its mission uses (`uses`, or `stratagem.max_uses`; -1 is unlimited) and a
+`stratagem.rearms_after_uses` tick (0 or 1). Unticked, the game's own: a cooldown after every use, and spent uses are
+gone for the rest of the mission. Ticked, the uses go one after another with no cooldown between them, though the game
+still holds a stratagem while its strike runs. The cooldown starts once they are spent, and when it ends they come back.
+Unlimited uses with the tick have no cooldown at all.
 
-- Each machine counts every player's calls, so the HUD shows a teammate's stratagem as the editing player's machine
-  sees it. A stratagem with a team cooldown is confirmed by the host, so the host's value decides it in co-op.
-- HellForge hooks the game's cooldown start (game.dll 0x135C2C0) and refuses every uses edit on a build where it
-  differs.
+```json
+{ "format": 1, "stratagems": { "Orbital Railcannon Strike": { "uses": 3, "stratagem.rearms_after_uses": 1 } } }
+```
+
+- The HUD's stratagem list shows the uses left, counting down and coming back, as it shows a limited stratagem's.
+- Every machine runs every player's calls and refills every player's uses alike, so teammates' views agree when they
+  play with the same tick. A mod with the tick is therefore shared: friends need the same copy. In the editor's Local
+  Stats it is each player's own unless the host shares theirs.
+- Eagles keep their rearm, and stratagems with a team cooldown keep the game's ways (the tick is refused on them).
+  HellForge hooks the game's cooldown start (game.dll 0x135C2C0) and refuses the tick on a build where it differs.
 
 ## How it applies
 

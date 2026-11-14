@@ -66,9 +66,8 @@ static uint32_t CodeUnpack(uint32_t packed, uint32_t* directions)
 
 static int CodeValid(uint32_t packed) { uint32_t d[SCODE_MAX]; return CodeUnpack(packed, d) != 0; }
 
-/* HellForge's own per-stratagem tables, which go with the stratagems' rows: codes, and uses before cooldown
- * (stratagem_uses.c). */
-static int StratagemOwnKind(const char* kind) { return !strcmp(kind, "StratagemCode") || !strcmp(kind, "StratagemUses"); }
+/* HellForge's own per-stratagem tables, which go with the stratagems' rows: codes, and rearm flags (stratagem_rearm.c). */
+static int StratagemOwnKind(const char* kind) { return !strcmp(kind, "StratagemCode") || !strcmp(kind, "StratagemRearm"); }
 
 /* A table kind's stats phase (projectile 0, damage 1, stratagem 2: HellForge's own stratagem tables with it), else -1. */
 static int CodesTablePhase(const char* kind)

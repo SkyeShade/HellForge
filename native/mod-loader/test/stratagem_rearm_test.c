@@ -1,76 +1,113 @@
-/* Uses before cooldown (stratagem_uses.c): the field the stats layers write, the calls counted per player's slot, the
- * cooldown passed on, and Eagles left alone. Included by stats_test.c. */
+/* Rearms after uses (stratagem_rearm.c): the tick the stats layers write, the cooldown passed on while uses are left,
+ * the refill once the cooldown has ended, and Eagles, Eagle Rearm and team cooldowns left alone. Included by
+ * stats_test.c. */
 
-static uint8_t* g_usesRows[STR_VANILLA];
-static uintptr_t UsesFixtureRow(uint32_t type) { return type < STR_VANILLA ? (uintptr_t)g_usesRows[type] : 0; }
-
-static uint8_t* UsesFixtureStratagem(uint32_t type, uint32_t stable, uint32_t delivery)
+static uint8_t* g_rearmRows[STR_VANILLA];
+static uintptr_t RearmFixtureRow(uint32_t type) { return type < STR_VANILLA ? (uintptr_t)g_rearmRows[type] : 0; }
+static uint32_t g_rearmFixtureUses;
+static uint32_t RearmFixtureUsesFor(uintptr_t customization, int64_t player, uint32_t type, char flag)
 {
-    uint8_t* row = calloc(1, STR_ROW);
-    memcpy(row, &type, 4); memcpy(row + 4, &stable, 4); memcpy(row + 60, &delivery, 4);
-    return g_usesRows[type] = row;
+    (void)customization; (void)player; (void)type; (void)flag;
+    return g_rearmFixtureUses;
 }
 
-static void StratagemUsesFixture(void)
+static void RearmFixtureStratagem(uint32_t type, uint32_t stable, uint32_t delivery, uint32_t cooldownType)
 {
-    uintptr_t (*row)(uint32_t) = UsesRow;
-    int state = g_usesState;
-    UsesRow = UsesFixtureRow;
-    g_usesState = 1;
-    UsesFixtureStratagem(5, 0x55u, 1);           /* an orbital */
-    UsesFixtureStratagem(6, 0x66u, 0);           /* an Eagle */
-    UsesFixtureStratagem(SUSES_EAGLE_REARM, 0x31u, 7);
+    uint8_t* row = calloc(1, STR_ROW);
+    memcpy(row, &type, 4); memcpy(row + 4, &stable, 4); memcpy(row + 60, &delivery, 4); memcpy(row + 148, &cooldownType, 4);
+    g_rearmRows[type] = row;
+}
 
-    /* the field: by stable id, unset reads 1; Eagles and Eagle Rearm have none */
-    StatEdit edit = {&g_mods[0], "StratagemUses", "", "fixture uses"};
+/* A players' record list with player 42's slot 3 holding type with `left` uses, its cooldown ending at `end`. */
+static uint8_t* RearmFixturePlayers(uint32_t type, uint32_t left, uint64_t end)
+{
+    uint8_t* players = calloc(1, 0x2D210);
+    int64_t who = 42; uint32_t count = 2;
+    uint8_t* entry = players + 0x1690 + 3 * 0x30 + 0x1C0;
+    memcpy(players + 0x1690, &who, 8);
+    memcpy(entry, &type, 4); memcpy(entry + 4, &left, 4); memcpy(entry + 0x18, &end, 8);
+    memcpy(players + 0x2D200, &count, 4);
+    return players;
+}
+
+static void StratagemRearmFixture(void)
+{
+    uintptr_t (*row)(uint32_t) = RearmRow;
+    RearmUsesFn usesFor = g_rearmUsesFor;
+    int state = g_rearmState;
+    RearmRow = RearmFixtureRow;
+    g_rearmUsesFor = RearmFixtureUsesFor;
+    g_rearmState = 1;
+    RearmFixtureStratagem(5, 0x55u, 1, 0);           /* an orbital */
+    RearmFixtureStratagem(6, 0x66u, 0, 0);           /* an Eagle */
+    RearmFixtureStratagem(7, 0x77u, 2, 2);           /* a team cooldown */
+    RearmFixtureStratagem(SREARM_EAGLE_REARM, 0x31u, 7, 0);
+
+    /* the field: by stable id; Eagles, Eagle Rearm and team cooldowns have none */
+    StatEdit edit = {&g_mods[0], "StratagemRearm", "", "fixture rearm"};
     edit.record = 0x55u; edit.size = 4; edit.ref = -1;
     const char* why = NULL;
-    uintptr_t at = UsesField(&edit, &why);
-    assert(at == (uintptr_t)&g_stratagemUses[5] && g_stratagemUses[5] == 1 && UsesOf(5) == 1);
+    uintptr_t at = RearmField(&edit, &why);
+    assert(at == (uintptr_t)&g_stratagemRearm[5] && !RearmOn(5));
     edit.record = 0x66u;
-    assert(UsesField(&edit, &why) == 0 && strstr(why, "non-Eagle"));
+    assert(RearmField(&edit, &why) == 0 && strstr(why, "Eagles"));
+    edit.record = 0x77u;
+    assert(RearmField(&edit, &why) == 0 && strstr(why, "team cooldown"));
     edit.record = 0x31u;
-    assert(UsesField(&edit, &why) == 0);
+    assert(RearmField(&edit, &why) == 0);
     int ready = 0;
-    assert(UsesRowOf(5, &ready) == (uintptr_t)&g_stratagemUses[5] && ready && UsesRowOf(6, &ready) == 0);
+    assert(RearmRowOf(5, &ready) == (uintptr_t)&g_stratagemRearm[5] && ready && RearmRowOf(6, &ready) == 0);
 
-    /* the stats pass: 0 and past 99 refused, 3 taken */
-    edit.record = 0x55u; edit.value = 0;
+    /* the stats pass: 2 refused, 1 taken */
+    edit.record = 0x55u; edit.value = 2;
     StatsWrite(&edit, at);
-    assert(!edit.applied && g_stratagemUses[5] == 1);
-    edit.value = 100;
+    assert(!edit.applied && !RearmOn(5));
+    edit.value = 1;
     StatsWrite(&edit, at);
-    assert(!edit.applied);
-    edit.value = 3;
-    StatsWrite(&edit, at);
-    assert(edit.applied && edit.original == 1 && UsesOf(5) == 3);
+    assert(edit.applied && edit.original == 0 && RearmOn(5));
 
-    /* three calls: the first two pass the burst cooldown, the third the game's, then it starts over; each player's slot
-     * counts on its own, a slot that changed stratagem starts over */
-    memset(g_usesCounters, 0, sizeof g_usesCounters);
-    uintptr_t players = 0x1000;
-    assert(UsesCooldownFor(players, 7, 2, 5, -1.0f) == SUSES_BURST_COOLDOWN);
-    assert(UsesCooldownFor(players, 8, 2, 5, -1.0f) == SUSES_BURST_COOLDOWN); /* another player */
-    assert(UsesCooldownFor(players, 7, 2, 5, -1.0f) == SUSES_BURST_COOLDOWN);
-    assert(UsesCooldownFor(players, 7, 2, 5, -1.0f) == -1.0f);
-    assert(UsesCooldownFor(players, 7, 2, 5, -1.0f) == SUSES_BURST_COOLDOWN);
-    assert(UsesCooldownFor(players, 7, 2, 6, 12.0f) == 12.0f);                 /* now an Eagle there */
-    assert(UsesCooldownFor(players, 7, 3, SUSES_EAGLE_REARM, 90.0f) == 90.0f);
-    g_stratagemUses[5] = 1;
-    assert(UsesCooldownFor(players, 9, 0, 5, 30.0f) == 30.0f);                 /* the game's own: one use */
+    /* while uses are left (or unlimited) the burst cooldown, spent the game's and the slot noted; not ticked, the game's */
+    memset(g_rearmPending, 0, sizeof g_rearmPending);
+    uint8_t* players = RearmFixturePlayers(5, 2, 0);
+    uintptr_t entry = RearmSlot((uintptr_t)players, 42, 3);
+    assert(entry == (uintptr_t)(players + 0x1690 + 3 * 0x30 + 0x1C0) && RearmSlot((uintptr_t)players, 43, 3) == 0);
+    assert(RearmCooldownFor(entry, (uintptr_t)players, 42, 3, -1.0f) == SREARM_BURST_COOLDOWN && g_rearmPending[0].players == 0);
+    uint32_t left = 0xFFFFFFFFu;
+    memcpy((void*)(entry + 4), &left, 4);
+    assert(RearmCooldownFor(entry, (uintptr_t)players, 42, 3, -1.0f) == SREARM_BURST_COOLDOWN); /* unlimited: no cooldown */
+    left = 0;
+    memcpy((void*)(entry + 4), &left, 4);
+    assert(RearmCooldownFor(entry, (uintptr_t)players, 42, 3, -1.0f) == -1.0f);
+    assert(g_rearmPending[0].players == (uintptr_t)players && g_rearmPending[0].player == 42 && g_rearmPending[0].slot == 3 && g_rearmPending[0].type == 5);
+    assert(RearmCooldownFor(entry, (uintptr_t)players, 42, 3, -1.0f) == -1.0f && g_rearmPending[1].players == 0); /* noted once */
 
-    /* the slot's type, as the cooldown start finds it: players' records 0x1690 apart, the count at +0x2D200 */
-    uint8_t* records = calloc(1, 0x2D210);
-    int64_t who = 42; uint32_t count = 2, type = 5;
-    memcpy(records + 0x1690, &who, 8);
-    memcpy(records + 0x1690 + 3 * 0x30 + 0x1C0, &type, 4);
-    memcpy(records + 0x2D200, &count, 4);
-    assert(UsesSlotType(records, 42, 3) == 5 && UsesSlotType(records, 43, 3) == 0);
-    free(records);
+    /* the refill: not while the cooldown runs; after it, the game's count; a slot that changed stratagem is let go */
+    uint64_t end = 5000000;
+    memcpy((void*)(entry + 0x18), &end, 8);
+    g_rearmFixtureUses = 3;
+    assert(RearmRefill(0x1000, 0, 4999999) == 0);
+    memcpy(&left, (void*)(entry + 4), 4);
+    assert(left == 0);
+    assert(RearmRefill(0x1000, 0, 5000000) == 1);
+    memcpy(&left, (void*)(entry + 4), 4);
+    assert(left == 3);
+    left = 0;
+    memcpy((void*)(entry + 4), &left, 4);
+    uint32_t other = 6;
+    memcpy((void*)entry, &other, 4);
+    assert(RearmRefill(0x1000, 0, 9000000) == 1);
+    memcpy(&left, (void*)(entry + 4), 4);
+    assert(left == 0);
+    assert(RearmCooldownFor(entry, (uintptr_t)players, 42, 3, 12.0f) == 12.0f); /* an Eagle there now: the game's */
+    g_stratagemRearm[5] = 0;
+    memcpy((void*)entry, &(uint32_t){5}, 4);
+    assert(RearmCooldownFor(entry, (uintptr_t)players, 42, 3, 30.0f) == 30.0f); /* not ticked: the game's own */
+    free(players);
 
-    for (uint32_t t = 0; t < STR_VANILLA; t++) { free(g_usesRows[t]); g_usesRows[t] = NULL; }
-    memset(g_stratagemUses, 0, sizeof g_stratagemUses);
-    memset(g_usesCounters, 0, sizeof g_usesCounters);
-    UsesRow = row;
-    g_usesState = state;
+    for (uint32_t t = 0; t < STR_VANILLA; t++) { free(g_rearmRows[t]); g_rearmRows[t] = NULL; }
+    memset(g_stratagemRearm, 0, sizeof g_stratagemRearm);
+    memset(g_rearmPending, 0, sizeof g_rearmPending);
+    RearmRow = row;
+    g_rearmUsesFor = usesFor;
+    g_rearmState = state;
 }

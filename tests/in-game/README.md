@@ -26,8 +26,8 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `editor-engine-probe/` | the stats mod `editor-engine.json` runs (`hellforge.editor-engine-probe`), never shipped |
 | `stratagem-codes.json` | stratagem input codes: a stats edit gives Resupply Up Up Left Right Down, the vanilla codes move into HellForge's arrays, and the new code calls Resupply in (needs the harness's `call` step) |
 | `stratagem-codes-probe/` | the test mod `stratagem-codes.json` runs (`hellforge.stratagem-codes-probe`), never shipped: the stats edit and every beacon's type |
-| `stratagem-uses.json` | uses before cooldown: a stats edit gives the Orbital Railcannon Strike 3, the probe puts it in the loadout on the ship, three calls land and a fourth waits for the cooldown (needs the harness's `call` step) |
-| `stratagem-uses-probe/` | the test mod `stratagem-uses.json` runs (`hellforge.stratagem-uses-probe`), never shipped: the stats edit, the loadout, the Railcannon's beacons counted |
+| `stratagem-uses.json` | rearms after uses: a stats edit gives the Orbital Railcannon Strike 3 mission uses that rearm after a 30 s cooldown, the probe puts it in the loadout on the ship, three calls land, the uses left go to 0, a fourth waits, the uses come back to 3 and a call lands again (needs the harness's `call` step) |
+| `stratagem-uses-probe/` | the test mod `stratagem-uses.json` runs (`hellforge.stratagem-uses-probe`), never shipped: the stats edit, the loadout, the uses left the HUD shows after each change, the Railcannon's beacons counted |
 
 ## Running one
 

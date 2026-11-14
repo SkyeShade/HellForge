@@ -30,10 +30,10 @@ static int StatsTableKind(const char* kind)
     return !strcmp(kind, "ProjectileSettings") || !strcmp(kind, "DamageInfo") || !strcmp(kind, "StratagemDefinition") ||
         !strcmp(kind, "BoosterSettings") || !strcmp(kind, "PassiveModifier") || !strcmp(kind, "PassiveStat") || !strcmp(kind, "MeleeHitVolume") ||
         !strcmp(kind, "DifficultySettings") || DirectorKind(kind) || !strcmp(kind, "StratagemCode") ||
-        !strcmp(kind, "StratagemUses");
+        !strcmp(kind, "StratagemRearm");
 }
 #include "stratagem_codes.c" /* the StratagemCode kind: stratagems' input codes */
-#include "stratagem_uses.c"  /* the StratagemUses kind: uses before cooldown */
+#include "stratagem_rearm.c" /* the StratagemRearm kind: uses that rearm after their cooldown */
 static StatEdit g_stats[MAX_STATS];
 static int g_statCount;
 static volatile LONG g_statsComponentsReady;
@@ -98,13 +98,13 @@ static void StatsNoteShots(const StatEdit* e, uint32_t original)
         ShotsNoteLocal(e->resource, ShotsSlotOf(e->component, e->offset), original, e->value);
 }
 
-/* An edit's value checks past its field's own: a code's or a uses count's (stratagem_codes.c, stratagem_uses.c), then a
+/* An edit's value checks past its field's own: a code's or a rearm flag's (stratagem_codes.c, stratagem_rearm.c), then a
  * reference's (refs.c). 0 when it may be
  * written; else refused (logged) or, for a reference, waiting. */
 static int StatsChecks(StatEdit* e, uintptr_t address, uint32_t original)
 {
     const char* code = CodesRefusal(e, original);
-    if (code == NULL) code = UsesRefusal(e);
+    if (code == NULL) code = RearmRefusal(e);
     if (code != NULL) { StatsRefuse(e, code); return 1; }
     return RefStat(e, address, original) != 0 /* REF_OK */;
 }

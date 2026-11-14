@@ -26,7 +26,7 @@
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
 #include "stratagem_codes_test.c"
-#include "stratagem_uses_test.c"
+#include "stratagem_rearm_test.c"
 #include "safe_read_test.c"
 #include "perf_speedtree_empty_cells_test.c"
 #include "perf_record_hash_test.c"
@@ -4615,7 +4615,7 @@ int main(int argc, char** argv)
     PickerFrameFixture();
     StratagemFieldFixture();
     StratagemCodesFixture();
-    StratagemUsesFixture();
+    StratagemRearmFixture();
     StratagemCapFixture();
     ExplosionsFixture();
     ExplosionsWidthFixture();
