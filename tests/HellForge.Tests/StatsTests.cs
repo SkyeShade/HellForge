@@ -328,6 +328,11 @@ static class StatsTests
                 weapons["GL-28 Belt-Fed Grenade Launcher"].Fields.ContainsKey("fire_rate.modes.z"), "The BFGL's rate of fire and its slots");
             check(weapons["LAS-98 Laser Cannon"].Fields["weapon.third_person_reticle"] is { Offset: 400 } reticle &&
                 reticle.Choices.Any(c => c.Value == 11), "The Laser Cannon's third-person reticle, its own style named");
+            check(weapons["R-36 Eruptor"].Fields["weapon.fire_ability"] is { Component: "WeaponDataComponentData", Offset: 940 } eruptor &&
+                eruptor.Choices.Any(c => c.Value == 2660) && eruptor.Choices.Any(c => c.Value == 2708) && eruptor.Choices.Any(c => c.Value == 0),
+                "The Eruptor's firing ability (its bolt cycle), with the other weapons' to choose from");
+            check(weapons["VG-70 Variable"].Fields["weapon.fire_ability_2"].Offset == 944 && weapons["StA-X3 W.A.S.P. Launcher"].Fields["weapon.fire_ability_function"].Offset == 948 &&
+                !weapons["AR-23 Liberator"].Fields.ContainsKey("weapon.fire_ability_2"), "The stand-in firing abilities only where a weapon has one");
             var patriot = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
             check(patriot["entity.durable_resistance"].Offset == 268 && patriot["zone_0.durable_resistance"] is { Offset: 724, Section: not null }, "A vehicle's durable damage share, default and per zone");
             var targets = StatsSchema.Current.Targets;

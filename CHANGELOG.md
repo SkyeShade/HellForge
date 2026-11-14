@@ -14,6 +14,10 @@ On `dev`, since 0.4.0-beta.
 
 - **The editor's presets can be saved over again.** Each preset in PRESETS has SAVE OVER beside IMPORT, as HD2R
   Editor had: a second click within a few seconds writes your saved changes into that preset, keeping its name.
+- **Firing ability in the editor.** Every hand-held weapon has the ability each shot starts: its firing motion, the
+  Eruptor's bolt cycle, a shotgun's pump, the Variable's stagger. Pick another weapon's to swap the
+  motion, or None to drop it; the Variable and Bullet Storm also show their fire-mode-7 one, the W.A.S.P. and Warrant
+  their lock-on one.
 - **More weapon rows in the editor.** The Stalwart, FLAM-40, Sterilizer, Epoch, W.A.S.P., Meltagun, Cremator and
   Breaching Hammer have a reload duration. Weapons that load round by round (shotguns, the Bushwhacker, the Autocannon,
   revolvers) have Rounds per reload. Support weapons that fire have Suppressed, the BFGL and the Railgun have their

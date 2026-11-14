@@ -26,6 +26,8 @@ them:
                 suppressed   the Suppressed flag (WeaponData +112) of the support weapons
                 fire rate    the rate of fire (ProjectileWeapon +8, and its slots +4 and +12 where set)
                 reticle      the third-person reticle (WeaponData +400) where the weapon has one
+  firing        the ability a hand-held weapon starts on every shot (WeaponData +940; +944 in fire mode 7, +948 with weapon
+                function 8 on): its firing motion, the bolt, pump or lever cycle and the Variable's stagger (firing_rows)
   durable       a vehicle's durable damage share, the default zone's (+268) and each zone's (+0xCC), as entity pages
                 show them
 """
@@ -119,6 +121,40 @@ def weapon_rows(weapons, owner_of, tables, add):
                 for key, value in (('fire_rate.modes.x', slots[0]), ('weapon.fire_rate', slots[1]), ('fire_rate.modes.z', slots[2])):
                     if value > 0:
                         add('weapons', name, entry(key, amr[key], resource=resource, record=record))
+
+
+# The firing ability (game.dll 0x7533C0, run on every shot: the spray fire 0x67F3D0 and the projectile fire call it): it
+# starts WeaponData +940 on the weapon through StartAbility (0x7CAF40); +948 instead while weapon function 8 is on
+# (0x1787500), else +944 in fire mode 7 (0x756730) when the shot asks for it. 0 starts none.
+FIRING = (('weapon.fire_ability', 'Firing ability', 940,
+           'The ability every shot starts: the firing motion, a bolt, pump or lever cycle (R-36 Eruptor 2660, SG-8 Punisher 2661), '
+           'the VG-70 Variable\'s stagger (2692). Another weapon\'s gives its motion; 0 none'),
+          ('weapon.fire_ability_2', 'Firing ability (fire mode 7)', 944, 'Used instead in fire mode 7 (the Variable\'s and the Bullet Storm\'s 50)'),
+          ('weapon.fire_ability_function', 'Firing ability (weapon function on)', 948,
+           'Used instead while its weapon function 8 is on (the W.A.S.P.\'s, the Warrant\'s)'))
+
+
+def firing_rows(weapons, owner_of, tables, add):
+    """Each hand-held weapon's firing abilities, named by the weapons that use them (the module docstring's firing)."""
+    found = {}
+    for name, t in weapons.items():
+        resource, record = owner_of(name, 'WeaponDataComponentData')
+        if record is None or t.get('slot') not in HANDHELD or owner_of(name, 'AbilityWeaponComponentData')[1] is not None:
+            continue
+        found[name] = (resource, record, struct.unpack_from('<3I', tables.component('WeaponDataComponentData').raw(record), 940))
+    users = {}
+    for name, (_, _, values) in sorted(found.items()):
+        for v in values:
+            if v:
+                users.setdefault(v, []).append(name)
+    options = [[0, 'None']] + [[v, '%d: %s' % (v, ', '.join(n[:2]) + (' +%d more' % (len(n) - 2) if len(n) > 2 else ''))]
+                               for v, n in sorted(users.items())]
+    for name, (resource, record, values) in sorted(found.items()):
+        for (key, label, offset, note), v in zip(FIRING, values):
+            if v:
+                add('weapons', name, {'key': key, 'label': label, 'kind': 'component', 'component': 'WeaponDataComponentData',
+                                      'resource': resource, 'record': record, 'offset': offset, 'storage': 'u32', 'min': None, 'max': None,
+                                      'unit': None, 'shared': False, 'options': options, 'note': note})
 
 
 DURABLE_NOTE = 'Share of durable damage taken (1 = full; 0 = none)'
@@ -304,6 +340,7 @@ def main(dev6, out):
                 'min': None, 'max': None, 'unit': None, 'shared': False, 'ref': 'projectile'})
 
     weapon_rows(weapons, owner_of, tables, add)
+    firing_rows(weapons, owner_of, tables, add)
 
     # explosions: every target with a health record
     def explosion_fields(category, name, resource, record, zones, section=None, zone_sections=None):

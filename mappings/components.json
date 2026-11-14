@@ -504,16 +504,23 @@
         "fire_ability": {
           "offset": 940,
           "type": "u32",
-          "meaning": "an ability the weapon runs when it fires (0: none)",
-          "verified": false,
-          "source": "Filediver weapon_data FireAbility +940 (2026-10-20)"
+          "meaning": "the ability every shot starts on the weapon: its firing motion, a bolt, pump or lever cycle (R-36 Eruptor 2660, SG-8 Punisher 2661), the VG-70 Variable's stagger (2692); 0 none",
+          "verified": true,
+          "source": "Filediver weapon_data FireAbility +940; game.dll 0x7533C0 (run on every shot) passes it to StartAbility 0x7CAF40 (research editor-requests/engine-a)"
         },
         "fire_ability_2": {
           "offset": 944,
           "type": "u32",
-          "meaning": "a second fire-time ability (the VG-70 Variable: 50, a lead for its knock-down when fired standing; 0 on the AMR and Autocannon)",
-          "verified": false,
-          "source": "Filediver weapon_data, the field after FireAbility; VG-70 vs APW-1/AC-8 records (2026-10-20)"
+          "meaning": "fire_ability's stand-in in fire mode 7, when the shot asks for it (the VG-70 Variable and MGX-42 Bullet Storm: 50; 0 elsewhere)",
+          "verified": true,
+          "source": "Filediver weapon_data, the field after FireAbility; game.dll 0x7533C0 takes it in fire mode 7 (0x756730) (research editor-requests/engine-a)"
+        },
+        "fire_ability_function": {
+          "offset": 948,
+          "type": "u32",
+          "meaning": "fire_ability's stand-in while weapon function 8 is on (the W.A.S.P.'s 2679)",
+          "verified": true,
+          "source": "game.dll 0x7533C0 takes it while 0x1787500(weapon, 8) is 1 (research editor-requests/engine-a)"
         }
       },
       "groups": {

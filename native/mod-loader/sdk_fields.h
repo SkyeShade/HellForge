@@ -68,6 +68,7 @@ static const SdkField kSdkFieldsWeaponData[] = {
     {"crosshair_type", 400, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"fire_ability", 940, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"fire_ability_2", 944, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"fire_ability_function", 948, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsWeaponMagazine[] = {
     {"magazine_type", 0, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1193,7 +1194,7 @@ static const SdkField kSdkFieldsWeaponCustomization[] = {
 };
 static const SdkComponent kSdkComponents[] = {
     {"ProjectileWeapon", "ProjectileWeaponComponentData", 25480438u, 616u, kSdkFieldsProjectileWeapon, 45, 0, 321},
-    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 20, 0, 236},
+    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 21, 0, 236},
     {"WeaponMagazine", "WeaponMagazineComponentData", 25480438u, 160u, kSdkFieldsWeaponMagazine, 9, 0, 5},
     {"Tag", "TagComponentData", 25480438u, 544u, kSdkFieldsTag, 2, 0, 3},
     {"Mount", "MountComponentData", 25480438u, 120u, kSdkFieldsMount, 10, 0, 283},

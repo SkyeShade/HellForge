@@ -8811,8 +8811,9 @@ Group `firing_sounds` (every firing sound, silenced or not (HfWeapon.sound_from 
 | `ergonomics` | +0x164 | f32 | respawn | ergonomics (unverified) |
 | `stationary_while_firing` | +0x183 | u8 | respawn | 1: the wielder stands still while firing (unverified) |
 | `crosshair_type` | +0x190 | u32 | respawn | crosshair (unverified) |
-| `fire_ability` | +0x3AC | u32 | respawn | an ability the weapon runs when it fires (0: none) (unverified) |
-| `fire_ability_2` | +0x3B0 | u32 | respawn | a second fire-time ability (the VG-70 Variable: 50, a lead for its knock-down when fired standing; 0 on the AMR and Autocannon) (unverified) |
+| `fire_ability` | +0x3AC | u32 | respawn | the ability every shot starts on the weapon: its firing motion, a bolt, pump or lever cycle (R-36 Eruptor 2660, SG-8 Punisher 2661), the VG-70 Variable's stagger (2692); 0 none |
+| `fire_ability_2` | +0x3B0 | u32 | respawn | fire_ability's stand-in in fire mode 7, when the shot asks for it (the VG-70 Variable and MGX-42 Bullet Storm: 50; 0 elsewhere) |
+| `fire_ability_function` | +0x3B4 | u32 | respawn | fire_ability's stand-in while weapon function 8 is on (the W.A.S.P.'s 2679) |
 
 Group `recoil` (both recoil blocks, sideways and up): `recoil_drift_horizontal`, `recoil_drift_vertical`, `recoil_climb_horizontal`, `recoil_climb_vertical`.
 
