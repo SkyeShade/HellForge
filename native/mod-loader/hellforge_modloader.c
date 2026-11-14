@@ -580,6 +580,7 @@ static void ChannelInstall(uintptr_t game);
 #include "perf_heap_trim.c" /* the allocator's caches emptied once more when a load ends */
 #include "perf_scatter_cameras.c" /* the generator's water and fog cameras left out of the scatter update */
 #include "perf_knn_grid.c" /* knn-grid: the Hive Lord graph's neighbour pass on a grid */
+#include "perf_spread_sort.c" /* SpreadLocations' candidate sort */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -787,6 +788,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
     AiPathBudgetWatch();
+    if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
     RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
     PerfSpeedTreeWatch();
     RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */

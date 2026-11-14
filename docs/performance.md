@@ -32,6 +32,7 @@ out this way without another build.
 | `heap-trim` | The game's allocator caches are emptied once more when a load ends on the ship or a mission | 16 km maps: 0.5 to 5.5 ms a trim on the game thread, 10 to 72 MB given back each time; not measured at normal size |
 | `scatter-cameras` | The level generator's water and fog cameras are left out of the engine's scatter update, so its node vectors stay the size of real views | 16 km map: 4,205 MB less memory on entering play. Normal size: not measured, an estimated 1/64 of that |
 | `knn-grid` | The Hive Lord graph links its points through a grid instead of trying every pair, with the same result | Level generation on a 4 km map: 1,447 ms to 24 ms; on a 16 km map about 400 s saved |
+| `spread-sort` | Map generation's location spreading sorts its candidates with the game's own steps, the comparison inlined | The sort alone, outside the game: 55 to 28 ms for 460,000 candidates, 0.61 to 0.32 ms for 7,200 |
 
 ## safe-read
 
@@ -374,3 +375,33 @@ Limits:
 - It is pinned to the whole function on game build 25480438. Another build keeps the game's pass, with a line in
   `modloader.log`.
 - Below 1,024 points the grid is no faster: both take about 0.4 ms. The game's pass runs there.
+
+## spread-sort
+
+While a map is generated, the game places each location at the nearest free candidate point. For every location it
+sorts the whole candidate list by squared distance with its own quicksort. That sort calls the comparison through a
+pointer for every pair. HellForge runs the same quicksort with the comparison inlined (`native/mod-loader/perf_spread_sort.c`).
+
+- **What changes.** The game's sort is hooked. A call with the spreading's comparison and 12-byte records runs the
+  copy; every other sort goes on to the game's code.
+- **Why the results stay the same.** The copy takes the same steps as the game's sort: the same pivot, comparisons
+  and swaps. Two candidates can be at exactly the same distance, so a different sort could order them differently.
+  This one leaves them in the game's order, so every byte of the list is the same.
+- **Tested.** The native tests run the game's sort, copied from build 25480438, beside the copy on random, repeated,
+  sorted, reversed and NaN keys at every size up to 300 and larger. The outputs match byte for byte.
+- **Co-op.** The map is the same with or without the fix, so a host and a friend need not both have it.
+
+Measured outside the game, the sort alone takes half the time:
+
+| Candidates | The game's sort | The copy |
+|---|---|---|
+| 7,200 (a normal-size map) | 0.61 ms | 0.32 ms |
+| 460,000 (a 16 km map) | 55 ms | 28 ms |
+
+In the game the effect is not measured. On a 16 km map these sorts took 3.7 s of a load, so about 1.8 s should go. A
+normal-size map has about 7,200 candidates and a few dozen locations: some 10 ms a generation, a small gain.
+
+Limits:
+
+- It is pinned to game build 25480438: the whole sort and the comparison. Another build keeps the game's sort.
+- A mod that hooks the game's sort still sees every call. The copy runs last in the chain, in place of the game's code.
