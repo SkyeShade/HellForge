@@ -19,7 +19,7 @@
     {"name": "the hot copy has its own spray record with its own damage", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE hot record ok"},
     {"name": "the gas copy has its own spray record with the Sterilizer's damage", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE gas record ok"},
     {"name": "the FLAM-40 keeps its own damage", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE base unchanged ok"},
-    {"name": "the loader writes each copy's spray damage", "log": "mod-hellforge.spray-probe.log", "regex": "its spray deals damage \d+ \(its base's deals 14\)", "min": 2},
+    {"name": "the loader writes each copy's spray damage", "log": "mod-hellforge.spray-probe.log", "regex": "its spray deals damage \\d+ \\(its base's deals 14\\)", "min": 2},
     {"name": "the hot copy's stratagem is in the loadout on the ship", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE loadout ok"},
     {"name": "called in, its hellpod brings the hot copy", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE hot spawned ok"},
     {"name": "nothing failed", "log": "mod-hellforge.spray-probe.log", "absent": "FAIL"}

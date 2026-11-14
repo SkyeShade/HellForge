@@ -46,7 +46,7 @@ static uint32_t SprayDamage(uint64_t entity)
 {
     HfField field = HF_FIELD(SprayWeapon, damage);
     HfLiveValue value;
-    return hf->get_live(g_mod, entity, &field, &value) == 0 ? (uint32_t)value.now.number : 0xFFFFFFFFu;
+    return hf->get_live(g_mod, entity, &field, &value) != 0 ? (uint32_t)value.now.number : 0xFFFFFFFFu; /* when a change applies, or 0: unread */
 }
 
 /* Once the entity data is in: each copy's record is its own (component_record finds only own records) and holds its
