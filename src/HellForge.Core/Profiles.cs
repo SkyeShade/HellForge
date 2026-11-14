@@ -172,16 +172,37 @@ public static partial class ProfileStore
     // backend. On unless switched off.
     public static bool LoadSdkShims(ISessionPaths paths) => LoadFlag(paths, "sdkShims");
 
-    // The galactic war a session serves: the live war read-only through the community mirror (backend --live-war), the
-    // frozen war HellForge ships, or the all-planets war made from it (backend --war open). Live unless chosen otherwise;
-    // a settings file from before the choice keeps its live-war switch ("liveWar").
-    public const string WarLive = "live", WarFrozen = "frozen", WarOpen = "open";
+    // The galactic war a session serves: the HellForge war shared by HellForge players (backend --war hellforge,
+    // WarServer), the live war read-only through the community mirror (backend --live-war), the frozen war HellForge
+    // ships, or the all-planets war made from it (backend --war open). The HellForge war unless chosen otherwise, from
+    // the release after 0.4.0-beta: an installation that saved its settings before keeps the war it had (every save
+    // wrote "war", so one never changed cannot be told from one chosen), and a settings file from before the choice keeps
+    // its live-war switch ("liveWar").
+    public const string WarHellForge = "hellforge", WarLive = "live", WarFrozen = "frozen", WarOpen = "open";
+    public static readonly string[] Wars = [WarHellForge, WarLive, WarFrozen, WarOpen];
     public static string LoadWar(ISessionPaths paths)
     {
         var settings = SessionFiles.ReadJson(paths.SettingsFile);
         var war = settings is { } s ? SessionFiles.Text(s, "war") : "";
-        if (war is WarLive or WarFrozen or WarOpen) return war;
-        return LoadFlag(paths, "liveWar") ? WarLive : WarFrozen;
+        if (Wars.Contains(war)) return war;
+        if (settings is { } old && SessionFiles.Text(old, "liveWar") is { Length: > 0 } liveWar) return liveWar == "false" ? WarFrozen : WarLive;
+        return WarHellForge;
+    }
+
+    // The HellForge war's server (WarServer): HELLFORGE_WAR_SERVER, else the one saved ("warServer"), else the default.
+    public static string LoadWarServer(ISessionPaths paths) =>
+        WarServer.Normalize(Environment.GetEnvironmentVariable(WarServer.EnvironmentVariable)) ?? LoadSavedWarServer(paths);
+    // The saved one alone, as Settings shows it.
+    public static string LoadSavedWarServer(ISessionPaths paths) =>
+        WarServer.Normalize(SessionFiles.ReadJson(paths.SettingsFile) is { } settings ? SessionFiles.Text(settings, "warServer") : null) ?? WarServer.Default;
+    // Saves an address (empty: the default); false when it is not one a session may use.
+    public static bool SaveWarServer(ISessionPaths paths, string address)
+    {
+        var server = string.IsNullOrWhiteSpace(address) ? WarServer.Default : WarServer.Normalize(address);
+        if (server == null) return false;
+        Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths),
+            LoadLaunchOptions(paths), WarServer: server));
+        return true;
     }
 
     // The all-planets war's seed (backend --war-seed), for its subfactions and SEAF allies: 0 unless one was typed or rolled.
@@ -255,9 +276,9 @@ public static partial class ProfileStore
     public static void SaveLaunchOptions(ISessionPaths paths, string text) =>
         Save(paths, new(LoadSelected(paths), LoadLocalPlayFab(paths), LoadSdkShims(paths), LoadWar(paths), LoadEngineLog(paths), LoadCrashDump(paths), text));
 
-    // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions, DealSeaf or SteamUdp keeps the saved one.
+    // What launcher-settings.json holds; a null Seed, Sandbox, DealSubfactions, DealSeaf, SteamUdp or WarServer keeps the saved one.
     sealed record SavedSettings(string Profile, bool LocalPlayFab, bool SdkShims, string War, bool EngineLog, bool CrashDump, string LaunchOptions,
-        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null, bool? SteamUdp = null);
+        uint? Seed = null, bool? Sandbox = null, bool? DealSubfactions = null, bool? DealSeaf = null, bool? SteamUdp = null, string? WarServer = null);
 
     static void Save(ISessionPaths paths, SavedSettings saved)
     {
@@ -268,12 +289,13 @@ public static partial class ProfileStore
             var subfactions = saved.DealSubfactions ?? LoadDealSubfactions(paths);
             var seaf = saved.DealSeaf ?? LoadDealSeaf(paths);
             var steamUdp = saved.SteamUdp ?? LoadSteamUdp(paths);
+            var warServer = saved.WarServer ?? LoadSavedWarServer(paths);
             Directory.CreateDirectory(paths.HostRoot);
             File.WriteAllText(paths.SettingsFile, JsonSerializer.Serialize(new
             {
                 selectedProfile = saved.Profile, localPlayFab = saved.LocalPlayFab, sdkShims = saved.SdkShims, war = saved.War, liveWar = saved.War == WarLive,
                 engineLog = saved.EngineLog, crashDump = saved.CrashDump, launchOptions = saved.LaunchOptions, subfactionSeed,
-                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp
+                dealSubfactions = subfactions, dealSeaf = seaf, sandboxed, coopRelays = steamUdp, warServer
             }, WriteOptions) + "\n");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }  // Only a convenience.

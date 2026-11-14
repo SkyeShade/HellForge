@@ -70,15 +70,15 @@ static class Launch
     {
         var (install, paths) = Preflight(options);
         var war = options.GetValueOrDefault("--war") ?? ProfileStore.LoadWar(paths);
-        if (war is not (ProfileStore.WarLive or ProfileStore.WarFrozen or ProfileStore.WarOpen))
-            throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
+        if (!ProfileStore.Wars.Contains(war)) throw new ArgumentException("--war takes " + string.Join(", ", ProfileStore.Wars) + ".");
+        var warServer = WarServerOption(options);
         var sandbox = SandboxChoice(options, paths);
         var session = new SessionOptions(Yes(options, "--local-playfab", ProfileStore.LoadLocalPlayFab(paths)),
             Yes(options, "--multiplayer", ProfileStore.LoadSdkShims(paths)), war,
             Yes(options, "--engine-log", ProfileStore.LoadEngineLog(paths)), Yes(options, "--crash-dump", ProfileStore.LoadCrashDump(paths)),
             GameLaunchOptions.Parse(options.TryGetValue("--game-options", out var typed) ? typed : ProfileStore.LoadLaunchOptions(paths)),
             Sandbox: sandbox, FullOwnershipCheck: Yes(options, "--full-ownership-check", false),
-            SteamUdp: Yes(options, "--steam-udp", ProfileStore.LoadSteamUdp(paths)));
+            SteamUdp: Yes(options, "--steam-udp", ProfileStore.LoadSteamUdp(paths)), WarServer: warServer);
         var profiles = ProfileStore.List(paths);
         var name = options.GetValueOrDefault("--profile") ?? ProfileStore.LoadSelected(paths);
         var profile = profiles.FirstOrDefault(p => p.Name == name) ?? throw new ArgumentException(
@@ -276,27 +276,37 @@ static class Launch
         };
     }
 
-    // fetch-war: the live galactic war into the cache a live-war session serves. A Linux session has no network, so
-    // linux/hellforge-linux.sh fetches it before entering the namespace; on Windows the session refreshes it itself.
+    // --war-server: an https address, or http to this PC (WarServer.Normalize); null without the option.
+    static string? WarServerOption(Dictionary<string, string> options) =>
+        options.TryGetValue("--war-server", out var typed) ? WarServer.Normalize(typed) ??
+            throw new ArgumentException("--war-server takes an https address, or http to this PC (http://localhost:5093).") : null;
+
+    // fetch-war: the war a session serves into its cache: the HellForge war (the saved war, or --war hellforge; from the
+    // saved server, or --war-server) or the live war (--war live, or a saved live war). A Linux session has no network,
+    // so linux/hellforge-linux.sh fetches both before entering the namespace; on Windows the session refreshes it itself.
     public static object FetchWar(Dictionary<string, string> options)
     {
         var install = Install(options);
         var paths = new InstallSessionPaths(install);
         if (!File.Exists(paths.Backend)) throw new InvalidDataException($"The local backend is missing ({paths.Backend}): reinstall HellForge.");
+        var war = options.GetValueOrDefault("--war") ?? (ProfileStore.LoadWar(paths) == ProfileStore.WarLive ? ProfileStore.WarLive : ProfileStore.WarHellForge);
+        if (war is not (ProfileStore.WarHellForge or ProfileStore.WarLive)) throw new ArgumentException("--war takes hellforge or live here.");
+        var server = WarServerOption(options) ?? ProfileStore.LoadWarServer(paths);
+        var cache = war == ProfileStore.WarLive ? paths.LiveWarCache : WarServer.CachePath(paths.HostRoot, server);
         var start = new ProcessStartInfo(paths.Backend) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        start.ArgumentList.Add("fetch-live-war");
-        start.ArgumentList.Add(paths.LiveWarCache);
+        if (war == ProfileStore.WarLive) { start.ArgumentList.Add("fetch-live-war"); start.ArgumentList.Add(paths.LiveWarCache); }
+        else { start.ArgumentList.Add("fetch-hellforge-war"); start.ArgumentList.Add(paths.HostRoot); start.ArgumentList.Add(server); }
         using var backend = Process.Start(start) ?? throw new InvalidDataException("The local backend did not start.");
         var output = backend.StandardOutput.ReadToEndAsync();
         var error = backend.StandardError.ReadToEndAsync();
         if (!backend.WaitForExit(TimeSpan.FromSeconds(90)))
         {
             backend.Kill();
-            throw new InvalidDataException("The live war did not arrive within 90 s; a session serves the last one fetched.");
+            throw new InvalidDataException("The war did not arrive within 90 s; a session serves the last one fetched.");
         }
         if (backend.ExitCode != 0)
-            throw new InvalidDataException("Could not fetch the live war: " + (error.Result + output.Result).Trim());
-        return new { fetched = true, cache = paths.LiveWarCache };
+            throw new InvalidDataException($"Could not fetch the {(war == ProfileStore.WarLive ? "live" : "HellForge")} war: " + (error.Result + output.Result).Trim());
+        return new { fetched = true, war, cache, server = war == ProfileStore.WarLive ? null : server };
     }
 
     // mods: the Mods page's list, top first (the bottom one loads first; gameplay mods, then cosmetic ones). A .rar or .7z
@@ -515,6 +525,18 @@ static class Launch
             if (options.ContainsKey(option)) save(paths, Yes(options, option, bare));
     }
 
+    // settings --war and --war-server (default goes back to HellForge's server)
+    static void SaveWarChoices(Dictionary<string, string> options, InstallSessionPaths paths)
+    {
+        if (options.TryGetValue("--war", out var war))
+        {
+            if (!ProfileStore.Wars.Contains(war)) throw new ArgumentException("--war takes " + string.Join(", ", ProfileStore.Wars) + ".");
+            ProfileStore.SaveWar(paths, war);
+        }
+        if (options.TryGetValue("--war-server", out var warServer) && !ProfileStore.SaveWarServer(paths, warServer == "default" ? "" : warServer))
+            throw new ArgumentException("--war-server takes an https address, or http to this PC (http://localhost:5093), or default.");
+    }
+
     // settings: the launcher's saved choices (launcher-settings.json), which play and HellForge.exe's PLAY both start from.
     // Each option given is saved first; all of them are printed. They apply from the next session.
     public static object Settings(Dictionary<string, string> options)
@@ -528,12 +550,7 @@ static class Launch
                 $"No profile named {name}; there are: {string.Join(", ", profiles.Select(p => p.Name))} (profiles --create makes one).");
             ProfileStore.SaveSelected(paths, name);
         }
-        if (options.TryGetValue("--war", out var war))
-        {
-            if (war is not (ProfileStore.WarLive or ProfileStore.WarFrozen or ProfileStore.WarOpen))
-                throw new ArgumentException($"--war takes {ProfileStore.WarLive}, {ProfileStore.WarFrozen} or {ProfileStore.WarOpen}.");
-            ProfileStore.SaveWar(paths, war);
-        }
+        SaveWarChoices(options, paths);
         SaveSwitches(options, paths);
         if (options.TryGetValue("--game-options", out var typed))
         {
@@ -557,6 +574,7 @@ static class Launch
         {
             profile = ProfileStore.LoadSelected(paths),
             war = ProfileStore.LoadWar(paths),
+            warServer = ProfileStore.LoadWarServer(paths),
             localPlayFab = ProfileStore.LoadLocalPlayFab(paths),
             multiplayer = ProfileStore.LoadSdkShims(paths),
             engineLog = ProfileStore.LoadEngineLog(paths),

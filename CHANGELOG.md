@@ -176,6 +176,15 @@ On `dev`, since 0.4.0-beta.
 - **The Linux installer as a zip with no archive inside.** Sites that refuse an archive inside an archive, such as Nexus
   Mods, can offer it. Extract it once and run `HellForge.Launcher`; it installs the same files as the `.tar.gz`
   ([Linux](docs/linux.md#graphical-installer), #381).
+- **The HellForge war**, now the default war (Settings > GALACTIC WAR > HellForge war): one galactic war shared by every
+  HellForge player, with its own major orders and dispatches, from HellForge's war server. The war updates every minute
+  while you play, and your missions count towards it. Without a connection the last war fetched is used, and without
+  that the frozen war. Installations that saved their settings before keep the war they had. Settings has a War server
+  field for trying a server of your own ([docs/hellforge-war.md](docs/hellforge-war.md)) (#393).
+- **War scripts.** A `war-script.json` in your HellForge folder adds your own major orders, dispatches, reward mail and
+  planet modifiers (such as an extra stratagem for everyone on a planet) to the war. Edits show in game within a
+  minute ([docs/war-script.md](docs/war-script.md)). Mail rewards can be claimed once by every player. The major order,
+  dispatch, mailbox and episode screens also get a proper empty answer now, where they got an error before (#393).
 
 ### Changed
 
@@ -415,6 +424,12 @@ On `dev`, since 0.4.0-beta.
   is call only ([premium content](docs/modding/concepts.md#premium-content)) (#403).
 - **A mod's `write` over code HellForge checks turns that feature off.** Such a write used to pass as one of
   HellForge's own rewrites. The offsets and capacities of the moved lists above are the exception (#348).
+
+### For launcher developers
+
+- `play`, `settings` and `fetch-war` take `--war hellforge` (the default for new installations) and `--war-server <url>`;
+  `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it. `fetch-war` fetches the HellForge war unless
+  the saved war is the live one, and prints `war` and `server` ([docs/external-launchers.md](docs/external-launchers.md)) (#393).
 
 ## 0.4.0-beta (2026-11-05)
 
