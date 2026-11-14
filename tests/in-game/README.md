@@ -18,6 +18,8 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `sdk-probe/` | the test mod `sdk16.json` runs (`hellforge.sdk-probe`), never shipped: one `PROBE <check> ok` or `PROBE <check> FAIL <why>` line per check in its log |
 | `rpc17.json` | SDK 17's RPCs in the game: `rpc_listen` on every RPC on the ship and in a mission, their arguments, the readers, and `rpc_send`'s refusals in solo |
 | `rpc-probe/` | the test mod `rpc17.json` runs (`hellforge.rpc-probe`), never shipped; it sends nothing outside solo |
+| `projectile-cap.json` | room for 1,024 new projectile types: 400 added (types 351 to 750), past the 161 the projectile type's 9-bit co-op field carries, the field widened to 11 bits, rows on both sides of the old reach |
+| `projectile-cap-probe/` | the test mod `projectile-cap.json` runs (`hellforge.projectile-cap-probe`), never shipped |
 | `stratagem-cap.json` | room for 1,024 new stratagems: 300 added (types 150 to 449), the co-op type field at 16 bits, type 449 in the loadout before the mission and called in by its code (needs the harness's `call` step) |
 | `stratagem-cap-probe/` | the test mod `stratagem-cap.json` runs (`hellforge.stratagem-cap-probe`), never shipped |
 | `patterns18.json` | SDK 18's patterns: two weapon patterns on every weapon taking paints, the Pelican's, hellpod's, exosuits' and FRVs' skins in every collection, their deltas and package map, the Armory's Pattern tab captured |
