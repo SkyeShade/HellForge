@@ -103,17 +103,21 @@ public static partial class SessionLogs
     // logs); other files (a crash dump) go in as they are. A running session still has its logs open, so each file is
     // read with shared access, and one in use is left out (Skipped). The game's console logs are copied into the run
     // (engine-logs) when it ends: while it runs, or if that copy failed, the ones the game wrote since the session started
-    // come from gameLogs (the installation's userdata/logs).
-    public static Exported Export(string run, string? gameLogs, string target)
+    // come from gameLogs (the installation's userdata/logs). installLogs (the installation's logs folder) adds the start
+    // logs: a start after this session may have stopped before it had a folder of its own.
+    public static Exported Export(string run, string? gameLogs, string target, string? installLogs = null)
     {
         int written, skipped;
         using (var zip = System.IO.Compression.ZipFile.Open(target, System.IO.Compression.ZipArchiveMode.Create))
         {
             (written, skipped) = AddTo(zip, run, gameLogs, new(Privacy.Current.ApplyBytes, Privacy.Scrub, "", Dumps: true));
+            if (installLogs != null)
+            {
+                var start = AddStartLogs(zip, installLogs);
+                (written, skipped) = (written + start.Written, skipped + start.Skipped);
+            }
             // a game that would not close: which of the session's programs were still running when the logs were saved
-            using (var writer = new StreamWriter(zip.CreateEntry(Path.GetFileName(run) + "/" + ProcessesFile, System.IO.Compression.CompressionLevel.Optimal).Open(),
-                       new System.Text.UTF8Encoding(false)))
-                writer.Write(Privacy.Scrub(RunningProcesses(DateTime.UtcNow, Process.GetProcesses())));
+            WriteProcesses(zip, Path.GetFileName(run));
             written++;
         }
         return new(target, written, skipped);

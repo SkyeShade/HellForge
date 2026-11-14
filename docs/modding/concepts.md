@@ -186,15 +186,19 @@ game: use `hf_set` or `edit_entity` instead.
 
 Arrowhead's premium content (premium warbonds, Superstore items bought with Super Credits, and the Steam DLCs' gear)
 is a player's only when they bought it in the normal game. A player brings it into HellForge with Profile > Account
-sync, which reads their own account and seals it to their PC and Steam account. A mod that ports premium content, or
+sync, which reads their own account and seals it to their PC and Steam account for 14 days. A mod that ports premium content, or
 builds on it, must follow that sync: it may not give premium content to players who have not bought it.
 
 HellForge does most of this for you.
 
-- **Copies of premium content are locked automatically.** A weapon or stratagem your mod makes as a copy of a premium
-  one is in a player's armory only when that player owns the original. Such a copy can be of a premium warbond's
-  weapon, a Superstore weapon or the Super Citizen Edition's MP-98 Knight. It still exists on every machine, so friends with and without it
-  play together; a player without it cannot equip it.
+- **The session's backend locks copies of premium content.** A weapon, stratagem, pattern or attachment your mod
+  makes as a copy of premium content is in a player's armory only when that player owns the original. Such a copy can
+  be of a premium warbond's weapon, a Superstore weapon or the Super Citizen Edition's MP-98 Knight. The copy still
+  exists on every machine, so friends with and without it play together; a player without it cannot equip it.
+- **A copy of another mod's weapon follows that weapon's original,** up to 8 copies deep; a longer chain is locked. A
+  mod added while the game runs follows the same rules.
+- **Your items' ids must be new.** HellForge makes them from your names. An item whose id, or a child's id, is the
+  game's own or a paid item's is refused, and the backend's log names your mod.
 - **Declare what your mod recreates or builds on** in the manifest's `premium` list, when it is not a plain copy.
   Examples are a free weapon made to play like a premium one, a premium armour's look on a free armour, or a larger
   variant of a DLC weapon. Each entry is one of:
@@ -228,9 +232,27 @@ HellForge does most of this for you.
 - **Your code's own effects are yours to gate.** HellForge locks items, not logic: a code mod that recreates a premium
   booster's or armour passive's effect must not apply it for players without the content. Until the SDK has an
   ownership call, give such effects only to the items HellForge locks, or leave them out.
+- **Code mods may not hook or write the ownership checks and paid purchases.** These are the game's checks of what a
+  player holds, its login loadout check, and its Super Credit, Superstore and premium warbond purchases. The loader
+  refuses such a `hook`, `write` or `write_u32_if`, and its log names the mod and the function.
+- **A paid item the backend refuses is taken back.** The loader asks the session's backend which paid items the player
+  may not hold. When the game holds one, through a mod's add or a changed reply, the loader removes it once a newer
+  answer still refuses it. An item just bought survives, because the newer answer allows it.
 
 Cosmetic packs in the community's format have no `hellforge-mod.json` and cannot declare premium content: ship a
 premium look as a data mod with a manifest instead.
+
+These checks run on the player's own PC. HellForge decides what is paid from an id list compiled into it, not from
+the installation's catalogue. Its backend serves the catalogue's paid entries from that list and checks every reply
+that gives an item, a mod warbond's purchases included. A session also refuses a backend that is
+not the one it was built with. None of this stops a player who changes HellForge itself: a replaced session, or one
+whose compiled pin was edited, starts any backend.
+
+A code mod that patches the game without the SDK's calls also passes the loader's refusal. With no backend to answer,
+the loader takes nothing back.
+
+A difficulty's mission stratagem is never a paid one in the loader. How a joiner's game handles a mission group sent
+by a changed host is not traced yet, so that path is open.
 
 ## Load order and conflicts
 

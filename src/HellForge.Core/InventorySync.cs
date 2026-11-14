@@ -19,9 +19,9 @@ namespace HellForge.Core;
 // capture's state (CaptureState) says they are sealed.
 //
 // Windows keeps the elevated app/capture/HellForge.CaptureProxy.exe, its hosts file and its LocalMachine Root store.
-// Native Linux starts the unprivileged app/capture-linux proxy below the installed root helper, which owns the marked
-// /etc/hosts lines and the 127.0.0.1:443 relay, and the supervisor imports the proxy's public CA into HELLDIVERS 2's
-// prefix Root store through Wine's reg.exe.
+// Native Linux asks the installed root helper, which owns the marked /etc/hosts lines and the 127.0.0.1:443 relay and
+// runs its root-owned copy of app/capture-linux as the signing service; the supervisor imports that capture's public CA
+// into HELLDIVERS 2's prefix Root store through Wine's reg.exe.
 public static class InventorySync
 {
     public const string SnapshotFolder = "account-snapshot";
@@ -62,10 +62,10 @@ public static class InventorySync
         return Path.Combine(installRoot, SnapshotFolder, profileName);
     }
 
-    // One key per installation, beside every profile's snapshot.
-    public static string SealKeyFor(string snapshotDir) =>
+    // The HMAC key version 1 seals kept beside every profile's snapshot; FinalizeCapture deletes it.
+    public static string LegacySealKeyFor(string snapshotDir) =>
         Path.Combine(Path.GetDirectoryName(Path.GetFullPath(snapshotDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))!,
-            SnapshotSeal.KeyFileName);
+            SnapshotSeal.LegacyKeyFileName);
 
     // The inventory makes a snapshot; progression is applied when it was captured too.
     public static bool HasSnapshot(string snapshotDir) => File.Exists(Path.Combine(snapshotDir, InventoryFile));
@@ -127,7 +127,7 @@ public static class InventorySync
     // Starts the platform's proxy, sealing what it captures for steamAccount. Windows starts it elevated (one UAC prompt)
     // and blocks until the prompt is answered; without a process, Refused says why (CaptureStart.FromStartError): the
     // prompt declined, or Windows refusing the file (a security program, an application control policy). Native Linux
-    // starts the unprivileged proxy, proves its CA is in the game's prefix, then starts the root relay; it throws
+    // asks the root helper to start the signing capture, then puts its CA in the game's prefix; it throws
     // InvalidOperationException with the reason instead. Call it off the UI thread.
     public static (CaptureRun? Run, CaptureProblem Refused, string? Detail) StartCaptureProxy(string installRoot, string proxyPath, string syncDir,
         string snapshotDir, ulong steamAccount, bool sessionRunning)
@@ -139,7 +139,7 @@ public static class InventorySync
         // An earlier attempt's failure must not be read as this one's.
         File.Delete(Path.Combine(syncDir, CaptureStart.FailureFile));
         var started = TryStartElevated(proxyPath, arguments);
-        return started.Process != null ? (new CaptureRun(started.Process, null, null), CaptureProblem.None, null)
+        return started.Process != null ? (new CaptureRun(started.Process), CaptureProblem.None, null)
             : (null, CaptureStart.FromStartError(started.Error), started.Message);
     }
 
@@ -156,7 +156,7 @@ public static class InventorySync
             "--progression", Path.Combine(syncDir, ProgressionFile),
             "--catalogue", Path.Combine(syncDir, CatalogueFolder),
             "--evidence", syncDir,
-            "--seal-key", SealKeyFor(snapshotDir),
+            "--sign",
             "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture),
             "--close-game"];
         return launcherSid != null && CaptureAccess.IsSid(launcherSid) ? [.. arguments, "--grant-sid", launcherSid] : arguments;
@@ -184,65 +184,49 @@ public static class InventorySync
 
         LinuxCapture.RestrictPrivateDirectory(syncDir);
         var certificatePath = LinuxCapture.CertificatePath(syncDir);
-        Process? proxy = null;
         LinuxCapture.HelperRun? helper = null;
         LinuxCapture.CertificateRecord? record = null;
         try
         {
-            proxy = Process.Start(LinuxProxyStartInfo(proxyPath, syncDir, snapshotDir, steamAccount, address!, certificatePath))
-                ?? throw new InvalidOperationException("The Linux capture proxy did not start.");
-            WaitForLinuxProxy(proxy, certificatePath, syncDir);
+            helper = LinuxCapture.StartHelper(installRoot, steamAccount, address!, syncDir);
+            var run = new CaptureRun(helper, syncDir);
+            WaitForSigningCapture(run, syncDir);
+            File.Copy(LinuxCapture.CertificatePath(LinuxCapture.SignerRunFolder), certificatePath, overwrite: true);
+            LinuxCapture.RestrictPrivateFile(certificatePath);
             record = new(prefix!, proton!, steamRoot, certificatePath,
                 LinuxCapture.CertificateThumbprint(File.ReadAllBytes(certificatePath)));
             LinuxCapture.WriteCertificateRecord(syncDir, record);
             LinuxCapture.InstallCertificate(record);
-            helper = LinuxCapture.StartHelper(installRoot, proxy.Id, syncDir);
-            return new CaptureRun(proxy!, helper, syncDir);
+            return run;
         }
         catch
         {
-            AbortLinuxCapture(proxy, helper, record, syncDir);
+            AbortLinuxCapture(helper, record, syncDir);
             throw;
         }
     }
 
-    static ProcessStartInfo LinuxProxyStartInfo(string proxyPath, string syncDir, string snapshotDir, ulong steamAccount,
-        string address, string certificatePath)
+    // The helper checks its capture copy (tens of megabytes hashed) and starts it as a systemd service before it listens.
+    static void WaitForSigningCapture(CaptureRun run, string syncDir)
     {
-        var start = new ProcessStartInfo(proxyPath) { WorkingDirectory = syncDir, UseShellExecute = false, CreateNoWindow = true };
-        foreach (var argument in new[]
+        var deadline = DateTime.UtcNow.AddSeconds(45);
+        while (true)
         {
-            "--host", LinuxCapture.ApiHost,
-            "--timeout-min", TimeoutMinutes.ToString(CultureInfo.InvariantCulture),
-            "--output", Path.Combine(syncDir, InventoryFile),
-            "--progression", Path.Combine(syncDir, ProgressionFile),
-            "--catalogue", Path.Combine(syncDir, CatalogueFolder),
-            "--evidence", syncDir,
-            "--seal-key", SealKeyFor(snapshotDir),
-            "--steam-account", steamAccount.ToString(CultureInfo.InvariantCulture),
-            "--no-hosts", "--listen-port", LinuxCapture.ProxyPort.ToString(CultureInfo.InvariantCulture),
-            "--real-ip", address, "--ca-cert", certificatePath
-        })
-            start.ArgumentList.Add(argument);
-        return start;
-    }
-
-    static void WaitForLinuxProxy(Process proxy, string certificatePath, string syncDir)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(20);
-        while (!File.Exists(certificatePath) || !IsListening(syncDir))
-        {
-            if (proxy.HasExited) throw new InvalidOperationException("The Linux capture proxy stopped before it listened. " + ProxyLogTail(syncDir));
-            if (DateTime.UtcNow >= deadline) throw new InvalidOperationException("The Linux capture proxy did not start within 20 seconds. " + ProxyLogTail(syncDir));
+            run.Refresh();
+            if (File.Exists(LinuxCapture.CertificatePath(LinuxCapture.SignerRunFolder)) && IsListening(syncDir)) return;
+            if (run.HasExited) throw new InvalidOperationException("The Linux capture stopped before it listened. " + ProxyLogTail(syncDir));
+            if (DateTime.UtcNow >= deadline) throw new InvalidOperationException("The Linux capture did not start within 45 seconds. " + ProxyLogTail(syncDir));
             Thread.Sleep(100);
         }
     }
 
-    static void AbortLinuxCapture(Process? proxy, LinuxCapture.HelperRun? helper, LinuxCapture.CertificateRecord? record, string syncDir)
+    static void AbortLinuxCapture(LinuxCapture.HelperRun? helper, LinuxCapture.CertificateRecord? record, string syncDir)
     {
-        try { if (proxy is { HasExited: false }) proxy.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-        proxy?.Dispose();
-        helper?.Dispose();
+        if (helper != null)
+        {
+            LinuxCapture.StopHelper();
+            helper.Dispose();
+        }
         if (record != null && LinuxCapture.RemoveCertificate(record) == null)
             LinuxCapture.DeleteCertificateRecord(syncDir);
     }
@@ -265,16 +249,21 @@ public static class InventorySync
 
     // A Windows capture proxy, or the native Linux proxy plus the root relay that owns /etc/hosts and 443. The launcher
     // treats either as one run: HasExited and ExitCode read the proxy; Dispose ends the Linux helper and removes its CA.
+    // The capture: the elevated proxy on Windows; on Linux the root helper's sudo process, which ends with the signing
+    // service and gives its exit code.
     public sealed class CaptureRun : IDisposable
     {
         readonly Process proxy;
         readonly string? syncDir;
         LinuxCapture.HelperRun? helper;
+        bool accountFilesCopied;
         int disposed;
 
-        internal CaptureRun(Process proxy, LinuxCapture.HelperRun? helper, string? syncDir)
+        internal CaptureRun(Process proxy) => this.proxy = proxy;
+
+        internal CaptureRun(LinuxCapture.HelperRun helper, string syncDir)
         {
-            this.proxy = proxy;
+            proxy = helper.Process;
             this.helper = helper;
             this.syncDir = syncDir;
         }
@@ -283,11 +272,20 @@ public static class InventorySync
         public int ExitCode => proxy.ExitCode;
         public int Id => proxy.Id;
 
+        // Linux: brings what the signing service shares into the sync folder (LinuxCapture.MirrorSignerRun). Call it before
+        // reading the folder.
+        public void Refresh()
+        {
+            if (helper != null && syncDir != null && Volatile.Read(ref disposed) == 0)
+                accountFilesCopied |= LinuxCapture.MirrorSignerRun(LinuxCapture.SignerRunFolder, LinuxCapture.SignerHandOverFolder, syncDir, accountFilesCopied);
+        }
+
         public void Dispose()
         {
+            Refresh();
             if (Interlocked.Exchange(ref disposed, 1) == 1) return;
-            proxy.Dispose();
-            if (syncDir == null) { helper?.Dispose(); helper = null; return; }
+            if (helper == null) proxy.Dispose();
+            if (syncDir == null) return;
             string? stop = null;
             try { stop = LinuxCapture.StopHelper(); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -502,7 +500,7 @@ public static class InventorySync
         if (!CanReadSyncFolder(syncDir)) return UnreadableFolderMessage;
         if (ReadInventory(Path.Combine(syncDir, InventoryFile), out var items) is { } inventoryProblem) return inventoryProblem;
         if (ReadProgression(Path.Combine(syncDir, ProgressionFile), out var experience) is { } progressionProblem) return progressionProblem;
-        if (SnapshotSeal.Verify(syncDir, SealKeyFor(snapshotDir), out var sealProblem) == null)
+        if (SnapshotSeal.Verify(syncDir, out var sealProblem) == null)
             return sealProblem ?? "The capture is not sealed for this PC. Sync again.";
         // A capture without progression is a failed sync: the last complete snapshot keeps the level and unlocks it imported.
         if (!File.Exists(Path.Combine(syncDir, ProgressionFile)) && ReadMetadata(snapshotDir) is { Progression: true } kept)
@@ -529,6 +527,7 @@ public static class InventorySync
             };
             File.WriteAllText(Path.Combine(snapshotDir, MetadataFile), metadata.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
             InstallCatalogue(syncDir, snapshotDir);
+            File.Delete(LegacySealKeyFor(snapshotDir));
             return null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

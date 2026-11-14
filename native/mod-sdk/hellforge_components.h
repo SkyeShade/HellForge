@@ -207,9 +207,10 @@ typedef struct HfWeaponData
     uint8_t _unknown_184[12];
     uint32_t crosshair_type;                     /* +0x190 crosshair (unverified) [respawn] */
     uint8_t _unknown_194[536];
-    uint32_t fire_ability;                       /* +0x3AC an ability the weapon runs when it fires (0: none) (unverified) [respawn] */
-    uint32_t fire_ability_2;                     /* +0x3B0 a second fire-time ability (the VG-70 Variable: 50, a lead for its knock-down when fired standing; 0 on the AMR and Autocannon) (unverified) [respawn] */
-    uint8_t _unknown_3B4[284];
+    uint32_t fire_ability;                       /* +0x3AC the ability every shot starts on the weapon: its firing motion, a bolt, pump or lever cycle (R-36 Eruptor 2660, SG-8 Punisher 2661), the VG-70 Variable's stagger (2692); 0 none [respawn] */
+    uint32_t fire_ability_2;                     /* +0x3B0 fire_ability's stand-in in fire mode 7, when the shot asks for it (the VG-70 Variable and MGX-42 Bullet Storm: 50; 0 elsewhere) [respawn] */
+    uint32_t fire_ability_function;              /* +0x3B4 fire_ability's stand-in while weapon function 8 is on (the W.A.S.P.'s 2679) [respawn] */
+    uint8_t _unknown_3B8[280];
 } HfWeaponData;
 HF_ASSERT_SIZE(HfWeaponData, 1232);
 HF_ASSERT_OFFSET(HfWeaponData, recoil_drift_horizontal, 0);
@@ -252,6 +253,8 @@ HF_ASSERT_OFFSET(HfWeaponData, fire_ability, 940);
 #define HF_TYPE_WeaponData_fire_ability HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponData, fire_ability_2, 944);
 #define HF_TYPE_WeaponData_fire_ability_2 HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponData, fire_ability_function, 948);
+#define HF_TYPE_WeaponData_fire_ability_function HF_TYPE_U32
 /* Group recoil: both recoil blocks, sideways and up */
 #define HF_GROUP_WeaponData_recoil(X, ...) X(WeaponData, recoil_drift_horizontal, __VA_ARGS__), X(WeaponData, recoil_drift_vertical, __VA_ARGS__), X(WeaponData, recoil_climb_horizontal, __VA_ARGS__), X(WeaponData, recoil_climb_vertical, __VA_ARGS__)
 /* Group spread: spread sideways and up and down */
@@ -530,7 +533,7 @@ typedef struct HfProjectileSettings
     float gravity;                               /* +0x2C gravity factor (unverified) [now?] */
     uint8_t _unknown_30[4];
     float lifetime;                              /* +0x34 seconds before it expires (unverified) [now?] */
-    uint8_t _unknown_38[4];
+    float lifetime_variance;                     /* +0x38 how much its lifetime varies, as a share of it: each round lives lifetime +- (this x lifetime), at random (unverified) [now?] */
     uint32_t damage;                             /* +0x3C the damage id its hits deal [now?] */
     float penetration_slowdown;                  /* +0x40 slowdown when it penetrates (unverified) [now?] */
     uint8_t _unknown_44[4];
@@ -541,7 +544,12 @@ typedef struct HfProjectileSettings
     uint32_t impact_explosion;                   /* +0x90 the explosion type where it hits (0: none) [now] */
     uint8_t _unknown_94[8];
     uint32_t expiry_explosion;                   /* +0x9C the explosion type when its lifetime runs out (0: none) [now] */
-    uint8_t _unknown_A0[112];
+    float arming_distance;                       /* +0xA0 how far (m) a round with an impact payload flies before it arms: one that hits sooner bounces instead of going off (the GL-21 7, the GP-31 and GL-52 4) (unverified) [now?] */
+    uint8_t _unknown_A4[12];
+    uint32_t ricochets;                          /* +0xB0 whether its rounds bounce off what they hit: 0 never; the update bounces a round only while this is not 0 and counts its bounces against it (grenade launchers and most bullets 1, lasers 0) (unverified) [now?] */
+    float ricochet_angle;                        /* +0xB4 how flat a hit must be to bounce, in degrees off straight on (0: any hit, 360: never); a round still unarmed bounces anyway (unverified) [now?] */
+    float ricochet_min_speed;                    /* +0xB8 the speed (m/s) a round must be faster than to bounce (unverified) [now?] */
+    uint8_t _unknown_BC[84];
 } HfProjectileSettings;
 HF_ASSERT_SIZE(HfProjectileSettings, 272);
 HF_ASSERT_OFFSET(HfProjectileSettings, type, 0);
@@ -558,6 +566,8 @@ HF_ASSERT_OFFSET(HfProjectileSettings, gravity, 44);
 #define HF_TYPE_ProjectileSettings_gravity HF_TYPE_F32
 HF_ASSERT_OFFSET(HfProjectileSettings, lifetime, 52);
 #define HF_TYPE_ProjectileSettings_lifetime HF_TYPE_F32
+HF_ASSERT_OFFSET(HfProjectileSettings, lifetime_variance, 56);
+#define HF_TYPE_ProjectileSettings_lifetime_variance HF_TYPE_F32
 HF_ASSERT_OFFSET(HfProjectileSettings, damage, 60);
 #define HF_TYPE_ProjectileSettings_damage HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileSettings, penetration_slowdown, 64);
@@ -570,6 +580,24 @@ HF_ASSERT_OFFSET(HfProjectileSettings, impact_explosion, 144);
 #define HF_TYPE_ProjectileSettings_impact_explosion HF_TYPE_U32
 HF_ASSERT_OFFSET(HfProjectileSettings, expiry_explosion, 156);
 #define HF_TYPE_ProjectileSettings_expiry_explosion HF_TYPE_U32
+HF_ASSERT_OFFSET(HfProjectileSettings, arming_distance, 160);
+#define HF_TYPE_ProjectileSettings_arming_distance HF_TYPE_F32
+HF_ASSERT_OFFSET(HfProjectileSettings, ricochets, 176);
+#define HF_TYPE_ProjectileSettings_ricochets HF_TYPE_U32
+HF_ASSERT_OFFSET(HfProjectileSettings, ricochet_angle, 180);
+#define HF_TYPE_ProjectileSettings_ricochet_angle HF_TYPE_F32
+HF_ASSERT_OFFSET(HfProjectileSettings, ricochet_min_speed, 184);
+#define HF_TYPE_ProjectileSettings_ricochet_min_speed HF_TYPE_F32
+
+/* StratagemCode (4-byte table rows, found by id): a vanilla stratagem's input code (by type), kept by HellForge: the row's code points at an array of HellForge's, which follows this packed value (native/mod-loader/stratagem_codes.c) */
+#define HfStratagemCode_INFO "StratagemCode", 25480438u
+typedef struct HfStratagemCode
+{
+    uint32_t packed;                             /* +0x00 its directions, one base-5 digit each, the first lowest (1 up, 2 right, 3 down, 4 left; Up, Right = 1 + 2*5 = 11); 1 to 10 directions (unverified) [now?] */
+} HfStratagemCode;
+HF_ASSERT_SIZE(HfStratagemCode, 4);
+HF_ASSERT_OFFSET(HfStratagemCode, packed, 0);
+#define HF_TYPE_StratagemCode_packed HF_TYPE_U32
 
 /* StratagemDefinition (400-byte table rows, found by id; api->stratagem_row returns one: (HfStratagemSettings*)api->stratagem_row(...)): a stratagem: text, input, uses, cooldown, delivery, payload, packages and traits */
 #define HfStratagemSettings_INFO "StratagemDefinition", 25480438u
@@ -2668,7 +2696,8 @@ typedef struct HfExplosive
     float explosion_delay;                       /* +0x0C Fuse (explosion delay) (seconds) (unverified) [respawn?] */
     uint8_t _unknown_10[20];
     uint32_t explosion;                          /* +0x24 Explosion payload (unverified) [respawn?] */
-    uint8_t _unknown_28[288];
+    uint32_t impact_explosion;                   /* +0x28 the explosion where it hits something (0: none; the Solo Silo missile 420) (unverified) [respawn?] */
+    uint8_t _unknown_2C[284];
     uint32_t armed_ability;                      /* +0x148 the ability it runs once it is set off (the Solo Silo missile: 2088, its launch) [respawn?] */
     uint8_t _unknown_14C[28];
 } HfExplosive;
@@ -2679,6 +2708,8 @@ HF_ASSERT_OFFSET(HfExplosive, explosion_delay, 12);
 #define HF_TYPE_Explosive_explosion_delay HF_TYPE_F32
 HF_ASSERT_OFFSET(HfExplosive, explosion, 36);
 #define HF_TYPE_Explosive_explosion HF_TYPE_U32
+HF_ASSERT_OFFSET(HfExplosive, impact_explosion, 40);
+#define HF_TYPE_Explosive_impact_explosion HF_TYPE_U32
 HF_ASSERT_OFFSET(HfExplosive, armed_ability, 328);
 #define HF_TYPE_Explosive_armed_ability HF_TYPE_U32
 
@@ -2908,7 +2939,8 @@ typedef struct HfWeaponRounds
     uint32_t spare_rounds;                       /* +0x50 Spare rounds (rounds) (unverified) [respawn?] */
     uint32_t rounds_from_supply;                 /* +0x54 Rounds from supply (rounds) (unverified) [respawn?] */
     uint32_t starting_rounds;                    /* +0x58 Starting rounds (rounds) (unverified) [respawn?] */
-    uint8_t _unknown_5C[44];
+    uint32_t rounds_per_reload;                  /* +0x5C Rounds each reload step loads into the feed and takes from the spare rounds (1: one by one; the AC-8 Autocannon's clip 5) [respawn?] */
+    uint8_t _unknown_60[40];
 } HfWeaponRounds;
 HF_ASSERT_SIZE(HfWeaponRounds, 136);
 HF_ASSERT_OFFSET(HfWeaponRounds, primary_projectile, 64);
@@ -2925,6 +2957,8 @@ HF_ASSERT_OFFSET(HfWeaponRounds, rounds_from_supply, 84);
 #define HF_TYPE_WeaponRounds_rounds_from_supply HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponRounds, starting_rounds, 88);
 #define HF_TYPE_WeaponRounds_starting_rounds HF_TYPE_U32
+HF_ASSERT_OFFSET(HfWeaponRounds, rounds_per_reload, 92);
+#define HF_TYPE_WeaponRounds_rounds_per_reload HF_TYPE_U32
 
 /* ArcWeaponComponentData (component 265, 80-byte records): (from the stats schema) */
 #define HfArcWeapon_INFO "ArcWeaponComponentData", 25480438u

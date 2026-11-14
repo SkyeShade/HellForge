@@ -90,6 +90,9 @@ static const uint8_t kNavStub[145] = {
     0x48, 0x8B, 0x00,                                                 /* 134 mov rax, [rax] */
     0xFF, 0x50, 0x08,                                                 /* 137 call [rax+8] */
     0xE9, 0, 0, 0, 0};                                                /* 140 jmp 0xC19E1C (rel32 at 141) */
+/* Another mod may pin these bytes and call the function at +65, NavRetile(id, 0), itself earlier in the ship's set-up
+ * (the PrepareShip enter), skipping this step. So the grid NavRetile writes for the ship must follow from the id, the
+ * nav world table and count, the grid's dimensions and constants alone: nothing the ship's set-up changes. */
 static const uint8_t kNavShipStub[144] = {
     STUB_PUSH_VOLATILE,                                               /*   0 push rax rcx rdx r8 r9 r10 r11 */
     0x48, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00,                         /*  11 sub rsp, 0x88 (aligned: 7 pushes + 0x88) */
@@ -112,9 +115,28 @@ static const uint8_t kNavTileSizeRead[8] = {0xF3, 0x0F, 0x10, 0x05, 0x4A, 0xF5, 
 static const uint8_t kNavTileSize256[4] = {0x5A, 0xFF, 0xE0, 0x00};
 static int g_navTiles256; /* the exe's terrain build and its 256.0 are as reviewed */
 static uintptr_t g_navExe;
-static volatile LONG g_navLarger, g_navVanilla;
+static volatile LONG g_navLarger, g_navVanilla, g_navRefiled; /* g_navRefiled: the last re-file's carvers */
+/* The grid's min and max (+0x671C) before NavRetile writes `bounds`: carvers filed under other ones need re-filing. */
+static int NavMappingChanges(uintptr_t world, const float* bounds)
+{
+    float before[4];
+    return g_navCarvers.ready && !SafeRead(world + 0x671C, before, sizeof before) && memcmp(before, bounds, sizeof before) != 0;
+}
+
+static void NavRefile(uintptr_t world, int tile)
+{
+    int64_t refiled = NavCarversRefile((uint8_t*)world);
+    if (refiled < 0)
+    {
+        NoteDiagnostic("difficulty: navigation grid retiled to %d m tiles: its carvers' free list does not end, none re-filed", tile);
+        return;
+    }
+    InterlockedExchange(&g_navRefiled, (LONG)refiled);
+    NoteDiagnostic("difficulty: navigation grid retiled to %d m tiles: %lld carvers re-filed", tile, (long long)refiled);
+}
+
 /* Before a navmesh grid is set up: 256 m tiles for a larger map (its generated disk, lg+0x2D8C, past vanilla's 681 m),
- * else 128 m. Only an 8 x 8 grid is touched. */
+ * else 128 m. Only an 8 x 8 grid is touched. A changed mapping re-files the carvers filed under the old one. */
 static void NavRetile(uint32_t id, uintptr_t level)
 {
     uintptr_t exe = g_navExe, worlds = 0, world = 0;
@@ -128,8 +150,10 @@ static void NavRetile(uint32_t id, uintptr_t level)
     if (g_navTiles256 && ApiWrite(exe + DIF_NAV_TILE_SIZE_READ + 4, larger ? kNavTileSize256 : kNavTileSizeRead + 4, 4)) return;
     float lo = larger ? -1023.75f : -511.75f, hi = larger ? 1024.25f : 512.25f;
     float min[2] = {lo, lo}, max[2] = {hi, hi}, tiles[5] = {larger ? 256.0f : 128.0f, lo, lo, hi, hi};
+    int moved = NavMappingChanges(world, tiles + 1);
     if (ApiWrite(world + 0x08, min, sizeof min) || ApiWrite(world + 0x14, max, sizeof max) || ApiWrite(world + 0x6718, tiles, sizeof tiles)) return;
     InterlockedIncrement(larger ? &g_navLarger : &g_navVanilla);
+    if (moved) NavRefile(world, larger ? 256 : 128);
 }
 
 /* The physics pools: game.dll's plugin setup (0x4EE160, once per process,
@@ -798,6 +822,11 @@ static const char* InstallNavGrid(DifficultyInstall* d)
         !SafeRead(exe + 0x16A9DB0, &sizes[0], 4) && !SafeRead(exe + 0x16AA7C0, &sizes[1], 4) && sizes[0] == 128.0f && sizes[1] == 256.0f;
     if (!g_navTiles256)
         ApiLog(g_difficulty.mod, "difficulty %s: the navmesh's terrain build is not the reviewed one; larger maps keep a navmesh of +-512 m (mission stratagems will not stick beyond it)", g_difficulty.name);
+    size_t image = 0;
+    ApiModuleBase("helldivers2.exe", &image);
+    const char* carvers = g_navTiles256 ? InstallNavCarvers(exe, image) : NULL;
+    if (carvers != NULL)
+        ApiLog(g_difficulty.mod, "difficulty %s: %s; after a larger map the ship's navmesh can miss obstacles", g_difficulty.name, carvers);
     PrepareNavStubs(game, nav);
     uint8_t navJump[15];
     memset(navJump, 0x90, sizeof navJump);

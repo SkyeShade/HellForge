@@ -185,7 +185,8 @@ $sandbox=Join-Path $linuxTarget 'hf-sandbox'
     (Join-Path $sandboxFolder 'hf-sandbox-guard.c') (Join-Path $sandboxFolder 'hf-sandbox-selftest.c') -o $sandbox
 if($LASTEXITCODE -or -not(Test-Path -LiteralPath $sandbox)){throw 'Building the Linux sandbox failed.'}
 # Sync Inventory's 443 relay: one static program built the same way, installed root-owned beside capture-helper.sh by
-# allow-capture.sh and executed only from /usr/local/lib/hellforge, never from the Wine-writable installation.
+# allow-capture.sh and executed only from its root-owned folder (/usr/local/lib/hellforge; /opt/hellforge on SteamOS),
+# never from the Wine-writable installation.
 $captureRelay=Join-Path $linuxTarget 'capture-relay'
 & $zig cc -target x86_64-linux-musl -static -O2 -Wall -Werror -s (Join-Path $project 'native/linux-capture/capture-relay.c') -o $captureRelay
 if($LASTEXITCODE -or -not(Test-Path -LiteralPath $captureRelay)){throw 'Building the Linux capture relay failed.'}

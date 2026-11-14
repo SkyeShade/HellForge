@@ -17,6 +17,9 @@ public sealed record MasteryTrack(uint Package, JsonElement Definition, Func<uin
     public bool Holds(JsonArray inventory, JsonObject entry, uint mixId) =>
         IsMod ? WeaponMastery.Owned(this, entry).Contains(Own(mixId)) : ProfileStore.Held(inventory, mixId) > 0;
 
+    // The id a grant of mixId stores: a copy's own for a mod weapon.
+    public uint Stored(uint mixId) => IsMod ? Own(mixId) : mixId;
+
     public void Give(JsonArray inventory, JsonObject entry, uint mixId, long amount)
     {
         if (IsMod) ModPackages.Hold(entry, Own(mixId));
@@ -50,8 +53,9 @@ public static class WeaponMastery
     public sealed record Earned(uint Package, int Level, long Progress);
 
     // Adds a mission's XP to a package and walks its levels: past the last one nothing counts. The rewards of each level
-    // reached are given here, as nothing else will; what is held already stays as it is.
-    public static Earned Earn(MasteryTrack track, JsonObject progression, JsonArray inventory, long experience)
+    // reached are given here, as nothing else will; what is held already stays as it is, and what grantable refuses (paid
+    // items the player does not own, ProfileStore.Grantable) is not given.
+    public static Earned Earn(MasteryTrack track, JsonObject progression, JsonArray inventory, long experience, Func<uint, bool>? grantable = null)
     {
         var entry = track.Entry(progression);
         var level = (int)(ModPackages.Whole(entry["level"]) ?? 0);
@@ -64,7 +68,7 @@ public static class WeaponMastery
             if (kind == ExperienceRequirement) progress -= next.GetProperty("requirement").GetInt64();
             level++;
             foreach (var (mixId, amount) in Rewards(next))
-                if (!track.Holds(inventory, entry, mixId)) track.Give(inventory, entry, mixId, amount);
+                if (!track.Holds(inventory, entry, mixId) && grantable?.Invoke(track.Stored(mixId)) != false) track.Give(inventory, entry, mixId, amount);
         }
         if (!steps.ContainsKey(level + 1)) progress = 0;
         entry["level"] = level;

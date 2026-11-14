@@ -63,7 +63,9 @@ Windows SmartScreen may warn that `HellForge-Setup.exe` is unrecognised. It is n
 anyway.
 
 On Linux, the graphical installer asks for a Proton prefix instead of an installation folder; see
-[linux.md](linux.md#setting-it-up).
+[linux.md](linux.md#setting-it-up). It refuses a prefix inside a `steamapps` folder. A launcher that says "HellForge
+cannot run from inside Steam's steamapps folder" was unpacked into one: run the installer again with a prefix folder
+outside `steamapps`, then delete the copy the message names.
 
 ### "This PC runs Windows 10 version ..." (Setup or the launcher closes as it starts)
 
@@ -107,7 +109,10 @@ The card shows the Steam app's steps, with one `download_depot 553850 <depot> <m
 - when you choose the Steam app
 - when Steam does not allow the download after a sign-in
 - when SteamCMD cannot be set up (below)
-- always on Linux
+- always in Linux's [Proton-only fallback](linux.md#proton-only-fallback), which cannot reach Steam itself
+
+On Linux, SteamCMD opens in a terminal window (Konsole, for example). The card leaves SteamCMD out when it finds no
+terminal window program.
 
 To use them:
 
@@ -115,9 +120,10 @@ To use them:
 2. Copy the first command (each has a Copy button), paste it into the console and press Enter. Do the same for each
    command, one at a time.
 3. Watch the progress under Game files: Steam shows no progress in its library for this download. Steam puts it in
-   `<Steam>/steamapps/content/app_553850/` (about 24 GB); the Linux Steam client may use
-   `steamrt64/steamapps/content/app_553850/` or `ubuntu12_64/steamapps/content/app_553850/` instead, and setup looks in
-   each. On Linux the bar stays empty, and setup reads the download directly from Steam's content folder; do not move it
+   `<Steam>/steamapps/content/app_553850/` (about 24 GB). The Linux Steam client often uses
+   `ubuntu12_32/steamapps/content/app_553850/` under the Steam folder instead (or `ubuntu12_64` or `steamrt64`). Setup
+   looks in each and names the folder it found under the progress.
+   On Linux the bar stays empty, and setup reads the download directly from Steam's content folder; do not move it
    into the prefix: see [Steam's download of the supported build](linux.md#steams-download-of-the-supported-build).
 4. Setup continues by itself when every depot is complete and copies the game from the download. "Delete Steam's
    download after copying" is ticked unless you untick it, and frees the space afterwards.
@@ -307,7 +313,7 @@ up to 30 seconds; a game that crashes, or that does not close in time, keeps the
 | Message | What to do |
 |---|---|
 | "Existing game or GameGuard process." | HELLDIVERS 2 (or its GameGuard) is already running. Close it, then press PLAY. |
-| "This installation has no game catalogue yet. Run Sync Inventory once..." | HellForge doesn't ship the game's item and warbond catalogues. Run Profile > Account sync > Sync Inventory once on any profile, then press PLAY. |
+| "Sync your inventory before the first session." or "This installation has no game catalogue yet. Run Sync Inventory once..." | HellForge doesn't ship the game's item and warbond catalogues. Run Profile > Account sync > Sync Inventory once on any profile, then press PLAY. The launcher says so when PLAY is pressed, before it starts anything. |
 | "The game catalogue from the last Sync Inventory cannot be used (...): sync again." | Run Sync Inventory again. `logs/sync-*/launcher.log` says what was wrong with the last one. |
 | "HellForge's pinned catalogue (...) is missing: repair or reinstall HellForge." | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. |
 | "Another HellForge session is still running for this installation..." | Wait for it to end, or close `HellForge.Session.exe` in Task Manager (or restart the PC), then press PLAY again. |
@@ -316,7 +322,7 @@ up to 30 seconds; a game that crashes, or that does not close in time, keeps the
 | A message ending in "reinstall HellForge" (stand-ins, mod loader or local backend missing or changed) | Run `HellForge-Setup.exe` and pick the installation; Update keeps the game copy, profiles and settings. If it comes back, check your antivirus ([above](#antivirus)). |
 | "Windows administrator consent was not given for the network block." | Press PLAY again and answer Yes to the Windows prompt. |
 | "The launch options cannot be used." | Fix or clear Settings > Launch options; the reason shows under the box. |
-| "The session runner exited before starting." | On Windows, check `logs\session-runner.log`. On Linux, also check `logs/linux-session-wrapper.log` for Bash and Proton output; that file can identify failures that happen before the Windows session runner starts. |
+| "The session runner exited before starting." | The line under it is the session runner's own reason, from `logs\session-runner.log`; look that reason up in this table. On Linux, when the runner never ran, it is the Linux wrapper's reason from `logs/linux-session-wrapper.log`. Where the wrapper gave none, it is the last Bash or Proton line before the wrapper stopped, and the line says so: open that log for what led to it. With no line under it, open those logs. |
 | "HellForge: Steam Linux Runtime: host mode: ..." | Information, not an error: Proton runs on the host for the reason shown (the Proton names no runtime, the runtime is not installed, or `HELLFORGE_STEAM_RUNTIME=off`). To use the runtime, start any game with that Proton once in Steam so Steam installs the runtime it names, and do not set `HELLFORGE_STEAM_RUNTIME=off`. See [linux.md](linux.md#proton-in-the-steam-linux-runtime). |
 | "the Linux sandbox self-test was run in host mode, but this session uses the Steam Linux Runtime container" (or the reverse), or "... belongs to another Steam Linux Runtime" | The sandbox self-test must run in the mode the session uses, and again after Steam updates the runtime. Run Setup again (it runs the self-test), or start the session again: the wrapper refreshes the record. |
 | "the Linux sandbox self-test could not identify the Steam Linux Runtime (VERSIONS.txt is missing or unreadable)" | The runtime's folder is damaged. In Steam, find the runtime under Library > Tools (for example Steam Linux Runtime 4.0), use Properties > Installed Files > Verify integrity, then run Setup again. |
@@ -352,6 +358,8 @@ On Linux, **Sync Inventory** can stop before the game opens with these messages.
 | "The capture helper was not installed; nothing changed." | The password dialog was dismissed, the password was denied, or the launcher could not show one. Sync again to get the confirmation and dialog again. |
 | "pkexec is not installed, so the launcher cannot show the desktop password dialog." or "No polkit authentication agent is running..." | The launcher could not show the desktop dialog. Its message includes the exact `sudo bash .../allow-capture.sh` command to run once from a terminal. |
 | "SteamOS 3.x may have no password set: run passwd first, then sync again." | Set a password with `passwd`, then press Sync Inventory again; the launcher installs the helper through the polkit dialog. |
+| "The helper and its sudoers rule were installed, but the helper's check still fails. sudo asks for a password..." | Another sudoers rule is read after `/etc/sudoers.d/zz-hellforge-capture` and asks for a password: a file in `/etc/sudoers.d` that sorts later, or a line in `/etc/sudoers` below its `@includedir`. Rename or move that rule so HellForge's is read last, then sync again. |
+| "... No folder for the root-owned helper can be used: ..." | The installer found no folder that only root can change. The lines after it name each folder and the reason: read-only, not owned by root, or writable by other accounts. Make one of them root-owned and not writable by a group you are in (for example `sudo chown root:root /opt; sudo chmod 755 /opt`), then sync again ([the helper folder](linux-account-sync.md#the-root-owned-helper)). |
 | "The helper installer finished, but the installed copies still do not match..." | The install ran but the helper/relay hashes still differ. The message includes the terminal installer command; run it, then sync again. |
 
 On Linux, `hellforge-linux.sh` refuses before Steam and Proton when HellForge was started inside Flatpak, a Snap or
@@ -469,6 +477,19 @@ The game draws every Armory icon itself (weapons, helmets, armour, capes), a pag
 next page. An icon stays blank until the game has drawn its page, and the game waits for the item's textures to load
 first.
 
+### Premium content is locked
+
+Premium warbonds, Superstore items and DLC gear come from your last Sync Inventory. This PC's snapshot signer seals it
+for 14 days. Profile > Account sync says why a snapshot gives none:
+
+| Message | What to do |
+|---|---|
+| "The snapshot is older than 14 days. Sync again." | Run Sync Inventory again. |
+| "This snapshot was sealed by an older HellForge. Sync again." | Run Sync Inventory once after updating HellForge. |
+| "This PC has no snapshot signer yet. Sync again." | Run Sync Inventory: the capture makes the signer, with administrator rights on Windows and the helper on Linux. |
+| "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
+| "The capture could not open this PC's snapshot signer..." | Sync again. On Linux, premium content needs systemd ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)). |
+
 ## Playing with friends
 
 Friends need the same gameplay mods, versions and files, and the same HellForge version. When they differ, the join is
@@ -501,6 +522,10 @@ of the older ones the five newest that ended in a crash.
 To send them to someone, open the Console page and press Save logs to Desktop. It zips the latest session's folder to
 your Desktop as `HellForge-logs-<date>-<time>.zip`, with the game's console logs. If a session is still running, files in
 use may be left out, and the launcher says how many.
+
+The zip's `start` folder holds the logs of a start that stopped before it had a session folder: `session-runner.log`
+and, on Linux, `linux-session-wrapper.log` and `linux-container-refusal.txt`. When no session has run yet, the zip
+holds only that folder, so the button also works after a first PLAY that failed.
 
 In the text files in the zip, your Windows user folder is written as `%USERPROFILE%` (a Linux home folder as `~`) and the
 PC's name as `PC`. Paths stay readable. The zip still names Steam accounts by their id. Files that are not text, such

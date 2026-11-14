@@ -15,11 +15,11 @@ there) and `mappings/` (functions, globals, fields and content); do not edit it 
 
 ## Contents
 
-- [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-the-lobby-browser-hfbrowsestate-check-hf-size-before-calling), [SDK 16](#sdk-16-game-functions-and-globals-by-name-hellforge_functionsh-hellforge_globalsh-check-hf-size), [SDK 16](#sdk-16-the-mods-status-check-hf-size-before-calling), [SDK 16](#sdk-16-the-mod-channel-co-op-docsmoddingconceptsmd-co-op), [SDK 16](#sdk-16-live-mods-see-the-top-of-this-file-check-hf-size-before-calling), [SDK 17](#sdk-17-explosions-check-hf-size-before-calling), [SDK 17](#sdk-17-beams-and-arcs-check-hf-size-before-calling), [SDK 17](#sdk-17-enemies-check-hf-size-before-calling), [SDK 17](#sdk-17-the-games-rpcs-hellforge_rpcsh-docsmoddingnetworkingmd-check-hf-size-before-calling)
-- [Functions](#functions): [ConsumeDamageEvent](#consumedamageevent), [KillDispatch](#killdispatch), [ActivateStratagemBeacon](#activatestratagembeacon), [SpawnEntity](#spawnentity), [RequestExplosion](#requestexplosion), [AddHealthFraction](#addhealthfraction), [RestoreZone](#restorezone), [QueueStatusRequest](#queuestatusrequest), [SetVelocity](#setvelocity), [FireProjectile](#fireprojectile), [QueueDamage](#queuedamage), [NeedsAmmo](#needsammo), [TryStartAction](#trystartaction), [RequestEntitySpawn](#requestentityspawn), [AbilityTick](#abilitytick), [SiloMissileArmedAbility](#silomissilearmedability), [LinkedMissile](#linkedmissile), [LinkerRecord](#linkerrecord), [LinkedRack](#linkedrack), [SetMissileEngine](#setmissileengine), [LaunchMissile](#launchmissile), [SetExplosiveOwner](#setexplosiveowner), [SetGuidanceTarget](#setguidancetarget), [RackReleaseItem](#rackreleaseitem), [StartAbility](#startability), [BehaviourUpdate](#behaviourupdate), [BehaviourStage](#behaviourstage), [BehaviourEvent](#behaviourevent), [BehaviourResume](#behaviourresume), [PelicanTransportUpdate](#pelicantransportupdate), [PelicanTransportStage](#pelicantransportstage), [PelicanTransportEvent](#pelicantransportevent), [BehaviourOwnPosition](#behaviourownposition), [BehaviourOrbitStep](#behaviourorbitstep), [BehaviourMoveTo](#behaviourmoveto), [BehaviourFace](#behaviourface), [BehaviourTargetPosition](#behaviourtargetposition), [PelicanTurretIdle](#pelicanturretidle), [TurretActive](#turretactive), [TurretHasAmmo](#turrethasammo), [PelicanTurretStage](#pelicanturretstage), [BehaviourSetTarget](#behavioursettarget), [WeaponDegreesTo](#weapondegreesto), [IsValidTarget](#isvalidtarget), [FindPerceptionEntry](#findperceptionentry), [MagazineRounds](#magazinerounds), [AddMagazineRounds](#addmagazinerounds), [MagazineCapacity](#magazinecapacity), [WeaponWithinDegrees](#weaponwithindegrees), [EntityDescriptor](#entitydescriptor), [MarkReplicated](#markreplicated), [ShieldRecord](#shieldrecord), [MoveObject](#moveobject), [SpawnProjectile](#spawnprojectile), [CatalogueAddItem](#catalogueadditem), [CatalogueSort](#cataloguesort), [AddItemAmount](#additemamount), [RemoveItemAmount](#removeitemamount), [LoadEntities](#loadentities), [BuildArmoryList](#buildarmorylist), [ArmoryEntryOf](#armoryentryof), [EngineText](#enginetext), [OpenMenuPresenter](#openmenupresenter), [MenuSoundUpdate](#menusoundupdate), [RequestPackages](#requestpackages), [EntityOfNetwork](#entityofnetwork), [QueryLoadoutPreview](#queryloadoutpreview), [PushArmoryLoadout](#pusharmoryloadout), [RollCacheLoot](#rollcacheloot), [RequestWarbondPurchase](#requestwarbondpurchase), [FinishWarbondPurchase](#finishwarbondpurchase), [SpawnWarbondShowcase](#spawnwarbondshowcase), [UpdateWarbondSpent](#updatewarbondspent), [UpdateWarbondPager](#updatewarbondpager), [WarbondPagerInput](#warbondpagerinput), [SetElementText](#setelementtext), [SetElementTextAlt](#setelementtextalt), [SetElementNumber](#setelementnumber), [SetWidgetVisible](#setwidgetvisible), [SetElementColour](#setelementcolour), [SetPickerHeading](#setpickerheading), [StratagemAvailable](#stratagemavailable), [SortArray](#sortarray), [HighestDifficulty](#highestdifficulty), [FindConfigSetting](#findconfigsetting), [ShowDifficultyWidget](#showdifficultywidget), [ComputeMissionRating](#computemissionrating), [EnemyDirectorTick](#enemydirectortick), [ArenaAllocate](#arenaallocate), [GameMemset](#gamememset), [CreateGenerationBlock](#creategenerationblock), [InitLevel](#initlevel), [GenerateRouteCells](#generateroutecells), [GenerateRouteCellVoronoi](#generateroutecellvoronoi), [GenerateSubregionHeights](#generatesubregionheights), [GenerateVoronoi](#generatevoronoi), [FinalizeVoronoi](#finalizevoronoi), [ForceFlattenZones](#forceflattenzones), [SelectSubRegionCellsFromHeightGroup](#selectsubregioncellsfromheightgroup), [SampleSubregionNoise](#samplesubregionnoise), [GenerateLocationClusters](#generatelocationclusters), [SpreadLocations](#spreadlocations), [SpreadLocationsCities](#spreadlocationscities), [GenerateOutpostLocations](#generateoutpostlocations), [GenerateObjectiveLocations](#generateobjectivelocations), [AddImportantLocations](#addimportantlocations), [GenerateMissionStampList](#generatemissionstamplist), [FixUnreachableAreas](#fixunreachableareas), [CullUnitsOutsidePlayableArea](#cullunitsoutsideplayablearea), [GenerateCityRoads](#generatecityroads), [CreateCityFootprintList](#createcityfootprintlist), [FlattenCityRoads](#flattencityroads), [StampIndexSize](#stampindexsize), [StampIndexCheckLayout](#stampindexchecklayout), [HashMapInsert](#hashmapinsert), [SetupDestructionRecordMap](#setupdestructionrecordmap), [RegisterStaticDestructionRecords](#registerstaticdestructionrecords), [SelectObjectives](#selectobjectives), [LaunchMission](#launchmission), [MissionTimerWidget](#missiontimerwidget), [UpdateHudObjectives](#updatehudobjectives), [UpdateMapScreen](#updatemapscreen), [BuildMapMarkerSlots](#buildmapmarkerslots), [HudMandatoryObjectives](#hudmandatoryobjectives), [MissionHudTopBar](#missionhudtopbar), [BuildMissionResult](#buildmissionresult), [TelemetrySelectedMission](#telemetryselectedmission), [TelemetryMissionEnd](#telemetrymissionend), [RollArtilleryShell](#rollartilleryshell), [ArtilleryAim](#artilleryaim), [SolveBallisticAim](#solveballisticaim), [PredictProjectileLanding](#predictprojectilelanding), [GenerateRegionMissions](#generateregionmissions), [GenerateCampaignPlanetMissions](#generatecampaignplanetmissions), [GenerateDefencePlanetMissions](#generatedefenceplanetmissions), [DifficultyBarBuild](#difficultybarbuild), [DifficultyBarDestroy](#difficultybardestroy), [DifficultyBarChoose](#difficultybarchoose), [SetImageSprite](#setimagesprite), [SetImageSpriteOrTexture](#setimagespriteortexture), [SetElementResourceSlot](#setelementresourceslot), [SetImageWithBase](#setimagewithbase), [UiElementRect](#uielementrect), [MissionCardMinimap](#missioncardminimap), [WarTableHologramUpdate](#wartablehologramupdate), [WarTableHologramZoom](#wartablehologramzoom), [WarTableHologramHeightAt](#wartablehologramheightat), [WarTableHologramTerrainHeight](#wartablehologramterrainheight), [EngineRenderStep](#enginerenderstep), [UnitSetLocalPose](#unitsetlocalpose), [UpdateUnit](#updateunit), [UnitFromHandle](#unitfromhandle), [MainWorld](#mainworld), [UnitNodeWorldPosition](#unitnodeworldposition), [UnitActorByName](#unitactorbyname), [SetResourceOverride](#setresourceoverride), [ClearResourceOverride](#clearresourceoverride), [CanGetResource](#cangetresource), [TransportCleanup](#transportcleanup), [DestroyConnection](#destroyconnection), [SessionPeersRemoved](#sessionpeersremoved), [NetworkManagerUpdate](#networkmanagerupdate), [CollisionFilterPairs](#collisionfilterpairs), [PhysicsHandleBody](#physicshandlebody), [CreateNavmeshCut](#createnavmeshcut), [RemoveNavmeshCuts](#removenavmeshcuts), [EnableNavmeshCuts](#enablenavmeshcuts), [NavWorldSetup](#navworldsetup), [BuildNavTile](#buildnavtile), [BuildPhysicsPools](#buildphysicspools), [EngineAllocatorAllocate](#engineallocatorallocate), [DestroyNetworkTypeEntry](#destroynetworktypeentry), [FindPackage](#findpackage), [PackageHasLoaded](#packagehasloaded), [LobbyMemberData](#lobbymemberdata), [LobbySetMemberData](#lobbysetmemberdata), [RegistryAllocate](#registryallocate), [ProjectileWeaponCopy](#projectileweaponcopy), [MagazineCopy](#magazinecopy), [AttachToUnit](#attachtounit), [SetBehaviour](#setbehaviour), [UnlinkRelation](#unlinkrelation), [RemoveEntity](#removeentity), [DestroyEntity](#destroyentity), [CloseStratagemSelector](#closestratagemselector), [SetStratagemCardEnabled](#setstratagemcardenabled), [SetLobbySetting](#setlobbysetting), [SetQuickplay](#setquickplay), [ReleasePackages](#releasepackages), [BeamInfoOf](#beaminfoof), [DamageInfoOf](#damageinfoof), [ProjectileInfoOf](#projectileinfoof), [PluginUpdate](#pluginupdate), [GameUpdate](#gameupdate), [PlayLoadoutSound](#playloadoutsound), [CreditorOf](#creditorof), [PickEnemy](#pickenemy), [EntityAttribute](#entityattribute), [ApplyDamage](#applydamage), [IsDead](#isdead), [HealthRecord](#healthrecord), [RestoreHealth](#restorehealth), [HealthSettings](#healthsettings), [SetLifeState](#setlifestate), [HealthManagerUpdate](#healthmanagerupdate), [DrainCombatQueues](#draincombatqueues), [EnqueueDamageEvent](#enqueuedamageevent), [ProduceDamage](#producedamage), [InitHitInfo](#inithitinfo), [EntityToNetwork](#entitytonetwork), [HealthZoneOfNode](#healthzoneofnode), [BuildDamageValues](#builddamagevalues), [IsBoosterActive](#isboosteractive), [ApplyStatus](#applystatus), [HasStatus](#hasstatus), [RemoveStatus](#removestatus), [AddStat](#addstat), [StatsPlayerIndex](#statsplayerindex), [StatMapLookup](#statmaplookup), [BuildScore](#buildscore), [KillCreditListener](#killcreditlistener), [PassiveValue](#passivevalue), [ChangeState](#changestate), [SetPlayerAvatar](#setplayeravatar), [SetPlayerState](#setplayerstate), [TurretSettings](#turretsettings), [SensorEyeSettings](#sensoreyesettings), [ProjectileWeaponRecord](#projectileweaponrecord), [WeaponDataRecord](#weapondatarecord), [BeamWeaponRecord](#beamweaponrecord), [WeaponProjectileType](#weaponprojectiletype), [ProjectileFire](#projectilefire), [GenericFire](#genericfire), [WeaponHeatStep](#weaponheatstep), [SpendRound](#spendround), [ProjectileWeaponUpdate](#projectileweaponupdate), [BeamWeaponUpdate](#beamweaponupdate), [BeamShot](#beamshot), [ReloadMagazine](#reloadmagazine), [TurretUpdate](#turretupdate), [TurretSpeedFactor](#turretspeedfactor), [SensorEyeRanges](#sensoreyeranges), [PerceptionUpdate](#perceptionupdate), [WindUpUpdate](#windupupdate), [ApplyAttribute](#applyattribute), [UpdateCustomization](#updatecustomization), [UpdateCustomizations](#updatecustomizations), [SetArmorKit](#setarmorkit), [SetHelmetKit](#sethelmetkit), [SetCapeKit](#setcapekit), [PlayerSlot](#playerslot), [BehaviourExplosion](#behaviourexplosion), [RequestExplosionAt](#requestexplosionat), [ExplosionKick](#explosionkick), [ExplosionGather](#explosiongather), [ProcessExplosion](#processexplosion), [ProjectileKick](#projectilekick), [BehaviourStartAbility](#behaviourstartability), [CorpseSource](#corpsesource), [StatusReceivable](#statusreceivable), [FlushNetworkFields](#flushnetworkfields), [Wield](#wield), [SwitchWeapon](#switchweapon), [QueueFieldWrite](#queuefieldwrite), [BeamTypeOf](#beamtypeof), [OutOfAmmo](#outofammo), [ChargeFire](#chargefire), [EncyclopediaRecord](#encyclopediarecord), [PickerCatalogueItem](#pickercatalogueitem), [NavigationRecord](#navigationrecord), [BehaviourStageCount](#behaviourstagecount), [BehaviourEventSlot](#behavioureventslot), [BehaviourSlotEvent](#behaviourslotevent), [FillDistancesTo](#filldistancesto), [UpdateImageUv](#updateimageuv), [HiveMindDefinition](#hiveminddefinition), [UnloadDamageList](#unloaddamagelist), [CollectOperationsForDifficulty](#collectoperationsfordifficulty), [FinalizeVoronoiStructured](#finalizevoronoistructured), [ReVoronoi](#revoronoi), [PlaceRoadProps](#placeroadprops), [StampIndexInit](#stampindexinit), [StampIndexInsert](#stampindexinsert), [CreateMinimapTexture](#createminimaptexture), [UpdateMissionCardDuration](#updatemissioncardduration), [SetupPhysicsConfig](#setupphysicsconfig), [SiloRemoteLink](#siloremotelink), [LaserDesignatorUpdate](#laserdesignatorupdate), [LinkRemoteOnPickup](#linkremoteonpickup), [MissilePreDestroy](#missilepredestroy), [CompactLinkerCopies](#compactlinkercopies), [SiloRemoteCleanup](#siloremotecleanup), [PelicanTurretAim](#pelicanturretaim), [RealizePellet](#realizepellet), [NetworkApplyState](#networkapplystate), [BehaviourSpawnSetup](#behaviourspawnsetup), [BehaviourNetworkFill](#behaviournetworkfill), [LoadProjectileList](#loadprojectilelist), [UnloadProjectileList](#unloadprojectilelist), [ProjectileLookupA](#projectilelookupa), [ProjectileLookupB](#projectilelookupb), [AttachmentItemById](#attachmentitembyid), [EntityDelta](#entitydelta), [RemoveSessionPeer](#removesessionpeer), [IsSteamFriend](#issteamfriend), [ApplySpawnDeltas](#applyspawndeltas), [HiveMindOf](#hivemindof), [RegisterDestructible](#registerdestructible), [LoadDestructibleIndex](#loaddestructibleindex), [DestructibleIndexEntry](#destructibleindexentry), [PlayerNearness](#playernearness), [BuildWarbondPager](#buildwarbondpager), [RefreshWarbondBuyButton](#refreshwarbondbuybutton), [UpdateWarbondBuyButton](#updatewarbondbuybutton), [WarbondScreenData](#warbondscreendata), [BuildWarbondList](#buildwarbondlist), [UpdateWarbondPanel](#updatewarbondpanel), [DrawWarbondClaimButton](#drawwarbondclaimbutton), [UpdateWarbondPage](#updatewarbondpage), [ItemPresetKit](#itempresetkit), [ValidateBootLoadout](#validatebootloadout), [StratagemPackages](#stratagempackages), [ReleaseUnusedSharedStratagems](#releaseunusedsharedstratagems), [LoadStratagemSettings](#loadstratagemsettings), [BuildStratagemPicker](#buildstratagempicker), [MasteryPackageOf](#masterypackageof), [BuildCustomizationList](#buildcustomizationlist), [CreateWorld](#createworld), [StretchCityTemplate](#stretchcitytemplate), [LaySites](#laysites), [KeepTownEdges](#keeptownedges), [BuildingPlaced](#buildingplaced), [AreaRimHeight](#arearimheight), [FindPocketNeighbour](#findpocketneighbour), [SendMissionEndTelemetry](#sendmissionendtelemetry), [MissionResultReport](#missionresultreport), [ObjectiveSpawnSetup](#objectivespawnsetup), [RateOfFireCycle](#rateoffirecycle), [WeaponFunctionPress](#weaponfunctionpress), [ProjectileWeaponRateSeed](#projectileweaponrateseed), [ProjectileWeaponNetApply](#projectileweaponnetapply), [ProjectileWeaponSystemPass](#projectileweaponsystempass), [SetCurrentFireMode](#setcurrentfiremode), [WeaponFunctionValue](#weaponfunctionvalue), [WeaponApplyReplicatedTrigger](#weaponapplyreplicatedtrigger), [RpcFireSingleRound](#rpcfiresingleround), [RpcFireSingleRoundAdvanced](#rpcfiresingleroundadvanced), [SendFireSingleRoundAdvanced](#sendfiresingleroundadvanced), [RpcAddProjectileToManager](#rpcaddprojectiletomanager), [SetWielder](#setwielder), [ProjectileWeaponNetInit](#projectileweaponnetinit), [WeaponBuild](#weaponbuild), [ProjectileWeaponEnterOwned](#projectileweaponenterowned), [OwnsWarbond](#ownswarbond), [WarbondCurrencyToken](#warbondcurrencytoken), [HasCatalogueItem](#hascatalogueitem), [WeaponMagazineRecord](#weaponmagazinerecord), [WeaponWindUpRecord](#weaponwinduprecord), [RechargeRecord](#rechargerecord), [WeaponReloadRecord](#weaponreloadrecord), [WeaponRoundsRecord](#weaponroundsrecord), [WeaponChargeRecord](#weaponchargerecord), [EquipmentRecord](#equipmentrecord), [ThrowerRecord](#throwerrecord), [ArcWeaponRecord](#arcweaponrecord), [WeaponHeatRecord](#weaponheatrecord), [WeaponCustomizationRecord](#weaponcustomizationrecord), [WeaponMagazineTypeRecord](#weaponmagazinetyperecord), [RechargeTypeRecord](#rechargetyperecord), [WeaponReloadTypeRecord](#weaponreloadtyperecord), [WeaponRoundsTypeRecord](#weaponroundstyperecord), [EquipmentTypeRecord](#equipmenttyperecord), [ThrowerTypeRecord](#throwertyperecord), [ThrowableTypeRecord](#throwabletyperecord), [ArcWeaponTypeRecord](#arcweapontyperecord), [WeaponHeatTypeRecord](#weaponheattyperecord), [AbilityWeaponTypeRecord](#abilityweapontyperecord), [WeaponCustomizationTypeRecord](#weaponcustomizationtyperecord), [WeaponUpdate](#weaponupdate), [WeaponDataUpdate](#weapondataupdate), [WeaponHeatUpdate](#weaponheatupdate), [WeaponHeatInstanceStep](#weaponheatinstancestep), [WeaponChargeUpdate](#weaponchargeupdate), [ChargeRelease](#chargerelease), [ChargeOvercharge](#chargeovercharge), [ChargeMultiplier](#chargemultiplier), [EquipmentUpdate](#equipmentupdate), [ThrowerUpdate](#throwerupdate), [ThrowableUpdate](#throwableupdate), [ArcWeaponUpdate](#arcweaponupdate), [AbilityWeaponUpdate](#abilityweaponupdate), [WeaponCustomizationUpdate](#weaponcustomizationupdate), [StartReload](#startreload), [CanReload](#canreload), [ReloadStateHas](#reloadstatehas), [WeaponReloadBusy](#weaponreloadbusy), [OwnSpareAmmo](#ownspareammo), [WeaponRefill](#weaponrefill), [MagazineRefill](#magazinerefill), [RoundsRefill](#roundsrefill), [HeatsinkRefill](#heatsinkrefill), [AbilityWeaponModeSettings](#abilityweaponmodesettings), [AbilityWeaponFire](#abilityweaponfire), [MeleeHitVolumeStart](#meleehitvolumestart), [UnitSettings](#unitsettings), [VehicleSettings](#vehiclesettings), [HellpodPayloadSettings](#hellpodpayloadsettings), [AvatarSettings](#avatarsettings), [JumppackSettings](#jumppacksettings), [DisplacementSettings](#displacementsettings), [OrbitalAbilitySettings](#orbitalabilitysettings), [RotationSettings](#rotationsettings), [EagleSettings](#eaglesettings), [VehicleUpdate](#vehicleupdate), [SquadTransportUpdate](#squadtransportupdate), [HellpodPayloadUpdate](#hellpodpayloadupdate), [AiSpawnerUpdate](#aispawnerupdate), [BugholeUpdate](#bugholeupdate), [VehicleMotionUpdate](#vehiclemotionupdate), [AvatarUpdate](#avatarupdate), [DisplacementUpdate](#displacementupdate), [OrbitalAbilityUpdate](#orbitalabilityupdate), [EagleUpdate](#eagleupdate), [EncounterUpdate](#encounterupdate), [GuardForceUpdate](#guardforceupdate), [EagleStage](#eaglestage), [EagleTrackAim](#eagletrackaim), [EagleStrike](#eaglestrike), [EagleFlight](#eagleflight), [JumppackTimers](#jumppacktimers), [JumppackFlight](#jumppackflight), [SetJumppackActive](#setjumppackactive), [JumppackTakeOff](#jumppacktakeoff), [PickPatrolComposition](#pickpatrolcomposition), [SpawnSquad](#spawnsquad), [PatrolClock](#patrolclock), [PickReinforcementComposition](#pickreinforcementcomposition), [DispatchReinforcement](#dispatchreinforcement), [FillOutpost](#filloutpost), [UnitSetLocalPosition](#unitsetlocalposition), [UnitSetLocalRotation](#unitsetlocalrotation), [UnitSetLocalScale](#unitsetlocalscale), [UnitTeleportLocalPosition](#unitteleportlocalposition), [UnitTeleportLocalPose](#unitteleportlocalpose), [WorldSetUnitMoving](#worldsetunitmoving), [UnitDeltaPosition](#unitdeltaposition), [UnitDeltaRotation](#unitdeltarotation), [UnitDeltaPose](#unitdeltapose), [UnitTeleportLocalRotation](#unitteleportlocalrotation), [UnitTeleportLocalScale](#unitteleportlocalscale), [WorldSpawnUnit](#worldspawnunit), [WorldDestroyUnit](#worlddestroyunit), [WorldQueueUnitsDestroy](#worldqueueunitsdestroy), [WorldLinkUnitHandles](#worldlinkunithandles), [WorldLinkUnit](#worldlinkunit), [WorldUnlinkUnit](#worldunlinkunit), [WorldMendUnit](#worldmendunit), [WorldUpdate](#worldupdate), [WorldUpdateScene](#worldupdatescene), [WorldCreateLineObject](#worldcreatelineobject), [LineObjectAddLine](#lineobjectaddline), [LineObjectAddCone](#lineobjectaddcone), [LineObjectAddCircle](#lineobjectaddcircle), [LineObjectAddSphere](#lineobjectaddsphere), [LineObjectAddHalfSphere](#lineobjectaddhalfsphere), [LineObjectAddBox](#lineobjectaddbox), [LineObjectAddCapsule](#lineobjectaddcapsule), [LineObjectDispatch](#lineobjectdispatch), [MurmurHash64A](#murmurhash64a), [MaterialSetScalar](#materialsetscalar), [MaterialSetVector2](#materialsetvector2), [MaterialSetVector3](#materialsetvector3), [MaterialSetVector4](#materialsetvector4), [MaterialSetMatrix4x4](#materialsetmatrix4x4), [MaterialSetTexture](#materialsettexture), [MaterialSetResource](#materialsetresource), [MaterialSetShaderPassFlag](#materialsetshaderpassflag), [MaterialReinitializeShader](#materialreinitializeshader), [CameraWorldToScreen](#cameraworldtoscreen), [CameraScreenToWorld](#camerascreentoworld), [CameraSyncRange](#camerasyncrange), [CameraSyncFrustum](#camerasyncfrustum), [CameraSetLocal](#camerasetlocal), [CameraInsideFrustum](#camerainsidefrustum), [GuiAddPrimitive](#guiaddprimitive), [GuiRect](#guirect), [ResourceManagerGet](#resourcemanagerget), [ResourceManagerCanGet](#resourcemanagercanget), [ResourceManagerSetOverride](#resourcemanagersetoverride), [ResourceManagerClearOverride](#resourcemanagerclearoverride), [MurmurHash64ALower](#murmurhash64alower), [RendererWindowSize](#rendererwindowsize), [ReleaseWorld](#releaseworld), [CreateViewport](#createviewport), [WorldDestroyViewport](#worlddestroyviewport), [NetworkCreateGameSession](#networkcreategamesession), [NetworkShutdownGameSession](#networkshutdowngamesession), [LevelIsPointInsideVolume](#levelispointinsidevolume), [LevelRandomPointInsideVolume](#levelrandompointinsidevolume), [LevelHasVolume](#levelhasvolume), [LevelUnitIndex](#levelunitindex), [LevelSpawnAllLayers](#levelspawnalllayers), [UnitAnimationFindVariable](#unitanimationfindvariable), [UnitAnimationHasVariable](#unitanimationhasvariable), [UnitAnimationGetVariable](#unitanimationgetvariable), [UnitAnimationSetVariable](#unitanimationsetvariable), [UnitSetUnitVisibility](#unitsetunitvisibility), [UnitSetVisibilityGroup](#unitsetvisibilitygroup), [UnitCrossfadeAnimation](#unitcrossfadeanimation), [UnitCrossfadeAnimationSetTime](#unitcrossfadeanimationsettime), [UnitCopySceneGraphLocalFrom](#unitcopyscenegraphlocalfrom), [UnitSetBonesLod](#unitsetboneslod), [UnitAnimationFindConstraintTarget](#unitanimationfindconstrainttarget), [UnitAnimationSetConstraintTargetPosition](#unitanimationsetconstrainttargetposition), [LightSync](#lightsync), [LightSetEnabled](#lightsetenabled), [WorldDestroyLevel](#worlddestroylevel), [WorldDestroyPrefab](#worlddestroyprefab), [WorldPlayCameraShake](#worldplaycamerashake), [WorldStopCameraShake](#worldstopcamerashake), [WorldUpdateAnimations](#worldupdateanimations), [GuiManagerDestroyGui](#guimanagerdestroygui), [SpawnEntityAddComponents](#spawnentityaddcomponents), [SpawnEntityFinishComponents](#spawnentityfinishcomponents), [ActivateEntity](#activateentity), [DeactivateEntity](#deactivateentity)
+- [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-the-lobby-browser-hfbrowsestate-check-hf-size-before-calling), [SDK 16](#sdk-16-game-functions-and-globals-by-name-hellforge_functionsh-hellforge_globalsh-check-hf-size), [SDK 16](#sdk-16-the-mods-status-check-hf-size-before-calling), [SDK 16](#sdk-16-the-mod-channel-co-op-docsmoddingconceptsmd-co-op), [SDK 16](#sdk-16-live-mods-see-the-top-of-this-file-check-hf-size-before-calling), [SDK 17](#sdk-17-explosions-check-hf-size-before-calling), [SDK 17](#sdk-17-beams-and-arcs-check-hf-size-before-calling), [SDK 17](#sdk-17-enemies-check-hf-size-before-calling), [SDK 17](#sdk-17-the-games-rpcs-hellforge_rpcsh-docsmoddingnetworkingmd-check-hf-size-before-calling), [SDK 18](#sdk-18-patterns-check-hf-size-before-calling)
+- [Functions](#functions): [ConsumeDamageEvent](#consumedamageevent), [KillDispatch](#killdispatch), [ActivateStratagemBeacon](#activatestratagembeacon), [SpawnEntity](#spawnentity), [RequestExplosion](#requestexplosion), [AddHealthFraction](#addhealthfraction), [RestoreZone](#restorezone), [QueueStatusRequest](#queuestatusrequest), [SetVelocity](#setvelocity), [FireProjectile](#fireprojectile), [QueueDamage](#queuedamage), [NeedsAmmo](#needsammo), [TryStartAction](#trystartaction), [RequestEntitySpawn](#requestentityspawn), [AbilityTick](#abilitytick), [SiloMissileArmedAbility](#silomissilearmedability), [LinkedMissile](#linkedmissile), [LinkerRecord](#linkerrecord), [LinkedRack](#linkedrack), [SetMissileEngine](#setmissileengine), [LaunchMissile](#launchmissile), [SetExplosiveOwner](#setexplosiveowner), [SetGuidanceTarget](#setguidancetarget), [RackReleaseItem](#rackreleaseitem), [StartAbility](#startability), [BehaviourUpdate](#behaviourupdate), [BehaviourStage](#behaviourstage), [BehaviourEvent](#behaviourevent), [BehaviourResume](#behaviourresume), [PelicanTransportUpdate](#pelicantransportupdate), [PelicanTransportStage](#pelicantransportstage), [PelicanTransportEvent](#pelicantransportevent), [BehaviourOwnPosition](#behaviourownposition), [BehaviourOrbitStep](#behaviourorbitstep), [BehaviourMoveTo](#behaviourmoveto), [BehaviourFace](#behaviourface), [BehaviourTargetPosition](#behaviourtargetposition), [PelicanTurretIdle](#pelicanturretidle), [TurretActive](#turretactive), [TurretHasAmmo](#turrethasammo), [PelicanTurretStage](#pelicanturretstage), [BehaviourSetTarget](#behavioursettarget), [WeaponDegreesTo](#weapondegreesto), [IsValidTarget](#isvalidtarget), [FindPerceptionEntry](#findperceptionentry), [MagazineRounds](#magazinerounds), [AddMagazineRounds](#addmagazinerounds), [MagazineCapacity](#magazinecapacity), [WeaponWithinDegrees](#weaponwithindegrees), [EntityDescriptor](#entitydescriptor), [MarkReplicated](#markreplicated), [ShieldRecord](#shieldrecord), [MoveObject](#moveobject), [SpawnProjectile](#spawnprojectile), [CatalogueAddItem](#catalogueadditem), [CatalogueSort](#cataloguesort), [AddItemAmount](#additemamount), [RemoveItemAmount](#removeitemamount), [LoadEntities](#loadentities), [BuildArmoryList](#buildarmorylist), [ArmoryEntryOf](#armoryentryof), [EngineText](#enginetext), [OpenMenuPresenter](#openmenupresenter), [MenuSoundUpdate](#menusoundupdate), [RequestPackages](#requestpackages), [EntityOfNetwork](#entityofnetwork), [QueryLoadoutPreview](#queryloadoutpreview), [PushArmoryLoadout](#pusharmoryloadout), [RollCacheLoot](#rollcacheloot), [RequestWarbondPurchase](#requestwarbondpurchase), [FinishWarbondPurchase](#finishwarbondpurchase), [SpawnWarbondShowcase](#spawnwarbondshowcase), [UpdateWarbondSpent](#updatewarbondspent), [UpdateWarbondPager](#updatewarbondpager), [WarbondPagerInput](#warbondpagerinput), [SetElementText](#setelementtext), [SetElementTextAlt](#setelementtextalt), [SetElementNumber](#setelementnumber), [SetWidgetVisible](#setwidgetvisible), [SetElementColour](#setelementcolour), [SetPickerHeading](#setpickerheading), [StratagemAvailable](#stratagemavailable), [SortArray](#sortarray), [HighestDifficulty](#highestdifficulty), [FindConfigSetting](#findconfigsetting), [ShowDifficultyWidget](#showdifficultywidget), [ComputeMissionRating](#computemissionrating), [EnemyDirectorTick](#enemydirectortick), [ArenaAllocate](#arenaallocate), [GameMemset](#gamememset), [CreateGenerationBlock](#creategenerationblock), [InitLevel](#initlevel), [GenerateRouteCells](#generateroutecells), [GenerateRouteCellVoronoi](#generateroutecellvoronoi), [GenerateSubregionHeights](#generatesubregionheights), [GenerateVoronoi](#generatevoronoi), [FinalizeVoronoi](#finalizevoronoi), [ForceFlattenZones](#forceflattenzones), [SelectSubRegionCellsFromHeightGroup](#selectsubregioncellsfromheightgroup), [SampleSubregionNoise](#samplesubregionnoise), [GenerateLocationClusters](#generatelocationclusters), [SpreadLocations](#spreadlocations), [SpreadLocationsCities](#spreadlocationscities), [GenerateOutpostLocations](#generateoutpostlocations), [GenerateObjectiveLocations](#generateobjectivelocations), [AddImportantLocations](#addimportantlocations), [GenerateMissionStampList](#generatemissionstamplist), [FixUnreachableAreas](#fixunreachableareas), [CullUnitsOutsidePlayableArea](#cullunitsoutsideplayablearea), [GenerateCityRoads](#generatecityroads), [CreateCityFootprintList](#createcityfootprintlist), [FlattenCityRoads](#flattencityroads), [StampIndexSize](#stampindexsize), [StampIndexCheckLayout](#stampindexchecklayout), [HashMapInsert](#hashmapinsert), [SetupDestructionRecordMap](#setupdestructionrecordmap), [RegisterStaticDestructionRecords](#registerstaticdestructionrecords), [SelectObjectives](#selectobjectives), [LaunchMission](#launchmission), [MissionTimerWidget](#missiontimerwidget), [UpdateHudObjectives](#updatehudobjectives), [UpdateMapScreen](#updatemapscreen), [BuildMapMarkerSlots](#buildmapmarkerslots), [HudMandatoryObjectives](#hudmandatoryobjectives), [MissionHudTopBar](#missionhudtopbar), [BuildMissionResult](#buildmissionresult), [TelemetrySelectedMission](#telemetryselectedmission), [TelemetryMissionEnd](#telemetrymissionend), [RollArtilleryShell](#rollartilleryshell), [ArtilleryAim](#artilleryaim), [SolveBallisticAim](#solveballisticaim), [PredictProjectileLanding](#predictprojectilelanding), [GenerateRegionMissions](#generateregionmissions), [GenerateCampaignPlanetMissions](#generatecampaignplanetmissions), [GenerateDefencePlanetMissions](#generatedefenceplanetmissions), [DifficultyBarBuild](#difficultybarbuild), [DifficultyBarDestroy](#difficultybardestroy), [DifficultyBarChoose](#difficultybarchoose), [SetImageSprite](#setimagesprite), [SetImageSpriteOrTexture](#setimagespriteortexture), [SetElementResourceSlot](#setelementresourceslot), [SetImageWithBase](#setimagewithbase), [UiElementRect](#uielementrect), [MissionCardMinimap](#missioncardminimap), [WarTableHologramUpdate](#wartablehologramupdate), [WarTableHologramZoom](#wartablehologramzoom), [WarTableHologramHeightAt](#wartablehologramheightat), [WarTableHologramTerrainHeight](#wartablehologramterrainheight), [EngineRenderStep](#enginerenderstep), [UnitSetLocalPose](#unitsetlocalpose), [UpdateUnit](#updateunit), [UnitFromHandle](#unitfromhandle), [MainWorld](#mainworld), [UnitNodeWorldPosition](#unitnodeworldposition), [UnitActorByName](#unitactorbyname), [SetResourceOverride](#setresourceoverride), [ClearResourceOverride](#clearresourceoverride), [CanGetResource](#cangetresource), [TransportCleanup](#transportcleanup), [DestroyConnection](#destroyconnection), [SessionPeersRemoved](#sessionpeersremoved), [NetworkManagerUpdate](#networkmanagerupdate), [CollisionFilterPairs](#collisionfilterpairs), [PhysicsHandleBody](#physicshandlebody), [CreateNavmeshCut](#createnavmeshcut), [RemoveNavmeshCuts](#removenavmeshcuts), [EnableNavmeshCuts](#enablenavmeshcuts), [NavWorldSetup](#navworldsetup), [BuildNavTile](#buildnavtile), [BuildPhysicsPools](#buildphysicspools), [EngineAllocatorAllocate](#engineallocatorallocate), [DestroyNetworkTypeEntry](#destroynetworktypeentry), [FindPackage](#findpackage), [PackageHasLoaded](#packagehasloaded), [LobbyMemberData](#lobbymemberdata), [LobbySetMemberData](#lobbysetmemberdata), [RegistryAllocate](#registryallocate), [ProjectileWeaponCopy](#projectileweaponcopy), [MagazineCopy](#magazinecopy), [AttachToUnit](#attachtounit), [SetBehaviour](#setbehaviour), [UnlinkRelation](#unlinkrelation), [RemoveEntity](#removeentity), [DestroyEntity](#destroyentity), [CloseStratagemSelector](#closestratagemselector), [SetStratagemCardEnabled](#setstratagemcardenabled), [SetLobbySetting](#setlobbysetting), [SetQuickplay](#setquickplay), [ReleasePackages](#releasepackages), [BeamInfoOf](#beaminfoof), [DamageInfoOf](#damageinfoof), [ProjectileInfoOf](#projectileinfoof), [PluginUpdate](#pluginupdate), [GameUpdate](#gameupdate), [PlayLoadoutSound](#playloadoutsound), [CreditorOf](#creditorof), [PickEnemy](#pickenemy), [EntityAttribute](#entityattribute), [ApplyDamage](#applydamage), [IsDead](#isdead), [HealthRecord](#healthrecord), [RestoreHealth](#restorehealth), [HealthSettings](#healthsettings), [SetLifeState](#setlifestate), [HealthManagerUpdate](#healthmanagerupdate), [DrainCombatQueues](#draincombatqueues), [EnqueueDamageEvent](#enqueuedamageevent), [ProduceDamage](#producedamage), [InitHitInfo](#inithitinfo), [EntityToNetwork](#entitytonetwork), [HealthZoneOfNode](#healthzoneofnode), [BuildDamageValues](#builddamagevalues), [IsBoosterActive](#isboosteractive), [ApplyStatus](#applystatus), [HasStatus](#hasstatus), [RemoveStatus](#removestatus), [AddStat](#addstat), [StatsPlayerIndex](#statsplayerindex), [StatMapLookup](#statmaplookup), [BuildScore](#buildscore), [KillCreditListener](#killcreditlistener), [PassiveValue](#passivevalue), [ChangeState](#changestate), [SetPlayerAvatar](#setplayeravatar), [SetPlayerState](#setplayerstate), [TurretSettings](#turretsettings), [SensorEyeSettings](#sensoreyesettings), [ProjectileWeaponRecord](#projectileweaponrecord), [WeaponDataRecord](#weapondatarecord), [BeamWeaponRecord](#beamweaponrecord), [WeaponProjectileType](#weaponprojectiletype), [ProjectileFire](#projectilefire), [GenericFire](#genericfire), [WeaponHeatStep](#weaponheatstep), [SpendRound](#spendround), [ProjectileWeaponUpdate](#projectileweaponupdate), [BeamWeaponUpdate](#beamweaponupdate), [BeamShot](#beamshot), [ReloadMagazine](#reloadmagazine), [TurretUpdate](#turretupdate), [TurretSpeedFactor](#turretspeedfactor), [SensorEyeRanges](#sensoreyeranges), [PerceptionUpdate](#perceptionupdate), [WindUpUpdate](#windupupdate), [ApplyAttribute](#applyattribute), [UpdateCustomization](#updatecustomization), [UpdateCustomizations](#updatecustomizations), [SetArmorKit](#setarmorkit), [SetHelmetKit](#sethelmetkit), [SetCapeKit](#setcapekit), [PlayerSlot](#playerslot), [BehaviourExplosion](#behaviourexplosion), [RequestExplosionAt](#requestexplosionat), [ExplosionKick](#explosionkick), [ExplosionGather](#explosiongather), [ProcessExplosion](#processexplosion), [ProjectileKick](#projectilekick), [BehaviourStartAbility](#behaviourstartability), [CorpseSource](#corpsesource), [StatusReceivable](#statusreceivable), [FlushNetworkFields](#flushnetworkfields), [Wield](#wield), [SwitchWeapon](#switchweapon), [QueueFieldWrite](#queuefieldwrite), [BeamTypeOf](#beamtypeof), [OutOfAmmo](#outofammo), [ChargeFire](#chargefire), [EncyclopediaRecord](#encyclopediarecord), [PickerCatalogueItem](#pickercatalogueitem), [NavigationRecord](#navigationrecord), [BehaviourStageCount](#behaviourstagecount), [BehaviourEventSlot](#behavioureventslot), [BehaviourSlotEvent](#behaviourslotevent), [FillDistancesTo](#filldistancesto), [UpdateImageUv](#updateimageuv), [HiveMindDefinition](#hiveminddefinition), [UnloadDamageList](#unloaddamagelist), [CollectOperationsForDifficulty](#collectoperationsfordifficulty), [FinalizeVoronoiStructured](#finalizevoronoistructured), [ReVoronoi](#revoronoi), [PlaceRoadProps](#placeroadprops), [StampIndexInit](#stampindexinit), [StampIndexInsert](#stampindexinsert), [CreateMinimapTexture](#createminimaptexture), [UpdateMissionCardDuration](#updatemissioncardduration), [SetupPhysicsConfig](#setupphysicsconfig), [SiloRemoteLink](#siloremotelink), [LaserDesignatorUpdate](#laserdesignatorupdate), [LinkRemoteOnPickup](#linkremoteonpickup), [MissilePreDestroy](#missilepredestroy), [CompactLinkerCopies](#compactlinkercopies), [SiloRemoteCleanup](#siloremotecleanup), [PelicanTurretAim](#pelicanturretaim), [RealizePellet](#realizepellet), [NetworkApplyState](#networkapplystate), [BehaviourSpawnSetup](#behaviourspawnsetup), [BehaviourNetworkFill](#behaviournetworkfill), [LoadProjectileList](#loadprojectilelist), [UnloadProjectileList](#unloadprojectilelist), [ProjectileLookupA](#projectilelookupa), [ProjectileLookupB](#projectilelookupb), [AttachmentItemById](#attachmentitembyid), [EntityDelta](#entitydelta), [RemoveSessionPeer](#removesessionpeer), [IsSteamFriend](#issteamfriend), [ApplySpawnDeltas](#applyspawndeltas), [HiveMindOf](#hivemindof), [RegisterDestructible](#registerdestructible), [LoadDestructibleIndex](#loaddestructibleindex), [DestructibleIndexEntry](#destructibleindexentry), [PlayerNearness](#playernearness), [BuildWarbondPager](#buildwarbondpager), [RefreshWarbondBuyButton](#refreshwarbondbuybutton), [UpdateWarbondBuyButton](#updatewarbondbuybutton), [WarbondScreenData](#warbondscreendata), [BuildWarbondList](#buildwarbondlist), [UpdateWarbondPanel](#updatewarbondpanel), [DrawWarbondClaimButton](#drawwarbondclaimbutton), [UpdateWarbondPage](#updatewarbondpage), [ItemPresetKit](#itempresetkit), [ValidateBootLoadout](#validatebootloadout), [StratagemPackages](#stratagempackages), [ReleaseUnusedSharedStratagems](#releaseunusedsharedstratagems), [LoadStratagemSettings](#loadstratagemsettings), [BuildStratagemPicker](#buildstratagempicker), [MasteryPackageOf](#masterypackageof), [BuildCustomizationList](#buildcustomizationlist), [CreateWorld](#createworld), [StretchCityTemplate](#stretchcitytemplate), [LaySites](#laysites), [KeepTownEdges](#keeptownedges), [BuildingPlaced](#buildingplaced), [AreaRimHeight](#arearimheight), [FindPocketNeighbour](#findpocketneighbour), [SendMissionEndTelemetry](#sendmissionendtelemetry), [MissionResultReport](#missionresultreport), [ObjectiveSpawnSetup](#objectivespawnsetup), [RateOfFireCycle](#rateoffirecycle), [WeaponFunctionPress](#weaponfunctionpress), [ProjectileWeaponRateSeed](#projectileweaponrateseed), [ProjectileWeaponNetApply](#projectileweaponnetapply), [ProjectileWeaponSystemPass](#projectileweaponsystempass), [SetCurrentFireMode](#setcurrentfiremode), [WeaponFunctionValue](#weaponfunctionvalue), [WeaponApplyReplicatedTrigger](#weaponapplyreplicatedtrigger), [RpcFireSingleRound](#rpcfiresingleround), [RpcFireSingleRoundAdvanced](#rpcfiresingleroundadvanced), [SendFireSingleRoundAdvanced](#sendfiresingleroundadvanced), [RpcAddProjectileToManager](#rpcaddprojectiletomanager), [SetWielder](#setwielder), [ProjectileWeaponNetInit](#projectileweaponnetinit), [WeaponBuild](#weaponbuild), [ProjectileWeaponEnterOwned](#projectileweaponenterowned), [OwnsWarbond](#ownswarbond), [WarbondCurrencyToken](#warbondcurrencytoken), [HasCatalogueItem](#hascatalogueitem), [WeaponMagazineRecord](#weaponmagazinerecord), [WeaponWindUpRecord](#weaponwinduprecord), [RechargeRecord](#rechargerecord), [WeaponReloadRecord](#weaponreloadrecord), [WeaponRoundsRecord](#weaponroundsrecord), [WeaponChargeRecord](#weaponchargerecord), [EquipmentRecord](#equipmentrecord), [ThrowerRecord](#throwerrecord), [ArcWeaponRecord](#arcweaponrecord), [WeaponHeatRecord](#weaponheatrecord), [WeaponCustomizationRecord](#weaponcustomizationrecord), [WeaponMagazineTypeRecord](#weaponmagazinetyperecord), [RechargeTypeRecord](#rechargetyperecord), [WeaponReloadTypeRecord](#weaponreloadtyperecord), [WeaponRoundsTypeRecord](#weaponroundstyperecord), [EquipmentTypeRecord](#equipmenttyperecord), [ThrowerTypeRecord](#throwertyperecord), [ThrowableTypeRecord](#throwabletyperecord), [ArcWeaponTypeRecord](#arcweapontyperecord), [WeaponHeatTypeRecord](#weaponheattyperecord), [AbilityWeaponTypeRecord](#abilityweapontyperecord), [WeaponCustomizationTypeRecord](#weaponcustomizationtyperecord), [WeaponUpdate](#weaponupdate), [WeaponDataUpdate](#weapondataupdate), [WeaponHeatUpdate](#weaponheatupdate), [WeaponHeatInstanceStep](#weaponheatinstancestep), [WeaponChargeUpdate](#weaponchargeupdate), [ChargeRelease](#chargerelease), [ChargeOvercharge](#chargeovercharge), [ChargeMultiplier](#chargemultiplier), [EquipmentUpdate](#equipmentupdate), [ThrowerUpdate](#throwerupdate), [ThrowableUpdate](#throwableupdate), [ArcWeaponUpdate](#arcweaponupdate), [AbilityWeaponUpdate](#abilityweaponupdate), [WeaponCustomizationUpdate](#weaponcustomizationupdate), [StartReload](#startreload), [CanReload](#canreload), [ReloadStateHas](#reloadstatehas), [WeaponReloadBusy](#weaponreloadbusy), [OwnSpareAmmo](#ownspareammo), [WeaponRefill](#weaponrefill), [MagazineRefill](#magazinerefill), [RoundsRefill](#roundsrefill), [HeatsinkRefill](#heatsinkrefill), [AbilityWeaponModeSettings](#abilityweaponmodesettings), [AbilityWeaponFire](#abilityweaponfire), [MeleeHitVolumeStart](#meleehitvolumestart), [UnitSettings](#unitsettings), [VehicleSettings](#vehiclesettings), [HellpodPayloadSettings](#hellpodpayloadsettings), [AvatarSettings](#avatarsettings), [JumppackSettings](#jumppacksettings), [DisplacementSettings](#displacementsettings), [OrbitalAbilitySettings](#orbitalabilitysettings), [RotationSettings](#rotationsettings), [EagleSettings](#eaglesettings), [VehicleUpdate](#vehicleupdate), [SquadTransportUpdate](#squadtransportupdate), [HellpodPayloadUpdate](#hellpodpayloadupdate), [AiSpawnerUpdate](#aispawnerupdate), [BugholeUpdate](#bugholeupdate), [VehicleMotionUpdate](#vehiclemotionupdate), [AvatarUpdate](#avatarupdate), [DisplacementUpdate](#displacementupdate), [OrbitalAbilityUpdate](#orbitalabilityupdate), [EagleUpdate](#eagleupdate), [EncounterUpdate](#encounterupdate), [GuardForceUpdate](#guardforceupdate), [EagleStage](#eaglestage), [EagleTrackAim](#eagletrackaim), [EagleStrike](#eaglestrike), [EagleFlight](#eagleflight), [JumppackTimers](#jumppacktimers), [JumppackFlight](#jumppackflight), [SetJumppackActive](#setjumppackactive), [JumppackTakeOff](#jumppacktakeoff), [PickPatrolComposition](#pickpatrolcomposition), [SpawnSquad](#spawnsquad), [PatrolClock](#patrolclock), [PickReinforcementComposition](#pickreinforcementcomposition), [DispatchReinforcement](#dispatchreinforcement), [FillOutpost](#filloutpost), [UnitSetLocalPosition](#unitsetlocalposition), [UnitSetLocalRotation](#unitsetlocalrotation), [UnitSetLocalScale](#unitsetlocalscale), [UnitTeleportLocalPosition](#unitteleportlocalposition), [UnitTeleportLocalPose](#unitteleportlocalpose), [WorldSetUnitMoving](#worldsetunitmoving), [UnitDeltaPosition](#unitdeltaposition), [UnitDeltaRotation](#unitdeltarotation), [UnitDeltaPose](#unitdeltapose), [UnitTeleportLocalRotation](#unitteleportlocalrotation), [UnitTeleportLocalScale](#unitteleportlocalscale), [WorldSpawnUnit](#worldspawnunit), [WorldDestroyUnit](#worlddestroyunit), [WorldQueueUnitsDestroy](#worldqueueunitsdestroy), [WorldLinkUnitHandles](#worldlinkunithandles), [WorldLinkUnit](#worldlinkunit), [WorldUnlinkUnit](#worldunlinkunit), [WorldMendUnit](#worldmendunit), [WorldUpdate](#worldupdate), [WorldUpdateScene](#worldupdatescene), [WorldCreateLineObject](#worldcreatelineobject), [LineObjectAddLine](#lineobjectaddline), [LineObjectAddCone](#lineobjectaddcone), [LineObjectAddCircle](#lineobjectaddcircle), [LineObjectAddSphere](#lineobjectaddsphere), [LineObjectAddHalfSphere](#lineobjectaddhalfsphere), [LineObjectAddBox](#lineobjectaddbox), [LineObjectAddCapsule](#lineobjectaddcapsule), [LineObjectDispatch](#lineobjectdispatch), [MurmurHash64A](#murmurhash64a), [MaterialSetScalar](#materialsetscalar), [MaterialSetVector2](#materialsetvector2), [MaterialSetVector3](#materialsetvector3), [MaterialSetVector4](#materialsetvector4), [MaterialSetMatrix4x4](#materialsetmatrix4x4), [MaterialSetTexture](#materialsettexture), [MaterialSetResource](#materialsetresource), [MaterialSetShaderPassFlag](#materialsetshaderpassflag), [MaterialReinitializeShader](#materialreinitializeshader), [CameraWorldToScreen](#cameraworldtoscreen), [CameraScreenToWorld](#camerascreentoworld), [CameraSyncRange](#camerasyncrange), [CameraSyncFrustum](#camerasyncfrustum), [CameraSetLocal](#camerasetlocal), [CameraInsideFrustum](#camerainsidefrustum), [GuiAddPrimitive](#guiaddprimitive), [GuiRect](#guirect), [ResourceManagerGet](#resourcemanagerget), [ResourceManagerCanGet](#resourcemanagercanget), [ResourceManagerSetOverride](#resourcemanagersetoverride), [ResourceManagerClearOverride](#resourcemanagerclearoverride), [MurmurHash64ALower](#murmurhash64alower), [RendererWindowSize](#rendererwindowsize), [ReleaseWorld](#releaseworld), [CreateViewport](#createviewport), [WorldDestroyViewport](#worlddestroyviewport), [NetworkCreateGameSession](#networkcreategamesession), [NetworkShutdownGameSession](#networkshutdowngamesession), [LevelIsPointInsideVolume](#levelispointinsidevolume), [LevelRandomPointInsideVolume](#levelrandompointinsidevolume), [LevelHasVolume](#levelhasvolume), [LevelUnitIndex](#levelunitindex), [LevelSpawnAllLayers](#levelspawnalllayers), [UnitAnimationFindVariable](#unitanimationfindvariable), [UnitAnimationHasVariable](#unitanimationhasvariable), [UnitAnimationGetVariable](#unitanimationgetvariable), [UnitAnimationSetVariable](#unitanimationsetvariable), [UnitSetUnitVisibility](#unitsetunitvisibility), [UnitSetVisibilityGroup](#unitsetvisibilitygroup), [UnitCrossfadeAnimation](#unitcrossfadeanimation), [UnitCrossfadeAnimationSetTime](#unitcrossfadeanimationsettime), [UnitCopySceneGraphLocalFrom](#unitcopyscenegraphlocalfrom), [UnitSetBonesLod](#unitsetboneslod), [UnitAnimationFindConstraintTarget](#unitanimationfindconstrainttarget), [UnitAnimationSetConstraintTargetPosition](#unitanimationsetconstrainttargetposition), [LightSync](#lightsync), [LightSetEnabled](#lightsetenabled), [WorldDestroyLevel](#worlddestroylevel), [WorldDestroyPrefab](#worlddestroyprefab), [WorldPlayCameraShake](#worldplaycamerashake), [WorldStopCameraShake](#worldstopcamerashake), [WorldUpdateAnimations](#worldupdateanimations), [GuiManagerDestroyGui](#guimanagerdestroygui), [SpawnEntityAddComponents](#spawnentityaddcomponents), [SpawnEntityFinishComponents](#spawnentityfinishcomponents), [ActivateEntity](#activateentity), [DeactivateEntity](#deactivateentity), [UnitLocalPosition](#unitlocalposition), [UnitLocalRotation](#unitlocalrotation), [UnitLocalScale](#unitlocalscale), [UnitLocalPose](#unitlocalpose), [UnitWorldPose](#unitworldpose), [UnitWorldRotation](#unitworldrotation), [UnitNumMeshes](#unitnummeshes), [UnitMesh](#unitmesh), [UnitAlive](#unitalive), [UnitHasAnimationBlender](#unithasanimationblender), [UnitHasAnimationStateMachine](#unithasanimationstatemachine), [UnitAnimationRootMode](#unitanimationrootmode), [UnitAnimationBoneMode](#unitanimationbonemode), [UnitNumSceneGraphItems](#unitnumscenegraphitems), [UnitSceneGraphParent](#unitscenegraphparent), [UnitNumTerrains](#unitnumterrains), [UnitNumLodObjects](#unitnumlodobjects), [UnitNumLights](#unitnumlights), [UnitNumCameras](#unitnumcameras), [UnitHasNode](#unithasnode), [UnitNode](#unitnode), [UnitLevel](#unitlevel), [UnitId](#unitid), [UnitResourceName](#unitresourcename), [UnitDebugName](#unitdebugname)
 - [Globals](#globals): [Game](#game), [PlayerManager](#playermanager), [LocalUser](#localuser), [GameMode](#gamemode), [EntityManager](#entitymanager), [HealthManager](#healthmanager), [MotionManager](#motionmanager), [ExplosionQueue](#explosionqueue), [ProjectileSystem](#projectilesystem), [CombatQueues](#combatqueues), [ScoreManager](#scoremanager), [WielderManager](#wieldermanager), [InventoryManager](#inventorymanager), [Destructibles](#destructibles), [DestructionRecords](#destructionrecords), [DepositManager](#depositmanager), [AvatarManager](#avatarmanager), [WieldableManager](#wieldablemanager), [FactionManager](#factionmanager), [BehaviourManager](#behaviourmanager), [TagManager](#tagmanager), [Clock](#clock), [EngineApi](#engineapi), [EngineUnitApi](#engineunitapi), [WwiseApi](#wwiseapi), [AbilityManager](#abilitymanager), [WeaponLinkerManager](#weaponlinkermanager), [SeekingMissileManager](#seekingmissilemanager), [LaserDesignatorManager](#laserdesignatormanager), [GuidanceTargets](#guidancetargets), [ExplosiveManager](#explosivemanager), [EquipmentManager](#equipmentmanager), [HellpodRackManager](#hellpodrackmanager), [AttachableManager](#attachablemanager), [MountManager](#mountmanager), [DropAnchors](#dropanchors), [PerceptionManager](#perceptionmanager), [WeaponManager](#weaponmanager), [WeaponMagazines](#weaponmagazines), [WeaponTargeting](#weapontargeting), [ShieldManager](#shieldmanager), [CustomizationManager](#customizationmanager), [BombardmentManager](#bombardmentmanager), [Progression](#progression), [PlayerHistory](#playerhistory), [Profile](#profile), [MenuStates](#menustates), [MenuStack](#menustack), [Armory](#armory), [ThumbnailManager](#thumbnailmanager), [PackageSystem](#packagesystem), [GameConfig](#gameconfig), [NavigationSystem](#navigationsystem), [PhysicsPlugin](#physicsplugin), [ObjectiveManager](#objectivemanager), [HiveMindManager](#hivemindmanager), [Telemetry](#telemetry), [GuardForces](#guardforces), [UnitRegistry](#unitregistry), [EngineCore](#enginecore), [NetworkManager](#networkmanager), [NetworkConfigOwner](#networkconfigowner), [EngineEntityIndex](#engineentityindex), [NavWorlds](#navworlds), [PhysicsProperties](#physicsproperties), [CollisionFilterA](#collisionfiltera), [CollisionFilterB](#collisionfilterb), [StatusReceivers](#statusreceivers), [ComponentWorld](#componentworld), [GameModeMission](#gamemodemission), [CareerStats](#careerstats), [ProjectileWeapons](#projectileweapons), [WeaponDatas](#weapondatas), [BeamWeapons](#beamweapons), [LinkedAmmo](#linkedammo), [Corpses](#corpses), [WeaponWindUps](#weaponwindups), [Recharges](#recharges), [WeaponReloads](#weaponreloads), [WeaponRoundsManager](#weaponroundsmanager), [WeaponCharges](#weaponcharges), [Throwers](#throwers), [Throwables](#throwables), [ArcWeapons](#arcweapons), [WeaponHeats](#weaponheats), [AbilityWeapons](#abilityweapons), [MeleeWeapons](#meleeweapons), [WeaponCustomizations](#weaponcustomizations), [AiSpawnerManager](#aispawnermanager), [BugholeManager](#bugholemanager), [VehicleMotionManager](#vehiclemotionmanager), [VehicleManager](#vehiclemanager), [SquadTransportManager](#squadtransportmanager), [SquadFormationManager](#squadformationmanager), [GoreManager](#goremanager), [StratagemBlockerManager](#stratagemblockermanager), [OrbitalAbilityManager](#orbitalabilitymanager), [HellpodPayloadManager](#hellpodpayloadmanager), [UnitManager](#unitmanager), [RotationManager](#rotationmanager), [DisplacementManager](#displacementmanager), [JumppackManager](#jumppackmanager), [EagleManager](#eaglemanager), [EncounterManager](#encountermanager), [AiSquadManager](#aisquadmanager), [SensorEyeManager](#sensoreyemanager), [TurretManager](#turretmanager), [LocomotionManager](#locomotionmanager)
 - [Components](#components): [HfProjectileWeapon](#hfprojectileweapon), [HfWeaponData](#hfweapondata), [HfWeaponMagazine](#hfweaponmagazine), [HfTag](#hftag), [HfMount](#hfmount), [HfBehavior](#hfbehavior), [HfLoadoutPackage](#hfloadoutpackage), [HfDeposit](#hfdeposit), [HfHealth](#hfhealth), [HfJumppack](#hfjumppack), [HfRecharge](#hfrecharge), [HfShield](#hfshield), [HfHellpodPayload](#hfhellpodpayload), [HfSensorEye](#hfsensoreye), [HfTurret](#hfturret), [HfWeaponWindUp](#hfweaponwindup), [HfBeamWeapon](#hfbeamweapon), [HfWeaponHeat](#hfweaponheat), [HfEagle](#hfeagle), [HfThrower](#hfthrower), [HfBombardment](#hfbombardment), [HfExplosive](#hfexplosive), [HfThrowable](#hfthrowable), [HfVehicleMotion](#hfvehiclemotion), [HfWeaponCharge](#hfweaponcharge), [HfWeaponReload](#hfweaponreload), [HfWeaponRounds](#hfweaponrounds), [HfArcWeapon](#hfarcweapon), [HfHiveMind](#hfhivemind), [HfOrbitalAbility](#hforbitalability), [HfRotation](#hfrotation), [HfDisplacement](#hfdisplacement), [HfSeekingMissile](#hfseekingmissile), [HfLoadoutEntry](#hfloadoutentry), [HfHellpodRack](#hfhellpodrack), [HfAvatar](#hfavatar), [HfInventory](#hfinventory), [HfMeleeWeapon](#hfmeleeweapon), [HfAbilityWeapon](#hfabilityweapon), [HfUnit](#hfunit), [HfSquadTransportFormation](#hfsquadtransportformation), [HfSquadTransport](#hfsquadtransport), [HfGore](#hfgore), [HfAiSpawner](#hfaispawner), [HfStratagemBlocker](#hfstratagemblocker), [HfBughole](#hfbughole), [HfEquipment](#hfequipment), [HfWieldable](#hfwieldable), [HfAttachable](#hfattachable), [HfWeaponCustomization](#hfweaponcustomization)
-- [Settings tables](#settings-tables): [HfDifficultySettings](#hfdifficultysettings), [HfDamageInfo](#hfdamageinfo), [HfProjectileSettings](#hfprojectilesettings), [HfStratagemSettings](#hfstratagemsettings), [HfExplosionSettings](#hfexplosionsettings), [HfArcSettings](#hfarcsettings), [HfBeamSettings](#hfbeamsettings), [HfStatusEffectSettings](#hfstatuseffectsettings), [HfBoosterSettings](#hfboostersettings), [HfPassiveModifier](#hfpassivemodifier), [HfPassiveStat](#hfpassivestat), [HfMeleeHitVolume](#hfmeleehitvolume), [HfEnemyRoster](#hfenemyroster), [HfEnemyRosterLevel11](#hfenemyrosterlevel11), [HfEnemyComposition](#hfenemycomposition), [HfDemolitionTemplate](#hfdemolitiontemplate)
+- [Settings tables](#settings-tables): [HfDifficultySettings](#hfdifficultysettings), [HfDamageInfo](#hfdamageinfo), [HfProjectileSettings](#hfprojectilesettings), [HfStratagemCode](#hfstratagemcode), [HfStratagemSettings](#hfstratagemsettings), [HfExplosionSettings](#hfexplosionsettings), [HfArcSettings](#hfarcsettings), [HfBeamSettings](#hfbeamsettings), [HfStatusEffectSettings](#hfstatuseffectsettings), [HfBoosterSettings](#hfboostersettings), [HfPassiveModifier](#hfpassivemodifier), [HfPassiveStat](#hfpassivestat), [HfMeleeHitVolume](#hfmeleehitvolume), [HfEnemyRoster](#hfenemyroster), [HfEnemyRosterLevel11](#hfenemyrosterlevel11), [HfEnemyComposition](#hfenemycomposition), [HfDemolitionTemplate](#hfdemolitiontemplate)
 - [Content](#content): [HF_ITEM_...](#hf_item_-168-hf_kind_item), [HF_PROJECTILE_...](#hf_projectile_-61-hf_kind_projectile), [HF_STRATAGEM_...](#hf_stratagem_-149-hf_kind_stratagem), [HF_BEHAVIOUR_...](#hf_behaviour_-2-hf_kind_behaviour), [HF_ENTITY_...](#hf_entity_-369-hf_kind_entity), [HF_DAMAGE_...](#hf_damage_-342-hf_kind_damage), [HF_PACKAGE_...](#hf_package_-1-hf_kind_package), [HF_TAG_...](#hf_tag_-1-hf_kind_tag), [HF_TRAIT_...](#hf_trait_-29-hf_kind_trait), [HF_CATEGORY_...](#hf_category_-5-hf_kind_category), [HF_BEAM_...](#hf_beam_-3-hf_kind_beam), [HF_BOOSTER_...](#hf_booster_-20-hf_kind_booster), [HF_EXPLOSION_...](#hf_explosion_-295-hf_kind_explosion), [HF_WEAPON_BEAM_...](#hf_weapon_beam_-1-hf_kind_weapon_beam), [HF_ARC_...](#hf_arc_-1-hf_kind_arc)
 
 ## API
@@ -55,7 +55,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 ### SDK 2
 
-- `add_weapon`: `uint32_t (HfMod* mod, const HfWeapon* weapon)`. Adds a new arsenal weapon (see HfWeapon). HellForge adds it to the game's entity data when that loads, to the armory, and to the backend's item catalogue and the player's inventory; it behaves exactly like its base except for what the mod changes in its own records. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the mod's log says why).
+- `add_weapon`: `uint32_t (HfMod* mod, const HfWeapon* weapon)`. Adds a new arsenal weapon (see HfWeapon). HellForge adds it to the game's entity data when that loads, to the armory, and to the backend's item catalogue and the player's inventory (a copy of premium content only to a player who owns the original); it behaves exactly like its base except for what the mod changes in its own records. Call it from hellforge_mod_init. Returns the new weapon's loadout id, or 0 (the mod's log says why).
 - `weapon_entity`: `uint64_t (uint32_t weapon)`. The entity resource of a weapon any mod added (its loadout id), for component_record; 0 if there is none.
 
 ### SDK 3
@@ -207,6 +207,13 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 - `rpc_listen`: `int (HfMod* mod, uint32_t rpc, HfRpcListener listener, void* user, int32_t priority)`. Listens to an RPC (its HF_RPC_... id, or HF_RPC_ALL for every one) as this machine receives it: on the game thread, before the game's own receiver, highest priority first (equal priorities in the order they listened). A listener that returns HF_RPC_DROP stops the message: later listeners and the game don't see it. Call it from hellforge_mod_init on. 0 listening, 1 refused (an RPC this build doesn't have; the mod's log says why).
 - `rpc_send`: `int (HfMod* mod, uint32_t rpc, uint64_t to, const HfRpcArg* args, uint32_t count)`. Sends one of the game's RPCs (hellforge_rpcs.h's hf_rpc_<name>_send builds the arguments): to HF_TO_ALL (every other machine of the session), HF_TO_HOST, or a peer (an HfRpcEvent's sender). The game encodes each argument by its declared type, so values outside a type's range are clamped or wrap. Game thread only. 0 sent, 1 refused (another thread, solo, an unknown RPC, arguments that are not its declared ones, HF_TO_HOST on the host; the mod's log says why).
+- `add_screen`: `int (HfMod* mod, const HfScreen* screen)`. SDK 17: screens drawn over the game (hellforge_overlay.h, docs/modding/overlay.md). Adds one, from any thread: its id (1 and up), or 0 refused (modloader.log says why: its key is another screen's, say).
+- `screen_show`: `void (HfMod* mod, int id, int open)`. Opens (1) or closes (0) one of the mod's screens, from any thread. Closing sets input->closing; draw is called until it returns 0.
+- `generation_capacity`: `int (HfMod* mod, const HfGenerationCapacity* want, HfGenerationCapacity* have)`. SDK 17: room in the map generator's arrays (see HfGenerationCapacity; check hf->size before calling). With want: asks for at least these capacities, from hellforge_mod_init only; 0 recorded, 1 refused (too late, a mod loaded while the game runs, a field over its limit; the mod's log says why, and nothing is changed). Mods' requests combine to the largest of each. With have (set its size): filled, up to that size, with the capacities planned, where each region lies in the block (regions, by HF_GEN_ name), and whether the game uses them yet. want may be NULL to only read.
+
+### SDK 18: patterns (check hf->size before calling)
+
+- `add_pattern`: `uint32_t (HfMod* mod, const HfPattern* pattern)`. Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why). 128 across all mods; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data.
 
 ## Functions
 
@@ -5222,7 +5229,7 @@ typedef void (*HfFn_WarbondCurrencyToken)(uint64_t unused, uint32_t* out, uint32
 
 ### HasCatalogueItem
 
-`game.dll+0x136FB40`, hook or call. Whether the player holds a catalogue item. From HellForge research forge-credits-tint (README.md, locked warbonds).
+`game.dll+0x136FB40`, call only. Whether the player holds a catalogue item. From HellForge research forge-credits-tint (README.md, locked warbonds).
 
 ```c
 typedef uint8_t (*HfFn_HasCatalogueItem)(void* account, uint32_t item);
@@ -7549,6 +7556,318 @@ typedef void (*HfFn_DeactivateEntity)(void* unused, uint32_t entity, uint64_t ct
 | `entity` | `uint32_t` | the entity's network id |
 | `ctx` | `uint64_t` | the caller's second argument (through the thunk), passed on unchanged to each component's deactivate callbacks |
 
+### UnitLocalPosition
+
+`helldivers2.exe+0x1FC450`, hook or call. A node's position in its parent's space: 3 floats, inside its local transform (UnitLocalPose +0x24): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x0. From the Unit table's slot 0 (+0x0) and its Lua twin Unit.local_position; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef const float* (*HfFn_UnitLocalPosition)(uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root), below UnitNumSceneGraphItems |
+
+### UnitLocalRotation
+
+`helldivers2.exe+0x1FC490`, hook or call. A node's rotation in its parent's space, written to out as a quaternion; returns out: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x8. From the Unit table's slot 1 (+0x8) and its Lua twin Unit.local_rotation; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef float* (*HfFn_UnitLocalRotation)(float* out, uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | where the rotation goes: a quaternion, 4 floats (x, y, z, w) |
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root), below UnitNumSceneGraphItems |
+
+### UnitLocalScale
+
+`helldivers2.exe+0x1FC4E0`, hook or call. A node's scale in its parent's space: 3 floats, inside its local transform (UnitLocalPose +0x30): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x10. From the Unit table's slot 2 (+0x10) and its Lua twin Unit.local_scale; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef const float* (*HfFn_UnitLocalScale)(uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root), below UnitNumSceneGraphItems |
+
+### UnitLocalPose
+
+`helldivers2.exe+0x1FC520`, hook or call. A node's local transform: a 3x3 rotation (9 floats), then its position (+0x24, 3 floats) and scale (+0x30, 3 floats): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x18. From the Unit table's slot 3 (+0x18) and its Lua twin Unit.local_pose; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef const float* (*HfFn_UnitLocalPose)(uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root), below UnitNumSceneGraphItems |
+
+### UnitWorldPose
+
+`helldivers2.exe+0x1FD220`, hook or call. A node's world pose: a 4x4 matrix of floats, its position in the last row (+0x30). The game reads it from more than 1,500 places: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x90. From the Unit table's slot 18 (+0x90) and its Lua twin Unit.world_pose; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef const float* (*HfFn_UnitWorldPose)(uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root), below UnitNumSceneGraphItems |
+
+### UnitWorldRotation
+
+`helldivers2.exe+0x1FD1D0`, hook or call. A node's world rotation, written to out as a quaternion; returns out: the Unit table's (EngineApi +0x18, 0x27C8F10) +0xb0. From the Unit table's slot 22 (+0xb0) and its Lua twin Unit.world_rotation; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef float* (*HfFn_UnitWorldRotation)(float* out, uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `out` | `float*` | where the rotation goes: a quaternion, 4 floats (x, y, z, w) |
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root), below UnitNumSceneGraphItems |
+
+### UnitNumMeshes
+
+`helldivers2.exe+0x200CD0`, hook or call. How many meshes a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x1a8. From the Unit table's slot 53 (+0x1a8) and its Lua twin Unit.num_meshes; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitNumMeshes)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitMesh
+
+`helldivers2.exe+0x200D20`, hook or call. A unit's mesh object by index: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x1b8. From the Unit table's slot 55 (+0x1b8) and its Lua twin Unit.mesh; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef void* (*HfFn_UnitMesh)(uint32_t unit, int32_t index);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `index` | `int32_t` | the mesh, below UnitNumMeshes |
+
+### UnitAlive
+
+`helldivers2.exe+0x1FEEB0`, hook or call. 1 while the handle names a unit that exists, 0 once it is gone. Only the low byte is the answer: the rest of the register is left over: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x720. From the Unit table's slot 228 (+0x720) and its Lua twin Unit.alive; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint8_t (*HfFn_UnitAlive)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitHasAnimationBlender
+
+`helldivers2.exe+0x2016E0`, hook or call. 1 when the unit has an animation blender (what the animation calls need), else 0: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x348. From the Unit table's slot 105 (+0x348) and its Lua twin Unit.has_animation_blender; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint8_t (*HfFn_UnitHasAnimationBlender)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitHasAnimationStateMachine
+
+`helldivers2.exe+0x2016B0`, hook or call. 1 when the unit has an animation state machine, else 0: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x340. From the Unit table's slot 104 (+0x340) and its Lua twin Unit.has_animation_state_machine; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint8_t (*HfFn_UnitHasAnimationStateMachine)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitAnimationRootMode
+
+`helldivers2.exe+0x202DA0`, hook or call. How the root bone's animation moves the unit, as bits: 1 position, 2 rotation, 4 scale (0 none, 7 all three); in Lua the names delta_position, delta_rotation and so on. Call it only on a unit whose UnitHasAnimationBlender is 1: it reads the blender without checking for one: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x208. From the Unit table's slot 65 (+0x208) and its Lua twin Unit.animation_root_mode; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitAnimationRootMode)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitAnimationBoneMode
+
+`helldivers2.exe+0x202DE0`, hook or call. Which parts of a bone its animation drives, as bits: 1 position, 2 rotation, 4 scale (0 none, 7 all three); in Lua position, rotation, position_and_rotation and so on. Call it only on a unit whose UnitHasAnimationBlender is 1: it reads the blender without checking for one: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x210. From the Unit table's slot 66 (+0x210) and its Lua twin Unit.animation_bone_mode; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitAnimationBoneMode)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitNumSceneGraphItems
+
+`helldivers2.exe+0x2047B0`, hook or call. How many scene graph nodes a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x4f8. From the Unit table's slot 159 (+0x4f8) and its Lua twin Unit.num_scene_graph_items; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitNumSceneGraphItems)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitSceneGraphParent
+
+`helldivers2.exe+0x2047D0`, hook or call. A node's parent, packed: the low 16 bits are 1 when the node has a parent, and the parent's node index is in the high 16 bits (the root has none): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x500. From the Unit table's slot 160 (+0x500) and its Lua twin Unit.scene_graph_parent; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitSceneGraphParent)(uint32_t unit, int32_t node);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `node` | `int32_t` | the scene graph node (0 the root), below UnitNumSceneGraphItems |
+
+### UnitNumTerrains
+
+`helldivers2.exe+0x203DD0`, hook or call. How many terrains a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x450. From the Unit table's slot 138 (+0x450) and its Lua twin Unit.num_terrains; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitNumTerrains)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitNumLodObjects
+
+`helldivers2.exe+0x204A70`, hook or call. How many LOD objects a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x538. From the Unit table's slot 167 (+0x538) and its Lua twin Unit.num_lod_objects; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitNumLodObjects)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitNumLights
+
+`helldivers2.exe+0x204CF0`, hook or call. How many lights a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x580. From the Unit table's slot 176 (+0x580) and its Lua twin Unit.num_lights; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitNumLights)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitNumCameras
+
+`helldivers2.exe+0x1FC3C0`, hook or call. How many cameras a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x6a0. From the Unit table's slot 212 (+0x6a0) and its Lua twin Unit.num_cameras; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitNumCameras)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitHasNode
+
+`helldivers2.exe+0x1FE590`, hook or call. 1 when the unit has a node of this name, else 0. Only the low byte is the answer: the rest of the register is left over: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x6d0. From the Unit table's slot 218 (+0x6d0) and its Lua twin Unit.has_node; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint8_t (*HfFn_UnitHasNode)(uint32_t unit, uint32_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `name` | `uint32_t` | the node's name as an IdString32: the high 32 bits of MurmurHash64A(name, length, 0) |
+
+### UnitNode
+
+`helldivers2.exe+0x1FE5E0`, hook or call. A node's index by name, below UnitNumSceneGraphItems. Call it only after UnitHasNode says 1: Lua's Unit.node stops on a missing name, and that case is not reviewed: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x6d8. From the Unit table's slot 219 (+0x6d8) and its Lua twin Unit.node; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint32_t (*HfFn_UnitNode)(uint32_t unit, uint32_t name);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+| `name` | `uint32_t` | the node's name as an IdString32: the high 32 bits of MurmurHash64A(name, length, 0) |
+
+### UnitLevel
+
+`helldivers2.exe+0x1FEE50`, hook or call. The level a unit belongs to, or NULL; most units have none: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x710. From the Unit table's slot 226 (+0x710) and its Lua twin Unit.level; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef void* (*HfFn_UnitLevel)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitId
+
+`helldivers2.exe+0x1FEED0`, hook or call. A unit's 64-bit id, or 0 when it has none. It is a value, not a pointer: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x728. From the Unit table's slot 229 (+0x728) and its Lua twin Unit.id; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint64_t (*HfFn_UnitId)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitResourceName
+
+`helldivers2.exe+0x1FC120`, hook or call. The unit resource's name as an IdString64 (MurmurHash64A of the path, seed 0): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x750. From the Unit table's slot 234 (+0x750) and its Lua twin Unit.resource_name; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef uint64_t (*HfFn_UnitResourceName)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
+### UnitDebugName
+
+`helldivers2.exe+0x1FEF30`, hook or call. A unit's debug name. In this build that is "#ID[" + UnitResourceName in 16 hex digits + "]": the Unit table's (EngineApi +0x18, 0x27C8F10) +0x738. From the Unit table's slot 231 (+0x738) and its Lua twin Unit.debug_name; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438).
+
+```c
+typedef const char* (*HfFn_UnitDebugName)(uint32_t unit);
+```
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `unit` | `uint32_t` | the unit's handle |
+
 ## Globals
 
 The game's objects by name (`hellforge_globals.h`, SDK 16), from `mappings/globals.json`: its managers and queues,
@@ -7595,7 +7914,7 @@ See also: [Hooks and game memory](modding/hooks.md#game-globals).
 
 ### EntityManager
 
-`game.dll+0x346BF98` (a pointer to it), `HfEntityManager`. The entities of this machine's world. At +0xF22EC8 a hash map of network ids to slots (8-byte keys, 4-byte values), and at +0xF32F20 the network objects by slot, 24 bytes each (+0 the entity id, u32); at +0xF1AEB0 the map of entity ids, at +0xF32F18 their descriptors. From HD2Runtime 0.40.1 research event-combat; HellForge's event polls (event_polls.c).
+`game.dll+0x346BF98` (a pointer to it), `HfEntityManager`. The entities of this machine's world. At +0xF22EC8 a hash map of network ids to slots (8-byte keys, 4-byte values), and at +0xF32F20 the network objects by slot, 24 bytes each (+0 the entity id, u32); at +0xF1AEB0 the map of entity ids, at +0xF32F18 their descriptors. A mod may move the descriptors, the network objects with them (they are one record): docs/modding/hooks.md "Fields a mod moved". From HD2Runtime 0.40.1 research event-combat; HellForge's event polls (event_polls.c).
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
@@ -8492,8 +8811,9 @@ Group `firing_sounds` (every firing sound, silenced or not (HfWeapon.sound_from 
 | `ergonomics` | +0x164 | f32 | respawn | ergonomics (unverified) |
 | `stationary_while_firing` | +0x183 | u8 | respawn | 1: the wielder stands still while firing (unverified) |
 | `crosshair_type` | +0x190 | u32 | respawn | crosshair (unverified) |
-| `fire_ability` | +0x3AC | u32 | respawn | an ability the weapon runs when it fires (0: none) (unverified) |
-| `fire_ability_2` | +0x3B0 | u32 | respawn | a second fire-time ability (the VG-70 Variable: 50, a lead for its knock-down when fired standing; 0 on the AMR and Autocannon) (unverified) |
+| `fire_ability` | +0x3AC | u32 | respawn | the ability every shot starts on the weapon: its firing motion, a bolt, pump or lever cycle (R-36 Eruptor 2660, SG-8 Punisher 2661), the VG-70 Variable's stagger (2692); 0 none |
+| `fire_ability_2` | +0x3B0 | u32 | respawn | fire_ability's stand-in in fire mode 7, when the shot asks for it (the VG-70 Variable and MGX-42 Bullet Storm: 50; 0 elsewhere) |
+| `fire_ability_function` | +0x3B4 | u32 | respawn | fire_ability's stand-in while weapon function 8 is on (the W.A.S.P.'s 2679) |
 
 Group `recoil` (both recoil blocks, sideways and up): `recoil_drift_horizontal`, `recoil_drift_vertical`, `recoil_climb_horizontal`, `recoil_climb_vertical`.
 
@@ -9169,6 +9489,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `arming_delay` | +0x08 | f32 | respawn? | Arming delay (seconds) (unverified) |
 | `explosion_delay` | +0x0C | f32 | respawn? | Fuse (explosion delay) (seconds) (unverified) |
 | `explosion` | +0x24 | u32 | respawn? | Explosion payload (unverified) (an explosion reference) |
+| `impact_explosion` | +0x28 | u32 | respawn? | the explosion where it hits something (0: none; the Solo Silo missile 420) (unverified) (an explosion reference) |
 | `armed_ability` | +0x148 | u32 | respawn? | the ability it runs once it is set off (the Solo Silo missile: 2088, its launch) |
 
 ### HfThrowable
@@ -9268,6 +9589,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `spare_rounds` | +0x50 | u32 | respawn? | Spare rounds (rounds) (unverified) |
 | `rounds_from_supply` | +0x54 | u32 | respawn? | Rounds from supply (rounds) (unverified) |
 | `starting_rounds` | +0x58 | u32 | respawn? | Starting rounds (rounds) (unverified) |
+| `rounds_per_reload` | +0x5C | u32 | respawn? | Rounds each reload step loads into the feed and takes from the spare rounds (1: one by one; the AC-8 Autocannon's clip 5) |
 
 ### HfArcWeapon
 
@@ -9750,12 +10072,25 @@ and statuses without code.
 | `drag` | +0x28 | f32 | now? | drag (unverified) |
 | `gravity` | +0x2C | f32 | now? | gravity factor (unverified) |
 | `lifetime` | +0x34 | f32 | now? | seconds before it expires (unverified) |
+| `lifetime_variance` | +0x38 | f32 | now? | how much its lifetime varies, as a share of it: each round lives lifetime +- (this x lifetime), at random (unverified) |
 | `damage` | +0x3C | u32 | now? | the damage id its hits deal (a damage reference) |
 | `penetration_slowdown` | +0x40 | f32 | now? | slowdown when it penetrates (unverified) |
 | `spawn_effect` | +0x48 | u64 | now? | its main particle effect |
 | `flight_effect` | +0x70 | u64 | now? | its second particle effect (light and trail) |
 | `impact_explosion` | +0x90 | u32 | now | the explosion type where it hits (0: none) (an explosion reference) |
 | `expiry_explosion` | +0x9C | u32 | now | the explosion type when its lifetime runs out (0: none) (an explosion reference) |
+| `arming_distance` | +0xA0 | f32 | now? | how far (m) a round with an impact payload flies before it arms: one that hits sooner bounces instead of going off (the GL-21 7, the GP-31 and GL-52 4) (unverified) |
+| `ricochets` | +0xB0 | u32 | now? | whether its rounds bounce off what they hit: 0 never; the update bounces a round only while this is not 0 and counts its bounces against it (grenade launchers and most bullets 1, lasers 0) (unverified) |
+| `ricochet_angle` | +0xB4 | f32 | now? | how flat a hit must be to bounce, in degrees off straight on (0: any hit, 360: never); a round still unarmed bounces anyway (unverified) |
+| `ricochet_min_speed` | +0xB8 | f32 | now? | the speed (m/s) a round must be faster than to bounce (unverified) |
+
+### HfStratagemCode
+
+`StratagemCode`: 4-byte rows found by id. a vanilla stratagem's input code (by type), kept by HellForge: the row's code points at an array of HellForge's, which follows this packed value (native/mod-loader/stratagem_codes.c).
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `packed` | +0x00 | u32 | now? | its directions, one base-5 digit each, the first lowest (1 up, 2 right, 3 down, 4 left; Up, Right = 1 + 2*5 = 11); 1 to 10 directions (unverified) |
 
 ### HfStratagemSettings
 

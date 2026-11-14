@@ -20,6 +20,12 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `rpc-probe/` | the test mod `rpc17.json` runs (`hellforge.rpc-probe`), never shipped; it sends nothing outside solo |
 | `stratagem-cap.json` | room for 1,024 new stratagems: 300 added (types 150 to 449), the co-op type field at 16 bits, type 449 in the loadout before the mission and called in by its code (needs the harness's `call` step) |
 | `stratagem-cap-probe/` | the test mod `stratagem-cap.json` runs (`hellforge.stratagem-cap-probe`), never shipped |
+| `patterns18.json` | SDK 18's patterns: two weapon patterns on every weapon taking paints, the Pelican's, hellpod's, exosuits' and FRVs' skins in every collection, their deltas and package map, the Armory's Pattern tab captured |
+| `pattern-probe/` | the test mod `patterns18.json` runs (`hellforge.pattern-probe`), never shipped: magenta copies of Forest Camo (material LUT swaps on weapons, a pattern_lut on units) and an Arctic Camo copy |
+| `editor-engine.json` | the editor's engine-backed rows: the Eruptor's and Variable's firing ability swapped, spare heatsinks added to the Sai's Improved Cooldown heatsink; the logs prove the edits land, the mission shows what they do |
+| `editor-engine-probe/` | the stats mod `editor-engine.json` runs (`hellforge.editor-engine-probe`), never shipped |
+| `stratagem-codes.json` | stratagem input codes: a stats edit gives Resupply Up Up Left Right Down, the vanilla codes move into HellForge's arrays, and the new code calls Resupply in (needs the harness's `call` step) |
+| `stratagem-codes-probe/` | the test mod `stratagem-codes.json` runs (`hellforge.stratagem-codes-probe`), never shipped: the stats edit and every beacon's type |
 
 ## Running one
 

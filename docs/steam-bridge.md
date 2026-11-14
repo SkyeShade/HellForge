@@ -217,7 +217,7 @@ The forwarding build refuses to start a session that asks for the bridge, rather
 | `SteamUtils010` | `GetIPCountry`, `IsSteamRunningOnSteamDeck` | snapshot | |
 | `SteamUtils010` | `SetOverlayNotificationPosition`, `IsOverlayEnabled` | local | the overlay is in the broker: nothing to place, none shown |
 | `SteamUtils010` | `InitFilterText`, `FilterText` | call | input at most 4096 bytes, output buffer bounded |
-| `SteamMatchMaking009` | `CreateLobby` | call | reviewed 2026-10-24: strangers can read a public lobby's data. At most 4 members. The type is logged, and Public becomes Friends only while Play with strangers is off (below). Whether it can be Friends only always is the two-PC stranger test's question |
+| `SteamMatchMaking009` | `CreateLobby` | call | reviewed 2026-10-24: strangers can read a public lobby's data. At most 8 members, for mods that take eight players. The type is logged, and Public becomes Friends only while Play with strangers is off (below). Whether it can be Friends only always is the two-PC stranger test's question |
 | `SteamMatchMaking009` | `JoinLobby` | call | reviewed 2026-10-24: any lobby by id, as the game joins the host's own Steam lobby in a co-op join; that lobby learns this player's SteamID, as without HellForge, and its members are no co-op peers for P2P unless the backend lists them |
 | `SteamMatchMaking009` | `SetLobbyData`, `GetLobbyData`, `SetLobbyJoinable`, `LeaveLobby`, `GetNumLobbyMembers`, `GetLobbyMemberByIndex`, `GetLobbyOwner` | call | only a lobby the game made or entered this session (`LobbyCreated_t`, or a `LobbyEnter_t` that says it entered); key at most 255, value at most 8192 bytes |
 | `STEAMUSERSTATS_INTERFACE_VERSION012` | `RequestCurrentStats`, `GetAchievement` | call | name at most 128 |
@@ -345,6 +345,11 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
   - `HELLFORGE_NETGATE_HOOKS` without `denied` leaves it out.
   - The census's hooks also keep the caller's last error now: `TlsGetValue` in their bookkeeping reset it to 0, so a
     failed `connect` read back as no error.
+- **The tablet driver is refused** (`tablet_gate.c`): kernelbase's four `LoadLibrary` calls answer `Wintab32.dll` with
+  `ERROR_MOD_NOT_FOUND`. At low integrity the driver is refused its shared memory, and Gaomon's then shows a modal
+  `OpenMem failed. Err=5` on every alt-tab. The census writes each refusal; `result.json` has `networkCensus.tablet*`.
+- **Nahimic crashes a sandboxed game** as it starts (#369). The failure message names it from the census
+  (`SandboxRefusals.CrashHint`).
 - **Steam's overlay** loads with `SteamAPI_Init`, so only into the broker. `HELLFORGE_SANDBOX_OVERLAY_PROBE=1` is a
   diagnostic: the stand-in loads Steam's `GameOverlayRenderer64.dll` into the sandboxed game at `SteamAPI_Init`
   (`OverlayProbe`). The runner passes its path, from Steam's `SteamPath`, as `HELLFORGE_OVERLAY_PROBE`. The census then

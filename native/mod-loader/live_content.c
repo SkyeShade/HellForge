@@ -31,6 +31,7 @@
  * unmeasured in game. Afterwards the lists are read as before; a stub's id check compares with a higher count. */
 
 #include "ownership.c" /* items made owned, and given back */
+#include "paid_guard_step.c" /* after ownership.c: paid items the backend refuses taken back */
 #include "loadout_scrub.c" /* the loadout without what a removed mod added */
 
 #define LC_MAX 1024 /* entries of any numbered kind HellForge has room for (weapons and entities grow: their tombs are Weapon.tomb) */
@@ -778,7 +779,7 @@ static void LiveContentStep(void* arg)
     if (plan->categories && !g_stratagemCategoriesActive) InstallStratagemCategories(plan->game);
     else if (g_stratagemCategoriesActive && g_stratagemCategoryCount > g_lcCategoriesBefore) OrderStratagemCategories();
     LiveRegistryStep(plan);
-    if (plan->scrubbing && g_livePlayers() <= 1 && ScrubReady(plan->game) == NULL) ScrubStep(plan->game, &plan->scrub);
+    if (plan->scrubbing && g_livePlayers() <= 1 && g_livePlayers() != EVP_LAYOUT && ScrubReady(plan->game) == NULL) ScrubStep(plan->game, &plan->scrub);
     else if (plan->scrubbing) plan->scrubFailed = 1;
     if (plan->items.count > 0) OwnBatchStep(&plan->items);
 }
@@ -919,7 +920,8 @@ static const char* LiveContentMake(char* why, size_t size, int* failed)
     LiveEditsFollow();
     *failed = !LiveSteps(&plan);
     WriteRegisteredItems();
-    Note("live content: %d write(s) under one freeze (%d page(s)); %d catalogue record(s) added, %d item(s) owned, %d given back", g_lcWriteCount,
-        g_lcPageCount, plan.items.added, plan.items.owned, plan.items.taken);
+    Note("live content: %d write(s) under one freeze (%d page(s)); %d catalogue record(s) added, %d item(s) owned, %d given back, %d not owned "
+        "(the player does not hold what it copies, or it is not in the catalogue)", g_lcWriteCount, g_lcPageCount, plan.items.added, plan.items.owned,
+        plan.items.taken, plan.items.unowned);
     return NULL;
 }

@@ -61,7 +61,7 @@
         {"rva": "0xBA043", "code": "48 8B 0D 4E 1F 3B 03 8B 50 08 48 83"},
         {"rva": "0xBA0F5", "code": "48 8B 0D 9C 1E 3B 03 8B 50 08 E8 0C"}
       ],
-      "meaning": "The entities of this machine's world. At +0xF22EC8 a hash map of network ids to slots (8-byte keys, 4-byte values), and at +0xF32F20 the network objects by slot, 24 bytes each (+0 the entity id, u32); at +0xF1AEB0 the map of entity ids, at +0xF32F18 their descriptors",
+      "meaning": "The entities of this machine's world. At +0xF22EC8 a hash map of network ids to slots (8-byte keys, 4-byte values), and at +0xF32F20 the network objects by slot, 24 bytes each (+0 the entity id, u32); at +0xF1AEB0 the map of entity ids, at +0xF32F18 their descriptors. A mod may move the descriptors, the network objects with them (they are one record): docs/modding/hooks.md \"Fields a mod moved\"",
       "source": "HD2Runtime 0.40.1 research event-combat; HellForge's event polls (event_polls.c)",
       "fields": {
         "component_tables": {"offset": "0xF12478", "type": "ptr", "meaning": "component table 0; table c's pointer at +8 c: rows {u64 entity, u32 record, u32 0} from entity % slots, then the records"},

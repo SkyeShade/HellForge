@@ -106,7 +106,7 @@ static const uint8_t kBadgeStub[21] = {
  * group (Reinforce, SOS, Resupply...; no loadout slot) starts from a table of 8 sets of 6 types (0x213F550), one per
  * mission kind, read only at 0x6AE35D (lea r14, [r15+table]; r15 the image base). At the added level it reads a copy
  * with the level's type in each set's first empty place (sets 1..7; set 0 is empty and unused). Uses and cooldown are
- * the type's own; any type is accepted (galactic war effects already grant vehicles this way). */
+ * the type's own; any type the player need not pay for is accepted (galactic war effects grant vehicles this way). */
 #define DIF_GRANTS 0x213F550u
 #define DIF_GRANT_SITE 0x6AE35Du
 #define DIF_GRANT_BACK 0x6AE364u
@@ -884,11 +884,50 @@ static uint32_t GrantSets(uint32_t sets[8][6])
     return added;
 }
 
+#include "paid_stratagems.h"
+
+static int PaidStratagem(uint32_t stable)
+{
+    for (uint32_t i = 0; i < PAID_STRATAGEM_COUNT; i++)
+        if (kPaidStratagems[i] == stable) return 1;
+    return 0;
+}
+
+/* Why the level may not grant this type, or NULL; *waiting while its row is not loaded. The mission group grants it
+ * whether the player owns it or not, so it is judged by its row's stable id, and a new type by its base's too. */
+static const char* GrantRefused(uintptr_t game, uint32_t type, int* waiting)
+{
+    *waiting = 0;
+    uint32_t base = type, own = 0;
+    if (type >= STR_VANILLA)
+    {
+        uint32_t i = 0;
+        while (i < g_stratagemCount && g_stratagems[i].type != type) i++;
+        if (i == g_stratagemCount) return "it is not a stratagem type of the game or of a mod";
+        base = g_stratagems[i].base;
+        own = g_stratagems[i].stable;
+    }
+    uintptr_t table = g_stratagemState == 1 && g_stratagemTable ? (uintptr_t)g_stratagemTable : game + STR_TABLE;
+    uint64_t row = 0;
+    uint32_t head[2];
+    if (SafeRead(table + (uintptr_t)base * 8, &row, 8) || row == 0) { *waiting = 1; return "the game has not loaded its stratagems yet"; }
+    if (SafeRead((uintptr_t)row, head, sizeof head) || head[0] != base) return "its stratagem row is not the reviewed one";
+    if (PaidStratagem(head[1]) || PaidStratagem(own)) return "it is a paid stratagem, which players would get without owning it";
+    return NULL;
+}
+
 /* The mission stratagem: the sets' copy (+0x100) the stub (+0) gives the added level. */
 static const char* InstallGrant(DifficultyInstall* d)
 {
     if (g_difficulty.grant == 0) return NULL;
     uintptr_t game = d->game;
+    int waiting;
+    const char* refused = GrantRefused(game, g_difficulty.grant, &waiting);
+    if (refused != NULL)
+    {
+        ApiLog(g_difficulty.mod, "difficulty %s: mission stratagem %u is not granted: %s", g_difficulty.name, g_difficulty.grant, refused);
+        return NULL;
+    }
     int32_t rel;
     uint8_t pin[7];
     uint8_t* grant = AllocateNearGame(game, 0x200); /* the stub (+0), the table copy (+0x100) */

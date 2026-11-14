@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace HellForge.Core.GameData;
@@ -38,6 +39,97 @@ public static class ShaderSplice
         }
         foreach (var (old, (id, count)) in ids) Rename(output, old, id, count * 2, "stage id");
         return output;
+    }
+
+    // A game resource's stages edited in place (data spec "edit"): each must be the signed container the spec pins, the
+    // bytes stay inside it past its chunk table, and it is signed again. Its stage id is kept, unlike a copy's: the edited
+    // stage is meant to take the game's place.
+    public static byte[] EditStages(byte[] gpu, IReadOnlyList<StageEdit> stages)
+    {
+        var output = gpu.ToArray();
+        foreach (var stage in stages)
+        {
+            var (size, chunks) = Read(gpu, stage.At, $"the data at 0x{stage.At:X}");
+            var container = gpu.AsSpan(stage.At, size);
+            if (!container.Slice(4, 16).SequenceEqual(stage.Digest) || !Digest(container).AsSpan().SequenceEqual(stage.Digest))
+                throw new InvalidDataException($"the stage at 0x{stage.At:X} is not the signed shader the spec was written for (another game build?).");
+            var table = Header + 4 * chunks.Count;
+            foreach (var (offset, bytes) in stage.Set)
+            {
+                if (offset < table || (long)offset + bytes.Length > size)
+                    throw new InvalidDataException($"the stage at 0x{stage.At:X} has {size} bytes, its chunks from 0x{table:X}: set 0x{offset:X} (+{bytes.Length}) is outside them.");
+                bytes.CopyTo(output, stage.At + offset);
+            }
+            Digest(output.AsSpan(stage.At, size)).CopyTo(output, stage.At + 4);
+        }
+        return output;
+    }
+
+    // The GPU part the edit was written for, when the spec pins it (data spec "edit" gpu).
+    public static byte[] Pinned(byte[] gpu, GpuPin? pin)
+    {
+        if (pin?.Size is { } size && gpu.Length != size)
+            throw new InvalidDataException($"the GPU part has {gpu.Length} bytes, not the {size} the spec pins (another game build?).");
+        if (pin?.Sha256 is { } sha && !SHA256.HashData(gpu).AsSpan().SequenceEqual(sha))
+            throw new InvalidDataException($"the GPU part's SHA-256 is {Convert.ToHexString(SHA256.HashData(gpu))}, not the {Convert.ToHexString(sha)} the spec pins (another game build?).");
+        return gpu;
+    }
+
+    // Bytes of a game resource's GPU part outside its shader stages (data spec "edit" bytes), such as the binding table that
+    // names a stage's textures. Each must find the game's own bytes: another game build or a wrong offset is refused. Bytes
+    // in a stage are refused too: its digest would no longer match and D3D would refuse it; "stages" signs again. So are
+    // a stage's id, after its container and in its program's record: the engine finds the stage by it.
+    public static byte[] EditBytes(byte[] gpu, IReadOnlyList<BytesEdit> edits)
+    {
+        if (edits.Count == 0) return gpu;
+        var stages = Stages(gpu);
+        var ids = StageIds(gpu, stages);
+        var output = gpu.ToArray();
+        foreach (var edit in edits)
+        {
+            Clear(gpu.Length, edit, stages, ids);
+            if (!gpu.AsSpan(edit.At, edit.Expect.Length).SequenceEqual(edit.Expect))
+                throw new InvalidDataException($"the bytes at 0x{edit.At:X} are {Convert.ToHexString(gpu, edit.At, edit.Expect.Length)}, not the expected {Convert.ToHexString(edit.Expect)} (another game build?).");
+            edit.Set.CopyTo(output, edit.At);
+        }
+        return output;
+    }
+
+    static void Clear(int length, BytesEdit edit, List<(int At, int Size)> stages, List<int> ids)
+    {
+        bool Meets(int at, int size) => edit.At < at + size && at < edit.At + edit.Set.Length;
+        if (edit.At < 0 || (long)edit.At + edit.Set.Length > length)
+            throw new InvalidDataException($"bytes at 0x{edit.At:X} (+{edit.Set.Length}) are outside the GPU part's {length} bytes.");
+        if (stages.FirstOrDefault(s => Meets(s.At, s.Size)) is { Size: > 0 } stage)
+            throw new InvalidDataException($"bytes at 0x{edit.At:X} (+{edit.Set.Length}) are inside the shader stage at 0x{stage.At:X}: edit it under stages.");
+        if (ids.FindIndex(at => Meets(at, 4)) is var k and >= 0)
+            throw new InvalidDataException($"bytes at 0x{edit.At:X} (+{edit.Set.Length}) touch the stage id at 0x{ids[k]:X}: an edit keeps the game's stage ids.");
+    }
+
+    // Every place a stage's id stands: the u32 after each container, and each other place its value stands (its program's
+    // record). A zero after a container is no id.
+    static List<int> StageIds(byte[] gpu, List<(int At, int Size)> stages)
+    {
+        var values = stages.Where(s => (long)s.At + s.Size + 4 <= gpu.Length).Select(s => BitConverter.ToUInt32(gpu, s.At + s.Size)).Where(v => v != 0).ToHashSet();
+        var at = new List<int>();
+        for (var i = 0; i + 4 <= gpu.Length; i++) if (values.Contains(BitConverter.ToUInt32(gpu, i))) at.Add(i);
+        return at;
+    }
+
+    // Every DXBC container in the part whose header reads.
+    static List<(int At, int Size)> Stages(byte[] gpu)
+    {
+        var stages = new List<(int At, int Size)>();
+        var magic = "DXBC"u8;
+        for (var at = gpu.AsSpan().IndexOf(magic); at >= 0;)
+        {
+            var size = 0;
+            try { size = Read(gpu, at, "").Size; } catch (InvalidDataException) { }
+            if (size > 0) stages.Add((at, size));
+            var next = gpu.AsSpan(at + (size > 0 ? size : 1)).IndexOf(magic);
+            at = next < 0 ? -1 : at + (size > 0 ? size : 1) + next;
+        }
+        return stages;
     }
 
     static byte[] Stage(byte[] gpu, int offset, byte[] compiled)

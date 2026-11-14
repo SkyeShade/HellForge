@@ -113,7 +113,18 @@ frame.
 `HF_DIFFICULTY_HEAVY_ARTILLERY` is under [Artillery](#artillery). The mission-end telemetry keeps 16 objectives (capped).
 
 `mission_stratagem` names a stratagem type every mission at the level grants every player. It goes in the mission group
-with Reinforce and Resupply: no loadout slot, and the type's own uses and cooldown. The header's descriptions of these
+with Reinforce and Resupply: no loadout slot, and the type's own uses and cooldown. The group grants it whether the
+player owns it or not, so the loader refuses a paid type (`GrantRefused` in `difficulty_missions.c`):
+
+- It reads the type's StratagemInfo row (+4, the stable id). A mod's type is checked by its own stable id and its base's.
+- The paid stable ids come from `data/paid-items.json` through `native/mod-loader/paid_stratagems.h`, which
+  `sdk-headers` generates and its check keeps current.
+- The level's install waits until the game has loaded that row. A refused type is logged, and the level grants none.
+
+The check runs in each player's loader. How a joiner's game handles a mission group the host sends (RPC 0xC953DB6D)
+is not traced, so a changed host's paid stratagem may still reach it.
+
+The header's descriptions of these
 flags and fields are in `native/mod-sdk/hellforge_mod.h` (`HfDifficulty`).
 
 ### Second primary
@@ -260,6 +271,39 @@ The minimap's arrays follow with 4 x their places:
 
 They grow because a 2 x map's proxies ran over the scatter into the terrain merge slots (G+0x8758A8). The block is then
 0x15A9280 bytes.
+
+### Capacity a mod asks for
+
+`generation_capacity` lets any mod ask for more places in five of the moved arrays: locations, minimap, mission stamps,
+places and place set. The layout is therefore worked out, not fixed (`GenerationLayoutOf` in `difficulty_block.c`). The
+regions keep their order, each starts where the one before ends, and with no request the result is the fixed layout
+above.
+
+Three things follow from a layout that moves:
+
+- **The objective list's table.** Its 60 displacements from the block's start move with the list. The one negated
+  displacement (0xF70F70, minus the list's start plus 4) moves the other way. The 13 displacements from the list's own
+  start stay.
+- **A self-check before any write.** `GenerationLayoutFailed` refuses the level when two regions overlap, when the
+  block's size is not the last region's end, or when a value to be written addresses another region.
+- **A guard on the mission stamps.** Their append (0xF8E935) takes no capacity. With a request, a stub at 0xF8E925
+  leaves out a stamp past the last place and counts it.
+
+Two more lists move only when a mod asks for more than the game's places: the important locations (G+0x8996B0, 256 x
+0x108, 129 instructions) and the linked locations (G+0x8AB6C0, 64 x 0x18, 7 instructions). They go after the clusters,
+and each keeps its place within 16 bytes. No instruction addresses a later element by a fixed offset, so the first
+element's references carry the whole list. The terrain step's own reader follows the moved list. Important locations
+stop at 1024, the size of the cities' flags.
+
+The route graph moves the same way, each list by itself: nodes (G+0x8C4E40, 975 x 0x98), edges (G+0x937348, 1621 x
+0x48) with their class bytes (G+0x11A1F98), and road points (G+0x9568E4, 9936 x 8). It has 182 instructions and 166
+capacities. A capacity is a store into a pass record, beside the pointer to its list's count. GenerateRoutes clears
+each list and sizes its hash tables by them. The limits are 2304 nodes, 3456 edges and 65520 points: a road entry names
+a point in 16 bits. A hash over the block still covers the first 9936 points only.
+
+A request makes the level need the moved block, even a level with no larger map or extra objectives. A level added
+while the game runs keeps the arrays it found. Locations stop at 65024 because the stamp index keeps a location's id in
+16 bits (0xF35054).
 
 Blocks are made with a world, after the loader installs this, and if one exists already, the move is skipped. Structured
 maps (map type 2, the mega cities, another generator) grow too. Their revoronoi, grid and vertex buckets are scaled the

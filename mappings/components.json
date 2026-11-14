@@ -504,16 +504,23 @@
         "fire_ability": {
           "offset": 940,
           "type": "u32",
-          "meaning": "an ability the weapon runs when it fires (0: none)",
-          "verified": false,
-          "source": "Filediver weapon_data FireAbility +940 (2026-10-20)"
+          "meaning": "the ability every shot starts on the weapon: its firing motion, a bolt, pump or lever cycle (R-36 Eruptor 2660, SG-8 Punisher 2661), the VG-70 Variable's stagger (2692); 0 none",
+          "verified": true,
+          "source": "Filediver weapon_data FireAbility +940; game.dll 0x7533C0 (run on every shot) passes it to StartAbility 0x7CAF40 (research editor-requests/engine-a)"
         },
         "fire_ability_2": {
           "offset": 944,
           "type": "u32",
-          "meaning": "a second fire-time ability (the VG-70 Variable: 50, a lead for its knock-down when fired standing; 0 on the AMR and Autocannon)",
-          "verified": false,
-          "source": "Filediver weapon_data, the field after FireAbility; VG-70 vs APW-1/AC-8 records (2026-10-20)"
+          "meaning": "fire_ability's stand-in in fire mode 7, when the shot asks for it (the VG-70 Variable and MGX-42 Bullet Storm: 50; 0 elsewhere)",
+          "verified": true,
+          "source": "Filediver weapon_data, the field after FireAbility; game.dll 0x7533C0 takes it in fire mode 7 (0x756730) (research editor-requests/engine-a)"
+        },
+        "fire_ability_function": {
+          "offset": 948,
+          "type": "u32",
+          "meaning": "fire_ability's stand-in while weapon function 8 is on (the W.A.S.P.'s 2679)",
+          "verified": true,
+          "source": "game.dll 0x7533C0 takes it while 0x1787500(weapon, 8) is 1 (research editor-requests/engine-a)"
         }
       },
       "groups": {
@@ -1158,6 +1165,13 @@
           "verified": false,
           "source": "stats-schema"
         },
+        "lifetime_variance": {
+          "offset": 56,
+          "type": "f32",
+          "meaning": "how much its lifetime varies, as a share of it: each round lives lifetime +- (this x lifetime), at random",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile: flight +0x34 = lifetime + lifetime x (+0x38) x (2r - 1)"
+        },
         "damage": {
           "offset": 60,
           "type": "u32",
@@ -1208,11 +1222,58 @@
           "appliesVerified": true,
           "appliesSource": "read when the shot expires",
           "ref": "explosion"
+        },
+        "arming_distance": {
+          "offset": 160,
+          "type": "f32",
+          "meaning": "how far (m) a round with an impact payload flies before it arms: one that hits sooner bounces instead of going off (the GL-21 7, the GP-31 and GL-52 4)",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile copies +0xA0 into the slot (system +0x3B044); the projectile update 0x13AC1F0 compares the distance flown at the hit with it and bounces the round while it is short"
+        },
+        "ricochets": {
+          "offset": 176,
+          "type": "u32",
+          "meaning": "whether its rounds bounce off what they hit: 0 never; the update bounces a round only while this is not 0 and counts its bounces against it (grenade launchers and most bullets 1, lasers 0)",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile copies +0xB0 / +0xB4 / +0xB8 into the slot record +0x9C / +0xA0 / +0xA4; the projectile update 0x13AC1F0 reads them at its bounce"
+        },
+        "ricochet_angle": {
+          "offset": 180,
+          "type": "f32",
+          "meaning": "how flat a hit must be to bounce, in degrees off straight on (0: any hit, 360: never); a round still unarmed bounces anyway",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile copies +0xB0 / +0xB4 / +0xB8 into the slot record +0x9C / +0xA0 / +0xA4; the projectile update 0x13AC1F0 reads them at its bounce"
+        },
+        "ricochet_min_speed": {
+          "offset": 184,
+          "type": "f32",
+          "meaning": "the speed (m/s) a round must be faster than to bounce",
+          "verified": false,
+          "source": "game.dll 0x13A9830 SpawnProjectile copies +0xB0 / +0xB4 / +0xB8 into the slot record +0x9C / +0xA0 / +0xA4; the projectile update 0x13AC1F0 reads them at its bounce"
         }
       },
       "applies": "now",
       "appliesVerified": false,
       "appliesSource": "rows are looked up by type when a projectile spawns"
+    },
+    "StratagemCode": {
+      "component": "StratagemCode",
+      "table": true,
+      "stride": 4,
+      "layout": "25480438",
+      "meaning": "a vanilla stratagem's input code (by type), kept by HellForge: the row's code points at an array of HellForge's, which follows this packed value (native/mod-loader/stratagem_codes.c)",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "the input matcher (game.dll 0x66D8C0) and the HUD (0xA106C0) read the row's code and length each time",
+      "fields": {
+        "packed": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "its directions, one base-5 digit each, the first lowest (1 up, 2 right, 3 down, 4 left; Up, Right = 1 + 2*5 = 11); 1 to 10 directions",
+          "verified": false,
+          "source": "the arcade minigame's 10 arrows (0x17EFB4F), the matcher's 12-direction stack buffer (0x66DF7E, 0x66E161) and the 16-press input (0xA903AF); native/mod-loader/stratagem_codes.c"
+        }
+      }
     },
     "StratagemSettings": {
       "component": "StratagemDefinition",
@@ -5294,6 +5355,14 @@
           "source": "stats-schema throwable.explosion",
           "ref": "explosion"
         },
+        "impact_explosion": {
+          "offset": 40,
+          "type": "u32",
+          "meaning": "the explosion where it hits something (0: none; the Solo Silo missile 420)",
+          "verified": false,
+          "source": "the type library (ExplosionType, as +0x24); HD2Runtime 0.40.1 research/silo-payload-F5FEE03DCFDB.json (explosive impact 420)",
+          "ref": "explosion"
+        },
         "armed_ability": {
           "offset": 328,
           "type": "u32",
@@ -5807,6 +5876,13 @@
           "meaning": "Starting rounds (rounds)",
           "verified": false,
           "source": "stats-schema rounds.starting_rounds"
+        },
+        "rounds_per_reload": {
+          "offset": 92,
+          "type": "u32",
+          "meaning": "Rounds each reload step loads into the feed and takes from the spare rounds (1: one by one; the AC-8 Autocannon's clip 5)",
+          "verified": true,
+          "source": "game.dll 0x7768F0 (ReloadMagazine) adds it to the loaded rounds and takes it from the deposit; research editor-requests"
         }
       },
       "applies": "respawn",

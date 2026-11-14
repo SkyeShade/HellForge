@@ -41,6 +41,7 @@ The modding guide, in reading order:
 6. [Content](modding/content.md): changing and adding weapons, projectiles, stratagems, entities, behaviours, abilities
    and difficulties.
    [New enemies](modding/enemies.md): enemies with roster rows and squads of their own, and replacement rules.
+   [Patterns](modding/patterns.md): patterns of a mod's own for weapons, vehicles, the hellpod and the Pelican.
    [Warbonds](modding/warbonds.md): warbonds of a mod's own, selling game items and its weapons and stratagems.
 7. [Logic at run time](modding/runtime.md): events, actions, live edits and the game thread.
 8. [Hooks and game memory](modding/hooks.md): hooking game functions and reading and patching memory where the SDK has
@@ -57,6 +58,8 @@ Reference and related pages:
   files it reads and writes.
 - [Mods that change while the game runs](modding/live.md): for code mod authors; what HellForge does when a mod is
   switched on or off during a session, and how a mod takes part.
+- [Screens over the game](modding/overlay.md): for code mod authors; the SDK 17 screens, what each drawing call does,
+  the input, the backdrop and the overlay host.
 - [Building a lobby browser](lobby-browser.md): for front-end developers drawing their own lobby browser on the ship's
   terminal; the SDK 16 calls, the terminal's visit, what each lobby says and the rules a browser keeps.
 
@@ -71,6 +74,10 @@ Reference and related pages:
   which game tables move or grow, and what each part of the level changes.
 - [Stats, live editing and events](internals-live.md): the stats pass at load, live editing, the in-game editor and live
   pipe, event sources and native edits.
+- [Performance fixes in the engine](performance.md): what the mod loader changes so the game and HellForge do less
+  work, and how to turn a fix off.
+- [Performance fixes in level generation](performance-loading.md): the fixes that make the game's level generation
+  take less time or memory.
 - [Crash guards in the renderer](crash-guards.md): the two crashes of the game's renderer that HellForge guards, and why
   each guard is safe.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in
@@ -93,8 +100,8 @@ Reference and related pages:
   the Steam Linux Runtime and what the wrapper sets up.
 - [The Linux sandbox](linux-sandbox.md): the sandbox probe, how `hf-sandbox` runs the game in its own domain, the
   self-test and the design claims still open.
-- [Account sync on Linux](linux-account-sync.md): what Sync Inventory changes on a Linux PC (hosts file, root relay, the
-  CA in the game's prefix) and how each change is checked and undone.
+- [Account sync on Linux](linux-account-sync.md): what Sync Inventory changes on a Linux PC (hosts file, root relay,
+  snapshot signer, the CA in the game's prefix) and how each change is checked and undone.
 - [Testing HellForge on Linux](linux-testing.md): for Linux testers; what is still untested, the sandbox probe and what
   to report.
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs
@@ -127,7 +134,7 @@ On Linux, the graphical installer and native setup wizard do this instead; see
      sign-in is kept, and every file is checked against Steam's hashes. [steam-download.md](steam-download.md) explains
      how.
    - When you choose Use the Steam app, when Steam does not allow the download (a game borrowed through Steam Family
-     Sharing, for example), when SteamCMD cannot be set up, or on Linux, the Steam app downloads the supported build on
+     Sharing, for example), or when SteamCMD cannot be set up, the Steam app downloads the supported build on
      your account. The wizard shows one
      `download_depot 553850 <depot> <manifest>` command per depot (the manifests pinned in
      `supported-build.json`) to paste into the Steam console (`steam://open/console`), watches

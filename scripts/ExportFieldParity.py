@@ -20,6 +20,16 @@ them:
                 each zone its page shows, the zone's own share (+0x144) and whether explosions use it (+0x143)
                 (game.dll 0x129D180: a zone with the flag uses its own share, else the default zone's; an unset share,
                 FLT_MAX, falls back to the default, and an unset default to 1, full damage)
+  weapon rows   rows the like weapons have, on every weapon whose record has the byte (weapon_rows):
+                reload       the reload duration override (WeaponReload +56) of a weapon with a reload ability
+                feeds        rounds per reload of a weapon loading round by round (WeaponRounds +92)
+                suppressed   the Suppressed flag (WeaponData +112) of the support weapons
+                fire rate    the rate of fire (ProjectileWeapon +8, and its slots +4 and +12 where set)
+                reticle      the third-person reticle (WeaponData +400) where the weapon has one
+  firing        the ability a hand-held weapon starts on every shot (WeaponData +940; +944 in fire mode 7, +948 with weapon
+                function 8 on): its firing motion, the bolt, pump or lever cycle and the Variable's stagger (firing_rows)
+  durable       a vehicle's durable damage share, the default zone's (+268) and each zone's (+0xCC), as entity pages
+                show them
 """
 import json
 import struct
@@ -59,6 +69,114 @@ def entry(key, f, **over):
         e['options'] = f['options']
     e.update(over)
     return e
+
+
+RELOAD_NOTE = 'Seconds the reload takes; 0 keeps the length of its reload animation (game.dll 0x774B60 scales the animation to it)'
+FEED_NOTE = 'Rounds each reload step loads into the feed and takes from the spare rounds (game.dll 0x7768F0); 1 loads them one by one'
+SUPPRESSED_NOTE = "The flag the primaries and secondaries show as Suppressed, on this weapon's own handling record"
+NEW_RETICLE = {11: 'Laser cannon (11): LAS-98 Laser Cannon'}
+HANDHELD = ('primary', 'secondary', 'support')
+
+
+def weapon_rows(weapons, owner_of, tables, add):
+    """Rows the like weapons show, on every weapon whose own record has the byte (the module docstring's weapon rows)."""
+    def raw(component, record):
+        return tables.component(component).raw(record)
+    mg43 = weapons['MG-43 Machine Gun']['fields']
+    liberator = weapons['AR-23 Liberator']['fields']
+    amr = weapons['APW-1 Anti-Materiel Rifle']['fields']
+    kit = json.loads((ROOT / 'mappings/attachments.json').read_text(encoding='utf-8'))
+    # weapons whose attachments set the reload duration (their own record's is overwritten when they are assembled)
+    timed = {name for name, slots in kit['weapons'].items() for slot in slots.values() if isinstance(slot, dict)
+             for a in slot.get('attachments', []) if any(f['id'] == 'attachment.reload_duration' for f in kit['attachments'].get(a, {}).get('fields', []))}
+    fired = ('ProjectileWeaponComponentData', 'BeamWeaponComponentData', 'SprayWeaponComponentData', 'ArcWeaponComponentData')
+    reticle = dict(map(tuple, amr['weapon.third_person_reticle']['options']))
+    reticle.update(NEW_RETICLE)
+    for name, t in weapons.items():
+        fields = t['fields']
+        resource, record = owner_of(name, 'WeaponReloadComponentData')
+        if record is not None and name not in timed and struct.unpack_from('<I', raw('WeaponReloadComponentData', record), 4)[0] != 0:
+            add('weapons', name, entry('reload.duration', mg43['reload.duration'], resource=resource, record=record, note=RELOAD_NOTE))
+        resource, record = owner_of(name, 'WeaponRoundsComponentData')
+        if record is not None:
+            add('weapons', name, {'key': 'rounds.rounds_per_reload', 'label': 'Rounds per reload', 'kind': 'component',
+                                  'component': 'WeaponRoundsComponentData', 'resource': resource, 'record': record, 'offset': 92,
+                                  'storage': 'u32', 'min': 1, 'max': 255, 'unit': 'rounds', 'shared': False, 'note': FEED_NOTE})
+        resource, record = owner_of(name, 'WeaponDataComponentData')
+        if record is not None and owner_of(name, 'AbilityWeaponComponentData')[1] is None:
+            data = raw('WeaponDataComponentData', record)
+            if t.get('slot') == 'support' and any(owner_of(name, c)[1] is not None for c in fired):
+                add('weapons', name, entry('weapon.suppressed', liberator['weapon.suppressed'], resource=resource, record=record,
+                                           note=SUPPRESSED_NOTE))
+            style = struct.unpack_from('<I', data, 400)[0]
+            if style != 0 and t.get('slot') in HANDHELD and 'weapon.third_person_reticle' not in t.get('blocked', {}):
+                if style not in reticle:
+                    raise SystemExit(f'{name}: reticle style {style} has no label')
+                add('weapons', name, entry('weapon.third_person_reticle', amr['weapon.third_person_reticle'], resource=resource, record=record,
+                                           options=[[k, v] for k, v in sorted(reticle.items())]))
+        resource, record = owner_of(name, 'ProjectileWeaponComponentData')
+        if record is not None and t.get('slot') in HANDHELD:
+            slots = struct.unpack_from('<3f', raw('ProjectileWeaponComponentData', record), 4)
+            if slots[1] > 0 and 'weapon.fire_rate' not in fields:
+                for key, value in (('fire_rate.modes.x', slots[0]), ('weapon.fire_rate', slots[1]), ('fire_rate.modes.z', slots[2])):
+                    if value > 0:
+                        add('weapons', name, entry(key, amr[key], resource=resource, record=record))
+
+
+# The firing ability (game.dll 0x7533C0, run on every shot: the spray fire 0x67F3D0 and the projectile fire call it): it
+# starts WeaponData +940 on the weapon through StartAbility (0x7CAF40); +948 instead while weapon function 8 is on
+# (0x1787500), else +944 in fire mode 7 (0x756730) when the shot asks for it. 0 starts none.
+FIRING = (('weapon.fire_ability', 'Firing ability', 940,
+           'The ability every shot starts: the firing motion, a bolt, pump or lever cycle (R-36 Eruptor 2660, SG-8 Punisher 2661), '
+           'the VG-70 Variable\'s stagger (2692). Another weapon\'s gives its motion; 0 none'),
+          ('weapon.fire_ability_2', 'Firing ability (fire mode 7)', 944, 'Used instead in fire mode 7 (the Variable\'s and the Bullet Storm\'s 50)'),
+          ('weapon.fire_ability_function', 'Firing ability (weapon function on)', 948,
+           'Used instead while its weapon function 8 is on (the W.A.S.P.\'s, the Warrant\'s)'))
+
+
+def firing_rows(weapons, owner_of, tables, add):
+    """Each hand-held weapon's firing abilities, named by the weapons that use them (the module docstring's firing)."""
+    found = {}
+    for name, t in weapons.items():
+        resource, record = owner_of(name, 'WeaponDataComponentData')
+        if record is None or t.get('slot') not in HANDHELD or owner_of(name, 'AbilityWeaponComponentData')[1] is not None:
+            continue
+        found[name] = (resource, record, struct.unpack_from('<3I', tables.component('WeaponDataComponentData').raw(record), 940))
+    users = {}
+    for name, (_, _, values) in sorted(found.items()):
+        for v in values:
+            if v:
+                users.setdefault(v, []).append(name)
+    options = [[0, 'None']] + [[v, '%d: %s' % (v, ', '.join(n[:2]) + (' +%d more' % (len(n) - 2) if len(n) > 2 else ''))]
+                               for v, n in sorted(users.items())]
+    for name, (resource, record, values) in sorted(found.items()):
+        for (key, label, offset, note), v in zip(FIRING, values):
+            if v:
+                add('weapons', name, {'key': key, 'label': label, 'kind': 'component', 'component': 'WeaponDataComponentData',
+                                      'resource': resource, 'record': record, 'offset': offset, 'storage': 'u32', 'min': None, 'max': None,
+                                      'unit': None, 'shared': False, 'options': options, 'note': note})
+
+
+DURABLE_NOTE = 'Share of durable damage taken (1 = full; 0 = none)'
+
+
+def durable_rows(vehicles, tables, add):
+    """A vehicle's durable damage share: the default zone's and each zone's its page shows (entity pages' Durable resistance)."""
+    for name, v in vehicles.items():
+        health = next(f for f in v['fields'] if f['key'] == 'entity.health')
+        common = {'kind': 'component', 'component': 'HealthComponentData', 'resource': health['resource'], 'record': health['record'],
+                  'storage': 'f32', 'min': 0, 'max': 10, 'unit': 'ratio', 'shared': False, 'label': 'Durable resistance', 'note': DURABLE_NOTE}
+        add('vehicles', name, dict(common, key='entity.durable_resistance', offset=268, section='Health & Armor'))
+        sections = {}
+        for f in v['fields']:
+            if f['key'].startswith('zone_'):
+                sections[int(f['key'][5:f['key'].index('.')])] = f['section']
+        raw = tables.component('HealthComponentData').raw(health['record'])
+        for z in sorted(sections):
+            base = ZONE_BASE + z * ZONE_STRIDE
+            if struct.unpack_from('<I', raw, base + 96)[0] == 0:
+                continue  # an unpopulated zone slot
+            add('vehicles', name, dict(common, key=f'zone_{z}.durable_resistance', offset=base + 204, section=sections[z]))
 
 
 def main(dev6, out):
@@ -221,6 +339,9 @@ def main(dev6, out):
                 'component': 'ProjectileWeaponComponentData', 'resource': sentry, 'record': record, 'offset': 0, 'storage': 'u32',
                 'min': None, 'max': None, 'unit': None, 'shared': False, 'ref': 'projectile'})
 
+    weapon_rows(weapons, owner_of, tables, add)
+    firing_rows(weapons, owner_of, tables, add)
+
     # explosions: every target with a health record
     def explosion_fields(category, name, resource, record, zones, section=None, zone_sections=None):
         raw = tables.component('HealthComponentData').raw(record)
@@ -261,6 +382,8 @@ def main(dev6, out):
                 sections[int(f['key'][5:f['key'].index('.')])] = f['section']
         explosion_fields('vehicles', name, health['resource'], health['record'], [(z, f'zone_{z}') for z in sorted(sections)],
                          section='Health & Armor', zone_sections=sections)
+
+    durable_rows(vehicles, tables, add)
 
     count = sum(len(fs) for c in added.values() for fs in c.values())
     data = {'format': 1, 'build': '25480438',

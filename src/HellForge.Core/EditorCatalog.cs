@@ -809,6 +809,7 @@ public static class EditorCatalog
         if (f.Options.ValueKind == JsonValueKind.Array)
             json["values"] = new JsonArray(f.Choices.Select(c => (JsonNode)new JsonObject { ["value"] = c.Value, ["label"] = c.Label }).ToArray());
         if (row.Key is "shield.blocks_grenades" or "shield.blocks_enemies") json["toggle"] = true; // a tick box, not a list of two
+        if (f.Kind == "StratagemCode") json["format"] = "code"; // shown and typed as arrows
         // References (HD2R Editor's payload swaps): what the row picks; a status slot's number (its strength's too) and
         // the slot group; the rows a projectile swap locks (the weapon's own round), named by the swap's key.
         var pick = Pick(f);
@@ -839,8 +840,9 @@ public static class EditorCatalog
     {
         var f = row.Field;
         var applies = LiveApplies.Of(f);
-        var type = f.LiveId ?? (f.Kind == "StratagemDefinition" && StratagemTypes.Value.TryGetValue(row.Part.Target, out var t) ? t : (ulong?)null);
-        var live = applies != null && (f.Kind != "StratagemDefinition" || type != null);
+        var stratagem = f.Kind is "StratagemDefinition" or "StratagemCode"; // a stratagem row: live by its type
+        var type = f.LiveId ?? (stratagem && StratagemTypes.Value.TryGetValue(row.Part.Target, out var t) ? t : (ulong?)null);
+        var live = applies != null && (!stratagem || type != null);
         var also = StatsCatalog.AlsoChanges(row, item.Nav is "projectiles" or "damage");
         var json = new JsonObject
         {

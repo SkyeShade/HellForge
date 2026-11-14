@@ -12,7 +12,8 @@ namespace editorapp
  * Importing stages every field HellForge has a row for (APPLY writes them, DISCARD drops them): projectile swaps
  * first, then the rest, leaving out a weapon's own round while the preset swaps it (as HD2R Editor does). Keys with no
  * row yet (enemies, vehicle zones...) are skipped and counted. Exporting writes the changes saved in Local Stats (and
- * the armor perks the editor keeps) as a preset HD2R Editor reads. */
+ * the armor perks the editor keeps) as a preset HD2R Editor reads; SAVE OVER writes them into a preset already there
+ * (its name kept), after a second click, as HD2R Editor's SAVE OVER asked "OVERWRITE PRESET?". */
 std::vector<PresetFile> g_presets;
 int g_preset;
 static struct { bool shown = false; std::string name, text; ImU32 colour = TEXT; } g_presetResult;
@@ -432,18 +433,18 @@ static hfjson::Value FieldList(const std::map<std::string, std::pair<const Row*,
     return list;
 }
 
-static void ExportPreset()
+/* The saved changes written as a preset named name at path, then the list read again with it selected: how many
+ * fields, or -1 (toasted) when there is nothing to write or it could not be written. */
+static int WritePreset(const std::wstring& path, const std::string& name)
 {
     std::map<std::string, std::pair<const Row*, double>> fields;
     std::map<std::string, hfjson::Value> structured; /* flags, named values, slot lists: from every slot's row */
     CollectFields(fields, structured);
-    if (fields.empty()) { Toast("Nothing to export: no change is saved yet", PENDING); return; }
+    if (fields.empty()) { Toast("Nothing to save: no change is saved yet", PENDING); return -1; }
     SYSTEMTIME now;
     GetSystemTime(&now);
-    char stamp[32], created[32];
-    snprintf(stamp, sizeof stamp, "%04d-%02d-%02d %02d%02d%02d", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
+    char created[32];
     snprintf(created, sizeof created, "%04d-%02d-%02dT%02d:%02d:%02dZ", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
-    std::string name = std::string("HellForge ") + stamp;
     hfjson::Value root;
     root.kind = hfjson::Value::Object;
     int written = 0;
@@ -456,12 +457,43 @@ static void ExportPreset()
     root.members.emplace_back("created", hfjson::Value::MakeString(created));
     root.members.emplace_back("fields", list);
     CreateDirectoryW(PresetWriteFolder().c_str(), nullptr);
-    std::wstring path = PresetWriteFolder() + L"\\" + hfjson::Wide(name) + L".hd2rpreset.json";
-    if (!hfjson::WriteAtomically(path, hfjson::Write(root))) { Toast("The preset could not be written", ERROR_); return; }
+    if (!hfjson::WriteAtomically(path, hfjson::Write(root))) { Toast("The preset could not be written", ERROR_); return -1; }
     ScanPresets();
     for (int i = 0; i < (int)g_presets.size(); i++) if (g_presets[i].path == path) g_preset = i;
     Sound(sounds::APPLY);
-    Toast(std::to_string(written) + " saved change" + (written == 1 ? "" : "s") + " exported as " + name, OK);
+    return written;
+}
+
+static std::string Changes(int n) { return std::to_string(n) + " saved change" + (n == 1 ? "" : "s"); }
+
+static void ExportPreset()
+{
+    SYSTEMTIME now;
+    GetSystemTime(&now);
+    char stamp[32];
+    snprintf(stamp, sizeof stamp, "%04d-%02d-%02d %02d%02d%02d", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
+    std::string name = std::string("HellForge ") + stamp;
+    int written = WritePreset(PresetWriteFolder() + L"\\" + hfjson::Wide(name) + L".hd2rpreset.json", name);
+    if (written >= 0) Toast(Changes(written) + " exported as " + name, OK);
+}
+
+/* SAVE OVER: the first click arms the row's button for a few seconds, the second writes the saved changes into that
+ * preset's file under its own name (a sandboxed session writes its copy, which the list then shows, as EXPORT does). */
+static struct { int row = -1; float until = 0; } g_saveOver;
+
+static void SaveOverPreset(int i)
+{
+    const PresetFile& p = g_presets[i];
+    if (g_saveOver.row != i || g_time > g_saveOver.until)
+    {
+        g_saveOver = {i, g_time + 4.0f};
+        Sound(sounds::CLICK);
+        return;
+    }
+    g_saveOver.row = -1;
+    std::string name = p.name.substr(0, 40);
+    int written = WritePreset(PresetWriteFolder() + L"\\" + hfjson::Wide(p.file), name);
+    if (written >= 0) Toast(Changes(written) + " saved over " + name, OK);
 }
 
 static void OpenPresetFolder()
@@ -481,7 +513,7 @@ void DrawPresets(float y0, float h)
     float W = PANEL_W;
     g_cv.Rect(0, y0, W, h, PANEL, 1);
     g_cv.Text("PRESETS", 20, y0 + 24, T(20, TEXT, ui::TITLE));
-    g_cv.Text("HD2R Editor presets (.hd2rpreset.json) in the editor's presets folder. IMPORT stages their values for APPLY.",
+    g_cv.Text("HD2R Editor presets (.hd2rpreset.json). IMPORT stages one for APPLY; SAVE OVER replaces it with your changes.",
         20, y0 + 47, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, W - 520));
     float bx = W - 20;
     bx -= 150; if (Button("EXPORT", {bx, y0 + 16, 150, 34}, NORMAL, ui::Id("presetexport"))) ExportPreset();
@@ -496,8 +528,8 @@ void DrawPresets(float y0, float h)
     g_cv.Rect(0, hy, W, 22, HEADER, 2);
     g_cv.Text("PRESET", 20, hy + 11, T(SZ_TINY, FAINT, ui::TITLE));
     g_cv.Text("FILE", 420, hy + 11, T(SZ_TINY, FAINT, ui::TITLE));
-    g_cv.Text("FIELDS", W - 330, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::RIGHT));
-    g_cv.Text("MADE WITH", W - 140, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::RIGHT));
+    g_cv.Text("FIELDS", W - 452, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::RIGHT));
+    g_cv.Text("MADE WITH", W - 262, hy + 11, T(SZ_TINY, FAINT, ui::TITLE, ui::RIGHT));
     if (g_presets.empty())
         g_cv.Text("No presets yet. OPEN FOLDER and put .hd2rpreset.json files there, or EXPORT your saved changes.", 20, hy + 44, T(SZ_SMALL, FAINT));
     ListOpts o;
@@ -510,16 +542,20 @@ void DrawPresets(float y0, float h)
         else if (hovered) g_cv.Rect(x + 8, y + 2, lw - 16, rh - 4, HOVER, 2);
         float cy = y + rh / 2;
         g_cv.Text(p.error.empty() ? p.name : p.file, x + 20, cy, T(SZ_LABEL, p.error.empty() ? (selected ? TEXT : DIM) : FAINT, ui::BODY, ui::LEFT, 380));
-        g_cv.Text(p.error.empty() ? p.file : p.error, x + 420, cy, T(SZ_SMALL, p.error.empty() ? FAINT : ERROR_, ui::BODY, ui::LEFT, lw - 420 - 480));
+        g_cv.Text(p.error.empty() ? p.file : p.error, x + 420, cy, T(SZ_SMALL, p.error.empty() ? FAINT : ERROR_, ui::BODY, ui::LEFT, lw - 420 - 610));
         if (p.error.empty())
         {
-            g_cv.Text(std::to_string(p.fields), x + lw - 330, cy, T(SZ_SMALL, DIM, ui::BODY, ui::RIGHT, 80));
-            g_cv.Text(p.editor.empty() ? "?" : p.editor + (p.runtime.empty() ? "" : "  (" + p.runtime + ")"), x + lw - 140, cy, T(SZ_TINY, FAINT, ui::BODY, ui::RIGHT, 170));
+            g_cv.Text(std::to_string(p.fields), x + lw - 452, cy, T(SZ_SMALL, DIM, ui::BODY, ui::RIGHT, 80));
+            g_cv.Text(p.editor.empty() ? "?" : p.editor + (p.runtime.empty() ? "" : "  (" + p.runtime + ")"), x + lw - 262, cy, T(SZ_TINY, FAINT, ui::BODY, ui::RIGHT, 170));
         }
     };
     o.after = [&](int i, float x, float y, float lw, float rh) {
-        if (g_presets[i].error.empty() && Button("IMPORT", {x + lw - 116, y + 4, 100, rh - 8}, PRIMARY, ui::Id("presetimport", (uint64_t)i)))
+        if (!g_presets[i].error.empty()) return;
+        if (Button("IMPORT", {x + lw - 116, y + 4, 100, rh - 8}, PRIMARY, ui::Id("presetimport", (uint64_t)i)))
         { g_preset = i; ImportPreset(g_presets[i]); }
+        bool armed = g_saveOver.row == i && g_time <= g_saveOver.until;
+        if (Button(armed ? "CONFIRM?" : "SAVE OVER", {x + lw - 246, y + 4, 120, rh - 8}, armed ? DANGER : NORMAL, ui::Id("presetover", (uint64_t)i)))
+        { g_preset = i; SaveOverPreset(i); }
     };
     List(o);
 }

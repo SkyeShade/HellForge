@@ -64,6 +64,7 @@ struct Row
     /* a field with named values only (a flag's No / Yes, an enum, a trait or fire mode slot): picked from its options */
     bool Valued() const { return choice.empty() && !options.empty(); }
     bool toggle = false;                      /* a flag drawn as a tick box: pressing it flips the value, with no list */
+    bool code = false;                        /* a stratagem's input code: shown and typed as arrows (app_values.cpp) */
     bool Whole() const;
 };
 

@@ -1,0 +1,130 @@
+using HellForge.Core;
+
+// A session that stops before its run folder exists: the reason the launcher and the CLI show comes from the logs
+// written for that start, never from an older one.
+static class EarlySessionFailureTests
+{
+    public static void Register(Action<string, Action> test, Action<bool, string> check, string root)
+    {
+        test("An early session failure shows the session runner's own reason, and only the one written for this start", () =>
+        {
+            var logs = Directory.CreateDirectory(Path.Combine(root, "early-failure", "logs")).FullName;
+            var log = Path.Combine(logs, EarlySessionFailure.RunnerLog);
+            var started = DateTime.UtcNow;
+            check(EarlySessionFailure.Reason(logs, started) == null, "A missing log gave a reason.");
+
+            // As HellForge.Session writes it: the local time, a space, the scrubbed message.
+            File.WriteAllText(log, "2026-11-09 18:02:11 Not a HellForge installation: C:\\old\n" +
+                "2026-11-09 19:40:03 " + GameCatalog.SyncFirst + "\n");
+            check(EarlySessionFailure.Reason(logs, started) == GameCatalog.SyncFirst,
+                "The newest entry was not shown without its time: " + EarlySessionFailure.Reason(logs, started));
+
+            // The same file, last written before this start: its reason belongs to an earlier one.
+            File.SetLastWriteTimeUtc(log, started.AddMinutes(-5));
+            check(EarlySessionFailure.Reason(logs, started) == null, "An older start's reason was shown for this one.");
+            // A card that keeps times to two seconds may date the write just before the start.
+            File.SetLastWriteTimeUtc(log, started.AddSeconds(-1.5));
+            check(EarlySessionFailure.Reason(logs, started) == GameCatalog.SyncFirst, "A two-second file time hid the reason.");
+
+            File.WriteAllText(log, "2026-11-09 19:40:03 The game copy is incomplete:\r\n  data/game is missing\r\n\r\n");
+            check(EarlySessionFailure.Reason(logs, started) == "The game copy is incomplete:   data/game is missing",
+                "A reason with line breaks was cut to its last line: " + EarlySessionFailure.Reason(logs, started));
+            File.WriteAllText(log, "a line without a time\n");
+            check(EarlySessionFailure.Reason(logs, started) == "a line without a time", "A line without a time was dropped.");
+            File.WriteAllText(log, "\n  \n");
+            check(EarlySessionFailure.Reason(logs, started) == null, "An empty log gave a reason.");
+        });
+
+        test("On Linux the wrapper's reason stands in when the session runner never ran", () =>
+        {
+            var logs = Directory.CreateDirectory(Path.Combine(root, "early-failure-wrapper", "logs")).FullName;
+            var log = Path.Combine(logs, EarlySessionFailure.LinuxWrapperLog);
+            var started = DateTime.UtcNow;
+            string? reason() => EarlySessionFailure.WrapperReason(logs, started);
+            check(reason() == null, "A missing wrapper log gave a reason.");
+            // The wrapper's exit trap writes after the reason, so the log never ends on it.
+            const string start = "HellForge: /x with /p/proton (prefix /c)\nSteam compatibility app ID: 553850\n";
+            const string bridge = "Steam's local ports could not be bridged: is Steam running and signed in?";
+            File.WriteAllText(log, start + bridge + "\nHellForge wrapper exiting with code 1.\n");
+            check(reason() == bridge, "The wrapper's failure line was not the reason: " + reason());
+            const string appArmor = "This system only lets allowed programs make the network namespace HellForge runs " +
+                "in. Run this once, then start HellForge again:";
+            File.WriteAllText(log, start + appArmor + "\n  sudo bash /x/app/linux/allow-namespace.sh   (docs/linux.md)\n");
+            check(reason() == appArmor + " sudo bash /x/app/linux/allow-namespace.sh   (docs/linux.md)",
+                "A failure line ending in a colon lost its command: " + reason());
+            // With co-op relays on and no pasta, the wrapper warns in a failure's words and goes on to the real stop.
+            const string warning = "Warning: HELLFORGE_STEAM_UDP=1 needs these programs, which were not found: pasta. " +
+                "This session plays without co-op over Steam relays: lobbies are found, but none can be joined.\n" +
+                "Install them with: sudo dnf install passt python3\n";
+            File.WriteAllText(log, start + warning + bridge + "\nHellForge wrapper exiting with code 1.\n");
+            check(reason() == bridge, "A warning the wrapper went on from was the reason: " + reason());
+            File.WriteAllText(log, start + warning + "wine: could not load kernel32.dll\nHellForge wrapper exiting with code 53.\n");
+            check(reason()?.EndsWith("wrapper stopped: wine: could not load kernel32.dll", StringComparison.Ordinal) == true,
+                "A warning alone was the reason: " + reason());
+            File.WriteAllText(log, "HellForge on Linux needs these programs, which were not found: ip unshare pgrep flock\n" +
+                "  ip\n  unshare\n  pgrep\n  flock\nInstall them with: sudo dnf install iproute util-linux procps-ng\n");
+            check(reason() == "HellForge on Linux needs these programs, which were not found: ip unshare pgrep flock Install them with: " +
+                "sudo dnf install iproute util-linux procps-ng", "The missing programs lost their install command: " + reason());
+            File.WriteAllText(log, start + "A Windows program is still running in the Wine prefix /c/pfx outside HellForge's " +
+                "network namespace;\nprograms started inside would share its network. Close it (or give HellForge a prefix " +
+                "of its own: docs/linux.md).\nHellForge wrapper exiting with code 1.\n");
+            check(reason()?.EndsWith("namespace; programs started inside would share its network. Close it (or give " +
+                "HellForge a prefix of its own: docs/linux.md).", StringComparison.Ordinal) == true,
+                "A failure in two lines was cut after the first: " + reason());
+            // Inside the namespace hf-inner.sh writes its own exit line before the wrapper's.
+            const string inner = "\nhf-inner exiting with code 1.\nOffline namespace command exited with code 1.\n" +
+                "HellForge wrapper exiting with code 1.\n";
+            const string relay = "hf-inner: the Steam bridge relay did not start; Steam's loopback ports are not bridged.";
+            File.WriteAllText(log, start + "Entering the offline network namespace.\n" + relay + inner);
+            check(reason() == "The last line of linux-session-wrapper.log before the wrapper stopped: " + relay,
+                "hf-inner's exit line was the reason: " + reason());
+            File.WriteAllText(log, start + "no bridge sockets found; start hf-bridge-host.sh first" + inner);
+            check(reason() == "no bridge sockets found; start hf-bridge-host.sh first",
+                "hf-inner's exit line was added to a failure: " + reason());
+            File.WriteAllText(log, start + "Entering the offline network namespace.\nwine: could not load kernel32.dll\n" +
+                "hf-inner received SIGTERM.\nhf-inner exiting with code 53.\n" +
+                "Offline namespace command exited with code 53.\nHellForge is running inside the container \"box\"; if " +
+                "this namespace step failed, the container may not allow it.\nSteam bridge did not stop after 5 seconds; " +
+                "killing it.\nHellForge wrapper exiting with code 53.\n");
+            check(reason() == "The last line of linux-session-wrapper.log before the wrapper stopped: wine: could not " +
+                "load kernel32.dll", "The wrapper's closing lines were not passed over: " + reason());
+            File.WriteAllText(log, "HellForge wrapper received SIGTERM.\nHellForge wrapper exiting with code 143.\n");
+            check(reason() == null, "A log of closing lines alone gave a reason: " + reason());
+            File.WriteAllText(log, start + bridge + "\n");
+            File.SetLastWriteTimeUtc(log, started.AddMinutes(-5));
+            check(reason() == null, "An older run's wrapper reason was shown.");
+        });
+
+        test("The closing lines the launcher passes over are the ones the Linux scripts write on their way out", () =>
+        {
+            if (RepositoryRoot() is not { } repository) { Console.WriteLine("  (skipped: no repository root above the test)"); return; }
+            string Script(string name) => File.ReadAllText(Path.Combine(repository, "linux", name));
+            var wrapper = Script("hellforge-linux.sh");
+            var all = wrapper + Script("hf-inner.sh") + Script("hf-container.sh");
+            foreach (var closing in EarlySessionFailure.WrapperClosingLines)
+                check(all.Contains(closing, StringComparison.Ordinal), "No Linux script writes: " + closing);
+            // Everything a session script echoes from a trap, from its exit function or after the namespace command
+            // failed comes after the reason, so it must be on the list.
+            var late = wrapper[wrapper.IndexOf("Offline namespace command completed.", StringComparison.Ordinal)..];
+            foreach (var name in new[] { "hellforge-linux.sh", "hf-inner.sh", "hellforge-offline.sh" })
+            {
+                var text = Script(name);
+                late += string.Join('\n', text.Split('\n').Where(line => line.TrimStart().StartsWith("trap ", StringComparison.Ordinal)));
+                var exit = text.IndexOf("cleanup() {", StringComparison.Ordinal);
+                if (exit >= 0) late += text[exit..text.IndexOf("trap cleanup EXIT", exit, StringComparison.Ordinal)];
+            }
+            var echoes = System.Text.RegularExpressions.Regex.Matches(late, "echo \"([^\"$]+)");
+            check(echoes.Count >= 7, "The scripts' exit lines were not found: " + echoes.Count);
+            foreach (System.Text.RegularExpressions.Match echo in echoes)
+                check(EarlySessionFailure.WrapperClosingLines.Any(closing => echo.Groups[1].Value.Contains(closing, StringComparison.Ordinal)),
+                    "A script writes a closing line the launcher would show as the reason: " + echo.Groups[1].Value);
+        });
+    }
+
+    static string? RepositoryRoot()
+    {
+        for (var folder = new DirectoryInfo(AppContext.BaseDirectory); folder != null; folder = folder.Parent)
+            if (File.Exists(Path.Combine(folder.FullName, "linux", "hellforge-linux.sh"))) return folder.FullName;
+        return null;
+    }
+}

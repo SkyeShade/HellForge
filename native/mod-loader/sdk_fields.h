@@ -68,6 +68,7 @@ static const SdkField kSdkFieldsWeaponData[] = {
     {"crosshair_type", 400, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"fire_ability", 940, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"fire_ability_2", 944, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"fire_ability_function", 948, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsWeaponMagazine[] = {
     {"magazine_type", 0, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -155,12 +156,20 @@ static const SdkField kSdkFieldsProjectileSettings[] = {
     {"drag", 40, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"gravity", 44, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"lifetime", 52, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"lifetime_variance", 56, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"damage", 60, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_DAMAGE},
     {"penetration_slowdown", 64, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"spawn_effect", 72, 8, HF_TYPE_U64, HF_APPLIES_NOW, REF_NONE},
     {"flight_effect", 112, 8, HF_TYPE_U64, HF_APPLIES_NOW, REF_NONE},
     {"impact_explosion", 144, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_EXPLOSION},
     {"expiry_explosion", 156, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_EXPLOSION},
+    {"arming_distance", 160, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"ricochets", 176, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"ricochet_angle", 180, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"ricochet_min_speed", 184, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+};
+static const SdkField kSdkFieldsStratagemCode[] = {
+    {"packed", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsStratagemSettings[] = {
     {"type", 0, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
@@ -745,6 +754,7 @@ static const SdkField kSdkFieldsExplosive[] = {
     {"arming_delay", 8, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"explosion_delay", 12, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"explosion", 36, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_EXPLOSION},
+    {"impact_explosion", 40, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_EXPLOSION},
     {"armed_ability", 328, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsThrowable[] = {
@@ -819,6 +829,7 @@ static const SdkField kSdkFieldsWeaponRounds[] = {
     {"spare_rounds", 80, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"rounds_from_supply", 84, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"starting_rounds", 88, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"rounds_per_reload", 92, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsArcWeapon[] = {
     {"fire_rate", 4, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1186,7 +1197,7 @@ static const SdkField kSdkFieldsWeaponCustomization[] = {
 };
 static const SdkComponent kSdkComponents[] = {
     {"ProjectileWeapon", "ProjectileWeaponComponentData", 25480438u, 616u, kSdkFieldsProjectileWeapon, 45, 0, 321},
-    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 20, 0, 236},
+    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 21, 0, 236},
     {"WeaponMagazine", "WeaponMagazineComponentData", 25480438u, 160u, kSdkFieldsWeaponMagazine, 9, 0, 5},
     {"Tag", "TagComponentData", 25480438u, 544u, kSdkFieldsTag, 2, 0, 3},
     {"Mount", "MountComponentData", 25480438u, 120u, kSdkFieldsMount, 10, 0, 283},
@@ -1195,7 +1206,8 @@ static const SdkComponent kSdkComponents[] = {
     {"Deposit", "DepositComponentData", 25480438u, 152u, kSdkFieldsDeposit, 4, 0, 177},
     {"DifficultySettings", "DifficultySettings", 25480438u, 816u, kSdkFieldsDifficultySettings, 15, 1, -1},
     {"DamageInfo", "DamageInfo", 25480438u, 76u, kSdkFieldsDamageInfo, 15, 1, -1},
-    {"ProjectileSettings", "ProjectileSettings", 25480438u, 272u, kSdkFieldsProjectileSettings, 13, 1, -1},
+    {"ProjectileSettings", "ProjectileSettings", 25480438u, 272u, kSdkFieldsProjectileSettings, 18, 1, -1},
+    {"StratagemCode", "StratagemCode", 25480438u, 4u, kSdkFieldsStratagemCode, 1, 1, -1},
     {"StratagemSettings", "StratagemDefinition", 25480438u, 400u, kSdkFieldsStratagemSettings, 28, 1, -1},
     {"ExplosionSettings", "ExplosionSettings", 25480438u, 152u, kSdkFieldsExplosionSettings, 5, 1, -1},
     {"ArcSettings", "ArcSettings", 25480438u, 104u, kSdkFieldsArcSettings, 9, 1, -1},
@@ -1214,12 +1226,12 @@ static const SdkComponent kSdkComponents[] = {
     {"Eagle", "EagleComponentData", 25480438u, 152u, kSdkFieldsEagle, 6, 0, 320},
     {"Thrower", "ThrowerComponentData", 25480438u, 752u, kSdkFieldsThrower, 2, 0, 258},
     {"Bombardment", "BombardmentComponentData", 25480438u, 192u, kSdkFieldsBombardment, 12, 0, 193},
-    {"Explosive", "ExplosiveComponentData", 25480438u, 360u, kSdkFieldsExplosive, 4, 0, 255},
+    {"Explosive", "ExplosiveComponentData", 25480438u, 360u, kSdkFieldsExplosive, 5, 0, 255},
     {"Throwable", "ThrowableComponentData", 25480438u, 360u, kSdkFieldsThrowable, 14, 0, 259},
     {"VehicleMotion", "VehicleMotionComponentData", 25480438u, 456u, kSdkFieldsVehicleMotion, 1, 0, 225},
     {"WeaponCharge", "WeaponChargeComponentData", 25480438u, 216u, kSdkFieldsWeaponCharge, 20, 0, 204},
     {"WeaponReload", "WeaponReloadComponentData", 25480438u, 80u, kSdkFieldsWeaponReload, 21, 0, 113},
-    {"WeaponRounds", "WeaponRoundsComponentData", 25480438u, 136u, kSdkFieldsWeaponRounds, 7, 0, 117},
+    {"WeaponRounds", "WeaponRoundsComponentData", 25480438u, 136u, kSdkFieldsWeaponRounds, 8, 0, 117},
     {"ArcWeapon", "ArcWeaponComponentData", 25480438u, 80u, kSdkFieldsArcWeapon, 1, 0, 265},
     {"BoosterSettings", "BoosterSettings", 25480438u, 56u, kSdkFieldsBoosterSettings, 2, 1, -1},
     {"PassiveModifier", "PassiveModifier", 25480438u, 16u, kSdkFieldsPassiveModifier, 2, 1, -1},

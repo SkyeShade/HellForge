@@ -42,6 +42,12 @@ public sealed record MeshFile(string Obj, double Scale, bool YUp, bool UnitSpace
 // for a shader host's stage what the game's stage must be.
 public sealed record ShaderFile(int Offset, string Dxbc, HostStage? Host = null);
 public sealed record IncludeResources(string Where, ulong Type, IReadOnlyList<ulong> Ids) : DataResource(Where);
+// A game resource edited in place: each stage is the signed DXBC container at At in the GPU part, which must carry Digest,
+// with bytes set at offsets inside the container.
+public sealed record EditResource(string Where, ulong Type, ulong Id, IReadOnlyList<StageEdit> Stages, IReadOnlyList<BytesEdit> Bytes, GpuPin? Gpu) : DataResource(Where);
+public sealed record StageEdit(int At, byte[] Digest, IReadOnlyList<(int Offset, byte[] Bytes)> Set);
+public sealed record BytesEdit(int At, byte[] Expect, byte[] Set);
+public sealed record GpuPin(int? Size, byte[]? Sha256);
 public sealed record IconResource(string Where, string Name, string Png, string Prepare) : DataResource(Where);
 // A compiled shader in a named host (mappings/shader-hosts.json), under the mod's name; Mesh for a host that draws one.
 public sealed record ShaderResource(string Where, string Host, string Name, string Dxbc, MeshFile? Mesh) : DataResource(Where);
@@ -109,6 +115,8 @@ public static partial class DataSpecs
                     return $"{copy.Where} brings its own shader code";
                 case ShaderResource shader:
                     return $"{shader.Where} brings its own shader code";
+                case EditResource edit:
+                    return $"{edit.Where} edits the game's {ResourceTypes.Describe(edit.Type)} 0x{edit.Id:X16} in place";
                 case CopyResource copy when copy.Curves != null && copy.Type != ResourceTypes.Particles || copy.Colours != null && copy.Type != ResourceTypes.Material ||
                     copy.Lut != null && copy.Type != ResourceTypes.Texture || copy.Textures != null && copy.Type != ResourceTypes.Material:
                     return $"{copy.Where} edits a {ResourceTypes.Describe(copy.Type)} resource as another type";
@@ -198,9 +206,9 @@ public static partial class DataSpecs
     static DataResource Resource(JsonElement e, string at, string? folder, ISet<string> inputs)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{at}: a resource is an object.");
-        var kinds = new[] { "copy", "include", "icon", "texture", "animations", "model", "sounds" }.Where(k => e.TryGetProperty(k, out _)).ToList();
+        var kinds = new[] { "copy", "include", "icon", "texture", "animations", "model", "sounds", "edit" }.Where(k => e.TryGetProperty(k, out _)).ToList();
         if (kinds.Count == 0 && e.TryGetProperty("shader", out _)) return ReadShader(e, at, folder, inputs);
-        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon, texture, animations, model, sounds or shader.");
+        if (kinds.Count != 1) throw new InvalidDataException($"{at}: a resource has exactly one of copy, include, icon, texture, animations, model, sounds, edit or shader.");
         switch (kinds[0])
         {
             case "include": return ReadInclude(e, at);
@@ -209,6 +217,7 @@ public static partial class DataSpecs
             case "animations": return ReadAnimations(e, at, folder, inputs);
             case "model": return ReadModel(e, at, folder, inputs);
             case "sounds": return ReadSounds(e, at, folder, inputs);
+            case "edit": return ReadEdit(e, at);
         }
         return ReadCopy(e, at, folder, inputs);
     }
@@ -530,6 +539,77 @@ public static partial class DataSpecs
             throw new InvalidDataException($"{at}: a resource is 0x<up to 16 hex digits> or its name.");
         return EngineHash.Murmur64A(Encoding.UTF8.GetBytes(text));
     }
+
+    // An edit in place: shader stages, each pinned by the game container's digest, and bytes outside the stages, each
+    // pinned by the game's own bytes there, so another game build or a wrong offset is refused before anything is written.
+    static EditResource ReadEdit(JsonElement e, string at)
+    {
+        Fields(e, at, "type", "edit", "gpu", "stages", "bytes");
+        var stages = e.TryGetProperty("stages", out _) ? ReadStages(e, at) : [];
+        var bytes = e.TryGetProperty("bytes", out _) ? ReadBytes(e, at) : [];
+        if (stages.Count == 0 && bytes.Count == 0) throw new InvalidDataException($"{at}: an edit needs stages or bytes.");
+        return new EditResource(at, Type(e, at), Id(Property(e, "edit", at), at), stages, bytes, e.TryGetProperty("gpu", out var gpu) ? ReadGpuPin(gpu, $"{at}.gpu") : null);
+    }
+
+    // "gpu": { "size", "sha256" }: the whole GPU part as the spec was written for. Offsets that are right on one build can
+    // land in a moved table on the next, where each expect alone may still match.
+    static GpuPin ReadGpuPin(JsonElement e, string at)
+    {
+        Fields(e, at, "size", "sha256");
+        int? size = e.TryGetProperty("size", out var s) ? (s.ValueKind == JsonValueKind.Number && s.TryGetInt32(out var n) && n > 0 ? n : throw new InvalidDataException($"{at}: size is the GPU part's length in bytes.")) : null;
+        byte[]? sha = e.TryGetProperty("sha256", out _) ? HexBytes(Text(e, "sha256", at), $"{at}.sha256") : null;
+        if (sha != null && sha.Length != 32) throw new InvalidDataException($"{at}: sha256 is the GPU part's SHA-256 (64 hex digits).");
+        if (size == null && sha == null) throw new InvalidDataException($"{at}: pin size, sha256 or both.");
+        return new(size, sha);
+    }
+
+    static List<StageEdit> ReadStages(JsonElement e, string at)
+    {
+        var stages = new List<StageEdit>();
+        var s = 0;
+        foreach (var stage in Items(e, "stages", at))
+        {
+            var where = $"{at}.stages[{s++}]";
+            Fields(stage, where, "at", "digest", "set");
+            var digest = HexBytes(Text(stage, "digest", where), $"{where}.digest");
+            if (digest.Length != 16) throw new InvalidDataException($"{where}: digest is the game container's 16-byte digest (32 hex digits, bytes 4..19).");
+            var set = Object(Property(stage, "set", where), $"{where}.set").Select(item => (Offset(item.Name, $"{where}.set"),
+                HexBytes(item.Value.ValueKind == JsonValueKind.String ? item.Value.GetString()! : "", $"{where}.set"))).OrderBy(x => x.Item1).ToList();
+            if (set.Count == 0) throw new InvalidDataException($"{where}: set changes nothing.");
+            for (var i = 1; i < set.Count; i++)
+                if (set[i - 1].Item1 + set[i - 1].Item2.Length > set[i].Item1) throw new InvalidDataException($"{where}: set writes 0x{set[i].Item1:X} twice.");
+            stages.Add(new(Offset(Text(stage, "at", where), where), digest, set));
+        }
+        if (stages.Count == 0) throw new InvalidDataException($"{at}: stages lists nothing.");
+        if (stages.Select(x => x.At).Distinct().Count() != stages.Count) throw new InvalidDataException($"{at}: a stage is listed twice.");
+        return stages;
+    }
+
+    // "bytes": [{ "at", "expect", "set" }]: expect is what the game has there, set the same number of bytes in its place.
+    static List<BytesEdit> ReadBytes(JsonElement e, string at)
+    {
+        var bytes = new List<BytesEdit>();
+        var b = 0;
+        foreach (var item in Items(e, "bytes", at))
+        {
+            var where = $"{at}.bytes[{b++}]";
+            Fields(item, where, "at", "expect", "set");
+            var expect = HexBytes(Text(item, "expect", where), $"{where}.expect");
+            var set = HexBytes(Text(item, "set", where), $"{where}.set");
+            if (expect.Length != set.Length) throw new InvalidDataException($"{where}: expect has {expect.Length} bytes and set {set.Length}: they must be as long.");
+            bytes.Add(new(Offset(Text(item, "at", where), where), expect, set));
+        }
+        if (bytes.Count == 0) throw new InvalidDataException($"{at}: bytes lists nothing.");
+        var sorted = bytes.Select((x, i) => (x.At, x.Set.Length, Index: i)).OrderBy(x => x.At).ToList();
+        for (var i = 1; i < sorted.Count; i++)
+            if (sorted[i - 1].At + sorted[i - 1].Length > sorted[i].At)
+                throw new InvalidDataException($"{at}: bytes[{sorted[i - 1].Index}] and bytes[{sorted[i].Index}] both write 0x{sorted[i].At:X}.");
+        return bytes;
+    }
+
+    static byte[] HexBytes(string text, string at) =>
+        text.Length > 0 && text.Length % 2 == 0 && text.All(Uri.IsHexDigit) ? Convert.FromHexString(text)
+            : throw new InvalidDataException($"{at}: {(text.Length > 40 ? text[..40] + "..." : text)} is not bytes as hex digits, such as \"0B000032\".");
 
     static ulong Type(JsonElement e, string at)
     {
