@@ -234,10 +234,41 @@ static void BlastPackageFixture(void)
     puts("explosions: an explosive round asks for its weapon's package, a plain one does not");
 }
 
+/* The projectile type's field (projectiles.c): untouched up to 161 new types; past that it widens from 9 to 11 bits, an
+ * already wide one stays; one not as reviewed (another width, another kind, no row) refuses and changes nothing. */
+static uint8_t g_fakeProjectileField[0x18];
+static int g_fakeProjectileFieldThere;
+static uintptr_t FakeProjectileFieldRow(uint32_t hash)
+{
+    return hash == PRJ_FIELD_HASH && g_fakeProjectileFieldThere ? (uintptr_t)g_fakeProjectileField : 0;
+}
+static void ProjectileFieldFixture(void)
+{
+    uintptr_t (*was)(uint32_t) = g_projectileFieldRow;
+    g_projectileFieldRow = FakeProjectileFieldRow;
+    memset(g_fakeProjectileField, 0, sizeof g_fakeProjectileField);
+    g_fakeProjectileField[12] = 1; g_fakeProjectileField[13] = PRJ_FIELD_BITS;
+    g_fakeProjectileFieldThere = 1;
+    assert(PRJ_NARROW_MAX == 161 && ProjectileFieldFor(PRJ_NARROW_MAX, ApiWrite) && g_fakeProjectileField[13] == PRJ_FIELD_BITS);
+    assert(ProjectileFieldFor(PRJ_NARROW_MAX + 1, ApiWrite) && g_fakeProjectileField[13] == PRJ_FIELD_WIDE);
+    assert(ProjectileFieldFor(PRJ_MAX_NEW, ApiWrite) && g_fakeProjectileField[13] == PRJ_FIELD_WIDE); /* already wide */
+    g_fakeProjectileField[13] = 10;
+    assert(!ProjectileFieldFor(PRJ_NARROW_MAX + 1, ApiWrite) && g_fakeProjectileField[13] == 10); /* another width */
+    g_fakeProjectileField[13] = PRJ_FIELD_BITS; g_fakeProjectileField[12] = 2;
+    assert(!ProjectileFieldFor(PRJ_NARROW_MAX + 1, ApiWrite) && g_fakeProjectileField[13] == PRJ_FIELD_BITS); /* another kind */
+    g_fakeProjectileField[12] = 1; g_fakeProjectileField[16] = 1;
+    assert(!ProjectileFieldFor(PRJ_NARROW_MAX + 1, ApiWrite)); /* another minimum */
+    g_fakeProjectileFieldThere = 0;
+    assert(!ProjectileFieldFor(PRJ_NARROW_MAX + 1, ApiWrite) && ProjectileFieldFor(1, ApiWrite));
+    g_projectileFieldRow = was;
+    puts("projectiles: past 161 new types the co-op type field widens from 9 to 11 bits, or refuses as not reviewed");
+}
+
 static void ExplosionsWidthFixture(void)
 {
     BlastPackageFixture();
     ExplosionsWidth(1);
     ExplosionsWidth(0);
     puts("explosions: past 89 types field 248 widens to 10 bits, or the first 89 go in");
+    ProjectileFieldFixture();
 }

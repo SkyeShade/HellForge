@@ -60,7 +60,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 ### SDK 3
 
-- `add_projectile`: `uint32_t (HfMod* mod, const HfProjectile* projectile)`. Adds a new projectile type (see HfProjectile). Call it from hellforge_mod_init. Returns its ProjectileType (351 and up), or 0 (the mod's log says why). 64 new types in all mods together (HellForge moves the game's list).
+- `add_projectile`: `uint32_t (HfMod* mod, const HfProjectile* projectile)`. Adds a new projectile type (see HfProjectile). Call it from hellforge_mod_init. Returns its ProjectileType (351 and up), or 0 (the mod's log says why). 1,024 new types in all mods together (HellForge moves the game's list); past type 511 their co-op field widens to 11 bits on every machine (docs/modding/projectiles.md "Room and co-op").
 - `projectile_row`: `uintptr_t (uint32_t type)`. The 272-byte settings row of a projectile a mod added, after HF_EVENT_PROJECTILES_READY, or 0. Its +0 is the type and must stay so; the rest may be changed (HD2Runtime's research names the members).
 - `add_damage`: `uint32_t (HfMod* mod, const HfDamage* damage)`. Adds a new damage type (see HfDamage). Call it from hellforge_mod_init, before the projectiles that deal it. Returns its id (650 and up), or 0 (the mod's log says why).
 - `damage_row`: `uintptr_t (uint32_t id)`. The 76-byte DamageInfo row of a damage type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 id (must stay), +4 standard damage, +8 durable damage, +0x0C four armour penetration values, +0x1C on status effects.

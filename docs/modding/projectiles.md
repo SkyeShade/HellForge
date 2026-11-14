@@ -157,9 +157,14 @@ turns the Talon's bolt blue.
 
 ## Room and co-op
 
-There is room for 512 new projectile types and 512 new damage types across all mods, and for 512 each of explosions,
+There is room for 1,024 new projectile types and 512 new damage types across all mods, and for 512 each of explosions,
 beams and arcs. In co-op, every machine fires its own copy of a hand-held weapon's shots from its own data; with the same
 mods, that is the same projectile.
+
+Some shots also travel between players by type (synced fire, reloads, projectiles added to the manager), in a network
+field of 9 bits: types up to 511, so the first 161 new ones. A larger set widens it to 11 bits, on every machine together,
+as all of them run the same mods. If the field is not the one HellForge knows, only the first 161 go in and the log names
+the rest; weapons that fire those fire their base's.
 
 A set of more than 89 explosion types widens a co-op network field by one bit. Every player runs the same mods, so all of
 them widen it together. If the field is not the one HellForge knows, only the first 89 go in and the log names the rest.

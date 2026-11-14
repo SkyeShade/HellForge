@@ -296,7 +296,7 @@ These limits are for all mods together:
 | What | Room |
 |---|---|
 | New entities and weapons | no number of HellForge's own: the game's entity map, about 2,187 rows free ([content](content.md#other-rules)) |
-| New projectile types | 512 (types 351 and up) |
+| New projectile types | 1,024 (types 351 and up) |
 | New damage types | 512 (ids 650 and up) |
 | New explosion, beam and arc types | 512 of each |
 | New stratagems | 48 (types 150 and up) |
