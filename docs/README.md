@@ -56,6 +56,8 @@ Reference and related pages:
   files it reads and writes.
 - [Mods that change while the game runs](modding/live.md): for code mod authors; what HellForge does when a mod is
   switched on or off during a session, and how a mod takes part.
+- [Screens in the game's own UI](modding/ui.md): for code mod authors; SDK 19 menus and overlays in XAML with the
+  game's styles, set from code, with click handlers.
 - [Screens over the game](modding/overlay.md): for code mod authors; the SDK 17 screens, what each drawing call does,
   the input, the backdrop and the overlay host.
 - [Building a lobby browser](lobby-browser.md): for front-end developers drawing their own lobby browser on the ship's

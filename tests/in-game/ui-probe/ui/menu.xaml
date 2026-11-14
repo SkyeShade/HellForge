@@ -1,0 +1,17 @@
+<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Background="#B0000000">
+  <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="560" Background="#F0101214"
+          BorderThickness="0,4,0,0" Padding="36,22,36,26">
+    <Border.BorderBrush><SolidColorBrush Color="{StaticResource BrandYellow}"/></Border.BorderBrush>
+    <StackPanel>
+      <TextBlock x:Name="Title" Style="{StaticResource Headerstyle}" Text="UI PROBE MENU"/>
+      <TextBlock x:Name="Body" Style="{StaticResource Body_Medium}" TextWrapping="Wrap" Margin="0,8,0,0"
+                 Text="A mod's menu screen on the game's menu presenter. Click a button, or press Back."/>
+      <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+        <Button x:Name="Count" Content="COUNT" Padding="24,8"/>
+        <Button x:Name="Close" Content="CLOSE" Padding="24,8" Margin="12,0,0,0"/>
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Grid>
