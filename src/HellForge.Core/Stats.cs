@@ -28,7 +28,7 @@ public sealed record StatsField(string Name, string Kind, string Component, stri
     public string Hd2rAddress => Kind switch
     {
         "component" => $"component|{Component}|{Record.ToString(CultureInfo.InvariantCulture)}|{Offset.ToString(CultureInfo.InvariantCulture)}",
-        "EntityDelta" => $"EntityDelta|{Component}|{Offset.ToString(CultureInfo.InvariantCulture)}",
+        "EntityDelta" => $"EntityDelta|{Component}|{Offset.ToString(CultureInfo.InvariantCulture)}" + (Offset == 0 ? "|" + Resource : ""), // 0: a member HellForge adds, one per attachment
         _ => $"{Kind}|{Record.ToString(CultureInfo.InvariantCulture)}|{Offset.ToString(CultureInfo.InvariantCulture)}",
     };
     public string AddressKey => $"{Kind}\t{(Component.Length == 0 ? "-" : Component)}\t{Convert.ToUInt64(Resource[2..], 16):X16}\t{Record.ToString(CultureInfo.InvariantCulture)}\t{Offset.ToString(CultureInfo.InvariantCulture)}\t{Storage}";
@@ -92,6 +92,8 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         Ricochets(schema);
         FiredEntities(schema);
         EditorRequests(schema);
+        InputCodes(schema);
+        StratagemPayloads(schema);
         Entities(schema);
         Director(schema);
         return schema;
@@ -423,6 +425,35 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                 };
     }
 
+    // Every vanilla stratagem's input code (StratagemCode, by its stable id: native/mod-loader/stratagem_codes.c keeps the
+    // codes in arrays of HellForge's and follows the packed value), after its call-in fields. The editor shows and takes
+    // it as directions (its "code" format).
+    static void InputCodes(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets["stratagems"].Values)
+            if (target.Fields.FirstOrDefault(f => f.Value.Kind == "StratagemDefinition" && f.Key.StartsWith("stratagem.", StringComparison.Ordinal)).Value is { } own)
+                AddField(target, InputCodeKey, new StatsField("Input code", "StratagemCode", "", "0x0", own.Record, 0, "u32", null, null, null, true, true)
+                {
+                    Order = own.Order, Note = "The arrows that call it in, 1 to 10 of them. Each player's own: it is matched on their machine.",
+                });
+    }
+    public const string InputCodeKey = "stratagem.input_code";
+
+    // An impact payload picker on every stratagem round that has none (the Eagle 110mm Rocket Pods', the orbitals'
+    // shells): the round's ProjectileSettings +0x90, as the hand-held weapons' rounds have it.
+    static void StratagemPayloads(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets["stratagems"].Values)
+            foreach (var round in target.Fields.Where(f => f.Value.Kind == "ProjectileSettings" && FlightOffsets.Contains(f.Value.Offset))
+                .GroupBy(f => (Prefix: f.Key[..(f.Key.LastIndexOf('.') + 1)], f.Value.Record)).ToList())
+            {
+                if (target.Fields.Values.Any(f => f is { Kind: "ProjectileSettings", Offset: 144 } && f.Record == round.Key.Record)) continue;
+                var middle = round.Key.Prefix.Split('.', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault() ?? "primary";
+                AddField(target, $"terminal.{middle}.impact.explosion", new StatsField("Impact payload", "ProjectileSettings", "", "0x0", round.Key.Record, 144, "u32",
+                    null, null, null, true, true) { Order = -100 });
+            }
+    }
+
     // Fields players asked for (the Discord list "Missing stuff from the HellForge's editor"; mappings/editor-requests.json,
     // scripts/ExportEditorRequests.py): records the catalogues never reach, added as the parity fields are (lock-on
     // ranges, the C4 pack's charges, the Grenadier Battlement's gun, the Solo Silo's remote, the Spear's and the silo
@@ -733,6 +764,26 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
             if (!fieldId.StartsWith("attachment.", StringComparison.Ordinal) && fieldId.Length > "attachment.".Length)
                 target.Aliases[$"attachment.{slot.Name}.{slug}.{fieldId["attachment.".Length..]}"] = key;
         }
+        AddHeatsinkCounts(target, slot, id, a, slug, section, ref order);
+    }
+
+    // A heatsink whose deltas leave the heatsink counts to the weapon (the LAS-12 Sai's Improved Cooldown): rows for them
+    // that HellForge adds to its deltas when set (native/mod-loader/attachment_extras.c; offset 0 names an added member).
+    // 0 keeps the weapon's own count. Not on a slot's default heatsink, whose counts are the weapon's own rows.
+    static readonly (string Id, string Label, int Member)[] HeatsinkCounts =
+        [("heatsink.starting", "Starting heatsinks", 84), ("heatsink.from_supply", "Heatsinks from supply", 88), ("heatsink.spare", "Spare heatsinks", 92)];
+    static void AddHeatsinkCounts(StatsTarget target, JsonProperty slot, string id, JsonElement a, string slug, string section, ref int order)
+    {
+        if (a.GetProperty("kind").GetString() != "heatsink" || (slot.Value.TryGetProperty("default", out var standard) && standard.GetString() == id)) return;
+        var own = a.GetProperty("fields").EnumerateArray().Select(f => f.GetProperty("id").GetString()).ToHashSet(StringComparer.Ordinal);
+        foreach (var (fieldId, label, member) in HeatsinkCounts)
+        {
+            var key = $"attachment.{slot.Name}.{slug}.{fieldId}";
+            if (own.Contains(fieldId) || target.Fields.ContainsKey(key)) continue;
+            target.Fields[key] = new StatsField(label, "EntityDelta", $"266:{member}", a.GetProperty("resource").GetString()!, a.GetProperty("record").GetInt64(),
+                0, "u32", 0, 1000, "heatsinks", true, true)
+            { Order = order++, Section = section, Note = "0 keeps the weapon's own count; set, HellForge adds it to this heatsink's changes" };
+        }
     }
 
     // The explosions (HD2R Editor's explosion pages): one target per catalogued explosion, named by its label, with the
@@ -968,7 +1019,7 @@ public static class StatsData
         if (own && field.Kind != "component") throw new InvalidDataException($"{entryName} {name}: own isolates entity component records; {field.Kind} is a shared definition. Put shared definition edits in a separate entry or mod without own.");
         var value = property.Name == "armorPenetration" ? property.Value[index] : property.Value;
         // StratagemDefinition uses UINT32_MAX for unlimited uses (the registry's reviewed sentinel).
-        var bits = field.Kind == "StratagemDefinition" && field.Offset == 0x50 && field.Storage == "u32" &&
+        var bits = field.Kind == "StratagemCode" ? CodeBits(value) : field.Kind == "StratagemDefinition" && field.Offset == 0x50 && field.Storage == "u32" &&
             value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var uses) && uses == -1
             ? uint.MaxValue : Bits(value, field.Storage, field.Min, field.Max);
         return new StatsEdit($"{entryName} {name}", field.Kind, field.Component, Resource(field.Resource, allowZero: true), field.Record,
@@ -983,6 +1034,11 @@ public static class StatsData
                 yield return new StatsEdit(field.Name, "component", write.Component, write.Resource, -1, field.Offset, "u32", field.Value, field.Expect, false, true, false);
         foreach (var edit in mod.Stats) yield return edit;
     }
+
+    // An input code: its arrows or letters ("UULRD"), or the packed number Local Stats saves.
+    static uint CodeBits(JsonElement value) =>
+        InputCode.TryParse(value.ValueKind == JsonValueKind.String ? value.GetString()! : value.GetRawText(), out var packed, out var error)
+            ? packed : throw new InvalidDataException($"Input code: {error}");
 
     static uint Bits(JsonElement value, string storage, double? min, double? max)
     {

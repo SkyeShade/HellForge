@@ -365,6 +365,7 @@ static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready)
     uintptr_t game = ApiModuleBase("game.dll", NULL);
     int projectile = !strcmp(component, "ProjectileSettings"), damage = !strcmp(component, "DamageInfo");
     if (projectile || damage || !strcmp(component, "StratagemDefinition")) return TypedRowOf(game, projectile, damage, id, ready);
+    if (!strcmp(component, "StratagemCode")) return CodesRowOf(id, ready);
     if (!strcmp(component, "BoosterSettings")) return BoosterRowOf(id, ready);
     if (!strncmp(component, "Passive", 7)) return PerkRow(component, id, ready);
     if (!strcmp(component, "MeleeHitVolume")) return MeleeRowOf(id, ready);

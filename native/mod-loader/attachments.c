@@ -116,30 +116,45 @@ static AttSizes AttMeasure(const uint8_t* s)
 
 static void PatternTextures(const DeltaCopy* a, uint32_t component, uint32_t at, uint8_t* data, uint32_t size); /* patterns.c */
 
-/* One copy's deltas under its add_path: its settings entry, component settings, deltas and data appended. */
-static void AttCopyDeltas(const uint8_t* s, const DeltaCopy* a, uint32_t* settings, uint32_t* comps, uint32_t* deltas, uint8_t* data, AttSizes* z)
+/* The arrays of a storage being made: its key map and slot count, settings, component settings, deltas and data. */
+typedef struct AttArrays { uint8_t* keys; uint32_t slots; uint32_t *settings, *comps, *deltas; uint8_t* data; } AttArrays;
+
+/* One component setting of s and its deltas and data, appended to `to` after *z's last: the new component setting. */
+static uint32_t* AttCopyComponent(const uint8_t* s, const uint32_t* oc, const AttArrays* to, AttSizes* z)
+{
+    const uint32_t* oldDeltas = *(uint32_t* const*)(s + 0x30);
+    const uint8_t* oldData = *(uint8_t* const*)(s + 0x40);
+    uint32_t* nc = to->comps + 3u * z->comps++;
+    nc[0] = oc[0]; nc[1] = z->deltas; nc[2] = oc[2];
+    for (uint32_t d = 0; d < oc[2]; d++)
+    {
+        const uint32_t* od = oldDeltas + 3u * (oc[1] + d);
+        uint32_t* nd = to->deltas + 3u * z->deltas++;
+        nd[0] = od[0]; nd[1] = od[1]; nd[2] = z->data;
+        memcpy(to->data + z->data, oldData + od[2], od[1]);
+        z->data += od[1];
+    }
+    return nc;
+}
+
+/* One copy's deltas under its add_path: its settings entry, component settings, deltas and data appended; the base's
+ * unit replaced by the copy's where the Customization record holds it, a pattern's textures swapped in. */
+static void AttCopyDeltas(const uint8_t* s, const DeltaCopy* a, const AttArrays* to, AttSizes* z)
 {
     const uint32_t* from = AttDeltaSetting(s, a->baseKey);
     const uint32_t* oldComps = *(uint32_t* const*)(s + 0x20);
-    const uint32_t* oldDeltas = *(uint32_t* const*)(s + 0x30);
-    const uint8_t* oldData = *(uint8_t* const*)(s + 0x40);
-    settings[2 * z->settings] = from[0];
-    settings[2 * z->settings + 1] = z->comps;
+    to->settings[2 * z->settings] = from[0];
+    to->settings[2 * z->settings + 1] = z->comps;
     for (uint32_t c = 0; c < from[0]; c++)
     {
-        const uint32_t* oc = oldComps + 3u * (from[1] + c);
-        uint32_t* nc = comps + 3u * z->comps++;
-        nc[0] = oc[0]; nc[1] = z->deltas; nc[2] = oc[2];
-        for (uint32_t d = 0; d < oc[2]; d++)
+        const uint32_t* nc = AttCopyComponent(s, oldComps + 3u * (from[1] + c), to, z);
+        for (uint32_t d = 0; d < nc[2]; d++)
         {
-            const uint32_t* od = oldDeltas + 3u * (oc[1] + d);
-            uint32_t* nd = deltas + 3u * z->deltas++;
-            nd[0] = od[0]; nd[1] = od[1]; nd[2] = z->data;
-            memcpy(data + z->data, oldData + od[2], od[1]);
-            for (uint32_t b = 0; a->unit && oc[0] == ATT_CUSTOMIZATION && b + 8 <= od[1]; b++) /* the base's unit, where the record holds it */
-                if ((od[0] + b) % 8 == 0 && *(const uint64_t*)(data + z->data + b) == a->baseKey) memcpy(data + z->data + b, &a->unit, 8);
-            PatternTextures(a, oc[0], od[0], data + z->data, od[1]);
-            z->data += od[1];
+            const uint32_t* nd = to->deltas + 3u * (nc[1] + d);
+            uint8_t* bytes = to->data + nd[2];
+            for (uint32_t b = 0; a->unit && nc[0] == ATT_CUSTOMIZATION && b + 8 <= nd[1]; b++) /* the base's unit, where the record holds it */
+                if ((nd[0] + b) % 8 == 0 && *(const uint64_t*)(bytes + b) == a->baseKey) memcpy(bytes + b, &a->unit, 8);
+            PatternTextures(a, nc[0], nd[0], bytes, nd[1]);
         }
     }
     z->settings++;
@@ -182,13 +197,18 @@ static void AttHeader(uint8_t* g, const uint8_t* s, void* const* pointers, uint3
         if (*(const uint32_t*)(s + 0x10 * p + 8) == before[p - 1]) memcpy(g + 0x10 * p + 8, &after[p - 1], 4);
 }
 
-/* A grown copy of the delta storage with these copies' deltas (one VirtualAlloc block), or NULL. */
+static AttSizes AttExtrasSize(const uint8_t* s); /* attachment_extras.c */
+static void AttExtrasCopy(const uint8_t* s, const AttArrays* to, AttSizes* z);
+
+/* A grown copy of the delta storage with these copies' deltas and the vanilla attachments' added members
+ * (attachment_extras.c), in one VirtualAlloc block, or NULL. */
 static uint8_t* AttGrow(const uint8_t* s, DeltaCopy* const* list, int n)
 {
-    AttSizes old = AttMeasure(s), add = {0}, z;
+    AttSizes old = AttMeasure(s), add = AttExtrasSize(s), z;
     for (int i = 0; i < n; i++) { AttSizes one = AttExtra(s, list[i]); add.comps += one.comps; add.deltas += one.deltas; add.data += one.data; }
     uint32_t slots = 2 * (old.keys + (uint32_t)n) + 1;
-    const size_t parts[5] = {16u * slots, 8u * (old.settings + (uint32_t)n), 12u * (old.comps + add.comps), 12u * (old.deltas + add.deltas), (size_t)old.data + add.data};
+    const size_t parts[5] = {16u * slots, 8u * (old.settings + (uint32_t)n + add.settings), 12u * (old.comps + add.comps), 12u * (old.deltas + add.deltas),
+        (size_t)old.data + add.data};
     size_t at[5], size = 0x100;
     for (int p = 0; p < 5; p++) { at[p] = size; size += (parts[p] + 15) & ~(size_t)15; }
     uint8_t* g = (uint8_t*)VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -203,11 +223,13 @@ static uint8_t* AttGrow(const uint8_t* s, DeltaCopy* const* list, int n)
     for (uint32_t i = 0; i < *(const uint32_t*)(s + 8); i++)
         if (*(const uint64_t*)(keys + 16u * i)) AttPut(pointers[0], slots, *(const uint64_t*)(keys + 16u * i), *(const uint32_t*)(keys + 16u * i + 8));
     z = old;
+    const AttArrays to = {pointers[0], slots, pointers[1], pointers[2], pointers[3], pointers[4]};
     for (int i = 0; i < n; i++)
     {
-        AttPut(pointers[0], slots, list[i]->addPath, z.settings);
-        AttCopyDeltas(s, list[i], pointers[1], pointers[2], pointers[3], pointers[4], &z);
+        AttPut(to.keys, slots, list[i]->addPath, z.settings);
+        AttCopyDeltas(s, list[i], &to, &z);
     }
+    AttExtrasCopy(s, &to, &z);
     AttHeader(g, s, pointers, slots, &old, &z);
     return g;
 }
@@ -286,31 +308,43 @@ static int AttProven(uintptr_t game)
 static int PatResolve(uintptr_t game, const uint8_t* s, DeltaCopy** ready, int** states, int n); /* patterns.c */
 static int PatWaiting(uintptr_t game);                                                          /* patterns.c */
 static void PatReset(void);                                                                      /* patterns.c */
+static int g_attExtraCount;                                                                      /* attachment_extras.c */
+static int g_patternCount;                                                                       /* patterns.c: unit skins */
+static int AttExtrasPending(void), AttExtraWanted(const uint8_t* s, int i);
+static void AttExtrasLive(void), AttExtrasUnmade(void);
 
-/* The deltas made again from the game's storage: on a storage HellForge has not grown (a new load: every copy checked
- * again), or when a pattern that waited for its table can go in now. The ready ones' deltas are swapped in. */
-static void AttDeltasTick(uintptr_t game, uint8_t* state, uint8_t* s)
+/* The deltas made again from the game's storage: on a storage HellForge has not made from (a new load: every copy checked
+ * again), when a pattern that waited for its table can go in now, or when an edit set or cleared a member added to a
+ * vanilla attachment (attachment_extras.c). The ready ones' deltas are swapped in. */
+/* The storage made from s with the attachments, patterns and added members that can go in, swapped in; again: one made
+ * before is made again (a member cleared: without it). */
+static void AttMakeDeltas(uintptr_t game, uint8_t* state, uint8_t* s, int again)
 {
-    if (s == g_attGrownFrom) return;
-    if (s == g_attGrown)
-    {
-        if (!PatWaiting(game)) return;
-        s = g_attGrownFrom; /* the game's own, which the grown one copies */
-    }
     for (int i = 0; i < g_attachmentCount; i++) if (g_attachments[i].state == 1) g_attachments[i].state = 0;
     PatReset();
     static DeltaCopy* ready[ATT_MAX + PAT_MAX * PAT_COLLECTION_SLOTS]; /* the game thread's only */
     static int* states[ATT_MAX + PAT_MAX * PAT_COLLECTION_SLOTS];
     int n = AttResolve(game, s, ready, states, 0);
     n = PatResolve(game, s, ready, states, n);
-    uint8_t* grown = n ? AttGrow(s, ready, n) : NULL;
+    int extras = 0;
+    for (int i = 0; i < g_attExtraCount; i++) extras |= AttExtraWanted(s, i);
+    uint8_t* grown = n || extras || again ? AttGrow(s, ready, n) : NULL;
     for (int i = 0; i < n; i++) { *states[i] = grown ? 1 : -1; ready[i]->log = NULL; } /* a pattern's textures are told once */
-    WriteRegisteredItems(); /* the refused are not for the backend */
-    if (grown == NULL) return;
+    if (g_attachmentCount || g_patternCount) WriteRegisteredItems(); /* the refused are not for the backend */
+    if (grown == NULL) { AttExtrasUnmade(); return; }
     g_attGrownFrom = s;
     g_attGrown = grown; /* the old storage stays: a reader may hold it */
     SetStatePointer(state, ATT_DELTAS, grown);
-    Note("attachments: %d attachment(s) and pattern(s) added to the entity deltas", n);
+    Note("attachments: %d attachment(s) and pattern(s) added to the entity deltas%s", n, extras ? ", with members added to vanilla attachments" : "");
+}
+
+static void AttDeltasTick(uintptr_t game, uint8_t* state, uint8_t* s)
+{
+    static uint8_t* seen; /* the game's storage last made from, grown or not */
+    int again = s == g_attGrown && (PatWaiting(game) || AttExtrasPending());
+    if (!again && (s == g_attGrown || (s == seen && !AttExtrasPending()))) return;
+    seen = again ? g_attGrownFrom : s; /* again: from the game's own, which the grown one copies */
+    AttMakeDeltas(game, state, seen, again);
 }
 
 /* HellForge's item block appended to g_settings when it is not there (the first time, or after the game's reload). */
@@ -331,12 +365,13 @@ static void PatternsTick(uintptr_t game); /* patterns.c */
 static void AttachmentsTick(void)
 {
     uintptr_t game = g_game;
-    if ((g_attachmentCount == 0 && g_patternCount == 0) || game == 0 || !AttProven(game)) return;
+    if ((g_attachmentCount == 0 && g_patternCount == 0 && g_attExtraCount == 0) || game == 0 || !AttProven(game)) return;
     uint8_t* state = EntityState();
     uint8_t* s = StatePointer(state, ATT_DELTAS);
     uint32_t count = *(volatile uint32_t*)(game + ATT_COUNT);
     if (s == NULL || count == 0 || count >= ATT_SLOTS) return;
     AttDeltasTick(game, state, s);
+    AttExtrasLive();
     AttItemsTick(game, count);
     PatternsTick(game);
 }
@@ -434,4 +469,5 @@ static int AttachmentItems(char* text, int n, int size)
     return n + snprintf(text + n, size - n, "]");
 }
 
+#include "attachment_extras.c" /* members added to vanilla attachments' deltas (stats edits) */
 #include "patterns.c" /* mods' patterns: weapon paints (as attachments) and unit skins */

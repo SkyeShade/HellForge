@@ -328,6 +328,17 @@ static class StatsTests
                 weapons["GL-28 Belt-Fed Grenade Launcher"].Fields.ContainsKey("fire_rate.modes.z"), "The BFGL's rate of fire and its slots");
             check(weapons["LAS-98 Laser Cannon"].Fields["weapon.third_person_reticle"] is { Offset: 400 } reticle &&
                 reticle.Choices.Any(c => c.Value == 11), "The Laser Cannon's third-person reticle, its own style named");
+            check(weapons["R-36 Eruptor"].Fields["weapon.fire_ability"] is { Component: "WeaponDataComponentData", Offset: 940 } eruptor &&
+                eruptor.Choices.Any(c => c.Value == 2660) && eruptor.Choices.Any(c => c.Value == 2708) && eruptor.Choices.Any(c => c.Value == 0),
+                "The Eruptor's firing ability (its bolt cycle), with the other weapons' to choose from");
+            check(weapons["VG-70 Variable"].Fields["weapon.fire_ability_2"].Offset == 944 && weapons["StA-X3 W.A.S.P. Launcher"].Fields["weapon.fire_ability_function"].Offset == 948 &&
+                !weapons["AR-23 Liberator"].Fields.ContainsKey("weapon.fire_ability_2"), "The stand-in firing abilities only where a weapon has one");
+            var sai = weapons["LAS-12 Sai"].Fields;
+            check(sai["attachment.magazine.laser_heatsink_blaster_improved_cooldown.heatsink.spare"] is { Kind: "EntityDelta", Component: "266:92", Offset: 0, Storage: "u32" } &&
+                sai.Values.Count(f => f is { Kind: "EntityDelta", Offset: 0 } && f.Resource == sai["attachment.magazine.laser_heatsink_blaster_improved_cooldown.heatsink.spare"].Resource) == 3 &&
+                !sai.ContainsKey("attachment.magazine.laser_heatsink_blaster_standard.heatsink.spare") &&
+                sai["attachment.magazine.laser_heatsink_blaster_improved_heatcapacity.heatsink.spare"].Offset != 0,
+                "The Sai's Improved Cooldown carries heatsink counts HellForge adds; the default heatsink and one with its own counts do not");
             var patriot = StatsSchema.Current.Targets["vehicles"]["EXO-45 Patriot Exosuit"].Fields;
             check(patriot["entity.durable_resistance"].Offset == 268 && patriot["zone_0.durable_resistance"] is { Offset: 724, Section: not null }, "A vehicle's durable damage share, default and per zone");
             var targets = StatsSchema.Current.Targets;
@@ -351,6 +362,26 @@ static class StatsTests
                 silo["fired.impact_payload"].Offset == 40 && weapons["FAF-14 Spear"].Fields["terminal.primary.impact.explosion"] is { Kind: "ProjectileSettings", Record: 225, Offset: 144 },
                 "The Solo Silo's remote handling and missile payloads; the Spear's impact payload");
             check(targets["stratagems"]["Eagle 110mm Rocket Pods"].Fields["eagle.fire_duration"].Max >= 2, "The rocket pods' attack duration reaches its own 2 s");
+            var bomb = targets["stratagems"]["Eagle 500kg Bomb"].Fields;
+            check(bomb[StatsSchema.InputCodeKey] is { Kind: "StratagemCode", Offset: 0, Storage: "u32" } code && code.Record == bomb["stratagem.call_in_time"].Record &&
+                targets["stratagems"].Values.All(t => !t.Fields.Values.Any(f => f.Kind == "StratagemDefinition" && f.Offset == 72)),
+                "Every stratagem's input code, by its stable id (the length follows the code)");
+            check(InputCode.TryParse("U R D", out var urd, out _) && urd == 1 + 2 * 5 + 3 * 25 && InputCode.Text(urd) == "↑ → ↓" &&
+                InputCode.TryParse("↑,←-↓", out var arrows, out _) && InputCode.Directions(arrows) is [1, 4, 3] &&
+                !InputCode.TryParse("UUUUUUUUUUU", out _, out _) && InputCode.TryParse("UUUUUUUUUU", out _, out _) && !InputCode.TryParse("UX", out _, out _) && !InputCode.TryParse("5", out _, out _) &&
+                InputCode.TryParse("86", out var number, out _) && number == 86, "Input codes: arrows or U R D L in, arrows out, 1 to 10 directions");
+            check(StatsCatalog.TryParse(bomb[StatsSchema.InputCodeKey], "R D L", out var json, out var bits, out _) && bits == 2 + 3 * 5 + 4 * 25 &&
+                json!.GetValue<long>() == bits && StatsCatalog.Format(bomb[StatsSchema.InputCodeKey], bits) == "→ ↓ ←", "The launcher's stats read and write a code as arrows");
+            check(targets["stratagems"]["Eagle 110mm Rocket Pods"].Fields["terminal.primary.impact.explosion"] is { Kind: "ProjectileSettings", Record: 82, Offset: 144 } &&
+                targets["stratagems"]["Orbital Precision Strike"].Fields.Values.Any(f => f is { Kind: "ProjectileSettings", Offset: 144 }),
+                "Stratagem rounds have their impact payload pickers");
+            var codeRow = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "Eagle 500kg Bomb")!["page"]!.AsArray()
+                .SelectMany(c => c!["subs"]!.AsArray()).SelectMany(p => p!["rows"]!.AsArray()).Single(r => r!["key"]!.GetValue<string>() == StatsSchema.InputCodeKey)!;
+            check(codeRow["format"]?.GetValue<string>() == "code" && codeRow["component"]?.GetValue<string>() == "StratagemCode", "Its editor row: shown as arrows, live");
+            var letters = StatsData.Parse("""{"format":1,"stratagems":{"Resupply":{"stratagem.input_code":"UULRD"}}}""", profile).Single();
+            var packed = StatsData.Parse("""{"format":1,"stratagems":{"Resupply":{"stratagem.input_code":2231}}}""", profile).Single();
+            check(letters.Kind == "StratagemCode" && letters.Value == 2231 && packed.Value == 2231 && letters.Offset == 0, "A stats file takes a code as letters or packed");
+            reject(() => StatsData.Parse("""{"format":1,"stratagems":{"Resupply":{"stratagem.input_code":"UUUUUUUUUUU"}}}""", profile));
             var shield = StatsSchema.Current.Targets["backpacks"]["SH-20 Ballistic Shield Backpack"].Fields;
             check(shield["zone.explosive_damage_percentage"].Offset == 844 && shield["entity.explosive_damage_percentage"].Record == 292, "The ballistic shield's explosion shares.");
             var row = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "SH-20 Ballistic Shield Backpack")!["page"]!.AsArray()

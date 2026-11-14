@@ -68,6 +68,7 @@ static const SdkField kSdkFieldsWeaponData[] = {
     {"crosshair_type", 400, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"fire_ability", 940, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"fire_ability_2", 944, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"fire_ability_function", 948, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
 };
 static const SdkField kSdkFieldsWeaponMagazine[] = {
     {"magazine_type", 0, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -166,6 +167,9 @@ static const SdkField kSdkFieldsProjectileSettings[] = {
     {"ricochets", 176, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
     {"ricochet_angle", 180, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"ricochet_min_speed", 184, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+};
+static const SdkField kSdkFieldsStratagemCode[] = {
+    {"packed", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsStratagemSettings[] = {
     {"type", 0, 4, HF_TYPE_U32, HF_APPLIES_MISSION, REF_NONE},
@@ -1193,7 +1197,7 @@ static const SdkField kSdkFieldsWeaponCustomization[] = {
 };
 static const SdkComponent kSdkComponents[] = {
     {"ProjectileWeapon", "ProjectileWeaponComponentData", 25480438u, 616u, kSdkFieldsProjectileWeapon, 45, 0, 321},
-    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 20, 0, 236},
+    {"WeaponData", "WeaponDataComponentData", 25480438u, 1232u, kSdkFieldsWeaponData, 21, 0, 236},
     {"WeaponMagazine", "WeaponMagazineComponentData", 25480438u, 160u, kSdkFieldsWeaponMagazine, 9, 0, 5},
     {"Tag", "TagComponentData", 25480438u, 544u, kSdkFieldsTag, 2, 0, 3},
     {"Mount", "MountComponentData", 25480438u, 120u, kSdkFieldsMount, 10, 0, 283},
@@ -1203,6 +1207,7 @@ static const SdkComponent kSdkComponents[] = {
     {"DifficultySettings", "DifficultySettings", 25480438u, 816u, kSdkFieldsDifficultySettings, 15, 1, -1},
     {"DamageInfo", "DamageInfo", 25480438u, 76u, kSdkFieldsDamageInfo, 15, 1, -1},
     {"ProjectileSettings", "ProjectileSettings", 25480438u, 272u, kSdkFieldsProjectileSettings, 18, 1, -1},
+    {"StratagemCode", "StratagemCode", 25480438u, 4u, kSdkFieldsStratagemCode, 1, 1, -1},
     {"StratagemSettings", "StratagemDefinition", 25480438u, 400u, kSdkFieldsStratagemSettings, 28, 1, -1},
     {"ExplosionSettings", "ExplosionSettings", 25480438u, 152u, kSdkFieldsExplosionSettings, 5, 1, -1},
     {"ArcSettings", "ArcSettings", 25480438u, 104u, kSdkFieldsArcSettings, 9, 1, -1},

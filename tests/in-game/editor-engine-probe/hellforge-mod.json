@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "hellforge.editor-engine-probe",
+  "name": "Editor engine probe",
+  "version": "1.0.0",
+  "description": "In-game test only (tests/in-game/editor-engine.json), never shipped: the Eruptor and Variable take the Liberator's firing ability, the Sai's Improved Cooldown gets 9 spare heatsinks.",
+  "gameplay": true
+}

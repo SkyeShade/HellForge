@@ -334,6 +334,7 @@ static void ArmoryDiagTick(void); /* armory_diag.c */
 static void SpanRescueTick(void); /* perf_span_rescue.c */
 
 static void ShieldBlockTick(float dt); /* shield_block.c */
+static void CodesTick(void);            /* stratagem_codes.c */
 static void AiPathBudgetTick(void); /* perf_ai_path_budget.c */
 static void PerfCorpseFreezeTick(void); /* perf_corpse_freeze.c */
 static void HeapTrimTick(void); /* perf_heap_trim.c */
@@ -347,6 +348,7 @@ static void TickDetour(void* manager, float dt)
     ArmoryDiagTick();
     SpanRescueTick();
     ShieldBlockTick(dt);
+    CodesTick();
     AiPathBudgetTick();
     PerfCorpseFreezeTick();
     HeapTrimTick();

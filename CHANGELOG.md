@@ -12,8 +12,21 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Stratagem input codes in the editor.** Every stratagem's call-in section has Input code, shown as arrows and typed
+  as U, R, D and L, 1 to 10 directions. It applies at once, the HUD's arrows too, and each player's code is their own.
+  Stats files take it as letters (`"stratagem.input_code": "UULRD"`) ([stats mods](docs/modding/stats-mods.md#stratagem-input-codes)).
+- **Impact payloads on stratagem rounds.** The Eagle 110mm Rocket Pods, the Eagle strikes, the orbital shells, the
+  sentries and the emplacements get the Impact payload picker the hand-held weapons have.
 - **The editor's presets can be saved over again.** Each preset in PRESETS has SAVE OVER beside IMPORT, as HD2R
   Editor had: a second click within a few seconds writes your saved changes into that preset, keeping its name.
+- **Heatsink counts on the Sai's Improved Cooldown heatsink.** Its changes left the heatsink counts to the weapon, so
+  it always had the Sai's own. The editor now has Starting heatsinks, Heatsinks from supply and Spare heatsinks on it
+  (and Heatsinks from supply on Improved Heatcapacity); set, HellForge adds them to the heatsink's changes, and 0 keeps
+  the weapon's.
+- **Firing ability in the editor.** Every hand-held weapon has the ability each shot starts: its firing motion, the
+  Eruptor's bolt cycle, a shotgun's pump, the Variable's stagger. Pick another weapon's to swap the
+  motion, or None to drop it; the Variable and Bullet Storm also show their fire-mode-7 one, the W.A.S.P. and Warrant
+  their lock-on one.
 - **More weapon rows in the editor.** The Stalwart, FLAM-40, Sterilizer, Epoch, W.A.S.P., Meltagun, Cremator and
   Breaching Hammer have a reload duration. Weapons that load round by round (shotguns, the Bushwhacker, the Autocannon,
   revolvers) have Rounds per reload. Support weapons that fire have Suppressed, the BFGL and the Railgun have their
@@ -206,7 +219,6 @@ On `dev`, since 0.4.0-beta.
 - **Mission generation tests stamps only against their neighbours.** Stamp placement finds the records near each
   candidate on a grid. On a 16 km map a test visits 8.2 records instead of 136.7; a normal-size map is not measured
   ([performance fixes](docs/performance-loading.md#overlap-grid)).
-  ([performance fixes](docs/performance.md#scatter-cameras)).
 - **Memory that other threads freed goes back into use when a load ends.** Full allocator spans held by one live block
   return to their thread's heap. On a 16 km map one pass gave back 355 MB
   ([performance fixes](docs/performance.md#span-rescue)).

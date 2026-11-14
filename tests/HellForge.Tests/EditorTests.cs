@@ -87,7 +87,7 @@ static class EditorTests
                             var component = r["component"]?.GetValue<string>();
                             if (component == null) { check(field.Kind is "EntityDelta" or "StatusMultiplier" && r["applies"]!.GetValue<string>() == "boot", "Only entity deltas and status multipliers are saved without live editing."); continue; }
                             check(SdkMappings.Current.FieldAt(component, field.Offset, field.Storage) != null, $"{component} +{field.Offset} is a mapped field.");
-                            var stratagemType = field.Kind != "StratagemDefinition" ? null : field.LiveId?.ToString() ??
+                            var stratagemType = field.Kind is not ("StratagemDefinition" or "StratagemCode") ? null : field.LiveId?.ToString() ??
                                 SdkMappings.Current.Content.Single(c => c.Kind == "stratagems" && c.Name == r["target"]!.GetValue<string>()).Id.ToString();
                             check(r["ref"]!.GetValue<string>() == (field.Kind == "component" ? field.Resource : stratagemType ?? field.Record.ToString()),
                                 "The target is the entity, the row id, or the stratagem's type.");

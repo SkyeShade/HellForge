@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.stratagem-codes-probe",
+  "name": "Stratagem codes probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: its stats give Resupply the input code Up Up Left Right Down, and its code logs the Resupply row's code in the mission and every beacon's type, one PROBE line per check, for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "stratagem_codes_probe.dll", "sdk": 16 }
+}
