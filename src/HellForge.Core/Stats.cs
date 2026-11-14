@@ -93,6 +93,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         FiredEntities(schema);
         EditorRequests(schema);
         InputCodes(schema);
+        StratagemPayloads(schema);
         Entities(schema);
         Director(schema);
         return schema;
@@ -437,6 +438,21 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                 });
     }
     public const string InputCodeKey = "stratagem.input_code";
+
+    // An impact payload picker on every stratagem round that has none (the Eagle 110mm Rocket Pods', the orbitals'
+    // shells): the round's ProjectileSettings +0x90, as the hand-held weapons' rounds have it.
+    static void StratagemPayloads(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets["stratagems"].Values)
+            foreach (var round in target.Fields.Where(f => f.Value.Kind == "ProjectileSettings" && FlightOffsets.Contains(f.Value.Offset))
+                .GroupBy(f => (Prefix: f.Key[..(f.Key.LastIndexOf('.') + 1)], f.Value.Record)).ToList())
+            {
+                if (target.Fields.Values.Any(f => f is { Kind: "ProjectileSettings", Offset: 144 } && f.Record == round.Key.Record)) continue;
+                var middle = round.Key.Prefix.Split('.', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault() ?? "primary";
+                AddField(target, $"terminal.{middle}.impact.explosion", new StatsField("Impact payload", "ProjectileSettings", "", "0x0", round.Key.Record, 144, "u32",
+                    null, null, null, true, true) { Order = -100 });
+            }
+    }
 
     // Fields players asked for (the Discord list "Missing stuff from the HellForge's editor"; mappings/editor-requests.json,
     // scripts/ExportEditorRequests.py): records the catalogues never reach, added as the parity fields are (lock-on

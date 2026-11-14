@@ -361,6 +361,9 @@ static class StatsTests
                 InputCode.TryParse("86", out var number, out _) && number == 86, "Input codes: arrows or U R D L in, arrows out, 1 to 10 directions");
             check(StatsCatalog.TryParse(bomb[StatsSchema.InputCodeKey], "R D L", out var json, out var bits, out _) && bits == 2 + 3 * 5 + 4 * 25 &&
                 json!.GetValue<long>() == bits && StatsCatalog.Format(bomb[StatsSchema.InputCodeKey], bits) == "→ ↓ ←", "The launcher's stats read and write a code as arrows");
+            check(targets["stratagems"]["Eagle 110mm Rocket Pods"].Fields["terminal.primary.impact.explosion"] is { Kind: "ProjectileSettings", Record: 82, Offset: 144 } &&
+                targets["stratagems"]["Orbital Precision Strike"].Fields.Values.Any(f => f is { Kind: "ProjectileSettings", Offset: 144 }),
+                "Stratagem rounds have their impact payload pickers");
             var codeRow = EditorCatalog.Build()["objects"]!.AsArray().Single(o => o!["name"]!.GetValue<string>() == "Eagle 500kg Bomb")!["page"]!.AsArray()
                 .SelectMany(c => c!["subs"]!.AsArray()).SelectMany(p => p!["rows"]!.AsArray()).Single(r => r!["key"]!.GetValue<string>() == StatsSchema.InputCodeKey)!;
             check(codeRow["format"]?.GetValue<string>() == "code" && codeRow["component"]?.GetValue<string>() == "StratagemCode", "Its editor row: shown as arrows, live");
