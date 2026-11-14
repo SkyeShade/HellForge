@@ -1,7 +1,9 @@
 /* Stratagem uses probe (in-game test only, never shipped; tests/in-game/stratagem-uses.json). Its stats give the Orbital
- * Railcannon Strike (type 58) 3 mission uses that rearm after a 30 s cooldown (native/mod-loader/stratagem_rearm.c). On
+ * Railcannon Strike (type 58) 3 mission uses that rearm after a 90 s cooldown (native/mod-loader/stratagem_rearm.c). On
  * the ship it puts the Railcannon in the player's loadout before the mission, as stratagem-cap-probe does (the local
- * player's PlayerHistory slot 0 and the profile's first pair, game build 25480438). In the mission it logs every change
+ * player's PlayerHistory slot 0 and the profile's first pair, game build 25480438), and fills the slot as the game's own
+ * pick does (game.dll 0x66EFD0): its uses left from the row's mission uses (+0x50, which 0x879550 starts a slot with),
+ * the slot's flag at +9 set and its cooldown end at +0x18 cleared. The mission keeps that record. In the mission it logs every change
  * of the slot's uses left (the number the HUD shows) and counts the Railcannon's beacons: three land 20 s apart, a fourth
  * waits, the uses come back after the cooldown, and a call then lands again. "PROBE <check> ok" or "PROBE <check> FAIL
  * <why>" per check. */
@@ -18,6 +20,7 @@ static const HfApi* hf;
 
 #define PROBE_TYPE HF_STRATAGEM_ORBITAL_RAILCANNON_STRIKE
 #define PROBE_STABLE 0xA39552A5u /* its stable id (hellforge_content.h): stratagem_row is for added stratagems only */
+#define PROBE_TABLE 0x37CB600u   /* the stratagem rows by type (native/mod-loader/stratagems.c STR_TABLE) */
 static int g_set, g_beacons, g_spent, g_rearmed;
 static uint32_t g_left = 0xFFFFFFFEu; /* the last uses left logged */
 
@@ -82,11 +85,16 @@ static void Tick(HfMod* mod, float dt, void* user)
     if (game == 0 || manager == 0 || U32(manager + 0xDDCF8) != 12) return;
     uintptr_t loadout = LocalLoadout(game), profile = Pointer(game + LS_PROFILE);
     if (loadout == 0 || profile == 0) return;
-    uint32_t type = PROBE_TYPE, stable = PROBE_STABLE, slots = U32(loadout + LS_SLOT_COUNT);
-    if (slots == 0 || slots > 32) return;
+    uintptr_t row = Pointer(game + PROBE_TABLE + PROBE_TYPE * 8u);
+    uint32_t type = PROBE_TYPE, stable = PROBE_STABLE, slots = U32(loadout + LS_SLOT_COUNT), uses = U32(row + 0x50);
+    if (slots == 0 || slots > 32 || row == 0 || U32(row) != PROBE_TYPE || U32(row + 4) != PROBE_STABLE) return;
     g_set = 1;
-    if (hf->write(loadout + LS_SLOTS, &type, 4) || hf->write(profile + LS_PAIRS, &stable, 4)) { LOG("PROBE loadout FAIL could not write it"); return; }
-    LOG("PROBE loadout ok: slot 0 type %u, stable id %08x", U32(loadout + LS_SLOTS), stable);
+    uint8_t picked = 1;
+    uint64_t ready = 0;
+    if (hf->write(loadout + LS_SLOTS, &type, 4) || hf->write(loadout + LS_SLOTS + 4, &uses, 4) || hf->write(loadout + LS_SLOTS + 9, &picked, 1) ||
+        hf->write(loadout + LS_SLOTS + 0x18, &ready, 8) || hf->write(profile + LS_PAIRS, &stable, 4))
+    { LOG("PROBE loadout FAIL could not write it"); return; }
+    LOG("PROBE loadout ok: slot 0 type %u, uses %u, stable id %08x", U32(loadout + LS_SLOTS), U32(loadout + LS_SLOTS + 4), stable);
 }
 
 static void Called(HfMod* mod, const HfStratagemEvent* event, void* user)

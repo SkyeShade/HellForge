@@ -1,5 +1,5 @@
 {
-  "about": "Rearms after uses in the real game: a stats edit gives the Orbital Railcannon Strike 3 mission uses that rearm after a 30 s cooldown; with it in the loadout before the mission, three calls land 20 s apart (each once the previous strike has finished: the game holds a stratagem while its strike runs), the uses left the HUD shows go 3, 2, 1, 0, a fourth call waits, the uses come back to 3 after the cooldown, and a call lands again (tests/in-game/README.md).",
+  "about": "Rearms after uses in the real game: a stats edit gives the Orbital Railcannon Strike 3 mission uses that rearm after a 90 s cooldown; with it in the loadout before the mission (filled as the game's own pick fills a slot), three calls land 20 s apart (each once the previous strike has finished: the game holds a stratagem while its strike runs), the uses left the HUD shows go 3, 2, 1, 0, a fourth call 25 s after the third falls inside the cooldown and waits, the uses come back to 3 when it ends, and a fifth call lands (tests/in-game/README.md).",
   "mods": [
     "stratagem-uses-probe"
   ],
@@ -15,10 +15,10 @@
     {"wait": 20},
     {"menu": "stratagem-menu"},
     {"call": "RUDDR"},
-    {"wait": 20},
+    {"wait": 25},
     {"menu": "stratagem-menu"},
     {"call": "RUDDR"},
-    {"wait": 40},
+    {"wait": 85},
     {"menu": "stratagem-menu"},
     {"call": "RUDDR"},
     {"wait": 20},
@@ -26,14 +26,14 @@
   ],
   "checks": [
     {"name": "the probe loads", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE sdk ok"},
-    {"name": "the Railcannon is in the loadout on the ship", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE loadout ok: slot 0 type 58"},
+    {"name": "the Railcannon is in the loadout on the ship", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE loadout ok: slot 0 type 58, uses 3"},
     {"name": "the cooldown start is hooked", "log": "modloader.log", "absent": "stratagem rearm: game.dll"},
     {"name": "the rearm tick applies", "log": "mod-hellforge.stratagem-uses-probe.log", "regex": "stats .*rearms_after_uses.*: applied"},
     {"name": "the mission starts with 3 uses", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE uses left 3"},
     {"name": "the uses count down to 0", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE uses left 0"},
     {"name": "three calls land before the cooldown", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE burst ok: three calls before the cooldown"},
     {"name": "the uses come back after the cooldown", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE rearmed ok: uses left 3 after the cooldown"},
-    {"name": "HellForge's refill is logged", "log": "modloader.log", "regex": "stratagem rearm: type 58 slot \d+ of player [0-9a-f]+ rearmed: 3 uses"},
+    {"name": "HellForge's refill is logged", "log": "modloader.log", "regex": "stratagem rearm: type 58 slot \\d+ of player [0-9a-f]+ rearmed: 3 uses"},
     {"name": "a call lands again after the rearm", "log": "mod-hellforge.stratagem-uses-probe.log", "contains": "PROBE call after the rearm ok"},
     {"name": "no probe check failed (a fourth call before the rearm waits)", "log": "mod-hellforge.stratagem-uses-probe.log", "absent": "FAIL"}
   ]

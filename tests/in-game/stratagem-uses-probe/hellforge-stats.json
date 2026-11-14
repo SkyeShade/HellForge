@@ -1,6 +1,6 @@
 {
   "format": 1,
   "stratagems": {
-    "Orbital Railcannon Strike": { "uses": 3, "stratagem.rearms_after_uses": 1, "cooldown": 30 }
+    "Orbital Railcannon Strike": { "uses": 3, "stratagem.rearms_after_uses": 1, "cooldown": 90 }
   }
 }
