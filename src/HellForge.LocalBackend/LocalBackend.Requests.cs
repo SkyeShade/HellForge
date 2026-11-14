@@ -98,6 +98,7 @@ public static partial class LocalBackend
             if (request.Path == "/config/locator.json") return Locator(context);
             if (request.Path == "/Account/Login") return await LoginAsync(context);
             if (request.Path == "/hellforge/live-mods") return await LiveModsAsync(context);
+            if (request.Path == "/hellforge/paid-guard") return PaidGuard(context);
             if (request.Path.StartsWithSegments("/lobby", out var lobbyPath)) return await LobbyAsync(context, lobbyPath.Value ?? "");
             if (request.Path == "/Account/Keys") return await AccountKeysAsync(context);
             if (request.Path.StartsWithSegments("/hellforge/v1/lobbies", out var browsePath)) return await BrowseAsync(context, browsePath.Value ?? "");
@@ -170,6 +171,17 @@ public static partial class LocalBackend
                 ["live"] = result.Live, ["applied"] = result.Applied, ["changes"] = Texts(result.Changes), ["blocking"] = Texts(result.Blocking),
                 ["detail"] = result.Detail, ["digest"] = result.Digest
             });
+        }
+
+        // The loader's paid-item guard (native/mod-loader/paid_guard.c): the reserved ids the player may not hold now. It asks
+        // again before each take-back, so a token just bought with Forge Credits is never taken.
+        Reply PaidGuard(HttpContext context)
+        {
+            if (OtherMethod(context, HttpMethods.IsGet, "GET") is { } rejected) return rejected;
+            if (Profile?.Ownership is not { } ownership)
+                return new(StatusCodes.Status409Conflict, "paid_guard_unavailable", Error("HELLFORGE_NO_OWNERSHIP_RULES"));
+            var refused = ownership.Refused(Profile.InventorySection());
+            return new(StatusCodes.Status200OK, "paid_guard_served", new JsonObject { ["refused"] = new JsonArray([.. refused.Select(id => (JsonNode)id)]) });
         }
 
         static Reply Locator(HttpContext context)

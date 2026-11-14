@@ -4164,16 +4164,12 @@ static inline int hf_hook_OwnsWarbond(HfMod* mod, HfFn_OwnsWarbond detour, HfFn_
 typedef void (*HfFn_WarbondCurrencyToken)(uint64_t unused, uint32_t* out, uint32_t warbond, uint32_t currency);
 static inline HfFn_WarbondCurrencyToken hf_fn_WarbondCurrencyToken(HfMod* mod) { return (HfFn_WarbondCurrencyToken)hf_function_(mod, "WarbondCurrencyToken"); }
 
-/* HasCatalogueItem (game.dll+0x136FB40; hook or call). Whether the player holds a catalogue item.
+/* HasCatalogueItem (game.dll+0x136FB40; call only). Whether the player holds a catalogue item.
  *   account  the progression manager: hf_global_Progression
  *   item     the item's id
  * From HellForge research forge-credits-tint (README.md, locked warbonds). */
 typedef uint8_t (*HfFn_HasCatalogueItem)(void* account, uint32_t item);
 static inline HfFn_HasCatalogueItem hf_fn_HasCatalogueItem(HfMod* mod) { return (HfFn_HasCatalogueItem)hf_function_(mod, "HasCatalogueItem"); }
-static inline int hf_hook_HasCatalogueItem(HfMod* mod, HfFn_HasCatalogueItem detour, HfFn_HasCatalogueItem* original, int32_t priority)
-{
-    return hf_hook_function_(mod, "HasCatalogueItem", (void*)detour, (void**)original, priority);
-}
 
 /* WeaponMagazineRecord (game.dll+0x4F3740; hook or call). The entity's WeaponMagazineComponentData (component 5): its
  * own copy in the manager's private copies if it has one, else its type's shared record (WeaponMagazineTypeRecord);
