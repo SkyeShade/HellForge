@@ -3,7 +3,7 @@
 <!-- diataxis: explanation -->
 
 This page is for contributors working on what co-op players share in game: stats, the assets a change needs, pickups,
-each player's projectile swaps and edited rounds, the mod channel, and mod content.
+each player's projectile swaps and edited rounds, deployables, the mod channel, and mod content.
 
 Players see the stats choice in [multiplayer.md](multiplayer.md). The backends, the Steam link and joins are in
 [Co-op internals](multiplayer-internals.md).
@@ -232,6 +232,35 @@ others' guns. Research: `HD2Mods\research\coop-weapon-stats` (part B).
 - Not covered: a shotgun's pellet count (read by type in the fire function), explosion values, damage statuses and
   demolition (read by damage id per hit; the damage list is not moved for this). Shots spawned anywhere else (sentries,
   vehicles, stratagems) are not covered either. Which machine decides damage is unchanged: the shooter's.
+
+## Deployables in co-op
+
+Every machine builds its own copy of a deployable or orbital. It reads that copy's Shield, Health, OrbitalAbility and
+Bombardment values through a resolver from its own type record, some of them every frame. So a friend's relay or Orbital
+Laser moved and looked as this machine's edits had it. The thrower's machine has authority and already reads the
+thrower's edits; the work is on the others. Research: `HD2Mods\research\per-player-deployables`.
+
+- Each player's changes of those records travel with the lobby's assets. They are four-byte fields of what the player
+  calls in, by the stats schema's stratagems and backpacks.
+  - `assets.mine` adds `E<resource hex>/<S|H|O|B>+<offset hex>=<bits hex>` entries, `;` between them, at most 128.
+  - `assets.lobby` adds `<peer hex>=<entries>` for every player.
+  - Each backend sends its game `deploys <list>` (`AssetShare.Deploys`). Not while the host shares its stats
+    (`deploys -`). Older backends send none: their machines see stock values, and nothing goes on the game's own wire.
+- The mod loader (`native/mod-loader/deploys.c`) hooks nothing until a lobby has such changes.
+- Then it hooks the post-create pass (game.dll 0x581780), where the network's first state has landed and nothing has
+  been built from the records yet. An entity this machine has no authority over, of a type anyone in the lobby edited,
+  gets a private copy of each edited record there.
+- The copy is this machine's record with this machine's own changes undone (as in rounds.c), then the values of the
+  player who made it: the creator peer, LoadoutPackage +0xC0. A player who changed nothing of it plays with the base
+  value, not this machine's.
+- The four resolvers (0x4FB390, 0x507920, 0x512E20, 0x5043C0) return that copy for that entity. So two players' relays
+  differ at once, and every read through them follows, live ones included. The owner's own machine reads its own record.
+  An entity with no creator found stays as the game has it.
+- A copy lasts until its entity's id comes back, the lobby's list ends, or 64 of its kind are newer.
+- Not covered yet: reads that skip the resolvers. Those are Health's 0x12A15E0, 0x650B90, 0x655240 and 0x929710,
+  Bombardment's two reads before the owner is known, and the readers listed in the research.
+- Not covered either: shots and shells of deployables (their projectile, damage and explosion rows), and a dropped pack
+  another player picks up (it stays its thrower's).
 
 ## The mod channel in co-op
 

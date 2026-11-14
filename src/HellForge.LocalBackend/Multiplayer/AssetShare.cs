@@ -26,10 +26,6 @@ namespace HellForge.LocalBackend.Multiplayer;
 // "D<id>+<offset hex>=<bits hex>" semicolon separated in "assets.mine" and, for every player of the lobby,
 // "<peer hex>=<entries>" comma separated in "assets.lobby"; each game is sent the lobby's ("rounds"), so its copies of a
 // player's shots fly and hit with that player's values (native/mod-loader/rounds.c). Older backends send neither.
-// Deployables in co-op: each player's changes of the Shield, Health, OrbitalAbility and Bombardment records of what they
-// call in travel the same way, "E<resource hex>/<S|H|O|B>+<offset hex>=<bits hex>" semicolon separated, and each game is
-// sent the lobby's ("deploys"), so its copies of a player's relays, sentries and orbitals carry that player's values
-// (native/mod-loader/deploys.c).
 public sealed class AssetShare : IAsyncDisposable
 {
     public const int MaxPerPlayer = 64, MaxLobby = 256, MaxRounds = 96, MaxRoundsText = 7000, MaxDeploys = 128;
@@ -138,6 +134,8 @@ public sealed class AssetShare : IAsyncDisposable
         catch (Exception error) when (error is InvalidDataException or System.Text.Json.JsonException) { return "-"; }
     }
 
+    // Deployables in co-op (docs/multiplayer-in-game.md): each player's changes of these records travel as the rounds do,
+    // "deploys", so a game's copies of a player's relays, sentries and orbitals carry that player's values (deploys.c).
     // The records deploys.c gives a private copy, by the letter that names them.
     static readonly Dictionary<string, char> DeployRecords = new(StringComparer.Ordinal)
     {

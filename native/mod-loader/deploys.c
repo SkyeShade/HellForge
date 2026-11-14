@@ -1,17 +1,10 @@
-/* Per-player deployable and orbital stats in co-op (docs/multiplayer.md "Deployables in co-op"). Every machine builds its
- * own copy of a deployable (SpawnEntity, game.dll 0xFDC140) and reads its Shield, Health, OrbitalAbility and Bombardment
- * values through a resolver (0x4FB390, 0x507920, 0x512E20, 0x5043C0) from its own type record, every frame for some, so a
- * friend's relay or Orbital Laser showed this machine's edits and not theirs. The machine that throws a deployable has
- * authority over it and reads the thrower's edits already; the work is on the others. Research:
- * HD2Mods\research\per-player-deployables. Included by hellforge_modloader.c after rounds.c (RoundBase).
- *
- * The lobby's players' edits of those records come from the session's backend (live.c "deploys", AssetShare). At the
- * post-create pass (0x581780: the network's first state has landed, nothing has been built from the records yet) an
- * entity this machine has no authority over, of a type anyone in the lobby edited, gets a private copy of each edited
- * record: this machine's, with this machine's own changes undone, then the values of the player who made it (the creator
- * peer, LoadoutPackage +0xC0, which the game replicates). Each resolver returns that copy for that entity. Nothing goes
- * on the game's own wire, so two players' relays differ on every screen at once, and a machine without this sees stock.
- * A copy lasts until its entity's id comes back, the lobby's list ends, or DEPLOY_COPIES of its kind are newer. */
+/* Per-player deployable and orbital stats in co-op (docs/multiplayer-in-game.md "Deployables in co-op"). Every machine
+ * builds its own copy of a deployable and reads its Shield, Health, OrbitalAbility and Bombardment values through a
+ * resolver (0x4FB390, 0x507920, 0x512E20, 0x5043C0) from its own type record, so a friend's relay or Orbital Laser showed
+ * this machine's edits. At the post-create pass (0x581780) an entity this machine has no authority over, of a type anyone
+ * in the lobby edited (live.c "deploys"), gets a private copy of each edited record: this machine's with its own changes
+ * undone, then the creator peer's values (LoadoutPackage +0xC0). The resolvers return that copy for that entity. Nothing
+ * goes on the game's wire. Research: HD2Mods\research\per-player-deployables. Included after rounds.c (RoundBase). */
 
 #define DEPLOY_POST 0x581780u
 #define DEPLOY_LOADOUT 0x3326C40u  /* the LoadoutPackage manager: a pointer to it */
@@ -216,7 +209,31 @@ static void DeployMake(DeployKind* kind, int k, uint64_t resource, uint32_t enti
     slot->resource = resource;
     InterlockedExchange(&slot->entity, (LONG)entity);
     InterlockedExchange(&kind->live, 1);
-    InterlockedIncrement(&g_deployMade);
+    if (InterlockedIncrement(&g_deployMade) <= 32) /* the first ones, for a test's log; the watch loop counts the rest */
+        Note("deploys: entity %08x (%016llx) reads %s with %016llx's values", entity, (unsigned long long)resource, kind->what, (unsigned long long)owner);
+}
+
+/* Which kinds of record the lobby edited for this resource; 0 none. */
+static int DeployTouched(uint64_t resource, int touched[DEPLOY_KINDS])
+{
+    int any = 0;
+    AcquireSRWLockShared(&g_deployLock);
+    for (int i = 0; i < g_deployEntryCount; i++)
+        if (g_deployEntries[i].resource == resource) touched[g_deployEntries[i].kind] = any = 1;
+    ReleaseSRWLockShared(&g_deployLock);
+    return any;
+}
+
+/* An entity id came back: the copies a dead entity with it had go. */
+static void DeployDrop(uint32_t entity)
+{
+    for (int k = 0; k < DEPLOY_KINDS; k++)
+    {
+        DeployKind* kind = &g_deployKinds[k];
+        if (!kind->live) continue;
+        for (int i = 0; i < DEPLOY_COPIES; i++)
+            if ((uint32_t)kind->copies[i].entity == entity) InterlockedExchange(&kind->copies[i].entity, 0);
+    }
 }
 
 /* The post-create pass begins for an entity: its id may be one a dead entity had, and it may need copies. */
@@ -228,15 +245,9 @@ static void DeployEntity(const uint8_t* row, const uint8_t* info)
     memcpy(&entity, row + 8, 4);
     memcpy(&network, row + 0x10, 4);
     if (entity == 0) return;
-    int touched[DEPLOY_KINDS] = {0}, any = 0;
-    AcquireSRWLockShared(&g_deployLock);
-    for (int i = 0; i < g_deployEntryCount; i++)
-        if (g_deployEntries[i].resource == resource) touched[g_deployEntries[i].kind] = any = 1;
-    ReleaseSRWLockShared(&g_deployLock);
-    for (int k = 0; k < DEPLOY_KINDS; k++)
-        if (g_deployKinds[k].live)
-            for (int i = 0; i < DEPLOY_COPIES; i++)
-                if ((uint32_t)g_deployKinds[k].copies[i].entity == entity) InterlockedExchange(&g_deployKinds[k].copies[i].entity, 0);
+    int touched[DEPLOY_KINDS] = {0};
+    int any = DeployTouched(resource, touched);
+    DeployDrop(entity);
     if (!any || info[0]) return; /* this machine has authority: it reads its own records */
     uint64_t owner = g_deployCreator(entity), local = g_deployLocal();
     if (owner == 0) owner = g_deployCreator(network);
@@ -248,6 +259,23 @@ static uint64_t DeployPostDetour(void* world, uint8_t* row, uint8_t* info, void*
 {
     if (g_deployEntryCount > 0 && row != NULL && info != NULL) DeployEntity(row, info);
     return g_deployPost(world, row, info, extra);
+}
+
+/* The four resolvers and the post-create pass; 0 (said why) when one could not be hooked. */
+static int DeployHook(uintptr_t game)
+{
+    for (int k = 0; k < DEPLOY_KINDS; k++)
+        if (LoaderHook(g_deployKinds[k].what, game + g_deployKinds[k].rva, g_deployKinds[k].detour, (void**)&g_deployKinds[k].original))
+        {
+            Note("deploys: could not hook %s", g_deployKinds[k].what);
+            return 0;
+        }
+    if (LoaderHook("the post-create pass", game + DEPLOY_POST, (void*)DeployPostDetour, (void**)&g_deployPost))
+    {
+        Note("deploys: could not hook the post-create pass");
+        return 0;
+    }
+    return 1;
 }
 
 /* The watch loop, after the game loads: the hooks once the lobby has changes and their bytes read as reviewed (60 s for
@@ -275,19 +303,7 @@ static void DeploysTick(void)
         Note("deploys: the records' code is not the reviewed one; friends' deployables keep this machine's values");
         return;
     }
-    for (int k = 0; k < DEPLOY_KINDS; k++)
-        if (LoaderHook(g_deployKinds[k].what, game + g_deployKinds[k].rva, g_deployKinds[k].detour, (void**)&g_deployKinds[k].original))
-        {
-            g_deployState = -1;
-            Note("deploys: could not hook %s", g_deployKinds[k].what);
-            return;
-        }
-    if (LoaderHook("the post-create pass", game + DEPLOY_POST, (void*)DeployPostDetour, (void**)&g_deployPost))
-    {
-        g_deployState = -1;
-        Note("deploys: could not hook the post-create pass");
-        return;
-    }
+    if (!DeployHook(game)) { g_deployState = -1; return; }
     g_deployState = 1;
     Note("deploys: hooked: in co-op each player's deployables and orbitals carry their own values on every machine");
 }
