@@ -182,6 +182,9 @@ On `dev`, since 0.4.0-beta.
 - **The Direct3D 12 renderer stops copying empty table space every frame.** A level load left its resource-version
   tables far too large, and every recording job copied them whole. They are now rehashed short: 79 to 116 fps on a
   16 km map ([performance fixes](docs/performance.md#render-version-rehash)).
+- **Enemies near vehicles cost less to move.** Each vehicle's box is computed once per motion and steering pass and
+  copied for the other enemies, which cut the motion pass on a 16 km map from 6.8 to 0.6 ms
+  ([performance fixes](docs/performance.md#vehicle-box)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the

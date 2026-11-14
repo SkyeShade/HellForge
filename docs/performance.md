@@ -28,6 +28,7 @@ out this way without another build.
 | `corpse-freeze` | A corpse at rest in the game's corpse ring leaves the physics world, as the game's disposal does to it later | A fight on a 16 km map: the corpses' terrain pairs 456 k to 49 k a window, median frame 18 to 15.5 ms, a trend in one direction |
 | `render-job-copies` | On Direct3D 12, each render job's copy of the resource-version table is freed once the job is recorded | On a 16 km city map, the copies standing at a peak: 561-930 MB to 4-9 MB |
 | `render-version-rehash` | The Direct3D 12 renderer's resource-version tables are rehashed short when a level load left them far too large | A 16 km map, standing still: frame 12.5-13.0 ms to 8.5 ms, about 79 to 116 fps |
+| `vehicle-box` | Each vehicle's oriented box is computed once per motion and steering pass, then copied for the other enemies | The motion pass at 213-225 enemies on a 16 km map: 6.8 ms to 0.5-0.6 ms a frame |
 
 ## safe-read
 
@@ -237,3 +238,45 @@ Limits:
 
 - Direct3D 12 only. Under Direct3D 11 the hooked dispatch never runs.
 - It is pinned to build 25480438's bytes. Another build leaves it off, with a line in `modloader.log`.
+
+## vehicle-box
+
+Each vehicle's box is computed once per pass and copied for every other enemy that asks for it in that pass
+(`native/mod-loader/perf_vehicle_box.c`).
+
+Enemies walk around vehicles. Twice a frame, in the motion pass and in the AI steering pass, the game clips each moving
+enemy's move against every vehicle. It asks the engine for each vehicle's oriented box before it tests the distance.
+On a 16 km map with 39 scout walkers, the game asked for over 7,000 boxes a frame, of 39 vehicles.
+
+### Why the answers stay the same
+
+- The engine's box function writes only its 76-byte answer. The answer depends only on the vehicle's scene-graph world
+  matrices and mesh records.
+- Nothing writes those during the two passes. The game's unit calls there read, or queue a world command, such as a
+  position or a flow event, that the engine applies after the game's update.
+- The engine computes world matrices later in the frame, in its own world update. The animation jobs that run during
+  the passes write local transforms and private copies only.
+- Copies live inside one pass on its own thread and are dropped when the pass starts and ends. Nothing is kept between
+  frames, levels or worlds, so a world freed at level end is never read.
+- Only the clip's own call, with its flag, gets a copy. Other callers and other threads get the engine's answer every
+  time.
+
+### Measured effect
+
+On a 16 km map with 213-225 enemies, 39 of them scout walkers, the motion pass went from 6.8-6.9 ms to 0.5-0.6 ms a
+frame. The median frame went from 25 ms to 18 ms. A compare mode checked about 8 million answers, and none differed.
+
+That measurement kept each box for a whole frame. This fix keeps it for one pass, so it computes each box twice a
+frame instead of once: 78 boxes instead of 39, against more than 7,000 without it.
+
+The effect on a normal-size mission is not measured. The cost is moving enemies times vehicles, so a mission with
+scout walkers or an exosuit gains in proportion, and one without vehicles gains nothing.
+
+### Limits
+
+- Build 25480438 only. The four places it relies on are pinned to that build's bytes; any other code leaves it off with
+  a note in `modloader.log`.
+- Scout walkers and the exosuit carry the vehicle component. Whether war striders and factory striders do was not
+  checked.
+- A pass copies at most 128 boxes, and the game holds at most 64 vehicles. Past that, boxes are computed every time.
+- A mod that hooks the box function itself turns the copies off: the call then no longer comes from the clip.
