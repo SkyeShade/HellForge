@@ -787,6 +787,7 @@ static void WatchInstalls(void)
     RenderVersionRehashWatch();
     PerfScatterCamerasWatch();
     TreeLimitsWatch();
+    SpanRescueInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));

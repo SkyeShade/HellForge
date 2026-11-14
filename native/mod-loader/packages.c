@@ -331,6 +331,7 @@ static void PackagesRequest(void)
 
 static void EventsTick(void); /* events.c */
 static void ArmoryDiagTick(void); /* armory_diag.c */
+static void SpanRescueTick(void); /* perf_span_rescue.c */
 
 static void ShieldBlockTick(float dt); /* shield_block.c */
 static void AiPathBudgetTick(void); /* perf_ai_path_budget.c */
@@ -344,6 +345,7 @@ static void TickDetour(void* manager, float dt)
     PackagesRequest();
     AttachmentsTick();
     ArmoryDiagTick();
+    SpanRescueTick();
     ShieldBlockTick(dt);
     AiPathBudgetTick();
     PerfCorpseFreezeTick();
