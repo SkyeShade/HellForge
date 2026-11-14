@@ -165,6 +165,9 @@ On `dev`, since 0.4.0-beta.
 - **Corpses at rest leave the physics world.** Up to 32 corpses on each machine kept their ragdoll bodies in the
   physics step until newer deaths pushed them out. Once they settle, they are frozen as the game freezes a sinking
   corpse, so they no longer react to hits ([performance fixes](docs/performance.md#corpse-freeze)).
+- **Direct3D 12 gives back the render jobs' table copies.** Each job copies the renderer's whole resource-version
+  table, and the game kept every copy in a pool of hundreds. A copy now goes when its job is recorded; on a 16 km
+  city map that was up to 930 MB at a peak ([performance fixes](docs/performance.md#render-job-copies)).
 - **HellForge reads game memory without a system call.** Its own readers and every mod's `read` copy up to 256 bytes
   in place, which cut the living world's tick on a 16 km map from 1.8 to 0.5 ms. `HELLFORGE_PERF_OFF` turns any
   performance fix off ([performance fixes](docs/performance.md)).
