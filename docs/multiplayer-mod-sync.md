@@ -157,6 +157,8 @@ hash, class (content, code, raw, bundled), load-order place, folder and counted 
 **Without the in-game editor.** With the in-game editor switched off, the launcher shows the offer from
 `mod-sync.json` on its Play page (`ModSyncPrompt.cs`, `ModSyncOffer`), TRUST and GET IT included. It writes the answer
 to `<run>/backend/mod-sync-answer.json`, which the backend takes within a second, as the game's `syncanswer`.
+Other launchers do the same with `HellForge.Cli mod-sync-offer`
+([external-launchers.md](external-launchers.md#the-mod-sync-prompt)).
 
 ## Rejoining after the restart
 

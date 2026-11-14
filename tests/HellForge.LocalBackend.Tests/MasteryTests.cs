@@ -246,7 +246,7 @@ static class MasteryTests
         check(refused, "A malformed modPackageProgress passed validation.");
     }
 
-    // The launcher's edit (WeaponLevelData.Save calls ModPackages for a mod weapon).
+    // The launcher's edit (WeaponLevels.Save calls ModPackages for a mod weapon).
     static void Launcher(string root, Action<bool, string> check)
     {
         using var rig = new Rig(root, "launcher", null, (Gold, "a"));

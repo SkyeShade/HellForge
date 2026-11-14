@@ -65,13 +65,15 @@ standard error and exits with 1.
 |---|---|
 | `status` | Prints the versions (HellForge, engine, mod SDK, game build), readiness (`ready.gameCopy`, `ready.sessionRunner`, `ready.linuxNamespace`), how the copy is kept off the internet (`networkBlock`: `wfp`, `firewall` or `linux-netns`), the launcher's settings, the last session, whether one is running, and the language packs in the copy (`languages`; English is always there). |
 | `profiles` | Lists the profiles (name, template, folder, used, selected) and the templates. `--create <name> --template <template>` makes a profile; the name is 1 to 32 lowercase letters, digits or hyphens. |
-| `mods` | Prints the Mods page's list, top first. Each mod has its id, name, version, description, enabled, group, tags, folder, archive (its zip, if it came as one), removable, and a pack's options. Also printed: the folder's problems, the modlist code friends compare (null when no gameplay mod is on) and the path of `hellforge-mods.json`. |
-| `mod-add --file <path>` | Adds a mod the way the Mods page's "Add mods..." does: a `.zip`, `.rar` or `.7z`, a folder mod's `hellforge-mod.json`, or a cosmetic pack's `manifest.json`. A mod with the same id is replaced (an update). |
-| `mod-remove --id <id>` | Deletes the mod's zip or folder. Mods HellForge ships (tag `bundled`) come back by themselves: switch these off instead. Local Stats (tag `local-stats`) cannot be removed. |
-| `mod-switch --id <id> --on yes\|no` | Switches a mod on or off. Local Stats (tag `local-stats`) is always on and refuses `--on no`. |
+| `mods` | Prints the Mods page's list, top first. Each mod has its id, name, version, description, enabled, group, tags, folder, archive (its zip, if it came as one), removable, and a pack's options. It also has `unsupported` (why this HellForge can't run it, or null), `premium` (the premium items it was built on, each with its `requirement` and `name`), `url`, `icon`, and a source mod's `build` (see [Source mod builds](#source-mod-builds)). Also printed: the folder's problems, the modlist code friends compare (null when no gameplay mod is on) and the path of `hellforge-mods.json`. |
+| `mod-add --file <path>` | Adds a mod the way the Mods page's "Add mods..." does: a `.zip`, `.rar` or `.7z`, a folder mod's `hellforge-mod.json`, or a cosmetic pack's `manifest.json`. A mod with the same id is replaced (an update). Give `--file` more than once to add several (see [Several mods at once](#several-mods-at-once)). |
+| `mod-remove --id <id>` | Deletes the mod's zip or folder. Mods HellForge ships (tag `bundled`) come back by themselves: switch these off instead. Local Stats (tag `local-stats`) cannot be removed. `--ids <id,id,...>` removes several. |
+| `mod-switch --id <id> --on yes\|no` | Switches a mod on or off. Local Stats (tag `local-stats`) is always on and refuses `--on no`. `--ids <id,id,...>` switches several. |
 | `mod-order --ids <id,id,...>` | Puts the listed mods first, top first, in that order. The others keep their order after them. Gameplay mods stay above cosmetic ones, so the order changes within each group. |
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
 | `settings [options]` | Prints the choices `play` and HellForge.exe start from, after saving any option given (see [Profiles and settings](#profiles-and-settings)). |
+| `weapon-levels [--profile <name>] [--set <package>=<level>,... \| --all <level>]` | Prints a profile's weapon levels, as the profile page's Weapon levels card shows them, and sets them between sessions (see [Weapon levels](#weapon-levels)). |
+| `mod-sync-offer [--answer <answer> --version <n> [--mod <id>]]` | Prints the running session's MOD SYNC offer and sends the player's answer, as the Play page's MOD SYNC card does (see [The MOD SYNC prompt](#the-mod-sync-prompt)). |
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended. `--run` adds one session's files. `--export` zips a session's logs, and `--crash-report` makes its crash report (see [Logs](#logs)). |
 | `play` | Starts a session (see [Sessions](#sessions)). |
 | `stop [--run <run folder>] [--wait yes] [--now yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. `--now yes` ends the game at once instead of asking it to close first. |
@@ -136,6 +138,44 @@ If you write `mods\hellforge-mods.json` yourself, it looks like this:
 
 Write the whole file at once, to a temporary file and then a rename, as HellForge does.
 
+### Source mod builds
+
+A mod with C or C++ sources is compiled by HellForge before each session. `mods` gives each such mod a `build` with a
+`state`, when it was `built` and the compiler's `error`. Other mods have `build: null`.
+
+| `state` | Meaning |
+|---|---|
+| `not-built` | Never built here. The next session builds it. |
+| `built` | Built at `built`. Sessions reuse it until its sources, the SDK or the game build change. |
+| `did-not-compile` | Its current sources failed; `error` has the compiler's message. The mod stays off until it is fixed. |
+| `tools-failed` | The last build failed in the mod tools (Zig), not the mod. The next session unpacks Zig again. |
+| `changed` | Its sources, the SDK or the game build changed since the last build, so the next session builds it. `error` keeps an old failure's message. |
+| `unreadable` | Its sources could not be read; `error` says why. |
+
+The tags also name `native` (network field types or component writes), `premium` and `unsupported`.
+
+### Several mods at once
+
+Sending a list of mods one command at a time reads the whole mods folder once per mod. Give the list to one command
+instead, which reads it once:
+
+```text
+HellForge.Cli.exe mod-remove --ids owner.one,owner.two
+HellForge.Cli.exe mod-switch --ids owner.one,owner.two --on no
+HellForge.Cli.exe mod-add --file C:\Downloads\one.zip --file C:\Downloads\two.zip
+```
+
+Every id or file is checked before anything changes. An unknown id, a mod that can't be removed or switched off, or a
+file that isn't a mod refuses the whole list, and nothing is changed. `mod-switch` saves the list with one write.
+`mod-remove` and `mod-add` then work through the list. A file that can't be deleted or copied (open in another program)
+is that mod's `error`, and the others still go. The answer counts them:
+
+```json
+{ "done": 2, "failed": 0, "mods": [ { "id": "owner.one", "removed": "...", "error": null } ] }
+```
+
+`--id` and one `--file` still print the single-mod answer they always did.
+
 ## Profiles and settings
 
 `play` uses the launcher's settings unless an option replaces one, so a player gets the same session from either
@@ -143,13 +183,15 @@ launcher. It never changes `launcher-settings.json`.
 
 To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
 `--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--game-options`), and also
-`--strangers yes|no|default`, `--live-changes` and `--forge-credits`. It saves the ones given, checks them as `play`
-would, and prints every setting:
+`--strangers yes|no|default`, `--live-changes`, `--forge-credits`, the war options and the mod sync switches below. It
+saves the ones given, checks them as `play` would, and prints every setting:
 
 ```json
 {"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
  "gameOptions": "", "sandbox": true, "steamUdp": true, "steamBridge": true, "playWithStrangers": true,
- "playWithStrangersChosen": null, "liveChanges": false, "forgeCreditChance": 30, "file": "<installation>\\launcher-settings.json"}
+ "playWithStrangersChosen": null, "liveChanges": false, "forgeCreditChance": 30, "dealSubfactions": true, "dealSeaf": true,
+ "warSeed": 0, "shareMods": true, "listPublic": true, "showEditedStats": false, "hostStats": false,
+ "file": "<installation>\\launcher-settings.json"}
 ```
 
 `settings --live-changes yes|no` sets the experimental Change mods without restarting (off by default, read when a
@@ -182,8 +224,53 @@ Credits (HellForge's default is 30 %; the game's was 20 % for Super Credits). It
 `forgeCreditChance` and applies from the next session. Everyone in a co-op mission should use the same value: each player
 rolls the loot from the mission's seed.
 
+The all-planets war's options, as on HellForge.exe's Play page, are saved in `launcher-settings.json`:
+
+| Option | Meaning |
+|---|---|
+| `--deal-subfactions yes\|no` | Deals the war's subfactions from its seed (on by default; off keeps the frozen war's). |
+| `--deal-seaf yes\|no` | Deals the war's SEAF allies from its seed (on by default). |
+| `--war-seed <number>\|random` | The seed they are dealt from: a whole number, or `random` to roll one. `0` until one is set. |
+
+The mod sync switches, as on the Mods page's Sharing card, are saved in `mods\hellforge-mods.json`:
+
+| Option | Meaning |
+|---|---|
+| `--share-mods yes\|no` | Players who join you may download your gameplay mods (on by default). |
+| `--list-public yes\|no` | Your Public lobbies are listed on other HellForge players' Galactic Map (on by default). |
+| `--show-edited-stats yes\|no` | Public lobbies whose host plays with edited stats are shown (off by default). |
+| `--host-stats yes\|no` | Friends play with your editor changes instead of their own (off by default). |
+
+`mod-sync` lists what mod sync keeps for the player. `trusted` holds the mods trusted on the in-game MOD SYNC prompt:
+id, name, version, hash, who hosted it, since when, and whether it counts only in a sandboxed session. `blocked` holds
+the blocked mods, and `downloaded` the mods downloaded from hosts (count, bytes, folder). Its options change them as the
+Mods page does:
+
+| Option | What it does |
+|---|---|
+| `--untrust <id> --hash <hash>` | Takes the trust back and deletes that mod's download. Refused while a session runs. |
+| `--block <id>` / `--unblock <id>` | Adds a mod to the blocklist, or takes it off. Lobbies running a blocked mod are not offered. |
+| `--delete-downloaded yes` | Deletes every mod downloaded from hosts. Refused while a session runs. |
+
 HellForge.exe reads the same file, so a choice made in your launcher is the one its Settings page shows. `profiles`
 lists and creates profiles; `settings --profile <name>` selects one.
+
+### Weapon levels
+
+`weapon-levels` prints the selected profile's weapon mastery levels, or another profile's with `--profile <name>`:
+
+```json
+{"profile": "default", "used": true,
+ "weapons": [{"package": 3391943729, "weapon": "AA035309", "name": "AR-23 Liberator", "maxLevel": 25, "level": 4, "mod": false}]}
+```
+
+- `package` is the weapon's mastery track, and the id `--set` takes. `mod` is a mod weapon's own track.
+- The names come from the newest session, so before a first session some weapons show as `Weapon <id>`.
+- `used` is `false` until a session has filled the profile. Its levels cannot be set before that.
+- `--set <package>=<level>,...` sets the listed weapons. `--all <level>` sets every weapon, each held at its top level.
+- Setting a level adds the items each level up to it gives, and takes nothing away, as SAVE LEVELS does. Level `0`
+  removes the weapon's progress.
+- Both are refused while a session runs. The next session uses the new levels.
 
 ## Sessions
 
@@ -244,6 +331,31 @@ so handle them too.
 
 One session runs at a time on a PC, because the game runs only once. `play` refuses while one is running, in any
 installation.
+
+### The MOD SYNC prompt
+
+When a player joins a host with other gameplay mods, the session offers the host's mods
+([multiplayer-mod-sync.md](multiplayer-mod-sync.md)). With the in-game editor on, the game shows the MOD SYNC prompt
+itself. Without it, HellForge.exe shows the offer on its Play page, and `mod-sync-offer` lets your launcher do the same.
+
+`mod-sync-offer` prints the newest session's offer (`--run <run folder>` picks another session), or `"offer": null`
+when none waits:
+
+- `inGamePrompt` is `true` when the editor mod is on, so the game shows the prompt itself.
+- `offer.version` numbers the offer, and `offer.state` is `offer`, `downloading`, `ready`, `blocked` or `failed`.
+- `offer.answers` lists the answers its buttons send, the main one first. `accept` downloads the host's mods and
+  restarts, `restart` joins with the mods already here, and `decline` cancels or closes the offer.
+- Each mod in `offer.mods` has its `action`: `have`, `download`, `manual`, `blocked`, `update`, `off` or `trust`.
+- A mod whose action is `trust` carries `trustWarning`, the prompt's TRUST warning, and `offer.trustNote` is the line
+  under it. `stranger: true` means the host is not the player's Steam friend.
+- `live: true` means the running game can take the host's mods without a restart.
+
+`--answer <answer> --version <n>` sends the player's choice for the offer they were shown, and the session takes it
+within a second. A newer offer refuses an old version, so read it again and show it first. `trust`, `block` and `open`
+(open the mod's page) name the mod with `--mod <id>`.
+
+Show `trustWarning` in full before you send `trust`, and make the player confirm it, as the prompt does. A trusted mod
+runs its own code or unchecked data on the player's PC.
 
 ### The lobby browser API
 
