@@ -29,8 +29,9 @@ static int StatsTableKind(const char* kind)
 {
     return !strcmp(kind, "ProjectileSettings") || !strcmp(kind, "DamageInfo") || !strcmp(kind, "StratagemDefinition") ||
         !strcmp(kind, "BoosterSettings") || !strcmp(kind, "PassiveModifier") || !strcmp(kind, "PassiveStat") || !strcmp(kind, "MeleeHitVolume") ||
-        !strcmp(kind, "DifficultySettings") || DirectorKind(kind);
+        !strcmp(kind, "DifficultySettings") || DirectorKind(kind) || !strcmp(kind, "StratagemCode");
 }
+#include "stratagem_codes.c" /* the StratagemCode kind: stratagems' input codes */
 static StatEdit g_stats[MAX_STATS];
 static int g_statCount;
 static volatile LONG g_statsComponentsReady;
@@ -95,6 +96,15 @@ static void StatsNoteShots(const StatEdit* e, uint32_t original)
         ShotsNoteLocal(e->resource, ShotsSlotOf(e->component, e->offset), original, e->value);
 }
 
+/* An edit's value checks past its field's own: a code's (stratagem_codes.c), then a reference's (refs.c). 0 when it may be
+ * written; else refused (logged) or, for a reference, waiting. */
+static int StatsChecks(StatEdit* e, uintptr_t address, uint32_t original)
+{
+    const char* code = CodesRefusal(e, original);
+    if (code != NULL) { StatsRefuse(e, code); return 1; }
+    return RefStat(e, address, original) != 0 /* REF_OK */;
+}
+
 static void StatsWrite(StatEdit* e, uintptr_t address)
 {
     uint32_t current = 0, original, size = StatSize(e);
@@ -102,7 +112,7 @@ static void StatsWrite(StatEdit* e, uintptr_t address)
     original = StatsOriginal(e, address, current);
     if (e->hasExpect && original != e->expect) { StatsRefuse(e, "original value differs from expect"); return; }
     if (e->floating && !StatsFiniteBits(current)) { StatsRefuse(e, "current float is not finite"); return; }
-    if (RefStat(e, address, original) != 0 /* REF_OK */) return;
+    if (StatsChecks(e, address, original) != 0) return;
     if (e->shared && !e->own) ApiLog(e->mod, "stats %s: shared record; all consumers are affected", e->label);
     if (e->unverified) ApiLog(e->mod, "stats %s: gameplay effect is unverified", e->label);
     if (ApiWrite(address, &e->value, size) || SafeRead(address, &current, size) || current != e->value)
@@ -271,6 +281,7 @@ static uintptr_t StatsTableRow(int phase, uintptr_t table, uint32_t first, uint3
  * original), or 0 with *why. Also live_stats.c's lookup. */
 static uintptr_t StatsTableField(int phase, uintptr_t game, const StatEdit* e, const char** why)
 {
+    if (!strcmp(e->kind, "StratagemCode")) return e->own ? (*why = "a code has no own record", 0) : CodesField(e, why);
     uint32_t count = phase == 0 ? PRJ_VANILLA : phase == 1 ? DMG_VANILLA : STR_VANILLA;
     uint32_t stride = phase == 0 ? PRJ_ROW : phase == 1 ? DMG_ROW : STR_ROW;
     if (strcmp(g_build, "25480438") || e->own || e->offset < 4 || e->offset > stride - 4 || e->offset % 4)
@@ -286,10 +297,11 @@ static void StatsApplyTable(int phase, uintptr_t game)
     if (g_statsTablesDone[phase]) return;
     g_statsTablesDone[phase] = 1;
     const char* kind = StatsTableName(phase);
+    if (phase == 2) CodesInstallAt(game, StatsTableOf(phase, game)); /* before any edit: a code's field is its array's */
     for (int i = 0; i < g_statCount; i++)
     {
         StatEdit* e = &g_stats[i];
-        if (strcmp(e->kind, kind) || !e->mod->loaded) continue;
+        if ((strcmp(e->kind, kind) && (phase != 2 || strcmp(e->kind, "StratagemCode"))) || !e->mod->loaded) continue;
         const char* why = NULL;
         uintptr_t at = StatsTableField(phase, game, e, &why);
         if (!at) StatsRefuse(e, why);

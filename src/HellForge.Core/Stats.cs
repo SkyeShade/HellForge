@@ -92,6 +92,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         Ricochets(schema);
         FiredEntities(schema);
         EditorRequests(schema);
+        InputCodes(schema);
         Entities(schema);
         Director(schema);
         return schema;
@@ -422,6 +423,20 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                     Options = default, LiveId = null, Hd2rKey = null,
                 };
     }
+
+    // Every vanilla stratagem's input code (StratagemCode, by its stable id: native/mod-loader/stratagem_codes.c keeps the
+    // codes in arrays of HellForge's and follows the packed value), after its call-in fields. The editor shows and takes
+    // it as directions (its "code" format).
+    static void InputCodes(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets["stratagems"].Values)
+            if (target.Fields.FirstOrDefault(f => f.Value.Kind == "StratagemDefinition" && f.Key.StartsWith("stratagem.", StringComparison.Ordinal)).Value is { } own)
+                AddField(target, InputCodeKey, new StatsField("Input code", "StratagemCode", "", "0x0", own.Record, 0, "u32", null, null, null, true, true)
+                {
+                    Order = own.Order, Note = "The arrows that call it in, 1 to 10 of them. Each player's own: it is matched on their machine.",
+                });
+    }
+    public const string InputCodeKey = "stratagem.input_code";
 
     // Fields players asked for (the Discord list "Missing stuff from the HellForge's editor"; mappings/editor-requests.json,
     // scripts/ExportEditorRequests.py): records the catalogues never reach, added as the parity fields are (lock-on
@@ -968,7 +983,7 @@ public static class StatsData
         if (own && field.Kind != "component") throw new InvalidDataException($"{entryName} {name}: own isolates entity component records; {field.Kind} is a shared definition. Put shared definition edits in a separate entry or mod without own.");
         var value = property.Name == "armorPenetration" ? property.Value[index] : property.Value;
         // StratagemDefinition uses UINT32_MAX for unlimited uses (the registry's reviewed sentinel).
-        var bits = field.Kind == "StratagemDefinition" && field.Offset == 0x50 && field.Storage == "u32" &&
+        var bits = field.Kind == "StratagemCode" ? CodeBits(value) : field.Kind == "StratagemDefinition" && field.Offset == 0x50 && field.Storage == "u32" &&
             value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var uses) && uses == -1
             ? uint.MaxValue : Bits(value, field.Storage, field.Min, field.Max);
         return new StatsEdit($"{entryName} {name}", field.Kind, field.Component, Resource(field.Resource, allowZero: true), field.Record,
@@ -983,6 +998,11 @@ public static class StatsData
                 yield return new StatsEdit(field.Name, "component", write.Component, write.Resource, -1, field.Offset, "u32", field.Value, field.Expect, false, true, false);
         foreach (var edit in mod.Stats) yield return edit;
     }
+
+    // An input code: its arrows or letters ("UULRD"), or the packed number Local Stats saves.
+    static uint CodeBits(JsonElement value) =>
+        InputCode.TryParse(value.ValueKind == JsonValueKind.String ? value.GetString()! : value.GetRawText(), out var packed, out var error)
+            ? packed : throw new InvalidDataException($"Input code: {error}");
 
     static uint Bits(JsonElement value, string storage, double? min, double? max)
     {

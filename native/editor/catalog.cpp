@@ -302,6 +302,7 @@ static void ReadRow(const Value& r, Row& row)
     row.note = r.GetString("note");
     ReadOptions(r, row);
     row.toggle = r.GetBool("toggle");
+    row.code = r.GetString("format") == "code";
     row.pick = r.GetString("pick");
     row.fires = r.GetString("fires");
     row.mountSlot = r.GetString("mountSlot");

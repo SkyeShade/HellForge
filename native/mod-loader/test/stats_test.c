@@ -25,6 +25,7 @@
 #include "moved_fields_test.c"
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
+#include "stratagem_codes_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -4508,6 +4509,7 @@ int main(int argc, char** argv)
     StratagemGuardsFixture();
     PickerFrameFixture();
     StratagemFieldFixture();
+    StratagemCodesFixture();
     StratagemCapFixture();
     ExplosionsFixture();
     ExplosionsWidthFixture();
