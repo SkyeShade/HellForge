@@ -577,6 +577,7 @@ static void ChannelInstall(uintptr_t game);
 #include "perf_render_job_copies.c" /* Direct3D 12 render jobs give their version copies back */
 #include "perf_render_version_rehash.c" /* the D3D12 version tables kept short */
 #include "perf_vehicle_box.c" /* vehicles' boxes once per motion and steering pass */
+#include "perf_heap_trim.c" /* the allocator's caches emptied once more when a load ends */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -775,6 +776,7 @@ static void WatchInstalls(void)
 {
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) PerfCorpseFreezeWatch();
+    HeapTrimInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallForgeCreditsColour(); InstallForgeCreditsRoll(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();

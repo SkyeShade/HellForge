@@ -29,6 +29,7 @@ out this way without another build.
 | `render-job-copies` | On Direct3D 12, each render job's copy of the resource-version table is freed once the job is recorded | On a 16 km city map, the copies standing at a peak: 561-930 MB to 4-9 MB |
 | `render-version-rehash` | The Direct3D 12 renderer's resource-version tables are rehashed short when a level load left them far too large | A 16 km map, standing still: frame 12.5-13.0 ms to 8.5 ms, about 79 to 116 fps |
 | `vehicle-box` | Each vehicle's oriented box is computed once per motion and steering pass, then copied for the other enemies | The motion pass at 213-225 enemies on a 16 km map: 6.8 ms to 0.5-0.6 ms a frame |
+| `heap-trim` | The game's allocator caches are emptied once more when a load ends on the ship or a mission | 16 km maps: 0.5 to 5.5 ms a trim on the game thread, 10 to 72 MB given back each time; not measured at normal size |
 
 ## safe-read
 
@@ -280,3 +281,27 @@ scout walkers or an exosuit gains in proportion, and one without vehicles gains 
   checked.
 - A pass copies at most 128 boxes, and the game holds at most 64 vehicles. Past that, boxes are computed every time.
 - A mod that hooks the box function itself turns the copies off: the call then no longer comes from the clip.
+
+## heap-trim
+
+When a load ends, the loader calls the game's own allocator trim once more (`native/mod-loader/perf_heap_trim.c`). The
+game trims only as a load starts, so the memory that load frees stays cached until the next one.
+
+- **What it changes.** The game's allocator, rpmalloc, keeps freed memory in caches: about 0.5 GB shared by all
+  threads, and up to 62 MB for each thread. The game empties them as it enters the ship's or a mission's loading state.
+- **When.** On the game thread's first update in the ship or a mission after another state. The first state the
+  loader reads only sets the baseline, so a fix that installs during play waits for the next load.
+- **What the trim does.** It is the function the game calls, through the same engine slot. It releases the game
+  thread's caches and the shared ones; the pool workers and the render thread release their own on their next turn.
+- **Why the game's results stay the same.** The trim runs on the thread and in the frame update the game calls it
+  from, holding no allocator or queue lock. It releases only memory nothing uses. Another thread that needs a shared
+  cache meanwhile waits on that cache's spin lock, as during the game's own trims.
+- **Measured.** On Complex Operations' 16 km maps, nine trims after tile events took 0.5 to 5.5 ms on the game thread
+  and gave back 10 to 72 MB each. The effect at normal size is not measured. Each trim writes a `heap trim` line to
+  `modloader.log` with its time and the process's commit before and after.
+- **Limits.** Only whole cached spans go back: partly used spans and the engine's own pools (Havok, the renderer's
+  tagged heap) keep their memory. The first frame after a load pays the trim's time once. Memory the game asks for
+  again after the trim is mapped again.
+- **Pins.** The trim (`0x3245F0` in the executable), the calls it makes and both of `game.dll`'s calls of it must read
+  as on build 25480438, and the engine slot must hold the trim. Otherwise the fix stays off with a `heap trim: off`
+  line.
