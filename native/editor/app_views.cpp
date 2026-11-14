@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "app_internal.h"
 #include "icons.h"
+#include "translate.h"
 
 namespace editorapp
 {
@@ -91,6 +92,26 @@ void DrawChanges(float y0, float h)
     List(o);
 }
 
+/* The language: auto, English, then each list in the translations folder; a click moves to the next. */
+static void DrawLanguageSetting(float x, float y)
+{
+    std::vector<std::string> languages = {"auto", "en"};
+    for (const std::string& tag : tr::Available(g_host.modFolder)) if (tag != "en") languages.push_back(tag);
+    uint64_t id = ui::Id("language");
+    if (g_cv.Hovered() == id) g_cv.Rect(x - 8, y - 14, 560, 28, HOVER, 1);
+    g_cv.Text("Language (the editor's translations folder)", x, y, T(SZ_LABEL, DIM));
+    std::string shown = g_language == "auto" ? std::string("AUTO") : g_language == "en" ? std::string("ENGLISH") : g_language;
+    if (g_language == "auto") shown += tr::Active() ? " (" + tr::Tag() + ")" : " (ENGLISH)";
+    for (char& c : shown) c = (char)toupper((unsigned char)c);
+    Chip(shown, x + 540, y, INVERSE, GOLD, true);
+    if (!g_cv.Hit(x - 8, y - 14, 560, 28, id)) return;
+    size_t at = std::find(languages.begin(), languages.end(), g_language) - languages.begin();
+    g_language = languages[(at + 1) % languages.size()];
+    ApplyLanguage();
+    SaveSettings();
+    Sound(sounds::CLICK);
+}
+
 void DrawSettings(float y0, float h)
 {
     g_cv.Rect(0, y0, PANEL_W, h, PANEL, 1);
@@ -116,6 +137,8 @@ void DrawSettings(float y0, float h)
     g_cv.Text("Menu sounds on buttons (the game's own)", x, y, T(SZ_LABEL, DIM));
     Chip(g_soundsOn ? "ON" : "OFF", x + 540, y, g_soundsOn ? INVERSE : FAINT, g_soundsOn ? GOLD : LINE, true);
     if (g_cv.Hit(x - 8, y - 14, 560, 28, soundsId)) { g_soundsOn = !g_soundsOn; sounds::SetEnabled(g_soundsOn); SaveSettings(); Sound(sounds::CLICK); }
+    y += 34;
+    DrawLanguageSetting(x, y);
     y += 34;
     g_cv.Text("The window is 1260 units wide on a 1080-unit-tall screen, centred: 100% fills the same share of every screen.", x, y, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, PANEL_W - 60));
     y += 26;

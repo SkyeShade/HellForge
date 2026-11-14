@@ -58,7 +58,7 @@ foreach($source in $sources){
     if($LASTEXITCODE){throw ('Dear ImGui did not compile: '+$source)}
     $built+=$object
 }
-$editorSources=@('editor.cpp','app.cpp','app_values.cpp','app_staging.cpp','app_widgets.cpp','app_page.cpp','app_presets.cpp','app_mods_logs.cpp','app_sync.cpp','app_lobbies.cpp','app_keys.cpp','app_browse.cpp','app_views.cpp','canvas.cpp','catalog.cpp','icons.cpp','json.cpp','local_stats.cpp','sounds.cpp')|ForEach-Object{Join-Path $project ('native/editor/'+$_)}
+$editorSources=@('editor.cpp','app.cpp','app_values.cpp','app_staging.cpp','app_widgets.cpp','app_page.cpp','app_presets.cpp','app_mods_logs.cpp','app_sync.cpp','app_lobbies.cpp','app_keys.cpp','app_browse.cpp','app_views.cpp','canvas.cpp','catalog.cpp','icons.cpp','json.cpp','local_stats.cpp','sounds.cpp','translate.cpp')|ForEach-Object{Join-Path $project ('native/editor/'+$_)}
 & $zig c++ @common -shared -Wall -Werror -Wno-unused-parameter -s @editorSources @built `
     -ld3d11 -ld3d12 -ldxgi -ld3dcompiler_47 -ldwmapi -lgdi32 -lole32 -luser32 -o (Join-Path $out 'hellforge_editor.dll')
 if($LASTEXITCODE){throw 'The editor did not compile.'}
@@ -66,6 +66,12 @@ Get-ChildItem -LiteralPath $out -Filter '*.lib'|Remove-Item
 Copy-Item -LiteralPath (Join-Path $project 'native/editor/hellforge-mod.json') -Destination $out
 # its picture on the launcher's Mods page (the manifest's "icon")
 Copy-Item -LiteralPath (Join-Path $project 'native/editor/assets/editor-logo.png') -Destination (Join-Path $out 'icon.png')
+# the word lists of its translations (docs/editor-translations.md), where there are any
+$translations=Join-Path $project 'native/editor/translations'
+if(Test-Path -LiteralPath $translations){
+    New-Item -ItemType Directory (Join-Path $out 'translations') -Force|Out-Null
+    Copy-Item -Path (Join-Path $translations '*.tsv') -Destination (Join-Path $out 'translations') -Force
+}
 # The catalogue (HellForge's EditorCatalog.cs), and with -Install the icons and fonts from that installation's game copy (EditorIcons.cs, EditorFonts.cs:
 # the player's own game files, read there; they are never part of a build anyone else gets).
 $dataArgs=@('editor-data','--out',$out)
@@ -117,6 +123,11 @@ if($Test){
     if($LASTEXITCODE){throw 'The Local Stats test did not compile.'}
     & (Join-Path $testOut 'local_stats_test.exe')
     if($LASTEXITCODE){throw 'The Local Stats test failed.'}
+    & $zig c++ -target x86_64-windows-gnu -O1 -std=c++17 -Wall -Werror (Join-Path $project 'native/editor/test/translate_test.cpp') `
+        (Join-Path $project 'native/editor/translate.cpp') -o (Join-Path $testOut 'translate_test.exe')
+    if($LASTEXITCODE){throw 'The translation test did not compile.'}
+    & (Join-Path $testOut 'translate_test.exe')
+    if($LASTEXITCODE){throw 'The translation test failed.'}
 }
 if($Install){
     $target=Join-Path $Install 'mods/hellforge-editor'

@@ -343,7 +343,7 @@ static void DrawTrust(const HfSyncMod& mod)
     g_cv.Text(name, cx, ly, T(SZ_LABEL, TEXT, ui::BODY, ui::LEFT, x + w - 24 - cx, 11));
     g_cv.Rect(x + 12, ly + 22, w - 24, 1, LINE, 10);
     for (size_t i = 0; i < lines.size(); i++)
-        g_cv.Text(lines[i], x + 28, ly + 50 + 26.0f * (float)i + (i >= lead ? 8.0f : 0), T(i < lead ? SZ_LABEL : SZ_SMALL, i < lead ? TEXT : DIM, ui::BODY, ui::LEFT, w - 56, 11));
+        g_cv.Text(lines[i], x + 28, ly + 50 + 26.0f * (float)i + (i >= lead ? 8.0f : 0), Shown(T(i < lead ? SZ_LABEL : SZ_SMALL, i < lead ? TEXT : DIM, ui::BODY, ui::LEFT, w - 56, 11)));
     TrustButtons(mod, {x, y, w, h});
 }
 
@@ -462,7 +462,7 @@ static void DrawGetItNote(float x, float fy, float bx)
     auto lines = Wrapped("GET IT opens the mod's page in your browser. To install a mod yourself, close the game, add the mod "
         "on the Mods page, then start HellForge again and join.", bx - x - 48, SZ_SMALL);
     for (size_t i = 0; i < lines.size() && i < 2; i++)
-        g_cv.Text(lines[i], x + 24, fy + 46 + 18.0f * (float)i, T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, bx - x - 36, 11));
+        g_cv.Text(lines[i], x + 24, fy + 46 + 18.0f * (float)i, Shown(T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, bx - x - 36, 11)));
 }
 
 /* The dialog's keys, as they are now. */
