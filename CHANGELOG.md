@@ -170,6 +170,9 @@ On `dev`, since 0.4.0-beta.
   ([performance fixes](docs/performance.md#speedtree-empty-cells)).
 - **Destructible lookups no longer walk a long run of the game's map.** Its destruction-record map spreads its keys,
   which cut a miss on a 16 km map from 2,316 probes to 11 ([performance fixes](docs/performance.md#record-hash)).
+- **The game thread waits less for enemies' path searches.** The AI's path threads get 0.5 ms a step instead of 2 ms,
+  and 2 ms again while requests wait over 500 ms. A 16 km fight's wait fell from about 1.2 to 0.3 ms a frame
+  ([performance fixes](docs/performance.md#ai-path-budget)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
