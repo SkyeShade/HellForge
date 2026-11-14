@@ -575,6 +575,7 @@ static void ChannelInstall(uintptr_t game);
 #include "perf_ai_path_budget.c" /* the AI path threads' time a step; the game thread calls AiPathBudgetTick */
 #include "perf_corpse_freeze.c" /* settled ring corpses frozen; the game thread calls PerfCorpseFreezeTick */
 #include "perf_render_job_copies.c" /* Direct3D 12 render jobs give their version copies back */
+#include "perf_render_version_rehash.c" /* the D3D12 version tables kept short */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -783,6 +784,7 @@ static void WatchInstalls(void)
     RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
     PerfSpeedTreeWatch();
     RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
+    RenderVersionRehashWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
