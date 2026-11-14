@@ -43,6 +43,7 @@ friends compare in co-op.
 | learn how code mods work, from nothing | [Your first mod](first-mod.md) |
 | change an existing weapon or stratagem in code | [Content: changing existing content](content.md#changing-existing-content) |
 | add a new stratagem, weapon or entity | [Content](content.md), after [your first mod](first-mod.md) |
+| give a weapon its own projectile, damage, explosion, beam, arc or spray | [Projectiles and damage](projectiles.md) |
 | put your stratagems under a heading of their own | [Content: selection headings](content.md#selection-headings) |
 | make the game spawn an enemy of your own beside the vanilla ones | [New enemies](enemies.md) |
 | add a pattern for weapons, vehicles, the hellpod or the Pelican | [Patterns](patterns.md) |

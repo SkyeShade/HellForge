@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Mods can make sprays of their own (SDK 20).** `HfWeapon.spray_damage` gives a flamethrower or Sterilizer copy a
+  damage of its own, in a spray record of its own, so it burns harder, or with another status, without changing the
+  base. The `SprayWeapon` fields are in stats files and the editor shows a copy's own damage
+  ([sprays](docs/modding/projectiles.md#sprays)).
 - **Stratagems that rearm.** Every stratagem but the Eagles has "Rearms after uses" beside its mission uses. Ticked,
   its uses go with no cooldown between them, the cooldown starts once they are spent, and they come back when it ends;
   the HUD shows the uses left counting down and refilling ([stats mods](docs/modding/stats-mods.md#rearms-after-uses)).
@@ -120,7 +124,7 @@ On `dev`, since 0.4.0-beta.
 - **New explosion, beam and arc types for mods (SDK 17).** `add_explosion`, `add_beam` and `add_arc` copy a vanilla type
   with its own damage, radii, length or chained arc, up to 512 of each across all mods. A projectile names its blasts in
   `impact_explosion` and `expiry_explosion`, and a weapon its `beam` or `arc`
-  ([projectiles and damage](docs/modding/content.md#projectiles-and-damage)) (#298).
+  ([projectiles and damage](docs/modding/projectiles.md)) (#298).
 - **295 explosions and 342 damage ids by name.** The catalogue lists them as `HF_EXPLOSION_` and `HF_DAMAGE_` constants
   for mods (#298).
 - **A mod weapon's own explosion, beam and arc in the editor.** Its page shows them with the damage they deal, and mods'

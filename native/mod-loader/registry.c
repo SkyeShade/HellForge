@@ -155,6 +155,7 @@ typedef struct Weapon
     uint32_t projectile, baseProjectile;   /* HfWeapon.projectile, and what its base fires */
     uint32_t soundFrom;                    /* HfWeapon.sound_from */
     uint32_t beam, arc;                    /* HfWeapon.beam, HfWeapon.arc */
+    uint32_t sprayDamage;                  /* HfWeapon.spray_damage */
     uint8_t* projectileRecord;             /* its own ProjectileWeapon record, when it has a projectile */
     int ownCount;
     uint32_t own[REG_MAX_OWN], ownStride[REG_MAX_OWN]; /* components it owns records of (HfWeapon.own_components) */
@@ -269,6 +270,7 @@ static int g_registryActive; /* the hooks are in: weapons get added when the ent
 static int g_armoryReplaced; /* HellForge's armory builder runs instead of the game's (table 29 may grow) */
 static int ProjectileUsable(uint32_t type); /* projectiles.c */
 static int BeamTypeKnown(uint32_t type), ArcTypeKnown(uint32_t type), BeamTypeUsable(uint32_t type), ArcTypeUsable(uint32_t type); /* beam_arc.c */
+static int DamageKnown(uint32_t id), DamageUsable(uint32_t id); /* damage.c */
 static int BehaviourUsable(uint32_t id);    /* behaviours.c */
 static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64_t copy); /* registry_load.c: unit copies */
 static uint32_t GrownSlots(uint32_t component); /* table_growth.c: a table grown this session */
@@ -564,6 +566,19 @@ static int WeaponBeamArc(HfMod* mod, const char* unit, const HfWeapon* def, Weap
     return 0;
 }
 
+/* The damage its spray deals (HfWeapon.spray_damage), when the mod's HfWeapon names one; 1 if refused (logged). */
+static int WeaponSpray(HfMod* mod, const char* unit, const HfWeapon* def, Weapon* w)
+{
+    if (def->size < offsetof(HfWeapon, spray_damage) + sizeof def->spray_damage || def->spray_damage == 0) return 0;
+    if (!DamageKnown(def->spray_damage))
+    {
+        ApiLog(mod, "add_weapon(%s): spray damage %u is neither a vanilla damage id nor one a mod added", unit, def->spray_damage);
+        return 1;
+    }
+    w->sprayDamage = def->spray_damage;
+    return 0;
+}
+
 /* Its own text ids (HfWeapon.name and the rest), when the mod names it. */
 static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
 {
@@ -614,7 +629,8 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     w.id = id;
     w.entity = entity;
     snprintf(w.name, sizeof w.name, "%s", unit);
-    if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w) || WeaponBeamArc(mod, unit, def, &w)) return 0;
+    if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w) || WeaponBeamArc(mod, unit, def, &w) ||
+        WeaponSpray(mod, unit, def, &w)) return 0;
     if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
     if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w.ownAll = def->own_all != 0;
     WeaponText(def, unit, &w);

@@ -2982,6 +2982,25 @@ HF_ASSERT_SIZE(HfArcWeapon, 80);
 HF_ASSERT_OFFSET(HfArcWeapon, fire_rate, 4);
 #define HF_TYPE_ArcWeapon_fire_rate HF_TYPE_F32
 
+/* SprayWeaponComponentData (component 315, 224-byte records): a spray weapon (flamethrowers, the Sterilizer, enemy sprays): the damage its spray deals and the projectiles an enemy spray throws, all in the weapon's own record (no shared settings row) */
+#define HfSprayWeapon_INFO "SprayWeaponComponentData", 25480438u
+typedef struct HfSprayWeapon
+{
+    uint8_t _unknown_00[16];
+    float link_radius;                           /* +0x10 Radius of the capsule joining consecutive spray projectiles (metres; 0: none, as on every player flamer) (unverified) [respawn?] */
+    uint8_t _unknown_14[176];
+    uint32_t projectile;                         /* +0xC4 the projectile type an enemy spray throws (0 on every player flamer: the spray is its particle effect) [respawn?] */
+    uint32_t damage;                             /* +0xC8 the damage id its spray deals (DamageInfo; 0 on enemy sprays, whose projectile deals it) [respawn?] */
+    uint8_t _unknown_CC[20];
+} HfSprayWeapon;
+HF_ASSERT_SIZE(HfSprayWeapon, 224);
+HF_ASSERT_OFFSET(HfSprayWeapon, link_radius, 16);
+#define HF_TYPE_SprayWeapon_link_radius HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSprayWeapon, projectile, 196);
+#define HF_TYPE_SprayWeapon_projectile HF_TYPE_U32
+HF_ASSERT_OFFSET(HfSprayWeapon, damage, 200);
+#define HF_TYPE_SprayWeapon_damage HF_TYPE_U32
+
 /* BoosterSettings (56-byte table rows, found by id): a booster definition (game.dll +0x32FDA90, a row by the booster's value: HF_BOOSTER_...) */
 #define HfBoosterSettings_INFO "BoosterSettings", 25480438u
 typedef struct HfBoosterSettings
