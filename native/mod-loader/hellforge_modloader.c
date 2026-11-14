@@ -579,6 +579,7 @@ static void ChannelInstall(uintptr_t game);
 #include "perf_vehicle_box.c" /* vehicles' boxes once per motion and steering pass */
 #include "perf_heap_trim.c" /* the allocator's caches emptied once more when a load ends */
 #include "perf_scatter_cameras.c" /* the generator's water and fog cameras left out of the scatter update */
+#include "perf_knn_grid.c" /* knn-grid: the Hive Lord graph's neighbour pass on a grid */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -731,6 +732,7 @@ static void WatchLoaded(void)
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
     RecordHashInstall(); /* before the plugin setup builds the destruction-record map */
     StateMoves(ApiModuleBase("game.dll", NULL)); /* before the plugin setup allocates the game state */
+    KnnGridInstall(); /* before any level is generated */
     StartCrashWorker(); /* crash_notes.c: the thread that notes a stack overflow */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();

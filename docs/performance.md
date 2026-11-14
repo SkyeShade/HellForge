@@ -31,6 +31,7 @@ out this way without another build.
 | `vehicle-box` | Each vehicle's oriented box is computed once per motion and steering pass, then copied for the other enemies | The motion pass at 213-225 enemies on a 16 km map: 6.8 ms to 0.5-0.6 ms a frame |
 | `heap-trim` | The game's allocator caches are emptied once more when a load ends on the ship or a mission | 16 km maps: 0.5 to 5.5 ms a trim on the game thread, 10 to 72 MB given back each time; not measured at normal size |
 | `scatter-cameras` | The level generator's water and fog cameras are left out of the engine's scatter update, so its node vectors stay the size of real views | 16 km map: 4,205 MB less memory on entering play. Normal size: not measured, an estimated 1/64 of that |
+| `knn-grid` | The Hive Lord graph links its points through a grid instead of trying every pair, with the same result | Level generation on a 4 km map: 1,447 ms to 24 ms; on a 16 km map about 400 s saved |
 
 ## safe-read
 
@@ -328,3 +329,48 @@ now leaves both out of it (`native/mod-loader/perf_scatter_cameras.c`).
 - **Limits.** It hooks two functions of build 25480438, the scatter update in the exe and the generator's dispatcher
   in `game.dll`; another build keeps the game's code, with a line in `modloader.log`. A view rendered after its op
   has ended is not left out: no saving, no harm.
+
+## knn-grid
+
+During level generation the game builds the Hive Lord's movement graph: points about the map, each linked to up to 4
+others within 18 m. Its linking pass (game.dll `0x177C9E0`) tries every pair of points, so its time grows with the
+square of their number. HellForge replaces it with a grid search that writes the same bytes
+(`native/mod-loader/perf_knn_grid.c`).
+
+What the game's pass does, for each point i in order and each later point j in order:
+
+- It takes the float distance `(xi - xj)^2 + (yi - yj)^2`, x first, one rounding a step. Height is not read.
+- It skips the pair when that is over the radius squared, or when j's last link slot is taken.
+- Otherwise it fills i's first free slot, or replaces i's largest distance, by fixed rules. A distance of 0 marks a free
+  slot, so a duplicate point leaves its slot free.
+- After i's pairs it turns the new distances into lengths and writes each link back into the neighbour's first free
+  slot.
+
+Why the result stays the same:
+
+- A skipped pair changes nothing. The grid visits every pair the radius test can pass, in the game's order, through a
+  copy of the game's per-pair code.
+- Cells are the radius plus 1/1024 wide. When a float distance passes the test, its x and y differences are under
+  the radius plus a few float steps, so both points lie in neighbouring cells. This holds in every rounding mode,
+  with flush-to-zero too.
+- A point with a coordinate that is not finite can give a NaN distance, which passes the test. Such points are paired
+  with every point.
+- The grid runs only on nodes as the graph's maker leaves them, all zero, and on a radius whose square is a normal
+  float. Anything else, and graphs under 1,024 points, go to the game's own pass.
+
+The native test runs the game's own 734 bytes against the grid on 900 random point sets. They include clustered,
+duplicate, collinear, non-finite and far-off points, and pairs a float step either side of the radius. Every node byte
+matches.
+
+Measured in Complex Operations: a 4 km map's 80,746 points took 1,447 ms in the game's pass and 24 ms on the grid,
+with the same nodes. A 16 km map's million points had taken about 400 s.
+
+On a normal-size map the effect is not measured. The game builds the graph only on missions that need it. By area, a
+2 km map has about a quarter of a 4 km map's points. In the native test the game's pass took 98-146 ms on 20,000
+points and the grid 9-11 ms. Level 11's larger maps have more points and gain more.
+
+Limits:
+
+- It is pinned to the whole function on game build 25480438. Another build keeps the game's pass, with a line in
+  `modloader.log`.
+- Below 1,024 points the grid is no faster: both take about 0.4 ms. The game's pass runs there.

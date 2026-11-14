@@ -191,6 +191,9 @@ On `dev`, since 0.4.0-beta.
 - **A generating level fills less scatter it never draws.** The water and fog cameras are left out of the engine's
   scatter update. On a 16 km map that saved 4,205 MB; a normal-size map should save tens of MB
   ([performance fixes](docs/performance.md#scatter-cameras)).
+- **Missions with the Hive Lord generate faster.** Its movement graph links its points through a grid instead of trying
+  every pair, with the same result. A 4 km map's pass fell from 1,447 to 24 ms
+  ([performance fixes](docs/performance.md#knn-grid)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
