@@ -25,6 +25,7 @@
 #include "moved_fields_test.c"
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
+#include "safe_read_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -4790,6 +4791,7 @@ int main(int argc, char** argv)
     RenderGuardsFixture();
     OverlayCursorFixture();
     NavCarversFixture();
+    SafeReadFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
