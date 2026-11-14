@@ -33,6 +33,7 @@ out this way without another build.
 | `scatter-cameras` | The level generator's water and fog cameras are left out of the engine's scatter update, so its node vectors stay the size of real views | 16 km map: 4,205 MB less memory on entering play. Normal size: not measured, an estimated 1/64 of that |
 | `knn-grid` | The Hive Lord graph links its points through a grid instead of trying every pair, with the same result | Level generation on a 4 km map: 1,447 ms to 24 ms; on a 16 km map about 400 s saved |
 | `spread-sort` | Map generation's location spreading sorts its candidates with the game's own steps, the comparison inlined | The sort alone, outside the game: 55 to 28 ms for 460,000 candidates, 0.61 to 0.32 ms for 7,200 |
+| `tree-cell-limits` | After trees are taken out, SpeedTree's forest keeps both axes of the cut that limits each view to cells with trees | On a 16 km map, a view walked about 20,000 cells instead of 120,000 to 325,000 |
 
 ## safe-read
 
@@ -405,3 +406,36 @@ Limits:
 
 - It is pinned to game build 25480438: the whole sort and the comparison. Another build keeps the game's sort.
 - A mod that hooks the game's sort still sees every call. The copy runs last in the chain, in place of the game's code.
+
+## tree-cell-limits
+
+SpeedTree files a level's trees in 64 m cells. Each view walks the cells of a far rectangle around the camera, cut to
+the forest's extents on both axes. The game skips the cut when either axis has no range.
+
+- When trees are taken out (a destroyed tree's record, any removal) or a tree leaves the last cell it shared, the game
+  rebuilds the extents from its cell map. The rebuild never reads a cell's row, so the second axis collapses to row 0.
+- From then on, every view walks its whole far rectangle for the rest of the level, on any map and for host and
+  clients alike.
+- Right after either rebuild, the fix sets the second axis from the same cell map, the way the game sets the first: the
+  centres of the lowest and highest rows with trees (`native/mod-loader/perf_tree_cell_limits.c`).
+
+### Why it keeps the game's results
+
+- The new range holds every cell with trees, so no tree is cut that was drawn. Cells outside it are empty, so no tree
+  appears that was not there.
+- After a move, the game widens a collapsed axis only to the moved tree's row. Its trees in other rows are then cut and
+  vanish; the fix keeps them.
+- It is stateless. It runs where the game writes the same fields, on the render thread, so a level end, a new world
+  and other threads see nothing new.
+- It acts only on a call straight from the two rebuilds. A mod's hook in front of the forest's push leaves the game's
+  extents.
+
+### Measured effect and limits
+
+- Measured with Complex Operations' version on a 16 km map: a view walked about 20,000 cells instead of 120,000 to
+  325,000, which had cost a slow frame a second.
+- Normal maps take the same rebuild after a destroyed tree. The far rectangle follows the camera, not the map, but the
+  effect at normal size is not measured.
+- It works with `speedtree-empty-cells`: that fix makes each empty cell a view walks cheap, this one stops the walk
+  over cells outside the trees' rows. Their combined effect is not measured.
+- The fix is pinned to build 25480438. Any other build leaves it off with a `modloader.log` line.

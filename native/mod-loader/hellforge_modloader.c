@@ -581,6 +581,7 @@ static void ChannelInstall(uintptr_t game);
 #include "perf_scatter_cameras.c" /* the generator's water and fog cameras left out of the scatter update */
 #include "perf_knn_grid.c" /* knn-grid: the Hive Lord graph's neighbour pass on a grid */
 #include "perf_spread_sort.c" /* SpreadLocations' candidate sort */
+#include "perf_tree_cell_limits.c" /* SpeedTree's view cut kept after its forest is rebuilt */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -794,6 +795,7 @@ static void WatchInstalls(void)
     RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
     RenderVersionRehashWatch();
     PerfScatterCamerasWatch();
+    TreeLimitsWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
