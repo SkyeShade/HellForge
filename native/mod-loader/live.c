@@ -807,7 +807,7 @@ static void LiveFieldRequest(char** f, int n, char* reply, size_t size)
     LiveFieldLog(&r, applies);
 }
 
-/* A request that sets a list of the lobby's (ShotsSetRules, RoundsSetLobby): ok, or refused with why. */
+/* A request that sets a list of the lobby's (ShotsSetRules, RoundsSetLobby, DeploysSetLobby): ok, or refused with why. */
 static void ListLine(const char* seq, const char* list, int (*set)(const char* list, const char** why), char* reply, size_t size)
 {
     const char* why = NULL;
@@ -847,6 +847,7 @@ static void LiveRequest(char* line, char* reply, size_t size)
     if (!strcmp(f[0], "preload") && n == 3) { PreloadLine(seq, f[2], reply, size); return; }
     if (!strcmp(f[0], "shots") && n == 3) { ListLine(seq, f[2], ShotsSetRules, reply, size); return; }
     if (!strcmp(f[0], "rounds") && n == 3) { ListLine(seq, f[2], RoundsSetLobby, reply, size); return; }
+    if (!strcmp(f[0], "deploys") && n == 3) { ListLine(seq, f[2], DeploysSetLobby, reply, size); return; }
     if (!strcmp(f[0], "notice") && n >= 4)
     {
         SetNotice(f + 2, n - 2);
@@ -968,6 +969,7 @@ static void LiveConnected(HANDLE pipe, OVERLAPPED* readOp, OVERLAPPED* writeOp)
     const char* none;
     ShotsSetRules("-", &none); /* nor whose swaps friends' shots fire */
     RoundsSetLobby("-", &none); /* nor their edited rounds */
+    DeploysSetLobby("-", &none); /* nor their deployables */
     SyncClear();
     LiveModsAbort("the backend disconnected");
     ChannelDisconnected(); /* the mod channel's rows are the lobby's: it is over for this game */

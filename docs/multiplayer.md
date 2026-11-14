@@ -900,6 +900,32 @@ others' guns. Research: `HD2Mods\research\coop-weapon-stats` (part B).
   demolition (read by damage id per hit; the damage list is not moved for this), and shots spawned anywhere else
   (sentries, vehicles, stratagems). Which machine decides damage is unchanged: the shooter's.
 
+### Deployables in co-op
+
+Every machine builds its own copy of a deployable or orbital and reads its Shield, Health, OrbitalAbility and Bombardment
+values from its own type record, through a resolver, every frame for some. So a friend's relay or Orbital Laser moved and
+looked as this machine's edits had it. The thrower's machine has authority and already reads the thrower's edits; the
+work is on the others. Research: `HD2Mods\research\per-player-deployables`. Not yet tested in game: whether the creator
+peer below reaches a remote copy is the first thing to check.
+
+- Each player's changes of those records (four-byte fields of what they call in, by the stats schema's stratagems and
+  backpacks) travel with the lobby's assets: `assets.mine` adds `E<resource hex>/<S|H|O|B>+<offset hex>=<bits hex>`
+  entries (`;` between them, at most 128), `assets.lobby` adds `<peer hex>=<entries>` for every player, and each backend
+  sends its game `deploys <list>`. Not while the host shares its stats (`deploys -`). Older backends send none: their
+  machines see this machine's stock behaviour, and nothing goes on the game's own wire.
+- The mod loader (`native/mod-loader/deploys.c`) hooks nothing until a lobby has such changes. Then, at the post-create pass
+  (game.dll 0x581780: the network's first state has landed, nothing has been built from the records yet), an entity this
+  machine has no authority over, of a type anyone in the lobby edited, gets a private copy of each edited record: this
+  machine's, with this machine's own changes undone (as in rounds.c), then the values of the player who made it, the
+  creator peer (LoadoutPackage +0xC0). A player who changed nothing of it plays with the base value, not this machine's.
+- The four resolvers (0x4FB390, 0x507920, 0x512E20, 0x5043C0) return that copy for that entity, so two players' relays
+  differ at once and every read through them follows, live ones included. The owner's own machine reads its own record.
+  An entity with no creator found stays as the game has it.
+- A copy lasts until its entity's id comes back, the lobby's list ends, or 64 of its kind are newer.
+- Not covered yet: reads that skip the resolvers (Health 0x12A15E0, 0x650B90, 0x655240, 0x929710; Bombardment's two reads
+  before the owner is known and the readers listed in the research), shots and shells of deployables (their projectile,
+  damage and explosion rows), and a dropped pack another player picks up (it stays its thrower's).
+
 ### The mod channel in co-op
 
 A code mod can talk to the same mod on the other players' machines, and keep a small table its host owns (SDK 16;
