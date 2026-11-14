@@ -154,10 +154,13 @@ static void DrawScreen(Screen& s, int id, int capturing, HfDraw* draw, float dt)
     LONG seen = s.state;
     if (seen != OPEN && seen != CLOSING) return;
     HfInput input;
-    TakeInput(&input, id == capturing && seen != CLOSING, draw->width * draw->pixels, draw->height * draw->pixels, 1.0f / draw->pixels);
+    bool hasInput = id == capturing && seen != CLOSING;
+    TakeInput(&input, hasInput, draw->width * draw->pixels, draw->height * draw->pixels, 1.0f / draw->pixels);
     input.closing = seen == CLOSING;
     g_backdropTaken = &s.backdropTaken;
+    g_mayHidePointer = hasInput;
     int again = s.def.draw(s.def.user, draw, &input, dt);
+    g_mayHidePointer = false;
     EndScreenDraw();
     if (again) return;
     AcquireSRWLockExclusive(&g_screensLock);
@@ -175,8 +178,10 @@ void DrawScreens(float width, float height, float dt)
     BeginDraw(&draw, width, height);
     int capturing = CapturingScreen();
     LONG count = g_screenCount;
+    g_pointerAsked = false;
     for (LONG i = 0; i < count; i++) DrawScreen(g_screens[i], (int)i + 1, capturing, &draw, dt);
     g_backdropTaken = NULL;
+    FollowPointer(g_pointerAsked);
 }
 } // namespace overlay
 

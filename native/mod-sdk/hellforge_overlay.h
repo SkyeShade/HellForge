@@ -65,6 +65,10 @@ typedef struct HfDraw
     /* The game's frame as it was when the screen opened, dimmed (0 none .. 1 black), desaturated (0 .. 1) and blurred
      * (radius in units), over the whole screen. Draws the frame as it is now, dimmed, where the host cannot copy it. */
     void (*backdrop)(float dim, float desaturate, float blur);
+    /* For a modal screen that draws its own cursor over part of itself (a map's crosshair): call it every frame the mouse
+     * is there, and the mouse pointer is hidden until a frame without the call. Other screens' calls do nothing. Older
+     * hosts end at backdrop, so check size first. */
+    void (*hide_pointer)(void);
 } HfDraw;
 
 /* The mouse and keys this frame, in screen units. */

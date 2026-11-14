@@ -78,6 +78,7 @@ anti-aliased.
 | `image(image, box, part, tint)` | A picture in the `HfRect` `box`, filtered, times `tint`. `part` is the piece to draw, in 0 to 1 of its size; NULL draws all of it. |
 | `clip_push(x0, y0, x1, y1)` / `clip_pop()` | Cuts drawing off outside a box. Boxes nest. |
 | `backdrop(dim, desaturate, blur)` | The game's frame behind the screen, dimmed, greyed and blurred. |
+| `hide_pointer()` | No mouse pointer this frame, for a screen that draws its own cursor where the mouse is. See [HfInput](#hfinput). |
 
 Colours are `HF_RGBA(r, g, b, a)` in sRGB, as on an SDR screen. In HDR the host converts them, so white is the
 display's SDR white.
@@ -115,6 +116,10 @@ screen's own key and Esc never show up in `keys`: the host takes them to open an
 
 While a modal screen is open, the mouse shows as the game's own pointer, the one its menus use. When the host cannot
 find that pointer, for example after a game update, it draws Dear ImGui's arrow instead. `modloader.log` says which.
+
+A screen that draws its own cursor, such as a map's crosshair, calls `hide_pointer()` in every frame the mouse is over
+that part. The pointer stays hidden until a frame without the call. Only the modal screen with the input can hide it.
+`hide_pointer` is new in HfDraw, so check `size` before calling it: older hosts end at `backdrop`.
 
 ## Threads and limits
 

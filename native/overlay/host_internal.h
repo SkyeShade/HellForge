@@ -40,6 +40,8 @@ void ReleaseCursorClip();
 void FollowCursor(bool captured);
 /* Whether ImGui draws its arrow this frame: the game hides its cursor in play, and the game's pointer is unknown. */
 bool ImGuiDrawsCursor(bool captured);
+/* After the screens' frame: the pointer hidden while the screen with the input asked for it, else shown. */
+void FollowPointer(bool hidden);
 extern HCURSOR volatile g_gameCursor;
 
 /* ---- present.cpp: the swap chain's and the queue's hooks ---- */
@@ -91,6 +93,8 @@ void BackdropFormatChanged();
 
 /* ---- draw.cpp: HfDraw, the fonts ---- */
 extern bool* g_backdropTaken; /* the drawing screen's "its frame is copied" */
+extern bool g_mayHidePointer;  /* the screen drawing now has the input, so hide_pointer counts */
+extern bool g_pointerAsked;    /* hide_pointer was called this frame */
 void SetFontFiles(const char* body, const char* title);
 bool BakeFonts(float pixelsPerUnit); /* true when the atlas changed */
 void BeginDraw(HfDraw* draw, float width, float height);

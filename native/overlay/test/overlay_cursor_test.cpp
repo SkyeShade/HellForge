@@ -2,7 +2,7 @@
  * over a stand-in game's, a stand-in for the rest of the host. While a modal screen has the mouse with the game's
  * pointer known, WM_SETCURSOR shows that pointer, raises a hidden cursor's count and never reaches the game; once the
  * screen lets go, the game gets WM_SETCURSOR again with its count as it was. With no pointer known, ImGui draws its
- * arrow and the game's window procedure goes on as before.
+ * arrow and the game's window procedure goes on as before. A screen that draws its own cursor hides either.
  * Usage: overlay_cursor_test.exe (built and run by scripts/build-overlay.sh --test) */
 #include <stdarg.h>
 #include <stdio.h>
@@ -98,10 +98,31 @@ int main()
     SetCursorMessage(HTCLIENT);
     SetCursorMessage(HTCLIENT);
     Check(CursorCount() == shown, "the count is raised once, not at every message");
+
+    puts("  -- the screen draws its own cursor under the mouse (hide_pointer)");
+    SetCursor(pointer);
+    FollowPointer(true);
+    Pump(); /* the WM_SETCURSOR FollowPointer posts */
+    Check(GetCursor() == NULL, "hidden at once, without a mouse move");
+    SetCursorMessage(HTCLIENT);
+    SendMessageW(g_window, WM_MOUSEMOVE, 0, MAKELPARAM(12, 12));
+    Check(GetCursor() == NULL && g_gameSetCursor == before, "WM_SETCURSOR and mouse moves keep it hidden, still without the game");
+    Check(!ImGuiDrawsCursor(true), "hidden: no ImGui arrow either");
+    SetCursor(NULL);
+    FollowPointer(false);
+    Pump();
+    Check(GetCursor() == pointer, "a frame without the call shows the pointer again at once");
     Capture(false);
     Check(CursorCount() == hidden, "closed: the cursor count is the game's again, however many messages came");
     Check(g_gameSetCursor == before + 1 && GetCursor() == NULL, "closed: the game's window procedure set its own cursor");
     Check(g_gameCursor == NULL && !ImGuiDrawsCursor(false), "closed: no pointer kept, no arrow");
+
+    puts("  -- hide_pointer counts only while a screen has the mouse");
+    FollowPointer(true);
+    Pump();
+    Capture(true);
+    Check(GetCursor() == pointer, "asked with no screen open: the next opening shows the pointer");
+    Capture(false);
 
     puts("  -- the pointer's border: only the client area");
     Capture(true);
@@ -117,6 +138,10 @@ int main()
     Capture(true);
     Check(strstr(g_lastLog, "ImGui's arrow") != NULL, "the log says ImGui's arrow is drawn");
     Check(ImGuiDrawsCursor(true), "ImGui draws its arrow");
+    FollowPointer(true);
+    Check(!ImGuiDrawsCursor(true), "hide_pointer: ImGui draws no arrow there");
+    FollowPointer(false);
+    Check(ImGuiDrawsCursor(true), "and draws it again from the next frame without the call");
     Check(CursorCount() == hidden, "the cursor count is left alone");
     Capture(false);
     Check(!ImGuiDrawsCursor(false), "closed: no arrow");

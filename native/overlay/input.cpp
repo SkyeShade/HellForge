@@ -19,6 +19,7 @@ SetCursorPosFn g_setCursorPos;
 RawInputBufferFn g_rawInputBuffer;
 WNDPROC g_gameProc;
 int g_shownBy; /* ShowCursor(TRUE) calls made for the game's pointer; the window's thread only */
+volatile LONG g_pointerHidden; /* the screen with the input draws its own cursor under the mouse (hide_pointer) */
 
 /* What the window's messages said since the last frame (mouse in client pixels). */
 struct Pending
@@ -87,14 +88,15 @@ bool TakeKey(UINT message, WPARAM w, LPARAM l)
 }
 
 /* The game hides the cursor in play and sets it again on every WM_SETCURSOR, so while a screen has the mouse those go
- * to the host, which shows the game's own pointer; true when the message was taken. The game gets them back after. */
+ * to the host, which shows the game's own pointer, or none where the screen draws its own cursor; true when the message
+ * was taken. The game gets them back after. */
 bool PointWithGameCursor(UINT message, LPARAM l)
 {
     HCURSOR cursor = g_gameCursor;
     bool ours = message == WM_SETCURSOR ? LOWORD(l) == HTCLIENT : message == WM_MOUSEMOVE;
     if (g_captured && cursor != NULL && ours)
     {
-        SetCursor(cursor);
+        SetCursor(g_pointerHidden ? NULL : cursor);
         if (g_shownBy == 0)
             for (int count = -1; count < 0 && g_shownBy < 64; g_shownBy++) count = ShowCursor(TRUE);
         return message == WM_SETCURSOR;
@@ -144,7 +146,15 @@ void FollowCursor(bool captured)
     if (g_window != NULL) PostMessageW(g_window, WM_SETCURSOR, (WPARAM)g_window, MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
 }
 
-bool ImGuiDrawsCursor(bool captured) { return captured && g_gameCursor == NULL; }
+bool ImGuiDrawsCursor(bool captured) { return captured && g_gameCursor == NULL && !g_pointerHidden; }
+
+void FollowPointer(bool hidden)
+{
+    LONG now = hidden && g_captured;
+    /* a mouse at rest gets no WM_SETCURSOR of its own when the screen changes its mind */
+    if (InterlockedExchange(&g_pointerHidden, now) != now && g_window != NULL)
+        PostMessageW(g_window, WM_SETCURSOR, (WPARAM)g_window, MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+}
 
 void HookCursor()
 {
