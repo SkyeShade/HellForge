@@ -1,5 +1,5 @@
 {
-  "about": "Uses before cooldown in the real game: a stats edit gives the Orbital Railcannon Strike 3 uses; with it in the loadout before the mission, three calls land a few seconds apart and a fourth waits for the cooldown (tests/in-game/README.md).",
+  "about": "Uses before cooldown in the real game: a stats edit gives the Orbital Railcannon Strike 3 uses; with it in the loadout before the mission, three calls land 20 s apart (each once the previous strike has finished: the game holds a stratagem while its strike runs) and a fourth waits for the cooldown (tests/in-game/README.md).",
   "mods": [
     "stratagem-uses-probe"
   ],
@@ -9,16 +9,16 @@
     {"wait": 25},
     {"menu": "stratagem-menu"},
     {"call": "RUDDR"},
-    {"wait": 10},
+    {"wait": 20},
     {"menu": "stratagem-menu"},
     {"call": "RUDDR"},
-    {"wait": 10},
+    {"wait": 20},
     {"menu": "stratagem-menu"},
     {"call": "RUDDR"},
-    {"wait": 10},
+    {"wait": 20},
     {"menu": "stratagem-menu"},
     {"call": "RUDDR"},
-    {"wait": 10},
+    {"wait": 20},
     {"diag": 1}
   ],
   "checks": [

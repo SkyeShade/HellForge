@@ -2,7 +2,7 @@
  * Railcannon Strike (type 58) 3 uses before cooldown (native/mod-loader/stratagem_uses.c). On the ship it puts the
  * Railcannon in the player's loadout before the mission, as stratagem-cap-probe does (the local player's PlayerHistory
  * slot 0 and the profile's first pair, game build 25480438); in the mission it counts the Railcannon's beacons: the
- * harness calls it four times, a few seconds apart, and only three may land before the cooldown. "PROBE <check> ok" or
+ * harness calls it four times, 20 s apart, and only three may land before the cooldown. "PROBE <check> ok" or
  * "PROBE <check> FAIL <why>" per check. */
 #define WIN32_LEAN_AND_MEAN
 #include <stdio.h>
@@ -16,6 +16,7 @@ static const HfApi* hf;
 #define LOG(...) hf->log(g_mod, __VA_ARGS__)
 
 #define PROBE_TYPE HF_STRATAGEM_ORBITAL_RAILCANNON_STRIKE
+#define PROBE_STABLE 0xA39552A5u /* its stable id (hellforge_content.h): stratagem_row is for added stratagems only */
 static int g_set, g_beacons;
 
 /* loadout_scrub.c */
@@ -54,13 +55,12 @@ static void Tick(HfMod* mod, float dt, void* user)
 {
     (void)mod; (void)dt; (void)user;
     if (g_set || hf->game_state(g_mod) != HF_STATE_SHIP) return;
-    uintptr_t row = hf->stratagem_row(PROBE_TYPE);
     uintptr_t game = hf->module_base("game.dll", NULL);
     uintptr_t manager = Pointer(game + LS_MANAGER);
-    if (row == 0 || game == 0 || manager == 0 || U32(manager + 0xDDCF8) != 12) return;
+    if (game == 0 || manager == 0 || U32(manager + 0xDDCF8) != 12) return;
     uintptr_t loadout = LocalLoadout(game), profile = Pointer(game + LS_PROFILE);
     if (loadout == 0 || profile == 0) return;
-    uint32_t type = PROBE_TYPE, stable = U32(row + 4), slots = U32(loadout + LS_SLOT_COUNT);
+    uint32_t type = PROBE_TYPE, stable = PROBE_STABLE, slots = U32(loadout + LS_SLOT_COUNT);
     if (slots == 0 || slots > 32) return;
     g_set = 1;
     if (hf->write(loadout + LS_SLOTS, &type, 4) || hf->write(profile + LS_PAIRS, &stable, 4)) { LOG("PROBE loadout FAIL could not write it"); return; }
