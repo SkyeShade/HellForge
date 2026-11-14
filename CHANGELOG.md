@@ -387,6 +387,22 @@ On `dev`, since 0.4.0-beta.
 - **A mod's `write` over code HellForge checks turns that feature off.** Such a write used to pass as one of
   HellForge's own rewrites. The offsets and capacities of the moved lists above are the exception (#348).
 
+### For launcher developers
+
+- **Several mods in one CLI call.** `mod-remove --ids a,b,c` and `mod-switch --ids a,b,c --on yes|no` change a list
+  of mods, and `mod-add` takes `--file` more than once. The mods folder is read once for the whole list instead of once
+  per mod, so a launcher sending 30 mods no longer waits for 30 reads. Every id is checked first: one unknown or refused
+  id changes nothing. The answer counts `done` and `failed` and lists each mod. `mod-order` no longer reads the folder
+  twice ([external launchers](docs/external-launchers.md), #389).
+- **`mods` shows what the Mods page shows.** Each mod now has `unsupported`, `premium` (the premium items it was built
+  on), `url` and `icon`. A source mod also has its `build`: built, failed to compile (with the compiler's message) or
+  due at the next session. The tags add `native`, `premium` and `unsupported`
+  ([source mod builds](docs/external-launchers.md#source-mod-builds), #390).
+- **The CLI reaches the war options and mod sync.** `settings` takes `--deal-subfactions`, `--deal-seaf` and
+  `--war-seed`, and the Sharing card's switches `--share-mods`, `--list-public`, `--show-edited-stats` and
+  `--host-stats`. The new `mod-sync` lists the trusted, blocked and downloaded mods, and untrusts, blocks, unblocks or
+  deletes the downloads ([profiles and settings](docs/external-launchers.md#profiles-and-settings), #391).
+
 ## 0.4.0-beta (2026-11-05)
 
 [Release](https://github.com/SkyeShade/HellForge/releases/tag/v0.4.0-beta). Engine 0.1.47, mod SDK 16.
