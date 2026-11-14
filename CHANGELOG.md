@@ -206,6 +206,10 @@ On `dev`, since 0.4.0-beta.
 - **Mission generation tests stamps only against their neighbours.** Stamp placement finds the records near each
   candidate on a grid. On a 16 km map a test visits 8.2 records instead of 136.7; a normal-size map is not measured
   ([performance fixes](docs/performance-loading.md#overlap-grid)).
+  ([performance fixes](docs/performance.md#scatter-cameras)).
+- **Memory that other threads freed goes back into use when a load ends.** Full allocator spans held by one live block
+  return to their thread's heap. On a 16 km map one pass gave back 355 MB
+  ([performance fixes](docs/performance.md#span-rescue)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the

@@ -39,6 +39,7 @@ out this way without another build.
 
 The fixes that run while a level is generated have their sections in [Performance fixes in level
 generation](performance-loading.md): `scatter-cameras`, `knn-grid`, `spread-sort`, `early-stamp-packages` and `overlap-grid`.
+| `span-rescue` | When a load ends, memory blocks that other threads freed go back into use instead of waiting for their neighbours | 16 km map: 355 MB back in one pass. Normal size: not measured |
 
 ## safe-read
 
@@ -347,3 +348,57 @@ the forest's extents on both axes. The game skips the cut when either axis has n
 - It works with `speedtree-empty-cells`: that fix makes each empty cell a view walks cheap, this one stops the walk
   over cells outside the trees' rows. Their combined effect is not measured.
 - The fix is pinned to build 25480438. Any other build leaves it off with a `modloader.log` line.
+- **What changes.** For such a view the update grew every scatter layer's node vector to the whole map and filled
+  every cell with grass and small rocks. The engine never shrinks that vector, so the memory stayed all mission.
+- **Which views.** A view is left out only while the generator runs one of those five ops, and only when it is
+  orthographic with near 1, far 1001 and a box at least 2048 m wide. That is the water and fog cameras alone. The
+  far-scatter bake's 256 m tiles and the in-game map's views keep their scatter. So does the ambient-occlusion bake,
+  which runs before these ops.
+- **Why the results stay the same.** Neither viewport has a SpeedTree pass, so they never drew this scatter. The next
+  view's update stamps, fills and drops its own cells. A cell's scatter depends only on the cell and the layer's maps,
+  which none of the five ops writes. The water height map and the fog volumes come out as before.
+- **Measured.** Complex Operations made the same cut on its 16 km maps: 4,205 MB less memory on entering play.
+- **Normal-size maps.** The vectors follow the map's area, so the saving should be about 1/64 of that: tens of MB,
+  plus the time spent filling every cell once. It was not measured at that size.
+- **Limits.** It hooks two functions of build 25480438, the scatter update in the exe and the generator's dispatcher
+  in `game.dll`; another build keeps the game's code, with a line in `modloader.log`. A view rendered after its op
+  has ended is not left out: no saving, no harm.
+
+## span-rescue
+
+The game's allocator (rpmalloc) gives each thread a heap of 64 KiB spans, each cut into blocks of one size. A block
+that another thread frees waits on its span's deferred list. A span that was full rejoins its heap only once every
+block in it is free.
+
+- **What changes.** One live block can keep the other freed blocks of a full span out of use, so the heap maps new
+  spans. When a load ends, at the ship or a mission, the loader finds such spans
+  (`native/mod-loader/perf_span_rescue.c`).
+  Each heap's own thread then moves its spans to the heap's partial list, as its own free does with a full span.
+  `heap-trim` gives back whole free spans; this makes partly used ones usable again.
+- **Who does the move.** Only a heap's owner thread changes its lists, so the move runs on that thread. The game thread
+  moves its own at its update. Other threads move theirs where they already trim: pool workers after their jobs, the
+  renderer between messages and Havok's task threads between tasks.
+- **Why the results stay the same.** Allocations return the same kinds of blocks; only which span they come from
+  changes. A free on another thread takes the span's own lock, and the move takes that lock too. A span whose last
+  block was freed meanwhile is left to the game.
+- **Which heaps.** A heap whose thread has ended has no owner, so nothing moves its spans until a new thread adopts
+  it. Every map and unmap of a span goes through the loader, so a span is read only while it is mapped.
+
+Measured on Complex Operations' 16 km maps, where these passes also ran during play:
+
+| 16 km map | Result |
+|---|---|
+| One pass on 16 threads | 355 MB back in use |
+| Memory growth from stranded spans during play | Halved |
+| Cost of a pass on a thread | 0.011-0.015 ms, up to 0.13 ms on a Havok thread |
+
+The effect on a normal-size mission is not measured. Its threads strand spans in the same way, since units are built
+on pool workers and removed on the game thread, but fewer of them.
+
+Limits:
+
+- It runs only when a load ends, not during play, so spans stranded during a mission wait for the next load.
+- A heap whose thread reaches none of those points within 5 seconds keeps its spans until the next pass.
+- It is pinned to game build 25480438: rpmalloc's code, its setup and every place that reaches a trim. Another build
+  leaves it off, with a line in `modloader.log`. If the renderer's or Havok's code differs, only that thread is left out.
+- Each pass writes one line to `modloader.log` with what it found and moved.
