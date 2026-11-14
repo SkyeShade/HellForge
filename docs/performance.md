@@ -23,6 +23,7 @@ out this way without another build.
 | `safe-read` | HellForge's own reads of game memory, and every mod's `HfApi.read`, copy up to 256 bytes in place instead of a system call | The living world's tick on a 16 km map: 1.8 ms to 0.5 ms a frame, together with its own slicing |
 | `speedtree-empty-cells` | Forest cells with no trees stay out of every view, also those that hold the world origin | 16 km map: render-thread waits over 3 ms fell from 343 to 0; a fight's 0.1% low rose from 43.4 to 51.7 fps. Normal size: about 0.04 ms a frame to gain |
 | `record-hash` | The destruction-record map spreads its keys over its slots instead of packing them into one run | A miss on a 16 km map: 2,316 probes to 11 |
+| `ai-path-budget` | The game's AI path threads get 0.5 ms a step instead of 2 ms, and 2 ms again while path requests wait over 500 ms | The game thread's wait for the AI step on a 16 km map: 1.0-1.5 ms to 0.2-0.3 ms a frame at 117-209 enemies |
 
 ## safe-read
 
@@ -91,3 +92,38 @@ Limits:
   `modloader.log` says it is not installed, and the session keeps multiplier 1.
 - It is pinned to game build 25480438 and to every reader of the multiplier. Another build leaves it off.
 - A mod that checks the setup's original bytes at that store sees the new multiplier there.
+
+## ai-path-budget
+
+Each frame the game steps its Havok AI world on a worker thread, and the next frame's game thread waits for that step
+to end. While path requests are queued, the step hands the AI's four path threads a time budget and sleeps until they
+use it up: 2 ms, the game's own setting. HellForge sets it to 0.5 ms (`native/mod-loader/perf_ai_path_budget.c`).
+
+- The game thread's wait for the step is shorter by about the time cut from the budget.
+- Path searches and navmesh updates are the same work, spread over more steps. Enemies get the same paths, a few
+  frames later.
+- Every thread still passes its next yield point each step, so the work always moves on.
+- When requests have waited over 500 ms, the game's 2 ms comes back until the wait is under 250 ms. The game keeps
+  that wait itself.
+
+There is one AI world for the whole session: the game makes it when it starts and frees it when it quits. The ship,
+missions of every size and the moves between them all use it. HellForge reads the engine's record of it each frame,
+on the thread that makes and frees it, in the game's update, where no step is running. The game clears the record
+when it frees the world, so a set record is a live world.
+
+Measured on Complex Operations' 16 km maps with 117 to 209 enemies:
+
+- the wait fell from 1.0-1.5 ms to 0.2-0.3 ms a frame, and the mean frame was 1.5-2 ms shorter at 195-209 enemies;
+- in another fight the wait fell from 1.2-1.3 ms to 0.5-0.85 ms, but the 0.1% low did not improve: it is not a fix
+  for stutter;
+- requests waited 6-12 ms on average in three 45 s windows and 157 ms in the fourth; the 500 ms limit was reached
+  on 0 to 3 frames a window.
+
+On a normal-size map the effect is not measured. The wait there is about 1 ms with 117 enemies and 0.03 ms with none,
+so a mission with 30 to 90 enemies saves less.
+
+Limits:
+
+- It acts only on a world whose budget is the game's 2 ms or its own 0.5 ms; a value another mod set stays.
+- It changes nothing on a game build other than 25480438, or when the game thread's update is not hooked.
+- It runs on the host and in a friend's game alike. The budget only matters on a machine with path requests queued.
