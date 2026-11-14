@@ -477,6 +477,19 @@ The game draws every Armory icon itself (weapons, helmets, armour, capes), a pag
 next page. An icon stays blank until the game has drawn its page, and the game waits for the item's textures to load
 first.
 
+### Premium content is locked
+
+Premium warbonds, Superstore items and DLC gear come from your last Sync Inventory. This PC's snapshot signer seals it
+for 14 days. Profile > Account sync says why a snapshot gives none:
+
+| Message | What to do |
+|---|---|
+| "The snapshot is older than 14 days. Sync again." | Run Sync Inventory again. |
+| "This snapshot was sealed by an older HellForge. Sync again." | Run Sync Inventory once after updating HellForge. |
+| "This PC has no snapshot signer yet. Sync again." | Run Sync Inventory: the capture makes the signer, with administrator rights on Windows and the helper on Linux. |
+| "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
+| "The capture could not open this PC's snapshot signer..." | Sync again. On Linux, premium content needs systemd ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)). |
+
 ## Playing with friends
 
 Friends need the same gameplay mods, versions and files, and the same HellForge version. When they differ, the join is

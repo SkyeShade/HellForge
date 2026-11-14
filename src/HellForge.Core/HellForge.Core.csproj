@@ -32,6 +32,7 @@
     <EmbeddedResource Include="../../mappings/melee.json" LogicalName="HellForge.Core.mappings.melee.json" />
     <EmbeddedResource Include="../../mappings/fired-entities.json" LogicalName="HellForge.Core.mappings.fired-entities.json" />
     <EmbeddedResource Include="../../mappings/parity.json" LogicalName="HellForge.Core.mappings.parity.json" />
+    <EmbeddedResource Include="../../mappings/editor-requests.json" LogicalName="HellForge.Core.mappings.editor-requests.json" />
     <EmbeddedResource Include="../../mappings/shader-hosts.json" LogicalName="HellForge.Core.mappings.shader-hosts.json" /></ItemGroup>
   <ItemGroup>
     <!-- .rar and .7z mods (OtherArchives): managed code, MIT -->

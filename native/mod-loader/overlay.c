@@ -57,6 +57,30 @@ static int OverlayHook(void* user, uintptr_t target, void* detour, void** origin
     return LoaderHook("overlay host", target, detour, original);
 }
 
+/* The game's own mouse pointer, which its menus show: the engine makes it from the game's mouse_cursor resource (Lua
+ * Window.set_cursor, exe 0x3285E4) and keeps it in its first window at +0x68, the HWND at +0x50 and the arrow it falls
+ * back to at +0x70 (exe 0x6167F0). The engine is the global the code at exe 0x328508 reads. */
+#define OVERLAY_ENGINE 0x1A10210u
+static const char kOverlayEngineCode[] = "4C 8B 0D 01 7D 6E 01 33 FF 48 8B F2 48 8B D9 48 85 C9 74 2E 49 8B 89 C0 03 00 00 41 8B 81 B8 03 00 00";
+static const char kOverlaySetCode[] = "48 8B 48 28 48 89 4B 68";
+static const char kOverlayShowCode[] = "80 79 41 00 75 0D 48 8B 79 68 48 85 FF 75 04 48 8B 79 70 48 8B CF FF 15 ?? ?? ?? ?? 48 8B 4B 50 4C 8B C7 BA F4 FF FF FF";
+
+/* NULL when the code is not the reviewed one, the engine has no window, or the window is not `window`. */
+static void* OverlayGameCursorIn(uintptr_t exe, void* window)
+{
+    uintptr_t engine = 0, windows = 0, w = 0, hwnd = 0, cursor = 0, arrow = 0;
+    uint32_t count = 0;
+    if (!ApiCodeMatches(exe + 0x328508u, kOverlayEngineCode) || !ApiCodeMatches(exe + 0x3285E4u, kOverlaySetCode) ||
+        !ApiCodeMatches(exe + 0x616815u, kOverlayShowCode)) return NULL;
+    if (SafeRead(exe + OVERLAY_ENGINE, &engine, 8) || SafeRead(engine + 0x3B8, &count, 4) || count == 0 ||
+        SafeRead(engine + 0x3C0, &windows, 8) || SafeRead(windows, &w, 8) || SafeRead(w + 0x50, &hwnd, 8) ||
+        SafeRead(w + 0x68, &cursor, 8) || SafeRead(w + 0x70, &arrow, 8)) return NULL;
+    if ((window != NULL && hwnd != (uintptr_t)window) || arrow != (uintptr_t)LoadCursorW(NULL, MAKEINTRESOURCEW(32512))) return NULL; /* IDC_ARROW */
+    return (void*)cursor;
+}
+
+static void* OverlayGameCursor(void* user, void* window) { return OverlayGameCursorIn((uintptr_t)GetModuleHandleW(NULL), window); }
+
 /* The folder of a file of the loader's, with a trailing backslash; "" when unknown. */
 static void LoaderFolder(wchar_t* out, DWORD capacity)
 {
@@ -117,7 +141,7 @@ static void OverlayStartIfReady(void)
 {
     if (!g_fired[HF_EVENT_ENTITIES_READY] || g_overlayLoaded <= 0 || InterlockedCompareExchange(&g_overlayStarted, 1, 0) != 0) return;
     OverlayFindFonts();
-    HfOverlayStart start = {sizeof start, NULL, OverlayLog, OverlayHook, NULL, g_overlayFonts[0], g_overlayFonts[1]};
+    HfOverlayStart start = {sizeof start, NULL, OverlayLog, OverlayHook, NULL, g_overlayFonts[0], g_overlayFonts[1], OverlayGameCursor};
     if (g_overlayStart(&start) != 0) Note("overlay: the host did not start; screens are not drawn");
 }
 

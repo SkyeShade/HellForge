@@ -56,6 +56,40 @@ The file is organised by category, then by target, then by field:
 To check a file without starting the game, run `HellForge.Cli check-stats --mod <folder>`. `examples/mods/stats-example`
 is a working example.
 
+### Stratagem input codes
+
+A stratagem's `stratagem.input_code` is its arrows: a string of `U`, `R`, `D` and `L` (or the arrows themselves), 1 to
+10 of them, such as `"stratagems": { "Resupply": { "stratagem.input_code": "UULRD" } }`. Local Stats saves it as a
+number, one base-5 digit per direction with the first lowest (Up, Right is 1 + 2 x 5 = 11), and both forms load.
+
+- Ten is the most the game takes: the ship's arcade minigame has 10 arrows, its input matcher copies a code into a
+  12-direction buffer, and the HUD's arrows go into a 16-direction one. HellForge checks those readers in game.dll and
+  refuses every code edit on a build where they differ.
+- The game reads the code each time it is asked for it, so a change applies at once, the HUD's arrows too. HellForge
+  keeps every vanilla code in an array of its own and points the stratagem at it; taking the mod out puts the vanilla
+  code back.
+- The code is matched on each player's own machine. The beacon tells the others which stratagem was thrown, never its
+  code, so in co-op a code edit only changes what its player presses.
+
+### Rearms after uses
+
+Every non-Eagle stratagem has its mission uses (`uses`, or `stratagem.max_uses`; -1 is unlimited) and a
+`stratagem.rearms_after_uses` tick (0 or 1). Unticked, the game's own: a cooldown after every use, and spent uses are
+gone for the rest of the mission. Ticked, the uses go one after another with no cooldown between them, though the game
+still holds a stratagem while its strike runs. The cooldown starts once they are spent, and when it ends they come back.
+Unlimited uses with the tick have no cooldown at all.
+
+```json
+{ "format": 1, "stratagems": { "Orbital Railcannon Strike": { "uses": 3, "stratagem.rearms_after_uses": 1 } } }
+```
+
+- The HUD's stratagem list shows the uses left, counting down and coming back, as it shows a limited stratagem's.
+- Every machine runs every player's calls and refills every player's uses alike, so teammates' views agree when they
+  play with the same tick. A mod with the tick is therefore shared: friends need the same copy. In the editor's Local
+  Stats it is each player's own unless the host shares theirs.
+- Eagles keep their rearm, and stratagems with a team cooldown keep the game's ways (the tick is refused on them).
+  HellForge hooks the game's cooldown start (game.dll 0x135C2C0) and refuses the tick on a build where it differs.
+
 ## How it applies
 
 - Changes apply when the game loads its data, every session. A stats-only mod (no code, Lua, data patches, data spec,

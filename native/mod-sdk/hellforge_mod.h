@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 19
+#define HF_MOD_SDK_VERSION 20
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -127,7 +127,7 @@ typedef struct HfWeapon
      * is in the type's row. */
     uint32_t beam;
     uint32_t arc;
-    /* SDK 19: the damage its spray deals (a vanilla damage id, or one add_damage returned; 0: its base's). Its base must
+    /* SDK 20: the damage its spray deals (a vanilla damage id, or one add_damage returned; 0: its base's). Its base must
      * spray (a flamethrower, the Sterilizer: a SprayWeaponComponentData record): a spray has no shared settings row,
      * so the weapon gets that record of its own with the damage in it (docs/modding/content.md "Sprays"). */
     uint32_t spray_damage;
@@ -271,6 +271,7 @@ typedef struct HfArc
 } HfArc;
 
 #include "hellforge_customization.h" /* HfAttachment (SDK 17) and HfPattern (SDK 18): weapon attachments and patterns */
+#include "hellforge_ui.h"            /* SDK 19: screens in the game's own UI */
 
 /* The faction rosters of the enemy spawn director, for HfEnemy and HfEnemySwap (SDK 17). */
 #define HF_ENEMY_TERMINIDS 1u
@@ -782,7 +783,7 @@ typedef struct HfContent
     /* SDK 17, a weapon: the beam and arc it fires of a mod's (0: its base's) */
     uint32_t beam;
     uint32_t arc;
-    /* SDK 19, a weapon: the damage its spray deals of a mod's (0: its base's) */
+    /* SDK 20, a weapon: the damage its spray deals of a mod's (0: its base's) */
     uint32_t spray_damage;
 } HfContent;
 
@@ -1697,6 +1698,20 @@ typedef struct HfApi
      * 128 across all mods; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in
      * all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data. */
     uint32_t (*add_pattern)(HfMod* mod, const HfPattern* pattern);
+
+    /* ---- SDK 19: screens in the game's own UI (hellforge_ui.h, docs/modding/ui.md; check hf->size) ---------------- */
+    /* Opens a screen: xaml is a file of the mod's folder ("ui/shop.xaml") or XAML text; kind HF_UI_OVERLAY (over the
+     * game, not clickable) or HF_UI_MENU (a menu with the cursor, Back closes it; one at a time). Its id, or 0 (the mod's
+     * log says why). The screen shows at the next game update; 64 across all mods. */
+    int (*ui_open)(HfMod* mod, const char* xaml, uint32_t kind);
+    /* Sets a property of a named element ("" or NULL: the screen's root) from text, as XAML would ("Text", "SUPPLY";
+     * "Visibility", "Collapsed"; "Foreground", "#FFE900"). 0 queued, 1 refused (logged). */
+    int (*ui_set)(HfMod* mod, int screen, const char* element, const char* property, const char* value);
+    /* Calls back when a named Button (or anything with a Command) is clicked; with element NULL, when the screen closes
+     * (ui_close, or the player's Back on a menu). 0 queued, 1 refused (logged). */
+    int (*ui_on)(HfMod* mod, int screen, const char* element, HfUiCallback callback, void* user);
+    /* Closes one of the mod's screens; a menu closes as the game closes its own. 0 queued, 1 refused (logged). */
+    int (*ui_close)(HfMod* mod, int screen);
 } HfApi;
 
 /* SDK 6: an HfMod starts with the API, so these need only the mod. */

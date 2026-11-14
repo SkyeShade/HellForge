@@ -469,6 +469,7 @@ static void MoveGuardRecord(uintptr_t address, uint64_t rip, uint32_t write)
 static LONG CALLBACK MoveGuard(EXCEPTION_POINTERS* e)
 {
     DWORD thread = GetCurrentThreadId(), protect;
+    if (SafeReadOwns(e->ContextRecord->Rip)) return EXCEPTION_CONTINUE_SEARCH; /* a failed SafeRead, as ReadProcessMemory's */
     if (e->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP && g_moveGuardOwner == thread)
     {
         MoveGuardClose();

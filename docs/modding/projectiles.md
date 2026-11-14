@@ -126,7 +126,7 @@ flamer.base = HF_ITEM_FLAM40_FLAMETHROWER; /* a base that sprays */
 flamer.spray_damage = api->add_damage(mod, &hot);
 ```
 
-- `HfWeapon.spray_damage` (SDK 19) names the damage its spray deals, vanilla or added; 0 keeps the base's. The weapon
+- `HfWeapon.spray_damage` (SDK 20) names the damage its spray deals, vanilla or added; 0 keeps the base's. The weapon
   gets a `SprayWeapon` record of its own with that damage, so the base and other sprays don't change. A copy of the
   Sterilizer's damage (`HF_DAMAGE_TX41_STERILIZER`) on a flamethrower deals the Sterilizer's damage and status.
 - Its base must spray. A weapon that doesn't keeps its own damage, and its log says so.

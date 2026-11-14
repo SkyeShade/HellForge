@@ -25,7 +25,10 @@ It:
 
 - copies `capture-helper.sh` to `capture-helper` and `capture-relay` to `capture-relay` in the helper folder
   (below);
-- records each installed copy's SHA-256 in `capture-helper.sha256` and `capture-relay.sha256` beside them;
+- copies the Linux capture, `app/capture-linux`, to `capture-proxy` there, for the
+  [snapshot signer](#the-snapshot-signer);
+- records each installed copy's SHA-256 in `capture-helper.sha256`, `capture-relay.sha256` and `capture-proxy.sha256`
+  beside them, the last over a sorted list of the folder's file hashes;
 - adds `/etc/sudoers.d/zz-hellforge-capture`, a rule for that one root-owned helper's exact `check`, `start`, `stop`
   and `cleanup` commands, and removes the rule's earlier name, `hellforge-capture`;
 - removes a helper an earlier install left in another of the folders.
@@ -44,16 +47,40 @@ able to replace it. With no folder left, the installer installs nothing and name
 sudo reads `/etc/sudoers.d` in lexical order and its last matching rule wins. The `zz-` name sorts after a
 distribution's own files, such as SteamOS's `sudo` and `wheel`, which ask for a password.
 
-There is no wildcard and no port argument. `start` reads the native proxy's pid from stdin, and the relay's ports are
-fixed. The account comes from `SUDO_USER` or, under pkexec, from `PKEXEC_UID`. After the installer exits, the launcher
-checks both installed hashes again.
+There is no wildcard and no port argument. `start` reads the Steam account and the API's IPv4 address from stdin and
+checks both. The relay's ports are fixed. The account comes from `SUDO_USER` or, under pkexec, from `PKEXEC_UID`. After the installer exits, the launcher
+checks the installed hashes again.
 
 Before each sync the launcher also runs `sudo -n` with the helper's `check` command. If sudo asks for a password, the
 sync offers the install again, which writes the rule under the name that sorts last.
 
 The helper checks its arguments. It cannot run Wine, a game, or a program chosen by the caller. `capture-relay` is a
-tiny static C program built from `native/linux-capture`. The helper runs only the installed root-owned copy beside
-itself, never one from the installation, which any Wine program can write.
+tiny static C program built from `native/linux-capture`. The helper runs only the installed root-owned relay and
+capture beside itself, never one from the installation, which any Wine program can write. It checks the capture copy
+against `capture-proxy.sha256` before each start.
+
+## The snapshot signer
+
+A synced snapshot gives premium content only with a seal from this PC's snapshot signer. The helper runs the capture as
+a systemd service with its own dynamic user, so the signer's private key is out of the player's reach.
+
+| Path | Holds |
+|---|---|
+| `/var/lib/private/hellforge-signer/signer.key` | The signer's private key, readable only by the service's user |
+| `/run/hellforge-capture/` | The service's log, state and CA certificate; its account files are mode `0600` |
+| `/run/hellforge/capture-out/` | The sealed account files, copied by root, then given to the player |
+| `/var/lib/hellforge/snapshot-signer.pub` | The public key, written by root, mode `0644` |
+
+- The capture signs only when its connection validates for `api.live.prod.thehelldiversgame.com` and the chain holds
+  one of HellForge's pinned Let's Encrypt roots. A CA the player adds cannot stand in.
+- It signs the SHA-256 of the bytes it received, the Steam account and the time from the API's `Date` header.
+- A seal lasts 14 days. Then the snapshot gives no premium content until the next sync.
+- The launcher refuses a public key that a group or other accounts can change, or that sits in such a folder.
+- Without systemd, the helper's `check` refuses: the signer needs a systemd service.
+- A HellForge update that changes the capture makes the next sync offer the helper install again.
+
+The service stops at the capture's 10-minute timeout plus two minutes (`RuntimeMaxSec`). Root moves no file the player
+can change: it copies the sealed files into its own folder, `seal.json` last, then hands that folder over.
 
 ## Which Proton opens the game's prefix
 
@@ -84,8 +111,8 @@ For the length of a sync, until the normal game exits, these change:
 - **The game's prefix:** the proxy's one-day CA is imported into HELLDIVERS 2's own Proton prefix
   ([below](#the-certificate-in-the-games-prefix)).
 - **The sync folder:** `logs/sync-<utc>/` is mode `0700`. The inventory, progression, state, certificate and seal files
-  are mode `0600`. The snapshot is sealed natively with the machine-id transform. The account is the one the Steam probe
-  confirmed. Captured JSON is never put in a log.
+  are mode `0600`. The launcher copies them from the service's folders ([the snapshot signer](#the-snapshot-signer)).
+  The account is the one the Steam probe confirmed. Captured JSON is never put in a log.
 
 The relay forwards only to `127.0.0.1:18443`, where the native proxy listens. No argument can change either address or
 port. Nothing is bound beyond loopback, the table of connections is bounded, and the relay stops with the helper.
@@ -135,11 +162,10 @@ HELLDIVERS 2 to close, then removes the CA.
 
 ## When a sync is interrupted
 
-If HellForge itself is killed mid-sync, the helper watches the native proxy's pid. The proxy's pid is checked against
-`/proc/<pid>/cmdline`, so a reused pid does not keep the redirect alive.
+If HellForge itself is killed mid-sync, the helper runs on until the capture's service ends.
 
-- The helper removes the hosts lines and the relay when the proxy exits.
-- It has a hard lifetime cap of the proxy's 10-minute timeout plus two minutes, never more than an hour.
+- The service ends at the capture's 10-minute timeout, and systemd stops it two minutes later at the latest.
+- When it ends, the helper removes the hosts lines and the relay, and stops the service.
 - Closing the launcher window while a sync runs stops the helper, and attempts the CA removal before the window closes.
 
 The prefix CA is not removed by that helper. If HellForge was killed, the next launcher start finds `capture-ca.json`

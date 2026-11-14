@@ -26,6 +26,8 @@ void DrawScreens(float width, float height, float dt);
 bool ScreenKey(UINT key);
 /* The screen that has the input now (the last open modal one), for Esc; 0 none. */
 int CapturingScreen();
+/* The loader's game_cursor for the game's window; NULL when it gave none or knows none. */
+HCURSOR GameCursor();
 
 /* ---- input.cpp: the window procedure and the cursor ---- */
 void HookCursor();
@@ -34,6 +36,13 @@ void ResetInput();
 /* This frame's input for the screen that has it (mouse in back-buffer pixels until DrawScreens scales it). */
 void TakeInput(HfInput* out, bool captured, float width, float height, float unitsPerPixel);
 void ReleaseCursorClip();
+/* After a capture change: the game's pointer while a screen has the mouse (NULL: ImGui draws its arrow). */
+void FollowCursor(bool captured);
+/* Whether ImGui draws its arrow this frame: the game hides its cursor in play, and the game's pointer is unknown. */
+bool ImGuiDrawsCursor(bool captured);
+/* After the screens' frame: the pointer hidden while the screen with the input asked for it, else shown. */
+void FollowPointer(bool hidden);
+extern HCURSOR volatile g_gameCursor;
 
 /* ---- present.cpp: the swap chain's and the queue's hooks ---- */
 bool HookPresent();
@@ -84,6 +93,8 @@ void BackdropFormatChanged();
 
 /* ---- draw.cpp: HfDraw, the fonts ---- */
 extern bool* g_backdropTaken; /* the drawing screen's "its frame is copied" */
+extern bool g_mayHidePointer;  /* the screen drawing now has the input, so hide_pointer counts */
+extern bool g_pointerAsked;    /* hide_pointer was called this frame */
 void SetFontFiles(const char* body, const char* title);
 bool BakeFonts(float pixelsPerUnit); /* true when the atlas changed */
 void BeginDraw(HfDraw* draw, float width, float height);

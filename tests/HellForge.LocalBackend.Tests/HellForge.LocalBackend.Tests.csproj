@@ -4,4 +4,5 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../src/HellForge.LocalBackend/HellForge.LocalBackend.csproj" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../HellForge.Tests/TestSigner.cs" Link="TestSigner.cs" /></ItemGroup>
 </Project>

@@ -177,6 +177,8 @@ static uintptr_t StatsDeltaRow(const StatEdit* e, uintptr_t base)
     uint32_t settings[2];
     if (SafeRead(arrays[2] + e->record * 8, settings, sizeof settings) ||
         !settings[0] || settings[0] > 64 || (uint64_t)settings[1] + settings[0] > d->counts[2]) return 0;
+    /* offset 0: a member the attachment's deltas lack, which HellForge adds (attachment_extras.c; 0 keeps the weapon's) */
+    if (e->offset == 0) return e->size != 1 ? (uintptr_t)AttExtraSlot(e->resource, component, member) : 0;
     return StatsDeltaFind(arrays, d, settings, component, member, e->offset);
 }
 

@@ -94,7 +94,7 @@ several GB. It is Steam's, and prefix backup and uninstall do not include it.
 
 ## After a SteamOS update
 
-The inventory seal (C.5a) is bound to `/etc/machine-id`. If a SteamOS update changes it, a snapshot is refused with
-"This snapshot was sealed on another system: sync again". Run **Sync Inventory** again, which writes a seal for the new
-id. Whether SteamOS keeps `/etc/machine-id` across an A/B update is not established. Record it before and after one (the
-E.3 evidence list) and report the result.
+The snapshot signer keeps its key in `/var/lib/private/hellforge-signer` and its public key in `/var/lib/hellforge`
+([the snapshot signer](linux-account-sync.md#the-snapshot-signer)). If an update removes either, a snapshot is refused
+until the next sync. Run **Sync Inventory** again, which makes a new signer. Whether SteamOS keeps both across an A/B
+update is not established. Record them before and after one (the E.3 evidence list) and report the result.

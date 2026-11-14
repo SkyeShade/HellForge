@@ -21,9 +21,28 @@
 #include "mod_identity_test.c"
 #include "mod_status_test.c"
 #include "render_guards_test.c"
+#include "overlay_cursor_test.c"
 #include "moved_fields_test.c"
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
+#include "stratagem_codes_test.c"
+#include "stratagem_rearm_test.c"
+#include "safe_read_test.c"
+#include "perf_speedtree_empty_cells_test.c"
+#include "perf_record_hash_test.c"
+#include "perf_ai_path_budget_test.c"
+#include "perf_corpse_freeze_test.c"
+#include "perf_render_job_copies_test.c"
+#include "perf_render_version_rehash_test.c"
+#include "perf_vehicle_box_test.c"
+#include "perf_heap_trim_test.c"
+#include "perf_scatter_cameras_test.c"
+#include "perf_knn_grid_test.c"
+#include "perf_spread_sort_test.c"
+#include "perf_tree_cell_limits_test.c"
+#include "perf_early_stamp_packages_test.c"
+#include "perf_overlap_grid_test.c"
+#include "perf_span_rescue_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -163,6 +182,14 @@ static void ExtraFixtures(void)
     assert(StatsExtraRow(&e) == (uintptr_t)base + e.offset);
     g_stats[0] = e; StatsWrite(&g_stats[0], StatsExtraRow(&e)); memcpy(&value, base + e.offset, 4); assert(value == 60);
     delta[2]++; assert(!StatsExtraRow(&e)); delta[2]--;
+    {
+        /* offset 0: a member the attachment lacks, HellForge's to add (attachment_extras.c), only an allowed one */
+        StatEdit added = e;
+        added.offset = 0; strcpy(added.component, "266:92");
+        assert(StatsExtraRow(&added) == (uintptr_t)AttExtraSlot(1, 266, 92) && StatsExtraRow(&added) != 0);
+        strcpy(added.component, "5:136"); assert(!StatsExtraRow(&added));
+        g_attExtraCount = 0;
+    }
     component[0]++; assert(!StatsExtraRow(&e)); component[0]--;
     settings[1] = d->counts[2]; assert(!StatsExtraRow(&e)); settings[1] = 3;
     *(uint64_t*)(hashes + 16) = 1; *(uint32_t*)(hashes + 24) = 2;
@@ -3686,6 +3713,85 @@ static void AttachmentsFixture(void)
     VirtualFree(game, 0, MEM_RELEASE);
 }
 
+/* Members added to vanilla attachments (attachment_extras.c): only the allowed ones; nothing made while none is set; set,
+ * the key's own settings entry with the member (in its WeaponHeat component, or a WeaponHeat component of its own) and
+ * the game's untouched; a new value written in place; cleared, made again without it; a key the storage lacks made once. */
+static void AttachmentExtrasFixture(void)
+{
+    uint8_t* game = (uint8_t*)VirtualAlloc(NULL, ATT_TABLE + 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint8_t* state = (uint8_t*)VirtualAlloc(NULL, ATT_DELTAS + 0x100, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert(game && state);
+    memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
+    memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
+    static uint8_t items[ATT_ITEM];
+    static struct { uint8_t* items; uint32_t count; uint32_t pad; } block;
+    block.items = items; block.count = 1;
+    at = (uintptr_t)&block; memcpy(game + ATT_TABLE, &at, 8);
+    uint32_t count = 1; memcpy(game + ATT_COUNT, &count, 4);
+    /* two heatsinks: one changing the cooling rate (WeaponHeat +128), one only the ergonomics (WeaponData +960) */
+    const uint64_t cooldown = 0xA313B38037CEE20Bull, other = 0x0000000000000013ull, absent = 0x0000000000000022ull;
+    static uint8_t keys[16 * 5], data[8];
+    static uint32_t settings[4] = {1, 0, 1, 1}, comps[6] = {ATT_HEAT, 0, 1, 236, 1, 1}, deltas[6] = {128, 4, 0, 960, 4, 4};
+    uint32_t second = 1;
+    assert(cooldown % 5 != other % 5);
+    memcpy(keys + 16 * (cooldown % 5), &cooldown, 8);
+    memcpy(keys + 16 * (other % 5), &other, 8); memcpy(keys + 16 * (other % 5) + 8, &second, 4);
+    float cooling = 8.5f, ergonomics = -7.0f;
+    memcpy(data, &cooling, 4); memcpy(data + 4, &ergonomics, 4);
+    static uint8_t storage[0x50];
+    void* parts[5] = {keys, settings, comps, deltas, data};
+    for (int p = 0; p < 5; p++) memcpy(storage + 0x10 * p, &parts[p], 8);
+    uint32_t five = 5; memcpy(storage + 8, &five, 4);
+    at = (uintptr_t)storage; memcpy(state + ATT_DELTAS, &at, 8);
+    uintptr_t savedGame = g_game;
+    g_game = (uintptr_t)game;
+    g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL;
+
+    assert(AttExtraSlot(cooldown, 236, 960) == NULL && AttExtraSlot(0, ATT_HEAT, 92) == NULL);
+    uint32_t* spare = AttExtraSlot(cooldown, ATT_HEAT, 92);
+    assert(spare != NULL && AttExtraSlot(cooldown, ATT_HEAT, 92) == spare && g_attExtraCount == 1);
+    AttachmentsTick();
+    assert(StatePointer(state, ATT_DELTAS) == storage); /* none set: the game's own */
+    *spare = 6;
+    uint32_t* starting = AttExtraSlot(other, ATT_HEAT, 84);
+    *starting = 2;
+    AttachmentsTick();
+    uint8_t* grown = StatePointer(state, ATT_DELTAS);
+    assert(grown != storage && grown == g_attGrown);
+    const uint32_t* setting = AttDeltaSetting(grown, cooldown);
+    const uint32_t* comp = *(uint32_t* const*)(grown + 0x20) + 3 * setting[1];
+    const uint32_t* delta = *(uint32_t* const*)(grown + 0x30) + 3 * comp[1];
+    const uint8_t* bytes = *(uint8_t* const*)(grown + 0x40);
+    assert(setting[0] == 1 && comp[0] == ATT_HEAT && comp[2] == 2 && delta[0] == 128 && delta[3] == 92 && delta[4] == 4);
+    assert(*(const float*)(bytes + delta[2]) == 8.5f && *(const uint32_t*)(bytes + delta[5]) == 6);
+    setting = AttDeltaSetting(grown, other); /* its own component kept, a WeaponHeat one added */
+    comp = *(uint32_t* const*)(grown + 0x20) + 3 * setting[1];
+    delta = *(uint32_t* const*)(grown + 0x30) + 3 * comp[4];
+    assert(setting[0] == 2 && comp[0] == 236 && comp[3] == ATT_HEAT && comp[5] == 1 && delta[0] == 84 && *(const uint32_t*)(bytes + delta[2]) == 2);
+    assert(AttDeltaSetting(storage, cooldown)[0] == 1 && settings[1] == 0 && comps[2] == 1); /* the game's untouched */
+    *spare = 7;
+    AttachmentsTick();
+    setting = AttDeltaSetting(grown, cooldown);
+    delta = *(uint32_t* const*)(grown + 0x30) + 3 * (*(uint32_t* const*)(grown + 0x20))[3 * setting[1] + 1];
+    assert(StatePointer(state, ATT_DELTAS) == grown && *(const uint32_t*)(bytes + delta[5]) == 7); /* in place */
+    *spare = 0; *starting = 0;
+    AttachmentsTick();
+    uint8_t* again = StatePointer(state, ATT_DELTAS);
+    setting = AttDeltaSetting(again, cooldown);
+    assert(again != grown && again == g_attGrown && setting[0] == 1 && (*(uint32_t* const*)(again + 0x20))[3 * setting[1] + 2] == 1);
+    *AttExtraSlot(absent, ATT_HEAT, 88) = 3; /* a key the storage lacks: looked at once, nothing added */
+    AttachmentsTick();
+    uint8_t* third = StatePointer(state, ATT_DELTAS);
+    AttachmentsTick();
+    assert(StatePointer(state, ATT_DELTAS) == third && AttDeltaSetting(third, absent) == NULL);
+
+    g_attExtraCount = 0; g_attGrown = g_attGrownFrom = NULL;
+    g_game = savedGame;
+    VirtualFree(state, 0, MEM_RELEASE);
+    VirtualFree(game, 0, MEM_RELEASE);
+}
+
 /* Patterns (patterns.c): a weapon pattern is a paint's copy among the attachments, with its pattern_lut and a mask
  * swapped in its WeaponCustomization override; a unit pattern joins every collection holding its base skin (the hellpod
  * and its rack), with its own row, name and deltas, waits for a skin table that is not loaded yet, stops at the list's 24,
@@ -4546,6 +4652,7 @@ static void FieldWatchCapFixture(void)
 #include "live_mods_test.c" /* after the helpers it shares (Edit, FixtureLoad) */
 #include "live_content_test.c" /* after live_mods_test.c and the behaviour and registry helpers */
 #include "stratagem_cap_test.c" /* after live_content_test.c (ContentGame, ContentMod) */
+#include "paid_guard_test.c" /* after live_content_test.c: its fake catalogue */
 #include "explosions_test.c"
 #include "beam_arc_test.c"
 
@@ -4573,6 +4680,8 @@ int main(int argc, char** argv)
     StratagemGuardsFixture();
     PickerFrameFixture();
     StratagemFieldFixture();
+    StratagemCodesFixture();
+    StratagemRearmFixture();
     StratagemCapFixture();
     ExplosionsFixture();
     ExplosionsWidthFixture();
@@ -4581,6 +4690,7 @@ int main(int argc, char** argv)
     ContentDifficultyFixture();
     ContentMovedOwnershipFixture();
     StratagemHeldFixture();
+    PaidGuardFixture();
     ChannelGameFixture();
     ChannelFixture();
     RpcFixture();
@@ -4623,6 +4733,7 @@ int main(int argc, char** argv)
     WeaponOrderFixture();
     RegisteredItemsFixture();
     AttachmentsFixture();
+    AttachmentExtrasFixture();
     PatternsFixture();
     SetupOrderFixture();
     BehaviourStubsFixture();
@@ -4852,12 +4963,29 @@ int main(int argc, char** argv)
     ArmoryDiagFixture();
     ShieldBlockFixture();
     RenderGuardsFixture();
+    OverlayCursorFixture();
     NavCarversFixture();
+    SafeReadFixture();
+    PerfSpeedTreeFixture();
+    RecordHashFixture();
+    PerfAiPathBudgetFixture();
+    PerfCorpseFreezeFixture();
+    RenderJobCopiesFixture();
+    RenderVersionRehashFixture();
+    VehicleBoxFixture();
+    HeapTrimFixture();
+    PerfScatterCamerasFixture();
+    KnnGridFixture();
+    PerfSpreadSortFixture();
+    TreeCellLimitsFixture();
+    EarlyStampPackagesFixture();
+    PerfOverlapGridFixture();
+    SpanRescueFixture();
     puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
         "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; sprays: a record of its own with its damage, refusals; registered items: a full registry's export, names escaped; "
-        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again");
+        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again; overlay: the game's mouse pointer and its checks");
     return 0;
 }

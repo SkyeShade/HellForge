@@ -409,8 +409,9 @@ void Frame(IDXGISwapChain3* chain, bool captured)
     float width = (float)g_frameWidth, height = (float)g_frameHeight;
     FollowFonts(height);
     ImGuiIO& io = ImGui::GetIO();
-    io.MouseDrawCursor = captured; /* the game hides its own cursor */
-    if (captured) io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+    bool drawn = ImGuiDrawsCursor(captured);
+    io.MouseDrawCursor = drawn;
+    if (drawn) io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
     else io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     if (g_device11 != NULL) ImGui_ImplDX11_NewFrame();
     else ImGui_ImplDX12_NewFrame();

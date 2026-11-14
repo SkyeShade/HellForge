@@ -362,7 +362,7 @@ static const SdkFunction kSdkFunctions[] = {
     {"ProjectileWeaponEnterOwned", "game.dll", 0x61A260u, "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 56 41 57 48 81 EC E0 00 00 00 8B 42 08 3B 05 9C 99 E6 02", 0},
     {"OwnsWarbond", "game.dll", 0x136E470u, "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B 35 72 EA 10 02 45 33 C0 4C 63 96 D4 92 74 01", 1},
     {"WarbondCurrencyToken", "game.dll", 0x136C270u, "48 89 74 24 08 48 89 7C 24 10 48 8B 3D 77 0C 11 02 45 33 D2 48 8B F2 4C 63 9F D4 92 74 01 4D 85 DB", 0},
-    {"HasCatalogueItem", "game.dll", 0x136FB40u, "40 53 48 83 EC 20 48 8B D9 85 D2 74 26 44 8B 81 E0 1C 00 00 33 C0 45 85 C0 74 18 4C 8D 89 E4 9C 0B 00", 1},
+    {"HasCatalogueItem", "game.dll", 0x136FB40u, "40 53 48 83 EC 20 48 8B D9 85 D2 74 26 44 8B 81 E0 1C 00 00 33 C0 45 85 C0 74 18 4C 8D 89 E4 9C 0B 00", 0},
     {"WeaponMagazineRecord", "game.dll", 0x4F3740u, "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 C8 04 F9 02 0F 84 94 00 00 00", 1},
     {"WeaponWindUpRecord", "game.dll", 0x4F8090u, "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 78 BB F8 02 0F 84 94 00 00 00", 1},
     {"RechargeRecord", "game.dll", 0x4FBC30u, "48 83 EC 28 4C 8B D1 48 85 C9 75 07 33 C0 48 83 C4 28 C3 8B 41 08 3B 05 D8 7F F8 02 0F 84 92 00 00 00", 1},

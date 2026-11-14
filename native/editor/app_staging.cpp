@@ -1,7 +1,9 @@
 /* The editor's window (app_internal.h): staging, applying and editing values, the mods each row's value is held by,
  * and the marks of objects, categories and headers. */
+#include <ctype.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <algorithm>
 #include "app_internal.h"
 
@@ -570,8 +572,43 @@ void BeginEdit(const Row* row, const std::string& text, bool fresh)
     g_edit.buffer = !text.empty() ? text : v.has ? Format(row, v.value) : "";
 }
 
+/* The direction at text[*i] (1 up, 2 right, 3 down, 4 left: a letter U R D L or an arrow, *i moved past it), or 0. */
+static uint32_t CodeDirection(const std::string& text, size_t* i)
+{
+    unsigned char c = (unsigned char)text[*i];
+    if (c == 0xE2 && *i + 2 < text.size() && (unsigned char)text[*i + 1] == 0x86)
+    {
+        unsigned char a = (unsigned char)text[*i + 2];
+        *i += 2;
+        return a == 0x91 ? 1 : a == 0x92 ? 2 : a == 0x93 ? 3 : a == 0x90 ? 4 : 0;
+    }
+    const char* letters = "URDL";
+    const char* at = c != 0 ? strchr(letters, toupper(c)) : nullptr;
+    return at != nullptr ? (uint32_t)(at - letters) + 1 : 0;
+}
+
+/* Typed directions (U, R, D and L, or the arrows; spaces, commas and dashes between them ignored) as a packed input code. */
+static bool ParseCode(const std::string& text, double* out, std::string* error)
+{
+    uint32_t directions[10], count = 0;
+    for (size_t i = 0; i < text.size(); i++)
+    {
+        if (text[i] == ' ' || text[i] == ',' || text[i] == '-') continue;
+        uint32_t d = CodeDirection(text, &i);
+        if (d == 0) { *error = "Use U, D, L and R, or the arrows."; return false; }
+        if (count == 10) { *error = "At most 10 directions."; return false; }
+        directions[count++] = d;
+    }
+    if (count == 0) { *error = "Enter at least one direction."; return false; }
+    double packed = 0;
+    for (uint32_t i = count; i-- > 0;) packed = packed * 5 + directions[i];
+    *out = packed;
+    return true;
+}
+
 static bool Parse(const Row* row, const std::string& text, double* out, std::string* error)
 {
+    if (row->code) return ParseCode(text, out, error);
     std::string t = text;
     if (t.find('.') == std::string::npos && std::count(t.begin(), t.end(), ',') == 1) std::replace(t.begin(), t.end(), ',', '.');
     char* end = nullptr;

@@ -44,7 +44,7 @@ static class PremiumModsTests
             var snapshot = Directory.CreateDirectory(Path.Combine(root, "premium-install", InventorySync.SnapshotFolder, "player")).FullName;
             File.WriteAllText(Path.Combine(snapshot, InventorySync.InventoryFile), "{\"items\":[{\"mixId\":" + Knight + ",\"amount\":1,\"isDiscovered\":true}]}");
             check(!PremiumContent.ForSnapshot(data, snapshot, Account).Owns("item:" + Knight), "An unsealed snapshot gave ownership.");
-            SnapshotSeal.Write(snapshot, InventorySync.SealKeyFor(snapshot), Account, DateTime.UtcNow);
+            TestSigner.Seal(snapshot, Account, DateTime.UtcNow);
             check(PremiumContent.ForSnapshot(data, snapshot, Account).Owns("dlc:super-citizen-edition"), "A sealed snapshot gave no ownership.");
             check(!PremiumContent.ForSnapshot(data, snapshot, Account + 1).Owns("item:" + Knight) && !PremiumContent.ForSnapshot(data, snapshot, null).Owns("item:" + Knight),
                 "Another Steam account, or none, owned the snapshot's items.");
