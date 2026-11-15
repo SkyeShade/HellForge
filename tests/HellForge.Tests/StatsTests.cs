@@ -362,6 +362,27 @@ static class StatsTests
                 silo["fired.impact_payload"].Offset == 40 && weapons["FAF-14 Spear"].Fields["terminal.primary.impact.explosion"] is { Kind: "ProjectileSettings", Record: 225, Offset: 144 },
                 "The Solo Silo's remote handling and missile payloads; the Spear's impact payload");
             check(targets["stratagems"]["Eagle 110mm Rocket Pods"].Fields["eagle.fire_duration"].Max >= 2, "The rocket pods' attack duration reaches its own 2 s");
+            var enemies = targets["enemies"];
+            var charger = enemies["Charger"].Fields;
+            check(charger["movement::charge.speed"] is { Component: "AiEnemyComponentData", Offset: 0x114, Section: "Movement" } &&
+                charger["movement::charge.acceleration"].Offset == 0x124 && !charger.ContainsKey("movement::rotation.turn_speed") &&
+                enemies["hunter_base"].Fields["movement::rotation.turn_speed"] is { Component: "RotationComponentData", Offset: 0, Min: 1 } &&
+                enemies["hunter_base"].Fields["movement::locomotion.acceleration"] is { Component: "LocomotionComponentData", Offset: 0x1170 },
+                "Enemy movement: state speeds and the charge (AiEnemy), acceleration (Locomotion), turn speed only where it is not 0");
+            check(enemies["hunter_base"].Fields["sensor::eye.range"] is { Component: "SensorEyeComponentData", Offset: 0, Section: "Detection" },
+                "Enemy sight ranges (SensorEye)");
+            check(enemies["hunter_base"].Fields["attack:melee_1:damage.standard_damage"] is { Kind: "DamageInfo", Record: 574 } &&
+                enemies["berserker"].Fields.Values.Any(f => f is { Kind: "DamageInfo", Record: 601, Offset: 4 }) &&
+                charger.Values.Any(f => f is { Kind: "DamageInfo", Record: 570, Offset: 4 }), "Enemy melee damage: the Hunter's, the Berserker's chainsaw, the Charger's");
+            var titan = enemies["Bile Titan"].Fields;
+            check(titan["status::added.type"] is { Component: "StatusEffectReceiverComponentData", Offset: 8 + 12 * 0xB0 + 0x8C } &&
+                titan["status::added.type"].Choices.Any(c => c is { Value: 22, Label: "Stun" }) && !titan["status::added.type"].Choices.Any(c => c.Value == 4) &&
+                titan["status::fire.min_buildup"].Offset == 8 + 2 * 0xB0 + 0x90 && titan["elements::fire.multiplier"] is { Component: "HealthComponentData", Offset: 0x5400 },
+                "Enemy statuses: buildups per status taken, a stun the Bile Titan lacks, its fire damage multiplier");
+            check(enemies["hunter_base"].Fields["entity::entity.armor"].Max == 1000 && enemies["Charger"].Fields.Values.Any(f => f is { Section: "Head (zone_0)", Unit: "armor_class", Max: 1000 }) &&
+                weapons["40-K Meltagun"].Fields["zone_1:damage.ap_direct"].Max == 1000 && enemies["charger_bull"].Fields["attack:mapped_2:damage.ap_direct"].Max == 1000 &&
+                !targets["helldiver"]["Helldiver"].Fields.Values.Any(f => f is { Unit: "armor_class", Max: 1000 }), "Armour and AP to 1000 on enemies, their attacks and melee weapons, not the Helldiver");
+            check(StatsSchema.Observed.Sum(k => k.Length + 9) < 12 << 20, $"The plan's observed fields fit its 16 MiB ({StatsSchema.Observed.Count} fields, {StatsSchema.Observed.Sum(k => k.Length + 9)} bytes)");
             var bomb = targets["stratagems"]["Eagle 500kg Bomb"].Fields;
             check(bomb[StatsSchema.InputCodeKey] is { Kind: "StratagemCode", Offset: 0, Storage: "u32" } code && code.Record == bomb["stratagem.call_in_time"].Record &&
                 targets["stratagems"].Values.All(t => !t.Fields.Values.Any(f => f.Kind == "StratagemDefinition" && f.Offset == 72)),

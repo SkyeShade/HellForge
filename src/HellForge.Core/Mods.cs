@@ -905,7 +905,7 @@ public static class ModLoaderPlan
         if (mods.Count > 64 || mods.Sum(m => StatsData.Edits(m).Count()) > StatsData.MaxEdits || mods.Sum(m => m.Packages.Count) > 64)
             throw new InvalidDataException("Mod loader plan exceeds its mod or stats edit capacity.");
         foreach (var mod in mods) lines.AddRange(ModLines(mod));
-        if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (4 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 4 MiB.");
+        if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (16 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 16 MiB.");
         return string.Join("\n", lines) + "\n";
     }
 

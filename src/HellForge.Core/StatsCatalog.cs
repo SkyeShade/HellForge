@@ -533,7 +533,8 @@ public static class StatsCatalog
     static readonly Dictionary<string, string> Units = new(StringComparer.Ordinal)
     {
         ["rpm"] = "rpm", ["mrad"] = "mrad", ["seconds"] = "s", ["milliseconds"] = "ms", ["degrees"] = "°", ["degrees_per_second"] = "°/s",
-        ["meters"] = "m", ["meters_per_second"] = "m/s", ["grams"] = "g", ["kilograms"] = "kg", ["multiplier"] = "×", ["factor"] = "×",
+        ["meters"] = "m", ["meters_per_second"] = "m/s", ["meters_per_second_squared"] = "m/s²", ["degrees_per_second_squared"] = "°/s²",
+        ["grams"] = "g", ["kilograms"] = "kg", ["multiplier"] = "×", ["factor"] = "×",
         ["ratio"] = "", ["percent"] = "%", ["damage"] = "", ["health"] = "hp", ["armor_class"] = "AP", ["force"] = "", ["rounds"] = "rnd",
         ["projectiles"] = "", ["count"] = "", ["throwables"] = "", ["magazines"] = "mag", ["uses"] = "uses", ["record_units"] = "",
         ["native_angular_velocity"] = "", ["projectiles_per_shot"] = "/shot", ["pellets"] = "", ["strength"] = "", ["targets"] = "",
