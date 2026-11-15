@@ -105,11 +105,22 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
     // "difficulty" (a level's DifficultySettings row, 1 to 11), "rosters" (an enemy's spawn weights by difficulty) and
     // "compositions" (a squad: its groups' counts, weight, cost and the difficulties and player counts it is drawn at) and
     // "demolition" (a demolition template: the force a destruction stage naming it requires).
-    // Family is a faction; Class a composition's role (patrol, map, reinforcement).
+    // Family is a faction; Class a composition's role (its family's spawn channel: patrol, guard, map, reinforcement,
+    // traveller, straggler, convoy, air_support). A group's enemy family is a pick of its faction's families ("families":
+    // a roster row's +0). "summons" join the enemies' pages, after Entities: what a summoning enemy calls up (EnemySummon,
+    // native/mod-loader/enemy_summons.c).
     static void Director(StatsSchema schema)
     {
         using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.director.json")!;
         using var json = JsonDocument.Parse(stream);
+        var families = json.RootElement.GetProperty("families");
+        StatsField Field(JsonElement f, int order) => new(f.GetProperty("label").GetString()!, f.GetProperty("kind").GetString()!, "",
+            "0x0", f.GetProperty("record").GetInt64(), f.GetProperty("offset").GetInt32(), f.GetProperty("storage").GetString()!,
+            Number(f, "min"), Number(f, "max"), Text(f, "unit"), true, true)
+        {
+            Order = order, Section = Text(f, "section"), Note = Text(f, "note"), Hd2rKey = Text(f, "hd2r"),
+            Options = Text(f, "families") is { } faction ? families.GetProperty(faction).Clone() : default,
+        };
         foreach (var category in new[] { "difficulty", "rosters", "compositions", "demolition" })
         {
             var targets = new Dictionary<string, StatsTarget>(StringComparer.Ordinal);
@@ -118,10 +129,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                 var fields = new Dictionary<string, StatsField>(StringComparer.Ordinal);
                 var order = 0;
                 foreach (var f in t.Value.GetProperty("fields").EnumerateArray())
-                    fields[f.GetProperty("key").GetString()!] = new StatsField(f.GetProperty("label").GetString()!, f.GetProperty("kind").GetString()!, "",
-                        "0x0", f.GetProperty("record").GetInt64(), f.GetProperty("offset").GetInt32(), f.GetProperty("storage").GetString()!,
-                        Number(f, "min"), Number(f, "max"), Text(f, "unit"), true, true)
-                    { Order = ++order, Section = Text(f, "section"), Note = Text(f, "note"), Hd2rKey = Text(f, "hd2r") };
+                    fields[f.GetProperty("key").GetString()!] = Field(f, ++order);
                 targets[t.Name] = new StatsTarget(fields, new Dictionary<string, string>(StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal))
                 {
                     Label = Text(t.Value, "label"), Family = Text(t.Value, "faction"), Class = Text(t.Value, "role"),
@@ -129,6 +137,12 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
             }
             schema.Targets[category] = targets;
         }
+        foreach (var enemy in json.RootElement.GetProperty("summons").EnumerateObject())
+            if (schema.Targets["enemies"].TryGetValue(enemy.Name, out var target))
+            {
+                var order = target.Fields.Values.Select(f => f.Order).DefaultIfEmpty(0).Max();
+                foreach (var f in enemy.Value.EnumerateArray()) AddField(target, f.GetProperty("key").GetString()!, Field(f, ++order));
+            }
     }
 
     // The entities another page shows instead (StatsCatalog: the MS-11 Solo Silo's rack and missile), and the one whose

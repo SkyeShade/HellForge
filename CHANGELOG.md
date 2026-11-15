@@ -12,6 +12,20 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **What summoning enemies summon.** The Impaler's page has Summons: tentacles and the Alpha Commander's Summons:
+  warriors: which Terminid family they call up and how many a call (0 to 16). The host's choice decides, as with all
+  spawning ([stats mods](docs/modding/stats-mods.md#spawning)).
+- **Spawn compositions say what they are.** Each one is named by its role (Patrol, Map guard, Reinforcement,
+  Traveller, Straggler, Convoy, Air support, Guard post) and the enemies it draws, "Patrol: Hunter, Scavenger", with
+  its faction, family and row under the name. Each group picks the enemy family it draws from, and the first empty
+  group adds enemies to the composition.
+- **Rosters and compositions by difficulty.** Spawn Rosters and Spawn Compositions have D1 to D11 chips: a roster
+  row shows where its weight is above 0, a composition where its tech levels reach. Compositions filter by faction too.
+- **Travellers and stragglers on Mission Difficulty.** Per faction, the seconds between travellers (Shriekers,
+  Gunships, War Striders) and how many roam at once. Stragglers top up the map's guards: their interval, batch and the
+  cap on guards and stragglers together.
+- **Patrol caps past 128.** Up to 1000 per faction: nothing in the game bounds patrols but the cap, so very high
+  ones cost frame rate.
 - **Enemy combat in the editor.** Enemy pages get new sections:
   - Movement: each behaviour's move speed, the charge's speed, steering and tracking angle, turn speed.
   - Detection: how far it sees ahead, to the sides and behind.

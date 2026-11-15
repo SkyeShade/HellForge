@@ -77,7 +77,17 @@ static void DirectorFixture(void)
     assert(DirectorRefuses("EnemyRoster", 0, 0, &f, 4) != NULL && DirectorRefuses("EnemyComposition", (uintptr_t)second, 0xE0, &f, 4) != NULL);
     f = 0.001f; assert(strstr(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0xE4, &f, 4), "0.01"));
     f = 2.5f; assert(DirectorRefuses("EnemyRoster", 0, 0, &f, 4) == NULL);
-    assert(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &key, 4) != NULL); /* a group's key is not edited */
+    /* a group's key: a family its own roster holds (roster 0's), or 0 once its count is */
+    uint32_t automatonKey = 0x1A0EC706u, noKey = 0;
+    assert(strstr(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &key, 4), "no such enemy family"));
+    memcpy(rows[0] + 5 * DIR_ROSTER_ROW, &key, 4);
+    memcpy(rows[2] + 7 * DIR_ROSTER_ROW, &automatonKey, 4);
+    assert(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &key, 4) == NULL);
+    assert(DirectorRefuses("EnemyComposition", (uintptr_t)second, 24, &key, 4) == NULL); /* an empty group takes one */
+    assert(strstr(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &automatonKey, 4), "no such enemy family")); /* another faction's */
+    assert(strstr(DirectorRefuses("EnemyComposition", (uintptr_t)second, 0, &noKey, 4), "count to 0"));
+    assert(DirectorRefuses("EnemyComposition", (uintptr_t)second, 24, &noKey, 4) == NULL);
+    assert(DirectorRefuses("EnemyComposition", 0x1000, 0, &key, 4) != NULL); /* no roster's composition */
 
     /* a family's last weight at a level stays (roster 0's Scavengers: tier 1 at levels 1-3, tier 2 at 4-10) */
     float one_f = 1, zero = 0;
@@ -167,6 +177,49 @@ static void DirectorFixture(void)
     v = 256; assert(strstr(DirectorRefuses("DemolitionTemplate", (uintptr_t)templates + 3 * DIR_DEMOLITION_ROW, 4, &v, 4), "255"));
     v = 0; assert(DirectorRefuses("DemolitionTemplate", (uintptr_t)templates + 3 * DIR_DEMOLITION_ROW, 4, &v, 4) != NULL);
     v = 45; assert(DirectorRefuses("DemolitionTemplate", (uintptr_t)templates + 3 * DIR_DEMOLITION_ROW, 8, &v, 4) != NULL);
+
+    /* summons: no rows while the abilities' code is not the reviewed one (it may still be decoded), then the code's own
+     * values; a family of a primary roster and 0 to 16 of them, put into the code by the update */
+    assert(DirectorRow("EnemySummon", 463, &ready) == 0 && !ready);
+    for (size_t i = 0; i < SUM_SITES; i++)
+    {
+        const SummonSite* site = &kSummons[i];
+        uint32_t stub = 0x1150000u + (uint32_t)i * 0x10, family = i ? 0x8F7704F8u : 0xAFF5B26Bu, many = i ? 1 : 3;
+        int32_t rel = (int32_t)(site->function - (stub + 8));
+        memcpy(g_dirGame + SUM_ABILITIES + (site->ability - 1) * 4, &stub, 4);
+        static const uint8_t caseStub[] = {0x41, 0x8B, 0xD0, 0xE8}; /* mov edx, r8d; call */
+        memcpy(g_dirGame + stub, caseStub, 4); memcpy(g_dirGame + stub + 4, &rel, 4);
+        memcpy(g_dirGame + site->function, site->prologue, sizeof site->prologue);
+        memcpy(g_dirGame + site->key, site->keyOp, site->opLength); memcpy(g_dirGame + site->key + site->opLength, &family, 4);
+        memcpy(g_dirGame + site->count, site->countOp, site->opLength); memcpy(g_dirGame + site->count + site->opLength, &many, 4);
+        rel = (int32_t)(SUM_SPAWN - (site->call + 5));
+        g_dirGame[site->call] = 0xE8; memcpy(g_dirGame + site->call + 1, &rel, 4);
+    }
+    memcpy(g_dirGame + SUM_SPAWN, kSummonSpawnPin, sizeof kSummonSpawnPin);
+    uint8_t* warriors = (uint8_t*)DirectorRow("EnemySummon", 463, &ready);
+    assert(warriors == (uint8_t*)&g_summonRows[1] && ready && g_summonRows[1].family == 0x8F7704F8u && g_summonRows[1].count == 1);
+    assert(DirectorRow("EnemySummon", 333, &ready) == (uintptr_t)&g_summonRows[0] && g_summonRows[0].count == 3);
+    assert(DirectorRow("EnemySummon", 1702, &ready) == 0 && ready);
+    v = 17; assert(strstr(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 4, &v, 4), "0 to 16"));
+    v = 16; assert(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 4, &v, 4) == NULL);
+    assert(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 0, &key, 4) == NULL);
+    assert(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 0, &automatonKey, 4) == NULL); /* any faction's roster */
+    v = 0x12345678u; assert(strstr(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 0, &v, 4), "no faction"));
+    assert(DirectorRefuses("EnemySummon", (uintptr_t)warriors, 0, &noKey, 4) != NULL);
+    assert(DirectorStride("EnemySummon") == SUM_ROW);
+    g_summonRows[1].family = key; g_summonRows[1].count = 4;
+    SummonsTick();
+    memcpy(&v, g_dirGame + kSummons[1].key + 3, 4); assert(v == key);
+    memcpy(&v, g_dirGame + kSummons[1].count + 3, 4); assert(v == 4);
+    memcpy(&v, g_dirGame + kSummons[0].count + 4, 4); assert(v == 3); /* the other left as it was */
+    g_summonRows[1].family = 0x8F7704F8u; g_summonRows[1].count = 1;
+    SummonsTick();
+    memcpy(&v, g_dirGame + kSummons[1].key + 3, 4); assert(v == 0x8F7704F8u);
+    HfField summoned = HF_FIELD(EnemySummon, count);
+    HfValue six = HF_U32(6), lots = HF_U32(40);
+    assert(ApiSetLive(&g_mods[0], 333, &summoned, &six, HF_LIVE_SHARED) != 0 && g_summonRows[0].count == 6);
+    assert(ApiSetLive(&g_mods[0], 333, &summoned, &lots, HF_LIVE_SHARED) == 0 && g_summonRows[0].count == 6);
+    memset(rows[0] + 5 * DIR_ROSTER_ROW, 0, 4);
 
     /* live: the editor's writes go through the same checks */
     HfMod* mod = &g_mods[0];

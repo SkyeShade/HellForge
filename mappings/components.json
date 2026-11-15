@@ -981,6 +981,61 @@
           "applies": "now",
           "appliesVerified": true,
           "appliesSource": "artifacts/difficulty11/research-patrols (the director reads the row every frame, 0x94EB90)"
+        },
+        "traveller_interval": {
+          "offset": 736,
+          "type": "f32",
+          "count": 3,
+          "meaning": "seconds between travellers (spawn reason 7, Family 5: Shriekers and Dragonroaches, Gunships, War Striders): Terminids, Automatons, Illuminate (level 10: 130, 160, 90)",
+          "verified": false,
+          "source": "game.dll 0x94FE02 (the director copies the row to rbp+0x2B0 every frame) and its readers; HD2BeyondTheStars artifacts/difficulty11/research-patrols; 0x95AAE0",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the director copies the row every frame (0x94FE02), as the patrol fields"
+        },
+        "traveller_cap": {
+          "offset": 748,
+          "type": "u32",
+          "count": 3,
+          "meaning": "most living travellers, per faction (level 10: 12, 4, 6)",
+          "verified": false,
+          "source": "game.dll 0x94FE02 (the director copies the row to rbp+0x2B0 every frame) and its readers; HD2BeyondTheStars artifacts/difficulty11/research-patrols; 0x94E900, the director's +0x62C",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the director copies the row every frame (0x94FE02), as the patrol fields"
+        },
+        "straggler_interval": {
+          "offset": 760,
+          "type": "f32",
+          "count": 3,
+          "meaning": "seconds between straggler batches (spawn reason 8, Family 6), per faction (level 10: 5)",
+          "verified": false,
+          "source": "game.dll 0x94FE02 (the director copies the row to rbp+0x2B0 every frame) and its readers; HD2BeyondTheStars artifacts/difficulty11/research-patrols; 0x950A99 passes it (rbp+0x5A8), 0x95B250 sets the timer",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the director copies the row every frame (0x94FE02), as the patrol fields"
+        },
+        "straggler_batch": {
+          "offset": 784,
+          "type": "u32",
+          "count": 3,
+          "meaning": "most stragglers sent at once, per faction (level 10: 32, one squad)",
+          "verified": false,
+          "source": "game.dll 0x94FE02 (the director copies the row to rbp+0x2B0 every frame) and its readers; HD2BeyondTheStars artifacts/difficulty11/research-patrols; 0x950A11 (rbp+0x5C0)",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the director copies the row every frame (0x94FE02), as the patrol fields"
+        },
+        "straggler_cap": {
+          "offset": 796,
+          "type": "u32",
+          "count": 3,
+          "meaning": "most living map guards and stragglers together, under which stragglers are sent, per faction (level 10: 60)",
+          "verified": false,
+          "source": "game.dll 0x94FE02 (the director copies the row to rbp+0x2B0 every frame) and its readers; HD2BeyondTheStars artifacts/difficulty11/research-patrols; 0x950A04 (rbp+0x5CC) against the director's +0x618 and +0x630",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the director copies the row every frame (0x94FE02), as the patrol fields"
         }
       },
       "applies": "mission",
@@ -7563,7 +7618,7 @@
         "group_0_key": {
           "offset": 0,
           "type": "u32",
-          "meaning": "group 1: the roster group it draws enemies from (not edited)",
+          "meaning": "group 1: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0)",
           "verified": false,
           "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
         },
@@ -7584,7 +7639,7 @@
         "group_1_key": {
           "offset": 12,
           "type": "u32",
-          "meaning": "group 2: the roster group it draws enemies from (not edited)",
+          "meaning": "group 2: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0)",
           "verified": false,
           "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
         },
@@ -7605,7 +7660,7 @@
         "group_2_key": {
           "offset": 24,
           "type": "u32",
-          "meaning": "group 3: the roster group it draws enemies from (not edited)",
+          "meaning": "group 3: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0)",
           "verified": false,
           "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
         },
@@ -7626,7 +7681,7 @@
         "group_3_key": {
           "offset": 36,
           "type": "u32",
-          "meaning": "group 4: the roster group it draws enemies from (not edited)",
+          "meaning": "group 4: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0)",
           "verified": false,
           "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
         },
@@ -7647,7 +7702,7 @@
         "group_4_key": {
           "offset": 48,
           "type": "u32",
-          "meaning": "group 5: the roster group it draws enemies from (not edited)",
+          "meaning": "group 5: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0)",
           "verified": false,
           "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
         },
@@ -7668,7 +7723,7 @@
         "group_5_key": {
           "offset": 60,
           "type": "u32",
-          "meaning": "group 6: the roster group it draws enemies from (not edited)",
+          "meaning": "group 6: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0)",
           "verified": false,
           "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
         },
@@ -7689,7 +7744,7 @@
         "group_6_key": {
           "offset": 72,
           "type": "u32",
-          "meaning": "group 7: the roster group it draws enemies from (not edited)",
+          "meaning": "group 7: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0)",
           "verified": false,
           "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
         },
@@ -7710,7 +7765,7 @@
         "group_7_key": {
           "offset": 84,
           "type": "u32",
-          "meaning": "group 8: the roster group it draws enemies from (not edited)",
+          "meaning": "group 8: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0)",
           "verified": false,
           "source": "HD2Runtime 0.40.1 domains/enemy_director.lua, enemy_director_writes.lua; native/mod-loader/director.c"
         },
@@ -8040,6 +8095,32 @@
           "meaning": "the force a stage naming it requires, 1 to 255 (the incoming force is narrowed to a byte)",
           "verified": false,
           "source": "HD2Runtime enemy_director.lua demolition.force"
+        }
+      }
+    },
+    "EnemySummon": {
+      "component": "EnemySummon",
+      "table": true,
+      "stride": 8,
+      "layout": "25480438",
+      "meaning": "what a summoning ability calls up (a row by its ability id: 333 the Impaler's tentacles, 463 the Alpha Commander's warriors): HellForge's row, put into the ability's code (native/mod-loader/enemy_summons.c)",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "the ability passes the code's immediates to its summon (0x11C8230) each time it runs; HellForge's update writes the row's values there",
+      "fields": {
+        "family": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "the enemy family it calls up (a roster row's +0), picked by spawn weight at the mission's level from the mission faction's roster",
+          "verified": false,
+          "source": "game.dll 0x11C8230 (PickEnemy on the director's +0x660 with its params +8); 333 at 0x10B059D, 463 at 0x10B922D"
+        },
+        "count": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "how many it calls up each call, 0 to 16 (one SpawnSquad each, spawn reason 4)",
+          "verified": false,
+          "source": "game.dll 0x11C8230 (its loop over params +0x20); 333 at 0x10B05B1, 463 at 0x10B9245"
         }
       }
     },

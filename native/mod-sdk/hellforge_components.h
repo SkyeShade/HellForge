@@ -433,7 +433,14 @@ typedef struct HfDifficultySettings
     uint8_t _unknown_108[408];
     float patrol_interval[3];                    /* +0x2A0 seconds between roaming patrols: Terminids, Automatons, Illuminate (level 10: 65, 78, 75) [now] */
     uint32_t patrol_cap[3];                      /* +0x2AC most living patrol enemies, per faction (level 10: 41, 39, 48) [now] */
-    uint8_t _unknown_2B8[120];
+    uint8_t _unknown_2B8[40];
+    float traveller_interval[3];                 /* +0x2E0 seconds between travellers (spawn reason 7, Family 5: Shriekers and Dragonroaches, Gunships, War Striders): Terminids, Automatons, Illuminate (level 10: 130, 160, 90) (unverified) [now?] */
+    uint32_t traveller_cap[3];                   /* +0x2EC most living travellers, per faction (level 10: 12, 4, 6) (unverified) [now?] */
+    float straggler_interval[3];                 /* +0x2F8 seconds between straggler batches (spawn reason 8, Family 6), per faction (level 10: 5) (unverified) [now?] */
+    uint8_t _unknown_304[12];
+    uint32_t straggler_batch[3];                 /* +0x310 most stragglers sent at once, per faction (level 10: 32, one squad) (unverified) [now?] */
+    uint32_t straggler_cap[3];                   /* +0x31C most living map guards and stragglers together, under which stragglers are sent, per faction (level 10: 60) (unverified) [now?] */
+    uint8_t _unknown_328[8];
 } HfDifficultySettings;
 HF_ASSERT_SIZE(HfDifficultySettings, 816);
 HF_ASSERT_OFFSET(HfDifficultySettings, unlock_item, 0);
@@ -466,6 +473,16 @@ HF_ASSERT_OFFSET(HfDifficultySettings, patrol_interval, 672);
 #define HF_TYPE_DifficultySettings_patrol_interval HF_TYPE_F32
 HF_ASSERT_OFFSET(HfDifficultySettings, patrol_cap, 684);
 #define HF_TYPE_DifficultySettings_patrol_cap HF_TYPE_U32
+HF_ASSERT_OFFSET(HfDifficultySettings, traveller_interval, 736);
+#define HF_TYPE_DifficultySettings_traveller_interval HF_TYPE_F32
+HF_ASSERT_OFFSET(HfDifficultySettings, traveller_cap, 748);
+#define HF_TYPE_DifficultySettings_traveller_cap HF_TYPE_U32
+HF_ASSERT_OFFSET(HfDifficultySettings, straggler_interval, 760);
+#define HF_TYPE_DifficultySettings_straggler_interval HF_TYPE_F32
+HF_ASSERT_OFFSET(HfDifficultySettings, straggler_batch, 784);
+#define HF_TYPE_DifficultySettings_straggler_batch HF_TYPE_U32
+HF_ASSERT_OFFSET(HfDifficultySettings, straggler_cap, 796);
+#define HF_TYPE_DifficultySettings_straggler_cap HF_TYPE_U32
 
 /* DamageInfo (76-byte table rows, found by id; api->damage_row returns one: (HfDamageInfo*)api->damage_row(...)): a damage type: damage, armour penetration, forces and status effects */
 #define HfDamageInfo_INFO "DamageInfo", 25480438u
@@ -3754,28 +3771,28 @@ HF_ASSERT_OFFSET(HfEnemyRosterLevel11, weight, 0);
 #define HfEnemyComposition_INFO "EnemyComposition", 25480438u
 typedef struct HfEnemyComposition
 {
-    uint32_t group_0_key;                        /* +0x00 group 1: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_0_key;                        /* +0x00 group 1: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_0_count;                      /* +0x04 group 1: how many (the groups total at most 32) (unverified) [mission?] */
     float group_0_emission_time;                 /* +0x08 group 1: emission time (s) (unverified) [mission?] */
-    uint32_t group_1_key;                        /* +0x0C group 2: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_1_key;                        /* +0x0C group 2: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_1_count;                      /* +0x10 group 2: how many (the groups total at most 32) (unverified) [mission?] */
     float group_1_emission_time;                 /* +0x14 group 2: emission time (s) (unverified) [mission?] */
-    uint32_t group_2_key;                        /* +0x18 group 3: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_2_key;                        /* +0x18 group 3: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_2_count;                      /* +0x1C group 3: how many (the groups total at most 32) (unverified) [mission?] */
     float group_2_emission_time;                 /* +0x20 group 3: emission time (s) (unverified) [mission?] */
-    uint32_t group_3_key;                        /* +0x24 group 4: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_3_key;                        /* +0x24 group 4: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_3_count;                      /* +0x28 group 4: how many (the groups total at most 32) (unverified) [mission?] */
     float group_3_emission_time;                 /* +0x2C group 4: emission time (s) (unverified) [mission?] */
-    uint32_t group_4_key;                        /* +0x30 group 5: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_4_key;                        /* +0x30 group 5: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_4_count;                      /* +0x34 group 5: how many (the groups total at most 32) (unverified) [mission?] */
     float group_4_emission_time;                 /* +0x38 group 5: emission time (s) (unverified) [mission?] */
-    uint32_t group_5_key;                        /* +0x3C group 6: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_5_key;                        /* +0x3C group 6: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_5_count;                      /* +0x40 group 6: how many (the groups total at most 32) (unverified) [mission?] */
     float group_5_emission_time;                 /* +0x44 group 6: emission time (s) (unverified) [mission?] */
-    uint32_t group_6_key;                        /* +0x48 group 7: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_6_key;                        /* +0x48 group 7: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_6_count;                      /* +0x4C group 7: how many (the groups total at most 32) (unverified) [mission?] */
     float group_6_emission_time;                 /* +0x50 group 7: emission time (s) (unverified) [mission?] */
-    uint32_t group_7_key;                        /* +0x54 group 8: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_7_key;                        /* +0x54 group 8: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_7_count;                      /* +0x58 group 8: how many (the groups total at most 32) (unverified) [mission?] */
     float group_7_emission_time;                 /* +0x5C group 8: emission time (s) (unverified) [mission?] */
     uint8_t _unknown_60[128];
@@ -3994,6 +4011,19 @@ HF_ASSERT_OFFSET(HfDemolitionTemplate, index, 0);
 #define HF_TYPE_DemolitionTemplate_index HF_TYPE_U32
 HF_ASSERT_OFFSET(HfDemolitionTemplate, force, 4);
 #define HF_TYPE_DemolitionTemplate_force HF_TYPE_U32
+
+/* EnemySummon (8-byte table rows, found by id): what a summoning ability calls up (a row by its ability id: 333 the Impaler's tentacles, 463 the Alpha Commander's warriors): HellForge's row, put into the ability's code (native/mod-loader/enemy_summons.c) */
+#define HfEnemySummon_INFO "EnemySummon", 25480438u
+typedef struct HfEnemySummon
+{
+    uint32_t family;                             /* +0x00 the enemy family it calls up (a roster row's +0), picked by spawn weight at the mission's level from the mission faction's roster (unverified) [now?] */
+    uint32_t count;                              /* +0x04 how many it calls up each call, 0 to 16 (one SpawnSquad each, spawn reason 4) (unverified) [now?] */
+} HfEnemySummon;
+HF_ASSERT_SIZE(HfEnemySummon, 8);
+HF_ASSERT_OFFSET(HfEnemySummon, family, 0);
+#define HF_TYPE_EnemySummon_family HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemySummon, count, 4);
+#define HF_TYPE_EnemySummon_count HF_TYPE_U32
 
 /* EquipmentComponentData (component 233, 232-byte records): how a held item is wielded, holstered and dropped: nodes, timings, the Helldiver's animations and grip */
 #define HfEquipment_INFO "EquipmentComponentData", 25480438u
