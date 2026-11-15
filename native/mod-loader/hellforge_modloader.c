@@ -164,24 +164,7 @@ static HfApi g_api;
 #include "perf_fixes.c" /* HELLFORGE_PERF_OFF: which performance fixes stay off */
 #include "safe_read.c"  /* SafeRead: small reads copied in place, a fault turned into the failure return */
 
-/* A component's index rows (16 bytes each) in one read, into this thread's buffer (kept for its next call); NULL when
- * they do not all read. One read a row cost the editor's live reads about a millisecond of every frame, on the thread
- * that renders (Health alone has 1002 rows, walked twice for each field). */
-static const uint8_t* ReadIndexRows(uintptr_t address, uint32_t rows)
-{
-    static _Thread_local uint8_t* buffer;
-    static _Thread_local size_t capacity;
-    size_t size = (size_t)rows * 16;
-    if (size == 0) return NULL;
-    if (size > capacity)
-    {
-        uint8_t* grown = (uint8_t*)realloc(buffer, size);
-        if (grown == NULL) return NULL;
-        buffer = grown;
-        capacity = size;
-    }
-    return SafeRead(address, buffer, size) ? NULL : buffer;
-}
+#include "index_rows.c"
 
 /* Every range of game.dll HellForge has written (the Lua bridge's hellforge_lua_rewrites): its rva and size, a range
  * that touches the last one joined to it. A Lua runtime proving game code against reviewed bytes asks for them. A mod's
@@ -447,12 +430,9 @@ static int64_t VanillaRecordOf(const Component* c, const uint8_t* rows, uint64_t
     int owners = 0;
     for (uint32_t row = 0; row < c->indices; row++)
     {
-        const uint8_t* entry = rows + (size_t)row * 16;
         uint64_t id;
         uint32_t record, flags;
-        memcpy(&id, entry, 8);
-        memcpy(&record, entry + 8, 4);
-        memcpy(&flags, entry + 12, 4);
+        IndexRowAt(rows, row, &id, &record, &flags);
         if (record >= c->records || flags != 0) return -1;
         if (id == resource) { owners++; selected = record; }
     }

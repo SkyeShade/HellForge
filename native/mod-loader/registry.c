@@ -838,10 +838,9 @@ static int64_t OnlyRecordOf(const Component* c, const uint8_t* rows, uint64_t re
     int owners = 0;
     for (uint32_t row = 0; row < c->indices; row++)
     {
-        const uint8_t* entry = rows + (size_t)row * 16;
         uint64_t id;
         uint32_t record, flags;
-        memcpy(&id, entry, 8); memcpy(&record, entry + 8, 4); memcpy(&flags, entry + 12, 4);
+        IndexRowAt(rows, row, &id, &record, &flags); /* hellforge_modloader.c */
         if (id == resource) { if (flags) return -1; owners++; selected = record; }
     }
     return owners == 1 ? selected : -1;
