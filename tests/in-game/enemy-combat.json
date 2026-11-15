@@ -8,7 +8,7 @@
   "checks": [
     {"name": "the Charger's charge speed becomes 4.5 m/s", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (41100000 -> 40900000)"},
     {"name": "the Charger sees 80 m", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (42200000 -> 42a00000)"},
-    {"name": "the Charger's main armour becomes 50", "log": "mod-hellforge.enemy-combat-probe.log", "regex": "applied \([0-9a-f]{8} -> 00000032\)", "min": 1},
+    {"name": "the Charger's main armour becomes 50", "log": "mod-hellforge.enemy-combat-probe.log", "regex": "applied \\([0-9a-f]{8} -> 00000032\\)", "min": 1},
     {"name": "the Hunter's first melee hits for 1", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (00000023 -> 00000001)"},
     {"name": "the Hunter turns at 30 degrees a second", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (43340000 -> 41f00000)"},
     {"name": "the Hunter's acceleration becomes 3", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (41400000 -> 40400000)"},
