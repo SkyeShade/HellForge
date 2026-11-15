@@ -53,7 +53,8 @@ Four files name what the SDK can touch:
 
 - the SDK's `hellforge_components.h`, `hellforge_content.h`, `hellforge_functions.h`, `hellforge_globals.h`;
 - the loader's `sdk_fields.h`, `sdk_content.h`, `sdk_functions.h` and `sdk_globals.h`;
-- `sdk-reference.md`.
+- `sdk-reference.md`;
+- the loader's `paid_stratagems.h`, from `data/paid-items.json`.
 
 Naming grows one entry at a time: an `_unknown_XX` range becomes a named field by adding its entry (offset, type,
 meaning, build, evidence) and regenerating. Adding a name never breaks a mod, and a renamed field keeps its old name as

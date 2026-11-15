@@ -11,14 +11,19 @@ static class LaunchFailure
     public const string Prepare = "prepare it for", Connect = "connect it to";
 
     // The game closed during `step`, with exit code `code`; crash: Windows' record of the crash (or null), whose module
-    // `owner` is. A module of another program is named as the thing to close, since it crashed the game.
-    public static string Closed(string step, int code, WindowsCrash.Record? crash, WindowsCrash.Owner owner)
+    // `owner` is. A module of another program is named as the thing to close, since it crashed the game. sandboxed: the
+    // session ran the game in the sandbox; sandboxHint: SandboxRefusals.CrashHint, a program known to crash it there,
+    // which comes first (its crash is often recorded in Windows' own code: #369, ntdll.dll).
+    public static string Closed(string step, int code, WindowsCrash.Record? crash, WindowsCrash.Owner owner, bool sandboxed = false, string? sandboxHint = null)
     {
         var meaning = Tools.ExitMeaning(code);
         var how = $"0x{code:X8}" + (meaning.Length > 0 ? ": " + meaning : "") + (crash != null ? $"; Windows recorded the crash in {crash.Module}+{crash.Offset}" : "");
-        return $"The game closed while starting, before HellForge could {step} the local backend (exit code {how}). " + (crash != null && owner == WindowsCrash.Owner.Other
+        return $"The game closed while starting, before HellForge could {step} the local backend (exit code {how}). " + (
+            sandboxHint != null ? sandboxHint
+            : crash != null && owner == WindowsCrash.Owner.Other
             ? $"{crash.Module} is not part of the game, HellForge or Windows: another program put it into the game, such as an overlay, a recorder, or RGB or " +
               "security software. Close that program, turn off its in-game overlay or add the HellForge folder to its exclusions, then press PLAY."
+            : sandboxed && WindowsCrash.IsCrash(code) ? HellForge.Core.SandboxRefusals.CrashAdvice
             : "Press PLAY to try again. If the game closes again, save the crash report on the Play page and attach it to a GitHub issue.");
     }
 

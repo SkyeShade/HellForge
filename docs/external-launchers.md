@@ -375,6 +375,8 @@ that session's files with their sizes.
 `logs --export <file.zip>` makes the zip the launcher's Save logs to Desktop makes, of the newest session or the one
 `--run` names. The zip must not exist yet.
 
+- Its `start` folder holds `session-runner.log` and, on Linux, the wrapper's logs. With no session yet, the zip holds
+  only that folder and `run` is null.
 - It also has `<run>/processes-now.txt`, the programs of the session.
 - Text files and file names in it say `%USERPROFILE%` and `PC` instead of the player's user folder and computer name,
   whoever wrote them.

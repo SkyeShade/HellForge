@@ -1,0 +1,22 @@
+{
+  "about": "SDK 18's patterns in the real game: two weapon patterns on every weapon taking paints, Pelican, hellpod, exosuit and FRV skins, their deltas, collections and package map, the Armory's Pattern tab and Ship Management captured (tests/in-game/README.md).",
+  "mods": [
+    "pattern-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "armory": { "customize": true, "other_tabs": false, "acquisitions": true },
+  "checks": [
+    {"name": "the mod loads with SDK 18", "log": "mod-hellforge.pattern-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "all six patterns are taken", "log": "mod-hellforge.pattern-probe.log", "contains": "PROBE patterns added 6"},
+    {"name": "a default base and a taken name are refused", "log": "mod-hellforge.pattern-probe.log", "contains": "PROBE refusals ok"},
+    {"name": "the weapon patterns' base sets material LUTs (a paint sets no pattern_lut; its deltas were copied)", "log": "mod-hellforge.pattern-probe.log", "regex": "add_pattern\\(hellforge/pattern_probe/magenta\\): its base sets material_lut", "min": 8},
+    {"name": "the unit patterns' bases set textures on their collections", "log": "mod-hellforge.pattern-probe.log", "regex": "add_pattern\\(hellforge/pattern_probe/(pelican|hellpod|exosuit|frv)\\): on collection [0-9]+ its base sets", "min": 8},
+    {"name": "no pattern is refused once the game has its tables", "log": "mod-hellforge.pattern-probe.log", "absent_regex": "add_pattern\\(hellforge/pattern_probe/(arctic_copy|magenta|pelican|hellpod|exosuit|frv)\\): (its base is|its id is a game|its key|too late|collection [0-9]+ has)"},
+    {"name": "the copies go into the entity deltas", "log": "modloader.log", "regex": "attachments: [0-9]+ attachment\\(s\\) and pattern\\(s\\) added to the entity deltas"},
+    {"name": "the unit skins join their collections", "log": "modloader.log", "regex": "patterns: collection [0-9]+ shows [12][0-9] skin\\(s\\), [0-9]+ of mods", "min": 8},
+    {"name": "every pattern is mapped to its base's package", "log": "modloader.log", "regex": "patterns: [1-9][0-9]* pattern\\(s\\) mapped to their base's package"},
+    {"name": "the pattern lookups are the reviewed ones", "log": "modloader.log", "absent": "patterns: the game's skin or package lookup is not the reviewed one"},
+    {"name": "the package map has room", "log": "modloader.log", "absent": "the package map is full"}
+  ]
+}

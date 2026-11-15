@@ -1,21 +1,23 @@
 #!/bin/bash
 # HellForge's Sync Inventory helper on Linux (docs/linux.md, "Account sync"). allow-capture.sh installs this file and
-# capture-relay root-owned at /usr/local/lib/hellforge and gives the player's account a sudoers rule for this exact
-# program. The launcher then starts and stops it without another password prompt.
+# capture-relay root-owned at /usr/local/lib/hellforge (on SteamOS /opt/hellforge) and gives the player's account a
+# sudoers rule for this exact program. The launcher then starts and stops it without another password prompt.
 #
 #   capture-helper.sh check
-#   capture-helper.sh start              (root; reads the capture proxy pid from stdin)
+#   capture-helper.sh start              (root; reads "<SteamID64> <API IPv4 address>" from stdin)
 #   capture-helper.sh stop
 #   capture-helper.sh cleanup
 #   capture-helper.sh hosts-add --hosts-file <path> [--state-dir <dir>]             (test only, unprivileged)
 #   capture-helper.sh hosts-remove --hosts-file <path> [--state-dir <dir>]          (test only, unprivileged)
 #   capture-helper.sh watch --pid <pid> --hosts-file <path> [--state-dir <dir>] [--seconds <n>]  (test only)
 #
-# start adds exactly CaptureHosts.Marker and "127.0.0.1 api.live.prod.thehelldiversgame.com" to /etc/hosts, then runs the
-# installed root-owned capture-relay (never a file from the installation, which any Wine program can write): it binds
-# 127.0.0.1:443 as root, drops to nobody, and forwards to 127.0.0.1:18443 only. The EXIT/TERM/INT/HUP trap removes both.
-# The helper watches the native proxy's pid and also ends itself at the proxy's timeout plus a margin, so killing
-# HellForge does not leave the redirect behind. cleanup does the same after a killed run. Wine is never started here and
+# start adds exactly CaptureHosts.Marker and "127.0.0.1 api.live.prod.thehelldiversgame.com" to /etc/hosts, runs the
+# installed root-owned capture-relay (never a file from the installation, which any Wine program can write; it binds
+# 127.0.0.1:443 as root, drops to nobody, and forwards to 127.0.0.1:18443 only), and runs the installed root-owned capture
+# as the signing service: a systemd DynamicUser whose StateDirectory holds the snapshot signer's key, out of the player's
+# reach (SnapshotSigner). Once it has sealed, the account files go to the player in /run/hellforge/capture-out and its
+# public key to /var/lib/hellforge (SignerPublicKey). The EXIT/TERM/INT/HUP trap removes the redirect and stops both, and
+# the service ends at the capture's timeout plus a margin, so killing HellForge leaves nothing behind. Wine is never started here and
 # this helper never becomes root for the game. The test-only host and state arguments are not in the sudoers rule.
 set -euo pipefail
 # sudo starts this root-owned helper; use only the root-owned system paths even if the caller's PATH differs.
@@ -30,8 +32,21 @@ state_dir='/run/hellforge'
 hosts_file='/etc/hosts'
 pid_file="$state_dir/capture-helper.pid"
 lock_file="$state_dir/capture-helper.lock"
-helper_path='/usr/local/lib/hellforge/capture-helper'
-relay_path='/usr/local/lib/hellforge/capture-relay'
+# allow-capture.sh installs this file and the relay together in one of these root-owned folders (SteamOS cannot write
+# /usr/local). The relay run is the one beside this file; started from anywhere else, as the tests do, it is the first.
+helper_folders=(/usr/local/lib/hellforge /opt/hellforge /var/lib/hellforge)
+helper_folder=${helper_folders[0]}
+for candidate in "${helper_folders[@]}"; do
+  [ "${BASH_SOURCE[0]}" -ef "$candidate/capture-helper" ] && helper_folder=$candidate
+done
+helper_path="$helper_folder/capture-helper"
+relay_path="$helper_folder/capture-relay"
+proxy_dir="$helper_folder/capture-proxy"
+signer_unit='hellforge-capture'
+signer_run='/run/hellforge-capture'
+public_key='/var/lib/hellforge/snapshot-signer.pub'
+capture_pid=''
+player_uid=''
 relay_pid=''
 watch_pid=''
 cleanup_done=''
@@ -59,9 +74,22 @@ require_relay() {
   id -u nobody >/dev/null 2>&1 || die "the unprivileged 'nobody' account is missing (the relay drops to it after binding)."
 }
 
+# The signing service: systemd, and the capture copy allow-capture.sh installed, root's alone and unchanged since.
+require_signer() {
+  local recorded actual
+  command -v systemd-run >/dev/null && command -v systemctl >/dev/null && [ -d /run/systemd/system ] ||
+    die "premium content needs a systemd system: the snapshot signer runs as a systemd service."
+  [ -d "$proxy_dir" ] && [ ! -L "$proxy_dir" ] || die "the capture copy is missing ($proxy_dir): run allow-capture.sh again."
+  [ -z "$(find "$proxy_dir" \( ! -user 0 -o -perm /022 -o -type l \) -print -quit)" ] ||
+    die "the capture copy is not root's alone ($proxy_dir): run allow-capture.sh again."
+  recorded="$(cat "$proxy_dir.sha256" 2>/dev/null || true)"
+  actual="$( (cd "$proxy_dir" && LC_ALL=C find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | sha256sum | awk '{print $1}')"
+  [ -n "$recorded" ] && [ "$recorded" = "$actual" ] || die "the capture copy changed since it was installed: run allow-capture.sh again."
+}
+
 require_commands() {
   local name
-  for name in flock awk mktemp cmp chmod chown mv tail date sleep stat; do
+  for name in flock awk mktemp cmp chmod chown mv tail date sleep stat find sort xargs sha256sum install grep; do
     command -v "$name" >/dev/null || die "$name is missing."
   done
 }
@@ -85,10 +113,19 @@ pid_matches() {
   [[ "$cmdline" == *"$text"* ]]
 }
 
-pid_is_helper() { pid_matches "$1" "$helper_path"; }
+# A helper or relay left running by a copy in another of the folders counts too (an install that moved the helper).
+pid_is_helper() {
+  local folder
+  for folder in "${helper_folders[@]}"; do pid_matches "$1" "$folder/capture-helper" && return 0; done
+  return 1
+}
 pid_is_proxy() { pid_matches "$1" "HellForge.CaptureProxy"; }
 # The native relay, and the socat listener an older helper may have left behind.
-pid_is_relay() { pid_matches "$1" "$relay_path" || pid_matches "$1" "TCP-LISTEN:443,bind=127.0.0.1"; }
+pid_is_relay() {
+  local folder
+  for folder in "${helper_folders[@]}"; do pid_matches "$1" "$folder/capture-relay" && return 0; done
+  pid_matches "$1" "TCP-LISTEN:443,bind=127.0.0.1"
+}
 
 kill_pid() {
   local pid="$1"
@@ -170,7 +207,18 @@ add_hosts() { hosts_rewrite add; }
 remove_hosts() { hosts_rewrite remove; }
 
 cleanup_locked() {
+  local remove_out="${1:-}"
   set +e
+  # Only root's runs own the unit; the unprivileged test modes would wait on a polkit prompt.
+  if [ "$EUID" -eq 0 ]; then
+    systemctl --no-ask-password stop "$signer_unit.service" >/dev/null 2>&1
+    systemctl --no-ask-password reset-failed "$signer_unit.service" >/dev/null 2>&1
+  fi
+  if [ -n "$capture_pid" ]; then
+    kill_pid "$capture_pid"
+    wait "$capture_pid" 2>/dev/null
+    capture_pid=''
+  fi
   if [ -n "$watch_pid" ]; then
     kill_pid "$watch_pid"
     wait "$watch_pid" 2>/dev/null
@@ -193,6 +241,8 @@ cleanup_locked() {
   fi
   rm -f "$pid_file"
   remove_hosts
+  # The launcher takes the account files before it stops the helper; a helper ending on its own keeps them for it.
+  [ -n "$remove_out" ] && rm -rf -- "$state_dir/capture-out" "$signer_run"
   set -e
 }
 
@@ -206,6 +256,57 @@ cleanup_once() {
 start_relay() {
   "$relay_path" 9>&- &
   relay_pid=$!
+}
+
+# The capture as the signing service. Its arguments are fixed here; the caller gives only the Steam account and the API's
+# address, which the capture's pinned upstream check makes harmless (CaptureUpstreamPins).
+start_capture() {
+  systemd-run --quiet --wait --collect --unit="$signer_unit" \
+    -p DynamicUser=yes -p StateDirectory=hellforge-signer -p StateDirectoryMode=0700 \
+    -p RuntimeDirectory=hellforge-capture -p RuntimeDirectoryMode=0755 -p RuntimeDirectoryPreserve=yes \
+    -p UMask=0022 -p ProtectHome=yes -p PrivateDevices=yes -p RuntimeMaxSec="$max_lifetime" \
+    --setenv=HOME="$signer_run" --setenv=DOTNET_NOLOGO=1 \
+    "$proxy_dir/HellForge.CaptureProxy" --host "$api" --timeout-min 10 --sign --steam-account "$1" --shared-evidence \
+    --output "$signer_run/private/real-inventory.json" --progression "$signer_run/private/progression.json" \
+    --catalogue "$signer_run/private/catalogue" --evidence "$signer_run" --ca-cert "$signer_run/capture-ca.cer" \
+    --no-hosts --listen-port 18443 --real-ip "$2" 9>&- &
+  capture_pid=$!
+}
+
+# Root copies the sealed account files into its own folder, then gives that folder to the player whole: nothing the player
+# can change is written as root. seal.json goes last, so the launcher never sees a seal before its files.
+hand_over() {
+  local from="$signer_run/private" out="$state_dir/capture-out" name
+  [ -f "$from/seal.json" ] && [ ! -L "$from/seal.json" ] || return 1
+  rm -rf -- "$out"
+  install -d -m 700 -o root -g root "$out"
+  for name in real-inventory.json progression.json; do
+    [ -f "$from/$name" ] && [ ! -L "$from/$name" ] && install -m 600 -o root -g root "$from/$name" "$out/$name"
+  done
+  if [ -d "$from/catalogue" ] && [ ! -L "$from/catalogue" ]; then
+    install -d -m 700 -o root -g root "$out/catalogue"
+    for name in "$from/catalogue"/*.json; do
+      [ -f "$name" ] && [ ! -L "$name" ] && install -m 600 -o root -g root "$name" "$out/catalogue/"
+    done
+  fi
+  install -m 600 -o root -g root "$from/seal.json" "$out/seal.json"
+  publish_key
+  chown -hR "$player_uid" "$out"
+}
+
+# The signer's public half, where only root writes (SignerPublicKey). Taken from the service's own run folder.
+publish_key() {
+  local from="$signer_run/snapshot-signer.pub"
+  [ -f "$from" ] && [ ! -L "$from" ] && [ "$(stat -c %s "$from")" -lt 4096 ] && grep -q -- '-----BEGIN PUBLIC KEY-----' "$from" || return 0
+  install -d -m 755 -o root -g root "$(dirname "$public_key")"
+  install -m 644 -o root -g root "$from" "$public_key"
+}
+
+watch_capture() {
+  while kill -0 "$capture_pid" 2>/dev/null; do
+    hand_over && return 0
+    sleep 1
+  done
 }
 
 # A reused proxy pid must not keep the helper alive: the cmdline has to be the capture proxy. The lifetime cap covers a
@@ -232,7 +333,7 @@ stop_and_cleanup() {
       pid_is_relay "$old_relay" && kill_pid "$old_relay"
     fi
     if acquire_lock_wait 10; then
-      cleanup_locked
+      cleanup_locked remove-out
       return 0
     fi
   done
@@ -259,6 +360,7 @@ case "$command" in
     require_root check
     require_commands
     require_relay
+    require_signer
     [ -w /etc/hosts ] || die "/etc/hosts is not writable"
     exit 0
     ;;
@@ -266,24 +368,33 @@ case "$command" in
     require_root start
     require_commands
     require_relay
-    [ $# -eq 0 ] || die "start takes no arguments; its proxy pid is read from stdin"
-    proxy_pid=''
-    IFS= read -r proxy_pid || true
-    [[ "$proxy_pid" =~ ^[0-9]+$ ]] && [ "$proxy_pid" -gt 1 ] || die "start reads the capture proxy pid on stdin"
-    pid_is_proxy "$proxy_pid" || die "the capture proxy process is not running: $proxy_pid"
+    require_signer
+    [ $# -eq 0 ] || die "start takes no arguments; it reads the Steam account and the API's address from stdin"
+    steam_account='' real_ip='' extra=''
+    IFS=' ' read -r steam_account real_ip extra || true
+    [[ "$steam_account" =~ ^[0-9]{1,20}$ ]] || die "start reads the Steam account (SteamID64) first on stdin"
+    [[ "$real_ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || die "start reads the API's IPv4 address second on stdin"
+    [ -z "$extra" ] || die "start reads two values on stdin"
+    player_uid="${SUDO_UID:-}"
+    [[ "$player_uid" =~ ^[0-9]+$ ]] && [ "$player_uid" -gt 0 ] || die "start runs through sudo from the player's account"
     acquire_lock_now || die "another capture helper is running"
     trap 'cleanup_once' EXIT
     trap 'cleanup_once; exit 0' INT TERM HUP
-    cleanup_locked
+    cleanup_locked remove-out
     add_hosts
     start_relay
-    printf '%s %s %s\n' "$$" "$relay_pid" "$proxy_pid" > "$pid_file"
+    start_capture "$steam_account" "$real_ip"
+    printf '%s %s %s\n' "$$" "$relay_pid" "$capture_pid" > "$pid_file"
     chmod 644 "$pid_file"
-    watch_proxy "$proxy_pid" &
+    watch_capture &
     watch_pid=$!
     set +e
-    wait "$relay_pid"
+    wait "$capture_pid"
     status=$?
+    capture_pid=''
+    wait "$watch_pid" 2>/dev/null
+    watch_pid=''
+    [ -f "$state_dir/capture-out/seal.json" ] || hand_over
     set -e
     cleanup_once
     exit "$status"

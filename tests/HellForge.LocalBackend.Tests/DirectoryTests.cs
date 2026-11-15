@@ -575,6 +575,8 @@ static class DirectoryTests
             ModSync.OtherVersion(Editor("dev"), null) == "its host runs another HellForge version", "The same or unreadable versions say neither.");
         check(DirectoryService.SquadSize(8) == 4 && DirectoryService.SquadSlots(8, 4) == 0 && DirectoryService.SquadSlots(8, 1) == 3 && DirectoryService.SquadSlots(2, 1) == 1,
             "A squad is at most 4 of the lobby's 8 places.");
+        check(DirectoryService.SquadSize(12) == 8 && DirectoryService.SquadSlots(12, 4) == 4 && DirectoryService.SquadSlots(12, 8) == 0 &&
+            DirectoryService.SquadSize(10) == 6 && DirectoryService.SquadSize(40) == 8, "A lobby of 12 places is a squad of 8: the game asks for its squad and 4 more.");
     }
 
     // Quick Play's choice (BrowseApi.Best): joinable with a slot free, a friend's first, then the least a join needs, then
@@ -693,13 +695,16 @@ static class DirectoryTests
         }
         bool Valid(Dictionary<string, string> data) => DirectoryService.Valid(new DirectoryListing(OtherId, data), out _, out _, out _, out _, out _);
         check(Valid(With(_ => { })), "A stranger's well-formed listing is valid.");
+        check(Valid(With(d => { d[DirectoryKeys.MaxMembers] = "12"; d[DirectoryKeys.Members] = "7"; })), "A squad of 8 (a lobby of 12 places) with 7 members is valid.");
         var bad = new Dictionary<string, Dictionary<string, string>>
         {
             ["a forged hf.host"] = With(d => d[DirectoryKeys.Host] = HostId.ToString(CultureInfo.InvariantCulture)),
             ["a lobby id that is no GUID"] = With(d => { d[DirectoryKeys.LobbyId] = "../x"; d[DirectoryKeys.Connection] = LobbyService.ConnectionPrefix + "../x;" + LobbyService.EntityId(OtherId); }),
             ["5 members"] = With(d => d[DirectoryKeys.Members] = "5"),
             ["0 members"] = With(d => d[DirectoryKeys.Members] = "0"),
-            ["9 at most"] = With(d => d[DirectoryKeys.MaxMembers] = "9"),
+            ["13 at most"] = With(d => d[DirectoryKeys.MaxMembers] = "13"),
+            ["9 members of 12"] = With(d => { d[DirectoryKeys.MaxMembers] = "12"; d[DirectoryKeys.Members] = "9"; }),
+            ["6 members of 9"] = With(d => { d[DirectoryKeys.MaxMembers] = "9"; d[DirectoryKeys.Members] = "6"; }),
             ["a lock of 2"] = With(d => d[DirectoryKeys.Lock] = "2"),
             ["31 search properties"] = With(d => { for (var i = 1; i <= 30; i++) d["string_key" + i] = "x"; d["number_key1"] = "1"; }),
             ["a text number_key"] = With(d => d["number_key6"] = "zero"),

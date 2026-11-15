@@ -22,7 +22,7 @@ static class InventorySyncTests
             check(InventorySync.SnapshotDirectoryFromProfileDir(Path.Combine(install, "profiles", "player")) == expected, "Profile folder.");
             check(InventorySync.SnapshotDirectoryFromProfileDir(Path.Combine(install, "profiles", "player") + Path.DirectorySeparatorChar) == expected, "Trailing separator.");
             check(InventorySync.SnapshotDirectory(install, "player") == expected, "Launcher and backend disagree on the folder.");
-            check(InventorySync.SealKeyFor(expected) == Path.Combine(install, InventorySync.SnapshotFolder, SnapshotSeal.KeyFileName), "The seal key is not shared by the installation.");
+            check(InventorySync.LegacySealKeyFor(expected) == Path.Combine(install, InventorySync.SnapshotFolder, SnapshotSeal.LegacyKeyFileName), "The old seal key is looked for in the wrong place.");
             check(!InventorySync.HasSnapshot(expected), "A missing folder is a snapshot.");
             Directory.CreateDirectory(expected);
             File.WriteAllText(Path.Combine(expected, InventorySync.InventoryFile), Inventory);
@@ -79,21 +79,40 @@ static class InventorySyncTests
 
         test("allow-capture.sh names the pkexec caller from PKEXEC_UID", () => HelperInstallerUser(check));
 
+        test("allow-capture.sh writes the sudoers rule that sorts last and removes the rule under its old name", () =>
+            HelperInstallerRule(root, check));
+
+        test("On SteamOS allow-capture.sh installs the helper in /opt/hellforge and lists its rule for updates to keep", () =>
+            HelperInstallerSteamOs(root, check));
+
+        test("allow-capture.sh installs the helper only in a folder the account cannot change, and a removal runs no other", () =>
+            HelperInstallerFolders(root, check));
+
+        test("The launcher finds the helper in the folder this system's installer chose", () => HelperFolders(check));
+
+        test("A sudo that still asks for a password is a reason to install the helper again, and is said after an install", () =>
+            HelperCheck(root, check));
+
         test("The capture helper writes and removes only its exact hosts lines against a test file", () => HelperHosts(root, check));
 
         test("The capture helper holds its lock and ends when the watched proxy pid is gone or its lifetime ends", () => HelperWatch(root, check));
 
-        test("A snapshot seal holds only for its files, its Steam account and this installation's key", () =>
+        test("A snapshot seal holds only for its files under this PC's signer, names an older seal, another signer and an expired one", () =>
             Seals(root, check));
+
+        test("The signer's public key reads back from PEM, a Linux key file others can change is refused, and the Linux key file is the service's alone", () =>
+            SignerKeys(root, check));
+
+        test("A signing capture's upstream must hold a pinned Let's Encrypt root and validate", () => UpstreamPins(check));
 
         test("A capture becomes the snapshot only sealed and with an inventory list; a capture without progression never replaces one with it", () =>
             Finalize(root, check));
 
-        test("A Linux seal is bound to the machine id, and a changed key or another machine id fails", () =>
-            LinuxMachineBinding(root, check));
+        test("The signing service's files reach the sync folder: the account files once, the seal last, a sealed state only after them", () =>
+            SignerMirror(root, check));
 
-        test("A Linux seal fails closed without a valid machine id and refuses a DPAPI-marked key", () =>
-            LinuxMachineIdRefusals(root, check));
+        test("The signing copy of the Linux capture must match this installation's capture-linux by its manifest", () =>
+            SignerCopy(root, check));
 
         test("The capture's state says when it listens and when its files are sealed, for the launcher to take while the game plays on", () =>
             State(root, check));
@@ -707,9 +726,15 @@ static class InventorySyncTests
         File.WriteAllText(installer, "#!/bin/sh\n");
         File.SetUnixFileMode(installer, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
-        var description = LinuxCapture.HelperInstallDescription(install);
+        var description = LinuxCapture.HelperInstallDescription(install, steamOs: false);
+        var onSteamOs = LinuxCapture.HelperInstallDescription(install, steamOs: true);
+        check(description.Contains("to /usr/local/lib/hellforge (to /opt/hellforge or /var/lib/hellforge if", StringComparison.Ordinal) &&
+            !description.Contains("SteamOS", StringComparison.Ordinal) &&
+            onSteamOs.Contains("to /opt/hellforge (to /var/lib/hellforge if", StringComparison.Ordinal) &&
+            onSteamOs.Contains(LinuxCapture.SteamOsKeepListPath, StringComparison.Ordinal),
+            "The helper confirmation does not name this system's folders, or SteamOS's keep list: " + onSteamOs);
         check(description.Contains("/usr/local/lib/hellforge", StringComparison.Ordinal) &&
-            description.Contains("/etc/sudoers.d/hellforge-capture", StringComparison.Ordinal) &&
+            description.Contains("/etc/sudoers.d/zz-hellforge-capture", StringComparison.Ordinal) &&
             description.Contains("--remove", StringComparison.Ordinal) &&
             description.Contains("pkexec", StringComparison.Ordinal),
             "The helper confirmation does not say what will be installed and how it is removed.");
@@ -790,6 +815,297 @@ static class InventorySyncTests
         });
         check(bySudo.ExitCode == 0 && bySudo.Output.Trim() == user,
             "allow-capture.sh did not resolve the caller from SUDO_USER: " + bySudo.Output);
+    }
+
+    // The real installer, run as root of a private user and mount namespace over SteamOS's own drop-ins: its rule must be
+    // read last, the rule under the old name must go, and --remove must leave neither.
+    static void HelperInstallerRule(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: the sudoers rule's name)"); return; }
+        if (FakeRootScripts(root, "helper-rule") == null) return;
+        var rule = Path.GetFileName(LinuxCapture.SudoersPath);
+        var oldRule = Path.GetFileName(LinuxCapture.LegacySudoersPath);
+        var body = string.Join("\n",
+            "printf '%s\\n' '%wheel ALL=(ALL) ALL' > /etc/sudoers.d/wheel",
+            "printf '%s\\n' '%sudo ALL=(ALL) ALL' > /etc/sudoers.d/sudo",
+            "printf '%s\\n' 'Defaults !fqdn' > /etc/sudoers.d/no-fqdn",
+            "printf '%s\\n' '%wheel ALL=(root) NOPASSWD: /usr/bin/steamos-prepare-oobe-test' > /etc/sudoers.d/wheel-prepare-oobe-test",
+            "printf '%s\\n' 'old rule' > /etc/sudoers.d/" + oldRule,
+            "PKEXEC_UID=1000 bash " + FakeRootInstaller + " >/dev/null",
+            "echo \"order:$(LC_ALL=C ls /etc/sudoers.d | tr '\\n' ' ')\"",
+            "echo \"mode:$(stat -c '%a %u %g' /etc/sudoers.d/" + rule + ")\"",
+            "echo \"rule:$(cat /etc/sudoers.d/" + rule + ")\"",
+            "echo \"keep:$(ls /etc/atomic-update.conf.d 2>/dev/null | tr '\\n' ' ')\"",
+            "printf '%s\\n' 'old rule' > /etc/sudoers.d/" + oldRule,
+            "bash " + FakeRootInstaller + " --remove >/dev/null",
+            "echo \"left:$(LC_ALL=C ls /etc/sudoers.d /usr/local/lib | tr '\\n' ' ')\"");
+        if (RunAsFakeRoot(root, "helper-rule", body) is not { } run) return;
+        check(run.ExitCode == 0, "The installer failed as root over SteamOS's drop-ins: " + run.Output);
+        var order = FakeRootLine(run.Output, "order").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        check(order.Length > 0 && order[^1] == rule, "HellForge's rule is not the last drop-in sudo reads: " + string.Join(' ', order));
+        check(!order.Contains(oldRule), "The rule under its old name was left, where SteamOS's own files override it: " + string.Join(' ', order));
+        check(!rule.Contains('.') && !rule.EndsWith('~'), "sudo skips a drop-in whose name has a dot or ends in ~: " + rule);
+        check(FakeRootLine(run.Output, "mode") == "440 0 0", "The rule is not root-owned with mode 440: " + FakeRootLine(run.Output, "mode"));
+        var helper = LinuxCapture.HelperFolders[0] + "/capture-helper";
+        check(FakeRootLine(run.Output, "rule") == $"{FakeRootUser} ALL=(root) NOPASSWD: {helper} check, {helper} start, {helper} stop, {helper} cleanup",
+            "The rule does not name exactly the helper's four commands for this account: " + FakeRootLine(run.Output, "rule"));
+        check(FakeRootLine(run.Output, "keep").Length == 0, "A system that is not SteamOS got SteamOS's keep list.");
+        check(FakeRootLine(run.Output, "left") == "/etc/sudoers.d: no-fqdn sudo wheel wheel-prepare-oobe-test /usr/local/lib:",
+            "--remove did not remove both rule names and the helper folder, or removed another file: " + FakeRootLine(run.Output, "left"));
+    }
+
+    // SteamOS keeps /usr/local on a read-only image: the real installer, as root of a stand-in SteamOS, must put the
+    // helper in /opt/hellforge, name that helper in the rule, list the rule for SteamOS updates and leave nothing behind.
+    static void HelperInstallerSteamOs(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: the helper's folder on SteamOS)"); return; }
+        if (FakeRootScripts(root, "helper-steamos") == null) return;
+        var rule = LinuxCapture.SudoersPath;
+        var body = string.Join("\n",
+            "mount -t tmpfs -o ro,mode=755 tmpfs /usr/local",
+            "mkdir -p /var/lib/hellforge && echo stale > /var/lib/hellforge/capture-helper",
+            "PKEXEC_UID=1000 bash " + FakeRootInstaller + " >/dev/null",
+            "echo \"files:$(LC_ALL=C ls /opt/hellforge | tr '\\n' ' ')\"",
+            "echo \"owner:$(stat -c '%a %u' /opt/hellforge /opt/hellforge/capture-helper /opt/hellforge/capture-relay | tr '\\n' ' ')\"",
+            "echo \"rule:$(cat " + rule + ")\"",
+            "echo \"keep:$(cat " + LinuxCapture.SteamOsKeepListPath + ") $(stat -c '%a %u' " + LinuxCapture.SteamOsKeepListPath + ")\"",
+            "echo \"stale:$(ls /var/lib | tr '\\n' ' ')\"",
+            "echo \"manifest:$(cat /opt/hellforge/capture-proxy.sha256) $(stat -c '%a %u' /opt/hellforge/capture-proxy/HellForge.CaptureProxy)\"",
+            "echo \"check:$(/opt/hellforge/capture-helper check 2>&1 && echo ready)\"",
+            "echo \"moved:$(cd /tmp && cp /opt/hellforge/capture-helper . && ./capture-helper check 2>&1 | grep -c /usr/local/lib/hellforge/capture-relay)\"",
+            "PKEXEC_UID=1000 bash " + FakeRootInstaller + " >/dev/null && echo again:ok",
+            "bash " + FakeRootInstaller + " --remove >/dev/null",
+            "echo \"left:$(LC_ALL=C ls /opt /var/lib /etc/sudoers.d /etc/atomic-update.conf.d | tr '\\n' ' ')\"");
+        if (RunAsFakeRoot(root, "helper-steamos", body, steamOs: true) is not { } run) return;
+        check(run.ExitCode == 0, "The installer failed on a read-only /usr/local: " + run.Output);
+        string Line(string name) => FakeRootLine(run.Output, name);
+        check(Line("files") == "capture-helper capture-helper.sha256 capture-proxy capture-proxy.sha256 capture-relay capture-relay.sha256",
+            "The helper, relay, capture and hashes are not in /opt/hellforge: " + Line("files"));
+        check(Line("owner") == "755 0 755 0 755 0", "The folder, helper or relay is not root's alone: " + Line("owner"));
+        const string helper = "/opt/hellforge/capture-helper";
+        check(Line("rule") == $"{FakeRootUser} ALL=(root) NOPASSWD: {helper} check, {helper} start, {helper} stop, {helper} cleanup",
+            "The rule does not name the helper where it was installed: " + Line("rule"));
+        check(Line("keep") == rule + " 644 0", "SteamOS's keep list does not hold exactly the rule's path: " + Line("keep"));
+        check(Line("stale").Length == 0, "A helper copy in another folder was left: " + Line("stale"));
+        check(Line("manifest") == LinuxCapture.FolderManifestSha256(Path.Combine(root, "helper-steamos", "capture-linux")) + " 755 0",
+            "The installer's capture manifest differs from the launcher's, or the copy is not root's: " + Line("manifest"));
+        check(Line("check") == "ready", "The installed helper does not find the relay beside it: " + Line("check"));
+        check(Line("moved") == "1", "A helper outside the allowed folders did not fall back to the first one's relay.");
+        check(Line("again") == "ok", "A second install over the first failed.");
+        check(Line("left") == "/etc/atomic-update.conf.d: /etc/sudoers.d: /opt: /var/lib:",
+            "--remove left something of the helper on SteamOS: " + Line("left"));
+    }
+
+    // The rule lets the account run the helper as root, so the helper's folder must be one the account cannot change:
+    // the installer passes over such a folder and, with none left, installs nothing at all.
+    static void HelperInstallerFolders(string root, Action<bool, string> check)
+    {
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: the helper's folder checks)"); return; }
+        if (FakeRootScripts(root, "helper-folders") == null) return;
+        var body = string.Join("\n",
+            "mount -t tmpfs -o ro,mode=755 tmpfs /usr/local",
+            "chmod 777 /opt",
+            "PKEXEC_UID=1000 bash " + FakeRootInstaller + " >/dev/null",
+            "echo \"first:$(ls /var/lib/hellforge | wc -l) $(grep -c /var/lib/hellforge/capture-helper " + LinuxCapture.SudoersPath + ") $(ls /opt | wc -l)\"",
+            "echo \"keep:$(ls /etc/atomic-update.conf.d 2>/dev/null | wc -l)\"",
+            "bash " + FakeRootInstaller + " --remove >/dev/null",
+            // The account is in the group of id 0 in this stand-in system, and /var/lib becomes writable by that group.
+            "chmod 775 /var/lib",
+            "if PKEXEC_UID=1000 bash " + FakeRootInstaller + " > /tmp/refused 2>&1; then echo refused:installed; else echo refused:yes; fi",
+            "echo \"why:$(tr '\\n' ' ' < /tmp/refused)\"",
+            "echo \"left:$(ls /opt /var/lib /etc/sudoers.d | tr '\\n' ' ')\"",
+            // A helper planted where every account can write is never run as root by a removal.
+            "mkdir /opt/hellforge && printf '#!/bin/sh\\ntouch /tmp/planted-ran\\n' > /opt/hellforge/capture-helper",
+            "chmod 777 /opt/hellforge /opt/hellforge/capture-helper",
+            "bash " + FakeRootInstaller + " --remove >/dev/null",
+            "echo \"planted:$(ls /tmp/planted-ran 2>/dev/null | wc -l)\"");
+        if (RunAsFakeRoot(root, "helper-folders", body) is not { } run) return;
+        check(run.ExitCode == 0, "The folder checks did not run to the end: " + run.Output);
+        string Line(string name) => FakeRootLine(run.Output, name);
+        check(Line("first") == "6 1 0", "With /usr/local read-only and /opt open to every account, the helper did not go " +
+            "to /var/lib/hellforge alone: " + Line("first"));
+        check(Line("keep") == "0", "A system that is not SteamOS got SteamOS's keep list.");
+        check(Line("refused") == "yes", "The installer installed a helper although no folder is root's alone.");
+        var why = Line("why");
+        check(why.Contains("/usr/local/lib/hellforge: ", StringComparison.Ordinal) &&
+            why.Contains("/opt/hellforge: /opt is writable by every account", StringComparison.Ordinal) &&
+            why.Contains("/var/lib/hellforge: /var/lib is writable by a group " + FakeRootUser + " is in", StringComparison.Ordinal),
+            "The refusal does not say why each folder cannot be used: " + why);
+        check(Line("left") == "/etc/sudoers.d: /opt: /var/lib:", "A refused install left a folder or a rule: " + Line("left"));
+        check(Line("planted") == "0", "A removal ran a helper that another account could have written.");
+    }
+
+    // Checked on every system, also where the installer cannot be run as root of a namespace: the launcher, the installer
+    // and the helper name the same folders in the same order, and the launcher looks where the installer installs.
+    static void HelperFolders(Action<bool, string> check)
+    {
+        var folders = string.Join(' ', LinuxCapture.HelperFolders);
+        var installer = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperInstaller));
+        var helper = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperScript));
+        if (File.Exists(installer) && File.Exists(helper))
+        {
+            var lines = File.ReadAllLines(installer);
+            check(lines.Contains("all_folders=(" + folders + ")") && lines.Contains("keep_list=" + LinuxCapture.SteamOsKeepListPath) &&
+                lines.Contains("folders=(\"${all_folders[@]}\")") && lines.Contains("  folders=(\"${all_folders[@]:1}\")"),
+                "allow-capture.sh and the launcher do not name the same helper folders, order or keep list.");
+            check(File.ReadAllLines(helper).Contains("helper_folders=(" + folders + ")"),
+                "capture-helper.sh and the launcher do not name the same helper folders.");
+        }
+        else Console.WriteLine("  (the scripts are not in the test working directory: only the launcher's side is checked)");
+
+        check(LinuxCapture.InstallFolders(steamOs: false).SequenceEqual(LinuxCapture.HelperFolders) &&
+            LinuxCapture.InstallFolders(steamOs: true).SequenceEqual(["/opt/hellforge", "/var/lib/hellforge"]),
+            "The launcher's install order is not /usr/local first, and /opt first on SteamOS without /usr/local.");
+        string Folder(bool steamOs, params string[] present) =>
+            LinuxCapture.HelperFolderOf(steamOs, path => present.Contains(path));
+        check(Folder(false) == "/usr/local/lib/hellforge" && Folder(true) == "/opt/hellforge",
+            "With no helper installed, the folder named is not the system's first choice.");
+        check(Folder(false, "/opt/hellforge/capture-helper") == "/opt/hellforge" &&
+            Folder(true, "/var/lib/hellforge/capture-helper") == "/var/lib/hellforge",
+            "A helper in a later folder was not found.");
+        check(Folder(true, "/usr/local/lib/hellforge/capture-helper", "/opt/hellforge/capture-helper") == "/opt/hellforge" &&
+            Folder(false, "/usr/local/lib/hellforge/capture-helper", "/opt/hellforge/capture-helper") == "/usr/local/lib/hellforge" &&
+            Folder(true, "/usr/local/lib/hellforge/capture-helper") == "/usr/local/lib/hellforge",
+            "With two copies, the launcher did not take the one the installer writes first on this system.");
+        string[] parts = ["capture-helper", "capture-helper.sha256", "capture-relay", "capture-relay.sha256"];
+        check(LinuxCapture.HelperFolders.All(folder => parts.All(part => LinuxCapture.HelperInstalled(path => path == folder + "/" + part))) &&
+            LinuxCapture.HelperInstalled(path => path == LinuxCapture.SteamOsKeepListPath) &&
+            LinuxCapture.HelperInstalled(path => path == LinuxCapture.SudoersPath) &&
+            !LinuxCapture.HelperInstalled(path => path == "/opt/hellforge/unshare"),
+            "A leftover of the helper in one of its folders, or SteamOS's keep list, is not counted as installed.");
+    }
+
+    // HelperCheckProblem reads sudo's own answer; InstallHelper reports a rule that still does not win without sending the
+    // player to a terminal command that would write the same files again.
+    static void HelperCheck(string root, Action<bool, string> check)
+    {
+        check(LinuxCapture.HelperCheckProblem(new LinuxCapture.WineResult(0, "", "")) == null, "A passing helper check was a problem.");
+        var password = LinuxCapture.HelperCheckProblem(new LinuxCapture.WineResult(1, "", "sudo: a password is required"));
+        check(password != null && password.Contains(LinuxCapture.SudoersPath, StringComparison.Ordinal) &&
+            password.Contains("asks for a password", StringComparison.Ordinal),
+            "sudo asking for a password was not named with the rule's path: " + password);
+        var other = LinuxCapture.HelperCheckProblem(new LinuxCapture.WineResult(1, "", "hellforge-capture-helper: /etc/hosts is not writable"));
+        check(other != null && other.Contains("/etc/hosts is not writable", StringComparison.Ordinal) &&
+            !other.Contains("asks for a password", StringComparison.Ordinal),
+            "The helper's own refusal was not passed on: " + other);
+
+        check(LinuxCapture.InstallFixesCheck(password!) &&
+            LinuxCapture.InstallFixesCheck(LinuxCapture.HelperCheckProblem(new LinuxCapture.WineResult(1, "",
+                "hellforge-capture-helper: the relay is missing (/x): run allow-capture.sh again."))!) &&
+            !LinuxCapture.InstallFixesCheck(other!),
+            "The install is not offered for exactly the failures it can clear.");
+
+        // Checked on every system, also where the installer cannot be run as root of a namespace: the launcher and the
+        // script name the same two rules, and the new name is read after every drop-in SteamOS ships.
+        var script = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperInstaller));
+        if (File.Exists(script))
+        {
+            var lines = File.ReadAllLines(script);
+            check(lines.Contains("sudoers=" + LinuxCapture.SudoersPath) && lines.Contains("old_sudoers=" + LinuxCapture.LegacySudoersPath),
+                "allow-capture.sh and the launcher do not name the same sudoers rules.");
+        }
+        string[] shipped = ["holo-group-sudo", "holo-group-wheel", "holo-no-fqdn", "no-fqdn", "sudo", "wheel", "wheel-prepare-oobe-test"];
+        var name = Path.GetFileName(LinuxCapture.SudoersPath);
+        check(shipped.All(file => string.CompareOrdinal(file, name) < 0) &&
+            shipped.Any(file => string.CompareOrdinal(file, Path.GetFileName(LinuxCapture.LegacySudoersPath)) > 0),
+            "The rule's name does not sort after SteamOS's drop-ins in sudo's byte order, or the old name did.");
+
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: pkexec helper install)"); return; }
+        var install = Directory.CreateDirectory(Path.Combine(root, "helper-check", "install")).FullName;
+        var installer = Path.Combine(Directory.CreateDirectory(Path.Combine(install, "app", "linux")).FullName, LinuxCapture.HelperInstaller);
+        File.WriteAllText(installer, "#!/bin/sh\n");
+        var pkexec = FakePkexec(Path.Combine(root, "helper-check", "pkexec"), "exit 0");
+        var blocked = LinuxCapture.InstallHelper(install, pkexec, "/usr/bin/bash", _ => null, () => password);
+        check(!blocked.Succeeded && !blocked.Cancelled && !blocked.NeedsManual &&
+            blocked.Message.Contains("asks for a password", StringComparison.Ordinal) &&
+            !blocked.Message.Contains("Install it from a terminal", StringComparison.Ordinal),
+            "A rule that does not win after the install was not reported as such: " + blocked.Message);
+        var ready = LinuxCapture.InstallHelper(install, pkexec, "/usr/bin/bash", _ => null, () => null);
+        check(ready.Succeeded, "An install whose files and rule are right did not succeed: " + ready.Message);
+        var stale = LinuxCapture.InstallHelper(install, pkexec, "/usr/bin/bash", _ => "the copies differ", () => throw new Exception("checked"));
+        check(!stale.Succeeded && stale.NeedsManual, "sudo was asked although the installed files were already wrong.");
+    }
+
+    const string FakeRootUser = "deck";
+    const string FakeRootInstaller = "/scripts/" + LinuxCapture.HelperInstaller;
+
+    static string FakeRootLine(string output, string name) => string.Join(' ', (output.Split('\n')
+        .FirstOrDefault(line => line.StartsWith(name + ":", StringComparison.Ordinal))?[(name.Length + 1)..] ?? "")
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+    // A copy of the installer and helper with a stand-in relay beside them, as an installation's app/linux has them; the
+    // fake root has it as /scripts. Null (and a skip line) when the scripts are not in the test working directory.
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    static string? FakeRootScripts(string root, string name)
+    {
+        var source = Path.GetFullPath("linux");
+        if (!File.Exists(Path.Combine(source, LinuxCapture.HelperInstaller)))
+        {
+            Console.WriteLine("  (skipped: linux/allow-capture.sh is not in the test working directory)");
+            return null;
+        }
+        var scripts = Directory.CreateDirectory(Path.Combine(root, name, "linux")).FullName;
+        foreach (var file in new[] { LinuxCapture.HelperInstaller, LinuxCapture.HelperScript })
+            File.Copy(Path.Combine(source, file), Path.Combine(scripts, file), overwrite: true);
+        File.WriteAllText(Path.Combine(scripts, LinuxCapture.RelayBinary), "stand-in relay\n");
+        // The installer copies the Linux capture beside linux/ as the signing service's program (capture-proxy).
+        var capture = Directory.CreateDirectory(Path.Combine(root, name, "capture-linux")).FullName;
+        File.WriteAllText(Path.Combine(capture, "HellForge.CaptureProxy"), "#!/bin/sh\n");
+        File.SetUnixFileMode(Path.Combine(capture, "HellForge.CaptureProxy"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        File.WriteAllText(Path.Combine(capture, "HellForge.CaptureProxy.dll"), "stand-in capture\n");
+        return scripts;
+    }
+
+    // Runs a bash script as root of a stand-in system: a private user and mount namespace, changed into an empty root
+    // that has only this PC's programs (read-only), its own accounts (deck, 1000, also in the group of id 0) and empty
+    // /etc, /opt, /var/lib and /usr/local. In a user namespace the PC's own folders belong to nobody, so the installer's
+    // "root's alone" checks need folders made inside it; the PC's own files are neither read nor changed. Null (and a
+    // skip line) where unprivileged user namespaces cannot mount, as on Ubuntu's runners with AppArmor's restriction.
+    static (int ExitCode, string Output)? RunAsFakeRoot(string root, string name, string body, bool steamOs = false)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        var scripts = Directory.CreateDirectory(Path.Combine(folder, "linux")).FullName;
+        var system = Directory.CreateDirectory(Path.Combine(folder, "system")).FullName;
+        File.WriteAllText(Path.Combine(scripts, "body.sh"), "set -eu\n" + body + "\n");
+        var script = Path.Combine(folder, "fake-root.sh");
+        File.WriteAllText(script, string.Join("\n",
+            "set -eu",
+            "PATH=$PATH:/usr/sbin:/sbin",
+            "R=" + ShQuote(system),
+            "mount -t tmpfs -o mode=755 tmpfs \"$R\"",
+            "mkdir -p \"$R\"/usr/local/lib \"$R\"/etc/sudoers.d \"$R\"/run \"$R\"/tmp \"$R\"/proc \"$R\"/dev \"$R\"/opt \"$R\"/var/lib \"$R\"/scripts \"$R\"/capture-linux \"$R\"/run/systemd/system",
+            "for d in /usr/bin /usr/sbin /usr/lib /usr/lib32 /usr/lib64 /usr/libexec /usr/share /bin /sbin /lib /lib32 /lib64; do",
+            "  if [ -L \"$d\" ]; then cp -P \"$d\" \"$R$d\"; elif [ -d \"$d\" ]; then mkdir \"$R$d\"; mount --rbind \"$d\" \"$R$d\"; fi",
+            "done",
+            "mount --rbind /proc \"$R/proc\"",
+            "mount --rbind /dev \"$R/dev\"",
+            "mount --bind " + ShQuote(scripts) + " \"$R/scripts\"",
+            "[ ! -d " + ShQuote(Path.Combine(folder, "capture-linux")) + " ] || mount --bind " + ShQuote(Path.Combine(folder, "capture-linux")) + " \"$R/capture-linux\"",
+            "[ ! -d /etc/alternatives ] || cp -RP /etc/alternatives \"$R/etc/\"",
+            "[ ! -f /etc/ld.so.cache ] || cp /etc/ld.so.cache \"$R/etc/\"",
+            "printf '%s\\n' 'root:x:0:0::/root:/bin/bash' 'nobody:x:65534:65534::/:/bin/false' '" + FakeRootUser +
+                ":x:1000:1000::/home/" + FakeRootUser + ":/bin/bash' > \"$R/etc/passwd\"",
+            "printf '%s\\n' 'root:x:0:" + FakeRootUser + "' 'nobody:x:65534:' 'wheel:x:998:" + FakeRootUser + "' '" +
+                FakeRootUser + ":x:1000:' > \"$R/etc/group\"",
+            "printf '%s\\n' '127.0.0.1 localhost' > \"$R/etc/hosts\"",
+            "printf '%s\\n' 'NAME=\"Stand-in\"' 'ID=" + (steamOs ? "steamos" : "standin") + "' > \"$R/etc/os-release\"",
+            "exec env -i PATH=/usr/bin:/usr/sbin:/bin:/sbin chroot \"$R\" /bin/bash /scripts/body.sh") + "\n");
+        string[] unshare = ["--user", "--map-root-user", "--mount", "bash"];
+        try
+        {
+            var probe = RunTestProcess("unshare", [.. unshare, "-c", "mount -t tmpfs tmpfs " + ShQuote(system)]);
+            if (probe.ExitCode != 0)
+            {
+                Console.WriteLine("  (skipped: this system does not let a user namespace mount a file system)");
+                return null;
+            }
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            Console.WriteLine("  (skipped: unshare is not installed)");
+            return null;
+        }
+        return RunTestProcess("unshare", [.. unshare, script]);
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
@@ -1140,140 +1456,200 @@ static class InventorySyncTests
     static void Seals(string root, Action<bool, string> check)
     {
         var folder = Directory.CreateDirectory(Path.Combine(root, "seal", "account-snapshot", "player")).FullName;
-        var key = InventorySync.SealKeyFor(folder);
         File.WriteAllText(Path.Combine(folder, SnapshotSeal.InventoryFile), Inventory);
         File.WriteAllText(Path.Combine(folder, SnapshotSeal.ProgressionFile), Progression);
-        var captured = new DateTime(2026, 10, 25, 9, 30, 0, DateTimeKind.Utc);
-        SnapshotSeal.Write(folder, key, Account, captured);
-        check(File.Exists(key) && SnapshotSeal.Verify(folder, key) is { SteamAccount: Account } info && info.CapturedUtc == captured, "A fresh seal does not verify.");
+        var captured = DateTime.UtcNow.AddDays(-1);
+        TestSigner.Seal(folder, Account, captured);
+        check(SnapshotSeal.Verify(folder) is { SteamAccount: Account } info && info.CapturedUtc == captured &&
+            info.ExpiresUtc == captured + SnapshotSeal.MaxAge, "A fresh seal does not verify.");
+        var sealPath = Path.Combine(folder, SnapshotSeal.FileName);
+        var sealText = File.ReadAllText(sealPath);
+        check(sealText.Contains("\"version\":2", StringComparison.Ordinal) &&
+            sealText.Contains(SnapshotSeal.KeyId(TestSigner.Key.ExportSubjectPublicKeyInfo()), StringComparison.Ordinal),
+            "The seal does not name its version and signer.");
 
         File.WriteAllText(Path.Combine(folder, SnapshotSeal.ProgressionFile), Progression.Replace("485592", "999999", StringComparison.Ordinal));
-        check(SnapshotSeal.Verify(folder, key) == null, "Edited progression still verifies.");
-        File.WriteAllText(Path.Combine(folder, SnapshotSeal.ProgressionFile), Progression);
+        check(SnapshotSeal.Verify(folder) == null, "Edited progression still verifies.");
         File.Delete(Path.Combine(folder, SnapshotSeal.ProgressionFile));
-        check(SnapshotSeal.Verify(folder, key) == null, "A seal over progression verifies without it.");
+        check(SnapshotSeal.Verify(folder) == null, "A seal over progression verifies without it.");
         File.WriteAllText(Path.Combine(folder, SnapshotSeal.ProgressionFile), Progression);
-        check(SnapshotSeal.Verify(folder, key) != null, "The restored files no longer verify.");
+        check(SnapshotSeal.Verify(folder) != null, "The restored files no longer verify.");
 
-        var otherKey = Path.Combine(root, "seal-other", SnapshotSeal.KeyFileName);
-        var other = Directory.CreateDirectory(Path.Combine(root, "seal-other", "player")).FullName;
-        File.WriteAllText(Path.Combine(other, SnapshotSeal.InventoryFile), Inventory);
-        SnapshotSeal.Write(other, otherKey, Account, captured);
-        check(SnapshotSeal.Verify(folder, otherKey) == null && SnapshotSeal.Verify(other, key) == null, "A seal verifies under another installation's key.");
-        check(SnapshotSeal.Verify(folder, Path.Combine(root, "seal", "missing.key")) == null, "A seal verifies without a key.");
-        File.WriteAllText(Path.Combine(folder, SnapshotSeal.FileName), "{");
-        check(SnapshotSeal.Verify(folder, key) == null, "A broken seal verifies.");
+        // The signature covers the account and the time, not only the files.
+        var accountText = Account.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        File.WriteAllText(sealPath, sealText.Replace(accountText, (Account + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
+        check(SnapshotSeal.Verify(folder) == null, "A seal verifies for another Steam account.");
+        var later = captured.AddDays(10).ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+        File.WriteAllText(sealPath, sealText.Replace(captured.ToString("O", System.Globalization.CultureInfo.InvariantCulture), later, StringComparison.Ordinal));
+        check(SnapshotSeal.Verify(folder) == null, "A seal verifies with a moved capture time.");
+        File.WriteAllText(sealPath, sealText);
+
+        var publicKey = TestSigner.Key.ExportSubjectPublicKeyInfo();
+        check(SnapshotSeal.Verify(folder, publicKey, captured + SnapshotSeal.MaxAge - TimeSpan.FromMinutes(1), out _) != null,
+            "A seal inside its 14 days does not verify.");
+        check(SnapshotSeal.Verify(folder, publicKey, captured + SnapshotSeal.MaxAge + TimeSpan.FromMinutes(1), out var expired) == null &&
+            expired == SnapshotSeal.ExpiredMessage, "An expired seal verifies, or does not say it expired.");
+        check(SnapshotSeal.Verify(folder, null, captured, out var noKey) == null && noKey == null, "A seal verifies with no signer key.");
+
+        using var otherKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        TestSigner.Seal(folder, Account, captured, otherKey);
+        check(SnapshotSeal.Verify(folder, out var other) == null && other == SnapshotSeal.OtherSignerMessage,
+            "A seal from another signer verifies, or does not say so.");
+        // A seal that names this signer but was signed by another key is a forgery, not another PC.
+        File.WriteAllText(sealPath, File.ReadAllText(sealPath).Replace(SnapshotSeal.KeyId(otherKey.ExportSubjectPublicKeyInfo()),
+            SnapshotSeal.KeyId(publicKey), StringComparison.Ordinal));
+        check(SnapshotSeal.Verify(folder, out var forged) == null && forged == null, "A seal signed by another key verifies under this key id.");
+
+        File.WriteAllText(sealPath, """{"version":1,"steamAccount":"1","capturedUtc":"2026-10-25T09:30:00.0000000Z","mac":"00"}""");
+        check(SnapshotSeal.Verify(folder, out var older) == null && older == SnapshotSeal.OlderSealMessage, "A version 1 seal is not named as older.");
+        File.WriteAllText(sealPath, "{");
+        check(SnapshotSeal.Verify(folder) == null, "A broken seal verifies.");
     }
 
-    static void LinuxMachineBinding(string root, Action<bool, string> check)
+    static void SignerKeys(string root, Action<bool, string> check)
     {
-        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux machine-id seal)"); return; }
-        if (SnapshotSeal.MachineData.MachineIdPathForTests is not { } machineId)
+        var publicKey = TestSigner.Key.ExportSubjectPublicKeyInfo();
+        check(SignerPublicKey.FromPem(SignerPublicKey.ToPem(publicKey)).AsSpan().SequenceEqual(publicKey), "The public key does not survive PEM.");
+        using (var p384 = ECDsa.Create(ECCurve.NamedCurves.nistP384))
         {
-            Console.WriteLine("  (skipped: no synthetic machine id is set)");
-            return;
+            var refused = false;
+            try { SignerPublicKey.FromPem(SignerPublicKey.ToPem(p384.ExportSubjectPublicKeyInfo())); }
+            catch (CryptographicException) { refused = true; }
+            check(refused, "A key that is not P-256 was taken as the signer.");
         }
-        var other = MachineIdFile(root, "other", "fedcba9876543210fedcba9876543210\n");
+
+        var state = Path.Combine(root, "signer-state");
+        var keyFile = Path.Combine(state, SnapshotSigner.KeyFile);
+        using (var made = SnapshotSigner.OpenFileKey(keyFile))
+        using (var reopened = SnapshotSigner.OpenFileKey(keyFile))
+            check(made.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(reopened.ExportSubjectPublicKeyInfo()) && !File.Exists(keyFile + ".tmp"),
+                "The signer's key file does not reopen as the same key.");
+        if (OperatingSystem.IsWindows()) { WindowsMachineSigner(root, check); return; }
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux key file modes and key path)"); return; }
+        check(File.GetUnixFileMode(keyFile) == (UnixFileMode.UserRead | UnixFileMode.UserWrite), "The signer's key file is readable by others.");
+
+        var evidence = Directory.CreateDirectory(Path.Combine(root, "signer-evidence")).FullName;
+        var refusedWithoutState = false;
+        try { SnapshotSigner.Open(null, evidence, out _).Dispose(); }
+        catch (CryptographicException) { refusedWithoutState = true; }
+        check(refusedWithoutState, "The Linux capture signed outside the signing service.");
+        using (var opened = SnapshotSigner.Open(state, evidence, out var where))
+        {
+            var published = Path.Combine(evidence, SnapshotSigner.PublicKeyFile);
+            check(where == keyFile && SignerPublicKey.FromPem(File.ReadAllText(published)).AsSpan().SequenceEqual(opened.ExportSubjectPublicKeyInfo()) &&
+                (File.GetUnixFileMode(published) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) == 0 &&
+                (File.GetUnixFileMode(published) & UnixFileMode.OtherRead) != 0,
+                "The signing service did not publish its public key for the helper to copy.");
+        }
+
+        var keyFolder = Directory.CreateDirectory(Path.Combine(root, "signer-public")).FullName;
+        var pub = Path.Combine(keyFolder, SnapshotSigner.PublicKeyFile);
+        var (savedKey, savedFile) = (SignerPublicKey.ForTests, SignerPublicKey.LinuxFile);
         try
         {
-            var folder = Directory.CreateDirectory(Path.Combine(root, "seal-linux-machine", "account-snapshot", "player")).FullName;
-            var key = InventorySync.SealKeyFor(folder);
-            File.WriteAllText(Path.Combine(folder, SnapshotSeal.InventoryFile), Inventory);
-            File.WriteAllText(Path.Combine(folder, SnapshotSeal.ProgressionFile), Progression);
-            var captured = new DateTime(2026, 10, 25, 9, 30, 0, DateTimeKind.Utc);
-            SnapshotSeal.Write(folder, key, Account, captured);
-            check(SnapshotSeal.Verify(folder, key) is { SteamAccount: Account } info && info.CapturedUtc == captured,
-                "A fresh Linux seal does not verify.");
-            check(File.ReadAllBytes(key).AsSpan().StartsWith("HFL1"u8), "The Linux seal key has no Linux marker.");
-
-            SnapshotSeal.MachineData.MachineIdPathForTests = other;
-            check(SnapshotSeal.Verify(folder, key) == null, "A seal verified under another machine id.");
-            SnapshotSeal.Write(folder, key, Account, captured);
-            check(SnapshotSeal.Verify(folder, key) is { SteamAccount: Account }, "A key from another machine id was not replaced on Write.");
-
-            var blob = File.ReadAllBytes(key);
-            blob[^1] ^= 0x80;
-            File.WriteAllBytes(key, blob);
-            check(SnapshotSeal.Verify(folder, key) == null, "A tampered Linux seal key verified.");
+            (SignerPublicKey.ForTests, SignerPublicKey.LinuxFile) = (null, pub);
+            const UnixFileMode Shared = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
+            const UnixFileMode Folder = Shared | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+            File.SetUnixFileMode(keyFolder, Folder);
+            check(SignerPublicKey.Read(out var missing) == null && missing == SignerPublicKey.NoSignerMessage, "A missing key file is not named.");
+            File.WriteAllText(pub, SignerPublicKey.ToPem(publicKey));
+            File.SetUnixFileMode(pub, Shared);
+            check(SignerPublicKey.Read(out _) is { } read && read.AsSpan().SequenceEqual(publicKey), "The installed key file does not read.");
+            File.SetUnixFileMode(pub, Shared | UnixFileMode.OtherWrite);
+            check(SignerPublicKey.Read(out var writableFile) == null && writableFile!.Contains("can be changed", StringComparison.Ordinal),
+                "A key file others can write was trusted.");
+            File.SetUnixFileMode(pub, Shared);
+            File.SetUnixFileMode(keyFolder, Folder | UnixFileMode.GroupWrite);
+            check(SignerPublicKey.Read(out var writableFolder) == null && writableFolder!.Contains("can be changed", StringComparison.Ordinal),
+                "A key file in a folder others can write was trusted.");
         }
-        finally { SnapshotSeal.MachineData.MachineIdPathForTests = machineId; }
+        finally { (SignerPublicKey.ForTests, SignerPublicKey.LinuxFile) = (savedKey, savedFile); }
     }
 
-    static void LinuxMachineIdRefusals(string root, Action<bool, string> check)
+    // The real CNG machine key and HKLM value, under a test name and path of their own, removed afterwards. Elevated only:
+    // the CI runner is, a player's PC running tests usually is not.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    static void WindowsMachineSigner(string root, Action<bool, string> check)
     {
-        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: Linux machine-id seal)"); return; }
-        if (SnapshotSeal.MachineData.MachineIdPathForTests is not { } machineId)
-        {
-            Console.WriteLine("  (skipped: no synthetic machine id is set)");
-            return;
-        }
-        const string OtherSystem = "This snapshot was sealed on another system: sync again";
-        try
-        {
-            foreach (var (name, id) in new (string Name, string? Id)[] { ("missing", null), ("short", "abc\n") })
+        using (var identity = System.Security.Principal.WindowsIdentity.GetCurrent())
+            if (!new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator))
             {
-                var badId = MachineIdFile(root, name, id);
-                SnapshotSeal.MachineData.MachineIdPathForTests = badId;
-                var folder = Directory.CreateDirectory(Path.Combine(root, "seal-no-machine", name)).FullName;
-                var key = Path.Combine(folder, SnapshotSeal.KeyFileName);
-                File.WriteAllText(Path.Combine(folder, SnapshotSeal.InventoryFile), Inventory);
-                var reason = "";
-                try { SnapshotSeal.Write(folder, key, Account, DateTime.UtcNow); }
-                catch (CryptographicException error) { reason = error.Message; }
-                check(reason.Contains("machine id", StringComparison.OrdinalIgnoreCase) && !File.Exists(key),
-                    name + ": a missing or short machine id did not fail closed with its reason.");
-
-                SnapshotSeal.MachineData.MachineIdPathForTests = machineId;
-                SnapshotSeal.Write(folder, key, Account, DateTime.UtcNow);
-                SnapshotSeal.MachineData.MachineIdPathForTests = badId;
-                check(SnapshotSeal.Verify(folder, key, out var verifyProblem) == null && verifyProblem is { } &&
-                    verifyProblem.Contains("machine id", StringComparison.OrdinalIgnoreCase),
-                    name + ": verification did not fail closed with the machine-id reason.");
-
-                var before = File.ReadAllBytes(key);
-                var blocked = "";
-                try { SnapshotSeal.Write(folder, key, Account, DateTime.UtcNow); }
-                catch (CryptographicException error) { blocked = error.Message; }
-                check(blocked.Contains("machine id", StringComparison.OrdinalIgnoreCase) && File.ReadAllBytes(key).SequenceEqual(before),
-                    name + ": Write replaced a key without a usable machine id.");
+                Console.WriteLine("  (skipped: the machine signer needs an elevated test run)");
+                return;
             }
-
-            SnapshotSeal.MachineData.MachineIdPathForTests = machineId;
-            var sync = Directory.CreateDirectory(Path.Combine(root, "seal-dpapi", "sync")).FullName;
-            var snapshot = Path.Combine(root, "seal-dpapi", "account-snapshot", "player");
-            var keyPath = InventorySync.SealKeyFor(snapshot);
-            File.WriteAllText(Path.Combine(sync, SnapshotSeal.InventoryFile), Inventory);
-            File.WriteAllText(Path.Combine(sync, SnapshotSeal.ProgressionFile), Progression);
-            SnapshotSeal.Write(sync, keyPath, Account, DateTime.UtcNow);
-
-            var dpapi = new byte[64];
-            dpapi[0] = 1; // DPAPI blobs start 01 00 00 00, never the Linux HFL1 marker.
-            File.WriteAllBytes(keyPath, dpapi);
-            check(SnapshotSeal.Verify(sync, keyPath, out var problem) == null && problem == OtherSystem,
-                "A DPAPI-marked key was not refused on Linux with the foreign-seal reason.");
-            check(InventorySync.FinalizeCapture(sync, snapshot) == OtherSystem,
-                "FinalizeCapture did not pass on the foreign-seal reason.");
-
-            SnapshotSeal.Write(sync, keyPath, Account, DateTime.UtcNow);
-            check(File.ReadAllBytes(keyPath).AsSpan().StartsWith("HFL1"u8) && SnapshotSeal.Verify(sync, keyPath) is { SteamAccount: Account },
-                "A DPAPI-marked key was not replaced on Write.");
+        var (savedName, savedPath, savedKey) = (SnapshotSigner.KeyName, SignerPublicKey.RegistryKeyPath, SignerPublicKey.ForTests);
+        var suffix = Guid.NewGuid().ToString("N");
+        try
+        {
+            SnapshotSigner.KeyName = "HellForge Snapshot Signer Test " + suffix;
+            SignerPublicKey.RegistryKeyPath = @"SOFTWARE\HellForge\SnapshotSignerTest-" + suffix;
+            SignerPublicKey.ForTests = null;
+            var evidence = Directory.CreateDirectory(Path.Combine(root, "signer-windows")).FullName;
+            using var made = SnapshotSigner.Open(null, evidence, out var provider);
+            using var reopened = SnapshotSigner.Open(null, evidence, out var again);
+            var published = SignerPublicKey.Read(out var problem);
+            check(published != null && published.AsSpan().SequenceEqual(made.ExportSubjectPublicKeyInfo()) && problem == null,
+                "The machine signer's public key in HKLM does not match it: " + problem);
+            check(again == provider && reopened.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(published), "The machine key did not reopen as the same signer.");
+            var exported = false;
+            try { made.ExportParameters(includePrivateParameters: true); exported = true; }
+            catch (CryptographicException) { }
+            check(!exported, "The machine signer's private key can be exported.");
+            var folder = Directory.CreateDirectory(Path.Combine(root, "signer-windows", "seal")).FullName;
+            File.WriteAllText(Path.Combine(folder, SnapshotSeal.InventoryFile), Inventory);
+            TestSigner.Seal(folder, Account, DateTime.UtcNow, made);
+            check(SnapshotSeal.Verify(folder) is { SteamAccount: Account }, "A seal by the machine signer does not verify from HKLM.");
         }
-        finally { SnapshotSeal.MachineData.MachineIdPathForTests = machineId; }
+        finally
+        {
+            try { SnapshotSigner.DeleteMachineKey(); } catch (CryptographicException) { }
+            using (var machine = Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryView.Registry64))
+                machine.DeleteSubKeyTree(SignerPublicKey.RegistryKeyPath, throwOnMissingSubKey: false);
+            (SnapshotSigner.KeyName, SignerPublicKey.RegistryKeyPath, SignerPublicKey.ForTests) = (savedName, savedPath, savedKey);
+        }
     }
 
-    static string MachineIdFile(string root, string name, string? id)
+    static void UpstreamPins(Action<bool, string> check)
     {
-        var path = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "machine-ids")).FullName, name);
-        if (id == null) File.Delete(path);
-        else File.WriteAllText(path, id);
-        return path;
+        check(CaptureUpstreamPins.Pins.Distinct().Count() == CaptureUpstreamPins.Pins.Count &&
+            CaptureUpstreamPins.Pins.All(pin => Convert.FromBase64String(pin).Length == 32), "A pin is not a SHA-256 or is listed twice.");
+        check(CaptureUpstreamPins.Refusal(null, System.Net.Security.SslPolicyErrors.None) != null, "A connection without a chain may sign.");
+
+        using var ownKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var own = new CertificateRequest("CN=" + CaptureUpstreamPins.ApiHost, ownKey, HashAlgorithmName.SHA256)
+            .CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        using (var chain = ChainTrusting(own))
+            check(CaptureUpstreamPins.Refusal(chain, System.Net.Security.SslPolicyErrors.None) is { } refusal && refusal.Contains("pinned", StringComparison.Ordinal),
+                "A chain under a CA the player can add may sign.");
+
+        using var store = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
+        store.Open(OpenFlags.ReadOnly | OpenFlags.OpenExistingOnly);
+        var x1 = store.Certificates.Find(X509FindType.FindBySubjectName, "ISRG Root X1", validOnly: false).FirstOrDefault();
+        if (x1 == null) { Console.WriteLine("  (skipped: ISRG Root X1 is not in this system's root store)"); return; }
+        check(CaptureUpstreamPins.Pin(x1) == CaptureUpstreamPins.Pins[0], "ISRG Root X1's pin does not match its key.");
+        using (var chain = ChainTrusting(x1))
+        {
+            check(CaptureUpstreamPins.Refusal(chain, System.Net.Security.SslPolicyErrors.None) == null, "A chain to a pinned root may not sign.");
+            check(CaptureUpstreamPins.Refusal(chain, System.Net.Security.SslPolicyErrors.RemoteCertificateNameMismatch) != null,
+                "A pinned chain for another name may sign.");
+        }
+    }
+
+    static X509Chain ChainTrusting(X509Certificate2 root)
+    {
+        var chain = new X509Chain();
+        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+        chain.ChainPolicy.CustomTrustStore.Add(root);
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        chain.Build(root);
+        return chain;
     }
 
     static void Finalize(string root, Action<bool, string> check)
     {
         var sync = Path.Combine(root, "sync-run");
         var snapshot = Path.Combine(root, "sync-install", InventorySync.SnapshotFolder, "player");
-        var key = InventorySync.SealKeyFor(snapshot);
+        var legacyKey = InventorySync.LegacySealKeyFor(snapshot);
         Directory.CreateDirectory(sync);
         check(InventorySync.FinalizeCapture(sync, snapshot) != null, "A capture without an inventory was saved.");
         File.WriteAllText(Path.Combine(sync, InventorySync.InventoryFile), """{"error":"denied"}""");
@@ -1282,10 +1658,13 @@ static class InventorySyncTests
         File.WriteAllText(Path.Combine(sync, InventorySync.ProgressionFile), Progression);
         check(InventorySync.FinalizeCapture(sync, snapshot) != null && !Directory.Exists(snapshot), "An unsealed capture was saved.");
 
-        SnapshotSeal.Write(sync, key, Account, DateTime.UtcNow);
+        Directory.CreateDirectory(Path.GetDirectoryName(legacyKey)!);
+        File.WriteAllText(legacyKey, "old");
+        TestSigner.Seal(sync, Account, DateTime.UtcNow);
         check(InventorySync.FinalizeCapture(sync, snapshot) == null, "A sealed capture was refused.");
+        check(!File.Exists(legacyKey), "The old seal key stayed after a sync.");
         check(!File.Exists(Path.Combine(sync, InventorySync.InventoryFile)) && !File.Exists(Path.Combine(sync, SnapshotSeal.FileName)), "The capture's files stayed in the sync folder.");
-        check(SnapshotSeal.Verify(snapshot, key) is { SteamAccount: Account }, "The moved snapshot no longer verifies.");
+        check(SnapshotSeal.Verify(snapshot) is { SteamAccount: Account }, "The moved snapshot no longer verifies.");
         check(InventorySync.ReadMetadata(snapshot) is { Items: 2, Experience: 485592, Progression: true, CapturedUtc: not null }, "Metadata does not describe the capture.");
 
         File.WriteAllText(Path.Combine(sync, InventorySync.InventoryFile), Inventory);
@@ -1293,7 +1672,7 @@ static class InventorySyncTests
         check(InventorySync.FinalizeCapture(sync, snapshot) != null && File.Exists(Path.Combine(snapshot, InventorySync.ProgressionFile)),
             "A progression that is not an object was saved, or changed the snapshot.");
         File.Delete(Path.Combine(sync, InventorySync.ProgressionFile));
-        SnapshotSeal.Write(sync, key, Account, DateTime.UtcNow);
+        TestSigner.Seal(sync, Account, DateTime.UtcNow);
         check(InventorySync.FinalizeCapture(sync, snapshot) != null && File.Exists(Path.Combine(snapshot, InventorySync.ProgressionFile)) &&
             InventorySync.ReadMetadata(snapshot) is { Items: 2, Experience: 485592, Progression: true },
             "An inventory-only capture replaced the complete snapshot, or was not refused.");
@@ -1302,7 +1681,7 @@ static class InventorySyncTests
         // A progression without XP is still progression; a snapshot from before the flag has it exactly when it has XP.
         File.WriteAllText(Path.Combine(sync, InventorySync.InventoryFile), Inventory);
         File.WriteAllText(Path.Combine(sync, InventorySync.ProgressionFile), """{"onboardingState":128}""");
-        SnapshotSeal.Write(sync, key, Account, DateTime.UtcNow);
+        TestSigner.Seal(sync, Account, DateTime.UtcNow);
         check(InventorySync.FinalizeCapture(sync, snapshot) == null && InventorySync.ReadMetadata(snapshot) is { Experience: null, Progression: true },
             "A progression without XP does not count as progression.");
 
@@ -1311,14 +1690,70 @@ static class InventorySyncTests
         var newcomer = Path.Combine(root, "sync-install", InventorySync.SnapshotFolder, "newcomer");
         File.WriteAllText(Path.Combine(sync, InventorySync.InventoryFile), Inventory);
         File.Delete(Path.Combine(sync, InventorySync.ProgressionFile));
-        SnapshotSeal.Write(sync, InventorySync.SealKeyFor(newcomer), Account, DateTime.UtcNow);
+        TestSigner.Seal(sync, Account, DateTime.UtcNow);
         check(InventorySync.FinalizeCapture(sync, newcomer) == null && InventorySync.ReadMetadata(newcomer) is { Items: 2, Experience: null, Progression: false },
             "An inventory-only capture made no snapshot where there was none.");
+
+        File.WriteAllText(Path.Combine(sync, InventorySync.InventoryFile), Inventory);
+        using (var otherSigner = ECDsa.Create(ECCurve.NamedCurves.nistP256))
+            TestSigner.Seal(sync, Account, DateTime.UtcNow, otherSigner);
+        check(InventorySync.FinalizeCapture(sync, newcomer) == SnapshotSeal.OtherSignerMessage, "A capture sealed by another signer was saved, or not named.");
 
         File.WriteAllText(Path.Combine(snapshot, InventorySync.MetadataFile), """{"items":2,"experience":7}""");
         check(InventorySync.ReadMetadata(snapshot) is { Progression: true }, "An older snapshot with XP lost its progression.");
         File.WriteAllText(Path.Combine(snapshot, InventorySync.MetadataFile), """{"items":2,"experience":null}""");
         check(InventorySync.ReadMetadata(snapshot) is { Progression: false }, "An older snapshot without XP claims progression.");
+    }
+
+    static void SignerMirror(string root, Action<bool, string> check)
+    {
+        var run = Directory.CreateDirectory(Path.Combine(root, "signer-mirror", "run")).FullName;
+        var handOver = Path.Combine(root, "signer-mirror", "out");
+        var sync = Directory.CreateDirectory(Path.Combine(root, "signer-mirror", "sync")).FullName;
+        File.WriteAllText(Path.Combine(run, "proxy.log"), "listening\n");
+        CaptureState.Write(run, 42, sealedCapture: false, progression: false);
+        check(!LinuxCapture.MirrorSignerRun(run, handOver, sync, false) && InventorySync.IsListening(sync) &&
+            File.Exists(Path.Combine(sync, "proxy.log")), "A listening service's state and log did not reach the sync folder.");
+
+        // Sealed in the service's run, not handed over yet: the launcher must not read sealed before the files are there.
+        CaptureState.Write(run, 42, sealedCapture: true, progression: true);
+        check(!LinuxCapture.MirrorSignerRun(run, handOver, sync, false) && !InventorySync.IsSealed(sync),
+            "The sealed state reached the sync folder before the account files.");
+
+        Directory.CreateDirectory(Path.Combine(handOver, InventorySync.CatalogueFolder));
+        File.WriteAllText(Path.Combine(handOver, InventorySync.InventoryFile), Inventory);
+        File.WriteAllText(Path.Combine(handOver, InventorySync.ProgressionFile), Progression);
+        File.WriteAllText(Path.Combine(handOver, InventorySync.CatalogueFolder, "items.json"), "{}");
+        File.WriteAllText(Path.Combine(handOver, SnapshotSeal.FileName), "{}");
+        check(LinuxCapture.MirrorSignerRun(run, handOver, sync, false) && InventorySync.IsSealed(sync) &&
+            new[] { InventorySync.InventoryFile, InventorySync.ProgressionFile, SnapshotSeal.FileName, Path.Combine(InventorySync.CatalogueFolder, "items.json") }
+                .All(name => File.Exists(Path.Combine(sync, name))), "The handed-over files or the sealed state did not reach the sync folder.");
+
+        // Once taken, the account files are the launcher's: a later tick does not copy them again over what it moved.
+        File.Delete(Path.Combine(sync, InventorySync.InventoryFile));
+        check(LinuxCapture.MirrorSignerRun(run, handOver, sync, true) && !File.Exists(Path.Combine(sync, InventorySync.InventoryFile)),
+            "The account files were copied a second time.");
+        if (OperatingSystem.IsLinux())
+            check(File.GetUnixFileMode(Path.Combine(sync, SnapshotSeal.FileName)) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+                "A copied account file is readable by other accounts.");
+    }
+
+    static void SignerCopy(string root, Action<bool, string> check)
+    {
+        var shipped = Directory.CreateDirectory(Path.Combine(root, "signer-copy", "capture-linux")).FullName;
+        Directory.CreateDirectory(Path.Combine(shipped, "sub"));
+        File.WriteAllText(Path.Combine(shipped, "HellForge.CaptureProxy"), "a");
+        File.WriteAllText(Path.Combine(shipped, "sub", "b.dll"), "b");
+        var installed = Path.Combine(root, "signer-copy", "capture-proxy");
+        check(LinuxCapture.InstalledFolderProblem(installed, shipped) is { } missing && missing.Contains("not installed", StringComparison.Ordinal),
+            "A missing signing copy was not named.");
+        Directory.CreateDirectory(installed);
+        File.WriteAllText(installed + ".sha256", LinuxCapture.FolderManifestSha256(shipped) + "\n");
+        check(LinuxCapture.InstalledFolderProblem(installed, shipped) == null, "A signing copy with this version's manifest was refused.");
+        File.WriteAllText(Path.Combine(shipped, "sub", "b.dll"), "changed");
+        check(LinuxCapture.InstalledFolderProblem(installed, shipped) != null, "A signing copy from another version was taken as current.");
+        check(LinuxCapture.InstalledFolderProblem(installed, Path.Combine(root, "signer-copy", "missing")) != null,
+            "An installation without capture-linux was taken as current.");
     }
 
     static void State(string root, Action<bool, string> check)
@@ -1340,7 +1775,7 @@ static class InventorySyncTests
 
         // Every capture-side problem has an exit code of its own that reads back, clear of 0, 1 and 2.
         foreach (var problem in new[] { CaptureProblem.EvidenceFolder, CaptureProblem.LeftoverCapture, CaptureProblem.HostsBusy,
-            CaptureProblem.HostsDenied, CaptureProblem.Offline, CaptureProblem.Certificate, CaptureProblem.PortInUse, CaptureProblem.PortDenied })
+            CaptureProblem.HostsDenied, CaptureProblem.Offline, CaptureProblem.Certificate, CaptureProblem.PortInUse, CaptureProblem.PortDenied, CaptureProblem.Signer })
         {
             var code = CaptureStart.ExitCode(problem);
             check(code >= 20 && CaptureStart.FromExitCode(code) == problem, problem + ": its exit code does not read back.");

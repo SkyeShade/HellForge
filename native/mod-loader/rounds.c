@@ -29,6 +29,7 @@
 #define ROUND_ROWS 32             /* distinct rows of each table the lobby's edits touch */
 #define ROUND_SHADOWS 96
 #define ROUND_VIEWS 96
+#define ROUND_BASE_BYTES 22096u  /* the largest record RoundBase takes: Health (deploys.c) */
 static const uint8_t kRoundCallPin[20] = {0x48, 0x8B, 0x0D, 0x9E, 0x68, 0xE6, 0x02, 0x4C, 0x8D, 0x45, 0x20, 0x48, 0x8D, 0x55, 0xE0,
     0xE8, 0x19, 0x32, 0xD9, 0x00};
 
@@ -116,7 +117,10 @@ static int RoundsSetLobby(const char* list, const char** why)
  * field's, from before every live edit) and the Local Stats mod's boot edits' (from before it), written over it. */
 static void RoundBase(uintptr_t row, uint8_t* copy, uint32_t size)
 {
-    uint8_t done[PRJ_ROW] = {0};
+    static uint8_t done[ROUND_BASE_BYTES]; /* large; the watch loop and the threads that spawn call this */
+    static SRWLOCK doneLock = SRWLOCK_INIT;
+    AcquireSRWLockExclusive(&doneLock);
+    memset(done, 0, size);
     AcquireSRWLockShared(&g_fieldsLock);
     for (int i = 0; i < g_editCount; i++)
     {
@@ -137,6 +141,7 @@ static void RoundBase(uintptr_t row, uint8_t* copy, uint32_t size)
             memcpy(copy + (s->address - row), &s->original, bytes);
     }
     ReleaseSRWLockShared(&g_statsLock);
+    ReleaseSRWLockExclusive(&doneLock);
 }
 
 /* The rows of each table anyone in the lobby changed ([0] projectiles, [1] damage). */
@@ -219,7 +224,7 @@ static void RoundsRebuild(void)
     static RoundEntry entries[ROUND_ENTRIES];
     static RoundShadow shadows[ROUND_SHADOWS];
     static RoundView views[ROUND_VIEWS];
-    ShotPlayer players[4];
+    ShotPlayer players[EVT_MAX_PLAYERS];
     int playerCount;
     AcquireSRWLockShared(&g_shotsLock);
     playerCount = g_shotPlayerCount;

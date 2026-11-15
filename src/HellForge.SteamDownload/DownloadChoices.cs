@@ -14,8 +14,10 @@ public static class DownloadChoices
     public static IReadOnlyList<DownloadChoice> All { get; } = [DownloadChoice.QrCode, DownloadChoice.SteamCmd, DownloadChoice.SteamClient];
 
     // The ways setup can offer. reachesSteam: setup can reach Steam's servers itself (not under Wine, inside HellForge's
-    // network namespace, which has no route out); else only the Steam app on this PC can download.
-    public static IReadOnlyList<DownloadChoice> Offered(bool reachesSteam) => reachesSteam ? All : [DownloadChoice.SteamClient];
+    // network namespace, which has no route out); else only the Steam app on this PC can download. steamCmd: SteamCMD
+    // can be shown to the player (on Linux it needs a terminal window program) in a folder it accepts.
+    public static IReadOnlyList<DownloadChoice> Offered(bool reachesSteam, bool steamCmd = true) =>
+        !reachesSteam ? [DownloadChoice.SteamClient] : steamCmd ? All : [.. All.Where(choice => choice != DownloadChoice.SteamCmd)];
 
     // Whether HellForge signs in to Steam itself (only with the QR code; SteamCMD and the Steam app sign in on their own).
     public static bool SignsIn(DownloadChoice choice) => choice == DownloadChoice.QrCode;

@@ -240,10 +240,32 @@ sealed partial class PlaySession
     // named here (SandboxRefusals).
     void SayRefusals()
     {
-        if (result["networkCensus"]?["deniedTargets"] is not JsonArray denied) return;
-        var refusals = denied.OfType<JsonObject>().Select(row => new SandboxRefusals.Refusal((string?)row["to"] ?? "?", (string?)row["caller"] ?? "?",
-            (long?)row["count"] ?? 1)).ToList();
-        if (SandboxRefusals.Describe(refusals, (long?)result["networkCensus"]?["denied"]) is { } line) Say(line);
+        var census = result["networkCensus"];
+        if (SandboxRefusals.DescribeTablet((long?)census?["tabletRefused"] ?? 0, (bool?)census?["tabletLoaded"] ?? false) is { } tablet) Say(tablet);
+        if (SandboxRefusals.Describe(Refusals(census), (long?)census?["denied"]) is { } line) Say(line);
+    }
+
+    static List<SandboxRefusals.Refusal> Refusals(JsonNode? census) => census?["deniedTargets"] is not JsonArray denied ? []
+        : [.. denied.OfType<JsonObject>().Select(row => new SandboxRefusals.Refusal((string?)row["to"] ?? "?", (string?)row["caller"] ?? "?", (long?)row["count"] ?? 1))];
+
+    // Why the game closed during `step` (LaunchFailure.Closed): sandboxed, with what the sandbox may have to do with it.
+    string ClosedMessage(string step, int code, WindowsCrash.Record? crash)
+    {
+        var sandboxed = options.Sandbox && !linuxSandbox;
+        return LaunchFailure.Closed(step, code, crash, crash != null ? CrashOwner(crash) : WindowsCrash.Owner.Unknown, sandboxed,
+            sandboxed && WindowsCrash.IsCrash(code) ? SandboxCrashHint() : null);
+    }
+
+    // The sandboxed game crashed as it started: a program known to crash it there that was refused (SandboxRefusals.CrashHint),
+    // from the census as the game left it.
+    string? SandboxCrashHint()
+    {
+        try
+        {
+            var census = Path.Combine(gameOut, CensusLog);
+            return File.Exists(census) ? SandboxRefusals.CrashHint(Refusals(NetworkCensus.Summarize(census))) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidDataException) { return null; }
     }
 
     void StopBrokerAndBackend()

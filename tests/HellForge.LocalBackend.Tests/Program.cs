@@ -696,6 +696,8 @@ try
     Check(unpaired, "Profile accepted without startup fixtures.");
     AccountSyncTests.Run(root, Check);
     Console.WriteLine("PASS account sync: premium only from a sealed snapshot of the signed-in account, free warbond open, Super Credits never served, granted or imported, imports by category with backups and restore");
+    PaidFloorTests.Run(root, Check);
+    Console.WriteLine("PASS paid floor: the compiled list is what the catalogue's rules give, and an edited catalogue frees no paid or premium warbond item");
     results.Add(new { mode = "profile", outcome = "passed", invalidEdits = invalidEdits.Length + 1 });
     Console.WriteLine("PASS profile: fixture defaults, persistence, single server, validation, session audit");
     await LiveWarTests.Run(root, Check);
@@ -713,9 +715,10 @@ try
     // The command line: every option the session runner passes (PlaySession.StartBackend and the WarArguments and
     // MultiplayerArguments it delegates to, up to Observe; the multiplayer path the longest) is accepted; an unknown or
     // repeated one is refused.
-    // The three methods are read by name and brace-matched, so moving other methods to partial files does not change
-    // what is read. A missing method leaves its part empty and the check below fails with its message.
-    var runner = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../src/HellForge.Session/PlaySession.cs"));
+    // The three methods are read by name and brace-matched from every PlaySession partial file, so moving a method
+    // between them does not change what is read. A missing method leaves its part empty and the check below fails.
+    var sessionFolder = Path.Combine(AppContext.BaseDirectory, "../../../../../src/HellForge.Session");
+    var runner = string.Concat(Directory.GetFiles(sessionFolder, "PlaySession*.cs").Order(StringComparer.Ordinal).Select(File.ReadAllText));
     var startBackend = string.Concat(new[] { "void StartBackend(", "void WarArguments(", "void MultiplayerArguments(" }
         .Select(signature => MethodText(runner, signature)));
     var passed = System.Text.RegularExpressions.Regex.Matches(startBackend, "\"(--[a-z][a-z-]+)\"").Select(m => m.Groups[1].Value).Distinct().ToList();
@@ -762,6 +765,9 @@ try
     results.Add(new { mode = "idle-kick", outcome = "passed" });
     Console.WriteLine("PASS idle kick: served off, every other override unchanged");
     RegisteredItemsTests.Run(root, Check);
+    RegisteredChecksTests.Run(root, Check);
+    await GrantGateTests.Run(root, Check);
+    CatalogueRebuildTests.Run(root, Check);
     results.Add(new { mode = "registered-items", outcome = "passed" });
     Console.WriteLine("PASS registered items: child hash, catalogue children, mastery package, progress, inventory");
     await ModWarbondsTests.Run(root, Check);

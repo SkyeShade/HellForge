@@ -268,35 +268,6 @@ static void OwnProjectile(Weapon* w, uint8_t* record, uint8_t* customization)
         removed ? "; its default ammunition is removed" : "");
 }
 
-/* The beam or arc a weapon's own record names (+0 of BeamWeaponComponentData, component 270, or ArcWeaponComponentData, 265:
- * the only place a type reaches a weapon). Only an installed type is written: beam_arc.c says why. */
-#define REG_BEAM_WEAPON 270u
-#define REG_BEAM_WEAPON_STRIDE 120u
-#define REG_ARC_WEAPON 265u
-#define REG_ARC_WEAPON_STRIDE 80u
-#define REG_BEAM_VANILLA 31u
-#define REG_ARC_VANILLA 17u
-
-typedef struct FiredKind { const char* what; uint32_t vanilla, component, stride; } FiredKind;
-static const FiredKind kFiredBeam = {"beam", REG_BEAM_VANILLA, REG_BEAM_WEAPON, REG_BEAM_WEAPON_STRIDE};
-static const FiredKind kFiredArc = {"arc", REG_ARC_VANILLA, REG_ARC_WEAPON, REG_ARC_WEAPON_STRIDE};
-
-static void OwnBeamArc(uint8_t* state, const Weapon* w, uint64_t baseEntity, const FiredKind* k, int usable, uint32_t type)
-{
-    if (type == 0) return;
-    uint32_t c = k->component;
-    const char* what = k->what;
-    uint8_t* table = StatePointer(state, REG_TABLES + 8 * c);
-    uint8_t* record = table != NULL && FindRow(table, SlotsOf(c), 16, baseEntity) != NULL ? OwnRecord(state, c, k->stride, baseEntity, w->entity) : NULL;
-    if (record == NULL) { ApiLog(w->mod, "%s: its base has no %s record; it keeps its base's weapon", w->name, what); return; }
-    uint32_t base;
-    memcpy(&base, record, 4);
-    if (base == 0 || base >= k->vanilla) { ApiLog(w->mod, "%s: its own %s record does not name a vanilla %s (%u); it keeps its base's", w->name, what, what, base); return; }
-    if (!usable) { ApiLog(w->mod, "%s keeps its base's %s %u: type %u was not added", w->name, what, base, type); return; }
-    memcpy(record, &type, 4);
-    ApiLog(w->mod, "%s: its %s is type %u (its base's is %u)", w->name, what, type, base);
-}
-
 /* Its own encyclopedia record when it has text of its own. */
 static void OwnTextRecord(uint8_t* state, const Weapon* w, uint64_t baseEntity)
 {
@@ -390,6 +361,7 @@ static void GiveOwnRecords(WeaponLoad* L, Weapon* w, uint64_t baseEntity, const 
     if (fireRecord != NULL && w->projectile != 0) OwnProjectile(w, fireRecord, customization);
     OwnBeamArc(state, w, baseEntity, &kFiredBeam, BeamTypeUsable(w->beam), w->beam);
     OwnBeamArc(state, w, baseEntity, &kFiredArc, ArcTypeUsable(w->arc), w->arc);
+    OwnSpray(state, w, baseEntity);
     if (w->text[0] != 0 || w->text[2] != 0 || w->text[3] != 0) OwnTextRecord(state, w, Donor(w, REG_TEXT_COMPONENT, baseEntity));
     if (w->modelFrom != 0 && !KeepsGroundModel(state, w, baseEntity)) TakeModel(state, w, baseEntity);
     if (w->behaviour != 0) OwnBehaviour(state, w, Donor(w, REG_BEHAVIOUR, baseEntity));

@@ -17,8 +17,9 @@ are in [`linux/`](../linux) and the Wine checks in `src/HellForge.Core/LinuxNetw
 - **Co-op on Linux:** friends' games are reached through Steam's networking, which runs in the Steam client outside the
   namespace. The one test so far did not connect
   ([problems players have reported](linux.md#problems-players-have-reported)).
-- **Containers and SteamOS:** Steam as a Flatpak or Snap (its own `/tmp` and paths) is untested. So is SteamOS 3.x
-  ([HellForge on SteamOS](linux-steamos.md)), including the Steam Deck and Game Mode. Starting HellForge itself inside
+- **Containers and SteamOS:** Steam as a Flatpak or Snap (its own `/tmp` and paths) is untested. So are sessions on
+  SteamOS 3.x ([HellForge on SteamOS](linux-steamos.md)), including the Steam Deck and Game Mode. The Account Sync
+  helper's install there (`/opt/hellforge`) has only been run on a stand-in system. Starting HellForge itself inside
   Flatpak, Snap or Steam's runtime container is refused
   ([started from inside a container](linux.md#started-from-inside-a-container)). That path has not been tried on a real
   Flatpak or Snap either.

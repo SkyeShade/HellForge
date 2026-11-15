@@ -1,10 +1,11 @@
 // capture-relay: Sync Inventory's 127.0.0.1:443 -> 127.0.0.1:18443 relay on Linux.
 //
-// linux/capture-helper.sh runs the installed root-owned copy (/usr/local/lib/hellforge/capture-relay), never a copy from
-// the installation: the installation sits in a Wine prefix that the game and its mods can write. The program binds the
-// privileged port as root, drops to nobody with setgroups/setgid/setuid (each checked), and only then accepts. It takes
-// no arguments and cannot be pointed at another address or port. A fixed table of connections with one fixed buffer per
-// direction bounds the number of clients and the memory the root helper's relay can use.
+// linux/capture-helper.sh runs the installed root-owned copy beside itself (in /usr/local/lib/hellforge, or
+// /opt/hellforge on SteamOS), never a copy from the installation: the installation sits in a Wine prefix that the game
+// and its mods can write. The program binds the privileged port as root, drops to nobody with setgroups/setgid/setuid
+// (each checked), and only then accepts. It takes no arguments and cannot be pointed at another address or port. A
+// fixed table of connections with one fixed buffer per direction bounds the number of clients and the memory the root
+// helper's relay can use.
 
 #define _GNU_SOURCE 1
 

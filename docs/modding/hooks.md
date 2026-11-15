@@ -32,6 +32,7 @@ what people reach for hooks for, and its [game thread](runtime.md#the-game-threa
 - [Threads](#threads)
 - [Several mods, one function](#several-mods-one-function)
 - [Patching code](#patching-code)
+- [Room in the map generator](#room-in-the-map-generator)
 - [Reading and writing data](#reading-and-writing-data)
 - [Co-op](#co-op)
 - [When it goes wrong](#when-it-goes-wrong)
@@ -90,8 +91,8 @@ The others exist since SDK 1. Hooks stay for the session.
 HellForge names game functions the way Minecraft's mappings do (`mappings/functions.json`, generated into
 `hellforge_functions.h`). A named function has its signature as a type (`HfFn_SpawnEntity`), so the compiler checks
 your detour. Your IDE completes `hf_hook_` and `hf_fn_` with every function there is, and HellForge keeps the address
-and the check of its first bytes. When the game updates, HellForge updates where the functions are. A mod that hooks by
-name keeps working without being rebuilt, unless a function's signature itself changed.
+and the check of its first bytes. HellForge runs one game build, so a function's place never moves. A name stays once it
+ships, so a mod that hooks or calls by name keeps working on later versions of HellForge without being rebuilt.
 
 ```c
 static HfFn_SpawnEntity g_spawn;   /* calls the next hook, or the game's code */
@@ -172,6 +173,44 @@ hf_on_game_thread(mod, EveryUpdate, NULL);
   an alias, as functions do. `hf->global(mod, name)` gives the cell itself, for code that wants it.
 - These are the objects the functions of [hooking by name](#hooking-by-name) take: `ExplosionQueue` is
   `RequestExplosion`'s `queue`, `ProjectileSystem` is `FireProjectile`'s `system`.
+
+### Fields a mod moved
+
+The offsets in `hellforge_globals.h` are the game's own. A mod that grows a per-player list (more than four players,
+say) moves it inside its manager and rewrites every game instruction that addresses it. The game follows; a fixed
+offset in your mod then reads stale data.
+
+HellForge reads these fields where the game's code addresses them now, and so can your mod: take the offset from the
+displacement of an instruction that uses the field.
+
+| Field (PlayerManager) | The game's offset | Read the 4 bytes at |
+|---|---|---|
+| count | 0x84 | `game.dll+0x62C727` |
+| peer ids, 0x38 a player | 0x2C8 | `game.dll+0x62C733` |
+| lifecycles, 0x38 a player | 0x2E0 | `game.dll+0x6094DF` |
+| player descriptors | 0xE8 | `game.dll+0x62C755` |
+| network ids, 0x20 a player | 0x3A8 | `game.dll+0xACC670` |
+
+- Check the instruction first (`code_matches` on the bytes before the displacement), and refuse a value that is not
+  aligned or not inside the manager.
+- The list's capacity is the byte at `game.dll+0x540870` (4 in the game). Size your own per-player arrays from it.
+- HellForge's events, actions, armor passives and perks follow the player, customization, avatar and score managers
+  and the entity records this way. When the sites of one field disagree, the feature that reads it stays off and the
+  log names the field. The log also says when the field reads as reviewed again.
+
+The entity records (`EntityManager`, 24 bytes an entity) can move as well, for a mod that makes room for more
+entities. They may then lie outside the manager, before it too, so their offset is signed.
+
+| You want | Use |
+|---|---|
+| an entity's record | `hf_fn_EntityDescriptor`, the game's own lookup |
+| the entity of a network id | `hf->entity_of_network` |
+| the records' offset from the manager | 8 times the signed 4 bytes at `game.dll+0xFD9DDE` (0xF32F18 in the game) |
+
+- A mod that moves the records rewrites every instruction that addresses them. Move them before the game builds the
+  entity manager, when no record is live.
+- HellForge checks eight of those instructions against each other on every read. While they disagree it finds no
+  player's Helldiver, and the events and actions that need one wait.
 
 ## Finding a function
 
@@ -377,6 +416,82 @@ static void SteerAnywhere(HfMod* mod, HfEvent event, void* user)
 - HellForge itself rewrites some of the game's code (where it moves the game's lists of projectiles, damage, stratagems
   and difficulties, and where its events read the game). Check the bytes you patch are the build's own, as above: if
   HellForge or another mod changed them first, your check fails cleanly.
+- A patch over code that a HellForge feature checks turns that feature off: HellForge takes only its own rewrites as
+  known. The exception is a field's offset or capacity listed under [Fields a mod moved](#fields-a-mod-moved).
+
+## Room in the map generator
+
+`generation_capacity` (SDK 17) enlarges the map generator's arrays. Use it when your mod's hooks or patches put more
+on a level-11 map than the level does. Any mod may ask, not only the one that added the level.
+
+```c
+HfGenerationCapacity want = {sizeof want};   /* 0 in a field keeps HellForge's size */
+want.locations = 40000;
+want.mission_stamps = 4096;
+if (hf->size >= offsetof(HfApi, generation_capacity) + sizeof(void*)) hf->generation_capacity(mod, &want, NULL);
+```
+
+| Field | What it holds | HellForge's size | Most |
+|---|---|---|---|
+| `locations` | everything placed on the map | 8192 | 65024 |
+| `minimap_proxies` | the minimap's shapes, in steps of 4096 | 16384 | 32768 |
+| `mission_stamps` | the objectives' candidate stamps | 1024 | 16384 |
+| `places` | objective and extraction placement attempts | 512 | 8192 |
+| `place_set` | the places' set | 256 | 4096 |
+| `important_locations` | objectives, extraction, outposts, points of interest, satellites | 256 | 1024 |
+| `linked_locations` | each satellite with the location it belongs to | 64 | 1024 |
+| `route_nodes` | the route graph's nodes | 975 | 2304 |
+| `route_edges` | the route graph's edges, with a class byte each | 1621 | 3456 |
+| `route_points` | the road points along the edges | 9936 | 65520 |
+
+- Call it from `hellforge_mod_init`. The game makes these arrays once, so a later call returns 1 and changes nothing.
+  The same goes for a mod loaded while the game runs, and for a field over its limit. Your log says why.
+- When several mods ask, each field gets the largest request.
+- The larger arrays exist once level 11 is installed, so a mod must have added the level.
+- Without a request, HellForge installs level 11 exactly as before.
+- The fields from `important_locations` on came later than the first five. A mod built with a shorter struct keeps
+  working: HellForge reads and fills no more than the struct's `size`.
+- HellForge leaves those later lists where the game has them, with the game's places, unless a mod asks for more.
+  Each one moves by itself.
+- The game clears each route list and sizes its lookup tables by the capacity, so ask for what your map needs.
+
+To read the result, call it again later with `want` NULL and a `have` struct. `have.moved` is 1 when the game uses the
+capacities in `have`:
+
+```c
+HfGenerationCapacity have = {sizeof have};
+hf->generation_capacity(mod, NULL, &have);
+if (!have.moved || have.locations < 40000) return;   /* keep to what a level-11 map holds */
+```
+
+`have.regions` says where each array lies: its offset from the block's start (`at`) and the elements it holds
+(`places`). Read the offsets from it every session, because a request from any mod moves the arrays behind it. A list
+HellForge left alone reports the game's own offset.
+
+```c
+uint32_t b = have.regions[HF_GEN_LOCATIONS_B].at;            /* the locations' second array */
+uint32_t list = have.regions[HF_GEN_OBJECTIVE_LIST].at;      /* the objective list's row field; ids at +4 */
+uint32_t objectives = have.regions[HF_GEN_OBJECTIVE_LIST].places;
+```
+
+| Region | Element, bytes | Its capacity |
+|---|---|---|
+| `HF_GEN_LOCATIONS_A`, `HF_GEN_LOCATIONS_B` | 0xE0, 0x40 | `locations` |
+| `HF_GEN_LOCATION_TYPES` | 0x10 | 512 |
+| `HF_GEN_MINIMAP_PROXIES`, `_SHAPES`, `_U`, `_V` | 0x30, 0x58, 4, 4 | `minimap_proxies` x 1, 1/2, 1, 4 |
+| `HF_GEN_MISSION_STAMPS` | 0x10 | `mission_stamps` |
+| `HF_GEN_OBJECTIVE_LIST` | one record | 30 objectives |
+| `HF_GEN_PLACES`, `HF_GEN_PLACE_SET` | 8, 0x10 | `places`, `place_set` |
+| `HF_GEN_CLUSTERS` | 0xE0 | 32 |
+| `HF_GEN_IMPORTANT`, `HF_GEN_LINKED` | 0x108, 0x18 | `important_locations`, `linked_locations` |
+| `HF_GEN_ROUTE_NODES`, `_EDGES`, `_CLASSES`, `_POINTS` | 0x98, 0x48, 1, 8 | `route_nodes`, `route_edges` (twice), `route_points` |
+
+`have.size` says how much HellForge filled in. The regions are the last field, so a HellForge without them leaves
+them as you set them: zero the struct first and treat an `at` of 0 as unknown. `have.block_bytes` is the block's size.
+
+The game appends to these arrays without checking for room. Only `mission_stamps` is guarded: with a request, a stamp
+past the last place is left out, and `modloader.log` counts them. For the others, limit what your mod generates to
+what `have` reports.
 
 ## Reading and writing data
 

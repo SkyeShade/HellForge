@@ -31,6 +31,7 @@
  * unmeasured in game. Afterwards the lists are read as before; a stub's id check compares with a higher count. */
 
 #include "ownership.c" /* items made owned, and given back */
+#include "paid_guard_step.c" /* after ownership.c: paid items the backend refuses taken back */
 #include "loadout_scrub.c" /* the loadout without what a removed mod added */
 
 #define LC_MAX 1024 /* entries of any numbered kind HellForge has room for (weapons and entities grow: their tombs are Weapon.tomb) */
@@ -588,6 +589,15 @@ static uint8_t* LiveProjectileList(uintptr_t game, const char** failed)
     return g_projectileBlock != NULL && !SafeRead(game + PRJ_TABLE, g_projectileBlock, PRJ_VANILLA * 8) ? g_projectileBlock : NULL;
 }
 
+/* The co-op type field widened when the set passes 161, the type bounds raised to the new count. NULL, or why not. */
+static const char* LiveProjectileBounds(uintptr_t game)
+{
+    if (!ProjectileFieldFor(g_projectileCount, LivePut)) return "the projectile type's co-op field cannot widen";
+    const char* failed = g_projectileCount > g_lcBefore[LC_PROJECTILE] ? ProjectileRaise(game, PRJ_VANILLA + g_projectileCount, LivePut) : NULL;
+    if (failed == NULL) g_projectilesIn = g_projectileCount;
+    return failed;
+}
+
 static const char* LiveProjectiles(LivePlan* plan, char* why, size_t size)
 {
     const char* refused;
@@ -606,8 +616,7 @@ static const char* LiveProjectiles(LivePlan* plan, char* why, size_t size)
         LivePut((uintptr_t)table + p->type * 8, &p->row, 8);
     }
     if (g_projectileTable == NULL && (failed = ProjectileMove(plan->game, table, LivePut)) != NULL) return LiveFailed(why, size, "projectiles", failed);
-    if (g_projectileCount > g_lcBefore[LC_PROJECTILE] && (failed = ProjectileRaise(plan->game, PRJ_VANILLA + g_projectileCount, LivePut)) != NULL)
-        return LiveFailed(why, size, "projectiles", failed);
+    if ((failed = LiveProjectileBounds(plan->game)) != NULL) return LiveFailed(why, size, "projectiles", failed);
     if (g_projectileTable == NULL) plan->projectiles = table;
     return NULL;
 }
@@ -778,7 +787,7 @@ static void LiveContentStep(void* arg)
     if (plan->categories && !g_stratagemCategoriesActive) InstallStratagemCategories(plan->game);
     else if (g_stratagemCategoriesActive && g_stratagemCategoryCount > g_lcCategoriesBefore) OrderStratagemCategories();
     LiveRegistryStep(plan);
-    if (plan->scrubbing && g_livePlayers() <= 1 && ScrubReady(plan->game) == NULL) ScrubStep(plan->game, &plan->scrub);
+    if (plan->scrubbing && g_livePlayers() <= 1 && g_livePlayers() != EVP_LAYOUT && ScrubReady(plan->game) == NULL) ScrubStep(plan->game, &plan->scrub);
     else if (plan->scrubbing) plan->scrubFailed = 1;
     if (plan->items.count > 0) OwnBatchStep(&plan->items);
 }
@@ -919,7 +928,8 @@ static const char* LiveContentMake(char* why, size_t size, int* failed)
     LiveEditsFollow();
     *failed = !LiveSteps(&plan);
     WriteRegisteredItems();
-    Note("live content: %d write(s) under one freeze (%d page(s)); %d catalogue record(s) added, %d item(s) owned, %d given back", g_lcWriteCount,
-        g_lcPageCount, plan.items.added, plan.items.owned, plan.items.taken);
+    Note("live content: %d write(s) under one freeze (%d page(s)); %d catalogue record(s) added, %d item(s) owned, %d given back, %d not owned "
+        "(the player does not hold what it copies, or it is not in the catalogue)", g_lcWriteCount, g_lcPageCount, plan.items.added, plan.items.owned,
+        plan.items.taken, plan.items.unowned);
     return NULL;
 }

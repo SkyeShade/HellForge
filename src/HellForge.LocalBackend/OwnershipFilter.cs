@@ -17,7 +17,7 @@ namespace HellForge.LocalBackend;
 // Everything else passes through. Without a verified snapshot no paid item is served.
 // A profile that earns its warbonds (EarnWarbonds: every template but unlock-all) is not handed the premium warbond tokens
 // the account owns: it buys each one with Forge Credits (Purchases.WarbondToken), and only then is the warbond open.
-public sealed class OwnershipFilter
+public sealed partial class OwnershipFilter
 {
     readonly Dictionary<uint, JsonObject> owned = [];
     // Each premium warbond token's warbond's tokens: one priced in Super Credits, and most have one priced in another item.
@@ -100,11 +100,12 @@ public sealed class OwnershipFilter
 
     // The item catalogue as served: a premium warbond's token the live account does not own has no price, so the client
     // offers no purchase for it (its unlock looks for the token priced in Super Credits, game.dll 0x136C270) and nobody
-    // spends Forge Credits on a warbond they cannot have; Purchases refuses one anyway.
+    // spends Forge Credits on a warbond they cannot have; Purchases refuses one anyway. Its paid families are rebuilt from
+    // the compiled list first (PaidContentSet.Rebuilt), as the game reads ownership through their order.
     public JsonElement FilterCatalogueResponse(JsonElement catalogue)
     {
         if (catalogue.ValueKind != JsonValueKind.Array) return catalogue;
-        var node = JsonNode.Parse(catalogue.GetRawText())!.AsArray();
+        var node = Paid.Rebuilt(JsonNode.Parse(catalogue.GetRawText())!.AsArray());
         foreach (var item in node.OfType<JsonObject>())
             if (MixId(item) is { } id && Paid.WarbondTokens.Contains(id) && !Owns(id) && item["buyPrice"] is JsonArray { Count: > 0 })
                 item["buyPrice"] = new JsonArray();
@@ -116,7 +117,7 @@ public sealed class OwnershipFilter
     public JsonElement FilterProgressionResponse(JsonElement progressionSection, JsonElement inventorySection)
     {
         var held = Held(inventorySection);
-        var locked = Paid.Warbonds.Where(warbond => warbond.Tokens.Length > 0 && !warbond.Tokens.Any(t => Unlocked(t, held)))
+        var locked = Paid.Warbonds.Where(warbond => warbond.Id != HellForge.Core.PremiumContent.FreeWarbond && !warbond.Tokens.Any(t => Unlocked(t, held)))
             .SelectMany(warbond => warbond.Items.Select(item => item.ItemId)).ToHashSet();
         if (locked.Count == 0 || !progressionSection.TryGetProperty("purchasedSeasonPassItems", out var bought) || bought.ValueKind != JsonValueKind.Array)
             return progressionSection;

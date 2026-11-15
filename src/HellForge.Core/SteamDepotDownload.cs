@@ -31,6 +31,38 @@ public static class SteamDepotDownload
     public static IReadOnlyList<string> ContentFolders(string steamRoot, SupportedBuild build) =>
         [.. SteamAppsFolders(steamRoot).Select(folder => Path.Combine(folder, "content", "app_" + build.AppId))];
 
+    // Where the console card says the download goes, before any of it is there: the usual folder, and on Linux the one
+    // under the client's own folder, which the Linux Steam client often uses instead of the usual one.
+    public static IReadOnlyList<string> ExpectedContentFolders(string steamRoot, SupportedBuild build, bool linux) =>
+        linux ? [.. ContentFolders(steamRoot, build).Take(2)] : [ContentFolder(steamRoot, build)];
+
+    // The content folders Steam has put something of the build's depots in: for each depot the folder setup reads
+    // (DepotFolder's choice), or another that holds something when that one is empty. A depot folder with nothing in it
+    // is not a download: an earlier one leaves such folders behind (GitHub issue 112). Empty before Steam has written.
+    public static IReadOnlyList<string> DownloadFolders(string steamRoot, SupportedBuild build)
+    {
+        static bool Holds(string folder) => Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any();
+        return [.. build.Depots.Select(depot =>
+        {
+            var chosen = DepotFolder(steamRoot, build, depot.Id);
+            return Holds(chosen) ? chosen
+                : ContentFolders(steamRoot, build).Select(folder => Path.Combine(folder, "depot_" + depot.Id)).FirstOrDefault(Holds);
+        }).Where(folder => folder != null).Select(folder => Path.GetDirectoryName(folder)!).Distinct()];
+    }
+
+    // The console card's words for where Steam downloads to. The Linux client often downloads under its own folder, not
+    // where the Windows client does, so both are named; FoundText names the real one once it exists.
+    public static string TargetText(string steamRoot, SupportedBuild build, bool linux)
+    {
+        var folders = ExpectedContentFolders(steamRoot, build, linux);
+        return folders.Count == 1 ? folders[0]
+            : $"{folders[1]} or {folders[0]}, usually (the progress below names the folder once Steam has written to it)";
+    }
+
+    // The line under the depots' progress that names the folders Steam is really downloading into.
+    public static string FoundText(IReadOnlyList<string> folders) =>
+        folders.Count == 0 ? "" : "\nSteam's download is in " + string.Join(" and ", folders);
+
     // The depot's folder: of the places Steam may have put it, the one holding most of it (the first on a tie), else the
     // usual one (while nothing is there yet). An empty depot folder left by an earlier download must not hide the real
     // one under a client folder (GitHub issue 112; the same as linux-native's #181).
@@ -51,6 +83,15 @@ public static class SteamDepotDownload
             var info = new FileInfo(Path.Combine(folder, file.Path));
             return info.Exists ? Math.Min(info.Length, file.Size) : 0;
         });
+
+    // What the console card adds when the drive that holds Steam cannot take the rest of the download (it goes there,
+    // not where HellForge is installed). Null when there is room or the free space cannot be read.
+    public static string? SpaceNote(DiskSpaceInfo steamDrive, long missingBytes, bool otherWays) =>
+        steamDrive.FreeBytes is { } free && missingBytes > 0 && free < missingBytes + DiskSpace.Margin
+            ? $"The drive with Steam ({steamDrive.Name}) has {free / 1e9:0.0} GB free, and this download needs " +
+              $"{missingBytes / 1e9:0.0} GB there." +
+              (otherWays ? " Choose another way to download straight into this installation's folder instead." : "")
+            : null;
 
     public static IReadOnlyList<string> Commands(SupportedBuild build) =>
         [.. build.Depots.Select(depot => $"download_depot {build.AppId} {depot.Id} {depot.ManifestId}")];

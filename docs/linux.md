@@ -23,12 +23,14 @@ over from it. The scripts are in `linux/` (in an installation: `app/linux/`).
 - Steam for Linux, running and signed in to an account that owns HELLDIVERS 2, with at least one Proton installed.
   HELLDIVERS 2 itself does not need to be installed. Setup gets the supported build from Steam's installed copy, its
   depot download, or a build patch applied to a newer installed copy.
-- About 50 GB of free space while setting up. Steam's download of the supported build and HellForge's copy of the game
-  are about 24 GB each. Setup deletes the download after copying unless you untick that. A build patch needs about 2 GB
-  more while it is applied.
+- About 24 GB of free space for HellForge's copy of the game. The Steam app's download of the supported build, when
+  setup uses that way, needs about 24 GB more on the drive that holds Steam. Setup deletes the download after copying
+  unless you untick that. A build patch needs about 2 GB more while it is applied.
 - The `HellForge-Linux-Installer` artifact from a successful **Build Linux package** run. It contains the native
   launcher and `HellForge-Linux.zip`, which holds the app and no game files. The same run's `HellForge-Linux-package`
   artifact also contains `HellForge-Setup.exe` for Windows; Linux players do not run it.
+  `HellForge-Linux-Installer-zip` is the same installer as a zip with no archive inside it, for sites such as Nexus Mods
+  that refuse one. It holds the package as a `HellForge-Linux` folder and the engine package as a folder.
 - The programs below.
 
 ### Programs
@@ -94,10 +96,12 @@ missing or does not match the supported build.
 
 1. Download the `HellForge-Linux-Installer` artifact from the successful Actions run.
 2. Extract its downloaded ZIP with your desktop's archive manager. Extract the resulting
-   `HellForge-Linux-Installer.tar.gz` with the archive manager too.
+   `HellForge-Linux-Installer.tar.gz` with the archive manager too. `HellForge-Linux-Installer.zip` needs one
+   extraction.
 3. Open the extracted folder and launch `HellForge.Launcher`. If your desktop asks, choose **Run** or **Allow executing
    file as program**.
-4. Choose a Proton version and a prefix folder. The default prefix is `~/.local/share/hellforge-prefix`.
+4. Choose a Proton version and a prefix folder. The default prefix is `~/.local/share/hellforge-prefix`. A folder
+   inside a Steam library's `steamapps`, such as a Proton version's own folder, is refused.
 
 The installer reads Steam's folders and lists the Proton versions installed there:
 
@@ -116,8 +120,10 @@ The installer then:
 2. Runs `proton run wineboot -u` (three minutes at most) when the prefix has no HellForge launcher yet. Only when the
    folder did not exist or was empty, it writes a `.hellforge-created` marker that uninstall later uses for its prefix
    offer.
-3. Extracts the app into `<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`.
-4. Installs the engine package from `app/engine-package.zip`.
+3. Extracts the app from `HellForge-Linux.zip`, or copies it from the `HellForge-Linux` folder, into
+   `<prefix>/pfx/drive_c/users/steamuser/Documents/HellForge`. The zip is used when both are beside the installer.
+4. Installs the engine package from `app/engine-package.zip`. A `HellForge-Linux` folder carries it as
+   `app/engine-package/`, which the installer zips back into that file first.
 5. Saves the Proton and Steam folder choices and starts the native launcher. The setup wizard starts automatically while
    the game copy is incomplete.
 
@@ -125,9 +131,10 @@ It refuses a package that is missing any of these entries:
 
 | Entries the package must have |
 |---|
-| `app/app-build.json`, `app/engine-package.zip`, the native launcher |
+| `app/app-build.json`, `app/engine-package.zip` (or `app/engine-package/engine.json`), the native launcher |
 | `app/capture-linux/HellForge.CaptureProxy`, `app/backend-linux/HellForge.LocalBackend` |
 | `app/linux/hellforge-linux.sh`, `app/linux/hf-steam.sh`, `app/linux/hf-container.sh`, `app/linux/hf-wineserver.sh` |
+| `app/linux/hf-relays.sh`, `app/linux/hf-coop-relays.sh` |
 | `app/linux/hf-sandbox-probe`, `app/linux/hf-sandbox` |
 | `app/linux/allow-capture.sh`, `app/linux/capture-helper.sh`, `app/linux/capture-relay` |
 
@@ -153,16 +160,19 @@ profiles and mods stay in that prefix.
 A link above the prefix also works, for example `ln -s /mnt/games/hellforge-prefix ~/.local/share/hellforge-prefix`. A
 link above the folder HellForge protects is resolved and the real folder is used. These are refused:
 
+- A prefix folder inside any `steamapps` folder, with "Choose a prefix folder outside Steam's steamapps folders".
+  Steam checks, updates and deletes what is in there. A folder at the top of the same drive, beside `steamapps`, works.
+  An installation that already runs in such a prefix is still updated.
 - A link at the installation folder or inside it, with `Linked/reparse paths are not supported: <path>`. A game copy
   written through it could land somewhere else. The same rule covers the game folder and every Steam library HellForge
   reads.
 - For the sandbox self-test, `/run`, because the sandbox gives the game its own private `/run`. The exception is a drive
   your desktop mounted under `/run/media/<user>/<drive>` (KDE, GNOME, SteamOS), which works, sandbox included.
 
-The supported build's copy is 23.8 GB (about 24 GB). A first setup that copies from Steam's download needs room for that
-download too, about another 24 GB, unless setup can use an installed game or a build patch. Allow at least 50 GB free on
-the prefix's drive for a first setup from Steam's download. A prefix backup is about the size of the prefix. Its default
-folder is `hellforge-backups` beside the prefix, on the same drive; choose another folder with **Choose folder**.
+The supported build's copy is 23.8 GB (about 24 GB). The QR code's and SteamCMD's downloads go straight into it. The
+Steam app's download needs about another 24 GB on the drive that holds Steam. Allow at least 50 GB free for that way
+when the prefix and Steam share a drive. A prefix backup is about the size of the prefix. Its default folder is
+`hellforge-backups` beside the prefix, on the same drive; choose another folder with **Choose folder**.
 
 What stays in the home is small: `~/Desktop/HellForge.desktop`, the shortcut setup writes (a few hundred bytes). The
 launcher, game copy, logs, profiles, mods, temporary files and backups are in the prefix. HellForge does not write
@@ -186,7 +196,8 @@ The wizard runs natively. In order, it:
    1. the installation's own copy, if every file matches the supported build;
    2. Steam's installed copy, if it is the supported build;
    3. Steam's completed `download_depot` download;
-   4. otherwise, [Steam's download of the supported build](#steams-download-of-the-supported-build).
+   4. otherwise, it gets the build from Steam now, before the next step
+      ([Steam's download of the supported build](#steams-download-of-the-supported-build)).
 6. Confirms ownership through the selected Proton ([below](#the-ownership-check)).
 7. Prepares the optional mod tools through the wrapper. These are the pinned native Linux Zig (about 55 MB, a `.tar.xz`
    from ziglang.org) that compiles source mods, and the pinned Windows Zig (about 90 MB) for an installation that is
@@ -211,7 +222,15 @@ session. The probe writes `logs/setup-ownership.json`, and that report decides. 
 
 ### Steam's download of the supported build
 
-When setup needs the download, it shows a card with one `download_depot 553850 <depot> <manifest>` command per depot.
+When setup needs the download, it shows the card Get the supported build from Steam, with the same three ways as on
+Windows ([steam-download.md](steam-download.md#on-linux)):
+
+- **Scan a QR code with your phone** (the default) and **No phone: sign in with SteamCMD** download straight into the
+  installation. SteamCMD runs in a terminal window, and is offered only when setup finds a terminal window program.
+- **Use the Steam app** downloads onto the drive that holds Steam, and setup copies from there. The card says when that
+  drive is too full. Its steps follow.
+
+The Steam app's card has one `download_depot 553850 <depot> <manifest>` command per depot.
 
 1. Press **Open the Steam console**, or run `xdg-open steam://open/console`.
 2. Paste each command into the console and press Enter, one at a time.
@@ -221,16 +240,19 @@ When setup needs the download, it shows a card with one `download_depot 553850 <
 When five or fewer files remain, the wizard names them. A file larger than this build's is another build's file, so
 delete it and run that depot's command again.
 
-The Linux Steam client puts what `download_depot` downloads in `<Steam>/steamapps/content/app_553850/`. It can also be
-in the same path under `<Steam>/ubuntu12_32/`, `<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, because Steam downloads
-relative to the folder its program runs from. The native setup reads these locations directly and does not move the
-depot folders:
+The Linux Steam client downloads relative to the folder its program runs from. So `download_depot` often writes to
+`<Steam>/ubuntu12_32/steamapps/content/app_553850/` (a Steam Deck does), and sometimes to the same path under
+`<Steam>/ubuntu12_64/` or `<Steam>/steamrt64/`, or to `<Steam>/steamapps/content/app_553850/`. Setup's card names the
+first and the last before the download, and the folder it found once Steam has written to it. The native setup reads these
+locations directly and does not move the depot folders:
 
 ```text
-<Steam>/steamapps/content/app_553850/depot_553851/
-<Steam>/steamapps/content/app_553850/depot_553853/
-<Steam>/steamapps/content/app_553850/depot_553854/
+<Steam>/ubuntu12_32/steamapps/content/app_553850/depot_553851/
+<Steam>/ubuntu12_32/steamapps/content/app_553850/depot_553853/
+<Steam>/ubuntu12_32/steamapps/content/app_553850/depot_553854/
 ```
+
+The download needs about 24 GB on the drive that holds the Steam folder, wherever HellForge is installed.
 
 The download can remain in Steam's folder, or setup can delete it. **Delete Steam's download after copying** is ticked by
 default. It removes the build's depot folders from the content locations, and each `app_553850` folder when it becomes
@@ -422,8 +444,11 @@ what it installs. After the installer exits, the launcher continues the same syn
 - If `pkexec` is missing or no polkit authentication agent is running (Game Mode on a Deck, a bare window manager), the
   launcher shows the terminal command instead.
 - SteamOS 3.x users without a password are told to run `passwd` first.
-- A package update that changes either shipped file makes the next sync offer the same install again.
-- `allow-capture.sh --remove` removes the rule, the helper, the relay and both hashes. Uninstall offers the same
+- A package update that changes the shipped helper, relay or capture makes the next sync offer the same install again.
+- Premium content needs systemd: the snapshot signer runs as a systemd service
+  ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)).
+- So does a sudo that still asks for a password for the helper, as on SteamOS with a rule from an earlier version.
+- `allow-capture.sh --remove` removes the rule, the helper, the relay, the capture copy, the hashes and the signer's keys. Uninstall offers the same
   `--remove` through pkexec.
 
 ### During and after a sync
@@ -446,6 +471,9 @@ If a sync was killed before it could clean up, start HellForge and press **Clean
 ```fish
 sudo /usr/local/lib/hellforge/capture-helper cleanup
 ```
+
+On SteamOS the helper is `/opt/hellforge/capture-helper`
+([the helper folder](linux-account-sync.md#the-root-owned-helper)).
 
 The launcher checks `/etc/hosts` for the marker on every start and, when the game is not running, runs that cleanup at
 startup. If it fails, the card offers **Clean up**. The CA record is under `logs/sync-*/capture-ca.json`. **Clean up**

@@ -86,7 +86,12 @@ public partial class MainWindow
         ImportBox.IsVisible = Directory.Exists(Path.Combine(EarlierGameData, "profiles")) || File.Exists(Path.Combine(EarlierGameData, "user_settings.config"));
         InstallCard.IsVisible = true;
         InstallText.Text = $"{Privacy.Scrub(install.Root)}  ·  HELLDIVERS 2 build {SupportedBuild.Current.BuildId}";
-        if (!SupportedBuild.Current.IsComplete(install.Game)) EnterSetup(repair: false);
+        // A session cut short (a restart, a crash, a game that would not close) leaves the SDK stand-ins in game/bin, a
+        // different size from the build's DLLs: their originals go back before the copy is judged, as on Linux.
+        string? recoveryError = null;
+        try { SdkShimRecovery.Recover(install); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { recoveryError = error.Message; }
+        if (SupportedBuild.Current.FirstCompletenessProblem(install.Game) is { } problem) EnterSetupFor(install, problem, recoveryError);
     }
 
     void EnterSetup(bool repair, string? reason = null)
@@ -143,7 +148,8 @@ public partial class MainWindow
 
     // The game found for setup: the supported build, Steam's root, Steam's installed game (or null), whether Steam's
     // console download holds it, and whether setup downloads it from Steam's servers (copying what Game holds).
-    sealed record SetupSource(SupportedBuild Build, string SteamRoot, SteamGame? Game, bool FromDepots, bool FromSteamServers);
+    // Existing: this installation's own copy already verifies, so nothing is copied.
+    sealed record SetupSource(SupportedBuild Build, string SteamRoot, SteamGame? Game, bool FromDepots, bool FromSteamServers, bool Existing = false);
 
     async Task RunSetup()
     {
@@ -171,7 +177,8 @@ public partial class MainWindow
             var steamApi = SteamApiPath(install, found);
             step = SetupStep.Ownership;
             await OwnershipStep(install, steamApi);
-            if (!found.FromSteamServers) { step = SetupStep.Copy; await CopyStep(install, found); }
+            if (found.Existing) SetRow(SetupStep.Copy, true, $"Nothing to copy: the game copy is build {found.Build.BuildId}, every file verified.");
+            else if (!found.FromSteamServers) { step = SetupStep.Copy; await CopyStep(install, found); }
             step = SetupStep.NetworkBlock;
             await NetworkBlockStep(install);
             step = SetupStep.Import;
@@ -214,8 +221,10 @@ public partial class MainWindow
 
     // What Linux setup found for the copy: the supported build, Steam's root, whether this installation's own copy or
     // Steam's depot download already holds it, and the copy's source folder and steam_api64.dll for the ownership check.
+    // Download: nothing holds the build yet, so setup gets it from Steam first (Steam's installed game of another build,
+    // if any, to copy what it shares). Downloaded: the copy row's words once that download is in the installation.
     sealed record LinuxSetupSource(SupportedBuild Build, string SteamRoot, bool ExistingGame, bool FromDepots, string? Source,
-        string? SteamApi);
+        string? SteamApi, SetupSource? Download = null, string? Downloaded = null);
 
     // Confirms Steam ownership with the probe through the selected Proton version. The evidence file decides; a failed
     // check throws SetupStopped with the probe's reason.
@@ -272,6 +281,15 @@ public partial class MainWindow
         var (steamRoot, wrapper, probe) = await CheckLinuxSetupFilesWithProbe(install, proton);
         var build = SupportedBuild.Current;
         var game = await FindLinuxGame(install, steamRoot, build);
+        // As on Windows, a download from Steam comes first: the ownership check needs the supported build's
+        // steam_api64.dll. It goes straight into this installation, so the drive with Steam needs no room for it.
+        if (game.Download is { } download)
+        {
+            SetStep(SetupStep.Copy);
+            var copied = await SteamDownloadStep(install, download);
+            game = game with { ExistingGame = true, Download = null, Downloaded = copied,
+                SteamApi = Path.Combine(install.Game, "bin", "steam_api64.dll") };
+        }
 
         SetStep(SetupStep.Ownership);
         await CheckLinuxOwnership(install, proton, wrapper, probe, game);
@@ -319,8 +337,11 @@ public partial class MainWindow
         return (steamRoot, wrapper, probe);
     }
 
+    // Whether this launcher has already looked at Steam's own download once; after that the way is the player's choice.
+    bool linuxDownloadSeen;
+
     // Finds the game Linux setup copies from: this installation's verified copy, Steam's installed supported build or
-    // Steam's depot download. Offers Steam's download (throwing SetupWaiting) when none is usable.
+    // Steam's depot download. When none is usable, the source says to get the build from Steam first.
     async Task<LinuxSetupSource> FindLinuxGame(InstallLayout install, string steamRoot, SupportedBuild build)
     {
         SetRow(SetupStep.Find, null, "Checking the existing HellForge game folder...", running: true);
@@ -329,7 +350,7 @@ public partial class MainWindow
         {
             throw new SetupStopped("The SDK stand-ins left by an interrupted session could not be restored: " + error.Message);
         }
-        var audit = GameDataAudit.Quarantine(install, build);
+        var audit = GameDataAudit.Quarantine(install, build, downloading: true);
         if (audit.Problems.Count > 0)
             throw new SetupStopped("The game copy has a data file that cannot be used: " + audit.Problems[0]);
         if (audit.Extras.Count > 0)
@@ -344,7 +365,7 @@ public partial class MainWindow
         return await FindLinuxSteamGame(install, steamRoot, build);
     }
 
-    // Steam's installed build or its depot download, for the copy, in Windows setup's order; offers Steam's download when none is usable. Returns the source and the steam_api64.dll the ownership check uses.
+    // Steam's installed build or its depot download, for the copy, in Windows setup's order; a download from Steam when none is usable. Returns the source and the steam_api64.dll the ownership check uses.
     async Task<LinuxSetupSource> FindLinuxSteamGame(InstallLayout install, string steamRoot, SupportedBuild build)
     {
         SteamGame? game;
@@ -369,10 +390,14 @@ public partial class MainWindow
                 return new(build, steamRoot, false, true, null, steamApi);
             }
             default:
-                var have = game == null
-                    ? unusable == null ? "no supported game build" : "an unusable HELLDIVERS 2 installation"
-                    : $"unsupported HELLDIVERS 2 build {game.Report.Pin.BuildId}";
-                throw OfferDownload(steamRoot, game, unusable, build, have);
+                // A download the Steam app has already begun is carried on with, not left for the QR code.
+                if (!linuxDownloadSeen && await Task.Run(() => SteamDepotDownload.Status(steamRoot, build).Sum(depot => depot.Done)) > 0)
+                    downloadChoice = DownloadChoice.SteamClient;
+                linuxDownloadSeen = true;
+                SetRow(SetupStep.Find, true, game != null
+                    ? $"Build {game.Report.Pin.BuildId} in {game.Report.Source}. Steam sends build {build.BuildId} for your account; what your install already has is copied, not downloaded."
+                    : $"No HELLDIVERS 2 setup can copy from{(unusable == null ? "" : " (" + unusable + ")")}. Steam sends build {build.BuildId} (about {build.TotalBytes / 1e9:0} GB) for your account.");
+                return new(build, steamRoot, false, false, null, null, new SetupSource(build, steamRoot, game, false, true));
         }
     }
 
@@ -382,7 +407,8 @@ public partial class MainWindow
     {
         var build = game.Build;
         string copied;
-        if (game.ExistingGame)
+        if (game.Downloaded != null) copied = game.Downloaded;
+        else if (game.ExistingGame)
             copied = $"{build.Files.Count} existing files ({build.TotalBytes / 1e9:0.0} GB) verified against Steam's hashes; no download or copy needed.";
         else
         {
@@ -499,6 +525,11 @@ public partial class MainWindow
         SetRow(SetupStep.Find, null, "Looking in your Steam libraries...", running: true);
         var build = SupportedBuild.Current;
         var steamRoot = SteamLocator.SteamRoot(install) ?? throw new SetupStopped("Steam is not installed on this PC. Install Steam and HELLDIVERS 2, then start setup again.");
+        if (await ExistingCopyVerifies(install, build))
+        {
+            SetRow(SetupStep.Find, true, $"Build {build.BuildId}, already verified in {Privacy.Scrub(install.Game)}");
+            return new(build, steamRoot, null, false, false, Existing: true);
+        }
         SteamGame? game;
         string? unusable = null;
         try { game = await Task.Run(() => SteamLocator.FindGame(steamRoot)); }
@@ -529,25 +560,14 @@ public partial class MainWindow
         return new(build, steamRoot, game, false, true);
     }
 
-    // Offers Steam's download of the supported build and returns the stop that waits for it (thrown by the caller), on
-    // Linux's own setup. Have names what Steam has, when the caller says it in its own words.
-    SetupWaiting OfferDownload(string steamRoot, SteamGame? game, string? unusable, SupportedBuild build, string? have = null)
-    {
-        have ??= game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
-            : unusable != null ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2";
-        ShowDownload(steamRoot, have);
-        return new SetupWaiting($"Steam has {have}, but this version of HellForge needs build {build.BuildId}. Steam can download that exact " +
-            "build for your account: follow the steps below. Setup continues by itself when the download is complete.");
-    }
-
     // What Steam has, in the console card's words.
     static string SteamHas(SteamGame? game, string? unusable = null) => game != null ? $"HELLDIVERS 2 build {game.Report.Pin.BuildId}"
-        : unusable != null && LinuxNetworkBlock.UnderWine ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2 setup can copy from";
+        : unusable != null && LinuxNetworkBlock.UnderWine ? "a HELLDIVERS 2 setup cannot read from inside Wine" : "no HELLDIVERS 2 that setup can copy from";
 
     // Gets the supported build into the installation the way the player chooses on the card (SteamSignInFlow), on the copy
     // step's row. A full drive asks for space; a refused or failed download shows the Steam app's console download.
     // Files already written are kept.
-    async Task SteamDownloadStep(InstallLayout install, SetupSource found)
+    async Task<string> SteamDownloadStep(InstallLayout install, SetupSource found)
     {
         var build = found.Build;
         // Only the screen order changes: each step keeps its own row (setupRows by step), so the download's progress
@@ -567,7 +587,9 @@ public partial class MainWindow
         SetupPauseButton.IsVisible = true;
         try
         {
-            SetRow(SetupStep.Copy, true, await GetBuildFromSteam(install, found, token));
+            var copied = await GetBuildFromSteam(install, found, token);
+            SetRow(SetupStep.Copy, true, copied);
+            return copied;
         }
         catch (SteamAppChosen)
         {
@@ -584,7 +606,7 @@ public partial class MainWindow
     }
 
     // The steam_api64.dll the ownership check uses: the downloaded copy, Steam's depot download, or the installed game.
-    static string SteamApiPath(InstallLayout install, SetupSource found) => found.FromSteamServers
+    static string SteamApiPath(InstallLayout install, SetupSource found) => found.FromSteamServers || found.Existing
         ? Path.Combine(install.Game, "bin", "steam_api64.dll")
         : found.FromDepots
             ? SteamDepotDownload.Locate(found.SteamRoot, found.Build, found.Build.Files.Single(f => f.Path == "bin/steam_api64.dll"))
@@ -771,10 +793,10 @@ public partial class MainWindow
         SignInCard.IsVisible = true;
         DownloadIntro.Text = $"Steam has {have}; this version of HellForge runs build {build.BuildId}. Steam can still download that exact build " +
             "for your account. Open the Steam console, paste each command below and press Enter, one at a time. Steam then downloads about " +
-            $"{build.TotalBytes / 1e9:0} GB into {SteamDepotDownload.ContentFolder(steamRoot, build)} (your normal game is not touched). " +
+            $"{build.TotalBytes / 1e9:0} GB into {SteamDepotDownload.TargetText(steamRoot, build, OperatingSystem.IsLinux() || LinuxNetworkBlock.UnderWine)} (your normal game is not touched). " +
             "Steam shows no progress in its library for this; the bar below does.";
         if (OperatingSystem.IsLinux())
-            DownloadIntro.Text += " Native Linux setup reads the Steam download directly from this folder; there is no move into the Proton prefix.";
+            DownloadIntro.Text += " Native Linux setup reads the Steam download directly from where Steam puts it; there is no move into the Proton prefix.";
         DownloadCommands.Children.Clear();
         foreach (var command in SteamDepotDownload.Commands(build))
         {
@@ -791,6 +813,7 @@ public partial class MainWindow
             row.Children.Add(text);
             DownloadCommands.Children.Add(row);
         }
+        _ = ShowDownloadSpace(steamRoot, DownloadIntro.Text);
         downloadTimer ??= new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, async (_, _) => await CheckDownload());
         downloadTimer.Start();
         _ = CheckDownload();
@@ -805,8 +828,10 @@ public partial class MainWindow
         try
         {
             var root = downloadSteamRoot;
-            var states = await Task.Run(() => SteamDepotDownload.Status(root, SupportedBuild.Current));
+            var (states, folders) = await Task.Run(() => (SteamDepotDownload.Status(root, SupportedBuild.Current),
+                SteamDepotDownload.DownloadFolders(root, SupportedBuild.Current)));
             ShowDepotProgress(states, "Steam");
+            CopyText.Text += SteamDepotDownload.FoundText(folders);
             if (states.All(s => s.Complete))
             {
                 downloadTimer?.Stop();
@@ -832,6 +857,20 @@ public partial class MainWindow
             CopyText.Text += "\nWaiting for " + string.Join(", ", left.Select(f => f.Path + (f.Have < 0 ? " (not there yet)"
                 : f.Have > f.Size ? $" ({f.Have:N0} bytes, larger than this build's {f.Size:N0}: another build's file; delete it and run the download_depot command again)"
                 : $" ({f.Have:N0} of {f.Size:N0} bytes)")));
+    }
+
+    // The Steam app downloads onto the drive that holds Steam, wherever this installation is: when that drive is too
+    // full, the card says so and points at the ways that download straight into this folder.
+    async Task ShowDownloadSpace(string steamRoot, string intro)
+    {
+        try
+        {
+            var build = SupportedBuild.Current;
+            var note = await Task.Run(() => SteamDepotDownload.SpaceNote(DiskSpace.ForFolder(steamRoot),
+                build.TotalBytes - SteamDepotDownload.Status(steamRoot, build).Sum(depot => depot.Done), OfferedChoices.Count > 1));
+            if (note != null && DownloadIntro.Text == intro) DownloadIntro.Text = intro + " " + note;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
     }
 
     void OpenSteamConsole()

@@ -153,6 +153,7 @@ static int g_difficultyAttempts;   /* InstallDifficulty's polls, for the decode 
 static uint8_t* g_difficultyTable;
 static uintptr_t g_difficultyGame;
 static uint32_t g_objectivePlaces = 16;  /* the objective list's places: 30 once moved */
+static int g_generationAsked; /* a mod asked for room in the generation block (difficulty_block.c) */
 static volatile LONG g_secondPrimaries, g_secondPrimaryMisses;
 
 static int LargerMaps(void) { return g_difficulty.mapScale > 1.0f; }  /* a map_scale above 1 */
@@ -443,7 +444,8 @@ static int DifficultyNeedsBlockOf(const Difficulty* d)
 {
     return d->mapScale > 1.0f || d->optional != 0 || d->major != 0 || (d->flags & (HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_RADAR));
 }
-static int DifficultyNeedsBlock(void) { return DifficultyNeedsBlockOf(&g_difficulty); }
+/* A mod's request for room needs the moved block too; a level added live keeps to what it had (the block exists). */
+static int DifficultyNeedsBlock(void) { return DifficultyNeedsBlockOf(&g_difficulty) || (g_generationAsked && !g_difficultyLive); }
 
 static int32_t DifficultyDisplacement(uintptr_t table, uintptr_t game, const DifficultySite* s)
 {

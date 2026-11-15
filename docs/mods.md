@@ -77,8 +77,8 @@ cosmetic packs, Lua mods and mods that say they are not gameplay mods; friends n
   not marked: the next session unpacks Zig again and builds the mod.
 - PREMIUM marks a mod built on Arrowhead's premium content (a premium warbond, Superstore items, a Steam DLC). What it
   adds is yours only when you bought that content in the normal game and synced it (Profile > Account sync). PREMIUM:
-  LOCKED means the selected profile's synced account lacks it: the mod loads, but its weapons and stratagems stay
-  locked, and a cosmetic one is not loaded. Its details say what is missing.
+  LOCKED means the selected profile's synced account lacks it: the mod loads, but its weapons, stratagems, patterns
+  and attachments stay locked, and a cosmetic one is not loaded. Its details say what is missing.
 - A pack's details let you switch its options on and off (or All on, All off) and pick their variants.
 - Mod notices, at the top in red, say why a mod could not be loaded.
 - The modlist code friends must match is at the bottom of the page.

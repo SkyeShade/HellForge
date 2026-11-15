@@ -257,9 +257,9 @@ int wmain(int argc, wchar_t** argv)
     typedef uint64_t (*CreateLobbyFn)(void*, int, int);
     CreateLobbyFn createLobby = (CreateLobbyFn)SLOT(matchmaking, SteamMatchMaking009_CreateLobby);
     EXPECT(createLobby(matchmaking, 1, 9) == 0 && fake->createLobbyMax == 0 && g_bridge.pendingCount == 0,
-        "CreateLobby for 9 members is refused (table: 1-4), before the broker's own rule sees it");
-    uint64_t call = createLobby(matchmaking, 2, 4);
-    EXPECT(call == 5005 && fake->createLobbyMax == 4, "CreateLobby returns its SteamAPICall_t");
+        "CreateLobby for 9 members is refused (table: 1-8), before the broker's own rule sees it");
+    uint64_t call = createLobby(matchmaking, 2, 8);
+    EXPECT(call == 5005 && fake->createLobbyMax == 8, "CreateLobby for 8 members returns its SteamAPICall_t");
     EXPECT(fake->createLobbyType == 1, "Play with strangers off: the game's Public lobby (2) is made Friends only (1)");
     FakeCallback created = { g_callbackVtable, 0, { 0 }, 513, 16, 0, { 0 }, false, 0 };
     EXPORT(RegisterResultFn, "SteamAPI_RegisterCallResult")(&created, call);

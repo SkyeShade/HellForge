@@ -421,7 +421,8 @@ try
             var code = active.Where(m => m.NeedsLoader).ToList();
             if (options.TryGetValue("--plan", out var planPath))
                 File.WriteAllText(planPath, ModLoaderPlan.Text(code, Path.GetFullPath(Required("--logs")), EntityProfile.Current, SupportedBuild.Current.BuildId,
-                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance, modWarbonds));
+                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance, modWarbonds,
+                    modInstall.BackendPort));
             // The gameplay mods with their content hashes, for the backend (mod sync: joiners whose mods differ get it), and
             // the digest's mods one by one (ModlistDiff's wire form), so a refused co-op join can say which differ.
             var modSet = ModSet.Of(active);

@@ -47,9 +47,14 @@ static class GameCatalogTests
             var app = Directory.CreateDirectory(Path.Combine(install, "app")).FullName;
             File.Copy(Pinned(Path.Combine(root, "catalogue-install-source")), Path.Combine(app, GameCatalog.PinnedFile));
             check(GameCatalog.Ensure(install) == GameCatalog.SyncFirst, "An installation without a sync was ready.");
+            // What the launcher asks before PLAY starts anything: the same answer, read only.
+            check(GameCatalog.Missing(install) && !Directory.Exists(GameCatalog.Directory(install)),
+                "An installation without a sync was not reported as missing its catalogue, or the check wrote something.");
             GameCatalog.Install(install, Captured(Path.Combine(root, "catalogue-install-capture")), DateTime.UtcNow);
+            check(!GameCatalog.Missing(install), "A synced installation was reported as missing its catalogue.");
             check(GameCatalog.Ensure(install) == null && File.Exists(GameCatalog.ProgressionData(install)) && File.Exists(GameCatalog.ItemCatalog(install)),
                 "An installed catalogue was not assembled.");
+            check(!GameCatalog.Missing(install), "An assembled catalogue was reported as missing.");
             check(File.Exists(Path.Combine(GameCatalog.CapturedDirectory(install), GameCatalog.CapturedStampFile)), "The capture's time was not kept.");
             // An update with new pinned ids reassembles: a pinned file newer than the assembled one.
             var pinned = JsonNode.Parse(File.ReadAllText(Path.Combine(app, GameCatalog.PinnedFile)))!.AsObject();

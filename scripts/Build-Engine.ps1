@@ -5,7 +5,8 @@
 #   sdk-shims/   the PlayFab SDK stand-ins (PartyWin.dll, PlayFabMultiplayerWin.dll), the steam_api64.dll stand-in, its bridge
 #                build and the Steam broker for low-integrity sessions (steam_api64_bridge.dll, hellforge_steam_broker.exe,
 #                docs/steam-bridge.md; only with the Steamworks SDK, -SteamSdk), the mod loader
-#                (hellforge_modloader.dll, with MinHook 1.3.4: BSD-2, MinHook-LICENSE.txt) and build.json (their pins)
+#                (hellforge_modloader.dll, with MinHook 1.3.4: BSD-2, MinHook-LICENSE.txt), its overlay host
+#                (hellforge_overlay.dll, scripts/Build-Overlay.ps1, with Dear ImGui: MIT, imgui-LICENSE.txt) and build.json (pins)
 #   scripts/     the network block (Windows Firewall rules) and Steam ownership check, readable as they run
 #   engine.json  the version, the game build and every file's SHA-256; LICENSE (GPL-3.0) and LICENSE-EXCEPTION
 # Built in this repository, against its Core library, mod SDK headers and mappings (the loader's field table is
@@ -161,15 +162,18 @@ foreach($dll in @(
     (Join-Path $minHook 'src/trampoline.c') (Join-Path $minHook 'src/hde/hde64.c') -o (Join-Path $out 'hellforge_modloader.dll')
 if($LASTEXITCODE){throw 'Compiling hellforge_modloader.dll failed.'}
 Copy-Item -LiteralPath (Join-Path $minHook 'LICENSE.txt') -Destination (Join-Path $out 'MinHook-LICENSE.txt')
+# The overlay host the loader loads from its own folder for SDK 17 screens (docs/modding/overlay.md), with ImGui's licence.
+& (Join-Path $PSScriptRoot 'Build-Overlay.ps1')|Out-Null
+foreach($name in @('hellforge_overlay.dll','imgui-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $project ('artifacts/overlay/'+$name)) -Destination $out}
 $cloudSource=Join-Path $project 'native/steam-cloud/steam_cloud.c'
 if($SteamExports){
     Invoke-Generator forward-manifest $SteamExports steam_api64_hellforge $cloudSource (Join-Path $gen 'steam_api64.def')
 }else{
     Invoke-Generator forward $SteamApi steam_api64_hellforge $cloudSource (Join-Path $gen 'steam_api64.def')
 }
-# with the network gate (net_gate.c, MinHook), hooked in its DllMain before the game's own code runs
+# with the network and tablet gates (net_gate.c, tablet_gate.c, MinHook), hooked in its DllMain before the game's own code runs
 $minHookSources=@('src/buffer.c','src/hook.c','src/trampoline.c','src/hde/hde64.c')|ForEach-Object {Join-Path $minHook $_}
-$cloudSources=@('net_gate.c','steam_census.c','bridge_channel.c')|ForEach-Object {Join-Path $project ('native/steam-cloud/'+$_)}
+$cloudSources=@('net_gate.c','tablet_gate.c','steam_census.c','bridge_channel.c')|ForEach-Object {Join-Path $project ('native/steam-cloud/'+$_)}
 & $zig cc -target x86_64-windows-gnu -shared -O2 -std=c11 -Wall -Werror -Wno-unused-parameter -s -I (Join-Path $minHook 'include') $cloudSource `
     @cloudSources @minHookSources (Join-Path $gen 'steam_api64.def') -ladvapi32 -o (Join-Path $out 'steam_api64.dll')
 if($LASTEXITCODE){throw 'Compiling steam_api64.dll failed.'}
@@ -319,17 +323,30 @@ if(-not $SkipSmoke){
     Invoke-Generator smoke-modloader $out $testOut $machineGun $compendium
 }
 # The session runner and the local backend, compiled ahead of time to native code (NativeAOT needs the Visual Studio
-# C++ linker, which it finds through vswhere).
+# C++ linker, which it finds through vswhere). Each is signed when a certificate is configured (Sign-Files.ps1; Smart App
+# Control blocks unsigned programs), before engine.json hashes them. The backend comes first: its signed folder's digest
+# (HellForge.Core BackendPin) is compiled into the session, which then starts no other backend.
+function Publish-App([string]$Folder,[string]$Csproj,[string]$Target,[string[]]$Properties){
+    Write-Output ('Compiling '+$Folder+' (NativeAOT)')
+    dotnet publish (Join-Path $project $Csproj) -c Release -p:DebugType=none -p:DebugSymbols=false @Properties --nologo -v q -o $Target
+    if($LASTEXITCODE){throw ('Compiling '+$Folder+' failed.')}
+    Get-ChildItem -LiteralPath $Target -File|Where-Object {$_.Extension -in @('.pdb','.dbg','.map')}|Remove-Item
+    & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path $Target
+}
 function Publish-Aot([string]$Staging){
-    foreach($app in @(@{folder='session';project='src/HellForge.Session/HellForge.Session.csproj'},@{folder='backend';project='src/HellForge.LocalBackend/HellForge.LocalBackend.csproj'})){
-        Write-Output ('Compiling '+$app.folder+' (NativeAOT)')
-        dotnet publish (Join-Path $project $app.project) -c Release -p:DebugType=none -p:DebugSymbols=false --nologo -v q -o (Join-Path $Staging $app.folder)
-        if($LASTEXITCODE){throw ('Compiling '+$app.folder+' failed.')}
-        Get-ChildItem -LiteralPath (Join-Path $Staging $app.folder) -File|Where-Object {$_.Extension -in @('.pdb','.dbg','.map')}|Remove-Item
-    }
-    # signed when a certificate is configured (Sign-Files.ps1; Smart App Control blocks unsigned programs), before engine.json hashes them
-    & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (Join-Path $Staging 'session'),(Join-Path $Staging 'backend')
-    if(-not $SkipSmoke){& (Join-Path $PSScriptRoot 'Test-BackendAot.ps1') -Aot (Join-Path $Staging 'backend/HellForge.LocalBackend.exe')|Select-Object -Last 1}
+    $backend=Join-Path $Staging 'backend';$session=Join-Path $Staging 'session'
+    Publish-App 'backend' 'src/HellForge.LocalBackend/HellForge.LocalBackend.csproj' $backend @()
+    $pin=(& dotnet $generator backend-digest $backend|Select-Object -Last 1)
+    if($LASTEXITCODE -or $pin -notmatch '^[0-9A-F]{64}$'){throw 'Could not compute the backend digest (HellForge.SdkShimGen backend-digest).'}
+    Publish-App 'session' 'src/HellForge.Session/HellForge.Session.csproj' $session @('-p:HellForgeBackendPin='+$pin)
+    # the session is a GUI program: run it to its end with its output in a file, and refuse a build that does not carry the pin
+    $carried=[IO.Path]::GetTempFileName()
+    try{
+        $check=Start-Process -FilePath (Join-Path $session 'HellForge.Session.exe') -ArgumentList 'backend-pin' -NoNewWindow -Wait -PassThru -RedirectStandardOutput $carried
+        if($check.ExitCode -ne 0 -or ([IO.File]::ReadAllText($carried)).Trim() -ne $pin){throw ('The session does not carry the backend digest '+$pin+'.')}
+    }finally{Remove-Item -LiteralPath $carried -ErrorAction SilentlyContinue}
+    Write-Output ('Backend pin '+$pin+' compiled into the session.')
+    if(-not $SkipSmoke){& (Join-Path $PSScriptRoot 'Test-BackendAot.ps1') -Aot (Join-Path $backend 'HellForge.LocalBackend.exe')|Select-Object -Last 1}
 }
 $env:PATH+=';'+(Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer')
 $package=Join-Path $project 'artifacts/engine-package'
@@ -345,7 +362,7 @@ if($NoSteamApi){
 }
 # The stand-ins, mod loader, WFP tool and broker, signed when a certificate is configured (Sign-Files.ps1), before build.json
 # pins them: the session checks them against these hashes.
-$signed=@('PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','hellforge_wfp.exe')+$(if($bridge){@('steam_api64_bridge.dll','hellforge_steam_broker.exe')}else{@()})
+$signed=@('PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','hellforge_overlay.dll','hellforge_wfp.exe')+$(if($bridge){@('steam_api64_bridge.dll','hellforge_steam_broker.exe')}else{@()})
 & (Join-Path $PSScriptRoot 'Sign-Files.ps1') -Path (@($signed|ForEach-Object {Join-Path $out $_})+$(if($SteamCensus){@(Join-Path $census 'steam_api64.dll')}else{@()}))
 $receipt=[ordered]@{builtUtc=[DateTime]::UtcNow.ToString('o');zig='0.17.0';
     originals=[ordered]@{'PartyWin.dll'=(Get-FileHash $partyOriginal).Hash;'PlayFabMultiplayerWin.dll'=(Get-FileHash $lobbyOriginal).Hash;'steam_api64.dll'=$steamApiPin};
@@ -365,7 +382,7 @@ if(Test-Path -LiteralPath $staging){Remove-Item -LiteralPath $staging -Recurse -
 New-Item -ItemType Directory $staging|Out-Null
 Publish-Aot $staging
 $shimTarget=New-Item -ItemType Directory (Join-Path $staging 'sdk-shims')
-foreach($name in @('build.json','PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','MinHook-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $out $name) -Destination $shimTarget}
+foreach($name in @('build.json','PartyWin.dll','PlayFabMultiplayerWin.dll','steam_api64.dll','hellforge_modloader.dll','MinHook-LICENSE.txt','hellforge_overlay.dll','imgui-LICENSE.txt')){Copy-Item -LiteralPath (Join-Path $out $name) -Destination $shimTarget}
 if($bridge){foreach($name in @('steam_api64_bridge.dll','hellforge_steam_broker.exe')){Copy-Item -LiteralPath (Join-Path $out $name) -Destination $shimTarget}}
 # build.json's standIns pin names this one with -SteamCensus, since the session checks the stand-in it swaps in against it.
 if($SteamCensus){Copy-Item -LiteralPath (Join-Path $census 'steam_api64.dll') -Destination $shimTarget -Force}

@@ -190,11 +190,22 @@ jobs:
           dotnet-version: 10.0.x
       - name: bash -n linux/*.sh
         run: for f in linux/*.sh; do bash -n "$f"; done
+      # The package mirrors are sometimes unreachable from a runner for minutes. That must not fail the job: the
+      # install is retried, and without bsdtar the .7z test skips and a warning says so.
       - name: Install libarchive-tools (bsdtar)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools
-          bsdtar --version
+          for attempt in 1 2 3 4 5; do
+            if sudo apt-get update -o Acquire::Retries=3 && sudo apt-get install -y -o Acquire::Retries=3 libarchive-tools; then
+              break
+            fi
+            echo "apt attempt $attempt failed; waiting $((attempt * 20)) s"
+            sleep $((attempt * 20))
+          done
+          if command -v bsdtar >/dev/null; then
+            bsdtar --version
+          else
+            echo "::warning title=bsdtar not installed::The package mirrors could not be reached; the .7z test is skipped in this run."
+          fi
       - name: Build the launcher, CLI and tests
         env:
           TMPDIR: ${{ github.workspace }}/artifacts/tmp

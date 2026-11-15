@@ -103,7 +103,7 @@ public static partial class ModCatalog
         File.Exists(Path.Combine(folder, ManifestName)) ? Path.Combine(folder, ManifestName)
         : File.Exists(Path.Combine(folder, LegacyManifestName)) ? Path.Combine(folder, LegacyManifestName) : null;
     // The mod SDK version this HellForge provides (native/mod-sdk/hellforge_mod.h).
-    public const int SdkVersion = 17;
+    public const int SdkVersion = 20;
 
     [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}\\.dll$")]
     private static partial Regex DllName();
@@ -307,8 +307,11 @@ public static partial class ModCatalog
     // with either cannot be the player's own.
     static CoopTier DecideTier(JsonElement root, ModManifest mod, TierFacts facts)
     {
+        // A rearm tick is not the player's own: every machine refills every player's uses (native/mod-loader/stratagem_rearm.c),
+        // so the squad needs the same mod. Local Stats stays each player's (a host may share theirs).
+        var rearms = mod.Id != LocalStatsId && facts.Stats.Any(s => s.Kind == "StratagemRearm");
         var statsOnly = facts.Stats.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && facts.Data.Count == 0 && !facts.Spec &&
-            facts.Types.Count == 0 && facts.Writes.Count == 0;
+            facts.Types.Count == 0 && facts.Writes.Count == 0 && !rearms;
         var dataOnly = facts.Data.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && !facts.Spec &&
             facts.Stats.Count == 0 && facts.Types.Count == 0 && facts.Writes.Count == 0;
         var tier = ReadCoop(root) ?? (statsOnly || dataOnly && ClientOnlyPatches(mod) ? CoopTier.PerPlayer : CoopTier.Shared);
@@ -884,11 +887,13 @@ public static class ModLoaderPlan
     // forgeCreditChance: the share of loot caches that hold Forge Credits (ModSettings.ForgeCreditChance, else its default),
     // null to leave the game's loot roll alone.
     // warbonds: the session's mod warbonds (ModWarbonds), for their entries in the game's warbond table.
+    // backendPort: where the session's backend listens, so the loader's paid-item guard can ask it (paid_guard.c).
     public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId, int? forgeCreditChance = null,
-        IReadOnlyList<ModWarbonds.Warbond>? warbonds = null)
+        IReadOnlyList<ModWarbonds.Warbond>? warbonds = null, int? backendPort = null)
     {
         var lines = new List<string> { "build\t" + buildId, "logs\t" + Field(logs), "network_config\t" + NetworkConfig,
             $"entity_region\t{profile.EntityRegionSize}\t{profile.MapHeader.ToLowerInvariant()}" };
+        if (backendPort is > 0 and <= 65535) lines.Add(FormattableString.Invariant($"backend_port\t{backendPort}"));
         foreach (var (name, c) in profile.Components.OrderBy(c => c.Key, StringComparer.Ordinal))
             lines.Add($"component\t{name}\t{c.Offset}\t{c.Header.ToLowerInvariant()}\t{c.Index}\t{c.Indices}\t{c.Records}\t{c.RecordOffset}\t{c.Stride}");
         lines.Add("stats_schema\t" + StatsSchema.Fingerprint);

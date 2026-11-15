@@ -83,10 +83,24 @@ public static class ModDataBuilder
                     case SoundsResource sounds:
                         AddSounds(resources, sounds, added);
                         break;
+                    case EditResource edit:
+                        AddEdit(resources, edit);
+                        break;
                 }
             foreach (var animations in patch.Resources.OfType<AnimationsResource>())
                 AddAnimations(resources, animations, added);
             return resources;
+        }
+        // A game resource under its own key, so the patch takes its place; not in `added`: standing for the game's is its purpose.
+        void AddEdit(Dictionary<ResourceKey, ResourceParts> resources, EditResource edit)
+        {
+            var key = new ResourceKey(edit.Type, edit.Id);
+            var source = Read(key, From(edit));
+            try { AddResource(resources, edit.Where, key, source with { Gpu = ShaderSplice.EditBytes(ShaderSplice.EditStages(ShaderSplice.Pinned(source.Gpu, edit.Gpu), edit.Stages), edit.Bytes) }); }
+            catch (InvalidDataException error) when (!error.Message.StartsWith(edit.Where, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException($"{edit.Where} ({ResourceTypes.Describe(edit.Type)} 0x{edit.Id:X16}): {error.Message}");
+            }
         }
         // A unit copy's own animations: its bones and state machine under the unit's name, its clips beside it, and the
         // unit pointed at them (header +0x08 bones, +0x20 state machine).
@@ -200,6 +214,7 @@ public static class ModDataBuilder
             IncludeResources include => include.Ids.Select(id => new ResourceKey(include.Type, id)),
             ModelResource model => ModelSources(model),
             SoundsResource sounds => [new ResourceKey(ResourceTypes.WwiseBank, sounds.MixerBank)],
+            EditResource edit => [new ResourceKey(edit.Type, edit.Id)],
             _ => []
         }).ToHashSet();
         var gameSources = Sources(false);

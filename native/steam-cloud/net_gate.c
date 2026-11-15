@@ -177,6 +177,19 @@ static void Note(const char *api, const char *target, const char *scope, void *r
     LeaveCriticalSection(&g_lock);
 }
 
+void NetGateNote(const char *api, const char *target, const char *scope, void *returnAddress)
+{
+    Note(api, target, scope, returnAddress);
+}
+
+void NetGateWrite(const char *line)
+{
+    if (!g_on) return;
+    EnterCriticalSection(&g_lock);
+    Write(line, (int)strlen(line));
+    LeaveCriticalSection(&g_lock);
+}
+
 // Both keep the caller's last error: TlsGetValue sets it to ERROR_SUCCESS, and Leave runs after the real call, whose
 // error (WSAGetLastError is the same value) the game reads next.
 static bool Enter(void)
@@ -728,16 +741,11 @@ static int HookLoaded(void)
     return hooked;
 }
 
-// A network module loaded later (a test program, or a game build that loads one on demand): hooked as it is mapped,
-// before LoadLibrary returns it to anyone. The callback runs on the thread that holds the loader lock, so MinHook's
-// thread suspend is of threads merely waiting on that lock, not holding it, and its own GetProcAddress re-enters the
-// loader only on this same thread (the lock is recursive); the census confirmed a late-loaded WinHTTP is hooked here.
 typedef struct { ULONG flags; const UNICODE_STRING *fullName, *baseName; void *base; ULONG size; } DllLoaded;
 typedef VOID (CALLBACK *DllNotification)(ULONG reason, const DllLoaded *data, PVOID context);
 typedef LONG (NTAPI *RegisterDllNotification)(ULONG flags, DllNotification callback, PVOID context, PVOID *cookie);
-static PVOID g_cookie;
 
-static VOID CALLBACK OnDllLoaded(ULONG reason, const DllLoaded *data, PVOID context)
+static VOID CALLBACK OnDllNotification(ULONG reason, const DllLoaded *data, PVOID context)
 {
     if (reason != 1 || !data || !data->baseName || !data->baseName->Buffer) return; /* 1: loaded */
     wchar_t name[64];
@@ -745,6 +753,22 @@ static VOID CALLBACK OnDllLoaded(ULONG reason, const DllLoaded *data, PVOID cont
     if (n >= 64) return;
     memcpy(name, data->baseName->Buffer, n * sizeof(wchar_t));
     name[n] = 0;
+    ((void (*)(const wchar_t *))context)(name);
+}
+
+bool NetGateWatchLoads(void (*loaded)(const wchar_t *name))
+{
+    RegisterDllNotification registerNotification = (RegisterDllNotification)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "LdrRegisterDllNotification");
+    PVOID cookie; /* never unregistered: the stand-in stays loaded for the game's life */
+    return registerNotification && registerNotification(0, OnDllNotification, (void *)loaded, &cookie) == 0;
+}
+
+// A network module loaded later (a test program, or a game build that loads one on demand): hooked as it is mapped,
+// before LoadLibrary returns it to anyone. The callback runs on the thread that holds the loader lock, so MinHook's
+// thread suspend is of threads merely waiting on that lock, not holding it, and its own GetProcAddress re-enters the
+// loader only on this same thread (the lock is recursive); the census confirmed a late-loaded WinHTTP is hooked here.
+static void OnDllLoaded(const wchar_t *name)
+{
     for (size_t i = 0; i < SITE_COUNT; i++)
         if (!_wcsicmp(name, g_sites[i].module))
         {
@@ -811,8 +835,7 @@ void NetGateStart(void)
     g_depth = TlsAlloc();
     bool ready = g_depth != TLS_OUT_OF_INDEXES && MH_Initialize() == MH_OK;
     int hooked = ready ? HookLoaded() : 0;
-    RegisterDllNotification registerNotification = (RegisterDllNotification)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "LdrRegisterDllNotification");
-    bool watching = ready && registerNotification && registerNotification(0, OnDllLoaded, NULL, &g_cookie) == 0;
+    bool watching = ready && NetGateWatchLoads(OnDllLoaded);
     g_on = ready;
     WriteStart(hooked, watching);
 }

@@ -68,7 +68,8 @@ public sealed class SdkMappings
     static readonly HashSet<string> SdkTypes = ["Ability", "BugholeEvent", "Content", "DamageEvent", "DamagePreEvent", "EditDef",
         "EditorEntity", "EventInfo", "ExplosionEvent", "HealEvent", "Homing", "KillEvent", "LimbState", "LiveValue", "ModInfo",
         "Notice", "Passives", "PelicanCall", "PlayerEvent", "Session", "Shot", "ShotRule", "SpawnEvent", "Stat", "StatEvent",
-        "StatSource", "StateEvent", "StratagemCategory", "StratagemEvent", "SyncMod", "SyncState", "WeaponEvent", "Listener"];
+        "StatSource", "StateEvent", "StratagemCategory", "StratagemEvent", "SyncMod", "SyncState", "WeaponEvent", "Listener",
+        "Colour", "Draw", "Image", "Input", "Point", "Screen"];
     // A global's field types: the record field types and ptr, a pointer.
     static readonly string[] GlobalFieldTypes = ["u8", "u16", "u32", "i32", "f32", "u64", "ptr"];
 
@@ -442,7 +443,7 @@ public sealed class SdkMappings
     };
 
     // Writes the generated files under the repository root (the SDK's headers and reference, and the mod loader's
-    // tables in native/mod-loader); with check, only lists the ones that differ.
+    // tables in native/mod-loader, its paid stratagems among them); with check, only lists the ones that differ.
     public static IReadOnlyList<string> Sync(string repository, bool check)
     {
         var stale = new List<string>();
@@ -451,6 +452,7 @@ public sealed class SdkMappings
         var generated = new Dictionary<string, string>(Load(Path.Combine(repository, "mappings")).Generate(api));
         if (SdkRpcs.Load(Path.Combine(repository, "mappings")) is { } rpcs)
             foreach (var (path, text) in rpcs.Generate()) generated[path] = text;
+        generated[PaidItems.StratagemHeaderFile] = PaidItems.Parse(File.ReadAllText(Path.Combine(repository, "data", "paid-items.json"))).StratagemHeader();
         foreach (var (path, text) in generated)
         {
             var file = Path.Combine(repository, path);

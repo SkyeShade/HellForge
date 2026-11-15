@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.projectile-cap-probe",
+  "name": "Projectile cap probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: adds 400 projectile types (past the 161 the game's co-op field carries) and checks their rows, one PROBE line per check for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "projectile_cap_probe.dll", "sdk": 3 }
+}

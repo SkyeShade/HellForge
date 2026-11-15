@@ -18,8 +18,20 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `sdk-probe/` | the test mod `sdk16.json` runs (`hellforge.sdk-probe`), never shipped: one `PROBE <check> ok` or `PROBE <check> FAIL <why>` line per check in its log |
 | `rpc17.json` | SDK 17's RPCs in the game: `rpc_listen` on every RPC on the ship and in a mission, their arguments, the readers, and `rpc_send`'s refusals in solo |
 | `rpc-probe/` | the test mod `rpc17.json` runs (`hellforge.rpc-probe`), never shipped; it sends nothing outside solo |
+| `projectile-cap.json` | room for 1,024 new projectile types: 400 added (types 351 to 750), past the 161 the projectile type's 9-bit co-op field carries, the field widened to 11 bits, rows on both sides of the old reach |
+| `projectile-cap-probe/` | the test mod `projectile-cap.json` runs (`hellforge.projectile-cap-probe`), never shipped |
 | `stratagem-cap.json` | room for 1,024 new stratagems: 300 added (types 150 to 449), the co-op type field at 16 bits, type 449 in the loadout before the mission and called in by its code (needs the harness's `call` step) |
 | `stratagem-cap-probe/` | the test mod `stratagem-cap.json` runs (`hellforge.stratagem-cap-probe`), never shipped |
+| `patterns18.json` | SDK 18's patterns: two weapon patterns on every weapon taking paints, the Pelican's, hellpod's, exosuits' and FRVs' skins in every collection, their deltas and package map, the Armory's Pattern tab captured |
+| `pattern-probe/` | the test mod `patterns18.json` runs (`hellforge.pattern-probe`), never shipped: magenta copies of Forest Camo (material LUT swaps on weapons, a pattern_lut on units) and an Arctic Camo copy |
+| `editor-engine.json` | the editor's engine-backed rows: the Eruptor's and Variable's firing ability swapped, spare heatsinks added to the Sai's Improved Cooldown heatsink; the logs prove the edits land, the mission shows what they do |
+| `editor-engine-probe/` | the stats mod `editor-engine.json` runs (`hellforge.editor-engine-probe`), never shipped |
+| `spray20.json` | SDK 20's sprays: two FLAM-40 copies with damage of their own (a scaled one, the Sterilizer's gas), each in its own spray record while the FLAM-40 keeps its own; the hot copy's stratagem in the loadout, called in, its hellpod bringing the copy. Spraying enemies with it is by hand |
+| `spray-probe/` | the test mod `spray20.json` runs (`hellforge.spray-probe`), never shipped; it also logs the first hits the called-in copy deals |
+| `stratagem-codes.json` | stratagem input codes: a stats edit gives Resupply Up Up Left Right Down, the vanilla codes move into HellForge's arrays, and the new code calls Resupply in (needs the harness's `call` step) |
+| `stratagem-codes-probe/` | the test mod `stratagem-codes.json` runs (`hellforge.stratagem-codes-probe`), never shipped: the stats edit and every beacon's type |
+| `stratagem-uses.json` | rearms after uses: a stats edit gives the Orbital Railcannon Strike 3 mission uses that rearm after a 90 s cooldown, the probe puts it in the loadout on the ship (filled as a pick fills a slot), three calls land, the uses left go to 0, a fourth (inside a 90 s cooldown) waits, the uses come back to 3 and a call lands again (needs the harness's `call` step) |
+| `stratagem-uses-probe/` | the test mod `stratagem-uses.json` runs (`hellforge.stratagem-uses-probe`), never shipped: the stats edit, the loadout, the uses left the HUD shows after each change, the Railcannon's beacons counted |
 
 ## Running one
 

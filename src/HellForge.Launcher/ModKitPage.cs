@@ -17,7 +17,11 @@ public partial class MainWindow
     bool modKitBusy;
     string modKitStatus = "";
 
-    ModSdk? Sdk => paths.InstallRoot != null ? ModSdk.Find(paths.InstallRoot) : null;
+    // The SDK the page's last load found (it looks once per load), else looked for now.
+    ModSdk? Sdk => modsData is { Error: null } data ? data.Sdk : paths.InstallRoot != null ? ModSdk.Find(paths.InstallRoot) : null;
+
+    // Whether the mod tools are in, as the page's last load saw them (a tools install loads the page again).
+    bool ToolsReady(ModSdk sdk) => modsData is { Error: null } data && data.Sdk == sdk ? data.ToolsReady : ModKit.ToolsReady(sdk);
 
     // Mod folders with sources (src/ and a manifest): the ones BUILD can make.
     IEnumerable<string> SourceMods() => paths.ModsFolder == null || !Directory.Exists(paths.ModsFolder) ? [] :
@@ -30,7 +34,7 @@ public partial class MainWindow
     {
         var sdk = Sdk;
         if (sdk == null) return;
-        if (SourceMods().Any() && !ModKit.ToolsReady(sdk))
+        if ((modsData?.HasSourceMods ?? SourceMods().Any()) && !ToolsReady(sdk))
         {
             var install = new Button { Content = modKitBusy ? "Installing..." : "Install mod tools", Classes = { "primary" }, IsEnabled = !modKitBusy, Margin = new(0, 8, 0, 0) };
             install.Click += (_, _) => InstallModTools(sdk);
@@ -57,7 +61,7 @@ public partial class MainWindow
         {
             Header = "Build now",
             IsEnabled = !modsLocked && !modKitBusy && sdk != null &&
-                (linux ? linuxAgentExists && nativeZig != null : ModKit.ToolsReady(sdk))
+                (linux ? linuxAgentExists && nativeZig != null : ToolsReady(sdk))
         };
         ToolTip.SetShowOnDisabled(build, true);
         ToolTip.SetTip(build, modsLocked ? "Builds wait until the session ends: the game has the mod loaded."
@@ -126,7 +130,7 @@ public partial class MainWindow
     MenuItem ZipItem(ModManifest mod)
     {
         var needsBuild = mod.HasSource;
-        var zip = new MenuItem { Header = "Prepare for sharing", IsEnabled = !modKitBusy && !(needsBuild && (modsLocked || Sdk is not { } s || !ModKit.ToolsReady(s))) };
+        var zip = new MenuItem { Header = "Prepare for sharing", IsEnabled = !modKitBusy && !(needsBuild && (modsLocked || Sdk is not { } s || !ToolsReady(s))) };
         ToolTip.SetShowOnDisabled(zip, true);
         ToolTip.SetTip(zip, needsBuild && modsLocked ? "Preparing builds the mod first, which waits until the session ends."
             : "Packs the mod to share, into the installation's exports folder: drop the zip into a mods folder as it is. Arrowhead's bytes in its game " +
@@ -146,7 +150,7 @@ public partial class MainWindow
         {
             try
             {
-                await ModKit.InstallToolsAsync(sdk, ide: true, line => Dispatcher.UIThread.Post(() => { modKitStatus = line; Append(line, LauncherLine); RefreshMods(); }));
+                await ModKit.InstallToolsAsync(sdk, ide: true, line => Dispatcher.UIThread.Post(() => { modKitStatus = line; Append(line, LauncherLine); DrawMods(); }));
                 Dispatcher.UIThread.Post(() => Append("Mod tools installed in " + sdk.Tools, Green));
             }
             catch (Exception failure) when (failure is IOException or InvalidDataException or HttpRequestException or TaskCanceledException or UnauthorizedAccessException)

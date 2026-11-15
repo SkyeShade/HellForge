@@ -270,6 +270,9 @@ public partial class MainWindow : Window
         else Start();
     }
 
+    // When the session runner was last started: an early failure's reason is read only from logs written since.
+    DateTime runnerStartedUtc;
+
     void Start(string? modSync = null)
     {
         if (runner.IsRunning) return;
@@ -319,6 +322,7 @@ public partial class MainWindow : Window
         {
             previousRunId = SessionRunner.LatestRunId(paths);
             runLookupPending = true;
+            runnerStartedUtc = DateTime.UtcNow;
             runner.Start(paths, profile, new(LocalPlayFabBox.IsChecked == true, SdkShimsBox.IsChecked == true, ProfileStore.LoadWar(paths),
                 EngineLogBox.IsChecked == true, CrashDumpBox.IsChecked == true, gameOptions, modSync, SandboxBox.IsChecked == true,
                 SteamUdp: SteamUdpBox.IsChecked == true));
@@ -357,6 +361,12 @@ public partial class MainWindow : Window
                     failure: paths.InstallRoot != null ? "Reinstall HellForge: " + file + " is missing." : "Sessions run in installations made with HellForge-Setup.");
                 return false;
             }
+        // None ships, so the session runner would stop at once; on Linux only after Steam and Proton had started.
+        if (paths.InstallRoot != null && HellForge.Core.GameCatalog.Missing(paths.InstallRoot))
+        {
+            SetStatus("Sync your inventory before the first session.", Phase.Attention, HellForge.Core.GameCatalog.SyncFirst);
+            return false;
+        }
         // A finished sync's capture still forwards the normal game until it closes; ending it would cut the game off.
         if (SyncCaptureId != null)
         {
@@ -503,26 +513,6 @@ public partial class MainWindow : Window
             ShowEarlyFailure(exitCode);
         }
         runLookupPending = false;
-    }
-
-    void ShowEarlyFailure(int? exitCode)
-    {
-        // The wrapper refuses before Steam and Proton when HellForge was started inside Flatpak, Snap or Steam's
-        // runtime container. It writes the reason for this line; without it, keep the generic early-exit advice.
-        var containerRefusal = paths.InstallRoot == null ? null : SessionRunner.LinuxContainerRefusal(paths.InstallRoot);
-        if (containerRefusal != null)
-        {
-            SetStatus("HellForge cannot start inside this container.", Phase.Failed, failure: containerRefusal);
-            return;
-        }
-        var failureLogs = paths.InstallRoot == null ? "Sessions run in installations made with HellForge-Setup."
-            : OperatingSystem.IsLinux()
-                ? "Check " + Path.Combine(paths.InstallRoot, "logs", "linux-session-wrapper.log") +
-                    " for Bash/Proton output and " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") +
-                    " for errors after the Windows session runner starts."
-                : "See " + Path.Combine(paths.InstallRoot, "logs", "session-runner.log") + " for why.";
-        SetStatus("The session runner exited before starting.", Phase.Failed, failureLogs,
-            exitCode is { } code ? $"The launch process exited with code {code}." : null);
     }
 
     void FindRun()
@@ -1000,29 +990,9 @@ public partial class MainWindow : Window
         for (var i = 0; i < pages.Length; i++) pages[i].IsVisible = i == index;
         SetupPage.IsVisible = false;
         if (index == 0) UpdateSyncStatus();  // Steam may have signed in to another account since
-        if (index == 2) RefreshMods();
-        if (index == 3) QueueScroll();
-    }
+        if (index == 2) RefreshMods(onlyIfChanged: true); // shows the page as drawn, then what changed
 
-    // Zips the latest session folder to the Desktop, for sending to whoever helps test (it names Steam accounts by id).
-    void SaveLogsToDesktop()
-    {
-        try
-        {
-            var run = runDirectory ?? (Directory.Exists(paths.RunsFolder)
-                ? new DirectoryInfo(paths.RunsFolder).GetDirectories().OrderByDescending(d => d.LastWriteTimeUtc).FirstOrDefault()?.FullName : null);
-            if (run == null) { Append("No session logs yet: play a session first.", Orange); return; }
-            var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-                $"HellForge-logs-{DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.zip");
-            // the same zip as HellForge.Cli logs --export: scrubbed of the PC's names (SessionLogs.Export)
-            var gameLogs = paths.InstallRoot != null ? Path.Combine(paths.InstallRoot, "userdata", "logs") : null;
-            var skipped = HellForge.Core.SessionLogs.Export(run, gameLogs, target).Skipped;
-            Append("Saved the latest session's logs to " + target + (skipped > 0 ? $" ({skipped} files in use were left out)" : ""), Green);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            Append("Could not save the logs: " + error.Message, Red);
-        }
+        if (index == 3) QueueScroll();
     }
 
     // The HellForge Discord server: support, news and mods (the sidebar's Discord button).

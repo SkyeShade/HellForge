@@ -41,7 +41,7 @@ public partial class MainWindow
         Append($"Preparing {mod.Id} for sharing...", LauncherLine);
         RefreshMods();
         var install = new InstallLayout(paths.InstallRoot);
-        void Status(string line) => Dispatcher.UIThread.Post(() => { share.Status = line; RefreshMods(); });
+        void Status(string line) => Dispatcher.UIThread.Post(() => { share.Status = line; DrawMods(); });
         var context = new AssetSharing.Context(install, history ? new SharePrompt(this, share) : null, Status, share.Running!.Token, SteamLogins.Default);
         Task.Run(() =>
         {
@@ -95,7 +95,7 @@ public partial class MainWindow
         if (share.Running == null)
         {
             var close = new Button { Content = "Close", Classes = { "flat" }, HorizontalAlignment = HorizontalAlignment.Left };
-            close.Click += (_, _) => { sharing = null; RefreshMods(); };
+            close.Click += (_, _) => { sharing = null; DrawMods(); };
             list.Children.Add(close);
         }
         ModsList.Children.Add(new Border { Classes = { "card" }, Child = list, HorizontalAlignment = HorizontalAlignment.Stretch });
@@ -167,7 +167,7 @@ public partial class MainWindow
     // What sign-in shows, on the sharing card (from SteamKit2's threads, so through the UI thread).
     sealed class SharePrompt(MainWindow window, Sharing share) : ISignInPrompt
     {
-        public void ShowQr(string challenge) => Dispatcher.UIThread.Post(() => { share.Qr = QrGeometry(challenge); window.RefreshMods(); });
-        public void Status(string text) => Dispatcher.UIThread.Post(() => { share.Status = text; window.RefreshMods(); });
+        public void ShowQr(string challenge) => Dispatcher.UIThread.Post(() => { share.Qr = QrGeometry(challenge); window.DrawMods(); });
+        public void Status(string text) => Dispatcher.UIThread.Post(() => { share.Status = text; window.DrawMods(); });
     }
 }
