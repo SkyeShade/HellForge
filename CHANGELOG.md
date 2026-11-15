@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Vehicles with a model of their own.** A unit copy's `mesh` takes `"parts": true`: each object of the OBJ rides the
+  unit joint it is named after, so a vehicle's wheels steer and turn under a body of the mod's own. The copy keeps its
+  base's joints, so seats, damage zones and the gun mount still fit. The `vehicle-model` example is an M-102 under a
+  body of boxes ([new vehicles](docs/modding/vehicles.md)).
 - **Room for 1,024 projectile types from mods.** Mods with many weapons can add up to 1,024 new projectile types between
   them (it was 512). Past the 161st, the co-op field that carries a projectile type widens from 9 to 11 bits on every
   machine. Types above 511 now reach other players too; before, they were cut in synced shots and reloads.

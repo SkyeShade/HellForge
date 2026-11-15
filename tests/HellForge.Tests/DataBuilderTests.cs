@@ -202,6 +202,29 @@ static class DataBuilderTests
             reject(() => UnitMesh.ReadObj("v 0 0 0\nf 1 2 3\n", 1, true));
             reject(() => UnitMesh.ReadObj("v 0 0 0\n", 1, true));
 
+            // In parts each object names the joint its faces ride: Blender's number on a repeated name is dropped, a
+            // corner shared by two objects is a vertex of each, and faces before the first name ride the main bone.
+            const string partsObj = """
+                v 0 0 0
+                v 1 0 0
+                v 0 1 0
+                v 0 0 1
+                f 1 2 3
+                o l_front_rotation
+                f 1 2 4
+                o l_front_rotation.001
+                f 2 3 4
+                g hood
+                f 1 3 4
+                """;
+            var parted = UnitMesh.ReadObj(partsObj, 1, false, parts: true);
+            check(parted.Joints is { } partJoints && parted.Positions.Count == 10 && partJoints.Count == 10,
+                $"Corners shared by parts are a vertex of each part: {parted.Positions.Count} vertices.");
+            check(parted.Joints![0] == null && parted.Joints[3] == "l_front_rotation" && parted.Joints.Count(j => j == "l_front_rotation") == 4
+                && parted.Joints.Count(j => j == "hood") == 3, "Each part's vertices name its joint, l_front_rotation.001 is l_front_rotation.");
+            check(UnitMesh.ReadObj(partsObj, 1, false).Joints == null && UnitMesh.ReadObj(partsObj, 1, false).Positions.Count == 4,
+                "Without parts, object names are ignored as before.");
+
             var folder = Directory.CreateDirectory(Path.Combine(root, "mesh-spec")).FullName;
             Directory.CreateDirectory(Path.Combine(folder, "models"));
             File.WriteAllText(Path.Combine(folder, "models", "cube.obj"), "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
@@ -212,10 +235,12 @@ static class DataBuilderTests
             check(spec.Inputs.SequenceEqual(["models/cube.obj"]) && spec.Patches[0].Resources[0] is CopyResource { Mesh: { Obj: "models/cube.obj", Scale: 2, YUp: false, UnitSpace: false } },
                 "The mesh and its file are part of the spec (and of its cache key).");
             File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), Spec("""{"obj":"models/cube.obj","unitSpace":true}"""));
-            check(DataSpecs.Load(folder)!.Patches[0].Resources[0] is CopyResource { Mesh: { UnitSpace: true, YUp: true } }, "unitSpace is read.");
+            check(DataSpecs.Load(folder)!.Patches[0].Resources[0] is CopyResource { Mesh: { UnitSpace: true, YUp: true, Parts: false } }, "unitSpace is read.");
+            File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), Spec("""{"obj":"models/cube.obj","parts":true}"""));
+            check(DataSpecs.Load(folder)!.Patches[0].Resources[0] is CopyResource { Mesh: { Parts: true } }, "parts is read.");
             foreach (var (bad, why) in new[] { (Spec("""{"obj":"../cube.obj"}"""), "an .obj file in the mod folder"), (Spec("""{"obj":"models/none.obj"}"""), "is missing"),
                 (Spec("""{"obj":"models/cube.obj"}""", "material"), "mesh is for a unit copy"), (Spec("""{"obj":"models/cube.obj","scale":0}"""), "scale is a positive number"),
-                (Spec("""{"obj":"models/cube.obj","unitSpace":1}"""), "unitSpace is true or false") })
+                (Spec("""{"obj":"models/cube.obj","unitSpace":1}"""), "unitSpace is true or false"), (Spec("""{"obj":"models/cube.obj","parts":"yes"}"""), "parts is true or false") })
             {
                 File.WriteAllText(Path.Combine(folder, DataSpecs.FileName), bad);
                 try { DataSpecs.Load(folder); throw new Exception("Accepted: " + bad); }

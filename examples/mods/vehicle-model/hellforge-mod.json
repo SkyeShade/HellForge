@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.vehicle-model",
+  "name": "Vehicle Model",
+  "version": "0.1.0",
+  "description": "A vehicle with a model of its own: the M-102B Box Buggy, an M-102 copy whose body is an original model of boxes (models/box_buggy.obj) with its wheels on the M-102's wheel joints, so they steer and turn. Called in by a Pelican drop stratagem of its own. SDK 8 example.",
+  "gameplay": true,
+  "code": { "dll": "vehicle_model.dll", "sdk": 8 }
+}

@@ -41,6 +41,7 @@ The modding guide, in reading order:
    [Projectiles and damage](modding/projectiles.md): projectiles, damage types, explosions, beams, arcs and sprays of a
    mod's own.
    [New enemies](modding/enemies.md): enemies with roster rows and squads of their own, and replacement rules.
+   [New vehicles](modding/vehicles.md): vehicles as copies of vanilla ones, with stats and models of their own.
    [Patterns](modding/patterns.md): patterns of a mod's own for weapons, vehicles, the hellpod and the Pelican.
    [Warbonds](modding/warbonds.md): warbonds of a mod's own, selling game items and its weapons and stratagems.
 7. [Logic at run time](modding/runtime.md): events, actions, live edits and the game thread.

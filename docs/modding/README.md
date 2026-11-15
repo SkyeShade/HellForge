@@ -46,6 +46,7 @@ friends compare in co-op.
 | give a weapon its own projectile, damage, explosion, beam, arc or spray | [Projectiles and damage](projectiles.md) |
 | put your stratagems under a heading of their own | [Content: selection headings](content.md#selection-headings) |
 | make the game spawn an enemy of your own beside the vanilla ones | [New enemies](enemies.md) |
+| add a vehicle of your own, with its own stats or model | [New vehicles](vehicles.md) |
 | add a pattern for weapons, vehicles, the hellpod or the Pelican | [Patterns](patterns.md) |
 | sell items on a warbond of your own, in a currency you choose | [Warbonds](warbonds.md) |
 | recolour a model or ship your own model, sound or icon | [Data mods](data.md) |
@@ -109,6 +110,7 @@ The example mods:
 | `stratagem-categories` | stratagem selection headings and their order ([how headings work](../stratagem-categories.md)) |
 | `alpha-scavenger` | a new enemy tied to no vanilla one: an entity, its roster row, its squads and a replacement rule |
 | `vehicle-variants` | two new vehicles, an exosuit and an FRV, each a copy of a vanilla one with a Pelican drop stratagem |
+| `vehicle-model` | a vehicle with a model of its own: an M-102 under a body of boxes, its wheels on the M-102's wheel joints |
 | `hell-forge` | difficulty 11 |
 | `hell-swarm` | a difficulty's settings row, changed directly |
 | `vanilla-plus` | live edits of every stratagem's settings, and code patches: game code checked against the build, then changed (a branch, a jump to a stub of its own) |

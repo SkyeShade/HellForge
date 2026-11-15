@@ -224,8 +224,8 @@ static HfEntityDef hmgSentry = {
 ### Model
 
 `model_from` takes another entity's model with the records naming a Pelican's parts (thrusters, effects, collision) and
-its packages: a model under another model's records hangs the game at spawn. Ground vehicles ignore it;
-`examples/mods/vehicle-variants` copies them with `own_all`, `mount` and `set` instead. `unit` names a model your mod's
+its packages: a model under another model's records hangs the game at spawn. Ground vehicles ignore it
+([new vehicles](vehicles.md) says how to copy them). `unit` names a model your mod's
 data provides ([data mods](data.md)).
 
 ### Text

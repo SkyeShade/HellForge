@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace HellForge.Core.GameData;
 
@@ -11,10 +12,12 @@ namespace HellForge.Core.GameData;
 // coordinates in the unit). The layout is HellForge's research (artifacts/models/FORMAT.md in the research repository),
 // checked against every unit of the supported build. What it does not cover is refused, never guessed: geometry in
 // another resource, data after the streams, rotated mesh joints, meshes culled by another body, unknown vertex formats.
-// Physics, hitboxes and attachment points stay the base's.
+// Physics, hitboxes and attachment points stay the base's. A mesh in parts rides the unit's joints instead (Parts).
 public static class UnitMesh
 {
-    public sealed record Mesh(IReadOnlyList<double[]> Positions, IReadOnlyList<double[]> Normals, IReadOnlyList<double[]> Uvs, IReadOnlyList<int> Triangles);
+    // Joints: per vertex, the joint it rides in a mesh in parts (null: the main bone); null for a mesh rigid on the main bone.
+    public sealed record Mesh(IReadOnlyList<double[]> Positions, IReadOnlyList<double[]> Normals, IReadOnlyList<double[]> Uvs, IReadOnlyList<int> Triangles,
+        IReadOnlyList<string?>? Joints = null);
 
     const int RenderMesh = 0x9, ShadowMesh = 0xA;
 
@@ -24,7 +27,11 @@ public static class UnitMesh
     sealed record UnitMeshRecord(int At, uint Type, uint AabbJoint, uint Joint, int Stream, IReadOnlyList<Group> Groups, int GroupsAt, int SkeletonMap);
     // The copied unit as Replace rewrites it: its main part (written in place), its GPU part, its meshes and the ones that
     // get the mod's geometry.
-    sealed record Model(byte[] Main, byte[] Gpu, List<UnitMeshRecord> Meshes, HashSet<int> Replaced, Dictionary<int, Bind> Binds);
+    sealed record Model(byte[] Main, byte[] Gpu, List<UnitMeshRecord> Meshes, HashSet<int> Replaced, Dictionary<int, Bind> Binds,
+        Dictionary<int, Parted>? Parts = null);
+    // A replaced mesh's vertices of a mesh in parts as that mesh stores them: each one's group and bone index in it,
+    // position, normal and tangent in the mesh's bind space, and their box.
+    sealed record Parted(int[] Groups, int[] Bones, double[][] Positions, double[][] Normals, (double[] T, int Sign)[] Tangents, double[] Lo, double[] Hi, double Radius);
     // How a replaced mesh holds the geometry: the bone index its vertices name, what they are moved by, and where the
     // mesh places its vertices in the unit.
     sealed record Bind(int Bone, double[] Shift, double[] At);
@@ -61,12 +68,125 @@ public static class UnitMesh
         if ((end + 15) / 16 * 16 < gpu.Length) throw new InvalidDataException("the model has GPU data after its vertex streams; HellForge cannot replace it yet.");
 
         var replaced = Replaced(meshes, joints);
-        var model = new Model(main, gpu, meshes, replaced, Binds(main, meshes, joints, replaced, unitSpace));
         var geometry = new Geometry(mesh, Tangents(mesh));
+        var model = mesh.Joints == null
+            ? new Model(main, gpu, meshes, replaced, Binds(main, meshes, joints, replaced, unitSpace))
+            : new Model(main, gpu, meshes, replaced, [], Parts(main, meshes, replaced, geometry));
         var output = new MemoryStream();
         for (var si = 0; si < streams.Count; si++) WriteStream(model, streams[si], si, geometry, output);
-        RebuildLodFooters(main, Meshes(main), i => replaced.Contains(i) ? model.Binds[i].At : joints[(int)meshes[i].Joint].T);
+        // a mesh in parts is in each mesh's bind space, as the game's own meshes are: placed by its mesh joint like theirs
+        RebuildLodFooters(main, Meshes(main), i => replaced.Contains(i) && model.Parts == null ? model.Binds[i].At : joints[(int)meshes[i].Joint].T);
         return (main, output.ToArray());
+    }
+
+    // A joint's name hash, world matrix (row vectors: a point is p * World) and parent (itself at the root).
+    sealed record Joint(uint Name, System.Numerics.Matrix4x4 World, int Parent);
+
+    static List<Joint> Skeleton(byte[] m)
+    {
+        var base0 = (int)U32(m, 0x34);
+        if (base0 == 0) return [];
+        var n = (int)U32(m, base0);
+        int world = base0 + 16 + 64 * n, parents = world + 64 * n, names = parents + 4 * n;
+        return [.. Enumerable.Range(0, n).Select(i => new Joint(U32(m, names + 4 * i), Matrix(m, world + 64 * i), (int)(U32(m, parents + 4 * i) >> 16)))];
+    }
+
+    static System.Numerics.Matrix4x4 Matrix(byte[] m, int at) => new(
+        F32(m, at), F32(m, at + 4), F32(m, at + 8), F32(m, at + 12), F32(m, at + 16), F32(m, at + 20), F32(m, at + 24), F32(m, at + 28),
+        F32(m, at + 32), F32(m, at + 36), F32(m, at + 40), F32(m, at + 44), F32(m, at + 48), F32(m, at + 52), F32(m, at + 56), F32(m, at + 60));
+
+    // A mesh in parts (Mesh.Joints, a data spec's "parts") is in the unit's own space at rest, each vertex riding a joint by
+    // name, so a vehicle's wheels and turret move with their joints. A vehicle's meshes are skinned over most of its joints,
+    // one bone list per group (a group is a material: the FRV's tyres are one). A part's triangles go in the first group
+    // of each mesh whose bones reach its joint, and its vertices are stored by the inverse of where that bone (its bind
+    // matrix times its joint's world matrix, Hellraiser's reading of a skinned vertex) puts them at rest. A mesh that
+    // reaches the joint in no group (a far LOD, a shadow) holds the part on the nearest joint above it.
+    static Dictionary<int, Parted> Parts(byte[] m, List<UnitMeshRecord> meshes, HashSet<int> replaced, Geometry geometry)
+    {
+        var skeleton = Skeleton(m);
+        var first = replaced.Where(i => meshes[i].Type == RenderMesh).DefaultIfEmpty(replaced.Min()).Min();
+        var mainJoint = MainJoint(m, meshes[first]);
+        var byName = new Dictionary<string, int>();
+        foreach (var name in geometry.Mesh.Joints!.OfType<string>().Distinct())
+        {
+            var hash = EngineHash.Id32(name);
+            var index = skeleton.FindIndex(j => j.Name == hash);
+            if (index < 0) throw new InvalidDataException($"the model has no joint named {name}.");
+            byName[name] = index;
+        }
+        var wanted = geometry.Mesh.Joints!.Select(name => name == null ? mainJoint : byName[name]).ToArray();
+        if (wanted.Any(j => j < 0)) throw new InvalidDataException("the model's first render mesh has no main bone for the parts without a joint.");
+        var parts = new Dictionary<int, Parted>();
+        foreach (var i in replaced)
+        {
+            if (SkeletonMap(m, meshes[i]) is not { } map) throw new InvalidDataException("a mesh of the model has no skeleton map, so parts cannot ride their joints.");
+            var remaps = GroupRemaps(m, meshes[i]);
+            var placed = new Dictionary<int, (int Group, int Bone, System.Numerics.Matrix4x4 Inverse)>();
+            // A part's group and bone in this mesh: the first group whose bones reach its joint (the FRV's tyres are a group
+            // of their own, drawn with their own material), else the nearest joint above it any group reaches.
+            (int, int, System.Numerics.Matrix4x4) Place(int joint)
+            {
+                if (placed.TryGetValue(joint, out var known)) return known;
+                for (var at = joint; ; at = skeleton[at].Parent)
+                {
+                    for (var g = 0; g < remaps.Length; g++)
+                    {
+                        var bone = Array.FindIndex(remaps[g], e => (int)U32(m, map.Joints + 4 * e) == at);
+                        if (bone < 0) continue;
+                        var rest = Matrix(m, map.Matrices + 64 * remaps[g][bone]) * skeleton[at].World;
+                        if (!System.Numerics.Matrix4x4.Invert(rest, out var inverse)) throw new InvalidDataException("a bone of the model has a bind that cannot be undone.");
+                        return placed[joint] = (g, bone, inverse);
+                    }
+                    if (skeleton[at].Parent == at || at == 0) throw new InvalidDataException("a mesh of the model reaches neither a part's joint nor any joint above it.");
+                }
+            }
+            var mesh = geometry.Mesh;
+            var count = mesh.Positions.Count;
+            var (groups, bones, positions, normals, tangents) = (new int[count], new int[count], new double[count][], new double[count][], new (double[], int)[count]);
+            double[] lo = [double.MaxValue, double.MaxValue, double.MaxValue], hi = [double.MinValue, double.MinValue, double.MinValue];
+            var radius = 0.0;
+            for (var v = 0; v < count; v++)
+            {
+                var (group, bone, inverse) = Place(wanted[v]);
+                groups[v] = group;
+                bones[v] = bone;
+                positions[v] = Point(mesh.Positions[v], inverse);
+                normals[v] = Direction(mesh.Normals[v], inverse);
+                tangents[v] = (Direction(geometry.Tangents[v].T, inverse), geometry.Tangents[v].Sign);
+                for (var k = 0; k < 3; k++) { lo[k] = Math.Min(lo[k], positions[v][k]); hi[k] = Math.Max(hi[k], positions[v][k]); }
+                radius = Math.Max(radius, Math.Sqrt(Dot(positions[v], positions[v])));
+            }
+            parts[i] = new(groups, bones, positions, normals, tangents, lo, hi, radius);
+        }
+        return parts;
+    }
+
+    // A mesh's bone remap list for each of its groups (a group past the map's lists uses the first, as the game does).
+    static int[][] GroupRemaps(byte[] m, UnitMeshRecord mesh)
+    {
+        var mapsAt = (int)U32(m, 0x58);
+        var at = mapsAt + (int)U32(m, mapsAt + 4 + 4 * mesh.SkeletonMap);
+        int count = (int)U32(m, at), remap = at + (int)U32(m, at + 12), lists = (int)U32(m, remap);
+        var result = new int[mesh.Groups.Count][];
+        for (var g = 0; g < result.Length; g++)
+        {
+            var list = g < lists ? g : 0;
+            result[g] = lists == 0 ? [] : [.. Enumerable.Range(0, (int)U32(m, remap + 8 + 8 * list)).Select(q => (int)U32(m, remap + (int)U32(m, remap + 4 + 8 * list) + 4 * q))];
+            if (result[g].Any(e => e >= count)) throw new InvalidDataException("a mesh's skeleton map remaps a bone past its joints.");
+        }
+        return result;
+    }
+
+    static double[] Point(double[] p, System.Numerics.Matrix4x4 m)
+    {
+        var q = System.Numerics.Vector3.Transform(new((float)p[0], (float)p[1], (float)p[2]), m);
+        return [q.X, q.Y, q.Z];
+    }
+
+    static double[] Direction(double[] d, System.Numerics.Matrix4x4 m)
+    {
+        var q = System.Numerics.Vector3.TransformNormal(new((float)d[0], (float)d[1], (float)d[2]), m);
+        return Normalize([q.X, q.Y, q.Z]);
     }
 
     // The render and shadow meshes that get the mod's geometry, each culled by its own joint, which is not rotated or scaled.
@@ -144,7 +264,8 @@ public static class UnitMesh
         {
             var m = model.Meshes[b.Mesh];
             indexCount = WriteIndices(main, m, b, first[b.Mesh], indexCount, wide, output);
-            if (model.Replaced.Contains(b.Mesh)) WriteBox(main, m.At, geometry, model.Binds[b.Mesh].Shift);
+            if (model.Parts?.GetValueOrDefault(b.Mesh) is { } parted) WriteBox(main, m.At, parted.Lo, parted.Hi, parted.Radius);
+            else if (model.Replaced.Contains(b.Mesh)) WriteBox(main, m.At, geometry, model.Binds[b.Mesh].Shift);
         }
         var ibSize = (uint)output.Length - ibOffset;
         Write(main, s.At + 352, vertexCount);
@@ -173,8 +294,23 @@ public static class UnitMesh
         var own = Enumerable.Range(0, meshes.Count).Where(i => meshes[i].Stream == si).OrderBy(i => meshes[i].Groups[0].VertexOffset).ToList();
         var blocks = new List<Block>();
         foreach (var i in own)
-            blocks.Add(model.Replaced.Contains(i) ? NewBlock(i, meshes[i], s, geometry, model.Binds[i], offsets) : OldBlock(i, meshes[i], s, model.Gpu));
+            blocks.Add(model.Parts?.GetValueOrDefault(i) is { } parted ? PartedBlock(i, meshes[i], s, geometry, parted, offsets)
+                : model.Replaced.Contains(i) ? NewBlock(i, meshes[i], s, geometry, model.Binds[i], offsets) : OldBlock(i, meshes[i], s, model.Gpu));
         return blocks;
+    }
+
+    static Block PartedBlock(int i, UnitMeshRecord m, Stream s, Geometry geometry, Parted parted, int[] offsets)
+    {
+        var mesh = geometry.Mesh;
+        var vertices = new byte[mesh.Positions.Count * s.Stride];
+        for (var v = 0; v < mesh.Positions.Count; v++)
+            EncodeVertex(vertices.AsSpan(v * (int)s.Stride, (int)s.Stride), s.Items, offsets, new(parted.Positions[v], parted.Normals[v], parted.Tangents[v], mesh.Uvs[v], parted.Bones[v]));
+        // each triangle in its part's group (a face's corners are all of one part); a group left over gets one degenerate triangle
+        var lists = Enumerable.Range(0, m.Groups.Count).Select(_ => new List<uint>()).ToList();
+        for (var t = 0; t + 2 < mesh.Triangles.Count; t += 3)
+            lists[parted.Groups[mesh.Triangles[t]]].AddRange([(uint)mesh.Triangles[t], (uint)mesh.Triangles[t + 1], (uint)mesh.Triangles[t + 2]]);
+        foreach (var list in lists.Where(l => l.Count == 0)) list.AddRange([0, 0, 0]);
+        return new(i, vertices, mesh.Positions.Count, lists);
     }
 
     static Block NewBlock(int i, UnitMeshRecord m, Stream s, Geometry geometry, Bind bind, int[] offsets)
@@ -229,6 +365,11 @@ public static class UnitMesh
             for (var k = 0; k < 3; k++) { lo[k] = Math.Min(lo[k], p[k]); hi[k] = Math.Max(hi[k], p[k]); }
             radius = Math.Max(radius, Math.Sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]));
         }
+        WriteBox(main, at, lo, hi, radius);
+    }
+
+    static void WriteBox(byte[] main, int at, double[] lo, double[] hi, double radius)
+    {
         for (var k = 0; k < 3; k++) { WriteF(main, at + 8 + 4 * k, lo[k]); WriteF(main, at + 20 + 4 * k, hi[k]); }
         WriteF(main, at + 0x20, radius);
     }
@@ -365,8 +506,9 @@ public static class UnitMesh
                 case (5, 4): at[..4].Fill(255); break;
                 case (7, 0): BitConverter.TryWriteBytes(at, 1.0f); break;
                 case (7, 35): BitConverter.TryWriteBytes(at, (Half)1.0); break; // weights 1, 0, 0, 0 (the rest stay 0)
-                case (6, 28): at[0] = (byte)bone; break; // the bone index group 0's remap gives the main joint
-                case (6, 24) when bone == 0: break;
+                case (6, 28) when bone <= 255: at[0] = (byte)bone; break; // the bone index group 0's remap gives the joint
+                case (6, 28): throw new InvalidDataException("a part's joint is past bone 255 of a mesh whose bone indices are bytes.");
+                case (6, 24): BitConverter.TryWriteBytes(at, (uint)bone); break;
                 default: throw new InvalidDataException($"the model's vertices have an item (type {type}, format {format}) HellForge cannot write yet.");
             }
         }
@@ -442,22 +584,36 @@ public static class UnitMesh
 
     // A Wavefront OBJ (triangulated on read; one vertex per distinct position/UV/normal corner). yUp: the file is Y-up,
     // as Blender and most tools write it, turned into the game's Z-up (x, -z, y), which keeps the winding. Its V is up,
-    // the game's down (v -> 1 - v). Corners without a normal take their faces' normal.
-    public static Mesh ReadObj(string text, double scale, bool yUp)
+    // the game's down (v -> 1 - v). Corners without a normal take their faces' normal. In parts, each object or group
+    // (o, g) names the joint its faces ride, without a number Blender adds to a repeated name (wheel.001 is wheel); faces
+    // before the first name ride the main bone.
+    public static Mesh ReadObj(string text, double scale, bool yUp, bool parts = false)
     {
         var positions = new List<double[]>();
         var uvs = new List<double[]>();
         var normals = new List<double[]>();
-        var corners = new Dictionary<(int P, int T, int N), int>();
+        var corners = new Dictionary<(int P, int T, int N, int Part), int>();
         var order = new List<(int P, int T, int N)>();
         var triangles = new List<int>();
+        var partNames = new List<string?> { null };
+        var joints = new List<string?>();
+        var part = 0;
         double[] Axes(double x, double y, double z) => yUp ? [x, -z, y] : [x, y, z];
         static double Number(string s) => double.Parse(s, NumberStyles.Float, CultureInfo.InvariantCulture);
-        // A face's corners (each distinct position/UV/normal corner one vertex), fanned into triangles.
-        void Face(string[] parts)
+        // A corner's vertex: a new one for each distinct position/UV/normal corner of each part.
+        int Corner((int P, int T, int N) key)
+        {
+            if (corners.TryGetValue((key.P, key.T, key.N, part), out var index)) return index;
+            corners[(key.P, key.T, key.N, part)] = order.Count;
+            order.Add(key);
+            joints.Add(partNames[part]);
+            return order.Count - 1;
+        }
+        // A face's corners, fanned into triangles.
+        void Face(string[] fields)
         {
             var face = new List<int>();
-            foreach (var corner in parts.Skip(1))
+            foreach (var corner in fields.Skip(1))
             {
                 var q = corner.Split('/');
                 int Index(int k, int count) => k < q.Length && q[k].Length > 0
@@ -465,8 +621,7 @@ public static class UnitMesh
                 var key = (Index(0, positions.Count), Index(1, uvs.Count), Index(2, normals.Count));
                 if (key.Item1 < 0 || key.Item1 >= positions.Count || key.Item2 >= uvs.Count || key.Item3 >= normals.Count)
                     throw new InvalidDataException("a face names a vertex the file does not have.");
-                if (!corners.TryGetValue(key, out var index)) { index = order.Count; corners[key] = index; order.Add(key); }
-                face.Add(index);
+                face.Add(Corner(key));
             }
             if (face.Count < 3) throw new InvalidDataException("a face has fewer than 3 corners.");
             for (var k = 1; k + 1 < face.Count; k++) triangles.AddRange([face[0], face[k], face[k + 1]]);
@@ -475,21 +630,22 @@ public static class UnitMesh
         foreach (var raw in text.Split('\n'))
         {
             line++;
-            var parts = raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0 || parts[0].StartsWith('#')) continue;
+            var fields = raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (fields.Length == 0 || fields[0].StartsWith('#')) continue;
             try
             {
-                switch (parts[0])
+                switch (fields[0])
                 {
                     case "v":
                     {
-                        var p = Axes(Number(parts[1]) * scale, Number(parts[2]) * scale, Number(parts[3]) * scale);
+                        var p = Axes(Number(fields[1]) * scale, Number(fields[2]) * scale, Number(fields[3]) * scale);
                         positions.Add(p);
                         break;
                     }
-                    case "vt": uvs.Add([Number(parts[1]), parts.Length > 2 ? Number(parts[2]) : 0]); break;
-                    case "vn": normals.Add(Axes(Number(parts[1]), Number(parts[2]), Number(parts[3]))); break;
-                    case "f": Face(parts); break;
+                    case "vt": uvs.Add([Number(fields[1]), fields.Length > 2 ? Number(fields[2]) : 0]); break;
+                    case "vn": normals.Add(Axes(Number(fields[1]), Number(fields[2]), Number(fields[3]))); break;
+                    case "f": Face(fields); break;
+                    case "o" or "g" when parts: part = PartIndex(partNames, fields); break;
                 }
             }
             catch (Exception error) when (error is FormatException or IndexOutOfRangeException or OverflowException)
@@ -498,12 +654,23 @@ public static class UnitMesh
             }
             catch (InvalidDataException error) { throw new InvalidDataException($"OBJ line {line}: {error.Message}"); }
         }
-        return Vertices(positions, uvs, normals, order, triangles);
+        return Vertices(positions, uvs, normals, order, triangles, parts ? joints : null);
+    }
+
+    // An o or g line's part: its name without a number Blender adds (wheel.001 is wheel), added to the names if new.
+    static int PartIndex(List<string?> names, string[] fields)
+    {
+        var name = fields.Length > 1 ? Regex.Replace(fields[1], @"\.\d+$", "") : null;
+        var index = names.IndexOf(name);
+        if (index >= 0) return index;
+        names.Add(name);
+        return names.Count - 1;
     }
 
     // The corners as the mesh's vertices: their positions, UVs (V flipped to the game's) and normals, a corner without a
     // normal taking its faces'.
-    static Mesh Vertices(List<double[]> positions, List<double[]> uvs, List<double[]> normals, List<(int P, int T, int N)> order, List<int> triangles)
+    static Mesh Vertices(List<double[]> positions, List<double[]> uvs, List<double[]> normals, List<(int P, int T, int N)> order, List<int> triangles,
+        List<string?>? joints = null)
     {
         var pos = order.Select(c => positions[c.P]).ToList();
         var uv = order.Select(c => c.T >= 0 ? new[] { uvs[c.T][0], 1 - uvs[c.T][1] } : [0.0, 0.0]).ToList();
@@ -511,7 +678,7 @@ public static class UnitMesh
         if (nrm.Any(n => n == null)) FaceNormals(pos, nrm, triangles);
         if (triangles.Count == 0) throw new InvalidDataException("the OBJ has no faces.");
         if (pos.Count > 1_000_000) throw new InvalidDataException("the OBJ has over a million vertices.");
-        return new(pos, nrm!, uv, triangles);
+        return new(pos, nrm!, uv, triangles, joints);
     }
 
     // Each vertex without a normal: the sum of its faces' normals (unnormalized: larger faces weigh more).
