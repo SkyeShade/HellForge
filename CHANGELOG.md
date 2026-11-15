@@ -302,6 +302,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Mod support weapons from a broken hellpod can be picked up.** When a pod broke with a mod's launcher still on its
+  rack (the Stratagem Compendium's Expendables, Beelzebub's Strat Pack and other packs' pods), the launcher fell
+  without a pickup and could never be taken. The game picks a dropped item's pickup by its armory list, and these
+  launchers were in none. They are now in their base weapon's list, so they drop as it does.
 - **The Eagle 110mm Rocket Pods' attack duration goes above 1.6 seconds.** The editor capped it there, under the pods'
   own 2 seconds. The pods fire one rocket per target they find, spread over this time, so more time adds no rockets.
 - **Spore Burst Strain planets show it on the war table.** "All planets open" dealt the Spore Burst Strain like the other
