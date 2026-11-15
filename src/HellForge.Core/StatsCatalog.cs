@@ -542,6 +542,7 @@ public static class StatsCatalog
 
     public static string Format(StatsField field, uint bits) => field.Storage switch
     {
+        _ when field.Kind == "StratagemCode" => InputCode.Text(bits),
         "f32" => BitConverter.UInt32BitsToSingle(bits) is var f && f == 0 ? "0" : f.ToString(CultureInfo.InvariantCulture),
         "i32" => unchecked((int)bits).ToString(CultureInfo.InvariantCulture),
         _ when Unlimited(field) && bits == uint.MaxValue => "-1",
@@ -556,6 +557,7 @@ public static class StatsCatalog
     {
         value = null; bits = 0; error = null;
         text = text.Trim();
+        if (field.Kind == "StratagemCode") return TryParseCode(text, out value, out bits, out error);
         if (!text.Contains('.') && text.Count(c => c == ',') == 1) text = text.Replace(',', '.');
         if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) || !double.IsFinite(number))
         { error = "Enter a number."; return false; }
@@ -574,6 +576,15 @@ public static class StatsCatalog
                 bits = (uint)number; value = JsonValue.Create((long)number); return true;
         }
         error = field.Storage is "u32" or "u8" && number < 0 ? "Must not be negative." : "Number is too large."; return false;
+    }
+
+    // An input code typed as arrows or letters, saved as its packed number.
+    static bool TryParseCode(string text, out JsonNode? value, out uint bits, out string? error)
+    {
+        value = null;
+        if (!InputCode.TryParse(text.Trim('"'), out bits, out error)) return false;
+        value = JsonValue.Create((long)bits);
+        return true;
     }
 
     // A step for the arrow keys: 1 for whole numbers, one significant digit below the value's for decimals.

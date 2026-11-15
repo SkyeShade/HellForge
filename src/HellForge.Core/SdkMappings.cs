@@ -443,7 +443,7 @@ public sealed class SdkMappings
     };
 
     // Writes the generated files under the repository root (the SDK's headers and reference, and the mod loader's
-    // tables in native/mod-loader); with check, only lists the ones that differ.
+    // tables in native/mod-loader, its paid stratagems among them); with check, only lists the ones that differ.
     public static IReadOnlyList<string> Sync(string repository, bool check)
     {
         var stale = new List<string>();
@@ -452,6 +452,7 @@ public sealed class SdkMappings
         var generated = new Dictionary<string, string>(Load(Path.Combine(repository, "mappings")).Generate(api));
         if (SdkRpcs.Load(Path.Combine(repository, "mappings")) is { } rpcs)
             foreach (var (path, text) in rpcs.Generate()) generated[path] = text;
+        generated[PaidItems.StratagemHeaderFile] = PaidItems.Parse(File.ReadAllText(Path.Combine(repository, "data", "paid-items.json"))).StratagemHeader();
         foreach (var (path, text) in generated)
         {
             var file = Path.Combine(repository, path);

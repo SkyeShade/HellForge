@@ -62,8 +62,34 @@ jobs:
           chmod +x installer/HellForge.Launcher
           mkdir -p artifacts
           tar -czf artifacts/HellForge-Linux-Installer.tar.gz -C installer .
+      # The same installer with no archive inside it, for Nexus Mods, which quarantines an archive in an archive: the
+      # package as HellForge-Linux/ and its engine package as a folder, which the installer zips back. Modes are kept,
+      # so HellForge.Launcher stays executable once the zip is extracted.
+      - name: Build the zip without nested archives
+        run: |
+          set -euo pipefail
+          root=unpacked/HellForge-Linux-Installer
+          mkdir -p "$root"
+          cp -a payload/app/launcher-linux/. "$root/"
+          cp -a payload "$root/HellForge-Linux"
+          engine="$root/HellForge-Linux/app/engine-package"
+          unzip -q "$engine.zip" -d "$engine"
+          rm "$engine.zip"
+          chmod +x "$root/HellForge.Launcher"
+          nested=$(find "$root" -type f \( -iname '*.zip' -o -iname '*.7z' -o -iname '*.rar' -o -iname '*.tar' \
+            -o -iname '*.gz' -o -iname '*.tgz' -o -iname '*.xz' -o -iname '*.bz2' -o -iname '*.zst' -o -iname '*.nupkg' \))
+          if [ -n "$nested" ]; then
+            echo "::error::An archive is left inside the installer zip: $nested"
+            exit 1
+          fi
+          (cd unpacked && zip -q -r -X ../artifacts/HellForge-Linux-Installer.zip HellForge-Linux-Installer)
       - uses: actions/upload-artifact@v4
         with:
           name: HellForge-Linux-Installer
           path: artifacts/HellForge-Linux-Installer.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HellForge-Linux-Installer-zip
+          path: artifacts/HellForge-Linux-Installer.zip
           if-no-files-found: error

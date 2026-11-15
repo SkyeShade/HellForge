@@ -89,7 +89,8 @@ In order, the script:
 3. generates and compiles the two PlayFab stand-ins, the mod loader, the `steam_api64.dll` stand-in with the network
    gate, and the WFP tool, all with Zig, then checks each stand-in's exports against the original;
 4. builds and runs the native tests and smoke tests (see [Tests](#tests));
-5. compiles the session runner and the local backend with NativeAOT;
+5. compiles the local backend with NativeAOT, then the session runner with the backend folder's digest compiled in,
+   and checks the session reports that digest. A session refuses a backend folder whose digest differs;
 6. stages the package, checks it for the PC's name, writes `engine.json` and zips it.
 
 Intermediate output goes to `artifacts/sdk-shims/out` (the native DLLs and `build.json`) and

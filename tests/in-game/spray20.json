@@ -1,0 +1,27 @@
+{
+  "about": "SDK 20's sprays in the real game: two FLAM-40 copies with damage of their own (HfWeapon.spray_damage), a scaled copy of the FLAM-40's and the TX-41 Sterilizer's gas, each in a SprayWeapon record of its own while the FLAM-40 keeps its own; the hot copy's stratagem in the loadout on the ship, called in, and its hellpod bringing the copy (tests/in-game/README.md). Spraying enemies with it is by hand.",
+  "mods": [
+    "spray-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "script": [
+    {"wait": 25},
+    {"menu": "stratagem-menu"},
+    {"call": "LRLRLRLRD"},
+    {"wait": 25},
+    {"diag": 1}
+  ],
+  "checks": [
+    {"name": "the probe loads with SDK 20", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "the damage, both copies and the stratagem are added", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE added ok"},
+    {"name": "the stratagem is added", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE stratagem ok"},
+    {"name": "the hot copy has its own spray record with its own damage", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE hot record ok"},
+    {"name": "the gas copy has its own spray record with the Sterilizer's damage", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE gas record ok"},
+    {"name": "the FLAM-40 keeps its own damage", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE base unchanged ok"},
+    {"name": "the loader writes each copy's spray damage", "log": "mod-hellforge.spray-probe.log", "regex": "its spray deals damage \\d+ \\(its base's deals 14\\)", "min": 2},
+    {"name": "the hot copy's stratagem is in the loadout on the ship", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE loadout ok"},
+    {"name": "called in, its hellpod brings the hot copy", "log": "mod-hellforge.spray-probe.log", "contains": "PROBE hot spawned ok"},
+    {"name": "nothing failed", "log": "mod-hellforge.spray-probe.log", "absent": "FAIL"}
+  ]
+}

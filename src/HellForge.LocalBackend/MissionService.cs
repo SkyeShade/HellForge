@@ -165,7 +165,7 @@ public sealed class MissionService
         {
             foreach (var track in tracks)
             {
-                var earned = WeaponMastery.Earn(track, progression, inventory, experience);
+                var earned = WeaponMastery.Earn(track, progression, inventory, experience, id => profile.Grantable(id, inventory));
                 var update = new JsonObject { ["id32"] = earned.Package, ["level"] = earned.Level, ["progress"] = earned.Progress };
                 if (player is { } participant && participant.TryGetProperty("platformAccountId", out var account) && account.ValueKind == JsonValueKind.String)
                     update["platformAccountId"] = account.GetString();
@@ -265,15 +265,19 @@ public sealed class MissionService
         return count;
     }
 
+    // What a report's loot may hold: the three sample kinds, requisition and medals. Super Credits found on a map are a
+    // premium currency, and Forge Credits come from their piles (Activity), so neither is loot.
+    static readonly HashSet<uint> Looted = [0xEDF6EAF5, 0xB1ED1C41, 0xDAC0E9DB, RequisitionMixId, MedalsMixId];
+
     static Dictionary<uint, long> SumItems(JsonElement body, string key)
     {
         var items = new Dictionary<uint, long>();
         foreach (var list in FindAll(body, key))
             if (list.ValueKind == JsonValueKind.Array)
                 foreach (var item in list.EnumerateArray())
-                    // Super Credits found on a map (or claimed by a modified report) are a premium currency: never granted.
+                    // Only what a mission yields (Looted): the report is the client's, so an item it names is not granted for that.
                     if (TryInt(item, "mixId", out var mix) && TryInt(item, "amount", out var amount) && mix > 0 && amount > 0 && mix <= uint.MaxValue &&
-                        !PaidContentSet.IsSuperCredits((uint)mix))
+                        Looted.Contains((uint)mix))
                         items[(uint)mix] = items.GetValueOrDefault((uint)mix) + Math.Min(amount, 10_000);
         return items;
     }

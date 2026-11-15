@@ -564,6 +564,7 @@ static LONG CALLBACK BehaviourFault(EXCEPTION_POINTERS* info)
 {
     static int reported;
     DWORD code = info->ExceptionRecord->ExceptionCode;
+    if (SafeReadOwns(info->ContextRecord->Rip)) return EXCEPTION_CONTINUE_SEARCH; /* a failed SafeRead, not the behaviour's */
     if (g_bhvCallAt == 0 || GetCurrentThreadId() != g_bhvThread || reported >= 4 ||
         (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_ILLEGAL_INSTRUCTION && code != EXCEPTION_STACK_OVERFLOW))
         return EXCEPTION_CONTINUE_SEARCH;

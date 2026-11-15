@@ -79,6 +79,9 @@ static uintptr_t ApiDamageRow(uint32_t id)
     return 0;
 }
 
+/* Whether a mod may name a damage id at all: vanilla, or one a mod added (it may not be installed yet). */
+static int DamageKnown(uint32_t id) { return id < DMG_VANILLA + g_damageCount; }
+
 /* Whether a damage id resolves in this game: vanilla, or added and installed. */
 static int DamageUsable(uint32_t id)
 {

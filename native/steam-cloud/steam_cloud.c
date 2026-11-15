@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "net_gate.h"
+#include "tablet_gate.h"
 #include "steam_census.h"
 #include "bridge_channel.h"
 #include "../common/hf_privacy.h"
@@ -575,6 +576,8 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
         InitializeCriticalSection(&g_lock);
         // the network gate first: hooked before the game's own code can reach the network (net_gate.c)
         NetGateStart();
+        // sandboxed, the game is refused the Wintab tablet driver (tablet_gate.c); after the gate, so its census is open
+        TabletGateStart();
         // the Steam census, when asked for (steam_census.c): what the game asks of Steam
         SteamCensusStart(instance);
         // bridge mode (docs/steam-bridge.md): the broker instead of Valve's DLL; the Init functions connect. Any value set

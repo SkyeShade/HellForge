@@ -161,11 +161,8 @@ static HfApi g_api;
 
 /* ---- memory ----------------------------------------------------------------------------------------------------- */
 
-static int SafeRead(uintptr_t address, void* buffer, size_t size)
-{
-    SIZE_T read = 0;
-    return ReadProcessMemory(GetCurrentProcess(), (LPCVOID)address, buffer, size, &read) && read == size ? 0 : 1;
-}
+#include "perf_fixes.c" /* HELLFORGE_PERF_OFF: which performance fixes stay off */
+#include "safe_read.c"  /* SafeRead: small reads copied in place, a fault turned into the failure return */
 
 /* A component's index rows (16 bytes each) in one read, into this thread's buffer (kept for its next call); NULL when
  * they do not all read. One read a row cost the editor's live reads about a millisecond of every frame, on the thread
@@ -357,6 +354,7 @@ static int SwapPointer(uintptr_t at, void* value, void** old)
     return 0;
 }
 
+#include "paid_guard.c" /* before hooks.c: what mods may not hook or write, and the backend's list of refused paid ids */
 #include "hooks.c" /* every hook, a mod's or HellForge's own: one chain per function (SDK 13) */
 #include "functions.c" /* after hooks.c: game functions by name (SDK 16) */
 #include "globals.c" /* game globals by name (SDK 16) */
@@ -541,6 +539,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 static void ChannelInstall(uintptr_t game);
 #include "registry.c"
 #include "table_growth.c" /* the component tables the registry grows */
+#include "registry_fired.c" /* what a weapon fires: its beam or arc type, its spray damage */
 #include "registry_load.c" /* the registry at work when the entity data loads */
 #include "damage.c"
 #include "beam_arc.c"
@@ -553,6 +552,7 @@ static void ChannelInstall(uintptr_t game);
 #include "difficulty_missions.c" /* its missions and objectives */
 #include "difficulty_countdown.c" /* its mission countdown */
 #include "difficulty_cities.c" /* its larger structured maps and cities */
+#include "difficulty_carvers.c" /* before difficulty_maps.c: NavRetile re-files the navmesh's carvers */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_towns.c" /* after difficulty_maps.c: towns on larger maps, their counters and guards */
 #include "difficulty_streets.c" /* after difficulty_towns.c: city streets on larger maps */
@@ -588,8 +588,10 @@ static void ChannelInstall(uintptr_t game);
 #include "actions.c" /* after refs.c (packages) and events.c (the readers) */
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
+#include "deploys.c" /* after rounds.c: RoundBase */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
 #include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
+#include "perf_all.c" /* the performance fixes, after render_guards.c */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -718,6 +720,8 @@ static int ApiGetStat(HfMod* mod, const HfStat* stat, HfLiveValue* out)
     return result;
 }
 
+#include "decode_top.c" /* when game.dll counts as decoded: the top of each section unpacked */
+
 static int GameLoaded(void)
 {
     uintptr_t base = ApiModuleBase(g_pinModule, NULL);
@@ -726,7 +730,7 @@ static int GameLoaded(void)
     for (int i = 0; i < g_pinCount; i++)
     {
         uint8_t bytes[32];
-        if (!SafeRead(base + g_pinRva, bytes, g_pinLength[i]) && memcmp(bytes, g_pins[i], g_pinLength[i]) == 0) return 1;
+        if (!SafeRead(base + g_pinRva, bytes, g_pinLength[i]) && memcmp(bytes, g_pins[i], g_pinLength[i]) == 0) return DecodedToTheTop(base);
     }
     return 0;
 }
@@ -738,7 +742,9 @@ static void WatchLoaded(void)
     Note("game.dll loaded and decoded");
     ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
+    RecordHashInstall(); /* before the plugin setup builds the destruction-record map */
     StateMoves(ApiModuleBase("game.dll", NULL)); /* before the plugin setup allocates the game state */
+    KnnGridInstall(); /* before any level is generated */
     StartCrashWorker(); /* crash_notes.c: the thread that notes a stack overflow */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
@@ -778,19 +784,31 @@ static void WatchStats(void)
     if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SpawnGuardsWatch(); ShotsTick(); RoundsTick(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SpawnGuardsWatch(); VehicleBoxWatch(); ShotsTick(); RoundsTick(); DeploysTick(); }
 }
 
 static void WatchInstalls(void)
 {
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
+    if (g_fired[HF_EVENT_GAME_LOADED]) PerfCorpseFreezeWatch();
+    HeapTrimInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallForgeCreditsColour(); InstallForgeCreditsRoll(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
-    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); }
+    AiPathBudgetWatch();
+    if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
+    EarlyStampPackagesInstall();
     RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
+    if (g_fired[HF_EVENT_GAME_LOADED]) OverlapGridWatch();
+    PerfSpeedTreeWatch();
+    RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
+    RenderVersionRehashWatch();
+    PerfScatterCamerasWatch();
+    TreeLimitsWatch();
+    SpanRescueInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
@@ -989,7 +1007,7 @@ static int PlanGame(char** f, int n)
 {
     if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
     if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
-    if (FnPlanLine(f, n) || GlPlanLine(f, n) || WarbondPlanLine(f, n) || PackagePlanLine(f, n)) return 1;
+    if (FnPlanLine(f, n) || GlPlanLine(f, n) || WarbondPlanLine(f, n) || PackagePlanLine(f, n) || PaidGuardPlanLine(f, n)) return 1;
     if (n == 2 && strcmp(f[0], "forge_credits_chance") == 0) { int p = atoi(f[1]); g_forgeCreditChance = p < 0 ? 0 : p > 100 ? 100 : p; return 1; }
     if (n >= 4 && strcmp(f[0], "game_pin") == 0)
     {
@@ -1073,6 +1091,7 @@ static int ReadPlan(const wchar_t* path)
         static const char* const kPins[] = {"7575488b15fafc06024881c2e4030000", "6690488d153a1084000f1f8000000000"};
         snprintf(g_pinModule, sizeof g_pinModule, "%s", "game.dll");
         g_pinRva = 0x12b663d;
+        g_decodeTop = 1;
         for (int i = 0; i < 2; i++, g_pinCount++) g_pinLength[g_pinCount] = ParseHex(kPins[i], g_pins[g_pinCount], 32);
     }
     return 0;
@@ -1119,7 +1138,7 @@ static void ApiInit(void)
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
         ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiAddEnemy, ApiAddEnemySwap, ApiAddEnemySquad, ApiRpcListen, ApiRpcSend,
-        ApiAddScreen, ApiScreenShow, ApiGenerationCapacity};
+        ApiAddScreen, ApiScreenShow, ApiGenerationCapacity, ApiAddPattern, ApiUiOpen, ApiUiSet, ApiUiOn, ApiUiClose};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */

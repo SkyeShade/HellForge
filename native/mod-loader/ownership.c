@@ -52,6 +52,7 @@ static OwnSortFn g_ownSort;
 static OwnApplyFn g_ownApply;
 static OwnRemoveFn g_ownRemove;
 static uintptr_t (*g_ownManager)(void);
+static uintptr_t g_ownGame; /* the native fixture's game image, else game.dll's */
 
 static uintptr_t OwnManagerNow(void)
 {
@@ -59,13 +60,30 @@ static uintptr_t OwnManagerNow(void)
     return game != 0 && !SafeRead(game + OWN_MANAGER, &manager, 8) ? manager : 0;
 }
 
+/* A pin as the code reads once the catalogue moved: the sort's and the remove's pins hold catalogue displacements that
+ * state_moves.c rewrote (kMoveCatalogueSites), so those bytes are compared with what it wrote. */
+static int OwnPinMatches(uintptr_t game, uint32_t rva, const uint8_t* pin, size_t size)
+{
+    uint8_t now[64];
+    if (size > sizeof now) return 0;
+    memcpy(now, pin, size);
+    for (size_t i = 0; g_stateMoves == 1 && i < MOVE_COUNT(kMoveCatalogueSites); i++)
+    {
+        const MoveSite* site = &kMoveCatalogueSites[i];
+        int32_t value = site->value + MoveSiteDelta(site->kind);
+        for (uint32_t b = 0; b < 4; b++)
+            if (site->rva + site->at + b >= rva && site->rva + site->at + b < rva + size) now[site->rva + site->at + b - rva] = (uint8_t)((uint32_t)value >> (8 * b));
+    }
+    return PinMatches(game + rva, now, size);
+}
+
 /* The game's catalogue functions, checked once. 1 when they are the reviewed ones. */
 static int OwnProve(void)
 {
     if (g_ownApply != NULL) return 1;
-    uintptr_t game = ApiModuleBase("game.dll", NULL);
-    if (game == 0 || !PinMatches(game + OWN_APPLY, kOwnApplyPin, sizeof kOwnApplyPin) || !PinMatches(game + OWN_ADD, kOwnAddPin, sizeof kOwnAddPin) ||
-        !PinMatches(game + OWN_SORT + 0x21, kOwnSortPin, sizeof kOwnSortPin) || !PinMatches(game + OWN_REMOVE, kOwnRemovePin, sizeof kOwnRemovePin))
+    uintptr_t game = g_ownGame != 0 ? g_ownGame : ApiModuleBase("game.dll", NULL);
+    if (game == 0 || !OwnPinMatches(game, OWN_APPLY, kOwnApplyPin, sizeof kOwnApplyPin) || !OwnPinMatches(game, OWN_ADD, kOwnAddPin, sizeof kOwnAddPin) ||
+        !OwnPinMatches(game, OWN_SORT + 0x21, kOwnSortPin, sizeof kOwnSortPin) || !OwnPinMatches(game, OWN_REMOVE, kOwnRemovePin, sizeof kOwnRemovePin))
         return 0;
     g_ownAdd = (OwnAddFn)(game + OWN_ADD);
     g_ownSort = (OwnSortFn)(game + OWN_SORT);
@@ -116,7 +134,7 @@ static const char* const kOwnNoBase[] = {"a new weapon's base has no root item i
 typedef struct OwnItem { int kind; uint32_t mixId, stable, baseStable, baseMixId; int take; } OwnItem;
 /* items: grown as a change adds them (live_content.c LiveOwn), capacity entries; a change may own or give back every
  * weapon and entity its mods had, more than any fixed number */
-typedef struct OwnBatch { OwnItem* items; int count, capacity, added, owned, taken; const char* why; } OwnBatch;
+typedef struct OwnBatch { OwnItem* items; int count, capacity, added, owned, taken, unowned; const char* why; } OwnBatch;
 
 /* A stratagem's records: the base's child (category 10, itemId its stable id) and its item (the child's parent). */
 static int OwnStratagem(uintptr_t manager, const OwnItem* item)
@@ -159,12 +177,34 @@ static int OwnDifficulty(uintptr_t manager, const OwnItem* item)
     return 1;
 }
 
-/* Whether an item is owned (its record's state 2 or 4). */
-static int OwnOwned(uintptr_t manager, uint32_t mixId)
+/* Whether a record is held: state 2 or 4, as every reader of +0x14 tests it (add -2, test ~2). */
+static int OwnHeldAt(uintptr_t manager, int entry)
 {
-    int entry = OwnEntry(manager, mixId, 0, 0);
     uint32_t state = entry >= 0 ? *(const uint32_t*)(OwnRecordAt(manager, entry) + 0x14) : 0;
     return state == 2 || state == 4;
+}
+
+/* Whether an item is owned (its record's state 2 or 4). */
+static int OwnOwned(uintptr_t manager, uint32_t mixId) { return OwnHeldAt(manager, OwnEntry(manager, mixId, 0, 0)); }
+
+/* Whether the player holds a stratagem, as the game decides (0x136FC20): the first category-10 entry with its stable id,
+ * or that entry's parent, held. The game first returns not held when its row's [+0xC0]&1 or [+0x80]&2 is clear; this
+ * reads no row, so it can say held where the game does not. */
+static int OwnStratagemHeld(uintptr_t manager, uint32_t stable)
+{
+    int child = OwnEntry(manager, 0, stable, 10);
+    if (child < 0) return 0;
+    uint32_t back = ((const uint32_t*)(manager + OWN_INDEX + (uintptr_t)child * 24))[4];
+    return OwnHeldAt(manager, child) || (back != 0 && back <= (uint32_t)child && OwnHeldAt(manager, child - (int)back));
+}
+
+/* Whether an item may be owned now: a copy only when the player holds what it copies (a weapon's base, which can be
+ * another mod's weapon owned earlier in the batch; a stratagem's base), a level when level 10 is. A copy of premium
+ * content the player lacks stays unowned; the backend decides at the next session (RegisteredItems.Locked). */
+static int OwnMay(uintptr_t manager, const OwnItem* item)
+{
+    if (item->kind == OWN_STRATAGEM) return OwnStratagemHeld(manager, item->baseStable);
+    return OwnOwned(manager, item->baseMixId);
 }
 
 /* One item's records appended, copies of its base's: how many (0: its base is not in the catalogue). */
@@ -212,6 +252,29 @@ static int OwnAppendAll(uintptr_t manager, OwnBatch* b)
     return appended;
 }
 
+/* Each item owned that may be: passes until none more is, as a weapon's base can come later in the batch. Those left
+ * are counted, so the change says some stay unowned. */
+static void OwnAll(uintptr_t manager, OwnBatch* b)
+{
+    uint8_t* done = (uint8_t*)calloc((size_t)b->count + 1, 1);
+    if (done == NULL) { b->why = "no memory to own the new items; they are owned from the next session"; return; }
+    for (int grown = 1; grown;)
+    {
+        grown = 0;
+        for (int i = 0; i < b->count; i++)
+        {
+            const OwnItem* item = &b->items[i];
+            if (done[i] || item->take || OwnEntry(manager, item->mixId, 0, 0) < 0 || !OwnMay(manager, item)) continue;
+            g_ownApply(manager, item->mixId, 1, 0, NULL, 0);
+            b->owned++;
+            done[i] = 1;
+            grown = 1;
+        }
+    }
+    for (int i = 0; i < b->count; i++) b->unowned += !b->items[i].take && !done[i];
+    free(done);
+}
+
 /* On the game thread: the batch's records appended, the catalogue sorted, and each item owned (or, take, given back). */
 static void OwnBatchStep(void* arg)
 {
@@ -229,10 +292,5 @@ static void OwnBatchStep(void* arg)
     /* every item given back before any is owned: one a change gives back and owns (a new version renumbering its
      * stratagems) stays owned */
     for (int i = 0; i < b->count; i++) if (b->items[i].take) { g_ownRemove(manager, b->items[i].mixId, 1); b->taken++; }
-    for (int i = 0; i < b->count; i++)
-    {
-        const OwnItem* item = &b->items[i];
-        if (!item->take && OwnEntry(manager, item->mixId, 0, 0) >= 0 && (item->kind != OWN_DIFFICULTY || OwnOwned(manager, item->baseMixId)))
-        { g_ownApply(manager, item->mixId, 1, 0, NULL, 0); b->owned++; }
-    }
+    OwnAll(manager, b);
 }

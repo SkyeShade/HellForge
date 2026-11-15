@@ -160,6 +160,7 @@ public sealed class LiveEditServer : IAsyncDisposable
     // Each player's changes of projectile and damage rows, which the game's copies of their shots fly and hit with
     // (native/mod-loader/rounds.c): "<peer hex>=<entry>;<entry>..." comma separated, "-" none (AssetShare.Rounds).
     public Task<LiveResult> RoundsAsync(string list) => SendAsync("rounds", list);
+    public Task<LiveResult> DeploysAsync(string list) => SendAsync("deploys", list);
 
     // The mod channel (SDK 16, native/mod-loader/channel.c): a message from the same mod on another machine, one row of
     // the host's shared table (no value: removed), and the lobby changing (every row goes, then its snapshot follows).

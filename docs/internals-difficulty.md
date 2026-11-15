@@ -113,7 +113,18 @@ frame.
 `HF_DIFFICULTY_HEAVY_ARTILLERY` is under [Artillery](#artillery). The mission-end telemetry keeps 16 objectives (capped).
 
 `mission_stratagem` names a stratagem type every mission at the level grants every player. It goes in the mission group
-with Reinforce and Resupply: no loadout slot, and the type's own uses and cooldown. The header's descriptions of these
+with Reinforce and Resupply: no loadout slot, and the type's own uses and cooldown. The group grants it whether the
+player owns it or not, so the loader refuses a paid type (`GrantRefused` in `difficulty_missions.c`):
+
+- It reads the type's StratagemInfo row (+4, the stable id). A mod's type is checked by its own stable id and its base's.
+- The paid stable ids come from `data/paid-items.json` through `native/mod-loader/paid_stratagems.h`, which
+  `sdk-headers` generates and its check keeps current.
+- The level's install waits until the game has loaded that row. A refused type is logged, and the level grants none.
+
+The check runs in each player's loader. How a joiner's game handles a mission group the host sends (RPC 0xC953DB6D)
+is not traced, so a changed host's paid stratagem may still reach it.
+
+The header's descriptions of these
 flags and fields are in `native/mod-sdk/hellforge_mod.h` (`HfDifficulty`).
 
 ### Second primary

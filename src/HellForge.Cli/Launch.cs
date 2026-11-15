@@ -46,8 +46,11 @@ static class Launch
         var paths = new InstallSessionPaths(install);
         foreach (var (part, file) in new[] { ("The local backend", paths.Backend), ("The session runner", paths.Session) })
             if (!File.Exists(file)) throw new InvalidDataException($"{part} is missing ({file}): reinstall HellForge.");
-        if (!SupportedBuild.Current.IsComplete(install.Game))
-            throw new InvalidDataException("The game copy is not complete: open HellForge.exe once to set up (or repair) the installation.");
+        // the SDK stand-ins a session cut short left in game/bin go back first, as when the launcher opens
+        try { SdkShimRecovery.Recover(install); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
+        if (SupportedBuild.Current.FirstCompletenessProblem(install.Game) is { } problem)
+            throw new InvalidDataException($"The game copy is not complete ({problem}): open HellForge.exe once to set up (or repair) the installation.");
         return (install, paths);
     }
 

@@ -233,8 +233,25 @@ static void FormatNumber(char* text, size_t size, double v, bool whole)
     if (!strcmp(text, "-0")) strcpy(text, "0");
 }
 
+/* A packed input code (stratagem_codes.c: a base-5 digit per direction, the first lowest) as arrows; "?" when it is not
+ * one. */
+static std::string FormatCode(double v)
+{
+    static const char* const kArrows[] = {"", "â", "â", "â", "â"}; /* up right down left */
+    if (v < 1 || v > 4294967295.0 || v != floor(v)) return "?";
+    std::string text;
+    for (uint32_t packed = (uint32_t)v, n = 0; packed != 0; packed /= 5, n++)
+    {
+        if (packed % 5 == 0 || n == 10) return "?";
+        if (!text.empty()) text += " ";
+        text += kArrows[packed % 5];
+    }
+    return text;
+}
+
 std::string Format(const Row* row, double v)
 {
+    if (row->code) return FormatCode(v);
     if (!row->choice.empty()) { const Row::Option* o = row->OptionOf(v); return o ? o->label : "?"; }
     if (row->Valued()) if (const Row::Option* o = row->OptionOf(v)) return o->label; /* else its number */
     if (!row->pick.empty()) return RefLabel(row, v);

@@ -9,6 +9,7 @@
     <EmbeddedResource Include="entity-profile.json" LogicalName="HellForge.Core.entity-profile.json" />
     <EmbeddedResource Include="stats-schema.json" LogicalName="HellForge.Core.stats-schema.json" />
     <EmbeddedResource Include="../../data/verified-mods.json" LogicalName="HellForge.Core.verified-mods.json" />
+    <EmbeddedResource Include="../../data/paid-items.json" LogicalName="HellForge.Core.paid-items.json" />
     <EmbeddedResource Include="../../data/depot-history/553853.txt" LogicalName="HellForge.Core.depot-history.553853.txt" />
     <EmbeddedResource Include="../../mappings/components.json" LogicalName="HellForge.Core.mappings.components.json" />
     <EmbeddedResource Include="../../mappings/catalog.json" LogicalName="HellForge.Core.mappings.catalog.json" />
@@ -31,6 +32,7 @@
     <EmbeddedResource Include="../../mappings/melee.json" LogicalName="HellForge.Core.mappings.melee.json" />
     <EmbeddedResource Include="../../mappings/fired-entities.json" LogicalName="HellForge.Core.mappings.fired-entities.json" />
     <EmbeddedResource Include="../../mappings/parity.json" LogicalName="HellForge.Core.mappings.parity.json" />
+    <EmbeddedResource Include="../../mappings/editor-requests.json" LogicalName="HellForge.Core.mappings.editor-requests.json" />
     <EmbeddedResource Include="../../mappings/shader-hosts.json" LogicalName="HellForge.Core.mappings.shader-hosts.json" /></ItemGroup>
   <ItemGroup>
     <!-- .rar and .7z mods (OtherArchives): managed code, MIT -->

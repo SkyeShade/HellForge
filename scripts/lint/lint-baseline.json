@@ -24,7 +24,6 @@
     {"unit": "HellForge.Core", "file": "StatsSync.cs", "rule": "R16", "function": "", "value": 11},
     {"unit": "HellForge.Core", "file": "VisualCppRuntimes.cs", "rule": "R16", "function": "", "value": 11},
     {"unit": "HellForge.LocalBackend", "file": "FriendPresence.cs", "rule": "R16", "function": "", "value": 11},
-    {"unit": "HellForge.LocalBackend", "file": "LocalBackend.Requests.cs", "rule": "R10", "function": "LocalBackend.Requests.GameRouteAsync", "value": 16},
     {"unit": "HellForge.LocalBackend", "file": "MissionService.cs", "rule": "R16", "function": "", "value": 17},
     {"unit": "HellForge.LocalBackend", "file": "Multiplayer/AssetShare.cs", "rule": "R16", "function": "", "value": 24},
     {"unit": "HellForge.LocalBackend", "file": "Multiplayer/AutoRejoin.cs", "rule": "R16", "function": "", "value": 18},

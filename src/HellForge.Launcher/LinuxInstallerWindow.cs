@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.IO.Compression;
 using System.Runtime.Versioning;
 using Avalonia;
 using Avalonia.Controls;
@@ -265,9 +264,9 @@ sealed class LinuxInstallerWindow : Window
         installButton.IsEnabled = false;
         try
         {
-            if (!File.Exists(payload)) throw new InvalidDataException("The HellForge Linux package was not found beside this installer.");
             // Reading the package's index and walking Steam's folders are disk work too; keep both off the UI thread.
-            await Task.Run(() => ValidatePackage(payload));
+            if (await Task.Run(() => LinuxAppInstaller.PackageProblem(payload)) is { } packageProblem)
+                throw new InvalidDataException(packageProblem);
             var steamRoot = steamChoice ?? await Task.Run(() => SteamLocator.SteamRoot());
             if (steamRoot == null) steamRoot = await ChooseSteamFolder();
             if (steamRoot == null)
@@ -348,32 +347,6 @@ sealed class LinuxInstallerWindow : Window
         }
         if (process.ExitCode != 0) throw new InvalidDataException($"Proton could not prepare the prefix (exit code {process.ExitCode}).");
         LinuxUninstall.WritePrefixMarker(prefix, existed, empty);
-    }
-
-    static void ValidatePackage(string archivePath)
-    {
-        using var archive = ZipFile.OpenRead(archivePath);
-        var entries = archive.Entries.Select(entry => entry.FullName.Replace('\\', '/')).ToHashSet(StringComparer.Ordinal);
-        foreach (var required in new[]
-        {
-            "app/app-build.json",
-            "app/engine-package.zip",
-            "app/launcher-linux/HellForge.Launcher",
-            "app/capture-linux/HellForge.CaptureProxy",
-            "app/backend-linux/HellForge.LocalBackend",
-            "app/linux/hellforge-linux.sh",
-            "app/linux/hf-steam.sh",
-            "app/linux/hf-container.sh",
-            "app/linux/hf-wineserver.sh",
-            "app/linux/hf-relays.sh",
-            "app/linux/hf-coop-relays.sh",
-            "app/linux/hf-sandbox-probe",
-            "app/linux/allow-capture.sh",
-            "app/linux/capture-helper.sh",
-            "app/linux/capture-relay",
-            "app/linux/hf-sandbox"
-        })
-            if (!entries.Contains(required)) throw new InvalidDataException("The Linux package is incomplete; missing " + required + ".");
     }
 
     void Status(string message) => status.Text = message;

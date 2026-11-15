@@ -7,10 +7,7 @@ using System.Text.Json;
 // Dependency-free integration checks. Every game file here is synthetic.
 var root = Path.GetFullPath(Path.Combine("artifacts", "tests", Guid.NewGuid().ToString("N")));
 Directory.CreateDirectory(root);
-// The Linux snapshot seal uses this synthetic machine id in every test; the real /etc/machine-id is never read.
-var sampleMachineId = Path.Combine(root, "machine-id");
-File.WriteAllText(sampleMachineId, "0123456789abcdef0123456789abcdef\n");
-SnapshotSeal.MachineData.MachineIdPathForTests = sampleMachineId;
+TestSigner.Install();
 var passed = 0;
 var failed = 0;
 void Check(bool condition, string reason)
@@ -817,6 +814,7 @@ IntegrityTests.Register(Test, Check, root);
 WindowsSupportTests.Register(Test, Check, Reject, root);
 SmartAppControlTests.Register(Test, Check, Reject, root);
 SteamInputNoteTests.Register(Test, Check, Reject, root);
+BackendPinTests.Register(Test, Check, root);
 
 Console.WriteLine($"{passed} passed; {failed} failed. Synthetic fixtures: {root}");
 return failed == 0 ? 0 : 1;

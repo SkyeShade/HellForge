@@ -4705,7 +4705,7 @@
         {"name": "account", "type": "void*", "meaning": "the progression manager: hf_global_Progression"},
         {"name": "item", "type": "uint32_t", "meaning": "the item's id"}
       ],
-      "hook": true,
+      "hook": false,
       "meaning": "Whether the player holds a catalogue item",
       "source": "HellForge research forge-credits-tint (README.md, locked warbonds)"
     },
@@ -6937,6 +6937,318 @@
       "hook": true,
       "meaning": "Switches an entity off in this machine's world: finds it by network id and, if it is on (bit 0 of its record's flags, +0x14), runs each of its components' deactivate callbacks (kinds 9, then 8) and clears the bit. The entity stays in the world. The session calls it through LocalUser's entity callbacks (+0xB3D8, set at 0x134D470, via a thunk at 0xBA0680)",
       "source": "HellForge research (build 25480438): 0xFDBEA0, its thunks at 0xBA0680 and 0xFDA140, 0x581E10"
+    },
+    "UnitLocalPosition": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FC450",
+      "code": "40 53 48 83 EC 20 48 63 DA E8 62 14 EA FF 48 8B C8 4C 8B 00 41 FF 90 E8 00 00 00 48 8B CB 48 C1",
+      "returns": "const float*",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root), below UnitNumSceneGraphItems"}
+      ],
+      "hook": true,
+      "meaning": "A node's position in its parent's space: 3 floats, inside its local transform (UnitLocalPose +0x24): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x0",
+      "source": "the Unit table's slot 0 (+0x0) and its Lua twin Unit.local_position; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitLocalRotation": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FC490",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 48 8B F9 49 63 D8 8B CA E8 19 14 EA FF 48 8B C8 48 8B 10 FF 92 E8",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "where the rotation goes: a quaternion, 4 floats (x, y, z, w)"},
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root), below UnitNumSceneGraphItems"}
+      ],
+      "hook": true,
+      "meaning": "A node's rotation in its parent's space, written to out as a quaternion; returns out: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x8",
+      "source": "the Unit table's slot 1 (+0x8) and its Lua twin Unit.local_rotation; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitLocalScale": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FC4E0",
+      "code": "40 53 48 83 EC 20 48 63 DA E8 D2 13 EA FF 48 8B C8 4C 8B 00 41 FF 90 E8 00 00 00 48 8B CB 48 C1",
+      "returns": "const float*",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root), below UnitNumSceneGraphItems"}
+      ],
+      "hook": true,
+      "meaning": "A node's scale in its parent's space: 3 floats, inside its local transform (UnitLocalPose +0x30): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x10",
+      "source": "the Unit table's slot 2 (+0x10) and its Lua twin Unit.local_scale; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitLocalPose": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FC520",
+      "code": "40 53 48 83 EC 20 48 63 DA E8 92 13 EA FF 48 8B C8 4C 8B 00 41 FF 90 E8 00 00 00 48 8B CB 48 C1",
+      "returns": "const float*",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root), below UnitNumSceneGraphItems"}
+      ],
+      "hook": true,
+      "meaning": "A node's local transform: a 3x3 rotation (9 floats), then its position (+0x24, 3 floats) and scale (+0x30, 3 floats): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x18",
+      "source": "the Unit table's slot 3 (+0x18) and its Lua twin Unit.local_pose; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitWorldPose": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FD220",
+      "code": "40 53 48 83 EC 20 48 63 DA E8 92 06 EA FF 48 8B C8 4C 8B 00 41 FF 90 E8 00 00 00 48 8B CB 48 C1",
+      "returns": "const float*",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root), below UnitNumSceneGraphItems"}
+      ],
+      "hook": true,
+      "meaning": "A node's world pose: a 4x4 matrix of floats, its position in the last row (+0x30). The game reads it from more than 1,500 places: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x90",
+      "source": "the Unit table's slot 18 (+0x90) and its Lua twin Unit.world_pose; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitWorldRotation": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FD1D0",
+      "code": "48 89 5C 24 08 57 48 83 EC 30 48 8B F9 49 63 D8 8B CA E8 D9 06 EA FF 48 8B C8 48 8B 10 FF 92 E8",
+      "returns": "float*",
+      "params": [
+        {"name": "out", "type": "float*", "meaning": "where the rotation goes: a quaternion, 4 floats (x, y, z, w)"},
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root), below UnitNumSceneGraphItems"}
+      ],
+      "hook": true,
+      "meaning": "A node's world rotation, written to out as a quaternion; returns out: the Unit table's (EngineApi +0x18, 0x27C8F10) +0xb0",
+      "source": "the Unit table's slot 22 (+0xb0) and its Lua twin Unit.world_rotation; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitNumMeshes": {
+      "module": "helldivers2.exe",
+      "rva": "0x200CD0",
+      "code": "48 83 EC 28 E8 E7 CB E9 FF 48 8B C8 48 8B 10 48 83 C4 28 48 FF A2 F8 00 00 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "How many meshes a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x1a8",
+      "source": "the Unit table's slot 53 (+0x1a8) and its Lua twin Unit.num_meshes; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitMesh": {
+      "module": "helldivers2.exe",
+      "rva": "0x200D20",
+      "code": "48 89 5C 24 08 57 48 83 EC 20 8B FA E8 8F CB E9 FF 48 8B C8 48 8B D8 4C 8B 00 41 FF 90 F8 00 00",
+      "returns": "void*",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "index", "type": "int32_t", "meaning": "the mesh, below UnitNumMeshes"}
+      ],
+      "hook": true,
+      "meaning": "A unit's mesh object by index: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x1b8",
+      "source": "the Unit table's slot 55 (+0x1b8) and its Lua twin Unit.mesh; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitAlive": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FEEB0",
+      "code": "48 83 EC 28 E8 07 EA E9 FF 48 85 C0 0F 95 C0 48 83 C4 28 C3",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "1 while the handle names a unit that exists, 0 once it is gone. Only the low byte is the answer: the rest of the register is left over: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x720",
+      "source": "the Unit table's slot 228 (+0x720) and its Lua twin Unit.alive; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitHasAnimationBlender": {
+      "module": "helldivers2.exe",
+      "rva": "0x2016E0",
+      "code": "48 83 EC 28 E8 D7 C1 E9 FF 48 8B C8 48 8B 10 FF 92 A8 01 00 00 33 C9 48 85 C0 0F 95 C1 8B C1 48",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "1 when the unit has an animation blender (what the animation calls need), else 0: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x348",
+      "source": "the Unit table's slot 105 (+0x348) and its Lua twin Unit.has_animation_blender; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitHasAnimationStateMachine": {
+      "module": "helldivers2.exe",
+      "rva": "0x2016B0",
+      "code": "48 83 EC 28 E8 07 C2 E9 FF 48 8B C8 48 8B 10 FF 92 B0 01 00 00 33 C9 48 85 C0 0F 95 C1 8B C1 48",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "1 when the unit has an animation state machine, else 0: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x340",
+      "source": "the Unit table's slot 104 (+0x340) and its Lua twin Unit.has_animation_state_machine; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitAnimationRootMode": {
+      "module": "helldivers2.exe",
+      "rva": "0x202DA0",
+      "code": "40 53 48 83 EC 20 E8 15 AB E9 FF 48 8B C8 48 8B D8 48 8B 10 FF 92 A8 01 00 00 48 8B 13 48 8B CB",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "How the root bone's animation moves the unit, as bits: 1 position, 2 rotation, 4 scale (0 none, 7 all three); in Lua the names delta_position, delta_rotation and so on. Call it only on a unit whose UnitHasAnimationBlender is 1: it reads the blender without checking for one: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x208",
+      "source": "the Unit table's slot 65 (+0x208) and its Lua twin Unit.animation_root_mode; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitAnimationBoneMode": {
+      "module": "helldivers2.exe",
+      "rva": "0x202DE0",
+      "code": "40 53 48 83 EC 20 E8 D5 AA E9 FF 48 8B C8 48 8B D8 48 8B 10 FF 92 A8 01 00 00 48 8B 13 48 8B CB",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "Which parts of a bone its animation drives, as bits: 1 position, 2 rotation, 4 scale (0 none, 7 all three); in Lua position, rotation, position_and_rotation and so on. Call it only on a unit whose UnitHasAnimationBlender is 1: it reads the blender without checking for one: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x210",
+      "source": "the Unit table's slot 66 (+0x210) and its Lua twin Unit.animation_bone_mode; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitNumSceneGraphItems": {
+      "module": "helldivers2.exe",
+      "rva": "0x2047B0",
+      "code": "48 83 EC 28 E8 07 91 E9 FF 48 8B C8 48 8B 10 FF 92 E8 00 00 00 8B 40 10 48 83 C4 28 C3",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "How many scene graph nodes a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x4f8",
+      "source": "the Unit table's slot 159 (+0x4f8) and its Lua twin Unit.num_scene_graph_items; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitSceneGraphParent": {
+      "module": "helldivers2.exe",
+      "rva": "0x2047D0",
+      "code": "40 53 48 83 EC 20 48 63 DA E8 E2 90 E9 FF 48 8B C8 4C 8B 00 41 FF 90 E8 00 00 00 48 8B 40 38 8B",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "node", "type": "int32_t", "meaning": "the scene graph node (0 the root), below UnitNumSceneGraphItems"}
+      ],
+      "hook": true,
+      "meaning": "A node's parent, packed: the low 16 bits are 1 when the node has a parent, and the parent's node index is in the high 16 bits (the root has none): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x500",
+      "source": "the Unit table's slot 160 (+0x500) and its Lua twin Unit.scene_graph_parent; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitNumTerrains": {
+      "module": "helldivers2.exe",
+      "rva": "0x203DD0",
+      "code": "48 83 EC 28 E8 E7 9A E9 FF 48 8B C8 48 8B 10 48 83 C4 28 48 FF A2 40 01 00 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "How many terrains a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x450",
+      "source": "the Unit table's slot 138 (+0x450) and its Lua twin Unit.num_terrains; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitNumLodObjects": {
+      "module": "helldivers2.exe",
+      "rva": "0x204A70",
+      "code": "48 83 EC 28 E8 47 8E E9 FF 48 8B C8 48 8B 10 48 83 C4 28 48 FF A2 28 01 00 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "How many LOD objects a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x538",
+      "source": "the Unit table's slot 167 (+0x538) and its Lua twin Unit.num_lod_objects; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitNumLights": {
+      "module": "helldivers2.exe",
+      "rva": "0x204CF0",
+      "code": "48 83 EC 28 E8 C7 8B E9 FF 48 8B C8 48 8B 10 48 83 C4 28 48 FF A2 78 01 00 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "How many lights a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x580",
+      "source": "the Unit table's slot 176 (+0x580) and its Lua twin Unit.num_lights; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitNumCameras": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FC3C0",
+      "code": "48 83 EC 28 E8 F7 14 EA FF 48 8B C8 48 8B 10 48 83 C4 28 48 FF A2 60 01 00 00",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "How many cameras a unit has: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x6a0",
+      "source": "the Unit table's slot 212 (+0x6a0) and its Lua twin Unit.num_cameras; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitHasNode": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FE590",
+      "code": "40 53 48 83 EC 20 8B DA E8 23 F3 E9 FF 48 8B C8 4C 8B 00 41 FF 90 E8 00 00 00 33 C9 44 8B 40 10",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "name", "type": "uint32_t", "meaning": "the node's name as an IdString32: the high 32 bits of MurmurHash64A(name, length, 0)"}
+      ],
+      "hook": true,
+      "meaning": "1 when the unit has a node of this name, else 0. Only the low byte is the answer: the rest of the register is left over: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x6d0",
+      "source": "the Unit table's slot 218 (+0x6d0) and its Lua twin Unit.has_node; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitNode": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FE5E0",
+      "code": "40 53 48 83 EC 20 8B DA E8 D3 F2 E9 FF 48 8B C8 4C 8B 00 41 FF 90 E8 00 00 00 48 8B D0 33 C0 44",
+      "returns": "uint32_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"},
+        {"name": "name", "type": "uint32_t", "meaning": "the node's name as an IdString32: the high 32 bits of MurmurHash64A(name, length, 0)"}
+      ],
+      "hook": true,
+      "meaning": "A node's index by name, below UnitNumSceneGraphItems. Call it only after UnitHasNode says 1: Lua's Unit.node stops on a missing name, and that case is not reviewed: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x6d8",
+      "source": "the Unit table's slot 219 (+0x6d8) and its Lua twin Unit.node; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitLevel": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FEE50",
+      "code": "48 83 EC 28 E8 67 EA E9 FF 48 8B 48 20 33 C0 0F B6 D1 48 83 E1 FE 80 E2 01 48 0F 44 C1 48 83 C4",
+      "returns": "void*",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "The level a unit belongs to, or NULL; most units have none: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x710",
+      "source": "the Unit table's slot 226 (+0x710) and its Lua twin Unit.level; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitId": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FEED0",
+      "code": "40 53 48 83 EC 20 E8 E5 E9 E9 FF 48 8B C8 48 8B D8 48 8B 10 FF 52 30 84 C0 74 12 48 8B 13 48 8B",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "A unit's 64-bit id, or 0 when it has none. It is a value, not a pointer: the Unit table's (EngineApi +0x18, 0x27C8F10) +0x728",
+      "source": "the Unit table's slot 229 (+0x728) and its Lua twin Unit.id; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitResourceName": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FC120",
+      "code": "48 83 EC 28 E8 97 17 EA FF 48 8B 40 30 48 8B 00 48 83 C4 28 C3",
+      "returns": "uint64_t",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "The unit resource's name as an IdString64 (MurmurHash64A of the path, seed 0): the Unit table's (EngineApi +0x18, 0x27C8F10) +0x750",
+      "source": "the Unit table's slot 234 (+0x750) and its Lua twin Unit.resource_name; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
+    },
+    "UnitDebugName": {
+      "module": "helldivers2.exe",
+      "rva": "0x1FEF30",
+      "code": "48 83 EC 28 E8 87 E9 E9 FF 48 85 C0 74 1B 48 8B 40 30 48 8B 08 48 89 4C 24 38 48 8D 4C 24 38 E8",
+      "returns": "const char*",
+      "params": [
+        {"name": "unit", "type": "uint32_t", "meaning": "the unit's handle"}
+      ],
+      "hook": true,
+      "meaning": "A unit's debug name. In this build that is \"#ID[\" + UnitResourceName in 16 hex digits + \"]\": the Unit table's (EngineApi +0x18, 0x27C8F10) +0x738",
+      "source": "the Unit table's slot 231 (+0x738) and its Lua twin Unit.debug_name; the arguments from the code, the return from the game's callers or the twin, and both checked in the game on a mission (build 25480438)"
     }
   }
 }

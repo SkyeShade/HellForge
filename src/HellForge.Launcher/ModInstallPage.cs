@@ -98,7 +98,7 @@ public partial class MainWindow
         var add = new Button { Content = "Add", Classes = { "primary" }, IsEnabled = !modsLocked };
         var cancel = new Button { Content = "Cancel", Classes = { "ghost" } };
         add.Click += async (_, _) => await AddMods(install, pendingAdd!, pendingAddProblems);
-        cancel.Click += (_, _) => { pendingAdd = null; pendingAddProblems = []; RefreshMods(); };
+        cancel.Click += (_, _) => { pendingAdd = null; pendingAddProblems = []; DrawMods(); };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         buttons.Children.Add(add);
         buttons.Children.Add(cancel);
@@ -111,7 +111,7 @@ public partial class MainWindow
         var remove = new MenuItem { Header = "Remove...", IsEnabled = !modsLocked && !modKitBusy };
         ToolTip.SetShowOnDisabled(remove, true);
         ToolTip.SetTip(remove, modsLocked ? "Removing waits until the session ends: the game has the mods loaded." : "Deletes the mod's files from the mods folder (asks first).");
-        remove.Click += (_, _) => { removeAsked = mod.Id; RefreshMods(); };
+        remove.Click += (_, _) => { removeAsked = mod.Id; DrawMods(); };
         return remove;
     }
 
@@ -141,7 +141,7 @@ public partial class MainWindow
             { Append($"{mod.Name} was not removed: {error.Message}", Red); }
             RefreshMods();
         };
-        cancel.Click += (_, _) => { removeAsked = null; RefreshMods(); };
+        cancel.Click += (_, _) => { removeAsked = null; DrawMods(); };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         buttons.Children.Add(delete);
         buttons.Children.Add(cancel);
