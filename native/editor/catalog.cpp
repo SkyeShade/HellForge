@@ -221,6 +221,7 @@ static void LoadNavs(const Value& root, Catalog* out)
     {
         Nav nav{n.GetString("id"), n.GetString("label"), n.GetString("group"), n.GetString("tone"), {}, false};
         nav.hasFilters = Strings(n, "filters", &nav.filters);
+        nav.levels = n.GetBool("levels");
         out->navs.push_back(nav);
     }
 }

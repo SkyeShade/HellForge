@@ -159,9 +159,15 @@ public static class StatsCatalog
                 items.Add(new("rosters/" + name, target.Label ?? name, "rosters", FactionLabel(target.Family), name, [Part("rosters", name, "Roster row")])
                     { Search = name, Faction = target.Family, Line = Humanize(roster) + (row.Length > 0 ? " · Row " + row : "") });
             }
+            // a composition by its role and the enemies it draws ("Patrol: Hunter, Scavenger"), its faction's emblem and filter
+            // chip, and its faction, family and row under the name ("terminids/family_1/row_3": "Terminids · Family 1 · Row 3")
             foreach (var (name, target) in Section("compositions"))
+            {
+                var place = name.Split('/') is [_, var family, var row] ? " · " + Humanize(family) + " · " + Humanize(row) : "";
                 items.Add(new("compositions/" + name, target.Label ?? name, "compositions", FactionLabel(target.Family), Humanize(target.Class ?? ""),
-                    [Part("compositions", name, "Composition")]) { Search = name + " " + target.Class });
+                    [Part("compositions", name, "Composition")])
+                    { Search = name + " " + target.Class, Faction = target.Family, Line = FactionLabel(target.Family) + place });
+            }
             foreach (var (name, target) in Section("demolition"))
                 items.Add(new("demolition/" + name, target.Label ?? name, "demolition", null, null, [Part("demolition", name, "Demolition template")])
                     { Search = name });

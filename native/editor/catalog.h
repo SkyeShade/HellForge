@@ -82,7 +82,8 @@ struct Object
     std::vector<Row*> rows;
 };
 
-struct Nav { std::string id, label, group, tone; std::vector<std::string> filters; bool hasFilters = false; };
+/* levels: its objects filter by the difficulty they spawn at too (Spawn Rosters and Compositions), from their live values */
+struct Nav { std::string id, label, group, tone; std::vector<std::string> filters; bool hasFilters = false, levels = false; };
 
 /* Where a copy of a page points (Catalog::AddCopy): the page's ids for its kinds and the copy's own for each. */
 struct Remap { std::map<uint64_t, uint64_t> stratagem, entity, projectile, damage, explosion, beam, arc; };

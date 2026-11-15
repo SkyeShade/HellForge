@@ -244,6 +244,31 @@ static float DrawGroupFilter(const catalog::Nav* nav, float x0, float sy)
     return cy + 32;
 }
 
+/* A difficulty's chip ("Any", "D1" to "D11"), wrapped as the group chips are; a click filters the list by it. */
+static void LevelChip(int level, const catalog::Nav* nav, float x0, float& cx, float& cy)
+{
+    std::string label = level == 0 ? "Any" : "D" + std::to_string(level);
+    float w = g_cv.Measure(label, SZ_TINY, ui::TITLE) + 14;
+    if (cx + w > x0 + OBJ_W - 12) { cx = x0 + 12; cy += 26; }
+    uint64_t id = ui::Id("level" + nav->id, (uint64_t)level);
+    int current = g_level.count(nav->id) ? g_level[nav->id] : 0;
+    bool on = level == current;
+    g_cv.Rect(cx, cy, w, 20, on ? GOLD : g_cv.Hovered() == id ? HOVER : BOX, 3);
+    if (!on) g_cv.Frame(cx, cy, w, 20, LINE_STRONG, 4);
+    g_cv.Text(label, cx + w / 2, cy + 10, T(SZ_TINY, on ? INVERSE : DIM, ui::TITLE, ui::CENTER, 0, 5));
+    if (g_cv.Hit(cx, cy, w, 20, id)) { if (level != current) { g_level[nav->id] = level; g_obj = 0; g_field = 0; } g_focus = OBJECTS; }
+    cx += w + 4;
+}
+
+/* The difficulty filter of Spawn Rosters and Compositions (Nav::levels) from ly: the rows spawning at a difficulty, by
+ * their live values (AtLevel); returns where the list below it starts. */
+static float DrawLevelFilter(const catalog::Nav* nav, float x0, float ly)
+{
+    float cx = x0 + 12, cy = ly;
+    for (int level = 0; level <= 11; level++) LevelChip(level, nav, x0, cx, cy);
+    return cy + 28;
+}
+
 void DrawObjects(float y0, float h)
 {
     float x0 = CAT_W;
@@ -254,6 +279,7 @@ void DrawObjects(float y0, float h)
     float ly = sy + 44;
     const catalog::Nav* nav = NavOf(g_cat);
     if (nav != nullptr && nav->hasFilters) ly = DrawGroupFilter(nav, x0, sy);
+    if (nav != nullptr && nav->levels) ly = DrawLevelFilter(nav, x0, ly);
     auto objects = Objects();
     g_obj = std::clamp(g_obj, 0, std::max(0, (int)objects.size() - 1));
     const MarkCache& marks = Markers();

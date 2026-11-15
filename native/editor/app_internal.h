@@ -90,6 +90,11 @@ extern float g_catScroll; /* the category list's scroll, in units (its rows diff
 struct SearchBox { bool active = false; std::string text; };
 extern SearchBox g_search;
 extern std::map<std::string, std::string> g_group;
+/* A category's difficulty filter (Nav::levels): 1 to 11, 0 (or none) every difficulty. */
+extern std::map<std::string, int> g_level;
+/* Whether an object spawns at a difficulty, by its live values: a roster row's weight there above 0, a composition's
+ * tech levels around it; true while they are not read yet. */
+bool AtLevel(const Object* object, int level);
 struct Pend { double value; bool reset; }; /* reset: back to the default when applied */
 /* The armor perks (choice rows): what the editor keeps (its settings, "passives"), -1 for the kits' own; set_passives
  * from Init on, so they hold from every boot. */

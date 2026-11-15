@@ -90,6 +90,31 @@ Unlimited uses with the tick have no cooldown at all.
 - Eagles keep their rearm, and stratagems with a team cooldown keep the game's ways (the tick is refused on them).
   HellForge hooks the game's cooldown start (game.dll 0x135C2C0) and refuses the tick on a build where it differs.
 
+### Spawning
+
+The `difficulty`, `rosters` and `compositions` categories are the spawn director's tables (the editor's Spawning
+pages, `mappings/director.json`). The host's game spawns the enemies, so only the host's values decide what spawns: a
+joiner's edits change nothing in a host's mission.
+
+- A composition's name is its family's role. Family 1 is patrols, 2 guard posts (empty in this build), 3 map guards
+  and 4 reinforcements (breaches and drops). Family 5 is travellers (Shriekers, Gunships, War Striders), 6 stragglers
+  (they top up the map's guards), 7 convoys (Factory Striders) and 8 air support (the Illuminate's attack ships).
+- `composition.group_<n>_key` is the enemy family a group draws from, a number (the editor lists them by name). It
+  takes a family of the composition's own faction's roster, or 0 for a group with a count of 0. A family with no spawn
+  weight at the mission's difficulty spawns nothing. Give an empty group a family and a count to add enemies.
+- What summoning enemies call up is on their pages in `enemies`: `"Impaler"` and `"warrior_big_tier2"` (the Alpha
+  Commander) have `summon.family` and `summon.count` (0 to 16 a call; the Alpha Commander calls three times a summon).
+  The game keeps them in its abilities' code, so HellForge writes them there. It checks that code in game.dll and
+  refuses these edits on a build where it differs.
+- A difficulty has `difficulty.patrol_cap_<faction>` (0 to 1000), `difficulty.traveller_interval_<faction>` and
+  `difficulty.traveller_cap_<faction>`, and the stragglers' `difficulty.straggler_interval_<faction>`,
+  `difficulty.straggler_batch_<faction>` (up to 32, one squad) and `difficulty.straggler_cap_<faction>` (map guards and
+  stragglers alive together). The faction is `terminids`, `automatons` or `illuminate`.
+
+```json
+{ "format": 1, "enemies": { "Impaler": { "summon.count": 5 } }, "difficulty": { "7": { "difficulty.patrol_cap_terminids": 200 } } }
+```
+
 ## How it applies
 
 - Changes apply when the game loads its data, every session. A stats-only mod (no code, Lua, data patches, data spec,

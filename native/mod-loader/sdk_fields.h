@@ -130,6 +130,11 @@ static const SdkField kSdkFieldsDifficultySettings[] = {
     {"spawner_cooldown", 260, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"patrol_interval", 672, 12, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
     {"patrol_cap", 684, 12, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"traveller_interval", 736, 12, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"traveller_cap", 748, 12, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"straggler_interval", 760, 12, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"straggler_batch", 784, 12, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"straggler_cap", 796, 12, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsDamageInfo[] = {
     {"id", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
@@ -1133,6 +1138,10 @@ static const SdkField kSdkFieldsDemolitionTemplate[] = {
     {"index", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
     {"force", 4, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
 };
+static const SdkField kSdkFieldsEnemySummon[] = {
+    {"family", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"count", 4, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+};
 static const SdkField kSdkFieldsEquipment[] = {
     {"wield_node", 0, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"wield_rotation", 4, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1212,7 +1221,7 @@ static const SdkComponent kSdkComponents[] = {
     {"Behavior", "BehaviorComponentData", 25480438u, 12u, kSdkFieldsBehavior, 3, 0, 284},
     {"LoadoutPackage", "LoadoutPackageComponentData", 25480438u, 32u, kSdkFieldsLoadoutPackage, 4, 0, 28},
     {"Deposit", "DepositComponentData", 25480438u, 152u, kSdkFieldsDeposit, 4, 0, 177},
-    {"DifficultySettings", "DifficultySettings", 25480438u, 816u, kSdkFieldsDifficultySettings, 15, 1, -1},
+    {"DifficultySettings", "DifficultySettings", 25480438u, 816u, kSdkFieldsDifficultySettings, 20, 1, -1},
     {"DamageInfo", "DamageInfo", 25480438u, 76u, kSdkFieldsDamageInfo, 15, 1, -1},
     {"ProjectileSettings", "ProjectileSettings", 25480438u, 272u, kSdkFieldsProjectileSettings, 18, 1, -1},
     {"StratagemCode", "StratagemCode", 25480438u, 4u, kSdkFieldsStratagemCode, 1, 1, -1},
@@ -1269,6 +1278,7 @@ static const SdkComponent kSdkComponents[] = {
     {"StratagemBlocker", "StratagemBlockerComponentData", 25480438u, 20u, kSdkFieldsStratagemBlocker, 2, 0, 25},
     {"Bughole", "BugholeComponentData", 25480438u, 40u, kSdkFieldsBughole, 1, 0, 216},
     {"DemolitionTemplate", "DemolitionTemplate", 25480438u, 16u, kSdkFieldsDemolitionTemplate, 2, 1, -1},
+    {"EnemySummon", "EnemySummon", 25480438u, 8u, kSdkFieldsEnemySummon, 2, 1, -1},
     {"Equipment", "EquipmentComponentData", 25480438u, 232u, kSdkFieldsEquipment, 35, 0, 233},
     {"Wieldable", "WieldableComponentData", 25480438u, 32u, kSdkFieldsWieldable, 6, 0, 111},
     {"Attachable", "AttachableComponentData", 25480438u, 64u, kSdkFieldsAttachable, 11, 0, 262},

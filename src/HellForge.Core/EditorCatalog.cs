@@ -54,6 +54,7 @@ public static class EditorCatalog
         ["secondary"] = ["Pistol", "Melee", "Special"],
         // the HD2R Editor's filter by faction (StatsCatalog.FactionLabel)
         ["rosters"] = ["Terminids", "Automatons", "Illuminate", "Super Earth", "Unknown"],
+        ["compositions"] = ["Terminids", "Automatons", "Illuminate"],
     };
     const string Sep = " · ";
 
@@ -148,6 +149,8 @@ public static class EditorCatalog
             {
                 ["id"] = id, ["label"] = label, ["group"] = group, ["tone"] = tone,
                 ["filters"] = GroupOrder.ContainsKey(id) ? new JsonArray(groups.Select(g => (JsonNode)g).ToArray()) : null,
+                // the difficulty filter: rows that spawn at a difficulty, by their live weights or tech levels (app_page.cpp)
+                ["levels"] = id is "rosters" or "compositions" ? true : null,
             });
             foreach (var item in items) objects.Add(Object(item, id, tone, schema));
             if (id == "helldiver") objects.Add(ArmorPerks());

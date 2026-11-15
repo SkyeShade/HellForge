@@ -35,6 +35,7 @@ std::map<std::string, int> g_scroll, g_seen;
 float g_catScroll = 0;
 SearchBox g_search;
 std::map<std::string, std::string> g_group;
+std::map<std::string, int> g_level;
 double g_choice[2] = {-1, -1};
 Picker g_picker;
 std::map<std::string, double> g_mounts;
