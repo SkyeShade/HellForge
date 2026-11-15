@@ -96,6 +96,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         RearmsAfterUses(schema);
         StratagemPayloads(schema);
         Entities(schema);
+        EnemyCombat(schema);
         Director(schema);
         return schema;
     });
@@ -177,6 +178,30 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         }
         schema.Targets["enemies"] = enemies;
     }
+
+    // The enemy combat fields players asked for (mappings/enemy-combat.json, scripts/ExportEnemyCombat.py), on the enemy
+    // pages Entities made. Enemies are the host's in co-op: a joiner's own values change nothing they fight.
+    static void EnemyCombat(StatsSchema schema)
+    {
+        using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.enemy-combat.json")!;
+        using var json = JsonDocument.Parse(stream);
+        var enemies = schema.Targets["enemies"];
+        foreach (var t in json.RootElement.GetProperty("enemies").EnumerateObject())
+            if (enemies.TryGetValue(t.Name, out var target)) AddParity(target, t.Value);
+        // Armour and AP past 10: every damage builder (game.dll 0x129C9F0 and its five siblings) compares AP - armour as
+        // floats (full damage from 1 up, 0.65 at 0, none below), and no table is indexed by either. The runtime armour is
+        // a signed int, so values near 2^31 turn negative; SetZoneArmor (0x9234D0, Acid Storm) clamps to 20.
+        foreach (var target in enemies.Values)
+            foreach (var (key, f) in target.Fields.Where(f => f.Value is { Kind: "component", Unit: "armor_class", Max: 10 }).ToList())
+                target.Fields[key] = f with { Max = MaxArmor, Note = f.Note ?? ArmorNote };
+        foreach (var target in schema.Targets.Values.SelectMany(t => t.Values))
+            foreach (var (key, f) in target.Fields.Where(f => f.Value is { Kind: "DamageInfo", Unit: "armor_class", Max: 10 }).ToList())
+                target.Fields[key] = f with { Max = MaxArmor };
+    }
+
+    const double MaxArmor = 1000;
+    const string ArmorNote = "Above 10 no vanilla weapon hurts it here, explosions included, and none sets a status on it. A hit needs more " +
+        "AP than the armour for full damage, the same AP for 65%. Acid Storm leaves it at 20.";
 
     // The Helldiver entity's main fields (entity::<key>) on the Helldiver page, after its own, where it shows none of
     // their bytes.

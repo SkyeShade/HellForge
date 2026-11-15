@@ -4505,6 +4505,78 @@
           "meaning": "Main health capped",
           "verified": false,
           "source": "HD2Runtime enemy catalogue zone.main_health_capped"
+        },
+        "element_0_type": {
+          "offset": 21500,
+          "type": "u32",
+          "meaning": "element damage 0: the element (0 matches damage with no element)",
+          "source": "game.dll 0x9239E2 (ApplyDamage 0x9235F0)",
+          "verified": false,
+          "applies": "now",
+          "appliesSource": "read at every hit"
+        },
+        "element_0_multiplier": {
+          "offset": 21504,
+          "type": "f32",
+          "meaning": "element damage 0: multiplier of that element's damage",
+          "source": "game.dll 0x9239E2 (ApplyDamage 0x9235F0)",
+          "verified": false,
+          "applies": "now",
+          "appliesSource": "read at every hit"
+        },
+        "element_1_type": {
+          "offset": 21508,
+          "type": "u32",
+          "meaning": "element damage 1: the element (0 matches damage with no element)",
+          "source": "game.dll 0x9239E2 (ApplyDamage 0x9235F0)",
+          "verified": false,
+          "applies": "now",
+          "appliesSource": "read at every hit"
+        },
+        "element_1_multiplier": {
+          "offset": 21512,
+          "type": "f32",
+          "meaning": "element damage 1: multiplier of that element's damage",
+          "source": "game.dll 0x9239E2 (ApplyDamage 0x9235F0)",
+          "verified": false,
+          "applies": "now",
+          "appliesSource": "read at every hit"
+        },
+        "element_2_type": {
+          "offset": 21516,
+          "type": "u32",
+          "meaning": "element damage 2: the element (0 matches damage with no element)",
+          "source": "game.dll 0x9239E2 (ApplyDamage 0x9235F0)",
+          "verified": false,
+          "applies": "now",
+          "appliesSource": "read at every hit"
+        },
+        "element_2_multiplier": {
+          "offset": 21520,
+          "type": "f32",
+          "meaning": "element damage 2: multiplier of that element's damage",
+          "source": "game.dll 0x9239E2 (ApplyDamage 0x9235F0)",
+          "verified": false,
+          "applies": "now",
+          "appliesSource": "read at every hit"
+        },
+        "element_3_type": {
+          "offset": 21524,
+          "type": "u32",
+          "meaning": "element damage 3: the element (0 matches damage with no element)",
+          "source": "game.dll 0x9239E2 (ApplyDamage 0x9235F0)",
+          "verified": false,
+          "applies": "now",
+          "appliesSource": "read at every hit"
+        },
+        "element_3_multiplier": {
+          "offset": 21528,
+          "type": "f32",
+          "meaning": "element damage 3: multiplier of that element's damage",
+          "source": "game.dll 0x9239E2 (ApplyDamage 0x9235F0)",
+          "verified": false,
+          "applies": "now",
+          "appliesSource": "read at every hit"
         }
       },
       "applies": "respawn",
@@ -8463,6 +8535,1277 @@
       "applies": "respawn",
       "appliesVerified": false,
       "appliesSource": "the armory and the spawned weapon compose it with the chosen attachments' deltas"
+    },
+    "AiEnemy": {
+      "component": "AiEnemyComponentData",
+      "index": 302,
+      "stride": 732,
+      "meaning": "an enemy's AI behaviours: each state's movement settings, its charge",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "read from the type record (0x511CC0) as a state begins (0x7F0180) and every charge tick (0xAA8680)",
+      "layout": "25480438",
+      "fields": {
+        "patrol_speed": {
+          "offset": 36,
+          "type": "f32",
+          "meaning": "Patrol behaviour: move speed in m/s (used unless both random ends are above 0)",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "patrol_speed_min": {
+          "offset": 44,
+          "type": "f32",
+          "meaning": "Patrol behaviour: random move speed, lowest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "patrol_speed_max": {
+          "offset": 48,
+          "type": "f32",
+          "meaning": "Patrol behaviour: random move speed, highest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "combat_speed": {
+          "offset": 100,
+          "type": "f32",
+          "meaning": "Combat behaviour: move speed in m/s (used unless both random ends are above 0)",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "combat_speed_min": {
+          "offset": 108,
+          "type": "f32",
+          "meaning": "Combat behaviour: random move speed, lowest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "combat_speed_max": {
+          "offset": 112,
+          "type": "f32",
+          "meaning": "Combat behaviour: random move speed, highest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "strafe_speed": {
+          "offset": 124,
+          "type": "f32",
+          "meaning": "Strafe behaviour: move speed in m/s (used unless both random ends are above 0)",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "strafe_speed_min": {
+          "offset": 132,
+          "type": "f32",
+          "meaning": "Strafe behaviour: random move speed, lowest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "strafe_speed_max": {
+          "offset": 136,
+          "type": "f32",
+          "meaning": "Strafe behaviour: random move speed, highest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "retreat_speed": {
+          "offset": 244,
+          "type": "f32",
+          "meaning": "Retreat behaviour: move speed in m/s (used unless both random ends are above 0)",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "retreat_speed_min": {
+          "offset": 252,
+          "type": "f32",
+          "meaning": "Retreat behaviour: random move speed, lowest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "retreat_speed_max": {
+          "offset": 256,
+          "type": "f32",
+          "meaning": "Retreat behaviour: random move speed, highest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "charge_speed": {
+          "offset": 276,
+          "type": "f32",
+          "meaning": "Charge behaviour: move speed in m/s (used unless both random ends are above 0)",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "charge_speed_min": {
+          "offset": 284,
+          "type": "f32",
+          "meaning": "Charge behaviour: random move speed, lowest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "charge_speed_max": {
+          "offset": 288,
+          "type": "f32",
+          "meaning": "Charge behaviour: random move speed, highest",
+          "source": "game.dll 0x7F0180 (state entry), 0x964830 (velocity cap)",
+          "verified": false
+        },
+        "charge_acceleration": {
+          "offset": 292,
+          "type": "f32",
+          "meaning": "locomotion acceleration while charging (m/s^2)",
+          "source": "game.dll 0xAA85D0 (charge start, Locomotion_SetLimitA)",
+          "verified": false
+        },
+        "charge_tracking_angle": {
+          "offset": 300,
+          "type": "f32",
+          "meaning": "it keeps homing while the target is within this many degrees of its facing",
+          "source": "game.dll 0xAA8680 (charge tick)",
+          "verified": false
+        }
+      }
+    },
+    "Locomotion": {
+      "component": "LocomotionComponentData",
+      "index": 311,
+      "stride": 4624,
+      "meaning": "how an enemy's legs move it: eight locomotion sets (animation speed bands, turn animations), its acceleration and deceleration",
+      "applies": "respawn",
+      "appliesVerified": false,
+      "appliesSource": "acceleration and deceleration are copied into the instance at spawn (0x9CD990)",
+      "layout": "25480438",
+      "fields": {
+        "acceleration": {
+          "offset": 4464,
+          "type": "f32",
+          "meaning": "acceleration (m/s^2; -1 the default)",
+          "source": "game.dll 0x9CD990 (copied at spawn), 0x9C77D0",
+          "verified": false
+        },
+        "deceleration": {
+          "offset": 4468,
+          "type": "f32",
+          "meaning": "deceleration (m/s^2; -1 the default)",
+          "source": "game.dll 0x9CD990 (copied at spawn), 0x9C77D0",
+          "verified": false
+        }
+      }
+    },
+    "StatusEffectReceiver": {
+      "component": "StatusEffectReceiverComponentData",
+      "index": 307,
+      "stride": 46600,
+      "meaning": "the statuses an entity takes: 8 zones of 33 susceptibility entries (0xB0 each, packed up to the first type 0; zone 0 at +8) and 8 duration multipliers at +0xB5C8",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "read from the type record at every hit (FUN_00512740, ApplyStatus 0x699E40)",
+      "layout": "25480438",
+      "fields": {
+        "entry_0_type": {
+          "offset": 148,
+          "type": "u32",
+          "meaning": "zone 0 entry 0: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_0_min_buildup": {
+          "offset": 152,
+          "type": "f32",
+          "meaning": "zone 0 entry 0: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_0_sure_buildup": {
+          "offset": 156,
+          "type": "f32",
+          "meaning": "zone 0 entry 0: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_0_damage_multiplier": {
+          "offset": 176,
+          "type": "f32",
+          "meaning": "zone 0 entry 0: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_1_type": {
+          "offset": 324,
+          "type": "u32",
+          "meaning": "zone 0 entry 1: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_1_min_buildup": {
+          "offset": 328,
+          "type": "f32",
+          "meaning": "zone 0 entry 1: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_1_sure_buildup": {
+          "offset": 332,
+          "type": "f32",
+          "meaning": "zone 0 entry 1: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_1_damage_multiplier": {
+          "offset": 352,
+          "type": "f32",
+          "meaning": "zone 0 entry 1: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_2_type": {
+          "offset": 500,
+          "type": "u32",
+          "meaning": "zone 0 entry 2: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_2_min_buildup": {
+          "offset": 504,
+          "type": "f32",
+          "meaning": "zone 0 entry 2: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_2_sure_buildup": {
+          "offset": 508,
+          "type": "f32",
+          "meaning": "zone 0 entry 2: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_2_damage_multiplier": {
+          "offset": 528,
+          "type": "f32",
+          "meaning": "zone 0 entry 2: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_3_type": {
+          "offset": 676,
+          "type": "u32",
+          "meaning": "zone 0 entry 3: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_3_min_buildup": {
+          "offset": 680,
+          "type": "f32",
+          "meaning": "zone 0 entry 3: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_3_sure_buildup": {
+          "offset": 684,
+          "type": "f32",
+          "meaning": "zone 0 entry 3: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_3_damage_multiplier": {
+          "offset": 704,
+          "type": "f32",
+          "meaning": "zone 0 entry 3: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_4_type": {
+          "offset": 852,
+          "type": "u32",
+          "meaning": "zone 0 entry 4: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_4_min_buildup": {
+          "offset": 856,
+          "type": "f32",
+          "meaning": "zone 0 entry 4: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_4_sure_buildup": {
+          "offset": 860,
+          "type": "f32",
+          "meaning": "zone 0 entry 4: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_4_damage_multiplier": {
+          "offset": 880,
+          "type": "f32",
+          "meaning": "zone 0 entry 4: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_5_type": {
+          "offset": 1028,
+          "type": "u32",
+          "meaning": "zone 0 entry 5: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_5_min_buildup": {
+          "offset": 1032,
+          "type": "f32",
+          "meaning": "zone 0 entry 5: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_5_sure_buildup": {
+          "offset": 1036,
+          "type": "f32",
+          "meaning": "zone 0 entry 5: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_5_damage_multiplier": {
+          "offset": 1056,
+          "type": "f32",
+          "meaning": "zone 0 entry 5: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_6_type": {
+          "offset": 1204,
+          "type": "u32",
+          "meaning": "zone 0 entry 6: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_6_min_buildup": {
+          "offset": 1208,
+          "type": "f32",
+          "meaning": "zone 0 entry 6: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_6_sure_buildup": {
+          "offset": 1212,
+          "type": "f32",
+          "meaning": "zone 0 entry 6: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_6_damage_multiplier": {
+          "offset": 1232,
+          "type": "f32",
+          "meaning": "zone 0 entry 6: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_7_type": {
+          "offset": 1380,
+          "type": "u32",
+          "meaning": "zone 0 entry 7: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_7_min_buildup": {
+          "offset": 1384,
+          "type": "f32",
+          "meaning": "zone 0 entry 7: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_7_sure_buildup": {
+          "offset": 1388,
+          "type": "f32",
+          "meaning": "zone 0 entry 7: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_7_damage_multiplier": {
+          "offset": 1408,
+          "type": "f32",
+          "meaning": "zone 0 entry 7: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_8_type": {
+          "offset": 1556,
+          "type": "u32",
+          "meaning": "zone 0 entry 8: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_8_min_buildup": {
+          "offset": 1560,
+          "type": "f32",
+          "meaning": "zone 0 entry 8: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_8_sure_buildup": {
+          "offset": 1564,
+          "type": "f32",
+          "meaning": "zone 0 entry 8: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_8_damage_multiplier": {
+          "offset": 1584,
+          "type": "f32",
+          "meaning": "zone 0 entry 8: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_9_type": {
+          "offset": 1732,
+          "type": "u32",
+          "meaning": "zone 0 entry 9: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_9_min_buildup": {
+          "offset": 1736,
+          "type": "f32",
+          "meaning": "zone 0 entry 9: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_9_sure_buildup": {
+          "offset": 1740,
+          "type": "f32",
+          "meaning": "zone 0 entry 9: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_9_damage_multiplier": {
+          "offset": 1760,
+          "type": "f32",
+          "meaning": "zone 0 entry 9: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_10_type": {
+          "offset": 1908,
+          "type": "u32",
+          "meaning": "zone 0 entry 10: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_10_min_buildup": {
+          "offset": 1912,
+          "type": "f32",
+          "meaning": "zone 0 entry 10: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_10_sure_buildup": {
+          "offset": 1916,
+          "type": "f32",
+          "meaning": "zone 0 entry 10: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_10_damage_multiplier": {
+          "offset": 1936,
+          "type": "f32",
+          "meaning": "zone 0 entry 10: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_11_type": {
+          "offset": 2084,
+          "type": "u32",
+          "meaning": "zone 0 entry 11: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_11_min_buildup": {
+          "offset": 2088,
+          "type": "f32",
+          "meaning": "zone 0 entry 11: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_11_sure_buildup": {
+          "offset": 2092,
+          "type": "f32",
+          "meaning": "zone 0 entry 11: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_11_damage_multiplier": {
+          "offset": 2112,
+          "type": "f32",
+          "meaning": "zone 0 entry 11: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_12_type": {
+          "offset": 2260,
+          "type": "u32",
+          "meaning": "zone 0 entry 12: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_12_min_buildup": {
+          "offset": 2264,
+          "type": "f32",
+          "meaning": "zone 0 entry 12: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_12_sure_buildup": {
+          "offset": 2268,
+          "type": "f32",
+          "meaning": "zone 0 entry 12: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_12_damage_multiplier": {
+          "offset": 2288,
+          "type": "f32",
+          "meaning": "zone 0 entry 12: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_13_type": {
+          "offset": 2436,
+          "type": "u32",
+          "meaning": "zone 0 entry 13: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_13_min_buildup": {
+          "offset": 2440,
+          "type": "f32",
+          "meaning": "zone 0 entry 13: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_13_sure_buildup": {
+          "offset": 2444,
+          "type": "f32",
+          "meaning": "zone 0 entry 13: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_13_damage_multiplier": {
+          "offset": 2464,
+          "type": "f32",
+          "meaning": "zone 0 entry 13: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_14_type": {
+          "offset": 2612,
+          "type": "u32",
+          "meaning": "zone 0 entry 14: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_14_min_buildup": {
+          "offset": 2616,
+          "type": "f32",
+          "meaning": "zone 0 entry 14: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_14_sure_buildup": {
+          "offset": 2620,
+          "type": "f32",
+          "meaning": "zone 0 entry 14: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_14_damage_multiplier": {
+          "offset": 2640,
+          "type": "f32",
+          "meaning": "zone 0 entry 14: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_15_type": {
+          "offset": 2788,
+          "type": "u32",
+          "meaning": "zone 0 entry 15: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_15_min_buildup": {
+          "offset": 2792,
+          "type": "f32",
+          "meaning": "zone 0 entry 15: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_15_sure_buildup": {
+          "offset": 2796,
+          "type": "f32",
+          "meaning": "zone 0 entry 15: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_15_damage_multiplier": {
+          "offset": 2816,
+          "type": "f32",
+          "meaning": "zone 0 entry 15: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_16_type": {
+          "offset": 2964,
+          "type": "u32",
+          "meaning": "zone 0 entry 16: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_16_min_buildup": {
+          "offset": 2968,
+          "type": "f32",
+          "meaning": "zone 0 entry 16: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_16_sure_buildup": {
+          "offset": 2972,
+          "type": "f32",
+          "meaning": "zone 0 entry 16: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_16_damage_multiplier": {
+          "offset": 2992,
+          "type": "f32",
+          "meaning": "zone 0 entry 16: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_17_type": {
+          "offset": 3140,
+          "type": "u32",
+          "meaning": "zone 0 entry 17: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_17_min_buildup": {
+          "offset": 3144,
+          "type": "f32",
+          "meaning": "zone 0 entry 17: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_17_sure_buildup": {
+          "offset": 3148,
+          "type": "f32",
+          "meaning": "zone 0 entry 17: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_17_damage_multiplier": {
+          "offset": 3168,
+          "type": "f32",
+          "meaning": "zone 0 entry 17: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_18_type": {
+          "offset": 3316,
+          "type": "u32",
+          "meaning": "zone 0 entry 18: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_18_min_buildup": {
+          "offset": 3320,
+          "type": "f32",
+          "meaning": "zone 0 entry 18: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_18_sure_buildup": {
+          "offset": 3324,
+          "type": "f32",
+          "meaning": "zone 0 entry 18: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_18_damage_multiplier": {
+          "offset": 3344,
+          "type": "f32",
+          "meaning": "zone 0 entry 18: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_19_type": {
+          "offset": 3492,
+          "type": "u32",
+          "meaning": "zone 0 entry 19: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_19_min_buildup": {
+          "offset": 3496,
+          "type": "f32",
+          "meaning": "zone 0 entry 19: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_19_sure_buildup": {
+          "offset": 3500,
+          "type": "f32",
+          "meaning": "zone 0 entry 19: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_19_damage_multiplier": {
+          "offset": 3520,
+          "type": "f32",
+          "meaning": "zone 0 entry 19: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_20_type": {
+          "offset": 3668,
+          "type": "u32",
+          "meaning": "zone 0 entry 20: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_20_min_buildup": {
+          "offset": 3672,
+          "type": "f32",
+          "meaning": "zone 0 entry 20: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_20_sure_buildup": {
+          "offset": 3676,
+          "type": "f32",
+          "meaning": "zone 0 entry 20: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_20_damage_multiplier": {
+          "offset": 3696,
+          "type": "f32",
+          "meaning": "zone 0 entry 20: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_21_type": {
+          "offset": 3844,
+          "type": "u32",
+          "meaning": "zone 0 entry 21: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_21_min_buildup": {
+          "offset": 3848,
+          "type": "f32",
+          "meaning": "zone 0 entry 21: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_21_sure_buildup": {
+          "offset": 3852,
+          "type": "f32",
+          "meaning": "zone 0 entry 21: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_21_damage_multiplier": {
+          "offset": 3872,
+          "type": "f32",
+          "meaning": "zone 0 entry 21: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_22_type": {
+          "offset": 4020,
+          "type": "u32",
+          "meaning": "zone 0 entry 22: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_22_min_buildup": {
+          "offset": 4024,
+          "type": "f32",
+          "meaning": "zone 0 entry 22: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_22_sure_buildup": {
+          "offset": 4028,
+          "type": "f32",
+          "meaning": "zone 0 entry 22: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_22_damage_multiplier": {
+          "offset": 4048,
+          "type": "f32",
+          "meaning": "zone 0 entry 22: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_23_type": {
+          "offset": 4196,
+          "type": "u32",
+          "meaning": "zone 0 entry 23: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_23_min_buildup": {
+          "offset": 4200,
+          "type": "f32",
+          "meaning": "zone 0 entry 23: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_23_sure_buildup": {
+          "offset": 4204,
+          "type": "f32",
+          "meaning": "zone 0 entry 23: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_23_damage_multiplier": {
+          "offset": 4224,
+          "type": "f32",
+          "meaning": "zone 0 entry 23: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_24_type": {
+          "offset": 4372,
+          "type": "u32",
+          "meaning": "zone 0 entry 24: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_24_min_buildup": {
+          "offset": 4376,
+          "type": "f32",
+          "meaning": "zone 0 entry 24: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_24_sure_buildup": {
+          "offset": 4380,
+          "type": "f32",
+          "meaning": "zone 0 entry 24: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_24_damage_multiplier": {
+          "offset": 4400,
+          "type": "f32",
+          "meaning": "zone 0 entry 24: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_25_type": {
+          "offset": 4548,
+          "type": "u32",
+          "meaning": "zone 0 entry 25: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_25_min_buildup": {
+          "offset": 4552,
+          "type": "f32",
+          "meaning": "zone 0 entry 25: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_25_sure_buildup": {
+          "offset": 4556,
+          "type": "f32",
+          "meaning": "zone 0 entry 25: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_25_damage_multiplier": {
+          "offset": 4576,
+          "type": "f32",
+          "meaning": "zone 0 entry 25: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_26_type": {
+          "offset": 4724,
+          "type": "u32",
+          "meaning": "zone 0 entry 26: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_26_min_buildup": {
+          "offset": 4728,
+          "type": "f32",
+          "meaning": "zone 0 entry 26: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_26_sure_buildup": {
+          "offset": 4732,
+          "type": "f32",
+          "meaning": "zone 0 entry 26: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_26_damage_multiplier": {
+          "offset": 4752,
+          "type": "f32",
+          "meaning": "zone 0 entry 26: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_27_type": {
+          "offset": 4900,
+          "type": "u32",
+          "meaning": "zone 0 entry 27: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_27_min_buildup": {
+          "offset": 4904,
+          "type": "f32",
+          "meaning": "zone 0 entry 27: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_27_sure_buildup": {
+          "offset": 4908,
+          "type": "f32",
+          "meaning": "zone 0 entry 27: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_27_damage_multiplier": {
+          "offset": 4928,
+          "type": "f32",
+          "meaning": "zone 0 entry 27: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_28_type": {
+          "offset": 5076,
+          "type": "u32",
+          "meaning": "zone 0 entry 28: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_28_min_buildup": {
+          "offset": 5080,
+          "type": "f32",
+          "meaning": "zone 0 entry 28: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_28_sure_buildup": {
+          "offset": 5084,
+          "type": "f32",
+          "meaning": "zone 0 entry 28: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_28_damage_multiplier": {
+          "offset": 5104,
+          "type": "f32",
+          "meaning": "zone 0 entry 28: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_29_type": {
+          "offset": 5252,
+          "type": "u32",
+          "meaning": "zone 0 entry 29: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_29_min_buildup": {
+          "offset": 5256,
+          "type": "f32",
+          "meaning": "zone 0 entry 29: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_29_sure_buildup": {
+          "offset": 5260,
+          "type": "f32",
+          "meaning": "zone 0 entry 29: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_29_damage_multiplier": {
+          "offset": 5280,
+          "type": "f32",
+          "meaning": "zone 0 entry 29: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_30_type": {
+          "offset": 5428,
+          "type": "u32",
+          "meaning": "zone 0 entry 30: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_30_min_buildup": {
+          "offset": 5432,
+          "type": "f32",
+          "meaning": "zone 0 entry 30: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_30_sure_buildup": {
+          "offset": 5436,
+          "type": "f32",
+          "meaning": "zone 0 entry 30: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_30_damage_multiplier": {
+          "offset": 5456,
+          "type": "f32",
+          "meaning": "zone 0 entry 30: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_31_type": {
+          "offset": 5604,
+          "type": "u32",
+          "meaning": "zone 0 entry 31: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_31_min_buildup": {
+          "offset": 5608,
+          "type": "f32",
+          "meaning": "zone 0 entry 31: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_31_sure_buildup": {
+          "offset": 5612,
+          "type": "f32",
+          "meaning": "zone 0 entry 31: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_31_damage_multiplier": {
+          "offset": 5632,
+          "type": "f32",
+          "meaning": "zone 0 entry 31: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "entry_32_type": {
+          "offset": 5780,
+          "type": "u32",
+          "meaning": "zone 0 entry 32: susceptibility type (0 ends the list)",
+          "source": "game.dll FUN_006992A0 (lookup), FUN_00690B00 (allowed statuses, at spawn)",
+          "verified": false,
+          "applies": "respawn",
+          "appliesSource": "each enemy's allowed statuses are built from the record when it spawns (FUN_00690B00)"
+        },
+        "entry_32_min_buildup": {
+          "offset": 5784,
+          "type": "f32",
+          "meaning": "zone 0 entry 32: buildup below which it never applies",
+          "source": "game.dll 0x69A0D6",
+          "verified": false
+        },
+        "entry_32_sure_buildup": {
+          "offset": 5788,
+          "type": "f32",
+          "meaning": "zone 0 entry 32: chance to apply = buildup / this",
+          "source": "game.dll 0x69A124",
+          "verified": false
+        },
+        "entry_32_damage_multiplier": {
+          "offset": 5808,
+          "type": "f32",
+          "meaning": "zone 0 entry 32: tick damage multiplier",
+          "source": "game.dll 0x694C4E",
+          "verified": false
+        },
+        "duration_0_type": {
+          "offset": 46536,
+          "type": "u32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 0: susceptibility type (0 ends the list)",
+          "verified": false
+        },
+        "duration_0_multiplier": {
+          "offset": 46540,
+          "type": "f32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 0 (0 or less is ignored)",
+          "verified": false
+        },
+        "duration_1_type": {
+          "offset": 46544,
+          "type": "u32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 1: susceptibility type (0 ends the list)",
+          "verified": false
+        },
+        "duration_1_multiplier": {
+          "offset": 46548,
+          "type": "f32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 1 (0 or less is ignored)",
+          "verified": false
+        },
+        "duration_2_type": {
+          "offset": 46552,
+          "type": "u32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 2: susceptibility type (0 ends the list)",
+          "verified": false
+        },
+        "duration_2_multiplier": {
+          "offset": 46556,
+          "type": "f32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 2 (0 or less is ignored)",
+          "verified": false
+        },
+        "duration_3_type": {
+          "offset": 46560,
+          "type": "u32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 3: susceptibility type (0 ends the list)",
+          "verified": false
+        },
+        "duration_3_multiplier": {
+          "offset": 46564,
+          "type": "f32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 3 (0 or less is ignored)",
+          "verified": false
+        },
+        "duration_4_type": {
+          "offset": 46568,
+          "type": "u32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 4: susceptibility type (0 ends the list)",
+          "verified": false
+        },
+        "duration_4_multiplier": {
+          "offset": 46572,
+          "type": "f32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 4 (0 or less is ignored)",
+          "verified": false
+        },
+        "duration_5_type": {
+          "offset": 46576,
+          "type": "u32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 5: susceptibility type (0 ends the list)",
+          "verified": false
+        },
+        "duration_5_multiplier": {
+          "offset": 46580,
+          "type": "f32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 5 (0 or less is ignored)",
+          "verified": false
+        },
+        "duration_6_type": {
+          "offset": 46584,
+          "type": "u32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 6: susceptibility type (0 ends the list)",
+          "verified": false
+        },
+        "duration_6_multiplier": {
+          "offset": 46588,
+          "type": "f32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 6 (0 or less is ignored)",
+          "verified": false
+        },
+        "duration_7_type": {
+          "offset": 46592,
+          "type": "u32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 7: susceptibility type (0 ends the list)",
+          "verified": false
+        },
+        "duration_7_multiplier": {
+          "offset": 46596,
+          "type": "f32",
+          "source": "game.dll 0x691A7F",
+          "meaning": "duration multiplier 7 (0 or less is ignored)",
+          "verified": false
+        }
+      }
     }
   }
 }

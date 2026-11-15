@@ -16,6 +16,16 @@
    "stride": 88,
    "type": 4287831141
   },
+  "AiEnemyComponentData": {
+   "offset": 30027352,
+   "header": "b5ef0e9d4c444c4401000000b5ef0e9d88d701000100000000000000",
+   "index": 302,
+   "indices": 316,
+   "records": 158,
+   "recordOffset": 5056,
+   "stride": 732,
+   "type": 2635001781
+  },
   "AiSpawnerComponentData": {
    "offset": 7293320,
    "header": "772615bc4c444c4401000000772615bc681d00000100000000000000",
@@ -216,6 +226,16 @@
    "stride": 32,
    "type": 2055571089
   },
+  "LocomotionComponentData": {
+   "offset": 45414912,
+   "header": "906707884c444c44010000009067078850900e000100000000000000",
+   "index": 311,
+   "indices": 408,
+   "records": 205,
+   "recordOffset": 6528,
+   "stride": 4624,
+   "type": 2282186640
+  },
   "MeleeAttackComponentData": {
    "offset": 729888,
    "header": "8df224524c444c44010000008df22452701e00000100000000000000",
@@ -355,6 +375,16 @@
    "recordOffset": 2880,
    "stride": 48,
    "type": 1233971143
+  },
+  "StatusEffectReceiverComponentData": {
+   "offset": 30174472,
+   "header": "33c262604c444c440100000033c26260a840e7000100000000000000",
+   "index": 307,
+   "indices": 648,
+   "records": 325,
+   "recordOffset": 10368,
+   "stride": 46600,
+   "type": 1617084979
   },
   "StratagemBlockerComponentData": {
    "offset": 681424,
