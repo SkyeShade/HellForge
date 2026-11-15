@@ -923,7 +923,7 @@ static void ArmoryFill(uint8_t* armory, uint8_t* table, uint32_t count)
         memcpy(&type, rec + 4, 4);
         if (type >= REG_ARMORY_TYPES) continue;
         uint8_t* entry = armory + (size_t)(starts[type] + placed[type]++) * 32;
-        uint64_t owner = LoadoutOwner(table, r);
+        uint64_t owner = ArmoryEntity(table, r);
         memcpy(entry, rec, 4);          /* loadout id */
         memcpy(entry + 8, &owner, 8);   /* entity */
         memcpy(entry + 16, &type, 4);
@@ -947,12 +947,35 @@ static void BuildArmory(void)
 
 typedef uint8_t* (*EncyclopediaFn)(uint64_t entity);
 typedef uint8_t* (*ArmoryEntryFn)(uint32_t id);
+typedef uint32_t (*ArmoryListFn)(uint64_t entity);
 #define REG_ENCYCLOPEDIA_LOOKUP 0x4F8A50u /* component 76 record of an entity */
 #define REG_ARMORY_LOOKUP 0x11E7C60u      /* armory entry of a loadout id (walks the per-type ranges) */
+#define REG_ARMORY_LIST 0x11E7AE0u        /* the armory list (1-6) whose entries name an entity, 0 none (ArmoryEntity) */
+static const uint8_t kArmoryListPin[32] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x8b, 0x1d, 0xfc, 0xee, 0x13, 0x02, 0x41, 0xbb, 0x01, 0x00,
+    0x00, 0x00, 0x4c, 0x8d, 0x93, 0x28, 0x1b, 0x00, 0x00, 0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00};
+
+/* Each entity copy's armory list, as the game reads it when its hellpod rack breaks, beside its base's: logged when either
+ * is in one. Not read on a build whose lookup differs. */
+static void SelfCheckLists(const char* when)
+{
+    uint8_t code[sizeof kArmoryListPin];
+    if (g_armory == NULL || HookedCode(g_game + REG_ARMORY_LIST, code, sizeof code) || memcmp(code, kArmoryListPin, sizeof code) != 0) return;
+    ArmoryListFn list = (ArmoryListFn)(void*)(g_game + REG_ARMORY_LIST);
+    for (int i = 0; i < g_weaponCount; i++)
+    {
+        const Weapon* w = &g_weapons[i];
+        if (w->state != 1 || !w->plain || w->baseEntity == 0) continue;
+        uint32_t mine = list(w->entity), base = list(w->baseEntity);
+        if (mine == 0 && base == 0) continue; /* a rack, a sentry: no list for either */
+        ApiLog(w->mod, "self-check (%s): %s is in armory list %u (its base's %u)%s", when, w->name, mine, base,
+            mine == base ? "" : "; dropped from a broken hellpod it may not be picked up");
+    }
+}
 
 /* Asks the game's own lookups about every registered weapon and logs the answers (the armory's name path). */
 static void SelfCheck(const char* when)
 {
+    SelfCheckLists(when);
     for (int i = 0; i < g_weaponCount; i++)
     {
         Weapon* w = &g_weapons[i];

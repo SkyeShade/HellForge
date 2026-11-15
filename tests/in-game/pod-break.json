@@ -1,0 +1,32 @@
+{
+  "about": "A mod's support weapon dropped from a broken hellpod: an EAT-17 copy (register_entity, as the Stratagem Compendium's Expendables are) on a copy of the EAT-17's rack, and the vanilla rack, each under its own stratagem in the loadout on the ship and called in; each rack broken 20 s after it spawns by the game's own rack death (game.dll 0x938650), and the dropped launchers' pickups read: the copy must fall with the EAT-17's pickup on (tests/in-game/README.md). Picking one up by hand is not part of it.",
+  "mods": [
+    "pod-break-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "script": [
+    {"wait": 25},
+    {"menu": "stratagem-menu"},
+    {"call": "LRLRLRLRD"},
+    {"wait": 15},
+    {"menu": "stratagem-menu"},
+    {"call": "LRLRLRLRU"},
+    {"wait": 60},
+    {"diag": 1}
+  ],
+  "checks": [
+    {"name": "the probe loads", "log": "mod-hellforge.pod-break-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "the copy, its rack and both stratagems are added", "log": "mod-hellforge.pod-break-probe.log", "contains": "PROBE added ok"},
+    {"name": "the copy is in its base's armory list, as the game reads it", "log": "mod-hellforge.pod-break-probe.log", "regex": "eat_copy is in armory list 2 \\(its base's 2\\)"},
+    {"name": "both stratagems are in the loadout on the ship", "log": "mod-hellforge.pod-break-probe.log", "contains": "PROBE loadout ok"},
+    {"name": "called in, the copy's rack spawns", "log": "mod-hellforge.pod-break-probe.log", "contains": "PROBE copy rack spawned ok"},
+    {"name": "called in, the EAT-17's rack spawns", "log": "mod-hellforge.pod-break-probe.log", "contains": "PROBE vanilla rack spawned ok"},
+    {"name": "the copy's rack holds both copies", "log": "mod-hellforge.pod-break-probe.log", "regex": "PROBE copy rack [0-9]+ holds 2 item"},
+    {"name": "the copy's rack breaks (by the probe, or by itself first)", "log": "mod-hellforge.pod-break-probe.log", "regex": "PROBE copy (break ok|rack broke by itself: rack [0-9]+ left)"},
+    {"name": "the EAT-17's rack breaks", "log": "mod-hellforge.pod-break-probe.log", "contains": "PROBE vanilla break ok"},
+    {"name": "the dropped EAT-17s can be picked up", "log": "mod-hellforge.pod-break-probe.log", "contains": "PROBE vanilla pickup ok"},
+    {"name": "the dropped copies can be picked up as the EAT-17s", "log": "mod-hellforge.pod-break-probe.log", "contains": "PROBE copy pickup ok"},
+    {"name": "nothing failed", "log": "mod-hellforge.pod-break-probe.log", "absent": "FAIL"}
+  ]
+}

@@ -384,6 +384,29 @@ static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
     return owner;
 }
 
+/* The entity an armory entry of a loadout record names: its owner (LoadoutOwner), or, for a record no other entity names,
+ * the one entity copy whose own record it is (an entity of add_entity: PlainLoadoutRecord). The game asks the armory
+ * which list an item's entity is in (game.dll 0x11E7AE0: 1 primary, 2 support, 3 secondary...), and a hellpod rack that
+ * breaks (0x936530) turns on the dropped item's pickup by that answer: with no entry naming it, a mod's EAT copy got the
+ * pickup of "in no list" (interaction 7), which a support weapon does not have, and could never be picked up again
+ * (Discord, 2026-11-15). EquipmentComponent's spawn (0x8BF260) and taking the item in hand (0x9AA3F1) ask the same. */
+static uint64_t ArmoryEntity(uint8_t* table, uint32_t record)
+{
+    uint64_t owner = LoadoutOwner(table, record), copy = 0;
+    if (owner != 0) return owner;
+    for (uint32_t i = 0, slots = SlotsOf(REG_LOADOUT); i < slots; i++)
+    {
+        uint64_t entity;
+        uint32_t r;
+        memcpy(&entity, table + 16 * i, 8);
+        memcpy(&r, table + 16 * i + 8, 4);
+        if (entity == 0 || r != record) continue;
+        if (!PlainCopy(entity) || copy != 0) return 0; /* two entities name it: no one owner */
+        copy = entity;
+    }
+    return copy;
+}
+
 /* What the game keeps once state_moves.c has moved its arrays (0: what it compiled, as far as the backend need know). */
 static uint32_t g_gameItems, g_gamePackages;
 
