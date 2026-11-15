@@ -1,0 +1,19 @@
+{
+  "about": "The editor's enemy combat rows: the Charger's charge speed (AiEnemy +0x114), sight range (SensorEye +0) and main armour past 10, the Hunter's first melee damage (DamageInfo 574), turn speed (Rotation +0) and acceleration (Locomotion +0x1170), a stun entry added to the Bile Titan (StatusEffectReceiver zone 0 entry 12) and its fire damage multiplier (Health +0x5400). The logs prove the edits land; what they do (a slow charge, a Charger no gun hurts, a Hunter that turns slowly and hits for 1, a stunnable Titan that fire does not hurt) needs a look in the mission (tests/in-game/README.md).",
+  "mods": [
+    "enemy-combat-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {"name": "the Charger's charge speed becomes 4.5 m/s", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (41100000 -> 40900000)"},
+    {"name": "the Charger sees 80 m", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (42200000 -> 42a00000)"},
+    {"name": "the Charger's main armour becomes 50", "log": "mod-hellforge.enemy-combat-probe.log", "regex": "applied \([0-9a-f]{8} -> 00000032\)", "min": 1},
+    {"name": "the Hunter's first melee hits for 1", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (00000023 -> 00000001)"},
+    {"name": "the Hunter turns at 30 degrees a second", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (43340000 -> 41f00000)"},
+    {"name": "the Hunter's acceleration becomes 3", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (41400000 -> 40400000)"},
+    {"name": "the Bile Titan takes stun", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (00000000 -> 00000016)"},
+    {"name": "the Bile Titan's fire damage multiplier becomes 0", "log": "mod-hellforge.enemy-combat-probe.log", "contains": "applied (3fd9999a -> 00000000)"},
+    {"name": "no edit is refused", "log": "mod-hellforge.enemy-combat-probe.log", "absent": "refused"}
+  ]
+}

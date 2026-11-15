@@ -12,6 +12,15 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Enemy combat in the editor.** Enemy pages get new sections:
+  - Movement: each behaviour's move speed, the charge's speed, steering and tracking angle, turn speed.
+  - Detection: how far it sees ahead, to the sides and behind.
+  - Melee attacks with their damage and AP. Hunters and Pouncers had no Attacks before.
+  - Damage Taken: fire, arc, gas and other element multipliers.
+  - Status Effects: the buildup each status needs, its damage and duration, and a status it is immune to added, such
+    as stun on a Bile Titan.
+- **Enemy armour and AP to 1000.** Above 10 no vanilla weapon hurts that part. Enemies are the host's in co-op, so the
+  host's values apply to everyone.
 - **Room for 1,024 projectile types from mods.** Mods with many weapons can add up to 1,024 new projectile types between
   them (it was 512). Past the 161st, the co-op field that carries a projectile type widens from 9 to 11 bits on every
   machine. Types above 511 now reach other players too; before, they were cut in synced shots and reloads.
