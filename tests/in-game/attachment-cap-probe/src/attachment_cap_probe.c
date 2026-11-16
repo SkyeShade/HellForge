@@ -1,6 +1,7 @@
 /* Attachment cap probe (in-game test only, never shipped; tests/in-game/attachment-cap.json): room for 1,024 attachments.
  * Adds 640 copies of the Liberator's drum magazine, past the old 128, on three AR-23 Liberator copies (213 or 214 on
- * each). On the ship, once the loader has its item block in the game's table, the game's own item lookup
+ * each), whose models hellforge-data.json builds (plain copies of the Liberator's unit: a copy naming a unit no data
+ * provides has no model, and so no physics actor: docs/modding/content.md, "the mod's data provides" it). On the ship, once the loader has its item block in the game's table, the game's own item lookup
  * (AttachmentItemById) and delta lookup (EntityDelta) must find the 1st, the 128th, the 129th and the 640th. It then puts
  * the 640th on the first copy and that copy in the primary slot, as the armory leaves a pick (game build 25480438):
  *   - the profile P = [game + 0x347CDD8]: the primary's loadout id at +0x40 (native/mod-loader/loadout_scrub.c)

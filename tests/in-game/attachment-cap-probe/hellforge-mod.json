@@ -3,7 +3,7 @@
   "id": "hellforge.attachment-cap-probe",
   "name": "Attachment cap probe (in-game test)",
   "version": "1.0.0",
-  "description": "In-game test only, never shipped: adds 640 attachments (past the old 128) on three AR-23 Liberator copies, checks the game's own item and delta lookups find them, equips the last one on the ship and checks the mission builds the weapon with it, one PROBE line per check for the development harness (tests/in-game/README.md).",
+  "description": "In-game test only, never shipped: adds 640 attachments (past the old 128) on three AR-23 Liberator copies (their models plain copies of the Liberator's, hellforge-data.json), checks the game's own item and delta lookups find them, equips the last one on the ship and checks the mission builds the weapon with it, one PROBE line per check for the development harness (tests/in-game/README.md).",
   "gameplay": true,
   "code": { "dll": "attachment_cap_probe.dll", "sdk": 17 }
 }
