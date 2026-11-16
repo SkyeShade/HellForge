@@ -10,6 +10,7 @@ namespace HellForge.Core;
 // and the API's own time of the capture, signed by this PC's snapshot signer (SnapshotSigner). Only code running with
 // administrator or root rights holds the signer's private key, and HellForge reads the public key from a place only those
 // rights can write, so a program running with the player's rights cannot make a seal that verifies here.
+// A seal holds until the next sync replaces it: it has no age limit.
 // A deterrent, not a guarantee: an administrator, or a changed HellForge the player lets run elevated, can still sign.
 // The capture (HellForge.CaptureProxy) compiles this file in as well, so it uses nothing else from HellForge.Core.
 public static class SnapshotSeal
@@ -19,18 +20,13 @@ public static class SnapshotSeal
     public const string LegacyKeyFileName = "seal.key";
     public const string InventoryFile = "real-inventory.json";
     public const string ProgressionFile = "progression.json";
-    public static readonly TimeSpan MaxAge = TimeSpan.FromDays(14);
     const int Version = 2;
     const string Tag = "hellforge-snapshot-seal-v2";
 
     public const string OlderSealMessage = "This snapshot was sealed by an older HellForge. Sync again.";
     public const string OtherSignerMessage = "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again.";
-    public static string ExpiredMessage => $"The snapshot is older than {MaxAge.TotalDays:0} days. Sync again.";
 
-    public sealed record Info(ulong SteamAccount, DateTime CapturedUtc)
-    {
-        public DateTime ExpiresUtc => CapturedUtc + MaxAge;
-    }
+    public sealed record Info(ulong SteamAccount, DateTime CapturedUtc);
 
     // Seals the files in folder by the hashes of the bytes the capture received, not by reading the files back: what the
     // capture wrote is what is signed, whatever touches the folder in between.
@@ -56,19 +52,19 @@ public static class SnapshotSeal
 
     public static string KeyId(byte[] subjectPublicKeyInfo) => Sha256(subjectPublicKeyInfo);
 
-    // The seal's account and time when it holds for the files in folder, under this PC's signer, and is not expired.
+    // The seal's account and time when it holds for the files in folder, under this PC's signer, however old.
     public static Info? Verify(string folder) => Verify(folder, out _);
 
     // Same, with problem saying why when there is more to say than "the files changed".
     public static Info? Verify(string folder, out string? problem)
     {
         var publicKey = SignerPublicKey.Read(out var keyProblem);
-        var info = Verify(folder, publicKey, DateTime.UtcNow, out problem);
+        var info = Verify(folder, publicKey, out problem);
         if (info == null && publicKey == null && problem == null) problem = keyProblem;
         return info;
     }
 
-    internal static Info? Verify(string folder, byte[]? publicKey, DateTime nowUtc, out string? problem)
+    internal static Info? Verify(string folder, byte[]? publicKey, out string? problem)
     {
         problem = null;
         try
@@ -88,7 +84,6 @@ public static class SnapshotSeal
             if (publicKey == null) return null;
             if (Text(seal, "keyId") != KeyId(publicKey)) { problem = OtherSignerMessage; return null; }
             if (!Signed(publicKey, Payload(account, captured, inventory, progression), Text(seal, "signature"))) return null;
-            if (nowUtc - captured > MaxAge) { problem = ExpiredMessage; return null; }
             return new Info(account, captured);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or CryptographicException or FormatException)
