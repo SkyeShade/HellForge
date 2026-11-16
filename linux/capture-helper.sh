@@ -10,13 +10,16 @@
 #   capture-helper.sh hosts-add --hosts-file <path> [--state-dir <dir>]             (test only, unprivileged)
 #   capture-helper.sh hosts-remove --hosts-file <path> [--state-dir <dir>]          (test only, unprivileged)
 #   capture-helper.sh watch --pid <pid> --hosts-file <path> [--state-dir <dir>] [--seconds <n>]  (test only)
+#   capture-helper.sh share --run-dir <dir> --state-dir <dir>                       (test only, unprivileged)
 #
 # start adds exactly CaptureHosts.Marker and "127.0.0.1 api.live.prod.thehelldiversgame.com" to /etc/hosts, runs the
 # installed root-owned capture-relay (never a file from the installation, which any Wine program can write; it binds
 # 127.0.0.1:443 as root, drops to nobody, and forwards to 127.0.0.1:18443 only), and runs the installed root-owned capture
 # as the signing service: a systemd DynamicUser whose StateDirectory holds the snapshot signer's key, out of the player's
-# reach (SnapshotSigner). Once it has sealed, the account files go to the player in /run/hellforge/capture-out and its
-# public key to /var/lib/hellforge (SignerPublicKey). The EXIT/TERM/INT/HUP trap removes the redirect and stops both, and
+# reach (SnapshotSigner). systemd keeps that service's run folder in /run/private, which only root can enter, so root
+# copies its log, state and public CA to /run/hellforge/capture-evidence for the launcher while it runs. Once it has
+# sealed, the account files go to the player in /run/hellforge/capture-out and its public key to /var/lib/hellforge
+# (SignerPublicKey). The EXIT/TERM/INT/HUP trap removes the redirect and stops both, and
 # the service ends at the capture's timeout plus a margin, so killing HellForge leaves nothing behind. Wine is never started here and
 # this helper never becomes root for the game. The test-only host and state arguments are not in the sudoers rule.
 set -euo pipefail
@@ -44,6 +47,11 @@ relay_path="$helper_folder/capture-relay"
 proxy_dir="$helper_folder/capture-proxy"
 signer_unit='hellforge-capture'
 signer_run='/run/hellforge-capture'
+# A DynamicUser service whose RuntimeDirectory is preserved gets it in /run/private (mode 0700, root's), and
+# /run/hellforge-capture is only a link there: the player's launcher cannot read it (systemd.exec, RuntimeDirectoryPreserve=).
+signer_private='/run/private/hellforge-capture'
+# What the launcher may read of the service while it runs (LinuxCapture.SignerEvidenceFolder), copied there by root.
+evidence_name='capture-evidence'
 public_key='/var/lib/hellforge/snapshot-signer.pub'
 capture_pid=''
 player_uid=''
@@ -89,7 +97,7 @@ require_signer() {
 
 require_commands() {
   local name
-  for name in flock awk mktemp cmp chmod chown mv tail date sleep stat find sort xargs sha256sum install grep; do
+  for name in flock awk mktemp cmp cp chmod chown mv tail date sleep stat find sort xargs sha256sum install grep basename dirname; do
     command -v "$name" >/dev/null || die "$name is missing."
   done
 }
@@ -242,7 +250,8 @@ cleanup_locked() {
   rm -f "$pid_file"
   remove_hosts
   # The launcher takes the account files before it stops the helper; a helper ending on its own keeps them for it.
-  [ -n "$remove_out" ] && rm -rf -- "$state_dir/capture-out" "$signer_run"
+  # The run folder's link goes, and the private folder it points to: a stale CA or state there must never reach the next run.
+  [ -n "$remove_out" ] && rm -rf -- "$state_dir/capture-out" "$state_dir/$evidence_name" "$signer_run" "$signer_private"
   set -e
 }
 
@@ -273,6 +282,32 @@ start_capture() {
   capture_pid=$!
 }
 
+# One regular file the service wrote, copied by root into a folder only root writes. cp -P opens it with O_NOFOLLOW, so a
+# file swapped for a link after the check is copied as that link, or not at all, never read through it; a copy that is
+# not a plain file is dropped. The copy lands under a temporary name and moves into place whole.
+copy_plain() {
+  local from="$1" to="$2" mode="$3" tmp
+  [ -f "$from" ] && [ ! -L "$from" ] || return 1
+  tmp="$(dirname "$to")/.$(basename "$to").tmp"
+  rm -f -- "$tmp"
+  if ! cp -P -- "$from" "$tmp" 2>/dev/null || [ -L "$tmp" ] || [ ! -f "$tmp" ]; then
+    rm -f -- "$tmp"
+    return 1
+  fi
+  chmod "$mode" "$tmp"
+  mv -f -- "$tmp" "$to"
+}
+
+# The service's log, start failure and public CA, then its state (the launcher opens the game once the state says it
+# listens and the CA is there), for the player's launcher to read. They hold no account values (CapturePlatform).
+share_evidence() {
+  local into="$state_dir/$evidence_name" name
+  install -d -m 755 "$into"
+  for name in proxy.log capture-failure.json capture-ca.cer capture-state.json; do
+    copy_plain "$signer_run/$name" "$into/$name" 644 || true
+  done
+}
+
 # Root copies the sealed account files into its own folder, then gives that folder to the player whole: nothing the player
 # can change is written as root. seal.json goes last, so the launcher never sees a seal before its files.
 hand_over() {
@@ -281,15 +316,15 @@ hand_over() {
   rm -rf -- "$out"
   install -d -m 700 -o root -g root "$out"
   for name in real-inventory.json progression.json; do
-    [ -f "$from/$name" ] && [ ! -L "$from/$name" ] && install -m 600 -o root -g root "$from/$name" "$out/$name"
+    copy_plain "$from/$name" "$out/$name" 600 || true
   done
   if [ -d "$from/catalogue" ] && [ ! -L "$from/catalogue" ]; then
     install -d -m 700 -o root -g root "$out/catalogue"
     for name in "$from/catalogue"/*.json; do
-      [ -f "$name" ] && [ ! -L "$name" ] && install -m 600 -o root -g root "$name" "$out/catalogue/"
+      copy_plain "$name" "$out/catalogue/$(basename "$name")" 600 || true
     done
   fi
-  install -m 600 -o root -g root "$from/seal.json" "$out/seal.json"
+  copy_plain "$from/seal.json" "$out/seal.json" 600 || return 1
   publish_key
   chown -hR "$player_uid" "$out"
 }
@@ -302,10 +337,13 @@ publish_key() {
   install -m 644 -o root -g root "$from" "$public_key"
 }
 
+# While the service runs: its evidence for the launcher every half second, and the account files once it has sealed.
 watch_capture() {
+  local handed=''
   while kill -0 "$capture_pid" 2>/dev/null; do
-    hand_over && return 0
-    sleep 1
+    share_evidence || true
+    [ -n "$handed" ] || { hand_over && handed=1; }
+    sleep 0.5
   done
 }
 
@@ -346,6 +384,7 @@ parse_test_args() {
       --hosts-file) [ $# -ge 2 ] || die "--hosts-file needs a value"; hosts_file="$2"; shift 2 ;;
       --state-dir) [ $# -ge 2 ] || die "--state-dir needs a value"; state_dir="$2"; shift 2 ;;
       --pid) [ $# -ge 2 ] || die "--pid needs a value"; watch_target="$2"; shift 2 ;;
+      --run-dir) [ $# -ge 2 ] || die "--run-dir needs a value"; signer_run="$2"; shift 2 ;;
       --seconds) [ $# -ge 2 ] || die "--seconds needs a value"; max_lifetime="$2"; shift 2 ;;
       *) die "unknown test argument: $1" ;;
     esac
@@ -394,6 +433,9 @@ case "$command" in
     capture_pid=''
     wait "$watch_pid" 2>/dev/null
     watch_pid=''
+    # The run folder outlives the service (RuntimeDirectoryPreserve), so its last log lines and state still reach the
+    # launcher, which takes them before it stops this helper.
+    share_evidence || true
     [ -f "$state_dir/capture-out/seal.json" ] || hand_over
     set -e
     cleanup_once
@@ -416,6 +458,12 @@ case "$command" in
     parse_test_args "$@"
     acquire_lock_now || die "another capture helper is running"
     if [ "$command" = hosts-add ]; then add_hosts; else remove_hosts; fi
+    exit 0
+    ;;
+  share)
+    watch_target=''
+    parse_test_args "$@"
+    share_evidence || true
     exit 0
     ;;
   watch)

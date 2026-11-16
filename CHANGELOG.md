@@ -331,6 +331,16 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
+  "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
+  service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
+  copies the service's log, state and certificate to `/run/hellforge/capture-evidence` for the launcher. The next
+  sync asks to install the updated helper once
+  ([the snapshot signer](docs/linux-account-sync.md#the-snapshot-signer)).
+- **Steam Deck: Sync Inventory with steamapps on the microSD card.** A `steamapps` folder linked to the card's library
+  crashed the launcher with "Linked/reparse paths are not supported". HellForge now follows that link and still
+  refuses a link at the game folder or inside it. A Steam library HellForge cannot read stops the sync with a message
+  ([HellForge on Linux](docs/linux.md)).
 - **Mod support weapons from a broken hellpod can be picked up.** When a pod broke with a mod's launcher still on its
   rack (the Stratagem Compendium's Expendables, Beelzebub's Strat Pack and other packs' pods), the launcher fell
   without a pickup and could never be taken. The game picks a dropped item's pickup by its armory list, and these

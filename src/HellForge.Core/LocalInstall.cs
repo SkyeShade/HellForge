@@ -157,19 +157,28 @@ public static class LocalInstall
         return current;
     }
 
+    // Each manifest under its library's real steamapps folder, so a linked steamapps (below) is read where it lies and the
+    // same library reached twice counts once.
     public static IReadOnlyList<string> FindManifests(string steamRoot) =>
-        FindLibraries(steamRoot).Select(root => Path.Combine(root, "steamapps", $"appmanifest_{AppId}.acf"))
-            .Where(File.Exists).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        FindLibraries(steamRoot).Select(root => Path.Combine(SteamApps(root), $"appmanifest_{AppId}.acf"))
+            .Where(File.Exists).Distinct(StringComparer.Ordinal).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+
+    // A library's steamapps folder with its links resolved on Linux. On a Steam Deck with little internal storage the
+    // steamapps folder of Steam's own library is often a link to the SD card's: that is the player's own layout, and
+    // Steam follows it too. HellForge guards the game folder under it (Inspect: the game folder and everything below may
+    // not be a link), not the way there. Windows keeps the path as given and its strict NoLinks walk where it is read.
+    public static string SteamApps(string library) => ResolveLinks(Path.Combine(library, "steamapps"));
 
     // Steam's library folders: its own folder and every one in libraryfolders.vdf.
     public static IReadOnlyList<string> FindLibraries(string steamRoot)
     {
         steamRoot = ResolveLinks(steamRoot);
         var libraries = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { steamRoot };
-        var folders = Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf");
+        var folders = Path.Combine(SteamApps(steamRoot), "libraryfolders.vdf");
         if (File.Exists(folders))
         {
-            folders = NoLinks(folders, steamRoot);
+            // The list itself may not be a link; the folders on the way to it are resolved.
+            folders = NoLinks(folders, folders);
             var document = ValveData.Parse(File.ReadAllText(folders));
             if (!document.Children.TryGetValue("libraryfolders", out var entries))
                 throw new InvalidDataException("Missing libraryfolders object.");
