@@ -72,6 +72,21 @@ int main()
     Check(tr::Named("{1}'s lobby", {"Damage"}) == "Damage LOBBY", "a name put into a translated sentence is not translated");
     Check(tr::Named("{1} and {2}", {"a", "b"}) == "b+a", "the list can move the names");
     Check(tr::Named("from {1}", {"x{2}"}) == "from x{2}", "a name is put in once, never read for more names");
+    /* scripts that keep spaces: Russian урон пробитие, Korean 피해 관통, German Überschaden Größe; Japanese 貫通 does not */
+    tr::LoadText("[words]\ndamage\t\xD1\x83\xD1\x80\xD0\xBE\xD0\xBD\npenetration\t\xD0\xBF\xD1\x80\xD0\xBE\xD0\xB1\xD0\xB8\xD1\x82\xD0\xB8\xD0\xB5\n", "ru");
+    Check(tr::Get("Damage penetration") == "\xD1\x83\xD1\x80\xD0\xBE\xD0\xBD \xD0\xBF\xD1\x80\xD0\xBE\xD0\xB1\xD0\xB8\xD1\x82\xD0\xB8\xD0\xB5",
+          "Cyrillic words keep the space between them");
+    tr::LoadText("[words]\ndamage\t\xED\x94\xBC\xED\x95\xB4\npenetration\t\xEA\xB4\x80\xED\x86\xB5\n", "ko");
+    Check(tr::Get("Damage penetration") == "\xED\x94\xBC\xED\x95\xB4 \xEA\xB4\x80\xED\x86\xB5", "Korean words keep the space between them");
+    tr::LoadText("[words]\ndamage\t\xC3\x9C" "berschaden\nsize\t\xC3\x96" "ffnung\n", "de");
+    Check(tr::Get("Damage size") == "\xC3\x9C" "berschaden \xC3\x96" "ffnung", "words that start with an umlaut keep the space between them");
+    tr::LoadText("[words]\ndamage\t\xE3\x83\x80\xE3\x83\xA1\xE3\x83\xBC\xE3\x82\xB8\npenetration\t\xE8\xB2\xAB\xE9\x80\x9A\n", "ja");
+    Check(tr::Get("Damage penetration") == "\xE3\x83\x80\xE3\x83\xA1\xE3\x83\xBC\xE3\x82\xB8\xE8\xB2\xAB\xE9\x80\x9A", "Japanese words lose the space between them");
+    Check(tr::HasUnspaced(SETTINGS) && tr::HasUnspaced("AR-23 \xE8\xB2\xAB\xE9\x80\x9A") && !tr::HasUnspaced("Gr\xC3\xB6\xC3\x9F" "e") &&
+          !tr::HasUnspaced("\xD1\x83\xD1\x80\xD0\xBE\xD0\xBD") && !tr::HasUnspaced("\xED\x94\xBC\xED\x95\xB4") && !tr::HasUnspaced("Damage"),
+          "lines break between characters only in Chinese and Japanese text");
+    tr::LoadText(list, "zz");
+
     bool has = false, latin = false;
     for (uint32_t c : tr::Characters()) { if (c == 0x8BBE) has = true; if (c == 'S') latin = true; }
     Check(has && latin, "the characters the translations use, for the font");

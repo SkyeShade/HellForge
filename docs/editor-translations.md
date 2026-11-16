@@ -50,7 +50,7 @@ the lines after it match:
   `Firerate`.
 - In `[words]`, a `-` between letters is part of a word (`anti-tank`). A `-` before a number is a sign, not a word.
 - `[words]` keeps a string English when one of its words is unknown. A weapon's or enemy's name then stays whole.
-- Two translated words with non-Latin text lose the space between them, as Chinese and Japanese are written.
+- Two translated words in Chinese or Japanese lose the space between them. Korean and every other script keep it.
 - Section headers ignore letter case and the spaces around them. `[rules]` and `[extra]` are read as `[fragments]` and
   `[exact]`.
 
@@ -83,4 +83,7 @@ A list with characters past Latin-1 keeps the font atlas small:
 - Text is baked at every other size and scaled to the sizes between them.
 - When the atlas still does not fit, the glyphs are baked smaller and drawn larger. The editor's log says so.
 
-Long translations wrap between words, and between characters where the language has no spaces.
+Long translations wrap between words. Chinese and Japanese text also wraps between characters.
+
+Scripts written right to left (Arabic, Hebrew) and scripts whose letters change shape with their neighbours (Thai,
+Devanagari) do not show correctly: the editor's text drawing (Dear ImGui) supports neither.

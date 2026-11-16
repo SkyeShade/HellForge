@@ -110,7 +110,25 @@ std::vector<std::string> Tokens(const std::string& in)
     return out;
 }
 
-bool NonLatin(const std::string* s) { return s != nullptr && !s->empty() && (unsigned char)(*s)[0] >= 0x80; }
+/* The code point at a UTF-8 lead byte (a broken sequence: its first byte), and its length. */
+uint32_t CodePoint(const std::string& s, size_t i, size_t* len)
+{
+    unsigned char c = (unsigned char)s[i];
+    *len = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 1;
+    if (i + *len > s.size()) *len = 1;
+    uint32_t cp = *len == 1 ? c : c & (0xFFu >> (*len + 1));
+    for (size_t k = 1; k < *len; k++) cp = cp << 6 | ((unsigned char)s[i + k] & 0x3Fu);
+    return cp;
+}
+
+/* the first or the last character of a translation is Chinese or Japanese */
+bool EdgeUnspaced(const std::string* s, bool last)
+{
+    if (s == nullptr || s->empty()) return false;
+    size_t i = 0, len = 1;
+    if (last) { i = s->size() - 1; while (i > 0 && ((unsigned char)(*s)[i] & 0xC0) == 0x80) i--; }
+    return Unspaced(CodePoint(*s, i, &len));
+}
 
 /* Each word's translation (numbers and other characters: none); false when a word is not in the list. */
 bool WordTranslations(const std::vector<std::string>& tokens, std::vector<const std::string*>* shown)
@@ -137,8 +155,8 @@ bool Words(const std::string& in, std::string* out)
     out->clear();
     for (size_t k = 0; k < tokens.size(); k++)
     {
-        /* Chinese and Japanese put no space between words */
-        bool gap = tokens[k] == " " && k > 0 && k + 1 < tokens.size() && NonLatin(shown[k - 1]) && NonLatin(shown[k + 1]);
+        /* Chinese and Japanese put no space between words; every other script keeps it */
+        bool gap = tokens[k] == " " && k > 0 && k + 1 < tokens.size() && EdgeUnspaced(shown[k - 1], true) && EdgeUnspaced(shown[k + 1], false);
         if (!gap) *out += shown[k] ? *shown[k] : tokens[k];
     }
     return true;
@@ -220,6 +238,26 @@ std::vector<std::string> Lines(const std::string& raw)
     return lines;
 }
 } // namespace
+
+bool Unspaced(uint32_t c)
+{
+    return (c >= 0x2E80 && c <= 0x2FDF) ||  /* CJK radicals */
+        (c >= 0x3000 && c <= 0x30FF) ||     /* CJK punctuation, hiragana, katakana */
+        (c >= 0x3100 && c <= 0x312F) ||     /* bopomofo */
+        (c >= 0x31F0 && c <= 0x31FF) ||     /* katakana extensions */
+        (c >= 0x3400 && c <= 0x4DBF) ||     /* CJK extension A */
+        (c >= 0x4E00 && c <= 0x9FFF) ||     /* CJK unified ideographs */
+        (c >= 0xF900 && c <= 0xFAFF) ||     /* CJK compatibility ideographs */
+        (c >= 0xFF00 && c <= 0xFFEF) ||     /* full-width forms, half-width katakana */
+        (c >= 0x20000 && c <= 0x3FFFF);     /* CJK extensions B and on */
+}
+
+bool HasUnspaced(const std::string& s)
+{
+    for (size_t i = 0, len = 1; i < s.size(); i += len)
+        if (Unspaced(CodePoint(s, i, &len))) return true;
+    return false;
+}
 
 bool ValidTag(const std::string& tag)
 {

@@ -29,6 +29,10 @@ std::string Get(const std::string& english);
 /* A sentence with names in it: the sentence translated with {1}, {2} where the names go, then the names put in as they
  * are, so a list can move them and a name is never translated. */
 std::string Named(const std::string& english, const std::vector<std::string>& names);
+/* A character of a script written without spaces (Chinese, Japanese): words translated into it lose the space between
+ * them, and a line breaks between any two of them. Korean and every other script keep spaces and break at words. */
+bool Unspaced(uint32_t codePoint);
+bool HasUnspaced(const std::string& text);
 /* Every character the loaded list's translations use, sorted: the font atlas bakes these and no others. */
 const std::vector<uint32_t>& Characters();
 /* Parses a list's text (for the tests; Load reads the file and calls it). */
