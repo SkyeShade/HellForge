@@ -54,9 +54,9 @@ try
             mods [--install <folder>]
             languages [--install <folder>] [--steam-root <Steam folder>]
             language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
-            mod-add [--install <folder>] --file <.zip, .rar, .7z, hellforge-mod.json or manifest.json>
-            mod-remove [--install <folder>] --id <mod id>
-            mod-switch [--install <folder>] --id <mod id> --on yes | no
+            mod-add [--install <folder>] --file <.zip, .rar, .7z, hellforge-mod.json or manifest.json> [--file <another> ...]
+            mod-remove [--install <folder>] (--id <mod id> | --ids <id,id,...>)
+            mod-switch [--install <folder>] (--id <mod id> | --ids <id,id,...>) --on yes | no
             mod-order [--install <folder>] --ids <id,id,... top first>
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
             settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
@@ -171,8 +171,8 @@ try
         "status" or "fetch-war" or "mods" => ["--install"],
         "profiles" => ["--install", "--create", "--template"],
         "mod-add" => ["--install", "--file"],
-        "mod-remove" => ["--install", "--id"],
-        "mod-switch" => ["--install", "--id", "--on"],
+        "mod-remove" => ["--install", "--id", "--ids"],
+        "mod-switch" => ["--install", "--id", "--ids", "--on"],
         "mod-order" => ["--install", "--ids"],
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
         "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--strangers", "--live-changes", "--forge-credits", "--game-options"],
@@ -180,8 +180,14 @@ try
         _ => throw new ArgumentException($"Unknown command: {args[0]}")
     };
     var options = new Dictionary<string, string>(StringComparer.Ordinal);
+    var addFiles = new List<string>(); // mod-add takes --file more than once
     for (var i = 1; i < args.Length; i += 2)
     {
+        if (args[0] == "mod-add" && args[i] == "--file" && i + 1 < args.Length)
+        {
+            addFiles.Add(args[i + 1]);
+            continue;
+        }
         if (!allowed.Contains(args[i]) || i + 1 >= args.Length || !options.TryAdd(args[i], args[i + 1]))
             throw new ArgumentException($"Unknown, duplicate, or incomplete option: {args[i]}");
     }
@@ -192,6 +198,12 @@ try
         var value = Required(key);
         if (value.Length != 64 || !value.All(Uri.IsHexDigit)) throw new ArgumentException($"{key} must contain 64 hexadecimal digits.");
         return value.ToUpperInvariant();
+    }
+    // --id for one mod, --ids for several; not both.
+    bool OneOrMany()
+    {
+        if (options.ContainsKey("--id") && options.ContainsKey("--ids")) throw new ArgumentException("Give --id or --ids, not both.");
+        return options.ContainsKey("--ids");
     }
     object result;
     // --progress: a JSON file the launcher reads for its "compiling mods" bar (written whole, then moved in place).
@@ -226,7 +238,12 @@ try
             result = Launch.Mods(options);
             break;
         case "mod-add":
-            result = Launch.ModAdd(options, Required("--file"));
+            result = addFiles.Count switch
+            {
+                0 => throw new ArgumentException("Missing --file."),
+                1 => Launch.ModAdd(options, addFiles[0]),
+                _ => Launch.ModAddMany(options, addFiles)
+            };
             break;
         case "languages":
             result = Launch.Languages(options);
@@ -235,10 +252,10 @@ try
             result = Launch.LanguageAdd(options, Required("--name"));
             break;
         case "mod-remove":
-            result = Launch.ModRemove(options, Required("--id"));
+            result = OneOrMany() ? Launch.ModRemoveMany(options, Required("--ids")) : Launch.ModRemove(options, Required("--id"));
             break;
         case "mod-switch":
-            result = Launch.ModSwitch(options, Required("--id"), Required("--on"));
+            result = OneOrMany() ? Launch.ModSwitchMany(options, Required("--ids"), Required("--on")) : Launch.ModSwitch(options, Required("--id"), Required("--on"));
             break;
         case "mod-order":
             result = Launch.ModOrder(options, Required("--ids"));
