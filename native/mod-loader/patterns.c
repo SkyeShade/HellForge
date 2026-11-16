@@ -424,6 +424,9 @@ static int PatLook(HfMod* mod, const HfPattern* def, DeltaCopy* copy, float (*co
 static uint32_t PatAddWeapon(HfMod* mod, const HfPattern* def, const char* key)
 {
     if (g_attachmentCount == ATT_MAX) { ApiLog(mod, "add_pattern(%s): mods added %d attachments and weapon patterns already", def->name, ATT_MAX); return 0; }
+    int weaponPatterns = 0;
+    for (int i = 0; i < g_attachmentCount; i++) weaponPatterns += g_attachments[i].pattern;
+    if (weaponPatterns == ATT_PATTERN_MAX) { ApiLog(mod, "add_pattern(%s): mods added %d weapon patterns already", def->name, ATT_PATTERN_MAX); return 0; }
     if (def->weapon_count > ATT_WEAPONS || (def->weapon_count && def->weapons == NULL))
     { ApiLog(mod, "add_pattern(%s): it names up to %d weapons (none: every weapon offering its base)", def->name, ATT_WEAPONS); return 0; }
     Attachment a = {0};

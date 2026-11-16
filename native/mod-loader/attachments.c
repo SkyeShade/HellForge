@@ -6,7 +6,15 @@
  * appended to g_settings, and of its base's deltas under its own add_path in a grown copy of the delta storage, swapped
  * in; a unit of the mod's own replaces the base's where the deltas name it. Both are made again when the game reloads. */
 
-#define ATT_MAX 128
+/* Room for mods' attachments and weapon patterns together. Nothing in the game bounds it: the item lookups (0x11F46F0,
+ * 0x11F4680) and a weapon's customization list (0x1370420) walk every item of every group, that list is a heap block
+ * sized by them all (0x11F4760), a group's item count is a u32, the entity deltas' key map is HellForge's grown one
+ * (key % slots, 0x5154C0), and a loadout names an attachment by its full 32-bit id, in co-op too (the loadout RPCs'
+ * option arrays are 32-bit ints; a peer looks the id up in its own items). The customize screen's 64 cards a panel are
+ * fixed (0x1493770), but they come from mastery package entries, which an attachment does not get. A weapon pattern
+ * also maps its add_path to a package in the game's fixed-size package map (patterns.c), so those keep 128. */
+#define ATT_MAX 1024
+#define ATT_PATTERN_MAX 128 /* weapon patterns among them */
 #define ATT_WEAPONS 16
 #define ATT_TABLE 0x37C5B50u
 #define ATT_COUNT 0x348DA98u
@@ -19,6 +27,7 @@
 #define ATT_UNIT_CUSTOMIZATION 206u
 #define PAT_MAX 128               /* unit patterns (patterns.c) */
 #define PAT_COLLECTION_SLOTS 12u  /* the game's unit skin collections */
+_Static_assert(ATT_MAX * 3 + PAT_MAX <= REG_ATTACHMENT_TEXTS, "each attachment's three texts and each unit pattern's one have room (registry.c g_texts)");
 
 static const uint8_t kAttItemPin[24] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x7c, 0x24, 0x10, 0x8b, 0x3d, 0x98, 0x93, 0x29, 0x02,
     0x45, 0x33, 0xd2, 0x85, 0xff, 0x74, 0x3b, 0x4c};

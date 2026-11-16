@@ -1652,8 +1652,9 @@ typedef struct HfApi
      * stay. */
     uintptr_t (*arc_row)(uint32_t type);
     /* Adds a weapon attachment (see HfAttachment). Call it from hellforge_mod_init, after add_weapon for its weapons.
-     * Returns its item id, or 0 (the mod's log says why). 128 across all mods. Customization screens list it on its
-     * weapons once the game has loaded its items; the session's backend makes it the player's. */
+     * Returns its item id, or 0 (the mod's log says why). 1,024 across all mods, weapon patterns among them.
+     * Customization screens list it on its weapons once the game has loaded its items; the session's backend makes it
+     * the player's while the game's catalogue has room for its item on each weapon (the backend's log names the rest). */
     uint32_t (*add_attachment)(HfMod* mod, const HfAttachment* attachment);
 
     /* ---- SDK 17: enemies (check hf->size before calling) ----------------------------------------------------------- */
@@ -1696,7 +1697,8 @@ typedef struct HfApi
 
     /* ---- SDK 18: patterns (check hf->size before calling) ---------------------------------------------------------- */
     /* Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why).
-     * 128 across all mods; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in
+     * 128 weapon patterns and 128 unit patterns across all mods (weapon patterns also count among add_attachment's
+     * 1,024); a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in
      * all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data. */
     uint32_t (*add_pattern)(HfMod* mod, const HfPattern* pattern);
 

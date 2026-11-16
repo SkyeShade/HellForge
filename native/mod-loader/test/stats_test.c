@@ -3715,6 +3715,127 @@ static void AttachmentsFixture(void)
     VirtualFree(game, 0, MEM_RELEASE);
 }
 
+/* Room for 1,024 attachments (attachments.c ATT_MAX): weapon patterns stop at 128 of them, attachments fill the rest and
+ * one more is refused; all 1,024 go into HellForge's one item block and the grown deltas, the last one is found by the
+ * game's own walk (0x11F46F0: every group the count names, every item of each), and the backend's text lists them all. */
+static const uint8_t* GameItemById(const uint8_t* game, uint32_t id) /* 0x11F46F0, as the game walks */
+{
+    uint32_t groups;
+    memcpy(&groups, game + ATT_COUNT, 4);
+    for (uint32_t k = 0; k < groups; k++)
+    {
+        const uint8_t* block = *(uint8_t* const*)(game + ATT_TABLE + 8u * k);
+        const uint8_t* items = *(uint8_t* const*)block;
+        for (uint32_t i = 0; i < *(const uint32_t*)(block + 8); i++)
+            if (*(const uint32_t*)(items + (size_t)i * ATT_ITEM + 8) == id) return items + (size_t)i * ATT_ITEM;
+    }
+    return NULL;
+}
+
+static void AttachmentCapFixture(void)
+{
+    uint8_t* game = (uint8_t*)VirtualAlloc(NULL, ATT_TABLE + 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint8_t* state = (uint8_t*)VirtualAlloc(NULL, ATT_DELTAS + 0x100, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert(game && state);
+    memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
+    memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
+    /* the game's item: a magazine (slot 5) whose deltas write its unit into the Customization record */
+    static uint8_t items[ATT_ITEM];
+    static uint32_t magazineSlot = 5;
+    const uint64_t baseUnit = 0x1111222233334444ull;
+    uint32_t id = 0xBA5E0001u; memcpy(items + 8, &id, 4); memcpy(items + 0x20, &baseUnit, 8);
+    uintptr_t slots = (uintptr_t)&magazineSlot; memcpy(items + 0x30, &slots, 8); uint32_t one = 1; memcpy(items + 0x38, &one, 4);
+    static struct { uint8_t* items; uint32_t count; uint32_t pad; } block;
+    block.items = items; block.count = 1;
+    at = (uintptr_t)&block; memcpy(game + ATT_TABLE, &at, 8);
+    uint32_t count = 1; memcpy(game + ATT_COUNT, &count, 4);
+    static uint8_t keys[16 * 3], data[16];
+    static uint32_t settings[2] = {1, 0}, comps[3] = {ATT_CUSTOMIZATION, 0, 1}, deltas[3] = {0x80, 8, 0};
+    memcpy(keys + 16 * (baseUnit % 3), &baseUnit, 8);
+    memcpy(data, &baseUnit, 8);
+    static uint8_t storage[0x50];
+    void* parts[5] = {keys, settings, comps, deltas, data};
+    for (int p = 0; p < 5; p++) memcpy(storage + 0x10 * p, &parts[p], 8);
+    uint32_t three = 3; memcpy(storage + 8, &three, 4);
+    at = (uintptr_t)storage; memcpy(state + ATT_DELTAS, &at, 8);
+
+    uintptr_t savedGame = g_game;
+    int savedWeapons = g_weaponCount;
+    LONG savedReady = InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], 0);
+    g_game = (uintptr_t)game;
+    memset(&g_weapons[g_weaponCount], 0, sizeof g_weapons[0]);
+    g_weapons[g_weaponCount].id = 0x7E57u;
+    g_weaponCount++;
+    HfMod* mod = &g_mods[0];
+    const uint32_t weapons[] = {0x7E57u};
+    char name[64];
+
+    /* weapon patterns: 128, then refused while attachments still have room */
+    for (int i = 0; i <= ATT_PATTERN_MAX; i++)
+    {
+        snprintf(name, sizeof name, "test/cap/paint-%d", i);
+        HfPattern paint = {sizeof paint, 0x80FBE63Du, name};
+        uint32_t made = ApiAddPattern(mod, &paint);
+        assert(i < ATT_PATTERN_MAX ? made != 0 : made == 0 && strstr(ApiLastLog(mod), "128 weapon patterns already") != NULL);
+    }
+    assert(g_attachmentCount == ATT_PATTERN_MAX);
+    snprintf(name, sizeof name, "test/cap/mag-first");
+    HfAttachment mag = {sizeof mag, 0xBA5E0001u, name, 0, NULL, NULL, weapons, 1};
+    assert(ApiAddAttachment(mod, &mag) != 0);
+    g_attachmentCount = 0; /* the attachments alone from here */
+
+    /* 1,024 attachments, then one more refused */
+    uint32_t ids[ATT_MAX];
+    for (int i = 0; i <= ATT_MAX; i++)
+    {
+        snprintf(name, sizeof name, "test/cap/mag-%d", i);
+        uint32_t made = ApiAddAttachment(mod, &mag);
+        if (i < ATT_MAX) { assert(made == Thin(name)); ids[i] = made; }
+        else assert(made == 0 && strstr(ApiLastLog(mod), "1024 attachments and weapon patterns already") != NULL);
+    }
+    assert(g_attachmentCount == ATT_MAX && ATT_MAX == 1024);
+    snprintf(name, sizeof name, "test/cap/paint-late");
+    HfPattern late = {sizeof late, 0x80FBE63Du, name};
+    assert(ApiAddPattern(mod, &late) == 0 && strstr(ApiLastLog(mod), "1024 attachments and weapon patterns already") != NULL);
+
+    AttachmentsTick();
+    uint8_t* grown = StatePointer(state, ATT_DELTAS);
+    int in = 0;
+    for (int i = 0; i < ATT_MAX; i++) in += g_attachments[i].state == 1;
+    assert(grown == g_attGrown && grown != storage && in == ATT_MAX);
+    memcpy(&count, game + ATT_COUNT, 4);
+    assert(count == 2 && *(uint8_t**)(game + ATT_TABLE + 8) == (uint8_t*)&g_attBlock && g_attBlock.count == ATT_MAX);
+    /* the first, the 129th (past the old 128) and the last, by the game's walk: each its own item, add_path and deltas */
+    const int probes[] = {0, 128, ATT_MAX - 1};
+    for (size_t p = 0; p < sizeof probes / sizeof probes[0]; p++)
+    {
+        const Attachment* a = &g_attachments[probes[p]];
+        const uint8_t* item = GameItemById(game, ids[probes[p]]);
+        assert(item == g_attItems + (size_t)probes[p] * ATT_ITEM && *(const uint64_t*)(item + 0x20) == a->copy.addPath && AttSlot(item) == 5);
+        const uint32_t* setting = AttDeltaSetting(grown, a->copy.addPath);
+        assert(setting != NULL && setting[0] == 1);
+        const uint32_t* comp = *(uint32_t* const*)(grown + 0x20) + 3 * setting[1];
+        assert(comp[0] == ATT_CUSTOMIZATION && comp[2] == 1);
+    }
+    assert(GameItemById(game, 0xBA5E0001u) == items && AttDeltaSetting(grown, baseUnit) != NULL); /* the game's own stay */
+    /* the backend hears of every one */
+    size_t size = 1u << 20;
+    char* text = (char*)malloc(size);
+    assert(text != NULL);
+    int n = AttachmentItems(text, 0, (int)size);
+    assert(n < (int)size - REG_ITEM_ROOM && Occurrences(text, "\"mixId\":") == ATT_MAX);
+    free(text);
+
+    g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL; g_attBlock.count = 0;
+    g_weaponCount = savedWeapons;
+    g_game = savedGame;
+    InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], savedReady);
+    VirtualFree(grown, 0, MEM_RELEASE);
+    VirtualFree(state, 0, MEM_RELEASE);
+    VirtualFree(game, 0, MEM_RELEASE);
+}
+
 /* Members added to vanilla attachments (attachment_extras.c): only the allowed ones; nothing made while none is set; set,
  * the key's own settings entry with the member (in its WeaponHeat component, or a WeaponHeat component of its own) and
  * the game's untouched; a new value written in place; cleared, made again without it; a key the storage lacks made once. */
@@ -4736,6 +4857,7 @@ int main(int argc, char** argv)
     WeaponOrderFixture();
     RegisteredItemsFixture();
     AttachmentsFixture();
+    AttachmentCapFixture();
     AttachmentExtrasFixture();
     PatternsFixture();
     SetupOrderFixture();
@@ -4985,7 +5107,7 @@ int main(int argc, char** argv)
     EarlyStampPackagesFixture();
     PerfOverlapGridFixture();
     SpanRescueFixture();
-    puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
+    puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, room for 1,024 attachments, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "

@@ -170,13 +170,16 @@ typedef struct Weapon
 } Weapon;
 
 /* Mod text by id, answered by the text lookup detour: four for each weapon or entity (name, upper-case name, description,
- * designation), three for each stratagem (stratagems.c asserts its STR_MAX_NEW fits) and two for the difficulty. Weapons
- * once shared a fixed 4 * 512 with the others, so a full pack left a stratagem with its base's name. They grow as they are added
- * (stable_array.c: TextDetour reads them on the game thread while a live change adds more). */
+ * designation), three for each stratagem (stratagems.c asserts its STR_MAX_NEW fits), the attachments' and patterns'
+ * and two for the difficulty. Weapons once shared a fixed 4 * 512 with the others, so a full pack left a stratagem with
+ * its base's name. They grow as they are added (stable_array.c: TextDetour reads them on the game thread while a live
+ * change adds more). */
 #define REG_STRATAGEM_TEXTS (1024 * 3)
+/* three for each attachment or weapon pattern and one for each unit pattern (attachments.c asserts ATT_MAX and PAT_MAX fit) */
+#define REG_ATTACHMENT_TEXTS (1024 * 3 + 128)
 typedef struct ModText { uint32_t id; char* text; } ModText;
 /* + four for each mod warbond (warbonds.c: its name and the line above it, each in two cases), 99 at most */
-#define REG_TEXT_CEILING ((size_t)REG_WEAPON_CEILING * 4 + REG_STRATAGEM_TEXTS + 2 + 4 * 99)
+#define REG_TEXT_CEILING ((size_t)REG_WEAPON_CEILING * 4 + REG_STRATAGEM_TEXTS + REG_ATTACHMENT_TEXTS + 2 + 4 * 99)
 static ModText* g_texts;
 static StableArray g_textStore = {NULL, sizeof(ModText), REG_TEXT_CEILING, 0};
 static int g_textCount;
