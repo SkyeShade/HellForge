@@ -3643,6 +3643,7 @@ static void AttachmentsFixture(void)
     assert(game && state);
     memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
     memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin); memcpy(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin);
     uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
     /* the game's items: a magazine (slot 5) whose add_path is its unit, and a paint without deltas */
     static uint8_t items[2 * ATT_ITEM];
@@ -3715,9 +3716,12 @@ static void AttachmentsFixture(void)
     VirtualFree(game, 0, MEM_RELEASE);
 }
 
-/* Room for 1,024 attachments (attachments.c ATT_MAX): weapon patterns stop at 128 of them, attachments fill the rest and
- * one more is refused; all 1,024 go into HellForge's one item block and the grown deltas, the last one is found by the
- * game's own walk (0x11F46F0: every group the count names, every item of each), and the backend's text lists them all. */
+/* Room for 1,024 attachments (attachments.c ATT_MAX): 1,024 go in and one more is refused, a weapon pattern too; all of
+ * them go into HellForge's one item block and the grown deltas, the last one is found by the game's own walk
+ * (0x11F46F0: every group the count names, every item of each), and the backend's text lists them all. Each add_path
+ * gets its base's package in a copy of the game's package map grown to hold them (the game's 1,024 entries, 429 used,
+ * held about 340: a copy without its base's package loaded nothing for its unit, and the mission crashed); a smaller
+ * map the game loads again is copied and grown again. */
 static const uint8_t* GameItemById(const uint8_t* game, uint32_t id) /* 0x11F46F0, as the game walks */
 {
     uint32_t groups;
@@ -3732,6 +3736,19 @@ static const uint8_t* GameItemById(const uint8_t* game, uint32_t id) /* 0x11F46F
     return NULL;
 }
 
+/* A package map as the game keeps it at PAT_PACKAGES: count entries, used of them taken, the magazine's add_path among them. */
+static void GamePackageMap(uint8_t* game, uint8_t* entries, uint32_t count, uint32_t used, uint64_t magazine, uint64_t package)
+{
+    memset(entries, 0, 16u * (size_t)count);
+    assert(PatMapPut(entries, count, 2, 0, magazine, package));
+    for (uint32_t i = 1; i < used; i++) assert(PatMapPut(entries, count, 2, 0, 0x9000000000000000ull + i * 0x10001ull, 0x700 + i));
+    uint32_t two = 2;
+    memcpy(game + PAT_PACKAGES + 8, &count, 4); /* as the game's loader writes them: the count, then the entries */
+    memcpy(game + PAT_PACKAGES, &entries, 8);
+    memcpy(game + PAT_PACKAGES + 0x18, &two, 4);
+    memset(game + PAT_PACKAGES + 0x10, 0, 8);
+}
+
 static void AttachmentCapFixture(void)
 {
     uint8_t* game = (uint8_t*)VirtualAlloc(NULL, ATT_TABLE + 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -3739,11 +3756,12 @@ static void AttachmentCapFixture(void)
     assert(game && state);
     memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
     memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin); memcpy(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin);
     uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
     /* the game's item: a magazine (slot 5) whose deltas write its unit into the Customization record */
     static uint8_t items[ATT_ITEM];
     static uint32_t magazineSlot = 5;
-    const uint64_t baseUnit = 0x1111222233334444ull;
+    const uint64_t baseUnit = 0x1111222233334444ull, basePackage = 0x272519D2E9BF5324ull;
     uint32_t id = 0xBA5E0001u; memcpy(items + 8, &id, 4); memcpy(items + 0x20, &baseUnit, 8);
     uintptr_t slots = (uintptr_t)&magazineSlot; memcpy(items + 0x30, &slots, 8); uint32_t one = 1; memcpy(items + 0x38, &one, 4);
     static struct { uint8_t* items; uint32_t count; uint32_t pad; } block;
@@ -3759,6 +3777,8 @@ static void AttachmentCapFixture(void)
     for (int p = 0; p < 5; p++) memcpy(storage + 0x10 * p, &parts[p], 8);
     uint32_t three = 3; memcpy(storage + 8, &three, 4);
     at = (uintptr_t)storage; memcpy(state + ATT_DELTAS, &at, 8);
+    static uint8_t packages[1024 * 16];
+    GamePackageMap(game, packages, 1024, 429, baseUnit, basePackage); /* the game's: 1,024 entries, 429 used */
 
     uintptr_t savedGame = g_game;
     int savedWeapons = g_weaponCount;
@@ -3770,23 +3790,10 @@ static void AttachmentCapFixture(void)
     HfMod* mod = &g_mods[0];
     const uint32_t weapons[] = {0x7E57u};
     char name[64];
-
-    /* weapon patterns: 128, then refused while attachments still have room */
-    for (int i = 0; i <= ATT_PATTERN_MAX; i++)
-    {
-        snprintf(name, sizeof name, "test/cap/paint-%d", i);
-        HfPattern paint = {sizeof paint, 0x80FBE63Du, name};
-        uint32_t made = ApiAddPattern(mod, &paint);
-        assert(i < ATT_PATTERN_MAX ? made != 0 : made == 0 && strstr(ApiLastLog(mod), "128 weapon patterns already") != NULL);
-    }
-    assert(g_attachmentCount == ATT_PATTERN_MAX);
-    snprintf(name, sizeof name, "test/cap/mag-first");
     HfAttachment mag = {sizeof mag, 0xBA5E0001u, name, 0, NULL, NULL, weapons, 1};
-    assert(ApiAddAttachment(mod, &mag) != 0);
-    g_attachmentCount = 0; /* the attachments alone from here */
 
-    /* 1,024 attachments, then one more refused */
-    uint32_t ids[ATT_MAX];
+    /* 1,024 attachments, then one more refused, and a weapon pattern (which counts among them) */
+    static uint32_t ids[ATT_MAX];
     for (int i = 0; i <= ATT_MAX; i++)
     {
         snprintf(name, sizeof name, "test/cap/mag-%d", i);
@@ -3819,6 +3826,32 @@ static void AttachmentCapFixture(void)
         assert(comp[0] == ATT_CUSTOMIZATION && comp[2] == 1);
     }
     assert(GameItemById(game, 0xBA5E0001u) == items && AttDeltaSetting(grown, baseUnit) != NULL); /* the game's own stay */
+
+    /* the package map: grown to 2,048 (429 + 1,024 at most 3/4 full), every add_path with the magazine's package, the
+     * game's entries kept, the game's own array untouched */
+    uint8_t* map = *(uint8_t**)(game + PAT_PACKAGES);
+    uint32_t mapCount; memcpy(&mapCount, game + PAT_PACKAGES + 8, 4);
+    assert(map == g_patMap && map != packages && mapCount == 2048 && g_patMapFrom == packages && g_patMapFromCount == 1024);
+    int mapped = 0;
+    for (int i = 0; i < ATT_MAX; i++) mapped += PatMapGet(map, mapCount, 2, 0, g_attachments[i].copy.addPath) == basePackage;
+    assert(mapped == ATT_MAX && PatMapGet(map, mapCount, 2, 0, baseUnit) == basePackage);
+    assert(PatMapGet(map, mapCount, 2, 0, 0x9000000000000000ull + 428 * 0x10001ull) == 0x700 + 428);
+    assert(PatMapGet(packages, 1024, 2, 0, g_attachments[ATT_MAX - 1].copy.addPath) == 0);
+    AttachmentsTick(); assert(*(uint8_t**)(game + PAT_PACKAGES) == map); /* once */
+    /* the game loads its map again (a smaller one): copied and grown again */
+    static uint8_t reloaded[512 * 16];
+    GamePackageMap(game, reloaded, 512, 100, baseUnit, basePackage + 1);
+    AttachmentsTick();
+    uint8_t* remap = *(uint8_t**)(game + PAT_PACKAGES);
+    memcpy(&mapCount, game + PAT_PACKAGES + 8, 4);
+    assert(remap == g_patMap && remap != map && remap != reloaded && mapCount == 2048 && g_patMapFrom == reloaded && g_patMapFromCount == 512);
+    assert(PatMapGet(remap, mapCount, 2, 0, g_attachments[ATT_MAX - 1].copy.addPath) == basePackage + 1);
+    /* a reader never sees a count past its entries: a smaller map's count goes in before its entries */
+    PatMap small = {reloaded, 512, 2, 0, 0};
+    PatMapPublish((uintptr_t)game, &small);
+    memcpy(&mapCount, game + PAT_PACKAGES + 8, 4);
+    assert(*(uint8_t**)(game + PAT_PACKAGES) == reloaded && mapCount == 512);
+
     /* the backend hears of every one */
     size_t size = 1u << 20;
     char* text = (char*)malloc(size);
@@ -3828,6 +3861,8 @@ static void AttachmentCapFixture(void)
     free(text);
 
     g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL; g_attBlock.count = 0;
+    VirtualFree(map, 0, MEM_RELEASE); VirtualFree(remap, 0, MEM_RELEASE);
+    g_patMap = g_patMapFrom = NULL; g_patMapFromCount = 0;
     g_weaponCount = savedWeapons;
     g_game = savedGame;
     InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], savedReady);
@@ -3846,6 +3881,7 @@ static void AttachmentExtrasFixture(void)
     assert(game && state);
     memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
     memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin); memcpy(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin);
     uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
     static uint8_t items[ATT_ITEM];
     static struct { uint8_t* items; uint32_t count; uint32_t pad; } block;
@@ -3926,6 +3962,7 @@ static void PatternsFixture(void)
     assert(game && state);
     memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
     memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin); memcpy(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin);
     memcpy(game + PAT_SKIN_LOOKUP, kPatSkinPin, sizeof kPatSkinPin);
     memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin);
     uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);

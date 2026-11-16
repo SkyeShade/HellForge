@@ -1,5 +1,5 @@
 {
-  "about": "Room for 1,024 attachments in the real game: 640 drum magazine copies (past the old 128) on three AR-23 Liberator copies; the game's own item and delta lookups find the 1st, 128th, 129th and 640th; the 640th, put on the first copy in the primary slot on the ship, is in the equipped set the mission builds for it, and the Helldiver holds the copy (tests/in-game/README.md).",
+  "about": "Room for 1,024 attachments in the real game: 640 drum magazine copies (past the old 128) on three AR-23 Liberator copies; the game's own item and delta lookups find the 1st, 128th, 129th and 640th, each mapped to the drum's package; the 640th, put on the first copy in the primary slot on the ship, is in the equipped set the mission builds for it, and the Helldiver holds the copy (tests/in-game/README.md).",
   "mods": [
     "attachment-cap-probe"
   ],
@@ -13,6 +13,8 @@
     {"name": "the game's lookups are the reviewed ones", "log": "modloader.log", "absent": "attachments: the game's item or delta lookup is not the reviewed one"},
     {"name": "the probe's pins hold and its hook is in", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE pins ok"},
     {"name": "the game's item and delta lookups find attachments 1, 128, 129 and 640", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE lookup ok: attachments 1, 128, 129 and 640"},
+    {"name": "the 1st and 640th map to the drum's package, as the game's own drum does", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE packages ok"},
+    {"name": "the package map grows to hold them", "log": "modloader.log", "regex": "patterns: 6[0-9]{2} attachment\\(s\\) and pattern\\(s\\) mapped to their base's package \\([0-9]+ entries"},
     {"name": "the 640th is on the first copy, in the primary slot", "log": "mod-hellforge.attachment-cap-probe.log", "regex": "PROBE loadout ok: primary [0-9a-f]{8} with attachment [0-9a-f]{8} in slot 5"},
     {"name": "the mission builds the copy with the 640th", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE built ok: weapon"},
     {"name": "the Helldiver holds the copy", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE holds ok"},

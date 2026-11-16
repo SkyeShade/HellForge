@@ -3,22 +3,19 @@
  * vanilla weapons too. A unit pattern copies a skin of generated_unit_customization_settings (12 collection records at
  * +0x37C8180, count +0x348E3F8; skins of 0x40 bytes at +0x28, their count at +0x30, read on every call) and joins every
  * collection holding its base, in HellForge's copy of its skins. A pick's add_path keys its deltas (the material
- * overrides) and, in the hash_lookup map at +0x3799810, the package loaded before they apply: so each copy's add_path is
- * mapped to its base's package in HellForge's copy of the map. All of it is made again when the game reloads a table. */
+ * overrides) and, in the hash_lookup map at +0x3799810, the package loaded before they apply: so each copy's add_path,
+ * an attachment's too, is mapped to its base's package in HellForge's copy of the map, grown to hold them. All of it is
+ * made again when the game reloads a table. */
 
 #define PAT_COLLECTIONS 0x37C8180u
 #define PAT_COLLECTION_COUNT 0x348E3F8u
 #define PAT_SKIN 0x40u
 #define PAT_SKINS_CAP 24u /* the hangar list's thumbnails: 6 groups of 4, unchecked past them (0x14DC620, 0x19E4EF0) */
 #define PAT_SKIN_LOOKUP 0x11F4260u
-#define PAT_PACKAGE_LOOKUP 0xFD25A0u
-#define PAT_PACKAGES 0x3799810u /* entries*; +8 u32 count (a power of 2); +0x10 u64 the empty key; +0x18 u32 the multiplier */
 #define PAT_OVERRIDE 40u        /* {u32 material, u32, u64 material_lut, decal_sheet, pattern_lut, pattern_masks_array} */
 
 static const uint8_t kPatSkinPin[24] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x44, 0x8b, 0x1d, 0x8c, 0xa1, 0x29, 0x02, 0x45, 0x33, 0xc0, 0x8b,
     0xda, 0x45, 0x8b, 0xc8, 0x45, 0x85, 0xdb, 0x74};
-static const uint8_t kPatPackagePin[29] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x7c, 0x24, 0x10, 0x44, 0x8b, 0x05, 0x67, 0x72, 0x7c,
-    0x02, 0x33, 0xd2, 0x44, 0x8b, 0x15, 0x6e, 0x72, 0x7c, 0x02, 0x4c, 0x8b, 0xc9};
 
 /* The game's 12 weapon paints (slot 3; every weapon with paints offers all of them). */
 static const uint32_t kPatPaints[] = {0x80FBE63Du, 0xBD04CA8Cu, 0x94685290u, 0x5D125795u, 0x82C32409u, 0x46A140E2u, 0x680145DEu,
@@ -340,57 +337,93 @@ static uint64_t PatMapGet(const uint8_t* entries, uint32_t count, uint32_t multi
 
 /* The game's package map: its entries, their count (a power of 2), the empty key and the probe's multiplier. */
 typedef struct PatMap { uint8_t* entries; uint32_t count, multiplier, used; uint64_t empty; } PatMap;
+static uint32_t g_patMapFromCount; /* the count of the game's map g_patMapFrom */
+#define PAT_MAP_CEILING (1u << 16)
 
-/* The i-th copy a pattern in the game has (weapon patterns', then each unit pattern's on each collection), or NULL. */
+/* The i-th copy in the game (attachments' and weapon patterns', then each unit pattern's on each collection), or NULL. */
 static const DeltaCopy* PatCopyAt(int i)
 {
-    if (i < g_attachmentCount) return g_attachments[i].pattern && g_attachments[i].state == 1 ? &g_attachments[i].copy : NULL;
+    if (i < g_attachmentCount) return g_attachments[i].state == 1 ? &g_attachments[i].copy : NULL;
     const Pattern* p = &g_patterns[(i - g_attachmentCount) / (int)PAT_COLLECTION_SLOTS];
     uint32_t k = (uint32_t)(i - g_attachmentCount) % PAT_COLLECTION_SLOTS;
     return p->state == 1 && (p->has & (1u << k)) ? &p->copies[k] : NULL;
 }
 
 /* A copy's add_path put in the map with its base's package (in the game's map, from); 1 put. */
-static int PatMapCopy(PatMap* map, const uint8_t* from, const DeltaCopy* copy)
+static int PatMapCopy(PatMap* map, const PatMap* from, const DeltaCopy* copy)
 {
-    uint64_t package = PatMapGet(from, map->count, map->multiplier, map->empty, copy->baseKey);
+    uint64_t package = PatMapGet(from->entries, from->count, from->multiplier, from->empty, copy->baseKey);
     if (package == 0 || PatMapGet(map->entries, map->count, map->multiplier, map->empty, copy->addPath) != 0) return 0;
     if (4u * (map->used + 1) > 3u * map->count || !PatMapPut(map->entries, map->count, map->multiplier, map->empty, copy->addPath, package))
-    { Note("patterns: the package map is full; %s's textures may not load", copy->name); return 0; }
+    { Note("patterns: the package map is full; %s's package may not load", copy->name); return 0; }
     map->used++;
     return 1;
 }
 
-/* Each pattern's add_path mapped to its base's package in a copy of the game's map, made again when the map is new or
- * patterns went in. The copy keeps the game's size, so a reader never sees a count that is not its entries'. */
+/* The map's entries and count in the game, so a reader never reads past the entries: the readers load the count, then
+ * the entries (0xFD25A0, 0x12689C0), so a larger map's entries go in first and a smaller one's count. */
+static void PatMapPublish(uintptr_t game, const PatMap* map)
+{
+    volatile uint32_t* count = (volatile uint32_t*)(game + PAT_PACKAGES + 8);
+    if (map->count < *count) { *count = map->count; MemoryBarrier(); }
+    memcpy((void*)(game + PAT_PACKAGES), &map->entries, 8);
+    MemoryBarrier();
+    *count = map->count;
+}
+
+/* A copy of the game's map (from) with room for wanted more, a power of 2 at most 3/4 full: the game's entries put in
+ * again at their places in it. Its entries are NULL when out of memory. */
+static PatMap PatMapGrown(const PatMap* from, uint32_t wanted)
+{
+    PatMap map = *from;
+    map.used = 0;
+    while (map.count < PAT_MAP_CEILING && 4ull * (from->used + wanted) > 3ull * map.count) map.count *= 2;
+    map.entries = (uint8_t*)VirtualAlloc(NULL, 16u * (size_t)map.count, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (map.entries == NULL) return map;
+    for (uint32_t i = 0; from->empty != 0 && i < map.count; i++) memcpy(map.entries + 16u * i, &from->empty, 8);
+    for (uint32_t i = 0; i < from->count; i++)
+    {
+        const uint8_t* entry = from->entries + 16u * i;
+        if (*(const uint64_t*)entry == from->empty) continue;
+        PatMapPut(map.entries, map.count, map.multiplier, map.empty, *(const uint64_t*)entry, *(const uint64_t*)(entry + 8));
+        map.used++;
+    }
+    return map;
+}
+
+/* Every attachment's and pattern's add_path mapped to its base's package in HellForge's copy of the game's map, made
+ * again when the map is new or copies went in. The copy grows to hold them all: the game's 1,024 entries, 429 of them
+ * used, leave room for about 340. */
 static void PatPackagesTick(uintptr_t game)
 {
     uint8_t* entries = *(uint8_t* const*)(game + PAT_PACKAGES);
-    PatMap map = {NULL, *(const uint32_t*)(game + PAT_PACKAGES + 8), *(const uint32_t*)(game + PAT_PACKAGES + 0x18), 0, *(const uint64_t*)(game + PAT_PACKAGES + 0x10)};
-    if (entries == NULL || map.count == 0 || (map.count & (map.count - 1)) != 0) return;
+    PatMap from = {NULL, *(const uint32_t*)(game + PAT_PACKAGES + 8), *(const uint32_t*)(game + PAT_PACKAGES + 0x18), 0, *(const uint64_t*)(game + PAT_PACKAGES + 0x10)};
+    if (entries == NULL || from.count == 0 || (from.count & (from.count - 1)) != 0) return;
     if (entries == g_patMap && g_patMapBuilt == g_patGeneration) return;
-    const uint8_t* from = entries == g_patMap ? g_patMapFrom : entries;
-    for (uint32_t i = 0; i < map.count; i++) map.used += *(const uint64_t*)(from + 16u * i) != map.empty;
-    map.entries = (uint8_t*)VirtualAlloc(NULL, 16u * (size_t)map.count, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    from.entries = entries == g_patMap ? g_patMapFrom : entries;
+    if (entries == g_patMap) from.count = g_patMapFromCount;
+    int copies = g_attachmentCount + g_patternCount * (int)PAT_COLLECTION_SLOTS;
+    uint32_t wanted = 0;
+    for (int i = 0; i < copies; i++) wanted += PatCopyAt(i) != NULL;
+    for (uint32_t i = 0; i < from.count; i++) from.used += *(const uint64_t*)(from.entries + 16u * i) != from.empty;
+    PatMap map = PatMapGrown(&from, wanted);
     if (map.entries == NULL) return;
-    memcpy(map.entries, from, 16u * (size_t)map.count);
     int added = 0;
-    for (int i = 0; i < g_attachmentCount + g_patternCount * (int)PAT_COLLECTION_SLOTS; i++)
-        if (PatCopyAt(i) != NULL) added += PatMapCopy(&map, from, PatCopyAt(i));
+    for (int i = 0; i < copies; i++) added += PatCopyAt(i) != NULL && PatMapCopy(&map, &from, PatCopyAt(i));
     g_patMapBuilt = g_patGeneration;
     if (added == 0 && entries != g_patMap) { VirtualFree(map.entries, 0, MEM_RELEASE); return; }
-    g_patMapFrom = (uint8_t*)from;
+    g_patMapFrom = from.entries;
+    g_patMapFromCount = from.count;
     g_patMap = map.entries; /* the old copy stays: a reader may hold it */
-    memcpy((void*)(game + PAT_PACKAGES), &map.entries, 8);
-    Note("patterns: %d pattern(s) mapped to their base's package", added);
+    PatMapPublish(game, &map);
+    Note("patterns: %d attachment(s) and pattern(s) mapped to their base's package (%u entries, %u of the game's)", added, map.count, from.count);
 }
 
-/* On the game thread after the deltas: the collections and the package map, once the game has them. */
+/* On the game thread after the deltas: the collections (once the game has them) and the package map. */
 static void PatternsTick(uintptr_t game)
 {
-    if (!PatProven(game)) return;
     uint32_t collections = *(volatile uint32_t*)(game + PAT_COLLECTION_COUNT);
-    for (uint32_t k = 0; g_patternCount > 0 && k < collections && k < PAT_COLLECTION_SLOTS; k++) PatCollectionTick(game, k);
+    for (uint32_t k = 0; g_patternCount > 0 && PatProven(game) && k < collections && k < PAT_COLLECTION_SLOTS; k++) PatCollectionTick(game, k);
     PatPackagesTick(game);
 }
 
@@ -424,9 +457,6 @@ static int PatLook(HfMod* mod, const HfPattern* def, DeltaCopy* copy, float (*co
 static uint32_t PatAddWeapon(HfMod* mod, const HfPattern* def, const char* key)
 {
     if (g_attachmentCount == ATT_MAX) { ApiLog(mod, "add_pattern(%s): mods added %d attachments and weapon patterns already", def->name, ATT_MAX); return 0; }
-    int weaponPatterns = 0;
-    for (int i = 0; i < g_attachmentCount; i++) weaponPatterns += g_attachments[i].pattern;
-    if (weaponPatterns == ATT_PATTERN_MAX) { ApiLog(mod, "add_pattern(%s): mods added %d weapon patterns already", def->name, ATT_PATTERN_MAX); return 0; }
     if (def->weapon_count > ATT_WEAPONS || (def->weapon_count && def->weapons == NULL))
     { ApiLog(mod, "add_pattern(%s): it names up to %d weapons (none: every weapon offering its base)", def->name, ATT_WEAPONS); return 0; }
     Attachment a = {0};

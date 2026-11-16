@@ -8,7 +8,8 @@
  *     (0 to 2), +0xC three templates of 10 option ids by slot (BuildCustomizationList 0x14939A1, 0x17516E1)
  *   - the local player's PlayerHistory loadout (loadout_scrub.c): the primary at +0, its slot numbers at +4 and option
  *     ids at +0x2C, 10 of each; the magazine is slot 5 (0x1751632 fills it from the profile and the record)
- * In the mission, the equipped set the game builds for a weapon from those ids (0x1366E50: {u32 count, u64 add_path[]},
+ * Every attachment's add_path must map to the drum's package in the game's package map (hash_lookup, +0x3799810),
+ * which the weapon loads for it. In the mission, the equipped set the game builds for a weapon from those ids (0x1366E50: {u32 count, u64 add_path[]},
  * each id looked up by AttachmentItemById) must hold the 640th's add_path, and the Helldiver must hold the copy.
  * "PROBE <check> ok" or "PROBE <check> FAIL <why>" per check. */
 #define WIN32_LEAN_AND_MEAN
@@ -169,8 +170,10 @@ static int Equip(uintptr_t game)
     { LOG("PROBE loadout FAIL could not write it"); return 1; }
     LOG("PROBE loadout ok: primary %08x with attachment %08x in slot %u (%s customization record, template %u)", U32(loadout),
         U32(loadout + 0x2C + 4u * MAGAZINE_SLOT), U32(loadout + 4 + 4u * MAGAZINE_SLOT), made ? "a new" : "its", template);
-    LOG("PROBE packages: the drum's add_path maps to package %016llx, the last attachment's to %016llx", (unsigned long long)PackageOf(game, DRUM_PATH),
-        (unsigned long long)PackageOf(game, g_paths[COUNT - 1]));
+    uint64_t drumPackage = PackageOf(game, DRUM_PATH), lastPackage = PackageOf(game, g_paths[COUNT - 1]), firstPackage = PackageOf(game, g_paths[0]);
+    LOG("PROBE packages %s: the drum's add_path maps to package %016llx, the 1st attachment's to %016llx, the last one's to %016llx",
+        drumPackage != 0 && lastPackage == drumPackage && firstPackage == drumPackage ? "ok" : "FAIL", (unsigned long long)drumPackage,
+        (unsigned long long)firstPackage, (unsigned long long)lastPackage);
     return 1;
 }
 
@@ -259,7 +262,7 @@ HF_MOD_EXPORT int hellforge_mod_init(const HfApi* api, HfMod* mod)
     else LOG("PROBE added FAIL %u of %u attachments (%s)", added, COUNT, api->last_log(mod));
     api->on(mod, HF_EVENT_GAME_LOADED, GameLoaded, NULL);
     api->on(mod, HF_EVENT_ENTITIES_READY, EntitiesReady, NULL);
-    LOG(hf_on_game_thread(mod, Tick, NULL) ? "PROBE game_thread ok" : "PROBE game_thread FAIL refused");
+    LOG(hf_on_game_thread(mod, Tick, NULL) == 0 ? "PROBE game_thread ok" : "PROBE game_thread FAIL refused"); /* the hf_ wrapper: 0 on success */
     hf_on_mission_start(mod, MissionStarted, NULL, 0);
     hf_on_mission_end(mod, MissionEnded, NULL, 0);
     hf_on_weapon(mod, Weapon, NULL, 0);
