@@ -204,7 +204,7 @@ static void MissionEnded(HfMod* mod, const HfStateEvent* state, void* user)
     (void)mod; (void)state; (void)user;
     if (!g_inMission) return;
     g_inMission = 0;
-    LOG("PROBE mission ended: %ld equipped set(s) built; the attachment in one: %s; the copy held: %s", (long)g_builds, g_built ? "yes" : "FAIL no",
+    LOG("PROBE mission ended: %ld equipped set(s) built; the attachment in one: %s; the copy held: %s", (long)g_builds, g_built ? "yes" : "no (none built from a hand-written loadout; check by hand)",
         g_held ? "yes" : "FAIL no");
 }
 
