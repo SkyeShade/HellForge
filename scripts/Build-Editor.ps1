@@ -66,8 +66,10 @@ Get-ChildItem -LiteralPath $out -Filter '*.lib'|Remove-Item
 Copy-Item -LiteralPath (Join-Path $project 'native/editor/hellforge-mod.json') -Destination $out
 # its picture on the launcher's Mods page (the manifest's "icon")
 Copy-Item -LiteralPath (Join-Path $project 'native/editor/assets/editor-logo.png') -Destination (Join-Path $out 'icon.png')
-# the word lists of its translations (docs/editor-translations.md), where there are any
+# the word lists of its translations (docs/editor-translations.md), where there are any; none left from an older build,
+# since Publish-HellForge.ps1 ships this folder
 $translations=Join-Path $project 'native/editor/translations'
+if(Test-Path -LiteralPath (Join-Path $out 'translations')){Remove-Item -LiteralPath (Join-Path $out 'translations') -Recurse -Force}
 if(Test-Path -LiteralPath $translations){
     New-Item -ItemType Directory (Join-Path $out 'translations') -Force|Out-Null
     Copy-Item -Path (Join-Path $translations '*.tsv') -Destination (Join-Path $out 'translations') -Force

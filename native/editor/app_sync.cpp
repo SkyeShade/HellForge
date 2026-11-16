@@ -272,31 +272,31 @@ static std::vector<std::string> TrustLines(const HfSyncMod& mod, const std::stri
     std::string warning;
     if (mod.flags & HF_SYNC_FLAG_STRANGER)
     {
-        warning = mod.kind == HF_SYNC_CLASS_RAW
-            ? name + " carries game data HellForge cannot check, and " + friendName + " is not your Steam friend. Through a flaw in the "
-              "game, data like this can run code on your PC."
-            : name + " runs its own code on your PC, and " + friendName + " is not your Steam friend.";
-        warning += " Your game is sandboxed: the mod cannot change your files or reach the internet, but it can read your files and send "
-                   "what it reads to " + friendName + " through the game. Only trust it if you know where the mod comes from. It will run "
-                   "only while the sandbox is on.";
+        warning = Named(mod.kind == HF_SYNC_CLASS_RAW
+            ? "{1} carries game data HellForge cannot check, and {2} is not your Steam friend. Through a flaw in the game, data like "
+              "this can run code on your PC."
+            : "{1} runs its own code on your PC, and {2} is not your Steam friend.", {name, friendName});
+        warning += " " + Named("Your game is sandboxed: the mod cannot change your files or reach the internet, but it can read your "
+                               "files and send what it reads to {2} through the game. Only trust it if you know where the mod comes "
+                               "from. It will run only while the sandbox is on.", {name, friendName});
     }
     else
     {
-        warning = mod.kind == HF_SYNC_CLASS_RAW
-            ? name + " carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or "
+        warning = Named(mod.kind == HF_SYNC_CLASS_RAW
+            ? "{1} carries game data HellForge cannot check, which goes straight to the game. Data like this can break your game, or "
               "through a flaw in the game run code on your PC that can do anything your Windows account can."
-            : name + " runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your "
-              "files, or install other programs.";
-        warning += " Only trust it if you trust " + friendName + " and know where the mod comes from.";
+            : "{1} runs its own code on your PC. A mod like this can do anything your Windows account can: read and change your "
+              "files, or install other programs.", {name, friendName});
+        warning += " " + Named("Only trust it if you trust {2} and know where the mod comes from.", {name, friendName});
         /* any code in a sandboxed game can answer this prompt, so a trust given here holds only there (ModSync.Answer) */
         if (mod.flags & HF_SYNC_FLAG_SANDBOX_ONLY)
-            warning += " Trusted here, in a sandboxed game, it will run only while the sandbox is on; the launcher's Mods page "
-                       "lists it.";
+            warning += " " + Translated("Trusted here, in a sandboxed game, it will run only while the sandbox is on; the "
+                                        "launcher's Mods page lists it.");
     }
-    for (std::string& part : Wrapped(warning, w - 56, SZ_LABEL)) lines.push_back(std::move(part));
+    for (std::string& part : Wrapped(warning, w - 56, SZ_LABEL, true)) lines.push_back(std::move(part));
     *lead = lines.size();
-    for (std::string& part : Wrapped("HellForge still checks that every file you download is exactly the one " + friendName + " has. You can take "
-             "the trust back on the launcher's Mods page (MOD SYNC).", w - 56, SZ_SMALL))
+    for (std::string& part : Wrapped(Named("HellForge still checks that every file you download is exactly the one {1} has. You "
+             "can take the trust back on the launcher's Mods page (MOD SYNC).", {friendName}), w - 56, SZ_SMALL, true))
         lines.push_back(std::move(part));
     return lines;
 }
@@ -336,14 +336,14 @@ static void DrawTrust(const HfSyncMod& mod)
     g_cv.Frame(x, y, w, h, LINE_STRONG, 10);
     g_cv.Rect(x, y, w, 3, ERROR_, 10);
     float tw = g_cv.Text("TRUST THIS MOD?", x + 24, y + 30, T(18, ERROR_, ui::TITLE, ui::LEFT, 0, 11));
-    g_cv.Text(std::string("from ") + friendName + "'s lobby", x + 36 + tw, y + 31, T(SZ_LABEL, DIM, ui::BODY, ui::LEFT, w - tw - 80, 11));
+    g_cv.Text(Named("from {1}'s lobby", {friendName}), x + 36 + tw, y + 31, Raw(T(SZ_LABEL, DIM, ui::BODY, ui::LEFT, w - tw - 80, 11)));
     float ly = y + 70;
     float cx = x + 24;
     cx += ClassChip(mod, cx, ly, 11);
-    g_cv.Text(name, cx, ly, T(SZ_LABEL, TEXT, ui::BODY, ui::LEFT, x + w - 24 - cx, 11));
+    g_cv.Text(name, cx, ly, Raw(T(SZ_LABEL, TEXT, ui::BODY, ui::LEFT, x + w - 24 - cx, 11)));
     g_cv.Rect(x + 12, ly + 22, w - 24, 1, LINE, 10);
     for (size_t i = 0; i < lines.size(); i++)
-        g_cv.Text(lines[i], x + 28, ly + 50 + 26.0f * (float)i + (i >= lead ? 8.0f : 0), Shown(T(i < lead ? SZ_LABEL : SZ_SMALL, i < lead ? TEXT : DIM, ui::BODY, ui::LEFT, w - 56, 11)));
+        g_cv.Text(lines[i], x + 28, ly + 50 + 26.0f * (float)i + (i >= lead ? 8.0f : 0), Raw(T(i < lead ? SZ_LABEL : SZ_SMALL, i < lead ? TEXT : DIM, ui::BODY, ui::LEFT, w - 56, 11)));
     TrustButtons(mod, {x, y, w, h});
 }
 
@@ -364,7 +364,7 @@ static void DrawSyncHead(const HfSyncState& s, bool bad, const Area& box)
     float x = box.x, y = box.y, w = box.w;
     g_cv.Rect(x, y, w, 3, bad ? ERROR_ : GOLD, 10);
     float tw = g_cv.Text("MOD SYNC", x + 24, y + 30, T(18, bad ? ERROR_ : GOLD, ui::TITLE, ui::LEFT, 0, 11));
-    g_cv.Text(std::string(s.host[0] ? s.host : "The host") + "'s lobby", x + 36 + tw, y + 31, T(SZ_LABEL, TEXT, ui::BODY, ui::LEFT, w - tw - 80, 11));
+    g_cv.Text(s.host[0] ? Named("{1}'s lobby", {s.host}) : Translated("The host's lobby"), x + 36 + tw, y + 31, Raw(T(SZ_LABEL, TEXT, ui::BODY, ui::LEFT, w - tw - 80, 11)));
     g_cv.Text(SyncMessage(s), x + 24, y + 58, T(SZ_SMALL, bad ? ERROR_ : DIM, ui::BODY, ui::LEFT, w - 48, 11));
     float hy = y + 80;
     g_cv.Rect(x + 1, hy, w - 2, 22, HEADER, 10);
@@ -386,8 +386,8 @@ static void DrawSyncList(const Area& box, float hy, int n)
         else if (hovered) g_cv.Rect(rx + 10, ry + 2, rw - 20, rh - 4, HOVER, 10);
         float lx = rx + 22, right = rx + rw - 460;
         lx += ClassChip(mod, lx, ry + rh / 2, 12);
-        float nw = g_cv.Text(mod.name[0] ? mod.name : mod.id, lx, ry + rh / 2, T(SZ_LABEL, selected ? TEXT : DIM, ui::BODY, ui::LEFT, (right - lx) * 0.7f, 12));
-        g_cv.Text(mod.version, lx + nw + 10, ry + rh / 2, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, right - lx - nw - 20, 12));
+        float nw = g_cv.Text(mod.name[0] ? mod.name : mod.id, lx, ry + rh / 2, Raw(T(SZ_LABEL, selected ? TEXT : DIM, ui::BODY, ui::LEFT, (right - lx) * 0.7f, 12)));
+        g_cv.Text(mod.version, lx + nw + 10, ry + rh / 2, Raw(T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, right - lx - nw - 20, 12)));
         std::string what = SyncActionText(mod.action);
         if (mod.action == HF_SYNC_MOD_DOWNLOAD) what += " (" + SizeText(mod.bytes) + ")";
         /* the action's text up to the row's buttons (BLOCK, TRUST, GET IT from the right) */
@@ -462,7 +462,7 @@ static void DrawGetItNote(float x, float fy, float bx)
     auto lines = Wrapped("GET IT opens the mod's page in your browser. To install a mod yourself, close the game, add the mod "
         "on the Mods page, then start HellForge again and join.", bx - x - 48, SZ_SMALL);
     for (size_t i = 0; i < lines.size() && i < 2; i++)
-        g_cv.Text(lines[i], x + 24, fy + 46 + 18.0f * (float)i, Shown(T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, bx - x - 36, 11)));
+        g_cv.Text(lines[i], x + 24, fy + 46 + 18.0f * (float)i, Raw(T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, bx - x - 36, 11)));
 }
 
 /* The dialog's keys, as they are now. */

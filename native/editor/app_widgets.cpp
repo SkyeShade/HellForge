@@ -30,9 +30,6 @@ bool EntityPage(const Object* object)
         object->category == "difficulty" || FactionColour(object->category) != 0;
 }
 
-/* The text in the player's language broken into lines at most max units wide, at word ends; a word wider than that is
- * cut with "...", unless it is not Latin: scripts without spaces (Chinese, Japanese) break between characters. Draw the
- * lines with Shown(). */
 /* a word added to the line a character at a time, lines full of it going out */
 static void BreakCharacters(const std::string& word, float max, float size, std::string* line, std::vector<std::string>* out)
 {
@@ -48,9 +45,11 @@ static void BreakCharacters(const std::string& word, float max, float size, std:
     }
 }
 
-std::vector<std::string> Wrapped(const std::string& english, float max, float size)
+/* The text in the player's language broken into lines at most max units wide, at word ends; a word wider than that is
+ * cut with "...", unless it is not Latin: scripts without spaces (Chinese, Japanese) break between characters. Draw the
+ * lines with Raw(). */
+static std::vector<std::string> Lines(const std::string& text, float max, float size)
 {
-    const std::string text = tr::Get(english);
     std::vector<std::string> out;
     std::string line;
     size_t i = 0;
@@ -71,6 +70,11 @@ std::vector<std::string> Wrapped(const std::string& english, float max, float si
     return out;
 }
 
+std::vector<std::string> Wrapped(const std::string& text, float max, float size, bool shown)
+{
+    return Lines(shown ? text : tr::Get(text), max, size);
+}
+
 /* A header's chevron: v open, > closed, in strokes heavy enough to read at a glance. */
 void Arrow(float x, float cy, bool down, ImU32 colour)
 {
@@ -80,13 +84,25 @@ void Arrow(float x, float cy, bool down, ImU32 colour)
 }
 
 /* ---- drawing helpers ---- */
+static float DrawChip(const std::string& text, bool shown, ImVec2 at, ImU32 fg, ImU32 bg, bool right, int z)
+{
+    float w = g_cv.Measure(text, SZ_TINY, ui::TITLE, shown) + 14;
+    float x = right ? at.x - w : at.x;
+    g_cv.Rect(x, at.y - 10, w, 20, bg, z);
+    TextOpts o = T(SZ_TINY, fg, ui::TITLE, ui::LEFT, 0, z + 2);
+    o.shown = shown;
+    g_cv.Text(text, x + 7, at.y, o);
+    return w;
+}
+
 float Chip(const std::string& text, float x, float cy, ImU32 fg, ImU32 bg, bool right, int z)
 {
-    float w = g_cv.Measure(text, SZ_TINY, ui::TITLE) + 14;
-    if (right) x -= w;
-    g_cv.Rect(x, cy - 10, w, 20, bg, z);
-    g_cv.Text(text, x + 7, cy, T(SZ_TINY, fg, ui::TITLE, ui::LEFT, 0, z + 2));
-    return w;
+    return DrawChip(text, false, ImVec2(x, cy), fg, bg, right, z);
+}
+
+float Chip(const RawText& text, float x, float cy, ImU32 fg, ImU32 bg, bool right, int z)
+{
+    return DrawChip(text.text, true, ImVec2(x, cy), fg, bg, right, z);
 }
 
 bool Button(const std::string& label, const Area& a, Style style, uint64_t id, int z)
@@ -281,4 +297,7 @@ void List(const ListOpts& o)
     }
     if (o.count > rows) Scrollbar(o, scroll, rows, maxScroll);
 }
+
+std::string Named(const std::string& english, const std::vector<std::string>& names) { return tr::Named(english, names); }
+std::string Translated(const std::string& english) { return tr::Get(english); }
 } // namespace editorapp

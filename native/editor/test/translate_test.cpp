@@ -1,6 +1,7 @@
 /* The in-game editor's translations (translate.cpp) on word lists of its own: exact lines, a label the editor upper-cases,
  * fragments of a sentence built at run time (the longest first), word-by-word names that stay English when one word is
- * unknown, the characters the font must bake, and the folder's lists for "auto" and the settings' choice.
+ * unknown, the characters the font must bake, and the folder's lists for "auto" and the settings' choice; names put into
+ * a translated sentence as they are, and tags that are not a list's name refused.
  * Usage: translate_test.exe */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -31,14 +32,20 @@ int main()
                              "Interface size\tSchnittstelle\n"
                              "Handling / Fire\tHandhabung / Feuer\n"
                              "Weapon \xC2\xB7 Gun\tW\n"
+                             "Reload\tNachladen\ta note for translators\n"
+                             "Fuel\t\xC3\xA9nergie\n"
+                             "{1}'s lobby\t{1} LOBBY\n"
+                             "{1} and {2}\t{2}+{1}\n"
                              "\n"
                              "[fragments]\n"
                              " fields\t " FIELDS "\n"
                              " fields selected\t selected-" FIELDS "\n"
-                             "[words]\n"
+                             "rate\tR\n"
+                             " [Words] \n"
                              "damage\t" DAMAGE "\n"
                              "penetration\t" PEN "\n"
                              "armor\tA\n"
+                             "anti-tank\tAT\n"
                              "[extra]\n"
                              "Damage\t" DAMAGE "!\n"
                              "broken line without a tab\n";
@@ -56,6 +63,15 @@ int main()
     Check(tr::Get("Armor damage 2") == "A " DAMAGE " 2", "a Latin word keeps its space; numbers are not words");
     Check(tr::Get("Liberator damage") == "Liberator damage", "an unknown word keeps the whole name English");
     Check(tr::Get("Nothing here") == "Nothing here", "no match: the same string");
+    Check(tr::Get("Reload") == "Nachladen", "a third column is not part of the translation");
+    Check(tr::Get("FUEL") == "\xC3\x89NERGIE", "an upper-cased label's translation is upper-cased past ASCII too");
+    Check(tr::Get("3 rate") == "3 R" && tr::Get("3 rates") == "3 rates" && tr::Get("Firerate") == "Firerate",
+          "a fragment matches at a word's edges, never inside a word");
+    Check(tr::Get("Damage -5") == DAMAGE " -5", "a minus sign is not part of a word");
+    Check(tr::Get("Anti-tank damage") == "AT " DAMAGE, "a hyphen between letters joins a word");
+    Check(tr::Named("{1}'s lobby", {"Damage"}) == "Damage LOBBY", "a name put into a translated sentence is not translated");
+    Check(tr::Named("{1} and {2}", {"a", "b"}) == "b+a", "the list can move the names");
+    Check(tr::Named("from {1}", {"x{2}"}) == "from x{2}", "a name is put in once, never read for more names");
     bool has = false, latin = false;
     for (uint32_t c : tr::Characters()) { if (c == 0x8BBE) has = true; if (c == 'S') latin = true; }
     Check(has && latin, "the characters the translations use, for the font");
@@ -77,8 +93,12 @@ int main()
     Check(tr::AutoTag(folder, "de-AT") == "de", "auto: its language alone when the region has no list");
     Check(tr::AutoTag(folder, "fr-FR").empty(), "auto: English when there is no list");
     Check(tr::Load(folder, "zh-cn") && tr::Get("Settings") == SETTINGS, "a list loaded from the folder");
+    Check(tr::Load(folder, "de") && tr::Get("Settings") == "Einstellungen", "another list: nothing cached from the one before");
     Check(!tr::Load(folder, "ja") && !tr::Active(), "a missing list: English");
     Check(tr::Load(folder, "en") && !tr::Active(), "en: English");
+    Check(tr::ValidTag("zh-cn") && !tr::ValidTag("..\\..\\x") && !tr::ValidTag("zh/cn") && !tr::ValidTag("ZH") && !tr::ValidTag(""),
+          "a tag is a-z, 0-9 and '-' only");
+    Check(!tr::Load(folder, "..\\translations\\zh-cn") && !tr::Active(), "a tag that is a path is refused, not opened");
     DeleteFileA((folder + "\\translations\\zh-CN.tsv").c_str());
     DeleteFileA((folder + "\\translations\\de.tsv").c_str());
     RemoveDirectoryA((folder + "\\translations").c_str());

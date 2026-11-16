@@ -8,21 +8,27 @@
 
 namespace tr
 {
-/* The languages the folder has a word list for, as tags ("zh-cn"), sorted. */
+/* A tag a list may have: 1 to 16 of a-z, 0-9 and '-' ("zh-cn"). Nothing else is ever opened. */
+bool ValidTag(const std::string& tag);
+/* The languages the folder has a word list for, as tags ("zh-cn"), sorted. Reads the folder: callers cache it. */
 std::vector<std::string> Available(const std::string& folder);
 /* The tag "auto" stands for: Windows' display language, or its language alone ("zh"), when the folder has that list;
  * "" (English) otherwise. */
 std::string AutoTag(const std::string& folder, const std::string& windowsLocale);
-/* Windows' display language as a locale name ("zh-CN"), "" when it cannot be read. */
+/* Windows' first display language as a locale name ("zh-CN"), "" when it cannot be read. */
 std::string WindowsLanguage();
-/* Loads the folder's list for a tag ("" or "en": English, no list). false when the list cannot be read. */
+/* Loads the folder's list for a tag ("" or "en": English, no list). false when the tag is not valid or the list cannot
+ * be read. */
 bool Load(const std::string& folder, const std::string& tag);
 const std::string& Tag();
 bool Active();
 /* Bumped by every Load: the canvas re-measures and rebakes its fonts when it changes. */
 unsigned Generation();
 /* The text in the loaded language (the same string when nothing matches). */
-const std::string& Get(const std::string& english);
+std::string Get(const std::string& english);
+/* A sentence with names in it: the sentence translated with {1}, {2} where the names go, then the names put in as they
+ * are, so a list can move them and a name is never translated. */
+std::string Named(const std::string& english, const std::vector<std::string>& names);
 /* Every character the loaded list's translations use, sorted: the font atlas bakes these and no others. */
 const std::vector<uint32_t>& Characters();
 /* Parses a list's text (for the tests; Load reads the file and calls it). */

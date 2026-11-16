@@ -4,6 +4,8 @@
 #include <float.h>
 #include <math.h>
 #include <string.h>
+#include <map>
+#include <set>
 #include "canvas.h"
 #include "translate.h"
 
@@ -20,15 +22,19 @@ struct Metrics { float pixelHeightPerEm = 1.2f, capPerEm = 0.7f; };
 /* faux: the title face is the body font drawn twice (no FS Sinclair Medium) */
 struct Baked
 {
-    ImFont* fonts[2][SIZE_COUNT] = {};
-    float scale = 0;
+    ImFont* fonts[2][SIZE_COUNT] = {}; /* null: a size not baked, drawn with the nearest one */
+    float scale = 0, raster = 0; /* the layout's pixels per unit, and the glyphs' (smaller when the atlas would not fit) */
     Metrics metrics[2], fallback, symbols, language;
     bool faux = false;
     unsigned translation = 0; /* tr::Generation() the atlas was baked for */
 };
 Baked g_baked;
-std::string g_folder, g_faceFile[2], g_fallbackFile, g_symbolFile, g_languageFile;
+std::string g_folder, g_faceFile[2], g_fallbackFile, g_symbolFile, g_languageFile, g_note;
 ImVector<ImWchar> g_languageRanges;
+int g_languageGlyphs = 0;
+/* Each font file read once: the atlas points into these instead of keeping a copy per size (a CJK font is 20 MB). */
+std::map<std::string, std::vector<unsigned char>> g_fontData;
+std::set<std::string> g_fontsUsed;
 
 std::string WindowsFont(const char* name)
 {
@@ -68,10 +74,18 @@ size_t FontStart(const std::vector<unsigned char>& data)
     return (size_t)data[12] << 24 | (size_t)data[13] << 16 | (size_t)data[14] << 8 | data[15];
 }
 
+const std::vector<unsigned char>& FontData(const std::string& file)
+{
+    g_fontsUsed.insert(file);
+    std::vector<unsigned char>& data = g_fontData[file];
+    if (data.empty()) data = FileBytes(file);
+    return data;
+}
+
 Metrics ReadMetrics(const std::string& file)
 {
     Metrics m;
-    std::vector<unsigned char> data = FileBytes(file);
+    const std::vector<unsigned char>& data = FontData(file);
     size_t base = FontStart(data);
     if (base + 12 > data.size()) return m;
     int tables = U16(&data[base + 4]);
@@ -91,11 +105,26 @@ Metrics ReadMetrics(const std::string& file)
     return m;
 }
 
+/* the nearest baked size, the larger on a tie: a glyph scaled down stays sharper than one scaled up */
 int Nearest(float size)
 {
-    int best = 0;
-    for (int i = 1; i < SIZE_COUNT; i++) if (fabsf(SIZES[i] - size) < fabsf(SIZES[best] - size)) best = i;
-    return best;
+    int best = -1;
+    for (int i = 0; i < SIZE_COUNT; i++)
+    {
+        if (g_baked.fonts[BODY][i] == nullptr) continue;
+        float d = fabsf(SIZES[i] - size), b = best < 0 ? 0 : fabsf(SIZES[best] - size);
+        if (best < 0 || d < b || (d == b && SIZES[i] > SIZES[best])) best = i;
+    }
+    return best < 0 ? 0 : best;
+}
+
+ImFont* AddFont(const std::string& file, float pixels, ImFontConfig config, const ImWchar* ranges)
+{
+    if (file.empty()) return nullptr;
+    const std::vector<unsigned char>& data = FontData(file);
+    if (data.empty()) return nullptr;
+    config.FontDataOwnedByAtlas = false;
+    return ImGui::GetIO().Fonts->AddFontFromMemoryTTF((void*)data.data(), (int)data.size(), pixels < 6 ? 6 : pixels, &config, ranges);
 }
 } // namespace
 
@@ -126,6 +155,7 @@ static void FindLanguageFont()
     g_languageFile.clear();
     std::vector<uint32_t> wanted;
     for (uint32_t c : tr::Characters()) if (c > 0xFF && c <= 0xFFFF) wanted.push_back(c);
+    g_languageGlyphs = (int)wanted.size();
     if (wanted.empty()) return;
     for (size_t i = 0; i < wanted.size();)
     {
@@ -151,14 +181,12 @@ static void FindLanguageFont()
 static void MergeFont(const std::string& file, const Metrics& m, float size, float s, float multiply, const ImWchar* ranges,
     int oversample = 2)
 {
-    if (file.empty()) return;
     ImFontConfig config;
     config.MergeMode = true;
     config.PixelSnapH = true;
     config.OversampleH = oversample;
     config.RasterizerMultiply = multiply;
-    float pixels = size * s * m.pixelHeightPerEm;
-    ImGui::GetIO().Fonts->AddFontFromFileTTF(file.c_str(), pixels < 6 ? 6 : pixels, &config, ranges);
+    AddFont(file, size * s * m.pixelHeightPerEm, config, ranges);
 }
 
 /* A face at one of the sizes, from its file (ImGui's own font when that cannot be read). */
@@ -172,7 +200,7 @@ static ImFont* BakeFont(const std::string& file, int face, int i, float s)
     config.OversampleV = 1;
     config.PixelSnapH = true;
     config.RasterizerMultiply = face == TITLE && g_baked.faux ? 1.15f : 1.0f;
-    ImFont* font = !file.empty() ? io.Fonts->AddFontFromFileTTF(file.c_str(), pixels, &config, TEXT_RANGES) : nullptr;
+    ImFont* font = AddFont(file, pixels, config, TEXT_RANGES);
     if (font == nullptr) { ImFontConfig fallback; fallback.SizePixels = pixels; return io.Fonts->AddFontDefault(&fallback); }
     /* what FS Sinclair lacks: other characters from the fallback, the arrows from Segoe UI Symbol */
     if (file != g_fallbackFile) MergeFont(g_fallbackFile, g_baked.fallback, SIZES[i], s, config.RasterizerMultiply, TEXT_RANGES);
@@ -180,36 +208,79 @@ static ImFont* BakeFont(const std::string& file, int face, int i, float s)
     /* thousands of CJK characters: no horizontal oversampling, half the atlas */
     if (!g_languageRanges.empty())
         MergeFont(g_languageFile, g_baked.language, SIZES[i], s, config.RasterizerMultiply, g_languageRanges.Data,
-            g_languageRanges.Size > 400 ? 1 : 2);
+            g_languageGlyphs > 400 ? 1 : 2);
     return font;
+}
+
+/* The atlas' tallest texture: D3D11 at feature level 10 stops at 8192, and 4096x8192 is 128 MB of RGBA already. */
+static const int ATLAS_MAX = 8192;
+
+static void BakeSizes(const std::string files[2], bool few, float raster)
+{
+    for (int i = 0; i < SIZE_COUNT; i++)
+    {
+        if (few && i % 2 == 0) continue;
+        g_baked.fonts[BODY][i] = BakeFont(files[BODY], BODY, i, raster);
+        g_baked.fonts[TITLE][i] = few ? g_baked.fonts[BODY][i] : BakeFont(files[TITLE], TITLE, i, raster);
+    }
+}
+
+/* Bakes the faces with glyphs at a scale. With a translation's characters, one face at every other size (titles are
+ * drawn bold from it): a quarter of the atlas that both faces at every size take. */
+static void Bake(float raster, bool language)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->Clear();
+    io.Fonts->Flags |= ImFontAtlasFlags_NoPowerOfTwoHeight;
+    if (!language) g_languageRanges.clear();
+    Baked baked;
+    baked.scale = g_baked.scale;
+    baked.translation = g_baked.translation;
+    baked.raster = raster;
+    g_baked = baked;
+    if (!g_languageFile.empty()) g_baked.language = ReadMetrics(g_languageFile);
+    bool few = !g_languageRanges.empty();
+    std::string files[2] = {g_faceFile[BODY], g_faceFile[TITLE]};
+    if (files[BODY].empty()) files[BODY] = g_fallbackFile;
+    g_baked.faux = files[TITLE].empty() || few;
+    if (g_baked.faux) files[TITLE] = files[BODY];
+    for (int face = 0; face < 2; face++) if (!files[face].empty()) g_baked.metrics[face] = ReadMetrics(files[face]);
+    if (!g_fallbackFile.empty()) g_baked.fallback = ReadMetrics(g_fallbackFile);
+    if (!g_symbolFile.empty()) g_baked.symbols = ReadMetrics(g_symbolFile);
+    BakeSizes(files, few, raster);
+    io.Fonts->Build();
+    io.FontDefault = g_baked.fonts[BODY][Nearest(16)];
 }
 
 bool BuildFonts(float s)
 {
     if (fabsf(g_baked.scale - s) < 0.005f && g_baked.translation == tr::Generation()) return false;
-    ImGuiIO& io = ImGui::GetIO();
-    io.Fonts->Clear();
     if (g_fallbackFile.empty()) FindFontFiles();
     FindLanguageFont();
-    g_baked = Baked{};
     g_baked.scale = s;
     g_baked.translation = tr::Generation();
-    if (!g_languageFile.empty()) g_baked.language = ReadMetrics(g_languageFile);
-    std::string files[2] = {g_faceFile[BODY], g_faceFile[TITLE]};
-    if (files[BODY].empty()) files[BODY] = g_fallbackFile;
-    g_baked.faux = files[TITLE].empty();
-    if (g_baked.faux) files[TITLE] = files[BODY];
-    for (int face = 0; face < 2; face++) if (!files[face].empty()) g_baked.metrics[face] = ReadMetrics(files[face]);
-    if (!g_fallbackFile.empty()) g_baked.fallback = ReadMetrics(g_fallbackFile);
-    if (!g_symbolFile.empty()) g_baked.symbols = ReadMetrics(g_symbolFile);
-    for (int face = 0; face < 2; face++)
-        for (int i = 0; i < SIZE_COUNT; i++) g_baked.fonts[face][i] = BakeFont(files[face], face, i, s);
-    io.Fonts->Build();
-    io.FontDefault = g_baked.fonts[BODY][3];
+    g_note.clear();
+    g_fontsUsed.clear();
+    /* more characters, or a larger screen, than the atlas holds: smaller glyphs drawn larger, at last no translation */
+    float raster = s;
+    Bake(raster, true);
+    for (int tries = 0; ImGui::GetIO().Fonts->TexHeight > ATLAS_MAX && tries < 3; tries++)
+    {
+        raster *= 0.75f;
+        Bake(raster, true);
+        g_note = "glyphs at " + std::to_string((int)(100 * raster / s + 0.5f)) + "% to fit the atlas";
+    }
+    if (ImGui::GetIO().Fonts->TexHeight > ATLAS_MAX)
+    {
+        Bake(s, false);
+        g_note = "the translation's characters do not fit the atlas and are left out";
+    }
+    for (auto it = g_fontData.begin(); it != g_fontData.end();) it = g_fontsUsed.count(it->first) ? std::next(it) : g_fontData.erase(it);
     return true;
 }
 
 float FontScale() { return g_baked.scale; }
+const std::string& FontNote() { return g_note; }
 
 uint64_t Id(const char* text, uint64_t salt)
 {
@@ -307,14 +378,14 @@ static ImFont* FontFor(float size, Face face, float* pixels)
     int i = Nearest(size);
     ImFont* font = g_baked.fonts[face][i];
     if (font == nullptr) font = ImGui::GetFont();
-    /* A size between the baked ones: the nearest font, scaled. */
-    *pixels = font->FontSize * size / SIZES[i];
+    /* A size between the baked ones, or glyphs baked smaller than the screen: the nearest font, scaled. */
+    *pixels = font->FontSize * size / SIZES[i] * (g_baked.raster > 0 ? g_baked.scale / g_baked.raster : 1.0f);
     return font;
 }
 
 float Canvas::Measure(const std::string& raw, float size, Face face, bool shown)
 {
-    const std::string& text = shown ? raw : tr::Get(raw);
+    const std::string text = shown ? raw : tr::Get(raw);
     std::string key = std::to_string((int)(size * 10)) + (face == TITLE ? "T" : "B") + text;
     auto found = widths.find(key);
     if (found != widths.end()) return found->second;

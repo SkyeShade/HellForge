@@ -82,6 +82,7 @@ void SaveSettings()
 
 void ApplyLanguage()
 {
+    if (g_language != "auto" && !tr::ValidTag(g_language)) g_language = "auto";
     std::string tag = g_language == "auto" ? tr::AutoTag(g_host.modFolder, tr::WindowsLanguage()) : g_language;
     if (!tr::Load(g_host.modFolder, tag))
         g_host.api->log(g_host.mod, "editor: no translation %s in translations\\, English", tag.c_str());

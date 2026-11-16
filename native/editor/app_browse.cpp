@@ -21,10 +21,11 @@ static float DrawTab(int v, float tx, float h)
     return w;
 }
 
-/* A status chip, right to left from rx, unless it would reach the tabs; true when its action took this frame's click. */
+/* A status chip, right to left from rx, unless it would reach the tabs; true when its action took this frame's click. Its
+ * text is in the player's language already: some hold the host's name. */
 static bool StatusChip(float& rx, float tabsEnd, float h, const std::string& text, ImU32 fg, ImU32 bg, uint64_t action)
 {
-    float w = g_cv.Measure(text, SZ_TINY, ui::TITLE) + 14;
+    float w = g_cv.Measure(text, SZ_TINY, ui::TITLE, true) + 14;
     if (rx - w < tabsEnd) return false;
     bool clicked = false;
     if (action)
@@ -32,18 +33,19 @@ static bool StatusChip(float& rx, float tabsEnd, float h, const std::string& tex
         if (g_cv.Hovered() == action) g_cv.Frame(rx - w - 2, h / 2 - 12, w + 4, 24, fg, 4);
         clicked = g_cv.Hit(rx - w - 4, h / 2 - 14, w + 8, 28, action);
     }
-    rx -= Chip(text, rx, h / 2, fg, bg, true) + 8;
+    rx -= Chip(RawText{text}, rx, h / 2, fg, bg, true) + 8;
     return clicked;
 }
 
 /* The session's chip: read-only while playing with a host's stats, else hosting or joined. */
 static void SessionChip(float& rx, float tabsEnd, float h)
 {
-    if (Locked()) StatusChip(rx, tabsEnd, h, std::string("READ-ONLY \xC2\xB7 HOST: ") + (g_session.host[0] ? g_session.host : "A FRIEND"), PENDING, PENDING_SOFT, 0);
+    std::string host = g_session.host[0] ? std::string(g_session.host) : Translated("A FRIEND");
+    if (Locked()) StatusChip(rx, tabsEnd, h, Named("READ-ONLY \xC2\xB7 HOST: {1}", {host}), PENDING, PENDING_SOFT, 0);
     else if (g_session.role == HF_SESSION_HOST)
-        StatusChip(rx, tabsEnd, h, g_lobbyStats ? "HOSTING \xC2\xB7 FRIENDS PLAY WITH YOUR STATS" : "HOSTING \xC2\xB7 EVERYONE KEEPS THEIR OWN", MOD, MOD_SOFT, 0);
+        StatusChip(rx, tabsEnd, h, Translated(g_lobbyStats ? "HOSTING \xC2\xB7 FRIENDS PLAY WITH YOUR STATS" : "HOSTING \xC2\xB7 EVERYONE KEEPS THEIR OWN"), MOD, MOD_SOFT, 0);
     else if (g_session.role == HF_SESSION_JOINER)
-        StatusChip(rx, tabsEnd, h, std::string("JOINED \xC2\xB7 ") + (g_session.host[0] ? g_session.host : "A FRIEND") + " \xC2\xB7 YOUR OWN STATS", MOD, MOD_SOFT, 0);
+        StatusChip(rx, tabsEnd, h, Named("JOINED \xC2\xB7 {1} \xC2\xB7 YOUR OWN STATS", {host}), MOD, MOD_SOFT, 0);
 }
 
 /* The status chips right to left from the close button, as many as fit before the tabs: the session, the errors (a
@@ -52,9 +54,9 @@ static void StatusChips(int errors, int active, float tabsEnd, float h)
 {
     float rx = PANEL_W - 62;
     SessionChip(rx, tabsEnd, h);
-    if (errors > 0 && StatusChip(rx, tabsEnd, h, std::to_string(errors) + (errors == 1 ? " ERROR" : " ERRORS"), ERROR_, ERROR_SOFT, ui::Id("errors"))) OpenErrors();
-    if (active > 0) StatusChip(rx, tabsEnd, h, std::to_string(active) + (Locked() ? " ACTIVE (HOST)" : " ACTIVE"), GOLD, GOLD_WASH, 0);
-    if (PendingCount() > 0 && !Locked()) StatusChip(rx, tabsEnd, h, std::to_string(PendingCount()) + " PENDING", PENDING, PENDING_SOFT, 0);
+    if (errors > 0 && StatusChip(rx, tabsEnd, h, Translated(std::to_string(errors) + (errors == 1 ? " ERROR" : " ERRORS")), ERROR_, ERROR_SOFT, ui::Id("errors"))) OpenErrors();
+    if (active > 0) StatusChip(rx, tabsEnd, h, Translated(std::to_string(active) + (Locked() ? " ACTIVE (HOST)" : " ACTIVE")), GOLD, GOLD_WASH, 0);
+    if (PendingCount() > 0 && !Locked()) StatusChip(rx, tabsEnd, h, Translated(std::to_string(PendingCount()) + " PENDING"), PENDING, PENDING_SOFT, 0);
 }
 
 void DrawHeader(int errors, int active)
@@ -210,7 +212,7 @@ static void DrawObjectSearch(float x0, float sy)
     if (g_search.text.empty() && !searching) g_cv.Text("Search   Ctrl+F", x0 + 24, sy + 16, T(SZ_SMALL, FAINT));
     else
     {
-        float w = g_cv.Text(g_search.text, x0 + 24, sy + 16, T(SZ_LABEL, TEXT, ui::BODY, ui::LEFT, OBJ_W - 60));
+        float w = g_cv.Text(g_search.text, x0 + 24, sy + 16, Raw(T(SZ_LABEL, TEXT, ui::BODY, ui::LEFT, OBJ_W - 60)));
         if (searching && (int)(g_time * 2) % 2 == 0) g_cv.Rect(x0 + 26 + w, sy + 7, 2, 18, GOLD, 6);
     }
     if (g_cv.Hit(x0 + 12, sy, OBJ_W - 24, 32, ui::Id("objsearch"))) { g_search.active = true; g_focus = OBJECTS; }
@@ -327,7 +329,7 @@ static void BoxStyle(const RowView& v, bool editing, bool error, bool held, ImU3
 /* The number being typed, selected while it is fresh (the first key replaces it), and the blinking cursor. */
 static void DrawEditBuffer(float bx, float bw2, float y, float rowH)
 {
-    float tw = g_cv.Text(g_edit.buffer, bx + bw2 - 10, y + rowH / 2, T(SZ_LABEL, TEXT, ui::BODY, ui::RIGHT, bw2 - 16));
+    float tw = g_cv.Text(g_edit.buffer, bx + bw2 - 10, y + rowH / 2, Raw(T(SZ_LABEL, TEXT, ui::BODY, ui::RIGHT, bw2 - 16)));
     if (g_edit.fresh && !g_edit.buffer.empty()) g_cv.Rect(bx + bw2 - 12 - tw, y + 7, tw + 4, rowH - 14, GOLD_SOFT, 4);
     if ((int)(g_time * 2.2f) % 2 == 0) g_cv.Rect(bx + bw2 - 8, y + 8, 2, rowH - 16, GOLD, 6);
 }
@@ -464,7 +466,7 @@ static void StatusPick(const Row* row, float cy, float maxw)
     RowView v = ViewOf(row);
     const Row::Option* o = v.has ? g_catalog.Reference(row->pick, v.value) : nullptr;
     float x = 18;
-    x += g_cv.Text(row->key, x, cy, T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, 300)) + 16;
+    x += g_cv.Text(row->key, x, cy, Raw(T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, 300))) + 16;
     x += g_cv.Text(AppliesText(row), x, cy, T(SZ_SMALL, row->Live() ? FAINT : PENDING, ui::BODY, ui::LEFT, 220)) + 14;
     if (row->shared || !row->also.empty()) x += Chip("SHARED", x, cy, PENDING, PENDING_SOFT, false) + 6;
     std::string text = !row->note.empty() ? row->note : o != nullptr ? o->group + ": " + o->note :
@@ -525,8 +527,8 @@ static std::string AlsoText(const Row* row)
 static void StatusAside(const Row* row, const RowView& v, float x, float cy, float maxw)
 {
     if (!v.holder.empty())
-        g_cv.Text(std::string(IsLuaHolder(v.holder) ? "Lua mod: " : "Mod: ") + v.holder + " = " + Format(row, v.base), x + 10, cy,
-            T(SZ_SMALL, IsLuaHolder(v.holder) ? LUA : MOD, ui::BODY, ui::LEFT, std::max(40.0f, maxw - x - 10)));
+        g_cv.Text(Named(IsLuaHolder(v.holder) ? "Lua mod: {1} = {2}" : "Mod: {1} = {2}", {v.holder, Format(row, v.base)}), x + 10, cy,
+            Raw(T(SZ_SMALL, IsLuaHolder(v.holder) ? LUA : MOD, ui::BODY, ui::LEFT, std::max(40.0f, maxw - x - 10))));
     else if (!row->also.empty() || !row->alsoIf.empty())
         g_cv.Text(AlsoText(row), x + 10, cy, T(SZ_SMALL, PENDING, ui::BODY, ui::LEFT, std::max(40.0f, maxw - x - 10)));
     else if (!row->note.empty())
@@ -538,7 +540,7 @@ static void StatusField(const Row* row, float cy, float maxw)
 {
     float x = 18;
     std::string range = RangeText(row);
-    x += g_cv.Text(row->key, x, cy, T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, 260)) + 16;
+    x += g_cv.Text(row->key, x, cy, Raw(T(SZ_SMALL, DIM, ui::BODY, ui::LEFT, 260))) + 16;
     x += g_cv.Text(range, x, cy, T(SZ_SMALL, FAINT, ui::BODY, ui::LEFT, 240)) + 14;
     x += g_cv.Text(AppliesText(row), x, cy, T(SZ_SMALL, row->Live() ? FAINT : PENDING, ui::BODY, ui::LEFT, 220)) + 14;
     if (row->shared || !row->also.empty()) x += Chip("SHARED", x, cy, PENDING, PENDING_SOFT, false) + 6;

@@ -24,7 +24,7 @@ public static class BundledMods
     // one that is retired.
     static readonly Dictionary<string, string[]> Kept = new(StringComparer.OrdinalIgnoreCase)
     {
-        [EditorFolder] = ["editor-settings.json", "mod-stats.json", "presets/"],
+        [EditorFolder] = ["editor-settings.json", "mod-stats.json", "presets/", "translations/"],
     };
 
     public static string Folder(InstallLayout install) => Path.Combine(install.App, FolderName);

@@ -22,7 +22,7 @@ struct TextOpts
     Align align = LEFT;
     int z = 5;
     float max = 0; /* fit to this width with "..." (0: no limit) */
-    bool shown = false; /* already in the player's language (a wrapped line): not translated again */
+    bool shown = false; /* drawn as it is: a line already translated, or text that is not the editor's own (typed, a name, a log line) */
 };
 
 /* The fonts at a pixel scale: the game's own FS Sinclair (body) and FS Sinclair Medium (titles), extracted into the
@@ -32,6 +32,8 @@ struct TextOpts
 void SetFontFolder(const std::string& folder);
 bool BuildFonts(float pixelsPerUnit);
 float FontScale();
+/* What the last bake gave up to fit the atlas ("" when nothing), for the log. */
+const std::string& FontNote();
 
 struct Region { float x, y, w, h; uint64_t id; bool scroll; };
 
