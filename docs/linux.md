@@ -165,7 +165,8 @@ link above the folder HellForge protects is resolved and the real folder is used
   An installation that already runs in such a prefix is still updated.
 - A link at the installation folder or inside it, with `Linked/reparse paths are not supported: <path>`. A game copy
   written through it could land somewhere else. The same rule covers the game folder and every Steam library HellForge
-  reads.
+  reads. One exception: a library's `steamapps` folder may be a link, as on a Steam Deck that keeps it on the microSD
+  card. HellForge follows it, and the game folder inside it may still not be a link.
 - For the sandbox self-test, `/run`, because the sandbox gives the game its own private `/run`. The exception is a drive
   your desktop mounted under `/run/media/<user>/<drive>` (KDE, GNOME, SteamOS), which works, sandbox included.
 

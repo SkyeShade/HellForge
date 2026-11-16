@@ -111,6 +111,9 @@ static class InventorySyncTests
         test("The signing service's files reach the sync folder: the account files once, the seal last, a sealed state only after them", () =>
             SignerMirror(root, check));
 
+        test("The launcher reads the signing service only through the evidence folder root shares, never the service's private run folder", () =>
+            SignerEvidence(root, check));
+
         test("The signing copy of the Linux capture must match this installation's capture-linux by its manifest", () =>
             SignerCopy(root, check));
 
@@ -1736,6 +1739,76 @@ static class InventorySyncTests
         if (OperatingSystem.IsLinux())
             check(File.GetUnixFileMode(Path.Combine(sync, SnapshotSeal.FileName)) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
                 "A copied account file is readable by other accounts.");
+    }
+
+    // systemd puts a DynamicUser service's preserved RuntimeDirectory in /run/private (root's, 0700) behind a link, so the
+    // player's launcher cannot read /run/hellforge-capture: it waited there 45 seconds for a capture that was listening.
+    // Root's helper copies the service's log, state and CA to the evidence folder, and the launcher reads only that.
+    static void SignerEvidence(string root, Action<bool, string> check)
+    {
+        var script = Path.GetFullPath(Path.Combine("linux", LinuxCapture.HelperScript));
+        if (!File.Exists(script)) { Console.WriteLine("  (skipped: linux/capture-helper.sh is not in the test working directory)"); return; }
+        var helperText = File.ReadAllText(script);
+        check(helperText.Contains("-p DynamicUser=yes", StringComparison.Ordinal) &&
+            helperText.Contains("-p RuntimeDirectoryPreserve=yes", StringComparison.Ordinal) &&
+            helperText.Contains("signer_run='/run/hellforge-capture'", StringComparison.Ordinal),
+            "The helper's service changed: check what the launcher can read of it.");
+        check(helperText.Contains("state_dir='/run/hellforge'", StringComparison.Ordinal) &&
+            helperText.Contains("evidence_name='capture-evidence'", StringComparison.Ordinal) &&
+            LinuxCapture.SignerEvidenceFolder == "/run/hellforge/capture-evidence" &&
+            LinuxCapture.SignerHandOverFolder == "/run/hellforge/capture-out",
+            "The launcher's evidence or hand-over folder is not the one capture-helper.sh shares.");
+        check(!LinuxCapture.SignerEvidenceFolder.StartsWith("/run/hellforge-capture", StringComparison.Ordinal),
+            "The launcher reads the signing service's run folder, which only root can enter.");
+
+        var folder = Directory.CreateDirectory(Path.Combine(root, "signer-evidence")).FullName;
+        var sync = Directory.CreateDirectory(Path.Combine(folder, "sync")).FullName;
+        var handOver = Path.Combine(folder, "out");
+        var run = Directory.CreateDirectory(Path.Combine(folder, "private", "hellforge-capture")).FullName;
+        File.WriteAllText(Path.Combine(run, "proxy.log"), "listening on port 18443\n");
+        File.WriteAllBytes(LinuxCapture.CertificatePath(run), [0x30, 0x82, 0x01]);
+        CaptureState.Write(run, 42, sealedCapture: false, progression: false);
+        if (!OperatingSystem.IsLinux()) { Console.WriteLine("  (skipped: the helper's evidence copy on Linux)"); return; }
+
+        // The service's folder behind a parent this account cannot enter, as /run/private is: nothing there is seen.
+        var privateParent = Path.Combine(folder, "private");
+        File.SetUnixFileMode(privateParent, UnixFileMode.None);
+        try
+        {
+            if (!Directory.Exists(run))
+            {
+                LinuxCapture.MirrorSignerRun(run, handOver, sync, false);
+                check(!LinuxCapture.SigningCaptureReady(run, sync) && !File.Exists(Path.Combine(sync, "proxy.log")),
+                    "A run folder this account cannot enter was read.");
+            }
+            else Console.WriteLine("  (skipped: this account enters any folder, as root does)");
+        }
+        finally { File.SetUnixFileMode(privateParent, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); }
+
+        // A file the service swapped for a link is never read through it.
+        var secret = Path.Combine(folder, "secret");
+        File.WriteAllText(secret, "not the service's");
+        File.CreateSymbolicLink(Path.Combine(run, CaptureStart.FailureFile), secret);
+        var state = Path.Combine(folder, "state");
+        var share = RunHelper(script, "share", "--run-dir", run, "--state-dir", state);
+        check(share.ExitCode == 0, "The helper could not share the service's evidence: " + share.Output);
+        var evidence = Path.Combine(state, "capture-evidence");
+        var shared = Directory.Exists(evidence) ? Directory.GetFileSystemEntries(evidence).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray() : [];
+        check(shared.SequenceEqual(["capture-ca.cer", CaptureState.FileName, "proxy.log"]),
+            "The evidence folder does not hold exactly the log, state and CA: " + string.Join(", ", shared));
+        var readable = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
+        foreach (var name in shared)
+        {
+            var path = Path.Combine(evidence, name!);
+            check((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0 && File.GetUnixFileMode(path) == readable,
+                "A shared file is a link or not readable by the player's account: " + name);
+        }
+
+        check(!LinuxCapture.SigningCaptureReady(evidence, sync), "The capture read as listening before its state reached the sync folder.");
+        check(!LinuxCapture.MirrorSignerRun(evidence, handOver, sync, false) && LinuxCapture.SigningCaptureReady(evidence, sync) &&
+            File.ReadAllText(Path.Combine(sync, "proxy.log")).Contains("18443", StringComparison.Ordinal) &&
+            !File.Exists(Path.Combine(sync, CaptureStart.FailureFile)),
+            "The shared evidence did not make the capture read as listening, or a linked file reached the sync folder.");
     }
 
     static void SignerCopy(string root, Action<bool, string> check)
