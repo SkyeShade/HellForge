@@ -16,6 +16,10 @@ On `dev`, since 0.4.0-beta.
   folder, chosen on its settings page or by Windows' display language. Chinese, Japanese and Korean text uses a
   Windows font that has the characters ([translating the editor](docs/editor-translations.md)). The word-list format
   follows YEYINGSHENZI's Chinese localization of the editor (#425, #426).
+- **Stratagems that rearm.** Every stratagem but the Eagles has "Rearms after uses" beside its mission uses. Ticked,
+  its uses go with no cooldown between them, the cooldown starts once they are spent, and they come back when it ends;
+  the HUD shows the uses left counting down and refilling ([stats mods](docs/modding/stats-mods.md#rearms-after-uses)).
+- **RESET ALL in the editor's Errors list.** Two clicks stage a reset of every refused field, as each row's RESET does.
 - **Stratagem input codes in the editor.** Every stratagem's call-in section has Input code, shown as arrows and typed
   as U, R, D and L, 1 to 10 directions. It applies at once, the HUD's arrows too, and each player's code is their own.
   Stats files take it as letters (`"stratagem.input_code": "UULRD"`) ([stats mods](docs/modding/stats-mods.md#stratagem-input-codes)).
@@ -48,6 +52,10 @@ On `dev`, since 0.4.0-beta.
   grenades have their lock-on range, and their missiles their seeker range. The B/MD C4 Pack has its charges from
   supply, the MD-I4 Incendiary Mines a status pick, and the E/GL-21 Grenadier Battlement its gun's handling and
   ammunition. The MS-11 Solo Silo has its remote's handling and its missile's payloads; the Spear an impact payload.
+- **Mods can make screens in the game's own UI (SDK 19).** `ui_open` shows a mod's XAML through the game's NoesisGUI,
+  with the game's fonts, text styles, colours and controls. A screen is a menu (the cursor shows, the player is held,
+  Back closes it) or an overlay on the ship and in missions. `ui_set` changes any property from code, and `ui_on` calls
+  the mod when a button is clicked or the screen closes ([screens in the game's own UI](docs/modding/ui.md)).
 - **Mods can add patterns (SDK 18).** `add_pattern` copies a vanilla pattern under an id of its own, with the mod's
   colour and masks in place of the base's. A copy of a weapon paint is in the armory's pattern slot of every weapon that
   offers the base, or of the weapons the mod names. A copy of a Pelican, hellpod or vehicle skin joins the hangar for its

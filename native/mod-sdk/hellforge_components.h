@@ -599,6 +599,16 @@ HF_ASSERT_SIZE(HfStratagemCode, 4);
 HF_ASSERT_OFFSET(HfStratagemCode, packed, 0);
 #define HF_TYPE_StratagemCode_packed HF_TYPE_U32
 
+/* StratagemRearm (4-byte table rows, found by id): whether a vanilla non-Eagle stratagem's uses per mission rearm after its cooldown (by type), kept by HellForge (native/mod-loader/stratagem_rearm.c) */
+#define HfStratagemRearm_INFO "StratagemRearm", 25480438u
+typedef struct HfStratagemRearm
+{
+    uint32_t rearms;                             /* +0x00 1: its uses go with no cooldown between them, the cooldown starts once they are spent, and they refill when it ends; 0: the game's own (a cooldown after every use, spent uses gone for the mission) (unverified) [now?] */
+} HfStratagemRearm;
+HF_ASSERT_SIZE(HfStratagemRearm, 4);
+HF_ASSERT_OFFSET(HfStratagemRearm, rearms, 0);
+#define HF_TYPE_StratagemRearm_rearms HF_TYPE_U32
+
 /* StratagemDefinition (400-byte table rows, found by id; api->stratagem_row returns one: (HfStratagemSettings*)api->stratagem_row(...)): a stratagem: text, input, uses, cooldown, delivery, payload, packages and traits */
 #define HfStratagemSettings_INFO "StratagemDefinition", 25480438u
 typedef struct HfStratagemSettings

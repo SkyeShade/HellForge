@@ -730,7 +730,7 @@ static int LiveFieldNamed(LiveField* r, char* reply, size_t size)
     r->offset = strtoul(f[6], NULL, 10);
     if (r->c == NULL || r->type == 0 || *end || r->offset > 0xFFFF || (r->c->table != (strcmp(kind, "component") != 0)))
     { snprintf(reply, size, "%s\trefused\tHellForge has no mappings for %s %s", r->seq, kind, f[3]); return 0; }
-    r->target = !r->c->table ? resource : !strcmp(kind, "StratagemDefinition") || !strcmp(kind, "StratagemCode") ? StratagemTypeOf((uint32_t)r->record) : (uint64_t)r->record;
+    r->target = !r->c->table ? resource : !strcmp(kind, "StratagemDefinition") || StratagemOwnKind(kind) ? StratagemTypeOf((uint32_t)r->record) : (uint64_t)r->record;
     if (r->target == 0) { snprintf(reply, size, "%s\trefused\tno such %s row", r->seq, kind); return 0; }
     return 1;
 }

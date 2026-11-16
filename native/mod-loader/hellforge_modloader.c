@@ -776,7 +776,7 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
-    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); }
     AiPathBudgetWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
     EarlyStampPackagesInstall();
@@ -1117,7 +1117,7 @@ static void ApiInit(void)
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
         ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiAddEnemy, ApiAddEnemySwap, ApiAddEnemySquad, ApiRpcListen, ApiRpcSend,
-        ApiAddScreen, ApiScreenShow, ApiGenerationCapacity, ApiAddPattern};
+        ApiAddScreen, ApiScreenShow, ApiGenerationCapacity, ApiAddPattern, ApiUiOpen, ApiUiSet, ApiUiOn, ApiUiClose};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */

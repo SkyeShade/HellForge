@@ -1275,6 +1275,25 @@
         }
       }
     },
+    "StratagemRearm": {
+      "component": "StratagemRearm",
+      "table": true,
+      "stride": 4,
+      "layout": "25480438",
+      "meaning": "whether a vanilla non-Eagle stratagem's uses per mission rearm after its cooldown (by type), kept by HellForge (native/mod-loader/stratagem_rearm.c)",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "read at every call by the detour on the cooldown start (game.dll 0x135C2C0)",
+      "fields": {
+        "rearms": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "1: its uses go with no cooldown between them, the cooldown starts once they are spent, and they refill when it ends; 0: the game's own (a cooldown after every use, spent uses gone for the mission)",
+          "verified": false,
+          "source": "game.dll 0xB9AAB0 (the use: uses left at slot +0x1C4), 0x135C2C0 (the cooldown start), 0x879550 (a slot's uses at mission start); native/mod-loader/stratagem_rearm.c"
+        }
+      }
+    },
     "StratagemSettings": {
       "component": "StratagemDefinition",
       "row": "stratagem_row",
