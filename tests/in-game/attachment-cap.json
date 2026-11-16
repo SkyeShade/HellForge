@@ -1,0 +1,22 @@
+{
+  "about": "Room for 1,024 attachments in the real game: 640 drum magazine copies (past the old 128) on three AR-23 Liberator copies; the game's own item and delta lookups find the 1st, 128th, 129th and 640th; the 640th, put on the first copy in the primary slot on the ship, is in the equipped set the mission builds for it, and the Helldiver holds the copy (tests/in-game/README.md).",
+  "mods": [
+    "attachment-cap-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {"name": "the probe loads", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "640 attachments are added on 3 weapons", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE added ok: 640 attachments on 3 weapons"},
+    {"name": "no attachment is refused", "log": "mod-hellforge.attachment-cap-probe.log", "absent": "add_attachment("},
+    {"name": "all 640 go into the entity deltas", "log": "modloader.log", "contains": "attachments: 640 attachment(s) and pattern(s) added to the entity deltas"},
+    {"name": "the game's lookups are the reviewed ones", "log": "modloader.log", "absent": "attachments: the game's item or delta lookup is not the reviewed one"},
+    {"name": "the probe's pins hold and its hook is in", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE pins ok"},
+    {"name": "the game's item and delta lookups find attachments 1, 128, 129 and 640", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE lookup ok: attachments 1, 128, 129 and 640"},
+    {"name": "the 640th is on the first copy, in the primary slot", "log": "mod-hellforge.attachment-cap-probe.log", "regex": "PROBE loadout ok: primary [0-9a-f]{8} with attachment [0-9a-f]{8} in slot 5"},
+    {"name": "the mission builds the copy with the 640th", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE built ok: weapon"},
+    {"name": "the Helldiver holds the copy", "log": "mod-hellforge.attachment-cap-probe.log", "contains": "PROBE holds ok"},
+    {"name": "the mission ends with both", "log": "mod-hellforge.attachment-cap-probe.log", "regex": "PROBE mission ended: [0-9]+ equipped set\\(s\\) built; the attachment in one: yes; the copy held: yes"},
+    {"name": "no probe check failed", "log": "mod-hellforge.attachment-cap-probe.log", "absent": "FAIL"}
+  ]
+}

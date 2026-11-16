@@ -20,6 +20,8 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `rpc-probe/` | the test mod `rpc17.json` runs (`hellforge.rpc-probe`), never shipped; it sends nothing outside solo |
 | `projectile-cap.json` | room for 1,024 new projectile types: 400 added (types 351 to 750), past the 161 the projectile type's 9-bit co-op field carries, the field widened to 11 bits, rows on both sides of the old reach |
 | `projectile-cap-probe/` | the test mod `projectile-cap.json` runs (`hellforge.projectile-cap-probe`), never shipped |
+| `attachment-cap.json` | room for 1,024 attachments: 640 drum copies (past the old 128) on three Liberator copies, the game's own item and delta lookups finding them, the 640th put in the primary's magazine slot on the ship and in the equipped set the mission builds |
+| `attachment-cap-probe/` | the test mod `attachment-cap.json` runs (`hellforge.attachment-cap-probe`), never shipped |
 | `stratagem-cap.json` | room for 1,024 new stratagems: 300 added (types 150 to 449), the co-op type field at 16 bits, type 449 in the loadout before the mission and called in by its code (needs the harness's `call` step) |
 | `stratagem-cap-probe/` | the test mod `stratagem-cap.json` runs (`hellforge.stratagem-cap-probe`), never shipped |
 | `patterns18.json` | SDK 18's patterns: two weapon patterns on every weapon taking paints, the Pelican's, hellpod's, exosuits' and FRVs' skins in every collection, their deltas and package map, the Armory's Pattern tab captured |
