@@ -159,7 +159,7 @@ the pattern colour. A shape of your own is a greyscale PNG painted on the model'
 
 | Limit | Value |
 |---|---|
-| Weapon patterns and attachments, all mods | 128 |
+| Weapon patterns and attachments, all mods | 1,024 ([attachments](content.md#attachments-of-your-own)) |
 | Unit patterns, all mods | 128 |
 | Mods' patterns on one weapon | 16 (its customize screen holds 64 entries over five slots) |
 | Skins in one collection | 24 in all, the game's 16 to 19 among them: the hangar list shows no more |

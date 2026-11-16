@@ -35,6 +35,12 @@ On `dev`, since 0.4.0-beta.
     as stun on a Bile Titan.
 - **Enemy armour and AP to 1000.** Above 10 no vanilla weapon hurts that part. Enemies are the host's in co-op, so the
   host's values apply to everyone.
+- **Room for 1,024 attachments and weapon patterns from mods (was 128).** A player's pick travels in co-op as the
+  attachment's full id, as before. Each attachment takes a catalogue item on each of its weapons, and when the game's
+  catalogue is full the session's backend leaves the rest out whole and its log names them
+  ([attachments](docs/modding/content.md#attachments-of-your-own)).
+- **An attachment that keeps its base's model loads it.** The weapon loads its base's package for it, as the game does
+  for its own attachments; before, the model was missing and the mission could crash when the weapon spawned.
 - **Room for 1,024 projectile types from mods.** Mods with many weapons can add up to 1,024 new projectile types between
   them (it was 512). Past the 161st, the co-op field that carries a projectile type widens from 9 to 11 bits on every
   machine. Types above 511 now reach other players too; before, they were cut in synced shots and reloads.
