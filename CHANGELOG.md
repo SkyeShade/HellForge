@@ -331,6 +331,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Explosions no longer knock you down through cover.** Behind a rock or a wall, a blast's damage already stopped,
+  but its knockback still threw the Helldiver: the game checks the line of sight only for the damage. The knockback
+  now waits for the same check and comes only when the damage does. Close blasts the game does not check keep
+  knocking you down, as before ([why](docs/gameplay-fixes.md#explosion-knockback-and-cover)).
 - **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
   "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
   service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
