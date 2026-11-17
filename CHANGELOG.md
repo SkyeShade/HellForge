@@ -342,6 +342,9 @@ On `dev`, since 0.4.0-beta.
 - **A language the game copy lacks no longer crashes every start.** Switching the game's voice or text language to one
   whose language pack is not in the copy, such as Japanese, crashed the game, and every start after it. Before each
   session HellForge now sets such a language back to English and says how to add its pack (#343).
+- **No more `.partial` files piling up in `mods/.unpacked`.** When another program held a zipped mods' cache file
+  while the mods were listed, each listing left a `.zip-hashes.json.<id>.partial` behind: a launcher listing them every
+  5 seconds left 11,405. Such a write now removes its partial, and the next start removes ones left before (#331).
 - **Explosions no longer knock you down through cover.** Behind a rock or a wall, a blast's damage already stopped,
   but its knockback still threw the Helldiver: the game checks the line of sight only for the damage. The knockback
   now waits for the same check and comes only when the damage does. Close blasts the game does not check keep
@@ -459,6 +462,9 @@ On `dev`, since 0.4.0-beta.
 
 ### For mod makers
 
+- **`modloader.log` follows edits that wait for their tables.** The "deferred edits" line names the tables the waiting
+  edits wait for, and a later line says when they apply. The count waiting at first differs between PCs, as the tables
+  load at different times. Before, nothing said that they applied later (#352).
 - **A mod can ask for more room on level-11 maps (SDK 17).** `generation_capacity` enlarges the map generator's lists
   of locations, minimap shapes, mission stamps and objective places for the largest request among the installed mods.
   The mod need not be the one that added the level. Without a request nothing changes
