@@ -1848,7 +1848,8 @@ static class InventorySyncTests
 
         // Every capture-side problem has an exit code of its own that reads back, clear of 0, 1 and 2.
         foreach (var problem in new[] { CaptureProblem.EvidenceFolder, CaptureProblem.LeftoverCapture, CaptureProblem.HostsBusy,
-            CaptureProblem.HostsDenied, CaptureProblem.Offline, CaptureProblem.Certificate, CaptureProblem.PortInUse, CaptureProblem.PortDenied, CaptureProblem.Signer })
+            CaptureProblem.HostsDenied, CaptureProblem.Offline, CaptureProblem.Certificate, CaptureProblem.PortInUse, CaptureProblem.PortDenied, CaptureProblem.Signer,
+            CaptureProblem.HostsIgnored })
         {
             var code = CaptureStart.ExitCode(problem);
             check(code >= 20 && CaptureStart.FromExitCode(code) == problem, problem + ": its exit code does not read back.");

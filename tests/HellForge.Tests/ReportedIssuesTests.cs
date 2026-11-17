@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json.Nodes;
 using System.Security.Cryptography;
 using System.Text;
@@ -8,6 +9,31 @@ static class ReportedIssuesTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
+        test("A capture whose hosts line Windows does not follow stops before the game opens, and says what to turn off (bug-report-0510)", () =>
+        {
+            // bug-report-0510: "hosts line added", then "system DNS: <api> -> 68.154.15.59", the game ran for ten minutes and
+            // the capture saw 0 connections; the player was told to pass the title screen.
+            IPAddress[] Parse(params string[] addresses) => [.. addresses.Select(IPAddress.Parse)];
+            check(CaptureHosts.Redirects(Parse("127.0.0.1")) && CaptureHosts.Redirects(Parse("127.0.0.1", "::1")) &&
+                CaptureHosts.Redirects(Parse("::ffff:1.2.3.4", "127.0.0.1")), "The capture's line, as the resolver answers it, was not taken.");
+            check(!CaptureHosts.Redirects(Parse("68.154.15.59")) && !CaptureHosts.Redirects(Parse("127.0.0.1", "68.154.15.59")) &&
+                !CaptureHosts.Redirects([]) && !CaptureHosts.Redirects(Parse("::1")), "A resolver that still answers the real address (or nothing) was taken.");
+
+            var system32 = @"C:\Windows\system32";
+            check(CaptureHosts.MovedHostsFolder(null, system32) == null && CaptureHosts.MovedHostsFolder(" ", system32) == null &&
+                CaptureHosts.MovedHostsFolder(@"C:\WINDOWS\System32\drivers\etc\", system32) == null, "The usual hosts folder reads as moved.");
+            check(CaptureHosts.MovedHostsFolder(@"D:\tools\hosts-switcher", system32) == @"D:\tools\hosts-switcher", "A moved hosts folder is not named.");
+
+            var code = CaptureStart.ExitCode(CaptureProblem.HostsIgnored);
+            check(CaptureStart.ExitCode(CaptureProblem.Signer) == 28 && code == 29 && CaptureStart.FromExitCode(code) == CaptureProblem.HostsIgnored,
+                "The earlier problems' exit codes moved, or the new one does not read back.");
+            var message = CaptureStart.Message(new CaptureFailure(CaptureProblem.HostsIgnored, CaptureUpstreamPins.ApiHost + " still leads to 68.154.15.59"),
+                ["Kaspersky Premium"], @"C:\HellForge\app\capture\HellForge.CaptureProxy.exe", @"C:\HellForge\logs\sync-1\proxy.log");
+            check(message.Contains("68.154.15.59", StringComparison.Ordinal) && message.Contains("VPN", StringComparison.Ordinal) &&
+                message.Contains("turn it off while you sync", StringComparison.Ordinal) && message.Contains(@"sync-1\proxy.log", StringComparison.Ordinal) &&
+                !message.Contains("Kaspersky", StringComparison.Ordinal) && !CaptureStart.SecurityProgramLikely(CaptureProblem.HostsIgnored),
+                "The message does not say what is in the way and what to do: " + message);
+        });
         test("The Peacemaker's ammunition rows name the Knight and Redeemer only for when they equip it (bug-report-0035)", () =>
         {
             var objects = EditorCatalog.Build()["objects"]!.AsArray().Select(o => o!).ToList();

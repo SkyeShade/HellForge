@@ -243,6 +243,7 @@ Cases HellForge already recognises:
   | "... kept the hosts file (...) open, so the sync could not change it" | The program it names keeps the hosts file open; it is usually a security program. Allow the capture in it. |
   | "The capture has not got ready after a minute; still waiting." | A security program is usually checking or holding the capture. It goes on if it is let through. |
   | "The capture could not reach HELLDIVERS 2's servers" | Check the internet connection. |
+  | "Windows does not follow the sync's line in the hosts file (... still leads to ...)" | A VPN, DNS changer or ad blocker answers name lookups itself, so the game would go past the sync. Turn it off while you sync. |
 
   A capture is left running when the launcher closed during a sync. The next sync stops it itself, along with its hosts
   line and certificate: restarting the PC is not needed for that.
