@@ -222,7 +222,7 @@ On `dev`, since 0.4.0-beta.
 - **Mods load as you download them.** A zip may hold the mod in folders, beside a readme, or in a zip inside it, as
   mod sites ship them. A folder unpacked into the mods folder works the same way, and a folder of several mods loads
   each one. A zip with several mods is refused, and Mod notices names them: one zip is one mod, as friends compare it
-  ([using mods](docs/mods.md#adding-mods)).
+  ([using mods](docs/mods.md#where-the-mod-may-sit), #451).
 - **Corpses at rest leave the physics world.** Up to 32 corpses on each machine kept their ragdoll bodies in the
   physics step until newer deaths pushed them out. Once they settle, they are frozen as the game freezes a sinking
   corpse, so they no longer react to hits ([performance fixes](docs/performance.md#corpse-freeze)).
@@ -481,7 +481,7 @@ On `dev`, since 0.4.0-beta.
 
 - **`mods` lists mods in folders around them.** Such a mod's `folder` is its own folder inside the one in the mods
   folder. `mod-remove` deletes the outermost folder that holds only that mod, and `removed` names it
-  ([external launchers](docs/external-launchers.md)).
+  ([external launchers](docs/external-launchers.md), #451).
 - **Several mods in one CLI call.** `mod-remove --ids a,b,c` and `mod-switch --ids a,b,c --on yes|no` change a list
   of mods, and `mod-add` takes `--file` more than once. The mods folder is read once for the whole list instead of once
   per mod, so a launcher sending 30 mods no longer waits for 30 reads. Every id is checked first: one unknown or refused
