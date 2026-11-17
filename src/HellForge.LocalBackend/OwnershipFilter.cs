@@ -5,10 +5,10 @@ namespace HellForge.LocalBackend;
 
 // Which items a profile's /Progression/inventory may serve (PaidContentSet says what is paid):
 // - Super Credits never, but for the Forge Credits the player earned (PaidContentSet.ForgeCreditsWallet).
-// - paid items (premium warbond tokens, Superstore items) only when the verified account snapshot holds them. Those it
-//   holds are served even when the profile lacks them, so premium ownership always follows the latest sync, whatever
-//   the player chose to import.
-// - a premium warbond's items only when one of its tokens is owned.
+// - paid items (premium warbond tokens, Superstore items) only when the verified account snapshot holds them, then even
+//   when the profile lacks them: premium ownership always follows the latest sync, whatever the player imported.
+// - a premium warbond's items only when one of its tokens is owned, or the snapshot holds the item itself while the
+//   account does not own that warbond: an item given away on its own (Killzone's, #368), not bought on its pages.
 // - a child item (a stratagem's loadout entry, a weapon's attachment) only when its parent may be served: the loadout
 //   checks a stratagem's child, so a premium stratagem's child served alone unlocked the stratagem (unlock-all profiles
 //   had every premium stratagem with no snapshot).
@@ -23,6 +23,8 @@ public sealed partial class OwnershipFilter
     // Each premium warbond token's warbond's tokens: one priced in Super Credits, and most have one priced in another item.
     // An account holds the warbond with either (PremiumContent's rule too), and the client buys only the first.
     readonly Dictionary<uint, uint[]> warbondTokens = [];
+    // Premium warbond items the snapshot holds although the account owns none of their warbonds' tokens (#368).
+    readonly HashSet<uint> heldAlone = [];
 
     // Whether the verified snapshot holds this paid item; a premium warbond's token, whether it holds the warbond: bought on
     // live, with any of its tokens.
@@ -36,7 +38,16 @@ public sealed partial class OwnershipFilter
             if (MixId(item) is { } id && paid.IsPaid(id)) owned[id] = (JsonObject)item.DeepClone();
         foreach (var warbond in paid.Warbonds)
             foreach (var token in warbond.Tokens) warbondTokens[token] = warbond.Tokens;
+        // Only for warbonds the account does not own: an owned warbond's items follow its token, so a profile that earns
+        // its warbonds still buys an owned one with Forge Credits.
+        foreach (var item in snapshotItems ?? [])
+            if (MixId(item) is { } id && Amount(item) > 0 && paid.TryGetWarbondTokens(id, out var tokens) && !tokens.Any(owned.ContainsKey))
+                heldAlone.Add(id);
     }
+
+    static long Amount(JsonObject item) =>
+        item["amount"] is JsonValue value && value.GetValueKind() == JsonValueKind.Number && long.TryParse(value.ToJsonString(),
+            System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out var amount) ? amount : 0;
 
     public PaidContentSet Paid { get; }
 
@@ -65,7 +76,7 @@ public sealed partial class OwnershipFilter
         if (PaidContentSet.IsSuperCredits(mixId)) return PaidContentSet.IsForgeCredits(mixId);
         if (Paid.WarbondTokens.Contains(mixId)) return Unlocked(mixId, held);
         if (Paid.IsPaid(mixId)) return owned.ContainsKey(mixId);
-        return !Paid.TryGetWarbondTokens(mixId, out var tokens) || tokens.Any(t => Unlocked(t, held));
+        return !Paid.TryGetWarbondTokens(mixId, out var tokens) || tokens.Any(t => Unlocked(t, held)) || heldAlone.Contains(mixId);
     }
 
     // The paid items an inventory section holds (amount above 0).

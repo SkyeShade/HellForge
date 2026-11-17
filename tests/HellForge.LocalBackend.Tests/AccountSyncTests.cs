@@ -314,6 +314,33 @@ static class AccountSyncTests
         paid.TryGetWarbondTokens(stratagem, out var tokens);
         var owner = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = tokens![0], ["amount"] = 1, ["isDiscovered"] = true }]);
         check(owner.IsAllowed(stratagem) && owner.IsAllowed(entry), "A premium stratagem's loadout entry was withheld from its owner.");
+        HeldAlone(paid, ids, (entry, stratagem), check);
+    }
+
+    // An item of a premium warbond the account does not own, held on its own (#368: Killzone's STA-11 and PLAS-39, given
+    // away): served, the warbond's other items not. A stratagem held that way keeps its loadout entry. An owned warbond's
+    // items still follow its token, so a profile that earns its warbonds buys it with Forge Credits first.
+    static void HeldAlone(PaidContentSet paid, Ids ids, (uint Entry, uint Stratagem) premium, Action<bool, string> check)
+    {
+        static JsonObject Held(uint id) => new() { ["mixId"] = id, ["amount"] = 1, ["isDiscovered"] = true };
+        static HashSet<uint> ServedFrom(OwnershipFilter filter, params uint[] profileItems) =>
+            [.. filter.FilterInventoryResponse(JsonSerializer.SerializeToElement(new { items = profileItems.Select(id => new { mixId = id, amount = 1 }).ToArray() }))
+                .GetProperty("items").EnumerateArray().Select(i => i.GetProperty("mixId").GetUInt32())];
+        var otherWarbond = paid.Warbonds.First(w => w.Tokens.Length > 0 && w.Items.Any(i => i.MixId == ids.OtherWarbondItem));
+        var sibling = otherWarbond.Items.Select(i => i.MixId).First(i => i != ids.OtherWarbondItem && paid.TryGetWarbondTokens(i, out _) && !paid.IsPaid(i));
+        var single = new OwnershipFilter(paid, [Held(ids.OtherWarbondItem)]);
+        check(single.IsAllowed(ids.OtherWarbondItem) && !single.IsAllowed(sibling) && !single.Owns(otherWarbond.Tokens[0]),
+            "A premium warbond item held on its own was withheld, or it opened its warbond.");
+        var alone = ServedFrom(single, ids.OtherWarbondItem, sibling);
+        check(alone.Contains(ids.OtherWarbondItem) && !alone.Contains(sibling), "The inventory served for an item held on its own is wrong.");
+        check(!new OwnershipFilter(paid, [new JsonObject { ["mixId"] = ids.OtherWarbondItem, ["amount"] = 0 }]).IsAllowed(ids.OtherWarbondItem),
+            "An item the snapshot lists with none held was served.");
+        var lone = new OwnershipFilter(paid, [Held(premium.Stratagem)]);
+        check(lone.IsAllowed(premium.Stratagem) && lone.IsAllowed(premium.Entry), "A premium stratagem held on its own lost its loadout entry.");
+        var earning = new OwnershipFilter(paid, [Held(ids.OwnedToken), Held(ids.OwnedWarbondItem)]) { EarnWarbonds = true };
+        check(!ServedFrom(earning, ids.OwnedWarbondItem).Contains(ids.OwnedWarbondItem) &&
+            ServedFrom(earning, ids.OwnedWarbondItem, ids.OwnedToken).Contains(ids.OwnedWarbondItem),
+            "An owned warbond's item opened on a profile that earns its warbonds before the warbond was bought, or not after.");
     }
 
     // Each premium warbond stratagem's loadout entry (catalogue category 10) and the stratagem it belongs to.

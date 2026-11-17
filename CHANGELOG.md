@@ -346,6 +346,10 @@ On `dev`, since 0.4.0-beta.
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
+- **Warbond items you got on their own come with Sync Inventory.** An item of a premium warbond you do not own, such
+  as Killzone's STA-11 SMG and PLAS-39 Accelerator Rifle given away on their own, stayed locked after a sync. The
+  backend now serves an item your sealed snapshot holds when you do not own its warbond. The warbond's other items stay
+  locked, and an owned warbond still waits for its Forge Credits purchase on a profile that earns its warbonds (#368).
 - **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
   "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
   service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
