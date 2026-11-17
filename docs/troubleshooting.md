@@ -552,7 +552,9 @@ scrubbed. Open a GitHub issue then opens the new-issue page; nothing is sent unt
 Settings > Troubleshooting has two switches for harder problems. Both apply to the next session.
 
 - Engine log starts the game with its own log switched on (`--log-to-file`) and copies that log into the session's logs,
-  so Save logs to Desktop includes it. It helps find why a join or connection fails.
+  so Save logs to Desktop includes it. It helps find why a join or connection fails. On some PCs the game crashes as
+  it opens that log (`helldivers2.exe+0x5ce339`, before the game connects). The launcher then names the setting: turn
+  it off and press PLAY.
 - Crash dump writes a full memory dump of the game (about 1 GB) into the session's logs if it crashes. Without it, a
   crash still leaves a small dump (`crash-<process id>.dmp`: the game's threads and the memory they point to, not all
   of it). Either can hold what the game had in memory, your Steam account name for one, so only send a dump to people you

@@ -150,10 +150,36 @@ public static partial class CrashReport
         return null;
     }
 
-    // The known cause of a run's crash, from its loader log, or null.
+    // helldivers2.exe+0x5ce339 (build 25480438), only with the engine log on (--log-to-file, the Engine log setting): the
+    // engine could not create its console log file (CreateFileW at 0x5CE240 failed with an error other than a sharing
+    // violation) and crashed on its way to saying so. The error path (0x5CE322, "Cannot open file for output") reads the
+    // file name back through a stack slot (rbp+0x878) that holds other text by then, so the game reads text as an address.
+    // A game started without the switch never opens that file (#423, #424, #263). Windows records it, the loader does not:
+    // the game has not loaded game.dll yet.
+    public const string EngineLogAdvice = "the game's own log (the Engine log setting) could not open its log file and the " +
+        "game crashed as it said so. Turn Engine log off in Settings > TROUBLESHOOTING (or play with HellForge.Cli's " +
+        "--engine-log no), then press PLAY.";
+
+    public static string? KnownWindowsCause(string? module, string? offset, bool engineLog, string buildId) =>
+        engineLog && buildId == "25480438" && "helldivers2.exe".Equals(module, StringComparison.OrdinalIgnoreCase)
+            && "0x5ce339".Equals(offset, StringComparison.OrdinalIgnoreCase) ? EngineLogAdvice : null;
+
+    // The known cause in a run's result.json: Windows' record of the crash and the engine log setting.
+    static string? KnownWindowsCause(JsonElement? result)
+    {
+        if (result is not { } r || !r.TryGetProperty("windowsCrash", out var crash) || crash.ValueKind != JsonValueKind.Object) return null;
+        var engineLog = r.TryGetProperty("engineLog", out var on) && on.ValueKind == JsonValueKind.True;
+        return KnownWindowsCause(SessionFiles.Text(crash, "module"), SessionFiles.Text(crash, "offset"), engineLog, SupportedBuild.Current.BuildId);
+    }
+
+    // The known cause of a run's crash, from its loader log or Windows' record of it, or null.
     public static string? KnownCause(string run)
     {
-        try { return LoaderLog(run) is { } log ? KnownCause(FindFault(Tail(log, int.MaxValue)), SupportedBuild.Current.BuildId) : null; }
+        try
+        {
+            if (LoaderLog(run) is { } log && KnownCause(FindFault(Tail(log, int.MaxValue)), SupportedBuild.Current.BuildId) is { } cause) return cause;
+            return KnownWindowsCause(SessionFiles.ReadJson(Path.Combine(run, "result.json")));
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException) { return null; }
     }
 
@@ -240,7 +266,7 @@ public static partial class CrashReport
             text.AppendLine("Failure: " + scrub.Apply(failure));
         text.AppendLine(fault == null ? "Crash: the mod loader noted none"
             : scrub.Apply($"Crash: {fault.Code} at {fault.Where} on thread {fault.Thread}" + (fault.ByModule != null ? $" (by module: {fault.ByModule})" : "")));
-        if (KnownCause(fault, SupportedBuild.Current.BuildId) is { } cause) text.AppendLine("Known cause: " + cause);
+        if ((KnownCause(fault, SupportedBuild.Current.BuildId) ?? KnownWindowsCause(result)) is { } cause) text.AppendLine("Known cause: " + cause);
         WindowsCrashLine(text, result, scrub);
     }
 

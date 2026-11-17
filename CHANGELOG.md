@@ -335,6 +335,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **A crash at start with Engine log on is named.** On some PCs the game closed as it started, at
+  `helldivers2.exe+0x5ce339`, whenever Engine log was on: the game's own log could not open its file and crashed as it
+  said so. The launcher and the crash report now name the setting and say to turn it off (#423, #424, #263).
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
