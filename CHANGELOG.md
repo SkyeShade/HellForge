@@ -339,6 +339,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
+  after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
+  them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before
+  any mod's set-up. If the game still made them first, level 11 is off for that start and the log says why (#422).
 - **A language the game copy lacks no longer crashes every start.** Switching the game's voice or text language to one
   whose language pack is not in the copy, such as Japanese, crashed the game, and every start after it. Before each
   session HellForge now sets such a language back to English and says how to add its pack (#343).

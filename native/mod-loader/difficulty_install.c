@@ -6,7 +6,7 @@ static const char* (*const kDifficultyChecks[])(uintptr_t game) = {
     DifficultyReadersFailed, KeepTenFailed, BandFailed, LevelReadersFailed, BoardFailed, SpreadFailed, HashInsertFailed,
     IconsFailed, RangesFailed, EnemyReadersFailed, RostersFailed, BarFailed,
     MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed, TownPinsFailed, StreetPinsFailed, RecordMapFailed, TerrainPinsFailed, /* a map_scale above 1 */
-    LocationRefsFailed, ObjectiveListFailed, ObjectiveStubSitesFailed,                        /* the moved generation block */
+    GenerationBlockFailed, ObjectiveStubSitesFailed,                                          /* the moved generation block */
     RestartSitesFailed, CaptureSiteFailed, MissionSitesFailed, CountdownSitesFailed, CardViewFailed, MapViewFailed,
     ArtilleryPinsFailed};
 
@@ -33,7 +33,7 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     MoveBandsAndIcons,
     JumpToMapStubs, MoveZoneTable, PrepareStructuredStubs, InstallVista, InstallCull, PrepareFlagsStubs, JumpToStructured,
     InstallClusterGuards, InstallAppendGuards, InstallClusterRings, InstallTowns, InstallStreets, InstallRecordMap, InstallTerrain, InstallFootprintWatch, InstallNavGrid, /* a map_scale above 1 */
-    MoveGenerationBlock, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, InstallMineLimit, JumpToMapView,
+    MoveGenerationBlockStep, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, InstallMineLimit, JumpToMapView,
     JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs, InstallArtilleryShells};
 
 /* B.2: the same steps by name, so a refusal says which one (and how many completed) kept their patches. */
