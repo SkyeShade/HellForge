@@ -126,5 +126,51 @@ static class ReportedIssuesTests
             check(new[] { "bin/nvngx_dlss.dll", "bin/libxess.dll", "bin/amd_fidelityfx_upscaler_dx12.dll" }.All(p =>
                 SupportedBuild.IsReplaceable(p) && SupportedBuild.Current.Files.Any(f => f.Path == p)), "The upscalers are not the build's.");
         });
+
+        test("The capture's connection to the API ignores a system proxy (#346)", () =>
+        {
+            // What the API is sent first, through a ConnectCallback that reaches a stand-in for it on loopback, while the
+            // machine has a proxy set: a request that took the proxy names the whole URL (for HTTPS: CONNECT) instead.
+            string FirstLine(System.Net.Http.SocketsHttpHandler handler)
+            {
+                var api = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+                api.Start();
+                try
+                {
+                    var port = ((System.Net.IPEndPoint)api.LocalEndpoint).Port;
+                    handler.ConnectCallback = async (_, token) =>
+                    {
+                        var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+                        await socket.ConnectAsync(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port), token);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    };
+                    var answered = Task.Run(() =>
+                    {
+                        using var client = api.AcceptTcpClient();
+                        using var stream = client.GetStream();
+                        var reader = new StreamReader(stream, Encoding.ASCII);
+                        var first = reader.ReadLine() ?? "";
+                        while (reader.ReadLine() is { Length: > 0 }) { }
+                        var reply = Encoding.ASCII.GetBytes("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                        stream.Write(reply);
+                        return first;
+                    });
+                    using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+                    using var response = http.GetAsync("http://api.example.test/api/Probe").GetAwaiter().GetResult();
+                    return answered.Wait(TimeSpan.FromSeconds(10)) ? answered.Result : "(nothing)";
+                }
+                finally { api.Stop(); }
+            }
+            var systemProxy = System.Net.Http.HttpClient.DefaultProxy;
+            System.Net.Http.HttpClient.DefaultProxy = new System.Net.WebProxy("http://127.0.0.1:7897");
+            try
+            {
+                check(FirstLine(new System.Net.Http.SocketsHttpHandler()).StartsWith("GET http://api.example.test/", StringComparison.Ordinal),
+                    "The stand-in proxy was not taken by a default handler, so this test proves nothing.");
+                var line = FirstLine(CaptureUpstream.Handler());
+                check(line == "GET /api/Probe HTTP/1.1", "The capture's handler sent: " + line);
+            }
+            finally { System.Net.Http.HttpClient.DefaultProxy = systemProxy; }
+        });
     }
 }
