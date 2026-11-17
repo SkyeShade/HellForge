@@ -786,6 +786,7 @@ static void WatchInstalls(void)
     PerfSpeedTreeWatch();
     RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
     RenderVersionRehashWatch();
+    PerfRenderWaitHelpWatch(); /* from the start too: the render thread waits from its first frame */
     PerfScatterCamerasWatch();
     TreeLimitsWatch();
     SpanRescueInstall();

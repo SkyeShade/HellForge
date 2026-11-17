@@ -16,3 +16,4 @@
 #include "perf_early_stamp_packages.c" /* after perf_scatter_cameras.c: it pins part of the same dispatcher bytes */
 #include "perf_overlap_grid.c" /* op 0x2B's overlap test on a grid of each job's records */
 #include "perf_span_rescue.c" /* span-rescue: rpmalloc spans stranded by other threads' frees */
+#include "perf_render_wait_help.c" /* the render thread runs its own jobs while it waits for them */
