@@ -448,6 +448,9 @@ On `dev`, since 0.4.0-beta.
 
 ### For mod makers
 
+- **`modloader.log` follows edits that wait for their tables.** The "deferred edits" line names the tables the waiting
+  edits wait for, and a later line says when they apply. The count waiting at first differs between PCs, as the tables
+  load at different times. Before, nothing said that they applied later (#352).
 - **A mod can ask for more room on level-11 maps (SDK 17).** `generation_capacity` enlarges the map generator's lists
   of locations, minimap shapes, mission stamps and objective places for the largest request among the installed mods.
   The mod need not be the one that added the level. Without a request nothing changes
