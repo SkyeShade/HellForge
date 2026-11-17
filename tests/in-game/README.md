@@ -40,6 +40,7 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `pod-break.json` | a mod's support weapon from a broken hellpod: an EAT-17 copy (`register_entity`) on a copy of the EAT-17's rack and the vanilla rack, each called in and broken by the game's own rack death; the copy must drop with the EAT-17's pickup on (needs the harness's `call` step). Picking one up is by hand |
 | `pod-break-probe/` | the test mod `pod-break.json` runs (`hellforge.pod-break-probe`), never shipped: both stratagems in the loadout on the ship, each rack broken 20 s after it spawns, the launchers' interactions and which are on, before and after |
 | `stratagem-uses-probe/` | the test mod `stratagem-uses.json` runs (`hellforge.stratagem-uses-probe`), never shipped: the stats edit, the loadout, the uses left the HUD shows after each change, the Railcannon's beacons counted |
+| `quit-job-pool.json` | a quit after a mission ends with exit code 0 where the game crashed at `helldivers2.exe+0x626296` (#332): the render guards in, the engine's quit pinned, no crash at the quit. Needs the harness to end the session through the game's own quit, with a mod set that fills the job pool then |
 
 ## Running one
 
