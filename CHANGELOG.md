@@ -339,6 +339,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **No more `.partial` files piling up in `mods/.unpacked`.** When another program held a zipped mods' cache file
+  while the mods were listed, each listing left a `.zip-hashes.json.<id>.partial` behind: a launcher listing them every
+  5 seconds left 11,405. Such a write now removes its partial, and the next start removes ones left before (#331).
 - **Explosions no longer knock you down through cover.** Behind a rock or a wall, a blast's damage already stopped,
   but its knockback still threw the Helldiver: the game checks the line of sight only for the damage. The knockback
   now waits for the same check and comes only when the damage does. Close blasts the game does not check keep
