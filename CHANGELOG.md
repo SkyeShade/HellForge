@@ -219,6 +219,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **The render thread helps with its own culling jobs.** While it waited for them it could not take them, so it
+  polled empty job channels until pool workers woke. At D11 that waiting fell from 16% to 8% of its time, about 1 ms a
+  frame; frame rate on the test PC stayed the same ([performance fixes](docs/performance.md#render-wait-help)).
 - **Mods load as you download them.** A zip may hold the mod in folders, beside a readme, or in a zip inside it, as
   mod sites ship them. A folder unpacked into the mods folder works the same way, and a folder of several mods loads
   each one. A zip with several mods is refused, and Mod notices names them: one zip is one mod, as friends compare it

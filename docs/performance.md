@@ -36,10 +36,11 @@ out this way without another build.
 | `tree-cell-limits` | After trees are taken out, SpeedTree's forest keeps both axes of the cut that limits each view to cells with trees | On a 16 km map, a view walked about 20,000 cells instead of 120,000 to 325,000 |
 | `early-stamp-packages` | A mission's stamp packages are requested during its stamp planning, before the load step that asks for them | The wait for them on a 16 km map was about 13 s; the fix's own saving is not measured |
 | `overlap-grid` | Mission generation's stamp placement tests each candidate only against the records near it, found on a grid | 16 km map: a test visits 8.2 of an item's 136.7 records on average; the pass took about 80 s without it. Normal size: unmeasured |
+| `span-rescue` | When a load ends, memory blocks that other threads freed go back into use instead of waiting for their neighbours | 16 km map: 355 MB back in one pass. Normal size: not measured |
+| `render-wait-help` | The render thread, while it waits for its culling jobs, runs them itself instead of polling channels they are not in | D11, standing: its polling in those waits 16% to 8% of its time, about 1 ms a frame; frame rate unchanged (55.0 against 54.6 fps) |
 
 The fixes that run while a level is generated have their sections in [Performance fixes in level
 generation](performance-loading.md): `scatter-cameras`, `knn-grid`, `spread-sort`, `early-stamp-packages` and `overlap-grid`.
-| `span-rescue` | When a load ends, memory blocks that other threads freed go back into use instead of waiting for their neighbours | 16 km map: 355 MB back in one pass. Normal size: not measured |
 
 ## safe-read
 
@@ -402,3 +403,32 @@ Limits:
 - It is pinned to game build 25480438: rpmalloc's code, its setup and every place that reaches a trim. Another build
   leaves it off, with a line in `modloader.log`. If the renderer's or Havok's code differs, only that thread is left out.
 - Each pass writes one line to `modloader.log` with what it found and moved.
+
+## render-wait-help
+
+The engine's job system puts each job in a channel: its affinity (any thread, main-preferring, render-preferring,
+workers only, background, main only, render only) times 3, plus its priority (0 first, to 2). A thread that waits
+for jobs runs queued ones meanwhile, from its own list of channels, three for each priority on the render thread.
+
+- **What the game does.** The render thread takes only the first `2 * (priority + 1)` channels of that list.
+  Waiting at priority 0 it never takes its render-preferring jobs, at priority 1 never their priority-1 channel.
+  Its culling waits run at those priorities, and its culling jobs are in exactly those channels. So it polls empty
+  channels while pool workers wake up and run the chain one stage after another.
+- **What changes.** The render thread's branch of the poll and of the wait for a counter count `3 * (priority + 1)`
+  channels, at most 6 (`native/mod-loader/perf_render_wait_help.c`). At priority 2, where it idles between frames,
+  nothing changes.
+- **Why the results stay the same.** The same jobs run, in the same dependency order; only which thread runs some of
+  them changes. Every channel it now takes in a wait is one it already takes in other waits inside the same frame, so
+  no new kind of job runs on it. The main thread, pool workers and background workers keep their code.
+- **Measured.** A D11 Automaton map, the same seed, the Helldiver standing at the drop, 3 sessions each way:
+
+  | | Fix on | Fix off |
+  |---|---|---|
+  | Render thread polling in its culling waits | 8.1% of its time | 15.9% |
+  | Render thread running jobs in those waits | 5.4% | 2.9% |
+  | Frame rate | 55.0 ±1.5 fps | 54.6 ±2.3 fps |
+
+  The waits end about 1 ms a frame sooner. On that PC the frame is paced by Reflex and the GPU, so the frame rate
+  does not move; a PC where the render thread sets the pace may gain.
+- **Limits.** It is pinned to build 25480438's job system and render thread code. Another build leaves it off, with a
+  line in `modloader.log`. The main thread has the same short count; this fix leaves it as it is.
