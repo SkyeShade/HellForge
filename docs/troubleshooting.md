@@ -244,6 +244,17 @@ Cases HellForge already recognises:
   | "The capture has not got ready after a minute; still waiting." | A security program is usually checking or holding the capture. It goes on if it is let through. |
   | "The capture could not reach HELLDIVERS 2's servers" | Check the internet connection. |
 
+  Once the game runs, the launcher reads the capture's `proxy.log` and says where the game's login stopped, without
+  waiting out the ten minutes:
+
+  | Message | What to do |
+  | --- | --- |
+  | "HELLDIVERS 2 never contacted the sync" | A VPN, DNS changer or ad blocker sent the game past the sync. Turn it off while you sync. |
+  | "... the sync could not reach HELLDIVERS 2's servers (...)" | A firewall, VPN or network filter blocks the capture. Allow it, or turn the filter off while you sync. |
+  | "Something on this PC stepped into the sync's connection ... and showed its own certificate" | An antivirus's HTTPS or web scanning. Turn it off while you sync. |
+  | "HELLDIVERS 2 reached the sync but did not accept its certificate" | A security program guards Windows' trusted certificates. Allow `HellForge.CaptureProxy.exe` in it. |
+  | "HELLDIVERS 2's servers refused the game's login (HTTP ...)" | The servers may be down: check that the normal game logs in, then sync again. |
+
   A capture is left running when the launcher closed during a sync. The next sync stops it itself, along with its hosts
   line and certificate: restarting the PC is not needed for that.
 

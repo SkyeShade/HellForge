@@ -516,6 +516,14 @@ async Task Handle(TcpClient client)
     using var ssl = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
     var watch = Stopwatch.StartNew();
     Log($"{id} connection from {client.Client.RemoteEndPoint}");
+    // A port check (the Linux launcher's look at the relay) connects and closes without a byte. Logged as a TLS failure, it
+    // sent players after certificates (bug-report-0551), and the launcher's reading of this log (CaptureStall) counts
+    // TLS failures as the game refusing the certificate.
+    if (await SentNothing(client))
+    {
+        Log($"{id} closed before sending anything (a port check, not the game)");
+        return;
+    }
     if (!await Handshake(ssl, id, watch)) return;
     var stage = "reading the request";
     try
@@ -542,6 +550,13 @@ async Task Handle(TcpClient client)
     {
         Log($"{id} failed while {stage} after {CaptureDiagnostics.Milliseconds(watch)}: {CaptureDiagnostics.Chain(error)}");
     }
+}
+
+// True when the client closed its side before sending a byte (the first byte is only looked at, so TLS still reads it).
+static async Task<bool> SentNothing(TcpClient client)
+{
+    try { return await client.Client.ReceiveAsync(new byte[1], SocketFlags.Peek) == 0; }
+    catch (SocketException) { return false; }
 }
 
 async Task<bool> Handshake(SslStream ssl, string id, Stopwatch watch)

@@ -8,6 +8,62 @@ static class ReportedIssuesTests
 {
     public static void Register(Action<string, Action> test, Action<bool, string> check, Action<Action> reject, string root)
     {
+        test("A sync that read nothing says where the game's login stopped, from proxy.log (#346, bug-report-0495, bug-report-0510, bug-report-0551)", () =>
+        {
+            static string Log(params string[] lines) => string.Join("\n", lines) + "\n";
+            string[] start = ["12:43:01.000 hosts line added", "12:43:01.002 system DNS: api.live.prod.thehelldiversgame.com -> 127.0.0.1",
+                "12:43:01.003 listening on port 443"];
+            // bug-report-0510: the game ran ten minutes and never connected (the resolver went past the hosts line).
+            var silent = Log([.. start, "12:43:30.000 status: 0 connections, 0 requests, last connection 30 s ago, game running, captured no",
+                "12:53:01.000 nothing captured", "12:53:01.001 summary: 0 connections, 0 requests answered by the API"]);
+            check(CaptureStall.Read(silent, noConnectionYet: false, linux: false) == null, "A game that has not had its time yet is called silent.");
+            check(CaptureStall.Read(silent, noConnectionYet: true, linux: false) is { Kind: CaptureStall.Kind.NeverConnected } never &&
+                never.Message.Contains("VPN", StringComparison.Ordinal) && !never.Message.Contains("title screen", StringComparison.Ordinal),
+                "A game that never connected is not told as one.");
+
+            // #346 and bug-report-0495: a Windows system proxy took the capture's upstream (fixed on its own); the message says
+            // the servers could not be reached, with the reason.
+            string[] reached = ["12:43:20.100 #1 connection from 127.0.0.1:64215",
+                "12:43:20.232 #1 TLS Tls13 TLS_AES_256_GCM_SHA384 http/1.1, sni api.live.prod.thehelldiversgame.com in 132 ms",
+                "12:43:20.240 #1 GET /api/Configuration/... api.live.prod.thehelldiversgame.com, body 0 bytes (application/json); headers: Accept; query: none",
+                "12:43:20.242 upstream connected to 68.154.15.59:443 in 2 ms"];
+            var proxied = Log([.. start, .. reached,
+                "12:43:21.124 #1 failed while asking the API after 884 ms: HttpRequestException: The proxy tunnel request to proxy 'http://127.0.0.1:7897/' failed with status code '400'."]);
+            check(CaptureStall.Read(proxied, noConnectionYet: false, linux: false) is { Kind: CaptureStall.Kind.ServersUnreachable } unreachable &&
+                unreachable.Message.Contains("proxy tunnel request", StringComparison.Ordinal) && unreachable.Message.Contains("firewall", StringComparison.Ordinal),
+                "A capture that could not reach the servers is not told with its reason.");
+
+            // An antivirus's HTTPS scanning: the signing capture refuses a certificate without the pinned roots.
+            var scanned = Log([.. start, .. reached, "12:43:20.300 upstream refused: the API's certificate chain holds none of HellForge's pinned keys",
+                "12:43:20.301 #1 failed while asking the API after 61 ms: HttpRequestException: The SSL connection could not be established, see inner exception."]);
+            check(CaptureStall.Read(scanned, noConnectionYet: true, linux: false) is { Kind: CaptureStall.Kind.Intercepted } intercepted &&
+                intercepted.Message.Contains("HTTPS", StringComparison.Ordinal) && intercepted.Message.Contains("pinned keys", StringComparison.Ordinal),
+                "An intercepted upstream is not told as one.");
+
+            // The game refused the capture's certificate; the Linux launcher's port check (bug-report-0551) is not the game.
+            string[] portCheck = ["12:43:01.700 #1 connection from 127.0.0.1:51804", "12:43:01.701 #1 closed before sending anything (a port check, not the game)"];
+            var refused = Log([.. start, .. portCheck, "12:43:20.100 #2 connection from 127.0.0.1:51900",
+                "12:43:20.140 #2 TLS handshake failed after 40 ms: 0x80090326 AuthenticationException: Authentication failed"]);
+            check(CaptureStall.Read(refused, noConnectionYet: true, linux: false) is { Kind: CaptureStall.Kind.CertificateRefused } windows &&
+                windows.Message.Contains("HellForge.CaptureProxy.exe", StringComparison.Ordinal) &&
+                CaptureStall.Read(refused, noConnectionYet: true, linux: true) is { Kind: CaptureStall.Kind.CertificateRefused } linux &&
+                linux.Message.Contains("Proton prefix", StringComparison.Ordinal), "A refused certificate is not told for the platform.");
+            check(CaptureStall.Read(Log([.. start, .. portCheck]), noConnectionYet: true, linux: true) is { Kind: CaptureStall.Kind.NeverConnected },
+                "The launcher's port check counts as the game.");
+
+            // The servers refused the login: not the player's title screen either.
+            string[] tls = ["12:43:20.100 #1 connection from 127.0.0.1:55439",
+                "12:43:20.108 #1 TLS Tls12 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 http/1.1, sni api.live.prod.thehelldiversgame.com in 8 ms"];
+            check(CaptureStall.Read(Log([.. start, .. tls, "12:43:20.400 POST /api/Account/Login 503 120 bytes"]), noConnectionYet: true, linux: false)
+                is { Kind: CaptureStall.Kind.LoginRefused } down && down.Message.Contains("HTTP 503", StringComparison.Ordinal), "A refused login is not told as one.");
+
+            // #89's log: the login was answered, so what is left is the title screen (no stall); Windows line ends; no log at all.
+            var answered = Log([.. start, .. tls, "12:11:29.388 POST /api/Account/Login 200 52 bytes",
+                "12:11:29.401 login answered: the game's own reads that follow are kept"]);
+            check(CaptureStall.Read(answered, true, false) == null && CaptureStall.Read(answered.Replace("\n", "\r\n", StringComparison.Ordinal), true, false) == null &&
+                CaptureStall.Read(null, true, false) == null && CaptureStall.Read("", true, false) == null, "A login the servers answered is called a stall.");
+            check(CaptureStall.Read(Log([.. start, .. tls]), true, false) == null, "A game that reached the capture and waits at the title screen is called a stall.");
+        });
         test("The Peacemaker's ammunition rows name the Knight and Redeemer only for when they equip it (bug-report-0035)", () =>
         {
             var objects = EditorCatalog.Build()["objects"]!.AsArray().Select(o => o!).ToList();

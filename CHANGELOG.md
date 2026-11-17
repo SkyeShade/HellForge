@@ -346,6 +346,12 @@ On `dev`, since 0.4.0-beta.
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
+- **A sync that reads nothing says why.** It said "pass the title screen" after ten minutes for every stall. The
+  launcher now reads the capture's log while the game runs and says within seconds where the login stopped. The game
+  never reached the sync (a VPN or DNS tool), or the sync could not reach the servers (a firewall, a proxy). Or
+  something showed its own certificate (an antivirus's HTTPS scanning), the game refused the sync's certificate, or the
+  servers refused the login ([troubleshooting](docs/troubleshooting.md)). The Linux launcher's port check no longer shows in the log as a failed
+  TLS handshake.
 - **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
   "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
   service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
