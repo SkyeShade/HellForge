@@ -155,12 +155,29 @@ static int JwPinned(uintptr_t exe)
     return 1;
 }
 
-/* The import is the kernel's function (kernel32's export or the kernelbase one it forwards to). */
-static int JwImportIs(uintptr_t value, const char* name)
+static HMODULE JwModuleOf(uintptr_t address)
 {
-    HMODULE k32 = GetModuleHandleA("kernel32.dll"), base = GetModuleHandleA("kernelbase.dll");
-    FARPROC a = k32 ? GetProcAddress(k32, name) : NULL, b = base ? GetProcAddress(base, name) : NULL;
-    return value != 0 && (value == (uintptr_t)a || value == (uintptr_t)b);
+    HMODULE module = NULL;
+    if (address == 0 || !GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        (LPCSTR)address, &module)) return NULL;
+    return module;
+}
+
+/* The two imports lead into the kernel or the exe's own import stubs (its protector redirects them there), and on a
+ * semaphore of HellForge's own they release, wait without a count and time out as ReleaseSemaphore and
+ * WaitForSingleObject do. */
+static int JwImportsWork(uintptr_t exe, JwReleaseFn release, JwWaitFn wait)
+{
+    HMODULE k32 = GetModuleHandleA("kernel32.dll"), base = GetModuleHandleA("kernelbase.dll"), own = JwModuleOf(exe);
+    HMODULE r = JwModuleOf((uintptr_t)release), w = JwModuleOf((uintptr_t)wait);
+    if (r == NULL || w == NULL || (r != k32 && r != base && r != own) || (w != k32 && w != base && w != own)) return 0;
+    HANDLE probe = CreateSemaphoreA(NULL, 0, 4, NULL);
+    if (probe == NULL) return 0;
+    LONG previous = -1;
+    int works = release(probe, 2, &previous) && previous == 0 && wait(probe, 0) == WAIT_OBJECT_0 &&
+        wait(probe, 0) == WAIT_OBJECT_0 && wait(probe, 1) == WAIT_TIMEOUT;
+    CloseHandle(probe);
+    return works;
 }
 
 /* call rel32 to a stub in the page near the exe, then a nop: the 6-byte call [rip] it replaces. */
@@ -187,7 +204,7 @@ static int JwInstallAt(uintptr_t exe)
         return -1;
     }
     uintptr_t release = *(volatile uintptr_t*)(exe + JW_RELEASE_SLOT), wait = *(volatile uintptr_t*)(exe + JW_WAIT_SLOT);
-    if (!JwImportIs(release, "ReleaseSemaphore") || !JwImportIs(wait, "WaitForSingleObject"))
+    if (!JwImportsWork(exe, (JwReleaseFn)release, (JwWaitFn)wait))
     {
         Note("performance fix %s: not installed; the job system's imports are not ReleaseSemaphore and WaitForSingleObject", JW_NAME);
         return -1;

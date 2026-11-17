@@ -252,9 +252,16 @@ static void JwtStates(uint8_t* image, uintptr_t exe)
     JwWatchAt(exe);
     assert(g_jwState == -1);
     memcpy(image + JW_CALLBACK, &callback, 8);
-    g_jwState = 0; /* the import slot is not the kernel's ReleaseSemaphore (it is the counter): refused */
+    g_jwState = 0; /* the import leads outside the kernel and the exe (the counter): refused */
     JwWatchAt(exe);
     assert(g_jwState == -1);
+    uint64_t counted, wrong = (uint64_t)(uintptr_t)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetLastError");
+    memcpy(&counted, image + JW_RELEASE_SLOT, 8);
+    memcpy(image + JW_RELEASE_SLOT, &wrong, 8); /* in the kernel, but no release: refused */
+    g_jwState = 0;
+    JwWatchAt(exe);
+    assert(g_jwState == -1);
+    memcpy(image + JW_RELEASE_SLOT, &counted, 8);
     SetEnvironmentVariableA("HELLFORGE_PERF_OFF", "heap-trim, Job-Wake");
     g_jwState = 0;
     JwWatchAt(exe);
@@ -344,8 +351,8 @@ static void JobWakeFixture(void)
     VirtualFree(image, 0, MEM_RELEASE);
     printf("PASS job wake: the game's ready callback and worker loop run on a synthetic image with real semaphores and "
         "threads, 3000 bursts of 1-12 readied jobs each run to the end (slowest %.1f ms as the game has it, %.1f ms "
-        "rewritten); pins refuse any changed byte, wait for decoded code and give up, refuse an import that is not the "
-        "kernel's, off by name and on another build; installed once with every worker asleep in the game's wait, no "
+        "rewritten); pins refuse any changed byte, wait for decoded code and give up, refuse imports that are not the "
+        "kernel's or do not release and wait, off by name and on another build; installed once with every worker asleep in the game's wait, no "
         "wake lost, all owed paid, the readying thread's releases %ld -> %lld (%lld asked for)\n",
         before, after, (long)gameReleases, (long long)hfSubmitter, (long long)hfAsked);
 }
