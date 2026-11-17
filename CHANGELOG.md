@@ -339,6 +339,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **A language the game copy lacks no longer crashes every start.** Switching the game's voice or text language to one
+  whose language pack is not in the copy, such as Japanese, crashed the game, and every start after it. Before each
+  session HellForge now sets such a language back to English and says how to add its pack (#343).
 - **No more crash at start with Engine log on and a PC name outside A-Z.** The game puts the PC's name in its own
   log's file name and misreads letters such as Japanese or Chinese ones, then crashed at `helldivers2.exe+0x5ce339`
   before it connected. On such a PC the session now starts the game without its log and says why. Should the crash

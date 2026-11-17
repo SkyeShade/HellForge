@@ -189,7 +189,8 @@ have. On Linux, Proton's own builtin runtimes serve, and nothing is checked or i
 
 The copy setup makes holds English only: every other language of HELLDIVERS 2 is a free DLC of its own, which Steam
 installs beside the game but setup does not copy yet. A copy without your language crashes when you switch the game to
-it.
+it. Before each session HellForge checks the game's text and voice language: one whose pack is not in the copy is set
+back to English, and the session log says so.
 
 Until setup offers it, add the language with the command-line tool, `<installation>\app\cli\HellForge.Cli.exe`. Japanese is
 the only language HellForge has pinned so far; more follow.
