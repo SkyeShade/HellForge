@@ -357,6 +357,9 @@ static class AccountSyncTests
         paid.TryGetWarbondTokens(stratagem, out var tokens);
         var owner = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = tokens![0], ["amount"] = 1, ["isDiscovered"] = true }]);
         check(owner.IsAllowed(stratagem) && owner.IsAllowed(entry), "A premium stratagem's loadout entry was withheld from its owner.");
+        // Held on its own, without its warbond (#368), the stratagem keeps its loadout entry too.
+        var lone = new OwnershipFilter(paid, [new JsonObject { ["mixId"] = stratagem, ["amount"] = 1, ["isDiscovered"] = true }]);
+        check(lone.IsAllowed(stratagem) && lone.IsAllowed(entry), "A premium stratagem held on its own lost its loadout entry.");
     }
 
     // Each premium warbond stratagem's loadout entry (catalogue category 10) and the stratagem it belongs to.
