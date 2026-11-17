@@ -492,6 +492,9 @@ for 14 days. Profile > Account sync says why a snapshot gives none:
 | "This snapshot was sealed on another PC, or before this PC's snapshot signer changed. Sync again." | The snapshot came from another PC, or the signer's key was removed. Run Sync Inventory on this PC. |
 | "The capture could not open this PC's snapshot signer..." | Sync again. On Linux, premium content needs systemd ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)). |
 
+An item the live game gave you on its own, without its premium warbond (a free reward, such as the Killzone weapons
+some players got), is yours on every profile once synced. The rest of that warbond stays locked until you own it.
+
 ## Playing with friends
 
 Friends need the same gameplay mods, versions and files, and the same HellForge version. When they differ, the join is

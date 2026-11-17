@@ -339,6 +339,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Items the live game gave you alone are yours in HellForge too.** An item of a premium warbond held without the
+  warbond itself, such as the Killzone weapons some players got for free, was locked with the rest of its warbond.
+  Once synced it is served on every profile; only that item, never the rest of the warbond
+  ([premium content](docs/troubleshooting.md#premium-content-is-locked), #368).
 - **Explosions no longer knock you down through cover.** Behind a rock or a wall, a blast's damage already stopped,
   but its knockback still threw the Helldiver: the game checks the line of sight only for the damage. The knockback
   now waits for the same check and comes only when the damage does. Close blasts the game does not check keep
