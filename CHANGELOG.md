@@ -335,6 +335,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Windows: HellForge started from Steam as a non-Steam game finds Steam.** Steam gives such a shortcut an app id of
+  its own, and the Steam check and the game inherited it, so they asked Steam about the shortcut instead of
+  HELLDIVERS 2. The launcher and the CLI now drop the shortcut's ids as they start (#434).
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
