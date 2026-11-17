@@ -29,6 +29,7 @@
 #include "nav_carvers_test.c"
 #include "stratagem_codes_test.c"
 #include "stratagem_rearm_test.c"
+#include "explosion_cover_test.c"
 #include "safe_read_test.c"
 #include "perf_speedtree_empty_cells_test.c"
 #include "perf_record_hash_test.c"
@@ -1920,9 +1921,14 @@ static void LiveFixture(void)
     float speed = 385.0f, read;
     memcpy(g_fakeProjectile + 0x20, &speed, 4);
     assert(ApiSetLive(mod, 5, &velocity, &fast, 0) == HF_APPLIES_NOW && g_editCount == 1 && g_edits[0].waiting && g_editsWaiting);
+    char waitingFor[256]; /* what the log names (#352) */
+    WaitingTables(waitingFor, sizeof waitingFor);
+    assert(!strcmp(waitingFor, ": ProjectileSettings x1"));
     g_fakeTablesReady = 1;
     ApplyWaitingEdits();
     memcpy(&read, g_fakeProjectile + 0x20, 4); assert(read == 1200.0f && !g_edits[0].waiting);
+    WaitingTables(waitingFor, sizeof waitingFor);
+    assert(waitingFor[0] == 0);
     assert(ApiSetLive(mod, 5, &velocity, &faster, 0) == HF_APPLIES_NOW && g_editCount == 1);
     memcpy(&read, g_fakeProjectile + 0x20, 4); assert(read == 1500.0f);
     assert(ApiSetLive(mod, 5, &velocity, NULL, 0) == HF_APPLIES_NOW && g_editCount == 0);
@@ -4845,6 +4851,7 @@ int main(int argc, char** argv)
     StratagemCapFixture();
     ExplosionsFixture();
     ExplosionsWidthFixture();
+    ExplosionCoverFixture();
     BeamArcFixture();
     ContentWeaponsFixture();
     ContentDifficultyFixture();
