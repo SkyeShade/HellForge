@@ -43,18 +43,41 @@ The file is organised by category, then by target, then by field:
   A composition's group counts total at most 32, and these apply from the next mission, on the host. A roster weight
   of 0 that leaves an enemy with nothing to spawn at that level on some planet is refused (at boot, after a file's
   other lines).
+- Explosions go by their editor label or their type (1..422). A projectile, damage type or explosion a mod added goes
+  by the name it was added under, `"<mod id>:<name>"` (see [Mods' content by name](#mods-content-by-name)).
 - Fields go by their full names (`weapon.fire_rate`, `deposit.capacity`), or by short aliases where the target has the
   field: `rpm`, `magazine`, `fuse`, `cooldown`, `uses`, projectile `speed`, and damage `standard` and `durable`. Not
   every weapon has a magazine field, and not every throwable a fuse. Recoil is edited through its four input fields.
   `spread` sets both spreads, `armorPenetration` takes four values (direct, slight, large, extreme angle), and a
   stratagem's `uses: -1` is unlimited.
-- References (a weapon's projectile, a projectile's impact or expiry explosion, a damage type's statuses) take type
-  ids. `mappings/references.json` lists what each can be.
+- References take type ids: a projectile's `damage`, `terminal.impact.explosion` and `terminal.expiry.explosion`; a
+  weapon's `attack.primary.projectile` and `terminal.<role>.impact.explosion`; a damage type's `status_<n>_type`. A
+  mod's projectile, damage type or explosion is named instead (`"damage": "you.mod:plasma_burn"`).
+  `mappings/references.json` lists what each can be.
 - Every field and its range is shown on its item's page in the in-game editor, and `check-stats` names any field it
   refuses and why. In the repository, the fields are in `src/HellForge.Core/stats-schema.json` and `mappings/*.json`.
 
 To check a file without starting the game, run `HellForge.Cli check-stats --mod <folder>`. `examples/mods/stats-example`
 is a working example.
+
+### Mods' content by name
+
+A code mod's projectiles, damage types and explosions are numbered when the game starts, in the order of the mods' ids,
+so their numbers change with the mods a player has. A stats file names them as the mod added them: the mod's id, a colon
+and the name it gave (`HfProjectile.name` and so on). HellForge numbers them once every mod has set up, and refuses an
+edit whose name no loaded mod added, with the reason in the mod's log.
+
+```json
+{
+  "format": 1,
+  "projectiles": { "you.mod:plasma_round": { "speed": 900, "damage": "you.mod:plasma_burn" } },
+  "damage": { "you.mod:plasma_burn": { "standard": 150 } },
+  "explosions": { "you.mod:plasma_blast": { "explosion.inner_radius": 4 } }
+}
+```
+
+A mod's row has the same fields as the game's rows of its kind, but `own`. A mod's explosion has its own row's fields; its
+damage type is a damage target of its own.
 
 ### Stratagem input codes
 

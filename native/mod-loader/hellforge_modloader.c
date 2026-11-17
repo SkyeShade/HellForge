@@ -1182,6 +1182,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     g_modsSettingUp = 1;
     for (int k = 0; k < g_modCount; k++) SetupMod(&g_mods[setupOrder[k]]);
     g_modsSettingUp = 0;
+    StatsResolveAll(); /* stats.c: the plan's names of mods' content, now that the mods added it */
     FinishSetupEdits(); /* fields.c: the edits queued while the mods set up, reported and applied in load order */
     CoopDiagStart(); /* coop_diag.c: before the event sources install (they hook the kinds someone listens to) */
     OpenSessionEnd(); /* mod_status.c: the session runner's stop, which the watch thread waits on */

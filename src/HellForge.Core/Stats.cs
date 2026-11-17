@@ -55,6 +55,9 @@ public sealed record StatsTarget(Dictionary<string, StatsField> Fields, Dictiona
 public sealed record StatsSchema(int Format, string Build, string GameDllSha256, Dictionary<string, Dictionary<string, StatsTarget>> Targets)
 {
     public Dictionary<string, Dictionary<string, string>> TargetAliases { get; init; } = [];
+    // references.json's explosion fields: an explosion named by its type, or a mod's, gets its target from these
+    // (StatsData.NamedTarget).
+    [System.Text.Json.Serialization.JsonIgnore] public List<JsonElement> ExplosionDefs { get; set; } = [];
     // Where each weapon's projectile swap is written, by its edit's site (SwapSite): the weapons whose shots it changes
     // (an ammunition every weapon equipping it shares: several) and how the loader finds that weapon's round in co-op
     // (native/mod-loader/shots.c): "" its ProjectileWeapon +0, "/r" its WeaponRounds +64, "/f" its programmable round
@@ -241,6 +244,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         var programmable = json.RootElement.GetProperty("programmable");
         schema.Targets["statuses"] = Statuses(json.RootElement, schema);
         schema.Targets["explosions"] = Explosions(json.RootElement);
+        schema.ExplosionDefs = [.. json.RootElement.GetProperty("explosionFields").EnumerateArray().Select(f => f.Clone())];
         var ammunition = json.RootElement.GetProperty("ammunition").EnumerateArray().ToDictionary(a => a.GetProperty("weapon").GetString()!, a => a.Clone());
         foreach (var (category, targets) in schema.Targets)
             foreach (var (name, target) in targets)
@@ -925,7 +929,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
     }
 
     // An explosion's fields: its ExplosionSettings row's (type), and its damage type's when it has one.
-    static Dictionary<string, StatsField> ExplosionFields(List<JsonElement> defs, long type, long? damage)
+    internal static Dictionary<string, StatsField> ExplosionFields(List<JsonElement> defs, long type, long? damage)
     {
         var fields = new Dictionary<string, StatsField>(StringComparer.Ordinal);
         var order = 0;
@@ -1010,7 +1014,13 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
 public sealed record StatsEdit(string Label, string Kind, string Component, ulong Resource, long Record, int Offset,
     string Storage, uint Value, uint? Expect, bool Own, bool Shared, bool Unverified)
 {
-    public string Key => $"{Kind}:{Component}:{(Own || Record < 0 ? $"entity-{Resource:X16}" : Record.ToString(CultureInfo.InvariantCulture))}:{Offset}";
+    // A mod's projectile, damage type or explosion by the name it was added under ("<mod id>:<name>"): the row edited,
+    // and a reference's value with its kind ('p', 'd', 'e'). The loader numbers them once the mods have added them, so
+    // the edit holds whatever other mods are loaded. Null when the edit gives numbers.
+    public string? RecordName { get; init; }
+    public string? ValueName { get; init; }
+    public char ValueKind { get; init; }
+    public string Key => $"{Kind}:{Component}:{(Own || Record < 0 ? $"entity-{Resource:X16}" : RecordName ?? Record.ToString(CultureInfo.InvariantCulture))}:{Offset}";
 }
 
 public static class StatsData
@@ -1089,16 +1099,50 @@ public static class StatsData
     static int TargetEdits(StatsSchema schema, string category, Dictionary<string, StatsTarget> targets, JsonProperty entry, List<StatsEdit> edits)
     {
         var targetName = schema.TargetAliases.GetValueOrDefault(category)?.GetValueOrDefault(entry.Name, entry.Name) ?? entry.Name;
-        if (!targets.TryGetValue(targetName, out var target)) throw new InvalidDataException($"Unknown {category} target {entry.Name}.");
+        string? content = null;
+        if (!targets.TryGetValue(targetName, out var target) && (target = NamedTarget(schema, category, targets, entry.Name, out content)) == null)
+            throw new InvalidDataException($"Unknown {category} target {entry.Name}.");
         Object(entry.Value);
         var own = Flag(entry.Value, "own");
+        if (own && content != null) throw new InvalidDataException($"{entry.Name}: own isolates entity records; a mod's row is a shared definition.");
         var before = edits.Count;
         var retired = 0;
         foreach (var property in entry.Value.EnumerateObject())
             if (property.Name != "own") retired += PropertyEdits(category, entry.Name, target, property, own, edits);
+        if (content != null)
+            for (var i = before; i < edits.Count; i++) edits[i] = edits[i] with { RecordName = content, Record = 0 };
         if (before == edits.Count && retired == 0) throw new InvalidDataException($"{entry.Name}: no stats supplied.");
         return retired;
     }
+
+    // A mod's content names: "<mod id>:<name>", the identity the loader gives what a mod added (HfProjectile.name and so on).
+    static bool IsContentName(string name) => name.IndexOf(':') is > 0 and var colon && colon < name.Length - 1 && !name.Any(char.IsWhiteSpace);
+
+    // A target the schema does not list: in "explosions", a vanilla explosion by its type (1..422: its catalogued page
+    // when it has one, else its ExplosionSettings row's fields); in "projectiles", "damage" and "explosions", a mod's
+    // content by name (content: that name), with the fields of the game's rows of that kind. Null for anything else.
+    static StatsTarget? NamedTarget(StatsSchema schema, string category, Dictionary<string, StatsTarget> targets, string name, out string? content)
+    {
+        content = null;
+        if (category == "explosions" && long.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out var type) && type is >= 1 and <= 422)
+            return targets.Values.FirstOrDefault(t => t.Fields.Values.Any(f => f.Kind == "ExplosionSettings" && f.Record == type))
+                ?? new StatsTarget(StatsSchema.ExplosionFields(schema.ExplosionDefs, type, null), [], []);
+        if (!IsContentName(name)) return null;
+        content = name;
+        return category switch
+        {
+            "projectiles" or "damage" => targets.TryGetValue("1", out var row) ? row : null,
+            // a mod's explosion: its own row's fields (its damage type is a damage target of its own)
+            "explosions" => new StatsTarget(StatsSchema.ExplosionFields(schema.ExplosionDefs, 1, null), [], []),
+            _ => null
+        };
+    }
+
+    // The kind of content a reference field names ('p' projectile, 'd' damage type, 'e' explosion), or 0.
+    static char ReferenceKind(string name, StatsField field) =>
+        name.EndsWith(".projectile", StringComparison.Ordinal) ? 'p'
+        : name.EndsWith(".explosion", StringComparison.Ordinal) ? 'e'
+        : name == "damage" && field.Kind == "ProjectileSettings" && field.Offset == 60 ? 'd' : '\0';
 
     // One stat of an entry (a field, an alias, or "spread" and "armorPenetration", which name several): its edits, and how
     // many of its fields were retired.
@@ -1129,6 +1173,15 @@ public static class StatsData
         if (!target.Fields.TryGetValue(name, out var field)) throw new InvalidDataException($"{entryName}: unknown stat {property.Name}.");
         if (own && field.Kind != "component") throw new InvalidDataException($"{entryName} {name}: own isolates entity component records; {field.Kind} is a shared definition. Put shared definition edits in a separate entry or mod without own.");
         var value = property.Name == "armorPenetration" ? property.Value[index] : property.Value;
+        // a reference to a mod's content by name: numbered by the loader (a raw number past the game's would name
+        // whichever mod's content is loaded there)
+        if (value.ValueKind == JsonValueKind.String && ReferenceKind(name, field) is var refers and not '\0' && field.Storage == "u32")
+        {
+            var named = value.GetString()!;
+            if (!IsContentName(named)) throw new InvalidDataException($"{entryName} {name}: a reference names a type by number, or a mod's by \"<mod id>:<name>\".");
+            return new StatsEdit($"{entryName} {name}", field.Kind, field.Component, Resource(field.Resource, allowZero: true), field.Record,
+                field.Offset, field.Storage, 0, null, own, field.Shared, field.Unverified) { ValueName = named, ValueKind = refers };
+        }
         // StratagemDefinition uses UINT32_MAX for unlimited uses (the registry's reviewed sentinel).
         var bits = field.Kind == "StratagemCode" ? CodeBits(value) : field.Kind == "StratagemDefinition" && field.Offset == 0x50 && field.Storage == "u32" &&
             value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var uses) && uses == -1
