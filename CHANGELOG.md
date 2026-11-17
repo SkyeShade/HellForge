@@ -339,6 +339,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **A language the game copy lacks no longer crashes every start.** Switching the game's voice or text language to one
+  whose language pack is not in the copy, such as Japanese, crashed the game, and every start after it. Before each
+  session HellForge now sets such a language back to English and says how to add its pack (#343).
 - **Explosions no longer knock you down through cover.** Behind a rock or a wall, a blast's damage already stopped,
   but its knockback still threw the Helldiver: the game checks the line of sight only for the damage. The knockback
   now waits for the same check and comes only when the damage does. Close blasts the game does not check keep

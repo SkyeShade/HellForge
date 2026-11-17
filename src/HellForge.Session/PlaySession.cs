@@ -284,8 +284,25 @@ sealed partial class PlaySession(PlayOptions options)
         result["modsHeld"] = modsHold.Held;
         HoldGameFiles();
         ThrowIfStopRequested();
+        CheckGameLanguages();
         PrepareSessionData(profileDirectory);
         ThrowIfStopRequested();
+    }
+
+    // A text or voice language whose pack the copy lacks crashes the game on every start (#343): it is set back to English
+    // in the profile's settings before they go to the game, and the session says so (GameLanguageCheck).
+    void CheckGameLanguages()
+    {
+        IReadOnlyList<GameLanguageCheck.Fix> fixes;
+        try { fixes = GameLanguageCheck.Apply(install.GameProfile(profileName), copy, SupportedLanguages.Current); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            Say("Language check skipped: " + error.Message);
+            return;
+        }
+        if (fixes.Count == 0) return;
+        result["languagesSetBack"] = new JsonArray([.. fixes.Select(f => (JsonNode)new JsonObject { ["key"] = f.Key, ["code"] = f.Code, ["pack"] = f.Pack })]);
+        foreach (var fix in fixes.DistinctBy(f => (f.Key, f.Code))) Say(GameLanguageCheck.Describe(fix));
     }
 
     void CheckPreconditions()
