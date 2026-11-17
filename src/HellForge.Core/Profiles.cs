@@ -40,6 +40,19 @@ public static partial class ProfileStore
 
     public static bool IsValidName(string name) => ProfileName().IsMatch(name);
 
+    // Whether a profile buys the premium warbonds its account owns with Forge Credits: every template but unlock-all and
+    // live-like, which have them open as soon as a sync shows them owned (the backend's OwnershipFilter.EarnWarbonds).
+    public static bool EarnsWarbonds(string? template) =>
+        template == null || !(template.Contains("unlock-all", StringComparison.Ordinal) || template == LiveLikeTemplate);
+
+    // What a synced profile that earns its warbonds tells the player beside PLAY, or null for one that does not. Players
+    // with an older starter profile read "Profile synced" with their owned warbonds still locked as a sync that failed
+    // (#262, #282, bug-report-0560).
+    public static string? EarnedWarbondsNote(string? template) => !EarnsWarbonds(template) ? null
+        : "Your sync is in. This profile (" + (string.IsNullOrEmpty(template) ? "no template" : "template " + template) + ") opens " +
+          "the premium warbonds you own once you buy each one here with Forge Credits, at its Super Credits price: they stay " +
+          "locked until then. To have them open at once, make a new profile from the " + LiveLikeTemplate + " template and sync it.";
+
     public static List<ProfileTemplate> LoadTemplates(ISessionPaths paths)
     {
         var templates = new List<ProfileTemplate>();

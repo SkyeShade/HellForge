@@ -349,6 +349,10 @@ On `dev`, since 0.4.0-beta.
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
+- **A synced starter profile says why its warbonds are locked.** Some profiles buy the premium warbonds you own with
+  Forge Credits: starter, and the first profile of older installations. There the card beside PLAY said "Profile
+  synced" while those warbonds stayed locked, and players took it for a sync that failed. It now says they open once
+  bought with Forge Credits, and that a new live-like profile has them open at once (#262, #282).
 - **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
   "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
   service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
