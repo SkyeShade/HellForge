@@ -242,6 +242,7 @@ public static class ModAssets
         if (Directory.Exists(install.Mods))
         {
             folders.AddRange(Directory.GetDirectories(install.Mods).Where(f => !Path.GetFileName(f).StartsWith('.')));
+            folders.AddRange(ModSources.InModsFolder(install.Mods).Folders); // and those in folders around them (ModSources)
             foreach (var (_, root, problem) in ModArchives.Sync(install.Mods))
                 if (problem == null && root != null) folders.Add(root);
         }

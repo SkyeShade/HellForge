@@ -40,7 +40,7 @@ public static class ModBatch
         var outcomes = new List<Outcome>();
         foreach (var mod in chosen)
         {
-            var path = mod.Archive != null ? System.IO.Path.Combine(install.Mods, mod.Archive) : mod.Folder;
+            var path = ModInstaller.InstalledPath(install, mod);
             try { ModInstaller.Remove(install, mod); outcomes.Add(new(mod.Id, path, null)); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
             {

@@ -37,8 +37,8 @@ hold the rest:
 
 An installation loads these mods:
 
-- every `<installation>/mods/<folder>/` that has a valid `hellforge-mod.json`;
-- every `<installation>/mods/<name>.zip` that holds one, at the zip's root or in its single top-level folder.
+- every `<installation>/mods/<folder>/` that has a valid `hellforge-mod.json`, or holds such folders;
+- every `<installation>/mods/<name>.zip` that holds one ([where it may sit](mods.md#where-the-mod-may-sit)).
 
 Zips are unpacked into `mods/.unpacked/<name>-<content hash>` whenever mods are loaded, by the launcher's Mods page or a
 session start. The mod is loaded from there. Deleting or replacing a zip removes its unpacked copy at the next load, so a

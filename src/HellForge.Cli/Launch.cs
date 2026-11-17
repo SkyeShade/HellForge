@@ -444,8 +444,9 @@ static class Launch
         NoSession();
         var mod = Find(install, id);
         if (!ModBatch.Removable(mod)) throw new InvalidDataException($"{id} ships with HellForge: switch it off instead (mod-switch).");
+        var removed = ModInstaller.InstalledPath(install, mod);
         ModInstaller.Remove(install, mod);
-        return new { mod.Id, removed = mod.Archive != null ? Path.Combine(install.Mods, mod.Archive) : mod.Folder };
+        return new { mod.Id, removed };
     }
 
     // mod-remove --ids a,b,c: one read of the mods folder for the whole list (ModBatch.Remove).
