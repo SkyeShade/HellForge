@@ -646,6 +646,8 @@ static void TxnStatLine(char** f, int n, char* reply, size_t size)
     if (t == NULL || t->action == TXN_REMOVE || !(t->kinds & TXN_STATS)) { TxnRefuse(reply, size, f[1], "malformed", "modstat for no mod added or replaced with stats"); return; }
     StatEdit e;
     if (StatsParseInto(f + 2, 14, &e)) { TxnRefuse(reply, size, f[1], "malformed", "modstat"); return; }
+    char why[192]; /* a name of mods' content: that content as it is now (content this change adds itself is not yet) */
+    if (StatsResolveNames(&e, why, sizeof why)) { TxnRefuse(reply, size, f[1], "unknown", why); return; }
     if (g_txn.statCount == g_txn.statCapacity)
     {
         int capacity = g_txn.statCapacity ? g_txn.statCapacity * 2 : 256;

@@ -982,8 +982,11 @@ public static class ModLoaderPlan
         static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
             ? throw new InvalidDataException("A stats label contains a tab or line break.") : value;
         var invariant = CultureInfo.InvariantCulture;
-        return [mod.Id, e.Kind, e.Component.Length == 0 ? "-" : e.Component, e.Resource.ToString("X16", invariant), e.Record.ToString(invariant),
-            e.Offset.ToString(invariant), e.Storage, e.Value.ToString("X8", invariant), e.Expect.HasValue ? e.Expect.Value.ToString("X8", invariant) : "-",
+        // a mod's content by name: "@<name>" for the row, "@<p|d|e>=<name>" for a reference (native stats.c numbers them)
+        return [mod.Id, e.Kind, e.Component.Length == 0 ? "-" : e.Component, e.Resource.ToString("X16", invariant),
+            e.RecordName != null ? "@" + Field(e.RecordName) : e.Record.ToString(invariant),
+            e.Offset.ToString(invariant), e.Storage, e.ValueName != null ? $"@{e.ValueKind}={Field(e.ValueName)}" : e.Value.ToString("X8", invariant),
+            e.Expect.HasValue ? e.Expect.Value.ToString("X8", invariant) : "-",
             e.Own ? "1" : "0", e.Shared ? "1" : "0", e.Unverified ? "1" : "0", Field(e.Label)];
     }
 

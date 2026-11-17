@@ -4874,6 +4874,64 @@ static void FieldWatchCapFixture(void)
 #include "explosions_test.c"
 #include "beam_arc_test.c"
 
+/* Mods' content in stats lines: a row past the game's in the moved tables, by number and by the name the mod added it
+ * under ("@you.mod:burn"), and a reference's value by name ("@e=you.mod:blast"); a name no mod added is refused and left
+ * out of every pass. */
+static void NamedStatsFixture(void)
+{
+    uint8_t* savedTable = g_damageTable;
+    uint32_t savedDamages = g_damageCount, savedExplosions = g_explosionCount;
+    int savedCount = g_statCount, savedDone = g_statsTablesDone[1], savedMods = g_modCount;
+    char savedId[sizeof g_mods[0].id];
+    strcpy(savedId, g_mods[0].id); strcpy(g_mods[0].id, "you.mod"); if (g_modCount < 1) g_modCount = 1;
+    uint8_t* game = calloc(1, 0x3800000);
+    g_damageTable = calloc(DMG_VANILLA + DMG_MAX_NEW, 8);
+    uint8_t* modRow = calloc(1, DMG_ROW);
+    *(uint32_t*)modRow = DMG_VANILLA + 2;
+    *(uintptr_t*)(g_damageTable + (DMG_VANILLA + 2) * 8) = (uintptr_t)modRow;
+    /* by number: the moved table's row past the game's 650 */
+    g_statCount = 1; g_stats[0] = Edit(0, 77, 4, 0); strcpy(g_stats[0].kind, "DamageInfo"); g_stats[0].record = DMG_VANILLA + 2;
+    g_statsTablesDone[1] = 0; StatsApplyTable(1, (uintptr_t)game);
+    assert(g_stats[0].applied && *(uint32_t*)(modRow + 4) == 77);
+    /* by name: numbered once the mods have set up */
+    g_damageCount = 1; memset(&g_damages[0], 0, sizeof g_damages[0]);
+    strcpy(g_damages[0].name, "you.mod:burn"); g_damages[0].id = DMG_VANILLA + 2;
+    g_explosionCount = 1; memset(&g_explosions[0], 0, sizeof g_explosions[0]);
+    strcpy(g_explosions[0].name, "you.mod:blast"); g_explosions[0].type = EXP_VANILLA + 5;
+    char row[] = "stat	you.mod	DamageInfo	-	0000000000000000	@you.mod:burn	8	i32	00000058	-	0	1	1	you.mod:burn durable_damage";
+    char ref[] = "stat	you.mod	ProjectileSettings	-	0000000000000000	276	144	u32	@e=you.mod:blast	-	0	1	1	276 terminal.impact.explosion";
+    char lost[] = "stat	you.mod	DamageInfo	-	0000000000000000	@you.mod:gone	4	i32	00000001	-	0	1	1	you.mod:gone standard_damage";
+    char badKind[] = "stat	you.mod	component	Fixture	0000000000000001	@you.mod:burn	4	u32	00000001	-	0	1	0	named component";
+    char badRef[] = "stat	you.mod	ProjectileSettings	-	0000000000000000	276	144	u32	@x=you.mod:blast	-	0	1	1	bad kind";
+    char* lines[] = {row, ref, lost, badKind, badRef};
+    g_statCount = 0;
+    for (int k = 0; k < 5; k++)
+    {
+        char* f[16]; int n = 0;
+        for (char* t = strtok(lines[k], "	"); t && n < 16; t = strtok(NULL, "	")) f[n++] = t;
+        int refused = StatsParse(f, n) != 0;
+        assert(k < 3 ? !refused : refused); /* a name on a component row, or an unknown content kind, is malformed */
+    }
+    assert(g_statCount == 3 && !strcmp(g_stats[0].recordName, "you.mod:burn") && g_stats[0].record == 0);
+    assert(g_stats[1].valueKind == 'e' && !strcmp(g_stats[1].valueName, "you.mod:blast") && g_stats[1].value == 0);
+    StatsResolveAll();
+    assert(g_stats[0].record == DMG_VANILLA + 2 && !strcmp(g_stats[0].kind, "DamageInfo"));
+    assert(g_stats[1].value == EXP_VANILLA + 5);
+    assert(g_stats[2].kind[0] == 0); /* no such mod damage type: refused, no pass applies it */
+    g_statsTablesDone[1] = 0; StatsApplyTable(1, (uintptr_t)game);
+    assert(g_stats[0].applied && *(int32_t*)(modRow + 8) == 0x58 && !g_stats[2].applied);
+    /* a live change's line names content as it is now */
+    char live[] = "stat	you.mod	DamageInfo	-	0000000000000000	@you.mod:gone	4	i32	00000001	-	0	1	1	live";
+    char* f[16]; int n = 0;
+    for (char* t = strtok(live, "	"); t && n < 16; t = strtok(NULL, "	")) f[n++] = t;
+    StatEdit e; char why[192];
+    assert(!StatsParseInto(f, n, &e) && StatsResolveNames(&e, why, sizeof why) && strstr(why, "you.mod:gone"));
+    g_damageTable = savedTable; g_damageCount = savedDamages; g_explosionCount = savedExplosions;
+    g_statCount = savedCount; g_statsTablesDone[1] = savedDone; strcpy(g_mods[0].id, savedId); g_modCount = savedMods;
+    free(modRow); free(game);
+    puts("PASS stats name mods' content: rows past the game's reached by number and by name, references by name, a name no mod added refused");
+}
+
 int main(int argc, char** argv)
 {
     strcpy(g_build, "25480438");
@@ -5030,7 +5088,7 @@ int main(int argc, char** argv)
     uint8_t* oldRow = calloc(1, DMG_ROW); *(uint32_t*)oldRow = 54; *(uint32_t*)(oldRow + 4) = 5;
     uint8_t* newRow = calloc(1, DMG_ROW); *(uint32_t*)newRow = 54; *(uint32_t*)(newRow + 4) = 10;
     *(uintptr_t*)(game + DMG_TABLE + 54 * 8) = (uintptr_t)oldRow;
-    g_damageTable = calloc(DMG_VANILLA, 8); *(uintptr_t*)(g_damageTable + 54 * 8) = (uintptr_t)newRow;
+    g_damageTable = calloc(DMG_VANILLA + DMG_MAX_NEW, 8); *(uintptr_t*)(g_damageTable + 54 * 8) = (uintptr_t)newRow;
     g_statCount = 1; g_stats[0] = Edit(0, 150, 4, 0); strcpy(g_stats[0].kind, "DamageInfo"); g_stats[0].record = 54;
     StatsApplyTable(1, (uintptr_t)game);
     assert(*(uint32_t*)(newRow + 4) == 150 && *(uint32_t*)(oldRow + 4) == 5);
@@ -5138,6 +5196,7 @@ int main(int argc, char** argv)
     GrowthLookupFixture();
     StateMovesOffsetsFixture();
     StateMovesDecodeFixture();
+    NamedStatsFixture();
     DecodeTopFixture();
     StateMovesOwnershipFixture();
     ArmoryRoomFixture();
