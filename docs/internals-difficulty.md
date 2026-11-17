@@ -308,9 +308,18 @@ A request makes the level need the moved block, even a level with no larger map 
 while the game runs keeps the arrays it found. Locations stop at 65024 because the stamp index keeps a location's id in
 16 bits (0xF35054).
 
-Blocks are made with a world, after the loader installs this, and if one exists already, the move is skipped. Structured
-maps (map type 2, the mega cities, another generator) grow too. Their revoronoi, grid and vertex buckets are scaled the
-same way (difficulty_cities.c).
+The game makes one world per start (`CreateWorld` 0xAB8B70), with its block (`CreateGenerationBlock` 0xF6E710), a few
+seconds after game.dll decodes. When the install came after that, a larger map overran the old block and the drop never
+landed (#422). A slow `HF_EVENT_GAME_LOADED` handler or the wait for the difficulty tables did it. So:
+
+- The move runs before the mods hear that event (`MoveGenerationBlockEarly`, from `WatchLoaded`). Its inputs are final
+  by then: `add_difficulty` and `generation_capacity` count only from `hellforge_mod_init`.
+- The rest of level 11 installs later, as before, and its step 52 does nothing.
+- If the game made its block first anyway, the checks refuse level 11 for the session before any step writes ("the game
+  made its generation block before HellForge could enlarge it").
+
+Structured maps (map type 2, the mega cities, another generator) grow too. Their revoronoi, grid and vertex buckets are
+scaled the same way (difficulty_cities.c).
 
 ### City streets
 

@@ -730,6 +730,7 @@ static void WatchLoaded(void)
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
     InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
+    MoveGenerationBlockEarly(ApiModuleBase("game.dll", NULL)); /* before the mods' handlers: the game makes the block with its world (#422) */
     StartRegistry();
     StartProjectiles();
     Fire(HF_EVENT_GAME_LOADED);

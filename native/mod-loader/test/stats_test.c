@@ -519,6 +519,42 @@ static void DifficultyFixture(void)
         int waiting;
         assert(DifficultySitesFailed(base, &waiting) == NULL);
     }
+    /* A block the game made before the move (#422): a larger map would overrun it, so the checks refuse level 11 (after
+     * the grace period for code still decoding) before any step writes anything. */
+    {
+        static uint8_t world[0xAE290], levelGen[0x2D0];
+        uint64_t at = (uintptr_t)levelGen, block = 0x1000;
+        memcpy(world + 0xAE288, &at, 8); memcpy(levelGen + 0x2C8, &block, 8);
+        at = (uintptr_t)world; memcpy(game + DIF_WORLD, &at, 8);
+        int waiting;
+        const char* why = DifficultySitesFailed(base, &waiting);
+        assert(why != NULL && !waiting && strstr(why, "generation block before HellForge could enlarge it"));
+        assert(InstallDifficulty(base, 0) == 0 && g_difficultyState == 0);
+        assert(InstallDifficulty(base, 1) == 1 && g_difficultyState == -1 && g_difficultyTable == NULL);
+        for (size_t i = 0; i < sizeof kGenerationBlockSize / sizeof kGenerationBlockSize[0]; i++)
+            assert(*(uint32_t*)(game + kGenerationBlockSize[i].rva + kGenerationBlockSize[i].at) == kGenerationBlockSize[i].value);
+        /* no block yet: the early move runs, and finds nothing to do once moved */
+        MoveGenerationBlockEarly(base);
+        assert(!g_generationMoved); /* only while level 11 is still to install */
+        g_difficultyState = 0;
+        memset(game + DIF_WORLD, 0, 8);
+    }
+    /* Before the mods hear HF_EVENT_GAME_LOADED the block moves on its own (WatchLoaded, #422). The install that follows
+     * passes its checks on the moved code, skips its own move (step 52) and keeps every byte the move wrote. */
+    uint8_t* beforeMove = malloc(size);
+    assert(beforeMove);
+    memcpy(beforeMove, game, size);
+    MoveGenerationBlockEarly(base);
+    assert(g_generationMoved && g_generationEarlyFailed == NULL);
+    for (size_t i = 0; i < sizeof kGenerationBlockSize / sizeof kGenerationBlockSize[0]; i++)
+        assert(*(uint32_t*)(game + kGenerationBlockSize[i].rva + kGenerationBlockSize[i].at) == 0x15B1100u);
+    uint8_t* afterMove = malloc(size);
+    assert(afterMove);
+    memcpy(afterMove, game, size);
+    {
+        int waiting;
+        assert(DifficultySitesFailed(base, &waiting) == NULL);
+    }
     /* An unfilled copy waits, even after the grace period; a changed instruction waits, then is refused. */
     uint32_t item = *(uint32_t*)(game + kDifficultyCopies[7]);
     *(uint32_t*)(game + kDifficultyCopies[7]) = 0;
@@ -528,6 +564,13 @@ static void DifficultyFixture(void)
     assert(InstallDifficulty(base, 0) == 0 && g_difficultyState == 0);
     game[kDifficultySites[3].rva + kDifficultySites[3].dispAt] ^= 1;
     assert(InstallDifficulty(base, 1) == 1 && g_difficultyState == 1);
+    {
+        size_t moved = 0;
+        for (size_t i = 0; i < size; i++)
+            if (beforeMove[i] != afterMove[i]) { moved++; assert(game[i] == afterMove[i]); }
+        assert(moved > 1000);
+        free(beforeMove); free(afterMove);
+    }
     /* The grant waits for its row: the site keeps the game's code until the row loads; then the M-102 FRV's (free, in a
      * family with paid skins) installs at the next tick, once. */
     assert(g_grantPending && !memcmp(game + DIF_GRANT_SITE, kGrantPin, 7));
