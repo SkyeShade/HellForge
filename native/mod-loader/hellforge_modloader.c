@@ -570,6 +570,7 @@ static void ChannelInstall(uintptr_t game);
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
 #include "deploys.c" /* after rounds.c: RoundBase */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
+#include "explosion_cover.c" /* an explosion's knockback waits for its damage's line of sight */
 #include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
 #include "perf_all.c" /* the performance fixes, after render_guards.c */
 
@@ -777,7 +778,8 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
-    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); ExplosionCoverInstall(); }
+    ExplosionCoverReport();
     AiPathBudgetWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
     EarlyStampPackagesInstall();
