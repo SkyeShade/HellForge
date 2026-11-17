@@ -161,6 +161,10 @@ There is room for 1,024 new projectile types and 512 new damage types across all
 beams and arcs. In co-op, every machine fires its own copy of a hand-held weapon's shots from its own data; with the same
 mods, that is the same projectile.
 
+A seeking missile also flies on every machine from that machine's own `SeekingMissile` record. Its spread
+(`deviation_*`) is drawn from a seed all machines share. With the same values, every machine flies the same path; with
+other values, each player sees their own.
+
 Some shots also travel between players by type (synced fire, reloads, projectiles added to the manager), in a network
 field of 9 bits: types up to 511, so the first 161 new ones. A larger set widens it to 11 bits, on every machine together,
 as all of them run the same mods. If the field is not the one HellForge knows, only the first 161 go in and the log names
