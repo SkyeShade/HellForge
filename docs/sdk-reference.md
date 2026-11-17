@@ -9770,7 +9770,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 
 ### HfSeekingMissile
 
-`SeekingMissileComponentData`: component 196, 272-byte records. SeekingMissileComponentData (fields from the stats schema).
+`SeekingMissileComponentData`: component 196, 272-byte records. SeekingMissileComponentData: a seeking missile's flight (speeds, turn rates, guidance) and its spread.
 
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
@@ -9783,6 +9783,21 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `max_angle_to_target` | +0x54 | f32 | respawn? | Missile turn blend angle (unverified) |
 | `turn_rate_at_max_angle` | +0x58 | f32 | respawn? | Missile turn rate at the blend angle (unverified) |
 | `turn_rate_aligned` | +0x5C | f32 | respawn? | Missile turn rate on target (unverified) |
+| `deviation_enabled` | +0xB4 | u8 | respawn? | 1: each missile spreads: it veers off its launch line, curves, then swings back onto its target (the deviation_* fields); 0: it flies straight at its target. The W.A.S.P. (both missiles), the Missile Pistol and the Warrant have it (unverified) |
+| `deviation_direction_min` | +0xB8 | f32 | respawn? | which way a missile veers, in degrees around its flight line (0 up, 90 / -90 a side, 180 down): each missile draws one between this and deviation_direction_max (the W.A.S.P. -75 to 75) (unverified) |
+| `deviation_direction_max` | +0xBC | f32 | respawn? | the top of the veer direction (see deviation_direction_min) (unverified) |
+| `deviation_angle_min` | +0xC0 | f32 | respawn? | how far a missile turns off its launch line, in degrees: each missile draws an angle between this and deviation_angle_max (the W.A.S.P. 40 to 55) (unverified) |
+| `deviation_angle_max` | +0xC4 | f32 | respawn? | the top of the veer angle (see deviation_angle_min) (unverified) |
+| `deviation_curve_min` | +0xC8 | f32[3] | respawn? | the curve after the veer: pitch, roll (around the flight line) and yaw in degrees, each drawn per missile between this and deviation_curve_max and turned every second (times deviation_curve_speed) until the return ends (unverified) |
+| `deviation_curve_max` | +0xD4 | f32[3] | respawn? | the top of the curve (see deviation_curve_min) (unverified) |
+| `deviation_curve_either_way` | +0xE0 | u8 | respawn? | 1: each of the curve's three angles gets a random sign (unverified) |
+| `deviation_curve_speed` | +0xE4 | f32 | now? | the curve's rate: its angles turn by this many times a second (unverified) |
+| `deviation_veer_end` | +0xE8 | f32 | now? | seconds after launch when the veer is done (the missile turns evenly from deviation_veer_start); the curve and return start here (unverified) |
+| `deviation_veer_start` | +0xEC | f32 | now? | seconds after launch when the missile starts to veer; until then it flies straight (unverified) |
+| `deviation_return_time` | +0xF0 | f32 | now? | seconds after the veer the missile takes to swing fully back onto its target (its aim slides from the curve to the target over this time); then it homes as usual (unverified) |
+| `deviation_return_turn_rate` | +0xF4 | f32 | now? | its turn rate while it swings back, as a multiple of the usual blended turn rate (+0x58 / +0x5C) (unverified) |
+
+Group `spread` (the missile spread: its veer off the launch line, its curve and its return onto the target): `deviation_enabled`, `deviation_direction_min`, `deviation_direction_max`, `deviation_angle_min`, `deviation_angle_max`, `deviation_curve_min`, `deviation_curve_max`, `deviation_curve_either_way`, `deviation_curve_speed`, `deviation_veer_end`, `deviation_veer_start`, `deviation_return_time`, `deviation_return_turn_rate`.
 
 ### HfLoadoutEntry
 

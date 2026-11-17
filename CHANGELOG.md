@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Missile spread in the editor.** Every seeking missile's page has a Spread group: whether its missiles veer off
+  their launch line, how far and which way, the curve they fly after, and how fast they swing back onto the target.
+  The W.A.S.P., the Missile Pistol and the Warrant have it on; the Spear, the Commando and the others can turn it on.
+  Mods reach it as `missile.spread.*` and `function_missile.spread.*`.
 - **What summoning enemies summon.** The Impaler's page has Summons: tentacles and the Alpha Commander's Summons:
   warriors: which Terminid family they call up and how many a call (0 to 16). The host's choice decides, as with all
   spawning ([stats mods](docs/modding/stats-mods.md#spawning)).

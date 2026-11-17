@@ -378,6 +378,8 @@ public static class StatsCatalog
             case "presentation": return ("presentation", "Armory", 0); // the armory's traits
             case "turret": return ("fire", "Turret", 2);
             case "targeting": return ("fire", "Targeting", 3);
+            // a seeking missile's spread: its own group after the missile's flight (Stats.cs MissileSpread)
+            case "missile" or "function_missile" when segments.Length == 3 && segments[1] == "spread": return ("other:" + domain, "Spread", 1);
             case "weapon" when AmmoRank.ContainsKey(key): return ("ammo", "Ammunition", 0);
             case "weapon" when HandlingWords.Any(key.Contains): return ("fire", "Handling", 0);
             case "weapon": return ("fire", "Fire", 1);

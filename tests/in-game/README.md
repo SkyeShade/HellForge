@@ -32,6 +32,8 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `editor-spawning-probe/` | the stats mod `editor-spawning.json` runs (`hellforge.editor-spawning-probe`), never shipped |
 | `enemy-combat.json` | the editor's enemy combat rows: the Charger's charge speed, sight and armour 50, the Hunter's melee damage, turn speed and acceleration, a stun added to the Bile Titan and its fire damage multiplier; the logs prove the edits land, the mission shows what they do |
 | `enemy-combat-probe/` | the stats mod `enemy-combat.json` runs (`hellforge.enemy-combat-probe`), never shipped |
+| `missile-spread.json` | the editor's missile spread rows: the W.A.S.P. missile's spread off, the MLS-4X Commando's on with a 45° veer to one side; the logs prove the edits land, firing each weapon in the mission shows what they do |
+| `missile-spread-probe/` | the stats mod `missile-spread.json` runs (`hellforge.missile-spread-probe`), never shipped |
 | `spray20.json` | SDK 20's sprays: two FLAM-40 copies with damage of their own (a scaled one, the Sterilizer's gas), each in its own spray record while the FLAM-40 keeps its own; the hot copy's stratagem in the loadout, called in, its hellpod bringing the copy. Spraying enemies with it is by hand |
 | `spray-probe/` | the test mod `spray20.json` runs (`hellforge.spray-probe`), never shipped; it also logs the first hits the called-in copy deals |
 | `stratagem-codes.json` | stratagem input codes: a stats edit gives Resupply Up Up Left Right Down, the vanilla codes move into HellForge's arrays, and the new code calls Resupply in (needs the harness's `call` step) |
