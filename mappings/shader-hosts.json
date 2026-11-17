@@ -16,7 +16,13 @@
    "unit": {
     "copy": "0x1B798F4F99A0B8C8",
     "material": "0x79F6761BE6F61772",
-    "at": "0x69C"
+    "at": "0x69C",
+    "cull": {
+     "at": "0xD4",
+     "node": 3,
+     "from": 0.5,
+     "half": 64.0
+    }
    },
    "mesh": false,
    "inputs": [

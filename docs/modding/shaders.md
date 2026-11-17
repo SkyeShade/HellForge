@@ -104,7 +104,8 @@ Keep flashes under three a second: a large flash faster than that is a risk for 
 A shader draws when its unit is in the world. The SDK has no call for spawning a unit yet. For now a code mod does it
 on the game thread through [game memory](hooks.md): the world's spawn call, with the resource's name hashed and the
 unit's package loaded. A `decal` box is 1 m across, so scale it to the area it covers, and leave its rotation alone so
-`uvw.z` stays up.
+`uvw.z` stays up. The engine judges a unit's draw distance by its unscaled size, so the decal host's unit is made to
+count as 128 m across: a decal up to that size stays on screen as far as the player can see it.
 
 ## Checks and refusals
 

@@ -16,9 +16,12 @@ public sealed record HostStage(int Offset, int Size, byte[] Digest)
 }
 
 // Child: a child material of the root and where it names its parent. Mesh: whether the host draws a mesh the mod brings, or the
-// unit's own box.
+// unit's own box. Cull: the box's LOD footer, widened from a cube `From` across each way to one `Half` across (see Copies).
 public sealed record ShaderHost(string Name, ulong Root, IReadOnlyList<HostStage> Stages, (ulong Material, int ParentAt)? Child, ulong Unit, ulong UnitMaterial, int UnitMaterialAt,
-    bool Mesh, IReadOnlyList<string> Bindings);
+    bool Mesh, IReadOnlyList<string> Bindings, HostCull? Cull = null);
+
+// A LOD footer in the host's unit: min, max (floats), half its diagonal, then the node it sits on.
+public sealed record HostCull(int At, uint Node, float From, float Half);
 
 // The game's materials a mod's pixel shader can go into, for the supported game build (mappings/shader-hosts.json,
 // scripts/ExportShaderHosts.py). A data spec's "shader" resource names a host and HellForge builds the copies it needs, so the
@@ -50,8 +53,11 @@ public sealed class ShaderHosts(IReadOnlyDictionary<string, ShaderHost> hosts)
             var stages = value.GetProperty("stages").EnumerateArray().Select(s => new HostStage((int)Hex(s.GetProperty("offset")), s.GetProperty("size").GetInt32(),
                 Convert.FromHexString(s.GetProperty("digest").GetString()!))).ToList();
             (ulong, int)? child = value.TryGetProperty("child", out var c) ? (Hex(c.GetProperty("copy")), (int)Hex(c.GetProperty("parentAt"))) : null;
+            HostCull? cull = unit.TryGetProperty("cull", out var k)
+                ? new((int)Hex(k.GetProperty("at")), k.GetProperty("node").GetUInt32(), k.GetProperty("from").GetSingle(), k.GetProperty("half").GetSingle())
+                : null;
             hosts[host.Name] = new(host.Name, Hex(value.GetProperty("root")), stages, child, Hex(unit.GetProperty("copy")), Hex(unit.GetProperty("material")), (int)Hex(unit.GetProperty("at")),
-                value.GetProperty("mesh").GetBoolean(), [.. value.GetProperty("bindings").EnumerateArray().Select(b => b.GetString()!)]);
+                value.GetProperty("mesh").GetBoolean(), [.. value.GetProperty("bindings").EnumerateArray().Select(b => b.GetString()!)], cull);
         }
         return new(hosts);
     }
@@ -72,8 +78,24 @@ public sealed class ShaderHosts(IReadOnlyDictionary<string, ShaderHost> hosts)
         var coded = host.Child == null ? material : shader.Name + "/root";
         var copies = new List<DataResource> { Copy(shader, ResourceTypes.Material, host.Root, coded, [], null, [.. host.Stages.Select(s => new ShaderFile(s.Offset, shader.Dxbc, s))]) };
         if (host.Child is { } child) copies.Add(Copy(shader, ResourceTypes.Material, child.Material, material, [new(host.Root, Hash(coded), [child.ParentAt])], null, null));
-        copies.Add(Copy(shader, ResourceTypes.Unit, host.Unit, shader.Name, [new(host.UnitMaterial, Hash(material), [host.UnitMaterialAt])], shader.Mesh, null));
+        List<Replacement> unit = [new(host.UnitMaterial, Hash(material), [host.UnitMaterialAt])];
+        if (host.Cull is { } cull && shader.Mesh == null) unit.AddRange(Widen(cull));
+        copies.Add(Copy(shader, ResourceTypes.Unit, host.Unit, shader.Name, unit, shader.Mesh, null));
         return copies;
+    }
+
+    // The engine picks a unit's LOD and culls it by its LOD footer in the unit's own space, without the unit's scale, so a box
+    // scaled up to the area a decal covers was dropped once its unscaled 1 m looked small: past about 90 m. Widened, the footer
+    // keeps any decal up to `Half` x 2 across on screen at any distance (each piece still draws only inside its scaled box).
+    static IEnumerable<Replacement> Widen(HostCull cull)
+    {
+        static ulong Pair(float low, float high) => BitConverter.SingleToUInt32Bits(low) | (ulong)BitConverter.SingleToUInt32Bits(high) << 32;
+        static ulong Last(float radius, uint node) => BitConverter.SingleToUInt32Bits(radius) | (ulong)node << 32;
+        float f = cull.From, h = cull.Half, root3 = MathF.Sqrt(3);
+        yield return new(Pair(-f, -f), Pair(-h, -h), [cull.At]);
+        yield return new(Pair(-f, f), Pair(-h, h), [cull.At + 8]);
+        yield return new(Pair(f, f), Pair(h, h), [cull.At + 16]);
+        yield return new(Last(f * root3, cull.Node), Last(h * root3, cull.Node), [cull.At + 24]);
     }
 
     static CopyResource Copy(ShaderResource shader, ulong type, ulong from, string name, IReadOnlyList<Replacement> replace, MeshFile? mesh, IReadOnlyList<ShaderFile>? shaders) =>
