@@ -12,6 +12,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Missile spread in the editor.** Every seeking missile's page has a Spread group: whether its missiles veer off
+  their launch line, how far and which way, the curve they fly after, and how fast they swing back onto the target.
+  The W.A.S.P., the Missile Pistol and the Warrant have it on; the Spear, the Commando and the others can turn it on.
+  Mods reach it as `missile.spread.*` and `function_missile.spread.*`.
 - **What summoning enemies summon.** The Impaler's page has Summons: tentacles and the Alpha Commander's Summons:
   warriors: which Terminid family they call up and how many a call (0 to 16). The host's choice decides, as with all
   spawning ([stats mods](docs/modding/stats-mods.md#spawning)).
@@ -335,6 +339,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Explosions no longer knock you down through cover.** Behind a rock or a wall, a blast's damage already stopped,
+  but its knockback still threw the Helldiver: the game checks the line of sight only for the damage. The knockback
+  now waits for the same check and comes only when the damage does. Close blasts the game does not check keep
+  knocking you down, as before ([why](docs/gameplay-fixes.md#explosion-knockback-and-cover)).
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).

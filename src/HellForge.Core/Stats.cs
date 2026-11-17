@@ -92,6 +92,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         Ricochets(schema);
         FiredEntities(schema);
         EditorRequests(schema);
+        MissileSpread(schema);
         InputCodes(schema);
         RearmsAfterUses(schema);
         StratagemPayloads(schema);
@@ -610,6 +611,59 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
     {
         foreach (var (key, field) in spear)
             target.Fields[key] = field with { Resource = entity!, Record = missile, Shared = false, SharedConsumers = [] };
+    }
+
+    // Every seeking missile's spread (its SeekingMissile record's deviation block, +0xB4..+0xF4; research/missile-deviation):
+    // whether it veers off its launch line, how far and which way, then a curve at a random rate while it swings back onto
+    // its target. On each missile a page shows (missile.*, and function_missile.* for a weapon function's: the Spear, the
+    // W.A.S.P., the Commando, the Missile Pistol, the Warrant, the Maelstrom's and the Patriot's), on its own record. The
+    // spawn (game.dll 0x641050) draws the veer and the curve once per missile, from a seed every machine shares; the update
+    // (0x642760) reads the timings every step, and only while guidance is on and the missile has a target.
+    static readonly (string Leaf, string Name, int Offset, string Storage, double Min, double Max, string? Unit, string Note)[] Spread =
+    [
+        ("enabled", "Spread", 0xB4, "u8", 0, 1, null,
+            "Yes: each missile veers off its launch line, curves, then swings back onto its target (the fields below). No: it flies straight at its target. Read when it is fired."),
+        ("direction_min", "Veer direction min", 0xB8, "f32", -180, 180, "degrees",
+            "Which way a missile veers, as an angle around its flight line (0: up, 90 or -90: to a side, 180: down). Each missile picks one between min and max."),
+        ("direction_max", "Veer direction max", 0xBC, "f32", -180, 180, "degrees", "The other end of the veer direction (see Veer direction min)."),
+        ("angle_min", "Veer angle min", 0xC0, "f32", 0, 180, "degrees",
+            "How far a missile turns off its launch line. Each missile picks an angle between min and max; 0 and 0: no veer."),
+        ("angle_max", "Veer angle max", 0xC4, "f32", 0, 180, "degrees", "The other end of the veer angle (see Veer angle min)."),
+        ("veer_start", "Veer start", 0xEC, "f32", 0, 10, "seconds", "Seconds after launch the missile starts to veer. Until then it flies straight on."),
+        ("veer_end", "Veer end", 0xE8, "f32", 0, 10, "seconds",
+            "Seconds after launch the missile has turned its full veer angle (it turns evenly from Veer start). Its curve and return start here."),
+        ("curve_pitch_min", "Curve pitch min", 0xC8, "f32", -360, 360, "degrees",
+            "After the veer the missile keeps turning: up or down by this much a second (times Curve speed), picked between min and max per missile."),
+        ("curve_roll_min", "Curve roll min", 0xCC, "f32", -360, 360, "degrees", "Its curve's roll around its flight line, as Curve pitch min."),
+        ("curve_yaw_min", "Curve yaw min", 0xD0, "f32", -360, 360, "degrees", "Its curve's turn to the side, as Curve pitch min."),
+        ("curve_pitch_max", "Curve pitch max", 0xD4, "f32", -360, 360, "degrees", "The other end of the curve's pitch (see Curve pitch min)."),
+        ("curve_roll_max", "Curve roll max", 0xD8, "f32", -360, 360, "degrees", "The other end of the curve's roll."),
+        ("curve_yaw_max", "Curve yaw max", 0xDC, "f32", -360, 360, "degrees", "The other end of the curve's turn to the side."),
+        ("curve_either_way", "Curve either way", 0xE0, "u8", 0, 1, null,
+            "Yes: each of the curve's pitch, roll and turn goes one way or the other at random. No: always the way min and max say."),
+        ("curve_speed", "Curve speed", 0xE4, "f32", 0, 50, "multiplier", "How fast the curve turns: its angles are degrees a second times this."),
+        ("return_time", "Return time", 0xF0, "f32", 0, 10, "seconds",
+            "Seconds after the veer the missile takes to swing fully back onto its target, curving less as it goes. Then it homes as usual."),
+        ("return_turn_rate", "Return turn rate", 0xF4, "f32", 0, 10, "multiplier",
+            "Its turn rate while it swings back, as a multiple of its usual turn rate. Past about 60 divided by that turn rate it overshoots and swings wildly."),
+    ];
+
+    // What tests/in-game/missile-spread-look.json saw a missile do: direction 0 veers up, the first curve axis pitches.
+    static readonly string[] Seen = ["enabled", "direction_min", "direction_max", "angle_min", "angle_max", "veer_start", "veer_end",
+        "curve_pitch_min", "curve_pitch_max", "curve_speed"];
+
+    static void MissileSpread(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets.Values.SelectMany(t => t.Values))
+            foreach (var missile in target.Fields.Where(f => f.Value is { Kind: "component", Component: "SeekingMissileComponentData" })
+                         .GroupBy(f => (Prefix: f.Key[..f.Key.IndexOf('.')], f.Value.Resource, f.Value.Record)).ToList())
+            {
+                var order = target.Fields.Values.Select(f => f.Order).DefaultIfEmpty(0).Max();
+                foreach (var (leaf, name, offset, storage, min, max, unit, note) in Spread)
+                    AddField(target, $"{missile.Key.Prefix}.spread.{leaf}", new StatsField(name, "component", "SeekingMissileComponentData", missile.Key.Resource,
+                        missile.Key.Record, offset, storage, min, max, unit, false, !Seen.Contains(leaf))
+                    { Order = ++order, Note = note, Options = storage == "u8" ? NoYes : default });
+            }
     }
 
     static void Retire(StatsTarget target, Func<KeyValuePair<string, StatsField>, bool> which, string reason)

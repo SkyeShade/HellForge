@@ -352,6 +352,19 @@ static class StatsTests
                 weapons["FAF-14 Spear"].Fields["missile.seeker_range"].Record == 47 && weapons["StA-X3 W.A.S.P. Launcher"].Fields.ContainsKey("function_missile.seeker_range") &&
                 targets["throwables"]["G-50 Seeker"].Fields.ContainsKey("targeting.range") && !weapons["A/M-12 Mortar Sentry / weapon"].Fields.ContainsKey("targeting.range"),
                 "Lock-on ranges on the Spear, its missile, the W.A.S.P.'s two and the seekers; not twice for a sentry");
+            var wasp = weapons["StA-X3 W.A.S.P. Launcher"].Fields;
+            check(wasp["missile.spread.enabled"] is { Component: "SeekingMissileComponentData", Resource: "0x14CC0DB942F6D7F2", Record: 9, Offset: 0xB4, Storage: "u8", Shared: false } &&
+                wasp["missile.spread.curve_yaw_max"] is { Record: 9, Offset: 0xDC, Storage: "f32" } && wasp["function_missile.spread.angle_max"] is { Record: 8, Offset: 0xC4 } &&
+                wasp["missile.spread.return_turn_rate"].Offset == 0xF4 && weapons["FAF-14 Spear"].Fields["missile.spread.enabled"].Record == 7 &&
+                weapons["P-33 Missile Pistol"].Fields["function_missile.spread.veer_end"] is { Record: 6, Offset: 0xE8 } &&
+                weapons["EXO-45 Patriot Exosuit / left_gun"].Fields["missile.spread.direction_min"] is { Record: 12, Resource: "0xA526DC7D89FF696D", Offset: 0xB8 } &&
+                weapons["TD-110 Maelstrom / slot_3"].Fields["missile.spread.angle_min"].Record == 14 &&
+                weapons.Values.Sum(t => t.Fields.Keys.Count(k => k.EndsWith(".spread.enabled", StringComparison.Ordinal))) == 10 &&
+                wasp.Values.Count(f => f.Component == "SeekingMissileComponentData" && f.Record == 9 && f.Offset is >= 0xB4 and < 0xF8) == 17,
+                "Every seeking missile's spread on its own record: the W.A.S.P.'s two, the Spear's, the Missile Pistol's, the Patriot's and the Maelstrom's");
+            var waspGroups = StatsCatalog.Sections(StatsCatalog.Items.Single(i => i.Name == "StA-X3 W.A.S.P. Launcher"))
+                .Where(s => s.Key is "other:missile" or "other:function_missile").Select(s => s.Title + ": " + string.Join(", ", s.Groups.Select(g => g.Title))).ToList();
+            check(waspGroups.Order(StringComparer.Ordinal).SequenceEqual(["Function missile: Function missile, Spread", "Missile: Missile, Spread"]), "The W.A.S.P.'s missiles: their flight, then their spread: " + string.Join("; ", waspGroups));
             check(weapons["B/MD C4 Pack"].Fields["deposit.refill_amount"] is { Component: "DepositComponentData", Record: 10, Offset: 8 }, "The C4 pack's charges from supply");
             check(targets["stratagems"]["MD-I4 Incendiary Mines"].Fields["status.type"] is { Kind: "DamageInfo", Record: 407, Offset: 44 }, "The incendiary mines' status pick");
             var battlement = targets["stratagems"]["E/GL-21 Grenadier Battlement"].Fields;
