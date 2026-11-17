@@ -513,16 +513,11 @@ static void DifficultyFixture(void)
     HfDifficulty hell = {sizeof hell};
     hell.name = "fixture/hell_forge"; hell.title = "Hell Forge"; hell.encounter_points = 1500.0f; hell.icon = "fixture/icon"; hell.map_scale = 2.0f; hell.optional_objectives = 8; hell.major_objectives = 2; hell.outpost_scale = 2.0f; hell.mission_minutes = 72.0f; hell.flags = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS; hell.mission_stratagem = 105; hell.patrol_frequency = 2.0f; hell.patrol_cap = 1.5f;
     assert(ApiAddDifficulty(&g_mods[0], &hell) == 11 && ApiAddDifficulty(&g_mods[0], &hell) == 0);
-    /* The mission stratagem's row not loaded yet waits; the M-102 FRV's (free, in a family with paid skins) installs. */
+    /* The install does not wait for the mission stratagem's row (the generation block's move must come before the
+     * game's world): only the grant waits, below. */
     {
         int waiting;
-        const char* why = DifficultySitesFailed(base, &waiting);
-        assert(why != NULL && waiting && strstr(why, "mission stratagem"));
-        uint8_t* frv = calloc(1, STR_ROW);
-        uint32_t head[2] = {105, 0xEA902C4Bu};
-        memcpy(frv, head, 8);
-        uint64_t at = (uintptr_t)frv;
-        memcpy(game + STR_TABLE + 105 * 8, &at, 8);
+        assert(DifficultySitesFailed(base, &waiting) == NULL);
     }
     /* An unfilled copy waits, even after the grace period; a changed instruction waits, then is refused. */
     uint32_t item = *(uint32_t*)(game + kDifficultyCopies[7]);
@@ -533,6 +528,20 @@ static void DifficultyFixture(void)
     assert(InstallDifficulty(base, 0) == 0 && g_difficultyState == 0);
     game[kDifficultySites[3].rva + kDifficultySites[3].dispAt] ^= 1;
     assert(InstallDifficulty(base, 1) == 1 && g_difficultyState == 1);
+    /* The grant waits for its row: the site keeps the game's code until the row loads; then the M-102 FRV's (free, in a
+     * family with paid skins) installs at the next tick, once. */
+    assert(g_grantPending && !memcmp(game + DIF_GRANT_SITE, kGrantPin, 7));
+    GrantTick(base);
+    assert(g_grantPending && !memcmp(game + DIF_GRANT_SITE, kGrantPin, 7));
+    {
+        uint8_t* frv = calloc(1, STR_ROW);
+        uint32_t head[2] = {105, 0xEA902C4Bu};
+        memcpy(frv, head, 8);
+        uint64_t at = (uintptr_t)frv;
+        memcpy(game + STR_TABLE + 105 * 8, &at, 8);
+    }
+    GrantTick(base);
+    assert(!g_grantPending && game[DIF_GRANT_SITE] == 0xE9);
     /* Every instruction addresses the moved table; level 11 is level 10 with the mod's values; rows 12..15 are empty. */
     uint8_t* table = g_difficultyTable;
     for (size_t i = 0; i < sizeof kDifficultySites / sizeof kDifficultySites[0]; i++)

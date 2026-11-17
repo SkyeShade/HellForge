@@ -119,7 +119,10 @@ player owns it or not, so the loader refuses a paid type (`GrantRefused` in `dif
 - It reads the type's StratagemInfo row (+4, the stable id). A mod's type is checked by its own stable id and its base's.
 - The paid stable ids come from `data/paid-items.json` through `native/mod-loader/paid_stratagems.h`, which
   `sdk-headers` generates and its check keeps current.
-- The level's install waits until the game has loaded that row. A refused type is logged, and the level grants none.
+- The grant waits until the game has loaded that row; the rest of the install does not (`GrantTick` adds the grant
+  later). The game makes its world, and with it the generation block, about when that row loads. A block made before
+  the install keeps the old layout, and a larger map then overruns it: the drop never lands. A refused type is logged,
+  and the level grants none.
 
 The check runs in each player's loader. How a joiner's game handles a mission group the host sends (RPC 0xC953DB6D)
 is not traced, so a changed host's paid stratagem may still reach it.
