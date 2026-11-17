@@ -364,16 +364,15 @@ static class InventorySyncTests
                 missingLog.Contains("system.reg check: the key is not in system.reg: the import did not land", StringComparison.Ordinal),
                 "The capture log did not record both checks for a missing import: " + string.Join(" / ", missingLog.Split('\n').TakeLast(8)));
 
-            // system.reg has the key but reg export writes no file: the message says which check failed.
+            // system.reg has the key but reg export fails and writes no file (bug-report-0559: SteamOS, Proton Experimental,
+            // exit -1): system.reg is what the game's Wine loads, so the certificate is in place and the sync goes on.
             var notReadFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-not-read")).FullName;
             var notRead = WriteFakeProton(notReadFolder, Path.Combine(notReadFolder, "state"), template, expectedHex,
                 importLands: true, exportTemplate: null);
-            var exportLost = Refusal(() => LinuxCapture.InstallCertificate(fakeRecord with { Proton = notRead }));
-            check(exportLost.Contains("reg export exited 1", StringComparison.Ordinal) &&
-                exportLost.Contains("system.reg holds the expected Blob", StringComparison.Ordinal) &&
-                !exportLost.Contains("reg query", StringComparison.Ordinal) &&
-                !exportLost.Contains("xrizer", StringComparison.Ordinal),
-                "A readable system.reg with a failed export was not named: " + exportLost);
+            LinuxCapture.InstallCertificate(fakeRecord with { Proton = notRead });
+            var exportLostLog = File.ReadAllText(Path.Combine(sync, InventorySync.LauncherLogFile));
+            check(exportLostLog.Contains("reg export did not confirm the Blob (reg export exited 1); system.reg holds it", StringComparison.Ordinal),
+                "A failed export beside a system.reg with the Blob was not taken, or not logged: " + string.Join(" / ", exportLostLog.Split('\n').TakeLast(4)));
 
             var badFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-bad-proton")).FullName;
             var badExport = Path.Combine(badFolder, "bad-export.reg");
