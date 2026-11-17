@@ -161,6 +161,8 @@ static class ShaderTests
             check(hosts.Values.All(h => h.Stages.Count > 0 && h.Stages.All(s => s.Digest.Length == 16 && s.Size > 0)), "A stage has no pin.");
             check(hosts["transparent"].Stages.Count == 4 && hosts["transparent"].Child != null && hosts["decal"].Child == null && hosts["refract"].Child == null, "The hosts' shape changed.");
             check(hosts["decal"].Stages[0].Offset == 0x11C38 && hosts["decal"].UnitMaterialAt == 0x69C && !hosts["decal"].Mesh && hosts["refract"].Mesh, "The decal host is not the reviewed one.");
+            check(hosts["decal"].Cull == new HostCull(0xD4, 3, 0.5f, 64f) && hosts["transparent"].Cull == null && hosts["refract"].Cull == null,
+                "Only the decal host widens its box's LOD footer: mesh hosts rebuild theirs from the mesh.");
             const string json = """{"format":1,"build":"1","hosts":{}}""";
             check(ShaderHosts.Parse(json, "1").Hosts.Count == 0, "A catalogue for this build must load.");
             Refused(() => ShaderHosts.Parse(json, "2"), "for game build 1, and this is build 2");
@@ -238,6 +240,9 @@ static class ShaderTests
             var (gpu, stages) = Part(1);
             var unit = new byte[0x800];
             BitConverter.TryWriteBytes(unit.AsSpan(0x69C), BoxMaterial);
+            float[] footer = [-0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f, MathF.Sqrt(3) * 0.5f];   // the box's LOD footer, then its node
+            for (var k = 0; k < footer.Length; k++) BitConverter.TryWriteBytes(unit.AsSpan(0xD4 + 4 * k), footer[k]);
+            BitConverter.TryWriteBytes(unit.AsSpan(0xD4 + 28), 3u);
             var child = new byte[0x40];
             BitConverter.TryWriteBytes(child.AsSpan(0x18), Root);
             var game = ResourceArchive.Write(new Dictionary<ResourceKey, ResourceParts>
@@ -249,7 +254,8 @@ static class ShaderTests
             DataBuilderTests.WriteBundles(data, new Dictionary<string, byte[]> { ["1111111111111111"] = game.Archive, ["1111111111111111.gpu_resources"] = game.Gpu });
             var stage = new HostStage(stages[0], BitConverter.ToInt32(gpu, stages[0] + 24), gpu.AsSpan(stages[0] + 4, 16).ToArray());
             var plain = new ShaderHost("plain", Root, [stage], null, Unit, BoxMaterial, 0x69C, false, []);
-            var hosts = new ShaderHosts(new Dictionary<string, ShaderHost> { ["plain"] = plain, ["child"] = plain with { Name = "child", Child = (Child, 0x18) } });
+            var hosts = new ShaderHosts(new Dictionary<string, ShaderHost> { ["plain"] = plain, ["child"] = plain with { Name = "child", Child = (Child, 0x18) },
+                ["culled"] = plain with { Name = "culled", Cull = new(0xD4, 3, 0.5f, 64f) } });
             var mod = Directory.CreateDirectory(Path.Combine(root, "shader-mod")).FullName;
             File.WriteAllBytes(Path.Combine(mod, "x.dxbc"), Container(Stage, 16));
             static ulong Hash(string name) => EngineHash.Murmur64A(Encoding.UTF8.GetBytes(name));
@@ -271,6 +277,14 @@ static class ShaderTests
             check(BitConverter.ToUInt32(rootCopy.Gpu, 4) == (uint)(Hash("test/mod/b/root") >> 32) && BitConverter.ToUInt32(rootCopy.Gpu, 0x30) != BitConverter.ToUInt32(coded.Gpu, 0x30), "Copies of one root must not share ids.");
             check(BitConverter.ToUInt64(Named(ResourceTypes.Material, "test/mod/b/material").Main, 0x18) == Hash("test/mod/b/root"), "The child does not name the root copy.");
             check(BitConverter.ToUInt64(Named(ResourceTypes.Unit, "test/mod/b").Main, 0x69C) == Hash("test/mod/b/material"), "The unit does not use the child.");
+
+            var culled = ModDataBuilder.Build(hosts.Expand(Spec(new ShaderResource("r0", "culled", "test/mod/c", "x.dxbc", null))), mod, reader, Path.Combine(root, "shader-culled"));
+            var culledMain = Path.Combine(root, "shader-culled", culled[0]);
+            var box = ResourceArchive.Read(File.ReadAllBytes(culledMain), File.ReadAllBytes(culledMain + ".gpu_resources"), [])[new(ResourceTypes.Unit, Hash("test/mod/c"))].Main;
+            float F(int at) => BitConverter.ToSingle(box, at);
+            check(F(0xD4) == -64 && F(0xDC) == -64 && F(0xE0) == 64 && F(0xE8) == 64 && MathF.Abs(F(0xEC) - 64 * MathF.Sqrt(3)) < 1e-3f && BitConverter.ToUInt32(box, 0xF0) == 3
+                && BitConverter.ToUInt64(box, 0x69C) == Hash("test/mod/c/material"), "The culled host's unit must carry its widened LOD footer, node kept, and its material.");
+            check(BitConverter.ToSingle(Named(ResourceTypes.Unit, "test/mod/a").Main, 0xD4) == -0.5f, "A host without a cull entry must leave the footer as it is.");
 
             var other = hosts.Expand(Spec(new ShaderResource("r0", "plain", "test/mod/a", "x.dxbc", null)));
             var moved = new ShaderHosts(new Dictionary<string, ShaderHost> { ["plain"] = plain with { Stages = [stage with { Digest = new byte[16] }] } });

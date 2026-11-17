@@ -137,7 +137,8 @@ public sealed class ModsHold : IDisposable
         }
     }
 
-    // The enabled mods in the folders things appeared in, switched off: their ids.
+    // The enabled mods in the folders things appeared in (inside them too: a folder around mods, ModSources), switched
+    // off: their ids.
     List<string> SwitchOff(HashSet<string> touched, Action<string> say)
     {
         var disabled = new List<string>();
@@ -145,7 +146,7 @@ public sealed class ModsHold : IDisposable
         try
         {
             var (mods, _) = ModCatalog.Load(root);
-            foreach (var mod in mods.Where(m => m.Enabled && touched.Contains(Path.GetFullPath(m.Folder).TrimEnd('\\', '/'))))
+            foreach (var mod in mods.Where(m => m.Enabled && m.Archive == null && touched.Any(top => LocalInstall.Within(m.Folder, top))))
             {
                 ModSettings.SetEnabled(root, mod.Id, false);
                 disabled.Add(mod.Id);

@@ -219,6 +219,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **Mods load as you download them.** A zip may hold the mod in folders, beside a readme, or in a zip inside it, as
+  mod sites ship them. A folder unpacked into the mods folder works the same way, and a folder of several mods loads
+  each one. A zip with several mods is refused, and Mod notices names them: one zip is one mod, as friends compare it
+  ([using mods](docs/mods.md#where-the-mod-may-sit), #451).
 - **Corpses at rest leave the physics world.** Up to 32 corpses on each machine kept their ragdoll bodies in the
   physics step until newer deaths pushed them out. Once they settle, they are frozen as the game freezes a sinking
   corpse, so they no longer react to hits ([performance fixes](docs/performance.md#corpse-freeze)).
@@ -335,6 +339,9 @@ On `dev`, since 0.4.0-beta.
   but its knockback still threw the Helldiver: the game checks the line of sight only for the damage. The knockback
   now waits for the same check and comes only when the damage does. Close blasts the game does not check keep
   knocking you down, as before ([why](docs/gameplay-fixes.md#explosion-knockback-and-cover)).
+- **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
+  however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
+  counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
 - **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
   "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
   service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
@@ -476,6 +483,9 @@ On `dev`, since 0.4.0-beta.
 
 ### For launcher developers
 
+- **`mods` lists mods in folders around them.** Such a mod's `folder` is its own folder inside the one in the mods
+  folder. `mod-remove` deletes the outermost folder that holds only that mod, and `removed` names it
+  ([external launchers](docs/external-launchers.md), #451).
 - **Several mods in one CLI call.** `mod-remove --ids a,b,c` and `mod-switch --ids a,b,c --on yes|no` change a list
   of mods, and `mod-add` takes `--file` more than once. The mods folder is read once for the whole list instead of once
   per mod, so a launcher sending 30 mods no longer waits for 30 reads. Every id is checked first: one unknown or refused
