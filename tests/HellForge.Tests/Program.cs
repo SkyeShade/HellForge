@@ -765,6 +765,7 @@ ModToolRepairTests.Register(Test, Check, Reject, root);
 BundledModsTests.Register(Test, Check, Reject, root);
 CosmeticPacksTests.Register(Test, Check, Reject, root);
 OtherArchivesTests.Register(Test, Check, Reject, root);
+ModSourcesTests.Register(Test, Check, Reject, root);
 EditorTests.Register(Test, Check, Reject, root);
 SessionLaunchTests.Register(Test, Check, Reject, root);
 WinePathTests.Register(Test, Check, root);
