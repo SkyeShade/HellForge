@@ -343,6 +343,9 @@ On `dev`, since 0.4.0-beta.
   log's file name and misreads letters such as Japanese or Chinese ones, then crashed at `helldivers2.exe+0x5ce339`
   before it connected. On such a PC the session now starts the game without its log and says why. Should the crash
   come another way, the launcher and the crash report name the setting and say to turn it off (#423, #424, #263).
+- **Setup says which link in the game's Steam folder stops it.** A mod manager that links mods into HELLDIVERS 2's
+  folder in Steam stopped setup at "Linked/reparse paths are not supported". Setup now names the file and says to
+  remove those mods or verify the game's files in Steam (#373).
 - **No more `.partial` files piling up in `mods/.unpacked`.** When another program held a zipped mods' cache file
   while the mods were listed, each listing left a `.zip-hashes.json.<id>.partial` behind: a launcher listing them every
   5 seconds left 11,405. Such a write now removes its partial, and the next start removes ones left before (#331).
