@@ -789,6 +789,7 @@ static void WatchInstalls(void)
     PerfSpeedTreeWatch();
     RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
     RenderVersionRehashWatch();
+    PerfJobWakeWatch(); /* installs once the game has loaded */
     PerfScatterCamerasWatch();
     TreeLimitsWatch();
     SpanRescueInstall();
