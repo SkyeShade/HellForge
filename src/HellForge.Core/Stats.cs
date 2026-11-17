@@ -644,8 +644,13 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         ("curve_speed", "Curve speed", 0xE4, "f32", 0, 50, "multiplier", "How fast the curve turns: its angles are degrees a second times this."),
         ("return_time", "Return time", 0xF0, "f32", 0, 10, "seconds",
             "Seconds after the veer the missile takes to swing fully back onto its target, curving less as it goes. Then it homes as usual."),
-        ("return_turn_rate", "Return turn rate", 0xF4, "f32", 0, 20, "multiplier", "Its turn rate while it swings back, as a multiple of its usual turn rate."),
+        ("return_turn_rate", "Return turn rate", 0xF4, "f32", 0, 10, "multiplier",
+            "Its turn rate while it swings back, as a multiple of its usual turn rate. Past about 60 divided by that turn rate it overshoots and swings wildly."),
     ];
+
+    // What tests/in-game/missile-spread-look.json saw a missile do: direction 0 veers up, the first curve axis pitches.
+    static readonly string[] Seen = ["enabled", "direction_min", "direction_max", "angle_min", "angle_max", "veer_start", "veer_end",
+        "curve_pitch_min", "curve_pitch_max", "curve_speed"];
 
     static void MissileSpread(StatsSchema schema)
     {
@@ -656,7 +661,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                 var order = target.Fields.Values.Select(f => f.Order).DefaultIfEmpty(0).Max();
                 foreach (var (leaf, name, offset, storage, min, max, unit, note) in Spread)
                     AddField(target, $"{missile.Key.Prefix}.spread.{leaf}", new StatsField(name, "component", "SeekingMissileComponentData", missile.Key.Resource,
-                        missile.Key.Record, offset, storage, min, max, unit, false, true)
+                        missile.Key.Record, offset, storage, min, max, unit, false, !Seen.Contains(leaf))
                     { Order = ++order, Note = note, Options = storage == "u8" ? NoYes : default });
             }
     }

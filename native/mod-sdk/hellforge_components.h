@@ -3501,21 +3501,21 @@ typedef struct HfSeekingMissile
     float turn_rate_at_max_angle;                /* +0x58 Missile turn rate at the blend angle (unverified) [respawn?] */
     float turn_rate_aligned;                     /* +0x5C Missile turn rate on target (unverified) [respawn?] */
     uint8_t _unknown_60[84];
-    uint8_t deviation_enabled;                   /* +0xB4 1: each missile spreads: it veers off its launch line, curves, then swings back onto its target (the deviation_* fields); 0: it flies straight at its target. The W.A.S.P. (both missiles), the Missile Pistol and the Warrant have it (unverified) [respawn?] */
+    uint8_t deviation_enabled;                   /* +0xB4 1: each missile spreads: it veers off its launch line, curves, then swings back onto its target (the deviation_* fields); 0: it flies straight at its target. The W.A.S.P. (both missiles), the Missile Pistol and the Warrant have it [respawn?] */
     uint8_t _unknown_B5[3];
-    float deviation_direction_min;               /* +0xB8 which way a missile veers, in degrees around its flight line (0 up, 90 / -90 a side, 180 down): each missile draws one between this and deviation_direction_max (the W.A.S.P. -75 to 75) (unverified) [respawn?] */
-    float deviation_direction_max;               /* +0xBC the top of the veer direction (see deviation_direction_min) (unverified) [respawn?] */
-    float deviation_angle_min;                   /* +0xC0 how far a missile turns off its launch line, in degrees: each missile draws an angle between this and deviation_angle_max (the W.A.S.P. 40 to 55) (unverified) [respawn?] */
-    float deviation_angle_max;                   /* +0xC4 the top of the veer angle (see deviation_angle_min) (unverified) [respawn?] */
-    float deviation_curve_min[3];                /* +0xC8 the curve after the veer: pitch, roll (around the flight line) and yaw in degrees, each drawn per missile between this and deviation_curve_max and turned every second (times deviation_curve_speed) until the return ends (unverified) [respawn?] */
-    float deviation_curve_max[3];                /* +0xD4 the top of the curve (see deviation_curve_min) (unverified) [respawn?] */
+    float deviation_direction_min;               /* +0xB8 which way a missile veers, in degrees around its flight line (0 up, 90 / -90 a side, 180 down): each missile draws one between this and deviation_direction_max (the W.A.S.P. -75 to 75) [respawn?] */
+    float deviation_direction_max;               /* +0xBC the top of the veer direction (see deviation_direction_min) [respawn?] */
+    float deviation_angle_min;                   /* +0xC0 how far a missile turns off its launch line, in degrees: each missile draws an angle between this and deviation_angle_max (the W.A.S.P. 40 to 55) [respawn?] */
+    float deviation_angle_max;                   /* +0xC4 the top of the veer angle (see deviation_angle_min) [respawn?] */
+    float deviation_curve_min[3];                /* +0xC8 the curve after the veer: pitch (x, positive up), roll (y, around the flight line) and yaw (z) in degrees, each drawn per missile between this and deviation_curve_max and turned every second (times deviation_curve_speed) until the return ends [respawn?] */
+    float deviation_curve_max[3];                /* +0xD4 the top of the curve (see deviation_curve_min) [respawn?] */
     uint8_t deviation_curve_either_way;          /* +0xE0 1: each of the curve's three angles gets a random sign (unverified) [respawn?] */
     uint8_t _unknown_E1[3];
-    float deviation_curve_speed;                 /* +0xE4 the curve's rate: its angles turn by this many times a second (unverified) [now?] */
-    float deviation_veer_end;                    /* +0xE8 seconds after launch when the veer is done (the missile turns evenly from deviation_veer_start); the curve and return start here (unverified) [now?] */
-    float deviation_veer_start;                  /* +0xEC seconds after launch when the missile starts to veer; until then it flies straight (unverified) [now?] */
+    float deviation_curve_speed;                 /* +0xE4 the curve's rate: its angles turn by this many times a second [now?] */
+    float deviation_veer_end;                    /* +0xE8 seconds after launch when the veer is done (the missile turns evenly from deviation_veer_start); the curve and return start here [now?] */
+    float deviation_veer_start;                  /* +0xEC seconds after launch when the missile starts to veer; until then it flies straight [now?] */
     float deviation_return_time;                 /* +0xF0 seconds after the veer the missile takes to swing fully back onto its target (its aim slides from the curve to the target over this time); then it homes as usual (unverified) [now?] */
-    float deviation_return_turn_rate;            /* +0xF4 its turn rate while it swings back, as a multiple of the usual blended turn rate (+0x58 / +0x5C) (unverified) [now?] */
+    float deviation_return_turn_rate;            /* +0xF4 its turn rate while it swings back, as a multiple of the usual blended turn rate (+0x58 / +0x5C); past about 60 / that turn rate a step overshoots (the slerp fraction passes 1) and the missile swings wildly (unverified) [now?] */
     uint8_t _unknown_F8[24];
 } HfSeekingMissile;
 HF_ASSERT_SIZE(HfSeekingMissile, 272);

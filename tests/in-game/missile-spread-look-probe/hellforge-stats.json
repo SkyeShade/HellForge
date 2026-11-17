@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "weapons": {
+    "MLS-4X Commando": {
+      "missile.spread.enabled": 1,
+      "missile.spread.direction_min": 0,
+      "missile.spread.direction_max": 0,
+      "missile.spread.angle_min": 45,
+      "missile.spread.angle_max": 45,
+      "missile.spread.veer_start": 0.05,
+      "missile.spread.veer_end": 0.5,
+      "missile.spread.curve_pitch_min": 90,
+      "missile.spread.curve_pitch_max": 90,
+      "missile.spread.curve_speed": 1,
+      "missile.spread.return_time": 3,
+      "missile.spread.return_turn_rate": 3
+    }
+  },
+  "raw": [
+    {
+      "component": "ProjectileWeaponComponentData",
+      "resource": "0x968211C0033DCE64",
+      "offset": 40,
+      "type": "u32",
+      "value": 3589452743,
+      "expect": 0
+    },
+    {
+      "component": "ProjectileWeaponComponentData",
+      "resource": "0x968211C0033DCE64",
+      "offset": 44,
+      "type": "u32",
+      "value": 1383362761,
+      "expect": 0
+    }
+  ]
+}
