@@ -211,6 +211,17 @@ sealed partial class PlaySession(PlayOptions options)
         var appControl = SmartAppControl.Current;
         result["smartAppControl"] = SmartAppControl.Describe(appControl);
         if (appControl != SmartAppControlState.NotPresent) Say("Smart App Control: " + SmartAppControl.Describe(appControl));
+        GuardEngineLog(options);
+    }
+
+    // The engine log on a PC whose name would crash the game as it opens the log (EngineLogGuard): this session starts the
+    // game without --log-to-file and says why; the setting stays as the player chose it.
+    void GuardEngineLog(PlayOptions options)
+    {
+        if (!options.EngineLog || HellForge.Core.EngineLogGuard.Current() is not { } why) return;
+        options.EngineLog = false;
+        result["engineLogSkipped"] = "host name";
+        Say("Engine log: " + why);
     }
 
     // Holds a file of the installed game closed (no other handle, so it cannot start) into `into`; false when another
