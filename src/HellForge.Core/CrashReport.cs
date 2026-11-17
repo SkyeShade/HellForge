@@ -151,14 +151,12 @@ public static partial class CrashReport
     }
 
     // helldivers2.exe+0x5ce339 (build 25480438), only with the engine log on (--log-to-file, the Engine log setting): the
-    // engine could not create its console log file (CreateFileW at 0x5CE240 failed with an error other than a sharing
-    // violation) and crashed on its way to saying so. The error path (0x5CE322, "Cannot open file for output") reads the
-    // file name back through a stack slot (rbp+0x878) that holds other text by then, so the game reads text as an address.
-    // A game started without the switch never opens that file (#423, #424, #263). Windows records it, the loader does not:
-    // the game has not loaded game.dll yet.
-    public const string EngineLogAdvice = "the game's own log (the Engine log setting) could not open its log file and the " +
-        "game crashed as it said so. Turn Engine log off in Settings > TROUBLESHOOTING (or play with HellForge.Cli's " +
-        "--engine-log no), then press PLAY.";
+    // engine's UTF-8 converter ran away on its log file's name and overwrote its stack, and the open's error path then
+    // read text as an address (EngineLogGuard says how; #423, #424, #263). Sessions skip the engine log on a PC whose name
+    // does that; this names the setting for any other way into the same crash. Windows records it, the loader does not.
+    public const string EngineLogAdvice = "the game's own log (the Engine log setting) crashed the game as it opened its " +
+        "log file, which happens when this PC's name has letters outside A-Z, 0-9 and \"-\". Turn Engine log off in " +
+        "Settings > TROUBLESHOOTING (or play with HellForge.Cli's --engine-log no), then press PLAY.";
 
     public static string? KnownWindowsCause(string? module, string? offset, bool engineLog, string buildId) =>
         engineLog && buildId == "25480438" && "helldivers2.exe".Equals(module, StringComparison.OrdinalIgnoreCase)
