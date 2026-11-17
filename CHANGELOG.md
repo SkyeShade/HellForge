@@ -335,6 +335,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Setup says which link in the game's Steam folder stops it.** A mod manager that links mods into HELLDIVERS 2's
+  folder in Steam stopped setup at "Linked/reparse paths are not supported". Setup now names the file and says to
+  remove those mods or verify the game's files in Steam (#373).
 - **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
   however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
   counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
