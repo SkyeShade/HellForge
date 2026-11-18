@@ -19,6 +19,7 @@ public static partial class LocalBackend
         public required ProfileStore? Profile { get; init; }
         public required MissionService? Missions { get; init; }
         public required Purchases? Purchases { get; init; }
+        public required WarServices? War { get; init; }
         public required FriendPresence Presence { get; init; }
         public required PlayFabService PlayFab { get; init; }
         public required string? CaptureBodies { get; init; }
@@ -98,6 +99,7 @@ public static partial class LocalBackend
             if (request.Path == "/config/locator.json") return Locator(context);
             if (request.Path == "/Account/Login") return await LoginAsync(context);
             if (request.Path == "/hellforge/live-mods") return await LiveModsAsync(context);
+            if (request.Path == "/hellforge/paid-guard") return PaidGuard(context);
             if (request.Path.StartsWithSegments("/lobby", out var lobbyPath)) return await LobbyAsync(context, lobbyPath.Value ?? "");
             if (request.Path == "/Account/Keys") return await AccountKeysAsync(context);
             if (request.Path.StartsWithSegments("/hellforge/v1/lobbies", out var browsePath)) return await BrowseAsync(context, browsePath.Value ?? "");
@@ -123,6 +125,7 @@ public static partial class LocalBackend
                     return (StatusCodes.Status200OK, reply, outcome);
                 });
             if (Purchases != null && Purchases.Handles(request.Path.Value ?? "")) return await PostAsync(context, Purchases.Handle);
+            if (War != null && WarServices.Handles(request.Path.Value ?? "")) return await WarAsync(context, War);
             if (StartupFixtures && request.Path == "/WarSeason/801/timeSinceStart")
                 return OtherMethod(context, HttpMethods.IsGet, "GET") ??
                     new Reply(StatusCodes.Status200OK, "local_war_clock", new JsonObject { ["secondsSinceStart"] = WarClock.Seconds });
@@ -138,11 +141,13 @@ public static partial class LocalBackend
 
         // A startup body as served. Weapons code mods registered this session join the catalogue, packages and inventory
         // (RegisteredItems), then mods' warbonds their list entries, spent counters and, on unlock-all, their purchases
-        // (ModWarbondService). The last gate runs after both (OwnershipFilter.Gate.cs).
+        // (ModWarbondService), and a war script's additions the war's bodies (WarServices). The last gate runs after them
+        // (OwnershipFilter.Gate.cs).
         JsonElement Serve(string path, JsonElement body)
         {
             var served = RegisteredItems?.Apply(path, body) ?? body;
             served = ModWarbonds?.Apply(path, served) ?? served;
+            served = War?.Apply(path, served) ?? served;
             if (Profile?.Ownership is not { } ownership) return served;
             return path switch
             {
@@ -170,6 +175,17 @@ public static partial class LocalBackend
                 ["live"] = result.Live, ["applied"] = result.Applied, ["changes"] = Texts(result.Changes), ["blocking"] = Texts(result.Blocking),
                 ["detail"] = result.Detail, ["digest"] = result.Digest
             });
+        }
+
+        // The loader's paid-item guard (native/mod-loader/paid_guard.c): the reserved ids the player may not hold now. It asks
+        // again before each take-back, so a token just bought with Forge Credits is never taken.
+        Reply PaidGuard(HttpContext context)
+        {
+            if (OtherMethod(context, HttpMethods.IsGet, "GET") is { } rejected) return rejected;
+            if (Profile?.Ownership is not { } ownership)
+                return new(StatusCodes.Status409Conflict, "paid_guard_unavailable", Error("HELLFORGE_NO_OWNERSHIP_RULES"));
+            var refused = ownership.Refused(Profile.InventorySection());
+            return new(StatusCodes.Status200OK, "paid_guard_served", new JsonObject { ["refused"] = new JsonArray([.. refused.Select(id => (JsonNode)id)]) });
         }
 
         static Reply Locator(HttpContext context)
@@ -359,6 +375,17 @@ public static partial class LocalBackend
                     request.Path.Value!.Trim('/').Replace('/', '_') + ".json"), body.RootElement.GetRawText(), context.RequestAborted);
             var (status, response, outcome) = handle(request.Path.Value!, body.RootElement);
             return new(status, outcome, response);
+        }
+
+        // The war's polled services (WarServices); a POST's body may be empty.
+        static async Task<Reply> WarAsync(HttpContext context, WarServices war)
+        {
+            var request = context.Request;
+            using var reader = new StreamReader(request.Body);
+            var text = HttpMethods.IsPost(request.Method) ? await reader.ReadToEndAsync(context.RequestAborted) : "";
+            using var body = JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text, new JsonDocumentOptions { AllowTrailingCommas = true });
+            var (reply, outcome) = war.Handle(request.Method, request.Path.Value!, request.Query, body.RootElement);
+            return new(StatusCodes.Status200OK, outcome, reply);
         }
 
         static async Task<Reply> CustomizeAsync(HttpContext context, ProfileStore profile)

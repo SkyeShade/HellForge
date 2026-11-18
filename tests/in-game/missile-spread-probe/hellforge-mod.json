@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "hellforge.missile-spread-probe",
+  "name": "Missile spread probe",
+  "version": "1.0.0",
+  "description": "In-game test only (tests/in-game/missile-spread.json), never shipped: the editor's missile spread rows, the W.A.S.P.'s spread off and the MLS-4X Commando's on (45 degrees to one side).",
+  "gameplay": true
+}

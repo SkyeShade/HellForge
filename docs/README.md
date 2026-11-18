@@ -10,6 +10,8 @@ Every HellForge document, by who it is for, and what an installation holds. To i
   fail), how to collect logs and where to ask.
 - [Using mods](mods.md): adding and removing mods, the Mods page, load order and playing with friends.
 - [Lua mods](lua-bridge.md): Bingus Shared Loader, HD2Runtime and their mods on HellForge, and the Lua bridge behind them.
+- [The HellForge war](hellforge-war.md): the war every HellForge player shares, its server and its mission reports.
+- [War scripts](war-script.md): your own major orders, dispatches, reward mail and planet modifiers on top of the war.
 - [Co-op and public lobbies](multiplayer.md): playing with friends and in public lobbies, and which settings decide
   who can join.
 - [Linux (Proton)](linux.md): the experimental Linux setup: installing, updating, sessions, co-op, account sync and
@@ -38,6 +40,8 @@ The modding guide, in reading order:
    [The asset kit](modding/assets.md): sharing patch files made from the game's resources without Arrowhead's bytes.
 6. [Content](modding/content.md): changing and adding weapons, projectiles, stratagems, entities, behaviours, abilities
    and difficulties.
+   [Projectiles and damage](modding/projectiles.md): projectiles, damage types, explosions, beams, arcs and sprays of a
+   mod's own.
    [New enemies](modding/enemies.md): enemies with roster rows and squads of their own, and replacement rules.
    [Patterns](modding/patterns.md): patterns of a mod's own for weapons, vehicles, the hellpod and the Pelican.
    [Warbonds](modding/warbonds.md): warbonds of a mod's own, selling game items and its weapons and stratagems.
@@ -56,6 +60,8 @@ Reference and related pages:
   files it reads and writes.
 - [Mods that change while the game runs](modding/live.md): for code mod authors; what HellForge does when a mod is
   switched on or off during a session, and how a mod takes part.
+- [Screens in the game's own UI](modding/ui.md): for code mod authors; SDK 19 menus and overlays in XAML with the
+  game's styles, set from code, with click handlers.
 - [Screens over the game](modding/overlay.md): for code mod authors; the SDK 17 screens, what each drawing call does,
   the input, the backdrop and the overlay host.
 - [Building a lobby browser](lobby-browser.md): for front-end developers drawing their own lobby browser on the ship's
@@ -72,6 +78,13 @@ Reference and related pages:
   which game tables move or grow, and what each part of the level changes.
 - [Stats, live editing and events](internals-live.md): the stats pass at load, live editing, the in-game editor and live
   pipe, event sources and native edits.
+- [Performance fixes in the engine](performance.md): what the mod loader changes so the game and HellForge do less
+  work, and how to turn a fix off.
+- [Performance fixes in level generation](performance-loading.md): the fixes that make the game's level generation
+  take less time or memory.
+- [Performance fixes for many enemies](performance-enemies.md): the fixes for missions with hundreds of enemies.
+- [Fixes to the game's own behaviour](gameplay-fixes.md): where the mod loader changes what the game gets wrong, such as
+  explosions knocking Helldivers down through cover.
 - [Crash guards in the renderer](crash-guards.md): the two crashes of the game's renderer that HellForge guards, and why
   each guard is safe.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in
@@ -94,8 +107,8 @@ Reference and related pages:
   the Steam Linux Runtime and what the wrapper sets up.
 - [The Linux sandbox](linux-sandbox.md): the sandbox probe, how `hf-sandbox` runs the game in its own domain, the
   self-test and the design claims still open.
-- [Account sync on Linux](linux-account-sync.md): what Sync Inventory changes on a Linux PC (hosts file, root relay, the
-  CA in the game's prefix) and how each change is checked and undone.
+- [Account sync on Linux](linux-account-sync.md): what Sync Inventory changes on a Linux PC (hosts file, root relay,
+  snapshot signer, the CA in the game's prefix) and how each change is checked and undone.
 - [Testing HellForge on Linux](linux-testing.md): for Linux testers; what is still untested, the sandbox probe and what
   to report.
 - [Several installations on one PC](multi-instance.md): for testing co-op without a second PC; a test mode that runs

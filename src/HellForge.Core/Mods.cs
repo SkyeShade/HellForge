@@ -103,7 +103,7 @@ public static partial class ModCatalog
         File.Exists(Path.Combine(folder, ManifestName)) ? Path.Combine(folder, ManifestName)
         : File.Exists(Path.Combine(folder, LegacyManifestName)) ? Path.Combine(folder, LegacyManifestName) : null;
     // The mod SDK version this HellForge provides (native/mod-sdk/hellforge_mod.h).
-    public const int SdkVersion = 18;
+    public const int SdkVersion = 20;
 
     [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}\\.dll$")]
     private static partial Regex DllName();
@@ -160,9 +160,9 @@ public static partial class ModCatalog
         var problems = new List<string>();
         if (!Directory.Exists(modsFolder)) return (mods, problems);
         profile ??= EntityProfile.Current;
-        var sources = Directory.GetDirectories(modsFolder).Order(StringComparer.OrdinalIgnoreCase)
-            .Where(folder => !Path.GetFileName(folder).StartsWith('.') && (ManifestIn(folder) != null || CosmeticPacks.IsPack(folder)))
-            .Select(folder => (Folder: folder, Archive: (string?)null)).ToList();
+        var (folders, folderProblems) = ModSources.InModsFolder(modsFolder);
+        problems.AddRange(folderProblems);
+        var sources = folders.Select(folder => (Folder: folder, Archive: (string?)null)).ToList();
         foreach (var (archive, root, problem) in ModArchives.Sync(modsFolder))
             if (problem != null) problems.Add($"{Path.GetFileName(archive)}: {problem}");
             else sources.Add((root!, Path.GetFileName(archive)));
@@ -172,7 +172,7 @@ public static partial class ModCatalog
             try { mods.Add(LoadOne(folder, archive, settings, profile)); }
             catch (Exception error) when (error is InvalidDataException or JsonException or IOException)
             {
-                problems.Add($"{archive ?? Path.GetFileName(folder)}: {error.Message}");
+                problems.Add($"{archive ?? Path.GetRelativePath(modsFolder, folder)}: {error.Message}");
             }
         }
         foreach (var duplicate in mods.GroupBy(m => m.Id).Where(g => g.Count() > 1))
@@ -307,8 +307,11 @@ public static partial class ModCatalog
     // with either cannot be the player's own.
     static CoopTier DecideTier(JsonElement root, ModManifest mod, TierFacts facts)
     {
+        // A rearm tick is not the player's own: every machine refills every player's uses (native/mod-loader/stratagem_rearm.c),
+        // so the squad needs the same mod. Local Stats stays each player's (a host may share theirs).
+        var rearms = mod.Id != LocalStatsId && facts.Stats.Any(s => s.Kind == "StratagemRearm");
         var statsOnly = facts.Stats.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && facts.Data.Count == 0 && !facts.Spec &&
-            facts.Types.Count == 0 && facts.Writes.Count == 0;
+            facts.Types.Count == 0 && facts.Writes.Count == 0 && !rearms;
         var dataOnly = facts.Data.Count > 0 && facts.Code == null && !facts.Source && !facts.Lua && !facts.Spec &&
             facts.Stats.Count == 0 && facts.Types.Count == 0 && facts.Writes.Count == 0;
         var tier = ReadCoop(root) ?? (statsOnly || dataOnly && ClientOnlyPatches(mod) ? CoopTier.PerPlayer : CoopTier.Shared);
@@ -639,7 +642,7 @@ public static partial class ModCatalog
 // The plan the HellForge mod loader (native/mod-loader) reads: the build's pins, the entity profile and the code mods in
 // load order, as tab-separated lines (no JSON parser in the loader). Written per session next to its logs.
 // Mods kept as zips: each <mods>/<name>.zip is unpacked into <mods>/.unpacked/<name>-<content hash> (once per content)
-// and loaded from there; the manifest may be at the zip's root or in its single top-level folder. A zip that is removed
+// and loaded from there; the mod may be wherever ModSources finds it (in wrapper folders, in a zip inside it). A zip removed
 // or replaced takes its unpacked copy with it at the next load (a copy still in use, such as a code mod's DLL in a
 // running game, is removed at a later load). No entry may be written outside the unpacked folder (no absolute or parent
 // paths); a zip's size is the player's business.
@@ -659,6 +662,8 @@ public static class ModArchives
             {
                 var target = UnpackedFolderOf(cache, archive);
                 keep.Add(Path.GetFileName(target));
+                // a copy holding only a zip: unpacked by a HellForge that left zips inside zips closed (OpenInner)
+                if (Directory.Exists(target) && ModSources.Search(target) is [{ Zip: true }]) Directory.Delete(target, recursive: true);
                 if (!Directory.Exists(target)) Unpack(archive, target);
                 results.Add((archive, ManifestRoot(target), null));
             }
@@ -703,6 +708,7 @@ public static class ModArchives
     static void LoadHashes(string cache)
     {
         lock (hashesLoaded) if (!hashesLoaded.Add(cache)) return;
+        RemoveLeftPartials(cache);
         try
         {
             if (System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(cache, HashesName))) is not System.Text.Json.Nodes.JsonObject saved) return;
@@ -720,13 +726,42 @@ public static class ModArchives
         foreach (var archive in archives)
             if (hashes.TryGetValue(Path.GetFullPath(archive), out var known))
                 saved[Path.GetFullPath(archive)] = new System.Text.Json.Nodes.JsonObject { ["length"] = known.Length, ["written"] = known.Written.Ticks, ["hash"] = known.Hash };
+        try { Directory.CreateDirectory(cache); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return; }
+        WriteWhole(Path.Combine(cache, HashesName), saved.ToJsonString());
+    }
+
+    // A cache file written whole through a partial of its own, as another process may write it at the same time (the last
+    // one stays). Best effort: when another process holds the file, it keeps its old contents and the partial goes. Each
+    // failed write left its partial: a launcher listing the mods every 5 s while it held the file made 720 an hour (#331).
+    static void WriteWhole(string path, string text)
+    {
+        var partial = path + "." + Guid.NewGuid().ToString("N")[..8] + PartialSuffix;
         try
         {
-            Directory.CreateDirectory(cache);
-            var path = Path.Combine(cache, HashesName);
-            var partial = path + "." + Guid.NewGuid().ToString("N")[..8] + ".partial";
-            File.WriteAllText(partial, saved.ToJsonString());
+            File.WriteAllText(partial, text);
             File.Move(partial, path, overwrite: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        finally
+        {
+            try { File.Delete(partial); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    const string PartialSuffix = ".partial";
+
+    // The cache files' partials that earlier HellForge versions left behind (#331), once per process. Only those older than
+    // a minute: a younger one may be another process's write in progress.
+    static void RemoveLeftPartials(string cache)
+    {
+        try
+        {
+            if (!Directory.Exists(cache)) return;
+            foreach (var name in new[] { HashesName, ShippedName })
+                foreach (var partial in Directory.EnumerateFiles(cache, name + ".*" + PartialSuffix))
+                    if (DateTime.UtcNow - File.GetLastWriteTimeUtc(partial) > TimeSpan.FromMinutes(1)) File.Delete(partial);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
@@ -736,15 +771,18 @@ public static class ModArchives
     // zip's size and time are unchanged. Null when the zip cannot be read.
     static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long Length, DateTime Written, IReadOnlyDictionary<string, string> Files)> shipped = new(StringComparer.OrdinalIgnoreCase);
 
-    // archive: the zip's name in the mods folder (ModManifest.Archive); folder: the mod's, in mods/.unpacked.
+    // archive: the zip's name in the mods folder (ModManifest.Archive); folder: the mod's, in mods/.unpacked. The files
+    // come from the zip they are in (a zip inside it, for a zip of a zip: ModSources.ReadZip), by their path in the mod's
+    // folder, as the mod zipped on its own gives them. Null too when that zip's mod is not this folder.
     internal static IReadOnlyDictionary<string, string>? Shipped(string archive, string folder)
     {
-        // the folder's place in the zip: its root (mods/.unpacked/<zip>-<hash>), or its one top-level folder (ManifestRoot)
-        var full = Path.GetFullPath(folder);
-        static bool InCache(string? path) => path != null && string.Equals(Path.GetFileName(Path.GetDirectoryName(path)), UnpackedFolder, StringComparison.OrdinalIgnoreCase);
-        var root = InCache(full) ? full : InCache(Path.GetDirectoryName(full)) ? Path.GetDirectoryName(full)! : null;
+        // the folder's place in its unpacked copy (mods/.unpacked/<zip>-<hash>): its place in the zip it came from
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+        static bool InCache(string path) => string.Equals(Path.GetFileName(Path.GetDirectoryName(path)), UnpackedFolder, StringComparison.OrdinalIgnoreCase);
+        string? root = full;
+        for (var depth = 0; root != null && !InCache(root); depth++) root = depth < ModSources.MaxDepth ? Path.GetDirectoryName(root) : null;
         if (root == null) return null;
-        var prefix = root == full ? "" : Path.GetFileName(full) + "/";
+        var relative = root == full ? "" : Path.GetRelativePath(root, full).Replace('\\', '/');
         var cache = Path.GetDirectoryName(root)!;
         var info = new FileInfo(Path.Combine(Path.GetDirectoryName(cache)!, archive));
         var key = info.FullName + "|" + full;
@@ -752,15 +790,18 @@ public static class ModArchives
         if (shipped.TryGetValue(key, out var known) && known.Length == info.Length && known.Written == info.LastWriteTimeUtc) return known.Files;
         try
         {
-            var files = new Dictionary<string, string>(StringComparer.Ordinal);
-            using (var zip = ZipFile.OpenRead(info.FullName))
-                foreach (var entry in zip.Entries)
+            var files = ModSources.ReadZip(info.FullName, level =>
+            {
+                if (level.Path != relative) return null;
+                var hashed = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var (name, entry) in level.Shipped())
                 {
-                    var name = entry.FullName.Replace('\\', '/');
-                    if (name.EndsWith('/') || !name.StartsWith(prefix, StringComparison.Ordinal)) continue;
                     using var stream = entry.Open();
-                    files[name[prefix.Length..]] = Convert.ToHexString(SHA256.HashData(stream));
+                    hashed[name] = Convert.ToHexString(SHA256.HashData(stream));
                 }
+                return hashed;
+            });
+            if (files == null) return null;
             shipped[key] = (info.Length, info.LastWriteTimeUtc, files);
             SaveShipped(cache);
             return files;
@@ -801,36 +842,18 @@ public static class ModArchives
             foreach (var (name, hash) in entry.Files) files[name] = hash;
             saved[key] = new System.Text.Json.Nodes.JsonObject { ["length"] = entry.Length, ["written"] = entry.Written.Ticks, ["files"] = files };
         }
-        try
-        {
-            var path = Path.Combine(cache, ShippedName);
-            var partial = path + "." + Guid.NewGuid().ToString("N")[..8] + ".partial";
-            File.WriteAllText(partial, saved.ToJsonString());
-            File.Move(partial, path, overwrite: true);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        WriteWhole(Path.Combine(cache, ShippedName), saved.ToJsonString());
     }
 
+    // The zip's files in target, with the zips inside it opened (OpenInner).
     internal static void Unpack(string archive, string target)
     {
-        using var zip = ZipFile.OpenRead(archive);
         // A staging folder of its own, so the launcher and a starting session can unpack the same zip at once.
         var staging = target + ".partial-" + Guid.NewGuid().ToString("N")[..8];
-        var root = Path.GetFullPath(staging) + Path.DirectorySeparatorChar;
         try
         {
-            foreach (var entry in zip.Entries)
-            {
-                var name = entry.FullName.Replace('\\', '/');
-                if (name.StartsWith('/') || name.Contains(':') || name.Split('/').Any(part => part == ".."))
-                    throw new InvalidDataException($"the zip contains an unsafe path ({entry.FullName}).");
-                var destination = Path.GetFullPath(Path.Combine(staging, name));
-                if (!destination.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException($"the zip contains an unsafe path ({entry.FullName}).");
-                if (name.EndsWith('/')) { Directory.CreateDirectory(destination); continue; }
-                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                entry.ExtractToFile(destination, overwrite: false);
-            }
+            Extract(archive, staging, "the zip");
+            OpenInner(staging);
             try { Directory.Move(staging, target); }
             catch (IOException) when (Directory.Exists(target)) { Directory.Delete(staging, recursive: true); }
         }
@@ -841,16 +864,54 @@ public static class ModArchives
         }
     }
 
-    // The folder holding hellforge-mod.json: the zip's root, or its single top-level folder.
+    // No entry may land outside destination: no absolute or parent paths. label names the zip in a refusal.
+    static void Extract(string archive, string destination, string label)
+    {
+        using var zip = ZipFile.OpenRead(archive);
+        var root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
+        Directory.CreateDirectory(destination);
+        foreach (var entry in zip.Entries)
+        {
+            var name = entry.FullName.Replace('\\', '/');
+            if (name.StartsWith('/') || name.Contains(':') || name.Split('/').Any(part => part == ".."))
+                throw new InvalidDataException($"{label} contains an unsafe path ({entry.FullName}).");
+            var path = Path.GetFullPath(Path.Combine(destination, name));
+            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"{label} contains an unsafe path ({entry.FullName}).");
+            if (name.EndsWith('/')) { Directory.CreateDirectory(path); continue; }
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            entry.ExtractToFile(path, overwrite: false);
+        }
+    }
+
+    // A zip inside the unpacked archive opened in its place, while the archive holds no mod but that zip (ModSources):
+    // a download that zips the mod's zip again. MaxInnerZips deep at most.
+    internal static void OpenInner(string folder)
+    {
+        for (var opened = 0; ModSources.Search(folder) is [{ Zip: true } inner]; opened++)
+        {
+            if (opened == ModSources.MaxInnerZips)
+                throw new InvalidDataException($"it holds zips inside zips more than {ModSources.MaxInnerZips} deep ({inner.Path}): unpack them, and add the mod's own zip or folder.");
+            var next = folder + ".inner-" + Guid.NewGuid().ToString("N")[..8];
+            try { Extract(ModSources.PathIn(folder, inner.Path), next, $"the zip inside it ({inner.Path})"); }
+            catch
+            {
+                try { if (Directory.Exists(next)) Directory.Delete(next, recursive: true); } catch (IOException) { }
+                throw;
+            }
+            Directory.Delete(folder, recursive: true);
+            Directory.Move(next, folder);
+        }
+    }
+
+    // The folder of the mod the unpacked archive holds (ModSources); else why it holds none, or more than one.
     internal static string ManifestRoot(string unpacked)
     {
-        static bool Root(string folder) => ModCatalog.ManifestIn(folder) != null || CosmeticPacks.IsPack(folder);
-        if (Root(unpacked)) return unpacked;
-        var folders = Directory.GetDirectories(unpacked);
-        if (folders.Length == 1 && Directory.GetFiles(unpacked).Length == 0 && Root(folders[0])) return folders[0];
-        var single = folders.Length == 1 && Directory.GetFiles(unpacked).Length == 0 ? folders[0] : unpacked;
-        throw new InvalidDataException(NotAModReason(single) ??
-            $"no {ModCatalog.ManifestName} (or a cosmetic pack's {CosmeticPacks.ManifestName}) at the archive's root or in its one top-level folder.");
+        var found = ModSources.Search(unpacked);
+        if (found is [{ Zip: false } mod]) return ModSources.PathIn(unpacked, mod.Path);
+        if (found.Count > 1) throw new InvalidDataException(ModSources.SeveralReason(found));
+        if (found is [{ Zip: true } zip]) throw new InvalidDataException($"it holds {zip.Path}, a zip, and no mod.");
+        throw new InvalidDataException(ModSources.Wrappers(unpacked).Select(NotAModReason).FirstOrDefault(reason => reason != null) ?? ModSources.NoModReason);
     }
 
     // Why an archive that holds no mod was added, when it is a known kind of not-a-mod: HD2Runtime's mod template (a
@@ -884,11 +945,13 @@ public static class ModLoaderPlan
     // forgeCreditChance: the share of loot caches that hold Forge Credits (ModSettings.ForgeCreditChance, else its default),
     // null to leave the game's loot roll alone.
     // warbonds: the session's mod warbonds (ModWarbonds), for their entries in the game's warbond table.
+    // backendPort: where the session's backend listens, so the loader's paid-item guard can ask it (paid_guard.c).
     public static string Text(IReadOnlyList<ModManifest> codeMods, string logs, EntityProfile profile, string buildId, int? forgeCreditChance = null,
-        IReadOnlyList<ModWarbonds.Warbond>? warbonds = null)
+        IReadOnlyList<ModWarbonds.Warbond>? warbonds = null, int? backendPort = null)
     {
         var lines = new List<string> { "build\t" + buildId, "logs\t" + Field(logs), "network_config\t" + NetworkConfig,
             $"entity_region\t{profile.EntityRegionSize}\t{profile.MapHeader.ToLowerInvariant()}" };
+        if (backendPort is > 0 and <= 65535) lines.Add(FormattableString.Invariant($"backend_port\t{backendPort}"));
         foreach (var (name, c) in profile.Components.OrderBy(c => c.Key, StringComparer.Ordinal))
             lines.Add($"component\t{name}\t{c.Offset}\t{c.Header.ToLowerInvariant()}\t{c.Index}\t{c.Indices}\t{c.Records}\t{c.RecordOffset}\t{c.Stride}");
         lines.Add("stats_schema\t" + StatsSchema.Fingerprint);
@@ -900,7 +963,7 @@ public static class ModLoaderPlan
         if (mods.Count > 64 || mods.Sum(m => StatsData.Edits(m).Count()) > StatsData.MaxEdits || mods.Sum(m => m.Packages.Count) > 64)
             throw new InvalidDataException("Mod loader plan exceeds its mod or stats edit capacity.");
         foreach (var mod in mods) lines.AddRange(ModLines(mod));
-        if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (4 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 4 MiB.");
+        if (Encoding.UTF8.GetByteCount(string.Join("\n", lines)) >= (16 << 20) - 1) throw new InvalidDataException("Mod loader plan exceeds 16 MiB.");
         return string.Join("\n", lines) + "\n";
     }
 
@@ -919,8 +982,11 @@ public static class ModLoaderPlan
         static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
             ? throw new InvalidDataException("A stats label contains a tab or line break.") : value;
         var invariant = CultureInfo.InvariantCulture;
-        return [mod.Id, e.Kind, e.Component.Length == 0 ? "-" : e.Component, e.Resource.ToString("X16", invariant), e.Record.ToString(invariant),
-            e.Offset.ToString(invariant), e.Storage, e.Value.ToString("X8", invariant), e.Expect.HasValue ? e.Expect.Value.ToString("X8", invariant) : "-",
+        // a mod's content by name: "@<name>" for the row, "@<p|d|e>=<name>" for a reference (native stats.c numbers them)
+        return [mod.Id, e.Kind, e.Component.Length == 0 ? "-" : e.Component, e.Resource.ToString("X16", invariant),
+            e.RecordName != null ? "@" + Field(e.RecordName) : e.Record.ToString(invariant),
+            e.Offset.ToString(invariant), e.Storage, e.ValueName != null ? $"@{e.ValueKind}={Field(e.ValueName)}" : e.Value.ToString("X8", invariant),
+            e.Expect.HasValue ? e.Expect.Value.ToString("X8", invariant) : "-",
             e.Own ? "1" : "0", e.Shared ? "1" : "0", e.Unverified ? "1" : "0", Field(e.Label)];
     }
 
@@ -1086,10 +1152,14 @@ public static class ModSettings
 
     public static HashSet<string> Disabled(string modsFolder) => Read(modsFolder).Disabled;
 
-    public static void SetEnabled(string modsFolder, string id, bool enabled) => Change(modsFolder, state =>
+    public static void SetEnabled(string modsFolder, string id, bool enabled) => SetEnabled(modsFolder, [id], enabled);
+
+    // Several mods with one write (ModBatch.Switch).
+    public static void SetEnabled(string modsFolder, IEnumerable<string> ids, bool enabled) => Change(modsFolder, state =>
     {
-        if (enabled) state.Disabled.Remove(id);
-        else state.Disabled.Add(id);
+        foreach (var id in ids)
+            if (enabled) state.Disabled.Remove(id);
+            else state.Disabled.Add(id);
     });
 
     // The Mods page's order, top first.

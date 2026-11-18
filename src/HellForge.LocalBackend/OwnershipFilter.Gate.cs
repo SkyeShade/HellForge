@@ -12,6 +12,14 @@ public sealed partial class OwnershipFilter
     // Whether a grant may give this item now (inventory: the saved profile's).
     public bool Grantable(uint mixId, JsonArray inventory) => IsAllowed(mixId, HeldIn(inventory));
 
+    // The reserved ids the player may not hold now (profileInventory: the saved one), sorted. A code mod can add an item in
+    // the game without asking this backend, so the loader takes back any of these the game holds (paid_guard.c).
+    public uint[] Refused(JsonElement profileInventory)
+    {
+        var held = Held(profileInventory);
+        return [.. Paid.Reserved().Where(id => !IsAllowed(id, held)).Order()];
+    }
+
     // The inventory as served, every addition made: what may not be granted is dropped (profileInventory: the saved one).
     public JsonElement GateInventory(JsonElement inventorySection, JsonElement profileInventory)
     {

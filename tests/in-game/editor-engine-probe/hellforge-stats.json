@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "weapons": {
+    "R-36 Eruptor": { "weapon.fire_ability": 2708 },
+    "VG-70 Variable": { "weapon.fire_ability": 2708, "weapon.fire_ability_2": 0 },
+    "LAS-12 Sai": { "attachment.magazine.laser_heatsink_blaster_improved_cooldown.heatsink.spare": 9 }
+  }
+}

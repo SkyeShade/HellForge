@@ -4705,7 +4705,7 @@
         {"name": "account", "type": "void*", "meaning": "the progression manager: hf_global_Progression"},
         {"name": "item", "type": "uint32_t", "meaning": "the item's id"}
       ],
-      "hook": true,
+      "hook": false,
       "meaning": "Whether the player holds a catalogue item",
       "source": "HellForge research forge-credits-tint (README.md, locked warbonds)"
     },
@@ -5655,6 +5655,42 @@
       "hook": true,
       "meaning": "Spawns a squad of enemies from a composition at a position: the director's patrols (EnemyDirectorTick), spawners (AiSpawnerUpdate), bug holes (BugholeUpdate), dropships (SquadTransportUpdate) and outposts (FillOutpost) all spawn through it. Returns the squad, or NULL",
       "source": "HD2Runtime 0.40.1 research spawn-channels-dev10 (selected patrol creation); game.dll: its six callers' stack arguments (+0x20 to +0x48) and the return they test"
+    },
+    "DirectorSpawnAllowed": {
+      "rva": "0x952EB0",
+      "code": "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 4C 8B 15 A2 35 9D 02 45 33 C9 41 0F B6 F0 8B FA 48 8B D9 45 8B",
+      "returns": "uint8_t",
+      "params": [
+        {"name": "hivemind", "type": "void*", "meaning": "the HiveMind manager: hf_global_HiveMindManager"},
+        {"name": "reason", "type": "uint32_t", "meaning": "the spawn reason (0 Guard, 1 Patrol, 2 GuardForce, 3 Encounter, 4 ProducedFighter, 5 Convoy, 6 Convoy_Defending, 7 Border_Travelling, 8 Straggler, 9 Airsupport, 10 BattleSquad)"},
+        {"name": "skip_roaming", "type": "uint8_t", "meaning": "1 skips the roaming gate (the 70 at 0x952F56); reasons 3, 5 and 6 skip it anyway"}
+      ],
+      "hook": true,
+      "meaning": "Whether the director may spawn for a reason now: 0 while the mission refuses spawns (0x8F32B0), while the queued and living enemies less breach and fabricator ones reach the roaming gate (70), or while the AI enemy manager holds the spawn gate's 448 enemies; else 1. HellForge's EnemyLimits rows set both gates",
+      "source": "game.dll: its body (0x952F3A..0x952F69), the reason names at 0x2142590 and its callers 0x7F7FD7 (AiSpawnerUpdate, 2), 0x8B624E (3), 0x9508E7 (7), 0x950A51 (8) and SpawnSquad 0x953612 / 0x95362F; native/mod-loader/enemy_limits.c"
+    },
+    "AiEnemyBudgetDespawnPass": {
+      "rva": "0xA2C030",
+      "code": "48 89 4C 24 08 41 55 48 83 EC 50 4C 8B 2D DE AC 8F 02 33 D2 0F 57 C9 45 8B 45 6C 45 85 C0 74 1D 49 8D 85 20",
+      "returns": "void",
+      "params": [
+        {"name": "budget", "type": "void*", "meaning": "the AI enemy budget's state (component 181), world + 0x75D380: +0x1654 the entries despawning, +0x1664 the entries, +0x1690 their 16-byte records (entity, score, distance squared, a flag at +0xC)"}
+      ],
+      "hook": true,
+      "meaning": "Despawns at most one enemy for the AI enemy budget: the highest-scored entry that is 150 m or more away, whose avatar value (AvatarManager +0x546C20, 0x1B8 each) is at most 0.6 of AvatarManager +0x60, or any once the entries reach those despawning + 110. Returns at once while a player's value is below 0. The world update runs it on the host, once the entries reach those despawning + 100",
+      "source": "game.dll: its body, its call at 0x572C69 in the world update (0x571250) and the despawn it calls (0xA2C220); research perf-d11 spawn5x (the despawning abilities traced to it); native/mod-loader/enemy_limits.c"
+    },
+    "AiEnemyBudgetDespawn": {
+      "rva": "0xA2C220",
+      "code": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 55 41 56 41 57 48 83 EC 30 48 8B 81 88 16 00",
+      "returns": "void",
+      "params": [
+        {"name": "budget", "type": "void*", "meaning": "the AI enemy budget's state, as AiEnemyBudgetDespawnPass's"},
+        {"name": "entry", "type": "uint32_t", "meaning": "the entry's index"}
+      ],
+      "hook": false,
+      "meaning": "Despawns one budget entry: its entity type's despawn ability (type data +0x18C, 1169 for the bots) through StartAbility, or an entity deletion request when the type has none; marks the entry and counts it despawning",
+      "source": "game.dll: its body (StartAbility 0x7CAF40, SendRpcEntityDeletionRequest 0xFDC4E0) and its caller AiEnemyBudgetDespawnPass; research perf-d11 spawn5x"
     },
     "PatrolClock": {
       "rva": "0x959740",

@@ -2628,6 +2628,23 @@
       "id": "13",
       "source": "enemy-attacks; projectile row +60"
     },
+    "FLAM-40 Flamethrower": {
+      "id": "14",
+      "source": "spray record +200"
+    },
+    "FLAM-66 Torcher": {
+      "id": "15",
+      "source": "spray record +200"
+    },
+    "P-72 Crisper": {
+      "id": "16",
+      "source": "spray record +200"
+    },
+    "B/FLAM-80 Cremator and 2 others": {
+      "id": "17",
+      "note": "shared: B/FLAM-80 Cremator, A/FLAM-40 Flame Sentry, combat_walker_flamethrower",
+      "source": "spray record +200"
+    },
     "Possibly Hive Lord Spewing Projectile and 1 other": {
       "id": "18",
       "note": "shared: Possibly Hive Lord Spewing Projectile, hive_lord",
@@ -2645,6 +2662,10 @@
       "id": "22",
       "source": "explosion row +4"
     },
+    "G-142 Pyrotech": {
+      "id": "25",
+      "source": "spray record +200"
+    },
     "G-142 Pyrotech (detonation)": {
       "id": "26",
       "source": "explosion row +4"
@@ -2652,6 +2673,10 @@
     "GP-20 Ultimatum": {
       "id": "27",
       "source": "attack-outputs"
+    },
+    "TX-41 Sterilizer": {
+      "id": "28",
+      "source": "spray record +200"
     },
     "GL-28 Belt-Fed Grenade Launcher": {
       "id": "30",

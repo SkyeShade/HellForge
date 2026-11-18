@@ -15,6 +15,96 @@ On `dev`, since 0.4.0-beta.
 - **The launcher says when a newer HellForge is out.** On start it checks HellForge's GitHub releases; when one is
   newer, the sidebar shows "HellForge X is out" above the version, and pressing it opens the release page. Nothing is
   downloaded: you still install the new version by hand ([roadmap](docs/roadmap.md#launcher-updates), #387).
+- **Missile spread in the editor.** Every seeking missile's page has a Spread group: whether its missiles veer off
+  their launch line, how far and which way, the curve they fly after, and how fast they swing back onto the target.
+  The W.A.S.P., the Missile Pistol and the Warrant have it on; the Spear, the Commando and the others can turn it on.
+  Mods reach it as `missile.spread.*` and `function_missile.spread.*`.
+- **What summoning enemies summon.** The Impaler's page has Summons: tentacles and the Alpha Commander's Summons:
+  warriors: which Terminid family they call up and how many a call (0 to 16). The host's choice decides, as with all
+  spawning ([stats mods](docs/modding/stats-mods.md#spawning)).
+- **Spawn compositions say what they are.** Each one is named by its role (Patrol, Map guard, Reinforcement,
+  Traveller, Straggler, Convoy, Air support, Guard post) and the enemies it draws, "Patrol: Hunter, Scavenger", with
+  its faction, family and row under the name. Each group picks the enemy family it draws from, and the first empty
+  group adds enemies to the composition.
+- **Rosters and compositions by difficulty.** Spawn Rosters and Spawn Compositions have D1 to D11 chips: a roster
+  row shows where its weight is above 0, a composition where its tech levels reach. Compositions filter by faction too.
+- **Travellers and stragglers on Mission Difficulty.** Per faction, the seconds between travellers (Shriekers,
+  Gunships, War Striders) and how many roam at once. Stragglers top up the map's guards: their interval, batch and the
+  cap on guards and stragglers together.
+- **Patrol caps past 128.** Up to 1000 per faction. The game's patrol gate still stops patrols at 100 living
+  enemies unless the difficulty's Enemy limits raise it (below).
+- **Enemy limits on Mission Difficulty.** Each difficulty has the counts the game keeps in its code as fields:
+  - the patrol gate (100 living enemies) and the roaming gate for spawners, travellers and stragglers (70);
+  - the gate on every other spawn (448);
+  - the despawning that recycles about one far enemy a second once 100 are alive: on or off, where it starts, how
+    far is far.
+
+  They keep the game's values until changed and apply at once; in co-op the host's count
+  ([stats mods](docs/modding/stats-mods.md#enemy-limits)). Past about 400 living enemies the game still crashes until
+  HellForge's engine fixes for it are in.
+- **Patrols under a second.** The patrol interval goes down to 0.1 s; the 1 s floor was the editor's.
+- **Enemy combat in the editor.** Enemy pages get new sections:
+  - Movement: each behaviour's move speed, the charge's speed, steering and tracking angle, turn speed.
+  - Detection: how far it sees ahead, to the sides and behind.
+  - Melee attacks with their damage and AP. Hunters and Pouncers had no Attacks before.
+  - Damage Taken: fire, arc, gas and other element multipliers.
+  - Status Effects: the buildup each status needs, its damage and duration, and a status it is immune to added, such
+    as stun on a Bile Titan.
+- **Enemy armour and AP to 1000.** Above 10 no vanilla weapon hurts that part. Enemies are the host's in co-op, so the
+  host's values apply to everyone.
+- **Room for 1,024 attachments and weapon patterns from mods (was 128).** A player's pick travels in co-op as the
+  attachment's full id, as before. Each attachment takes a catalogue item on each of its weapons, and when the game's
+  catalogue is full the session's backend leaves the rest out whole and its log names them
+  ([attachments](docs/modding/content.md#attachments-of-your-own)).
+- **An attachment that keeps its base's model loads it.** The weapon loads its base's package for it, as the game does
+  for its own attachments; before, the model was missing and the mission could crash when the weapon spawned.
+- **Room for 1,024 projectile types from mods.** Mods with many weapons can add up to 1,024 new projectile types between
+  them (it was 512). Past the 161st, the co-op field that carries a projectile type widens from 9 to 11 bits on every
+  machine. Types above 511 now reach other players too; before, they were cut in synced shots and reloads.
+- **Mods can make sprays of their own (SDK 20).** `HfWeapon.spray_damage` gives a flamethrower or Sterilizer copy a
+  damage of its own, in a spray record of its own, so it burns harder, or with another status, without changing the
+  base. The `SprayWeapon` fields are in stats files and the editor shows a copy's own damage
+  ([sprays](docs/modding/projectiles.md#sprays)).
+- **Stratagems that rearm.** Every stratagem but the Eagles has "Rearms after uses" beside its mission uses. Ticked,
+  its uses go with no cooldown between them, the cooldown starts once they are spent, and they come back when it ends;
+  the HUD shows the uses left counting down and refilling ([stats mods](docs/modding/stats-mods.md#rearms-after-uses)).
+- **RESET ALL in the editor's Errors list.** Two clicks stage a reset of every refused field, as each row's RESET does.
+- **Stratagem input codes in the editor.** Every stratagem's call-in section has Input code, shown as arrows and typed
+  as U, R, D and L, 1 to 10 directions. It applies at once, the HUD's arrows too, and each player's code is their own.
+  Stats files take it as letters (`"stratagem.input_code": "UULRD"`) ([stats mods](docs/modding/stats-mods.md#stratagem-input-codes)).
+- **Impact payloads on stratagem rounds.** The Eagle 110mm Rocket Pods, the Eagle strikes, the orbital shells, the
+  sentries and the emplacements get the Impact payload picker the hand-held weapons have.
+- **The editor's presets can be saved over again.** Each preset in PRESETS has SAVE OVER beside IMPORT, as HD2R
+  Editor had: a second click within a few seconds writes your saved changes into that preset, keeping its name.
+- **Heatsink counts on the Sai's Improved Cooldown heatsink.** Its changes left the heatsink counts to the weapon, so
+  it always had the Sai's own. The editor now has Starting heatsinks, Heatsinks from supply and Spare heatsinks on it
+  (and Heatsinks from supply on Improved Heatcapacity); set, HellForge adds them to the heatsink's changes, and 0 keeps
+  the weapon's.
+- **Firing ability in the editor.** Every hand-held weapon has the ability each shot starts: its firing motion, the
+  Eruptor's bolt cycle, a shotgun's pump, the Variable's stagger. Pick another weapon's to swap the
+  motion, or None to drop it; the Variable and Bullet Storm also show their fire-mode-7 one, the W.A.S.P. and Warrant
+  their lock-on one.
+- **More weapon rows in the editor.** The Stalwart, FLAM-40, Sterilizer, Epoch, W.A.S.P., Meltagun, Cremator and
+  Breaching Hammer have a reload duration. Weapons that load round by round (shotguns, the Bushwhacker, the Autocannon,
+  revolvers) have Rounds per reload. Support weapons that fire have Suppressed, the BFGL and the Railgun have their
+  rate of fire, and the Laser Cannon, Epoch and Meltagun have their third-person reticle. Mods reach rounds per reload
+  as `rounds_per_reload` on `WeaponRounds`.
+- **Vehicles' durable damage share in the editor.** Every vehicle page has Durable resistance under Health & Armor and
+  in each damage zone, the same rows enemy and other entity pages have.
+- **Ricochets in the editor.** Every round's flight section has Ricochets, Ricochet angle and Ricochet minimum speed.
+  Ricochets 0 keeps a grenade launcher's or grenade pistol's grenade from bouncing off what it hits (they have 1), and
+  works on bullets too. Mods reach them as `ricochets`, `ricochet_angle` and `ricochet_min_speed` on a projectile row.
+- **Fuses in the editor.** Every round's flight section has Lifetime, Lifetime variance and Arming distance: a grenade
+  that hits before it has flown that far bounces instead of going off. Explosion pages show their bomblets' fuse, and
+  shrapnel counts go to 512.
+- **More of the editor's missing fields.** The FAF-14 Spear, W.A.S.P., Commando, Warrant, Missile Pistol and the seeker
+  grenades have their lock-on range, and their missiles their seeker range. The B/MD C4 Pack has its charges from
+  supply, the MD-I4 Incendiary Mines a status pick, and the E/GL-21 Grenadier Battlement its gun's handling and
+  ammunition. The MS-11 Solo Silo has its remote's handling and its missile's payloads; the Spear an impact payload.
+- **Mods can make screens in the game's own UI (SDK 19).** `ui_open` shows a mod's XAML through the game's NoesisGUI,
+  with the game's fonts, text styles, colours and controls. A screen is a menu (the cursor shows, the player is held,
+  Back closes it) or an overlay on the ship and in missions. `ui_set` changes any property from code, and `ui_on` calls
+  the mod when a button is clicked or the screen closes ([screens in the game's own UI](docs/modding/ui.md)).
 - **Mods can add patterns (SDK 18).** `add_pattern` copies a vanilla pattern under an id of its own, with the mod's
   colour and masks in place of the base's. A copy of a weapon paint is in the armory's pattern slot of every weapon that
   offers the base, or of the weapons the mod names. A copy of a Pelican, hellpod or vehicle skin joins the hangar for its
@@ -26,10 +116,13 @@ On `dev`, since 0.4.0-beta.
   animation modes need an animation blender, and `UnitNode` needs a name `UnitHasNode` found (#375).
 - **A data spec can fix a game shader.** The new `edit` entry changes bytes in one of the game's shader stages; HellForge
   signs the stage again and refuses the edit on a game build whose shader differs
-  ([data specs](docs/modding/data.md#edit), #350).
+  ([data specs](docs/modding/data.md#edit), #350). It also changes bytes outside the stages, such as which texture a
+  stage reads, each only where the game's own bytes are as the spec expects. An edit can pin the whole GPU part by
+  size or SHA-256 (#400).
 - **Mods can draw screens over the game (SDK 17).** `add_screen` adds a screen with its own key, such as a map, and
-  `screen_show` opens and closes it. A modal screen takes the mouse and keys from the game while it is open. Screens
-  draw shapes, text in the game's fonts, pictures and a blurred copy of the game's frame, on Direct3D 11 and 12, in SDR
+  `screen_show` opens and closes it. A modal screen takes the mouse and keys from the game while it is open. The mouse
+  shows as the game's own pointer, except where the screen draws its own cursor (`hide_pointer`, #399). Screens draw
+  shapes, text in the game's fonts, pictures and a blurred copy of the game's frame, on Direct3D 11 and 12, in SDR
   and HDR ([screens over the game](docs/modding/overlay.md)).
 - **New vehicles as copies of vanilla ones.** The `vehicle-variants` example adds the EXO-45H Heavy Patriot (a quicker
   turn and a 2000-round machine gun) and the M-102R Rally FRV (quicker steering), each called in by a Pelican drop
@@ -80,7 +173,7 @@ On `dev`, since 0.4.0-beta.
 - **New explosion, beam and arc types for mods (SDK 17).** `add_explosion`, `add_beam` and `add_arc` copy a vanilla type
   with its own damage, radii, length or chained arc, up to 512 of each across all mods. A projectile names its blasts in
   `impact_explosion` and `expiry_explosion`, and a weapon its `beam` or `arc`
-  ([projectiles and damage](docs/modding/content.md#projectiles-and-damage)) (#298).
+  ([projectiles and damage](docs/modding/projectiles.md)) (#298).
 - **295 explosions and 342 damage ids by name.** The catalogue lists them as `HF_EXPLOSION_` and `HF_DAMAGE_` constants
   for mods (#298).
 - **A mod weapon's own explosion, beam and arc in the editor.** Its page shows them with the damage they deal, and mods'
@@ -140,14 +233,88 @@ On `dev`, since 0.4.0-beta.
 - **The Linux installer as a zip with no archive inside.** Sites that refuse an archive inside an archive, such as Nexus
   Mods, can offer it. Extract it once and run `HellForge.Launcher`; it installs the same files as the `.tar.gz`
   ([Linux](docs/linux.md#graphical-installer), #381).
+- **The HellForge war**, now the default war (Settings > GALACTIC WAR > HellForge war): one galactic war shared by every
+  HellForge player, with its own major orders and dispatches, from HellForge's war server (`https://war.hf-mod.com`).
+  The war updates every minute while you play, and your missions count towards it. Without a connection the last war
+  fetched is used, and without that the frozen war. Installations that saved their settings before keep the war they
+  had. Settings has a War server field for trying a server of your own ([docs/hellforge-war.md](docs/hellforge-war.md)) (#393).
+- **War scripts.** A `war-script.json` in your HellForge folder adds your own major orders, dispatches, reward mail and
+  planet modifiers (such as an extra stratagem for everyone on a planet) to the war. Edits show in game within a
+  minute ([docs/war-script.md](docs/war-script.md)). Mail rewards can be claimed once by every player. The major order,
+  dispatch, mailbox and episode screens also get a proper empty answer now, where they got an error before (#393).
 
 ### Changed
 
+- **Hellpod / Call-in opens every stratagem's page in the editor.** Support weapons had it last, under all of the
+  weapon's own sections; now it comes first, as on every other stratagem.
+- **Big enemy counts run faster.** With 950 to 1,100 enemies alive, a mission ran at 34.5 fps instead of 27.0, and the
+  slowest frames improved as much. Below about 400 enemies nothing visible changes
+  ([performance fixes](docs/performance-enemies.md#motion-grid)).
+  - The grids that moving enemies use to steer around each other were full past 256 enemies; they now hold 1,152.
+  - The AI's raycast and navmesh queries are shared out in small chunks, and the game thread helps instead of waiting.
+  - The navmesh edge queries are waited for only where they are read.
+  - Enemies over 100 m from every Helldiver steer every third frame.
+- **Mods load as you download them.** A zip may hold the mod in folders, beside a readme, or in a zip inside it, as
+  mod sites ship them. A folder unpacked into the mods folder works the same way, and a folder of several mods loads
+  each one. A zip with several mods is refused, and Mod notices names them: one zip is one mod, as friends compare it
+  ([using mods](docs/mods.md#where-the-mod-may-sit), #451).
+- **Corpses at rest leave the physics world.** Up to 32 corpses on each machine kept their ragdoll bodies in the
+  physics step until newer deaths pushed them out. Once they settle, they are frozen as the game freezes a sinking
+  corpse, so they no longer react to hits ([performance fixes](docs/performance.md#corpse-freeze)).
+- **Direct3D 12 gives back the render jobs' table copies.** Each job copies the renderer's whole resource-version
+  table, and the game kept every copy in a pool of hundreds. A copy now goes when its job is recorded; on a 16 km
+  city map that was up to 930 MB at a peak ([performance fixes](docs/performance.md#render-job-copies)).
+- **HellForge reads game memory without a system call.** Its own readers and every mod's `read` copy up to 256 bytes
+  in place, which cut the living world's tick on a 16 km map from 1.8 to 0.5 ms. `HELLFORGE_PERF_OFF` turns any
+  performance fix off ([performance fixes](docs/performance.md)).
+- **Forests cost the renderer less near the world origin.** Forest cells with no trees stay out of every view. On a
+  16 km map that removed the render thread's waits over 3 ms; on a normal-size map the gain is about 0.04 ms a frame
+  ([performance fixes](docs/performance.md#speedtree-empty-cells)).
+- **Destructible lookups no longer walk a long run of the game's map.** Its destruction-record map spreads its keys,
+  which cut a miss on a 16 km map from 2,316 probes to 11 ([performance fixes](docs/performance.md#record-hash)).
+- **The game thread waits less for enemies' path searches.** The AI's path threads get 0.5 ms a step instead of 2 ms,
+  and 2 ms again while requests wait over 500 ms. A 16 km fight's wait fell from about 1.2 to 0.3 ms a frame
+  ([performance fixes](docs/performance.md#ai-path-budget)).
+- **The Direct3D 12 renderer stops copying empty table space every frame.** A level load left its resource-version
+  tables far too large, and every recording job copied them whole. They are now rehashed short: 79 to 116 fps on a
+  16 km map ([performance fixes](docs/performance.md#render-version-rehash)).
+- **Enemies near vehicles cost less to move.** Each vehicle's box is computed once per motion and steering pass and
+  copied for the other enemies, which cut the motion pass on a 16 km map from 6.8 to 0.6 ms
+  ([performance fixes](docs/performance.md#vehicle-box)).
+- **The game gives back memory it freed during a load.** When a load ends on the ship or a mission, HellForge empties
+  the game's allocator caches once more; the game itself does so only as a load starts
+  ([performance fixes](docs/performance.md#heap-trim)).
+- **A generating level fills less scatter it never draws.** The water and fog cameras are left out of the engine's
+  scatter update. On a 16 km map that saved 4,205 MB; a normal-size map should save tens of MB
+  ([performance fixes](docs/performance-loading.md#scatter-cameras)).
+- **Missions with the Hive Lord generate faster.** Its movement graph links its points through a grid instead of trying
+  every pair, with the same result. A 4 km map's pass fell from 1,447 to 24 ms
+  ([performance fixes](docs/performance-loading.md#knn-grid)).
+- **Map generation sorts its location candidates in half the time.** The game's own sort runs with its comparison
+  inlined, so the map comes out byte for byte the same. The gain is small on a normal-size map
+  ([performance fixes](docs/performance-loading.md#spread-sort)).
+- **Trees keep their view cut after one is destroyed.** The game stopped cutting each view's walk to the cells with
+  trees for the rest of the level. On a 16 km map, that walk falls from up to 325,000 cells to about 20,000
+  ([performance fixes](docs/performance.md#tree-cell-limits)).
+- **Missions load their props sooner.** A mission's stamp packages are requested during its stamp planning, before
+  the load step that waits for them. On a 16 km map that wait was about 13 s
+  ([performance fixes](docs/performance-loading.md#early-stamp-packages)).
+- **Mission generation tests stamps only against their neighbours.** Stamp placement finds the records near each
+  candidate on a grid. On a 16 km map a test visits 8.2 records instead of 136.7; a normal-size map is not measured
+  ([performance fixes](docs/performance-loading.md#overlap-grid)).
+- **Memory that other threads freed goes back into use when a load ends.** Full allocator spans held by one live block
+  return to their thread's heap. On a 16 km map one pass gave back 355 MB
+  ([performance fixes](docs/performance.md#span-rescue)).
 - **Which items are paid comes from a list compiled into HellForge.** An edited catalogue or profile no longer makes a
   premium warbond, Superstore or Steam DLC item free. The local backend serves the catalogue's paid entries from the
   list, in its order, as the game reads ownership from them. It checks every reply that gives an item last: the
   inventory, purchases (mod warbonds' too), warbond pages, mastery and mission rewards (#386).
 - **A premium weapon's mastery levels and attachments need the weapon.** They were sold and earned without it (#386).
+- **A synced snapshot is signed by your PC and lasts 14 days.** Only administrator or root code holds the signing key:
+  Windows' key storage (the TPM where there is one), or a systemd service on Linux. The capture signs only what
+  Arrowhead's API sent. Sync once after updating, then every 14 days to keep premium content. A HellForge you build
+  yourself signs the same way. On Linux, premium content needs systemd
+  ([premium content is locked](docs/troubleshooting.md#premium-content-is-locked)) (#404).
 - **Mods' registered items can no longer name paid items.** An entry whose id, or a child's id, is the game's or a paid
   item's is refused, and the backend's log names the mod. Copies of premium patterns and attachments are locked like
   weapons, and a copy of another mod's weapon follows its original, up to 8 copies deep (#386).
@@ -203,6 +370,63 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Level 11's Launch ICBM shows the whole launch code.** A mixed mission's SSSD hard drives (from uplinks, collected
+  data or SE equipment) counted as parts of the code, so after retrieving the codes it often showed one digit and
+  question marks. The code now counts only the Launch Codes ([Difficulty 11](docs/internals-difficulty.md#second-primary)).
+- **Quitting after a mission no longer crashes at `helldivers2.exe+0x626296`.** As the game quits, its job workers can
+  stop while the job pool is full, and the game crashed as it tried to queue one more job. When the game was told to
+  quit, HellForge now ends it there with exit code 0, so the session ends as a normal quit ([crash
+  guards](docs/crash-guards.md), #332).
+- **Room for about 1,000 enemies.** A world now holds 4,096 entities instead of 2,048. The AI avoidance holds
+  2,048 enemies instead of 512, and the ragdolls 2,048. Past about 540 and 650 live enemies, the game used to crash.
+  A host with this change refuses an older HellForge's join, as that game would crash with so many entities
+  ([performance fixes](docs/performance.md#entity-table)).
+- **No more crash at about 400 enemies alive.** The AI's navmesh edge queries ran out of their 256 places and
+  overwrote the HUD, which crashed the game at `game.dll+0x1449D76`. They now have room for 4,096 moving enemies, and
+  the game ran past 550 alive ([performance fixes](docs/performance.md#edge-batch)).
+- **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
+  after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
+  them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before
+  any mod's set-up. If the game still made them first, level 11 is off for that start and the log says why (#422).
+- **A language the game copy lacks no longer crashes every start.** Switching the game's voice or text language to one
+  whose language pack is not in the copy, such as Japanese, crashed the game, and every start after it. Before each
+  session HellForge now sets such a language back to English and says how to add its pack (#343).
+- **No more crash at start with Engine log on and a PC name outside A-Z.** The game puts the PC's name in its own
+  log's file name and misreads letters such as Japanese or Chinese ones, then crashed at `helldivers2.exe+0x5ce339`
+  before it connected. On such a PC the session now starts the game without its log and says why. Should the crash
+  come another way, the launcher and the crash report name the setting and say to turn it off (#423, #424, #263).
+- **Setup says which link in the game's Steam folder stops it.** A mod manager that links mods into HELLDIVERS 2's
+  folder in Steam stopped setup at "Linked/reparse paths are not supported". Setup now names the file and says to
+  remove those mods or verify the game's files in Steam (#373).
+- **No more `.partial` files piling up in `mods/.unpacked`.** When another program held a zipped mods' cache file
+  while the mods were listed, each listing left a `.zip-hashes.json.<id>.partial` behind: a launcher listing them every
+  5 seconds left 11,405. Such a write now removes its partial, and the next start removes ones left before (#331).
+- **Explosions no longer knock you down through cover.** Behind a rock or a wall, a blast's damage already stopped,
+  but its knockback still threw the Helldiver: the game checks the line of sight only for the damage. The knockback
+  now waits for the same check and comes only when the damage does. Close blasts the game does not check keep
+  knocking you down, as before ([why](docs/gameplay-fixes.md#explosion-knockback-and-cover)).
+- **Decal shaders stay on screen far away.** A mod's `decal` shader vanished once the player was about 90 m from it,
+  however large its box was: the game judges draw distance by the box's unscaled 1 m size. The decal host's unit now
+  counts as 128 m across, so a decal shows as far as the player can see it ([shaders](docs/modding/shaders.md)).
+- **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
+  "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
+  service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
+  copies the service's log, state and certificate to `/run/hellforge/capture-evidence` for the launcher. The next
+  sync asks to install the updated helper once
+  ([the snapshot signer](docs/linux-account-sync.md#the-snapshot-signer)).
+- **Steam Deck: Sync Inventory with steamapps on the microSD card.** A `steamapps` folder linked to the card's library
+  crashed the launcher with "Linked/reparse paths are not supported". HellForge now follows that link and still
+  refuses a link at the game folder or inside it. A Steam library HellForge cannot read stops the sync with a message
+  ([HellForge on Linux](docs/linux.md)).
+- **Mod support weapons from a broken hellpod can be picked up.** When a pod broke with a mod's launcher still on its
+  rack (the Stratagem Compendium's Expendables, Beelzebub's Strat Pack and other packs' pods), the launcher fell
+  without a pickup and could never be taken. The game picks a dropped item's pickup by its armory list, and these
+  launchers were in none. They are now in their base weapon's list, so they drop as it does.
+- **The Eagle 110mm Rocket Pods' attack duration goes above 1.6 seconds.** The editor capped it there, under the pods'
+  own 2 seconds. The pods fire one rocket per target they find, spread over this time, so more time adds no rockets.
+- **Spore Burst Strain planets show it on the war table.** "All planets open" dealt the Spore Burst Strain like the other
+  subfactions, but without its war-table flag, so no planet showed it and only the others seemed to be there. Its flag
+  (effect 1386) is served and dealt with it now.
 - **The Mods page no longer freezes the launcher when it opens.** With many mods, each click on 03 MODS froze the
   window for about half a second while the page read the mods folder and drew every row again. It now reads in the
   background, shows the page as it was at once, and redraws only what changed, a few rows at a time.
@@ -294,6 +518,9 @@ On `dev`, since 0.4.0-beta.
 
 ### For mod makers
 
+- **`modloader.log` follows edits that wait for their tables.** The "deferred edits" line names the tables the waiting
+  edits wait for, and a later line says when they apply. The count waiting at first differs between PCs, as the tables
+  load at different times. Before, nothing said that they applied later (#352).
 - **A mod can ask for more room on level-11 maps (SDK 17).** `generation_capacity` enlarges the map generator's lists
   of locations, minimap shapes, mission stamps and objective places for the largest request among the installed mods.
   The mod need not be the one that added the level. Without a request nothing changes
@@ -317,8 +544,30 @@ On `dev`, since 0.4.0-beta.
   manager's records and rewrites the game's instructions for them. HellForge's player, heal, stats and weapon events
   and its actions then read the records where those instructions address them
   ([hooks](docs/modding/hooks.md#fields-a-mod-moved)) (#362).
+- **Mods cannot hand out paid items.** The loader refuses a mod's hook or write on the game's ownership checks and
+  paid purchases, and takes back any paid item the session's backend says the player does not own. `HasCatalogueItem`
+  is call only ([premium content](docs/modding/concepts.md#premium-content)) (#403).
 - **A mod's `write` over code HellForge checks turns that feature off.** Such a write used to pass as one of
   HellForge's own rewrites. The offsets and capacities of the moved lists above are the exception (#348).
+
+### For launcher developers
+
+- **The HellForge war from the CLI.** `play`, `settings` and `fetch-war` take `--war hellforge` (the default for new
+  installations) and `--war-server <url>`; `settings` prints `warServer`, and `HELLFORGE_WAR_SERVER` overrides it.
+  `fetch-war` fetches the HellForge war unless the saved war is the live one, and prints `war` and `server`
+  ([docs/external-launchers.md](docs/external-launchers.md)) (#393).
+- **`mods` lists mods in folders around them.** Such a mod's `folder` is its own folder inside the one in the mods
+  folder. `mod-remove` deletes the outermost folder that holds only that mod, and `removed` names it
+  ([external launchers](docs/external-launchers.md), #451).
+- **Several mods in one CLI call.** `mod-remove --ids a,b,c` and `mod-switch --ids a,b,c --on yes|no` change a list
+  of mods, and `mod-add` takes `--file` more than once. The mods folder is read once for the whole list instead of once
+  per mod, so a launcher sending 30 mods no longer waits for 30 reads. Every id is checked first: one unknown or refused
+  id changes nothing. The answer counts `done` and `failed` and lists each mod. `mod-order` no longer reads the folder
+  twice ([external launchers](docs/external-launchers.md), #389).
+- **`mods` shows what the Mods page shows.** Each mod now has `unsupported`, `premium` (the premium items it was built
+  on), `url` and `icon`. A source mod also has its `build`: built, failed to compile (with the compiler's message) or
+  due at the next session. The tags add `native`, `premium` and `unsupported`
+  ([source mod builds](docs/external-launchers.md#source-mod-builds), #390).
 
 ## 0.4.0-beta (2026-11-05)
 

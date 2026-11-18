@@ -4164,16 +4164,12 @@ static inline int hf_hook_OwnsWarbond(HfMod* mod, HfFn_OwnsWarbond detour, HfFn_
 typedef void (*HfFn_WarbondCurrencyToken)(uint64_t unused, uint32_t* out, uint32_t warbond, uint32_t currency);
 static inline HfFn_WarbondCurrencyToken hf_fn_WarbondCurrencyToken(HfMod* mod) { return (HfFn_WarbondCurrencyToken)hf_function_(mod, "WarbondCurrencyToken"); }
 
-/* HasCatalogueItem (game.dll+0x136FB40; hook or call). Whether the player holds a catalogue item.
+/* HasCatalogueItem (game.dll+0x136FB40; call only). Whether the player holds a catalogue item.
  *   account  the progression manager: hf_global_Progression
  *   item     the item's id
  * From HellForge research forge-credits-tint (README.md, locked warbonds). */
 typedef uint8_t (*HfFn_HasCatalogueItem)(void* account, uint32_t item);
 static inline HfFn_HasCatalogueItem hf_fn_HasCatalogueItem(HfMod* mod) { return (HfFn_HasCatalogueItem)hf_function_(mod, "HasCatalogueItem"); }
-static inline int hf_hook_HasCatalogueItem(HfMod* mod, HfFn_HasCatalogueItem detour, HfFn_HasCatalogueItem* original, int32_t priority)
-{
-    return hf_hook_function_(mod, "HasCatalogueItem", (void*)detour, (void**)original, priority);
-}
 
 /* WeaponMagazineRecord (game.dll+0x4F3740; hook or call). The entity's WeaponMagazineComponentData (component 5): its
  * own copy in the manager's private copies if it has one, else its type's shared record (WeaponMagazineTypeRecord);
@@ -5230,6 +5226,49 @@ static inline int hf_hook_SpawnSquad(HfMod* mod, HfFn_SpawnSquad detour, HfFn_Sp
 {
     return hf_hook_function_(mod, "SpawnSquad", (void*)detour, (void**)original, priority);
 }
+
+/* DirectorSpawnAllowed (game.dll+0x952EB0; hook or call). Whether the director may spawn for a reason now: 0 while the
+ * mission refuses spawns (0x8F32B0), while the queued and living enemies less breach and fabricator ones reach the
+ * roaming gate (70), or while the AI enemy manager holds the spawn gate's 448 enemies; else 1. HellForge's EnemyLimits
+ * rows set both gates.
+ *   hivemind      the HiveMind manager: hf_global_HiveMindManager
+ *   reason        the spawn reason (0 Guard, 1 Patrol, 2 GuardForce, 3 Encounter, 4 ProducedFighter, 5 Convoy, 6
+ *                 Convoy_Defending, 7 Border_Travelling, 8 Straggler, 9 Airsupport, 10 BattleSquad)
+ *   skip_roaming  1 skips the roaming gate (the 70 at 0x952F56); reasons 3, 5 and 6 skip it anyway
+ * From game.dll: its body (0x952F3A..0x952F69), the reason names at 0x2142590 and its callers 0x7F7FD7
+ * (AiSpawnerUpdate, 2), 0x8B624E (3), 0x9508E7 (7), 0x950A51 (8) and SpawnSquad 0x953612 / 0x95362F;
+ * native/mod-loader/enemy_limits.c. */
+typedef uint8_t (*HfFn_DirectorSpawnAllowed)(void* hivemind, uint32_t reason, uint8_t skip_roaming);
+static inline HfFn_DirectorSpawnAllowed hf_fn_DirectorSpawnAllowed(HfMod* mod) { return (HfFn_DirectorSpawnAllowed)hf_function_(mod, "DirectorSpawnAllowed"); }
+static inline int hf_hook_DirectorSpawnAllowed(HfMod* mod, HfFn_DirectorSpawnAllowed detour, HfFn_DirectorSpawnAllowed* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "DirectorSpawnAllowed", (void*)detour, (void**)original, priority);
+}
+
+/* AiEnemyBudgetDespawnPass (game.dll+0xA2C030; hook or call). Despawns at most one enemy for the AI enemy budget: the
+ * highest-scored entry that is 150 m or more away, whose avatar value (AvatarManager +0x546C20, 0x1B8 each) is at most
+ * 0.6 of AvatarManager +0x60, or any once the entries reach those despawning + 110. Returns at once while a player's
+ * value is below 0. The world update runs it on the host, once the entries reach those despawning + 100.
+ *   budget  the AI enemy budget's state (component 181), world + 0x75D380: +0x1654 the entries despawning, +0x1664 the
+ *           entries, +0x1690 their 16-byte records (entity, score, distance squared, a flag at +0xC)
+ * From game.dll: its body, its call at 0x572C69 in the world update (0x571250) and the despawn it calls (0xA2C220);
+ * research perf-d11 spawn5x (the despawning abilities traced to it); native/mod-loader/enemy_limits.c. */
+typedef void (*HfFn_AiEnemyBudgetDespawnPass)(void* budget);
+static inline HfFn_AiEnemyBudgetDespawnPass hf_fn_AiEnemyBudgetDespawnPass(HfMod* mod) { return (HfFn_AiEnemyBudgetDespawnPass)hf_function_(mod, "AiEnemyBudgetDespawnPass"); }
+static inline int hf_hook_AiEnemyBudgetDespawnPass(HfMod* mod, HfFn_AiEnemyBudgetDespawnPass detour, HfFn_AiEnemyBudgetDespawnPass* original, int32_t priority)
+{
+    return hf_hook_function_(mod, "AiEnemyBudgetDespawnPass", (void*)detour, (void**)original, priority);
+}
+
+/* AiEnemyBudgetDespawn (game.dll+0xA2C220; call only). Despawns one budget entry: its entity type's despawn ability
+ * (type data +0x18C, 1169 for the bots) through StartAbility, or an entity deletion request when the type has none;
+ * marks the entry and counts it despawning.
+ *   budget  the AI enemy budget's state, as AiEnemyBudgetDespawnPass's
+ *   entry   the entry's index
+ * From game.dll: its body (StartAbility 0x7CAF40, SendRpcEntityDeletionRequest 0xFDC4E0) and its caller
+ * AiEnemyBudgetDespawnPass; research perf-d11 spawn5x. */
+typedef void (*HfFn_AiEnemyBudgetDespawn)(void* budget, uint32_t entry);
+static inline HfFn_AiEnemyBudgetDespawn hf_fn_AiEnemyBudgetDespawn(HfMod* mod) { return (HfFn_AiEnemyBudgetDespawn)hf_function_(mod, "AiEnemyBudgetDespawn"); }
 
 /* PatrolClock (game.dll+0x959740; hook or call). The patrol clock: the frame time scaled by the HiveMind's progress and
  * player-count multipliers (HiveMindComponentData +0x1DC, +0x1F0, +0x204), which EnemyDirectorTick takes off the patrol

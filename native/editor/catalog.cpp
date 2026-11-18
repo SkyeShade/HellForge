@@ -221,6 +221,7 @@ static void LoadNavs(const Value& root, Catalog* out)
     {
         Nav nav{n.GetString("id"), n.GetString("label"), n.GetString("group"), n.GetString("tone"), {}, false};
         nav.hasFilters = Strings(n, "filters", &nav.filters);
+        nav.levels = n.GetBool("levels");
         out->navs.push_back(nav);
     }
 }
@@ -302,6 +303,7 @@ static void ReadRow(const Value& r, Row& row)
     row.note = r.GetString("note");
     ReadOptions(r, row);
     row.toggle = r.GetBool("toggle");
+    row.code = r.GetString("format") == "code";
     row.pick = r.GetString("pick");
     row.fires = r.GetString("fires");
     row.mountSlot = r.GetString("mountSlot");

@@ -157,19 +157,28 @@ public static class LocalInstall
         return current;
     }
 
+    // Each manifest under its library's real steamapps folder, so a linked steamapps (below) is read where it lies and the
+    // same library reached twice counts once.
     public static IReadOnlyList<string> FindManifests(string steamRoot) =>
-        FindLibraries(steamRoot).Select(root => Path.Combine(root, "steamapps", $"appmanifest_{AppId}.acf"))
-            .Where(File.Exists).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        FindLibraries(steamRoot).Select(root => Path.Combine(SteamApps(root), $"appmanifest_{AppId}.acf"))
+            .Where(File.Exists).Distinct(StringComparer.Ordinal).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+
+    // A library's steamapps folder with its links resolved on Linux. On a Steam Deck with little internal storage the
+    // steamapps folder of Steam's own library is often a link to the SD card's: that is the player's own layout, and
+    // Steam follows it too. HellForge guards the game folder under it (Inspect: the game folder and everything below may
+    // not be a link), not the way there. Windows keeps the path as given and its strict NoLinks walk where it is read.
+    public static string SteamApps(string library) => ResolveLinks(Path.Combine(library, "steamapps"));
 
     // Steam's library folders: its own folder and every one in libraryfolders.vdf.
     public static IReadOnlyList<string> FindLibraries(string steamRoot)
     {
         steamRoot = ResolveLinks(steamRoot);
         var libraries = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { steamRoot };
-        var folders = Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf");
+        var folders = Path.Combine(SteamApps(steamRoot), "libraryfolders.vdf");
         if (File.Exists(folders))
         {
-            folders = NoLinks(folders, steamRoot);
+            // The list itself may not be a link; the folders on the way to it are resolved.
+            folders = NoLinks(folders, folders);
             var document = ValveData.Parse(File.ReadAllText(folders));
             if (!document.Children.TryGetValue("libraryfolders", out var entries))
                 throw new InvalidDataException("Missing libraryfolders object.");
@@ -181,6 +190,23 @@ public static class LocalInstall
         return libraries.Order(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
+    // A link (or another reparse point) found inside a folder whose every entry is read; Data[LinkedPath] names it.
+    public const string LinkedPath = "LinkedPath";
+
+    static InvalidDataException LinkInside(string path)
+    {
+        var error = new InvalidDataException($"Linked/reparse paths are not supported: {path}");
+        error.Data[LinkedPath] = path;
+        return error;
+    }
+
+    // Steam's game folder with a link inside (#373: a mod's .patch_0 file a mod manager linked into the game's data). Setup
+    // stopped at the bare refusal; this says which file and what to do.
+    public static string SteamFolderLink(string source, string linked) =>
+        $"{Path.GetRelativePath(source, linked)} in HELLDIVERS 2's folder in Steam is a link, and HellForge reads that folder " +
+        "only as Steam installed it. Mod managers make such links when they install mods into the game in Steam: remove " +
+        "those mods, or verify the game's files in Steam (Properties > Installed Files), then try again.";
+
     public static List<InventoryFile> Inventory(string root)
     {
         root = NoLinks(root, root);
@@ -189,8 +215,7 @@ public static class LocalInstall
         {
             foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
             {
-                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidDataException($"Linked/reparse paths are not supported: {entry.FullName}");
+                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0) throw LinkInside(entry.FullName);
                 if ((entry.Attributes & FileAttributes.Directory) != 0) Walk(entry.FullName);
                 else files.Add(new(Path.GetRelativePath(root, entry.FullName).Replace('\\', '/'),
                     ((FileInfo)entry).Length, entry.LastWriteTimeUtc.Ticks));
@@ -243,7 +268,9 @@ public static class LocalInstall
             var path = NoLinks(Path.Combine(source, required), source);
             if (!File.Exists(path)) throw new InvalidDataException($"Required game file is missing: {required}");
         }
-        var inventory = Inventory(source);
+        List<InventoryFile> inventory;
+        try { inventory = Inventory(source); }
+        catch (InvalidDataException link) when (link.Data[LinkedPath] is string linked) { throw new InvalidDataException(SteamFolderLink(source, linked), link); }
         return new(source, manifestPath,
             new(build, Hash(Path.Combine(source, Exe)), Hash(Path.Combine(source, GameDll))),
             inventory.Count, inventory.Sum(x => x.Length),

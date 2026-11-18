@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "hellforge.enemy-combat-probe",
+  "name": "Enemy combat probe",
+  "version": "1.0.0",
+  "description": "In-game test only (tests/in-game/enemy-combat.json), never shipped: the editor's enemy combat rows on the Charger, Hunter and Bile Titan (movement, sight, melee damage, a stun the Titan lacks, armour past 10).",
+  "gameplay": true
+}

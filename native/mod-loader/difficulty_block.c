@@ -192,7 +192,8 @@ static const char* GenerationAskRefused(HfMod* mod, const HfGenerationCapacity* 
         LiveRefuse(mod, "generation capacity", NULL, "the game makes its generation block once, as it starts");
         return "a mod loaded while the game runs is too late";
     }
-    if (g_difficultyState != 0 || g_fired[HF_EVENT_GAME_LOADED]) return "too late; call it from hellforge_mod_init";
+    if (g_difficultyState != 0 || g_fired[HF_EVENT_GAME_LOADED] || g_generationMoved)
+        return "too late: the generation block is placed before the mods hear HF_EVENT_GAME_LOADED; call it from hellforge_mod_init";
     return GenerationMerge(&g_generationWant, want);
 }
 
@@ -685,7 +686,7 @@ static const char* MoveGenerationBlock(DifficultyInstall* d)
     uintptr_t block = GenerationBlock(d->game);
     if (block != 0)
     {
-        Note("difficulty: a generation block exists already (0x%llx): the locations keep 2740 places and the mission stamps 128; larger maps and more objectives may overrun them", (unsigned long long)block);
+        Note("difficulty: WARNING: a generation block exists already (0x%llx): the locations keep 2740 places and the mission stamps 128; larger maps and more objectives may overrun them", (unsigned long long)block);
         return NULL;
     }
     const GenerationLayout* l = Generation();
@@ -706,4 +707,52 @@ static const char* MoveGenerationBlock(DifficultyInstall* d)
         Note("difficulty: a mod asked for generation capacity: %u minimap proxies, %u places, a place set of %u; a mission stamp past the %uth is left out",
             l->caps.minimap_proxies, l->caps.places, l->caps.place_set, l->caps.mission_stamps);
     return NULL;
+}
+
+/* Why the block's move failed before the mods' set-up (some of its writes may be in), or NULL. */
+static const char* g_generationEarlyFailed;
+
+/* From WatchLoaded, before any mod hears HF_EVENT_GAME_LOADED: the block's move, once level 11 needs it and its code is
+ * the reviewed one. The game makes its one world, and with it the block, a few seconds after game.dll decodes; a mod's
+ * slow GAME_LOADED handler, or the wait for the difficulty tables, put the install after it (#422) and a larger map then
+ * overran the old block. Its inputs are final by now: add_difficulty and generation_capacity are refused once the event
+ * has fired, so only hellforge_mod_init can ask. The rest of level 11 installs later, as before; the move alone leaves
+ * every level working (the code addresses the larger block it makes). */
+static void MoveGenerationBlockEarly(uintptr_t game)
+{
+    if (game == 0 || g_generationMoved || g_difficultyState != 0 || !g_difficultyAdded || !DifficultyNeedsBlock()) return;
+    const char* why = LocationRefsFailed(game);
+    if (why == NULL) why = ObjectiveListFailed(game);
+    if (why != NULL)
+    {
+        Note("difficulty: the generation block is not moved before the mods' set-up: %s; level 11's install looks again", why);
+        return;
+    }
+    DifficultyInstall d = {game};
+    g_patchAuditOn = 1;
+    why = MoveGenerationBlock(&d);
+    g_patchAuditOn = 0;
+    if (why != NULL) g_generationEarlyFailed = why;
+    if (why != NULL) Note("difficulty: the generation block's move failed before the mods' set-up: %s; level 11 is refused", why);
+    else if (g_generationMoved) Note("difficulty: the generation block moved before the mods' set-up (the game makes it with its world)");
+}
+
+/* The install's checks of the block: the move's own (when it has not run yet), and why level 11 cannot run when the
+ * game made its block before the move: a larger map would overrun it and the drop would never land. */
+static const char* GenerationBlockFailed(uintptr_t game)
+{
+    if (!DifficultyNeedsBlock()) return NULL;
+    if (g_generationEarlyFailed != NULL) return g_generationEarlyFailed;
+    if (g_generationMoved) return NULL;
+    const char* why = LocationRefsFailed(game);
+    if (why == NULL) why = ObjectiveListFailed(game);
+    if (why == NULL && GenerationBlock(game) != 0)
+        why = "the game made its generation block before HellForge could enlarge it, so level 11's larger maps would overrun it; restart the game";
+    return why;
+}
+
+/* Install step 52: the move, unless it ran before the mods' set-up. */
+static const char* MoveGenerationBlockStep(DifficultyInstall* d)
+{
+    return g_generationMoved ? NULL : MoveGenerationBlock(d);
 }

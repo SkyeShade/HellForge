@@ -165,7 +165,8 @@ link above the folder HellForge protects is resolved and the real folder is used
   An installation that already runs in such a prefix is still updated.
 - A link at the installation folder or inside it, with `Linked/reparse paths are not supported: <path>`. A game copy
   written through it could land somewhere else. The same rule covers the game folder and every Steam library HellForge
-  reads.
+  reads. One exception: a library's `steamapps` folder may be a link, as on a Steam Deck that keeps it on the microSD
+  card. HellForge follows it, and the game folder inside it may still not be a link.
 - For the sandbox self-test, `/run`, because the sandbox gives the game its own private `/run`. The exception is a drive
   your desktop mounted under `/run/media/<user>/<drive>` (KDE, GNOME, SteamOS), which works, sandbox included.
 
@@ -444,9 +445,11 @@ what it installs. After the installer exits, the launcher continues the same syn
 - If `pkexec` is missing or no polkit authentication agent is running (Game Mode on a Deck, a bare window manager), the
   launcher shows the terminal command instead.
 - SteamOS 3.x users without a password are told to run `passwd` first.
-- A package update that changes either shipped file makes the next sync offer the same install again.
+- A package update that changes the shipped helper, relay or capture makes the next sync offer the same install again.
+- Premium content needs systemd: the snapshot signer runs as a systemd service
+  ([the snapshot signer](linux-account-sync.md#the-snapshot-signer)).
 - So does a sudo that still asks for a password for the helper, as on SteamOS with a rule from an earlier version.
-- `allow-capture.sh --remove` removes the rule, the helper, the relay and both hashes. Uninstall offers the same
+- `allow-capture.sh --remove` removes the rule, the helper, the relay, the capture copy, the hashes and the signer's keys. Uninstall offers the same
   `--remove` through pkexec.
 
 ### During and after a sync

@@ -17,7 +17,14 @@ typedef struct StatEdit
     int ref;        /* its field's reference kind (refs.c; -1 not looked up yet) */
     int refWaiting; /* a reference waiting for its packages (StatsRefsTick writes it) */
     uint32_t size;  /* 1 for a u8 (a component's flag), else 0 or 4: four bytes */
+    /* Mod content by the name it was added under ("<mod id>:<name>"), numbered once every mod has set up
+     * (StatsResolveNames): the row's (a mod's projectile, damage type or explosion), and a reference's value with its
+     * kind ('p' projectile, 'd' damage type, 'e' explosion). Empty when the line gives numbers. */
+    char recordName[128], valueName[128];
+    char valueKind;
 } StatEdit;
+static uint64_t ProjectileTypeNamed(const char* name); /* fields.c */
+static uint64_t DamageNamed(const char* name);
 /* The bytes a stats edit or observation reads and writes: 1 (u8) or 4. */
 static uint32_t StatSize(const StatEdit* e) { return e->size == 1 ? 1u : 4u; }
 static int RefStat(StatEdit* e, uintptr_t address, uint32_t original);
@@ -29,8 +36,11 @@ static int StatsTableKind(const char* kind)
 {
     return !strcmp(kind, "ProjectileSettings") || !strcmp(kind, "DamageInfo") || !strcmp(kind, "StratagemDefinition") ||
         !strcmp(kind, "BoosterSettings") || !strcmp(kind, "PassiveModifier") || !strcmp(kind, "PassiveStat") || !strcmp(kind, "MeleeHitVolume") ||
-        !strcmp(kind, "DifficultySettings") || DirectorKind(kind);
+        !strcmp(kind, "DifficultySettings") || DirectorKind(kind) || !strcmp(kind, "StratagemCode") ||
+        !strcmp(kind, "StratagemRearm");
 }
+#include "stratagem_codes.c" /* the StratagemCode kind: stratagems' input codes */
+#include "stratagem_rearm.c" /* the StratagemRearm kind: uses that rearm after their cooldown */
 static StatEdit g_stats[MAX_STATS];
 static int g_statCount;
 static volatile LONG g_statsComponentsReady;
@@ -95,6 +105,17 @@ static void StatsNoteShots(const StatEdit* e, uint32_t original)
         ShotsNoteLocal(e->resource, ShotsSlotOf(e->component, e->offset), original, e->value);
 }
 
+/* An edit's value checks past its field's own: a code's or a rearm flag's (stratagem_codes.c, stratagem_rearm.c), then a
+ * reference's (refs.c). 0 when it may be
+ * written; else refused (logged) or, for a reference, waiting. */
+static int StatsChecks(StatEdit* e, uintptr_t address, uint32_t original)
+{
+    const char* code = CodesRefusal(e, original);
+    if (code == NULL) code = RearmRefusal(e);
+    if (code != NULL) { StatsRefuse(e, code); return 1; }
+    return RefStat(e, address, original) != 0 /* REF_OK */;
+}
+
 static void StatsWrite(StatEdit* e, uintptr_t address)
 {
     uint32_t current = 0, original, size = StatSize(e);
@@ -102,7 +123,7 @@ static void StatsWrite(StatEdit* e, uintptr_t address)
     original = StatsOriginal(e, address, current);
     if (e->hasExpect && original != e->expect) { StatsRefuse(e, "original value differs from expect"); return; }
     if (e->floating && !StatsFiniteBits(current)) { StatsRefuse(e, "current float is not finite"); return; }
-    if (RefStat(e, address, original) != 0 /* REF_OK */) return;
+    if (StatsChecks(e, address, original) != 0) return;
     if (e->shared && !e->own) ApiLog(e->mod, "stats %s: shared record; all consumers are affected", e->label);
     if (e->unverified) ApiLog(e->mod, "stats %s: gameplay effect is unverified", e->label);
     if (ApiWrite(address, &e->value, size) || SafeRead(address, &current, size) || current != e->value)
@@ -251,7 +272,7 @@ static uintptr_t StatsTableOf(int phase, uintptr_t game)
         (g_stratagemTable ? (uintptr_t)g_stratagemTable : game + STR_TABLE);
 }
 
-/* The vanilla row among slots [first, last) whose id is `record` (the stratagems' stable id at +4, else its type): the
+/* The row among slots [first, last) whose id is `record` (the stratagems' stable id at +4, else its type): the
  * row, 0 when not exactly one is. */
 static uintptr_t StatsTableRow(int phase, uintptr_t table, uint32_t first, uint32_t last, int64_t record)
 {
@@ -271,7 +292,10 @@ static uintptr_t StatsTableRow(int phase, uintptr_t table, uint32_t first, uint3
  * original), or 0 with *why. Also live_stats.c's lookup. */
 static uintptr_t StatsTableField(int phase, uintptr_t game, const StatEdit* e, const char** why)
 {
-    uint32_t count = phase == 0 ? PRJ_VANILLA : phase == 1 ? DMG_VANILLA : STR_VANILLA;
+    if (StratagemOwnKind(e->kind)) return e->own ? (*why = "HellForge's stratagem tables have no own records", 0) : StratagemOwnField(e, why);
+    /* the moved projectile and damage tables hold the mods' rows after the game's */
+    uint32_t count = phase == 0 ? (g_projectileTable ? PRJ_VANILLA + PRJ_MAX_NEW : PRJ_VANILLA)
+        : phase == 1 ? (g_damageTable ? DMG_VANILLA + DMG_MAX_NEW : DMG_VANILLA) : STR_VANILLA;
     uint32_t stride = phase == 0 ? PRJ_ROW : phase == 1 ? DMG_ROW : STR_ROW;
     if (strcmp(g_build, "25480438") || e->own || e->offset < 4 || e->offset > stride - 4 || e->offset % 4)
     { *why = "unsupported build or table layout"; return 0; }
@@ -286,10 +310,11 @@ static void StatsApplyTable(int phase, uintptr_t game)
     if (g_statsTablesDone[phase]) return;
     g_statsTablesDone[phase] = 1;
     const char* kind = StatsTableName(phase);
+    if (phase == 2) CodesInstallAt(game, StatsTableOf(phase, game)); /* before any edit: a code's field is its array's */
     for (int i = 0; i < g_statCount; i++)
     {
         StatEdit* e = &g_stats[i];
-        if (strcmp(e->kind, kind) || !e->mod->loaded) continue;
+        if ((strcmp(e->kind, kind) && (phase != 2 || !StratagemOwnKind(e->kind))) || !e->mod->loaded) continue;
         const char* why = NULL;
         uintptr_t at = StatsTableField(phase, game, e, &why);
         if (!at) StatsRefuse(e, why);
@@ -309,16 +334,96 @@ static int StatsStorageKnown(const char* storage)
     return !strcmp(storage, "f32") || !strcmp(storage, "u32") || !strcmp(storage, "i32") || !strcmp(storage, "u8");
 }
 
+/* The content a settings row of this kind is: 'p' projectile, 'd' damage type, 'e' explosion, else 0. */
+static char StatsRowContent(const char* kind)
+{
+    return !strcmp(kind, "ProjectileSettings") ? 'p' : !strcmp(kind, "DamageInfo") ? 'd' : !strcmp(kind, "ExplosionSettings") ? 'e' : 0;
+}
+
+static uint64_t StatsContentNamed(char content, const char* name)
+{
+    return content == 'p' ? ProjectileTypeNamed(name) : content == 'd' ? DamageNamed(name) : content == 'e' ? ExplosionNamed(name) : 0;
+}
+
+static const char* StatsContentWord(char content) { return content == 'p' ? "projectile" : content == 'd' ? "damage type" : "explosion"; }
+
+/* The names an edit gives numbered (its row, a reference's value): NULL, or why not, in why (size bytes). */
+static const char* StatsResolveNames(StatEdit* e, char* why, size_t size)
+{
+    if (e->recordName[0])
+    {
+        uint64_t id = StatsContentNamed(StatsRowContent(e->kind), e->recordName);
+        if (!id) { snprintf(why, size, "no mod %s is named %s", StatsContentWord(StatsRowContent(e->kind)), e->recordName); return why; }
+        e->record = (int64_t)id;
+    }
+    if (e->valueName[0])
+    {
+        uint64_t id = StatsContentNamed(e->valueKind, e->valueName);
+        if (!id || id > UINT32_MAX) { snprintf(why, size, "no mod %s is named %s", StatsContentWord(e->valueKind), e->valueName); return why; }
+        e->value = (uint32_t)id;
+    }
+    return NULL;
+}
+
+/* Once every mod has set up (their projectiles, damage types and explosions have their numbers): the plan's names
+ * numbered. An edit naming content no mod added is refused and left out of every pass. */
+static void StatsResolveAll(void)
+{
+    for (int i = 0; i < g_statCount; i++)
+    {
+        StatEdit* e = &g_stats[i];
+        char why[192];
+        if ((!e->recordName[0] && !e->valueName[0]) || !StatsResolveNames(e, why, sizeof why)) continue;
+        StatsRefuse(e, why);
+        e->kind[0] = 0; /* no pass's kind */
+    }
+}
+
+/* A stat line's record: a number, or "@<name>", a mod's row by name (the kind says which content, StatsRowContent).
+ * 1 when it does not parse. */
+static int StatsParseRecord(StatEdit* e, const char* kind, const char* text)
+{
+    char* end;
+    if (text[0] != '@')
+    {
+        e->record = strtoll(text, &end, 10);
+        return *end || e->record < -1 || e->record > UINT32_MAX;
+    }
+    if (!text[1] || strlen(text + 1) >= sizeof e->recordName || !StatsRowContent(kind)) return 1;
+    snprintf(e->recordName, sizeof e->recordName, "%s", text + 1);
+    e->record = 0;
+    return 0;
+}
+
+/* A stat line's value: hex bits, or "@<p|d|e>=<name>", a reference to a mod's projectile, damage type or explosion by
+ * name. 1 when it does not parse. */
+static int StatsParseValue(StatEdit* e, const char* text)
+{
+    char* end;
+    if (text[0] != '@')
+    {
+        uint64_t bits = strtoull(text, &end, 16);
+        if (*end || bits > (e->size == 1 ? 0xFFu : UINT32_MAX)) return 1;
+        e->value = (uint32_t)bits;
+        return 0;
+    }
+    if (!text[1] || !strchr("pde", text[1]) || text[2] != '=' || !text[3] || strlen(text + 3) >= sizeof e->valueName || e->size == 1) return 1;
+    e->valueKind = text[1];
+    snprintf(e->valueName, sizeof e->valueName, "%s", text + 3);
+    e->value = 0;
+    return 0;
+}
+
 /* A stat line's resource, record, offset, value and expect into e (its size set). 1 when one does not parse. */
 static int StatsParseNumbers(StatEdit* e, char** f)
 {
     char* end;
     e->resource = strtoull(f[4], &end, 16); if (*end) return 1;
-    e->record = strtoll(f[5], &end, 10); if (*end || e->record < -1 || e->record > UINT32_MAX) return 1;
+    if (StatsParseRecord(e, f[2], f[5])) return 1;
     uint64_t offset = strtoull(f[6], &end, 10); if (*end || offset > UINT32_MAX || (offset % 4 && strcmp(f[2], "EntityDelta") && e->size != 1)) return 1; e->offset = (uint32_t)offset;
-    uint64_t bits = strtoull(f[8], &end, 16); if (*end || bits > (e->size == 1 ? 0xFFu : UINT32_MAX)) return 1; e->value = (uint32_t)bits;
+    if (StatsParseValue(e, f[8])) return 1;
     e->hasExpect = strcmp(f[9], "-") != 0;
-    if (e->hasExpect) { bits = strtoull(f[9], &end, 16); if (*end || bits > UINT32_MAX) return 1; e->expect = (uint32_t)bits; }
+    if (e->hasExpect) { uint64_t bits = strtoull(f[9], &end, 16); if (*end || bits > UINT32_MAX) return 1; e->expect = (uint32_t)bits; }
     return 0;
 }
 
