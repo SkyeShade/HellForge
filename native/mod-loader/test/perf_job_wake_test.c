@@ -336,8 +336,17 @@ static void JobWakeFixture(void)
     assert(image[JW_WAIT_SITE] == 0xE8 && image[JW_RELEASE] == 0xE8 && image[JW_RELEASE_LP] == 0xE8 && image[JW_WAIT_SITE + 5] == 0x90);
     JwWatchAt(exe);
     assert(g_jwState == 1); /* once */
+    DWORD gameThread = g_gameThread;
+    LONG64 direct = g_jwDirect;
+    g_gameThread = 0; /* before the game thread is known: every release made at once, as the game makes it */
+    JwtBursts(exe, 200, 3);
+    assert(g_jwDirect > direct);
+    JwtWaitAsleep();
+    g_gameThread = GetCurrentThreadId(); /* the readying thread is the game thread */
     LONG64 bySubmit = g_jwBySubmit, asked = g_jwAsked;
+    direct = g_jwDirect;
     double after = JwtBursts(exe, 3000, 7);
+    assert(g_jwDirect == direct);
     LONG64 hfSubmitter = g_jwBySubmit - bySubmit, hfAsked = g_jwAsked - asked;
     JwtWaitAsleep();
     for (int i = 0; i < 2; i++) assert(g_jwtSems[i].count == (i ? -JWT_BACKGROUND : -JWT_WORKERS));
@@ -345,6 +354,7 @@ static void JobWakeFixture(void)
     assert(hfAsked > 0 && hfSubmitter < gameReleases);
     assert(g_jwStale == stale);
     JwtStop();
+    g_gameThread = gameThread;
 
     memcpy(g_build, build, sizeof build);
     g_fired[HF_EVENT_GAME_LOADED] = loaded;
@@ -352,7 +362,7 @@ static void JobWakeFixture(void)
     printf("PASS job wake: the game's ready callback and worker loop run on a synthetic image with real semaphores and "
         "threads, 3000 bursts of 1-12 readied jobs each run to the end (slowest %.1f ms as the game has it, %.1f ms "
         "rewritten); pins refuse any changed byte, wait for decoded code and give up, refuse imports that are not the "
-        "kernel's or do not release and wait, off by name and on another build; installed once with every worker asleep in the game's wait, no "
-        "wake lost, all owed paid, the readying thread's releases %ld -> %lld (%lld asked for)\n",
+        "kernel's or do not release and wait, off by name and on another build; installed once with every worker asleep in the game's wait, other threads' "
+        "releases made at once, no wake lost, all owed paid, the game thread's releases %ld -> %lld (%lld asked for)\n",
         before, after, (long)gameReleases, (long long)hfSubmitter, (long long)hfAsked);
 }

@@ -1,8 +1,8 @@
 /* job-wake (docs/performance.md#job-wake). The job system's ready callback (exe 0x625400) calls ReleaseSemaphore for
- * each job a thread readies while pool workers sleep. HellForge keeps the game's count and moves those calls: the
- * releases asked for are owed, the readying thread pays one only while none it owed is on its way, and each worker that
- * wakes pays the next before it looks for work. Every release is still made on the same semaphore, no more of them;
- * why none is lost is in the doc. Included by hellforge_modloader.c after render_guards.c: AllocateNearGame (damage.c),
+ * each job a thread readies while pool workers sleep. On the game thread HellForge keeps the game's count and moves
+ * those calls: the releases asked for are owed, the game thread pays one only while none it owed is on its way, and
+ * each worker that wakes pays the next before it looks for work. Other threads release as the game does. Every release
+ * is still made on the same semaphore, no more of them; why none is lost is in the doc. Included by hellforge_modloader.c after render_guards.c: AllocateNearGame (damage.c),
  * JournalPut (live_code.c), ApiCodeMatches and FarJump (hooks.c), PerfFixOn, Note, g_build, g_fired. */
 
 #define JW_NAME "job-wake"
@@ -115,10 +115,12 @@ static void JwKick(JwSem* s, LONG limit, int force, volatile LONG64* counter)
     }
 }
 
-/* The ready callback's ReleaseSemaphore(handle, min(sleepers, jobs), &unused), on the readying thread. */
+/* The ready callback's ReleaseSemaphore(handle, min(sleepers, jobs), &unused), on the readying thread. Only the game
+ * thread's are owed: the render thread and the workers wait on their own job chains, so theirs wake at once. */
 static BOOL WINAPI JwSubmitRelease(HANDLE handle, LONG count, LONG* previous)
 {
-    JwSem* s = count > 0 ? JwFind(handle) : NULL;
+    DWORD game = g_gameThread; /* events.c: set by the game thread's update */
+    JwSem* s = count > 0 && game != 0 && GetCurrentThreadId() == game ? JwFind(handle) : NULL;
     if (s == NULL)
     {
         InterlockedIncrement64(&g_jwDirect);
@@ -229,7 +231,7 @@ static int JwInstallAt(uintptr_t exe)
     ((void (*)(uintptr_t))(exe + JW_WAKE_ALL))(scheduler);
     int lowPriority = !JwCallTo(exe, JW_RELEASE_LP, page + 16), workers = !JwCallTo(exe, JW_RELEASE, page + 16);
     if (lowPriority && workers)
-        Note("performance fix %s: installed; a thread that readies jobs wakes one worker, the woken workers wake the rest", JW_NAME);
+        Note("performance fix %s: installed; the game thread wakes one worker for the jobs it readies, the woken workers wake the rest", JW_NAME);
     else
         Note("performance fix %s: installed in part; the ready callback's %s release could not be rewritten", JW_NAME,
             lowPriority ? "workers'" : workers ? "low-priority" : "both");
@@ -268,8 +270,8 @@ static void JwReport(void)
     if (g_jwState != 1 || asked == g_jwReportedAsked || now - g_jwReportedAt < 60000) return;
     g_jwReportedAt = now;
     g_jwReportedAsked = asked;
-    Note("performance fix %s: %lld wakes asked for; made by the readying thread %lld, by woken workers %lld, by waiting "
-        "workers %lld; %lld taken as lost, %lld direct", JW_NAME, (long long)asked, (long long)g_jwBySubmit,
+    Note("performance fix %s: %lld wakes asked for; made by the game thread %lld, by woken workers %lld, by waiting "
+        "workers %lld; %lld taken as lost; %lld made at once by other threads", JW_NAME, (long long)asked, (long long)g_jwBySubmit,
         (long long)g_jwByWorker, (long long)g_jwByWatch, (long long)g_jwStale, (long long)g_jwDirect);
 }
 
