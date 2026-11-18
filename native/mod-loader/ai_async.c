@@ -14,6 +14,15 @@
 #define AA_PERCEPTION 0x3326548u  /* PerceptionManager: map +0x30, records +0x50 stride 0x13F8 */
 #define AA_EYES 0x3326520u        /* SensorEyeManager: +0 the ray batch, +8 its settings (+0xBC the sight filter) */
 #define AA_ABILITIES 0x3326640u   /* AbilityManager: map +0x18, records +0x38 stride 0xE0 (+0x10 running) */
+#define AA_NAVIGATION 0x3326418u  /* Navigation: map +0x30, records +0x50 stride 0xA8 (+0xC status, +0x10 flags, +0x34 the
+                                    * path direction, +0x54 the agent's position for its navigator) */
+#define AA_CHARACTERS 0x3326D18u  /* AiCharacter (steering): map +0x30, B +0x58 stride 0x84, C +0x60 stride 0x14 */
+#define AA_LOCOMOTION 0x3326CF8u  /* Locomotion: map +0x20, wanted velocity +0x40 stride 0xC */
+#define AA_ROTATION 0x33264A0u    /* RotationManager: map +0x38 */
+#define AA_STEER 0x7D9FA0u        /* game: the steering pass (unused, start, end, dt) */
+#define AA_FIELD_WRITE 0xFD97E0u  /* game: QueueFieldWrite (network id, field hash, value) */
+#define AA_VELOCITY_FIELD 0x3A2B4F15u
+#define AA_MOVER_FIELD 0x1510FA6Au
 #define AA_DEVASTATOR 0xAE63E525853D7044ull
 #define AA_TYPES 8
 #define AA_DEAD 0x10u
@@ -25,7 +34,7 @@
 #define AA_CHEST_UP 1.2f
 
 enum { AF_SET_TARGET, AF_FACE, AF_MOVE, AF_INFORM, AF_FIND_ENTRY, AF_START, AF_START_AT, AF_RAY, AF_STATE, AF_SPEEDS,
-    AF_DATA, AF_COUNT };
+    AF_DATA, AF_ATTACKS, AF_AVOID, AF_FACING, AF_COUNT };
 static const GameFunction kAaFunctions[AF_COUNT] = {
     {0x4AF4E0u, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7c, 0x24, 0x20, 0x41, 0x55, 0x41, 0x56}}, /* BehaviourSetTarget */
     {0x4C1530u, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57}}, /* BehaviourFace */
@@ -38,10 +47,14 @@ static const GameFunction kAaFunctions[AF_COUNT] = {
     {0x7EAC40u, {0x40, 0x53, 0x57, 0x41, 0x57, 0x48, 0x83, 0xec, 0x20, 0x8b, 0x42, 0x08, 0x45, 0x8b, 0xf8, 0x3b, 0x05, 0xcb, 0x8f, 0xc9, 0x02, 0x48, 0x8b, 0xf9}}, /* AiEnemy state request */
     {0x7F0180u, {0x48, 0x89, 0x5c, 0x24, 0x18, 0x48, 0x89, 0x6c, 0x24, 0x20, 0x56, 0x57, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xec, 0x40, 0x45, 0x33}}, /* AiEnemy movement block */
     {0x511CC0u, {0x48, 0x85, 0xc9, 0x74, 0x71, 0x48, 0x8b, 0x05, 0xcc, 0xa2, 0xf5, 0x02, 0x44, 0x8b, 0xc1, 0x4c, 0x8b, 0x90, 0xe8, 0x2d, 0xf1, 0x00, 0x48, 0xb8}}, /* AiEnemyComponentData of a type */
+    {0x4A0F00u, {0x48, 0x8b, 0xc4, 0x48, 0x89, 0x58, 0x10, 0x55, 0x56, 0x57, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8d, 0x68, 0xa1, 0x48, 0x81, 0xec, 0xb0, 0x00, 0x00}}, /* a behaviour's attack list */
+    {0x7DDC30u, {0x41, 0x56, 0x48, 0x83, 0xec, 0x20, 0x3b, 0x15, 0xe4, 0x5f, 0xca, 0x02, 0x45, 0x0f, 0xb6, 0xf0, 0x4c, 0x8b, 0x15, 0xd1, 0x90, 0xb4, 0x02, 0x0f}}, /* Havok AI avoidance on / off */
+    {0x61DBB0u, {0x41, 0x56, 0x48, 0x83, 0xec, 0x30, 0x3b, 0x15, 0x64, 0x60, 0xe6, 0x02, 0x4d, 0x8b, 0xf0, 0x4c, 0x8b, 0xd9, 0x75, 0x07, 0xba, 0xff, 0xff, 0xff}}, /* facing (and its field) */
 };
-static const GameFunction kAaHooked[2] = {
+static const GameFunction kAaHooked[3] = {
     {AA_AI_PASS, {0x48, 0x8b, 0xc4, 0x57, 0x41, 0x54, 0x48, 0x83, 0xec, 0x78, 0x0f, 0x29, 0x78, 0xb8, 0x45, 0x33, 0xe4, 0x44, 0x0f, 0x29, 0x40, 0xa8, 0x41, 0x8b}},
     {AA_STATE_SWITCH, {0x40, 0x56, 0x48, 0x83, 0xec, 0x40, 0x41, 0x83, 0xc1, 0xfe, 0x48, 0x8b, 0xf2, 0x41, 0x83, 0xf9, 0x0d, 0x0f, 0x87, 0x80, 0x02, 0x00, 0x00, 0x48}},
+    {AA_FIELD_WRITE, {0x48, 0x89, 0x6c, 0x24, 0x18, 0x56, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xec, 0x30, 0x48, 0x8b, 0x05, 0xa3, 0x27, 0x49, 0x02, 0x4d, 0x8b, 0xf0}},
 };
 
 typedef void (*AaPassFn)(void* manager, float dt);
@@ -57,6 +70,11 @@ typedef uint32_t (*AaRayFn)(void* batch, uint32_t filter, const float* from, con
 typedef void (*AaStateFn)(void* manager, uint8_t* info, uint32_t state);
 typedef void (*AaSpeedsFn)(void* manager, uint32_t entity, const float* block);
 typedef uint8_t* (*AaDataFn)(uint64_t resource);
+typedef uint8_t* (*AaAttackListFn)(BehaviourCtx* ctx, uint32_t behaviour, float* scratch, uint32_t* count);
+typedef void (*AaAvoidFn)(void* unused, uint32_t entity, char on);
+typedef void (*AaFacingFn)(void* rotation, uint32_t entity, const float* dir);
+typedef void (*AaSteerFn)(void* unused, uint32_t start, uint32_t end, float dt);
+typedef void (*AaFieldFn)(uint32_t network, uint32_t field, void* value);
 
 /* One registered agent, the game thread's: its held intent, its ray, what was applied. */
 typedef struct AaSlot
@@ -65,7 +83,8 @@ typedef struct AaSlot
     int8_t rayPlayer, rayVisible, applied, pad;
     double rayAt;
     AbIntent held;
-    uint8_t pendingMove, pendingFire, pendingRay, quiet, attackCount;
+    uint8_t pendingMove, pendingFire, pendingRay, quiet, attackCount, crowd, faced;
+    float vel[3], face[3], facedDir[2];
     AbAttack attacks[AB_ATTACKS];
     uint8_t hits[2][AA_HIT];
 } AaSlot;
@@ -96,6 +115,14 @@ static double g_aaWorkerMs, g_aaApplyMs, g_aaCaptureMs;
 static LONG64 g_aaStat[12];           /* frames, busy, agents, engaged, skipped, moves, fires, rays, visible, answered, thinks, informs */
 static LONG64 g_aaLast[12];
 static int g_aaListed;
+static int g_aaMoveOn, g_aaFieldsOn;  /* phase 2 (our movement and avoidance), phase 3 (fields on change) */
+static AbMove g_aaMoves[AB_MAX];
+static uint32_t g_aaSteerMark[AB_MAX]; /* AiCharacter index -> the frame + 1 phase 2 moved it in */
+static void* volatile g_aaSteerNext;
+static void* volatile g_aaFieldNext;
+static LONG64 g_aaSteered, g_aaSteerKept, g_aaFieldSkips, g_aaFieldCalls;
+typedef struct AaField { float v[3]; ULONGLONG at, atB; uint8_t has, b, hasB; } AaField;
+static AaField g_aaFields[0x8000];
 
 static void* AaFn(int f) { return (void*)(g_aaGame + kAaFunctions[f].rva); }
 static uintptr_t AaGlobal(uint32_t rva) { return *(uintptr_t*)(g_aaGame + rva); }
@@ -208,11 +235,13 @@ static void AaHeard(const AbSnapshot* s, uint8_t* perceiver, AbAgentIn* a)
 
 /* The attacks the game gave this agent (its AiEnemy record's list: 0x60 a row, +0 ability, +4 how it starts, +0x14 /
  * +0x18 its range), and its first log line. */
-static void AaAttacks(uintptr_t ai, uint32_t index, AaSlot* a)
+static void AaAttacks(uintptr_t ai, AaSlot* a)
 {
-    const uint8_t* rec = *(uint8_t**)(ai + 0x2350) + (size_t)index * 0xA50;
-    const uint8_t* rows = *(uint8_t* const*)(rec + 0x50);
-    uint32_t count = *(const uint32_t*)(rec + 0x58);
+    BehaviourCtx ctx;
+    float scratch[8] = {0};
+    uint32_t count = 0;
+    if (!AaCtx(a->entity, &ctx)) return;
+    const uint8_t* rows = ((AaAttackListFn)AaFn(AF_ATTACKS))(&ctx, *(uint32_t*)(ctx.p - 8), scratch, &count);
     a->attackCount = 0;
     for (uint32_t k = 0; rows && k < count && a->attackCount < AB_ATTACKS; k++)
     {
@@ -223,6 +252,22 @@ static void AaAttacks(uintptr_t ai, uint32_t index, AaSlot* a)
             k, at->ability, at->kind, at->minRange, at->maxRange, *(uint32_t*)(ai + 0x1D10));
     }
     if (a->attackCount) g_aaListed = 1;
+}
+
+/* The navigator's path direction and the speed the game gave the agent (phase 2's inputs). */
+static void AaPath(uint32_t entity, AbAgentIn* a)
+{
+    uintptr_t nav = AaGlobal(AA_NAVIGATION), ch = AaGlobal(AA_CHARACTERS);
+    int64_t n = nav ? BhvMapFind(nav, 0x30, entity) : -1, c = ch ? BhvMapFind(ch, 0x30, entity) : -1;
+    a->pathOk = 0; a->speed = 0.0f;
+    if (n < 0 || c < 0) return;
+    const uint8_t* r = *(uint8_t**)(nav + 0x50) + (size_t)n * 0xA8;
+    uint32_t status = *(const uint32_t*)(r + 0xC), flags = *(const uint32_t*)(r + 0x10);
+    const float* d = (const float*)(r + 0x34);
+    float l = sqrtf(d[0] * d[0] + d[1] * d[1]);
+    if ((status == 0 || status == 3) && (flags & 0xA) && l > 1e-3f) { a->pathDir[0] = d[0] / l; a->pathDir[1] = d[1] / l; a->pathOk = 1; }
+    a->speed = *(const float*)(*(uint8_t**)(ch + 0x60) + (size_t)c * 0x14 + 0xC);
+    a->crowd = 1;
 }
 
 /* A new slot for an entity: its perceiver's eye scan off (the brain sees for it), memory fresh. */
@@ -250,7 +295,9 @@ static int AaCapture(uintptr_t ai, uint32_t index, uint8_t* info, AbAgentIn* a, 
     if (g_aaUsed[slot] == 2) { fresh = 1; g_aaUsed[slot] = 1; }
     AaSlot* sl = &g_aaSlots[slot];
     if (!AaPose(entity, a->pos, a->fwd)) return 0;
-    if (fresh) AaAttacks(ai, index, sl);
+    if (fresh || (g_aaFrame + (uint32_t)slot) % 60u == 0) AaAttacks(ai, sl);
+    a->crowd = 0;
+    if (g_aaMoveOn) AaPath(entity, a);
     a->attackCount = sl->attackCount;
     memcpy(a->attacks, sl->attacks, sizeof a->attacks);
     AaMapPut(next, entity, (uint32_t)slot);
@@ -349,21 +396,30 @@ static void AaEngage(uintptr_t ai, uint8_t* info)
     if (data) ((AaSpeedsFn)AaFn(AF_SPEEDS))((void*)ai, *(uint32_t*)(info + 8), (const float*)(data + 100));
 }
 
-/* Applies one slot's held intent; the one-shots once. */
-static void AaApplySlot(uintptr_t ai, AaSlot* sl, const AbSnapshot* s, double now)
+/* Phase 2 for one agent: its navigator learns where it is, Locomotion gets our velocity, the facing ours (with its
+ * field, when it turned), Havok AI avoidance stays off, and the steering pass skips it this frame. */
+static void AaCrowdApply(AaSlot* sl)
 {
-    AbIntent* in = &sl->held;
-    BehaviourCtx ctx;
-    if (!in->engaged || in->target < 0 || (uint32_t)in->target >= s->playerCount || !AaCtx(sl->entity, &ctx)) { sl->applied = 0; return; }
-    if (!sl->applied)
+    uintptr_t nav = AaGlobal(AA_NAVIGATION), ch = AaGlobal(AA_CHARACTERS), loco = AaGlobal(AA_LOCOMOTION);
+    int64_t n = nav ? BhvMapFind(nav, 0x30, sl->entity) : -1, c = ch ? BhvMapFind(ch, 0x30, sl->entity) : -1;
+    int64_t l = loco ? BhvMapFind(loco, 0x20, sl->entity) : -1;
+    float pos[3], fwd[3];
+    if (n < 0 || c < 0 || l < 0 || c >= (int64_t)AB_MAX || !AaPose(sl->entity, pos, fwd)) return;
+    memcpy(*(uint8_t**)(nav + 0x50) + (size_t)n * 0xA8 + 0x54, pos, 12);
+    memcpy(*(uint8_t**)(loco + 0x40) + (size_t)l * 0xC, sl->vel, 12);
+    ((AaAvoidFn)AaFn(AF_AVOID))(NULL, sl->entity, 0);
+    if (sl->faced && fabsf(sl->face[0] - sl->facedDir[0]) + fabsf(sl->face[1] - sl->facedDir[1]) > 0.01f)
     {
-        int64_t i = BhvMapFind(ai, 0x2330, sl->entity);
-        if (i >= 0) AaEngage(ai, (*(uint8_t***)(ai + 0x2348))[i]);
-        sl->applied = 1;
+        ((AaFacingFn)AaFn(AF_FACING))((void*)AaGlobal(AA_ROTATION), sl->entity, sl->face);
+        sl->facedDir[0] = sl->face[0]; sl->facedDir[1] = sl->face[1];
     }
-    AaTarget(&ctx, in, s, now);
-    if (in->face) ((AaVectorFn)AaFn(AF_FACE))(&ctx, in->faceDir);
-    if (sl->pendingMove) { ((AaVectorFn)AaFn(AF_MOVE))(&ctx, in->goal); sl->pendingMove = 0; g_aaStat[5]++; }
+    g_aaSteerMark[c] = g_aaFrame + 1u;
+}
+
+/* A pending attack starts, with the game's own start for its kind, unless an ability already runs. */
+static void AaFire(AaSlot* sl, const AbSnapshot* s)
+{
+    const AbIntent* in = &sl->held;
     if (sl->pendingFire && !AaAbilityRunning(sl->entity))
     {
         uint32_t target = s->players[in->target].entity;
@@ -372,6 +428,25 @@ static void AaApplySlot(uintptr_t ai, AaSlot* sl, const AbSnapshot* s, double no
         g_aaStat[6]++;
     }
     sl->pendingFire = 0;
+}
+
+/* Applies one slot's held intent; the one-shots once. */
+static void AaApplySlot(uintptr_t ai, AaSlot* sl, const AbSnapshot* s, double now)
+{
+    AbIntent* in = &sl->held;
+    BehaviourCtx ctx;
+    if (g_aaMoveOn && sl->crowd) AaCrowdApply(sl);
+    if (!in->engaged || in->target < 0 || (uint32_t)in->target >= s->playerCount || !AaCtx(sl->entity, &ctx)) { sl->applied = 0; return; }
+    if (!sl->applied)
+    {
+        int64_t i = BhvMapFind(ai, 0x2330, sl->entity);
+        if (i >= 0) AaEngage(ai, (*(uint8_t***)(ai + 0x2348))[i]);
+        sl->applied = 1;
+    }
+    AaTarget(&ctx, in, s, now);
+    if (in->face && !(g_aaMoveOn && sl->crowd)) ((AaVectorFn)AaFn(AF_FACE))(&ctx, in->faceDir);
+    if (sl->pendingMove) { ((AaVectorFn)AaFn(AF_MOVE))(&ctx, in->goal); sl->pendingMove = 0; g_aaStat[5]++; }
+    AaFire(sl, s);
     g_aaStat[3]++;
 }
 
@@ -393,6 +468,13 @@ static void AaCanary(void)
 /* The worker's finished pass into the held intents: thinkers replace theirs, with their one-shots pending. */
 static void AaMerge(void)
 {
+    for (uint32_t i = 0; g_aaMoveOn && i < g_aaSnap.agentCount; i++)
+    {
+        AaSlot* sl = &g_aaSlots[g_aaMoves[i].slot % AB_MAX];
+        if (g_aaMoves[i].entity == 0 || sl->entity != g_aaMoves[i].entity) continue;
+        memcpy(sl->vel, g_aaMoves[i].vel, 12); sl->crowd = 1;
+        if (g_aaMoves[i].hasFace) { memcpy(sl->face, g_aaMoves[i].face, 12); sl->faced = 1; }
+    }
     for (uint32_t i = 0; i < g_aaSnap.agentCount; i++)
     {
         if (!g_aaThought[i]) continue;
@@ -415,6 +497,7 @@ static DWORD WINAPI AaWorker(LPVOID unused)
         LARGE_INTEGER a, b;
         QueryPerformanceCounter(&a);
         AbRun(&g_aaSnap, g_aaOut, g_aaThought);
+        if (g_aaMoveOn) AbCrowd(&g_aaSnap, g_aaMoves);
         QueryPerformanceCounter(&b);
         g_aaWorkerMs += AaMs(a, b);
         InterlockedIncrement64(&g_aaPasses);
@@ -446,6 +529,54 @@ static void AaFrame(uintptr_t ai)
     g_aaCaptureMs += AaMs(b, c);
 }
 
+/* A locomotion set change waits in steering's tail (C+0 against B+4): such an agent steers with the game this frame. */
+static int AaSetPending(uintptr_t ch, uint32_t i)
+{
+    return *(uint32_t*)(*(uint8_t**)(ch + 0x60) + (size_t)i * 0x14) != *(uint32_t*)(*(uint8_t**)(ch + 0x58) + (size_t)i * 0x84 + 4);
+}
+
+/* The steering pass, without the agents phase 2 moved this frame. */
+static void AaSteer(void* unused, uint32_t start, uint32_t end, float dt)
+{
+    AaSteerFn next = (AaSteerFn)g_aaSteerNext;
+    uintptr_t ch = AaGlobal(AA_CHARACTERS);
+    if (!g_aaOn || !g_aaMoveOn || !ch) { next(unused, start, end, dt); return; }
+    uint32_t run = start, mark = g_aaFrame + 1u;
+    for (uint32_t i = start; i < end && i < AB_MAX; i++)
+    {
+        if (g_aaSteerMark[i] != mark) continue;
+        if (AaSetPending(ch, i)) { g_aaSteerKept++; continue; }
+        if (run < i) next(unused, run, i, dt);
+        run = i + 1;
+        g_aaSteered++;
+    }
+    if (run < end) next(unused, run, end, dt);
+}
+
+/* Phase 3: the per-frame fields (locomotion's velocity, motion's bool) are queued when they change, and at least
+ * twice a second, instead of every frame for every enemy. */
+static void AaFieldWrite(uint32_t network, uint32_t field, void* value)
+{
+    AaFieldFn next = (AaFieldFn)g_aaFieldNext;
+    if (g_aaFieldsOn && value && network < 0x7FFFu && (field == AA_VELOCITY_FIELD || field == AA_MOVER_FIELD))
+    {
+        AaField* f = &g_aaFields[network];
+        ULONGLONG now = GetTickCount64();
+        g_aaFieldCalls++;
+        if (field == AA_VELOCITY_FIELD)
+        {
+            if (f->has && !memcmp(f->v, value, 12) && now - f->at < 500) { g_aaFieldSkips++; return; }
+            memcpy(f->v, value, 12); f->has = 1; f->at = now;
+        }
+        else
+        {
+            if (f->hasB && f->b == *(uint8_t*)value && now - f->atB < 500) { g_aaFieldSkips++; return; }
+            f->b = *(uint8_t*)value; f->hasB = 1; f->atB = now;
+        }
+    }
+    next(network, field, value);
+}
+
 static void AaPass(void* manager, float dt)
 {
     ((AaPassFn)g_aaPassNext)(manager, dt);
@@ -462,6 +593,14 @@ static void AaSwitch(void* unused, void* manager, uint32_t index, uint32_t state
         if (slot >= 0 && g_aaSlots[slot].held.engaged) { g_aaStat[4]++; return; }
     }
     ((AaSwitchFn)g_aaSwitchNext)(unused, manager, index, state, dt);
+}
+
+/* HELLFORGE_ASYNC_OFF lists parts that stay the game's: move (phase 2), fields (phase 3). */
+static int AaPartOn(const char* name)
+{
+    char v[128];
+    DWORD n = GetEnvironmentVariableA("HELLFORGE_ASYNC_OFF", v, sizeof v);
+    return n == 0 || n >= sizeof v || !PerfFixListed(v, name);
 }
 
 /* HELLFORGE_ASYNC_AI: off, or the resources (hex, comma separated) to run; unset or "on": the Devastator. */
@@ -488,8 +627,10 @@ static const char* AaMismatch(uintptr_t game)
 {
     for (int f = 0; f < AF_COUNT; f++)
         if (!PinMatches(game + kAaFunctions[f].rva, kAaFunctions[f].pin, 24)) return "a game function async-ai calls";
-    for (int f = 0; f < 2; f++)
-        if (!PinMatches(game + kAaHooked[f].rva, kAaHooked[f].pin, 24)) return f ? "the AiEnemy state handler" : "the AiEnemy pass";
+    static const char* what[3] = {"the AiEnemy pass", "the AiEnemy state handler", "QueueFieldWrite"};
+    for (int f = 0; f < 3; f++)
+        if (!PinMatches(game + kAaHooked[f].rva, kAaHooked[f].pin, 24)) return what[f];
+    if (!PinMatches(game + VB_STEER, kVbSteerPin, sizeof kVbSteerPin)) return "the steering pass";
     return NULL;
 }
 
@@ -503,6 +644,7 @@ static int AaTry(uintptr_t game, int lastTry)
         return -1;
     }
     if (!AaConfigure()) { Note("async-ai: off (HELLFORGE_ASYNC_AI)"); return -1; }
+    g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields");
     g_aaGame = game;
     g_aaWake = CreateEventW(NULL, FALSE, FALSE, NULL);
     HANDLE worker = g_aaWake ? CreateThread(NULL, 0, AaWorker, NULL, 0, NULL) : NULL;
@@ -514,9 +656,14 @@ static int AaTry(uintptr_t game, int lastTry)
         Note("async-ai: not installed; a hook could not be placed");
         return -1;
     }
+    if (g_aaMoveOn && LoaderHook("async-ai: the steering pass", game + AA_STEER, (void*)AaSteer, (void**)&g_aaSteerNext) != 0)
+    { g_aaMoveOn = 0; Note("async-ai: move off; the steering pass could not be hooked"); }
+    if (g_aaFieldsOn && LoaderHook("async-ai: QueueFieldWrite", game + AA_FIELD_WRITE, (void*)AaFieldWrite, (void**)&g_aaFieldNext) != 0)
+    { g_aaFieldsOn = 0; Note("async-ai: fields off; QueueFieldWrite could not be hooked"); }
     g_aaReportedAt = GetTickCount64();
     InterlockedExchange(&g_aaOn, 1);
-    Note("async-ai: installed; %d enemy type(s) think on a worker thread (the Devastator's brain)", g_aaTypeCount);
+    Note("async-ai: installed; %d enemy type(s) think on a worker thread (the Devastator's brain); move %s, fields %s",
+        g_aaTypeCount, g_aaMoveOn ? "on (our movement, Havok AI avoidance off for them)" : "off", g_aaFieldsOn ? "on (per-frame fields on change)" : "off");
     return 1;
 }
 
@@ -534,6 +681,10 @@ static void AaReport(void)
         (long long)g_aaPasses, (long long)g_aaLate, (long long)d[1], (long long)d[11]);
     g_aaPasses = 0; g_aaLate = 0;
     memcpy(g_aaLast, g_aaStat, sizeof d);
+    Note("async-ai: move: %.1f agents a frame steered by us, %lld kept the game's for a locomotion set change; fields: %lld of %lld "
+        "per-frame writes unchanged and not queued", (double)g_aaSteered / f, (long long)g_aaSteerKept, (long long)g_aaFieldSkips,
+        (long long)g_aaFieldCalls);
+    g_aaSteered = g_aaSteerKept = g_aaFieldSkips = g_aaFieldCalls = 0;
     g_aaApplyMs = g_aaCaptureMs = g_aaWorkerMs = 0.0;
 }
 

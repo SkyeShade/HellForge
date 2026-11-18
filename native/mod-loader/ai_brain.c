@@ -28,6 +28,8 @@ typedef struct AbAgentIn
     int8_t rayPlayer;          /* the player the last answered ray looked at, -1 none */
     uint8_t rayVisible;        /* its answer: 1 nothing in between */
     float rayAge;              /* seconds since it was answered */
+    float pathDir[2], speed;   /* the game's navigator: direction along its path, the speed it was given */
+    uint8_t pathOk, crowd;     /* a usable path direction; we move it (phase 2) */
 } AbAgentIn;
 
 typedef struct AbPlayerIn { uint32_t entity, unit; float pos[3]; uint8_t alive; } AbPlayerIn;
@@ -52,6 +54,10 @@ typedef struct AbIntent
     float targetPos[3], goal[3], faceDir[3];
     uint32_t ability;
 } AbIntent;
+
+/* Phase 2, every pass for every crowd agent: the velocity and facing the game thread writes in place of the game's
+ * steering and Havok AI avoidance. */
+typedef struct AbMove { uint32_t entity, slot; float vel[3], face[3]; uint8_t hasFace; } AbMove;
 
 /* The brain's memory of one agent (by registry slot, the worker's alone). */
 typedef struct AbMemory
@@ -163,7 +169,7 @@ static void AbChoose(const AbType* t, const AbSnapshot* s, const AbAgentIn* a, A
 
 /* Where to stand: in to holdAt when far, back off when too near, else strafe sideways now and then; the last known
  * position when the target is out of sight. */
-static void AbMove(const AbType* t, const AbSnapshot* s, const AbAgentIn* a, AbMemory* m, AbIntent* out, int recent)
+static void AbPlace(const AbType* t, const AbSnapshot* s, const AbAgentIn* a, AbMemory* m, AbIntent* out, int recent)
 {
     const float* tp = m->lastSeen[m->target];
     float dx = a->pos[0] - tp[0], dy = a->pos[1] - tp[1], d = sqrtf(dx * dx + dy * dy), g[3];
@@ -238,8 +244,81 @@ static void AbThink(const AbType* t, const AbSnapshot* s, const AbAgentIn* a, Ab
     memcpy(out->targetPos, m->lastSeen[m->target], 12);
     float fx = out->targetPos[0] - a->pos[0], fy = out->targetPos[1] - a->pos[1], fl = sqrtf(fx * fx + fy * fy);
     if (recent && fl > 1e-3f) { out->face = 1; out->faceDir[0] = fx / fl; out->faceDir[1] = fy / fl; out->faceDir[2] = 0.0f; }
-    AbMove(t, s, a, m, out, recent);
+    AbPlace(t, s, a, m, out, recent);
     AbFire(t, s, a, m, out);
+}
+
+#define AB_GRID 4096u
+#define AB_CELL 2.0f
+#define AB_RADIUS 1.8f             /* two Devastators closer than this push apart */
+static uint32_t g_abHead[AB_GRID], g_abNext[AB_MAX];
+
+static uint32_t AbCell(int32_t x, int32_t y) { return ((uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u) & (AB_GRID - 1u); }
+
+static void AbGrid(const AbSnapshot* s)
+{
+    for (uint32_t c = 0; c < AB_GRID; c++) g_abHead[c] = 0xFFFFFFFFu;
+    for (uint32_t i = 0; i < s->agentCount; i++)
+    {
+        uint32_t c = AbCell((int32_t)floorf(s->agents[i].pos[0] / AB_CELL), (int32_t)floorf(s->agents[i].pos[1] / AB_CELL));
+        g_abNext[i] = g_abHead[c]; g_abHead[c] = i;
+    }
+}
+
+/* The push away from neighbours in the 3 x 3 cells around: each closer than AB_RADIUS adds its overlap. */
+static void AbSeparation(const AbSnapshot* s, uint32_t i, float* push)
+{
+    const float* p = s->agents[i].pos;
+    int32_t cx = (int32_t)floorf(p[0] / AB_CELL), cy = (int32_t)floorf(p[1] / AB_CELL);
+    push[0] = push[1] = 0.0f;
+    for (int dx = -1; dx <= 1; dx++)
+        for (int dy = -1; dy <= 1; dy++)
+            for (uint32_t j = g_abHead[AbCell(cx + dx, cy + dy)]; j != 0xFFFFFFFFu; j = g_abNext[j])
+            {
+                float ox = p[0] - s->agents[j].pos[0], oy = p[1] - s->agents[j].pos[1], d2 = ox * ox + oy * oy;
+                if (j == i || d2 >= AB_RADIUS * AB_RADIUS || fabsf(p[2] - s->agents[j].pos[2]) > 2.0f) continue;
+                float d = sqrtf(d2), w = (AB_RADIUS - d) / AB_RADIUS;
+                if (d < 1e-3f) { ox = (float)((i * 7u) % 5u) - 2.0f; oy = 1.0f; d = sqrtf(ox * ox + 1.0f); }
+                push[0] += ox / d * w; push[1] += oy / d * w;
+            }
+}
+
+/* One crowd agent's velocity: the navigator's path direction at its speed, plus separation, capped at the speed;
+ * facing the target it fights, else where it walks. */
+static void AbSteer(const AbSnapshot* s, uint32_t i, AbMove* out)
+{
+    const AbAgentIn* a = &s->agents[i];
+    const AbMemory* m = &g_abMemory[a->slot % AB_MAX];
+    float v[2] = {0.0f, 0.0f}, push[2];
+    if (a->pathOk && a->speed >= 0.1f) { v[0] = a->pathDir[0] * a->speed; v[1] = a->pathDir[1] * a->speed; }
+    AbSeparation(s, i, push);
+    float k = (a->speed > 1.0f ? a->speed : 1.0f) * 1.5f;
+    v[0] += push[0] * k; v[1] += push[1] * k;
+    float n = sqrtf(v[0] * v[0] + v[1] * v[1]), cap = a->speed > 1.0f ? a->speed : 1.0f;
+    if (n > cap) { v[0] *= cap / n; v[1] *= cap / n; n = cap; }
+    if (n < 0.1f) { v[0] = v[1] = 0.0f; n = 0.0f; }
+    memset(out, 0, sizeof *out);
+    out->entity = a->entity; out->slot = a->slot; out->vel[0] = v[0]; out->vel[1] = v[1];
+    float fx = 0.0f, fy = 0.0f;
+    if (m->entity == a->entity && m->engaged && m->target >= 0 && s->now - m->lastSeenAt[m->target] < 3.0)
+    { fx = m->lastSeen[m->target][0] - a->pos[0]; fy = m->lastSeen[m->target][1] - a->pos[1]; }
+    else if (n > 0.3f) { fx = v[0]; fy = v[1]; }
+    float fl = sqrtf(fx * fx + fy * fy);
+    if (fl > 1e-3f) { out->hasFace = 1; out->face[0] = fx / fl; out->face[1] = fy / fl; }
+}
+
+/* Phase 2's pass: every crowd agent's movement. Returns how many. */
+static uint32_t AbCrowd(const AbSnapshot* s, AbMove* out)
+{
+    uint32_t n = 0;
+    AbGrid(s);
+    for (uint32_t i = 0; i < s->agentCount; i++)
+    {
+        if (!s->agents[i].crowd) { out[i].entity = 0; continue; }
+        AbSteer(s, i, &out[i]);
+        n++;
+    }
+    return n;
 }
 
 /* The worker's pass over a snapshot: agents whose turn it is think, the others keep their last intent (the game thread

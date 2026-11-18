@@ -42,7 +42,8 @@ static void AbtPins(void)
     uint8_t* image = (uint8_t*)VirtualAlloc(NULL, 0x1800000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     assert(image != NULL);
     for (int f = 0; f < AF_COUNT; f++) memcpy(image + kAaFunctions[f].rva, kAaFunctions[f].pin, 24);
-    for (int f = 0; f < 2; f++) memcpy(image + kAaHooked[f].rva, kAaHooked[f].pin, 24);
+    for (int f = 0; f < 3; f++) memcpy(image + kAaHooked[f].rva, kAaHooked[f].pin, 24);
+    memcpy(image + VB_STEER, kVbSteerPin, sizeof kVbSteerPin);
     assert(AaMismatch((uintptr_t)image) == NULL);
     image[AA_STATE_SWITCH + 6] ^= 1;
     assert(AaMismatch((uintptr_t)image) != NULL);
@@ -52,8 +53,30 @@ static void AbtPins(void)
     VirtualFree(image, 0, MEM_RELEASE);
 }
 
+/* Phase 2's crowd: a lone agent walks its path at its speed facing where it goes; two on top of each other push
+ * apart; one fighting faces its target while it strafes. */
+static void AbtCrowd(void)
+{
+    static AbMove moves[4];
+    AbtScene(0.0f, 30.0f, 1);
+    AbAgentIn* a = &g_abtSnap.agents[0];
+    a->crowd = 1; a->pathOk = 1; a->pathDir[0] = 1.0f; a->speed = 3.0f;
+    assert(AbCrowd(&g_abtSnap, moves) == 1);
+    assert(fabsf(moves[0].vel[0] - 3.0f) < 1e-3f && fabsf(moves[0].vel[1]) < 1e-3f && moves[0].hasFace && moves[0].face[0] > 0.99f);
+    g_abtSnap.agentCount = 2;
+    g_abtSnap.agents[1] = *a; g_abtSnap.agents[1].entity = 0x400005; g_abtSnap.agents[1].slot = 4;
+    a->pathOk = 0; g_abtSnap.agents[1].pathOk = 0; g_abtSnap.agents[1].pos[0] = 0.8f;
+    AbCrowd(&g_abtSnap, moves);
+    assert(moves[0].vel[0] < -0.1f && moves[1].vel[0] > 0.1f);
+    g_abtSnap.agentCount = 1; a->pathOk = 1;
+    AbtRun(1.0, NULL, NULL);
+    AbCrowd(&g_abtSnap, moves);
+    assert(moves[0].hasFace && moves[0].face[1] > 0.99f); /* faces the Helldiver at +y while walking +x */
+}
+
 static void AsyncAiFixture(void)
 {
+    AbtCrowd();
     AbtPins();
     int moves = 0, fires = 0;
     /* seen at 30 m ahead: engages within a second, faces it, fires bursts with pauses, holds its distance by strafing */
@@ -88,5 +111,5 @@ static void AsyncAiFixture(void)
     g_abtSnap.players[0].alive = 0;
     AbtRun(0.3, NULL, NULL);
     assert(!g_abtOut[0].engaged && g_abtOut[0].target == -1);
-    printf("async-ai: the brain notices, engages, keeps its distance, fires in bursts and lets go; pins refuse other bytes\n");
+    printf("async-ai: the brain notices, engages, keeps its distance, fires in bursts and lets go; the crowd walks its path, pushes apart and faces its target; pins refuse other bytes\n");
 }
