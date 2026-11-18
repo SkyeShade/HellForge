@@ -8,6 +8,11 @@
 #include "perf_render_job_copies.c" /* Direct3D 12 render jobs give their version copies back */
 #include "perf_render_version_rehash.c" /* the D3D12 version tables kept short */
 #include "perf_vehicle_box.c" /* vehicles' boxes once per motion and steering pass */
+#include "enemy_pools.c" /* edge-batch: the AI's navmesh edge queries past the game's 256 */
+#include "perf_motion_grid.c" /* motion-grid: the motion grids past the game's 256 moving agents */
+#include "perf_ai_query_chunks.c" /* ai-query-chunks: the AI query jobs in chunks, the game thread helping */
+#include "perf_steer_lod.c" /* steer-lod: far enemies steer every third frame; after perf_vehicle_box.c */
+#include "perf_edge_join_late.c" /* edge-join-late: after ai-query-chunks, whose join and job runner hooks it shares */
 #include "perf_heap_trim.c" /* the allocator's caches emptied once more when a load ends */
 #include "perf_scatter_cameras.c" /* the generator's water and fog cameras left out of the scatter update */
 #include "perf_knn_grid.c" /* knn-grid: the Hive Lord graph's neighbour pass on a grid */

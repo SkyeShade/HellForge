@@ -9,7 +9,7 @@ guard sends the crashing case to the path the game already has, so it adds no ne
 | Crash | What the game does | The guard |
 |---|---|---|
 | `helldivers2.exe+0x732040` | A material still binds a resource that has been freed. Its slot reads `0xFFFFFFFF`, and the binding reads entry -1 | A freed slot takes the path of the null handle: the slot is bound empty, or nothing is bound |
-| `helldivers2.exe+0x626296` | The job pool (8192 jobs) is full for a moment. Its allocator gives up after 33 spins without writing the new job's handle, and the caller reads the handle anyway | The thread waits 1 ms at a time while workers finish jobs. It gives up as the game did when no job finishes for 0.5 s (the game quitting, or stuck) or after 10 s |
+| `helldivers2.exe+0x626296` | The job pool (8192 jobs) is full for a moment. Its allocator gives up after 33 spins without writing the new job's handle, and the caller reads the handle anyway | The thread waits 1 ms at a time while workers finish jobs. It gives up as the game did when no job finishes for 0.5 s (the game quitting, or stuck) or after 10 s. When the game was told to quit with exit code 0, it ends the game there with exit code 0 instead |
 
 ## What is guarded
 
@@ -36,7 +36,9 @@ crash.
 
 - `render guards: ... bound as empty in the ...`: a freed resource was caught.
 - `the job pool ran full`: how often, and the longest wait.
-- `saw no job finish`: the wait stopped because nothing finished. At quit this is the game's own crash on quitting.
+- `saw no job finish`: the wait stopped because nothing finished, and the game crashes next.
+- `the game is quitting and a full job pool saw no job finish`: the game was quitting after a mission and its job
+  workers had stopped, where it used to crash. HellForge ended it with exit code 0, as a normal quit (#332).
 - `still full after 10 s`: the wait ran out during play. The game crashes next: please attach the crash report.
 
 The analysis behind each guard is in the comments of `render_guards.c`. Its test,

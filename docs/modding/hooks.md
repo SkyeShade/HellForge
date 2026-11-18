@@ -444,8 +444,9 @@ if (hf->size >= offsetof(HfApi, generation_capacity) + sizeof(void*)) hf->genera
 | `route_edges` | the route graph's edges, with a class byte each | 1621 | 3456 |
 | `route_points` | the road points along the edges | 9936 | 65520 |
 
-- Call it from `hellforge_mod_init`. The game makes these arrays once, so a later call returns 1 and changes nothing.
-  The same goes for a mod loaded while the game runs, and for a field over its limit. Your log says why.
+- Call it from `hellforge_mod_init`. The game makes these arrays once, and HellForge places them before any mod hears
+  `HF_EVENT_GAME_LOADED`, so a later call, even from that event's handler, returns 1 and changes nothing. The same goes
+  for a mod loaded while the game runs, and for a field over its limit. Your log says why.
 - When several mods ask, each field gets the largest request.
 - The larger arrays exist once level 11 is installed, so a mod must have added the level.
 - Without a request, HellForge installs level 11 exactly as before.

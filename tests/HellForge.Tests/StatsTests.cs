@@ -142,13 +142,54 @@ static class StatsTests
             check(sections[2].Rows.First().Key == "magazine.capacity" &&
                 sections[0].Groups.Select(g => g.Title).SequenceEqual(["Swap", "Flight", "Direct hit", "Explosion · Impact", "Explosion · Expiry"]),
                 "Ammunition or round order wrong: " + string.Join(", ", sections[0].Groups.Select(g => g.Title)));
-            check(StatsCatalog.Sections(Item("MG-43 Machine Gun"))[^1].Title == "Hellpod / Call-in" && StatsCatalog.Sections(Item("Orbital Laser"))[0].Title == "Hellpod / Call-in",
-                "Call-in should close a weapon page and open a stratagem page.");
+            check(StatsCatalog.Sections(Item("MG-43 Machine Gun"))[0].Title == "Hellpod / Call-in" && StatsCatalog.Sections(Item("Orbital Laser"))[0].Title == "Hellpod / Call-in",
+                "Call-in should open a support weapon's page and a stratagem's.");
+            var callInLate = items.Where(i => StatsCatalog.Sections(i) is var all && all.Any(s => s.Key == "call_in") && all[0].Key != "call_in").Select(i => i.Name).ToList();
+            check(callInLate.Count == 0, "Call-in is not the first section of: " + string.Join(", ", callInLate.Take(10)));
             var railgun = StatsCatalog.Sections(Item("RS-422 Railgun")).SelectMany(s => s.Rows).ToList();
             check(railgun.GroupBy(r => (r.Part, StatsCatalog.LinkKey(r.Field))).All(g => g.Count() == 1) && railgun.All(r => !r.Label.Contains("deprecated")), "Duplicate ids shown twice.");
             var words = StatsCatalog.SearchWords("liberator fire rate");
             var match = StatsCatalog.Match(Item("AR-23 Liberator"), words, i => StatsCatalog.Sections(i).SelectMany(s => s.Rows));
             check(!match.Item && match.Fields.Count >= 1 && match.Fields.Any(f => f.EndsWith("weapon.fire_rate", StringComparison.Ordinal)) && StatsCatalog.Match(Item("AR-23 Liberator"), StatsCatalog.SearchWords("23 lib"), _ => []).Item, "Search did not match a field or an item.");
+        });
+        test("Mods' projectiles, damage types and explosions go by name, and explosions by type too", () =>
+        {
+            // a mod's rows by the name it added them under: the vanilla row's fields, numbered by the loader
+            const string plasma = """{"format":1,"projectiles":{"you.mod:plasma_round":{"speed":900,"damage":"you.mod:plasma_burn","terminal.impact.explosion":"you.mod:plasma_blast"}},"damage":{"you.mod:plasma_burn":{"standard":150}},"explosions":{"you.mod:plasma_blast":{"explosion.inner_radius":4}}}""";
+            var named = StatsData.Parse(plasma, profile);
+            var speed = named.Single(e => e.Label.EndsWith("velocity", StringComparison.Ordinal));
+            check(speed is { Kind: "ProjectileSettings", Record: 0, RecordName: "you.mod:plasma_round", ValueName: null } && BitConverter.UInt32BitsToSingle(speed.Value) == 900,
+                "A mod's projectile row is named, not numbered.");
+            var burn = named.Single(e => e.Label.EndsWith(" damage", StringComparison.Ordinal));
+            check(burn is { Offset: 60, ValueName: "you.mod:plasma_burn", ValueKind: 'd', Value: 0 }, "A projectile's damage reference names a mod's damage type.");
+            check(named.Single(e => e.Label.EndsWith("impact.explosion", StringComparison.Ordinal)) is { Offset: 144, ValueName: "you.mod:plasma_blast", ValueKind: 'e' },
+                "An impact explosion reference names a mod's explosion.");
+            check(named.Single(e => e.Kind == "DamageInfo") is { RecordName: "you.mod:plasma_burn", Offset: 4 }, "A mod's damage row is named.");
+            check(named.Single(e => e.Kind == "ExplosionSettings") is { RecordName: "you.mod:plasma_blast", Offset: 16 }, "A mod's explosion row is named.");
+            // the plan carries the names for the loader to number (native stats.c)
+            var folder = Path.Combine(root, "named-stats", "you.mod"); Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, ModCatalog.ManifestName), """{"format":1,"id":"you.mod","name":"Named","version":"1","gameplay":true}""");
+            File.WriteAllText(Path.Combine(folder, StatsData.FileName), """{"format":1,"projectiles":{"you.mod:plasma_round":{"damage":"you.mod:plasma_burn"}}}""");
+            var mod = ModCatalog.Load(Path.Combine(root, "named-stats")).Mods.Single();
+            var fields = ModLoaderPlan.StatFields(mod, StatsData.Edits(mod).Single());
+            check(fields[4] == "@you.mod:plasma_round" && fields[7] == "@d=you.mod:plasma_burn", "The plan line names the row and the reference: " + string.Join(' ', fields));
+            // vanilla explosions by type: a catalogued one is its page, any other its row
+            var catalogued = StatsSchema.Current.Targets["explosions"].Values.First(t => t.Fields.Values.Any(f => f.Kind == "ExplosionSettings")).Fields.Values.First(f => f.Kind == "ExplosionSettings").Record;
+            var byType = StatsData.Parse("{\"format\":1,\"explosions\":{\"" + catalogued + "\":{\"explosion.inner_radius\":3}}}", profile).Single();
+            check(byType is { Kind: "ExplosionSettings", Offset: 16 } && byType.Record == catalogued && byType.RecordName == null, "An explosion goes by its type.");
+            var uncatalogued = Enumerable.Range(1, 422).First(t => !StatsSchema.Current.Targets["explosions"].Values.Any(x => x.Fields.Values.Any(f => f.Kind == "ExplosionSettings" && f.Record == t)));
+            check(StatsData.Parse("{\"format\":1,\"explosions\":{\"" + uncatalogued + "\":{\"explosion.outer_radius\":5}}}", profile).Single().Record == uncatalogued,
+                "An explosion without a page goes by its type.");
+            foreach (var json in new[]
+            {
+                """{"format":1,"explosions":{"423":{"explosion.inner_radius":3}}}""", // a raw number past the game's: name the mod's instead
+                """{"format":1,"projectiles":{"351":{"speed":900}}}""",
+                """{"format":1,"projectiles":{"276":{"damage":650}}}""",
+                """{"format":1,"projectiles":{"276":{"damage":"no-colon"}}}""",
+                """{"format":1,"projectiles":{"you.mod:a":{"own":true,"speed":900}}}""",
+                """{"format":1,"weapons":{"you.mod:gun":{"rpm":900}}}""", // weapons go by armory name
+                """{"format":1,"damage":{"you.mod:burn":{"standard":"you.mod:x"}}}""", // not a reference
+            }) reject(() => StatsData.Parse(json, profile));
         });
         test("References (payload swaps) are stats fields placed by the target's own records", () =>
         {
