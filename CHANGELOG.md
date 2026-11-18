@@ -372,6 +372,9 @@ On `dev`, since 0.4.0-beta.
   Arrowhead's API, which answered 400. The capture now always goes straight to the API (#346).
 - **A capture that crashes as it starts says why.** It wrote nothing when it crashed before it was listening; its
   `proxy.log` now has the error (#436).
+- **Windows: HellForge started from Steam as a non-Steam game finds Steam.** Steam gives such a shortcut an app id of
+  its own, and the Steam check and the game inherited it, so they asked Steam about the shortcut instead of
+  HELLDIVERS 2. The launcher and the CLI now drop the shortcut's ids as they start (#434).
 - **Setup finds the Steam app's download in any Steam library.** With HELLDIVERS 2 in another library than Steam
   itself (`E:\SteamLibrary` with Steam on C:), Steam can put the download in that library's `steamapps/content`, and
   setup only watched Steam's own folder. It now looks in every library, names the game's library on the card, and checks
