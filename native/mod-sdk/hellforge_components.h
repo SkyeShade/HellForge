@@ -4069,6 +4069,31 @@ HF_ASSERT_OFFSET(HfEnemySummon, family, 0);
 HF_ASSERT_OFFSET(HfEnemySummon, count, 4);
 #define HF_TYPE_EnemySummon_count HF_TYPE_U32
 
+/* EnemyLimits (24-byte table rows, found by id): the enemy limits game.dll keeps in its code rather than the difficulty table (a row by difficulty level, 1 to 11, each the game's values until changed): HellForge's row, read by the spawn gates and the AI enemy budget's despawn pass through stubs (native/mod-loader/enemy_limits.c). Host only: the host's rows decide */
+#define HfEnemyLimits_INFO "EnemyLimits", 25480438u
+typedef struct HfEnemyLimits
+{
+    uint32_t patrol_gate;                        /* +0x00 a scheduled patrol spawns only while its squad, the queued enemies (HiveMind manager +0x36C0) and the living AI characters total at most this; the game's 100. The patrol caps count only under it (unverified) [now?] */
+    uint32_t roaming_gate;                       /* +0x04 the shared spawners' waves (AiSpawnerUpdate, spawn reason 2), travellers (7) and stragglers (8) spawn only while the queued and living enemies, less those of breaches and drops (3) and fabricators (4), stay under this; the game's 70 (unverified) [now?] */
+    uint32_t spawn_gate;                         /* +0x08 no spawn but a patrol squad's while the AI enemy manager holds this many enemies; the game's 448 (unverified) [now?] */
+    uint32_t despawn;                            /* +0x0C 1: the AI enemy budget's despawn pass runs (the game's); 0: it never runs, so no living enemy is despawned for the budget (unverified) [now?] */
+    uint32_t despawn_start;                      /* +0x10 the despawn pass runs once the budget's enemies reach those despawning + this (the game's 100): one a pass, far ones first (despawn_distance); from ten more any enemy may go (unverified) [now?] */
+    float despawn_distance;                      /* +0x14 metres from which the despawn pass may take an enemy as far (the game's 150), 10 to 2000 (unverified) [now?] */
+} HfEnemyLimits;
+HF_ASSERT_SIZE(HfEnemyLimits, 24);
+HF_ASSERT_OFFSET(HfEnemyLimits, patrol_gate, 0);
+#define HF_TYPE_EnemyLimits_patrol_gate HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, roaming_gate, 4);
+#define HF_TYPE_EnemyLimits_roaming_gate HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, spawn_gate, 8);
+#define HF_TYPE_EnemyLimits_spawn_gate HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, despawn, 12);
+#define HF_TYPE_EnemyLimits_despawn HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, despawn_start, 16);
+#define HF_TYPE_EnemyLimits_despawn_start HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, despawn_distance, 20);
+#define HF_TYPE_EnemyLimits_despawn_distance HF_TYPE_F32
+
 /* EquipmentComponentData (component 233, 232-byte records): how a held item is wielded, holstered and dropped: nodes, timings, the Helldiver's animations and grip */
 #define HfEquipment_INFO "EquipmentComponentData", 25480438u
 typedef struct HfEquipment

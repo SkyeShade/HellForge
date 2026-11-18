@@ -30,6 +30,8 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `editor-engine-probe/` | the stats mod `editor-engine.json` runs (`hellforge.editor-engine-probe`), never shipped |
 | `editor-spawning.json` | the editor's spawning rows: what the Impaler's strike and the Alpha Commander's call summon (their code takes the family and count), a patrol group's enemy family, difficulty 7's Terminid patrol cap past 128 and traveller interval; the logs prove the edits land, a Terminid mission shows what they do |
 | `editor-spawning-probe/` | the stats mod `editor-spawning.json` runs (`hellforge.editor-spawning-probe`), never shipped |
+| `enemy-limits.json` | the difficulty's Enemy limits: difficulty 10's patrol gate at 200, the despawn pass off, the spawn gate at 300 and patrols every 0.5 s; the living enemies climb past the game's 165 and stay under 350 (an immortal Helldiver from research's `local.perf-seedpin`, about 7 minutes at difficulty 10) |
+| `enemy-limits-probe/` | the stats mod `enemy-limits.json` runs (`hellforge.enemy-limits-probe`), never shipped |
 | `enemy-combat.json` | the editor's enemy combat rows: the Charger's charge speed, sight and armour 50, the Hunter's melee damage, turn speed and acceleration, a stun added to the Bile Titan and its fire damage multiplier; the logs prove the edits land, the mission shows what they do |
 | `enemy-combat-probe/` | the stats mod `enemy-combat.json` runs (`hellforge.enemy-combat-probe`), never shipped |
 | `missile-spread.json` | the editor's missile spread rows: the W.A.S.P. missile's spread off, the MLS-4X Commando's on with a 45° veer to one side; the logs prove the edits land, firing each weapon in the mission shows what they do |
