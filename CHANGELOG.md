@@ -233,6 +233,8 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **Hellpod / Call-in opens every stratagem's page in the editor.** Support weapons had it last, under all of the
+  weapon's own sections; now it comes first, as on every other stratagem.
 - **Big enemy counts run faster.** With 950 to 1,100 enemies alive, a mission ran at 34.5 fps instead of 27.0, and the
   slowest frames improved as much. Below about 400 enemies nothing visible changes
   ([performance fixes](docs/performance-enemies.md#motion-grid)).
