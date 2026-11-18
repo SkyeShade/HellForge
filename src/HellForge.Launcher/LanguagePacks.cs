@@ -70,7 +70,7 @@ public partial class MainWindow
         var pack = language.AsBuild(SupportedBuild.Current);
         var inCopy = pack.IsComplete(install.Game);
         var downloaded = !inCopy && steamRoot != null && SteamDepotDownload.IsComplete(steamRoot, pack);
-        var name = char.ToUpperInvariant(language.Name[0]) + language.Name[1..];
+        var name = language.Title;
         var state = LanguageState(language, inCopy, downloaded, inSteam);
         var row = new StackPanel { Spacing = 6 };
         row.Children.Add(new TextBlock { Text = $"{name}: {state}", TextWrapping = TextWrapping.Wrap, Foreground = inCopy ? Green : Light });
@@ -120,12 +120,12 @@ public partial class MainWindow
                     var path = Path.Combine(install.Game, file.Path);
                     if (File.Exists(path)) File.Delete(path);
                 }
-                LanguageStatus.Text = $"{language.Name} is removed from the game copy.";
-                Append($"Language pack {language.Name}: removed from the game copy.", LauncherLine);
+                LanguageStatus.Text = $"{language.Title} is removed from the game copy.";
+                Append($"Language pack {language.Title}: removed from the game copy.", LauncherLine);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                LanguageStatus.Text = $"{language.Name} could not be removed: {Privacy.Scrub(error.Message)}";
+                LanguageStatus.Text = $"{language.Title} could not be removed: {Privacy.Scrub(error.Message)}";
             }
             languageState = "";
             UpdateLanguages();
@@ -203,16 +203,16 @@ public partial class MainWindow
             await Task.Run(() => work(languageCancel.Token), languageCancel.Token);
             var pack = language.AsBuild(SupportedBuild.Current);
             result = pack.IsComplete(install.Game)
-                ? $"{language.Name} is in the game copy. Choose it in the game's options (text or voice)."
-                : $"{language.Name} is not complete in the copy yet: try again.";
-            Append($"Language pack {language.Name}: {result}", LauncherLine);
+                ? $"{language.Title} is in the game copy. Choose it as the voice in the game's options."
+                : $"{language.Title} is not complete in the copy yet: try again.";
+            Append($"Language pack {language.Title}: {result}", LauncherLine);
         }
         // Everything is caught here: the handlers are async void, so an escaped exception would end the launcher.
         catch (Exception error)
         {
             result = error is OperationCanceledException ? "Cancelled."
-                : $"{language.Name} could not be added: {Privacy.Scrub(error.Message)} ({error.GetType().Name})";
-            if (error is not OperationCanceledException) Append($"Language pack {language.Name}: {Privacy.Scrub(error.ToString())}", Red);
+                : $"{language.Title} could not be added: {Privacy.Scrub(error.Message)} ({error.GetType().Name})";
+            if (error is not OperationCanceledException) Append($"Language pack {language.Title}: {Privacy.Scrub(error.ToString())}", Red);
         }
         finally
         {

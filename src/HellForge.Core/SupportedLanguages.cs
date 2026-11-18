@@ -10,6 +10,17 @@ public sealed record SupportedLanguage(string Name, uint DlcAppId, string Manife
     public uint Depot => DlcAppId;
     public long TotalBytes => Files.Sum(f => f.Size);
 
+    // The name the player reads: Steam's names for some packs are codes (latam, brazilian).
+    public string Title => Titles.GetValueOrDefault(Name) ?? char.ToUpperInvariant(Name[0]) + Name[1..];
+
+    static readonly Dictionary<string, string> Titles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["brazilian"] = "Portuguese (Brazil)",
+        ["spanish"] = "Spanish (Spain)",
+        ["latam"] = "Spanish (Latin America)",
+        ["chinese"] = "Chinese (Simplified)",
+    };
+
     // The pack as a build of one depot, so everything made for the base build works on it unchanged: the download_depot
     // command (SteamDepotDownload), copying (GameCopier.CopyFromDepots), IsComplete and Verify.
     public SupportedBuild AsBuild(SupportedBuild build) =>

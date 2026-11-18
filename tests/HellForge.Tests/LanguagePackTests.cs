@@ -70,5 +70,16 @@ static class LanguagePackTests
             var empty = Directory.CreateDirectory(Path.Combine(root, "language-empty", "depot_2506270")).FullName;
             reject(() => SupportedLanguages.FromDownload("japanese", 2506270, "1", empty, null));
         });
+
+        test("The pinned packs share no file with each other, and each has a name the player can read", () =>
+        {
+            var packs = SupportedLanguages.Current.Languages;
+            check(packs.Count >= 8, "Pinned: " + string.Join(", ", packs.Select(l => l.Name)));
+            var shared = packs.SelectMany(l => l.Files).GroupBy(f => f.Path).FirstOrDefault(g => g.Count() > 1);
+            check(shared == null, "In two packs: " + shared?.Key);
+            check(packs.All(l => l.Files.All(f => f.Depot == l.Depot)), "A file names another depot.");
+            check(SupportedLanguages.Current.Find("latam")?.Title == "Spanish (Latin America)" &&
+                SupportedLanguages.Current.Find("german")?.Title == "German", "Titles: " + string.Join(", ", packs.Select(l => l.Title)));
+        });
     }
 }

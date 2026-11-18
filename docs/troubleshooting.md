@@ -188,16 +188,15 @@ have. On Linux, Proton's own builtin runtimes serve, and nothing is checked or i
 
 ### Playing in a language other than English
 
-The copy setup makes holds English only: every other language of HELLDIVERS 2 is a free DLC of its own, which Steam
-installs beside the game. A copy without your language crashes when you switch the game to it. Before each session
-HellForge checks the game's text and voice language: one whose pack is not in the copy is set back to English, and the
-session log says so.
+Every text language is in the copy setup makes. A voice other than English is a free DLC of its own, which Steam
+installs beside the game, and a copy without it crashes when the game plays that voice. Before each session HellForge
+checks the game's voice language: one whose pack is not in the copy is set back to English, and the session log says so.
 
-Add a language in **Settings > Languages** before you choose it in the game's options. Japanese is the only language
-HellForge has pinned so far; more follow.
+Add a voice in **Settings > Languages** before you choose it in the game's options. HellForge pins German, French,
+Italian, Spanish (Spain), Spanish (Latin America), Portuguese (Brazil), Japanese and Chinese.
 
-The game's options list every language, added or not. Choosing one that is not added crashes the game, at once or when
-the next mission loads. The next session starts in English again.
+The game's voice options list every voice, added or not. Choosing one that is not added crashes the game, at once or
+when the next mission loads. The next session starts with the English voice again.
 
 - **Steam's own download:** the card shows a `download_depot` command. Paste it into Steam's console
   (`steam://open/console`) and wait for "Depot download complete". Then press **Add**: it copies the pack, checks every
