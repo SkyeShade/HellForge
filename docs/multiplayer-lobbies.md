@@ -209,6 +209,11 @@ once more than 50 are listed, the joinable ones could be cut.
 
 ### HellForge 0.3 players
 
+Since 0.5 a host refuses every older HellForge's join, 0.3's and 0.4's (`LobbyService.RequireEntityRoom`): their games
+hold 2,048 entities a world, and would crash once the host's held more. A join carries `entities-4096`
+(`LobbyService.EntityRoom`) when the joiner's game holds 4,096. The rest of this section is how a 0.5 player joins a
+0.3 host, and how 0.4 hosts met 0.3 joiners.
+
 0.3's backends speak `hellforge-mp-8`. Their frames are this protocol's. They differ in what must match: 0.3 counts
 every gameplay mod as shared (stats mods too), and bundled mods by their files, which differ between releases. This
 backend meets them both ways.
