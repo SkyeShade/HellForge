@@ -10,13 +10,13 @@
  *   EnemyRosterLevel11  the same row's level 11 weight (+0x54), only with level 11 added.
  *   EnemyComposition    (roster << 16) | (family << 12) | row: a composition row (0x118): eight groups of {key, count,
  *                       emission time} from +0, weight +0xE0, cost multiplier +0xE4, post-schedule duration +0xE8, tech
- *                       levels +0xEC..+0xF0, players +0xF4..+0xF8.
+ *                       levels +0xEC..+0xF0, players +0xF4..+0xF8. A group's key: a family (roster row +0) of its roster.
+ *   EnemySummon         a summoning ability's id: what it calls up (enemy_summons.c). EnemyLimits: a level's gates.
  *   DemolitionTemplate  a demolition template's index, 1 to 9 (0 "none" and 10 "Count" stay): the force a destruction
  *                       stage that names it requires (+4, u32, 1 to 255: the incoming force is narrowed to a byte), shared
  *                       by every stage that names it. The templates are 16-byte rows at [[game+0x346D928] + 0x30]
  *                       (HD2Runtime enemy_director.lua destructionGlobal, templateCount 11); each row holds its index at +0
- *                       and the bytes HD2Runtime read at +8, checked before anything is written. Whether a change reaches
- *                       structures already standing is not tested.
+ *                       and the bytes HD2Runtime read at +8, checked first. Untested on structures already standing.
  * The director reads them when a mission is set up, so a change applies from the next mission; only the host's tables
  * decide what spawns. A composition's group counts may total at most 32 (the AI squad queue's capacity: a 33rd entry
  * overwrote its count and crashed the game, HD2Runtime research spawn-capacity), and its lowest tech level and player
@@ -42,6 +42,9 @@ static int EnemyRostersPending(void); /* enemy_rosters.c */
 static uintptr_t DirectorGame(size_t* size) { return ApiModuleBase("game.dll", size); }
 /* game.dll's image; the native fixture replaces it. */
 static uintptr_t (*g_directorImage)(size_t* size) = DirectorGame;
+
+#include "enemy_summons.c" /* what summoning enemies call up */
+#include "enemy_limits.c"  /* the spawn gates and the despawn pass */
 
 /* Whether the roster weights sit at +0x2C (level 11 added: difficulty.c moved them), from the first reader's displacement:
  * 1 moved, 0 not, -1 neither (not as reviewed). */
@@ -107,6 +110,8 @@ static uintptr_t DirectorRow(const char* kind, uint64_t id, int* ready)
     uintptr_t game = g_directorImage(&size);
     if (game == 0 || size != DIR_IMAGE || strcmp(g_build, "25480438")) { *ready = game == 0; return 0; }
     if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRow(game, id, ready);
+    if (!strcmp(kind, "EnemySummon")) return SummonRowOf(game, id, ready);
+    if (!strcmp(kind, "EnemyLimits")) return LimitsRowOf(game, id, ready);
     if (g_difficultyAdded && g_difficultyState == 0) { *ready = 0; return 0; } /* the weights are about to move */
     if (EnemyRostersPending()) { *ready = 0; return 0; } /* the rows are about to move to larger copies */
     uint32_t roster = (uint32_t)(id >> 16), row = (uint32_t)(id & 0xFFFF);
@@ -121,7 +126,7 @@ static uintptr_t DirectorRow(const char* kind, uint64_t id, int* ready)
 static int DirectorKind(const char* kind)
 {
     return !strcmp(kind, "EnemyRoster") || !strcmp(kind, "EnemyRosterLevel11") || !strcmp(kind, "EnemyComposition") ||
-        !strcmp(kind, "DemolitionTemplate");
+        !strcmp(kind, "DemolitionTemplate") || !strcmp(kind, "EnemySummon") || !strcmp(kind, "EnemyLimits");
 }
 
 static const char* DirectorDemolitionRefuses(uint32_t offset, uint32_t bits)
@@ -218,6 +223,56 @@ static const char* DirectorFamilyRefuses(const char* kind, uintptr_t weights, ui
     return NULL;
 }
 
+/* Whether a roster's rows hold an enemy family (a row's +0). */
+static int DirectorRosterHolds(uintptr_t game, uint32_t roster, uint32_t family)
+{
+    uint64_t count = 0;
+    uintptr_t rows = DirectorRoster(game, roster, &count);
+    for (uint64_t i = 0; rows != 0 && i < count; i++)
+    {
+        uint32_t key = 0;
+        if (!SafeRead(rows + i * DIR_ROSTER_ROW, &key, 4) && key == family) return 1;
+    }
+    return 0;
+}
+
+/* Why a family is refused for a summon, or NULL: one of the three primary rosters (Terminids, Illuminate, Automatons)
+ * holds it. */
+static const char* DirectorFamilyUnknown(uint32_t family)
+{
+    uintptr_t game = g_directorImage(NULL);
+    for (uint32_t r = 0; family != 0 && r < 3; r++)
+        if (DirectorRosterHolds(game, r, family)) return NULL;
+    return "no faction's roster holds that enemy family";
+}
+
+/* The roster whose compositions hold the row, or -1. */
+static int DirectorCompositionRoster(uintptr_t game, uintptr_t row)
+{
+    for (uint32_t r = 0; r < DIF_ROSTERS; r++)
+        for (uint32_t family = 0; family < DIR_FAMILIES; family++)
+        {
+            uint64_t base = 0, count = 0;
+            if (SafeRead(game + kRosters[r].descriptor + 0x20 + 0x10 * family, &base, 8) ||
+                SafeRead(game + kRosters[r].descriptor + 0x28 + 0x10 * family, &count, 8) || base == 0 || count > 4096) continue;
+            if (row >= base && row < base + count * DIR_COMPOSITION_ROW) return (int)r;
+        }
+    return -1;
+}
+
+/* A group's key (now: the composition as it would be): a family of the composition's own roster (the director picks
+ * its enemies there), or 0 for a group of no enemies. */
+static const char* DirectorKeyRefuses(uintptr_t row, const uint8_t* now, uint32_t offset, uint32_t bits)
+{
+    uint32_t count;
+    memcpy(&count, now + offset + 4, 4);
+    if (bits == 0) return count != 0 ? "a group of enemies draws from a family: set its count to 0 first" : NULL;
+    uintptr_t game = g_directorImage(NULL);
+    int roster = DirectorCompositionRoster(game, row);
+    if (roster < 0) return "the composition's roster is not known";
+    return DirectorRosterHolds(game, (uint32_t)roster, bits) ? NULL : "its faction's roster holds no such enemy family";
+}
+
 /* A group's count (now: the composition as it would be): its group names enemies, and the groups fit the squad queue. */
 static const char* DirectorGroupRefuses(const uint8_t* now, uint32_t offset, uint32_t bits)
 {
@@ -254,6 +309,7 @@ static const char* DirectorCompositionRefuses(uintptr_t row, uint32_t offset, co
     uint8_t now[DIR_COMPOSITION_ROW];
     if (offset > DIR_COMPOSITION_ROW - 4 || SafeRead(row, now, sizeof now)) return "the composition is unreadable";
     memcpy(now + offset, bytes, 4); /* the row as it would be */
+    if (offset < DIR_GROUPS * 12 && offset % 12 == 0) return DirectorKeyRefuses(row, now, offset, bits);
     if (offset < DIR_GROUPS * 12 && offset % 12 == 4) return DirectorGroupRefuses(now, offset, bits);
     if ((offset < DIR_GROUPS * 12 && offset % 12 == 8) || (offset >= 0xE0 && offset <= 0xE8)) return DirectorFloatRefuses(offset, value);
     if (offset >= 0xEC && offset <= 0xF8) return DirectorRangeRefuses(now);
@@ -270,6 +326,8 @@ static const char* DirectorRefuses(const char* kind, uintptr_t row, uint32_t off
     memcpy(&bits, bytes, 4);
     memcpy(&value, bytes, 4);
     if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRefuses(offset, bits);
+    if (!strcmp(kind, "EnemySummon")) return SummonRefuses(offset, bits);
+    if (!strcmp(kind, "EnemyLimits")) return LimitsRefuses(offset, bits);
     if (strcmp(kind, "EnemyComposition"))
     {
         const char* why = DirectorWeightRefuses(value);
@@ -310,7 +368,8 @@ static void DifficultyMirror(uintptr_t row, uint32_t offset, const void* before,
 static uint32_t DirectorStride(const char* kind)
 {
     return !strcmp(kind, "EnemyRoster") ? 40u : !strcmp(kind, "EnemyRosterLevel11") ? 4u : !strcmp(kind, "EnemyComposition") ? DIR_COMPOSITION_ROW :
-        !strcmp(kind, "DemolitionTemplate") ? DIR_DEMOLITION_ROW : !strcmp(kind, "DifficultySettings") ? DIF_ROW : 0u;
+        !strcmp(kind, "DemolitionTemplate") ? DIR_DEMOLITION_ROW : !strcmp(kind, "EnemySummon") ? SUM_ROW : !strcmp(kind, "EnemyLimits") ? EL_ROW :
+        !strcmp(kind, "DifficultySettings") ? DIF_ROW : 0u;
 }
 
 #include "spawn_guards.c" /* the game-side half: a null enemy from writes these checks never see */

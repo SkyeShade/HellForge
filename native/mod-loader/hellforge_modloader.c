@@ -164,6 +164,8 @@ static HfApi g_api;
 #include "perf_fixes.c" /* HELLFORGE_PERF_OFF: which performance fixes stay off */
 #include "safe_read.c"  /* SafeRead: small reads copied in place, a fault turned into the failure return */
 
+#include "index_rows.c"
+
 /* Every range of game.dll HellForge has written (the Lua bridge's hellforge_lua_rewrites): its rva and size, a range
  * that touches the last one joined to it. A Lua runtime proving game code against reviewed bytes asks for them. A mod's
  * own writes (HfApi.write, g_modWriting) are not HellForge's: a pin over one reads as the difference it is. */
@@ -421,20 +423,16 @@ static const Component* LastComponentNamed(const char* name)
 }
 
 /* The one vanilla record of the component the resource's index rows name: its index; -1 when none or several do, or a
- * row does not read as an index row. */
-static int64_t VanillaRecordOf(const Component* c, uintptr_t region, uint64_t resource)
+ * row does not read as an index row. rows: the component's index rows (ReadIndexRows). */
+static int64_t VanillaRecordOf(const Component* c, const uint8_t* rows, uint64_t resource)
 {
     int64_t selected = -1;
     int owners = 0;
     for (uint32_t row = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
-        if (SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16)) return -1;
         uint64_t id;
         uint32_t record, flags;
-        memcpy(&id, entry, 8);
-        memcpy(&record, entry + 8, 4);
-        memcpy(&flags, entry + 12, 4);
+        IndexRowAt(rows, row, &id, &record, &flags);
         if (record >= c->records || flags != 0) return -1;
         if (id == resource) { owners++; selected = record; }
     }
@@ -442,12 +440,11 @@ static int64_t VanillaRecordOf(const Component* c, uintptr_t region, uint64_t re
 }
 
 /* Whether another entity (not a copy of a base) names the selected record too: refused (1) unless `shared`. */
-static int SharedRecordRefused(const Component* c, uintptr_t region, uint64_t resource, uint32_t selected, int shared)
+static int SharedRecordRefused(const Component* c, const uint8_t* rows, uint64_t resource, uint32_t selected, int shared)
 {
     for (uint32_t row = 0, sharers = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
-        SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16);
+        const uint8_t* entry = rows + (size_t)row * 16;
         uint64_t id;
         uint32_t record;
         memcpy(&id, entry, 8);
@@ -478,8 +475,10 @@ static uintptr_t ComponentRecordOf(const char* name, uint64_t resource, uint32_t
     memcpy(&index, head, 4);
     memcpy(&extent, head + 20, 4);
     if (index != c->index || memcmp(head + 4, c->header, 28) != 0 || (uint64_t)c->recordOffset + (uint64_t)c->records * c->stride > extent) return 0;
-    int64_t selected = VanillaRecordOf(c, region, resource);
-    if (selected < 0 || SharedRecordRefused(c, region, resource, (uint32_t)selected, shared)) return 0;
+    const uint8_t* rows = ReadIndexRows(region + c->offset + 28, c->indices);
+    if (rows == NULL) return 0;
+    int64_t selected = VanillaRecordOf(c, rows, resource);
+    if (selected < 0 || SharedRecordRefused(c, rows, resource, (uint32_t)selected, shared)) return 0;
     if (stride != NULL) *stride = c->stride;
     return region + c->offset + 28 + c->recordOffset + (uintptr_t)selected * c->stride;
 }
@@ -520,6 +519,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 static void ChannelInstall(uintptr_t game);
 #include "registry.c"
 #include "table_growth.c" /* the component tables the registry grows */
+#include "registry_fired.c" /* what a weapon fires: its beam or arc type, its spray damage */
 #include "registry_load.c" /* the registry at work when the entity data loads */
 #include "damage.c"
 #include "beam_arc.c"
@@ -531,8 +531,10 @@ static void ChannelInstall(uintptr_t game);
 #include "difficulty_ui.c" /* the level on the war table and in the HUD */
 #include "difficulty_missions.c" /* its missions and objectives */
 #include "difficulty_countdown.c" /* its mission countdown */
+#include "difficulty_codes.c" /* a mixed mission's launch code */
 #include "difficulty_cities.c" /* its larger structured maps and cities */
 #include "difficulty_carvers.c" /* before difficulty_maps.c: NavRetile re-files the navmesh's carvers */
+#include "entity_table.c" /* the entity records behind the Game block; PhysicsPools raises them */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_towns.c" /* after difficulty_maps.c: towns on larger maps, their counters and guards */
 #include "difficulty_streets.c" /* after difficulty_towns.c: city streets on larger maps */
@@ -568,7 +570,9 @@ static void ChannelInstall(uintptr_t game);
 #include "actions.c" /* after refs.c (packages) and events.c (the readers) */
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
+#include "deploys.c" /* after rounds.c: RoundBase */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
+#include "explosion_cover.c" /* an explosion's knockback waits for its damage's line of sight */
 #include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
 #include "perf_all.c" /* the performance fixes, after render_guards.c */
 
@@ -728,6 +732,7 @@ static void WatchLoaded(void)
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
     InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
+    MoveGenerationBlockEarly(ApiModuleBase("game.dll", NULL)); /* before the mods' handlers: the game makes the block with its world (#422) */
     StartRegistry();
     StartProjectiles();
     Fire(HF_EVENT_GAME_LOADED);
@@ -763,7 +768,7 @@ static void WatchStats(void)
     if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SpawnGuardsWatch(); VehicleBoxWatch(); ShotsTick(); RoundsTick(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SummonsTick(); EnemyLimitsTick(); SpawnGuardsWatch(); VehicleBoxWatch(); EdgeBatchWatch(); MotionGridWatch(); AiQueryChunksWatch(); EdgeJoinLateWatch(); SteerLodWatch(); ShotsTick(); RoundsTick(); DeploysTick(); }
 }
 
 static void WatchInstalls(void)
@@ -776,7 +781,8 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
-    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); ExplosionCoverInstall(); }
+    ExplosionCoverReport();
     AiPathBudgetWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
     EarlyStampPackagesInstall();
@@ -957,13 +963,13 @@ static void Utf8ToWide(const char* text, wchar_t* out, int capacity)
 static int g_planLine;
 static char g_planBad[160];
 
-/* The plan's text, NUL-terminated (the caller frees it); NULL when it is missing, empty, 4 MB or more, or unreadable. */
+/* The plan's text, NUL-terminated (the caller frees it); NULL when it is missing, empty, 16 MiB or more, or unreadable. */
 static char* ReadPlanText(const wchar_t* path)
 {
     HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return NULL;
     DWORD size = GetFileSize(file, NULL), read = 0;
-    char* text = size > 0 && size < (4u << 20) ? (char*)malloc(size + 1) : NULL;
+    char* text = size > 0 && size < (16u << 20) ? (char*)malloc(size + 1) : NULL;
     int ok = text != NULL && ReadFile(file, text, size, &read, NULL) && read == size;
     CloseHandle(file);
     if (!ok) { free(text); return NULL; }
@@ -1179,6 +1185,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     g_modsSettingUp = 1;
     for (int k = 0; k < g_modCount; k++) SetupMod(&g_mods[setupOrder[k]]);
     g_modsSettingUp = 0;
+    StatsResolveAll(); /* stats.c: the plan's names of mods' content, now that the mods added it */
     FinishSetupEdits(); /* fields.c: the edits queued while the mods set up, reported and applied in load order */
     CoopDiagStart(); /* coop_diag.c: before the event sources install (they hook the kinds someone listens to) */
     OpenSessionEnd(); /* mod_status.c: the session runner's stop, which the watch thread waits on */

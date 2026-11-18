@@ -311,24 +311,58 @@ The SPAWNING group is the HD2R Editor's Mission Difficulty, Spawn Rosters and Sp
 `native/mod-loader/director.c` writes it:
 
 - **Mission Difficulty:** a level's `DifficultySettings` row (1 to 10, and 11 with a mod that adds it). It holds the
-  HD2R Editor's three budgets, plus the objectives and per-faction patrol interval and cap. Without level 11 the game's
-  own table is written: the copy HD2Runtime edits, and every other of its 19 copies that held the same bytes.
+  HD2R Editor's three budgets and the objectives. Per faction it has the patrol interval and cap (+0x2A0, +0x2AC), the
+  traveller interval and cap (+0x2E0, +0x2EC) and the straggler interval, batch and cap (+0x2F8, +0x310, +0x31C).
+- The director copies that row every frame (0x94FE02). No array is sized by the patrol cap, so it goes to 1000; the
+  patrol gate below stops patrols first. The patrol interval goes down to 0.1 s: the game only counts its timer down
+  (PatrolClock, 0x959740), with no floor of its own. Without level 11 the game's own table is written: the copy
+  HD2Runtime edits, and every other of its 19 copies that held the same bytes.
+- **Enemy limits:** the numbers game.dll keeps in its code, an `EnemyLimits` row per level of HellForge's
+  (`enemy_limits.c`, below).
 - **Spawn Rosters:** an enemy's spawn weight at each difficulty (`EnemyRoster`, a row by `(roster << 16) | row` in
   `difficulty.c`'s roster order). The weights sit at +0x30, or at +0x2C once level 11 gave every row an 11th weight.
   That 11th weight is then `EnemyRosterLevel11`.
 - **Spawn Compositions:** a squad (`EnemyComposition`, `(roster << 16) | (family - 1 << 12) | row`). It holds its
-  groups' counts and emission times, its weight, cost multiplier and post-schedule duration, and the tech levels and
-  player counts it is drawn at.
+  groups' enemy families (a roster row's +0), counts and emission times, its weight, cost multiplier and post-schedule
+  duration, and the tech levels and player counts it is drawn at. Its name is its family's role. That comes from the
+  spawn reason the family's consumer hands SpawnSquad (0x953580): 1 patrol, 2 guard post, 3 map guard, 4
+  reinforcement, 5 traveller, 6 straggler, 7 convoy, 8 air support (`ExportDirector.py` FAMILY_ROLES). Spawn Rosters and Compositions
+  filter by difficulty from their live weights and tech levels (`AtLevel`, `app_page.cpp`).
+- **Summons** (on the enemies' pages): what the Impaler's strike (ability 333) and the Alpha Commander's call (463)
+  call up, `EnemySummon` rows of HellForge's (`enemy_summons.c`). The abilities hand 0x11C8230 the family and count
+  as immediates in their code; the game-thread update writes the rows into those immediates. Both are pinned.
 - **Demolition Templates:** the force a destruction stage requires (`DemolitionTemplate`, a row by its index, 1 to 9;
   "none" and "Count" are not offered), 1 to 255, shared by every stage that names it. The templates are 16-byte rows at
   `[[game.dll + 0x346D928] + 0x30]` (HD2Runtime's destructionGlobal). All eleven must hold their index and the bytes
   HD2Runtime read before anything is written, and edits wait until the destruction system exists. Untested in game.
+
+##### Enemy limits
+
+Fixed numbers in game.dll's code bound a mission's enemies past the row's caps. Each is a field of a level's
+`EnemyLimits` row (`enemy_limits.c`), the game's value until changed:
+
+| Field | Where | The game's | What it bounds |
+|---|---|---|---|
+| `patrol_gate` | EnemyDirectorTick, 0x9514ED | 100 | A patrol's squad, the queued enemies (HiveMind +0x36C0) and the living AI characters (`[0x3326D18]` +0x1C) |
+| `roaming_gate` | DirectorSpawnAllowed (0x952EB0), 0x952F56 | 70 | Spawn reasons 2, 7 and 8 (shared spawners, travellers, stragglers), against the enemies less breach and fabricator ones |
+| `spawn_gate` | DirectorSpawnAllowed, 0x952F62 | 448 | Every spawn but a patrol's, against the AI enemy manager's count (`[0x33264D8]` +0xC) |
+| `despawn`, `despawn_start` | the world update, 0x572C51 | on, 100 | AiEnemyBudgetDespawnPass (0xA2C030): one enemy a pass once the budget's entries reach those despawning + the start; any enemy from 10 more (0xA2C098) |
+| `despawn_distance` | AiEnemyBudgetDespawnPass, 0xA2C0BC | 150 m | Far enough to go first (it reads 22500.0, the square) |
+
+- **How:** nothing changes until a row differs from the game's. Then the four sites jump to stubs near game.dll that
+  read a block of HellForge's, and the far read and the spawn gate's immediate move to it (`JournalPut`). The watch
+  thread fills the block from the mission's level (HiveMind manager +0x650, +0xF9). Every site is pinned.
+- **Co-op:** the despawn pass runs only on the host (0x572C3C), and the host's game spawns, so the host's rows decide.
+- **Limits past these:** about 400 living enemies overflow the AI's navmesh query batch, and near 545 the entity
+  table runs out. Both crash the game until their engine fixes are in.
 
 Every write, live or from Local Stats at boot (`StatsDirectorReady`), is checked against the row as it is:
 
 - a squad's groups total at most 32, the AI squad queue's capacity (a 33rd entry crashed the game in HD2Runtime's
   research);
 - a group with no roster key takes no count;
+- a group's key is a family of the composition's own roster, or 0 with a count of 0;
+- a summon's family is in one of the three factions' rosters, and it calls up 0 to 16;
 - the lowest tech level and player count may not exceed the highest;
 - tech levels go to 11 only with level 11;
 - weights are finite;

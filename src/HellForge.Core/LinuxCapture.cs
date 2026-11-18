@@ -39,9 +39,11 @@ public static partial class LinuxCapture
     public const string RelayBinary = "capture-relay";
     public const string HelperInstaller = "allow-capture.sh";
     const string CertificateFile = "capture-ca.cer";
-    // The signing service's folders (capture-helper.sh): its run folder, readable while it runs, and the folder the helper
-    // hands the sealed account files over in, owned by the player's account.
-    public const string SignerRunFolder = "/run/hellforge-capture";
+    // The signing service's folders as the launcher reads them (capture-helper.sh). The service's own run folder,
+    // /run/hellforge-capture, is a link into /run/private, which only root may enter: systemd puts a DynamicUser service's
+    // preserved RuntimeDirectory there. So root copies the service's log, state and public CA into the evidence folder
+    // while it runs, and hands the sealed account files over in a folder it gives to the player's account.
+    public const string SignerEvidenceFolder = "/run/hellforge/capture-evidence";
     public const string SignerHandOverFolder = "/run/hellforge/capture-out";
     const string ProxyCopyName = "capture-proxy";
     const string CertificateRecordFile = "capture-ca.json";
@@ -601,9 +603,9 @@ public static partial class LinuxCapture
     }
 
     // The signing service runs as its own user, so its files reach the sync folder, where the launcher's flow reads them,
-    // by copy: the account files the helper handed over first (once), then the log, a start failure and the state. A state
-    // that says sealed waits for the account files. True once they are copied.
-    internal static bool MirrorSignerRun(string runFolder, string handOverFolder, string syncDir, bool accountFilesCopied)
+    // by copy: the account files the helper handed over first (once), then the log, a start failure and the state from the
+    // evidence folder root shares. A state that says sealed waits for the account files. True once they are copied.
+    internal static bool MirrorSignerRun(string evidenceFolder, string handOverFolder, string syncDir, bool accountFilesCopied)
     {
         try
         {
@@ -621,14 +623,19 @@ public static partial class LinuxCapture
                 CopyPrivate(Path.Combine(handOverFolder, SnapshotSeal.FileName), Path.Combine(syncDir, SnapshotSeal.FileName));
                 accountFilesCopied = true;
             }
-            CopyPrivate(Path.Combine(runFolder, "proxy.log"), Path.Combine(syncDir, "proxy.log"));
-            CopyPrivate(Path.Combine(runFolder, CaptureStart.FailureFile), Path.Combine(syncDir, CaptureStart.FailureFile));
-            if (CaptureState.Read(runFolder) is { } state && (!state.Sealed || accountFilesCopied))
-                CopyPrivate(Path.Combine(runFolder, CaptureState.FileName), Path.Combine(syncDir, CaptureState.FileName));
+            CopyPrivate(Path.Combine(evidenceFolder, "proxy.log"), Path.Combine(syncDir, "proxy.log"));
+            CopyPrivate(Path.Combine(evidenceFolder, CaptureStart.FailureFile), Path.Combine(syncDir, CaptureStart.FailureFile));
+            if (CaptureState.Read(evidenceFolder) is { } state && (!state.Sealed || accountFilesCopied))
+                CopyPrivate(Path.Combine(evidenceFolder, CaptureState.FileName), Path.Combine(syncDir, CaptureState.FileName));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         return accountFilesCopied;
     }
+
+    // The launcher opens the game once the service's public CA is there to import and its state, mirrored into the sync
+    // folder, says it listens. Both come from the evidence folder, which this account can read.
+    internal static bool SigningCaptureReady(string evidenceFolder, string syncDir) =>
+        File.Exists(CertificatePath(evidenceFolder)) && InventorySync.IsListening(syncDir);
 
     static void CopyPrivate(string from, string to)
     {

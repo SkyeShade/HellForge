@@ -433,7 +433,14 @@ typedef struct HfDifficultySettings
     uint8_t _unknown_108[408];
     float patrol_interval[3];                    /* +0x2A0 seconds between roaming patrols: Terminids, Automatons, Illuminate (level 10: 65, 78, 75) [now] */
     uint32_t patrol_cap[3];                      /* +0x2AC most living patrol enemies, per faction (level 10: 41, 39, 48) [now] */
-    uint8_t _unknown_2B8[120];
+    uint8_t _unknown_2B8[40];
+    float traveller_interval[3];                 /* +0x2E0 seconds between travellers (spawn reason 7, Family 5: Shriekers and Dragonroaches, Gunships, War Striders): Terminids, Automatons, Illuminate (level 10: 130, 160, 90) (unverified) [now?] */
+    uint32_t traveller_cap[3];                   /* +0x2EC most living travellers, per faction (level 10: 12, 4, 6) (unverified) [now?] */
+    float straggler_interval[3];                 /* +0x2F8 seconds between straggler batches (spawn reason 8, Family 6), per faction (level 10: 5) (unverified) [now?] */
+    uint8_t _unknown_304[12];
+    uint32_t straggler_batch[3];                 /* +0x310 most stragglers sent at once, per faction (level 10: 32, one squad) (unverified) [now?] */
+    uint32_t straggler_cap[3];                   /* +0x31C most living map guards and stragglers together, under which stragglers are sent, per faction (level 10: 60) (unverified) [now?] */
+    uint8_t _unknown_328[8];
 } HfDifficultySettings;
 HF_ASSERT_SIZE(HfDifficultySettings, 816);
 HF_ASSERT_OFFSET(HfDifficultySettings, unlock_item, 0);
@@ -466,6 +473,16 @@ HF_ASSERT_OFFSET(HfDifficultySettings, patrol_interval, 672);
 #define HF_TYPE_DifficultySettings_patrol_interval HF_TYPE_F32
 HF_ASSERT_OFFSET(HfDifficultySettings, patrol_cap, 684);
 #define HF_TYPE_DifficultySettings_patrol_cap HF_TYPE_U32
+HF_ASSERT_OFFSET(HfDifficultySettings, traveller_interval, 736);
+#define HF_TYPE_DifficultySettings_traveller_interval HF_TYPE_F32
+HF_ASSERT_OFFSET(HfDifficultySettings, traveller_cap, 748);
+#define HF_TYPE_DifficultySettings_traveller_cap HF_TYPE_U32
+HF_ASSERT_OFFSET(HfDifficultySettings, straggler_interval, 760);
+#define HF_TYPE_DifficultySettings_straggler_interval HF_TYPE_F32
+HF_ASSERT_OFFSET(HfDifficultySettings, straggler_batch, 784);
+#define HF_TYPE_DifficultySettings_straggler_batch HF_TYPE_U32
+HF_ASSERT_OFFSET(HfDifficultySettings, straggler_cap, 796);
+#define HF_TYPE_DifficultySettings_straggler_cap HF_TYPE_U32
 
 /* DamageInfo (76-byte table rows, found by id; api->damage_row returns one: (HfDamageInfo*)api->damage_row(...)): a damage type: damage, armour penetration, forces and status effects */
 #define HfDamageInfo_INFO "DamageInfo", 25480438u
@@ -1486,7 +1503,16 @@ typedef struct HfHealth
     float zone_37_explosive_damage_percentage;   /* +0x5314 Explosive damage percentage (unverified) [respawn?] */
     uint8_t _unknown_5318[12];
     uint8_t zone_37_main_health_capped;          /* +0x5324 Main health capped (unverified) [respawn?] */
-    uint8_t _unknown_5325[811];
+    uint8_t _unknown_5325[215];
+    uint32_t element_0_type;                     /* +0x53FC element damage 0: the element (0 matches damage with no element) (unverified) [now?] */
+    float element_0_multiplier;                  /* +0x5400 element damage 0: multiplier of that element's damage (unverified) [now?] */
+    uint32_t element_1_type;                     /* +0x5404 element damage 1: the element (0 matches damage with no element) (unverified) [now?] */
+    float element_1_multiplier;                  /* +0x5408 element damage 1: multiplier of that element's damage (unverified) [now?] */
+    uint32_t element_2_type;                     /* +0x540C element damage 2: the element (0 matches damage with no element) (unverified) [now?] */
+    float element_2_multiplier;                  /* +0x5410 element damage 2: multiplier of that element's damage (unverified) [now?] */
+    uint32_t element_3_type;                     /* +0x5414 element damage 3: the element (0 matches damage with no element) (unverified) [now?] */
+    float element_3_multiplier;                  /* +0x5418 element damage 3: multiplier of that element's damage (unverified) [now?] */
+    uint8_t _unknown_541C[564];
 } HfHealth;
 HF_ASSERT_SIZE(HfHealth, 22096);
 HF_ASSERT_OFFSET(HfHealth, health, 0);
@@ -2291,6 +2317,22 @@ HF_ASSERT_OFFSET(HfHealth, zone_37_explosive_damage_percentage, 21268);
 #define HF_TYPE_Health_zone_37_explosive_damage_percentage HF_TYPE_F32
 HF_ASSERT_OFFSET(HfHealth, zone_37_main_health_capped, 21284);
 #define HF_TYPE_Health_zone_37_main_health_capped HF_TYPE_U8
+HF_ASSERT_OFFSET(HfHealth, element_0_type, 21500);
+#define HF_TYPE_Health_element_0_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfHealth, element_0_multiplier, 21504);
+#define HF_TYPE_Health_element_0_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, element_1_type, 21508);
+#define HF_TYPE_Health_element_1_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfHealth, element_1_multiplier, 21512);
+#define HF_TYPE_Health_element_1_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, element_2_type, 21516);
+#define HF_TYPE_Health_element_2_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfHealth, element_2_multiplier, 21520);
+#define HF_TYPE_Health_element_2_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfHealth, element_3_type, 21524);
+#define HF_TYPE_Health_element_3_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfHealth, element_3_multiplier, 21528);
+#define HF_TYPE_Health_element_3_multiplier HF_TYPE_F32
 
 /* JumppackComponentData (component 264, 280-byte records): (from the stats schema) */
 #define HfJumppack_INFO "JumppackComponentData", 25480438u
@@ -2982,6 +3024,25 @@ HF_ASSERT_SIZE(HfArcWeapon, 80);
 HF_ASSERT_OFFSET(HfArcWeapon, fire_rate, 4);
 #define HF_TYPE_ArcWeapon_fire_rate HF_TYPE_F32
 
+/* SprayWeaponComponentData (component 315, 224-byte records): a spray weapon (flamethrowers, the Sterilizer, enemy sprays): the damage its spray deals and the projectiles an enemy spray throws, all in the weapon's own record (no shared settings row) */
+#define HfSprayWeapon_INFO "SprayWeaponComponentData", 25480438u
+typedef struct HfSprayWeapon
+{
+    uint8_t _unknown_00[16];
+    float link_radius;                           /* +0x10 Radius of the capsule joining consecutive spray projectiles (metres; 0: none, as on every player flamer) (unverified) [respawn?] */
+    uint8_t _unknown_14[176];
+    uint32_t projectile;                         /* +0xC4 the projectile type an enemy spray throws (0 on every player flamer: the spray is its particle effect) [respawn?] */
+    uint32_t damage;                             /* +0xC8 the damage id its spray deals (DamageInfo; 0 on enemy sprays, whose projectile deals it) [respawn?] */
+    uint8_t _unknown_CC[20];
+} HfSprayWeapon;
+HF_ASSERT_SIZE(HfSprayWeapon, 224);
+HF_ASSERT_OFFSET(HfSprayWeapon, link_radius, 16);
+#define HF_TYPE_SprayWeapon_link_radius HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSprayWeapon, projectile, 196);
+#define HF_TYPE_SprayWeapon_projectile HF_TYPE_U32
+HF_ASSERT_OFFSET(HfSprayWeapon, damage, 200);
+#define HF_TYPE_SprayWeapon_damage HF_TYPE_U32
+
 /* BoosterSettings (56-byte table rows, found by id): a booster definition (game.dll +0x32FDA90, a row by the booster's value: HF_BOOSTER_...) */
 #define HfBoosterSettings_INFO "BoosterSettings", 25480438u
 typedef struct HfBoosterSettings
@@ -3424,7 +3485,7 @@ HF_ASSERT_OFFSET(HfDisplacement, left_leg_injury_damage, 236);
 HF_ASSERT_OFFSET(HfDisplacement, right_leg_injury_damage, 260);
 #define HF_TYPE_Displacement_right_leg_injury_damage HF_TYPE_F32
 
-/* SeekingMissileComponentData (component 196, 272-byte records): SeekingMissileComponentData (fields from the stats schema) */
+/* SeekingMissileComponentData (component 196, 272-byte records): SeekingMissileComponentData: a seeking missile's flight (speeds, turn rates, guidance) and its spread */
 #define HfSeekingMissile_INFO "SeekingMissileComponentData", 25480438u
 typedef struct HfSeekingMissile
 {
@@ -3439,7 +3500,23 @@ typedef struct HfSeekingMissile
     float max_angle_to_target;                   /* +0x54 Missile turn blend angle (unverified) [respawn?] */
     float turn_rate_at_max_angle;                /* +0x58 Missile turn rate at the blend angle (unverified) [respawn?] */
     float turn_rate_aligned;                     /* +0x5C Missile turn rate on target (unverified) [respawn?] */
-    uint8_t _unknown_60[176];
+    uint8_t _unknown_60[84];
+    uint8_t deviation_enabled;                   /* +0xB4 1: each missile spreads: it veers off its launch line, curves, then swings back onto its target (the deviation_* fields); 0: it flies straight at its target. The W.A.S.P. (both missiles), the Missile Pistol and the Warrant have it [respawn?] */
+    uint8_t _unknown_B5[3];
+    float deviation_direction_min;               /* +0xB8 which way a missile veers, in degrees around its flight line (0 up, 90 / -90 a side, 180 down): each missile draws one between this and deviation_direction_max (the W.A.S.P. -75 to 75) [respawn?] */
+    float deviation_direction_max;               /* +0xBC the top of the veer direction (see deviation_direction_min) [respawn?] */
+    float deviation_angle_min;                   /* +0xC0 how far a missile turns off its launch line, in degrees: each missile draws an angle between this and deviation_angle_max (the W.A.S.P. 40 to 55) [respawn?] */
+    float deviation_angle_max;                   /* +0xC4 the top of the veer angle (see deviation_angle_min) [respawn?] */
+    float deviation_curve_min[3];                /* +0xC8 the curve after the veer: pitch (x, positive up), roll (y, around the flight line) and yaw (z) in degrees, each drawn per missile between this and deviation_curve_max and turned every second (times deviation_curve_speed) until the return ends [respawn?] */
+    float deviation_curve_max[3];                /* +0xD4 the top of the curve (see deviation_curve_min) [respawn?] */
+    uint8_t deviation_curve_either_way;          /* +0xE0 1: each of the curve's three angles gets a random sign (unverified) [respawn?] */
+    uint8_t _unknown_E1[3];
+    float deviation_curve_speed;                 /* +0xE4 the curve's rate: its angles turn by this many times a second [now?] */
+    float deviation_veer_end;                    /* +0xE8 seconds after launch when the veer is done (the missile turns evenly from deviation_veer_start); the curve and return start here [now?] */
+    float deviation_veer_start;                  /* +0xEC seconds after launch when the missile starts to veer; until then it flies straight [now?] */
+    float deviation_return_time;                 /* +0xF0 seconds after the veer the missile takes to swing fully back onto its target (its aim slides from the curve to the target over this time); then it homes as usual (unverified) [now?] */
+    float deviation_return_turn_rate;            /* +0xF4 its turn rate while it swings back, as a multiple of the usual blended turn rate (+0x58 / +0x5C); past about 60 / that turn rate a step overshoots (the slerp fraction passes 1) and the missile swings wildly (unverified) [now?] */
+    uint8_t _unknown_F8[24];
 } HfSeekingMissile;
 HF_ASSERT_SIZE(HfSeekingMissile, 272);
 HF_ASSERT_OFFSET(HfSeekingMissile, guidance_delay, 12);
@@ -3460,6 +3537,34 @@ HF_ASSERT_OFFSET(HfSeekingMissile, turn_rate_at_max_angle, 88);
 #define HF_TYPE_SeekingMissile_turn_rate_at_max_angle HF_TYPE_F32
 HF_ASSERT_OFFSET(HfSeekingMissile, turn_rate_aligned, 92);
 #define HF_TYPE_SeekingMissile_turn_rate_aligned HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_enabled, 180);
+#define HF_TYPE_SeekingMissile_deviation_enabled HF_TYPE_U8
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_direction_min, 184);
+#define HF_TYPE_SeekingMissile_deviation_direction_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_direction_max, 188);
+#define HF_TYPE_SeekingMissile_deviation_direction_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_angle_min, 192);
+#define HF_TYPE_SeekingMissile_deviation_angle_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_angle_max, 196);
+#define HF_TYPE_SeekingMissile_deviation_angle_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_curve_min, 200);
+#define HF_TYPE_SeekingMissile_deviation_curve_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_curve_max, 212);
+#define HF_TYPE_SeekingMissile_deviation_curve_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_curve_either_way, 224);
+#define HF_TYPE_SeekingMissile_deviation_curve_either_way HF_TYPE_U8
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_curve_speed, 228);
+#define HF_TYPE_SeekingMissile_deviation_curve_speed HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_veer_end, 232);
+#define HF_TYPE_SeekingMissile_deviation_veer_end HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_veer_start, 236);
+#define HF_TYPE_SeekingMissile_deviation_veer_start HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_return_time, 240);
+#define HF_TYPE_SeekingMissile_deviation_return_time HF_TYPE_F32
+HF_ASSERT_OFFSET(HfSeekingMissile, deviation_return_turn_rate, 244);
+#define HF_TYPE_SeekingMissile_deviation_return_turn_rate HF_TYPE_F32
+/* Group spread: the missile spread: its veer off the launch line, its curve and its return onto the target */
+#define HF_GROUP_SeekingMissile_spread(X, ...) X(SeekingMissile, deviation_enabled, __VA_ARGS__), X(SeekingMissile, deviation_direction_min, __VA_ARGS__), X(SeekingMissile, deviation_direction_max, __VA_ARGS__), X(SeekingMissile, deviation_angle_min, __VA_ARGS__), X(SeekingMissile, deviation_angle_max, __VA_ARGS__), X(SeekingMissile, deviation_curve_min, __VA_ARGS__), X(SeekingMissile, deviation_curve_max, __VA_ARGS__), X(SeekingMissile, deviation_curve_either_way, __VA_ARGS__), X(SeekingMissile, deviation_curve_speed, __VA_ARGS__), X(SeekingMissile, deviation_veer_end, __VA_ARGS__), X(SeekingMissile, deviation_veer_start, __VA_ARGS__), X(SeekingMissile, deviation_return_time, __VA_ARGS__), X(SeekingMissile, deviation_return_turn_rate, __VA_ARGS__)
 
 /* LoadoutEntryComponentData (component 29, 32-byte records): LoadoutEntryComponentData (fields from the stats schema) */
 #define HfLoadoutEntry_INFO "LoadoutEntryComponentData", 25480438u
@@ -3710,28 +3815,28 @@ HF_ASSERT_OFFSET(HfEnemyRosterLevel11, weight, 0);
 #define HfEnemyComposition_INFO "EnemyComposition", 25480438u
 typedef struct HfEnemyComposition
 {
-    uint32_t group_0_key;                        /* +0x00 group 1: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_0_key;                        /* +0x00 group 1: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_0_count;                      /* +0x04 group 1: how many (the groups total at most 32) (unverified) [mission?] */
     float group_0_emission_time;                 /* +0x08 group 1: emission time (s) (unverified) [mission?] */
-    uint32_t group_1_key;                        /* +0x0C group 2: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_1_key;                        /* +0x0C group 2: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_1_count;                      /* +0x10 group 2: how many (the groups total at most 32) (unverified) [mission?] */
     float group_1_emission_time;                 /* +0x14 group 2: emission time (s) (unverified) [mission?] */
-    uint32_t group_2_key;                        /* +0x18 group 3: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_2_key;                        /* +0x18 group 3: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_2_count;                      /* +0x1C group 3: how many (the groups total at most 32) (unverified) [mission?] */
     float group_2_emission_time;                 /* +0x20 group 3: emission time (s) (unverified) [mission?] */
-    uint32_t group_3_key;                        /* +0x24 group 4: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_3_key;                        /* +0x24 group 4: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_3_count;                      /* +0x28 group 4: how many (the groups total at most 32) (unverified) [mission?] */
     float group_3_emission_time;                 /* +0x2C group 4: emission time (s) (unverified) [mission?] */
-    uint32_t group_4_key;                        /* +0x30 group 5: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_4_key;                        /* +0x30 group 5: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_4_count;                      /* +0x34 group 5: how many (the groups total at most 32) (unverified) [mission?] */
     float group_4_emission_time;                 /* +0x38 group 5: emission time (s) (unverified) [mission?] */
-    uint32_t group_5_key;                        /* +0x3C group 6: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_5_key;                        /* +0x3C group 6: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_5_count;                      /* +0x40 group 6: how many (the groups total at most 32) (unverified) [mission?] */
     float group_5_emission_time;                 /* +0x44 group 6: emission time (s) (unverified) [mission?] */
-    uint32_t group_6_key;                        /* +0x48 group 7: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_6_key;                        /* +0x48 group 7: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_6_count;                      /* +0x4C group 7: how many (the groups total at most 32) (unverified) [mission?] */
     float group_6_emission_time;                 /* +0x50 group 7: emission time (s) (unverified) [mission?] */
-    uint32_t group_7_key;                        /* +0x54 group 8: the roster group it draws enemies from (not edited) (unverified) [mission?] */
+    uint32_t group_7_key;                        /* +0x54 group 8: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) [mission?] */
     uint32_t group_7_count;                      /* +0x58 group 8: how many (the groups total at most 32) (unverified) [mission?] */
     float group_7_emission_time;                 /* +0x5C group 8: emission time (s) (unverified) [mission?] */
     uint8_t _unknown_60[128];
@@ -3950,6 +4055,44 @@ HF_ASSERT_OFFSET(HfDemolitionTemplate, index, 0);
 #define HF_TYPE_DemolitionTemplate_index HF_TYPE_U32
 HF_ASSERT_OFFSET(HfDemolitionTemplate, force, 4);
 #define HF_TYPE_DemolitionTemplate_force HF_TYPE_U32
+
+/* EnemySummon (8-byte table rows, found by id): what a summoning ability calls up (a row by its ability id: 333 the Impaler's tentacles, 463 the Alpha Commander's warriors): HellForge's row, put into the ability's code (native/mod-loader/enemy_summons.c) */
+#define HfEnemySummon_INFO "EnemySummon", 25480438u
+typedef struct HfEnemySummon
+{
+    uint32_t family;                             /* +0x00 the enemy family it calls up (a roster row's +0), picked by spawn weight at the mission's level from the mission faction's roster (unverified) [now?] */
+    uint32_t count;                              /* +0x04 how many it calls up each call, 0 to 16 (one SpawnSquad each, spawn reason 4) (unverified) [now?] */
+} HfEnemySummon;
+HF_ASSERT_SIZE(HfEnemySummon, 8);
+HF_ASSERT_OFFSET(HfEnemySummon, family, 0);
+#define HF_TYPE_EnemySummon_family HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemySummon, count, 4);
+#define HF_TYPE_EnemySummon_count HF_TYPE_U32
+
+/* EnemyLimits (24-byte table rows, found by id): the enemy limits game.dll keeps in its code rather than the difficulty table (a row by difficulty level, 1 to 11, each the game's values until changed): HellForge's row, read by the spawn gates and the AI enemy budget's despawn pass through stubs (native/mod-loader/enemy_limits.c). Host only: the host's rows decide */
+#define HfEnemyLimits_INFO "EnemyLimits", 25480438u
+typedef struct HfEnemyLimits
+{
+    uint32_t patrol_gate;                        /* +0x00 a scheduled patrol spawns only while its squad, the queued enemies (HiveMind manager +0x36C0) and the living AI characters total at most this; the game's 100. The patrol caps count only under it (unverified) [now?] */
+    uint32_t roaming_gate;                       /* +0x04 the shared spawners' waves (AiSpawnerUpdate, spawn reason 2), travellers (7) and stragglers (8) spawn only while the queued and living enemies, less those of breaches and drops (3) and fabricators (4), stay under this; the game's 70 (unverified) [now?] */
+    uint32_t spawn_gate;                         /* +0x08 no spawn but a patrol squad's while the AI enemy manager holds this many enemies; the game's 448 (unverified) [now?] */
+    uint32_t despawn;                            /* +0x0C 1: the AI enemy budget's despawn pass runs (the game's); 0: it never runs, so no living enemy is despawned for the budget (unverified) [now?] */
+    uint32_t despawn_start;                      /* +0x10 the despawn pass runs once the budget's enemies reach those despawning + this (the game's 100): one a pass, far ones first (despawn_distance); from ten more any enemy may go (unverified) [now?] */
+    float despawn_distance;                      /* +0x14 metres from which the despawn pass may take an enemy as far (the game's 150), 10 to 2000 (unverified) [now?] */
+} HfEnemyLimits;
+HF_ASSERT_SIZE(HfEnemyLimits, 24);
+HF_ASSERT_OFFSET(HfEnemyLimits, patrol_gate, 0);
+#define HF_TYPE_EnemyLimits_patrol_gate HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, roaming_gate, 4);
+#define HF_TYPE_EnemyLimits_roaming_gate HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, spawn_gate, 8);
+#define HF_TYPE_EnemyLimits_spawn_gate HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, despawn, 12);
+#define HF_TYPE_EnemyLimits_despawn HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, despawn_start, 16);
+#define HF_TYPE_EnemyLimits_despawn_start HF_TYPE_U32
+HF_ASSERT_OFFSET(HfEnemyLimits, despawn_distance, 20);
+#define HF_TYPE_EnemyLimits_despawn_distance HF_TYPE_F32
 
 /* EquipmentComponentData (component 233, 232-byte records): how a held item is wielded, holstered and dropped: nodes, timings, the Helldiver's animations and grip */
 #define HfEquipment_INFO "EquipmentComponentData", 25480438u
@@ -4185,6 +4328,609 @@ HF_ASSERT_OFFSET(HfWeaponCustomization, trigger_settings, 4680);
 #define HF_TYPE_WeaponCustomization_trigger_settings HF_TYPE_U32
 HF_ASSERT_OFFSET(HfWeaponCustomization, magazine_adjusting_nodes, 4736);
 #define HF_TYPE_WeaponCustomization_magazine_adjusting_nodes HF_TYPE_U32
+
+/* AiEnemyComponentData (component 302, 732-byte records): an enemy's AI behaviours: each state's movement settings, its charge */
+#define HfAiEnemy_INFO "AiEnemyComponentData", 25480438u
+typedef struct HfAiEnemy
+{
+    uint8_t _unknown_00[36];
+    float patrol_speed;                          /* +0x24 Patrol behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) [now?] */
+    uint8_t _unknown_28[4];
+    float patrol_speed_min;                      /* +0x2C Patrol behaviour: random move speed, lowest (unverified) [now?] */
+    float patrol_speed_max;                      /* +0x30 Patrol behaviour: random move speed, highest (unverified) [now?] */
+    uint8_t _unknown_34[48];
+    float combat_speed;                          /* +0x64 Combat behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) [now?] */
+    uint8_t _unknown_68[4];
+    float combat_speed_min;                      /* +0x6C Combat behaviour: random move speed, lowest (unverified) [now?] */
+    float combat_speed_max;                      /* +0x70 Combat behaviour: random move speed, highest (unverified) [now?] */
+    uint8_t _unknown_74[8];
+    float strafe_speed;                          /* +0x7C Strafe behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) [now?] */
+    uint8_t _unknown_80[4];
+    float strafe_speed_min;                      /* +0x84 Strafe behaviour: random move speed, lowest (unverified) [now?] */
+    float strafe_speed_max;                      /* +0x88 Strafe behaviour: random move speed, highest (unverified) [now?] */
+    uint8_t _unknown_8C[104];
+    float retreat_speed;                         /* +0xF4 Retreat behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) [now?] */
+    uint8_t _unknown_F8[4];
+    float retreat_speed_min;                     /* +0xFC Retreat behaviour: random move speed, lowest (unverified) [now?] */
+    float retreat_speed_max;                     /* +0x100 Retreat behaviour: random move speed, highest (unverified) [now?] */
+    uint8_t _unknown_104[16];
+    float charge_speed;                          /* +0x114 Charge behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) [now?] */
+    uint8_t _unknown_118[4];
+    float charge_speed_min;                      /* +0x11C Charge behaviour: random move speed, lowest (unverified) [now?] */
+    float charge_speed_max;                      /* +0x120 Charge behaviour: random move speed, highest (unverified) [now?] */
+    float charge_acceleration;                   /* +0x124 locomotion acceleration while charging (m/s^2) (unverified) [now?] */
+    uint8_t _unknown_128[4];
+    float charge_tracking_angle;                 /* +0x12C it keeps homing while the target is within this many degrees of its facing (unverified) [now?] */
+    uint8_t _unknown_130[428];
+} HfAiEnemy;
+HF_ASSERT_SIZE(HfAiEnemy, 732);
+HF_ASSERT_OFFSET(HfAiEnemy, patrol_speed, 36);
+#define HF_TYPE_AiEnemy_patrol_speed HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, patrol_speed_min, 44);
+#define HF_TYPE_AiEnemy_patrol_speed_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, patrol_speed_max, 48);
+#define HF_TYPE_AiEnemy_patrol_speed_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, combat_speed, 100);
+#define HF_TYPE_AiEnemy_combat_speed HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, combat_speed_min, 108);
+#define HF_TYPE_AiEnemy_combat_speed_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, combat_speed_max, 112);
+#define HF_TYPE_AiEnemy_combat_speed_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, strafe_speed, 124);
+#define HF_TYPE_AiEnemy_strafe_speed HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, strafe_speed_min, 132);
+#define HF_TYPE_AiEnemy_strafe_speed_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, strafe_speed_max, 136);
+#define HF_TYPE_AiEnemy_strafe_speed_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, retreat_speed, 244);
+#define HF_TYPE_AiEnemy_retreat_speed HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, retreat_speed_min, 252);
+#define HF_TYPE_AiEnemy_retreat_speed_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, retreat_speed_max, 256);
+#define HF_TYPE_AiEnemy_retreat_speed_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, charge_speed, 276);
+#define HF_TYPE_AiEnemy_charge_speed HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, charge_speed_min, 284);
+#define HF_TYPE_AiEnemy_charge_speed_min HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, charge_speed_max, 288);
+#define HF_TYPE_AiEnemy_charge_speed_max HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, charge_acceleration, 292);
+#define HF_TYPE_AiEnemy_charge_acceleration HF_TYPE_F32
+HF_ASSERT_OFFSET(HfAiEnemy, charge_tracking_angle, 300);
+#define HF_TYPE_AiEnemy_charge_tracking_angle HF_TYPE_F32
+
+/* LocomotionComponentData (component 311, 4624-byte records): how an enemy's legs move it: eight locomotion sets (animation speed bands, turn animations), its acceleration and deceleration */
+#define HfLocomotion_INFO "LocomotionComponentData", 25480438u
+typedef struct HfLocomotion
+{
+    uint8_t _unknown_00[4464];
+    float acceleration;                          /* +0x1170 acceleration (m/s^2; -1 the default) (unverified) [respawn?] */
+    float deceleration;                          /* +0x1174 deceleration (m/s^2; -1 the default) (unverified) [respawn?] */
+    uint8_t _unknown_1178[152];
+} HfLocomotion;
+HF_ASSERT_SIZE(HfLocomotion, 4624);
+HF_ASSERT_OFFSET(HfLocomotion, acceleration, 4464);
+#define HF_TYPE_Locomotion_acceleration HF_TYPE_F32
+HF_ASSERT_OFFSET(HfLocomotion, deceleration, 4468);
+#define HF_TYPE_Locomotion_deceleration HF_TYPE_F32
+
+/* StatusEffectReceiverComponentData (component 307, 46600-byte records): the statuses an entity takes: 8 zones of 33 susceptibility entries (0xB0 each, packed up to the first type 0; zone 0 at +8) and 8 duration multipliers at +0xB5C8 */
+#define HfStatusEffectReceiver_INFO "StatusEffectReceiverComponentData", 25480438u
+typedef struct HfStatusEffectReceiver
+{
+    uint8_t _unknown_00[148];
+    uint32_t entry_0_type;                       /* +0x94 zone 0 entry 0: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_0_min_buildup;                   /* +0x98 zone 0 entry 0: buildup below which it never applies (unverified) [now?] */
+    float entry_0_sure_buildup;                  /* +0x9C zone 0 entry 0: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_A0[16];
+    float entry_0_damage_multiplier;             /* +0xB0 zone 0 entry 0: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_B4[144];
+    uint32_t entry_1_type;                       /* +0x144 zone 0 entry 1: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_1_min_buildup;                   /* +0x148 zone 0 entry 1: buildup below which it never applies (unverified) [now?] */
+    float entry_1_sure_buildup;                  /* +0x14C zone 0 entry 1: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_150[16];
+    float entry_1_damage_multiplier;             /* +0x160 zone 0 entry 1: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_164[144];
+    uint32_t entry_2_type;                       /* +0x1F4 zone 0 entry 2: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_2_min_buildup;                   /* +0x1F8 zone 0 entry 2: buildup below which it never applies (unverified) [now?] */
+    float entry_2_sure_buildup;                  /* +0x1FC zone 0 entry 2: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_200[16];
+    float entry_2_damage_multiplier;             /* +0x210 zone 0 entry 2: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_214[144];
+    uint32_t entry_3_type;                       /* +0x2A4 zone 0 entry 3: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_3_min_buildup;                   /* +0x2A8 zone 0 entry 3: buildup below which it never applies (unverified) [now?] */
+    float entry_3_sure_buildup;                  /* +0x2AC zone 0 entry 3: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_2B0[16];
+    float entry_3_damage_multiplier;             /* +0x2C0 zone 0 entry 3: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_2C4[144];
+    uint32_t entry_4_type;                       /* +0x354 zone 0 entry 4: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_4_min_buildup;                   /* +0x358 zone 0 entry 4: buildup below which it never applies (unverified) [now?] */
+    float entry_4_sure_buildup;                  /* +0x35C zone 0 entry 4: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_360[16];
+    float entry_4_damage_multiplier;             /* +0x370 zone 0 entry 4: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_374[144];
+    uint32_t entry_5_type;                       /* +0x404 zone 0 entry 5: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_5_min_buildup;                   /* +0x408 zone 0 entry 5: buildup below which it never applies (unverified) [now?] */
+    float entry_5_sure_buildup;                  /* +0x40C zone 0 entry 5: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_410[16];
+    float entry_5_damage_multiplier;             /* +0x420 zone 0 entry 5: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_424[144];
+    uint32_t entry_6_type;                       /* +0x4B4 zone 0 entry 6: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_6_min_buildup;                   /* +0x4B8 zone 0 entry 6: buildup below which it never applies (unverified) [now?] */
+    float entry_6_sure_buildup;                  /* +0x4BC zone 0 entry 6: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_4C0[16];
+    float entry_6_damage_multiplier;             /* +0x4D0 zone 0 entry 6: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_4D4[144];
+    uint32_t entry_7_type;                       /* +0x564 zone 0 entry 7: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_7_min_buildup;                   /* +0x568 zone 0 entry 7: buildup below which it never applies (unverified) [now?] */
+    float entry_7_sure_buildup;                  /* +0x56C zone 0 entry 7: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_570[16];
+    float entry_7_damage_multiplier;             /* +0x580 zone 0 entry 7: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_584[144];
+    uint32_t entry_8_type;                       /* +0x614 zone 0 entry 8: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_8_min_buildup;                   /* +0x618 zone 0 entry 8: buildup below which it never applies (unverified) [now?] */
+    float entry_8_sure_buildup;                  /* +0x61C zone 0 entry 8: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_620[16];
+    float entry_8_damage_multiplier;             /* +0x630 zone 0 entry 8: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_634[144];
+    uint32_t entry_9_type;                       /* +0x6C4 zone 0 entry 9: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_9_min_buildup;                   /* +0x6C8 zone 0 entry 9: buildup below which it never applies (unverified) [now?] */
+    float entry_9_sure_buildup;                  /* +0x6CC zone 0 entry 9: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_6D0[16];
+    float entry_9_damage_multiplier;             /* +0x6E0 zone 0 entry 9: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_6E4[144];
+    uint32_t entry_10_type;                      /* +0x774 zone 0 entry 10: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_10_min_buildup;                  /* +0x778 zone 0 entry 10: buildup below which it never applies (unverified) [now?] */
+    float entry_10_sure_buildup;                 /* +0x77C zone 0 entry 10: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_780[16];
+    float entry_10_damage_multiplier;            /* +0x790 zone 0 entry 10: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_794[144];
+    uint32_t entry_11_type;                      /* +0x824 zone 0 entry 11: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_11_min_buildup;                  /* +0x828 zone 0 entry 11: buildup below which it never applies (unverified) [now?] */
+    float entry_11_sure_buildup;                 /* +0x82C zone 0 entry 11: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_830[16];
+    float entry_11_damage_multiplier;            /* +0x840 zone 0 entry 11: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_844[144];
+    uint32_t entry_12_type;                      /* +0x8D4 zone 0 entry 12: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_12_min_buildup;                  /* +0x8D8 zone 0 entry 12: buildup below which it never applies (unverified) [now?] */
+    float entry_12_sure_buildup;                 /* +0x8DC zone 0 entry 12: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_8E0[16];
+    float entry_12_damage_multiplier;            /* +0x8F0 zone 0 entry 12: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_8F4[144];
+    uint32_t entry_13_type;                      /* +0x984 zone 0 entry 13: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_13_min_buildup;                  /* +0x988 zone 0 entry 13: buildup below which it never applies (unverified) [now?] */
+    float entry_13_sure_buildup;                 /* +0x98C zone 0 entry 13: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_990[16];
+    float entry_13_damage_multiplier;            /* +0x9A0 zone 0 entry 13: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_9A4[144];
+    uint32_t entry_14_type;                      /* +0xA34 zone 0 entry 14: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_14_min_buildup;                  /* +0xA38 zone 0 entry 14: buildup below which it never applies (unverified) [now?] */
+    float entry_14_sure_buildup;                 /* +0xA3C zone 0 entry 14: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_A40[16];
+    float entry_14_damage_multiplier;            /* +0xA50 zone 0 entry 14: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_A54[144];
+    uint32_t entry_15_type;                      /* +0xAE4 zone 0 entry 15: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_15_min_buildup;                  /* +0xAE8 zone 0 entry 15: buildup below which it never applies (unverified) [now?] */
+    float entry_15_sure_buildup;                 /* +0xAEC zone 0 entry 15: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_AF0[16];
+    float entry_15_damage_multiplier;            /* +0xB00 zone 0 entry 15: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_B04[144];
+    uint32_t entry_16_type;                      /* +0xB94 zone 0 entry 16: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_16_min_buildup;                  /* +0xB98 zone 0 entry 16: buildup below which it never applies (unverified) [now?] */
+    float entry_16_sure_buildup;                 /* +0xB9C zone 0 entry 16: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_BA0[16];
+    float entry_16_damage_multiplier;            /* +0xBB0 zone 0 entry 16: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_BB4[144];
+    uint32_t entry_17_type;                      /* +0xC44 zone 0 entry 17: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_17_min_buildup;                  /* +0xC48 zone 0 entry 17: buildup below which it never applies (unverified) [now?] */
+    float entry_17_sure_buildup;                 /* +0xC4C zone 0 entry 17: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_C50[16];
+    float entry_17_damage_multiplier;            /* +0xC60 zone 0 entry 17: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_C64[144];
+    uint32_t entry_18_type;                      /* +0xCF4 zone 0 entry 18: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_18_min_buildup;                  /* +0xCF8 zone 0 entry 18: buildup below which it never applies (unverified) [now?] */
+    float entry_18_sure_buildup;                 /* +0xCFC zone 0 entry 18: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_D00[16];
+    float entry_18_damage_multiplier;            /* +0xD10 zone 0 entry 18: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_D14[144];
+    uint32_t entry_19_type;                      /* +0xDA4 zone 0 entry 19: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_19_min_buildup;                  /* +0xDA8 zone 0 entry 19: buildup below which it never applies (unverified) [now?] */
+    float entry_19_sure_buildup;                 /* +0xDAC zone 0 entry 19: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_DB0[16];
+    float entry_19_damage_multiplier;            /* +0xDC0 zone 0 entry 19: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_DC4[144];
+    uint32_t entry_20_type;                      /* +0xE54 zone 0 entry 20: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_20_min_buildup;                  /* +0xE58 zone 0 entry 20: buildup below which it never applies (unverified) [now?] */
+    float entry_20_sure_buildup;                 /* +0xE5C zone 0 entry 20: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_E60[16];
+    float entry_20_damage_multiplier;            /* +0xE70 zone 0 entry 20: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_E74[144];
+    uint32_t entry_21_type;                      /* +0xF04 zone 0 entry 21: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_21_min_buildup;                  /* +0xF08 zone 0 entry 21: buildup below which it never applies (unverified) [now?] */
+    float entry_21_sure_buildup;                 /* +0xF0C zone 0 entry 21: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_F10[16];
+    float entry_21_damage_multiplier;            /* +0xF20 zone 0 entry 21: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_F24[144];
+    uint32_t entry_22_type;                      /* +0xFB4 zone 0 entry 22: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_22_min_buildup;                  /* +0xFB8 zone 0 entry 22: buildup below which it never applies (unverified) [now?] */
+    float entry_22_sure_buildup;                 /* +0xFBC zone 0 entry 22: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_FC0[16];
+    float entry_22_damage_multiplier;            /* +0xFD0 zone 0 entry 22: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_FD4[144];
+    uint32_t entry_23_type;                      /* +0x1064 zone 0 entry 23: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_23_min_buildup;                  /* +0x1068 zone 0 entry 23: buildup below which it never applies (unverified) [now?] */
+    float entry_23_sure_buildup;                 /* +0x106C zone 0 entry 23: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_1070[16];
+    float entry_23_damage_multiplier;            /* +0x1080 zone 0 entry 23: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_1084[144];
+    uint32_t entry_24_type;                      /* +0x1114 zone 0 entry 24: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_24_min_buildup;                  /* +0x1118 zone 0 entry 24: buildup below which it never applies (unverified) [now?] */
+    float entry_24_sure_buildup;                 /* +0x111C zone 0 entry 24: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_1120[16];
+    float entry_24_damage_multiplier;            /* +0x1130 zone 0 entry 24: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_1134[144];
+    uint32_t entry_25_type;                      /* +0x11C4 zone 0 entry 25: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_25_min_buildup;                  /* +0x11C8 zone 0 entry 25: buildup below which it never applies (unverified) [now?] */
+    float entry_25_sure_buildup;                 /* +0x11CC zone 0 entry 25: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_11D0[16];
+    float entry_25_damage_multiplier;            /* +0x11E0 zone 0 entry 25: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_11E4[144];
+    uint32_t entry_26_type;                      /* +0x1274 zone 0 entry 26: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_26_min_buildup;                  /* +0x1278 zone 0 entry 26: buildup below which it never applies (unverified) [now?] */
+    float entry_26_sure_buildup;                 /* +0x127C zone 0 entry 26: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_1280[16];
+    float entry_26_damage_multiplier;            /* +0x1290 zone 0 entry 26: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_1294[144];
+    uint32_t entry_27_type;                      /* +0x1324 zone 0 entry 27: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_27_min_buildup;                  /* +0x1328 zone 0 entry 27: buildup below which it never applies (unverified) [now?] */
+    float entry_27_sure_buildup;                 /* +0x132C zone 0 entry 27: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_1330[16];
+    float entry_27_damage_multiplier;            /* +0x1340 zone 0 entry 27: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_1344[144];
+    uint32_t entry_28_type;                      /* +0x13D4 zone 0 entry 28: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_28_min_buildup;                  /* +0x13D8 zone 0 entry 28: buildup below which it never applies (unverified) [now?] */
+    float entry_28_sure_buildup;                 /* +0x13DC zone 0 entry 28: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_13E0[16];
+    float entry_28_damage_multiplier;            /* +0x13F0 zone 0 entry 28: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_13F4[144];
+    uint32_t entry_29_type;                      /* +0x1484 zone 0 entry 29: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_29_min_buildup;                  /* +0x1488 zone 0 entry 29: buildup below which it never applies (unverified) [now?] */
+    float entry_29_sure_buildup;                 /* +0x148C zone 0 entry 29: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_1490[16];
+    float entry_29_damage_multiplier;            /* +0x14A0 zone 0 entry 29: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_14A4[144];
+    uint32_t entry_30_type;                      /* +0x1534 zone 0 entry 30: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_30_min_buildup;                  /* +0x1538 zone 0 entry 30: buildup below which it never applies (unverified) [now?] */
+    float entry_30_sure_buildup;                 /* +0x153C zone 0 entry 30: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_1540[16];
+    float entry_30_damage_multiplier;            /* +0x1550 zone 0 entry 30: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_1554[144];
+    uint32_t entry_31_type;                      /* +0x15E4 zone 0 entry 31: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_31_min_buildup;                  /* +0x15E8 zone 0 entry 31: buildup below which it never applies (unverified) [now?] */
+    float entry_31_sure_buildup;                 /* +0x15EC zone 0 entry 31: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_15F0[16];
+    float entry_31_damage_multiplier;            /* +0x1600 zone 0 entry 31: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_1604[144];
+    uint32_t entry_32_type;                      /* +0x1694 zone 0 entry 32: susceptibility type (0 ends the list) (unverified) [respawn?] */
+    float entry_32_min_buildup;                  /* +0x1698 zone 0 entry 32: buildup below which it never applies (unverified) [now?] */
+    float entry_32_sure_buildup;                 /* +0x169C zone 0 entry 32: chance to apply = buildup / this (unverified) [now?] */
+    uint8_t _unknown_16A0[16];
+    float entry_32_damage_multiplier;            /* +0x16B0 zone 0 entry 32: tick damage multiplier (unverified) [now?] */
+    uint8_t _unknown_16B4[40724];
+    uint32_t duration_0_type;                    /* +0xB5C8 duration multiplier 0: susceptibility type (0 ends the list) (unverified) [now?] */
+    float duration_0_multiplier;                 /* +0xB5CC duration multiplier 0 (0 or less is ignored) (unverified) [now?] */
+    uint32_t duration_1_type;                    /* +0xB5D0 duration multiplier 1: susceptibility type (0 ends the list) (unverified) [now?] */
+    float duration_1_multiplier;                 /* +0xB5D4 duration multiplier 1 (0 or less is ignored) (unverified) [now?] */
+    uint32_t duration_2_type;                    /* +0xB5D8 duration multiplier 2: susceptibility type (0 ends the list) (unverified) [now?] */
+    float duration_2_multiplier;                 /* +0xB5DC duration multiplier 2 (0 or less is ignored) (unverified) [now?] */
+    uint32_t duration_3_type;                    /* +0xB5E0 duration multiplier 3: susceptibility type (0 ends the list) (unverified) [now?] */
+    float duration_3_multiplier;                 /* +0xB5E4 duration multiplier 3 (0 or less is ignored) (unverified) [now?] */
+    uint32_t duration_4_type;                    /* +0xB5E8 duration multiplier 4: susceptibility type (0 ends the list) (unverified) [now?] */
+    float duration_4_multiplier;                 /* +0xB5EC duration multiplier 4 (0 or less is ignored) (unverified) [now?] */
+    uint32_t duration_5_type;                    /* +0xB5F0 duration multiplier 5: susceptibility type (0 ends the list) (unverified) [now?] */
+    float duration_5_multiplier;                 /* +0xB5F4 duration multiplier 5 (0 or less is ignored) (unverified) [now?] */
+    uint32_t duration_6_type;                    /* +0xB5F8 duration multiplier 6: susceptibility type (0 ends the list) (unverified) [now?] */
+    float duration_6_multiplier;                 /* +0xB5FC duration multiplier 6 (0 or less is ignored) (unverified) [now?] */
+    uint32_t duration_7_type;                    /* +0xB600 duration multiplier 7: susceptibility type (0 ends the list) (unverified) [now?] */
+    float duration_7_multiplier;                 /* +0xB604 duration multiplier 7 (0 or less is ignored) (unverified) [now?] */
+} HfStatusEffectReceiver;
+HF_ASSERT_SIZE(HfStatusEffectReceiver, 46600);
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_0_type, 148);
+#define HF_TYPE_StatusEffectReceiver_entry_0_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_0_min_buildup, 152);
+#define HF_TYPE_StatusEffectReceiver_entry_0_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_0_sure_buildup, 156);
+#define HF_TYPE_StatusEffectReceiver_entry_0_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_0_damage_multiplier, 176);
+#define HF_TYPE_StatusEffectReceiver_entry_0_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_1_type, 324);
+#define HF_TYPE_StatusEffectReceiver_entry_1_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_1_min_buildup, 328);
+#define HF_TYPE_StatusEffectReceiver_entry_1_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_1_sure_buildup, 332);
+#define HF_TYPE_StatusEffectReceiver_entry_1_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_1_damage_multiplier, 352);
+#define HF_TYPE_StatusEffectReceiver_entry_1_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_2_type, 500);
+#define HF_TYPE_StatusEffectReceiver_entry_2_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_2_min_buildup, 504);
+#define HF_TYPE_StatusEffectReceiver_entry_2_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_2_sure_buildup, 508);
+#define HF_TYPE_StatusEffectReceiver_entry_2_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_2_damage_multiplier, 528);
+#define HF_TYPE_StatusEffectReceiver_entry_2_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_3_type, 676);
+#define HF_TYPE_StatusEffectReceiver_entry_3_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_3_min_buildup, 680);
+#define HF_TYPE_StatusEffectReceiver_entry_3_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_3_sure_buildup, 684);
+#define HF_TYPE_StatusEffectReceiver_entry_3_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_3_damage_multiplier, 704);
+#define HF_TYPE_StatusEffectReceiver_entry_3_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_4_type, 852);
+#define HF_TYPE_StatusEffectReceiver_entry_4_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_4_min_buildup, 856);
+#define HF_TYPE_StatusEffectReceiver_entry_4_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_4_sure_buildup, 860);
+#define HF_TYPE_StatusEffectReceiver_entry_4_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_4_damage_multiplier, 880);
+#define HF_TYPE_StatusEffectReceiver_entry_4_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_5_type, 1028);
+#define HF_TYPE_StatusEffectReceiver_entry_5_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_5_min_buildup, 1032);
+#define HF_TYPE_StatusEffectReceiver_entry_5_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_5_sure_buildup, 1036);
+#define HF_TYPE_StatusEffectReceiver_entry_5_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_5_damage_multiplier, 1056);
+#define HF_TYPE_StatusEffectReceiver_entry_5_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_6_type, 1204);
+#define HF_TYPE_StatusEffectReceiver_entry_6_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_6_min_buildup, 1208);
+#define HF_TYPE_StatusEffectReceiver_entry_6_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_6_sure_buildup, 1212);
+#define HF_TYPE_StatusEffectReceiver_entry_6_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_6_damage_multiplier, 1232);
+#define HF_TYPE_StatusEffectReceiver_entry_6_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_7_type, 1380);
+#define HF_TYPE_StatusEffectReceiver_entry_7_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_7_min_buildup, 1384);
+#define HF_TYPE_StatusEffectReceiver_entry_7_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_7_sure_buildup, 1388);
+#define HF_TYPE_StatusEffectReceiver_entry_7_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_7_damage_multiplier, 1408);
+#define HF_TYPE_StatusEffectReceiver_entry_7_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_8_type, 1556);
+#define HF_TYPE_StatusEffectReceiver_entry_8_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_8_min_buildup, 1560);
+#define HF_TYPE_StatusEffectReceiver_entry_8_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_8_sure_buildup, 1564);
+#define HF_TYPE_StatusEffectReceiver_entry_8_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_8_damage_multiplier, 1584);
+#define HF_TYPE_StatusEffectReceiver_entry_8_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_9_type, 1732);
+#define HF_TYPE_StatusEffectReceiver_entry_9_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_9_min_buildup, 1736);
+#define HF_TYPE_StatusEffectReceiver_entry_9_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_9_sure_buildup, 1740);
+#define HF_TYPE_StatusEffectReceiver_entry_9_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_9_damage_multiplier, 1760);
+#define HF_TYPE_StatusEffectReceiver_entry_9_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_10_type, 1908);
+#define HF_TYPE_StatusEffectReceiver_entry_10_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_10_min_buildup, 1912);
+#define HF_TYPE_StatusEffectReceiver_entry_10_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_10_sure_buildup, 1916);
+#define HF_TYPE_StatusEffectReceiver_entry_10_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_10_damage_multiplier, 1936);
+#define HF_TYPE_StatusEffectReceiver_entry_10_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_11_type, 2084);
+#define HF_TYPE_StatusEffectReceiver_entry_11_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_11_min_buildup, 2088);
+#define HF_TYPE_StatusEffectReceiver_entry_11_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_11_sure_buildup, 2092);
+#define HF_TYPE_StatusEffectReceiver_entry_11_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_11_damage_multiplier, 2112);
+#define HF_TYPE_StatusEffectReceiver_entry_11_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_12_type, 2260);
+#define HF_TYPE_StatusEffectReceiver_entry_12_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_12_min_buildup, 2264);
+#define HF_TYPE_StatusEffectReceiver_entry_12_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_12_sure_buildup, 2268);
+#define HF_TYPE_StatusEffectReceiver_entry_12_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_12_damage_multiplier, 2288);
+#define HF_TYPE_StatusEffectReceiver_entry_12_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_13_type, 2436);
+#define HF_TYPE_StatusEffectReceiver_entry_13_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_13_min_buildup, 2440);
+#define HF_TYPE_StatusEffectReceiver_entry_13_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_13_sure_buildup, 2444);
+#define HF_TYPE_StatusEffectReceiver_entry_13_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_13_damage_multiplier, 2464);
+#define HF_TYPE_StatusEffectReceiver_entry_13_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_14_type, 2612);
+#define HF_TYPE_StatusEffectReceiver_entry_14_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_14_min_buildup, 2616);
+#define HF_TYPE_StatusEffectReceiver_entry_14_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_14_sure_buildup, 2620);
+#define HF_TYPE_StatusEffectReceiver_entry_14_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_14_damage_multiplier, 2640);
+#define HF_TYPE_StatusEffectReceiver_entry_14_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_15_type, 2788);
+#define HF_TYPE_StatusEffectReceiver_entry_15_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_15_min_buildup, 2792);
+#define HF_TYPE_StatusEffectReceiver_entry_15_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_15_sure_buildup, 2796);
+#define HF_TYPE_StatusEffectReceiver_entry_15_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_15_damage_multiplier, 2816);
+#define HF_TYPE_StatusEffectReceiver_entry_15_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_16_type, 2964);
+#define HF_TYPE_StatusEffectReceiver_entry_16_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_16_min_buildup, 2968);
+#define HF_TYPE_StatusEffectReceiver_entry_16_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_16_sure_buildup, 2972);
+#define HF_TYPE_StatusEffectReceiver_entry_16_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_16_damage_multiplier, 2992);
+#define HF_TYPE_StatusEffectReceiver_entry_16_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_17_type, 3140);
+#define HF_TYPE_StatusEffectReceiver_entry_17_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_17_min_buildup, 3144);
+#define HF_TYPE_StatusEffectReceiver_entry_17_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_17_sure_buildup, 3148);
+#define HF_TYPE_StatusEffectReceiver_entry_17_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_17_damage_multiplier, 3168);
+#define HF_TYPE_StatusEffectReceiver_entry_17_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_18_type, 3316);
+#define HF_TYPE_StatusEffectReceiver_entry_18_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_18_min_buildup, 3320);
+#define HF_TYPE_StatusEffectReceiver_entry_18_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_18_sure_buildup, 3324);
+#define HF_TYPE_StatusEffectReceiver_entry_18_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_18_damage_multiplier, 3344);
+#define HF_TYPE_StatusEffectReceiver_entry_18_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_19_type, 3492);
+#define HF_TYPE_StatusEffectReceiver_entry_19_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_19_min_buildup, 3496);
+#define HF_TYPE_StatusEffectReceiver_entry_19_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_19_sure_buildup, 3500);
+#define HF_TYPE_StatusEffectReceiver_entry_19_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_19_damage_multiplier, 3520);
+#define HF_TYPE_StatusEffectReceiver_entry_19_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_20_type, 3668);
+#define HF_TYPE_StatusEffectReceiver_entry_20_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_20_min_buildup, 3672);
+#define HF_TYPE_StatusEffectReceiver_entry_20_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_20_sure_buildup, 3676);
+#define HF_TYPE_StatusEffectReceiver_entry_20_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_20_damage_multiplier, 3696);
+#define HF_TYPE_StatusEffectReceiver_entry_20_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_21_type, 3844);
+#define HF_TYPE_StatusEffectReceiver_entry_21_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_21_min_buildup, 3848);
+#define HF_TYPE_StatusEffectReceiver_entry_21_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_21_sure_buildup, 3852);
+#define HF_TYPE_StatusEffectReceiver_entry_21_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_21_damage_multiplier, 3872);
+#define HF_TYPE_StatusEffectReceiver_entry_21_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_22_type, 4020);
+#define HF_TYPE_StatusEffectReceiver_entry_22_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_22_min_buildup, 4024);
+#define HF_TYPE_StatusEffectReceiver_entry_22_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_22_sure_buildup, 4028);
+#define HF_TYPE_StatusEffectReceiver_entry_22_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_22_damage_multiplier, 4048);
+#define HF_TYPE_StatusEffectReceiver_entry_22_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_23_type, 4196);
+#define HF_TYPE_StatusEffectReceiver_entry_23_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_23_min_buildup, 4200);
+#define HF_TYPE_StatusEffectReceiver_entry_23_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_23_sure_buildup, 4204);
+#define HF_TYPE_StatusEffectReceiver_entry_23_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_23_damage_multiplier, 4224);
+#define HF_TYPE_StatusEffectReceiver_entry_23_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_24_type, 4372);
+#define HF_TYPE_StatusEffectReceiver_entry_24_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_24_min_buildup, 4376);
+#define HF_TYPE_StatusEffectReceiver_entry_24_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_24_sure_buildup, 4380);
+#define HF_TYPE_StatusEffectReceiver_entry_24_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_24_damage_multiplier, 4400);
+#define HF_TYPE_StatusEffectReceiver_entry_24_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_25_type, 4548);
+#define HF_TYPE_StatusEffectReceiver_entry_25_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_25_min_buildup, 4552);
+#define HF_TYPE_StatusEffectReceiver_entry_25_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_25_sure_buildup, 4556);
+#define HF_TYPE_StatusEffectReceiver_entry_25_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_25_damage_multiplier, 4576);
+#define HF_TYPE_StatusEffectReceiver_entry_25_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_26_type, 4724);
+#define HF_TYPE_StatusEffectReceiver_entry_26_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_26_min_buildup, 4728);
+#define HF_TYPE_StatusEffectReceiver_entry_26_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_26_sure_buildup, 4732);
+#define HF_TYPE_StatusEffectReceiver_entry_26_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_26_damage_multiplier, 4752);
+#define HF_TYPE_StatusEffectReceiver_entry_26_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_27_type, 4900);
+#define HF_TYPE_StatusEffectReceiver_entry_27_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_27_min_buildup, 4904);
+#define HF_TYPE_StatusEffectReceiver_entry_27_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_27_sure_buildup, 4908);
+#define HF_TYPE_StatusEffectReceiver_entry_27_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_27_damage_multiplier, 4928);
+#define HF_TYPE_StatusEffectReceiver_entry_27_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_28_type, 5076);
+#define HF_TYPE_StatusEffectReceiver_entry_28_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_28_min_buildup, 5080);
+#define HF_TYPE_StatusEffectReceiver_entry_28_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_28_sure_buildup, 5084);
+#define HF_TYPE_StatusEffectReceiver_entry_28_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_28_damage_multiplier, 5104);
+#define HF_TYPE_StatusEffectReceiver_entry_28_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_29_type, 5252);
+#define HF_TYPE_StatusEffectReceiver_entry_29_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_29_min_buildup, 5256);
+#define HF_TYPE_StatusEffectReceiver_entry_29_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_29_sure_buildup, 5260);
+#define HF_TYPE_StatusEffectReceiver_entry_29_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_29_damage_multiplier, 5280);
+#define HF_TYPE_StatusEffectReceiver_entry_29_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_30_type, 5428);
+#define HF_TYPE_StatusEffectReceiver_entry_30_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_30_min_buildup, 5432);
+#define HF_TYPE_StatusEffectReceiver_entry_30_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_30_sure_buildup, 5436);
+#define HF_TYPE_StatusEffectReceiver_entry_30_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_30_damage_multiplier, 5456);
+#define HF_TYPE_StatusEffectReceiver_entry_30_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_31_type, 5604);
+#define HF_TYPE_StatusEffectReceiver_entry_31_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_31_min_buildup, 5608);
+#define HF_TYPE_StatusEffectReceiver_entry_31_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_31_sure_buildup, 5612);
+#define HF_TYPE_StatusEffectReceiver_entry_31_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_31_damage_multiplier, 5632);
+#define HF_TYPE_StatusEffectReceiver_entry_31_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_32_type, 5780);
+#define HF_TYPE_StatusEffectReceiver_entry_32_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_32_min_buildup, 5784);
+#define HF_TYPE_StatusEffectReceiver_entry_32_min_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_32_sure_buildup, 5788);
+#define HF_TYPE_StatusEffectReceiver_entry_32_sure_buildup HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, entry_32_damage_multiplier, 5808);
+#define HF_TYPE_StatusEffectReceiver_entry_32_damage_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_0_type, 46536);
+#define HF_TYPE_StatusEffectReceiver_duration_0_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_0_multiplier, 46540);
+#define HF_TYPE_StatusEffectReceiver_duration_0_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_1_type, 46544);
+#define HF_TYPE_StatusEffectReceiver_duration_1_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_1_multiplier, 46548);
+#define HF_TYPE_StatusEffectReceiver_duration_1_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_2_type, 46552);
+#define HF_TYPE_StatusEffectReceiver_duration_2_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_2_multiplier, 46556);
+#define HF_TYPE_StatusEffectReceiver_duration_2_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_3_type, 46560);
+#define HF_TYPE_StatusEffectReceiver_duration_3_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_3_multiplier, 46564);
+#define HF_TYPE_StatusEffectReceiver_duration_3_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_4_type, 46568);
+#define HF_TYPE_StatusEffectReceiver_duration_4_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_4_multiplier, 46572);
+#define HF_TYPE_StatusEffectReceiver_duration_4_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_5_type, 46576);
+#define HF_TYPE_StatusEffectReceiver_duration_5_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_5_multiplier, 46580);
+#define HF_TYPE_StatusEffectReceiver_duration_5_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_6_type, 46584);
+#define HF_TYPE_StatusEffectReceiver_duration_6_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_6_multiplier, 46588);
+#define HF_TYPE_StatusEffectReceiver_duration_6_multiplier HF_TYPE_F32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_7_type, 46592);
+#define HF_TYPE_StatusEffectReceiver_duration_7_type HF_TYPE_U32
+HF_ASSERT_OFFSET(HfStatusEffectReceiver, duration_7_multiplier, 46596);
+#define HF_TYPE_StatusEffectReceiver_duration_7_multiplier HF_TYPE_F32
 
 #pragma pack(pop)
 

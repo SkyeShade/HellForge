@@ -1,0 +1,23 @@
+{
+  "about": "Level 11's launch code (difficulty_codes.c, #480): in a mixed mission the code's count takes only the Launch Codes, not the SSSD hard drives a partner brings. Run at difficulty 11 (keep skyeshade.hell-forge). The probe checks the stub on the count's call, asks the stub and the lookup for each of the seven carriers, and compares the game's own count (0x9B9820) over the live carriers with the Launch Codes' share. 'filter ok' needs a carrier other than the Launch Codes in the level (an uplink's, collected data's, a refinery's or SE equipment's drive); Automaton level 11 mixes draw one most times. Seeing the whole code on the HUD after retrieving the codes of an ICBM mixed with uplinks is still a hand test.",
+  "mods": [
+    "launch-codes-probe"
+  ],
+  "keep": [
+    "skyeshade.hell-forge"
+  ],
+  "only": true,
+  "mission": true,
+  "script": [
+    {"wait": 30}
+  ],
+  "checks": [
+    {"name": "the probe loads", "log": "mod-hellforge.launch-codes-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "level 11 gives the count its stub", "log": "modloader.log", "contains": "difficulty: a mixed mission's launch code counts only its Launch Codes"},
+    {"name": "the count's call reaches the stub", "log": "mod-hellforge.launch-codes-probe.log", "contains": "PROBE stub ok"},
+    {"name": "the stub passes the Launch Codes and gives the other carriers a zero key", "log": "mod-hellforge.launch-codes-probe.log", "contains": "PROBE direct ok"},
+    {"name": "with other carriers in the level the game's count is the Launch Codes' share", "log": "mod-hellforge.launch-codes-probe.log", "contains": "PROBE filter ok"},
+    {"name": "the launch code's sites are the reviewed code", "log": "modloader.log", "absent": "the launch code's"},
+    {"name": "nothing failed", "log": "mod-hellforge.launch-codes-probe.log", "absent": "FAIL"}
+  ]
+}

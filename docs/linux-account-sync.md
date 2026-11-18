@@ -67,7 +67,8 @@ a systemd service with its own dynamic user, so the signer's private key is out 
 | Path | Holds |
 |---|---|
 | `/var/lib/private/hellforge-signer/signer.key` | The signer's private key, readable only by the service's user |
-| `/run/hellforge-capture/` | The service's log, state and CA certificate; its account files are mode `0600` |
+| `/run/hellforge-capture/` | The service's run folder. systemd keeps it in `/run/private`, which only root can open |
+| `/run/hellforge/capture-evidence/` | The service's log, state and CA certificate, copied there by root every half second |
 | `/run/hellforge/capture-out/` | The sealed account files, copied by root, then given to the player |
 | `/var/lib/hellforge/snapshot-signer.pub` | The public key, written by root, mode `0644` |
 
@@ -80,7 +81,8 @@ a systemd service with its own dynamic user, so the signer's private key is out 
 - A HellForge update that changes the capture makes the next sync offer the helper install again.
 
 The service stops at the capture's 10-minute timeout plus two minutes (`RuntimeMaxSec`). Root moves no file the player
-can change: it copies the sealed files into its own folder, `seal.json` last, then hands that folder over.
+can change: it copies the sealed files into its own folder, `seal.json` last, then hands that folder over. It copies
+only plain files and never reads one through a link the service left in its place.
 
 ## Which Proton opens the game's prefix
 

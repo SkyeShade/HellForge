@@ -12,6 +12,8 @@ Every HellForge document, by who it is for, and what an installation holds. To i
 - [Translating the in-game editor](editor-translations.md): showing the editor (F8) in another language, and writing a
   word list for one.
 - [Lua mods](lua-bridge.md): Bingus Shared Loader, HD2Runtime and their mods on HellForge, and the Lua bridge behind them.
+- [The HellForge war](hellforge-war.md): the war every HellForge player shares, its server and its mission reports.
+- [War scripts](war-script.md): your own major orders, dispatches, reward mail and planet modifiers on top of the war.
 - [Co-op and public lobbies](multiplayer.md): playing with friends and in public lobbies, and which settings decide
   who can join.
 - [Linux (Proton)](linux.md): the experimental Linux setup: installing, updating, sessions, co-op, account sync and
@@ -40,6 +42,8 @@ The modding guide, in reading order:
    [The asset kit](modding/assets.md): sharing patch files made from the game's resources without Arrowhead's bytes.
 6. [Content](modding/content.md): changing and adding weapons, projectiles, stratagems, entities, behaviours, abilities
    and difficulties.
+   [Projectiles and damage](modding/projectiles.md): projectiles, damage types, explosions, beams, arcs and sprays of a
+   mod's own.
    [New enemies](modding/enemies.md): enemies with roster rows and squads of their own, and replacement rules.
    [Patterns](modding/patterns.md): patterns of a mod's own for weapons, vehicles, the hellpod and the Pelican.
    [Warbonds](modding/warbonds.md): warbonds of a mod's own, selling game items and its weapons and stratagems.
@@ -80,6 +84,9 @@ Reference and related pages:
   work, and how to turn a fix off.
 - [Performance fixes in level generation](performance-loading.md): the fixes that make the game's level generation
   take less time or memory.
+- [Performance fixes for many enemies](performance-enemies.md): the fixes for missions with hundreds of enemies.
+- [Fixes to the game's own behaviour](gameplay-fixes.md): where the mod loader changes what the game gets wrong, such as
+  explosions knocking Helldivers down through cover.
 - [Crash guards in the renderer](crash-guards.md): the two crashes of the game's renderer that HellForge guards, and why
   each guard is safe.
 - [Steam Cloud stays in the profile](steam-cloud.md): how the `steam_api64.dll` stand-in keeps the game's cloud files in

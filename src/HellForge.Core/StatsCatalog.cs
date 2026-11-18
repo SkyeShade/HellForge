@@ -159,9 +159,15 @@ public static class StatsCatalog
                 items.Add(new("rosters/" + name, target.Label ?? name, "rosters", FactionLabel(target.Family), name, [Part("rosters", name, "Roster row")])
                     { Search = name, Faction = target.Family, Line = Humanize(roster) + (row.Length > 0 ? " · Row " + row : "") });
             }
+            // a composition by its role and the enemies it draws ("Patrol: Hunter, Scavenger"), its faction's emblem and filter
+            // chip, and its faction, family and row under the name ("terminids/family_1/row_3": "Terminids · Family 1 · Row 3")
             foreach (var (name, target) in Section("compositions"))
+            {
+                var place = name.Split('/') is [_, var family, var row] ? " · " + Humanize(family) + " · " + Humanize(row) : "";
                 items.Add(new("compositions/" + name, target.Label ?? name, "compositions", FactionLabel(target.Family), Humanize(target.Class ?? ""),
-                    [Part("compositions", name, "Composition")]) { Search = name + " " + target.Class });
+                    [Part("compositions", name, "Composition")])
+                    { Search = name + " " + target.Class, Faction = target.Family, Line = FactionLabel(target.Family) + place });
+            }
             foreach (var (name, target) in Section("demolition"))
                 items.Add(new("demolition/" + name, target.Label ?? name, "demolition", null, null, [Part("demolition", name, "Demolition template")])
                     { Search = name });
@@ -372,6 +378,8 @@ public static class StatsCatalog
             case "presentation": return ("presentation", "Armory", 0); // the armory's traits
             case "turret": return ("fire", "Turret", 2);
             case "targeting": return ("fire", "Targeting", 3);
+            // a seeking missile's spread: its own group after the missile's flight (Stats.cs MissileSpread)
+            case "missile" or "function_missile" when segments.Length == 3 && segments[1] == "spread": return ("other:" + domain, "Spread", 1);
             case "weapon" when AmmoRank.ContainsKey(key): return ("ammo", "Ammunition", 0);
             case "weapon" when HandlingWords.Any(key.Contains): return ("fire", "Handling", 0);
             case "weapon": return ("fire", "Fire", 1);
@@ -400,7 +408,6 @@ public static class StatsCatalog
     public static IReadOnlyList<StatsSection> Sections(StatsItem item, StatsSchema? schema = null)
     {
         schema ??= StatsSchema.Current;
-        var weaponPage = item.Nav is "primary" or "secondary" or "throwables" or "support";
         var vehiclePage = item.Nav == "vehicles";
         var titles = new Dictionary<string, string>(StringComparer.Ordinal);
         var placed = new List<(string Category, string Group, double Rank, StatsRow Row)>();
@@ -413,7 +420,7 @@ public static class StatsCatalog
             part.Category == "enemies" && item.Parts.Count > 1 || groupParts[(category, group)].Count > 1 && groupParts[(category, group)][0] != part;
         var sections = new List<StatsSection>();
         var firstSeen = placed.Select(p => p.Category).Distinct().ToList();
-        foreach (var category in firstSeen.OrderBy(c => vehiclePage ? VehicleRank(c, firstSeen) : CategoryRank(c, weaponPage, firstSeen)))
+        foreach (var category in firstSeen.OrderBy(c => vehiclePage ? VehicleRank(c, firstSeen) : CategoryRank(c, firstSeen)))
         {
             var rows = placed.Where(p => p.Category == category).ToList();
             var groups = rows.GroupBy(p => (p.Group, p.Row.Part))
@@ -480,12 +487,12 @@ public static class StatsCatalog
         _ => 1000 + firstSeen.IndexOf(category),
     };
 
-    static int CategoryRank(string category, bool weaponPage, IList<string> firstSeen) => category switch
+    static int CategoryRank(string category, IList<string> firstSeen) => category switch
     {
         "att:magazine" => 2000, "att:muzzle" => 2001, "att:optics" => 2002, "att:underbarrel" => 2003,
         "identity:health" => 0, "identity:speed" => 1, "identity:stamina" => 2, "identity:refill" => 3, "identity:damage" => 4, // the Helldiver's, in HD2R Editor's order
         "zones" => 200, "attacks" => 300, // an entity's, after its Health & Armor
-        "call_in" => weaponPage ? 3000 : 0,
+        "call_in" => 0, // a stratagem's hellpod and call-in open its page, a support weapon's too
         _ when category.StartsWith("identity:", StringComparison.Ordinal) => 10 + firstSeen.IndexOf(category),
         _ when Array.IndexOf(Order, category) is var i and >= 0 => 100 + i,
         _ => 1000 + firstSeen.IndexOf(category)
@@ -527,7 +534,8 @@ public static class StatsCatalog
     static readonly Dictionary<string, string> Units = new(StringComparer.Ordinal)
     {
         ["rpm"] = "rpm", ["mrad"] = "mrad", ["seconds"] = "s", ["milliseconds"] = "ms", ["degrees"] = "°", ["degrees_per_second"] = "°/s",
-        ["meters"] = "m", ["meters_per_second"] = "m/s", ["grams"] = "g", ["kilograms"] = "kg", ["multiplier"] = "×", ["factor"] = "×",
+        ["meters"] = "m", ["meters_per_second"] = "m/s", ["meters_per_second_squared"] = "m/s²", ["degrees_per_second_squared"] = "°/s²",
+        ["grams"] = "g", ["kilograms"] = "kg", ["multiplier"] = "×", ["factor"] = "×",
         ["ratio"] = "", ["percent"] = "%", ["damage"] = "", ["health"] = "hp", ["armor_class"] = "AP", ["force"] = "", ["rounds"] = "rnd",
         ["projectiles"] = "", ["count"] = "", ["throwables"] = "", ["magazines"] = "mag", ["uses"] = "uses", ["record_units"] = "",
         ["native_angular_velocity"] = "", ["projectiles_per_shot"] = "/shot", ["pellets"] = "", ["strength"] = "", ["targets"] = "",

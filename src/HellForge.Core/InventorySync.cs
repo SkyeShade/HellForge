@@ -171,7 +171,13 @@ public static class InventorySync
         if (LinuxCapture.RunRefusal(gameRunning(), sessionRunning) is { } running)
             throw new InvalidOperationException(running);
         var steamRoot = SteamLocator.SteamRoot(new InstallLayout(installRoot));
-        var prefix = LinuxCapture.FindPrefix(steamRoot);
+        string? prefix;
+        // Steam's library list can be unreadable or refused; that is a reason the sync cannot start, not a launcher crash.
+        try { prefix = LinuxCapture.FindPrefix(steamRoot); }
+        catch (Exception error) when (error is InvalidDataException or ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException("HELLDIVERS 2's Proton prefix could not be found in Steam's libraries: " + error.Message);
+        }
         var resolution = LinuxCapture.FindProtonForGame(steamRoot);
         var proton = resolution.Proton;
         var address = LinuxCapture.CurrentAddress();
@@ -191,7 +197,7 @@ public static class InventorySync
             helper = LinuxCapture.StartHelper(installRoot, steamAccount, address!, syncDir);
             var run = new CaptureRun(helper, syncDir);
             WaitForSigningCapture(run, syncDir);
-            File.Copy(LinuxCapture.CertificatePath(LinuxCapture.SignerRunFolder), certificatePath, overwrite: true);
+            File.Copy(LinuxCapture.CertificatePath(LinuxCapture.SignerEvidenceFolder), certificatePath, overwrite: true);
             LinuxCapture.RestrictPrivateFile(certificatePath);
             record = new(prefix!, proton!, steamRoot, certificatePath,
                 LinuxCapture.CertificateThumbprint(File.ReadAllBytes(certificatePath)));
@@ -206,14 +212,15 @@ public static class InventorySync
         }
     }
 
-    // The helper checks its capture copy (tens of megabytes hashed) and starts it as a systemd service before it listens.
+    // The helper checks its capture copy (tens of megabytes hashed) and starts it as a systemd service before it listens;
+    // it copies the service's state and CA to the evidence folder every half second (LinuxCapture.SignerEvidenceFolder).
     static void WaitForSigningCapture(CaptureRun run, string syncDir)
     {
         var deadline = DateTime.UtcNow.AddSeconds(45);
         while (true)
         {
             run.Refresh();
-            if (File.Exists(LinuxCapture.CertificatePath(LinuxCapture.SignerRunFolder)) && IsListening(syncDir)) return;
+            if (LinuxCapture.SigningCaptureReady(LinuxCapture.SignerEvidenceFolder, syncDir)) return;
             if (run.HasExited) throw new InvalidOperationException("The Linux capture stopped before it listened. " + ProxyLogTail(syncDir));
             if (DateTime.UtcNow >= deadline) throw new InvalidOperationException("The Linux capture did not start within 45 seconds. " + ProxyLogTail(syncDir));
             Thread.Sleep(100);
@@ -277,7 +284,7 @@ public static class InventorySync
         public void Refresh()
         {
             if (helper != null && syncDir != null && Volatile.Read(ref disposed) == 0)
-                accountFilesCopied |= LinuxCapture.MirrorSignerRun(LinuxCapture.SignerRunFolder, LinuxCapture.SignerHandOverFolder, syncDir, accountFilesCopied);
+                accountFilesCopied |= LinuxCapture.MirrorSignerRun(LinuxCapture.SignerEvidenceFolder, LinuxCapture.SignerHandOverFolder, syncDir, accountFilesCopied);
         }
 
         public void Dispose()

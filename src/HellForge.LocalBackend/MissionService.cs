@@ -48,10 +48,27 @@ public sealed class MissionService
         if (pickups != null) pickups.Credit = Credit;
     }
 
+    // The HellForge war, told of each mission (HellForgeWar); its reports never change a reply.
+    public HellForgeWar? Reports { get; init; }
+
     public static bool Handles(string path) => path is "/Operation/Create" or "/Operation/Abandon" or "/Operation/Mission/Start"
         or "/Operation/Mission/end" or "/Operation/Mission/Activity" or "/Operation/Mission/SetMaxRewards" or "/Progression/inventory/consume";
 
-    public (JsonNode Reply, string Outcome) Handle(string path, JsonElement body) => path switch
+    public (JsonNode Reply, string Outcome) Handle(string path, JsonElement body)
+    {
+        var answer = Answer(path, body);
+        // after the reply is made, so a report can neither delay nor change it (each runs in the background)
+        switch (path)
+        {
+            case "/Operation/Create": Reports?.OperationsCreated(body); break;
+            case "/Operation/Mission/Start": Reports?.MissionStarted(body, (string)answer.Reply["missionId"]!); break;
+            case "/Operation/Mission/end": Reports?.MissionEnded(body); break;
+            case "/Operation/Abandon": Reports?.OperationAbandoned(body); break;
+        }
+        return answer;
+    }
+
+    (JsonNode Reply, string Outcome) Answer(string path, JsonElement body) => path switch
     {
         "/Operation/Create" => (Create(body), "operation_created"),
         "/Operation/Mission/Start" => (new JsonObject { ["missionId"] = Guid.NewGuid().ToString() }, "mission_started"),

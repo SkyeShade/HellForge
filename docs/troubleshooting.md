@@ -189,7 +189,8 @@ have. On Linux, Proton's own builtin runtimes serve, and nothing is checked or i
 
 The copy setup makes holds English only: every other language of HELLDIVERS 2 is a free DLC of its own, which Steam
 installs beside the game but setup does not copy yet. A copy without your language crashes when you switch the game to
-it.
+it. Before each session HellForge checks the game's text and voice language: one whose pack is not in the copy is set
+back to English, and the session log says so.
 
 Until setup offers it, add the language with the command-line tool, `<installation>\app\cli\HellForge.Cli.exe`. Japanese is
 the only language HellForge has pinned so far; more follow.
@@ -355,6 +356,8 @@ On Linux, **Sync Inventory** can stop before the game opens with these messages.
 | "The prefix version changed from ... to ... during the import" | Evidence that a Proton upgraded the prefix while the CA was being imported. If the sync failed, close Steam's game/tools in that prefix and sync again. |
 | "Wine reg import could not remove the capture CA (exit ..., see launcher.log)", "The capture CA removal is not proven: reg export ...", or "Wine reg export did not find the capture CA key, but the key is in system.reg after the flush; the key is not proven gone." | Cleanup kept the `capture-ca.json` record so the next launcher start retries. Empty `reg export` output alone is never "removed"; close the game/tools in that prefix, then use **Clean up** again. |
 | "The Proton that opens HELLDIVERS 2's prefix could not be resolved..." | HellForge looked for Steam's `CompatToolMapping` for 553850 or its `0` default, then the prefix's `compatdata/553850/config_info` and `version`. Start HELLDIVERS 2 once through Steam: running it writes `config_info`, and the next sync can follow it. |
+| "The Linux capture did not start within 45 seconds. It wrote no log." | The capture never told the launcher it was listening. HellForge 0.5.0 nightlies before the fix had this on every Linux PC: the helper kept the capture's files where only root can read them. Update HellForge, sync, and accept the helper install it offers. If it still happens, send `logs/sync-*` and the output of `journalctl -u hellforge-capture -b`. |
+| "HELLDIVERS 2's Proton prefix could not be found in Steam's libraries: ..." | Steam's library list (`steamapps/libraryfolders.vdf`) could not be read, or is itself a link. Start Steam once so it writes the list, then sync again. |
 | "The capture helper was not installed; nothing changed." | The password dialog was dismissed, the password was denied, or the launcher could not show one. Sync again to get the confirmation and dialog again. |
 | "pkexec is not installed, so the launcher cannot show the desktop password dialog." or "No polkit authentication agent is running..." | The launcher could not show the desktop dialog. Its message includes the exact `sudo bash .../allow-capture.sh` command to run once from a terminal. |
 | "SteamOS 3.x may have no password set: run passwd first, then sync again." | Set a password with `passwd`, then press Sync Inventory again; the launcher installs the helper through the polkit dialog. |
@@ -550,7 +553,10 @@ scrubbed. Open a GitHub issue then opens the new-issue page; nothing is sent unt
 Settings > Troubleshooting has two switches for harder problems. Both apply to the next session.
 
 - Engine log starts the game with its own log switched on (`--log-to-file`) and copies that log into the session's logs,
-  so Save logs to Desktop includes it. It helps find why a join or connection fails.
+  so Save logs to Desktop includes it. It helps find why a join or connection fails. The game puts the PC's name in
+  that log's file name, and a name with letters outside A-Z, 0-9 and "-" crashes it (`helldivers2.exe+0x5ce339`). On
+  such a PC the session starts the game without its log and the session log says why. Rename the PC with plain letters
+  to have the engine log.
 - Crash dump writes a full memory dump of the game (about 1 GB) into the session's logs if it crashes. Without it, a
   crash still leaves a small dump (`crash-<process id>.dmp`: the game's threads and the memory they point to, not all
   of it). Either can hold what the game had in memory, your Steam account name for one, so only send a dump to people you

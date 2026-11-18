@@ -484,9 +484,9 @@ int main(int argc, char** argv)
         if (!g_modPage || g_modApplied != 1) { puts("FAIL a mod's stratagem got no page, or its saved value did not reach its own row"); return 1; }
         printf("  mod weapons: own_all %d field(s), its own fire record %d, shares everything: %s\n", g_goldFields, g_swiftFields,
             g_plainNoPage ? "no page" : "a page");
-        /* the Liberator's live fields: 15 handling and fire, 3 rates of fire, 5 armory traits (stats snapshot reads and
-         * choices, its displayed armor penetration, stay off copies) */
-        if (g_goldFields != 23 || g_swiftFields != 3 || !g_plainNoPage)
+        /* the Liberator's live fields: 16 handling and fire (with its firing ability, #402), 3 rates of fire, 5 armory
+         * traits (stats snapshot reads and choices, its displayed armor penetration, stay off copies) */
+        if (g_goldFields != 24 || g_swiftFields != 3 || !g_plainNoPage)
         { puts("FAIL a mod weapon's page is not the fields of the records it owns"); return 1; }
     }
 

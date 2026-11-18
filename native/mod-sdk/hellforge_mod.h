@@ -37,7 +37,7 @@
 extern "C" {
 #endif
 
-#define HF_MOD_SDK_VERSION 19
+#define HF_MOD_SDK_VERSION 20
 #define HF_MOD_EXPORT __declspec(dllexport)
 
 typedef struct HfMod HfMod; /* Identifies the calling mod in logs and status. Opaque, but for SDK 6's HF_API(mod). */
@@ -127,6 +127,10 @@ typedef struct HfWeapon
      * is in the type's row. */
     uint32_t beam;
     uint32_t arc;
+    /* SDK 20: the damage its spray deals (a vanilla damage id, or one add_damage returned; 0: its base's). Its base must
+     * spray (a flamethrower, the Sterilizer: a SprayWeaponComponentData record): a spray has no shared settings row,
+     * so the weapon gets that record of its own with the damage in it (docs/modding/content.md "Sprays"). */
+    uint32_t spray_damage;
 } HfWeapon;
 
 /* A part of an entity (SDK 17, HfEntity.parts): a component's name ("#52": its number) and the entity whose record it takes. */
@@ -779,6 +783,8 @@ typedef struct HfContent
     /* SDK 17, a weapon: the beam and arc it fires of a mod's (0: its base's) */
     uint32_t beam;
     uint32_t arc;
+    /* SDK 20, a weapon: the damage its spray deals of a mod's (0: its base's) */
+    uint32_t spray_damage;
 } HfContent;
 
 typedef struct HfEventInfo
@@ -1335,7 +1341,8 @@ typedef struct HfApi
 
     /* ---- SDK 3 ---------------------------------------------------------------------------------------------------- */
     /* Adds a new projectile type (see HfProjectile). Call it from hellforge_mod_init. Returns its ProjectileType (351 and
-     * up), or 0 (the mod's log says why). 64 new types in all mods together (HellForge moves the game's list). */
+     * up), or 0 (the mod's log says why). 1,024 new types in all mods together (HellForge moves the game's list); past
+     * type 511 their co-op field widens to 11 bits on every machine (docs/modding/projectiles.md "Room and co-op"). */
     uint32_t (*add_projectile)(HfMod* mod, const HfProjectile* projectile);
     /* The 272-byte settings row of a projectile a mod added, after HF_EVENT_PROJECTILES_READY, or 0. Its +0 is the type
      * and must stay so; the rest may be changed (HD2Runtime's research names the members). */
@@ -1645,8 +1652,9 @@ typedef struct HfApi
      * stay. */
     uintptr_t (*arc_row)(uint32_t type);
     /* Adds a weapon attachment (see HfAttachment). Call it from hellforge_mod_init, after add_weapon for its weapons.
-     * Returns its item id, or 0 (the mod's log says why). 128 across all mods. Customization screens list it on its
-     * weapons once the game has loaded its items; the session's backend makes it the player's. */
+     * Returns its item id, or 0 (the mod's log says why). 1,024 across all mods, weapon patterns among them.
+     * Customization screens list it on its weapons once the game has loaded its items; the session's backend makes it
+     * the player's while the game's catalogue has room for its item on each weapon (the backend's log names the rest). */
     uint32_t (*add_attachment)(HfMod* mod, const HfAttachment* attachment);
 
     /* ---- SDK 17: enemies (check hf->size before calling) ----------------------------------------------------------- */
@@ -1689,8 +1697,9 @@ typedef struct HfApi
 
     /* ---- SDK 18: patterns (check hf->size before calling) ---------------------------------------------------------- */
     /* Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why).
-     * 128 across all mods; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in
-     * all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data. */
+     * Weapon patterns count among add_attachment's 1,024 across all mods, unit patterns 128; a weapon takes 16 mods'
+     * patterns, and a vehicle, hellpod or Pelican collection 24 skins in all (16 to 19 are the game's). Its textures must
+     * be loaded: put them in a session package of the mod's data. */
     uint32_t (*add_pattern)(HfMod* mod, const HfPattern* pattern);
 
     /* ---- SDK 19: screens in the game's own UI (hellforge_ui.h, docs/modding/ui.md; check hf->size) ---------------- */

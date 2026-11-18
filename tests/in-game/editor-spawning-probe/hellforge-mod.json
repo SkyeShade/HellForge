@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "hellforge.editor-spawning-probe",
+  "name": "Editor spawning probe",
+  "version": "1.0.0",
+  "description": "In-game test only (tests/in-game/editor-spawning.json), never shipped: Impalers strike with 5 tentacles, Alpha Commanders summon 2 Hunters a call, a Terminid patrol draws warriors instead of hunters, and difficulty 7's Terminid patrol cap and traveller interval change.",
+  "gameplay": true
+}

@@ -916,13 +916,22 @@ static const char* GrantRefused(uintptr_t game, uint32_t type, int* waiting)
     return NULL;
 }
 
-/* The mission stratagem: the sets' copy (+0x100) the stub (+0) gives the added level. */
+static int g_grantPending; /* the mission stratagem's row was not loaded at the install: GrantTick installs it later */
+
+/* The mission stratagem: the sets' copy (+0x100) the stub (+0) gives the added level. While its row is not loaded the
+ * grant waits (g_grantPending) and the install goes on: the generation block's move must not wait for it. */
 static const char* InstallGrant(DifficultyInstall* d)
 {
     if (g_difficulty.grant == 0) return NULL;
     uintptr_t game = d->game;
     int waiting;
     const char* refused = GrantRefused(game, g_difficulty.grant, &waiting);
+    g_grantPending = refused != NULL && waiting;
+    if (g_grantPending)
+    {
+        NoteDiagnostic("difficulty: the mission stratagem's row is not loaded yet; its grant follows once it is");
+        return NULL;
+    }
     if (refused != NULL)
     {
         ApiLog(g_difficulty.mod, "difficulty %s: mission stratagem %u is not granted: %s", g_difficulty.name, g_difficulty.grant, refused);
@@ -949,8 +958,20 @@ static const char* InstallGrant(DifficultyInstall* d)
     uint8_t jump[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
     rel = DifficultyJumpRel(game + DIF_GRANT_SITE, (uintptr_t)grant); memcpy(jump + 1, &rel, 4);
     if (ApiWrite(game + DIF_GRANT_SITE, jump, sizeof jump)) return "the mission stratagems could not be extended";
+    StorePatch(game + DIF_GRANT_SITE, jump, sizeof jump); /* the site audit's record, also when GrantTick writes it */
     ApiLog(g_difficulty.mod, "difficulty %s: every mission grants stratagem %u (%u mission kinds)", g_difficulty.name, g_difficulty.grant, added);
     return NULL;
+}
+
+/* From the Watch thread once level 11 is installed: the grant whose row was not loaded at the install, once it is. */
+static void GrantTick(uintptr_t game)
+{
+    if (!g_grantPending || g_difficultyState != 1 || game == 0) return;
+    int waiting;
+    if (GrantRefused(game, g_difficulty.grant, &waiting) != NULL && waiting) return;
+    DifficultyInstall d = {game};
+    const char* why = InstallGrant(&d);
+    if (why != NULL) ApiLog(g_difficulty.mod, "difficulty %s: stratagem %u is not granted: %s", g_difficulty.name, g_difficulty.grant, why);
 }
 
 /* The radar station (HF_DIFFICULTY_RADAR): discovered from the start, kept in the selection, and the city ICBM missions. */

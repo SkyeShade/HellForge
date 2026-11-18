@@ -120,7 +120,7 @@ public partial class MainWindow
     {
         if (removeAsked != mod.Id || paths.InstallRoot == null) return null;
         var install = new InstallLayout(paths.InstallRoot);
-        var what = mod.Archive != null ? Path.Combine(install.Mods, mod.Archive) : mod.Folder;
+        var what = ModInstaller.InstalledPath(install, mod);
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock
         {

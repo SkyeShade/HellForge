@@ -268,6 +268,73 @@ static class EditorTests
             check(row["hd2r"]![0]!.GetValue<string>() == "ed|composition/automatons/family_1/row_0|composition.weight", "Keyed as HD2R Editor presets name them.");
         });
 
+        test("Spawning edits from the Discord requests: summons, composition contents and roles, travellers, stragglers, patrols past 128", () =>
+        {
+            var targets = StatsSchema.Current.Targets;
+            var hunters = targets["compositions"]["terminids/family_1/row_3"];
+            check(hunters.Label == "Patrol: Hunter, Scavenger" && targets["compositions"]["automatons/family_7/row_0"].Class == "convoy" &&
+                  targets["compositions"]["illuminate/family_8/row_0"].Label!.StartsWith("Air support: ", StringComparison.Ordinal) &&
+                  !targets["compositions"].Values.Any(c => c.Class is null or "unresolved"),
+                "A composition is named by its family's role and the enemies its groups draw; every family has a role.");
+            var key = hunters.Fields["composition.group_0_key"];
+            check(key is { Kind: "EnemyComposition", Offset: 0, Storage: "u32" } && key.Choices.Any(c => c.Value == 0xD1A37E30u && c.Label == "Hunter") &&
+                  hunters.Fields["composition.group_2_key"].Offset == 24 && hunters.Fields["composition.group_2_count"] is { Offset: 28, Max: 32 } &&
+                  !hunters.Fields.ContainsKey("composition.group_3_key"),
+                "Each group picks its enemy family from its faction's roster, and the first empty group adds one.");
+            var tentacles = targets["enemies"]["Impaler"].Fields;
+            var warriors = targets["enemies"]["warrior_big_tier2"].Fields;
+            check(tentacles["summon.family"] is { Kind: "EnemySummon", Record: 333, Offset: 0 } && tentacles["summon.count"] is { Record: 333, Offset: 4, Max: 16 } &&
+                  warriors["summon.family"] is { Kind: "EnemySummon", Record: 463 } && warriors["summon.family"].Choices.Any(c => c.Value == 0x8F7704F8u) &&
+                  !targets["enemies"]["warrior_big"].Fields.ContainsKey("summon.family"),
+                "The Impaler's tentacles and the Alpha Commander's warriors: which family and how many, on their pages.");
+            var level = targets["difficulty"]["10"].Fields;
+            check(level["difficulty.patrol_cap_terminids"].Max == 1000 && level["difficulty.traveller_cap_automatons"] is { Offset: 752, Storage: "u32" } &&
+                  level["difficulty.straggler_interval_illuminate"] is { Offset: 768, Storage: "f32" } && level["difficulty.straggler_batch_terminids"] is { Offset: 784, Max: 32 } &&
+                  level["difficulty.straggler_cap_automatons"].Offset == 800 && targets["difficulty"]["11"].Fields.ContainsKey("difficulty.traveller_interval_terminids"),
+                "Patrol caps past 128; traveller and straggler timers and caps per faction, on every difficulty (11 too).");
+            check(targets["enemies"].Values.SelectMany(t => t.Fields.Values).Where(f => f.Kind == "EnemySummon")
+                    .All(f => SdkMappings.Current.FieldAt(f.Kind, f.Offset, f.Storage) != null),
+                "The summon rows are the engine's (mappings/components.json EnemySummon).");
+            var saved = StatsData.Parse("""{"format":1,"enemies":{"Impaler":{"summon.count":5}},"compositions":{"terminids/family_1/row_3":{"composition.group_2_key":3517152816}}}""",
+                EntityProfile.Current);
+            check(saved.Any(e => e is { Kind: "EnemySummon", Record: 333, Offset: 4, Value: 5 }) &&
+                  saved.Any(e => e is { Kind: "EnemyComposition", Record: 3, Offset: 24, Value: 3517152816 }),
+                "Saved in Local Stats, they come back at the next boot: " + string.Join(", ", saved.Select(e => e.Key)));
+            var catalog = EditorCatalog.Build();
+            var compositions = catalog["categories"]!.AsArray().Single(c => c!["id"]!.GetValue<string>() == "compositions")!;
+            var item = catalog["objects"]!.AsArray().Single(o => o!["id"]!.GetValue<string>() == "compositions/terminids/family_1/row_3")!;
+            check(compositions["levels"]!.GetValue<bool>() && compositions["filters"]!.AsArray().Count == 3 &&
+                  item["subtitle"]!.GetValue<string>() == "Terminids · Family 1 · Row 3" && item["group"]!.GetValue<string>() == "Terminids",
+                "Spawn Compositions filter by faction and by difficulty; the line under a name says where it is.");
+        });
+
+        test("Enemy limits: the spawn gates and the despawn pass on every difficulty, patrols under a second", () =>
+        {
+            var targets = StatsSchema.Current.Targets;
+            var level = targets["difficulty"]["7"].Fields;
+            check(level["difficulty.patrol_gate"] is { Kind: "EnemyLimits", Record: 7, Offset: 0, Storage: "u32", Min: 0, Max: 1000, Section: "Enemy limits" } &&
+                  level["difficulty.roaming_gate"].Offset == 4 && level["difficulty.spawn_gate"].Offset == 8 &&
+                  level["difficulty.despawn"] is { Offset: 12, Max: 1 } && level["difficulty.despawn"].Choices.Count() == 2 &&
+                  level["difficulty.despawn_start"].Offset == 16 && level["difficulty.despawn_distance"] is { Offset: 20, Storage: "f32", Min: 10, Max: 2000 } &&
+                  targets["difficulty"]["11"].Fields["difficulty.patrol_gate"].Record == 11,
+                "Each difficulty (11 too) has its EnemyLimits row: three gates, the despawn switch, its start and distance.");
+            check(level.Values.Where(f => f.Kind == "EnemyLimits").All(f => f.Note!.Contains("host's", StringComparison.Ordinal)) &&
+                  level["difficulty.patrol_gate"].Note!.Contains("400", StringComparison.Ordinal) && level["difficulty.despawn"].Note!.Contains("545", StringComparison.Ordinal),
+                "Their notes say the host decides and where the game crashes today.");
+            check(level["difficulty.patrol_interval_terminids"].Min == 0.1 && level["difficulty.patrol_cap_automatons"].Note!.Contains("patrol gate", StringComparison.Ordinal),
+                "Patrols may come every 0.1 s; the patrol caps point at the gate that stops them first.");
+            var saved = StatsData.Parse("""{"format":1,"difficulty":{"10":{"difficulty.patrol_gate":200,"difficulty.despawn":0,"difficulty.despawn_distance":300,"difficulty.patrol_interval_terminids":0.5}}}""",
+                EntityProfile.Current);
+            check(saved.Any(e => e is { Kind: "EnemyLimits", Record: 10, Offset: 0, Value: 200 }) && saved.Any(e => e is { Kind: "EnemyLimits", Offset: 12, Value: 0 }) &&
+                  saved.Any(e => e is { Kind: "DifficultySettings", Record: 10, Offset: 672 }),
+                "A stats file sets them: " + string.Join(", ", saved.Select(e => e.Key)));
+            foreach (var wrong in new[] { "\"difficulty.patrol_gate\":5000", "\"difficulty.despawn\":2", "\"difficulty.despawn_distance\":5" })
+                reject(() => StatsData.Parse("{\"format\":1,\"difficulty\":{\"10\":{" + wrong + "}}}", EntityProfile.Current));
+            var row = EditorCatalog.Build()["objects"]!.AsArray().Select(o => o!.AsObject()).Single(o => o["id"]!.GetValue<string>() == "difficulty/10")["page"]!
+                .AsArray().SelectMany(c => c!["subs"]!.AsArray()).SelectMany(s => s!["rows"]!.AsArray()).First(r => r!["key"]!.GetValue<string>() == "difficulty.despawn")!;
+            check(row["toggle"]?.GetValue<bool>() == true, "The despawn switch is a tick box.");
+        });
+
         test("The editor's icons are the game's sprite pixels: block formats decoded exactly, written in the editor's format", () =>
         {
             /* BC1: colour 0 white, colour 1 black, every texel index 0 except the last (1) */

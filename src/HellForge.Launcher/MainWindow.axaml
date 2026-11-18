@@ -479,6 +479,18 @@
             <Border Classes="card">
               <StackPanel Spacing="8">
                 <TextBlock Text="GALACTIC WAR" Classes="h2" />
+                <RadioButton x:Name="WarHellForgeRadio" GroupName="war" Content="HellForge war" />
+                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
+                           Text="One war shared by every HellForge player, with its own major orders and dispatches. Your missions count towards it. The backend reads it from HellForge's war server before the game starts and every minute while you play. Without a connection the last fetched war is used." />
+                <StackPanel x:Name="WarServerOptions" Spacing="4" Margin="28,2,0,0">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="War server" VerticalAlignment="Center" />
+                    <TextBox x:Name="WarServerBox" Width="320" MaxLength="512" VerticalContentAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock Classes="muted" TextWrapping="Wrap"
+                             Text="For testing a server of your own. Leave it empty for HellForge's. An address on this PC can be http, any other must be https." />
+                  <TextBlock x:Name="WarServerWarning" Classes="muted" Foreground="#FFA235" TextWrapping="Wrap" IsVisible="False" />
+                </StackPanel>
                 <RadioButton x:Name="WarLiveRadio" GroupName="war" Content="Follow the live galactic war" />
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="28,0,0,0"
                            Text="Before the game starts and every 5 minutes while you play, the backend reads the current war (planets, campaigns, liberation) from the community API mirror api.helldivers2.dev, read-only. Neither HellForge nor the game ever contacts Arrowhead's servers. Without a connection the last fetched war is used." />
