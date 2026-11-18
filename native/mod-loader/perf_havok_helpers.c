@@ -11,7 +11,7 @@
 #define HH_SETUP 0x816520u   /* exe: the worker's Havok thread setup (once a thread), writes an int thread index */
 #define HH_SPAWN 0x8AA1B4u   /* exe: the submit's helper start, the job's only reference */
 #define HH_POPPED 0x8A9B35u  /* exe: a pop takes one from the queue's count +8 */
-#define HH_LINGER 6          /* helpers that may stay at once */
+#define HH_LINGER 12         /* helpers that may stay at once: the AI avoidance solve alone has 32 parts a frame */
 #define HH_IDLE_US 1000      /* a staying helper leaves after this long without a task */
 #define HH_PAUSES 32         /* pause instructions between two looks at the queue */
 
