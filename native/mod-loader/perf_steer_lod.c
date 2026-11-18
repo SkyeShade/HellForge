@@ -163,3 +163,101 @@ static void SteerLodWatch(void)
     if (g_slFirstTry == 0) g_slFirstTry = GetTickCount64();
     g_slState = SteerLodTry(game, GetTickCount64() - g_slFirstTry >= 60000);
 }
+
+/* ---- the enemy crowd's density, for measuring (HELLFORGE_PERF_DENSITY=1; any fix on or off) ---------------------- */
+
+#define ED_CELL 5.0f
+#define ED_SLOTS 8192u
+typedef struct EdCell { int32_t x, y; uint32_t count; uint32_t used; } EdCell;
+static EdCell g_edCells[ED_SLOTS];
+static float g_edAt[SL_MAX][3];
+static int g_edState;            /* 0 not read yet, 1 on, -1 off */
+static double g_edNext;
+
+static EdCell* EnemyDensityCell(int32_t x, int32_t y, int add)
+{
+    uint32_t h = ((uint32_t)x * 73856093u ^ (uint32_t)y * 19349663u) & (ED_SLOTS - 1u);
+    for (uint32_t k = 0; k < ED_SLOTS; k++, h = (h + 1u) & (ED_SLOTS - 1u))
+    {
+        EdCell* c = &g_edCells[h];
+        if (c->used && c->x == x && c->y == y) return c;
+        if (!c->used) { if (!add) return NULL; c->used = 1; c->x = x; c->y = y; c->count = 0; return c; }
+    }
+    return NULL;
+}
+
+/* The nearest Helldiver's distance squared. */
+static float EnemyDensityNearest(const float* at, float (*players)[3], int np)
+{
+    float best = 1e30f;
+    for (int k = 0; k < np; k++)
+    {
+        float dx = at[0] - players[k][0], dy = at[1] - players[k][1], dz = at[2] - players[k][2], d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < best) best = d2;
+    }
+    return best;
+}
+
+/* The others in the 15 m square around each agent, on the mean. */
+static double EnemyDensityNeighbours(uint32_t read)
+{
+    double around = 0.0;
+    for (uint32_t i = 0; i < read; i++)
+    {
+        int32_t x = (int32_t)floorf(g_edAt[i][0] / ED_CELL), y = (int32_t)floorf(g_edAt[i][1] / ED_CELL);
+        uint32_t n = 0;
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dy = -1; dy <= 1; dy++) { EdCell* c = EnemyDensityCell(x + dx, y + dy, 0); if (c) n += c->count; }
+        around += n ? n - 1 : 0;
+    }
+    return read ? around / read : 0.0;
+}
+
+/* 1 when a line is due (HELLFORGE_PERF_DENSITY=1, every two seconds); its QueryPerformanceCounter seconds. */
+static int EnemyDensityDue(double* now)
+{
+    if (g_edState == 0)
+    {
+        char v[8];
+        DWORD n = GetEnvironmentVariableA("HELLFORGE_PERF_DENSITY", v, sizeof v);
+        g_edState = n > 0 && n < sizeof v && v[0] == '1' ? 1 : -1;
+    }
+    if (g_edState != 1) return 0;
+    LARGE_INTEGER q, hz;
+    QueryPerformanceCounter(&q);
+    QueryPerformanceFrequency(&hz);
+    *now = (double)q.QuadPart / (double)hz.QuadPart;
+    if (*now < g_edNext) return 0;
+    g_edNext = *now + 2.0;
+    if (g_slGame == 0) g_slGame = ApiModuleBase("game.dll", NULL);
+    return g_slGame != 0;
+}
+
+/* Every two seconds on the game thread: the AI agents near the Helldivers and their neighbours, one log line with the
+ * QueryPerformanceCounter seconds the test runs stamp their windows with. */
+static void EnemyDensityTick(void)
+{
+    double now;
+    float players[SL_PLAYERS][3];
+    uint32_t count = 0, read = 0, near10 = 0, near30 = 0;
+    uintptr_t descriptors = 0;
+    if (!EnemyDensityDue(&now)) return;
+    int np = SteerLodGamePlayers(players, SL_PLAYERS);
+    if (np <= 0 || !SteerLodManager(&count, &descriptors)) return;
+    if (count > SL_MAX) count = SL_MAX;
+    memset(g_edCells, 0, sizeof g_edCells);
+    for (uint32_t i = 0; i < count; i++)
+    {
+        uint32_t unit;
+        uintptr_t d = ((const uintptr_t*)descriptors)[i];
+        if (d < 0x10000 || SafeRead(d + 0xC, &unit, 4) || !unit || !EvpUnitPosition(unit, g_edAt[read])) continue;
+        float best = EnemyDensityNearest(g_edAt[read], players, np);
+        near10 += best <= 100.0f;
+        near30 += best <= 900.0f;
+        EdCell* c = EnemyDensityCell((int32_t)floorf(g_edAt[read][0] / ED_CELL), (int32_t)floorf(g_edAt[read][1] / ED_CELL), 1);
+        if (c) c->count++;
+        read++;
+    }
+    Note("enemy density: qpc %.3f agents %u within 10 m %u within 30 m %u neighbours %.1f (mean in the 15 m square around each)",
+        now, read, near10, near30, EnemyDensityNeighbours(read));
+}
