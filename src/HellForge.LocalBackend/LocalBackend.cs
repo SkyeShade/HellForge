@@ -21,6 +21,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     public WarClock? WarClock { get; init; }
     public AccountKeys? AccountKeys { get; init; }
     public LiveWar? LiveWar { get; init; }
+    // The HellForge war (backend --war hellforge): served in the live war's place, and told of the game's missions.
+    public HellForgeWar? HellForgeWar { get; init; }
     public FriendPresence? Presence { get; init; }
     public RegisteredItems? RegisteredItems { get; init; }
     // Warbonds mods add (--mod-warbonds), served beside the game's.
@@ -32,6 +34,8 @@ public sealed record BackendSettings(int Port, string EvidenceDirectory, LoginMo
     // the all-planets war deals its subfactions and SEAF allies from the seed (true) or keeps the frozen war's
     public bool DealSubfactions { get; init; } = true;
     public bool DealSeaf { get; init; } = true;
+    // A war script (WarServices, docs/war-script.md): major orders, dispatches, reward mail and additions to the war.
+    public string? WarScript { get; init; }
     // The launcher's Mods page while the session runs (/hellforge/live-mods), once the session's LiveMods is set up.
     public LiveModsHub? LiveMods { get; init; }
     // Pickups paid here go to the other players' backends, and theirs come in, through multiplayer (PickupShare).
@@ -146,11 +150,13 @@ public static partial class LocalBackend
     {
         CheckSettings(settings);
         var fixtures = Fixtures(settings);
-        // --war open: the all-planets war (OpenWar) replaces the live war.
-        var liveWar = settings.OpenWar ? null : settings.LiveWar;
+        var (hellforgeWar, liveWar) = Wars(settings);
         var profile = settings.Profile;
         if (settings.StartupFixtures) profile ??= ProfileStore.Open(null);
-        var missions = profile != null ? new MissionService(profile, settings.Pickups) { Registered = settings.RegisteredItems, LocalAccount = settings.LocalAccount } : null;
+        var missions = profile != null ? new MissionService(profile, settings.Pickups)
+        {
+            Registered = settings.RegisteredItems, LocalAccount = settings.LocalAccount, Reports = hellforgeWar
+        } : null;
         // Friends' lobbies and profiles for the social tab, filled by multiplayer when a caller supplies it.
         var presence = settings.Presence ?? new FriendPresence();
         var playFab = new PlayFabService(presence);
@@ -185,6 +191,7 @@ public static partial class LocalBackend
             return null;
         }
         var purchases = profile != null ? new Purchases(profile, Catalogue, settings.ModWarbonds) { Registered = settings.RegisteredItems } : null;
+        var warServices = settings.StartupFixtures ? PolledWarServices(settings, warClock, profile, accountKeys, hellforgeWar) : null;
         Directory.CreateDirectory(settings.EvidenceDirectory);
         var auditPath = Path.Combine(settings.EvidenceDirectory, "requests.jsonl");
         // A fresh evidence directory prevents accidental mixing of runs.
@@ -202,13 +209,27 @@ public static partial class LocalBackend
         var app = builder.Build();
         var requests = new Requests
         {
-            Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, Presence = presence,
+            Mode = settings.Mode, StartupFixtures = settings.StartupFixtures, Profile = profile, Missions = missions, Purchases = purchases, War = warServices, Presence = presence,
             PlayFab = playFab, CaptureBodies = captureBodies, SeasonPassDetails = seasonPassDetails, WarClock = warClock,
             AccountKeys = accountKeys, RegisteredItems = settings.RegisteredItems, ModWarbonds = settings.ModWarbonds, Startup = startup, AuditPath = auditPath, Browse = settings.Browse,
             LiveMods = settings.LiveMods
         };
         app.Run(requests.HandleAsync);
         return app;
+    }
+
+    // --war open: the all-planets war (OpenWar) replaces the live war; the HellForge war does too.
+    static (HellForgeWar? HellForge, IServedWar? Served) Wars(BackendSettings settings) =>
+        settings.OpenWar ? (null, null) : (settings.HellForgeWar, (IServedWar?)settings.HellForgeWar ?? settings.LiveWar);
+
+    // The war's polled services (major orders, dispatches, mail...), with the war script's content when there is one.
+    static WarServices PolledWarServices(BackendSettings settings, WarClock warClock, ProfileStore? profile, AccountKeys accountKeys, HellForgeWar? hellforgeWar)
+    {
+        var warLog = Path.Combine(settings.EvidenceDirectory, "war-script.log");
+        return new WarServices(settings.WarScript, warClock, profile, () => accountKeys.LocalId ?? 0, message =>
+        {
+            lock (warLog) File.AppendAllText(warLog, DateTime.UtcNow.ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture) + " " + message + Environment.NewLine);
+        }, hellforgeWar);
     }
 
     // Mods' warbonds read the startup bodies and the registered items, and decide which registered items the profile holds
@@ -285,16 +306,19 @@ public static partial class LocalBackend
         return seasonPassDetails;
     }
 
-    // A startup path's body: the local profile's, else the live war's (for a path the fixtures serve), else the synthetic
-    // fixture's; source says which, for the audit.
-    sealed class StartupBodies(ProfileStore? profile, LiveWar? liveWar, Dictionary<string, JsonElement> fixtures)
+    // A startup path's body: the local profile's, else the live or HellForge war's (for a path the fixtures serve), else
+    // the synthetic fixture's; source says which, for the audit.
+    sealed class StartupBodies(ProfileStore? profile, IServedWar? liveWar, Dictionary<string, JsonElement> fixtures)
     {
         public bool TryGet(string path, out JsonElement body, out string source)
         {
             source = "local_profile";
             if (profile != null && profile.TryGetResponse(path, out body)) return true;
-            source = "live_war";
-            if (liveWar != null && fixtures.ContainsKey(path) && liveWar.TryGet(path, out body)) return true;
+            if (liveWar != null && fixtures.ContainsKey(path) && liveWar.TryGet(path, out body))
+            {
+                source = liveWar.Source;
+                return true;
+            }
             source = "synthetic_startup_fixture";
             return fixtures.TryGetValue(path, out body);
         }

@@ -214,6 +214,40 @@ static class LinkRuleTests
             check(atInstall != null && atInstall.Contains("Linked/reparse paths are not supported:", StringComparison.Ordinal),
                 "A linked installation folder was not refused with the shared message: " + atInstall);
         });
+
+        test("A link inside Steam's game folder is refused with the file and what to do (#373)", () =>
+        {
+            var sandbox = Path.Combine(root, "steam-folder-link");
+            var source = Path.Combine(sandbox, "Steam", "steamapps", "common", "Helldivers 2");
+            Directory.CreateDirectory(Path.Combine(source, "bin"));
+            Directory.CreateDirectory(Path.Combine(source, "data", "game"));
+            File.WriteAllText(Path.Combine(source, LocalInstall.Exe), "synthetic executable");
+            File.WriteAllText(Path.Combine(source, LocalInstall.GameDll), "synthetic game library");
+            var manifest = Path.Combine(sandbox, "Steam", "steamapps", "appmanifest_553850.acf");
+            File.WriteAllText(manifest, """
+                "AppState" { "appid" "553850" "StateFlags" "4" "installdir" "Helldivers 2" "buildid" "12345" }
+                """);
+            check(LocalInstall.Inspect(manifest).FileCount == 2, "The game folder without a link was not inspected.");
+            // a mod manager's link in the data folder: a junction needs no privilege on Windows, a symlink none on Linux
+            var outside = Directory.CreateDirectory(Path.Combine(sandbox, "mod-manager")).FullName;
+            var linked = Path.Combine(source, "data", "mods");
+            if (OperatingSystem.IsWindows())
+                using (var junction = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/d", "/c", "mklink", "/J", linked, outside])
+                    { UseShellExecute = false, RedirectStandardOutput = true })!)
+                    junction.WaitForExit();
+            else Directory.CreateSymbolicLink(linked, outside);
+            if (!Directory.Exists(linked)) { Console.WriteLine("  (skipped: could not make a link)"); return; }
+            string? message = null;
+            try { LocalInstall.Inspect(manifest); }
+            catch (InvalidDataException error) { message = error.Message; }
+            check(message != null && message.StartsWith(Path.Combine("data", "mods") + " in HELLDIVERS 2's folder in Steam is a link", StringComparison.Ordinal) &&
+                message.Contains("verify the game's files in Steam", StringComparison.Ordinal), "The refusal: " + message);
+            string? copy = null;
+            try { LocalInstall.Inventory(source); }
+            catch (InvalidDataException error) { copy = error.Message; }
+            check(copy != null && copy.StartsWith("Linked/reparse paths are not supported:", StringComparison.Ordinal),
+                "Other readers lost the shared message: " + copy);
+        });
     }
 
     static (string Sandbox, string LinkedHome, string RealHome) Home(string root, string name)

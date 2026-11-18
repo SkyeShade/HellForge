@@ -199,6 +199,58 @@ static class CrashReportTests
             check(CrashReport.KnownCause(null, "25480438") == null, "A run without a crash got a cause.");
         });
 
+        test("A crash as the engine log opens its file names the Engine log setting, only with it on (#424)", () =>
+        {
+            var cause = CrashReport.KnownWindowsCause("helldivers2.exe", "0x5ce339", true, "25480438");
+            check(cause != null && cause.Contains("Engine log", StringComparison.Ordinal) && cause.Contains("--engine-log no", StringComparison.Ordinal), "Cause: " + cause);
+            check(CrashReport.KnownWindowsCause("HELLDIVERS2.EXE", "0x5CE339", true, "25480438") == cause, "Windows' record in another case.");
+            check(CrashReport.KnownWindowsCause("helldivers2.exe", "0x5ce339", false, "25480438") == null, "Named with the engine log off.");
+            check(CrashReport.KnownWindowsCause("helldivers2.exe", "0x5ce339", true, "25480439") == null, "Matched for another game build.");
+            check(CrashReport.KnownWindowsCause("helldivers2.exe", "0x5ce33a", true, "25480438") == null, "Another address was matched.");
+            check(CrashReport.KnownWindowsCause("ntdll.dll", "0x5ce339", true, "25480438") == null, "Another module was matched.");
+            check(CrashReport.KnownWindowsCause(null, null, true, "25480438") == null, "A crash without Windows' record got a cause.");
+            // a run as the session runner left it (#263): no loader note, Windows' record and the setting in result.json
+            const string Crash = """
+                "windowsCrash": {"module": "helldivers2.exe", "offset": "0x5ce339", "code": "0xC0000005", "modulePath": "E:\\HellForge\\game\\bin\\helldivers2.exe", "owner": "installation"}
+                """;
+            var on = Session(new string('a', 32), "{\"gameLaunched\": true, \"gameExitCode\": \"0xC0000005\", \"engineLog\": true, " + Crash + "}");
+            var off = Session(new string('b', 32), "{\"gameLaunched\": true, \"gameExitCode\": \"0xC0000005\", \"engineLog\": false, " + Crash + "}");
+            check(CrashReport.KnownCause(on) == cause, "The run's cause: " + CrashReport.KnownCause(on));
+            check(CrashReport.KnownCause(off) == null, "A run with the engine log off: " + CrashReport.KnownCause(off));
+            var summary = CrashReport.Summary(on, new ReportPrivacy(Pc, []), DateTime.UtcNow, false);
+            check(summary.Contains("Known cause: " + cause, StringComparison.Ordinal), "The summary does not name it: " + summary);
+        });
+
+        test("A PC name the engine's UTF-8 converter stalls on keeps the engine log off; others keep it (#424)", () =>
+        {
+            // The engine's converter (exe 0x59160) as the game runs it: a byte that cannot start a UTF-8 character is
+            // neither passed nor ends the string. -1: the string converts; else where it stalls.
+            static int Stall(byte[] bytes)
+            {
+                for (var i = 0; i < bytes.Length;)
+                {
+                    var b = bytes[i];
+                    var length = b < 0x80 ? 1 : (b & 0xE0) == 0xC0 ? 2 : (b & 0xF0) == 0xE0 ? 3 : (b & 0xF8) == 0xF0 ? 4 : 0;
+                    if (length == 0) return i;
+                    i += length;
+                }
+                return -1;
+            }
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+            foreach (var (name, codePage) in new[] { ("ゲーミングPC", 932), ("张三的电脑", 936), ("Müller-PC", 1252) })
+            {
+                var file = "console_2026-11-14-14.57.06-e1198218-" + name + ".txt";
+                check(Stall(System.Text.Encoding.GetEncoding(codePage).GetBytes(file)) > 0, $"{name} in code page {codePage} does not stall the converter.");
+                check(Stall(System.Text.Encoding.UTF8.GetBytes(file)) == -1, $"{name} as UTF-8 stalls the converter.");
+                var why = EngineLogGuard.Blocker(name, codePage);
+                check(why != null && why.Contains("Engine log is off for this session", StringComparison.Ordinal), $"{name} in code page {codePage}: {why}");
+                check(EngineLogGuard.Blocker(name, 65001) == null, $"{name} with a UTF-8 code page was refused.");
+            }
+            check(EngineLogGuard.Blocker("DESKTOP-K2Q7R4T", 1252) == null && EngineLogGuard.Blocker("", 932) == null && EngineLogGuard.Blocker(null, 0) == null,
+                "A plain or missing name was refused.");
+            check(EngineLogGuard.Blocker("王伟", 0) != null, "A name outside ASCII with the code page unknown (Wine) was let through.");
+        });
+
         test("The friends the backend counted are left out, also when their profile never arrived", () =>
         {
             var names = ReportPrivacy.NamesIn(crashed);
