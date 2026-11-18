@@ -783,6 +783,8 @@ static void WatchInstalls(void)
     if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); ExplosionCoverInstall(); }
     ExplosionCoverReport();
     AiPathBudgetWatch();
+    PhysicsStepsWatch();
+    PerfHavokHelpersWatch();
     if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
     EarlyStampPackagesInstall();
     RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
