@@ -203,15 +203,17 @@ static void AbFire(const AbType* t, const AbSnapshot* s, const AbAgentIn* a, AbM
     float dx = tp[0] - a->pos[0], dy = tp[1] - a->pos[1], d = sqrtf(dx * dx + dy * dy);
     float fl = sqrtf(a->fwd[0] * a->fwd[0] + a->fwd[1] * a->fwd[1]);
     if (d > 2.0f && fl > 1e-3f && (dx * a->fwd[0] + dy * a->fwd[1]) / (d * fl) < t->faceCos) return;
+    uint32_t fits[AB_ATTACKS], n = 0;
     for (uint32_t k = 0; k < a->attackCount && k < AB_ATTACKS; k++)
     {
         const AbAttack* at = &a->attacks[k];
-        if (at->kind > 1 || d < at->minRange || d > at->maxRange) continue;
-        out->fire = at->kind == 1 ? AB_FIRE_TARGETED : AB_FIRE_PLAIN;
-        out->ability = at->ability;
-        m->nextShot = s->now + t->shotGap;
-        return;
+        if (at->kind <= 1 && d >= at->minRange && d <= at->maxRange) fits[n++] = k;
     }
+    if (n == 0) return;
+    const AbAttack* at = &a->attacks[fits[AbRand(m) % n]]; /* the game rotates its attacks; any in range, at random */
+    out->fire = at->kind == 1 ? AB_FIRE_TARGETED : AB_FIRE_PLAIN;
+    out->ability = at->ability;
+    m->nextShot = s->now + t->shotGap;
 }
 
 /* One agent's think: perception, target choice, then movement, facing, attacks and its next ray. */

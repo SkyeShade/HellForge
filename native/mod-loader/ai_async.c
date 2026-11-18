@@ -117,7 +117,8 @@ static double g_aaWorkerMs, g_aaApplyMs, g_aaCaptureMs;
 static LONG64 g_aaStat[12];           /* frames, busy, agents, engaged, skipped, moves, fires, rays, visible, answered, thinks, informs */
 static LONG64 g_aaLast[12];
 static int g_aaListed;
-static int g_aaMoveOn, g_aaFieldsOn, g_aaLodOn;  /* phase 2 (our movement and avoidance), phase 3 (fields on change) */
+static int g_aaMoveOn, g_aaFieldsOn, g_aaLodOn, g_aaAvoidOff;
+static double g_aaPathOk, g_aaPathAll, g_aaSpeedSum, g_aaVelSum, g_aaVelN;  /* phase 2 (our movement and avoidance), phase 3 (fields on change) */
 static AbMove g_aaMoves[AB_MAX];
 static uint32_t g_aaSteerMark[AB_MAX]; /* AiCharacter index -> the frame + 1 phase 2 moved it in */
 static void* volatile g_aaSteerNext;
@@ -270,6 +271,7 @@ static void AaPath(uint32_t entity, AbAgentIn* a)
     if ((status == 0 || status == 3) && (flags & 0xA) && l > 1e-3f) { a->pathDir[0] = d[0] / l; a->pathDir[1] = d[1] / l; a->pathOk = 1; }
     a->speed = *(const float*)(*(uint8_t**)(ch + 0x60) + (size_t)c * 0x14 + 0xC);
     a->crowd = 1;
+    g_aaPathAll += 1.0; g_aaPathOk += a->pathOk; g_aaSpeedSum += a->speed;
 }
 
 /* Phase 5: over 100 m from every Helldiver (the snapshot's players). */
@@ -421,7 +423,7 @@ static void AaCrowdApply(AaSlot* sl)
     if (n < 0 || c < 0 || l < 0 || c >= (int64_t)AB_MAX || !AaPose(sl->entity, pos, fwd)) return;
     memcpy(*(uint8_t**)(nav + 0x50) + (size_t)n * 0xA8 + 0x54, pos, 12);
     memcpy(*(uint8_t**)(loco + 0x40) + (size_t)l * 0xC, sl->vel, 12);
-    ((AaAvoidFn)AaFn(AF_AVOID))(NULL, sl->entity, 0);
+    if (g_aaAvoidOff) ((AaAvoidFn)AaFn(AF_AVOID))(NULL, sl->entity, 0);
     if (sl->faced && fabsf(sl->face[0] - sl->facedDir[0]) + fabsf(sl->face[1] - sl->facedDir[1]) > 0.01f)
     {
         ((AaFacingFn)AaFn(AF_FACING))((void*)AaGlobal(AA_ROTATION), sl->entity, sl->face);
@@ -500,6 +502,7 @@ static void AaMerge(void)
         AaSlot* sl = &g_aaSlots[g_aaMoves[i].slot % AB_MAX];
         if (g_aaMoves[i].entity == 0 || sl->entity != g_aaMoves[i].entity) continue;
         memcpy(sl->vel, g_aaMoves[i].vel, 12); sl->crowd = 1;
+        g_aaVelSum += sqrtf(sl->vel[0] * sl->vel[0] + sl->vel[1] * sl->vel[1]); g_aaVelN += 1.0;
         if (g_aaMoves[i].hasFace) { memcpy(sl->face, g_aaMoves[i].face, 12); sl->faced = 1; }
     }
     for (uint32_t i = 0; i < g_aaSnap.agentCount; i++)
@@ -671,7 +674,7 @@ static int AaTry(uintptr_t game, int lastTry)
         return -1;
     }
     if (!AaConfigure()) { Note("async-ai: off (HELLFORGE_ASYNC_AI)"); return -1; }
-    g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields"); g_aaLodOn = AaPartOn("lod");
+    g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields"); g_aaLodOn = AaPartOn("lod"); g_aaAvoidOff = AaPartOn("avoid");
     g_aaGame = game;
     g_aaWake = CreateEventW(NULL, FALSE, FALSE, NULL);
     HANDLE worker = g_aaWake ? CreateThread(NULL, 0, AaWorker, NULL, 0, NULL) : NULL;
@@ -713,6 +716,10 @@ static void AaReport(void)
         "per-frame writes unchanged and not queued", (double)g_aaSteered / f, (long long)g_aaSteerKept, (long long)g_aaFieldSkips,
         (long long)g_aaFieldCalls);
     g_aaSteered = g_aaSteerKept = g_aaFieldSkips = g_aaFieldCalls = 0;
+    Note("async-ai: move inputs: %.0f%% of crowd agents with a path direction, speed %.2f m/s, our velocity %.2f m/s on the mean; "
+        "Havok AI avoidance %s for them", g_aaPathAll > 0 ? 100.0 * g_aaPathOk / g_aaPathAll : 0.0,
+        g_aaPathAll > 0 ? g_aaSpeedSum / g_aaPathAll : 0.0, g_aaVelN > 0 ? g_aaVelSum / g_aaVelN : 0.0, g_aaAvoidOff ? "off" : "kept on");
+    g_aaPathOk = g_aaPathAll = g_aaSpeedSum = g_aaVelSum = g_aaVelN = 0.0;
     g_aaApplyMs = g_aaCaptureMs = g_aaWorkerMs = 0.0;
 }
 
