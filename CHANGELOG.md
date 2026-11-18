@@ -349,6 +349,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Level 11's Launch ICBM shows the whole launch code.** A mixed mission's SSSD hard drives (from uplinks, collected
+  data or SE equipment) counted as parts of the code, so after retrieving the codes it often showed one digit and
+  question marks. The code now counts only the Launch Codes ([Difficulty 11](docs/internals-difficulty.md#second-primary)).
 - **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
   after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
   them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before
