@@ -69,6 +69,7 @@ static const RefusedDll *RefusedA(const char *name)
     return NULL;
 }
 
+// The answer a PC without the DLL gets (no tablet driver, no NVIDIA telemetry), so its caller takes its own path for that.
 static HMODULE Refuse(const char *api, const RefusedDll *refused, void *returnAddress)
 {
     NetGateNote(api, refused->dll, "refused", returnAddress);
@@ -76,7 +77,6 @@ static HMODULE Refuse(const char *api, const RefusedDll *refused, void *returnAd
     return NULL;
 }
 
-// The answer a PC without the DLL gets (no tablet driver, no NVIDIA telemetry), so its caller takes its own path for that.
 static HMODULE WINAPI HookLoadLibraryA(LPCSTR name)
 {
     const RefusedDll *refused = RefusedA(name);
@@ -112,7 +112,7 @@ static Site g_sites[] = {
 };
 #define SITE_COUNT (sizeof g_sites / sizeof g_sites[0])
 
-// Wintab32 loaded although refused: the session's census then says the gate missed the game's way of loading it.
+// A refused DLL loaded: the session's census then says the gate missed the game's way of loading it.
 static void OnDllLoaded(const wchar_t *name)
 {
     const RefusedDll *refused = RefusedW(name);
