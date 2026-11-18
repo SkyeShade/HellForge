@@ -388,6 +388,8 @@ On `dev`, since 0.4.0-beta.
 - **No more crash at about 400 enemies alive.** The AI's navmesh edge queries ran out of their 256 places and
   overwrote the HUD, which crashed the game at `game.dll+0x1449D76`. They now have room for 4,096 moving enemies, and
   the game ran past 550 alive ([performance fixes](docs/performance.md#edge-batch)).
+- **A kept Steam sign-in works more than once.** The Mods page keeps the Steam app sign-in so the next fetch needs no
+  phone. Logging on with it told Steam not to remember it, so Steam revoked it and every fetch asked for the QR code (#492).
 - **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
   after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
   them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before
