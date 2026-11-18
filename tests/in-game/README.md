@@ -30,8 +30,14 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `editor-engine-probe/` | the stats mod `editor-engine.json` runs (`hellforge.editor-engine-probe`), never shipped |
 | `editor-spawning.json` | the editor's spawning rows: what the Impaler's strike and the Alpha Commander's call summon (their code takes the family and count), a patrol group's enemy family, difficulty 7's Terminid patrol cap past 128 and traveller interval; the logs prove the edits land, a Terminid mission shows what they do |
 | `editor-spawning-probe/` | the stats mod `editor-spawning.json` runs (`hellforge.editor-spawning-probe`), never shipped |
+| `enemy-limits.json` | the difficulty's Enemy limits: difficulty 10's patrol gate at 200, the despawn pass off, the spawn gate at 300 and patrols every 0.5 s; the living enemies climb past the game's 165 and stay under 350 (an immortal Helldiver from research's `local.perf-seedpin`, about 7 minutes at difficulty 10) |
+| `enemy-limits-probe/` | the stats mod `enemy-limits.json` runs (`hellforge.enemy-limits-probe`), never shipped |
 | `enemy-combat.json` | the editor's enemy combat rows: the Charger's charge speed, sight and armour 50, the Hunter's melee damage, turn speed and acceleration, a stun added to the Bile Titan and its fire damage multiplier; the logs prove the edits land, the mission shows what they do |
 | `enemy-combat-probe/` | the stats mod `enemy-combat.json` runs (`hellforge.enemy-combat-probe`), never shipped |
+| `missile-spread.json` | the editor's missile spread rows: the W.A.S.P. missile's spread off, the MLS-4X Commando's on with a 45° veer to one side; the logs prove the edits land, firing each weapon in the mission shows what they do |
+| `missile-spread-probe/` | the stats mod `missile-spread.json` runs (`hellforge.missile-spread-probe`), never shipped |
+| `missile-spread-look.json` | which way the spread turns: the primary fires the Commando's missile with a 45° veer at direction 0 and a pitch-only curve; the probe measures the heading against the launch frame (direction 0 goes up, the curve's first axis pitches) |
+| `missile-spread-look-probe/` | the test mod `missile-spread-look.json` runs (`hellforge.missile-spread-look-probe`), never shipped; its raw stats arm the AR-23 Liberator, the primary of the install it was written for |
 | `spray20.json` | SDK 20's sprays: two FLAM-40 copies with damage of their own (a scaled one, the Sterilizer's gas), each in its own spray record while the FLAM-40 keeps its own; the hot copy's stratagem in the loadout, called in, its hellpod bringing the copy. Spraying enemies with it is by hand |
 | `spray-probe/` | the test mod `spray20.json` runs (`hellforge.spray-probe`), never shipped; it also logs the first hits the called-in copy deals |
 | `stratagem-codes.json` | stratagem input codes: a stats edit gives Resupply Up Up Left Right Down, the vanilla codes move into HellForge's arrays, and the new code calls Resupply in (needs the harness's `call` step) |
@@ -40,6 +46,9 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `pod-break.json` | a mod's support weapon from a broken hellpod: an EAT-17 copy (`register_entity`) on a copy of the EAT-17's rack and the vanilla rack, each called in and broken by the game's own rack death; the copy must drop with the EAT-17's pickup on (needs the harness's `call` step). Picking one up is by hand |
 | `pod-break-probe/` | the test mod `pod-break.json` runs (`hellforge.pod-break-probe`), never shipped: both stratagems in the loadout on the ship, each rack broken 20 s after it spawns, the launchers' interactions and which are on, before and after |
 | `stratagem-uses-probe/` | the test mod `stratagem-uses.json` runs (`hellforge.stratagem-uses-probe`), never shipped: the stats edit, the loadout, the uses left the HUD shows after each change, the Railcannon's beacons counted |
+| `launch-codes.json` | level 11's launch code: the count's call goes to the stub, the stub passes the Launch Codes and gives the other six carriers a zero key, and in a mission with another carrier (an SSSD drive) the game's own count is the Launch Codes' share. Run at difficulty 11 on a mission that brings a drive (Automaton collect data, row 3). Reading the whole code on the HUD after retrieving an ICBM's codes is by hand |
+| `launch-codes-probe/` | the test mod `launch-codes.json` runs (`hellforge.launch-codes-probe`), never shipped; it only reads |
+| `quit-job-pool.json` | a quit after a mission ends with exit code 0 where the game crashed at `helldivers2.exe+0x626296` (#332): the render guards in, the engine's quit pinned, no crash at the quit. Needs the harness to end the session through the game's own quit, with a mod set that fills the job pool then |
 
 ## Running one
 

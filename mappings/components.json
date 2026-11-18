@@ -7054,7 +7054,27 @@
       "index": 196,
       "stride": 272,
       "layout": "25480438",
-      "meaning": "SeekingMissileComponentData (fields from the stats schema)",
+      "meaning": "SeekingMissileComponentData: a seeking missile's flight (speeds, turn rates, guidance) and its spread",
+      "groups": {
+        "spread": {
+          "meaning": "the missile spread: its veer off the launch line, its curve and its return onto the target",
+          "fields": [
+            "deviation_enabled",
+            "deviation_direction_min",
+            "deviation_direction_max",
+            "deviation_angle_min",
+            "deviation_angle_max",
+            "deviation_curve_min",
+            "deviation_curve_max",
+            "deviation_curve_either_way",
+            "deviation_curve_speed",
+            "deviation_veer_end",
+            "deviation_veer_start",
+            "deviation_return_time",
+            "deviation_return_turn_rate"
+          ]
+        }
+      },
       "applies": "respawn",
       "appliesVerified": false,
       "appliesSource": "a component record: read when the entity is made",
@@ -7121,6 +7141,114 @@
           "meaning": "Missile turn rate on target",
           "verified": false,
           "source": "stats-schema missile.turn_rate_aligned"
+        },
+        "deviation_enabled": {
+          "offset": 180,
+          "type": "u8",
+          "meaning": "1: each missile spreads: it veers off its launch line, curves, then swings back onto its target (the deviation_* fields); 0: it flies straight at its target. The W.A.S.P. (both missiles), the Missile Pistol and the Warrant have it",
+          "verified": true,
+          "source": "game.dll 0x641050 (the missile spawn, once per missile): cmp byte [r12+0xB4], 0 at 0x641EFD skips the block; else the instance row +0x88 = 1, which the update tests; seen in game by tests/in-game/missile-spread-look.json"
+        },
+        "deviation_direction_min": {
+          "offset": 184,
+          "type": "f32",
+          "meaning": "which way a missile veers, in degrees around its flight line (0 up, 90 / -90 a side, 180 down): each missile draws one between this and deviation_direction_max (the W.A.S.P. -75 to 75)",
+          "verified": true,
+          "source": "game.dll 0x641050 (the missile spawn, once per missile): 0x64202F, a draw in [+0xB8, +0xBC]; the veer is euler(pitch cos(d) x a, roll d, yaw sin(d) x a) in the missile frame (forward local Y, 0x173F150); seen in game by tests/in-game/missile-spread-look.json (direction 0 veered 45 degrees straight up)"
+        },
+        "deviation_direction_max": {
+          "offset": 188,
+          "type": "f32",
+          "meaning": "the top of the veer direction (see deviation_direction_min)",
+          "verified": true,
+          "source": "game.dll 0x641050 (the missile spawn, once per missile): 0x64201B; seen in game by tests/in-game/missile-spread-look.json"
+        },
+        "deviation_angle_min": {
+          "offset": 192,
+          "type": "f32",
+          "meaning": "how far a missile turns off its launch line, in degrees: each missile draws an angle between this and deviation_angle_max (the W.A.S.P. 40 to 55)",
+          "verified": true,
+          "source": "game.dll 0x641050 (the missile spawn, once per missile): 0x641FD2, a draw in [+0xC0, +0xC4] degrees; seen in game by tests/in-game/missile-spread-look.json"
+        },
+        "deviation_angle_max": {
+          "offset": 196,
+          "type": "f32",
+          "meaning": "the top of the veer angle (see deviation_angle_min)",
+          "verified": true,
+          "source": "game.dll 0x641050 (the missile spawn, once per missile): 0x641FDC; seen in game by tests/in-game/missile-spread-look.json"
+        },
+        "deviation_curve_min": {
+          "offset": 200,
+          "type": "f32",
+          "count": 3,
+          "meaning": "the curve after the veer: pitch (x, positive up), roll (y, around the flight line) and yaw (z) in degrees, each drawn per missile between this and deviation_curve_max and turned every second (times deviation_curve_speed) until the return ends",
+          "verified": true,
+          "source": "game.dll 0x641050 (the missile spawn, once per missile): 0x642217 / 0x642251 / 0x6422A1 (x, y, z), each a draw up to +0xD4 / +0xD8 / +0xDC, stored as a rotation in the instance row +0x9C; seen in game by tests/in-game/missile-spread-look.json (x 90: the heading pitched up 85-90 degrees a second, none sideways)"
+        },
+        "deviation_curve_max": {
+          "offset": 212,
+          "type": "f32",
+          "count": 3,
+          "meaning": "the top of the curve (see deviation_curve_min)",
+          "verified": true,
+          "source": "game.dll 0x641050 (the missile spawn, once per missile): 0x642221 / 0x642243 / 0x64228E; seen in game by tests/in-game/missile-spread-look.json"
+        },
+        "deviation_curve_either_way": {
+          "offset": 224,
+          "type": "u8",
+          "meaning": "1: each of the curve's three angles gets a random sign",
+          "verified": false,
+          "source": "game.dll 0x641050 (the missile spawn, once per missile): 0x642281: three more draws give each angle a sign"
+        },
+        "deviation_curve_speed": {
+          "offset": 228,
+          "type": "f32",
+          "meaning": "the curve's rate: its angles turn by this many times a second",
+          "verified": true,
+          "source": "game.dll 0x642760 (the missile update, every step): 0x644699: the base heading turns by curve angle x this x step; seen in game by tests/in-game/missile-spread-look.json",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the update reads it every step, also for missiles in flight"
+        },
+        "deviation_veer_end": {
+          "offset": 232,
+          "type": "f32",
+          "meaning": "seconds after launch when the veer is done (the missile turns evenly from deviation_veer_start); the curve and return start here",
+          "verified": true,
+          "source": "game.dll 0x642760 (the missile update, every step): 0x644335, 0x6448AC: age below it veers, past it curves and returns; seen in game by tests/in-game/missile-spread-look.json (the veer grew evenly from 0.05 to 0.5 s)",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the update reads it every step, also for missiles in flight"
+        },
+        "deviation_veer_start": {
+          "offset": 236,
+          "type": "f32",
+          "meaning": "seconds after launch when the missile starts to veer; until then it flies straight",
+          "verified": true,
+          "source": "game.dll 0x642760 (the missile update, every step): 0x644347: each step turns veer angle x step / (end - start) once age passes it; seen in game by tests/in-game/missile-spread-look.json",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the update reads it every step, also for missiles in flight"
+        },
+        "deviation_return_time": {
+          "offset": 240,
+          "type": "f32",
+          "meaning": "seconds after the veer the missile takes to swing fully back onto its target (its aim slides from the curve to the target over this time); then it homes as usual",
+          "verified": false,
+          "source": "game.dll 0x642760 (the missile update, every step): 0x64465B, 0x6448D5: aim = slerp(base, target direction, (age - veer end) / this)",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the update reads it every step, also for missiles in flight"
+        },
+        "deviation_return_turn_rate": {
+          "offset": 244,
+          "type": "f32",
+          "meaning": "its turn rate while it swings back, as a multiple of the usual blended turn rate (+0x58 / +0x5C); past about 60 / that turn rate a step overshoots (the slerp fraction passes 1) and the missile swings wildly",
+          "verified": false,
+          "source": "game.dll 0x642760 (the missile update, every step): 0x644B72: multiplies the blended turn step toward the aim",
+          "applies": "now",
+          "appliesVerified": false,
+          "appliesSource": "the update reads it every step, also for missiles in flight"
         }
       }
     },
@@ -8121,6 +8249,60 @@
           "meaning": "how many it calls up each call, 0 to 16 (one SpawnSquad each, spawn reason 4)",
           "verified": false,
           "source": "game.dll 0x11C8230 (its loop over params +0x20); 333 at 0x10B05B1, 463 at 0x10B9245"
+        }
+      }
+    },
+    "EnemyLimits": {
+      "component": "EnemyLimits",
+      "table": true,
+      "stride": 24,
+      "layout": "25480438",
+      "meaning": "the enemy limits game.dll keeps in its code rather than the difficulty table (a row by difficulty level, 1 to 11, each the game's values until changed): HellForge's row, read by the spawn gates and the AI enemy budget's despawn pass through stubs (native/mod-loader/enemy_limits.c). Host only: the host's rows decide",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "the code reads them every frame; HellForge's update copies the mission's level's row to where the stubs read it",
+      "fields": {
+        "patrol_gate": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "a scheduled patrol spawns only while its squad, the queued enemies (HiveMind manager +0x36C0) and the living AI characters total at most this; the game's 100. The patrol caps count only under it",
+          "verified": false,
+          "source": "game.dll EnemyDirectorTick 0x9514D6..0x9514F9 (add eax, [rcx+0x1C]; cmp eax, 0x64; jbe: the squad from 0x949900, +0x36C0, [0x3326D18] +0x1C)"
+        },
+        "roaming_gate": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "the shared spawners' waves (AiSpawnerUpdate, spawn reason 2), travellers (7) and stragglers (8) spawn only while the queued and living enemies, less those of breaches and drops (3) and fabricators (4), stay under this; the game's 70",
+          "verified": false,
+          "source": "game.dll DirectorSpawnAllowed 0x952F3A..0x952F59 (cmp ecx, 0x46; jge refuse), its callers 0x7F7FD7, 0x9508E7, 0x950A51 (flag 0); SpawnSquad's own call only marks the squad"
+        },
+        "spawn_gate": {
+          "offset": 8,
+          "type": "u32",
+          "meaning": "no spawn but a patrol squad's while the AI enemy manager holds this many enemies; the game's 448",
+          "verified": false,
+          "source": "game.dll DirectorSpawnAllowed 0x952F62 (cmp dword [[0x33264D8]+0xC], 0x1C0; jae refuse); patrols pass SpawnSquad flag bit 6, which skips it"
+        },
+        "despawn": {
+          "offset": 12,
+          "type": "u32",
+          "meaning": "1: the AI enemy budget's despawn pass runs (the game's); 0: it never runs, so no living enemy is despawned for the budget",
+          "verified": false,
+          "source": "game.dll's world update 0x572C35..0x572C69 (host only: host peer 0 or this peer; then the count test and call AiEnemyBudgetDespawnPass)"
+        },
+        "despawn_start": {
+          "offset": 16,
+          "type": "u32",
+          "meaning": "the despawn pass runs once the budget's enemies reach those despawning + this (the game's 100): one a pass, far ones first (despawn_distance); from ten more any enemy may go",
+          "verified": false,
+          "source": "game.dll 0x572C51 (add eax, 0x64 over [world+0x75E9D4], against +0x75E9E4) and AiEnemyBudgetDespawnPass 0xA2C098 (add ebx, 0x6E)"
+        },
+        "despawn_distance": {
+          "offset": 20,
+          "type": "f32",
+          "meaning": "metres from which the despawn pass may take an enemy as far (the game's 150), 10 to 2000",
+          "verified": false,
+          "source": "game.dll AiEnemyBudgetDespawnPass 0xA2C0BC (movss xmm5, 22500.0 at 0x23C7E5C: the distance squared, against each entry's +8)"
         }
       }
     },

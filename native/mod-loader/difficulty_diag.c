@@ -521,6 +521,7 @@ static void WatchTowns(void)
 static void DifficultyWatch(void)
 {
     static int logged;
+    GrantTick(g_difficultyGame); /* a mission stratagem whose row loaded after the install */
     WatchZones();
     WatchHashFull();
     if (g_restartWatch == NULL) return;

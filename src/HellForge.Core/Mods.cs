@@ -708,6 +708,7 @@ public static class ModArchives
     static void LoadHashes(string cache)
     {
         lock (hashesLoaded) if (!hashesLoaded.Add(cache)) return;
+        RemoveLeftPartials(cache);
         try
         {
             if (System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(cache, HashesName))) is not System.Text.Json.Nodes.JsonObject saved) return;
@@ -725,13 +726,42 @@ public static class ModArchives
         foreach (var archive in archives)
             if (hashes.TryGetValue(Path.GetFullPath(archive), out var known))
                 saved[Path.GetFullPath(archive)] = new System.Text.Json.Nodes.JsonObject { ["length"] = known.Length, ["written"] = known.Written.Ticks, ["hash"] = known.Hash };
+        try { Directory.CreateDirectory(cache); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return; }
+        WriteWhole(Path.Combine(cache, HashesName), saved.ToJsonString());
+    }
+
+    // A cache file written whole through a partial of its own, as another process may write it at the same time (the last
+    // one stays). Best effort: when another process holds the file, it keeps its old contents and the partial goes. Each
+    // failed write left its partial: a launcher listing the mods every 5 s while it held the file made 720 an hour (#331).
+    static void WriteWhole(string path, string text)
+    {
+        var partial = path + "." + Guid.NewGuid().ToString("N")[..8] + PartialSuffix;
         try
         {
-            Directory.CreateDirectory(cache);
-            var path = Path.Combine(cache, HashesName);
-            var partial = path + "." + Guid.NewGuid().ToString("N")[..8] + ".partial";
-            File.WriteAllText(partial, saved.ToJsonString());
+            File.WriteAllText(partial, text);
             File.Move(partial, path, overwrite: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        finally
+        {
+            try { File.Delete(partial); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    const string PartialSuffix = ".partial";
+
+    // The cache files' partials that earlier HellForge versions left behind (#331), once per process. Only those older than
+    // a minute: a younger one may be another process's write in progress.
+    static void RemoveLeftPartials(string cache)
+    {
+        try
+        {
+            if (!Directory.Exists(cache)) return;
+            foreach (var name in new[] { HashesName, ShippedName })
+                foreach (var partial in Directory.EnumerateFiles(cache, name + ".*" + PartialSuffix))
+                    if (DateTime.UtcNow - File.GetLastWriteTimeUtc(partial) > TimeSpan.FromMinutes(1)) File.Delete(partial);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
@@ -812,14 +842,7 @@ public static class ModArchives
             foreach (var (name, hash) in entry.Files) files[name] = hash;
             saved[key] = new System.Text.Json.Nodes.JsonObject { ["length"] = entry.Length, ["written"] = entry.Written.Ticks, ["files"] = files };
         }
-        try
-        {
-            var path = Path.Combine(cache, ShippedName);
-            var partial = path + "." + Guid.NewGuid().ToString("N")[..8] + ".partial";
-            File.WriteAllText(partial, saved.ToJsonString());
-            File.Move(partial, path, overwrite: true);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        WriteWhole(Path.Combine(cache, ShippedName), saved.ToJsonString());
     }
 
     // The zip's files in target, with the zips inside it opened (OpenInner).
@@ -959,8 +982,11 @@ public static class ModLoaderPlan
         static string Field(string value) => value.Contains('\t') || value.Contains('\n') || value.Contains('\r')
             ? throw new InvalidDataException("A stats label contains a tab or line break.") : value;
         var invariant = CultureInfo.InvariantCulture;
-        return [mod.Id, e.Kind, e.Component.Length == 0 ? "-" : e.Component, e.Resource.ToString("X16", invariant), e.Record.ToString(invariant),
-            e.Offset.ToString(invariant), e.Storage, e.Value.ToString("X8", invariant), e.Expect.HasValue ? e.Expect.Value.ToString("X8", invariant) : "-",
+        // a mod's content by name: "@<name>" for the row, "@<p|d|e>=<name>" for a reference (native stats.c numbers them)
+        return [mod.Id, e.Kind, e.Component.Length == 0 ? "-" : e.Component, e.Resource.ToString("X16", invariant),
+            e.RecordName != null ? "@" + Field(e.RecordName) : e.Record.ToString(invariant),
+            e.Offset.ToString(invariant), e.Storage, e.ValueName != null ? $"@{e.ValueKind}={Field(e.ValueName)}" : e.Value.ToString("X8", invariant),
+            e.Expect.HasValue ? e.Expect.Value.ToString("X8", invariant) : "-",
             e.Own ? "1" : "0", e.Shared ? "1" : "0", e.Unverified ? "1" : "0", Field(e.Label)];
     }
 

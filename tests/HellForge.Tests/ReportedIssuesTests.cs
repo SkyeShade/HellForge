@@ -172,5 +172,38 @@ static class ReportedIssuesTests
             }
             finally { System.Net.Http.HttpClient.DefaultProxy = systemProxy; }
         });
+
+        test("Listing zipped mods while another program holds the hash cache leaves no partial files (#331)", () =>
+        {
+            var mods = Path.Combine(root, "mods-held-cache");
+            Directory.CreateDirectory(mods);
+            using (var zip = System.IO.Compression.ZipFile.Open(Path.Combine(mods, "held.zip"), System.IO.Compression.ZipArchiveMode.Create))
+            {
+                using (var writer = new StreamWriter(zip.CreateEntry(ModCatalog.ManifestName).Open()))
+                    writer.Write("""{"format":1,"id":"test.held","name":"Held","version":"1"}""");
+                using (var writer = new StreamWriter(zip.CreateEntry("data/0123456789abcdef.patch_0").Open())) writer.Write("patch bytes");
+            }
+            var cache = Path.Combine(mods, ModArchives.UnpackedFolder);
+            // what an earlier version left: one old partial (removed) and one being written now (kept)
+            Directory.CreateDirectory(cache);
+            var old = Path.Combine(cache, ".zip-hashes.json.0badf00d.partial");
+            var young = Path.Combine(cache, ".zip-files.json.0123abcd.partial");
+            File.WriteAllText(old, "{}");
+            File.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddHours(-1));
+            File.WriteAllText(young, "{}");
+            var (loaded, problems) = ModCatalog.Load(mods);
+            check(loaded.Any(m => m.Id == "test.held"), "The zipped mod did not load: " + string.Join(" | ", problems));
+            check(!File.Exists(old) && File.Exists(young), "Left partials: the old one was kept or the young one removed.");
+            File.Delete(young);
+            var hashes = Path.Combine(cache, ".zip-hashes.json");
+            var before = File.ReadAllText(hashes);
+            // another program reading the cache without delete sharing: Windows refuses to replace it
+            using (new FileStream(hashes, FileMode.Open, FileAccess.Read, FileShare.Read))
+                for (var i = 0; i < 3; i++)
+                    check(ModCatalog.Load(mods).Mods.Any(m => m.Id == "test.held"), "Listing failed while the cache was held.");
+            var left = Directory.GetFiles(cache, "*.partial");
+            check(left.Length == 0, "Partial files left: " + string.Join(", ", left.Select(Path.GetFileName)));
+            check(File.ReadAllText(hashes) == before, "The held cache changed.");
+        });
     }
 }

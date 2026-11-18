@@ -67,6 +67,34 @@ static DWORD g_rgTls = TLS_OUT_OF_INDEXES;
 static ULONGLONG g_rgPoolWaitMs = 10000, g_rgPoolStallMs = 500; /* a fixture shortens them */
 
 static int JournalPut(uintptr_t address, const uint8_t* bytes, size_t size); /* live_code.c */
+static void SessionEnd(const char* why); /* mod_status.c */
+
+/* The engine's quit: Application.quit (Lua 0x3FB710, the C API's slot 79 alike) sets EngineCore (the pointer at
+ * 0x1A10208) +0x460 to 1 and +0x464 to the exit code; pinned where the Lua binding does it. As the game quits after a
+ * mission its job workers stop while the pool is full, and the pool's caller crashes at 0x626296 (#332). A stall with
+ * a quit for exit code 0 is ended there, with exit code 0, instead. */
+#define RG_QUIT_SET 0x3FB739u
+#define RG_ENGINE_CORE 0x1A10208u
+static const uint8_t kRgQuitPin[] = {0x48,0x8b,0x05,0xc8,0x4a,0x61,0x01, 0xc6,0x80,0x60,0x04,0x00,0x00,0x01, 0x89,0x88,0x64,0x04,0x00,0x00};
+static uintptr_t g_rgQuitExe; /* the exe, once the quit's code matched the pin */
+
+static void RgEndQuit(void)
+{
+    SessionEnd("the game is quitting");
+    TerminateProcess(GetCurrentProcess(), 0);
+}
+static void (*g_rgQuitEnd)(void) = RgEndQuit; /* a fixture counts the end instead */
+
+/* 1 when the engine has been told to quit with exit code 0. */
+static int RgQuitting(void)
+{
+    uintptr_t core = 0;
+    uint8_t quit = 0;
+    int32_t code = -1;
+    if (g_rgQuitExe == 0 || SafeRead(g_rgQuitExe + RG_ENGINE_CORE, &core, sizeof core) || core == 0) return 0;
+    if (SafeRead(core + 0x460, &quit, 1) || SafeRead(core + 0x464, &code, sizeof code)) return 0;
+    return quit == 1 && code == 0;
+}
 
 /* Called from the pool cave on the game's thread, r9d as it stands and the pool. 1: wait again; 0: give up as the
  * game did. */
@@ -97,7 +125,12 @@ static int RenderGuardPoolWait(uint32_t spins, const uint8_t* pool)
     if (now - w->moved >= g_rgPoolStallMs)
     {
         InterlockedIncrement(&g_rgPoolStalled);
-        Note("render guards: a full job pool saw no job finish for %llu ms (the game quitting, or stuck); the game's own failure follows", g_rgPoolStallMs);
+        if (RgQuitting())
+        {
+            Note("render guards: the game is quitting and a full job pool saw no job finish for %llu ms; HellForge ends the game with exit code 0 where it would crash (helldivers2.exe+0x626296)", g_rgPoolStallMs);
+            g_rgQuitEnd();
+        }
+        else Note("render guards: a full job pool saw no job finish for %llu ms (the game quitting, or stuck); the game's own failure follows", g_rgPoolStallMs);
     }
     else if (waited >= g_rgPoolWaitMs)
     {
@@ -220,6 +253,13 @@ static int RenderGuardsInstallAt(uintptr_t exe)
     return written > 0;
 }
 
+/* The engine's quit read only where its code is the reviewed one (RgQuitting). */
+static void RgPinQuit(uintptr_t exe)
+{
+    if (PinMatches(exe + RG_QUIT_SET, kRgQuitPin, sizeof kRgQuitPin)) g_rgQuitExe = exe;
+    else Note("render guards: the engine's quit is not the reviewed code; a full job pool at quit is left to the game");
+}
+
 /* From the watch thread. The exe's code is decoded some time after start; a minute after the game loaded, it never
  * will be the reviewed one. */
 static void RenderGuardsInstall(void)
@@ -237,6 +277,7 @@ static void RenderGuardsInstall(void)
         return;
     }
     g_rgState = RenderGuardsInstallAt(exe) ? 1 : -1;
+    if (g_rgState == 1) RgPinQuit(exe);
 }
 
 /* What the guards caught, at most every 10 s, and at once when a wait gave up (the game crashes next). */

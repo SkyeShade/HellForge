@@ -1,0 +1,71 @@
+{
+  "about": "The difficulty's Enemy limits (EnemyLimits, enemy_limits.c): at difficulty 10 the patrol gate goes to 200, the despawn pass off, every other spawn stops at 300 AI enemies, patrols come every 0.5 s with their caps at 1000. Run at difficulty 10 for about 7 minutes (the script's wait) with an immortal Helldiver (research perf-d11's local.perf-seedpin, HELLFORGE_PERF_IMMORTAL=1): the living AI enemies climb past the game's 165 and stay under about 350, and patrols keep coming. Today the game crashes past about 400 living enemies, so the spawn gate holds the count under 300.",
+  "mods": [
+    "enemy-limits-probe"
+  ],
+  "keep": [
+    "local.perf-seedpin"
+  ],
+  "env": {
+    "HELLFORGE_PERF_IMMORTAL": "1"
+  },
+  "only": true,
+  "mission": true,
+  "script": [
+    {
+      "wait": 420
+    }
+  ],
+  "checks": [
+    {
+      "name": "difficulty 10's patrol gate goes to 200",
+      "log": "mod-hellforge.enemy-limits-probe.log",
+      "contains": "applied (00000064 -> 000000c8)"
+    },
+    {
+      "name": "difficulty 10's despawn pass goes off",
+      "log": "mod-hellforge.enemy-limits-probe.log",
+      "contains": "applied (00000001 -> 00000000)"
+    },
+    {
+      "name": "difficulty 10's patrols every 0.5 s",
+      "log": "mod-hellforge.enemy-limits-probe.log",
+      "contains": "-> 3f000000)"
+    },
+    {
+      "name": "the gates and the despawn pass are the reviewed code",
+      "log": "modloader.log",
+      "absent": "not the reviewed code"
+    },
+    {
+      "name": "the code reads HellForge's rows",
+      "log": "modloader.log",
+      "contains": "enemy limits: the spawn gates and the despawn pass read HellForge's rows"
+    },
+    {
+      "name": "the mission takes difficulty 10's limits",
+      "log": "modloader.log",
+      "contains": "enemy limits: difficulty 10: patrols up to 200 enemies, roaming spawns under 70, other spawns under 300; despawn pass off"
+    },
+    {
+      "name": "the living enemies climb past the game's 165",
+      "log": "modloader.log",
+      "regex": "enemy limits: (1[7-9]\\d|[23]\\d\\d) AI enemies"
+    },
+    {
+      "name": "and stay under 350",
+      "log": "modloader.log",
+      "absent_regex": "enemy limits: (3[5-9]\\d|[4-9]\\d\\d|\\d{4}) AI enemies"
+    },
+    {
+      "name": "no edit is refused",
+      "log": "mod-hellforge.enemy-limits-probe.log",
+      "absent": "refused"
+    },
+    {
+      "name": "nothing refused in the loader",
+      "log": "modloader.log",
+      "absent": "enemy limits: refused"
+    }
+  ]
+}
