@@ -128,11 +128,14 @@ kept. A borrowed game cannot be downloaded this way either; the card then points
 The third way, and where setup goes when another way cannot work. **Open the Steam console** opens it
 (`steam://open/console`), and each depot has its `download_depot 553850 <depot> <manifest>` command with a Copy button.
 
-The Steam app downloads each depot into `<Steam>/steamapps/content/app_553850/depot_<depot>/`. The Linux client often
-uses `ubuntu12_32/steamapps` under the Steam folder instead, or `ubuntu12_64/steamapps` or `steamrt64/steamapps`. The
-card names the two usual folders on Linux, and the one Steam really uses once it has written to it. Setup looks in
-all of them and takes, for each depot, the folder that holds the most of the build. So an empty folder left by an
-earlier download does not hide the real one.
+The Steam app downloads each depot into `<Steam>/steamapps/content/app_553850/depot_<depot>/`. With HELLDIVERS 2 in
+another Steam library (say `E:\SteamLibrary`), the Windows client may use that library's `steamapps/content` instead.
+
+The Linux client often uses `ubuntu12_32/steamapps` under the Steam folder instead, or `ubuntu12_64/steamapps` or
+`steamrt64/steamapps`. The card names the likely folders, and the one Steam really uses once it has written to
+it. Setup looks in all of them and in every Steam library, and takes, for each depot, the folder that holds the most
+of the build. So an empty folder left by an earlier download does not hide the real one, and no link between drives
+is needed (setup refuses links).
 
 Setup watches the download by itself and says which file it still waits for. Once every file has the build's size, it
 copies them into the installation, each checked against the SHA-1 in `supported-build.json`. A file the Steam app wrote

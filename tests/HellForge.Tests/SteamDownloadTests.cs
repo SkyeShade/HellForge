@@ -527,7 +527,7 @@ static class SteamDownloadTests
             check(!File.Exists(marker), "A cancelled SteamCMD went on running behind a terminal that had ended.");
         });
 
-        test("The Steam app's card says when the drive with Steam cannot take the download", () =>
+        test("The Steam app's card says when the drive Steam downloads to cannot take the download", () =>
         {
             var drive = new DiskSpaceInfo("/home", 10_000_000_000);
             check(SteamDepotDownload.SpaceNote(drive, 5_000_000_000, otherWays: true) == null &&
@@ -622,6 +622,42 @@ static class SteamDownloadTests
             // a file the Steam client wrote wrong is never copied
             Put("bin/b.dll", Bytes(77, fixture.C3.Length));
             reject(() => GameCopier.CopyFromDepots(steamRoot, Path.Combine(fixture.Home, "client-game-2"), fixture.Build));
+        });
+
+        test("The Steam app's download is found in the Steam library that holds the game, not only in Steam's own folder", () =>
+        {
+            var fixture = new Fixture(root, "steam-other-library");
+            var steamRoot = Path.Combine(fixture.Home, "SteamOnC");
+            var library = Path.Combine(fixture.Home, "SteamLibrary");
+            Directory.CreateDirectory(Path.Combine(steamRoot, "steamapps"));
+            Directory.CreateDirectory(Path.Combine(library, "steamapps"));
+            static string Quoted(string path) => path.Replace("\\", "\\\\", StringComparison.Ordinal);
+            File.WriteAllText(Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf"),
+                $"\"libraryfolders\" {{ \"0\" {{ \"path\" \"{Quoted(steamRoot)}\" }} \"1\" {{ \"path\" \"{Quoted(library)}\" }} }}");
+            File.WriteAllText(Path.Combine(library, "steamapps", "appmanifest_553850.acf"), "\"AppState\" { \"appid\" \"553850\" }");
+            var usual = SteamDepotDownload.ContentFolder(steamRoot, fixture.Build);
+            var theirs = SteamDepotDownload.ContentFolder(library, fixture.Build);
+            // before Steam writes: the card names both, and the free space is the game's library's
+            var text = SteamDepotDownload.TargetText(steamRoot, fixture.Build, linux: false);
+            check(text.Contains(usual, StringComparison.Ordinal) && text.Contains(theirs, StringComparison.Ordinal), "The card did not name the game's library: " + text);
+            check(SteamDepotDownload.DownloadTarget(steamRoot, fixture.Build) == library, "The free space was not checked in the game's library.");
+            foreach (var file in fixture.Build.Files)
+            {
+                var target = Path.Combine(theirs, $"depot_{file.Depot}", file.Path);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.WriteAllBytes(target, fixture.Contents.GetValueOrDefault(file.Path) ?? []);
+            }
+            check(SteamDepotDownload.IsComplete(steamRoot, fixture.Build), "The download in the game's library was not found.");
+            check(SteamDepotDownload.DownloadFolders(steamRoot, fixture.Build).SequenceEqual([theirs]) &&
+                SteamDepotDownload.DownloadTarget(steamRoot, fixture.Build).StartsWith(theirs, StringComparison.Ordinal), "The download's folder was not named.");
+            var destination = Path.Combine(fixture.Home, "library-game");
+            GameCopier.CopyFromDepots(steamRoot, destination, fixture.Build);
+            fixture.CheckOutput(destination, check);
+            SteamDepotDownload.Delete(steamRoot, fixture.Build);
+            check(!Directory.Exists(theirs), "The download in the game's library was left after the copy.");
+            // an unreadable library list leaves Steam's own folders
+            File.WriteAllText(Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf"), "not a list {");
+            check(SteamDepotDownload.SteamAppsFolders(steamRoot).Count == 5, "A broken library list was not ignored.");
         });
 
         test("The Steam download's libraries ship with their licences, and the notices name the versions referenced", () =>
