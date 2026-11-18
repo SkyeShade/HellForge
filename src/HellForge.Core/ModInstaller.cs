@@ -55,7 +55,7 @@ public static class ModInstaller
         var mod = isZip ? ReadZip(install, path) : ParseAny(source);
         if (chosen.Any(m => m.Id == mod.Id)) throw new InvalidDataException($"{mod.Id} is chosen twice.");
         var current = installed.FirstOrDefault(m => m.Id == mod.Id);
-        var replaces = current == null ? null : current.Archive != null ? Path.Combine(install.Mods, current.Archive) : current.Folder;
+        var replaces = current == null ? null : InstalledPath(install, current);
         return new(source, isZip, mod.Id, mod.Name, mod.Version, replaces) { InstalledFolder = current?.Folder };
     }
 
@@ -101,23 +101,50 @@ public static class ModInstaller
         catch (IOException) { }
     }
 
-    // A .rar's or .7z's unpacked copy (Unpack) is not needed once the mod is in mods/.
+    // A .rar's or .7z's unpacked copy (Unpack) is not needed once the mod is in mods/. The mod may be folders down in it
+    // (ModSources).
     static void DeleteUnpacked(InstallLayout install, string source)
     {
-        var extracted = Path.GetFullPath(source);
-        if (LocalInstall.Within(extracted, install.Temp) && Path.GetFileName(Path.GetDirectoryName(extracted) ?? "").StartsWith("mod-unpacked-", StringComparison.Ordinal))
-            try { Directory.Delete(Path.GetDirectoryName(extracted)!, recursive: true); } catch (IOException) { }
+        for (var folder = Path.GetDirectoryName(Path.GetFullPath(source)); folder != null && LocalInstall.Within(folder, install.Temp);
+             folder = Path.GetDirectoryName(folder))
+            if (Path.GetFileName(folder).StartsWith("mod-unpacked-", StringComparison.Ordinal))
+            {
+                try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+                return;
+            }
     }
 
-    // Deletes the mod's files: its zip (its unpacked copy goes at the next load) or its folder.
-    public static void Remove(InstallLayout install, ModManifest mod) =>
-        Delete(install, mod.Archive != null ? Path.Combine(install.Mods, mod.Archive) : mod.Folder);
+    // Deletes the mod's files (InstalledPath): its zip (its unpacked copy goes at the next load) or its folder.
+    public static void Remove(InstallLayout install, ModManifest mod) => Delete(install, InstalledPath(install, mod));
 
+    // What removing the mod deletes: its zip, or the outermost folder in mods/ that holds this mod and no other (ModSources:
+    // a folder around it, with its readme), so a folder holding other mods as well keeps them.
+    public static string InstalledPath(InstallLayout install, ModManifest mod)
+    {
+        if (mod.Archive != null) return Path.Combine(install.Mods, mod.Archive);
+        var mods = Path.TrimEndingDirectorySeparator(Path.GetFullPath(install.Mods));
+        var folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(mod.Folder));
+        var path = folder;
+        for (var parent = Path.GetDirectoryName(path); parent != null && LocalInstall.Within(parent, mods) &&
+            !string.Equals(parent, mods, StringComparison.OrdinalIgnoreCase); parent = Path.GetDirectoryName(parent))
+        {
+            List<ModSources.Found> found;
+            try { found = ModSources.Search(parent); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { break; }
+            if (found is not [{ Zip: false } only] ||
+                !string.Equals(Path.GetFullPath(ModSources.PathIn(parent, only.Path)), folder, StringComparison.OrdinalIgnoreCase)) break;
+            path = parent;
+        }
+        return path;
+    }
+
+    // Only a zip or folder in mods/ (in a folder there too), outside its dot folders, and never through a link.
     static void Delete(InstallLayout install, string path)
     {
-        path = Path.GetFullPath(path);
-        if (!string.Equals(Path.GetDirectoryName(path), Path.GetFullPath(install.Mods).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase) ||
-            Path.GetFileName(path).StartsWith('.'))
+        path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        var mods = Path.TrimEndingDirectorySeparator(Path.GetFullPath(install.Mods));
+        if (!LocalInstall.Within(path, mods) || string.Equals(path, mods, StringComparison.OrdinalIgnoreCase) ||
+            Path.GetRelativePath(mods, path).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(part => part.StartsWith('.')))
             throw new InvalidDataException($"{path} is not a mod in this installation's mods folder; nothing was deleted.");
         path = LocalInstall.NoLinks(path, install.Mods);
         if (File.Exists(path)) File.Delete(path);
@@ -147,7 +174,11 @@ public static class ModInstaller
         var target = Path.Combine(install.Temp, "mod-unpacked-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(install.Temp);
         if (archive.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) ModArchives.Unpack(archive, target);
-        else OtherArchives.Unpack(archive, target);
+        else
+        {
+            OtherArchives.Unpack(archive, target);
+            ModArchives.OpenInner(target);
+        }
         var root = ModArchives.ManifestRoot(target);
         if (root != target) return root;
         var named = Path.Combine(install.Temp, "mod-unpacked-" + Guid.NewGuid().ToString("N")[..8], Path.GetFileNameWithoutExtension(archive));
@@ -196,35 +227,12 @@ public static class ModInstaller
         return false;
     }
 
-    // Whether the zip holds a cosmetic pack where ModArchives loads a mod from (ManifestRoot: its root, or its one top-level
-    // folder), read from its entries without unpacking it: a pack's patches or manifest.json there, and no HellForge
-    // manifest. False for a zip that cannot be read: it stays a zip, and loading it says why.
+    // Whether the mod the zip holds (ModSources: where ModArchives loads it from, in a zip inside it too) is a cosmetic pack,
+    // read from its entries without unpacking it: a pack's patches or manifest.json there, and no HellForge manifest. False
+    // for a zip that cannot be read: it stays a zip, and loading it says why.
     internal static bool ZipHoldsPack(string file)
     {
-        try
-        {
-            using var zip = ZipFile.OpenRead(file);
-            var files = zip.Entries.Select(e => (Name: e.FullName.Replace('\\', '/'), Entry: e)).Where(e => !e.Name.EndsWith('/')).ToList();
-            bool? PackAt(string prefix)
-            {
-                // names compared as the system's file lookups compare them (ModCatalog.ManifestIn, CosmeticPacks.IsPack once unpacked)
-                var here = files.Where(f => f.Name.StartsWith(prefix, StringComparison.Ordinal) && !f.Name[prefix.Length..].Contains('/'))
-                    .GroupBy(f => f.Name[prefix.Length..], OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
-                    .ToDictionary(g => g.Key, g => g.First().Entry, OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-                if (here.ContainsKey(ModCatalog.ManifestName) || here.ContainsKey(ModCatalog.LegacyManifestName)) return false; // a mod
-                if (here.Keys.Any(n => ModCatalog.PatchFile().IsMatch(n))) return true;
-                if (here.TryGetValue(CosmeticPacks.ManifestName, out var manifest))
-                {
-                    using var reader = new StreamReader(manifest.Open());
-                    if (CosmeticPacks.IsPackManifest(reader.ReadToEnd())) return true;
-                }
-                return null; // neither here
-            }
-            if (PackAt("") is { } atRoot) return atRoot;
-            var tops = zip.Entries.Select(e => e.FullName.Replace('\\', '/')).Where(n => n.Length > 0)
-                .Select(n => n.Contains('/') ? n[..(n.IndexOf('/') + 1)] : n).Distinct(StringComparer.Ordinal).ToList();
-            return tops.Count == 1 && tops[0].EndsWith('/') && PackAt(tops[0]) == true;
-        }
+        try { return ModSources.ReadZip(file, level => level.IsPack); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return false; }
     }
 
@@ -292,11 +300,11 @@ public static class ModInstaller
             if (ModCatalog.ManifestIn(root) != null || !CosmeticPacks.IsPack(root)) return null;
             pack = CosmeticPacks.Parse(root, CosmeticPacks.Choice.Default);
             // a folder with the same pack installed as well: TakeOne decides (the same files: the zip goes; else it stays)
-            if (Directory.GetDirectories(install.Mods).Any(d => !Path.GetFileName(d).StartsWith('.') && CosmeticPacks.IsPack(d) &&
+            if (ModSources.InModsFolder(install.Mods).Folders.Any(d => CosmeticPacks.IsPack(d) &&
                 CosmeticPacks.Parse(d, CosmeticPacks.Choice.Default).Id == pack.Id)) return null;
         }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { return null; }
-        // its folder's name as Add mods would give it: the zip's, or its one top-level folder's
+        // its folder's name as Add mods would give it: the zip's, or the pack's own folder's
         var name = root == folder ? Path.GetFileNameWithoutExtension(archive) : Path.GetFileName(root);
         var target = Path.Combine(install.Mods, name);
         for (var n = 2; File.Exists(target) || Directory.Exists(target); n++) target = Path.Combine(install.Mods, $"{name}-{n}");

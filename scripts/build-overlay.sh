@@ -80,6 +80,11 @@ for source in src/buffer.c src/hook.c src/trampoline.c src/hde/hde64.c; do
 done
 "$zig" c++ -target x86_64-windows-gnu -O1 -std=c++17 -Wall -Werror -Wno-unused-parameter -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -I "$project/native/mod-sdk" -I "$project/native/overlay" \
   -I "$imgui" -I "$minhook/include" "$project/native/overlay/test/overlay_host_test.cpp" "${hooks[@]}" -ld3d11 -ld3d12 -ldxgi -lgdi32 -o "$tests/overlay_host_test.exe"
+# The mouse pointer's test needs a window but no swap chain: input.cpp with ImGui's core and Win32 backend.
+imgui_core=()
+for name in imgui imgui_draw imgui_tables imgui_widgets imgui_demo imgui_impl_win32; do imgui_core+=("$objects/$name.o"); done
+"$zig" c++ "${common[@]}" -Wall -Werror -Wno-unused-parameter "$project/native/overlay/test/overlay_cursor_test.cpp" "$project/native/overlay/input.cpp" \
+  "${imgui_core[@]}" -ldwmapi -lgdi32 -luser32 -o "$tests/overlay_cursor_test.exe"
 # The test's window takes the focus and would catch the keys of whoever works at the desktop, so it runs on a hidden
 # display. HELLFORGE_OVERLAY_TEST_VISIBLE=1 runs it on the desktop instead.
 display=()
@@ -98,6 +103,8 @@ run() { # <name> [VAR=value ...]: one run, its screenshot <name>.bmp
   echo "== $name"
   "${display[@]}" env "$@" "$WINE" "$tests/overlay_host_test.exe" "$out/hellforge_overlay.dll" "$tests/$name.bmp"
 }
+echo "== cursor"
+"${display[@]}" "$WINE" "$tests/overlay_cursor_test.exe"
 run screen12
 run screen11 HELLFORGE_OVERLAY_TEST_D3D11=1
 run screen12-pq HELLFORGE_OVERLAY_TEST_FORMAT=rgb10a2 HELLFORGE_OVERLAY_HDR=pq:200

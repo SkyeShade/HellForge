@@ -44,13 +44,13 @@ try
             steam-bridge host | inner | check [socket]
 
             For launchers of their own (docs/external-launchers.md); --install defaults to the installation this is in:
-            play [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
+            play [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url>] [--local-playfab yes | no]
                  [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                  [--steam-udp yes | no] [--game-options <options>] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
             stop [--install <folder>] [--run <session folder>] [--wait yes] [--now yes]
             status [--install <folder>]
             profiles [--install <folder>] [--create <name> --template <template>]
-            fetch-war [--install <folder>]
+            fetch-war [--install <folder>] [--war hellforge | live] [--war-server <url>]
             mods [--install <folder>]
             languages [--install <folder>] [--steam-root <Steam folder>]
             language-add [--install <folder>] --name <language> [--steam-root <Steam folder>] [--keep yes | no]
@@ -59,7 +59,7 @@ try
             mod-switch [--install <folder>] (--id <mod id> | --ids <id,id,...>) --on yes | no
             mod-order [--install <folder>] --ids <id,id,... top first>
             mod-pack [--install <folder>] --id <pack id> (--option <name> [--on yes | no] [--variant <name>] | --all yes | no)
-            settings [--install <folder>] [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no]
+            settings [--install <folder>] [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url> | default] [--local-playfab yes | no]
                      [--multiplayer yes | no] [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no]
                      [--steam-udp yes | no] [--strangers yes | no | default] [--live-changes yes | no] [--forge-credits <0-100> | default] [--game-options <options>]
                      [--deal-subfactions yes | no] [--deal-seaf yes | no] [--war-seed <number> | random]
@@ -171,16 +171,17 @@ try
         "assets-strip" => ["--mod", "--out", "--install", "--history"],
         "mod-hash" => ["--mod"],
         "mod-tools" => ["--install", "--ide"],
-        "play" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
+        "play" => ["--install", "--profile", "--war", "--war-server", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--game-options", "--full-ownership-check", "--wait", "--dry-run"],
         "stop" => ["--install", "--run", "--wait", "--now"],
-        "status" or "fetch-war" or "mods" => ["--install"],
+        "status" or "mods" => ["--install"],
+        "fetch-war" => ["--install", "--war", "--war-server"],
         "profiles" => ["--install", "--create", "--template"],
         "mod-add" => ["--install", "--file"],
         "mod-remove" => ["--install", "--id", "--ids"],
         "mod-switch" => ["--install", "--id", "--ids", "--on"],
         "mod-order" => ["--install", "--ids"],
         "mod-pack" => ["--install", "--id", "--option", "--on", "--variant", "--all"],
-        "settings" => ["--install", "--profile", "--war", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--strangers", "--live-changes", "--forge-credits", "--game-options", "--deal-subfactions", "--deal-seaf", "--war-seed", "--share-mods", "--list-public", "--show-edited-stats", "--host-stats"],
+        "settings" => ["--install", "--profile", "--war", "--war-server", "--local-playfab", "--multiplayer", "--engine-log", "--crash-dump", "--sandbox", "--steam-udp", "--strangers", "--live-changes", "--forge-credits", "--game-options", "--deal-subfactions", "--deal-seaf", "--war-seed", "--share-mods", "--list-public", "--show-edited-stats", "--host-stats"],
         "mod-sync" => ["--install", "--untrust", "--hash", "--block", "--unblock", "--delete-downloaded"],
         "mod-sync-offer" => ["--install", "--run", "--answer", "--version", "--mod"],
         "weapon-levels" => ["--install", "--profile", "--set", "--all"],
@@ -455,7 +456,8 @@ try
             var code = active.Where(m => m.NeedsLoader).ToList();
             if (options.TryGetValue("--plan", out var planPath))
                 File.WriteAllText(planPath, ModLoaderPlan.Text(code, Path.GetFullPath(Required("--logs")), EntityProfile.Current, SupportedBuild.Current.BuildId,
-                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance, modWarbonds));
+                    ModSettings.ForgeCreditChance(modInstall.Mods) ?? ModSettings.DefaultForgeCreditChance, modWarbonds,
+                    modInstall.BackendPort));
             // The gameplay mods with their content hashes, for the backend (mod sync: joiners whose mods differ get it), and
             // the digest's mods one by one (ModlistDiff's wire form), so a refused co-op join can say which differ.
             var modSet = ModSet.Of(active);

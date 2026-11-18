@@ -467,6 +467,7 @@ static int HookAdd(HfMod* mod, const char* what, uintptr_t target, void* detour,
     HookWhere(target, where, sizeof where);
     if (target == 0 || detour == NULL || original == NULL) { HookRefused(mod, what, target, detour); return 1; }
     if (ModGone(mod)) { ApiLog(mod, "hook refused: the mod is being taken out"); return 1; }
+    if (mod != NULL && PaidGuardRefuses(mod, "hook", target, 1)) return 1;
     HookLink link = HookLinkOf(mod, what, detour, original, priority);
 
     AcquireSRWLockExclusive(&g_hookLock);

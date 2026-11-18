@@ -211,6 +211,17 @@ sealed partial class PlaySession(PlayOptions options)
         var appControl = SmartAppControl.Current;
         result["smartAppControl"] = SmartAppControl.Describe(appControl);
         if (appControl != SmartAppControlState.NotPresent) Say("Smart App Control: " + SmartAppControl.Describe(appControl));
+        GuardEngineLog(options);
+    }
+
+    // The engine log on a PC whose name would crash the game as it opens the log (EngineLogGuard): this session starts the
+    // game without --log-to-file and says why; the setting stays as the player chose it.
+    void GuardEngineLog(PlayOptions options)
+    {
+        if (!options.EngineLog || HellForge.Core.EngineLogGuard.Current() is not { } why) return;
+        options.EngineLog = false;
+        result["engineLogSkipped"] = "host name";
+        Say("Engine log: " + why);
     }
 
     // Holds a file of the installed game closed (no other handle, so it cannot start) into `into`; false when another
@@ -284,8 +295,25 @@ sealed partial class PlaySession(PlayOptions options)
         result["modsHeld"] = modsHold.Held;
         HoldGameFiles();
         ThrowIfStopRequested();
+        CheckGameLanguages();
         PrepareSessionData(profileDirectory);
         ThrowIfStopRequested();
+    }
+
+    // A text or voice language whose pack the copy lacks crashes the game on every start (#343): it is set back to English
+    // in the profile's settings before they go to the game, and the session says so (GameLanguageCheck).
+    void CheckGameLanguages()
+    {
+        IReadOnlyList<GameLanguageCheck.Fix> fixes;
+        try { fixes = GameLanguageCheck.Apply(install.GameProfile(profileName), copy, SupportedLanguages.Current); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            Say("Language check skipped: " + error.Message);
+            return;
+        }
+        if (fixes.Count == 0) return;
+        result["languagesSetBack"] = new JsonArray([.. fixes.Select(f => (JsonNode)new JsonObject { ["key"] = f.Key, ["code"] = f.Code, ["pack"] = f.Pack })]);
+        foreach (var fix in fixes.DistinctBy(f => (f.Key, f.Code))) Say(GameLanguageCheck.Describe(fix));
     }
 
     void CheckPreconditions()
@@ -1145,16 +1173,24 @@ sealed partial class PlaySession(PlayOptions options)
         if (Tools.Sha256(target) != standInPin) throw new SessionFailure("Stand-in copy failed: " + name);
     }
 
-    // Follows the live galactic war read-only through the community mirror; fetched before the backend is ready.
+    // Follows the HellForge war (its server's snapshot), or the live galactic war read-only through the community mirror;
+    // either is fetched before the backend is ready.
     // The all-planets war (every planet but Super Earth a liberation) takes the live war's place.
     void WarArguments(ProcessStartInfo start)
     {
+        if (options.WarScript != null) { start.ArgumentList.Add("--war-script"); start.ArgumentList.Add(Path.GetFullPath(options.WarScript)); result["warScript"] = true; }
         if (options.OpenWar)
         {
             start.ArgumentList.Add("--war"); start.ArgumentList.Add("open"); result["war"] = "open";
             if (options.WarSeed != 0) { start.ArgumentList.Add("--war-seed"); start.ArgumentList.Add(options.WarSeed.ToString(System.Globalization.CultureInfo.InvariantCulture)); result["warSeed"] = options.WarSeed; }
             if (!options.DealSubfactions) { start.ArgumentList.Add("--war-subfactions"); start.ArgumentList.Add("no"); result["warSubfactions"] = false; }
             if (!options.DealSeaf) { start.ArgumentList.Add("--war-seaf"); start.ArgumentList.Add("no"); result["warSeaf"] = false; }
+        }
+        else if (options.HellForgeWar != null)
+        {
+            start.ArgumentList.Add("--war"); start.ArgumentList.Add("hellforge"); result["war"] = "hellforge";
+            start.ArgumentList.Add("--war-cache"); start.ArgumentList.Add(Path.GetFullPath(options.HellForgeWar));
+            if (options.WarServer != null) { start.ArgumentList.Add("--war-server"); start.ArgumentList.Add(options.WarServer); result["warServer"] = options.WarServer; }
         }
         else if (options.LiveWar != null) { start.ArgumentList.Add("--live-war"); start.ArgumentList.Add(Path.GetFullPath(options.LiveWar)); result["liveWar"] = true; }
     }

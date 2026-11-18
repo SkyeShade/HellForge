@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "enemies": {
+    "Charger": { "movement::charge.speed": 4.5, "sensor::eye.range": 80, "entity::entity.armor": 50 },
+    "hunter_base": { "attack:melee_1:damage.standard_damage": 1, "movement::rotation.turn_speed": 30, "movement::locomotion.acceleration": 3 },
+    "Bile Titan": { "status::added.type": 22, "status::added.min_buildup": 10, "status::added.sure_buildup": 15, "elements::fire.multiplier": 0 }
+  }
+}

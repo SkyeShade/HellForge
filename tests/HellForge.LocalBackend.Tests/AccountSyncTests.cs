@@ -22,10 +22,7 @@ static class AccountSyncTests
 
     public static void Run(string root, Action<bool, string> check)
     {
-        // The Linux snapshot seal uses this synthetic machine id; the real /etc/machine-id is never read.
-        var machineId = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "machine-id")).FullName, "seal-test");
-        File.WriteAllText(machineId, "0123456789abcdef0123456789abcdef\n");
-        SnapshotSeal.MachineData.MachineIdPathForTests = machineId;
+        TestSigner.Install();
         var paid = PaidContentSet.Load();
         var ids = FindIds(paid);
         PremiumRules(paid, ids, check);
@@ -186,7 +183,7 @@ static class AccountSyncTests
         var file = Path.Combine(snapshot, InventorySync.ProgressionFile);
         File.WriteAllText(file, File.ReadAllText(file).Replace("{\"warId\":801,\"planetIndex\":171,\"territoryIndex\":11}",
             "{\"warId\":-1,\"planetIndex\":-1,\"regionIndex\":-1}"));
-        SnapshotSeal.Write(snapshot, InventorySync.SealKeyFor(snapshot), Player, DateTime.UtcNow);
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow);
         var settings = new AccountImportSettings();
         settings.Set("ship", true, ImportRule.Vanilla);
         settings.Save(AccountImportSettings.PathIn(profileDir));
@@ -383,10 +380,14 @@ static class AccountSyncTests
         Refused(paid, snapshot, Sibling, "changed", check);
         File.WriteAllText(seal, sealText);
 
-        // Another installation (its own key) does not accept this one's snapshot.
+        // The seal is bound to the PC's signer, not to an installation: another installation here accepts it, while a
+        // seal from another PC's signer is refused.
         var (_, elsewhere) = Install(root, "seals-elsewhere", ids);
         foreach (var name in new[] { InventorySync.InventoryFile, InventorySync.ProgressionFile, SnapshotSeal.FileName })
             File.Copy(Path.Combine(snapshot, name), Path.Combine(elsewhere, name), overwrite: true);
+        check(OwnershipFilter.ForSnapshot(paid, elsewhere, Player, out _).OwnedPaidCount == 3, "Another installation on this PC refused its snapshot.");
+        using (var otherPc = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
+            TestSigner.Seal(elsewhere, Player, DateTime.UtcNow, otherPc);
         Refused(paid, elsewhere, Player, "another PC", check);
         check(!OwnershipFilter.ForSnapshot(paid, Path.Combine(root, "none", "account-snapshot", "p"), Player, out problem).HasRealInventory && problem == null,
             "A profile without a snapshot reported a problem or ownership.");
@@ -538,7 +539,7 @@ static class AccountSyncTests
              "packageProgress":[{"id32":2373460877,"level":10,"progress":476,"sortOrder":0,"claimedLevels":[]}],"assignments":[],
              "purchasedSeasonPassItems":[871,872],"shipName":[9,16],"location":{"warId":801,"planetIndex":171,"territoryIndex":11},"achievements":[{"id":1}]}
             """);
-        SnapshotSeal.Write(snapshot, InventorySync.SealKeyFor(snapshot), Player, DateTime.UtcNow);
+        TestSigner.Seal(snapshot, Player, DateTime.UtcNow);
         return (profileDir, snapshot);
     }
 

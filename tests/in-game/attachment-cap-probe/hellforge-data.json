@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "patches": [
+    {
+      "archives": ["dbd9381f9ea9788f", "047c26f2f11d253e"],
+      "resources": [
+        { "type": "unit", "copy": "0x968211C0033DCE64", "name": "hellforge/attachment_cap_probe/liberator_0" },
+        { "type": "unit", "copy": "0x968211C0033DCE64", "name": "hellforge/attachment_cap_probe/liberator_1" },
+        { "type": "unit", "copy": "0x968211C0033DCE64", "name": "hellforge/attachment_cap_probe/liberator_2" }
+      ]
+    }
+  ]
+}

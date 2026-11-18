@@ -268,35 +268,6 @@ static void OwnProjectile(Weapon* w, uint8_t* record, uint8_t* customization)
         removed ? "; its default ammunition is removed" : "");
 }
 
-/* The beam or arc a weapon's own record names (+0 of BeamWeaponComponentData, component 270, or ArcWeaponComponentData, 265:
- * the only place a type reaches a weapon). Only an installed type is written: beam_arc.c says why. */
-#define REG_BEAM_WEAPON 270u
-#define REG_BEAM_WEAPON_STRIDE 120u
-#define REG_ARC_WEAPON 265u
-#define REG_ARC_WEAPON_STRIDE 80u
-#define REG_BEAM_VANILLA 31u
-#define REG_ARC_VANILLA 17u
-
-typedef struct FiredKind { const char* what; uint32_t vanilla, component, stride; } FiredKind;
-static const FiredKind kFiredBeam = {"beam", REG_BEAM_VANILLA, REG_BEAM_WEAPON, REG_BEAM_WEAPON_STRIDE};
-static const FiredKind kFiredArc = {"arc", REG_ARC_VANILLA, REG_ARC_WEAPON, REG_ARC_WEAPON_STRIDE};
-
-static void OwnBeamArc(uint8_t* state, const Weapon* w, uint64_t baseEntity, const FiredKind* k, int usable, uint32_t type)
-{
-    if (type == 0) return;
-    uint32_t c = k->component;
-    const char* what = k->what;
-    uint8_t* table = StatePointer(state, REG_TABLES + 8 * c);
-    uint8_t* record = table != NULL && FindRow(table, SlotsOf(c), 16, baseEntity) != NULL ? OwnRecord(state, c, k->stride, baseEntity, w->entity) : NULL;
-    if (record == NULL) { ApiLog(w->mod, "%s: its base has no %s record; it keeps its base's weapon", w->name, what); return; }
-    uint32_t base;
-    memcpy(&base, record, 4);
-    if (base == 0 || base >= k->vanilla) { ApiLog(w->mod, "%s: its own %s record does not name a vanilla %s (%u); it keeps its base's", w->name, what, what, base); return; }
-    if (!usable) { ApiLog(w->mod, "%s keeps its base's %s %u: type %u was not added", w->name, what, base, type); return; }
-    memcpy(record, &type, 4);
-    ApiLog(w->mod, "%s: its %s is type %u (its base's is %u)", w->name, what, type, base);
-}
-
 /* Its own encyclopedia record when it has text of its own. */
 static void OwnTextRecord(uint8_t* state, const Weapon* w, uint64_t baseEntity)
 {
@@ -390,6 +361,7 @@ static void GiveOwnRecords(WeaponLoad* L, Weapon* w, uint64_t baseEntity, const 
     if (fireRecord != NULL && w->projectile != 0) OwnProjectile(w, fireRecord, customization);
     OwnBeamArc(state, w, baseEntity, &kFiredBeam, BeamTypeUsable(w->beam), w->beam);
     OwnBeamArc(state, w, baseEntity, &kFiredArc, ArcTypeUsable(w->arc), w->arc);
+    OwnSpray(state, w, baseEntity);
     if (w->text[0] != 0 || w->text[2] != 0 || w->text[3] != 0) OwnTextRecord(state, w, Donor(w, REG_TEXT_COMPONENT, baseEntity));
     if (w->modelFrom != 0 && !KeepsGroundModel(state, w, baseEntity)) TakeModel(state, w, baseEntity);
     if (w->behaviour != 0) OwnBehaviour(state, w, Donor(w, REG_BEHAVIOUR, baseEntity));
@@ -951,7 +923,7 @@ static void ArmoryFill(uint8_t* armory, uint8_t* table, uint32_t count)
         memcpy(&type, rec + 4, 4);
         if (type >= REG_ARMORY_TYPES) continue;
         uint8_t* entry = armory + (size_t)(starts[type] + placed[type]++) * 32;
-        uint64_t owner = LoadoutOwner(table, r);
+        uint64_t owner = ArmoryEntity(table, r);
         memcpy(entry, rec, 4);          /* loadout id */
         memcpy(entry + 8, &owner, 8);   /* entity */
         memcpy(entry + 16, &type, 4);
@@ -975,12 +947,35 @@ static void BuildArmory(void)
 
 typedef uint8_t* (*EncyclopediaFn)(uint64_t entity);
 typedef uint8_t* (*ArmoryEntryFn)(uint32_t id);
+typedef uint32_t (*ArmoryListFn)(uint64_t entity);
 #define REG_ENCYCLOPEDIA_LOOKUP 0x4F8A50u /* component 76 record of an entity */
 #define REG_ARMORY_LOOKUP 0x11E7C60u      /* armory entry of a loadout id (walks the per-type ranges) */
+#define REG_ARMORY_LIST 0x11E7AE0u        /* the armory list (1-6) whose entries name an entity, 0 none (ArmoryEntity) */
+static const uint8_t kArmoryListPin[32] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x8b, 0x1d, 0xfc, 0xee, 0x13, 0x02, 0x41, 0xbb, 0x01, 0x00,
+    0x00, 0x00, 0x4c, 0x8d, 0x93, 0x28, 0x1b, 0x00, 0x00, 0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00};
+
+/* Each entity copy's armory list, as the game reads it when its hellpod rack breaks, beside its base's: logged when either
+ * is in one. Not read on a build whose lookup differs. */
+static void SelfCheckLists(const char* when)
+{
+    uint8_t code[sizeof kArmoryListPin];
+    if (g_armory == NULL || HookedCode(g_game + REG_ARMORY_LIST, code, sizeof code) || memcmp(code, kArmoryListPin, sizeof code) != 0) return;
+    ArmoryListFn list = (ArmoryListFn)(void*)(g_game + REG_ARMORY_LIST);
+    for (int i = 0; i < g_weaponCount; i++)
+    {
+        const Weapon* w = &g_weapons[i];
+        if (w->state != 1 || !w->plain || w->baseEntity == 0) continue;
+        uint32_t mine = list(w->entity), base = list(w->baseEntity);
+        if (mine == 0 && base == 0) continue; /* a rack, a sentry: no list for either */
+        ApiLog(w->mod, "self-check (%s): %s is in armory list %u (its base's %u)%s", when, w->name, mine, base,
+            mine == base ? "" : "; dropped from a broken hellpod it may not be picked up");
+    }
+}
 
 /* Asks the game's own lookups about every registered weapon and logs the answers (the armory's name path). */
 static void SelfCheck(const char* when)
 {
+    SelfCheckLists(when);
     for (int i = 0; i < g_weaponCount; i++)
     {
         Weapon* w = &g_weapons[i];

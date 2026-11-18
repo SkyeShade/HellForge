@@ -27,7 +27,15 @@
 
 #define PRJ_TABLE 0x37C7670u
 #define PRJ_VANILLA 351u
-#define PRJ_MAX_NEW 512u /* what 512 weapons could each fire: the list is HellForge's own once moved */
+#define PRJ_MAX_NEW 1024u /* what 1,024 weapons could each fire: the list is HellForge's own once moved */
+/* Co-op: the type travels in network field type 0xCDE01BFB (rpc_fire_single_round_advanced, rpc_add_projectile_to_manager,
+ * rpc_sync_reload_state; mappings/rpcs.json), 9 bits from 0. A set past 161 new types widens it to 11 bits (its row's +13,
+ * as explosions widen field 248) on every machine, which all run the same mods; a row not as reviewed takes 161. */
+#define PRJ_FIELD_HASH 0xCDE01BFBu /* the projectile type's network field type (its name's hash) */
+#define PRJ_FIELD_BITS 9u
+#define PRJ_FIELD_WIDE 11u
+#define PRJ_NARROW_MAX ((1u << PRJ_FIELD_BITS) - PRJ_VANILLA) /* 161: the new types the game's 9 bits carry */
+_Static_assert(PRJ_VANILLA + PRJ_MAX_NEW <= 1u << PRJ_FIELD_WIDE, "the types the wide field carries");
 #define PRJ_ROW 272u
 #define PRJ_DAMAGE_AT 0x3Cu
 #define PRJ_VISUAL_AT 0x48u
@@ -57,6 +65,7 @@ typedef struct Projectile
 #include "projectile_sites.h"
 
 static Projectile g_projectiles[PRJ_MAX_NEW];
+static uint32_t g_projectilesIn; /* the new types that went in (all, or PRJ_NARROW_MAX when the co-op field could not widen) */
 static uint32_t g_projectileCount;
 static int g_projectileState; /* 0 waiting, 1 installed, -1 refused (the build is not as reviewed) */
 static uint8_t* g_projectileTable; /* HellForge's moved list, once installed */
@@ -156,7 +165,8 @@ static uintptr_t ApiProjectileRow(uint32_t type)
 static int ProjectileUsable(uint32_t type)
 {
     if (type > 0 && type < PRJ_VANILLA) return 1;
-    return type >= PRJ_VANILLA && type < PRJ_VANILLA + g_projectileCount && g_projectileState >= 0;
+    uint32_t in = g_projectileState == 1 && g_projectilesIn < g_projectileCount ? g_projectilesIn : g_projectileCount;
+    return type >= PRJ_VANILLA && type < PRJ_VANILLA + in && g_projectileState >= 0;
 }
 
 static int PinIs(uintptr_t address, const uint8_t* bytes, size_t size)
@@ -183,6 +193,34 @@ static const char* ProjectilePinsFailed(uintptr_t game)
 }
 
 static void StartProjectiles(void) {}
+
+static int FieldTypes(uintptr_t* rows, uint32_t* count);        /* nettypes.c */
+static uintptr_t FindFieldTypeHash(uint32_t hash);
+static int (*g_projectileFields)(uintptr_t* rows, uint32_t* count) = FieldTypes; /* the native fixture replaces both */
+static uintptr_t (*g_projectileFieldRow)(uint32_t hash) = FindFieldTypeHash;
+
+/* The projectile type's field row when it is as reviewed (an integer of 9 bits, or of the 11 HellForge widened it to,
+ * from 0), or 0. */
+static uintptr_t ProjectileFieldRow(void)
+{
+    uintptr_t row = g_projectileFieldRow(PRJ_FIELD_HASH);
+    uint8_t bytes[0x18];
+    uint32_t min;
+    if (row == 0 || SafeRead(row, bytes, sizeof bytes)) return 0;
+    memcpy(&min, bytes + 16, 4);
+    return bytes[12] == 1 && (bytes[13] == PRJ_FIELD_BITS || bytes[13] == PRJ_FIELD_WIDE) && min == 0 ? row : 0;
+}
+
+/* The field widened for types past 511: 1 done (or not needed), 0 the row is not the reviewed one (logged). */
+static int ProjectileFieldFor(uint32_t count, PutFn put)
+{
+    if (count <= PRJ_NARROW_MAX) return 1;
+    uintptr_t row = ProjectileFieldRow();
+    uint8_t wide = PRJ_FIELD_WIDE;
+    if (row != 0 && (*(const uint8_t*)(row + 13) == PRJ_FIELD_WIDE || !put(row + 13, &wide, 1))) return 1;
+    Note("projectiles: network field type %08x is not the reviewed one: types past %u cannot travel in co-op", PRJ_FIELD_HASH, PRJ_VANILLA + PRJ_NARROW_MAX - 1);
+    return 0;
+}
 
 static int RefuseProjectiles(const char* why)
 {
@@ -256,6 +294,8 @@ static uint8_t* g_projectileBlock;
 
 static void ProjectilesInstalledLog(void)
 {
+    for (uint32_t i = g_projectilesIn; i < g_projectileCount; i++)
+        ApiLog(g_projectiles[i].mod, "projectile %s (type %u) not added: the type does not fit the game's 9-bit co-op field", g_projectiles[i].name, g_projectiles[i].type);
     for (uint32_t i = 0; i < g_projectileCount; i++)
     {
         uint32_t damage;
@@ -287,7 +327,7 @@ static int ProjectileListsIn(uintptr_t game, int graceOver)
 /* Every new row, in the block. 1 done, 0 not loaded yet, -1 refused (why). */
 static int ProjectileRows(uint8_t* table, uintptr_t game, const char** why)
 {
-    for (uint32_t i = 0; i < g_projectileCount; i++)
+    for (uint32_t i = 0; i < g_projectilesIn; i++)
     {
         g_projectiles[i].row = table + PRJ_ROWS_AT + i * PRJ_ROW;
         int made = ProjectileRow(&g_projectiles[i], game, why);
@@ -301,11 +341,32 @@ static int ProjectileRows(uint8_t* table, uintptr_t game, const char** why)
 static const char* ProjectileSwitch(uintptr_t game, uint8_t* table)
 {
     if (SafeRead(game + PRJ_TABLE, table, PRJ_VANILLA * 8)) return "the projectile list is unreadable";
-    for (uint32_t i = 0; i < g_projectileCount; i++) memcpy(table + (size_t)g_projectiles[i].type * 8, &g_projectiles[i].row, 8);
+    for (uint32_t i = 0; i < g_projectilesIn; i++) memcpy(table + (size_t)g_projectiles[i].type * 8, &g_projectiles[i].row, 8);
     const char* why = ProjectileMove(game, table, ApiWrite);
     if (why != NULL) return why;
     g_projectileTable = table;
-    return ProjectileRaise(game, PRJ_VANILLA + g_projectileCount, ApiWrite);
+    return ProjectileRaise(game, PRJ_VANILLA + g_projectilesIn, ApiWrite);
+}
+
+/* The list in: said, weapons naming types that did not fit back on their base's, each new type's row logged. */
+static void ProjectilesInstalled(const uint8_t* table)
+{
+    Note("projectiles: the list moved to 0x%llx (%zu instructions) with %u new type(s) (bounds raised to %u)%s",
+        (unsigned long long)(uintptr_t)table, sizeof kProjectileSites / sizeof kProjectileSites[0], g_projectilesIn, PRJ_VANILLA + g_projectilesIn,
+        g_projectilesIn > PRJ_NARROW_MAX ? ", network field type cde01bfb now 11 bits" : "");
+    RevertWeaponProjectiles();
+    ProjectilesInstalledLog();
+}
+
+/* How many new types go in (g_projectilesIn): all, or the 161 the game's field carries when it cannot widen. 0 while
+ * the field types are not there yet and the grace period runs. */
+static int ProjectilesFit(int graceOver)
+{
+    uintptr_t rows;
+    uint32_t fields;
+    if (g_projectileCount > PRJ_NARROW_MAX && g_projectileFields(&rows, &fields) && !graceOver) return 0;
+    g_projectilesIn = ProjectileFieldFor(g_projectileCount, ApiWrite) ? g_projectileCount : PRJ_NARROW_MAX;
+    return 1;
 }
 
 /* Called from the watch loop until it returns 1: moves the damage list if mods added damage, then installs the rows,
@@ -321,6 +382,7 @@ static int InstallProjectiles(void)
     if (g_projectileCount == 0) { g_projectileState = 1; return 1; }
     const char* why = ProjectilePinsFailed(game);
     if (why != NULL) return graceOver ? RefuseProjectiles(why) : 0;
+    if (!ProjectilesFit(graceOver)) return 0;
     if (g_projectileBlock == NULL) g_projectileBlock = AllocateNearGame(game, PRJ_ROWS_AT + (size_t)PRJ_MAX_NEW * PRJ_ROW);
     uint8_t* table = g_projectileBlock;
     if (table == NULL) return RefuseProjectiles("no memory within 2 GB of game.dll for the moved list");
@@ -328,8 +390,6 @@ static int InstallProjectiles(void)
     if (made <= 0) return made < 0 ? RefuseProjectiles(why) : 0;
     if ((why = ProjectileSwitch(game, table)) != NULL) return RefuseProjectiles(why);
     g_projectileState = 1;
-    Note("projectiles: the list moved to 0x%llx (%zu instructions) with %u new type(s) (bounds raised to %u)",
-        (unsigned long long)(uintptr_t)table, sizeof kProjectileSites / sizeof kProjectileSites[0], g_projectileCount, PRJ_VANILLA + g_projectileCount);
-    ProjectilesInstalledLog();
+    ProjectilesInstalled(table);
     return 1;
 }

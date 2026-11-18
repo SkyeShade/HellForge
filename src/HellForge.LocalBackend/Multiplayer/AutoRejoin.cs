@@ -165,7 +165,7 @@ public sealed class AutoRejoin : IDisposable
                     (stage, due) = (Stage.Asking, now + AnswerTimeout);
                     log($"Rejoin: asking {LobbyService.EntityId(target.Host)} whether this player may rejoin lobby {target.LobbyId}.");
                     send(target.Host, new Frame("lobby.rejoin").Add(target.LobbyId).Add(target.Legacy ? target.Digest : ownDigest)
-                        .Add(target.Legacy ? LobbyService.LegacyProtocol : LobbyService.Protocol));
+                        .Add(target.Legacy ? LobbyService.LegacyProtocol : LobbyService.Protocol).Add(target.Legacy ? "" : LobbyService.EntityRoom));
                     return;
                 case Stage.Asking:
                     GiveUp($"{LobbyService.EntityId(target.Host)} did not answer within {AnswerTimeout.TotalSeconds:0} s.",

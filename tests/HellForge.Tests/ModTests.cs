@@ -65,6 +65,9 @@ static class ModTests
                 plan.Any(l => l.StartsWith("component\tDepositComponentData\t7287344\t", StringComparison.Ordinal)) &&
                 plan.Contains($"mod\ttest.code\t{loaded[0].Folder}\t{Path.Combine(loaded[0].Folder, "mod.dll")}"), "The loader plan is incomplete.");
             check(plan.Contains("mod_version\ttest.code\t1"), "The loader plan lacks the code mod's version.");
+            check(!plan.Any(l => l.StartsWith("backend_port", StringComparison.Ordinal)) &&
+                ModLoaderPlan.Text(loaded, Path.Combine(root, "session"), EntityProfile.Current, "25480438", backendPort: 41234).Split('\n').Contains("backend_port\t41234"),
+                "The loader plan names the backend's port only when given one (the paid-item guard asks it).");
             var digest = ModCatalog.Digest(loaded);
             File.WriteAllText(Path.Combine(mods, "good", "mod.dll"), "rebuilt dll");
             check(ModCatalog.Digest(ModCatalog.Load(mods).Mods) != digest, "A rebuilt DLL kept the modlist code.");
