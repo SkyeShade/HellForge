@@ -402,3 +402,34 @@ Limits:
 - It is pinned to game build 25480438: rpmalloc's code, its setup and every place that reaches a trim. Another build
   leaves it off, with a line in `modloader.log`. If the renderer's or Havok's code differs, only that thread is left out.
 - Each pass writes one line to `modloader.log` with what it found and moved.
+
+## job-wake
+
+The engine's job system wakes its pool workers through a light semaphore, one for the workers, the low-priority and
+the background threads each: an atomic count, below zero while workers sleep, over a Windows semaphore they sleep on.
+
+- **What the game does.** Each time a thread readies jobs (bikeshed's ready callback, exe `0x625400`), it adds them to
+  the count and, if workers sleep, calls `ReleaseSemaphore` to wake as many. With most of the 28 workers asleep, nearly
+  every job the game thread readies costs it a system call that wakes one: particle effects, Havok and Wwise jobs
+  alike. At D11 that is 1.3-1.5 ms of each game-thread frame, and under Reflex every ms of the game thread is a ms of
+  the frame.
+- **What changes.** The count stays the game's; only the game thread's system calls move
+  (`native/mod-loader/perf_job_wake.c`). The wakes it asks for are owed. The game thread makes one only while no wake
+  it owed is still on its way. Each worker that wakes makes the next ones, up to two on their way, before it looks
+  for work. The render thread and the workers wait on their own chains of jobs, so they still wake workers at once.
+- **Why no job waits.** These semaphores are waited on in one place, the worker loop (exe `0x625380`): count minus
+  one, sleep when it was below one, then run jobs until none is left in its channels. So any wake reaches a worker
+  that runs every job queued in its channels, and a job readied while a wake is on its way is run by that worker.
+- **Why no wake is lost.** The game thread adds to what is owed, then looks at the wakes on their way. A woken
+  worker takes itself off them, then looks at what is owed. Both steps are locked operations, so one of the two
+  threads sees the other and makes the wake. A wake on its way for over 2 ms is taken as lost, and sleeping workers
+  look at what is owed every 50 ms. At the install, the workers asleep in the game's own wait are woken once with
+  the game's own wake of all workers (`0x625F80`), so every later sleep is in HellForge's wait.
+- **Why the results stay the same.** Every wake the game asks for is still made, on the same semaphore, and never
+  more of them: each one first takes one off what is owed. Only which thread makes it, and a few microseconds of
+  when, change. The jobs, their order and their dependencies are the game's.
+- **Limits.** It is pinned to build 25480438: the callback, the worker loop, bikeshed's calls of the callback, its
+  install and the wake of all workers. The two imports must lead into the kernel or the exe's own import stubs, and
+  release, wait and time out on a test semaphore as `ReleaseSemaphore` and `WaitForSingleObject` do. Otherwise it
+  stays off, with a line in `modloader.log`. It installs once the game has loaded,
+  and `modloader.log` gets a line a minute with how many wakes were asked for and who made them.
