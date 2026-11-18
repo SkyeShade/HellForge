@@ -223,6 +223,8 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **Hellpod / Call-in opens every stratagem's page in the editor.** Support weapons had it last, under all of the
+  weapon's own sections; now it comes first, as on every other stratagem.
 - **Mods load as you download them.** A zip may hold the mod in folders, beside a readme, or in a zip inside it, as
   mod sites ship them. A folder unpacked into the mods folder works the same way, and a folder of several mods loads
   each one. A zip with several mods is refused, and Mod notices names them: one zip is one mod, as friends compare it
