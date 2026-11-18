@@ -6,7 +6,15 @@
  * appended to g_settings, and of its base's deltas under its own add_path in a grown copy of the delta storage, swapped
  * in; a unit of the mod's own replaces the base's where the deltas name it. Both are made again when the game reloads. */
 
-#define ATT_MAX 128
+/* Room for mods' attachments and weapon patterns together. Nothing in the game bounds it: the item lookups (0x11F46F0,
+ * 0x11F4680) and a weapon's customization list (0x1370420) walk every item of every group, that list is a heap block
+ * sized by them all (0x11F4760), a group's item count is a u32, the entity deltas' key map is HellForge's grown one
+ * (key % slots, 0x5154C0), and a loadout names an attachment by its full 32-bit id, in co-op too (the loadout RPCs'
+ * option arrays are 32-bit ints; a peer looks the id up in its own items). The customize screen's 64 cards a panel are
+ * fixed (0x1493770), but they come from mastery package entries, which an attachment does not get. Each add_path also
+ * needs its base's package in the game's package map, which held about 340 more: HellForge's copy of it grows
+ * (patterns.c PatPackagesTick). */
+#define ATT_MAX 1024
 #define ATT_WEAPONS 16
 #define ATT_TABLE 0x37C5B50u
 #define ATT_COUNT 0x348DA98u
@@ -18,10 +26,21 @@
 #define ATT_CUSTOMIZATION 271u
 #define ATT_UNIT_CUSTOMIZATION 206u
 #define PAT_MAX 128               /* unit patterns (patterns.c) */
+/* The hash_lookup map from an add_path to the package loaded before its deltas apply (patterns.c PatPackagesTick): a
+ * weapon loads a package for each of its attachments' add_paths there (0x139A3DE), and one with none loads nothing, so
+ * a copy's unit and textures would be missing. Its readers, 0xFD25A0 and 0x12689C0, load the count before the entries. */
+#define PAT_PACKAGE_LOOKUP 0xFD25A0u
+#define PAT_PACKAGE_READER 0x1268A2Fu
+#define PAT_PACKAGES 0x3799810u /* entries*; +8 u32 count (a power of 2); +0x10 u64 the empty key; +0x18 u32 the multiplier */
 #define PAT_COLLECTION_SLOTS 12u  /* the game's unit skin collections */
+_Static_assert(ATT_MAX * 3 + PAT_MAX <= REG_ATTACHMENT_TEXTS, "each attachment's three texts and each unit pattern's one have room (registry.c g_texts)");
 
 static const uint8_t kAttItemPin[24] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x7c, 0x24, 0x10, 0x8b, 0x3d, 0x98, 0x93, 0x29, 0x02,
     0x45, 0x33, 0xd2, 0x85, 0xff, 0x74, 0x3b, 0x4c};
+static const uint8_t kPatPackagePin[29] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x7c, 0x24, 0x10, 0x44, 0x8b, 0x05, 0x67, 0x72, 0x7c,
+    0x02, 0x33, 0xd2, 0x44, 0x8b, 0x15, 0x6e, 0x72, 0x7c, 0x02, 0x4c, 0x8b, 0xc9};
+static const uint8_t kPatReaderPin[30] = {0x44, 0x8b, 0x05, 0xe2, 0x0d, 0x53, 0x02, 0x44, 0x8b, 0x15, 0xeb, 0x0d, 0x53, 0x02, 0x4d, 0x0f,
+    0xaf, 0xd1, 0x41, 0x8d, 0x70, 0xff, 0x45, 0x85, 0xc0, 0x74, 0x42, 0x4c, 0x8b, 0x1d};
 static const uint8_t kAttDeltaPin[30] = {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x8b, 0x05, 0xcc, 0x6a, 0xf5, 0x02, 0x33, 0xd2, 0x45, 0x33,
     0xc0, 0x4c, 0x8b, 0xd9, 0x48, 0x8b, 0x98, 0x98, 0x2e, 0xf1, 0x00, 0x48, 0x8b, 0xc1};
 
@@ -293,14 +312,15 @@ static int AttResolve(uintptr_t game, const uint8_t* s, DeltaCopy** ready, int**
     return n;
 }
 
-/* Whether the game's item and delta lookups read as reviewed (once; logged when not). */
+/* Whether the game's item, delta and package lookups read as reviewed (once; logged when not). */
 static int AttProven(uintptr_t game)
 {
     static int proven;
     if (!proven)
     {
-        proven = PinMatches(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin) && PinMatches(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin) ? 1 : -1;
-        if (proven < 0) Note("attachments: the game's item or delta lookup is not the reviewed one; no attachments or patterns");
+        proven = PinMatches(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin) && PinMatches(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin) &&
+            PinMatches(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin) && PinMatches(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin) ? 1 : -1;
+        if (proven < 0) Note("attachments: the game's item, delta or package lookup is not the reviewed one; no attachments or patterns");
     }
     return proven > 0;
 }

@@ -46,6 +46,20 @@ Some things to know:
   beside its unpacked copy would hold the pack twice.
 - Files that are not mods are listed under Mod notices with the reason, until the next Add mods.
 
+### Where the mod may sit
+
+A download loads as it comes: the mod may be in folders inside the zip, beside a readme, or in a zip inside the zip. A
+folder unpacked into the mods folder works the same way. HellForge finds the mod by one rule:
+
+1. A folder with a `hellforge-mod.json`, or a cosmetic pack, is the mod.
+2. Else HellForge looks in its folders and zips, when only readme files are beside them: text, Markdown, PDF, pictures,
+   links and licences. Any other file, such as an installer, stops the search there.
+3. It looks 4 folders down at most, and in 2 zips inside a zip at most. It skips dot folders and `__MACOSX`.
+
+One zip holds one mod, since friends compare a zip's files: a zip with several is refused, and Mod notices names them.
+A folder in the mods folder may hold several mods, and each loads. A zip inside such a folder does not: move it into the
+mods folder. Removing a mod deletes its folder, and the folders around it that hold no other mod.
+
 ### Disk space
 
 PLAY puts each mod's patches into the game copy's data folder as hard links to the mod's own files where it can, not as

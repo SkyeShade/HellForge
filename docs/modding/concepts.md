@@ -300,6 +300,7 @@ These limits are for all mods together:
 | New damage types | 512 (ids 650 and up) |
 | New explosion, beam and arc types | 512 of each |
 | New stratagems | 48 (types 150 and up) |
+| New attachments | 1,024, weapon patterns among them |
 | New behaviours | 8 |
 | New abilities | 8 |
 | Selection headings | 28 |

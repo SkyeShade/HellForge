@@ -241,6 +241,15 @@ static class RejoinTests
             "An mp-7 joiner was not refused as another HellForge: " + string.Join(" | ", oldSeen.Select(f => f.Type)));
         check(Join("legacy", LobbyService.LegacyProtocol, out _).Text(2) == "0", "An mp-8 (0.3) joiner with the host's digest was refused.");
         check(Join("new", LobbyService.Protocol, out _).Text(2) == "0", "An mp-9 joiner was refused.");
+        host.Lobby.RequireEntityRoom = true;
+        var older = Join("older", LobbyService.Protocol, out var olderSeen);
+        check(older.Text(2) == LobbyService.LobbyNotJoinable.ToString() &&
+            olderSeen.Any(f => f.Type == "lobby.refused" && Enumerable.Range(0, f.Count).Any(i => f.Text(i).Contains("holds more enemies"))),
+            "A joiner whose game keeps 2048 entities was not refused by a host that keeps 4096.");
+        peer.Send(HostId, MultiplayerTests.Join("room", FriendId, connection).Add(HostMods).Add(LobbyService.Protocol).Add("").Add(LobbyService.EntityRoom).Encode(), reliable: true);
+        var room = replies.GetConsumingEnumerable().First(f => f.Type == "lobby.result" && f.Text(0) == "room");
+        check(room.Text(2) == "0", "A joiner that names " + LobbyService.EntityRoom + " was refused.");
+        host.Lobby.RequireEntityRoom = false;
     }
 
     // The host's answers to lobby.rejoin: ok (the lobby asked, or the host's lobby now), or why not.
