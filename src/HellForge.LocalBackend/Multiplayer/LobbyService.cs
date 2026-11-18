@@ -79,6 +79,19 @@ public sealed class LobbyService
     public const string LegacyProtocol = "hellforge-mp-8";
     // Whether a joiner's protocol can be used: the feature version this build speaks, or 0.3's (LegacyProtocol).
     public static bool Compatible(string protocol) => protocol is Protocol or LegacyProtocol;
+    // What this HellForge's game can hold that an older one's cannot: a joiner names it after its mod list (lobby.join) or
+    // its protocol (lobby.rejoin), which older hosts never read. This host's game keeps 4096 entities a world where
+    // older games keep 2048 and crash past them, so a joiner without it is refused; this machine joining an older host
+    // is fine, as the host's world is the smaller.
+    public const string EntityRoom = "entities-4096";
+    static bool HoldsEntities(string capabilities) => capabilities.Split(',').Contains(EntityRoom);
+    // Set by the session's host (MultiplayerHost) when its game holds the larger entity table.
+    public bool RequireEntityRoom { get; set; }
+    // What a rejoiner of this protocol is told (its capabilities follow the protocol), or null when it may rejoin.
+    IReadOnlyList<string>? VersionRefusal(string protocol, Frame rejoin) =>
+        !Compatible(protocol) ? ["Your HellForge version is not the host's.", "Both players need the same HellForge installer."]
+        : RequireEntityRoom && !HoldsEntities(rejoin.Count > 3 ? rejoin.Text(3) : "") ? OlderJoinerLines : null;
+    static readonly string[] OlderJoinerLines = ["The host's HellForge holds more enemies than yours.", "Update HellForge to join this host."];
     const int MemberRemovedForcibly = 1, MemberRemovedRemoteLeft = 2, DisconnectingNoLocalMembers = 0, DisconnectingLobbyDeleted = 1;
     static readonly HashSet<string> Requests = ["lobby.create", "lobby.join", "lobby.update", "lobby.leave", "lobby.kick", "lobby.invite"];
     // PlayFab's limits (PFLobby.h: PFLobbyMaxLobbyPropertyCount, ...MemberPropertyCount, ...SearchPropertyCount, 30 each),
@@ -505,7 +518,8 @@ public sealed class LobbyService
         if (protocol != Protocol) log($"Joining {EntityId(owner)}, whose HellForge is older, as {protocol}.");
         frame.Add(digest);
         frame.Add(protocol);
-        if (own.List != null) frame.Add(own.List);
+        if (protocol == Protocol) { frame.Add(own.List ?? ""); frame.Add(EntityRoom); }
+        else if (own.List != null) frame.Add(own.List);
         return (owner, lobbyId);
     }
 
@@ -684,6 +698,12 @@ public sealed class LobbyService
                 ["Their HellForge version is not yours: both players need the same HellForge installer."]);
             return;
         }
+        if (RequireEntityRoom && node != LocalNode && !HoldsEntities(frame.Count > index + 3 ? frame.Text(index + 3) : ""))
+        {
+            Refuse(node, op, lobby.Id, "an older HellForge joining: its game holds 2048 entities, this host's 4096.", OlderJoinerLines,
+                ["An older HellForge tried to join: it must be updated to join you."]);
+            return;
+        }
         if (hosting.Changing && node != LocalNode)
         {
             Refuse(node, op, lobby.Id, "the host's gameplay mods are changing; try again in a moment.",
@@ -741,7 +761,7 @@ public sealed class LobbyService
 
     // A joiner's mods one by one (after its digest and protocol; a joiner from before sends none).
     static List<ModFingerprint>? Theirs(ulong node, Frame frame, int index) =>
-        node != LocalNode && frame.Count > index + 2 ? ModlistDiff.Decode(frame.Text(index + 2)) : null;
+        node != LocalNode && frame.Count > index + 2 && frame.Text(index + 2).Length > 0 ? ModlistDiff.Decode(frame.Text(index + 2)) : null;
 
     // A join that passed the checks: the member joins unless the lobby is locked, full, or has them already.
     void AddMember(ulong node, Frame frame, string op, HostedLobby lobby, string memberId, Dictionary<string, string> memberProperties)
@@ -918,7 +938,7 @@ public sealed class LobbyService
         if (asked.Length is 0 or > 100) return;
         if (lobby == null) { Tell("gone", ["The host's lobby has closed."]); return; }
         if (Admission(lobby, node) is { } refusal) { Tell("refused", refusal.JoinerLines); return; }
-        if (!Compatible(protocol)) { Tell("version", ["Your HellForge version is not the host's.", "Both players need the same HellForge installer."]); return; }
+        if (VersionRefusal(protocol, frame) is { } older) { Tell("version", older); return; }
         var hosting = mods;
         if (hosting.Changing) { Tell("mods", ["The host's gameplay mods are changing.", "Join them again in a moment."]); return; }
         if (!SameMods(hosting.Digest, digest, protocol, null)) { Tell("mods", ["The host's gameplay mods changed since you were refused.", "Join them again to see which differ."]); return; }

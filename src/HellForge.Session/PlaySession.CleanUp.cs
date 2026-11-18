@@ -248,12 +248,13 @@ sealed partial class PlaySession
     static List<SandboxRefusals.Refusal> Refusals(JsonNode? census) => census?["deniedTargets"] is not JsonArray denied ? []
         : [.. denied.OfType<JsonObject>().Select(row => new SandboxRefusals.Refusal((string?)row["to"] ?? "?", (string?)row["caller"] ?? "?", (long?)row["count"] ?? 1))];
 
-    // Why the game closed during `step` (LaunchFailure.Closed): sandboxed, with what the sandbox may have to do with it.
+    // Why the game closed during `step` (LaunchFailure.Closed): sandboxed, with what the sandbox may have to do with it, and
+    // whether the game's own log was on (a crash known to come from it is named).
     string ClosedMessage(string step, int code, WindowsCrash.Record? crash)
     {
         var sandboxed = options.Sandbox && !linuxSandbox;
         return LaunchFailure.Closed(step, code, crash, crash != null ? CrashOwner(crash) : WindowsCrash.Owner.Unknown, sandboxed,
-            sandboxed && WindowsCrash.IsCrash(code) ? SandboxCrashHint() : null);
+            sandboxed && WindowsCrash.IsCrash(code) ? SandboxCrashHint() : null, options.EngineLog);
     }
 
     // The sandboxed game crashed as it started: a program known to crash it there that was refused (SandboxRefusals.CrashHint),

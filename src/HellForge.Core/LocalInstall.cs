@@ -190,6 +190,23 @@ public static class LocalInstall
         return libraries.Order(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
+    // A link (or another reparse point) found inside a folder whose every entry is read; Data[LinkedPath] names it.
+    public const string LinkedPath = "LinkedPath";
+
+    static InvalidDataException LinkInside(string path)
+    {
+        var error = new InvalidDataException($"Linked/reparse paths are not supported: {path}");
+        error.Data[LinkedPath] = path;
+        return error;
+    }
+
+    // Steam's game folder with a link inside (#373: a mod's .patch_0 file a mod manager linked into the game's data). Setup
+    // stopped at the bare refusal; this says which file and what to do.
+    public static string SteamFolderLink(string source, string linked) =>
+        $"{Path.GetRelativePath(source, linked)} in HELLDIVERS 2's folder in Steam is a link, and HellForge reads that folder " +
+        "only as Steam installed it. Mod managers make such links when they install mods into the game in Steam: remove " +
+        "those mods, or verify the game's files in Steam (Properties > Installed Files), then try again.";
+
     public static List<InventoryFile> Inventory(string root)
     {
         root = NoLinks(root, root);
@@ -198,8 +215,7 @@ public static class LocalInstall
         {
             foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
             {
-                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidDataException($"Linked/reparse paths are not supported: {entry.FullName}");
+                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0) throw LinkInside(entry.FullName);
                 if ((entry.Attributes & FileAttributes.Directory) != 0) Walk(entry.FullName);
                 else files.Add(new(Path.GetRelativePath(root, entry.FullName).Replace('\\', '/'),
                     ((FileInfo)entry).Length, entry.LastWriteTimeUtc.Ticks));
@@ -252,7 +268,9 @@ public static class LocalInstall
             var path = NoLinks(Path.Combine(source, required), source);
             if (!File.Exists(path)) throw new InvalidDataException($"Required game file is missing: {required}");
         }
-        var inventory = Inventory(source);
+        List<InventoryFile> inventory;
+        try { inventory = Inventory(source); }
+        catch (InvalidDataException link) when (link.Data[LinkedPath] is string linked) { throw new InvalidDataException(SteamFolderLink(source, linked), link); }
         return new(source, manifestPath,
             new(build, Hash(Path.Combine(source, Exe)), Hash(Path.Combine(source, GameDll))),
             inventory.Count, inventory.Sum(x => x.Length),
