@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "hellforge.enemy-limits-probe",
+  "name": "Enemy limits probe",
+  "version": "1.0.0",
+  "description": "In-game test only (tests/in-game/enemy-limits.json), never shipped: difficulty 10's patrol gate at 200, the despawn pass off, other spawns held under 300 living enemies, patrols every 0.5 s and the patrol caps at 1000.",
+  "gameplay": true
+}

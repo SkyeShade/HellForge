@@ -79,9 +79,9 @@
      "record": 1,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -91,9 +91,9 @@
      "record": 1,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -103,9 +103,9 @@
      "record": 1,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -117,7 +117,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -129,7 +129,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -141,7 +141,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -328,6 +328,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 1,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 1,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 1,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 1,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 1,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 1,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -406,9 +484,9 @@
      "record": 2,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -418,9 +496,9 @@
      "record": 2,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -430,9 +508,9 @@
      "record": 2,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -444,7 +522,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -456,7 +534,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -468,7 +546,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -655,6 +733,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 2,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 2,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 2,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 2,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 2,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 2,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -733,9 +889,9 @@
      "record": 3,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -745,9 +901,9 @@
      "record": 3,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -757,9 +913,9 @@
      "record": 3,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -771,7 +927,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -783,7 +939,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -795,7 +951,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -982,6 +1138,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 3,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 3,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 3,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 3,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 3,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 3,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -1060,9 +1294,9 @@
      "record": 4,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -1072,9 +1306,9 @@
      "record": 4,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -1084,9 +1318,9 @@
      "record": 4,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -1098,7 +1332,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -1110,7 +1344,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -1122,7 +1356,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -1309,6 +1543,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 4,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 4,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 4,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 4,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 4,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 4,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -1387,9 +1699,9 @@
      "record": 5,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -1399,9 +1711,9 @@
      "record": 5,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -1411,9 +1723,9 @@
      "record": 5,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -1425,7 +1737,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -1437,7 +1749,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -1449,7 +1761,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -1636,6 +1948,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 5,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 5,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 5,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 5,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 5,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 5,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -1714,9 +2104,9 @@
      "record": 6,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -1726,9 +2116,9 @@
      "record": 6,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -1738,9 +2128,9 @@
      "record": 6,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -1752,7 +2142,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -1764,7 +2154,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -1776,7 +2166,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -1963,6 +2353,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 6,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 6,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 6,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 6,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 6,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 6,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -2041,9 +2509,9 @@
      "record": 7,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -2053,9 +2521,9 @@
      "record": 7,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -2065,9 +2533,9 @@
      "record": 7,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -2079,7 +2547,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -2091,7 +2559,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -2103,7 +2571,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -2290,6 +2758,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 7,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 7,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 7,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 7,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 7,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 7,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -2368,9 +2914,9 @@
      "record": 8,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -2380,9 +2926,9 @@
      "record": 8,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -2392,9 +2938,9 @@
      "record": 8,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -2406,7 +2952,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -2418,7 +2964,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -2430,7 +2976,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -2617,6 +3163,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 8,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 8,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 8,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 8,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 8,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 8,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -2695,9 +3319,9 @@
      "record": 9,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -2707,9 +3331,9 @@
      "record": 9,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -2719,9 +3343,9 @@
      "record": 9,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -2733,7 +3357,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -2745,7 +3369,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -2757,7 +3381,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -2944,6 +3568,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 9,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 9,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 9,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 9,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 9,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 9,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -3022,9 +3724,9 @@
      "record": 10,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -3034,9 +3736,9 @@
      "record": 10,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -3046,9 +3748,9 @@
      "record": 10,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Applies from the next mission; only the host's values decide what spawns."
+     "note": "Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -3060,7 +3762,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -3072,7 +3774,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -3084,7 +3786,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -3271,6 +3973,84 @@
      "min": 0,
      "max": 448,
      "note": "Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 10,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 10,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 10,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 10,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 10,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 10,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   },
@@ -3346,9 +4126,9 @@
      "record": 11,
      "offset": 672,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Only with a mod that adds difficulty 11. Applies from the next mission; only the host's values decide what spawns."
+     "note": "Only with a mod that adds difficulty 11. Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_automatons",
@@ -3358,9 +4138,9 @@
      "record": 11,
      "offset": 676,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Only with a mod that adds difficulty 11. Applies from the next mission; only the host's values decide what spawns."
+     "note": "Only with a mod that adds difficulty 11. Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_interval_illuminate",
@@ -3370,9 +4150,9 @@
      "record": 11,
      "offset": 680,
      "storage": "f32",
-     "min": 1,
+     "min": 0.1,
      "max": 3600,
-     "note": "Only with a mod that adds difficulty 11. Applies from the next mission; only the host's values decide what spawns."
+     "note": "Only with a mod that adds difficulty 11. Seconds between patrols; the mission's progress and the player count make them come faster. Under a second they come as fast as the patrol gate (Enemy limits) lets them. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_terminids",
@@ -3384,7 +4164,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "Only with a mod that adds difficulty 11. The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "Only with a mod that adds difficulty 11. The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_automatons",
@@ -3396,7 +4176,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "Only with a mod that adds difficulty 11. The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "Only with a mod that adds difficulty 11. The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.patrol_cap_illuminate",
@@ -3408,7 +4188,7 @@
      "storage": "u32",
      "min": 0,
      "max": 1000,
-     "note": "Only with a mod that adds difficulty 11. The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). Nothing else limits patrols: hundreds cost frame rate. Applies from the next mission; only the host's values decide what spawns."
+     "note": "Only with a mod that adds difficulty 11. The most living patrol enemies of this faction; the mission scales it by its progress and the player count (up to about 2.9 times at difficulty 10 with four players). The patrol gate (Enemy limits) stops patrols first: at the game's 100 living enemies, whatever this says. Applies from the next mission; only the host's values decide what spawns."
     },
     {
      "key": "difficulty.traveller_interval_terminids",
@@ -3595,6 +4375,84 @@
      "min": 0,
      "max": 448,
      "note": "Only with a mod that adds difficulty 11. Stragglers top up the map's guards (Family 6 compositions): while fewer guards and stragglers than the cap are alive, the director sends up to the batch each interval. Applies from the next mission; only the host's values decide what spawns."
+    },
+    {
+     "key": "difficulty.patrol_gate",
+     "label": "Patrols stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 11,
+     "offset": 0,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Only with a mod that adds difficulty 11. Scheduled patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this (the game's 100). The patrol caps count only under it. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.roaming_gate",
+     "label": "Roaming spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 11,
+     "offset": 4,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Only with a mod that adds difficulty 11. The shared spawners' waves, travellers and stragglers spawn only while fewer enemies than this are alive, not counting those of breaches, drops and fabricators (the game's 70). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.spawn_gate",
+     "label": "Other spawns stop at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 11,
+     "offset": 8,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Only with a mod that adds difficulty 11. No spawn but a patrol's while this many AI enemies are alive (the game's 448): bug holes, fabricators, drops, breaches and outposts stop there. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn",
+     "label": "Despawn enemies",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 11,
+     "offset": 12,
+     "storage": "u32",
+     "min": 0,
+     "max": 1,
+     "note": "Only with a mod that adds difficulty 11. Yes (the game's): once enough enemies are alive the game despawns about one a second, far ones first, so new patrols only replace them. No: no living enemy is despawned, so the count keeps rising. Today the game crashes past about 400 living enemies (the AI's navmesh query batch) and past about 545 (the entity table), until HellForge's engine fixes for them are in your version. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count.",
+     "toggle": true
+    },
+    {
+     "key": "difficulty.despawn_start",
+     "label": "Despawning starts at",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 11,
+     "offset": 16,
+     "storage": "u32",
+     "min": 0,
+     "max": 1000,
+     "unit": "count",
+     "note": "Only with a mod that adds difficulty 11. The despawning starts once this many enemies are alive (the game's 100), taking those past the despawn distance; from ten more it takes any enemy. Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
+    },
+    {
+     "key": "difficulty.despawn_distance",
+     "label": "Despawn distance",
+     "section": "Enemy limits",
+     "kind": "EnemyLimits",
+     "record": 11,
+     "offset": 20,
+     "storage": "f32",
+     "min": 10,
+     "max": 2000,
+     "unit": "meters",
+     "note": "Only with a mod that adds difficulty 11. Enemies this far from the players may be despawned first (the game's 150 m). Applies at once. In co-op the host's game spawns and despawns, so only the host's values count."
     }
    ]
   }
