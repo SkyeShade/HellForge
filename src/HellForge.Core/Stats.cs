@@ -112,7 +112,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
     // Family is a faction; Class a composition's role (its family's spawn channel: patrol, guard, map, reinforcement,
     // traveller, straggler, convoy, air_support). A group's enemy family is a pick of its faction's families ("families":
     // a roster row's +0). "summons" join the enemies' pages, after Entities: what a summoning enemy calls up (EnemySummon,
-    // native/mod-loader/enemy_summons.c).
+    // native/mod-loader/enemy_summons.c). A difficulty's Enemy limits are EnemyLimits rows (enemy_limits.c); "toggle" a tick box.
     static void Director(StatsSchema schema)
     {
         using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.director.json")!;
@@ -123,7 +123,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
             Number(f, "min"), Number(f, "max"), Text(f, "unit"), true, true)
         {
             Order = order, Section = Text(f, "section"), Note = Text(f, "note"), Hd2rKey = Text(f, "hd2r"),
-            Options = Text(f, "families") is { } faction ? families.GetProperty(faction).Clone() : default,
+            Options = Text(f, "families") is { } faction ? families.GetProperty(faction).Clone() : f.TryGetProperty("toggle", out _) ? NoYes : default,
         };
         foreach (var category in new[] { "difficulty", "rosters", "compositions", "demolition" })
         {
@@ -500,6 +500,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                 });
     }
     public const string RearmKey = "stratagem.rearms_after_uses";
+    public const string DespawnKey = "difficulty.despawn";
 
     // An impact payload picker on every stratagem round that has none (the Eagle 110mm Rocket Pods', the orbitals'
     // shells): the round's ProjectileSettings +0x90, as the hand-held weapons' rounds have it.

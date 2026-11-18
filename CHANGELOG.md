@@ -28,8 +28,18 @@ On `dev`, since 0.4.0-beta.
 - **Travellers and stragglers on Mission Difficulty.** Per faction, the seconds between travellers (Shriekers,
   Gunships, War Striders) and how many roam at once. Stragglers top up the map's guards: their interval, batch and the
   cap on guards and stragglers together.
-- **Patrol caps past 128.** Up to 1000 per faction: nothing in the game bounds patrols but the cap, so very high
-  ones cost frame rate.
+- **Patrol caps past 128.** Up to 1000 per faction. The game's patrol gate still stops patrols at 100 living
+  enemies unless the difficulty's Enemy limits raise it (below).
+- **Enemy limits on Mission Difficulty.** Each difficulty has the counts the game keeps in its code as fields:
+  - the patrol gate (100 living enemies) and the roaming gate for spawners, travellers and stragglers (70);
+  - the gate on every other spawn (448);
+  - the despawning that recycles about one far enemy a second once 100 are alive: on or off, where it starts, how
+    far is far.
+
+  They keep the game's values until changed and apply at once; in co-op the host's count
+  ([stats mods](docs/modding/stats-mods.md#enemy-limits)). Past about 400 living enemies the game still crashes until
+  HellForge's engine fixes for it are in.
+- **Patrols under a second.** The patrol interval goes down to 0.1 s; the 1 s floor was the editor's.
 - **Enemy combat in the editor.** Enemy pages get new sections:
   - Movement: each behaviour's move speed, the charge's speed, steering and tracking angle, turn speed.
   - Detection: how far it sees ahead, to the sides and behind.

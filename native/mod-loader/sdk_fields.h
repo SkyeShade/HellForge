@@ -1163,6 +1163,14 @@ static const SdkField kSdkFieldsEnemySummon[] = {
     {"family", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
     {"count", 4, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
 };
+static const SdkField kSdkFieldsEnemyLimits[] = {
+    {"patrol_gate", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"roaming_gate", 4, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"spawn_gate", 8, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"despawn", 12, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"despawn_start", 16, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"despawn_distance", 20, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+};
 static const SdkField kSdkFieldsEquipment[] = {
     {"wield_node", 0, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
     {"wield_rotation", 4, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1473,6 +1481,7 @@ static const SdkComponent kSdkComponents[] = {
     {"Bughole", "BugholeComponentData", 25480438u, 40u, kSdkFieldsBughole, 1, 0, 216},
     {"DemolitionTemplate", "DemolitionTemplate", 25480438u, 16u, kSdkFieldsDemolitionTemplate, 2, 1, -1},
     {"EnemySummon", "EnemySummon", 25480438u, 8u, kSdkFieldsEnemySummon, 2, 1, -1},
+    {"EnemyLimits", "EnemyLimits", 25480438u, 24u, kSdkFieldsEnemyLimits, 6, 1, -1},
     {"Equipment", "EquipmentComponentData", 25480438u, 232u, kSdkFieldsEquipment, 35, 0, 233},
     {"Wieldable", "WieldableComponentData", 25480438u, 32u, kSdkFieldsWieldable, 6, 0, 111},
     {"Attachable", "AttachableComponentData", 25480438u, 64u, kSdkFieldsAttachable, 11, 0, 262},
