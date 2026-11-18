@@ -5261,6 +5261,7 @@ int main(int argc, char** argv)
     EdgeBatchFixture();
     MotionGridFixture();
     AiQueryChunksFixture();
+    EdgeJoinLateFixture();
     EntityTableFixture();
     HeapTrimFixture();
     PerfScatterCamerasFixture();

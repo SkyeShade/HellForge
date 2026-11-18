@@ -235,11 +235,23 @@ static void AiQueryChunksKick(AqBatch* b, uint32_t** rows, uint32_t count)
     InterlockedExchange(&b->active, 1);
 }
 
+/* edge-join-late (perf_edge_join_late.c): the edge gathers' wait moved to their first reader. */
+#define AQ_EDGES 3
+static int EdgeJoinLateWanted(void);
+static void EdgeJoinLateJoin(void* entities);
+static void EdgeJoinLateWait(void);
+static volatile LONG g_ejPending;
+
 static uint32_t AiQueryChunksRunJob(void* fn, uint32_t** rows, const char* name, uint32_t p4, int32_t priority, uint32_t count, void* p7)
 {
     if (g_aqOn && rows != NULL && count != 0 && count <= AQ_ROWS_MAX)
         for (int i = 0; i < AQ_BATCHES; i++)
-            if ((uintptr_t)fn == g_aq[i].fn) { AiQueryChunksKick(&g_aq[i], rows, count); break; }
+            if ((uintptr_t)fn == g_aq[i].fn)
+            {
+                if (i == AQ_EDGES) EdgeJoinLateWait(); /* a moved wait never reached: the last kick ends first */
+                AiQueryChunksKick(&g_aq[i], rows, count);
+                break;
+            }
     return ((AqRunJobFn)g_aqRunNext)(fn, rows, name, p4, priority, count, p7);
 }
 
@@ -249,13 +261,15 @@ static void AiQueryChunksJoin(void* entities)
 {
     LARGE_INTEGER t0, t1, t2;
     QueryPerformanceCounter(&t0);
+    int late = EdgeJoinLateWanted();
     if (g_aqOn)
         for (int i = 0; i < AQ_BATCHES; i++)
-            if (g_aq[i].active) AiQueryChunksRun(&g_aq[i], NULL, NULL, NULL, 1);
+            if (g_aq[i].active && !(late && i == AQ_EDGES)) AiQueryChunksRun(&g_aq[i], NULL, NULL, NULL, 1);
     QueryPerformanceCounter(&t1);
-    ((AqJoinFn)g_aqJoinNext)(entities);
+    if (late) EdgeJoinLateJoin(entities);
+    else ((AqJoinFn)g_aqJoinNext)(entities);
     QueryPerformanceCounter(&t2);
-    for (int i = 0; i < AQ_BATCHES; i++) InterlockedExchange(&g_aq[i].active, 0);
+    for (int i = 0; i < AQ_BATCHES; i++) if (!(g_ejPending && i == AQ_EDGES)) InterlockedExchange(&g_aq[i].active, 0);
     g_aqStealTicks += t1.QuadPart - t0.QuadPart;
     g_aqJoinTicks += t2.QuadPart - t0.QuadPart;
     g_aqJoins++;

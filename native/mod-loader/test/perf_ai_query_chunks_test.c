@@ -58,31 +58,46 @@ static uint32_t AqtRunJob(void* fn, uint32_t** rows, const char* name, uint32_t 
 }
 
 /* The join's stand-in: the workers go, every row's done flag, the threads closed. */
+static uint32_t (*g_aqtRowBase[AQ_BATCHES])[3]; /* each batch's rows: ours, or the edges' in a world batch */
+static uint32_t (*AqtRows(int b))[3] { return g_aqtRowBase[b] ? g_aqtRowBase[b] : g_aqtRows[b]; }
+
+/* With an entity manager, the edge gathers are waited for through its batch pointer (+0x38) and their count reset,
+ * as the game's join does, and the threads are left running. */
 static void AqtJoin(void* entities)
 {
-    (void)entities;
     SetEvent(g_aqtGo);
     for (int b = 0; b < AQ_BATCHES; b++)
+    {
+        if (entities != NULL && b == AQ_EDGES)
+        {
+            uint8_t* batch = *(uint8_t**)((uint8_t*)entities + EJ_BATCH_AT);
+            for (uint32_t i = 0; i < EJ_ROWS; i++) while (((volatile uint32_t*)(batch + EJ_DONE_AT))[i * 3] == 0) Sleep(0);
+            *(uint32_t*)batch = 0;
+            continue;
+        }
         for (uint32_t i = 0; i < g_aqtRowCount[b]; i++)
-            while (((volatile uint32_t*)g_aqtRows[b][i])[2] == 0) Sleep(0);
+            while (((volatile uint32_t*)AqtRows(b)[i])[2] == 0) Sleep(0);
+    }
+    InterlockedIncrement(&g_aqtJoined);
+    if (entities != NULL) return;
     WaitForMultipleObjects((DWORD)g_aqtThreadCount, g_aqtThreads, TRUE, INFINITE);
     for (int i = 0; i < g_aqtThreadCount; i++) CloseHandle(g_aqtThreads[i]);
     g_aqtThreadCount = 0;
-    InterlockedIncrement(&g_aqtJoined);
 }
 
 /* The game's cut of `count` entries over `tasks` rows (count / tasks + 1 each), handed to the hooked job runner. */
 static void AqtKick(int b, uint32_t count, uint32_t tasks)
 {
     uint32_t per = count / tasks + 1, used = 0, at = 0;
-    for (uint32_t i = 0; i < AQ_ROWS_MAX; i++) g_aqtRows[b][i][2] = 1;
+    uint32_t (*rows)[3] = AqtRows(b);
+    for (uint32_t i = 0; i < tasks; i++) rows[i][2] = 1;
     while (used < tasks && at < count)
     {
         uint32_t n = count - at < per ? count - at : per;
-        g_aqtRows[b][used][0] = at;
-        g_aqtRows[b][used][1] = at + n;
-        g_aqtRows[b][used][2] = 0;
-        g_aqtRowPointers[b][used] = g_aqtRows[b][used];
+        rows[used][0] = at;
+        rows[used][1] = at + n;
+        rows[used][2] = 0;
+        g_aqtRowPointers[b][used] = rows[used];
         at += n;
         used++;
     }
@@ -193,4 +208,108 @@ static void AiQueryChunksFixture(void)
     printf("PASS ai query chunks: pins, the switch, every query of four batches run once over 22 kicks, by the game thread "
         "alone while the workers wait and shared with them (%lld chunks, %lld by the game thread), a kick with a gap and another "
         "job left to the game\n", (long long)(g_aqChunks + g_aqStolen), (long long)g_aqStolen);
+}
+
+/* ---- edge-join-late (perf_edge_join_late.c), on the same images after AiQueryChunksFixture ---- */
+
+static uint8_t* g_ejtWorld;      /* the edge gathers' world batch: count at +0, rows at +0x65C08 */
+static uint8_t g_ejtEntities[0x40];
+static int g_ejtVehicleCalls, g_ejtSkipVehicle;
+static LONG g_ejtSeenAtVehicle;
+
+static void EjtPendingTask(void) { Sleep(0); }
+
+/* The vehicle collision pass's stand-in: by now every edge gather is answered and its count back to 0. */
+static void EjtVehicle(void* self, float dt)
+{
+    (void)self; (void)dt;
+    g_ejtVehicleCalls++;
+    LONG all = 1;
+    for (uint32_t i = 0; i < 1100; i++) all &= g_aqtSeen[AQ_EDGES][i] == 1;
+    g_ejtSeenAtVehicle = all && *(uint32_t*)g_ejtWorld == 0 && !g_ejPending;
+}
+
+/* The world update's stand-in: its join, then (unless skipped) the vehicle collision pass. */
+static void EjtWorld(void* self, float dt)
+{
+    (void)self;
+    ((AqJoinFn)(void*)(g_aqtGame + AQ_JOIN))(g_ejtEntities);
+    if (!g_ejtSkipVehicle) ((EjPassFn)(void*)(g_aqtGame + EJ_VEHICLE_PASS))(NULL, dt);
+}
+
+static void EjtFrame(int skipVehicle)
+{
+    static const uint32_t counts[AQ_BATCHES] = {600, 200, 300, 1100}, tasks[AQ_BATCHES] = {24, 8, 8, 12};
+    memset((void*)g_aqtSeen, 0, sizeof g_aqtSeen);
+    ResetEvent(g_aqtGo);
+    *(uint32_t*)g_ejtWorld = counts[AQ_EDGES];
+    for (int b = 0; b < AQ_BATCHES; b++) AqtKick(b, counts[b], tasks[b]);
+    g_ejtSkipVehicle = skipVehicle;
+    ((EjPassFn)(void*)(g_aqtGame + EJ_WORLD_UPDATE))(NULL, 0.016f);
+    WaitForMultipleObjects((DWORD)g_aqtThreadCount, g_aqtThreads, TRUE, INFINITE);
+    for (int i = 0; i < g_aqtThreadCount; i++) CloseHandle(g_aqtThreads[i]);
+    g_aqtThreadCount = 0;
+    for (int b = 0; b < AQ_BATCHES; b++)
+    {
+        for (uint32_t i = 0; i < counts[b]; i++) assert(g_aqtSeen[b][i] == 1);
+        assert(!g_aq[b].active);
+    }
+    assert(*(uint32_t*)g_ejtWorld == 0 && !g_ejPending && *(uint8_t**)(g_ejtEntities + EJ_BATCH_AT) == g_ejtWorld);
+}
+
+static void EdgeJoinLateFixture(void)
+{
+    uintptr_t game = (uintptr_t)g_aqtGame, exe = (uintptr_t)g_aqtExe;
+    for (size_t i = 0; i < EJ_GAME_PINS; i++) memcpy(g_aqtGame + kEjGamePins[i].rva, kEjGamePins[i].bytes, kEjGamePins[i].size);
+    for (size_t i = 0; i < EJ_EXE_PINS; i++) memcpy(g_aqtExe + kEjExePins[i].rva, kEjExePins[i].bytes, kEjExePins[i].size);
+    assert(EdgeJoinLateMismatch(exe, game) == NULL);
+    for (size_t i = 0; i < EJ_GAME_PINS; i++)
+    {
+        g_aqtGame[kEjGamePins[i].rva + kEjGamePins[i].size - 1] ^= 1;
+        assert(EdgeJoinLateMismatch(exe, game) == kEjGamePins[i].what);
+        g_aqtGame[kEjGamePins[i].rva + kEjGamePins[i].size - 1] ^= 1;
+    }
+    SetEnvironmentVariableA("HELLFORGE_PERF_OFF", "edge-join-late");
+    assert(EdgeJoinLateTry(exe, game, 0) == -1 && !g_ejOn);
+    SetEnvironmentVariableA("HELLFORGE_PERF_OFF", NULL);
+    assert(EdgeJoinLateTry(exe, game, 0) == 1 && g_ejOn);
+    assert(EdgeJoinLateMismatch(exe, game) == NULL);
+
+    /* stand-ins: the world update moves 7 bytes, the vehicle pass 5; the engine's pending task only yields */
+    VbtFar(g_aqtGame + EJ_WORLD_UPDATE + 7, (void*)EjtWorld);
+    VbtFar(g_aqtGame + EJ_VEHICLE_PASS + 5, (void*)EjtVehicle);
+    VbtFar(g_aqtExe + EJ_PENDING_TASK, (void*)EjtPendingTask);
+    FlushInstructionCache(GetCurrentProcess(), g_aqtGame, AQT_GAME);
+    FlushInstructionCache(GetCurrentProcess(), g_aqtExe, AQT_EXE);
+    g_ejtWorld = (uint8_t*)VirtualAlloc(NULL, EJ_DONE_AT + 0x200, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    assert(g_ejtWorld != NULL);
+    *(uint8_t**)(g_ejtEntities + EJ_BATCH_AT) = g_ejtWorld;
+    g_aqtRowBase[AQ_EDGES] = (uint32_t (*)[3])(g_ejtWorld + EJ_DONE_AT - 8);
+
+    /* the world update's join leaves the edge gathers running; the vehicle pass finds them answered and reset */
+    for (int frame = 0; frame < 10; frame++)
+    {
+        EjtFrame(0);
+        assert(g_ejtSeenAtVehicle == 1);
+    }
+    assert(g_ejLate == 10 && g_ejAtEnd == 0 && g_ejtVehicleCalls == 10);
+
+    /* no vehicle pass: the wait ends with the world update */
+    EjtFrame(1);
+    assert(g_ejAtEnd == 1 && g_ejtVehicleCalls == 10);
+
+    /* a join outside the world update waits for the edges itself */
+    memset((void*)g_aqtSeen, 0, sizeof g_aqtSeen);
+    *(uint32_t*)g_ejtWorld = 50;
+    AqtKick(AQ_EDGES, 50, 12);
+    ((AqJoinFn)(void*)(g_aqtGame + AQ_JOIN))(g_ejtEntities);
+    WaitForMultipleObjects((DWORD)g_aqtThreadCount, g_aqtThreads, TRUE, INFINITE);
+    for (int i = 0; i < g_aqtThreadCount; i++) CloseHandle(g_aqtThreads[i]);
+    g_aqtThreadCount = 0;
+    for (uint32_t i = 0; i < 50; i++) assert(g_aqtSeen[AQ_EDGES][i] == 1);
+    assert(*(uint32_t*)g_ejtWorld == 0 && !g_ejPending && g_ejLate == 10);
+    g_aqtRowBase[AQ_EDGES] = NULL;
+    printf("PASS edge join late: pins, the switch, the edge gathers answered at the vehicle collision pass with the world batch's "
+        "count reset and the entity manager's pointer put back, over 10 frames; at the world update's end without that pass; "
+        "a join outside the world update waits for them itself\n");
 }
