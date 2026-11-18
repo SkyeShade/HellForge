@@ -217,6 +217,7 @@ static void PhysicsPools(uintptr_t game)
         }
     g_physicsPools = 1;
     EntityTableRaise(game);
+    EntityTableGuard(game);
     Note("physics: pools enlarged before the engine built them: ragdoll actors 65536, ragdolls 2048, motions 131072, bodies and static actors 262144, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152; AI avoidance characters, obstacles and steering 2048");
 }
 /* SpreadLocations (op 0x8B, 0xF7C310) picks the nearest location of a kind as a reference (r12d, -1 when none

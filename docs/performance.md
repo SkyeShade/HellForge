@@ -355,7 +355,8 @@ crashes; it saves no time.
 
 - The game's director still keeps its own caps on enemies; these sizes matter only when a mod or the editor spawns
   more.
-- Past 4,096 entities the game still reuses a live record.
+- Past 4,096 entities a spawn is refused instead of taking a live entity's record. `modloader.log` counts the refused
+  spawns.
 
 ## heap-trim
 

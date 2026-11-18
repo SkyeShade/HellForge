@@ -94,3 +94,48 @@ static void EntityTableRaise(uintptr_t game)
     Note("entity table: %u records a world (the game's %u) and entity maps of %u slots, behind the Game block (%u KB more)",
         ET_COUNT_NEW, ET_GAME_COUNT, ET_MAP_SLOTS, (l.size - ET_GAME_SIZE) / 1024u);
 }
+
+/* The safety net: with every record live, SpawnEntity's search ends on a live one and the new entity took its place.
+ * Before the spawner runs, a live record at its next index sends the search on from there; with none free the spawn is
+ * refused (counted, logged), as the world cannot hold it. */
+#define ET_SPAWN 0xFDC140u
+#define ET_NEXT 0xF32F14u        /* the record the next spawn takes */
+#define ET_EMPTY 0x348456Cu      /* a free record's entity id */
+static const uint8_t kEtSpawnPin[] = {0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x48,0x89,0x7c,
+    0x24,0x20,0x41,0x54,0x41,0x56};
+typedef uint64_t (*EtSpawnFn)(void* manager, uint32_t entity, uint64_t resource, uint8_t* info, uint64_t s5, uint64_t s6);
+static void* volatile g_etSpawnNext;
+static uintptr_t g_etGame;
+static uint32_t g_etCount = ET_GAME_COUNT, g_etAt = ET_RECORDS;
+static volatile LONG g_etRefused;
+
+static int EtFree(uintptr_t manager, uint32_t i, uint32_t empty)
+{
+    return *(volatile uint32_t*)(manager + g_etAt + (uintptr_t)i * ET_RECORD + 8u) == empty;
+}
+
+static uint64_t EtSpawn(void* manager, uint32_t entity, uint64_t resource, uint8_t* info, uint64_t s5, uint64_t s6)
+{
+    uintptr_t m = (uintptr_t)manager;
+    uint32_t next = *(volatile uint32_t*)(m + ET_NEXT), empty = *(volatile uint32_t*)(g_etGame + ET_EMPTY), k = 0;
+    if (next >= g_etCount) next = 0;
+    while (k < g_etCount && !EtFree(m, (next + k) % g_etCount, empty)) k++;
+    if (k == g_etCount)
+    {
+        LONG n = InterlockedIncrement(&g_etRefused);
+        if ((n & (n - 1)) == 0) Note("entity table: all %u records are live; %ld spawn(s) refused so far", g_etCount, (long)n);
+        return 0;
+    }
+    *(volatile uint32_t*)(m + ET_NEXT) = (next + k) % g_etCount;
+    return ((EtSpawnFn)g_etSpawnNext)(manager, entity, resource, info, s5, s6);
+}
+
+/* After EntityTableRaise, whatever it did: the records' place and count as the code has them now. */
+static void EntityTableGuard(uintptr_t game)
+{
+    if (!PinMatches(game + ET_SPAWN, kEtSpawnPin, sizeof kEtSpawnPin)) { Note("entity table: the spawner is not the reviewed code; no guard"); return; }
+    g_etGame = game;
+    if (g_entityTable) { g_etCount = ET_COUNT_NEW; g_etAt = g_etRecords; }
+    if (LoaderHook("entity table: the spawner's guard", game + ET_SPAWN, (void*)EtSpawn, (void**)&g_etSpawnNext) != 0)
+        Note("entity table: the spawner could not be hooked; no guard");
+}
