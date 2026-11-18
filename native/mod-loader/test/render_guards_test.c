@@ -26,13 +26,13 @@ static RgCall RgThunk(uint8_t* image, uint32_t rva, const uint8_t* prefix, size_
 static volatile LONG* g_rgTestHead;
 static volatile LONG* g_rgTestFreed;
 static volatile LONG g_rgTestStop;
-static LONG g_rgFillAfter; /* the pool's wait count before the test's take: the filler starts its 40 ms once it rises */
+static LONG g_rgFillAfter; /* the pool's wait count before the test's take: the filler starts once it rises */
 static DWORD WINAPI RgFillLater(void* parameter)
 {
-    /* the wait's clock starts after the guard's spins, which a slow machine (CI) can spend most of 40 ms on: the
-     * filler sleeps from the moment the guard waits, so the wait it records is never under 20 ms */
+    /* the slot comes free only once the guard itself has timed 20 ms of waiting: a busy machine (CI) may not run the
+     * guard's thread for a fixed sleep's whole length, and the guard times a wait only while it still waits */
     while (g_rgPoolWaits == g_rgFillAfter) Sleep(1);
-    Sleep(40);
+    for (ULONGLONG until = GetTickCount64() + 5000; g_rgPoolLongestMs < 20 && GetTickCount64() < until;) Sleep(1);
     InterlockedIncrement(g_rgTestFreed);
     InterlockedExchange(g_rgTestHead, 0x5);
     return 0;

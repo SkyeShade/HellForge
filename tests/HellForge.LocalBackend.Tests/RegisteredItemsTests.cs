@@ -65,6 +65,26 @@ static class RegisteredItemsTests
         inventory = JsonNode.Parse(items.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
         check(inventory.Contains(RegisteredItems.WeaponChild(Drum, Gold)), "The attachment's child is not held with the weapon.");
 
+        // Mods may add 1,024 attachments, each a catalogue item on each of its weapons: those past the game's 4,096 items
+        // stay out whole and are logged once each, so the catalogue never passes what the game keeps (it would drop the
+        // tail unsaid), and only the kept ones are held.
+        var vanillaItems = fixtures["/Progression/items"].GetArrayLength();
+        var roomLeft = RegisteredItems.CatalogueCap - vanillaItems - (baseChildren.Count + 1);
+        var many = Enumerable.Range(0, roomLeft + 10).Select(i => 0x0D130000u + (uint)i).ToList();
+        File.WriteAllText(file, $$"""{"format":1,"items":[{"mixId":{{Gold}},"copyOf":{{Liberator}},"mod":"test","unit":"test/gold"}],"attachments":[""" +
+            string.Join(",", many.Select(m => $$"""{"mixId":{{m}},"copyOf":3441477456,"mod":"test.many","weapons":[{{Gold}},{{Gold}}]}""")) + "]}");
+        var attachmentLog = new List<string>();
+        var crowdedAttachments = new RegisteredItems(file) { Source = items.Source, Log = attachmentLog.Add };
+        catalogue = (JsonArray)JsonNode.Parse(crowdedAttachments.Apply("/Progression/items", fixtures["/Progression/items"]).GetRawText())!;
+        var listed = many.Where(m => catalogue.Any(i => (uint)i!["itemId"]! == m)).ToList();
+        check(roomLeft > 0 && catalogue.Count == RegisteredItems.CatalogueCap && listed.SequenceEqual(many.Take(roomLeft)),
+            $"The first {roomLeft} attachments fill the catalogue ({listed.Count} listed, {catalogue.Count} items).");
+        check(attachmentLog.Count == 10 && attachmentLog.All(l => l.StartsWith("test.many's attachment ", StringComparison.Ordinal) && l.Contains("4096 catalogue items")),
+            "Each attachment left out is logged once: " + string.Join(" | ", attachmentLog.Take(2)));
+        inventory = JsonNode.Parse(crowdedAttachments.Apply("/Progression/inventory", held).GetRawText())!["items"]!.AsArray().Select(i => (uint)i!["mixId"]!).ToList();
+        check(inventory.Contains(RegisteredItems.WeaponChild(many[0], Gold)) && !inventory.Contains(RegisteredItems.WeaponChild(many[^1], Gold)),
+            "Only the attachments in the catalogue are held.");
+
         Patterns(file, fixtures, check);
 
         // A stratagem a code mod adds (stratagems.c): a copy of the Orbital Airburst Strike's item (stable id 1560416221)

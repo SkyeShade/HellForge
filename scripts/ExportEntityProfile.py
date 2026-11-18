@@ -77,6 +77,14 @@ EXTRA = {
                                       'indices': 14, 'records': 7, 'record_offset': 224, 'stride': 20, 'type': 2355071671},
     'BugholeComponentData': {'offset': 7710424, 'header': 'f3b10f174c444c4401000000f3b10f17900000000100000000000000', 'index': 216,
                              'indices': 4, 'records': 2, 'record_offset': 64, 'stride': 40, 'type': 386904563},
+    # The same way: the enemy components the editor's enemy combat rows edit (scripts/ExportEnemyCombat.py).
+    'AiEnemyComponentData': {'offset': 30027352, 'header': 'b5ef0e9d4c444c4401000000b5ef0e9d88d701000100000000000000', 'index': 302,
+                             'indices': 316, 'records': 158, 'record_offset': 5056, 'stride': 732, 'type': 2635001781},
+    'StatusEffectReceiverComponentData': {'offset': 30174472, 'header': '33c262604c444c440100000033c26260a840e7000100000000000000',
+                                          'index': 307, 'indices': 648, 'records': 325, 'record_offset': 10368, 'stride': 46600,
+                                          'type': 1617084979},
+    'LocomotionComponentData': {'offset': 45414912, 'header': '906707884c444c44010000009067078850900e000100000000000000', 'index': 311,
+                                'indices': 408, 'records': 205, 'record_offset': 6528, 'stride': 4624, 'type': 2282186640},
 }
 for name, c in EXTRA.items():
     components.setdefault(name, c)

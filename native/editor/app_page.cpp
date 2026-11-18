@@ -1,6 +1,7 @@
 /* The editor's window (app_internal.h): the catalogue's lists, an object's page of items, navigation, search, the
  * changes and the errors. */
 #include <math.h>
+#include <stdio.h>
 #include <algorithm>
 #include "app_internal.h"
 
@@ -25,20 +26,41 @@ static std::vector<std::string> Words(const std::string& text)
     return out;
 }
 
+/* Whether the filters show an object: its group chip, its difficulty (AtLevel) and the search text (lower case). */
+static bool Shown(const Object* o, const std::string& group, int level, const std::string& q)
+{
+    if (group != "All" && (o->group.empty() ? o->subtitle : o->group) != group) return false;
+    if (level > 0 && !AtLevel(o, level)) return false;
+    return q.empty() || (Lower(o->name) + " " + Lower(o->subtitle) + " " + o->search).find(q) != std::string::npos;
+}
+
 std::vector<Object*> Objects()
 {
     const catalog::Nav* nav = NavOf(g_cat);
     if (nav == nullptr) return {};
     std::vector<Object*> list = g_catalog.Of(nav->id), out;
     std::string group = g_group.count(nav->id) ? g_group[nav->id] : "All";
+    int level = nav->levels && g_level.count(nav->id) ? g_level[nav->id] : 0;
     std::string q = Lower(g_search.text);
     for (Object* o : list)
-    {
-        if (group != "All" && (o->group.empty() ? o->subtitle : o->group) != group) continue;
-        if (!q.empty() && (Lower(o->name) + " " + Lower(o->subtitle) + " " + o->search).find(q) == std::string::npos) continue;
-        out.push_back(o);
-    }
+        if (Shown(o, group, level, q)) out.push_back(o);
     return out;
+}
+
+/* A roster row's weight at the level, or a composition's tech levels (the budgeted reads drawing shares). */
+bool AtLevel(const Object* object, int level)
+{
+    char weight[32];
+    snprintf(weight, sizeof weight, "spawn.weight_%d", level);
+    const LiveState *low = nullptr, *high = nullptr;
+    for (const Row* r : object->rows)
+    {
+        if (r->key == weight) { const LiveState& s = Live(r, false, true); return !s.read || s.now > 0; }
+        if (r->key == "composition.minimum_tech_level") low = &Live(r, false, true);
+        if (r->key == "composition.maximum_tech_level") high = &Live(r, false, true);
+    }
+    if (low == nullptr || high == nullptr || !low->read || !high->read) return true;
+    return low->now <= level && level <= high->now;
 }
 
 Object* Current()
@@ -124,7 +146,7 @@ static void AddDonorViews(std::vector<Item>& items, const Row* r, int depth, dou
 {
     AddNote(items, "Fires " + RefLabel(r, value) + " now: its own round's rows are hidden until \"" + r->label + "\" is reset", depth);
     std::string donor = "Donor " + RefLabel(r, value);
-    int shown = AddViews(items, depth, donor, "ProjectileSettings", (uint64_t)value, {32, 36, 40, 44, 28, 52, 64, 144, 156});
+    int shown = AddViews(items, depth, donor, "ProjectileSettings", (uint64_t)value, {32, 36, 40, 44, 28, 52, 56, 64, 160, 176, 180, 184, 144, 156});
     double hurt;
     if (ReadSetting("ProjectileSettings", (uint64_t)value, 60, HF_TYPE_U32, &hurt) && hurt != 0)
         shown += AddViews(items, depth, donor, "DamageInfo", (uint64_t)hurt, {4, 8, 12, 16, 20, 24, 28, 32, 36, 44, 52, 60, 68});
@@ -409,6 +431,7 @@ bool GotoObject(const Object* object)
         if (!g_cats[i].group && g_catalog.navs[g_cats[i].nav].id == object->category) SelectCategory(i);
     g_search = {};
     g_group.erase(object->category);
+    g_level.erase(object->category);
     g_seen.erase("obj");
     auto list = Objects();
     for (int i = 0; i < (int)list.size(); i++) if (list[i] == object) { SelectObject(i); return true; }

@@ -10,6 +10,7 @@
 namespace overlay
 {
 bool* g_backdropTaken;
+bool g_mayHidePointer, g_pointerAsked;
 
 namespace
 {
@@ -237,6 +238,11 @@ void BackdropCall(float dim, float desaturate, float blur)
     Backdrop(g_drawList, dim < 0 ? 0 : dim > 1 ? 1 : dim, desaturate < 0 ? 0 : desaturate > 1 ? 1 : desaturate, blur > 0 ? blur * g_s : 0,
              g_backdropTaken != NULL ? g_backdropTaken : &spare);
 }
+
+void HidePointer()
+{
+    if (g_mayHidePointer) g_pointerAsked = true;
+}
 } // namespace
 
 void SetFontFiles(const char* body, const char* title)
@@ -286,6 +292,7 @@ void BeginDraw(HfDraw* draw, float width, float height)
     draw->clip_push = ClipPush;
     draw->clip_pop = ClipPop;
     draw->backdrop = BackdropCall;
+    draw->hide_pointer = HidePointer;
 }
 
 void EndScreenDraw()

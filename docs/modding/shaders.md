@@ -106,6 +106,9 @@ on the game thread through [game memory](hooks.md): the world's spawn call, with
 unit's package loaded. A `decal` box is 1 m across, so scale it to the area it covers, and leave its rotation alone so
 `uvw.z` stays up.
 
+The engine judges how far away a unit still draws by its size before scaling. The decal host's unit counts as 128 m
+across, so a decal up to that size stays on screen as far as the player can see it.
+
 ## Checks and refusals
 
 `HellForge.Cli build-data --mod <folder>` builds the spec and stops at the first problem, as a session does. HellForge

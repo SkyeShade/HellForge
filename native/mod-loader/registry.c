@@ -155,6 +155,7 @@ typedef struct Weapon
     uint32_t projectile, baseProjectile;   /* HfWeapon.projectile, and what its base fires */
     uint32_t soundFrom;                    /* HfWeapon.sound_from */
     uint32_t beam, arc;                    /* HfWeapon.beam, HfWeapon.arc */
+    uint32_t sprayDamage;                  /* HfWeapon.spray_damage */
     uint8_t* projectileRecord;             /* its own ProjectileWeapon record, when it has a projectile */
     int ownCount;
     uint32_t own[REG_MAX_OWN], ownStride[REG_MAX_OWN]; /* components it owns records of (HfWeapon.own_components) */
@@ -169,13 +170,16 @@ typedef struct Weapon
 } Weapon;
 
 /* Mod text by id, answered by the text lookup detour: four for each weapon or entity (name, upper-case name, description,
- * designation), three for each stratagem (stratagems.c asserts its STR_MAX_NEW fits) and two for the difficulty. Weapons
- * once shared a fixed 4 * 512 with the others, so a full pack left a stratagem with its base's name. They grow as they are added
- * (stable_array.c: TextDetour reads them on the game thread while a live change adds more). */
+ * designation), three for each stratagem (stratagems.c asserts its STR_MAX_NEW fits), the attachments' and patterns'
+ * and two for the difficulty. Weapons once shared a fixed 4 * 512 with the others, so a full pack left a stratagem with
+ * its base's name. They grow as they are added (stable_array.c: TextDetour reads them on the game thread while a live
+ * change adds more). */
 #define REG_STRATAGEM_TEXTS (1024 * 3)
+/* three for each attachment or weapon pattern and one for each unit pattern (attachments.c asserts ATT_MAX and PAT_MAX fit) */
+#define REG_ATTACHMENT_TEXTS (1024 * 3 + 128)
 typedef struct ModText { uint32_t id; char* text; } ModText;
 /* + four for each mod warbond (warbonds.c: its name and the line above it, each in two cases), 99 at most */
-#define REG_TEXT_CEILING ((size_t)REG_WEAPON_CEILING * 4 + REG_STRATAGEM_TEXTS + 2 + 4 * 99)
+#define REG_TEXT_CEILING ((size_t)REG_WEAPON_CEILING * 4 + REG_STRATAGEM_TEXTS + REG_ATTACHMENT_TEXTS + 2 + 4 * 99)
 static ModText* g_texts;
 static StableArray g_textStore = {NULL, sizeof(ModText), REG_TEXT_CEILING, 0};
 static int g_textCount;
@@ -269,6 +273,7 @@ static int g_registryActive; /* the hooks are in: weapons get added when the ent
 static int g_armoryReplaced; /* HellForge's armory builder runs instead of the game's (table 29 may grow) */
 static int ProjectileUsable(uint32_t type); /* projectiles.c */
 static int BeamTypeKnown(uint32_t type), ArcTypeKnown(uint32_t type), BeamTypeUsable(uint32_t type), ArcTypeUsable(uint32_t type); /* beam_arc.c */
+static int DamageKnown(uint32_t id), DamageUsable(uint32_t id); /* damage.c */
 static int BehaviourUsable(uint32_t id);    /* behaviours.c */
 static void RememberUnitCopy(HfMod* mod, const char* name, uint64_t base, uint64_t copy); /* registry_load.c: unit copies */
 static uint32_t GrownSlots(uint32_t component); /* table_growth.c: a table grown this session */
@@ -380,6 +385,29 @@ static uint64_t LoadoutOwner(uint8_t* table, uint32_t record)
         if (entity != 0 && r == record && !PlainCopy(entity)) { if (owner != 0) return 0; owner = entity; }
     }
     return owner;
+}
+
+/* The entity an armory entry of a loadout record names: its owner (LoadoutOwner), or, for a record no other entity names,
+ * the one entity copy whose own record it is (an entity of add_entity: PlainLoadoutRecord). The game asks the armory
+ * which list an item's entity is in (game.dll 0x11E7AE0: 1 primary, 2 support, 3 secondary...), and a hellpod rack that
+ * breaks (0x936530) turns on the dropped item's pickup by that answer: with no entry naming it, a mod's EAT copy got the
+ * pickup of "in no list" (interaction 7), which a support weapon does not have, and could never be picked up again
+ * (Discord, 2026-11-15). EquipmentComponent's spawn (0x8BF260) and taking the item in hand (0x9AA3F1) ask the same. */
+static uint64_t ArmoryEntity(uint8_t* table, uint32_t record)
+{
+    uint64_t owner = LoadoutOwner(table, record), copy = 0;
+    if (owner != 0) return owner;
+    for (uint32_t i = 0, slots = SlotsOf(REG_LOADOUT); i < slots; i++)
+    {
+        uint64_t entity;
+        uint32_t r;
+        memcpy(&entity, table + 16 * i, 8);
+        memcpy(&r, table + 16 * i + 8, 4);
+        if (entity == 0 || r != record) continue;
+        if (!PlainCopy(entity) || copy != 0) return 0; /* two entities name it: no one owner */
+        copy = entity;
+    }
+    return copy;
 }
 
 /* What the game keeps once state_moves.c has moved its arrays (0: what it compiled, as far as the backend need know). */
@@ -564,6 +592,19 @@ static int WeaponBeamArc(HfMod* mod, const char* unit, const HfWeapon* def, Weap
     return 0;
 }
 
+/* The damage its spray deals (HfWeapon.spray_damage), when the mod's HfWeapon names one; 1 if refused (logged). */
+static int WeaponSpray(HfMod* mod, const char* unit, const HfWeapon* def, Weapon* w)
+{
+    if (def->size < offsetof(HfWeapon, spray_damage) + sizeof def->spray_damage || def->spray_damage == 0) return 0;
+    if (!DamageKnown(def->spray_damage))
+    {
+        ApiLog(mod, "add_weapon(%s): spray damage %u is neither a vanilla damage id nor one a mod added", unit, def->spray_damage);
+        return 1;
+    }
+    w->sprayDamage = def->spray_damage;
+    return 0;
+}
+
 /* Its own text ids (HfWeapon.name and the rest), when the mod names it. */
 static void WeaponText(const HfWeapon* def, const char* unit, Weapon* w)
 {
@@ -614,7 +655,8 @@ static uint32_t ApiAddWeapon(HfMod* mod, const HfWeapon* def)
     w.id = id;
     w.entity = entity;
     snprintf(w.name, sizeof w.name, "%s", unit);
-    if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w) || WeaponBeamArc(mod, unit, def, &w)) return 0;
+    if (OwnComponents(mod, "add_weapon", unit, def->own_components, &w) || WeaponProjectile(mod, unit, def, &w) || WeaponBeamArc(mod, unit, def, &w) ||
+        WeaponSpray(mod, unit, def, &w)) return 0;
     if (def->size >= offsetof(HfWeapon, sound_from) + sizeof def->sound_from) w.soundFrom = def->sound_from;
     if (def->size >= offsetof(HfWeapon, own_all) + sizeof def->own_all) w.ownAll = def->own_all != 0;
     WeaponText(def, unit, &w);
@@ -814,33 +856,30 @@ static int TableHeaderMatches(const Component* c, const uint8_t* table)
     return !SafeRead((uintptr_t)table - 32, header, 32) && !memcmp(header, &c->index, 4) && !memcmp(header + 4, c->header, 28);
 }
 
-/* The record the entity's one index row in table names, or -1 when it has none, several or a flagged one, or a row is
- * unreadable. */
-static int64_t OnlyRecordOf(const Component* c, const uint8_t* table, uint64_t resource)
+/* The record the entity's one index row names, or -1 when it has none, several or a flagged one. rows: the table's
+ * index rows (ReadIndexRows). */
+static int64_t OnlyRecordOf(const Component* c, const uint8_t* rows, uint64_t resource)
 {
     int64_t selected = -1;
     int owners = 0;
     for (uint32_t row = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
         uint64_t id;
         uint32_t record, flags;
-        if (SafeRead((uintptr_t)table + row * 16u, entry, 16)) return -1;
-        memcpy(&id, entry, 8); memcpy(&record, entry + 8, 4); memcpy(&flags, entry + 12, 4);
+        IndexRowAt(rows, row, &id, &record, &flags); /* hellforge_modloader.c */
         if (id == resource) { if (flags) return -1; owners++; selected = record; }
     }
     return owners == 1 ? selected : -1;
 }
 
-/* Whether another entity (not a copy of its base) names the record too; an unreadable row counts as one. */
-static int RecordShared(const Component* c, const uint8_t* table, uint64_t resource, uint32_t selected)
+/* Whether another entity (not a copy of its base) names the record too. */
+static int RecordShared(const Component* c, const uint8_t* rows, uint64_t resource, uint32_t selected)
 {
     for (uint32_t row = 0, sharers = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
+        const uint8_t* entry = rows + (size_t)row * 16;
         uint64_t id;
         uint32_t record;
-        if (SafeRead((uintptr_t)table + row * 16u, entry, 16)) return 1;
         memcpy(&id, entry, 8); memcpy(&record, entry + 8, 4);
         if (id != 0 && id != resource && record == selected && !CopiesBase(id) && ++sharers > 0) return 1;
     }
@@ -860,9 +899,11 @@ static uintptr_t CurrentTableRecord(const Component* c, uint64_t resource, uint3
     const OwnedTable* owned = OwnedTableOf(c->index, table);
     if (owned == NULL && !TableHeaderMatches(c, table)) return 0;
     uint32_t limit = owned != NULL ? owned->next : c->records;
-    int64_t selected = OnlyRecordOf(c, table, resource);
+    const uint8_t* rows = ReadIndexRows((uintptr_t)table, c->indices); /* an unreadable row: no record */
+    if (rows == NULL) return 0;
+    int64_t selected = OnlyRecordOf(c, rows, resource);
     if (selected < 0 || selected >= limit) return 0;
-    if (!shared && RecordShared(c, table, resource, (uint32_t)selected)) return 0;
+    if (!shared && RecordShared(c, rows, resource, (uint32_t)selected)) return 0;
     if (stride != NULL) *stride = c->stride;
     return (uintptr_t)table + (uintptr_t)c->indices * 16u + (uintptr_t)selected * c->stride;
 }

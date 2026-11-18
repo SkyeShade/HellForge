@@ -15,12 +15,12 @@ there) and `mappings/` (functions, globals, fields and content); do not edit it 
 
 ## Contents
 
-- [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-the-lobby-browser-hfbrowsestate-check-hf-size-before-calling), [SDK 16](#sdk-16-game-functions-and-globals-by-name-hellforge_functionsh-hellforge_globalsh-check-hf-size), [SDK 16](#sdk-16-the-mods-status-check-hf-size-before-calling), [SDK 16](#sdk-16-the-mod-channel-co-op-docsmoddingconceptsmd-co-op), [SDK 16](#sdk-16-live-mods-see-the-top-of-this-file-check-hf-size-before-calling), [SDK 17](#sdk-17-explosions-check-hf-size-before-calling), [SDK 17](#sdk-17-beams-and-arcs-check-hf-size-before-calling), [SDK 17](#sdk-17-enemies-check-hf-size-before-calling), [SDK 17](#sdk-17-the-games-rpcs-hellforge_rpcsh-docsmoddingnetworkingmd-check-hf-size-before-calling), [SDK 18](#sdk-18-patterns-check-hf-size-before-calling)
+- [API](#api): [SDK 1](#sdk-1), [SDK 2](#sdk-2), [SDK 3](#sdk-3), [SDK 4](#sdk-4), [SDK 5](#sdk-5), [SDK 6](#sdk-6), [SDK 7](#sdk-7), [SDK 9](#sdk-9), [SDK 10](#sdk-10), [SDK 11](#sdk-11-actions-hf_act_-check-hf-size-before-calling), [SDK 12](#sdk-12), [SDK 13](#sdk-13), [SDK 14](#sdk-14-mod-sync-hfsyncstate-check-hf-size-before-calling), [SDK 15](#sdk-15), [SDK 16](#sdk-16-the-lobby-browser-hfbrowsestate-check-hf-size-before-calling), [SDK 16](#sdk-16-game-functions-and-globals-by-name-hellforge_functionsh-hellforge_globalsh-check-hf-size), [SDK 16](#sdk-16-the-mods-status-check-hf-size-before-calling), [SDK 16](#sdk-16-the-mod-channel-co-op-docsmoddingconceptsmd-co-op), [SDK 16](#sdk-16-live-mods-see-the-top-of-this-file-check-hf-size-before-calling), [SDK 17](#sdk-17-explosions-check-hf-size-before-calling), [SDK 17](#sdk-17-beams-and-arcs-check-hf-size-before-calling), [SDK 17](#sdk-17-enemies-check-hf-size-before-calling), [SDK 17](#sdk-17-the-games-rpcs-hellforge_rpcsh-docsmoddingnetworkingmd-check-hf-size-before-calling), [SDK 18](#sdk-18-patterns-check-hf-size-before-calling), [SDK 19](#sdk-19-screens-in-the-games-own-ui-hellforge_uih-docsmoddinguimd-check-hf-size)
 - [Functions](#functions): [ConsumeDamageEvent](#consumedamageevent), [KillDispatch](#killdispatch), [ActivateStratagemBeacon](#activatestratagembeacon), [SpawnEntity](#spawnentity), [RequestExplosion](#requestexplosion), [AddHealthFraction](#addhealthfraction), [RestoreZone](#restorezone), [QueueStatusRequest](#queuestatusrequest), [SetVelocity](#setvelocity), [FireProjectile](#fireprojectile), [QueueDamage](#queuedamage), [NeedsAmmo](#needsammo), [TryStartAction](#trystartaction), [RequestEntitySpawn](#requestentityspawn), [AbilityTick](#abilitytick), [SiloMissileArmedAbility](#silomissilearmedability), [LinkedMissile](#linkedmissile), [LinkerRecord](#linkerrecord), [LinkedRack](#linkedrack), [SetMissileEngine](#setmissileengine), [LaunchMissile](#launchmissile), [SetExplosiveOwner](#setexplosiveowner), [SetGuidanceTarget](#setguidancetarget), [RackReleaseItem](#rackreleaseitem), [StartAbility](#startability), [BehaviourUpdate](#behaviourupdate), [BehaviourStage](#behaviourstage), [BehaviourEvent](#behaviourevent), [BehaviourResume](#behaviourresume), [PelicanTransportUpdate](#pelicantransportupdate), [PelicanTransportStage](#pelicantransportstage), [PelicanTransportEvent](#pelicantransportevent), [BehaviourOwnPosition](#behaviourownposition), [BehaviourOrbitStep](#behaviourorbitstep), [BehaviourMoveTo](#behaviourmoveto), [BehaviourFace](#behaviourface), [BehaviourTargetPosition](#behaviourtargetposition), [PelicanTurretIdle](#pelicanturretidle), [TurretActive](#turretactive), [TurretHasAmmo](#turrethasammo), [PelicanTurretStage](#pelicanturretstage), [BehaviourSetTarget](#behavioursettarget), [WeaponDegreesTo](#weapondegreesto), [IsValidTarget](#isvalidtarget), [FindPerceptionEntry](#findperceptionentry), [MagazineRounds](#magazinerounds), [AddMagazineRounds](#addmagazinerounds), [MagazineCapacity](#magazinecapacity), [WeaponWithinDegrees](#weaponwithindegrees), [EntityDescriptor](#entitydescriptor), [MarkReplicated](#markreplicated), [ShieldRecord](#shieldrecord), [MoveObject](#moveobject), [SpawnProjectile](#spawnprojectile), [CatalogueAddItem](#catalogueadditem), [CatalogueSort](#cataloguesort), [AddItemAmount](#additemamount), [RemoveItemAmount](#removeitemamount), [LoadEntities](#loadentities), [BuildArmoryList](#buildarmorylist), [ArmoryEntryOf](#armoryentryof), [EngineText](#enginetext), [OpenMenuPresenter](#openmenupresenter), [MenuSoundUpdate](#menusoundupdate), [RequestPackages](#requestpackages), [EntityOfNetwork](#entityofnetwork), [QueryLoadoutPreview](#queryloadoutpreview), [PushArmoryLoadout](#pusharmoryloadout), [RollCacheLoot](#rollcacheloot), [RequestWarbondPurchase](#requestwarbondpurchase), [FinishWarbondPurchase](#finishwarbondpurchase), [SpawnWarbondShowcase](#spawnwarbondshowcase), [UpdateWarbondSpent](#updatewarbondspent), [UpdateWarbondPager](#updatewarbondpager), [WarbondPagerInput](#warbondpagerinput), [SetElementText](#setelementtext), [SetElementTextAlt](#setelementtextalt), [SetElementNumber](#setelementnumber), [SetWidgetVisible](#setwidgetvisible), [SetElementColour](#setelementcolour), [SetPickerHeading](#setpickerheading), [StratagemAvailable](#stratagemavailable), [SortArray](#sortarray), [HighestDifficulty](#highestdifficulty), [FindConfigSetting](#findconfigsetting), [ShowDifficultyWidget](#showdifficultywidget), [ComputeMissionRating](#computemissionrating), [EnemyDirectorTick](#enemydirectortick), [ArenaAllocate](#arenaallocate), [GameMemset](#gamememset), [CreateGenerationBlock](#creategenerationblock), [InitLevel](#initlevel), [GenerateRouteCells](#generateroutecells), [GenerateRouteCellVoronoi](#generateroutecellvoronoi), [GenerateSubregionHeights](#generatesubregionheights), [GenerateVoronoi](#generatevoronoi), [FinalizeVoronoi](#finalizevoronoi), [ForceFlattenZones](#forceflattenzones), [SelectSubRegionCellsFromHeightGroup](#selectsubregioncellsfromheightgroup), [SampleSubregionNoise](#samplesubregionnoise), [GenerateLocationClusters](#generatelocationclusters), [SpreadLocations](#spreadlocations), [SpreadLocationsCities](#spreadlocationscities), [GenerateOutpostLocations](#generateoutpostlocations), [GenerateObjectiveLocations](#generateobjectivelocations), [AddImportantLocations](#addimportantlocations), [GenerateMissionStampList](#generatemissionstamplist), [FixUnreachableAreas](#fixunreachableareas), [CullUnitsOutsidePlayableArea](#cullunitsoutsideplayablearea), [GenerateCityRoads](#generatecityroads), [CreateCityFootprintList](#createcityfootprintlist), [FlattenCityRoads](#flattencityroads), [StampIndexSize](#stampindexsize), [StampIndexCheckLayout](#stampindexchecklayout), [HashMapInsert](#hashmapinsert), [SetupDestructionRecordMap](#setupdestructionrecordmap), [RegisterStaticDestructionRecords](#registerstaticdestructionrecords), [SelectObjectives](#selectobjectives), [LaunchMission](#launchmission), [MissionTimerWidget](#missiontimerwidget), [UpdateHudObjectives](#updatehudobjectives), [UpdateMapScreen](#updatemapscreen), [BuildMapMarkerSlots](#buildmapmarkerslots), [HudMandatoryObjectives](#hudmandatoryobjectives), [MissionHudTopBar](#missionhudtopbar), [BuildMissionResult](#buildmissionresult), [TelemetrySelectedMission](#telemetryselectedmission), [TelemetryMissionEnd](#telemetrymissionend), [RollArtilleryShell](#rollartilleryshell), [ArtilleryAim](#artilleryaim), [SolveBallisticAim](#solveballisticaim), [PredictProjectileLanding](#predictprojectilelanding), [GenerateRegionMissions](#generateregionmissions), [GenerateCampaignPlanetMissions](#generatecampaignplanetmissions), [GenerateDefencePlanetMissions](#generatedefenceplanetmissions), [DifficultyBarBuild](#difficultybarbuild), [DifficultyBarDestroy](#difficultybardestroy), [DifficultyBarChoose](#difficultybarchoose), [SetImageSprite](#setimagesprite), [SetImageSpriteOrTexture](#setimagespriteortexture), [SetElementResourceSlot](#setelementresourceslot), [SetImageWithBase](#setimagewithbase), [UiElementRect](#uielementrect), [MissionCardMinimap](#missioncardminimap), [WarTableHologramUpdate](#wartablehologramupdate), [WarTableHologramZoom](#wartablehologramzoom), [WarTableHologramHeightAt](#wartablehologramheightat), [WarTableHologramTerrainHeight](#wartablehologramterrainheight), [EngineRenderStep](#enginerenderstep), [UnitSetLocalPose](#unitsetlocalpose), [UpdateUnit](#updateunit), [UnitFromHandle](#unitfromhandle), [MainWorld](#mainworld), [UnitNodeWorldPosition](#unitnodeworldposition), [UnitActorByName](#unitactorbyname), [SetResourceOverride](#setresourceoverride), [ClearResourceOverride](#clearresourceoverride), [CanGetResource](#cangetresource), [TransportCleanup](#transportcleanup), [DestroyConnection](#destroyconnection), [SessionPeersRemoved](#sessionpeersremoved), [NetworkManagerUpdate](#networkmanagerupdate), [CollisionFilterPairs](#collisionfilterpairs), [PhysicsHandleBody](#physicshandlebody), [CreateNavmeshCut](#createnavmeshcut), [RemoveNavmeshCuts](#removenavmeshcuts), [EnableNavmeshCuts](#enablenavmeshcuts), [NavWorldSetup](#navworldsetup), [BuildNavTile](#buildnavtile), [BuildPhysicsPools](#buildphysicspools), [EngineAllocatorAllocate](#engineallocatorallocate), [DestroyNetworkTypeEntry](#destroynetworktypeentry), [FindPackage](#findpackage), [PackageHasLoaded](#packagehasloaded), [LobbyMemberData](#lobbymemberdata), [LobbySetMemberData](#lobbysetmemberdata), [RegistryAllocate](#registryallocate), [ProjectileWeaponCopy](#projectileweaponcopy), [MagazineCopy](#magazinecopy), [AttachToUnit](#attachtounit), [SetBehaviour](#setbehaviour), [UnlinkRelation](#unlinkrelation), [RemoveEntity](#removeentity), [DestroyEntity](#destroyentity), [CloseStratagemSelector](#closestratagemselector), [SetStratagemCardEnabled](#setstratagemcardenabled), [SetLobbySetting](#setlobbysetting), [SetQuickplay](#setquickplay), [ReleasePackages](#releasepackages), [BeamInfoOf](#beaminfoof), [DamageInfoOf](#damageinfoof), [ProjectileInfoOf](#projectileinfoof), [PluginUpdate](#pluginupdate), [GameUpdate](#gameupdate), [PlayLoadoutSound](#playloadoutsound), [CreditorOf](#creditorof), [PickEnemy](#pickenemy), [EntityAttribute](#entityattribute), [ApplyDamage](#applydamage), [IsDead](#isdead), [HealthRecord](#healthrecord), [RestoreHealth](#restorehealth), [HealthSettings](#healthsettings), [SetLifeState](#setlifestate), [HealthManagerUpdate](#healthmanagerupdate), [DrainCombatQueues](#draincombatqueues), [EnqueueDamageEvent](#enqueuedamageevent), [ProduceDamage](#producedamage), [InitHitInfo](#inithitinfo), [EntityToNetwork](#entitytonetwork), [HealthZoneOfNode](#healthzoneofnode), [BuildDamageValues](#builddamagevalues), [IsBoosterActive](#isboosteractive), [ApplyStatus](#applystatus), [HasStatus](#hasstatus), [RemoveStatus](#removestatus), [AddStat](#addstat), [StatsPlayerIndex](#statsplayerindex), [StatMapLookup](#statmaplookup), [BuildScore](#buildscore), [KillCreditListener](#killcreditlistener), [PassiveValue](#passivevalue), [ChangeState](#changestate), [SetPlayerAvatar](#setplayeravatar), [SetPlayerState](#setplayerstate), [TurretSettings](#turretsettings), [SensorEyeSettings](#sensoreyesettings), [ProjectileWeaponRecord](#projectileweaponrecord), [WeaponDataRecord](#weapondatarecord), [BeamWeaponRecord](#beamweaponrecord), [WeaponProjectileType](#weaponprojectiletype), [ProjectileFire](#projectilefire), [GenericFire](#genericfire), [WeaponHeatStep](#weaponheatstep), [SpendRound](#spendround), [ProjectileWeaponUpdate](#projectileweaponupdate), [BeamWeaponUpdate](#beamweaponupdate), [BeamShot](#beamshot), [ReloadMagazine](#reloadmagazine), [TurretUpdate](#turretupdate), [TurretSpeedFactor](#turretspeedfactor), [SensorEyeRanges](#sensoreyeranges), [PerceptionUpdate](#perceptionupdate), [WindUpUpdate](#windupupdate), [ApplyAttribute](#applyattribute), [UpdateCustomization](#updatecustomization), [UpdateCustomizations](#updatecustomizations), [SetArmorKit](#setarmorkit), [SetHelmetKit](#sethelmetkit), [SetCapeKit](#setcapekit), [PlayerSlot](#playerslot), [BehaviourExplosion](#behaviourexplosion), [RequestExplosionAt](#requestexplosionat), [ExplosionKick](#explosionkick), [ExplosionGather](#explosiongather), [ProcessExplosion](#processexplosion), [ProjectileKick](#projectilekick), [BehaviourStartAbility](#behaviourstartability), [CorpseSource](#corpsesource), [StatusReceivable](#statusreceivable), [FlushNetworkFields](#flushnetworkfields), [Wield](#wield), [SwitchWeapon](#switchweapon), [QueueFieldWrite](#queuefieldwrite), [BeamTypeOf](#beamtypeof), [OutOfAmmo](#outofammo), [ChargeFire](#chargefire), [EncyclopediaRecord](#encyclopediarecord), [PickerCatalogueItem](#pickercatalogueitem), [NavigationRecord](#navigationrecord), [BehaviourStageCount](#behaviourstagecount), [BehaviourEventSlot](#behavioureventslot), [BehaviourSlotEvent](#behaviourslotevent), [FillDistancesTo](#filldistancesto), [UpdateImageUv](#updateimageuv), [HiveMindDefinition](#hiveminddefinition), [UnloadDamageList](#unloaddamagelist), [CollectOperationsForDifficulty](#collectoperationsfordifficulty), [FinalizeVoronoiStructured](#finalizevoronoistructured), [ReVoronoi](#revoronoi), [PlaceRoadProps](#placeroadprops), [StampIndexInit](#stampindexinit), [StampIndexInsert](#stampindexinsert), [CreateMinimapTexture](#createminimaptexture), [UpdateMissionCardDuration](#updatemissioncardduration), [SetupPhysicsConfig](#setupphysicsconfig), [SiloRemoteLink](#siloremotelink), [LaserDesignatorUpdate](#laserdesignatorupdate), [LinkRemoteOnPickup](#linkremoteonpickup), [MissilePreDestroy](#missilepredestroy), [CompactLinkerCopies](#compactlinkercopies), [SiloRemoteCleanup](#siloremotecleanup), [PelicanTurretAim](#pelicanturretaim), [RealizePellet](#realizepellet), [NetworkApplyState](#networkapplystate), [BehaviourSpawnSetup](#behaviourspawnsetup), [BehaviourNetworkFill](#behaviournetworkfill), [LoadProjectileList](#loadprojectilelist), [UnloadProjectileList](#unloadprojectilelist), [ProjectileLookupA](#projectilelookupa), [ProjectileLookupB](#projectilelookupb), [AttachmentItemById](#attachmentitembyid), [EntityDelta](#entitydelta), [RemoveSessionPeer](#removesessionpeer), [IsSteamFriend](#issteamfriend), [ApplySpawnDeltas](#applyspawndeltas), [HiveMindOf](#hivemindof), [RegisterDestructible](#registerdestructible), [LoadDestructibleIndex](#loaddestructibleindex), [DestructibleIndexEntry](#destructibleindexentry), [PlayerNearness](#playernearness), [BuildWarbondPager](#buildwarbondpager), [RefreshWarbondBuyButton](#refreshwarbondbuybutton), [UpdateWarbondBuyButton](#updatewarbondbuybutton), [WarbondScreenData](#warbondscreendata), [BuildWarbondList](#buildwarbondlist), [UpdateWarbondPanel](#updatewarbondpanel), [DrawWarbondClaimButton](#drawwarbondclaimbutton), [UpdateWarbondPage](#updatewarbondpage), [ItemPresetKit](#itempresetkit), [ValidateBootLoadout](#validatebootloadout), [StratagemPackages](#stratagempackages), [ReleaseUnusedSharedStratagems](#releaseunusedsharedstratagems), [LoadStratagemSettings](#loadstratagemsettings), [BuildStratagemPicker](#buildstratagempicker), [MasteryPackageOf](#masterypackageof), [BuildCustomizationList](#buildcustomizationlist), [CreateWorld](#createworld), [StretchCityTemplate](#stretchcitytemplate), [LaySites](#laysites), [KeepTownEdges](#keeptownedges), [BuildingPlaced](#buildingplaced), [AreaRimHeight](#arearimheight), [FindPocketNeighbour](#findpocketneighbour), [SendMissionEndTelemetry](#sendmissionendtelemetry), [MissionResultReport](#missionresultreport), [ObjectiveSpawnSetup](#objectivespawnsetup), [RateOfFireCycle](#rateoffirecycle), [WeaponFunctionPress](#weaponfunctionpress), [ProjectileWeaponRateSeed](#projectileweaponrateseed), [ProjectileWeaponNetApply](#projectileweaponnetapply), [ProjectileWeaponSystemPass](#projectileweaponsystempass), [SetCurrentFireMode](#setcurrentfiremode), [WeaponFunctionValue](#weaponfunctionvalue), [WeaponApplyReplicatedTrigger](#weaponapplyreplicatedtrigger), [RpcFireSingleRound](#rpcfiresingleround), [RpcFireSingleRoundAdvanced](#rpcfiresingleroundadvanced), [SendFireSingleRoundAdvanced](#sendfiresingleroundadvanced), [RpcAddProjectileToManager](#rpcaddprojectiletomanager), [SetWielder](#setwielder), [ProjectileWeaponNetInit](#projectileweaponnetinit), [WeaponBuild](#weaponbuild), [ProjectileWeaponEnterOwned](#projectileweaponenterowned), [OwnsWarbond](#ownswarbond), [WarbondCurrencyToken](#warbondcurrencytoken), [HasCatalogueItem](#hascatalogueitem), [WeaponMagazineRecord](#weaponmagazinerecord), [WeaponWindUpRecord](#weaponwinduprecord), [RechargeRecord](#rechargerecord), [WeaponReloadRecord](#weaponreloadrecord), [WeaponRoundsRecord](#weaponroundsrecord), [WeaponChargeRecord](#weaponchargerecord), [EquipmentRecord](#equipmentrecord), [ThrowerRecord](#throwerrecord), [ArcWeaponRecord](#arcweaponrecord), [WeaponHeatRecord](#weaponheatrecord), [WeaponCustomizationRecord](#weaponcustomizationrecord), [WeaponMagazineTypeRecord](#weaponmagazinetyperecord), [RechargeTypeRecord](#rechargetyperecord), [WeaponReloadTypeRecord](#weaponreloadtyperecord), [WeaponRoundsTypeRecord](#weaponroundstyperecord), [EquipmentTypeRecord](#equipmenttyperecord), [ThrowerTypeRecord](#throwertyperecord), [ThrowableTypeRecord](#throwabletyperecord), [ArcWeaponTypeRecord](#arcweapontyperecord), [WeaponHeatTypeRecord](#weaponheattyperecord), [AbilityWeaponTypeRecord](#abilityweapontyperecord), [WeaponCustomizationTypeRecord](#weaponcustomizationtyperecord), [WeaponUpdate](#weaponupdate), [WeaponDataUpdate](#weapondataupdate), [WeaponHeatUpdate](#weaponheatupdate), [WeaponHeatInstanceStep](#weaponheatinstancestep), [WeaponChargeUpdate](#weaponchargeupdate), [ChargeRelease](#chargerelease), [ChargeOvercharge](#chargeovercharge), [ChargeMultiplier](#chargemultiplier), [EquipmentUpdate](#equipmentupdate), [ThrowerUpdate](#throwerupdate), [ThrowableUpdate](#throwableupdate), [ArcWeaponUpdate](#arcweaponupdate), [AbilityWeaponUpdate](#abilityweaponupdate), [WeaponCustomizationUpdate](#weaponcustomizationupdate), [StartReload](#startreload), [CanReload](#canreload), [ReloadStateHas](#reloadstatehas), [WeaponReloadBusy](#weaponreloadbusy), [OwnSpareAmmo](#ownspareammo), [WeaponRefill](#weaponrefill), [MagazineRefill](#magazinerefill), [RoundsRefill](#roundsrefill), [HeatsinkRefill](#heatsinkrefill), [AbilityWeaponModeSettings](#abilityweaponmodesettings), [AbilityWeaponFire](#abilityweaponfire), [MeleeHitVolumeStart](#meleehitvolumestart), [UnitSettings](#unitsettings), [VehicleSettings](#vehiclesettings), [HellpodPayloadSettings](#hellpodpayloadsettings), [AvatarSettings](#avatarsettings), [JumppackSettings](#jumppacksettings), [DisplacementSettings](#displacementsettings), [OrbitalAbilitySettings](#orbitalabilitysettings), [RotationSettings](#rotationsettings), [EagleSettings](#eaglesettings), [VehicleUpdate](#vehicleupdate), [SquadTransportUpdate](#squadtransportupdate), [HellpodPayloadUpdate](#hellpodpayloadupdate), [AiSpawnerUpdate](#aispawnerupdate), [BugholeUpdate](#bugholeupdate), [VehicleMotionUpdate](#vehiclemotionupdate), [AvatarUpdate](#avatarupdate), [DisplacementUpdate](#displacementupdate), [OrbitalAbilityUpdate](#orbitalabilityupdate), [EagleUpdate](#eagleupdate), [EncounterUpdate](#encounterupdate), [GuardForceUpdate](#guardforceupdate), [EagleStage](#eaglestage), [EagleTrackAim](#eagletrackaim), [EagleStrike](#eaglestrike), [EagleFlight](#eagleflight), [JumppackTimers](#jumppacktimers), [JumppackFlight](#jumppackflight), [SetJumppackActive](#setjumppackactive), [JumppackTakeOff](#jumppacktakeoff), [PickPatrolComposition](#pickpatrolcomposition), [SpawnSquad](#spawnsquad), [PatrolClock](#patrolclock), [PickReinforcementComposition](#pickreinforcementcomposition), [DispatchReinforcement](#dispatchreinforcement), [FillOutpost](#filloutpost), [UnitSetLocalPosition](#unitsetlocalposition), [UnitSetLocalRotation](#unitsetlocalrotation), [UnitSetLocalScale](#unitsetlocalscale), [UnitTeleportLocalPosition](#unitteleportlocalposition), [UnitTeleportLocalPose](#unitteleportlocalpose), [WorldSetUnitMoving](#worldsetunitmoving), [UnitDeltaPosition](#unitdeltaposition), [UnitDeltaRotation](#unitdeltarotation), [UnitDeltaPose](#unitdeltapose), [UnitTeleportLocalRotation](#unitteleportlocalrotation), [UnitTeleportLocalScale](#unitteleportlocalscale), [WorldSpawnUnit](#worldspawnunit), [WorldDestroyUnit](#worlddestroyunit), [WorldQueueUnitsDestroy](#worldqueueunitsdestroy), [WorldLinkUnitHandles](#worldlinkunithandles), [WorldLinkUnit](#worldlinkunit), [WorldUnlinkUnit](#worldunlinkunit), [WorldMendUnit](#worldmendunit), [WorldUpdate](#worldupdate), [WorldUpdateScene](#worldupdatescene), [WorldCreateLineObject](#worldcreatelineobject), [LineObjectAddLine](#lineobjectaddline), [LineObjectAddCone](#lineobjectaddcone), [LineObjectAddCircle](#lineobjectaddcircle), [LineObjectAddSphere](#lineobjectaddsphere), [LineObjectAddHalfSphere](#lineobjectaddhalfsphere), [LineObjectAddBox](#lineobjectaddbox), [LineObjectAddCapsule](#lineobjectaddcapsule), [LineObjectDispatch](#lineobjectdispatch), [MurmurHash64A](#murmurhash64a), [MaterialSetScalar](#materialsetscalar), [MaterialSetVector2](#materialsetvector2), [MaterialSetVector3](#materialsetvector3), [MaterialSetVector4](#materialsetvector4), [MaterialSetMatrix4x4](#materialsetmatrix4x4), [MaterialSetTexture](#materialsettexture), [MaterialSetResource](#materialsetresource), [MaterialSetShaderPassFlag](#materialsetshaderpassflag), [MaterialReinitializeShader](#materialreinitializeshader), [CameraWorldToScreen](#cameraworldtoscreen), [CameraScreenToWorld](#camerascreentoworld), [CameraSyncRange](#camerasyncrange), [CameraSyncFrustum](#camerasyncfrustum), [CameraSetLocal](#camerasetlocal), [CameraInsideFrustum](#camerainsidefrustum), [GuiAddPrimitive](#guiaddprimitive), [GuiRect](#guirect), [ResourceManagerGet](#resourcemanagerget), [ResourceManagerCanGet](#resourcemanagercanget), [ResourceManagerSetOverride](#resourcemanagersetoverride), [ResourceManagerClearOverride](#resourcemanagerclearoverride), [MurmurHash64ALower](#murmurhash64alower), [RendererWindowSize](#rendererwindowsize), [ReleaseWorld](#releaseworld), [CreateViewport](#createviewport), [WorldDestroyViewport](#worlddestroyviewport), [NetworkCreateGameSession](#networkcreategamesession), [NetworkShutdownGameSession](#networkshutdowngamesession), [LevelIsPointInsideVolume](#levelispointinsidevolume), [LevelRandomPointInsideVolume](#levelrandompointinsidevolume), [LevelHasVolume](#levelhasvolume), [LevelUnitIndex](#levelunitindex), [LevelSpawnAllLayers](#levelspawnalllayers), [UnitAnimationFindVariable](#unitanimationfindvariable), [UnitAnimationHasVariable](#unitanimationhasvariable), [UnitAnimationGetVariable](#unitanimationgetvariable), [UnitAnimationSetVariable](#unitanimationsetvariable), [UnitSetUnitVisibility](#unitsetunitvisibility), [UnitSetVisibilityGroup](#unitsetvisibilitygroup), [UnitCrossfadeAnimation](#unitcrossfadeanimation), [UnitCrossfadeAnimationSetTime](#unitcrossfadeanimationsettime), [UnitCopySceneGraphLocalFrom](#unitcopyscenegraphlocalfrom), [UnitSetBonesLod](#unitsetboneslod), [UnitAnimationFindConstraintTarget](#unitanimationfindconstrainttarget), [UnitAnimationSetConstraintTargetPosition](#unitanimationsetconstrainttargetposition), [LightSync](#lightsync), [LightSetEnabled](#lightsetenabled), [WorldDestroyLevel](#worlddestroylevel), [WorldDestroyPrefab](#worlddestroyprefab), [WorldPlayCameraShake](#worldplaycamerashake), [WorldStopCameraShake](#worldstopcamerashake), [WorldUpdateAnimations](#worldupdateanimations), [GuiManagerDestroyGui](#guimanagerdestroygui), [SpawnEntityAddComponents](#spawnentityaddcomponents), [SpawnEntityFinishComponents](#spawnentityfinishcomponents), [ActivateEntity](#activateentity), [DeactivateEntity](#deactivateentity), [UnitLocalPosition](#unitlocalposition), [UnitLocalRotation](#unitlocalrotation), [UnitLocalScale](#unitlocalscale), [UnitLocalPose](#unitlocalpose), [UnitWorldPose](#unitworldpose), [UnitWorldRotation](#unitworldrotation), [UnitNumMeshes](#unitnummeshes), [UnitMesh](#unitmesh), [UnitAlive](#unitalive), [UnitHasAnimationBlender](#unithasanimationblender), [UnitHasAnimationStateMachine](#unithasanimationstatemachine), [UnitAnimationRootMode](#unitanimationrootmode), [UnitAnimationBoneMode](#unitanimationbonemode), [UnitNumSceneGraphItems](#unitnumscenegraphitems), [UnitSceneGraphParent](#unitscenegraphparent), [UnitNumTerrains](#unitnumterrains), [UnitNumLodObjects](#unitnumlodobjects), [UnitNumLights](#unitnumlights), [UnitNumCameras](#unitnumcameras), [UnitHasNode](#unithasnode), [UnitNode](#unitnode), [UnitLevel](#unitlevel), [UnitId](#unitid), [UnitResourceName](#unitresourcename), [UnitDebugName](#unitdebugname)
 - [Globals](#globals): [Game](#game), [PlayerManager](#playermanager), [LocalUser](#localuser), [GameMode](#gamemode), [EntityManager](#entitymanager), [HealthManager](#healthmanager), [MotionManager](#motionmanager), [ExplosionQueue](#explosionqueue), [ProjectileSystem](#projectilesystem), [CombatQueues](#combatqueues), [ScoreManager](#scoremanager), [WielderManager](#wieldermanager), [InventoryManager](#inventorymanager), [Destructibles](#destructibles), [DestructionRecords](#destructionrecords), [DepositManager](#depositmanager), [AvatarManager](#avatarmanager), [WieldableManager](#wieldablemanager), [FactionManager](#factionmanager), [BehaviourManager](#behaviourmanager), [TagManager](#tagmanager), [Clock](#clock), [EngineApi](#engineapi), [EngineUnitApi](#engineunitapi), [WwiseApi](#wwiseapi), [AbilityManager](#abilitymanager), [WeaponLinkerManager](#weaponlinkermanager), [SeekingMissileManager](#seekingmissilemanager), [LaserDesignatorManager](#laserdesignatormanager), [GuidanceTargets](#guidancetargets), [ExplosiveManager](#explosivemanager), [EquipmentManager](#equipmentmanager), [HellpodRackManager](#hellpodrackmanager), [AttachableManager](#attachablemanager), [MountManager](#mountmanager), [DropAnchors](#dropanchors), [PerceptionManager](#perceptionmanager), [WeaponManager](#weaponmanager), [WeaponMagazines](#weaponmagazines), [WeaponTargeting](#weapontargeting), [ShieldManager](#shieldmanager), [CustomizationManager](#customizationmanager), [BombardmentManager](#bombardmentmanager), [Progression](#progression), [PlayerHistory](#playerhistory), [Profile](#profile), [MenuStates](#menustates), [MenuStack](#menustack), [Armory](#armory), [ThumbnailManager](#thumbnailmanager), [PackageSystem](#packagesystem), [GameConfig](#gameconfig), [NavigationSystem](#navigationsystem), [PhysicsPlugin](#physicsplugin), [ObjectiveManager](#objectivemanager), [HiveMindManager](#hivemindmanager), [Telemetry](#telemetry), [GuardForces](#guardforces), [UnitRegistry](#unitregistry), [EngineCore](#enginecore), [NetworkManager](#networkmanager), [NetworkConfigOwner](#networkconfigowner), [EngineEntityIndex](#engineentityindex), [NavWorlds](#navworlds), [PhysicsProperties](#physicsproperties), [CollisionFilterA](#collisionfiltera), [CollisionFilterB](#collisionfilterb), [StatusReceivers](#statusreceivers), [ComponentWorld](#componentworld), [GameModeMission](#gamemodemission), [CareerStats](#careerstats), [ProjectileWeapons](#projectileweapons), [WeaponDatas](#weapondatas), [BeamWeapons](#beamweapons), [LinkedAmmo](#linkedammo), [Corpses](#corpses), [WeaponWindUps](#weaponwindups), [Recharges](#recharges), [WeaponReloads](#weaponreloads), [WeaponRoundsManager](#weaponroundsmanager), [WeaponCharges](#weaponcharges), [Throwers](#throwers), [Throwables](#throwables), [ArcWeapons](#arcweapons), [WeaponHeats](#weaponheats), [AbilityWeapons](#abilityweapons), [MeleeWeapons](#meleeweapons), [WeaponCustomizations](#weaponcustomizations), [AiSpawnerManager](#aispawnermanager), [BugholeManager](#bugholemanager), [VehicleMotionManager](#vehiclemotionmanager), [VehicleManager](#vehiclemanager), [SquadTransportManager](#squadtransportmanager), [SquadFormationManager](#squadformationmanager), [GoreManager](#goremanager), [StratagemBlockerManager](#stratagemblockermanager), [OrbitalAbilityManager](#orbitalabilitymanager), [HellpodPayloadManager](#hellpodpayloadmanager), [UnitManager](#unitmanager), [RotationManager](#rotationmanager), [DisplacementManager](#displacementmanager), [JumppackManager](#jumppackmanager), [EagleManager](#eaglemanager), [EncounterManager](#encountermanager), [AiSquadManager](#aisquadmanager), [SensorEyeManager](#sensoreyemanager), [TurretManager](#turretmanager), [LocomotionManager](#locomotionmanager)
-- [Components](#components): [HfProjectileWeapon](#hfprojectileweapon), [HfWeaponData](#hfweapondata), [HfWeaponMagazine](#hfweaponmagazine), [HfTag](#hftag), [HfMount](#hfmount), [HfBehavior](#hfbehavior), [HfLoadoutPackage](#hfloadoutpackage), [HfDeposit](#hfdeposit), [HfHealth](#hfhealth), [HfJumppack](#hfjumppack), [HfRecharge](#hfrecharge), [HfShield](#hfshield), [HfHellpodPayload](#hfhellpodpayload), [HfSensorEye](#hfsensoreye), [HfTurret](#hfturret), [HfWeaponWindUp](#hfweaponwindup), [HfBeamWeapon](#hfbeamweapon), [HfWeaponHeat](#hfweaponheat), [HfEagle](#hfeagle), [HfThrower](#hfthrower), [HfBombardment](#hfbombardment), [HfExplosive](#hfexplosive), [HfThrowable](#hfthrowable), [HfVehicleMotion](#hfvehiclemotion), [HfWeaponCharge](#hfweaponcharge), [HfWeaponReload](#hfweaponreload), [HfWeaponRounds](#hfweaponrounds), [HfArcWeapon](#hfarcweapon), [HfHiveMind](#hfhivemind), [HfOrbitalAbility](#hforbitalability), [HfRotation](#hfrotation), [HfDisplacement](#hfdisplacement), [HfSeekingMissile](#hfseekingmissile), [HfLoadoutEntry](#hfloadoutentry), [HfHellpodRack](#hfhellpodrack), [HfAvatar](#hfavatar), [HfInventory](#hfinventory), [HfMeleeWeapon](#hfmeleeweapon), [HfAbilityWeapon](#hfabilityweapon), [HfUnit](#hfunit), [HfSquadTransportFormation](#hfsquadtransportformation), [HfSquadTransport](#hfsquadtransport), [HfGore](#hfgore), [HfAiSpawner](#hfaispawner), [HfStratagemBlocker](#hfstratagemblocker), [HfBughole](#hfbughole), [HfEquipment](#hfequipment), [HfWieldable](#hfwieldable), [HfAttachable](#hfattachable), [HfWeaponCustomization](#hfweaponcustomization)
-- [Settings tables](#settings-tables): [HfDifficultySettings](#hfdifficultysettings), [HfDamageInfo](#hfdamageinfo), [HfProjectileSettings](#hfprojectilesettings), [HfStratagemSettings](#hfstratagemsettings), [HfExplosionSettings](#hfexplosionsettings), [HfArcSettings](#hfarcsettings), [HfBeamSettings](#hfbeamsettings), [HfStatusEffectSettings](#hfstatuseffectsettings), [HfBoosterSettings](#hfboostersettings), [HfPassiveModifier](#hfpassivemodifier), [HfPassiveStat](#hfpassivestat), [HfMeleeHitVolume](#hfmeleehitvolume), [HfEnemyRoster](#hfenemyroster), [HfEnemyRosterLevel11](#hfenemyrosterlevel11), [HfEnemyComposition](#hfenemycomposition), [HfDemolitionTemplate](#hfdemolitiontemplate)
-- [Content](#content): [HF_ITEM_...](#hf_item_-168-hf_kind_item), [HF_PROJECTILE_...](#hf_projectile_-61-hf_kind_projectile), [HF_STRATAGEM_...](#hf_stratagem_-149-hf_kind_stratagem), [HF_BEHAVIOUR_...](#hf_behaviour_-2-hf_kind_behaviour), [HF_ENTITY_...](#hf_entity_-369-hf_kind_entity), [HF_DAMAGE_...](#hf_damage_-342-hf_kind_damage), [HF_PACKAGE_...](#hf_package_-1-hf_kind_package), [HF_TAG_...](#hf_tag_-1-hf_kind_tag), [HF_TRAIT_...](#hf_trait_-29-hf_kind_trait), [HF_CATEGORY_...](#hf_category_-5-hf_kind_category), [HF_BEAM_...](#hf_beam_-3-hf_kind_beam), [HF_BOOSTER_...](#hf_booster_-20-hf_kind_booster), [HF_EXPLOSION_...](#hf_explosion_-295-hf_kind_explosion), [HF_WEAPON_BEAM_...](#hf_weapon_beam_-1-hf_kind_weapon_beam), [HF_ARC_...](#hf_arc_-1-hf_kind_arc)
+- [Components](#components): [HfProjectileWeapon](#hfprojectileweapon), [HfWeaponData](#hfweapondata), [HfWeaponMagazine](#hfweaponmagazine), [HfTag](#hftag), [HfMount](#hfmount), [HfBehavior](#hfbehavior), [HfLoadoutPackage](#hfloadoutpackage), [HfDeposit](#hfdeposit), [HfHealth](#hfhealth), [HfJumppack](#hfjumppack), [HfRecharge](#hfrecharge), [HfShield](#hfshield), [HfHellpodPayload](#hfhellpodpayload), [HfSensorEye](#hfsensoreye), [HfTurret](#hfturret), [HfWeaponWindUp](#hfweaponwindup), [HfBeamWeapon](#hfbeamweapon), [HfWeaponHeat](#hfweaponheat), [HfEagle](#hfeagle), [HfThrower](#hfthrower), [HfBombardment](#hfbombardment), [HfExplosive](#hfexplosive), [HfThrowable](#hfthrowable), [HfVehicleMotion](#hfvehiclemotion), [HfWeaponCharge](#hfweaponcharge), [HfWeaponReload](#hfweaponreload), [HfWeaponRounds](#hfweaponrounds), [HfArcWeapon](#hfarcweapon), [HfSprayWeapon](#hfsprayweapon), [HfHiveMind](#hfhivemind), [HfOrbitalAbility](#hforbitalability), [HfRotation](#hfrotation), [HfDisplacement](#hfdisplacement), [HfSeekingMissile](#hfseekingmissile), [HfLoadoutEntry](#hfloadoutentry), [HfHellpodRack](#hfhellpodrack), [HfAvatar](#hfavatar), [HfInventory](#hfinventory), [HfMeleeWeapon](#hfmeleeweapon), [HfAbilityWeapon](#hfabilityweapon), [HfUnit](#hfunit), [HfSquadTransportFormation](#hfsquadtransportformation), [HfSquadTransport](#hfsquadtransport), [HfGore](#hfgore), [HfAiSpawner](#hfaispawner), [HfStratagemBlocker](#hfstratagemblocker), [HfBughole](#hfbughole), [HfEquipment](#hfequipment), [HfWieldable](#hfwieldable), [HfAttachable](#hfattachable), [HfWeaponCustomization](#hfweaponcustomization), [HfAiEnemy](#hfaienemy), [HfLocomotion](#hflocomotion), [HfStatusEffectReceiver](#hfstatuseffectreceiver)
+- [Settings tables](#settings-tables): [HfDifficultySettings](#hfdifficultysettings), [HfDamageInfo](#hfdamageinfo), [HfProjectileSettings](#hfprojectilesettings), [HfStratagemCode](#hfstratagemcode), [HfStratagemRearm](#hfstratagemrearm), [HfStratagemSettings](#hfstratagemsettings), [HfExplosionSettings](#hfexplosionsettings), [HfArcSettings](#hfarcsettings), [HfBeamSettings](#hfbeamsettings), [HfStatusEffectSettings](#hfstatuseffectsettings), [HfBoosterSettings](#hfboostersettings), [HfPassiveModifier](#hfpassivemodifier), [HfPassiveStat](#hfpassivestat), [HfMeleeHitVolume](#hfmeleehitvolume), [HfEnemyRoster](#hfenemyroster), [HfEnemyRosterLevel11](#hfenemyrosterlevel11), [HfEnemyComposition](#hfenemycomposition), [HfDemolitionTemplate](#hfdemolitiontemplate), [HfEnemySummon](#hfenemysummon)
+- [Content](#content): [HF_ITEM_...](#hf_item_-168-hf_kind_item), [HF_PROJECTILE_...](#hf_projectile_-61-hf_kind_projectile), [HF_STRATAGEM_...](#hf_stratagem_-149-hf_kind_stratagem), [HF_BEHAVIOUR_...](#hf_behaviour_-2-hf_kind_behaviour), [HF_ENTITY_...](#hf_entity_-369-hf_kind_entity), [HF_DAMAGE_...](#hf_damage_-348-hf_kind_damage), [HF_PACKAGE_...](#hf_package_-1-hf_kind_package), [HF_TAG_...](#hf_tag_-1-hf_kind_tag), [HF_TRAIT_...](#hf_trait_-29-hf_kind_trait), [HF_CATEGORY_...](#hf_category_-5-hf_kind_category), [HF_BEAM_...](#hf_beam_-3-hf_kind_beam), [HF_BOOSTER_...](#hf_booster_-20-hf_kind_booster), [HF_EXPLOSION_...](#hf_explosion_-295-hf_kind_explosion), [HF_WEAPON_BEAM_...](#hf_weapon_beam_-1-hf_kind_weapon_beam), [HF_ARC_...](#hf_arc_-1-hf_kind_arc)
 
 ## API
 
@@ -60,7 +60,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 ### SDK 3
 
-- `add_projectile`: `uint32_t (HfMod* mod, const HfProjectile* projectile)`. Adds a new projectile type (see HfProjectile). Call it from hellforge_mod_init. Returns its ProjectileType (351 and up), or 0 (the mod's log says why). 64 new types in all mods together (HellForge moves the game's list).
+- `add_projectile`: `uint32_t (HfMod* mod, const HfProjectile* projectile)`. Adds a new projectile type (see HfProjectile). Call it from hellforge_mod_init. Returns its ProjectileType (351 and up), or 0 (the mod's log says why). 1,024 new types in all mods together (HellForge moves the game's list); past type 511 their co-op field widens to 11 bits on every machine (docs/modding/projectiles.md "Room and co-op").
 - `projectile_row`: `uintptr_t (uint32_t type)`. The 272-byte settings row of a projectile a mod added, after HF_EVENT_PROJECTILES_READY, or 0. Its +0 is the type and must stay so; the rest may be changed (HD2Runtime's research names the members).
 - `add_damage`: `uint32_t (HfMod* mod, const HfDamage* damage)`. Adds a new damage type (see HfDamage). Call it from hellforge_mod_init, before the projectiles that deal it. Returns its id (650 and up), or 0 (the mod's log says why).
 - `damage_row`: `uintptr_t (uint32_t id)`. The 76-byte DamageInfo row of a damage type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 id (must stay), +4 standard damage, +8 durable damage, +0x0C four armour penetration values, +0x1C on status effects.
@@ -195,7 +195,7 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 - `beam_row`: `uintptr_t (uint32_t type)`. The 112-byte BeamSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must stay.
 - `add_arc`: `uint32_t (HfMod* mod, const HfArc* arc)`. Adds a new arc type (see HfArc). Call it from hellforge_mod_init. Returns its type (17 and up), or 0 (the mod's log says why). 512 across all mods.
 - `arc_row`: `uintptr_t (uint32_t type)`. The 104-byte ArcSettings row of a type a mod added, after HF_EVENT_PROJECTILES_READY, or 0: +0 is the type and must stay.
-- `add_attachment`: `uint32_t (HfMod* mod, const HfAttachment* attachment)`. Adds a weapon attachment (see HfAttachment). Call it from hellforge_mod_init, after add_weapon for its weapons. Returns its item id, or 0 (the mod's log says why). 128 across all mods. Customization screens list it on its weapons once the game has loaded its items; the session's backend makes it the player's.
+- `add_attachment`: `uint32_t (HfMod* mod, const HfAttachment* attachment)`. Adds a weapon attachment (see HfAttachment). Call it from hellforge_mod_init, after add_weapon for its weapons. Returns its item id, or 0 (the mod's log says why). 1,024 across all mods, weapon patterns among them. Customization screens list it on its weapons once the game has loaded its items; the session's backend makes it the player's while the game's catalogue has room for its item on each weapon (the backend's log names the rest).
 
 ### SDK 17: enemies (check hf->size before calling)
 
@@ -213,7 +213,14 @@ for changing and adding content; [Hooks and game memory](modding/hooks.md) for `
 
 ### SDK 18: patterns (check hf->size before calling)
 
-- `add_pattern`: `uint32_t (HfMod* mod, const HfPattern* pattern)`. Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why). 128 across all mods; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data.
+- `add_pattern`: `uint32_t (HfMod* mod, const HfPattern* pattern)`. Adds a pattern (see HfPattern). Call it from hellforge_mod_init. Returns its id, or 0 (the mod's log says why). Weapon patterns count among add_attachment's 1,024 across all mods, unit patterns 128; a weapon takes 16 mods' patterns, and a vehicle, hellpod or Pelican collection 24 skins in all (16 to 19 are the game's). Its textures must be loaded: put them in a session package of the mod's data.
+
+### SDK 19: screens in the game's own UI (hellforge_ui.h, docs/modding/ui.md; check hf->size)
+
+- `ui_open`: `int (HfMod* mod, const char* xaml, uint32_t kind)`. Opens a screen: xaml is a file of the mod's folder ("ui/shop.xaml") or XAML text; kind HF_UI_OVERLAY (over the game, not clickable) or HF_UI_MENU (a menu with the cursor, Back closes it; one at a time). Its id, or 0 (the mod's log says why). The screen shows at the next game update; 64 across all mods.
+- `ui_set`: `int (HfMod* mod, int screen, const char* element, const char* property, const char* value)`. Sets a property of a named element ("" or NULL: the screen's root) from text, as XAML would ("Text", "SUPPLY"; "Visibility", "Collapsed"; "Foreground", "#FFE900"). 0 queued, 1 refused (logged).
+- `ui_on`: `int (HfMod* mod, int screen, const char* element, HfUiCallback callback, void* user)`. Calls back when a named Button (or anything with a Command) is clicked; with element NULL, when the screen closes (ui_close, or the player's Back on a menu). 0 queued, 1 refused (logged).
+- `ui_close`: `int (HfMod* mod, int screen)`. Closes one of the mod's screens; a menu closes as the game closes its own. 0 queued, 1 refused (logged).
 
 ## Functions
 
@@ -5229,7 +5236,7 @@ typedef void (*HfFn_WarbondCurrencyToken)(uint64_t unused, uint32_t* out, uint32
 
 ### HasCatalogueItem
 
-`game.dll+0x136FB40`, hook or call. Whether the player holds a catalogue item. From HellForge research forge-credits-tint (README.md, locked warbonds).
+`game.dll+0x136FB40`, call only. Whether the player holds a catalogue item. From HellForge research forge-credits-tint (README.md, locked warbonds).
 
 ```c
 typedef uint8_t (*HfFn_HasCatalogueItem)(void* account, uint32_t item);
@@ -8811,8 +8818,9 @@ Group `firing_sounds` (every firing sound, silenced or not (HfWeapon.sound_from 
 | `ergonomics` | +0x164 | f32 | respawn | ergonomics (unverified) |
 | `stationary_while_firing` | +0x183 | u8 | respawn | 1: the wielder stands still while firing (unverified) |
 | `crosshair_type` | +0x190 | u32 | respawn | crosshair (unverified) |
-| `fire_ability` | +0x3AC | u32 | respawn | an ability the weapon runs when it fires (0: none) (unverified) |
-| `fire_ability_2` | +0x3B0 | u32 | respawn | a second fire-time ability (the VG-70 Variable: 50, a lead for its knock-down when fired standing; 0 on the AMR and Autocannon) (unverified) |
+| `fire_ability` | +0x3AC | u32 | respawn | the ability every shot starts on the weapon: its firing motion, a bolt, pump or lever cycle (R-36 Eruptor 2660, SG-8 Punisher 2661), the VG-70 Variable's stagger (2692); 0 none |
+| `fire_ability_2` | +0x3B0 | u32 | respawn | fire_ability's stand-in in fire mode 7, when the shot asks for it (the VG-70 Variable and MGX-42 Bullet Storm: 50; 0 elsewhere) |
+| `fire_ability_function` | +0x3B4 | u32 | respawn | fire_ability's stand-in while weapon function 8 is on (the W.A.S.P.'s 2679) |
 
 Group `recoil` (both recoil blocks, sideways and up): `recoil_drift_horizontal`, `recoil_drift_vertical`, `recoil_climb_horizontal`, `recoil_climb_vertical`.
 
@@ -9299,6 +9307,14 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `zone_37_affects_main_health` | +0x52C8 | f32 | respawn? | Affects main health (unverified) |
 | `zone_37_explosive_damage_percentage` | +0x5314 | f32 | respawn? | Explosive damage percentage (unverified) |
 | `zone_37_main_health_capped` | +0x5324 | u8 | respawn? | Main health capped (unverified) |
+| `element_0_type` | +0x53FC | u32 | now? | element damage 0: the element (0 matches damage with no element) (unverified) |
+| `element_0_multiplier` | +0x5400 | f32 | now? | element damage 0: multiplier of that element's damage (unverified) |
+| `element_1_type` | +0x5404 | u32 | now? | element damage 1: the element (0 matches damage with no element) (unverified) |
+| `element_1_multiplier` | +0x5408 | f32 | now? | element damage 1: multiplier of that element's damage (unverified) |
+| `element_2_type` | +0x540C | u32 | now? | element damage 2: the element (0 matches damage with no element) (unverified) |
+| `element_2_multiplier` | +0x5410 | f32 | now? | element damage 2: multiplier of that element's damage (unverified) |
+| `element_3_type` | +0x5414 | u32 | now? | element damage 3: the element (0 matches damage with no element) (unverified) |
+| `element_3_multiplier` | +0x5418 | f32 | now? | element damage 3: multiplier of that element's damage (unverified) |
 
 ### HfJumppack
 
@@ -9488,6 +9504,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `arming_delay` | +0x08 | f32 | respawn? | Arming delay (seconds) (unverified) |
 | `explosion_delay` | +0x0C | f32 | respawn? | Fuse (explosion delay) (seconds) (unverified) |
 | `explosion` | +0x24 | u32 | respawn? | Explosion payload (unverified) (an explosion reference) |
+| `impact_explosion` | +0x28 | u32 | respawn? | the explosion where it hits something (0: none; the Solo Silo missile 420) (unverified) (an explosion reference) |
 | `armed_ability` | +0x148 | u32 | respawn? | the ability it runs once it is set off (the Solo Silo missile: 2088, its launch) |
 
 ### HfThrowable
@@ -9587,6 +9604,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `spare_rounds` | +0x50 | u32 | respawn? | Spare rounds (rounds) (unverified) |
 | `rounds_from_supply` | +0x54 | u32 | respawn? | Rounds from supply (rounds) (unverified) |
 | `starting_rounds` | +0x58 | u32 | respawn? | Starting rounds (rounds) (unverified) |
+| `rounds_per_reload` | +0x5C | u32 | respawn? | Rounds each reload step loads into the feed and takes from the spare rounds (1: one by one; the AC-8 Autocannon's clip 5) |
 
 ### HfArcWeapon
 
@@ -9595,6 +9613,16 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
 | `fire_rate` | +0x04 | f32 | respawn? | Fire rate (rpm) (unverified) |
+
+### HfSprayWeapon
+
+`SprayWeaponComponentData`: component 315, 224-byte records. a spray weapon (flamethrowers, the Sterilizer, enemy sprays): the damage its spray deals and the projectiles an enemy spray throws, all in the weapon's own record (no shared settings row).
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `link_radius` | +0x10 | f32 | respawn? | Radius of the capsule joining consecutive spray projectiles (metres; 0: none, as on every player flamer) (unverified) |
+| `projectile` | +0xC4 | u32 | respawn? | the projectile type an enemy spray throws (0 on every player flamer: the spray is its particle effect) (a projectile reference) |
+| `damage` | +0xC8 | u32 | respawn? | the damage id its spray deals (DamageInfo; 0 on enemy sprays, whose projectile deals it) (a damage reference) |
 
 ### HfHiveMind
 
@@ -9742,7 +9770,7 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 
 ### HfSeekingMissile
 
-`SeekingMissileComponentData`: component 196, 272-byte records. SeekingMissileComponentData (fields from the stats schema).
+`SeekingMissileComponentData`: component 196, 272-byte records. SeekingMissileComponentData: a seeking missile's flight (speeds, turn rates, guidance) and its spread.
 
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
@@ -9755,6 +9783,21 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `max_angle_to_target` | +0x54 | f32 | respawn? | Missile turn blend angle (unverified) |
 | `turn_rate_at_max_angle` | +0x58 | f32 | respawn? | Missile turn rate at the blend angle (unverified) |
 | `turn_rate_aligned` | +0x5C | f32 | respawn? | Missile turn rate on target (unverified) |
+| `deviation_enabled` | +0xB4 | u8 | respawn? | 1: each missile spreads: it veers off its launch line, curves, then swings back onto its target (the deviation_* fields); 0: it flies straight at its target. The W.A.S.P. (both missiles), the Missile Pistol and the Warrant have it |
+| `deviation_direction_min` | +0xB8 | f32 | respawn? | which way a missile veers, in degrees around its flight line (0 up, 90 / -90 a side, 180 down): each missile draws one between this and deviation_direction_max (the W.A.S.P. -75 to 75) |
+| `deviation_direction_max` | +0xBC | f32 | respawn? | the top of the veer direction (see deviation_direction_min) |
+| `deviation_angle_min` | +0xC0 | f32 | respawn? | how far a missile turns off its launch line, in degrees: each missile draws an angle between this and deviation_angle_max (the W.A.S.P. 40 to 55) |
+| `deviation_angle_max` | +0xC4 | f32 | respawn? | the top of the veer angle (see deviation_angle_min) |
+| `deviation_curve_min` | +0xC8 | f32[3] | respawn? | the curve after the veer: pitch (x, positive up), roll (y, around the flight line) and yaw (z) in degrees, each drawn per missile between this and deviation_curve_max and turned every second (times deviation_curve_speed) until the return ends |
+| `deviation_curve_max` | +0xD4 | f32[3] | respawn? | the top of the curve (see deviation_curve_min) |
+| `deviation_curve_either_way` | +0xE0 | u8 | respawn? | 1: each of the curve's three angles gets a random sign (unverified) |
+| `deviation_curve_speed` | +0xE4 | f32 | now? | the curve's rate: its angles turn by this many times a second |
+| `deviation_veer_end` | +0xE8 | f32 | now? | seconds after launch when the veer is done (the missile turns evenly from deviation_veer_start); the curve and return start here |
+| `deviation_veer_start` | +0xEC | f32 | now? | seconds after launch when the missile starts to veer; until then it flies straight |
+| `deviation_return_time` | +0xF0 | f32 | now? | seconds after the veer the missile takes to swing fully back onto its target (its aim slides from the curve to the target over this time); then it homes as usual (unverified) |
+| `deviation_return_turn_rate` | +0xF4 | f32 | now? | its turn rate while it swings back, as a multiple of the usual blended turn rate (+0x58 / +0x5C); past about 60 / that turn rate a step overshoots (the slerp fraction passes 1) and the missile swings wildly (unverified) |
+
+Group `spread` (the missile spread: its veer off the launch line, its curve and its return onto the target): `deviation_enabled`, `deviation_direction_min`, `deviation_direction_max`, `deviation_angle_min`, `deviation_angle_max`, `deviation_curve_min`, `deviation_curve_max`, `deviation_curve_either_way`, `deviation_curve_speed`, `deviation_veer_end`, `deviation_veer_start`, `deviation_return_time`, `deviation_return_turn_rate`.
 
 ### HfLoadoutEntry
 
@@ -10002,6 +10045,194 @@ Group `spread` (spread sideways and up and down): `horizontal_spread`, `vertical
 | `trigger_settings` | +0x1248 | u32[13] | respawn? | trigger settings |
 | `magazine_adjusting_nodes` | +0x1280 | u32[24] | respawn? | magazine joints shown one per remaining round (thin hashes: bullet_01..) |
 
+### HfAiEnemy
+
+`AiEnemyComponentData`: component 302, 732-byte records. an enemy's AI behaviours: each state's movement settings, its charge.
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `patrol_speed` | +0x24 | f32 | now? | Patrol behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) |
+| `patrol_speed_min` | +0x2C | f32 | now? | Patrol behaviour: random move speed, lowest (unverified) |
+| `patrol_speed_max` | +0x30 | f32 | now? | Patrol behaviour: random move speed, highest (unverified) |
+| `combat_speed` | +0x64 | f32 | now? | Combat behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) |
+| `combat_speed_min` | +0x6C | f32 | now? | Combat behaviour: random move speed, lowest (unverified) |
+| `combat_speed_max` | +0x70 | f32 | now? | Combat behaviour: random move speed, highest (unverified) |
+| `strafe_speed` | +0x7C | f32 | now? | Strafe behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) |
+| `strafe_speed_min` | +0x84 | f32 | now? | Strafe behaviour: random move speed, lowest (unverified) |
+| `strafe_speed_max` | +0x88 | f32 | now? | Strafe behaviour: random move speed, highest (unverified) |
+| `retreat_speed` | +0xF4 | f32 | now? | Retreat behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) |
+| `retreat_speed_min` | +0xFC | f32 | now? | Retreat behaviour: random move speed, lowest (unverified) |
+| `retreat_speed_max` | +0x100 | f32 | now? | Retreat behaviour: random move speed, highest (unverified) |
+| `charge_speed` | +0x114 | f32 | now? | Charge behaviour: move speed in m/s (used unless both random ends are above 0) (unverified) |
+| `charge_speed_min` | +0x11C | f32 | now? | Charge behaviour: random move speed, lowest (unverified) |
+| `charge_speed_max` | +0x120 | f32 | now? | Charge behaviour: random move speed, highest (unverified) |
+| `charge_acceleration` | +0x124 | f32 | now? | locomotion acceleration while charging (m/s^2) (unverified) |
+| `charge_tracking_angle` | +0x12C | f32 | now? | it keeps homing while the target is within this many degrees of its facing (unverified) |
+
+### HfLocomotion
+
+`LocomotionComponentData`: component 311, 4624-byte records. how an enemy's legs move it: eight locomotion sets (animation speed bands, turn animations), its acceleration and deceleration.
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `acceleration` | +0x1170 | f32 | respawn? | acceleration (m/s^2; -1 the default) (unverified) |
+| `deceleration` | +0x1174 | f32 | respawn? | deceleration (m/s^2; -1 the default) (unverified) |
+
+### HfStatusEffectReceiver
+
+`StatusEffectReceiverComponentData`: component 307, 46600-byte records. the statuses an entity takes: 8 zones of 33 susceptibility entries (0xB0 each, packed up to the first type 0; zone 0 at +8) and 8 duration multipliers at +0xB5C8.
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `entry_0_type` | +0x94 | u32 | respawn? | zone 0 entry 0: susceptibility type (0 ends the list) (unverified) |
+| `entry_0_min_buildup` | +0x98 | f32 | now? | zone 0 entry 0: buildup below which it never applies (unverified) |
+| `entry_0_sure_buildup` | +0x9C | f32 | now? | zone 0 entry 0: chance to apply = buildup / this (unverified) |
+| `entry_0_damage_multiplier` | +0xB0 | f32 | now? | zone 0 entry 0: tick damage multiplier (unverified) |
+| `entry_1_type` | +0x144 | u32 | respawn? | zone 0 entry 1: susceptibility type (0 ends the list) (unverified) |
+| `entry_1_min_buildup` | +0x148 | f32 | now? | zone 0 entry 1: buildup below which it never applies (unverified) |
+| `entry_1_sure_buildup` | +0x14C | f32 | now? | zone 0 entry 1: chance to apply = buildup / this (unverified) |
+| `entry_1_damage_multiplier` | +0x160 | f32 | now? | zone 0 entry 1: tick damage multiplier (unverified) |
+| `entry_2_type` | +0x1F4 | u32 | respawn? | zone 0 entry 2: susceptibility type (0 ends the list) (unverified) |
+| `entry_2_min_buildup` | +0x1F8 | f32 | now? | zone 0 entry 2: buildup below which it never applies (unverified) |
+| `entry_2_sure_buildup` | +0x1FC | f32 | now? | zone 0 entry 2: chance to apply = buildup / this (unverified) |
+| `entry_2_damage_multiplier` | +0x210 | f32 | now? | zone 0 entry 2: tick damage multiplier (unverified) |
+| `entry_3_type` | +0x2A4 | u32 | respawn? | zone 0 entry 3: susceptibility type (0 ends the list) (unverified) |
+| `entry_3_min_buildup` | +0x2A8 | f32 | now? | zone 0 entry 3: buildup below which it never applies (unverified) |
+| `entry_3_sure_buildup` | +0x2AC | f32 | now? | zone 0 entry 3: chance to apply = buildup / this (unverified) |
+| `entry_3_damage_multiplier` | +0x2C0 | f32 | now? | zone 0 entry 3: tick damage multiplier (unverified) |
+| `entry_4_type` | +0x354 | u32 | respawn? | zone 0 entry 4: susceptibility type (0 ends the list) (unverified) |
+| `entry_4_min_buildup` | +0x358 | f32 | now? | zone 0 entry 4: buildup below which it never applies (unverified) |
+| `entry_4_sure_buildup` | +0x35C | f32 | now? | zone 0 entry 4: chance to apply = buildup / this (unverified) |
+| `entry_4_damage_multiplier` | +0x370 | f32 | now? | zone 0 entry 4: tick damage multiplier (unverified) |
+| `entry_5_type` | +0x404 | u32 | respawn? | zone 0 entry 5: susceptibility type (0 ends the list) (unverified) |
+| `entry_5_min_buildup` | +0x408 | f32 | now? | zone 0 entry 5: buildup below which it never applies (unverified) |
+| `entry_5_sure_buildup` | +0x40C | f32 | now? | zone 0 entry 5: chance to apply = buildup / this (unverified) |
+| `entry_5_damage_multiplier` | +0x420 | f32 | now? | zone 0 entry 5: tick damage multiplier (unverified) |
+| `entry_6_type` | +0x4B4 | u32 | respawn? | zone 0 entry 6: susceptibility type (0 ends the list) (unverified) |
+| `entry_6_min_buildup` | +0x4B8 | f32 | now? | zone 0 entry 6: buildup below which it never applies (unverified) |
+| `entry_6_sure_buildup` | +0x4BC | f32 | now? | zone 0 entry 6: chance to apply = buildup / this (unverified) |
+| `entry_6_damage_multiplier` | +0x4D0 | f32 | now? | zone 0 entry 6: tick damage multiplier (unverified) |
+| `entry_7_type` | +0x564 | u32 | respawn? | zone 0 entry 7: susceptibility type (0 ends the list) (unverified) |
+| `entry_7_min_buildup` | +0x568 | f32 | now? | zone 0 entry 7: buildup below which it never applies (unverified) |
+| `entry_7_sure_buildup` | +0x56C | f32 | now? | zone 0 entry 7: chance to apply = buildup / this (unverified) |
+| `entry_7_damage_multiplier` | +0x580 | f32 | now? | zone 0 entry 7: tick damage multiplier (unverified) |
+| `entry_8_type` | +0x614 | u32 | respawn? | zone 0 entry 8: susceptibility type (0 ends the list) (unverified) |
+| `entry_8_min_buildup` | +0x618 | f32 | now? | zone 0 entry 8: buildup below which it never applies (unverified) |
+| `entry_8_sure_buildup` | +0x61C | f32 | now? | zone 0 entry 8: chance to apply = buildup / this (unverified) |
+| `entry_8_damage_multiplier` | +0x630 | f32 | now? | zone 0 entry 8: tick damage multiplier (unverified) |
+| `entry_9_type` | +0x6C4 | u32 | respawn? | zone 0 entry 9: susceptibility type (0 ends the list) (unverified) |
+| `entry_9_min_buildup` | +0x6C8 | f32 | now? | zone 0 entry 9: buildup below which it never applies (unverified) |
+| `entry_9_sure_buildup` | +0x6CC | f32 | now? | zone 0 entry 9: chance to apply = buildup / this (unverified) |
+| `entry_9_damage_multiplier` | +0x6E0 | f32 | now? | zone 0 entry 9: tick damage multiplier (unverified) |
+| `entry_10_type` | +0x774 | u32 | respawn? | zone 0 entry 10: susceptibility type (0 ends the list) (unverified) |
+| `entry_10_min_buildup` | +0x778 | f32 | now? | zone 0 entry 10: buildup below which it never applies (unverified) |
+| `entry_10_sure_buildup` | +0x77C | f32 | now? | zone 0 entry 10: chance to apply = buildup / this (unverified) |
+| `entry_10_damage_multiplier` | +0x790 | f32 | now? | zone 0 entry 10: tick damage multiplier (unverified) |
+| `entry_11_type` | +0x824 | u32 | respawn? | zone 0 entry 11: susceptibility type (0 ends the list) (unverified) |
+| `entry_11_min_buildup` | +0x828 | f32 | now? | zone 0 entry 11: buildup below which it never applies (unverified) |
+| `entry_11_sure_buildup` | +0x82C | f32 | now? | zone 0 entry 11: chance to apply = buildup / this (unverified) |
+| `entry_11_damage_multiplier` | +0x840 | f32 | now? | zone 0 entry 11: tick damage multiplier (unverified) |
+| `entry_12_type` | +0x8D4 | u32 | respawn? | zone 0 entry 12: susceptibility type (0 ends the list) (unverified) |
+| `entry_12_min_buildup` | +0x8D8 | f32 | now? | zone 0 entry 12: buildup below which it never applies (unverified) |
+| `entry_12_sure_buildup` | +0x8DC | f32 | now? | zone 0 entry 12: chance to apply = buildup / this (unverified) |
+| `entry_12_damage_multiplier` | +0x8F0 | f32 | now? | zone 0 entry 12: tick damage multiplier (unverified) |
+| `entry_13_type` | +0x984 | u32 | respawn? | zone 0 entry 13: susceptibility type (0 ends the list) (unverified) |
+| `entry_13_min_buildup` | +0x988 | f32 | now? | zone 0 entry 13: buildup below which it never applies (unverified) |
+| `entry_13_sure_buildup` | +0x98C | f32 | now? | zone 0 entry 13: chance to apply = buildup / this (unverified) |
+| `entry_13_damage_multiplier` | +0x9A0 | f32 | now? | zone 0 entry 13: tick damage multiplier (unverified) |
+| `entry_14_type` | +0xA34 | u32 | respawn? | zone 0 entry 14: susceptibility type (0 ends the list) (unverified) |
+| `entry_14_min_buildup` | +0xA38 | f32 | now? | zone 0 entry 14: buildup below which it never applies (unverified) |
+| `entry_14_sure_buildup` | +0xA3C | f32 | now? | zone 0 entry 14: chance to apply = buildup / this (unverified) |
+| `entry_14_damage_multiplier` | +0xA50 | f32 | now? | zone 0 entry 14: tick damage multiplier (unverified) |
+| `entry_15_type` | +0xAE4 | u32 | respawn? | zone 0 entry 15: susceptibility type (0 ends the list) (unverified) |
+| `entry_15_min_buildup` | +0xAE8 | f32 | now? | zone 0 entry 15: buildup below which it never applies (unverified) |
+| `entry_15_sure_buildup` | +0xAEC | f32 | now? | zone 0 entry 15: chance to apply = buildup / this (unverified) |
+| `entry_15_damage_multiplier` | +0xB00 | f32 | now? | zone 0 entry 15: tick damage multiplier (unverified) |
+| `entry_16_type` | +0xB94 | u32 | respawn? | zone 0 entry 16: susceptibility type (0 ends the list) (unverified) |
+| `entry_16_min_buildup` | +0xB98 | f32 | now? | zone 0 entry 16: buildup below which it never applies (unverified) |
+| `entry_16_sure_buildup` | +0xB9C | f32 | now? | zone 0 entry 16: chance to apply = buildup / this (unverified) |
+| `entry_16_damage_multiplier` | +0xBB0 | f32 | now? | zone 0 entry 16: tick damage multiplier (unverified) |
+| `entry_17_type` | +0xC44 | u32 | respawn? | zone 0 entry 17: susceptibility type (0 ends the list) (unverified) |
+| `entry_17_min_buildup` | +0xC48 | f32 | now? | zone 0 entry 17: buildup below which it never applies (unverified) |
+| `entry_17_sure_buildup` | +0xC4C | f32 | now? | zone 0 entry 17: chance to apply = buildup / this (unverified) |
+| `entry_17_damage_multiplier` | +0xC60 | f32 | now? | zone 0 entry 17: tick damage multiplier (unverified) |
+| `entry_18_type` | +0xCF4 | u32 | respawn? | zone 0 entry 18: susceptibility type (0 ends the list) (unverified) |
+| `entry_18_min_buildup` | +0xCF8 | f32 | now? | zone 0 entry 18: buildup below which it never applies (unverified) |
+| `entry_18_sure_buildup` | +0xCFC | f32 | now? | zone 0 entry 18: chance to apply = buildup / this (unverified) |
+| `entry_18_damage_multiplier` | +0xD10 | f32 | now? | zone 0 entry 18: tick damage multiplier (unverified) |
+| `entry_19_type` | +0xDA4 | u32 | respawn? | zone 0 entry 19: susceptibility type (0 ends the list) (unverified) |
+| `entry_19_min_buildup` | +0xDA8 | f32 | now? | zone 0 entry 19: buildup below which it never applies (unverified) |
+| `entry_19_sure_buildup` | +0xDAC | f32 | now? | zone 0 entry 19: chance to apply = buildup / this (unverified) |
+| `entry_19_damage_multiplier` | +0xDC0 | f32 | now? | zone 0 entry 19: tick damage multiplier (unverified) |
+| `entry_20_type` | +0xE54 | u32 | respawn? | zone 0 entry 20: susceptibility type (0 ends the list) (unverified) |
+| `entry_20_min_buildup` | +0xE58 | f32 | now? | zone 0 entry 20: buildup below which it never applies (unverified) |
+| `entry_20_sure_buildup` | +0xE5C | f32 | now? | zone 0 entry 20: chance to apply = buildup / this (unverified) |
+| `entry_20_damage_multiplier` | +0xE70 | f32 | now? | zone 0 entry 20: tick damage multiplier (unverified) |
+| `entry_21_type` | +0xF04 | u32 | respawn? | zone 0 entry 21: susceptibility type (0 ends the list) (unverified) |
+| `entry_21_min_buildup` | +0xF08 | f32 | now? | zone 0 entry 21: buildup below which it never applies (unverified) |
+| `entry_21_sure_buildup` | +0xF0C | f32 | now? | zone 0 entry 21: chance to apply = buildup / this (unverified) |
+| `entry_21_damage_multiplier` | +0xF20 | f32 | now? | zone 0 entry 21: tick damage multiplier (unverified) |
+| `entry_22_type` | +0xFB4 | u32 | respawn? | zone 0 entry 22: susceptibility type (0 ends the list) (unverified) |
+| `entry_22_min_buildup` | +0xFB8 | f32 | now? | zone 0 entry 22: buildup below which it never applies (unverified) |
+| `entry_22_sure_buildup` | +0xFBC | f32 | now? | zone 0 entry 22: chance to apply = buildup / this (unverified) |
+| `entry_22_damage_multiplier` | +0xFD0 | f32 | now? | zone 0 entry 22: tick damage multiplier (unverified) |
+| `entry_23_type` | +0x1064 | u32 | respawn? | zone 0 entry 23: susceptibility type (0 ends the list) (unverified) |
+| `entry_23_min_buildup` | +0x1068 | f32 | now? | zone 0 entry 23: buildup below which it never applies (unverified) |
+| `entry_23_sure_buildup` | +0x106C | f32 | now? | zone 0 entry 23: chance to apply = buildup / this (unverified) |
+| `entry_23_damage_multiplier` | +0x1080 | f32 | now? | zone 0 entry 23: tick damage multiplier (unverified) |
+| `entry_24_type` | +0x1114 | u32 | respawn? | zone 0 entry 24: susceptibility type (0 ends the list) (unverified) |
+| `entry_24_min_buildup` | +0x1118 | f32 | now? | zone 0 entry 24: buildup below which it never applies (unverified) |
+| `entry_24_sure_buildup` | +0x111C | f32 | now? | zone 0 entry 24: chance to apply = buildup / this (unverified) |
+| `entry_24_damage_multiplier` | +0x1130 | f32 | now? | zone 0 entry 24: tick damage multiplier (unverified) |
+| `entry_25_type` | +0x11C4 | u32 | respawn? | zone 0 entry 25: susceptibility type (0 ends the list) (unverified) |
+| `entry_25_min_buildup` | +0x11C8 | f32 | now? | zone 0 entry 25: buildup below which it never applies (unverified) |
+| `entry_25_sure_buildup` | +0x11CC | f32 | now? | zone 0 entry 25: chance to apply = buildup / this (unverified) |
+| `entry_25_damage_multiplier` | +0x11E0 | f32 | now? | zone 0 entry 25: tick damage multiplier (unverified) |
+| `entry_26_type` | +0x1274 | u32 | respawn? | zone 0 entry 26: susceptibility type (0 ends the list) (unverified) |
+| `entry_26_min_buildup` | +0x1278 | f32 | now? | zone 0 entry 26: buildup below which it never applies (unverified) |
+| `entry_26_sure_buildup` | +0x127C | f32 | now? | zone 0 entry 26: chance to apply = buildup / this (unverified) |
+| `entry_26_damage_multiplier` | +0x1290 | f32 | now? | zone 0 entry 26: tick damage multiplier (unverified) |
+| `entry_27_type` | +0x1324 | u32 | respawn? | zone 0 entry 27: susceptibility type (0 ends the list) (unverified) |
+| `entry_27_min_buildup` | +0x1328 | f32 | now? | zone 0 entry 27: buildup below which it never applies (unverified) |
+| `entry_27_sure_buildup` | +0x132C | f32 | now? | zone 0 entry 27: chance to apply = buildup / this (unverified) |
+| `entry_27_damage_multiplier` | +0x1340 | f32 | now? | zone 0 entry 27: tick damage multiplier (unverified) |
+| `entry_28_type` | +0x13D4 | u32 | respawn? | zone 0 entry 28: susceptibility type (0 ends the list) (unverified) |
+| `entry_28_min_buildup` | +0x13D8 | f32 | now? | zone 0 entry 28: buildup below which it never applies (unverified) |
+| `entry_28_sure_buildup` | +0x13DC | f32 | now? | zone 0 entry 28: chance to apply = buildup / this (unverified) |
+| `entry_28_damage_multiplier` | +0x13F0 | f32 | now? | zone 0 entry 28: tick damage multiplier (unverified) |
+| `entry_29_type` | +0x1484 | u32 | respawn? | zone 0 entry 29: susceptibility type (0 ends the list) (unverified) |
+| `entry_29_min_buildup` | +0x1488 | f32 | now? | zone 0 entry 29: buildup below which it never applies (unverified) |
+| `entry_29_sure_buildup` | +0x148C | f32 | now? | zone 0 entry 29: chance to apply = buildup / this (unverified) |
+| `entry_29_damage_multiplier` | +0x14A0 | f32 | now? | zone 0 entry 29: tick damage multiplier (unverified) |
+| `entry_30_type` | +0x1534 | u32 | respawn? | zone 0 entry 30: susceptibility type (0 ends the list) (unverified) |
+| `entry_30_min_buildup` | +0x1538 | f32 | now? | zone 0 entry 30: buildup below which it never applies (unverified) |
+| `entry_30_sure_buildup` | +0x153C | f32 | now? | zone 0 entry 30: chance to apply = buildup / this (unverified) |
+| `entry_30_damage_multiplier` | +0x1550 | f32 | now? | zone 0 entry 30: tick damage multiplier (unverified) |
+| `entry_31_type` | +0x15E4 | u32 | respawn? | zone 0 entry 31: susceptibility type (0 ends the list) (unverified) |
+| `entry_31_min_buildup` | +0x15E8 | f32 | now? | zone 0 entry 31: buildup below which it never applies (unverified) |
+| `entry_31_sure_buildup` | +0x15EC | f32 | now? | zone 0 entry 31: chance to apply = buildup / this (unverified) |
+| `entry_31_damage_multiplier` | +0x1600 | f32 | now? | zone 0 entry 31: tick damage multiplier (unverified) |
+| `entry_32_type` | +0x1694 | u32 | respawn? | zone 0 entry 32: susceptibility type (0 ends the list) (unverified) |
+| `entry_32_min_buildup` | +0x1698 | f32 | now? | zone 0 entry 32: buildup below which it never applies (unverified) |
+| `entry_32_sure_buildup` | +0x169C | f32 | now? | zone 0 entry 32: chance to apply = buildup / this (unverified) |
+| `entry_32_damage_multiplier` | +0x16B0 | f32 | now? | zone 0 entry 32: tick damage multiplier (unverified) |
+| `duration_0_type` | +0xB5C8 | u32 | now? | duration multiplier 0: susceptibility type (0 ends the list) (unverified) |
+| `duration_0_multiplier` | +0xB5CC | f32 | now? | duration multiplier 0 (0 or less is ignored) (unverified) |
+| `duration_1_type` | +0xB5D0 | u32 | now? | duration multiplier 1: susceptibility type (0 ends the list) (unverified) |
+| `duration_1_multiplier` | +0xB5D4 | f32 | now? | duration multiplier 1 (0 or less is ignored) (unverified) |
+| `duration_2_type` | +0xB5D8 | u32 | now? | duration multiplier 2: susceptibility type (0 ends the list) (unverified) |
+| `duration_2_multiplier` | +0xB5DC | f32 | now? | duration multiplier 2 (0 or less is ignored) (unverified) |
+| `duration_3_type` | +0xB5E0 | u32 | now? | duration multiplier 3: susceptibility type (0 ends the list) (unverified) |
+| `duration_3_multiplier` | +0xB5E4 | f32 | now? | duration multiplier 3 (0 or less is ignored) (unverified) |
+| `duration_4_type` | +0xB5E8 | u32 | now? | duration multiplier 4: susceptibility type (0 ends the list) (unverified) |
+| `duration_4_multiplier` | +0xB5EC | f32 | now? | duration multiplier 4 (0 or less is ignored) (unverified) |
+| `duration_5_type` | +0xB5F0 | u32 | now? | duration multiplier 5: susceptibility type (0 ends the list) (unverified) |
+| `duration_5_multiplier` | +0xB5F4 | f32 | now? | duration multiplier 5 (0 or less is ignored) (unverified) |
+| `duration_6_type` | +0xB5F8 | u32 | now? | duration multiplier 6: susceptibility type (0 ends the list) (unverified) |
+| `duration_6_multiplier` | +0xB5FC | f32 | now? | duration multiplier 6 (0 or less is ignored) (unverified) |
+| `duration_7_type` | +0xB600 | u32 | now? | duration multiplier 7: susceptibility type (0 ends the list) (unverified) |
+| `duration_7_multiplier` | +0xB604 | f32 | now? | duration multiplier 7 (0 or less is ignored) (unverified) |
+
 ## Settings tables
 
 Rows of the game's settings tables, found by their id (`set_live`, `set_field`), or through a row function where the
@@ -10033,6 +10264,11 @@ and statuses without code.
 | `spawner_cooldown` | +0x104 | f32 | now? | seconds between the shared spawners' waves (level 10: 1.5) |
 | `patrol_interval` | +0x2A0 | f32[3] | now | seconds between roaming patrols: Terminids, Automatons, Illuminate (level 10: 65, 78, 75) |
 | `patrol_cap` | +0x2AC | u32[3] | now | most living patrol enemies, per faction (level 10: 41, 39, 48) |
+| `traveller_interval` | +0x2E0 | f32[3] | now? | seconds between travellers (spawn reason 7, Family 5: Shriekers and Dragonroaches, Gunships, War Striders): Terminids, Automatons, Illuminate (level 10: 130, 160, 90) (unverified) |
+| `traveller_cap` | +0x2EC | u32[3] | now? | most living travellers, per faction (level 10: 12, 4, 6) (unverified) |
+| `straggler_interval` | +0x2F8 | f32[3] | now? | seconds between straggler batches (spawn reason 8, Family 6), per faction (level 10: 5) (unverified) |
+| `straggler_batch` | +0x310 | u32[3] | now? | most stragglers sent at once, per faction (level 10: 32, one squad) (unverified) |
+| `straggler_cap` | +0x31C | u32[3] | now? | most living map guards and stragglers together, under which stragglers are sent, per faction (level 10: 60) (unverified) |
 
 ### HfDamageInfo
 
@@ -10069,12 +10305,33 @@ and statuses without code.
 | `drag` | +0x28 | f32 | now? | drag (unverified) |
 | `gravity` | +0x2C | f32 | now? | gravity factor (unverified) |
 | `lifetime` | +0x34 | f32 | now? | seconds before it expires (unverified) |
+| `lifetime_variance` | +0x38 | f32 | now? | how much its lifetime varies, as a share of it: each round lives lifetime +- (this x lifetime), at random (unverified) |
 | `damage` | +0x3C | u32 | now? | the damage id its hits deal (a damage reference) |
 | `penetration_slowdown` | +0x40 | f32 | now? | slowdown when it penetrates (unverified) |
 | `spawn_effect` | +0x48 | u64 | now? | its main particle effect |
 | `flight_effect` | +0x70 | u64 | now? | its second particle effect (light and trail) |
 | `impact_explosion` | +0x90 | u32 | now | the explosion type where it hits (0: none) (an explosion reference) |
 | `expiry_explosion` | +0x9C | u32 | now | the explosion type when its lifetime runs out (0: none) (an explosion reference) |
+| `arming_distance` | +0xA0 | f32 | now? | how far (m) a round with an impact payload flies before it arms: one that hits sooner bounces instead of going off (the GL-21 7, the GP-31 and GL-52 4) (unverified) |
+| `ricochets` | +0xB0 | u32 | now? | whether its rounds bounce off what they hit: 0 never; the update bounces a round only while this is not 0 and counts its bounces against it (grenade launchers and most bullets 1, lasers 0) (unverified) |
+| `ricochet_angle` | +0xB4 | f32 | now? | how flat a hit must be to bounce, in degrees off straight on (0: any hit, 360: never); a round still unarmed bounces anyway (unverified) |
+| `ricochet_min_speed` | +0xB8 | f32 | now? | the speed (m/s) a round must be faster than to bounce (unverified) |
+
+### HfStratagemCode
+
+`StratagemCode`: 4-byte rows found by id. a vanilla stratagem's input code (by type), kept by HellForge: the row's code points at an array of HellForge's, which follows this packed value (native/mod-loader/stratagem_codes.c).
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `packed` | +0x00 | u32 | now? | its directions, one base-5 digit each, the first lowest (1 up, 2 right, 3 down, 4 left; Up, Right = 1 + 2*5 = 11); 1 to 10 directions (unverified) |
+
+### HfStratagemRearm
+
+`StratagemRearm`: 4-byte rows found by id. whether a vanilla non-Eagle stratagem's uses per mission rearm after its cooldown (by type), kept by HellForge (native/mod-loader/stratagem_rearm.c).
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `rearms` | +0x00 | u32 | now? | 1: its uses go with no cooldown between them, the cooldown starts once they are spent, and they refill when it ends; 0: the game's own (a cooldown after every use, spent uses gone for the mission) (unverified) |
 
 ### HfStratagemSettings
 
@@ -10222,28 +10479,28 @@ and statuses without code.
 
 | Field | Offset | Type | Applies | Meaning |
 |---|---|---|---|---|
-| `group_0_key` | +0x00 | u32 | mission? | group 1: the roster group it draws enemies from (not edited) (unverified) |
+| `group_0_key` | +0x00 | u32 | mission? | group 1: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) |
 | `group_0_count` | +0x04 | u32 | mission? | group 1: how many (the groups total at most 32) (unverified) |
 | `group_0_emission_time` | +0x08 | f32 | mission? | group 1: emission time (s) (unverified) |
-| `group_1_key` | +0x0C | u32 | mission? | group 2: the roster group it draws enemies from (not edited) (unverified) |
+| `group_1_key` | +0x0C | u32 | mission? | group 2: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) |
 | `group_1_count` | +0x10 | u32 | mission? | group 2: how many (the groups total at most 32) (unverified) |
 | `group_1_emission_time` | +0x14 | f32 | mission? | group 2: emission time (s) (unverified) |
-| `group_2_key` | +0x18 | u32 | mission? | group 3: the roster group it draws enemies from (not edited) (unverified) |
+| `group_2_key` | +0x18 | u32 | mission? | group 3: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) |
 | `group_2_count` | +0x1C | u32 | mission? | group 3: how many (the groups total at most 32) (unverified) |
 | `group_2_emission_time` | +0x20 | f32 | mission? | group 3: emission time (s) (unverified) |
-| `group_3_key` | +0x24 | u32 | mission? | group 4: the roster group it draws enemies from (not edited) (unverified) |
+| `group_3_key` | +0x24 | u32 | mission? | group 4: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) |
 | `group_3_count` | +0x28 | u32 | mission? | group 4: how many (the groups total at most 32) (unverified) |
 | `group_3_emission_time` | +0x2C | f32 | mission? | group 4: emission time (s) (unverified) |
-| `group_4_key` | +0x30 | u32 | mission? | group 5: the roster group it draws enemies from (not edited) (unverified) |
+| `group_4_key` | +0x30 | u32 | mission? | group 5: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) |
 | `group_4_count` | +0x34 | u32 | mission? | group 5: how many (the groups total at most 32) (unverified) |
 | `group_4_emission_time` | +0x38 | f32 | mission? | group 5: emission time (s) (unverified) |
-| `group_5_key` | +0x3C | u32 | mission? | group 6: the roster group it draws enemies from (not edited) (unverified) |
+| `group_5_key` | +0x3C | u32 | mission? | group 6: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) |
 | `group_5_count` | +0x40 | u32 | mission? | group 6: how many (the groups total at most 32) (unverified) |
 | `group_5_emission_time` | +0x44 | f32 | mission? | group 6: emission time (s) (unverified) |
-| `group_6_key` | +0x48 | u32 | mission? | group 7: the roster group it draws enemies from (not edited) (unverified) |
+| `group_6_key` | +0x48 | u32 | mission? | group 7: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) |
 | `group_6_count` | +0x4C | u32 | mission? | group 7: how many (the groups total at most 32) (unverified) |
 | `group_6_emission_time` | +0x50 | f32 | mission? | group 7: emission time (s) (unverified) |
-| `group_7_key` | +0x54 | u32 | mission? | group 8: the roster group it draws enemies from (not edited) (unverified) |
+| `group_7_key` | +0x54 | u32 | mission? | group 8: the enemy family it draws from (a roster row's +0 of its faction's roster; 0 an empty group, only with a count of 0) (unverified) |
 | `group_7_count` | +0x58 | u32 | mission? | group 8: how many (the groups total at most 32) (unverified) |
 | `group_7_emission_time` | +0x5C | f32 | mission? | group 8: emission time (s) (unverified) |
 | `weight` | +0xE0 | f32 | mission? | how often it is picked (unverified) |
@@ -10262,6 +10519,15 @@ and statuses without code.
 |---|---|---|---|---|
 | `index` | +0x00 | u32 | now? | its index (not edited) (unverified) |
 | `force` | +0x04 | u32 | now? | the force a stage naming it requires, 1 to 255 (the incoming force is narrowed to a byte) (unverified) |
+
+### HfEnemySummon
+
+`EnemySummon`: 8-byte rows found by id. what a summoning ability calls up (a row by its ability id: 333 the Impaler's tentacles, 463 the Alpha Commander's warriors): HellForge's row, put into the ability's code (native/mod-loader/enemy_summons.c).
+
+| Field | Offset | Type | Applies | Meaning |
+|---|---|---|---|---|
+| `family` | +0x00 | u32 | now? | the enemy family it calls up (a roster row's +0), picked by spawn weight at the mission's level from the mission faction's roster (unverified) |
+| `count` | +0x04 | u32 | now? | how many it calls up each call, 0 to 16 (one SpawnSquad each, spawn reason 4) (unverified) |
 
 ## Content
 
@@ -11075,11 +11341,11 @@ Vanilla entities, for HfEntity.base, HfEntityDef.base, model_from and HfCopy.fro
 
 </details>
 
-### HF_DAMAGE_... (342, `HF_KIND_DAMAGE`)
+### HF_DAMAGE_... (348, `HF_KIND_DAMAGE`)
 
 Vanilla damage ids, for HfDamage.base and HfProjectile.damage (the projectile row's +0x3C).
 
-<details><summary>All 342</summary>
+<details><summary>All 348</summary>
 
 | Constant | Value | Name |
 |---|---|---|
@@ -11094,12 +11360,18 @@ Vanilla damage ids, for HfDamage.base and HfProjectile.damage (the projectile ro
 | `HF_DAMAGE_SOLDIER_FLAMER_AND_1_OTHER` | 10 | soldier_flamer and 1 other - shared: soldier_flamer, soldier_mg_ivory_legion |
 | `HF_DAMAGE_AUTOMATON_FIRE_BRIGADE_SHOTGUN_ROUND_AND_1_OTHER` | 12 | Automaton Fire Brigade Shotgun Round and 1 other - shared: Automaton Fire Brigade Shotgun Round, soldier_shotgun_ivory_legion |
 | `HF_DAMAGE_SIEGE_ENGINE` | 13 | siege_engine |
+| `HF_DAMAGE_FLAM40_FLAMETHROWER` | 14 | FLAM-40 Flamethrower |
+| `HF_DAMAGE_FLAM66_TORCHER` | 15 | FLAM-66 Torcher |
+| `HF_DAMAGE_P72_CRISPER` | 16 | P-72 Crisper |
+| `HF_DAMAGE_BFLAM80_CREMATOR_AND_2_OTHERS` | 17 | B/FLAM-80 Cremator and 2 others - shared: B/FLAM-80 Cremator, A/FLAM-40 Flame Sentry, combat_walker_flamethrower |
 | `HF_DAMAGE_POSSIBLY_HIVE_LORD_SPEWING_PROJECTILE_AND_1_OTHER` | 18 | Possibly Hive Lord Spewing Projectile and 1 other - shared: Possibly Hive Lord Spewing Projectile, hive_lord |
 | `HF_DAMAGE_HIVE_LORD_ABILITY_7` | 20 | hive_lord (ability) #7 |
 | `HF_DAMAGE_HIVE_LORD_ABILITY_9` | 21 | hive_lord (ability) #9 |
 | `HF_DAMAGE_HIVE_LORD_ABILITY` | 22 | hive_lord (ability) |
+| `HF_DAMAGE_G142_PYROTECH` | 25 | G-142 Pyrotech |
 | `HF_DAMAGE_G142_PYROTECH_DETONATION` | 26 | G-142 Pyrotech (detonation) |
 | `HF_DAMAGE_GP20_ULTIMATUM` | 27 | GP-20 Ultimatum |
+| `HF_DAMAGE_TX41_STERILIZER` | 28 | TX-41 Sterilizer |
 | `HF_DAMAGE_GL28_BELTFED_GRENADE_LAUNCHER` | 30 | GL-28 Belt-Fed Grenade Launcher |
 | `HF_DAMAGE_GL28_BELTFED_GRENADE_LAUNCHER_IMPACT` | 31 | GL-28 Belt-Fed Grenade Launcher (impact) |
 | `HF_DAMAGE_GL21_GRENADE_LAUNCHER_AND_8_OTHERS` | 32 | GL-21 Grenade Launcher and 8 others - shared: GL-21 Grenade Launcher, GL-52 De-Escalator, A/GM-17 Gas Mortar Sentry, A/M-12 Mortar Sentry, A/M-23 EMS Mortar Sentry, Automaton Mortar Round, StA-X3 W.A.S.P. Launcher, assault_walker ... |

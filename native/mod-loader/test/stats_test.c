@@ -5,6 +5,7 @@
 #include "stratagem_categories_test.c"
 #include "loadout_preview_test.c"
 #include "armory_diag_test.c"
+#include "armory_list_test.c"
 #include "live_sync_test.c"
 #include "channel_test.c"
 #include "rpc_test.c"
@@ -13,6 +14,7 @@
 #include "spawn_guards_test.c"
 #include "shots_test.c"
 #include "rounds_test.c"
+#include "deploys_test.c"
 #include "network_types_test.c"
 #include "table_growth_test.c"
 #include "state_moves_test.c"
@@ -21,9 +23,29 @@
 #include "mod_identity_test.c"
 #include "mod_status_test.c"
 #include "render_guards_test.c"
+#include "overlay_cursor_test.c"
 #include "moved_fields_test.c"
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
+#include "stratagem_codes_test.c"
+#include "stratagem_rearm_test.c"
+#include "explosion_cover_test.c"
+#include "safe_read_test.c"
+#include "perf_speedtree_empty_cells_test.c"
+#include "perf_record_hash_test.c"
+#include "perf_ai_path_budget_test.c"
+#include "perf_corpse_freeze_test.c"
+#include "perf_render_job_copies_test.c"
+#include "perf_render_version_rehash_test.c"
+#include "perf_vehicle_box_test.c"
+#include "perf_heap_trim_test.c"
+#include "perf_scatter_cameras_test.c"
+#include "perf_knn_grid_test.c"
+#include "perf_spread_sort_test.c"
+#include "perf_tree_cell_limits_test.c"
+#include "perf_early_stamp_packages_test.c"
+#include "perf_overlap_grid_test.c"
+#include "perf_span_rescue_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -163,6 +185,14 @@ static void ExtraFixtures(void)
     assert(StatsExtraRow(&e) == (uintptr_t)base + e.offset);
     g_stats[0] = e; StatsWrite(&g_stats[0], StatsExtraRow(&e)); memcpy(&value, base + e.offset, 4); assert(value == 60);
     delta[2]++; assert(!StatsExtraRow(&e)); delta[2]--;
+    {
+        /* offset 0: a member the attachment lacks, HellForge's to add (attachment_extras.c), only an allowed one */
+        StatEdit added = e;
+        added.offset = 0; strcpy(added.component, "266:92");
+        assert(StatsExtraRow(&added) == (uintptr_t)AttExtraSlot(1, 266, 92) && StatsExtraRow(&added) != 0);
+        strcpy(added.component, "5:136"); assert(!StatsExtraRow(&added));
+        g_attExtraCount = 0;
+    }
     component[0]++; assert(!StatsExtraRow(&e)); component[0]--;
     settings[1] = d->counts[2]; assert(!StatsExtraRow(&e)); settings[1] = 3;
     *(uint64_t*)(hashes + 16) = 1; *(uint32_t*)(hashes + 24) = 2;
@@ -483,16 +513,47 @@ static void DifficultyFixture(void)
     HfDifficulty hell = {sizeof hell};
     hell.name = "fixture/hell_forge"; hell.title = "Hell Forge"; hell.encounter_points = 1500.0f; hell.icon = "fixture/icon"; hell.map_scale = 2.0f; hell.optional_objectives = 8; hell.major_objectives = 2; hell.outpost_scale = 2.0f; hell.mission_minutes = 72.0f; hell.flags = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS; hell.mission_stratagem = 105; hell.patrol_frequency = 2.0f; hell.patrol_cap = 1.5f;
     assert(ApiAddDifficulty(&g_mods[0], &hell) == 11 && ApiAddDifficulty(&g_mods[0], &hell) == 0);
-    /* The mission stratagem's row not loaded yet waits; the M-102 FRV's (free, in a family with paid skins) installs. */
+    /* The install does not wait for the mission stratagem's row (the generation block's move must come before the
+     * game's world): only the grant waits, below. */
     {
         int waiting;
+        assert(DifficultySitesFailed(base, &waiting) == NULL);
+    }
+    /* A block the game made before the move (#422): a larger map would overrun it, so the checks refuse level 11 (after
+     * the grace period for code still decoding) before any step writes anything. */
+    {
+        static uint8_t world[0xAE290], levelGen[0x2D0];
+        uint64_t at = (uintptr_t)levelGen, block = 0x1000;
+        memcpy(world + 0xAE288, &at, 8); memcpy(levelGen + 0x2C8, &block, 8);
+        at = (uintptr_t)world; memcpy(game + DIF_WORLD, &at, 8);
+        int waiting;
         const char* why = DifficultySitesFailed(base, &waiting);
-        assert(why != NULL && waiting && strstr(why, "mission stratagem"));
-        uint8_t* frv = calloc(1, STR_ROW);
-        uint32_t head[2] = {105, 0xEA902C4Bu};
-        memcpy(frv, head, 8);
-        uint64_t at = (uintptr_t)frv;
-        memcpy(game + STR_TABLE + 105 * 8, &at, 8);
+        assert(why != NULL && !waiting && strstr(why, "generation block before HellForge could enlarge it"));
+        assert(InstallDifficulty(base, 0) == 0 && g_difficultyState == 0);
+        assert(InstallDifficulty(base, 1) == 1 && g_difficultyState == -1 && g_difficultyTable == NULL);
+        for (size_t i = 0; i < sizeof kGenerationBlockSize / sizeof kGenerationBlockSize[0]; i++)
+            assert(*(uint32_t*)(game + kGenerationBlockSize[i].rva + kGenerationBlockSize[i].at) == kGenerationBlockSize[i].value);
+        /* no block yet: the early move runs, and finds nothing to do once moved */
+        MoveGenerationBlockEarly(base);
+        assert(!g_generationMoved); /* only while level 11 is still to install */
+        g_difficultyState = 0;
+        memset(game + DIF_WORLD, 0, 8);
+    }
+    /* Before the mods hear HF_EVENT_GAME_LOADED the block moves on its own (WatchLoaded, #422). The install that follows
+     * passes its checks on the moved code, skips its own move (step 52) and keeps every byte the move wrote. */
+    uint8_t* beforeMove = malloc(size);
+    assert(beforeMove);
+    memcpy(beforeMove, game, size);
+    MoveGenerationBlockEarly(base);
+    assert(g_generationMoved && g_generationEarlyFailed == NULL);
+    for (size_t i = 0; i < sizeof kGenerationBlockSize / sizeof kGenerationBlockSize[0]; i++)
+        assert(*(uint32_t*)(game + kGenerationBlockSize[i].rva + kGenerationBlockSize[i].at) == 0x15B1100u);
+    uint8_t* afterMove = malloc(size);
+    assert(afterMove);
+    memcpy(afterMove, game, size);
+    {
+        int waiting;
+        assert(DifficultySitesFailed(base, &waiting) == NULL);
     }
     /* An unfilled copy waits, even after the grace period; a changed instruction waits, then is refused. */
     uint32_t item = *(uint32_t*)(game + kDifficultyCopies[7]);
@@ -503,6 +564,27 @@ static void DifficultyFixture(void)
     assert(InstallDifficulty(base, 0) == 0 && g_difficultyState == 0);
     game[kDifficultySites[3].rva + kDifficultySites[3].dispAt] ^= 1;
     assert(InstallDifficulty(base, 1) == 1 && g_difficultyState == 1);
+    {
+        size_t moved = 0;
+        for (size_t i = 0; i < size; i++)
+            if (beforeMove[i] != afterMove[i]) { moved++; assert(game[i] == afterMove[i]); }
+        assert(moved > 1000);
+        free(beforeMove); free(afterMove);
+    }
+    /* The grant waits for its row: the site keeps the game's code until the row loads; then the M-102 FRV's (free, in a
+     * family with paid skins) installs at the next tick, once. */
+    assert(g_grantPending && !memcmp(game + DIF_GRANT_SITE, kGrantPin, 7));
+    GrantTick(base);
+    assert(g_grantPending && !memcmp(game + DIF_GRANT_SITE, kGrantPin, 7));
+    {
+        uint8_t* frv = calloc(1, STR_ROW);
+        uint32_t head[2] = {105, 0xEA902C4Bu};
+        memcpy(frv, head, 8);
+        uint64_t at = (uintptr_t)frv;
+        memcpy(game + STR_TABLE + 105 * 8, &at, 8);
+    }
+    GrantTick(base);
+    assert(!g_grantPending && game[DIF_GRANT_SITE] == 0xE9);
     /* Every instruction addresses the moved table; level 11 is level 10 with the mod's values; rows 12..15 are empty. */
     uint8_t* table = g_difficultyTable;
     for (size_t i = 0; i < sizeof kDifficultySites / sizeof kDifficultySites[0]; i++)
@@ -1891,9 +1973,14 @@ static void LiveFixture(void)
     float speed = 385.0f, read;
     memcpy(g_fakeProjectile + 0x20, &speed, 4);
     assert(ApiSetLive(mod, 5, &velocity, &fast, 0) == HF_APPLIES_NOW && g_editCount == 1 && g_edits[0].waiting && g_editsWaiting);
+    char waitingFor[256]; /* what the log names (#352) */
+    WaitingTables(waitingFor, sizeof waitingFor);
+    assert(!strcmp(waitingFor, ": ProjectileSettings x1"));
     g_fakeTablesReady = 1;
     ApplyWaitingEdits();
     memcpy(&read, g_fakeProjectile + 0x20, 4); assert(read == 1200.0f && !g_edits[0].waiting);
+    WaitingTables(waitingFor, sizeof waitingFor);
+    assert(waitingFor[0] == 0);
     assert(ApiSetLive(mod, 5, &velocity, &faster, 0) == HF_APPLIES_NOW && g_editCount == 1);
     memcpy(&read, g_fakeProjectile + 0x20, 4); assert(read == 1500.0f);
     assert(ApiSetLive(mod, 5, &velocity, NULL, 0) == HF_APPLIES_NOW && g_editCount == 0);
@@ -2906,6 +2993,72 @@ static void OwnAllFixture(void)
     g_weaponCount = g_ownedCount = g_componentCount = 0; g_loadoutTable = NULL; g_game = was;
 }
 
+/* Sprays (HfWeapon.spray_damage; registry_load.c OwnSpray): the weapon's own SprayWeaponComponentData record with the
+ * damage in it and its base's unchanged; a damage not installed keeps the base's; a base that does not spray changes
+ * nothing; add_weapon refuses a damage no mod added, and an older HfWeapon has none. */
+static void SprayFixture(void)
+{
+    uintptr_t was = g_game;
+    uint32_t damageCount = g_damageCount;
+    int damageState = g_damageState;
+    g_weaponCount = g_ownedCount = g_componentCount = 0;
+    const uint64_t flamer = 0x39AB99895147A3BFull, hot = 0x77, cold = 0x78, rifle = 0x1234;
+    uint8_t* game = calloc(1, REG_STATE_GLOBAL + 8);
+    uint8_t* state = calloc(1, REG_LIST + 8);
+    g_game = (uintptr_t)game; memcpy(game + REG_STATE_GLOBAL, &state, 8);
+    const uint32_t slots = 46, stride = REG_SPRAY_WEAPON_STRIDE, at = REG_SPRAY_DAMAGE_AT;
+    uint8_t* t = FakeTable(REG_SPRAY_WEAPON, slots * 16 + 24 * stride);
+    SetStatePointer(state, REG_TABLES + 8 * REG_SPRAY_WEAPON, t);
+    FakeRow(t, slots, flamer, 20);
+    FakeRow(t, slots, hot, 20); /* the registry's rows of a copy: its base's record until it owns one */
+    FakeRow(t, slots, cold, 20);
+    memcpy(t + slots * 16 + 20 * stride + at, &(uint32_t){14}, 4);
+    assert(SlotsOf(REG_SPRAY_WEAPON) == slots);
+
+    g_damageCount = 1; g_damageState = 1; /* one mod damage, installed: DMG_VANILLA */
+    Weapon w;
+    memset(&w, 0, sizeof w);
+    w.mod = &g_mods[0]; w.entity = hot; w.sprayDamage = DMG_VANILLA;
+    snprintf(w.name, sizeof w.name, "fixture/hot-flamer");
+    OwnSpray(state, &w, flamer);
+    t = StatePointer(state, REG_TABLES + 8 * REG_SPRAY_WEAPON); /* HellForge's copy of the table */
+    uint32_t mine, theirs, damage;
+    memcpy(&mine, FindRow(t, slots, 16, hot) + 8, 4);
+    memcpy(&theirs, FindRow(t, slots, 16, flamer) + 8, 4);
+    assert(theirs == 20 && mine != theirs);
+    memcpy(&damage, t + slots * 16 + (size_t)mine * stride + at, 4); assert(damage == DMG_VANILLA);
+    memcpy(&damage, t + slots * 16 + (size_t)theirs * stride + at, 4); assert(damage == 14);
+
+    /* not installed: keeps the base's; its base does not spray: nothing changes */
+    g_damageState = -1;
+    w.entity = cold;
+    OwnSpray(state, &w, flamer);
+    memcpy(&mine, FindRow(t, slots, 16, cold) + 8, 4);
+    memcpy(&damage, t + slots * 16 + (size_t)mine * stride + at, 4); assert(damage == 14);
+    g_damageState = 1;
+    uint32_t next = g_owned[0].next;
+    w.entity = hot;
+    OwnSpray(state, &w, rifle);
+    assert(g_owned[0].next == next);
+
+    /* add_weapon's check: a damage no mod added refused; vanilla and added taken; an older HfWeapon has no spray_damage */
+    HfWeapon def = {sizeof def};
+    Weapon x;
+    memset(&x, 0, sizeof x);
+    def.spray_damage = DMG_VANILLA + 1;
+    assert(WeaponSpray(&g_mods[0], "fixture/unit", &def, &x) == 1 && x.sprayDamage == 0);
+    def.spray_damage = 28;
+    assert(WeaponSpray(&g_mods[0], "fixture/unit", &def, &x) == 0 && x.sprayDamage == 28);
+    def.spray_damage = DMG_VANILLA;
+    assert(WeaponSpray(&g_mods[0], "fixture/unit", &def, &x) == 0 && x.sprayDamage == DMG_VANILLA);
+    x.sprayDamage = 0;
+    def.size = (uint32_t)offsetof(HfWeapon, spray_damage);
+    assert(WeaponSpray(&g_mods[0], "fixture/unit", &def, &x) == 0 && x.sprayDamage == 0);
+
+    g_damageCount = damageCount; g_damageState = damageState;
+    g_weaponCount = g_ownedCount = g_componentCount = 0; g_game = was;
+}
+
 /* Game events: listeners by priority, the queue, and the sources against synthetic game memory and fake originals. */
 static char g_heard[64];
 static int g_heardCount;
@@ -3548,6 +3701,7 @@ static void AttachmentsFixture(void)
     assert(game && state);
     memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
     memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin); memcpy(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin);
     uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
     /* the game's items: a magazine (slot 5) whose add_path is its unit, and a paint without deltas */
     static uint8_t items[2 * ATT_ITEM];
@@ -3620,6 +3774,241 @@ static void AttachmentsFixture(void)
     VirtualFree(game, 0, MEM_RELEASE);
 }
 
+/* Room for 1,024 attachments (attachments.c ATT_MAX): 1,024 go in and one more is refused, a weapon pattern too; all of
+ * them go into HellForge's one item block and the grown deltas, the last one is found by the game's own walk
+ * (0x11F46F0: every group the count names, every item of each), and the backend's text lists them all. Each add_path
+ * gets its base's package in a copy of the game's package map grown to hold them (the game's 1,024 entries, 429 used,
+ * held about 340: a copy without its base's package loaded nothing for its unit, and the mission crashed); a smaller
+ * map the game loads again is copied and grown again. */
+static const uint8_t* GameItemById(const uint8_t* game, uint32_t id) /* 0x11F46F0, as the game walks */
+{
+    uint32_t groups;
+    memcpy(&groups, game + ATT_COUNT, 4);
+    for (uint32_t k = 0; k < groups; k++)
+    {
+        const uint8_t* block = *(uint8_t* const*)(game + ATT_TABLE + 8u * k);
+        const uint8_t* items = *(uint8_t* const*)block;
+        for (uint32_t i = 0; i < *(const uint32_t*)(block + 8); i++)
+            if (*(const uint32_t*)(items + (size_t)i * ATT_ITEM + 8) == id) return items + (size_t)i * ATT_ITEM;
+    }
+    return NULL;
+}
+
+/* A package map as the game keeps it at PAT_PACKAGES: count entries, used of them taken, the magazine's add_path among them. */
+static void GamePackageMap(uint8_t* game, uint8_t* entries, uint32_t count, uint32_t used, uint64_t magazine, uint64_t package)
+{
+    memset(entries, 0, 16u * (size_t)count);
+    assert(PatMapPut(entries, count, 2, 0, magazine, package));
+    for (uint32_t i = 1; i < used; i++) assert(PatMapPut(entries, count, 2, 0, 0x9000000000000000ull + i * 0x10001ull, 0x700 + i));
+    uint32_t two = 2;
+    memcpy(game + PAT_PACKAGES + 8, &count, 4); /* as the game's loader writes them: the count, then the entries */
+    memcpy(game + PAT_PACKAGES, &entries, 8);
+    memcpy(game + PAT_PACKAGES + 0x18, &two, 4);
+    memset(game + PAT_PACKAGES + 0x10, 0, 8);
+}
+
+static void AttachmentCapFixture(void)
+{
+    uint8_t* game = (uint8_t*)VirtualAlloc(NULL, ATT_TABLE + 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint8_t* state = (uint8_t*)VirtualAlloc(NULL, ATT_DELTAS + 0x100, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert(game && state);
+    memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
+    memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin); memcpy(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin);
+    uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
+    /* the game's item: a magazine (slot 5) whose deltas write its unit into the Customization record */
+    static uint8_t items[ATT_ITEM];
+    static uint32_t magazineSlot = 5;
+    const uint64_t baseUnit = 0x1111222233334444ull, basePackage = 0x272519D2E9BF5324ull;
+    uint32_t id = 0xBA5E0001u; memcpy(items + 8, &id, 4); memcpy(items + 0x20, &baseUnit, 8);
+    uintptr_t slots = (uintptr_t)&magazineSlot; memcpy(items + 0x30, &slots, 8); uint32_t one = 1; memcpy(items + 0x38, &one, 4);
+    static struct { uint8_t* items; uint32_t count; uint32_t pad; } block;
+    block.items = items; block.count = 1;
+    at = (uintptr_t)&block; memcpy(game + ATT_TABLE, &at, 8);
+    uint32_t count = 1; memcpy(game + ATT_COUNT, &count, 4);
+    static uint8_t keys[16 * 3], data[16];
+    static uint32_t settings[2] = {1, 0}, comps[3] = {ATT_CUSTOMIZATION, 0, 1}, deltas[3] = {0x80, 8, 0};
+    memcpy(keys + 16 * (baseUnit % 3), &baseUnit, 8);
+    memcpy(data, &baseUnit, 8);
+    static uint8_t storage[0x50];
+    void* parts[5] = {keys, settings, comps, deltas, data};
+    for (int p = 0; p < 5; p++) memcpy(storage + 0x10 * p, &parts[p], 8);
+    uint32_t three = 3; memcpy(storage + 8, &three, 4);
+    at = (uintptr_t)storage; memcpy(state + ATT_DELTAS, &at, 8);
+    static uint8_t packages[1024 * 16];
+    GamePackageMap(game, packages, 1024, 429, baseUnit, basePackage); /* the game's: 1,024 entries, 429 used */
+
+    uintptr_t savedGame = g_game;
+    int savedWeapons = g_weaponCount;
+    LONG savedReady = InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], 0);
+    g_game = (uintptr_t)game;
+    memset(&g_weapons[g_weaponCount], 0, sizeof g_weapons[0]);
+    g_weapons[g_weaponCount].id = 0x7E57u;
+    g_weaponCount++;
+    HfMod* mod = &g_mods[0];
+    const uint32_t weapons[] = {0x7E57u};
+    char name[64];
+    HfAttachment mag = {sizeof mag, 0xBA5E0001u, name, 0, NULL, NULL, weapons, 1};
+
+    /* 1,024 attachments, then one more refused, and a weapon pattern (which counts among them) */
+    static uint32_t ids[ATT_MAX];
+    for (int i = 0; i <= ATT_MAX; i++)
+    {
+        snprintf(name, sizeof name, "test/cap/mag-%d", i);
+        uint32_t made = ApiAddAttachment(mod, &mag);
+        if (i < ATT_MAX) { assert(made == Thin(name)); ids[i] = made; }
+        else assert(made == 0 && strstr(ApiLastLog(mod), "1024 attachments and weapon patterns already") != NULL);
+    }
+    assert(g_attachmentCount == ATT_MAX && ATT_MAX == 1024);
+    snprintf(name, sizeof name, "test/cap/paint-late");
+    HfPattern late = {sizeof late, 0x80FBE63Du, name};
+    assert(ApiAddPattern(mod, &late) == 0 && strstr(ApiLastLog(mod), "1024 attachments and weapon patterns already") != NULL);
+
+    AttachmentsTick();
+    uint8_t* grown = StatePointer(state, ATT_DELTAS);
+    int in = 0;
+    for (int i = 0; i < ATT_MAX; i++) in += g_attachments[i].state == 1;
+    assert(grown == g_attGrown && grown != storage && in == ATT_MAX);
+    memcpy(&count, game + ATT_COUNT, 4);
+    assert(count == 2 && *(uint8_t**)(game + ATT_TABLE + 8) == (uint8_t*)&g_attBlock && g_attBlock.count == ATT_MAX);
+    /* the first, the 129th (past the old 128) and the last, by the game's walk: each its own item, add_path and deltas */
+    const int probes[] = {0, 128, ATT_MAX - 1};
+    for (size_t p = 0; p < sizeof probes / sizeof probes[0]; p++)
+    {
+        const Attachment* a = &g_attachments[probes[p]];
+        const uint8_t* item = GameItemById(game, ids[probes[p]]);
+        assert(item == g_attItems + (size_t)probes[p] * ATT_ITEM && *(const uint64_t*)(item + 0x20) == a->copy.addPath && AttSlot(item) == 5);
+        const uint32_t* setting = AttDeltaSetting(grown, a->copy.addPath);
+        assert(setting != NULL && setting[0] == 1);
+        const uint32_t* comp = *(uint32_t* const*)(grown + 0x20) + 3 * setting[1];
+        assert(comp[0] == ATT_CUSTOMIZATION && comp[2] == 1);
+    }
+    assert(GameItemById(game, 0xBA5E0001u) == items && AttDeltaSetting(grown, baseUnit) != NULL); /* the game's own stay */
+
+    /* the package map: grown to 2,048 (429 + 1,024 at most 3/4 full), every add_path with the magazine's package, the
+     * game's entries kept, the game's own array untouched */
+    uint8_t* map = *(uint8_t**)(game + PAT_PACKAGES);
+    uint32_t mapCount; memcpy(&mapCount, game + PAT_PACKAGES + 8, 4);
+    assert(map == g_patMap && map != packages && mapCount == 2048 && g_patMapFrom == packages && g_patMapFromCount == 1024);
+    int mapped = 0;
+    for (int i = 0; i < ATT_MAX; i++) mapped += PatMapGet(map, mapCount, 2, 0, g_attachments[i].copy.addPath) == basePackage;
+    assert(mapped == ATT_MAX && PatMapGet(map, mapCount, 2, 0, baseUnit) == basePackage);
+    assert(PatMapGet(map, mapCount, 2, 0, 0x9000000000000000ull + 428 * 0x10001ull) == 0x700 + 428);
+    assert(PatMapGet(packages, 1024, 2, 0, g_attachments[ATT_MAX - 1].copy.addPath) == 0);
+    AttachmentsTick(); assert(*(uint8_t**)(game + PAT_PACKAGES) == map); /* once */
+    /* the game loads its map again (a smaller one): copied and grown again */
+    static uint8_t reloaded[512 * 16];
+    GamePackageMap(game, reloaded, 512, 100, baseUnit, basePackage + 1);
+    AttachmentsTick();
+    uint8_t* remap = *(uint8_t**)(game + PAT_PACKAGES);
+    memcpy(&mapCount, game + PAT_PACKAGES + 8, 4);
+    assert(remap == g_patMap && remap != map && remap != reloaded && mapCount == 2048 && g_patMapFrom == reloaded && g_patMapFromCount == 512);
+    assert(PatMapGet(remap, mapCount, 2, 0, g_attachments[ATT_MAX - 1].copy.addPath) == basePackage + 1);
+    /* a reader never sees a count past its entries: a smaller map's count goes in before its entries */
+    PatMap small = {reloaded, 512, 2, 0, 0};
+    PatMapPublish((uintptr_t)game, &small);
+    memcpy(&mapCount, game + PAT_PACKAGES + 8, 4);
+    assert(*(uint8_t**)(game + PAT_PACKAGES) == reloaded && mapCount == 512);
+
+    /* the backend hears of every one */
+    size_t size = 1u << 20;
+    char* text = (char*)malloc(size);
+    assert(text != NULL);
+    int n = AttachmentItems(text, 0, (int)size);
+    assert(n < (int)size - REG_ITEM_ROOM && Occurrences(text, "\"mixId\":") == ATT_MAX);
+    free(text);
+
+    g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL; g_attBlock.count = 0;
+    VirtualFree(map, 0, MEM_RELEASE); VirtualFree(remap, 0, MEM_RELEASE);
+    g_patMap = g_patMapFrom = NULL; g_patMapFromCount = 0;
+    g_weaponCount = savedWeapons;
+    g_game = savedGame;
+    InterlockedExchange(&g_fired[HF_EVENT_ENTITIES_READY], savedReady);
+    VirtualFree(grown, 0, MEM_RELEASE);
+    VirtualFree(state, 0, MEM_RELEASE);
+    VirtualFree(game, 0, MEM_RELEASE);
+}
+
+/* Members added to vanilla attachments (attachment_extras.c): only the allowed ones; nothing made while none is set; set,
+ * the key's own settings entry with the member (in its WeaponHeat component, or a WeaponHeat component of its own) and
+ * the game's untouched; a new value written in place; cleared, made again without it; a key the storage lacks made once. */
+static void AttachmentExtrasFixture(void)
+{
+    uint8_t* game = (uint8_t*)VirtualAlloc(NULL, ATT_TABLE + 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    uint8_t* state = (uint8_t*)VirtualAlloc(NULL, ATT_DELTAS + 0x100, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    assert(game && state);
+    memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
+    memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin); memcpy(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin);
+    uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
+    static uint8_t items[ATT_ITEM];
+    static struct { uint8_t* items; uint32_t count; uint32_t pad; } block;
+    block.items = items; block.count = 1;
+    at = (uintptr_t)&block; memcpy(game + ATT_TABLE, &at, 8);
+    uint32_t count = 1; memcpy(game + ATT_COUNT, &count, 4);
+    /* two heatsinks: one changing the cooling rate (WeaponHeat +128), one only the ergonomics (WeaponData +960) */
+    const uint64_t cooldown = 0xA313B38037CEE20Bull, other = 0x0000000000000013ull, absent = 0x0000000000000022ull;
+    static uint8_t keys[16 * 5], data[8];
+    static uint32_t settings[4] = {1, 0, 1, 1}, comps[6] = {ATT_HEAT, 0, 1, 236, 1, 1}, deltas[6] = {128, 4, 0, 960, 4, 4};
+    uint32_t second = 1;
+    assert(cooldown % 5 != other % 5);
+    memcpy(keys + 16 * (cooldown % 5), &cooldown, 8);
+    memcpy(keys + 16 * (other % 5), &other, 8); memcpy(keys + 16 * (other % 5) + 8, &second, 4);
+    float cooling = 8.5f, ergonomics = -7.0f;
+    memcpy(data, &cooling, 4); memcpy(data + 4, &ergonomics, 4);
+    static uint8_t storage[0x50];
+    void* parts[5] = {keys, settings, comps, deltas, data};
+    for (int p = 0; p < 5; p++) memcpy(storage + 0x10 * p, &parts[p], 8);
+    uint32_t five = 5; memcpy(storage + 8, &five, 4);
+    at = (uintptr_t)storage; memcpy(state + ATT_DELTAS, &at, 8);
+    uintptr_t savedGame = g_game;
+    g_game = (uintptr_t)game;
+    g_attachmentCount = 0; g_attGrown = g_attGrownFrom = NULL;
+
+    assert(AttExtraSlot(cooldown, 236, 960) == NULL && AttExtraSlot(0, ATT_HEAT, 92) == NULL);
+    uint32_t* spare = AttExtraSlot(cooldown, ATT_HEAT, 92);
+    assert(spare != NULL && AttExtraSlot(cooldown, ATT_HEAT, 92) == spare && g_attExtraCount == 1);
+    AttachmentsTick();
+    assert(StatePointer(state, ATT_DELTAS) == storage); /* none set: the game's own */
+    *spare = 6;
+    uint32_t* starting = AttExtraSlot(other, ATT_HEAT, 84);
+    *starting = 2;
+    AttachmentsTick();
+    uint8_t* grown = StatePointer(state, ATT_DELTAS);
+    assert(grown != storage && grown == g_attGrown);
+    const uint32_t* setting = AttDeltaSetting(grown, cooldown);
+    const uint32_t* comp = *(uint32_t* const*)(grown + 0x20) + 3 * setting[1];
+    const uint32_t* delta = *(uint32_t* const*)(grown + 0x30) + 3 * comp[1];
+    const uint8_t* bytes = *(uint8_t* const*)(grown + 0x40);
+    assert(setting[0] == 1 && comp[0] == ATT_HEAT && comp[2] == 2 && delta[0] == 128 && delta[3] == 92 && delta[4] == 4);
+    assert(*(const float*)(bytes + delta[2]) == 8.5f && *(const uint32_t*)(bytes + delta[5]) == 6);
+    setting = AttDeltaSetting(grown, other); /* its own component kept, a WeaponHeat one added */
+    comp = *(uint32_t* const*)(grown + 0x20) + 3 * setting[1];
+    delta = *(uint32_t* const*)(grown + 0x30) + 3 * comp[4];
+    assert(setting[0] == 2 && comp[0] == 236 && comp[3] == ATT_HEAT && comp[5] == 1 && delta[0] == 84 && *(const uint32_t*)(bytes + delta[2]) == 2);
+    assert(AttDeltaSetting(storage, cooldown)[0] == 1 && settings[1] == 0 && comps[2] == 1); /* the game's untouched */
+    *spare = 7;
+    AttachmentsTick();
+    setting = AttDeltaSetting(grown, cooldown);
+    delta = *(uint32_t* const*)(grown + 0x30) + 3 * (*(uint32_t* const*)(grown + 0x20))[3 * setting[1] + 1];
+    assert(StatePointer(state, ATT_DELTAS) == grown && *(const uint32_t*)(bytes + delta[5]) == 7); /* in place */
+    *spare = 0; *starting = 0;
+    AttachmentsTick();
+    uint8_t* again = StatePointer(state, ATT_DELTAS);
+    setting = AttDeltaSetting(again, cooldown);
+    assert(again != grown && again == g_attGrown && setting[0] == 1 && (*(uint32_t* const*)(again + 0x20))[3 * setting[1] + 2] == 1);
+    *AttExtraSlot(absent, ATT_HEAT, 88) = 3; /* a key the storage lacks: looked at once, nothing added */
+    AttachmentsTick();
+    uint8_t* third = StatePointer(state, ATT_DELTAS);
+    AttachmentsTick();
+    assert(StatePointer(state, ATT_DELTAS) == third && AttDeltaSetting(third, absent) == NULL);
+
+    g_attExtraCount = 0; g_attGrown = g_attGrownFrom = NULL;
+    g_game = savedGame;
+    VirtualFree(state, 0, MEM_RELEASE);
+    VirtualFree(game, 0, MEM_RELEASE);
+}
+
 /* Patterns (patterns.c): a weapon pattern is a paint's copy among the attachments, with its pattern_lut and a mask
  * swapped in its WeaponCustomization override; a unit pattern joins every collection holding its base skin (the hellpod
  * and its rack), with its own row, name and deltas, waits for a skin table that is not loaded yet, stops at the list's 24,
@@ -3631,6 +4020,7 @@ static void PatternsFixture(void)
     assert(game && state);
     memcpy(game + ATT_ITEM_LOOKUP, kAttItemPin, sizeof kAttItemPin);
     memcpy(game + ATT_DELTA_LOOKUP, kAttDeltaPin, sizeof kAttDeltaPin);
+    memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin); memcpy(game + PAT_PACKAGE_READER, kPatReaderPin, sizeof kPatReaderPin);
     memcpy(game + PAT_SKIN_LOOKUP, kPatSkinPin, sizeof kPatSkinPin);
     memcpy(game + PAT_PACKAGE_LOOKUP, kPatPackagePin, sizeof kPatPackagePin);
     uintptr_t at = (uintptr_t)state; memcpy(game + REG_STATE_GLOBAL, &at, 8);
@@ -4480,8 +4870,67 @@ static void FieldWatchCapFixture(void)
 #include "live_mods_test.c" /* after the helpers it shares (Edit, FixtureLoad) */
 #include "live_content_test.c" /* after live_mods_test.c and the behaviour and registry helpers */
 #include "stratagem_cap_test.c" /* after live_content_test.c (ContentGame, ContentMod) */
+#include "paid_guard_test.c" /* after live_content_test.c: its fake catalogue */
 #include "explosions_test.c"
 #include "beam_arc_test.c"
+
+/* Mods' content in stats lines: a row past the game's in the moved tables, by number and by the name the mod added it
+ * under ("@you.mod:burn"), and a reference's value by name ("@e=you.mod:blast"); a name no mod added is refused and left
+ * out of every pass. */
+static void NamedStatsFixture(void)
+{
+    uint8_t* savedTable = g_damageTable;
+    uint32_t savedDamages = g_damageCount, savedExplosions = g_explosionCount;
+    int savedCount = g_statCount, savedDone = g_statsTablesDone[1], savedMods = g_modCount;
+    char savedId[sizeof g_mods[0].id];
+    strcpy(savedId, g_mods[0].id); strcpy(g_mods[0].id, "you.mod"); if (g_modCount < 1) g_modCount = 1;
+    uint8_t* game = calloc(1, 0x3800000);
+    g_damageTable = calloc(DMG_VANILLA + DMG_MAX_NEW, 8);
+    uint8_t* modRow = calloc(1, DMG_ROW);
+    *(uint32_t*)modRow = DMG_VANILLA + 2;
+    *(uintptr_t*)(g_damageTable + (DMG_VANILLA + 2) * 8) = (uintptr_t)modRow;
+    /* by number: the moved table's row past the game's 650 */
+    g_statCount = 1; g_stats[0] = Edit(0, 77, 4, 0); strcpy(g_stats[0].kind, "DamageInfo"); g_stats[0].record = DMG_VANILLA + 2;
+    g_statsTablesDone[1] = 0; StatsApplyTable(1, (uintptr_t)game);
+    assert(g_stats[0].applied && *(uint32_t*)(modRow + 4) == 77);
+    /* by name: numbered once the mods have set up */
+    g_damageCount = 1; memset(&g_damages[0], 0, sizeof g_damages[0]);
+    strcpy(g_damages[0].name, "you.mod:burn"); g_damages[0].id = DMG_VANILLA + 2;
+    g_explosionCount = 1; memset(&g_explosions[0], 0, sizeof g_explosions[0]);
+    strcpy(g_explosions[0].name, "you.mod:blast"); g_explosions[0].type = EXP_VANILLA + 5;
+    char row[] = "stat	you.mod	DamageInfo	-	0000000000000000	@you.mod:burn	8	i32	00000058	-	0	1	1	you.mod:burn durable_damage";
+    char ref[] = "stat	you.mod	ProjectileSettings	-	0000000000000000	276	144	u32	@e=you.mod:blast	-	0	1	1	276 terminal.impact.explosion";
+    char lost[] = "stat	you.mod	DamageInfo	-	0000000000000000	@you.mod:gone	4	i32	00000001	-	0	1	1	you.mod:gone standard_damage";
+    char badKind[] = "stat	you.mod	component	Fixture	0000000000000001	@you.mod:burn	4	u32	00000001	-	0	1	0	named component";
+    char badRef[] = "stat	you.mod	ProjectileSettings	-	0000000000000000	276	144	u32	@x=you.mod:blast	-	0	1	1	bad kind";
+    char* lines[] = {row, ref, lost, badKind, badRef};
+    g_statCount = 0;
+    for (int k = 0; k < 5; k++)
+    {
+        char* f[16]; int n = 0;
+        for (char* t = strtok(lines[k], "	"); t && n < 16; t = strtok(NULL, "	")) f[n++] = t;
+        int refused = StatsParse(f, n) != 0;
+        assert(k < 3 ? !refused : refused); /* a name on a component row, or an unknown content kind, is malformed */
+    }
+    assert(g_statCount == 3 && !strcmp(g_stats[0].recordName, "you.mod:burn") && g_stats[0].record == 0);
+    assert(g_stats[1].valueKind == 'e' && !strcmp(g_stats[1].valueName, "you.mod:blast") && g_stats[1].value == 0);
+    StatsResolveAll();
+    assert(g_stats[0].record == DMG_VANILLA + 2 && !strcmp(g_stats[0].kind, "DamageInfo"));
+    assert(g_stats[1].value == EXP_VANILLA + 5);
+    assert(g_stats[2].kind[0] == 0); /* no such mod damage type: refused, no pass applies it */
+    g_statsTablesDone[1] = 0; StatsApplyTable(1, (uintptr_t)game);
+    assert(g_stats[0].applied && *(int32_t*)(modRow + 8) == 0x58 && !g_stats[2].applied);
+    /* a live change's line names content as it is now */
+    char live[] = "stat	you.mod	DamageInfo	-	0000000000000000	@you.mod:gone	4	i32	00000001	-	0	1	1	live";
+    char* f[16]; int n = 0;
+    for (char* t = strtok(live, "	"); t && n < 16; t = strtok(NULL, "	")) f[n++] = t;
+    StatEdit e; char why[192];
+    assert(!StatsParseInto(f, n, &e) && StatsResolveNames(&e, why, sizeof why) && strstr(why, "you.mod:gone"));
+    g_damageTable = savedTable; g_damageCount = savedDamages; g_explosionCount = savedExplosions;
+    g_statCount = savedCount; g_statsTablesDone[1] = savedDone; strcpy(g_mods[0].id, savedId); g_modCount = savedMods;
+    free(modRow); free(game);
+    puts("PASS stats name mods' content: rows past the game's reached by number and by name, references by name, a name no mod added refused");
+}
 
 int main(int argc, char** argv)
 {
@@ -4507,14 +4956,18 @@ int main(int argc, char** argv)
     StratagemGuardsFixture();
     PickerFrameFixture();
     StratagemFieldFixture();
+    StratagemCodesFixture();
+    StratagemRearmFixture();
     StratagemCapFixture();
     ExplosionsFixture();
     ExplosionsWidthFixture();
+    ExplosionCoverFixture();
     BeamArcFixture();
     ContentWeaponsFixture();
     ContentDifficultyFixture();
     ContentMovedOwnershipFixture();
     StratagemHeldFixture();
+    PaidGuardFixture();
     ChannelGameFixture();
     ChannelFixture();
     RpcFixture();
@@ -4528,6 +4981,7 @@ int main(int argc, char** argv)
     SpawnGuardsFixture();
     ShotsFixture();
     RoundsFixture();
+    DeploysFixture();
     PerksFixture();
     {
         /* thousands of edits (an editor applying a preset): the list grows, none refused */
@@ -4557,6 +5011,8 @@ int main(int argc, char** argv)
     WeaponOrderFixture();
     RegisteredItemsFixture();
     AttachmentsFixture();
+    AttachmentCapFixture();
+    AttachmentExtrasFixture();
     PatternsFixture();
     SetupOrderFixture();
     BehaviourStubsFixture();
@@ -4632,7 +5088,7 @@ int main(int argc, char** argv)
     uint8_t* oldRow = calloc(1, DMG_ROW); *(uint32_t*)oldRow = 54; *(uint32_t*)(oldRow + 4) = 5;
     uint8_t* newRow = calloc(1, DMG_ROW); *(uint32_t*)newRow = 54; *(uint32_t*)(newRow + 4) = 10;
     *(uintptr_t*)(game + DMG_TABLE + 54 * 8) = (uintptr_t)oldRow;
-    g_damageTable = calloc(DMG_VANILLA, 8); *(uintptr_t*)(g_damageTable + 54 * 8) = (uintptr_t)newRow;
+    g_damageTable = calloc(DMG_VANILLA + DMG_MAX_NEW, 8); *(uintptr_t*)(g_damageTable + 54 * 8) = (uintptr_t)newRow;
     g_statCount = 1; g_stats[0] = Edit(0, 150, 4, 0); strcpy(g_stats[0].kind, "DamageInfo"); g_stats[0].record = 54;
     StatsApplyTable(1, (uintptr_t)game);
     assert(*(uint32_t*)(newRow + 4) == 150 && *(uint32_t*)(oldRow + 4) == 5);
@@ -4713,6 +5169,7 @@ int main(int argc, char** argv)
         StatsSaveSnapshot();
     }
     OwnAllFixture();
+    SprayFixture();
     {
         /* the crash note names modules: an address in kernel32, none for the null page or a heap block */
         char where[160];
@@ -4739,6 +5196,7 @@ int main(int argc, char** argv)
     GrowthLookupFixture();
     StateMovesOffsetsFixture();
     StateMovesDecodeFixture();
+    NamedStatsFixture();
     DecodeTopFixture();
     StateMovesOwnershipFixture();
     ArmoryRoomFixture();
@@ -4783,14 +5241,32 @@ int main(int argc, char** argv)
     FieldWatchCapFixture();
     SetEnvironmentVariableW(L"HELLFORGE_DIFFICULTY_FIELDWATCH", NULL);
     ArmoryDiagFixture();
+    ArmoryListFixture();
     ShieldBlockFixture();
     RenderGuardsFixture();
+    OverlayCursorFixture();
     NavCarversFixture();
-    puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
+    SafeReadFixture();
+    PerfSpeedTreeFixture();
+    RecordHashFixture();
+    PerfAiPathBudgetFixture();
+    PerfCorpseFreezeFixture();
+    RenderJobCopiesFixture();
+    RenderVersionRehashFixture();
+    VehicleBoxFixture();
+    HeapTrimFixture();
+    PerfScatterCamerasFixture();
+    KnnGridFixture();
+    PerfSpreadSortFixture();
+    TreeCellLimitsFixture();
+    EarlyStampPackagesFixture();
+    PerfOverlapGridFixture();
+    SpanRescueFixture();
+    puts("PASS stats: shared records, conflicts, guards, own records, moved tables, retained settings, attachment deltas, room for 1,024 attachments, patterns (weapon paints, unit skins, the package map), one-time settings; difficulty 11; "
         "named fields: definition blocks, inferred records, deferred and renewed edits, groups, tags, mounts, refusals, "
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
-        "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; registered items: a full registry's export, names escaped; "
-        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, live and at boot, difficulty copies; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again");
+        "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; sprays: a record of its own with its damage, refusals; registered items: a full registry's export, names escaped; "
+        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, group families, summons into their code, live and at boot, difficulty copies; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again; overlay: the game's mouse pointer and its checks");
     return 0;
 }

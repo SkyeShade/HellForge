@@ -28,7 +28,7 @@ public sealed record StatsField(string Name, string Kind, string Component, stri
     public string Hd2rAddress => Kind switch
     {
         "component" => $"component|{Component}|{Record.ToString(CultureInfo.InvariantCulture)}|{Offset.ToString(CultureInfo.InvariantCulture)}",
-        "EntityDelta" => $"EntityDelta|{Component}|{Offset.ToString(CultureInfo.InvariantCulture)}",
+        "EntityDelta" => $"EntityDelta|{Component}|{Offset.ToString(CultureInfo.InvariantCulture)}" + (Offset == 0 ? "|" + Resource : ""), // 0: a member HellForge adds, one per attachment
         _ => $"{Kind}|{Record.ToString(CultureInfo.InvariantCulture)}|{Offset.ToString(CultureInfo.InvariantCulture)}",
     };
     public string AddressKey => $"{Kind}\t{(Component.Length == 0 ? "-" : Component)}\t{Convert.ToUInt64(Resource[2..], 16):X16}\t{Record.ToString(CultureInfo.InvariantCulture)}\t{Offset.ToString(CultureInfo.InvariantCulture)}\t{Storage}";
@@ -55,6 +55,9 @@ public sealed record StatsTarget(Dictionary<string, StatsField> Fields, Dictiona
 public sealed record StatsSchema(int Format, string Build, string GameDllSha256, Dictionary<string, Dictionary<string, StatsTarget>> Targets)
 {
     public Dictionary<string, Dictionary<string, string>> TargetAliases { get; init; } = [];
+    // references.json's explosion fields: an explosion named by its type, or a mod's, gets its target from these
+    // (StatsData.NamedTarget).
+    [System.Text.Json.Serialization.JsonIgnore] public List<JsonElement> ExplosionDefs { get; set; } = [];
     // Where each weapon's projectile swap is written, by its edit's site (SwapSite): the weapons whose shots it changes
     // (an ammunition every weapon equipping it shares: several) and how the loader finds that weapon's round in co-op
     // (native/mod-loader/shots.c): "" its ProjectileWeapon +0, "/r" its WeaponRounds +64, "/f" its programmable round
@@ -89,8 +92,15 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         Parity(schema);
         References(schema);
         ProjectileSources(schema);
+        Ricochets(schema);
         FiredEntities(schema);
+        EditorRequests(schema);
+        MissileSpread(schema);
+        InputCodes(schema);
+        RearmsAfterUses(schema);
+        StratagemPayloads(schema);
         Entities(schema);
+        EnemyCombat(schema);
         Director(schema);
         return schema;
     });
@@ -99,11 +109,22 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
     // "difficulty" (a level's DifficultySettings row, 1 to 11), "rosters" (an enemy's spawn weights by difficulty) and
     // "compositions" (a squad: its groups' counts, weight, cost and the difficulties and player counts it is drawn at) and
     // "demolition" (a demolition template: the force a destruction stage naming it requires).
-    // Family is a faction; Class a composition's role (patrol, map, reinforcement).
+    // Family is a faction; Class a composition's role (its family's spawn channel: patrol, guard, map, reinforcement,
+    // traveller, straggler, convoy, air_support). A group's enemy family is a pick of its faction's families ("families":
+    // a roster row's +0). "summons" join the enemies' pages, after Entities: what a summoning enemy calls up (EnemySummon,
+    // native/mod-loader/enemy_summons.c).
     static void Director(StatsSchema schema)
     {
         using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.director.json")!;
         using var json = JsonDocument.Parse(stream);
+        var families = json.RootElement.GetProperty("families");
+        StatsField Field(JsonElement f, int order) => new(f.GetProperty("label").GetString()!, f.GetProperty("kind").GetString()!, "",
+            "0x0", f.GetProperty("record").GetInt64(), f.GetProperty("offset").GetInt32(), f.GetProperty("storage").GetString()!,
+            Number(f, "min"), Number(f, "max"), Text(f, "unit"), true, true)
+        {
+            Order = order, Section = Text(f, "section"), Note = Text(f, "note"), Hd2rKey = Text(f, "hd2r"),
+            Options = Text(f, "families") is { } faction ? families.GetProperty(faction).Clone() : default,
+        };
         foreach (var category in new[] { "difficulty", "rosters", "compositions", "demolition" })
         {
             var targets = new Dictionary<string, StatsTarget>(StringComparer.Ordinal);
@@ -112,10 +133,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
                 var fields = new Dictionary<string, StatsField>(StringComparer.Ordinal);
                 var order = 0;
                 foreach (var f in t.Value.GetProperty("fields").EnumerateArray())
-                    fields[f.GetProperty("key").GetString()!] = new StatsField(f.GetProperty("label").GetString()!, f.GetProperty("kind").GetString()!, "",
-                        "0x0", f.GetProperty("record").GetInt64(), f.GetProperty("offset").GetInt32(), f.GetProperty("storage").GetString()!,
-                        Number(f, "min"), Number(f, "max"), Text(f, "unit"), true, true)
-                    { Order = ++order, Section = Text(f, "section"), Note = Text(f, "note"), Hd2rKey = Text(f, "hd2r") };
+                    fields[f.GetProperty("key").GetString()!] = Field(f, ++order);
                 targets[t.Name] = new StatsTarget(fields, new Dictionary<string, string>(StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal))
                 {
                     Label = Text(t.Value, "label"), Family = Text(t.Value, "faction"), Class = Text(t.Value, "role"),
@@ -123,6 +141,12 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
             }
             schema.Targets[category] = targets;
         }
+        foreach (var enemy in json.RootElement.GetProperty("summons").EnumerateObject())
+            if (schema.Targets["enemies"].TryGetValue(enemy.Name, out var target))
+            {
+                var order = target.Fields.Values.Select(f => f.Order).DefaultIfEmpty(0).Max();
+                foreach (var f in enemy.Value.EnumerateArray()) AddField(target, f.GetProperty("key").GetString()!, Field(f, ++order));
+            }
     }
 
     // The entities another page shows instead (StatsCatalog: the MS-11 Solo Silo's rack and missile), and the one whose
@@ -173,6 +197,30 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         schema.Targets["enemies"] = enemies;
     }
 
+    // The enemy combat fields players asked for (mappings/enemy-combat.json, scripts/ExportEnemyCombat.py), on the enemy
+    // pages Entities made. Enemies are the host's in co-op: a joiner's own values change nothing they fight.
+    static void EnemyCombat(StatsSchema schema)
+    {
+        using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.enemy-combat.json")!;
+        using var json = JsonDocument.Parse(stream);
+        var enemies = schema.Targets["enemies"];
+        foreach (var t in json.RootElement.GetProperty("enemies").EnumerateObject())
+            if (enemies.TryGetValue(t.Name, out var target)) AddParity(target, t.Value);
+        // Armour and AP past 10: every damage builder (game.dll 0x129C9F0 and its five siblings) compares AP - armour as
+        // floats (full damage from 1 up, 0.65 at 0, none below), and no table is indexed by either. The runtime armour is
+        // a signed int, so values near 2^31 turn negative; SetZoneArmor (0x9234D0, Acid Storm) clamps to 20.
+        foreach (var target in enemies.Values)
+            foreach (var (key, f) in target.Fields.Where(f => f.Value is { Kind: "component", Unit: "armor_class", Max: 10 }).ToList())
+                target.Fields[key] = f with { Max = MaxArmor, Note = f.Note ?? ArmorNote };
+        foreach (var target in schema.Targets.Values.SelectMany(t => t.Values))
+            foreach (var (key, f) in target.Fields.Where(f => f.Value is { Kind: "DamageInfo", Unit: "armor_class", Max: 10 }).ToList())
+                target.Fields[key] = f with { Max = MaxArmor };
+    }
+
+    const double MaxArmor = 1000;
+    const string ArmorNote = "Above 10 no vanilla weapon hurts it here, explosions included, and none sets a status on it. A hit needs more " +
+        "AP than the armour for full damage, the same AP for 65%. Acid Storm leaves it at 20.";
+
     // The Helldiver entity's main fields (entity::<key>) on the Helldiver page, after its own, where it shows none of
     // their bytes.
     static void JoinHelldiver(StatsTarget helldiver, Dictionary<string, StatsField> fields)
@@ -196,6 +244,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         var programmable = json.RootElement.GetProperty("programmable");
         schema.Targets["statuses"] = Statuses(json.RootElement, schema);
         schema.Targets["explosions"] = Explosions(json.RootElement);
+        schema.ExplosionDefs = [.. json.RootElement.GetProperty("explosionFields").EnumerateArray().Select(f => f.Clone())];
         var ammunition = json.RootElement.GetProperty("ammunition").EnumerateArray().ToDictionary(a => a.GetProperty("weapon").GetString()!, a => a.Clone());
         foreach (var (category, targets) in schema.Targets)
             foreach (var (name, target) in targets)
@@ -382,6 +431,155 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
         }
     }
 
+    // A round's ricochets (ProjectileSettings +0xB0 / +0xB4 / +0xB8), after its other flight fields, wherever the schema
+    // shows its flight: the grenade launchers' rounds have 1, which is their bounce. SpawnProjectile (game.dll 0x13A9830)
+    // copies the three into the slot's record (+0x9C, +0xA0, +0xA4); the update (0x13AC1F0) bounces a round only while
+    // the first is not 0, it hits at least as flat as the angle (degrees off straight on: 0 any hit, 360 never) or is
+    // still unarmed, and it is faster than the speed. Its fuse comes with them: the lifetime (+0x34) and its variance
+    // (+0x38), which SpawnProjectile turns into the round's own lifetime, and the arming distance (+0xA0, slot +0x3B044):
+    // a round with an impact payload that hits before it has flown that far bounces instead of going off.
+    static readonly (string Leaf, string Name, int Offset, string Storage, string? Unit, string Note)[] RicochetFields =
+    [
+        ("ricochets", "Ricochets", 176, "u32", "count", "Whether its rounds bounce off what they hit: 0 never (a grenade launcher's grenade then goes off or stops at the first hit). The grenade launchers have 1."),
+        ("ricochet_angle", "Ricochet angle", 180, "f32", "degrees", "How flat a hit must be to bounce, in degrees off straight on: 0 bounces at any angle, 360 never (an unarmed grenade bounces anyway)."),
+        ("ricochet_min_speed", "Ricochet minimum speed", 184, "f32", "meters_per_second", "Slower rounds stop instead of bouncing."),
+        ("lifetime", "Lifetime", 52, "f32", "seconds", "Seconds before the round expires and sets off its expiry payload, if it has one. 0: no limit (the grenade launchers' grenades fly until they hit)."),
+        ("lifetime_variance", "Lifetime variance", 56, "f32", "ratio", "How much the lifetime varies at random, as a share of it: 0.5 lives from half to one and a half times the lifetime."),
+        ("arming_distance", "Arming distance", 160, "f32", "meters", "How far a round with an impact payload flies before it arms: one that hits sooner bounces instead of going off. The GL-21 has 7 m, the GP-31 and GL-52 4 m."),
+    ];
+    static void Ricochets(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets.Values.SelectMany(t => t.Values))
+            foreach (var round in target.Fields.Where(f => f.Value.Kind == "ProjectileSettings" && FlightOffsets.Contains(f.Value.Offset))
+                .GroupBy(f => (Prefix: f.Key[..(f.Key.LastIndexOf('.') + 1)], f.Value.Record)).ToList())
+                AddRicochets(target, round.Key.Prefix, round.MaxBy(f => f.Value.Order).Value);
+    }
+
+    // A round's ricochet and fuse fields under its key prefix, after its last flight field, on that field's row, where it
+    // shows none of them yet.
+    static void AddRicochets(StatsTarget target, string prefix, StatsField flight)
+    {
+        var order = flight.Order;
+        var taken = target.Fields.Values.Where(f => f.Kind == "ProjectileSettings" && f.Record == flight.Record).Select(f => f.Offset).ToHashSet();
+        foreach (var (leaf, name, offset, storage, unit, note) in RicochetFields)
+            if (!target.Fields.ContainsKey(prefix + leaf) && !taken.Contains(offset))
+                target.Fields[prefix + leaf] = flight with
+                {
+                    Name = name, Offset = offset, Storage = storage, Min = 0, Max = storage == "u32" ? 255 : null, Unit = unit, Order = ++order, Note = note,
+                    Options = default, LiveId = null, Hd2rKey = null,
+                };
+    }
+
+    // Every vanilla stratagem's input code (StratagemCode, by its stable id: native/mod-loader/stratagem_codes.c keeps the
+    // codes in arrays of HellForge's and follows the packed value), after its call-in fields. The editor shows and takes
+    // it as directions (its "code" format).
+    static void InputCodes(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets["stratagems"].Values)
+            if (target.Fields.FirstOrDefault(f => f.Value.Kind == "StratagemDefinition" && f.Key.StartsWith("stratagem.", StringComparison.Ordinal)).Value is { } own)
+                AddField(target, InputCodeKey, new StatsField("Input code", "StratagemCode", "", "0x0", own.Record, 0, "u32", null, null, null, true, true)
+                {
+                    Order = own.Order, Note = "The arrows that call it in, 1 to 10 of them. Each player's own: it is matched on their machine.",
+                });
+    }
+    public const string InputCodeKey = "stratagem.input_code";
+
+    // Every non-Eagle stratagem's "Rearms after uses" tick (StratagemRearm, by its stable id: native/mod-loader/
+    // stratagem_rearm.c), after its input code: its mission uses go with no cooldown between them, the cooldown starts
+    // once they are spent, and they refill when it ends. Eagles keep their rearm.
+    static readonly JsonElement NoYes = JsonDocument.Parse("[[0,\"No\"],[1,\"Yes\"]]").RootElement.Clone();
+    static void RearmsAfterUses(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets["stratagems"].Values.Where(t => t.Family != "eagle"))
+            if (target.Fields.FirstOrDefault(f => f.Value.Kind == "StratagemDefinition" && f.Key.StartsWith("stratagem.", StringComparison.Ordinal)).Value is { } own)
+                AddField(target, RearmKey, new StatsField("Rearms after uses", "StratagemRearm", "", "0x0", own.Record, 0, "u32", 0, 1, null, true, true)
+                {
+                    Order = own.Order, Options = NoYes,
+                    Note = "Yes: its mission uses go one after another with no cooldown between them, then the cooldown runs and they come back. " +
+                        "With unlimited uses it has no cooldown at all. No: the game's own, a cooldown after every use and spent uses gone for the mission.",
+                });
+    }
+    public const string RearmKey = "stratagem.rearms_after_uses";
+
+    // An impact payload picker on every stratagem round that has none (the Eagle 110mm Rocket Pods', the orbitals'
+    // shells): the round's ProjectileSettings +0x90, as the hand-held weapons' rounds have it.
+    static void StratagemPayloads(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets["stratagems"].Values)
+            foreach (var round in target.Fields.Where(f => f.Value.Kind == "ProjectileSettings" && FlightOffsets.Contains(f.Value.Offset))
+                .GroupBy(f => (Prefix: f.Key[..(f.Key.LastIndexOf('.') + 1)], f.Value.Record)).ToList())
+            {
+                if (target.Fields.Values.Any(f => f is { Kind: "ProjectileSettings", Offset: 144 } && f.Record == round.Key.Record)) continue;
+                var middle = round.Key.Prefix.Split('.', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault() ?? "primary";
+                AddField(target, $"terminal.{middle}.impact.explosion", new StatsField("Impact payload", "ProjectileSettings", "", "0x0", round.Key.Record, 144, "u32",
+                    null, null, null, true, true) { Order = -100 });
+            }
+    }
+
+    // Fields players asked for (the Discord list "Missing stuff from the HellForge's editor"; mappings/editor-requests.json,
+    // scripts/ExportEditorRequests.py): records the catalogues never reach, added as the parity fields are (lock-on
+    // ranges, the C4 pack's charges, the Grenadier Battlement's gun, the Solo Silo's remote, the Spear's and the silo
+    // missile's payloads); each explosion page's bomblet fuse (its shrapnel projectile's lifetime and arming); a status
+    // pick beside every status strength that has none; shrapnel counts past HD2R Editor's 64.
+    static void EditorRequests(StatsSchema schema)
+    {
+        using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.editor-requests.json")!;
+        using var json = JsonDocument.Parse(stream);
+        foreach (var category in json.RootElement.GetProperty("targets").EnumerateObject())
+            foreach (var t in category.Value.EnumerateObject())
+                if (schema.Targets.TryGetValue(category.Name, out var targets) && targets.TryGetValue(t.Name, out var target)) AddParity(target, t.Value);
+        Shrapnel(schema, json.RootElement.GetProperty("shrapnel"));
+        // The 110mm Rocket Pods' attack duration (EagleComponent +0x28) is read by their strike (EagleStrike, game.dll 0x8A4410,
+        // payload 4): one rocket per target, spread over this time. The catalogue's 1.6 s cap sits under its own 2 s.
+        if (schema.Targets["stratagems"].TryGetValue("Eagle 110mm Rocket Pods", out var pods) && pods.Fields.TryGetValue("eagle.fire_duration", out var duration))
+            pods.Fields["eagle.fire_duration"] = duration with { Max = 10, Note = "How long the pods take to fire: one rocket per target found, spread over this time. More time does not add rockets." };
+    }
+
+    // The bomblet fuse on each explosion page whose explosion throws shrapnel, shrapnel counts past 64, and the status
+    // picks.
+    static void Shrapnel(StatsSchema schema, JsonElement rows)
+    {
+        var shrapnel = rows.EnumerateObject().ToDictionary(p => long.Parse(p.Name, CultureInfo.InvariantCulture), p => p.Value.GetInt64());
+        foreach (var target in schema.Targets["explosions"].Values)
+            if (target.Fields.Values.FirstOrDefault(f => f.Kind == "ExplosionSettings") is { } row && shrapnel.TryGetValue(row.Record, out var bomblet))
+                AddBomblets(target, bomblet);
+        foreach (var target in schema.Targets.Values.SelectMany(t => t.Values))
+        {
+            StatusPicks(target);
+            foreach (var (key, f) in target.Fields.Where(f => f.Value is { Kind: "ExplosionSettings", Offset: 80, Max: 64 }).ToList())
+                target.Fields[key] = f with { Max = MaxShrapnel, Note = f.Note ?? ShrapnelNote };
+        }
+    }
+
+    // HD2R Editor capped shrapnel at 64; the game reads the count with no cap (ProcessExplosion spawns that many), each one a
+    // projectile of a pool of 2048 every shot in the mission shares, so a big count can starve the guns.
+    const double MaxShrapnel = 512;
+    const string ShrapnelNote = "How many shrapnel projectiles or bomblets it throws. Every shot in the mission shares 2048 projectile slots, so very high counts can stop guns firing while they fly.";
+
+    // An explosion's bomblet fuse: its shrapnel projectile's lifetime, variance and arming distance (that row's own
+    // fields, shared by every explosion throwing it).
+    static void AddBomblets(StatsTarget target, long projectile)
+    {
+        var order = target.Fields.Values.Select(f => f.Order).DefaultIfEmpty(0).Max();
+        foreach (var (leaf, name, offset, unit, note) in new[]
+        {
+            ("lifetime", "Bomblet lifetime", 52, "seconds", "Seconds before each shrapnel projectile or bomblet expires and sets off its expiry payload. 0: no limit."),
+            ("lifetime_variance", "Bomblet lifetime variance", 56, "ratio", "How much the bomblet lifetime varies at random, as a share of it."),
+            ("arming_distance", "Bomblet arming distance", 160, "meters", "How far a bomblet flies before it arms: one that hits sooner bounces instead of going off."),
+        })
+            AddField(target, "shrapnel." + leaf, new StatsField(name, "ProjectileSettings", "", "0x0", projectile, offset, "f32", 0, null, unit, true, true) { Order = ++order, Note = note });
+    }
+
+    // A status pick (DamageInfo +0x2C, the status its first slot applies) beside a status strength shown alone (the
+    // MD-I4's "status.strength"): the slot's type and strength, as the mounted weapons show all four.
+    static void StatusPicks(StatsTarget target)
+    {
+        foreach (var (key, f) in target.Fields.Where(f => f.Value is { Kind: "DamageInfo", Offset: 48 } && (f.Key == "status.strength" || f.Key.EndsWith(".status.strength", StringComparison.Ordinal))).ToList())
+            if (!target.Fields.Values.Any(g => g is { Kind: "DamageInfo", Offset: 44 } && g.Record == f.Record))
+                AddField(target, key[..^"strength".Length] + "type", new StatsField("Status", "DamageInfo", "", "0x0", f.Record, 44, "u32", null, null, null, true, true)
+                    { Order = f.Order, Note = "The status the explosion applies (its first status slot)." });
+    }
+
     // Weapons whose shot spawns an entity instead of firing a projectile row (mappings/fired-entities.json,
     // research/wasp-rocket). Where the entity explodes by its own ExplosiveComponent (the P-34 Breacher's sticky charge,
     // the TD-110 Maelstrom's rockets), the row (ProjectileWeapon +0), its damage and its explosions never reach the
@@ -389,7 +587,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
     // Where a missile carries the row as its hit row, only the row's flight is retired: the missile is unit-driven and
     // flies by its SeekingMissile record, offered as missile.* (the Spear's fields; on these missiles guidance is never
     // switched on by time, as on the Spear) where the catalogue lacks them.
-    static readonly int[] FlightOffsets = [28, 32, 36, 40, 44, 64]; // pellets, velocity, mass, drag, gravity, penetration slowdown
+    static readonly int[] FlightOffsets = [28, 32, 36, 40, 44, 64, 176, 180, 184, 52, 56, 160]; // pellets, velocity, mass, drag, gravity, penetration slowdown, ricochets, fuse
     static void FiredEntities(StatsSchema schema)
     {
         using var stream = typeof(StatsSchema).Assembly.GetManifestResourceStream("HellForge.Core.mappings.fired-entities.json")!;
@@ -417,6 +615,59 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
     {
         foreach (var (key, field) in spear)
             target.Fields[key] = field with { Resource = entity!, Record = missile, Shared = false, SharedConsumers = [] };
+    }
+
+    // Every seeking missile's spread (its SeekingMissile record's deviation block, +0xB4..+0xF4; research/missile-deviation):
+    // whether it veers off its launch line, how far and which way, then a curve at a random rate while it swings back onto
+    // its target. On each missile a page shows (missile.*, and function_missile.* for a weapon function's: the Spear, the
+    // W.A.S.P., the Commando, the Missile Pistol, the Warrant, the Maelstrom's and the Patriot's), on its own record. The
+    // spawn (game.dll 0x641050) draws the veer and the curve once per missile, from a seed every machine shares; the update
+    // (0x642760) reads the timings every step, and only while guidance is on and the missile has a target.
+    static readonly (string Leaf, string Name, int Offset, string Storage, double Min, double Max, string? Unit, string Note)[] Spread =
+    [
+        ("enabled", "Spread", 0xB4, "u8", 0, 1, null,
+            "Yes: each missile veers off its launch line, curves, then swings back onto its target (the fields below). No: it flies straight at its target. Read when it is fired."),
+        ("direction_min", "Veer direction min", 0xB8, "f32", -180, 180, "degrees",
+            "Which way a missile veers, as an angle around its flight line (0: up, 90 or -90: to a side, 180: down). Each missile picks one between min and max."),
+        ("direction_max", "Veer direction max", 0xBC, "f32", -180, 180, "degrees", "The other end of the veer direction (see Veer direction min)."),
+        ("angle_min", "Veer angle min", 0xC0, "f32", 0, 180, "degrees",
+            "How far a missile turns off its launch line. Each missile picks an angle between min and max; 0 and 0: no veer."),
+        ("angle_max", "Veer angle max", 0xC4, "f32", 0, 180, "degrees", "The other end of the veer angle (see Veer angle min)."),
+        ("veer_start", "Veer start", 0xEC, "f32", 0, 10, "seconds", "Seconds after launch the missile starts to veer. Until then it flies straight on."),
+        ("veer_end", "Veer end", 0xE8, "f32", 0, 10, "seconds",
+            "Seconds after launch the missile has turned its full veer angle (it turns evenly from Veer start). Its curve and return start here."),
+        ("curve_pitch_min", "Curve pitch min", 0xC8, "f32", -360, 360, "degrees",
+            "After the veer the missile keeps turning: up or down by this much a second (times Curve speed), picked between min and max per missile."),
+        ("curve_roll_min", "Curve roll min", 0xCC, "f32", -360, 360, "degrees", "Its curve's roll around its flight line, as Curve pitch min."),
+        ("curve_yaw_min", "Curve yaw min", 0xD0, "f32", -360, 360, "degrees", "Its curve's turn to the side, as Curve pitch min."),
+        ("curve_pitch_max", "Curve pitch max", 0xD4, "f32", -360, 360, "degrees", "The other end of the curve's pitch (see Curve pitch min)."),
+        ("curve_roll_max", "Curve roll max", 0xD8, "f32", -360, 360, "degrees", "The other end of the curve's roll."),
+        ("curve_yaw_max", "Curve yaw max", 0xDC, "f32", -360, 360, "degrees", "The other end of the curve's turn to the side."),
+        ("curve_either_way", "Curve either way", 0xE0, "u8", 0, 1, null,
+            "Yes: each of the curve's pitch, roll and turn goes one way or the other at random. No: always the way min and max say."),
+        ("curve_speed", "Curve speed", 0xE4, "f32", 0, 50, "multiplier", "How fast the curve turns: its angles are degrees a second times this."),
+        ("return_time", "Return time", 0xF0, "f32", 0, 10, "seconds",
+            "Seconds after the veer the missile takes to swing fully back onto its target, curving less as it goes. Then it homes as usual."),
+        ("return_turn_rate", "Return turn rate", 0xF4, "f32", 0, 10, "multiplier",
+            "Its turn rate while it swings back, as a multiple of its usual turn rate. Past about 60 divided by that turn rate it overshoots and swings wildly."),
+    ];
+
+    // What tests/in-game/missile-spread-look.json saw a missile do: direction 0 veers up, the first curve axis pitches.
+    static readonly string[] Seen = ["enabled", "direction_min", "direction_max", "angle_min", "angle_max", "veer_start", "veer_end",
+        "curve_pitch_min", "curve_pitch_max", "curve_speed"];
+
+    static void MissileSpread(StatsSchema schema)
+    {
+        foreach (var target in schema.Targets.Values.SelectMany(t => t.Values))
+            foreach (var missile in target.Fields.Where(f => f.Value is { Kind: "component", Component: "SeekingMissileComponentData" })
+                         .GroupBy(f => (Prefix: f.Key[..f.Key.IndexOf('.')], f.Value.Resource, f.Value.Record)).ToList())
+            {
+                var order = target.Fields.Values.Select(f => f.Order).DefaultIfEmpty(0).Max();
+                foreach (var (leaf, name, offset, storage, min, max, unit, note) in Spread)
+                    AddField(target, $"{missile.Key.Prefix}.spread.{leaf}", new StatsField(name, "component", "SeekingMissileComponentData", missile.Key.Resource,
+                        missile.Key.Record, offset, storage, min, max, unit, false, !Seen.Contains(leaf))
+                    { Order = ++order, Note = note, Options = storage == "u8" ? NoYes : default });
+            }
     }
 
     static void Retire(StatsTarget target, Func<KeyValuePair<string, StatsField>, bool> which, string reason)
@@ -628,6 +879,26 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
             if (!fieldId.StartsWith("attachment.", StringComparison.Ordinal) && fieldId.Length > "attachment.".Length)
                 target.Aliases[$"attachment.{slot.Name}.{slug}.{fieldId["attachment.".Length..]}"] = key;
         }
+        AddHeatsinkCounts(target, slot, id, a, slug, section, ref order);
+    }
+
+    // A heatsink whose deltas leave the heatsink counts to the weapon (the LAS-12 Sai's Improved Cooldown): rows for them
+    // that HellForge adds to its deltas when set (native/mod-loader/attachment_extras.c; offset 0 names an added member).
+    // 0 keeps the weapon's own count. Not on a slot's default heatsink, whose counts are the weapon's own rows.
+    static readonly (string Id, string Label, int Member)[] HeatsinkCounts =
+        [("heatsink.starting", "Starting heatsinks", 84), ("heatsink.from_supply", "Heatsinks from supply", 88), ("heatsink.spare", "Spare heatsinks", 92)];
+    static void AddHeatsinkCounts(StatsTarget target, JsonProperty slot, string id, JsonElement a, string slug, string section, ref int order)
+    {
+        if (a.GetProperty("kind").GetString() != "heatsink" || (slot.Value.TryGetProperty("default", out var standard) && standard.GetString() == id)) return;
+        var own = a.GetProperty("fields").EnumerateArray().Select(f => f.GetProperty("id").GetString()).ToHashSet(StringComparer.Ordinal);
+        foreach (var (fieldId, label, member) in HeatsinkCounts)
+        {
+            var key = $"attachment.{slot.Name}.{slug}.{fieldId}";
+            if (own.Contains(fieldId) || target.Fields.ContainsKey(key)) continue;
+            target.Fields[key] = new StatsField(label, "EntityDelta", $"266:{member}", a.GetProperty("resource").GetString()!, a.GetProperty("record").GetInt64(),
+                0, "u32", 0, 1000, "heatsinks", true, true)
+            { Order = order++, Section = section, Note = "0 keeps the weapon's own count; set, HellForge adds it to this heatsink's changes" };
+        }
     }
 
     // The explosions (HD2R Editor's explosion pages): one target per catalogued explosion, named by its label, with the
@@ -658,7 +929,7 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
     }
 
     // An explosion's fields: its ExplosionSettings row's (type), and its damage type's when it has one.
-    static Dictionary<string, StatsField> ExplosionFields(List<JsonElement> defs, long type, long? damage)
+    internal static Dictionary<string, StatsField> ExplosionFields(List<JsonElement> defs, long type, long? damage)
     {
         var fields = new Dictionary<string, StatsField>(StringComparer.Ordinal);
         var order = 0;
@@ -743,7 +1014,13 @@ public sealed record StatsSchema(int Format, string Build, string GameDllSha256,
 public sealed record StatsEdit(string Label, string Kind, string Component, ulong Resource, long Record, int Offset,
     string Storage, uint Value, uint? Expect, bool Own, bool Shared, bool Unverified)
 {
-    public string Key => $"{Kind}:{Component}:{(Own || Record < 0 ? $"entity-{Resource:X16}" : Record.ToString(CultureInfo.InvariantCulture))}:{Offset}";
+    // A mod's projectile, damage type or explosion by the name it was added under ("<mod id>:<name>"): the row edited,
+    // and a reference's value with its kind ('p', 'd', 'e'). The loader numbers them once the mods have added them, so
+    // the edit holds whatever other mods are loaded. Null when the edit gives numbers.
+    public string? RecordName { get; init; }
+    public string? ValueName { get; init; }
+    public char ValueKind { get; init; }
+    public string Key => $"{Kind}:{Component}:{(Own || Record < 0 ? $"entity-{Resource:X16}" : RecordName ?? Record.ToString(CultureInfo.InvariantCulture))}:{Offset}";
 }
 
 public static class StatsData
@@ -822,16 +1099,50 @@ public static class StatsData
     static int TargetEdits(StatsSchema schema, string category, Dictionary<string, StatsTarget> targets, JsonProperty entry, List<StatsEdit> edits)
     {
         var targetName = schema.TargetAliases.GetValueOrDefault(category)?.GetValueOrDefault(entry.Name, entry.Name) ?? entry.Name;
-        if (!targets.TryGetValue(targetName, out var target)) throw new InvalidDataException($"Unknown {category} target {entry.Name}.");
+        string? content = null;
+        if (!targets.TryGetValue(targetName, out var target) && (target = NamedTarget(schema, category, targets, entry.Name, out content)) == null)
+            throw new InvalidDataException($"Unknown {category} target {entry.Name}.");
         Object(entry.Value);
         var own = Flag(entry.Value, "own");
+        if (own && content != null) throw new InvalidDataException($"{entry.Name}: own isolates entity records; a mod's row is a shared definition.");
         var before = edits.Count;
         var retired = 0;
         foreach (var property in entry.Value.EnumerateObject())
             if (property.Name != "own") retired += PropertyEdits(category, entry.Name, target, property, own, edits);
+        if (content != null)
+            for (var i = before; i < edits.Count; i++) edits[i] = edits[i] with { RecordName = content, Record = 0 };
         if (before == edits.Count && retired == 0) throw new InvalidDataException($"{entry.Name}: no stats supplied.");
         return retired;
     }
+
+    // A mod's content names: "<mod id>:<name>", the identity the loader gives what a mod added (HfProjectile.name and so on).
+    static bool IsContentName(string name) => name.IndexOf(':') is > 0 and var colon && colon < name.Length - 1 && !name.Any(char.IsWhiteSpace);
+
+    // A target the schema does not list: in "explosions", a vanilla explosion by its type (1..422: its catalogued page
+    // when it has one, else its ExplosionSettings row's fields); in "projectiles", "damage" and "explosions", a mod's
+    // content by name (content: that name), with the fields of the game's rows of that kind. Null for anything else.
+    static StatsTarget? NamedTarget(StatsSchema schema, string category, Dictionary<string, StatsTarget> targets, string name, out string? content)
+    {
+        content = null;
+        if (category == "explosions" && long.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out var type) && type is >= 1 and <= 422)
+            return targets.Values.FirstOrDefault(t => t.Fields.Values.Any(f => f.Kind == "ExplosionSettings" && f.Record == type))
+                ?? new StatsTarget(StatsSchema.ExplosionFields(schema.ExplosionDefs, type, null), [], []);
+        if (!IsContentName(name)) return null;
+        content = name;
+        return category switch
+        {
+            "projectiles" or "damage" => targets.TryGetValue("1", out var row) ? row : null,
+            // a mod's explosion: its own row's fields (its damage type is a damage target of its own)
+            "explosions" => new StatsTarget(StatsSchema.ExplosionFields(schema.ExplosionDefs, 1, null), [], []),
+            _ => null
+        };
+    }
+
+    // The kind of content a reference field names ('p' projectile, 'd' damage type, 'e' explosion), or 0.
+    static char ReferenceKind(string name, StatsField field) =>
+        name.EndsWith(".projectile", StringComparison.Ordinal) ? 'p'
+        : name.EndsWith(".explosion", StringComparison.Ordinal) ? 'e'
+        : name == "damage" && field.Kind == "ProjectileSettings" && field.Offset == 60 ? 'd' : '\0';
 
     // One stat of an entry (a field, an alias, or "spread" and "armorPenetration", which name several): its edits, and how
     // many of its fields were retired.
@@ -862,8 +1173,17 @@ public static class StatsData
         if (!target.Fields.TryGetValue(name, out var field)) throw new InvalidDataException($"{entryName}: unknown stat {property.Name}.");
         if (own && field.Kind != "component") throw new InvalidDataException($"{entryName} {name}: own isolates entity component records; {field.Kind} is a shared definition. Put shared definition edits in a separate entry or mod without own.");
         var value = property.Name == "armorPenetration" ? property.Value[index] : property.Value;
+        // a reference to a mod's content by name: numbered by the loader (a raw number past the game's would name
+        // whichever mod's content is loaded there)
+        if (value.ValueKind == JsonValueKind.String && ReferenceKind(name, field) is var refers and not '\0' && field.Storage == "u32")
+        {
+            var named = value.GetString()!;
+            if (!IsContentName(named)) throw new InvalidDataException($"{entryName} {name}: a reference names a type by number, or a mod's by \"<mod id>:<name>\".");
+            return new StatsEdit($"{entryName} {name}", field.Kind, field.Component, Resource(field.Resource, allowZero: true), field.Record,
+                field.Offset, field.Storage, 0, null, own, field.Shared, field.Unverified) { ValueName = named, ValueKind = refers };
+        }
         // StratagemDefinition uses UINT32_MAX for unlimited uses (the registry's reviewed sentinel).
-        var bits = field.Kind == "StratagemDefinition" && field.Offset == 0x50 && field.Storage == "u32" &&
+        var bits = field.Kind == "StratagemCode" ? CodeBits(value) : field.Kind == "StratagemDefinition" && field.Offset == 0x50 && field.Storage == "u32" &&
             value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var uses) && uses == -1
             ? uint.MaxValue : Bits(value, field.Storage, field.Min, field.Max);
         return new StatsEdit($"{entryName} {name}", field.Kind, field.Component, Resource(field.Resource, allowZero: true), field.Record,
@@ -878,6 +1198,11 @@ public static class StatsData
                 yield return new StatsEdit(field.Name, "component", write.Component, write.Resource, -1, field.Offset, "u32", field.Value, field.Expect, false, true, false);
         foreach (var edit in mod.Stats) yield return edit;
     }
+
+    // An input code: its arrows or letters ("UULRD"), or the packed number Local Stats saves.
+    static uint CodeBits(JsonElement value) =>
+        InputCode.TryParse(value.ValueKind == JsonValueKind.String ? value.GetString()! : value.GetRawText(), out var packed, out var error)
+            ? packed : throw new InvalidDataException($"Input code: {error}");
 
     static uint Bits(JsonElement value, string storage, double? min, double? max)
     {

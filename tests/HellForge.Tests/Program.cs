@@ -7,10 +7,7 @@ using System.Text.Json;
 // Dependency-free integration checks. Every game file here is synthetic.
 var root = Path.GetFullPath(Path.Combine("artifacts", "tests", Guid.NewGuid().ToString("N")));
 Directory.CreateDirectory(root);
-// The Linux snapshot seal uses this synthetic machine id in every test; the real /etc/machine-id is never read.
-var sampleMachineId = Path.Combine(root, "machine-id");
-File.WriteAllText(sampleMachineId, "0123456789abcdef0123456789abcdef\n");
-SnapshotSeal.MachineData.MachineIdPathForTests = sampleMachineId;
+TestSigner.Install();
 var passed = 0;
 var failed = 0;
 void Check(bool condition, string reason)
@@ -768,6 +765,7 @@ ModToolRepairTests.Register(Test, Check, Reject, root);
 BundledModsTests.Register(Test, Check, Reject, root);
 CosmeticPacksTests.Register(Test, Check, Reject, root);
 OtherArchivesTests.Register(Test, Check, Reject, root);
+ModSourcesTests.Register(Test, Check, Reject, root);
 EditorTests.Register(Test, Check, Reject, root);
 SessionLaunchTests.Register(Test, Check, Reject, root);
 WinePathTests.Register(Test, Check, root);
@@ -793,6 +791,9 @@ LinuxInstallerTests.Register(Test, Check, Reject, root);
 LinuxUninstallTests.Register(Test, Check, Reject, root);
 LinuxPrefixBackupTests.Register(Test, Check, Reject, root);
 LinkRuleTests.Register(Test, Check, Reject, root);
+GameLanguageCheckTests.Register(Test, Check, Reject, root);
+ModBatchTests.Register(Test, Check, Reject, root);
+ModBuildStatusTests.Register(Test, Check, Reject, root);
 SandboxCopyBackTests.Register(Test, Check, Reject, root);
 SandboxWireTests.Register(Test, Check, Reject, root);
 SandboxPipeRelayTests.Register(Test, Check);
@@ -803,6 +804,7 @@ SteamPathTests.Register(Test, Check, Reject, root);
 SteamRuntimeTests.Register(Test, Check, Reject, root);
 LinuxInvocationTests.Register(Test, Check, Reject, root);
 ContainerCheckTests.Register(Test, Check, Reject, root);
+InGameSpecTests.Register(Test, Check, Reject, root);
 WineserverWaitTests.Register(Test, Check, Reject, root);
 LinuxPrefixCaseTests.Register(Test, Check, Reject, root);
 InventorySyncTests.Register(Test, Check, Reject, root);

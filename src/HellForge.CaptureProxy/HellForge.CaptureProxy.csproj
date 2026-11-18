@@ -14,6 +14,8 @@
   <!-- The seal and the hosts line only: HellForge.Core itself carries tens of megabytes of game mappings the capture never uses. -->
   <ItemGroup>
     <Compile Include="../HellForge.Core/SnapshotSeal.cs" Link="SnapshotSeal.cs" />
+    <Compile Include="../HellForge.Core/SnapshotSigner.cs" Link="SnapshotSigner.cs" />
+    <Compile Include="../HellForge.Core/CaptureUpstreamPins.cs" Link="CaptureUpstreamPins.cs" />
     <Compile Include="../HellForge.Core/CaptureHosts.cs" Link="CaptureHosts.cs" />
     <Compile Include="../HellForge.Core/CaptureCompletion.cs" Link="CaptureCompletion.cs" />
     <Compile Include="../HellForge.Core/CaptureLog.cs" Link="CaptureLog.cs" />

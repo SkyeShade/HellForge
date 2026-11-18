@@ -119,7 +119,10 @@ player owns it or not, so the loader refuses a paid type (`GrantRefused` in `dif
 - It reads the type's StratagemInfo row (+4, the stable id). A mod's type is checked by its own stable id and its base's.
 - The paid stable ids come from `data/paid-items.json` through `native/mod-loader/paid_stratagems.h`, which
   `sdk-headers` generates and its check keeps current.
-- The level's install waits until the game has loaded that row. A refused type is logged, and the level grants none.
+- The grant waits until the game has loaded that row; the rest of the install does not (`GrantTick` adds the grant
+  later). The game makes its world, and with it the generation block, about when that row loads. A block made before
+  the install keeps the old layout, and a larger map then overruns it: the drop never lands. A refused type is logged,
+  and the level grants none.
 
 The check runs in each player's loader. How a joiner's game handles a mission group the host sends (RPC 0xC953DB6D)
 is not traced, so a changed host's paid stratagem may still reach it.
@@ -305,9 +308,18 @@ A request makes the level need the moved block, even a level with no larger map 
 while the game runs keeps the arrays it found. Locations stop at 65024 because the stamp index keeps a location's id in
 16 bits (0xF35054).
 
-Blocks are made with a world, after the loader installs this, and if one exists already, the move is skipped. Structured
-maps (map type 2, the mega cities, another generator) grow too. Their revoronoi, grid and vertex buckets are scaled the
-same way (difficulty_cities.c).
+The game makes one world per start (`CreateWorld` 0xAB8B70), with its block (`CreateGenerationBlock` 0xF6E710), a few
+seconds after game.dll decodes. When the install came after that, a larger map overran the old block and the drop never
+landed (#422). A slow `HF_EVENT_GAME_LOADED` handler or the wait for the difficulty tables did it. So:
+
+- The move runs before the mods hear that event (`MoveGenerationBlockEarly`, from `WatchLoaded`). Its inputs are final
+  by then: `add_difficulty` and `generation_capacity` count only from `hellforge_mod_init`.
+- The rest of level 11 installs later, as before, and its step 52 does nothing.
+- If the game made its block first anyway, the checks refuse level 11 for the session before any step writes ("the game
+  made its generation block before HellForge could enlarge it").
+
+Structured maps (map type 2, the mega cities, another generator) grow too. Their revoronoi, grid and vertex buckets are
+scaled the same way (difficulty_cities.c).
 
 ### City streets
 

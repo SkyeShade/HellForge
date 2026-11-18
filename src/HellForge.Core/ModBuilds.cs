@@ -90,6 +90,29 @@ public static class ModBuilds
         catch (Exception error) when (error is JsonException or IOException) { return null; }
     }
 
+    // Where a source mod's build stands, as the Mods page and HellForge.Cli's mods show it (null for a mod without sources):
+    //   not-built        never built here: the next session builds it
+    //   built            built at Built, and sessions reuse it while its sources, the SDK and the game build stay the same
+    //   did-not-compile  the current sources failed (Error holds the compiler's message); the mod stays off until fixed
+    //   tools-failed     the last build failed in the mod tools (Zig), not the mod; the next session unpacks Zig again
+    //   changed          its sources, the SDK or the game build changed since its last build: the next session builds it
+    //   unreadable       its sources could not be read (Error says why)
+    // A failed build whose sources changed since is "changed" with its old Error: the next session tries again.
+    public sealed record BuildStatus(string State, DateTime? Built, string? Error);
+
+    public static BuildStatus? Status(InstallLayout install, ModManifest mod, ModSdk? sdk, bool toolsReady)
+    {
+        if (!mod.HasSource) return null;
+        var record = Record(install, mod.Id);
+        bool current;
+        try { current = record != null && sdk != null && toolsReady && record.Key == Key(mod.Folder, sdk, SupportedBuild.Current.BuildId); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return new("unreadable", null, error.Message); }
+        if (record == null) return new("not-built", null, null);
+        if (record.Error != null && ToolsFailure(record.Error)) return new("tools-failed", record.Built, record.Error);
+        if (record.Error != null) return current ? new("did-not-compile", record.Built, record.Error) : new("changed", record.Built, record.Error);
+        return current ? new("built", record.Built, null) : new("changed", record.Built, null);
+    }
+
     // What a build before the session (the Linux wrapper's build-source-mods) builds: the player's enabled mods and, when
     // the session follows a mod sync (sync: the launcher's --mod-sync), the host's mods it plays from the synced store,
     // resolved as the session's mods-stage resolves them (ModSyncSession.Resolve; sandboxed: whether the session is, so a

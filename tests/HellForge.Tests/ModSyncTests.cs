@@ -268,6 +268,19 @@ static class ModSyncTests
             check(A(ModSyncPlan.Make(bundled, true, own, locator.Find, none), host.Mods[0].Id) == SyncAction.Update, "A different bundled mod is another HellForge.");
         });
 
+        test("Mod sync: a stats mod with a Rearms after uses tick is shared (every machine refills every player's uses); its uses alone stay per-player", () =>
+        {
+            var folder = Path.Combine(root, "sync-rearm");
+            Write(Path.Combine(folder, "rearm"), ModCatalog.ManifestName, Manifest("test.rearm", "1"));
+            Write(Path.Combine(folder, "rearm"), StatsData.FileName,
+                """{"format":1,"stratagems":{"Orbital Railcannon Strike":{"uses":3,"stratagem.rearms_after_uses":1}}}""");
+            Write(Path.Combine(folder, "uses"), ModCatalog.ManifestName, Manifest("test.uses", "1"));
+            Write(Path.Combine(folder, "uses"), StatsData.FileName, """{"format":1,"stratagems":{"Orbital Railcannon Strike":{"uses":3}}}""");
+            var (loaded, problems) = ModCatalog.Load(folder);
+            check(loaded.Count == 2, "Fixture mods load: " + string.Join(" | ", problems));
+            check(loaded.Single(m => m.Id == "test.rearm").Coop == CoopTier.Shared && loaded.Single(m => m.Id == "test.uses").Coop == CoopTier.PerPlayer,
+                "The rearm tick makes its mod shared; uses alone do not.");
+        });
         test("Mod sync: only what HellForge checks itself downloads unverified: data specs and network field types; a stats mod is per-player; raw data needs the verified list, from friends too", () =>
         {
             var folder = Path.Combine(root, "sync-classes");

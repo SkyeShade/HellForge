@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "enemies": {
+    "Impaler": { "summon.count": 5 },
+    "warrior_big_tier2": { "summon.family": 3517152816, "summon.count": 2 }
+  },
+  "compositions": {
+    "terminids/family_1/row_3": { "composition.group_0_key": 2406941944 }
+  },
+  "difficulty": {
+    "7": { "difficulty.patrol_cap_terminids": 200, "difficulty.traveller_interval_terminids": 60 }
+  }
+}

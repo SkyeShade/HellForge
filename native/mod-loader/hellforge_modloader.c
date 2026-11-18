@@ -161,11 +161,10 @@ static HfApi g_api;
 
 /* ---- memory ----------------------------------------------------------------------------------------------------- */
 
-static int SafeRead(uintptr_t address, void* buffer, size_t size)
-{
-    SIZE_T read = 0;
-    return ReadProcessMemory(GetCurrentProcess(), (LPCVOID)address, buffer, size, &read) && read == size ? 0 : 1;
-}
+#include "perf_fixes.c" /* HELLFORGE_PERF_OFF: which performance fixes stay off */
+#include "safe_read.c"  /* SafeRead: small reads copied in place, a fault turned into the failure return */
+
+#include "index_rows.c"
 
 /* Every range of game.dll HellForge has written (the Lua bridge's hellforge_lua_rewrites): its rva and size, a range
  * that touches the last one joined to it. A Lua runtime proving game code against reviewed bytes asks for them. A mod's
@@ -338,6 +337,7 @@ static int SwapPointer(uintptr_t at, void* value, void** old)
     return 0;
 }
 
+#include "paid_guard.c" /* before hooks.c: what mods may not hook or write, and the backend's list of refused paid ids */
 #include "hooks.c" /* every hook, a mod's or HellForge's own: one chain per function (SDK 13) */
 #include "functions.c" /* after hooks.c: game functions by name (SDK 16) */
 #include "globals.c" /* game globals by name (SDK 16) */
@@ -423,20 +423,16 @@ static const Component* LastComponentNamed(const char* name)
 }
 
 /* The one vanilla record of the component the resource's index rows name: its index; -1 when none or several do, or a
- * row does not read as an index row. */
-static int64_t VanillaRecordOf(const Component* c, uintptr_t region, uint64_t resource)
+ * row does not read as an index row. rows: the component's index rows (ReadIndexRows). */
+static int64_t VanillaRecordOf(const Component* c, const uint8_t* rows, uint64_t resource)
 {
     int64_t selected = -1;
     int owners = 0;
     for (uint32_t row = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
-        if (SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16)) return -1;
         uint64_t id;
         uint32_t record, flags;
-        memcpy(&id, entry, 8);
-        memcpy(&record, entry + 8, 4);
-        memcpy(&flags, entry + 12, 4);
+        IndexRowAt(rows, row, &id, &record, &flags);
         if (record >= c->records || flags != 0) return -1;
         if (id == resource) { owners++; selected = record; }
     }
@@ -444,12 +440,11 @@ static int64_t VanillaRecordOf(const Component* c, uintptr_t region, uint64_t re
 }
 
 /* Whether another entity (not a copy of a base) names the selected record too: refused (1) unless `shared`. */
-static int SharedRecordRefused(const Component* c, uintptr_t region, uint64_t resource, uint32_t selected, int shared)
+static int SharedRecordRefused(const Component* c, const uint8_t* rows, uint64_t resource, uint32_t selected, int shared)
 {
     for (uint32_t row = 0, sharers = 0; row < c->indices; row++)
     {
-        uint8_t entry[16];
-        SafeRead(region + c->offset + 28 + (uintptr_t)row * 16, entry, 16);
+        const uint8_t* entry = rows + (size_t)row * 16;
         uint64_t id;
         uint32_t record;
         memcpy(&id, entry, 8);
@@ -480,8 +475,10 @@ static uintptr_t ComponentRecordOf(const char* name, uint64_t resource, uint32_t
     memcpy(&index, head, 4);
     memcpy(&extent, head + 20, 4);
     if (index != c->index || memcmp(head + 4, c->header, 28) != 0 || (uint64_t)c->recordOffset + (uint64_t)c->records * c->stride > extent) return 0;
-    int64_t selected = VanillaRecordOf(c, region, resource);
-    if (selected < 0 || SharedRecordRefused(c, region, resource, (uint32_t)selected, shared)) return 0;
+    const uint8_t* rows = ReadIndexRows(region + c->offset + 28, c->indices);
+    if (rows == NULL) return 0;
+    int64_t selected = VanillaRecordOf(c, rows, resource);
+    if (selected < 0 || SharedRecordRefused(c, rows, resource, (uint32_t)selected, shared)) return 0;
     if (stride != NULL) *stride = c->stride;
     return region + c->offset + 28 + c->recordOffset + (uintptr_t)selected * c->stride;
 }
@@ -522,6 +519,7 @@ static int ApiSubscribe(HfMod* mod, uint32_t kind, HfListener listener, void* us
 static void ChannelInstall(uintptr_t game);
 #include "registry.c"
 #include "table_growth.c" /* the component tables the registry grows */
+#include "registry_fired.c" /* what a weapon fires: its beam or arc type, its spray damage */
 #include "registry_load.c" /* the registry at work when the entity data loads */
 #include "damage.c"
 #include "beam_arc.c"
@@ -570,8 +568,11 @@ static void ChannelInstall(uintptr_t game);
 #include "actions.c" /* after refs.c (packages) and events.c (the readers) */
 #include "shots.c" /* after actions.c: the players (event_polls.c), RefCheck (refs.c), the field records (fields.c) */
 #include "rounds.c" /* after shots.c: its players and wielders; the projectile and damage lists (projectiles.c, damage.c) */
+#include "deploys.c" /* after rounds.c: RoundBase */
 #include "shield_block.c" /* after event_polls.c: its readers; the game thread calls ShieldBlockTick */
+#include "explosion_cover.c" /* an explosion's knockback waits for its damage's line of sight */
 #include "render_guards.c" /* the renderer's freed-texture and full-job-pool crashes */
+#include "perf_all.c" /* the performance fixes, after render_guards.c */
 
 /* Set as the game quits (mod_status.c DllMain): its other threads are gone, and a lock one of them held stays held. */
 static volatile LONG g_exiting;
@@ -722,11 +723,14 @@ static void WatchLoaded(void)
     Note("game.dll loaded and decoded");
     ReserveNearGame(ApiModuleBase("game.dll", NULL)); /* before the game's own allocations fill the 2 GB around it */
     PhysicsPools(ApiModuleBase("game.dll", NULL)); /* before the plugin setup builds the physics pools */
+    RecordHashInstall(); /* before the plugin setup builds the destruction-record map */
     StateMoves(ApiModuleBase("game.dll", NULL)); /* before the plugin setup allocates the game state */
+    KnnGridInstall(); /* before any level is generated */
     StartCrashWorker(); /* crash_notes.c: the thread that notes a stack overflow */
     AddVectoredExceptionHandler(0, CrashNote); /* after other vectored handlers; it only logs and passes the fault on */
     InstallFailFastNote();
     InstallBehaviours(ApiModuleBase("game.dll", NULL)); /* before the entity data loads: copies name them */
+    MoveGenerationBlockEarly(ApiModuleBase("game.dll", NULL)); /* before the mods' handlers: the game makes the block with its world (#422) */
     StartRegistry();
     StartProjectiles();
     Fire(HF_EVENT_GAME_LOADED);
@@ -762,19 +766,32 @@ static void WatchStats(void)
     if ((g_statCount || g_statsProbeCount) && !(g_statsTablesDone[0] && g_statsTablesDone[1] && g_statsTablesDone[2]) && g_fired[HF_EVENT_GAME_LOADED])
         StatsTablesReady(ApiModuleBase("game.dll", NULL));
     if (g_fired[HF_EVENT_PROJECTILES_READY]) StatsExtraReady();
-    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SpawnGuardsWatch(); ShotsTick(); RoundsTick(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { StatsBoostersReady(); StatsMeleeReady(); WatchEnemyRosters(); StatsDirectorReady(); SummonsTick(); SpawnGuardsWatch(); VehicleBoxWatch(); ShotsTick(); RoundsTick(); DeploysTick(); }
 }
 
 static void WatchInstalls(void)
 {
     if (g_fired[HF_EVENT_GAME_LOADED] && g_tickState == 0) TickInstall();
+    if (g_fired[HF_EVENT_GAME_LOADED]) PerfCorpseFreezeWatch();
+    HeapTrimInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLoadoutPreview();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallForgeCreditsColour(); InstallForgeCreditsRoll(); }
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallLockedWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) InstallModWarbonds();
     if (g_fired[HF_EVENT_GAME_LOADED]) { InstallTerminal(); InstallTerminalCamera(); }
-    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); }
+    if (g_fired[HF_EVENT_GAME_LOADED]) { ShieldBlockInstall(); EventsInstall(); RearmInstall(); ExplosionCoverInstall(); }
+    ExplosionCoverReport();
+    AiPathBudgetWatch();
+    if (g_fired[HF_EVENT_GAME_LOADED]) PerfSpreadSortInstall();
+    EarlyStampPackagesInstall();
     RenderGuardsWatch(); /* from the start: the shader build runs before the game has loaded */
+    if (g_fired[HF_EVENT_GAME_LOADED]) OverlapGridWatch();
+    PerfSpeedTreeWatch();
+    RenderJobCopiesWatch(); /* from the start too: the render jobs run from the first frame */
+    RenderVersionRehashWatch();
+    PerfScatterCamerasWatch();
+    TreeLimitsWatch();
+    SpanRescueInstall();
     if (g_fired[HF_EVENT_GAME_LOADED]) ChannelInstall(ApiModuleBase("game.dll", NULL));
     FnHooksTick(); /* functions.c: hooks by name waiting for their code */
     if (g_fired[HF_EVENT_GAME_LOADED] && g_abilityState == 0) InstallAbilities(ApiModuleBase("game.dll", NULL));
@@ -944,13 +961,13 @@ static void Utf8ToWide(const char* text, wchar_t* out, int capacity)
 static int g_planLine;
 static char g_planBad[160];
 
-/* The plan's text, NUL-terminated (the caller frees it); NULL when it is missing, empty, 4 MB or more, or unreadable. */
+/* The plan's text, NUL-terminated (the caller frees it); NULL when it is missing, empty, 16 MiB or more, or unreadable. */
 static char* ReadPlanText(const wchar_t* path)
 {
     HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return NULL;
     DWORD size = GetFileSize(file, NULL), read = 0;
-    char* text = size > 0 && size < (4u << 20) ? (char*)malloc(size + 1) : NULL;
+    char* text = size > 0 && size < (16u << 20) ? (char*)malloc(size + 1) : NULL;
     int ok = text != NULL && ReadFile(file, text, size, &read, NULL) && read == size;
     CloseHandle(file);
     if (!ok) { free(text); return NULL; }
@@ -973,7 +990,7 @@ static int PlanGame(char** f, int n)
 {
     if (n == 2 && strcmp(f[0], "build") == 0) { snprintf(g_build, sizeof g_build, "%s", f[1]); return 1; }
     if (n == 2 && strcmp(f[0], "logs") == 0) { Utf8ToWide(f[1], g_logs, MAX_PATH); return 1; }
-    if (FnPlanLine(f, n) || GlPlanLine(f, n) || WarbondPlanLine(f, n) || PackagePlanLine(f, n)) return 1;
+    if (FnPlanLine(f, n) || GlPlanLine(f, n) || WarbondPlanLine(f, n) || PackagePlanLine(f, n) || PaidGuardPlanLine(f, n)) return 1;
     if (n == 2 && strcmp(f[0], "forge_credits_chance") == 0) { int p = atoi(f[1]); g_forgeCreditChance = p < 0 ? 0 : p > 100 ? 100 : p; return 1; }
     if (n >= 4 && strcmp(f[0], "game_pin") == 0)
     {
@@ -1104,7 +1121,7 @@ static void ApiInit(void)
         ApiBrowseState, ApiBrowseLobby, ApiBrowseAsk, ApiFunction, ApiHookFunction, ApiGlobal, ApiSetStatus,
         ApiIsAuthority, ApiEntityOfNetwork, ApiSend, ApiShareSet, ApiShareGet, ApiShareRow,
         ApiLoadPhase, ApiUnhook, ApiAddExplosion, ApiExplosionRow, ApiAddBeam, ApiBeamRow, ApiAddArc, ApiArcRow, ApiAddAttachment, ApiAddEnemy, ApiAddEnemySwap, ApiAddEnemySquad, ApiRpcListen, ApiRpcSend,
-        ApiAddScreen, ApiScreenShow, ApiGenerationCapacity, ApiAddPattern};
+        ApiAddScreen, ApiScreenShow, ApiGenerationCapacity, ApiAddPattern, ApiUiOpen, ApiUiSet, ApiUiOn, ApiUiClose};
 }
 
 /* One mod of the plan set up: its log opened, then a code mod's DLL loaded and its hellforge_mod_init called. */
@@ -1166,6 +1183,7 @@ __declspec(dllexport) int hellforge_loader_start(const wchar_t* plan)
     g_modsSettingUp = 1;
     for (int k = 0; k < g_modCount; k++) SetupMod(&g_mods[setupOrder[k]]);
     g_modsSettingUp = 0;
+    StatsResolveAll(); /* stats.c: the plan's names of mods' content, now that the mods added it */
     FinishSetupEdits(); /* fields.c: the edits queued while the mods set up, reported and applied in load order */
     CoopDiagStart(); /* coop_diag.c: before the event sources install (they hook the kinds someone listens to) */
     OpenSessionEnd(); /* mod_status.c: the session runner's stop, which the watch thread waits on */
