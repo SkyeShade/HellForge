@@ -169,18 +169,24 @@ static void NavRetile(uint32_t id, uintptr_t level)
  * Game World's render objects ("max render objects", 0xAB189D in the same
  * world creation) size its culling systems (N/8 for the main visibility set, 98304, which then ran out at exe
  * 0x58E14B): 0xC0000 -> 0x200000 (handles keep 24 bits, 2 generation bits left; ~+120 MB). Dynamic actors 32768 ->
- * 131072, keyframed 8192 -> 32768 and motions 73728 -> 131072 follow the same 4 x units.
+ * 131072, keyframed 8192 -> 32768 and motions 73728 -> 131072 follow the same 4 x units. For about 1,000 enemies the
+ * ragdolls get 2048 and their actors 65536, and the AI config (0x4EDEC0) its 512 avoidance characters, obstacles and
+ * steering records 2048 each: a full avoidance pool returned -1 and its next lookup crashed (exe 0x7D180B).
  * [game+0x3326380] is set by the setup's first call (0x4EDC62): while it is 0, the setup has not started. */
-static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[10]; uint32_t value; } kPhysicsPools[9] = {
-    {0x4EE32Bu, 7, 3, {0xC7, 0x45, 0x9C, 0x00, 0x20, 0x00, 0x00}, 0x8000u},                        /* config +0x2C ragdoll actors */
-    {0x4EE35Cu, 7, 3, {0xC7, 0x45, 0xAC, 0x00, 0x02, 0x00, 0x00}, 0x400u},                         /* config +0x3C ragdolls */
+static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[10]; uint32_t value; } kPhysicsPools[13] = {
+    {0x4EE32Bu, 7, 3, {0xC7, 0x45, 0x9C, 0x00, 0x20, 0x00, 0x00}, 0x10000u},                       /* config +0x2C ragdoll actors */
+    {0x4EE35Cu, 7, 3, {0xC7, 0x45, 0xAC, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* config +0x3C ragdolls */
     {0xAB19F8u, 10, 6, {0xC7, 0x85, 0x20, 0x05, 0x00, 0x00, 0x00, 0x90, 0x00, 0x00}, 0x20000u},   /* Havok world motions */
     {0xAB19EEu, 10, 6, {0xC7, 0x85, 0x1C, 0x05, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00}, 0x40000u},   /* Havok world bodies */
     {0x4EE324u, 7, 3, {0xC7, 0x45, 0x98, 0x00, 0x00, 0x02, 0x00}, 0x40000u},                       /* config +0x28 static actors */
     {0x4EE371u, 7, 3, {0xC7, 0x45, 0xBC, 0x00, 0x80, 0x00, 0x00}, 0x10000u},                       /* config +0x4C navmesh cutters */
     {0x4EE31Du, 7, 3, {0xC7, 0x45, 0x94, 0x00, 0x80, 0x00, 0x00}, 0x20000u},                       /* config +0x24 dynamic actors */
     {0x4EE332u, 7, 3, {0xC7, 0x45, 0x90, 0x00, 0x20, 0x00, 0x00}, 0x8000u},                        /* config +0x20 keyframed actors */
-    {0xAB189Du, 8, 4, {0xC7, 0x44, 0x24, 0x58, 0x00, 0x00, 0x0C, 0x00}, 0x200000u}};             /* Game World render objects */
+    {0xAB189Du, 8, 4, {0xC7, 0x44, 0x24, 0x58, 0x00, 0x00, 0x0C, 0x00}, 0x200000u},              /* Game World render objects */
+    {0x4EE0BBu, 7, 3, {0xC7, 0x45, 0xFB, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* AI config +0x44: steering pool */
+    {0x4EE0ADu, 7, 3, {0xC7, 0x45, 0xFF, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* +0x48 avoidance characters */
+    {0x4EE0C2u, 7, 3, {0xC7, 0x45, 0x07, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* +0x50 avoidance obstacles */
+    {0x4EE0C9u, 7, 3, {0xC7, 0x45, 0x0B, 0x00, 0x02, 0x00, 0x00}, 0x800u}};                        /* +0x54 avoidance pool 3 */
 #define DIF_PHYSICS_SETUP 0x3326380u
 static int g_physicsPools; /* 0 waiting, 1 enlarged, -1 left as they are */
 /* Polled from the loader's thread once game.dll is decoded. */
@@ -194,7 +200,7 @@ static void PhysicsPools(uintptr_t game)
         Note("physics: the engine's pools were already built: ragdolls keep 8192 actors (about 230 enemies at once)");
         return;
     }
-    for (int i = 0; i < 9; i++)
+    for (int i = 0; i < 13; i++)
     {
         uint8_t bytes[10];
         if (SafeRead(game + kPhysicsPools[i].rva, bytes, kPhysicsPools[i].length) || memcmp(bytes, kPhysicsPools[i].pin, kPhysicsPools[i].length) != 0)
@@ -204,7 +210,7 @@ static void PhysicsPools(uintptr_t game)
             return;
         }
     }
-    for (int i = 0; i < 9; i++)
+    for (int i = 0; i < 13; i++)
         if (ApiWrite(game + kPhysicsPools[i].rva + kPhysicsPools[i].at, &kPhysicsPools[i].value, 4))
         {
             g_physicsPools = -1;
@@ -212,7 +218,7 @@ static void PhysicsPools(uintptr_t game)
             return;
         }
     g_physicsPools = 1;
-    Note("physics: pools enlarged before the engine built them: ragdoll actors 32768, ragdolls 1024, motions 131072, bodies and static actors 262144, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152");
+    Note("physics: pools enlarged before the engine built them: ragdoll actors 65536, ragdolls 2048, motions 131072, bodies and static actors 262144, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152; AI avoidance characters, obstacles and steering 2048");
 }
 /* SpreadLocations (op 0x8B, 0xF7C310) picks the nearest location of a kind as a reference (r12d, -1 when none
  * qualifies) and sorts its candidates by their distance from it (0xF7A430) without checking: a level-11 city map (normal
