@@ -85,6 +85,8 @@ typedef struct AaSlot
     AbIntent held;
     uint8_t pendingMove, pendingFire, pendingRay, quiet, attackCount, crowd, faced;
     float vel[3], face[3], facedDir[2];
+    uint32_t charIndex;        /* its AiCharacter index when last applied in full */
+    uint8_t distant;
     AbAttack attacks[AB_ATTACKS];
     uint8_t hits[2][AA_HIT];
 } AaSlot;
@@ -115,7 +117,7 @@ static double g_aaWorkerMs, g_aaApplyMs, g_aaCaptureMs;
 static LONG64 g_aaStat[12];           /* frames, busy, agents, engaged, skipped, moves, fires, rays, visible, answered, thinks, informs */
 static LONG64 g_aaLast[12];
 static int g_aaListed;
-static int g_aaMoveOn, g_aaFieldsOn;  /* phase 2 (our movement and avoidance), phase 3 (fields on change) */
+static int g_aaMoveOn, g_aaFieldsOn, g_aaLodOn;  /* phase 2 (our movement and avoidance), phase 3 (fields on change) */
 static AbMove g_aaMoves[AB_MAX];
 static uint32_t g_aaSteerMark[AB_MAX]; /* AiCharacter index -> the frame + 1 phase 2 moved it in */
 static void* volatile g_aaSteerNext;
@@ -270,6 +272,17 @@ static void AaPath(uint32_t entity, AbAgentIn* a)
     a->crowd = 1;
 }
 
+/* Phase 5: over 100 m from every Helldiver (the snapshot's players). */
+static int AaFar(const float* p)
+{
+    for (uint32_t k = 0; k < g_aaSnap.playerCount; k++)
+    {
+        float dx = p[0] - g_aaSnap.players[k].pos[0], dy = p[1] - g_aaSnap.players[k].pos[1];
+        if (dx * dx + dy * dy <= 10000.0f) return 0;
+    }
+    return g_aaSnap.playerCount > 0;
+}
+
 /* A new slot for an entity: its perceiver's eye scan off (the brain sees for it), memory fresh. */
 static int AaRegister(uint32_t entity, uint32_t unit)
 {
@@ -298,6 +311,7 @@ static int AaCapture(uintptr_t ai, uint32_t index, uint8_t* info, AbAgentIn* a, 
     if (fresh || (g_aaFrame + (uint32_t)slot) % 60u == 0) AaAttacks(ai, sl);
     a->crowd = 0;
     if (g_aaMoveOn) AaPath(entity, a);
+    a->distant = sl->distant = (uint8_t)(g_aaLodOn && AaFar(a->pos));
     a->attackCount = sl->attackCount;
     memcpy(a->attacks, sl->attacks, sizeof a->attacks);
     AaMapPut(next, entity, (uint32_t)slot);
@@ -414,6 +428,19 @@ static void AaCrowdApply(AaSlot* sl)
         sl->facedDir[0] = sl->face[0]; sl->facedDir[1] = sl->face[1];
     }
     g_aaSteerMark[c] = g_aaFrame + 1u;
+    sl->charIndex = (uint32_t)c + 1u;
+}
+
+/* Phase 5: a far agent between its full applies (every third frame) keeps its velocity in Locomotion and is only kept
+ * out of the steering pass, when its AiCharacter index still holds it. */
+static int AaCrowdKeep(AaSlot* sl)
+{
+    uintptr_t ch = AaGlobal(AA_CHARACTERS);
+    uint32_t c = sl->charIndex - 1u;
+    if (!g_aaLodOn || !sl->distant || sl->charIndex == 0 || !ch || c >= AB_MAX || (g_aaFrame + c) % 3u == 0) return 0;
+    if (c >= *(uint32_t*)(ch + 0x1C) || *(uint32_t*)((*(uint8_t***)(ch + 0x48))[c] + 8) != sl->entity) return 0;
+    g_aaSteerMark[c] = g_aaFrame + 1u;
+    return 1;
 }
 
 /* A pending attack starts, with the game's own start for its kind, unless an ability already runs. */
@@ -435,7 +462,7 @@ static void AaApplySlot(uintptr_t ai, AaSlot* sl, const AbSnapshot* s, double no
 {
     AbIntent* in = &sl->held;
     BehaviourCtx ctx;
-    if (g_aaMoveOn && sl->crowd) AaCrowdApply(sl);
+    if (g_aaMoveOn && sl->crowd && !AaCrowdKeep(sl)) AaCrowdApply(sl);
     if (!in->engaged || in->target < 0 || (uint32_t)in->target >= s->playerCount || !AaCtx(sl->entity, &ctx)) { sl->applied = 0; return; }
     if (!sl->applied)
     {
@@ -644,7 +671,7 @@ static int AaTry(uintptr_t game, int lastTry)
         return -1;
     }
     if (!AaConfigure()) { Note("async-ai: off (HELLFORGE_ASYNC_AI)"); return -1; }
-    g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields");
+    g_aaMoveOn = AaPartOn("move"); g_aaFieldsOn = AaPartOn("fields"); g_aaLodOn = AaPartOn("lod");
     g_aaGame = game;
     g_aaWake = CreateEventW(NULL, FALSE, FALSE, NULL);
     HANDLE worker = g_aaWake ? CreateThread(NULL, 0, AaWorker, NULL, 0, NULL) : NULL;
@@ -664,6 +691,7 @@ static int AaTry(uintptr_t game, int lastTry)
     InterlockedExchange(&g_aaOn, 1);
     Note("async-ai: installed; %d enemy type(s) think on a worker thread (the Devastator's brain); move %s, fields %s",
         g_aaTypeCount, g_aaMoveOn ? "on (our movement, Havok AI avoidance off for them)" : "off", g_aaFieldsOn ? "on (per-frame fields on change)" : "off");
+    Note("async-ai: lod %s", g_aaLodOn ? "on (over 100 m from every Helldiver: thinks at 2 Hz, moved in full every third frame)" : "off");
     return 1;
 }
 

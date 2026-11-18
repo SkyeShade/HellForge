@@ -11,6 +11,7 @@
 #define AB_PLAYERS 4
 #define AB_ATTACKS 6
 #define AB_THINK_EVERY 6u      /* frames between an agent's thinks (10 a second at 60 fps), staggered by slot */
+#define AB_THINK_FAR 30u       /* the same for one far from every Helldiver (phase 5) */
 
 typedef struct AbAttack { uint32_t ability, kind; float minRange, maxRange; } AbAttack;
 
@@ -30,6 +31,7 @@ typedef struct AbAgentIn
     float rayAge;              /* seconds since it was answered */
     float pathDir[2], speed;   /* the game's navigator: direction along its path, the speed it was given */
     uint8_t pathOk, crowd;     /* a usable path direction; we move it (phase 2) */
+    uint8_t distant;               /* over 100 m from every Helldiver (phase 5) */
 } AbAgentIn;
 
 typedef struct AbPlayerIn { uint32_t entity, unit; float pos[3]; uint8_t alive; } AbPlayerIn;
@@ -329,7 +331,8 @@ static uint32_t AbRun(const AbSnapshot* s, AbIntent* out, uint8_t* thought)
     for (uint32_t i = 0; i < s->agentCount; i++)
     {
         const AbAgentIn* a = &s->agents[i];
-        int due = a->fresh || g_abMemory[a->slot % AB_MAX].entity != a->entity || (s->frame + a->slot) % AB_THINK_EVERY == 0;
+        uint32_t every = a->distant ? AB_THINK_FAR : AB_THINK_EVERY;
+        int due = a->fresh || g_abMemory[a->slot % AB_MAX].entity != a->entity || (s->frame + a->slot) % every == 0;
         thought[i] = (uint8_t)due;
         if (!due) continue;
         AbThink(&kAbDevastator, s, a, &out[i]);

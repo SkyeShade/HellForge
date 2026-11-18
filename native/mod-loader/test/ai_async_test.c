@@ -74,8 +74,21 @@ static void AbtCrowd(void)
     assert(moves[0].hasFace && moves[0].face[1] > 0.99f); /* faces the Helldiver at +y while walking +x */
 }
 
+/* Phase 5: an agent far from every Helldiver thinks every AB_THINK_FAR frames, a near one every AB_THINK_EVERY. */
+static void AbtLod(void)
+{
+    AbtScene(0.0f, 30.0f, 1);
+    AbtRun(0.1, NULL, NULL);
+    int close = 0, distant = 0;
+    for (uint32_t f = 0; f < 60; f++) { g_abtSnap.frame = f; AbRun(&g_abtSnap, g_abtOut, g_abtThought); close += g_abtThought[0]; }
+    g_abtSnap.agents[0].distant = 1;
+    for (uint32_t f = 0; f < 60; f++) { g_abtSnap.frame = f; AbRun(&g_abtSnap, g_abtOut, g_abtThought); distant += g_abtThought[0]; }
+    assert(close == 60 / AB_THINK_EVERY && distant == 60 / AB_THINK_FAR);
+}
+
 static void AsyncAiFixture(void)
 {
+    AbtLod();
     AbtCrowd();
     AbtPins();
     int moves = 0, fires = 0;
@@ -111,5 +124,5 @@ static void AsyncAiFixture(void)
     g_abtSnap.players[0].alive = 0;
     AbtRun(0.3, NULL, NULL);
     assert(!g_abtOut[0].engaged && g_abtOut[0].target == -1);
-    printf("async-ai: the brain notices, engages, keeps its distance, fires in bursts and lets go; the crowd walks its path, pushes apart and faces its target; pins refuse other bytes\n");
+    printf("async-ai: the brain notices, engages, keeps its distance, fires in bursts and lets go; the crowd walks its path, pushes apart and faces its target; far ones think less; pins refuse other bytes\n");
 }
