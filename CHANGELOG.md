@@ -367,6 +367,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Setup finds the Steam app's download in any Steam library.** With HELLDIVERS 2 in another library than Steam
+  itself (`E:\SteamLibrary` with Steam on C:), Steam can put the download in that library's `steamapps/content`, and
+  setup only watched Steam's own folder. It now looks in every library, names the game's library on the card, and checks
+  the free space on the drive Steam really downloads to ([Steam download](docs/steam-download.md)).
 - **Level 11's Launch ICBM shows the whole launch code.** A mixed mission's SSSD hard drives (from uplinks, collected
   data or SE equipment) counted as parts of the code, so after retrieving the codes it often showed one digit and
   question marks. The code now counts only the Launch Codes ([Difficulty 11](docs/internals-difficulty.md#second-primary)).
@@ -409,6 +413,10 @@ On `dev`, since 0.4.0-beta.
   name lookups itself sent the game straight to its servers. The sync saw nothing for ten minutes, and the launcher
   asked to pass the title screen. The capture now checks that the API's name leads to it before the game
   opens; when it does not, it stops and says what to turn off ([troubleshooting](docs/troubleshooting.md)).
+- **SteamOS: Sync Inventory no longer stops at "Wine could not confirm the capture CA".** With Proton Experimental,
+  Wine's `reg export` failed after the certificate was in place, and the sync stopped before the game opened. The
+  prefix's `system.reg`, which the game loads, is now the proof; a failed export is logged
+  ([the certificate check](docs/linux-account-sync.md)).
 - **Linux: Sync Inventory opens the game again.** With the snapshot signer, every sync on Linux and SteamOS stopped at
   "The Linux capture did not start within 45 seconds". The capture was listening all along. systemd keeps the signing
   service's files in `/run/private`, which only root can open, so the launcher never saw it listen. The helper now
