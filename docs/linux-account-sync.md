@@ -135,14 +135,17 @@ The supervisor imports the certificate into `steamapps/compatdata/553850/pfx`. I
 serialized `Blob`, under `HKEY_LOCAL_MACHINE\Software\Microsoft\SystemCertificates\Root\Certificates\<SHA-1>`. The import
 uses `proton run reg import` with a UTF-16 LE `.reg` file.
 
-Before the game opens, two independent checks must both hold the byte-exact Blob:
+Before the game opens, the supervisor proves the byte-exact Blob:
 
 1. The supervisor waits (bounded) for that prefix's own `wineserver -w`.
 2. It exports the key with `proton run reg export <key> <Z: path in a fresh private temp folder> /y`, and parses that
    UTF-16 LE file's `"Blob"=hex:` value.
-3. It reads `pfx/system.reg` as the second check.
+3. It reads `pfx/system.reg`, the file the game's Wine loads. This one must hold the Blob.
 
-The failure message says which check disagreed. `proton run reg query` is not used for the verdict: the measured Proton
+An export that exits with an error, writes no file or has no Blob is logged and does not stop the sync when
+`system.reg` holds the Blob. On SteamOS with Proton Experimental `reg export` exited -1 after an import that landed,
+and every sync stopped there. An export that holds another Blob stops the sync. The failure message says what each
+check found. `proton run reg query` is not used for the verdict: the measured Proton
 gives it 0 bytes of stdout even for a known key.
 
 Removal imports a delete `.reg`. It then requires `reg export` to write no file **and** `system.reg` to no longer have
