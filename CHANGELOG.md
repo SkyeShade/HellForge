@@ -358,6 +358,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Level 11's Launch ICBM shows the whole launch code.** A mixed mission's SSSD hard drives (from uplinks, collected
+  data or SE equipment) counted as parts of the code, so after retrieving the codes it often showed one digit and
+  question marks. The code now counts only the Launch Codes ([Difficulty 11](docs/internals-difficulty.md#second-primary)).
 - **Quitting after a mission no longer crashes at `helldivers2.exe+0x626296`.** As the game quits, its job workers can
   stop while the job pool is full, and the game crashed as it tried to queue one more job. When the game was told to
   quit, HellForge now ends it there with exit code 0, so the session ends as a normal quit ([crash

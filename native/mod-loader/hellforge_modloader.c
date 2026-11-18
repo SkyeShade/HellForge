@@ -531,6 +531,7 @@ static void ChannelInstall(uintptr_t game);
 #include "difficulty_ui.c" /* the level on the war table and in the HUD */
 #include "difficulty_missions.c" /* its missions and objectives */
 #include "difficulty_countdown.c" /* its mission countdown */
+#include "difficulty_codes.c" /* a mixed mission's launch code */
 #include "difficulty_cities.c" /* its larger structured maps and cities */
 #include "difficulty_carvers.c" /* before difficulty_maps.c: NavRetile re-files the navmesh's carvers */
 #include "entity_table.c" /* the entity records behind the Game block; PhysicsPools raises them */
