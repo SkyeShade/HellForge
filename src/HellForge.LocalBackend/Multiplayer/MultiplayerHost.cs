@@ -70,6 +70,7 @@ public sealed class MultiplayerHost : IAsyncDisposable
         transport = CreateTransport(settings.Link, Log);
         pipes = new PipeHost(settings.PipeName, Log);
         Lobby = new LobbyService(transport, pipes.SendLobby, Log, settings.ModDigest, warClock, settings.ModList);
+        Lobby.RequireEntityRoom = true; /* this HellForge's game keeps 4096 entities a world (entity_table.c) */
         // off the lobby service's lock; a peer admitted or joined is listed before its game hears of it (ListPeer)
         Lobby.HostedChanged += () => Task.Run(WritePeers);
         Lobby.PeerAdmitted += ListPeer;

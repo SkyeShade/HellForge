@@ -233,6 +233,13 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **Big enemy counts run faster.** With 950 to 1,100 enemies alive, a mission ran at 34.5 fps instead of 27.0, and the
+  slowest frames improved as much. Below about 400 enemies nothing visible changes
+  ([performance fixes](docs/performance-enemies.md#motion-grid)).
+  - The grids that moving enemies use to steer around each other were full past 256 enemies; they now hold 1,152.
+  - The AI's raycast and navmesh queries are shared out in small chunks, and the game thread helps instead of waiting.
+  - The navmesh edge queries are waited for only where they are read.
+  - Enemies over 100 m from every Helldiver steer every third frame.
 - **Mods load as you download them.** A zip may hold the mod in folders, beside a readme, or in a zip inside it, as
   mod sites ship them. A folder unpacked into the mods folder works the same way, and a folder of several mods loads
   each one. A zip with several mods is refused, and Mod notices names them: one zip is one mod, as friends compare it
@@ -349,6 +356,13 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Room for about 1,000 enemies.** A world now holds 4,096 entities instead of 2,048. The AI avoidance holds
+  2,048 enemies instead of 512, and the ragdolls 2,048. Past about 540 and 650 live enemies, the game used to crash.
+  A host with this change refuses an older HellForge's join, as that game would crash with so many entities
+  ([performance fixes](docs/performance.md#entity-table)).
+- **No more crash at about 400 enemies alive.** The AI's navmesh edge queries ran out of their 256 places and
+  overwrote the HUD, which crashed the game at `game.dll+0x1449D76`. They now have room for 4,096 moving enemies, and
+  the game ran past 550 alive ([performance fixes](docs/performance.md#edge-batch)).
 - **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
   after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
   them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before

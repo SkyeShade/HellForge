@@ -39,6 +39,11 @@
 #include "perf_render_job_copies_test.c"
 #include "perf_render_version_rehash_test.c"
 #include "perf_vehicle_box_test.c"
+#include "enemy_pools_test.c"
+#include "perf_motion_grid_test.c"
+#include "perf_ai_query_chunks_test.c"
+#include "perf_steer_lod_test.c"
+#include "entity_table_test.c"
 #include "perf_heap_trim_test.c"
 #include "perf_scatter_cameras_test.c"
 #include "perf_knn_grid_test.c"
@@ -5256,6 +5261,12 @@ int main(int argc, char** argv)
     RenderJobCopiesFixture();
     RenderVersionRehashFixture();
     VehicleBoxFixture();
+    EdgeBatchFixture();
+    MotionGridFixture();
+    AiQueryChunksFixture();
+    EdgeJoinLateFixture();
+    SteerLodFixture();
+    EntityTableFixture();
     HeapTrimFixture();
     PerfScatterCamerasFixture();
     KnnGridFixture();
