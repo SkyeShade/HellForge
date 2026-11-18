@@ -5,8 +5,9 @@
  * every remove of the grid's move (0x17350C0) then probes all 256 slots, and a new agent takes over another's entry.
  * At ~1,000 enemies the clip's probe loop was 11% of the game thread. Each grid set up after the fix is installed gets
  * 4,096 slots and 4,096 entries of ours (its header: +0x2400 slots, +0x2408 count, +0x2418 entries). The 9 KB the grid
- * kept inline then hold radii for 1,152 entries; entries from 1,152 on are marked taken, so the game never hands them
- * out. Included by perf_all.c: LoaderHook (hooks.c), PinMatches (packages.c), PerfFixOn, Note, g_build, ApiModuleBase. */
+ * kept inline then hold the per-entry 8 bytes for 1,152 entries (+0 the radius, +4 the agent's edge query index + 1,
+ * 0 none: edge-batch's block), zeroed as the game's component starts them; entries from 1,152 on are marked taken, so
+ * the game never hands them out. Included by perf_all.c: LoaderHook (hooks.c), PinMatches (packages.c), PerfFixOn, Note, g_build, ApiModuleBase. */
 
 #define MG_INIT 0x134A870u      /* the grid's set-up: (grid, cell size in xmm1) */
 #define MG_SLOTS_AT 0x2400u     /* header: the slots (8 bytes: key, entry index) */
@@ -17,7 +18,7 @@
 #define MG_CURSOR_AT 0x2424u    /* the next free entry */
 #define MG_GAME_COUNT 0x100u
 #define MG_COUNT 4096u
-#define MG_RADII (MG_SLOTS_AT / 8u) /* 1,152 entries have a radius inside the grid */
+#define MG_RADII (MG_SLOTS_AT / 8u) /* 1,152 entries have their 8 bytes (radius, edge index) inside the grid */
 #define MG_ENTRY 0x14u
 #define MG_TAKEN 0x7FFFFFFEu    /* the key of the entries past the radii: not free, and never in a slot */
 #define MG_MAX 8                /* grids kept; the motion component is in the game's block, made once a session */
@@ -176,7 +177,9 @@ static MgGrid* MotionGridArrays(uintptr_t grid)
     return g;
 }
 
-/* After the game's set-up of `grid`: our slots and entries, empty as the game's set-up leaves its own. */
+/* After the game's set-up of `grid`: our slots and entries, empty as the game's set-up leaves its own. The inline slots
+ * and entries become per-entry blocks: zeroed, since the clip reads a block's +4 as an edge query index (the game's
+ * slot keys there, -1, sent it 4 billion queries past the batch). */
 static void MotionGridEnlarge(uintptr_t grid)
 {
     if (!MotionGridFresh(grid)) { InterlockedIncrement(&g_mgRefused); return; }
@@ -191,6 +194,7 @@ static void MotionGridEnlarge(uintptr_t grid)
         memset(e, 0, MG_ENTRY);
         *(uint32_t*)(e + 0xC) = i < MG_RADII ? 0xFFFFFFFFu : MG_TAKEN;
     }
+    memset((void*)(grid + MG_GAME_COUNT * 8u), 0, MG_SLOTS_AT - MG_GAME_COUNT * 8u);
     *(uintptr_t*)(grid + MG_SLOTS_AT) = (uintptr_t)g->slots;
     *(uintptr_t*)(grid + MG_ENTRIES_AT) = (uintptr_t)g->entries;
     *(uint32_t*)(grid + MG_COUNT_AT) = MG_COUNT;

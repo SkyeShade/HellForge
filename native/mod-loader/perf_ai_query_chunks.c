@@ -277,7 +277,7 @@ static int AiQueryChunksInstallAt(uintptr_t exe, uintptr_t game)
         g_aqReportedAt = GetTickCount64();
         InterlockedExchange(&g_aqOn, 1);
         Note("performance fix ai-query-chunks: installed; the AI's raycast, navmesh raycast, overlap and edge gather tasks take their batch "
-            "in chunks of a %uth of a share, and the game thread runs chunks itself before it waits", AQ_SPLIT);
+            "in chunks of 1/%u of a share, and the game thread runs chunks itself before it waits", AQ_SPLIT);
         return 1;
     }
     if (join) HookRemove(NULL, game + AQ_JOIN, (void*)AiQueryChunksJoin);

@@ -129,6 +129,8 @@ static void MotionGridFixture(void)
         assert(*(uint32_t*)(grid + MG_COUNT_AT) == MG_COUNT && *(uintptr_t*)(grid + MG_SLOTS_AT) == (uintptr_t)g_mgGrids[kind].slots);
         assert(*(uintptr_t*)(grid + MG_ENTRIES_AT) == (uintptr_t)g_mgGrids[kind].entries && *(uint32_t*)(grid + MG_STEP_AT) == 2u);
         assert(*(float*)(grid + 0x2420) == (kind ? 0.1f : 0.5f) && *(float*)(grid + 0x2428) == (kind ? 10.0f : 2.0f));
+        /* the blocks past the game's 256: no edge query (+4 is 0), where the game's set-up had left its slot keys, -1 */
+        for (uint32_t e = MG_GAME_COUNT; e < MG_RADII; e++) assert(((uint32_t*)grid)[e * 2 + 1] == 0 && ((uint32_t*)grid)[e * 2] == 0);
     }
 
     /* 1,100 agents: each in its cell once with its radius, short probes, no entry past the radii */
