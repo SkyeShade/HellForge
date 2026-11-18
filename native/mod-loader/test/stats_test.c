@@ -52,6 +52,7 @@
 #include "perf_early_stamp_packages_test.c"
 #include "perf_overlap_grid_test.c"
 #include "perf_span_rescue_test.c"
+#include "ai_async_test.c"
 
 static StatEdit Edit(int mod, uint32_t value, uint32_t offset, int own)
 {
@@ -5266,6 +5267,7 @@ int main(int argc, char** argv)
     AiQueryChunksFixture();
     EdgeJoinLateFixture();
     SteerLodFixture();
+    AsyncAiFixture();
     EntityTableFixture();
     HeapTrimFixture();
     PerfScatterCamerasFixture();
