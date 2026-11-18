@@ -4,12 +4,7 @@ HellForge runs your own copy of HELLDIVERS 2 locally, against a backend on your 
 loads mods into it: new stratagems, weapons, stats and difficulties. You can play solo, or co-op over Steam with other
 players who run HellForge. It comes with an in-game editor (F8) and a C mod SDK with guides and examples.
 
-> [!WARNING]
-> **This is the `dev` branch: work in progress for the next release (0.5.0), experimental and possibly broken.** Players:
-> install the latest numbered release from the [Releases page](https://github.com/SkyeShade/HellForge/releases) instead,
-> not the Nightly. A build of this branch shows `-dev.<n>` or `-nightly.<date>` in its version.
-
-Status: beta (0.4.0-beta), made for modders first, so expect rough edges. The launcher shows its version
+Status: beta (0.5.0-beta), made for modders first, so expect rough edges. The launcher shows its version
 and the game build it targets in its bottom-left corner.
 
 ## What HellForge is and is not
@@ -40,9 +35,9 @@ check (binary data patches, raw stats) download only when HellForge has verified
 running mods you don't want, and lobbies whose host plays with edited stats (which you would play with) are hidden
 unless you show them on the Mods page.
 
-Profiles are local. A new installation's first profile starts as a fresh player after basic training (the starter
-template), and new profiles can pick another template. Sync Inventory (Profile > Account sync) brings in your own
-account's inventory and progression from the normal game.
+Profiles are local. A new installation's first profile starts from the live-like template: a fresh player until Sync
+Inventory (Profile > Account sync) brings in your own account's inventory and progression from the normal game. New
+profiles can pick another template, such as starter, to earn everything again.
 
 A sync also copies the game's item and warbond catalogues, which HellForge does not ship, so an installation needs one
 sync before its first PLAY. A sync only keeps what the normal game receives when it logs in, and sends nothing of its

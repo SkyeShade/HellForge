@@ -22,13 +22,17 @@ The interface is the commands and the JSON they print. Other files in an install
 2. If `ready.gameCopy` is false, the installation is not set up yet. Start its `HellForge.exe` once: the setup wizard
    copies (or patches) the game from the player's Steam library, confirms ownership with Steam and places the network
    block, which takes one Windows administrator prompt. Repairs also go through HellForge.exe (Settings > Check and
-   repair). Everything after that works with HellForge.exe closed.
-3. Manage mods with `mods`, `mod-add`, `mod-remove`, `mod-switch`, `mod-order` and `mod-pack`. They all work on the
+   repair).
+3. Have the player run Sync Inventory once in HellForge.exe (Profile > Account sync). It copies the game's item and
+   warbond catalogues, which HellForge does not ship (since 0.5.0-beta). In an installation that was never synced, a
+   session ends `failed` with "This installation has no game catalogue yet" as its `failure`. Premium content also
+   comes only from a sync. Everything else works with HellForge.exe closed.
+4. Manage mods with `mods`, `mod-add`, `mod-remove`, `mod-switch`, `mod-order` and `mod-pack`. They all work on the
    installation's `mods\` folder, which HellForge.exe's Mods page shows too, so both see the same list. Lua mods go in
    the same way (see [Mods](#mods)).
-4. Manage profiles and settings with `profiles` and `settings`.
-5. Start a session with `play --wait yes`, show its status lines, and stop it with `stop`.
-6. Show what happened with `logs`, and let the player send `logs --export <file.zip>` when they need help, or
+5. Manage profiles and settings with `profiles` and `settings`.
+6. Start a session with `play --wait yes`, show its status lines, and stop it with `stop`.
+7. Show what happened with `logs`, and let the player send `logs --export <file.zip>` when they need help, or
    `logs --crash-report <file.zip>` after a session that `crashed`.
 
 To update HellForge, the player runs a newer HellForge-Setup.exe on the same folder. It replaces `app\` and keeps the
@@ -81,9 +85,13 @@ standard error and exits with 1.
 | `steam-download --out <folder> [--file <a file of the build>] [--steam-root <Steam folder>] [--sign-in qr\|steamcmd] [--account <name>] [--steamcmd <folder>] [--dry-run yes]` | Downloads the supported build from Steam's servers into `--out` for the account that signs in, as setup does ([steam-download.md](steam-download.md)), copying what Steam's install already has. It is interactive: it prints a QR code on standard error to approve in the Steam app. With `--sign-in steamcmd`, Valve's SteamCMD downloads it instead into `--steamcmd` (default `<out>-steamcmd`; asks for the account name unless `--account` gives it), and SteamCMD asks for the password and any Steam Guard code in the terminal itself. The files are then checked and moved into `--out`, SteamCMD's sign-in is forgotten and SteamCMD removed, and it prints `files`, `bytes`, `by`, `destination` and `seconds`. Nothing of the sign-in is kept or printed. `--file` takes one file of the build; `--dry-run yes` prints the plan (`files`, `bytes`, `knownLocalBytes`, `downloadAtMostBytes`, `notes` and a `plan` per file) and writes nothing. Without it, prints `files`, `bytes`, `downloadedBytes`, `copiedBytes`, `destination`, `seconds` and `notes`. `--out` and `--steamcmd` must be outside any `steamapps` folder. It needs no installation. |
 | `steam-signout` | Deletes HellForge's saved Steam sign-in, the one the asset kit's fetches keep (`<ApplicationData>/HellForge/steam-login.json`; [signing in to Steam](modding/assets.md#signing-in-to-steam)). It prints `signedOut` (whether there was one) and `file`. The asset migrator's saved sign-in is its own and stays. |
 
-The tags in `mods` are `source`, `code`, `stats`, `data`, `pack`, `lua`, `bundled` and `local-stats`. The Mods page does
-not show Local Stats (the in-game editor's saved changes, always on and never compared between friends); `mods` still
-lists it, so a launcher can hide it the same way.
+The CLI's other commands, such as `package-mod`, `assets-check`, `assets-strip`, `assets-rebuild` and `unit-joints`,
+are for mod authors ([mod tools](modding/tools.md)).
+
+The tags in `mods` are `source`, `code`, `native`, `stats`, `data`, `pack`, `lua`, `bundled`, `local-stats`, `premium`
+and `unsupported` (`native`, `premium` and `unsupported` since 0.5.0-beta, see
+[source mod builds](#source-mod-builds)). The Mods page does not show Local Stats (the in-game editor's saved changes,
+always on and never compared between friends); `mods` still lists it, so a launcher can hide it the same way.
 
 Mod changes are refused while a session runs, as on the Mods page, because a session keeps the mods it started with.
 HellForge.exe can stay open meanwhile: its Mods page watches the folder.
@@ -247,6 +255,11 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 
 Once the session runner has made its run folder, `play` prints
 `{"event": "started", "runId": ..., "run": <run folder>, "pid": ..., ...}` and returns. The session goes on without it.
+
+A session that stops before its run folder exists makes `play` exit with 1 and the reason on standard error. Since
+0.5.0-beta that is the session runner's own reason from `logs\session-runner.log`. `play` also puts back the SDK
+stand-ins a session cut short left in the game copy, as HellForge.exe does when it opens. A copy that is still not
+complete names the first file that is wrong or missing.
 
 With `--wait yes`, `play` stays and prints one JSON line each time the session's status changes, then
 `{"event": "ended", "status": ..., "result": ..., "logs": ...}`. It exits with 0 when the session ended normally. Two
