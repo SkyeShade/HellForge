@@ -102,15 +102,16 @@ public partial class MainWindow
     void UpdatePlaySync(string snapshot, SnapshotInfo? info)
     {
         var synced = InventorySync.HasSnapshot(snapshot);
-        var seal = synced ? SnapshotSeal.Verify(snapshot, InventorySync.SealKeyFor(snapshot)) : null;
+        string? sealProblem = null;
+        var seal = synced ? SnapshotSeal.Verify(snapshot, out sealProblem) : null;
         var when = (seal?.CapturedUtc ?? info?.CapturedUtc)?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
         var last = when != null ? "The last sync (" + when + ")" : "The last sync";
         var locked = !synced ? "Warbonds, Superstore items and DLC gear you own stay locked in the game until you sync this profile with " +
                 "your HELLDIVERS 2 account. Sync opens the normal game through Steam and " +
                 (NativeLinux ? "the first time asks for your password to install its helper" : "asks for administrator access") +
                 "; log in and pass the title screen."
-            : seal == null ? last + " cannot be checked on this PC: it changed since, or was made on another PC. Your premium content " +
-                "stays locked in the game until you sync again."
+            : seal == null ? (sealProblem ?? last + " cannot be checked on this PC: it changed since, or was made on another PC.") +
+                " Your premium content stays locked in the game until you sync again."
             : SteamAccount.Current() is { } account && account != seal.SteamAccount ? last + " is for another Steam account than the " +
                 "one signed in. Your premium content stays locked in the game until you sync with this one."
             : null;
@@ -118,7 +119,8 @@ public partial class MainWindow
         PlaySyncTitle.Text = locked != null ? "Your premium content is not in this profile" : "Profile synced";
         PlaySyncTitle.Foreground = locked != null ? Orange : Text;
         PlaySyncText.Text = locked ?? "Premium content you owned " + (when != null ? "on " + when : "at the last sync") +
-            " is unlocked. Bought or unlocked something since? Update the sync to bring it in.";
+            " is unlocked until " + seal!.ExpiresUtc.ToLocalTime().ToString("d", CultureInfo.CurrentCulture) +
+            ". Bought or unlocked something since? Update the sync to bring it in.";
         if (locked != null) PlaySyncCard.BorderBrush = Orange;
         else PlaySyncCard.ClearValue(Border.BorderBrushProperty);
         PlaySyncButton.Content = synced ? "Update profile sync" : "Sync profile";
@@ -363,6 +365,7 @@ public partial class MainWindow
     void RefreshSync()
     {
         if (syncProxy == null || syncProfile == null || syncDir == null || syncSnapshotDir == null) return;
+        syncProxy.Refresh();
         if (!syncProxy.HasExited)
         {
             WatchCapture(syncProfile, syncDir, syncSnapshotDir);

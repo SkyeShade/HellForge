@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.pod-break-probe",
+  "name": "Pod break probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: an EAT-17 copy (register_entity, as the Stratagem Compendium's Expendables are) on a copy of the EAT-17's hellpod rack, and the vanilla rack, each under a stratagem of its own put in the loadout on the ship; called in, each rack is broken by the game's own rack death, and the dropped launchers' pickups are logged, one PROBE line per check, for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "pod_break_probe.dll", "sdk": 16 }
+}

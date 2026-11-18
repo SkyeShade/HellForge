@@ -242,19 +242,51 @@ public sealed partial class RegisteredItems(string path)
                         tracks[track.Package] = track;
                         byWeapon[item.MixId] = track;
                     }
-            return session = new Session(bytes, loaded, admitted, tracks, byWeapon, keeps, PlanPatterns(Checked(Patterns(bytes), admitted), admitted, keeps),
-                Checked(Attachments(bytes), admitted));
+            var attachments = PlanAttachments(Checked(Attachments(bytes), admitted), admitted, keeps, out var attachmentItems);
+            return session = new Session(bytes, loaded, admitted, tracks, byWeapon, keeps,
+                PlanPatterns(Checked(Patterns(bytes), admitted), admitted, keeps, attachmentItems), attachments);
         }
+    }
+
+    // The catalogue items left after the game's own, the admitted items and those reserved for others; no limit without
+    // the vanilla catalogue (Source).
+    int CatalogueRoom(Vanilla? game, IReadOnlyList<Item> admitted, Capacity keeps) =>
+        game == null ? int.MaxValue : keeps.Items - game.Items - ReservedCatalogue - admitted.Sum(i => Cost(game, i));
+
+    // The attachments that fit, in the order mods added them: each with its child on every admitted weapon it is offered
+    // on (AddAttachmentChildren), whole within the catalogue's room after the items, or left out (said). An attachment
+    // past the game's catalogue was cut with the weapons after it (mods may add 1,024, on 16 weapons each). used: the
+    // catalogue items the kept ones take.
+    List<ModAttachment> PlanAttachments(IReadOnlyList<ModAttachment> attachments, IReadOnlyList<Item> admitted, Capacity keeps, out int used)
+    {
+        used = 0;
+        if (attachments.Count == 0) return [];
+        var game = Game();
+        var room = CatalogueRoom(game, admitted, keeps);
+        var weapons = admitted.Where(i => i.IsWeapon).Select(i => i.MixId).ToHashSet();
+        List<ModAttachment> kept = [];
+        foreach (var a in attachments)
+        {
+            var cost = game == null || !game.ItemChildren.ContainsKey(a.CopyOf) ? 0 : a.Weapons.Distinct().Count(weapons.Contains);
+            if (cost > room - used)
+            {
+                ReportEntry(a.Mod, "attachment", a.MixId, $"the game keeps {keeps.Items} catalogue items, and it needs {cost} more where {room - used} are left");
+                continue;
+            }
+            used += cost;
+            kept.Add(a);
+        }
+        return kept;
     }
 
     // The patterns that fit, in the order mods added them: a weapon pattern on each weapon it goes on that takes another
     // (PatternsPerWeapon), a unit pattern whose base skin the catalogue has; each whole within the catalogue's room after
-    // the items. Without the vanilla catalogue (Source) only weapons named outright.
-    List<PatternPlan> PlanPatterns(IReadOnlyList<ModPattern> patterns, IReadOnlyList<Item> admitted, Capacity keeps)
+    // the items and the attachments. Without the vanilla catalogue (Source) only weapons named outright.
+    List<PatternPlan> PlanPatterns(IReadOnlyList<ModPattern> patterns, IReadOnlyList<Item> admitted, Capacity keeps, int attachmentItems)
     {
         if (patterns.Count == 0) return [];
         var game = Game();
-        var room = game == null ? int.MaxValue : keeps.Items - game.Items - ReservedCatalogue - admitted.Sum(i => Cost(game, i));
+        var room = game == null ? int.MaxValue : CatalogueRoom(game, admitted, keeps) - attachmentItems;
         Dictionary<uint, int> perWeapon = [];
         List<PatternPlan> plans = [];
         foreach (var p in patterns)

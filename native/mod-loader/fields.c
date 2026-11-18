@@ -365,6 +365,8 @@ static uintptr_t TableRowOf(const char* component, uint64_t id, int* ready)
     uintptr_t game = ApiModuleBase("game.dll", NULL);
     int projectile = !strcmp(component, "ProjectileSettings"), damage = !strcmp(component, "DamageInfo");
     if (projectile || damage || !strcmp(component, "StratagemDefinition")) return TypedRowOf(game, projectile, damage, id, ready);
+    if (!strcmp(component, "StratagemCode")) return CodesRowOf(id, ready);
+    if (!strcmp(component, "StratagemRearm")) return RearmRowOf(id, ready);
     if (!strcmp(component, "BoosterSettings")) return BoosterRowOf(id, ready);
     if (!strncmp(component, "Passive", 7)) return PerkRow(component, id, ready);
     if (!strcmp(component, "MeleeHitVolume")) return MeleeRowOf(id, ready);
@@ -818,6 +820,8 @@ static void InferStratagemPackages(void)
     }
 }
 
+#include "waiting_edits.c" /* WaitingTables, ApplyWaitingEdits: the edits that wait for their tables */
+
 /* Every deferred edit, in the order mods queued them: each time the game loads its entity data, before the mods hear of it.
  * Entity records are fresh after a load, so live edits take their originals again; table rows are not reloaded. */
 static void ApplyFieldEdits(void)
@@ -830,17 +834,11 @@ static void ApplyFieldEdits(void)
     {
         int failed = 0, waiting = 0;
         for (int i = 0; i < g_editCount; i++) { failed += g_edits[i].failed; waiting += g_edits[i].waiting; }
-        Note("deferred edits: %d applied, %d refused, %d waiting for their tables", g_editCount - failed - waiting, failed, waiting);
+        char tables[256];
+        WaitingTables(tables, sizeof tables);
+        Note("deferred edits: %d applied, %d refused, %d waiting for their tables%s", g_editCount - failed - waiting, failed,
+            waiting, tables);
     }
-    ReleaseSRWLockExclusive(&g_fieldsLock);
-}
-
-/* Edits whose tables have loaded since (the watch loop calls this while any waits). */
-static void ApplyWaitingEdits(void)
-{
-    AcquireSRWLockExclusive(&g_fieldsLock);
-    g_editsWaiting = 0;
-    for (int i = 0; i < g_editCount; i++) if (g_edits[i].waiting) ApplyEdit(&g_edits[i]);
     ReleaseSRWLockExclusive(&g_fieldsLock);
 }
 
@@ -1093,6 +1091,7 @@ static HfContent WeaponContent(const Weapon* w, uint32_t size)
     c.base_entity = w->copies;
     c.beam = BeamTypeUsable(w->beam) ? w->beam : 0;
     c.arc = ArcTypeUsable(w->arc) ? w->arc : 0;
+    c.spray_damage = DamageUsable(w->sprayDamage) ? w->sprayDamage : 0;
     return c;
 }
 

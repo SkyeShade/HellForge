@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "weapons": {
+    "StA-X3 W.A.S.P. Launcher": { "missile.spread.enabled": 0 },
+    "MLS-4X Commando": {
+      "missile.spread.enabled": 1,
+      "missile.spread.direction_min": 90,
+      "missile.spread.direction_max": 90,
+      "missile.spread.angle_min": 45,
+      "missile.spread.angle_max": 45,
+      "missile.spread.veer_start": 0.05,
+      "missile.spread.veer_end": 0.4,
+      "missile.spread.return_time": 1,
+      "missile.spread.return_turn_rate": 1
+    }
+  }
+}

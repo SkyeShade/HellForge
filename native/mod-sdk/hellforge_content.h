@@ -794,12 +794,18 @@
 #define HF_DAMAGE_SOLDIER_FLAMER_AND_1_OTHER 10u         /* soldier_flamer and 1 other - shared: soldier_flamer, soldier_mg_ivory_legion */
 #define HF_DAMAGE_AUTOMATON_FIRE_BRIGADE_SHOTGUN_ROUND_AND_1_OTHER 12u /* Automaton Fire Brigade Shotgun Round and 1 other - shared: Automaton Fire Brigade Shotgun Round, soldier_shotgun_ivory_legion */
 #define HF_DAMAGE_SIEGE_ENGINE 13u                       /* siege_engine */
+#define HF_DAMAGE_FLAM40_FLAMETHROWER 14u                /* FLAM-40 Flamethrower */
+#define HF_DAMAGE_FLAM66_TORCHER 15u                     /* FLAM-66 Torcher */
+#define HF_DAMAGE_P72_CRISPER 16u                        /* P-72 Crisper */
+#define HF_DAMAGE_BFLAM80_CREMATOR_AND_2_OTHERS 17u      /* B/FLAM-80 Cremator and 2 others - shared: B/FLAM-80 Cremator, A/FLAM-40 Flame Sentry, combat_walker_flamethrower */
 #define HF_DAMAGE_POSSIBLY_HIVE_LORD_SPEWING_PROJECTILE_AND_1_OTHER 18u /* Possibly Hive Lord Spewing Projectile and 1 other - shared: Possibly Hive Lord Spewing Projectile, hive_lord */
 #define HF_DAMAGE_HIVE_LORD_ABILITY_7 20u                /* hive_lord (ability) #7 */
 #define HF_DAMAGE_HIVE_LORD_ABILITY_9 21u                /* hive_lord (ability) #9 */
 #define HF_DAMAGE_HIVE_LORD_ABILITY 22u                  /* hive_lord (ability) */
+#define HF_DAMAGE_G142_PYROTECH 25u                      /* G-142 Pyrotech */
 #define HF_DAMAGE_G142_PYROTECH_DETONATION 26u           /* G-142 Pyrotech (detonation) */
 #define HF_DAMAGE_GP20_ULTIMATUM 27u                     /* GP-20 Ultimatum */
+#define HF_DAMAGE_TX41_STERILIZER 28u                    /* TX-41 Sterilizer */
 #define HF_DAMAGE_GL28_BELTFED_GRENADE_LAUNCHER 30u      /* GL-28 Belt-Fed Grenade Launcher */
 #define HF_DAMAGE_GL28_BELTFED_GRENADE_LAUNCHER_IMPACT 31u /* GL-28 Belt-Fed Grenade Launcher (impact) */
 #define HF_DAMAGE_GL21_GRENADE_LAUNCHER_AND_8_OTHERS 32u /* GL-21 Grenade Launcher and 8 others - shared: GL-21 Grenade Launcher, GL-52 De-Escalator, A/GM-17 Gas Mortar Sentry, A/M-12 Mortar Sentry, A/M-23 EMS Mortar Sentry, Automaton Mortar Round, StA-X3 W.A.S.P. Launcher, assault_walker ... */

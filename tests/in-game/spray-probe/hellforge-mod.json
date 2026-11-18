@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "hellforge.spray-probe",
+  "name": "Spray probe (in-game test)",
+  "version": "1.0.0",
+  "description": "In-game test only, never shipped: two FLAM-40 copies spraying damage of their own (SDK 20, HfWeapon.spray_damage), their own spray records checked, the hot copy's stratagem in the loadout on the ship and its call-in logged, one PROBE line per check for the development harness (tests/in-game/README.md).",
+  "gameplay": true,
+  "code": { "dll": "spray_probe.dll", "sdk": 20 }
+}

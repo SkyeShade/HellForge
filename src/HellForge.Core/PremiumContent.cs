@@ -108,7 +108,7 @@ public sealed class PremiumContent
 
     static IEnumerable<uint> OwnedItems(string? snapshotDir, ulong? steamAccount)
     {
-        if (snapshotDir == null || steamAccount == null || SnapshotSeal.Verify(snapshotDir, InventorySync.SealKeyFor(snapshotDir)) is not { } seal ||
+        if (snapshotDir == null || steamAccount == null || SnapshotSeal.Verify(snapshotDir) is not { } seal ||
             seal.SteamAccount != steamAccount) return [];
         try
         {

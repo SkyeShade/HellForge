@@ -14,6 +14,10 @@ import sys
 from pathlib import Path
 
 BOX = {'copy': '0x1B798F4F99A0B8C8', 'material': '0x79F6761BE6F61772', 'at': '0x69C'}  # decal_box: a 1 m cube, one material slot
+# The box's LOD footer (unit +0xD4: min, max, half diagonal, node 3), which the engine picks the LOD and culls with in the unit's
+# own space, unscaled: a decal scaled up past 1 m vanished past about 90 m. The decal host widens it to a cube `half` across
+# each way (ShaderHosts.Copies); mesh hosts rebuild it from their mesh (UnitMesh.RebuildLodFooters).
+CULL = {'at': '0xD4', 'node': 3, 'from': 0.5, 'half': 64.0}
 HOSTS = {
     'decal': {'root': 0xFDE0D8CB17821DC0, 'stages': [0x11C38], 'mesh': False,
               'draws': 'in the decals pass, on what is already drawn inside the unit box'},
@@ -78,7 +82,7 @@ def host(folder, spec):
     entry = {'root': f'0x{spec["root"]:016X}', 'draws': spec['draws'], 'stages': stages}
     if 'child' in spec:
         entry['child'] = spec['child']
-    entry.update(unit=BOX, mesh=spec['mesh'], inputs=inputs, outputs=outputs, bindings=binds)
+    entry.update(unit=BOX if spec['mesh'] else dict(BOX, cull=CULL), mesh=spec['mesh'], inputs=inputs, outputs=outputs, bindings=binds)
     return entry
 
 

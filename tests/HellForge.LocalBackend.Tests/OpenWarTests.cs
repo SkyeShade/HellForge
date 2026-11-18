@@ -53,9 +53,9 @@ static class OpenWarTests
         var subfactions = OpenWar.Subfactions();
         var definitions = LocalBackend.LoadStartupFixtures()["/WarSeason/GalacticWarEffects"];
         var flags = OpenWar.Flags();
-        check(definitions.GetArrayLength() == 24 && definitions.EnumerateArray().All(e => e.GetProperty("effectType").GetInt32() == 40 ?
+        check(definitions.GetArrayLength() == 25 && definitions.EnumerateArray().All(e => e.GetProperty("effectType").GetInt32() == 40 ?
             subfactions.ContainsKey(e.GetProperty("id").GetInt32()) : e.GetProperty("effectType").GetInt32() == 71 && flags.Values.Contains(e.GetProperty("id").GetInt32())),
-            "The 13 subfaction effects and 11 flags are served (not an empty list).");
+            "The 13 subfaction effects and 12 flags are served (not an empty list).");
         var onPlanet = open.GetProperty("planetActiveEffects").EnumerateArray()
             .Select(e => (Index: e.GetProperty("index").GetInt32(), Id: e.GetProperty("galacticEffectId").GetInt32()))
             .Where(e => subfactions.TryGetValue(e.Id, out var f) && f != 0).ToList();

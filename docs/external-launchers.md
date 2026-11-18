@@ -67,7 +67,7 @@ standard error and exits with 1.
 | `profiles` | Lists the profiles (name, template, folder, used, selected) and the templates. `--create <name> --template <template>` makes a profile; the name is 1 to 32 lowercase letters, digits or hyphens. |
 | `mods` | Prints the Mods page's list, top first. Each mod has its id, name, version, description, enabled, group, tags, folder, archive (its zip, if it came as one), removable, and a pack's options. It also has `unsupported` (why this HellForge can't run it, or null), `premium` (the premium items it was built on, each with its `requirement` and `name`), `url`, `icon`, and a source mod's `build` (see [Source mod builds](#source-mod-builds)). Also printed: the folder's problems, the modlist code friends compare (null when no gameplay mod is on) and the path of `hellforge-mods.json`. |
 | `mod-add --file <path>` | Adds a mod the way the Mods page's "Add mods..." does: a `.zip`, `.rar` or `.7z`, a folder mod's `hellforge-mod.json`, or a cosmetic pack's `manifest.json`. A mod with the same id is replaced (an update). Give `--file` more than once to add several (see [Several mods at once](#several-mods-at-once)). |
-| `mod-remove --id <id>` | Deletes the mod's zip or folder. Mods HellForge ships (tag `bundled`) come back by themselves: switch these off instead. Local Stats (tag `local-stats`) cannot be removed. `--ids <id,id,...>` removes several. |
+| `mod-remove --id <id>` | Deletes the mod's zip or folder, with the folders around it that hold no other mod; `removed` names what went. Mods HellForge ships (tag `bundled`) come back by themselves: switch these off instead. Local Stats (tag `local-stats`) cannot be removed. `--ids <id,id,...>` removes several. |
 | `mod-switch --id <id> --on yes\|no` | Switches a mod on or off. Local Stats (tag `local-stats`) is always on and refuses `--on no`. `--ids <id,id,...>` switches several. |
 | `mod-order --ids <id,id,...>` | Puts the listed mods first, top first, in that order. The others keep their order after them. Gameplay mods stay above cosmetic ones, so the order changes within each group. |
 | `mod-pack --id <pack id> --option <name> [--on yes\|no] [--variant <name>]` | Switches one of a cosmetic pack's options, or picks one of its variants, as the pack's picker on the Mods page does. `--all yes\|no` switches every option at once. Prints the pack's options. |
@@ -75,7 +75,7 @@ standard error and exits with 1.
 | `logs [--run <id>] [--export <file.zip> \| --crash-report <file.zip> [--dump yes \| no]]` | Lists the sessions, newest first, with how each ended. `--run` adds one session's files. `--export` zips a session's logs, and `--crash-report` makes its crash report (see [Logs](#logs)). |
 | `play` | Starts a session (see [Sessions](#sessions)). |
 | `stop [--run <run folder>] [--wait yes] [--now yes]` | Asks the running session to close the game and clean up, as STOP does. Without `--run` it stops the newest session. `--now yes` ends the game at once instead of asking it to close first. |
-| `fetch-war` | Fetches the live galactic war into `live-war.json`. The Linux scripts run this before a session. |
+| `fetch-war [--war hellforge \| live] [--war-server <url>]` | Fetches the war a session serves into its cache: the HellForge war (unless the saved war is the live one) into `hellforge-war/<server>.json`, or the live war into `live-war.json`. Prints `fetched`, `war`, `cache` and `server`. The Linux scripts fetch both before a session. |
 | `languages [--steam-root <Steam folder>]` | Lists the language packs pinned for the supported build: `name`, `dlcAppId`, `bytes`, `inCopy`, `installedInSteam` (the player owns and installed that language in Steam) and the `command` to paste into Steam's console to download it at the pinned manifest. |
 | `language-add --name <language> [--steam-root <Steam folder>] [--keep yes\|no]` | Copies one pack from Steam's download into the game copy, every file checked against the pinned list, then deletes the download unless `--keep yes`. Refused while a session runs, and until Steam has finished the download. |
 | `steam-download --out <folder> [--file <a file of the build>] [--steam-root <Steam folder>] [--sign-in qr\|steamcmd] [--account <name>] [--steamcmd <folder>] [--dry-run yes]` | Downloads the supported build from Steam's servers into `--out` for the account that signs in, as setup does ([steam-download.md](steam-download.md)), copying what Steam's install already has. It is interactive: it prints a QR code on standard error to approve in the Steam app. With `--sign-in steamcmd`, Valve's SteamCMD downloads it instead into `--steamcmd` (default `<out>-steamcmd`; asks for the account name unless `--account` gives it), and SteamCMD asks for the password and any Steam Guard code in the terminal itself. The files are then checked and moved into `--out`, SteamCMD's sign-in is forgotten and SteamCMD removed, and it prints `files`, `bytes`, `by`, `destination` and `seconds`. Nothing of the sign-in is kept or printed. `--file` takes one file of the build; `--dry-run yes` prints the plan (`files`, `bytes`, `knownLocalBytes`, `downloadAtMostBytes`, `notes` and a `plan` per file) and writes nothing. Without it, prints `files`, `bytes`, `downloadedBytes`, `copiedBytes`, `destination`, `seconds` and `notes`. `--out` and `--steamcmd` must be outside any `steamapps` folder. It needs no installation. |
@@ -179,18 +179,22 @@ is that mod's `error`, and the others still go. The answer counts them:
 `play` uses the launcher's settings unless an option replaces one, so a player gets the same session from either
 launcher. It never changes `launcher-settings.json`.
 
-To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--local-playfab`,
-`--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--game-options`), and also
-`--strangers yes|no|default`, `--live-changes`, `--forge-credits`, the war options and the mod sync switches below. It
-saves the ones given, checks them as `play` would, and prints every setting:
+To change them for good, use `settings`. It takes the same options as `play` (`--profile`, `--war`, `--war-server`,
+`--local-playfab`, `--multiplayer`, `--engine-log`, `--crash-dump`, `--sandbox`, `--steam-udp`, `--game-options`), and
+also `--strangers yes|no|default`, `--live-changes`, `--forge-credits`, the war options and the mod sync switches below.
+It saves the ones given, checks them as `play` would, and prints every setting:
 
 ```json
-{"profile": "default", "war": "live", "localPlayFab": true, "multiplayer": true, "engineLog": true, "crashDump": false,
- "gameOptions": "", "sandbox": true, "steamUdp": true, "steamBridge": true, "playWithStrangers": true,
- "playWithStrangersChosen": null, "liveChanges": false, "forgeCreditChance": 30, "dealSubfactions": true, "dealSeaf": true,
- "warSeed": 0, "shareMods": true, "listPublic": true, "showEditedStats": false, "hostStats": false,
- "file": "<installation>\\launcher-settings.json"}
+{"profile": "default", "war": "hellforge", "warServer": "https://war.hf-mod.com", "localPlayFab": true, "multiplayer": true,
+ "engineLog": true, "crashDump": false, "gameOptions": "", "sandbox": true, "steamUdp": true, "steamBridge": true,
+ "playWithStrangers": true, "playWithStrangersChosen": null, "liveChanges": false, "forgeCreditChance": 30,
+ "dealSubfactions": true, "dealSeaf": true, "warSeed": 0, "shareMods": true, "listPublic": true, "showEditedStats": false,
+ "hostStats": false, "file": "<installation>\launcher-settings.json"}
 ```
+
+`settings --war-server <url>|default` saves the HellForge war's server (an https address, or http to this PC; `default`
+is HellForge's, `https://war.hf-mod.com`). `HELLFORGE_WAR_SERVER` overrides it, and the printed `warServer` is the one a
+session would use ([hellforge-war.md](hellforge-war.md#choosing-the-server)).
 
 `settings --live-changes yes|no` sets the experimental Change mods without restarting (off by default, read when a
 session starts; the settings JSON says `liveChanges`).
@@ -256,7 +260,7 @@ lists and creates profiles; `settings --profile <name>` selects one.
 ## Sessions
 
 ```text
-HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-playfab yes | no] [--multiplayer yes | no]
+HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | open] [--war-server <url>] [--local-playfab yes | no] [--multiplayer yes | no]
                        [--engine-log yes | no] [--crash-dump yes | no] [--sandbox yes | no] [--steam-udp yes | no]
                        [--game-options "<launch options>"] [--full-ownership-check yes | no] [--wait yes] [--dry-run yes]
 ```
@@ -264,7 +268,8 @@ HellForge.Cli.exe play [--profile <name>] [--war live | frozen | open] [--local-
 | Option | Default (the launcher's setting) | Meaning |
 |---|---|---|
 | `--profile` | the selected profile | which HellForge profile plays |
-| `--war` | `live` | `live`: the current galactic war, read-only through the community mirror. `frozen`: the war HellForge ships. `open`: every planet open |
+| `--war` | `hellforge` | `hellforge`: the war every HellForge player shares, from its war server ([hellforge-war.md](hellforge-war.md)). `live`: the current galactic war, read-only through the community mirror. `frozen`: the war HellForge ships. `open`: every planet open. A settings file saved before the HellForge war keeps the war it had |
+| `--war-server` | `HELLFORGE_WAR_SERVER`, the saved server, else `https://war.hf-mod.com` | the HellForge war's server for this session only: https, or http to this PC (`http://localhost:5093`) |
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |
@@ -471,7 +476,8 @@ memory and cannot be scrubbed: ask the player before passing `--dump yes`. The J
 
 On Linux, HellForge's game runs only inside its network namespace, which `app/linux/hellforge-linux.sh` sets up
 ([linux.md](linux.md)). Outside it the session runner stops before the game starts, as it does for HellForge.exe. The
-script also bridges Steam and fetches the live war while the PC still has its network. Give it the program to run in
+script also bridges Steam and fetches the live war and the HellForge war while the PC still has its network (the
+session cannot report missions to the war server from inside the namespace). Give it the program to run in
 place of HellForge.exe, with its arguments:
 
 ```sh

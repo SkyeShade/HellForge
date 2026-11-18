@@ -124,6 +124,7 @@ static int ApiWriteOfMod(uintptr_t address, const void* data, size_t size)
 __attribute__((noinline)) static int ApiModWrite(uintptr_t address, const void* data, size_t size)
 {
     HfMod* mod = ModOfWrite((uintptr_t)__builtin_return_address(0));
+    if (PaidGuardRefuses(mod, "write", address, size)) return 1;
     if (mod == NULL || !mod->live) return ApiWriteOfMod(address, data, size);
     if (ModGone(mod)) { ApiLog(mod, "write refused: the mod is being taken out"); return 1; }
     uint8_t small[256];
@@ -152,6 +153,7 @@ static int ApiModWriteU32IfOf(HfMod* mod, uintptr_t address, uint32_t expect, ui
 }
 static int ApiModWriteU32If(HfMod* mod, uintptr_t address, uint32_t expect, uint32_t value)
 {
+    if (PaidGuardRefuses(mod, "write_u32_if", address, 4)) return 1;
     g_modWriting++;
     int result = ApiModWriteU32IfOf(mod, address, expect, value);
     g_modWriting--;
