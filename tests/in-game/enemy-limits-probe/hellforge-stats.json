@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "difficulty": {
+    "10": {
+      "difficulty.patrol_gate": 200,
+      "difficulty.spawn_gate": 300,
+      "difficulty.despawn": 0,
+      "difficulty.patrol_interval_terminids": 0.5,
+      "difficulty.patrol_interval_automatons": 0.5,
+      "difficulty.patrol_interval_illuminate": 0.5,
+      "difficulty.patrol_cap_terminids": 1000,
+      "difficulty.patrol_cap_automatons": 1000,
+      "difficulty.patrol_cap_illuminate": 1000
+    }
+  }
+}

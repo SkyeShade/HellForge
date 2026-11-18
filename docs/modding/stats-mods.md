@@ -138,6 +138,34 @@ joiner's edits change nothing in a host's mission.
 { "format": 1, "enemies": { "Impaler": { "summon.count": 5 } }, "difficulty": { "7": { "difficulty.patrol_cap_terminids": 200 } } }
 ```
 
+- `difficulty.patrol_interval_<faction>` is the seconds between patrols, down to 0.1.
+
+#### Enemy limits
+
+The game also stops spawning at fixed counts in its code, whatever the caps above say. Each difficulty has them as
+fields too, in the editor's Enemy limits group. They hold the game's values until a mod changes one, and they apply at
+once:
+
+| Field | The game's | What it does |
+|---|---|---|
+| `difficulty.patrol_gate` | 100 | Patrols spawn only while the living AI enemies, the queued ones and the new squad total at most this. The patrol caps count only under it. |
+| `difficulty.roaming_gate` | 70 | The shared spawners' waves, travellers and stragglers stop at this many enemies, not counting those of breaches, drops and fabricators. |
+| `difficulty.spawn_gate` | 448 | Every spawn but a patrol's stops at this many AI enemies: bug holes, fabricators, drops, breaches, outposts. |
+| `difficulty.despawn` | 1 | 1: once enough enemies are alive, the game despawns about one a second, far ones first. 0: never. |
+| `difficulty.despawn_start` | 100 | How many enemies are alive before the despawning starts. From ten more it takes any enemy. |
+| `difficulty.despawn_distance` | 150 | Metres from which an enemy counts as far. |
+
+The counts take 0 to 1000 and the distance 10 to 2000. Only the host's values count in co-op: the host's game spawns
+and despawns.
+
+```json
+{ "format": 1, "difficulty": { "10": { "difficulty.patrol_gate": 200, "difficulty.despawn": 0, "difficulty.patrol_interval_automatons": 0.5 } } }
+```
+
+> **Warning:** today the game crashes past about 400 living enemies (the AI's navmesh query batch) and, with that fixed,
+> near 545 (the entity table). HellForge's engine fixes for both are on their way. Until your version has them, keep
+> a mission under about 400 enemies: lift the gates a step at a time rather than to 1000.
+
 ## How it applies
 
 - Changes apply when the game loads its data, every session. A stats-only mod (no code, Lua, data patches, data spec,
