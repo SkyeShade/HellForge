@@ -90,3 +90,62 @@ thread while most workers were idle.
 - Build 25480438 only, as above. Its edge gathers rely on edge-batch's pins too.
 - The status-effect volume queries and the navmesh free-area queries stay the game's: they are small.
 - `modloader.log` says once a minute how long the wait took and how much of it the game thread spent on chunks.
+
+## edge-join-late
+
+The navmesh edge queries are waited for where they are first read (`native/mod-loader/perf_edge_join_late.c`). It
+needs `ai-query-chunks`.
+
+The edge queries are the largest of the AI's query jobs with many moving enemies. Only the boundary clip reads their
+answers, and its first caller in the world update is the vehicle collision pass. The steering and motion passes come
+after it. So the world update's wait at its start now covers the other jobs only. The edge queries are waited for
+when the vehicle collision pass starts, and the workers answer them while the game thread runs the passes before it.
+
+### Why the answers stay the same
+
+- The queries, their job and their reader are the game's, and the reader still finds every answer ready.
+- The game's own wait runs as before. For that call, its pointer to the edge batch names a batch of HellForge's whose
+  jobs are all done, so it waits for the others and resets them.
+- The edge wait then does what the game's wait did for them: every job done, then the count back to 0.
+- If the vehicle collision pass is not reached, the wait ends with the world update. Any other call of the wait is the
+  game's own, edges included.
+- The navmesh changes in the Havok AI step, which runs in the scene update after the world update.
+
+### Measured effect
+
+Measured on the same 1,000-enemy test as the others, with all four fixes on against `edge-join-late` alone off. The
+fix's log line in `modloader.log` gives the game thread's wait:
+
+- before the world update: 2.5-2.7 ms a frame without it, 0.4-0.9 ms with it;
+- at the vehicle collision pass: 0.003-0.010 ms, so by then the workers had answered the queries.
+
+The one session with only this fix off ran 31.1 fps at 950-1,100 enemies against 34.5 with all four. The sessions'
+spread is about as large as that difference.
+
+## steer-lod
+
+Enemies far from every Helldiver steer every third frame (`native/mod-loader/perf_steer_lod.c`).
+
+The AI steering pass decides where each enemy wants to go, around its neighbours and the navmesh's edges. An enemy more
+than 100 m from every Helldiver now runs it one frame in three; a third of them each frame. Enemies within 100 m of
+any Helldiver run it every frame.
+
+### What a player sees
+
+- Nothing within 100 m. Further away, an enemy turns towards a new direction up to two frames later.
+- Its motion still moves it every frame, along the steering it last chose.
+- Aim, perception, attacks and animation are other passes and run as before.
+
+### Measured effect
+
+At about 1,000 enemies the fix skipped 37% of the steering updates: much of the crowd stood within 100 m of the
+Helldiver. The session with only this fix off ran 34.0 fps at 950-1,100 enemies, against 34.5 with all four. That is
+inside the sessions' spread, so its own gain is not shown. The enemies still reached the Helldiver, crowded round it
+and hit it.
+
+### Limits
+
+- Build 25480438 only, pinned as above.
+- Distance only: an enemy on screen but 100 m away counts as far.
+- Each frame a quarter of the enemies' distances are read again, so one that comes within 100 m steers every frame
+  from at most four frames later.

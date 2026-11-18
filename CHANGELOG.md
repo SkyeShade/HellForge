@@ -223,11 +223,13 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
-- **Big enemy counts run faster.** With 900 to 1,000 enemies alive, a mission ran at 32.9 fps instead of 26.7, and the
-  slowest frames improved as much. The grids that moving enemies use to steer around each other were full past 256
-  enemies; they now hold 1,152. The AI's raycast and navmesh queries are shared out in small chunks, and the game thread
-  helps with them instead of waiting. Below about 400 enemies nothing changes
+- **Big enemy counts run faster.** With 950 to 1,100 enemies alive, a mission ran at 34.5 fps instead of 26.9, and the
+  slowest frames improved as much. Below about 400 enemies nothing visible changes
   ([performance fixes](docs/performance-enemies.md#motion-grid)).
+  - The grids that moving enemies use to steer around each other were full past 256 enemies; they now hold 1,152.
+  - The AI's raycast and navmesh queries are shared out in small chunks, and the game thread helps instead of waiting.
+  - The navmesh edge queries are waited for only where they are read.
+  - Enemies over 100 m from every Helldiver steer every third frame.
 - **Mods load as you download them.** A zip may hold the mod in folders, beside a readme, or in a zip inside it, as
   mod sites ship them. A folder unpacked into the mods folder works the same way, and a folder of several mods loads
   each one. A zip with several mods is refused, and Mod notices names them: one zip is one mod, as friends compare it
