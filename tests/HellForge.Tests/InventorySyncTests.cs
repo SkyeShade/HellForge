@@ -364,16 +364,40 @@ static class InventorySyncTests
                 missingLog.Contains("system.reg check: the key is not in system.reg: the import did not land", StringComparison.Ordinal),
                 "The capture log did not record both checks for a missing import: " + string.Join(" / ", missingLog.Split('\n').TakeLast(8)));
 
-            // system.reg has the key but reg export writes no file: the message says which check failed.
+            // system.reg has the key but reg export fails and writes no file (bug-report-0559: SteamOS, Proton Experimental,
+            // exit -1): system.reg is what the game's Wine loads, so the certificate is in place and the sync goes on.
+            // The prefix's system.reg here is written the way wineserver saves it, so the fallback is proven on that form.
             var notReadFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-not-read")).FullName;
-            var notRead = WriteFakeProton(notReadFolder, Path.Combine(notReadFolder, "state"), template, expectedHex,
+            var wineTemplate = Path.Combine(notReadFolder, "system.reg.wine");
+            File.WriteAllText(wineTemplate, WineSystemReg(thumbprint, LinuxCapture.CertificateBlob(der)));
+            var notRead = WriteFakeProton(notReadFolder, Path.Combine(notReadFolder, "state"), wineTemplate, expectedHex,
                 importLands: true, exportTemplate: null);
-            var exportLost = Refusal(() => LinuxCapture.InstallCertificate(fakeRecord with { Proton = notRead }));
-            check(exportLost.Contains("reg export exited 1", StringComparison.Ordinal) &&
-                exportLost.Contains("system.reg holds the expected Blob", StringComparison.Ordinal) &&
-                !exportLost.Contains("reg query", StringComparison.Ordinal) &&
-                !exportLost.Contains("xrizer", StringComparison.Ordinal),
-                "A readable system.reg with a failed export was not named: " + exportLost);
+            LinuxCapture.InstallCertificate(fakeRecord with { Proton = notRead });
+            var exportLostLog = File.ReadAllText(Path.Combine(sync, InventorySync.LauncherLogFile));
+            check(exportLostLog.Contains("reg export did not confirm the Blob (reg export exited 1); system.reg holds it", StringComparison.Ordinal),
+                "A failed export beside a system.reg with the Blob was not taken, or not logged: " + string.Join(" / ", exportLostLog.Split('\n').TakeLast(4)));
+
+            // reg export exits 0 but its file has no Blob for the key: found nothing, so system.reg decides as above.
+            var emptyExport = Path.Combine(notReadFolder, "empty-export.reg");
+            LinuxCapture.WriteRegistryFile(emptyExport, "Windows Registry Editor Version 5.00\r\n\r\n[Other\\Key]\r\n");
+            var emptyProton = WriteFakeProton(notReadFolder, Path.Combine(notReadFolder, "state-empty"), wineTemplate, expectedHex,
+                importLands: true, exportTemplate: emptyExport);
+            LinuxCapture.InstallCertificate(fakeRecord with { Proton = emptyProton });
+            check(File.ReadAllText(Path.Combine(sync, InventorySync.LauncherLogFile)).Contains(
+                    "reg export did not confirm the Blob (the export file has no Blob for the key); system.reg holds it", StringComparison.Ordinal),
+                "An export without the key beside a system.reg with the Blob was not taken, or not logged.");
+
+            // A failed export never excuses a system.reg whose Blob is another certificate's.
+            var otherBlob = LinuxCapture.CertificateBlob(der);
+            otherBlob[^1] ^= 0xFF;
+            var otherTemplate = Path.Combine(notReadFolder, "system.reg.other");
+            File.WriteAllText(otherTemplate, WineSystemReg(thumbprint, otherBlob));
+            var otherProton = WriteFakeProton(notReadFolder, Path.Combine(notReadFolder, "state-other"), otherTemplate, expectedHex,
+                importLands: true, exportTemplate: null);
+            var otherRefusal = Refusal(() => LinuxCapture.InstallCertificate(fakeRecord with { Proton = otherProton }));
+            check(otherRefusal.Contains("its Blob value does not match the certificate", StringComparison.Ordinal) &&
+                otherRefusal.Contains("reg export exited 1", StringComparison.Ordinal),
+                "A failed export beside a system.reg with another Blob was accepted: " + otherRefusal);
 
             var badFolder = Directory.CreateDirectory(Path.Combine(root, "linux-capture-record", "fake-bad-proton")).FullName;
             var badExport = Path.Combine(badFolder, "bad-export.reg");
@@ -532,6 +556,9 @@ static class InventorySyncTests
             "WINE REGISTRY Version 2\n\n[" + systemKey + "]\n\"Blob\"=hex:" + expected[..24] + ",\\\n  " + expected[24..] + "\n\n[Other\\\\Key]\n",
             thumbprint);
         check(continued.KeyFound && continued.BlobHex == expected, "A continued system.reg Blob was not read in full.");
+        var wineSaved = LinuxCapture.ReadSystemRegCertificate(WineSystemReg(thumbprint.ToLowerInvariant(), blob), thumbprint);
+        check(wineSaved.KeyFound && wineSaved.BlobHex == expected,
+            "system.reg as wineserver saves it (key timestamp, #time line, lower-case wrapped hex) did not yield the Blob.");
         check(!LinuxCapture.ReadSystemRegCertificate(systemReg, new string('B', 40)).KeyFound,
             "Another certificate's key was reported present.");
         check(LinuxCapture.ReadSystemRegCertificate("[" + systemKey + "]\n\"Other\"=hex:00\n", thumbprint) is
@@ -1419,6 +1446,28 @@ static class InventorySyncTests
         File.SetUnixFileMode(proton, mode);
         File.SetUnixFileMode(wineserver, mode);
         return proton;
+    }
+
+    // system.reg as wineserver saves it (Wine's server/registry.c, save_subkeys and dump_value): the section line ends with
+    // the key's modification time, a #time line follows, and REG_BINARY is lower-case comma-separated hex wrapped after
+    // column 76 with "\" and two spaces. Other keys and values sit around the certificate's.
+    static string WineSystemReg(string thumbprint, byte[] blob)
+    {
+        var text = new StringBuilder("WINE REGISTRY Version 2\n;; All keys relative to \\\\Machine\n\n#arch=win64\n\n");
+        text.Append("[Software\\\\Microsoft\\\\SystemCertificates\\\\Root] 1763500000\n#time=1dc5883b5f0c2a4\n\n");
+        text.Append("[Software\\\\Microsoft\\\\SystemCertificates\\\\Root\\\\Certificates\\\\").Append(thumbprint)
+            .Append("] 1763500001\n#time=1dc5883b5f0c2a5\n\"Blob\"=hex:");
+        var column = "\"Blob\"=hex:".Length;
+        for (var index = 0; index < blob.Length; index++)
+        {
+            text.Append(blob[index].ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+            column += 2;
+            if (index == blob.Length - 1) break;
+            text.Append(',');
+            if (++column > 76) { text.Append("\\\n  "); column = 2; }
+        }
+        text.Append("\n\n[Software\\\\Wine\\\\Other] 1763500002\n#time=1dc5883b5f0c2a6\n\"Flags\"=dword:00000001\n");
+        return text.ToString();
     }
 
     static string ShQuote(string value) => "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
