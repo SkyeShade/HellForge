@@ -339,6 +339,7 @@ static void CodesTick(void);            /* stratagem_codes.c */
 static void RearmTick(void);            /* stratagem_rearm.c */
 static void AiPathBudgetTick(void); /* perf_ai_path_budget.c */
 static void PerfCorpseFreezeTick(void); /* perf_corpse_freeze.c */
+static void PhysicsStepsTick(float dt); /* perf_physics_steps.c */
 static void HeapTrimTick(void); /* perf_heap_trim.c */
 static void TickDetour(void* manager, float dt)
 {
@@ -355,6 +356,7 @@ static void TickDetour(void* manager, float dt)
     RearmTick();
     AiPathBudgetTick();
     PerfCorpseFreezeTick();
+    PhysicsStepsTick(dt);
     HeapTrimTick();
     TickTable* ticks = g_ticks;
     LONG count = ticks ? ticks->count : 0;

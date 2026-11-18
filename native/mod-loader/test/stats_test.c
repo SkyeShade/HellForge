@@ -35,6 +35,8 @@
 #include "perf_record_hash_test.c"
 #include "perf_ai_path_budget_test.c"
 #include "perf_corpse_freeze_test.c"
+#include "perf_physics_steps_test.c"
+#include "perf_havok_helpers_test.c"
 #include "perf_render_job_copies_test.c"
 #include "perf_render_version_rehash_test.c"
 #include "perf_vehicle_box_test.c"
@@ -5253,6 +5255,8 @@ int main(int argc, char** argv)
     RecordHashFixture();
     PerfAiPathBudgetFixture();
     PerfCorpseFreezeFixture();
+    PerfPhysicsStepsFixture();
+    PerfHavokHelpersFixture();
     RenderJobCopiesFixture();
     RenderVersionRehashFixture();
     VehicleBoxFixture();

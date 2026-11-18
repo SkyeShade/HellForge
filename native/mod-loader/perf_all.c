@@ -5,6 +5,8 @@
 #include "perf_record_hash.c" /* record-hash: the destruction-record map's hash multiplier */
 #include "perf_ai_path_budget.c" /* the AI path threads' time a step; the game thread calls AiPathBudgetTick */
 #include "perf_corpse_freeze.c" /* settled ring corpses frozen; the game thread calls PerfCorpseFreezeTick */
+#include "perf_physics_steps.c" /* the physics rate under 30 fps; the game thread calls PhysicsStepsTick */
+#include "perf_havok_helpers.c" /* Havok task queue helpers stay for tasks released later */
 #include "perf_render_job_copies.c" /* Direct3D 12 render jobs give their version copies back */
 #include "perf_render_version_rehash.c" /* the D3D12 version tables kept short */
 #include "perf_vehicle_box.c" /* vehicles' boxes once per motion and steering pass */
