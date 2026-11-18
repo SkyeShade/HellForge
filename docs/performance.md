@@ -31,6 +31,8 @@ out this way without another build.
 | `vehicle-box` | Each vehicle's oriented box is computed once per motion and steering pass, then copied for the other enemies | The motion pass at 213-225 enemies on a 16 km map: 6.8 ms to 0.5-0.6 ms a frame |
 | `edge-batch` | The AI's navmesh edge queries go to a batch with room for 4,096 moving enemies instead of the game's 256 | A crash at about 400 live enemies: the game then ran on past 550 |
 | `entity-table` | A world holds 4,096 entities instead of 2,048, and the AI avoidance 2,048 characters instead of 512 | Crashes at about 540 and 650 live enemies: the game then ran on past 700 |
+| `motion-grid` | The motion grids that enemies avoid each other with hold 1,152 moving enemies in 4,096 slots instead of 256 in 256 | At 950-1,100 live enemies, both fixes together: 26.7 to 32.9 fps, the boundary clip 3.5-4.9 ms to 0.5-1.0 ms a frame |
+| `ai-query-chunks` | The AI's raycast, overlap and navmesh query jobs are taken in small chunks, and the game thread helps instead of waiting | At about 1,000 enemies: the game thread runs about 2 ms of queries itself and waits about 0.2 ms more. In these runs the wait had been 2.6 ms |
 | `heap-trim` | The game's allocator caches are emptied once more when a load ends on the ship or a mission | 16 km maps: 0.5 to 5.5 ms a trim on the game thread, 10 to 72 MB given back each time; not measured at normal size |
 | `scatter-cameras` | The level generator's water and fog cameras are left out of the engine's scatter update, so its node vectors stay the size of real views | 16 km map: 4,205 MB less memory on entering play. Normal size: not measured, an estimated 1/64 of that |
 | `knn-grid` | The Hive Lord graph links its points through a grid instead of trying every pair, with the same result | Level generation on a 4 km map: 1,447 ms to 24 ms; on a 16 km map about 400 s saved |
@@ -41,6 +43,8 @@ out this way without another build.
 
 The fixes that run while a level is generated have their sections in [Performance fixes in level
 generation](performance-loading.md): `scatter-cameras`, `knn-grid`, `spread-sort`, `early-stamp-packages` and `overlap-grid`.
+The fixes for missions with hundreds of enemies have theirs in [Performance fixes for many
+enemies](performance-enemies.md): `motion-grid` and `ai-query-chunks`.
 | `span-rescue` | When a load ends, memory blocks that other threads freed go back into use instead of waiting for their neighbours | 16 km map: 355 MB back in one pass. Normal size: not measured |
 
 ## safe-read
