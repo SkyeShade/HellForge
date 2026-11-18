@@ -170,8 +170,9 @@ static void NavRetile(uint32_t id, uintptr_t level)
  * world creation) size its culling systems (N/8 for the main visibility set, 98304, which then ran out at exe
  * 0x58E14B): 0xC0000 -> 0x200000 (handles keep 24 bits, 2 generation bits left; ~+120 MB). Dynamic actors 32768 ->
  * 131072, keyframed 8192 -> 32768 and motions 73728 -> 131072 follow the same 4 x units. For about 1,000 enemies the
- * ragdolls get 2048 and their actors 65536, and the AI config (0x4EDEC0) its 512 avoidance characters, obstacles and
- * steering records 2048 each: a full avoidance pool returned -1 and its next lookup crashed (exe 0x7D180B).
+ * ragdolls get 2048 and their actors 65536, and the config's AI part (+0x44..+0x54, which exe 0x7D7A40 copies) its
+ * 512 avoidance characters, obstacles and steering records 2048 each: a full avoidance pool returned -1 and the next
+ * lookup crashed (exe 0x7D180B).
  * [game+0x3326380] is set by the setup's first call (0x4EDC62): while it is 0, the setup has not started. */
 static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[10]; uint32_t value; } kPhysicsPools[13] = {
     {0x4EE32Bu, 7, 3, {0xC7, 0x45, 0x9C, 0x00, 0x20, 0x00, 0x00}, 0x10000u},                       /* config +0x2C ragdoll actors */
@@ -183,10 +184,10 @@ static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[10]; uint32_
     {0x4EE31Du, 7, 3, {0xC7, 0x45, 0x94, 0x00, 0x80, 0x00, 0x00}, 0x20000u},                       /* config +0x24 dynamic actors */
     {0x4EE332u, 7, 3, {0xC7, 0x45, 0x90, 0x00, 0x20, 0x00, 0x00}, 0x8000u},                        /* config +0x20 keyframed actors */
     {0xAB189Du, 8, 4, {0xC7, 0x44, 0x24, 0x58, 0x00, 0x00, 0x0C, 0x00}, 0x200000u},              /* Game World render objects */
-    {0x4EE0BBu, 7, 3, {0xC7, 0x45, 0xFB, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* AI config +0x44: steering pool */
-    {0x4EE0ADu, 7, 3, {0xC7, 0x45, 0xFF, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* +0x48 avoidance characters */
-    {0x4EE0C2u, 7, 3, {0xC7, 0x45, 0x07, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* +0x50 avoidance obstacles */
-    {0x4EE0C9u, 7, 3, {0xC7, 0x45, 0x0B, 0x00, 0x02, 0x00, 0x00}, 0x800u}};                        /* +0x54 avoidance pool 3 */
+    {0x4EE378u, 7, 3, {0xC7, 0x45, 0xB4, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* config +0x44 AI steering pool */
+    {0x4EE36Au, 7, 3, {0xC7, 0x45, 0xB8, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* config +0x48 AI avoidance characters */
+    {0x4EE37Fu, 7, 3, {0xC7, 0x45, 0xC0, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* config +0x50 AI avoidance obstacles */
+    {0x4EE386u, 7, 3, {0xC7, 0x45, 0xC4, 0x00, 0x02, 0x00, 0x00}, 0x800u}};                        /* config +0x54 AI avoidance pool 3 */
 #define DIF_PHYSICS_SETUP 0x3326380u
 static int g_physicsPools; /* 0 waiting, 1 enlarged, -1 left as they are */
 /* Polled from the loader's thread once game.dll is decoded. */
