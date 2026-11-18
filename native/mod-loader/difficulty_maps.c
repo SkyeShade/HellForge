@@ -189,6 +189,7 @@ static const struct { uint32_t rva; uint8_t length, at; uint8_t pin[10]; uint32_
     {0x4EE37Fu, 7, 3, {0xC7, 0x45, 0xC0, 0x00, 0x02, 0x00, 0x00}, 0x800u},                         /* config +0x50 AI avoidance obstacles */
     {0x4EE386u, 7, 3, {0xC7, 0x45, 0xC4, 0x00, 0x02, 0x00, 0x00}, 0x800u}};                        /* config +0x54 AI avoidance pool 3 */
 #define DIF_PHYSICS_SETUP 0x3326380u
+#include "entity_table.c" /* the entity records behind the Game block, which the same setup allocates */
 static int g_physicsPools; /* 0 waiting, 1 enlarged, -1 left as they are */
 /* Polled from the loader's thread once game.dll is decoded. */
 static void PhysicsPools(uintptr_t game)
@@ -219,6 +220,7 @@ static void PhysicsPools(uintptr_t game)
             return;
         }
     g_physicsPools = 1;
+    EntityTableRaise(game);
     Note("physics: pools enlarged before the engine built them: ragdoll actors 65536, ragdolls 2048, motions 131072, bodies and static actors 262144, dynamic actors 131072, keyframed 32768, navmesh cutters 65536 per world; render objects 2097152; AI avoidance characters, obstacles and steering 2048");
 }
 /* SpreadLocations (op 0x8B, 0xF7C310) picks the nearest location of a kind as a reference (r12d, -1 when none
