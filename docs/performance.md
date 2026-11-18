@@ -30,6 +30,7 @@ out this way without another build.
 | `render-version-rehash` | The Direct3D 12 renderer's resource-version tables are rehashed short when a level load left them far too large | A 16 km map, standing still: frame 12.5-13.0 ms to 8.5 ms, about 79 to 116 fps |
 | `vehicle-box` | Each vehicle's oriented box is computed once per motion and steering pass, then copied for the other enemies | The motion pass at 213-225 enemies on a 16 km map: 6.8 ms to 0.5-0.6 ms a frame |
 | `edge-batch` | The AI's navmesh edge queries go to a batch with room for 4,096 moving enemies instead of the game's 256 | A crash at about 400 live enemies: the game then ran on past 550 |
+| `entity-table` | A world holds 4,096 entities instead of 2,048, and the AI avoidance 2,048 characters instead of 512 | Crashes at about 540 and 650 live enemies: the game then ran on past 700 |
 | `heap-trim` | The game's allocator caches are emptied once more when a load ends on the ship or a mission | 16 km maps: 0.5 to 5.5 ms a trim on the game thread, 10 to 72 MB given back each time; not measured at normal size |
 | `scatter-cameras` | The level generator's water and fog cameras are left out of the engine's scatter update, so its node vectors stay the size of real views | 16 km map: 4,205 MB less memory on entering play. Normal size: not measured, an estimated 1/64 of that |
 | `knn-grid` | The Hive Lord graph links its points through a grid instead of trying every pair, with the same result | Level generation on a 4 km map: 1,447 ms to 24 ms; on a 16 km map about 400 s saved |
@@ -321,6 +322,40 @@ overwrote the HUD, and the game crashed in its HUD job (`game.dll+0x1449D76` or 
   says so once a minute.
 - More enemies hit other limits next. The world holds at most 2,048 entities, about 545 enemies with their parts and
   the map's own objects.
+
+## entity-table
+
+Room for about 1,000 live enemies (`native/mod-loader/entity_table.c`, and the pools in `difficulty_maps.c`). It fixes
+crashes; it saves no time.
+
+| What the game holds | The game's room | HellForge's | Without it |
+|---|---|---|---|
+| Entities in a world: each enemy and its parts, pickups, the map's objects | 2,048 | 4,096 | Past about 650 enemies a new entity took a live one's place, and the game crashed |
+| The AI collision avoidance's characters, obstacles and steering records | 512 | 2,048 | Past about 540 enemies a new enemy got no avoidance character, and the game crashed at `helldivers2.exe+0x7D180B` |
+| Ragdolls (corpses keep theirs) and their bodies | 1,024 and 32,768 | 2,048 and 65,536 | Raised for the same count before they fill |
+
+### How it works
+
+- The game makes its world state once a process, as it starts. HellForge makes that block 352 KB larger before the
+  game allocates it, and puts the entity records and the four entity maps behind it.
+- Every instruction of the game that names the records or the maps then names their new place. The entity maps get
+  8,192 slots, so they stay at most half full.
+- The AI and ragdoll sizes are raised in the same config as the physics pools, before the game builds them.
+- Everything is pinned to build 25480438. If one place differs, the game keeps its own sizes and `modloader.log` says
+  so.
+
+### Co-op
+
+- A client's world mirrors the host's entities. An older HellForge as client would crash once the host's world held
+  more than 2,048 entities. A host with this change therefore refuses an older HellForge's join, and tells that
+  player to update.
+- This HellForge can still join an older host: that host's world is the smaller one.
+
+### Limits
+
+- The game's director still keeps its own caps on enemies; these sizes matter only when a mod or the editor spawns
+  more.
+- Past 4,096 entities the game still reuses a live record.
 
 ## heap-trim
 

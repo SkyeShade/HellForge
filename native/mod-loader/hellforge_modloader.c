@@ -533,6 +533,7 @@ static void ChannelInstall(uintptr_t game);
 #include "difficulty_countdown.c" /* its mission countdown */
 #include "difficulty_cities.c" /* its larger structured maps and cities */
 #include "difficulty_carvers.c" /* before difficulty_maps.c: NavRetile re-files the navmesh's carvers */
+#include "entity_table.c" /* the entity records behind the Game block; PhysicsPools raises them */
 #include "difficulty_maps.c" /* after difficulty_cities.c: its larger maps (the radii stub ends through the city copies) */
 #include "difficulty_towns.c" /* after difficulty_maps.c: towns on larger maps, their counters and guards */
 #include "difficulty_streets.c" /* after difficulty_towns.c: city streets on larger maps */

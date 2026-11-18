@@ -5,7 +5,7 @@
  * the plugin setup allocates once a process (0x4EE51C), so the block is made larger and the records and the four entity
  * maps' tables (0x1000 slots each, now 0x2000) move behind it: every constant that names them (entity_table_sites.h,
  * found by research/perf-d11/hunt2/recscan.py) moves by the same distance. Run with the physics pools, before the
- * setup; all or nothing. Included by difficulty_maps.c: SafeRead, ApiWrite, Note. */
+ * setup; all or nothing. Included by hellforge_modloader.c before difficulty_maps.c: SafeRead, ApiWrite, Note. */
 
 enum { ET_REC, ET_REC8, ET_REC24, ET_GAME8, ET_COUNT, ET_MAP, ET_SLOTS, ET_SIZE };
 typedef struct EtSite { uint32_t rva; uint8_t kind, k; uint8_t pin[3]; uint32_t old; } EtSite;

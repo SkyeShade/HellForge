@@ -339,6 +339,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Room for about 1,000 enemies.** A world now holds 4,096 entities instead of 2,048. The AI avoidance holds
+  2,048 enemies instead of 512, and the ragdolls 2,048. Past about 540 and 650 live enemies, the game used to crash.
+  A host with this change refuses an older HellForge's join, as that game would crash with so many entities
+  ([performance fixes](docs/performance.md#entity-table)).
 - **No more crash at about 400 enemies alive.** The AI's navmesh edge queries ran out of their 256 places and
   overwrote the HUD, which crashed the game at `game.dll+0x1449D76`. They now have room for 4,096 moving enemies, and
   the game ran past 550 alive ([performance fixes](docs/performance.md#edge-batch)).
