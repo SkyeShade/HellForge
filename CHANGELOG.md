@@ -339,6 +339,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Setup finds the Steam app's download in any Steam library.** With HELLDIVERS 2 in another library than Steam
+  itself (`E:\SteamLibrary` with Steam on C:), Steam can put the download in that library's `steamapps/content`, and
+  setup only watched Steam's own folder. It now looks in every library, names the game's library on the card, and checks
+  the free space on the drive Steam really downloads to ([Steam download](docs/steam-download.md)).
 - **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
   after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
   them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before
