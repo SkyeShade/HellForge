@@ -185,14 +185,14 @@ also `--strangers yes|no|default`, `--live-changes` and `--forge-credits`. It sa
 would, and prints every setting:
 
 ```json
-{"profile": "default", "war": "hellforge", "warServer": "http://127.0.0.1:5093", "localPlayFab": true, "multiplayer": true,
+{"profile": "default", "war": "hellforge", "warServer": "https://war.hf-mod.com", "localPlayFab": true, "multiplayer": true,
  "engineLog": true, "crashDump": false, "gameOptions": "", "sandbox": true, "steamUdp": true, "steamBridge": true,
  "playWithStrangers": true, "playWithStrangersChosen": null, "liveChanges": false, "forgeCreditChance": 30,
  "file": "<installation>\launcher-settings.json"}
 ```
 
 `settings --war-server <url>|default` saves the HellForge war's server (an https address, or http to this PC; `default`
-is HellForge's, `http://127.0.0.1:5093`). `HELLFORGE_WAR_SERVER` overrides it, and the printed `warServer` is the one a
+is HellForge's, `https://war.hf-mod.com`). `HELLFORGE_WAR_SERVER` overrides it, and the printed `warServer` is the one a
 session would use ([hellforge-war.md](hellforge-war.md#choosing-the-server)).
 
 `settings --live-changes yes|no` sets the experimental Change mods without restarting (off by default, read when a
@@ -240,7 +240,7 @@ HellForge.Cli.exe play [--profile <name>] [--war hellforge | live | frozen | ope
 |---|---|---|
 | `--profile` | the selected profile | which HellForge profile plays |
 | `--war` | `hellforge` | `hellforge`: the war every HellForge player shares, from its war server ([hellforge-war.md](hellforge-war.md)). `live`: the current galactic war, read-only through the community mirror. `frozen`: the war HellForge ships. `open`: every planet open. A settings file saved before the HellForge war keeps the war it had |
-| `--war-server` | `HELLFORGE_WAR_SERVER`, the saved server, else `http://127.0.0.1:5093` | the HellForge war's server for this session only: https, or http to this PC (`http://localhost:5093`) |
+| `--war-server` | `HELLFORGE_WAR_SERVER`, the saved server, else `https://war.hf-mod.com` | the HellForge war's server for this session only: https, or http to this PC (`http://localhost:5093`) |
 | `--local-playfab` | `yes` | the game's PlayFab calls go to the local backend |
 | `--multiplayer` | `yes` | co-op with Steam friends |
 | `--engine-log` | `yes` | the game's own log, copied into the session's logs |

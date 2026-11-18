@@ -221,10 +221,10 @@ On `dev`, since 0.4.0-beta.
   Mods, can offer it. Extract it once and run `HellForge.Launcher`; it installs the same files as the `.tar.gz`
   ([Linux](docs/linux.md#graphical-installer), #381).
 - **The HellForge war**, now the default war (Settings > GALACTIC WAR > HellForge war): one galactic war shared by every
-  HellForge player, with its own major orders and dispatches, from HellForge's war server. The war updates every minute
-  while you play, and your missions count towards it. Without a connection the last war fetched is used, and without
-  that the frozen war. Installations that saved their settings before keep the war they had. Settings has a War server
-  field for trying a server of your own ([docs/hellforge-war.md](docs/hellforge-war.md)) (#393).
+  HellForge player, with its own major orders and dispatches, from HellForge's war server (`https://war.hf-mod.com`).
+  The war updates every minute while you play, and your missions count towards it. Without a connection the last war
+  fetched is used, and without that the frozen war. Installations that saved their settings before keep the war they
+  had. Settings has a War server field for trying a server of your own ([docs/hellforge-war.md](docs/hellforge-war.md)) (#393).
 - **War scripts.** A `war-script.json` in your HellForge folder adds your own major orders, dispatches, reward mail and
   planet modifiers (such as an extra stratagem for everyone on a planet) to the war. Edits show in game within a
   minute ([docs/war-script.md](docs/war-script.md)). Mail rewards can be claimed once by every player. The major order,

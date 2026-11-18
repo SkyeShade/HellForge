@@ -167,8 +167,8 @@ shows what the backend serves and reports each mission. The steps:
    and missions counting towards planets and major orders.
 3. A HellForge war server running that state for everyone, and each backend following it the way it follows the live
    war. The backend side is built: `--war hellforge`, the default war, fetches the server's snapshot every minute,
-   caches it per server, and reports mission starts, heartbeats and ends. The server is its own service
-   (the official address isn't decided yet; the default is a placeholder on this PC). Still to do: signed snapshots (like the verified list), reports from Linux sessions
+   caches it per server, and reports mission starts, heartbeats and ends. The server is its own service, at
+   `https://war.hf-mod.com`. Still to do: signed snapshots (like the verified list), reports from Linux sessions
    (through the launcher), and showing a mission's impact in game.
 4. Staff tools on the website: planets, effects, events, the major order and dispatch editors, reward mail.
 5. Engine support for what the war data can't do: banning or changing a stratagem on one planet, task text of our own,
