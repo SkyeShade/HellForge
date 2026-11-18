@@ -8,7 +8,7 @@ static const char* (*const kDifficultyChecks[])(uintptr_t game) = {
     MapPinsFailed, StructuredFailed, ClusterPinsFailed, CityFlagsFailed, PreviewFailed, TownPinsFailed, StreetPinsFailed, RecordMapFailed, TerrainPinsFailed, /* a map_scale above 1 */
     GenerationBlockFailed, ObjectiveStubSitesFailed,                                          /* the moved generation block */
     RestartSitesFailed, CaptureSiteFailed, MissionSitesFailed, CountdownSitesFailed, CardViewFailed, MapViewFailed,
-    ArtilleryPinsFailed};
+    ArtilleryPinsFailed, LaunchCodesFailed};
 
 /* NULL when every copy, instruction, bound and kept caller is the reviewed one; 1 in *waiting while the tables are not
  * filled yet. The mission stratagem's row is not waited for here: the game makes its one world, and with it the
@@ -34,7 +34,8 @@ static const char* (*const kInstallSteps[])(DifficultyInstall* d) = {
     JumpToMapStubs, MoveZoneTable, PrepareStructuredStubs, InstallVista, InstallCull, PrepareFlagsStubs, JumpToStructured,
     InstallClusterGuards, InstallAppendGuards, InstallClusterRings, InstallTowns, InstallStreets, InstallRecordMap, InstallTerrain, InstallFootprintWatch, InstallNavGrid, /* a map_scale above 1 */
     MoveGenerationBlockStep, JumpToRestartStubs, JumpToCapture, JumpToTelemetry, JumpToSpawners, InstallMineLimit, JumpToMapView,
-    JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs, InstallArtilleryShells};
+    JumpToTimeStubs, JumpToCardStubs, JumpToLevelStubs, JumpToMarkerStubs, JumpToObjectiveStubs, InstallArtilleryShells,
+    InstallLaunchCodes};
 
 /* B.2: the same steps by name, so a refusal says which one (and how many completed) kept their patches. */
 static const char* const kInstallStepNames[] = {
@@ -49,7 +50,8 @@ static const char* const kInstallStepNames[] = {
     "InstallClusterGuards", "InstallAppendGuards", "InstallClusterRings", "InstallTowns", "InstallStreets", "InstallRecordMap",
     "InstallTerrain", "InstallFootprintWatch", "InstallNavGrid",
     "MoveGenerationBlock", "JumpToRestartStubs", "JumpToCapture", "JumpToTelemetry", "JumpToSpawners", "InstallMineLimit", "JumpToMapView",
-    "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs", "InstallArtilleryShells"};
+    "JumpToTimeStubs", "JumpToCardStubs", "JumpToLevelStubs", "JumpToMarkerStubs", "JumpToObjectiveStubs", "InstallArtilleryShells",
+    "InstallLaunchCodes"};
 _Static_assert(sizeof kInstallStepNames / sizeof kInstallStepNames[0] == sizeof kInstallSteps / sizeof kInstallSteps[0],
     "every install step needs a name");
 #define DIF_STEP_COUNT (sizeof kInstallSteps / sizeof kInstallSteps[0])

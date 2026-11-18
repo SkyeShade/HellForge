@@ -10,6 +10,7 @@
 #include "channel_test.c"
 #include "rpc_test.c"
 #include "director_test.c"
+#include "enemy_limits_test.c"
 #include "enemy_rosters_test.c"
 #include "spawn_guards_test.c"
 #include "shots_test.c"
@@ -28,6 +29,7 @@
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
 #include "stratagem_codes_test.c"
+#include "difficulty_codes_test.c"
 #include "stratagem_rearm_test.c"
 #include "explosion_cover_test.c"
 #include "safe_read_test.c"
@@ -38,6 +40,11 @@
 #include "perf_render_job_copies_test.c"
 #include "perf_render_version_rehash_test.c"
 #include "perf_vehicle_box_test.c"
+#include "enemy_pools_test.c"
+#include "perf_motion_grid_test.c"
+#include "perf_ai_query_chunks_test.c"
+#include "perf_steer_lod_test.c"
+#include "entity_table_test.c"
 #include "perf_heap_trim_test.c"
 #include "perf_scatter_cameras_test.c"
 #include "perf_knn_grid_test.c"
@@ -425,6 +432,8 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_MARKER_ROUTE_SITE, kMarkerRoutePin, sizeof kMarkerRoutePin);
     memcpy(game + DIF_TIMER_SITE, kTimerPin, sizeof kTimerPin);
     memcpy(game + DIF_LAUNCH_SITE, kLaunchPin, sizeof kLaunchPin);
+    memcpy(game + DIF_CODE_SITE, kCodeSitePin, sizeof kCodeSitePin);
+    memcpy(game + DIF_CODE_LOOKUP, kCodeLookupPin, sizeof kCodeLookupPin);
     memcpy(game + DIF_CARD_TIME_SITE, kCardTimePin, sizeof kCardTimePin);
     memcpy(game + DIF_WIDGET_TIME_SITE, kWidgetTimePin, sizeof kWidgetTimePin);
     memcpy(game + DIF_CARD_VIEW_SITE, kCardViewPin, sizeof kCardViewPin); memcpy(game + DIF_CARD_VIEW_CALL, kCardViewCallPin, 5);
@@ -804,6 +813,7 @@ static void DifficultyFixture(void)
             memcpy(&rel, game + DIF_LAUNCH_SITE + 1, 4);
             uint8_t* launch = game + DIF_LAUNCH_SITE + 5 + rel;
             assert(game[DIF_LAUNCH_SITE] == 0xE9 && game[DIF_LAUNCH_SITE + 11] == 0x90 && !memcmp(launch, kLaunchPin, 7) && !memcmp(launch + 69, kLaunchPin + 7, 5));
+            assert(game[DIF_CODE_CALL] == 0xE8); /* second primaries: the launch code's count calls its stub */
             assert(!memcmp(launch + 38, &own, 8) && g_restartWatch[0x40] == 1);
             memcpy(&rel, launch + 18, 4); assert(launch + 23 + rel == g_restartWatch + 0x40);
             memcpy(&rel, launch + 65, 4); assert(launch + 69 + rel == g_restartWatch + 0x44);
@@ -4957,6 +4967,7 @@ int main(int argc, char** argv)
     PickerFrameFixture();
     StratagemFieldFixture();
     StratagemCodesFixture();
+    DifficultyCodesFixture();
     StratagemRearmFixture();
     StratagemCapFixture();
     ExplosionsFixture();
@@ -4977,6 +4988,7 @@ int main(int argc, char** argv)
     PassivesFixture();
     RefsFixture();
     DirectorFixture();
+    EnemyLimitsFixture();
     EnemyRostersFixture();
     SpawnGuardsFixture();
     ShotsFixture();
@@ -5254,6 +5266,12 @@ int main(int argc, char** argv)
     RenderJobCopiesFixture();
     RenderVersionRehashFixture();
     VehicleBoxFixture();
+    EdgeBatchFixture();
+    MotionGridFixture();
+    AiQueryChunksFixture();
+    EdgeJoinLateFixture();
+    SteerLodFixture();
+    EntityTableFixture();
     HeapTrimFixture();
     PerfScatterCamerasFixture();
     KnnGridFixture();
@@ -5267,6 +5285,6 @@ int main(int argc, char** argv)
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
         "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; sprays: a record of its own with its damage, refusals; registered items: a full registry's export, names escaped; "
-        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, group families, summons into their code, live and at boot, difficulty copies; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again; overlay: the game's mouse pointer and its checks");
+        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, group families, summons into their code, live and at boot, difficulty copies; enemy limits: rows by level, the code left alone at the game's values, the gates and despawn pass run through their stubs by level; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again; overlay: the game's mouse pointer and its checks");
     return 0;
 }

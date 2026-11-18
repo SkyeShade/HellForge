@@ -145,6 +145,14 @@ loader runs the game's own selection for it and appends its main objectives and 
 are registered in the base missions' rows as class 1 with weight 0, so the game gates every main objective on all
 steps of both missions. With weight 0 they are never drawn, so levels 1 to 10 are unchanged.
 
+A partner can bring SSSD hard drives (uplinks, collected data, SE equipment). The game shows a keypad code's digits in
+proportion to the code's carriers revealed (0x9B9820). The drives share the ICBM code's key, so they counted as parts
+of it: with the codes retrieved, an ICBM mixed with two uplinks showed `5-?-?-?-?`.
+
+With second primaries on, the count's record lookup (the call at 0x9B9864) goes through a stub. It gives every carrier
+but the Launch Codes (intel `F48E9DEC9CC20D8A`, carried `5684D928C9AB00D1`) a zero key, so the codes alone reveal the
+whole code. The keypad itself never checked the count (`difficulty_codes.c`).
+
 ### City strongholds
 
 `HF_DIFFICULTY_CITY_STRONGHOLDS` gives the level's city maps the strongholds (Automaton fortresses, Terminid mega nests)
