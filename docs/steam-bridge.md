@@ -345,7 +345,7 @@ reaches only the game's **co-op peers**, so the game has no way to send to any o
   - `HELLFORGE_NETGATE_HOOKS` without `denied` leaves it out.
   - The census's hooks also keep the caller's last error now: `TlsGetValue` in their bookkeeping reset it to 0, so a
     failed `connect` read back as no error.
-  - **Tablet drivers and NVIDIA's telemetry are refused** (`tablet_gate.c`): kernelbase's four `LoadLibrary` calls
+- **Tablet drivers and NVIDIA's telemetry are refused** (`tablet_gate.c`): kernelbase's four `LoadLibrary` calls
   answer `Wintab32.dll` and `NvTelemetryAPI64.dll` with `ERROR_MOD_NOT_FOUND`. Gaomon's driver, refused its shared
   memory, shows `OpenMem failed. Err=5` on every alt-tab. The telemetry, refused its pipe, retries forever and holds the
   game open at quit. The census writes each refusal; `result.json` has `networkCensus.tablet*`.
