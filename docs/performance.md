@@ -29,6 +29,12 @@ out this way without another build.
 | `render-job-copies` | On Direct3D 12, each render job's copy of the resource-version table is freed once the job is recorded | On a 16 km city map, the copies standing at a peak: 561-930 MB to 4-9 MB |
 | `render-version-rehash` | The Direct3D 12 renderer's resource-version tables are rehashed short when a level load left them far too large | A 16 km map, standing still: frame 12.5-13.0 ms to 8.5 ms, about 79 to 116 fps |
 | `vehicle-box` | Each vehicle's oriented box is computed once per motion and steering pass, then copied for the other enemies | The motion pass at 213-225 enemies on a 16 km map: 6.8 ms to 0.5-0.6 ms a frame |
+| `edge-batch` | The AI's navmesh edge queries go to a batch with room for 4,096 moving enemies instead of the game's 256 | A crash at about 400 live enemies: the game then ran on past 550 |
+| `entity-table` | A world holds 4,096 entities instead of 2,048, and the AI avoidance 2,048 characters instead of 512 | Crashes at about 540 and 650 live enemies: the game then ran on past 700 |
+| `motion-grid` | The motion grids that enemies avoid each other with hold 1,152 moving enemies in 4,096 slots instead of 256 in 256 | At 950-1,100 live enemies, both fixes together: 26.7 to 32.9 fps, the boundary clip 3.5-4.9 ms to 0.5-1.0 ms a frame |
+| `ai-query-chunks` | The AI's raycast, overlap and navmesh query jobs are taken in small chunks, and the game thread helps instead of waiting | At about 1,000 enemies: the game thread runs about 2 ms of queries itself and waits about 0.2 ms more. In these runs the wait had been 2.6 ms |
+| `edge-join-late` | The navmesh edge queries are waited for at the first pass that reads them, not before the world update | At about 1,000 enemies: the game thread's wait before the world update 2.6 ms to 0.75 ms a frame; the moved wait finds the queries answered |
+| `steer-lod` | Enemies over 100 m from every Helldiver steer every third frame | At about 1,000 enemies, 37% of the steering updates skipped; the fps change stayed inside the sessions' spread |
 | `heap-trim` | The game's allocator caches are emptied once more when a load ends on the ship or a mission | 16 km maps: 0.5 to 5.5 ms a trim on the game thread, 10 to 72 MB given back each time; not measured at normal size |
 | `scatter-cameras` | The level generator's water and fog cameras are left out of the engine's scatter update, so its node vectors stay the size of real views | 16 km map: 4,205 MB less memory on entering play. Normal size: not measured, an estimated 1/64 of that |
 | `knn-grid` | The Hive Lord graph links its points through a grid instead of trying every pair, with the same result | Level generation on a 4 km map: 1,447 ms to 24 ms; on a 16 km map about 400 s saved |
@@ -39,6 +45,8 @@ out this way without another build.
 
 The fixes that run while a level is generated have their sections in [Performance fixes in level
 generation](performance-loading.md): `scatter-cameras`, `knn-grid`, `spread-sort`, `early-stamp-packages` and `overlap-grid`.
+The fixes for missions with hundreds of enemies have theirs in [Performance fixes for many
+enemies](performance-enemies.md): `motion-grid`, `ai-query-chunks`, `edge-join-late` and `steer-lod`.
 | `span-rescue` | When a load ends, memory blocks that other threads freed go back into use instead of waiting for their neighbours | 16 km map: 355 MB back in one pass. Normal size: not measured |
 
 ## safe-read
@@ -291,6 +299,70 @@ scout walkers or an exosuit gains in proportion, and one without vehicles gains 
   checked.
 - A pass copies at most 128 boxes, and the game holds at most 64 vehicles. Past that, boxes are computed every time.
 - A mod that hooks the box function itself turns the copies off: the call then no longer comes from the clip.
+
+## edge-batch
+
+The AI's navmesh edge queries go to a batch of HellForge's with room for 4,096 queries a frame
+(`native/mod-loader/enemy_pools.c`). It fixes a crash; it saves no time.
+
+Every frame, each moving enemy asks the navmesh for the blocking edges near it, and the steering keeps it off them.
+The game collects these queries in a batch of 256 inside the world, with the HUD's state right behind it. It adds them
+without checking for room. With more than 256 moving enemies, about 400 alive, the extra queries and their answers
+overwrote the HUD, and the game crashed in its HUD job (`game.dll+0x1449D76` or `+0x144C414`).
+
+### Why the answers stay the same
+
+- The queries, the job that answers them and the steering that reads the answers are the game's own. Only the place
+  of the entries changes.
+- The world's batch keeps the count. The game splits the job by it and clears it after the job, as before. HellForge
+  copies it to the new batch before the queries are added and back after.
+- Up to 256 queries, every query and answer is the game's, entry by entry.
+- A new world sets up its own batch, and HellForge takes it over the same way. When the world is torn down, the
+  queries of that frame go nowhere, as no job reads them.
+
+### Limits
+
+- Build 25480438 only. The eleven places it relies on are pinned to that build's bytes; any other code leaves it off with
+  a note in `modloader.log`.
+- Past 4,096 moving enemies, the rest get no edges that frame: they steer as an enemy without a navmesh does. The log
+  says so once a minute.
+- More enemies hit other limits next. The world holds at most 2,048 entities, about 545 enemies with their parts and
+  the map's own objects.
+
+## entity-table
+
+Room for about 1,000 live enemies (`native/mod-loader/entity_table.c`, and the pools in `difficulty_maps.c`). It fixes
+crashes; it saves no time.
+
+| What the game holds | The game's room | HellForge's | Without it |
+|---|---|---|---|
+| Entities in a world: each enemy and its parts, pickups, the map's objects | 2,048 | 4,096 | Past about 650 enemies a new entity took a live one's place, and the game crashed |
+| The AI collision avoidance's characters, obstacles and steering records | 512 | 2,048 | Past about 540 enemies a new enemy got no avoidance character, and the game crashed at `helldivers2.exe+0x7D180B` |
+| Ragdolls (corpses keep theirs) and their bodies | 1,024 and 32,768 | 2,048 and 65,536 | Raised for the same count before they fill |
+
+### How it works
+
+- The game makes its world state once a process, as it starts. HellForge makes that block 352 KB larger before the
+  game allocates it, and puts the entity records and the four entity maps behind it.
+- Every instruction of the game that names the records or the maps then names their new place. The entity maps get
+  8,192 slots, so they stay at most half full.
+- The AI and ragdoll sizes are raised in the same config as the physics pools, before the game builds them.
+- Everything is pinned to build 25480438. If one place differs, the game keeps its own sizes and `modloader.log` says
+  so.
+
+### Co-op
+
+- A client's world mirrors the host's entities. An older HellForge as client would crash once the host's world held
+  more than 2,048 entities. A host with this change therefore refuses an older HellForge's join, and tells that
+  player to update.
+- This HellForge can still join an older host: that host's world is the smaller one.
+
+### Limits
+
+- The game's director still keeps its own caps on enemies; these sizes matter only when a mod or the editor spawns
+  more.
+- Past 4,096 entities a spawn is refused instead of taking a live entity's record. `modloader.log` counts the refused
+  spawns.
 
 ## heap-trim
 

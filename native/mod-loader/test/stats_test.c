@@ -10,6 +10,7 @@
 #include "channel_test.c"
 #include "rpc_test.c"
 #include "director_test.c"
+#include "enemy_limits_test.c"
 #include "enemy_rosters_test.c"
 #include "spawn_guards_test.c"
 #include "shots_test.c"
@@ -28,6 +29,7 @@
 #include "generation_capacity_test.c"
 #include "nav_carvers_test.c"
 #include "stratagem_codes_test.c"
+#include "difficulty_codes_test.c"
 #include "stratagem_rearm_test.c"
 #include "explosion_cover_test.c"
 #include "safe_read_test.c"
@@ -38,6 +40,11 @@
 #include "perf_render_job_copies_test.c"
 #include "perf_render_version_rehash_test.c"
 #include "perf_vehicle_box_test.c"
+#include "enemy_pools_test.c"
+#include "perf_motion_grid_test.c"
+#include "perf_ai_query_chunks_test.c"
+#include "perf_steer_lod_test.c"
+#include "entity_table_test.c"
 #include "perf_heap_trim_test.c"
 #include "perf_scatter_cameras_test.c"
 #include "perf_knn_grid_test.c"
@@ -425,6 +432,8 @@ static void DifficultyFixture(void)
     memcpy(game + DIF_MARKER_ROUTE_SITE, kMarkerRoutePin, sizeof kMarkerRoutePin);
     memcpy(game + DIF_TIMER_SITE, kTimerPin, sizeof kTimerPin);
     memcpy(game + DIF_LAUNCH_SITE, kLaunchPin, sizeof kLaunchPin);
+    memcpy(game + DIF_CODE_SITE, kCodeSitePin, sizeof kCodeSitePin);
+    memcpy(game + DIF_CODE_LOOKUP, kCodeLookupPin, sizeof kCodeLookupPin);
     memcpy(game + DIF_CARD_TIME_SITE, kCardTimePin, sizeof kCardTimePin);
     memcpy(game + DIF_WIDGET_TIME_SITE, kWidgetTimePin, sizeof kWidgetTimePin);
     memcpy(game + DIF_CARD_VIEW_SITE, kCardViewPin, sizeof kCardViewPin); memcpy(game + DIF_CARD_VIEW_CALL, kCardViewCallPin, 5);
@@ -513,16 +522,47 @@ static void DifficultyFixture(void)
     HfDifficulty hell = {sizeof hell};
     hell.name = "fixture/hell_forge"; hell.title = "Hell Forge"; hell.encounter_points = 1500.0f; hell.icon = "fixture/icon"; hell.map_scale = 2.0f; hell.optional_objectives = 8; hell.major_objectives = 2; hell.outpost_scale = 2.0f; hell.mission_minutes = 72.0f; hell.flags = HF_DIFFICULTY_SECOND_PRIMARY | HF_DIFFICULTY_NO_ERADICATE | HF_DIFFICULTY_NO_BLITZ | HF_DIFFICULTY_CITY_STRONGHOLDS; hell.mission_stratagem = 105; hell.patrol_frequency = 2.0f; hell.patrol_cap = 1.5f;
     assert(ApiAddDifficulty(&g_mods[0], &hell) == 11 && ApiAddDifficulty(&g_mods[0], &hell) == 0);
-    /* The mission stratagem's row not loaded yet waits; the M-102 FRV's (free, in a family with paid skins) installs. */
+    /* The install does not wait for the mission stratagem's row (the generation block's move must come before the
+     * game's world): only the grant waits, below. */
     {
         int waiting;
+        assert(DifficultySitesFailed(base, &waiting) == NULL);
+    }
+    /* A block the game made before the move (#422): a larger map would overrun it, so the checks refuse level 11 (after
+     * the grace period for code still decoding) before any step writes anything. */
+    {
+        static uint8_t world[0xAE290], levelGen[0x2D0];
+        uint64_t at = (uintptr_t)levelGen, block = 0x1000;
+        memcpy(world + 0xAE288, &at, 8); memcpy(levelGen + 0x2C8, &block, 8);
+        at = (uintptr_t)world; memcpy(game + DIF_WORLD, &at, 8);
+        int waiting;
         const char* why = DifficultySitesFailed(base, &waiting);
-        assert(why != NULL && waiting && strstr(why, "mission stratagem"));
-        uint8_t* frv = calloc(1, STR_ROW);
-        uint32_t head[2] = {105, 0xEA902C4Bu};
-        memcpy(frv, head, 8);
-        uint64_t at = (uintptr_t)frv;
-        memcpy(game + STR_TABLE + 105 * 8, &at, 8);
+        assert(why != NULL && !waiting && strstr(why, "generation block before HellForge could enlarge it"));
+        assert(InstallDifficulty(base, 0) == 0 && g_difficultyState == 0);
+        assert(InstallDifficulty(base, 1) == 1 && g_difficultyState == -1 && g_difficultyTable == NULL);
+        for (size_t i = 0; i < sizeof kGenerationBlockSize / sizeof kGenerationBlockSize[0]; i++)
+            assert(*(uint32_t*)(game + kGenerationBlockSize[i].rva + kGenerationBlockSize[i].at) == kGenerationBlockSize[i].value);
+        /* no block yet: the early move runs, and finds nothing to do once moved */
+        MoveGenerationBlockEarly(base);
+        assert(!g_generationMoved); /* only while level 11 is still to install */
+        g_difficultyState = 0;
+        memset(game + DIF_WORLD, 0, 8);
+    }
+    /* Before the mods hear HF_EVENT_GAME_LOADED the block moves on its own (WatchLoaded, #422). The install that follows
+     * passes its checks on the moved code, skips its own move (step 52) and keeps every byte the move wrote. */
+    uint8_t* beforeMove = malloc(size);
+    assert(beforeMove);
+    memcpy(beforeMove, game, size);
+    MoveGenerationBlockEarly(base);
+    assert(g_generationMoved && g_generationEarlyFailed == NULL);
+    for (size_t i = 0; i < sizeof kGenerationBlockSize / sizeof kGenerationBlockSize[0]; i++)
+        assert(*(uint32_t*)(game + kGenerationBlockSize[i].rva + kGenerationBlockSize[i].at) == 0x15B1100u);
+    uint8_t* afterMove = malloc(size);
+    assert(afterMove);
+    memcpy(afterMove, game, size);
+    {
+        int waiting;
+        assert(DifficultySitesFailed(base, &waiting) == NULL);
     }
     /* An unfilled copy waits, even after the grace period; a changed instruction waits, then is refused. */
     uint32_t item = *(uint32_t*)(game + kDifficultyCopies[7]);
@@ -533,6 +573,27 @@ static void DifficultyFixture(void)
     assert(InstallDifficulty(base, 0) == 0 && g_difficultyState == 0);
     game[kDifficultySites[3].rva + kDifficultySites[3].dispAt] ^= 1;
     assert(InstallDifficulty(base, 1) == 1 && g_difficultyState == 1);
+    {
+        size_t moved = 0;
+        for (size_t i = 0; i < size; i++)
+            if (beforeMove[i] != afterMove[i]) { moved++; assert(game[i] == afterMove[i]); }
+        assert(moved > 1000);
+        free(beforeMove); free(afterMove);
+    }
+    /* The grant waits for its row: the site keeps the game's code until the row loads; then the M-102 FRV's (free, in a
+     * family with paid skins) installs at the next tick, once. */
+    assert(g_grantPending && !memcmp(game + DIF_GRANT_SITE, kGrantPin, 7));
+    GrantTick(base);
+    assert(g_grantPending && !memcmp(game + DIF_GRANT_SITE, kGrantPin, 7));
+    {
+        uint8_t* frv = calloc(1, STR_ROW);
+        uint32_t head[2] = {105, 0xEA902C4Bu};
+        memcpy(frv, head, 8);
+        uint64_t at = (uintptr_t)frv;
+        memcpy(game + STR_TABLE + 105 * 8, &at, 8);
+    }
+    GrantTick(base);
+    assert(!g_grantPending && game[DIF_GRANT_SITE] == 0xE9);
     /* Every instruction addresses the moved table; level 11 is level 10 with the mod's values; rows 12..15 are empty. */
     uint8_t* table = g_difficultyTable;
     for (size_t i = 0; i < sizeof kDifficultySites / sizeof kDifficultySites[0]; i++)
@@ -752,6 +813,7 @@ static void DifficultyFixture(void)
             memcpy(&rel, game + DIF_LAUNCH_SITE + 1, 4);
             uint8_t* launch = game + DIF_LAUNCH_SITE + 5 + rel;
             assert(game[DIF_LAUNCH_SITE] == 0xE9 && game[DIF_LAUNCH_SITE + 11] == 0x90 && !memcmp(launch, kLaunchPin, 7) && !memcmp(launch + 69, kLaunchPin + 7, 5));
+            assert(game[DIF_CODE_CALL] == 0xE8); /* second primaries: the launch code's count calls its stub */
             assert(!memcmp(launch + 38, &own, 8) && g_restartWatch[0x40] == 1);
             memcpy(&rel, launch + 18, 4); assert(launch + 23 + rel == g_restartWatch + 0x40);
             memcpy(&rel, launch + 65, 4); assert(launch + 69 + rel == g_restartWatch + 0x44);
@@ -1921,9 +1983,14 @@ static void LiveFixture(void)
     float speed = 385.0f, read;
     memcpy(g_fakeProjectile + 0x20, &speed, 4);
     assert(ApiSetLive(mod, 5, &velocity, &fast, 0) == HF_APPLIES_NOW && g_editCount == 1 && g_edits[0].waiting && g_editsWaiting);
+    char waitingFor[256]; /* what the log names (#352) */
+    WaitingTables(waitingFor, sizeof waitingFor);
+    assert(!strcmp(waitingFor, ": ProjectileSettings x1"));
     g_fakeTablesReady = 1;
     ApplyWaitingEdits();
     memcpy(&read, g_fakeProjectile + 0x20, 4); assert(read == 1200.0f && !g_edits[0].waiting);
+    WaitingTables(waitingFor, sizeof waitingFor);
+    assert(waitingFor[0] == 0);
     assert(ApiSetLive(mod, 5, &velocity, &faster, 0) == HF_APPLIES_NOW && g_editCount == 1);
     memcpy(&read, g_fakeProjectile + 0x20, 4); assert(read == 1500.0f);
     assert(ApiSetLive(mod, 5, &velocity, NULL, 0) == HF_APPLIES_NOW && g_editCount == 0);
@@ -4817,6 +4884,64 @@ static void FieldWatchCapFixture(void)
 #include "explosions_test.c"
 #include "beam_arc_test.c"
 
+/* Mods' content in stats lines: a row past the game's in the moved tables, by number and by the name the mod added it
+ * under ("@you.mod:burn"), and a reference's value by name ("@e=you.mod:blast"); a name no mod added is refused and left
+ * out of every pass. */
+static void NamedStatsFixture(void)
+{
+    uint8_t* savedTable = g_damageTable;
+    uint32_t savedDamages = g_damageCount, savedExplosions = g_explosionCount;
+    int savedCount = g_statCount, savedDone = g_statsTablesDone[1], savedMods = g_modCount;
+    char savedId[sizeof g_mods[0].id];
+    strcpy(savedId, g_mods[0].id); strcpy(g_mods[0].id, "you.mod"); if (g_modCount < 1) g_modCount = 1;
+    uint8_t* game = calloc(1, 0x3800000);
+    g_damageTable = calloc(DMG_VANILLA + DMG_MAX_NEW, 8);
+    uint8_t* modRow = calloc(1, DMG_ROW);
+    *(uint32_t*)modRow = DMG_VANILLA + 2;
+    *(uintptr_t*)(g_damageTable + (DMG_VANILLA + 2) * 8) = (uintptr_t)modRow;
+    /* by number: the moved table's row past the game's 650 */
+    g_statCount = 1; g_stats[0] = Edit(0, 77, 4, 0); strcpy(g_stats[0].kind, "DamageInfo"); g_stats[0].record = DMG_VANILLA + 2;
+    g_statsTablesDone[1] = 0; StatsApplyTable(1, (uintptr_t)game);
+    assert(g_stats[0].applied && *(uint32_t*)(modRow + 4) == 77);
+    /* by name: numbered once the mods have set up */
+    g_damageCount = 1; memset(&g_damages[0], 0, sizeof g_damages[0]);
+    strcpy(g_damages[0].name, "you.mod:burn"); g_damages[0].id = DMG_VANILLA + 2;
+    g_explosionCount = 1; memset(&g_explosions[0], 0, sizeof g_explosions[0]);
+    strcpy(g_explosions[0].name, "you.mod:blast"); g_explosions[0].type = EXP_VANILLA + 5;
+    char row[] = "stat	you.mod	DamageInfo	-	0000000000000000	@you.mod:burn	8	i32	00000058	-	0	1	1	you.mod:burn durable_damage";
+    char ref[] = "stat	you.mod	ProjectileSettings	-	0000000000000000	276	144	u32	@e=you.mod:blast	-	0	1	1	276 terminal.impact.explosion";
+    char lost[] = "stat	you.mod	DamageInfo	-	0000000000000000	@you.mod:gone	4	i32	00000001	-	0	1	1	you.mod:gone standard_damage";
+    char badKind[] = "stat	you.mod	component	Fixture	0000000000000001	@you.mod:burn	4	u32	00000001	-	0	1	0	named component";
+    char badRef[] = "stat	you.mod	ProjectileSettings	-	0000000000000000	276	144	u32	@x=you.mod:blast	-	0	1	1	bad kind";
+    char* lines[] = {row, ref, lost, badKind, badRef};
+    g_statCount = 0;
+    for (int k = 0; k < 5; k++)
+    {
+        char* f[16]; int n = 0;
+        for (char* t = strtok(lines[k], "	"); t && n < 16; t = strtok(NULL, "	")) f[n++] = t;
+        int refused = StatsParse(f, n) != 0;
+        assert(k < 3 ? !refused : refused); /* a name on a component row, or an unknown content kind, is malformed */
+    }
+    assert(g_statCount == 3 && !strcmp(g_stats[0].recordName, "you.mod:burn") && g_stats[0].record == 0);
+    assert(g_stats[1].valueKind == 'e' && !strcmp(g_stats[1].valueName, "you.mod:blast") && g_stats[1].value == 0);
+    StatsResolveAll();
+    assert(g_stats[0].record == DMG_VANILLA + 2 && !strcmp(g_stats[0].kind, "DamageInfo"));
+    assert(g_stats[1].value == EXP_VANILLA + 5);
+    assert(g_stats[2].kind[0] == 0); /* no such mod damage type: refused, no pass applies it */
+    g_statsTablesDone[1] = 0; StatsApplyTable(1, (uintptr_t)game);
+    assert(g_stats[0].applied && *(int32_t*)(modRow + 8) == 0x58 && !g_stats[2].applied);
+    /* a live change's line names content as it is now */
+    char live[] = "stat	you.mod	DamageInfo	-	0000000000000000	@you.mod:gone	4	i32	00000001	-	0	1	1	live";
+    char* f[16]; int n = 0;
+    for (char* t = strtok(live, "	"); t && n < 16; t = strtok(NULL, "	")) f[n++] = t;
+    StatEdit e; char why[192];
+    assert(!StatsParseInto(f, n, &e) && StatsResolveNames(&e, why, sizeof why) && strstr(why, "you.mod:gone"));
+    g_damageTable = savedTable; g_damageCount = savedDamages; g_explosionCount = savedExplosions;
+    g_statCount = savedCount; g_statsTablesDone[1] = savedDone; strcpy(g_mods[0].id, savedId); g_modCount = savedMods;
+    free(modRow); free(game);
+    puts("PASS stats name mods' content: rows past the game's reached by number and by name, references by name, a name no mod added refused");
+}
+
 int main(int argc, char** argv)
 {
     strcpy(g_build, "25480438");
@@ -4842,6 +4967,7 @@ int main(int argc, char** argv)
     PickerFrameFixture();
     StratagemFieldFixture();
     StratagemCodesFixture();
+    DifficultyCodesFixture();
     StratagemRearmFixture();
     StratagemCapFixture();
     ExplosionsFixture();
@@ -4862,6 +4988,7 @@ int main(int argc, char** argv)
     PassivesFixture();
     RefsFixture();
     DirectorFixture();
+    EnemyLimitsFixture();
     EnemyRostersFixture();
     SpawnGuardsFixture();
     ShotsFixture();
@@ -4973,7 +5100,7 @@ int main(int argc, char** argv)
     uint8_t* oldRow = calloc(1, DMG_ROW); *(uint32_t*)oldRow = 54; *(uint32_t*)(oldRow + 4) = 5;
     uint8_t* newRow = calloc(1, DMG_ROW); *(uint32_t*)newRow = 54; *(uint32_t*)(newRow + 4) = 10;
     *(uintptr_t*)(game + DMG_TABLE + 54 * 8) = (uintptr_t)oldRow;
-    g_damageTable = calloc(DMG_VANILLA, 8); *(uintptr_t*)(g_damageTable + 54 * 8) = (uintptr_t)newRow;
+    g_damageTable = calloc(DMG_VANILLA + DMG_MAX_NEW, 8); *(uintptr_t*)(g_damageTable + 54 * 8) = (uintptr_t)newRow;
     g_statCount = 1; g_stats[0] = Edit(0, 150, 4, 0); strcpy(g_stats[0].kind, "DamageInfo"); g_stats[0].record = 54;
     StatsApplyTable(1, (uintptr_t)game);
     assert(*(uint32_t*)(newRow + 4) == 150 && *(uint32_t*)(oldRow + 4) == 5);
@@ -5081,6 +5208,7 @@ int main(int argc, char** argv)
     GrowthLookupFixture();
     StateMovesOffsetsFixture();
     StateMovesDecodeFixture();
+    NamedStatsFixture();
     DecodeTopFixture();
     StateMovesOwnershipFixture();
     ArmoryRoomFixture();
@@ -5138,6 +5266,12 @@ int main(int argc, char** argv)
     RenderJobCopiesFixture();
     RenderVersionRehashFixture();
     VehicleBoxFixture();
+    EdgeBatchFixture();
+    MotionGridFixture();
+    AiQueryChunksFixture();
+    EdgeJoinLateFixture();
+    SteerLodFixture();
+    EntityTableFixture();
     HeapTrimFixture();
     PerfScatterCamerasFixture();
     KnnGridFixture();
@@ -5151,6 +5285,6 @@ int main(int argc, char** argv)
         "vanilla edits and conflicts, identities, find, inferred packages; live edits: table rows, waiting tables, replace and reset, "
         "shared records, array elements, pipe requests; mod sync: offers held until published, progress, refusals, cut text, answers over the overlapped pipe; mod channel: rows by host, size and row caps, messages' words and rate, the pipe's lines and their events, an absent mod dropped; lobby browser: lists held until published, refusals, asks, the terminal count, claims; Lua bridge: mods by name, any value of a record, edits stacked editor over Lua over code, Lua holders, saved values, record owners, the event queue; armor passives: record lookup, override kept through kit changes, solo only, "
         "refusals, release, pins; references: package waits, refusals, the stats pass; armor perk values: resolve, live, stats pass, refusals; arm swaps: allowed, refused, package wait, reset; hellpod payloads: pickups, empty, refusals, package wait, reset; row copies: donors, waits, refusals, restore; far hooks: overlay stubs, trampolines, refusals; hook chains: HellForge's and mods' hooks on one function in order, priorities, hooks added later, pins read through a hook, hooks.tsv, code_matches and read_code through another mod's hook; own_all copies: record sizes by shape, own records, idempotence; sprays: a record of its own with its damage, refusals; registered items: a full registry's export, names escaped; "
-        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, group families, summons into their code, live and at boot, difficulty copies; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again; overlay: the game's mouse pointer and its checks");
+        "game events: priorities, state and mission polling, players by peer, damage hook, the queue; abilities: countdown hold, base from tick 0, refusals, silo countdown flags, the loose remote guard, dead connections closed for a rejoin, silo launches by missile authority only, link marks shared and own, slots freed per frame; behaviours: stubs installed, a new behaviour resumes as its base; spawn director: rosters and compositions by id, weights where level 11 left them, the squad cap and ranges, group families, summons into their code, live and at boot, difficulty copies; enemy limits: rows by level, the code left alone at the game's values, the gates and despawn pass run through their stubs by level; enemies added to the faction rosters: rows and rules after the game's, rows of a mod's own and its squads, the budget's weight, any entity as an enemy, the plan arrays' bound, a mod taken out; per-player shots: the lobby's rules from the pipe, whose round each shot fires; per-player rounds: the lobby's changes, rows rebuilt without this machine's own, the shooter's row and damage at the spawn; table growth: division magics, the loadout lookup grown and run, the 74 tables, a table grown, built again on a reload and grown again; overlay: the game's mouse pointer and its checks");
     return 0;
 }
