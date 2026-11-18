@@ -121,8 +121,8 @@ static void TabletChecks(bool sandboxed, const wchar_t *folder)
     Check(CopyFileW(fake, wintab, FALSE), "a stand-in Wintab32.dll is made from fake_game.dll");
     Check(CopyFileW(fake, telemetry, FALSE), "a stand-in NvTelemetryAPI64.dll is made from fake_game.dll");
     HMODULE wintabByPath = LoadLibraryExW(wintab, NULL, 0);
-    HMODULE telemetryByPath = LoadLibraryExW(telemetry, NULL, 0);
     DWORD wintabByPathError = GetLastError();
+    HMODULE telemetryByPath = LoadLibraryExW(telemetry, NULL, 0);
     DWORD telemetryByPathError = GetLastError();
     if (!sandboxed)
     {

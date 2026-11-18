@@ -4,8 +4,8 @@
 // gains or loses focus (alt-tab). Refused, the game runs as on a PC without a tablet driver; the pen still moves the mouse.
 
 // The NVIDIA telemetry: at low integrity it's refused the pipe to NVIDIA's service and retries without pause
-// at quit, DLSS' shutdown waits for it with no time limit, so the game never exists and it's shader cache is never saved
-// refused, nvapi carries on as on a PC with no telemetry, DLSS still functional
+// at quit. DLSS' shutdown waits for it with no time limit, so the game never exits and its shader cache is never saved.
+// NvTelemetryAPI64.dll refused, nvapi carries on as on a PC with no telemetry, DLSS still functional.
 #define WIN32_LEAN_AND_MEAN
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0A00
@@ -31,7 +31,7 @@ static LoadLibraryExWFn g_loadLibraryExW;
 typedef struct { const wchar_t *wide; const char *narrow; const char *dll; const char *loadedLine; } RefusedDll;
 static const RefusedDll g_refused[] = {
     {L"wintab32", "wintab32", "Wintab32.dll", "{\"gate\":\"tablet loaded\",\"module\":\"Wintab32.dll\"}\n"},
-    {L"nvtelemetryapi64", "nvtelemetryapi64", "NvTelemetryAPI64.dll", "{\"gate\":\"telemetry loaded\",\"module\":\"NvTelemetryAPI64.dll\"}\n"},        
+    {L"nvtelemetryapi64", "nvtelemetryapi64", "NvTelemetryAPI64.dll", "{\"gate\":\"telemetry loaded\",\"module\":\"NvTelemetryAPI64.dll\"}\n"},
 };
 #define REFUSED_COUNT (sizeof g_refused / sizeof g_refused[0])
 
