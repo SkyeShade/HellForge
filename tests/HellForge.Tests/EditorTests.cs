@@ -308,6 +308,33 @@ static class EditorTests
                 "Spawn Compositions filter by faction and by difficulty; the line under a name says where it is.");
         });
 
+        test("Enemy limits: the spawn gates and the despawn pass on every difficulty, patrols under a second", () =>
+        {
+            var targets = StatsSchema.Current.Targets;
+            var level = targets["difficulty"]["7"].Fields;
+            check(level["difficulty.patrol_gate"] is { Kind: "EnemyLimits", Record: 7, Offset: 0, Storage: "u32", Min: 0, Max: 1000, Section: "Enemy limits" } &&
+                  level["difficulty.roaming_gate"].Offset == 4 && level["difficulty.spawn_gate"].Offset == 8 &&
+                  level["difficulty.despawn"] is { Offset: 12, Max: 1 } && level["difficulty.despawn"].Choices.Count() == 2 &&
+                  level["difficulty.despawn_start"].Offset == 16 && level["difficulty.despawn_distance"] is { Offset: 20, Storage: "f32", Min: 10, Max: 2000 } &&
+                  targets["difficulty"]["11"].Fields["difficulty.patrol_gate"].Record == 11,
+                "Each difficulty (11 too) has its EnemyLimits row: three gates, the despawn switch, its start and distance.");
+            check(level.Values.Where(f => f.Kind == "EnemyLimits").All(f => f.Note!.Contains("host's", StringComparison.Ordinal)) &&
+                  level["difficulty.patrol_gate"].Note!.Contains("400", StringComparison.Ordinal) && level["difficulty.despawn"].Note!.Contains("545", StringComparison.Ordinal),
+                "Their notes say the host decides and where the game crashes today.");
+            check(level["difficulty.patrol_interval_terminids"].Min == 0.1 && level["difficulty.patrol_cap_automatons"].Note!.Contains("patrol gate", StringComparison.Ordinal),
+                "Patrols may come every 0.1 s; the patrol caps point at the gate that stops them first.");
+            var saved = StatsData.Parse("""{"format":1,"difficulty":{"10":{"difficulty.patrol_gate":200,"difficulty.despawn":0,"difficulty.despawn_distance":300,"difficulty.patrol_interval_terminids":0.5}}}""",
+                EntityProfile.Current);
+            check(saved.Any(e => e is { Kind: "EnemyLimits", Record: 10, Offset: 0, Value: 200 }) && saved.Any(e => e is { Kind: "EnemyLimits", Offset: 12, Value: 0 }) &&
+                  saved.Any(e => e is { Kind: "DifficultySettings", Record: 10, Offset: 672 }),
+                "A stats file sets them: " + string.Join(", ", saved.Select(e => e.Key)));
+            foreach (var wrong in new[] { "\"difficulty.patrol_gate\":5000", "\"difficulty.despawn\":2", "\"difficulty.despawn_distance\":5" })
+                reject(() => StatsData.Parse("{\"format\":1,\"difficulty\":{\"10\":{" + wrong + "}}}", EntityProfile.Current));
+            var row = EditorCatalog.Build()["objects"]!.AsArray().Select(o => o!.AsObject()).Single(o => o["id"]!.GetValue<string>() == "difficulty/10")["page"]!
+                .AsArray().SelectMany(c => c!["subs"]!.AsArray()).SelectMany(s => s!["rows"]!.AsArray()).First(r => r!["key"]!.GetValue<string>() == "difficulty.despawn")!;
+            check(row["toggle"]?.GetValue<bool>() == true, "The despawn switch is a tick box.");
+        });
+
         test("The editor's icons are the game's sprite pixels: block formats decoded exactly, written in the editor's format", () =>
         {
             /* BC1: colour 0 white, colour 1 black, every texel index 0 except the last (1) */

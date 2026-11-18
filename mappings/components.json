@@ -8252,6 +8252,60 @@
         }
       }
     },
+    "EnemyLimits": {
+      "component": "EnemyLimits",
+      "table": true,
+      "stride": 24,
+      "layout": "25480438",
+      "meaning": "the enemy limits game.dll keeps in its code rather than the difficulty table (a row by difficulty level, 1 to 11, each the game's values until changed): HellForge's row, read by the spawn gates and the AI enemy budget's despawn pass through stubs (native/mod-loader/enemy_limits.c). Host only: the host's rows decide",
+      "applies": "now",
+      "appliesVerified": false,
+      "appliesSource": "the code reads them every frame; HellForge's update copies the mission's level's row to where the stubs read it",
+      "fields": {
+        "patrol_gate": {
+          "offset": 0,
+          "type": "u32",
+          "meaning": "a scheduled patrol spawns only while its squad, the queued enemies (HiveMind manager +0x36C0) and the living AI characters total at most this; the game's 100. The patrol caps count only under it",
+          "verified": false,
+          "source": "game.dll EnemyDirectorTick 0x9514D6..0x9514F9 (add eax, [rcx+0x1C]; cmp eax, 0x64; jbe: the squad from 0x949900, +0x36C0, [0x3326D18] +0x1C)"
+        },
+        "roaming_gate": {
+          "offset": 4,
+          "type": "u32",
+          "meaning": "the shared spawners' waves (AiSpawnerUpdate, spawn reason 2), travellers (7) and stragglers (8) spawn only while the queued and living enemies, less those of breaches and drops (3) and fabricators (4), stay under this; the game's 70",
+          "verified": false,
+          "source": "game.dll DirectorSpawnAllowed 0x952F3A..0x952F59 (cmp ecx, 0x46; jge refuse), its callers 0x7F7FD7, 0x9508E7, 0x950A51 (flag 0); SpawnSquad's own call only marks the squad"
+        },
+        "spawn_gate": {
+          "offset": 8,
+          "type": "u32",
+          "meaning": "no spawn but a patrol squad's while the AI enemy manager holds this many enemies; the game's 448",
+          "verified": false,
+          "source": "game.dll DirectorSpawnAllowed 0x952F62 (cmp dword [[0x33264D8]+0xC], 0x1C0; jae refuse); patrols pass SpawnSquad flag bit 6, which skips it"
+        },
+        "despawn": {
+          "offset": 12,
+          "type": "u32",
+          "meaning": "1: the AI enemy budget's despawn pass runs (the game's); 0: it never runs, so no living enemy is despawned for the budget",
+          "verified": false,
+          "source": "game.dll's world update 0x572C35..0x572C69 (host only: host peer 0 or this peer; then the count test and call AiEnemyBudgetDespawnPass)"
+        },
+        "despawn_start": {
+          "offset": 16,
+          "type": "u32",
+          "meaning": "the despawn pass runs once the budget's enemies reach those despawning + this (the game's 100): one a pass, far ones first (despawn_distance); from ten more any enemy may go",
+          "verified": false,
+          "source": "game.dll 0x572C51 (add eax, 0x64 over [world+0x75E9D4], against +0x75E9E4) and AiEnemyBudgetDespawnPass 0xA2C098 (add ebx, 0x6E)"
+        },
+        "despawn_distance": {
+          "offset": 20,
+          "type": "f32",
+          "meaning": "metres from which the despawn pass may take an enemy as far (the game's 150), 10 to 2000",
+          "verified": false,
+          "source": "game.dll AiEnemyBudgetDespawnPass 0xA2C0BC (movss xmm5, 22500.0 at 0x23C7E5C: the distance squared, against each entry's +8)"
+        }
+      }
+    },
     "Equipment": {
       "component": "EquipmentComponentData",
       "index": 233,

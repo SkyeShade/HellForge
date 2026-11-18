@@ -38,6 +38,9 @@ static DWORD WINAPI RgFillLater(void* parameter)
     return 0;
 }
 
+static volatile LONG g_rgTestQuitEnds;
+static void RgTestQuitEnd(void) { InterlockedIncrement(&g_rgTestQuitEnds); }
+
 /* Workers finishing jobs that other threads take at once: give-backs, never a free slot. */
 static DWORD WINAPI RgFinishing(void* parameter)
 {
@@ -61,6 +64,7 @@ static void RenderGuardsFixture(void)
         0x41,0xff,0xc1, 0x83,0xf8,0x20, 0x76,0xe8};
     RgPut(image, RG_POOL_RETRY, spin, sizeof spin);
     RgPut(image, RG_POOL_EMPTY, kRgPoolPin, sizeof kRgPoolPin);
+    RgPut(image, RG_QUIT_SET, kRgQuitPin, sizeof kRgQuitPin);
     assert(RgPinned(exe));
     image[kRgSites[2].rva + 3] ^= 1;
     assert(!RgPinned(exe)); /* another build's code is left alone */
@@ -159,7 +163,36 @@ static void RenderGuardsFixture(void)
     WaitForSingleObject(finishing, INFINITE);
     CloseHandle(finishing);
     assert(g_rgPoolGaveUp == gaveUp + 1 && g_rgPoolStalled == stalled + 1);
+
+    /* the engine told to quit (#332): a stall ends the game with exit code 0, only for a quit with exit code 0. The
+     * fixture's EngineCore pointer stands where exe + RG_ENGINE_CORE reads it. */
+    RgPinQuit(exe);
+    assert(g_rgQuitExe == exe); /* the quit's pin, written with the image */
+    image[RG_QUIT_SET + 3] ^= 1;
+    g_rgQuitExe = 0;
+    RgPinQuit(exe);
+    assert(g_rgQuitExe == 0); /* another build's quit is not read */
+    image[RG_QUIT_SET + 3] ^= 1;
+    static uintptr_t core;
+    static uint8_t engine[0x470];
+    core = (uintptr_t)engine;
+    void (*end)(void) = g_rgQuitEnd;
+    g_rgQuitExe = (uintptr_t)&core - RG_ENGINE_CORE;
+    g_rgQuitEnd = RgTestQuitEnd;
+    const struct { uint8_t quit; int32_t code; int ends; } quits[] = {{0, 0, 0}, {1, 3, 0}, {1, 0, 1}};
+    for (size_t i = 0; i < sizeof quits / sizeof quits[0]; i++)
+    {
+        engine[0x460] = quits[i].quit;
+        memcpy(engine + 0x464, &quits[i].code, sizeof quits[i].code);
+        LONG ends = g_rgTestQuitEnds;
+        assert(take(pool, 0) == 2); /* the end returns here: the game's own failure after it */
+        assert(g_rgTestQuitEnds == ends + quits[i].ends);
+    }
+    core = 0;
+    assert(take(pool, 0) == 2 && g_rgTestQuitEnds == 1); /* EngineCore gone: no end */
+    g_rgQuitExe = exe;
+    g_rgQuitEnd = end;
     g_rgPoolWaitMs = budget;
     g_rgPoolStallMs = stall;
-    puts("PASS render guards: pins, a freed slot on its null path at all eight sites and live ones unchanged, the job pool waited out with r10 kept, ended early when no job finishes, by the budget when jobs finish but none is free, the last error kept");
+    puts("PASS render guards: pins, a freed slot on its null path at all eight sites and live ones unchanged, the job pool waited out with r10 kept, ended early when no job finishes, by the budget when jobs finish but none is free, the last error kept, a stall at a quit for exit code 0 ends the game");
 }

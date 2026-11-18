@@ -408,7 +408,6 @@ public static class StatsCatalog
     public static IReadOnlyList<StatsSection> Sections(StatsItem item, StatsSchema? schema = null)
     {
         schema ??= StatsSchema.Current;
-        var weaponPage = item.Nav is "primary" or "secondary" or "throwables" or "support";
         var vehiclePage = item.Nav == "vehicles";
         var titles = new Dictionary<string, string>(StringComparer.Ordinal);
         var placed = new List<(string Category, string Group, double Rank, StatsRow Row)>();
@@ -421,7 +420,7 @@ public static class StatsCatalog
             part.Category == "enemies" && item.Parts.Count > 1 || groupParts[(category, group)].Count > 1 && groupParts[(category, group)][0] != part;
         var sections = new List<StatsSection>();
         var firstSeen = placed.Select(p => p.Category).Distinct().ToList();
-        foreach (var category in firstSeen.OrderBy(c => vehiclePage ? VehicleRank(c, firstSeen) : CategoryRank(c, weaponPage, firstSeen)))
+        foreach (var category in firstSeen.OrderBy(c => vehiclePage ? VehicleRank(c, firstSeen) : CategoryRank(c, firstSeen)))
         {
             var rows = placed.Where(p => p.Category == category).ToList();
             var groups = rows.GroupBy(p => (p.Group, p.Row.Part))
@@ -488,12 +487,12 @@ public static class StatsCatalog
         _ => 1000 + firstSeen.IndexOf(category),
     };
 
-    static int CategoryRank(string category, bool weaponPage, IList<string> firstSeen) => category switch
+    static int CategoryRank(string category, IList<string> firstSeen) => category switch
     {
         "att:magazine" => 2000, "att:muzzle" => 2001, "att:optics" => 2002, "att:underbarrel" => 2003,
         "identity:health" => 0, "identity:speed" => 1, "identity:stamina" => 2, "identity:refill" => 3, "identity:damage" => 4, // the Helldiver's, in HD2R Editor's order
         "zones" => 200, "attacks" => 300, // an entity's, after its Health & Armor
-        "call_in" => weaponPage ? 3000 : 0,
+        "call_in" => 0, // a stratagem's hellpod and call-in open its page, a support weapon's too
         _ when category.StartsWith("identity:", StringComparison.Ordinal) => 10 + firstSeen.IndexOf(category),
         _ when Array.IndexOf(Order, category) is var i and >= 0 => 100 + i,
         _ => 1000 + firstSeen.IndexOf(category)

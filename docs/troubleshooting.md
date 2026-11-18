@@ -189,7 +189,8 @@ have. On Linux, Proton's own builtin runtimes serve, and nothing is checked or i
 
 The copy setup makes holds English only: every other language of HELLDIVERS 2 is a free DLC of its own, which Steam
 installs beside the game but setup does not copy yet. A copy without your language crashes when you switch the game to
-it.
+it. Before each session HellForge checks the game's text and voice language: one whose pack is not in the copy is set
+back to English, and the session log says so.
 
 Until setup offers it, add the language with the command-line tool, `<installation>\app\cli\HellForge.Cli.exe`. Japanese is
 the only language HellForge has pinned so far; more follow.
@@ -563,7 +564,10 @@ scrubbed. Open a GitHub issue then opens the new-issue page; nothing is sent unt
 Settings > Troubleshooting has two switches for harder problems. Both apply to the next session.
 
 - Engine log starts the game with its own log switched on (`--log-to-file`) and copies that log into the session's logs,
-  so Save logs to Desktop includes it. It helps find why a join or connection fails.
+  so Save logs to Desktop includes it. It helps find why a join or connection fails. The game puts the PC's name in
+  that log's file name, and a name with letters outside A-Z, 0-9 and "-" crashes it (`helldivers2.exe+0x5ce339`). On
+  such a PC the session starts the game without its log and the session log says why. Rename the PC with plain letters
+  to have the engine log.
 - Crash dump writes a full memory dump of the game (about 1 GB) into the session's logs if it crashes. Without it, a
   crash still leaves a small dump (`crash-<process id>.dmp`: the game's threads and the memory they point to, not all
   of it). Either can hold what the game had in memory, your Steam account name for one, so only send a dump to people you
