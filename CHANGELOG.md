@@ -12,6 +12,9 @@ On `dev`, since 0.4.0-beta.
 
 ### Added
 
+- **Languages in Settings.** A Languages card lists the language packs pinned for the build and adds one to the game
+  copy. Steam downloads it from the console command the card shows, or on Windows HellForge does after a sign-in in
+  the Steam app. Remove takes a pack out again ([troubleshooting](docs/troubleshooting.md#playing-in-a-language-other-than-english)).
 - **Missile spread in the editor.** Every seeking missile's page has a Spread group: whether its missiles veer off
   their launch line, how far and which way, the curve they fly after, and how fast they swing back onto the target.
   The W.A.S.P., the Missile Pistol and the Warrant have it on; the Spear, the Commando and the others can turn it on.
