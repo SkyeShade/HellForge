@@ -233,6 +233,8 @@ On `dev`, since 0.4.0-beta.
 
 ### Changed
 
+- **Hellpod / Call-in opens every stratagem's page in the editor.** Support weapons had it last, under all of the
+  weapon's own sections; now it comes first, as on every other stratagem.
 - **Big enemy counts run faster.** With 950 to 1,100 enemies alive, a mission ran at 34.5 fps instead of 27.0, and the
   slowest frames improved as much. Below about 400 enemies nothing visible changes
   ([performance fixes](docs/performance-enemies.md#motion-grid)).
@@ -359,6 +361,10 @@ On `dev`, since 0.4.0-beta.
 - **Level 11's Launch ICBM shows the whole launch code.** A mixed mission's SSSD hard drives (from uplinks, collected
   data or SE equipment) counted as parts of the code, so after retrieving the codes it often showed one digit and
   question marks. The code now counts only the Launch Codes ([Difficulty 11](docs/internals-difficulty.md#second-primary)).
+- **Quitting after a mission no longer crashes at `helldivers2.exe+0x626296`.** As the game quits, its job workers can
+  stop while the job pool is full, and the game crashed as it tried to queue one more job. When the game was told to
+  quit, HellForge now ends it there with exit code 0, so the session ends as a normal quit ([crash
+  guards](docs/crash-guards.md), #332).
 - **Room for about 1,000 enemies.** A world now holds 4,096 entities instead of 2,048. The AI avoidance holds
   2,048 enemies instead of 512, and the ragdolls 2,048. Past about 540 and 650 live enemies, the game used to crash.
   A host with this change refuses an older HellForge's join, as that game would crash with so many entities

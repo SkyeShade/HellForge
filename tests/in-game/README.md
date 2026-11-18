@@ -48,6 +48,7 @@ a mission and back. Then compare the probe's log (`mod-hellforge.sdk-probe.log` 
 | `stratagem-uses-probe/` | the test mod `stratagem-uses.json` runs (`hellforge.stratagem-uses-probe`), never shipped: the stats edit, the loadout, the uses left the HUD shows after each change, the Railcannon's beacons counted |
 | `launch-codes.json` | level 11's launch code: the count's call goes to the stub, the stub passes the Launch Codes and gives the other six carriers a zero key, and in a mission with another carrier (an SSSD drive) the game's own count is the Launch Codes' share. Run at difficulty 11 on a mission that brings a drive (Automaton collect data, row 3). Reading the whole code on the HUD after retrieving an ICBM's codes is by hand |
 | `launch-codes-probe/` | the test mod `launch-codes.json` runs (`hellforge.launch-codes-probe`), never shipped; it only reads |
+| `quit-job-pool.json` | a quit after a mission ends with exit code 0 where the game crashed at `helldivers2.exe+0x626296` (#332): the render guards in, the engine's quit pinned, no crash at the quit. Needs the harness to end the session through the game's own quit, with a mod set that fills the job pool then |
 
 ## Running one
 
