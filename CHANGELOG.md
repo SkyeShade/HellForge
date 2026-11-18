@@ -342,7 +342,7 @@ On `dev`, since 0.4.0-beta.
 - **Windows, sandbox on, NVIDIA with DLSS: the game requires 2 ALT-F4's to close.**
   NVIDIA's telemetry service `NvTelemetryAPI64.dll` could not succeed inside a low integrity session and would continuously 
   retry a connection during play which caused an infinite hang on ALT-F4. Hellforge now refuses offending DLL allowing for clean exits
-  and shaders to be saved cleanly. DLSS retains functionality. (#477, #PR)
+  and shaders to be saved cleanly. DLSS retains functionality. (#477, #478)
 - **Level 11 no longer hangs in the drop when a mod is slow to start.** Level 11 enlarged the game's map buffers only
   after every mod had set itself up, so a slow mod could let the game make them first. A level-11 map then ran over
   them, the hellpod never landed, and players in one lobby could get different maps. HellForge now enlarges them before
