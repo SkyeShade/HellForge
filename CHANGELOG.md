@@ -356,6 +356,10 @@ On `dev`, since 0.4.0-beta.
 
 ### Fixed
 
+- **Quitting after a mission no longer crashes at `helldivers2.exe+0x626296`.** As the game quits, its job workers can
+  stop while the job pool is full, and the game crashed as it tried to queue one more job. When the game was told to
+  quit, HellForge now ends it there with exit code 0, so the session ends as a normal quit ([crash
+  guards](docs/crash-guards.md), #332).
 - **Room for about 1,000 enemies.** A world now holds 4,096 entities instead of 2,048. The AI avoidance holds
   2,048 enemies instead of 512, and the ragdolls 2,048. Past about 540 and 650 live enemies, the game used to crash.
   A host with this change refuses an older HellForge's join, as that game would crash with so many entities
