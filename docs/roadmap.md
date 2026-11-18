@@ -129,7 +129,7 @@ maintainer and the admins before it goes out (the checklist in `.github/PULL_REQ
 
 The big parts: room for about 1,000 enemies, with each difficulty's enemy limits in the editor, and missions that run
 faster with many enemies and on large maps. Mods can add enemies, explosions, sprays, attachments, patterns, warbonds,
-screens in the game's UI, and weapons from models, textures, animations and sounds of their own, and they can listen
+screens in the game's UI, and weapons from models, textures, animations and sounds of their own. They can also listen
 to and send the game's network messages.
 
 ## Next: stability and co-op
