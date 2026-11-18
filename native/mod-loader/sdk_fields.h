@@ -1002,6 +1002,19 @@ static const SdkField kSdkFieldsSeekingMissile[] = {
     {"max_angle_to_target", 84, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"turn_rate_at_max_angle", 88, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
     {"turn_rate_aligned", 92, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"deviation_enabled", 180, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"deviation_direction_min", 184, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"deviation_direction_max", 188, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"deviation_angle_min", 192, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"deviation_angle_max", 196, 4, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"deviation_curve_min", 200, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"deviation_curve_max", 212, 12, HF_TYPE_F32, HF_APPLIES_RESPAWN, REF_NONE},
+    {"deviation_curve_either_way", 224, 1, HF_TYPE_U8, HF_APPLIES_RESPAWN, REF_NONE},
+    {"deviation_curve_speed", 228, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"deviation_veer_end", 232, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"deviation_veer_start", 236, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"deviation_return_time", 240, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
+    {"deviation_return_turn_rate", 244, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsLoadoutEntry[] = {
     {"traits_1", 12, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1149,6 +1162,14 @@ static const SdkField kSdkFieldsDemolitionTemplate[] = {
 static const SdkField kSdkFieldsEnemySummon[] = {
     {"family", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
     {"count", 4, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+};
+static const SdkField kSdkFieldsEnemyLimits[] = {
+    {"patrol_gate", 0, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"roaming_gate", 4, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"spawn_gate", 8, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"despawn", 12, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"despawn_start", 16, 4, HF_TYPE_U32, HF_APPLIES_NOW, REF_NONE},
+    {"despawn_distance", 20, 4, HF_TYPE_F32, HF_APPLIES_NOW, REF_NONE},
 };
 static const SdkField kSdkFieldsEquipment[] = {
     {"wield_node", 0, 4, HF_TYPE_U32, HF_APPLIES_RESPAWN, REF_NONE},
@@ -1440,7 +1461,7 @@ static const SdkComponent kSdkComponents[] = {
     {"OrbitalAbility", "OrbitalAbilityComponentData", 25480438u, 552u, kSdkFieldsOrbitalAbility, 6, 0, 308},
     {"Rotation", "RotationComponentData", 25480438u, 312u, kSdkFieldsRotation, 3, 0, 310},
     {"Displacement", "DisplacementComponentData", 25480438u, 632u, kSdkFieldsDisplacement, 12, 0, 274},
-    {"SeekingMissile", "SeekingMissileComponentData", 25480438u, 272u, kSdkFieldsSeekingMissile, 9, 0, 196},
+    {"SeekingMissile", "SeekingMissileComponentData", 25480438u, 272u, kSdkFieldsSeekingMissile, 22, 0, 196},
     {"LoadoutEntry", "LoadoutEntryComponentData", 25480438u, 32u, kSdkFieldsLoadoutEntry, 5, 0, 29},
     {"HellpodRack", "HellpodRackComponentData", 25480438u, 568u, kSdkFieldsHellpodRack, 9, 0, 155},
     {"Avatar", "AvatarComponentData", 25480438u, 852u, kSdkFieldsAvatar, 21, 0, 232},
@@ -1460,6 +1481,7 @@ static const SdkComponent kSdkComponents[] = {
     {"Bughole", "BugholeComponentData", 25480438u, 40u, kSdkFieldsBughole, 1, 0, 216},
     {"DemolitionTemplate", "DemolitionTemplate", 25480438u, 16u, kSdkFieldsDemolitionTemplate, 2, 1, -1},
     {"EnemySummon", "EnemySummon", 25480438u, 8u, kSdkFieldsEnemySummon, 2, 1, -1},
+    {"EnemyLimits", "EnemyLimits", 25480438u, 24u, kSdkFieldsEnemyLimits, 6, 1, -1},
     {"Equipment", "EquipmentComponentData", 25480438u, 232u, kSdkFieldsEquipment, 35, 0, 233},
     {"Wieldable", "WieldableComponentData", 25480438u, 32u, kSdkFieldsWieldable, 6, 0, 111},
     {"Attachable", "AttachableComponentData", 25480438u, 64u, kSdkFieldsAttachable, 11, 0, 262},

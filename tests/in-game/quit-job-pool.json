@@ -1,0 +1,28 @@
+{
+  "about": "A quit after a mission ends with exit code 0, not the crash at helldivers2.exe+0x626296 (#332, docs/crash-guards.md). The harness must end the session through the game's own quit (Application.quit, as the menu's Quit does) after the mission, with a mod set that fills the job pool at quit (the full Clones preset crashed 5 of 5). The line 'the game is quitting and a full job pool' shows the new path ran; without a stall at quit it is not written and the quit is normal anyway.",
+  "mods": [],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {
+      "name": "the render guards are in, the job pool's among them",
+      "log": "modloader.log",
+      "regex": "render guards: [1-9] of 9 installed"
+    },
+    {
+      "name": "the engine's quit is the reviewed code",
+      "log": "modloader.log",
+      "absent": "the engine's quit is not the reviewed code"
+    },
+    {
+      "name": "no crash at the quit",
+      "log": "modloader.log",
+      "absent_regex": "crash: c0000005 .* at helldivers2\\.exe\\+0x626296"
+    },
+    {
+      "name": "a stall at the quit did not fall through to the game's own failure",
+      "log": "modloader.log",
+      "absent": "saw no job finish for 500 ms (the game quitting, or stuck)"
+    }
+  ]
+}

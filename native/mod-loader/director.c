@@ -11,7 +11,7 @@
  *   EnemyComposition    (roster << 16) | (family << 12) | row: a composition row (0x118): eight groups of {key, count,
  *                       emission time} from +0, weight +0xE0, cost multiplier +0xE4, post-schedule duration +0xE8, tech
  *                       levels +0xEC..+0xF0, players +0xF4..+0xF8. A group's key: a family (roster row +0) of its roster.
- *   EnemySummon         a summoning ability's id: the family and count it calls up (enemy_summons.c).
+ *   EnemySummon         a summoning ability's id: what it calls up (enemy_summons.c). EnemyLimits: a level's gates.
  *   DemolitionTemplate  a demolition template's index, 1 to 9 (0 "none" and 10 "Count" stay): the force a destruction
  *                       stage that names it requires (+4, u32, 1 to 255: the incoming force is narrowed to a byte), shared
  *                       by every stage that names it. The templates are 16-byte rows at [[game+0x346D928] + 0x30]
@@ -44,6 +44,7 @@ static uintptr_t DirectorGame(size_t* size) { return ApiModuleBase("game.dll", s
 static uintptr_t (*g_directorImage)(size_t* size) = DirectorGame;
 
 #include "enemy_summons.c" /* what summoning enemies call up */
+#include "enemy_limits.c"  /* the spawn gates and the despawn pass */
 
 /* Whether the roster weights sit at +0x2C (level 11 added: difficulty.c moved them), from the first reader's displacement:
  * 1 moved, 0 not, -1 neither (not as reviewed). */
@@ -110,6 +111,7 @@ static uintptr_t DirectorRow(const char* kind, uint64_t id, int* ready)
     if (game == 0 || size != DIR_IMAGE || strcmp(g_build, "25480438")) { *ready = game == 0; return 0; }
     if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRow(game, id, ready);
     if (!strcmp(kind, "EnemySummon")) return SummonRowOf(game, id, ready);
+    if (!strcmp(kind, "EnemyLimits")) return LimitsRowOf(game, id, ready);
     if (g_difficultyAdded && g_difficultyState == 0) { *ready = 0; return 0; } /* the weights are about to move */
     if (EnemyRostersPending()) { *ready = 0; return 0; } /* the rows are about to move to larger copies */
     uint32_t roster = (uint32_t)(id >> 16), row = (uint32_t)(id & 0xFFFF);
@@ -124,7 +126,7 @@ static uintptr_t DirectorRow(const char* kind, uint64_t id, int* ready)
 static int DirectorKind(const char* kind)
 {
     return !strcmp(kind, "EnemyRoster") || !strcmp(kind, "EnemyRosterLevel11") || !strcmp(kind, "EnemyComposition") ||
-        !strcmp(kind, "DemolitionTemplate") || !strcmp(kind, "EnemySummon");
+        !strcmp(kind, "DemolitionTemplate") || !strcmp(kind, "EnemySummon") || !strcmp(kind, "EnemyLimits");
 }
 
 static const char* DirectorDemolitionRefuses(uint32_t offset, uint32_t bits)
@@ -325,6 +327,7 @@ static const char* DirectorRefuses(const char* kind, uintptr_t row, uint32_t off
     memcpy(&value, bytes, 4);
     if (!strcmp(kind, "DemolitionTemplate")) return DirectorDemolitionRefuses(offset, bits);
     if (!strcmp(kind, "EnemySummon")) return SummonRefuses(offset, bits);
+    if (!strcmp(kind, "EnemyLimits")) return LimitsRefuses(offset, bits);
     if (strcmp(kind, "EnemyComposition"))
     {
         const char* why = DirectorWeightRefuses(value);
@@ -365,7 +368,7 @@ static void DifficultyMirror(uintptr_t row, uint32_t offset, const void* before,
 static uint32_t DirectorStride(const char* kind)
 {
     return !strcmp(kind, "EnemyRoster") ? 40u : !strcmp(kind, "EnemyRosterLevel11") ? 4u : !strcmp(kind, "EnemyComposition") ? DIR_COMPOSITION_ROW :
-        !strcmp(kind, "DemolitionTemplate") ? DIR_DEMOLITION_ROW : !strcmp(kind, "EnemySummon") ? SUM_ROW :
+        !strcmp(kind, "DemolitionTemplate") ? DIR_DEMOLITION_ROW : !strcmp(kind, "EnemySummon") ? SUM_ROW : !strcmp(kind, "EnemyLimits") ? EL_ROW :
         !strcmp(kind, "DifficultySettings") ? DIF_ROW : 0u;
 }
 

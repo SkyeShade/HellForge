@@ -1,0 +1,20 @@
+{
+  "about": "Which way the missile spread turns: the primary fires the MLS-4X Commando's missile (its package held), whose stats give a 45 degree veer at direction 0 from 0.05 to 0.5 s and a curve of 90 degrees a second about the curve's first axis (curve_pitch) only. The probe logs the first missiles' heading against their launch frame (local Y forward, Z up) and says which way direction 0 went (expected: up) and which way the first curve axis turned (expected: pitch, in the up plane). The harness holds the trigger until the log shows a missile at 0.8 s (tests/in-game/README.md).",
+  "mods": [
+    "missile-spread-look-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "fire": 3,
+  "fire_until": {"log": "mod-hellforge.missile-spread-look-probe.log", "regex": "PROBE missile 0 at age 0\\.8"},
+  "checks": [
+    {"name": "the probe loads", "log": "mod-hellforge.missile-spread-look-probe.log", "contains": "PROBE sdk ok"},
+    {"name": "the Commando's package is held", "log": "mod-hellforge.missile-spread-look-probe.log", "contains": "PROBE package ok"},
+    {"name": "the primary fires the Commando's missile", "log": "mod-hellforge.missile-spread-look-probe.log", "contains": "PROBE primary ok"},
+    {"name": "the Commando missile's spread edits land", "log": "mod-hellforge.missile-spread-look-probe.log", "regex": "Commando missile\\.spread\\.(enabled|angle_max|curve_pitch_max): applied", "min": 3},
+    {"name": "a missile flies with the spread on", "log": "mod-hellforge.missile-spread-look-probe.log", "regex": "PROBE missile [0-9] seen at age [0-9.]+, spread flag 1", "min": 1},
+    {"name": "veer direction 0 is up", "log": "mod-hellforge.missile-spread-look-probe.log", "contains": "PROBE veer direction 0 ok: up"},
+    {"name": "the curve's first axis is pitch", "log": "mod-hellforge.missile-spread-look-probe.log", "contains": "PROBE curve first axis ok: pitch"},
+    {"name": "no probe check failed and no edit was refused", "log": "mod-hellforge.missile-spread-look-probe.log", "absent_regex": "FAIL|refused"}
+  ]
+}

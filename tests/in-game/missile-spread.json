@@ -1,0 +1,17 @@
+{
+  "about": "The editor's missile spread rows (SeekingMissile +0xB4..+0xF4): the W.A.S.P. missile's spread switched off (record 9 +0xB4), the MLS-4X Commando's switched on with a 45 degree veer to one side between 0.05 and 0.4 s and a 1 s return (record 10). The logs prove the edits land; what they do (a W.A.S.P. salvo that flies straight at its target without fanning out, Commando rockets that swerve 45 degrees sideways and curve back onto the laser point) needs a look in the mission with each weapon fired (tests/in-game/README.md).",
+  "mods": [
+    "missile-spread-probe"
+  ],
+  "only": true,
+  "mission": true,
+  "checks": [
+    {"name": "the W.A.S.P. missile's spread goes off", "log": "mod-hellforge.missile-spread-probe.log", "regex": "W\\.A\\.S\\.P\\. Launcher missile\\.spread\\.enabled: applied \\(00000001 -> 00000000\\)", "min": 1},
+    {"name": "the Commando's spread goes on", "log": "mod-hellforge.missile-spread-probe.log", "regex": "Commando missile\\.spread\\.enabled: applied \\(00000000 -> 00000001\\)", "min": 1},
+    {"name": "the Commando veers 90 degrees round its flight line", "log": "mod-hellforge.missile-spread-probe.log", "regex": "Commando missile\\.spread\\.direction_m(in|ax): applied \\(00000000 -> 42b40000\\)", "min": 2},
+    {"name": "the Commando veers 45 degrees", "log": "mod-hellforge.missile-spread-probe.log", "regex": "Commando missile\\.spread\\.angle_m(in|ax): applied \\(00000000 -> 42340000\\)", "min": 2},
+    {"name": "the Commando's veer runs from 0.05 s to 0.4 s", "log": "mod-hellforge.missile-spread-probe.log", "regex": "Commando missile\\.spread\\.veer_(start: applied \\(00000000 -> 3d4ccccd|end: applied \\(00000000 -> 3ecccccd)\\)", "min": 2},
+    {"name": "the Commando swings back over 1 s at its usual turn rate", "log": "mod-hellforge.missile-spread-probe.log", "regex": "Commando missile\\.spread\\.return_(time|turn_rate): applied \\(00000000 -> 3f800000\\)", "min": 2},
+    {"name": "no edit is refused", "log": "mod-hellforge.missile-spread-probe.log", "absent": "refused"}
+  ]
+}

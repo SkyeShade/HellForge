@@ -87,6 +87,15 @@ static class LaunchFailureTests
             check(!LaunchFailure.Closed(LaunchFailure.Prepare, 1, null, WindowsCrash.Owner.Unknown, true).Contains("sandbox"), "A plain exit: no sandbox advice.");
             check(LaunchFailure.Closed(LaunchFailure.Connect, AccessViolation, rtss, WindowsCrash.Owner.Other, true).Contains("RTSSHooks64.dll is not part of the game"),
                 "A third-party module that crashed a sandboxed game is still named.");
+            // the engine's own log crashed the game as it opened its file (#424): the setting is named first, sandboxed or not
+            var engineLog = rtss with { Module = "helldivers2.exe", Offset = "0x5ce339", ModulePath = Root + @"\game\bin\helldivers2.exe" };
+            var logOn = LaunchFailure.Closed(LaunchFailure.Connect, AccessViolation, engineLog, WindowsCrash.Owner.Installation, true, null, engineLog: true);
+            check(logOn.Contains("helldivers2.exe+0x5ce339). The game's own log (the Engine log setting)") && logOn.Contains("Turn Engine log off") &&
+                !logOn.Contains("sandbox off"), "The engine log crash: " + logOn);
+            check(LaunchFailure.Closed(LaunchFailure.Connect, AccessViolation, engineLog, WindowsCrash.Owner.Installation, true,
+                "Nahimic's audio overlay (NahimicOSD.dll) was in the game.", engineLog: true).Contains("Turn Engine log off"), "Before a sandbox hint.");
+            check(!LaunchFailure.Closed(LaunchFailure.Connect, AccessViolation, engineLog, WindowsCrash.Owner.Installation).Contains("Engine log"),
+                "With the engine log off the setting is not named.");
             // the game still runs: what part of the connect step failed
             check(LaunchFailure.NotConnected("module_not_observed").StartsWith("The game could not be connected to the local backend: it had not loaded its code " +
                 "(game.dll) after 45 seconds.", StringComparison.Ordinal), LaunchFailure.NotConnected("module_not_observed"));
